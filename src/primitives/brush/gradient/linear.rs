@@ -4,6 +4,7 @@ use crate::primitives::brush::gradient::{
     FillAxis, GradientBuilderCore, Interp, Spread, gradient_tag,
 };
 use crate::primitives::color::ColorU8;
+use crate::primitives::nan::NanCheck;
 
 /// Linear gradient — paints colour along an axis at `angle` radians
 /// (0 = →, π/2 = ↓). Object-space: gradient spans the brush owner's
@@ -111,5 +112,13 @@ gradient_common!(LinearGradient);
 impl From<LinearGradientBuilder> for LinearGradient {
     fn from(builder: LinearGradientBuilder) -> Self {
         builder.build()
+    }
+}
+/// Stop offsets and colours are integer-encoded (`Stop::offset_u8`,
+/// `ColorU8`), so a gradient's geometry is the only place a NaN can hide.
+impl NanCheck for LinearGradient {
+    #[inline]
+    fn has_nan(&self) -> bool {
+        self.angle.is_nan()
     }
 }

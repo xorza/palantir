@@ -123,6 +123,7 @@ mod tests {
     use crate::renderer::gpu_view::GpuFrameCtx;
     use crate::scene::layer::Layer;
     use crate::scene::node::Configure;
+    use crate::scene::shapes::paint::ImageSource;
     use crate::scene::shapes::record::ShapeRecord;
     use crate::widgets::panel::Panel;
     use glam::{UVec2, Vec2};
@@ -155,8 +156,14 @@ mod tests {
         let tree = &h.ui.forest.trees[Layer::Main];
         let mut shapes = tree.shapes_of(node);
         assert!(
-            matches!(shapes.next(), Some(ShapeRecord::GpuView { .. })),
-            "records exactly one GpuView shape",
+            matches!(
+                shapes.next(),
+                Some(ShapeRecord::Image {
+                    source: ImageSource::GpuView { .. },
+                    ..
+                }),
+            ),
+            "records exactly one view-sourced image shape",
         );
         assert!(shapes.next().is_none());
         let r = h.ui.layout[Layer::Main].rect[node.idx()];

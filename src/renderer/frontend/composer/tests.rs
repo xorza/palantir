@@ -11,12 +11,13 @@ use crate::primitives::{
 use crate::renderer::frontend::composer::{Composer, stroke_bbox_urect};
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::{
-    BrushSource, DrawMeshPayload, DrawPolylinePayload, ResolvedGradient,
+    BrushSource, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload, ResolvedGradient,
 };
 use crate::renderer::frontend::record_sink::RecordedPaint;
 use crate::renderer::gpu_view::{GpuFrameCtx, GpuPaint, GpuPaintRef};
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::scene::record_store::RecordPayloads;
+use crate::scene::shapes::paint::ShapeStroke;
 use crate::scene::shapes::record::ColorMode;
 use crate::shape::style::{LineCap, LineJoin};
 use crate::text::key::TextShapeKey;
@@ -107,6 +108,13 @@ impl GpuPaint for NoopGpuPaint {
 
 fn gpu_paint() -> GpuPaintRef {
     GpuPaintRef(Rc::new(RefCell::new(NoopGpuPaint)))
+}
+
+/// The payload the encoder builds for a `GpuView`: the view's full
+/// arranged rect, untinted, full UV, default sampling. Pair it with
+/// `Some(&paint)` — that's what makes the sink flag it as a view.
+fn gpu_view_payload(rect: Rect, handle: TextureId) -> DrawImagePayload {
+    DrawImagePayload::image(rect, Vec2::ZERO, Vec2::ONE, Color::WHITE.into(), handle, 0)
 }
 
 #[test]
@@ -272,7 +280,7 @@ fn compose_intersects_nested_clips() {
 
 #[test]
 fn cull_drops_drawrect_entirely_outside_active_clip() {
-    // Two `DrawRect`s under the same clip: one inside, one fully
+    // Two rect quads under the same clip: one inside, one fully
     // outside. Composer must skip emitting the outside one (the GPU
     // would scissor it, but skipping the `quads.push` saves CPU work).
     // Push/Pop pair still emits a single scissored group covering the
@@ -599,6 +607,80 @@ fn push_clip_rect_emits_no_rounded_data() {
     assert_eq!(buf.groups.len(), 1);
     assert!(buf.rounded_clips.is_empty());
     assert_eq!(buf.groups[0].rounded_clips.len, 0);
+}
+
+/// A NaN stroke width normalizes away like any other non-painting
+/// width, uniformly for every quad shape. `Shape::debug_assert_no_nan`
+/// is what catches it loudly, at the authoring boundary; this pins the
+/// release-side fallback, which is to fail safe.
+///
+/// Pinned end to end rather than at the payload, because the interesting
+/// claim is about what reaches the GPU: **no NaN ever does**, on either
+/// geometry. Before `ShapeStroke` carried an `f32` width the two arms
+/// disagreed here — rect forwarded NaN to the instance, triangle scrubbed
+/// it via `.max(0.0)` — and nothing was checking that they agreed.
+#[test]
+fn nan_stroke_width_normalizes_away_on_every_quad_geometry() {
+    let nan_stroke: ShapeStroke = Stroke::solid(Color::rgb(0.0, 1.0, 0.0), f32::NAN).into();
+    let display = params(2.0, UVec2::new(400, 400));
+
+    // An opaque fill keeps the draw alive, so the quad reaches the
+    // buffer and its stroke lanes can be inspected. With a transparent
+    // fill the whole payload gates out instead — also fine, but it
+    // proves nothing about the lanes.
+    let buf = run(
+        |b, _arena| {
+            b.draw_rect(
+                rect(10.0, 20.0, 30.0, 40.0),
+                Corners::ZERO,
+                BrushSource::Solid(Color::WHITE.into()),
+                nan_stroke,
+            );
+        },
+        &display,
+    );
+    assert_eq!(buf.quads.len(), 1, "the fill keeps the rect alive");
+    assert_eq!(
+        buf.quads[0].stroke_width, 0.0,
+        "a NaN width must not reach the instance",
+    );
+
+    let buf = run(
+        |b, _arena| {
+            b.draw_triangle(
+                Vec2::ZERO,
+                [
+                    Vec2::new(0.0, 0.0),
+                    Vec2::new(10.0, 0.0),
+                    Vec2::new(5.0, 8.0),
+                ],
+                Color::WHITE.into(),
+                0.0,
+                nan_stroke,
+            );
+        },
+        &display,
+    );
+    assert_eq!(buf.quads.len(), 1, "the fill keeps the triangle alive");
+    assert_eq!(
+        buf.quads[0].stroke_width, 0.0,
+        "the triangle arm must agree with the rect arm",
+    );
+
+    // A NaN stroke on a shape with nothing else to paint is simply
+    // dropped — the fill and the stroke are both no-ops.
+    let buf = run(
+        |b, _arena| {
+            b.draw_rect(
+                rect(10.0, 20.0, 30.0, 40.0),
+                Corners::ZERO,
+                BrushSource::Solid(Color::TRANSPARENT.into()),
+                nan_stroke,
+            );
+        },
+        &display,
+    );
+    assert!(buf.quads.is_empty(), "nothing to paint, nothing emitted");
 }
 
 #[test]
@@ -1672,14 +1754,17 @@ fn compose_emits_image_batch_for_drawimage() {
     use crate::renderer::frontend::payload::DrawImagePayload;
     let buf = run(
         |b, _arena| {
-            b.draw_image(DrawImagePayload::image(
-                rect(10.0, 20.0, 30.0, 40.0),
-                glam::Vec2::ZERO,
-                glam::Vec2::ONE,
-                Color::WHITE.into(),
-                TextureId(0xc0ffee),
-                0,
-            ));
+            b.draw_image(
+                DrawImagePayload::image(
+                    rect(10.0, 20.0, 30.0, 40.0),
+                    glam::Vec2::ZERO,
+                    glam::Vec2::ONE,
+                    Color::WHITE.into(),
+                    TextureId(0xc0ffee),
+                    0,
+                ),
+                None,
+            );
         },
         &params(2.0, UVec2::new(400, 400)),
     );
@@ -1724,10 +1809,9 @@ fn compose_gpu_view_carries_nested_transform_and_dpr_to_raster_target() {
             |b, _arena| {
                 b.push_transform(TranslateScale::from_scale(2.0));
                 b.push_transform(TranslateScale::from_scale(1.5));
-                b.draw_gpu_view(
-                    rect(0.0, 0.0, 20.0, 10.0),
-                    TextureId(0xc0ffee),
-                    &gpu_paint(),
+                b.draw_image(
+                    gpu_view_payload(rect(0.0, 0.0, 20.0, 10.0), TextureId(0xc0ffee)),
+                    Some(&gpu_paint()),
                 );
                 b.pop_transform();
                 b.pop_transform();
@@ -1770,13 +1854,15 @@ fn compose_gpu_view_caps_wide_and_tall_targets_uniformly() {
     for case in cases {
         let buf = run_with_texture_cap(
             |b, _arena| {
-                b.draw_gpu_view(
-                    Rect {
-                        min: Vec2::ZERO,
-                        size: case.logical_size,
-                    },
-                    TextureId(0xc0ffee),
-                    &gpu_paint(),
+                b.draw_image(
+                    gpu_view_payload(
+                        Rect {
+                            min: Vec2::ZERO,
+                            size: case.logical_size,
+                        },
+                        TextureId(0xc0ffee),
+                    ),
+                    Some(&gpu_paint()),
                 );
             },
             &params(1.0, UVec2::new(400, 400)),
@@ -1806,14 +1892,17 @@ fn compose_image_forwards_uv_crop_for_cover_fit() {
     use crate::renderer::frontend::payload::DrawImagePayload;
     let buf = run(
         |b, _arena| {
-            b.draw_image(DrawImagePayload::image(
-                rect(0.0, 0.0, 100.0, 100.0),
-                glam::Vec2::new(0.25, 0.0),
-                glam::Vec2::new(0.5, 1.0),
-                Color::WHITE.into(),
-                TextureId(1),
-                0,
-            ));
+            b.draw_image(
+                DrawImagePayload::image(
+                    rect(0.0, 0.0, 100.0, 100.0),
+                    glam::Vec2::new(0.25, 0.0),
+                    glam::Vec2::new(0.5, 1.0),
+                    Color::WHITE.into(),
+                    TextureId(1),
+                    0,
+                ),
+                None,
+            );
         },
         &params(1.0, UVec2::new(400, 400)),
     );
@@ -1832,32 +1921,41 @@ fn compose_forwards_flags_and_repeat_uv() {
     let buf = run(
         |b, _arena| {
             // Plain draw: flags stay 0.
-            b.draw_image(DrawImagePayload::image(
-                rect(0.0, 0.0, 50.0, 50.0),
-                glam::Vec2::ZERO,
-                glam::Vec2::ONE,
-                Color::WHITE.into(),
-                TextureId(1),
-                0,
-            ));
+            b.draw_image(
+                DrawImagePayload::image(
+                    rect(0.0, 0.0, 50.0, 50.0),
+                    glam::Vec2::ZERO,
+                    glam::Vec2::ONE,
+                    Color::WHITE.into(),
+                    TextureId(1),
+                    0,
+                ),
+                None,
+            );
             // Tiled draw: UV size > 1 (3×2 repeats) + tiled bit.
-            b.draw_image(DrawImagePayload::image(
-                rect(0.0, 0.0, 50.0, 50.0),
-                glam::Vec2::ZERO,
-                glam::Vec2::new(3.0, 2.0),
-                Color::WHITE.into(),
-                TextureId(2),
-                IMG_FLAG_TILED,
-            ));
+            b.draw_image(
+                DrawImagePayload::image(
+                    rect(0.0, 0.0, 50.0, 50.0),
+                    glam::Vec2::ZERO,
+                    glam::Vec2::new(3.0, 2.0),
+                    Color::WHITE.into(),
+                    TextureId(2),
+                    IMG_FLAG_TILED,
+                ),
+                None,
+            );
             // The two nearest-filter bits ride through together.
-            b.draw_image(DrawImagePayload::image(
-                rect(0.0, 0.0, 50.0, 50.0),
-                glam::Vec2::ZERO,
-                glam::Vec2::ONE,
-                Color::WHITE.into(),
-                TextureId(3),
-                IMG_FLAG_MIN_NEAREST | IMG_FLAG_MAG_NEAREST,
-            ));
+            b.draw_image(
+                DrawImagePayload::image(
+                    rect(0.0, 0.0, 50.0, 50.0),
+                    glam::Vec2::ZERO,
+                    glam::Vec2::ONE,
+                    Color::WHITE.into(),
+                    TextureId(3),
+                    IMG_FLAG_MIN_NEAREST | IMG_FLAG_MAG_NEAREST,
+                ),
+                None,
+            );
         },
         &params(1.0, UVec2::new(400, 400)),
     );
@@ -2294,14 +2392,17 @@ fn curve(b: &mut RecordedPaint, bbox: Rect) {
 
 fn image(b: &mut RecordedPaint, r: Rect) {
     use crate::renderer::frontend::payload::DrawImagePayload;
-    b.draw_image(DrawImagePayload::image(
-        r,
-        Vec2::ZERO,
-        Vec2::ONE,
-        Color::WHITE.into(),
-        TextureId(1),
-        0,
-    ));
+    b.draw_image(
+        DrawImagePayload::image(
+            r,
+            Vec2::ZERO,
+            Vec2::ONE,
+            Color::WHITE.into(),
+            TextureId(1),
+            0,
+        ),
+        None,
+    );
 }
 
 /// The backend replays a group's higher kinds in fixed tier order —

@@ -4,6 +4,7 @@ use crate::primitives::brush::gradient::{
     FillAxis, GradientBuilderCore, Interp, Spread, gradient_tag,
 };
 use crate::primitives::color::ColorU8;
+use crate::primitives::nan::NanCheck;
 use glam::Vec2;
 
 /// Radial gradient — paints colour outward from `center` along the
@@ -110,5 +111,13 @@ gradient_common!(RadialGradient);
 impl From<RadialGradientBuilder> for RadialGradient {
     fn from(builder: RadialGradientBuilder) -> Self {
         builder.build()
+    }
+}
+/// Stops carry no float (see `LinearGradient`'s impl), so only the
+/// geometry is checked.
+impl NanCheck for RadialGradient {
+    #[inline]
+    fn has_nan(&self) -> bool {
+        self.center.has_nan() || self.radius.has_nan()
     }
 }

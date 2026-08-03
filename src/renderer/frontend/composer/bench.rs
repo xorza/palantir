@@ -141,14 +141,17 @@ fn push_mesh(cmds: &mut RecordedPaint, bbox: Rect) {
 }
 
 fn push_image(cmds: &mut RecordedPaint, rect: Rect) {
-    cmds.draw_image(DrawImagePayload::image(
-        rect,
-        Vec2::ZERO,
-        Vec2::ONE,
-        Color::WHITE.into(),
-        TextureId(1),
-        0,
-    ));
+    cmds.draw_image(
+        DrawImagePayload::image(
+            rect,
+            Vec2::ZERO,
+            Vec2::ONE,
+            Color::WHITE.into(),
+            TextureId(1),
+            0,
+        ),
+        None,
+    );
 }
 
 pub fn bench(c: &mut Criterion) {

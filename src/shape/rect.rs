@@ -1,5 +1,6 @@
 use crate::primitives::brush::Brush;
 use crate::primitives::corners::Corners;
+use crate::primitives::nan::NanCheck;
 use crate::primitives::rect::Rect;
 use crate::primitives::stroke::Stroke;
 use crate::shape::local_rect_paint_empty;
@@ -51,5 +52,14 @@ impl RectShape {
 
     pub(super) fn is_noop(&self) -> bool {
         local_rect_paint_empty(&self.local_rect) || (self.fill.is_noop() && self.stroke.is_noop())
+    }
+}
+impl NanCheck for RectShape {
+    #[inline]
+    fn has_nan(&self) -> bool {
+        self.local_rect.has_nan()
+            || self.corners.has_nan()
+            || self.fill.has_nan()
+            || self.stroke.has_nan()
     }
 }

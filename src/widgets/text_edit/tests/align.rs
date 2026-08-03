@@ -12,6 +12,7 @@
 use crate::Align;
 use crate::primitives::transform::TranslateScale;
 use crate::scene::layer::Layer;
+use crate::scene::shapes::paint::QuadShape;
 use crate::scene::shapes::record::ShapeRecord;
 use crate::scene::tree::record::NodeId;
 use crate::shape::rect::RectKind;
@@ -96,11 +97,11 @@ fn shape_origins(ui: &Ui, node: NodeId) -> (Option<glam::Vec2>, Option<glam::Vec
                 local_origin: Some(o),
                 ..
             } => text_origin = Some(*o),
-            ShapeRecord::Rect {
+            ShapeRecord::Quad(QuadShape::Rect {
                 kind: RectKind::Rounded,
                 local_rect: Some(r),
                 ..
-            } => caret_origin = Some(glam::Vec2::new(r.min.x, r.min.y)),
+            }) => caret_origin = Some(glam::Vec2::new(r.min.x, r.min.y)),
             _ => {}
         }
     }
@@ -318,11 +319,11 @@ fn selection_rects_offset_matches_text() {
     let first_rounded = h.ui.forest.trees[Layer::Main]
         .shapes_of(node)
         .find_map(|s| match s {
-            ShapeRecord::Rect {
+            ShapeRecord::Quad(QuadShape::Rect {
                 kind: RectKind::Rounded,
                 local_rect,
                 ..
-            } => *local_rect,
+            }) => *local_rect,
             _ => None,
         });
     let r = first_rounded.expect("selection wash rect present");

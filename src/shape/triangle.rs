@@ -1,5 +1,6 @@
 use crate::primitives::approx::noop_f32;
 use crate::primitives::color::Color;
+use crate::primitives::nan::NanCheck;
 use crate::primitives::stroke::Stroke;
 use glam::Vec2;
 
@@ -48,4 +49,15 @@ fn triangle_paint_empty(a: Vec2, b: Vec2, c: Vec2) -> bool {
     // Longest-edge normalization keeps the cutoff independent of authored scale.
     let normalized_twice_area = ab.perp_dot(ac).abs() / max_edge_len_sq;
     noop_f32(normalized_twice_area)
+}
+impl NanCheck for TriangleShape {
+    #[inline]
+    fn has_nan(&self) -> bool {
+        self.a.has_nan()
+            || self.b.has_nan()
+            || self.c.has_nan()
+            || self.radius.is_nan()
+            || self.fill.has_nan()
+            || self.stroke.has_nan()
+    }
 }

@@ -9,6 +9,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::renderer::frontend::record_sink::PaintCall;
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
+use crate::scene::shapes::paint::QuadShape;
 use crate::scene::shapes::record::ShapeRecord;
 use crate::scene::tree::record::NodeId;
 use crate::scene::tree::recording::Placement;
@@ -100,11 +101,11 @@ fn interleaved_shapes_record_correct_order() {
     let sizes: Vec<f32> = h.ui.forest.trees[Layer::Main]
         .shapes_of(p)
         .map(|s| match s {
-            ShapeRecord::Rect {
+            ShapeRecord::Quad(QuadShape::Rect {
                 kind: RectKind::Rounded,
                 local_rect: Some(rect),
                 ..
-            } => rect.size.w,
+            }) => rect.size.w,
             _ => panic!("unexpected shape variant"),
         })
         .collect();
@@ -114,7 +115,7 @@ fn interleaved_shapes_record_correct_order() {
     let draw_rect_count = cmds
         .calls
         .iter()
-        .filter(|command| matches!(command, PaintCall::Rect(_)))
+        .filter(|command| matches!(command, PaintCall::Quad(_)))
         .count();
     assert_eq!(
         draw_rect_count, 5,
@@ -1053,11 +1054,11 @@ fn mid_recording_popup_keeps_trees_independent() {
     }
     fn marker_w(s: &ShapeRecord) -> u32 {
         match s {
-            ShapeRecord::Rect {
+            ShapeRecord::Quad(QuadShape::Rect {
                 kind: RectKind::Rounded,
                 local_rect: Some(r),
                 ..
-            } => r.size.w as u32,
+            }) => r.size.w as u32,
             _ => panic!("unexpected shape variant"),
         }
     }

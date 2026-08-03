@@ -1,4 +1,5 @@
 use crate::primitives::corners::Corners;
+use crate::primitives::nan::NanCheck;
 use crate::primitives::rect::Rect;
 use crate::primitives::shadow::Shadow;
 use crate::shape::local_rect_paint_empty;
@@ -24,5 +25,11 @@ impl ShadowShape {
 
     pub(super) fn is_noop(&self) -> bool {
         local_rect_paint_empty(&self.local_rect) || self.shadow.is_noop()
+    }
+}
+impl NanCheck for ShadowShape {
+    #[inline]
+    fn has_nan(&self) -> bool {
+        self.local_rect.has_nan() || self.corners.has_nan() || self.shadow.has_nan()
     }
 }

@@ -1,3 +1,4 @@
+use crate::primitives::nan::NanCheck;
 use crate::primitives::{approx, num::Num};
 
 #[repr(C)]
@@ -123,6 +124,13 @@ impl<'de> ::serde::Deserialize<'de> for Size {
             raw.w.unwrap_or(f32::INFINITY),
             raw.h.unwrap_or(f32::INFINITY),
         ))
+    }
+}
+
+impl NanCheck for Size {
+    #[inline]
+    fn has_nan(&self) -> bool {
+        self.w.is_nan() || self.h.is_nan()
     }
 }
 

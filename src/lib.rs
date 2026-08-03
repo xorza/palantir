@@ -275,8 +275,8 @@ mod hot_struct_sizes {
     use crate::primitives::span::Span;
     use crate::renderer::backend::text::GlyphInstance;
     use crate::renderer::frontend::payload::{
-        DrawCurvePayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload, DrawRectPayload,
-        DrawShadowPayload, DrawTextPayload, DrawTrianglePayload, PushClipPayload, ResolvedGradient,
+        DrawCurvePayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload, DrawQuadPayload,
+        DrawTextPayload, PushClipPayload, ResolvedGradient,
     };
     use crate::renderer::quad::Quad;
     use crate::renderer::render_buffer::curve::CurveInstance;
@@ -373,8 +373,8 @@ mod hot_struct_sizes {
         // Per-shape / per-chrome paint records + lowered fill forms.
         ShapeRecord => "scene::ShapeRecord": 88 / 8,
         RecordedText => "shapes::RecordedText": 16 / 8,
-        ChromeRow => "scene::ChromeRow": 56 / 8,
-        ShapeStroke => "shapes::ShapeStroke": 10 / 2,
+        ChromeRow => "scene::ChromeRow": 64 / 8,
+        ShapeStroke => "shapes::ShapeStroke": 12 / 4,
         LoweredShadow => "shapes::LoweredShadow": 18 / 2,
         RecordedGradient => "shapes::RecordedGradient": 56 / 4,
         ResolvedGradient => "payload::ResolvedGradient": 16 / 4,
@@ -413,13 +413,11 @@ mod hot_struct_sizes {
         NodeSnapshot => "damage::snapshot::NodeSnapshot": 40 / 8,
         // Encoder↔composer wire payloads.
         PushClipPayload => "payload::PushClipPayload": 24 / 4,
-        DrawRectPayload => "payload::DrawRectPayload": 60 / 4,
-        DrawShadowPayload => "payload::DrawShadowPayload": 44 / 4,
+        DrawQuadPayload => "payload::DrawQuadPayload": 76 / 4,
         DrawTextPayload => "payload::DrawTextPayload": 56 / 8,
         DrawPolylinePayload => "payload::DrawPolylinePayload": 52 / 4,
         DrawMeshPayload => "payload::DrawMeshPayload": 48 / 4,
         DrawImagePayload => "payload::DrawImagePayload": 56 / 8,
-        DrawTrianglePayload => "payload::DrawTrianglePayload": 56 / 4,
         DrawCurvePayload => "payload::DrawCurvePayload": 88 / 4,
         // GPU instance / vertex types.
         Quad => "renderer::Quad": 60 / 4,

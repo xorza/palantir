@@ -1,3 +1,4 @@
+use crate::primitives::nan::NanCheck;
 use crate::primitives::{approx, half_simd::F16x4};
 use ::serde::de::Error as _;
 use ::serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -602,6 +603,13 @@ fn linear_to_srgb(y: f32) -> f32 {
         x -= f / f_prime;
     }
     x
+}
+
+impl NanCheck for Color {
+    #[inline]
+    fn has_nan(&self) -> bool {
+        self.r.is_nan() || self.g.is_nan() || self.b.is_nan() || self.a.is_nan()
+    }
 }
 
 #[cfg(test)]

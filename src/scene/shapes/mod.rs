@@ -7,10 +7,13 @@ pub(crate) mod record;
 mod tests;
 
 use crate::common::content_hash::ContentHash;
+use crate::primitives::color::{Color, ColorF16};
+use crate::primitives::image::{ImageFilter, ImageFit};
+use crate::primitives::nan::NanCheck;
 use crate::primitives::span::Span;
 use crate::scene::record_store::RecordStore;
 use crate::scene::shapes::hash::compute_record_hash;
-use crate::scene::shapes::paint::ShapeStroke;
+use crate::scene::shapes::paint::ImageSource;
 use crate::scene::shapes::record::ShapeRecord;
 use crate::shape::Shape;
 use crate::shape::curve::CurveGeometry;
@@ -67,6 +70,16 @@ impl Shapes {
     /// registry) use the returned index; the legacy "fire and forget"
     /// path ignores it.
     pub(crate) fn add(&mut self, shape: Shape<'_>, store: &RecordStore) -> Option<u32> {
+        // Ahead of every other gate, including `is_noop`: `noop_f32`
+        // reads NaN as invisible, so a NaN-width shape would leave
+        // through that early return unexamined.
+        debug_assert!(
+            !shape.has_nan(),
+            "NaN in a paint-shape input — an arithmetic bug on the \
+             calling side (0/0, ∞-∞, an unseeded layout value). Release \
+             builds don't crash on it; the draw silently vanishes, or \
+             worse, poisons a damage bbox and leaves trails. {shape:?}",
+        );
         if let Shape::Polyline(shape) = &shape {
             shape.colors.assert_matches(shape.points.len());
         }
@@ -74,17 +87,14 @@ impl Shapes {
             return None;
         }
         let record = match shape {
-            Shape::Rect(shape) => {
-                let lowered = lower::brush(store, &shape.fill);
-                ShapeRecord::Rect {
-                    kind: shape.kind,
-                    local_rect: shape.local_rect,
-                    corners: shape.corners,
-                    fill: lowered.brush,
-                    stroke: ShapeStroke::from(shape.stroke),
-                    fill_grad_hash: lowered.hash,
-                }
-            }
+            Shape::Rect(shape) => lower::rect(
+                store,
+                shape.kind,
+                shape.local_rect,
+                shape.corners,
+                &shape.fill,
+                shape.stroke,
+            ),
             Shape::Triangle(shape) => lower::triangle(
                 shape.a,
                 shape.b,
@@ -159,18 +169,16 @@ impl Shapes {
                     weight,
                 }
             }
-            Shape::Shadow(shape) => ShapeRecord::Shadow {
-                local_rect: shape.local_rect,
-                corners: shape.corners,
-                shadow: shape.shadow.into(),
-            },
+            Shape::Shadow(shape) => lower::shadow(shape.local_rect, shape.corners, shape.shadow),
             Shape::Image(shape) => ShapeRecord::Image {
                 local_rect: shape.local_rect,
                 tint: shape.tint.into(),
                 // Extract the cheap id + size; the owning `ImageHandle`
                 // the caller holds is what keeps the GPU texture alive.
-                id: shape.handle.id(),
-                size: shape.handle.size(),
+                source: ImageSource::Texture {
+                    id: shape.handle.id(),
+                    size: shape.handle.size(),
+                },
                 fit: shape.fit,
                 min_filter: shape.min_filter,
                 mag_filter: shape.mag_filter,
@@ -206,13 +214,26 @@ impl Shapes {
         Some(idx)
     }
 
-    /// Append a [`ShapeRecord::GpuView`] directly — assembled by `Ui::gpu_view`,
-    /// not lowered from a user-facing [`Shape`], so this bypasses the
-    /// [`Self::add`] lowering. The view's `id` + `paint` live in `Ui::gpu_views`
-    /// keyed by the owner's `WidgetId`; the shape carries only `epoch` (which
+    /// Append a [`ImageSource::GpuView`]-sourced [`ShapeRecord::Image`]
+    /// directly — assembled by `Ui::gpu_view`, not lowered from a
+    /// user-facing [`Shape`], so this bypasses the [`Self::add`]
+    /// lowering. The view's `id` + `paint` live in `Ui::gpu_views` keyed
+    /// by the owner's `WidgetId`; the record carries only `epoch` (which
     /// the per-frame damage hash reads).
+    ///
+    /// The placement fields are the neutral ones that reproduce a
+    /// full-owner-rect composite: no sub-rect, untinted, and a `Fill`
+    /// fit which — against the all-zero intrinsic size the encoder hands
+    /// a view — resolves to the base rect at full UV.
     pub(crate) fn add_gpu_view(&mut self, epoch: u64) {
-        let record = ShapeRecord::GpuView { epoch };
+        let record = ShapeRecord::Image {
+            local_rect: None,
+            tint: ColorF16::from(Color::WHITE),
+            source: ImageSource::GpuView { epoch },
+            fit: ImageFit::Fill,
+            min_filter: ImageFilter::Linear,
+            mag_filter: ImageFilter::Linear,
+        };
         let hash = compute_record_hash(&record);
         self.records.push(record);
         self.hashes.push(hash);

@@ -1,3 +1,4 @@
+use crate::primitives::nan::NanCheck;
 use crate::primitives::{approx, corners::Corners, num::F32Ext, size::Size, spacing::Spacing};
 use core::f32::consts::FRAC_1_SQRT_2;
 use glam::Vec2;
@@ -250,6 +251,13 @@ impl Rect {
             min,
             size: Size::new((max.x - min.x).max(0.0), (max.y - min.y).max(0.0)),
         }
+    }
+}
+
+impl NanCheck for Rect {
+    #[inline]
+    fn has_nan(&self) -> bool {
+        self.min.has_nan() || self.size.has_nan()
     }
 }
 

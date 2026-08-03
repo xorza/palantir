@@ -1,5 +1,6 @@
 use crate::primitives::approx::noop_f32;
 use crate::primitives::color::Color;
+use crate::primitives::nan::NanCheck;
 use crate::shape::style::{LineCap, LineJoin};
 use glam::Vec2;
 
@@ -72,5 +73,23 @@ impl PolylineColors<'_> {
                 points_len.saturating_sub(1),
             ),
         }
+    }
+}
+impl NanCheck for PolylineColors<'_> {
+    #[inline]
+    fn has_nan(&self) -> bool {
+        match self {
+            Self::Single(color) => color.has_nan(),
+            Self::PerPoint(colors) | Self::PerSegment(colors) => colors.has_nan(),
+        }
+    }
+}
+
+/// Walks `points` and `colors`. `O(n)` — debug-only, per the
+/// [`NanCheck`] module doc.
+impl NanCheck for PolylineShape<'_> {
+    #[inline]
+    fn has_nan(&self) -> bool {
+        self.width.is_nan() || self.points.has_nan() || self.colors.has_nan()
     }
 }

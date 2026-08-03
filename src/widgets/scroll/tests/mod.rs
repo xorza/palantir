@@ -797,6 +797,7 @@ mod bars {
     use crate::primitives::widget_id::WidgetId;
     use crate::scene::layer::Layer;
     use crate::scene::node::Configure;
+    use crate::scene::shapes::paint::QuadShape;
     use crate::scene::shapes::record::ShapeRecord;
     use crate::scene::tree::record::NodeId;
     use crate::shape::rect::RectKind;
@@ -945,11 +946,11 @@ mod bars {
             .filter(|s| {
                 matches!(
                     s,
-                    ShapeRecord::Rect {
+                    ShapeRecord::Quad(QuadShape::Rect {
                         kind: RectKind::Rounded,
                         local_rect: Some(_),
                         ..
-                    }
+                    })
                 )
             })
             .count()

@@ -18,14 +18,19 @@ use crate::primitives::bezier::{CurveBounds, cubic_bezier_bbox, quadratic_to_cub
 use crate::primitives::brush::gradient::linear::LinearGradient;
 use crate::primitives::brush::{Brush, CurveBrush};
 use crate::primitives::color::{Color, ColorU8};
+use crate::primitives::corners::Corners;
 use crate::primitives::fill_wire::FillKind;
 use crate::primitives::rect::Rect;
+use crate::primitives::shadow::Shadow;
 use crate::primitives::span::Span;
 use crate::primitives::stroke::Stroke;
 use crate::scene::record_store::{RecordStore, RecordedGradient};
-use crate::scene::shapes::paint::{ChromeRow, CurveBasis, LoweredShadow, ShapeBrush, ShapeStroke};
+use crate::scene::shapes::paint::{
+    ChromeRow, CurveBasis, LoweredShadow, QuadShape, ShapeBrush, ShapeStroke,
+};
 use crate::scene::shapes::record::{ColorMode, ShapeRecord};
 use crate::shape::polyline::PolylineColors;
+use crate::shape::rect::RectKind;
 use crate::shape::stroke_bounds::HALF_FRINGE;
 use crate::shape::style::{LineCap, LineJoin};
 use glam::Vec2;
@@ -150,15 +155,16 @@ pub(crate) fn background(store: &RecordStore, bg: &Background) -> ChromeRow {
     // setup + final `add_to_hash` 5 times — ~40 cycles of overhead
     // dominated `background`'s self-time (~0.5% of frame
     // total). Field order is layout-engineered to avoid internal
-    // padding (u64s first → 2-align Pod structs → tag);
-    // `padding_struct` fills the tail so `NoUninit` is sound.
+    // padding — descending alignment, u64s first, then the Pod
+    // structs widest-aligned first, then the tag; `padding_struct`
+    // fills the tail so `NoUninit` is sound.
     #[repr(C)]
     #[padding_struct::padding_struct]
     #[derive(Clone, Copy, bytemuck::NoUninit, bytemuck::Zeroable)]
     struct ChromeHashBytes {
         fill_payload: u64, // ColorF16-as-u64 (Solid) or fill_grad_hash (Gradient)
         corners_u64: u64,
-        stroke: ShapeStroke,   // 10 B align 2
+        stroke: ShapeStroke,   // 12 B align 4
         shadow: LoweredShadow, // 18 B align 2
         fill_tag: u8,
     }
@@ -188,6 +194,43 @@ pub(crate) fn background(store: &RecordStore, bg: &Background) -> ChromeRow {
         shadow,
         hash,
     }
+}
+
+/// Lower a rounded or windowed rectangle onto the quad tier. Every
+/// geometry input is already in its storage form, so the only work is
+/// the fill: it interns through [`brush`], the same pool [`background`]
+/// draws from, so chrome and rectangle fills share one gradient set.
+pub(super) fn rect(
+    store: &RecordStore,
+    kind: RectKind,
+    local_rect: Option<Rect>,
+    corners: Corners,
+    fill: &Brush,
+    stroke: Stroke,
+) -> ShapeRecord {
+    let lowered = brush(store, fill);
+    ShapeRecord::Quad(QuadShape::Rect {
+        kind,
+        local_rect,
+        corners,
+        fill: lowered.brush,
+        stroke: ShapeStroke::from(stroke),
+        fill_grad_hash: lowered.hash,
+    })
+}
+
+/// Lower a box-shadow onto the quad tier. Pure repacking — the f16
+/// lane squeeze happens in `LoweredShadow`'s `From<Shadow>`, and the
+/// paint extent is derived downstream by
+/// [`shadow_paint_rect_local`](crate::scene::shapes::paint::shadow_paint_rect_local)
+/// so damage and the encoder can't disagree about the halo. No store
+/// needed (a shadow's colour is always solid).
+pub(super) fn shadow(local_rect: Option<Rect>, corners: Corners, shadow: Shadow) -> ShapeRecord {
+    ShapeRecord::Quad(QuadShape::Shadow {
+        local_rect,
+        corners,
+        shadow: shadow.into(),
+    })
 }
 
 /// Lower a (points, colors, width) authoring shape into a
@@ -351,12 +394,11 @@ pub(super) fn arc(
     )
 }
 
-/// Lower a triangle into a [`ShapeRecord::Triangle`].
-/// `bbox` is the owner-local AABB of `a`/`b`/`c` inflated by
-/// `radius + AA fringe` (the SDF offsets the shape outward by `radius`;
-/// the stroke is inner-edge and adds no outward reach), so damage and
-/// clip-cull cover the rounded, antialiased extent. No store needed
-/// (no gradient to register).
+/// Lower a triangle onto the quad tier. `bbox` is the owner-local AABB
+/// of `a`/`b`/`c` inflated by `radius + AA fringe` (the SDF offsets the
+/// shape outward by `radius`; the stroke is inner-edge and adds no
+/// outward reach), so damage and clip-cull cover the rounded,
+/// antialiased extent. No store needed (no gradient to register).
 pub(super) fn triangle(
     a: Vec2,
     b: Vec2,
@@ -369,7 +411,7 @@ pub(super) fn triangle(
     let hi = a.max(b).max(c);
     let pad = radius.max(0.0) + HALF_FRINGE;
     let bbox = Rect::from_min_max(lo, hi).inflated(pad);
-    ShapeRecord::Triangle {
+    ShapeRecord::Quad(QuadShape::Triangle {
         a,
         b,
         c,
@@ -377,7 +419,7 @@ pub(super) fn triangle(
         fill: fill.into(),
         stroke: ShapeStroke::from(stroke),
         bbox,
-    }
+    })
 }
 
 /// Build a `ShapeRecord::Curve` from cubic control points, deriving the

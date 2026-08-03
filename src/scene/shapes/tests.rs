@@ -4,6 +4,7 @@ use crate::renderer::image_registry::ImageRegistry;
 use crate::renderer::texture_id_source::TextureIdSource;
 use crate::scene::record_store::RecordStore;
 use crate::scene::shapes::Shapes;
+use crate::scene::shapes::paint::ImageSource;
 use crate::scene::shapes::record::ShapeRecord;
 use crate::shape::Shape;
 use crate::shape::polyline::PolylineColors;
@@ -131,8 +132,46 @@ fn image_dimensions_above_u16_survive_lowering() {
     let store = RecordStore::default();
 
     assert_eq!(shapes.add(Shape::image(handle).into(), &store), Some(0));
-    let ShapeRecord::Image { size, .. } = shapes.records[0] else {
-        panic!("image lowered to another record variant");
+    let ShapeRecord::Image {
+        source: ImageSource::Texture { size, .. },
+        ..
+    } = shapes.records[0]
+    else {
+        panic!("image lowered to another record variant or source");
     };
     assert_eq!(size, glam::UVec2::new(WIDTH, 1));
+}
+
+/// The NaN screen has to run *before* `is_noop`, because `noop_f32`
+/// classifies NaN as invisible: a NaN-width shape reads as a no-op and
+/// would leave through that early return without ever being looked at.
+/// Ordering the two the other way round is a silent regression — the
+/// assert still exists, it just stops seeing the case it exists for.
+///
+/// Debug-only by design (see the `NanCheck` module doc), so this test
+/// only means anything in a `debug_assertions` build.
+#[test]
+#[cfg(debug_assertions)]
+fn nan_is_rejected_before_the_noop_early_return() {
+    let clean = |width| {
+        let mut shapes = Shapes::default();
+        let store = RecordStore::default();
+        let shape = Shape::line(Vec2::ZERO, Vec2::new(4.0, 0.0), width).brush(Color::WHITE);
+        catch_unwind(AssertUnwindSafe(|| shapes.add(shape.into(), &store))).map(|r| r.is_some())
+    };
+
+    assert!(
+        clean(2.0).expect("a live shape must not panic"),
+        "sanity: the fixture records without the NaN",
+    );
+    // Zero width is a plain no-op: dropped quietly, no panic. This is
+    // the door the NaN case must not be able to use.
+    assert!(
+        !clean(0.0).expect("a zero-width shape is a no-op, not a panic"),
+        "a zero-width shape is dropped, not recorded",
+    );
+    assert!(
+        clean(f32::NAN).is_err(),
+        "a NaN width must assert, not slip out through the no-op gate",
+    );
 }

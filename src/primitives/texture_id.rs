@@ -1,8 +1,9 @@
 //! [`TextureId`] — a GPU texture's identity.
 //!
 //! Lives in `primitives` rather than beside the renderer that consumes it
-//! because `scene` needs it too: `ShapeRecord::Image` / `ShapeRecord::GpuView`
-//! carry one from the moment a shape is recorded, long before the renderer
+//! because `scene` needs it too: `ShapeRecord::Image` carries one — for a
+//! registered texture or a `GpuView` target alike — from the moment a shape
+//! is recorded, long before the renderer
 //! sees it. Holding it in `renderer` made `scene` depend on `renderer` for a
 //! `u64` newtype — the only such edge, and against the flow of every other
 //! dependency between those two.

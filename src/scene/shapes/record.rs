@@ -1,15 +1,12 @@
 use crate::layout::types::align::{self, Align};
 use crate::primitives::color::ColorF16;
-use crate::primitives::corners::Corners;
 use crate::primitives::image::{ImageFilter, ImageFit};
 use crate::primitives::interned_str::RecordedText;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::span::Span;
-use crate::primitives::texture_id::TextureId;
-use crate::scene::shapes::paint::{CurveBasis, LoweredShadow, ShadowGeom, ShapeBrush, ShapeStroke};
-use crate::shape::rect::RectKind;
+use crate::scene::shapes::paint::{CurveBasis, ImageSource, QuadShape, ShapeBrush};
 use crate::shape::style::{LineCap, LineJoin};
 use crate::text::wrap::TextWrap;
 use crate::text::{FontFamily, FontWeight};
@@ -39,29 +36,12 @@ pub(crate) enum ColorMode {
 #[repr(u8)]
 #[derive(Clone, Debug)]
 pub(crate) enum ShapeRecord {
-    /// Filled/stroked rounded rectangle or inverse window, selected by `kind`.
-    /// With `local_rect = None` it covers the owner node's full arranged rect
-    /// (position/size come from layout). With `local_rect = Some(r)` it paints
-    /// `r` at owner-relative coords — `r.min = (0, 0)` is the owner's
-    /// top-left. The sub-rect form paints in the slot it was pushed in
-    /// (interleaved with children via the slot mechanism — see
-    /// `Tree::add_shape`), still under the owner's clip but outside its pan
-    /// transform. Used for scrollbar tracks/thumbs (pushed after body content
-    /// → slot N) and TextEdit carets (pushed after the Text shape on a leaf →
-    /// slot 0, after the Text in record order).
-    Rect {
-        kind: RectKind,
-        local_rect: Option<Rect>,
-        corners: Corners,
-        fill: ShapeBrush,
-        stroke: ShapeStroke,
-        /// Pre-computed content hash of `fill` when it's a gradient,
-        /// 0 for solid. Lets `ShapeRecord::Hash` stay context-free —
-        /// otherwise we'd need to thread the gradient payloads into
-        /// every hash call (subtree rollups, measure cache). The hash
-        /// is computed once at lowering time by `scene::record_store::grad_hash`.
-        fill_grad_hash: u64,
-    },
+    /// Rounded rectangle, box-shadow, or rounded triangle, per
+    /// [`QuadShape`]. One record kind, because everything outside the
+    /// shape is shared: the same quad pipeline, the same `Quad`
+    /// instance, and the same cull / group-flush / occlusion handling
+    /// from the payload down.
+    Quad(QuadShape),
     /// Stroked polyline. `points`/`colors` index into the
     /// `RecordPayloads`' `polyline_points` / `polyline_colors`. `colors`
     /// length depends on `color_mode`: 1 for `Single`,
@@ -142,33 +122,17 @@ pub(crate) enum ShapeRecord {
         bbox: Rect,
         content_hash: u64,
     },
-    /// Gaussian-blurred rounded rect — drop / inset shadow. All
-    /// parameters are inline scalars; no retained payloads. With
-    /// `local_rect = None` the shadow shadows the owner's full
-    /// arranged rect; with `Some(r)` it shadows the owner-relative
-    /// rect `r`. Encoder shifts drop-shadow paint bounds by `offset`,
-    /// inflates them by `3σ + max(spread, 0)`, and routes both shadow
-    /// kinds through `DrawShadow` with `FillKind::SHADOW_DROP|SHADOW_INSET`.
-    Shadow {
-        local_rect: Option<Rect>,
-        corners: Corners,
-        shadow: LoweredShadow,
-    },
-    /// Textured rectangle. `id` is the registration id behind an
-    /// [`ImageHandle`](crate::ImageHandle) — extracted at lowering so the
-    /// per-frame record carries no `Rc` (the user's held handle is what
-    /// keeps the GPU texture alive). The backend looks `id` up in its
-    /// texture cache and skips the draw on a miss. `local_rect = None`
-    /// paints into the owner's full arranged rect; `Some(r)` paints `r`
-    /// at owner-relative coords. `tint` multiplies sampled pixels in
-    /// linear-RGB premultiplied space.
+    /// Textured rectangle — a registered image or an app-rendered
+    /// `GpuView`'s off-screen target, per [`ImageSource`]. One record
+    /// kind, because everything outside `source` is shared: the same
+    /// paint-rect resolution, fit, sampling, tint, and image pipeline.
+    /// `local_rect = None` paints into the owner's full arranged rect;
+    /// `Some(r)` paints `r` at owner-relative coords. `tint` multiplies
+    /// sampled pixels in linear-RGB premultiplied space.
     Image {
         local_rect: Option<Rect>,
         tint: ColorF16,
-        id: TextureId,
-        /// Intrinsic dims, baked in at registration so the encoder reads
-        /// them with no registry borrow.
-        size: glam::UVec2,
+        source: ImageSource,
         fit: ImageFit,
         min_filter: ImageFilter,
         mag_filter: ImageFilter,
@@ -198,7 +162,7 @@ pub(crate) enum ShapeRecord {
         fill: ShapeBrush,
         /// Pre-computed content hash of `fill` when it's a gradient,
         /// `0` for solid — same context-free-hash trick as
-        /// [`ShapeRecord::Rect`]'s own `fill_grad_hash`.
+        /// [`QuadShape::Rect`]'s own `fill_grad_hash`.
         fill_grad_hash: u64,
         /// End-cap style. Joins are absent (single-curve primitive,
         /// no interior). `Round`/`Square` extend the painted strip by
@@ -206,103 +170,23 @@ pub(crate) enum ShapeRecord {
         cap: LineCap,
         bbox: Rect,
     },
-    /// Filled/stroked rounded triangle, rendered as an analytic SDF on the
-    /// shared quad pipeline (`FillKind::TRIANGLE`). `a`/`b`/`c` are owner-local
-    /// corner points; the composer transforms them to physical px, packs them
-    /// into the reused `Quad` corner/axis lanes, and the shader evaluates
-    /// `sdf_triangle - radius` for rounded corners + coverage AA. Solid fill
-    /// only (gradients don't fit the reused lanes). `bbox` is the owner-local
-    /// AABB inflated by `radius + AA fringe` for damage / cull (the stroke is
-    /// inner-edge, so it adds no outward reach).
-    Triangle {
-        a: Vec2,
-        b: Vec2,
-        c: Vec2,
-        radius: f32,
-        /// Solid linear-RGB fill (straight alpha).
-        fill: ColorF16,
-        stroke: ShapeStroke,
-        bbox: Rect,
-    },
-    /// App-rendered GPU surface. Carries only the redraw `epoch` — the view's
-    /// stable render-target [`TextureId`] + the app `paint` callback live in
-    /// `Ui::gpu_views`, keyed by the owner node's `WidgetId`, which the encoder
-    /// reads to look the view up (kept off the shape so the hot `records`
-    /// buffer stays small and `Rc`-free). Composited exactly like
-    /// [`ShapeRecord::Image`] (the encoder lowers it to the same `DrawImage`
-    /// cmd over the owner's full arranged rect), so it reuses the image pipeline
-    /// end to end. `epoch` is the view's damage version, folded into the shape
-    /// hash (which only sees the `ShapeRecord`, so it rides here):
-    /// `Ui::gpu_view` bumps it to the frame id on `repaint(true)` — the rect
-    /// repaints and the texture re-renders — and holds it stable on
-    /// `.repaint(false)`, so a static view stays undamaged and is culled.
-    GpuView { epoch: u64 },
-}
-
-/// Owner-local paint bbox of a [`ShapeRecord::Shadow`] — a drop shadow is
-/// the offset source inflated by `3σ + max(spread, 0)`; an inset shadow
-/// stays inside the source. `local_rect = None` ⇒ source covers the full
-/// owner; `Some(r)` ⇒ source is `r` at owner-relative coords. **Sole formula
-/// source** for the shadow paint extent: the encoder (per-quad paint rect) and
-/// [`ShapeRecord::bbox_local`] (cascade's per-node ink union) both call
-/// this so the two views can't drift.
-pub(crate) fn shadow_paint_rect_local(
-    local_rect: Option<Rect>,
-    owner_size: Size,
-    offset: Vec2,
-    blur: f32,
-    spread: f32,
-    inset: bool,
-) -> Rect {
-    let source = match local_rect {
-        None => Rect {
-            min: Vec2::ZERO,
-            size: owner_size,
-        },
-        Some(r) => r,
-    };
-    if inset {
-        return source;
-    }
-    let halo = 3.0 * blur.max(0.0) + spread.max(0.0);
-    Rect {
-        min: source.min + offset,
-        size: source.size,
-    }
-    .inflated(halo)
 }
 
 impl ShapeRecord {
     /// Owner-local bbox used as the basis for cascade's screen-space paint
     /// bound. `Polyline` / `Curve` return their tight centerline
     /// bbox because stroke width and the physical-pixel AA fringe are applied
-    /// after the bbox reaches screen space. Drop shadows include their full
-    /// local extent via [`shadow_paint_rect_local`]; the remaining shapes
-    /// return their paint bbox directly. Does **not** handle `Text` — its bbox
+    /// after the bbox reaches screen space. `Quad` defers to
+    /// [`QuadShape::bbox_local`], which is where the shadow halo is
+    /// accounted for; the remaining shapes return their paint bbox
+    /// directly. Does **not** handle `Text` — its bbox
     /// depends on the shaped extent from the layout pass and is computed by
     /// [`text_paint_bbox_local`], which cascade calls directly.
     #[inline]
     pub(crate) fn bbox_local(&self, owner_size: Size) -> Rect {
         match self {
-            ShapeRecord::Shadow {
-                local_rect, shadow, ..
-            } => {
-                let ShadowGeom {
-                    offset,
-                    blur,
-                    spread,
-                } = shadow.geom();
-                shadow_paint_rect_local(
-                    *local_rect,
-                    owner_size,
-                    offset,
-                    blur,
-                    spread,
-                    shadow.inset(),
-                )
-            }
+            ShapeRecord::Quad(shape) => shape.bbox_local(owner_size),
             ShapeRecord::Polyline { bbox, .. } | ShapeRecord::Curve { bbox, .. } => *bbox,
-            ShapeRecord::Triangle { bbox, .. } => *bbox,
             // A mesh's vertex hull can exceed the owner rect (rotated /
             // overflowing meshes), so it must report that hull — like
             // `Polyline` / `Curve` — or partial damage clips the overflow.
@@ -317,17 +201,10 @@ impl ShapeRecord {
                     size: bbox.size,
                 }
             }
-            ShapeRecord::Rect { local_rect, .. } | ShapeRecord::Image { local_rect, .. } => {
-                local_rect.unwrap_or(Rect {
-                    min: Vec2::ZERO,
-                    size: owner_size,
-                })
-            }
-            // Always paints the owner's full arranged rect.
-            ShapeRecord::GpuView { .. } => Rect {
+            ShapeRecord::Image { local_rect, .. } => local_rect.unwrap_or(Rect {
                 min: Vec2::ZERO,
                 size: owner_size,
-            },
+            }),
             // Cascade dispatches Text to `text_paint_bbox_local`
             // before reaching this method — a direct call here would
             // silently lose the shaped extent.
@@ -345,25 +222,30 @@ impl ShapeRecord {
     /// **This match is the sole source of those numbers**; the enum's
     /// own `repr` discriminant is unread, so reordering variants cannot
     /// move a hash. A number is frozen once it has shipped in a saved
-    /// document — give a new variant the next free one. Two are retired,
-    /// both to folded-away variants whose numbers would now collide with
-    /// hashes cached from before their merge: 9 was `WindowedRect`,
-    /// folded into [`ShapeRecord::Rect`]'s `kind`, and 10 was `Arc`,
-    /// folded into [`ShapeRecord::Curve`]'s
-    /// [`basis`](crate::scene::shapes::paint::CurveBasis). Arcs hash
-    /// under 6 now, told apart from cubics by
-    /// [`CurveBasis::tag`](crate::scene::shapes::paint::CurveBasis::tag).
+    /// document — give a new variant the next free one.
+    ///
+    /// Five are retired, all to variants folded into a surviving one,
+    /// whose numbers would now collide with hashes cached from before
+    /// the merge. Each merge left a nested tag doing the separating the
+    /// record tag used to do:
+    ///
+    /// | retired | was | folded into | told apart by |
+    /// |---|---|---|---|
+    /// | 4 | `Shadow` | `Quad` (0) | [`QuadShape::tag`] |
+    /// | 7 | `GpuView` | `Image` (5) | [`ImageSource::tag`] |
+    /// | 8 | `Triangle` | `Quad` (0) | [`QuadShape::tag`] |
+    /// | 9 | `WindowedRect` | `Quad` (0) | [`QuadShape::Rect`]'s `kind` |
+    /// | 10 | `Arc` | `Curve` (6) | [`CurveBasis::tag`] |
+    ///
+    /// [`CurveBasis::tag`]: crate::scene::shapes::paint::CurveBasis::tag
     pub(crate) const fn tag(&self) -> u8 {
         match self {
-            ShapeRecord::Rect { .. } => 0,
+            ShapeRecord::Quad(_) => 0,
             ShapeRecord::Polyline { .. } => 1,
             ShapeRecord::Text { .. } => 2,
             ShapeRecord::Mesh { .. } => 3,
-            ShapeRecord::Shadow { .. } => 4,
             ShapeRecord::Image { .. } => 5,
             ShapeRecord::Curve { .. } => 6,
-            ShapeRecord::GpuView { .. } => 7,
-            ShapeRecord::Triangle { .. } => 8,
         }
     }
 }
@@ -414,13 +296,17 @@ pub(crate) fn text_paint_bbox_local(
 mod tests {
     use crate::primitives::approx::EPS;
     use crate::primitives::color::Color;
+    use crate::primitives::corners::Corners;
     use crate::primitives::interned_str::TextSource;
     use crate::primitives::rect::Rect;
     use crate::primitives::shadow::Shadow;
     use crate::primitives::size::Size;
     use crate::primitives::stroke::Stroke;
+    use crate::primitives::texture_id::TextureId;
     use crate::scene::shapes::hash::compute_record_hash;
+    use crate::scene::shapes::paint::{LoweredShadow, ShapeStroke, shadow_paint_rect_local};
     use crate::scene::shapes::record::*;
+    use crate::shape::rect::RectKind;
     use glam::Vec2;
 
     /// [`ShapeRecord::tag`] is the only source of the hash's leading
@@ -442,19 +328,20 @@ mod tests {
     fn shape_record_tags_are_distinct_and_pinned() {
         let fill = ShapeBrush::Solid(ColorF16::from(Color::WHITE));
         let stroke = ShapeStroke::from(Stroke::solid(Color::BLACK, 1.0));
-        // 9 and 10 are absent on purpose — retired with `WindowedRect`
-        // and `Arc` when each folded into a surviving variant.
+        // 4, 7, 8, 9 and 10 are absent on purpose — retired with
+        // `Shadow`, `GpuView`, `Triangle`, `WindowedRect` and `Arc`
+        // when each folded into a surviving variant.
         let table = [
             (
                 0,
-                ShapeRecord::Rect {
+                ShapeRecord::Quad(QuadShape::Rect {
                     kind: RectKind::Rounded,
                     local_rect: None,
                     corners: Corners::ZERO,
                     fill,
                     stroke,
                     fill_grad_hash: 0,
-                },
+                }),
             ),
             (
                 1,
@@ -500,20 +387,14 @@ mod tests {
                 },
             ),
             (
-                4,
-                ShapeRecord::Shadow {
-                    local_rect: None,
-                    corners: Corners::ZERO,
-                    shadow: LoweredShadow::from(Shadow::default()),
-                },
-            ),
-            (
                 5,
                 ShapeRecord::Image {
                     local_rect: None,
                     tint: ColorF16::from(Color::WHITE),
-                    id: TextureId(1),
-                    size: glam::UVec2::new(1, 1),
+                    source: ImageSource::Texture {
+                        id: TextureId(1),
+                        size: glam::UVec2::new(1, 1),
+                    },
                     fit: ImageFit::Fill,
                     min_filter: ImageFilter::Linear,
                     mag_filter: ImageFilter::Linear,
@@ -535,19 +416,6 @@ mod tests {
                     bbox: Rect::ZERO,
                 },
             ),
-            (7, ShapeRecord::GpuView { epoch: 0 }),
-            (
-                8,
-                ShapeRecord::Triangle {
-                    a: Vec2::ZERO,
-                    b: Vec2::ZERO,
-                    c: Vec2::ZERO,
-                    radius: 0.0,
-                    fill: ColorF16::from(Color::WHITE),
-                    stroke,
-                    bbox: Rect::ZERO,
-                },
-            ),
         ];
 
         let mut seen = Vec::with_capacity(table.len());
@@ -564,9 +432,47 @@ mod tests {
             seen.push(*expected);
         }
 
-        // Both bases share the `Curve` tag — that's the merge. The
-        // basis byte, not the record tag, is what keeps their hashes
-        // apart (see `curve_and_arc_bases_hash_apart`).
+        // Three shapes share the `Quad` tag — the biggest merge. The
+        // shape byte, not the record tag, is what keeps their hashes
+        // apart (see `quad_shapes_hash_apart`).
+        let quad = |shape| ShapeRecord::Quad(shape);
+        let shadow_shape = QuadShape::Shadow {
+            local_rect: None,
+            corners: Corners::ZERO,
+            shadow: LoweredShadow::from(Shadow::default()),
+        };
+        let triangle_shape = QuadShape::Triangle {
+            a: Vec2::ZERO,
+            b: Vec2::ZERO,
+            c: Vec2::ZERO,
+            radius: 0.0,
+            fill: ColorF16::from(Color::WHITE),
+            stroke,
+            bbox: Rect::ZERO,
+        };
+        let rect_shape = QuadShape::Rect {
+            kind: RectKind::Rounded,
+            local_rect: None,
+            corners: Corners::ZERO,
+            fill,
+            stroke,
+            fill_grad_hash: 0,
+        };
+        for shape in [rect_shape, shadow_shape, triangle_shape] {
+            assert_eq!(quad(shape).tag(), 0, "{shape:?} tags as `Quad`");
+        }
+        let mut shape_tags = Vec::new();
+        for tag in [rect_shape.tag(), shadow_shape.tag(), triangle_shape.tag()] {
+            assert!(
+                !shape_tags.contains(&tag),
+                "quad-shape tag {tag} is claimed twice",
+            );
+            shape_tags.push(tag);
+        }
+
+        // Both bases share the `Curve` tag — same merge, same
+        // guarantee. The basis byte, not the record tag, is what keeps
+        // their hashes apart (see `curve_and_arc_bases_hash_apart`).
         let arc = ShapeRecord::Curve {
             basis: CurveBasis::Arc {
                 center: Vec2::ZERO,
@@ -596,6 +502,27 @@ mod tests {
                 a1: 1.0,
             }
             .tag(),
+        );
+
+        // Same merge, same guarantee: a view composite shares `Image`'s
+        // record tag, so `ImageSource::tag` is what keeps it apart from
+        // a texture draw (see `image_source_hashes_apart_by_source`).
+        let view = ShapeRecord::Image {
+            local_rect: None,
+            tint: ColorF16::from(Color::WHITE),
+            source: ImageSource::GpuView { epoch: 0 },
+            fit: ImageFit::Fill,
+            min_filter: ImageFilter::Linear,
+            mag_filter: ImageFilter::Linear,
+        };
+        assert_eq!(view.tag(), 5, "a `GpuView`-source image tags as `Image`");
+        assert_ne!(
+            ImageSource::Texture {
+                id: TextureId(1),
+                size: glam::UVec2::new(1, 1),
+            }
+            .tag(),
+            ImageSource::GpuView { epoch: 0 }.tag(),
         );
     }
 
@@ -708,30 +635,64 @@ mod tests {
     /// Same rectangle payload, different paint kind: switching to a
     /// windowed rect inverts the painted region, so a hash collision
     /// would make damage diff skip the repaint.
+    ///
+    /// The same risk, one level up: all three quad shapes share
+    /// [`ShapeRecord::Quad`]'s tag byte, so [`QuadShape::tag`] is the
+    /// only thing separating a rectangle, a shadow, and a triangle over
+    /// the same box — and each shape's own fields have to reach the
+    /// hasher through the merged arm. Every case here is a repaint that
+    /// damage diff would skip on a collision.
     #[test]
-    fn windowed_rect_hash_differs_from_rounded_rect() {
+    fn quad_shapes_hash_apart() {
         let fill = ShapeBrush::Solid(ColorF16::from(Color::WHITE));
         let stroke = ShapeStroke::from(Stroke::solid(Color::BLACK, 2.0));
-        let rounded = ShapeRecord::Rect {
-            kind: RectKind::Rounded,
-            local_rect: None,
-            corners: Corners::all(8.0),
-            fill,
-            stroke,
-            fill_grad_hash: 0,
+        let corners = Corners::all(8.0);
+        let rect = |kind| {
+            ShapeRecord::Quad(QuadShape::Rect {
+                kind,
+                local_rect: None,
+                corners,
+                fill,
+                stroke,
+                fill_grad_hash: 0,
+            })
         };
-        let windowed = ShapeRecord::Rect {
-            kind: RectKind::Windowed,
-            local_rect: None,
-            corners: Corners::all(8.0),
-            fill,
-            stroke,
-            fill_grad_hash: 0,
-        };
+
+        // Same rectangle payload, different paint kind.
         assert_ne!(
-            compute_record_hash(&rounded),
-            compute_record_hash(&windowed)
+            compute_record_hash(&rect(RectKind::Rounded)),
+            compute_record_hash(&rect(RectKind::Windowed)),
         );
+
+        // Same rounded box, three different shapes.
+        let shadow = ShapeRecord::Quad(QuadShape::Shadow {
+            local_rect: None,
+            corners,
+            shadow: LoweredShadow::from(Shadow::default()),
+        });
+        let triangle = ShapeRecord::Quad(QuadShape::Triangle {
+            a: Vec2::ZERO,
+            b: Vec2::ZERO,
+            c: Vec2::ZERO,
+            radius: 0.0,
+            fill: ColorF16::from(Color::WHITE),
+            stroke,
+            bbox: Rect::ZERO,
+        });
+        let mut seen = Vec::new();
+        for (label, record) in [
+            ("rounded", rect(RectKind::Rounded)),
+            ("windowed", rect(RectKind::Windowed)),
+            ("shadow", shadow),
+            ("triangle", triangle),
+        ] {
+            let hash = compute_record_hash(&record);
+            assert!(
+                !seen.contains(&hash),
+                "quad shape `{label}` collided with an earlier shape's hash",
+            );
+            seen.push(hash);
+        }
     }
 
     /// Cubics and arcs share [`ShapeRecord::Curve`]'s tag byte, so the
@@ -832,6 +793,44 @@ mod tests {
         );
     }
 
+    /// A view composite and a texture draw share `Image`'s record tag,
+    /// so only [`ImageSource::tag`] separates their hashes — and the
+    /// view's `epoch` has to reach the hasher through the merged arm.
+    /// A collision either way makes damage diff skip a repaint: a view
+    /// that bumped its epoch would keep its stale texture on screen.
+    #[test]
+    fn image_source_hashes_apart_by_source() {
+        let image = |source| ShapeRecord::Image {
+            local_rect: None,
+            tint: ColorF16::from(Color::WHITE),
+            source,
+            fit: ImageFit::Fill,
+            min_filter: ImageFilter::Linear,
+            mag_filter: ImageFilter::Linear,
+        };
+        // Both sources carry one u64-shaped payload of the same value,
+        // so the source tag is the only thing telling these two apart.
+        let view = compute_record_hash(&image(ImageSource::GpuView { epoch: 7 }));
+        assert_ne!(
+            view,
+            compute_record_hash(&image(ImageSource::Texture {
+                id: TextureId(7),
+                size: glam::UVec2::ZERO,
+            })),
+            "a texture id must not collide with an epoch of the same value",
+        );
+        assert_ne!(
+            view,
+            compute_record_hash(&image(ImageSource::GpuView { epoch: 8 })),
+            "a bumped epoch must move the hash, or the view never repaints",
+        );
+        assert_eq!(
+            view,
+            compute_record_hash(&image(ImageSource::GpuView { epoch: 7 })),
+            "a held epoch must hold the hash, or a static view never culls",
+        );
+    }
+
     #[test]
     fn shape_image_hash_distinguishes_handle_dimensions_tint_and_filters() {
         let make = |id: TextureId,
@@ -842,8 +841,7 @@ mod tests {
             ShapeRecord::Image {
                 local_rect: None,
                 tint: ColorF16::from(tint),
-                id,
-                size,
+                source: ImageSource::Texture { id, size },
                 fit: ImageFit::Fill,
                 min_filter,
                 mag_filter,

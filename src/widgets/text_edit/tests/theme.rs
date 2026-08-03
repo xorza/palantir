@@ -1,3 +1,4 @@
+use crate::scene::shapes::paint::QuadShape;
 use crate::shape::rect::RectKind;
 use crate::{scene::tree::record::NodeId, widgets::text_edit::tests::*};
 
@@ -394,10 +395,10 @@ fn no_selection_paints_no_highlight_rect() {
         .filter(|s| {
             matches!(
                 s,
-                ShapeRecord::Rect {
+                ShapeRecord::Quad(QuadShape::Rect {
                     kind: RectKind::Rounded,
                     ..
-                }
+                })
             )
         })
         .count();
@@ -439,11 +440,11 @@ fn shift_end_paints_selection_highlight() {
     let rects: Vec<_> = h.ui.forest.trees[Layer::Main]
         .shapes_of(leaf.unwrap())
         .filter_map(|s| match s {
-            ShapeRecord::Rect {
+            ShapeRecord::Quad(QuadShape::Rect {
                 kind: RectKind::Rounded,
                 local_rect: Some(r),
                 ..
-            } => Some(*r),
+            }) => Some(*r),
             _ => None,
         })
         .collect();
@@ -552,11 +553,11 @@ fn line_height_override_changes_caret_rect_height() {
         h.ui.forest.trees[Layer::Main]
             .shapes_of(leaf.unwrap())
             .find_map(|s| match s {
-                ShapeRecord::Rect {
+                ShapeRecord::Quad(QuadShape::Rect {
                     kind: RectKind::Rounded,
                     local_rect: Some(rect),
                     ..
-                } => Some(rect.size.h),
+                }) => Some(rect.size.h),
                 _ => None,
             })
             .expect("focused TextEdit pushes a caret Overlay")

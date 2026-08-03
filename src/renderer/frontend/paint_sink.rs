@@ -42,7 +42,7 @@
 //! So tier 2 is an optimization and tier 3 is correctness — a shape
 //! that slips past tier 2 still paints nothing, but pays for lowering.
 //! The gate is not *unbypassable*: the required half is crate-visible,
-//! so `sink.rect(payload)` compiles anywhere and skips it.
+//! so `sink.quad(payload)` compiles anywhere and skips it.
 //! `RecordedPaint::replay` is the one place that does, and only because
 //! its input already passed.
 //!
@@ -58,14 +58,12 @@
 use crate::primitives::brush::gradient::FillAxis;
 use crate::primitives::color::ColorF16;
 use crate::primitives::corners::Corners;
-use crate::primitives::fill_wire::FillKind;
+use crate::primitives::fill_wire::{FillKind, LutRow};
 use crate::primitives::rect::Rect;
-use crate::primitives::texture_id::TextureId;
 use crate::primitives::transform::TranslateScale;
 use crate::renderer::frontend::payload::{
     BrushSource, DrawCurvePayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload,
-    DrawRectPayload, DrawShadowPayload, DrawTextPayload, DrawTrianglePayload, GpuFillFields,
-    PushClipPayload,
+    DrawQuadPayload, DrawTextPayload, GpuFillFields, PushClipPayload, QuadGeom,
 };
 use crate::renderer::gpu_view::GpuPaintRef;
 use crate::scene::shapes::paint::ShapeStroke;
@@ -83,9 +81,8 @@ pub(crate) trait PaintSink {
 
     fn pop_transform(&mut self);
 
-    fn rect(&mut self, payload: DrawRectPayload);
-
-    fn shadow(&mut self, payload: DrawShadowPayload);
+    /// One quad-tier draw — rect, windowed rect, shadow, or triangle.
+    fn quad(&mut self, payload: DrawQuadPayload);
 
     fn text(&mut self, payload: DrawTextPayload);
 
@@ -98,8 +95,6 @@ pub(crate) trait PaintSink {
     fn image(&mut self, payload: DrawImagePayload, paint: Option<&GpuPaintRef>);
 
     fn curve(&mut self, payload: DrawCurvePayload);
-
-    fn triangle(&mut self, payload: DrawTrianglePayload);
 
     #[inline]
     fn push_clip(&mut self, rect: Rect) {
@@ -145,10 +140,6 @@ pub(crate) trait PaintSink {
         stroke: ShapeStroke,
         window: bool,
     ) {
-        if rect.is_paint_empty() || (fill.is_noop() && stroke.is_noop()) {
-            return;
-        }
-
         // Stroke stays solid-only — gradient strokes are a non-goal.
         let GpuFillFields {
             color: fill_color,
@@ -161,18 +152,10 @@ pub(crate) trait PaintSink {
         } else {
             fill_kind
         };
-
-        let (stroke_color, stroke_width) = if stroke.is_noop() {
-            (ColorF16::TRANSPARENT, 0.0)
-        } else {
-            (stroke.color, stroke.width())
-        };
-        self.rect(DrawRectPayload {
-            rect,
-            corners,
+        self.draw_quad(DrawQuadPayload {
+            geom: QuadGeom::Rect { rect, corners },
             fill: fill_color,
-            stroke_color,
-            stroke_width,
+            stroke: stroke.normalized(),
             fill_kind,
             fill_lut_row,
             fill_axis,
@@ -196,17 +179,26 @@ pub(crate) trait PaintSink {
         fill_kind: FillKind,
         fill_axis: FillAxis,
     ) {
-        let payload = DrawShadowPayload {
-            rect,
-            corners,
-            color,
+        self.draw_quad(DrawQuadPayload {
+            geom: QuadGeom::Rect { rect, corners },
+            fill: color,
+            // A shadow has no stroke; its whole edge is the blur.
+            stroke: ShapeStroke::NONE,
             fill_kind,
+            fill_lut_row: LutRow::FALLBACK,
             fill_axis,
-        };
+        });
+    }
+
+    /// The one no-op gate for the quad tier — rect, windowed rect,
+    /// shadow, and triangle all funnel through it, so the four cannot
+    /// drift apart on what counts as invisible.
+    #[inline]
+    fn draw_quad(&mut self, payload: DrawQuadPayload) {
         if payload.is_noop() {
             return;
         }
-        self.shadow(payload);
+        self.quad(payload);
     }
 
     #[inline]
@@ -230,22 +222,18 @@ pub(crate) trait PaintSink {
         self.mesh(payload);
     }
 
-    fn draw_image(&mut self, payload: DrawImagePayload) {
+    /// Paint a textured rect. `paint` is `Some` exactly when this
+    /// composites a `GpuView`, and carries the callback its off-screen
+    /// target is painted with — so the composite and the target it needs
+    /// cannot come apart. Deciding `payload.gpu_view` here, rather than
+    /// at either construction site, is what keeps the flag and the
+    /// callback from disagreeing.
+    fn draw_image(&mut self, mut payload: DrawImagePayload, paint: Option<&GpuPaintRef>) {
+        payload.gpu_view = paint.is_some();
         if payload.is_noop() {
             return;
         }
-        self.image(payload, None);
-    }
-
-    /// Composite a `GpuView` over its full arranged `rect` and schedule
-    /// its off-screen paint. Same draw as any image — the callback rides
-    /// alongside the payload so the sink can list the off-screen target.
-    fn draw_gpu_view(&mut self, rect: Rect, handle: TextureId, paint: &GpuPaintRef) {
-        let payload = DrawImagePayload::gpu_view(rect, handle);
-        if payload.is_noop() {
-            return;
-        }
-        self.image(payload, Some(paint));
+        self.image(payload, paint);
     }
 
     fn draw_curve(&mut self, payload: DrawCurvePayload) {
@@ -256,8 +244,9 @@ pub(crate) trait PaintSink {
     }
 
     /// Paint a rounded triangle from three owner-local `points` offset
-    /// by `origin`. Noop strokes normalize to `(TRANSPARENT, 0.0)`,
-    /// exactly like [`Self::draw_rect`].
+    /// by `origin`. Same quad-tier draw as [`Self::draw_rect`], down to
+    /// the shared stroke normalization — only the geometry and the SDF
+    /// the `FillKind` selects differ.
     fn draw_triangle(
         &mut self,
         origin: glam::Vec2,
@@ -266,26 +255,23 @@ pub(crate) trait PaintSink {
         radius: f32,
         stroke: ShapeStroke,
     ) {
-        let (stroke_color, stroke_width) = if stroke.is_noop() {
-            (ColorF16::TRANSPARENT, 0.0)
-        } else {
-            (stroke.color, stroke.width())
-        };
         let [a, b, c] = points;
-        let payload = DrawTrianglePayload {
-            origin,
-            a,
-            b,
-            c,
+        self.draw_quad(DrawQuadPayload {
+            geom: QuadGeom::Triangle {
+                origin,
+                a,
+                b,
+                c,
+                radius,
+            },
             fill,
-            stroke_color,
-            radius,
-            stroke_width,
-        };
-        if payload.is_noop() {
-            return;
-        }
-        self.triangle(payload);
+            stroke: stroke.normalized(),
+            fill_kind: FillKind::TRIANGLE,
+            // The composer overwrites both reused lanes from the
+            // transformed points, so neither is read from here.
+            fill_lut_row: LutRow::FALLBACK,
+            fill_axis: FillAxis::ZERO,
+        });
     }
 
     /// Paint a polyline against already-staged points and colors. The
@@ -309,10 +295,13 @@ mod tests {
     use crate::primitives::corners::Corners;
     use crate::primitives::rect::Rect;
 
+    use crate::primitives::fill_wire::FillKind;
     use crate::primitives::stroke::Stroke;
     use crate::primitives::texture_id::TextureId;
     use crate::renderer::frontend::paint_sink::PaintSink;
-    use crate::renderer::frontend::payload::{BrushSource, DrawPolylinePayload};
+    use crate::renderer::frontend::payload::{
+        BrushSource, DrawImagePayload, DrawPolylinePayload, QuadGeom,
+    };
     use crate::renderer::frontend::record_sink::{PaintCall, RecordedPaint};
     use crate::renderer::gpu_view::{GpuFrameCtx, GpuPaint, GpuPaintRef};
     use crate::scene::shapes::paint::ShapeStroke;
@@ -379,18 +368,25 @@ mod tests {
         }
     }
 
-    /// Both draw paths run the same stroke normalization inside the cmd
-    /// buffer (the single canonical correctness gate): a noop stroke —
-    /// transparent colour or zero width — lands in the payload as
-    /// `(TRANSPARENT, 0.0)`; anything else passes through verbatim. NaN
-    /// width is NOT a `ShapeStroke` noop (`noop_f16_bits` deliberately
-    /// classifies NaN as non-zero — loud bug, not silent skip), so it
-    /// passes through on both paths identically and the shader's
-    /// `stroke_width > 0.0` gate drops it. Table sweeps all four cases,
-    /// asserting the triangle payload's stroke fields are bit-identical to
-    /// the rect payload's for the same input stroke.
+    /// Every quad-tier draw runs one stroke normalization
+    /// ([`ShapeStroke::normalized`]): a noop stroke — transparent
+    /// colour, zero width, or a NaN width — lands in the payload as
+    /// [`ShapeStroke::NONE`]; anything else passes through verbatim.
+    ///
+    /// The NaN row is the interesting one. It normalizes away like any
+    /// other non-painting width, which is deliberate: catching a NaN
+    /// *loudly* is `Shape::debug_assert_no_nan`'s job at the authoring
+    /// boundary, so by the time a value reaches here the useful
+    /// behaviour is to fail safe — and to do it identically for every
+    /// shape, rather than the split this used to have (rect forwarded
+    /// NaN to the GPU, triangle scrubbed it).
+    ///
+    /// The table pins both halves: the exact normalized stroke per case,
+    /// **and** that the rect and triangle paths emit bit-identical
+    /// stroke fields — the regression guard against either path growing
+    /// its own copy again.
     #[test]
-    fn triangle_stroke_normalization_matches_draw_rect() {
+    fn quad_stroke_normalization_is_shared_by_rect_and_triangle() {
         let fill = Color::rgb(1.0, 0.0, 0.0);
         let green = Color::rgb(0.0, 1.0, 0.0);
         let cases: [(&str, ShapeStroke, bool); 4] = [
@@ -400,7 +396,7 @@ mod tests {
                 true,
             ),
             ("zero_width", Stroke::solid(green, 0.0).into(), true),
-            ("nan_width", Stroke::solid(green, f32::NAN).into(), false),
+            ("nan_width", Stroke::solid(green, f32::NAN).into(), true),
             ("live", Stroke::solid(green, 3.0).into(), false),
         ];
         for (label, stroke, expect_normalized) in cases {
@@ -411,9 +407,13 @@ mod tests {
                 BrushSource::Solid(fill.into()),
                 stroke,
             );
-            let Some(PaintCall::Rect(rp)) = rb.calls.first() else {
-                panic!("case {label}: expected DrawRect");
+            let Some(PaintCall::Quad(rp)) = rb.calls.first() else {
+                panic!("case {label}: expected a rect quad");
             };
+            assert!(
+                matches!(rp.geom, QuadGeom::Rect { .. }),
+                "case {label}: draw_rect must emit rect geometry",
+            );
 
             let mut tb = RecordedPaint::default();
             tb.draw_triangle(
@@ -427,21 +427,26 @@ mod tests {
                 0.0,
                 stroke,
             );
-            let Some(PaintCall::Triangle(tp)) = tb.calls.first() else {
-                panic!("case {label}: expected DrawTriangle");
+            let Some(PaintCall::Quad(tp)) = tb.calls.first() else {
+                panic!("case {label}: expected a triangle quad");
             };
+            assert!(
+                matches!(tp.geom, QuadGeom::Triangle { .. }),
+                "case {label}: draw_triangle must emit triangle geometry",
+            );
+            assert_eq!(tp.fill_kind, FillKind::TRIANGLE, "case {label}");
 
-            assert_eq!(tp.stroke_color, rp.stroke_color, "case {label}");
+            assert_eq!(tp.stroke.color, rp.stroke.color, "case {label}");
             assert_eq!(
-                tp.stroke_width.to_bits(),
-                rp.stroke_width.to_bits(),
+                tp.stroke.width.to_bits(),
+                rp.stroke.width.to_bits(),
                 "case {label}",
             );
             if expect_normalized {
-                assert_eq!(tp.stroke_color, ColorF16::TRANSPARENT, "case {label}");
-                assert_eq!(tp.stroke_width, 0.0, "case {label}");
+                assert_eq!(tp.stroke.color, ColorF16::TRANSPARENT, "case {label}");
+                assert_eq!(tp.stroke.width, 0.0, "case {label}");
             } else {
-                assert_eq!(tp.stroke_color, ColorF16::from(green), "case {label}");
+                assert_eq!(tp.stroke.color, ColorF16::from(green), "case {label}");
             }
         }
     }
@@ -472,7 +477,17 @@ mod tests {
 
         for (label, rect, expect_call) in cases {
             let mut sink = RecordedPaint::default();
-            sink.draw_gpu_view(rect, handle, &paint);
+            sink.draw_image(
+                DrawImagePayload::image(
+                    rect,
+                    Vec2::ZERO,
+                    Vec2::ONE,
+                    ColorF16::from(Color::WHITE),
+                    handle,
+                    0,
+                ),
+                Some(&paint),
+            );
             if !expect_call {
                 assert!(sink.calls.is_empty(), "case {label}: {:?}", sink.calls);
                 continue;

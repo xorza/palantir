@@ -1,4 +1,5 @@
 use crate::common::hash::Hasher;
+use crate::primitives::nan::NanCheck;
 use crate::primitives::rect::Rect;
 use crate::primitives::{approx, color::ColorU8};
 use bytemuck::{Pod, Zeroable};
@@ -275,6 +276,15 @@ fn compute_aabb(verts: &[MeshVertex]) -> Rect {
         hi = hi.max(v.pos);
     }
     Rect::from_min_max(lo, hi)
+}
+
+/// Vertex colours are `ColorU8`, so positions are the only place a mesh
+/// can hide a NaN. `O(n)` — debug-only, per the [`NanCheck`] module doc.
+impl NanCheck for Mesh {
+    #[inline]
+    fn has_nan(&self) -> bool {
+        self.vertices.iter().any(|v| v.pos.has_nan())
+    }
 }
 
 #[cfg(test)]

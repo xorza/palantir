@@ -14,7 +14,7 @@ use crate::common::hash::Hasher;
 use crate::primitives::approx;
 use crate::primitives::image::ImageFit;
 use crate::primitives::rect::Rect;
-use crate::scene::shapes::paint::{CurveBasis, ShapeBrush};
+use crate::scene::shapes::paint::{CurveBasis, ImageSource, QuadShape, ShapeBrush};
 use crate::scene::shapes::record::ShapeRecord;
 use std::hash::{Hash, Hasher as _};
 
@@ -25,20 +25,58 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
     let mut h = Hasher::new();
     h.write_u8(record.tag());
     match record {
-        ShapeRecord::Rect {
-            kind,
-            local_rect,
-            corners,
-            fill,
-            stroke,
-            fill_grad_hash,
-        } => {
-            h.write_u8(*kind as u8);
-            hash_optional_rect(*local_rect, &mut h);
-            corners.hash(&mut h);
-            hash_brush(fill, *fill_grad_hash, &mut h);
-            // Pod-byte hash for `(color, width)` — one dispatch.
-            h.pod(stroke);
+        // All three shapes share this record's tag byte, so
+        // `QuadShape::tag` goes in ahead of the per-shape fields to keep
+        // a rectangle, a shadow, and a triangle apart — without it a
+        // rect and a shadow over the same rounded box would differ only
+        // by fields their schedules happen not to share.
+        ShapeRecord::Quad(shape) => {
+            h.write_u8(shape.tag());
+            match shape {
+                QuadShape::Rect {
+                    kind,
+                    local_rect,
+                    corners,
+                    fill,
+                    stroke,
+                    fill_grad_hash,
+                } => {
+                    h.write_u8(*kind as u8);
+                    hash_optional_rect(*local_rect, &mut h);
+                    corners.hash(&mut h);
+                    hash_brush(fill, *fill_grad_hash, &mut h);
+                    // Pod-byte hash for `(color, width)` — one dispatch.
+                    h.pod(stroke);
+                }
+                QuadShape::Shadow {
+                    local_rect,
+                    corners,
+                    shadow,
+                } => {
+                    hash_optional_rect(*local_rect, &mut h);
+                    corners.hash(&mut h);
+                    shadow.hash(&mut h);
+                }
+                // `bbox` is derived from `a`/`b`/`c` + `radius`, so it's
+                // excluded — the geometry that determines it is already
+                // hashed.
+                QuadShape::Triangle {
+                    a,
+                    b,
+                    c,
+                    radius,
+                    fill,
+                    stroke,
+                    bbox: _,
+                } => {
+                    approx::hash_visual_vec2(*a, &mut h);
+                    approx::hash_visual_vec2(*b, &mut h);
+                    approx::hash_visual_vec2(*c, &mut h);
+                    approx::hash_visual_f32(*radius, &mut h);
+                    fill.hash(&mut h);
+                    h.pod(stroke);
+                }
+            }
         }
         // `content_hash` already folds width + color_mode + cap + join
         // + points + colors; bbox/spans are frame-local and excluded.
@@ -84,32 +122,38 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
             tint.hash(&mut h);
             h.write_u64(*content_hash);
         }
-        ShapeRecord::Shadow {
-            local_rect,
-            corners,
-            shadow,
-        } => {
-            hash_optional_rect(*local_rect, &mut h);
-            corners.hash(&mut h);
-            shadow.hash(&mut h);
-        }
+        // Both sources share this record's tag byte, so `ImageSource::tag`
+        // goes in ahead of the source fields to keep a texture draw and a
+        // view composite apart; the placement fields they share are hashed
+        // once, around the split.
         ShapeRecord::Image {
             local_rect,
             tint,
-            id,
-            size,
+            source,
             fit,
             min_filter,
             mag_filter,
         } => {
             hash_optional_rect(*local_rect, &mut h);
             tint.hash(&mut h);
-            // Hash the registration `id` + intrinsic `size`, then fold in
-            // the fit (incl. `Tile`'s UV transform,
-            // which changes every pan/zoom frame and must repaint) and
-            // both sampling filters.
-            h.write_u64(id.0);
-            h.write_u64(u64::from(size.x) | (u64::from(size.y) << 32));
+            h.write_u8(source.tag());
+            match source {
+                // The registration `id` + intrinsic `size`.
+                ImageSource::Texture { id, size } => {
+                    h.write_u64(id.0);
+                    h.write_u64(u64::from(size.x) | (u64::from(size.y) << 32));
+                }
+                // `epoch` is the view's damage version: `Ui::gpu_view` bumps
+                // it to the frame id on `repaint(true)` (hash changes → the
+                // rect repaints and the texture re-renders) and holds it
+                // stable on `repaint(false)` (hash matches → the view culls).
+                // The view's id + paint live in `Ui::gpu_views`, which the
+                // hash can't see; `epoch` rides the record precisely so this
+                // stays correct.
+                ImageSource::GpuView { epoch } => h.write_u64(*epoch),
+            }
+            // The fit (incl. `Tile`'s UV transform, which changes every
+            // pan/zoom frame and must repaint) and both sampling filters.
             hash_fit(fit, &mut h);
             h.write_u8((*min_filter as u8) | ((*mag_filter as u8) << 1));
         }
@@ -151,33 +195,6 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
             }
             h.write_u64((u64::from(approx::canon_bits(*width)) << 8) | u64::from(*cap as u8));
             hash_brush(fill, *fill_grad_hash, &mut h);
-        }
-        // `epoch` is the view's damage version: `Ui::gpu_view` bumps it
-        // to the frame id on `repaint(true)` (hash changes → the rect
-        // repaints and the texture re-renders) and holds it stable on
-        // `.repaint(false)` (hash matches → the view culls). The view's
-        // id + paint live in `Ui::gpu_views`, which the hash can't see;
-        // `epoch` rides the shape precisely so this stays correct.
-        ShapeRecord::GpuView { epoch } => {
-            h.write_u64(*epoch);
-        }
-        // `bbox` is derived from `a`/`b`/`c` + `radius`, so it's excluded —
-        // the geometry that determines it is already hashed.
-        ShapeRecord::Triangle {
-            a,
-            b,
-            c,
-            radius,
-            fill,
-            stroke,
-            bbox: _,
-        } => {
-            approx::hash_visual_vec2(*a, &mut h);
-            approx::hash_visual_vec2(*b, &mut h);
-            approx::hash_visual_vec2(*c, &mut h);
-            approx::hash_visual_f32(*radius, &mut h);
-            fill.hash(&mut h);
-            h.pod(stroke);
         }
     }
     ContentHash(h.finish())

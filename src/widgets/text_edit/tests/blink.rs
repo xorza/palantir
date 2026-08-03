@@ -11,6 +11,7 @@ use std::time::Duration;
 /// "rect present AND its anim (if any) samples to visible at the
 /// current time".
 fn caret_painted(ui: &Ui, leaf: NodeId) -> bool {
+    use crate::scene::shapes::paint::QuadShape;
     use crate::scene::shapes::record::ShapeRecord;
     use crate::scene::tree::iter::{TreeItem, TreeItems};
     use crate::shape::rect::RectKind;
@@ -26,11 +27,11 @@ fn caret_painted(ui: &Ui, leaf: NodeId) -> bool {
         .any(|(idx, s)| {
             let is_caret = matches!(
                 s,
-                ShapeRecord::Rect {
+                ShapeRecord::Quad(QuadShape::Rect {
                     kind: RectKind::Rounded,
                     local_rect: Some(_),
                     ..
-                }
+                })
             );
             is_caret && paint_anims.sample(idx, now).alpha > 0.0
         })

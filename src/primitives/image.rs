@@ -6,6 +6,7 @@
 //! lives in [`crate::renderer::image_registry`] — `primitives` stays a
 //! pure leaf.
 
+use crate::primitives::nan::NanCheck;
 use glam::UVec2;
 
 /// How an image's intrinsic size maps onto its paint rect. Same
@@ -94,6 +95,17 @@ impl Image {
         Self {
             size: UVec2::new(width, height),
             pixels,
+        }
+    }
+}
+
+/// Only [`ImageFit::Tile`] carries scalars; every other fit is a bare tag.
+impl NanCheck for ImageFit {
+    #[inline]
+    fn has_nan(&self) -> bool {
+        match self {
+            Self::Fill | Self::Contain | Self::Cover | Self::None => false,
+            Self::Tile { offset, scale } => offset.has_nan() || scale.has_nan(),
         }
     }
 }

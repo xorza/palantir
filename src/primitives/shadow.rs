@@ -1,5 +1,6 @@
 use crate::primitives::approx::canon_bits;
 use crate::primitives::color::Color;
+use crate::primitives::nan::NanCheck;
 use glam::Vec2;
 use palantir_anim_derive::Animatable;
 
@@ -90,5 +91,11 @@ impl std::hash::Hash for Shadow {
         state.write_u32(canon_bits(self.blur));
         state.write_u32(canon_bits(self.spread));
         state.write_u8(self.inset as u8);
+    }
+}
+impl NanCheck for Shadow {
+    #[inline]
+    fn has_nan(&self) -> bool {
+        self.color.has_nan() || self.offset.has_nan() || self.blur.is_nan() || self.spread.is_nan()
     }
 }

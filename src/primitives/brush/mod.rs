@@ -5,6 +5,7 @@ use crate::primitives::brush::gradient::conic::{ConicGradient, ConicGradientBuil
 use crate::primitives::brush::gradient::linear::{LinearGradient, LinearGradientBuilder};
 use crate::primitives::brush::gradient::radial::{RadialGradient, RadialGradientBuilder};
 use crate::primitives::color::{Color, ColorU8};
+use crate::primitives::nan::NanCheck;
 
 /// Paint source for gradient-capable fills.
 ///
@@ -255,6 +256,28 @@ impl Animatable for Brush {
                 *self = target.clone();
             }
             *velocity = Self::zero();
+        }
+    }
+}
+
+impl NanCheck for Brush {
+    #[inline]
+    fn has_nan(&self) -> bool {
+        match self {
+            Self::Solid(color) => color.has_nan(),
+            Self::Linear(gradient) => gradient.has_nan(),
+            Self::Radial(gradient) => gradient.has_nan(),
+            Self::Conic(gradient) => gradient.has_nan(),
+        }
+    }
+}
+
+impl NanCheck for CurveBrush {
+    #[inline]
+    fn has_nan(&self) -> bool {
+        match self {
+            Self::Solid(color) => color.has_nan(),
+            Self::Linear(gradient) => gradient.has_nan(),
         }
     }
 }
