@@ -7,6 +7,7 @@
 use crate::layout::types::align::HAlign;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
+use crate::text::cosmic::ShapedRun;
 use crate::text::mono;
 use crate::text::{ShaperInner, TextShapeRequest};
 use std::cell::RefMut;
@@ -37,10 +38,15 @@ impl<'s, 't> TextLayoutProbe<'s, 't> {
         }
     }
 
-    /// Shaped buffer behind this layout; `None` on the gated mono metric
+    /// Shaped run behind this layout; `None` on the gated mono metric
     /// (no cosmic to ask) and for empty text (an unshaped request).
-    fn buffer(&self) -> Option<&cosmic_text::Buffer> {
-        self.inner.cosmic.as_ref()?.buffer_for(self.request.key)
+    ///
+    /// Every query below reports in *block-local* coordinates — the same
+    /// space [`Self::size`] measures and the encoder places — so each one
+    /// takes [`ShapedRun::left`] off the buffer's own x, or adds it back
+    /// when going the other way.
+    fn shaped(&self) -> Option<ShapedRun<'_>> {
+        self.inner.cosmic.as_ref()?.shaped_run(self.request.key)
     }
     /// (x, y_top, line_height) for the caret at `byte_offset`.
     /// Multi-line aware via cosmic-text layout runs (each `\n` and each
@@ -56,16 +62,16 @@ impl<'s, 't> TextLayoutProbe<'s, 't> {
     /// interpolates across the cluster instead of jumping to its far end.
     pub(crate) fn cursor_xy(&self, byte_offset: usize) -> Caret {
         let line_height_px = self.request.key.line_height_px();
-        let max_width_px = self.request.key.max_width_px();
         let halign = self.request.key.halign();
         let target = cursor_from_byte(self.request.text, byte_offset);
-        let Some(buffer) = self.buffer() else {
+        let Some(ShapedRun { buffer, left }) = self.shaped() else {
+            // No shaped buffer means empty text (block-local x is 0, and
+            // the owner aligns the empty block itself) or the mono metric.
             return Caret {
                 x: mono::caret_x(
                     self.request.text,
                     byte_offset,
                     self.request.key.font_size_px(),
-                    empty_line_x(max_width_px, halign),
                 ),
                 y_top: 0.0,
                 line_height: line_height_px,
@@ -77,26 +83,30 @@ impl<'s, 't> TextLayoutProbe<'s, 't> {
             if run.line_i != target.line {
                 continue;
             }
-            // A glyphless visual line has nothing to hang the caret on and
-            // cosmic reports x = 0; place it where per-line align will put
-            // the first typed glyph instead.
-            let placed = if run.glyphs.is_empty() {
-                Some(empty_line_x(max_width_px, halign))
-            } else {
-                run.cursor_position(&target)
-            };
-            let x = placed.unwrap_or_else(|| run.glyphs.last().map_or(0.0, |g| g.x + g.w));
-            let pos = Caret {
-                x,
+            let at = |x: f32| Caret {
+                x: x - left,
                 y_top: run.line_top,
                 line_height: run.line_height,
             };
-            if placed.is_some() {
-                return pos;
+            // A glyphless visual line has nothing to hang the caret on and
+            // cosmic reports x = 0; place it where per-line align will put
+            // the first typed glyph instead. That answer is block-local
+            // already, so it skips the correction the buffer's own x needs.
+            if run.glyphs.is_empty() {
+                return Caret {
+                    x: empty_line_x(self.size.w, halign),
+                    y_top: run.line_top,
+                    line_height: run.line_height,
+                };
             }
-            // Soft wrap splits one logical line across runs, so a miss here
-            // just means the offset belongs to a later run.
-            last_in_line = Some(pos);
+            match run.cursor_position(&target) {
+                Some(x) => return at(x),
+                // Soft wrap splits one logical line across runs, so a miss
+                // here just means the offset belongs to a later run.
+                None => {
+                    last_in_line = Some(at(run.glyphs.last().map_or(0.0, |g| g.x + g.w)));
+                }
+            }
         }
         last_in_line.unwrap_or(Caret {
             x: 0.0,
@@ -110,9 +120,13 @@ impl<'s, 't> TextLayoutProbe<'s, 't> {
     /// `(x ÷ 0.5·font_size)` scan over char boundaries — enough for
     /// headless single-line click tests, ignores `y` entirely.
     pub(crate) fn byte_at_xy(&self, x: f32, y: f32) -> usize {
-        match self.buffer() {
-            Some(buffer) => buffer
-                .hit(x, y)
+        match self.shaped() {
+            // `x` arrives block-local, so put it back into buffer space
+            // before asking cosmic — the exact inverse of what
+            // [`Self::cursor_xy`] subtracts, which is what keeps the
+            // hit-test → caret round trip landing where it started.
+            Some(ShapedRun { buffer, left }) => buffer
+                .hit(x + left, y)
                 .map(|cursor| cursor_to_byte(self.request.text, cursor))
                 .unwrap_or(self.request.text.len()),
             None => mono::byte_at_x(self.request.text, x, self.request.key.font_size_px()),
@@ -134,12 +148,12 @@ impl<'s, 't> TextLayoutProbe<'s, 't> {
         if range.is_empty() {
             return;
         }
-        let Some(buffer) = self.buffer() else {
+        let Some(ShapedRun { buffer, left }) = self.shaped() else {
             // No shaped buffer to wash: mono lays the band out 1D, and
             // empty text collapses it to nothing.
             let font_size_px = self.request.key.font_size_px();
-            let x0 = mono::caret_x(self.request.text, range.start, font_size_px, 0.0);
-            let x1 = mono::caret_x(self.request.text, range.end, font_size_px, 0.0);
+            let x0 = mono::caret_x(self.request.text, range.start, font_size_px);
+            let x1 = mono::caret_x(self.request.text, range.end, font_size_px);
             out(Rect::new(
                 x0,
                 0.0,
@@ -151,7 +165,7 @@ impl<'s, 't> TextLayoutProbe<'s, 't> {
         let start = cursor_from_byte(self.request.text, range.start);
         let end = cursor_from_byte(self.request.text, range.end);
         for run in buffer.layout_runs() {
-            push_run_selection_rects(&run, start, end, out);
+            push_run_selection_rects(&run, start, end, left, out);
         }
     }
 }
@@ -170,17 +184,19 @@ pub struct Caret {
     pub line_height: f32,
 }
 
-/// Where the caret on a zero-glyph line ends up after cosmic's
-/// per-line align. Mirrors cosmic's `(line_width - line_w) * factor`
-/// formula collapsed for `line_w = 0`. Used by `cursor_xy` when the
-/// shaped buffer is missing (empty buffer / mono fallback) — without
-/// it, an empty right-aligned multi-line editor would paint its
-/// caret at `x = 0` instead of at the right edge.
-fn empty_line_x(max_width_px: Option<f32>, halign: HAlign) -> f32 {
-    let Some(w) = max_width_px else { return 0.0 };
+/// Where the caret on a zero-glyph line sits inside a block `block_w`
+/// wide. Cosmic reports `x = 0` for a glyphless line whatever the
+/// alignment, so without this an empty line in a right-aligned block
+/// would take its caret to the block's left edge instead of the edge the
+/// first typed glyph will land on.
+///
+/// Measured against the *block*, not the wrap width: the block is what
+/// the owner aligns inside the leaf rect, so aligning against the wrap
+/// width here would place the caret as if that alignment happened twice.
+fn empty_line_x(block_w: f32, halign: HAlign) -> f32 {
     match halign {
-        HAlign::Center => w * 0.5,
-        HAlign::Right => w,
+        HAlign::Center => block_w * 0.5,
+        HAlign::Right => block_w,
         HAlign::Auto | HAlign::Left | HAlign::Stretch => 0.0,
     }
 }
@@ -190,6 +206,7 @@ fn push_run_selection_rects(
     run: &cosmic_text::LayoutRun<'_>,
     cursor_start: cosmic_text::Cursor,
     cursor_end: cosmic_text::Cursor,
+    left: f32,
     out: &mut impl FnMut(Rect),
 ) {
     // The per-grapheme test below (ported from `LayoutRun::highlight`) treats a
@@ -204,7 +221,12 @@ fn push_run_selection_rects(
         if let Some((min_x, max_x)) = selected.take() {
             let width = max_x - min_x;
             if width > 0.0 {
-                out(Rect::new(min_x, run.line_top, width, run.line_height));
+                out(Rect::new(
+                    min_x - left,
+                    run.line_top,
+                    width,
+                    run.line_height,
+                ));
             }
         }
     };
@@ -270,7 +292,7 @@ mod internals {
         /// so production builds expose no cosmic types outside
         /// `src/text/`.
         pub(crate) fn buffer_for_test(&self) -> Option<&cosmic_text::Buffer> {
-            self.buffer()
+            self.shaped().map(|shaped| shaped.buffer)
         }
     }
 }

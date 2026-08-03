@@ -103,14 +103,18 @@ struct GlyphPosition {
     end: usize,
 }
 
+/// Glyph geometry in the same block-local space the renderer and probe
+/// see — `left` off the buffer's own x, exactly as `extract_glyphs` folds
+/// it into the run origin.
 fn glyph_positions(cosmic: &CosmicMeasure, key: TextShapeKey) -> Vec<GlyphPosition> {
-    cosmic
-        .buffer_for(key)
-        .expect("shaped buffer must exist")
+    let shaped = cosmic.shaped_run(key).expect("shaped buffer must exist");
+    let left = shaped.left;
+    shaped
+        .buffer
         .layout_runs()
-        .flat_map(|run| {
+        .flat_map(move |run| {
             run.glyphs.iter().map(move |glyph| GlyphPosition {
-                x: glyph.x,
+                x: glyph.x - left,
                 width: glyph.w,
                 line_top: run.line_top,
                 line_height: run.line_height,
@@ -854,7 +858,7 @@ fn cosmic_empty_text_returns_invalid_zero_size() {
     assert_eq!(r.intrinsic_min, 0.0);
     // `buffer_for(INVALID)` must return None — even after measuring,
     // no buffer was cached for the empty input.
-    assert!(c.buffer_for(r.key).is_none());
+    assert!(c.shaped_run(r.key).is_none());
 
     let shaper = TextShaper::test_mono();
     let calls = shaper.measure_calls();
@@ -1074,7 +1078,7 @@ fn above_epsilon_metrics_survive_cache_key_canonicalization() {
     assert!(!result.key.is_invalid());
     assert_eq!(result.key.size_q, 1);
     assert_eq!(result.key.lh_q, 1);
-    assert!(cosmic.buffer_for(result.key).is_some());
+    assert!(cosmic.shaped_run(result.key).is_some());
 }
 
 #[test]
@@ -1308,9 +1312,14 @@ fn end_frame_drops_every_row_not_used_this_frame() {
 /// Right-aligned multi-line buffer: caret at byte 4 ("abc\n|") lands
 /// on the empty second line. Cosmic's per-line halign offset only
 /// shifts existing glyphs, so an empty line has `line_w = 0` and
-/// the naive `unwrap_or(run.line_w)` reports `x = 0` (left edge).
-/// Post-fix the empty-line branch routes through `empty_line_x`,
-/// putting the caret at the right edge of the wrap target.
+/// cosmic reports `x = 0` whatever the alignment; the empty-line branch
+/// routes through `empty_line_x` to put the caret where the first typed
+/// glyph will actually appear.
+///
+/// That edge is the *block's*, not the wrap target's: the block is what
+/// the owner aligns inside its rect, so measuring the caret against the
+/// wrap target here would align it a second time and carry it past the
+/// text it belongs to.
 #[test]
 fn cursor_xy_on_empty_line_respects_right_align() {
     let m = TextShaper::new();
@@ -1321,20 +1330,23 @@ fn cursor_xy_on_empty_line_respects_right_align() {
     // `measure` end-to-end (unbounded + wrap-shape), so no
     // pre-prime is needed — the shaper builds whatever cache
     // entry it needs on first hit.
-    let pos = m.cursor_xy(
-        text,
-        text.len(),
-        TestShape {
-            max_width_px: Some(wrap),
-            halign: HAlign::Right,
-            ..ui_shape(font)
-        },
+    let shape = TestShape {
+        max_width_px: Some(wrap),
+        halign: HAlign::Right,
+        ..ui_shape(font)
+    };
+    let block = m.measure(text, shape).size.w;
+    let pos = m.cursor_xy(text, text.len(), shape);
+    assert!(
+        (pos.x - block).abs() < 0.5,
+        "right-aligned caret on empty trailing line must sit at the \
+         block's right edge ({block}); got x = {}",
+        pos.x,
     );
     assert!(
-        (pos.x - wrap).abs() < 0.5,
-        "right-aligned caret on empty trailing line must sit at \
-         the wrap target ({wrap}); got x = {}",
-        pos.x,
+        block < wrap - 100.0,
+        "\"abc\" must be far narrower than the {wrap} px wrap target, \
+         or this cannot tell the block edge from the wrap target; got {block}",
     );
     // And the left-aligned counterpart still anchors at zero —
     // sanity-pins the helper isn't accidentally always returning
@@ -1944,7 +1956,7 @@ fn ensure_buffer_exactly_restores_wrap_and_truncation() {
     let original = wrap.measure(text, wrap_params);
     let original_glyphs = glyph_positions(&wrap, original.key);
     wrap.drop_all_buffers();
-    assert!(wrap.buffer_for(original.key).is_none());
+    assert!(wrap.shaped_run(original.key).is_none());
     wrap.ensure_buffer(TextShapeRequest {
         text,
         key: original.key,
@@ -1971,9 +1983,9 @@ fn ensure_buffer_exactly_restores_wrap_and_truncation() {
         let original = truncated.measure_with_fit(text, params, fit, unbounded.key);
         let original_glyphs = glyph_positions(&truncated, original.key);
         truncated.drop_all_buffers();
-        assert!(truncated.buffer_for(original.key).is_none(), "fit: {fit:?}");
+        assert!(truncated.shaped_run(original.key).is_none(), "fit: {fit:?}");
         assert!(
-            truncated.buffer_for(unbounded.key).is_none(),
+            truncated.shaped_run(unbounded.key).is_none(),
             "fit: {fit:?}",
         );
 
@@ -1982,7 +1994,7 @@ fn ensure_buffer_exactly_restores_wrap_and_truncation() {
             key: original.key,
         });
         assert!(
-            truncated.buffer_for(unbounded.key).is_some(),
+            truncated.shaped_run(unbounded.key).is_some(),
             "truncation restoration must rebuild its unbounded probe for {fit:?}",
         );
         let restored = truncated.measure_with_fit(text, params, fit, unbounded.key);
@@ -2110,7 +2122,7 @@ fn probationary_entries_age_out_on_schedule_regardless_of_cache_size() {
     idle_frames(&mut c, 1);
     assert_eq!(c.cache_len(), 0, "one frame past the window, all dropped");
     for key in &keys {
-        assert!(c.buffer_for(*key).is_none());
+        assert!(c.shaped_run(*key).is_none());
     }
 
     // Capacity plays no part: a hundred times as many entries age out on
@@ -2157,10 +2169,10 @@ fn a_lookup_promotes_an_entry_to_the_protected_window() {
     // promoted ones are still here — they have 120 frames, not 4.
     idle_frames(&mut c, cosmic::PROBATION_KEEP_FRAMES + 1);
     assert_eq!(c.cache_len(), 2);
-    assert!(c.buffer_for(keys[0]).is_some(), "promoted key survives");
-    assert!(c.buffer_for(keys[1]).is_some(), "promoted key survives");
-    assert!(c.buffer_for(keys[2]).is_none(), "probationary key dropped");
-    assert!(c.buffer_for(keys[3]).is_none(), "probationary key dropped");
+    assert!(c.shaped_run(keys[0]).is_some(), "promoted key survives");
+    assert!(c.shaped_run(keys[1]).is_some(), "promoted key survives");
+    assert!(c.shaped_run(keys[2]).is_none(), "probationary key dropped");
+    assert!(c.shaped_run(keys[3]).is_none(), "probationary key dropped");
 
     // And they last out the protected window, then go.
     idle_frames(
@@ -2197,7 +2209,7 @@ fn steady_key_churn_costs_a_bounded_cache_and_spares_the_working_set() {
     let touch_working_set = |c: &mut CosmicMeasure, working_set: &[TextShapeKey]| {
         for key in working_set {
             assert!(
-                c.buffer_for(*key).is_some(),
+                c.shaped_run(*key).is_some(),
                 "a working-set key must never be evicted",
             );
             c.ensure_buffer(TextShapeRequest {
@@ -2236,7 +2248,7 @@ fn steady_key_churn_costs_a_bounded_cache_and_spares_the_working_set() {
     );
     for key in &working_set {
         assert!(
-            c.buffer_for(*key).is_some(),
+            c.shaped_run(*key).is_some(),
             "60 frames of churn must not have touched the working set",
         );
     }
@@ -2565,4 +2577,96 @@ fn shared_key_demotes_early_and_costs_at_most_one_reshape() {
         2,
         "recovery costs one root and one bounded reshape — no more",
     );
+}
+
+/// A width-bounded run measures the glyphs it contains, not the distance
+/// from the wrap target's left edge to them.
+///
+/// Cosmic anchors a line wherever alignment and direction put it, so the
+/// gap in front of a non-left-aligned run used to count as part of the
+/// run's own width — 200 px of "measurement" for 43 px of glyphs. The
+/// owner then aligned that full-width block inside its rect, so a hugging
+/// container inflated to the whole offer and its damage rect with it.
+///
+/// The RTL row is the case reachable without an explicit `text_align`:
+/// cosmic lays a right-to-left run out from `line_width` leftward
+/// (`shape.rs`'s `start_x`) whatever the alignment, so `HAlign::Auto` hit
+/// this too.
+#[test]
+fn a_bounded_run_measures_its_glyphs_not_the_gap_before_them() {
+    let mut m = CosmicMeasure::with_bundled_fonts();
+    let wrap = 200.0;
+    let bounded = |halign| TestShape {
+        max_width_px: Some(wrap),
+        halign,
+        ..ui_shape(16.0)
+    };
+    for (label, text) in [("LTR", "ab cd"), ("RTL", "مرحبا بالعالم")] {
+        let unbounded = m
+            .measure(
+                text,
+                TestShape {
+                    max_width_px: None,
+                    ..ui_shape(16.0)
+                },
+            )
+            .size
+            .w;
+        // The run fits the wrap target on one line, so binding a width
+        // cannot change how wide the glyphs are — only where cosmic puts
+        // them. Every alignment must therefore report the natural width.
+        for halign in [
+            HAlign::Auto,
+            HAlign::Left,
+            HAlign::Center,
+            HAlign::Right,
+            HAlign::Stretch,
+        ] {
+            let measured = m.measure(text, bounded(halign)).size.w;
+            assert_eq!(
+                measured, unbounded,
+                "{label} {halign:?}: bounded {measured} must equal natural {unbounded}",
+            );
+        }
+        assert!(
+            unbounded < wrap - 100.0,
+            "{label} must be far narrower than the {wrap} px wrap target, or a \
+             measurement that ran to the target would pass by accident; got {unbounded}",
+        );
+    }
+}
+
+/// Caret and hit-test must stay exact inverses now that both correct for
+/// the block origin by hand — `cursor_xy` subtracts it, `byte_at_xy` adds
+/// it back. Cosmic guarantees the round trip in *its* coordinates, so a
+/// sign slip in either correction would break it in ours while each half
+/// still looked plausible on its own.
+#[test]
+fn caret_and_hit_test_round_trip_in_block_local_space() {
+    let m = TextShaper::new();
+    // Two hard-broken lines of very different widths under right align:
+    // the narrow line carries a non-zero block-local offset, which is
+    // exactly where an unpaired correction would show up.
+    let text = "wwwwww\ni";
+    let shape = TestShape {
+        max_width_px: Some(300.0),
+        halign: HAlign::Right,
+        ..ui_shape(16.0)
+    };
+    for byte in [0usize, 1, 3, 6, 7, 8] {
+        assert!(
+            text.is_char_boundary(byte),
+            "byte {byte} must be a boundary"
+        );
+        let caret = m.cursor_xy(text, byte, shape);
+        // Probe just inside the caret so the hit lands on the glyph the
+        // offset belongs to rather than on the boundary between two.
+        let hit = m.byte_at_xy(
+            text,
+            caret.x + 0.5,
+            caret.y_top + caret.line_height * 0.5,
+            shape,
+        );
+        assert_eq!(hit, byte, "byte {byte} at x = {} round-trips", caret.x);
+    }
 }

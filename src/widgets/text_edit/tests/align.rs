@@ -333,13 +333,15 @@ fn selection_rects_offset_matches_text() {
         r.min.x,
     );
 }
-
 /// Per-line halign tests use real cosmic shaping (`ui_with_text`).
-/// Asks the shaper directly for caret + selection coords on a
-/// wrapped multi-line buffer at different halign values; verifies
-/// that line-internal x offsets reflect the encoder convention
-/// `dx_per_line = (line_width - line_w) * factor` where factor is
-/// 0 (Left), 0.5 (Center), 1.0 (Right).
+///
+/// These assert the *block-local* half of alignment. A shaped run is
+/// measured and reported as a block whose own left edge is x = 0; the
+/// owner then places that block inside its rect with the same halign
+/// (`TextGeometry::block_offset`, and `align_in_rect` for encoder-placed
+/// text). So halign shows up here only as the offset of a *narrow* line
+/// relative to the widest one — never as an offset of the block itself,
+/// which would be the same alignment applied twice.
 mod per_line {
     use crate::text::TextShaper;
     use crate::text::internals::TestShape;
@@ -348,93 +350,166 @@ mod per_line {
     use crate::{Align, HAlign};
     use glam::UVec2;
 
+    const FS: f32 = 16.0;
+    const LH: f32 = 19.2;
+
     fn cosmic_ui() -> UiHarness {
         UiHarness::with_text(UVec2::new(800, 200))
     }
 
+    fn shape(wrap: f32, halign: HAlign) -> TestShape {
+        TestShape {
+            font_size_px: FS,
+            line_height_px: LH,
+            max_width_px: Some(wrap),
+            family: FontFamily::Sans,
+            weight: FontWeight::Regular,
+            halign,
+        }
+    }
+
+    const ALL: [HAlign; 3] = [HAlign::Left, HAlign::Center, HAlign::Right];
+
+    /// A single-line run fills its own block, so its caret is at the same
+    /// block-local x under every halign — the alignment is entirely the
+    /// owner's placement of that block.
+    ///
+    /// Was the reverse before the block/placement split: cosmic baked
+    /// `(wrap - line_w) * factor` into the glyphs, so the caret moved with
+    /// halign *and* the owner moved the block again, aligning twice.
     #[test]
-    fn caret_at_eol_shifts_with_halign_under_wrap() {
-        // Wrapped paragraph: line "hi" (2 chars) inside a 300 px
-        // wrap target. Caret at the end of the line under
-        // `HAlign::Right` must sit at x ≈ wrap_target; under
-        // `HAlign::Left` at x ≈ line_w; under `HAlign::Center` at
-        // x ≈ (wrap + line_w) / 2.
+    fn a_single_line_caret_is_halign_independent() {
         let ui = cosmic_ui();
-        let fs = 16.0_f32;
-        let lh = fs * 1.2;
-        let wrap = 300.0_f32;
         let text = "hi";
+        let xs: Vec<f32> = ALL
+            .iter()
+            .map(|&halign| {
+                ui.ui
+                    .resources
+                    .text
+                    .cursor_xy(text, text.len(), shape(300.0, halign))
+                    .x
+            })
+            .collect();
+        for (halign, x) in ALL.iter().zip(&xs) {
+            assert!(
+                (x - xs[0]).abs() < 1e-3,
+                "{halign:?} caret {x} must match Left {} on a single line",
+                xs[0],
+            );
+        }
+        // …and it is the run's own width, not the wrap target.
+        let measured = ui
+            .ui
+            .resources
+            .text
+            .measure(text, shape(300.0, HAlign::Right));
+        assert!(
+            (xs[0] - measured.size.w).abs() <= 1.0,
+            "end-of-line caret {} must sit at the block's right edge {}",
+            xs[0],
+            measured.size.w,
+        );
+        assert!(
+            xs[0] < 100.0,
+            "\"hi\" is nowhere near the 300 px wrap target"
+        );
+    }
 
-        let left = ui
+    /// Halign *does* move a line that is narrower than the widest one:
+    /// that offset is internal to the block and cannot be recovered by
+    /// placing the block. Right pushes the short line to the block's right
+    /// edge, Center to half the slack, Left not at all.
+    #[test]
+    fn a_narrow_line_shifts_within_the_block() {
+        let ui = cosmic_ui();
+        // Two hard-broken lines: "i" is far narrower than "wwwwww".
+        let text = "wwwwww\ni";
+        let wrap = 300.0;
+        let block = ui
             .ui
             .resources
             .text
-            .cursor_xy(
-                text,
-                2,
-                TestShape {
-                    font_size_px: fs,
-                    line_height_px: lh,
-                    max_width_px: Some(wrap),
-                    family: FontFamily::Sans,
-                    weight: FontWeight::Regular,
-                    halign: HAlign::Left,
-                },
-            )
-            .x;
-        let center = ui
-            .ui
-            .resources
-            .text
-            .cursor_xy(
-                text,
-                2,
-                TestShape {
-                    font_size_px: fs,
-                    line_height_px: lh,
-                    max_width_px: Some(wrap),
-                    family: FontFamily::Sans,
-                    weight: FontWeight::Regular,
-                    halign: HAlign::Center,
-                },
-            )
-            .x;
-        let right = ui
-            .ui
-            .resources
-            .text
-            .cursor_xy(
-                text,
-                2,
-                TestShape {
-                    font_size_px: fs,
-                    line_height_px: lh,
-                    max_width_px: Some(wrap),
-                    family: FontFamily::Sans,
-                    weight: FontWeight::Regular,
-                    halign: HAlign::Right,
-                },
-            )
-            .x;
+            .measure(text, shape(wrap, HAlign::Right))
+            .size
+            .w;
+        let caret = |halign| {
+            ui.ui
+                .resources
+                .text
+                .cursor_xy(text, text.len(), shape(wrap, halign))
+                .x
+        };
+        let (left, center, right) = (
+            caret(HAlign::Left),
+            caret(HAlign::Center),
+            caret(HAlign::Right),
+        );
+        // Left leaves the short line at the block's left edge, so its
+        // end-caret is just the line's own width.
+        assert!(
+            left < block * 0.5,
+            "left-aligned short line stays narrow: {left}"
+        );
+        // Right takes it to the block's right edge — the block, not the
+        // wrap target.
+        assert!(
+            (right - block).abs() <= 1.0,
+            "right-aligned short line must end at the block edge {block}, got {right}",
+        );
+        assert!(
+            block < wrap - 100.0,
+            "the block ({block}) must be much narrower than the wrap target, or this proves nothing",
+        );
+        // Center splits the slack.
+        assert!(
+            (center - (left + right) / 2.0).abs() <= 1.0,
+            "center ({center}) must sit midway between left ({left}) and right ({right})",
+        );
+    }
 
-        // Right > Center > Left (caret follows the per-line offset).
+    /// Measured width is the glyphs' own extent under every halign. It
+    /// used to be the distance from x = 0 to the rightmost glyph, which
+    /// for a right-aligned run is the whole wrap target — so a hugging
+    /// owner inflated to the full offered width and its damage rect with
+    /// it.
+    #[test]
+    fn measured_width_is_the_content_extent_not_the_wrap_target() {
+        let c = TextShaper::new();
+        let wrap = 290.0_f32;
+        let widths: Vec<f32> = ALL
+            .iter()
+            .map(|&halign| c.measure("hi\nyo", shape(wrap, halign)).size.w)
+            .collect();
+        for (halign, w) in ALL.iter().zip(&widths) {
+            assert!(
+                (w - widths[0]).abs() < 1e-3,
+                "{halign:?} measured {w} must match Left {}",
+                widths[0],
+            );
+        }
         assert!(
-            right > center,
-            "right ({right}) must exceed center ({center})"
+            widths[0] < 60.0,
+            "\"hi\"/\"yo\" is ~13 px of glyphs, not {} (wrap {wrap})",
+            widths[0],
         );
-        assert!(center > left, "center ({center}) must exceed left ({left})");
-        // Right caret sits inside the wrap target (one cap of slack
-        // for inter-line trailing whitespace handling).
-        assert!(
-            right <= wrap + 1.0,
-            "right caret ({right}) must be within wrap target ({wrap})",
-        );
-        // Center caret is roughly midway between left and right.
-        let mid_expected = (left + right) * 0.5;
-        assert!(
-            (center - mid_expected).abs() < 2.0,
-            "center caret {center} must be ~mid of left {left} and right {right}",
-        );
+    }
+
+    /// An empty buffer has a zero-width block, so its caret is at 0 for
+    /// every halign — the owner's placement of that empty block is what
+    /// puts it on the correct edge.
+    #[test]
+    fn an_empty_buffer_caret_is_at_the_block_origin() {
+        let ui = cosmic_ui();
+        for halign in ALL {
+            let x = ui
+                .ui
+                .resources
+                .text
+                .cursor_xy("", 0, shape(300.0, halign))
+                .x;
+            assert!(x.abs() < 1e-3, "{halign:?} empty caret must be 0, got {x}");
+        }
     }
 
     #[test]
@@ -691,129 +766,14 @@ mod per_line {
         );
     }
 
-    /// Regression: an empty multi-line buffer with right-align must
-    /// place the caret at the right edge of the wrap target, not at
-    /// x = 0. Empty text returns `TextShapeKey::INVALID` and the
-    /// shaper's empty-layout fallback must still honor halign; it
-    /// historically ignored halign — caret pinned to the left while
-    /// the user expects it to anchor where typed text will appear.
-    #[test]
-    fn empty_buffer_caret_lands_at_aligned_edge() {
-        let ui = cosmic_ui();
-        let fs = 16.0_f32;
-        let lh = fs * 1.2;
-        let wrap = 290.0_f32;
-        let right = ui
-            .ui
-            .resources
-            .text
-            .cursor_xy(
-                "",
-                0,
-                TestShape {
-                    font_size_px: fs,
-                    line_height_px: lh,
-                    max_width_px: Some(wrap),
-                    family: FontFamily::Sans,
-                    weight: FontWeight::Regular,
-                    halign: HAlign::Right,
-                },
-            )
-            .x;
-        let center = ui
-            .ui
-            .resources
-            .text
-            .cursor_xy(
-                "",
-                0,
-                TestShape {
-                    font_size_px: fs,
-                    line_height_px: lh,
-                    max_width_px: Some(wrap),
-                    family: FontFamily::Sans,
-                    weight: FontWeight::Regular,
-                    halign: HAlign::Center,
-                },
-            )
-            .x;
-        let left = ui
-            .ui
-            .resources
-            .text
-            .cursor_xy(
-                "",
-                0,
-                TestShape {
-                    font_size_px: fs,
-                    line_height_px: lh,
-                    max_width_px: Some(wrap),
-                    family: FontFamily::Sans,
-                    weight: FontWeight::Regular,
-                    halign: HAlign::Left,
-                },
-            )
-            .x;
-        assert!(
-            (right - wrap).abs() < 1e-3,
-            "right-aligned empty caret must sit at the wrap target: got {right}",
-        );
-        assert!(
-            (center - wrap * 0.5).abs() < 1e-3,
-            "center-aligned empty caret must sit at wrap/2: got {center}",
-        );
-        assert!(
-            left.abs() < 1e-3,
-            "left-aligned empty caret at 0: got {left}"
-        );
-    }
-
-    /// Regression: `TextMeasurement.size.w` must extend to the right-
-    /// most rendered pixel under per-line align, not to the content
-    /// width of the widest visual line. cosmic-text positions
-    /// right-aligned glyphs at `(wrap_target - line_w)`, so the
-    /// effective bbox reaches `wrap_target`. If `measured.w` stays
-    /// at `max(line_w)` (the unaligned content width), the encoder
-    /// hands glyphon a `TextBounds` too narrow on the right and
-    /// every right-aligned glyph is clipped — the user sees nothing.
-    #[test]
-    fn measured_width_encloses_aligned_glyphs() {
-        let c = TextShaper::new();
-        let wrap = 290.0_f32;
-        let aligned = c.measure(
-            "hi\nyo",
-            TestShape {
-                font_size_px: 16.0,
-                line_height_px: 19.2,
-                max_width_px: Some(wrap),
-                family: FontFamily::Sans,
-                weight: FontWeight::Regular,
-                halign: HAlign::Right,
-            },
-        );
-        // The widest visual line content is ~13 px for "hi"; with
-        // right-align it sits at x ≈ 277 inside a 290 wrap. Bbox
-        // must reach the wrap target (within rounding slop).
-        assert!(
-            aligned.size.w >= wrap - 1.0,
-            "right-aligned bbox width must reach the wrap target: got {} (wrap {})",
-            aligned.size.w,
-            wrap,
-        );
-    }
-
+    /// End-to-end: the widget still right-aligns each line on screen.
+    /// Drives a real frame so the block placement and the block-local
+    /// offset compose the way they do in a running app.
     #[test]
     fn multiline_widget_right_aligns_each_line() {
-        // End-to-end: a multi-line TextEdit with `.text_align(RIGHT)`
-        // must produce caret coords at end-of-line that approach the
-        // wrap target. Pre-existing `block alignment` would have
-        // collapsed this to (widest_line - line_w) ≈ 0 for the
-        // widest line; per-line alignment offsets each shorter line
-        // by `wrap_target - line_w`.
         let mut h = cosmic_ui();
-        let buf_init = String::from("short\nlonger line here");
         let id = WidgetId::from_hash("ml-right");
-        let mut buf = buf_init.clone();
+        let mut buf = String::from("short\na much longer line here");
         let mut record = |ui: &mut Ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
                 TextEdit::new(&mut buf)
@@ -825,38 +785,30 @@ mod per_line {
             });
         };
         h.frame(&mut record);
-        // Caret at end of "short" (byte 5): under right-align the
-        // caret should sit far from the left edge.
         h.ui.state_mut::<TextEditState>(id).edit.caret = 5;
         h.frame(&mut record);
-        // Ask the shaper directly for the caret position the widget
-        // would have seen this frame. wrap target = inner width =
-        // 300 - 2*5 = 290.
-        let fs = 16.0_f32;
-        let lh = fs * 1.2;
+        // wrap target = inner width = 300 - 2*5 = 290.
+        let wrap = 290.0;
+        let block =
+            h.ui.resources
+                .text
+                .measure(&buf, shape(wrap, HAlign::Right))
+                .size
+                .w;
         let caret_short =
             h.ui.resources
                 .text
-                .cursor_xy(
-                    &buf,
-                    5,
-                    TestShape {
-                        font_size_px: fs,
-                        line_height_px: lh,
-                        max_width_px: Some(290.0),
-                        family: FontFamily::Sans,
-                        weight: FontWeight::Regular,
-                        halign: HAlign::Right,
-                    },
-                )
+                .cursor_xy(&buf, 5, shape(wrap, HAlign::Right))
                 .x;
-        // Without per-line alignment, the short line would land at
-        // x ≈ line_w ≈ 35-40 px. With per-line alignment under
-        // right-align, the caret at end-of-short sits near the wrap
-        // target (~290).
+        // "short" is the narrow line, so right-align carries its caret to
+        // the block's right edge rather than leaving it at ~35 px.
         assert!(
-            caret_short > 200.0,
-            "right-aligned 'short' caret at end must be far from 0 (got {caret_short})",
+            (caret_short - block).abs() <= 1.0,
+            "right-aligned 'short' caret must reach the block edge {block}, got {caret_short}",
+        );
+        assert!(
+            caret_short > 100.0,
+            "…and that is far from the line's own ~35 px width (got {caret_short})",
         );
     }
 }
