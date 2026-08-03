@@ -68,9 +68,31 @@ use wgpu::util::StagingBelt;
 const PHYSICAL: UVec2 = UVec2::new(1280, 800);
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 const BASE_SCALE: f32 = 2.0;
-const TEXT_SCALE_STEP: f32 = 0.025;
+/// Matches `crate::text::TEXT_SCALE_STEP`, the ladder the composer
+/// actually snaps a zoom to. It used to be 0.025 here — 5x coarser, so
+/// a given zoom range minted a fifth of the rungs and the churn arms
+/// modelled a gentler gesture than any real one.
+const TEXT_SCALE_STEP: f32 = crate::text::TEXT_SCALE_STEP;
 const WARM_SCALE_CYCLE: u32 = 5;
-const CHURN_SCALE_CYCLE: u32 = 128;
+
+/// Rungs the churn arms cycle through.
+///
+/// Sized to put the mask atlas **past** `EAGER_GROWTH_BYTE_BUDGET` — the
+/// point where it stops growing and starts recycling rectangles, which
+/// is where `GlyphAtlas::evict_one` bills. Measured on this fixture, the
+/// side fills and eviction begins between rung 250 and 500; 512 keeps
+/// the benched iterations solidly on the far side of that.
+///
+/// This is the crate's only coverage of that regime. Every other
+/// `text_atlas` arm sits below it — `zoom_cold` peaks at 137 live
+/// glyphs and the pre-widening `cache_churn` at 3700, both with *zero*
+/// evictions — so a change to the eviction policy used to be
+/// unmeasurable here. `report_atlas_pressure` prints which side of the
+/// line an arm landed on, so a future retune can tell at a glance.
+const CHURN_SCALE_CYCLE: u32 = 512;
+/// Coprime with [`CHURN_SCALE_CYCLE`], so cycling `i * STRIDE % CYCLE`
+/// visits every rung before repeating and the revisit order stays a
+/// permutation rather than a short orbit.
 const CHURN_INDEX_STRIDE: u32 = 37;
 
 /// Per-frame text count. Graph-view-shaped: many small runs rather
