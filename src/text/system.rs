@@ -167,9 +167,9 @@ impl TextSystem {
                 // The width this row used to answer is now unreachable
                 // through it. A resize drag leaves the *unbounded* key
                 // alone and replaces only this slot, so it is the drag's
-                // whole dead population — and the root the intrinsic pass
-                // re-reads every frame stays on the long window, which is
-                // what keeps a drag cheap.
+                // whole dead population — and the unbounded probe
+                // `measure_truncated` re-reads every frame stays on the
+                // long window, which is what keeps a drag cheap.
                 if let Some(stale) = wrap.key.bound(request.key) {
                     self.shaper.supersede(stale);
                 }

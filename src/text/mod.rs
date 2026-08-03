@@ -210,6 +210,13 @@ impl<'a> TextShapeRequest<'a> {
             key: self.key.bounded(max_width_px, halign, fit),
         }
     }
+
+    pub(crate) fn unbounded_version(self) -> Self {
+        Self {
+            text: self.text,
+            key: self.key.unbounded_version(),
+        }
+    }
 }
 
 impl Default for TextShaper {
@@ -489,8 +496,8 @@ pub(crate) mod internals {
             TestMeasure::new(self.shape(request, floor), key)
         }
 
-        /// Truncating-fit measure, paired with the unbounded key the
-        /// caller expects it to derive from.
+        /// Truncating-fit measure. Named apart from the production
+        /// `measure_truncated` — inherent methods can't share a name.
         pub(crate) fn measure_with_fit(
             &mut self,
             text: &str,
