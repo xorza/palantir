@@ -580,10 +580,12 @@ impl Ui {
     /// buffer, so same-arena lowering is zero-copy and steady-state authoring
     /// of dynamic labels skips per-call `String` allocations.
     ///
-    /// Retaining this handle keeps its source arena alive; lowering it in a
-    /// later pass or another window copies its exact bytes into that record
-    /// store before recording the span. Persistent application text should
-    /// stay in its source `String` and be passed to widgets by reference.
+    /// **Valid only for the pass that minted it.** Lower it here, in this
+    /// window; holding it into a later frame, into the second pass of a
+    /// double-layout frame, or into another window panics — the bytes it
+    /// spans are gone by then. Persistent application text should stay in
+    /// its source `String` and be interned again each frame, which costs
+    /// the one `memcpy` the borrowed path pays anyway.
     #[must_use]
     pub fn fmt(&mut self, args: std::fmt::Arguments<'_>) -> InternedStr {
         self.forest.record_store.intern_fmt(args)

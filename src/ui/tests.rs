@@ -1559,87 +1559,90 @@ fn widget_text_inputs_lower_exact_bytes() {
     }
 }
 
+/// `InternedStr` is valid for the record pass that minted it and no
+/// longer. The store clears its arena and takes a fresh epoch at the top
+/// of every pass, so a handle held across one addresses bytes that are
+/// gone — and resolving it anyway would record whatever text now sits at
+/// those offsets, which is a wrong-label bug with nothing to trace it
+/// back to.
+///
+/// Three cases, one rule. A later *frame*; the second pass of a
+/// double-layout *frame*, which is the easy one to trip by caching a
+/// handle in app state; and another *window*, whose store never shared
+/// the epoch at all.
 #[test]
-fn retained_arena_text_preserves_bytes_across_record_stores() {
-    use crate::scene::shapes::record::ShapeRecord;
-    use std::rc::Rc;
+fn interned_handles_do_not_outlive_their_record_pass() {
+    use crate::InternedStr;
 
-    fn assert_recorded_text(ui: &Ui, expected: &str) {
-        let payloads = ui.forest.record_store.payloads.borrow();
-        let interned_text = payloads.interned_text();
-        let records = &ui.forest.trees[Layer::Main].shapes.records;
-        let [ShapeRecord::Text { text, .. }] = records.as_slice() else {
-            panic!("expected one text shape, got {records:?}");
-        };
-        assert_eq!(text.resolve(&interned_text), expected);
+    fn intern_in_own_pass(h: &mut UiHarness) -> InternedStr {
+        let mut escaped = None;
+        h.frame(|ui| escaped = Some(ui.intern("escapee")));
+        escaped.expect("the pass ran")
     }
 
-    for (original, replacement) in [
-        ("first", "other"),
-        ("longer retained text", "x"),
-        ("x", "longer replacement text"),
-    ] {
-        let mut h = UiHarness::cold(SURFACE);
-        let mut retained = None;
-        let mut pass = 0;
-
-        h.frame(|ui| {
-            pass += 1;
-            if pass == 1 {
-                let label = ui.intern(original);
-                retained = Some(label.clone());
-                Text::new(label)
-                    .id(WidgetId::from_hash("retained-arena"))
-                    .show(ui);
-            } else {
-                assert_eq!(pass, 2, "cold first frame must record exactly twice");
-                let _replacement = ui.intern(replacement);
-                Text::new(retained.as_ref().unwrap().clone())
-                    .id(WidgetId::from_hash("retained-arena"))
-                    .show(ui);
-            }
-        });
-
-        assert_eq!(pass, 2);
-        assert_recorded_text(&h.ui, original);
-    }
-
-    let mut source = UiHarness::new(SURFACE);
-    let mut retained = None;
-    source.frame(|ui| {
-        let label = ui.intern("source window");
-        retained = Some(label.clone());
-        Text::new(label)
-            .id(WidgetId::from_hash("source-window"))
-            .show(ui);
-    });
-
-    let mut destination = UiHarness::new(SURFACE);
-    destination.frame(|ui| {
-        let _replacement = ui.intern("destination");
-        Text::new(retained.as_ref().unwrap().clone())
-            .id(WidgetId::from_hash("cross-window"))
-            .show(ui);
-    });
-    assert_recorded_text(&destination.ui, "source window");
-
+    // A later frame in the same window.
     let mut h = UiHarness::new(SURFACE);
-    let mut retained = None;
-    let mut arena_ptrs = Vec::new();
-    for content in ["first arena", "second arena", "first arena reused"] {
+    let stale = intern_in_own_pass(&mut h);
+    let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         h.frame(|ui| {
-            let label = ui.intern(content);
-            arena_ptrs.push(Rc::as_ptr(&label.arena));
-            drop(retained.replace(label.clone()));
-            Text::new(label)
-                .id(WidgetId::from_hash("arena-recycling"))
+            Text::new(stale).id(WidgetId::from_hash("stale")).show(ui);
+        });
+    }));
+    assert!(
+        caught.is_err(),
+        "a handle from a previous frame must not lower"
+    );
+
+    // Another window, which never shared the epoch.
+    let mut source = UiHarness::new(SURFACE);
+    let foreign = intern_in_own_pass(&mut source);
+    let mut destination = UiHarness::new(SURFACE);
+    let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        destination.frame(|ui| {
+            Text::new(foreign)
+                .id(WidgetId::from_hash("cross-window"))
                 .show(ui);
         });
-    }
-    assert_ne!(arena_ptrs[0], arena_ptrs[1]);
+    }));
+    assert!(
+        caught.is_err(),
+        "a handle from another window must not lower"
+    );
+}
+
+/// The rule the panic above enforces, stated positively: interning in
+/// the pass that records is the whole contract, and it holds across the
+/// second pass of a double-layout frame — where the closure runs twice
+/// and each run mints its own handle.
+#[test]
+fn interning_per_pass_records_the_expected_bytes() {
+    use crate::scene::shapes::record::ShapeRecord;
+
+    let mut h = UiHarness::cold(SURFACE);
+    let mut passes = 0;
+    h.frame(|ui| {
+        passes += 1;
+        let label = ui.intern(if passes == 1 {
+            "first pass"
+        } else {
+            "second pass"
+        });
+        Text::new(label)
+            .id(WidgetId::from_hash("per-pass"))
+            .show(ui);
+    });
+    assert_eq!(passes, 2, "cold first frame must record exactly twice");
+
+    let payloads = h.ui.forest.record_store.payloads.borrow();
+    let interned_text = payloads.interned_text();
+    let records = &h.ui.forest.trees[Layer::Main].shapes.records;
+    let [ShapeRecord::Text { text, .. }] = records.as_slice() else {
+        panic!("expected one text shape, got {records:?}");
+    };
     assert_eq!(
-        arena_ptrs[0], arena_ptrs[2],
-        "the spare arena must be recycled after its retained handle drops",
+        text.resolve(&interned_text),
+        "second pass",
+        "the recorded bytes come from the pass that survived",
     );
 }
 

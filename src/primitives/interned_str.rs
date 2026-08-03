@@ -1,25 +1,55 @@
 use crate::primitives::span::Span;
 use std::borrow::Cow;
-use std::cell::{Ref, RefCell};
+use std::cell::Ref;
 use std::hash::{Hash, Hasher};
-use std::rc::Rc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
-/// Arena-backed text handle. Every value is a span into storage owned by
-/// [`crate::Ui`]; construct one with [`crate::Ui::intern`] or
-/// [`crate::Ui::fmt`].
+/// Text handle valid for **the record pass that minted it**, in the
+/// window that minted it. A span into that pass's arena; construct one
+/// with [`crate::Ui::intern`] or [`crate::Ui::fmt`], and lower it in the
+/// same pass.
 ///
-/// Retaining a handle keeps its exact source bytes alive. Lowering is zero-copy
-/// when the handle belongs to the active record store and copies into that
-/// store when it came from an earlier pass or another window.
-#[derive(Clone, Debug)]
+/// Lowering is zero-copy: the bytes are already where the record store
+/// wants them, so recording is a span plus a hash.
+///
+/// **Intern per frame, per window.** Holding a handle past its pass —
+/// into the next frame, into the second pass of a double-layout frame,
+/// or into another window's — is a contract violation, and
+/// [`crate::Ui`] panics rather than resolving it against whatever text
+/// now occupies those offsets. Handles are [`Copy`] and carry no
+/// ownership, so nothing keeps the bytes alive on their behalf.
+///
+/// Persistent application text belongs in its own `String`, passed to
+/// widgets by reference; interning it each frame costs one `memcpy` into
+/// the arena, which is what the borrowed path pays anyway.
+#[derive(Clone, Copy, Debug)]
 pub struct InternedStr {
     pub(crate) span: Span,
-    pub(crate) arena: Rc<TextArena>,
+    pub(crate) epoch: TextEpoch,
 }
 
-/// Transient text accepted by widget builders. Borrowed and owned inputs are
-/// copied into the active [`crate::Ui`] text arena when the widget is shown;
-/// an [`InternedStr`] is already there and passes through unchanged.
+/// Identity of one record pass's text arena.
+///
+/// Drawn from a process-wide counter, so it separates passes *and*
+/// windows with one comparison — a handle from another window can no
+/// more match than one from another frame, and neither needs a second
+/// field to say so.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct TextEpoch(u64);
+
+impl TextEpoch {
+    /// The next unused epoch. Taken once per record-pass reset, so the
+    /// atomic is nowhere near a hot path.
+    pub(crate) fn next() -> Self {
+        static NEXT: AtomicU64 = AtomicU64::new(1);
+        Self(NEXT.fetch_add(1, Ordering::Relaxed))
+    }
+}
+
+/// Transient text accepted by widget builders. Borrowed and owned inputs
+/// are copied into the active [`crate::Ui`] text arena when the widget is
+/// shown; an [`InternedStr`] is already there and passes through
+/// unchanged, provided it belongs to the pass doing the showing.
 #[derive(Debug)]
 pub enum TextInput<'a> {
     Borrowed(&'a str),
@@ -35,14 +65,6 @@ impl TextInput<'_> {
             Self::Interned(text) => text.is_empty(),
         }
     }
-}
-
-/// Retained bytes behind frame-authored [`InternedStr`] values. The active
-/// record store reuses its arena while no handle has escaped; an escaped
-/// handle keeps this allocation and its exact bytes alive.
-#[derive(Debug, Default)]
-pub(crate) struct TextArena {
-    pub(crate) bytes: RefCell<String>,
 }
 
 /// Borrow of the complete record-pass text arena. Recorded text spans resolve
@@ -72,18 +94,13 @@ pub(crate) struct RecordedText {
 }
 
 impl InternedStr {
-    pub(crate) fn arena_backed(span: Span, arena: Rc<TextArena>) -> Self {
-        Self { span, arena }
+    pub(crate) fn new(span: Span, epoch: TextEpoch) -> Self {
+        Self { span, epoch }
     }
 
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.span.len == 0
-    }
-
-    /// Borrow this handle's string slice from its owning arena.
-    pub fn borrow_str(&self) -> Ref<'_, str> {
-        Ref::map(self.arena.bytes.borrow(), |bytes| &bytes[self.span.range()])
     }
 }
 
@@ -151,10 +168,9 @@ impl Hash for RecordedText {
 
 #[cfg(test)]
 mod tests {
-    use crate::primitives::interned_str::{InternedStr, TextArena, TextInput};
+    use crate::primitives::interned_str::{InternedStr, TextEpoch, TextInput};
     use crate::primitives::span::Span;
     use std::borrow::Cow;
-    use std::rc::Rc;
 
     #[test]
     fn text_input_empty_tracks_every_storage_variant() {
@@ -163,19 +179,19 @@ mod tests {
         assert!(TextInput::Owned(String::new()).is_empty());
         assert!(!TextInput::Owned("x".to_owned()).is_empty());
 
-        let arena = Rc::new(TextArena::default());
-        arena.bytes.borrow_mut().push('x');
-        assert!(
-            TextInput::Interned(InternedStr::arena_backed(Span::new(0, 0), arena.clone()))
-                .is_empty()
-        );
-        assert!(!TextInput::Interned(InternedStr::arena_backed(Span::new(0, 1), arena)).is_empty());
+        let epoch = TextEpoch::next();
+        assert!(TextInput::Interned(InternedStr::new(Span::new(0, 0), epoch)).is_empty());
+        assert!(!TextInput::Interned(InternedStr::new(Span::new(0, 1), epoch)).is_empty());
 
         let nested_borrow = "nested";
         let TextInput::Borrowed(text) = TextInput::from(&nested_borrow) else {
             panic!("nested string borrow must stay borrowed");
         };
         assert_eq!(text, "nested");
+
+        // Every epoch is distinct, which is what separates one pass's
+        // handles from the next's and one window's from another's.
+        assert_ne!(TextEpoch::next(), TextEpoch::next());
 
         let cow = Cow::Borrowed("cow");
         let TextInput::Borrowed(text) = TextInput::from(&cow) else {
