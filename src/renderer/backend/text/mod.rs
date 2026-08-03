@@ -28,6 +28,7 @@ mod atlas;
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
 mod encode;
+mod encoded_probe;
 
 use crate::primitives::interned_str::InternedText;
 use crate::primitives::span::Span;

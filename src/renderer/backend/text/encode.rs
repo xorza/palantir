@@ -38,6 +38,7 @@ use rustc_hash::FxHashMap;
 use std::collections::hash_map::Entry;
 
 use crate::renderer::backend::text::atlas::{GlyphAtlas, PackedGlyphMetadata};
+use crate::renderer::backend::text::encoded_probe::EncodedProbe;
 use crate::renderer::backend::text::{ContentType, GlyphInstance};
 
 /// Cache-hit identity for an encoded run. Subpixel bins capture the
@@ -133,6 +134,9 @@ pub(super) struct EncodedCache {
     /// replaces, or drops a row adjusts it; [`Self::settle`] is the only
     /// one that adds.
     live_glyphs: usize,
+    /// Encode / hit / expiry / re-file tallies. Zero-sized outside
+    /// benchmark and test builds.
+    pub(super) probe: EncodedProbe,
 }
 
 impl Default for EncodedCache {
@@ -143,6 +147,7 @@ impl Default for EncodedCache {
             scratch: Vec::new(),
             expiry: ExpiryWheel::with_horizon(ENCODED_CACHE_KEEP_FRAMES + 1),
             live_glyphs: 0,
+            probe: EncodedProbe::default(),
         }
     }
 }
@@ -176,6 +181,7 @@ impl EncodedCache {
     fn sweep(&mut self, current_frame: u64, keep_frames: u64) {
         let map = &mut self.map;
         let live_glyphs = &mut self.live_glyphs;
+        let probe = &mut self.probe;
         self.expiry.retire(current_frame, |key| {
             // Gone already: `try_emit_cached` drops a row whose atlas
             // slot was reused, leaving its ticket behind.
@@ -187,8 +193,10 @@ impl EncodedCache {
             // `last_use` is re-read here and a live row is re-filed.
             let dies_at = slot.get().last_use + keep_frames + 1;
             if dies_at > current_frame {
+                probe.refiles.bump();
                 return Some(dies_at);
             }
+            probe.expiries.bump();
             *live_glyphs -= slot.remove().span.len as usize;
             None
         });
@@ -345,6 +353,7 @@ impl TextEncoder {
             return false;
         }
         entry.last_use = current_frame;
+        self.cache.probe.hits.bump();
         true
     }
 
@@ -372,6 +381,7 @@ impl TextEncoder {
         run_key: EncodedRunKey,
     ) {
         let current_frame = self.atlas.current_frame;
+        self.cache.probe.encodes.bump();
         // The straight-linear cast of the run's colour — already baked
         // into the cache identity, reused as the emit colour.
         let color = run_key.key.area_color;
@@ -509,13 +519,89 @@ fn rasterize_and_insert(
     }
 }
 
-// `internals` only, not `any(test, …)`: the sole consumer is the
-// `text_atlas` benchmark, which that feature gates too. `pub(super)`
-// reaches it — the benchmark's fixture lives in this module's sibling
-// `bench.rs`, not outside the text backend.
-#[cfg(feature = "internals")]
+// Wider than `feature = "internals"`: `ChurnBench` is read by the
+// `text_atlas` benchmark *and* by the retention test below, which builds
+// under bare `cfg(test)`. `pub(super)` reaches both — the benchmark's
+// caller lives in this module's sibling `bench.rs`, not outside the text
+// backend.
+#[cfg(any(test, feature = "internals"))]
 pub(super) mod internals {
+    #![allow(dead_code)]
     use super::*;
+    #[cfg(test)]
+    use crate::renderer::backend::text::encoded_probe::EncodedCounts;
+
+    /// Churn harness: `runs` rows **re-keyed every frame**, which is what
+    /// a zoom (a fresh `scale_q` per `TEXT_SCALE_STEP` rung) or a resize
+    /// drag (a fresh `max_w_q` per committed width) produces.
+    ///
+    /// Not modelled on `bins`: that component takes only 16 values and a
+    /// pan cycles back through them, so sub-pixel motion re-hits its
+    /// entries instead of minting new ones.
+    #[derive(Debug, Default)]
+    pub(crate) struct ChurnBench {
+        cache: EncodedCache,
+        frame: u64,
+        runs: u32,
+        glyphs_per_row: u32,
+    }
+
+    impl ChurnBench {
+        pub(crate) fn new(runs: u32, glyphs_per_row: u32) -> Self {
+            Self {
+                cache: EncodedCache::default(),
+                frame: 0,
+                runs,
+                glyphs_per_row,
+            }
+        }
+
+        /// One gesture frame: every run mints a key it will never be
+        /// asked for again, encodes its glyphs into the arena, and the
+        /// sweep runs. Returns the resident row count.
+        pub(crate) fn churn_frame(&mut self) -> usize {
+            self.frame += 1;
+            for run in 0..self.runs {
+                let start = self.cache.arena.len() as u32;
+                for glyph in 0..self.glyphs_per_row {
+                    self.cache.arena.push(EncodedGlyph {
+                        instance: GlyphInstance {
+                            pos: [glyph as i32, run as i32],
+                            dim: 0,
+                            uv_and_kind: 0,
+                            color: 0,
+                        },
+                        atlas_slot: glyph,
+                        generation: 1,
+                    });
+                }
+                let key = EncodedKey {
+                    text: TextShapeKey::INVALID,
+                    // The churn axis: one fresh rung per frame.
+                    scale_q: self.frame as u32,
+                    // Run identity, stable across the gesture.
+                    area_color: run,
+                    bins: 0,
+                };
+                self.cache.settle(key, start, self.frame, true);
+            }
+            self.cache.sweep(self.frame, ENCODED_CACHE_KEEP_FRAMES);
+            self.cache.map.len()
+        }
+
+        pub(crate) fn rows(&self) -> usize {
+            self.cache.map.len()
+        }
+
+        pub(crate) fn arena_len(&self) -> usize {
+            self.cache.arena.len()
+        }
+
+        #[cfg(test)]
+        pub(crate) fn counts(&self) -> EncodedCounts {
+            self.cache.probe.counts()
+        }
+    }
 
     /// Sweep harness for the `encoded_cache_sweep` benchmark. Populates
     /// a cache with `rows` live rows of `glyphs_per_row` each — the
@@ -812,6 +898,62 @@ mod tests {
         }
         assert!(cache.map.is_empty(), "rows outlived their window");
         assert_eq!(cache.live_glyphs, 0, "live total must return to zero");
+    }
+
+    /// Sizes the problem a probation tier would solve, so the tier can
+    /// be argued from a number instead of a hunch.
+    ///
+    /// A zoom or resize drag re-keys every visible run every frame, and
+    /// each of those keys is asked for exactly once — the gesture has
+    /// moved on by the next frame. With one window and no demotion they
+    /// nonetheless live the full `ENCODED_CACHE_KEEP_FRAMES`, so the
+    /// resident population settles at `runs × (KEEP + 1)`: eight visible
+    /// runs cost 968 rows and ~12k glyph templates for two seconds after
+    /// the drag ends.
+    ///
+    /// What it also shows is where the cost *isn't*. Every one of those
+    /// rows is a single-use key, so its ticket fires once and expires —
+    /// `refiles` stays zero and the sweep never re-walks them. The wheel
+    /// already handles this shape; what is left is the population itself
+    /// and the arena compaction it drives.
+    #[test]
+    fn a_gesture_frame_retains_a_full_keep_window_of_single_use_rows() {
+        const RUNS: u32 = 8;
+        const GLYPHS: u32 = 12;
+        let mut churn = internals::ChurnBench::new(RUNS, GLYPHS);
+
+        // Run past the window so the population reaches steady state.
+        const FRAMES: u64 = ENCODED_CACHE_KEEP_FRAMES * 2;
+        for _ in 0..FRAMES {
+            churn.churn_frame();
+        }
+
+        // Rows minted on frames `F - KEEP ..= F` are all still resident.
+        let window = ENCODED_CACHE_KEEP_FRAMES as usize + 1;
+        assert_eq!(
+            churn.rows(),
+            RUNS as usize * window,
+            "a drag holds every run's key for the whole keep window",
+        );
+
+        let counts = churn.counts();
+        assert_eq!(
+            counts.refiles, 0,
+            "single-use keys are never re-filed — the drain is not the cost here",
+        );
+        // Everything minted and no longer resident has expired — the
+        // population is bounded, just far above what the gesture uses.
+        let minted = RUNS * FRAMES as u32;
+        assert_eq!(counts.encodes, 0, "the fixture inserts below `encode_run`");
+        assert_eq!(
+            counts.expiries as usize,
+            minted as usize - churn.rows(),
+            "steady state expires everything it mints beyond the window",
+        );
+        assert!(
+            churn.arena_len() >= churn.rows() * GLYPHS as usize,
+            "every resident row's glyphs are still on the arena",
+        );
     }
 
     #[test]
