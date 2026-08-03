@@ -167,10 +167,27 @@ pub(super) struct GlyphAtlas {
     /// safe because every recorded index carries the slot generation
     /// that `evict_one` advances before making the index reusable.
     pub(super) slots: Vec<GlyphSlot>,
+    /// Key held by each slab entry, parallel to [`Self::slots`]. The
+    /// reverse of [`Self::cache`], and the only reason eviction can pick
+    /// a victim by slab position at all — it has to drop the outgoing
+    /// glyph's map entry, and the map alone only answers key → index.
+    ///
+    /// A parallel column rather than a field on `GlyphSlot`: the slot is
+    /// hot (copied whole by `encode_run`, and read per glyph by
+    /// `try_emit_cached`) while the key is touched only when a slot is
+    /// stored or evicted, so folding a ~24-byte key in would cost the
+    /// hot path density for a cold path's convenience.
+    slot_keys: Vec<GlyphRasterKey>,
     pub(super) cache: FxHashMap<GlyphRasterKey, u32>,
     /// Slab indices freed by `evict_one` / the empty sweep, reused by
     /// the next `store`.
     free: Vec<u32>,
+    /// Rotating eviction cursor over [`Self::slots`] — see
+    /// [`Self::evict_one`]. Persists across calls, which is the whole
+    /// point: it is what turns the victim search from a scan of the
+    /// whole slab per eviction into a walk that resumes where the last
+    /// one stopped.
+    hand: u32,
     /// Latest value of the shaper's shared frame clock, mirrored here by
     /// [`Self::end_frame`] — not a count of this atlas's own frames.
     ///
@@ -240,8 +257,10 @@ impl GlyphAtlas {
         Self {
             sides,
             slots: Vec::new(),
+            slot_keys: Vec::new(),
             cache: FxHashMap::default(),
             free: Vec::new(),
+            hand: 0,
             current_frame: 0,
             unallocated_expiry: ExpiryWheel::with_horizon(UNALLOCATED_SWEEP_INTERVAL + 2),
             max_texture_dimension_2d: max,
@@ -319,10 +338,12 @@ impl GlyphAtlas {
             Some(i) => {
                 slot.generation = self.slots[i as usize].generation;
                 self.slots[i as usize] = slot;
+                self.slot_keys[i as usize] = key;
                 i
             }
             None => {
                 self.slots.push(slot);
+                self.slot_keys.push(key);
                 (self.slots.len() - 1) as u32
             }
         };
@@ -540,30 +561,59 @@ impl GlyphAtlas {
         bytes < EAGER_GROWTH_BYTE_BUDGET
     }
 
-    /// Evict the least-recently-used glyph of `target` content with
-    /// `last_use < current_frame`. Linear scan over the glyph cache —
-    /// but the cache is keyed on distinct `(glyph, scale,
-    /// subpixel-bin)` rasterizations *in view*, not glyph instances, so
-    /// for UI text (small alphabets; the `TEXT_SCALE_STEP` ladder
-    /// bounding distinct scales) it stays in the tens-to-low-hundreds.
-    /// Profiling the worst case (`text_atlas/zoom_cold` — a fresh scale
-    /// rung every frame, so eviction fires for nearly every glyph) put
-    /// this below 0.3 % of frame: invisible next to the per-glyph LRU
-    /// refresh and the GPU submit.
-    /// An O(1) intrusive LRU would only pay off for a
-    /// many-thousand-unique-glyph workload (zooming a full CJK document,
-    /// say); not worth the complexity until such a workload exists.
+    /// Evict one glyph of `target` content that was not drawn this
+    /// frame, chosen by a **clock** — a persistent hand that walks
+    /// [`Self::slots`] and takes the first entry it finds eligible,
+    /// resuming next call where this one stopped.
+    ///
+    /// # Why not exact LRU
+    ///
+    /// This used to pick the true least-recently-used entry, which meant
+    /// iterating the whole `cache` map and indexing `slots` per entry —
+    /// O(live glyphs) *per eviction*, and [`Self::allocate`] calls this
+    /// in a loop, so one insert could pay the walk several times over.
+    /// Measured at 6.0 ns per live glyph, dead linear from 1k to 32k
+    /// entries. Driving a real zoom at the production
+    /// `TEXT_SCALE_STEP` through this atlas, the mask side fills at
+    /// roughly 400 rungs — about two seconds of a continuous zoom — and
+    /// then thrash-evicts for the rest of the gesture, at up to 76
+    /// evictions a frame over ~9k live glyphs: **3.3 ms per frame of
+    /// pure victim selection**, sustained, on top of the rasterization
+    /// the zoom already owes.
+    ///
+    /// A clock makes that O(1) in the state that matters. In the thrash
+    /// steady state nearly every slot is eligible — only the handful
+    /// touched this frame are not — so the hand stops within a step or
+    /// two, and the whole-slab walk happens at most once per full
+    /// rotation instead of once per eviction.
+    ///
+    /// The trade is that the victim is approximately, not exactly, the
+    /// oldest. That is the standard bargain for an atlas: entries are
+    /// rasterizations, regenerable from the font at any time, and the
+    /// working set is protected regardless because anything drawn this
+    /// frame is skipped outright.
+    ///
+    /// **An intrusive MRU list is the wrong tool here**, though the
+    /// gradient atlas has one. Its `touch` is move-to-head, ~six link
+    /// writes; this atlas refreshes a slot's stamp with a *single
+    /// indexed store* per glyph on the encoded-cache hit path
+    /// (`TextEncoder::try_emit_cached`), which is the hottest path in
+    /// text rendering. Move-to-head would tax that to speed this up.
     fn evict_one(&mut self, target: ContentType) -> bool {
-        self.probe
-            .evict_scans
-            .edit(|n| *n += self.cache.len() as u64);
-        let Some((key, idx)) =
-            eviction_candidate(&self.cache, &self.slots, target, self.current_frame)
-        else {
+        let sweep = clock_victim(&self.slots, self.hand, target, self.current_frame);
+        self.hand = sweep.hand;
+        self.probe.evict_scans.edit(|n| *n += sweep.examined as u64);
+        let Some(idx) = sweep.victim else {
             return false;
         };
         self.probe.evictions.bump();
-        self.cache.remove(&key);
+        let key = self.slot_keys[idx as usize];
+        let removed = self.cache.remove(&key);
+        debug_assert_eq!(
+            removed,
+            Some(idx),
+            "slot_keys disagreed with cache about slab index {idx}",
+        );
         let slot = &mut self.slots[idx as usize];
         let id = slot.alloc.take().unwrap();
         slot.generation = slot
@@ -686,20 +736,63 @@ fn retire_unallocated(
     None
 }
 
-fn eviction_candidate(
-    cache: &FxHashMap<GlyphRasterKey, u32>,
+/// One turn of [`GlyphAtlas::evict_one`]'s clock: where the hand ended
+/// up, what it found, and how far it walked.
+///
+/// A named result rather than a tuple, and a free function rather than a
+/// method, so the policy is testable against a hand-built slab with no
+/// `wgpu::Device` in sight — the hand's persistence across calls is the
+/// property most worth pinning and the least visible from outside.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct ClockSweep {
+    victim: Option<u32>,
+    /// Where the next sweep resumes. Past the victim, not on it: the
+    /// slot just evicted is about to be refilled, and starting there
+    /// would make the next eviction reconsider it first.
+    hand: u32,
+    /// Slots examined. What [`AtlasProbe::evict_scans`] bills, and the
+    /// number that says whether the clock is behaving — a healthy thrash
+    /// state stops after one or two.
+    examined: u32,
+}
+
+/// Advance `hand` over `slots` until it meets an entry eligible for
+/// eviction: allocated, of `target` content, and not drawn on
+/// `current_frame`. Gives up after one full rotation.
+fn clock_victim(
     slots: &[GlyphSlot],
+    hand: u32,
     target: ContentType,
     current_frame: u64,
-) -> Option<(GlyphRasterKey, u32)> {
-    cache
-        .iter()
-        .filter_map(|(key, &idx)| {
-            let slot = &slots[idx as usize];
-            (slot.content == target && slot.last_use < current_frame && slot.alloc.is_some())
-                .then_some((*key, idx))
-        })
-        .min_by_key(|(_, idx)| (slots[*idx as usize].last_use, *idx))
+) -> ClockSweep {
+    let n = slots.len();
+    if n == 0 {
+        return ClockSweep {
+            victim: None,
+            hand: 0,
+            examined: 0,
+        };
+    }
+    // `slots` only ever grows, but a hand parked at the old length is
+    // still possible after a `store` that pushed — wrap it in.
+    let mut at = hand as usize % n;
+    for examined in 1..=n {
+        let idx = at;
+        at = if at + 1 == n { 0 } else { at + 1 };
+        let slot = &slots[idx];
+        if slot.content == target && slot.alloc.is_some() && slot.last_use < current_frame {
+            return ClockSweep {
+                victim: Some(idx as u32),
+                hand: at as u32,
+                examined: examined as u32,
+            };
+        }
+    }
+    ClockSweep {
+        victim: None,
+        hand: at as u32,
+        examined: n as u32,
+    }
 }
 
 fn make_texture(
@@ -766,200 +859,4 @@ pub(super) struct AtlasCounts {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn key(glyph_id: u16) -> GlyphRasterKey {
-        GlyphRasterKey::for_test(glyph_id)
-    }
-
-    fn slot(alloc: Option<AllocId>, last_use: u64) -> GlyphSlot {
-        GlyphSlot {
-            x: 0,
-            y: 0,
-            width: 0,
-            height: 0,
-            left: 0,
-            top: 0,
-            content: ContentType::Mask,
-            alloc,
-            generation: 0,
-            last_use,
-        }
-    }
-
-    #[test]
-    fn packed_glyph_metadata_checks_every_wire_boundary() {
-        let placement = |width, height, left, top| GlyphPlacement {
-            left,
-            top,
-            width,
-            height,
-        };
-        assert_eq!(
-            PackedGlyphMetadata::try_from(&placement(0, 0, 0, 0)).unwrap(),
-            PackedGlyphMetadata {
-                width: 0,
-                height: 0,
-                left: 0,
-                top: 0,
-            }
-        );
-        assert_eq!(
-            PackedGlyphMetadata::try_from(&placement(
-                u16::MAX as u32,
-                u16::MAX as u32,
-                i16::MIN as i32,
-                i16::MAX as i32,
-            ))
-            .unwrap(),
-            PackedGlyphMetadata {
-                width: u16::MAX,
-                height: u16::MAX,
-                left: i16::MIN,
-                top: i16::MAX,
-            }
-        );
-        assert_eq!(
-            PackedGlyphMetadata::try_from(&placement(1, 1, i16::MAX as i32, i16::MIN as i32,))
-                .unwrap(),
-            PackedGlyphMetadata {
-                width: 1,
-                height: 1,
-                left: i16::MAX,
-                top: i16::MIN,
-            }
-        );
-
-        let invalid = [
-            (u16::MAX as u32 + 1, 1, 0, 0, "width above u16"),
-            (1, u16::MAX as u32 + 1, 0, 0, "height above u16"),
-            (1, 1, i16::MIN as i32 - 1, 0, "left below i16"),
-            (1, 1, i16::MAX as i32 + 1, 0, "left above i16"),
-            (1, 1, 0, i16::MIN as i32 - 1, "top below i16"),
-            (1, 1, 0, i16::MAX as i32 + 1, "top above i16"),
-        ];
-        for (width, height, left, top, case) in invalid {
-            assert!(
-                PackedGlyphMetadata::try_from(&placement(width, height, left, top)).is_err(),
-                "{case}"
-            );
-        }
-    }
-
-    /// Each non-drawing entry retires on its own last use rather than on
-    /// a shared tick. At frame 1024 with a 512-frame window, an entry
-    /// dies once `last_use + 512 + 1 <= 1024`, i.e. `last_use <= 511`.
-    #[test]
-    fn a_drained_ticket_retires_only_its_own_stale_empty() {
-        let slots = vec![
-            slot(None, 1),                          // 1 + 513 = 514 <= 1024 -> reclaimed
-            slot(None, 511),                        // 511 + 513 = 1024 <= 1024 -> reclaimed
-            slot(None, 512),                        // 512 + 513 = 1025 > 1024 -> re-filed
-            slot(None, 1024),                       // freshly touched -> re-filed
-            slot(Some(AllocId::deserialize(0)), 1), // allocated -> evict_one's job
-        ];
-        let mut cache = FxHashMap::default();
-        for i in 0..slots.len() as u32 {
-            cache.insert(key(i as u16 + 1), i);
-        }
-        let mut free = Vec::new();
-        let refile = |cache: &mut FxHashMap<GlyphRasterKey, u32>, free: &mut Vec<u32>, k| {
-            retire_unallocated(cache, &slots, free, k, 1024)
-        };
-
-        assert_eq!(refile(&mut cache, &mut free, key(1)), None);
-        assert_eq!(refile(&mut cache, &mut free, key(2)), None);
-        assert_eq!(
-            refile(&mut cache, &mut free, key(3)),
-            Some(1025),
-            "an entry still inside its window is re-filed for its own deadline",
-        );
-        assert_eq!(refile(&mut cache, &mut free, key(4)), Some(1537));
-        assert_eq!(
-            refile(&mut cache, &mut free, key(5)),
-            None,
-            "an allocated entry is not this wheel's business",
-        );
-
-        assert!(
-            !cache.contains_key(&key(1)),
-            "stale empty must be reclaimed"
-        );
-        assert!(!cache.contains_key(&key(2)), "boundary empty too");
-        assert!(cache.contains_key(&key(3)), "one frame short of the window");
-        assert!(cache.contains_key(&key(4)), "fresh empty survives");
-        assert!(cache.contains_key(&key(5)), "allocated entry is untouched");
-        // Reclaimed slab slots are handed back for reuse, in ticket order.
-        assert_eq!(free, vec![0, 1]);
-
-        // A second ticket for an already-reclaimed key is a no-op, not a
-        // double free — that is what makes an early or duplicate fire safe.
-        assert_eq!(refile(&mut cache, &mut free, key(1)), None);
-        assert_eq!(free, vec![0, 1]);
-    }
-
-    /// Growth stops at the byte budget, not at whatever the adapter
-    /// happens to allow — the whole point of the ceiling.
-    ///
-    /// The exactness matters: 16 MiB is `2^24` and both pixel sizes are
-    /// powers of two, so the ceiling lands on a power-of-two side and
-    /// the doubling sequence reaches it precisely rather than stopping
-    /// one short or clamping to an odd size.
-    #[test]
-    fn growth_stops_at_the_byte_budget_not_the_device_limit() {
-        for device_max in [8192, 16384, 32768] {
-            assert_eq!(
-                growth_ceiling(device_max, ContentType::Mask),
-                4096,
-                "16 MiB of 1-byte pixels is 4096², whatever device_max={device_max} allows",
-            );
-            assert_eq!(
-                growth_ceiling(device_max, ContentType::Color),
-                2048,
-                "16 MiB of 4-byte pixels is 2048², device_max={device_max}",
-            );
-        }
-        // Both ceilings are exactly the budget, so neither wastes half a
-        // doubling nor overshoots it.
-        for (content, side) in [(ContentType::Mask, 4096u64), (ContentType::Color, 2048)] {
-            let bytes = side * side * u64::from(content.bytes_per_pixel());
-            assert_eq!(bytes, MAX_ATLAS_BYTE_BUDGET, "{content:?}");
-        }
-        // A device meaner than the budget still binds.
-        assert_eq!(growth_ceiling(1024, ContentType::Mask), 1024);
-        assert_eq!(growth_ceiling(512, ContentType::Color), 512);
-    }
-
-    #[test]
-    fn eviction_candidate_is_oldest_eligible_slot() {
-        let slots = vec![
-            slot(Some(AllocId::deserialize(0)), 8),
-            slot(Some(AllocId::deserialize(1)), 2),
-            slot(Some(AllocId::deserialize(2)), 2),
-            slot(None, 1),
-            GlyphSlot {
-                content: ContentType::Color,
-                ..slot(Some(AllocId::deserialize(3)), 0)
-            },
-            slot(Some(AllocId::deserialize(4)), 10),
-        ];
-        let mut cache = FxHashMap::default();
-        for i in 0..slots.len() as u32 {
-            cache.insert(key(i as u16 + 1), i);
-        }
-
-        assert_eq!(
-            eviction_candidate(&cache, &slots, ContentType::Mask, 10),
-            Some((key(2), 1)),
-        );
-        assert_eq!(
-            eviction_candidate(&cache, &slots, ContentType::Color, 10),
-            Some((key(5), 4)),
-        );
-        assert_eq!(
-            eviction_candidate(&cache, &slots, ContentType::Mask, 2),
-            None,
-        );
-    }
-}
+mod tests;
