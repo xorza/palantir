@@ -158,7 +158,28 @@ pub(crate) fn background(store: &RecordStore, bg: &Background) -> ChromeRow {
         hash: fill_grad_hash,
     } = brush(store, &bg.fill);
     let stroke = ShapeStroke::from(&bg.stroke);
-    let corners = bg.corners;
+    // Chrome's NaN gate, and the reason it sanitizes rather than
+    // dropping the way `Shapes::add` does: a radius has *two* consumers
+    // here. `chrome_table` deliberately keeps a row for
+    // `ClipMode::Rounded` even when the paint is fully no-op, so the
+    // encoder can read `corners` for the stencil mask — dropping the
+    // chrome would fix the fill and leave the mask reading the NaN.
+    //
+    // `ZERO` is what a non-finite radius means anyway ("no rounding"),
+    // and it degrades safely on both paths: a square background instead
+    // of a rounded one, and a clip that still clips instead of one that
+    // doesn't. Sanitizing before the hash below keeps `ChromeRow.hash`
+    // agreeing with what actually paints.
+    let corners = if bg.corners.has_nan() {
+        debug_assert!(
+            !bg.corners.has_nan(),
+            "NaN corner radius in a Background: {:?}",
+            bg.corners,
+        );
+        Corners::ZERO
+    } else {
+        bg.corners
+    };
     let shadow: LoweredShadow = bg.shadow.into();
     // Canonical authoring hash: fold all inputs into one
     // `Hasher::pod` call. Hashing field-by-field via 5 separate
@@ -488,6 +509,11 @@ fn curve_record(
 
 #[cfg(test)]
 mod tests {
+    use crate::primitives::background::Background;
+    use crate::primitives::color::Color;
+    use crate::primitives::corners::Corners;
+    use crate::scene::shapes::lower::background;
+
     use super::brush;
     use crate::primitives::brush::Brush;
     use crate::primitives::brush::gradient::conic::ConicGradient;
@@ -504,6 +530,52 @@ mod tests {
             ShapeBrush::Gradient(id) => id,
             ShapeBrush::Solid(_) => panic!("test gradient lowered to a solid brush"),
         }
+    }
+
+    /// Chrome is the one paint path with no record-level NaN gate
+    /// behind it — a `Background` never passes through `Shapes::add`.
+    /// A NaN radius is the case its own predicates cannot catch:
+    /// "radius is NaN" is not a reason the background paints nothing,
+    /// so no no-op predicate owns the question, and `approx_zero`
+    /// reports NaN as non-zero by design so a NaN cannot take the
+    /// sharp-corner fast path.
+    ///
+    /// It has to be caught *here* rather than by dropping the chrome,
+    /// because `chrome_table` keeps a row for `ClipMode::Rounded` even
+    /// when the paint is no-op — so a dropped background would still
+    /// leave the stencil mask reading the NaN.
+    #[test]
+    fn background_lowering_sanitizes_a_nan_corner_radius() {
+        let store = RecordStore::default();
+        let sane = Corners::all(6.0);
+        let bg = |corners| Background {
+            corners,
+            ..Background::fill(Color::WHITE)
+        };
+
+        let row = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            background(&store, &bg(Corners::new(4.0, f32::NAN, 4.0, 4.0)))
+        }));
+        if cfg!(debug_assertions) {
+            assert!(row.is_err(), "a NaN radius must assert in debug");
+        } else {
+            let row = row.expect("release must not panic");
+            assert!(
+                !row.corners.has_nan(),
+                "a NaN radius must not survive lowering"
+            );
+            assert!(row.corners.approx_zero(), "it collapses to no rounding");
+        }
+
+        // The sane path is untouched — and the hash follows the
+        // sanitized value, not the authored one.
+        let kept = background(&store, &bg(sane));
+        assert_eq!(kept.corners, sane);
+        assert_ne!(
+            kept.hash,
+            background(&store, &bg(Corners::ZERO)).hash,
+            "corners must still reach the chrome hash",
+        );
     }
 
     #[test]

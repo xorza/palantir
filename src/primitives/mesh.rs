@@ -280,15 +280,6 @@ fn compute_aabb(verts: &[MeshVertex]) -> Rect {
     Aabb::of_iter(verts.iter().map(|v| v.pos))
 }
 
-/// Vertex colours are `ColorU8`, so positions are the only place a mesh
-/// can hide a NaN. `O(n)` — debug-only, per the [`NanCheck`] module doc.
-impl NanCheck for Mesh {
-    #[inline]
-    fn has_nan(&self) -> bool {
-        self.vertices.iter().any(|v| v.pos.has_nan())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use crate::primitives::color::Color;
