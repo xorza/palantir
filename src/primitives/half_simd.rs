@@ -1,6 +1,6 @@
 //! Direct 4-lane f16 ↔ f32 pack/unpack, plus the [`F16x4`] newtype that
-//! `Spacing`, `Corners`, `ColorF16`, and `FillAxis` wrap as their shared
-//! `[u16; 4]` lane-storage core.
+//! `Spacing`, `Corners`, `ColorF16`, `FillAxis`, and `LoweredShadow`
+//! wrap as their shared `[u16; 4]` lane-storage core.
 //!
 //! Bypasses `half::slice::HalfFloatSliceExt::convert_{to,from}_f32_slice`,
 //! which gates every call on a runtime `is_x86_feature_detected!("f16c")`
@@ -22,10 +22,10 @@
 //! (`fcvtl` on aarch64-fp16).
 
 /// Four f16 lanes packed in 8 B (`[u16; 4]`, align 2) — the shared
-/// storage core behind `Corners`, `Spacing`, `FillAxis`, and
-/// `ColorF16`. Each of those wraps an `F16x4` for type safety and adds
-/// its own lane-naming + domain methods; `F16x4` owns only the
-/// pack/unpack/hash idiom so the four types can't drift apart.
+/// storage core behind `Corners`, `Spacing`, `FillAxis`, `ColorF16`,
+/// and `LoweredShadow`'s geometry. Each wraps an `F16x4` for type
+/// safety and adds its own lane-naming + domain methods; `F16x4` owns
+/// the pack/unpack/hash/NaN idioms so they can't drift apart.
 ///
 /// `Pod`/`Zeroable` with `repr(transparent)`, so a `repr(transparent)`
 /// wrapper of `F16x4` keeps the exact `[u16; 4]` GPU-wire layout. Lane
@@ -55,9 +55,8 @@ impl F16x4 {
     /// `u64`. Measured ~5× the scalar form.
     ///
     /// Both f16 lane predicates in the crate are this one test:
-    /// `ColorF16::has_nan` passes `0x7C00`, the infinity pattern, so
-    /// "above" is exactly the NaN range; `Corners::approx_zero` passes
-    /// the `EPS` pattern and negates.
+    /// [`Self::has_nan`] and `Corners::approx_zero` (which passes the
+    /// `EPS` pattern and negates).
     ///
     /// Packing by shift instead of a cast keeps this `const` and
     /// endian-independent; LLVM folds it back to a single 64-bit load.
@@ -71,6 +70,18 @@ impl F16x4 {
         let bias = (0x7FFF - bits) as u64;
         let bias = bias | (bias << 16) | (bias << 32) | (bias << 48);
         ((packed & ABS) + bias) & SIGN != 0
+    }
+
+    /// True if any lane is NaN.
+    ///
+    /// `0x7C00` is f16 infinity and NaN is the only thing whose
+    /// magnitude sorts above it, so the NaN test *is*
+    /// [`Self::any_lane_above`] at that threshold — one masked add for
+    /// all four lanes, no per-lane branch.
+    #[inline]
+    pub(crate) const fn has_nan(self) -> bool {
+        const F16_INFINITY: u16 = 0x7C00;
+        self.any_lane_above(F16_INFINITY)
     }
 
     /// Unpack all four lanes to f32 at once via the batched slice path.
@@ -228,6 +239,17 @@ mod tests {
                         "threshold={threshold:#06x} bits={bits:#06x} lane={lane}",
                     );
                 }
+            }
+        }
+
+        // `has_nan` is that sweep at the infinity threshold, so pin it
+        // against real f16 semantics rather than against itself.
+        for bits in 0..=u16::MAX {
+            let want = f16::from_bits(bits).is_nan();
+            for lane in 0..4 {
+                let mut lanes = [0u16; 4];
+                lanes[lane] = bits;
+                assert_eq!(F16x4(lanes).has_nan(), want, "bits={bits:#06x} lane={lane}",);
             }
         }
 
