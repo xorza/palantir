@@ -254,10 +254,9 @@ impl CosmicMeasure {
         out: &mut Vec<PlacedGlyph>,
     ) -> bool {
         debug_assert!(!request.key.is_invalid());
-        self.ensure_buffer(request);
         let buffer = self
-            .buffer_for(request.key)
-            .expect("ensure_buffer must restore the requested render buffer");
+            .ensure_buffer(request)
+            .expect("a valid render key must resolve to a shaped buffer");
 
         out.clear();
         let RunPlacement {
@@ -322,25 +321,7 @@ impl CosmicMeasure {
             data: image.data,
         })
     }
-}
 
-impl Default for CosmicMeasure {
-    fn default() -> Self {
-        Self::with_bundled_fonts()
-    }
-}
-
-// Manual: cosmic's `SwashCache` isn't `Debug`.
-impl std::fmt::Debug for CosmicMeasure {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("CosmicMeasure")
-            .field("cache", &self.cache.len())
-            .field("frame", &self.frame)
-            .finish_non_exhaustive()
-    }
-}
-
-impl CosmicMeasure {
     #[profiling::function]
     pub(super) fn shape(&mut self, request: TextShapeRequest<'_>) -> TextRoot {
         match (request.key.fit(), request.key.max_width_px()) {
@@ -378,17 +359,12 @@ impl CosmicMeasure {
         );
         buffer.shape_until_scroll(&mut self.font_system, false);
 
-        let extent = shaped_extent(
+        let root = shaped_extent(
             &buffer,
             key.max_width_px()
                 .is_none()
                 .then_some(&mut self.break_scratch),
         );
-        let root = TextRoot {
-            size: extent.size,
-            intrinsic_min: extent.intrinsic_min,
-            single_line: extent.single_line,
-        };
         self.insert(key, buffer, root);
         root
     }
@@ -567,17 +543,26 @@ impl CosmicMeasure {
     }
 
     /// Restore a missing shaped buffer from the retained source text and
-    /// the canonical parameters encoded by `key`. Truncated runs restore
-    /// their unbounded probe first; callers never manage that dependency.
-    pub(super) fn ensure_buffer(&mut self, request: TextShapeRequest<'_>) {
-        if request.key.is_invalid() || self.cache_hit(request.key).is_some() {
-            return;
+    /// the canonical parameters encoded by `key`, and hand it back.
+    /// Truncated runs restore their unbounded probe first; callers never
+    /// manage that dependency. `None` only for
+    /// [`TextShapeKey::INVALID`] — any other key is shaped on the spot,
+    /// so the final lookup doubles as the check that the restore landed
+    /// under its own key.
+    pub(super) fn ensure_buffer(&mut self, request: TextShapeRequest<'_>) -> Option<&Buffer> {
+        if request.key.is_invalid() {
+            return None;
         }
-        self.shape(request);
-        assert!(
-            self.cache.contains_key(&request.key),
-            "restored text buffer did not land under its own TextShapeKey",
-        );
+        if self.cache_hit(request.key).is_none() {
+            self.shape(request);
+        }
+        Some(
+            &self
+                .cache
+                .get(&request.key)
+                .expect("restored text buffer did not land under its own TextShapeKey")
+                .buffer,
+        )
     }
 
     /// Store a freshly shaped buffer. Entries start probationary; only a
@@ -696,6 +681,22 @@ impl CosmicMeasure {
     }
 }
 
+impl Default for CosmicMeasure {
+    fn default() -> Self {
+        Self::with_bundled_fonts()
+    }
+}
+
+// Manual: cosmic's `SwashCache` isn't `Debug`.
+impl std::fmt::Debug for CosmicMeasure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CosmicMeasure")
+            .field("cache", &self.cache.len())
+            .field("frame", &self.frame)
+            .finish_non_exhaustive()
+    }
+}
+
 /// Memoized trailing advance of "…" for one face.
 #[derive(Clone, Copy, Debug)]
 struct EllipsisMemo {
@@ -794,14 +795,9 @@ fn first_line_right(buffer: &Buffer) -> f32 {
 /// commits a narrower width. Passing `breaks` opts into the
 /// text-length-proportional segment scan (it doubles as that scan's
 /// scratch); bounded shapes pass `None` — their floor comes from the
-/// unbounded root — and report `0.0`.
-struct ShapedExtent {
-    size: Size,
-    intrinsic_min: f32,
-    single_line: bool,
-}
-
-fn shaped_extent(buffer: &Buffer, breaks: Option<&mut Vec<u32>>) -> ShapedExtent {
+/// unbounded root — and report `0.0`, the inert reading
+/// [`CacheEntry::root`] documents.
+fn shaped_extent(buffer: &Buffer, breaks: Option<&mut Vec<u32>>) -> TextRoot {
     let mut max_w = 0.0_f32;
     let mut total_h = 0.0_f32;
     let mut runs = 0usize;
@@ -824,7 +820,7 @@ fn shaped_extent(buffer: &Buffer, breaks: Option<&mut Vec<u32>>) -> ShapedExtent
         max_w = max_w.max(line_right);
         total_h = total_h.max(run.line_top + run.line_height);
     }
-    ShapedExtent {
+    TextRoot {
         size: Size::new(max_w.ceil(), total_h.ceil()),
         intrinsic_min: breaks.map_or(0.0, |breaks| intrinsic_min_width(buffer, breaks)),
         single_line: runs <= 1,
