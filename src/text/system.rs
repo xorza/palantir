@@ -102,8 +102,12 @@ impl TextSystem {
     /// Keeping rows for live widgets bounds them by the widget's peak
     /// text-ordinal count, which is a handful per widget, and `removed`
     /// still sweeps whole widgets as they leave the tree.
+    /// This is also where the shared text frame clock ticks — the one
+    /// the renderer's glyph atlas and encoded-run cache age against too,
+    /// so every text cache in the crate advances exactly here, once per
+    /// window per recorded frame.
     pub(crate) fn end_frame(&mut self, removed: &FxHashSet<WidgetId>) {
-        self.shaper.end_frame();
+        self.shaper.tick_frame();
         self.entries
             .retain(|(widget_id, _), _| !removed.contains(widget_id));
     }

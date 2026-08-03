@@ -136,7 +136,7 @@ fn fill_distinct_widths(c: &mut CosmicMeasure, n: u32) -> Vec<TextShapeKey> {
 
 fn idle_frames(c: &mut CosmicMeasure, n: u64) {
     for _ in 0..n {
-        c.end_frame();
+        c.tick_frame();
     }
 }
 
@@ -260,7 +260,7 @@ fn steady_key_churn_costs_a_bounded_cache_and_spares_the_working_set() {
             &format!("tick {frame}"),
             shape(14.0).leading(18.0).width(200.0).halign(HAlign::Left),
         );
-        c.end_frame();
+        c.tick_frame();
         lens.push(c.cache_len());
     }
 

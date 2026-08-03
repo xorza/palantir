@@ -4,6 +4,7 @@
 
 pub(crate) mod clipboard;
 pub(crate) mod content_hash;
+pub(crate) mod expiry_wheel;
 pub(crate) mod hash;
 pub(crate) mod index16;
 pub(crate) mod platform;

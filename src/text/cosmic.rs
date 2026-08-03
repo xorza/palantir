@@ -10,7 +10,9 @@
 //! resize drag — every width unique, a fresh entry per run per frame —
 //! stays bounded without explicit cache ownership. Evicted buffers feed a
 //! bounded recycle pool so later misses retain Cosmic Text's internal
-//! line, shaping, and layout allocations.
+//! line, shaping, and layout allocations. The sweep itself is driven by
+//! a deadline wheel, so it costs what expires rather than what is
+//! resident — see [`CosmicMeasure::expiry`].
 //!
 //! The render side never sees cosmic types: `TextShaper::render_session`
 //! lends a `RefMut<CosmicMeasure>` whose
@@ -23,6 +25,7 @@
 //! cost of resolving them — verifying with the cached buffer's source string
 //! on every hit — outweighs the cost of accepting the negligible risk.
 
+use crate::common::expiry_wheel::ExpiryWheel;
 use crate::layout::types::align::HAlign;
 use crate::primitives::num::F32Ext;
 use crate::primitives::size::Size;
@@ -40,6 +43,7 @@ use cosmic_text::{
     SwashCache, SwashContent, Weight, fontdb,
 };
 use rustc_hash::FxHashMap;
+use std::collections::hash_map::Entry;
 use std::sync::Arc;
 
 /// Bundled fonts shipped with the crate. Inter is the default UI /
@@ -221,19 +225,27 @@ pub(super) struct CosmicMeasure {
     /// uncached — the renderer's glyph atlas is the real bitmap cache.
     swash_cache: SwashCache,
     cache: FxHashMap<TextShapeKey, CacheEntry>,
-    /// Frames elapsed, bumped by [`Self::end_frame`]. Stamped onto every
-    /// entry it touches, and the reference point both retention windows
-    /// measure back from.
-    frame: u64,
-    /// Earliest `keep_until` in the cache, or `u64::MAX` when it is
-    /// empty. Lets [`Self::end_frame`] skip the sweep in O(1) while no
-    /// entry can have expired.
+    /// Latest value of the shaper's shared frame clock, mirrored here by
+    /// [`Self::end_frame`]. Stamped onto every entry this touches, and
+    /// the reference point both retention windows measure back from.
     ///
-    /// Only ever conservative: a lookup extends an entry's deadline
-    /// without advancing this, so a stale value costs one sweep that
-    /// drops nothing and then recomputes itself exactly. It is never too
-    /// late, which is the direction that would let an expired entry live.
-    next_expiry: u64,
+    /// Mirrored rather than counted: the renderer's encoded-run cache
+    /// and glyph atlas age against the same clock, and only one owner
+    /// can keep them in step — see
+    /// [`ShaperInner::frame`](crate::text::shaper::ShaperInner).
+    frame: u64,
+    /// Which keys come due on which frame, so [`Self::end_frame`] costs
+    /// what expires rather than what is resident.
+    ///
+    /// The earlier design kept the earliest `keep_until` in the cache and
+    /// skipped the sweep while nothing could have expired. That is O(1)
+    /// only while nothing churns: a single key that changes every frame —
+    /// a clock, an FPS counter, a scrubbing value — re-pins that minimum
+    /// one probation window out on every insert, the gate stops firing,
+    /// and every frame walks the whole map to reclaim one entry. The
+    /// churn it was measured against is precisely the churn that defeats
+    /// it.
+    expiry: ExpiryWheel<TextShapeKey>,
     /// LIFO pool fed by LRU eviction. `Buffer::set_text` reclaims its
     /// line, shaping, and layout allocations when the buffer is reset.
     recycle_pool: Vec<Buffer>,
@@ -282,7 +294,7 @@ impl CosmicMeasure {
             swash_cache: SwashCache::new(),
             cache: FxHashMap::default(),
             frame: 0,
-            next_expiry: u64::MAX,
+            expiry: ExpiryWheel::with_horizon(PROTECTED_KEEP_FRAMES + 1),
             recycle_pool: Vec::with_capacity(RECYCLE_POOL_CAP),
             ellipsis: None,
             truncate_scratch: String::new(),
@@ -686,7 +698,9 @@ impl CosmicMeasure {
         // shapes without inserting and is deliberately not counted.
         self.probe.shapes.bump();
         let keep_until = self.frame + PROBATION_KEEP_FRAMES;
-        self.next_expiry = self.next_expiry.min(keep_until);
+        // First frame on which the entry is dead, matching the sweep's
+        // own `keep_until < frame` test.
+        self.expiry.schedule(key, keep_until + 1);
         self.cache.insert(
             key,
             CacheEntry {
@@ -741,9 +755,9 @@ impl CosmicMeasure {
     /// the signal the two-tier policy runs on.
     ///
     /// Only ever shortens a deadline — a supersede must not extend the
-    /// life of an entry already closer to expiry — and pulls
-    /// [`Self::next_expiry`] back with it, since the sweep gate would
-    /// otherwise sleep straight through the shortened window.
+    /// life of an entry already closer to expiry — and files a second
+    /// ticket for the earlier frame, since the outstanding one sits at
+    /// the deadline this just retracted.
     ///
     /// Silent on a key that isn't resident: the buffer may already have
     /// aged out, and superseding what is gone is a no-op, not an error.
@@ -761,7 +775,7 @@ impl CosmicMeasure {
         // deadline.
         if entry.keep_until > keep_until {
             entry.keep_until = keep_until;
-            self.next_expiry = self.next_expiry.min(keep_until);
+            self.expiry.schedule(key, keep_until + 1);
         }
     }
 
@@ -774,8 +788,12 @@ impl CosmicMeasure {
         buffer
     }
 
-    /// Advance the frame clock and drop every buffer whose deadline has
-    /// passed.
+    /// Take the shaper's `frame` clock and drop every buffer whose
+    /// deadline has passed.
+    ///
+    /// `frame` is only ever read, never derived from a local counter, so
+    /// a clock that jumps several frames at once is handled by the same
+    /// comparison as one that advances by one.
     ///
     /// Age, not capacity. A count budget cannot express what this cache
     /// needs: set below the live working set it thrashes — UI redraw is a
@@ -785,30 +803,36 @@ impl CosmicMeasure {
     /// number to guess: an app keeps exactly what it keeps touching, and
     /// scan traffic falls out on its own.
     ///
-    /// [`Self::next_expiry`] skips the sweep outright while nothing can
-    /// have expired, so a steady frame pays one comparison and a churning
-    /// one pays in proportion to its churn.
-    pub(super) fn end_frame(&mut self) {
-        self.frame += 1;
-        if self.frame <= self.next_expiry {
-            return;
-        }
-        let frame = self.frame;
-        let mut next_expiry = u64::MAX;
+    /// Cost tracks what expires, not what is resident: [`Self::expiry`]
+    /// hands back only the keys whose ticket came due, so a frame holding
+    /// a scrolled document's whole working set pays the same as an empty
+    /// one unless something actually lapsed.
+    ///
+    /// A ticket is a hint, never authority to drop. Deadlines move after
+    /// it is filed — [`Self::cache_hit`] pushes one out and deliberately
+    /// files nothing, which is what keeps a re-read entry from filing a
+    /// ticket per frame — so the real `keep_until` is re-read here and a
+    /// still-live entry is simply re-filed.
+    pub(super) fn end_frame(&mut self, frame: u64) {
+        debug_assert!(frame >= self.frame, "the shared frame clock ran backwards");
+        self.frame = frame;
         let cache = &mut self.cache;
         let recycle_pool = &mut self.recycle_pool;
         let probe = &mut self.probe;
-        for (_, entry) in cache.extract_if(|_, entry| {
-            if entry.keep_until < frame {
-                return true;
+        self.expiry.retire(frame, |key| {
+            // Gone already — a superseded entry files a second ticket, so
+            // the first one to fire removes it and the other finds
+            // nothing.
+            let Entry::Occupied(slot) = cache.entry(key) else {
+                return None;
+            };
+            if slot.get().keep_until >= frame {
+                return Some(slot.get().keep_until + 1);
             }
-            next_expiry = next_expiry.min(entry.keep_until);
-            false
-        }) {
             probe.expiries.bump();
-            recycle_buffer(recycle_pool, entry.buffer);
-        }
-        self.next_expiry = next_expiry;
+            recycle_buffer(recycle_pool, slot.remove().buffer);
+            None
+        });
     }
 }
 
@@ -1096,6 +1120,15 @@ mod internals {
             self.cache.len()
         }
 
+        /// Advance the shared clock by one frame and sweep — what
+        /// `ShaperInner::tick_frame` does for a measurer reached through
+        /// a `TextShaper`. The retention tests drive `CosmicMeasure`
+        /// directly, with no shaper to hold the clock, so they own the
+        /// tick; production never increments here.
+        pub(crate) fn tick_frame(&mut self) {
+            self.end_frame(self.frame + 1);
+        }
+
         /// Drop every shaped buffer now, recycling each one, without
         /// waiting out a retention window. Lets tests that exercise the
         /// *restore* path (which any eviction can trigger) set up a
@@ -1107,7 +1140,7 @@ mod internals {
             for (_, entry) in cache.drain() {
                 recycle_buffer(recycle_pool, entry.buffer);
             }
-            self.next_expiry = u64::MAX;
+            self.expiry.clear();
         }
 
         pub(crate) fn recycle_pool_stats(&self) -> RecyclePoolStats {

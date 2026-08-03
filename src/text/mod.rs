@@ -72,6 +72,18 @@ pub(crate) const TEXT_SCALE_STEP: f32 = 0.005;
 /// quietly paying to reshape. Deriving both from here is what keeps
 /// that from drifting apart in a later edit to one of them.
 ///
+/// **A shared constant is only half of that, and for a while it was the
+/// only half.** Each cache also counted its own frames, off different
+/// events: this side ticked on the record path (`FullRecord` frames
+/// only), the encoder's on the submit path — which additionally runs
+/// for `PaintOnly` frames and used to skip any frame that prepared no
+/// text batch. Equal numbers over unequal clocks, so a recorded frame
+/// that drew no text aged buffers and not encoded entries, and the
+/// ordering this constant exists to guarantee simply did not hold.
+/// Both now read one clock — see
+/// [`ShaperInner::frame`](shaper::ShaperInner) — which is what makes
+/// the equality mean something.
+///
 /// Lives here rather than with either cache because `renderer` depends
 /// on `text` and not the reverse, so this is the only spot both can
 /// name. Same reason as [`TEXT_SCALE_STEP`].

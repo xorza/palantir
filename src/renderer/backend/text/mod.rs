@@ -317,12 +317,30 @@ impl TextBackend {
         pass.draw(0..4, span.start..span.start + span.len);
     }
 
-    pub(crate) fn post_record(&mut self) {
-        if self.ranges.is_empty() {
-            debug_assert!(self.encoder.instances.is_empty());
-            return;
-        }
-        self.encoder.end_frame();
+    /// Frame teardown, run for every submit — including one that
+    /// prepared no text batch at all.
+    ///
+    /// `end_frame`, not `post_record`: this runs as the last step of
+    /// `WgpuBackend::submit`, nowhere near a record pass, and the crate
+    /// spends `post_record` on the record half of a frame
+    /// (`FrameCycle`, `Forest`, `Tree`). It belongs with the other
+    /// frame-boundary teardowns instead — `TextSystem::end_frame` is its
+    /// opposite number on the record side.
+    ///
+    /// It used to return early on an empty `ranges`, which froze this
+    /// side's clock on any frame whose damage happened to miss every
+    /// text run while the shaper's kept advancing. Both caches now age
+    /// against the shaper's clock
+    /// ([`TextShaper::frame`](crate::text::shaper::TextShaper::frame)),
+    /// so there is nothing to skip: sweeping a text-free frame is what
+    /// keeps `ENCODED_CACHE_KEEP_FRAMES` a bound on retention rather
+    /// than a bound on text-bearing frames.
+    pub(crate) fn end_frame(&mut self) {
+        debug_assert!(
+            !self.ranges.is_empty() || self.encoder.instances.is_empty(),
+            "instances were emitted without a batch range to draw them",
+        );
+        self.encoder.end_frame(self.shaper.frame());
         self.ranges.clear();
     }
 }
@@ -396,6 +414,29 @@ fn glyph_instance_layout() -> wgpu::VertexBufferLayout<'static> {
         array_stride: std::mem::size_of::<GlyphInstance>() as u64,
         step_mode: wgpu::VertexStepMode::Instance,
         attributes: &GLYPH_INSTANCE_ATTRS,
+    }
+}
+
+// `internals` only, not `any(test, …)`: both consumers — the `text_atlas`
+// benchmark and the GPU regression suite in `tests.rs` — are gated on
+// that feature, so a plain `cargo test` build has no caller.
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use crate::renderer::backend::text::TextBackend;
+
+    impl TextBackend {
+        /// One frame boundary the way a window drives it: advance the
+        /// shared text clock — owned by the record pass in production,
+        /// where `TextSystem::end_frame` ticks it before the submit —
+        /// then sweep this side against it.
+        ///
+        /// Harnesses that drive a `TextBackend` with no `Ui` behind it
+        /// have no other way to age these caches, since
+        /// [`TextBackend::end_frame`] only *reads* the clock.
+        pub(crate) fn tick_frame(&mut self) {
+            self.shaper.tick_frame();
+            self.end_frame();
+        }
     }
 }
 

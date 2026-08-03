@@ -654,7 +654,7 @@ impl WgpuBackend {
             t.after_submit(&self.device);
         }
 
-        self.text.post_record();
+        self.text.end_frame();
     }
 
     /// Full-viewport pass that draws one 40%-translucent black quad
