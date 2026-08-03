@@ -102,11 +102,22 @@ fn reuse_rows_outlive_unused_frames_and_go_with_their_widget() {
     // Second frame touches only `a`'s first row. The untouched two stay:
     // being unused for a frame is what a measure-cache hit looks like, not
     // evidence the run is gone.
+    let clock = text.shaper.frame();
     text.shape_run(slot_at(a, 0), "hi", params, TextWrap::SingleLine);
     frame_end(&mut text);
     assert_eq!(text.entry_count(), 3, "an unused frame drops nothing");
     assert!(text.has_entry(a, 1), "untouched sibling row survives");
     assert!(text.has_entry(b, 0), "untouched row of another widget too");
+    // An empty `removed` skips the retain — the sweep would be a
+    // whole-table walk to discover nothing changed — but must *not* skip
+    // the clock, which every text cache in the crate ages against and
+    // which the glyph atlas needs to advance before anything is
+    // evictable. Pinned here because the two live one line apart.
+    assert_eq!(
+        text.shaper.frame(),
+        clock + 1,
+        "the empty-removed guard must not swallow the frame tick",
+    );
 
     // A removed widget's rows go even when hot, in the same retain pass
     // that drops cold ones.

@@ -111,8 +111,22 @@ impl TextSystem {
     /// the renderer's glyph atlas and encoded-run cache age against too,
     /// so every text cache in the crate advances exactly here, once per
     /// window per recorded frame.
+    ///
+    /// The empty-`removed` guard is not a micro-optimization.
+    /// `HashMap::retain` walks the raw table, so it costs *capacity* —
+    /// and capacity here is the session's peak widget×ordinal count,
+    /// which never shrinks. Without the guard a UI that once showed a
+    /// large text-bearing tree pays for that peak on every later frame
+    /// to discover nothing was removed, which is the steady state:
+    /// widgets leave the tree rarely, and the frames they do are already
+    /// the expensive ones. Every sibling sweep in `finalize_frame`
+    /// (`StateMap::sweep_removed`, `AnimMap::sweep_removed`, the
+    /// `gpu_views` retain) gates the same way.
     pub(crate) fn end_full_record(&mut self, removed: &FxHashSet<WidgetId>) {
         self.end_paint_only();
+        if removed.is_empty() {
+            return;
+        }
         self.entries
             .retain(|(widget_id, _), _| !removed.contains(widget_id));
     }
