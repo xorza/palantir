@@ -1,6 +1,5 @@
 use crate::primitives::approx::{noop_f32, vec2_approx_eq};
 use crate::primitives::brush::CurveBrush;
-use crate::primitives::nan::NanCheck;
 use crate::shape::style::LineCap;
 use glam::Vec2;
 
@@ -72,30 +71,5 @@ impl CurveShape {
             }
             CurveGeometry::Arc { radius, sweep, .. } => noop_f32(*radius) || noop_f32(sweep.abs()),
         }
-    }
-}
-impl NanCheck for CurveGeometry {
-    #[inline]
-    fn has_nan(&self) -> bool {
-        match self {
-            Self::Line { a, b } => a.has_nan() || b.has_nan(),
-            Self::CubicBezier { p0, p1, p2, p3 } => {
-                p0.has_nan() || p1.has_nan() || p2.has_nan() || p3.has_nan()
-            }
-            Self::QuadraticBezier { p0, p1, p2 } => p0.has_nan() || p1.has_nan() || p2.has_nan(),
-            Self::Arc {
-                center,
-                radius,
-                start_angle,
-                sweep,
-            } => center.has_nan() || radius.is_nan() || start_angle.is_nan() || sweep.is_nan(),
-        }
-    }
-}
-
-impl NanCheck for CurveShape {
-    #[inline]
-    fn has_nan(&self) -> bool {
-        self.geometry.has_nan() || self.width.is_nan() || self.brush.has_nan()
     }
 }

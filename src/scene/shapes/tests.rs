@@ -1,5 +1,6 @@
 use crate::primitives::color::Color;
 use crate::primitives::image::Image;
+use crate::primitives::rect::Rect;
 use crate::renderer::image_registry::ImageRegistry;
 use crate::renderer::texture_id_source::TextureIdSource;
 use crate::scene::record_store::RecordStore;
@@ -142,36 +143,143 @@ fn image_dimensions_above_u16_survive_lowering() {
     assert_eq!(size, glam::UVec2::new(WIDTH, 1));
 }
 
-/// The NaN screen has to run *before* `is_noop`, because `noop_f32`
-/// classifies NaN as invisible: a NaN-width shape reads as a no-op and
-/// would leave through that early return without ever being looked at.
-/// Ordering the two the other way round is a silent regression — the
-/// assert still exists, it just stops seeing the case it exists for.
+/// **The NaN contract**, exercised through `Shapes::add` for every
+/// shape kind: a NaN anywhere in a shape's inputs means the shape is
+/// **never recorded**. Its clean twin must record, so a gate that
+/// rejected everything would fail this too.
 ///
-/// Debug-only by design (see the `NanCheck` module doc), so this test
-/// only means anything in a `debug_assertions` build.
+/// The bulk cases are the point of the design: a NaN polyline point,
+/// mesh vertex, or curve control point is caught via the `bbox` it folds
+/// into, not by rescanning the data — which is what keeps the check
+/// `O(1)` and affordable in release rather than debug-only.
+///
+/// Two doors lead to "not recorded", and which one a case takes is not
+/// pinned here because it is not part of the contract: a NaN that also
+/// reads as invisible (a NaN origin makes `is_paint_empty` true) exits
+/// through the ordinary no-op gate, quietly; one that would otherwise
+/// have painted reaches `Shapes::add`'s NaN gate and additionally
+/// asserts in debug. Both drop the shape, which is what callers can
+/// rely on.
 #[test]
-#[cfg(debug_assertions)]
-fn nan_is_rejected_before_the_noop_early_return() {
-    let clean = |width| {
+fn the_nan_gate_drops_every_shape_kind() {
+    use crate::primitives::mesh::Mesh;
+    use crate::primitives::shadow::Shadow;
+    use crate::primitives::stroke::Stroke;
+    use crate::shape::Shape;
+    use glam::Vec2;
+
+    const N: f32 = f32::NAN;
+    let nan_pt = Vec2::new(1.0, N);
+    let ok_rect = Rect::new(0.0, 0.0, 8.0, 8.0);
+    let white = Color::WHITE;
+    let mesh = |pos| {
+        let mut m = Mesh::new();
+        m.vertex(pos, white);
+        m.vertex(Vec2::new(4.0, 0.0), white);
+        m.vertex(Vec2::new(0.0, 4.0), white);
+        m.triangle(0, 1, 2);
+        m
+    };
+    let (mesh_nan, mesh_ok) = (mesh(nan_pt), mesh(Vec2::ZERO));
+    let pts_nan = [Vec2::ZERO, nan_pt, Vec2::new(4.0, 4.0)];
+    let pts_ok = [Vec2::ZERO, Vec2::new(2.0, 2.0), Vec2::new(4.0, 4.0)];
+
+    // (label, tainted, clean)
+    let cases: Vec<(&str, Shape<'_>, Shape<'_>)> = vec![
+        (
+            "rect_local_rect",
+            Shape::rect(Rect::new(0.0, N, 8.0, 8.0)).fill(white).into(),
+            Shape::rect(ok_rect).fill(white).into(),
+        ),
+        (
+            "rect_corners",
+            Shape::rect(ok_rect).fill(white).corners(N).into(),
+            Shape::rect(ok_rect).fill(white).corners(2.0).into(),
+        ),
+        (
+            "rect_stroke_colour",
+            Shape::rect(ok_rect)
+                .fill(white)
+                .stroke(Stroke::solid(Color::rgba(0.0, N, 0.0, 1.0), 2.0))
+                .into(),
+            Shape::rect(ok_rect)
+                .fill(white)
+                .stroke(Stroke::solid(Color::BLACK, 2.0))
+                .into(),
+        ),
+        (
+            "triangle_corner",
+            Shape::triangle(Vec2::ZERO, Vec2::new(4.0, 0.0), nan_pt)
+                .fill(white)
+                .into(),
+            Shape::triangle(Vec2::ZERO, Vec2::new(4.0, 0.0), Vec2::new(0.0, 4.0))
+                .fill(white)
+                .into(),
+        ),
+        (
+            "curve_control_point",
+            Shape::line(Vec2::ZERO, nan_pt, 2.0).brush(white).into(),
+            Shape::line(Vec2::ZERO, Vec2::new(4.0, 4.0), 2.0)
+                .brush(white)
+                .into(),
+        ),
+        (
+            "arc_centre",
+            Shape::arc(nan_pt, 4.0, 0.0, 1.0, 2.0).brush(white).into(),
+            Shape::arc(Vec2::ZERO, 4.0, 0.0, 1.0, 2.0)
+                .brush(white)
+                .into(),
+        ),
+        (
+            "polyline_point",
+            Shape::polyline(&pts_nan, PolylineColors::Single(white), 2.0).into(),
+            Shape::polyline(&pts_ok, PolylineColors::Single(white), 2.0).into(),
+        ),
+        (
+            "mesh_vertex",
+            Shape::mesh(&mesh_nan).into(),
+            Shape::mesh(&mesh_ok).into(),
+        ),
+        (
+            "shadow_blur",
+            Shape::shadow(Shadow {
+                color: white,
+                blur: N,
+                ..Shadow::default()
+            })
+            .at(ok_rect)
+            .into(),
+            Shape::shadow(Shadow {
+                color: white,
+                blur: 4.0,
+                ..Shadow::default()
+            })
+            .at(ok_rect)
+            .into(),
+        ),
+    ];
+
+    for (label, tainted, clean) in cases {
         let mut shapes = Shapes::default();
         let store = RecordStore::default();
-        let shape = Shape::line(Vec2::ZERO, Vec2::new(4.0, 0.0), width).brush(Color::WHITE);
-        catch_unwind(AssertUnwindSafe(|| shapes.add(shape.into(), &store))).map(|r| r.is_some())
-    };
+        let got = catch_unwind(AssertUnwindSafe(|| shapes.add(tainted.clone(), &store)));
+        assert_eq!(
+            got.unwrap_or(None),
+            None,
+            "case {label}: a NaN shape must never be recorded",
+        );
+        assert!(
+            shapes.records.is_empty(),
+            "case {label}: nothing may reach the record buffer",
+        );
 
-    assert!(
-        clean(2.0).expect("a live shape must not panic"),
-        "sanity: the fixture records without the NaN",
-    );
-    // Zero width is a plain no-op: dropped quietly, no panic. This is
-    // the door the NaN case must not be able to use.
-    assert!(
-        !clean(0.0).expect("a zero-width shape is a no-op, not a panic"),
-        "a zero-width shape is dropped, not recorded",
-    );
-    assert!(
-        clean(f32::NAN).is_err(),
-        "a NaN width must assert, not slip out through the no-op gate",
-    );
+        let mut shapes = Shapes::default();
+        let store = RecordStore::default();
+        assert_eq!(
+            shapes.add(clean, &store),
+            Some(0),
+            "case {label}: the clean twin must record — otherwise the \
+             tainted arm proves nothing",
+        );
+    }
 }

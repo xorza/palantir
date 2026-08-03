@@ -44,6 +44,21 @@ pub(crate) fn quadratic_to_cubic(p0: Vec2, c: Vec2, p2: Vec2) -> CubicControls {
 /// so per axis: `a = -p0 + 3p1 - 3p2 + p3`, `b = 2(p0 - 2p1 + p2)`,
 /// `c = p1 - p0`.
 pub(crate) fn cubic_bezier_bbox(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2) -> CurveBounds {
+    // Four fixed inputs, so the AABB NaN contract is cheapest as one
+    // up-front screen — no per-point flag to carry, and `min`/`max`
+    // below stay the plain laundering form. It has to be up front:
+    // `min`/`max` would drop a NaN endpoint, and an interior control
+    // point reaches neither that seed nor the extremum scan (the `t`
+    // filter rejects NaN roots, since NaN compares false). Folding the
+    // interior points into the bounds instead would catch them, but
+    // would also loosen the box to the control hull — the exact
+    // tightness this function exists for.
+    if p0.is_nan() || p1.is_nan() || p2.is_nan() || p3.is_nan() {
+        return CurveBounds {
+            lo: Vec2::NAN,
+            hi: Vec2::NAN,
+        };
+    }
     let mut lo = p0.min(p3);
     let mut hi = p0.max(p3);
     for axis in 0..2 {

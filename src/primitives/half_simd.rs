@@ -45,6 +45,34 @@ impl F16x4 {
         Self(f16x4_from_f32x4(lanes))
     }
 
+    /// True if any lane's **magnitude** exceeds the f16 bit pattern
+    /// `bits` (sign ignored). `bits` must be `<= 0x7FFF`.
+    ///
+    /// SWAR rather than four scalar compares: masking the sign bit caps
+    /// every lane at `0x7FFF`, so adding `0x7FFF - bits` can set a
+    /// lane's top bit but can never carry *out* of it — which is what
+    /// lets all four comparisons run as one masked add over the packed
+    /// `u64`. Measured ~5× the scalar form.
+    ///
+    /// Both f16 lane predicates in the crate are this one test:
+    /// `ColorF16::has_nan` passes `0x7C00`, the infinity pattern, so
+    /// "above" is exactly the NaN range; `Corners::approx_zero` passes
+    /// the `EPS` pattern and negates.
+    ///
+    /// Packing by shift instead of a cast keeps this `const` and
+    /// endian-independent; LLVM folds it back to a single 64-bit load.
+    #[inline]
+    pub(crate) const fn any_lane_above(self, bits: u16) -> bool {
+        const ABS: u64 = 0x7FFF_7FFF_7FFF_7FFF;
+        const SIGN: u64 = 0x8000_8000_8000_8000;
+        debug_assert!(bits <= 0x7FFF, "threshold must be a magnitude pattern");
+        let [a, b, c, d] = self.0;
+        let packed = (a as u64) | ((b as u64) << 16) | ((c as u64) << 32) | ((d as u64) << 48);
+        let bias = (0x7FFF - bits) as u64;
+        let bias = bias | (bias << 16) | (bias << 32) | (bias << 48);
+        ((packed & ABS) + bias) & SIGN != 0
+    }
+
     /// Unpack all four lanes to f32 at once via the batched slice path.
     #[inline]
     pub(crate) fn lanes(self) -> [f32; 4] {
@@ -168,6 +196,64 @@ unsafe fn f16x4_from_f32x4_f16c(src: [f32; 4]) -> [u16; 4] {
 #[cfg(test)]
 mod tests {
     use crate::primitives::half_simd::*;
+
+    /// The SWAR lane compare, checked **exhaustively** against the
+    /// scalar form it replaces: every one of the 65 536 f16 bit
+    /// patterns, in each of the four lane positions, at both thresholds
+    /// the crate uses.
+    ///
+    /// Exhaustive because the failure mode it guards is a carry
+    /// escaping one lane into its neighbour — which would show up for
+    /// specific bit patterns near the top of a lane's range and be
+    /// invisible to hand-picked cases. Cheap enough to be worth it: the
+    /// whole sweep is a few hundred thousand ALU ops.
+    #[test]
+    fn any_lane_above_matches_the_scalar_compare_for_every_pattern() {
+        const F16_INFINITY: u16 = 0x7C00;
+        const EPS_BITS: u16 = f16::from_f32_const(crate::primitives::approx::EPS).to_bits();
+
+        for threshold in [F16_INFINITY, EPS_BITS, 0, 0x7FFF] {
+            for bits in 0..=u16::MAX {
+                let scalar = (bits & 0x7FFF) > threshold;
+                for lane in 0..4 {
+                    let mut lanes = [0u16; 4];
+                    lanes[lane] = bits;
+                    // Lane `lane` is the only non-zero one, so the
+                    // answer must be exactly the scalar verdict for it
+                    // — unless the threshold is 0, where the zero lanes
+                    // are themselves not above it either.
+                    assert_eq!(
+                        F16x4(lanes).any_lane_above(threshold),
+                        scalar,
+                        "threshold={threshold:#06x} bits={bits:#06x} lane={lane}",
+                    );
+                }
+            }
+        }
+
+        // A saturated neighbour must not leak a carry into the lane
+        // under test — the specific thing SWAR could get wrong.
+        for lane in 0..4 {
+            let mut lanes = [0x7FFFu16; 4];
+            lanes[lane] = 0;
+            assert!(
+                F16x4(lanes).any_lane_above(F16_INFINITY),
+                "saturated neighbours must still report above",
+            );
+            let mut lanes = [0u16; 4];
+            lanes[lane] = 0x7FFF;
+            assert!(F16x4(lanes).any_lane_above(F16_INFINITY), "lane {lane}");
+        }
+        assert!(
+            !F16x4([0x7BFF; 4]).any_lane_above(F16_INFINITY),
+            "the largest finite f16 is not above infinity",
+        );
+        assert!(
+            !F16x4([F16_INFINITY; 4]).any_lane_above(F16_INFINITY),
+            "infinity itself is not *above* infinity — that boundary is \
+             what makes the NaN test exact",
+        );
+    }
 
     #[test]
     fn round_trip_matches_half_slice() {

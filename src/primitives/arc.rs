@@ -25,6 +25,16 @@ pub(crate) fn arc_bbox(center: Vec2, radius: f32, a0: f32, a1: f32) -> CurveBoun
     };
     let e0 = p_at(a0);
     let e1 = p_at(a1);
+    // The AABB NaN contract, in its fixed-input form: a NaN centre,
+    // radius, or angle propagates into `e0`/`e1` through `p_at`, so one
+    // screen of the two endpoints covers every input, and `min`/`max`
+    // below stay the plain laundering form.
+    if e0.is_nan() || e1.is_nan() {
+        return CurveBounds {
+            lo: Vec2::NAN,
+            hi: Vec2::NAN,
+        };
+    }
     let mut lo = e0.min(e1);
     let mut hi = e0.max(e1);
     let (a_min, a_max) = if a0 <= a1 { (a0, a1) } else { (a1, a0) };
