@@ -510,9 +510,11 @@ fn rasterize_and_insert(
 }
 
 // `internals` only, not `any(test, …)`: the sole consumer is the
-// `text_atlas` benchmark, which that feature gates too.
+// `text_atlas` benchmark, which that feature gates too. `pub(super)`
+// reaches it — the benchmark's fixture lives in this module's sibling
+// `bench.rs`, not outside the text backend.
 #[cfg(feature = "internals")]
-pub(crate) mod internals {
+pub(super) mod internals {
     use super::*;
 
     /// Sweep harness for the `encoded_cache_sweep` benchmark. Populates
@@ -523,12 +525,24 @@ pub(crate) mod internals {
     #[derive(Debug, Default)]
     pub(crate) struct SweepBench {
         cache: EncodedCache,
+        frame: u64,
     }
 
     impl SweepBench {
+        /// Build `rows` rows **one per frame**, so their expiry tickets
+        /// land on distinct buckets exactly as a real scene's inserts
+        /// do.
+        ///
+        /// Populating them all on one frame would be easier and wrong:
+        /// every ticket would share a bucket, and the measurement would
+        /// alternate between frames that drain nothing and one frame in
+        /// a ring that drains everything — a burst the fixture invented,
+        /// not one the cache produces.
         pub(crate) fn new(rows: u32, glyphs_per_row: u32) -> Self {
             let mut cache = EncodedCache::default();
+            let mut frame = 0;
             for row in 0..rows {
+                frame += 1;
                 let start = cache.arena.len() as u32;
                 for glyph in 0..glyphs_per_row {
                     cache.arena.push(EncodedGlyph {
@@ -546,29 +560,43 @@ pub(crate) mod internals {
                 // files the expiry ticket and tracks the live-glyph
                 // total, and a fixture missing either would measure a
                 // sweep with nothing to do.
-                cache.settle(
-                    EncodedKey {
-                        text: TextShapeKey::INVALID,
-                        scale_q: row,
-                        area_color: 0,
-                        bins: 0,
-                    },
-                    start,
-                    ENCODED_CACHE_KEEP_FRAMES,
-                    true,
-                );
+                let key = EncodedKey {
+                    text: TextShapeKey::INVALID,
+                    scale_q: row,
+                    area_color: 0,
+                    bins: 0,
+                };
+                cache.settle(key, start, frame, true);
+                // Park `last_use` beyond any frame the bench reaches, so
+                // rows never expire and every fired ticket is re-filed.
+                // That is the steady-state load: a drawn run refreshes
+                // `last_use` on the encoded-cache hit path and files
+                // nothing, so the sweep's whole job is re-filing.
+                cache
+                    .map
+                    .get_mut(&key)
+                    .expect("settle just inserted this row")
+                    .last_use = u64::MAX / 2;
+                // Keep the wheel's clock in step with the inserts, or
+                // tickets more than a ring out get clamped together and
+                // the stagger is lost before the bench starts.
+                cache.sweep(frame, ENCODED_CACHE_KEEP_FRAMES);
             }
-            Self { cache }
+            Self { cache, frame }
         }
 
-        /// One steady-state `end_frame` sweep: the cutoff lands before
-        /// every row's stamp, so nothing expires and the arena holds no
-        /// dead spans — exactly the pass a frame pays when the cache is
-        /// warm and nothing changed. Returns the surviving row count so
-        /// the caller can assert the fixture stayed intact.
+        /// One steady-state `end_frame` sweep: the clock advances, the
+        /// handful of tickets that came due are re-filed, and nothing
+        /// expires — exactly the pass a frame pays when the cache is
+        /// warm and every row is still on screen. Returns the surviving
+        /// row count so the caller can assert the fixture stayed intact.
+        ///
+        /// The frame *must* advance per call. Sweeping the same frame
+        /// twice is a no-op under a deadline wheel, so a fixed-frame
+        /// harness would measure an early return and guard nothing.
         pub(crate) fn sweep_steady(&mut self) -> usize {
-            self.cache
-                .sweep(ENCODED_CACHE_KEEP_FRAMES, ENCODED_CACHE_KEEP_FRAMES);
+            self.frame += 1;
+            self.cache.sweep(self.frame, ENCODED_CACHE_KEEP_FRAMES);
             self.cache.map.len()
         }
     }
