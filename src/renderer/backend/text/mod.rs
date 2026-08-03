@@ -27,9 +27,7 @@
 mod atlas;
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
-// `pub(crate)` only so the `encoded_cache_sweep` benchmark can reach the
-// gated `internals` harness; every item inside stays `pub(super)`.
-pub(crate) mod encode;
+mod encode;
 
 use crate::primitives::interned_str::InternedText;
 use crate::primitives::span::Span;
