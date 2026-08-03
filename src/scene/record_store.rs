@@ -163,19 +163,35 @@ impl TextStore {
         Ref::map(self.active.bytes.borrow(), String::as_str)
     }
 
+    /// Ready the arena for a new record pass, reusing storage wherever
+    /// the caller has not pinned it.
+    ///
+    /// Three cases. Nothing outside holds `active`, so it clears in
+    /// place. Something does, but `spare` is free — swap, and the two
+    /// arenas alternate indefinitely. Both are pinned, which only a
+    /// caller holding handles from two record passes at once can do, and
+    /// a third arena is genuinely needed.
+    ///
+    /// **Choose the replacement before displacing `active`.** This used
+    /// to `mem::take` the outgoing arena first, which is
+    /// `replace(dest, Default::default())` — an allocated
+    /// `Rc<TextArena>` purely to vacate the slot, thrown away one line
+    /// later when the real replacement was assigned. It made the
+    /// middle case, the one the spare exists to make free, cost an
+    /// allocation on *every* frame a handle was held; `interned_hold_one`
+    /// in `tests/alloc` is the guard.
     fn clear(&mut self) {
         if Rc::strong_count(&self.active) == 1 {
             self.active.bytes.borrow_mut().clear();
             return;
         }
 
-        let previous = std::mem::take(&mut self.active);
-        self.active = match self.spare.take() {
+        let replacement = match self.spare.take() {
             Some(arena) if Rc::strong_count(&arena) == 1 => arena,
             Some(_) | None => Rc::default(),
         };
-        self.active.bytes.borrow_mut().clear();
-        self.spare = Some(previous);
+        replacement.bytes.borrow_mut().clear();
+        self.spare = Some(std::mem::replace(&mut self.active, replacement));
     }
 
     fn intern_str(&self, text: &str) -> InternedStr {
