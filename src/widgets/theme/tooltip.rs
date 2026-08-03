@@ -42,8 +42,19 @@ pub struct TooltipTheme {
 
 impl TooltipTheme {
     /// Visit every `TextStyle` this theme owns — drives `Theme::set_text_scale`.
+    /// Destructured so a new field fails to compile here — see
+    /// [`Theme::for_each_text`](crate::Theme).
     pub(super) fn for_each_text<F: FnMut(&mut TextStyle)>(&mut self, f: &mut F) {
-        f(&mut self.text);
+        let Self {
+            text,
+            panel: _,
+            padding: _,
+            max_size: _,
+            delay: _,
+            warmup: _,
+            gap: _,
+        } = self;
+        f(text);
     }
 
     pub fn from_palette(p: &Palette) -> Self {

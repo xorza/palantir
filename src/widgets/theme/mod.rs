@@ -278,21 +278,56 @@ impl Theme {
     }
 
     /// Visit every `TextStyle` in the theme. `set_text_scale` drives the
-    /// walk; each sub-theme owns its own visit (see each `for_each_text`),
-    /// so adding a font-bearing field updates the walk in that field's own
-    /// file rather than silently escaping this one.
+    /// walk; each sub-theme owns its own visit (see each `for_each_text`).
+    ///
+    /// **Every `for_each_text` in this module destructures its whole
+    /// struct**, binding the text-free fields to `_`, so a new field
+    /// anywhere in the theme tree fails to compile here until someone
+    /// classifies it as text-bearing or not. That is the guarantee; the
+    /// runtime backstop is
+    /// `tests::text_scale::set_text_scale_reaches_every_font_size`,
+    /// which scales a default theme and asserts over its serialized
+    /// form that every `font_size_px` moved. The test can only see
+    /// styles the default theme materializes — an `Option<TextStyle>`
+    /// left `None` by default is invisible to it — which is exactly the
+    /// gap the destructuring closes.
     fn for_each_text(&mut self, mut f: impl FnMut(&mut TextStyle)) {
+        let Self {
+            text,
+            button,
+            menu_button,
+            checkbox,
+            radio,
+            switch,
+            text_edit,
+            drag_value,
+            context_menu,
+            tooltip,
+            // Chrome, geometry, and scalars — no `TextStyle` reachable.
+            scrollbar: _,
+            combo_box: _,
+            modal: _,
+            progress_bar: _,
+            separator: _,
+            slider: _,
+            spinner: _,
+            splitter: _,
+            window_clear: _,
+            panel_background: _,
+            panel_clip: _,
+            text_scale: _,
+        } = self;
         let f = &mut f;
-        f(&mut self.text);
-        self.button.for_each_text(f);
-        self.menu_button.for_each_text(f);
-        self.checkbox.for_each_text(f);
-        self.radio.for_each_text(f);
-        self.switch.for_each_text(f);
-        self.text_edit.for_each_text(f);
-        self.drag_value.for_each_text(f);
-        self.context_menu.for_each_text(f);
-        self.tooltip.for_each_text(f);
+        f(text);
+        button.for_each_text(f);
+        menu_button.for_each_text(f);
+        checkbox.for_each_text(f);
+        radio.for_each_text(f);
+        switch.for_each_text(f);
+        text_edit.for_each_text(f);
+        drag_value.for_each_text(f);
+        context_menu.for_each_text(f);
+        tooltip.for_each_text(f);
     }
 
     /// Assemble a full theme from a [`Palette`] — every widget recipe
