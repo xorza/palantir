@@ -1,5 +1,5 @@
 use crate::primitives::color::Color;
-use crate::primitives::image::{ImageFilter, ImageFit};
+use crate::primitives::image::{ImageDownsample, ImageFilter, ImageFit};
 use crate::primitives::rect::Rect;
 use crate::renderer::image_registry::ImageHandle;
 use crate::scene::record_store::RecordStore;
@@ -16,6 +16,7 @@ pub struct ImageShape {
     pub(crate) fit: ImageFit,
     pub(crate) min_filter: ImageFilter,
     pub(crate) mag_filter: ImageFilter,
+    pub(crate) downsample: ImageDownsample,
     pub(crate) tint: Color,
 }
 
@@ -37,6 +38,15 @@ impl ImageShape {
 
     pub fn mag_filter(mut self, filter: impl Into<ImageFilter>) -> Self {
         self.mag_filter = filter.into();
+        self
+    }
+
+    /// Take extra taps where this image minifies, instead of the sampler's
+    /// lone bilinear one — see [`ImageDownsample`] for what that buys and what
+    /// it costs. Off by default; only worth setting on an image that actually
+    /// shrinks, and that has detail fine enough to alias.
+    pub fn downsample(mut self, downsample: impl Into<ImageDownsample>) -> Self {
+        self.downsample = downsample.into();
         self
     }
 
@@ -65,6 +75,7 @@ impl sealed::Lower for ImageShape {
             fit: self.fit,
             min_filter: self.min_filter,
             mag_filter: self.mag_filter,
+            downsample: self.downsample,
         }
     }
 }

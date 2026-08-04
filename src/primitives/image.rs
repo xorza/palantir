@@ -59,6 +59,46 @@ pub enum ImageFilter {
     Nearest,
 }
 
+/// Extra taps taken when an image *minifies*, and how they combine.
+///
+/// One bilinear tap reads a 2×2 texel neighbourhood however far the image is
+/// shrunk, so at 5× minification about 4 of each pixel's ~27 source texels
+/// reach the screen — and *which* 4 moves with the fractional UV, so panning
+/// makes fine detail scintillate: a starfield, a wire grid, a downscaled
+/// screenshot's text. Spreading taps across the pixel's derivative footprint
+/// reads enough of it for that to stop.
+///
+/// Opt in per shape via [`ImageShape::downsample`](crate::ImageShape::downsample).
+/// The taps cost fill rate on every fragment the image minifies into, which is
+/// why they are not the default — a UI icon or a 1:1 blit should not pay for
+/// them. Magnified and 1:1 draws take the single tap whatever this says, since
+/// there is no footprint left to cover.
+///
+/// Coverage is exact to 8× minification (the tap grid is capped, and each
+/// bilinear tap spans 2 texels); past that it is a bounded, evenly spread
+/// sample of the footprint rather than the whole of it.
+///
+/// No serde, unlike [`ImageFilter`]: nothing persists this yet, and the derive
+/// can arrive with the first host that puts it in a config file.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ImageDownsample {
+    /// One bilinear tap — what the sampler does on its own. The default, and
+    /// exactly right whenever the image is not being shrunk.
+    #[default]
+    Single,
+    /// Average the taps: the area filter, and the honest answer for
+    /// photographic content — what a correct downscale of that region looks
+    /// like.
+    Mean,
+    /// Keep the brightest tap, by luminance, so a point source survives a
+    /// footprint it occupies a fraction of. Averaging a one-texel star across a
+    /// 5×5 footprint costs it 25× of its peak, and a starfield zoomed out
+    /// reads as empty; this keeps the star — and its colour, since a whole tap
+    /// wins rather than each channel separately — at the cost of sitting
+    /// brighter than the true area average.
+    Peak,
+}
+
 /// Decoded pixel buffer. Straight (non-premultiplied) sRGB RGBA8 — the backend
 /// uses a `Rgba8UnormSrgb` texture so the sampler decodes to linear on read,
 /// and the shader premultiplies. Window icons use the same validated storage.

@@ -8,7 +8,7 @@ mod tests;
 
 use crate::common::content_hash::ContentHash;
 use crate::primitives::color::{Color, ColorF16};
-use crate::primitives::image::{ImageFilter, ImageFit};
+use crate::primitives::image::{ImageDownsample, ImageFilter, ImageFit};
 use crate::primitives::nan::NanCheck;
 use crate::scene::record_store::RecordStore;
 use crate::scene::shapes::hash::compute_record_hash;
@@ -119,6 +119,9 @@ impl Shapes {
             fit: ImageFit::Fill,
             min_filter: ImageFilter::Linear,
             mag_filter: ImageFilter::Linear,
+            // A view's target is allocated to the rect it composites into, so
+            // it is never minified and has no footprint to cover.
+            downsample: ImageDownsample::Single,
         };
         let hash = compute_record_hash(&record);
         self.records.push(record);

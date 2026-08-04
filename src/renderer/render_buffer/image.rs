@@ -44,6 +44,15 @@ pub(crate) const IMG_FLAG_TILED: u32 = 1 << 0;
 pub(crate) const IMG_FLAG_MIN_NEAREST: u32 = 1 << 1;
 /// Bit in [`ImageInstance::flags`]: nearest-neighbour magnification.
 pub(crate) const IMG_FLAG_MAG_NEAREST: u32 = 1 << 2;
+/// Bit in [`ImageInstance::flags`]: where this image minifies, spread a grid
+/// of taps over the fragment's source footprint and average them
+/// ([`ImageDownsample::Mean`](crate::ImageDownsample::Mean)).
+pub(crate) const IMG_FLAG_TAPS_MEAN: u32 = 1 << 3;
+/// Bit in [`ImageInstance::flags`]: as [`IMG_FLAG_TAPS_MEAN`], but the
+/// brightest tap wins instead of the average
+/// ([`ImageDownsample::Peak`](crate::ImageDownsample::Peak)). Mutually
+/// exclusive with it — the encoder sets at most one.
+pub(crate) const IMG_FLAG_TAPS_PEAK: u32 = 1 << 4;
 
 /// Per-image GPU state, uploaded to a `step_mode: Instance` vertex
 /// buffer. Shader interpolates `uv_min + corner * uv_size` per fragment
@@ -66,7 +75,7 @@ pub(crate) struct ImageInstance {
     pub(crate) uv_size: glam::Vec2,
     /// Linear-RGBA tint, premultiplied in the shader.
     pub(crate) tint: ColorU8,
-    /// `IMG_FLAG_*` bits (tile wrap, min/mag nearest sampling). `u32`
-    /// for a clean `Uint32` vertex attr.
+    /// `IMG_FLAG_*` bits (tile wrap, min/mag nearest sampling, minification
+    /// tap mode). `u32` for a clean `Uint32` vertex attr.
     pub(crate) flags: u32,
 }

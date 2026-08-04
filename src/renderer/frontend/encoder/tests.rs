@@ -1074,16 +1074,16 @@ fn viewport_and_damage_culls_advance_the_sparse_paint_anim_cursor() {
     }
 }
 
-/// Soundness repro: `Cascade.paint_rect` is the node's own paint
-/// extent (own layout rect ∪ direct shapes), not the subtree's. When
-/// a descendant overflows the parent — e.g. a Canvas-positioned
-/// child placed outside the parent's `Fixed` bound, or a shape with
-/// negative-margin overhang — the encoder's subtree-cull at the
-/// parent compares parent's *own* `paint_rect` against the damage
-/// region and may skip the whole subtree even though a descendant's
-/// pixels DO lie inside damage. Symptom in real apps: panning a
-/// `Scroll` over a node-graph leaves trails of stale curves because
-/// the cull misses overhanging port-circle children.
+/// Soundness repro for the encoder's damage cull, which must test
+/// `LayerCascade::subtree_paint_rects` (the node's own extent rolled up
+/// with every descendant's) rather than the node's own paint extent
+/// alone. When a descendant overflows the parent — a Canvas-positioned
+/// child placed outside the parent's `Fixed` bound, a shape with
+/// negative-margin overhang — an own-extent test at the parent skips the
+/// whole subtree even though a descendant's pixels DO lie inside damage.
+/// Symptom in real apps: panning a `Scroll` over a node-graph leaves
+/// trails of stale curves because the cull misses overhanging
+/// port-circle children.
 ///
 /// This test forces that exact shape:
 ///   parent (Canvas, Fixed 50×50) at (0..50, 0..50)
@@ -1224,6 +1224,66 @@ fn image_fit_modes_resolve_to_expected_rects_and_uv() {
     assert_eq!(r.rect, base);
     assert_eq!(r.uv_min, Vec2::new(0.5, 0.25));
     assert_eq!(r.uv_size, Vec2::new(3.0, 2.0));
+}
+
+/// Pin: each [`ImageDownsample`] mode reaches the shader as its own flag bit,
+/// and `Single` as none.
+///
+/// The bits are how the mode survives the trip — the record is gone by the time
+/// the fragment shader runs, so a mode that encoded to zero would silently draw
+/// as the default, and two modes sharing a bit would draw as each other. The
+/// tap bits also have to stay clear of the filter ones, since one `flags` word
+/// carries both and the shader masks them apart.
+#[test]
+fn downsample_modes_encode_to_distinct_tap_flags() {
+    use crate::primitives::image::{Image, ImageDownsample};
+    use crate::renderer::render_buffer::image::{
+        IMG_FLAG_MAG_NEAREST, IMG_FLAG_MIN_NEAREST, IMG_FLAG_TAPS_MEAN, IMG_FLAG_TAPS_PEAK,
+    };
+    use crate::shape::Shape;
+
+    let modes = [
+        ("Single", ImageDownsample::Single, 0),
+        ("Mean", ImageDownsample::Mean, IMG_FLAG_TAPS_MEAN),
+        ("Peak", ImageDownsample::Peak, IMG_FLAG_TAPS_PEAK),
+    ];
+
+    let mut h = UiHarness::new(UVec2::new(200, 200));
+    let handle = h
+        .ui()
+        .register_image(Image::from_rgba8(2, 2, vec![255; 16]))
+        .unwrap();
+    // Three shapes on one node: they all paint the same rect, and record order
+    // is what pairs each draw back up with the mode that asked for it.
+    h.frame(|ui| {
+        Panel::canvas()
+            .auto_id()
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                for (_, mode, _) in modes {
+                    ui.add_shape(Shape::image(handle.clone()).downsample(mode));
+                }
+            });
+    });
+
+    let cmds = h.encode_paint_for(DamageRegion::from(Rect::new(0.0, 0.0, 200.0, 200.0)));
+    let flags: Vec<u32> = cmds
+        .calls
+        .iter()
+        .filter_map(|call| match call {
+            PaintCall::Image { payload, .. } => Some(payload.flags),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(flags.len(), modes.len(), "one image draw per mode");
+    for ((label, _, expected), actual) in modes.into_iter().zip(flags) {
+        assert_eq!(actual, expected, "{label} encoded the wrong tap flags");
+        assert_eq!(
+            actual & (IMG_FLAG_MIN_NEAREST | IMG_FLAG_MAG_NEAREST),
+            0,
+            "{label} must not collide with the filter bits",
+        );
+    }
 }
 
 /// A spun polyline's payload bbox must be rotation-invariant: the

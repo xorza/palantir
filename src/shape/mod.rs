@@ -11,7 +11,7 @@ pub(crate) mod triangle;
 
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
-use crate::primitives::image::{ImageFilter, ImageFit};
+use crate::primitives::image::{ImageDownsample, ImageFilter, ImageFit};
 use crate::primitives::interned_str::InternedStr;
 use crate::primitives::mesh::Mesh;
 use crate::primitives::rect::Rect;
@@ -215,6 +215,7 @@ impl Shape {
             fit: ImageFit::default(),
             min_filter: ImageFilter::default(),
             mag_filter: ImageFilter::default(),
+            downsample: ImageDownsample::default(),
             tint: Color::WHITE,
         }
     }

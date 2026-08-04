@@ -284,12 +284,12 @@ impl Composer {
         out.text_batches.push(TextBatch {
             texts: (b.texts_start..texts_end).into(),
             last_group: b.last_group,
-            // `scissor` is already in physical pixels and clamped
-            // to every contributing run's clip-stack-narrowed bounds.
-            // Hand it through as the GPU scissor for this batch — the
-            // schedule was previously widening to the full viewport
-            // here and relying on per-run shader clipping that the
-            // inlined text backend doesn't actually implement.
+            // `scissor` is already in physical pixels and clamped to
+            // every contributing run's clip-stack-narrowed bounds, so it
+            // is the GPU scissor for this batch. It has to be: the text
+            // backend implements no per-run shader clipping, so a
+            // scissor any wider than this would let a clipped run's
+            // glyphs paint past their intended bound.
             scissor,
             // Every close site runs before `current_chain` can change
             // (set_clip closes ahead of the update), so this is the
@@ -1370,10 +1370,10 @@ impl PaintSink for ComposeSession<'_> {
         let kept = kept.as_slice();
         let directions = directions.as_slice();
         let pt = |k: usize| pts[kept[k] as usize];
-        // Segment color(s) for the kept segment `k → k+1`,
-        // honoring the original indices (coincident skips
-        // drop the degenerate segments' colors, mirroring
-        // the old `ColorPlan` walker).
+        // Segment color(s) for the kept segment `k → k+1`, indexed
+        // through `kept` so the lookup lands on the *original* point
+        // index — a coincident point dropped above takes its color
+        // with it.
         let seg_colors = |k: usize| -> (ColorU8, ColorU8) {
             match mode {
                 ColorMode::Single => (src_colors[0], src_colors[0]),

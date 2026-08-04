@@ -18,8 +18,12 @@ use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::image_pipeline::render_target::GpuViewTargets;
 use crate::renderer::backend::image_pipeline::textures::ImageTextures;
 use crate::renderer::backend::pipeline_utils::{ColorVariantSpec, StencilVariant};
+use crate::renderer::backend::shader_template::{ShaderConstant, specialize};
 use crate::renderer::image_registry::ImageRegistry;
-use crate::renderer::render_buffer::image::{ImageInstance, RenderTargetDraw};
+use crate::renderer::render_buffer::image::{
+    IMG_FLAG_MAG_NEAREST, IMG_FLAG_MIN_NEAREST, IMG_FLAG_TAPS_MEAN, IMG_FLAG_TAPS_PEAK,
+    IMG_FLAG_TILED, ImageInstance, RenderTargetDraw,
+};
 use crate::renderer::render_owner::RenderOwnerId;
 use std::time::Duration;
 
@@ -57,9 +61,21 @@ impl ImagePipeline {
     /// [`FormatPipelines`](crate::renderer::backend::format_pipelines::FormatPipelines)
     /// from [`Self::build_variants`].
     pub(super) fn new(device: &wgpu::Device) -> Self {
+        // Rust owns the flag bits; the shader declares them as markers so the
+        // two cannot drift (`specialize` panics on an unsubstituted one).
+        let wgsl = specialize(
+            include_str!("image.wgsl"),
+            &[
+                ShaderConstant::uint("IMG_FLAG_TILED", IMG_FLAG_TILED),
+                ShaderConstant::uint("IMG_FLAG_MIN_NEAREST", IMG_FLAG_MIN_NEAREST),
+                ShaderConstant::uint("IMG_FLAG_MAG_NEAREST", IMG_FLAG_MAG_NEAREST),
+                ShaderConstant::uint("IMG_FLAG_TAPS_MEAN", IMG_FLAG_TAPS_MEAN),
+                ShaderConstant::uint("IMG_FLAG_TAPS_PEAK", IMG_FLAG_TAPS_PEAK),
+            ],
+        );
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("palantir.image.shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("image.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(wgsl.into()),
         });
 
         let instance_buffer =

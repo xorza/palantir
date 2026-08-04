@@ -5,7 +5,7 @@ use crate::primitives::approx::noop_f32;
 use crate::primitives::brush::gradient::FillAxis;
 use crate::primitives::color::{Color, ColorF16};
 use crate::primitives::fill_wire::FillKind;
-use crate::primitives::image::{ImageFilter, ImageFit};
+use crate::primitives::image::{ImageDownsample, ImageFilter, ImageFit};
 use crate::primitives::nan::NanCheck;
 use crate::primitives::stroke::Stroke;
 use crate::primitives::widget_id::WidgetIdMap;
@@ -20,7 +20,8 @@ use crate::renderer::gpu_view::GpuViewEntry;
 use crate::renderer::gradient_atlas::handle::SharedGradientAtlas;
 use crate::renderer::plan::{RenderKind, RenderPlan, damage_cull_margin};
 use crate::renderer::render_buffer::image::{
-    IMG_FLAG_MAG_NEAREST, IMG_FLAG_MIN_NEAREST, IMG_FLAG_TILED,
+    IMG_FLAG_MAG_NEAREST, IMG_FLAG_MIN_NEAREST, IMG_FLAG_TAPS_MEAN, IMG_FLAG_TAPS_PEAK,
+    IMG_FLAG_TILED,
 };
 use crate::scene::cascade::CascadeInputHash;
 use crate::scene::damage::region::DamageRegion;
@@ -501,6 +502,7 @@ fn emit_one_shape<S: PaintSink>(
             fit,
             min_filter,
             mag_filter,
+            downsample,
         } => {
             let base = resolve_local_rect(owner_rect, *local_rect);
             // The one thing the two sources don't share: where the
@@ -536,6 +538,12 @@ fn emit_one_shape<S: PaintSink>(
             }
             if *mag_filter == ImageFilter::Nearest {
                 flags |= IMG_FLAG_MAG_NEAREST;
+            }
+            // At most one tap bit: the shader reads them as a mode, not a set.
+            match *downsample {
+                ImageDownsample::Single => {}
+                ImageDownsample::Mean => flags |= IMG_FLAG_TAPS_MEAN,
+                ImageDownsample::Peak => flags |= IMG_FLAG_TAPS_PEAK,
             }
             out.draw_image(
                 DrawImagePayload::image(rect, uv_min, uv_size, *tint, handle, flags),
@@ -604,7 +612,7 @@ fn encode_node<S: PaintSink>(ctx: &mut LayerCtx<'_>, id: NodeId, out: &mut S) {
     // Borrowed, not copied: `LayerCtx::tree` is a shared reference, so this
     // borrows the `Tree` rather than `ctx` and does not collide with the
     // `&mut ctx` that `brush_source` needs below. Copying instead cost a
-    // 56-byte `ChromeRow` per chromed node — most nodes in a real UI.
+    // 64-byte `ChromeRow` per chromed node — most nodes in a real UI.
     let chrome = ctx.tree.chrome(id);
 
     if let Some(bg) = chrome {

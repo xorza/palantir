@@ -152,6 +152,7 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
             fit,
             min_filter,
             mag_filter,
+            downsample,
         } => {
             hash_optional_rect(*local_rect, &mut h);
             tint.hash(&mut h);
@@ -172,9 +173,13 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
                 ImageSource::GpuView { epoch } => h.write_u64(*epoch),
             }
             // The fit (incl. `Tile`'s UV transform, which changes every
-            // pan/zoom frame and must repaint) and both sampling filters.
+            // pan/zoom frame and must repaint), both sampling filters, and the
+            // minification tap mode — one byte, two 1-bit filters in the low
+            // bits and the 3-variant `downsample` above them.
             hash_fit(fit, &mut h);
-            h.write_u8((*min_filter as u8) | ((*mag_filter as u8) << 1));
+            h.write_u8(
+                (*min_filter as u8) | ((*mag_filter as u8) << 1) | ((*downsample as u8) << 2),
+            );
         }
         // Geometry + style hashed inline — every input lives on the
         // record, so no lowering-time content hash is needed (unlike
