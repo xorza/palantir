@@ -1,12 +1,12 @@
 //! Image drawing: fit modes against a 64×64 checkerboard, tint and
 //! alpha on a gradient source, tiled repeat (UVs wrapped with `fract`
-//! in-shader), and linear vs nearest sampling under both magnification
-//! and minification.
+//! in-shader), linear vs nearest sampling under both magnification
+//! and minification, and the minification tap modes on a starfield.
 
 use crate::support;
 use crate::support::{demo_cell, demo_cell_at, section, tiles};
 use glam::Vec2;
-use palantir::{Color, Image, ImageFilter, ImageFit, ImageHandle, Shape, Ui};
+use palantir::{Color, Image, ImageDownsample, ImageFilter, ImageFit, ImageHandle, Shape, Ui};
 use std::cell::RefCell;
 
 /// Synthesize a 64×64 sRGB checkerboard.
@@ -65,7 +65,48 @@ fn sprite() -> Image {
     Image::from_rgba8(4, 4, px.into_iter().flatten().collect())
 }
 
-/// The three demo images, registered once and held for the life of the
+/// 512×512 of near-black with scattered one-pixel stars — the worst case
+/// for minification, and what [`ImageDownsample`] exists for. Drawn into a
+/// demo cell it shrinks about 5×, so one bilinear tap reads roughly 4 of each
+/// pixel's 27 source texels: most stars miss the sample grid entirely, and the
+/// ones that land on it move as the image does.
+///
+/// Deterministic (xorshift over a fixed seed) so the page draws the same sky
+/// every run.
+fn starfield() -> Image {
+    const N: u32 = 512;
+    const STARS: usize = 900;
+    let mut pixels = vec![0u8; (N * N * 4) as usize];
+    for px in pixels.chunks_exact_mut(4) {
+        px.copy_from_slice(&[6, 8, 14, 255]);
+    }
+    let mut state = 0x2545_f491_4f6c_dd1d_u64;
+    let mut next = move || {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        state
+    };
+    for _ in 0..STARS {
+        let r = next();
+        let x = (r % u64::from(N)) as u32;
+        let y = ((r >> 20) % u64::from(N)) as u32;
+        // A spread of magnitudes, and a warm/cool split, so `Peak` picking a
+        // whole tap rather than a per-channel max is visible as colour kept.
+        let mag = 90 + ((r >> 40) % 166) as u8;
+        let warm = (r >> 48) & 1 == 0;
+        let (rr, gg, bb) = if warm {
+            (mag, mag.saturating_sub(30), mag.saturating_sub(70))
+        } else {
+            (mag.saturating_sub(60), mag.saturating_sub(20), mag)
+        };
+        let i = ((y * N + x) * 4) as usize;
+        pixels[i..i + 4].copy_from_slice(&[rr, gg, bb, 255]);
+    }
+    Image::from_rgba8(N, N, pixels)
+}
+
+/// The four demo images, registered once and held for the life of the
 /// process — the GPU textures live as long as these handles do. A real
 /// app would store handles in its own state, dropping them to free VRAM.
 #[derive(Debug)]
@@ -73,6 +114,7 @@ struct Sources {
     checker: ImageHandle,
     gradient: ImageHandle,
     sprite: ImageHandle,
+    starfield: ImageHandle,
 }
 
 thread_local! {
@@ -92,11 +134,15 @@ fn sources(ui: &Ui) -> Sources {
             sprite: ui
                 .register_image(sprite())
                 .expect("showcase sprite fits every supported GPU"),
+            starfield: ui
+                .register_image(starfield())
+                .expect("showcase starfield fits every supported GPU"),
         });
         Sources {
             checker: s.checker.clone(),
             gradient: s.gradient.clone(),
             sprite: s.sprite.clone(),
+            starfield: s.starfield.clone(),
         }
     })
 }
@@ -194,6 +240,27 @@ pub(crate) fn build(ui: &mut Ui) {
             });
         },
     );
+
+    section(
+        ui,
+        "downsampling",
+        "downsampling — a 512×512 starfield minified ~5×. One tap keeps a \
+         shifting subset of the stars, Mean keeps all of them and dims each by \
+         the footprint area, Peak keeps them at their own brightness",
+        |ui| {
+            tiles(ui, "downsample-tiles", |ui| {
+                demo_cell(ui, "Single (default)", |ui| {
+                    downsampled(ui, &src.starfield, ImageDownsample::Single);
+                });
+                demo_cell(ui, "Mean", |ui| {
+                    downsampled(ui, &src.starfield, ImageDownsample::Mean);
+                });
+                demo_cell(ui, "Peak", |ui| {
+                    downsampled(ui, &src.starfield, ImageDownsample::Peak);
+                });
+            });
+        },
+    );
 }
 
 fn image(ui: &mut Ui, handle: &ImageHandle, fit: ImageFit, tint: Color) {
@@ -205,6 +272,14 @@ fn magnified(ui: &mut Ui, handle: &ImageHandle, filter: ImageFilter) {
         Shape::image(handle.clone())
             .fit(ImageFit::Fill)
             .mag_filter(filter),
+    );
+}
+
+fn downsampled(ui: &mut Ui, handle: &ImageHandle, downsample: ImageDownsample) {
+    ui.add_shape(
+        Shape::image(handle.clone())
+            .fit(ImageFit::Contain)
+            .downsample(downsample),
     );
 }
 

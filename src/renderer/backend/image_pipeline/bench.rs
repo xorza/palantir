@@ -1,11 +1,16 @@
-//! GPU image-pipeline benchmark. Both workloads paint the same stack of
-//! full-viewport images and differ only in the `IMG_FLAG_*` bits they ship:
+//! GPU image-pipeline benchmark. Every workload paints the same stack of
+//! full-viewport images; they differ in the `IMG_FLAG_*` bits they ship and,
+//! for the tap cases, in how large a source those bits are applied to:
 //!
 //! - `bilinear` sends zero flags — the common case (every plain image and
 //!   every `GpuView` composite), where the fragment shader samples the UV
 //!   directly.
 //! - `nearest` sends min+mag nearest, the control that must keep paying for
 //!   the texel-footprint measurement and the texel-center snap.
+//! - `minified_single` / `minified_mean` / `minified_peak` paint a source
+//!   large enough to shrink 5×, so the tap loop actually engages. The first is
+//!   the control with taps off; the other two isolate what up to 9 extra
+//!   fetches per fragment cost, and whether the two reductions differ.
 //!
 //! The scene is deliberately fragment-bound (one texture, one bind, a few
 //! dozen draws, ~25M fragments) so the shader's per-fragment cost — not
@@ -17,7 +22,7 @@ use crate::app::internals::RecordApp;
 use crate::diagnostics::gpu_stats::BatchKind;
 use crate::host::offscreen::OffscreenHost;
 use crate::primitives::color::Color;
-use crate::primitives::image::{Image, ImageFilter, ImageFit};
+use crate::primitives::image::{Image, ImageDownsample, ImageFilter, ImageFit};
 use crate::renderer::image_registry::ImageHandle;
 use crate::shape::Shape;
 use crate::ui::Ui;
@@ -31,9 +36,15 @@ use std::time::Duration;
 
 const PHYSICAL: glam::UVec2 = glam::UVec2::new(1024, 1024);
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
-/// Source texture edge. Smaller than the paint rect, so every workload
-/// runs the magnification side of the filter choice.
+/// Source texture edge for the filter workloads. Smaller than the paint rect,
+/// so both run the magnification side of the filter choice.
 const TEXEL: u32 = 256;
+/// Source texture edge for the tap workloads: 5× the paint rect, so each
+/// fragment's footprint is 5 texels and `footprint_taps` runs its middle tier
+/// (`ceil(5 / 2) = 3`, so 9 taps). 5 rather than 4 or 6 because those land on
+/// a `ceil` boundary, where float noise would split fragments across two tap
+/// counts and widen the distribution for no reason.
+const MINIFY_TEXEL: u32 = PHYSICAL.x * 5;
 const LAYERS: u32 = 24;
 const FRAGMENTS: u64 = (LAYERS * PHYSICAL.x * PHYSICAL.y) as u64;
 /// Frames rendered before sampling starts. An integrated GPU needs a
@@ -46,6 +57,9 @@ const EVIDENCE_FRAMES: usize = 256;
 enum Workload {
     Bilinear,
     Nearest,
+    MinifiedSingle,
+    MinifiedMean,
+    MinifiedPeak,
 }
 
 impl Workload {
@@ -53,13 +67,36 @@ impl Workload {
         match self {
             Self::Bilinear => "bilinear",
             Self::Nearest => "nearest",
+            Self::MinifiedSingle => "minified_single",
+            Self::MinifiedMean => "minified_mean",
+            Self::MinifiedPeak => "minified_peak",
         }
     }
 
     const fn filter(self) -> ImageFilter {
         match self {
-            Self::Bilinear => ImageFilter::Linear,
             Self::Nearest => ImageFilter::Nearest,
+            _ => ImageFilter::Linear,
+        }
+    }
+
+    const fn downsample(self) -> ImageDownsample {
+        match self {
+            Self::MinifiedMean => ImageDownsample::Mean,
+            Self::MinifiedPeak => ImageDownsample::Peak,
+            _ => ImageDownsample::Single,
+        }
+    }
+
+    /// Source edge. The first pair magnifies a small texture, which is what
+    /// the filter comparison needs; the tap workloads need the opposite, so
+    /// they share a source large enough to minify. `MinifiedSingle` is their
+    /// control — same texels, same footprint, taps off — so the difference
+    /// between it and the other two is the tap loop and nothing else.
+    const fn texel(self) -> u32 {
+        match self {
+            Self::Bilinear | Self::Nearest => TEXEL,
+            _ => MINIFY_TEXEL,
         }
     }
 }
@@ -149,10 +186,10 @@ fn poll(device: &wgpu::Device) {
 
 /// Deterministic high-frequency content: per-texel colour varies at the
 /// texel level so neither filter can be short-circuited by flat regions.
-fn texels() -> Vec<u8> {
-    let mut pixels = Vec::with_capacity((TEXEL * TEXEL * 4) as usize);
-    for y in 0..TEXEL {
-        for x in 0..TEXEL {
+fn texels(edge: u32) -> Vec<u8> {
+    let mut pixels = Vec::with_capacity((edge * edge * 4) as usize);
+    for y in 0..edge {
+        for x in 0..edge {
             let checker = if (x / 4 + y / 4).is_multiple_of(2) {
                 40
             } else {
@@ -170,9 +207,12 @@ fn texels() -> Vec<u8> {
 }
 
 fn record(ui: &mut Ui, handle: &mut Option<ImageHandle>, workload: Workload, phase: bool) {
+    // One `Fixture` per workload, so this registers that workload's own source
+    // edge on its first frame and reuses it after.
+    let edge = workload.texel();
     let image = handle
         .get_or_insert_with(|| {
-            ui.register_image(Image::from_rgba8(TEXEL, TEXEL, texels()))
+            ui.register_image(Image::from_rgba8(edge, edge, texels(edge)))
                 .expect("benchmark image fits every supported GPU")
         })
         .clone();
@@ -202,6 +242,7 @@ fn record(ui: &mut Ui, handle: &mut Option<ImageHandle>, workload: Workload, pha
                                 .fit(ImageFit::Fill)
                                 .min_filter(filter)
                                 .mag_filter(filter)
+                                .downsample(workload.downsample())
                                 .tint(tint),
                         );
                     });
@@ -310,7 +351,13 @@ pub fn bench(c: &mut Criterion) {
     let mut group = c.benchmark_group("image_pipeline/frame_wall");
     group.measurement_time(Duration::from_secs(5));
     group.sample_size(20);
-    for workload in [Workload::Bilinear, Workload::Nearest] {
+    for workload in [
+        Workload::Bilinear,
+        Workload::Nearest,
+        Workload::MinifiedSingle,
+        Workload::MinifiedMean,
+        Workload::MinifiedPeak,
+    ] {
         report_evidence(gpu, workload);
         let mut fixture = Fixture::new(gpu);
         for _ in 0..4 {

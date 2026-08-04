@@ -1,6 +1,6 @@
 use crate::layout::types::align::{self, Align};
 use crate::primitives::color::ColorF16;
-use crate::primitives::image::{ImageFilter, ImageFit};
+use crate::primitives::image::{ImageDownsample, ImageFilter, ImageFit};
 use crate::primitives::interned_str::RecordedText;
 use crate::primitives::nan::NanCheck;
 use crate::primitives::rect::Rect;
@@ -137,6 +137,7 @@ pub(crate) enum ShapeRecord {
         fit: ImageFit,
         min_filter: ImageFilter,
         mag_filter: ImageFilter,
+        downsample: ImageDownsample,
     },
     /// Native GPU stroke — a cubic Bézier or an exact circular arc, per
     /// [`CurveBasis`] (quadratics promote to cubic at lowering, lines

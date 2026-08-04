@@ -103,6 +103,7 @@ fn shape_record_tags_are_distinct_and_pinned() {
                 fit: ImageFit::Fill,
                 min_filter: ImageFilter::Linear,
                 mag_filter: ImageFilter::Linear,
+                downsample: ImageDownsample::Single,
             },
         ),
         (
@@ -219,6 +220,7 @@ fn shape_record_tags_are_distinct_and_pinned() {
         fit: ImageFit::Fill,
         min_filter: ImageFilter::Linear,
         mag_filter: ImageFilter::Linear,
+        downsample: ImageDownsample::Single,
     };
     assert_eq!(view.tag(), 5, "a `GpuView`-source image tags as `Image`");
     assert_ne!(
@@ -956,14 +958,16 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
     );
 
     // --- Image --------------------------------------------------
-    let image = |local_rect, tint, source, fit, min_filter, mag_filter| ShapeRecord::Image {
-        local_rect,
-        tint,
-        source,
-        fit,
-        min_filter,
-        mag_filter,
-    };
+    let image =
+        |local_rect, tint, source, fit, min_filter, mag_filter, downsample| ShapeRecord::Image {
+            local_rect,
+            tint,
+            source,
+            fit,
+            min_filter,
+            mag_filter,
+            downsample,
+        };
     let tex = ImageSource::Texture {
         id: TextureId(1),
         size: glam::UVec2::new(2, 3),
@@ -975,6 +979,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         ImageFit::Fill,
         ImageFilter::Linear,
         ImageFilter::Linear,
+        ImageDownsample::Single,
     );
     moves(
         "Image.local_rect",
@@ -986,6 +991,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             ImageFit::Fill,
             ImageFilter::Linear,
             ImageFilter::Linear,
+            ImageDownsample::Single,
         ),
     );
     moves(
@@ -998,6 +1004,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             ImageFit::Fill,
             ImageFilter::Linear,
             ImageFilter::Linear,
+            ImageDownsample::Single,
         ),
     );
     moves(
@@ -1010,6 +1017,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             ImageFit::Fill,
             ImageFilter::Linear,
             ImageFilter::Linear,
+            ImageDownsample::Single,
         ),
     );
     moves(
@@ -1022,6 +1030,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             ImageFit::Cover,
             ImageFilter::Linear,
             ImageFilter::Linear,
+            ImageDownsample::Single,
         ),
     );
     moves(
@@ -1034,6 +1043,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             ImageFit::Fill,
             ImageFilter::Nearest,
             ImageFilter::Linear,
+            ImageDownsample::Single,
         ),
     );
     moves(
@@ -1046,6 +1056,57 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             ImageFit::Fill,
             ImageFilter::Linear,
             ImageFilter::Nearest,
+            ImageDownsample::Single,
+        ),
+    );
+    // Both tap modes, because they share the field's bit range in the hash
+    // byte: folding them onto one value would let a mean-sampled image reuse a
+    // peak-sampled one's painted pixels.
+    moves(
+        "Image.downsample=Mean",
+        &base,
+        &image(
+            rect(0.0),
+            white,
+            tex,
+            ImageFit::Fill,
+            ImageFilter::Linear,
+            ImageFilter::Linear,
+            ImageDownsample::Mean,
+        ),
+    );
+    moves(
+        "Image.downsample=Peak",
+        &base,
+        &image(
+            rect(0.0),
+            white,
+            tex,
+            ImageFit::Fill,
+            ImageFilter::Linear,
+            ImageFilter::Linear,
+            ImageDownsample::Peak,
+        ),
+    );
+    moves(
+        "Image.downsample Mean vs Peak",
+        &image(
+            rect(0.0),
+            white,
+            tex,
+            ImageFit::Fill,
+            ImageFilter::Linear,
+            ImageFilter::Linear,
+            ImageDownsample::Mean,
+        ),
+        &image(
+            rect(0.0),
+            white,
+            tex,
+            ImageFit::Fill,
+            ImageFilter::Linear,
+            ImageFilter::Linear,
+            ImageDownsample::Peak,
         ),
     );
 
@@ -1343,6 +1404,7 @@ fn image_source_hashes_apart_by_source() {
         fit: ImageFit::Fill,
         min_filter: ImageFilter::Linear,
         mag_filter: ImageFilter::Linear,
+        downsample: ImageDownsample::Single,
     };
     // Both sources carry one u64-shaped payload of the same value,
     // so the source tag is the only thing telling these two apart.
@@ -1381,6 +1443,7 @@ fn shape_image_hash_distinguishes_handle_dimensions_tint_and_filters() {
             fit: ImageFit::Fill,
             min_filter,
             mag_filter,
+            downsample: ImageDownsample::Single,
         }
     };
     let size = glam::UVec2::new(64, 64);

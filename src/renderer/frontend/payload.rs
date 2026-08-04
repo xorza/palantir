@@ -332,10 +332,11 @@ pub(crate) struct DrawImagePayload {
     /// texture cache; `TextureId(0)` (the `Zeroable` default) is "no
     /// texture" and skips the draw.
     pub(crate) handle: TextureId,
-    /// `IMG_FLAG_*` bits (tile wrap, min/mag nearest sampling), forwarded
+    /// `IMG_FLAG_*` bits (tile wrap, min/mag nearest sampling, minification
+    /// tap mode), forwarded
     /// verbatim into [`ImageInstance::flags`](crate::renderer::render_buffer::image::ImageInstance).
-    /// `0` (the common case, including a `GpuView`) samples the UV
-    /// directly with the bilinear sampler.
+    /// `0` (the common case, including a `GpuView`) takes one bilinear tap at
+    /// the UV.
     pub(crate) flags: u32,
     /// Whether this draw composites a `GpuView`'s off-screen target
     /// rather than a registered image. **Written in exactly one place** —

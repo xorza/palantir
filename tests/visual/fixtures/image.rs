@@ -4,7 +4,9 @@
 //! rendered snapshot.
 
 use glam::{UVec2, Vec2};
-use palantir::{Color, Configure, ImageFilter, ImageFit, Panel, Shape, Sizing, Ui};
+use palantir::{
+    Color, Configure, ImageDownsample, ImageFilter, ImageFit, Panel, Shape, Sizing, Ui,
+};
 
 use crate::harness::Harness;
 
@@ -298,6 +300,201 @@ fn bilinear_both_nearest_and_tiled_sampling_paths_are_pinned() {
         close(tpx(100 + 20), BLUE),
         "tiled nearest intra-tile seam-right must be BLUE"
     );
+}
+
+/// Downsample fixture source: one lit texel per three, on black. White and
+/// black because they are linear 1.0 and 0.0 exactly, so every expected value
+/// below is a plain fraction of full scale.
+const STAR: [u8; 4] = [255, 255, 255, 255];
+const SKY: [u8; 4] = [0, 0, 0, 255];
+
+/// Each [`ImageDownsample`] mode's answer for a lit texel that the single
+/// bilinear tap misses entirely — the aliasing this feature exists to fix,
+/// reduced to three hand-computable pixels.
+///
+/// **Geometry.** A 24×1 source of `STAR SKY SKY` repeated 8× painted into an
+/// 8×16 pane: 3 texels per pixel, so `uv_dx = 1/8` and `texel_dx = 3`, giving
+/// a footprint of exactly 3 texels. Taps per axis is
+/// `clamp(ceil(3 · 0.5), 1, 4) = 2` — `ceil(1.5)` sits mid-bucket, so no
+/// float wobble can change the count. Pixel `x` covers texels
+/// `T0 T1 T2 = 3x, 3x+1, 3x+2`, and its centre is texel coord `3x + 1.5`.
+///
+/// **Taps.** The 2×2 grid offsets by `±0.25` of the derivative span, i.e.
+/// `±0.75` texels, landing at `3x + 0.75` and `3x + 2.25` (the two rows
+/// duplicate them — the source is one texel tall, so the vertical offset
+/// samples the same row). Each is a bilinear tap:
+/// - `3x + 0.75` is 0.25 of the way from T0's centre to T1's → `0.75·T0 + 0.25·T1`
+/// - `3x + 2.25` is 0.75 of the way from T1's centre to T2's → `0.25·T1 + 0.75·T2`
+///
+/// **Results**, with `T0 = STAR` (linear 1.0) and `T1 = T2 = SKY` (0.0), all
+/// weights being exact binary fractions:
+/// - `Single` samples once at the pixel centre, `3x + 1.5`, which is *exactly*
+///   T1's centre → `0.0`. The star is in the footprint and contributes
+///   nothing: sub-pixel motion is what swaps which texel that centre lands on,
+///   and that swap is the blinking.
+/// - `Mean` = `(0.75 + 0.25·0 + 0.25·0 + 0.75·0) / 2` → `0.375` linear
+///   → sRGB `1.055 · 0.375^(1/2.4) − 0.055` = 0.6461 → **165**.
+/// - `Peak` keeps the brighter tap, `0.75` linear
+///   → `1.055 · 0.75^(1/2.4) − 0.055` = 0.8808 → **225**.
+#[test]
+fn downsample_modes_recover_a_texel_the_single_tap_misses() {
+    const PANE: Vec2 = Vec2::new(8.0, 16.0);
+    // (mode, expected grey, label)
+    let cases = [
+        (ImageDownsample::Single, 0u8, "Single"),
+        (ImageDownsample::Mean, 165, "Mean"),
+        (ImageDownsample::Peak, 225, "Peak"),
+    ];
+
+    let mut h = Harness::new();
+    let mut source: Option<palantir::ImageHandle> = None;
+    let out = h.render(UVec2::new(24, 16), 1.0, Color::BLACK, |ui| {
+        let handle = source
+            .get_or_insert_with(|| {
+                let texels: Vec<u8> = std::iter::repeat_n([STAR, SKY, SKY], 8)
+                    .flatten()
+                    .flatten()
+                    .collect();
+                ui.register_image(palantir::Image::from_rgba8(24, 1, texels))
+                    .expect("fixture image fits every supported GPU")
+            })
+            .clone();
+        Panel::canvas()
+            .id_salt("downsample_fixture")
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                for (i, (mode, _, _)) in cases.iter().enumerate() {
+                    let x = i as f32 * PANE.x;
+                    Panel::zstack()
+                        .id_salt(("downsample_pane", i))
+                        .position(Vec2::new(x, 0.0))
+                        .size((Sizing::fixed(PANE.x), Sizing::fixed(PANE.y)))
+                        .show(ui, |ui| {
+                            ui.add_shape(
+                                Shape::image(handle.clone())
+                                    .fit(ImageFit::Fill)
+                                    .downsample(*mode),
+                            );
+                        });
+                }
+            });
+    });
+
+    let mut measured = Vec::with_capacity(cases.len());
+    for (i, (_, expected, label)) in cases.iter().enumerate() {
+        // Mid-pane, away from the pane seams; every pixel in a pane covers an
+        // identical `STAR SKY SKY` group, so the column choice is arbitrary.
+        let pixel = out.get_pixel(i as u32 * PANE.x as u32 + 4, 8).0;
+        assert!(
+            close(pixel, [*expected, *expected, *expected, 255]),
+            "{label} must read {expected} grey, got {pixel:?}",
+        );
+        assert_eq!(
+            [pixel[0], pixel[1], pixel[2]],
+            [pixel[0]; 3],
+            "{label} must stay neutral — a white star cannot gain a hue",
+        );
+        measured.push(pixel[0]);
+    }
+
+    // The ordering is the semantic claim, and it holds independently of the
+    // sRGB round-trip the tolerance above absorbs: one tap loses the star
+    // outright, the area average keeps a fraction of it, and the peak keeps
+    // the most.
+    assert!(
+        measured[0] < measured[1] && measured[1] < measured[2],
+        "Single < Mean < Peak must hold, got {measured:?}",
+    );
+}
+
+/// Taps are combined *premultiplied*, which is what makes both modes correct
+/// over alpha. Two panes, one claim each, on the same 3-texels-per-pixel
+/// geometry as the fixture above (taps read `0.75·T0 + 0.25·T1` and
+/// `0.25·T1 + 0.75·T2`; `T1` is fully clear in both sources, so each tap is
+/// just three-quarters of an outer texel).
+///
+/// **Mean — averaging.** Source `WHITE(α=128) CLEAR CLEAR`. Premultiplied, the
+/// lit tap is `0.75·0.75α` over `0.75α`, which un-premultiplies back to
+/// `rgb = 0.75` — the white survives at full strength and only the *coverage*
+/// halves. Straight-alpha averaging would instead have dragged rgb to
+/// `(0.75 + 0)/2 = 0.375`, halving the colour a second time. Composited over
+/// black the output is `rgb · a = 0.75 · 0.375α = 0.28125α`, and with
+/// `α = 128/255` that is 0.14118 linear → **105** sRGB (the straight-alpha
+/// answer would read 75).
+///
+/// **Peak — ranking.** Source `WHITE(α=26) CLEAR GREY(α=255)`, chosen so the
+/// two orderings disagree: by straight luma the near-invisible white wins
+/// (0.75 vs 0.162), by premultiplied luma the solid grey does (0.121 vs
+/// 0.057). Grey is sRGB 128 = 0.21586 linear, so the winning tap
+/// un-premultiplies to `rgb = 0.75 · 0.21586`, `a = 0.75`, and the composite
+/// is `0.12138` linear → **98** sRGB (picking the white would read 68).
+#[test]
+fn downsample_combines_taps_in_premultiplied_space() {
+    const PANE: Vec2 = Vec2::new(8.0, 16.0);
+    const CLEAR: [u8; 4] = [0, 0, 0, 0];
+    const DIM_WHITE: [u8; 4] = [255, 255, 255, 128];
+    const FAINT_WHITE: [u8; 4] = [255, 255, 255, 26];
+    const SOLID_GREY: [u8; 4] = [128, 128, 128, 255];
+
+    // (texel triple, mode, expected grey, label)
+    let cases = [
+        (
+            [DIM_WHITE, CLEAR, CLEAR],
+            ImageDownsample::Mean,
+            105u8,
+            "Mean over alpha",
+        ),
+        (
+            [FAINT_WHITE, CLEAR, SOLID_GREY],
+            ImageDownsample::Peak,
+            98,
+            "Peak ranking over alpha",
+        ),
+    ];
+
+    let mut h = Harness::new();
+    let mut sources: Option<Vec<palantir::ImageHandle>> = None;
+    let out = h.render(UVec2::new(16, 16), 1.0, Color::BLACK, |ui| {
+        let handles = sources.get_or_insert_with(|| {
+            cases
+                .iter()
+                .map(|(triple, _, _, _)| {
+                    let texels: Vec<u8> = std::iter::repeat_n(*triple, 8)
+                        .flatten()
+                        .flatten()
+                        .collect();
+                    ui.register_image(palantir::Image::from_rgba8(24, 1, texels))
+                        .expect("fixture image fits every supported GPU")
+                })
+                .collect()
+        });
+        Panel::canvas()
+            .id_salt("premultiplied_fixture")
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                for (i, (_, mode, _, _)) in cases.iter().enumerate() {
+                    Panel::zstack()
+                        .id_salt(("premultiplied_pane", i))
+                        .position(Vec2::new(i as f32 * PANE.x, 0.0))
+                        .size((Sizing::fixed(PANE.x), Sizing::fixed(PANE.y)))
+                        .show(ui, |ui| {
+                            ui.add_shape(
+                                Shape::image(handles[i].clone())
+                                    .fit(ImageFit::Fill)
+                                    .downsample(*mode),
+                            );
+                        });
+                }
+            });
+    });
+
+    for (i, (_, _, expected, label)) in cases.iter().enumerate() {
+        let pixel = out.get_pixel(i as u32 * PANE.x as u32 + 4, 8).0;
+        assert!(
+            close(pixel, [*expected, *expected, *expected, 255]),
+            "{label} must read {expected} grey, got {pixel:?}",
+        );
+    }
 }
 
 /// Third solid source for the run-coalescing fixture, distinct from
