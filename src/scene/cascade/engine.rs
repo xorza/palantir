@@ -183,7 +183,7 @@ impl CascadeEngine {
         self.probe.full_rebuild();
         let total = forest.total_nodes();
         cascade.entries.clear();
-        cascade.entries.reserve(total);
+        cascade.entries.reserve_exact(total);
         cascade.hits.clear();
         cascade.scopes.clear();
 
