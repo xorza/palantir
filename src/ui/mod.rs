@@ -8,6 +8,8 @@ pub(crate) mod layer_scope;
 pub(crate) mod resources;
 pub(crate) mod state;
 
+use std::num::NonZeroU32;
+
 use crate::animation::animatable::Animatable;
 use crate::animation::{AnimMap, AnimSlot, AnimSpec};
 use crate::app::App;
@@ -526,6 +528,20 @@ impl Ui {
     /// CPU recorders have no device limit and retain the original dimensions.
     pub fn register_image(&self, image: Image) -> Result<ImageHandle, RegisterImageError> {
         self.resources.images.register(image)
+    }
+
+    /// The largest width or height [`Self::register_image`] accepts — the
+    /// selected device's `max_texture_dimension_2d`, and the *only* ceiling on
+    /// a registered image, since palantir imposes none of its own. `None` for
+    /// a standalone CPU recorder, which has no device to ask.
+    ///
+    /// Read it when deriving a texture from a larger source, so the downscale
+    /// is sized against the device actually in use rather than a constant
+    /// picked to stay under every device's limit. Registration *rejects* an
+    /// over-limit image rather than shrinking it, so a host that wants the
+    /// biggest texture a machine will take has to ask first.
+    pub fn max_image_dimension(&self) -> Option<NonZeroU32> {
+        self.resources.images.max_texture_dimension_2d()
     }
 
     /// Record a `GpuView` for widget `id`: upsert it into [`Self::gpu_views`]
