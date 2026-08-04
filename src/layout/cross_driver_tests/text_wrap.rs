@@ -3,6 +3,7 @@ use crate::Ui;
 use crate::WidgetId;
 use crate::layout::cross_driver_tests::support;
 use crate::layout::cross_driver_tests::support::{chat_message, two_hug_cols_with_wrap};
+use crate::layout::types::align::Align;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
 use crate::layout::{axis::Axis, intrinsic::LenReq};
@@ -32,16 +33,15 @@ fn add_direct_text(
     local_origin: Option<glam::Vec2>,
 ) {
     let text = ui.intern(text);
-    ui.add_shape(Shape::Text {
-        local_origin,
-        text,
-        color: Color::WHITE,
-        font_size_px,
-        line_height_px,
-        wrap,
-        align: Default::default(),
-        family: FontFamily::Sans,
-        weight: FontWeight::Regular,
+    let shape = Shape::text(text, font_size_px, line_height_px)
+        .color(Color::WHITE)
+        .wrap(wrap)
+        .align(Align::default())
+        .family(FontFamily::Sans)
+        .weight(FontWeight::Regular);
+    ui.add_shape(match local_origin {
+        Some(origin) => shape.at(origin),
+        None => shape,
     });
 }
 
@@ -569,17 +569,15 @@ fn build_multi_text_leaf(ui: &mut Ui) -> NodeId {
         let node = Node::leaf().id(leaf_id);
         ui.widget(node).record(ui, None, |ui| {
             let first = ui.intern("first");
-            ui.add_shape(Shape::Text {
-                local_origin: Some(glam::Vec2::new(0.0, 0.0)),
-                text: first,
-                color: Color::WHITE,
-                font_size_px: 14.0,
-                line_height_px: 16.0,
-                wrap: TextWrap::Truncate,
-                align: Default::default(),
-                family: FontFamily::Sans,
-                weight: FontWeight::Regular,
-            });
+            ui.add_shape(
+                Shape::text(first, 14.0, 16.0)
+                    .at(glam::Vec2::new(0.0, 0.0))
+                    .color(Color::WHITE)
+                    .wrap(TextWrap::Truncate)
+                    .align(Align::default())
+                    .family(FontFamily::Sans)
+                    .weight(FontWeight::Regular),
+            );
             ui.add_shape(
                 Shape::rect(crate::Rect::new(0.0, 20.0, 4.0, 2.0))
                     .corners(crate::Corners::ZERO)
@@ -587,17 +585,15 @@ fn build_multi_text_leaf(ui: &mut Ui) -> NodeId {
                     .stroke(crate::Stroke::ZERO),
             );
             let second = ui.intern("second-with-different-text");
-            ui.add_shape(Shape::Text {
-                local_origin: Some(glam::Vec2::new(0.0, 22.0)),
-                text: second,
-                color: Color::WHITE,
-                font_size_px: 14.0,
-                line_height_px: 16.0,
-                wrap: TextWrap::Truncate,
-                align: Default::default(),
-                family: FontFamily::Sans,
-                weight: FontWeight::Regular,
-            });
+            ui.add_shape(
+                Shape::text(second, 14.0, 16.0)
+                    .at(glam::Vec2::new(0.0, 22.0))
+                    .color(Color::WHITE)
+                    .wrap(TextWrap::Truncate)
+                    .align(Align::default())
+                    .family(FontFamily::Sans)
+                    .weight(FontWeight::Regular),
+            );
         });
     });
     ui.forest.node_for_widget_id(Layer::Main, leaf_id)

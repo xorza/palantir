@@ -17,7 +17,7 @@ use crate::scene::tree::Tree;
 use crate::scene::tree::paint_anims::{PaintAnim, PaintAnimEntry};
 use crate::scene::tree::record::NodeId;
 use crate::scene::tree::recording::{Placement, RecordingScratch};
-use crate::shape::Shape;
+use crate::shape::Lower;
 use std::time::Duration;
 
 /// One arena per [`Layer`]. Recording dispatches `open_node`,
@@ -265,7 +265,7 @@ impl Forest {
     /// stamping, hashing) and append it to the active tree's shape
     /// buffer. Asserts a node is currently open so widgets can't leak
     /// shapes outside an `open_node` / `close_node` scope.
-    pub(crate) fn add_shape(&mut self, shape: Shape<'_>) {
+    pub(crate) fn add_shape<S: Lower>(&mut self, shape: S) {
         self.push_shape("add_shape", |tree, store| tree.shapes.add(shape, store));
     }
 
@@ -292,7 +292,7 @@ impl Forest {
     /// (no entry pushed) if the shape itself was noop-collapsed.
     /// Effectively invisible shapes stay authored but omit their
     /// animation row until a visible record pass resumes them.
-    pub(crate) fn add_shape_animated(&mut self, shape: Shape<'_>, anim: PaintAnim) {
+    pub(crate) fn add_shape_animated<S: Lower>(&mut self, shape: S, anim: PaintAnim) {
         let layer = self.current_layer();
         self.assert_node_open(layer, "add_shape_animated");
         // Disjoint borrow: `trees` and `scratch` are separate fields.

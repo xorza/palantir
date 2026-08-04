@@ -195,6 +195,9 @@ pub use primitives::transform::TranslateScale;
 pub use primitives::widget_id::WidgetId;
 pub use renderer::gpu_view::{GpuFrameCtx, GpuInitCtx, GpuPaint};
 pub use renderer::image_registry::{ImageHandle, RegisterImageError};
+/// The bound on [`Ui::add_shape`] — sealed, so it names the shape kinds
+/// the crate ships and nothing else.
+pub use shape::Lower;
 pub use shape::Shape;
 pub use shape::curve::CurveShape;
 pub use shape::image::ImageShape;
@@ -203,6 +206,7 @@ pub use shape::polyline::{PolylineColors, PolylineShape};
 pub use shape::rect::RectShape;
 pub use shape::shadow::ShadowShape;
 pub use shape::style::{LineCap, LineJoin};
+pub use shape::text::TextShape;
 pub use shape::triangle::TriangleShape;
 pub use text::layout_probe::Caret;
 pub use text::probe::TextProbe;

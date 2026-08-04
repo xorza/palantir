@@ -84,20 +84,17 @@ impl<'a> Button<'a> {
         widget.record(ui, Some(&look.background), |ui| {
             if !label.is_empty() {
                 let label = ui.intern(label);
-                ui.add_shape(Shape::Text {
-                    local_origin: None,
-                    text: label,
-                    color: look.text.color,
-                    font_size_px: look.text.font_size_px,
-                    line_height_px: look.line_height_px(),
+                ui.add_shape(
                     // `Truncate` by default so an over-wide label is cut to
                     // one line instead of spilling outside the chrome; see the
                     // `.text_wrap(TextWrap::Ellipsis)` / `.text_wrap(TextWrap::WrapWithOverflow)` / `.text_wrap(TextWrap::SingleLine)` builders.
-                    wrap: label_wrap,
-                    align: label_align,
-                    family: look.text.family,
-                    weight: look.text.weight,
-                });
+                    Shape::text(label, look.text.font_size_px, look.line_height_px())
+                        .color(look.text.color)
+                        .wrap(label_wrap)
+                        .align(label_align)
+                        .family(look.text.family)
+                        .weight(look.text.weight),
+                );
             }
         });
         // Eager: theme picking already paid for `response_for`, so

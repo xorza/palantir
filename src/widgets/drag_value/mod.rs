@@ -368,17 +368,14 @@ impl<'a> DragValue<'a> {
         });
 
         widget.record(ui, Some(&look.background), |ui| {
-            ui.add_shape(Shape::Text {
-                local_origin: None,
-                text,
-                color: look.text.color,
-                font_size_px: look.text.font_size_px,
-                line_height_px: look.line_height_px(),
-                wrap: TextWrap::Truncate,
-                align: Align::CENTER,
-                family: look.text.family,
-                weight: look.text.weight,
-            });
+            ui.add_shape(
+                Shape::text(text, look.text.font_size_px, look.line_height_px())
+                    .color(look.text.color)
+                    .wrap(TextWrap::Truncate)
+                    .align(Align::CENTER)
+                    .family(look.text.family)
+                    .weight(look.text.weight),
+            );
         });
         DragValueResponse {
             response: Response::eager(id, ui, response),

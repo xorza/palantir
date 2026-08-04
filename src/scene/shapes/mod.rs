@@ -1,5 +1,5 @@
 pub(crate) mod hash;
-pub(super) mod lower;
+pub(crate) mod lower;
 pub(crate) mod paint;
 pub(crate) mod record;
 
@@ -10,13 +10,11 @@ use crate::common::content_hash::ContentHash;
 use crate::primitives::color::{Color, ColorF16};
 use crate::primitives::image::{ImageFilter, ImageFit};
 use crate::primitives::nan::NanCheck;
-use crate::primitives::span::Span;
 use crate::scene::record_store::RecordStore;
 use crate::scene::shapes::hash::compute_record_hash;
 use crate::scene::shapes::paint::ImageSource;
 use crate::scene::shapes::record::ShapeRecord;
-use crate::shape::Shape;
-use crate::shape::curve::CurveGeometry;
+use crate::shape::Lower;
 
 /// Per-frame shape-record buffer for one [`crate::scene::tree::Tree`].
 ///
@@ -69,134 +67,11 @@ impl Shapes {
     /// to attach side data keyed by shape-index (e.g. paint-anim
     /// registry) use the returned index; the legacy "fire and forget"
     /// path ignores it.
-    pub(crate) fn add(&mut self, shape: Shape<'_>, store: &RecordStore) -> Option<u32> {
-        if let Shape::Polyline(shape) = &shape {
-            shape.colors.assert_matches(shape.points.len());
-        }
+    pub(crate) fn add<S: Lower>(&mut self, shape: S, store: &RecordStore) -> Option<u32> {
         if shape.is_noop() {
             return None;
         }
-        let record = match shape {
-            Shape::Rect(shape) => lower::rect(
-                store,
-                shape.kind,
-                shape.local_rect,
-                shape.corners,
-                &shape.fill,
-                shape.stroke,
-            ),
-            Shape::Triangle(shape) => lower::triangle(
-                shape.a,
-                shape.b,
-                shape.c,
-                shape.radius,
-                shape.fill,
-                shape.stroke,
-            ),
-            Shape::Curve(shape) => match shape.geometry {
-                CurveGeometry::Line { a, b } => {
-                    lower::line(store, a, b, shape.width, shape.brush, shape.cap)
-                }
-                CurveGeometry::CubicBezier { p0, p1, p2, p3 } => lower::cubic_bezier(
-                    store,
-                    [p0, p1, p2, p3],
-                    shape.width,
-                    shape.brush,
-                    shape.cap,
-                ),
-                CurveGeometry::QuadraticBezier { p0, p1, p2 } => lower::quadratic_bezier(
-                    store,
-                    [p0, p1, p2],
-                    shape.width,
-                    shape.brush,
-                    shape.cap,
-                ),
-                CurveGeometry::Arc {
-                    center,
-                    radius,
-                    start_angle,
-                    sweep,
-                } => lower::arc(
-                    store,
-                    center,
-                    radius,
-                    start_angle,
-                    sweep,
-                    shape.width,
-                    shape.brush,
-                    shape.cap,
-                ),
-            },
-            Shape::Polyline(shape) => lower::polyline(
-                store,
-                shape.points,
-                shape.colors,
-                shape.width,
-                shape.cap,
-                shape.join,
-            ),
-            Shape::Text {
-                local_origin,
-                text,
-                color,
-                font_size_px,
-                line_height_px,
-                wrap,
-                align,
-                family,
-                weight,
-            } => {
-                let text = store.record_text(text);
-                ShapeRecord::Text {
-                    local_origin,
-                    text,
-                    color: color.into(),
-                    font_size_px,
-                    line_height_px,
-                    wrap,
-                    align,
-                    family,
-                    weight,
-                }
-            }
-            Shape::Shadow(shape) => lower::shadow(shape.local_rect, shape.corners, shape.shadow),
-            Shape::Image(shape) => ShapeRecord::Image {
-                local_rect: shape.local_rect,
-                tint: shape.tint.into(),
-                // Extract the cheap id + size; the owning `ImageHandle`
-                // the caller holds is what keeps the GPU texture alive.
-                source: ImageSource::Texture {
-                    id: shape.handle.id(),
-                    size: shape.handle.size(),
-                },
-                fit: shape.fit,
-                min_filter: shape.min_filter,
-                mag_filter: shape.mag_filter,
-            },
-            Shape::Mesh(shape) => {
-                let mut payloads = store.payloads.borrow_mut();
-                let v_start = payloads.meshes.vertices.len() as u32;
-                payloads
-                    .meshes
-                    .vertices
-                    .extend_from_slice(&shape.mesh.vertices);
-                let i_start = payloads.meshes.indices.len() as u32;
-                payloads
-                    .meshes
-                    .indices
-                    .extend_from_slice(&shape.mesh.indices);
-                let content_hash = shape.mesh.content_hash();
-                let bbox = shape.mesh.bbox();
-                ShapeRecord::Mesh {
-                    local_rect: shape.local_rect,
-                    tint: shape.tint.into(),
-                    vertices: Span::new(v_start, shape.mesh.vertices.len() as u32),
-                    indices: Span::new(i_start, shape.mesh.indices.len() as u32),
-                    bbox,
-                    content_hash,
-                }
-            }
-        };
+        let record = shape.lower(store);
         // **The one NaN gate.** Lowered rather than authored, because by
         // here every bulk input has been folded into a `bbox` under the
         // AABB NaN contract — so this is `O(1)` for every shape and can
@@ -213,11 +88,16 @@ impl Shapes {
             );
             return None;
         }
+        Some(self.push(record))
+    }
+
+    /// Append an already-lowered record, returning its index.
+    fn push(&mut self, record: ShapeRecord) -> u32 {
         let idx = self.records.len() as u32;
         let hash = compute_record_hash(&record);
         self.records.push(record);
         self.hashes.push(hash);
-        Some(idx)
+        idx
     }
 
     /// Append a [`ImageSource::GpuView`]-sourced [`ShapeRecord::Image`]

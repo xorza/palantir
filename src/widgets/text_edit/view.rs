@@ -429,21 +429,19 @@ pub(super) fn record(ui: &mut Ui, mut widget: Widget, input: PaintInput<'_>) {
                 pad_l + display_offset.x - input.scroll.x,
                 pad_t + display_offset.y - input.scroll.y,
             );
-            ui.add_shape(Shape::Text {
-                local_origin: Some(display_origin),
-                text: display,
-                color,
-                font_size_px: ctx.font_size,
-                line_height_px: ctx.line_height_px,
-                wrap: if ctx.multiline {
-                    TextWrap::Wrap
-                } else {
-                    TextWrap::Scroll
-                },
-                align: layout.text_align,
-                family: ctx.family,
-                weight: ctx.weight,
-            });
+            ui.add_shape(
+                Shape::text(display, ctx.font_size, ctx.line_height_px)
+                    .at(display_origin)
+                    .color(color)
+                    .wrap(if ctx.multiline {
+                        TextWrap::Wrap
+                    } else {
+                        TextWrap::Scroll
+                    })
+                    .align(layout.text_align)
+                    .family(ctx.family)
+                    .weight(ctx.weight),
+            );
         }
 
         if let Some(caret) = input.caret {

@@ -8,6 +8,7 @@ use crate::primitives::stroke::Stroke;
 use crate::scene::record_store::RecordStore;
 use crate::shape::Shape;
 use crate::shape::rect::RectKind;
+use crate::shape::sealed::Lower as _;
 use crate::text::wrap::TextWrap;
 use crate::text::{FontFamily, FontWeight};
 use glam::Vec2;
@@ -83,30 +84,25 @@ fn triangle_noop_rejects_scale_relative_zero_area_without_winding_bias() {
     ];
 
     for case in cases {
-        let shape: Shape<'_> = Shape::triangle(case.a, case.b, case.c)
-            .fill(Color::WHITE)
-            .into();
-        let Shape::Triangle(triangle) = &shape else {
-            panic!("Shape::triangle must construct a triangle shape");
-        };
-        assert_eq!(triangle.fill, Color::WHITE, "case: {}", case.label);
+        let shape = Shape::triangle(case.a, case.b, case.c).fill(Color::WHITE);
+        assert_eq!(shape.fill, Color::WHITE, "case: {}", case.label);
         assert_eq!(shape.is_noop(), case.expected_noop, "case: {}", case.label);
     }
 }
 
+/// The constructors return the concrete shape they name, so "did the
+/// builder survive erasure into a `Shape` variant" is no longer a
+/// question the type system leaves open. What is still worth pinning is
+/// that each builder writes the field it advertises.
 #[test]
-fn typed_builders_preserve_convertible_variant_configuration() {
+fn typed_builders_set_the_fields_they_name() {
     let rect = Rect::new(1.0, 2.0, 30.0, 40.0);
     let gradient = LinearGradient::two_stop(0.25, Color::BLACK, Color::WHITE);
     let stroke = Stroke::solid(Color::WHITE, 2.0);
-    let rect_shape: Shape<'_> = Shape::windowed_rect(rect)
+    let rect_shape = Shape::windowed_rect(rect)
         .fill(gradient.clone())
         .stroke(stroke)
-        .corners(6.0)
-        .into();
-    let Shape::Rect(rect_shape) = rect_shape else {
-        panic!("Shape::windowed_rect must construct a rectangle shape");
-    };
+        .corners(6.0);
     assert!(matches!(rect_shape.kind, RectKind::Windowed));
     assert_eq!(rect_shape.local_rect, Some(rect));
     assert_eq!(rect_shape.fill, Brush::Linear(gradient));
@@ -115,10 +111,7 @@ fn typed_builders_preserve_convertible_variant_configuration() {
 
     let mesh = Mesh::new();
     let tint = ColorU8::rgb(10, 20, 30);
-    let mesh_shape: Shape<'_> = Shape::mesh(&mesh).at(rect).tint(tint).into();
-    let Shape::Mesh(mesh_shape) = mesh_shape else {
-        panic!("Shape::mesh must construct a mesh shape");
-    };
+    let mesh_shape = Shape::mesh(&mesh).at(rect).tint(tint);
     assert!(std::ptr::eq(mesh_shape.mesh, &mesh));
     assert_eq!(mesh_shape.local_rect, Some(rect));
     assert_eq!(mesh_shape.tint, tint.into());
@@ -156,32 +149,21 @@ fn text_noop_rejects_invalid_metrics() {
         ("NaN origin x", Some(Vec2::new(f32::NAN, 2.0)), true),
         ("NaN origin y", Some(Vec2::new(1.0, f32::NAN)), true),
     ] {
-        let shape = Shape::Text {
-            local_origin,
-            text: store.intern_str("visible"),
-            color: Color::WHITE,
-            font_size_px: 16.0,
-            line_height_px: 19.2,
-            wrap: TextWrap::SingleLine,
-            align: Align::TOP_LEFT,
-            family: FontFamily::Sans,
-            weight: FontWeight::Regular,
+        let shape = Shape::text(store.intern_str("visible"), 16.0, 19.2).color(Color::WHITE);
+        let shape = match local_origin {
+            Some(origin) => shape.at(origin),
+            None => shape,
         };
         assert_eq!(shape.is_noop(), expected_noop, "{label}");
     }
 
     for (label, font_size_px, line_height_px, expected_noop) in cases {
-        let shape = Shape::Text {
-            local_origin: None,
-            text: store.intern_str("visible"),
-            color: Color::WHITE,
-            font_size_px,
-            line_height_px,
-            wrap: TextWrap::SingleLine,
-            align: Align::TOP_LEFT,
-            family: FontFamily::Sans,
-            weight: FontWeight::Regular,
-        };
+        let shape = Shape::text(store.intern_str("visible"), font_size_px, line_height_px)
+            .color(Color::WHITE)
+            .wrap(TextWrap::SingleLine)
+            .align(Align::TOP_LEFT)
+            .family(FontFamily::Sans)
+            .weight(FontWeight::Regular);
         assert_eq!(shape.is_noop(), expected_noop, "{label}");
     }
 }
@@ -222,9 +204,7 @@ fn curve_brush_conversions_preserve_supported_paints_and_noop_state() {
     ];
 
     for case in cases {
-        let shape: Shape<'_> = Shape::line(Vec2::ZERO, Vec2::X, 1.0)
-            .brush(case.brush.clone())
-            .into();
+        let shape = Shape::line(Vec2::ZERO, Vec2::X, 1.0).brush(case.brush.clone());
         assert_eq!(
             case.brush.is_noop(),
             case.expected_noop,

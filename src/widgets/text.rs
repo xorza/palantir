@@ -118,17 +118,14 @@ impl<'a> Text<'a> {
             .show(ui, None, |ui| {
                 if metrics_valid {
                     let text = ui.intern(self.text);
-                    ui.add_shape(Shape::Text {
-                        local_origin: None,
-                        text,
-                        color,
-                        font_size_px,
-                        line_height_px,
-                        wrap: self.wrap,
-                        align: self.align,
-                        family,
-                        weight,
-                    });
+                    ui.add_shape(
+                        Shape::text(text, font_size_px, line_height_px)
+                            .color(color)
+                            .wrap(self.wrap)
+                            .align(self.align)
+                            .family(family)
+                            .weight(weight),
+                    );
                 }
             })
             .response

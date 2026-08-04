@@ -2920,17 +2920,14 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
                 let node = Node::leaf().id(leaf_id);
                 ui.widget(node).record(ui, None, |ui| {
                     let text = ui.intern(text);
-                    ui.add_shape(Shape::Text {
-                        local_origin: Some(ORIGIN),
-                        text,
-                        color: Color::WHITE,
-                        font_size_px: FONT,
-                        line_height_px: FONT,
-                        wrap: TextWrap::Truncate,
-                        align: Default::default(),
-                        family: FontFamily::Sans,
-                        weight: FontWeight::Regular,
-                    });
+                    ui.add_shape(
+                        Shape::text(text, FONT, FONT)
+                            .at(ORIGIN)
+                            .color(Color::WHITE)
+                            .wrap(TextWrap::Truncate)
+                            .family(FontFamily::Sans)
+                            .weight(FontWeight::Regular),
+                    );
                 });
             });
     };
