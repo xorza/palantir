@@ -51,8 +51,19 @@ pub(crate) struct PaintArena {
 impl PaintArena {
     /// Reset both columns for a new frame. `n_nodes` resizes
     /// `node_spans`; every retained slot is overwritten by
-    /// [`compute_paint_rect`]. `rows` is cleared and reserved for the
-    /// expected upper bound.
+    /// [`compute_paint_rect`].
+    ///
+    /// `rows` is cleared and seeded with `n_nodes` — a rough seed, not a
+    /// bound in either direction. The row count tracks chrome rows,
+    /// shapes and edges rather than nodes, and an invisible node emits
+    /// none at all, so a content-bearing tree lands near `2 * n_nodes`
+    /// while a chromeless, shapeless container tree lands at
+    /// `n_nodes - 1` (child markers only). Since `rows` is cleared and
+    /// never shrunk, capacity converges on the high-water mark after
+    /// warmup and the seed stops mattering; the true upper bound
+    /// (`chrome_table.len() + shapes.records.len() + n_nodes - roots.len()`)
+    /// is not worth threading in for the warmup reallocs alone, and
+    /// would over-reserve whenever a large subtree is hidden.
     pub(super) fn reset_for(&mut self, n_nodes: usize) {
         self.rows.clear();
         self.rows.reserve(n_nodes);
