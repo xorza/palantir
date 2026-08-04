@@ -31,7 +31,7 @@ use crate::shape::style::{LineCap, LineJoin};
 use glam::{UVec2, Vec2};
 use std::num::NonZeroU32;
 
-#[cfg(feature = "internals")]
+#[cfg(feature = "bench")]
 pub(crate) mod bench;
 mod higher_kind;
 mod occlusion;
@@ -1522,7 +1522,7 @@ impl PaintSink for ComposeSession<'_> {
     }
 }
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(any(test, feature = "bench"))]
 pub(crate) mod internals {
     //! Replay driver for the composer tests and the compose bench.
 

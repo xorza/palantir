@@ -6,7 +6,7 @@
 //! asserted in tests can't drift from the order actually issued to
 //! wgpu. Pure data — no GPU calls live here.
 
-#[cfg(feature = "internals")]
+#[cfg(feature = "bench")]
 pub(crate) mod bench;
 
 use crate::primitives::span::Span;
@@ -569,9 +569,9 @@ fn emit_group_body(
     );
 }
 
-// `internals` only, not `any(test, …)`: the sole consumer is the
+// `bench` only, not `any(test, …)`: the sole consumer is the
 // `schedule` benchmark, which that feature gates too.
-#[cfg(feature = "internals")]
+#[cfg(feature = "bench")]
 pub(crate) mod internals {
     use super::*;
 

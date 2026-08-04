@@ -46,7 +46,7 @@
 //! would read as a *speedup* if it started hitting.
 //!
 //! Requires the `internals` feature. Run with
-//! `cargo bench --features internals --bench gradient_atlas`.
+//! `cargo bench --features bench --bench gradient_atlas`.
 
 use crate::primitives::brush::gradient::Interp;
 use crate::primitives::brush::gradient::stops::{GradientStops, Stop};

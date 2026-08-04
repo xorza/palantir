@@ -29,7 +29,7 @@ impl Queue {
         data_layout: wgpu::TexelCopyBufferLayout,
         size: wgpu::Extent3d,
     ) {
-        #[cfg(feature = "internals")]
+        #[cfg(feature = "bench")]
         crate::renderer::backend::write_stats::record_texture(data.len() as u64);
         self.0.write_texture(texture, data, data_layout, size);
     }

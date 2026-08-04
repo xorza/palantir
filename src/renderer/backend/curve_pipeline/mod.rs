@@ -14,7 +14,7 @@
 //! [`MeshPipeline`]: crate::renderer::backend::mesh_pipeline::MeshPipeline
 //! [`ImagePipeline`]: crate::renderer::backend::image_pipeline::ImagePipeline
 
-#[cfg(feature = "internals")]
+#[cfg(feature = "bench")]
 pub(crate) mod bench;
 
 use crate::primitives::brush::gradient::Spread;

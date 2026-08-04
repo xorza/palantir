@@ -225,7 +225,7 @@ impl OffscreenHost {
     }
 }
 
-#[cfg(feature = "internals")]
+#[cfg(feature = "bench")]
 pub(crate) mod internals {
     use crate::host::offscreen::OffscreenHost;
     use crate::renderer::render_buffer::RenderBuffer;

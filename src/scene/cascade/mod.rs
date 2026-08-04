@@ -11,7 +11,7 @@
 //! the machinery in [`engine`], the row tables in [`entry`], and the
 //! paint arena in [`paint`].
 
-#[cfg(feature = "internals")]
+#[cfg(feature = "bench")]
 pub(crate) mod bench;
 pub(crate) mod engine;
 pub(crate) mod entry;

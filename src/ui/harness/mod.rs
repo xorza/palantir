@@ -143,7 +143,7 @@
 //!
 //! Tier 3's extra gate is not about encapsulation — `pub(crate)` already
 //! stops all of this leaving the crate. It is the only way to say "the
-//! benches don't use this": under `--features internals` alone, tier 3
+//! benches don't use this": under `--features bench` alone, tier 3
 //! simply isn't compiled, so nothing is spuriously unused and a
 //! genuinely dead method still gets reported.
 //!
@@ -163,6 +163,9 @@ use crate::input::response::{InputDelta, ResponseState};
 use crate::input::sense::{DOUBLE_CLICK_WINDOW, DRAG_THRESHOLD, Sense};
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
+// Carries `damage_region`'s gate: this whole module is build-gated test
+// support, and under a non-test `internals` build that method is absent.
+#[cfg(any(test, feature = "bench"))]
 use crate::scene::damage::region::DamageRegion;
 use crate::scene::seen_ids::Endpoint;
 use crate::text::shaper::TextShaper;
@@ -748,6 +751,9 @@ impl UiHarness {
         self.ui.frame_runtime.prev_stamp = Some(FrameStamp::new(self.display, self.time));
     }
 
+    /// Read by the crate's own damage tests and the `damage` bench; a
+    /// non-test `internals` build has no caller.
+    #[cfg(any(test, feature = "bench"))]
     pub(crate) fn damage_region(&self) -> DamageRegion {
         DamageRegion::collapse_from(
             &self.ui.damage_engine.raw_rects,

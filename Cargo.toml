@@ -26,9 +26,9 @@ exclude = [
     "scripts/",
 ]
 
-# `internals` pulls in criterion/dhat and exposes test-only reach-ins that
-# aren't part of the supported surface, so document the default features —
-# exactly what a consumer gets.
+# `internals` exposes test-only reach-ins and `bench` the criterion/dhat
+# drivers on top; neither is part of the supported surface, so document the
+# default features — exactly what a consumer gets.
 [package.metadata.docs.rs]
 all-features = false
 
@@ -101,7 +101,7 @@ required-features = ["internals"]
 
 [[example]]
 name = "frame_visual"
-required-features = ["internals", "winit-host"]
+required-features = ["bench", "winit-host"]
 
 [[example]]
 name = "counter"
@@ -114,17 +114,17 @@ required-features = ["winit-host"]
 [[bench]]
 name = "frame"
 harness = false
-required-features = ["internals"]
+required-features = ["bench"]
 
 [[bench]]
 name = "animation"
 harness = false
-required-features = ["internals"]
+required-features = ["bench"]
 
 [[bench]]
 name = "alloc_free"
 harness = false
-required-features = ["internals"]
+required-features = ["bench"]
 
 [[bench]]
 name = "alloc_resize"
@@ -133,98 +133,104 @@ harness = false
 # cosmic-text. With the mono fallback the resize path's paint counts
 # stay constant, the cascade cache reuses in place, and the bench
 # reports a false 0 — see the module docs.
-required-features = ["internals"]
+required-features = ["bench"]
 
 [[bench]]
 name = "alloc_free_gpu"
 harness = false
-required-features = ["internals"]
+required-features = ["bench"]
 
 [[bench]]
 name = "text_atlas"
 harness = false
-required-features = ["internals"]
+required-features = ["bench"]
 
 [[bench]]
 name = "gradient_atlas"
 harness = false
-required-features = ["internals"]
+required-features = ["bench"]
 
 [[bench]]
 name = "curve_pipeline"
 harness = false
-required-features = ["internals"]
+required-features = ["bench"]
 
 [[bench]]
 name = "image_pipeline"
 harness = false
-required-features = ["internals"]
+required-features = ["bench"]
 
 [[bench]]
 name = "schedule"
 harness = false
-required-features = ["internals"]
+required-features = ["bench"]
 
 [[bench]]
 name = "record_pass"
 harness = false
-required-features = ["internals"]
+required-features = ["bench"]
 
 [[bench]]
 name = "text_shape"
 harness = false
-required-features = ["internals"]
+required-features = ["bench"]
 
 [[bench]]
 name = "text_edit"
 harness = false
-required-features = ["internals"]
+required-features = ["bench"]
 
 [[bench]]
 name = "input_throughput"
 harness = false
-required-features = ["internals"]
+required-features = ["bench"]
 
 [[bench]]
 name = "caches"
 harness = false
-required-features = ["internals"]
+required-features = ["bench"]
 
 [[bench]]
 name = "damage"
 harness = false
-required-features = ["internals"]
+required-features = ["bench"]
 
 [[bench]]
 name = "composer"
 harness = false
-required-features = ["internals"]
+required-features = ["bench"]
 
 [[bench]]
 name = "text_grid"
 harness = false
-required-features = ["internals"]
+required-features = ["bench"]
 
 [[bench]]
 name = "gradient"
 harness = false
-required-features = ["internals"]
+required-features = ["bench"]
 
 [[bench]]
 name = "paint_anims"
 harness = false
-required-features = ["internals"]
+required-features = ["bench"]
 
 [[bench]]
 name = "cascade"
 harness = false
-required-features = ["internals"]
+required-features = ["bench"]
 
 [features]
 default = ["system-clipboard", "winit-host"]
+# Test reach-ins into crate privates — `UiHarness`, the probe counters, the
+# headless GPU lease. Deliberately cheap: both integration suites need it to
+# reach past the published surface, and neither should pay to compile a
+# benchmark harness for the privilege.
+internals = ["dep:pollster"]
 # Compiles the source-level benchmark drivers and exposes their function-only
-# facade to the thin external targets.
-internals = ["dep:criterion", "dep:dhat", "dep:gethostname", "dep:pollster"]
+# facade to the thin external targets. Implies `internals` — the drivers reach
+# into the same privates the tests do, and add the harness crates on top.
+bench = ["internals", "dep:criterion", "dep:dhat", "dep:gethostname"]
 # Enables the bundled widget-tour binary and its logging setup. Carries
 # `gpu-debug-markers` because the showcase is what you capture.
 showcase = ["dep:tracing-subscriber", "winit-host", "gpu-debug-markers"]

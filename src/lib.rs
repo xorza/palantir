@@ -79,7 +79,7 @@ extern crate self as palantir;
 
 pub(crate) mod animation;
 pub(crate) mod app;
-#[cfg(feature = "internals")]
+#[cfg(feature = "bench")]
 pub mod bench;
 pub(crate) mod common;
 pub(crate) mod diagnostics;
@@ -87,6 +87,12 @@ pub(crate) mod diagnostics;
 /// cross-cutting host/render vocabulary, read by `ui`, the renderer, and
 /// the host layer; not owned by any one subsystem.
 pub(crate) mod display;
+/// The shared benchmark workload — one designed app screen recorded by the
+/// frame, allocation, and cascade benches alike. Owned by none of them, so
+/// it lives here rather than under whichever driver happened to need it
+/// first.
+#[cfg(feature = "bench")]
+pub(crate) mod frame_fixture;
 pub(crate) mod host;
 pub(crate) mod input;
 pub(crate) mod layout;
