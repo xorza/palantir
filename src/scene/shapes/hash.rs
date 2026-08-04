@@ -80,7 +80,22 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
         }
         // `content_hash` already folds width + color_mode + cap + join
         // + points + colors; bbox/spans are frame-local and excluded.
-        ShapeRecord::Polyline { content_hash, .. } => h.write_u64(*content_hash),
+        //
+        // Spelled out rather than `..`: naming every field is what makes
+        // the compiler reject a *new* one until someone decides whether
+        // it belongs in the hash. `..` would absorb it silently, and a
+        // field missing from the hash is two records sharing one — which
+        // damage diff reads as "unchanged" and skips the repaint.
+        ShapeRecord::Polyline {
+            content_hash,
+            width: _,
+            color_mode: _,
+            cap: _,
+            join: _,
+            points: _,
+            colors: _,
+            bbox: _,
+        } => h.write_u64(*content_hash),
         ShapeRecord::Text {
             local_origin,
             text,
@@ -112,11 +127,15 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
                 | (*family as u32);
             h.write_u32(style);
         }
+        // Fields named exhaustively for the reason given on the
+        // `Polyline` arm above.
         ShapeRecord::Mesh {
             local_rect,
             tint,
             content_hash,
-            ..
+            vertices: _,
+            indices: _,
+            bbox: _,
         } => {
             hash_optional_rect(*local_rect, &mut h);
             tint.hash(&mut h);
