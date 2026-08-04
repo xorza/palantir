@@ -23,8 +23,8 @@ const ATLAS_GROWTH_FACTOR: u32 = 2;
 
 /// Hard ceiling on a side's backing texture, whatever the device allows.
 ///
-/// [`GlyphAtlas::grow`] used to stop only at `max_texture_dimension_2d`,
-/// which on desktop adapters is routinely 16384 — a 256 MB mask or a
+/// Stopping [`GlyphAtlas::grow`] at `max_texture_dimension_2d` alone
+/// admits 16384 on a routine desktop adapter — a 256 MB mask or a
 /// 1 GB colour atlas, for text. Nothing observed reaches that, but the
 /// failure mode if anything did is far worse than the alternative:
 /// refusing to grow yields `Rasterized::AtlasFull`, whose only cost is
@@ -41,19 +41,19 @@ const MAX_ATLAS_BYTE_BUDGET: u64 = 16 << 20;
 /// Byte budget below which [`GlyphAtlas::allocate`] grows a side rather
 /// than evicting from it.
 ///
-/// `allocate` used to try eviction first unconditionally, so an atlas
-/// never outgrew its initial size no matter how badly it fit: measured
-/// on `text_atlas/cache_churn`, a 1024² mask holding ~1k live glyphs
-/// performed 2668 evictions and *zero* growths, walking 4.06M cache
+/// Trying eviction first unconditionally would pin an atlas at its
+/// initial size no matter how badly it fits: measured that way on
+/// `text_atlas/cache_churn`, a 1024² mask holding ~1k live glyphs
+/// performs 2668 evictions and *zero* growths, walking 4.06M cache
 /// entries to pick victims — `evict_one` is O(live glyphs) and
 /// `allocate` calls it in a loop, so the scan repeats for every glyph
 /// the gesture brings in.
 ///
 /// Sizing to the working set first turns that into one texture
-/// allocation plus a preserved-rect blit: the same arm now performs a
-/// single growth, zero evictions and zero scanning, and its frame drops
-/// from 609 µs to 61 µs — from a 10x outlier among the `text_atlas`
-/// arms to the same ~55-60 µs band as the rest. Its real working set is
+/// allocation plus a preserved-rect blit: the same arm performs a
+/// single growth, zero evictions and zero scanning, and its frame costs
+/// 61 µs rather than 609 µs — the same ~55-60 µs band as the other
+/// `text_atlas` arms instead of a 10x outlier. Its real working set is
 /// 3700 glyphs, so a 1024² mask was recycling roughly seven of every
 /// ten rasters it held.
 ///
@@ -73,13 +73,13 @@ const EAGER_GROWTH_BYTE_BUDGET: u64 = 4 << 20;
 /// outside any flicker.
 ///
 /// A per-entry deadline on [`GlyphAtlas::unallocated_expiry`], not a
-/// cadence. It used to be a periodic `cache.retain` over the whole glyph
-/// map, which is the shape this crate avoids everywhere else: one frame
-/// in 512 paying for all of them. It also had to be spelled as a
-/// threshold rather than `frame % INTERVAL == 0`, because the shared
-/// clock can advance by more than one and a modulo gate steps over its
-/// own trigger. A wheel has neither problem, and retires each entry on
-/// its own last use instead of rounding every entry to a shared tick.
+/// cadence. A periodic `cache.retain` over the whole glyph map would be
+/// the shape this crate avoids everywhere else — one frame in 512 paying
+/// for all of them — and it would have to be spelled as a threshold
+/// rather than `frame % INTERVAL == 0`, because the shared clock can
+/// advance by more than one and a modulo gate steps over its own
+/// trigger. A wheel has neither problem, and retires each entry on its
+/// own last use instead of rounding every entry to a shared tick.
 const UNALLOCATED_SWEEP_INTERVAL: u64 = 512;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -192,13 +192,13 @@ pub(super) struct GlyphAtlas {
     /// Latest value of the shaper's shared frame clock, mirrored here by
     /// [`Self::end_frame`] — not a count of this atlas's own frames.
     ///
-    /// The atlas used to increment per submit while the shaped-buffer
-    /// cache incremented per recorded frame, so the two retention
-    /// windows `RENDERED_RUN_KEEP_FRAMES` derives were denominated in
-    /// different units and drifted apart in both directions (a recorded
-    /// frame that drew no text aged buffers only; a `PaintOnly` frame
-    /// aged the atlas only). Reading one clock is what makes the shared
-    /// constant mean what it says.
+    /// Incrementing per submit here while the shaped-buffer cache
+    /// increments per recorded frame would denominate the two retention
+    /// windows `RENDERED_RUN_KEEP_FRAMES` derives in different units, and
+    /// they would drift in both directions (a recorded frame that drew no
+    /// text ages buffers only; a `PaintOnly` frame ages the atlas only).
+    /// Reading one clock is what makes the shared constant mean what it
+    /// says.
     pub(super) current_frame: u64,
     /// Deadlines for non-drawing entries, which `evict_one` cannot
     /// reclaim. Same file-once/re-file-on-fire protocol as the two
@@ -571,10 +571,10 @@ impl GlyphAtlas {
     ///
     /// # Why not exact LRU
     ///
-    /// This used to pick the true least-recently-used entry, which meant
-    /// iterating the whole `cache` map and indexing `slots` per entry —
+    /// Picking the true least-recently-used entry means iterating the
+    /// whole `cache` map and indexing `slots` per entry —
     /// O(live glyphs) *per eviction*, and [`Self::allocate`] calls this
-    /// in a loop, so one insert could pay the walk several times over.
+    /// in a loop, so one insert can pay the walk several times over.
     /// Measured at 6.0 ns per live glyph, dead linear from 1k to 32k
     /// entries. Driving a real zoom at the production
     /// `TEXT_SCALE_STEP` through this atlas, the mask side fills at

@@ -43,8 +43,9 @@ pub(crate) struct PaintArena {
     /// cleared by [`Self::reset_for`].
     pub(crate) rows: Vec<Paint>,
     /// Per-node [`Span`] into [`Self::rows`]. Empty span
-    /// (`Span::default()`) means the node paints nothing — replaces
-    /// the old `rollups.paints` bitset.
+    /// (`Span::default()`) means the node paints nothing, so this column
+    /// answers "does it paint?" as well as "where are its rows?" — no
+    /// separate presence bitset.
     pub(crate) node_spans: Vec<Span>,
 }
 

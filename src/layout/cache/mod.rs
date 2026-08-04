@@ -298,9 +298,9 @@ impl MeasureCache {
             let mut owned_text_count = 0u32;
             for (index, span) in text_spans.iter().copied().enumerate() {
                 // Both arms assign, which is what makes the column
-                // total. A text-less node used to inherit the reset's
-                // default, so dropping that reset without this would let
-                // a longer previous tree's bound leak through.
+                // total and lets the pass run without a preceding reset.
+                // Leaving the text-less arm to inherit a default would
+                // let a longer previous tree's bound leak through.
                 let stored = if span.len == 0 {
                     Span::default()
                 } else {

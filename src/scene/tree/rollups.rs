@@ -49,9 +49,9 @@ pub(crate) struct SubtreeRollups {
     /// per-node length check stays the correctness backstop. It can miss
     /// (one node gains a shape while another loses one, leaving the
     /// counts level), and it can over-fire (an *invisible* node gaining
-    /// chrome bumps the count without emitting a row). Both land on the
-    /// same answer the old code reached, just sooner or with one wasted
-    /// rebuild respectively.
+    /// chrome bumps the count without emitting a row). Neither changes
+    /// the answer the length check reaches — a miss just arrives at it
+    /// later, an over-fire pays one wasted rebuild to get there.
     pub(crate) paint_cardinality: u64,
     pub(crate) container_text: FixedBitSet,
 }

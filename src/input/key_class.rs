@@ -128,8 +128,8 @@ bitflags! {
 
 impl KeyFilter {
     /// Every class — an overlay that owns the keyboard outright. What
-    /// `Popup` and `Modal` declare, and the exact equivalent of the
-    /// whole-stream claim they used to hold.
+    /// `Popup` and `Modal` declare: a whole-stream claim, expressed as a
+    /// filter rather than as a separate capture mechanism.
     pub const ALL: Self = Self::all();
 
     /// A focused text field.

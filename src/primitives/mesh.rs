@@ -269,13 +269,13 @@ fn checked_rebased_index(base: u32, index: u32) -> u32 {
         .expect("appended mesh index exceeds u32 range")
 }
 
-// This used to warn against sharing the fold with the sister loops in
-// `scene/shapes/lower.rs`, on the grounds that fusing the AABB pass into
-// the copy pass was the win. Measured, it is the opposite: splitting
-// them is ~3x faster past a handful of points, because each half then
-// gets to be the fast version of itself — the fold vectorizes when
-// nothing else shares the loop body, and the copy becomes one `memcpy`
-// instead of per-point `push`es. Hence the shared `Aabb`.
+// Deliberately *not* fused into the copy loops in
+// `scene/shapes/lower.rs`. Fusing the AABB pass into the copy pass
+// reads like the win and measures as the opposite: splitting them is
+// ~3x faster past a handful of points, because each half then gets to be
+// the fast version of itself — the fold vectorizes when nothing else
+// shares the loop body, and the copy becomes one `memcpy` instead of
+// per-point `push`es. Hence the shared `Aabb`.
 fn compute_aabb(verts: &[MeshVertex]) -> Rect {
     Aabb::of_iter(verts.iter().map(|v| v.pos))
 }

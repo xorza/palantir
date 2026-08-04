@@ -52,8 +52,8 @@ pub(super) struct Scopes {
     live: Vec<ScopeRow>,
     /// Topmost layer declaring any scope. An overlay declaring one
     /// raises this, which cuts every layer beneath it off both streams —
-    /// the whole of what the old keyboard/pointer claim pair did, from
-    /// one fact instead of two kept in step.
+    /// keyboard and pointer alike, from one fact rather than a pair of
+    /// per-stream claims that would have to be kept in step.
     active_layer: Option<Layer>,
     /// [`Self::active_layer`]'s outermost scope, resolved once here
     /// because it is a pure function of the cascade and every read would
@@ -133,7 +133,7 @@ impl Scopes {
             // descendant and skipped, and the first row outside it opens
             // the next root. The fold therefore ends on the last root,
             // which is what breaks the tie between two *sibling* overlays
-            // on one layer — exactly as the old topmost-claim did.
+            // on one layer: the last to record wins, as topmost.
             self.outermost = self.live.iter().filter(|row| row.layer == active).fold(
                 None,
                 |root, row| match root {

@@ -43,8 +43,8 @@ impl DamageProbe {
     /// Takes the span rather than being called conditionally because only
     /// a skip of more than one node is interesting — a `span == 1` "skip"
     /// covers just the node itself and would drown the metric. Keeping
-    /// that rule here means the walk calls this unconditionally instead of
-    /// wrapping it in the test-shaped `if` it used to.
+    /// that rule here lets the walk call this unconditionally rather than
+    /// wrap it in a test-shaped `if` at the call site.
     #[inline]
     pub(crate) fn subtree_skipped(&mut self, span: usize) {
         if span > 1 {

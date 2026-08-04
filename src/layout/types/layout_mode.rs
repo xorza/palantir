@@ -199,9 +199,9 @@ impl From<ScrollbarsDefId> for usize {
 
 /// Which driver lays a scroll viewport's children out. Derived from the
 /// spec's pan mask by [`ScrollSpec::child_layout`], so measure, arrange,
-/// and the intrinsic query can't pick different ones — they used to
-/// spell the same three-way choice out separately, and the intrinsic
-/// copy drifted.
+/// and the intrinsic query cannot pick different ones. Spelling the
+/// three-way choice out at each of the three sites is what lets the
+/// intrinsic copy drift from the other two.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ScrollChildLayout {
     /// Both axes pan, so neither constrains the other and children stack

@@ -12,9 +12,9 @@
 //! and `EXCLUDED` in this file's test module are the list, every exclusion
 //! carries its reason, and the two together are checked against `lib.rs`'s
 //! public exports — so a widget added to the crate fails the suite until
-//! someone decides which side it belongs on. This paragraph used to name
-//! the covered widgets in prose, and `Splitter` had already dropped out of
-//! it without anyone noticing; the lists exist because prose cannot fail.
+//! someone decides which side it belongs on. The lists are deliberately
+//! not restated here as prose: a widget can silently drop out of a
+//! sentence, which is exactly what the check exists to prevent.
 //!
 //! **Nothing animated belongs in here.** `Spinner` — and any `PaintAnim` —
 //! wakes the host every frame by design, so `frame/cached_*` could never
@@ -198,8 +198,8 @@ mod tests {
     /// surface — that is what
     /// [`covered_and_excluded_account_for_every_public_widget`] enforces,
     /// and it is the whole point of keeping these as data rather than
-    /// prose. The module doc used to make this claim in a comment, and
-    /// `splitter` had already fallen out of it unnoticed.
+    /// prose — a name can fall out of a sentence with nothing to catch
+    /// it, but not out of a list the suite checks.
     const COVERED: &[&str] = &[
         "button",
         "checkbox",

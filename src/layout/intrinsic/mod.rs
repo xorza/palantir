@@ -55,11 +55,11 @@ impl IntrinsicRange {
     /// this accumulator.
     ///
     /// Every driver's `intrinsic` folds children into a range under the
-    /// same gate, and each used to spell it as two near-identical
-    /// `if query.includes(..)` blocks — so a third `LenReq` would mean
-    /// editing six call sites, and forgetting one is silent. Iterating
-    /// the requested halves puts the gate here and leaves each driver
-    /// one loop body.
+    /// same gate. Spelling that per driver as two near-identical
+    /// `if query.includes(..)` blocks would put a third `LenReq` behind
+    /// six call-site edits, any one of which is silent to forget.
+    /// Iterating the requested halves puts the gate here and leaves each
+    /// driver one loop body.
     #[inline]
     pub(crate) fn requested(
         &mut self,
@@ -266,7 +266,7 @@ fn content_intrinsic(
         // A scroll's intrinsic has to answer exactly what its measure
         // would: same driver, same per-axis contribution rule. Both come
         // off the spec so the two can't drift — `ScrollSpec::contributes`
-        // documents the `fit` case that used to be missing here.
+        // is where the `fit` case is stated.
         // A scroll's two content sizes differ in kind, so one rule can't
         // serve both. **Min**-content on a panned axis is zero: being
         // able to shrink below the content is what scrolling *is*, and

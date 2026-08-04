@@ -49,11 +49,10 @@ pub(crate) struct EntryRow {
 /// **Self-sufficient on purpose.** This table carries the geometry and
 /// gates the hit tests need so a hit test is a dense sequential scan
 /// over interactive rows alone, with no indirection into the all-node
-/// [`Cascade::entries`]. It previously held only `(entry_idx,
-/// widget_id)` and gathered `rect` / `sense` / `focusable` from
-/// `entries` at scattered indices — one random access per candidate
-/// row, over a table sized by *every* node rather than the interactive
-/// subset.
+/// [`Cascade::entries`]. Holding only `(entry_idx, widget_id)` and
+/// gathering `rect` / `sense` / `focusable` from `entries` instead
+/// costs one random access per candidate row, over a table sized by
+/// *every* node rather than the interactive subset.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct HitRow {
     /// Visible screen rect — the same value as `EntryRow::rect` for

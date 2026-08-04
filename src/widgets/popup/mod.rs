@@ -56,8 +56,8 @@ pub enum ClickOutside {
 /// Carries only the close request. Reading input needs no handle: a body
 /// records *inside* the popup's layer and its scope, so plain
 /// [`Ui::key_pressed`] / [`Ui::keyboard_events`] already answer as the
-/// popup — which is what the owner-scoped forwarders here used to exist
-/// to arrange.
+/// popup. Owner-scoped forwarders on this handle would only re-arrange
+/// what the scope already provides.
 #[derive(Debug)]
 pub struct PopupHandle {
     requested: Cell<bool>,

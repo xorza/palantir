@@ -16,9 +16,9 @@
 //! `LutRow`, and from the outside a row id says nothing about how it
 //! was reached. Resolving from the index, baking into a free row,
 //! baking over an evicted one, doubling the table, and giving up to the
-//! magenta fallback are five materially different costs that were
-//! previously indistinguishable — which is exactly how an O(capacity)
-//! probe walk sat in the hot path unnoticed.
+//! magenta fallback are five materially different costs. Left
+//! indistinguishable, they are exactly how an O(capacity) probe walk
+//! sits in the hot path unnoticed.
 //!
 //! They accumulate for the life of the atlas rather than resetting per
 //! frame: the atlas is shared across windows and `flush` is a

@@ -39,6 +39,9 @@ unreachable_pub = "deny"
 [lints.clippy]
 items_after_test_module = "deny"
 
+[lints.rustdoc]
+broken_intra_doc_links = "deny"
+
 [[bin]]
 name = "showcase"
 path = "src/bin/showcase/main.rs"

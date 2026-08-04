@@ -820,8 +820,8 @@ fn resolve_axis(
     a.sizes.fill(0.0);
     // Reset resolved flags. Fixed + Hug get marked resolved as they're
     // computed. Fill stays unresolved so cells in Fill cols see INF as
-    // their available width via `known_span_size`, preserving the old
-    // "Fill is finalized at arrange" behavior. Without this, cells in
+    // their available width via `known_span_size`, which is what makes
+    // "Fill is finalized at arrange" hold. Without this, cells in
     // Fill cols would measure with measure-time Fill leftover (a
     // finite value), then arrange might assign a different
     // intrinsic-floor-driven slot to a Hug grid and the cell
