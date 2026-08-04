@@ -16,30 +16,39 @@ no "done" markers, no resolved section, no history.
 lines). Much of that volume is narration of refactors that already landed,
 which is why the factual claims in it drift out of sync with the code.
 
-The specific drift found in the first pass — five stale `Background` sizes,
-`ChromeRow`, `Brush`, the dead `resolve_look` / `handle_input` /
-`Node::columns` / `Cascade.paint_rect` references, the split `into_columns`
-doc block, and eight superseded-design narrations — has been corrected.
+**Stale-symbol half: closed.** The five `Background` sizes, `ChromeRow`,
+`Brush`, the dead `resolve_look` / `handle_input` / `Node::columns` /
+`Cascade.paint_rect` references, the split `into_columns` doc block, and the
+whole `Shape::Variant` family of stale enum-variant links are corrected.
+`RUSTDOCFLAGS="-D rustdoc::broken_intra_doc_links" cargo doc --no-deps
+--all-features` now exits 0 crate-wide.
 
-- [ ] That correction was **site-by-site over a sample, not an audit**. The
-  pass followed grep hits for the specific stale symbols and sizes already
-  identified; it did not sweep every file for history narration or for other
-  doc references to renamed items. The same class of drift is likely present
-  in files the sample did not reach — the 50%-comment files above are where
-  it would concentrate.
-- [ ] No lint guards the class. `Cargo.toml`'s `[lints.rust]` sets
-  `missing_debug_implementations`, `unreachable_pub`, and
-  `items_after_test_module`, but nothing denies
-  `rustdoc::broken_intra_doc_links`, so a doc link to a renamed item degrades
-  to a warning in a build that already prints none. Running
-  `RUSTDOCFLAGS="-D rustdoc::broken_intra_doc_links" cargo doc --no-deps
-  --all-features` surfaced seven broken links that no other gate reports;
-  six are fixed, and the seventh is below.
-- [ ] `primitives/image.rs:49` links `[`crate::Shape::Image`]`. `Shape` is a
-  unit-struct constructor namespace, so the live item is `Shape::image` —
-  the same stale enum-variant spelling that `image_registry.rs`,
-  `shape/style.rs`, `shape/polyline.rs`, `text/mod.rs`, and `ui/mod.rs`
-  carried. Left alone because that file was under concurrent edit.
+**Narration half: audited, still open.** The sweep the first pass did not do
+has now run — a grep over comment lines for unambiguous code-history phrasing
+(`it used to`, `used to be`, `the old`, `was previously`, `formerly`, and
+`used to <verb>` over ~40 verbs).
+
+- [ ] ~67 production and ~62 test/bench comments still narrate how the code
+  used to be written. Spot-checking shows a minority are runtime-sense rather
+  than code-history ("the old thumb", "the old rects", "the old uv"), so the
+  true count is somewhat lower — but the two hotspots are unambiguous and
+  worth taking first:
+  `renderer/backend/text/atlas/mod.rs` (9: "`grow` used to stop only at…",
+  "`allocate` used to try eviction first…", "It used to be a periodic
+  `cache.retain`…", "The atlas used to increment per submit…", "This used to
+  pick the true least-recently-used entry…") and
+  `renderer/backend/text/encode/mod.rs` (7: "This used to append every encode
+  to the arena tail…", "It used to be a `retain` over the whole table…", "The
+  old block…", "It used to be *equal*, which cost population for nothing").
+  Each states a superseded design and a reason it was superseded, which reads
+  as a changelog entry welded to the item it changed.
+- [ ] No lint guards the stale-symbol half against regressing.
+  `Cargo.toml`'s `[lints.rust]` sets `missing_debug_implementations`,
+  `unreachable_pub`, and `items_after_test_module`; there is no
+  `[lints.rustdoc]` section, so `broken_intra_doc_links` stays at its default
+  `warn` and a renamed item degrades a doc link silently in a build that
+  otherwise prints no warnings. The seven links found this pass had
+  accumulated precisely because nothing reports them.
 
 ## Production code is generic, indirected, or public solely to serve test and demo consumers
 

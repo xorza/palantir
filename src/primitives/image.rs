@@ -46,7 +46,7 @@ pub enum ImageFit {
 /// How texels are interpolated when an image paints at a size other
 /// than its intrinsic one. `Linear` (the default) is bilinear
 /// smoothing; `Nearest` keeps hard texel edges — pixel-art upscales,
-/// checkerboards, pixel peeping. [`crate::Shape::Image`] chooses this
+/// checkerboards, pixel peeping. [`Shape::image`](crate::Shape::image) chooses this
 /// independently for minification and magnification. Implemented as a
 /// UV texel-center snap in the image shader, so every combination
 /// shares one sampler and one bind group per texture. Serde (lowercase)

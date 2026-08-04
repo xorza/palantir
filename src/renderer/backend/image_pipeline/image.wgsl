@@ -39,6 +39,12 @@ const FLAG_TAPS_PEAK:   u32 = /*{IMG_FLAG_TAPS_PEAK}*/;
 // the branchless accumulate below is for.
 const MAX_TAPS_PER_AXIS: i32 = 4;
 
+// Squared footprint below which the tap grid collapses to `n = 1` — a single
+// tap at the fragment's own UV, which is exactly what the plain path does. Two
+// texels squared, since each tap already spans two. Gating here keeps a barely
+// minified image off the loop *and* off the premultiply round-trip's rounding.
+const MIN_TAPPED_FOOTPRINT_SQUARED: f32 = 4.0;
+
 // Rec. 709 luma, for picking the brightest tap under `FLAG_TAPS_PEAK`. The
 // whole tap wins rather than a per-channel `max`, so a coloured point source
 // keeps its hue instead of being pushed toward white.
@@ -105,8 +111,15 @@ fn footprint_taps(
     uv_dx: vec2<f32>,
     uv_dy: vec2<f32>,
     footprint: f32,
-    peak: bool,
+    flags: u32,
 ) -> vec4<f32> {
+    let peak = (flags & FLAG_TAPS_PEAK) != 0u;
+    // A tiled draw wraps its base UV in `fs`, but the taps step *off* that UV
+    // and can leave [0,1) on their own — where `ClampToEdge` would smear the
+    // edge texel across every tile seam instead of continuing into the next
+    // repeat. Same `fract`, same reason, and gated the same way: a Cover crop
+    // must not have its far edge wrapped.
+    let tiled = (flags & FLAG_TILED) != 0u;
     // Each tap spans 2 texels, so a footprint that wide needs half as many.
     let n = clamp(i32(ceil(footprint * 0.5)), 1, MAX_TAPS_PER_AXIS);
     let step = 1.0 / f32(n);
@@ -119,7 +132,8 @@ fn footprint_taps(
             // derivative span, so the grid tiles the footprint symmetrically
             // about the fragment's own UV.
             let t = (vec2<f32>(f32(i), f32(j)) + 0.5) * step - 0.5;
-            let s = tap(uv + uv_dx * t.x + uv_dy * t.y);
+            let p = uv + uv_dx * t.x + uv_dy * t.y;
+            let s = tap(select(p, fract(p), tiled));
             // Combined premultiplied, which is what makes both modes correct
             // over alpha: averaging straight colour lets a transparent texel
             // drag an opaque one's rgb toward black, and ranking by straight
@@ -181,28 +195,23 @@ fn fs(in: VsOut) -> @location(0) vec4<f32> {
         let footprint_squared = max(dot(texel_dx, texel_dx), dot(texel_dy, texel_dy));
         let minifying = footprint_squared > 1.0;
 
+        // Snap the UV to the texel center for the active scale direction.
+        // Single mip, so the snapped UV's derivatives cannot select a
+        // different level. No outer `nearest != 0u` guard: with neither bit
+        // set the mask below is already zero, and the branch cost more than
+        // the one `select` it skipped.
         let nearest = filtered & (FLAG_MIN_NEAREST | FLAG_MAG_NEAREST);
-        if (nearest != 0u) {
-            let filter_flag = select(FLAG_MAG_NEAREST, FLAG_MIN_NEAREST, minifying);
-            // Snap the UV to the texel center for the active scale
-            // direction. Single mip, so the snapped UV's derivatives cannot
-            // select a different level.
-            if ((nearest & filter_flag) != 0u) {
-                uv = (floor(uv * dims) + vec2<f32>(0.5)) / dims;
-            }
+        let filter_flag = select(FLAG_MAG_NEAREST, FLAG_MIN_NEAREST, minifying);
+        if ((nearest & filter_flag) != 0u) {
+            uv = (floor(uv * dims) + vec2<f32>(0.5)) / dims;
         }
 
-        // Only minification has a footprint to cover: magnified and 1:1 draws
-        // fall through to the single tap whatever the mode asked for.
+        // Only a footprint worth covering earns the loop: magnified and 1:1
+        // draws have none, and under two texels the grid is one tap at this
+        // same UV — which is the `else` arm, reached without the machinery.
         let taps = filtered & (FLAG_TAPS_MEAN | FLAG_TAPS_PEAK);
-        if (taps != 0u && minifying) {
-            s = footprint_taps(
-                uv,
-                uv_dx,
-                uv_dy,
-                sqrt(footprint_squared),
-                (taps & FLAG_TAPS_PEAK) != 0u,
-            );
+        if (taps != 0u && footprint_squared > MIN_TAPPED_FOOTPRINT_SQUARED) {
+            s = footprint_taps(uv, uv_dx, uv_dy, sqrt(footprint_squared), in.flags);
         } else {
             s = tap(uv);
         }
