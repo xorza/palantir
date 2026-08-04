@@ -9,7 +9,7 @@ use std::sync::Arc;
 use glam::IVec2;
 use winit::dpi::{LogicalSize, PhysicalPosition};
 use winit::event_loop::ActiveEventLoop;
-use winit::window::{Icon, Window as WinitWindow};
+use winit::window::{Icon, Window as WinitWindow, WindowAttributes};
 
 use crate::host::winit::error::WinitHostError;
 use crate::primitives::image::Image;
@@ -57,6 +57,7 @@ pub(super) fn create_window(
     if let Some(image) = &cfg.icon {
         attrs = attrs.with_window_icon(Some(icon(image)));
     }
+    attrs = with_app_id(attrs, cfg);
     // Restore a saved position only if it still lands on a connected
     // monitor — winit does no such clamping, so a window saved on a
     // since-disconnected display would otherwise reopen off-screen and
@@ -70,6 +71,50 @@ pub(super) fn create_window(
         .create_window(attrs)
         .map(Arc::new)
         .map_err(|source| WinitHostError::CreateWindow { token, source })
+}
+
+/// Apply [`WindowConfig::app_id`] on the platforms that have one.
+///
+/// Wayland's `app_id` and X11's `WM_CLASS` are the *same* winit attribute,
+/// reached through one extension trait per backend, so writing it through
+/// either covers both and whichever session is running reads it. The instance
+/// name repeats the general one: Wayland ignores the instance outright, and
+/// X11's `WM_CLASS(STRING) = "instance", "general"` conventionally carries the
+/// application name twice.
+///
+/// X11 would survive without this — winit falls back to `argv[0]`'s file name
+/// — but Wayland has no fallback at all, so an unnamed window reaches the
+/// shell with nothing to match against its `.desktop` entry.
+#[cfg(any(
+    target_os = "linux",
+    target_os = "dragonfly",
+    target_os = "freebsd",
+    target_os = "netbsd",
+    target_os = "openbsd",
+))]
+fn with_app_id(attrs: WindowAttributes, cfg: &WindowConfig) -> WindowAttributes {
+    // Inside the fn rather than at the top of the file: the trait is only
+    // reachable on these targets.
+    use winit::platform::wayland::WindowAttributesExtWayland as _;
+
+    match &cfg.app_id {
+        Some(app_id) => attrs.with_name(app_id.clone(), app_id.clone()),
+        None => attrs,
+    }
+}
+
+/// Nothing to apply: application identity comes from the `.app` bundle on
+/// macOS and from the executable on Windows, neither of which is a per-window
+/// hint.
+#[cfg(not(any(
+    target_os = "linux",
+    target_os = "dragonfly",
+    target_os = "freebsd",
+    target_os = "netbsd",
+    target_os = "openbsd",
+)))]
+fn with_app_id(attrs: WindowAttributes, _cfg: &WindowConfig) -> WindowAttributes {
+    attrs
 }
 
 /// Whether `pos` (physical, window top-left) falls inside any currently

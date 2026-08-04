@@ -89,6 +89,20 @@ pub struct WindowConfig {
     /// packaging time). [`WinitHost`](crate::WinitHost) converts the
     /// backend-agnostic [`Image`] to the platform icon at window creation.
     pub icon: Option<Image>,
+    /// Application identity, as the desktop shell uses it to tie this window
+    /// to its `.desktop` entry — Wayland's `app_id`, X11's `WM_CLASS`. Set it
+    /// to the desktop file's basename (`org.example.App` for
+    /// `org.example.App.desktop`).
+    ///
+    /// Worth setting even though it looks cosmetic: **Wayland has no
+    /// fallback**. X11 derives `WM_CLASS` from `argv[0]` when nothing is
+    /// given, but a Wayland window left unnamed has no `app_id` at all, and a
+    /// shell with nothing to match on shows the window under a generic icon,
+    /// detached from the launcher entry that started it.
+    ///
+    /// `None` keeps the platform default. Ignored on macOS and Windows, where
+    /// application identity comes from the bundle or the executable.
+    pub app_id: Option<String>,
 }
 
 /// A window's live geometry, assembled on demand by
@@ -153,6 +167,14 @@ impl WindowConfig {
     /// Title-bar / taskbar icon (ignored on macOS).
     pub fn icon(mut self, icon: Image) -> Self {
         self.icon = Some(icon);
+        self
+    }
+
+    /// Desktop application identity — Wayland `app_id` / X11 `WM_CLASS`. Give
+    /// it the `.desktop` entry's basename; see [`WindowConfig::app_id`] for
+    /// why Wayland in particular needs it.
+    pub fn app_id(mut self, app_id: impl Into<String>) -> Self {
+        self.app_id = Some(app_id.into());
         self
     }
 }
