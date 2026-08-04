@@ -178,9 +178,57 @@ pub(crate) fn build_ui(state: &mut FrameFixture, scale: usize, ui: &mut Ui) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::primitives::widget_id::WidgetId;
     use crate::ui::frame_report::FramePaint;
     use crate::ui::harness::UiHarness;
+    use crate::widgets::button::Button;
+    use std::cell::RefCell;
     use std::time::Duration;
+
+    /// Nothing this tree records on an overlay layer may capture input
+    /// aimed at a host recorded beside it.
+    ///
+    /// The fixture is no longer alone on its surface — the showcase
+    /// carries it as a page, next to a nav rail. `Popup` is a *modal*
+    /// primitive: every `Popup::show` records a full-surface
+    /// `Sense::ABSORB_POINTER` eater beneath its body, and the status
+    /// bar's toast is recorded unconditionally on every frame. Routing
+    /// that toast through `Popup` therefore left the entire window
+    /// unclickable — a dead host, not a subtle misplacement — and
+    /// standalone there was nothing beside it to reveal that.
+    ///
+    /// `click_on` is the assertion: it refuses to aim at a widget
+    /// something else covers, so this fails on the eater's rect rather
+    /// than reporting a click that silently went elsewhere.
+    #[test]
+    fn overlays_never_capture_input_aimed_at_a_host_beside_the_fixture() {
+        let nav = WidgetId::from_hash("frame_fixture::tests::host-nav");
+        // `RefCell` so the scene closure captures by shared ref and stays
+        // `Copy` — `prime` and `response_in` each take it by value.
+        let state = RefCell::new(FrameFixture::default());
+        let scene = |ui: &mut Ui| {
+            Panel::hstack()
+                .id_salt("host")
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    Button::new()
+                        .id(nav)
+                        .label("nav")
+                        .size((Sizing::fixed(120.0), Sizing::fixed(40.0)))
+                        .show(ui);
+                    build_ui(&mut state.borrow_mut(), 2, ui);
+                });
+        };
+
+        let mut h = UiHarness::new(glam::UVec2::new(1280, 800));
+        h.prime(2, scene);
+
+        h.click_on(nav);
+        assert!(
+            h.response_in(nav, scene).left.clicked(),
+            "a host widget beside the fixture must stay clickable",
+        );
+    }
 
     /// The `frame/partial_*` arms model an interactive steady state: one
     /// counter changes, everything else holds, so damage collapses to the
