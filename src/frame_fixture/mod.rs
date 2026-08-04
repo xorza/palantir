@@ -1,6 +1,6 @@
-//! Shared workload for the frame and allocation benches and the `frame_visual`
-//! example: a synthetic but *designed* app screen — a dark telemetry
-//! console — rather than a pile of widgets. It exercises every public
+//! Shared workload for the frame and allocation benches, and the showcase's
+//! `frame bench` page: a synthetic but *designed* app screen — a dark
+//! telemetry console — rather than a pile of widgets. It exercises every public
 //! layout driver (HStack/VStack/ZStack/Canvas/Grid/WrapHStack/WrapVStack
 //! and Scroll on **both** axes), every non-animated public widget
 //! (Panel/Frame/Button/Text/Grid/Scroll/Checkbox/RadioButton/Switch/
@@ -26,6 +26,11 @@
 //! node structure is what makes their numbers comparable release to
 //! release. Treat the structure as frozen — retheming is free, but adding
 //! or removing nodes retargets every recorded series at once.
+//!
+//! That freeze is also why the showcase hosts it as a page rather than
+//! sharing the showcase's own scaffolding: the page is a *viewer* for this
+//! tree, and a restyle of the surrounding tour must not reach in and change
+//! what the benches measure.
 
 mod chrome;
 mod forms;
@@ -43,6 +48,10 @@ use crate::ui::Ui;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
 
+/// Content multiplier the bench arms record at. The showcase page uses a
+/// far smaller one — this is sized for the bench's tall offscreen target,
+/// not for a window.
+#[cfg(feature = "bench")]
 pub(crate) const BENCH_SCALE: usize = 32;
 
 /// Persistent state for widgets that mutate user data (TextEdit needs
@@ -148,7 +157,7 @@ pub(crate) fn build_ui(state: &mut FrameFixture, scale: usize, ui: &mut Ui) {
                         .size((Sizing::FILL, Sizing::FILL))
                         .show(ui, |ui| {
                             // Ordered diverse-first: the visually varied cards lead so
-                            // they fill the `frame_visual` viewport, while the bulky
+                            // they fill the showcase page's viewport, while the bulky
                             // repetitive lists (properties, tags) trail.
                             stat_strip::show(ui);
                             forms::request_card(state, ui);

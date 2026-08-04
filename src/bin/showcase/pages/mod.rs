@@ -7,6 +7,7 @@ pub(crate) mod containers;
 pub(crate) mod controls;
 pub(crate) mod dialogs;
 pub(crate) mod fixtures;
+pub(crate) mod frame_bench;
 pub(crate) mod gpu_view;
 pub(crate) mod gradients;
 pub(crate) mod images;

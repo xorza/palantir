@@ -1,11 +1,11 @@
 //! The fixture's design tokens and the two pieces of scaffolding every
 //! section is built from.
 //!
-//! Colours are chosen so the console reads as a real screen in
-//! `frame_visual`, but their *only* load-bearing property is that the
-//! chrome they feed stays non-noop: [`card_bg`] must keep a real drop
-//! shadow (it is the sole driver of `emit_shadow`'s chrome branch) and a
-//! hairline stroke, or the workload silently loses coverage.
+//! Colours are chosen so the console reads as a real screen on the
+//! showcase's `frame bench` page, but their *only* load-bearing property
+//! is that the chrome they feed stays non-noop: [`card_bg`] must keep a
+//! real drop shadow (it is the sole driver of `emit_shadow`'s chrome
+//! branch) and a hairline stroke, or the workload silently loses coverage.
 
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;

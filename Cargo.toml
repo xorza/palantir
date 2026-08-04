@@ -100,10 +100,6 @@ path = "tests/alloc/main.rs"
 required-features = ["internals"]
 
 [[example]]
-name = "frame_visual"
-required-features = ["bench", "winit-host"]
-
-[[example]]
 name = "counter"
 required-features = ["winit-host"]
 
