@@ -6,7 +6,7 @@
 //! bytes), and caches the resulting bind group by registration id until
 //! the owning handle drops.
 
-#[cfg(feature = "internals")]
+#[cfg(feature = "bench")]
 pub(crate) mod bench;
 mod render_target;
 mod textures;

@@ -1,7 +1,5 @@
-#[cfg(feature = "internals")]
+#[cfg(feature = "bench")]
 pub(crate) mod bench;
-#[cfg(feature = "internals")]
-pub(crate) mod bench_fixture;
 pub(crate) mod frame;
 mod frame_cycle;
 pub(crate) mod frame_report;

@@ -3,7 +3,7 @@
 //! current layout is materialized once in pre-order. Each node, grid
 //! hug value, and shaped text run is therefore retained exactly once.
 
-#[cfg(feature = "internals")]
+#[cfg(feature = "bench")]
 pub(crate) mod bench;
 
 use crate::common::content_hash::ContentHash;
@@ -426,7 +426,7 @@ impl MeasureCache {
     }
 }
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(any(test, feature = "bench"))]
 pub(crate) mod internals {
     use super::*;
 

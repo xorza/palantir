@@ -1,5 +1,5 @@
 mod action;
-#[cfg(feature = "internals")]
+#[cfg(feature = "bench")]
 pub(crate) mod bench;
 mod edit_state;
 mod editor;

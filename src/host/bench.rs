@@ -15,10 +15,10 @@
 //! [`crate::ui::bench`] times.
 
 use crate::app::App;
+use crate::frame_fixture::FrameFixture;
 use crate::host::offscreen::OffscreenHost;
 use crate::primitives::color::Color;
 use crate::ui::Ui;
-use crate::ui::bench_fixture::FrameFixture;
 use crate::ui::harness::UiHarness;
 use crate::window::WindowToken;
 use glam::UVec2;
@@ -62,8 +62,8 @@ fn profiler() -> dhat::Profiler {
 /// `WgpuBackend::submit`), see [`alloc_free_gpu`] — driver overhead
 /// has a different floor and different semantics.
 ///
-/// Run with: `cargo bench --bench alloc_free --features internals`
-/// Verbose JSON: `DHAT_DUMP=1 cargo bench --bench alloc_free --features internals`
+/// Run with: `cargo bench --bench alloc_free --features bench`
+/// Verbose JSON: `DHAT_DUMP=1 cargo bench --bench alloc_free --features bench`
 pub fn alloc_free() {
     const WARMUP_FRAMES: usize = 16;
 
@@ -110,7 +110,7 @@ pub fn alloc_free() {
         );
         eprintln!();
         eprintln!("Inspect call sites with:");
-        eprintln!("  DHAT_DUMP=1 cargo bench --bench alloc_free --features internals");
+        eprintln!("  DHAT_DUMP=1 cargo bench --bench alloc_free --features bench");
         eprintln!("  open dhat-heap.json at https://nnethercote.github.io/dh_view/");
         std::process::exit(1);
     }
@@ -195,8 +195,8 @@ fn gpu() -> &'static Gpu {
 /// indicating either an palantir regression or a wgpu/cosmic-text
 /// version drift worth investigating.
 ///
-/// Run with: `cargo bench --bench alloc_free_gpu --features internals`
-/// Verbose JSON: `DHAT_DUMP=1 cargo bench --bench alloc_free_gpu --features internals`
+/// Run with: `cargo bench --bench alloc_free_gpu --features bench`
+/// Verbose JSON: `DHAT_DUMP=1 cargo bench --bench alloc_free_gpu --features bench`
 pub fn alloc_free_gpu() {
     const WARMUP_FRAMES: usize = 16;
 
@@ -269,7 +269,7 @@ pub fn alloc_free_gpu() {
         );
         eprintln!();
         eprintln!("Inspect call sites with:");
-        eprintln!("  DHAT_DUMP=1 cargo bench --bench alloc_free_gpu --features internals");
+        eprintln!("  DHAT_DUMP=1 cargo bench --bench alloc_free_gpu --features bench");
         eprintln!("  open dhat-heap.json at https://nnethercote.github.io/dh_view/");
         eprintln!();
         eprintln!(
@@ -320,8 +320,8 @@ fn continuous_size(frame: usize) -> UVec2 {
 /// arena evict/append path the live `frame/resizing_cpu` arm hits.
 /// That dependency is why this bench requires the `internals` feature.
 ///
-/// Run with: `cargo bench --bench alloc_resize --features internals`
-/// Verbose JSON: `DHAT_DUMP=1 cargo bench --bench alloc_resize --features internals`
+/// Run with: `cargo bench --bench alloc_resize --features bench`
+/// Verbose JSON: `DHAT_DUMP=1 cargo bench --bench alloc_resize --features bench`
 pub fn alloc_resize() {
     const WARMUP_FRAMES: usize = 32;
 

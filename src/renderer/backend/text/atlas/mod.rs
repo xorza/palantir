@@ -843,9 +843,9 @@ pub(super) struct AtlasProbe {
 }
 
 /// Reads are gated with their sole consumer: the `text_atlas`
-/// benchmark, which `internals` gates too. A plain `cargo test` build
+/// benchmark, which `bench` gates too. A plain `cargo test` build
 /// has no caller.
-#[cfg(feature = "internals")]
+#[cfg(feature = "bench")]
 impl AtlasProbe {
     pub(super) fn counts(&self) -> AtlasCounts {
         AtlasCounts {
@@ -857,7 +857,7 @@ impl AtlasProbe {
 }
 
 /// One reading of an [`AtlasProbe`].
-#[cfg(feature = "internals")]
+#[cfg(feature = "bench")]
 #[derive(Clone, Copy, Debug)]
 pub(super) struct AtlasCounts {
     pub(super) evictions: u32,

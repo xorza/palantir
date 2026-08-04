@@ -1,6 +1,7 @@
 //! Per-frame counters for `queue.write_texture` issued through the
-//! [`Queue`](crate::renderer::backend::queue::Queue) wrapper. Gated behind the `internals`
-//! feature.
+//! [`Queue`](crate::renderer::backend::queue::Queue) wrapper. Gated behind the `bench`
+//! feature — the frame bench's per-frame dump is the only reader, so a
+//! plain test build shouldn't pay two atomic RMWs per texture write.
 
 use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
 

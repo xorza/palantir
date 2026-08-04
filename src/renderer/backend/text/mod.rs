@@ -25,7 +25,7 @@
 //!   region as two `u32`s, pushed per batch — no uniform buffer.
 
 mod atlas;
-#[cfg(feature = "internals")]
+#[cfg(feature = "bench")]
 pub(crate) mod bench;
 mod encode;
 mod encoded_probe;
@@ -407,10 +407,11 @@ fn glyph_instance_layout() -> wgpu::VertexBufferLayout<'static> {
     }
 }
 
-// `internals` only, not `any(test, …)`: both consumers — the `text_atlas`
-// benchmark and the GPU regression suite in `tests.rs` — are gated on
-// that feature, so a plain `cargo test` build has no caller.
-#[cfg(feature = "internals")]
+// Exactly its two consumers, no wider: the `text_atlas` benchmark, and the
+// GPU regression suite in `tests.rs` — which needs a real device and so is
+// itself `internals`-gated inside `cfg(test)`. A plain `cargo test` build
+// has neither, and neither does a non-test `internals` build.
+#[cfg(any(feature = "bench", all(test, feature = "internals")))]
 pub(crate) mod internals {
     use crate::renderer::backend::text::TextBackend;
 

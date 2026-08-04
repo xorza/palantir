@@ -15,7 +15,7 @@
 //! Output crosses into the backend as `&RenderBuffer` (defined one
 //! level up so it sits at the frontend↔backend contract line).
 
-#[cfg(feature = "internals")]
+#[cfg(feature = "bench")]
 pub(crate) mod bench;
 pub(crate) mod composer;
 pub(crate) mod encoder;
@@ -107,7 +107,7 @@ impl Frontend {
     }
 }
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(any(test, feature = "bench"))]
 pub(crate) mod internals {
     use crate::renderer::frontend::Frontend;
 

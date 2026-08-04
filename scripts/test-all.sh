@@ -12,7 +12,9 @@
 #                         the shape an embedding host compiles)
 #   - default features   (production-shaped build: winit host + clipboard)
 #   - internals          (cache helpers + render-debug knobs +
-#                         damage fixtures + the deeper bench targets)
+#                         damage fixtures — the test reach-ins, no harness)
+#   - bench              (internals + the colocated criterion/dhat drivers
+#                         and the `benches/` targets that link them)
 #   - showcase           (bundled widget-tour binary + logging setup)
 #   - profile-with-tracy (the supported profiler backend)
 #   - all features       (aggregate compatibility)
@@ -44,6 +46,7 @@ step()   { printf '%s-> %s%s\n' "$dim" "$1" "$reset"; }
 COMBOS=(
   ""                       # default features
   "internals"
+  "bench"
   "showcase"
   "profile-with-tracy"
 )

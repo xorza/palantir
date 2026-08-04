@@ -5,13 +5,13 @@
 //!
 //! Test-only rather than the wider gate because [`Self::cache_hit`]
 //! pushes to a `Vec` on *every* cache hit, which in steady state is
-//! every subtree root — the `alloc_free` bench requires `internals` and
+//! every subtree root — the `alloc_free` bench requires `bench` and
 //! asserts steady-state frames allocate nothing, so it would end up
 //! measuring this probe instead of the frame.
 //!
 //! ## The one field still hand-gated
 //!
-//! [`PhaseTimings`] is `cfg(feature = "internals")` — narrower than
+//! [`PhaseTimings`] is `cfg(feature = "bench")` — narrower than
 //! either shared cell, because benches are its only reader and a test
 //! build must not pay the clock reads. It also can't ride a cell: the
 //! mutator's closure would have to call [`PhaseSpan::elapsed_ns`], which
@@ -36,13 +36,13 @@ use crate::primitives::widget_id::WidgetId;
 /// `desired`) is charged to neither: it is one `arrange_size` call per
 /// root, independent of tree size.
 ///
-/// `internals`-gated rather than test-gated: the `caches` bench is the
+/// `bench`-gated rather than test-gated: the `caches` bench is the
 /// only consumer, and the four clock reads per root per frame are no
 /// longer negligible against the pass they measure — arrange replay took
 /// the cached layout pass to ~4 µs, so the instrumentation would be a low
 /// single-digit percentage of it, landing inside the frame but outside
 /// the spans it reports.
-#[cfg(feature = "internals")]
+#[cfg(feature = "bench")]
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct PhaseTimings {
     pub(crate) measure_ns: u64,
@@ -50,7 +50,7 @@ pub(crate) struct PhaseTimings {
     pub(crate) capture_ns: u64,
 }
 
-/// An open timing span. Zero-sized and free outside `internals`, so the
+/// An open timing span. Zero-sized and free outside `bench`, so the
 /// call sites need no `#[cfg]` around the `let` that opens one — which is
 /// the whole reason this exists rather than a bare `Instant`.
 ///
@@ -58,7 +58,7 @@ pub(crate) struct PhaseTimings {
 /// so a span stays open across the `&mut self` call it is timing.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct PhaseSpan {
-    #[cfg(feature = "internals")]
+    #[cfg(feature = "bench")]
     at: std::time::Instant,
 }
 
@@ -66,12 +66,12 @@ impl PhaseSpan {
     #[inline]
     pub(crate) fn start() -> Self {
         Self {
-            #[cfg(feature = "internals")]
+            #[cfg(feature = "bench")]
             at: std::time::Instant::now(),
         }
     }
 
-    #[cfg(feature = "internals")]
+    #[cfg(feature = "bench")]
     #[inline]
     fn elapsed_ns(self) -> u64 {
         self.at.elapsed().as_nanos() as u64
@@ -114,7 +114,7 @@ pub(crate) struct LayoutProbe {
     translated: TestOnly<u32>,
     /// Measure / arrange wall time this run. See the module doc for why
     /// this one keeps its own gate.
-    #[cfg(feature = "internals")]
+    #[cfg(feature = "bench")]
     phase_timings: PhaseTimings,
 }
 
@@ -127,7 +127,7 @@ impl LayoutProbe {
         self.cache_hits.clear();
         self.copied.reset();
         self.translated.reset();
-        #[cfg(feature = "internals")]
+        #[cfg(feature = "bench")]
         {
             self.phase_timings = PhaseTimings::default();
         }
@@ -137,7 +137,7 @@ impl LayoutProbe {
     /// rather than assigns — `run` opens one span per root per layer.
     #[inline]
     pub(crate) fn add_measure(&mut self, #[allow(unused_variables)] span: PhaseSpan) {
-        #[cfg(feature = "internals")]
+        #[cfg(feature = "bench")]
         {
             self.phase_timings.measure_ns += span.elapsed_ns();
         }
@@ -158,7 +158,7 @@ impl LayoutProbe {
     /// [`MeasureCache::finish_frame`]: crate::layout::cache::MeasureCache
     #[inline]
     pub(crate) fn add_capture(&mut self, #[allow(unused_variables)] span: PhaseSpan) {
-        #[cfg(feature = "internals")]
+        #[cfg(feature = "bench")]
         {
             self.phase_timings.capture_ns += span.elapsed_ns();
         }
@@ -167,7 +167,7 @@ impl LayoutProbe {
     /// Arrange counterpart of [`Self::add_measure`].
     #[inline]
     pub(crate) fn add_arrange(&mut self, #[allow(unused_variables)] span: PhaseSpan) {
-        #[cfg(feature = "internals")]
+        #[cfg(feature = "bench")]
         {
             self.phase_timings.arrange_ns += span.elapsed_ns();
         }
@@ -196,7 +196,7 @@ impl LayoutProbe {
 
 /// Bench-facing read. Separate from the test-only accessors below
 /// because its field carries the other gate.
-#[cfg(feature = "internals")]
+#[cfg(feature = "bench")]
 impl LayoutProbe {
     pub(crate) fn phase_timings(&self) -> PhaseTimings {
         self.phase_timings
@@ -242,16 +242,16 @@ mod tests {
     /// the populated one.
     #[test]
     fn phase_span_costs_nothing_when_its_gate_is_off() {
-        #[cfg(not(feature = "internals"))]
+        #[cfg(not(feature = "bench"))]
         assert_eq!(
             size_of::<PhaseSpan>(),
             0,
-            "PhaseSpan must vanish without `internals`, or every `run` pays for a clock read",
+            "PhaseSpan must vanish without `bench`, or every `run` pays for a clock read",
         );
-        #[cfg(feature = "internals")]
+        #[cfg(feature = "bench")]
         assert!(
             size_of::<PhaseSpan>() > 0,
-            "with `internals` a span must actually carry an Instant",
+            "with `bench` a span must actually carry an Instant",
         );
     }
 

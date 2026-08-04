@@ -1,4 +1,4 @@
-#[cfg(feature = "internals")]
+#[cfg(feature = "bench")]
 pub(crate) mod bench;
 pub(crate) mod curve_pipeline;
 mod debug_marker;
@@ -21,6 +21,7 @@ mod stencil;
 pub(crate) mod text;
 pub(crate) mod viewport;
 #[cfg(feature = "internals")]
+#[cfg(feature = "bench")]
 pub(crate) mod write_stats;
 
 use self::curve_pipeline::CurvePipeline;

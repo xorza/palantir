@@ -27,7 +27,7 @@
 //! - Sorted sweep, interval tree, BVH: all need an O(n log n) build
 //!   every frame for n ≈ 200, against a ~7 µs total budget.
 
-#[cfg(feature = "internals")]
+#[cfg(feature = "bench")]
 pub(crate) mod bench;
 
 use crate::primitives::urect::URect;

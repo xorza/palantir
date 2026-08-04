@@ -301,7 +301,7 @@ dhat adds 10-30× allocator overhead.
 ### Hand-rolling
 
 ```sh
-cargo bench --bench frame --features internals --no-run
+cargo bench --bench frame --features bench --no-run
 BIN=$(ls -t target/release/deps/frame-* | grep -v '\.d$' | head -1)
 # frame bench requires PALANTIR_BENCH_MODE + PALANTIR_BENCH_NOTE in env.
 export PALANTIR_BENCH_MODE=cpu PALANTIR_BENCH_NOTE='drill note'

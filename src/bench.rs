@@ -6,6 +6,7 @@
 //! has to be `pub` for a benchmark's sake.
 
 pub use crate::animation::bench::bench as animation;
+pub use crate::frame_fixture::FrameFixture;
 pub use crate::host::bench::{alloc_free, alloc_free_gpu, alloc_resize};
 pub use crate::input::bench::bench as input;
 pub use crate::layout::cache::bench::bench as layout_caches;
@@ -23,5 +24,4 @@ pub use crate::scene::damage::bench::bench as damage;
 pub use crate::scene::tree::paint_anims::bench::bench as paint_anims;
 pub use crate::text::bench::bench as text_shape;
 pub use crate::ui::bench::{bench as frame, config as frame_config};
-pub use crate::ui::bench_fixture::FrameFixture;
 pub use crate::widgets::text_edit::bench::bench as text_edit;

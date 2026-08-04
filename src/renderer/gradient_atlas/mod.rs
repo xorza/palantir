@@ -46,7 +46,7 @@ use crate::renderer::gradient_atlas::mru::MruList;
 use crate::renderer::gradient_atlas::probe::GradientAtlasProbe;
 use rustc_hash::FxHashMap;
 
-#[cfg(feature = "internals")]
+#[cfg(feature = "bench")]
 pub(crate) mod bench;
 
 pub(crate) mod bake;

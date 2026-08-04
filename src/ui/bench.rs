@@ -52,19 +52,19 @@
 //! off-screen part of the fixture: the CPU arms still record, measure and
 //! arrange the whole tree, but only the visible part is painted.
 //!
-//! The shared workload lives in [`crate::ui::bench_fixture`] and also drives
+//! The shared workload lives in [`crate::frame_fixture`] and also drives
 //! the allocation benches in [`crate::host::bench`] and
 //! `examples/frame_visual.rs`.
 
 use crate::app::internals::RecordApp;
 use crate::diagnostics::gpu_stats::BatchKind;
+use crate::frame_fixture::{BENCH_SCALE, FrameFixture, build_ui};
 use crate::host::offscreen::OffscreenHost;
 use crate::primitives::color::Color;
 use crate::renderer::backend::write_stats;
 use crate::renderer::frontend::Frontend;
 use crate::renderer::plan::{RenderKind, RenderPlan};
 use crate::ui::Ui;
-use crate::ui::bench_fixture::{BENCH_SCALE, FrameFixture, build_ui};
 use crate::ui::frame_report::FramePaint;
 use crate::ui::harness::UiHarness;
 use criterion::Criterion;
@@ -159,7 +159,7 @@ fn gpu() -> &'static Gpu {
         // durations + pipeline statistics. The intersection with
         // `adapter.features()` drops bits the adapter doesn't
         // advertise; missing features degrade individually. The
-        // frame bench is `--features internals` only — the right
+        // frame bench is `--features bench` only — the right
         // place to keep instrumentation on by default.
         let timing_features = adapter.features()
             & (wgpu::Features::TIMESTAMP_QUERY

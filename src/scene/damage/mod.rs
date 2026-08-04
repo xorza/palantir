@@ -63,7 +63,7 @@ use crate::scene::forest::Forest;
 use rustc_hash::FxHashSet;
 use std::time::Duration;
 
-#[cfg(feature = "internals")]
+#[cfg(feature = "bench")]
 pub(crate) mod bench;
 pub(crate) mod probe;
 pub(crate) mod region;

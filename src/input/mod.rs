@@ -1,4 +1,4 @@
-#[cfg(feature = "internals")]
+#[cfg(feature = "bench")]
 pub(crate) mod bench;
 pub(crate) mod key_class;
 pub(crate) mod keyboard;

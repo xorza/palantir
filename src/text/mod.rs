@@ -29,7 +29,7 @@
 //! surface over [`layout_probe`]'s lease, [`render`] the cosmic-free
 //! render vocabulary, [`wrap`] the wrap-policy vocabulary.
 
-#[cfg(feature = "internals")]
+#[cfg(feature = "bench")]
 pub(crate) mod bench;
 mod cache_probe;
 mod cosmic;
