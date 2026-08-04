@@ -20,14 +20,16 @@ use palantir_anim_derive::Animatable;
 /// — there is no `Option<Stroke>` here. The animation pipeline lerps
 /// `Stroke` directly through `Stroke::ZERO`; paint-time `is_noop`
 /// filtering catches both authored and animation-decayed no-ops.
-// `Background` is intentionally **not `Copy`** — it's 168 B and was
-// previously threaded by value through `Widget::record` →
-// `Forest::open_node` → `Tree::open_node` → `shapes::lower::background`. Each
-// hop forced 6+ `vmovups` of stack copy, totalling ~35 % of
-// the node opener's self-time in the `frame` bench. The chain now
-// takes `&Background`; the matching `Animatable` supertrait relaxed
-// to `Clone` (not `Copy`) so the animation path doesn't bring
-// auto-`Copy` back in through the trait bound.
+// `Background` is intentionally **not `Copy`**. At 124 B (pinned by
+// `hot_struct_sizes_are_pinned`) an implicit copy is a `vmovups`
+// ladder, and the recording chain — `Widget::record` →
+// `Forest::open_node` → `Tree::open_node` → `shapes::lower::background`
+// — runs once per chromed widget per frame, so by-value threading
+// showed up at ~35 % of the node opener's self-time in the `frame`
+// bench. The chain takes `&Background`; `Animatable`'s supertrait is
+// `Clone` rather than `Copy` so the animation path can't reintroduce
+// auto-`Copy` through the trait bound. Duplication sites spell
+// `.clone()` so each copy stays a call-site decision.
 #[derive(Clone, Debug, PartialEq, Hash, serde::Serialize, serde::Deserialize, Animatable)]
 pub struct Background {
     pub fill: Brush,

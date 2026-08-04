@@ -252,7 +252,7 @@ impl<'a> TextEdit<'a> {
 
     pub fn show(self, ui: &mut Ui) -> TextEditResponse<'_> {
         // Identity resolves on its own: `self.node` keeps being written
-        // below (key filter, then `resolve_look`'s spacing defaults), so
+        // below (key filter, then `WidgetTheme::resolve`'s spacing defaults), so
         // a copy staged now would be stale by the time it records.
         let widget = ui.widget(self.node);
         let id = widget.id();
@@ -314,7 +314,7 @@ impl<'a> TextEdit<'a> {
         // — Ctrl+S still saves mid-edit, which is exactly what an
         // exclusive capture would break.
         //
-        // The same value gates the drain in `handle_input`, so what this
+        // The same value gates the drain in `run_input`, so what this
         // field tells other readers it takes and what it acts on are one
         // fact rather than two that can disagree.
         let mut filter = KeyFilter::TEXT_FIELD;
@@ -322,7 +322,7 @@ impl<'a> TextEdit<'a> {
         if is_focused {
             self.node.flags.set_key_filter(filter);
         }
-        // `resolve_look` also substitutes theme padding/margin where
+        // `WidgetTheme::resolve` also substitutes theme padding/margin where
         // the builder left those fields unconfigured. The renderer
         // reads `node.padding` to deflate the buffer layout, and
         // the caret hit-test reads it back below — both see the

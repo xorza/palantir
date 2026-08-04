@@ -299,12 +299,12 @@ pub(crate) trait PaintSink {
         // the owner's arranged box, a text extent from the shaped
         // measure — which can legitimately collapse to nothing.
         //
-        // Safe to demote: the composer handles a degenerate polyline by
-        // emitting no geometry (pinned by
+        // Debug-only is safe: the composer handles a degenerate polyline
+        // by emitting no geometry (pinned by
         // `degenerate_polyline_emits_nothing_rather_than_panicking`), so
-        // release behaviour is unchanged — it just stops paying two
-        // comparisons per polyline per frame to re-establish something
-        // upstream already proved.
+        // a release build that somehow reached here still paints
+        // correctly — it just doesn't pay two comparisons per polyline
+        // per frame to re-establish what upstream already proved.
         debug_assert!(
             !payload.is_noop(),
             "degenerate polyline reached the sink — `PolylineShape::is_noop` \

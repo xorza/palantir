@@ -180,11 +180,12 @@ impl std::fmt::Debug for DamageInput<'_> {
 /// `window_driver` — but that's a present-path GPU-cost call kept out of this
 /// damage-tracking one.)
 ///
-/// The previous 0.5 was tuned for the single-rect-union accumulator, where two
-/// unrelated tiny corners would blow the union to ~100 % and trip it despite
-/// < 1 % of pixels actually changing. The multi-rect region keeps disjoint
-/// corners disjoint at the data-structure level, so the threshold applies to the
-/// *sum* of per-rect areas — corner-pair pathologies stay well below 0.7.
+/// The threshold can sit this high because the region keeps disjoint rects
+/// disjoint at the data-structure level, so `coverage` is the *sum* of
+/// per-rect areas rather than the area of one bounding union. Two unrelated
+/// tiny corners therefore score near 0 %, not the ~100 % a single-union
+/// accumulator would report — which is what a threshold this permissive
+/// depends on.
 pub(crate) const FULL_REPAINT_THRESHOLD: f32 = 0.7;
 
 /// What the GPU should do with this frame:
@@ -437,8 +438,8 @@ fn extend_predamaged(
 #[cfg(test)]
 impl DamageEngine {
     /// Union of the paint screens retained for `wid` last frame — the
-    /// value the (now removed) `NodeSnapshot.rect` field used to cache.
-    /// Equal to the node's `Cascade.paint_rect`. `None` when `wid`
+    /// node's own paint extent, equal to what the live cascade's rows
+    /// fold to through [`PaintRows::union_screens`]. `None` when `wid`
     /// didn't paint last frame (no `prev` entry).
     pub(crate) fn prev_paint_rect(&self, wid: WidgetId) -> Option<Rect> {
         let snap = self.prev.get(&wid)?;

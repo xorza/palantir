@@ -518,7 +518,8 @@ impl Ui {
     /// Upload an image and get back an owning [`ImageHandle`]. **Hold the
     /// handle** to keep the GPU texture resident — dropping the last
     /// clone frees it; there is no `unregister`. Reference it in
-    /// [`Shape::Image`] every frame (`clone` it where it needs to live).
+    /// [`Shape::image`](crate::Shape::image) every frame (`clone` it where it
+    /// needs to live).
     /// The CPU bytes are dropped right after the upload.
     ///
     /// # Errors

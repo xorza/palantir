@@ -35,7 +35,7 @@ pub(super) struct InputResult {
 /// What the builder configured about *accepting* input, as opposed to
 /// rendering it. The three travel together because they are set on the
 /// same builder and read at the same call, and bundling them is what
-/// keeps [`handle_input`]'s parameter list inside its own means.
+/// keeps [`run_input`]'s parameter list inside its own means.
 ///
 /// Not to be confused with [`crate::InputPolicy`], which is unrelated —
 /// that one gates whether a frame re-records at all. This is per-widget

@@ -85,8 +85,8 @@ impl Widget {
     /// background — container widgets resolve an explicit-or-theme
     /// `Option<Background>` and pass `chrome.as_ref()`. Both it and the
     /// node travel by reference from here down `Forest::open_node` →
-    /// `Tree::open_node` → `Node::columns`, so neither the 168 B
-    /// `Background` nor the 120 B `Node` is re-copied per hop.
+    /// `Tree::open_node` → `Node::into_columns`, so neither the
+    /// `Background` nor the `Node` is re-copied per hop.
     pub fn record<R>(
         self,
         ui: &mut Ui,

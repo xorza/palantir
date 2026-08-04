@@ -77,21 +77,18 @@ pub(crate) const TEXT_SCALE_STEP: f32 = 0.005;
 /// multiplier. The `const _` assertion beside that constant is the
 /// tripwire.
 ///
-/// **Comparable numbers are only half of an ordering.** Each cache also
-/// counts frames, and they used to count off different events: this side
-/// ticked on the record path (`FullRecord` frames only), the encoder's
-/// on the submit path — which additionally runs for `PaintOnly` frames
-/// and used to skip any frame that prepared no text batch. Two windows
-/// over unequal clocks, so a recorded frame that drew no text aged
-/// buffers and not encoded entries, and the ordering simply did not
-/// hold. Both now read one clock — see
-/// [`ShaperInner::frame`](shaper::ShaperInner) — which is what makes
-/// comparing the two windows mean anything at all.
+/// **Comparable numbers are only half of an ordering.** Both windows
+/// count frames off **one** clock — [`ShaperInner::frame`](shaper::ShaperInner)
+/// — which is what makes comparing them mean anything. Counting off
+/// per-cache events instead (this side on the record path, the encoder's
+/// on the submit path, which also runs for `PaintOnly` frames) puts the
+/// two windows on unequal clocks, and the ordering stops holding: a
+/// recorded frame that drew no text would age buffers but not encoded
+/// entries.
 ///
-/// The two were also one *value* for a while, on the reasoning that a
-/// shared constant is what stops them drifting apart. That conflated
-/// "cannot cross" with "must match", and matching cost the encoded cache
-/// four times the resident rows it needed — the shaped side has a
+/// The ordering is deliberately **not** an equality. Sharing one value
+/// would conflate "cannot cross" with "must match" and cost the encoded
+/// cache four times the resident rows it needs — the shaped side has a
 /// probation tier to shed gesture churn, and the encoded side has none.
 ///
 /// Lives here rather than with either cache because `renderer` depends
@@ -100,7 +97,7 @@ pub(crate) const TEXT_SCALE_STEP: f32 = 0.005;
 pub(crate) const RENDERED_RUN_KEEP_FRAMES: u64 = 120;
 
 /// Font family picker on [`crate::TextStyle`] and
-/// [`crate::Shape::Text`]. `Sans` resolves to bundled Inter (the default
+/// [`Shape::text`](crate::Shape::text). `Sans` resolves to bundled Inter (the default
 /// proportional face); `Mono` resolves to bundled JetBrains Mono. Both
 /// ship inside `CosmicMeasure::with_bundled_fonts`; the test-only mono
 /// fallback ignores family entirely.
@@ -119,7 +116,8 @@ pub enum FontFamily {
     Mono = 1,
 }
 
-/// Font weight picker on [`crate::TextStyle`] and [`crate::Shape::Text`],
+/// Font weight picker on [`crate::TextStyle`] and
+/// [`Shape::text`](crate::Shape::text),
 /// independent of [`FontFamily`]. `Regular` shapes with the family's
 /// normal face; `Bold` requests the bold face (a distinct static face
 /// for Inter, an instantiated `wght` for the variable JetBrains

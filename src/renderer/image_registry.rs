@@ -8,7 +8,7 @@
 //! texture. There is no `unregister` — the handle's lifetime *is* the
 //! texture's lifetime.
 //!
-//! Reference the handle from [`Shape::Image`](crate::shape::Shape::Image)
+//! Reference the handle from [`Shape::image`](crate::Shape::image)
 //! every frame. The CPU bytes travel to the GPU exactly once — on the
 //! first drain after registration — and are dropped immediately after
 //! upload; only the GPU texture persists. The pure data types live
@@ -52,7 +52,7 @@ impl std::error::Error for RegisterImageError {}
 /// [`Ui::register_image`](crate::Ui::register_image). The texture lives exactly
 /// as long as an `ImageHandle` (or any clone of one) is held; dropping the last
 /// clone queues the texture for release. `Clone` shares ownership
-/// (reference-counted). Reference it from [`Shape::Image`](crate::Shape::Image)
+/// (reference-counted). Reference it from [`Shape::image`](crate::Shape::image)
 /// each frame; "no image" is
 /// expressed as `Option<ImageHandle>` at the call site, not a sentinel.
 ///

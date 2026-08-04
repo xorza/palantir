@@ -16,9 +16,9 @@ use crate::widgets::widget::Widget;
 /// label, and the indicator body.
 ///
 /// The theme is passed unresolved (`style` + `slot`) rather than as
-/// picked values: `toggle_row` hands both to [`resolve_look`], which is
-/// where every widget in the crate turns a theme bundle into a painted
-/// look. Callers still read the *geometry* scalars off the theme
+/// picked values: `toggle_row` hands both to [`WidgetTheme::resolve`],
+/// which is where every widget in the crate turns a theme bundle into a
+/// painted look. Callers still read the *geometry* scalars off the theme
 /// themselves — they need them to size `boxed` and to paint the
 /// indicator — but they no longer pick or animate.
 #[derive(Debug)]
@@ -32,8 +32,8 @@ pub(crate) struct ToggleChrome<'a> {
     /// fallback can't be hard-coded here.
     pub(crate) slot: fn(&Theme) -> &ToggleTheme,
     /// Checked / selected / on. Selects which of the theme's two look
-    /// packs the four-response pick runs inside; reaches `resolve_look` as
-    /// [`ToggleTheme`]'s `Mode`.
+    /// packs the four-response pick runs inside; reaches
+    /// [`WidgetTheme::resolve`] as [`ToggleTheme`]'s `Mode`.
     pub(crate) on: bool,
     /// The box/track child recorded before the label, already sized and
     /// in its layout mode — a square leaf for `Checkbox`/`RadioButton`,
@@ -118,12 +118,10 @@ mod tests {
     use crate::widgets::switch::Switch;
     use glam::UVec2;
 
-    /// All three toggles resolve their box through `resolve_look` now,
+    /// All three toggles resolve their box through `WidgetTheme::resolve`,
     /// so [`crate::ToggleTheme`]'s `padding` / `margin` reach the row and
-    /// an explicit builder value still wins — the contract `Button` and
-    /// `TextEdit` already had. Before the shared resolver the toggle
-    /// themes carried no spacing at all, so a toggle row was the one
-    /// chrome-box widget an app couldn't space from its theme.
+    /// an explicit builder value still wins — the same contract `Button`
+    /// and `TextEdit` hold to.
     ///
     /// One test over all three because they are now one code path: a
     /// regression that reached only `Switch` would mean `Switch` had

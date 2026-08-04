@@ -286,21 +286,21 @@ impl Node {
         }
     }
 
-    /// Fan this `Node` out into the per-NodeId columns `Tree` stores,
+    /// Fan this `Node` out into the per-`NodeId` columns `Tree` stores,
     /// resolving every still-`None` themable field to its layout
-    /// default. Single routing point — adding a field is one edit in
-    /// the column type and one in the routing block. `widget_id` is
-    /// supplied by the caller (resolved from `self.salt` upstream in
-    /// `Forest::open_node`) so `Node` itself never carries a
-    /// resolved id.
-    #[inline(always)]
-    /// Shred this node into its SoA columns — the tail of the
-    /// per-widget recording chain, after which the node is dead.
+    /// default — the tail of the per-widget recording chain, after which
+    /// the node is dead.
     ///
-    /// Consumes `self` to say exactly that: the caller has no reason to
-    /// read the node again, and handing over the 120 B lets the whole
+    /// Single routing point: adding a field is one edit in the column
+    /// type and one in the routing block below. `widget_id` is supplied
+    /// by the caller (resolved from `self.salt` upstream in
+    /// `Forest::open_node`) so `Node` itself never carries a resolved id.
+    ///
+    /// Consumes `self` to say exactly that the node is spent: the caller
+    /// has no reason to read it again, and handing it over lets the
     /// chain feed it forward rather than keep a live copy alongside the
     /// columns.
+    #[inline(always)]
     pub(super) fn into_columns(self, widget_id: WidgetId) -> NodeColumns {
         let mut attrs = self.flags;
         attrs.set_clip(self.clip.unwrap_or(ClipMode::None));
