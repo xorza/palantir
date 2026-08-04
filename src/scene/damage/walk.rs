@@ -174,11 +174,11 @@ impl LayerWalk<'_> {
     ///
     /// Roots key on the layer discriminant, so a subtree migrating
     /// between layers can't read as unchanged. Both the per-node walk
-    /// and the moved-subtree jump go through here — they used to keep
-    /// two stacks, the jump riding the tail of the outer one behind a
-    /// `jump_base` truncation. One stack needs no truncation: the jump's
-    /// frames all end within the jumped subtree, so the next outer
-    /// `parent_key_at` retires them on its own.
+    /// and the moved-subtree jump go through here, sharing **one** stack:
+    /// the jump's frames all end within the jumped subtree, so the next
+    /// outer `parent_key_at` retires them on its own. Two stacks — the
+    /// jump riding the tail of the outer one — would need a `jump_base`
+    /// truncation to do the same job.
     fn parent_key_at(&mut self, i: usize) -> u64 {
         while self.parents.last().is_some_and(|f| i as u32 >= f.end) {
             self.parents.pop();
@@ -431,9 +431,9 @@ impl LayerWalk<'_> {
         }
         for item in self.tree.tree_items(node) {
             // Every item — shape *and* child marker — owns one arena
-            // row, so the cursor advances on both. It used to be spelled
-            // `node_span.start + out.len()`, which made the output
-            // vector's length double as the read cursor.
+            // row, so the cursor advances on both. An explicit `row`
+            // rather than `node_span.start + out.len()`: the latter makes
+            // the output vector's length double as the read cursor.
             let extent = match item {
                 TreeItem::ShapeRecord(..) => arena.rows[row].screen,
                 TreeItem::Child(child) => arena

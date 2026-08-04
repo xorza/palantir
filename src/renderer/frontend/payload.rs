@@ -2,16 +2,17 @@
 //! [`PaintSink`](crate::renderer::frontend::paint_sink::PaintSink),
 //! one per paint operation.
 //!
-//! Plain value types: they used to be `bytemuck::Pod` so a packed
-//! command arena could store them, and carried `#[repr(C)]` plus
-//! injected trailing padding to satisfy that. Nothing serializes them
-//! now, so the layout is the compiler's to choose and fields can be
-//! ordinary enums rather than `u8` newtypes.
+//! Plain value types. Nothing serializes them — the sink consumes each
+//! payload inline — so the layout is the compiler's to choose, and
+//! fields are ordinary enums rather than the `u8` newtypes,
+//! `#[repr(C)]`, and injected trailing padding a `bytemuck::Pod` command
+//! arena would require.
 //!
 //! ## The spin pivot contract
 //!
 //! Stated once here because it binds two payload fields across three
-//! tiers, and the three used to restate it separately.
+//! tiers, and three separate restatements are three things to keep in
+//! step.
 //!
 //! `DrawPolylinePayload` and `DrawCurvePayload` each carry a `bbox`
 //! and a `rotation`. **Whenever `rotation != 0`, `bbox` is not the

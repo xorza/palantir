@@ -403,8 +403,8 @@ mod tests {
     /// *loudly* is `Shape::debug_assert_no_nan`'s job at the authoring
     /// boundary, so by the time a value reaches here the useful
     /// behaviour is to fail safe — and to do it identically for every
-    /// shape, rather than the split this used to have (rect forwarded
-    /// NaN to the GPU, triangle scrubbed it).
+    /// shape, rather than per-path (a rect forwarding NaN to the GPU
+    /// while a triangle scrubs it).
     ///
     /// The table pins both halves: the exact normalized stroke per case,
     /// **and** that the rect and triangle paths emit bit-identical

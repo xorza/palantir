@@ -776,8 +776,8 @@ mod tests {
         assert!(parse_hex("日本").is_err(), "6-byte non-ASCII");
         assert!(parse_hex("#日本").is_err(), "6-byte non-ASCII, hashed");
         assert!(parse_hex("αβγδ").is_err(), "8-byte non-ASCII");
-        // `u8::from_str_radix` accepts a leading sign, so the old parser
-        // read `"+a+b+c"` as rgb(10, 11, 12).
+        // `u8::from_str_radix` accepts a leading sign, so a parser that
+        // delegates to it reads `"+a+b+c"` as rgb(10, 11, 12).
         assert!(parse_hex("#+a+b+c").is_err(), "sign is not a hex digit");
     }
 

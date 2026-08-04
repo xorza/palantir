@@ -38,11 +38,11 @@ fn pointer_in_widget_space(pointer: Vec2, layout_origin: Vec2, transform: Transl
 }
 
 /// Per-button capture. One slot per [`PointerButton`]; three
-/// all-or-nothing pieces instead of twelve loose fields, so the old
-/// by-convention invariants (a capture always has a press origin, a
-/// drag latch always has a capture, click and drag-stop never
-/// coexist, the run tracker never half-exists) are unrepresentable
-/// rather than maintained.
+/// all-or-nothing pieces rather than twelve loose fields, so the
+/// invariants (a capture always has a press origin, a drag latch always
+/// has a capture, click and drag-stop never coexist, the run tracker
+/// never half-exists) are unrepresentable rather than maintained by
+/// convention.
 #[derive(Default, Clone, Copy, Debug)]
 struct Capture {
     /// The in-flight press, created on the press event and destroyed
@@ -990,12 +990,11 @@ impl InputState {
         // so these three land on one cache line instead of three.
         let entry = loc.map(|l| cascade.entries[l.entry_idx as usize]);
         let rect = entry.map(|e| e.rect);
-        // The arranged rect lives on `Layout`, which owns it; the
-        // cascade used to keep a per-node copy purely so this read
-        // wouldn't need the endpoint. Same value either way — the
-        // cascade is rebuilt (or provably skipped) whenever an arranged
-        // rect moves, so `layout` and `cascade` always describe the
-        // same arrangement.
+        // The arranged rect lives on `Layout`, which owns it. Reading it
+        // through the endpoint rather than from a per-node copy on the
+        // cascade costs nothing in freshness — the cascade is rebuilt (or
+        // provably skipped) whenever an arranged rect moves, so `layout`
+        // and `cascade` always describe the same arrangement.
         let layout_rect = loc.map(|l| layout.arranged_rect(l.endpoint));
         let transform = entry.map_or(TranslateScale::IDENTITY, |e| e.transform);
         // Cascade flattens parent-disabled into each entry, so this is

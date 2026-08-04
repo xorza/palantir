@@ -330,14 +330,14 @@ impl TextBackend {
     /// is its
     /// opposite number on the record side.
     ///
-    /// It used to return early on an empty `ranges`, which froze this
-    /// side's clock on any frame whose damage happened to miss every
-    /// text run while the shaper's kept advancing. Both caches now age
-    /// against the shaper's clock
+    /// **Runs on an empty `ranges` too.** Returning early there would
+    /// freeze this side's clock on any frame whose damage happened to
+    /// miss every text run, while the shaper's kept advancing. Both
+    /// caches age against the shaper's clock
     /// ([`TextShaper::frame`](crate::text::shaper::TextShaper::frame)),
-    /// so there is nothing to skip: sweeping a text-free frame is what
-    /// keeps `ENCODED_CACHE_KEEP_FRAMES` a bound on retention rather
-    /// than a bound on text-bearing frames.
+    /// so sweeping a text-free frame is what keeps
+    /// `ENCODED_CACHE_KEEP_FRAMES` a bound on retention rather than a
+    /// bound on text-bearing frames.
     pub(crate) fn end_frame(&mut self) {
         debug_assert!(
             !self.ranges.is_empty() || self.encoder.instances.is_empty(),

@@ -83,9 +83,10 @@ impl TextSystem {
 
     /// Drop every row belonging to a widget that vanished.
     ///
-    /// Rows used to go on a per-frame `hot` bit as well, on the reasoning
-    /// that a row is only a hint and reconstructing one costs a single
-    /// refresh dispatch. That is true of the *root*, and false of the
+    /// Eviction keys on the widget alone, never on a per-frame `hot`
+    /// bit. The reasoning that would justify a `hot` bit — a row is only
+    /// a hint, and reconstructing one costs a single refresh dispatch —
+    /// holds for the *root* and fails for the
     /// wrap slot: the slot is the only record of which bounded key this
     /// row last answered, and [`Self::measure`] needs it to
     /// [`supersede`](TextShaper::supersede) that key when the width

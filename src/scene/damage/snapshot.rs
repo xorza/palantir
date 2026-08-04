@@ -320,8 +320,8 @@ impl PaintSnapArena {
 /// One type rather than four loose `Vec`s on the arena so the phase
 /// order reads as a call sequence and each phase's doc can state what
 /// the previous one left behind. The sort order in particular is
-/// load-bearing twice over and used to be recorded only in a comment on
-/// [`PaintKey`], forty lines from the merge that depends on it.
+/// load-bearing twice over, and stating it on [`PaintKey`] alone would
+/// leave it forty lines from the merge that depends on it.
 ///
 /// Every column keeps its capacity across frames, so a steady-state
 /// content reshuffle allocates nothing.

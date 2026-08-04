@@ -1,12 +1,13 @@
 //! [`LayoutPass`] — the borrows one layer's measure/arrange walk holds,
 //! and the recursion that rides them.
 //!
-//! Every driver used to take the same five or six threaded parameters
-//! (`engine, tree, node, …, interned_text, out`) and reach into engine
-//! state by path (`engine.scratch.grid.depth_stack`). Both are this
-//! type's job now: the invariant borrows live here once, and the scratch
-//! each driver owns is reached by name. A driver's signature is down to
-//! the pass plus what actually varies per node.
+//! The invariant borrows live here once, so a driver takes the pass plus
+//! what actually varies per node — not the five or six parameters
+//! (`engine, tree, node, …, interned_text, out`) each would otherwise
+//! thread identically. The scratch a driver owns is reached by name
+//! through the accessors below rather than by path into engine state
+//! (`engine.scratch.grid.depth_stack`), which is what keeps one driver
+//! from growing a dependency on another's.
 //!
 //! The intrinsic query deliberately does **not** live here. It is a pure
 //! function of a subtree and must not be able to write the frame's text

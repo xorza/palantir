@@ -9,47 +9,6 @@ no "done" markers, no resolved section, no history.
 
 ---
 
-## Comments record the history of the code rather than its current state
-
-22% of `src/` is comment lines (28.7k of 129.6k); 13 files are over 50%
-(`scene/cascade/mod.rs` 55%, `input/response.rs` 54%, `ui/mod.rs` 53% of 1041
-lines). Much of that volume is narration of refactors that already landed,
-which is why the factual claims in it drift out of sync with the code.
-
-**Stale-symbol half: closed.** The five `Background` sizes, `ChromeRow`,
-`Brush`, the dead `resolve_look` / `handle_input` / `Node::columns` /
-`Cascade.paint_rect` references, the split `into_columns` doc block, and the
-whole `Shape::Variant` family of stale enum-variant links are corrected.
-`RUSTDOCFLAGS="-D rustdoc::broken_intra_doc_links" cargo doc --no-deps
---all-features` now exits 0 crate-wide.
-
-**Narration half: audited, still open.** The sweep the first pass did not do
-has now run — a grep over comment lines for unambiguous code-history phrasing
-(`it used to`, `used to be`, `the old`, `was previously`, `formerly`, and
-`used to <verb>` over ~40 verbs).
-
-- [ ] ~67 production and ~62 test/bench comments still narrate how the code
-  used to be written. Spot-checking shows a minority are runtime-sense rather
-  than code-history ("the old thumb", "the old rects", "the old uv"), so the
-  true count is somewhat lower — but the two hotspots are unambiguous and
-  worth taking first:
-  `renderer/backend/text/atlas/mod.rs` (9: "`grow` used to stop only at…",
-  "`allocate` used to try eviction first…", "It used to be a periodic
-  `cache.retain`…", "The atlas used to increment per submit…", "This used to
-  pick the true least-recently-used entry…") and
-  `renderer/backend/text/encode/mod.rs` (7: "This used to append every encode
-  to the arena tail…", "It used to be a `retain` over the whole table…", "The
-  old block…", "It used to be *equal*, which cost population for nothing").
-  Each states a superseded design and a reason it was superseded, which reads
-  as a changelog entry welded to the item it changed.
-- [ ] No lint guards the stale-symbol half against regressing.
-  `Cargo.toml`'s `[lints.rust]` sets `missing_debug_implementations`,
-  `unreachable_pub`, and `items_after_test_module`; there is no
-  `[lints.rustdoc]` section, so `broken_intra_doc_links` stays at its default
-  `warn` and a renamed item degrades a doc link silently in a build that
-  otherwise prints no warnings. The seven links found this pass had
-  accumulated precisely because nothing reports them.
-
 ## Production code is generic, indirected, or public solely to serve test and demo consumers
 
 - [ ] `renderer/frontend/paint_sink.rs`: `PaintSink` is a 10-required /
@@ -68,7 +27,15 @@ has now run — a grep over comment lines for unambiguous code-history phrasing
   `bench` **or** `showcase`.
 - [ ] `src/demo_swatches.rs` is `pub` in `lib.rs` with the comment "Public only
   because the `showcase` binary is a separate crate from this library and
-  cannot reach a `pub(crate)` one; not part of the supported API."
+  cannot reach a `pub(crate)` one; not part of the supported API." rustdoc
+  reports the consequence directly — `cargo doc --all-features` warns
+  "public documentation for `demo_swatches` links to private item
+  `crate::frame_fixture`", i.e. a published item documenting itself in terms
+  of one that isn't. It is one of only two `private_intra_doc_links` warnings
+  in the crate (the other is `Corners::approx_zero` →
+  `primitives::half_simd::F16x4::any_lane_above`), so denying that lint is
+  two fixes away — but this one is not a doc fix, it is the visibility
+  problem above.
 - [ ] `src/ui/harness/` (1,588 lines) plus `host/test_gpu.rs` are compiled into
   the library and re-exported through `pub mod internals`.
 - [ ] Counting these together: of 129.6k lines under `src/`, roughly 56k are

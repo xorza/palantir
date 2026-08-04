@@ -170,9 +170,9 @@ fn block_capacity(class: usize) -> u32 {
 ///
 /// # Why blocks rather than an append-only arena
 ///
-/// This used to append every encode to the arena tail and leave the
-/// replaced span behind as dead space, compacting once dead exceeded
-/// live. Compaction copies *every live glyph* in a single frame, and
+/// Appending every encode to the arena tail and leaving the replaced
+/// span behind as dead space means compacting once dead exceeds live.
+/// Compaction copies *every live glyph* in a single frame, and
 /// under a gesture — where each frame appends one frame's worth and
 /// expires one frame's worth, so live stays flat — the trigger fires on
 /// a fixed period of `⌊live / appends-per-frame⌋ + 1`, which for pure
@@ -265,14 +265,14 @@ impl EncodedCache {
     /// cost lumpy (one frame in N paying for all of them), and uniform
     /// per-frame cost is worth more here than a lower average.
     ///
-    /// It used to be a `retain` over the whole table, which is uniform
-    /// but uniformly proportional to the working set — a text-heavy
-    /// frame paid for every resident row to discover that none had
-    /// lapsed — measured at ~11 µs for 24k rows. Draining
-    /// [`Self::expiry`] keeps the every-frame cadence and drops the
-    /// proportionality: what a frame pays for is what came due on it.
+    /// A `retain` over the whole table would be uniform but uniformly
+    /// proportional to the working set — a text-heavy frame paying for
+    /// every resident row to discover that none had lapsed, measured at
+    /// ~11 µs for 24k rows. Draining [`Self::expiry`] keeps the
+    /// every-frame cadence and drops the proportionality: what a frame
+    /// pays for is what came due on it.
     ///
-    /// The whole pass is now the drain: an expired row hands its block
+    /// The whole pass is the drain: an expired row hands its block
     /// straight back to its free list, so there is no second traversal
     /// and nothing left for a compaction step to do.
     fn sweep(&mut self, current_frame: u64, keep_frames: u64) {
@@ -488,11 +488,11 @@ pub(super) fn encode_key_for(r: &TextDrawRow, frame_scale: f32) -> EncodedRunKey
 /// `const _` assertion below is what stops a later edit from inverting
 /// it.
 ///
-/// It used to be *equal*, which cost population for nothing.
+/// Making the two *equal* would cost population for nothing.
 /// `EncodedKey` folds `scale_q` and (through [`TextShapeKey`])
 /// `max_w_q`, so a zoom or width drag mints a fresh key per run per
 /// frame that will never be asked for again — and with one window and
-/// no demotion signal each of those lived the full span. The resident
+/// no demotion signal each of those lives the full span. The resident
 /// population is `runs × (KEEP + 1)`, so the window *is* the population
 /// multiplier: 120 held 121 frames of dead gesture keys, ~27 MB of
 /// glyph templates for a text-dense drag, on an arena that never

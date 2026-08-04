@@ -262,7 +262,7 @@ impl<'a> TextEdit<'a> {
         // probe, the context menu, the record — so a borrow taken from
         // `ui` cannot survive between them. Owning it costs two moves of
         // a small struct (no allocation: the undo buffers move with it)
-        // and collapses what used to be seven lookups into one.
+        // and collapses the seven per-stage lookups into one.
         //
         // [`Self::pass`] exists to make the write-back unconditional: it
         // early-returns on an unstyled editor, and a `mem::take` whose

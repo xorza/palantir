@@ -145,8 +145,8 @@ impl LayoutProbe {
 
     /// Snapshot capture — [`MeasureCache::capture_tree`] plus
     /// [`MeasureCache::finish_frame`]. The third layout phase, and the
-    /// one that used to be invisible: both run outside the measure and
-    /// arrange spans, so a frame's layout time was under-reported by
+    /// easiest to miss: both run outside the measure and arrange spans,
+    /// so without this counter a frame's layout time reads short by
     /// however much the snapshot cost.
     ///
     /// It is the phase whose *share* grows as the cache works better —

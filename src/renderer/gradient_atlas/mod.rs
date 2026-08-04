@@ -118,18 +118,18 @@ struct GradientLutKey {
 ///
 /// ## Why the index is separate from the rows
 ///
-/// This used to be one open-addressed table: hash the key, probe
-/// forward from that row. Eviction broke it. A victim is chosen by
-/// recency, so `claim_row` wrote keys into rows at arbitrary distance
-/// from their home slot, and the probe invariant ("reachable by
-/// walking forward from home until an empty slot") died at the first
-/// eviction. What kept lookups correct was that the probe scanned
-/// *every* row before giving up — so a miss cost O(capacity), twice
-/// over once the LRU search is counted, and capacity is a one-way
-/// ratchet. Splitting the two makes every operation O(1) and, as a
-/// side effect, lets [`Self::grow`] leave lookup completely alone:
-/// resident gradients keep their rows and can no longer be baked into
-/// a second one.
+/// One open-addressed table — hash the key, probe forward from that row
+/// — cannot survive eviction here. A victim is chosen by recency, so
+/// `claim_row` writes keys into rows at arbitrary distance from their
+/// home slot, and the probe invariant ("reachable by walking forward
+/// from home until an empty slot") dies at the first eviction. Keeping
+/// lookups correct then requires the probe to scan *every* row before
+/// giving up — a miss costing O(capacity), twice over once the LRU
+/// search is counted, against a capacity that only ratchets upward.
+/// Splitting the index from the rows makes every operation O(1) and, as
+/// a side effect, lets [`Self::grow`] leave lookup completely alone:
+/// resident gradients keep their rows and cannot be baked into a
+/// second one.
 #[derive(Debug)]
 pub(crate) struct CpuGradientAtlas {
     /// Bake key → the row holding it. A pure lookup index: it says
@@ -148,9 +148,9 @@ pub(crate) struct CpuGradientAtlas {
     /// contiguous, so casting to `&[u8]` for the GPU upload is a free
     /// reinterpret.
     baked: Vec<LutRowTexels>,
-    /// Recency order over rows `1..capacity`. Replaces the old
-    /// `last_used` timestamps: the list order *is* the recency order,
-    /// so there is nothing to compare and no clock to overflow. See
+    /// Recency order over rows `1..capacity`. The list order *is* the
+    /// recency order, so unlike `last_used` timestamps there is nothing
+    /// to compare and no clock to overflow. See
     /// [`mru`] for why its tail alone answers "what may be evicted".
     mru: MruList,
     /// Per-row: the [`Self::epoch`] the row was last registered in.

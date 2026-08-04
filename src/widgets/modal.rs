@@ -165,10 +165,11 @@ mod tests {
     }
 
     /// A modal paints above every popup and eats pointer input through
-    /// its backdrop, so it must also be the one that hears Escape. It
-    /// previously could not: any popup holding keyboard capture emptied
-    /// the uncaptured stream the modal read from, leaving it
-    /// undismissable for as long as the popup stayed open.
+    /// its backdrop, so it must also be the one that hears Escape. That
+    /// only holds while the modal's scope outranks the popup's: a popup
+    /// holding keyboard capture instead empties the uncaptured stream
+    /// the modal reads from, leaving it undismissable for as long as the
+    /// popup stays open.
     ///
     /// The control matters as much as the case — with no popup open the
     /// modal has always dismissed, so asserting only the popup case

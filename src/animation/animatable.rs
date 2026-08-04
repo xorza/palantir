@@ -103,14 +103,13 @@ impl Animatable for Vec2 {
     }
 }
 
-// `Color` derives `Animatable` (see `primitives/color.rs`) — the
-// generated impl is identical to the hand-written one used to live
-// here; per-component lerp/add/sub/scale, sum-of-squared-component
-// magnitude_squared, all-zeros for `zero()`.
+// `Color` derives `Animatable` (see `primitives/color.rs`); the
+// generated impl is per-component lerp/add/sub/scale,
+// sum-of-squared-component magnitude_squared, all-zeros for `zero()`.
 //
 // No `Option<T>` blanket: when a struct's field is "absent or value"
 // (e.g. a stroke), use a sentinel value (`Stroke::ZERO`) rather
 // than `Option<Stroke>` and let the paint-time `is_noop` filter
-// handle the absent case. The blanket used to be present but
-// always returned `Some(...)` from arithmetic, forcing every
-// consumer to scrub the no-op output back to `None` for hash equality.
+// handle the absent case. A blanket impl can only return `Some(...)`
+// from arithmetic, which forces every consumer to scrub the no-op
+// output back to `None` for hash equality.
