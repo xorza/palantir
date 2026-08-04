@@ -497,6 +497,68 @@ fn downsample_combines_taps_in_premultiplied_space() {
     }
 }
 
+/// Taps wrap with the tile rather than clamping at its edge. `fs` wraps the
+/// *base* UV for a tiled draw, but the taps step off that UV by up to half the
+/// footprint and leave `[0,1)` on their own — where `ClampToEdge` would smear
+/// the edge texel across every seam instead of continuing into the next
+/// repeat.
+///
+/// **Geometry.** A 4×1 `STAR SKY SKY SKY` tile repeated 24× across an 8×16
+/// pane: 3 whole tiles per pixel, so `uv_dx = 3` and the footprint is 12
+/// texels — past the cap, so `n = 4` and no float wobble can move it. Every
+/// pixel's base UV wraps to exactly 0.5 (`fract(3k + 1.5)`), which is why one
+/// expected value covers the whole pane.
+///
+/// **Taps.** `n = 4` offsets by `±0.125` and `±0.375` of the derivative span,
+/// i.e. `±0.375` and `±1.125` tiles, so the four positions are
+/// `-0.625, 0.125, 0.875, 1.625` — two of them outside the tile.
+/// - Wrapped: `0.375, 0.125, 0.875, 0.625` → texel coords `1.5, 0.5, 3.5, 2.5`,
+///   which are the centres of texels 1, 0, 3, 2 → `SKY STAR SKY SKY`. Mean is
+///   `0.25` linear → **137** sRGB.
+/// - Clamped: `-0.625` and `1.625` pin to the outer texels → `STAR STAR SKY
+///   SKY`, mean `0.5` linear → 188. So the wrap is worth exactly one star in
+///   four here, and the assertion below separates the two by 51 sRGB steps.
+#[test]
+fn downsample_taps_wrap_with_the_tile_instead_of_clamping() {
+    let mut h = Harness::new();
+    let mut source: Option<palantir::ImageHandle> = None;
+    let out = h.render(UVec2::new(8, 16), 1.0, Color::BLACK, |ui| {
+        let handle = source
+            .get_or_insert_with(|| {
+                ui.register_image(palantir::Image::from_rgba8(
+                    4,
+                    1,
+                    [STAR, SKY, SKY, SKY].concat(),
+                ))
+                .expect("fixture image fits every supported GPU")
+            })
+            .clone();
+        Panel::zstack()
+            .id_salt("tiled_downsample_fixture")
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                ui.add_shape(
+                    Shape::image(handle.clone())
+                        .fit(ImageFit::Tile {
+                            offset: Vec2::ZERO,
+                            scale: Vec2::new(24.0, 1.0),
+                        })
+                        .downsample(ImageDownsample::Mean),
+                );
+            });
+    });
+
+    // Every pixel is tile-aligned identically, so a single expected value
+    // covers the pane — and a seam that clamped would break exactly that.
+    for x in 0..8 {
+        let pixel = out.get_pixel(x, 8).0;
+        assert!(
+            close(pixel, [137, 137, 137, 255]),
+            "tiled tap column {x} must read 137 grey, got {pixel:?}",
+        );
+    }
+}
+
 /// Third solid source for the run-coalescing fixture, distinct from
 /// [`RED`] / [`BLUE`] so every run boundary is a visible colour change.
 const GREEN: [u8; 4] = [60, 200, 90, 255];
