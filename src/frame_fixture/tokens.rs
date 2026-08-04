@@ -7,6 +7,7 @@
 //! real drop shadow (it is the sole driver of `emit_shadow`'s chrome
 //! branch) and a hairline stroke, or the workload silently loses coverage.
 
+use crate::demo_swatches;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
@@ -19,15 +20,22 @@ use crate::widgets::panel::Panel;
 use crate::widgets::text::Text;
 use crate::widgets::theme::text_style::TextStyle;
 
+// Surface ladder and ink. The fixture's own — the showcase runs a
+// different one deliberately, so these are two designs that happen to
+// both be dark, not one duplicated.
 pub(super) const APP_BG: Color = Color::hex(0x0f1116);
 pub(super) const CARD_BG: Color = Color::hex(0x1a1d25);
 pub(super) const WELL_BG: Color = Color::hex(0x13151b);
 pub(super) const BORDER: Color = Color::hex(0x2b303d);
-pub(super) const ACCENT: Color = Color::hex(0x4cd3ff);
-pub(super) const WARN: Color = Color::hex(0xffa63d);
-pub(super) const OK: Color = Color::hex(0xd9ff57);
-pub(super) const VIOLET: Color = Color::hex(0xd897ff);
 pub(super) const TEXT_DIM: Color = Color::hex(0x8b93a7);
+
+// Accents, aliased from the shared set under the names this tree reads
+// them by: what a swatch *means* here is a threshold breach or a healthy
+// delta, not "the second distinct colour".
+pub(super) const ACCENT: Color = demo_swatches::TEAL;
+pub(super) const WARN: Color = demo_swatches::ORANGE;
+pub(super) const OK: Color = demo_swatches::LIME;
+pub(super) const VIOLET: Color = demo_swatches::VIOLET;
 
 /// Raised card: fill + hairline border + a real chrome drop shadow. The
 /// shadow is the only thing in the fixture that drives the chrome branch
