@@ -17,6 +17,7 @@
 //! vstack it is handed, and paint demos go in fixed [`TILE`]-square
 //! [`demo_cell`]s so every tile in the app is the same size.
 
+use palantir::demo_swatches;
 use palantir::{
     Background, Color, Configure, Corners, FontWeight, Panel, Sizing, Stroke, Text, TextStyle,
     TextWrap, Ui,
@@ -52,16 +53,20 @@ pub(crate) const INK_FAINT: Color = Color::hex(0x6d7482);
 /// demo content share one hue.
 pub(crate) const ACCENT: Color = Color::hex(0x4cd3ff);
 
+// Aliased from `palantir::demo_swatches`, which the benchmark fixture
+// reads too — the one set of ink both bundled demo surfaces use. Named
+// A-E here because this page is a *tour*: what matters is that two
+// chips differ, not what either means.
 /// Teal-blue. Default swatch when one color is enough.
-pub(crate) const A: Color = Color::hex(0x4cd3ff);
+pub(crate) const A: Color = demo_swatches::TEAL;
 /// Orange. Pair with `A` for "two distinct things".
-pub(crate) const B: Color = Color::hex(0xffa63d);
+pub(crate) const B: Color = demo_swatches::ORANGE;
 /// Green.
-pub(crate) const C: Color = Color::hex(0xd9ff57);
+pub(crate) const C: Color = demo_swatches::LIME;
 /// Purple.
-pub(crate) const D: Color = Color::hex(0xd897ff);
+pub(crate) const D: Color = demo_swatches::VIOLET;
 /// Red — the "wrong / danger" swatch.
-pub(crate) const E: Color = Color::hex(0xff5e44);
+pub(crate) const E: Color = demo_swatches::RED;
 
 /// Gap between a page's sections.
 pub(crate) const PAGE_GAP: f32 = 20.0;

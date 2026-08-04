@@ -82,6 +82,11 @@ pub(crate) mod app;
 #[cfg(feature = "bench")]
 pub mod bench;
 pub(crate) mod common;
+/// Accent swatches shared by the two bundled demo surfaces. Public only
+/// because the `showcase` binary is a separate crate from this library
+/// and cannot reach a `pub(crate)` one; not part of the supported API.
+#[cfg(any(feature = "bench", feature = "showcase"))]
+pub mod demo_swatches;
 pub(crate) mod diagnostics;
 /// Per-output display state (physical size, DPR, pixel-snap, refresh) —
 /// cross-cutting host/render vocabulary, read by `ui`, the renderer, and

@@ -6,6 +6,7 @@
 
 use std::f32::consts::PI;
 
+use crate::demo_swatches;
 use crate::frame_fixture::tokens;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::brush::gradient::conic::ConicGradient;
@@ -147,13 +148,15 @@ fn add_polyline(ui: &mut Ui) {
         glam::Vec2::new(126.0, 62.0),
         glam::Vec2::new(154.0, 38.0),
     ];
+    // The shared swatch set in order, plus one green it doesn't carry —
+    // six points need six distinguishable inks.
     let cols = [
-        Color::hex(0xff5e44),
-        Color::hex(0xffa63d),
-        Color::hex(0xd9ff57),
+        demo_swatches::RED,
+        demo_swatches::ORANGE,
+        demo_swatches::LIME,
         Color::hex(0x46c46c),
-        Color::hex(0x4cd3ff),
-        Color::hex(0xd897ff),
+        demo_swatches::TEAL,
+        demo_swatches::VIOLET,
     ];
     ui.add_shape(Shape::polyline(&pts, PolylineColors::PerPoint(&cols), 4.0).join(LineJoin::Round));
 }
