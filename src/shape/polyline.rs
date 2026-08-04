@@ -29,7 +29,7 @@ impl PolylineShape<'_> {
     }
 }
 
-/// Color source for [`crate::shape::Shape::Polyline`].
+/// Color source for [`Shape::polyline`](crate::Shape::polyline).
 #[derive(Clone, Copy, Debug)]
 pub enum PolylineColors<'a> {
     /// One color for the whole stroke. Broadcast to every cross-section.

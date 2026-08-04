@@ -195,10 +195,11 @@ impl Forest {
     /// (also emitting any pending explicit collision pair).
     ///
     /// `chrome` is `Some(Background { .. })` for nodes with a background
-    /// paint and `None` otherwise. The `Background` is borrowed (not
-    /// owned) so its 168 B don't get copied through the
-    /// `Widget::record → here → Tree::open_node →
-    /// shapes::lower::background` chain on every chromed widget.
+    /// paint and `None` otherwise. The `Background` is borrowed, not
+    /// owned, so it isn't re-copied through the `Widget::record → here →
+    /// Tree::open_node → shapes::lower::background` chain on every
+    /// chromed widget — see [`Background`]'s own note for why it is not
+    /// `Copy`.
     #[inline]
     pub(crate) fn open_node(
         &mut self,

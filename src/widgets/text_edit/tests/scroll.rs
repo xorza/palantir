@@ -98,7 +98,7 @@ fn hug_width_editor_shows_full_text_after_growth() {
 
 /// After horizontal scroll kicks in, clicking the left edge of the
 /// widget must hit the byte that's *visibly* at the left edge — not
-/// byte 0. Pins that `handle_input` adds `state.scroll` back into the
+/// byte 0. Pins that `run_input` adds `state.scroll` back into the
 /// hit-test coords.
 #[test]
 fn click_hit_test_compensates_for_scroll() {

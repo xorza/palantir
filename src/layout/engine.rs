@@ -215,9 +215,8 @@ pub(super) fn restore_after_cache_hit(
 /// `desired`. Returns `desired`.
 ///
 /// Per-node padding/margin sums are unpacked once and threaded through
-/// both halves of the pipeline (was two unpacks across two free fns
-/// before the merge; the grow-detection path that justified the split
-/// is gone — single dispatch, no re-measure).
+/// both halves of the pipeline, which is only possible because the
+/// dispatch is single-shot — see the single-dispatch note below.
 ///
 /// `available` is the parent-supplied slot (margin-inclusive).
 /// `intrinsic_min` floors `available` so children measure against the

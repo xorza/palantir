@@ -44,9 +44,10 @@ pub(super) const ROW_UNMATCHED: u32 = u32::MAX;
 /// into it. Each row is chrome (row 0 when present), one direct
 /// shape, or a child marker, mirroring `LayerCascade::paint_arena`.
 ///
-/// **No cached `rect`.** The node's own paint extent (the union of its
-/// `paint_arena` rows — what the cascade used to store as
-/// `Cascade.paint_rect`) is a pure function of `(hash, cascade_input)`:
+/// **No cached `rect`.** The node's own paint extent — the union of its
+/// `paint_arena` rows, folded by
+/// [`PaintRows::union_screens`](crate::scene::cascade::paint::PaintRows::union_screens)
+/// — is a pure function of `(hash, cascade_input)`:
 /// every geometry input (`layout_rect`, ancestor transform/clip) lives
 /// in `cascade_input` and every shape input lives in `hash`, so a
 /// snapshot field would be a redundant cache of those two. The diff

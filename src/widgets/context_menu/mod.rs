@@ -291,7 +291,7 @@ impl<'a> MenuItem<'a> {
         let disabled = response.disabled;
 
         // Row-only scalars first, off a borrow that ends before
-        // `resolve_look` reborrows `ui` mutably. Everything response-varying
+        // `WidgetTheme::resolve` reborrows `ui` mutably. Everything response-varying
         // — the four-response pick, the padding/margin defaults, the
         // transition — comes back from the shared resolver instead, so a
         // menu row picks and animates exactly like a Button.

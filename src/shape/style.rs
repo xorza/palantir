@@ -12,7 +12,7 @@ pub enum LineCap {
     Round = 2,
 }
 
-/// Interior-join style for [`crate::shape::Shape::Polyline`]. Miter joins
+/// Interior-join style for [`Shape::polyline`](crate::Shape::polyline). Miter joins
 /// downgrade to bevel when their extension exceeds the shared miter limit.
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]

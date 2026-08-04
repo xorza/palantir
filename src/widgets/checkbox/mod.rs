@@ -66,7 +66,7 @@ impl<'a> Checkbox<'a> {
 
         // Geometry off the theme before `toggle_row`'s `&mut Ui`
         // reborrow; the look itself is picked and animated in there,
-        // through the same `resolve_look` every other widget uses.
+        // through the same `WidgetTheme::resolve` every other widget uses.
         let theme = self.style.unwrap_or(&ui.theme.checkbox);
         let box_size = theme.box_size;
         let indicator = theme.indicator;

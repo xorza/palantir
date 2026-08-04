@@ -10,18 +10,19 @@ use crate::primitives::nan::NanCheck;
 /// Paint source for gradient-capable fills.
 ///
 /// `Solid(Color)` is the hot 99% path — 16 B inline, animation-lerpable.
-/// `Linear`/`Radial`/`Conic` carry their geometry inline (~80 B);
-/// gradient morph animations snap across variants and across distinct
-/// gradients of the same variant.
-// `Brush` is intentionally **not `Copy`** — the gradient variants
-// carry 40 B of inline stops and the whole enum is 60 B. The
-// recording chain used to thread `Brush` (often inside `Background`)
-// through 3-4 functions per chromed widget by value; auto-`Copy` hid
-// an O(N) of `vmovups` per frame in the node opener. Hot paths
-// now pass `&Brush` / `&Background`; explicit `.clone()` at the
-// remaining duplication sites keeps the cost auditable. See
-// `Animatable`'s `Clone` (not `Copy`) supertrait for the matching
-// animation-side relaxation.
+/// `Linear`/`Radial`/`Conic` carry their geometry plus a
+/// [`GradientStops`](crate::GradientStops) array inline, which
+/// is what sizes the whole enum; gradient morph animations snap across
+/// variants and across distinct gradients of the same variant.
+// `Brush` is intentionally **not `Copy`** — the gradient variants carry
+// 40 B of inline stops, putting the enum at 60 B (pinned by
+// `hot_struct_sizes_are_pinned`). The recording chain threads `Brush`
+// (usually inside `Background`) through three or four functions per
+// chromed widget, where auto-`Copy` hides a `vmovups` per hop per
+// frame in the node opener. Hot paths pass `&Brush` / `&Background`;
+// explicit `.clone()` at the remaining duplication sites keeps the cost
+// auditable. See `Animatable`'s `Clone` (not `Copy`) supertrait for the
+// matching animation-side relaxation.
 #[derive(Clone, Debug, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
 pub enum Brush {
     Solid(Color),

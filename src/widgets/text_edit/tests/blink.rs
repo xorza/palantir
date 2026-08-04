@@ -71,7 +71,7 @@ fn caret_blinks_on_and_off_while_focused() {
     );
 
     // Click focuses; caret jumps to byte 0 (empty buf). Drive a fresh
-    // frame at t=0 so handle_input drains the click. caret_changed =
+    // frame at t=0 so run_input drains the click. caret_changed =
     // true → last_caret_change = 0; elapsed = 0; phase 0; visible.
     h.click_at(Vec2::new(20.0, 20.0));
     record_at_secs(&mut h, 0.0, |ui| body(ui, &mut buf, &mut leaf));

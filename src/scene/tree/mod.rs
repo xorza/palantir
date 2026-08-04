@@ -52,9 +52,10 @@ use soa_rs::Soa;
 use std::hash::{Hash, Hasher as _};
 
 /// A single layer's arena. Per-layer trees live on
-/// [`crate::scene::forest::Forest`] and share no record/shape storage —
-/// mid-recording `Ui::layer` calls dispatch into the destination tree
-/// without interleaving, eliminating the prior reorder pass.
+/// [`crate::scene::forest::Forest`] and share no record/shape storage,
+/// so a mid-recording `Ui::layer` call dispatches straight into the
+/// destination tree without interleaving — no post-record reorder pass
+/// is needed to separate the layers again.
 ///
 /// **`records`** is `Soa<NodeRecord>` indexed by `NodeId.0`, in pre-order
 /// paint order (parent before children, siblings in declaration order).
