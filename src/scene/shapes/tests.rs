@@ -70,7 +70,7 @@ fn polyline_color_cardinality_is_enforced_before_noop_lowering() {
                     source.colors(&colors[..colors_len]),
                     1.0,
                 );
-                let result = catch_unwind(AssertUnwindSafe(|| shapes.add(shape.into(), &store)));
+                let result = catch_unwind(AssertUnwindSafe(|| shapes.add(shape, &store)));
                 let accepted = source.accepts(points_len, colors_len);
 
                 assert_eq!(
@@ -132,7 +132,7 @@ fn image_dimensions_above_u16_survive_lowering() {
     let mut shapes = Shapes::default();
     let store = RecordStore::default();
 
-    assert_eq!(shapes.add(Shape::image(handle).into(), &store), Some(0));
+    assert_eq!(shapes.add(Shape::image(handle), &store), Some(0));
     let ShapeRecord::Image {
         source: ImageSource::Texture { size, .. },
         ..
@@ -165,7 +165,7 @@ fn the_nan_gate_drops_every_shape_kind() {
     use crate::primitives::mesh::Mesh;
     use crate::primitives::shadow::Shadow;
     use crate::primitives::stroke::Stroke;
-    use crate::shape::Shape;
+    use crate::shape::{Lower, Shape};
     use glam::Vec2;
 
     const N: f32 = f32::NAN;
@@ -184,100 +184,15 @@ fn the_nan_gate_drops_every_shape_kind() {
     let pts_nan = [Vec2::ZERO, nan_pt, Vec2::new(4.0, 4.0)];
     let pts_ok = [Vec2::ZERO, Vec2::new(2.0, 2.0), Vec2::new(4.0, 4.0)];
 
-    // (label, tainted, clean)
-    let cases: Vec<(&str, Shape<'_>, Shape<'_>)> = vec![
-        (
-            "rect_local_rect",
-            Shape::rect(Rect::new(0.0, N, 8.0, 8.0)).fill(white).into(),
-            Shape::rect(ok_rect).fill(white).into(),
-        ),
-        (
-            "rect_corners",
-            Shape::rect(ok_rect).fill(white).corners(N).into(),
-            Shape::rect(ok_rect).fill(white).corners(2.0).into(),
-        ),
-        (
-            "rect_stroke_colour",
-            Shape::rect(ok_rect)
-                .fill(white)
-                .stroke(Stroke::solid(Color::rgba(0.0, N, 0.0, 1.0), 2.0))
-                .into(),
-            Shape::rect(ok_rect)
-                .fill(white)
-                .stroke(Stroke::solid(Color::BLACK, 2.0))
-                .into(),
-        ),
-        (
-            "triangle_corner",
-            Shape::triangle(Vec2::ZERO, Vec2::new(4.0, 0.0), nan_pt)
-                .fill(white)
-                .into(),
-            Shape::triangle(Vec2::ZERO, Vec2::new(4.0, 0.0), Vec2::new(0.0, 4.0))
-                .fill(white)
-                .into(),
-        ),
-        (
-            // Regression: `radius` reaches lowering only through
-            // `radius.max(0.0)`, which launders NaN to `0.0`, so it
-            // used to slip past every gate — the bbox it would have
-            // shown up in was finite.
-            "triangle_radius",
-            Shape::triangle(Vec2::ZERO, Vec2::new(4.0, 0.0), Vec2::new(0.0, 4.0))
-                .fill(white)
-                .radius(N)
-                .into(),
-            Shape::triangle(Vec2::ZERO, Vec2::new(4.0, 0.0), Vec2::new(0.0, 4.0))
-                .fill(white)
-                .radius(1.0_f32)
-                .into(),
-        ),
-        (
-            "curve_control_point",
-            Shape::line(Vec2::ZERO, nan_pt, 2.0).brush(white).into(),
-            Shape::line(Vec2::ZERO, Vec2::new(4.0, 4.0), 2.0)
-                .brush(white)
-                .into(),
-        ),
-        (
-            "arc_centre",
-            Shape::arc(nan_pt, 4.0, 0.0, 1.0, 2.0).brush(white).into(),
-            Shape::arc(Vec2::ZERO, 4.0, 0.0, 1.0, 2.0)
-                .brush(white)
-                .into(),
-        ),
-        (
-            "polyline_point",
-            Shape::polyline(&pts_nan, PolylineColors::Single(white), 2.0).into(),
-            Shape::polyline(&pts_ok, PolylineColors::Single(white), 2.0).into(),
-        ),
-        (
-            "mesh_vertex",
-            Shape::mesh(&mesh_nan).into(),
-            Shape::mesh(&mesh_ok).into(),
-        ),
-        (
-            "shadow_blur",
-            Shape::shadow(Shadow {
-                color: white,
-                blur: N,
-                ..Shadow::default()
-            })
-            .at(ok_rect)
-            .into(),
-            Shape::shadow(Shadow {
-                color: white,
-                blur: 4.0,
-                ..Shadow::default()
-            })
-            .at(ok_rect)
-            .into(),
-        ),
-    ];
-
-    for (label, tainted, clean) in cases {
+    // A generic helper, one call per case: without the erased `Shape`
+    // enum the kinds no longer share a type, so they cannot sit in one
+    // table. Each call monomorphizes, which is also what the production
+    // path now does.
+    #[track_caller]
+    fn gate<T: Lower, C: Lower>(label: &str, tainted: T, clean: C) {
         let mut shapes = Shapes::default();
         let store = RecordStore::default();
-        let got = catch_unwind(AssertUnwindSafe(|| shapes.add(tainted.clone(), &store)));
+        let got = catch_unwind(AssertUnwindSafe(|| shapes.add(tainted, &store)));
         assert_eq!(
             got.unwrap_or(None),
             None,
@@ -291,14 +206,16 @@ fn the_nan_gate_drops_every_shape_kind() {
         // either. Polyline is the case with teeth: it is the one shape
         // that reaches lowering with its NaN intact, so its bail has to
         // come before it stages anything.
-        let payloads = store.payloads.borrow();
-        assert!(
-            payloads.polyline_points.is_empty()
-                && payloads.polyline_colors.is_empty()
-                && payloads.meshes.vertices.is_empty()
-                && payloads.meshes.indices.is_empty(),
-            "case {label}: a rejected shape left bytes in the arena",
-        );
+        {
+            let payloads = store.payloads.borrow();
+            assert!(
+                payloads.polyline_points.is_empty()
+                    && payloads.polyline_colors.is_empty()
+                    && payloads.meshes.vertices.is_empty()
+                    && payloads.meshes.indices.is_empty(),
+                "case {label}: a rejected shape left bytes in the arena",
+            );
+        }
 
         let mut shapes = Shapes::default();
         let store = RecordStore::default();
@@ -309,4 +226,67 @@ fn the_nan_gate_drops_every_shape_kind() {
              tainted arm proves nothing",
         );
     }
+
+    let tri = |c, r: f32| {
+        Shape::triangle(Vec2::ZERO, Vec2::new(4.0, 0.0), c)
+            .fill(white)
+            .radius(r)
+    };
+    gate(
+        "rect_local_rect",
+        Shape::rect(Rect::new(0.0, N, 8.0, 8.0)).fill(white),
+        Shape::rect(ok_rect).fill(white),
+    );
+    gate(
+        "rect_corners",
+        Shape::rect(ok_rect).fill(white).corners(N),
+        Shape::rect(ok_rect).fill(white).corners(2.0),
+    );
+    gate(
+        "rect_stroke_colour",
+        Shape::rect(ok_rect)
+            .fill(white)
+            .stroke(Stroke::solid(Color::rgba(0.0, N, 0.0, 1.0), 2.0)),
+        Shape::rect(ok_rect)
+            .fill(white)
+            .stroke(Stroke::solid(Color::BLACK, 2.0)),
+    );
+    gate(
+        "triangle_corner",
+        tri(nan_pt, 0.0),
+        tri(Vec2::new(0.0, 4.0), 0.0),
+    );
+    // Regression: `radius` reaches lowering only through
+    // `radius.max(0.0)`, which launders NaN to `0.0`, so it used to slip
+    // past every gate — the bbox it would have shown up in was finite.
+    gate(
+        "triangle_radius",
+        tri(Vec2::new(0.0, 4.0), N),
+        tri(Vec2::new(0.0, 4.0), 1.0),
+    );
+    gate(
+        "curve_control_point",
+        Shape::line(Vec2::ZERO, nan_pt, 2.0).brush(white),
+        Shape::line(Vec2::ZERO, Vec2::new(4.0, 4.0), 2.0).brush(white),
+    );
+    gate(
+        "arc_centre",
+        Shape::arc(nan_pt, 4.0, 0.0, 1.0, 2.0).brush(white),
+        Shape::arc(Vec2::ZERO, 4.0, 0.0, 1.0, 2.0).brush(white),
+    );
+    gate(
+        "polyline_point",
+        Shape::polyline(&pts_nan, PolylineColors::Single(white), 2.0),
+        Shape::polyline(&pts_ok, PolylineColors::Single(white), 2.0),
+    );
+    gate("mesh_vertex", Shape::mesh(&mesh_nan), Shape::mesh(&mesh_ok));
+    let shadow = |blur| {
+        Shape::shadow(Shadow {
+            color: white,
+            blur,
+            ..Shadow::default()
+        })
+        .at(ok_rect)
+    };
+    gate("shadow_blur", shadow(N), shadow(4.0));
 }

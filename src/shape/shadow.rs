@@ -1,7 +1,11 @@
 use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
 use crate::primitives::shadow::Shadow;
+use crate::scene::record_store::RecordStore;
+use crate::scene::shapes::lower;
+use crate::scene::shapes::record::ShapeRecord;
 use crate::shape::local_rect_paint_empty;
+use crate::shape::sealed;
 
 /// Gaussian-blurred rounded rectangle shadow.
 #[derive(Clone, Debug)]
@@ -21,8 +25,15 @@ impl ShadowShape {
         self.corners = corners.into();
         self
     }
-
-    pub(super) fn is_noop(&self) -> bool {
+}
+// See the `sealed` module in `shape/mod.rs` for why.
+#[allow(private_interfaces)]
+impl sealed::Lower for ShadowShape {
+    fn is_noop(&self) -> bool {
         local_rect_paint_empty(&self.local_rect) || self.shadow.is_noop()
+    }
+
+    fn lower(self, _store: &RecordStore) -> ShapeRecord {
+        lower::shadow(self.local_rect, self.corners, self.shadow)
     }
 }

@@ -42,7 +42,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::scene::cascade::Cascade;
 use crate::scene::cascade::engine::CascadeEngine;
 use crate::scene::damage::DamageEngine;
-use crate::shape::Shape;
+use crate::shape::Lower;
 use crate::ui::frame::{FrameInput, FrameRuntime, WakeReasons};
 use crate::ui::frame_cycle::FrameCycle;
 use crate::ui::frame_report::FrameReport;
@@ -511,8 +511,8 @@ impl Ui {
     /// Attach a paint primitive to the active node. Direct text contributes to
     /// layout only on a leaf; container-owned text is an overlay shaped against
     /// that container's final padded width.
-    pub fn add_shape<'a>(&mut self, shape: impl Into<Shape<'a>>) {
-        self.forest.add_shape(shape.into());
+    pub fn add_shape<S: Lower>(&mut self, shape: S) {
+        self.forest.add_shape(shape);
     }
 
     /// Upload an image and get back an owning [`ImageHandle`]. **Hold the
@@ -612,8 +612,8 @@ impl Ui {
     /// caller doesn't manage scheduling. Drops silently if the shape
     /// itself was noop-collapsed (zero stroke + transparent fill,
     /// etc.) — `PaintAnim` can't make a zero shape paintable.
-    pub(crate) fn add_shape_animated<'a>(&mut self, shape: impl Into<Shape<'a>>, anim: PaintAnim) {
-        self.forest.add_shape_animated(shape.into(), anim);
+    pub(crate) fn add_shape_animated<S: Lower>(&mut self, shape: S, anim: PaintAnim) {
+        self.forest.add_shape_animated(shape, anim);
     }
 
     /// Open a side layer — an arena that paints above the `Main` tree,

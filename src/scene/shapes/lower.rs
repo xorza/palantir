@@ -52,9 +52,9 @@ pub(crate) struct ChromeInput<'a> {
 /// threading the store into their `Hash` impls. `hash == 0` for
 /// `Solid` (no gradient payload to identify).
 #[derive(Clone, Copy, Debug)]
-pub(super) struct LoweredBrush {
-    pub(super) brush: ShapeBrush,
-    pub(super) hash: u64,
+pub(crate) struct LoweredBrush {
+    pub(crate) brush: ShapeBrush,
+    pub(crate) hash: u64,
 }
 
 /// Stable content hash for a gradient variant: discriminant byte
@@ -103,7 +103,7 @@ fn linear_brush(store: &RecordStore, gradient: &LinearGradient) -> LoweredBrush 
 /// `ShapeBrush::Gradient`. The pre-computed content hash is returned
 /// alongside so the caller can stamp it into the `ShapeRecord` /
 /// `ChromeRow` and keep their `Hash` impls context-free.
-pub(super) fn brush(store: &RecordStore, b: &Brush) -> LoweredBrush {
+pub(crate) fn brush(store: &RecordStore, b: &Brush) -> LoweredBrush {
     // A gradient's geometry (angle / centre / radii) is interned into
     // the store behind a `GradientId`, so it is the one authoring input
     // the record-level NaN gate cannot see. Screen it here, where it is
@@ -232,7 +232,7 @@ pub(crate) fn background(store: &RecordStore, bg: &Background) -> ChromeRow {
 /// geometry input is already in its storage form, so the only work is
 /// the fill: it interns through [`brush`], the same pool [`background`]
 /// draws from, so chrome and rectangle fills share one gradient set.
-pub(super) fn rect(
+pub(crate) fn rect(
     store: &RecordStore,
     kind: RectKind,
     local_rect: Option<Rect>,
@@ -257,7 +257,7 @@ pub(super) fn rect(
 /// [`shadow_paint_rect_local`](crate::scene::shapes::paint::shadow_paint_rect_local)
 /// so damage and the encoder can't disagree about the halo. No store
 /// needed (a shadow's colour is always solid).
-pub(super) fn shadow(local_rect: Option<Rect>, corners: Corners, shadow: Shadow) -> ShapeRecord {
+pub(crate) fn shadow(local_rect: Option<Rect>, corners: Corners, shadow: Shadow) -> ShapeRecord {
     ShapeRecord::Quad(QuadShape::Shadow {
         local_rect,
         corners,
@@ -272,7 +272,7 @@ pub(super) fn shadow(local_rect: Option<Rect>, corners: Corners, shadow: Shadow)
 /// single-stroke shape (`Line`/beziers/`Arc`) lowers to a
 /// `ShapeRecord::Curve` directly, picking its [`CurveBasis`]. Both
 /// render on the GPU curve pipeline.
-pub(super) fn polyline(
+pub(crate) fn polyline(
     store: &RecordStore,
     points: &[Vec2],
     colors: PolylineColors<'_>,
@@ -360,7 +360,7 @@ pub(super) fn polyline(
 /// vertex/index allocation. The composer derives sub-instance count
 /// from the post-transform control-polygon length. A linear gradient samples
 /// along the curve parameter `t`; its `angle` is ignored.
-pub(super) fn cubic_bezier(
+pub(crate) fn cubic_bezier(
     store: &RecordStore,
     ctrl: [Vec2; 4],
     width: f32,
@@ -374,7 +374,7 @@ pub(super) fn cubic_bezier(
 /// Lower a quadratic bezier by promoting it to a cubic and going
 /// through [`cubic_bezier`]'s path. Exact reparameterization:
 /// `q1' = q0 + 2/3·(c - q0)`, `q2' = q2 + 2/3·(c - q2)`.
-pub(super) fn quadratic_bezier(
+pub(crate) fn quadratic_bezier(
     store: &RecordStore,
     ctrl: [Vec2; 3],
     width: f32,
@@ -392,7 +392,7 @@ pub(super) fn quadratic_bezier(
 /// so `B(t) = a + (b - a)·t` exactly — `t` (and thus a gradient
 /// brush) runs linearly from `a` to `b`. The composer's flatness
 /// fast-path keeps the collinear cubic a single GPU instance.
-pub(super) fn line(
+pub(crate) fn line(
     store: &RecordStore,
     a: Vec2,
     b: Vec2,
@@ -412,7 +412,7 @@ pub(super) fn line(
 /// `|sweep| ≤ 2π` is debug-asserted: a longer sweep would repaint
 /// pixels and double-blend a translucent stroke.
 #[allow(clippy::too_many_arguments)]
-pub(super) fn arc(
+pub(crate) fn arc(
     store: &RecordStore,
     center: Vec2,
     radius: f32,
@@ -447,7 +447,7 @@ pub(super) fn arc(
 /// shape outward by `radius`; the stroke is inner-edge and adds no
 /// outward reach), so damage and clip-cull cover the rounded,
 /// antialiased extent. No store needed (no gradient to register).
-pub(super) fn triangle(
+pub(crate) fn triangle(
     a: Vec2,
     b: Vec2,
     c: Vec2,

@@ -1,6 +1,10 @@
 use crate::primitives::approx::noop_f32;
 use crate::primitives::color::Color;
 use crate::primitives::stroke::Stroke;
+use crate::scene::record_store::RecordStore;
+use crate::scene::shapes::lower;
+use crate::scene::shapes::record::ShapeRecord;
+use crate::shape::sealed;
 use glam::Vec2;
 
 /// Filled and/or stroked triangle with optional uniform corner rounding.
@@ -29,17 +33,6 @@ impl TriangleShape {
         self.radius = radius.into();
         self
     }
-
-    pub(super) fn is_noop(&self) -> bool {
-        (self.fill.is_noop() && self.stroke.is_noop())
-            // A NaN corner falls out of this for free — the area
-            // arithmetic propagates it and `noop_f32` reads NaN as
-            // invisible. `radius` gets no such cover, and lowering
-            // launders it (`radius.max(0.0)` is `0.0` for NaN), so it
-            // has to be named.
-            || self.radius.is_nan()
-            || triangle_paint_empty(self.a, self.b, self.c)
-    }
 }
 
 #[inline]
@@ -54,4 +47,22 @@ fn triangle_paint_empty(a: Vec2, b: Vec2, c: Vec2) -> bool {
     // Longest-edge normalization keeps the cutoff independent of authored scale.
     let normalized_twice_area = ab.perp_dot(ac).abs() / max_edge_len_sq;
     noop_f32(normalized_twice_area)
+}
+// See the `sealed` module in `shape/mod.rs` for why.
+#[allow(private_interfaces)]
+impl sealed::Lower for TriangleShape {
+    fn is_noop(&self) -> bool {
+        (self.fill.is_noop() && self.stroke.is_noop())
+            // A NaN corner falls out of this for free — the area
+            // arithmetic propagates it and `noop_f32` reads NaN as
+            // invisible. `radius` gets no such cover, and lowering
+            // launders it (`radius.max(0.0)` is `0.0` for NaN), so it
+            // has to be named.
+            || self.radius.is_nan()
+            || triangle_paint_empty(self.a, self.b, self.c)
+    }
+
+    fn lower(self, _store: &RecordStore) -> ShapeRecord {
+        lower::triangle(self.a, self.b, self.c, self.radius, self.fill, self.stroke)
+    }
 }

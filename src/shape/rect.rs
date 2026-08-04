@@ -2,7 +2,11 @@ use crate::primitives::brush::Brush;
 use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
 use crate::primitives::stroke::Stroke;
+use crate::scene::record_store::RecordStore;
+use crate::scene::shapes::lower;
+use crate::scene::shapes::record::ShapeRecord;
 use crate::shape::local_rect_paint_empty;
+use crate::shape::sealed;
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -48,8 +52,22 @@ impl RectShape {
         self.corners = corners.into();
         self
     }
-
-    pub(super) fn is_noop(&self) -> bool {
+}
+// See the `sealed` module in `shape/mod.rs` for why.
+#[allow(private_interfaces)]
+impl sealed::Lower for RectShape {
+    fn is_noop(&self) -> bool {
         local_rect_paint_empty(&self.local_rect) || (self.fill.is_noop() && self.stroke.is_noop())
+    }
+
+    fn lower(self, store: &RecordStore) -> ShapeRecord {
+        lower::rect(
+            store,
+            self.kind,
+            self.local_rect,
+            self.corners,
+            &self.fill,
+            self.stroke,
+        )
     }
 }

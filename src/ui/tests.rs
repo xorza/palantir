@@ -762,17 +762,12 @@ fn paint_only_frames_advance_the_shared_text_clock() {
         ui.widget(node).record(ui, None, |ui| {
             let text = ui.intern("paint-only clock");
             ui.add_shape_animated(
-                Shape::Text {
-                    local_origin: None,
-                    text,
-                    color: Color::WHITE,
-                    font_size_px: 16.0,
-                    line_height_px: 19.2,
-                    wrap: TextWrap::SingleLine,
-                    align: Align::default(),
-                    family: FontFamily::Sans,
-                    weight: FontWeight::Regular,
-                },
+                Shape::text(text, 16.0, 19.2)
+                    .color(Color::WHITE)
+                    .wrap(TextWrap::SingleLine)
+                    .align(Align::default())
+                    .family(FontFamily::Sans)
+                    .weight(FontWeight::Regular),
                 PaintAnim::BlinkOpacity {
                     half_period: HALF,
                     started_at: HALF,
@@ -863,17 +858,12 @@ fn shared_cache_eviction_preserves_idle_windows_paint_only_text_source() {
         ui.widget(node).record(ui, None, |ui| {
             let text = ui.intern("idle interned window text");
             ui.add_shape_animated(
-                Shape::Text {
-                    local_origin: None,
-                    text,
-                    color: Color::WHITE,
-                    font_size_px: 16.0,
-                    line_height_px: 19.2,
-                    wrap: TextWrap::SingleLine,
-                    align: Align::default(),
-                    family: FontFamily::Sans,
-                    weight: FontWeight::Regular,
-                },
+                Shape::text(text, 16.0, 19.2)
+                    .color(Color::WHITE)
+                    .wrap(TextWrap::SingleLine)
+                    .align(Align::default())
+                    .family(FontFamily::Sans)
+                    .weight(FontWeight::Regular),
                 PaintAnim::BlinkOpacity {
                     half_period: HALF,
                     started_at: HALF,

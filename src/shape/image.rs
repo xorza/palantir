@@ -2,7 +2,11 @@ use crate::primitives::color::Color;
 use crate::primitives::image::{ImageFilter, ImageFit};
 use crate::primitives::rect::Rect;
 use crate::renderer::image_registry::ImageHandle;
+use crate::scene::record_store::RecordStore;
+use crate::scene::shapes::paint::ImageSource;
+use crate::scene::shapes::record::ShapeRecord;
 use crate::shape::local_rect_paint_empty;
+use crate::shape::sealed;
 
 /// Textured rectangle painted from a registered [`ImageHandle`].
 #[derive(Clone, Debug)]
@@ -40,8 +44,27 @@ impl ImageShape {
         self.tint = tint.into();
         self
     }
-
-    pub(super) fn is_noop(&self) -> bool {
+}
+// See the `sealed` module in `shape/mod.rs` for why.
+#[allow(private_interfaces)]
+impl sealed::Lower for ImageShape {
+    fn is_noop(&self) -> bool {
         local_rect_paint_empty(&self.local_rect) || self.tint.is_noop()
+    }
+
+    fn lower(self, _store: &RecordStore) -> ShapeRecord {
+        ShapeRecord::Image {
+            local_rect: self.local_rect,
+            tint: self.tint.into(),
+            // Extract the cheap id + size; the owning `ImageHandle` the
+            // caller holds is what keeps the GPU texture alive.
+            source: ImageSource::Texture {
+                id: self.handle.id(),
+                size: self.handle.size(),
+            },
+            fit: self.fit,
+            min_filter: self.min_filter,
+            mag_filter: self.mag_filter,
+        }
     }
 }

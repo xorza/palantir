@@ -1,5 +1,9 @@
 use crate::primitives::approx::noop_f32;
 use crate::primitives::color::Color;
+use crate::scene::record_store::RecordStore;
+use crate::scene::shapes::lower;
+use crate::scene::shapes::record::ShapeRecord;
+use crate::shape::sealed;
 use crate::shape::style::{LineCap, LineJoin};
 use glam::Vec2;
 
@@ -22,18 +26,6 @@ impl PolylineShape<'_> {
     pub fn join(mut self, join: impl Into<LineJoin>) -> Self {
         self.join = join.into();
         self
-    }
-
-    pub(super) fn is_noop(&self) -> bool {
-        if noop_f32(self.width) || self.points.len() < 2 {
-            return true;
-        }
-        match self.colors {
-            PolylineColors::Single(color) => color.is_noop(),
-            PolylineColors::PerPoint(colors) | PolylineColors::PerSegment(colors) => {
-                colors.iter().all(|color| color.is_noop())
-            }
-        }
     }
 }
 
@@ -72,5 +64,35 @@ impl PolylineColors<'_> {
                 points_len.saturating_sub(1),
             ),
         }
+    }
+}
+// See the `sealed` module in `shape/mod.rs` for why.
+#[allow(private_interfaces)]
+impl sealed::Lower for PolylineShape<'_> {
+    fn is_noop(&self) -> bool {
+        // Cardinality is a caller contract, not a paint question, so it
+        // is asserted rather than filtered — and asserted here because
+        // this is the first thing `Shapes::add` calls.
+        self.colors.assert_matches(self.points.len());
+        if noop_f32(self.width) || self.points.len() < 2 {
+            return true;
+        }
+        match self.colors {
+            PolylineColors::Single(color) => color.is_noop(),
+            PolylineColors::PerPoint(colors) | PolylineColors::PerSegment(colors) => {
+                colors.iter().all(|color| color.is_noop())
+            }
+        }
+    }
+
+    fn lower(self, store: &RecordStore) -> ShapeRecord {
+        lower::polyline(
+            store,
+            self.points,
+            self.colors,
+            self.width,
+            self.cap,
+            self.join,
+        )
     }
 }
