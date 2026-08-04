@@ -91,7 +91,12 @@ pub(crate) mod display;
 /// frame, allocation, and cascade benches alike. Owned by none of them, so
 /// it lives here rather than under whichever driver happened to need it
 /// first.
-#[cfg(feature = "bench")]
+///
+/// Gated on `showcase` as well as `bench` because the showcase carries it as
+/// a page — the only way to look at the workload the numbers come from. It is
+/// pure scene code with no harness dependency, so reaching it that way costs
+/// the showcase nothing.
+#[cfg(any(feature = "bench", feature = "showcase"))]
 pub(crate) mod frame_fixture;
 pub(crate) mod host;
 pub(crate) mod input;
@@ -138,6 +143,11 @@ pub use app::App;
 // both, and `#[derive(Animatable)]` works alongside `T: Animatable`.
 pub use diagnostics::DebugOverlayConfig;
 pub use display::Display;
+/// The benchmark workload as a recordable scene. Not part of the supported
+/// surface — it exists so the `bench` targets and the showcase page can
+/// record the same tree.
+#[cfg(any(feature = "bench", feature = "showcase"))]
+pub use frame_fixture::FrameFixture;
 pub use host::clock::{Clock, FixedClock, RealtimeClock};
 /// The headless render-to-texture host — the offscreen peer of
 /// [`WinitHost`]. Renders a `Ui` to a caller-supplied `wgpu::Texture`

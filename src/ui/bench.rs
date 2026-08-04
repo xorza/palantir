@@ -53,8 +53,9 @@
 //! arrange the whole tree, but only the visible part is painted.
 //!
 //! The shared workload lives in [`crate::frame_fixture`] and also drives
-//! the allocation benches in [`crate::host::bench`] and
-//! `examples/frame_visual.rs`.
+//! the allocation benches in [`crate::host::bench`] and the showcase's
+//! `frame bench` page — run `cargo run --bin showcase --features showcase`
+//! to eyeball the tree these numbers come from.
 
 use crate::app::internals::RecordApp;
 use crate::diagnostics::gpu_stats::BatchKind;

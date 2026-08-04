@@ -33,7 +33,8 @@ const MEASURE_FRAMES: usize = 256;
 const PHYSICAL: UVec2 = UVec2::new(1280, 800);
 const SCALE: f32 = 2.0;
 // Smaller than `ui::bench`'s BENCH_SCALE=32 because the alloc-free
-// viewport is 1280x800 instead of 3840x4800 — matches `examples/frame_visual.rs`.
+// viewport is 1280x800 instead of 3840x4800 — matches the showcase's
+// `frame bench` page.
 const NODE_SCALE: usize = 6;
 
 /// `DHAT_DUMP=1` swaps the counting-only profiler for the heap profiler

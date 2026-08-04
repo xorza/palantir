@@ -1,12 +1,16 @@
 //! Function-only facade over the colocated benchmark drivers.
 //!
 //! Every implementation lives in a `bench.rs` beside the code it
-//! measures; this module is the single `internals`-gated surface the
+//! measures; this module is the single `bench`-gated surface the
 //! thin `benches/*.rs` targets link against, so no production module
 //! has to be `pub` for a benchmark's sake.
+//!
+//! Function-only literally: the workload they record is
+//! [`FrameFixture`](crate::FrameFixture), exported from the crate root
+//! because the showcase reaches it too, under a feature that does not
+//! enable this module.
 
 pub use crate::animation::bench::bench as animation;
-pub use crate::frame_fixture::FrameFixture;
 pub use crate::host::bench::{alloc_free, alloc_free_gpu, alloc_resize};
 pub use crate::input::bench::bench as input;
 pub use crate::layout::cache::bench::bench as layout_caches;

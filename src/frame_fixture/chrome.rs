@@ -196,8 +196,8 @@ pub(super) fn status_bar(state: &mut FrameFixture, ui: &mut Ui) {
     // Toast on the Popup layer, parked above the *right* end of the status
     // bar — anchoring to the bar's full rect would drop it over the sidebar.
     // Reading the bar's rect (last frame's, hence the frame-0 fallback)
-    // keeps it placed at any viewport size: `frame_visual` is 1280x800, the
-    // bench target is far taller.
+    // keeps it placed at any viewport size: the showcase page is window-sized,
+    // the bench target is far taller.
     let bar_rect = bar.rect.unwrap_or(Rect::new(12.0, 12.0, 240.0, 34.0));
     const TOAST_W: f32 = 220.0;
     let anchor = Rect::new(

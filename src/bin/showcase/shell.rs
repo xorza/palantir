@@ -8,8 +8,9 @@
 
 use palantir::{
     Align, AnimSpec, App, Background, Button, ButtonTheme, Checkbox, Color, Configure, Corners,
-    FontWeight, Frame, Key, Palette, Panel, Scroll, Shortcut, Sizing, Spacing, StatefulLook,
-    Stroke, Text, TextStyle, TextWrap, Theme, Ui, Vsync, WidgetLook, WindowConfig, WindowToken,
+    FontWeight, Frame, FrameFixture, Key, Palette, Panel, Scroll, Shortcut, Sizing, Spacing,
+    StatefulLook, Stroke, Text, TextStyle, TextWrap, Theme, Ui, Vsync, WidgetLook, WindowConfig,
+    WindowToken,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -45,6 +46,7 @@ enum Body {
     Simple(fn(&mut Ui)),
     State,
     GpuView,
+    Fixture,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -213,6 +215,14 @@ const PAGES: &[Page] = &[
         flow: Flow::Scroll,
         body: Body::Simple(pages::fixtures::build),
     },
+    Page {
+        group: "RUNTIME",
+        label: "frame bench",
+        blurb: "The workload `cargo bench --bench frame` records, drawn live. Nothing \
+                here animates — the benches need damage to settle.",
+        flow: Flow::Fill,
+        body: Body::Fixture,
+    },
 ];
 
 /// State the showcase binary carries across frames.
@@ -227,6 +237,10 @@ pub(crate) struct State {
     /// Persistent renderer for the `gpu view` page — its GPU resources
     /// build lazily on first paint (no device at construction).
     cube: Rc<RefCell<pages::gpu_view::Cube>>,
+    /// Backing values for the `frame bench` page. Held across frames for
+    /// the same reason the benches hold it: the tree binds `&mut` to these
+    /// fields, so a fresh one each frame would reset every control.
+    fixture: FrameFixture,
 }
 
 impl State {
@@ -240,6 +254,7 @@ impl State {
             vsync: Vsync::default(),
             app: pages::state::AppState { counter: 0 },
             cube: Rc::new(RefCell::new(pages::gpu_view::Cube::new())),
+            fixture: FrameFixture::default(),
         }
     }
 
@@ -349,6 +364,7 @@ impl State {
             Body::Simple(build) => build(ui),
             Body::State => pages::state::build(ui, &mut self.app, INSPECTOR_WINDOW),
             Body::GpuView => pages::gpu_view::build(ui, &self.cube),
+            Body::Fixture => pages::frame_bench::build(ui, &mut self.fixture),
         }
     }
 }
