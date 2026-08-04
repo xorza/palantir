@@ -150,6 +150,14 @@ impl ImageRegistry {
         }
     }
 
+    /// The selected device's `max_texture_dimension_2d` — the one ceiling
+    /// [`Self::register`] enforces, and the only one this crate has. `None`
+    /// for a standalone CPU recorder, which has no device to ask and so
+    /// accepts any dimensions.
+    pub(crate) fn max_texture_dimension_2d(&self) -> Option<NonZeroU32> {
+        self.max_texture_dimension_2d
+    }
+
     /// Upload `image` and return an owning [`ImageHandle`]. The texture
     /// lives until the returned handle (and every clone of it) is
     /// dropped. Each call uploads independently — share one image across
@@ -223,6 +231,11 @@ mod tests {
     #[test]
     fn register_queues_one_upload_and_unique_ids() {
         let reg = ImageRegistry::new(TextureIdSource::default(), None);
+        assert_eq!(
+            reg.max_texture_dimension_2d(),
+            None,
+            "a deviceless registry reports the ceiling it enforces: none"
+        );
         let a = reg.register(img(2, 3)).unwrap();
         let b = reg.register(img(4, 5)).unwrap();
         // Distinct registrations get distinct ids, both nonzero.
@@ -240,6 +253,10 @@ mod tests {
     #[test]
     fn registration_rejects_dimension_overflow_before_queueing() {
         let reg = reg(4);
+        // What the accessor answers is exactly what registration enforces
+        // below — a caller sizing a downscale against it must land on the
+        // largest image that still registers, not one past it.
+        assert_eq!(reg.max_texture_dimension_2d(), NonZeroU32::new(4));
         let accepted = reg.register(img(4, 4)).unwrap();
         assert_eq!(
             accepted.id(),
