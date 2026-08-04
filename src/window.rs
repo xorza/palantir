@@ -342,7 +342,8 @@ mod tests {
             .inner_size(UVec2::new(800, 600))
             .min_inner_size(UVec2::new(320, 240))
             .position(IVec2::new(-40, 80))
-            .maximized(true);
+            .maximized(true)
+            .app_id("org.example.Inspector");
 
         assert_eq!(config.title, "inspector");
         assert_eq!(config.inner_size, Some(UVec2::new(800, 600)));
@@ -350,6 +351,12 @@ mod tests {
         assert_eq!(config.position, Some(IVec2::new(-40, 80)));
         assert!(config.maximized);
         assert!(config.icon.is_none());
+        // Identity is distinct from the title: a shell matches the `.desktop`
+        // entry on the id, so the two must not be conflated.
+        assert_eq!(config.app_id.as_deref(), Some("org.example.Inspector"));
         assert!(WindowConfig::default().icon.is_none());
+        // Unset by default — the platform's own default identity stands.
+        assert!(WindowConfig::default().app_id.is_none());
+        assert!(WindowConfig::new("inspector").app_id.is_none());
     }
 }
