@@ -15,22 +15,36 @@ use std::cell::Cell;
 
 /// What happens when the user presses outside the popup's body.
 ///
-/// Both modes install a full-surface "click-eater" leaf in the
-/// `Popup` layer behind the popup body — outside presses hit the
-/// eater (it senses `CLICK | DRAG | SCROLL | PINCH`) and don't
-/// propagate to the `Main` tree underneath. They differ only in
-/// whether the popup widget signals
-/// dismissal:
+/// [`Self::Block`] and [`Self::Dismiss`] are the modal pair: each
+/// installs a full-surface "click-eater" leaf in the `Popup` layer behind
+/// the popup body — outside presses hit the eater (it senses
+/// `CLICK | DRAG | SCROLL | PINCH`) and don't propagate to the `Main`
+/// tree underneath — and each takes the layer's whole key scope, cutting
+/// off every layer below. They differ only in whether the popup widget
+/// signals dismissal:
 ///
 /// - [`Self::Block`] — eater consumes the click; no signal (and Esc is
 ///   ignored). Use for confirm dialogs, stop-the-world prompts.
 /// - [`Self::Dismiss`] — an eaten outside-click **or** an Esc press sets
 ///   `PopupResponse.dismissed` so the host can flip its open flag. Use for
 ///   dropdowns, context menus, autocomplete.
+/// - [`Self::PassThrough`] — neither capture: no eater, no key-scope
+///   claim. Presses and keys outside the body reach `Main` untouched and
+///   never signal dismissal. Use for overlays that *annotate* rather than
+///   interrupt — toasts, notifications, hover cards — where the host has
+///   to stay live underneath.
+///
+/// The distinction bites hardest for an overlay recorded unconditionally
+/// every frame. Under the modal pair that is a permanently dead host: the
+/// eater swallows every pointer event and the key claim silences the
+/// keyboard, with no interaction able to reach whatever would close it.
+/// Under `PassThrough` it is exactly the harmless always-on banner it
+/// looks like.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ClickOutside {
     Block,
     Dismiss,
+    PassThrough,
 }
 
 /// The dismissal request handed to the body closure, so content widgets
@@ -91,16 +105,19 @@ impl PopupResponse {
 /// from the body's current measured size, then flipped or shifted to fit
 /// the surface.
 ///
-/// Outside clicks are handled per [`ClickOutside`]: a full-surface
-/// "click-eater" leaf is recorded in the `Popup` layer underneath
-/// the body, so clicks anywhere outside the body don't leak through
-/// to the `Main` tree. Inside-body clicks route to the body's own
-/// leaves first (popup hit-test priority).
+/// Outside clicks are handled per [`ClickOutside`]. Under the modal pair
+/// (`Block` / `Dismiss`, the default) a full-surface "click-eater" leaf
+/// is recorded in the `Popup` layer underneath the body, so clicks
+/// anywhere outside the body don't leak through to the `Main` tree.
+/// Inside-body clicks route to the body's own leaves first (popup
+/// hit-test priority).
 ///
-/// While recorded, the topmost popup owns both input streams — keyboard
-/// and the pointer watches — for every layer below it. Focus remains
+/// While recorded, such a popup owns both input streams — keyboard and
+/// the pointer watches — for every layer below it. Focus remains
 /// unchanged, so context-menu commands can still operate on their
-/// trigger without also reaching the focused widget.
+/// trigger without also reaching the focused widget. Choose
+/// [`ClickOutside::PassThrough`] for an overlay that must not take
+/// either stream.
 ///
 /// Implements [`Configure`] — use `.id(...)`, `.id_salt(...)`,
 /// `.padding(...)`, `.size(...)`, etc. on the popup body.
@@ -188,25 +205,36 @@ impl Popup {
         // way any other widget is, not to `Layer::Popup`'s empty root.
         let mut widget = ui.widget(node);
         let eater_id = widget.id().with("eater");
-        let scope = OverlayScope::claim(widget.id(), Layer::Popup, position, &mut widget.node);
-        ui.layer(Layer::Popup).show(|ui| {
-            // Eater records first → paints under the body. Hit-test runs
-            // reverse-iter so the body's leaves still win inside its rect.
-            //
-            // Senses all four pointer interactions so the popup is truly
-            // modal-over-`Main`: pan-drag, scroll, and pinch over the
-            // surrounding area can't leak through to the host (e.g. a
-            // graph canvas underneath that pans on middle-drag and zooms
-            // on scroll/pinch). `Sense::CLICK` is the dismiss trigger;
-            // the other three never produce visible behavior on the
-            // eater itself — they're absorbed and discarded so the host
-            // doesn't see them.
-            Frame::new()
-                .id(eater_id)
-                .size((Sizing::FILL, Sizing::FILL))
-                .sense(Sense::ABSORB_POINTER)
-                .show(ui);
-        });
+        // The two captures are one decision: an overlay either takes the
+        // pointer *and* the keys from the layers below, or neither. Taking
+        // one without the other leaves a host that is half-dead in a way
+        // nothing at the call site would explain.
+        let modal = click_outside != ClickOutside::PassThrough;
+        let scope = if modal {
+            OverlayScope::claim(widget.id(), Layer::Popup, position, &mut widget.node)
+        } else {
+            OverlayScope::passive(widget.id(), Layer::Popup, position)
+        };
+        if modal {
+            ui.layer(Layer::Popup).show(|ui| {
+                // Eater records first → paints under the body. Hit-test runs
+                // reverse-iter so the body's leaves still win inside its rect.
+                //
+                // Senses all four pointer interactions so the popup is truly
+                // modal-over-`Main`: pan-drag, scroll, and pinch over the
+                // surrounding area can't leak through to the host (e.g. a
+                // graph canvas underneath that pans on middle-drag and zooms
+                // on scroll/pinch). `Sense::CLICK` is the dismiss trigger;
+                // the other three never produce visible behavior on the
+                // eater itself — they're absorbed and discarded so the host
+                // doesn't see them.
+                Frame::new()
+                    .id(eater_id)
+                    .size((Sizing::FILL, Sizing::FILL))
+                    .sense(Sense::ABSORB_POINTER)
+                    .show(ui);
+            });
+        }
 
         {
             let chrome = chrome::resolve_container(
@@ -225,8 +253,14 @@ impl Popup {
             // outside is absorbed either way; reading only `left` meant it
             // was absorbed *and* ignored, leaving an open context menu with
             // no way to close it by the button that opened it.
-            let outside = ui.response_for(eater_id);
-            let eater_clicked = PointerButton::all().any(|b| outside.button(b).clicked());
+            //
+            // Gated on the mode that reads it: the other two record no
+            // eater at all (`Block` has one but ignores it), so this would
+            // be a lookup for an id that isn't in the tree.
+            let eater_clicked = dismiss_mode && {
+                let outside = ui.response_for(eater_id);
+                PointerButton::all().any(|b| outside.button(b).clicked())
+            };
             let response = PopupResponse {
                 // A `Dismiss` popup closes on an eaten outside-press OR an Esc
                 // press — so overlay hosts (ComboBox / ContextMenu) read one

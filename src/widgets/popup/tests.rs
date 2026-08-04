@@ -607,6 +607,94 @@ fn click_outside_blocks_main_without_signaling_with_block_mode() {
     );
 }
 
+/// The whole outside-press contract in one table, because the parameter
+/// has to *matter*: asserting only `PassThrough`'s half would pass just as
+/// well if the eater had been dropped from every mode.
+///
+/// `signals` is `dismissed` — `Dismiss` is the only mode that reports the
+/// press it ate, and `PassThrough` never reports one because it never
+/// takes it.
+#[test]
+fn each_click_outside_mode_decides_whether_main_sees_the_press() {
+    for (mode, reaches_main, signals) in [
+        (ClickOutside::Block, false, false),
+        (ClickOutside::Dismiss, false, true),
+        (ClickOutside::PassThrough, true, false),
+    ] {
+        let mut h = UiHarness::new(SURFACE);
+        let mut dismissed = false;
+        h.frame(|ui| {
+            record_body(ui, mode, &mut dismissed);
+        });
+        h.click_at(Vec2::new(300.0, 300.0));
+
+        // Both reads OR across passes, for the reason `record_body`
+        // already does: a click Main *acts* on makes `Ui::frame` re-run
+        // the closure, and pass B sees the edge gone. Reading Main's
+        // response after the frame samples that second pass and reports
+        // a click that did land as though it never had.
+        let mut dismissed = false;
+        let mut reached = false;
+        h.frame(|ui| {
+            record_body(ui, mode, &mut dismissed);
+            reached |= main_panel_clicked(ui);
+        });
+        assert_eq!(
+            reached, reaches_main,
+            "{mode:?}: whether an outside click reaches Main",
+        );
+        assert_eq!(dismissed, signals, "{mode:?}: whether it signals dismissal");
+    }
+}
+
+/// The key-scope claim is the *other* capture, and `PassThrough` drops it
+/// too. Worth its own test: a host that could be clicked but not typed
+/// into would be just as dead, and the eater cannot be seen from here —
+/// `KeyFilter::ALL` silences the layers below whether or not a pointer
+/// ever moves.
+#[test]
+fn only_pass_through_leaves_the_keyboard_to_the_layers_below() {
+    use crate::input::shortcut::Shortcut;
+
+    for (mode, main_reads_key) in [
+        (ClickOutside::Block, false),
+        (ClickOutside::Dismiss, false),
+        (ClickOutside::PassThrough, true),
+    ] {
+        let mut h = UiHarness::new(SURFACE);
+        let mut saw = false;
+        let mut scene = |ui: &mut Ui| {
+            Panel::vstack()
+                .id(WidgetId::from_hash("main-bg"))
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    // Read from `Main`, under the popup's layer. `F5` rather
+                    // than Esc: Esc is the dismiss key the popup itself
+                    // consumes, so it could not tell "scope silenced Main"
+                    // from "the popup handled it".
+                    saw |= ui.key_pressed(Shortcut::key(Key::F5));
+                    Popup::anchored_to(ANCHOR)
+                        .id(WidgetId::from_hash("test-popup"))
+                        .click_outside(mode)
+                        .show(ui, |ui, _popup| {
+                            Panel::vstack()
+                                .id(WidgetId::from_hash("popup-content"))
+                                .size((Sizing::fixed(BODY_W), Sizing::fixed(BODY_H)))
+                                .show(ui, |_| {});
+                        });
+                });
+        };
+        h.frame(&mut scene);
+        h.key(Key::F5);
+        h.frame(&mut scene);
+
+        assert_eq!(
+            saw, main_reads_key,
+            "{mode:?}: whether Main still reads the keyboard under the popup",
+        );
+    }
+}
+
 /// A text field inside a popup must be typeable.
 ///
 /// It was not, and the way it failed is worth keeping: `Popup::show`
