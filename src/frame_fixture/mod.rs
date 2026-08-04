@@ -2,22 +2,25 @@
 //! `frame bench` page: a synthetic but *designed* app screen — a dark
 //! telemetry console — rather than a pile of widgets. It exercises every public
 //! layout driver (HStack/VStack/ZStack/Canvas/Grid/WrapHStack/WrapVStack
-//! and Scroll on **both** axes), every non-animated public widget
-//! (Panel/Frame/Button/Text/Grid/Scroll/Checkbox/RadioButton/Switch/
-//! Slider/DragValue/ComboBox/ProgressBar/Separator/TextEdit/Tooltip/Popup),
-//! every authoring shape family (Rect / Triangle / Curve / Polyline / Mesh /
+//! and Scroll on **both** axes), every non-animated public widget, every
+//! authoring shape family (Rect / Triangle / Curve / Polyline / Mesh /
 //! Shadow / Text), every `Brush` variant (Solid / Linear / Radial / Conic)
 //! at both chrome and shape level, chrome drop shadows, grid cell spans,
 //! `disabled` / `hidden` cascade flattening, and the popup/tooltip layers.
 //!
+//! **The widget half of that claim is enforced, not asserted.** `COVERED`
+//! and `EXCLUDED` in this file's test module are the list, every exclusion
+//! carries its reason, and the two together are checked against `lib.rs`'s
+//! public exports — so a widget added to the crate fails the suite until
+//! someone decides which side it belongs on. This paragraph used to name
+//! the covered widgets in prose, and `Splitter` had already dropped out of
+//! it without anyone noticing; the lists exist because prose cannot fail.
+//!
 //! **Nothing animated belongs in here.** `Spinner` — and any `PaintAnim` —
 //! wakes the host every frame by design, so `frame/cached_*` could never
 //! settle to `Damage::Skip` and `frame/partial_*` would grow past the single
-//! footer-counter rect both arms exist to measure. `Modal`, `ContextMenu`,
-//! and `GpuView` are absent for the same class of reason: the first two
-//! record nothing until an interaction the benches never deliver, and
-//! `GpuView` needs a `wgpu::Device` the deviceless CPU/alloc harnesses
-//! don't have.
+//! footer-counter rect both arms exist to measure. That, and the three other
+//! standing exclusions, are recorded with their reasons in `EXCLUDED`.
 //!
 //! It sits at the crate root rather than beside any one driver because no
 //! driver owns it: the frame benches ([`crate::ui::bench`]), the allocation
@@ -35,6 +38,7 @@
 mod chrome;
 mod forms;
 mod lists;
+mod panes;
 mod specimen;
 mod stat_strip;
 mod tokens;
@@ -87,6 +91,8 @@ pub struct FrameFixture {
     zoom: f64,
     quality: usize,
     dark_mode: bool,
+    /// Divider position for the split-pane card.
+    split: f32,
     grid_rows: Vec<Track>,
 }
 
@@ -104,6 +110,7 @@ impl Default for FrameFixture {
             zoom: 42.0_f64,
             quality: 2,
             dark_mode: true,
+            split: 0.42,
             grid_rows: Vec::new(),
         }
     }
@@ -163,6 +170,7 @@ pub(crate) fn build_ui(state: &mut FrameFixture, scale: usize, ui: &mut Ui) {
                             forms::request_card(state, ui);
                             forms::settings_card(state, ui);
                             specimen::sheet(ui);
+                            panes::panes_card(state, ui);
                             lists::filmstrip(ui, film_cells);
                             lists::activity_card(ui, chat_messages);
                             forms::properties_card(state, ui, prop_rows);
@@ -184,6 +192,155 @@ mod tests {
     use crate::widgets::button::Button;
     use std::cell::RefCell;
     use std::time::Duration;
+
+    /// Every widget module this tree records at least once. Paired with
+    /// [`EXCLUDED`] it must account for the crate's entire public widget
+    /// surface — that is what
+    /// [`covered_and_excluded_account_for_every_public_widget`] enforces,
+    /// and it is the whole point of keeping these as data rather than
+    /// prose. The module doc used to make this claim in a comment, and
+    /// `splitter` had already fallen out of it unnoticed.
+    const COVERED: &[&str] = &[
+        "button",
+        "checkbox",
+        "combo_box",
+        "drag_value",
+        "frame",
+        "grid",
+        "panel",
+        "popup",
+        "progress_bar",
+        "radio",
+        "scroll",
+        "separator",
+        "slider",
+        "splitter",
+        "switch",
+        "text",
+        "text_edit",
+        "tooltip",
+    ];
+
+    /// Widget modules deliberately absent, each with the reason it can't
+    /// join. A reason is required: "we forgot" and "it doesn't fit the
+    /// workload" look identical in a diff otherwise, which is how
+    /// `splitter` went missing.
+    const EXCLUDED: &[(&str, &str)] = &[
+        (
+            "spinner",
+            "animates — a PaintAnim wakes the host every frame, so `frame/cached_*` \
+             could never settle to `Damage::Skip`",
+        ),
+        (
+            "modal",
+            "records nothing until an interaction the benches never deliver",
+        ),
+        (
+            "context_menu",
+            "same as modal — nothing is recorded until a right-click",
+        ),
+        (
+            "gpu_view",
+            "needs a `wgpu::Device` the deviceless CPU/alloc harnesses don't have",
+        ),
+    ];
+
+    /// Every source file of this module, so the checks below read what
+    /// the fixture actually records rather than what its docs claim.
+    /// `include_str!` resolves against this file's directory and runs at
+    /// compile time — no runtime filesystem access, no working-directory
+    /// assumption.
+    const SOURCES: &[&str] = &[
+        include_str!("mod.rs"),
+        include_str!("chrome.rs"),
+        include_str!("forms.rs"),
+        include_str!("lists.rs"),
+        include_str!("panes.rs"),
+        include_str!("specimen.rs"),
+        include_str!("stat_strip.rs"),
+        include_str!("tokens.rs"),
+    ];
+
+    /// Matches the `use` path a widget module is reached by. The trailing
+    /// `::` is load-bearing: without it `text` would also match
+    /// `text_edit`, and the two are separately covered.
+    fn records(module: &str) -> bool {
+        let path = format!("crate::widgets::{module}::");
+        SOURCES.iter().any(|src| src.contains(&path))
+    }
+
+    /// The covered list has to be *true*: a widget dropped from the tree
+    /// must fail here rather than leave the claim standing.
+    #[test]
+    fn every_covered_widget_is_actually_recorded() {
+        for module in COVERED {
+            assert!(
+                records(module),
+                "`{module}` is listed as covered but nothing in the fixture imports \
+                 `crate::widgets::{module}::` — drop it from COVERED or record one",
+            );
+        }
+    }
+
+    /// And the exclusions have to be *current*: one that quietly gained a
+    /// use is a stale reason nobody reread.
+    #[test]
+    fn every_excluded_widget_is_actually_absent() {
+        for (module, reason) in EXCLUDED {
+            assert!(
+                !records(module),
+                "`{module}` is excluded ({reason}) but the fixture imports it — \
+                 move it to COVERED",
+            );
+        }
+    }
+
+    /// The gate that stops the drift recurring: the two lists together
+    /// must name every widget the crate publicly exports, so a new one
+    /// cannot be shipped without someone deciding which side it lands on.
+    ///
+    /// Reality comes from `lib.rs`'s own `pub use widgets::<module>::`
+    /// lines — the definition of the public surface, not a second list
+    /// that could rot beside it. [`NOT_WIDGETS`] carries the exports that
+    /// live under `widgets::` without being one.
+    #[test]
+    fn covered_and_excluded_account_for_every_public_widget() {
+        /// Exported from `widgets::` but not widgets: themes, the shared
+        /// response types, and the `Widget` trait itself.
+        const NOT_WIDGETS: &[&str] = &["theme", "response", "widget"];
+
+        let mut classified: Vec<&str> = COVERED.to_vec();
+        classified.extend(EXCLUDED.iter().map(|(m, _)| *m));
+
+        let mut public: Vec<&str> = include_str!("../lib.rs")
+            .lines()
+            .filter_map(|line| line.trim().strip_prefix("pub use widgets::"))
+            .filter_map(|rest| rest.split("::").next())
+            .filter(|module| !NOT_WIDGETS.contains(module))
+            .collect();
+        public.sort_unstable();
+        public.dedup();
+
+        assert!(
+            !public.is_empty(),
+            "parsed no widget exports from lib.rs — the `pub use widgets::` shape changed \
+             and this test is now vacuous",
+        );
+
+        for module in &public {
+            assert!(
+                classified.contains(module),
+                "`{module}` is publicly exported but neither covered by the fixture nor \
+                 listed in EXCLUDED with a reason",
+            );
+        }
+        for module in &classified {
+            assert!(
+                public.contains(module),
+                "`{module}` is listed here but no longer publicly exported — drop it",
+            );
+        }
+    }
 
     /// Nothing this tree records on an overlay layer may capture input
     /// aimed at a host recorded beside it.
