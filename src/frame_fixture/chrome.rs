@@ -8,7 +8,6 @@ use crate::frame_fixture::FrameFixture;
 use crate::frame_fixture::tokens;
 use crate::layout::types::align::Align;
 use crate::layout::types::justify::Justify;
-use crate::layout::types::overlay::OverlayPosition;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::brush::Brush;
@@ -20,12 +19,12 @@ use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::stroke::Stroke;
-use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
 use crate::ui::Ui;
 use crate::widgets::button::Button;
 use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
+use crate::widgets::popup::{ClickOutside, Popup};
 use crate::widgets::scroll::Scroll;
 use crate::widgets::separator::Separator;
 use crate::widgets::text::Text;
@@ -200,14 +199,12 @@ pub(super) fn status_bar(state: &mut FrameFixture, ui: &mut Ui) {
     // keeps it placed at any viewport size: the showcase page is window-sized,
     // the bench target is far taller.
     //
-    // Recorded straight into the layer rather than through `Popup`, which is
-    // a *modal* primitive: every `Popup::show` also records a full-surface
-    // `Sense::ABSORB_POINTER` click-eater under its body, and this toast is
-    // re-recorded unconditionally every frame. Standalone that was invisible
-    // — nothing else was on screen to click — but the moment the fixture
-    // shares a window, as the showcase page, the eater swallows every
-    // pointer event bound for `Main` and the host goes dead. A toast is not
-    // modal, so it does not want the eater.
+    // `PassThrough`, not the default: this toast is re-recorded every frame,
+    // and a modal popup that never closes is a permanently dead host — the
+    // click-eater swallows every pointer event bound for `Main` and the key
+    // claim silences the keyboard. Standalone that was invisible (nothing
+    // else was on screen to reach), but the fixture shares a window as the
+    // showcase page. A toast annotates; it does not interrupt.
     let bar_rect = bar.rect.unwrap_or(Rect::new(12.0, 12.0, 240.0, 34.0));
     const TOAST_W: f32 = 220.0;
     let anchor = Rect::new(
@@ -216,27 +213,22 @@ pub(super) fn status_bar(state: &mut FrameFixture, ui: &mut Ui) {
         TOAST_W.min(bar_rect.size.w),
         bar_rect.size.h,
     );
-    ui.layer(Layer::Popup)
-        .placement(OverlayPosition::above(anchor, 0.0))
-        .show(|ui| {
-            Panel::vstack()
-                .id_salt("toast")
-                .size((Sizing::HUG, Sizing::HUG))
-                .background(Background {
-                    fill: tokens::CARD_BG.into(),
-                    stroke: Stroke::solid(tokens::BORDER, 1.0),
-                    corners: Corners::all(6.0),
-                    shadow: Shadow::drop(
-                        Color::rgba(0.0, 0.0, 0.0, 0.55),
-                        glam::Vec2::new(0.0, 3.0),
-                        10.0,
-                    ),
-                })
-                .show(ui, |ui| {
-                    Text::new("Capture written to disk")
-                        .id_salt("popup-label")
-                        .style(&tokens::caption_style())
-                        .show(ui);
-                });
+    Popup::above(anchor)
+        .click_outside(ClickOutside::PassThrough)
+        .background(Background {
+            fill: tokens::CARD_BG.into(),
+            stroke: Stroke::solid(tokens::BORDER, 1.0),
+            corners: Corners::all(6.0),
+            shadow: Shadow::drop(
+                Color::rgba(0.0, 0.0, 0.0, 0.55),
+                glam::Vec2::new(0.0, 3.0),
+                10.0,
+            ),
+        })
+        .show(ui, |ui, _handle| {
+            Text::new("Capture written to disk")
+                .id_salt("popup-label")
+                .style(&tokens::caption_style())
+                .show(ui);
         });
 }

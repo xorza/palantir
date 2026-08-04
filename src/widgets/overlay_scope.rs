@@ -30,6 +30,10 @@ pub(super) struct OverlayScope {
     /// placement at claim time anyway.
     layer: Layer,
     placement: Placement,
+    /// Whether [`Self::claim`] stamped the key filter. A [`Self::passive`]
+    /// scope owns nothing, so it has no dismiss key to read and nothing
+    /// to hand back.
+    owns_keys: bool,
 }
 
 impl OverlayScope {
@@ -50,6 +54,26 @@ impl OverlayScope {
             owner,
             layer,
             placement: placement.into(),
+            owns_keys: true,
+        }
+    }
+
+    /// Place and record on `layer` while claiming **nothing** — no key
+    /// filter, no scope to give back.
+    ///
+    /// For overlays that annotate rather than interrupt: they want the
+    /// layer for paint order and its flip-to-fit placement, but the host
+    /// underneath has to stay live. [`Self::claim`]'s `KeyFilter::ALL`
+    /// cuts off every layer below for as long as the overlay is recorded,
+    /// which for one recorded unconditionally every frame is forever.
+    ///
+    /// Takes no `root`: stamping nothing on it is the entire point.
+    pub(super) fn passive(owner: WidgetId, layer: Layer, placement: impl Into<Placement>) -> Self {
+        Self {
+            owner,
+            layer,
+            placement: placement.into(),
+            owns_keys: false,
         }
     }
 
@@ -61,10 +85,13 @@ impl OverlayScope {
     /// an `escape_pressed()` call made after the fact is silenced by the
     /// very scope the overlay just declared — and the overlay never sees
     /// its own dismiss key.
+    /// A passive scope reports `false` without asking: it has no dismiss
+    /// key, and `escape_pressed` auto-watches the chord for wake-up, which
+    /// an always-recorded overlay would re-arm every frame for nothing.
     pub(super) fn record(&self, ui: &mut Ui, body: impl FnOnce(&mut Ui)) -> bool {
         ui.layer(self.layer).placement(self.placement).show(|ui| {
             body(ui);
-            ui.escape_pressed()
+            self.owns_keys && ui.escape_pressed()
         })
     }
 
@@ -80,7 +107,7 @@ impl OverlayScope {
     /// stays open drops it instead, and one that closes cannot go on
     /// using a scope it has handed back.
     pub(super) fn withdraw(self, ui: &mut Ui, closed: bool) {
-        if closed {
+        if closed && self.owns_keys {
             ui.close_scope(self.owner);
         }
     }
