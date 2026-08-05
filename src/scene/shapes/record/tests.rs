@@ -14,225 +14,6 @@ use crate::scene::shapes::paint::{LoweredShadow, ShapeStroke, shadow_paint_rect_
 use crate::shape::rect::RectKind;
 use glam::Vec2;
 
-/// [`ShapeRecord::tag`] is the only source of the hash's leading
-/// discriminant byte, so its numbers have to be pairwise distinct
-/// and frozen once shipped. Two variants sharing a tag would differ
-/// only by whatever their field schedules don't have in common, which
-/// for the stroke kinds is very little — the reason
-/// [`CurveBasis::tag`] exists now that arcs hash under `Curve`.
-///
-/// The `repr` discriminants that used to sit on the variants looked
-/// like they enforced this. They never did: they pin their *own*
-/// uniqueness, which says nothing about the hand-written `tag`
-/// match. This is where the property is actually checked.
-///
-/// A brand-new variant still has to be added to the table below by
-/// hand; what the exhaustive `tag` match guarantees is only that
-/// someone had to pick a number for it.
-#[test]
-fn shape_record_tags_are_distinct_and_pinned() {
-    let fill = ShapeBrush::Solid(ColorF16::from(Color::WHITE));
-    let stroke = ShapeStroke::from(Stroke::solid(Color::BLACK, 1.0));
-    // 4, 7, 8, 9 and 10 are absent on purpose — retired with
-    // `Shadow`, `GpuView`, `Triangle`, `WindowedRect` and `Arc`
-    // when each folded into a surviving variant.
-    let table = [
-        (
-            0,
-            ShapeRecord::Quad(QuadShape::Rect {
-                kind: RectKind::Rounded,
-                local_rect: None,
-                corners: Corners::ZERO,
-                fill,
-                stroke,
-                fill_grad_hash: 0,
-            }),
-        ),
-        (
-            1,
-            ShapeRecord::Polyline {
-                width: 1.0,
-                color_mode: ColorMode::Single,
-                cap: LineCap::Butt,
-                join: LineJoin::Miter,
-                points: Span::new(0, 2),
-                colors: Span::new(0, 1),
-                bbox: Rect::ZERO,
-                content_hash: 0,
-            },
-        ),
-        (
-            2,
-            ShapeRecord::Text {
-                local_origin: None,
-                text: RecordedText {
-                    source: TextSource {
-                        span: Span::new(0, 1),
-                    },
-                    hash: 0,
-                },
-                color: ColorF16::from(Color::WHITE),
-                font_size_px: 12.0,
-                line_height_px: 14.0,
-                wrap: TextWrap::SingleLine,
-                align: Align::CENTER,
-                family: FontFamily::Sans,
-                weight: FontWeight::Regular,
-            },
-        ),
-        (
-            3,
-            ShapeRecord::Mesh {
-                local_rect: None,
-                tint: ColorF16::from(Color::WHITE),
-                vertices: Span::new(0, 3),
-                indices: Span::new(0, 3),
-                bbox: Rect::ZERO,
-                content_hash: 0,
-            },
-        ),
-        (
-            5,
-            ShapeRecord::Image {
-                local_rect: None,
-                tint: ColorF16::from(Color::WHITE),
-                source: ImageSource::Texture {
-                    id: TextureId(1),
-                    size: glam::UVec2::new(1, 1),
-                },
-                fit: ImageFit::Fill,
-                min_filter: ImageFilter::Linear,
-                mag_filter: ImageFilter::Linear,
-                downsample: ImageDownsample::Single,
-            },
-        ),
-        (
-            6,
-            ShapeRecord::Curve {
-                basis: CurveBasis::Cubic {
-                    p0: Vec2::ZERO,
-                    p1: Vec2::ZERO,
-                    p2: Vec2::ZERO,
-                    p3: Vec2::ZERO,
-                },
-                width: 1.0,
-                fill,
-                fill_grad_hash: 0,
-                cap: LineCap::Butt,
-                bbox: Rect::ZERO,
-            },
-        ),
-    ];
-
-    let mut seen = Vec::with_capacity(table.len());
-    for (expected, record) in &table {
-        assert_eq!(
-            record.tag(),
-            *expected,
-            "{record:?} moved off its shipped tag",
-        );
-        assert!(
-            !seen.contains(expected),
-            "tag {expected} is claimed by two variants",
-        );
-        seen.push(*expected);
-    }
-
-    // Three shapes share the `Quad` tag — the biggest merge. The
-    // shape byte, not the record tag, is what keeps their hashes
-    // apart (see `quad_shapes_hash_apart`).
-    let quad = |shape| ShapeRecord::Quad(shape);
-    let shadow_shape = QuadShape::Shadow {
-        local_rect: None,
-        corners: Corners::ZERO,
-        shadow: LoweredShadow::from(Shadow::default()),
-    };
-    let triangle_shape = QuadShape::Triangle {
-        a: Vec2::ZERO,
-        b: Vec2::ZERO,
-        c: Vec2::ZERO,
-        radius: 0.0,
-        fill: ColorF16::from(Color::WHITE),
-        stroke,
-        bbox: Rect::ZERO,
-    };
-    let rect_shape = QuadShape::Rect {
-        kind: RectKind::Rounded,
-        local_rect: None,
-        corners: Corners::ZERO,
-        fill,
-        stroke,
-        fill_grad_hash: 0,
-    };
-    for shape in [rect_shape, shadow_shape, triangle_shape] {
-        assert_eq!(quad(shape).tag(), 0, "{shape:?} tags as `Quad`");
-    }
-    let mut shape_tags = Vec::new();
-    for tag in [rect_shape.tag(), shadow_shape.tag(), triangle_shape.tag()] {
-        assert!(
-            !shape_tags.contains(&tag),
-            "quad-shape tag {tag} is claimed twice",
-        );
-        shape_tags.push(tag);
-    }
-
-    // Both bases share the `Curve` tag — same merge, same
-    // guarantee. The basis byte, not the record tag, is what keeps
-    // their hashes apart (see `curve_and_arc_bases_hash_apart`).
-    let arc = ShapeRecord::Curve {
-        basis: CurveBasis::Arc {
-            center: Vec2::ZERO,
-            radius: 1.0,
-            a0: 0.0,
-            a1: 1.0,
-        },
-        width: 1.0,
-        fill,
-        fill_grad_hash: 0,
-        cap: LineCap::Butt,
-        bbox: Rect::ZERO,
-    };
-    assert_eq!(arc.tag(), 6, "an arc-basis curve tags as `Curve`");
-    assert_ne!(
-        CurveBasis::Cubic {
-            p0: Vec2::ZERO,
-            p1: Vec2::ZERO,
-            p2: Vec2::ZERO,
-            p3: Vec2::ZERO,
-        }
-        .tag(),
-        CurveBasis::Arc {
-            center: Vec2::ZERO,
-            radius: 1.0,
-            a0: 0.0,
-            a1: 1.0,
-        }
-        .tag(),
-    );
-
-    // Same merge, same guarantee: a view composite shares `Image`'s
-    // record tag, so `ImageSource::tag` is what keeps it apart from
-    // a texture draw (see `image_source_hashes_apart_by_source`).
-    let view = ShapeRecord::Image {
-        local_rect: None,
-        tint: ColorF16::from(Color::WHITE),
-        source: ImageSource::GpuView { epoch: 0 },
-        fit: ImageFit::Fill,
-        min_filter: ImageFilter::Linear,
-        mag_filter: ImageFilter::Linear,
-        downsample: ImageDownsample::Single,
-    };
-    assert_eq!(view.tag(), 5, "a `GpuView`-source image tags as `Image`");
-    assert_ne!(
-        ImageSource::Texture {
-            id: TextureId(1),
-            size: glam::UVec2::new(1, 1),
-        }
-        .tag(),
-        ImageSource::GpuView { epoch: 0 }.tag(),
-    );
-}
-
 #[test]
 fn shadow_paint_bbox_tracks_shifted_drop_and_source_bounded_inset() {
     #[derive(Debug)]
@@ -1234,7 +1015,7 @@ fn mesh_paint_bbox_is_vertex_hull_not_owner_rect() {
 /// would make damage diff skip the repaint.
 ///
 /// The same risk, one level up: all three quad shapes share
-/// [`ShapeRecord::Quad`]'s tag byte, so [`QuadShape::tag`] is the
+/// [`ShapeRecord::Quad`]'s discriminant, so `QuadShape`'s own is the
 /// only thing separating a rectangle, a shadow, and a triangle over
 /// the same box — and each shape's own fields have to reach the
 /// hasher through the merged arm. Every case here is a repaint that
@@ -1292,10 +1073,10 @@ fn quad_shapes_hash_apart() {
     }
 }
 
-/// Cubics and arcs share [`ShapeRecord::Curve`]'s tag byte, so the
-/// basis byte is the only thing separating their hashes — and the
-/// arc's own fields have to reach the hasher through the merged
-/// arm. A collision either way would make damage diff skip a
+/// Cubics and arcs share [`ShapeRecord::Curve`]'s discriminant, so
+/// [`CurveBasis`]'s own is the only thing separating their hashes —
+/// and the arc's own fields have to reach the hasher through the
+/// merged arm. A collision either way would make damage diff skip a
 /// repaint when a stroke changes shape.
 #[test]
 fn curve_and_arc_bases_hash_apart() {
@@ -1319,7 +1100,7 @@ fn curve_and_arc_bases_hash_apart() {
     let baseline = arc(Vec2::ZERO, 4.0, 0.0, 1.0);
 
     // Every field the two bases don't share is identical here, so
-    // only `CurveBasis::tag` can tell these two apart.
+    // only `CurveBasis`'s discriminant can tell these two apart.
     assert_ne!(
         compute_record_hash(&baseline),
         compute_record_hash(&curve(CurveBasis::Cubic {
@@ -1390,10 +1171,10 @@ fn shape_mesh_hash_excludes_span_offsets() {
     );
 }
 
-/// A view composite and a texture draw share `Image`'s record tag,
-/// so only [`ImageSource::tag`] separates their hashes — and the
-/// view's `epoch` has to reach the hasher through the merged arm.
-/// A collision either way makes damage diff skip a repaint: a view
+/// A view composite and a texture draw share `Image`'s record
+/// discriminant, so only [`ImageSource`]'s own separates their hashes
+/// — and the view's `epoch` has to reach the hasher through the merged
+/// arm. A collision either way makes damage diff skip a repaint: a view
 /// that bumped its epoch would keep its stale texture on screen.
 #[test]
 fn image_source_hashes_apart_by_source() {

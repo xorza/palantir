@@ -117,85 +117,6 @@ question:
 
 ---
 
-# 4a. Delete the hash-tag freeze
-
-The shape tier keeps a parallel encoding of its own enum discriminants,
-justified by a document format that does not exist.
-
-**The rationale is self-referential.** `ContentHash`
-(`common/content_hash.rs:4`) derives no serde; palantir writes no files
-at all (`fs::write|File::create|to_writer` has zero hits under `src/`);
-every serde derive in the crate is the theme format. `"saved document"`
-occurs exactly once in the codebase — in the doc comment that invents it
-(`shapes/record/mod.rs:226`). Every consumer (subtree rollups, measure
-cache, cascade validity, damage diff) compares hashes produced in one
-process run.
-
-**What the tags do is still real; `mem::discriminant` does it.** The
-nested tags are not decoration — `QuadShape::tag` is what keeps a rect
-and a shadow over the same rounded box apart once both hash under
-`ShapeRecord::Quad`, and likewise for `CurveBasis` / `ImageSource`. That
-disambiguation stays. Only the hand-picked numbering and the freeze go.
-
-- [ ] Replace the four `tag()` fns with `mem::discriminant(…).hash(&mut
-  h)` at their call sites in `compute_record_hash` (`shapes/hash.rs:26`,
-  `:34`, `:159`, `:201`): `ShapeRecord::tag` (`shapes/record/mod.rs:243`),
-  `QuadShape::tag` (`shapes/paint.rs:254`), `CurveBasis::tag` (`:142`),
-  `ImageSource::tag` (`:376`). Give the three that lack it the
-  `#[repr(u8)]` `ShapeRecord` already carries, so the hashed discriminant
-  stays the one byte the current `write_u8` costs.
-- [ ] Two more hand-numbered tables sit inline in the same file and go
-  the same way: `hash_fit` (`shapes/hash.rs:257`, `ImageFit` 0-4) and
-  `hash_brush` (`:241`, `ShapeBrush` 0/1).
-- [ ] Delete the retired-tag table and the freeze doc blocks — ~83 lines
-  of doc, ~115 with the fn bodies.
-- [ ] Delete `shape_record_tags_are_distinct_and_pinned`
-  (`shapes/record/tests.rs:17`, ~215 lines). It is a *third* copy of the
-  numbering, and its own doc concedes "a brand-new variant still has to
-  be added to the table below by hand". Discriminants make the property
-  it checks unfalsifiable.
-
-**Not in scope: `layout_mode.rs`.** An earlier read counted
-`PackedLayoutMeta::tag` (`layout/types/layout_mode.rs:111`) as a fifth of
-these. It isn't. That is a bit-field getter — `(self.0 >> 24) as u8` —
-and the numbering in `From<LayoutMode>` (`:119`) packs a tag **plus a
-16-bit payload** into one `u32` for `Grid(GridDefId)` /
-`Scroll(ScrollSpec)` / `Scrollbars(ScrollbarsDefId)`.
-`mem::discriminant` cannot carry a payload. It is a codec that shares a
-method name, and it carries no freeze doc.
-
-**Not in scope: replacing the match with `#[derive(Hash)]`.** Recorded
-so it isn't retried. The tags are 6 of `compute_record_hash`'s 197 match
-lines; the other four jobs are load-bearing and a derive does none of
-them.
-
-- `f32` has no `Hash`, so `derive(Hash)` on `ShapeRecord` does not
-  compile. Every float goes through `approx::canon_bits`, which folds
-  sub-`EPS` and `-0.0` to `0` and canonicalizes NaN — visual-equivalence
-  semantics, not a bit cast.
-- Frame-local fields must be **excluded**: `points` / `colors` /
-  `vertices` / `indices` are `Span`s into a per-frame arena,
-  `ShapeBrush::Gradient(GradientId)` is a record-local handle,
-  `RecordedText.source` is an arena span. Two byte-identical polylines in
-  consecutive frames get different spans whenever anything upstream
-  changes size, so hashing them makes the damage diff repaint every shape
-  after an edit. `impl Hash for RecordedText`
-  (`primitives/interned_str.rs:163`) already hand-writes exactly this
-  exclusion.
-- Precomputed sub-hashes **stand in** for that excluded payload
-  (`content_hash`, `fill_grad_hash`, `RecordedText.hash`). A derive
-  cannot substitute one field for another.
-- Naming every field instead of `..` is deliberate (`shapes/hash.rs:83`):
-  a new field fails to compile until someone decides whether it is
-  hashed. A derive makes the opposite choice silently, and the failure
-  mode is a missed repaint — a compile error traded for a visual bug.
-
-The `Canon` newtype / `#[hash_visual]` helper is a real idea but belongs
-in batch 9 with the `approx.rs` twin hash families; it saves ~40 call
-lines, not 200. `anim-derive/` is already in the tree to host a derive.
-
----
-
 # 4b. Split derived fields off `ShapeRecord`
 
 `ShapeRecord` mixes authoring inputs with lowering outputs. `bbox`,
@@ -217,7 +138,7 @@ unchanged at ~56 — **88 → 64 B**, a 27% cut on the hot per-shape buffer.
 
 **Two consumers block it, and neither is in the bullet above.**
 
-- [ ] `NanCheck for ShapeRecord` (`shapes/record/mod.rs:311`) is the
+- [ ] `NanCheck for ShapeRecord` (`shapes/record/mod.rs:274`) is the
   crate's single NaN gate, and it is `O(1)` *because* `bbox` is on the
   record: every bulk input has been folded into a `bbox` under the AABB
   NaN contract, so one `Rect` test replaces an `O(n)` scan of the points
@@ -225,7 +146,7 @@ unchanged at ~56 — **88 → 64 B**, a 27% cut on the hot per-shape buffer.
   cannot see it. `Shapes::add` (`shapes/mod.rs:70`) has to test record and
   derived together, which means `Lower::lower` (`shape/mod.rs:80`) returns
   both and `NanCheck` stops being the right trait for this type.
-- [ ] `ShapeRecord::bbox_local(&self, owner_size)` (`:188`) needs the
+- [ ] `ShapeRecord::bbox_local(&self, owner_size)` (`:186`) needs the
   derived row threaded in from its cascade caller
   (`cascade/engine.rs:873`).
 
@@ -319,8 +240,8 @@ A half-hour sweep, plus a list to work through separately.
   10 arms, each doing hit-test + capture mutation + queue push + outcome
   derivation inline), `emit_one_shape` (`encoder/mod.rs:297`, 251 — one
   arm per variant with geometry resolution inline), `run_tree` (226,
-  batch 3), `compute_record_hash` (197 — 4a takes ~6 lines off it and 4b
-  a few more; the match itself stays), `text_edit::pass` (212),
+  batch 3), `compute_record_hash` (198 — the match itself stays; 4b takes
+  a few lines off it), `text_edit::pass` (212),
   `grid::measure_inner` (198), `AnimMapTyped::tick` (193).
 
 ---
