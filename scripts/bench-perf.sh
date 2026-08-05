@@ -1,80 +1,31 @@
 #!/usr/bin/env bash
-# Build a criterion bench with debug symbols, wipe old perf data, and
-# record a fresh profile alongside hardware-counter aggregates.
+# Profile a criterion bench with perf: flat callgraph report plus
+# hardware-counter, microarch, precise-IP, and data-source passes.
 #
-# **Vendor-aware.** The PMU layout, microarchitectural metrics, and
-# precise-sampling mechanism differ between Intel and AMD, so the script
-# detects `vendor_id` and picks the right path:
+# Vendor-aware — Intel needs the `cpu_core/…/` PMU prefix and gets TMA +
+# PEBS; AMD has one homogeneous PMU and gets metric groups + IBS. The
+# script detects `vendor_id` and picks the path.
 #
-#   Intel (e.g. i9-13980HX hybrid)      AMD (e.g. Ryzen 7 6800U, Zen3+)
-#   ────────────────────────────────    ────────────────────────────────
-#   cpu_core/.../ PMU prefix, pin P-core sole `cpu` PMU (homogeneous cores)
-#   perf stat -M TopdownL1 (Intel TMA)  perf stat -M <AMD metric groups>
-#   precise IP via cycles:ppp (PEBS)    precise IP via IBS (ibs_op//)
-#   perf mem -t load --ldlat=50 (PEBS)  perf mem (IBS; no ldlat on Zen<5)
-#   --call-graph lbr available          lbr/BRS unavailable → dwarf only
+#   scripts/bench-perf.sh                        # frame bench, 5s
+#   FILTER=damage scripts/bench-perf.sh          # a different driver
+#   FILTER= scripts/bench-perf.sh                # every driver
+#   SKIP_MEM=1 SKIP_MICRO=1 SKIP_IBS=1 scripts/bench-perf.sh
+#   scripts/bench-perf.sh --profile-time 2       # extra criterion args
 #
-# The cycles + dwarf-callgraph record pass (the workhorse flat/inclusive
-# report) is identical on both.
+# Env: BENCH (target, default criterion — every criterion driver shares
+# it, so pick a driver with FILTER), FILTER (criterion regex, default
+# `frame`; empty = all), FEATURES (extra cargo features; `bench` is
+# always on, every target requires it), CALLGRAPH (dwarf|lbr, Intel
+# only), PIN_CPU (2), FREQ (4000), IBS_PERIOD (250000), LDLAT (50),
+# SKIP_MEM / SKIP_MICRO / SKIP_IBS.
 #
-# Outputs (all in tmp/, gitignored):
-#   tmp/palantir-perf.data         - perf record output (cycles, callgraph)
-#   tmp/palantir-perf-report.txt   - flat top-functions report (self time)
-#   tmp/palantir-perf-stat.txt     - perf stat counters (IPC, cache, branch)
-#   tmp/palantir-perf-micro.txt    - microarch metrics (Intel TMA / AMD groups)
-#   tmp/palantir-perf-ibs.txt      - precise-IP report (IBS / PEBS), no skid
-#   tmp/palantir-perf-mem.txt      - load/store data-source report (cache levels)
+# The frame bench runs only with PALANTIR_BENCH_MODE set (and then
+# demands PALANTIR_BENCH_NOTE); without them it skips and the profile
+# comes back empty.
 #
-# Usage:
-#   scripts/bench-perf.sh                              # default: frame bench, --profile-time 5
-#   scripts/bench-perf.sh --profile-time 2             # override criterion args
-#   FILTER=cached_cpu scripts/bench-perf.sh
-#   FILTER=damage scripts/bench-perf.sh                # a different driver
-#   FILTER= scripts/bench-perf.sh                      # every driver
-#   CALLGRAPH=lbr scripts/bench-perf.sh                # Intel only; AMD falls back to dwarf
-#   SKIP_MEM=1 scripts/bench-perf.sh                   # skip the data-source pass
-#   SKIP_MICRO=1 scripts/bench-perf.sh                 # skip the microarch-metrics pass
-#   SKIP_IBS=1 scripts/bench-perf.sh                   # skip the precise-IP pass
-#
-# Every criterion driver lives in the one `criterion` target, so the
-# driver is selected by FILTER rather than by BENCH. BENCH is still
-# there for the separate dhat targets (alloc_free, alloc_resize,
-# alloc_free_gpu).
-#
-# Env:
-#   BENCH       bench target from Cargo.toml (default: criterion)
-#   FILTER      criterion filter, prepended to bench args (default: frame; empty = all)
-#   FEATURES    cargo features, comma-separated (default: internals)
-#   CALLGRAPH   dwarf (default) or lbr (Intel only — ~native overhead, 32 frames)
-#   PIN_CPU     core to pin to (default: 2 — avoids CPU0's IRQ load)
-#   FREQ        cycles sampling frequency for the callgraph pass (default: 4000)
-#   IBS_PERIOD  AMD IBS op sample period in cycles (default: 250000)
-#   LDLAT       Intel PEBS load-latency cutoff in cycles (default: 50; AMD ignores)
-#   SKIP_MEM / SKIP_MICRO / SKIP_IBS   set non-empty to skip that pass
-#
-# The frame bench runs only when PALANTIR_BENCH_MODE is set (and then demands
-# PALANTIR_BENCH_NOTE); export both before invoking, e.g.
-# `PALANTIR_BENCH_MODE=cpu PALANTIR_BENCH_NOTE=x scripts/bench-perf.sh`.
-# Without them it prints a skip notice and the profile comes back empty.
-#
-# Reading order (top-down):
-#   1. tmp/palantir-perf-micro.txt — where's the bottleneck class?
-#      Intel TMA: retiring / frontend / backend / bad-spec buckets.
-#      AMD Zen3 (no slot-based topdown): read the cache/TLB/branch group
-#      counters directly (Zen4+ exposes a real topdown — see note below).
-#      A retiring-bound / high-IPC workload (IPC > 2.5, low miss rates)
-#      wins only from doing *fewer* instructions, not microarch tuning.
-#   2. tmp/palantir-perf-stat.txt — IPC = insn/cycles; cache & TLB MPKI
-#      (= misses * 1000 / instructions).
-#   3. tmp/palantir-perf-ibs.txt — precise (no-skid) leaf IPs; feed the
-#      hottest symbol to `perf annotate` for the exact instruction.
-#   4. tmp/palantir-perf-mem.txt — which loads stall, at which level.
-#   5. tmp/palantir-perf-report.txt + `perf report -i tmp/palantir-perf.data`
-#      — callgraph context (callers/callees) for the top self-time symbols.
-#
-# For allocations (the project's "alloc-free per frame after warmup"
-# claim), use the alloc_free / alloc_resize benches with DHAT_DUMP=1 —
-# perf only sees CPU time inside the allocator, not allocation counts.
+# Outputs land in tmp/ and are listed on exit. **benches/AGENTS.md is
+# the manual** — which file to read in what order, what the numbers
+# mean, and the Intel/AMD drill recipes.
 
 set -uo pipefail
 
@@ -94,7 +45,11 @@ BENCH_NAME="${BENCH:-criterion}"
 # `-` not `:-`: an explicitly empty FILTER means "every case", and must
 # not fall back to the default the way an unset one does.
 FILTER_ARG="${FILTER-frame}"
-FEATURES_ARG="${FEATURES:-internals}"
+# `bench` is not optional — every target carries
+# `required-features = ["bench"]` and cargo refuses the target without
+# it. So it is always passed and FEATURES *adds* to it; naming some
+# other feature must not silently leave nothing to profile.
+FEATURES_ARG="bench${FEATURES:+,$FEATURES}"
 CALLGRAPH_MODE="${CALLGRAPH:-dwarf}"
 PIN_CPU="${PIN_CPU:-2}"
 PERF_FREQ="${FREQ:-4000}"
@@ -102,9 +57,7 @@ IBS_PERIOD="${IBS_PERIOD:-250000}"
 LDLAT_CYCLES="${LDLAT:-50}"
 
 EXTRA_ARGS=("$@")
-if [ ${#EXTRA_ARGS[@]} -eq 0 ]; then
-    EXTRA_ARGS=(--profile-time 5)
-fi
+[ ${#EXTRA_ARGS[@]} -eq 0 ] && EXTRA_ARGS=(--profile-time 5)
 BENCH_ARGS=(--bench)
 [ -n "$FILTER_ARG" ] && BENCH_ARGS+=("$FILTER_ARG")
 BENCH_ARGS+=("${EXTRA_ARGS[@]}")
@@ -114,70 +67,66 @@ for tool in perf taskset; do
 done
 
 # ── Vendor + capability detection ────────────────────────────────────
-VENDOR=$(awk -F': ' '/^vendor_id/{print $2; exit}' /proc/cpuinfo)
-case "$VENDOR" in
+case "$(awk -F': ' '/^vendor_id/{print $2; exit}' /proc/cpuinfo)" in
     AuthenticAMD) ARCH=amd ;;
     GenuineIntel) ARCH=intel ;;
-    *) ARCH=generic; echo "warning: unknown vendor '$VENDOR' — using generic events" >&2 ;;
+    *) ARCH=generic; echo "warning: unknown CPU vendor — using generic events" >&2 ;;
 esac
-
 PARANOID=$(cat /proc/sys/kernel/perf_event_paranoid 2>/dev/null || echo 99)
 HAVE_IBS=0
 [ -d /sys/bus/event_source/devices/ibs_op ] && HAVE_IBS=1
 
 echo "==> CPU: $(awk -F': ' '/^model name/{print $2; exit}' /proc/cpuinfo) [$ARCH]"
-echo "    perf_event_paranoid=$PARANOID  (need <=2 for user sampling, <=-1 for raw/IBS/kernel)"
-if [ "$PARANOID" -gt 1 ] 2>/dev/null; then
-    echo "    NOTE: paranoid > 1 disables some passes. Lower it:" >&2
-    echo "          sudo sysctl kernel.perf_event_paranoid=-1" >&2
-fi
-# The NMI watchdog steals one general PMC; disable it for full counter
-# coverage (informational — we don't change it here).
-if [ "$(cat /proc/sys/kernel/nmi_watchdog 2>/dev/null || echo 0)" != "0" ]; then
-    echo "    NOTE: nmi_watchdog on — one PMC reserved (counters may multiplex)."
-    echo "          For 100% coverage: sudo sysctl kernel.nmi_watchdog=0"
-fi
-GOV=$(cat /sys/devices/system/cpu/cpu${PIN_CPU}/cpufreq/scaling_governor 2>/dev/null || echo unknown)
-[ "$GOV" != "performance" ] && echo "    NOTE: governor=$GOV (not 'performance') — frequency scaling adds variance."
+# Each of these silently degrades a pass rather than failing it, so say
+# so up front instead of leaving a thin report to explain itself.
+[ "$PARANOID" -gt 1 ] 2>/dev/null &&
+    echo "    NOTE: perf_event_paranoid=$PARANOID disables some passes — sudo sysctl kernel.perf_event_paranoid=-1" >&2
+[ "$(cat /proc/sys/kernel/nmi_watchdog 2>/dev/null || echo 0)" != "0" ] &&
+    echo "    NOTE: nmi_watchdog on — reserves one PMC, counters may multiplex (sudo sysctl kernel.nmi_watchdog=0)"
+GOV=$(cat "/sys/devices/system/cpu/cpu${PIN_CPU}/cpufreq/scaling_governor" 2>/dev/null || echo unknown)
+[ "$GOV" != "performance" ] &&
+    echo "    NOTE: governor=$GOV — frequency scaling adds variance."
 
 # ── Build ────────────────────────────────────────────────────────────
 # STRIP=none is load-bearing when palantir is built inside an enclosing
 # workspace: cargo ignores `[profile.*]` from non-root packages, so
 # palantir's own `strip = "none"` never applies and the host workspace's
-# bench profile can strip the symtab, leaving perf with raw addresses.
-# DEBUG=2 (not line-tables-only) is what carries the inline records
-# `perf --inline` needs — under `lto = "fat"` most of the frame pipeline
-# is inlined and invisible without them.
-echo "==> Building bench '$BENCH_NAME' with debug symbols"
-CARGO_BUILD_ARGS=(--bench "$BENCH_NAME")
-[ -n "$FEATURES_ARG" ] && CARGO_BUILD_ARGS+=(--features "$FEATURES_ARG")
-BUILD_LOG=$(CARGO_PROFILE_BENCH_STRIP=none CARGO_PROFILE_BENCH_DEBUG=2 \
-    cargo bench "${CARGO_BUILD_ARGS[@]}" --no-run 2>&1)
+# bench profile can strip the symtab. DEBUG=2 (not line-tables-only)
+# carries the inline records `perf --inline` needs — under `lto = "fat"`
+# most of the frame pipeline is inlined and invisible without them.
+echo "==> Building '$BENCH_NAME' with debug symbols (features: $FEATURES_ARG)"
+# Checked, not assumed: this shell has no `set -e`, so an unchecked
+# failure would fall through to the fallback below and profile whatever
+# stale binary is lying in target/ — a plausible report of the wrong code.
+if ! BUILD_LOG=$(CARGO_PROFILE_BENCH_STRIP=none CARGO_PROFILE_BENCH_DEBUG=2 \
+    cargo bench --bench "$BENCH_NAME" --features "$FEATURES_ARG" --no-run 2>&1); then
+    echo "$BUILD_LOG" >&2
+    echo "error: bench build failed — refusing to profile a stale binary" >&2
+    exit 1
+fi
 echo "$BUILD_LOG" | tail -3
 
-# Take the path cargo just printed rather than guessing by mtime: a
-# newer binary from a different feature/flag set (a plain `cargo bench`
-# run) otherwise wins the `ls -t` race and gets profiled instead.
+# Prefer the path cargo just printed over an mtime guess: a newer binary
+# from a different feature set otherwise wins the `ls -t` race.
 BENCH_BIN=$(echo "$BUILD_LOG" \
     | sed -n "s/.*Executable .*(\(.*${BENCH_NAME}-[0-9a-f]*\))$/\1/p" | tail -1)
 if [ ! -x "$BENCH_BIN" ]; then
-    # Criterion writes to the workspace target; palantir is a git submodule so
-    # its package dir isn't the workspace root — search up for target/release.
+    # No `Executable` line means everything was already fresh. The build
+    # succeeded (checked above), so a binary exists — find it. Criterion
+    # writes to the workspace target, and palantir is a submodule whose
+    # package dir isn't the workspace root, so search upward too.
     BENCH_BIN=""
     for d in target ../target; do
         cand=$(ls -t "$d/release/deps/${BENCH_NAME}"-* 2>/dev/null | grep -vE '\.(d|so)$' | head -1)
         [ -n "$cand" ] && { BENCH_BIN=$cand; break; }
     done
 fi
-[ -x "$BENCH_BIN" ] || { echo "error: could not locate built bench binary for '$BENCH_NAME'" >&2; exit 1; }
-if ! nm "$BENCH_BIN" >/dev/null 2>&1; then
-    echo "    WARNING: '$BENCH_BIN' has no symbol table — perf will report raw" >&2
-    echo "             addresses. An enclosing workspace's [profile.bench] is" >&2
-    echo "             overriding strip/debug; see docs/frame-bench-hotspots.md." >&2
-fi
+[ -x "$BENCH_BIN" ] || { echo "error: no built binary for '$BENCH_NAME'" >&2; exit 1; }
+nm "$BENCH_BIN" >/dev/null 2>&1 ||
+    echo "    WARNING: '$BENCH_BIN' has no symbol table — perf will report raw addresses.
+             An enclosing workspace's [profile.bench] is overriding strip/debug." >&2
 echo "    binary: $BENCH_BIN"
-echo "    pinned to CPU $PIN_CPU   callgraph: $CALLGRAPH_MODE"
-[ -n "$FILTER_ARG" ] && echo "    filter: $FILTER_ARG"
+echo "    pinned to CPU $PIN_CPU   callgraph: $CALLGRAPH_MODE${FILTER_ARG:+   filter: $FILTER_ARG}"
 
 rm -f "$PERF_DATA" "$PERF_REPORT" "$PERF_STAT" "$PERF_MICRO" \
       "$PERF_IBS_DATA" "$PERF_IBS" "$PERF_MEM_DATA" "$PERF_MEM" "$PERF_DATA.old"
@@ -194,145 +143,132 @@ else
     demangle() { cat; }
 fi
 
+# Flat, no-callgraph, >=1% report. Same shape for every sampling pass.
+report_to() {
+    perf report -i "$1" --stdio --no-children -g none --percent-limit 1.0 2>/dev/null \
+        | demangle >"$2"
+}
+
 # ── perf stat: hardware counters ─────────────────────────────────────
-# AMD has a single homogeneous `cpu` PMU; Intel hybrid needs the explicit
-# `cpu_core/.../` prefix or generic `-e cycles` auto-expands across
-# cpu_core + cpu_atom and reports half-counts on a pinned run.
+# Intel hybrid needs the explicit `cpu_core/…/` prefix or generic
+# `-e cycles` auto-expands across cpu_core + cpu_atom and half-counts on
+# a pinned run. AMD's `-d` adds L1-dcache + LLC to the default set (LLC
+# reads <not supported> — it's an uncore PMU).
 echo "==> perf stat (hardware counters)"
-case "$ARCH" in
-  intel)
-    HW="cpu_core/cycles/,cpu_core/instructions/,cpu_core/branches/,cpu_core/branch-misses/,cpu_core/cache-references/,cpu_core/cache-misses/,cpu_core/L1-dcache-load-misses/,cpu_core/dTLB-load-misses/"
-    run perf stat -e "$HW" -e task-clock,context-switches,page-faults \
-        -o "$PERF_STAT" >/dev/null 2>&1 || true
-    ;;
-  *)
-    # `-d` (detailed) adds L1-dcache + LLC to the default set; AMD reports
-    # LLC as <not supported> (it's an uncore PMU — see the micro pass) but
-    # the L1 + IPC + branch lines all resolve.
+if [ "$ARCH" = intel ]; then
+    run perf stat -o "$PERF_STAT" -e task-clock,context-switches,page-faults \
+        -e "cpu_core/cycles/,cpu_core/instructions/,cpu_core/branches/,cpu_core/branch-misses/,cpu_core/cache-references/,cpu_core/cache-misses/,cpu_core/L1-dcache-load-misses/,cpu_core/dTLB-load-misses/" \
+        >/dev/null 2>&1 || true
+else
     run perf stat -d -o "$PERF_STAT" >/dev/null 2>&1 || true
-    ;;
-esac
+fi
 
 # ── Microarchitectural metrics ───────────────────────────────────────
 if [ -z "${SKIP_MICRO:-}" ]; then
-  echo "==> perf stat -M (microarch metrics)"
-  case "$ARCH" in
-    intel)
-      # Don't pass --cpu on hybrid: perf tries to attach cpu_atom event
-      # variants to the named CPU and the whole group fails. taskset pins.
-      run perf stat -M TopdownL1 -o "$PERF_MICRO" >/dev/null 2>&1 \
-        || echo "    (TopdownL1 unavailable — kernel too old or PMU denied)"
-      ;;
-    *)
-      # AMD core metric groups (per-process). l3_cache / data_fabric are
-      # *uncore* (amd_l3 / amd_df) and need -a (system-wide), so they're
-      # omitted here. Zen4+ also exposes a real slot-based topdown
-      # (Pipeline_Util_*) — add it if `perf list metricgroups` lists it.
-      # Keep the default lean (two small core groups) so the ~6 PMCs don't
-      # oversubscribe. Zen4+ adds a real slot-based topdown — prefer it.
-      AMD_GROUPS="branch_prediction,tlb"
-      perf list metricgroups 2>/dev/null | grep -qiE 'pipeline_util|topdown' \
-        && AMD_GROUPS="Pipeline_Util_Level1"
-      run perf stat -M "$AMD_GROUPS" -o "$PERF_MICRO" >/dev/null 2>&1 \
-        || echo "    (AMD metric groups unavailable)"
-      echo "    groups: $AMD_GROUPS"
-      echo "    more (run one at a time for clean counts): l2_cache, decoder, data_fabric"
-      echo "    uncore (need -a, system-wide): perf stat -a -M l3_cache,data_fabric"
-      ;;
-  esac
+    echo "==> perf stat -M (microarch metrics)"
+    if [ "$ARCH" = intel ]; then
+        # Don't pass --cpu on hybrid: perf tries to attach cpu_atom event
+        # variants to the named CPU and the whole group fails. taskset pins.
+        run perf stat -M TopdownL1 -o "$PERF_MICRO" >/dev/null 2>&1 ||
+            echo "    (TopdownL1 unavailable — kernel too old or PMU denied)"
+    else
+        # Two small core groups by default so the ~6 PMCs don't
+        # oversubscribe; Zen4+ replaces them with a real slot-based
+        # topdown when it advertises one. Uncore groups (l3_cache,
+        # data_fabric) need -a — see benches/AGENTS.md.
+        AMD_GROUPS="branch_prediction,tlb"
+        perf list metricgroups 2>/dev/null | grep -qiE 'pipeline_util|topdown' &&
+            AMD_GROUPS="Pipeline_Util_Level1"
+        run perf stat -M "$AMD_GROUPS" -o "$PERF_MICRO" >/dev/null 2>&1 ||
+            echo "    (AMD metric groups unavailable)"
+        echo "    groups: $AMD_GROUPS"
+    fi
 fi
 
 # ── perf record: cycles + callgraph (the workhorse) ──────────────────
-# DWARF unwinds .eh_frame from a per-sample stack dump — full depth, works
-# on Rust release builds, ~5-10x overhead. LBR (Intel, 32 frames, near
-# native) needs no frame pointers; AMD Zen3 BRS isn't wired for cycles, so
-# lbr silently degrades — force dwarf there.
-CG_EVENT="cycles"
+# DWARF unwinds .eh_frame from a per-sample stack dump — full depth,
+# works on Rust release builds, ~5-10x overhead. LBR (Intel, 32 frames,
+# near native) needs no frame pointers; AMD Zen3 BRS isn't wired for
+# cycles, so lbr silently degrades — force dwarf there.
+CG_EVENT=cycles
 [ "$ARCH" = intel ] && CG_EVENT="cpu_core/cycles/"
-case "$CALLGRAPH_MODE" in
-  lbr)
-    if [ "$ARCH" = intel ]; then CG=(--call-graph lbr); else
-      echo "    (lbr unsupported on $ARCH — using dwarf)"; CG=(--call-graph dwarf,16384); fi ;;
-  *) CG=(--call-graph dwarf,16384) ;;
-esac
+CG=(--call-graph dwarf,16384)
+if [ "$CALLGRAPH_MODE" = lbr ]; then
+    if [ "$ARCH" = intel ]; then
+        CG=(--call-graph lbr)
+    else
+        echo "    (lbr unsupported on $ARCH — using dwarf)"
+    fi
+fi
 echo "==> perf record (-F $PERF_FREQ ${CG[*]} -e $CG_EVENT)"
-run perf record -F "$PERF_FREQ" "${CG[@]}" -e "$CG_EVENT" -o "$PERF_DATA" >/dev/null 2>&1 \
-  || echo "    (record failed — check paranoid level)"
-[ -f "$PERF_DATA" ] && perf report -i "$PERF_DATA" --stdio --no-children -g none \
-  --percent-limit 1.0 2>/dev/null | demangle >"$PERF_REPORT"
+run perf record -F "$PERF_FREQ" "${CG[@]}" -e "$CG_EVENT" -o "$PERF_DATA" >/dev/null 2>&1 ||
+    echo "    (record failed — check paranoid level)"
+[ -f "$PERF_DATA" ] && report_to "$PERF_DATA" "$PERF_REPORT"
 
-# ── Precise-IP pass (no skid): AMD IBS / Intel PEBS ──────────────────
+# ── Precise-IP pass (no skid) ────────────────────────────────────────
 # Regular cycles sampling skids the recorded IP past the costly
 # instruction; IBS (AMD) and PEBS (`:ppp`, Intel) tag the exact retiring
-# op. Use this report + `perf annotate` to land on the real instruction.
-# No callgraph here — the leaf IP is the point; the dwarf pass above has
-# the call context.
+# op. No callgraph — the leaf IP is the point, and the dwarf pass above
+# already has the call context.
+PRECISE=()
+case "$ARCH" in
+    amd)   [ "$HAVE_IBS" = 1 ] && PRECISE=(-e ibs_op// -c "$IBS_PERIOD") ;;
+    intel) PRECISE=(-e cpu_core/cycles/ppp -F "$PERF_FREQ") ;;
+esac
 if [ -z "${SKIP_IBS:-}" ]; then
-  case "$ARCH" in
-    amd)
-      if [ "$HAVE_IBS" = 1 ]; then
-        echo "==> perf record (IBS precise, ibs_op// -c $IBS_PERIOD)"
-        run perf record -e ibs_op// -c "$IBS_PERIOD" -o "$PERF_IBS_DATA" >/dev/null 2>&1 \
-          && perf report -i "$PERF_IBS_DATA" --stdio --no-children -g none \
-             --percent-limit 1.0 2>/dev/null | demangle >"$PERF_IBS" \
-          || echo "    (IBS record failed — needs paranoid <= -1 / CAP_PERFMON)"
-      else
-        echo "==> (IBS unavailable: no ibs_op PMU)"
-      fi
-      ;;
-    intel)
-      echo "==> perf record (PEBS precise, cpu_core/cycles/ppp -F $PERF_FREQ)"
-      run perf record -F "$PERF_FREQ" -e cpu_core/cycles/ppp -o "$PERF_IBS_DATA" >/dev/null 2>&1 \
-        && perf report -i "$PERF_IBS_DATA" --stdio --no-children -g none \
-           --percent-limit 1.0 2>/dev/null | demangle >"$PERF_IBS" \
-        || echo "    (PEBS record failed)"
-      ;;
-  esac
+    if [ ${#PRECISE[@]} -eq 0 ]; then
+        echo "==> (precise IP unavailable on $ARCH)"
+    else
+        echo "==> perf record (precise IP: ${PRECISE[*]})"
+        run perf record "${PRECISE[@]}" -o "$PERF_IBS_DATA" >/dev/null 2>&1 &&
+            report_to "$PERF_IBS_DATA" "$PERF_IBS" ||
+            echo "    (precise-IP record failed — needs paranoid <= -1 / CAP_PERFMON)"
+    fi
 fi
 
 # ── perf mem: load/store data-source (cache-level attribution) ───────
-# AMD routes perf mem through IBS Op; Intel through PEBS load-latency.
-# AMD ldlat filtering needs the ibs_op/caps/ldlat capability (Zen5+) — on
-# Zen3/4 it's ignored, so we don't pass it there.
+# AMD routes perf mem through IBS Op, Intel through PEBS load-latency.
+# AMD ldlat filtering needs the ibs_op/caps/ldlat capability (Zen5+), so
+# it isn't passed there.
 if [ -z "${SKIP_MEM:-}" ]; then
-  echo "==> perf mem record (data-source sampling)"
-  case "$ARCH" in
-    amd)
-      MEM_OK=0
-      [ "$HAVE_IBS" = 1 ] && run perf mem record -o "$PERF_MEM_DATA" >/dev/null 2>&1 && MEM_OK=1 ;;
-    *)
-      run perf mem record -t load --ldlat="$LDLAT_CYCLES" -o "$PERF_MEM_DATA" >/dev/null 2>&1 && MEM_OK=1 || MEM_OK=0 ;;
-  esac
-  if [ "${MEM_OK:-0}" = 1 ]; then
-    perf mem report -i "$PERF_MEM_DATA" --stdio --sort=mem,sym,dso \
-      --percent-limit 1.0 2>/dev/null | demangle >"$PERF_MEM" || echo "    (perf mem report failed)"
-  else
-    echo "    (perf mem unavailable — needs IBS/PEBS + paranoid <= 0)"
-  fi
+    echo "==> perf mem record (data-source sampling)"
+    if [ "$ARCH" = amd ] && [ "$HAVE_IBS" != 1 ]; then
+        echo "    (perf mem unavailable — no IBS)"
+    else
+        if [ "$ARCH" = amd ]; then
+            run perf mem record -o "$PERF_MEM_DATA" >/dev/null 2>&1
+        else
+            run perf mem record -t load --ldlat="$LDLAT_CYCLES" \
+                -o "$PERF_MEM_DATA" >/dev/null 2>&1
+        fi
+        if [ -f "$PERF_MEM_DATA" ]; then
+            perf mem report -i "$PERF_MEM_DATA" --stdio --sort=mem,sym,dso \
+                --percent-limit 1.0 2>/dev/null | demangle >"$PERF_MEM" ||
+                echo "    (perf mem report failed)"
+        else
+            echo "    (perf mem unavailable — needs IBS/PEBS + paranoid <= 0)"
+        fi
+    fi
 fi
 
-# ── Summary to stdout ────────────────────────────────────────────────
-echo
-echo "==> Top self-time (cycles, callgraph pass):"
-[ -f "$PERF_REPORT" ] && sed -n '/^# Samples/,/^$/p' "$PERF_REPORT" | head -28
-echo
-echo "==> Hardware counters:"
-[ -f "$PERF_STAT" ] && sed -n '/Performance counter stats/,$p' "$PERF_STAT"
-if [ -f "$PERF_IBS" ]; then
-  echo; echo "==> Precise-IP top (no skid):"; sed -n '/^# Samples/,/^$/p' "$PERF_IBS" | head -16
-fi
-if [ -f "$PERF_MICRO" ]; then
-  echo; echo "==> Microarch metrics:"; sed -n '/Performance counter stats/,$p' "$PERF_MICRO" | head -40
-fi
-if [ -f "$PERF_MEM" ]; then
-  echo; echo "==> Memory data-source (top):"; head -30 "$PERF_MEM"
-fi
+# ── Summary ──────────────────────────────────────────────────────────
+samples() { sed -n '/^# Samples/,/^$/p' "$1" | head -"$2"; }
+counters() { sed -n '/Performance counter stats/,$p' "$1" | head -"$2"; }
 
-echo
-echo "Flat/self report : $PERF_REPORT"
-echo "Counters         : $PERF_STAT"
-echo "Microarch        : $PERF_MICRO"
-echo "Precise-IP       : $PERF_IBS"
-echo "Mem data-source  : $PERF_MEM"
-echo "Callgraph (TUI)  : perf report -i $PERF_DATA"
-echo "Annotate symbol  : perf annotate -i ${PERF_IBS_DATA} <symbol>   # precise, lands on the instruction"
+[ -f "$PERF_REPORT" ] && { echo; echo "==> Top self-time (cycles, callgraph pass):"; samples "$PERF_REPORT" 28; }
+[ -f "$PERF_STAT" ]   && { echo; echo "==> Hardware counters:";                      counters "$PERF_STAT" 9999; }
+[ -f "$PERF_IBS" ]    && { echo; echo "==> Precise-IP top (no skid):";               samples "$PERF_IBS" 16; }
+[ -f "$PERF_MICRO" ]  && { echo; echo "==> Microarch metrics:";                      counters "$PERF_MICRO" 40; }
+[ -f "$PERF_MEM" ]    && { echo; echo "==> Memory data-source (top):";               head -30 "$PERF_MEM"; }
+
+cat <<EOF
+
+Flat/self report : $PERF_REPORT
+Counters         : $PERF_STAT
+Microarch        : $PERF_MICRO
+Precise-IP       : $PERF_IBS
+Mem data-source  : $PERF_MEM
+Callgraph (TUI)  : perf report -i $PERF_DATA
+Annotate symbol  : perf annotate -i $PERF_IBS_DATA <symbol>
+How to read it   : benches/AGENTS.md
+EOF
