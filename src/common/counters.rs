@@ -29,6 +29,11 @@
 //! increments, so it is done for a real bench rather than a hypothetical
 //! one — [`crate::scene::damage::counters`] explains its own case.
 //!
+//! **This is the whole rule; a counter module does not restate it.**
+//! `TestOnly` unless a benchmark actually reads the counter. What each
+//! module documents locally is what it measures and why that is worth
+//! separating — not which gate it picked.
+//!
 //! [`LayoutCounters`]: crate::layout::counters::LayoutCounters
 //! [`DamageCounters`]: crate::scene::damage::counters::DamageCounters
 //! [`CascadeCounters`]: crate::scene::cascade::counters::CascadeCounters

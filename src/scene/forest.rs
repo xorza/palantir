@@ -49,6 +49,10 @@ pub(crate) struct Forest {
     /// Read by `encoder::emit_collision_overlays` after the regular
     /// paint walk; cleared by the next `pre_record`. Public-in-crate
     /// so tests can introspect.
+    ///
+    /// Recorded in every profile so the `internals` harness can assert
+    /// on it, but only *painted* in a development build — see
+    /// `encoder::emit_collision_overlays`.
     pub(crate) collisions: Vec<CollisionRecord>,
     /// Stack of active side-layer scopes; empty for the `Main` baseline.
     /// `push_layer` pushes, `pop_layer` pops and restores the parent

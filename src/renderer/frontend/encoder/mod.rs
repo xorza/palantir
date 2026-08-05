@@ -1,13 +1,14 @@
+#[cfg(debug_assertions)]
+mod collision_overlay;
+
+use crate::layout::LayerLayout;
 use crate::layout::types::align;
 use crate::layout::types::clip_mode::ClipMode;
-use crate::layout::{LayerLayout, Layout};
 use crate::primitives::approx::noop_f32;
 use crate::primitives::brush::gradient::FillAxis;
-use crate::primitives::color::{Color, ColorF16};
 use crate::primitives::fill_wire::FillKind;
 use crate::primitives::image::{ImageDownsample, ImageFilter, ImageFit};
 use crate::primitives::nan::NanCheck;
-use crate::primitives::stroke::Stroke;
 use crate::primitives::widget_id::WidgetIdMap;
 use crate::primitives::{corners::Corners, rect::Rect, size::Size};
 use crate::renderer::frontend::FrameScene;
@@ -25,7 +26,6 @@ use crate::renderer::render_buffer::image::{
 };
 use crate::scene::cascade::CascadeInputHash;
 use crate::scene::damage::region::DamageRegion;
-use crate::scene::forest::Forest;
 use crate::scene::record_store::RecordedGradient;
 use crate::scene::shapes::paint::{
     ImageSource, LoweredShadow, QuadShape, ShadowGeom, ShapeBrush, shadow_paint_rect_local,
@@ -38,12 +38,6 @@ use crate::scene::tree::record::NodeId;
 use crate::shape::rect::RectKind;
 use crate::text::shaped_ref::ShapedTextRef;
 use std::time::Duration;
-
-/// Always-on outline emitted over widgets whose explicit `WidgetId`
-/// collided this frame. Magenta — distinct from the opt-in red
-/// damage-rect overlay. Painted unclipped at the end of `encode`,
-/// after every layer's regular paint.
-const COLLISION_OVERLAY_STROKE: Stroke = Stroke::solid(Color::rgb(1.0, 0.0, 1.0), 3.0);
 
 /// Retained encoder state.
 #[derive(Debug)]
@@ -204,7 +198,8 @@ impl Encoder {
             }
         }
 
-        emit_collision_overlays(scene.forest, scene.layout, out);
+        #[cfg(debug_assertions)]
+        collision_overlay::emit(scene.forest, scene.layout, out);
     }
 }
 
@@ -238,44 +233,6 @@ impl LayerCtx<'_> {
     fn brush_source(&mut self, brush: ShapeBrush) -> BrushSource {
         self.gradient_resolver
             .source(self.gradients, self.gradient_atlas, brush)
-    }
-}
-
-/// Final pass: emit a magenta outline for each explicit-id collision
-/// recorded this frame. Painted after the regular per-layer walk so
-/// it sits on top of everything; emitted with no scissor push so it
-/// ignores any clip context the colliding widgets sit under (scroll
-/// viewports, clipped popups). Both `NodeId`s are precomputed at
-/// recording time (`SeenIds.curr` hashmap lookup) — no tree scan.
-fn emit_collision_overlays(forest: &Forest, layout: &Layout, out: &mut dyn PaintSink) {
-    if forest.collisions.is_empty() {
-        return;
-    }
-    for record in &forest.collisions {
-        for ep in [record.first, record.second] {
-            let rects = &layout[ep.layer].rect;
-            // Both endpoints carry the `NodeId` `Tree::open_node`
-            // assigned, so arrange produced a rect for each — the
-            // index can't actually exceed `rects`.
-            // Assert the invariant in dev; keep the skip as a release
-            // safety net so a logic slip degrades to a missing overlay
-            // (cosmetic) rather than a panic in the paint path.
-            debug_assert!(
-                ep.node.idx() < rects.len(),
-                "collision endpoint {:?} out of bounds for layer rects len {}",
-                ep.node,
-                rects.len(),
-            );
-            if ep.node.idx() >= rects.len() {
-                continue;
-            }
-            out.draw_quad(DrawQuadPayload::rect(
-                rects[ep.node.idx()],
-                Corners::ZERO,
-                BrushSource::Solid(ColorF16::TRANSPARENT),
-                COLLISION_OVERLAY_STROKE.into(),
-            ));
-        }
     }
 }
 

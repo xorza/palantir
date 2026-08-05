@@ -2,9 +2,6 @@
 //! [`TestOnly`](crate::common::counters::TestOnly), whose module doc
 //! explains the gated-cell pattern and why the two gates exist.
 //!
-//! On the narrow gate: nothing benches these yet, and the crate widens a
-//! counter for a real bench rather than a hypothetical one.
-//!
 //! ## What this exists to separate
 //!
 //! Every entry point into [`CosmicMeasure`] returns a measurement
