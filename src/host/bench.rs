@@ -30,8 +30,7 @@
 
 use crate::app::App;
 use crate::frame_fixture::{BENCH_SCALE, FrameFixture};
-use crate::host::offscreen::OffscreenHost;
-use crate::host::test_gpu::headless_test_gpu;
+use crate::host::bench_gpu::{BenchGpu, Timing};
 use crate::primitives::color::Color;
 use crate::ui::Ui;
 use crate::ui::bench::{CACHED_SIZE, SCALE};
@@ -167,8 +166,6 @@ const RENDER_BLOCKS_PER_FRAME_MAX: u64 = 35;
 const RENDER_SURFACE: UVec2 = UVec2::new(1280, 800);
 const RENDER_NODE_SCALE: usize = 6;
 
-const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
-
 #[derive(Debug)]
 struct FixtureApp<'a> {
     state: &'a mut FrameFixture,
@@ -194,41 +191,23 @@ impl App for FixtureApp<'_> {
 /// catches *drift* from that floor: a palantir regression, or a
 /// wgpu/cosmic-text bump worth looking at.
 fn record_and_render() -> Step {
-    let gpu = headless_test_gpu();
+    // `Bare`: the timestamp queries the instrumented device carries
+    // allocate per frame, which is the very thing this step counts.
+    let gpu = BenchGpu::shared(Timing::Bare);
     // The public offscreen path always copies from its backbuffer, so
     // the floor pinned here excludes the direct-present path.
-    let mut host = OffscreenHost::builder(gpu.device.clone(), gpu.queue.clone()).build();
+    let mut host = gpu.offscreen_builder().build();
     let mut state = FrameFixture::default();
     host.ui().theme.window_clear = Color::TRANSPARENT;
 
-    let target = gpu.device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("palantir.alloc.render.target"),
-        size: wgpu::Extent3d {
-            width: RENDER_SURFACE.x,
-            height: RENDER_SURFACE.y,
-            depth_or_array_layers: 1,
-        },
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format: FORMAT,
-        usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-            | wgpu::TextureUsages::COPY_DST
-            | wgpu::TextureUsages::COPY_SRC,
-        view_formats: &[],
-    });
+    let target = gpu.target(RENDER_SURFACE, "palantir.alloc.render.target");
 
     Step::measure(
         "record + render",
         Limit::BlocksPerFrame(RENDER_BLOCKS_PER_FRAME_MAX),
         || {
             black_box(host.frame_offscreen(&target, SCALE, &mut FixtureApp { state: &mut state }));
-            gpu.device
-                .poll(wgpu::PollType::Wait {
-                    submission_index: None,
-                    timeout: None,
-                })
-                .expect("device poll");
+            gpu.wait();
         },
     )
 }

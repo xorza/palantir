@@ -84,7 +84,6 @@ use std::process::Command;
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
-const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 /// Device pixel ratio every arm renders at. `pub(crate)` so the
 /// allocation gate in [`crate::host::bench`] measures this same tree
 /// rather than a smaller stand-in of its own.
@@ -132,17 +131,6 @@ impl Surface {
     }
 }
 
-/// Block until the GPU has drained all submitted work. The `_gpu` arms
-/// call this between iters so wall time covers the full CPU + GPU frame.
-fn gpu_wait(device: &wgpu::Device) {
-    device
-        .poll(wgpu::PollType::Wait {
-            submission_index: None,
-            timeout: None,
-        })
-        .expect("device poll");
-}
-
 fn gpu() -> &'static BenchGpu {
     let gpu = BenchGpu::shared(Timing::Instrumented);
     static ANNOUNCED: OnceLock<()> = OnceLock::new();
@@ -153,9 +141,7 @@ fn gpu() -> &'static BenchGpu {
 }
 
 fn bench_host(g: &BenchGpu) -> OffscreenHost {
-    OffscreenHost::builder(g.device.clone(), g.queue.clone())
-        .collect_gpu_stats(true)
-        .build()
+    g.offscreen_builder().collect_gpu_stats(true).build()
 }
 
 fn frame_offscreen(
@@ -166,25 +152,6 @@ fn frame_offscreen(
 ) {
     let mut app = RecordApp::new(record);
     host.frame_offscreen(target, scale_factor, &mut app);
-}
-
-fn make_target(device: &wgpu::Device, size: glam::UVec2, label: &str) -> wgpu::Texture {
-    device.create_texture(&wgpu::TextureDescriptor {
-        label: Some(label),
-        size: wgpu::Extent3d {
-            width: size.x,
-            height: size.y,
-            depth_or_array_layers: 1,
-        },
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format: FORMAT,
-        usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-            | wgpu::TextureUsages::COPY_DST
-            | wgpu::TextureUsages::COPY_SRC,
-        view_formats: &[],
-    })
 }
 
 /// Deviceless CPU-pipeline harness: a bare `Ui` (bundled-font shaper)
@@ -325,56 +292,52 @@ fn assert_partial_invariant(surface: &Surface) {
 /// state mutation.
 fn run_gpu_arm<F>(c: &mut Criterion, name: &str, mut iter: F)
 where
-    F: FnMut(&mut OffscreenHost, &mut FrameFixture, &wgpu::Device),
+    F: FnMut(&mut OffscreenHost, &mut FrameFixture),
 {
     let g = gpu();
     let mut host = bench_host(g);
     host.ui().theme.window_clear = WINDOW_CLEAR;
     let mut state = FrameFixture::default();
     for _ in 0..4 {
-        iter(&mut host, &mut state, &g.device);
+        iter(&mut host, &mut state);
     }
     c.bench_function(name, |b| {
-        b.iter(|| iter(&mut host, &mut state, &g.device));
+        b.iter(|| iter(&mut host, &mut state));
     });
     // Drain pipelined GPU work before the next bench function reuses
     // the device.
-    gpu_wait(&g.device);
+    g.wait();
 }
 
 fn gpu_cached(c: &mut Criterion, surface: &Surface) {
-    let target = make_target(&gpu().device, surface.size, "palantir.frame_bench.cached");
+    let target = gpu().target(surface.size, "palantir.frame_bench.cached");
     let scale = surface.scale;
-    run_gpu_arm(c, "frame/cached_gpu", |host, state, device| {
+    run_gpu_arm(c, "frame/cached_gpu", |host, state| {
         frame_offscreen(host, &target, scale, |ui| build_ui(state, BENCH_SCALE, ui));
-        gpu_wait(device);
+        gpu().wait();
         black_box(&target);
     });
 }
 
 fn gpu_partial(c: &mut Criterion, surface: &Surface) {
-    let target = make_target(&gpu().device, surface.size, "palantir.frame_bench.partial");
+    let target = gpu().target(surface.size, "palantir.frame_bench.partial");
     let scale = surface.scale;
-    run_gpu_arm(c, "frame/partial_gpu", |host, state, device| {
+    run_gpu_arm(c, "frame/partial_gpu", |host, state| {
         state.tick = state.tick.wrapping_add(1);
         frame_offscreen(host, &target, scale, |ui| build_ui(state, BENCH_SCALE, ui));
-        gpu_wait(device);
+        gpu().wait();
         black_box(&target);
     });
 }
 
 fn gpu_scrolling(c: &mut Criterion, surface: &Surface) {
-    let target = make_target(
-        &gpu().device,
-        surface.size,
-        "palantir.frame_bench.scrolling",
-    );
+    let target = gpu().target(surface.size, "palantir.frame_bench.scrolling");
     let scale = surface.scale;
-    run_gpu_arm(c, "frame/scrolling_gpu", |host, state, device| {
+    run_gpu_arm(c, "frame/scrolling_gpu", |host, state| {
         state.scroll_offset.x = (state.scroll_offset.x + 1.5) % 256.0;
         state.scroll_offset.y = (state.scroll_offset.y + 0.7) % 256.0;
         frame_offscreen(host, &target, scale, |ui| build_ui(state, BENCH_SCALE, ui));
-        gpu_wait(device);
+        gpu().wait();
         black_box(&target);
     });
 }
@@ -384,21 +347,15 @@ fn gpu_resizing(c: &mut Criterion, surface: &Surface) {
         .pool
         .iter()
         .enumerate()
-        .map(|(i, s)| {
-            make_target(
-                &gpu().device,
-                *s,
-                &format!("palantir.frame_bench.resize.{i}"),
-            )
-        })
+        .map(|(i, s)| gpu().target(*s, &format!("palantir.frame_bench.resize.{i}")))
         .collect();
     let mut idx = 0usize;
     let scale = surface.scale;
-    run_gpu_arm(c, "frame/resizing_gpu", move |host, state, device| {
+    run_gpu_arm(c, "frame/resizing_gpu", move |host, state| {
         let t = &targets[idx % targets.len()];
         idx = idx.wrapping_add(1);
         frame_offscreen(host, t, scale, |ui| build_ui(state, BENCH_SCALE, ui));
-        gpu_wait(device);
+        gpu().wait();
         black_box(t);
     });
 }
@@ -430,7 +387,7 @@ fn report_write_stats(surface: &Surface) {
             frame_offscreen(&mut host, target, scale, |ui| {
                 build_ui(&mut state, BENCH_SCALE, ui)
             });
-            gpu_wait(&g.device);
+            g.wait();
             let s = write_stats::take();
             // The pass-time readout lags by one frame (the
             // `map_async` callback that publishes a value fires off
@@ -474,10 +431,10 @@ fn report_write_stats(surface: &Surface) {
 
     let g = gpu();
     let scale = surface.scale;
-    let cached = [make_target(&g.device, surface.size, "write_stats.cached")];
+    let cached = [g.target(surface.size, "write_stats.cached")];
     run("cached", scale, &cached, |_, _| {});
 
-    let partial = [make_target(&g.device, surface.size, "write_stats.partial")];
+    let partial = [g.target(surface.size, "write_stats.partial")];
     run("partial", scale, &partial, |state, _| {
         state.tick = state.tick.wrapping_add(1);
     });
@@ -486,15 +443,11 @@ fn report_write_stats(surface: &Surface) {
         .pool
         .iter()
         .enumerate()
-        .map(|(i, s)| make_target(&g.device, *s, &format!("write_stats.resize.{i}")))
+        .map(|(i, s)| g.target(*s, &format!("write_stats.resize.{i}")))
         .collect();
     run("resizing", scale, &pool, |_, _| {});
 
-    let scrolling = [make_target(
-        &g.device,
-        surface.size,
-        "write_stats.scrolling",
-    )];
+    let scrolling = [g.target(surface.size, "write_stats.scrolling")];
     run("scrolling", scale, &scrolling, |state, _| {
         state.scroll_offset.x = (state.scroll_offset.x + 1.5) % 256.0;
         state.scroll_offset.y = (state.scroll_offset.y + 0.7) % 256.0;
