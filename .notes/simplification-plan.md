@@ -47,22 +47,20 @@ The same argument sinks moving `frame_fixture` / `demo_swatches` into
 the showcase binary: the benches record that workload too, and they live
 in `src`.
 
-What that leaves is the target count, which is done: 21 bench targets →
-4 (one `criterion` target holding all 18 criterion drivers, plus the
-three dhat targets, which need their own binaries for
-`#[global_allocator]`). `rustdoc::private_intra_doc_links` is now
-denied with zero warnings, and `dump_theme` has its `[[example]]` block.
+What that leaves is the target count, which is done: **21 bench targets
+→ 2**. `criterion` holds every timing driver; `alloc` holds the dhat
+one. Only that split is forced, by `dhat::Alloc` having to be *the*
+global allocator — the earlier reading, that each dhat workload needed
+its own binary, was wrong, and they are steps in one bench now.
+`rustdoc::private_intra_doc_links` is denied with zero warnings, and
+`dump_theme` has its `[[example]]` block.
 
-Still open, and small:
-
-- [ ] `src/ui/harness/` (1,588) + `host/test_gpu.rs` compile into the
-  library under `internals`. Genuinely test reach-ins and deliberately
-  cheap — listed only so the accounting is complete. No action unless
-  the surface grows.
-- [ ] Of ~130k lines under `src/`, ~46k are in-tree tests and ~6.5k are
-  bench drivers. That is a *reading* cost, not a shipped-binary one
-  (both are `cfg`-gated out of a normal build). Worth revisiting only if
-  someone wants `src/` to read as library-only.
+Nothing open here. For the record, since it reads alarming and isn't:
+of ~130k lines under `src/`, ~47k are in-tree tests and ~6k are bench
+drivers, and `src/ui/harness/` (1,588) plus `host/test_gpu.rs` compile
+into the library under `internals`. All of it is `cfg`-gated out of a
+normal build, so it is a *reading* cost, not a shipped one. Revisit only
+if someone wants `src/` to read as library-only.
 
 ---
 
