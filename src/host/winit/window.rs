@@ -79,8 +79,6 @@ impl Window {
         app: &mut T,
         commands: &mut WindowCommands,
     ) {
-        #[cfg(feature = "profile-with-tracy")]
-        let _tracy_frame = tracy_client::non_continuous_frame!("frame");
         profiling::scope!("Window::frame");
 
         let position = self
@@ -104,41 +102,43 @@ impl Window {
         // request is one-shot, so this costs at most one frame per close.
         if self.occluded_at.is_some() && !self.close_requested {
             self.next = FramePresent::Idle;
-            self.finish(commands);
-            return;
+        } else {
+            let physical = UVec2::new(self.config.width, self.config.height);
+            let display = Display {
+                physical,
+                scale_factor: self.scale_factor,
+                pixel_snap: self.driver.pixel_snap,
+                refresh_millihertz: self
+                    .window
+                    .current_monitor()
+                    .and_then(|monitor| monitor.refresh_rate_millihertz()),
+            };
+
+            // A size, format, or present-mode change invalidates the driver's
+            // retained target state *and* needs the swapchain reconfigured before
+            // the next acquire. Identical repeats cost nothing (Wayland resends configures
+            // on focus / output changes), which matters because
+            // `surface.configure` waits for GPU idle and reallocates the
+            // swapchain — wgpu #7447 measures 100ms+ stalls when called per
+            // repeated event.
+            if self.driver.note_target(TargetKey {
+                physical,
+                format: self.config.format,
+                present_mode: Some(self.config.present_mode),
+            }) {
+                surfaces.configure(&self.surface, &self.config);
+            }
+
+            let cpu = core.cpu_frame(&mut self.driver, display, app);
+            self.next = self.present(surfaces, core, cpu);
         }
 
-        let physical = UVec2::new(self.config.width, self.config.height);
-        let display = Display {
-            physical,
-            scale_factor: self.scale_factor,
-            pixel_snap: self.driver.pixel_snap,
-            refresh_millihertz: self
-                .window
-                .current_monitor()
-                .and_then(|monitor| monitor.refresh_rate_millihertz()),
-        };
-
-        // A size, format, or present-mode change invalidates the driver's
-        // retained target state *and* needs the swapchain reconfigured before
-        // the next acquire. Identical repeats cost nothing (Wayland resends configures
-        // on focus / output changes), which matters because
-        // `surface.configure` waits for GPU idle and reallocates the
-        // swapchain — wgpu #7447 measures 100ms+ stalls when called per
-        // repeated event.
-        if self.driver.note_target(TargetKey {
-            physical,
-            format: self.config.format,
-            present_mode: Some(self.config.present_mode),
-        }) {
-            surfaces.configure(&self.surface, &self.config);
-        }
-
-        let cpu = core.cpu_frame(&mut self.driver, display, app);
-        self.next = self.present(surfaces, core, cpu);
-
-        profiling::finish_frame!();
         self.finish(commands);
+        // Past every exit, so an occluded frame closes its own Tracy
+        // frame instead of being folded into the next painted one — the
+        // difference between a minimized window reading as idle and it
+        // reading as one multi-second frame.
+        profiling::finish_frame!();
     }
 
     fn present(
@@ -152,18 +152,27 @@ impl Window {
             report.repaint_requested
         } else {
             use wgpu::CurrentSurfaceTexture::*;
-            match self.surface.get_current_texture() {
+            // Bound before the match so the zone closes on acquire
+            // rather than spanning the arm that submits: on a vsync-
+            // paced present this call is where the frame blocks, and
+            // folding the submit into it hides which of the two cost
+            // the time.
+            let acquired = {
+                profiling::scope!("Surface::acquire");
+                self.surface.get_current_texture()
+            };
+            match acquired {
                 Success(frame) => {
                     core.submit(&mut self.driver, &frame.texture, mode);
                     self.window.pre_present_notify();
                     surfaces.present(frame);
                     report.repaint_requested
                 }
-                // A match scrutinee outlives its arm body, so binding and
-                // dropping is what releases the acquired texture here —
-                // `configure` fails with `PreviousOutputExists` while one is
-                // still alive, and that failure is a panic (wgpu surface
-                // configuration reports through the device error sink).
+                // Binding and dropping is what releases the acquired
+                // texture here — `configure` fails with
+                // `PreviousOutputExists` while one is still alive, and that
+                // failure is a panic (wgpu surface configuration reports
+                // through the device error sink).
                 Suboptimal(frame) => {
                     tracing::warn!("surface acquire: suboptimal");
                     drop(frame);
