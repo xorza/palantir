@@ -64,6 +64,7 @@
 //! result — they don't replace its elapsed time.
 
 use crate::app::internals::RecordApp;
+use crate::host::bench_gpu::{BenchGpu, Timing};
 use crate::host::offscreen::{OffscreenHost, internals as offscreen_internals};
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::color::Color;
@@ -80,9 +81,7 @@ use crate::widgets::text::Text;
 use crate::widgets::theme::text_style::TextStyle;
 use criterion::{Criterion, Throughput};
 use glam::Vec2;
-use pollster::FutureExt;
 use std::hint::black_box;
-use std::sync::OnceLock;
 use std::time::Duration;
 
 const PHYSICAL: glam::UVec2 = glam::UVec2::new(512, 512);
@@ -169,49 +168,12 @@ impl Workload {
     }
 }
 
-#[derive(Debug)]
-struct Gpu {
-    device: wgpu::Device,
-    queue: wgpu::Queue,
-    info: wgpu::AdapterInfo,
-}
-
 /// Device without `TIMESTAMP_QUERY`: the host also passes
 /// `collect_gpu_stats(false)`, but requesting the feature at all would
 /// leave the door open for a future default that writes timestamps into
 /// the very pass this benchmark times.
-fn gpu() -> &'static Gpu {
-    static GPU: OnceLock<Gpu> = OnceLock::new();
-    GPU.get_or_init(|| {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::HighPerformance,
-                compatible_surface: None,
-                force_fallback_adapter: false,
-                apply_limit_buckets: false,
-            })
-            .block_on()
-            .expect("request adapter (headless)");
-        let mut limits = wgpu::Limits::default();
-        limits.max_immediate_size = limits.max_immediate_size.max(16);
-        let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor {
-                label: Some("palantir.record_pass_bench.device"),
-                required_features: wgpu::Features::IMMEDIATES,
-                required_limits: limits,
-                experimental_features: wgpu::ExperimentalFeatures::default(),
-                memory_hints: wgpu::MemoryHints::default(),
-                trace: wgpu::Trace::Off,
-            })
-            .block_on()
-            .expect("request device");
-        Gpu {
-            device,
-            queue,
-            info: adapter.get_info(),
-        }
-    })
+fn gpu() -> &'static BenchGpu {
+    BenchGpu::shared(Timing::Bare)
 }
 
 fn target(device: &wgpu::Device) -> wgpu::Texture {
@@ -325,7 +287,7 @@ struct Fixture {
 }
 
 impl Fixture {
-    fn new(gpu: &Gpu, workload: Workload) -> Self {
+    fn new(gpu: &BenchGpu, workload: Workload) -> Self {
         let mut host = OffscreenHost::builder(gpu.device.clone(), gpu.queue.clone()).build();
         // No theme panel background: each arm should record exactly the
         // one shape family it names, not that plus a chrome quad per cell.

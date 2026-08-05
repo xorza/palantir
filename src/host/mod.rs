@@ -15,6 +15,8 @@
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
+#[cfg(feature = "bench")]
+pub(crate) mod bench_gpu;
 pub(crate) mod clock;
 mod core;
 pub(crate) mod offscreen;
