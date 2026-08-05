@@ -6,14 +6,19 @@ manual — how to invoke things is in `scripts/bench-perf.sh`'s header.
 
 ## Running them
 
-Four targets: `criterion` holds every timing driver, and `alloc_free` /
-`alloc_resize` / `alloc_free_gpu` are dhat (its `Alloc` is a
-`#[global_allocator]`, which is per-binary). One target rather than one
-per driver because `[profile.bench]` is fat-LTO with one codegen unit —
-eighteen parallel links of the whole dependency graph was an OOM risk.
+Two targets, each `harness = false` with its own `main`: `criterion`
+holds every timing driver, `alloc` every dhat one. That split — and only
+that one — is forced by `dhat::Alloc` being a `#[global_allocator]`:
+process-wide, and a 10-30x tax on any timing sharing the binary. Within
+each harness it is one target because `[profile.bench]` is fat-LTO with
+one codegen unit, and twenty parallel links of the whole dependency
+graph was an OOM risk.
 
-`--driver` selects a driver, `--arms` a half of the pipeline, and a bare
-positional is criterion's own regex over benchmark ids:
+`criterion` takes `--driver` (exact, repeatable) and `--list-drivers`;
+`--arms` picks a half of the pipeline, and a bare positional is
+criterion's own regex over benchmark ids. `alloc` takes no selection at
+all — it is one bench of four steps that answer one question, so it runs
+them all and fails if any bounded step is over:
 
 ```sh
 cargo bench -p palantir --bench criterion -- --list-drivers
@@ -21,10 +26,18 @@ cargo bench -p palantir --bench criterion -- -d damage
 cargo bench -p palantir --bench criterion -- --arms cpu
 cargo bench -p palantir --bench criterion -- 'cascade/hit_test$'
 cargo bench -p palantir --bench criterion -- -d frame --arms cpu --note 'after belt rework'
+cargo bench -p palantir --bench alloc               # every step
+cargo bench -p palantir --bench alloc -- --dump     # + dhat-heap.json
 ```
 
-`--help` lists the rest (`--profile-time`, `--sample-size`,
-`--measurement-time`, `--warm-up-time`, `--save-baseline`, `--noplot`).
+`--help` lists the rest — `--profile-time`, `--sample-size`,
+`--measurement-time`, `--warm-up-time`, `--save-baseline`, `--noplot`,
+and the frame bench's `--size`, `--scale`, `--machine`, `--note`.
+
+**Every input is a flag.** No bench reads an environment variable of its
+own: one parser per target, and what it resolves is handed down in a
+`Run`. A knob that has to reach a driver goes on the CLI — never into
+the environment, where nothing declares it and `--help` can't list it.
 
 **`frame` is opt-in** — `-d frame`. It is the one driver kept out of a
 bare run: the full matrix is ~90 s and appends a results row to
@@ -97,8 +110,8 @@ Before drawing conclusions:
   if those hit L2, catastrophic if they hit DRAM. `perf mem` tells you.
 - **Page-faults in steady state** are the cheap "did we allocate?"
   proxy — non-zero after warmup usually means a `Vec::reserve` crossed a
-  page. For attribution run the alloc benches with `DHAT_DUMP=1` and
-  load `dhat-heap.json` at <https://nnethercote.github.io/dh_view/>.
+  page. For attribution run `--bench alloc -- --dump` and load
+  `dhat-heap.json` at <https://nnethercote.github.io/dh_view/>.
   Never time those; dhat adds 10-30× allocator overhead.
 
 ### Drilling in (Intel)

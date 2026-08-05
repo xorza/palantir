@@ -10,7 +10,7 @@
 //! `harness = false` target collects no `#[test]` fns at all.
 //!
 //! `benches/criterion.rs` is therefore a three-line call into [`run`],
-//! the same shape `benches/alloc_*.rs` already had.
+//! and `benches/alloc.rs` the same into [`alloc::run`].
 //!
 //! ## Why this owns `main`
 //!
@@ -39,8 +39,14 @@
 //!
 //! What the runner decides, a driver is handed in a [`Run`] rather than
 //! left to re-derive: two readings of the same argv are two things that
-//! can disagree.
+//! can disagree. Nothing here reads the environment — every input is a
+//! declared flag, so `--help` is the whole surface.
+//!
+//! `cargo-criterion` integration rides `Criterion::default()`'s
+//! `connection`, which the own-branch keeps by construction. Baselines
+//! through `cargo criterion` are untested here.
 
+pub mod alloc;
 mod cli;
 mod driver;
 
@@ -57,7 +63,7 @@ use driver::DRIVERS;
 /// *whether* they run. A driver's `run` receives the resolved overlap
 /// anyway, because the frame bench genuinely has both and has to know
 /// which half was asked for.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Arms {
     /// Touches no GPU.
     Cpu,
@@ -105,8 +111,27 @@ pub(crate) struct Run<'a> {
     /// reads its own numbers back afterwards has to skip when this is
     /// false, or it files a row of "estimates not found".
     pub(crate) recording: bool,
-    /// `--note`: the caption a driver that appends to a results file
-    /// records with the row.
+    /// Every knob the command line carries for a driver that renders the
+    /// shared fixture and files a results row. The frame bench is the
+    /// only one today; a second would read the same struct rather than
+    /// grow `Run` sideways.
+    pub(crate) fixture: Fixture<'a>,
+}
+
+/// The surface the shared fixture renders into, and how the row it files
+/// is captioned. Defaults live with the bench that uses them — `None`
+/// means "whatever that bench considers normal", so the runner never has
+/// to know a widget's dimensions to hand one over.
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct Fixture<'a> {
+    /// `--size <W>x<H>`: the physical surface every arm renders into.
+    pub(crate) size: Option<glam::UVec2>,
+    /// `--scale`: device pixel ratio.
+    pub(crate) scale: Option<f32>,
+    /// `--machine`: which per-machine results file the row lands in.
+    /// Defaults to the short hostname.
+    pub(crate) machine: Option<&'a str>,
+    /// `--note`: the row's why-was-this-measured caption.
     pub(crate) note: Option<&'a str>,
 }
 
@@ -119,7 +144,7 @@ pub fn run() {
         let run = Run {
             arms: Arms::Both,
             recording: false,
-            note: None,
+            fixture: Fixture::default(),
         };
         for driver in DRIVERS.iter().filter(|d| !d.opt_in) {
             let mut criterion = (driver.config)().configure_from_args();
@@ -141,9 +166,8 @@ pub fn run() {
 
     cli.validate(DRIVERS);
 
-    let want = cli.arms();
     for driver in DRIVERS.iter().filter(|d| cli.selects(d)) {
-        let Some(arms) = driver.arms.overlap(want) else {
+        let Some(arms) = driver.arms.overlap(cli.arms) else {
             continue;
         };
         let mut criterion = cli.configure((driver.config)());
@@ -152,18 +176,12 @@ pub fn run() {
             Run {
                 arms,
                 recording: cli.records(),
-                note: cli.note.as_deref(),
+                fixture: cli.fixture(),
             },
         );
     }
     cli.configure(Criterion::default()).final_summary();
 }
-
-/// The dhat allocation drivers. Not in the criterion registry: they take
-/// no `Criterion`, measure allocations rather than time, and need a
-/// `#[global_allocator]` that must not be linked into a timing binary —
-/// so each keeps its own target.
-pub use crate::host::bench::{alloc_free, alloc_free_gpu, alloc_resize};
 
 #[cfg(test)]
 mod tests {

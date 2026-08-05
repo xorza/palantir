@@ -20,7 +20,7 @@
 //!
 //! [`TestOnly`] is `cfg(test)`: for counters nothing benches, and for
 //! anything that allocates. A probe that pushes to a `Vec` must not be
-//! live in an `internals` build — the `alloc_free` bench asserts
+//! live in an `internals` build — the `record-only` alloc step asserts
 //! steady-state frames allocate nothing and would measure the probe
 //! instead of the frame.
 //!

@@ -5,7 +5,7 @@
 //!
 //! Test-only rather than the wider gate because [`Self::cache_hit`]
 //! pushes to a `Vec` on *every* cache hit, which in steady state is
-//! every subtree root — the `alloc_free` bench requires `bench` and
+//! every subtree root — the alloc bench requires `bench` and
 //! asserts steady-state frames allocate nothing, so it would end up
 //! measuring this probe instead of the frame.
 //!
