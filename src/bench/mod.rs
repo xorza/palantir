@@ -34,7 +34,7 @@
 //!
 //! So when cargo drives us in test or list mode, argv goes to
 //! `configure_from_args` untouched. Otherwise `Cli` parses it and drives
-//! criterion's public setters. `Gate` draws that line — and the subtlety
+//! criterion's public setters. `cli::delegates` draws that line — and the subtlety
 //! is that test mode is signalled by an *absence*.
 //!
 //! What the runner decides, a driver is handed in a `Run` rather than
@@ -50,7 +50,7 @@ pub mod alloc;
 mod cli;
 mod driver;
 
-use cli::{Cli, Gate};
+use cli::Cli;
 use criterion::Criterion;
 use driver::DRIVERS;
 
@@ -140,7 +140,8 @@ pub fn run() {
     // Opt-in drivers stay out: test mode is a smoke check that every
     // benchmark still executes, and the frame matrix is ~90 s of that —
     // unoptimized, since `cargo test` builds the dev profile.
-    if Gate::parse_args().delegates() {
+    let argv: Vec<String> = std::env::args().collect();
+    if cli::delegates(argv.iter().map(String::as_str)) {
         let run = Run {
             arms: Arms::Both,
             recording: false,
