@@ -210,6 +210,7 @@ impl Encoder {
 
 /// Per-layer encode context. Bundles fixed inputs so recursion threads one
 /// `&mut ctx` instead of a long argument list.
+#[derive(Debug)]
 struct LayerCtx<'a> {
     tree: &'a Tree,
     layout: &'a LayerLayout,
@@ -237,17 +238,6 @@ impl LayerCtx<'_> {
     fn brush_source(&mut self, brush: ShapeBrush) -> BrushSource {
         self.gradient_resolver
             .source(self.gradients, self.gradient_atlas, brush)
-    }
-}
-
-// Manual: `Tree` / `LayerLayout` don't implement `Debug`.
-impl std::fmt::Debug for LayerCtx<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("LayerCtx")
-            .field("damage_cull_margin", &self.damage_cull_margin)
-            .field("viewport", &self.viewport)
-            .field("now", &self.now)
-            .finish_non_exhaustive()
     }
 }
 

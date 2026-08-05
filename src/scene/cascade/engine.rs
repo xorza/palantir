@@ -35,6 +35,7 @@ use std::hash::Hasher as _;
 /// walking — bundled because they are pushed to together and travel as
 /// one, and because threading four more parameters through
 /// `run_tree` is what the argument count is for.
+#[derive(Debug)]
 struct TreeSink<'a> {
     entries: &'a mut Vec<EntryRow>,
     hits: &'a mut Vec<HitRow>,
@@ -42,6 +43,7 @@ struct TreeSink<'a> {
     layer: Layer,
 }
 
+#[derive(Debug)]
 struct Frame {
     transform: TranslateScale,
     clip: Option<Rect>,
@@ -64,20 +66,6 @@ struct Frame {
     /// re-hash of the 32 B ancestor prefix per node. Incremental frames
     /// carry an empty hasher because their retained inputs stay valid.
     cascade_prefix: Hasher,
-}
-
-impl std::fmt::Debug for Frame {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Frame")
-            .field("transform", &self.transform)
-            .field("clip", &self.clip)
-            .field("disabled", &self.disabled)
-            .field("invisible", &self.invisible)
-            .field("subtree_end", &self.subtree_end)
-            .field("node_idx", &self.node_idx)
-            .field("subtree_paint_rect", &self.subtree_paint_rect)
-            .finish_non_exhaustive()
-    }
 }
 
 #[derive(Debug, Default)]
@@ -690,6 +678,7 @@ fn push_paint(arena: &mut PaintArena, union: &mut Option<Rect>, screen: Rect, ha
 /// `padding` are one indexed load each off lines this walk has already
 /// touched, and `padding` is read only by the text arm — so they are
 /// derived below instead of widening every node's bundle by 24 B.
+#[derive(Debug)]
 struct PaintRectCtx<'a> {
     tree: &'a Tree,
     layout: &'a LayerLayout,
@@ -702,22 +691,6 @@ struct PaintRectCtx<'a> {
     display_scale: f32,
     clips: bool,
     has_children: bool,
-}
-
-impl std::fmt::Debug for PaintRectCtx<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("PaintRectCtx")
-            .field("node", &self.node)
-            .field("visible_rect", &self.visible_rect)
-            .field("parent_transform", &self.parent_transform)
-            .field("parent_clip", &self.parent_clip)
-            .field("shape_clip", &self.shape_clip)
-            .field("shape_transform", &self.shape_transform)
-            .field("display_scale", &self.display_scale)
-            .field("clips", &self.clips)
-            .field("has_children", &self.has_children)
-            .finish_non_exhaustive()
-    }
 }
 
 /// Emit every paint row for `node` — chrome at row 0 when present,

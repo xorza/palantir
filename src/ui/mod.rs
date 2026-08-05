@@ -65,6 +65,7 @@ use std::time::Duration;
 /// logical pixels (DIPs); `Display::scale_factor` converts to
 /// physical at the wgpu boundary. Frame scheduling state is retained
 /// internally.
+#[derive(Debug)]
 pub struct Ui {
     pub(crate) forest: Forest,
     pub theme: Theme,
@@ -108,16 +109,6 @@ pub struct Ui {
     pub(crate) window_requests: WindowRequests,
     /// Host-to-recorder facts refreshed before each windowed frame.
     pub(crate) window_frame: WindowFrameState,
-}
-
-impl std::fmt::Debug for Ui {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Ui")
-            .field("render_frame_id", &self.frame_runtime.render_frame_id)
-            .field("time", &self.frame_runtime.time)
-            .field("display", &self.display)
-            .finish_non_exhaustive()
-    }
 }
 
 /// The widget- and host-facing authoring API: input feed, watches,

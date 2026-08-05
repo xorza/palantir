@@ -38,6 +38,16 @@ pub(crate) fn hash_str(s: &str) -> u64 {
 #[derive(Clone)]
 pub(crate) struct Hasher(FxHasher);
 
+// Manual: `FxHasher` has no `Debug`, and its state is one opaque `u64`.
+// The digest so far is the only thing worth showing, and reading it is
+// non-destructive.
+impl std::fmt::Debug for Hasher {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use std::hash::Hasher as _;
+        f.debug_tuple("Hasher").field(&self.0.finish()).finish()
+    }
+}
+
 impl Hasher {
     #[inline]
     pub(crate) fn new() -> Self {

@@ -13,6 +13,7 @@ use crate::scene::shapes::record::ShapeRecord;
 use crate::scene::tree::record::{NodeId, NodeRecord, SubtreeEnd};
 use crate::scene::visibility::Visibility;
 
+#[derive(Debug)]
 pub(crate) struct ChildIter<'a> {
     pub(crate) layouts: &'a [LayoutCore],
     pub(crate) ends: &'a [SubtreeEnd],
@@ -58,6 +59,7 @@ impl<'a> Iterator for ChildIter<'a> {
     }
 }
 
+#[derive(Debug)]
 pub(crate) struct TreeItems<'a> {
     shapes_col: &'a [Span],
     layouts: &'a [LayoutCore],

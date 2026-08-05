@@ -22,6 +22,24 @@ micro-optimizations (`Gaps` NaN-tagged f16 pair, `Index16` niche,
 `CascadeInputHash` sign-bit pack, `F32Ext::fast_round`) are each small,
 local, and load-bearing — they are not on this list.
 
+**The per-event scans are measured, not indexed.** `Cascade::hits_under`
+reverse-scans the hit rows on every pointer event, and the obvious move
+is a spatial index — `composer/text_grid/` already has a tiled AABB grid
+for the same query shape. The numbers say no. The real `FrameFixture`
+produces **314 hit rows**, the scan costs **0.46 ns/row**, so a full
+miss is ~150 ns against a 2.3 ms frame. `cascade/hit_test` measures that
+curve now — a flat `topmost` early-exit against a linear `miss` — so a
+regression in either row count or per-row cost shows up. It could not
+before: every row carried the same full-screen rect, so the scan matched
+on its first test and the group read 1-2 ns at every density while
+measuring nothing. Revisit if a tree ever pushes hit rows into the
+thousands; at 8k the miss is 3.7 µs.
+
+`InputState::target_scroll_delta`'s linear scan is the same verdict for
+a smaller reason: `frame_target_deltas` holds one row per *scrolled*
+widget, so it is empty on every frame that isn't scrolling, and `find`
+over an empty `Vec` is free.
+
 The complexity that *is* on this list is structural: layers that exist
 for one consumer, parallel encodings the compiler already has, and code
 that ships in the library because nothing moved it out.
@@ -64,42 +82,28 @@ if someone wants `src/` to read as library-only.
 
 ---
 
-# 2. Collapse `PaintSink`
-
-Now the highest-priority item. Unblocked: batch 1 settled that
-`RecordedPaint` stays in `src`, so the only question left is whether the
-trait earns its keep — and the argument below says it doesn't.
-
-- [ ] `paint_sink.rs:78` declares a **10-required / 12-provided-method
-  trait with exactly one production implementor** (`ComposeSession`).
-  The second, `RecordedPaint`, is `cfg(test)`/`bench`-only. Its
-  existence makes `Encoder::encode<S>` (`encoder/mod.rs:162`),
-  `encode_node<S>`, `emit_one_shape<S>` (`:297`) and `emit_shadow<S>`
-  generic over the sink, so the entire encoder monomorphizes for a type
-  that never ships.
-- [ ] The **provided half is the real content** — the no-op gates and
-  brush/stroke lowering — and it is not sink-specific at all. It reads
-  as an interface but it is the encoder's own lowering tier wearing a
-  trait. Move it to free functions (or an `impl ComposeSession`) and
-  make the encoder take `&mut ComposeSession` concretely.
-- [ ] `RecordedPaint` can then be a `#[cfg]`-gated *decorator* around a
-  concrete sink, or — cheaper — the tests can assert on the
-  `RenderBuffer` the composer already produces. The compose bench's
-  record-once-replay-many trick is the one real constraint; a recorded
-  `Vec<PaintCall>` replayed into `ComposeSession` still works with the
-  trait gone.
-- [ ] Once `S` is gone, `LayerCtx`'s hand-written `Debug`
-  (`encoder/mod.rs:244`) is the only thing left holding the encoder's
-  debug story hostage — see batch 6.
-
----
-
 # 3. De-specialize `CascadeEngine::run_tree`
 
 The densest function in the crate: `cascade/engine.rs:306`, 226 lines,
 `const INCREMENTAL: bool`, six `if INCREMENTAL` / `if !INCREMENTAL`
 branches. The two instantiations want different inputs *and* different
 outputs, which is the signal that this is two functions.
+
+**Measured, so the split isn't constrained by the specialization.**
+Swapping the const generic for a runtime `bool` moved nothing in
+`cascade/run` — paired A/B in both directions each reported "improved",
+which is drift, not effect, on a ~2-3% noise floor. It did shrink
+`cascade::engine` codegen from 16,918 to 13,494 bytes (the const generic
+inlines the whole walk into both callers). So `run_tree`'s comment —
+"compile-time specialization keeps the full rebuild free of incremental
+branches" — is true about codegen and unsupported as a perf claim.
+
+The split is still ~2/3 shared code: 73 of 226 lines sit under an
+`INCREMENTAL` branch, and the other 153 are the walk itself. Extract the
+dense shared middle (the 28-line transform/clip/`PaintRectCtx` block)
+*first*; the function may read fine afterwards, and two walk loops that
+must agree on traversal order is the drift risk this design currently
+rules out by construction.
 
 - [ ] **`TreeSink` (`engine.rs:38`) bundles `entries`, `hits`, `scopes`,
   `layer` — and the incremental instantiation writes none of the first
@@ -191,7 +195,7 @@ warmup / per-frame allocation is a real metric" posture.
 
 ---
 
-# 6. Debug / probe / always-on-diagnostics hygiene sweep
+# 6. Debug / counters / always-on-diagnostics hygiene sweep
 
 Mechanical, low-risk, one sitting. Three related messes.
 
@@ -237,45 +241,13 @@ types, so these slip through):
   `pre_record` clear, and the encoder's final pass all ship. Gate the
   overlay behind `DebugOverlayConfig` (which already exists and is
   app-global) or `debug_assertions`; keep the `tracing::error!`.
-- [ ] Four near-identical per-pass probe modules (`layout/probe.rs`,
-  `damage/probe.rs`, `cascade/probe.rs`, `text/cache_probe.rs`) built on
-  `gated_cell!` in `common/probe.rs` — 129 lines to produce two
-  zero-sized wrapper types, each module opening with a 20–25-line essay
-  on which of the two gates it chose. One gate parameter
-  (`Probe<const BENCH: bool>`) or one shared counter struct would cover
-  all four.
-
----
-
-# 7. Index the per-event scans
-
-Each of these runs on the input hot path or once per frame, and an index
-for the same query already exists elsewhere in the crate.
-
-- [ ] **`Cascade::hits_under` (`cascade/mod.rs:261`)** reverse-scans
-  *every* interactive row testing `rect.contains(pos)`. It runs on every
-  `PointerMoved` (via `hit_test_targets`, three filters), twice on every
-  press (`hit_test` + `hit_test_focusable`), on every release, and again
-  at `end_frame`. There is no spatial index — while
-  `composer/text_grid/` implements a tiled AABB grid for exactly this
-  query shape and is already benched. Reuse it (or a cheap row-major
-  tile bucket over `hits`, rebuilt once per cascade run).
-- [ ] **`InputState::target_scroll_delta` / `_mut`
-  (`input/mod.rs:525`, `:532`)** linear-scan `frame_target_deltas` on
-  every scroll/zoom event *and* once per widget in `response_for`. The
-  row count is tiny but the second caller makes it O(widgets × targets)
-  per frame. A `WidgetIdMap` or a "last hit index" memo removes it.
-- [ ] **`Cascade::run_full` (`cascade/engine.rs:223`)** does
-  `by_id.clone_from(&forest.ids.curr)` — a full `WidgetId → Endpoint`
-  hashmap copy on every full rebuild. The doc explains *why* a snapshot
-  is needed (relayout pass B reads pass A while `curr` is cleared); it
-  doesn't need to be a copy — double-buffer the two maps and swap.
-- [ ] **`LayerLayout::rect_hash` (`layout/mod.rs:152`)** bulk-hashes the
-  entire per-node `rect` column, and `CascadeEngine::can_update`
-  (`engine.rs:160`) calls it once per layer per frame *before* deciding
-  whether it can skip work. Fold the rects into a running hash during
-  arrange (which already writes every rect) instead of re-reading the
-  column.
+- [ ] Four near-identical per-pass counter modules
+  (`layout/counters.rs`, `damage/counters.rs`, `cascade/counters.rs`,
+  `text/cache_counters.rs`) built on `gated_cell!` in
+  `common/counters.rs` — 129 lines to produce two zero-sized wrapper
+  types, each module opening with a 20–25-line essay on which of the two
+  gates it chose. One gate parameter or one shared counter struct would
+  cover all four.
 
 ---
 
@@ -283,6 +255,22 @@ for the same query already exists elsewhere in the crate.
 
 A half-hour sweep, plus a list to work through separately.
 
+- [ ] **`Cascade::run_full` (`cascade/engine.rs:223`)** does
+  `by_id.clone_from(&forest.ids.curr)` — a full `WidgetId → Endpoint`
+  hashmap copy on every full rebuild. The doc explains *why* a snapshot
+  is needed (relayout pass B reads pass A while `curr` is cleared); it
+  doesn't need to be a copy — double-buffer the two maps and swap. Not
+  an input-hot-path item: `run_full` runs on structural change, not in
+  steady state. Worth it to drop an allocation-shaped copy from a path
+  the alloc gate watches.
+- [ ] **`LayerLayout::rect_hash` (`layout/mod.rs:152`)** bulk-hashes the
+  entire per-node `rect` column, and `CascadeEngine::can_update`
+  (`engine.rs:160`) calls it once per layer per frame *before* deciding
+  whether it can skip work. Fold the rects into a running hash during
+  arrange (which already writes every rect) instead of re-reading the
+  column. Bounded small — `cascade/run/paint_only`, a whole incremental
+  run *including* this hash, is 1.24 µs — so this is a shape fix, not a
+  perf one.
 - [ ] **`Forest::push_shape` (`forest.rs:331`)** takes a closure
   returning `Option<u32>` but only tests `.is_some()`; `add_gpu_view`
   (`:282`) satisfies it by returning a `Some(0)` sentinel; and

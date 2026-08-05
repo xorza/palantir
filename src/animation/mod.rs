@@ -286,6 +286,7 @@ pub(crate) struct AnimRow<T: Animatable> {
 /// Per-`T` animation table. Lives inside [`AnimMap`] behind a boxed
 /// trait object keyed by `TypeId`; allocated on first
 /// `Ui::animate::<T>` call.
+#[derive(Debug)]
 pub(crate) struct AnimMapTyped<T: Animatable> {
     pub(crate) rows: FxHashMap<(WidgetId, AnimSlot), AnimRow<T>>,
 }
@@ -314,6 +315,7 @@ fn dot<T: Animatable>(a: T, b: T) -> f32 {
     0.5 * (sum - mag_a - mag_b)
 }
 
+#[derive(Debug)]
 pub(crate) struct TickResult<T: Animatable> {
     pub(crate) current: T,
     pub(crate) settled: bool,
@@ -563,6 +565,17 @@ impl<T: Animatable> AnyTyped for AnimMapTyped<T> {
 #[derive(Default)]
 pub(crate) struct AnimMap {
     pub(crate) by_type: FxHashMap<TypeId, Box<dyn AnyTyped>>,
+}
+
+// Manual: the values are `dyn AnyTyped`, which has no `Debug` and can't
+// gain one without a supertrait every `AnimMapTyped<T>` would have to
+// satisfy. The row count is the shape worth reporting.
+impl std::fmt::Debug for AnimMap {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AnimMap")
+            .field("typed_maps", &self.by_type.len())
+            .finish()
+    }
 }
 
 impl AnimMap {

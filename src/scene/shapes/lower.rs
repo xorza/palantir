@@ -192,7 +192,7 @@ pub(crate) fn background(store: &RecordStore, bg: &Background) -> ChromeRow {
     // fills the tail so `NoUninit` is sound.
     #[repr(C)]
     #[padding_struct::padding_struct]
-    #[derive(Clone, Copy, bytemuck::NoUninit, bytemuck::Zeroable)]
+    #[derive(Debug, Clone, Copy, bytemuck::NoUninit, bytemuck::Zeroable)]
     struct ChromeHashBytes {
         fill_payload: u64, // ColorF16-as-u64 (Solid) or fill_grad_hash (Gradient)
         corners_u64: u64,

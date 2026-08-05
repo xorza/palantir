@@ -41,6 +41,7 @@ use crate::scene::forest::Forest;
 use crate::scene::record_store::RecordPayloads;
 
 /// Frozen inputs consumed by the CPU renderer for one frame.
+#[derive(Debug)]
 pub(crate) struct FrameScene<'a> {
     pub(crate) forest: &'a Forest,
     pub(crate) layout: &'a Layout,
@@ -51,15 +52,6 @@ pub(crate) struct FrameScene<'a> {
     pub(crate) display: Display,
     /// Drives backend `GpuView` frame deltas and is not derivable from `Display`.
     pub(crate) time: Duration,
-}
-
-impl std::fmt::Debug for FrameScene<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("FrameScene")
-            .field("display", &self.display)
-            .field("time", &self.time)
-            .finish_non_exhaustive()
-    }
 }
 
 /// CPU paint stage: tree → encoded commands → composed buffer. Owns

@@ -164,6 +164,7 @@ fn checked_text_ordinal(index: usize) -> u16 {
 /// 7-arg parameter cliff. `content_plus_padding` is the
 /// margin-exclusive hug size (`content + padding`); `available` and
 /// the returned value are margin-inclusive.
+#[derive(Debug)]
 pub(super) struct AxisCtx {
     pub(super) sizing: Sizing,
     pub(super) content_plus_padding: f32,
@@ -266,6 +267,7 @@ pub(super) fn no_offset(_: &Tree, _: NodeId) -> f32 {
 /// `justify`-distributed children. Single source of truth for Stack and
 /// WrapStack — keeps SpaceBetween / SpaceAround degeneracy rules
 /// (count < 2 / count < 1) in one place.
+#[derive(Debug)]
 pub(super) struct JustifyOffsets {
     pub(super) start: f32,
     pub(super) gap: f32,
@@ -355,6 +357,7 @@ pub(super) struct AxisAlignPair {
 }
 
 /// Per-axis placement: chosen extent + offset within the parent's inner span.
+#[derive(Debug)]
 pub(super) struct AxisPlacement {
     pub(super) size: f32,
     pub(super) offset: f32,
