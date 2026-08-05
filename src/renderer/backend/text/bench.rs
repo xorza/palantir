@@ -43,6 +43,7 @@
 use std::sync::OnceLock;
 use std::time::Duration;
 
+use crate::host::bench_gpu::{BenchGpu, Timing};
 use crate::primitives::color::ColorU8;
 use crate::primitives::interned_str::InternedText;
 use crate::primitives::urect::URect;
@@ -61,7 +62,6 @@ use crate::text::shaper::TextShaper;
 use crate::text::{FontFamily, FontWeight};
 use criterion::{BenchmarkId, Criterion, Throughput};
 use glam::{UVec2, Vec2};
-use pollster::FutureExt;
 use std::hint::black_box;
 use wgpu::util::StagingBelt;
 
@@ -185,33 +185,10 @@ impl BenchText {
 fn gpu() -> &'static Gpu {
     static G: OnceLock<Gpu> = OnceLock::new();
     G.get_or_init(|| {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::HighPerformance,
-                compatible_surface: None,
-                force_fallback_adapter: false,
-                apply_limit_buckets: false,
-            })
-            .block_on()
-            .expect("request adapter (headless)");
-        // Viewport + text atlas sizes use the 16-byte immediate budget.
-        let mut limits = wgpu::Limits::default();
-        limits.max_immediate_size = limits.max_immediate_size.max(16);
-        let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor {
-                label: Some("palantir.text_atlas.device"),
-                required_features: wgpu::Features::IMMEDIATES,
-                required_limits: limits,
-                experimental_features: wgpu::ExperimentalFeatures::default(),
-                memory_hints: wgpu::MemoryHints::default(),
-                trace: wgpu::Trace::Off,
-            })
-            .block_on()
-            .expect("request device");
+        let shared = BenchGpu::shared(Timing::Bare);
         Gpu {
-            device,
-            queue: Queue::new(queue),
+            device: shared.device.clone(),
+            queue: Queue::new(shared.queue.clone()),
         }
     })
 }

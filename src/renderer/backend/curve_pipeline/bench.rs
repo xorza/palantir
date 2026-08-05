@@ -13,6 +13,7 @@
 
 use crate::app::internals::RecordApp;
 use crate::diagnostics::gpu_stats::BatchKind;
+use crate::host::bench_gpu::{BenchGpu, Timing};
 use crate::host::offscreen::OffscreenHost;
 use crate::primitives::color::Color;
 use crate::shape::Shape;
@@ -22,9 +23,7 @@ use crate::ui::Ui;
 use crate::widgets::panel::Panel;
 use crate::{Configure, Sizing, Vec2};
 use criterion::{Criterion, Throughput};
-use pollster::FutureExt;
 use std::hint::black_box;
-use std::sync::OnceLock;
 use std::time::Duration;
 
 const PHYSICAL: glam::UVec2 = glam::UVec2::new(1024, 1024);
@@ -57,51 +56,8 @@ impl Workload {
     }
 }
 
-#[derive(Debug)]
-struct Gpu {
-    device: wgpu::Device,
-    queue: wgpu::Queue,
-    info: wgpu::AdapterInfo,
-    timing_features: wgpu::Features,
-}
-
-fn gpu() -> &'static Gpu {
-    static GPU: OnceLock<Gpu> = OnceLock::new();
-    GPU.get_or_init(|| {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::HighPerformance,
-                compatible_surface: None,
-                force_fallback_adapter: false,
-                apply_limit_buckets: false,
-            })
-            .block_on()
-            .expect("request adapter (headless)");
-        let timing_features = adapter.features()
-            & (wgpu::Features::TIMESTAMP_QUERY
-                | wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES
-                | wgpu::Features::PIPELINE_STATISTICS_QUERY);
-        let mut limits = wgpu::Limits::default();
-        limits.max_immediate_size = limits.max_immediate_size.max(16);
-        let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor {
-                label: Some("palantir.curve_pipeline_bench.device"),
-                required_features: timing_features | wgpu::Features::IMMEDIATES,
-                required_limits: limits,
-                experimental_features: wgpu::ExperimentalFeatures::default(),
-                memory_hints: wgpu::MemoryHints::default(),
-                trace: wgpu::Trace::Off,
-            })
-            .block_on()
-            .expect("request device");
-        Gpu {
-            device,
-            queue,
-            info: adapter.get_info(),
-            timing_features,
-        }
-    })
+fn gpu() -> &'static BenchGpu {
+    BenchGpu::shared(Timing::Instrumented)
 }
 
 fn target(device: &wgpu::Device) -> wgpu::Texture {
@@ -123,7 +79,7 @@ fn target(device: &wgpu::Device) -> wgpu::Texture {
     })
 }
 
-fn host(gpu: &Gpu) -> OffscreenHost {
+fn host(gpu: &BenchGpu) -> OffscreenHost {
     let mut host = OffscreenHost::builder(gpu.device.clone(), gpu.queue.clone())
         .collect_gpu_stats(true)
         .build();
@@ -189,7 +145,7 @@ fn record_joins(ui: &mut Ui, phase: bool) {
 }
 
 fn render(
-    gpu: &Gpu,
+    gpu: &BenchGpu,
     host: &mut OffscreenHost,
     target: &wgpu::Texture,
     workload: Workload,
@@ -209,7 +165,7 @@ fn median(values: &mut [f32]) -> Option<f32> {
     Some(values[values.len() / 2])
 }
 
-fn report_evidence(gpu: &Gpu, workload: Workload) {
+fn report_evidence(gpu: &BenchGpu, workload: Workload) {
     let target = target(&gpu.device);
     let mut host = host(gpu);
     let mut phase = false;

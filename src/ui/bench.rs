@@ -66,6 +66,7 @@ use crate::app::internals::RecordApp;
 use crate::bench::{Arms, Fixture, Run};
 use crate::diagnostics::gpu_stats::BatchKind;
 use crate::frame_fixture::{BENCH_SCALE, FrameFixture, build_ui};
+use crate::host::bench_gpu::{BenchGpu, Timing};
 use crate::host::offscreen::OffscreenHost;
 use crate::primitives::color::Color;
 use crate::renderer::backend::write_stats;
@@ -75,7 +76,6 @@ use crate::ui::Ui;
 use crate::ui::frame_report::FramePaint;
 use crate::ui::harness::UiHarness;
 use criterion::Criterion;
-use pollster::FutureExt;
 use std::fs::OpenOptions;
 use std::hint::black_box;
 use std::io::Write;
@@ -143,65 +143,16 @@ fn gpu_wait(device: &wgpu::Device) {
         .expect("device poll");
 }
 
-struct Gpu {
-    device: wgpu::Device,
-    queue: wgpu::Queue,
+fn gpu() -> &'static BenchGpu {
+    let gpu = BenchGpu::shared(Timing::Instrumented);
+    static ANNOUNCED: OnceLock<()> = OnceLock::new();
+    ANNOUNCED.get_or_init(|| {
+        eprintln!("[frame_bench] timing features: {}", gpu.timing_summary());
+    });
+    gpu
 }
 
-fn gpu() -> &'static Gpu {
-    static G: OnceLock<Gpu> = OnceLock::new();
-    G.get_or_init(|| {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::HighPerformance,
-                compatible_surface: None,
-                force_fallback_adapter: false,
-                apply_limit_buckets: false,
-            })
-            .block_on()
-            .expect("request adapter (headless)");
-        // Request the full instrumentation feature set so the
-        // backend's `GpuTimings` can publish whole-pass + per-batch
-        // durations + pipeline statistics. The intersection with
-        // `adapter.features()` drops bits the adapter doesn't
-        // advertise; missing features degrade individually. The
-        // frame bench is `--features bench` only — the right
-        // place to keep instrumentation on by default.
-        let timing_features = adapter.features()
-            & (wgpu::Features::TIMESTAMP_QUERY
-                | wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES
-                | wgpu::Features::PIPELINE_STATISTICS_QUERY);
-        eprintln!(
-            "[frame_bench] timing features: TIMESTAMP_QUERY={} INSIDE_PASSES={} PIPELINE_STATS={}",
-            timing_features.contains(wgpu::Features::TIMESTAMP_QUERY),
-            timing_features.contains(wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES),
-            timing_features.contains(wgpu::Features::PIPELINE_STATISTICS_QUERY),
-        );
-        // Match the production host: text Params is carried via
-        // immediates (push constants), so the feature + 16-byte
-        // immediate budget are required.
-        let mut limits = wgpu::Limits::default();
-        limits.max_immediate_size = limits.max_immediate_size.max(16);
-        let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor {
-                label: Some("palantir.frame_bench.device"),
-                required_features: timing_features | wgpu::Features::IMMEDIATES,
-                required_limits: limits,
-                experimental_features: wgpu::ExperimentalFeatures::default(),
-                memory_hints: wgpu::MemoryHints::default(),
-                trace: wgpu::Trace::Off,
-            })
-            .block_on()
-            .expect("request device");
-        Gpu { device, queue }
-    })
-}
-
-/// Build an `OffscreenHost` (one shared renderer + one window) from
-/// the shared bench device with GPU instrumentation on. Every bench arm
-/// wants the same shape — bundled fonts and a timestamp-enabled device.
-fn bench_host(g: &Gpu) -> OffscreenHost {
+fn bench_host(g: &BenchGpu) -> OffscreenHost {
     OffscreenHost::builder(g.device.clone(), g.queue.clone())
         .collect_gpu_stats(true)
         .build()
