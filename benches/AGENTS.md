@@ -72,7 +72,8 @@ SKIP_MEM=1 SKIP_MICRO=1 SKIP_IBS=1 scripts/bench-perf.sh
 ```
 
 Env: `BENCH` (default `criterion`), `FILTER` (regex, default `frame`;
-empty for all), `FEATURES` (default `internals`), `CALLGRAPH`
+empty for all), `FEATURES` (extra features; `bench` is always on),
+`CALLGRAPH`
 (`dwarf`|`lbr`), `PIN_CPU` (2), `FREQ` (4000), `IBS_PERIOD` (250000),
 `LDLAT` (50), `SKIP_MEM`, `SKIP_MICRO`, `SKIP_IBS`.
 
