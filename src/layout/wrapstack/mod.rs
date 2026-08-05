@@ -131,7 +131,6 @@ impl WrapScratch {
 /// (one pass over children), and arrange uses the same logic on the
 /// same `desired` values, so the assignment is deterministic across
 /// both passes.
-#[profiling::function]
 pub(super) fn measure(
     pass: &mut LayoutPass<'_>,
     node: NodeId,
