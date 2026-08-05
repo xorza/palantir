@@ -128,25 +128,6 @@ pub(crate) enum CurveBasis {
     },
 }
 
-impl CurveBasis {
-    /// Stable hash tag distinguishing the two bases, written by
-    /// [`compute_record_hash`] ahead of the basis fields. Both bases
-    /// share `ShapeRecord::Curve`'s tag, so without this a cubic and an
-    /// arc would be told apart only by how many floats they happen to
-    /// feed the hasher. Frozen for the same reason
-    /// [`ShapeRecord::tag`] is: these numbers reach cached hashes.
-    ///
-    /// [`compute_record_hash`]: crate::scene::shapes::hash::compute_record_hash
-    /// [`ShapeRecord::tag`]: crate::scene::shapes::record::ShapeRecord::tag
-    #[inline]
-    pub(crate) const fn tag(&self) -> u8 {
-        match self {
-            CurveBasis::Cubic { .. } => 0,
-            CurveBasis::Arc { .. } => 1,
-        }
-    }
-}
-
 impl Default for CurveBasis {
     /// A degenerate cubic at the origin — the `Default` a
     /// `DrawCurvePayload` literal falls back to, never a real draw.
@@ -239,26 +220,6 @@ pub(crate) enum QuadShape {
 }
 
 impl QuadShape {
-    /// Stable hash tag separating the three shapes, written by
-    /// [`compute_record_hash`] ahead of the per-shape fields. All three
-    /// share [`ShapeRecord::Quad`]'s tag byte, so without this a
-    /// rectangle and a shadow would be told apart only by whatever their
-    /// field schedules don't have in common — which, for two rounded
-    /// rects, is very little. Frozen for the same reason
-    /// [`ShapeRecord::tag`] is.
-    ///
-    /// [`compute_record_hash`]: crate::scene::shapes::hash::compute_record_hash
-    /// [`ShapeRecord::tag`]: crate::scene::shapes::record::ShapeRecord::tag
-    /// [`ShapeRecord::Quad`]: crate::scene::shapes::record::ShapeRecord::Quad
-    #[inline]
-    pub(crate) const fn tag(&self) -> u8 {
-        match self {
-            QuadShape::Rect { .. } => 0,
-            QuadShape::Shadow { .. } => 1,
-            QuadShape::Triangle { .. } => 2,
-        }
-    }
-
     /// Owner-local paint bbox — cascade's basis for the screen-space
     /// paint bound. A rectangle covers its `local_rect` (or the whole
     /// owner); a drop shadow reaches past its source by the halo
@@ -359,26 +320,6 @@ pub(crate) enum ImageSource {
     /// and the texture re-renders — and holds it stable on
     /// `repaint(false)`, so a static view stays undamaged and is culled.
     GpuView { epoch: u64 },
-}
-
-impl ImageSource {
-    /// Stable hash tag separating the two sources, written by
-    /// [`compute_record_hash`] ahead of the source's own fields. Both
-    /// share [`ShapeRecord::Image`]'s tag byte, so without this a
-    /// texture draw and a view composite would be told apart only by
-    /// how many words they happen to feed the hasher. Frozen for the
-    /// same reason [`ShapeRecord::tag`] is.
-    ///
-    /// [`compute_record_hash`]: crate::scene::shapes::hash::compute_record_hash
-    /// [`ShapeRecord::tag`]: crate::scene::shapes::record::ShapeRecord::tag
-    /// [`ShapeRecord::Image`]: crate::scene::shapes::record::ShapeRecord::Image
-    #[inline]
-    pub(crate) const fn tag(&self) -> u8 {
-        match self {
-            ImageSource::Texture { .. } => 0,
-            ImageSource::GpuView { .. } => 1,
-        }
-    }
 }
 
 #[derive(Clone, Copy, Debug)]

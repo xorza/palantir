@@ -24,16 +24,14 @@ pub(crate) enum ColorMode {
     PerSegment = 2,
 }
 
-/// The stable tag cache keys are built from is [`Self::tag`], **not**
-/// this enum's `repr` discriminant — nothing reads the latter. Reorder
-/// variants freely; a hash can only move when `tag` does. Adding a
-/// variant forces the `tag` and
-/// [`compute_record_hash`](crate::scene::shapes::hash::compute_record_hash)
-/// matches to grow, since both are exhaustive.
+/// `#[repr(u8)]` is for **layout**: it holds the discriminant to one
+/// byte, which the `ShapeRecord` entry in `hot_struct_sizes` pins.
 ///
-/// `#[repr(u8)]` stays for **layout**, not identity: it holds the
-/// discriminant to one byte, which the `ShapeRecord` entry in
-/// `hot_struct_sizes` pins.
+/// Reorder variants freely.
+/// [`compute_record_hash`](crate::scene::shapes::hash::compute_record_hash)
+/// hashes the discriminant via `mem::discriminant`, and the hashes it
+/// produces are only ever compared against others from the same process
+/// run — nothing persists them, so nothing depends on their values.
 #[repr(u8)]
 #[derive(Clone, Debug)]
 pub(crate) enum ShapeRecord {
@@ -213,41 +211,6 @@ impl ShapeRecord {
             ShapeRecord::Text { .. } => {
                 unreachable!("Text shapes resolve via text_paint_bbox_local in cascade")
             }
-        }
-    }
-
-    /// Stable hash tag — the discriminant byte
-    /// [`crate::scene::shapes::hash::compute_record_hash`] writes ahead
-    /// of the per-variant fields, and so an input to every subtree hash
-    /// and measure-cache key.
-    ///
-    /// **This match is the sole source of those numbers**; the enum's
-    /// own `repr` discriminant is unread, so reordering variants cannot
-    /// move a hash. A number is frozen once it has shipped in a saved
-    /// document — give a new variant the next free one.
-    ///
-    /// Five are retired, all to variants folded into a surviving one,
-    /// whose numbers would now collide with hashes cached from before
-    /// the merge. Each merge left a nested tag doing the separating the
-    /// record tag used to do:
-    ///
-    /// | retired | was | folded into | told apart by |
-    /// |---|---|---|---|
-    /// | 4 | `Shadow` | `Quad` (0) | [`QuadShape::tag`] |
-    /// | 7 | `GpuView` | `Image` (5) | [`ImageSource::tag`] |
-    /// | 8 | `Triangle` | `Quad` (0) | [`QuadShape::tag`] |
-    /// | 9 | `WindowedRect` | `Quad` (0) | [`QuadShape::Rect`]'s `kind` |
-    /// | 10 | `Arc` | `Curve` (6) | [`CurveBasis::tag`] |
-    ///
-    /// [`CurveBasis::tag`]: crate::scene::shapes::paint::CurveBasis::tag
-    pub(crate) const fn tag(&self) -> u8 {
-        match self {
-            ShapeRecord::Quad(_) => 0,
-            ShapeRecord::Polyline { .. } => 1,
-            ShapeRecord::Text { .. } => 2,
-            ShapeRecord::Mesh { .. } => 3,
-            ShapeRecord::Image { .. } => 5,
-            ShapeRecord::Curve { .. } => 6,
         }
     }
 }

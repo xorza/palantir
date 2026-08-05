@@ -4,10 +4,12 @@
 //! schedule. `Tree::compute_rollups` and damage diff both read those
 //! precomputed `ContentHash`es; no production code rehashes records.
 //!
-//! The schedule is `tag byte → per-variant fields`. The tag comes from
-//! [`ShapeRecord::tag`], which is its own source of truth — the enum's
-//! `repr` discriminant is unread, so variants can be reordered without
-//! moving a hash.
+//! The schedule is `discriminant → per-variant fields`, at every level
+//! of the nesting. `mem::discriminant` writes the discriminant, so it
+//! cannot drift from the enum it describes. Nothing here is persisted —
+//! a `ContentHash` is only ever compared against another produced in the
+//! same process run — so there is no numbering to hold stable and
+//! variants can be added or reordered freely.
 
 use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher;
@@ -17,21 +19,22 @@ use crate::primitives::rect::Rect;
 use crate::scene::shapes::paint::{CurveBasis, ImageSource, QuadShape, ShapeBrush};
 use crate::scene::shapes::record::ShapeRecord;
 use std::hash::{Hash, Hasher as _};
+use std::mem;
 
 /// Hash a fully-lowered `ShapeRecord` into a stable `ContentHash`.
 /// Sole public entry; the production call site is `Shapes::add`,
 /// which pushes the result onto the parallel `Shapes::hashes` arena.
 pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
     let mut h = Hasher::new();
-    h.write_u8(record.tag());
+    mem::discriminant(record).hash(&mut h);
     match record {
-        // All three shapes share this record's tag byte, so
-        // `QuadShape::tag` goes in ahead of the per-shape fields to keep
-        // a rectangle, a shadow, and a triangle apart — without it a
-        // rect and a shadow over the same rounded box would differ only
-        // by fields their schedules happen not to share.
+        // All three shapes share this record's discriminant, so
+        // `QuadShape`'s goes in ahead of the per-shape fields to keep a
+        // rectangle, a shadow, and a triangle apart — without it a rect
+        // and a shadow over the same rounded box would differ only by
+        // fields their schedules happen not to share.
         ShapeRecord::Quad(shape) => {
-            h.write_u8(shape.tag());
+            mem::discriminant(shape).hash(&mut h);
             match shape {
                 QuadShape::Rect {
                     kind,
@@ -141,10 +144,10 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
             tint.hash(&mut h);
             h.write_u64(*content_hash);
         }
-        // Both sources share this record's tag byte, so `ImageSource::tag`
-        // goes in ahead of the source fields to keep a texture draw and a
-        // view composite apart; the placement fields they share are hashed
-        // once, around the split.
+        // Both sources share this record's discriminant, so
+        // `ImageSource`'s goes in ahead of the source fields to keep a
+        // texture draw and a view composite apart; the placement fields
+        // they share are hashed once, around the split.
         ShapeRecord::Image {
             local_rect,
             tint,
@@ -156,7 +159,7 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
         } => {
             hash_optional_rect(*local_rect, &mut h);
             tint.hash(&mut h);
-            h.write_u8(source.tag());
+            mem::discriminant(source).hash(&mut h);
             match source {
                 // The registration `id` + intrinsic `size`.
                 ImageSource::Texture { id, size } => {
@@ -187,7 +190,7 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
         // `bbox` derives from geometry + width + cap and is excluded.
         // Brush folded separately so strokes with the same geometry
         // but different fills don't collide. Both bases share this
-        // record's tag byte, so `CurveBasis::tag` goes in ahead of the
+        // record's discriminant, so `CurveBasis`'s goes in ahead of the
         // basis fields to keep a cubic and an arc apart; the stroke
         // fields they share are hashed once, after the split.
         ShapeRecord::Curve {
@@ -198,7 +201,7 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
             cap,
             bbox: _,
         } => {
-            h.write_u8(basis.tag());
+            mem::discriminant(basis).hash(&mut h);
             match basis {
                 CurveBasis::Cubic { p0, p1, p2, p3 } => {
                     for point in [p0, p1, p2, p3] {
@@ -234,35 +237,23 @@ fn hash_optional_rect(rect: Option<Rect>, h: &mut Hasher) {
     }
 }
 
-/// Fold a lowered fill into the shape hash: variant byte, then the
+/// Fold a lowered fill into the shape hash: discriminant, then the
 /// inline colour for `Solid` or the pre-computed gradient content
 /// hash for `Gradient` (the `GradientId` itself is frame-local and
 /// excluded).
 fn hash_brush(fill: &ShapeBrush, fill_grad_hash: u64, h: &mut Hasher) {
+    mem::discriminant(fill).hash(h);
     match fill {
-        ShapeBrush::Solid(c) => {
-            h.write_u8(0);
-            c.hash(h);
-        }
-        ShapeBrush::Gradient(_) => {
-            h.write_u8(1);
-            h.write_u64(fill_grad_hash);
-        }
+        ShapeBrush::Solid(c) => c.hash(h),
+        ShapeBrush::Gradient(_) => h.write_u64(fill_grad_hash),
     }
 }
 
-/// Fold an [`ImageFit`] into the shape hash: a discriminant tag plus,
-/// for `Tile`, the UV transform bits (these vary per pan/zoom frame, so
+/// Fold an [`ImageFit`] into the shape hash: the discriminant plus, for
+/// `Tile`, the UV transform bits (these vary per pan/zoom frame, so
 /// they must drive a repaint). The other variants carry no payload.
 fn hash_fit(fit: &ImageFit, h: &mut Hasher) {
-    let tag = match fit {
-        ImageFit::Fill => 0u8,
-        ImageFit::Contain => 1,
-        ImageFit::Cover => 2,
-        ImageFit::None => 3,
-        ImageFit::Tile { .. } => 4,
-    };
-    h.write_u8(tag);
+    mem::discriminant(fit).hash(h);
     if let ImageFit::Tile { offset, scale } = fit {
         approx::hash_visual_vec2(*offset, h);
         approx::hash_visual_vec2(*scale, h);
