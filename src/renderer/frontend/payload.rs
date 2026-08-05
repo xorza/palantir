@@ -42,7 +42,6 @@ use crate::scene::shapes::paint::{CurveBasis, ShapeStroke};
 use crate::scene::shapes::record::ColorMode;
 use crate::shape::style::{LineCap, LineJoin};
 use crate::text::shaped_ref::ShapedTextRef;
-use glam::Vec2;
 
 /// Physical gradient identity resolved for this encode pass.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -284,8 +283,8 @@ impl DrawQuadPayload {
     /// stroke normalization — only the geometry and the SDF the
     /// `FillKind` selects differ.
     pub(crate) fn triangle(
-        origin: Vec2,
-        points: [Vec2; 3],
+        origin: glam::Vec2,
+        points: [glam::Vec2; 3],
         fill: ColorF16,
         radius: f32,
         stroke: ShapeStroke,
@@ -564,5 +563,92 @@ impl DrawCurvePayload {
             return true;
         }
         self.fill_kind == FillKind::SOLID && self.color.is_noop()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::primitives::color::{Color, ColorF16};
+    use crate::primitives::corners::Corners;
+    use crate::primitives::fill_wire::FillKind;
+    use crate::primitives::rect::Rect;
+    use crate::primitives::stroke::Stroke;
+    use crate::renderer::frontend::payload::{BrushSource, DrawQuadPayload, QuadGeom};
+    use crate::scene::shapes::paint::ShapeStroke;
+    use glam::Vec2;
+
+    /// Every quad-tier constructor runs one stroke normalization
+    /// ([`ShapeStroke::normalized`]): a noop stroke — transparent
+    /// colour, zero width, or a NaN width — lands in the payload as
+    /// [`ShapeStroke::NONE`]; anything else passes through verbatim.
+    ///
+    /// The NaN row is the interesting one. It normalizes away like any
+    /// other non-painting width, which is deliberate: catching a NaN
+    /// *loudly* is `Shape::debug_assert_no_nan`'s job at the authoring
+    /// boundary, so by the time a value reaches here the useful
+    /// behaviour is to fail safe — and to do it identically for every
+    /// shape, rather than per-path (a rect forwarding NaN to the GPU
+    /// while a triangle scrubs it).
+    ///
+    /// The table pins both halves: the exact normalized stroke per case,
+    /// **and** that [`DrawQuadPayload::rect`] and
+    /// [`DrawQuadPayload::triangle`] produce bit-identical stroke fields
+    /// — the regression guard against either growing its own copy again.
+    #[test]
+    fn quad_stroke_normalization_is_shared_by_rect_and_triangle() {
+        let fill = Color::rgb(1.0, 0.0, 0.0);
+        let green = Color::rgb(0.0, 1.0, 0.0);
+        let cases: [(&str, ShapeStroke, bool); 4] = [
+            (
+                "transparent_color",
+                Stroke::solid(Color::TRANSPARENT, 3.0).into(),
+                true,
+            ),
+            ("zero_width", Stroke::solid(green, 0.0).into(), true),
+            ("nan_width", Stroke::solid(green, f32::NAN).into(), true),
+            ("live", Stroke::solid(green, 3.0).into(), false),
+        ];
+        for (label, stroke, expect_normalized) in cases {
+            let rp = DrawQuadPayload::rect(
+                Rect::new(0.0, 0.0, 10.0, 10.0),
+                Corners::ZERO,
+                BrushSource::Solid(fill.into()),
+                stroke,
+            );
+            assert!(
+                matches!(rp.geom, QuadGeom::Rect { .. }),
+                "case {label}: rect must carry rect geometry",
+            );
+
+            let tp = DrawQuadPayload::triangle(
+                Vec2::ZERO,
+                [
+                    Vec2::new(0.0, 0.0),
+                    Vec2::new(10.0, 0.0),
+                    Vec2::new(5.0, 8.0),
+                ],
+                fill.into(),
+                0.0,
+                stroke,
+            );
+            assert!(
+                matches!(tp.geom, QuadGeom::Triangle { .. }),
+                "case {label}: triangle must carry triangle geometry",
+            );
+            assert_eq!(tp.fill_kind, FillKind::TRIANGLE, "case {label}");
+
+            assert_eq!(tp.stroke.color, rp.stroke.color, "case {label}");
+            assert_eq!(
+                tp.stroke.width.to_bits(),
+                rp.stroke.width.to_bits(),
+                "case {label}",
+            );
+            if expect_normalized {
+                assert_eq!(tp.stroke.color, ColorF16::TRANSPARENT, "case {label}");
+                assert_eq!(tp.stroke.width, 0.0, "case {label}");
+            } else {
+                assert_eq!(tp.stroke.color, ColorF16::from(green), "case {label}");
+            }
+        }
     }
 }

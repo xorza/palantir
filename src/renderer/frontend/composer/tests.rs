@@ -46,6 +46,14 @@ fn rect(x: f32, y: f32, w: f32, h: f32) -> Rect {
     Rect::new(x, y, w, h)
 }
 
+fn clip(buf: &mut RecordedPaint, r: Rect) {
+    buf.clip(PushClipPayload::rect(r));
+}
+
+fn clip_rounded(buf: &mut RecordedPaint, r: Rect, corners: Corners) {
+    buf.clip(PushClipPayload::rounded(r, corners));
+}
+
 fn draw(buf: &mut RecordedPaint, r: Rect) {
     buf.draw_quad(DrawQuadPayload::rect(
         r,
@@ -235,7 +243,7 @@ fn compose_with_clip_groups_inner_draws_under_scissor() {
     let buf = run(
         |b, _arena| {
             draw(b, rect(0.0, 0.0, 10.0, 10.0));
-            b.clip(PushClipPayload::rect(rect(50.0, 50.0, 100.0, 100.0)));
+            clip(b, rect(50.0, 50.0, 100.0, 100.0));
             draw(b, rect(60.0, 60.0, 20.0, 20.0));
             draw(b, rect(90.0, 90.0, 20.0, 20.0));
             b.pop_clip();
@@ -263,8 +271,8 @@ fn compose_with_clip_groups_inner_draws_under_scissor() {
 fn compose_intersects_nested_clips() {
     let buf = run(
         |b, _arena| {
-            b.clip(PushClipPayload::rect(rect(0.0, 0.0, 100.0, 100.0)));
-            b.clip(PushClipPayload::rect(rect(50.0, 50.0, 100.0, 100.0)));
+            clip(b, rect(0.0, 0.0, 100.0, 100.0));
+            clip(b, rect(50.0, 50.0, 100.0, 100.0));
             draw(b, rect(60.0, 60.0, 10.0, 10.0));
             b.pop_clip();
             b.pop_clip();
@@ -288,7 +296,7 @@ fn cull_drops_drawrect_entirely_outside_active_clip() {
     // visible quad.
     let buf = run(
         |b, _arena| {
-            b.clip(PushClipPayload::rect(rect(0.0, 0.0, 100.0, 100.0)));
+            clip(b, rect(0.0, 0.0, 100.0, 100.0));
             draw(b, rect(20.0, 20.0, 30.0, 30.0)); // inside
             draw(b, rect(200.0, 200.0, 30.0, 30.0)); // entirely outside
             b.pop_clip();
@@ -304,7 +312,7 @@ fn cull_drops_drawrect_entirely_outside_active_clip() {
 fn cull_drops_drawtext_entirely_outside_active_clip() {
     let buf = run(
         |b, _arena| {
-            b.clip(PushClipPayload::rect(rect(0.0, 0.0, 100.0, 100.0)));
+            clip(b, rect(0.0, 0.0, 100.0, 100.0));
             text(b, rect(10.0, 10.0, 50.0, 20.0)); // inside
             text(b, rect(300.0, 300.0, 50.0, 20.0)); // outside
             b.pop_clip();
@@ -320,7 +328,7 @@ fn cull_keeps_drawrect_partially_inside_active_clip() {
     // its quad. Only fully-disjoint draws are dropped.
     let buf = run(
         |b, _arena| {
-            b.clip(PushClipPayload::rect(rect(0.0, 0.0, 100.0, 100.0)));
+            clip(b, rect(0.0, 0.0, 100.0, 100.0));
             draw(b, rect(80.0, 80.0, 50.0, 50.0)); // straddles the clip
             b.pop_clip();
         },
@@ -362,7 +370,7 @@ fn cull_drops_drawmesh_entirely_outside_active_clip() {
     // outside is culled.
     let buf = run(
         |b, _arena| {
-            b.clip(PushClipPayload::rect(rect(0.0, 0.0, 100.0, 100.0)));
+            clip(b, rect(0.0, 0.0, 100.0, 100.0));
             mesh(b, rect(10.0, 10.0, 30.0, 30.0)); // inside
             mesh(b, rect(200.0, 200.0, 30.0, 30.0)); // outside the clip
             b.pop_clip();
@@ -381,7 +389,7 @@ fn cull_handles_culled_text_then_quad_split() {
     // share one group with both rects in it (no spurious split).
     let buf = run(
         |b, _arena| {
-            b.clip(PushClipPayload::rect(rect(0.0, 0.0, 100.0, 100.0)));
+            clip(b, rect(0.0, 0.0, 100.0, 100.0));
             text(b, rect(300.0, 300.0, 50.0, 20.0)); // culled
             draw(b, rect(10.0, 10.0, 30.0, 30.0));
             draw(b, rect(50.0, 50.0, 30.0, 30.0));
@@ -402,7 +410,7 @@ fn cull_handles_culled_text_then_quad_split() {
 fn compose_skips_groups_with_no_quads() {
     let buf = run(
         |b, _arena| {
-            b.clip(PushClipPayload::rect(rect(0.0, 0.0, 50.0, 50.0)));
+            clip(b, rect(0.0, 0.0, 50.0, 50.0));
             b.pop_clip();
         },
         &params(1.0, UVec2::new(200, 200)),
@@ -422,15 +430,12 @@ fn compose_skips_groups_with_no_quads() {
 fn push_clip_rounded_lands_radius_on_group_and_inherits_through_rect() {
     let buf = run(
         |b, _arena| {
-            b.clip(PushClipPayload::rounded(
-                rect(10.0, 20.0, 100.0, 80.0),
-                Corners::all(8.0),
-            ));
+            clip_rounded(b, rect(10.0, 20.0, 100.0, 80.0), Corners::all(8.0));
             // Tier 1: direct draw under the rounded clip.
             draw(b, rect(20.0, 30.0, 40.0, 40.0));
             // Tier 2: nest a plain rect clip — children of THIS clip
             // must still inherit the rounded info from the ancestor.
-            b.clip(PushClipPayload::rect(rect(30.0, 40.0, 40.0, 30.0)));
+            clip(b, rect(30.0, 40.0, 40.0, 30.0));
             draw(b, rect(35.0, 45.0, 10.0, 10.0));
             b.pop_clip();
             b.pop_clip();
@@ -477,17 +482,11 @@ fn push_clip_rounded_lands_radius_on_group_and_inherits_through_rect() {
 fn push_clip_rounded_nested_builds_outer_inner_chain() {
     let buf = run(
         |b, _arena| {
-            b.clip(PushClipPayload::rounded(
-                rect(10.0, 10.0, 200.0, 200.0),
-                Corners::all(8.0),
-            ));
+            clip_rounded(b, rect(10.0, 10.0, 200.0, 200.0), Corners::all(8.0));
             draw(b, rect(20.0, 20.0, 40.0, 40.0));
-            b.clip(PushClipPayload::rounded(
-                rect(20.0, 20.0, 100.0, 100.0),
-                Corners::all(4.0),
-            ));
+            clip_rounded(b, rect(20.0, 20.0, 100.0, 100.0), Corners::all(4.0));
             draw(b, rect(30.0, 30.0, 20.0, 20.0));
-            b.clip(PushClipPayload::rect(rect(30.0, 30.0, 50.0, 50.0)));
+            clip(b, rect(30.0, 30.0, 50.0, 50.0));
             draw(b, rect(35.0, 35.0, 10.0, 10.0));
             b.pop_clip();
             b.pop_clip();
@@ -526,10 +525,11 @@ fn push_clip_rounded_nested_builds_outer_inner_chain() {
 
 fn push_distinct_rounded_clips(buffer: &mut RecordedPaint, depth: u32) {
     for level in 1..=depth {
-        buffer.clip(PushClipPayload::rounded(
+        clip_rounded(
+            buffer,
             rect(0.0, 0.0, 400.0, 400.0),
             Corners::all(level as f32),
-        ));
+        );
     }
 }
 
@@ -563,15 +563,9 @@ fn rounded_clip_chain_rejects_stencil_depth_256() {
 fn push_clip_rounded_redundant_identical_push_adds_no_depth() {
     let buf = run(
         |b, _arena| {
-            b.clip(PushClipPayload::rounded(
-                rect(10.0, 10.0, 100.0, 100.0),
-                Corners::all(8.0),
-            ));
+            clip_rounded(b, rect(10.0, 10.0, 100.0, 100.0), Corners::all(8.0));
             draw(b, rect(20.0, 20.0, 20.0, 20.0));
-            b.clip(PushClipPayload::rounded(
-                rect(10.0, 10.0, 100.0, 100.0),
-                Corners::all(8.0),
-            ));
+            clip_rounded(b, rect(10.0, 10.0, 100.0, 100.0), Corners::all(8.0));
             draw(b, rect(50.0, 50.0, 20.0, 20.0));
             b.pop_clip();
             b.pop_clip();
@@ -596,10 +590,7 @@ fn push_clip_rounded_redundant_identical_push_adds_no_depth() {
 fn push_clip_rounded_mask_rect_is_unclamped_to_viewport() {
     let buf = run(
         |b, _arena| {
-            b.clip(PushClipPayload::rounded(
-                rect(-50.0, -20.0, 200.0, 100.0),
-                Corners::all(8.0),
-            ));
+            clip_rounded(b, rect(-50.0, -20.0, 200.0, 100.0), Corners::all(8.0));
             draw(b, rect(0.0, 0.0, 10.0, 10.0));
             b.pop_clip();
         },
@@ -620,7 +611,7 @@ fn push_clip_rounded_mask_rect_is_unclamped_to_viewport() {
 fn push_clip_rect_emits_no_rounded_data() {
     let buf = run(
         |b, _arena| {
-            b.clip(PushClipPayload::rect(rect(10.0, 20.0, 100.0, 80.0)));
+            clip(b, rect(10.0, 20.0, 100.0, 80.0));
             draw(b, rect(20.0, 30.0, 10.0, 10.0));
             b.pop_clip();
         },
@@ -998,7 +989,7 @@ fn compose_transforms_clip_rects_to_screen_space() {
     let buf = run(
         |b, _arena| {
             b.push_transform(TranslateScale::from_scale(2.0));
-            b.clip(PushClipPayload::rect(rect(10.0, 10.0, 20.0, 20.0)));
+            clip(b, rect(10.0, 10.0, 20.0, 20.0));
             draw(b, rect(15.0, 15.0, 5.0, 5.0));
             b.pop_clip();
             b.pop_transform();
@@ -1078,11 +1069,11 @@ fn compose_does_not_split_consecutive_texts() {
 fn compose_same_clip_push_pop_preserves_overlap_state() {
     let buf = run(
         |b, _arena| {
-            b.clip(PushClipPayload::rect(rect(0.0, 0.0, 200.0, 200.0)));
+            clip(b, rect(0.0, 0.0, 200.0, 200.0));
             draw(b, rect(0.0, 0.0, 100.0, 28.0)); // node A bg
             text(b, rect(4.0, 4.0, 90.0, 20.0)); //  node A label
             // Redundant nested clip — same rect, no narrowing.
-            b.clip(PushClipPayload::rect(rect(0.0, 0.0, 200.0, 200.0)));
+            clip(b, rect(0.0, 0.0, 200.0, 200.0));
             b.pop_clip();
             // Overlapping bg after the redundant clip: must still
             // flush against node A's label.
@@ -1208,11 +1199,11 @@ fn compose_keeps_quads_then_text_in_one_group() {
 fn compose_coalesces_text_across_distinct_scissor_groups() {
     let buf = run(
         |b, _arena| {
-            b.clip(PushClipPayload::rect(rect(0.0, 0.0, 100.0, 30.0)));
+            clip(b, rect(0.0, 0.0, 100.0, 30.0));
             draw(b, rect(0.0, 0.0, 100.0, 28.0));
             text(b, rect(4.0, 4.0, 90.0, 20.0));
             b.pop_clip();
-            b.clip(PushClipPayload::rect(rect(0.0, 40.0, 100.0, 30.0)));
+            clip(b, rect(0.0, 40.0, 100.0, 30.0));
             draw(b, rect(0.0, 40.0, 100.0, 28.0));
             text(b, rect(4.0, 44.0, 90.0, 20.0));
             b.pop_clip();
@@ -1243,7 +1234,7 @@ fn compose_clipped_text_overflow_does_not_widen_batch_scissor() {
             // The run's intended visible region is 20px, but its
             // measured rect is 100px — the clip is the only thing
             // keeping the glyphs inside.
-            b.clip(PushClipPayload::rect(rect(40.0, 40.0, 20.0, 20.0)));
+            clip(b, rect(40.0, 40.0, 20.0, 20.0));
             text(b, rect(40.0, 40.0, 100.0, 20.0));
             b.pop_clip();
         },
@@ -1272,13 +1263,13 @@ fn compose_clipped_text_overflow_does_not_widen_batch_scissor() {
 /// all the same width).
 #[test]
 fn compose_strict_text_with_matching_clip_coalesces() {
-    let clip = rect(40.0, 40.0, 20.0, 20.0);
+    let clip_rect = rect(40.0, 40.0, 20.0, 20.0);
     let buf = run(
         |b, _arena| {
-            b.clip(PushClipPayload::rect(clip));
+            clip(b, clip_rect);
             text(b, rect(40.0, 40.0, 100.0, 20.0));
             b.pop_clip();
-            b.clip(PushClipPayload::rect(clip));
+            clip(b, clip_rect);
             text(b, rect(40.0, 40.0, 100.0, 20.0));
             b.pop_clip();
         },
@@ -1302,16 +1293,10 @@ fn compose_strict_text_with_matching_clip_coalesces() {
 fn compose_rounded_clip_change_splits_text_batch() {
     let buf = run(
         |b, _arena| {
-            b.clip(PushClipPayload::rounded(
-                rect(0.0, 0.0, 100.0, 30.0),
-                Corners::all(4.0),
-            ));
+            clip_rounded(b, rect(0.0, 0.0, 100.0, 30.0), Corners::all(4.0));
             text(b, rect(4.0, 4.0, 90.0, 20.0));
             b.pop_clip();
-            b.clip(PushClipPayload::rounded(
-                rect(0.0, 40.0, 100.0, 30.0),
-                Corners::all(8.0),
-            ));
+            clip_rounded(b, rect(0.0, 40.0, 100.0, 30.0), Corners::all(8.0));
             text(b, rect(4.0, 44.0, 90.0, 20.0));
             b.pop_clip();
         },
@@ -1717,7 +1702,7 @@ fn compose_spins_polyline_about_bbox_center() {
 fn compose_culled_mesh_between_texts_keeps_one_batch() {
     let buf = run(
         |b, _arena| {
-            b.clip(PushClipPayload::rect(rect(0.0, 0.0, 100.0, 100.0)));
+            clip(b, rect(0.0, 0.0, 100.0, 100.0));
             text(b, rect(0.0, 0.0, 100.0, 20.0));
             mesh(b, rect(200.0, 200.0, 30.0, 30.0)); // outside the clip → culled
             text(b, rect(0.0, 40.0, 100.0, 20.0));
@@ -1763,7 +1748,7 @@ fn compose_quad_overlap_with_prior_batch_text_splits_batch() {
         |b, _arena| {
             text(b, rect(0.0, 0.0, 100.0, 30.0)); // text A
             // Push a clip to force a fresh group; quad inside overlaps text A.
-            b.clip(PushClipPayload::rect(rect(0.0, 0.0, 200.0, 200.0)));
+            clip(b, rect(0.0, 0.0, 200.0, 200.0));
             draw(b, rect(10.0, 10.0, 50.0, 20.0)); // overlaps A → must close batch
             b.pop_clip();
             text(b, rect(0.0, 40.0, 100.0, 30.0)); // text B
@@ -2057,7 +2042,7 @@ fn compose_splits_curve_batches_across_scissor_groups() {
                 width: 2.0,
                 ..Default::default()
             });
-            b.clip(PushClipPayload::rect(rect(0.0, 0.0, 50.0, 200.0)));
+            clip(b, rect(0.0, 0.0, 50.0, 200.0));
             b.draw_curve(DrawCurvePayload {
                 bbox: rect(0.0, 0.0, 50.0, 50.0),
                 origin: Vec2::ZERO,
@@ -2727,7 +2712,7 @@ fn prune_keeps_quads_in_separate_groups_even_when_covered() {
     let buf = run(
         |b, _| {
             draw(b, rect(0.0, 0.0, 100.0, 100.0));
-            b.clip(PushClipPayload::rect(rect(0.0, 0.0, 200.0, 200.0)));
+            clip(b, rect(0.0, 0.0, 200.0, 200.0));
             draw(b, rect(0.0, 0.0, 100.0, 100.0));
             b.pop_clip();
         },
@@ -3386,7 +3371,7 @@ fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
         (
             "active clip disqualifies",
             |b| {
-                b.clip(PushClipPayload::rect(rect(0.0, 0.0, 150.0, 150.0)));
+                clip(b, rect(0.0, 0.0, 150.0, 150.0));
                 draw(b, rect(0.0, 0.0, 200.0, 200.0));
                 b.pop_clip();
             },
@@ -3451,7 +3436,7 @@ fn clear_fold_discards_hidden_underlay_mid_stream() {
         |b, _arena| {
             // Hidden underlay: a text run and a quad inside a clipped group.
             text(b, rect(10.0, 10.0, 50.0, 20.0));
-            b.clip(PushClipPayload::rect(rect(0.0, 0.0, 150.0, 150.0)));
+            clip(b, rect(0.0, 0.0, 150.0, 150.0));
             draw(b, rect(10.0, 10.0, 20.0, 20.0));
             b.pop_clip();
             // The cover lands under an active 2x transform: its world rect
