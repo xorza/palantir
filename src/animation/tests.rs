@@ -1057,7 +1057,8 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     // capture out of the FnMut closure.
     let captured: Cell<Option<AnimatedLook>> = Cell::new(None);
     let _ = h.at(Duration::from_millis(16)).frame(|ui| {
-        captured.set(Some(look.clone().animate(ui, id, &fallback, None)));
+        let target = look.to_animated(&fallback);
+        captured.set(Some(ui.animate(id, WidgetLook::SLOT_LOOK, target, None)));
         Frame::new().id(WidgetId::from_hash("look-test")).show(ui);
     });
     let snap = captured.take().expect("animate ran");
@@ -1092,15 +1093,55 @@ fn widget_look_animate_resolves_components_and_falls_back() {
         text: None,
     };
     let _ = h.at(Duration::from_millis(32)).frame(|ui| {
-        let _ = look2
-            .clone()
-            .animate(ui, id, &fallback, Some(AnimSpec::FAST));
+        let target = look2.to_animated(&fallback);
+        let _ = ui.animate(id, WidgetLook::SLOT_LOOK, target, Some(AnimSpec::FAST));
         Frame::new().id(WidgetId::from_hash("look-test")).show(ui);
     });
     assert!(
         h.anim_row_count::<AnimatedLook>() > 0,
         "Some(FAST) on changed fill must allocate an AnimatedLook row",
     );
+
+    // The other half of the `fallback_text` contract: a look that
+    // overrides `text` must not read the fallback at all — that is the
+    // case `to_animated` saves a `TextStyle` copy on, and nothing else
+    // here would fail if it went back to consulting it. The fallback is
+    // made wrong in every field so any read shows up.
+    let own_text = TextStyle {
+        font_size_px: fallback.font_size_px + 7.0,
+        color: Color::hex(0x00ff00),
+        line_height_mult: fallback.line_height_mult + 0.5,
+        ..fallback.clone()
+    };
+    let unread = TextStyle {
+        font_size_px: fallback.font_size_px + 99.0,
+        color: Color::hex(0xff00ff),
+        line_height_mult: fallback.line_height_mult + 9.0,
+        ..fallback.clone()
+    };
+    let look3 = WidgetLook {
+        background: Some(bg.clone()),
+        text: Some(own_text.clone()),
+    };
+    let captured: Cell<Option<AnimatedLook>> = Cell::new(None);
+    let _ = h.at(Duration::from_millis(48)).frame(|ui| {
+        let target = look3.to_animated(&unread);
+        captured.set(Some(ui.animate(
+            id.with("own"),
+            WidgetLook::SLOT_LOOK,
+            target,
+            None,
+        )));
+        Frame::new().id(WidgetId::from_hash("look-test")).show(ui);
+    });
+    let snap = captured.take().expect("animate ran");
+    assert_eq!(
+        snap.text.font_size_px,
+        fallback.font_size_px + 7.0,
+        "an overriding look keeps its own size, not the fallback's",
+    );
+    assert_eq!(snap.text.color, own_text.color);
+    assert_eq!(snap.text.line_height_mult, own_text.line_height_mult);
 }
 
 /// Pin: `#[animate(snap)]` fields update on retarget mid-spring, not
