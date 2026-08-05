@@ -6,6 +6,7 @@ use crate::scene::node::{Configure, ConfigureNode, Node};
 use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::widgets::response::Response;
+use crate::widgets::theme::WidgetTheme;
 use crate::widgets::theme::toggle::ToggleTheme;
 use crate::widgets::toggle::{self, ToggleChrome};
 
@@ -57,8 +58,9 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        let widget = ui.widget(self.node);
+        let mut widget = ui.widget(self.node);
         let response = widget.response(ui);
+        let id = widget.id();
 
         let mut selected = *self.current == self.value;
         // Radios latch — re-clicking the selected option is a no-op,
@@ -71,18 +73,29 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
             selected = true;
         }
 
-        // Geometry off the theme before `toggle_row`'s `&mut Ui`
-        // reborrow; the look itself is picked and animated in there,
-        // through the same `WidgetTheme::resolve` every other widget uses.
+        // Everything off `theme.radio` in one place, before `toggle_row`'s
+        // `&mut Ui` reborrow: the geometry this widget paints with, and the
+        // look itself. `toggle_row` is shared by three toggles reading three
+        // different slots, so naming the slot is the caller's job — and this
+        // is the only place it is named.
         let theme = self.style.unwrap_or(&ui.theme.radio);
         let pip_size = theme.box_size;
         let indicator = theme.indicator;
         let dot_inset = theme.indicator_inset;
+        let row_gap = theme.row_gap;
+        let look = WidgetTheme::resolve(
+            ui,
+            id,
+            &mut widget.node,
+            &response,
+            selected,
+            self.style,
+            |t| &t.radio,
+        );
 
         let chrome = ToggleChrome {
-            style: self.style,
-            slot: |t| &t.radio,
-            on: selected,
+            look,
+            row_gap,
             boxed: Node::leaf().size((Sizing::fixed(pip_size), Sizing::fixed(pip_size))),
             // Forces the pip chrome to a circle regardless of any
             // re-themed `radio.checked.normal.background.radius` — a

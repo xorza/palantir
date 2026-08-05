@@ -7,34 +7,25 @@ use crate::scene::node::{Configure, Node};
 use crate::ui::Ui;
 use crate::widgets::response::Response;
 use crate::widgets::text::Text;
-use crate::widgets::theme::Theme;
-use crate::widgets::theme::WidgetTheme;
-use crate::widgets::theme::toggle::ToggleTheme;
+use crate::widgets::theme::widget_look::animated_look::AnimatedLook;
 use crate::widgets::widget::Widget;
 
 /// What [`toggle_row`] needs from its caller beyond the entry, the
 /// label, and the indicator body.
 ///
-/// The theme is passed unresolved (`style` + `slot`) rather than as
-/// picked values: `toggle_row` hands both to [`WidgetTheme::resolve`],
-/// which is where every widget in the crate turns a theme bundle into a
-/// painted look. Callers still read the *geometry* scalars off the theme
-/// themselves — they need them to size `boxed` and to paint the
-/// indicator — but they no longer pick or animate.
+/// The theme arrives **resolved**. Each toggle reads its own slot
+/// (`theme.checkbox` / `theme.radio` / `theme.switch`) — they share a
+/// theme *type* but not a *slot*, and only the caller knows which is
+/// its own — so the caller is also where [`WidgetTheme::resolve`] runs,
+/// beside the geometry scalars it already copies off that same slot.
+/// What crosses into here is owned, which is what keeps the shared
+/// scaffolding out of the business of naming theme fields.
 #[derive(Debug)]
-pub(crate) struct ToggleChrome<'a> {
-    /// Per-instance override from the builder. `None` reads
-    /// `slot(&ui.theme)`.
-    pub(crate) style: Option<&'a ToggleTheme>,
-    /// Which [`Theme`] field the override falls back to. The three
-    /// toggles share a theme *type* but not a *slot* — restyling
-    /// `checkbox` must leave `radio` and `switch` alone — so the
-    /// fallback can't be hard-coded here.
-    pub(crate) slot: fn(&Theme) -> &ToggleTheme,
-    /// Checked / selected / on. Selects which of the theme's two look
-    /// packs the four-response pick runs inside; reaches
-    /// [`WidgetTheme::resolve`] as [`ToggleTheme`]'s `Mode`.
-    pub(crate) on: bool,
+pub(crate) struct ToggleChrome {
+    /// The picked, animated look for this response and on/off state.
+    pub(crate) look: AnimatedLook,
+    /// Gap between the box and the label, off the same slot as `look`.
+    pub(crate) row_gap: f32,
     /// The box/track child recorded before the label, already sized and
     /// in its layout mode — a square leaf for `Checkbox`/`RadioButton`,
     /// a wide `Canvas` for `Switch`'s track. `toggle_row` only stamps
@@ -64,25 +55,18 @@ pub(crate) fn toggle_row<'ui, 'text>(
     ui: &'ui mut Ui,
     mut widget: Widget,
     response: ResponseState,
-    chrome: ToggleChrome<'_>,
+    chrome: ToggleChrome,
     label: TextInput<'text>,
     body: impl FnOnce(&mut Ui, &Background),
 ) -> Response<'ui> {
     let id = widget.id();
-    let row_gap = chrome
-        .style
-        .unwrap_or_else(|| (chrome.slot)(&ui.theme))
-        .row_gap;
-    let mut look = WidgetTheme::resolve(
-        ui,
-        id,
-        &mut widget.node,
-        &response,
-        chrome.on,
-        chrome.style,
-        chrome.slot,
-    );
-    if let Some(radius) = chrome.pill {
+    let ToggleChrome {
+        mut look,
+        row_gap,
+        boxed,
+        pill,
+    } = chrome;
+    if let Some(radius) = pill {
         look.background.corners = Corners::all(radius);
     }
 
@@ -90,7 +74,7 @@ pub(crate) fn toggle_row<'ui, 'text>(
     widget.node.child_align = Align::v(VAlign::Center);
 
     widget.record(ui, None, |ui| {
-        ui.widget(chrome.boxed.id(id.with("box")))
+        ui.widget(boxed.id(id.with("box")))
             .record(ui, Some(&look.background), |ui| body(ui, &look.background));
 
         if !label.is_empty() {
@@ -126,12 +110,22 @@ mod tests {
     /// One test over all three because they are now one code path: a
     /// regression that reached only `Switch` would mean `Switch` had
     /// stopped sharing it.
+    ///
+    /// Each toggle gets its **own** spacing, so this also pins which slot
+    /// each one reads. `toggle_row` is shared but the slots are not —
+    /// restyling `checkbox` must leave `radio` and `switch` alone — and the
+    /// three now name their slot at their own `WidgetTheme::resolve` call.
+    /// Writing one value to all three slots could not tell them apart, so a
+    /// toggle reading its neighbour's slot passed.
     #[test]
     fn theme_spacing_reaches_every_toggle_row_and_explicit_wins() {
         // Asymmetric, and different from each other, so neither a
-        // padding/margin swap nor an axis swap can read as a pass.
-        let padding = Spacing::xy(7.0, 5.0);
-        let margin = Spacing::xy(3.0, 11.0);
+        // padding/margin swap nor an axis swap can read as a pass — and
+        // distinct per toggle, so nor can a slot mix-up.
+        let spacing = |n: f32| (Spacing::xy(n, n + 2.0), Spacing::xy(n + 4.0, n + 6.0));
+        let (cb_padding, cb_margin) = spacing(7.0);
+        let (rb_padding, rb_margin) = spacing(23.0);
+        let (sw_padding, sw_margin) = spacing(41.0);
 
         #[track_caller]
         fn check(
@@ -151,10 +145,10 @@ mod tests {
         }
 
         let mut h = UiHarness::new(UVec2::new(400, 300));
-        for slot in [
-            &mut h.ui.theme.checkbox,
-            &mut h.ui.theme.radio,
-            &mut h.ui.theme.switch,
+        for (slot, (padding, margin)) in [
+            (&mut h.ui.theme.checkbox, (cb_padding, cb_margin)),
+            (&mut h.ui.theme.radio, (rb_padding, rb_margin)),
+            (&mut h.ui.theme.switch, (sw_padding, sw_margin)),
         ] {
             slot.padding = padding;
             slot.margin = margin;
@@ -175,7 +169,7 @@ mod tests {
                     .node(),
             ]
         });
-        check("Checkbox", &h, rows, padding, margin);
+        check("Checkbox", &h, rows, cb_padding, cb_margin);
 
         let (mut c, mut d) = (0_u8, 0_u8);
         let rows = h.frame_value(|ui| {
@@ -192,7 +186,7 @@ mod tests {
                     .node(),
             ]
         });
-        check("RadioButton", &h, rows, padding, margin);
+        check("RadioButton", &h, rows, rb_padding, rb_margin);
 
         let (mut e, mut f) = (false, false);
         let rows = h.frame_value(|ui| {
@@ -209,6 +203,6 @@ mod tests {
                     .node(),
             ]
         });
-        check("Switch", &h, rows, padding, margin);
+        check("Switch", &h, rows, sw_padding, sw_margin);
     }
 }
