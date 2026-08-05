@@ -14,7 +14,26 @@ use std::hint::black_box;
 use std::time::Duration;
 
 const ENTRY_COUNT: usize = 8192;
-const QUERY: Vec2 = Vec2::new(640.0, 400.0);
+/// Tile pitch for the hit fixture's disjoint rects, and how many fit a
+/// row. `TILE` leaves a 2 px gutter so a query can land between tiles.
+const TILE: f32 = 20.0;
+const TILES_PER_ROW: usize = 64;
+/// In a gutter: inside the tiled region's bounds but no rect contains
+/// it, so the scan runs to the end and finds nothing. The full-traversal
+/// case, and the one a spatial index would fix.
+const QUERY_MISS: Vec2 = Vec2::new(TILE - 1.0, TILE - 1.0);
+
+/// Inside the *last-pushed* interactive tile — the top of the paint
+/// order, so `hits_under`'s reverse scan matches on its first test.
+/// Pairs with [`QUERY_MISS`]: flat against density where the miss is
+/// linear, which is what makes the sweep a scan-length curve rather
+/// than two copies of the same number.
+fn topmost_query(interactive_count: usize) -> Vec2 {
+    let index = interactive_count.saturating_sub(1);
+    let x = (index % TILES_PER_ROW) as f32 * TILE;
+    let y = (index / TILES_PER_ROW) as f32 * TILE;
+    Vec2::new(x + TILE * 0.5, y + TILE * 0.5)
+}
 const FRAME_SIZE: UVec2 = UVec2::new(3840, 4800);
 const DISPLAY_SCALE: f32 = 2.0;
 
@@ -43,16 +62,29 @@ const DENSITIES: [Density; 4] = [
     },
 ];
 
+/// `density.percent` of [`ENTRY_COUNT`] rows are interactive, tiled into
+/// a disjoint grid.
+///
+/// **Disjoint is the whole point.** Every row used to carry the same
+/// full-screen rect, so `hits_under`'s reverse scan matched the first
+/// row it tested and returned — at every density, for every query. The
+/// group read 1-2 ns across the board and measured an early exit rather
+/// than the traversal it is named for. Only interactive rows reach
+/// `Cascade::hits` at all, so the old comment's "inert rows above
+/// interactive ones" described rows that were never there.
+///
+/// With tiles, a query lands in at most one, and the two `QUERY_*`
+/// constants pick how far the scan runs before it stops.
 fn fixture(density: Density) -> Cascade {
     let interactive_count = ENTRY_COUNT * density.percent / 100;
     let mut cascade = Cascade::default();
     cascade.entries.reserve(ENTRY_COUNT);
     for index in 0..ENTRY_COUNT {
-        // Put inert rows above interactive rows so sparse traversal cost stays visible.
-        let interactive = index < interactive_count;
-        if interactive {
+        if index < interactive_count {
+            let x = (index % TILES_PER_ROW) as f32 * TILE;
+            let y = (index / TILES_PER_ROW) as f32 * TILE;
             cascade.hits.push(HitRow {
-                rect: Rect::new(0.0, 0.0, 1280.0, 800.0),
+                rect: Rect::new(x, y, TILE - 2.0, TILE - 2.0),
                 widget_id: WidgetId::from_hash(index),
                 sense: Sense::HOVER | Sense::CLICK | Sense::SCROLL | Sense::PINCH,
                 focusable: true,
@@ -181,22 +213,35 @@ pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Run<'_>) {
 
     for density in DENSITIES {
         let cascade = fixture(density);
-        group.bench_function(BenchmarkId::new("targets", density.label), |b| {
-            b.iter(|| {
-                black_box(cascade.hit_test_targets(
-                    QUERY,
-                    Sense::hovers,
-                    Sense::scrolls,
-                    Sense::pinches,
-                ))
+        let interactive = ENTRY_COUNT * density.percent / 100;
+        // `topmost` exits on the first row tested and should stay flat
+        // across the sweep; `miss` traverses every row and should scale
+        // with it. The gap between the two curves is the scan cost a
+        // spatial index would remove — and the reason a single query
+        // could not measure this group.
+        for (query_label, query) in [
+            ("topmost", topmost_query(interactive)),
+            ("miss", QUERY_MISS),
+        ] {
+            let id =
+                |name: &str| BenchmarkId::new(name, format!("{}/{}", query_label, density.label));
+            group.bench_function(id("targets"), |b| {
+                b.iter(|| {
+                    black_box(cascade.hit_test_targets(
+                        black_box(query),
+                        Sense::hovers,
+                        Sense::scrolls,
+                        Sense::pinches,
+                    ))
+                });
             });
-        });
-        group.bench_function(BenchmarkId::new("click_focus", density.label), |b| {
-            b.iter(|| {
-                black_box(cascade.hit_test(QUERY, Sense::clicks));
-                black_box(cascade.hit_test_focusable(QUERY));
+            group.bench_function(id("click_focus"), |b| {
+                b.iter(|| {
+                    black_box(cascade.hit_test(black_box(query), Sense::clicks));
+                    black_box(cascade.hit_test_focusable(black_box(query)));
+                });
             });
-        });
+        }
     }
 
     group.finish();
