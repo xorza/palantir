@@ -14,7 +14,7 @@ use crate::renderer::frontend::FrameScene;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::{
     BrushSource, DrawCurvePayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload,
-    ResolvedGradient,
+    DrawQuadPayload, PushClipPayload, ResolvedGradient,
 };
 use crate::renderer::gpu_view::GpuViewEntry;
 use crate::renderer::gradient_atlas::handle::SharedGradientAtlas;
@@ -159,11 +159,11 @@ impl Encoder {
     /// pre-fusion capture.
     ///
     /// [`Frontend::build`]: crate::renderer::frontend::Frontend::build
-    pub(crate) fn encode<S: PaintSink>(
+    pub(crate) fn encode(
         &mut self,
         scene: &FrameScene<'_>,
         plan: RenderPlan,
-        out: &mut S,
+        out: &mut dyn PaintSink,
     ) {
         let Self {
             gradients: gradient_resolver,
@@ -257,7 +257,7 @@ impl std::fmt::Debug for LayerCtx<'_> {
 /// ignores any clip context the colliding widgets sit under (scroll
 /// viewports, clipped popups). Both `NodeId`s are precomputed at
 /// recording time (`SeenIds.curr` hashmap lookup) — no tree scan.
-fn emit_collision_overlays<S: PaintSink>(forest: &Forest, layout: &Layout, out: &mut S) {
+fn emit_collision_overlays(forest: &Forest, layout: &Layout, out: &mut dyn PaintSink) {
     if forest.collisions.is_empty() {
         return;
     }
@@ -279,12 +279,12 @@ fn emit_collision_overlays<S: PaintSink>(forest: &Forest, layout: &Layout, out: 
             if ep.node.idx() >= rects.len() {
                 continue;
             }
-            out.draw_rect(
+            out.draw_quad(DrawQuadPayload::rect(
                 rects[ep.node.idx()],
                 Corners::ZERO,
                 BrushSource::Solid(ColorF16::TRANSPARENT),
                 COLLISION_OVERLAY_STROKE.into(),
-            );
+            ));
         }
     }
 }
@@ -294,14 +294,14 @@ fn emit_collision_overlays<S: PaintSink>(forest: &Forest, layout: &Layout, out: 
 /// match. `text_ordinal` is the within-node index of the next
 /// `ShapeRecord::Text` to consume from `layout.text_spans[id]`; the caller
 /// increments it after this function emits a text run.
-fn emit_one_shape<S: PaintSink>(
+fn emit_one_shape(
     ctx: &mut LayerCtx<'_>,
     id: NodeId,
     owner_rect: Rect,
     shape_idx: u32,
     shape: &ShapeRecord,
     text_ordinal: u32,
-    out: &mut S,
+    out: &mut dyn PaintSink,
 ) {
     // **The lowered-shape invariant**, asserted at the one point every
     // lowered shape passes through. `Shapes::add` is the single gate
@@ -349,8 +349,12 @@ fn emit_one_shape<S: PaintSink>(
                 let r = resolve_local_rect(owner_rect, *local_rect);
                 let src = ctx.brush_source(*fill);
                 match kind {
-                    RectKind::Rounded => out.draw_rect(r, *corners, src, *stroke),
-                    RectKind::Windowed => out.draw_rect_window(r, *corners, src, *stroke),
+                    RectKind::Rounded => {
+                        out.draw_quad(DrawQuadPayload::rect(r, *corners, src, *stroke))
+                    }
+                    RectKind::Windowed => {
+                        out.draw_quad(DrawQuadPayload::rect_window(r, *corners, src, *stroke))
+                    }
                 }
             }
             QuadShape::Shadow {
@@ -372,7 +376,13 @@ fn emit_one_shape<S: PaintSink>(
                 // fill only — the reused quad lanes have no room for a gradient.
                 // Stroke noop-normalization happens inside `draw_triangle`
                 // (`PaintSink`'s provided half is the single canonical gate).
-                out.draw_triangle(owner_rect.min, [*a, *b, *c], *fill, *radius, *stroke)
+                out.draw_quad(DrawQuadPayload::triangle(
+                    owner_rect.min,
+                    [*a, *b, *c],
+                    *fill,
+                    *radius,
+                    *stroke,
+                ))
             }
         },
         ShapeRecord::Text {
@@ -553,7 +563,7 @@ fn emit_one_shape<S: PaintSink>(
     }
 }
 
-fn encode_node<S: PaintSink>(ctx: &mut LayerCtx<'_>, id: NodeId, out: &mut S) {
+fn encode_node(ctx: &mut LayerCtx<'_>, id: NodeId, out: &mut dyn PaintSink) {
     if ctx.cascade_inputs[id.idx()].invisible() {
         return;
     }
@@ -622,7 +632,7 @@ fn encode_node<S: PaintSink>(ctx: &mut LayerCtx<'_>, id: NodeId, out: &mut S) {
         // paint extent and damage extent stay in lockstep.
         emit_shadow(out, rect, None, bg.corners, &bg.shadow);
         let src = ctx.brush_source(bg.fill);
-        out.draw_rect(rect, bg.corners, src, bg.stroke);
+        out.draw_quad(DrawQuadPayload::rect(rect, bg.corners, src, bg.stroke));
     }
 
     if clip {
@@ -633,7 +643,7 @@ fn encode_node<S: PaintSink>(ctx: &mut LayerCtx<'_>, id: NodeId, out: &mut S) {
         let padding = ctx.tree.records.layout()[id.idx()].padding;
         let mask_rect = rect.deflated_by(padding);
         match mode {
-            ClipMode::Rect => out.push_clip(mask_rect),
+            ClipMode::Rect => out.clip(PushClipPayload::rect(mask_rect)),
             ClipMode::Rounded => {
                 // Per-corner reduction by the larger of the two
                 // adjacent edge insets so the mask curve stays inside
@@ -651,7 +661,7 @@ fn encode_node<S: PaintSink>(ctx: &mut LayerCtx<'_>, id: NodeId, out: &mut S) {
                     (pbr - pb.max(pr)).max(0.0),
                     (pbl - pb.max(pl)).max(0.0),
                 );
-                out.push_clip_rounded(mask_rect, mask_radius);
+                out.clip(PushClipPayload::rounded(mask_rect, mask_radius));
             }
             ClipMode::None => {}
         }
@@ -724,8 +734,8 @@ fn encode_node<S: PaintSink>(ctx: &mut LayerCtx<'_>, id: NodeId, out: &mut S) {
 /// owner-relative `local_rect`) both route here so the
 /// `shadow_paint_rect_local` translation + fill-axis packing
 /// can't drift between the two views.
-fn emit_shadow<S: PaintSink>(
-    out: &mut S,
+fn emit_shadow(
+    out: &mut dyn PaintSink,
     owner_rect: Rect,
     local_rect: Option<Rect>,
     corners: Corners,
@@ -758,7 +768,7 @@ fn emit_shadow<S: PaintSink>(
             FillAxis::from_lanes(0.0, 0.0, blur, spread),
         )
     };
-    out.draw_shadow(
+    out.draw_quad(DrawQuadPayload::shadow(
         paint_rect,
         corners,
         // LoweredShadow.color is `ColorF16` (the field); the payload
@@ -767,7 +777,7 @@ fn emit_shadow<S: PaintSink>(
         shadow.color,
         kind,
         fill_axis,
-    );
+    ));
 }
 
 /// Output of [`resolve_fit`]: the final paint rect + UV crop the

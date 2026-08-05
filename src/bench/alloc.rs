@@ -3,7 +3,7 @@
 //! No driver registry here, unlike the criterion runner next door: this
 //! target is one bench of a few steps, all of which answer the same
 //! question, so there is nothing to select between. See
-//! [`crate::host::bench`] for the steps.
+//! `crate::host::bench` for the steps.
 
 use crate::host::bench;
 use clap::Parser;

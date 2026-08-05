@@ -6,13 +6,19 @@
 //! command stream. Tests and benches add a recording sink
 //! (`record_sink`) that captures the same calls as owned values.
 //!
-//! The trait splits in two halves. **Required** methods take a fully
-//! lowered payload — one per paint operation, matching what the composer
-//! consumes. **Provided** methods are the encoder-facing surface: they
-//! own the no-op gates and the brush/stroke lowering, then call down.
-//! Keeping that half here rather than in either sink is what keeps the
-//! gate single-copy — it can't drift between the two sinks because
-//! there is only one copy of it.
+//! Each `draw_*` method is the no-op gate for one payload kind: it
+//! tests `is_noop` and calls the matching sink method, or nothing.
+//! Keeping the gate here rather than in either sink is what keeps it
+//! single-copy — it can't drift between the two because there is only
+//! one copy of it.
+//!
+//! Building the payloads is *not* here. A rect's brush lowering, a
+//! shadow's fill lanes, a triangle's geometry — those are constructors
+//! on the payload types (`DrawQuadPayload::rect`,
+//! `PushClipPayload::rect`, …), because none of them touch a sink. The
+//! trait is one job: receive a paint op, gated. That is also what keeps
+//! it object-safe, so the encoder paints through `&mut dyn PaintSink`
+//! and compiles once rather than once per sink.
 //!
 //! ## Noop policy
 //!
@@ -35,13 +41,13 @@
 //!    `Background::is_noop` at `Tree::open_node` is the same tier for
 //!    chrome, skipping a sparse-column write.
 //! 3. **Lowered payloads** (`Draw*Payload::is_noop`, called from this
-//!    trait's provided half) are the **single correctness gate**.
+//!    this trait's `draw_*` half) are the **single correctness gate**.
 //!    Callers don't pre-check and the encoder doesn't gate per branch;
 //!    everything funnels here.
 //!
 //! So tier 2 is an optimization and tier 3 is correctness — a shape
 //! that slips past tier 2 still paints nothing, but pays for lowering.
-//! The gate is not *unbypassable*: the required half is crate-visible,
+//! The gate is not *unbypassable*: the ungated half is crate-visible,
 //! so `sink.quad(payload)` compiles anywhere and skips it.
 //! `RecordedPaint::replay` is the one place that does, and only because
 //! its input already passed.
@@ -59,22 +65,20 @@
 //!
 //! [`Encoder`]: crate::renderer::frontend::encoder::Encoder
 
-use crate::primitives::brush::gradient::FillAxis;
 use crate::primitives::color::ColorF16;
-use crate::primitives::corners::Corners;
-use crate::primitives::fill_wire::{FillKind, LutRow};
 use crate::primitives::rect::Rect;
 use crate::primitives::transform::TranslateScale;
 use crate::renderer::frontend::payload::{
-    BrushSource, DrawCurvePayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload,
-    DrawQuadPayload, DrawTextPayload, GpuFillFields, PushClipPayload, QuadGeom,
+    DrawCurvePayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload, DrawQuadPayload,
+    DrawTextPayload, PushClipPayload,
 };
 use crate::renderer::gpu_view::GpuPaintRef;
-use crate::scene::shapes::paint::ShapeStroke;
 use crate::text::shaped_ref::ShapedTextRef;
 
 /// Sink for one frame's lowered paint operations, in authoring order.
-/// See the module docs for the required/provided split.
+/// One `draw_*` gate and one ungated method per payload kind; see the
+/// module docs for why the gate lives here and payload construction
+/// doesn't.
 pub(crate) trait PaintSink {
     /// Push a clip region. `payload.corners` is zero for a rect clip.
     fn clip(&mut self, payload: PushClipPayload);
@@ -99,100 +103,6 @@ pub(crate) trait PaintSink {
     fn image(&mut self, payload: DrawImagePayload, paint: Option<&GpuPaintRef>);
 
     fn curve(&mut self, payload: DrawCurvePayload);
-
-    #[inline]
-    fn push_clip(&mut self, rect: Rect) {
-        self.clip(PushClipPayload {
-            rect,
-            corners: Corners::ZERO,
-        });
-    }
-
-    #[inline]
-    fn push_clip_rounded(&mut self, rect: Rect, corners: Corners) {
-        self.clip(PushClipPayload { rect, corners });
-    }
-
-    #[inline]
-    fn draw_rect(&mut self, rect: Rect, corners: Corners, fill: BrushSource, stroke: ShapeStroke) {
-        self.draw_rect_impl(rect, corners, fill, stroke, false);
-    }
-
-    /// Windowed-rect sibling of [`Self::draw_rect`]: same payload, but
-    /// the `FillKind` carries the window bit so the shader inverts the
-    /// fill coverage (fill outside the rounded boundary, transparent
-    /// window inside the stroke). The bit also keeps the composer's
-    /// opaque-cover checks (`fill_kind == FillKind::SOLID`) from
-    /// treating the quad as an occluder — its interior is a hole.
-    #[inline]
-    fn draw_rect_window(
-        &mut self,
-        rect: Rect,
-        corners: Corners,
-        fill: BrushSource,
-        stroke: ShapeStroke,
-    ) {
-        self.draw_rect_impl(rect, corners, fill, stroke, true);
-    }
-
-    #[inline]
-    fn draw_rect_impl(
-        &mut self,
-        rect: Rect,
-        corners: Corners,
-        fill: BrushSource,
-        stroke: ShapeStroke,
-        window: bool,
-    ) {
-        // Stroke stays solid-only — gradient strokes are a non-goal.
-        let GpuFillFields {
-            color: fill_color,
-            kind: fill_kind,
-            lut_row: fill_lut_row,
-            axis: fill_axis,
-        } = fill.to_gpu_fields();
-        let fill_kind = if window {
-            fill_kind.with_window()
-        } else {
-            fill_kind
-        };
-        self.draw_quad(DrawQuadPayload {
-            geom: QuadGeom::Rect { rect, corners },
-            fill: fill_color,
-            stroke: stroke.normalized(),
-            fill_kind,
-            fill_lut_row,
-            fill_axis,
-        });
-    }
-
-    /// Paint a shadow. For a drop shadow, `rect` is the offset source
-    /// inflated by `3σ + max(spread, 0)`; for an inset shadow it is the
-    /// source rect. `corners` is the source shape's corner radii,
-    /// `color` the shadow tint, `fill_kind`
-    /// `FillKind::SHADOW_DROP|SHADOW_INSET`. Drop shadows carry
-    /// `(0, 0, σ, spread)` in `fill_axis`; inset shadows carry
-    /// `(offset.x, offset.y, σ, spread)`. The composer scales the
-    /// logical-px lanes to physical px on emit.
-    #[inline]
-    fn draw_shadow(
-        &mut self,
-        rect: Rect,
-        corners: Corners,
-        color: ColorF16,
-        fill_kind: FillKind,
-        fill_axis: FillAxis,
-    ) {
-        self.draw_quad(DrawQuadPayload {
-            geom: QuadGeom::Rect { rect, corners },
-            fill: color,
-            // A shadow has no stroke; its whole edge is the blur.
-            stroke: ShapeStroke::NONE,
-            fill_kind,
-            fill_lut_row: LutRow::FALLBACK,
-            fill_axis,
-        });
-    }
 
     /// The one no-op gate for the quad tier — rect, windowed rect,
     /// shadow, and triangle all funnel through it, so the four cannot
@@ -247,37 +157,6 @@ pub(crate) trait PaintSink {
         self.curve(payload);
     }
 
-    /// Paint a rounded triangle from three owner-local `points` offset
-    /// by `origin`. Same quad-tier draw as [`Self::draw_rect`], down to
-    /// the shared stroke normalization — only the geometry and the SDF
-    /// the `FillKind` selects differ.
-    fn draw_triangle(
-        &mut self,
-        origin: glam::Vec2,
-        points: [glam::Vec2; 3],
-        fill: ColorF16,
-        radius: f32,
-        stroke: ShapeStroke,
-    ) {
-        let [a, b, c] = points;
-        self.draw_quad(DrawQuadPayload {
-            geom: QuadGeom::Triangle {
-                origin,
-                a,
-                b,
-                c,
-                radius,
-            },
-            fill,
-            stroke: stroke.normalized(),
-            fill_kind: FillKind::TRIANGLE,
-            // The composer overwrites both reused lanes from the
-            // transformed points, so neither is read from here.
-            fill_lut_row: LutRow::FALLBACK,
-            fill_axis: FillAxis::ZERO,
-        });
-    }
-
     /// Paint a polyline against already-staged points and colors. The
     /// recorder pushes onto `polyline_points` / `polyline_colors`
     /// directly (so the encoder can apply the owner-rect offset inline
@@ -325,7 +204,7 @@ mod tests {
     use crate::primitives::texture_id::TextureId;
     use crate::renderer::frontend::paint_sink::PaintSink;
     use crate::renderer::frontend::payload::{
-        BrushSource, DrawImagePayload, DrawPolylinePayload, QuadGeom,
+        BrushSource, DrawImagePayload, DrawPolylinePayload, DrawQuadPayload, QuadGeom,
     };
     use crate::renderer::frontend::record_sink::{PaintCall, RecordedPaint};
     use crate::renderer::gpu_view::{GpuFrameCtx, GpuPaint, GpuPaintRef};
@@ -426,12 +305,12 @@ mod tests {
         ];
         for (label, stroke, expect_normalized) in cases {
             let mut rb = RecordedPaint::default();
-            rb.draw_rect(
+            rb.draw_quad(DrawQuadPayload::rect(
                 Rect::new(0.0, 0.0, 10.0, 10.0),
                 Corners::ZERO,
                 BrushSource::Solid(fill.into()),
                 stroke,
-            );
+            ));
             let Some(PaintCall::Quad(rp)) = rb.calls.first() else {
                 panic!("case {label}: expected a rect quad");
             };
@@ -441,7 +320,7 @@ mod tests {
             );
 
             let mut tb = RecordedPaint::default();
-            tb.draw_triangle(
+            tb.draw_quad(DrawQuadPayload::triangle(
                 Vec2::ZERO,
                 [
                     Vec2::new(0.0, 0.0),
@@ -451,7 +330,7 @@ mod tests {
                 fill.into(),
                 0.0,
                 stroke,
-            );
+            ));
             let Some(PaintCall::Quad(tp)) = tb.calls.first() else {
                 panic!("case {label}: expected a triangle quad");
             };
