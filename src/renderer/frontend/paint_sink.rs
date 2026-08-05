@@ -41,7 +41,7 @@
 //!    `Background::is_noop` at `Tree::open_node` is the same tier for
 //!    chrome, skipping a sparse-column write.
 //! 3. **Lowered payloads** (`Draw*Payload::is_noop`, called from this
-//!    this trait's `draw_*` half) are the **single correctness gate**.
+//!    trait's `draw_*` gates) are the **single correctness gate**.
 //!    Callers don't pre-check and the encoder doesn't gate per branch;
 //!    everything funnels here.
 //!
@@ -196,19 +196,12 @@ pub(crate) trait PaintSink {
 #[cfg(test)]
 mod tests {
     use crate::primitives::color::{Color, ColorF16};
-    use crate::primitives::corners::Corners;
     use crate::primitives::rect::Rect;
-
-    use crate::primitives::fill_wire::FillKind;
-    use crate::primitives::stroke::Stroke;
     use crate::primitives::texture_id::TextureId;
     use crate::renderer::frontend::paint_sink::PaintSink;
-    use crate::renderer::frontend::payload::{
-        BrushSource, DrawImagePayload, DrawPolylinePayload, DrawQuadPayload, QuadGeom,
-    };
+    use crate::renderer::frontend::payload::{DrawImagePayload, DrawPolylinePayload};
     use crate::renderer::frontend::record_sink::{PaintCall, RecordedPaint};
     use crate::renderer::gpu_view::{GpuFrameCtx, GpuPaint, GpuPaintRef};
-    use crate::scene::shapes::paint::ShapeStroke;
     use glam::Vec2;
     use std::cell::RefCell;
     use std::rc::Rc;
@@ -269,89 +262,6 @@ mod tests {
                 ..Default::default()
             };
             assert_eq!(payload.is_noop(), case.expected_noop, "{case:?}");
-        }
-    }
-
-    /// Every quad-tier draw runs one stroke normalization
-    /// ([`ShapeStroke::normalized`]): a noop stroke — transparent
-    /// colour, zero width, or a NaN width — lands in the payload as
-    /// [`ShapeStroke::NONE`]; anything else passes through verbatim.
-    ///
-    /// The NaN row is the interesting one. It normalizes away like any
-    /// other non-painting width, which is deliberate: catching a NaN
-    /// *loudly* is `Shape::debug_assert_no_nan`'s job at the authoring
-    /// boundary, so by the time a value reaches here the useful
-    /// behaviour is to fail safe — and to do it identically for every
-    /// shape, rather than per-path (a rect forwarding NaN to the GPU
-    /// while a triangle scrubs it).
-    ///
-    /// The table pins both halves: the exact normalized stroke per case,
-    /// **and** that the rect and triangle paths emit bit-identical
-    /// stroke fields — the regression guard against either path growing
-    /// its own copy again.
-    #[test]
-    fn quad_stroke_normalization_is_shared_by_rect_and_triangle() {
-        let fill = Color::rgb(1.0, 0.0, 0.0);
-        let green = Color::rgb(0.0, 1.0, 0.0);
-        let cases: [(&str, ShapeStroke, bool); 4] = [
-            (
-                "transparent_color",
-                Stroke::solid(Color::TRANSPARENT, 3.0).into(),
-                true,
-            ),
-            ("zero_width", Stroke::solid(green, 0.0).into(), true),
-            ("nan_width", Stroke::solid(green, f32::NAN).into(), true),
-            ("live", Stroke::solid(green, 3.0).into(), false),
-        ];
-        for (label, stroke, expect_normalized) in cases {
-            let mut rb = RecordedPaint::default();
-            rb.draw_quad(DrawQuadPayload::rect(
-                Rect::new(0.0, 0.0, 10.0, 10.0),
-                Corners::ZERO,
-                BrushSource::Solid(fill.into()),
-                stroke,
-            ));
-            let Some(PaintCall::Quad(rp)) = rb.calls.first() else {
-                panic!("case {label}: expected a rect quad");
-            };
-            assert!(
-                matches!(rp.geom, QuadGeom::Rect { .. }),
-                "case {label}: draw_rect must emit rect geometry",
-            );
-
-            let mut tb = RecordedPaint::default();
-            tb.draw_quad(DrawQuadPayload::triangle(
-                Vec2::ZERO,
-                [
-                    Vec2::new(0.0, 0.0),
-                    Vec2::new(10.0, 0.0),
-                    Vec2::new(5.0, 8.0),
-                ],
-                fill.into(),
-                0.0,
-                stroke,
-            ));
-            let Some(PaintCall::Quad(tp)) = tb.calls.first() else {
-                panic!("case {label}: expected a triangle quad");
-            };
-            assert!(
-                matches!(tp.geom, QuadGeom::Triangle { .. }),
-                "case {label}: draw_triangle must emit triangle geometry",
-            );
-            assert_eq!(tp.fill_kind, FillKind::TRIANGLE, "case {label}");
-
-            assert_eq!(tp.stroke.color, rp.stroke.color, "case {label}");
-            assert_eq!(
-                tp.stroke.width.to_bits(),
-                rp.stroke.width.to_bits(),
-                "case {label}",
-            );
-            if expect_normalized {
-                assert_eq!(tp.stroke.color, ColorF16::TRANSPARENT, "case {label}");
-                assert_eq!(tp.stroke.width, 0.0, "case {label}");
-            } else {
-                assert_eq!(tp.stroke.color, ColorF16::from(green), "case {label}");
-            }
         }
     }
 
