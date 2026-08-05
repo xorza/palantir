@@ -10,3 +10,4 @@ pub(crate) mod index16;
 pub(crate) mod platform;
 pub(crate) mod probe;
 pub(crate) mod time;
+pub(crate) mod tracy;

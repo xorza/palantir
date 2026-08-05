@@ -81,6 +81,12 @@ clap = { version = "4", optional = true, features = ["derive"] }
 dhat = { version = "0.3", optional = true }
 gethostname = { version = "1.1", optional = true }
 profiling = { version = "1.0", default-features = false, features = ["procmacros"] }
+# Named directly, not just through `profiling`: each window marks its own
+# Tracy frame set, and `secondary_frame_mark` has no equivalent in the
+# facade — `finish_frame!` marks the main set and nothing else. Pin to
+# whatever `profiling/profile-with-tracy` resolves to so cargo dedupes to
+# one tracy-client instance (one FFI connection); bump in lockstep.
+tracy-client = { version = "0.18", default-features = false, optional = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter"], optional = true }
 
 [dev-dependencies]
@@ -155,7 +161,7 @@ winit-host = ["dep:pollster", "dep:winit"]
 # Profiler backend — off by default (zero overhead).
 # Tracy needs an external viewer; wgpu's own GPU zones light up
 # automatically because `profiling` is a singleton in the dep graph.
-profile-with-tracy = ["profiling/profile-with-tracy"]
+profile-with-tracy = ["profiling/profile-with-tracy", "dep:tracy-client"]
 
 [profile.bench]
 debug = true

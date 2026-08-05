@@ -223,3 +223,10 @@ re-walk, not from microarchitecture tuning.
 single-threaded). RenderDoc or Tracy (`profile-with-tracy`) for GPU
 work. `iai-callgrind` for instruction counts when wall-clock variance
 hides a small win.
+
+**Tracy frame sets.** Each window marks its own — `window 0`, `window 1`,
+… — because windows paint on independent schedules and no single frame
+spans them. The *main* set, the one driving the FPS readout, is marked
+only while exactly one window is open; with a second open it falls quiet
+by design and the per-window sets carry everything. Pick the set in
+Tracy's frame-set dropdown.
