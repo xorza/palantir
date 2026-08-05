@@ -75,7 +75,6 @@ fn logical_rect_to_phys_scissor(r: Rect, buffer: &RenderBuffer) -> Option<URect>
 /// (`DamageRegion::collapse_from`) and the AA padding keeps their
 /// scissors nonzero. An empty result means the plan and composed draw
 /// list disagree; it must not degrade to a full clear.
-#[profiling::function]
 pub(super) fn build_repaint_scissors(
     render_kind: RenderKind,
     buffer: &RenderBuffer,

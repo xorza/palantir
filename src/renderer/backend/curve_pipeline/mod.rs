@@ -137,7 +137,6 @@ impl CurvePipeline {
         )
     }
 
-    #[profiling::function]
     pub(super) fn upload(&mut self, ctx: &mut GpuCtx<'_>, instances: &[CurveInstance]) {
         self.instance_buffer.upload_instances(ctx, instances);
     }

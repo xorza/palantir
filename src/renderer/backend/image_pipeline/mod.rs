@@ -126,7 +126,6 @@ impl ImagePipeline {
     /// Uploads run *before* drop-frees so an image registered and dropped
     /// in the same frame uploads then frees (no orphan) rather than
     /// free-then-upload (which would leak it into the cache un-owned).
-    #[profiling::function]
     pub(super) fn drain_registry(&mut self, ctx: &mut GpuCtx<'_>, images: &ImageRegistry) {
         self.textures.drain_registry(ctx, images);
     }
@@ -149,7 +148,6 @@ impl ImagePipeline {
     /// identity: the one shared backend serves all windows, so a submit may only
     /// evict its *own* absent targets — another window's targets survive
     /// both this submit and their owner's idle (non-submitting) frames.
-    #[profiling::function]
     pub(super) fn paint_gpu_views(
         &mut self,
         ctx: &mut GpuCtx<'_>,
@@ -174,7 +172,6 @@ impl ImagePipeline {
 
     /// Sync the per-instance buffer — one contiguous, zero-copy upload from
     /// the shared slice; the schedule slices by batch at draw time.
-    #[profiling::function]
     pub(super) fn upload_instances(&mut self, ctx: &mut GpuCtx<'_>, instances: &[ImageInstance]) {
         self.instance_buffer.upload_instances(ctx, instances);
     }

@@ -294,7 +294,6 @@ impl WgpuBackend {
     /// `format` is the per-window surface format; the matching pipeline
     /// set is fetched per submit from the `pipelines` map, so no
     /// global-format assert is needed.
-    #[profiling::function]
     pub(crate) fn ensure_backbuffer(
         &self,
         bb: &mut Option<Backbuffer>,
@@ -331,7 +330,6 @@ impl WgpuBackend {
     /// created on the first rounded-clip frame; recreated when the render
     /// target's size changes (a mismatched-size attachment fails wgpu
     /// validation). The [`Stencil`] is owned per-window by the caller.
-    #[profiling::function]
     pub(crate) fn ensure_stencil(&self, stencil: &mut Option<Stencil>, size: wgpu::Extent3d) {
         if stencil.as_ref().is_some_and(|s| s.size == size) {
             return;
@@ -1048,7 +1046,6 @@ impl WgpuBackend {
         self.image.retire_render_owner(owner);
     }
 
-    #[profiling::function]
     fn copy_backbuffer_into(
         &self,
         backbuffer: &Backbuffer,

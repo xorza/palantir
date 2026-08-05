@@ -112,7 +112,10 @@ impl<'a> FrameCycle<'a> {
                 FrameProcessing::PaintOnly
             }
             FramePlan::FullRecord { .. } => {
-                app.update(win, self.ui);
+                {
+                    profiling::scope!("Ui::update_user");
+                    app.update(win, self.ui);
+                }
                 if first_frame {
                     self.warmup(win, app);
                 }

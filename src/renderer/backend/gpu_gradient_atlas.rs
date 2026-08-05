@@ -131,7 +131,6 @@ impl GpuGradientAtlas {
     /// is refilled in the same `write_texture`, and the pipelines stay
     /// valid because they bind through the height-independent `bgl` and
     /// read the height with `textureDimensions`.
-    #[profiling::function]
     pub(super) fn upload(&mut self, ctx: &GpuCtx<'_>) {
         // Destructured so the resize below borrows the GPU-side fields
         // while `flush_with` holds the CPU atlas.
