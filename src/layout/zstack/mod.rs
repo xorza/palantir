@@ -38,7 +38,6 @@ pub(super) fn intrinsic(
 ///
 /// Content size = `max(child desired)` per axis, so the panel hugs the
 /// largest child (cross-axis fall-back when ZStack is Hug).
-#[profiling::function]
 pub(super) fn measure(pass: &mut LayoutPass<'_>, node: NodeId, inner_avail: Size) -> Size {
     measure_per_axis_hug(pass, node, inner_avail, |_, _, d| d)
 }

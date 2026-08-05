@@ -34,7 +34,6 @@ use crate::scene::tree::record::NodeId;
 /// [`crate::widgets::scroll::Scroll`] (shift positions into positive
 /// space and auto-compensate the scroll's offset so visible state stays
 /// stable).
-#[profiling::function]
 pub(super) fn measure(pass: &mut LayoutPass<'_>, node: NodeId, inner_avail: Size) -> Size {
     let canvas_size = pass.tree.records.layout()[node.idx()].size;
     let pos_inflates_x = canvas_size.w().is_hug();

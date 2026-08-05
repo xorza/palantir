@@ -14,7 +14,6 @@ use crate::scene::tree::record::NodeId;
 /// Measures scroll children with unbounded space on the panned axes,
 /// records their full content extent, and returns the viewport's
 /// desired size.
-#[profiling::function]
 pub(super) fn measure(
     pass: &mut LayoutPass<'_>,
     node: NodeId,

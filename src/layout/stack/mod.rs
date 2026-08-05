@@ -162,7 +162,6 @@ fn build_stack_plan(
     }
 }
 
-#[profiling::function]
 pub(super) fn measure(
     pass: &mut LayoutPass<'_>,
     node: NodeId,
