@@ -16,6 +16,7 @@ use winit::window::{Window as WinitWindow, WindowId};
 
 use crate::app::App;
 use crate::common::clipboard::Clipboard;
+use crate::common::tracy;
 use crate::diagnostics::DebugOverlayConfig;
 use crate::host::core::HostCore;
 use crate::host::window_driver::WindowDriver;
@@ -133,6 +134,11 @@ impl<T: App + 'static> WinitRuntime<T> {
             &mut self.app,
             &mut self.pending_commands,
         );
+
+        let single_window = self.windows.len() == 1;
+        if single_window {
+            tracy::mark_main_frame();
+        }
     }
 
     pub(super) fn repaint_all(&mut self) {

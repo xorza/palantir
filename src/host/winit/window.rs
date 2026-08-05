@@ -8,6 +8,7 @@ use winit::window::Window as WinitWindow;
 
 use crate::Display;
 use crate::app::App;
+use crate::common::tracy::FrameSet;
 use crate::host::core::HostCore;
 use crate::host::window_driver::{CpuFrame, TargetKey, WindowDriver};
 use crate::host::winit::gpu::{self, SurfaceManager, WindowSurface};
@@ -31,6 +32,8 @@ pub(super) struct Window {
     /// Time at which the window became hidden. The render core remains
     /// untouched while hidden, then its clock skips the elapsed gap on resume.
     occluded_at: Option<Instant>,
+    /// This window's Tracy frame set. Zero-sized without the profiler.
+    frame_set: FrameSet,
 }
 
 impl Window {
@@ -50,6 +53,7 @@ impl Window {
             close_requested: false,
             cursor: CursorIcon::default(),
             occluded_at: None,
+            frame_set: FrameSet::claim(),
         }
     }
 
@@ -134,11 +138,17 @@ impl Window {
         }
 
         self.finish(commands);
+        // This window's own frame set, not the main one: `Window::frame`
+        // runs once per window per host-loop iteration, so marking the
+        // main set here made Tracy's FPS readout tick N times per
+        // iteration and report per-window slices as whole frames.
+        // `WinitRuntime::draw` owns the main set.
+        //
         // Past every exit, so an occluded frame closes its own Tracy
         // frame instead of being folded into the next painted one — the
         // difference between a minimized window reading as idle and it
         // reading as one multi-second frame.
-        profiling::finish_frame!();
+        self.frame_set.mark();
     }
 
     fn present(
