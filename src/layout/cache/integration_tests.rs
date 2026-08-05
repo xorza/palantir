@@ -14,7 +14,7 @@ use crate::primitives::shadow::Shadow;
 use crate::primitives::{
     color::Color, corners::Corners, stroke::Stroke, transform::TranslateScale,
 };
-use crate::renderer::frontend::record_sink::assert_same_paint;
+use crate::renderer::frontend::capture::assert_same_capture;
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
 use crate::scene::tree::record::NodeId;
@@ -50,7 +50,7 @@ fn assert_warm_rects_match_cold(
     // regresses and the warm frame misses everywhere, cold == warm
     // would pass vacuously while pinning nothing.
     assert!(
-        !h.ui.layout_engine.scratch.probe.cache_hits().is_empty(),
+        !h.ui.layout_engine.scratch.counters.cache_hits().is_empty(),
         "warm frame produced no measure-cache hits — {msg} pins nothing",
     );
     assert_eq!(cold, warm, "{msg}");
@@ -220,12 +220,12 @@ fn cache_hit_preserves_grid_cell_rects() {
         assert!(
             h.ui.layout_engine
                 .scratch
-                .probe
+                .counters
                 .cache_hits()
                 .contains(&WidgetId::VIEWPORT),
             "case {label}: warm cache hit didn't land at the viewport root — grid hug \
              restore not exercised. hits={:?}",
-            h.ui.layout_engine.scratch.probe.cache_hits(),
+            h.ui.layout_engine.scratch.counters.cache_hits(),
         );
     }
 }
@@ -451,7 +451,7 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
     h.frame(|ui| record(ui));
     let warm = h.encode_paint();
 
-    assert_same_paint(&cold, &warm);
+    assert_same_capture(&cold, &warm);
 }
 
 /// Stress test: alternating surface widths force the cache through
@@ -569,7 +569,7 @@ fn measure_cache_restores_intrinsics_so_localized_change_skips_sibling_rewalk() 
 
     // Cold frame computes intrinsics across the whole tree.
     h.frame(|ui| build(ui, 0));
-    let cold = h.ui.layout_engine.scratch.probe.intrinsic_computes() as usize;
+    let cold = h.ui.layout_engine.scratch.counters.intrinsic_computes() as usize;
     assert!(
         cold > HEAVY,
         "cold frame should compute the whole tree's intrinsics, got {cold}",
@@ -580,7 +580,7 @@ fn measure_cache_restores_intrinsics_so_localized_change_skips_sibling_rewalk() 
     // the count collapses to the changed ancestor chain (~root + tiny),
     // not ~2·HEAVY for a full sibling re-walk.
     h.frame(|ui| build(ui, 1));
-    let warm = h.ui.layout_engine.scratch.probe.intrinsic_computes() as usize;
+    let warm = h.ui.layout_engine.scratch.counters.intrinsic_computes() as usize;
     assert!(
         warm < HEAVY / 2,
         "localized change re-walked the unchanged sibling: {warm} intrinsic \
@@ -660,12 +660,12 @@ fn moved_subtree_replays_translated_rects() {
     assert!(
         h.ui.layout_engine
             .scratch
-            .probe
+            .counters
             .arrange_replays()
             .translated
             > 0,
         "no subtree replayed via translation — fixture pins nothing, got {:?}",
-        h.ui.layout_engine.scratch.probe.arrange_replays(),
+        h.ui.layout_engine.scratch.counters.arrange_replays(),
     );
 
     // The header grew 10 → 30, so everything below shifts down exactly 20

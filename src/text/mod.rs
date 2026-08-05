@@ -31,7 +31,7 @@
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
-mod cache_probe;
+mod cache_counters;
 mod cosmic;
 pub(crate) mod key;
 pub(crate) mod layout_probe;

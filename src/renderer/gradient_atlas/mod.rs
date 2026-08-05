@@ -42,17 +42,17 @@ use crate::primitives::brush::gradient::stops::GradientStops;
 use crate::primitives::color::{Color, ColorF16};
 use crate::primitives::fill_wire::LutRow;
 use crate::renderer::gradient_atlas::bake::{LUT_ROW_TEXELS, LutRowTexels, bake_stops};
+use crate::renderer::gradient_atlas::counters::GradientAtlasCounters;
 use crate::renderer::gradient_atlas::mru::MruList;
-use crate::renderer::gradient_atlas::probe::GradientAtlasProbe;
 use rustc_hash::FxHashMap;
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
 
 pub(crate) mod bake;
+mod counters;
 pub(crate) mod handle;
 mod mru;
-mod probe;
 
 /// Rows the LUT atlas texture starts with. One row per distinct
 /// gradient currently in use. Row 0 is reserved as a debug-magenta
@@ -175,9 +175,9 @@ pub(crate) struct CpuGradientAtlas {
     /// Starts at 1 so a never-claimed row's `row_epoch` of 0 can never
     /// read as epoch-current.
     epoch: u64,
-    /// How each registration resolved — see [`GradientAtlasProbe`].
+    /// How each registration resolved — see [`GradientAtlasCounters`].
     /// Zero-sized in a shipping build.
-    probe: GradientAtlasProbe,
+    counters: GradientAtlasCounters,
     /// Contiguous row range changed since the last `flush`, widened on
     /// every bake; `None` when clean. The flush uploads `first..=last`
     /// in ONE `write_texture` (fixed API cost per call still dominates,
@@ -231,7 +231,7 @@ impl CpuGradientAtlas {
             max_rows: max_rows.max(INITIAL_ATLAS_ROWS),
             epoch: 1,
             dirty: None,
-            probe: GradientAtlasProbe::default(),
+            counters: GradientAtlasCounters::default(),
         };
         atlas.init_row_zero_magenta();
         atlas
@@ -281,7 +281,7 @@ impl CpuGradientAtlas {
     /// crashes nor corrupts the rows this frame's other draws already
     /// captured.
     pub(crate) fn register_stops(&mut self, stops: &GradientStops, interp: Interp) -> LutRow {
-        self.probe.registration();
+        self.counters.registration();
         let key = GradientLutKey {
             stops: *stops,
             interp,
@@ -290,7 +290,7 @@ impl CpuGradientAtlas {
         // — its `LutRow` id is now in a draw payload, so it must not be
         // evicted before the upload.
         if let Some(&row) = self.index.get(&key) {
-            self.probe.hit();
+            self.counters.hit();
             self.touch(row);
             return LutRow(row);
         }
@@ -307,7 +307,7 @@ impl CpuGradientAtlas {
             // retry: the grown rows land at the tail unclaimed, so the
             // next pass takes one and this loop runs at most twice.
             if !self.grow() {
-                self.probe.fallback();
+                self.counters.fallback();
                 return LutRow::FALLBACK;
             }
         }
@@ -344,7 +344,7 @@ impl CpuGradientAtlas {
             .resize(grown as usize, [ColorF16::TRANSPARENT; LUT_ROW_TEXELS]);
         self.row_epoch.resize(grown as usize, 0);
         self.mru.extend_to(capacity, grown);
-        self.probe.growth();
+        self.counters.growth();
         // The backend replaces its texture at the new height and wgpu
         // zero-initializes the replacement, so every row — not just the
         // new ones — has to re-upload.
@@ -377,7 +377,7 @@ impl CpuGradientAtlas {
         if let Some(evicted) = displaced {
             self.index.remove(&evicted);
         }
-        self.probe.bake(displaced.is_some());
+        self.counters.bake(displaced.is_some());
         bake_stops(&key.stops, key.interp, &mut self.baked[row as usize]);
         self.index.insert(key, row);
         self.touch(row);

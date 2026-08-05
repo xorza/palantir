@@ -1,5 +1,5 @@
 //! Observability for the shaped-buffer cache. Built on
-//! [`TestOnly`](crate::common::probe::TestOnly), whose module doc
+//! [`TestOnly`](crate::common::counters::TestOnly), whose module doc
 //! explains the gated-cell pattern and why the two gates exist.
 //!
 //! On the narrow gate: nothing benches these yet, and the crate widens a
@@ -26,7 +26,7 @@
 //! [`CosmicMeasure`]: crate::text::cosmic::CosmicMeasure
 //! [`TextShaper::measure_calls`]: crate::text::shaper::TextShaper
 
-use crate::common::probe::TestOnly;
+use crate::common::counters::TestOnly;
 
 /// What the shaped-buffer cache did.
 ///
@@ -35,7 +35,7 @@ use crate::common::probe::TestOnly;
 /// `probe.hits.bump()` is the whole call site and a wrapper would only
 /// restate the field name.
 #[derive(Debug, Default)]
-pub(super) struct CacheProbe {
+pub(super) struct CacheCounters {
     /// Runs actually pushed through cosmic — `set_text` plus
     /// `shape_until_scroll`. The cost every other counter here exists to
     /// explain.
@@ -57,7 +57,7 @@ pub(super) struct CacheProbe {
 /// Reads are test-only: nothing in a shipping build has a reason to ask,
 /// and gating them here is what lets the counters themselves be absent.
 #[cfg(test)]
-impl CacheProbe {
+impl CacheCounters {
     pub(super) fn counts(&self) -> CacheCounts {
         CacheCounts {
             shapes: self.shapes.count(),
@@ -69,7 +69,7 @@ impl CacheProbe {
     }
 }
 
-/// One reading of a [`CacheProbe`]'s tallies. Subtract two to get what a
+/// One reading of a [`CacheCounters`]'s tallies. Subtract two to get what a
 /// span of frames did — the counters accumulate for the life of the
 /// shaper. Copied out rather than borrowed so a test can hold a "before"
 /// reading across calls that need the shaper again.

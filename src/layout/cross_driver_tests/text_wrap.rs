@@ -9,7 +9,7 @@ use crate::layout::types::track::Track;
 use crate::layout::{axis::Axis, intrinsic::LenReq};
 use crate::primitives::color::Color;
 use crate::primitives::size::Size;
-use crate::renderer::frontend::record_sink::PaintCall;
+use crate::renderer::frontend::capture::PaintCall;
 use crate::scene::layer::Layer;
 use crate::scene::node::{Configure, Node};
 use crate::scene::shapes::record::ShapeRecord;
@@ -781,7 +781,7 @@ fn container_and_child_text_keep_independent_order_across_cache_hit() {
     );
     let second_scene = h.frame_value(build_interleaved_container_text);
     assert!(
-        !h.ui.layout_engine.scratch.probe.cache_hits().is_empty(),
+        !h.ui.layout_engine.scratch.counters.cache_hits().is_empty(),
         "second identical frame should exercise measure-cache replay",
     );
     let second_layout = &h.ui.layout[Layer::Main];

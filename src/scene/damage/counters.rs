@@ -1,14 +1,14 @@
 //! Observability for the damage diff. Built on
-//! [`BenchOnly`](crate::common::probe::BenchOnly), whose module doc
+//! [`BenchOnly`](crate::common::counters::BenchOnly), whose module doc
 //! explains the gated-cell pattern and why the two gates exist.
 //!
 //! This one is on the wider gate rather than test-only because the
 //! `damage` bench asserts against the counters. It can afford that where
-//! [`LayoutProbe`](crate::layout::probe::LayoutProbe) cannot: `dirty`
+//! [`LayoutCounters`](crate::layout::counters::LayoutCounters) cannot: `dirty`
 //! pushes only on a node that actually changed, so a steady-state frame
 //! appends nothing and the alloc benches see no allocation from here.
 
-use crate::common::probe::BenchOnly;
+use crate::common::counters::BenchOnly;
 use crate::scene::tree::record::NodeId;
 
 /// What the diff walk did this pass.
@@ -16,7 +16,7 @@ use crate::scene::tree::record::NodeId;
 /// Reset by [`Self::begin_pass`] at the top of every `compute`, so the
 /// counts describe one pass rather than accumulating.
 #[derive(Debug, Default)]
-pub(crate) struct DamageProbe {
+pub(crate) struct DamageCounters {
     /// Nodes whose paint rows the diff re-read — the ones that actually
     /// changed. Tests assert both the count and the identities.
     dirty: BenchOnly<Vec<NodeId>>,
@@ -25,7 +25,7 @@ pub(crate) struct DamageProbe {
     subtree_skips: BenchOnly<u32>,
 }
 
-impl DamageProbe {
+impl DamageCounters {
     /// Clear both counters for a new pass, retaining `dirty`'s capacity.
     #[inline]
     pub(crate) fn begin_pass(&mut self) {
@@ -59,7 +59,7 @@ impl DamageProbe {
 /// build legitimately leaves one unused.
 #[cfg(any(test, feature = "internals"))]
 #[allow(dead_code)]
-impl DamageProbe {
+impl DamageCounters {
     pub(crate) fn dirty(&self) -> &[NodeId] {
         self.dirty.as_slice()
     }

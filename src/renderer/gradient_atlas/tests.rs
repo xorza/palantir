@@ -409,10 +409,10 @@ fn register_full_atlas_evicts_lru_and_preserves_row_zero() {
     let _ = atlas.flush();
     let lru = filled_rows[0];
     // Push one more distinct gradient → forces eviction.
-    let evictions = atlas.probe.evictions();
+    let evictions = atlas.counters.evictions();
     let new_row = register_for(&mut atlas, distinct_grad(9999.0));
     assert_eq!(
-        atlas.probe.evictions(),
+        atlas.counters.evictions(),
         evictions + 1,
         "the newcomer must have displaced a resident, not taken a free row",
     );
@@ -517,16 +517,16 @@ fn growth_stops_at_max_rows_and_falls_back() {
     assert_eq!(atlas.capacity(), INITIAL_ATLAS_ROWS * 2);
     assert_eq!(rows.len(), (INITIAL_ATLAS_ROWS * 2 - 1) as usize);
 
-    let bakes = atlas.probe.bakes();
+    let bakes = atlas.counters.bakes();
     let overflow = register_for(&mut atlas, distinct_grad(9999.0));
     assert_eq!(
         overflow,
         LutRow::FALLBACK,
         "capped atlas must fall back to magenta, not evict a live row",
     );
-    assert_eq!(atlas.probe.fallbacks(), 1);
+    assert_eq!(atlas.counters.fallbacks(), 1);
     assert_eq!(
-        atlas.probe.bakes(),
+        atlas.counters.bakes(),
         bakes,
         "a fallback must not bake — there is no row to bake into",
     );
@@ -774,7 +774,7 @@ fn growth_leaves_resident_lookups_on_their_original_rows() {
     register_for(&mut atlas, distinct_grad(9999.0));
     assert_eq!(atlas.capacity(), INITIAL_ATLAS_ROWS * 2);
 
-    let bakes = atlas.probe.bakes();
+    let bakes = atlas.counters.bakes();
     for (g, &row) in resident.iter().zip(&before) {
         assert_eq!(
             atlas.resident_row(&g.stops, g.interp),
@@ -789,7 +789,7 @@ fn growth_leaves_resident_lookups_on_their_original_rows() {
         );
     }
     assert_eq!(
-        atlas.probe.bakes(),
+        atlas.counters.bakes(),
         bakes,
         "re-registering after growth baked at all — the open-addressed \
          table used to duplicate here because its probe modulus moved",
@@ -879,8 +879,8 @@ fn steady_state_frames_never_rebake() {
         .iter()
         .map(|g| register_for(&mut atlas, g.clone()))
         .collect();
-    assert_eq!(atlas.probe.bakes(), GRADIENTS);
-    let after_warmup = atlas.probe.bakes();
+    assert_eq!(atlas.counters.bakes(), GRADIENTS);
+    let after_warmup = atlas.counters.bakes();
 
     for _ in 0..FRAMES {
         atlas.flush();
@@ -894,15 +894,15 @@ fn steady_state_frames_never_rebake() {
     }
 
     assert_eq!(
-        atlas.probe.bakes(),
+        atlas.counters.bakes(),
         after_warmup,
         "a steady-state frame must not bake",
     );
-    assert_eq!(atlas.probe.evictions(), 0);
-    assert_eq!(atlas.probe.growths(), 0);
-    assert_eq!(atlas.probe.hits(), GRADIENTS * FRAMES);
+    assert_eq!(atlas.counters.evictions(), 0);
+    assert_eq!(atlas.counters.growths(), 0);
+    assert_eq!(atlas.counters.hits(), GRADIENTS * FRAMES);
     assert_eq!(
-        atlas.probe.registrations(),
+        atlas.counters.registrations(),
         GRADIENTS * (FRAMES + 1),
         "warm-up misses plus every frame's hits",
     );
@@ -944,15 +944,15 @@ fn cross_epoch_churn_evicts_without_growing() {
     }
 
     let registrations = (working_set * 4) as u32;
-    assert_eq!(atlas.probe.registrations(), registrations);
-    assert_eq!(atlas.probe.growths(), 0);
+    assert_eq!(atlas.counters.registrations(), registrations);
+    assert_eq!(atlas.counters.growths(), 0);
     // Cyclic access over 2x the table never reuses a resident row, so
     // every registration misses; the first INITIAL_ATLAS_ROWS - 1 take
     // never-claimed rows and the rest evict.
-    assert_eq!(atlas.probe.hits(), 0, "cyclic churn cannot hit");
-    assert_eq!(atlas.probe.bakes(), registrations);
+    assert_eq!(atlas.counters.hits(), 0, "cyclic churn cannot hit");
+    assert_eq!(atlas.counters.bakes(), registrations);
     assert_eq!(
-        atlas.probe.evictions(),
+        atlas.counters.evictions(),
         registrations - (INITIAL_ATLAS_ROWS - 1),
     );
     assert_eq!(atlas.index_len(), (INITIAL_ATLAS_ROWS - 1) as usize);
@@ -981,12 +981,20 @@ fn every_miss_bakes_exactly_one_row() {
         register_for(&mut atlas, content[i].clone());
     }
 
-    assert_eq!(atlas.probe.bakes(), expected_bakes);
-    assert_eq!(atlas.probe.bakes(), 40, "each distinct gradient baked once");
+    assert_eq!(atlas.counters.bakes(), expected_bakes);
     assert_eq!(
-        atlas.probe.hits(),
+        atlas.counters.bakes(),
+        40,
+        "each distinct gradient baked once"
+    );
+    assert_eq!(
+        atlas.counters.hits(),
         sequence.len() as u32 - expected_bakes,
         "every non-first occurrence must resolve from the index",
     );
-    assert_eq!(atlas.probe.evictions(), 0, "40 gradients fit in 255 rows");
+    assert_eq!(
+        atlas.counters.evictions(),
+        0,
+        "40 gradients fit in 255 rows"
+    );
 }

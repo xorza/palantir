@@ -18,7 +18,7 @@ use crate::primitives::span::Span;
 use crate::primitives::widget_id::WidgetIdMap;
 use crate::scene::cascade::LayerCascade;
 use crate::scene::cascade::paint::{Paint, PaintRows};
-use crate::scene::damage::probe::DamageProbe;
+use crate::scene::damage::counters::DamageCounters;
 use crate::scene::damage::push_screen;
 use crate::scene::damage::snapshot::{
     NodeSnapshot, PaintSnapArena, ROW_UNMATCHED, has_order_inversion,
@@ -108,7 +108,7 @@ pub(super) struct LayerWalk<'a> {
     /// on the rare frame a node's row order actually inverted.
     pub(super) order_extents: &'a mut Vec<Rect>,
     pub(super) parents: &'a mut Vec<ParentFrame>,
-    pub(super) probe: &'a mut DamageProbe,
+    pub(super) probe: &'a mut DamageCounters,
     pub(super) surface: Rect,
     /// On a force-full frame the caller discards the region, so the arms
     /// skip their rect pushes — a resize storm does no rect work, and

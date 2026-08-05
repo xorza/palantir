@@ -11,7 +11,7 @@ use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::background::Background;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::{color::Color, corners::Corners, stroke::Stroke};
-use crate::renderer::frontend::record_sink::PaintCall;
+use crate::renderer::frontend::capture::PaintCall;
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
 use crate::ui::harness::UiHarness;

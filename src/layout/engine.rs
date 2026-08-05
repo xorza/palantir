@@ -3,10 +3,10 @@ use crate::layout::cache::{
     AvailableKey, CachedSubtree, CaptureTreeInput, INVALID_AVAILABLE, MeasureCache,
     MeasureSnapshot, RootSnapshotKey, quantize_available,
 };
+use crate::layout::counters::{LayoutCounters, PhaseSpan};
 use crate::layout::grid::GridContext;
 use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange, LenReq, SLOT_COUNT};
 use crate::layout::pass::LayoutPass;
-use crate::layout::probe::{LayoutProbe, PhaseSpan};
 use crate::layout::stack::StackScratch;
 use crate::layout::support::{AxisCtx, arrange_size, container_text_shapes, resolve_axis_size};
 use crate::layout::types::layout_mode::LayoutMode;
@@ -75,8 +75,8 @@ use crate::text::system::TextSystem;
 /// replays that subtree's rects instead of re-running the drivers.
 #[derive(Debug, Default)]
 pub(crate) struct LayoutScratch {
-    /// Test-only observability for this run — see [`LayoutProbe`].
-    pub(crate) probe: LayoutProbe,
+    /// Test-only observability for this run — see [`LayoutCounters`].
+    pub(crate) counters: LayoutCounters,
     pub(super) grid: GridContext,
     pub(super) wrap: WrapScratch,
     pub(super) stack_fill: StackScratch,
@@ -426,7 +426,7 @@ impl LayoutEngine {
         let Some(walk) = IntrinsicQuery::of(missing_min, missing_max) else {
             return range;
         };
-        self.scratch.probe.intrinsic_computed();
+        self.scratch.counters.intrinsic_computed();
         let computed = intrinsic::compute(self, tree, node, axis, walk, interned_text);
         for (req, slot) in range.requested(walk) {
             let value = computed.get(req);
@@ -481,7 +481,7 @@ impl LayoutEngine {
         );
         // Once per run, not per layer: `resize_for` runs inside the layer
         // loop and would wipe an earlier layer's counts.
-        self.scratch.probe.begin_run();
+        self.scratch.counters.begin_run();
         self.cache_rebuild =
             !Self::cache_snapshot_matches_forest(&self.cache.previous, forest, surface);
         if self.cache_rebuild {
@@ -545,7 +545,7 @@ impl LayoutEngine {
                     },
                 );
             }
-            self.scratch.probe.add_capture(capture_span);
+            self.scratch.counters.add_capture(capture_span);
             // Container text is paint-only; its wrap width exists only
             // after arrange, so it gets its own pass over the owners the
             // rollup already identified.
@@ -566,7 +566,7 @@ impl LayoutEngine {
         if self.cache_rebuild {
             self.cache.finish_frame();
         }
-        self.scratch.probe.add_capture(finish_span);
+        self.scratch.counters.add_capture(finish_span);
         debug_assert_eq!(
             self.scratch.grid.depth_stack.depth, 0,
             "LayoutEngine::run exited with non-zero grid depth"

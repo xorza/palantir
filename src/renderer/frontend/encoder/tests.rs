@@ -16,9 +16,9 @@ use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{
     color::Color, rect::Rect, size::Size, stroke::Stroke, transform::TranslateScale,
 };
+use crate::renderer::frontend::capture::{PaintCall, PaintCapture};
 use crate::renderer::frontend::encoder::GradientResolver;
 use crate::renderer::frontend::payload::{BrushSource, DrawQuadPayload, PushClipPayload, QuadGeom};
-use crate::renderer::frontend::record_sink::{PaintCall, RecordedPaint};
 use crate::renderer::gradient_atlas::handle::SharedGradientAtlas;
 use crate::scene::damage::region::DamageRegion;
 use crate::scene::layer::Layer;
@@ -35,7 +35,7 @@ struct ClipPairs {
     pops: usize,
 }
 
-fn count_clip_pairs(cmds: &RecordedPaint) -> ClipPairs {
+fn count_clip_pairs(cmds: &PaintCapture) -> ClipPairs {
     let pushes = cmds
         .calls
         .iter()
@@ -81,7 +81,7 @@ fn quad_rect(p: &DrawQuadPayload) -> Rect {
     }
 }
 
-fn count_draw_rects(cmds: &RecordedPaint) -> usize {
+fn count_draw_rects(cmds: &PaintCapture) -> usize {
     cmds.calls.iter().filter(|c| as_rect(c).is_some()).count()
 }
 
@@ -574,7 +574,7 @@ fn clip_rounded_falls_back_to_scissor_without_background() {
 
 /// Walk a recorded paint stream and return the effective screen-space rect
 /// for each `Rect` call, keyed by its fill colour.
-fn screen_rects_by_fill(cmds: &RecordedPaint) -> Vec<(ColorF16, Rect)> {
+fn screen_rects_by_fill(cmds: &PaintCapture) -> Vec<(ColorF16, Rect)> {
     let mut t = TranslateScale::IDENTITY;
     let mut t_stack: Vec<TranslateScale> = Vec::new();
     let mut clip: Option<Rect> = None;

@@ -3,8 +3,8 @@
 //! [`PaintSink`] is the one interface the [`Encoder`] paints through.
 //! In production the only sink is `ComposeSession`, which composes each
 //! call straight into a `RenderBuffer` — there is no intermediate
-//! command stream. Tests and benches add a recording sink
-//! (`record_sink`) that captures the same calls as owned values.
+//! command stream. Tests and benches add a capturing sink
+//! (`capture`) that holds the same calls as owned values.
 //!
 //! Each `draw_*` method is the no-op gate for one payload kind: it
 //! tests `is_noop` and calls the matching sink method, or nothing.
@@ -49,7 +49,7 @@
 //! that slips past tier 2 still paints nothing, but pays for lowering.
 //! The gate is not *unbypassable*: the ungated half is crate-visible,
 //! so `sink.quad(payload)` compiles anywhere and skips it.
-//! `RecordedPaint::replay` is the one place that does, and only because
+//! `PaintCapture::replay` is the one place that does, and only because
 //! its input already passed.
 //!
 //! Exception: [`PaintSink::draw_polyline`] gates on nothing, and
@@ -198,9 +198,9 @@ mod tests {
     use crate::primitives::color::{Color, ColorF16};
     use crate::primitives::rect::Rect;
     use crate::primitives::texture_id::TextureId;
+    use crate::renderer::frontend::capture::{PaintCall, PaintCapture};
     use crate::renderer::frontend::paint_sink::PaintSink;
     use crate::renderer::frontend::payload::{DrawImagePayload, DrawPolylinePayload};
-    use crate::renderer::frontend::record_sink::{PaintCall, RecordedPaint};
     use crate::renderer::gpu_view::{GpuFrameCtx, GpuPaint, GpuPaintRef};
     use glam::Vec2;
     use std::cell::RefCell;
@@ -290,7 +290,7 @@ mod tests {
         ];
 
         for (label, rect, expect_call) in cases {
-            let mut sink = RecordedPaint::default();
+            let mut sink = PaintCapture::default();
             sink.draw_image(
                 DrawImagePayload::image(
                     rect,

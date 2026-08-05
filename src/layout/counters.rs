@@ -1,5 +1,5 @@
 //! Build-gated observability for the layout pass. Built on
-//! [`TestOnly`](crate::common::probe::TestOnly), whose module doc
+//! [`TestOnly`](crate::common::counters::TestOnly), whose module doc
 //! explains the gated-cell pattern and why the gates differ between
 //! passes.
 //!
@@ -19,7 +19,7 @@
 //! whether or not it runs. So it keeps the per-write `#[cfg]` the rest
 //! of this file no longer needs.
 
-use crate::common::probe::TestOnly;
+use crate::common::counters::TestOnly;
 use crate::primitives::widget_id::WidgetId;
 
 /// CPU nanoseconds one `LayoutEngine::run` spent in each half of the
@@ -100,7 +100,7 @@ pub(crate) struct ReplayCounts {
 /// `LayoutScratch::resize_for`, which runs per layer and would wipe an
 /// earlier layer's counts.
 #[derive(Debug, Default)]
-pub(crate) struct LayoutProbe {
+pub(crate) struct LayoutCounters {
     /// `intrinsic::compute` (cache-miss) calls this run. Tests assert a
     /// localized change doesn't trigger a whole-tree intrinsic re-walk.
     intrinsic_computes: TestOnly<u32>,
@@ -118,7 +118,7 @@ pub(crate) struct LayoutProbe {
     phase_timings: PhaseTimings,
 }
 
-impl LayoutProbe {
+impl LayoutCounters {
     /// Clear every counter for a new run. Retains `cache_hits` capacity so
     /// a test build doesn't reallocate each frame.
     #[inline]
@@ -197,7 +197,7 @@ impl LayoutProbe {
 /// Bench-facing read. Separate from the test-only accessors below
 /// because its field carries the other gate.
 #[cfg(feature = "bench")]
-impl LayoutProbe {
+impl LayoutCounters {
     pub(crate) fn phase_timings(&self) -> PhaseTimings {
         self.phase_timings
     }
@@ -206,7 +206,7 @@ impl LayoutProbe {
 /// Reads are test-only: nothing in a shipping build has a reason to ask,
 /// and gating them here is what lets the counters themselves be absent.
 #[cfg(test)]
-impl LayoutProbe {
+impl LayoutCounters {
     pub(crate) fn intrinsic_computes(&self) -> u32 {
         self.intrinsic_computes.count()
     }
@@ -231,7 +231,7 @@ impl LayoutProbe {
 
 #[cfg(test)]
 mod tests {
-    use crate::layout::probe::{LayoutProbe, PhaseSpan};
+    use crate::layout::counters::{LayoutCounters, PhaseSpan};
 
     /// The pattern's premise: with its gate off, a probe type costs
     /// nothing, so the unconditional call sites in `LayoutEngine::run`
@@ -260,9 +260,9 @@ mod tests {
     /// unobservable from a test build by construction, which is precisely
     /// why the `PhaseSpan` pin above matters.
     #[test]
-    fn probe_carries_its_counters_in_a_test_build() {
+    fn counters_are_carried_only_in_a_test_build() {
         assert!(
-            size_of::<LayoutProbe>() > 0,
+            size_of::<LayoutCounters>() > 0,
             "test builds must actually collect, or every assertion on the probe is vacuous",
         );
     }

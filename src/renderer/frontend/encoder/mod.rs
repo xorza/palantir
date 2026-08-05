@@ -144,7 +144,7 @@ fn spin_bbox(owner_rect: Rect, bbox: Rect, rotation: f32) -> Rect {
 ///   entirely when there's no damage to paint.
 ///
 /// The sink arrives ready for a fresh frame — a `ComposeSession` from
-/// `Composer::begin`, or an empty recording sink.
+/// `Composer::begin`, or an empty capturing sink.
 impl Encoder {
     pub(crate) fn new(gradient_atlas: SharedGradientAtlas) -> Self {
         Self {
@@ -874,8 +874,8 @@ fn resolve_fit(base: Rect, image_size: glam::UVec2, fit: ImageFit) -> Resolved {
 #[cfg(test)]
 pub(crate) mod internals {
     use crate::renderer::frontend::FrameScene;
+    use crate::renderer::frontend::capture::PaintCapture;
     use crate::renderer::frontend::encoder::Encoder;
-    use crate::renderer::frontend::record_sink::RecordedPaint;
     use crate::renderer::gradient_atlas::handle::SharedGradientAtlas;
     use crate::renderer::plan::RenderPlan;
 
@@ -883,9 +883,9 @@ pub(crate) mod internals {
         scene: FrameScene<'_>,
         gradient_atlas: &SharedGradientAtlas,
         plan: RenderPlan,
-    ) -> RecordedPaint {
+    ) -> PaintCapture {
         let mut encoder = Encoder::new(gradient_atlas.clone());
-        let mut recorded = RecordedPaint::default();
+        let mut recorded = PaintCapture::default();
         encoder.encode(&scene, plan, &mut recorded);
         recorded
     }

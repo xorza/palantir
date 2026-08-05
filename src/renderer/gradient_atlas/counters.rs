@@ -1,5 +1,5 @@
 //! Observability for the gradient LUT atlas. Built on
-//! [`BenchOnly`](crate::common::probe::BenchOnly), whose module doc
+//! [`BenchOnly`](crate::common::counters::BenchOnly), whose module doc
 //! explains the gated-cell pattern and why the two gates exist.
 //!
 //! On the wider gate rather than test-only because
@@ -24,16 +24,16 @@
 //! frame: the atlas is shared across windows and `flush` is a
 //! per-submit boundary, so there is no single "pass" to scope them to.
 //! Readers take a delta, the same call
-//! [`CascadeProbe`](crate::scene::cascade::probe::CascadeProbe) makes.
+//! [`CascadeCounters`](crate::scene::cascade::counters::CascadeCounters) makes.
 //!
 //! [`CpuGradientAtlas::register_stops`]:
 //!     crate::renderer::gradient_atlas::CpuGradientAtlas::register_stops
 
-use crate::common::probe::BenchOnly;
+use crate::common::counters::BenchOnly;
 
 /// What the atlas did, for tests and benches to assert against.
 #[derive(Debug, Default)]
-pub(super) struct GradientAtlasProbe {
+pub(super) struct GradientAtlasCounters {
     /// `register_stops` calls, however they resolved.
     registrations: BenchOnly<u32>,
     /// Calls answered straight from the index — no bake. The
@@ -60,7 +60,7 @@ pub(super) struct GradientAtlasProbe {
     fallbacks: BenchOnly<u32>,
 }
 
-impl GradientAtlasProbe {
+impl GradientAtlasCounters {
     #[inline]
     pub(super) fn registration(&mut self) {
         self.registrations.bump();
@@ -99,7 +99,7 @@ impl GradientAtlasProbe {
 /// leaves some unused.
 #[cfg(any(test, feature = "internals"))]
 #[allow(dead_code)]
-impl GradientAtlasProbe {
+impl GradientAtlasCounters {
     pub(super) fn registrations(&self) -> u32 {
         self.registrations.count()
     }

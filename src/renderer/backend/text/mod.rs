@@ -28,7 +28,7 @@ mod atlas;
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
 mod encode;
-mod encoded_probe;
+mod encoded_counters;
 
 use crate::primitives::interned_str::InternedText;
 use crate::primitives::span::Span;

@@ -482,7 +482,7 @@ fn the_ellipsis_memo_survives_interleaved_faces() {
     for face in faces {
         truncate(&mut c, TEXT, face.width(120.0), LineFit::Ellipsis);
     }
-    let warm = c.probe.counts();
+    let warm = c.counters.counts();
     assert_eq!(
         warm.ellipsis_misses, 2,
         "premise: first touch of each face reshapes the marker once",
@@ -501,7 +501,7 @@ fn the_ellipsis_memo_survives_interleaved_faces() {
             );
         }
     }
-    let churn = c.probe.counts() - warm;
+    let churn = c.counters.counts() - warm;
     assert!(
         churn.shapes >= 16,
         "premise: each round reshaped, so the memo was actually consulted          ({} shapes)",
@@ -520,12 +520,12 @@ fn the_ellipsis_memo_survives_interleaved_faces() {
     for face in &many {
         truncate(&mut c, TEXT, face.width(100.0), LineFit::Ellipsis);
     }
-    let before = c.probe.counts();
+    let before = c.counters.counts();
     for face in &many {
         truncate(&mut c, TEXT, face.width(99.0), LineFit::Ellipsis);
     }
     assert!(
-        (c.probe.counts() - before).ellipsis_misses > 0,
+        (c.counters.counts() - before).ellipsis_misses > 0,
         "eight faces cannot all fit four slots — the memo must be bounded",
     );
 }

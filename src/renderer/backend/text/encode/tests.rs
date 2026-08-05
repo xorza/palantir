@@ -93,7 +93,7 @@ fn a_reencoded_row_reclaims_its_own_block_and_the_arena_stops_growing() {
         "10 glyphs round up to a 12-slot block"
     );
 
-    let before = cache.probe.counts();
+    let before = cache.counters.counts();
     for frame in 1u64..=8 {
         let base = frame as u32 * 10;
         insert(&mut cache, key(2), base..base + 4, frame);
@@ -104,7 +104,7 @@ fn a_reencoded_row_reclaims_its_own_block_and_the_arena_stops_growing() {
             "after frame {frame}: the re-encode must reuse its own block",
         );
     }
-    let delta = cache.probe.counts() - before;
+    let delta = cache.counters.counts() - before;
     assert_eq!(
         (delta.block_allocs, delta.block_reuses),
         (1, 7),
@@ -151,7 +151,7 @@ fn blocks_recycle_only_within_their_size_class() {
 
     // Re-insert in the reverse order: each must land back in the
     // block of its own class, so the arena does not grow at all.
-    let before = cache.probe.counts();
+    let before = cache.counters.counts();
     for (i, len) in [9u32, 5, 2].into_iter().enumerate() {
         insert(
             &mut cache,
@@ -165,7 +165,7 @@ fn blocks_recycle_only_within_their_size_class() {
         4 + 8 + 12,
         "no class needed a fresh block"
     );
-    let delta = cache.probe.counts() - before;
+    let delta = cache.counters.counts() - before;
     assert_eq!((delta.block_allocs, delta.block_reuses), (0, 3));
     assert_eq!(
         cache.map[&key(100)].span.start,
