@@ -77,6 +77,7 @@ unicode-linebreak = "0.1"
 unicode-segmentation = "1.13"
 
 criterion = { version = "0.8", optional = true }
+clap = { version = "4", optional = true, features = ["derive"] }
 dhat = { version = "0.3", optional = true }
 gethostname = { version = "1.1", optional = true }
 # Pinned to whatever `profiling/profile-with-tracy` resolves to so cargo
@@ -151,7 +152,7 @@ internals = ["dep:pollster"]
 # Compiles the source-level benchmark drivers and exposes their function-only
 # facade to the thin external targets. Implies `internals` — the drivers reach
 # into the same privates the tests do, and add the harness crates on top.
-bench = ["internals", "dep:criterion", "dep:dhat", "dep:gethostname"]
+bench = ["internals", "dep:criterion", "dep:clap", "dep:dhat", "dep:gethostname"]
 # Enables the bundled widget-tour binary and its logging setup. Carries
 # `gpu-debug-markers` because the showcase is what you capture.
 showcase = ["dep:tracing-subscriber", "winit-host", "gpu-debug-markers"]

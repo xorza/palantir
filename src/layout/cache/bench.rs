@@ -496,7 +496,7 @@ fn bench_virtual_scroll(group: &mut BenchmarkGroup<'_, WallTime>) {
     }
 }
 
-pub fn bench(c: &mut Criterion) {
+pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Arms) {
     let mut group = c.benchmark_group("caches");
 
     bench_cache_pair(

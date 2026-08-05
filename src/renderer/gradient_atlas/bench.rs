@@ -101,7 +101,7 @@ fn filled(capacity: u32) -> CpuGradientAtlas {
     atlas
 }
 
-pub fn bench(c: &mut Criterion) {
+pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Arms) {
     let mut group = c.benchmark_group("gradient_atlas/register");
     group.sample_size(50);
     group.warm_up_time(Duration::from_millis(200));

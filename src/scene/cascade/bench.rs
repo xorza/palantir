@@ -147,7 +147,7 @@ fn record_fixture(mut state: FrameFixture) -> UiHarness {
     h
 }
 
-pub fn bench(c: &mut Criterion) {
+pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Arms) {
     let mut group = c.benchmark_group("cascade/run");
     group.sample_size(50);
     group.warm_up_time(Duration::from_secs(2));
