@@ -17,8 +17,7 @@ graph was an OOM risk.
 `criterion` takes `--driver` (exact, repeatable) and `--list-drivers`;
 `--arms` picks a half of the pipeline, and a bare positional is
 criterion's own regex over benchmark ids. `alloc` takes no selection at
-all — it is one bench of four steps that answer one question, so it runs
-them all and fails if any bounded step is over:
+all — two steps, both gated, both run:
 
 ```sh
 cargo bench -p palantir --bench criterion -- --list-drivers
@@ -26,7 +25,7 @@ cargo bench -p palantir --bench criterion -- -d damage
 cargo bench -p palantir --bench criterion -- --arms cpu
 cargo bench -p palantir --bench criterion -- 'cascade/hit_test$'
 cargo bench -p palantir --bench criterion -- -d frame --arms cpu --note 'after belt rework'
-cargo bench -p palantir --bench alloc               # every step
+cargo bench -p palantir --bench alloc               # both steps
 cargo bench -p palantir --bench alloc -- --dump     # + dhat-heap.json
 ```
 
@@ -38,6 +37,14 @@ and the frame bench's `--size`, `--scale`, `--machine`, `--note`.
 own: one parser per target, and what it resolves is handed down in a
 `Run`. A knob that has to reach a driver goes on the CLI — never into
 the environment, where nothing declares it and `--help` can't list it.
+
+**`alloc` gates, `tests/alloc` attributes.** The bench answers the two
+questions only it can — does our per-frame code allocate at full scale,
+and has the wgpu driver floor drifted. Everything finer lives in
+`cargo test --test alloc`: ~20 fixtures, per-frame budgets, backtrace
+capture, under a second, no allocator tax. Reach for that one first when
+a number moves; add a step here only for something it structurally
+cannot see.
 
 **`frame` is opt-in** — `-d frame`. It is the one driver kept out of a
 bare run: the full matrix is ~90 s and appends a results row to

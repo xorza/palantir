@@ -122,11 +122,10 @@ required-features = ["bench"]
 # reason for the second target — the steps within it share one binary
 # and one profiler.
 #
-# Its resize steps need `Ui::for_test_text()` (internals-gated, folded
-# into `bench`) so they shape with real cosmic-text. With the mono
-# fallback the resize path's paint counts stay constant, the cascade
-# cache reuses in place, and the step reports a false 0 — see the
-# module docs.
+# Its record step needs `Ui::for_test_text()` (internals-gated, folded
+# into `bench`) so it clears the gate against real cosmic shaping and
+# the same tree the criterion frame bench times, not a quieter
+# stand-in — see the module docs.
 [[bench]]
 name = "alloc"
 harness = false

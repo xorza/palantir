@@ -85,7 +85,10 @@ use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
-const SCALE: f32 = 2.0;
+/// Device pixel ratio every arm renders at. `pub(crate)` so the
+/// allocation gate in [`crate::host::bench`] measures this same tree
+/// rather than a smaller stand-in of its own.
+pub(crate) const SCALE: f32 = 2.0;
 // Surface clear colour. Set on `theme.window_clear` in both harnesses
 // and reused as the `clear` for the synthesized `Full` plan the CPU
 // `cached` arm encodes against (see `CpuHarness::frame`).
@@ -94,7 +97,7 @@ const WINDOW_CLEAR: Color = Color::BLACK;
 // specimen sheet, 64-cell filmstrip, activity scroll, notes) fits inside the
 // fixture's page scroll — clipped-away cards are culled, so a shorter view
 // would quietly shrink the painted tree this bench exists to measure.
-const CACHED_SIZE: glam::UVec2 = glam::UVec2::new(3840, 6000); // 1920x3000 @ 2x
+pub(crate) const CACHED_SIZE: glam::UVec2 = glam::UVec2::new(3840, 6000); // 1920x3000 @ 2x
 const RESIZE_POOL: &[glam::UVec2] = &[
     glam::UVec2::new(3200, 5600),
     glam::UVec2::new(3840, 6000),
