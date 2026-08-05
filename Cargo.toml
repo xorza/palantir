@@ -41,6 +41,7 @@ items_after_test_module = "deny"
 
 [lints.rustdoc]
 broken_intra_doc_links = "deny"
+private_intra_doc_links = "deny"
 
 [[bin]]
 name = "showcase"
@@ -110,16 +111,17 @@ required-features = ["winit-host"]
 name = "custom_widget"
 required-features = ["winit-host"]
 
+[[example]]
+name = "dump_theme"
+
 [[bench]]
-name = "frame"
+name = "criterion"
 harness = false
 required-features = ["bench"]
 
-[[bench]]
-name = "animation"
-harness = false
-required-features = ["bench"]
-
+# The dhat benches stay separate: each installs `dhat::Alloc` as its
+# `#[global_allocator]`, which is per-binary and would distort every
+# criterion timing it shared a target with.
 [[bench]]
 name = "alloc_free"
 harness = false
@@ -136,86 +138,6 @@ required-features = ["bench"]
 
 [[bench]]
 name = "alloc_free_gpu"
-harness = false
-required-features = ["bench"]
-
-[[bench]]
-name = "text_atlas"
-harness = false
-required-features = ["bench"]
-
-[[bench]]
-name = "gradient_atlas"
-harness = false
-required-features = ["bench"]
-
-[[bench]]
-name = "curve_pipeline"
-harness = false
-required-features = ["bench"]
-
-[[bench]]
-name = "image_pipeline"
-harness = false
-required-features = ["bench"]
-
-[[bench]]
-name = "schedule"
-harness = false
-required-features = ["bench"]
-
-[[bench]]
-name = "record_pass"
-harness = false
-required-features = ["bench"]
-
-[[bench]]
-name = "text_shape"
-harness = false
-required-features = ["bench"]
-
-[[bench]]
-name = "text_edit"
-harness = false
-required-features = ["bench"]
-
-[[bench]]
-name = "input_throughput"
-harness = false
-required-features = ["bench"]
-
-[[bench]]
-name = "caches"
-harness = false
-required-features = ["bench"]
-
-[[bench]]
-name = "damage"
-harness = false
-required-features = ["bench"]
-
-[[bench]]
-name = "composer"
-harness = false
-required-features = ["bench"]
-
-[[bench]]
-name = "text_grid"
-harness = false
-required-features = ["bench"]
-
-[[bench]]
-name = "gradient"
-harness = false
-required-features = ["bench"]
-
-[[bench]]
-name = "paint_anims"
-harness = false
-required-features = ["bench"]
-
-[[bench]]
-name = "cascade"
 harness = false
 required-features = ["bench"]
 

@@ -1,9 +1,16 @@
 //! Function-only facade over the colocated benchmark drivers.
 //!
 //! Every implementation lives in a `bench.rs` beside the code it
-//! measures; this module is the single `bench`-gated surface the
-//! thin `benches/*.rs` targets link against, so no production module
-//! has to be `pub` for a benchmark's sake.
+//! measures — they reach crate privates the supported surface will never
+//! carry, which is why they cannot live under `benches/` themselves.
+//! This module is the single `bench`-gated surface the thin external
+//! targets link against, so no production module has to be `pub` for a
+//! benchmark's sake.
+//!
+//! Four targets consume it: `benches/criterion.rs` runs every criterion
+//! driver below (selected by criterion's filter, not by target name),
+//! and the three `benches/alloc_*.rs` each drive one dhat function —
+//! separate because a `#[global_allocator]` is per-binary.
 //!
 //! Function-only literally: the workload they record is
 //! [`FrameFixture`](crate::FrameFixture), exported from the crate root

@@ -575,13 +575,23 @@ fn measuring() -> bool {
     bench && !test
 }
 
-/// Required mode selector for the frame bench. Read from
-/// `PALANTIR_BENCH_MODE`; accepts `cpu`, `gpu`, or `both`. A
-/// measurement run refuses to start without one so every invocation is
-/// an explicit decision about which arms to pay for (the full `both`
-/// matrix is ~90 s; `cpu` or `gpu` alone is ~45 s). A test-mode run
-/// pays none of that, so it defaults to the whole matrix.
-fn bench_mode() -> BenchMode {
+/// Mode selector for the frame bench, and its opt-in. Read from
+/// `PALANTIR_BENCH_MODE`; accepts `cpu`, `gpu`, or `both`.
+///
+/// `None` means "not asked for". The frame bench shares one binary with
+/// every other criterion driver, so it cannot make its demands of a run
+/// that only wanted `damage` — the env var *is* the selection, the way
+/// a dedicated `--bench frame` target used to be. Setting it is still an
+/// explicit decision about which arms to pay for (the full `both` matrix
+/// is ~90 s; `cpu` or `gpu` alone is ~45 s), and
+/// [`bench_annotation`] still refuses to proceed without a note once the
+/// mode says the arms are wanted.
+///
+/// A test-mode run (`cargo test --all-targets` executes each arm once,
+/// measuring nothing) pays none of that, so it defaults to the whole
+/// matrix. A value that isn't one of the three is a typo rather than an
+/// opt-out, and still panics.
+fn bench_mode() -> Option<BenchMode> {
     match std::env::var("PALANTIR_BENCH_MODE")
         .ok()
         .as_deref()
@@ -589,13 +599,15 @@ fn bench_mode() -> BenchMode {
         .map(str::to_ascii_lowercase)
         .as_deref()
     {
-        Some("cpu") => BenchMode::Cpu,
-        Some("gpu") => BenchMode::Gpu,
-        Some("both") => BenchMode::Both,
-        _ if !measuring() => BenchMode::Both,
-        _ => panic!(
-            "frame bench requires PALANTIR_BENCH_MODE=cpu|gpu|both; \
-             e.g. PALANTIR_BENCH_MODE=cpu PALANTIR_BENCH_NOTE='...' cargo bench --bench frame",
+        Some("cpu") => Some(BenchMode::Cpu),
+        Some("gpu") => Some(BenchMode::Gpu),
+        Some("both") => Some(BenchMode::Both),
+        None if measuring() => None,
+        None => Some(BenchMode::Cpu),
+        Some(other) => panic!(
+            "PALANTIR_BENCH_MODE must be cpu|gpu|both, got {other:?}; \
+             e.g. PALANTIR_BENCH_MODE=cpu PALANTIR_BENCH_NOTE='...' \
+             cargo bench --bench criterion -- '^frame/'",
         ),
     }
 }
@@ -636,8 +648,8 @@ fn arm_names(mode: BenchMode) -> Vec<&'static str> {
 /// `MODE=gpu` so a GPU-only run executes no CPU-arm code (and, more
 /// importantly, a `MODE=cpu` run reaches this without `bench_gpu` having
 /// touched the GPU at all — pristine for profiling).
-fn bench_cpu(c: &mut Criterion) {
-    if !bench_mode().includes_cpu() {
+fn bench_cpu(c: &mut Criterion, mode: BenchMode) {
+    if !mode.includes_cpu() {
         return;
     }
     cpu_cached(c);
@@ -648,8 +660,8 @@ fn bench_cpu(c: &mut Criterion) {
 
 /// GPU bench: the full-pipeline `frame/*_gpu` arms plus the per-frame
 /// `write_stats` dump. Skipped wholesale when `MODE=cpu`.
-fn bench_gpu(c: &mut Criterion) {
-    if !bench_mode().includes_gpu() {
+fn bench_gpu(c: &mut Criterion, mode: BenchMode) {
+    if !mode.includes_gpu() {
         return;
     }
     report_write_stats();
@@ -664,8 +676,8 @@ fn bench_gpu(c: &mut Criterion) {
 /// per-machine results row. Separated from the benches so it observes
 /// every arm regardless of mode, and so neither bench has to know it's
 /// the last one.
-fn write_results(_c: &mut Criterion) {
-    prepend_machine_results(bench_mode());
+fn write_results(mode: BenchMode) {
+    prepend_machine_results(mode);
 }
 
 /// Read criterion's reported estimate out of `target/criterion/<slug>/new/estimates.json`
@@ -867,7 +879,8 @@ fn bench_annotation() -> String {
         Ok(s) if !s.trim().is_empty() => s.trim().to_owned(),
         _ => panic!(
             "frame bench requires PALANTIR_BENCH_NOTE=<short context>; \
-             e.g. PALANTIR_BENCH_NOTE='after staging-belt rework' cargo bench --bench frame",
+             e.g. PALANTIR_BENCH_NOTE='after staging-belt rework' \
+             cargo bench --bench criterion -- '^frame/'",
         ),
     }
 }
@@ -897,6 +910,16 @@ pub fn config() -> Criterion {
 }
 
 pub fn bench(c: &mut Criterion) {
+    // Not asked for. Every other driver shares this binary, so a run
+    // that wanted one of them must not pay the frame matrix — or its
+    // env demands.
+    let Some(mode) = bench_mode() else {
+        eprintln!(
+            "skipping frame bench: set PALANTIR_BENCH_MODE=cpu|gpu|both \
+             (with PALANTIR_BENCH_NOTE=<short context>) to run it",
+        );
+        return;
+    };
     // Under criterion's test mode no estimate is written, so the
     // results row — and the note it demands — would be meaningless.
     let measuring = measuring();
@@ -905,9 +928,9 @@ pub fn bench(c: &mut Criterion) {
     if measuring {
         let _ = bench_annotation();
     }
-    bench_cpu(c);
-    bench_gpu(c);
+    bench_cpu(c, mode);
+    bench_gpu(c, mode);
     if measuring {
-        write_results(c);
+        write_results(mode);
     }
 }

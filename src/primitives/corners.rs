@@ -111,10 +111,9 @@ impl Corners {
     }
 
     /// True when every corner is within UI epsilon of zero. Routes
-    /// through [`F16x4::any_lane_above`] so the lane compare lives in
-    /// one place — see that method for the SWAR rationale.
-    ///
-    /// [`F16x4::any_lane_above`]: crate::primitives::half_simd::F16x4::any_lane_above
+    /// through `F16x4::any_lane_above` (crate-private, in
+    /// `primitives::half_simd`) so the lane compare lives in one place —
+    /// see that method for the SWAR rationale.
     #[inline]
     pub const fn approx_zero(&self) -> bool {
         // "Every lane within EPS" is the negation of "some lane above

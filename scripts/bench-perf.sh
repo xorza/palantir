@@ -28,15 +28,22 @@
 # Usage:
 #   scripts/bench-perf.sh                              # default: frame bench, --profile-time 5
 #   scripts/bench-perf.sh --profile-time 2             # override criterion args
-#   BENCH=frame FILTER=cached_cpu scripts/bench-perf.sh
+#   FILTER=cached_cpu scripts/bench-perf.sh
+#   FILTER=damage scripts/bench-perf.sh                # a different driver
+#   FILTER= scripts/bench-perf.sh                      # every driver
 #   CALLGRAPH=lbr scripts/bench-perf.sh                # Intel only; AMD falls back to dwarf
 #   SKIP_MEM=1 scripts/bench-perf.sh                   # skip the data-source pass
 #   SKIP_MICRO=1 scripts/bench-perf.sh                 # skip the microarch-metrics pass
 #   SKIP_IBS=1 scripts/bench-perf.sh                   # skip the precise-IP pass
 #
+# Every criterion driver lives in the one `criterion` target, so the
+# driver is selected by FILTER rather than by BENCH. BENCH is still
+# there for the separate dhat targets (alloc_free, alloc_resize,
+# alloc_free_gpu).
+#
 # Env:
-#   BENCH       bench target from Cargo.toml (default: frame)
-#   FILTER      criterion filter, prepended to bench args (default: empty = all)
+#   BENCH       bench target from Cargo.toml (default: criterion)
+#   FILTER      criterion filter, prepended to bench args (default: frame; empty = all)
 #   FEATURES    cargo features, comma-separated (default: internals)
 #   CALLGRAPH   dwarf (default) or lbr (Intel only — ~native overhead, 32 frames)
 #   PIN_CPU     core to pin to (default: 2 — avoids CPU0's IRQ load)
@@ -45,8 +52,10 @@
 #   LDLAT       Intel PEBS load-latency cutoff in cycles (default: 50; AMD ignores)
 #   SKIP_MEM / SKIP_MICRO / SKIP_IBS   set non-empty to skip that pass
 #
-# The frame bench refuses to run without PALANTIR_BENCH_MODE + _NOTE; export
-# them before invoking (e.g. `PALANTIR_BENCH_MODE=cpu PALANTIR_BENCH_NOTE=x`).
+# The frame bench runs only when PALANTIR_BENCH_MODE is set (and then demands
+# PALANTIR_BENCH_NOTE); export both before invoking, e.g.
+# `PALANTIR_BENCH_MODE=cpu PALANTIR_BENCH_NOTE=x scripts/bench-perf.sh`.
+# Without them it prints a skip notice and the profile comes back empty.
 #
 # Reading order (top-down):
 #   1. tmp/palantir-perf-micro.txt — where's the bottleneck class?
@@ -81,8 +90,10 @@ PERF_IBS=tmp/palantir-perf-ibs.txt
 PERF_MEM_DATA=tmp/palantir-perf-mem.data
 PERF_MEM=tmp/palantir-perf-mem.txt
 
-BENCH_NAME="${BENCH:-frame}"
-FILTER_ARG="${FILTER:-}"
+BENCH_NAME="${BENCH:-criterion}"
+# `-` not `:-`: an explicitly empty FILTER means "every case", and must
+# not fall back to the default the way an unset one does.
+FILTER_ARG="${FILTER-frame}"
 FEATURES_ARG="${FEATURES:-internals}"
 CALLGRAPH_MODE="${CALLGRAPH:-dwarf}"
 PIN_CPU="${PIN_CPU:-2}"

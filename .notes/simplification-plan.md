@@ -28,53 +28,49 @@ that ships in the library because nothing moved it out.
 
 ---
 
-# 1. Get the test/bench/demo estate out of the shipped library
+# 1. The test/bench/demo estate — mostly settled
 
-**Highest priority.** ~36 % of `src/` is not the library, and three
-feature flags exist to publish parts of it. This is the single largest
-reduction in what a reader of `palantir` has to hold, and it unblocks
-batch 2.
+**The original premise here was wrong and is recorded so it isn't
+retried.** "Move the 6,483 lines of `src/**/bench.rs` into `benches/`
+and let them reach in through `internals`" does not survive contact with
+the drivers: they touch `Composer`, `RenderBuffer`, `Frontend`,
+`CascadeEngine`, `DamageEngine`, `TextBackend`, `GpuCtx`, `Queue`,
+`RecordStore`, `RecordPayloads`, `PaintSink`, the `Draw*Payload` types,
+`Quad`, `URect`, `TextShaper`, `text::system`, and
+`schedule::internals::Walk`. Publishing that would make the test-facing
+surface *larger* than `pub mod bench` is today. The drivers stay
+colocated, `pub mod bench` stays, and the `bench` feature stays — it is
+a non-default, documented-unsupported flag with `docs.rs`
+`all-features = false`, which is the same deal `internals` gets.
 
-| what | where | size |
-|---|---|---|
-| criterion/dhat drivers | `src/**/bench.rs` (21 files) | 6,483 |
-| test harness | `src/ui/harness/`, `src/host/test_gpu.rs` | 1,588 + |
-| demo screen | `src/frame_fixture/` | 1,578 |
-| demo palette | `src/demo_swatches.rs` | — |
-| showcase binary | `src/bin/showcase/` | 5,572 |
-| in-tree tests | `tests.rs` + `tests/` dirs | 46,295 |
+The same argument sinks moving `frame_fixture` / `demo_swatches` into
+the showcase binary: the benches record that workload too, and they live
+in `src`.
 
-- [ ] **`pub mod bench` changes the crate's public API under a feature.**
-  `lib.rs` re-exports the drivers; `benches/` holds 23 four-line wrapper
-  targets; `Cargo.toml` holds 21 `[[bench]]` blocks that differ only in
-  `name`. Move the drivers into `benches/` proper (one file per target,
-  or a `benches/common/` module) and let them reach in through
-  `internals` like the integration tests do. `pub mod bench` and the
-  `bench` feature both disappear; the `[[bench]]` blocks collapse to
-  whatever autodiscovery leaves.
-- [ ] **`FrameFixture` and `demo_swatches` are library items serving two
-  binaries.** `demo_swatches` is `pub` with a comment explaining it
-  isn't API, and `cargo doc --all-features` reports the consequence
-  (`public documentation for demo_swatches links to private item
-  crate::frame_fixture`) — one of only two `private_intra_doc_links`
-  warnings in the crate. Both belong in the showcase binary, with the
-  benches reaching them via a path include or a small dev-only support
-  crate. That also lets `rustdoc::private_intra_doc_links` be denied
-  (the other warning, `Corners::approx_zero` → `F16x4::any_lane_above`,
-  is a one-line doc fix).
-- [ ] **`internals` should be the only survivor.** `ui/harness` +
-  `host/test_gpu` are genuinely test reach-ins and deliberately cheap;
-  keep them. After the two moves above, `internals` is the crate's one
-  test-facing flag instead of three overlapping ones.
-- [ ] `examples/dump_theme.rs` is the only example without an
-  `[[example]]` block — reads as an oversight next to `counter` and
-  `custom_widget`.
+What that leaves is the target count, which is done: 21 bench targets →
+4 (one `criterion` target holding all 18 criterion drivers, plus the
+three dhat targets, which need their own binaries for
+`#[global_allocator]`). `rustdoc::private_intra_doc_links` is now
+denied with zero warnings, and `dump_theme` has its `[[example]]` block.
+
+Still open, and small:
+
+- [ ] `src/ui/harness/` (1,588) + `host/test_gpu.rs` compile into the
+  library under `internals`. Genuinely test reach-ins and deliberately
+  cheap — listed only so the accounting is complete. No action unless
+  the surface grows.
+- [ ] Of ~130k lines under `src/`, ~46k are in-tree tests and ~6.5k are
+  bench drivers. That is a *reading* cost, not a shipped-binary one
+  (both are `cfg`-gated out of a normal build). Worth revisiting only if
+  someone wants `src/` to read as library-only.
 
 ---
 
 # 2. Collapse `PaintSink`
 
-Depends on batch 1's decision about `RecordedPaint`.
+Now the highest-priority item. Unblocked: batch 1 settled that
+`RecordedPaint` stays in `src`, so the only question left is whether the
+trait earns its keep — and the argument below says it doesn't.
 
 - [ ] `paint_sink.rs:78` declares a **10-required / 12-provided-method
   trait with exactly one production implementor** (`ComposeSession`).
@@ -325,6 +321,12 @@ A half-hour sweep, plus a list to work through separately.
   (`composer/mod.rs:363`)** is a one-line forwarder to
   `self.higher_kinds.any_overlap`, and its doc duplicates
   `HigherKindRects::any_overlap`'s.
+- [ ] **`ui/bench.rs` reads `PALANTIR_BENCH_MODE` once and threads it**
+  now, but the sibling env reads (`PALANTIR_BENCH_SIZE`,
+  `PALANTIR_BENCH_SCALE`, `PALANTIR_BENCH_MACHINE`, `DHAT_DUMP`) are
+  still scattered `std::env::var` calls across `ui/bench.rs` and
+  `host/bench.rs`. One `BenchEnv` struct read at entry would put the
+  whole knob surface in one place.
 - [ ] **`primitives/approx.rs` carries two parallel hash families** —
   `hash_f32`/`hash_vec2`/`hash_size`/`hash_rect` (exact, `eq_bits`) and
   `hash_visual_*` (canonicalized, `canon_bits`) — eight free functions
