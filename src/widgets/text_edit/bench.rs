@@ -39,7 +39,7 @@ fn bench_stable(c: &mut Criterion, name: &str, text: String, multiline: bool, se
     });
 }
 
-pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Arms) {
+pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Run<'_>) {
     bench_stable(
         c,
         "text_edit/stable_single_line",

@@ -470,7 +470,7 @@ fn report_evidence(fixture: &mut Fixture) -> Counts {
     counts
 }
 
-pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Arms) {
+pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Run<'_>) {
     let gpu = gpu();
     eprintln!(
         "[record_pass] adapter={} backend={:?}",

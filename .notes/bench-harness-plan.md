@@ -2,7 +2,8 @@
 
 Replace `criterion_main!` with a hand-rolled main so driver selection is
 **exact and happens before a driver runs**, and collapse the bench
-targets from five to two.
+targets from five to two. The runner is in place and the targets are
+down to four; what remains is the dhat consolidation below.
 
 **Delete an item when it's done.** This file lists open work only.
 
@@ -57,13 +58,21 @@ profile mode for the perf scripts.
 
 ## Design
 
-**Delegate-or-own.** If argv contains `--test` or `--list`, hand
-everything to `configure_from_args()` and run every driver — today's
-behaviour exactly, cargo and tooling untouched. Otherwise parse with our
-own clap and drive the public setters. Driver selection doesn't apply in
-test mode, which is right: that mode wants everything exercised once.
+**Delegate-or-own.** When argv is criterion's, hand it to
+`configure_from_args()` and run every driver — cargo and tooling
+untouched. Otherwise parse with our own clap and drive the public
+setters. Driver selection doesn't apply in test mode, which is right:
+that mode wants everything exercised once.
 
-**A driver registry** — in place, see `src/bench.rs`. Gating is an exact
+The line is drawn by a lenient three-flag `Gate` (`ignore_errors`,
+because on the delegating path argv carries criterion flags the strict
+`Cli` would hard-exit on), and **the rule is an absence**: criterion
+treats anything without `--bench` as test mode, and cargo sends a
+`harness = false` bench target *no arguments at all* under `cargo test`.
+The first cut keyed on a `--test` that cargo never sends, which silently
+turned every `cargo test --all-targets` into a full measurement run.
+
+**A driver registry** — in place, see `src/bench/`. Gating is an exact
 match against the table, before the driver is called: no regex guessing,
 no fail-open heuristic.
 
@@ -78,57 +87,32 @@ for CPU now runs no GPU driver at all, verified.
 belongs in the default set (cost, side effects), not what hardware it
 uses. Only `frame` sets it.
 
-**CLI:**
+**What the runner decides, a driver is handed** — in a `Run { arms,
+recording, note }`, never re-derived from argv. `recording` is false in
+test mode and under `--profile-time`, both of which disable criterion's
+analysis, so the frame bench skips the results row it would otherwise
+fill with "estimates not found". `note` rides the same channel: no
+env var, no `set_var` into our own process.
 
-```
-[FILTER]                    criterion regex, applied within selected drivers
--d, --driver <NAME>...      exact driver names, repeatable
-    --list-drivers          print names and exit
-    --skip-gpu              drop drivers needing a device
-    --mode <cpu|gpu|both>   enables the frame bench (was PALANTIR_BENCH_MODE)
-    --note <TEXT>           results-row context (was PALANTIR_BENCH_NOTE)
-    --profile-time/--sample-size/--measurement-time/--warm-up-time
-    --save-baseline/--baseline/--noplot
-```
-
-**End state — 5 targets → 2:**
-
-| target | holds |
-|---|---|
-| `criterion` | all 18 criterion drivers, exact `--driver` gating (folds `gpu` back in) |
-| `alloc` | the 3 dhat drivers behind a selector — `#[global_allocator]` is per-binary, but one binary can choose which workload runs |
-
-Also deletes 114 lines of wrapper files and three `[[bench]]` blocks.
+Two readings of one argv were two things that could disagree, and did.
 
 ## Steps
 
-- [ ] 2. `benches/criterion.rs` → clap CLI + delegate-or-own (~120
-      lines). The registry loop is already in place; this adds the arg
-      parsing and the `--driver` / `--skip-gpu` / `--mode` gating on top,
-      keeping the `configure_from_args()` path for `--test` / `--list`.
-- [ ] 3. Fold `gpu` in; delete `benches/gpu.rs`.
-- [ ] 4. `benches/alloc.rs` consolidating the three dhat targets.
-- [ ] 5. `frame` mode/note → flags, env kept as fallback so
-      `scripts/bench-perf.sh` keeps working.
-- [ ] 6. `Cargo.toml`: 5 `[[bench]]` → 2.
-- [ ] 7. Update `scripts/bench-perf.sh` (`--driver` for selection rather
-      than `FILTER`), `benches/AGENTS.md`, workspace `AGENTS.md`.
-- [ ] 8. Verify: fmt/clippy/test, **`cargo test --all-targets`** for the
-      test-mode delegation, a real filtered run, a perf run.
+- [ ] 4. `benches/alloc.rs` consolidating the three dhat targets, and
+      `Cargo.toml` 4 `[[bench]]` → 2.
+
+      **Open decision, not just open work.** The code now argues the
+      other way — `src/bench/mod.rs` and `benches/AGENTS.md` both say
+      each dhat driver keeps its own target because `#[global_allocator]`
+      is per-binary. That was this plan's premise too ("one binary can
+      choose which workload runs"), so one of the two is stale. Settle
+      which before touching it.
 
 ## Risks
 
-- **`clap` becomes a direct manifest entry.** Already in the graph at
-  4.6.5 via criterion, so `clap = { version = "4", optional = true }`
-  under `bench` unifies with no extra build cost. Named because it is a
-  new dependency line.
-- **Test-mode delegation is the one thing that can silently break
-  `cargo test`.** Establish whether `cargo test --all-targets` passes
-  *before* the change, so we know if we're preserving something that
-  works or something already broken.
 - `cargo-criterion` integration rides `Criterion::default()`'s
   `connection`, so the own-branch keeps it — but baselines through
   `cargo criterion` are untested here.
 - The registry is hand-maintained: a driver function added without a
-  table row is invisible. Needs a test pinning the row count, or at
-  minimum both edits in one place.
+  table row is invisible. The tests pin the table's shape but cannot see
+  a function that was never added.

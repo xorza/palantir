@@ -33,13 +33,18 @@
 //! does run this binary.
 //!
 //! So when cargo drives us in test or list mode, argv goes to
-//! `configure_from_args` untouched. Otherwise the `cli` module parses it
-//! and drives criterion's public setters.
+//! `configure_from_args` untouched. Otherwise `Cli` parses it and drives
+//! criterion's public setters. `Gate` draws that line — and the subtlety
+//! is that test mode is signalled by an *absence*.
+//!
+//! What the runner decides, a driver is handed in a [`Run`] rather than
+//! left to re-derive: two readings of the same argv are two things that
+//! can disagree.
 
 mod cli;
 mod driver;
 
-use cli::Cli;
+use cli::{Cli, Gate};
 use criterion::Criterion;
 use driver::DRIVERS;
 
@@ -86,17 +91,39 @@ impl Arms {
     }
 }
 
+/// What the runner resolved for one driver's invocation.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Run<'a> {
+    /// The half of the pipeline to exercise — [`Arms::overlap`] of what
+    /// the driver offers against what the command line asked for.
+    /// Single-arm drivers ignore it.
+    pub(crate) arms: Arms,
+    /// Whether criterion will write `estimates.json` for this run.
+    ///
+    /// False in test mode and under `--profile-time`, both of which
+    /// report "Analysis Disabled" and record nothing. A driver that
+    /// reads its own numbers back afterwards has to skip when this is
+    /// false, or it files a row of "estimates not found".
+    pub(crate) recording: bool,
+    /// `--note`: the caption a driver that appends to a results file
+    /// records with the row.
+    pub(crate) note: Option<&'a str>,
+}
+
 /// The bench target's entry point.
 pub fn run() {
-    // Cargo drives these, and both need a `Mode` we cannot construct.
-    // Delegate wholesale rather than approximate them. Opt-in drivers
-    // stay out: test mode is a smoke check that every benchmark still
-    // executes, and the frame matrix is ~90 s of that — unoptimized,
-    // since `cargo test` builds the dev profile.
-    if std::env::args().any(|a| a == "--test" || a == "--list") {
+    // Opt-in drivers stay out: test mode is a smoke check that every
+    // benchmark still executes, and the frame matrix is ~90 s of that —
+    // unoptimized, since `cargo test` builds the dev profile.
+    if Gate::parse_args().delegates() {
+        let run = Run {
+            arms: Arms::Both,
+            recording: false,
+            note: None,
+        };
         for driver in DRIVERS.iter().filter(|d| !d.opt_in) {
             let mut criterion = (driver.config)().configure_from_args();
-            (driver.run)(&mut criterion, Arms::Both);
+            (driver.run)(&mut criterion, run);
         }
         Criterion::default().configure_from_args().final_summary();
         return;
@@ -112,13 +139,6 @@ pub fn run() {
         return;
     }
 
-    // The frame bench reads this to caption its results row. Passing it
-    // as a flag is the point of having a CLI; it still falls back to the
-    // environment so the profiling scripts keep working unchanged.
-    if let Some(note) = &cli.note {
-        // SAFETY: single-threaded, before any driver has run.
-        unsafe { std::env::set_var("PALANTIR_BENCH_NOTE", note) };
-    }
     cli.validate(DRIVERS);
 
     let want = cli.arms();
@@ -127,7 +147,14 @@ pub fn run() {
             continue;
         };
         let mut criterion = cli.configure((driver.config)());
-        (driver.run)(&mut criterion, arms);
+        (driver.run)(
+            &mut criterion,
+            Run {
+                arms,
+                recording: cli.records(),
+                note: cli.note.as_deref(),
+            },
+        );
     }
     cli.configure(Criterion::default()).final_summary();
 }

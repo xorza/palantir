@@ -1,7 +1,7 @@
 //! The driver registry: what a benchmark driver is, and every one the
 //! crate has.
 
-use crate::bench::Arms;
+use crate::bench::{Arms, Run};
 use criterion::Criterion;
 
 /// One criterion driver, as [`run`](super::run) sees it.
@@ -35,9 +35,9 @@ pub(super) struct Driver {
     /// ±15-25% across runs on a shared machine), which is why this is
     /// per-driver rather than one config for the whole run.
     pub(super) config: fn() -> Criterion,
-    /// Runs the benchmarks, given the arms the run resolved to.
-    /// Single-arm drivers ignore it.
-    pub(super) run: fn(&mut Criterion, Arms),
+    /// Runs the benchmarks against what the runner resolved. All but
+    /// the frame bench ignore it.
+    pub(super) run: fn(&mut Criterion, Run<'_>),
 }
 
 /// Every criterion driver in the crate.
@@ -95,7 +95,7 @@ pub(super) const DRIVERS: &[Driver] = &[
 ];
 
 /// A CPU driver on criterion's default configuration — the common row.
-const fn driver(name: &'static str, run: fn(&mut Criterion, Arms)) -> Driver {
+const fn driver(name: &'static str, run: fn(&mut Criterion, Run<'_>)) -> Driver {
     Driver {
         name,
         arms: Arms::Cpu,
@@ -106,7 +106,7 @@ const fn driver(name: &'static str, run: fn(&mut Criterion, Arms)) -> Driver {
 }
 
 /// [`driver`] for one that requests an adapter.
-const fn gpu_driver(name: &'static str, run: fn(&mut Criterion, Arms)) -> Driver {
+const fn gpu_driver(name: &'static str, run: fn(&mut Criterion, Run<'_>)) -> Driver {
     Driver {
         arms: Arms::Gpu,
         ..driver(name, run)
