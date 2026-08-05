@@ -49,6 +49,12 @@ pub(crate) struct Endpoint {
     pub(crate) node: NodeId,
 }
 
+/// Both nodes of one explicit-id collision, in recording order.
+/// Accumulated into `Forest.collisions` in every profile, but read only
+/// by `encoder::collision_overlay` (`debug_assertions`) and
+/// `UiHarness::collisions` (`internals`) — so a release build without
+/// `internals` records the pair and never looks at it.
+#[cfg_attr(not(debug_assertions), allow(dead_code))]
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct CollisionRecord {
     pub(crate) first: Endpoint,
