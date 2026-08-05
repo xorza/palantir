@@ -96,6 +96,19 @@ pub(super) struct Cli {
     warm_up_time: Option<f64>,
     #[arg(long, value_name = "NAME")]
     save_baseline: Option<String>,
+    /// Compare against a named baseline rather than the previous run.
+    /// Fails if a selected benchmark has no sample under that name.
+    #[arg(
+        short = 'b',
+        long,
+        value_name = "NAME",
+        conflicts_with = "save_baseline"
+    )]
+    baseline: Option<String>,
+    /// [`Self::baseline`], except a benchmark with no sample under that
+    /// name is left uncompared instead of failing the run.
+    #[arg(long, value_name = "NAME", conflicts_with_all = ["save_baseline", "baseline"])]
+    baseline_lenient: Option<String>,
     /// Disable plot and HTML generation.
     #[arg(long)]
     noplot: bool,
@@ -186,6 +199,14 @@ impl Cli {
         if let Some(b) = &self.save_baseline {
             c = c.save_baseline(b.clone());
         }
+        // `strict` is the difference between the two flags, and clap has
+        // already ruled out both being set.
+        if let Some(b) = &self.baseline {
+            c = c.retain_baseline(b.clone(), true);
+        }
+        if let Some(b) = &self.baseline_lenient {
+            c = c.retain_baseline(b.clone(), false);
+        }
         if self.noplot {
             c = c.without_plots();
         }
@@ -231,6 +252,38 @@ mod tests {
         assert!(d(&["--list", "--bench"]));
         // A positional filter is not a flag and must not delegate.
         assert!(!d(&["test", "--bench"]));
+    }
+
+    /// `--save-baseline` writes a named sample; the two compare flags
+    /// read one back. Saving and comparing in the same run is
+    /// contradictory — criterion rules it out and so do we, or a run
+    /// would silently overwrite the thing it was asked to measure
+    /// against.
+    #[test]
+    fn baseline_flags_parse_and_exclude_each_other() {
+        assert_eq!(parse(&["-b", "before"]).baseline.as_deref(), Some("before"));
+        assert_eq!(
+            parse(&["--baseline", "before"]).baseline.as_deref(),
+            Some("before"),
+        );
+        assert_eq!(
+            parse(&["--baseline-lenient", "before"])
+                .baseline_lenient
+                .as_deref(),
+            Some("before"),
+        );
+        for clash in [
+            &["--save-baseline", "a", "--baseline", "a"][..],
+            &["--save-baseline", "a", "--baseline-lenient", "a"],
+            &["--baseline", "a", "--baseline-lenient", "a"],
+        ] {
+            let mut argv = vec!["palantir-bench"];
+            argv.extend_from_slice(clash);
+            assert!(
+                Cli::try_parse_from(argv).is_err(),
+                "{clash:?} must be rejected",
+            );
+        }
     }
 
     /// Profile mode disables criterion's analysis, so nothing writes an
