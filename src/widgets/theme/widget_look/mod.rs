@@ -6,10 +6,8 @@
 pub(crate) mod animated_look;
 pub(crate) mod stateful_look;
 
-use crate::animation::{AnimSlot, AnimSpec};
+use crate::animation::AnimSlot;
 use crate::primitives::background::Background;
-use crate::primitives::widget_id::WidgetId;
-use crate::ui::Ui;
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::theme::widget_look::animated_look::AnimatedLook;
 
@@ -22,9 +20,9 @@ use crate::widgets::theme::widget_look::animated_look::AnimatedLook;
 /// inherits [`crate::Theme::text`], so an app changing
 /// `theme.text.color` moves every label that didn't override it.
 ///
-/// Per-theme `pick(state)` returns `&WidgetLook`; widgets clone the selected
-/// look, then call [`Self::animate`] to interpolate its components and get an
-/// [`AnimatedLook`] ready to render with.
+/// Per-theme `pick(state)` returns `&WidgetLook`; [`Self::to_animated`]
+/// flattens the selected look into the [`AnimatedLook`] target
+/// `Ui::animate` interpolates toward.
 // **Not `Copy`** because `Background` isn't — `WidgetLook` shows up in
 // theme definitions and is cheap to `.clone()` (one branch for each
 // `Option` + the underlying field clones).
@@ -35,33 +33,28 @@ pub struct WidgetLook {
 }
 
 impl WidgetLook {
-    /// Slot [`Self::animate`] reserves on the widget's id. One row
-    /// per widget animates the whole resolved look (background + text)
-    /// — halves `Ui::animate` call traffic compared to per-component
-    /// slots.
-    const SLOT_LOOK: AnimSlot = AnimSlot::new("look");
+    /// Slot the resolved look reserves on the widget's id. One row
+    /// per widget animates the whole look (background + text) — halves
+    /// `Ui::animate` call traffic compared to per-component slots.
+    pub(crate) const SLOT_LOOK: AnimSlot = AnimSlot::new("look");
 
-    /// Resolve the look to flat animated values. `Background` (fill +
-    /// stroke) animates as one slot; `TextStyle` (color animated,
-    /// font/leading snapped) as another. Pass `spec = None` to snap
-    /// everything; call shape stays the same so callers don't fork
-    /// on motion.
+    /// Flatten the look into the target `Ui::animate` interpolates
+    /// toward: `Background` (fill + stroke) animates, `TextStyle`
+    /// carries its animated colour and snapped font/leading.
     ///
-    /// `fallback_text` is used when `self.text == None`. The selected look is
-    /// consumed so its background moves into the animation target.
+    /// `fallback_text` is read only when `self.text` is `None`, so a
+    /// look that overrides text never copies [`Theme::text`](crate::Theme).
+    /// It stays a reference — and this stays separate from the
+    /// `Ui::animate` call that consumes the result — because the caller
+    /// borrows it straight out of `ui.theme`, and that borrow has to end
+    /// before `ui` is reborrowed mutably. Folding the two together is
+    /// what forced the old unconditional clone.
     #[inline(always)]
-    pub fn animate(
-        self,
-        ui: &mut Ui,
-        id: WidgetId,
-        fallback_text: &TextStyle,
-        spec: Option<AnimSpec>,
-    ) -> AnimatedLook {
-        let target = AnimatedLook {
-            background: self.background.unwrap_or_default(),
-            text: self.text.unwrap_or_else(|| fallback_text.clone()),
-        };
-        ui.animate(id, Self::SLOT_LOOK, target, spec)
+    pub fn to_animated(&self, fallback_text: &TextStyle) -> AnimatedLook {
+        AnimatedLook {
+            background: self.background.clone().unwrap_or_default(),
+            text: self.text.clone().unwrap_or_else(|| fallback_text.clone()),
+        }
     }
 
     /// Visit this look's overriding `TextStyle`, if any. An unset look

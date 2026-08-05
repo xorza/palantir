@@ -407,9 +407,12 @@ pub(super) trait WidgetTheme: Sized {
     /// inferred from `style`, so call sites read
     /// `WidgetTheme::resolve(ui, …)` with no turbofish.
     ///
-    /// The scalars are copied out so the borrow on `ui.theme`
-    /// (borrowed, not cloned) ends before `animate` reborrows `ui`
-    /// mutably.
+    /// The scalars are copied out, and the look is flattened into an
+    /// owned target, so every borrow on `ui.theme` ends before
+    /// [`Ui::animate`] reborrows `ui` mutably. That split is what lets
+    /// [`Theme::text`] be passed by reference: it is copied only into
+    /// the target of a look that declines to override it, rather than
+    /// cloned for every themed widget to launder the borrow.
     // This generic crosses the theme/widget codegen-unit boundary. Leaving it
     // to the default inliner kept the resolver plus its tiny trait accessors
     // outlined in release builds; the frame bench measured that path at 3.9%
@@ -425,15 +428,14 @@ pub(super) trait WidgetTheme: Sized {
         style: Option<&Self>,
         fallback: impl FnOnce(&Theme) -> &Self,
     ) -> AnimatedLook {
-        let fallback_text = ui.theme.text.clone();
         let style = style.unwrap_or_else(|| fallback(&ui.theme));
         let padding = style.padding();
         let margin = style.margin();
         let anim = style.anim();
-        let look_target = style.pick(state, mode).clone();
+        let target = style.pick(state, mode).to_animated(&ui.theme.text);
         node.padding.get_or_insert(padding);
         node.margin.get_or_insert(margin);
-        look_target.animate(ui, id, &fallback_text, anim)
+        ui.animate(id, WidgetLook::SLOT_LOOK, target, anim)
     }
 }
 
