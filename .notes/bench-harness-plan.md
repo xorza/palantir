@@ -47,9 +47,13 @@ profile mode for the perf scripts.
    `cargo test --all-targets` into an hours-long bench run.
 
    **Verified, not hypothetical:** `cargo test -p palantir --benches
-   --all-features` runs all five bench binaries (`Running
-   benches/alloc_free.rs`, `…/criterion.rs`, `…/gpu.rs`, …) and they
-   complete in seconds. Test mode is load-bearing here.
+   --features bench,showcase` runs every bench binary and completes in
+   ~26 s. Test mode is load-bearing here.
+
+   (Use that feature set, not `--all-features` — the latter enables
+   `profile-with-tracy`, whose sampling threads turned the same 26 s of
+   work into 36 min of CPU across 4.8 cores. See the crate's
+   `AGENTS.md`.)
 
 ## Design
 
