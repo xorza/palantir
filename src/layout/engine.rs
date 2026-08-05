@@ -500,8 +500,17 @@ impl LayoutEngine {
                 for slot in &tree.roots {
                     let root = slot.first_node;
                     let available = root_available(layer, slot, surface);
+                    // Two of the five passes, and the only ones a Tracy
+                    // capture couldn't tell apart — `PhaseSpan` already
+                    // splits them for the debug overlay, so the zones go
+                    // on the same boundaries rather than inventing new
+                    // ones. Per root, not per node: bounded by layer
+                    // count, so the zone budget stays flat.
                     let measure_span = PhaseSpan::start();
-                    let desired = pass.measure(root, available);
+                    let desired = {
+                        profiling::scope!("Layout::measure");
+                        pass.measure(root, available)
+                    };
                     pass.note_measure(measure_span);
                     let root_layout = tree.records.layout()[root.idx()];
                     let size = arrange_size(&root_layout, tree.bounds(root), desired, available);
@@ -513,7 +522,10 @@ impl LayoutEngine {
                         slot.placement.origin(size, surface)
                     };
                     let arrange_span = PhaseSpan::start();
-                    pass.arrange(root, Rect { min: origin, size });
+                    {
+                        profiling::scope!("Layout::arrange");
+                        pass.arrange(root, Rect { min: origin, size });
+                    }
                     pass.note_arrange(arrange_span);
                 }
             }
