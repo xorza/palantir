@@ -30,8 +30,21 @@ cargo bench -p palantir --bench alloc -- --dump     # + dhat-heap.json
 ```
 
 `--help` lists the rest — `--profile-time`, `--sample-size`,
-`--measurement-time`, `--warm-up-time`, `--save-baseline`, `--noplot`,
-and the frame bench's `--size`, `--scale`, `--machine`, `--note`.
+`--measurement-time`, `--warm-up-time`, `--noplot`, and the frame
+bench's `--size`, `--scale`, `--machine`, `--note`.
+
+**A/B a change** with the baseline pair, which is the only way to
+compare two builds without the machine's own drift confounding it —
+back-to-back runs on a busy machine move several percent on their own:
+
+```sh
+cargo bench -p palantir --bench criterion -- -d cascade --save-baseline before
+# ... make the change ...
+cargo bench -p palantir --bench criterion -- -d cascade --baseline before
+```
+
+`--baseline` fails if a selected benchmark has no sample under that
+name; `--baseline-lenient` leaves it uncompared instead.
 
 **Every input is a flag.** No bench reads an environment variable of its
 own: one parser per target, and what it resolves is handed down in a
