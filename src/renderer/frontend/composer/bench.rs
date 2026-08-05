@@ -154,7 +154,7 @@ fn push_image(cmds: &mut RecordedPaint, rect: Rect) {
     );
 }
 
-pub fn bench(c: &mut Criterion) {
+pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Arms) {
     let mut group = c.benchmark_group("composer/curves");
     group.sample_size(30);
     group.warm_up_time(Duration::from_secs(1));

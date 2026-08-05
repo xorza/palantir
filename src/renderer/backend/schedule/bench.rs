@@ -138,7 +138,7 @@ impl Workload {
     }
 }
 
-pub fn bench(c: &mut Criterion) {
+pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Arms) {
     let mut group = c.benchmark_group("schedule/walk");
     group.sample_size(50);
     group.warm_up_time(Duration::from_secs(1));

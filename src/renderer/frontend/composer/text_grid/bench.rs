@@ -158,7 +158,7 @@ impl RealisticFixture {
     }
 }
 
-pub fn bench(c: &mut Criterion) {
+pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Arms) {
     // Label-sized text rects and quad-sized probes in the proportions
     // the instrumented `frame/*_cpu` arms showed. This is the arm that
     // decides whether the tile walk pays for itself.

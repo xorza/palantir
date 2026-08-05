@@ -1,5 +1,6 @@
 //! Per-frame aggregate benchmark — two cleanly-separated benches in one
-//! file, selected by `PALANTIR_BENCH_MODE` (`cpu` / `gpu` / `both`):
+//! file, selected by the [`Arms`](crate::bench::Arms) the runner hands
+//! [`bench`] (`cpu` / `gpu` / `both`):
 //!
 //! - **`bench_cpu`** (`frame/*_cpu`) — palantir's CPU pipeline in
 //!   isolation, driven on a **bare `Ui` + standalone `Frontend` with no
@@ -58,6 +59,7 @@
 //! to eyeball the tree these numbers come from.
 
 use crate::app::internals::RecordApp;
+use crate::bench::Arms;
 use crate::diagnostics::gpu_stats::BatchKind;
 use crate::frame_fixture::{BENCH_SCALE, FrameFixture, build_ui};
 use crate::host::offscreen::OffscreenHost;
@@ -544,27 +546,11 @@ fn report_write_stats() {
     });
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum BenchMode {
-    Cpu,
-    Gpu,
-    Both,
-}
-
-impl BenchMode {
-    fn includes_cpu(self) -> bool {
-        matches!(self, BenchMode::Cpu | BenchMode::Both)
-    }
-    fn includes_gpu(self) -> bool {
-        matches!(self, BenchMode::Gpu | BenchMode::Both)
-    }
-}
-
 /// `true` when this process is a real measurement run, which is what
-/// the env-var guards below exist to make deliberate. Mirrors
+/// the results-row guard below exists to make deliberate. Mirrors
 /// criterion's own rule — `--bench` without `--test` — because
-/// `cargo test --all-targets` runs every bench binary in test mode,
-/// where each arm executes once and nothing is measured or recorded.
+/// `cargo test --benches` runs every bench binary in test mode, where
+/// each arm executes once and nothing is measured or recorded.
 fn measuring() -> bool {
     let mut bench = false;
     let mut test = false;
@@ -575,70 +561,33 @@ fn measuring() -> bool {
     bench && !test
 }
 
-/// Mode selector for the frame bench, and its opt-in. Read from
-/// `PALANTIR_BENCH_MODE`; accepts `cpu`, `gpu`, or `both`.
-///
-/// `None` means "not asked for". The frame bench shares one binary with
-/// every other criterion driver, so it cannot make its demands of a run
-/// that only wanted `damage` — the env var *is* the selection, the way
-/// a dedicated `--bench frame` target used to be. Setting it is still an
-/// explicit decision about which arms to pay for (the full `both` matrix
-/// is ~90 s; `cpu` or `gpu` alone is ~45 s), and
-/// [`bench_annotation`] still refuses to proceed without a note once the
-/// mode says the arms are wanted.
-///
-/// A test-mode run (`cargo test --all-targets` executes each arm once,
-/// measuring nothing) pays none of that, so it defaults to the whole
-/// matrix. A value that isn't one of the three is a typo rather than an
-/// opt-out, and still panics.
-fn bench_mode() -> Option<BenchMode> {
-    match std::env::var("PALANTIR_BENCH_MODE")
-        .ok()
-        .as_deref()
-        .map(str::trim)
-        .map(str::to_ascii_lowercase)
-        .as_deref()
-    {
-        Some("cpu") => Some(BenchMode::Cpu),
-        Some("gpu") => Some(BenchMode::Gpu),
-        Some("both") => Some(BenchMode::Both),
-        None if measuring() => None,
-        None => Some(BenchMode::Cpu),
-        Some(other) => panic!(
-            "PALANTIR_BENCH_MODE must be cpu|gpu|both, got {other:?}; \
-             e.g. PALANTIR_BENCH_MODE=cpu PALANTIR_BENCH_NOTE='...' \
-             cargo bench --bench criterion -- '^frame/'",
-        ),
-    }
-}
-
 /// Arm names criterion runs for a given mode, interleaved cpu/gpu per
 /// category. Used by the per-machine results writer to know which
 /// criterion estimate files to read after all arms have finished.
-fn arm_names(mode: BenchMode) -> Vec<&'static str> {
+fn arm_names(arms: Arms) -> Vec<&'static str> {
     let mut v = Vec::with_capacity(6);
-    if mode.includes_cpu() {
+    if arms.includes_cpu() {
         v.push("frame/cached_cpu");
     }
-    if mode.includes_gpu() {
+    if arms.includes_gpu() {
         v.push("frame/cached_gpu");
     }
-    if mode.includes_cpu() {
+    if arms.includes_cpu() {
         v.push("frame/partial_cpu");
     }
-    if mode.includes_gpu() {
+    if arms.includes_gpu() {
         v.push("frame/partial_gpu");
     }
-    if mode.includes_cpu() {
+    if arms.includes_cpu() {
         v.push("frame/resizing_cpu");
     }
-    if mode.includes_gpu() {
+    if arms.includes_gpu() {
         v.push("frame/resizing_gpu");
     }
-    if mode.includes_cpu() {
+    if arms.includes_cpu() {
         v.push("frame/scrolling_cpu");
     }
-    if mode.includes_gpu() {
+    if arms.includes_gpu() {
         v.push("frame/scrolling_gpu");
     }
     v
@@ -648,8 +597,8 @@ fn arm_names(mode: BenchMode) -> Vec<&'static str> {
 /// `MODE=gpu` so a GPU-only run executes no CPU-arm code (and, more
 /// importantly, a `MODE=cpu` run reaches this without `bench_gpu` having
 /// touched the GPU at all — pristine for profiling).
-fn bench_cpu(c: &mut Criterion, mode: BenchMode) {
-    if !mode.includes_cpu() {
+fn bench_cpu(c: &mut Criterion, arms: Arms) {
+    if !arms.includes_cpu() {
         return;
     }
     cpu_cached(c);
@@ -660,8 +609,8 @@ fn bench_cpu(c: &mut Criterion, mode: BenchMode) {
 
 /// GPU bench: the full-pipeline `frame/*_gpu` arms plus the per-frame
 /// `write_stats` dump. Skipped wholesale when `MODE=cpu`.
-fn bench_gpu(c: &mut Criterion, mode: BenchMode) {
-    if !mode.includes_gpu() {
+fn bench_gpu(c: &mut Criterion, arms: Arms) {
+    if !arms.includes_gpu() {
         return;
     }
     report_write_stats();
@@ -676,8 +625,8 @@ fn bench_gpu(c: &mut Criterion, mode: BenchMode) {
 /// per-machine results row. Separated from the benches so it observes
 /// every arm regardless of mode, and so neither bench has to know it's
 /// the last one.
-fn write_results(mode: BenchMode) {
-    prepend_machine_results(mode);
+fn write_results(arms: Arms) {
+    prepend_machine_results(arms);
 }
 
 /// Read criterion's reported estimate out of `target/criterion/<slug>/new/estimates.json`
@@ -685,14 +634,14 @@ fn write_results(mode: BenchMode) {
 /// criterion's stdout prints — to a per-machine `.txt`. Newest run lives
 /// at the top of the file (`head` gives the latest). Best-effort: any I/O
 /// failure prints to stderr and continues.
-fn prepend_machine_results(mode: BenchMode) {
+fn prepend_machine_results(arms: Arms) {
     let machine = machine_label();
     let path = PathBuf::from("benches/results").join(format!("{machine}.txt"));
     let mut block = String::new();
-    let mode_tag = match mode {
-        BenchMode::Cpu => "cpu",
-        BenchMode::Gpu => "gpu",
-        BenchMode::Both => "both",
+    let mode_tag = match arms {
+        Arms::Cpu => "cpu",
+        Arms::Gpu => "gpu",
+        Arms::Both => "both",
     };
     block.push_str(&format!(
         "=== {} — [{}] {} ===\n",
@@ -700,7 +649,7 @@ fn prepend_machine_results(mode: BenchMode) {
         mode_tag,
         bench_annotation()
     ));
-    for &name in arm_names(mode).iter() {
+    for &name in arm_names(arms).iter() {
         let row = match read_criterion_estimate(name) {
             Some(e) => format!("{name:<22} time: {}\n", fmt_estimate(e)),
             None => format!("{name:<22} time: (criterion estimates not found)\n"),
@@ -903,23 +852,18 @@ fn now_label() -> String {
 // on-demand bench. `cpu` and `gpu` are separate criterion groups so
 // `MODE=cpu` can run (and be profiled) without any GPU code executing;
 // `results` runs last to prepend the per-machine row.
-pub fn config() -> Criterion {
+pub(crate) fn config() -> Criterion {
     Criterion::default()
         .measurement_time(Duration::from_secs(12))
         .warm_up_time(Duration::from_secs(3))
 }
 
-pub fn bench(c: &mut Criterion) {
-    // Not asked for. Every other driver shares this binary, so a run
-    // that wanted one of them must not pay the frame matrix — or its
-    // env demands.
-    let Some(mode) = bench_mode() else {
-        eprintln!(
-            "skipping frame bench: set PALANTIR_BENCH_MODE=cpu|gpu|both \
-             (with PALANTIR_BENCH_NOTE=<short context>) to run it",
-        );
-        return;
-    };
+/// `arms` decides which half runs — the runner resolved it from the
+/// driver's declared [`Arms::Both`] against what the invocation asked
+/// for, so this no longer reads the environment or decides whether it
+/// was wanted at all. Being called *is* being wanted; the registry's
+/// `opt_in` keeps it out of the default set.
+pub(crate) fn bench(c: &mut Criterion, arms: Arms) {
     // Under criterion's test mode no estimate is written, so the
     // results row — and the note it demands — would be meaningless.
     let measuring = measuring();
@@ -928,9 +872,9 @@ pub fn bench(c: &mut Criterion) {
     if measuring {
         let _ = bench_annotation();
     }
-    bench_cpu(c, mode);
-    bench_gpu(c, mode);
+    bench_cpu(c, arms);
+    bench_gpu(c, arms);
     if measuring {
-        write_results(mode);
+        write_results(arms);
     }
 }

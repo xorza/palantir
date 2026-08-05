@@ -334,7 +334,7 @@ fn report_evidence(gpu: &Gpu, workload: Workload) {
     );
 }
 
-pub fn bench(c: &mut Criterion) {
+pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Arms) {
     let gpu = gpu();
     eprintln!(
         "[image_pipeline] adapter={} backend={:?} timestamp={} inside_pass={} pipeline_stats={}",

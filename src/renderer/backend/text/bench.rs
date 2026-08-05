@@ -37,8 +37,8 @@
 //!   5. `end_frame` (atlas trim + clear instance Vec + reset ranges)
 //!
 //! Run with:
-//!   cargo bench --bench criterion --features bench -- text_atlas
-//!   cargo bench --bench criterion --features bench -- 'zoom_smooth$'
+//!   cargo bench --bench gpu --features bench -- text_atlas
+//!   cargo bench --bench gpu --features bench -- 'zoom_smooth$'
 
 use std::sync::OnceLock;
 use std::time::Duration;
@@ -473,7 +473,7 @@ fn report_atlas_pressure(label: &str, backend: &BenchText, frames: u32) {
     );
 }
 
-pub fn bench(c: &mut Criterion) {
+pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Arms) {
     let g = gpu();
     let target = make_target(&g.device);
     let view = target.create_view(&wgpu::TextureViewDescriptor::default());

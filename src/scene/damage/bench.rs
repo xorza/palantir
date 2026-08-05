@@ -650,7 +650,7 @@ fn bench_paint_order_inversion(c: &mut Criterion) {
     group.finish();
 }
 
-pub fn bench(c: &mut Criterion) {
+pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Arms) {
     bench_workloads(c);
     bench_paint_order_inversion(c);
     bench_region_add(c);
