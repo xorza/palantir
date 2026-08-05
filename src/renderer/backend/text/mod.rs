@@ -212,7 +212,6 @@ impl TextBackend {
     /// first miss opens the exclusive shaper session, and each miss
     /// extracts and rasterizes its glyphs in place. Rebinds the atlas
     /// bind group if it grew.
-    #[profiling::function]
     pub(crate) fn prepare_batch(
         &mut self,
         ctx: &mut GpuCtx<'_>,

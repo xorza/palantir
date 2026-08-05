@@ -241,7 +241,6 @@ impl QuadPipeline {
         )
     }
 
-    #[profiling::function]
     pub(super) fn upload(&mut self, ctx: &mut GpuCtx<'_>, quads: &[Quad]) {
         self.instance_buffer.upload_instances(ctx, quads);
     }
@@ -282,7 +281,6 @@ impl QuadPipeline {
     /// last frame's pixels. Alpha is forced because a translucent
     /// pre-clear would blend against last frame's pixels and defeat
     /// the fringe-fix.
-    #[profiling::function]
     pub(super) fn upload_clear(&mut self, ctx: &mut GpuCtx<'_>, viewport: Vec2, color: Color) {
         // Steady state: viewport + clear color match last frame, so
         // the clear_buffer already holds the right pixels. Skip the

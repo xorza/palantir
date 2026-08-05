@@ -40,7 +40,6 @@ impl ImageTextures {
         }
     }
 
-    #[profiling::function]
     pub(super) fn drain_registry(&mut self, ctx: &mut GpuCtx<'_>, images: &ImageRegistry) {
         // Destructured so the upload borrows `bgl`/`sampler` while the
         // closure holds `bindings` mutably — disjoint fields, which

@@ -78,7 +78,6 @@ impl MeshPipeline {
         )
     }
 
-    #[profiling::function]
     pub(super) fn upload(
         &mut self,
         ctx: &mut GpuCtx<'_>,
