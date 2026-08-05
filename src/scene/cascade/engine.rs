@@ -14,9 +14,9 @@ use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::span::Span;
 use crate::primitives::transform::TranslateScale;
+use crate::scene::cascade::counters::CascadeCounters;
 use crate::scene::cascade::entry::{EntryRow, HitRow, ScopeRow};
 use crate::scene::cascade::paint::{Paint, PaintArena};
-use crate::scene::cascade::probe::CascadeProbe;
 use crate::scene::cascade::{Cascade, CascadeInputHash, LayerCascade};
 use crate::scene::forest::Forest;
 use crate::scene::layer::Layer;
@@ -85,8 +85,8 @@ pub(crate) struct CascadeEngine {
     stack: Vec<Frame>,
     paint_scratch: PaintArena,
     display_scale: Option<f32>,
-    /// Test/bench observability for this pass — see [`CascadeProbe`].
-    pub(crate) probe: CascadeProbe,
+    /// Test/bench observability for this pass — see [`CascadeCounters`].
+    pub(crate) counters: CascadeCounters,
 }
 
 impl CascadeEngine {
@@ -123,7 +123,7 @@ impl CascadeEngine {
                 display.scale_factor,
             );
             if !incremental_complete {
-                self.probe.abandoned_incremental();
+                self.counters.abandoned_incremental();
                 self.run_full(forest, layout, display, cascade);
                 return;
             }
@@ -180,7 +180,7 @@ impl CascadeEngine {
         display: Display,
         cascade: &mut Cascade,
     ) {
-        self.probe.full_rebuild();
+        self.counters.full_rebuild();
         let total = forest.total_nodes();
         cascade.entries.clear();
         cascade.entries.reserve_exact(total);

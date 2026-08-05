@@ -196,7 +196,7 @@ fn bench_workloads(c: &mut Criterion) {
         // Pre-existing master regression: skip count drifted below
         // ROWS; not relevant to the shape-churn measurement below.
         assert!(
-            h.ui.damage_engine.probe.subtree_skips() > 0,
+            h.ui.damage_engine.counters.subtree_skips() > 0,
             "no subtree skips at all — fixture is broken",
         );
         group.bench_function("skip_painted_rows", |b| {

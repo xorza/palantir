@@ -69,7 +69,7 @@ mod internals {
         /// indistinguishable from outside. Accumulates for the life of
         /// the atlas, so readers take a delta.
         pub(crate) fn registrations(&self) -> u32 {
-            self.cpu.borrow().probe.registrations()
+            self.cpu.borrow().counters.registrations()
         }
     }
 }

@@ -1,5 +1,5 @@
 //! Observability for the encoded-run cache. Built on
-//! [`TestOnly`](crate::common::probe::TestOnly), whose module doc
+//! [`TestOnly`](crate::common::counters::TestOnly), whose module doc
 //! explains the gated-cell pattern and why the two gates exist.
 //!
 //! On the narrow gate: these counters were added to size a probation
@@ -29,11 +29,11 @@
 //! Counters accumulate for the life of the backend, so readers take a
 //! delta.
 
-use crate::common::probe::TestOnly;
+use crate::common::counters::TestOnly;
 
 /// What the encoded-run cache did.
 #[derive(Debug, Default)]
-pub(super) struct EncodedProbe {
+pub(super) struct EncodedCounters {
     /// Runs pushed through the full miss path — glyph extraction through
     /// the shaper lease, then an atlas touch or rasterization per glyph.
     /// The cost every other counter here exists to explain.
@@ -65,7 +65,7 @@ pub(super) struct EncodedProbe {
 
 /// Reads are gated with the counters themselves.
 #[cfg(test)]
-impl EncodedProbe {
+impl EncodedCounters {
     pub(super) fn counts(&self) -> EncodedCounts {
         EncodedCounts {
             encodes: self.encodes.count(),
@@ -78,7 +78,7 @@ impl EncodedProbe {
     }
 }
 
-/// One reading of an [`EncodedProbe`]'s tallies. Subtract two to get
+/// One reading of an [`EncodedCounters`]'s tallies. Subtract two to get
 /// what a span of frames did — the counters accumulate for the life of
 /// the backend. Copied out rather than borrowed so a caller can hold a
 /// "before" reading across calls that need the backend again.

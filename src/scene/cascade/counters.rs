@@ -1,5 +1,5 @@
 //! Observability for the cascade pass. Built on
-//! [`TestOnly`](crate::common::probe::TestOnly), whose module doc
+//! [`TestOnly`](crate::common::counters::TestOnly), whose module doc
 //! explains the gated-cell pattern and why the two gates exist.
 //!
 //! ## Why these accumulate instead of resetting per pass
@@ -18,13 +18,13 @@
 //! Nothing benches these two, so they stay `cfg(test)`; the crate
 //! escalates visibility for a real caller rather than a hypothetical
 //! one. If a cascade bench wants them, widen to
-//! [`BenchOnly`](crate::common::probe::BenchOnly) then.
+//! [`BenchOnly`](crate::common::counters::BenchOnly) then.
 //!
 //! [`CascadeEngine::run`]: crate::scene::cascade::engine::CascadeEngine
 //! [`PaintSnapArena::compactions_run`]:
 //!     crate::scene::damage::snapshot::PaintSnapArena
 
-use crate::common::probe::TestOnly;
+use crate::common::counters::TestOnly;
 
 /// What the cascade did, for tests to assert against.
 ///
@@ -33,7 +33,7 @@ use crate::common::probe::TestOnly;
 /// separating "`can_update` said no" from "the incremental walk gave up
 /// halfway" is the whole point.
 #[derive(Debug, Default)]
-pub(crate) struct CascadeProbe {
+pub(crate) struct CascadeCounters {
     /// Full rebuilds performed.
     full_rebuilds: TestOnly<u32>,
     /// Incremental walks that got partway and gave up, forcing the full
@@ -41,7 +41,7 @@ pub(crate) struct CascadeProbe {
     abandoned_incrementals: TestOnly<u32>,
 }
 
-impl CascadeProbe {
+impl CascadeCounters {
     #[inline]
     pub(crate) fn full_rebuild(&mut self) {
         self.full_rebuilds.bump();
@@ -56,7 +56,7 @@ impl CascadeProbe {
 /// Reads are test-only: nothing in a shipping build has a reason to ask,
 /// and gating them here is what lets the counters themselves be absent.
 #[cfg(test)]
-impl CascadeProbe {
+impl CascadeCounters {
     pub(crate) fn full_rebuilds(&self) -> u32 {
         self.full_rebuilds.count()
     }

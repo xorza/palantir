@@ -1,11 +1,11 @@
 pub(crate) mod axis;
 pub(crate) mod cache;
 mod canvas;
+pub(crate) mod counters;
 pub(crate) mod engine;
 pub(crate) mod grid;
 pub(crate) mod intrinsic;
 pub(crate) mod pass;
-pub(crate) mod probe;
 pub(crate) mod scroll;
 pub(crate) mod scrollbars;
 pub(crate) mod stack;

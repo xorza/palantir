@@ -17,12 +17,12 @@
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod capture;
 pub(crate) mod composer;
 pub(crate) mod encoder;
 pub(crate) mod paint_sink;
 pub(crate) mod payload;
-#[cfg(any(test, feature = "internals"))]
-pub(crate) mod record_sink;
 
 use std::cell::Ref;
 use std::time::Duration;

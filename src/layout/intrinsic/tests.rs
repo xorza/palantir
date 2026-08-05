@@ -106,7 +106,10 @@ fn intrinsic_query_short_circuits_on_cache_hit() {
     );
     let max_slot = LenReq::MaxContent.slot(Axis::X);
     h.ui.layout_engine.scratch.intrinsics[child.idx()][max_slot] = f32::NAN;
-    h.ui.layout_engine.scratch.probe.reset_intrinsic_computes();
+    h.ui.layout_engine
+        .scratch
+        .counters
+        .reset_intrinsic_computes();
     let range = h.ui.layout_engine.intrinsic_range(
         &h.ui.forest.trees[Layer::Main],
         child,
@@ -122,7 +125,7 @@ fn intrinsic_query_short_circuits_on_cache_hit() {
         "a partially cached range must preserve the populated side",
     );
     assert_eq!(
-        h.ui.layout_engine.scratch.probe.intrinsic_computes(),
+        h.ui.layout_engine.scratch.counters.intrinsic_computes(),
         1,
         "only the missing max-content side should compute",
     );
@@ -284,24 +287,30 @@ fn intrinsic_range_exactly_matches_separate_queries_for_every_driver() {
                 .scratch
                 .intrinsics
                 .fill([f32::NAN; SLOT_COUNT]);
-            h.ui.layout_engine.scratch.probe.reset_intrinsic_computes();
+            h.ui.layout_engine
+                .scratch
+                .counters
+                .reset_intrinsic_computes();
             let min =
                 h.ui.layout_engine
                     .intrinsic(tree, node, axis, LenReq::MinContent, &interned_text);
             let max =
                 h.ui.layout_engine
                     .intrinsic(tree, node, axis, LenReq::MaxContent, &interned_text);
-            let separate_computes = h.ui.layout_engine.scratch.probe.intrinsic_computes();
+            let separate_computes = h.ui.layout_engine.scratch.counters.intrinsic_computes();
 
             h.ui.layout_engine
                 .scratch
                 .intrinsics
                 .fill([f32::NAN; SLOT_COUNT]);
-            h.ui.layout_engine.scratch.probe.reset_intrinsic_computes();
+            h.ui.layout_engine
+                .scratch
+                .counters
+                .reset_intrinsic_computes();
             let range =
                 h.ui.layout_engine
                     .intrinsic_range(tree, node, axis, &interned_text);
-            let range_computes = h.ui.layout_engine.scratch.probe.intrinsic_computes();
+            let range_computes = h.ui.layout_engine.scratch.counters.intrinsic_computes();
 
             assert_eq!(range.min, min, "{mode:?} {axis:?} min-content");
             assert_eq!(range.max, max, "{mode:?} {axis:?} max-content");

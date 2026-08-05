@@ -29,7 +29,7 @@ use crate::common::expiry_wheel::ExpiryWheel;
 use crate::layout::types::align::HAlign;
 use crate::primitives::num::F32Ext;
 use crate::primitives::size::Size;
-use crate::text::cache_probe::CacheProbe;
+use crate::text::cache_counters::CacheCounters;
 use crate::text::key::TextShapeKey;
 use crate::text::render::{
     GlyphImage, GlyphImageKind, GlyphPlacement, GlyphRasterKey, PlacedGlyph, RunPlacement,
@@ -295,7 +295,7 @@ pub(super) struct CosmicMeasure {
     logical_order: Vec<u32>,
     /// Shape / hit / supersede / expire tallies. Zero-sized outside
     /// tests.
-    pub(super) probe: CacheProbe,
+    pub(super) counters: CacheCounters,
 }
 
 impl CosmicMeasure {
@@ -323,7 +323,7 @@ impl CosmicMeasure {
             truncate_scratch: String::new(),
             break_scratch: Vec::new(),
             logical_order: Vec::new(),
-            probe: CacheProbe::default(),
+            counters: CacheCounters::default(),
         }
     }
 
@@ -686,7 +686,7 @@ impl CosmicMeasure {
         buffer.shape_until_scroll(&mut self.font_system, false);
         let advance = first_line_right(&buffer);
         recycle_buffer(&mut self.recycle_pool, buffer);
-        self.probe.ellipsis_misses.bump();
+        self.counters.ellipsis_misses.bump();
         // `insert` panics at capacity, so retire the oldest first.
         if self.ellipsis.len() == ELLIPSIS_MEMO_SLOTS {
             self.ellipsis.pop();
@@ -724,7 +724,7 @@ impl CosmicMeasure {
         // width, and a workload test cares that the run was shaped, not
         // how many attempts the cut took. The memoized ellipsis probe
         // shapes without inserting and is deliberately not counted.
-        self.probe.shapes.bump();
+        self.counters.shapes.bump();
         let keep_until = self.frame + PROBATION_KEEP_FRAMES;
         // First frame on which the entry is dead, matching the sweep's
         // own `keep_until < frame` test.
@@ -778,7 +778,7 @@ impl CosmicMeasure {
             entry.root
         });
         if hit.is_some() {
-            self.probe.hits.bump();
+            self.counters.hits.bump();
         }
         hit
     }
@@ -803,7 +803,7 @@ impl CosmicMeasure {
         let Some(entry) = self.cache.get_mut(&key) else {
             return;
         };
-        self.probe.supersedes.bump();
+        self.counters.supersedes.bump();
         // Never *extends* a life: an entry already closer to expiry —
         // one that was inserted and never looked up — keeps its own
         // deadline.
@@ -852,7 +852,7 @@ impl CosmicMeasure {
         self.frame = frame;
         let cache = &mut self.cache;
         let recycle_pool = &mut self.recycle_pool;
-        let probe = &mut self.probe;
+        let probe = &mut self.counters;
         self.expiry.retire(frame, |key| {
             // Gone already — a superseded entry files a second ticket, so
             // the first one to fire removes it and the other finds

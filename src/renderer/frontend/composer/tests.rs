@@ -8,13 +8,13 @@ use crate::primitives::{
     color::Color, color::ColorU8, corners::Corners, rect::Rect, size::Size, stroke::Stroke,
     transform::TranslateScale, urect::URect,
 };
+use crate::renderer::frontend::capture::PaintCapture;
 use crate::renderer::frontend::composer::{Composer, stroke_bbox_urect};
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::{
     BrushSource, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload, DrawQuadPayload,
     PushClipPayload, ResolvedGradient,
 };
-use crate::renderer::frontend::record_sink::RecordedPaint;
 use crate::renderer::gpu_view::{GpuFrameCtx, GpuPaint, GpuPaintRef};
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::scene::record_store::RecordPayloads;
@@ -46,15 +46,15 @@ fn rect(x: f32, y: f32, w: f32, h: f32) -> Rect {
     Rect::new(x, y, w, h)
 }
 
-fn clip(buf: &mut RecordedPaint, r: Rect) {
+fn clip(buf: &mut PaintCapture, r: Rect) {
     buf.clip(PushClipPayload::rect(r));
 }
 
-fn clip_rounded(buf: &mut RecordedPaint, r: Rect, corners: Corners) {
+fn clip_rounded(buf: &mut PaintCapture, r: Rect, corners: Corners) {
     buf.clip(PushClipPayload::rounded(r, corners));
 }
 
-fn draw(buf: &mut RecordedPaint, r: Rect) {
+fn draw(buf: &mut PaintCapture, r: Rect) {
     buf.draw_quad(DrawQuadPayload::rect(
         r,
         Corners::default(),
@@ -63,7 +63,7 @@ fn draw(buf: &mut RecordedPaint, r: Rect) {
     ));
 }
 
-fn text(buf: &mut RecordedPaint, r: Rect) {
+fn text(buf: &mut PaintCapture, r: Rect) {
     buf.draw_text(
         r,
         Color::WHITE.into(),
@@ -86,18 +86,18 @@ fn params(scale: f32, physical: UVec2) -> Display {
 }
 
 fn run(
-    build: impl FnOnce(&mut RecordedPaint, &mut RecordPayloads),
+    build: impl FnOnce(&mut PaintCapture, &mut RecordPayloads),
     display: &Display,
 ) -> RenderBuffer {
     run_with_texture_cap(build, display, 16_384)
 }
 
 fn run_with_texture_cap(
-    build: impl FnOnce(&mut RecordedPaint, &mut RecordPayloads),
+    build: impl FnOnce(&mut PaintCapture, &mut RecordPayloads),
     display: &Display,
     max_texture_dim: u32,
 ) -> RenderBuffer {
-    let mut recorded = RecordedPaint::default();
+    let mut recorded = PaintCapture::default();
     let mut payloads = RecordPayloads::default();
     build(&mut recorded, &mut payloads);
     let mut composer = Composer::new(max_texture_dim);
@@ -154,7 +154,7 @@ fn dropping_a_session_emits_the_trailing_group_and_batch() {
     let mut out = render_buffer();
     {
         let mut session = composer.begin(display, &payloads, &mut out);
-        let mut recorded = RecordedPaint::default();
+        let mut recorded = PaintCapture::default();
         draw(&mut recorded, rect(0.0, 0.0, 10.0, 10.0));
         text(&mut recorded, rect(0.0, 20.0, 10.0, 10.0));
         recorded.replay(&mut session);
@@ -349,7 +349,7 @@ fn cull_without_active_clip_keeps_nonzero_viewport_bounds() {
     assert_eq!(buf.groups.len(), 1);
 }
 
-fn mesh(buf: &mut RecordedPaint, bbox: Rect) {
+fn mesh(buf: &mut PaintCapture, bbox: Rect) {
     // 3 verts / 3 indices + opaque tint clears `DrawMeshPayload::is_noop`
     // so the cmd reaches the composer.
     buf.draw_mesh(DrawMeshPayload {
@@ -523,7 +523,7 @@ fn push_clip_rounded_nested_builds_outer_inner_chain() {
     assert_eq!(buf.groups[2].scissor, Some(URect::new(30, 30, 50, 50)));
 }
 
-fn push_distinct_rounded_clips(buffer: &mut RecordedPaint, depth: u32) {
+fn push_distinct_rounded_clips(buffer: &mut PaintCapture, depth: u32) {
     for level in 1..=depth {
         clip_rounded(
             buffer,
@@ -752,7 +752,7 @@ fn compose_scales_radius_and_stroke_under_transform() {
 #[test]
 fn compose_solid_brush_emits_kind_zero_quad() {
     use crate::renderer::frontend::payload::BrushSource;
-    let mut buffer = RecordedPaint::default();
+    let mut buffer = PaintCapture::default();
     buffer.draw_quad(DrawQuadPayload::rect(
         rect(0.0, 0.0, 100.0, 100.0),
         Corners::default(),
@@ -844,7 +844,7 @@ fn compose_linear_brush_emits_kind_one_with_atlas_row() {
         row,
         kind: FillKind::linear(g.spread),
     };
-    let mut buffer = RecordedPaint::default();
+    let mut buffer = PaintCapture::default();
     buffer.draw_quad(DrawQuadPayload::rect(
         rect(0.0, 0.0, 100.0, 100.0),
         Corners::default(),
@@ -882,7 +882,7 @@ fn compose_repeated_linear_brush_shares_atlas_row() {
         row: atlas.register_stops(&g.stops, g.interp),
         kind: FillKind::linear(g.spread),
     };
-    let mut buffer = RecordedPaint::default();
+    let mut buffer = PaintCapture::default();
     for _ in 0..3 {
         buffer.draw_quad(DrawQuadPayload::rect(
             rect(0.0, 0.0, 10.0, 10.0),
@@ -1361,7 +1361,7 @@ fn compose_polyline_between_texts_splits_text_batch() {
 
 #[allow(clippy::too_many_arguments)]
 fn polyline_cmd(
-    b: &mut RecordedPaint,
+    b: &mut PaintCapture,
     payloads: &mut RecordPayloads,
     points: &[Vec2],
     colors: &[Color],
@@ -1412,7 +1412,7 @@ fn compose_polyline_emits_segments_and_join_chrome() {
         Vec2::new(110.0, 10.0),
         Vec2::new(160.0, 40.0),
     ];
-    let mut commands = RecordedPaint::default();
+    let mut commands = PaintCapture::default();
     let mut payloads = RecordPayloads::default();
     polyline_cmd(
         &mut commands,
@@ -1638,7 +1638,7 @@ fn compose_spins_polyline_about_bbox_center() {
     // bbox 100×100 ⇒ centre (50, 50) is both the pivot and the symmetry
     // point of the segment, so a correct spin keeps the AABB centred.
     let aabb = |rotation: f32| -> (Vec2, Vec2) {
-        let mut buffer = RecordedPaint::default();
+        let mut buffer = PaintCapture::default();
         let mut payloads = RecordPayloads::default();
         let p_start = payloads.polyline_points.len() as u32;
         payloads.polyline_points.push(Vec2::new(15.0, 50.0));
@@ -2209,7 +2209,7 @@ fn compose_flat_cubic_emits_single_instance_curved_emits_many() {
     // exactly what Shape::line lowers to) must collapse to one
     // instance; a genuinely curved one must subdivide (800 px polygon
     // → ⌈⌈800/1.5⌉/16⌉ = 34 instances).
-    let straight = |b: &mut RecordedPaint| {
+    let straight = |b: &mut PaintCapture| {
         b.draw_curve(DrawCurvePayload {
             bbox: rect(0.0, 0.0, 800.0, 10.0),
             origin: Vec2::ZERO,
@@ -2224,7 +2224,7 @@ fn compose_flat_cubic_emits_single_instance_curved_emits_many() {
             ..Default::default()
         });
     };
-    let curved = |b: &mut RecordedPaint| {
+    let curved = |b: &mut PaintCapture| {
         b.draw_curve(DrawCurvePayload {
             bbox: rect(0.0, 0.0, 800.0, 400.0),
             origin: Vec2::ZERO,
@@ -2385,7 +2385,7 @@ fn compose_arc_and_curve_share_one_batch_per_group() {
     assert!(buf.curves.iter().any(|c| c.kind == CURVE_KIND_CUBIC));
 }
 
-fn curve(b: &mut RecordedPaint, bbox: Rect) {
+fn curve(b: &mut PaintCapture, bbox: Rect) {
     use crate::renderer::frontend::payload::DrawCurvePayload;
     use crate::scene::shapes::paint::CurveBasis;
     b.draw_curve(DrawCurvePayload {
@@ -2403,7 +2403,7 @@ fn curve(b: &mut RecordedPaint, bbox: Rect) {
     });
 }
 
-fn image(b: &mut RecordedPaint, r: Rect) {
+fn image(b: &mut PaintCapture, r: Rect) {
     use crate::renderer::frontend::payload::DrawImagePayload;
     b.draw_image(
         DrawImagePayload::image(
@@ -3164,7 +3164,7 @@ fn prune_steady_state_across_repeated_compose_calls() {
     // `drop_indices`) are reset cleanly between frames — a stale
     // entry would either panic on index OOB after the slice shrinks
     // or leak across-frame drops.
-    let mut buffer = RecordedPaint::default();
+    let mut buffer = PaintCapture::default();
     let mut composer = composer();
     let display = params(1.0, UVec2::new(200, 200));
     for _ in 0..5 {
@@ -3283,7 +3283,7 @@ fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
     let folded = ColorF16::from(bg).unpack();
 
     // (case, builder, expected quad count, expected override)
-    type Build = fn(&mut RecordedPaint);
+    type Build = fn(&mut PaintCapture);
     let cases: &[(&str, Build, usize, Option<Color>)] = &[
         (
             "qualifying root folds, later quad stays",
@@ -3476,7 +3476,7 @@ fn clear_fold_resets_across_frames() {
     let mut out = render_buffer();
     let payloads = RecordPayloads::default();
 
-    let mut covered = RecordedPaint::default();
+    let mut covered = PaintCapture::default();
     draw(&mut covered, rect(0.0, 0.0, 200.0, 200.0));
     draw(&mut covered, rect(10.0, 10.0, 20.0, 20.0));
 
@@ -3492,7 +3492,7 @@ fn clear_fold_resets_across_frames() {
     assert!(out.clear_override.is_some(), "steady state re-folds");
     assert_eq!(out.quads.len(), 1);
 
-    let mut uncovered = RecordedPaint::default();
+    let mut uncovered = PaintCapture::default();
     draw(&mut uncovered, rect(10.0, 10.0, 20.0, 20.0));
     composer
         .begin(display, &payloads, &mut out)
@@ -3631,7 +3631,7 @@ fn quad_fast_path_flag_cases() {
 /// before restoring the gate — not this one to delete.
 ///
 /// Calls the **required** half directly, since that is the path below
-/// the assert (and the one `RecordedPaint::replay` takes).
+/// the assert (and the one `PaintCapture::replay` takes).
 #[test]
 fn degenerate_polyline_emits_nothing_rather_than_panicking() {
     for points_len in [0u32, 1] {

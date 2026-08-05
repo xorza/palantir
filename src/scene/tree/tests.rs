@@ -6,7 +6,7 @@ use crate::primitives::background::Background;
 use crate::primitives::color::{Color, ColorU8};
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
-use crate::renderer::frontend::record_sink::PaintCall;
+use crate::renderer::frontend::capture::PaintCall;
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
 use crate::scene::shapes::paint::QuadShape;

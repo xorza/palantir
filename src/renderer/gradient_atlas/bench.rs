@@ -40,7 +40,7 @@
 //!   is what a per-frame animated gradient produces, and the arm the
 //!   old O(capacity) probe-plus-LRU-scan dominated.
 //!
-//! Both arms assert against [`GradientAtlasProbe`] before measuring, so
+//! Both arms assert against [`GradientAtlasCounters`] before measuring, so
 //! a fixture that quietly stopped doing what its name says fails loudly
 //! instead of reporting a plausible-looking time. `miss/*` in particular
 //! would read as a *speedup* if it started hitting.
@@ -91,7 +91,7 @@ fn gradient_for(seed: u32) -> GradientStops {
 fn filled(capacity: u32) -> CpuGradientAtlas {
     let mut atlas = CpuGradientAtlas::new(capacity);
     let mut seed = 0u32;
-    while atlas.capacity() < capacity || atlas.probe.bakes() < capacity - 1 {
+    while atlas.capacity() < capacity || atlas.counters.bakes() < capacity - 1 {
         seed += 1;
         atlas.register_stops(&gradient_for(seed), Interp::Oklab);
         assert!(seed < capacity * 4, "fill made no progress");
@@ -116,12 +116,12 @@ pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Run<'_>) {
         let resident: Vec<GradientStops> = (capacity - WORKING_SET..capacity)
             .map(gradient_for)
             .collect();
-        let before = atlas.probe.bakes();
+        let before = atlas.counters.bakes();
         for stops in &resident {
             black_box(atlas.register_stops(stops, Interp::Oklab));
         }
         assert_eq!(
-            atlas.probe.bakes(),
+            atlas.counters.bakes(),
             before,
             "hit/{capacity} fixture re-baked: the working set is not resident",
         );
@@ -139,23 +139,23 @@ pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Run<'_>) {
         // Missing is then independent of the table size, so the arms
         // differ only in how much table the miss has to work against.
         let mut atlas = filled(capacity);
-        let (hits, bakes) = (atlas.probe.hits(), atlas.probe.bakes());
+        let (hits, bakes) = (atlas.counters.hits(), atlas.counters.bakes());
         for k in 0..16 {
             atlas.flush();
             black_box(atlas.register_stops(&gradient_for(CHURN_BASE + k), Interp::Oklab));
         }
         assert_eq!(
-            atlas.probe.hits(),
+            atlas.counters.hits(),
             hits,
             "miss/{capacity} fixture hit the index: the churn seeds overlap the fill",
         );
         assert_eq!(
-            atlas.probe.bakes() - bakes,
+            atlas.counters.bakes() - bakes,
             16,
             "miss/{capacity} fixture must bake exactly once per registration",
         );
 
-        let growths = atlas.probe.growths();
+        let growths = atlas.counters.growths();
         let mut seed = CHURN_BASE + 16;
         group.bench_with_input(BenchmarkId::new("miss", capacity), &capacity, |b, _| {
             b.iter(|| {
@@ -168,15 +168,15 @@ pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Run<'_>) {
             });
         });
         assert_eq!(
-            atlas.probe.growths(),
+            atlas.counters.growths(),
             growths,
             "miss/{capacity} grew the atlas: it measured a ratchet, not churn",
         );
         eprintln!(
             "[gradient_atlas] capacity={capacity} rows={} evictions={} fallbacks={}",
             atlas.capacity(),
-            atlas.probe.evictions(),
-            atlas.probe.fallbacks(),
+            atlas.counters.evictions(),
+            atlas.counters.fallbacks(),
         );
     }
     group.finish();

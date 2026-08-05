@@ -128,7 +128,7 @@ fn unchanged_subtree_hits_and_replays_exact_output() {
     );
     assert_eq!(first_rects, h.ui.layout[Layer::Main].rect);
     assert_eq!(
-        h.ui.layout_engine.scratch.probe.cache_hits().len(),
+        h.ui.layout_engine.scratch.counters.cache_hits().len(),
         1,
         "the highest unchanged subtree must short-circuit the frame"
     );
@@ -136,8 +136,8 @@ fn unchanged_subtree_hits_and_replays_exact_output() {
     // re-deriving them — identical output either way, so without this the
     // assertion says nothing about which path ran.
     assert_eq!(
-        h.ui.layout_engine.scratch.probe.arrange_replays(),
-        crate::layout::probe::ReplayCounts {
+        h.ui.layout_engine.scratch.counters.arrange_replays(),
+        crate::layout::counters::ReplayCounts {
             copied: 1,
             translated: 0,
         },
@@ -327,7 +327,7 @@ fn solver_order_text_runs_form_contiguous_subtree_snapshots() {
     assert!(
         h.ui.layout_engine
             .scratch
-            .probe
+            .counters
             .cache_hits()
             .contains(&WidgetId::VIEWPORT)
     );
@@ -373,7 +373,7 @@ fn localized_change_hits_unchanged_sibling() {
     assert!(
         h.ui.layout_engine
             .scratch
-            .probe
+            .counters
             .cache_hits()
             .contains(&WidgetId::from_hash("stable"))
     );
@@ -381,7 +381,7 @@ fn localized_change_hits_unchanged_sibling() {
         !h.ui
             .layout_engine
             .scratch
-            .probe
+            .counters
             .cache_hits()
             .contains(&WidgetId::from_hash("branch-root"))
     );

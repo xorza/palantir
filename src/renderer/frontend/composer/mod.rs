@@ -1526,15 +1526,15 @@ impl PaintSink for ComposeSession<'_> {
 pub(crate) mod internals {
     //! Replay driver for the composer tests and the compose bench.
 
+    use crate::renderer::frontend::capture::PaintCapture;
     use crate::renderer::frontend::composer::ComposeSession;
-    use crate::renderer::frontend::record_sink::RecordedPaint;
 
     impl ComposeSession<'_> {
         /// Replay a recorded paint stream into this session, closing it
         /// on return. Lets tests and benches drive the composer from a
         /// stream captured once, outside whatever they are measuring or
         /// asserting on.
-        pub(crate) fn replay_from(mut self, recorded: &RecordedPaint) {
+        pub(crate) fn replay_from(mut self, recorded: &PaintCapture) {
             recorded.replay(&mut self);
         }
     }

@@ -252,7 +252,7 @@ pub(crate) mod internals {
     #![allow(dead_code)]
     use super::*;
     #[cfg(test)]
-    use crate::text::cache_probe::CacheCounts;
+    use crate::text::cache_counters::CacheCounts;
     use crate::text::layout_probe::Caret;
     use crate::text::request::internals::TestShape;
     use crate::text::wrap::LineFit;
@@ -347,7 +347,7 @@ pub(crate) mod internals {
                 .cosmic
                 .as_ref()
                 .expect("cache counts require a cosmic text shaper")
-                .probe
+                .counters
                 .counts()
         }
 

@@ -279,29 +279,6 @@ for the same query already exists elsewhere in the crate.
 
 ---
 
-# 8. Naming: "probe" and "record" each mean three or more things
-
-Cheap, purely mechanical, and it removes a persistent reading tax.
-
-- [ ] **"Probe" names five unrelated things**: `TextProbe` (public
-  text-geometry API), `TextLayoutProbe` (a shaper lease), and
-  `LayoutProbe` / `DamageProbe` / `CascadeProbe` / `AtlasProbe` /
-  `EncodedProbe` (build-gated counters). Two modules are called "layout
-  probe" — `layout/probe.rs` (pass counters) and `text/layout_probe.rs`
-  (shaped-text lease). Rename the counters to `*Counters` (or `*Stats`,
-  matching `GpuPassStats`) and leave "probe" to the public geometry
-  surface.
-- [ ] **"Record" covers three distinct concepts** — authoring a tree,
-  capturing paint calls for tests, and SoA row storage:
-  `Frontend::build` / `Encoder::encode` / `Composer::begin` /
-  `ComposeSession` / `PaintSink` / `RecordedPaint` / `record_sink` /
-  `RecordStore` / `RecordPayloads` / `NodeRecord` / `ShapeRecord` /
-  `RecordApp` / `FrameCycle::record_pass`. The paint-capture family
-  (`RecordedPaint`, `record_sink`, `PaintCall`) is the one that should
-  move — call it `capture` — and batch 2 may delete it outright.
-
----
-
 # 9. Micro-consolidations and the long-function inventory
 
 A half-hour sweep, plus a list to work through separately.

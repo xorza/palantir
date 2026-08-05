@@ -494,7 +494,7 @@ fn scroll_content_is_restored_on_measure_cache_hit() {
     assert!(
         h.ui.layout_engine
             .scratch
-            .probe
+            .counters
             .cache_hits()
             .contains(&WidgetId::VIEWPORT),
         "warm frame must restore scroll content from an ancestor cache hit"

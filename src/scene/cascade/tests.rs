@@ -940,11 +940,11 @@ fn adding_a_shape_skips_the_doomed_incremental_walk() {
 
     let mut h = UiHarness::new(UVec2::new(200, 200));
     h.frame(|ui| build(ui, false));
-    let baseline = h.ui.cascade_engine.probe.abandoned_incrementals();
+    let baseline = h.ui.cascade_engine.counters.abandoned_incrementals();
 
     h.frame(|ui| build(ui, true));
     assert_eq!(
-        h.ui.cascade_engine.probe.abandoned_incrementals(),
+        h.ui.cascade_engine.counters.abandoned_incrementals(),
         baseline,
         "a row-count change must be caught by `can_update`, not discovered mid-walk",
     );
@@ -1025,8 +1025,8 @@ fn every_cascade_input_busts_both_reuse_gates() {
         let mut h = UiHarness::new(UVec2::new(200, 200));
         h.frame(|ui| scene(ui, 100.0, false));
         let base_fp = cascade_fingerprint(&h.ui.forest, h.ui.display);
-        let rebuilds = h.ui.cascade_engine.probe.full_rebuilds();
-        let abandoned = h.ui.cascade_engine.probe.abandoned_incrementals();
+        let rebuilds = h.ui.cascade_engine.counters.full_rebuilds();
+        let abandoned = h.ui.cascade_engine.counters.abandoned_incrementals();
 
         mutate(&mut h);
 
@@ -1036,12 +1036,12 @@ fn every_cascade_input_busts_both_reuse_gates() {
             "`{label}` left the fingerprint unmoved — the frame would reuse a stale cascade",
         );
         assert!(
-            h.ui.cascade_engine.probe.full_rebuilds() > rebuilds,
+            h.ui.cascade_engine.counters.full_rebuilds() > rebuilds,
             "`{label}` did not force a full rebuild — `can_update` kept columns \
              that no longer describe the frame",
         );
         assert_eq!(
-            h.ui.cascade_engine.probe.abandoned_incrementals(),
+            h.ui.cascade_engine.counters.abandoned_incrementals(),
             abandoned,
             "`{label}` should be caught by `can_update`, not discovered mid-walk",
         );
@@ -1052,7 +1052,7 @@ fn every_cascade_input_busts_both_reuse_gates() {
     let mut h = UiHarness::new(UVec2::new(200, 200));
     h.frame(|ui| scene(ui, 100.0, false));
     let base_fp = cascade_fingerprint(&h.ui.forest, h.ui.display);
-    let rebuilds = h.ui.cascade_engine.probe.full_rebuilds();
+    let rebuilds = h.ui.cascade_engine.counters.full_rebuilds();
     h.frame(|ui| scene(ui, 100.0, false));
     assert_eq!(
         base_fp,
@@ -1060,7 +1060,7 @@ fn every_cascade_input_busts_both_reuse_gates() {
         "an unchanged frame must keep its fingerprint",
     );
     assert_eq!(
-        h.ui.cascade_engine.probe.full_rebuilds(),
+        h.ui.cascade_engine.counters.full_rebuilds(),
         rebuilds,
         "an unchanged frame must not rebuild",
     );

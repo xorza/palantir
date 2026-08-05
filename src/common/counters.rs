@@ -1,5 +1,5 @@
 //! Build-gated observability primitives — the mechanism the per-pass
-//! probes ([`LayoutProbe`], [`DamageProbe`], [`CascadeProbe`]) are built
+//! probes ([`LayoutCounters`], [`DamageCounters`], [`CascadeCounters`]) are built
 //! from.
 //!
 //! ## The pattern
@@ -27,11 +27,11 @@
 //! [`BenchOnly`] is `cfg(any(test, feature = "internals"))`: for the
 //! counters a benchmark reads. Widening one costs a build's worth of
 //! increments, so it is done for a real bench rather than a hypothetical
-//! one — [`crate::scene::damage::probe`] explains its own case.
+//! one — [`crate::scene::damage::counters`] explains its own case.
 //!
-//! [`LayoutProbe`]: crate::layout::probe::LayoutProbe
-//! [`DamageProbe`]: crate::scene::damage::probe::DamageProbe
-//! [`CascadeProbe`]: crate::scene::cascade::probe::CascadeProbe
+//! [`LayoutCounters`]: crate::layout::counters::LayoutCounters
+//! [`DamageCounters`]: crate::scene::damage::counters::DamageCounters
+//! [`CascadeCounters`]: crate::scene::cascade::counters::CascadeCounters
 
 /// Declare a gated cell type: `T` when `$gate` holds, zero-sized
 /// otherwise, with unconditional mutators.

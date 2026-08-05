@@ -1,7 +1,7 @@
 //! Glyph atlas: one struct for both mask + color content.
 
+use crate::common::counters::BenchOnly;
 use crate::common::expiry_wheel::ExpiryWheel;
-use crate::common::probe::BenchOnly;
 use crate::renderer::backend::debug_marker;
 use crate::text::render::{GlyphPlacement, GlyphRasterKey};
 use etagere::{AllocId, BucketedAtlasAllocator, size2};
@@ -218,7 +218,7 @@ pub(super) struct GlyphAtlas {
     /// one-for-one. It is also the number that says whether this atlas
     /// reaches the
     /// region where F2's curve matters.
-    pub(super) probe: AtlasProbe,
+    pub(super) counters: AtlasCounters,
 
     /// Glyph pixel data queued by `insert`, packed with per-row padding
     /// so each glyph's copy can satisfy
@@ -268,7 +268,7 @@ impl GlyphAtlas {
             unallocated_expiry: ExpiryWheel::with_horizon(UNALLOCATED_SWEEP_INTERVAL + 2),
             max_texture_dimension_2d: max,
             bind_group_dirty: false,
-            probe: AtlasProbe::default(),
+            counters: AtlasCounters::default(),
             pending_staging: Vec::new(),
             pending_staging_used: 0,
             pending_copies: Vec::new(),
@@ -605,11 +605,13 @@ impl GlyphAtlas {
     fn evict_one(&mut self, target: ContentType) -> bool {
         let sweep = clock_victim(&self.slots, self.hand, target, self.current_frame);
         self.hand = sweep.hand;
-        self.probe.evict_scans.edit(|n| *n += sweep.examined as u64);
+        self.counters
+            .evict_scans
+            .edit(|n| *n += sweep.examined as u64);
         let Some(idx) = sweep.victim else {
             return false;
         };
-        self.probe.evictions.bump();
+        self.counters.evictions.bump();
         let key = self.slot_keys[idx as usize];
         let removed = self.cache.remove(&key);
         debug_assert_eq!(
@@ -639,7 +641,7 @@ impl GlyphAtlas {
         if side.size >= ceiling {
             return false;
         }
-        self.probe.grows.bump();
+        self.counters.grows.bump();
         let new_size = (side.size * ATLAS_GROWTH_FACTOR).min(ceiling);
         let new_texture = make_texture(device, content.format(), new_size, content.label());
         let old_size = side.size;
@@ -753,7 +755,7 @@ struct ClockSweep {
     /// slot just evicted is about to be refilled, and starting there
     /// would make the next eviction reconsider it first.
     hand: u32,
-    /// Slots examined. What [`AtlasProbe::evict_scans`] bills, and the
+    /// Slots examined. What [`AtlasCounters::evict_scans`] bills, and the
     /// number that says whether the clock is behaving — a healthy thrash
     /// state stops after one or two.
     examined: u32,
@@ -830,7 +832,7 @@ fn make_texture(
 /// all — is only reachable from `text_atlas`, which the `internals`
 /// feature gates.
 #[derive(Debug, Default)]
-pub(super) struct AtlasProbe {
+pub(super) struct AtlasCounters {
     pub(super) evictions: BenchOnly<u32>,
     pub(super) grows: BenchOnly<u32>,
     /// Slots the clock hand walked past, summed over every call. Divided
@@ -846,7 +848,7 @@ pub(super) struct AtlasProbe {
 /// benchmark, which `bench` gates too. A plain `cargo test` build
 /// has no caller.
 #[cfg(feature = "bench")]
-impl AtlasProbe {
+impl AtlasCounters {
     pub(super) fn counts(&self) -> AtlasCounts {
         AtlasCounts {
             evictions: self.evictions.count(),
@@ -856,7 +858,7 @@ impl AtlasProbe {
     }
 }
 
-/// One reading of an [`AtlasProbe`].
+/// One reading of an [`AtlasCounters`].
 #[cfg(feature = "bench")]
 #[derive(Clone, Copy, Debug)]
 pub(super) struct AtlasCounts {

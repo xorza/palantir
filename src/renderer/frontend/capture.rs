@@ -1,16 +1,20 @@
-//! Recording [`PaintSink`] for tests and benches.
+//! Capturing [`PaintSink`] for tests and benches.
 //!
 //! Production paints straight into a `ComposeSession`, which leaves no
-//! artifact to assert on. [`RecordedPaint`] captures the same call
-//! sequence as owned values so tests can count, match, and compare it,
-//! and [`RecordedPaint::replay`] pushes it into any other sink — which
-//! is what lets the compose bench measure compose alone, feeding a
-//! stream it recorded once outside the timed loop.
+//! artifact to assert on. [`PaintCapture`] holds the same call sequence
+//! as owned values so tests can count, match, and compare it, and
+//! [`PaintCapture::replay`] pushes it into any other sink — which is
+//! what lets the compose bench measure compose alone, feeding a stream
+//! it captured once outside the timed loop.
 //!
-//! Recording happens *below* [`PaintSink`]'s `draw_*` gates, so a call
-//! only lands here if it survived the no-op gate. Two recordings
-//! comparing equal therefore means the two encodes agreed on every
-//! painted operation, in order.
+//! *Capture*, not *record*: this crate spends "record" on the authoring
+//! pass (`App::record`, `RecordStore`) and on SoA rows (`NodeRecord`),
+//! and a third meaning on the same word cost more than the rename did.
+//!
+//! Capturing happens *below* [`PaintSink`]'s `draw_*` gates, so a call
+//! only lands here if it survived the no-op gate. Two captures comparing
+//! equal therefore means the two encodes agreed on every painted
+//! operation, in order.
 
 // Test-support surface: which parts are live depends on whether the
 // build enables `test`, `internals`, or both.
@@ -65,7 +69,7 @@ macro_rules! paint_calls {
             }
 
             /// Push this call back into `sink` through the *required*
-            /// half of the trait. See [`RecordedPaint::replay`] for why
+            /// half of the trait. See [`PaintCapture::replay`] for why
             /// that bypasses the no-op gate.
             fn replay_into(&self, sink: &mut impl PaintSink) {
                 match self {
@@ -76,7 +80,7 @@ macro_rules! paint_calls {
             }
         }
 
-        impl PaintSink for RecordedPaint {
+        impl PaintSink for PaintCapture {
             $(
                 fn $method(&mut self, payload: $payload) {
                     self.calls.push(PaintCall::$variant(payload));
@@ -112,11 +116,11 @@ paint_calls! {
 
 /// Every paint call one encode made, in order.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct RecordedPaint {
+pub(crate) struct PaintCapture {
     pub(crate) calls: Vec<PaintCall>,
 }
 
-impl RecordedPaint {
+impl PaintCapture {
     /// Push the recorded sequence into `sink`. Calls re-enter through
     /// the *required* half, below the no-op gate — deliberately, so a
     /// replay reproduces the recorded stream exactly rather than
@@ -138,7 +142,7 @@ impl RecordedPaint {
 
 /// Assert two encodes painted the same sequence, reporting the first
 /// divergence by index and kind instead of dumping both call lists.
-pub(crate) fn assert_same_paint(left: &RecordedPaint, right: &RecordedPaint) {
+pub(crate) fn assert_same_capture(left: &PaintCapture, right: &PaintCapture) {
     for (i, (l, r)) in left.calls.iter().zip(&right.calls).enumerate() {
         // Compare rendered `Debug`, not `PartialEq`: the payloads are
         // full of `f32`, and derived equality gets both float edge cases

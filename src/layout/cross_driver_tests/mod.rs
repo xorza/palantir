@@ -3,7 +3,7 @@
 //! own `tests.rs`; tests here exercise multiple drivers together.
 //!
 //! Internals access (`pub(crate)` fields on `Layout`,
-//! `renderer::frontend::record_sink::PaintCall`, `crate::support::testing::*`)
+//! `renderer::frontend::capture::PaintCall`, `crate::support::testing::*`)
 //! is intentional —
 //! moving these to crate-root `tests/` would force widening half a
 //! dozen items to `pub` purely for tests.

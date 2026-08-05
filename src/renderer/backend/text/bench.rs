@@ -409,7 +409,7 @@ fn fresh_backend(g: &Gpu) -> (BenchText, BenchRuns) {
 /// under `--list`.
 fn report_atlas_pressure(label: &str, backend: &BenchText, frames: u32) {
     let atlas = &backend.backend.encoder.atlas;
-    let counts = atlas.probe.counts();
+    let counts = atlas.counters.counts();
     let per_frame = counts.evict_scans as f64 / frames.max(1) as f64;
     eprintln!(
         "[text_atlas] {label}: live_glyphs={} evictions={} grows={} \

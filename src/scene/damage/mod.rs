@@ -55,7 +55,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::primitives::widget_id::WidgetIdMap;
 use crate::scene::cascade::Cascade;
 use crate::scene::cascade::paint::PaintRows;
-use crate::scene::damage::probe::DamageProbe;
+use crate::scene::damage::counters::DamageCounters;
 use crate::scene::damage::region::{DEFAULT_PASS_BUDGET_PX, DamageRegion};
 use crate::scene::damage::snapshot::{NodeSnapshot, PaintSnapArena};
 use crate::scene::damage::walk::{LayerWalk, ParentFrame};
@@ -65,7 +65,7 @@ use std::time::Duration;
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
-pub(crate) mod probe;
+pub(crate) mod counters;
 pub(crate) mod region;
 pub(crate) mod snapshot;
 mod walk;
@@ -119,14 +119,14 @@ pub(crate) struct DamageEngine {
     /// snapshot's [`NodeSnapshot::parent_key`].
     parent_stack: Vec<ParentFrame>,
 
-    /// Test/bench observability for this pass — see [`DamageProbe`].
-    pub(crate) probe: DamageProbe,
+    /// Test/bench observability for this pass — see [`DamageCounters`].
+    pub(crate) counters: DamageCounters,
 }
 
 impl Default for DamageEngine {
     fn default() -> Self {
         Self {
-            probe: DamageProbe::default(),
+            counters: DamageCounters::default(),
             budget_px: DEFAULT_PASS_BUDGET_PX,
             prev: WidgetIdMap::default(),
             arena: PaintSnapArena::default(),
@@ -291,7 +291,7 @@ impl DamageEngine {
         if force_full {
             self.invalidate_prev();
         }
-        self.probe.begin_pass();
+        self.counters.begin_pass();
 
         // Pass 1: every damage source pushes its contributions into
         // `self.raw_rects` without applying the merge or budget
@@ -308,7 +308,7 @@ impl DamageEngine {
                 raw_rects: &mut self.raw_rects,
                 order_extents: &mut self.order_extents,
                 parents: &mut self.parent_stack,
-                probe: &mut self.probe,
+                probe: &mut self.counters,
                 surface,
                 force_full,
                 layer,
@@ -371,7 +371,7 @@ impl DamageEngine {
     /// to the structural diff — skip Pass 1 entirely. Only the
     /// caller-supplied predamaged anim rects matter.
     pub(crate) fn compute_paint_only(&mut self, input: DamageInput<'_>) -> Damage {
-        self.probe.begin_pass();
+        self.counters.begin_pass();
         self.raw_rects.clear();
         extend_predamaged(
             &mut self.raw_rects,

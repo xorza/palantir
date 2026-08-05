@@ -209,7 +209,7 @@ fn collapsed_does_not_consume_fill_weight() {
 
 #[test]
 fn hidden_keeps_slot_but_emits_no_draws() {
-    use crate::renderer::frontend::record_sink::PaintCall;
+    use crate::renderer::frontend::capture::PaintCall;
 
     let mut h = UiHarness::new(UVec2::new(400, 100));
     let mut root = NodeId(0);

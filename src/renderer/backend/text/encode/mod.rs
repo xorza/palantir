@@ -38,7 +38,7 @@ use rustc_hash::FxHashMap;
 use std::collections::hash_map::Entry;
 
 use crate::renderer::backend::text::atlas::{GlyphAtlas, PackedGlyphMetadata};
-use crate::renderer::backend::text::encoded_probe::EncodedProbe;
+use crate::renderer::backend::text::encoded_counters::EncodedCounters;
 use crate::renderer::backend::text::{ContentType, GlyphInstance};
 
 /// Cache-hit identity for an encoded run. Subpixel bins capture the
@@ -231,7 +231,7 @@ pub(super) struct EncodedCache {
     expiry: ExpiryWheel<EncodedKey>,
     /// Encode / hit / expiry / re-file / block tallies. Zero-sized
     /// outside benchmark and test builds.
-    pub(super) probe: EncodedProbe,
+    pub(super) counters: EncodedCounters,
 }
 
 impl Default for EncodedCache {
@@ -252,7 +252,7 @@ impl Default for EncodedCache {
             // and re-files. Correct either way, since an early ticket is
             // just a re-file, but it doubles the drain for nothing.
             expiry: ExpiryWheel::with_horizon(ENCODED_CACHE_KEEP_FRAMES + 2),
-            probe: EncodedProbe::default(),
+            counters: EncodedCounters::default(),
         }
     }
 }
@@ -279,7 +279,7 @@ impl EncodedCache {
         let map = &mut self.map;
         let arena = &mut self.arena;
         let free_heads = &mut self.free_heads;
-        let probe = &mut self.probe;
+        let probe = &mut self.counters;
         self.expiry.retire(current_frame, |key| {
             // Gone already: `try_emit_cached` drops a row whose atlas
             // slot was reused, leaving its ticket behind.
@@ -325,7 +325,7 @@ impl EncodedCache {
             free_heads,
             pending,
             expiry,
-            probe,
+            counters,
         } = self;
         let len = pending.len() as u32;
         if !complete {
@@ -347,7 +347,7 @@ impl EncodedCache {
             // refreshed `last_use` when it fires.
             Entry::Occupied(mut row) => {
                 release(arena, free_heads, row.get().span);
-                let span = store(arena, free_heads, probe, pending, len);
+                let span = store(arena, free_heads, counters, pending, len);
                 row.insert(EncodedEntry {
                     span,
                     last_use: frame,
@@ -357,7 +357,7 @@ impl EncodedCache {
             // the only place one is filed — which is what makes "one
             // ticket per row, not one per encode" structural.
             Entry::Vacant(slot) => {
-                let span = store(arena, free_heads, probe, pending, len);
+                let span = store(arena, free_heads, counters, pending, len);
                 slot.insert(EncodedEntry {
                     span,
                     last_use: frame,
@@ -384,7 +384,7 @@ impl EncodedCache {
 fn store(
     arena: &mut Vec<EncodedGlyph>,
     free_heads: &mut Vec<u32>,
-    probe: &mut EncodedProbe,
+    probe: &mut EncodedCounters,
     pending: &[EncodedGlyph],
     len: u32,
 ) -> Span {
@@ -401,12 +401,12 @@ fn store(
 /// when it is not.
 ///
 /// The extension is the only path that grows the arena, so
-/// [`EncodedProbe::block_allocs`] going quiet is exactly the statement
+/// [`EncodedCounters::block_allocs`] going quiet is exactly the statement
 /// "the working set is saturated and every row now recycles".
 fn alloc_block(
     arena: &mut Vec<EncodedGlyph>,
     free_heads: &mut Vec<u32>,
-    probe: &mut EncodedProbe,
+    probe: &mut EncodedCounters,
     len: u32,
 ) -> u32 {
     let class = block_class(len);
@@ -604,7 +604,7 @@ impl TextEncoder {
             return false;
         }
         entry.last_use = current_frame;
-        self.cache.probe.hits.bump();
+        self.cache.counters.hits.bump();
         true
     }
 
@@ -658,7 +658,7 @@ impl TextEncoder {
         run_key: EncodedRunKey,
     ) {
         let current_frame = self.atlas.current_frame;
-        self.cache.probe.encodes.bump();
+        self.cache.counters.encodes.bump();
         // The straight-linear cast of the run's colour — already baked
         // into the cache identity, reused as the emit colour.
         let color = run_key.key.area_color;
@@ -812,7 +812,7 @@ pub(super) mod internals {
     #![allow(dead_code)]
     use super::*;
     #[cfg(test)]
-    use crate::renderer::backend::text::encoded_probe::EncodedCounts;
+    use crate::renderer::backend::text::encoded_counters::EncodedCounts;
 
     /// Churn harness: `runs` rows **re-keyed every frame**, which is what
     /// a zoom (a fresh `scale_q` per `TEXT_SCALE_STEP` rung) or a resize
@@ -881,7 +881,7 @@ pub(super) mod internals {
 
         #[cfg(test)]
         pub(crate) fn counts(&self) -> EncodedCounts {
-            self.cache.probe.counts()
+            self.cache.counters.counts()
         }
     }
 

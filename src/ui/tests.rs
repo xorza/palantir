@@ -250,7 +250,7 @@ fn layout_outputs_stay_isolated_per_layer_across_cache_hits() {
 
     h.frame(&mut record);
     assert!(
-        !h.ui.layout_engine.scratch.probe.cache_hits().is_empty(),
+        !h.ui.layout_engine.scratch.counters.cache_hits().is_empty(),
         "warm frame must exercise measure-cache restoration",
     );
     let main_node = node_for(&h.ui, Layer::Main, main_id);
@@ -393,7 +393,7 @@ fn empty_ui_drives_a_frame_safely() {
     // Synthetic viewport root: even an empty user record produces one node.
     assert_eq!(h.ui.forest.trees[Layer::Main].records.len(), 1);
     assert!(h.ui.damage_engine.prev.is_empty());
-    assert!(h.ui.damage_engine.probe.dirty().is_empty());
+    assert!(h.ui.damage_engine.counters.dirty().is_empty());
     assert!(h.damage_region().rects.is_empty());
     assert_eq!(Damage::new(h.damage_region()), Damage::Skip,);
 }
@@ -1765,8 +1765,8 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
 
     use crate::primitives::fill_wire::LutRow;
 
+    use crate::renderer::frontend::capture::PaintCall;
     use crate::renderer::frontend::encoder;
-    use crate::renderer::frontend::record_sink::PaintCall;
     use crate::renderer::gradient_atlas::INITIAL_ATLAS_ROWS;
     use crate::renderer::gradient_atlas::handle::SharedGradientAtlas;
     use crate::shape::Shape;

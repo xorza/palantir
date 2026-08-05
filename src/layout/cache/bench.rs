@@ -28,7 +28,7 @@
 //! text fallback, same path as the colocated frame bench); the `heavy/*` arms
 //! use `UiHarness::with_text(glam::UVec2::new(1280, 800))` so text-shaping cost is in the measurement.
 
-use crate::layout::probe::PhaseTimings;
+use crate::layout::counters::PhaseTimings;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
 use crate::primitives::background::Background;
@@ -343,7 +343,7 @@ fn bench_cache_pair(
         let mut h = make_ui();
         report_phases(&format!("{name}/cached"), || {
             let _ = h.frame(build);
-            h.ui.layout_engine.scratch.probe.phase_timings()
+            h.ui.layout_engine.scratch.counters.phase_timings()
         });
     }
     group.bench_function(format!("{name}/cached"), |b| {
@@ -359,7 +359,7 @@ fn bench_cache_pair(
         report_phases(&format!("{name}/forced_miss"), || {
             h.ui.layout_engine.cache.clear();
             let _ = h.frame(build);
-            h.ui.layout_engine.scratch.probe.phase_timings()
+            h.ui.layout_engine.scratch.counters.phase_timings()
         });
     }
     group.bench_function(format!("{name}/forced_miss"), |b| {
@@ -387,7 +387,7 @@ fn bench_cache_workload(
         report_phases(&format!("{name}/resizing"), || {
             frame = (frame + 1) % resize_widths.len();
             let _ = h.resize(resize_widths[frame]).frame(build);
-            h.ui.layout_engine.scratch.probe.phase_timings()
+            h.ui.layout_engine.scratch.counters.phase_timings()
         });
     }
     group.bench_function(format!("{name}/resizing"), |b| {
@@ -410,7 +410,7 @@ fn bench_broad_localized(group: &mut BenchmarkGroup<'_, WallTime>, name: &str) {
             let _ = h.frame(|ui| {
                 build_broad_variant(ui, changed);
             });
-            h.ui.layout_engine.scratch.probe.phase_timings()
+            h.ui.layout_engine.scratch.counters.phase_timings()
         });
     }
     group.bench_function(format!("{name}/localized"), |b| {
@@ -595,7 +595,7 @@ mod tests {
             build_broad_variant(ui, true);
         });
         assert_eq!(
-            h.ui.layout_engine.scratch.probe.cache_hits().len(),
+            h.ui.layout_engine.scratch.counters.cache_hits().len(),
             21,
             "seven unchanged siblings hit at each of the three branch levels",
         );

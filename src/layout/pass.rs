@@ -19,12 +19,12 @@
 use crate::layout::LayerLayout;
 use crate::layout::axis::Axis;
 use crate::layout::cache::quantize_available;
+use crate::layout::counters::PhaseSpan;
 use crate::layout::engine::{
     LayoutEngine, NO_ARRANGE_SRC, resolve_sizing, restore_after_cache_hit,
 };
 use crate::layout::grid::{GridContext, GridTrackStore};
 use crate::layout::intrinsic::{IntrinsicRange, LenReq};
-use crate::layout::probe::PhaseSpan;
 use crate::layout::stack::StackScratch;
 use crate::layout::support::{TextShapeInput, leaf_text_shapes};
 use crate::layout::types::layout_mode::LayoutMode;
@@ -151,12 +151,12 @@ impl LayoutPass<'_> {
     /// they close through it too.
     #[inline]
     pub(super) fn note_measure(&mut self, span: PhaseSpan) {
-        self.engine.scratch.probe.add_measure(span);
+        self.engine.scratch.counters.add_measure(span);
     }
 
     #[inline]
     pub(super) fn note_arrange(&mut self, span: PhaseSpan) {
-        self.engine.scratch.probe.add_arrange(span);
+        self.engine.scratch.counters.add_arrange(span);
     }
 
     /// Outer intrinsic on `axis` under content-sizing `req`. Forwards to
@@ -207,7 +207,7 @@ impl LayoutPass<'_> {
                 .cache
                 .try_lookup(cache_wid, cache_hash, available_q)
             {
-                self.engine.scratch.probe.cache_hit(cache_wid);
+                self.engine.scratch.counters.cache_hit(cache_wid);
                 let curr_start = node.idx();
                 let curr_end = curr_start + hit.desired.len();
                 // Subtree hash includes child count + per-child rollups,
@@ -432,10 +432,10 @@ impl LayoutPass<'_> {
         let delta = rendered.min - src[0].min;
         let dst = &mut self.out.rect[start..end];
         if delta == Vec2::ZERO {
-            self.engine.scratch.probe.arrange_copied();
+            self.engine.scratch.counters.arrange_copied();
             dst.copy_from_slice(src);
         } else {
-            self.engine.scratch.probe.arrange_translated();
+            self.engine.scratch.counters.arrange_translated();
             for (d, s) in dst.iter_mut().zip(src) {
                 *d = Rect {
                     min: s.min + delta,

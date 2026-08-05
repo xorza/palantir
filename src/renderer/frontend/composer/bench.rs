@@ -2,10 +2,10 @@ use crate::display::Display;
 use crate::primitives::color::Color;
 use crate::primitives::rect::Rect;
 use crate::primitives::texture_id::TextureId;
+use crate::renderer::frontend::capture::PaintCapture;
 use crate::renderer::frontend::composer::Composer;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::{DrawCurvePayload, DrawImagePayload, DrawMeshPayload};
-use crate::renderer::frontend::record_sink::RecordedPaint;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::scene::record_store::RecordPayloads;
 use crate::scene::shapes::paint::CurveBasis;
@@ -16,7 +16,7 @@ use std::time::Duration;
 
 #[derive(Debug)]
 struct ComposeBench {
-    cmds: RecordedPaint,
+    cmds: PaintCapture,
     payloads: RecordPayloads,
     composer: Composer,
     out: RenderBuffer,
@@ -24,7 +24,7 @@ struct ComposeBench {
 }
 
 impl ComposeBench {
-    fn new(cmds: RecordedPaint) -> Self {
+    fn new(cmds: PaintCapture) -> Self {
         Self {
             cmds,
             payloads: RecordPayloads::default(),
@@ -36,7 +36,7 @@ impl ComposeBench {
 
     fn curves(curve_count: usize) -> Self {
         assert!(curve_count > 0);
-        let mut cmds = RecordedPaint::default();
+        let mut cmds = PaintCapture::default();
         for _ in 0..curve_count {
             cmds.draw_curve(DrawCurvePayload {
                 bbox: Rect::new(16.0, 63.0, 96.0, 2.0),
@@ -90,7 +90,7 @@ impl HigherKindCase {
 
     fn fixture(self, draw_count: usize) -> ComposeBench {
         assert!(draw_count > 0);
-        let mut cmds = RecordedPaint::default();
+        let mut cmds = PaintCapture::default();
         let overlap = Rect::new(16.0, 16.0, 32.0, 32.0);
         let disjoint = Rect::new(80.0, 80.0, 32.0, 32.0);
         match self {
@@ -128,7 +128,7 @@ impl HigherKindCase {
     }
 }
 
-fn push_mesh(cmds: &mut RecordedPaint, bbox: Rect) {
+fn push_mesh(cmds: &mut PaintCapture, bbox: Rect) {
     cmds.draw_mesh(DrawMeshPayload {
         bbox,
         origin: Vec2::ZERO,
@@ -140,7 +140,7 @@ fn push_mesh(cmds: &mut RecordedPaint, bbox: Rect) {
     });
 }
 
-fn push_image(cmds: &mut RecordedPaint, rect: Rect) {
+fn push_image(cmds: &mut PaintCapture, rect: Rect) {
     cmds.draw_image(
         DrawImagePayload::image(
             rect,
