@@ -2,11 +2,9 @@
 //! [`TestOnly`](crate::common::counters::TestOnly), whose module doc
 //! explains the gated-cell pattern and why the two gates exist.
 //!
-//! On the narrow gate: these counters were added to size a probation
-//! tier for gesture churn, which the measurement then argued *against*
-//! building for now — so every reader is a test in `encode/tests.rs`,
-//! and `BenchOnly` would be the speculative widening that gate's doc
-//! warns off.
+//! These were added to size a probation tier for gesture churn, which
+//! the measurement then argued *against* building for now — so every
+//! reader is a test in `encode/tests.rs`.
 //!
 //! ## What this exists to separate
 //!

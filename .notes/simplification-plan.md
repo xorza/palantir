@@ -120,8 +120,6 @@ rules out by construction.
   shared middle — frame pop/rollup, transform+clip compose,
   `PaintRectCtx` construction — is three small helpers, most of which
   already exist (`finalize_frame`, `compute_node_paint`).
-- [ ] Once `cascade_prefix` is off the incremental `Frame`, derive
-  `Debug` on `Frame` (give `Hasher` a `#[derive(Debug)]` — see batch 6).
 
 ---
 
@@ -192,62 +190,6 @@ warmup / per-frame allocation is a real metric" posture.
   `radio/mod.rs`, `switch.rs`), once in `toggle_row` for `row_gap`
   (`toggle.rs`), and once inside `WidgetTheme::resolve`. Resolve once in
   `toggle_row` and hand the slice down.
-
----
-
-# 6. Debug / counters / always-on-diagnostics hygiene sweep
-
-Mechanical, low-risk, one sitting. Three related messes.
-
-**Hand-written `Debug` where derive works.** 18 manual impls; five are
-`finish_non_exhaustive` field lists justified by "`Tree` /
-`LayerLayout` don't implement `Debug`" — both derive `Debug`, as does
-every other field of both structs. Each impl is ~15 lines that silently
-omits any field added later.
-
-- [ ] `Frame` (`cascade/engine.rs:69`) — falls out of batch 3
-- [ ] `PaintRectCtx` (`cascade/engine.rs:707`)
-- [ ] `LayerCtx` (`encoder/mod.rs:244`)
-- [ ] `DamageInput` (`damage/mod.rs:163`)
-- [ ] `FrameScene` (`frontend/mod.rs:56`)
-- [ ] `Ui` (`ui/mod.rs:113`) — prints 3 of 17 fields
-
-**Structs with no `Debug` at all**, against `Cargo.toml`'s
-`missing_debug_implementations = "deny"` (which only reaches public
-types, so these slip through):
-
-- [ ] `InputState` (`input/mod.rs:296`) — the crate's central input state
-  machine, 20 fields
-- [ ] `Watches` (`input/watch.rs:90`)
-- [ ] `Hasher` and its `Pair` helpers (`common/hash.rs`) — used by every
-  hash site in the crate; blocking batch 3's derive
-- [ ] `AnimMap` (`animation/mod.rs:564`), `AnimMapTyped` (`:289`),
-  `TickResult` (`:317`), `SpringStep` (`animation/spring.rs`)
-- [ ] `ChildIter` / `TreeItems` (`scene/tree/iter.rs:16`, `:61`) — the two
-  iterators every walk goes through
-- [ ] `TreeSink` (`cascade/engine.rs:38`), `LayerWalk`
-  (`damage/walk.rs:103`), `PassState` (`backend/schedule/mod.rs:331`)
-- [ ] `AxisCtx` / `JustifyOffsets` / `AxisPlacement`
-  (`layout/support.rs:167`, `:269`, `:358`)
-- [ ] `ChromeHashBytes` (`shapes/lower.rs`, inline)
-
-**Always-on debug machinery in the release paint path.**
-
-- [ ] Explicit-`WidgetId` collision reporting is unconditional in
-  release: `Forest::report_explicit_collision` (`forest.rs:237`) pushes
-  to `Forest::collisions`, and `emit_collision_overlays`
-  (`encoder/mod.rs:260`) runs at the end of **every** `Encoder::encode`
-  to paint magenta outlines. The `Vec<CollisionRecord>` field, its
-  `pre_record` clear, and the encoder's final pass all ship. Gate the
-  overlay behind `DebugOverlayConfig` (which already exists and is
-  app-global) or `debug_assertions`; keep the `tracing::error!`.
-- [ ] Four near-identical per-pass counter modules
-  (`layout/counters.rs`, `damage/counters.rs`, `cascade/counters.rs`,
-  `text/cache_counters.rs`) built on `gated_cell!` in
-  `common/counters.rs` — 129 lines to produce two zero-sized wrapper
-  types, each module opening with a 20–25-line essay on which of the two
-  gates it chose. One gate parameter or one shared counter struct would
-  cover all four.
 
 ---
 

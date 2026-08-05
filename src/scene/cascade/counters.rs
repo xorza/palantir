@@ -15,11 +15,6 @@
 //! that may not run, the same call [`PaintSnapArena::compactions_run`]
 //! makes.
 //!
-//! Nothing benches these two, so they stay `cfg(test)`; the crate
-//! escalates visibility for a real caller rather than a hypothetical
-//! one. If a cascade bench wants them, widen to
-//! [`BenchOnly`](crate::common::counters::BenchOnly) then.
-//!
 //! [`CascadeEngine::run`]: crate::scene::cascade::engine::CascadeEngine
 //! [`PaintSnapArena::compactions_run`]:
 //!     crate::scene::damage::snapshot::PaintSnapArena
