@@ -42,6 +42,7 @@ use crate::scene::shapes::paint::{CurveBasis, ShapeStroke};
 use crate::scene::shapes::record::ColorMode;
 use crate::shape::style::{LineCap, LineJoin};
 use crate::text::shaped_ref::ShapedTextRef;
+use glam::Vec2;
 
 /// Physical gradient identity resolved for this encode pass.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -101,6 +102,21 @@ pub(crate) struct GpuFillFields {
 pub(crate) struct PushClipPayload {
     pub(crate) rect: Rect,
     pub(crate) corners: Corners,
+}
+
+impl PushClipPayload {
+    /// A plain rect clip — zero corners, which is what tells the
+    /// composer to take the scissor path rather than the rounded mask.
+    pub(crate) fn rect(rect: Rect) -> Self {
+        Self {
+            rect,
+            corners: Corners::ZERO,
+        }
+    }
+
+    pub(crate) fn rounded(rect: Rect, corners: Corners) -> Self {
+        Self { rect, corners }
+    }
 }
 
 /// The geometry half of a [`DrawQuadPayload`] — everything the composer
@@ -180,6 +196,119 @@ pub(crate) struct DrawQuadPayload {
 }
 
 impl DrawQuadPayload {
+    /// A rounded rect with `fill` and `stroke`.
+    ///
+    /// The brush is lowered here rather than at the call site because
+    /// the GPU lanes it fills — colour, kind, LUT row, axis — are this
+    /// type's, and a caller assembling them by hand is a caller that
+    /// can get the gradient case wrong.
+    pub(crate) fn rect(
+        rect: Rect,
+        corners: Corners,
+        fill: BrushSource,
+        stroke: ShapeStroke,
+    ) -> Self {
+        Self::rect_impl(rect, corners, fill, stroke, false)
+    }
+
+    /// Windowed sibling of [`Self::rect`]: same payload, but the
+    /// `FillKind` carries the window bit, so the shader inverts the fill
+    /// coverage (fill outside the rounded boundary, transparent window
+    /// inside the stroke). The bit also keeps the composer's opaque-cover
+    /// checks (`fill_kind == FillKind::SOLID`) from treating the quad as
+    /// an occluder — its interior is a hole.
+    pub(crate) fn rect_window(
+        rect: Rect,
+        corners: Corners,
+        fill: BrushSource,
+        stroke: ShapeStroke,
+    ) -> Self {
+        Self::rect_impl(rect, corners, fill, stroke, true)
+    }
+
+    fn rect_impl(
+        rect: Rect,
+        corners: Corners,
+        fill: BrushSource,
+        stroke: ShapeStroke,
+        window: bool,
+    ) -> Self {
+        // Stroke stays solid-only — gradient strokes are a non-goal.
+        let GpuFillFields {
+            color: fill_color,
+            kind: fill_kind,
+            lut_row: fill_lut_row,
+            axis: fill_axis,
+        } = fill.to_gpu_fields();
+        Self {
+            geom: QuadGeom::Rect { rect, corners },
+            fill: fill_color,
+            stroke: stroke.normalized(),
+            fill_kind: if window {
+                fill_kind.with_window()
+            } else {
+                fill_kind
+            },
+            fill_lut_row,
+            fill_axis,
+        }
+    }
+
+    /// A shadow. For a drop shadow, `rect` is the offset source inflated
+    /// by `3σ + max(spread, 0)`; for an inset shadow it is the source
+    /// rect. `corners` is the source shape's corner radii, `color` the
+    /// shadow tint, `fill_kind` `FillKind::SHADOW_DROP|SHADOW_INSET`.
+    /// Drop shadows carry `(0, 0, σ, spread)` in `fill_axis`; inset
+    /// shadows carry `(offset.x, offset.y, σ, spread)`. The composer
+    /// scales the logical-px lanes to physical px on emit.
+    pub(crate) fn shadow(
+        rect: Rect,
+        corners: Corners,
+        color: ColorF16,
+        fill_kind: FillKind,
+        fill_axis: FillAxis,
+    ) -> Self {
+        Self {
+            geom: QuadGeom::Rect { rect, corners },
+            fill: color,
+            // A shadow has no stroke; its whole edge is the blur.
+            stroke: ShapeStroke::NONE,
+            fill_kind,
+            fill_lut_row: LutRow::FALLBACK,
+            fill_axis,
+        }
+    }
+
+    /// A rounded triangle from three owner-local `points` offset by
+    /// `origin`. Same quad tier as [`Self::rect`], down to the shared
+    /// stroke normalization — only the geometry and the SDF the
+    /// `FillKind` selects differ.
+    pub(crate) fn triangle(
+        origin: Vec2,
+        points: [Vec2; 3],
+        fill: ColorF16,
+        radius: f32,
+        stroke: ShapeStroke,
+    ) -> Self {
+        let [a, b, c] = points;
+        Self {
+            geom: QuadGeom::Triangle {
+                origin,
+                a,
+                b,
+                c,
+                radius,
+            },
+            fill,
+            stroke: stroke.normalized(),
+            fill_kind: FillKind::TRIANGLE,
+            // The composer overwrites both reused lanes from the
+            // transformed points, so neither is read from here.
+            fill_lut_row: LutRow::FALLBACK,
+            fill_axis: FillAxis::ZERO,
+        }
+    }
+
     /// Paints nothing when the geometry covers no pixels, or when
     /// neither the fill nor the stroke can put down a texel.
     ///

@@ -37,7 +37,7 @@
 //! criterion's public setters. `Gate` draws that line — and the subtlety
 //! is that test mode is signalled by an *absence*.
 //!
-//! What the runner decides, a driver is handed in a [`Run`] rather than
+//! What the runner decides, a driver is handed in a `Run` rather than
 //! left to re-derive: two readings of the same argv are two things that
 //! can disagree. Nothing here reads the environment — every input is a
 //! declared flag, so `--help` is the whole surface.

@@ -11,7 +11,8 @@ use crate::primitives::{
 use crate::renderer::frontend::composer::{Composer, stroke_bbox_urect};
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::{
-    BrushSource, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload, ResolvedGradient,
+    BrushSource, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload, DrawQuadPayload,
+    PushClipPayload, ResolvedGradient,
 };
 use crate::renderer::frontend::record_sink::RecordedPaint;
 use crate::renderer::gpu_view::{GpuFrameCtx, GpuPaint, GpuPaintRef};
@@ -46,12 +47,12 @@ fn rect(x: f32, y: f32, w: f32, h: f32) -> Rect {
 }
 
 fn draw(buf: &mut RecordedPaint, r: Rect) {
-    buf.draw_rect(
+    buf.draw_quad(DrawQuadPayload::rect(
         r,
         Corners::default(),
         BrushSource::Solid(Color::rgb(1.0, 1.0, 1.0).into()),
         Stroke::ZERO.into(),
-    );
+    ));
 }
 
 fn text(buf: &mut RecordedPaint, r: Rect) {
@@ -234,7 +235,7 @@ fn compose_with_clip_groups_inner_draws_under_scissor() {
     let buf = run(
         |b, _arena| {
             draw(b, rect(0.0, 0.0, 10.0, 10.0));
-            b.push_clip(rect(50.0, 50.0, 100.0, 100.0));
+            b.clip(PushClipPayload::rect(rect(50.0, 50.0, 100.0, 100.0)));
             draw(b, rect(60.0, 60.0, 20.0, 20.0));
             draw(b, rect(90.0, 90.0, 20.0, 20.0));
             b.pop_clip();
@@ -262,8 +263,8 @@ fn compose_with_clip_groups_inner_draws_under_scissor() {
 fn compose_intersects_nested_clips() {
     let buf = run(
         |b, _arena| {
-            b.push_clip(rect(0.0, 0.0, 100.0, 100.0));
-            b.push_clip(rect(50.0, 50.0, 100.0, 100.0));
+            b.clip(PushClipPayload::rect(rect(0.0, 0.0, 100.0, 100.0)));
+            b.clip(PushClipPayload::rect(rect(50.0, 50.0, 100.0, 100.0)));
             draw(b, rect(60.0, 60.0, 10.0, 10.0));
             b.pop_clip();
             b.pop_clip();
@@ -287,7 +288,7 @@ fn cull_drops_drawrect_entirely_outside_active_clip() {
     // visible quad.
     let buf = run(
         |b, _arena| {
-            b.push_clip(rect(0.0, 0.0, 100.0, 100.0));
+            b.clip(PushClipPayload::rect(rect(0.0, 0.0, 100.0, 100.0)));
             draw(b, rect(20.0, 20.0, 30.0, 30.0)); // inside
             draw(b, rect(200.0, 200.0, 30.0, 30.0)); // entirely outside
             b.pop_clip();
@@ -303,7 +304,7 @@ fn cull_drops_drawrect_entirely_outside_active_clip() {
 fn cull_drops_drawtext_entirely_outside_active_clip() {
     let buf = run(
         |b, _arena| {
-            b.push_clip(rect(0.0, 0.0, 100.0, 100.0));
+            b.clip(PushClipPayload::rect(rect(0.0, 0.0, 100.0, 100.0)));
             text(b, rect(10.0, 10.0, 50.0, 20.0)); // inside
             text(b, rect(300.0, 300.0, 50.0, 20.0)); // outside
             b.pop_clip();
@@ -319,7 +320,7 @@ fn cull_keeps_drawrect_partially_inside_active_clip() {
     // its quad. Only fully-disjoint draws are dropped.
     let buf = run(
         |b, _arena| {
-            b.push_clip(rect(0.0, 0.0, 100.0, 100.0));
+            b.clip(PushClipPayload::rect(rect(0.0, 0.0, 100.0, 100.0)));
             draw(b, rect(80.0, 80.0, 50.0, 50.0)); // straddles the clip
             b.pop_clip();
         },
@@ -361,7 +362,7 @@ fn cull_drops_drawmesh_entirely_outside_active_clip() {
     // outside is culled.
     let buf = run(
         |b, _arena| {
-            b.push_clip(rect(0.0, 0.0, 100.0, 100.0));
+            b.clip(PushClipPayload::rect(rect(0.0, 0.0, 100.0, 100.0)));
             mesh(b, rect(10.0, 10.0, 30.0, 30.0)); // inside
             mesh(b, rect(200.0, 200.0, 30.0, 30.0)); // outside the clip
             b.pop_clip();
@@ -380,7 +381,7 @@ fn cull_handles_culled_text_then_quad_split() {
     // share one group with both rects in it (no spurious split).
     let buf = run(
         |b, _arena| {
-            b.push_clip(rect(0.0, 0.0, 100.0, 100.0));
+            b.clip(PushClipPayload::rect(rect(0.0, 0.0, 100.0, 100.0)));
             text(b, rect(300.0, 300.0, 50.0, 20.0)); // culled
             draw(b, rect(10.0, 10.0, 30.0, 30.0));
             draw(b, rect(50.0, 50.0, 30.0, 30.0));
@@ -401,7 +402,7 @@ fn cull_handles_culled_text_then_quad_split() {
 fn compose_skips_groups_with_no_quads() {
     let buf = run(
         |b, _arena| {
-            b.push_clip(rect(0.0, 0.0, 50.0, 50.0));
+            b.clip(PushClipPayload::rect(rect(0.0, 0.0, 50.0, 50.0)));
             b.pop_clip();
         },
         &params(1.0, UVec2::new(200, 200)),
@@ -421,12 +422,15 @@ fn compose_skips_groups_with_no_quads() {
 fn push_clip_rounded_lands_radius_on_group_and_inherits_through_rect() {
     let buf = run(
         |b, _arena| {
-            b.push_clip_rounded(rect(10.0, 20.0, 100.0, 80.0), Corners::all(8.0));
+            b.clip(PushClipPayload::rounded(
+                rect(10.0, 20.0, 100.0, 80.0),
+                Corners::all(8.0),
+            ));
             // Tier 1: direct draw under the rounded clip.
             draw(b, rect(20.0, 30.0, 40.0, 40.0));
             // Tier 2: nest a plain rect clip — children of THIS clip
             // must still inherit the rounded info from the ancestor.
-            b.push_clip(rect(30.0, 40.0, 40.0, 30.0));
+            b.clip(PushClipPayload::rect(rect(30.0, 40.0, 40.0, 30.0)));
             draw(b, rect(35.0, 45.0, 10.0, 10.0));
             b.pop_clip();
             b.pop_clip();
@@ -473,11 +477,17 @@ fn push_clip_rounded_lands_radius_on_group_and_inherits_through_rect() {
 fn push_clip_rounded_nested_builds_outer_inner_chain() {
     let buf = run(
         |b, _arena| {
-            b.push_clip_rounded(rect(10.0, 10.0, 200.0, 200.0), Corners::all(8.0));
+            b.clip(PushClipPayload::rounded(
+                rect(10.0, 10.0, 200.0, 200.0),
+                Corners::all(8.0),
+            ));
             draw(b, rect(20.0, 20.0, 40.0, 40.0));
-            b.push_clip_rounded(rect(20.0, 20.0, 100.0, 100.0), Corners::all(4.0));
+            b.clip(PushClipPayload::rounded(
+                rect(20.0, 20.0, 100.0, 100.0),
+                Corners::all(4.0),
+            ));
             draw(b, rect(30.0, 30.0, 20.0, 20.0));
-            b.push_clip(rect(30.0, 30.0, 50.0, 50.0));
+            b.clip(PushClipPayload::rect(rect(30.0, 30.0, 50.0, 50.0)));
             draw(b, rect(35.0, 35.0, 10.0, 10.0));
             b.pop_clip();
             b.pop_clip();
@@ -516,7 +526,10 @@ fn push_clip_rounded_nested_builds_outer_inner_chain() {
 
 fn push_distinct_rounded_clips(buffer: &mut RecordedPaint, depth: u32) {
     for level in 1..=depth {
-        buffer.push_clip_rounded(rect(0.0, 0.0, 400.0, 400.0), Corners::all(level as f32));
+        buffer.clip(PushClipPayload::rounded(
+            rect(0.0, 0.0, 400.0, 400.0),
+            Corners::all(level as f32),
+        ));
     }
 }
 
@@ -550,9 +563,15 @@ fn rounded_clip_chain_rejects_stencil_depth_256() {
 fn push_clip_rounded_redundant_identical_push_adds_no_depth() {
     let buf = run(
         |b, _arena| {
-            b.push_clip_rounded(rect(10.0, 10.0, 100.0, 100.0), Corners::all(8.0));
+            b.clip(PushClipPayload::rounded(
+                rect(10.0, 10.0, 100.0, 100.0),
+                Corners::all(8.0),
+            ));
             draw(b, rect(20.0, 20.0, 20.0, 20.0));
-            b.push_clip_rounded(rect(10.0, 10.0, 100.0, 100.0), Corners::all(8.0));
+            b.clip(PushClipPayload::rounded(
+                rect(10.0, 10.0, 100.0, 100.0),
+                Corners::all(8.0),
+            ));
             draw(b, rect(50.0, 50.0, 20.0, 20.0));
             b.pop_clip();
             b.pop_clip();
@@ -577,7 +596,10 @@ fn push_clip_rounded_redundant_identical_push_adds_no_depth() {
 fn push_clip_rounded_mask_rect_is_unclamped_to_viewport() {
     let buf = run(
         |b, _arena| {
-            b.push_clip_rounded(rect(-50.0, -20.0, 200.0, 100.0), Corners::all(8.0));
+            b.clip(PushClipPayload::rounded(
+                rect(-50.0, -20.0, 200.0, 100.0),
+                Corners::all(8.0),
+            ));
             draw(b, rect(0.0, 0.0, 10.0, 10.0));
             b.pop_clip();
         },
@@ -598,7 +620,7 @@ fn push_clip_rounded_mask_rect_is_unclamped_to_viewport() {
 fn push_clip_rect_emits_no_rounded_data() {
     let buf = run(
         |b, _arena| {
-            b.push_clip(rect(10.0, 20.0, 100.0, 80.0));
+            b.clip(PushClipPayload::rect(rect(10.0, 20.0, 100.0, 80.0)));
             draw(b, rect(20.0, 30.0, 10.0, 10.0));
             b.pop_clip();
         },
@@ -630,12 +652,12 @@ fn nan_stroke_width_normalizes_away_on_every_quad_geometry() {
     // proves nothing about the lanes.
     let buf = run(
         |b, _arena| {
-            b.draw_rect(
+            b.draw_quad(DrawQuadPayload::rect(
                 rect(10.0, 20.0, 30.0, 40.0),
                 Corners::ZERO,
                 BrushSource::Solid(Color::WHITE.into()),
                 nan_stroke,
-            );
+            ));
         },
         &display,
     );
@@ -647,7 +669,7 @@ fn nan_stroke_width_normalizes_away_on_every_quad_geometry() {
 
     let buf = run(
         |b, _arena| {
-            b.draw_triangle(
+            b.draw_quad(DrawQuadPayload::triangle(
                 Vec2::ZERO,
                 [
                     Vec2::new(0.0, 0.0),
@@ -657,7 +679,7 @@ fn nan_stroke_width_normalizes_away_on_every_quad_geometry() {
                 Color::WHITE.into(),
                 0.0,
                 nan_stroke,
-            );
+            ));
         },
         &display,
     );
@@ -671,12 +693,12 @@ fn nan_stroke_width_normalizes_away_on_every_quad_geometry() {
     // dropped — the fill and the stroke are both no-ops.
     let buf = run(
         |b, _arena| {
-            b.draw_rect(
+            b.draw_quad(DrawQuadPayload::rect(
                 rect(10.0, 20.0, 30.0, 40.0),
                 Corners::ZERO,
                 BrushSource::Solid(Color::TRANSPARENT.into()),
                 nan_stroke,
-            );
+            ));
         },
         &display,
     );
@@ -716,12 +738,12 @@ fn compose_scales_radius_and_stroke_under_transform() {
     let buf = run(
         |b, _arena| {
             b.push_transform(TranslateScale::from_scale(2.0));
-            b.draw_rect(
+            b.draw_quad(DrawQuadPayload::rect(
                 rect(0.0, 0.0, 50.0, 50.0),
                 Corners::all(8.0),
                 BrushSource::Solid(Color::rgb(1.0, 1.0, 1.0).into()),
                 Stroke::solid(Color::rgb(0.0, 0.0, 0.0), 1.5).into(),
-            );
+            ));
             b.pop_transform();
         },
         &params(1.0, UVec2::new(400, 400)),
@@ -740,12 +762,12 @@ fn compose_scales_radius_and_stroke_under_transform() {
 fn compose_solid_brush_emits_kind_zero_quad() {
     use crate::renderer::frontend::payload::BrushSource;
     let mut buffer = RecordedPaint::default();
-    buffer.draw_rect(
+    buffer.draw_quad(DrawQuadPayload::rect(
         rect(0.0, 0.0, 100.0, 100.0),
         Corners::default(),
         BrushSource::Solid(Color::rgb(0.5, 0.5, 0.5).into()),
         Stroke::ZERO.into(),
-    );
+    ));
     let mut composer = composer();
     let mut out = render_buffer();
     // 200×200 viewport: an opaque solid sharp quad covering the whole
@@ -787,12 +809,12 @@ fn windowed_rect_is_not_an_opaque_cover() {
     let buf = run(
         |b, _| {
             draw(b, rect(10.0, 10.0, 50.0, 50.0));
-            b.draw_rect_window(
+            b.draw_quad(DrawQuadPayload::rect_window(
                 rect(0.0, 0.0, 200.0, 200.0),
                 Corners::default(),
                 BrushSource::Solid(Color::rgb(1.0, 1.0, 1.0).into()),
                 Stroke::ZERO.into(),
-            );
+            ));
         },
         &params(1.0, UVec2::new(200, 200)),
     );
@@ -832,12 +854,12 @@ fn compose_linear_brush_emits_kind_one_with_atlas_row() {
         kind: FillKind::linear(g.spread),
     };
     let mut buffer = RecordedPaint::default();
-    buffer.draw_rect(
+    buffer.draw_quad(DrawQuadPayload::rect(
         rect(0.0, 0.0, 100.0, 100.0),
         Corners::default(),
         BrushSource::Gradient(lowered),
         Stroke::ZERO.into(),
-    );
+    ));
     let mut composer = composer();
     let mut out = render_buffer();
     composer
@@ -871,12 +893,12 @@ fn compose_repeated_linear_brush_shares_atlas_row() {
     };
     let mut buffer = RecordedPaint::default();
     for _ in 0..3 {
-        buffer.draw_rect(
+        buffer.draw_quad(DrawQuadPayload::rect(
             rect(0.0, 0.0, 10.0, 10.0),
             Corners::default(),
             BrushSource::Gradient(lowered),
             Stroke::ZERO.into(),
-        );
+        ));
     }
     let mut composer = composer();
     let mut out = render_buffer();
@@ -976,7 +998,7 @@ fn compose_transforms_clip_rects_to_screen_space() {
     let buf = run(
         |b, _arena| {
             b.push_transform(TranslateScale::from_scale(2.0));
-            b.push_clip(rect(10.0, 10.0, 20.0, 20.0));
+            b.clip(PushClipPayload::rect(rect(10.0, 10.0, 20.0, 20.0)));
             draw(b, rect(15.0, 15.0, 5.0, 5.0));
             b.pop_clip();
             b.pop_transform();
@@ -1056,11 +1078,11 @@ fn compose_does_not_split_consecutive_texts() {
 fn compose_same_clip_push_pop_preserves_overlap_state() {
     let buf = run(
         |b, _arena| {
-            b.push_clip(rect(0.0, 0.0, 200.0, 200.0));
+            b.clip(PushClipPayload::rect(rect(0.0, 0.0, 200.0, 200.0)));
             draw(b, rect(0.0, 0.0, 100.0, 28.0)); // node A bg
             text(b, rect(4.0, 4.0, 90.0, 20.0)); //  node A label
             // Redundant nested clip — same rect, no narrowing.
-            b.push_clip(rect(0.0, 0.0, 200.0, 200.0));
+            b.clip(PushClipPayload::rect(rect(0.0, 0.0, 200.0, 200.0)));
             b.pop_clip();
             // Overlapping bg after the redundant clip: must still
             // flush against node A's label.
@@ -1142,13 +1164,13 @@ fn compose_shadow_outer_halo_after_text_splits_group() {
     let buf = run(
         |b, _arena| {
             text(b, rect(39.0, 60.0, 2.0, 10.0));
-            b.draw_shadow(
+            b.draw_quad(DrawQuadPayload::shadow(
                 shadow_rect,
                 Corners::ZERO,
                 Color::BLACK.into(),
                 FillKind::SHADOW_DROP,
                 FillAxis::from_lanes(0.0, 0.0, sigma, 0.0),
-            );
+            ));
         },
         &params(1.0, UVec2::new(200, 200)),
     );
@@ -1186,11 +1208,11 @@ fn compose_keeps_quads_then_text_in_one_group() {
 fn compose_coalesces_text_across_distinct_scissor_groups() {
     let buf = run(
         |b, _arena| {
-            b.push_clip(rect(0.0, 0.0, 100.0, 30.0));
+            b.clip(PushClipPayload::rect(rect(0.0, 0.0, 100.0, 30.0)));
             draw(b, rect(0.0, 0.0, 100.0, 28.0));
             text(b, rect(4.0, 4.0, 90.0, 20.0));
             b.pop_clip();
-            b.push_clip(rect(0.0, 40.0, 100.0, 30.0));
+            b.clip(PushClipPayload::rect(rect(0.0, 40.0, 100.0, 30.0)));
             draw(b, rect(0.0, 40.0, 100.0, 28.0));
             text(b, rect(4.0, 44.0, 90.0, 20.0));
             b.pop_clip();
@@ -1221,7 +1243,7 @@ fn compose_clipped_text_overflow_does_not_widen_batch_scissor() {
             // The run's intended visible region is 20px, but its
             // measured rect is 100px — the clip is the only thing
             // keeping the glyphs inside.
-            b.push_clip(rect(40.0, 40.0, 20.0, 20.0));
+            b.clip(PushClipPayload::rect(rect(40.0, 40.0, 20.0, 20.0)));
             text(b, rect(40.0, 40.0, 100.0, 20.0));
             b.pop_clip();
         },
@@ -1253,10 +1275,10 @@ fn compose_strict_text_with_matching_clip_coalesces() {
     let clip = rect(40.0, 40.0, 20.0, 20.0);
     let buf = run(
         |b, _arena| {
-            b.push_clip(clip);
+            b.clip(PushClipPayload::rect(clip));
             text(b, rect(40.0, 40.0, 100.0, 20.0));
             b.pop_clip();
-            b.push_clip(clip);
+            b.clip(PushClipPayload::rect(clip));
             text(b, rect(40.0, 40.0, 100.0, 20.0));
             b.pop_clip();
         },
@@ -1280,10 +1302,16 @@ fn compose_strict_text_with_matching_clip_coalesces() {
 fn compose_rounded_clip_change_splits_text_batch() {
     let buf = run(
         |b, _arena| {
-            b.push_clip_rounded(rect(0.0, 0.0, 100.0, 30.0), Corners::all(4.0));
+            b.clip(PushClipPayload::rounded(
+                rect(0.0, 0.0, 100.0, 30.0),
+                Corners::all(4.0),
+            ));
             text(b, rect(4.0, 4.0, 90.0, 20.0));
             b.pop_clip();
-            b.push_clip_rounded(rect(0.0, 40.0, 100.0, 30.0), Corners::all(8.0));
+            b.clip(PushClipPayload::rounded(
+                rect(0.0, 40.0, 100.0, 30.0),
+                Corners::all(8.0),
+            ));
             text(b, rect(4.0, 44.0, 90.0, 20.0));
             b.pop_clip();
         },
@@ -1689,7 +1717,7 @@ fn compose_spins_polyline_about_bbox_center() {
 fn compose_culled_mesh_between_texts_keeps_one_batch() {
     let buf = run(
         |b, _arena| {
-            b.push_clip(rect(0.0, 0.0, 100.0, 100.0));
+            b.clip(PushClipPayload::rect(rect(0.0, 0.0, 100.0, 100.0)));
             text(b, rect(0.0, 0.0, 100.0, 20.0));
             mesh(b, rect(200.0, 200.0, 30.0, 30.0)); // outside the clip → culled
             text(b, rect(0.0, 40.0, 100.0, 20.0));
@@ -1735,7 +1763,7 @@ fn compose_quad_overlap_with_prior_batch_text_splits_batch() {
         |b, _arena| {
             text(b, rect(0.0, 0.0, 100.0, 30.0)); // text A
             // Push a clip to force a fresh group; quad inside overlaps text A.
-            b.push_clip(rect(0.0, 0.0, 200.0, 200.0));
+            b.clip(PushClipPayload::rect(rect(0.0, 0.0, 200.0, 200.0)));
             draw(b, rect(10.0, 10.0, 50.0, 20.0)); // overlaps A → must close batch
             b.pop_clip();
             text(b, rect(0.0, 40.0, 100.0, 30.0)); // text B
@@ -2029,7 +2057,7 @@ fn compose_splits_curve_batches_across_scissor_groups() {
                 width: 2.0,
                 ..Default::default()
             });
-            b.push_clip(rect(0.0, 0.0, 50.0, 200.0));
+            b.clip(PushClipPayload::rect(rect(0.0, 0.0, 50.0, 200.0)));
             b.draw_curve(DrawCurvePayload {
                 bbox: rect(0.0, 0.0, 50.0, 50.0),
                 origin: Vec2::ZERO,
@@ -2699,7 +2727,7 @@ fn prune_keeps_quads_in_separate_groups_even_when_covered() {
     let buf = run(
         |b, _| {
             draw(b, rect(0.0, 0.0, 100.0, 100.0));
-            b.push_clip(rect(0.0, 0.0, 200.0, 200.0));
+            b.clip(PushClipPayload::rect(rect(0.0, 0.0, 200.0, 200.0)));
             draw(b, rect(0.0, 0.0, 100.0, 100.0));
             b.pop_clip();
         },
@@ -2719,12 +2747,12 @@ fn prune_does_not_drop_stroked_quad_under_solid_cover() {
     // occludable — stroked quads are kept regardless of cover.
     let buf = run(
         |b, _| {
-            b.draw_rect(
+            b.draw_quad(DrawQuadPayload::rect(
                 rect(0.0, 0.0, 100.0, 100.0),
                 Corners::default(),
                 BrushSource::Solid(Color::rgb(1.0, 0.0, 0.0).into()),
                 Stroke::solid(Color::rgb(0.0, 1.0, 0.0), 2.0).into(),
-            );
+            ));
             draw(b, rect(0.0, 0.0, 100.0, 100.0)); // solid on top
         },
         &params(1.0, UVec2::new(200, 200)),
@@ -2757,12 +2785,12 @@ fn prune_rounded_on_top_uses_deflated_cover() {
     let buf_rounded_on_top = run(
         |b, _| {
             draw(b, rect(0.0, 0.0, 100.0, 100.0)); // solid sharp under
-            b.draw_rect(
+            b.draw_quad(DrawQuadPayload::rect(
                 rect(0.0, 0.0, 100.0, 100.0),
                 Corners::all(10.0),
                 BrushSource::Solid(Color::rgb(1.0, 1.0, 1.0).into()),
                 Stroke::ZERO.into(),
-            );
+            ));
         },
         &params(1.0, UVec2::new(200, 200)),
     );
@@ -2774,12 +2802,12 @@ fn prune_rounded_on_top_uses_deflated_cover() {
 
     let buf_sharp_on_top = run(
         |b, _| {
-            b.draw_rect(
+            b.draw_quad(DrawQuadPayload::rect(
                 rect(0.0, 0.0, 100.0, 100.0),
                 Corners::all(10.0),
                 BrushSource::Solid(Color::rgb(1.0, 1.0, 1.0).into()),
                 Stroke::ZERO.into(),
-            );
+            ));
             draw(b, rect(0.0, 0.0, 100.0, 100.0)); // sharp opaque on top
         },
         &params(1.0, UVec2::new(200, 200)),
@@ -2799,12 +2827,12 @@ fn prune_keeps_transparent_solid_as_non_occluder() {
     let buf = run(
         |b, _| {
             draw(b, rect(0.0, 0.0, 100.0, 100.0));
-            b.draw_rect(
+            b.draw_quad(DrawQuadPayload::rect(
                 rect(0.0, 0.0, 100.0, 100.0),
                 Corners::default(),
                 BrushSource::Solid(Color::rgba(1.0, 1.0, 1.0, 0.5).into()),
                 Stroke::ZERO.into(),
-            );
+            ));
         },
         &params(1.0, UVec2::new(200, 200)),
     );
@@ -2823,12 +2851,12 @@ fn prune_rounded_occluder_drops_smaller_under_inside_inscribed_rect() {
     let buf = run(
         |b, _| {
             draw(b, rect(10.0, 10.0, 80.0, 80.0)); // sharp opaque under
-            b.draw_rect(
+            b.draw_quad(DrawQuadPayload::rect(
                 rect(0.0, 0.0, 100.0, 100.0),
                 Corners::all(10.0),
                 BrushSource::Solid(Color::rgb(1.0, 1.0, 1.0).into()),
                 Stroke::ZERO.into(),
-            );
+            ));
         },
         &params(1.0, UVec2::new(200, 200)),
     );
@@ -2852,12 +2880,12 @@ fn prune_rounded_occluder_keeps_under_overlapping_corner_cutout() {
     let buf = run(
         |b, _| {
             draw(b, rect(0.0, 0.0, 5.0, 5.0)); // sharp under in corner
-            b.draw_rect(
+            b.draw_quad(DrawQuadPayload::rect(
                 rect(0.0, 0.0, 100.0, 100.0),
                 Corners::all(20.0),
                 BrushSource::Solid(Color::rgb(1.0, 1.0, 1.0).into()),
                 Stroke::ZERO.into(),
-            );
+            ));
         },
         &params(1.0, UVec2::new(200, 200)),
     );
@@ -2915,14 +2943,14 @@ fn prune_keeps_shadow_under_opaque_cover() {
     // outer halo would be lost. Predicate must never drop shadows.
     let buf = run(
         |b, _| {
-            b.draw_shadow(
+            b.draw_quad(DrawQuadPayload::shadow(
                 rect(20.0, 20.0, 60.0, 60.0),
                 Corners::default(),
                 Color::rgba(0.0, 0.0, 0.0, 0.5).into(),
                 FillKind::SHADOW_DROP,
                 // (offset.x, offset.y, sigma, spread) — sigma=4 ⇒ 8-px halo.
                 FillAxis::from_lanes(0.0, 0.0, 4.0, 0.0),
-            );
+            ));
             draw(b, rect(0.0, 0.0, 100.0, 100.0)); // opaque cover on top
         },
         &params(1.0, UVec2::new(200, 200)),
@@ -2965,12 +2993,12 @@ fn prune_stroked_occluder_drops_smaller_sharp_under() {
     let buf = run(
         |b, _| {
             draw(b, rect(10.0, 10.0, 50.0, 50.0)); // sharp opaque under
-            b.draw_rect(
+            b.draw_quad(DrawQuadPayload::rect(
                 rect(0.0, 0.0, 100.0, 100.0),
                 Corners::default(),
                 BrushSource::Solid(Color::rgb(1.0, 1.0, 1.0).into()),
                 Stroke::solid(Color::rgb(0.0, 0.0, 0.0), 2.0).into(),
-            );
+            ));
         },
         &params(1.0, UVec2::new(200, 200)),
     );
@@ -3046,12 +3074,12 @@ fn prune_occluder_stroke_translucency_gates_cover() {
         let buf = run(
             |b, _| {
                 draw(b, case.under);
-                b.draw_rect(
+                b.draw_quad(DrawQuadPayload::rect(
                     rect(0.0, 0.0, 100.0, 100.0),
                     Corners::default(),
                     BrushSource::Solid(Color::rgb(1.0, 1.0, 1.0).into()),
                     (&case.stroke).into(),
-                );
+                ));
             },
             &params(1.0, UVec2::new(200, 200)),
         );
@@ -3284,12 +3312,12 @@ fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
         (
             "rounded corners disqualify",
             |b| {
-                b.draw_rect(
+                b.draw_quad(DrawQuadPayload::rect(
                     rect(0.0, 0.0, 200.0, 200.0),
                     Corners::all(4.0),
                     BrushSource::Solid(Color::rgb(1.0, 1.0, 1.0).into()),
                     Stroke::ZERO.into(),
-                );
+                ));
             },
             1,
             None,
@@ -3297,12 +3325,12 @@ fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
         (
             "stroke disqualifies",
             |b| {
-                b.draw_rect(
+                b.draw_quad(DrawQuadPayload::rect(
                     rect(0.0, 0.0, 200.0, 200.0),
                     Corners::default(),
                     BrushSource::Solid(Color::rgb(1.0, 1.0, 1.0).into()),
                     Stroke::solid(Color::WHITE, 2.0).into(),
-                );
+                ));
             },
             1,
             None,
@@ -3310,12 +3338,12 @@ fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
         (
             "translucent fill disqualifies",
             |b| {
-                b.draw_rect(
+                b.draw_quad(DrawQuadPayload::rect(
                     rect(0.0, 0.0, 200.0, 200.0),
                     Corners::default(),
                     BrushSource::Solid(Color::rgba(1.0, 1.0, 1.0, 0.5).into()),
                     Stroke::ZERO.into(),
-                );
+                ));
             },
             1,
             None,
@@ -3323,7 +3351,7 @@ fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
         (
             "gradient fill disqualifies",
             |b| {
-                b.draw_rect(
+                b.draw_quad(DrawQuadPayload::rect(
                     rect(0.0, 0.0, 200.0, 200.0),
                     Corners::default(),
                     BrushSource::Gradient(ResolvedGradient {
@@ -3332,7 +3360,7 @@ fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
                         kind: FillKind::linear(Spread::Pad),
                     }),
                     Stroke::ZERO.into(),
-                );
+                ));
             },
             1,
             None,
@@ -3358,7 +3386,7 @@ fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
         (
             "active clip disqualifies",
             |b| {
-                b.push_clip(rect(0.0, 0.0, 150.0, 150.0));
+                b.clip(PushClipPayload::rect(rect(0.0, 0.0, 150.0, 150.0)));
                 draw(b, rect(0.0, 0.0, 200.0, 200.0));
                 b.pop_clip();
             },
@@ -3369,12 +3397,12 @@ fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
             "second qualifying cover re-folds over the first",
             |b| {
                 draw(b, rect(0.0, 0.0, 200.0, 200.0));
-                b.draw_rect(
+                b.draw_quad(DrawQuadPayload::rect(
                     rect(0.0, 0.0, 200.0, 200.0),
                     Corners::default(),
                     BrushSource::Solid(Color::rgb(0.14, 0.16, 0.22).into()),
                     Stroke::ZERO.into(),
-                );
+                ));
             },
             0,
             Some(Color::rgb(0.14, 0.16, 0.22)),
@@ -3396,12 +3424,12 @@ fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
     // covers the full physical viewport and folds.
     let buf = run(
         |b, _arena| {
-            b.draw_rect(
+            b.draw_quad(DrawQuadPayload::rect(
                 rect(0.0, 0.0, 100.0, 100.0),
                 Corners::default(),
                 BrushSource::Solid(bg.into()),
                 Stroke::ZERO.into(),
-            );
+            ));
         },
         &params(2.0, vp),
     );
@@ -3423,7 +3451,7 @@ fn clear_fold_discards_hidden_underlay_mid_stream() {
         |b, _arena| {
             // Hidden underlay: a text run and a quad inside a clipped group.
             text(b, rect(10.0, 10.0, 50.0, 20.0));
-            b.push_clip(rect(0.0, 0.0, 150.0, 150.0));
+            b.clip(PushClipPayload::rect(rect(0.0, 0.0, 150.0, 150.0)));
             draw(b, rect(10.0, 10.0, 20.0, 20.0));
             b.pop_clip();
             // The cover lands under an active 2x transform: its world rect
@@ -3586,7 +3614,14 @@ fn quad_fast_path_flag_cases() {
 
     for (name, r, corners, stroke, brush, dpr, expect_fast) in cases {
         let buf = run(
-            |b, _arena| b.draw_rect(*r, *corners, *brush, (*stroke).into()),
+            |b, _arena| {
+                b.draw_quad(DrawQuadPayload::rect(
+                    *r,
+                    *corners,
+                    *brush,
+                    (*stroke).into(),
+                ))
+            },
             &params(*dpr, UVec2::new(400, 400)),
         );
         assert_eq!(buf.quads.len(), 1, "{name}: quad emitted");

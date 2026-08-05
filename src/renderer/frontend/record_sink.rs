@@ -7,7 +7,7 @@
 //! is what lets the compose bench measure compose alone, feeding a
 //! stream it recorded once outside the timed loop.
 //!
-//! Recording happens *below* [`PaintSink`]'s provided half, so a call
+//! Recording happens *below* [`PaintSink`]'s `draw_*` gates, so a call
 //! only lands here if it survived the no-op gate. Two recordings
 //! comparing equal therefore means the two encodes agreed on every
 //! painted operation, in order.
