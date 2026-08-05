@@ -80,10 +80,6 @@ criterion = { version = "0.8", optional = true }
 clap = { version = "4", optional = true, features = ["derive"] }
 dhat = { version = "0.3", optional = true }
 gethostname = { version = "1.1", optional = true }
-# Pinned to whatever `profiling/profile-with-tracy` resolves to so cargo
-# dedupes to one tracy-client instance (one FFI connection). Bump in
-# lockstep with `profiling`.
-tracy-client = { version = "0.18", default-features = false, optional = true }
 profiling = { version = "1.0", default-features = false, features = ["procmacros"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"], optional = true }
 
@@ -120,25 +116,19 @@ name = "criterion"
 harness = false
 required-features = ["bench"]
 
-# The dhat benches stay separate: each installs `dhat::Alloc` as its
-# `#[global_allocator]`, which is per-binary and would distort every
-# criterion timing it shared a target with.
+# The allocation bench stays out of `criterion`: it installs
+# `dhat::Alloc` as its `#[global_allocator]`, which is per-binary and
+# would distort every timing it shared a target with. That is the only
+# reason for the second target — the steps within it share one binary
+# and one profiler.
+#
+# Its resize steps need `Ui::for_test_text()` (internals-gated, folded
+# into `bench`) so they shape with real cosmic-text. With the mono
+# fallback the resize path's paint counts stay constant, the cascade
+# cache reuses in place, and the step reports a false 0 — see the
+# module docs.
 [[bench]]
-name = "alloc_free"
-harness = false
-required-features = ["bench"]
-
-[[bench]]
-name = "alloc_resize"
-harness = false
-# Needs `Ui::for_test_text()` (internals-gated) so it shapes with real
-# cosmic-text. With the mono fallback the resize path's paint counts
-# stay constant, the cascade cache reuses in place, and the bench
-# reports a false 0 — see the module docs.
-required-features = ["bench"]
-
-[[bench]]
-name = "alloc_free_gpu"
+name = "alloc"
 harness = false
 required-features = ["bench"]
 
@@ -166,7 +156,7 @@ winit-host = ["dep:pollster", "dep:winit"]
 # Profiler backend — off by default (zero overhead).
 # Tracy needs an external viewer; wgpu's own GPU zones light up
 # automatically because `profiling` is a singleton in the dep graph.
-profile-with-tracy = ["profiling/profile-with-tracy", "dep:tracy-client"]
+profile-with-tracy = ["profiling/profile-with-tracy"]
 
 [profile.bench]
 debug = true

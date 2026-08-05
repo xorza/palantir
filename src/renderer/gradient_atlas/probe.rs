@@ -8,7 +8,7 @@
 //! name claims — a "steady-state hit" arm that quietly started baking
 //! would otherwise read as a plausible slowdown rather than a broken
 //! fixture. Every counter is a plain `u32`; nothing here allocates, so
-//! the `alloc_free` benches see nothing from this module.
+//! the alloc bench sees nothing from this module.
 //!
 //! ## Why these five
 //!

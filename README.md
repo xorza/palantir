@@ -96,8 +96,8 @@ Pre-1.0 — these are known gaps, not design rejections:
 Steady-state frames are heap-alloc-free after warmup. Per-frame data lives
 on retained scratch (`RecordStore`, SoA columns on `Tree`, `CacheArena`)
 that reuses capacity across frames; any new per-frame `Vec::new()` /
-`HashMap` rebuild is treated as a regression and caught by the
-`alloc_free` / `alloc_free_gpu` benches under `benches/`.
+`HashMap` rebuild is treated as a regression and caught by the `alloc`
+bench under `benches/`.
 
 ## Example
 

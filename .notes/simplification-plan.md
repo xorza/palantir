@@ -321,12 +321,6 @@ A half-hour sweep, plus a list to work through separately.
   (`composer/mod.rs:363`)** is a one-line forwarder to
   `self.higher_kinds.any_overlap`, and its doc duplicates
   `HigherKindRects::any_overlap`'s.
-- [ ] **`ui/bench.rs` reads `PALANTIR_BENCH_MODE` once and threads it**
-  now, but the sibling env reads (`PALANTIR_BENCH_SIZE`,
-  `PALANTIR_BENCH_SCALE`, `PALANTIR_BENCH_MACHINE`, `DHAT_DUMP`) are
-  still scattered `std::env::var` calls across `ui/bench.rs` and
-  `host/bench.rs`. One `BenchEnv` struct read at entry would put the
-  whole knob surface in one place.
 - [ ] **`primitives/approx.rs` carries two parallel hash families** —
   `hash_f32`/`hash_vec2`/`hash_size`/`hash_rect` (exact, `eq_bits`) and
   `hash_visual_*` (canonicalized, `canon_bits`) — eight free functions

@@ -4,7 +4,8 @@
 //!
 //! - **`bench_cpu`** (`frame/*_cpu`) — palantir's CPU pipeline in
 //!   isolation, driven on a **bare `Ui` + standalone `Frontend` with no
-//!   wgpu device at all** (same deviceless path as `alloc_free`). Each
+//!   wgpu device at all** (same deviceless path as the alloc bench's
+//!   `record-only` step). Each
 //!   iter runs record → measure → arrange → cascade → damage → encode +
 //!   compose and acks the present; nothing touches the GPU. This is the
 //!   clean signal: no queue submit, no `device.poll` ioctl, no
@@ -43,15 +44,18 @@
 //! After all selected arms run, each arm's criterion `time:` estimate
 //! (the slope it reports to stdout) is prepended to
 //! `benches/results/<machine>.txt` so per-machine history
-//! is captured automatically. `PALANTIR_BENCH_MACHINE` overrides the
-//! filename derived from `hostname -s`.
+//! is captured automatically. `--machine` overrides the filename derived
+//! from `hostname -s`, and `--note` captions the row.
 //!
-//! `PALANTIR_BENCH_SIZE=<w>x<h>` and `PALANTIR_BENCH_SCALE=<dpr>` override
-//! the surface every arm renders into (the resize pool rescales with it),
-//! so the same fixture can be measured at a real display size without
-//! editing this file. A surface smaller than the default culls the
-//! off-screen part of the fixture: the CPU arms still record, measure and
-//! arrange the whole tree, but only the visible part is painted.
+//! `--size <w>x<h>` and `--scale <dpr>` override the surface every arm
+//! renders into (the resize pool rescales with it), so the same fixture
+//! can be measured at a real display size without editing this file. A
+//! surface smaller than the default culls the off-screen part of the
+//! fixture: the CPU arms still record, measure and arrange the whole
+//! tree, but only the visible part is painted.
+//!
+//! All four arrive in [`Run::fixture`] — this bench reads no environment
+//! of its own.
 //!
 //! The shared workload lives in [`crate::frame_fixture`] and also drives
 //! the allocation benches in [`crate::host::bench`] and the showcase's
@@ -59,7 +63,7 @@
 //! to eyeball the tree these numbers come from.
 
 use crate::app::internals::RecordApp;
-use crate::bench::{Arms, Run};
+use crate::bench::{Arms, Fixture, Run};
 use crate::diagnostics::gpu_stats::BatchKind;
 use crate::frame_fixture::{BENCH_SCALE, FrameFixture, build_ui};
 use crate::host::offscreen::OffscreenHost;
@@ -98,34 +102,31 @@ const RESIZE_POOL: &[glam::UVec2] = &[
     glam::UVec2::new(4160, 6200),
 ];
 
-fn bench_scale() -> f32 {
-    std::env::var("PALANTIR_BENCH_SCALE")
-        .ok()
-        .and_then(|s| s.trim().parse().ok())
-        .unwrap_or(SCALE)
+/// [`Fixture`]'s options resolved against this bench's defaults — what
+/// every arm actually renders into. Built once per run and threaded
+/// down, so no arm re-derives it and the resize pool is scaled once
+/// rather than at each of its four use sites.
+#[derive(Clone, Debug)]
+struct Surface {
+    size: glam::UVec2,
+    scale: f32,
+    /// [`RESIZE_POOL`] scaled to keep its proportions against `size`.
+    pool: Vec<glam::UVec2>,
 }
 
-fn cached_size() -> glam::UVec2 {
-    let Ok(raw) = std::env::var("PALANTIR_BENCH_SIZE") else {
-        return CACHED_SIZE;
-    };
-    let (w, h) = raw
-        .trim()
-        .split_once(['x', 'X'])
-        .expect("PALANTIR_BENCH_SIZE=<width>x<height>");
-    glam::UVec2::new(
-        w.trim().parse().expect("width"),
-        h.trim().parse().expect("height"),
-    )
-}
-
-fn resize_pool() -> Vec<glam::UVec2> {
-    let base = cached_size();
-    let ratio = base.as_vec2() / CACHED_SIZE.as_vec2();
-    RESIZE_POOL
-        .iter()
-        .map(|s| (s.as_vec2() * ratio).round().as_uvec2())
-        .collect()
+impl Surface {
+    fn new(fixture: Fixture<'_>) -> Self {
+        let size = fixture.size.unwrap_or(CACHED_SIZE);
+        let ratio = size.as_vec2() / CACHED_SIZE.as_vec2();
+        Surface {
+            size,
+            scale: fixture.scale.unwrap_or(SCALE),
+            pool: RESIZE_POOL
+                .iter()
+                .map(|s| (s.as_vec2() * ratio).round().as_uvec2())
+                .collect(),
+        }
+    }
 }
 
 /// Block until the GPU has drained all submitted work. The `_gpu` arms
@@ -250,8 +251,8 @@ struct CpuHarness {
 }
 
 impl CpuHarness {
-    fn new() -> Self {
-        let harness = UiHarness::with_text(cached_size()).scale(bench_scale());
+    fn new(surface: &Surface) -> Self {
+        let harness = UiHarness::with_text(surface.size).scale(surface.scale);
         let frontend = Frontend::for_test();
         let mut h = Self {
             harness,
@@ -289,11 +290,11 @@ impl CpuHarness {
 
 /// Shared CPU-arm scaffolding: build a fresh deviceless harness, run 4
 /// warmup frames to settle caches, then hand criterion the same closure.
-fn run_cpu_arm<F>(c: &mut Criterion, name: &str, mut iter: F)
+fn run_cpu_arm<F>(c: &mut Criterion, name: &str, surface: &Surface, mut iter: F)
 where
     F: FnMut(&mut CpuHarness, &mut FrameFixture),
 {
-    let mut h = CpuHarness::new();
+    let mut h = CpuHarness::new(surface);
     let mut state = FrameFixture::default();
     for _ in 0..4 {
         iter(&mut h, &mut state);
@@ -303,15 +304,15 @@ where
     });
 }
 
-fn cpu_cached(c: &mut Criterion) {
-    run_cpu_arm(c, "frame/cached_cpu", |h, state| {
+fn cpu_cached(c: &mut Criterion, surface: &Surface) {
+    run_cpu_arm(c, "frame/cached_cpu", surface, |h, state| {
         h.frame(|ui| build_ui(state, BENCH_SCALE, ui));
     });
 }
 
-fn cpu_partial(c: &mut Criterion) {
-    assert_partial_invariant();
-    run_cpu_arm(c, "frame/partial_cpu", |h, state| {
+fn cpu_partial(c: &mut Criterion, surface: &Surface) {
+    assert_partial_invariant(surface);
+    run_cpu_arm(c, "frame/partial_cpu", surface, |h, state| {
         // Mutate before recording — same cadence as the scrolling /
         // resizing arms — so every arm sets up this frame's input then
         // records it, rather than relying on the prior iter's leftover.
@@ -320,8 +321,8 @@ fn cpu_partial(c: &mut Criterion) {
     });
 }
 
-fn cpu_scrolling(c: &mut Criterion) {
-    run_cpu_arm(c, "frame/scrolling_cpu", |h, state| {
+fn cpu_scrolling(c: &mut Criterion, surface: &Surface) {
+    run_cpu_arm(c, "frame/scrolling_cpu", surface, |h, state| {
         // Wraparound after a viewport's worth of pixels so the
         // transform stays in-bounds. `scroll_offset` is `glam::Vec2`.
         state.scroll_offset.x = (state.scroll_offset.x + 1.5) % 256.0;
@@ -330,10 +331,10 @@ fn cpu_scrolling(c: &mut Criterion) {
     });
 }
 
-fn cpu_resizing(c: &mut Criterion) {
+fn cpu_resizing(c: &mut Criterion, surface: &Surface) {
     let mut idx = 0usize;
-    let pool = resize_pool();
-    run_cpu_arm(c, "frame/resizing_cpu", move |h, state| {
+    let pool = surface.pool.clone();
+    run_cpu_arm(c, "frame/resizing_cpu", surface, move |h, state| {
         let size = pool[idx % pool.len()];
         idx = idx.wrapping_add(1);
         h.harness.resize(size);
@@ -346,8 +347,8 @@ fn cpu_resizing(c: &mut Criterion) {
 /// ever silently regresses to `Full` (e.g. someone widens the text box
 /// and the digits drift the surrounding panel hash), the bench would
 /// still produce a number but be measuring the wrong thing.
-fn assert_partial_invariant() {
-    let mut h = CpuHarness::new();
+fn assert_partial_invariant(surface: &Surface) {
+    let mut h = CpuHarness::new(surface);
     let mut state = FrameFixture::default();
     for _ in 0..2 {
         h.frame(|ui| build_ui(&mut state, BENCH_SCALE, ui));
@@ -387,48 +388,46 @@ where
     gpu_wait(&g.device);
 }
 
-fn gpu_cached(c: &mut Criterion) {
-    let target = make_target(&gpu().device, cached_size(), "palantir.frame_bench.cached");
+fn gpu_cached(c: &mut Criterion, surface: &Surface) {
+    let target = make_target(&gpu().device, surface.size, "palantir.frame_bench.cached");
+    let scale = surface.scale;
     run_gpu_arm(c, "frame/cached_gpu", |host, state, device| {
-        frame_offscreen(host, &target, bench_scale(), |ui| {
-            build_ui(state, BENCH_SCALE, ui)
-        });
+        frame_offscreen(host, &target, scale, |ui| build_ui(state, BENCH_SCALE, ui));
         gpu_wait(device);
         black_box(&target);
     });
 }
 
-fn gpu_partial(c: &mut Criterion) {
-    let target = make_target(&gpu().device, cached_size(), "palantir.frame_bench.partial");
+fn gpu_partial(c: &mut Criterion, surface: &Surface) {
+    let target = make_target(&gpu().device, surface.size, "palantir.frame_bench.partial");
+    let scale = surface.scale;
     run_gpu_arm(c, "frame/partial_gpu", |host, state, device| {
         state.tick = state.tick.wrapping_add(1);
-        frame_offscreen(host, &target, bench_scale(), |ui| {
-            build_ui(state, BENCH_SCALE, ui)
-        });
+        frame_offscreen(host, &target, scale, |ui| build_ui(state, BENCH_SCALE, ui));
         gpu_wait(device);
         black_box(&target);
     });
 }
 
-fn gpu_scrolling(c: &mut Criterion) {
+fn gpu_scrolling(c: &mut Criterion, surface: &Surface) {
     let target = make_target(
         &gpu().device,
-        cached_size(),
+        surface.size,
         "palantir.frame_bench.scrolling",
     );
+    let scale = surface.scale;
     run_gpu_arm(c, "frame/scrolling_gpu", |host, state, device| {
         state.scroll_offset.x = (state.scroll_offset.x + 1.5) % 256.0;
         state.scroll_offset.y = (state.scroll_offset.y + 0.7) % 256.0;
-        frame_offscreen(host, &target, bench_scale(), |ui| {
-            build_ui(state, BENCH_SCALE, ui)
-        });
+        frame_offscreen(host, &target, scale, |ui| build_ui(state, BENCH_SCALE, ui));
         gpu_wait(device);
         black_box(&target);
     });
 }
 
-fn gpu_resizing(c: &mut Criterion) {
-    let targets: Vec<wgpu::Texture> = resize_pool()
+fn gpu_resizing(c: &mut Criterion, surface: &Surface) {
+    let targets: Vec<wgpu::Texture> = surface
+        .pool
         .iter()
         .enumerate()
         .map(|(i, s)| {
@@ -440,12 +439,11 @@ fn gpu_resizing(c: &mut Criterion) {
         })
         .collect();
     let mut idx = 0usize;
+    let scale = surface.scale;
     run_gpu_arm(c, "frame/resizing_gpu", move |host, state, device| {
         let t = &targets[idx % targets.len()];
         idx = idx.wrapping_add(1);
-        frame_offscreen(host, t, bench_scale(), |ui| {
-            build_ui(state, BENCH_SCALE, ui)
-        });
+        frame_offscreen(host, t, scale, |ui| build_ui(state, BENCH_SCALE, ui));
         gpu_wait(device);
         black_box(t);
     });
@@ -459,9 +457,10 @@ fn gpu_resizing(c: &mut Criterion) {
 /// The pass readout is one frame lagged (the `map_async` callback
 /// fires after the next `device.poll`), so frame 0's column is
 /// omitted.
-fn report_write_stats() {
+fn report_write_stats(surface: &Surface) {
     fn run(
         label: &str,
+        scale: f32,
         targets: &[wgpu::Texture],
         mut mutate: impl FnMut(&mut FrameFixture, usize),
     ) {
@@ -474,7 +473,7 @@ fn report_write_stats() {
             mutate(&mut state, frame);
             let _ = write_stats::take();
             let target = &targets[frame % targets.len()];
-            frame_offscreen(&mut host, target, bench_scale(), |ui| {
+            frame_offscreen(&mut host, target, scale, |ui| {
                 build_ui(&mut state, BENCH_SCALE, ui)
             });
             gpu_wait(&g.device);
@@ -520,27 +519,29 @@ fn report_write_stats() {
     }
 
     let g = gpu();
-    let cached = [make_target(&g.device, cached_size(), "write_stats.cached")];
-    run("cached", &cached, |_, _| {});
+    let scale = surface.scale;
+    let cached = [make_target(&g.device, surface.size, "write_stats.cached")];
+    run("cached", scale, &cached, |_, _| {});
 
-    let partial = [make_target(&g.device, cached_size(), "write_stats.partial")];
-    run("partial", &partial, |state, _| {
+    let partial = [make_target(&g.device, surface.size, "write_stats.partial")];
+    run("partial", scale, &partial, |state, _| {
         state.tick = state.tick.wrapping_add(1);
     });
 
-    let pool: Vec<wgpu::Texture> = resize_pool()
+    let pool: Vec<wgpu::Texture> = surface
+        .pool
         .iter()
         .enumerate()
         .map(|(i, s)| make_target(&g.device, *s, &format!("write_stats.resize.{i}")))
         .collect();
-    run("resizing", &pool, |_, _| {});
+    run("resizing", scale, &pool, |_, _| {});
 
     let scrolling = [make_target(
         &g.device,
-        cached_size(),
+        surface.size,
         "write_stats.scrolling",
     )];
-    run("scrolling", &scrolling, |state, _| {
+    run("scrolling", scale, &scrolling, |state, _| {
         state.scroll_offset.x = (state.scroll_offset.x + 1.5) % 256.0;
         state.scroll_offset.y = (state.scroll_offset.y + 0.7) % 256.0;
     });
@@ -582,27 +583,27 @@ fn arm_names(arms: Arms) -> Vec<&'static str> {
 /// `--arms gpu` so a GPU-only run executes no CPU-arm code (and, more
 /// importantly, an `--arms cpu` run reaches this without `bench_gpu` having
 /// touched the GPU at all — pristine for profiling).
-fn bench_cpu(c: &mut Criterion, arms: Arms) {
+fn bench_cpu(c: &mut Criterion, arms: Arms, surface: &Surface) {
     if !arms.includes_cpu() {
         return;
     }
-    cpu_cached(c);
-    cpu_partial(c);
-    cpu_resizing(c);
-    cpu_scrolling(c);
+    cpu_cached(c, surface);
+    cpu_partial(c, surface);
+    cpu_resizing(c, surface);
+    cpu_scrolling(c, surface);
 }
 
 /// GPU bench: the full-pipeline `frame/*_gpu` arms plus the per-frame
 /// `write_stats` dump. Skipped wholesale when `--arms cpu`.
-fn bench_gpu(c: &mut Criterion, arms: Arms) {
+fn bench_gpu(c: &mut Criterion, arms: Arms, surface: &Surface) {
     if !arms.includes_gpu() {
         return;
     }
-    report_write_stats();
-    gpu_cached(c);
-    gpu_partial(c);
-    gpu_resizing(c);
-    gpu_scrolling(c);
+    report_write_stats(surface);
+    gpu_cached(c, surface);
+    gpu_partial(c, surface);
+    gpu_resizing(c, surface);
+    gpu_scrolling(c, surface);
 }
 
 /// Results finalizer — runs last in [`bench()`], and only when the run
@@ -615,7 +616,7 @@ fn bench_gpu(c: &mut Criterion, arms: Arms) {
 /// mode, and so neither bench has to know it's the last one.
 /// Best-effort: any I/O failure prints to stderr and continues.
 fn prepend_machine_results(run: Run<'_>) {
-    let machine = machine_label();
+    let machine = machine_label(run.fixture.machine);
     let path = PathBuf::from("benches/results").join(format!("{machine}.txt"));
     let mut block = String::new();
     let mode_tag = match run.arms {
@@ -627,7 +628,7 @@ fn prepend_machine_results(run: Run<'_>) {
         "=== {} — [{}] {} ===\n",
         now_label(),
         mode_tag,
-        bench_annotation(run.note)
+        bench_annotation(run.fixture.note)
     ));
     for &name in arm_names(run.arms).iter() {
         let row = match read_criterion_estimate(name) {
@@ -774,11 +775,11 @@ fn fmt_estimate(e: Estimate) -> String {
     format!("[{} {} {}]", one(e.lo_ns), one(e.mid_ns), one(e.hi_ns))
 }
 
-/// `PALANTIR_BENCH_MACHINE` overrides the default hostname-derived
-/// label. Sanitized to lowercase alnum + `-_` (first dotted component
-/// only, so FQDNs collapse to their short form) so it's safe as a
-/// filename. Falls back to `gethostname`; empty result → `unknown`.
-fn machine_label() -> String {
+/// `--machine` overrides the default hostname-derived label. Sanitized
+/// to lowercase alnum + `-_` (first dotted component only, so FQDNs
+/// collapse to their short form) so it's safe as a filename. Falls back
+/// to `gethostname`; empty result → `unknown`.
+fn machine_label(machine: Option<&str>) -> String {
     fn sanitize(raw: &str) -> String {
         raw.trim()
             .split('.')
@@ -789,8 +790,8 @@ fn machine_label() -> String {
             .collect::<String>()
             .to_lowercase()
     }
-    if let Ok(env) = std::env::var("PALANTIR_BENCH_MACHINE") {
-        let n = sanitize(&env);
+    if let Some(given) = machine {
+        let n = sanitize(given);
         if !n.is_empty() {
             return n;
         }
@@ -849,11 +850,57 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
     // Fail fast before any arm runs so a long bench doesn't finish and
     // then realise the results row has no context.
     if run.recording {
-        let _ = bench_annotation(run.note);
+        let _ = bench_annotation(run.fixture.note);
     }
-    bench_cpu(c, run.arms);
-    bench_gpu(c, run.arms);
+    let surface = Surface::new(run.fixture);
+    bench_cpu(c, run.arms, &surface);
+    bench_gpu(c, run.arms, &surface);
     if run.recording {
         prepend_machine_results(run);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::bench::Fixture;
+    use crate::ui::bench::{CACHED_SIZE, RESIZE_POOL, SCALE, Surface};
+
+    /// `--size` has to reach the pool as well as the cached arm, or the
+    /// resize arm keeps rendering at the default while every other arm
+    /// moves — the two would no longer be measuring the same fixture.
+    #[test]
+    fn a_given_size_scales_the_resize_pool_by_the_same_ratio() {
+        let d = Surface::new(Fixture::default());
+        assert_eq!(d.size, CACHED_SIZE);
+        assert_eq!(d.scale, SCALE);
+        assert_eq!(d.pool, RESIZE_POOL, "unset size leaves the pool alone");
+
+        // Half the default in both axes: 3840x6000 -> 1920x3000, ratio
+        // 0.5, so 3200x5600 -> 1600x2800 and 4160x6200 -> 2080x3100.
+        let half = Surface::new(Fixture {
+            size: Some(glam::UVec2::new(1920, 3000)),
+            scale: Some(1.0),
+            ..Fixture::default()
+        });
+        assert_eq!(half.size, glam::UVec2::new(1920, 3000));
+        assert_eq!(half.scale, 1.0);
+        assert_eq!(
+            half.pool,
+            [
+                glam::UVec2::new(1600, 2800),
+                glam::UVec2::new(1920, 3000),
+                glam::UVec2::new(1760, 2900),
+                glam::UVec2::new(2080, 3100),
+            ],
+        );
+
+        // A non-integral ratio rounds rather than truncating: width
+        // 3840 -> 2000 is 0.520833…, and 3200 * that = 1666.67 -> 1667.
+        let odd = Surface::new(Fixture {
+            size: Some(glam::UVec2::new(2000, 3000)),
+            ..Fixture::default()
+        });
+        assert_eq!(odd.pool[0].x, 1667);
+        assert_eq!(odd.scale, SCALE, "unset scale keeps the default");
     }
 }

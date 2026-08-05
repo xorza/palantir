@@ -6,8 +6,8 @@
 //! the criterion knobs below are re-declared and applied through public
 //! setters ([`Cli::configure`]) rather than forwarded.
 
-use crate::bench::Arms;
 use crate::bench::driver::Driver;
+use crate::bench::{Arms, Fixture};
 use clap::Parser;
 use criterion::Criterion;
 use std::time::Duration;
@@ -71,16 +71,28 @@ pub(super) struct Cli {
 
     /// Which half of the pipeline to measure. `cpu` runs no driver that
     /// requests a wgpu adapter.
-    #[arg(long, value_enum, default_value_t = ArmsArg::Both)]
-    arms: ArmsArg,
+    #[arg(long, value_enum, default_value_t = Arms::Both)]
+    pub(super) arms: Arms,
 
     /// Print the driver names and exit.
     #[arg(long)]
     pub(super) list_drivers: bool,
 
+    // ── knobs for a driver that renders the shared fixture; see
+    // `Fixture`. Declared here because this is the only parser ──
+    /// Physical surface every arm renders into, e.g. `3840x6000`.
+    #[arg(long, value_name = "WxH", value_parser = parse_size)]
+    size: Option<glam::UVec2>,
+    /// Device pixel ratio the fixture renders at.
+    #[arg(long, value_name = "DPR")]
+    scale: Option<f32>,
+    /// Which per-machine results file the row lands in. Defaults to the
+    /// short hostname.
+    #[arg(long, value_name = "NAME")]
+    machine: Option<String>,
     /// Context recorded alongside the frame bench's results row.
     #[arg(long, value_name = "TEXT")]
-    pub(super) note: Option<String>,
+    note: Option<String>,
 
     // ── criterion's own knobs, re-declared because we drive its setters
     // rather than letting it parse argv ──
@@ -105,21 +117,20 @@ pub(super) struct Cli {
     bench: bool,
 }
 
-#[derive(clap::ValueEnum, Clone, Copy, Debug)]
-enum ArmsArg {
-    Cpu,
-    Gpu,
-    Both,
-}
-
-impl From<ArmsArg> for Arms {
-    fn from(a: ArmsArg) -> Arms {
-        match a {
-            ArmsArg::Cpu => Arms::Cpu,
-            ArmsArg::Gpu => Arms::Gpu,
-            ArmsArg::Both => Arms::Both,
-        }
-    }
+/// `<W>x<H>` in physical pixels. A `value_parser` rather than a parse
+/// at the use site: a malformed size should be a clap error next to the
+/// flag, not a panic partway into a bench.
+fn parse_size(raw: &str) -> Result<glam::UVec2, String> {
+    let (w, h) = raw
+        .trim()
+        .split_once(['x', 'X'])
+        .ok_or_else(|| format!("expected <width>x<height>, got {raw:?}"))?;
+    let axis = |s: &str, which: &str| {
+        s.trim()
+            .parse::<u32>()
+            .map_err(|e| format!("{which} in {raw:?}: {e}"))
+    };
+    Ok(glam::UVec2::new(axis(w, "width")?, axis(h, "height")?))
 }
 
 impl Cli {
@@ -127,8 +138,13 @@ impl Cli {
         Cli::parse()
     }
 
-    pub(super) fn arms(&self) -> Arms {
-        self.arms.into()
+    pub(super) fn fixture(&self) -> Fixture<'_> {
+        Fixture {
+            size: self.size,
+            scale: self.scale,
+            machine: self.machine.as_deref(),
+            note: self.note.as_deref(),
+        }
     }
 
     /// Whether criterion will write `estimates.json` this run. Profile
@@ -291,10 +307,41 @@ mod tests {
     #[test]
     fn arms_parses_and_defaults_to_both() {
         use crate::bench::Arms;
-        assert_eq!(parse(&[]).arms(), Arms::Both);
-        assert_eq!(parse(&["--arms", "cpu"]).arms(), Arms::Cpu);
-        assert_eq!(parse(&["--arms", "gpu"]).arms(), Arms::Gpu);
+        assert_eq!(parse(&[]).arms, Arms::Both);
+        assert_eq!(parse(&["--arms", "cpu"]).arms, Arms::Cpu);
+        assert_eq!(parse(&["--arms", "gpu"]).arms, Arms::Gpu);
         assert!(Cli::try_parse_from(["palantir-bench", "--arms", "nope"]).is_err());
+    }
+
+    /// The fixture knobs were environment variables read deep inside the
+    /// frame bench; they are flags now, so the parse is the only place
+    /// a malformed one can be caught.
+    #[test]
+    fn fixture_knobs_parse_and_reject_junk() {
+        assert_eq!(parse(&[]).fixture().size, None);
+        let cli = parse(&["--size", "1920x1080", "--scale", "1.5", "--machine", "rig"]);
+        let fx = cli.fixture();
+        assert_eq!(fx.size, Some(glam::UVec2::new(1920, 1080)));
+        assert_eq!(fx.scale, Some(1.5));
+        assert_eq!(fx.machine, Some("rig"));
+        // `X` is accepted as the separator; a missing or non-numeric
+        // axis is a clap error, not a panic mid-bench.
+        assert_eq!(
+            parse(&["--size", "800X600"]).fixture().size,
+            Some(glam::UVec2::new(800, 600)),
+        );
+        for junk in [
+            &["--size", "1920"][..],
+            &["--size", "axb"],
+            &["--size", "1920x"],
+        ] {
+            let mut argv = vec!["palantir-bench"];
+            argv.extend_from_slice(junk);
+            assert!(
+                Cli::try_parse_from(argv).is_err(),
+                "{junk:?} must be rejected"
+            );
+        }
     }
 
     /// Cargo passes `--bench` to every `harness = false` target, and a

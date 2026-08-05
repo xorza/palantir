@@ -20,7 +20,8 @@
 # regex *within* the selected drivers, default none), ARMS
 # (cpu|gpu|both, default cpu — a CPU sampler has nothing to say about
 # the GPU arms), NOTE (frame-bench results caption — needed only on a
-# recording run, which profiling is not), FEATURES (extra
+# recording run, which profiling is not), SIZE (`<W>x<H>` surface) and
+# SCALE (dpr) for the frame bench's fixture, FEATURES (extra
 # cargo features; `bench` is always on, every target requires it),
 # CALLGRAPH (dwarf|lbr, Intel only), PIN_CPU (2), FREQ (4000),
 # IBS_PERIOD (250000), LDLAT (50), SKIP_MEM / SKIP_MICRO / SKIP_IBS.
@@ -76,6 +77,8 @@ for d in $DRIVER_ARG; do
 done
 [ -n "$FILTER_ARG" ] && BENCH_ARGS+=("$FILTER_ARG")
 [ -n "${NOTE:-}" ] && BENCH_ARGS+=(--note "$NOTE")
+[ -n "${SIZE:-}" ] && BENCH_ARGS+=(--size "$SIZE")
+[ -n "${SCALE:-}" ] && BENCH_ARGS+=(--scale "$SCALE")
 BENCH_ARGS+=("${EXTRA_ARGS[@]}")
 
 for tool in perf taskset; do

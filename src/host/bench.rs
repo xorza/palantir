@@ -1,18 +1,25 @@
 //! Per-frame allocation gates for the frame pipeline, driven by `dhat`.
 //!
-//! Three entry points, each its own `benches/` binary because `dhat`
-//! must be the process-wide global allocator:
+//! One bench — [`alloc`] — of four steps, each warming up and then
+//! counting what a batch of steady-state frames allocates:
 //!
-//! - [`alloc_free`] — strict-zero invariant on palantir's CPU pipeline
-//!   (record → measure → arrange → cascade → encode), no GPU.
-//! - [`alloc_free_gpu`] — bounded gate on the wgpu submission path,
-//!   which allocates a driver-side floor every frame.
-//! - [`alloc_resize`] — measurement (not a gate) of the resize path,
-//!   where cache busting keeps the allocation surface visible.
+//! | step | measures | limit |
+//! |---|---|---|
+//! | `record-only` | palantir's CPU pipeline: record → measure → arrange → cascade → encode, no GPU | strict zero |
+//! | `record + render` | the same plus `OffscreenHost::frame_offscreen`, i.e. the wgpu submission path | the driver floor |
+//! | `resize pool-rotation` | the resize path over [`RESIZE_POOL`], the shape `frame/resizing_cpu` measures | reported |
+//! | `resize drag` | resize with a unique width per frame, so no cache ever hits twice | reported |
 //!
-//! `dhat` carries 10-30x overhead — never use these binaries for timing.
-//! The shared workload is [`FrameFixture`], the same tree
-//! [`crate::ui::bench`] times.
+//! Steps rather than separate binaries because they share one profiler
+//! and answer one question — *does a steady-state frame allocate?* — so
+//! running one without the others tells you less than the four together.
+//! Every step reports; the run fails if any bounded one is over.
+//!
+//! It is its own target only because `dhat::Alloc` must be the
+//! process-wide global allocator, which would tax every criterion timing
+//! sharing the binary 10-30x. For the same reason these numbers are
+//! allocation counts, never times. The workload is [`FrameFixture`], the
+//! same tree [`crate::ui::bench`] times.
 
 use crate::app::App;
 use crate::frame_fixture::FrameFixture;
@@ -37,87 +44,108 @@ const SCALE: f32 = 2.0;
 // `frame bench` page.
 const NODE_SCALE: usize = 6;
 
-/// `DHAT_DUMP=1` swaps the counting-only profiler for the heap profiler
-/// that writes `dhat-heap.json` on drop. Every entry point holds the
-/// returned guard until after its last measurement, then drops it
-/// explicitly — `process::exit` skips `Drop`.
-fn profiler() -> dhat::Profiler {
-    if std::env::var("DHAT_DUMP").ok().as_deref() == Some("1") {
+/// `--dump` swaps the counting-only profiler for the heap profiler that
+/// writes `dhat-heap.json` on drop. [`alloc`] holds the returned guard
+/// until after the last step, then drops it explicitly — `process::exit`
+/// skips `Drop`.
+fn profiler(dump: bool) -> dhat::Profiler {
+    if dump {
         dhat::Profiler::new_heap()
     } else {
         dhat::Profiler::builder().testing().build()
     }
 }
 
-/// Strict per-frame allocation invariant for palantir's record/measure/
-/// arrange/cascade/encode pipeline (no GPU). Pinning test for the
-/// `AGENTS.md` claim: "Per-frame allocation is a real metric.
-/// Steady-state must be heap-alloc-free after warmup."
-///
-/// Runs the shared [`FrameFixture`] workload through `Ui::record`, warms
-/// up so retained scratch / caches stabilize, then measures heap-block
-/// delta over a batch of steady-state frames. **Fails on any non-zero
-/// delta** — palantir-side regressions show up here.
-///
-/// For the GPU submission path (wgpu backend allocations under
-/// `WgpuBackend::submit`), see [`alloc_free_gpu`] — driver overhead
-/// has a different floor and different semantics.
-///
-/// Run with: `cargo bench --bench alloc_free --features bench`
-/// Verbose JSON: `DHAT_DUMP=1 cargo bench --bench alloc_free --features bench`
-pub fn alloc_free() {
-    const WARMUP_FRAMES: usize = 16;
+/// What a step is allowed to allocate.
+#[derive(Clone, Copy, Debug)]
+enum Limit {
+    /// Not one block, not one byte. palantir's own code, where the
+    /// posture is an invariant rather than a budget.
+    Zero,
+    /// At most this many blocks per frame — a floor owned by someone
+    /// else (the wgpu driver), so the gate catches drift, not presence.
+    BlocksPerFrame(u64),
+    /// Reported, never enforced. Cache-busting paths allocate by
+    /// design; the number is there to be watched, not to gate.
+    Reported,
+}
 
-    let _profiler = profiler();
+/// One step's measured window.
+#[derive(Clone, Copy, Debug)]
+struct Step {
+    name: &'static str,
+    blocks: u64,
+    bytes: u64,
+    limit: Limit,
+}
 
-    // `Ui::new` over isolated mono resources; warmed
-    // manually below via `WARMUP_FRAMES` before measuring.
+impl Step {
+    /// Warm up until retained scratch and caches stabilize, then count
+    /// what `MEASURE_FRAMES` of steady state allocate. `frame` gets the
+    /// absolute frame index so a step can vary the surface per frame
+    /// without the warmup and the measured window overlapping sizes.
+    fn measure(
+        name: &'static str,
+        limit: Limit,
+        warmup: usize,
+        mut frame: impl FnMut(usize),
+    ) -> Step {
+        for f in 0..warmup {
+            frame(f);
+        }
+        let before = dhat::HeapStats::get();
+        for f in 0..MEASURE_FRAMES {
+            frame(warmup + f);
+        }
+        let after = dhat::HeapStats::get();
+        Step {
+            name,
+            blocks: after.total_blocks - before.total_blocks,
+            bytes: after.total_bytes - before.total_bytes,
+            limit,
+        }
+    }
+
+    fn blocks_per_frame(&self) -> f64 {
+        self.blocks as f64 / MEASURE_FRAMES as f64
+    }
+
+    fn over_limit(&self) -> bool {
+        match self.limit {
+            Limit::Zero => self.blocks != 0 || self.bytes != 0,
+            Limit::BlocksPerFrame(max) => self.blocks > max * MEASURE_FRAMES as u64,
+            Limit::Reported => false,
+        }
+    }
+
+    fn report(&self) {
+        let limit = match self.limit {
+            Limit::Zero => "limit strict zero".to_owned(),
+            Limit::BlocksPerFrame(max) => format!("limit <= {max}/frame"),
+            Limit::Reported => "measured, not gated".to_owned(),
+        };
+        println!(
+            "  {:<22} {:6} blocks  {:10} bytes  ({:7.2}/frame, {limit})",
+            self.name,
+            self.blocks,
+            self.bytes,
+            self.blocks_per_frame(),
+        );
+    }
+}
+
+/// Step 1 — palantir's record/measure/arrange/cascade/encode pipeline,
+/// no GPU. Pins the `AGENTS.md` claim: "Per-frame allocation is a real
+/// metric. Steady-state must be heap-alloc-free after warmup." Strict
+/// zero, because everything in this path is ours.
+fn record_only() -> Step {
+    // `Ui::new` over isolated mono resources; warmed by `Step::measure`
+    // before it starts counting.
     let mut h = UiHarness::new(PHYSICAL).scale(SCALE);
     let mut state = FrameFixture::default();
-
-    for _ in 0..WARMUP_FRAMES {
+    Step::measure("record-only", Limit::Zero, 16, |_| {
         black_box(h.frame(|ui| state.render(NODE_SCALE, ui)));
-    }
-    let before = dhat::HeapStats::get();
-    for _ in 0..MEASURE_FRAMES {
-        black_box(h.frame(|ui| state.render(NODE_SCALE, ui)));
-    }
-    let after = dhat::HeapStats::get();
-
-    let block_delta = after.total_blocks - before.total_blocks;
-    let byte_delta = after.total_bytes - before.total_bytes;
-
-    println!(
-        "alloc_free: warmup={WARMUP_FRAMES} measure={MEASURE_FRAMES} \
-         ({PHYSICAL:?} @ {SCALE}x, node_scale={NODE_SCALE})"
-    );
-    println!(
-        "  record-only           {block_delta:6} blocks  {byte_delta:10} bytes  \
-         ({:5.2}/frame, limit strict zero)",
-        block_delta as f64 / MEASURE_FRAMES as f64,
-    );
-
-    let ok = block_delta == 0 && byte_delta == 0;
-
-    // Drop the profiler explicitly so DHAT_DUMP=1 writes dhat-heap.json
-    // before we exit (process::exit skips Drop).
-    drop(_profiler);
-
-    if !ok {
-        eprintln!();
-        eprintln!(
-            "FAIL: record-only must be strictly allocation-free; got {:.2} blocks/frame.",
-            block_delta as f64 / MEASURE_FRAMES as f64
-        );
-        eprintln!();
-        eprintln!("Inspect call sites with:");
-        eprintln!("  DHAT_DUMP=1 cargo bench --bench alloc_free --features bench");
-        eprintln!("  open dhat-heap.json at https://nnethercote.github.io/dh_view/");
-        std::process::exit(1);
-    }
-
-    println!();
-    println!("PASS: palantir CPU pipeline is allocation-free in steady state.");
+    })
 }
 
 // Driver floor on the current wgpu/cosmic-text pin. Bump if a driver
@@ -163,7 +191,7 @@ fn gpu() -> &'static Gpu {
         limits.max_immediate_size = limits.max_immediate_size.max(16);
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
-                label: Some("palantir.alloc_free_gpu.device"),
+                label: Some("palantir.alloc.device"),
                 required_features: wgpu::Features::IMMEDIATES,
                 required_limits: limits,
                 experimental_features: wgpu::ExperimentalFeatures::default(),
@@ -176,41 +204,26 @@ fn gpu() -> &'static Gpu {
     })
 }
 
-/// Per-frame allocation regression gate for the wgpu submission path.
+/// Step 2 — the same frame plus `OffscreenHost::frame_offscreen`
+/// against an offscreen target, with a poll between frames so submitted
+/// work drains before the next.
 ///
-/// Sister to [`alloc_free`]. Where that gate asserts a *strict zero* on
-/// palantir's CPU pipeline (record → measure → arrange → cascade →
-/// encode), this one measures the additional allocations introduced by
-/// `OffscreenHost::frame_offscreen` against an offscreen target texture,
-/// with a GPU poll between frames so submitted work drains before the
-/// next iteration.
-///
-/// The GPU path is **not** strict zero. Every wgpu submission
-/// fundamentally allocates: a `CommandEncoder` Arc, a `CommandBuffer`
-/// Arc, the queue's in-flight `Vec` push, plus per-pass scratch from
-/// `wgpu_hal::metal`. Current measured floor on this fixture is
-/// ~27 blocks/frame, all attributed to wgpu_core/wgpu_hal driver code
-/// beneath `OffscreenHost::frame_offscreen` (verified via `DHAT_DUMP=1` +
-/// dh_view). The bench treats this as a baseline: the gate trips when
-/// the per-frame block count exceeds `RENDER_BLOCKS_PER_FRAME_MAX`,
-/// indicating either an palantir regression or a wgpu/cosmic-text
-/// version drift worth investigating.
-///
-/// Run with: `cargo bench --bench alloc_free_gpu --features bench`
-/// Verbose JSON: `DHAT_DUMP=1 cargo bench --bench alloc_free_gpu --features bench`
-pub fn alloc_free_gpu() {
-    const WARMUP_FRAMES: usize = 16;
-
-    let _profiler = profiler();
-
+/// **Not** strict zero, and cannot be: every wgpu submission allocates a
+/// `CommandEncoder` Arc, a `CommandBuffer` Arc, the queue's in-flight
+/// `Vec` push, and per-pass scratch from `wgpu_hal`. The measured floor
+/// on this fixture is ~27 blocks/frame, all attributed to
+/// wgpu_core/wgpu_hal beneath `frame_offscreen` (verified in dh_view via
+/// `--dump`). So the gate catches *drift* from that floor: a palantir
+/// regression, or a wgpu/cosmic-text bump worth looking at.
+fn record_and_render() -> Step {
     let g = gpu();
-    // The public offscreen path always copies from its backbuffer so the
-    // per-frame alloc floor this bench pins excludes the direct-present path.
+    // The public offscreen path always copies from its backbuffer, so
+    // the floor pinned here excludes the direct-present path.
     let mut host = OffscreenHost::builder(g.device.clone(), g.queue.clone()).build();
     let mut state = FrameFixture::default();
 
     let target = g.device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("palantir.alloc_free_gpu.target"),
+        label: Some("palantir.alloc.render.target"),
         size: wgpu::Extent3d {
             width: PHYSICAL.x,
             height: PHYSICAL.y,
@@ -225,63 +238,22 @@ pub fn alloc_free_gpu() {
             | wgpu::TextureUsages::COPY_SRC,
         view_formats: &[],
     });
-    let run = |host: &mut OffscreenHost, state: &mut FrameFixture| {
-        host.ui().theme.window_clear = Color::TRANSPARENT;
-        host.frame_offscreen(&target, SCALE, &mut FixtureApp { state });
-        g.device
-            .poll(wgpu::PollType::Wait {
-                submission_index: None,
-                timeout: None,
-            })
-            .expect("device poll");
-    };
 
-    for _ in 0..WARMUP_FRAMES {
-        run(&mut host, &mut state);
-    }
-    let before = dhat::HeapStats::get();
-    for _ in 0..MEASURE_FRAMES {
-        run(&mut host, &mut state);
-    }
-    let after = dhat::HeapStats::get();
-
-    let block_delta = after.total_blocks - before.total_blocks;
-    let byte_delta = after.total_bytes - before.total_bytes;
-    let bpf = block_delta as f64 / MEASURE_FRAMES as f64;
-
-    println!(
-        "alloc_free_gpu: warmup={WARMUP_FRAMES} measure={MEASURE_FRAMES} \
-         ({PHYSICAL:?} @ {SCALE}x, node_scale={NODE_SCALE})"
-    );
-    println!(
-        "  record + render       {block_delta:6} blocks  {byte_delta:10} bytes  \
-         ({bpf:5.2}/frame, limit ≤ {RENDER_BLOCKS_PER_FRAME_MAX}/frame)"
-    );
-
-    let ok = block_delta <= RENDER_BLOCKS_PER_FRAME_MAX * MEASURE_FRAMES as u64;
-
-    drop(_profiler);
-
-    if !ok {
-        eprintln!();
-        eprintln!(
-            "FAIL: render path exceeds wgpu driver baseline \
-             ({bpf:.2} > {RENDER_BLOCKS_PER_FRAME_MAX} blocks/frame)."
-        );
-        eprintln!();
-        eprintln!("Inspect call sites with:");
-        eprintln!("  DHAT_DUMP=1 cargo bench --bench alloc_free_gpu --features bench");
-        eprintln!("  open dhat-heap.json at https://nnethercote.github.io/dh_view/");
-        eprintln!();
-        eprintln!(
-            "If the baseline legitimately moved (wgpu/cosmic-text upgrade, intentional palantir"
-        );
-        eprintln!("change), bump RENDER_BLOCKS_PER_FRAME_MAX in src/host/bench.rs.");
-        std::process::exit(1);
-    }
-
-    println!();
-    println!("PASS: render path within wgpu driver baseline.");
+    Step::measure(
+        "record + render",
+        Limit::BlocksPerFrame(RENDER_BLOCKS_PER_FRAME_MAX),
+        16,
+        |_| {
+            host.ui().theme.window_clear = Color::TRANSPARENT;
+            host.frame_offscreen(&target, SCALE, &mut FixtureApp { state: &mut state });
+            g.device
+                .poll(wgpu::PollType::Wait {
+                    submission_index: None,
+                    timeout: None,
+                })
+                .expect("device poll");
+        },
+    )
 }
 
 // Match `ui::bench`'s `BENCH_SCALE` / `RESIZE_POOL` so the resize
@@ -306,67 +278,93 @@ fn continuous_size(frame: usize) -> UVec2 {
     UVec2::new((base.x as i32 + dx).max(800) as u32, base.y)
 }
 
-/// Steady-state allocation count for the resize path. Mirrors
-/// [`alloc_free`] but rotates the `Display` size each frame to bust
-/// `MeasureCache` / text-shaping caches the way the
-/// `frame/resizing_cpu` arm does. **Not strict-zero** — this measures,
-/// it doesn't assert. Use the output to find which call sites are
-/// still allocating after warmup.
+/// Steps 3 and 4 — the resize path, rotating the `Display` size to bust
+/// `MeasureCache` and the text-shaping caches the way `frame/resizing_cpu`
+/// does. Reported rather than gated: cache-busting allocates by design,
+/// and the number exists to show which call sites still do after warmup.
 ///
-/// Uses `UiHarness::with_text(PHYSICAL)` (real cosmic-text), NOT the mono resources
-/// (mono fallback): the fallback emits a constant paint count across
-/// sizes, so the damage `PaintSnapArena` reuses its slots in place
-/// and the bench reports a misleading 0 blocks/frame. Real shaping
-/// reflows text per size, drifting the paint count and exercising the
-/// arena evict/append path the live `frame/resizing_cpu` arm hits.
-/// That dependency is why this bench requires the `internals` feature.
+/// `pool-rotation` matches `frame/resizing_cpu` exactly; `drag` gives
+/// every frame a unique width, modelling a user dragging the window edge
+/// so no cache can hit the same width twice.
 ///
-/// Run with: `cargo bench --bench alloc_resize --features bench`
-/// Verbose JSON: `DHAT_DUMP=1 cargo bench --bench alloc_resize --features bench`
-pub fn alloc_resize() {
-    const WARMUP_FRAMES: usize = 32;
-
-    let _profiler = profiler();
-
+/// Both use `UiHarness::with_text` (real cosmic-text), **not** the mono
+/// fallback: the fallback emits a constant paint count across sizes, so
+/// the damage `PaintSnapArena` reuses its slots in place and the step
+/// reports a misleading 0 blocks/frame. Real shaping reflows text per
+/// size, drifting the paint count and exercising the arena evict/append
+/// path the live arm hits. That is why this bench needs `internals`.
+fn resize(name: &'static str, mut size: impl FnMut(usize) -> UVec2) -> Step {
     let mut h = UiHarness::with_text(PHYSICAL).scale(SCALE);
     let mut state = FrameFixture::default();
-
-    // Two arms: pool-rotation (matches `frame/resizing_cpu` exactly)
-    // and continuous-drag (every frame a unique width — models a real
-    // user dragging the window edge, no cache hits possible).
-    let mut run = |label: &str, size: &mut dyn FnMut(usize) -> UVec2| {
-        for f in 0..WARMUP_FRAMES {
-            black_box(
-                h.resize(size(f))
-                    .frame(|ui| state.render(RESIZE_NODE_SCALE, ui)),
-            );
-        }
-        let before = dhat::HeapStats::get();
-        for f in 0..MEASURE_FRAMES {
-            black_box(
-                h.resize(size(f + WARMUP_FRAMES))
-                    .frame(|ui| state.render(RESIZE_NODE_SCALE, ui)),
-            );
-        }
-        let after = dhat::HeapStats::get();
-
-        let block_delta = after.total_blocks - before.total_blocks;
-        let byte_delta = after.total_bytes - before.total_bytes;
-        println!(
-            "  {label:20} {block_delta:6} blocks  {byte_delta:10} bytes  \
-             ({:7.2} blocks/frame, {:9.0} bytes/frame)",
-            block_delta as f64 / MEASURE_FRAMES as f64,
-            byte_delta as f64 / MEASURE_FRAMES as f64,
+    Step::measure(name, Limit::Reported, 32, |f| {
+        black_box(
+            h.resize(size(f))
+                .frame(|ui| state.render(RESIZE_NODE_SCALE, ui)),
         );
-    };
+    })
+}
+
+/// The allocation bench: every step, one profiler, one verdict.
+///
+/// Steps run to completion even when an earlier one is over its limit —
+/// four numbers localize a regression, one plus an early exit does not.
+pub(crate) fn alloc(dump: bool) {
+    let profiler = profiler(dump);
 
     println!(
-        "alloc_resize: warmup={WARMUP_FRAMES} measure={MEASURE_FRAMES} \
-         (node_scale={RESIZE_NODE_SCALE})"
+        "alloc: measure={MEASURE_FRAMES} frames/step \
+         ({PHYSICAL:?} @ {SCALE}x, node_scale={NODE_SCALE}/{RESIZE_NODE_SCALE})"
     );
+    let steps = [
+        record_only(),
+        record_and_render(),
+        resize("resize pool-rotation", |f| {
+            RESIZE_POOL[f % RESIZE_POOL.len()]
+        }),
+        resize("resize drag", continuous_size),
+    ];
+    for step in &steps {
+        step.report();
+    }
 
-    run("pool-rotation", &mut |f| RESIZE_POOL[f % RESIZE_POOL.len()]);
-    run("continuous-drag", &mut continuous_size);
+    // Before any exit: `process::exit` skips `Drop`, and dropping is
+    // what writes `dhat-heap.json` under `--dump`.
+    drop(profiler);
 
-    drop(_profiler);
+    let over: Vec<&Step> = steps.iter().filter(|s| s.over_limit()).collect();
+    if over.is_empty() {
+        println!();
+        println!("PASS: every allocation gate held.");
+        return;
+    }
+
+    eprintln!();
+    for step in &over {
+        match step.limit {
+            Limit::Zero => eprintln!(
+                "FAIL: {} must be strictly allocation-free; got {:.2} blocks/frame.",
+                step.name,
+                step.blocks_per_frame(),
+            ),
+            Limit::BlocksPerFrame(max) => eprintln!(
+                "FAIL: {} exceeds the wgpu driver baseline ({:.2} > {max} blocks/frame).",
+                step.name,
+                step.blocks_per_frame(),
+            ),
+            Limit::Reported => unreachable!("a reported step is never over"),
+        }
+    }
+    eprintln!();
+    eprintln!("Inspect call sites with:");
+    eprintln!("  cargo bench --bench alloc --features bench -- --dump");
+    eprintln!("  open dhat-heap.json at https://nnethercote.github.io/dh_view/");
+    if over
+        .iter()
+        .any(|s| matches!(s.limit, Limit::BlocksPerFrame(_)))
+    {
+        eprintln!();
+        eprintln!("If the driver baseline legitimately moved (wgpu/cosmic-text upgrade,");
+        eprintln!("intentional palantir change), bump RENDER_BLOCKS_PER_FRAME_MAX here.");
+    }
+    std::process::exit(1);
 }

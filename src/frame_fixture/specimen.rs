@@ -206,7 +206,7 @@ fn add_shadow(ui: &mut Ui) {
 
 /// The mesh payload is built once and leaked: `Shape::mesh` borrows a
 /// `&'static Mesh`, and rebuilding it per frame would allocate — which the
-/// `alloc_free` gate forbids.
+/// `record-only` alloc step forbids.
 fn gradient_mesh() -> &'static Mesh {
     use std::sync::OnceLock;
     static MESH_PTR: OnceLock<usize> = OnceLock::new();
