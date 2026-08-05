@@ -37,8 +37,8 @@
 //!   5. `end_frame` (atlas trim + clear instance Vec + reset ranges)
 //!
 //! Run with:
-//!   cargo bench --bench text_atlas --features bench
-//!   cargo bench --bench text_atlas --features bench -- 'zoom_smooth$'
+//!   cargo bench --bench criterion --features bench -- text_atlas
+//!   cargo bench --bench criterion --features bench -- 'zoom_smooth$'
 
 use std::sync::OnceLock;
 use std::time::Duration;

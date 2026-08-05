@@ -218,7 +218,7 @@ const PAGES: &[Page] = &[
     Page {
         group: "RUNTIME",
         label: "frame bench",
-        blurb: "The workload `cargo bench --bench frame` records, drawn live. Nothing \
+        blurb: "The workload `cargo bench --bench criterion -- '^frame/'` records, drawn live. Nothing \
                 here animates — the benches need damage to settle.",
         flow: Flow::Fill,
         body: Body::Fixture,
