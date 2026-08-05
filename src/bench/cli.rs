@@ -12,7 +12,7 @@ use clap::Parser;
 use criterion::Criterion;
 use std::time::Duration;
 
-/// The three flags that decide *who* parses the rest of argv.
+/// Whether argv is criterion's to parse rather than ours.
 ///
 /// Criterion's rule, from its own `configure_from_args`
 /// (`criterion-0.8.2`, `src/lib.rs:960`): `--bench` without `--test`
@@ -22,35 +22,24 @@ use std::time::Duration;
 /// `cargo test --benches`. Keying on a `--test` that cargo never sends
 /// turns every `cargo test --all-targets` into a full measurement run.
 ///
-/// `ignore_errors` is what makes this safe to run first: on the
-/// delegating path argv carries criterion's own flags, which [`Cli`]
-/// never declared and would hard-exit on. A lenient parse reads the
-/// three it knows and lets the rest through untouched; the strict parse
-/// happens only once argv is known to be ours.
-#[derive(Parser, Debug)]
-#[command(
-    ignore_errors = true,
-    disable_help_flag = true,
-    disable_version_flag = true
-)]
-pub(super) struct Gate {
-    #[arg(long)]
-    bench: bool,
-    #[arg(long)]
-    test: bool,
-    #[arg(long)]
-    list: bool,
-}
-
-impl Gate {
-    pub(super) fn parse_args() -> Self {
-        Gate::parse()
+/// A hand scan rather than a lenient `clap` parse, which cannot do this
+/// job: **cargo appends `--bench` after the caller's own arguments**,
+/// and `ignore_errors` stops collecting at the first token it doesn't
+/// recognise. A `Gate` deriving `Parser` therefore read
+/// `-d cascade --bench` as having no `--bench` at all and handed the
+/// whole run to criterion, which then rejected `-d`. Every
+/// `cargo bench -- <anything>` broke that way; only the bare
+/// `cargo bench` survived, because its argv is `--bench` alone.
+pub(super) fn delegates<'a>(args: impl Iterator<Item = &'a str>) -> bool {
+    let mut bench = false;
+    for arg in args {
+        match arg {
+            "--test" | "--list" => return true,
+            "--bench" => bench = true,
+            _ => {}
+        }
     }
-
-    /// Hand argv to `Criterion::configure_from_args` untouched.
-    pub(super) fn delegates(&self) -> bool {
-        self.test || self.list || !self.bench
-    }
+    !bench
 }
 
 /// Palantir's criterion benchmark drivers.
@@ -206,7 +195,7 @@ impl Cli {
 
 #[cfg(test)]
 mod tests {
-    use crate::bench::cli::{Cli, Gate};
+    use crate::bench::cli::{Cli, delegates};
     use crate::bench::driver::DRIVERS;
     use clap::Parser;
 
@@ -217,49 +206,31 @@ mod tests {
     }
 
     /// The argv each cargo invocation actually sends, verified against a
-    /// throwaway `harness = false` target: `cargo bench` appends
-    /// `--bench`, `cargo test --benches` appends **nothing**. Getting
-    /// this backwards is silent — the run measures for real instead of
-    /// smoke-testing, and `cargo test --all-targets` goes from ~30 s to
-    /// a quarter hour.
+    /// throwaway `harness = false` target.
+    ///
+    /// **`--bench` comes last.** Cargo appends it *after* the caller's
+    /// own arguments, so every case below puts it where cargo does —
+    /// the ordering an earlier `clap`-based gate got wrong, reading
+    /// `-d damage --bench` as having no `--bench` and handing the run to
+    /// criterion. Tests that put it first pass either way and prove
+    /// nothing.
     #[test]
-    fn a_bare_argv_delegates_and_only_bench_keeps_it() {
-        let d = |args: &[&str]| {
-            let mut argv = vec!["palantir-bench"];
-            argv.extend_from_slice(args);
-            Gate::try_parse_from(argv)
-                .expect("lenient parse")
-                .delegates()
-        };
+    fn cargos_argv_routes_to_us_and_a_bare_one_delegates() {
+        let d = |args: &[&str]| delegates(args.iter().copied());
 
-        assert!(d(&[]), "cargo test --benches sends no args");
-        assert!(!d(&["--bench"]), "cargo bench");
-        // `cargo bench -- --test` is criterion's own "run them once".
-        assert!(d(&["--bench", "--test"]));
-        assert!(d(&["--bench", "--list"]));
-        assert!(!d(&["--bench", "-d", "damage"]));
+        // `cargo test --benches` sends nothing at all.
+        assert!(d(&[]));
+        // `cargo bench` and `cargo bench -- <args>`.
+        assert!(!d(&["--bench"]));
+        assert!(!d(&["-d", "damage", "--bench"]));
+        assert!(!d(&["cascade/hit_test", "--save-baseline", "x", "--bench"]));
+        assert!(!d(&["--arms", "cpu", "--profile-time", "2", "--bench"]));
+        // `cargo bench -- --test` is criterion's own "run them once",
+        // and `--list` is its enumeration mode. Both are its to parse.
+        assert!(d(&["--test", "--bench"]));
+        assert!(d(&["--list", "--bench"]));
         // A positional filter is not a flag and must not delegate.
-        assert!(!d(&["--bench", "test"]));
-    }
-
-    /// On the delegating path argv carries criterion's flags, which
-    /// `Cli` never declared. The gate has to read past them rather than
-    /// hard-exit the way a strict parse would — that is what
-    /// `ignore_errors` buys, so pin it against real criterion argv.
-    #[test]
-    fn the_gate_reads_past_criterions_own_flags() {
-        let gate = |args: &[&str]| {
-            let mut argv = vec!["palantir-bench"];
-            argv.extend_from_slice(args);
-            Gate::try_parse_from(argv)
-                .expect("lenient parse")
-                .delegates()
-        };
-
-        assert!(!gate(&["--bench", "--color", "always", "--nocapture"]));
-        assert!(!gate(&["--bench", "--save-baseline", "x", "--verbose"]));
-        assert!(gate(&["--test", "--exact", "some/id"]));
-        assert!(gate(&["--list", "--format", "terse"]));
+        assert!(!d(&["test", "--bench"]));
     }
 
     /// Profile mode disables criterion's analysis, so nothing writes an
