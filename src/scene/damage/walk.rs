@@ -100,6 +100,7 @@ enum Tier {
 /// `DamageEngine` each time. Every field the arms mutate is a field
 /// here, which is what lets them be methods: disjoint field borrows do
 /// the work the hand-written local aliases used to.
+#[derive(Debug)]
 pub(super) struct LayerWalk<'a> {
     pub(super) prev: &'a mut WidgetIdMap<NodeSnapshot>,
     pub(super) arena: &'a mut PaintSnapArena,

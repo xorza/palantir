@@ -56,6 +56,7 @@ pub(super) fn within_duration_snap_eps<T: Animatable>(displacement: T) -> bool {
     displacement.magnitude_squared() < DURATION_SNAP_EPS_SQ
 }
 
+#[derive(Debug)]
 pub(super) struct SpringStep<T: Animatable> {
     pub(super) current: T,
     pub(super) velocity: T,

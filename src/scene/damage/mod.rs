@@ -145,7 +145,7 @@ impl Default for DamageEngine {
 ///
 /// `time.prev` is `None` on the first frame (no prior `now` to anim
 /// against); both compute paths short-circuit predamage in that case.
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub(crate) struct DamageInput<'a> {
     pub(crate) forest: &'a Forest,
     pub(crate) cascade: &'a Cascade,
@@ -158,16 +158,6 @@ pub(crate) struct DamageInput<'a> {
     pub(crate) surface: Rect,
     pub(crate) prev_time: Option<Duration>,
     pub(crate) now: Duration,
-}
-
-impl std::fmt::Debug for DamageInput<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("DamageInput")
-            .field("surface", &self.surface)
-            .field("prev_time", &self.prev_time)
-            .field("now", &self.now)
-            .finish_non_exhaustive()
-    }
 }
 
 /// Coverage fraction above which [`Damage::new`] stops tracking partial damage

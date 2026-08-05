@@ -336,6 +336,18 @@ struct PassState<'a> {
     active: Option<ActiveMask>,
 }
 
+// Manual: `emit` is a `&mut dyn FnMut`, which has nothing to format.
+impl std::fmt::Debug for PassState<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PassState")
+            .field("use_stencil", &self.use_stencil)
+            .field("cur_scissor", &self.cur_scissor)
+            .field("cur_ref", &self.cur_ref)
+            .field("active", &self.active)
+            .finish_non_exhaustive()
+    }
+}
+
 impl PassState<'_> {
     fn push(&mut self, step: RenderStep) {
         (self.emit)(step);

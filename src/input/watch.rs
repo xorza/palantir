@@ -86,7 +86,7 @@ impl KeyboardWake {
 
 /// Per-`Ui` wake-gate registry. Cleared pre-record; widgets re-OR /
 /// re-push their declarations during record.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub(super) struct Watches {
     pub(super) pointer_mask: PointerWake,
     pub(super) keyboard_mask: KeyboardWake,
