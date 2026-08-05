@@ -82,44 +82,38 @@ if someone wants `src/` to read as library-only.
 
 ---
 
-# 3. De-specialize `CascadeEngine::run_tree`
+# 3. Split `CascadeEngine::run_tree`, or don't
 
-The densest function in the crate: `cascade/engine.rs:306`, 226 lines,
-`const INCREMENTAL: bool`, six `if INCREMENTAL` / `if !INCREMENTAL`
-branches. The two instantiations want different inputs *and* different
-outputs, which is the signal that this is two functions.
+`cascade/engine.rs`, 226 lines, `const INCREMENTAL: bool`, six
+`if INCREMENTAL` / `if !INCREMENTAL` branches.
 
-**Measured, so the split isn't constrained by the specialization.**
-Swapping the const generic for a runtime `bool` moved nothing in
-`cascade/run` — paired A/B in both directions each reported "improved",
-which is drift, not effect, on a ~2-3% noise floor. It did shrink
-`cascade::engine` codegen from 16,918 to 13,494 bytes (the const generic
-inlines the whole walk into both callers). So `run_tree`'s comment —
-"compile-time specialization keeps the full rebuild free of incremental
-branches" — is true about codegen and unsupported as a perf claim.
+**Not a de-specialization.** Swapping the const generic for a runtime
+`bool` moved nothing in `cascade/run` — paired A/B in both directions
+each reported "improved", which is drift, not effect, on a ~2-3% noise
+floor. It did shrink `cascade::engine` codegen from 16,918 to 13,494
+bytes, since the const generic inlines the walk into both callers. So
+the specialization buys dead-code elimination, not speed, and a split is
+not constrained by preserving it.
 
-The split is still ~2/3 shared code: 73 of 226 lines sit under an
-`INCREMENTAL` branch, and the other 153 are the walk itself. Extract the
-dense shared middle (the 28-line transform/clip/`PaintRectCtx` block)
-*first*; the function may read fine afterwards, and two walk loops that
-must agree on traversal order is the drift risk this design currently
-rules out by construction.
+**The machinery the incremental path carried is gone.** `TreeSink` is
+now `Option` and that path passes `None`; `Frame::cascade_prefix` is
+`Option<Hasher>` and it pushes `None`; the `bool` return documents that
+only the incremental walk can answer `false`. What remains is one
+question:
 
-- [ ] **`TreeSink` (`engine.rs:38`) bundles `entries`, `hits`, `scopes`,
-  `layer` — and the incremental instantiation writes none of the first
-  three.** They are destructured at the top of the walk and then unused
-  for its whole length.
-- [ ] **`Frame::cascade_prefix` (`engine.rs:66`) is dead on the
-  incremental path**: filled with `Hasher::new()` at every push
-  (`:516–520`), never read. It is also the single field that forces
-  `Frame` to carry a hand-written `Debug` (`:69`) — `Hasher`
-  (`common/hash.rs`) has no `Debug`.
 - [ ] Split into `run_tree_full` (writes every column, owns the prefix
-  hasher and the sink) and `repair_paint` (walks dirty subtrees, writes
-  `paint_arena` + `subtree_hashes` + `subtree_paint_rects` only). The
-  shared middle — frame pop/rollup, transform+clip compose,
-  `PaintRectCtx` construction — is three small helpers, most of which
-  already exist (`finalize_frame`, `compute_node_paint`).
+      hasher and the sink) and `repair_paint` (walks dirty subtrees,
+      writes `paint_arena` + `subtree_hashes` + `subtree_paint_rects`
+      only).
+
+      **Extract the shared middle first.** 73 of 226 lines sit under an
+      `INCREMENTAL` branch; the other 153 are the walk — frame
+      pop/rollup, the 28-line transform/clip/`PaintRectCtx` block, leaf
+      handling. Lift that block into a named helper and re-read the
+      function; it may not need splitting at all. Two walk loops that
+      must agree on traversal order is a silent failure mode the single
+      loop rules out by construction, and it is the cost this item has
+      to justify.
 
 ---
 
