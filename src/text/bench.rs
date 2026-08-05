@@ -412,7 +412,7 @@ fn bench_ellipsis_churn(c: &mut Criterion) {
     group.finish();
 }
 
-pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Arms) {
+pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Run<'_>) {
     bench_reuse_layer(c);
     bench_resize_drag(c);
     bench_ellipsis_churn(c);

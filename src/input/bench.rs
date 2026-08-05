@@ -144,7 +144,7 @@ fn pointer_at(i: u32) -> Vec2 {
     Vec2::new(x, y)
 }
 
-pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Arms) {
+pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Run<'_>) {
     {
         let mut ui = warmed_ui();
         let mut i: u32 = 0;

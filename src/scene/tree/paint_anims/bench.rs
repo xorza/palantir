@@ -23,7 +23,7 @@ fn last_shape_registry() -> PaintAnims {
     anims
 }
 
-pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Arms) {
+pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Run<'_>) {
     let anims = last_shape_registry();
     assert_eq!(anims.shape_indices, [SHAPE_COUNT - 1]);
 

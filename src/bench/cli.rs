@@ -12,6 +12,47 @@ use clap::Parser;
 use criterion::Criterion;
 use std::time::Duration;
 
+/// The three flags that decide *who* parses the rest of argv.
+///
+/// Criterion's rule, from its own `configure_from_args`
+/// (`criterion-0.8.2`, `src/lib.rs:960`): `--bench` without `--test`
+/// benchmarks, **everything else is test mode**. So test mode is
+/// signalled by an absence — cargo passes a `harness = false` bench
+/// target `--bench` under `cargo bench` and *no arguments at all* under
+/// `cargo test --benches`. Keying on a `--test` that cargo never sends
+/// turns every `cargo test --all-targets` into a full measurement run.
+///
+/// `ignore_errors` is what makes this safe to run first: on the
+/// delegating path argv carries criterion's own flags, which [`Cli`]
+/// never declared and would hard-exit on. A lenient parse reads the
+/// three it knows and lets the rest through untouched; the strict parse
+/// happens only once argv is known to be ours.
+#[derive(Parser, Debug)]
+#[command(
+    ignore_errors = true,
+    disable_help_flag = true,
+    disable_version_flag = true
+)]
+pub(super) struct Gate {
+    #[arg(long)]
+    bench: bool,
+    #[arg(long)]
+    test: bool,
+    #[arg(long)]
+    list: bool,
+}
+
+impl Gate {
+    pub(super) fn parse_args() -> Self {
+        Gate::parse()
+    }
+
+    /// Hand argv to `Criterion::configure_from_args` untouched.
+    pub(super) fn delegates(&self) -> bool {
+        self.test || self.list || !self.bench
+    }
+}
+
 /// Palantir's criterion benchmark drivers.
 #[derive(Parser, Debug)]
 #[command(
@@ -90,6 +131,13 @@ impl Cli {
         self.arms.into()
     }
 
+    /// Whether criterion will write `estimates.json` this run. Profile
+    /// mode reports "Analysis Disabled" and writes nothing, so a driver
+    /// that reads its own numbers back has to know.
+    pub(super) fn records(&self) -> bool {
+        self.profile_time.is_none()
+    }
+
     /// Every name given to `--driver` must exist, or the run silently
     /// measures less than asked for.
     pub(super) fn validate(&self, known: &[Driver]) {
@@ -142,7 +190,7 @@ impl Cli {
 
 #[cfg(test)]
 mod tests {
-    use crate::bench::cli::Cli;
+    use crate::bench::cli::{Cli, Gate};
     use crate::bench::driver::DRIVERS;
     use clap::Parser;
 
@@ -150,6 +198,61 @@ mod tests {
         let mut argv = vec!["palantir-bench"];
         argv.extend_from_slice(args);
         Cli::try_parse_from(argv).expect("parse")
+    }
+
+    /// The argv each cargo invocation actually sends, verified against a
+    /// throwaway `harness = false` target: `cargo bench` appends
+    /// `--bench`, `cargo test --benches` appends **nothing**. Getting
+    /// this backwards is silent — the run measures for real instead of
+    /// smoke-testing, and `cargo test --all-targets` goes from ~30 s to
+    /// a quarter hour.
+    #[test]
+    fn a_bare_argv_delegates_and_only_bench_keeps_it() {
+        let d = |args: &[&str]| {
+            let mut argv = vec!["palantir-bench"];
+            argv.extend_from_slice(args);
+            Gate::try_parse_from(argv)
+                .expect("lenient parse")
+                .delegates()
+        };
+
+        assert!(d(&[]), "cargo test --benches sends no args");
+        assert!(!d(&["--bench"]), "cargo bench");
+        // `cargo bench -- --test` is criterion's own "run them once".
+        assert!(d(&["--bench", "--test"]));
+        assert!(d(&["--bench", "--list"]));
+        assert!(!d(&["--bench", "-d", "damage"]));
+        // A positional filter is not a flag and must not delegate.
+        assert!(!d(&["--bench", "test"]));
+    }
+
+    /// On the delegating path argv carries criterion's flags, which
+    /// `Cli` never declared. The gate has to read past them rather than
+    /// hard-exit the way a strict parse would — that is what
+    /// `ignore_errors` buys, so pin it against real criterion argv.
+    #[test]
+    fn the_gate_reads_past_criterions_own_flags() {
+        let gate = |args: &[&str]| {
+            let mut argv = vec!["palantir-bench"];
+            argv.extend_from_slice(args);
+            Gate::try_parse_from(argv)
+                .expect("lenient parse")
+                .delegates()
+        };
+
+        assert!(!gate(&["--bench", "--color", "always", "--nocapture"]));
+        assert!(!gate(&["--bench", "--save-baseline", "x", "--verbose"]));
+        assert!(gate(&["--test", "--exact", "some/id"]));
+        assert!(gate(&["--list", "--format", "terse"]));
+    }
+
+    /// Profile mode disables criterion's analysis, so nothing writes an
+    /// `estimates.json` for the frame bench to read back.
+    #[test]
+    fn only_a_sampling_run_records_estimates() {
+        assert!(parse(&["--bench"]).records());
+        assert!(parse(&["--bench", "-d", "frame"]).records());
+        assert!(!parse(&["--bench", "--profile-time", "5"]).records());
     }
 
     /// The selection rule, which decides what a run actually measures.

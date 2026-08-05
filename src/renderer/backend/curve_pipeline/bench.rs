@@ -239,7 +239,7 @@ fn report_evidence(gpu: &Gpu, workload: Workload) {
     );
 }
 
-pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Arms) {
+pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Run<'_>) {
     let gpu = gpu();
     eprintln!(
         "[curve_pipeline] adapter={} backend={:?} timestamp={} inside_pass={} pipeline_stats={}",

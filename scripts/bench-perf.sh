@@ -6,22 +6,29 @@
 # PEBS; AMD has one homogeneous PMU and gets metric groups + IBS. The
 # script detects `vendor_id` and picks the path.
 #
-#   scripts/bench-perf.sh                        # frame bench, 5s
-#   FILTER=damage scripts/bench-perf.sh          # a different driver
-#   FILTER= scripts/bench-perf.sh                # every driver
+#   scripts/bench-perf.sh                            # frame bench, 5s
+#   DRIVER=damage scripts/bench-perf.sh              # a different driver
+#   DRIVER='damage cascade' scripts/bench-perf.sh    # several
+#   DRIVER= scripts/bench-perf.sh                    # every default driver
+#   DRIVER=damage FILTER='workload$' scripts/bench-perf.sh
 #   SKIP_MEM=1 SKIP_MICRO=1 SKIP_IBS=1 scripts/bench-perf.sh
-#   scripts/bench-perf.sh --profile-time 2       # extra criterion args
+#   scripts/bench-perf.sh --profile-time 2           # extra bench args
 #
 # Env: BENCH (target, default criterion — every criterion driver shares
-# it, so pick a driver with FILTER), FILTER (criterion regex, default
-# `frame`; empty = all), FEATURES (extra cargo features; `bench` is
-# always on, every target requires it), CALLGRAPH (dwarf|lbr, Intel
-# only), PIN_CPU (2), FREQ (4000), IBS_PERIOD (250000), LDLAT (50),
-# SKIP_MEM / SKIP_MICRO / SKIP_IBS.
+# it, so pick one with DRIVER), DRIVER (space-separated driver names,
+# default `frame`; empty = every non-opt-in driver), FILTER (criterion
+# regex *within* the selected drivers, default none), ARMS
+# (cpu|gpu|both, default cpu — a CPU sampler has nothing to say about
+# the GPU arms), NOTE (frame-bench results caption — needed only on a
+# recording run, which profiling is not), FEATURES (extra
+# cargo features; `bench` is always on, every target requires it),
+# CALLGRAPH (dwarf|lbr, Intel only), PIN_CPU (2), FREQ (4000),
+# IBS_PERIOD (250000), LDLAT (50), SKIP_MEM / SKIP_MICRO / SKIP_IBS.
 #
-# The frame bench runs only with PALANTIR_BENCH_MODE set (and then
-# demands PALANTIR_BENCH_NOTE); without them it skips and the profile
-# comes back empty.
+# DRIVER is exact selection, not a regex: an unnamed driver never runs,
+# so it costs nothing and stays out of the profile. FILTER is criterion's
+# own id regex and gates only the timing loop — the driver's setup has
+# already run by then, which is why it is the wrong tool for picking one.
 #
 # Outputs land in tmp/ and are listed on exit. **benches/AGENTS.md is
 # the manual** — which file to read in what order, what the numbers
@@ -42,9 +49,11 @@ PERF_MEM_DATA=tmp/palantir-perf-mem.data
 PERF_MEM=tmp/palantir-perf-mem.txt
 
 BENCH_NAME="${BENCH:-criterion}"
-# `-` not `:-`: an explicitly empty FILTER means "every case", and must
-# not fall back to the default the way an unset one does.
-FILTER_ARG="${FILTER-frame}"
+# `-` not `:-`: an explicitly empty DRIVER means "every default driver",
+# and must not fall back to the default the way an unset one does.
+DRIVER_ARG="${DRIVER-frame}"
+FILTER_ARG="${FILTER-}"
+ARMS_ARG="${ARMS:-cpu}"
 # `bench` is not optional — every target carries
 # `required-features = ["bench"]` and cargo refuses the target without
 # it. So it is always passed and FEATURES *adds* to it; naming some
@@ -58,13 +67,38 @@ LDLAT_CYCLES="${LDLAT:-50}"
 
 EXTRA_ARGS=("$@")
 [ ${#EXTRA_ARGS[@]} -eq 0 ] && EXTRA_ARGS=(--profile-time 5)
-BENCH_ARGS=(--bench)
+# `--bench` is what tells the runner argv is ours rather than criterion's
+# — without it the binary delegates and runs everything once in test
+# mode, which profiles nothing. See src/bench/mod.rs.
+BENCH_ARGS=(--bench --arms "$ARMS_ARG")
+for d in $DRIVER_ARG; do
+    BENCH_ARGS+=(--driver "$d")
+done
 [ -n "$FILTER_ARG" ] && BENCH_ARGS+=("$FILTER_ARG")
+[ -n "${NOTE:-}" ] && BENCH_ARGS+=(--note "$NOTE")
 BENCH_ARGS+=("${EXTRA_ARGS[@]}")
 
 for tool in perf taskset; do
     command -v "$tool" >/dev/null 2>&1 || { echo "error: $tool not installed" >&2; exit 1; }
 done
+
+# The frame bench appends a captioned row to benches/results/ — but only
+# on a recording run, and profiling writes no estimates to record. So the
+# note is needed only if the caller replaced the default profile pass
+# with real sampling. It panics for a missing one after the build, hence
+# checking here: minutes of cargo before an avoidable panic is a bad
+# trade. Matched without a trailing space to catch `--profile-time=N` too.
+case " $DRIVER_ARG " in
+    *" frame "*)
+        case " ${BENCH_ARGS[*]} " in
+            *" --profile-time"*) ;;
+            *) [ -n "${NOTE:-}" ] || {
+                   echo "error: a recording frame-bench run needs a caption for its results row." >&2
+                   echo "       NOTE='after staging-belt rework' $0 ${EXTRA_ARGS[*]}" >&2
+                   exit 1
+               } ;;
+        esac ;;
+esac
 
 # ── Vendor + capability detection ────────────────────────────────────
 case "$(awk -F': ' '/^vendor_id/{print $2; exit}' /proc/cpuinfo)" in
@@ -126,7 +160,8 @@ nm "$BENCH_BIN" >/dev/null 2>&1 ||
     echo "    WARNING: '$BENCH_BIN' has no symbol table — perf will report raw addresses.
              An enclosing workspace's [profile.bench] is overriding strip/debug." >&2
 echo "    binary: $BENCH_BIN"
-echo "    pinned to CPU $PIN_CPU   callgraph: $CALLGRAPH_MODE${FILTER_ARG:+   filter: $FILTER_ARG}"
+echo "    pinned to CPU $PIN_CPU   callgraph: $CALLGRAPH_MODE   arms: $ARMS_ARG"
+echo "    drivers: ${DRIVER_ARG:-<all default>}${FILTER_ARG:+   filter: $FILTER_ARG}"
 
 rm -f "$PERF_DATA" "$PERF_REPORT" "$PERF_STAT" "$PERF_MICRO" \
       "$PERF_IBS_DATA" "$PERF_IBS" "$PERF_MEM_DATA" "$PERF_MEM" "$PERF_DATA.old"

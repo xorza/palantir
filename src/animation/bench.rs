@@ -66,7 +66,7 @@ fn bench_motion(c: &mut Criterion, name: &str, motion: Motion) {
     group.finish();
 }
 
-pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Arms) {
+pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Run<'_>) {
     bench_motion(c, "animation/duration", Motion::Duration);
     bench_motion(c, "animation/spring", Motion::Spring);
 }

@@ -20,7 +20,7 @@
 //!   dump (upload counts, GPU pass timings) lives here since it's
 //!   inherently GPU.
 //!
-//! Running `MODE=cpu` executes **zero** GPU code (no adapter/device
+//! Running `--arms cpu` executes **zero** GPU code (no adapter/device
 //! request, no `write_stats`), so a `perf` / `samply` capture of the CPU
 //! bench is uncontaminated by driver activity.
 //!
@@ -59,7 +59,7 @@
 //! to eyeball the tree these numbers come from.
 
 use crate::app::internals::RecordApp;
-use crate::bench::Arms;
+use crate::bench::{Arms, Run};
 use crate::diagnostics::gpu_stats::BatchKind;
 use crate::frame_fixture::{BENCH_SCALE, FrameFixture, build_ui};
 use crate::host::offscreen::OffscreenHost;
@@ -546,21 +546,6 @@ fn report_write_stats() {
     });
 }
 
-/// `true` when this process is a real measurement run, which is what
-/// the results-row guard below exists to make deliberate. Mirrors
-/// criterion's own rule — `--bench` without `--test` — because
-/// `cargo test --benches` runs every bench binary in test mode, where
-/// each arm executes once and nothing is measured or recorded.
-fn measuring() -> bool {
-    let mut bench = false;
-    let mut test = false;
-    for arg in std::env::args() {
-        bench |= arg == "--bench";
-        test |= arg == "--test";
-    }
-    bench && !test
-}
-
 /// Arm names criterion runs for a given mode, interleaved cpu/gpu per
 /// category. Used by the per-machine results writer to know which
 /// criterion estimate files to read after all arms have finished.
@@ -594,8 +579,8 @@ fn arm_names(arms: Arms) -> Vec<&'static str> {
 }
 
 /// CPU bench: the deviceless `frame/*_cpu` arms. Skipped wholesale when
-/// `MODE=gpu` so a GPU-only run executes no CPU-arm code (and, more
-/// importantly, a `MODE=cpu` run reaches this without `bench_gpu` having
+/// `--arms gpu` so a GPU-only run executes no CPU-arm code (and, more
+/// importantly, an `--arms cpu` run reaches this without `bench_gpu` having
 /// touched the GPU at all — pristine for profiling).
 fn bench_cpu(c: &mut Criterion, arms: Arms) {
     if !arms.includes_cpu() {
@@ -608,7 +593,7 @@ fn bench_cpu(c: &mut Criterion, arms: Arms) {
 }
 
 /// GPU bench: the full-pipeline `frame/*_gpu` arms plus the per-frame
-/// `write_stats` dump. Skipped wholesale when `MODE=cpu`.
+/// `write_stats` dump. Skipped wholesale when `--arms cpu`.
 fn bench_gpu(c: &mut Criterion, arms: Arms) {
     if !arms.includes_gpu() {
         return;
@@ -620,25 +605,20 @@ fn bench_gpu(c: &mut Criterion, arms: Arms) {
     gpu_scrolling(c);
 }
 
-/// Results finalizer — runs last in [`bench()`]. Reads the
-/// criterion `time:` estimates the two benches just wrote and prepends a
-/// per-machine results row. Separated from the benches so it observes
-/// every arm regardless of mode, and so neither bench has to know it's
-/// the last one.
-fn write_results(arms: Arms) {
-    prepend_machine_results(arms);
-}
-
-/// Read criterion's reported estimate out of `target/criterion/<slug>/new/estimates.json`
-/// and write the `[lower point upper]` triple — the same slope/mean
-/// criterion's stdout prints — to a per-machine `.txt`. Newest run lives
-/// at the top of the file (`head` gives the latest). Best-effort: any I/O
-/// failure prints to stderr and continues.
-fn prepend_machine_results(arms: Arms) {
+/// Results finalizer — runs last in [`bench()`], and only when the run
+/// records. Reads criterion's reported estimate out of
+/// `target/criterion/<slug>/new/estimates.json` for every arm the two
+/// benches just ran and prepends the `[lower point upper]` triple — the
+/// same slope/mean criterion's stdout prints — to a per-machine `.txt`.
+/// Newest run lives at the top of the file (`head` gives the latest).
+/// Separated from the benches so it observes every arm regardless of
+/// mode, and so neither bench has to know it's the last one.
+/// Best-effort: any I/O failure prints to stderr and continues.
+fn prepend_machine_results(run: Run<'_>) {
     let machine = machine_label();
     let path = PathBuf::from("benches/results").join(format!("{machine}.txt"));
     let mut block = String::new();
-    let mode_tag = match arms {
+    let mode_tag = match run.arms {
         Arms::Cpu => "cpu",
         Arms::Gpu => "gpu",
         Arms::Both => "both",
@@ -647,9 +627,9 @@ fn prepend_machine_results(arms: Arms) {
         "=== {} — [{}] {} ===\n",
         now_label(),
         mode_tag,
-        bench_annotation()
+        bench_annotation(run.note)
     ));
-    for &name in arm_names(arms).iter() {
+    for &name in arm_names(run.arms).iter() {
         let row = match read_criterion_estimate(name) {
             Some(e) => format!("{name:<22} time: {}\n", fmt_estimate(e)),
             None => format!("{name:<22} time: (criterion estimates not found)\n"),
@@ -820,16 +800,15 @@ fn machine_label() -> String {
     if n.is_empty() { "unknown".into() } else { n }
 }
 
-/// Required context tag for the results row. Read from
-/// `PALANTIR_BENCH_NOTE`; the bench refuses to run without one so
-/// every appended row has a why-was-this-measured caption.
-fn bench_annotation() -> String {
-    match std::env::var("PALANTIR_BENCH_NOTE") {
-        Ok(s) if !s.trim().is_empty() => s.trim().to_owned(),
+/// Required context tag for the results row, from `--note`. The bench
+/// refuses to run without one so every appended row has a
+/// why-was-this-measured caption.
+fn bench_annotation(note: Option<&str>) -> &str {
+    match note.map(str::trim) {
+        Some(s) if !s.is_empty() => s,
         _ => panic!(
-            "frame bench requires PALANTIR_BENCH_NOTE=<short context>; \
-             e.g. PALANTIR_BENCH_NOTE='after staging-belt rework' \
-             cargo bench --bench criterion -- '^frame/'",
+            "frame bench requires a note; e.g. cargo bench --bench criterion \
+             -- -d frame --note 'after staging-belt rework'",
         ),
     }
 }
@@ -850,7 +829,7 @@ fn now_label() -> String {
 // machine. Doubling the window roughly halves the run-to-run spread;
 // total wall time goes from ~50 s to ~90 s, which is fine for an
 // on-demand bench. `cpu` and `gpu` are separate criterion groups so
-// `MODE=cpu` can run (and be profiled) without any GPU code executing;
+// `--arms cpu` can run (and be profiled) without any GPU code executing;
 // `results` runs last to prepend the per-machine row.
 pub(crate) fn config() -> Criterion {
     Criterion::default()
@@ -863,18 +842,18 @@ pub(crate) fn config() -> Criterion {
 /// for, so this no longer reads the environment or decides whether it
 /// was wanted at all. Being called *is* being wanted; the registry's
 /// `opt_in` keeps it out of the default set.
-pub(crate) fn bench(c: &mut Criterion, arms: Arms) {
-    // Under criterion's test mode no estimate is written, so the
-    // results row — and the note it demands — would be meaningless.
-    let measuring = measuring();
+pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
+    // Test and profile modes write no estimate, so the results row —
+    // and the note it demands — would be meaningless.
+    //
     // Fail fast before any arm runs so a long bench doesn't finish and
     // then realise the results row has no context.
-    if measuring {
-        let _ = bench_annotation();
+    if run.recording {
+        let _ = bench_annotation(run.note);
     }
-    bench_cpu(c, arms);
-    bench_gpu(c, arms);
-    if measuring {
-        write_results(arms);
+    bench_cpu(c, run.arms);
+    bench_gpu(c, run.arms);
+    if run.recording {
+        prepend_machine_results(run);
     }
 }

@@ -473,7 +473,7 @@ fn report_atlas_pressure(label: &str, backend: &BenchText, frames: u32) {
     );
 }
 
-pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Arms) {
+pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Run<'_>) {
     let g = gpu();
     let target = make_target(&g.device);
     let view = target.create_view(&wgpu::TextureViewDescriptor::default());
