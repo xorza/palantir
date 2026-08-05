@@ -7,6 +7,7 @@ use crate::primitives::interned_str::TextInput;
 use crate::scene::node::{Configure, Node};
 use crate::ui::Ui;
 use crate::widgets::response::Response;
+use crate::widgets::theme::WidgetTheme;
 use crate::widgets::theme::toggle::ToggleTheme;
 use crate::widgets::toggle::{self, ToggleChrome};
 use glam::Vec2;
@@ -54,7 +55,7 @@ impl<'a> Switch<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        let widget = ui.widget(self.node);
+        let mut widget = ui.widget(self.node);
         let response = widget.response(ui);
         let id = widget.id();
 
@@ -63,21 +64,26 @@ impl<'a> Switch<'a> {
         }
         let on = *self.value;
 
-        // Geometry off the theme before `toggle_row`'s `&mut Ui`
-        // reborrow; the look itself is picked and animated in there,
-        // through the same `WidgetTheme::resolve` every other widget uses.
+        // Everything off `theme.switch` in one place, before
+        // `toggle_row`'s `&mut Ui` reborrow: the geometry this widget
+        // paints with, and the look itself. `toggle_row` is shared by
+        // three toggles reading three different slots, so naming the slot
+        // is the caller's job — and this is the only place it is named.
         let theme = self.style.unwrap_or(&ui.theme.switch);
         let track_h = theme.box_size;
         let inset = theme.indicator_inset;
         let aspect = theme.track_aspect;
         let knob_color = theme.indicator;
         let anim = theme.anim;
+        let row_gap = theme.row_gap;
+        let look = WidgetTheme::resolve(ui, id, &mut widget.node, &response, on, self.style, |t| {
+            &t.switch
+        });
 
         let knob_id = id.with("knob");
         let chrome = ToggleChrome {
-            style: self.style,
-            slot: |t| &t.switch,
-            on,
+            look,
+            row_gap,
             // A `Canvas` so the knob can be absolutely positioned inside
             // the track. Width is stroke-independent, so it resolves
             // here even though the stroke isn't known until the body.

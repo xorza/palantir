@@ -395,7 +395,21 @@ impl<'a> DragValue<'a> {
         id: WidgetId,
         prev_rect: Option<Rect>,
     ) -> DragValueResponse<'_> {
-        let editor = self.style.map(|s| &s.editor);
+        // The editor has to wear the chip's box or the field resizes the moment
+        // it is clicked. `DragValueTheme::from_chip` mirrors the chip's padding
+        // onto `drag_value.editor` for exactly that; an *unstyled* `TextEdit`
+        // inherits `theme.text_edit` instead — a standalone field's box, whose
+        // padding is not the chip's — so the bundle has to be handed over
+        // rather than left to the field's own default.
+        //
+        // Owned, because the borrow has to outlive the `&mut Ui` the field is
+        // shown with. A theme bundle is inline (gradient stops are an
+        // `ArrayVec`), so this copies ~700 bytes of stack and allocates
+        // nothing, once per frame of an open edit.
+        let editor = match self.style {
+            Some(s) => s.editor.clone(),
+            None => ui.theme.drag_value.editor.clone(),
+        };
         // Hold the editor at exactly the width the chip occupied last frame.
         // The chip shows `decimals`-rounded text; the editor shows every digit
         // and, as a `Scroll` field, reports zero content width — so nothing
@@ -420,14 +434,10 @@ impl<'a> DragValue<'a> {
                 .id(id)
                 .text_align(Align::CENTER)
                 .select_all_on_focus()
+                .style(&editor)
                 .size((width, sizes.h()))
                 .min_size(min_size)
                 .max_size(self.node.max_size.unwrap_or(Size::INF));
-            let edit = if let Some(editor) = editor {
-                edit.style(editor)
-            } else {
-                edit
-            };
             // The chip's placement has to survive the swap or the field
             // visibly jumps mid-interaction; which fields that means is
             // `TextEdit`'s call, and documented there.

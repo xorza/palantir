@@ -7,6 +7,7 @@ use crate::shape::polyline::PolylineColors;
 use crate::shape::style::{LineCap, LineJoin};
 use crate::ui::Ui;
 use crate::widgets::response::Response;
+use crate::widgets::theme::WidgetTheme;
 use crate::widgets::theme::toggle::ToggleTheme;
 use crate::widgets::toggle::{self, ToggleChrome};
 
@@ -56,27 +57,39 @@ impl<'a> Checkbox<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        let widget = ui.widget(self.node);
+        let mut widget = ui.widget(self.node);
         let response = widget.response(ui);
+        let id = widget.id();
 
         if response.left.clicked() && !response.disabled {
             *self.value = !*self.value;
         }
         let checked = *self.value;
 
-        // Geometry off the theme before `toggle_row`'s `&mut Ui`
-        // reborrow; the look itself is picked and animated in there,
-        // through the same `WidgetTheme::resolve` every other widget uses.
+        // Everything off `theme.checkbox` in one place, before
+        // `toggle_row`'s `&mut Ui` reborrow: the geometry this widget
+        // paints with, and the look itself. `toggle_row` is shared by
+        // three toggles reading three different slots, so naming the slot
+        // is the caller's job — and this is the only place it is named.
         let theme = self.style.unwrap_or(&ui.theme.checkbox);
         let box_size = theme.box_size;
         let indicator = theme.indicator;
         let indicator_stroke = theme.indicator_stroke;
         let check = theme.check_polyline();
+        let row_gap = theme.row_gap;
+        let look = WidgetTheme::resolve(
+            ui,
+            id,
+            &mut widget.node,
+            &response,
+            checked,
+            self.style,
+            |t| &t.checkbox,
+        );
 
         let chrome = ToggleChrome {
-            style: self.style,
-            slot: |t| &t.checkbox,
-            on: checked,
+            look,
+            row_gap,
             boxed: Node::leaf().size((Sizing::fixed(box_size), Sizing::fixed(box_size))),
             // Square box: the theme's own corner radius stands.
             pill: None,

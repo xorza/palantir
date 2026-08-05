@@ -806,3 +806,59 @@ fn click_to_edit_reports_focus_on_the_same_frame() {
         "the response must report the focus the click just took",
     );
 }
+
+/// Clicking into the field must not change its box.
+///
+/// The chip and the inline editor are two different widgets, and an unstyled
+/// `TextEdit` inherits `theme.text_edit` — a standalone text field's box, whose
+/// padding is not the chip's. `DragValueTheme::from_chip` mirrors the chip's
+/// padding onto `drag_value.editor` for exactly this reason, but nothing pointed
+/// the editor at that slot, so the whole mirror was dead and the field resized
+/// on click (the showcase's 120 fps row lost 5 px of height).
+///
+/// Height is the axis that moves: the width is already pinned to the chip's
+/// last rect, so only the vertical padding difference showed.
+#[test]
+fn entering_edit_mode_keeps_the_chips_box() {
+    use super::DragValue;
+    use crate::Ui;
+    use crate::layout::types::sizing::Sizing;
+    use crate::primitives::widget_id::WidgetId;
+    use crate::scene::node::Configure;
+    use crate::widgets::panel::Panel;
+    use glam::UVec2;
+
+    let id = WidgetId::from_hash("dv-box");
+    let mut fps = 120_i64;
+    // A `Hug` height is what exposes the difference — a fixed one would pin
+    // both modes to the same number whatever their padding resolved to.
+    let render = |ui: &mut Ui, v: &mut i64| {
+        Panel::hstack()
+            .id(WidgetId::from_hash("dv-box-row"))
+            .gap(8.0)
+            .show(ui, |ui| {
+                DragValue::new(v)
+                    .editable(true)
+                    .range(24.0..=240.0)
+                    .decimals(0)
+                    .suffix(" fps")
+                    .size((Sizing::fixed(110.0), Sizing::HUG))
+                    .id(id)
+                    .show(ui);
+            });
+    };
+
+    let mut h = UiHarness::new(UVec2::new(400, 120));
+    h.frame(|ui| render(ui, &mut fps));
+    let chip = h.layout_rect(id).expect("arranged").size;
+
+    h.request_focus(Some(id));
+    h.frame(|ui| render(ui, &mut fps));
+    let editor = h.layout_rect(id).expect("arranged").size;
+
+    assert_eq!(
+        (chip.w, chip.h),
+        (editor.w, editor.h),
+        "entering edit mode resized the field (chip {chip:?}, editor {editor:?})",
+    );
+}
