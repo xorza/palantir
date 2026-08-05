@@ -27,7 +27,6 @@ use std::hint::black_box;
 use std::time::Duration;
 
 const PHYSICAL: glam::UVec2 = glam::UVec2::new(1024, 1024);
-const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 const GRID: u32 = 64;
 const CELL: f32 = 16.0;
 const CUBIC_INSTANCES: u64 = (GRID * GRID) as u64;
@@ -60,40 +59,10 @@ fn gpu() -> &'static BenchGpu {
     BenchGpu::shared(Timing::Instrumented)
 }
 
-fn target(device: &wgpu::Device) -> wgpu::Texture {
-    device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("palantir.curve_pipeline_bench.target"),
-        size: wgpu::Extent3d {
-            width: PHYSICAL.x,
-            height: PHYSICAL.y,
-            depth_or_array_layers: 1,
-        },
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format: FORMAT,
-        usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-            | wgpu::TextureUsages::COPY_DST
-            | wgpu::TextureUsages::COPY_SRC,
-        view_formats: &[],
-    })
-}
-
 fn host(gpu: &BenchGpu) -> OffscreenHost {
-    let mut host = OffscreenHost::builder(gpu.device.clone(), gpu.queue.clone())
-        .collect_gpu_stats(true)
-        .build();
+    let mut host = gpu.offscreen_builder().collect_gpu_stats(true).build();
     host.ui().theme.panel_background = None;
     host
-}
-
-fn poll(device: &wgpu::Device) {
-    device
-        .poll(wgpu::PollType::Wait {
-            submission_index: None,
-            timeout: None,
-        })
-        .expect("device poll");
 }
 
 fn record(ui: &mut Ui, workload: Workload, phase: bool) {
@@ -154,7 +123,7 @@ fn render(
     *phase = !*phase;
     let mut app = RecordApp::new(|ui| record(ui, workload, *phase));
     host.frame_offscreen(target, 1.0, &mut app);
-    poll(&gpu.device);
+    gpu.wait();
 }
 
 fn median(values: &mut [f32]) -> Option<f32> {
@@ -166,7 +135,7 @@ fn median(values: &mut [f32]) -> Option<f32> {
 }
 
 fn report_evidence(gpu: &BenchGpu, workload: Workload) {
-    let target = target(&gpu.device);
+    let target = gpu.target(PHYSICAL, "palantir.curve_pipeline_bench.target");
     let mut host = host(gpu);
     let mut phase = false;
     let mut curve_ms = Vec::with_capacity(EVIDENCE_FRAMES);
@@ -214,7 +183,7 @@ pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Run<'_>) {
     group.sample_size(20);
     for workload in [Workload::CubicStrips, Workload::JoinChrome] {
         report_evidence(gpu, workload);
-        let target = target(&gpu.device);
+        let target = gpu.target(PHYSICAL, "palantir.curve_pipeline_bench.target");
         let mut host = host(gpu);
         let mut phase = false;
         for _ in 0..4 {

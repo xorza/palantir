@@ -34,7 +34,6 @@ use std::hint::black_box;
 use std::time::Duration;
 
 const PHYSICAL: glam::UVec2 = glam::UVec2::new(1024, 1024);
-const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 /// Source texture edge for the filter workloads. Smaller than the paint rect,
 /// so both run the magnification side of the filter choice.
 const TEXEL: u32 = 256;
@@ -104,40 +103,10 @@ fn gpu() -> &'static BenchGpu {
     BenchGpu::shared(Timing::Instrumented)
 }
 
-fn target(device: &wgpu::Device) -> wgpu::Texture {
-    device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("palantir.image_pipeline_bench.target"),
-        size: wgpu::Extent3d {
-            width: PHYSICAL.x,
-            height: PHYSICAL.y,
-            depth_or_array_layers: 1,
-        },
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format: FORMAT,
-        usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-            | wgpu::TextureUsages::COPY_DST
-            | wgpu::TextureUsages::COPY_SRC,
-        view_formats: &[],
-    })
-}
-
 fn host(gpu: &BenchGpu) -> OffscreenHost {
-    let mut host = OffscreenHost::builder(gpu.device.clone(), gpu.queue.clone())
-        .collect_gpu_stats(true)
-        .build();
+    let mut host = gpu.offscreen_builder().collect_gpu_stats(true).build();
     host.ui().theme.panel_background = None;
     host
-}
-
-fn poll(device: &wgpu::Device) {
-    device
-        .poll(wgpu::PollType::Wait {
-            submission_index: None,
-            timeout: None,
-        })
-        .expect("device poll");
 }
 
 /// Deterministic high-frequency content: per-texel colour varies at the
@@ -218,7 +187,7 @@ impl Fixture {
     fn new(gpu: &BenchGpu) -> Self {
         Self {
             host: host(gpu),
-            target: target(&gpu.device),
+            target: gpu.target(PHYSICAL, "palantir.image_pipeline_bench.target"),
             handle: None,
             phase: false,
         }
@@ -235,7 +204,7 @@ impl Fixture {
         let phase = *phase;
         let mut app = RecordApp::new(|ui| record(ui, handle, workload, phase));
         host.frame_offscreen(target, 1.0, &mut app);
-        poll(&gpu.device);
+        gpu.wait();
     }
 }
 

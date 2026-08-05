@@ -85,7 +85,6 @@ use std::hint::black_box;
 use std::time::Duration;
 
 const PHYSICAL: glam::UVec2 = glam::UVec2::new(512, 512);
-const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 /// Cells per axis. `GRID * GRID` items tile the viewport exactly, with no
 /// gaps — every arm's dirty rects then merge into a region covering well
 /// over `FULL_REPAINT_THRESHOLD`, which is what keeps each frame a single
@@ -176,25 +175,6 @@ fn gpu() -> &'static BenchGpu {
     BenchGpu::shared(Timing::Bare)
 }
 
-fn target(device: &wgpu::Device) -> wgpu::Texture {
-    device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("palantir.record_pass_bench.target"),
-        size: wgpu::Extent3d {
-            width: PHYSICAL.x,
-            height: PHYSICAL.y,
-            depth_or_array_layers: 1,
-        },
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format: FORMAT,
-        usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-            | wgpu::TextureUsages::COPY_DST
-            | wgpu::TextureUsages::COPY_SRC,
-        view_formats: &[],
-    })
-}
-
 /// Solid `TEXEL`-square source. Content is irrelevant to a bind/draw
 /// count — `seed` only varies it so two registrations can't be folded
 /// together by any future content-hash dedup in the image registry.
@@ -279,7 +259,6 @@ struct Counts {
 #[derive(Debug)]
 struct Fixture {
     host: OffscreenHost,
-    device: wgpu::Device,
     target: wgpu::Texture,
     handles: Vec<ImageHandle>,
     workload: Workload,
@@ -288,7 +267,7 @@ struct Fixture {
 
 impl Fixture {
     fn new(gpu: &BenchGpu, workload: Workload) -> Self {
-        let mut host = OffscreenHost::builder(gpu.device.clone(), gpu.queue.clone()).build();
+        let mut host = gpu.offscreen_builder().build();
         // No theme panel background: each arm should record exactly the
         // one shape family it names, not that plus a chrome quad per cell.
         host.ui().theme.panel_background = None;
@@ -301,8 +280,7 @@ impl Fixture {
             .collect();
         Self {
             host,
-            device: gpu.device.clone(),
-            target: target(&gpu.device),
+            target: gpu.target(PHYSICAL, "palantir.record_pass_bench.target"),
             handles,
             workload,
             phase: false,
@@ -313,7 +291,6 @@ impl Fixture {
         self.phase = !self.phase;
         let Self {
             host,
-            device,
             target,
             handles,
             workload,
@@ -344,12 +321,7 @@ impl Fixture {
         //   the very command recording being timed. `Wait` costs a GPU
         //   round-trip per frame — which lands outside the measured window
         //   — and buys samples that are comparable across arms.
-        device
-            .poll(wgpu::PollType::Wait {
-                submission_index: None,
-                timeout: None,
-            })
-            .expect("device poll");
+        gpu().wait();
     }
 
     /// Replay the schedule over the frame just composed to count the

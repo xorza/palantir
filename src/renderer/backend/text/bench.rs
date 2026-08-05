@@ -43,7 +43,7 @@
 use std::sync::OnceLock;
 use std::time::Duration;
 
-use crate::host::bench_gpu::{BenchGpu, Timing};
+use crate::host::bench_gpu::{BenchGpu, TARGET_FORMAT, Timing};
 use crate::primitives::color::ColorU8;
 use crate::primitives::interned_str::InternedText;
 use crate::primitives::urect::URect;
@@ -66,7 +66,6 @@ use std::hint::black_box;
 use wgpu::util::StagingBelt;
 
 const PHYSICAL: UVec2 = UVec2::new(1280, 800);
-const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 const BASE_SCALE: f32 = 2.0;
 /// Matches `crate::text::TEXT_SCALE_STEP`, the ladder the composer
 /// actually snaps a zoom to. It used to be 0.025 here — 5x coarser, so
@@ -191,34 +190,6 @@ fn gpu() -> &'static Gpu {
             queue: Queue::new(shared.queue.clone()),
         }
     })
-}
-
-fn make_target(device: &wgpu::Device) -> wgpu::Texture {
-    device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("palantir.text_atlas.target"),
-        size: wgpu::Extent3d {
-            width: PHYSICAL.x,
-            height: PHYSICAL.y,
-            depth_or_array_layers: 1,
-        },
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format: FORMAT,
-        usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-            | wgpu::TextureUsages::COPY_DST
-            | wgpu::TextureUsages::COPY_SRC,
-        view_formats: &[],
-    })
-}
-
-fn poll_drain(device: &wgpu::Device) {
-    device
-        .poll(wgpu::PollType::Wait {
-            submission_index: None,
-            timeout: None,
-        })
-        .expect("device poll");
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -383,7 +354,7 @@ fn run_batches(
     belt.finish();
     g.queue.submit([encoder.finish()]);
     belt.recall();
-    poll_drain(&g.device);
+    BenchGpu::shared(Timing::Bare).wait();
     backend.end_frame();
 }
 
@@ -418,7 +389,7 @@ fn build_distinct_runs(shaper: &TextShaper) -> BenchRuns {
 fn fresh_backend(g: &Gpu) -> (BenchText, BenchRuns) {
     let shaper = TextShaper::new();
     let runs = build_runs(&shaper);
-    let backend = BenchText::new(&g.device, FORMAT, shaper);
+    let backend = BenchText::new(&g.device, TARGET_FORMAT, shaper);
     // Viewport is no longer the text backend's concern — it reads
     // from the shared `@group(0)` uniform the production host binds.
     // The bench's atlas-only fixture doesn't actually issue draws
@@ -452,7 +423,7 @@ fn report_atlas_pressure(label: &str, backend: &BenchText, frames: u32) {
 
 pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Run<'_>) {
     let g = gpu();
-    let target = make_target(&g.device);
+    let target = BenchGpu::shared(Timing::Bare).target(PHYSICAL, "palantir.text_atlas.target");
     let view = target.create_view(&wgpu::TextureViewDescriptor::default());
 
     let mut group = c.benchmark_group("text_atlas");
@@ -678,7 +649,7 @@ pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Run<'_>) {
         // full-frame variant cannot resolve it.
         let shaper = TextShaper::new();
         let scene = build_distinct_runs(&shaper);
-        let mut backend = BenchText::new(&g.device, FORMAT, shaper);
+        let mut backend = BenchText::new(&g.device, TARGET_FORMAT, shaper);
         let mut belt = StagingBelt::new(g.device.clone(), 1 << 20);
         for _ in 0..2 {
             run_frame(
