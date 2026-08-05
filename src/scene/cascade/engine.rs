@@ -35,6 +35,11 @@ use std::hash::Hasher as _;
 /// walking — bundled because they are pushed to together and travel as
 /// one, and because threading four more parameters through
 /// `run_tree` is what the argument count is for.
+///
+/// The **full rebuild's** alone. An incremental walk repairs paint and
+/// appends to none of them, which is why `run_tree` takes this as an
+/// `Option` and that path passes `None` rather than a sink it will
+/// never touch.
 #[derive(Debug)]
 struct TreeSink<'a> {
     entries: &'a mut Vec<EntryRow>,
@@ -63,9 +68,11 @@ struct Frame {
     /// ancestor-derived hash inputs (transform / clip / disabled /
     /// invisible). Cloned once per descendant to seed `cascade_input` —
     /// descendants only fold in their own `layout_rect`, avoiding a
-    /// re-hash of the 32 B ancestor prefix per node. Incremental frames
-    /// carry an empty hasher because their retained inputs stay valid.
-    cascade_prefix: Hasher,
+    /// re-hash of the 32 B ancestor prefix per node.
+    ///
+    /// `None` on an incremental frame: the retained `cascade_input`s
+    /// stay valid there, so no prefix is folded and none is read.
+    cascade_prefix: Option<Hasher>,
 }
 
 #[derive(Debug, Default)]
@@ -98,16 +105,13 @@ impl CascadeEngine {
             let n = tree.records.len();
             self.stack.clear();
             self.paint_scratch.reset_for(n);
+            // No sink: this walk repairs paint and appends to none of
+            // the three tables.
             let incremental_complete = self.run_tree::<true>(
                 tree,
                 &layout[layer],
                 &mut cascade.layers[layer],
-                &mut TreeSink {
-                    entries: &mut cascade.entries,
-                    hits: &mut cascade.hits,
-                    scopes: &mut cascade.scopes,
-                    layer,
-                },
+                None,
                 display.scale_factor,
             );
             if !incremental_complete {
@@ -184,12 +188,12 @@ impl CascadeEngine {
                 tree,
                 &layout[layer],
                 &mut cascade.layers[layer],
-                &mut TreeSink {
+                Some(&mut TreeSink {
                     entries: &mut cascade.entries,
                     hits: &mut cascade.hits,
                     scopes: &mut cascade.scopes,
                     layer,
-                },
+                }),
                 display.scale_factor,
             );
             debug_assert!(full_complete);
@@ -290,33 +294,38 @@ fn finalize_frame(stack: &mut [Frame], subtree_paint_rects: &mut [Rect], popped:
 }
 
 impl CascadeEngine {
-    // Compile-time specialization keeps the full rebuild free of incremental branches.
+    /// Walk one tree, writing the cascade columns for it.
+    ///
+    /// Returns whether the walk *completed*. Only the incremental path
+    /// can answer `false` — it bails when a node's repaired paint span
+    /// changes length, because the retained arena can no longer be
+    /// patched in place and the caller has to fall back to a full
+    /// rebuild. A full rebuild writes every column from scratch and has
+    /// nothing to bail on, so its caller asserts the `true`.
+    ///
+    /// `INCREMENTAL` is a const parameter so each path folds away the
+    /// other's branches. Measured: that buys no time on `cascade/run`,
+    /// and costs ~3.4 KB of codegen by inlining the walk into both
+    /// callers — it is kept for the dead-code elimination that keeps
+    /// each path's reads honest, not for speed.
     fn run_tree<const INCREMENTAL: bool>(
         &mut self,
         tree: &Tree,
         layout: &LayerLayout,
         lc: &mut LayerCascade,
-        sink: &mut TreeSink<'_>,
+        mut sink: Option<&mut TreeSink<'_>>,
         display_scale: f32,
     ) -> bool {
-        let TreeSink {
-            entries,
-            hits,
-            scopes,
-            layer,
-        } = sink;
-        let layer = *layer;
         let n = tree.records.len() as u32;
         let layout_col = tree.records.layout();
         let attrs_col = tree.records.attrs();
         let widget_ids = tree.records.widget_id();
         let ends = tree.records.subtree_end();
         let subtree_hashes = tree.rollups.subtree.as_slice();
-        let root_prefix = if INCREMENTAL {
-            Hasher::new()
-        } else {
-            build_cascade_prefix(TranslateScale::IDENTITY, None, false, false)
-        };
+        // `None` while repairing: the retained `cascade_input`s stay
+        // valid, so nothing folds a prefix and nothing reads one.
+        let root_prefix = (!INCREMENTAL)
+            .then(|| build_cascade_prefix(TranslateScale::IDENTITY, None, false, false));
 
         let mut i: u32 = 0;
         while i < n {
@@ -335,9 +344,15 @@ impl CascadeEngine {
                         p.clip,
                         p.disabled,
                         p.invisible,
-                        &p.cascade_prefix,
+                        p.cascade_prefix.as_ref(),
                     ),
-                    None => (TranslateScale::IDENTITY, None, false, false, &root_prefix),
+                    None => (
+                        TranslateScale::IDENTITY,
+                        None,
+                        false,
+                        false,
+                        root_prefix.as_ref(),
+                    ),
                 };
 
             let iu = i as usize;
@@ -435,6 +450,8 @@ impl CascadeEngine {
             if INCREMENTAL {
                 lc.subtree_hashes[iu] = subtree_hashes[iu];
             } else {
+                let parent_prefix =
+                    parent_prefix.expect("a full rebuild always carries a cascade prefix");
                 lc.cascade_inputs[iu] = finish_cascade_input(parent_prefix, layout_rect, invisible);
                 lc.subtree_ends[iu] = subtree_end;
             }
@@ -445,6 +462,10 @@ impl CascadeEngine {
             // before the body.
             let desc_clip = shape_clip;
             if !INCREMENTAL {
+                let sink = sink
+                    .as_mut()
+                    .expect("a full rebuild always passes its sink");
+                let layer = sink.layer;
                 let cascaded_off = disabled || invisible;
                 let sense = if cascaded_off {
                     Sense::NONE
@@ -453,7 +474,7 @@ impl CascadeEngine {
                 };
                 let focusable = !cascaded_off && attrs.is_focusable();
                 if sense != Sense::NONE || focusable {
-                    hits.push(HitRow {
+                    sink.hits.push(HitRow {
                         rect: visible_rect,
                         widget_id: widget_ids[iu],
                         sense,
@@ -468,13 +489,13 @@ impl CascadeEngine {
                     attrs.key_filter()
                 };
                 if filter.is_scope() {
-                    scopes.push(ScopeRow {
+                    sink.scopes.push(ScopeRow {
                         layer,
                         id: widget_ids[iu],
                         filter,
                     });
                 }
-                entries.push(EntryRow {
+                sink.entries.push(EntryRow {
                     rect: visible_rect,
                     transform: parent_transform,
                     disabled,
@@ -501,11 +522,9 @@ impl CascadeEngine {
                     subtree_end,
                     node_idx: iu,
                     subtree_paint_rect: subtree_seed,
-                    cascade_prefix: if INCREMENTAL {
-                        Hasher::new()
-                    } else {
+                    cascade_prefix: (!INCREMENTAL).then(|| {
                         build_cascade_prefix(desc_transform, shape_clip, disabled, invisible)
-                    },
+                    }),
                 });
             }
             i += 1;
