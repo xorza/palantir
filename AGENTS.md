@@ -39,3 +39,8 @@ write.
 Rendering changes (shaders, encoder/composer, atlases, colour pipeline, layout
 that moves pixels) need the visual suite run as well — the unit tests alone
 won't catch a render regression.
+
+Performance work starts at `benches/AGENTS.md` — the manual for both bench
+harnesses and for `scripts/bench-perf.sh`. Read it before measuring or reaching
+for `perf`; it carries the A/B protocol, the profiling recipes, and the traps
+that otherwise get rediscovered one wasted capture at a time.
