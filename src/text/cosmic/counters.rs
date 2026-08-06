@@ -32,30 +32,30 @@ use crate::common::counters::TestOnly;
 /// `probe.hits.bump()` is the whole call site and a wrapper would only
 /// restate the field name.
 #[derive(Debug, Default)]
-pub(super) struct CacheCounters {
+pub(crate) struct CacheCounters {
     /// Runs actually pushed through cosmic — `set_text` plus
     /// `shape_until_scroll`. The cost every other counter here exists to
     /// explain.
-    pub(super) shapes: TestOnly<u32>,
+    pub(crate) shapes: TestOnly<u32>,
     /// Lookups answered from the cache, layout-side and render-side
     /// alike.
-    pub(super) hits: TestOnly<u32>,
+    pub(crate) hits: TestOnly<u32>,
     /// Entries demoted to the probation window because the reuse slot
     /// that owned them moved on to a different key.
-    pub(super) supersedes: TestOnly<u32>,
+    pub(crate) supersedes: TestOnly<u32>,
     /// Buffers dropped by the end-of-frame sweep.
-    pub(super) expiries: TestOnly<u32>,
+    pub(crate) expiries: TestOnly<u32>,
     /// Times the "…" advance had to be reshaped because no slot held
     /// that face. Separate from `shapes`, which counts runs that landed
     /// in the cache — the ellipsis probe shapes without inserting.
-    pub(super) ellipsis_misses: TestOnly<u32>,
+    pub(crate) ellipsis_misses: TestOnly<u32>,
 }
 
 /// Reads are test-only: nothing in a shipping build has a reason to ask,
 /// and gating them here is what lets the counters themselves be absent.
 #[cfg(test)]
 impl CacheCounters {
-    pub(super) fn counts(&self) -> CacheCounts {
+    pub(crate) fn counts(&self) -> CacheCounts {
         CacheCounts {
             shapes: self.shapes.count(),
             hits: self.hits.count(),
