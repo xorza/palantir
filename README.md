@@ -22,6 +22,7 @@ every widget, every `Shape` family — at 2560×1440, and runs each arm
 twice: once as the deviceless CPU pipeline (record → measure → arrange →
 cascade → damage → encode + compose), once as the full public path
 through `OffscreenHost` with the GPU drained before the next iteration.
+
 Intel Core i9-13980HX (Raptor Lake) with an RTX 4090 Laptop:
 
 | arm         | CPU pipeline | CPU + GPU frame |
@@ -33,14 +34,24 @@ Intel Core i9-13980HX (Raptor Lake) with an RTX 4090 Laptop:
 
 Steady-state cost per frame on `frame/cached_cpu` (measured 5.03 GHz,
 ~97 µs/frame): **~2.07 M instructions retired**, **~489 K cycles**,
-**IPC ≈ 4.23** — close to the 4-5 this core can issue. The frame is
-retiring-bound, not stalled: **67.2% of issue slots retire**, **branch
-mispredicts are 0.09%** of ~257 K branches (~0.11 per 1K instructions)
-and the **L1-d cache miss rate is 0.69%** of ~517 K loads (~1.7 per 1K
-instructions), with 7.0% of slots lost to a frontend stall and 22.7% to
-the backend. Measured via `perf stat -d` and `-M TopdownL1`, pinned to
-one core; the per-frame counts are a differential between two
-`--profile-time` windows, so process startup cancels out.
+**IPC ≈ 4.23**.
+
+AMD Ryzen 7 6800U (Zen 3+) with its integrated Radeon 680M:
+
+| arm         | CPU pipeline | CPU + GPU frame |
+| ----------- | -----------: | --------------: |
+| `cached`    |       130 µs |         1.12 ms |
+| `partial`   |       145 µs |         1.37 ms |
+| `scrolling` |       201 µs |         4.25 ms |
+| `resizing`  |       317 µs |         5.38 ms |
+
+Steady-state cost per frame on `frame/cached_cpu` (measured 4.59 GHz,
+~130 µs/frame): **~2.03 M instructions retired**, **~596 K cycles**,
+**IPC ≈ 3.41**.
+
+Measured via `perf stat -d`, pinned to one core; the per-frame counts are
+a differential between two `--profile-time` windows, so process startup
+cancels out.
 
 The build sets `-C target-feature=+f16c` (see [Recommended build
 flag](#recommended-build-flag)), worth ~6% of the CPU figures above.

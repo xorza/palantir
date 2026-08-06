@@ -49,10 +49,11 @@
 //!
 //! `--size <w>x<h>` and `--scale <dpr>` override the surface every arm
 //! renders into (the resize pool rescales with it), so the same fixture
-//! can be measured at a real display size without editing this file. A
-//! surface smaller than the default culls the off-screen part of the
-//! fixture: the CPU arms still record, measure and arrange the whole
-//! tree, but only the visible part is painted.
+//! can be measured at another display size without editing this file.
+//! Culling is what makes the size matter: the fixture is taller than the
+//! 1440p default view, so the CPU arms record, measure and arrange the
+//! whole tree while paint and the GPU arms see only what is on screen. A
+//! taller surface therefore costs more, not less.
 //!
 //! All four arrive in [`Run::fixture`] — this bench reads no environment
 //! of its own.
@@ -92,16 +93,23 @@ pub(crate) const SCALE: f32 = 2.0;
 // and reused as the `clear` for the synthesized `Full` plan the CPU
 // `cached` arm encodes against (see `CpuHarness::frame`).
 const WINDOW_CLEAR: Color = Color::BLACK;
-// View sized so `BENCH_SCALE = 32` content (36-row prop grid, 96-chip wrap,
-// specimen sheet, 64-cell filmstrip, activity scroll, notes) fits inside the
-// fixture's page scroll — clipped-away cards are culled, so a shorter view
-// would quietly shrink the painted tree this bench exists to measure.
-pub(crate) const CACHED_SIZE: glam::UVec2 = glam::UVec2::new(3840, 6000); // 1920x3000 @ 2x
+// One 1440p display, which is what the reported numbers are meant to
+// stand for. `BENCH_SCALE = 32` content (36-row prop grid, 96-chip wrap,
+// specimen sheet, 64-cell filmstrip, activity scroll, notes) is far
+// taller than this, so everything past the fold is clipped away and
+// culled: the CPU arms still record, measure and arrange the whole tree,
+// while paint and the GPU arms see only the visible part. Raise it with
+// `--size` to measure the whole fixture painting at once.
+pub(crate) const CACHED_SIZE: glam::UVec2 = glam::UVec2::new(2560, 1440); // 1280x720 @ 2x
+// Proportioned against `CACHED_SIZE` — `Surface::new` rescales them by
+// whatever ratio `--size` asks for, so what matters is the spread
+// (-16%..+8% wide, -7%..+3% tall), not the absolute values. Multiples of
+// 16 so a resized surface stays tile-aligned.
 const RESIZE_POOL: &[glam::UVec2] = &[
-    glam::UVec2::new(3200, 5600),
-    glam::UVec2::new(3840, 6000),
-    glam::UVec2::new(3520, 5800),
-    glam::UVec2::new(4160, 6200),
+    glam::UVec2::new(2144, 1344),
+    glam::UVec2::new(2560, 1440),
+    glam::UVec2::new(2352, 1392),
+    glam::UVec2::new(2768, 1488),
 ];
 
 /// [`Fixture`]'s options resolved against this bench's defaults — what
@@ -782,32 +790,32 @@ mod tests {
         assert_eq!(d.scale, SCALE);
         assert_eq!(d.pool, RESIZE_POOL, "unset size leaves the pool alone");
 
-        // Half the default in both axes: 3840x6000 -> 1920x3000, ratio
-        // 0.5, so 3200x5600 -> 1600x2800 and 4160x6200 -> 2080x3100.
+        // Half the default in both axes: 2560x1440 -> 1280x720, ratio
+        // 0.5, so 2144x1344 -> 1072x672 and 2768x1488 -> 1384x744.
         let half = Surface::new(Fixture {
-            size: Some(glam::UVec2::new(1920, 3000)),
+            size: Some(glam::UVec2::new(1280, 720)),
             scale: Some(1.0),
             ..Fixture::default()
         });
-        assert_eq!(half.size, glam::UVec2::new(1920, 3000));
+        assert_eq!(half.size, glam::UVec2::new(1280, 720));
         assert_eq!(half.scale, 1.0);
         assert_eq!(
             half.pool,
             [
-                glam::UVec2::new(1600, 2800),
-                glam::UVec2::new(1920, 3000),
-                glam::UVec2::new(1760, 2900),
-                glam::UVec2::new(2080, 3100),
+                glam::UVec2::new(1072, 672),
+                glam::UVec2::new(1280, 720),
+                glam::UVec2::new(1176, 696),
+                glam::UVec2::new(1384, 744),
             ],
         );
 
         // A non-integral ratio rounds rather than truncating: width
-        // 3840 -> 2000 is 0.520833…, and 3200 * that = 1666.67 -> 1667.
+        // 2560 -> 2100 is 0.8203125, and 2144 * that = 1758.75 -> 1759.
         let odd = Surface::new(Fixture {
-            size: Some(glam::UVec2::new(2000, 3000)),
+            size: Some(glam::UVec2::new(2100, 1440)),
             ..Fixture::default()
         });
-        assert_eq!(odd.pool[0].x, 1667);
+        assert_eq!(odd.pool[0].x, 1759);
         assert_eq!(odd.scale, SCALE, "unset scale keeps the default");
     }
 }
