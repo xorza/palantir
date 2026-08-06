@@ -25,7 +25,7 @@
 //! cost of resolving them — verifying with the cached buffer's source string
 //! on every hit — outweighs the cost of accepting the negligible risk.
 
-use crate::common::expiry_wheel::ExpiryWheel;
+use crate::common::expiry_wheel::{ExpiryWheel, TicketSeq};
 use crate::layout::types::align::HAlign;
 use crate::primitives::num::F32Ext;
 use crate::primitives::size::Size;
@@ -218,12 +218,12 @@ struct CacheEntry {
     /// out, so the two-tier policy needs no separate "has been reused"
     /// flag — the deadline *is* the tier.
     keep_until: u64,
-    /// Frame this entry's live ticket was filed for. A ticket firing
-    /// under any other frame was supplanted by a later
+    /// Serial of this entry's live expiry ticket. A ticket firing under
+    /// any other one was supplanted by a later
     /// [`CosmicMeasure::supersede`] and dies in the sweep instead of
     /// re-filing itself — without which a run that is demoted and
     /// promoted each frame accumulates one permanent ticket per cycle.
-    ticket_due: u64,
+    ticket_seq: TicketSeq,
 }
 
 /// Real-shaping text measurer. Owns a [`FontSystem`] populated by
@@ -749,7 +749,7 @@ impl CosmicMeasure {
         let keep_until = self.frame + PROBATION_KEEP_FRAMES;
         // First frame on which the entry is dead, matching the sweep's
         // own `keep_until < frame` test.
-        let ticket_due = self.expiry.schedule(key, keep_until + 1);
+        let ticket_seq = self.expiry.schedule(key, keep_until + 1);
         let displaced = self.cache.insert(
             key,
             CacheEntry {
@@ -757,7 +757,7 @@ impl CosmicMeasure {
                 root: geometry.root,
                 left: geometry.left,
                 keep_until,
-                ticket_due,
+                ticket_seq,
             },
         );
         // Unreachable today — every caller checks `cache_hit` first, so a
@@ -834,7 +834,7 @@ impl CosmicMeasure {
             // The new ticket is earlier than the outstanding one, so it
             // is the one that decides this entry's fate: stamping it
             // here retires the supplanted ticket when it fires.
-            entry.ticket_due = self.expiry.schedule(key, keep_until + 1);
+            entry.ticket_seq = self.expiry.schedule(key, keep_until + 1);
         }
     }
 
@@ -878,11 +878,11 @@ impl CosmicMeasure {
         let cache = &mut self.cache;
         let recycle_pool = &mut self.recycle_pool;
         let probe = &mut self.counters;
-        self.expiry.retire(frame, |key, filed_for| {
+        self.expiry.retire(frame, |key, seq| {
             // Retired already — a demote leaves two tickets outstanding
             // and both can come due in one drain, so whichever settled
             // first may have evicted the entry this one is holding.
-            let Entry::Occupied(mut slot) = cache.entry(key) else {
+            let Entry::Occupied(slot) = cache.entry(key) else {
                 return None;
             };
             // Supplanted by a later `supersede`: the entry's live ticket
@@ -890,24 +890,13 @@ impl CosmicMeasure {
             // surplus and dies here. Re-filing it instead is what let the
             // per-entry ticket count — and with it the per-frame drain —
             // grow for as long as the entry stayed resident.
-            if filed_for.is_some_and(|filed| filed != slot.get().ticket_due) {
+            if seq != slot.get().ticket_seq {
                 return None;
             }
             if slot.get().keep_until >= frame {
-                let next = slot.get().keep_until + 1;
-                // Stamping owners, unlike the wheel's other users, cannot
-                // ride the clamp: a re-file the ring moved would fire on
-                // a frame this stamp does not name, and the entry would
-                // lose the very ticket guarding it. Holds because
-                // `keep_until` is always within a window of a frame
-                // already past, which is what the horizon is sized for.
-                debug_assert!(
-                    next <= frame + PROTECTED_KEEP_FRAMES + 1,
-                    "a re-file past the wheel's horizon would clamp and \
-                     leave this stamp unmatchable",
-                );
-                slot.get_mut().ticket_due = next;
-                return Some(next);
+                // Re-filed under the same serial, so the entry's stamp
+                // still names it and nothing has to be written back.
+                return Some(slot.get().keep_until + 1);
             }
             probe.expiries.bump();
             recycle_buffer(recycle_pool, slot.remove().buffer);
