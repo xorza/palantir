@@ -99,6 +99,23 @@ that reuses capacity across frames; any new per-frame `Vec::new()` /
 `HashMap` rebuild is treated as a regression and caught by the `alloc`
 bench under `benches/`.
 
+## Recommended build flag
+
+Colour, corner radii, spacing and shadow geometry are stored as f16. Without
+F16C in the target features, each conversion takes a runtime feature check
+into a `#[target_feature]` fn that can't inline into its caller — a spill and
+a call every time.
+
+```toml
+# .cargo/config.toml
+[target.'cfg(target_arch = "x86_64")']
+rustflags = ["-C", "target-feature=+f16c"]
+```
+
+Worth **−5 to −8%** on the `frame` bench. Moves the CPU floor to Ivy Bridge
+(2012), so it's the application's call — palantir keeps the runtime fallback
+either way. `-C target-cpu=x86-64-v3` implies it, plus AVX2 and FMA.
+
 ## Example
 
 ```rust,no_run
