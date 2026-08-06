@@ -522,7 +522,10 @@ impl GlyphAtlas {
         let cache = &mut self.cache;
         let slots = &self.slots;
         let free = &mut self.free;
-        self.unallocated_expiry.retire(frame, |key| {
+        // No stamp to check: this wheel's deadlines only ever move out,
+        // so a ticket is never supplanted and every one that fires is
+        // the live one.
+        self.unallocated_expiry.retire(frame, |key, _| {
             retire_unallocated(cache, slots, free, key, frame)
         });
     }

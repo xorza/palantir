@@ -280,3 +280,144 @@ fn steady_key_churn_costs_a_bounded_cache_and_spares_the_working_set() {
         );
     }
 }
+
+/// A resize drag demotes each run's previous width and promotes the one
+/// it lands on, every frame, forever. Each demote files a ticket that
+/// supplants the entry's outstanding one — and if the supplanted ticket
+/// re-files itself instead of dying, the ticket count grows by one per
+/// run per cycle for as long as the entry stays resident. The sweep then
+/// costs a function of uptime rather than of churn: `frame/resizing_cpu`
+/// read 374 µs before that and 707 µs after, and kept climbing with the
+/// benchmark's own measurement window.
+#[test]
+fn demote_and_promote_churn_keeps_the_ticket_count_flat() {
+    const RUNS: usize = 8;
+    const WIDTHS: usize = 4;
+    // Long enough that unbounded growth is unmissable: one surplus
+    // ticket per run per frame would leave ~3200 outstanding by the end.
+    const FRAMES: usize = 400;
+    // Past the initial fill's own insert tickets, so both samples sit in
+    // steady state rather than one catching the ramp.
+    const SETTLED_BY: usize = 100;
+
+    let mut c = CosmicMeasure::with_bundled_fonts();
+    let keys = fill_distinct_widths(&mut c, (RUNS * WIDTHS) as u32);
+    // One spelling of the arithmetic, so the key a case supersedes and
+    // the shape it measures cannot drift apart.
+    let idx = |run: usize, width: usize| run * WIDTHS + width;
+
+    // Sampled at matching phase of the rotation, so the two are directly
+    // comparable rather than differing by where in the cycle they land.
+    let mut pending_at = Vec::new();
+    for frame in 0..FRAMES {
+        let width = frame % WIDTHS;
+        let previous = (frame + WIDTHS - 1) % WIDTHS;
+        for run in 0..RUNS {
+            // Layout asks for this frame's width: a hit, which promotes.
+            c.measure(BODY, distinct_width_shape(idx(run, width) as u32));
+            // ...and the width the run's reuse slot just stopped
+            // answering is demoted to probation.
+            if frame > 0 {
+                c.supersede(keys[idx(run, previous)]);
+            }
+        }
+        c.tick_frame();
+        if frame % WIDTHS == 0 {
+            pending_at.push((frame, c.pending_tickets()));
+        }
+    }
+
+    // Nothing is ever evicted here — every key is re-measured one frame
+    // inside its probation window — so any growth is pure ticket surplus.
+    assert_eq!(c.cache_len(), RUNS * WIDTHS, "the working set is intact");
+
+    // A ticket filed by `supersede` is the entry's live one and fires
+    // PROBATION_KEEP_FRAMES + 1 frames later; the one it supplanted dies
+    // on its own next firing. So what is outstanding is one live ticket
+    // per resident entry plus the demotes still in flight, and never a
+    // multiple of how long the drag has run.
+    let ceiling = RUNS * WIDTHS + RUNS * (cosmic::PROBATION_KEEP_FRAMES as usize + 2);
+    let (worst_frame, worst) = *pending_at.iter().max_by_key(|&&(_, n)| n).unwrap();
+    assert!(
+        worst <= ceiling,
+        "frame {worst_frame} held {worst} tickets, over the {ceiling} \
+         a churning entry can justify",
+    );
+
+    let settled = pending_at
+        .iter()
+        .find(|&&(frame, _)| frame == SETTLED_BY)
+        .expect("the sample cadence divides SETTLED_BY");
+    let last = pending_at.last().unwrap();
+    assert_eq!(
+        settled.1, last.1,
+        "frame {} and frame {} must hold the same ticket count — it \
+         tracks churn, not how long the drag has run",
+        settled.0, last.0,
+    );
+}
+
+/// The demote has to *take effect* while a longer-lived ticket is still
+/// outstanding, which is the whole reason `supersede` files a second one.
+/// Retiring the supplanted ticket instead of the live one would leave a
+/// dead buffer resident for the protected window — the resize-drag bound
+/// gone, in exchange for the flat ticket count above.
+#[test]
+fn a_demote_still_evicts_on_time_with_an_older_ticket_outstanding() {
+    let mut c = CosmicMeasure::with_bundled_fonts();
+    let keys = fill_distinct_widths(&mut c, 1);
+
+    // Promote it, then let its insert-time ticket fire and re-file far
+    // out — now the outstanding ticket sits at the protected deadline.
+    c.ensure_buffer(TextShapeRequest {
+        text: BODY,
+        key: keys[0],
+    });
+    idle_frames(&mut c, cosmic::PROBATION_KEEP_FRAMES + 1);
+    assert_eq!(c.cache_len(), 1, "promoted, so it outlives probation");
+
+    // The reuse slot moves off this width.
+    c.supersede(keys[0]);
+    idle_frames(&mut c, cosmic::PROBATION_KEEP_FRAMES);
+    assert_eq!(c.cache_len(), 1, "still inside the probation window");
+    idle_frames(&mut c, 1);
+    assert_eq!(
+        c.cache_len(),
+        0,
+        "a demoted entry dies on the probation window, not the protected one",
+    );
+}
+
+/// The other side of the same edge: a demoted entry the drag comes back
+/// to is promoted again, and the ticket the demote supplanted must not
+/// take it with it when it fires. Dropping a live entry here would make
+/// every reversal in a drag reshape from scratch.
+#[test]
+fn a_supplanted_ticket_does_not_evict_an_entry_promoted_since() {
+    let mut c = CosmicMeasure::with_bundled_fonts();
+    let keys = fill_distinct_widths(&mut c, 1);
+
+    c.ensure_buffer(TextShapeRequest {
+        text: BODY,
+        key: keys[0],
+    });
+    idle_frames(&mut c, cosmic::PROBATION_KEEP_FRAMES + 1);
+
+    // Demote, then come back to it one frame before it would lapse —
+    // exactly what a width rotation does.
+    c.supersede(keys[0]);
+    idle_frames(&mut c, cosmic::PROBATION_KEEP_FRAMES);
+    c.ensure_buffer(TextShapeRequest {
+        text: BODY,
+        key: keys[0],
+    });
+
+    // Walk past both the probation deadline the demote set and the
+    // frame the supplanted ticket was filed for.
+    idle_frames(&mut c, cosmic::PROBATION_KEEP_FRAMES + 2);
+    assert_eq!(c.cache_len(), 1, "the promotion outranks the stale ticket");
+
+    // And it is still on a real deadline, not immortal.
+    idle_frames(&mut c, cosmic::PROTECTED_KEEP_FRAMES);
+    assert_eq!(c.cache_len(), 0, "left alone, it still ages out");
+}
