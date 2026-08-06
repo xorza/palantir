@@ -19,19 +19,36 @@
 //! [`render`]), which the mono fallback cannot provide,
 //! so a trait would just be a downcast in disguise.
 //!
-//! Module layout: this file owns only the vocabulary every other module
-//! names ([`FontFamily`], [`FontWeight`]) plus the two constants the
-//! renderer has to agree with. One major type per module beyond that —
-//! [`shaper`] the app-global coordinator, [`system`] the per-window reuse
-//! slots, [`request`] what a shaping call is asked, [`root`] what an
-//! unbounded shape answers, [`key`] the quantized cache identity,
-//! [`shaped_ref`] the render handoff, [`probe`] the public geometry
-//! surface over [`layout_probe`]'s lease, [`render`] the cosmic-free
-//! render vocabulary, [`wrap`] the wrap-policy vocabulary.
+//! # Module layout
+//!
+//! Two shapes, and a module is one or the other.
+//!
+//! **Owner modules** are named for the one type they own, and hold that
+//! type's private helpers and nothing else: [`shaper`] the app-global
+//! coordinator, [`system`] the per-window reuse slots, [`request`] what a
+//! shaping call is asked, [`root`] what an unbounded shape answers,
+//! [`key`] the quantized cache identity, [`shaped_ref`] the render
+//! handoff, [`run`] how a caller describes a run to probe, [`probe`] the
+//! public geometry surface over [`layout_probe`]'s lease.
+//!
+//! **Vocabulary modules** hold the small value types one layer speaks in,
+//! where naming a module per type would scatter a set that is only ever
+//! read together: this file ([`FontFamily`], [`FontWeight`], plus the two
+//! constants the renderer has to agree with), [`wrap`] the wrap policies,
+//! [`render`] the cosmic-free render terms.
+//!
+//! A backend gets a directory, because one type with five separable jobs
+//! is neither shape. [`cosmic`] is `CosmicMeasure` plus wrapped shaping
+//! in `mod.rs`, with `retention` (the two-tier windows and the four
+//! operations that move an entry between them), `truncate` (the
+//! cluster-precise cut), `geometry` (reading measurements back off a
+//! shaped buffer), `glyphs` (the render side), and `counters` beside it.
+//! Its children reach the measurer's private fields directly — privacy
+//! descends — so the split costs no widening, and each file is one
+//! answerable question.
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
-mod cache_counters;
 mod cosmic;
 pub(crate) mod key;
 pub(crate) mod layout_probe;
