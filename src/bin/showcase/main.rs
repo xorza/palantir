@@ -2,6 +2,8 @@
 //! chrome and the page table live in [`shell`], the pages themselves in
 //! [`pages`], and every shared token in [`support`].
 
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 mod pages;
 mod shell;
 mod support;
