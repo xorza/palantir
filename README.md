@@ -27,13 +27,13 @@ Intel Core i9-13980HX (Raptor Lake) with an RTX 4090 Laptop:
 
 | arm         | CPU pipeline | CPU + GPU frame |
 | ----------- | -----------: | --------------: |
-| `cached`    |        97 µs |          157 µs |
-| `partial`   |       103 µs |          231 µs |
-| `scrolling` |       148 µs |          369 µs |
-| `resizing`  |       597 µs |          847 µs |
+| `cached`    |        92 µs |          164 µs |
+| `partial`   |       100 µs |          241 µs |
+| `scrolling` |       143 µs |          437 µs |
+| `resizing`  |       237 µs |          614 µs |
 
-Steady-state cost per frame on `frame/cached_cpu` (measured 5.03 GHz,
-~97 µs/frame): **~2.07 M instructions retired**, **~489 K cycles**,
+Steady-state cost per frame on `frame/cached_cpu` (measured 4.79 GHz,
+~100 µs/frame): **~2.03 M instructions retired**, **~478 K cycles**,
 **IPC ≈ 4.23**.
 
 AMD Ryzen 7 6800U (Zen 3+) with its integrated Radeon 680M:
@@ -49,9 +49,9 @@ Steady-state cost per frame on `frame/cached_cpu` (measured 4.59 GHz,
 ~130 µs/frame): **~2.03 M instructions retired**, **~596 K cycles**,
 **IPC ≈ 3.41**.
 
-Measured via `perf stat -d`, pinned to one core; the per-frame counts are
-a differential between two `--profile-time` windows, so process startup
-cancels out.
+Measured via `perf stat`, pinned to one core; the per-frame counts are a
+differential between two measurement windows, so process startup cancels
+out.
 
 The build sets `-C target-feature=+f16c` (see [Recommended build
 flag](#recommended-build-flag)), worth ~6% of the CPU figures above.
