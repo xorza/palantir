@@ -65,7 +65,15 @@ impl GpuInit {
         if wgpu::Instance::enabled_backend_features().is_empty() {
             return Err(WinitHostError::NoGpuBackend);
         }
+        // `WGPU_BACKEND` alongside the flags' own vars. Without the backends
+        // half, every backend wgpu was built with is enumerated and the pick is
+        // whatever the adapter sort lands on — on Windows that is Vulkan before
+        // Dx12, with a *stable* sort, so a tie between two same-device-type
+        // adapters is decided by enumeration order and nothing else. Reading the
+        // var is what makes `WGPU_BACKEND=dx12` a usable A/B when a session's
+        // frame times or artifacts look backend-specific.
         let mut desc = wgpu::InstanceDescriptor::new_without_display_handle();
+        desc.backends = desc.backends.with_env();
         desc.flags = desc.flags.with_env();
         let instance = wgpu::Instance::new(desc);
         let surface = instance
