@@ -280,7 +280,10 @@ impl EncodedCache {
         let arena = &mut self.arena;
         let free_heads = &mut self.free_heads;
         let probe = &mut self.counters;
-        self.expiry.retire(current_frame, |key| {
+        // No stamp to check: `last_use` only ever moves a deadline out,
+        // so a ticket is never supplanted and every one that fires is
+        // the live one.
+        self.expiry.retire(current_frame, |key, _| {
             // Gone already: `try_emit_cached` drops a row whose atlas
             // slot was reused, leaving its ticket behind.
             let Entry::Occupied(slot) = map.entry(key) else {

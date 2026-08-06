@@ -218,6 +218,12 @@ struct CacheEntry {
     /// out, so the two-tier policy needs no separate "has been reused"
     /// flag — the deadline *is* the tier.
     keep_until: u64,
+    /// Frame this entry's live ticket was filed for. A ticket firing
+    /// under any other frame was supplanted by a later
+    /// [`CosmicMeasure::supersede`] and dies in the sweep instead of
+    /// re-filing itself — without which a run that is demoted and
+    /// promoted each frame accumulates one permanent ticket per cycle.
+    ticket_due: u64,
 }
 
 /// Real-shaping text measurer. Owns a [`FontSystem`] populated by
@@ -728,7 +734,7 @@ impl CosmicMeasure {
         let keep_until = self.frame + PROBATION_KEEP_FRAMES;
         // First frame on which the entry is dead, matching the sweep's
         // own `keep_until < frame` test.
-        self.expiry.schedule(key, keep_until + 1);
+        let ticket_due = self.expiry.schedule(key, keep_until + 1);
         let displaced = self.cache.insert(
             key,
             CacheEntry {
@@ -736,6 +742,7 @@ impl CosmicMeasure {
                 root: geometry.root,
                 left: geometry.left,
                 keep_until,
+                ticket_due,
             },
         );
         // Unreachable today — every caller checks `cache_hit` first, so a
@@ -809,7 +816,10 @@ impl CosmicMeasure {
         // deadline.
         if entry.keep_until > keep_until {
             entry.keep_until = keep_until;
-            self.expiry.schedule(key, keep_until + 1);
+            // The new ticket is earlier than the outstanding one, so it
+            // is the one that decides this entry's fate: stamping it
+            // here retires the supplanted ticket when it fires.
+            entry.ticket_due = self.expiry.schedule(key, keep_until + 1);
         }
     }
 
@@ -853,15 +863,36 @@ impl CosmicMeasure {
         let cache = &mut self.cache;
         let recycle_pool = &mut self.recycle_pool;
         let probe = &mut self.counters;
-        self.expiry.retire(frame, |key| {
-            // Gone already — a superseded entry files a second ticket, so
-            // the first one to fire removes it and the other finds
-            // nothing.
-            let Entry::Occupied(slot) = cache.entry(key) else {
+        self.expiry.retire(frame, |key, filed_for| {
+            // Retired already — a demote leaves two tickets outstanding
+            // and both can come due in one drain, so whichever settled
+            // first may have evicted the entry this one is holding.
+            let Entry::Occupied(mut slot) = cache.entry(key) else {
                 return None;
             };
+            // Supplanted by a later `supersede`: the entry's live ticket
+            // is still outstanding and will settle it, so this one is
+            // surplus and dies here. Re-filing it instead is what let the
+            // per-entry ticket count — and with it the per-frame drain —
+            // grow for as long as the entry stayed resident.
+            if filed_for.is_some_and(|filed| filed != slot.get().ticket_due) {
+                return None;
+            }
             if slot.get().keep_until >= frame {
-                return Some(slot.get().keep_until + 1);
+                let next = slot.get().keep_until + 1;
+                // Stamping owners, unlike the wheel's other users, cannot
+                // ride the clamp: a re-file the ring moved would fire on
+                // a frame this stamp does not name, and the entry would
+                // lose the very ticket guarding it. Holds because
+                // `keep_until` is always within a window of a frame
+                // already past, which is what the horizon is sized for.
+                debug_assert!(
+                    next <= frame + PROTECTED_KEEP_FRAMES + 1,
+                    "a re-file past the wheel's horizon would clamp and \
+                     leave this stamp unmatchable",
+                );
+                slot.get_mut().ticket_due = next;
+                return Some(next);
             }
             probe.expiries.bump();
             recycle_buffer(recycle_pool, slot.remove().buffer);
@@ -1165,6 +1196,15 @@ mod internals {
         /// in-tree eviction tests.
         pub(crate) fn cache_len(&self) -> usize {
             self.cache.len()
+        }
+
+        /// Outstanding expiry tickets. The number that says whether
+        /// [`CosmicMeasure::supersede`] is holding up its end of the
+        /// wheel's protocol: a demote files a ticket that supplants the
+        /// outstanding one, and if the supplanted ticket re-files itself
+        /// this grows by one per demote for as long as the entry lives.
+        pub(crate) fn pending_tickets(&self) -> usize {
+            self.expiry.pending()
         }
 
         /// Advance the shared clock by one frame and sweep — what
