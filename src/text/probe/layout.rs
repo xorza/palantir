@@ -28,7 +28,7 @@ pub(crate) struct TextLayoutProbe<'s, 't> {
 }
 
 impl<'s, 't> TextLayoutProbe<'s, 't> {
-    pub(super) fn new(
+    pub(crate) fn new(
         size: Size,
         request: TextShapeRequest<'t>,
         inner: RefMut<'s, ShaperInner>,
@@ -306,7 +306,7 @@ fn push_run_selection_rects(
 /// Map a UTF-8 byte offset into `text` to a cosmic-text `Cursor`:
 /// `line` = count of `\n` before the offset, `index` = bytes since
 /// the most recent `\n` (or start of text).
-pub(super) fn cursor_from_byte(text: &str, byte_offset: usize) -> cosmic_text::Cursor {
+pub(crate) fn cursor_from_byte(text: &str, byte_offset: usize) -> cosmic_text::Cursor {
     let prefix = &text.as_bytes()[..byte_offset.min(text.len())];
     let line = prefix.iter().filter(|&&b| b == b'\n').count();
     let line_start = prefix
@@ -318,7 +318,7 @@ pub(super) fn cursor_from_byte(text: &str, byte_offset: usize) -> cosmic_text::C
 
 /// Inverse of [`cursor_from_byte`]. Walks `text` to find the
 /// `line`-th `\n` and adds `cursor.index`.
-pub(super) fn cursor_to_byte(text: &str, cursor: cosmic_text::Cursor) -> usize {
+pub(crate) fn cursor_to_byte(text: &str, cursor: cosmic_text::Cursor) -> usize {
     let line_start = if cursor.line == 0 {
         0
     } else {
@@ -332,7 +332,7 @@ pub(super) fn cursor_to_byte(text: &str, cursor: cosmic_text::Cursor) -> usize {
 
 #[cfg(test)]
 mod internals {
-    use crate::text::layout_probe::TextLayoutProbe;
+    use crate::text::probe::layout::TextLayoutProbe;
 
     impl TextLayoutProbe<'_, '_> {
         /// Raw shaped buffer, reach-in for the in-tree cross-checks

@@ -217,8 +217,8 @@ fn selection_rects_match_cosmic_highlight_spans() {
         let mut expected = Vec::new();
         m.probe_layout(case.text, params, |layout| {
             let buffer = layout.buffer_for_test().unwrap();
-            let start = layout_probe::cursor_from_byte(case.text, case.range.start);
-            let end = layout_probe::cursor_from_byte(case.text, case.range.end);
+            let start = layout::cursor_from_byte(case.text, case.range.start);
+            let end = layout::cursor_from_byte(case.text, case.range.end);
             for run in buffer.layout_runs() {
                 // Raw `highlight` marks any run whose line differs from both
                 // cursors as fully selected; cosmic's editor guards it with
@@ -279,20 +279,20 @@ fn cursor_byte_round_trip_multiline() {
     // 3-line string with varying line lengths.
     let text = "ab\ncde\nfg";
     for off in 0..=text.len() {
-        let cur = layout_probe::cursor_from_byte(text, off);
-        let back = layout_probe::cursor_to_byte(text, cur);
+        let cur = layout::cursor_from_byte(text, off);
+        let back = layout::cursor_to_byte(text, cur);
         assert_eq!(
             back, off,
             "round-trip failed at offset {off}, cursor={cur:?}"
         );
     }
     // Line counts: offsets 0..=2 → line 0; 3..=6 → line 1; 7..=9 → line 2.
-    assert_eq!(layout_probe::cursor_from_byte(text, 0).line, 0);
-    assert_eq!(layout_probe::cursor_from_byte(text, 2).line, 0);
-    assert_eq!(layout_probe::cursor_from_byte(text, 3).line, 1);
-    assert_eq!(layout_probe::cursor_from_byte(text, 6).line, 1);
-    assert_eq!(layout_probe::cursor_from_byte(text, 7).line, 2);
-    assert_eq!(layout_probe::cursor_from_byte(text, 9).line, 2);
+    assert_eq!(layout::cursor_from_byte(text, 0).line, 0);
+    assert_eq!(layout::cursor_from_byte(text, 2).line, 0);
+    assert_eq!(layout::cursor_from_byte(text, 3).line, 1);
+    assert_eq!(layout::cursor_from_byte(text, 6).line, 1);
+    assert_eq!(layout::cursor_from_byte(text, 7).line, 2);
+    assert_eq!(layout::cursor_from_byte(text, 9).line, 2);
 }
 
 #[test]

@@ -29,7 +29,7 @@
 //! shaping call is asked, [`root`] what an unbounded shape answers,
 //! [`key`] the quantized cache identity, [`shaped_ref`] the render
 //! handoff, [`run`] how a caller describes a run to probe, [`probe`] the
-//! public geometry surface over [`layout_probe`]'s lease.
+//! public geometry surface over its own `layout` lease.
 //!
 //! **Vocabulary modules** hold the small value types one layer speaks in,
 //! where naming a module per type would scatter a set that is only ever
@@ -51,7 +51,6 @@
 pub(crate) mod bench;
 mod cosmic;
 pub(crate) mod key;
-pub(crate) mod layout_probe;
 #[cfg(any(test, feature = "internals"))]
 mod mono;
 pub(crate) mod probe;

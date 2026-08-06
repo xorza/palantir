@@ -3,7 +3,7 @@
 //! tools without a font system. [`measure`] is the metric behind
 //! [`TextShaper::test_mono`](crate::text::shaper::TextShaper), and
 //! [`single_line_caret_x`] / [`nearest_byte`] are the geometry
-//! [`layout_probe`] falls back to for the runs it produces.
+//! [`probe::layout`] falls back to for the runs it produces.
 //!
 //! Only [`TextShaper::test_mono`](crate::text::shaper::TextShaper) makes
 //! a run that reaches any of this, so the whole module is gated and
@@ -12,7 +12,7 @@
 //! answer there is a constant, so it belongs with the caller that knows
 //! the text is empty rather than behind a gate here.
 //!
-//! [`layout_probe`]: crate::text::layout_probe
+//! [`probe::layout`]: crate::text::probe::layout
 
 use crate::primitives::size::Size;
 use crate::text::request::TextShapeRequest;

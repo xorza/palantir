@@ -3,12 +3,13 @@
 //!
 //! Nothing shaped escapes `src/text/`: [`TextProbe`] answers in plain
 //! geometry, and the cosmic-text buffers behind it stay private —
-//! [`layout_probe`](crate::text::layout_probe) is where the lease over
-//! one of them lives.
+//! [`layout`] is where the lease over one of them lives.
+
+pub(crate) mod layout;
 
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
-use crate::text::layout_probe::{Caret, TextLayoutProbe};
+use crate::text::probe::layout::{Caret, TextLayoutProbe};
 use std::ops::Range;
 
 /// Geometry queries over one shaped run, minted by
