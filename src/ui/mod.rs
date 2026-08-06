@@ -74,8 +74,8 @@ pub struct Ui {
     /// pre-`Rc` shape forced every such site to clone a whole bundle to
     /// launder the borrow — 640 B for a `ButtonTheme`, 692 B for a
     /// `TextEditTheme`, per widget per frame. [`Self::theme`] hands out
-    /// the handle that makes it a refcount bump instead; see
-    /// [`Self::theme_mut`] for the write side.
+    /// the handle that makes it a refcount bump instead;
+    /// [`Self::set_theme`] is the write side.
     theme: Rc<Theme>,
     /// Cross-frame widget state: per-type dense stores keyed by
     /// `WidgetId` (see [`StateMap`]).
@@ -183,16 +183,6 @@ impl Ui {
     #[inline]
     pub fn theme(&self) -> &Rc<Theme> {
         &self.theme
-    }
-
-    /// The active theme, for in-place edits (`ui.theme_mut().button.anim
-    /// = …`). Copy-on-write: the deep copy fires only if a handle from
-    /// [`Self::theme`] is still alive, which in practice means mutating
-    /// the theme from inside a widget's `show` — apps restyle between
-    /// frames and pay nothing.
-    #[inline]
-    pub fn theme_mut(&mut self) -> &mut Theme {
-        Rc::make_mut(&mut self.theme)
     }
 
     /// Replace the whole theme. Takes the `Rc` so an app swapping
@@ -1045,11 +1035,38 @@ impl Ui {
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod harness;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {
+    #[cfg(test)]
     use crate::input::InputState;
     use crate::ui::Ui;
+    use crate::widgets::theme::Theme;
+    use std::rc::Rc;
 
+    impl Ui {
+        /// The active theme, for in-place edits
+        /// (`ui.theme_mut().button.anim = …`).
+        ///
+        /// Gated, because in-place mutation is a fixture affordance
+        /// rather than how an app dresses a `Ui`: build the [`Theme`]
+        /// you want and hand it over with
+        /// [`set_theme`](Ui::set_theme) — which is what every caller in
+        /// this workspace does, and what the `winit` module's example
+        /// shows. This exists so a test can nudge one axis of an
+        /// already-running harness without rebuilding the bundle.
+        ///
+        /// Copy-on-write, so a handle taken from [`Ui::theme`] keeps the
+        /// values it was taken with and the `Ui` moves on alone.
+        #[inline]
+        pub fn theme_mut(&mut self) -> &mut Theme {
+            Rc::make_mut(&mut self.theme)
+        }
+    }
+
+    /// Narrower than the mod's own gate: these are `pub(crate)` and only
+    /// this crate's own tests call them, so under `internals` alone they
+    /// would be dead code.
+    #[cfg(test)]
     impl Ui {
         /// The input machine itself, for tests that assert on routing
         /// state the public surface deliberately does not expose —

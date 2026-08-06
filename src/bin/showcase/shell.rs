@@ -245,10 +245,11 @@ pub(crate) struct State {
 
 impl State {
     pub(crate) fn new(ui: &mut Ui) -> Self {
-        ui.set_theme(Theme::from_palette(&showcase_palette()));
+        let mut theme = Theme::from_palette(&showcase_palette());
         // Library default is no button animation (`anim = None`). The
         // showcase exists to demo the animation primitive — opt in.
-        ui.theme_mut().button.anim = Some(AnimSpec::SPRING);
+        theme.button.anim = Some(AnimSpec::SPRING);
+        ui.set_theme(theme);
         State {
             active: 0,
             vsync: Vsync::default(),

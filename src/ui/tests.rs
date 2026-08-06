@@ -2608,3 +2608,4 @@ fn theme_reads_share_and_writes_copy_on_write() {
     h.ui.set_theme(swapped);
     assert_eq!(Rc::as_ptr(h.ui.theme()), swapped_ptr);
 }
+
