@@ -216,8 +216,8 @@ impl TextSystem {
         }
         let width = wrap_policy.target_width(width, &entry.root);
         let slot_key = WrapSlotKey::new(width, halign, fit);
-        let size = match entry.wrap.get(slot_key) {
-            Some(size) => size,
+        let size = match entry.wrap.filter(|slot| slot.key == slot_key) {
+            Some(slot) => slot.size,
             None => {
                 let size = shaper.shape_bounded(request.bounded(width, halign, fit));
                 // The width this row used to answer is now unreachable
@@ -226,13 +226,13 @@ impl TextSystem {
                 // whole dead population — and the unbounded probe
                 // `measure_truncated` re-reads every frame stays on the
                 // long window, which is what keeps a drag cheap.
-                if let Some(stale) = entry.wrap.key.bound(request.key) {
-                    shaper.supersede(stale);
+                if let Some(stale) = entry.wrap {
+                    shaper.supersede(stale.key.bound(request.key));
                 }
-                entry.wrap = WrapSlot {
+                entry.wrap = Some(WrapSlot {
                     key: slot_key,
                     size,
-                };
+                });
                 size
             }
         };
@@ -267,18 +267,14 @@ impl TextSystem {
         let fresh = || TextReuseEntry {
             key: request.key,
             root: shaper.shape_root(request, floor),
-            wrap: WrapSlot::EMPTY,
+            wrap: None,
         };
         let entry = entries
             .entry((slot.widget_id, slot.ordinal))
             .or_insert_with(&fresh);
         if entry.key != request.key {
-            let stale = *entry;
-            *entry = fresh();
-            shaper.supersede(stale.key);
-            if let Some(bounded) = stale.wrap.key.bound(stale.key) {
-                shaper.supersede(bounded);
-            }
+            let stale = std::mem::replace(entry, fresh());
+            retire_row(shaper, &stale);
         } else if floor == WrapFloor::Scan && entry.root.intrinsic_min.is_none() {
             entry.root = shaper.shape_root(request, WrapFloor::Scan);
         }
@@ -314,7 +310,28 @@ struct TextReuseEntry {
     /// root every bounded key it can serve is derived from.
     key: TextShapeKey,
     root: TextRoot,
-    wrap: WrapSlot,
+    /// `None` until the row has answered a bounded width. An `Option`
+    /// rather than a reserved key value: the only `max_w_q` no bounded
+    /// key can take is the *unbounded* sentinel, so an "empty" key
+    /// rebuilt through [`WrapSlotKey::bound`] became the row's own root
+    /// key — and handing that to `supersede` demotes the unbounded probe
+    /// a width drag re-reads every frame, the one buffer it most needs
+    /// kept. Emptiness is not a width, so it does not live in the key.
+    wrap: Option<WrapSlot>,
+}
+
+/// Demote every buffer `row` was the last reference to: each bounded
+/// resolve it answered, then its unbounded root.
+///
+/// One place rather than one per caller. A row's reachable keys are
+/// exactly its `key` plus its slots, and a caller that retires a row
+/// while forgetting either half leaves those buffers ageing on the
+/// protected window with nothing left that can ask for them.
+fn retire_row(shaper: &TextShaper, row: &TextReuseEntry) {
+    if let Some(slot) = row.wrap {
+        shaper.supersede(slot.key.bound(row.key));
+    }
+    shaper.supersede(row.key);
 }
 
 /// What distinguishes one bounded resolve of a row from another.
@@ -330,31 +347,17 @@ struct WrapSlotKey {
 }
 
 impl WrapSlotKey {
-    /// `max_w_q` no bounded key can take, so it marks an unfilled slot.
-    const EMPTY: Self = Self {
-        max_w_q: u32::MAX,
-        halign_q: 0,
-        fit_q: 0,
-    };
-
     /// The full bounded key this slot answered, rebuilt from the row's
-    /// unbounded `root`, or `None` for an unfilled slot. Six stored
-    /// bytes stand in for the eighteen a second [`TextShapeKey`] would
-    /// cost, and [`TextShapeKey::bounded`] varies nothing else — so
-    /// re-attaching them reconstructs the key exactly.
-    ///
-    /// The `None` arm is load-bearing rather than defensive:
-    /// [`Self::EMPTY`]'s `max_w_q` *is* the unbounded sentinel, so an
-    /// unfilled slot would rebuild into the row's own root key. Handing
-    /// that to `supersede` would demote the unbounded probe a width drag
-    /// re-reads every frame — the one buffer the drag most needs kept.
-    fn bound(self, root: TextShapeKey) -> Option<TextShapeKey> {
-        (self != Self::EMPTY).then_some(TextShapeKey {
+    /// unbounded `root`. [`TextShapeKey::bounded`] varies nothing the
+    /// row's key already pins, so re-attaching these three fields
+    /// reconstructs it exactly.
+    fn bound(self, root: TextShapeKey) -> TextShapeKey {
+        TextShapeKey {
             max_w_q: self.max_w_q,
             halign_q: self.halign_q,
             fit_q: self.fit_q,
             ..root
-        })
+        }
     }
 
     fn new(target_width_px: f32, halign: HAlign, fit: LineFit) -> Self {
@@ -372,17 +375,6 @@ impl WrapSlotKey {
 struct WrapSlot {
     key: WrapSlotKey,
     size: Size,
-}
-
-impl WrapSlot {
-    const EMPTY: Self = Self {
-        key: WrapSlotKey::EMPTY,
-        size: Size::ZERO,
-    };
-
-    fn get(self, key: WrapSlotKey) -> Option<Size> {
-        (self.key == key).then_some(self.size)
-    }
 }
 
 #[cfg(any(test, feature = "internals"))]
