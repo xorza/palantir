@@ -37,7 +37,7 @@
 //! Usage:
 //!
 //! ```no_run
-//! # use palantir::{AnimSpec, Ui, WindowToken, WinitHost, WinitHostError};
+//! # use palantir::{AnimSpec, Theme, Ui, WindowToken, WinitHost, WinitHostError};
 //! # fn demo() -> Result<(), WinitHostError> {
 //! struct MyApp;
 //! impl palantir::App for MyApp {
@@ -46,7 +46,9 @@
 //! WinitHost::builder(WindowToken(0))
 //!     .title("title")
 //!     .build(|ui, _handle| {
-//!         ui.theme_mut().button.anim = Some(AnimSpec::SPRING);
+//!         let mut theme = Theme::default();
+//!         theme.button.anim = Some(AnimSpec::SPRING);
+//!         ui.set_theme(theme);
 //!         MyApp
 //!     })?
 //!     .run()?;
