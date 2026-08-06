@@ -80,6 +80,22 @@ impl GpuInit {
         }))
         .map_err(|source| WinitHostError::RequestAdapter { source })?;
 
+        // Which physical GPU and backend won the `power_preference` sort is
+        // the single most load-bearing fact about a session's frame times, and
+        // nothing else reports it: on a hybrid laptop the "wrong" pick renders
+        // on the iGPU while the display hangs off the dGPU, so every present
+        // becomes a cross-adapter copy. Log it once at startup.
+        let info = adapter.get_info();
+        tracing::info!(
+            name = %info.name,
+            backend = ?info.backend,
+            device_type = ?info.device_type,
+            driver = %info.driver,
+            driver_info = %info.driver_info,
+            requested = ?cfg.power_preference,
+            "selected gpu adapter"
+        );
+
         // Caller-driven opt-in via `WinitHostConfig::collect_gpu_stats`
         // — see field doc. When off, none of the timing-query features
         // are requested, so the per-frame `resolve_query_set` +
