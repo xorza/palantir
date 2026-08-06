@@ -3,7 +3,7 @@
 use crate::primitives::size::Size;
 use crate::text::cosmic::CosmicMeasure;
 use crate::text::key::TextShapeKey;
-use crate::text::layout_probe::TextLayoutProbe;
+use crate::text::probe::layout::TextLayoutProbe;
 use crate::text::render::TextRenderSession;
 use crate::text::request::TextShapeRequest;
 use crate::text::root::TextRoot;
@@ -44,7 +44,7 @@ pub(crate) struct ShaperInner {
     /// `None` construction, so production never observes it.
     ///
     /// Visible to the module tree because
-    /// [`TextLayoutProbe`](crate::text::layout_probe::TextLayoutProbe)
+    /// [`TextLayoutProbe`](crate::text::probe::layout::TextLayoutProbe)
     /// reads it through the borrow it holds.
     pub(super) cosmic: Option<CosmicMeasure>,
     /// **The** frame clock every text cache ages against — the shaped
@@ -253,7 +253,7 @@ pub(crate) mod internals {
     use super::*;
     #[cfg(test)]
     use crate::text::cosmic::counters::CacheCounts;
-    use crate::text::layout_probe::Caret;
+    use crate::text::probe::layout::Caret;
     use crate::text::request::internals::TestShape;
     use crate::text::wrap::LineFit;
 
