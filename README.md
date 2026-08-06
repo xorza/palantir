@@ -22,22 +22,28 @@ every widget, every `Shape` family — at 2560×1440, and runs each arm
 twice: once as the deviceless CPU pipeline (record → measure → arrange →
 cascade → damage → encode + compose), once as the full public path
 through `OffscreenHost` with the GPU drained before the next iteration.
-AMD Ryzen 7 6800U (Zen3+) with its integrated Radeon 680M:
+Intel Core i9-13980HX (Raptor Lake) with an RTX 4090 Laptop:
 
 | arm         | CPU pipeline | CPU + GPU frame |
 | ----------- | -----------: | --------------: |
-| `cached`    |       146 µs |         1.08 ms |
-| `partial`   |       158 µs |         1.19 ms |
-| `scrolling` |       218 µs |         5.04 ms |
-| `resizing`  |       304 µs |         5.85 ms |
+| `cached`    |        97 µs |          157 µs |
+| `partial`   |       103 µs |          231 µs |
+| `scrolling` |       148 µs |          369 µs |
+| `resizing`  |       597 µs |          847 µs |
 
-Steady-state cost per frame on `frame/cached_cpu` (measured 4.65 GHz,
-~146 µs/frame): **~2.2 M instructions retired**, **~678 K cycles**,
-**IPC ≈ 3.25**. The frame is retiring-bound, not stalled: **branch
-mispredicts are 0.17%** of ~277 K branches (~0.21 per 1K instructions)
-and the **L1-d cache miss rate is 2.6%** of ~800 K loads (~9 per 1K
-instructions), with only 3.8% of cycles lost to a frontend stall.
-Measured via `perf stat -d`, pinned to one core.
+Steady-state cost per frame on `frame/cached_cpu` (measured 5.03 GHz,
+~97 µs/frame): **~2.07 M instructions retired**, **~489 K cycles**,
+**IPC ≈ 4.23** — close to the 4-5 this core can issue. The frame is
+retiring-bound, not stalled: **67.2% of issue slots retire**, **branch
+mispredicts are 0.09%** of ~257 K branches (~0.11 per 1K instructions)
+and the **L1-d cache miss rate is 0.69%** of ~517 K loads (~1.7 per 1K
+instructions), with 7.0% of slots lost to a frontend stall and 22.7% to
+the backend. Measured via `perf stat -d` and `-M TopdownL1`, pinned to
+one core; the per-frame counts are a differential between two
+`--profile-time` windows, so process startup cancels out.
+
+The build sets `-C target-feature=+f16c` (see [Recommended build
+flag](#recommended-build-flag)), worth ~6% of the CPU figures above.
 
 ---
 
