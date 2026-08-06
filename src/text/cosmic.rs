@@ -333,13 +333,27 @@ impl CosmicMeasure {
         }
     }
 
-    /// Look up the shaped run for `key`. Returns `None` for keys that
-    /// were never measured this `CosmicMeasure` instance — including
-    /// [`TextShapeKey::INVALID`].
+    /// Look up the shaped run for `key`, or `None` when no buffer is
+    /// resident under it — never measured on this `CosmicMeasure`, or
+    /// aged out since.
+    ///
+    /// Unlike [`Self::ensure_buffer`] this is a lookup, so absence is an
+    /// answer rather than a wiring bug: the probe path takes it for a run
+    /// that was never shaped, and a residency check is the question
+    /// itself.
+    ///
+    /// [`TextShapeKey::INVALID`] is not among the keys it answers for.
+    /// The sentinel means "this run has no shaped buffer at all", which
+    /// every caller knows before it gets here — the encoder drops those
+    /// runs — and nothing ever inserts one, since [`Self::insert`] is
+    /// reached only through [`Self::shape`], which returns before shaping
+    /// empty text. Asking the cache about it is a category error rather
+    /// than a miss, so it is asserted instead of answered.
     pub(super) fn shaped_run(&self, key: TextShapeKey) -> Option<ShapedRun<'_>> {
-        if key.is_invalid() {
-            return None;
-        }
+        debug_assert!(
+            !key.is_invalid(),
+            "the invalid sentinel names no cache entry — filter it before the lookup",
+        );
         self.cache.get(&key).map(|e| ShapedRun {
             buffer: &e.buffer,
             left: e.left,
@@ -360,10 +374,7 @@ impl CosmicMeasure {
         placement: RunPlacement,
         out: &mut Vec<PlacedGlyph>,
     ) -> bool {
-        debug_assert!(!request.key.is_invalid());
-        let ShapedRun { buffer, left } = self
-            .ensure_buffer(request)
-            .expect("a valid render key must resolve to a shaped buffer");
+        let ShapedRun { buffer, left } = self.ensure_buffer(request);
 
         out.clear();
         let RunPlacement {
@@ -704,21 +715,25 @@ impl CosmicMeasure {
     /// Restore a missing shaped buffer from the retained source text and
     /// the canonical parameters encoded by `key`, and hand it back.
     /// Truncated runs restore their unbounded probe first; callers never
-    /// manage that dependency. `None` only for
-    /// [`TextShapeKey::INVALID`] — any other key is shaped on the spot,
-    /// so the final lookup doubles as the check that the restore landed
+    /// manage that dependency. Any valid key is shaped on the spot, so
+    /// the final lookup doubles as the check that the restore landed
     /// under its own key.
-    pub(super) fn ensure_buffer(&mut self, request: TextShapeRequest<'_>) -> Option<ShapedRun<'_>> {
-        if request.key.is_invalid() {
-            return None;
-        }
+    ///
+    /// A run with no shaped buffer never gets this far: the encoder drops
+    /// [`TextShapeKey::INVALID`] runs before paint and the backend keeps
+    /// its own backstop, so arriving with one is a wiring bug rather than
+    /// a case to answer. Handing back an `Option` for it only moved the
+    /// panic to the caller, which is where it used to live.
+    pub(super) fn ensure_buffer(&mut self, request: TextShapeRequest<'_>) -> ShapedRun<'_> {
+        debug_assert!(
+            !request.key.is_invalid(),
+            "restoring a buffer for a run the encoder should have dropped",
+        );
         if self.cache_hit(request.key).is_none() {
             self.shape(request, WrapFloor::Skip);
         }
-        Some(
-            self.shaped_run(request.key)
-                .expect("restored text buffer did not land under its own TextShapeKey"),
-        )
+        self.shaped_run(request.key)
+            .expect("restored text buffer did not land under its own TextShapeKey")
     }
 
     /// Store a freshly shaped buffer. Entries start probationary; only a

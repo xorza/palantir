@@ -7,7 +7,7 @@
 //!   through [`render`]. Each render run carries its record-local
 //!   source span so an encoded-cache miss can restore an evicted shaped
 //!   buffer. The only production backend.
-//! - [`mono::internals::measure`] — deterministic placeholder metric behind
+//! - [`mono::measure`] — deterministic placeholder metric behind
 //!   the test/internals-only `TextShaper::test_mono`. Every glyph is
 //!   `font_size_px * 0.5` wide; it mints no shaped buffer, so `TextSystem`
 //!   reports [`key::TextShapeKey::INVALID`] for those runs and the renderer
@@ -35,6 +35,7 @@ mod cache_counters;
 mod cosmic;
 pub(crate) mod key;
 pub(crate) mod layout_probe;
+#[cfg(any(test, feature = "internals"))]
 mod mono;
 pub(crate) mod probe;
 pub(crate) mod render;

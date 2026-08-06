@@ -9,7 +9,6 @@ use crate::layout::types::align::HAlign;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::text::cosmic::ShapedRun;
-use crate::text::mono;
 use crate::text::request::TextShapeRequest;
 use crate::text::shaper::ShaperInner;
 use std::cell::RefMut;
@@ -51,6 +50,57 @@ impl<'s, 't> TextLayoutProbe<'s, 't> {
     fn shaped(&self) -> Option<ShapedRun<'_>> {
         self.inner.cosmic.as_ref()?.shaped_run(self.request.key)
     }
+
+    /// Caret-x for a layout with no shaped buffer.
+    ///
+    /// Production reaches this only for empty text, whose block is
+    /// zero-width — the only position in it is its own origin, and the
+    /// owner is what places that block against an alignment. The gated
+    /// mono metric also lands here, with real text, which is the arm
+    /// `mono` answers — reached by full path because the module it lives
+    /// in is gated away in a production build.
+    ///
+    /// Anything else is a wiring bug, not a case to answer with a
+    /// plausible zero: [`TextShaper::layout`](crate::text::shaper::TextShaper)
+    /// shapes non-empty text before minting the probe, and the probe
+    /// holds the shaper's borrow for its whole life, so no sweep can
+    /// evict that buffer out from under it.
+    fn unshaped_caret_x(&self, byte_offset: usize) -> f32 {
+        #[cfg(any(test, feature = "internals"))]
+        if !self.request.text.is_empty() {
+            return crate::text::mono::single_line_caret_x(
+                self.request.text,
+                byte_offset,
+                self.request.key.font_size_px(),
+            );
+        }
+        assert!(
+            self.request.text.is_empty(),
+            "a non-empty run with no shaped buffer requires the mono metric \
+             (caret at byte {byte_offset})",
+        );
+        0.0
+    }
+
+    /// [`Self::unshaped_caret_x`]'s inverse, and unreachable on the same
+    /// terms. Empty text has exactly one position, so production always
+    /// answers 0.
+    fn unshaped_byte_at(&self, target_x: f32) -> usize {
+        #[cfg(any(test, feature = "internals"))]
+        if !self.request.text.is_empty() {
+            return crate::text::mono::nearest_byte(
+                self.request.text,
+                target_x,
+                self.request.key.font_size_px(),
+            );
+        }
+        assert!(
+            self.request.text.is_empty(),
+            "a non-empty run with no shaped buffer requires the mono metric \
+             (hit-test at x {target_x})",
+        );
+        0
+    }
     /// (x, y_top, line_height) for the caret at `byte_offset`.
     /// Multi-line aware via cosmic-text layout runs (each `\n` and each
     /// soft-wrap segment becomes a distinct visual line). Mono fallback /
@@ -71,11 +121,7 @@ impl<'s, 't> TextLayoutProbe<'s, 't> {
             // No shaped buffer means empty text (block-local x is 0, and
             // the owner aligns the empty block itself) or the mono metric.
             return Caret {
-                x: mono::caret_x(
-                    self.request.text,
-                    byte_offset,
-                    self.request.key.font_size_px(),
-                ),
+                x: self.unshaped_caret_x(byte_offset),
                 y_top: 0.0,
                 line_height: line_height_px,
             };
@@ -132,7 +178,7 @@ impl<'s, 't> TextLayoutProbe<'s, 't> {
                 .hit(x + left, y)
                 .map(|cursor| cursor_to_byte(self.request.text, cursor))
                 .unwrap_or(self.request.text.len()),
-            None => mono::byte_at_x(self.request.text, x, self.request.key.font_size_px()),
+            None => self.unshaped_byte_at(x),
         }
     }
 
@@ -154,9 +200,8 @@ impl<'s, 't> TextLayoutProbe<'s, 't> {
         let Some(ShapedRun { buffer, left }) = self.shaped() else {
             // No shaped buffer to wash: mono lays the band out 1D, and
             // empty text collapses it to nothing.
-            let font_size_px = self.request.key.font_size_px();
-            let x0 = mono::caret_x(self.request.text, range.start, font_size_px);
-            let x1 = mono::caret_x(self.request.text, range.end, font_size_px);
+            let x0 = self.unshaped_caret_x(range.start);
+            let x1 = self.unshaped_caret_x(range.end);
             out(Rect::new(
                 x0,
                 0.0,
