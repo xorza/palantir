@@ -98,6 +98,34 @@ optimized + debuginfo, so symbolication needs no extra flags; and
 `--profile-time N` beats criterion's adaptive loop, because a fixed
 window makes sample counts comparable across runs.
 
+### Budget
+
+Run the script before hand-rolling `perf record` — it already knows the
+vendor, PMU prefix, call-graph mechanism, and pinning. Skipping it turned
+a ten-minute pass into an hour:
+
+- **`perf report -g graph,…` over a whole capture never finishes** — 10
+  min, no output, 16 MB file. For "who calls X", filter `perf script`
+  stacks to those containing X and tally the frame above it. `perf
+  report` is for flat self-time (`-g none`), where it is instant.
+- **dwarf profiles perf itself.** `--call-graph dwarf,16384` at 3 kHz
+  wrote 577 MB in 12 s, and its own writeback read as ~25% kernel
+  page-fault and FS time — indistinguishable from a real finding. The
+  same run flat is 7 MB.
+- **dwarf does not unwind this binary** — 146 of 76 000 stack lines
+  resolved against the 137 MB fat-LTO build. Call graphs need
+  `CALLGRAPH=lbr`, or `-C force-frame-pointers=yes` and a 2-min relink.
+- **The first `perf report` table is `cpu_atom`** — startup and I/O, not
+  the workload. Hybrid pitfalls below.
+- **Startup is ~1 s** (font DB), so 8% of a 12 s window and
+  `fontdb::parse_face_info` near the top. `-D <ms>` skips it;
+  `--profile-time 4` is enough for flat self-time.
+
+Budget rather than discover: each `RUSTFLAGS` variant is a fresh fat-LTO
+relink (~2 min), and a four-arm `--arms cpu` run is ~40 s at stock
+statistics. Cut `--sample-size` / `--measurement-time` while iterating;
+spend the full run on the number you report.
+
 ### Reading the output
 
 Intel, in this order:
