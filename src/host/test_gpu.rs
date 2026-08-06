@@ -95,7 +95,12 @@ fn lock_gpu_process() -> File {
 fn request_headless_adapter() -> wgpu::Adapter {
     let started = Instant::now();
     loop {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+        // `_from_env` so `WGPU_BACKEND` reaches the headless suite too. A
+        // rendering bug that only reproduces on one backend is otherwise
+        // untestable here: the harness would keep picking whatever the
+        // adapter sort lands on regardless of what the reporter ran.
+        let instance =
+            wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
         match instance
             .request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::LowPower,

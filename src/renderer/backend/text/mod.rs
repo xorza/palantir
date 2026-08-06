@@ -54,7 +54,8 @@ pub(crate) struct GlyphInstance {
 
 /// Offset of `[color_atlas_size, mask_atlas_size]` in the shared
 /// immediate region: straight after the viewport, which is what
-/// `shader.wgsl` declares as `Immediates { viewport, params }`.
+/// `shader.wgsl` declares as `Immediates { viewport_size, atlas_px }`
+/// — flat members, for the Dx12 constant-buffer reason documented there.
 ///
 /// Derived rather than written as `8`, because the offset and
 /// `ViewportPush`'s size are the same fact — a literal would let a field
