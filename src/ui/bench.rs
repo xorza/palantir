@@ -80,7 +80,7 @@ use criterion::Criterion;
 use std::fs::OpenOptions;
 use std::hint::black_box;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
@@ -529,10 +529,8 @@ fn bench_gpu(c: &mut Criterion, arms: Arms, surface: &Surface) {
 /// Newest run lives at the top of the file (`head` gives the latest).
 /// Separated from the benches so it observes every arm regardless of
 /// mode, and so neither bench has to know it's the last one.
-/// Best-effort: any I/O failure prints to stderr and continues.
 fn prepend_machine_results(run: Run<'_>) {
     let machine = machine_label(run.fixture.machine);
-    let path = PathBuf::from("benches/results").join(format!("{machine}.txt"));
     let mut block = String::new();
     let mode_tag = match run.arms {
         Arms::Cpu => "cpu",
@@ -554,6 +552,25 @@ fn prepend_machine_results(run: Run<'_>) {
     }
     block.push('\n');
 
+    prepend_block(Path::new("benches/results"), &machine, &block);
+}
+
+/// Put `block` at the top of `<dir>/<machine>.txt`, keeping whatever was
+/// there below it. Best-effort: any I/O failure prints to stderr and
+/// continues, because losing a history row must not fail a bench that
+/// has already produced its numbers.
+///
+/// Split from [`prepend_machine_results`] so the file handling is
+/// reachable from a test with a directory of its own — the caller's
+/// `benches/results` is a fixed relative path a test cannot redirect.
+fn prepend_block(dir: &Path, machine: &str, block: &str) {
+    // The directory is gitignored, so a fresh checkout has none and the
+    // tempfile open below would fail with ENOENT.
+    if let Err(e) = std::fs::create_dir_all(dir) {
+        eprintln!("[machine-results] create {}: {e}", dir.display());
+        return;
+    }
+    let path = dir.join(format!("{machine}.txt"));
     let prior = std::fs::read_to_string(&path).unwrap_or_default();
     // Atomic-enough rewrite: write to a sibling tempfile then rename
     // over the destination. Avoids leaving the file half-written if
@@ -778,7 +795,36 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
 #[cfg(test)]
 mod tests {
     use crate::bench::Fixture;
-    use crate::ui::bench::{CACHED_SIZE, RESIZE_POOL, SCALE, Surface};
+    use crate::ui::bench::{CACHED_SIZE, RESIZE_POOL, SCALE, Surface, prepend_block};
+
+    /// The results directory is gitignored, so the common case on a
+    /// fresh checkout is that it does not exist — a writer that only
+    /// opens the tempfile drops the row every run on such a machine.
+    /// Also pins newest-on-top, which is what makes `head` the latest
+    /// run.
+    #[test]
+    fn a_row_creates_the_missing_results_dir_and_lands_on_top() {
+        let root =
+            std::env::temp_dir().join(format!("palantir-bench-results-{}", std::process::id()));
+        let dir = root.join("results");
+        let _ = std::fs::remove_dir_all(&root);
+        assert!(!dir.exists(), "the case under test is an absent dir");
+
+        prepend_block(&dir, "rig", "older\n");
+        prepend_block(&dir, "rig", "newer\n");
+
+        let path = dir.join("rig.txt");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "newer\nolder\n");
+        assert!(
+            !dir.join("rig.txt.tmp").exists(),
+            "the rename must leave no tempfile behind",
+        );
+        // A second machine writes beside the first, not over it.
+        prepend_block(&dir, "other", "elsewhere\n");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "newer\nolder\n");
+
+        std::fs::remove_dir_all(&root).unwrap();
+    }
 
     /// `--size` has to reach the pool as well as the cached arm, or the
     /// resize arm keeps rendering at the default while every other arm
