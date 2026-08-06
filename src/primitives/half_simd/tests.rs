@@ -165,3 +165,41 @@ fn from_f32_matches_scalar_reference_on_sweep() {
     assert_eq!(inf[2], f16::INFINITY.to_bits());
     assert_eq!(inf[3], 0);
 }
+
+/// The pre-F16C scalar fallbacks, called directly.
+///
+/// Gated exactly as they are, and it has to be direct: on a machine that
+/// *has* F16C the runtime detect inside `f16x4_from_f32x4` takes the
+/// intrinsic branch, so the sweeps above never reach these even in a
+/// baseline build. Without this, the fallback's only coverage would be
+/// running the suite on pre-2012 hardware.
+///
+/// Checked against the intrinsic rather than against `half` again: the
+/// property that matters is that a machine without F16C encodes
+/// *identically* to one with it, so a value doesn't change meaning with
+/// the host CPU.
+#[cfg(all(target_arch = "x86_64", not(target_feature = "f16c")))]
+#[test]
+fn scalar_fallbacks_match_the_intrinsic() {
+    use crate::primitives::half_simd::{f16x4_from_f32x4_scalar, f16x4_to_f32x4_scalar};
+
+    for sign in [1.0f32, -1.0] {
+        for exp in -20i32..20 {
+            let m = sign * 1.37 * 2.0f32.powi(exp);
+            let lanes = [m, m * 0.5, m * 255.0, 0.0];
+            assert_eq!(
+                f16x4_from_f32x4_scalar(lanes),
+                f16x4_from_f32x4(lanes),
+                "encode {lanes:?}",
+            );
+        }
+    }
+    for bits in 0..=u16::MAX {
+        let packed = [bits, bits ^ 0x3C00, !bits, 0];
+        assert_eq!(
+            f16x4_to_f32x4_scalar(packed).map(f32::to_bits),
+            f16x4_to_f32x4(packed).map(f32::to_bits),
+            "decode {packed:#06x?}",
+        );
+    }
+}

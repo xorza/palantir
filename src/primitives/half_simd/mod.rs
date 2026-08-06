@@ -17,9 +17,12 @@
 //! and bit test, predicted after the first call) and direct-calls the
 //! same local kernel — skipping `half`'s out-of-line slice scaffolding,
 //! which profiled at ~1.4% self plus the dispatch absorbed by callers.
-//! Pre-F16C x86 (pre-2012) walks the lanes through `half::f16` scalar
-//! conversion. The non-x86 fallback goes through `half`'s slice path
-//! (`fcvtl` on aarch64-fp16).
+//! Pre-F16C x86 (pre-2012) walks the lanes through `half`'s scalar
+//! *kernel* — `f16::from_f32_const`, not `from_f32`, because the public
+//! converter re-runs its own F16C detection per lane and that question is
+//! already settled by the time the fallback is reached. The non-x86
+//! fallback goes through `half`'s slice path (`fcvtl` on aarch64-fp16),
+//! where the dispatch is the point.
 
 /// Four f16 lanes packed in 8 B (`[u16; 4]`, align 2) — the shared
 /// storage core behind `Corners`, `Spacing`, `FillAxis`, `ColorF16`,
@@ -135,6 +138,27 @@ use half::f16;
 #[cfg(not(target_arch = "x86_64"))]
 use half::slice::HalfFloatSliceExt;
 
+/// The scalar encode every x86 fallback below shares.
+///
+/// `from_f32_const`, **not** `from_f32`: `half`'s public converter runs
+/// its own `is_x86_feature_detected!("f16c")` per lane, and every caller
+/// of this has just answered that question — no. Going through it would
+/// re-ask four times and route each lane through an out-of-line
+/// dispatching call, on the one configuration that can least afford it.
+/// `from_f32_const` is the fallback kernel directly.
+#[cfg(all(target_arch = "x86_64", not(target_feature = "f16c")))]
+#[inline]
+fn f16x4_from_f32x4_scalar(src: [f32; 4]) -> [u16; 4] {
+    src.map(|v| f16::from_f32_const(v).to_bits())
+}
+
+/// [`f16x4_from_f32x4_scalar`]'s decode direction, same reasoning.
+#[cfg(all(target_arch = "x86_64", not(target_feature = "f16c")))]
+#[inline]
+fn f16x4_to_f32x4_scalar(bits: [u16; 4]) -> [f32; 4] {
+    bits.map(|b| f16::from_bits(b).to_f32_const())
+}
+
 /// Decode four packed f16 bit-patterns to f32 lanes.
 #[inline]
 pub(crate) fn f16x4_to_f32x4(bits: [u16; 4]) -> [f32; 4] {
@@ -151,7 +175,7 @@ pub(crate) fn f16x4_to_f32x4(bits: [u16; 4]) -> [f32; 4] {
         if std::arch::is_x86_feature_detected!("f16c") {
             return unsafe { f16x4_to_f32x4_f16c(bits) };
         }
-        bits.map(|b| f16::from_bits(b).to_f32())
+        f16x4_to_f32x4_scalar(bits)
     }
     #[cfg(not(target_arch = "x86_64"))]
     {
@@ -177,7 +201,7 @@ pub(crate) fn f16x4_from_f32x4(src: [f32; 4]) -> [u16; 4] {
         if std::arch::is_x86_feature_detected!("f16c") {
             return unsafe { f16x4_from_f32x4_f16c(src) };
         }
-        src.map(|v| f16::from_f32(v).to_bits())
+        f16x4_from_f32x4_scalar(src)
     }
     #[cfg(not(target_arch = "x86_64"))]
     {
@@ -199,11 +223,14 @@ pub(crate) fn f16x4_scaled(bits: [u16; 4], k: f32) -> [u16; 4] {
     #[cfg(all(target_arch = "x86_64", not(target_feature = "f16c")))]
     {
         // SAFETY: see the runtime branch in `f16x4_to_f32x4`. One
-        // detect here rather than one per converter.
+        // detect here rather than one per converter — which is also why
+        // the fallback goes straight to the scalar pair instead of back
+        // through `f16x4_from_f32x4(f16x4_to_f32x4(..))`, where each
+        // converter would re-run the detect this branch already settled.
         if std::arch::is_x86_feature_detected!("f16c") {
             return unsafe { f16x4_scaled_f16c(bits, k) };
         }
-        f16x4_from_f32x4(f16x4_to_f32x4(bits).map(|v| v * k))
+        f16x4_from_f32x4_scalar(f16x4_to_f32x4_scalar(bits).map(|v| v * k))
     }
     #[cfg(not(target_arch = "x86_64"))]
     {
