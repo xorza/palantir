@@ -22,7 +22,7 @@
 //! is filed — a cache hit pushes one out, a supersede pulls one in — and
 //! rewriting the ticket in place would mean finding it, which is the scan
 //! again. So the caller re-reads the entry's real deadline when its
-//! ticket fires and either drops it or files a fresh ticket. That makes
+//! ticket fires and either drops it or files a fresh one. That makes
 //! every awkward case fall out for free: a stale ticket for an
 //! already-removed key finds nothing, a clock that jumps several frames
 //! drains several buckets, and a jump wider than the ring drains all of
@@ -37,23 +37,61 @@
 //! - **Do nothing when a deadline moves *out*.** The outstanding ticket
 //!   fires early, sees a live entry, and re-files. This is what keeps a
 //!   run that is touched every frame from filing a ticket every frame.
-//! - **Remember which ticket is the live one, and let the rest die.**
-//!   [`ExpiryWheel::schedule`] hands back the frame it filed under so the
-//!   owner can stamp the entry with it; [`ExpiryWheel::retire`] then says
-//!   which frame each ticket was filed for, and a ticket whose frame is
-//!   not the entry's stamp is a supplanted duplicate that must answer
-//!   `None` rather than re-file.
+//! - **Keep the serial of the live ticket, and let the rest die.**
+//!   [`ExpiryWheel::schedule`] hands back a [`TicketSeq`] naming the
+//!   ticket it just filed; the owner stamps its entry with it, and
+//!   [`ExpiryWheel::retire`] reports the serial of every ticket that
+//!   fires. One that is not the entry's stamp was supplanted by a later
+//!   filing and must answer `None` rather than re-file.
 //!
-//! That fourth rule is what keeps the drain proportional to churn. A
+//! That last rule is what keeps the drain proportional to churn. A
 //! deadline that moves in and back out — a resize drag demoting a run
 //! that the next frame promotes again — files a ticket per cycle while
 //! the one it supplanted is still outstanding. Re-file both and the
 //! ticket count per entry grows without bound for as long as the entry
 //! lives, which turns the per-frame drain into a function of uptime.
-//! Stamping costs one `u64` on the entry and makes the surplus
+//! Stamping costs one `u32` on the entry and makes the surplus
 //! self-retiring: each supplanted ticket fires once and is gone.
+//!
+//! A re-file from inside [`ExpiryWheel::retire`] keeps the serial it
+//! fired under, so a serial names the whole chain of re-files of one live
+//! ticket rather than a single filing. That is what lets an owner stamp
+//! exactly where it decides something — at its own `schedule` call — and
+//! never on the wheel's behalf.
+//!
+//! **Only some owners need the last two rules.** An owner whose deadlines
+//! only ever move *out* never supplants a ticket, so it has nothing to
+//! stamp and ignores the serial `retire` reports; both of the caches in
+//! that position say so at their `retire` call. One that starts pulling a
+//! deadline in — a probation tier for the encoded rows is the obvious
+//! candidate, and its counters were built to size one — takes on the rule
+//! with it.
 
 use std::fmt::Debug;
+
+/// Names one live ticket, so an owner can tell it from the ones later
+/// filings have supplanted. Minted by [`ExpiryWheel::schedule`].
+///
+/// A serial, not the frame the ticket was filed for. The frame is not an
+/// identity: the clamp can move a ticket the owner asked to file past the
+/// ring, and a drain that aliased hands tickets back under some *other*
+/// bucket's frame — so an entry stamped with a frame can stop
+/// recognising its own ticket, and then nothing keeps it alive. A serial
+/// is true in both cases, which is what makes those two mechanisms
+/// invisible to owners rather than hazards they have to reason about.
+///
+/// 32 bits is not a wrap risk. Two serials are only ever compared while
+/// both their tickets are outstanding, and a ticket outlives its filing
+/// by at most one ring — so a collision would need 2³² filings inside a
+/// window a couple of hundred frames wide.
+pub(crate) type TicketSeq = u32;
+
+/// One filed ticket: which key to revisit, under which filing.
+#[derive(Clone, Copy, Debug)]
+struct Ticket<K> {
+    key: K,
+    seq: TicketSeq,
+}
 
 /// Ring of pending expiry tickets keyed by due frame.
 ///
@@ -64,22 +102,28 @@ pub(crate) struct ExpiryWheel<K> {
     /// Ring indexed by `due & mask`. Buckets keep their capacity across
     /// drains, so a steady workload files and fires tickets without
     /// allocating.
-    buckets: Vec<Vec<K>>,
+    ///
+    /// A boxed slice because the ring is sized once and never grows —
+    /// and one `Vec` per bucket because that is what makes a drain a
+    /// memcpy of a contiguous run. Threading the tickets through a flat
+    /// arena instead would save the bucket headers (a few KB across every
+    /// wheel in the crate) and cost a pointer chase per ticket on the one
+    /// path that has to be fast.
+    buckets: Box<[Vec<Ticket<K>>]>,
     mask: u64,
     /// Highest frame whose bucket has been drained. Tickets must be
     /// filed strictly after it, or they land in a bucket this cycle has
     /// already passed and would not fire for another full ring.
     drained_through: u64,
-    /// Retained landing area for the tickets [`Self::retire`] is
-    /// walking, each paired with the frame its bucket was drained under.
+    /// Serial for the next filing. Wraps, which is safe — see
+    /// [`TicketSeq`].
+    next_seq: TicketSeq,
+    /// Retained landing area for the tickets [`Self::retire`] is walking.
     ///
     /// Lives here rather than on each owner because it is part of this
     /// type's protocol, not theirs: it exists only so the ring can be
-    /// re-filed while its own drained tickets are being walked. Every
-    /// bucket is emptied before the first re-file for the same reason —
-    /// a re-filed ticket can land in a bucket this drain has not reached
-    /// yet, and walking bucket-by-bucket would fire it again immediately.
-    scratch: Vec<(K, u64)>,
+    /// re-filed while its own drained tickets are being walked.
+    scratch: Vec<Ticket<K>>,
 }
 
 impl<K: Copy + Debug> ExpiryWheel<K> {
@@ -106,6 +150,7 @@ impl<K: Copy + Debug> ExpiryWheel<K> {
             buckets: (0..slots).map(|_| Vec::new()).collect(),
             mask: slots as u64 - 1,
             drained_through: 0,
+            next_seq: 0,
             scratch: Vec::new(),
         }
     }
@@ -114,6 +159,7 @@ impl<K: Copy + Debug> ExpiryWheel<K> {
     /// which the entry is dead, not the last on which it lives, so the
     /// caller's own `deadline < frame` test decides and the wheel holds
     /// no policy.
+    ///
     /// A `due` outside the ring is clamped into it rather than rejected.
     /// Both ends are safe precisely because a ticket is a hint: firing
     /// early costs one re-file, while firing *late* is the one outcome
@@ -123,97 +169,82 @@ impl<K: Copy + Debug> ExpiryWheel<K> {
     /// stops submitting, a test driving frames by hand) would otherwise
     /// have to reason about the ring width themselves.
     ///
-    /// Hands back the frame the ticket actually landed on, which is the
-    /// requested one unless the clamp moved it. That is the value an
-    /// owner stamps its entry with — stamping the requested frame would
-    /// leave a clamped ticket unable to match its own entry, and the
-    /// entry would then be kept alive by a ticket it no longer
-    /// recognises.
-    pub(crate) fn schedule(&mut self, key: K, due: u64) -> u64 {
+    /// **If `due` is earlier than the entry's outstanding ticket, this
+    /// supplants that ticket rather than replacing it** — the wheel
+    /// cannot reach into a bucket to remove one, so both are now live.
+    /// Stamp the entry with the returned [`TicketSeq`] and let
+    /// [`Self::retire`] drop whatever fires under an older one, or the
+    /// pair re-files itself for as long as the entry lives.
+    pub(crate) fn schedule(&mut self, key: K, due: u64) -> TicketSeq {
         debug_assert!(
             due > self.drained_through,
             "ticket for {key:?} at {due} is not past the drained frame {}",
             self.drained_through,
         );
-        let due = due.clamp(self.drained_through + 1, self.drained_through + self.mask);
-        self.buckets[(due & self.mask) as usize].push(key);
-        due
+        let seq = self.next_seq;
+        self.next_seq = self.next_seq.wrapping_add(1);
+        self.file(Ticket { key, seq }, due);
+        seq
     }
 
-    /// Move every ticket due through `frame` into `out`, which is
-    /// cleared first, each paired with the frame its bucket stands for.
+    /// Put a ticket in its bucket, clamped into the ring.
     ///
-    /// Takes a destination rather than returning an iterator so the
-    /// wheel can be re-filed while the drain is walked: a draining
-    /// iterator would hold it borrowed for exactly the span in which
-    /// [`Self::schedule`] has to be callable. [`Self::retire`] is the
-    /// public form of that walk.
-    ///
-    /// Answers whether the drain aliased — see the ring-wide jump below.
-    /// A ticket drained that way sits in a bucket that stands for some
-    /// *other* frame than the one it was filed for, so its pairing is a
-    /// lie and [`Self::retire`] reports it as unknown rather than let an
-    /// owner discard a live ticket against a stamp it cannot match.
-    fn take_due(&mut self, frame: u64, out: &mut Vec<(K, u64)>) -> bool {
-        out.clear();
-        if frame <= self.drained_through {
-            return false;
-        }
-        // A clock that jumped further than the ring is wide has aliased
-        // every bucket, so every bucket is due. Draining a ticket early
-        // costs one re-file, never a wrong drop.
-        let slots = self.buckets.len() as u64;
-        let aliased = frame - self.drained_through >= slots;
-        let first = if aliased {
-            frame + 1 - slots
-        } else {
-            self.drained_through + 1
-        };
-        // `drained_through` moves first: the caller re-files from inside
-        // its walk, and those tickets are all past `frame`.
-        self.drained_through = frame;
-        for f in first..=frame {
-            let bucket = &mut self.buckets[(f & self.mask) as usize];
-            out.extend(bucket.drain(..).map(|key| (key, f)));
-        }
-        aliased
+    /// Split from [`Self::schedule`] because a re-file keeps the serial
+    /// it fired under rather than minting one — see the module doc.
+    fn file(&mut self, ticket: Ticket<K>, due: u64) {
+        let due = due.clamp(self.drained_through + 1, self.drained_through + self.mask);
+        self.buckets[(due & self.mask) as usize].push(ticket);
     }
 
     /// Hand every ticket due through `frame` to `settle`, re-filing each
-    /// key at the deadline it returns and forgetting the ones it answers
+    /// at the deadline it returns and forgetting the ones it answers
     /// `None` for.
     ///
     /// This is the whole owner-side protocol in one call: a ticket is a
     /// hint, so `settle` re-reads the entry's real deadline and says
-    /// either "still live, come back at N" or "gone". Owners used to
-    /// open-code the drain — each carrying its own scratch `Vec` and the
-    /// same four-line take/walk/put-back dance — which put this type's
-    /// invariants in three places at once.
+    /// either "still live, come back at N" or "gone". `settle`'s second
+    /// argument is the ticket's [`TicketSeq`], which an owner that stamps
+    /// compares against its entry to tell its live ticket from one a
+    /// later [`Self::schedule`] supplanted; owners whose deadlines only
+    /// move out ignore it.
     ///
     /// `settle` may freely mutate the owner's other fields: the wheel
     /// borrows only itself, so disjoint field captures let the closure
     /// hold the map it is retiring from.
-    ///
-    /// `settle`'s second argument is the frame the ticket was filed for,
-    /// which an owner that stamps its entries compares against the stamp
-    /// to tell its live ticket from the ones it has supplanted. `None`
-    /// means the drain aliased and the frame is unknowable, so the
-    /// ticket must be treated as the live one; the extra re-file that
-    /// costs converges on the next drain, whereas discarding it would
-    /// leave the entry with no ticket at all.
     pub(crate) fn retire(
         &mut self,
         frame: u64,
-        mut settle: impl FnMut(K, Option<u64>) -> Option<u64>,
+        mut settle: impl FnMut(K, TicketSeq) -> Option<u64>,
     ) {
+        if frame <= self.drained_through {
+            return;
+        }
         // Out and back so the ring stays free to be re-filed below;
         // capacity is retained across the swap.
         let mut due = std::mem::take(&mut self.scratch);
-        let aliased = self.take_due(frame, &mut due);
-        for (key, filed_for) in due.drain(..) {
-            let filed_for = (!aliased).then_some(filed_for);
-            if let Some(next) = settle(key, filed_for) {
-                self.schedule(key, next);
+
+        // A clock that jumped further than the ring is wide has aliased
+        // every bucket, so every bucket is due. Draining a ticket early
+        // costs one re-file, never a wrong drop.
+        let slots = self.buckets.len() as u64;
+        let first = if frame - self.drained_through >= slots {
+            frame + 1 - slots
+        } else {
+            self.drained_through + 1
+        };
+        // `drained_through` moves first: the walk below re-files, and
+        // those tickets are all past `frame`.
+        self.drained_through = frame;
+        // Every due bucket is emptied before the first re-file, because a
+        // re-filed ticket can land in one this drain has not reached yet
+        // and walking bucket-by-bucket would fire it again immediately.
+        for f in first..=frame {
+            due.append(&mut self.buckets[(f & self.mask) as usize]);
+        }
+
+        for ticket in due.drain(..) {
+            if let Some(next) = settle(ticket.key, ticket.seq) {
+                self.file(ticket, next);
             }
         }
         self.scratch = due;
@@ -258,12 +289,15 @@ pub(crate) mod internals {
 mod tests {
     use super::*;
 
-    /// Keys alone: most tests here pin *which* tickets fire, and the
-    /// frame each was filed for has its own test below.
+    /// Keys alone, in fire order: most tests here pin *which* tickets
+    /// fire, and serials have their own cases below.
     fn fired(wheel: &mut ExpiryWheel<u32>, frame: u64) -> Vec<u32> {
         let mut out = Vec::new();
-        wheel.take_due(frame, &mut out);
-        out.into_iter().map(|(key, _)| key).collect()
+        wheel.retire(frame, |key, _| {
+            out.push(key);
+            None
+        });
+        out
     }
 
     /// The wheel is a schedule, not a policy: a ticket comes back on its
@@ -295,51 +329,84 @@ mod tests {
         assert!(fired(&mut wheel, 6).is_empty());
     }
 
-    /// Each ticket is handed back with the frame it was filed for — the
-    /// stamp an owner matches against to tell its live ticket from one a
-    /// later `schedule` supplanted. A drain covering several frames must
-    /// pair each ticket with *its own*, not with the frame being swept.
+    /// Every filing gets its own serial, and a ticket comes back under
+    /// the one its `schedule` returned — the stamp an owner matches
+    /// against to tell its live ticket from a supplanted one.
     #[test]
-    fn a_ticket_carries_the_frame_it_was_filed_for() {
+    fn a_ticket_comes_back_under_the_serial_it_was_filed_with() {
         let mut wheel = ExpiryWheel::<u32>::with_horizon(8);
-        let mut out = Vec::new();
-
-        assert_eq!(wheel.schedule(1, 2), 2, "schedule reports where it filed");
-        wheel.schedule(2, 3);
-        wheel.schedule(3, 3);
-
-        let aliased = wheel.take_due(3, &mut out);
-        assert!(!aliased, "three frames is well inside a 16-slot ring");
-        out.sort_unstable();
-        assert_eq!(out, vec![(1, 2), (2, 3), (3, 3)]);
-
-        // Past the ring the clamp moves the ticket, and the reported
-        // frame is where it truly landed — stamping the requested 200
-        // would leave the entry unable to recognise its own ticket.
-        let mut wheel = ExpiryWheel::<u32>::with_horizon(8);
-        let landed = wheel.schedule(9, 200);
-        assert_eq!(landed, 15, "clamped to the ring's far edge");
-        wheel.take_due(15, &mut out);
-        assert_eq!(out, vec![(9, 15)]);
-    }
-
-    /// A drain that aliased cannot say which frame a ticket was filed
-    /// for, so it must report "unknown" rather than a frame that is
-    /// merely the bucket's. An owner discarding tickets against a stamp
-    /// would otherwise drop a live one and leak the entry it guarded.
-    #[test]
-    fn an_aliased_drain_reports_no_filed_frame() {
-        let mut wheel = ExpiryWheel::<u32>::with_horizon(8);
-        wheel.schedule(1, 2);
-        wheel.schedule(2, 9);
+        let first = wheel.schedule(1, 2);
+        let second = wheel.schedule(2, 3);
+        assert_ne!(first, second, "every filing gets its own serial");
 
         let mut seen = Vec::new();
-        wheel.retire(100, |key, filed_for| {
-            seen.push((key, filed_for));
+        wheel.retire(3, |key, seq| {
+            seen.push((key, seq));
             None
         });
         seen.sort_unstable();
-        assert_eq!(seen, vec![(1, None), (2, None)]);
+        assert_eq!(seen, vec![(1, first), (2, second)]);
+    }
+
+    /// A re-file keeps the serial it fired under, so an owner stamps only
+    /// where it decides something — at its own `schedule` — and never for
+    /// a ticket the wheel put back on its behalf.
+    #[test]
+    fn a_refile_keeps_its_serial() {
+        let mut wheel = ExpiryWheel::<u32>::with_horizon(8);
+        let seq = wheel.schedule(1, 2);
+
+        let mut seen = Vec::new();
+        wheel.retire(2, |key, s| {
+            seen.push((key, s));
+            Some(5)
+        });
+        wheel.retire(5, |key, s| {
+            seen.push((key, s));
+            None
+        });
+        assert_eq!(seen, vec![(1, seq), (1, seq)], "one serial, two firings");
+    }
+
+    /// The two mechanisms that make the *frame* an unusable identity, and
+    /// which a serial is immune to: a ticket the clamp moved, and a drain
+    /// that aliased every bucket. Both used to mean an entry could stop
+    /// recognising its own live ticket.
+    #[test]
+    fn clamped_and_aliased_tickets_keep_true_serials() {
+        // Horizon 8 rounds to 16 slots, so 200 is far past the ring.
+        let mut wheel = ExpiryWheel::<u32>::with_horizon(8);
+        let clamped = wheel.schedule(1, 200);
+        let mut seen = None;
+        for frame in 1..=15 {
+            wheel.retire(frame, |key, seq| {
+                seen = Some((key, seq));
+                None
+            });
+            if seen.is_some() {
+                break;
+            }
+        }
+        assert_eq!(
+            seen,
+            Some((1, clamped)),
+            "a clamped ticket keeps its serial"
+        );
+
+        let mut wheel = ExpiryWheel::<u32>::with_horizon(8);
+        let near = wheel.schedule(1, 2);
+        let far = wheel.schedule(2, 9);
+        let mut seen = Vec::new();
+        wheel.retire(100, |key, seq| {
+            seen.push((key, seq));
+            None
+        });
+        seen.sort_unstable();
+        assert_eq!(
+            seen,
+            vec![(1, near), (2, far)],
+            "an aliased drain reports true serials, not its buckets' frames",
+        );
     }
 
     /// A clock that advances by more than one — two windows recording
@@ -393,19 +460,20 @@ mod tests {
 
         // The owner "touches" the entry every frame, pushing its real
         // deadline out — but files nothing until its ticket fires at 2,
-        // and then files one covering the whole span to 6.
+        // and then that one ticket covers the whole span to 6.
         let mut fired_at = Vec::new();
         for frame in 1..=5 {
-            for key in fired(&mut wheel, frame) {
+            wheel.retire(frame, |_, _| {
                 fired_at.push(frame);
-                wheel.schedule(key, 6);
-            }
+                Some(6)
+            });
         }
         assert_eq!(
             fired_at,
             vec![2],
             "one ticket per deferral, not one per frame",
         );
+        assert_eq!(wheel.pending(), 1, "and no duplicate left behind");
 
         // Let it lapse: it fires at 6, is not re-filed, and is gone.
         assert_eq!(fired(&mut wheel, 6), vec![7]);
@@ -445,6 +513,7 @@ mod tests {
         wheel.schedule(2, 6);
 
         wheel.clear();
+        assert_eq!(wheel.pending(), 0);
         assert!(fired(&mut wheel, 9).is_empty());
     }
 
