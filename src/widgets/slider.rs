@@ -63,7 +63,7 @@ impl<'a> Slider<'a> {
         let response = widget.response(ui);
         let id = widget.id();
 
-        let theme = self.style.unwrap_or(&ui.theme.slider);
+        let theme = self.style.unwrap_or(&ui.theme().slider);
         let knob = theme.knob_size;
         let rail_h = theme.rail_thickness;
         let fill_color = theme.fill;

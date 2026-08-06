@@ -296,7 +296,8 @@ impl<'a> Scroll<'a> {
         // children for a dominant font — that's a future polish; for
         // now the active theme's text size is a good proxy and stays
         // consistent with what the user is reading.
-        let line_px = ui.theme.text.line_height_for(ui.theme.text.font_size_px);
+        let text = &ui.theme().text;
+        let line_px = text.line_height_for(text.font_size_px);
         let scroll = response.scroll;
         let pan_raw = scroll.pixels + scroll.lines * line_px;
         let notches = scroll.lines + scroll.pixels / line_px.max(f32::EPSILON);
@@ -337,7 +338,7 @@ impl<'a> Scroll<'a> {
     /// This viewport's scrollbar bundle: the per-instance override if
     /// the caller set one, else the global slot.
     fn bars_theme<'u>(&'u self, ui: &'u Ui) -> &'u ScrollbarTheme {
-        self.style.unwrap_or(&ui.theme.scrollbar)
+        self.style.unwrap_or(&ui.theme().scrollbar)
     }
 
     /// Last frame's measurements, in the shape every later step reads

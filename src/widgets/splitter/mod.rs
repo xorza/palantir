@@ -103,7 +103,7 @@ impl<'a> Splitter<'a> {
         let response = widget.response(ui);
         let id = widget.id();
 
-        let theme = self.style.unwrap_or(&ui.theme.splitter);
+        let theme = self.style.unwrap_or(&ui.theme().splitter);
         let thickness = theme.thickness.max(1.0);
         let rule_thickness = theme.rule_thickness.max(0.0);
         let rule_color = theme.rule;

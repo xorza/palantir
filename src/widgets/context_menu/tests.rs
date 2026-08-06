@@ -280,14 +280,14 @@ fn theme_gaps_drive_row_pitch_and_shortcut_gutter() {
     let mut h = UiHarness::new(SURFACE);
     // Hug the content: the theme's 160 px floor would otherwise absorb
     // the widened shortcut gutter instead of letting the row grow.
-    h.ui.theme.context_menu.min_width = 0.0;
+    h.ui.theme_mut().context_menu.min_width = 0.0;
     ContextMenu::open(&mut h.ui, trigger_id(), Vec2::new(20.0, 20.0));
     h.frame(menu);
     let before = menu_rows(&h, trigger_id());
     assert_eq!(before.len(), 2, "two rows recorded");
 
-    h.ui.theme.context_menu.gap += 6.0;
-    h.ui.theme.context_menu.item.gap += 10.0;
+    h.ui.theme_mut().context_menu.gap += 6.0;
+    h.ui.theme_mut().context_menu.item.gap += 10.0;
     h.frame(menu);
     let after = menu_rows(&h, trigger_id());
 
@@ -335,7 +335,7 @@ fn an_explicit_zero_gap_beats_the_theme_default() {
     }
 
     let mut h = UiHarness::new(SURFACE);
-    h.ui.theme.context_menu.gap = 7.0;
+    h.ui.theme_mut().context_menu.gap = 7.0;
     ContextMenu::open(&mut h.ui, trigger_id(), Vec2::new(20.0, 20.0));
 
     // Untouched: the theme's 7 px lands between the rows.
@@ -377,14 +377,14 @@ fn menu_separator_theme_drives_rule_geometry_and_color() {
 
     let mut h = UiHarness::new(SURFACE);
     let rule = Color::hex(0xff00ff);
-    h.ui.theme.context_menu.separator = SeparatorTheme {
+    h.ui.theme_mut().context_menu.separator = SeparatorTheme {
         color: rule,
         thickness: 3.0,
         margin: Spacing::xy(0.0, 7.0),
     };
     // Loudly different app-wide rule — the menu must not reach for it.
-    h.ui.theme.separator.thickness = 11.0;
-    h.ui.theme.separator.color = Color::hex(0x00ff00);
+    h.ui.theme_mut().separator.thickness = 11.0;
+    h.ui.theme_mut().separator.color = Color::hex(0x00ff00);
 
     ContextMenu::open(&mut h.ui, trigger_id(), Vec2::new(20.0, 20.0));
     h.frame(menu);
@@ -569,7 +569,7 @@ fn per_instance_style_overrides_global_menu_theme() {
 
     // Nothing about `.style` writes back to the global slot.
     let default = ContextMenuTheme::default();
-    let global = &h.ui.theme.context_menu;
+    let global = &h.ui.theme().context_menu;
     assert_eq!(global.padding, default.padding);
     assert_eq!(global.min_width, default.min_width);
     assert_eq!(global.item.padding, default.item.padding);

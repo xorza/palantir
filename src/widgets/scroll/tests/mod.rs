@@ -2038,7 +2038,7 @@ fn wheel_zoom_step_is_font_independent() {
     let mut last_zoom: Option<f32> = None;
     for font_size in [12.0_f32, 16.0, 24.0] {
         let mut h = UiHarness::new(SURFACE);
-        h.ui.theme.text = h.ui.theme.text.with_font_size(font_size);
+        h.ui.theme_mut().text.font_size_px = font_size;
         let build_zoom = |ui: &mut Ui| {
             Panel::vstack()
                 .id(WidgetId::from_hash("root"))
@@ -2089,11 +2089,9 @@ fn line_wheel_step_scales_with_theme_font_size() {
     ];
     for (label, font_size, line_height_mult, expected_px) in cases {
         let mut h = UiHarness::new(SURFACE);
-        h.ui.theme.text =
-            h.ui.theme
-                .text
-                .with_font_size(*font_size)
-                .with_line_height_mult(*line_height_mult);
+        let text = &mut h.ui.theme_mut().text;
+        text.font_size_px = *font_size;
+        text.line_height_mult = *line_height_mult;
         let build_v = |ui: &mut Ui| build(ui, 200.0, 800.0);
         h.frame(build_v);
         h.scroll_lines_at(Vec2::new(50.0, 50.0), Vec2::new(0.0, 1.0));

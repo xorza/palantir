@@ -270,7 +270,7 @@ impl Fixture {
         let mut host = gpu.offscreen_builder().build();
         // No theme panel background: each arm should record exactly the
         // one shape family it names, not that plus a chrome quad per cell.
-        host.ui().theme.panel_background = None;
+        host.ui().theme_mut().panel_background = None;
         let handles = (0..workload.textures())
             .map(|seed| {
                 host.ui()

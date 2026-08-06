@@ -180,7 +180,7 @@ impl CpuHarness {
             frontend,
             start: Instant::now(),
         };
-        h.harness.ui.theme.window_clear = WINDOW_CLEAR;
+        h.harness.ui.theme_mut().window_clear = WINDOW_CLEAR;
         h
     }
 
@@ -296,7 +296,7 @@ where
 {
     let g = gpu();
     let mut host = bench_host(g);
-    host.ui().theme.window_clear = WINDOW_CLEAR;
+    host.ui().theme_mut().window_clear = WINDOW_CLEAR;
     let mut state = FrameFixture::default();
     for _ in 0..4 {
         iter(&mut host, &mut state);
@@ -377,7 +377,7 @@ fn report_write_stats(surface: &Surface) {
     ) {
         let g = gpu();
         let mut host = bench_host(g);
-        host.ui().theme.window_clear = WINDOW_CLEAR;
+        host.ui().theme_mut().window_clear = WINDOW_CLEAR;
         let mut state = FrameFixture::default();
         eprintln!("[write_stats] {label}:");
         for frame in 0..6 {

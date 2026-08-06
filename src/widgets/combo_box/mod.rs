@@ -75,7 +75,10 @@ impl<'a> ComboBox<'a> {
             &t.button
         });
 
-        let geom = ui.theme.combo_box.clone();
+        // Handle: the geometry is read again inside the `record` closure
+        // below, which owns `ui` mutably.
+        let ui_theme = ui.theme().clone();
+        let geom = &ui_theme.combo_box;
         let node = &mut widget.node;
         node.justify = Justify::SpaceBetween;
         node.child_align = Align::v(VAlign::Center);
@@ -127,7 +130,7 @@ impl<'a> ComboBox<'a> {
         // separate `escape_pressed` here.
 
         if open && let Some(rect) = trigger_rect {
-            let panel = ui.theme.context_menu.panel.clone();
+            let panel = ui_theme.context_menu.panel.clone();
             let options = self.options;
             let selected = self.selected;
             let popup = Popup::below(rect)

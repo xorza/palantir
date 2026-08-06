@@ -75,7 +75,7 @@ impl Harness {
     ) -> RgbaImage {
         let target = make_target(&self.gpu.device, format, physical);
 
-        self.host.ui().theme.window_clear = clear;
+        self.host.ui().theme_mut().window_clear = clear;
         self.host
             .frame_offscreen(&target, scale, &mut RecordApp::new(scene));
 

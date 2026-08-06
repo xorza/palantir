@@ -398,7 +398,7 @@ fn cascade_screen_rect_matches_composed_quad_under_transform() {
     frontend.build(
         h.ui.frame_scene(),
         RenderPlan {
-            clear: h.ui.theme.window_clear,
+            clear: h.ui.theme().window_clear,
             kind: RenderKind::Full,
         },
     );

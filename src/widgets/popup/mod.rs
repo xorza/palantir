@@ -186,7 +186,7 @@ impl Popup {
 
     /// Paint chrome (fill / stroke / corner radius / shadow). `None`
     /// is the default; theme fallback in [`Self::show`] fills it in
-    /// from `ui.theme.panel_background` when unset. Pass
+    /// from `ui.theme().panel_background` when unset. Pass
     /// [`Background::NONE`] to suppress that fallback for this popup.
     pub fn background(mut self, bg: Background) -> Self {
         self.chrome = Some(bg);
@@ -240,8 +240,8 @@ impl Popup {
             let chrome = chrome::resolve_container(
                 &mut widget.node,
                 chrome,
-                ui.theme.panel_background.as_ref(),
-                ui.theme.panel_clip,
+                ui.theme().panel_background.as_ref(),
+                ui.theme().panel_clip,
             );
             let handle = PopupHandle::new();
             let escape = scope.record(ui, |ui| {

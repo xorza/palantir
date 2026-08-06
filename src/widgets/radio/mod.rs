@@ -78,7 +78,7 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
         // look itself. `toggle_row` is shared by three toggles reading three
         // different slots, so naming the slot is the caller's job — and this
         // is the only place it is named.
-        let theme = self.style.unwrap_or(&ui.theme.radio);
+        let theme = self.style.unwrap_or(&ui.theme().radio);
         let pip_size = theme.box_size;
         let indicator = theme.indicator;
         let dot_inset = theme.indicator_inset;

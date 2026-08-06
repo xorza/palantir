@@ -71,7 +71,7 @@ impl<'a> Checkbox<'a> {
         // paints with, and the look itself. `toggle_row` is shared by
         // three toggles reading three different slots, so naming the slot
         // is the caller's job — and this is the only place it is named.
-        let theme = self.style.unwrap_or(&ui.theme.checkbox);
+        let theme = self.style.unwrap_or(&ui.theme().checkbox);
         let box_size = theme.box_size;
         let indicator = theme.indicator;
         let indicator_stroke = theme.indicator_stroke;

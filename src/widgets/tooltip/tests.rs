@@ -79,7 +79,7 @@ fn content_growth_and_shrink_reposition_without_input_or_settling() {
     let small = frame(&mut h, &short);
     let large = frame(&mut h, &long);
     let shrunk = frame(&mut h, &short);
-    let above_edge = trigger.min.y - h.ui.theme.tooltip.gap;
+    let above_edge = trigger.min.y - h.ui.theme().tooltip.gap;
 
     assert_eq!(small.max().y, above_edge);
     assert_eq!(large.max().y, above_edge);
@@ -107,7 +107,7 @@ fn tooltip_breaks_long_tokens_inside_bubble() {
         .first()
         .expect("tooltip text shaped");
     assert!(
-        shaped.measured.w <= bubble.size.w - ui.ui.theme.tooltip.padding.horiz(),
+        shaped.measured.w <= bubble.size.w - ui.ui.theme().tooltip.padding.horiz(),
         "text width {} must fit inside bubble width {}",
         shaped.measured.w,
         bubble.size.w,
@@ -358,7 +358,7 @@ fn delay_gates_visibility() {
         "Tooltip layer must contain at least one recorded node",
     );
 
-    h.ui.theme.tooltip.warmup = Duration::ZERO;
+    h.ui.theme_mut().tooltip.warmup = Duration::ZERO;
     t += 0.1;
     h.move_to(Vec2::new(350.0, 250.0));
     record_at_secs(&mut h, t, &mut captured);

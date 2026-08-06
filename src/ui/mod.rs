@@ -68,7 +68,15 @@ use std::time::Duration;
 #[derive(Debug)]
 pub struct Ui {
     pub(crate) forest: Forest,
-    pub theme: Theme,
+    /// Refcounted, deliberately: a widget that styles *from the theme*
+    /// has to hold the bundle across the `&mut Ui` its own `show` takes,
+    /// and a plain `&ui.theme` borrow cannot survive that reborrow. The
+    /// pre-`Rc` shape forced every such site to clone a whole bundle to
+    /// launder the borrow — 640 B for a `ButtonTheme`, 692 B for a
+    /// `TextEditTheme`, per widget per frame. [`Self::theme`] hands out
+    /// the handle that makes it a refcount bump instead; see
+    /// [`Self::theme_mut`] for the write side.
+    theme: Rc<Theme>,
     /// Cross-frame widget state: per-type dense stores keyed by
     /// `WidgetId` (see [`StateMap`]).
     pub(crate) state: StateMap,
@@ -156,6 +164,43 @@ impl Ui {
             window_requests: Default::default(),
             window_frame: Default::default(),
         }
+    }
+
+    /// The active theme. Reads go straight through the `Rc` —
+    /// `ui.theme().button.padding` — and `.clone()` on the result is a
+    /// refcount bump, **not** a copy of the ~9 KB bundle tree, which is
+    /// why this hands back the handle rather than a plain `&Theme`.
+    ///
+    /// That handle is what a widget builder needs when a style reference
+    /// has to stay valid across the `show(ui)` that consumes it — the
+    /// `&mut Ui` reborrow would otherwise end a plain `&ui.theme()`
+    /// borrow, and the only way out used to be cloning the whole bundle:
+    ///
+    /// ```ignore
+    /// let theme = ui.theme().clone();
+    /// Button::new().label("File").style(&theme.menu_button).show(ui);
+    /// ```
+    #[inline]
+    pub fn theme(&self) -> &Rc<Theme> {
+        &self.theme
+    }
+
+    /// The active theme, for in-place edits (`ui.theme_mut().button.anim
+    /// = …`). Copy-on-write: the deep copy fires only if a handle from
+    /// [`Self::theme`] is still alive, which in practice means mutating
+    /// the theme from inside a widget's `show` — apps restyle between
+    /// frames and pay nothing.
+    #[inline]
+    pub fn theme_mut(&mut self) -> &mut Theme {
+        Rc::make_mut(&mut self.theme)
+    }
+
+    /// Replace the whole theme. Takes the `Rc` so an app swapping
+    /// between prebuilt themes (light/dark, a preferences apply) hands
+    /// over a handle instead of copying ~9 KB.
+    #[inline]
+    pub fn set_theme(&mut self, theme: impl Into<Rc<Theme>>) {
+        self.theme = theme.into();
     }
 
     /// Drive one application frame for `win`, delegating to

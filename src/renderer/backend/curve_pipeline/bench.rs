@@ -61,7 +61,7 @@ fn gpu() -> &'static BenchGpu {
 
 fn host(gpu: &BenchGpu) -> OffscreenHost {
     let mut host = gpu.offscreen_builder().collect_gpu_stats(true).build();
-    host.ui().theme.panel_background = None;
+    host.ui().theme_mut().panel_background = None;
     host
 }
 

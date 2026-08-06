@@ -165,7 +165,7 @@ impl<'a> TextEdit<'a> {
 
     /// Borrow a whole TextEdit theme override — all-or-nothing. To tweak
     /// one axis, build and share a bundle:
-    /// `TextEditTheme { caret: red, ..ui.theme.text_edit.clone() }`. Buffer
+    /// `TextEditTheme { caret: red, ..ui.theme().text_edit.clone() }`. Buffer
     /// font/leading/color live on the per-state `text` slot (a
     /// [`crate::TextStyle`]) — `None` inherits [`crate::Theme::text`]
     /// like every other text-rendering widget.
@@ -332,7 +332,7 @@ impl<'a> TextEdit<'a> {
         });
         // State-independent scalars off the same style source, copied
         // out so no theme borrow (or whole-theme clone) survives.
-        let style = self.style.unwrap_or(&ui.theme.text_edit);
+        let style = self.style.unwrap_or(&ui.theme().text_edit);
         let caret_color = style.caret;
         let caret_width = style.caret_width;
         let selection_color = style.selection;

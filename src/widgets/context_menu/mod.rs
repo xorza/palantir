@@ -140,12 +140,10 @@ impl<'a> ContextMenu<'a> {
 
         let body_id = self.for_id.with("body");
 
-        // Borrow the sub-theme to copy out the three scalars and the single
-        // `Background` we keep — avoids cloning the whole `ContextMenuTheme`
-        // (including the unused per-item looks) every open frame.
-        let ctx = self.style.unwrap_or(&ui.theme.context_menu);
-        let theme_padding = ctx.padding;
-        let theme_min_width = ctx.min_width;
+        // `Popup::background` owns its chrome, so the panel is copied even
+        // though the rest of the bundle is only read — once per open frame.
+        let ui_theme = ui.theme().clone();
+        let ctx = self.style.unwrap_or(&ui_theme.context_menu);
         let panel = self.chrome.unwrap_or_else(|| ctx.panel.clone());
 
         // The menu is the popup, configured: the caller's `Configure`
@@ -158,8 +156,8 @@ impl<'a> ContextMenu<'a> {
             .anchored_at(raw_anchor)
             .background(panel)
             .default_id(body_id)
-            .default_padding(theme_padding)
-            .default_min_size(Size::new(theme_min_width, 0.0))
+            .default_padding(ctx.padding)
+            .default_min_size(Size::new(ctx.min_width, 0.0))
             .default_gap(ctx.gap)
             .show(ui, body);
         if resp.closed() {
@@ -295,7 +293,7 @@ impl<'a> MenuItem<'a> {
         // — the four-response pick, the padding/margin defaults, the
         // transition — comes back from the shared resolver instead, so a
         // menu row picks and animates exactly like a Button.
-        let item = self.style.unwrap_or(&ui.theme.context_menu.item);
+        let item = self.style.unwrap_or(&ui.theme().context_menu.item);
         let shortcut_color = item.shortcut;
         let gap = item.gap;
 
@@ -398,12 +396,12 @@ impl<'a> MenuSeparator<'a> {
 
     #[track_caller]
     pub fn show<'ui>(self, ui: &'ui mut Ui) -> Response<'ui> {
-        let sep = self.style.unwrap_or(&ui.theme.context_menu.separator);
-        // Cloned, not borrowed: `Separator::style` holds the reference
-        // across `show`'s `&mut Ui`, and this one may point into
-        // `ui.theme`.
-        let sep = sep.clone();
-        Separator::horizontal().style(&sep).show(ui)
+        // Handle, not a borrow: `Separator::style` holds the reference
+        // across `show`'s `&mut Ui`, and this one may point into the
+        // `Ui`'s own theme.
+        let ui_theme = ui.theme().clone();
+        let sep = self.style.unwrap_or(&ui_theme.context_menu.separator);
+        Separator::horizontal().style(sep).show(ui)
     }
 }
 
