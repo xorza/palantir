@@ -123,7 +123,7 @@ impl ShaperInner {
         match self.cosmic.as_mut() {
             Some(cosmic) => cosmic.shape(request, floor),
             #[cfg(any(test, feature = "internals"))]
-            None => crate::text::mono::internals::measure(request, floor),
+            None => crate::text::mono::measure(request, floor),
             // The mono metric is gated out of production, and so is the
             // only constructor that could put us here.
             #[cfg(not(any(test, feature = "internals")))]

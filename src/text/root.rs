@@ -69,6 +69,13 @@ pub(crate) mod internals {
     /// [`TextSystem`](crate::text::system::TextSystem) rather than carrying
     /// it on the measurement, but tests assert on buffer identity, so the
     /// helpers hand both back together.
+    ///
+    /// **Flattened rather than holding a [`TextRoot`], because it is not
+    /// always one.** `TextSystem::shape_run` fills `size` from the
+    /// *width-bounded* resolve while `intrinsic_min` and `single_line`
+    /// come from the unbounded root, which is exactly the pair a bounded
+    /// shape cannot answer for itself. Storing a `root: TextRoot` would
+    /// give that hybrid a name promising it came from one shape.
     #[derive(Clone, Copy, Debug)]
     pub(crate) struct TestMeasure {
         pub(crate) size: Size,

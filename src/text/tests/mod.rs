@@ -75,7 +75,7 @@ fn slot_at(widget_id: WidgetId, ordinal: u16) -> TextRunSlot {
 /// Measure through the mono fallback. Mints no shaped buffer, so every
 /// run it measures carries the invalid sentinel.
 fn mono_shape(text: &str, shape: TestShape, fit: LineFit) -> TestMeasure {
-    let root = mono::internals::measure(shape.request(text, fit), WrapFloor::Scan);
+    let root = mono::measure(shape.request(text, fit), WrapFloor::Scan);
     TestMeasure::new(root, TextShapeKey::INVALID)
 }
 

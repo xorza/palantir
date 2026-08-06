@@ -222,9 +222,10 @@ fn cosmic_empty_text_returns_invalid_zero_size() {
         Some(0.0),
         "empty text has a genuinely zero floor, not an unscanned one",
     );
-    // `buffer_for(INVALID)` must return None — even after measuring,
-    // no buffer was cached for the empty input.
-    assert!(c.shaped_run(r.key).is_none());
+    // Nothing was cached for the empty input. Asserted against the cache
+    // itself rather than by looking the sentinel up: it names no entry,
+    // so `shaped_run` treats being asked as a misuse rather than a miss.
+    assert_eq!(c.cache_len(), 0, "empty text must mint no shaped buffer");
 
     // The mono fallback agrees, and empty text short-circuits ahead of
     // the dispatch tally — a run with nothing to shape is not a shape.
