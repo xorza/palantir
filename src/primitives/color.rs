@@ -418,7 +418,7 @@ impl ColorF16 {
         // NaN red channel reaches the shader and renders as
         // hardware-dependent garbage. Covering all four costs one
         // masked add, not three extra compares.
-        noop_f16_bits(self.0.0[3]) || self.0.has_nan()
+        noop_f16_bits(self.0.lane_bits(3)) || self.0.has_nan()
     }
 
     /// True when alpha is within `EPS` of 1.0 — paints with full
@@ -429,7 +429,7 @@ impl ColorF16 {
     #[inline]
     pub const fn is_opaque(self) -> bool {
         use crate::primitives::approx::opaque_f16_bits;
-        opaque_f16_bits(self.0.0[3])
+        opaque_f16_bits(self.0.lane_bits(3))
     }
 
     /// All four lanes unpacked to f32 at once via the batched f16→f32

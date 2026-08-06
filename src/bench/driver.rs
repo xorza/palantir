@@ -77,6 +77,7 @@ pub(super) const DRIVERS: &[Driver] = &[
         "gradient_atlas",
         crate::renderer::gradient_atlas::bench::bench,
     ),
+    driver("half_simd", crate::primitives::half_simd::bench::bench),
     gpu_driver(
         "image_pipeline",
         crate::renderer::backend::image_pipeline::bench::bench,
