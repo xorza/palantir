@@ -137,7 +137,7 @@ use crate::widgets::theme::widget_look::animated_look::AnimatedLook;
 /// Every themed widget takes `.style(&XTheme)`, which replaces its whole
 /// bundle for that call. It is all-or-nothing by design — to move one
 /// axis, build the bundle from the theme:
-/// `SpinnerTheme { color: red, ..ui.theme.spinner.clone() }`.
+/// `SpinnerTheme { color: red, ..ui.theme().spinner.clone() }`.
 ///
 /// Some widgets additionally expose **one-axis hatches** —
 /// [`Separator::color`](crate::Separator::color) /
@@ -398,7 +398,7 @@ pub(super) trait WidgetTheme: Sized {
     ///
     /// An associated function rather than a method: `style` is an
     /// `Option`, and the `None` case is the whole point — it inherits
-    /// `fallback(&ui.theme)`, the widget's own global slot
+    /// `fallback(ui.theme())`, the widget's own global slot
     /// (`theme.button` for Button/ComboBox, `theme.drag_value.chip` for
     /// the DragValue chip, `theme.text_edit` for TextEdit,
     /// `theme.context_menu.item` for MenuItem, and one of
@@ -408,11 +408,14 @@ pub(super) trait WidgetTheme: Sized {
     /// `WidgetTheme::resolve(ui, …)` with no turbofish.
     ///
     /// The scalars are copied out, and the look is flattened into an
-    /// owned target, so every borrow on `ui.theme` ends before
+    /// owned target, so every borrow on [`Ui::theme`] ends before
     /// [`Ui::animate`] reborrows `ui` mutably. That split is what lets
     /// [`Theme::text`] be passed by reference: it is copied only into
     /// the target of a look that declines to override it, rather than
-    /// cloned for every themed widget to launder the borrow.
+    /// cloned for every themed widget to launder the borrow. A widget
+    /// that also needs a bundle *after* this call — `TextEdit`'s caret
+    /// scalars, `ComboBox`'s arrow geometry — holds an [`Ui::theme`]
+    /// handle rather than paying a second lookup here.
     // This generic crosses the theme/widget codegen-unit boundary. Leaving it
     // to the default inliner kept the resolver plus its tiny trait accessors
     // outlined in release builds; the frame bench measured that path at 3.9%
@@ -428,11 +431,12 @@ pub(super) trait WidgetTheme: Sized {
         style: Option<&Self>,
         fallback: impl FnOnce(&Theme) -> &Self,
     ) -> AnimatedLook {
-        let style = style.unwrap_or_else(|| fallback(&ui.theme));
+        let theme = ui.theme();
+        let style = style.unwrap_or_else(|| fallback(theme));
         let padding = style.padding();
         let margin = style.margin();
         let anim = style.anim();
-        let target = style.pick(state, mode).to_animated(&ui.theme.text);
+        let target = style.pick(state, mode).to_animated(&theme.text);
         node.padding.get_or_insert(padding);
         node.margin.get_or_insert(margin);
         ui.animate(id, WidgetLook::SLOT_LOOK, target, anim)

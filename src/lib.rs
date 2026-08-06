@@ -323,6 +323,7 @@ mod hot_struct_sizes {
     use crate::text::key::TextShapeKey;
     use crate::text::render::PlacedGlyph;
     use crate::text::shaped_ref::ShapedTextRef;
+    use crate::ui::Ui;
     use crate::widgets::button::Button;
     use crate::widgets::checkbox::Checkbox;
     use crate::widgets::combo_box::ComboBox;
@@ -353,9 +354,14 @@ mod hot_struct_sizes {
     ///
     /// Sizes are for the 64-bit target (the only one). Covers the SoA
     /// per-node columns, per-shape/per-chrome lowered forms, the
-    /// encoder↔composer wire payloads, and the GPU instance types.
+    /// encoder↔composer wire payloads, the GPU instance types, and the
+    /// one whole-`Ui` entry ([`UI_SIZE`]).
+    ///
+    /// The expected size is a `tt`, not a literal, so a type whose
+    /// footprint is feature-conditional can name a `cfg`'d const in the
+    /// same column as everything else's number.
     macro_rules! hot_structs {
-        ($($ty:ty => $name:literal : $size:literal / $align:literal),+ $(,)?) => {
+        ($($ty:ty => $name:literal : $size:tt / $align:literal),+ $(,)?) => {
             #[test]
             #[ignore = "print-only"]
             fn print_hot_struct_sizes() {
@@ -386,7 +392,31 @@ mod hot_struct_sizes {
         };
     }
 
+    /// Expected `size_of::<Ui>()`. Two numbers because `LayoutCounters`
+    /// carries a `PhaseTimings` only under `bench` — the sole
+    /// feature-conditional footprint in the table below.
+    ///
+    /// Both are the **`cfg(test)`** size, since that is what this module
+    /// compiles as: `LayoutCounters`' `TestOnly` fields are live here and
+    /// zero-sized in a release build, so a shipped `Ui` is ~90 B smaller
+    /// than either. Read these as a drift tripwire, not as the production
+    /// footprint.
+    #[cfg(feature = "bench")]
+    const UI_SIZE: usize = 6872;
+    #[cfg(not(feature = "bench"))]
+    const UI_SIZE: usize = 6848;
+
     hot_structs! {
+        // One instance per window, not per frame — pinned because every
+        // pass walks `&mut Ui` to reach `forest` / `layout` / `anim` /
+        // `input` / `cascade`, so anything parked inline between them
+        // costs locality on all of them. `Theme` used to be: at 8904 B
+        // it made `Ui` 15656 B, and moving it behind an `Rc` (halving
+        // `Ui`) measured -6% on `frame/cached_cpu` and -6% on
+        // `frame/partial_cpu`. That is the regression this number
+        // exists to catch; a new field is fine, a new multi-KB blob is
+        // the thing to argue about.
+        Ui => "ui::Ui": UI_SIZE / 8,
         // Per-node SoA columns (touched every node, every frame).
         NodeRecord => "scene::NodeRecord": 56 / 8,
         LayoutCore => "scene::LayoutCore": 28 / 4,

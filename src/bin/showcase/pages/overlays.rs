@@ -297,7 +297,7 @@ enum Flavor {
 /// `ContextMenuTheme` isn't `const`-constructible; it's one small
 /// struct on an already-open menu's frame.
 fn roomy_menu_theme(ui: &Ui) -> ContextMenuTheme {
-    let mut t = ui.theme.context_menu.clone();
+    let mut t = ui.theme().context_menu.clone();
     t.padding = Spacing::all(10.0);
     t.gap = 4.0;
     t.item.padding = Spacing::xy(12.0, 8.0);

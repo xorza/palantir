@@ -75,7 +75,7 @@ impl<'a> Separator<'a> {
     }
 
     pub fn show(mut self, ui: &mut Ui) -> Response<'_> {
-        let theme = self.style.unwrap_or(&ui.theme.separator);
+        let theme = self.style.unwrap_or(&ui.theme().separator);
         let t = self.thickness.unwrap_or(theme.thickness).max(0.0);
         let margin = theme.margin;
         let default_size = if self.horizontal {
@@ -133,8 +133,8 @@ mod tests {
         };
         let mut h = UiHarness::new(UVec2::new(400, 300));
         // Loudly different global slot — a styled rule must not reach it.
-        h.ui.theme.separator.thickness = 11.0;
-        h.ui.theme.separator.margin = Spacing::all(9.0);
+        h.ui.theme_mut().separator.thickness = 11.0;
+        h.ui.theme_mut().separator.margin = Spacing::all(9.0);
 
         let (mut inherited, mut explicit, mut global) = (None, None, None);
         h.frame(|ui| {

@@ -198,7 +198,7 @@ fn record_and_render() -> Step {
     // the floor pinned here excludes the direct-present path.
     let mut host = gpu.offscreen_builder().build();
     let mut state = FrameFixture::default();
-    host.ui().theme.window_clear = Color::TRANSPARENT;
+    host.ui().theme_mut().window_clear = Color::TRANSPARENT;
 
     let target = gpu.target(RENDER_SURFACE, "palantir.alloc.render.target");
 

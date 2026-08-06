@@ -77,7 +77,7 @@ impl<'a> Spinner<'a> {
     }
 
     pub fn show(mut self, ui: &mut Ui) -> Response<'_> {
-        let theme = self.style.unwrap_or(&ui.theme.spinner);
+        let theme = self.style.unwrap_or(&ui.theme().spinner);
         let diameter = self.diameter.unwrap_or(theme.diameter).max(1.0);
         let width = self
             .thickness
@@ -186,7 +186,7 @@ mod tests {
 
         fn recorded(theme: SpinnerTheme, diameter: f32) -> (f32, f32, f32) {
             let mut h = UiHarness::new(UVec2::new(200, 200));
-            h.ui.theme.spinner = theme;
+            h.ui.theme_mut().spinner = theme;
             h.frame(|ui| {
                 Panel::hstack().auto_id().show(ui, |ui| {
                     Spinner::new()

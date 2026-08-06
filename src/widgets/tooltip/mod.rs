@@ -104,7 +104,7 @@ impl<'r> Tooltip<'r, 'static> {
 impl<'r, 'a> Tooltip<'r, 'a> {
     /// Paint chrome (fill / stroke / corner radius / shadow). `None`
     /// is the default; theme fallback in [`Self::show`] fills it in
-    /// from `ui.theme.tooltip.panel` when unset. Pass [`Background::NONE`]
+    /// from `ui.theme().tooltip.panel` when unset. Pass [`Background::NONE`]
     /// to suppress the themed bubble chrome.
     pub fn background(mut self, bg: Background) -> Self {
         self.chrome = Some(bg);
@@ -149,9 +149,10 @@ impl<'r, 'a> Tooltip<'r, 'a> {
     /// record the bubble into `Layer::Tooltip` anchored next to the
     /// trigger.
     pub fn show(self, ui: &mut Ui) {
-        // Copied out once: the bundle may point into `ui.theme`, and the
-        // record below reborrows `ui` mutably.
-        let theme = self.style.unwrap_or(&ui.theme.tooltip).clone();
+        // Handle, not a borrow: the bundle may point into the `Ui`'s own
+        // theme, and the record below reborrows `ui` mutably.
+        let ui_theme = ui.theme().clone();
+        let theme = self.style.unwrap_or(&ui_theme.tooltip);
         let delay = self.delay.unwrap_or(theme.delay);
         let warmup = theme.warmup;
         let gap = theme.gap;
@@ -201,8 +202,7 @@ impl<'r, 'a> Tooltip<'r, 'a> {
             global.last_visible_at = Some(now);
             let position = OverlayPosition::below(trigger_rect, gap);
             let text = self.text;
-            let text_style = theme.text.clone();
-            let chrome = self.chrome.unwrap_or_else(|| theme.panel.clone());
+            let chrome = self.chrome.as_ref().unwrap_or(&theme.panel);
             // Theme fills in whatever the caller left alone. Identity
             // derives from the trigger, because that is the only thing a
             // tooltip *has* — but a caller-set id wins like any other
@@ -213,9 +213,9 @@ impl<'r, 'a> Tooltip<'r, 'a> {
                 .default_padding(theme.padding)
                 .default_max_size(theme.max_size);
             ui.layer(Layer::Tooltip).placement(position).show(|ui| {
-                ui.widget(node).record(ui, Some(&chrome), |ui| {
+                ui.widget(node).record(ui, Some(chrome), |ui| {
                     Text::new(text)
-                        .style(&text_style)
+                        .style(&theme.text)
                         .text_wrap(TextWrap::Wrap)
                         .show(ui);
                 });

@@ -102,7 +102,7 @@ impl<Rows, Cols> Grid<Rows, Cols> {
 
     /// Paint chrome (fill / stroke / corner radius / shadow). `None` is
     /// the default; theme fallback in [`Self::show`] fills it in from
-    /// `ui.theme.panel_background` when unset. Pass [`Background::NONE`]
+    /// `ui.theme().panel_background` when unset. Pass [`Background::NONE`]
     /// to suppress that fallback for this grid.
     pub fn background(mut self, bg: Background) -> Self {
         self.chrome = Some(bg);
@@ -127,8 +127,8 @@ impl<Rows, Cols> Grid<Rows, Cols> {
         let chrome = chrome::resolve_container(
             &mut node,
             self.chrome,
-            ui.theme.panel_background.as_ref(),
-            ui.theme.panel_clip,
+            ui.theme().panel_background.as_ref(),
+            ui.theme().panel_clip,
         );
         ui.widget(node).show(ui, chrome.as_ref(), body)
     }

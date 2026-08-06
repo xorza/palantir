@@ -2553,3 +2553,58 @@ fn open_window_dedups_by_token_within_a_frame() {
     );
     assert_eq!(h.ui.window_requests.commands.opens[1].token, WindowToken(8));
 }
+
+/// The theme accessors' sharing contract, which is the whole point of
+/// storing it behind an `Rc`: reads hand back a handle so the widgets
+/// that need a bundle across a `&mut Ui` reborrow pay a refcount bump
+/// rather than copying one; writes are copy-on-write, so a live handle
+/// keeps the values it was taken with.
+///
+/// The `ptr_eq` assertion is the load-bearing one. If `Ui::theme` ever
+/// went back to returning `&Theme`, every `ui.theme().clone()` call site
+/// in the crate would still compile — and silently deep-copy ~9 KB of
+/// bundles per widget per frame instead.
+#[test]
+fn theme_reads_share_and_writes_copy_on_write() {
+    use crate::widgets::theme::Theme;
+    use std::rc::Rc;
+
+    let mut h = UiHarness::new(SURFACE);
+    let clear = Color::rgb(0.25, 0.5, 0.75);
+    h.ui.theme_mut().window_clear = clear;
+
+    let handle = h.ui.theme().clone();
+    assert!(
+        Rc::ptr_eq(&handle, h.ui.theme()),
+        "a theme read must hand back the same allocation, not a copy",
+    );
+
+    // Write with the handle alive: the `Ui` moves, the handle does not.
+    let recolored = Color::rgb(0.1, 0.2, 0.3);
+    h.ui.theme_mut().window_clear = recolored;
+    assert_eq!(h.ui.theme().window_clear, recolored);
+    assert_eq!(
+        handle.window_clear, clear,
+        "an outstanding handle must keep the values it was taken with",
+    );
+    assert!(
+        !Rc::ptr_eq(&handle, h.ui.theme()),
+        "the copy-on-write split must give the `Ui` a fresh allocation",
+    );
+
+    // With the handle dropped, the next write mutates in place.
+    drop(handle);
+    let before = Rc::as_ptr(h.ui.theme());
+    h.ui.theme_mut().window_clear = clear;
+    assert_eq!(
+        Rc::as_ptr(h.ui.theme()),
+        before,
+        "an unshared theme must be written in place, with no copy",
+    );
+
+    // `set_theme` takes the handle, so swapping whole themes is a move.
+    let swapped: Rc<Theme> = Rc::new(Theme::default());
+    let swapped_ptr = Rc::as_ptr(&swapped);
+    h.ui.set_theme(swapped);
+    assert_eq!(Rc::as_ptr(h.ui.theme()), swapped_ptr);
+}

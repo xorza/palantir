@@ -46,7 +46,7 @@
 //! WinitHost::builder(WindowToken(0))
 //!     .title("title")
 //!     .build(|ui, _handle| {
-//!         ui.theme.button.anim = Some(AnimSpec::SPRING);
+//!         ui.theme_mut().button.anim = Some(AnimSpec::SPRING);
 //!         MyApp
 //!     })?
 //!     .run()?;

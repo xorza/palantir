@@ -19,7 +19,7 @@ const ROW: Color = Color::rgb(0.42, 0.55, 0.78);
 /// so it shows up against the dark fixture background. Mirrors what
 /// the showcase binary (`src/bin/showcase/main.rs`) does.
 fn light_thumb_theme(ui: &mut palantir::Ui) {
-    ui.theme.scrollbar = ScrollbarTheme {
+    ui.theme_mut().scrollbar = ScrollbarTheme {
         thumb: Color::rgba(1.0, 1.0, 1.0, 0.55),
         thumb_hover: Color::rgba(1.0, 1.0, 1.0, 0.75),
         thumb_active: Color::rgba(1.0, 1.0, 1.0, 0.9),

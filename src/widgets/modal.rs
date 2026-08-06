@@ -82,9 +82,12 @@ impl<'a> Modal<'a> {
         let mut root_w = ui.widget(self.node);
         let root_id = root_w.id();
 
-        let mt = self.style.unwrap_or(&ui.theme.modal);
+        // Handle: `mt.card` is still borrowed at `scope.record`, which owns
+        // `ui` mutably.
+        let ui_theme = ui.theme().clone();
+        let mt = self.style.unwrap_or(&ui_theme.modal);
         let dim = Background::fill(self.backdrop.unwrap_or(mt.backdrop));
-        let card_bg = self.chrome.unwrap_or_else(|| mt.card.clone());
+        let card_bg = self.chrome.as_ref().unwrap_or(&mt.card);
         let theme_padding = mt.padding;
         let theme_min_width = mt.min_width;
 
@@ -110,7 +113,7 @@ impl<'a> Modal<'a> {
         root_w.node = root;
         let escape = scope.record(ui, |ui| {
             root_w.record(ui, Some(&dim), |ui| {
-                ui.widget(card).record(ui, Some(&card_bg), body);
+                ui.widget(card).record(ui, Some(card_bg), body);
             });
         });
         let dismissed = ui.response_for(root_id).left.clicked() || escape;

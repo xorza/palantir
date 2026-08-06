@@ -114,8 +114,8 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
 #[test]
 fn explicit_no_chrome_and_no_clip_override_panel_theme() {
     let mut h = UiHarness::new(UVec2::new(200, 120));
-    h.ui.theme.panel_background = Some(Background::fill(Color::WHITE));
-    h.ui.theme.panel_clip = ClipMode::Rect;
+    h.ui.theme_mut().panel_background = Some(Background::fill(Color::WHITE));
+    h.ui.theme_mut().panel_clip = ClipMode::Rect;
     let (mut explicit, mut inherited) = (None, None);
     h.frame(|ui| {
         explicit = Some(

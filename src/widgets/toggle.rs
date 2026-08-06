@@ -145,10 +145,11 @@ mod tests {
         }
 
         let mut h = UiHarness::new(UVec2::new(400, 300));
+        let theme = h.ui.theme_mut();
         for (slot, (padding, margin)) in [
-            (&mut h.ui.theme.checkbox, (cb_padding, cb_margin)),
-            (&mut h.ui.theme.radio, (rb_padding, rb_margin)),
-            (&mut h.ui.theme.switch, (sw_padding, sw_margin)),
+            (&mut theme.checkbox, (cb_padding, cb_margin)),
+            (&mut theme.radio, (rb_padding, rb_margin)),
+            (&mut theme.switch, (sw_padding, sw_margin)),
         ] {
             slot.padding = padding;
             slot.margin = margin;

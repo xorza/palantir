@@ -101,8 +101,8 @@ fn trigger_geometry_follows_the_combo_box_theme() {
 
     let measure = |arrow: Vec2, row_gap: f32| -> (Vec2, f32) {
         let mut h = UiHarness::new(SURFACE);
-        h.ui.theme.combo_box.arrow_size = arrow;
-        h.ui.theme.combo_box.row_gap = row_gap;
+        h.ui.theme_mut().combo_box.arrow_size = arrow;
+        h.ui.theme_mut().combo_box.row_gap = row_gap;
         let mut selected = 0;
         h.frame(|ui| {
             Panel::hstack()

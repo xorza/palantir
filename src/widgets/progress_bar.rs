@@ -39,7 +39,7 @@ impl<'a> ProgressBar<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        let theme = self.style.unwrap_or(&ui.theme.progress_bar);
+        let theme = self.style.unwrap_or(&ui.theme().progress_bar);
         let [fill, spacer] = Sizing::split(self.fraction);
         let height = theme.height.max(0.0);
         let radius = Corners::all(height * 0.5);

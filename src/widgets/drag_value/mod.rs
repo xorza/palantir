@@ -402,13 +402,13 @@ impl<'a> DragValue<'a> {
         // padding is not the chip's — so the bundle has to be handed over
         // rather than left to the field's own default.
         //
-        // Owned, because the borrow has to outlive the `&mut Ui` the field is
-        // shown with. A theme bundle is inline (gradient stops are an
-        // `ArrayVec`), so this copies ~700 bytes of stack and allocates
-        // nothing, once per frame of an open edit.
+        // Held as a handle, because the borrow has to outlive the `&mut Ui`
+        // the field is shown with — a refcount bump rather than the ~700-byte
+        // `TextEditTheme` copy a plain borrow would have forced.
+        let ui_theme = ui.theme().clone();
         let editor = match self.style {
-            Some(s) => s.editor.clone(),
-            None => ui.theme.drag_value.editor.clone(),
+            Some(s) => &s.editor,
+            None => &ui_theme.drag_value.editor,
         };
         // Hold the editor at exactly the width the chip occupied last frame.
         // The chip shows `decimals`-rounded text; the editor shows every digit
@@ -434,7 +434,7 @@ impl<'a> DragValue<'a> {
                 .id(id)
                 .text_align(Align::CENTER)
                 .select_all_on_focus()
-                .style(&editor)
+                .style(editor)
                 .size((width, sizes.h()))
                 .min_size(min_size)
                 .max_size(self.node.max_size.unwrap_or(Size::INF));

@@ -10,8 +10,8 @@ fn each_text_widget_reads_its_own_theme_path_for_font_size() {
     use crate::widgets::text::Text;
 
     let mut h = ui_at_no_cosmic(UVec2::new(600, 200));
-    h.ui.theme.text.font_size_px = 22.0;
-    h.ui.theme.text_edit.looks.normal.text = Some(TextStyle::default().with_font_size(24.0));
+    h.ui.theme_mut().text.font_size_px = 22.0;
+    h.ui.theme_mut().text_edit.looks.normal.text = Some(TextStyle::default().with_font_size(24.0));
     let mut buf = String::from("hi");
 
     let mut btn_node = None;
@@ -71,7 +71,7 @@ fn theme_text_color_used_when_text_widget_does_not_override() {
     use crate::widgets::text::Text;
 
     let mut h = ui_at_no_cosmic(NARROW);
-    h.ui.theme.text.color = Color::rgb(1.0, 0.0, 0.0);
+    h.ui.theme_mut().text.color = Color::rgb(1.0, 0.0, 0.0);
 
     let mut node = None;
     h.frame(|ui| {
@@ -97,7 +97,7 @@ fn text_widget_color_override_wins_over_theme() {
     use crate::widgets::text::Text;
 
     let mut h = ui_at_no_cosmic(NARROW);
-    h.ui.theme.text.color = Color::rgb(1.0, 0.0, 0.0);
+    h.ui.theme_mut().text.color = Color::rgb(1.0, 0.0, 0.0);
 
     let mut node = None;
     h.frame(|ui| {
@@ -129,8 +129,9 @@ fn each_text_widget_reads_its_own_theme_path_for_line_height() {
     use crate::widgets::text::Text;
 
     let mut h = ui_at_no_cosmic(UVec2::new(600, 200));
-    h.ui.theme.text.line_height_mult = 2.0;
-    h.ui.theme.text_edit.looks.normal.text = Some(TextStyle::default().with_line_height_mult(3.0));
+    h.ui.theme_mut().text.line_height_mult = 2.0;
+    h.ui.theme_mut().text_edit.looks.normal.text =
+        Some(TextStyle::default().with_line_height_mult(3.0));
     let mut buf = String::from("hi");
 
     let mut btn_node = None;
@@ -232,7 +233,7 @@ fn invalid_runtime_metrics_record_no_text_or_shaping_state() {
             st.edit.selection = Some(1);
         }
 
-        h.ui.theme.text_edit.looks.normal.text = Some(style.clone());
+        h.ui.theme_mut().text_edit.looks.normal.text = Some(style.clone());
         let mut text_node = None;
         let mut editor_node = None;
         let calls = h.ui.resources.text.measure_calls();
