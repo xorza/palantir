@@ -133,6 +133,17 @@ Worth **−5 to −8%** on the `frame` bench. Moves the CPU floor to Ivy Bridge
 (2012), so it's the application's call — palantir keeps the runtime fallback
 either way. `-C target-cpu=x86-64-v3` implies it, plus AVX2 and FMA.
 
+## Install
+
+```sh
+cargo add palantir
+```
+
+The default features carry the winit host and the OS clipboard. With
+`default-features = false` the only host left is `OffscreenHost`, which renders
+into a `wgpu::Texture` you supply — that's the build for embedding palantir in
+an app that already owns its window and event loop.
+
 ## Example
 
 ```rust,no_run
