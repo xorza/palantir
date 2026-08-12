@@ -7,6 +7,7 @@ description = "Derive macro for palantir's Animatable trait"
 repository = "https://github.com/xorza/palantir"
 homepage = "https://github.com/xorza/palantir"
 documentation = "https://docs.rs/palantir-anim-derive"
+readme = "README.md"
 keywords = ["palantir", "gui", "animation", "derive", "macro"]
 categories = ["gui", "rust-patterns"]
 license = "GPL-3.0-or-later"

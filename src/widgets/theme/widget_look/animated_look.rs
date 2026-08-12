@@ -3,7 +3,7 @@ use crate::widgets::theme::text_style::TextStyle;
 use palantir_anim_derive::Animatable;
 
 /// Resolved + per-frame animated values for a [`WidgetLook`](crate::WidgetLook). Built
-/// by [`WidgetLook::animate`](crate::WidgetLook::animate). Widgets read `background` and `text`
+/// by [`WidgetLook::to_animated`](crate::WidgetLook::to_animated). Widgets read `background` and `text`
 /// directly; both fields are already-animated.
 ///
 /// `text.color` is the animated color; `text.font_size_px` and
