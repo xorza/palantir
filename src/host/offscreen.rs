@@ -37,6 +37,7 @@ use crate::diagnostics::gpu_stats::GpuPassStats;
 use crate::display::{self, Display};
 use crate::host::clock::{Clock, RealtimeClock};
 use crate::host::core::HostCore;
+use crate::host::device_requirements::DeviceRequirements;
 use crate::host::window_driver::{CpuFrame, PresentStrategy, TargetKey, WindowDriver};
 use crate::primitives::approx::EPS;
 use crate::renderer::backend::BackendConfig;
@@ -103,7 +104,20 @@ impl OffscreenHostBuilder {
 
     /// Allocate the shared core and the window driver from the sealed
     /// settings.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the device cannot run Palantir's pipelines — see
+    /// [`DeviceRequirements`]. Checked here rather than left to the first
+    /// pipeline that trips over it, because a device is only ever short of a
+    /// feature its own request forgot to ask for: by the time one exists,
+    /// `request_device` has already granted whatever was asked. The mistake is
+    /// upstream of this call, so the report belongs at this boundary and not
+    /// several layers into the backend.
     pub fn build(self) -> OffscreenHost {
+        if let Err(unmet) = DeviceRequirements::met_by(&self.device) {
+            panic!("offscreen host device cannot run Palantir: {unmet}");
+        }
         let core = HostCore::new(
             self.device,
             self.queue,

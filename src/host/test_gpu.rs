@@ -6,7 +6,7 @@ use std::sync::OnceLock;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use pollster::FutureExt;
+use crate::host::headless_gpu::HeadlessGpu;
 
 const ADAPTER_RETRY_INTERVAL: Duration = Duration::from_millis(25);
 const ADAPTER_RETRY_TIMEOUT: Duration = Duration::from_secs(2);
@@ -21,23 +21,21 @@ struct ProcessGpu {
 impl ProcessGpu {
     fn new() -> Self {
         let process_lock = lock_gpu_process();
-        let adapter = request_headless_adapter();
-        let mut limits = wgpu::Limits::default();
-        limits.max_immediate_size = limits.max_immediate_size.max(16);
-        let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor {
-                label: Some("palantir.headless_test.device"),
-                required_features: wgpu::Features::IMMEDIATES,
-                required_limits: limits,
-                experimental_features: wgpu::ExperimentalFeatures::default(),
-                memory_hints: wgpu::MemoryHints::default(),
-                trace: wgpu::Trace::Off,
-            })
-            .block_on()
-            .expect("request headless test device");
+        let started = Instant::now();
+        let gpu = loop {
+            match HeadlessGpu::new(wgpu::PowerPreference::LowPower, wgpu::Features::empty()) {
+                Ok(gpu) => break gpu,
+                Err(_) if started.elapsed() < ADAPTER_RETRY_TIMEOUT => {
+                    thread::sleep(ADAPTER_RETRY_INTERVAL);
+                }
+                Err(error) => {
+                    panic!("lease headless test gpu after {ADAPTER_RETRY_TIMEOUT:?}: {error:?}");
+                }
+            }
+        };
         Self {
-            queue,
-            device,
+            queue: gpu.queue,
+            device: gpu.device,
             _process_lock: process_lock,
         }
     }
@@ -90,33 +88,4 @@ fn lock_gpu_process() -> File {
         .expect("open Palantir GPU test lock");
     file.lock().expect("lock Palantir GPU test process");
     file
-}
-
-fn request_headless_adapter() -> wgpu::Adapter {
-    let started = Instant::now();
-    loop {
-        // `_from_env` so `WGPU_BACKEND` reaches the headless suite too. A
-        // rendering bug that only reproduces on one backend is otherwise
-        // untestable here: the harness would keep picking whatever the
-        // adapter sort lands on regardless of what the reporter ran.
-        let instance =
-            wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
-        match instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::LowPower,
-                compatible_surface: None,
-                force_fallback_adapter: false,
-                apply_limit_buckets: false,
-            })
-            .block_on()
-        {
-            Ok(adapter) => return adapter,
-            Err(_) if started.elapsed() < ADAPTER_RETRY_TIMEOUT => {
-                thread::sleep(ADAPTER_RETRY_INTERVAL);
-            }
-            Err(error) => {
-                panic!("request headless test adapter after {ADAPTER_RETRY_TIMEOUT:?}: {error:?}");
-            }
-        }
-    }
 }

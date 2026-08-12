@@ -62,7 +62,7 @@ half = { version = "2.7", features = ["bytemuck"] }
 memchr = "2.8"
 rustc-hash = "2.1"
 tracing = { version = "0.1", default-features = false, features = ["std"] }
-pollster = { version = "1.0", optional = true }
+pollster = "1.0"
 wgpu = { version = "30.0", default-features = false, features = ["std", "parking_lot", "wgsl", "vulkan", "metal", "dx12"] }
 winit = { version = "0.30", optional = true }
 padding-struct = "0.2"
@@ -143,7 +143,7 @@ default = ["system-clipboard", "winit-host"]
 # headless GPU lease. Deliberately cheap: both integration suites need it to
 # reach past the published surface, and neither should pay to compile a
 # benchmark harness for the privilege.
-internals = ["dep:pollster"]
+internals = []
 # Compiles the source-level benchmark drivers and exposes their function-only
 # facade to the thin external targets. Implies `internals` — the drivers reach
 # into the same privates the tests do, and add the harness crates on top.
@@ -157,7 +157,7 @@ showcase = ["dep:tracing-subscriber", "winit-host", "gpu-debug-markers"]
 # scales with UI complexity. Turn on when you intend to capture.
 gpu-debug-markers = []
 system-clipboard = ["winit-host", "dep:arboard"]
-winit-host = ["dep:pollster", "dep:winit"]
+winit-host = ["dep:winit"]
 # Profiler backend — off by default (zero overhead).
 # Tracy needs an external viewer; wgpu's own GPU zones light up
 # automatically because `profiling` is a singleton in the dep graph.

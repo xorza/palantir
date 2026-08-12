@@ -7,11 +7,11 @@ use std::sync::Arc;
 use glam::UVec2;
 use winit::window::{Window as WinitWindow, WindowId};
 
+use crate::host::device_requirements::DeviceRequirements;
 use crate::host::winit::config::WinitHostConfig;
 use crate::host::winit::error::WinitHostError;
 use crate::window::Vsync;
 
-const REQUIRED_IMMEDIATE_SIZE: u32 = 16;
 const REQUIRED_SURFACE_USAGES: wgpu::TextureUsages =
     wgpu::TextureUsages::RENDER_ATTACHMENT.union(wgpu::TextureUsages::COPY_DST);
 
@@ -48,12 +48,6 @@ pub(super) struct GpuInit {
     pub(super) device: wgpu::Device,
     pub(super) queue: wgpu::Queue,
     pub(super) first_surface: WindowSurface,
-}
-
-#[derive(Debug)]
-struct DeviceRequirements {
-    features: wgpu::Features,
-    limits: wgpu::Limits,
 }
 
 impl GpuInit {
@@ -121,8 +115,8 @@ impl GpuInit {
         } else {
             wgpu::Features::empty()
         };
-        let requirements =
-            device_requirements(adapter.features(), adapter.limits(), timing_features)?;
+        let requirements = DeviceRequirements::negotiate(&adapter, timing_features)
+            .map_err(|source| WinitHostError::Requirements { source })?;
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
             label: Some("palantir.device"),
             required_features: requirements.features,
@@ -156,39 +150,6 @@ impl GpuInit {
             first_surface,
         })
     }
-}
-
-fn device_requirements(
-    supported_features: wgpu::Features,
-    supported_limits: wgpu::Limits,
-    optional_features: wgpu::Features,
-) -> Result<DeviceRequirements, WinitHostError> {
-    let required = wgpu::Features::IMMEDIATES;
-    if !supported_features.contains(required) {
-        return Err(WinitHostError::MissingAdapterFeatures {
-            required,
-            supported: supported_features,
-        });
-    }
-
-    let features = required | (supported_features & optional_features);
-    let mut limits = wgpu::Limits::default().using_resolution(supported_limits.clone());
-    // This covers `renderer::backend::text::Params` (vec2<u32>) with
-    // WGSL's 16-byte uniform-struct rounding.
-    limits.max_immediate_size = limits.max_immediate_size.max(REQUIRED_IMMEDIATE_SIZE);
-    let mut failed_limit = None;
-    limits.check_limits_with_fail_fn(&supported_limits, true, |name, required, supported| {
-        failed_limit = Some(WinitHostError::UnsupportedAdapterLimit {
-            name,
-            required,
-            supported,
-        });
-    });
-    if let Some(error) = failed_limit {
-        return Err(error);
-    }
-
-    Ok(DeviceRequirements { features, limits })
 }
 
 impl SurfaceManager {
@@ -322,14 +283,13 @@ mod tests {
 
     use glam::UVec2;
     use wgpu::{
-        CompositeAlphaMode, Features, PresentMode, SurfaceCapabilities, SurfaceColorSpaces,
+        CompositeAlphaMode, PresentMode, SurfaceCapabilities, SurfaceColorSpaces,
         SurfaceFormatCapabilities, TextureFormat, TextureUsages,
     };
 
     use crate::host::winit::error::WinitHostError;
     use crate::host::winit::gpu::{
-        REQUIRED_IMMEDIATE_SIZE, REQUIRED_SURFACE_USAGES, build_surface_config,
-        device_requirements, negotiate_present_mode, present_mode,
+        REQUIRED_SURFACE_USAGES, build_surface_config, negotiate_present_mode, present_mode,
     };
     use crate::window::Vsync;
 
@@ -436,51 +396,6 @@ mod tests {
         assert_eq!(bootstrap_mode, PresentMode::Mailbox);
         assert_eq!(secondary_mode, PresentMode::AutoNoVsync);
         assert_ne!(bootstrap_mode, secondary_mode);
-    }
-
-    #[test]
-    fn device_requirements_validate_hard_capabilities_and_degrade_optional_features() {
-        let supported_limits = wgpu::Limits {
-            max_immediate_size: REQUIRED_IMMEDIATE_SIZE,
-            ..wgpu::Limits::default()
-        };
-        let supported_features = Features::IMMEDIATES | Features::TIMESTAMP_QUERY;
-        let optional = Features::TIMESTAMP_QUERY | Features::PIPELINE_STATISTICS_QUERY;
-
-        let requirements =
-            device_requirements(supported_features, supported_limits.clone(), optional).unwrap();
-        assert_eq!(
-            requirements.features,
-            Features::IMMEDIATES | Features::TIMESTAMP_QUERY
-        );
-        assert_eq!(
-            requirements.limits.max_immediate_size,
-            REQUIRED_IMMEDIATE_SIZE
-        );
-
-        let missing_feature =
-            device_requirements(Features::empty(), supported_limits.clone(), optional).unwrap_err();
-        assert!(matches!(
-            missing_feature,
-            WinitHostError::MissingAdapterFeatures {
-                required,
-                supported,
-            } if required == Features::IMMEDIATES && supported.is_empty()
-        ));
-
-        let mut insufficient_limits = supported_limits;
-        insufficient_limits.max_immediate_size = REQUIRED_IMMEDIATE_SIZE - 1;
-        let missing_limit =
-            device_requirements(Features::IMMEDIATES, insufficient_limits, Features::empty())
-                .unwrap_err();
-        assert!(matches!(
-            missing_limit,
-            WinitHostError::UnsupportedAdapterLimit {
-                name: "max_immediate_size",
-                required: 16,
-                supported: 15,
-            }
-        ));
     }
 
     fn compatible_caps() -> SurfaceCapabilities {
