@@ -10,9 +10,9 @@
 //! contend; a bench wants the discrete GPU and must not block for
 //! minutes behind someone else's lock.
 
+use crate::host::headless_gpu::HeadlessGpu;
 use crate::host::offscreen::{OffscreenHost, OffscreenHostBuilder};
 use glam::UVec2;
-use pollster::FutureExt;
 use std::sync::OnceLock;
 
 /// Every bench target renders into this. sRGB so the encoded colour
@@ -51,51 +51,27 @@ pub(crate) struct BenchGpu {
 }
 
 fn build(timing: Timing) -> BenchGpu {
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: false,
-            apply_limit_buckets: false,
-        })
-        .block_on()
-        .expect("request adapter (headless)");
-
     let timing_features = match timing {
         Timing::Instrumented => {
-            adapter.features()
-                & (wgpu::Features::TIMESTAMP_QUERY
-                    | wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES
-                    | wgpu::Features::PIPELINE_STATISTICS_QUERY)
+            wgpu::Features::TIMESTAMP_QUERY
+                | wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES
+                | wgpu::Features::PIPELINE_STATISTICS_QUERY
         }
         Timing::Bare => wgpu::Features::empty(),
     };
-
-    // Match the production host: text `Params` rides immediates (push
-    // constants), so the feature and a 16-byte budget are required.
-    let mut limits = wgpu::Limits::default();
-    limits.max_immediate_size = limits.max_immediate_size.max(16);
-
-    let (device, queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor {
-            label: Some(match timing {
-                Timing::Instrumented => "palantir.bench.device.instrumented",
-                Timing::Bare => "palantir.bench.device.bare",
-            }),
-            required_features: timing_features | wgpu::Features::IMMEDIATES,
-            required_limits: limits,
-            experimental_features: wgpu::ExperimentalFeatures::default(),
-            memory_hints: wgpu::MemoryHints::default(),
-            trace: wgpu::Trace::Off,
-        })
-        .block_on()
-        .expect("request device");
+    // Palantir's own needs — the immediates feature and its 16-byte budget —
+    // come from `HeadlessGpu`, so the bench device cannot drift from the one
+    // the production host builds.
+    let gpu = HeadlessGpu::new(wgpu::PowerPreference::HighPerformance, timing_features)
+        .expect("lease headless bench gpu");
+    let timing_features = gpu.device.features() & timing_features;
+    let info = gpu.adapter.get_info();
+    let (device, queue) = (gpu.device, gpu.queue);
 
     BenchGpu {
         device,
         queue,
-        info: adapter.get_info(),
+        info,
         timing_features,
     }
 }

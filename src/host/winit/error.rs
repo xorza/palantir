@@ -1,6 +1,7 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
+use crate::host::error::UnmetRequirements;
 use crate::window::WindowToken;
 
 /// The event loop has exited, so a [`HostHandle`](crate::HostHandle) can no
@@ -52,17 +53,8 @@ pub enum WinitHostError {
     RequestDevice { source: wgpu::RequestDeviceError },
     /// Palantir was compiled without a wgpu backend for the current target.
     NoGpuBackend,
-    /// The selected adapter lacks a feature required by Palantir.
-    MissingAdapterFeatures {
-        required: wgpu::Features,
-        supported: wgpu::Features,
-    },
-    /// One requested device limit exceeds what the selected adapter supports.
-    UnsupportedAdapterLimit {
-        name: &'static str,
-        required: u64,
-        supported: u64,
-    },
+    /// The selected adapter cannot run Palantir's pipelines.
+    Requirements { source: UnmetRequirements },
     /// The selected adapter cannot present to this window's surface.
     IncompatibleSurface,
     /// The surface cannot satisfy Palantir's linear-to-sRGB output contract.
@@ -94,22 +86,7 @@ impl Display for WinitHostError {
             Self::NoGpuBackend => {
                 f.write_str("Palantir was compiled without a GPU backend for this target")
             }
-            Self::MissingAdapterFeatures {
-                required,
-                supported,
-            } => write!(
-                f,
-                "graphics adapter is missing required features \
-                 (required: {required:?}, supported: {supported:?})"
-            ),
-            Self::UnsupportedAdapterLimit {
-                name,
-                required,
-                supported,
-            } => write!(
-                f,
-                "graphics adapter limit {name} is {supported}, but Palantir requires {required}"
-            ),
+            Self::Requirements { source } => Display::fmt(source, f),
             Self::IncompatibleSurface => {
                 f.write_str("graphics adapter cannot present to the window surface")
             }
@@ -136,9 +113,8 @@ impl Error for WinitHostError {
             Self::CreateSurface { source } => Some(source),
             Self::RequestAdapter { source } => Some(source),
             Self::RequestDevice { source } => Some(source),
+            Self::Requirements { source } => Some(source),
             Self::NoGpuBackend
-            | Self::MissingAdapterFeatures { .. }
-            | Self::UnsupportedAdapterLimit { .. }
             | Self::IncompatibleSurface
             | Self::MissingSrgbSurface
             | Self::MissingSurfaceUsages { .. } => None,
@@ -150,6 +126,7 @@ impl Error for WinitHostError {
 mod tests {
     use std::error::Error;
 
+    use crate::host::error::UnmetRequirements;
     use crate::host::winit::error::{HostDisconnected, WinitHostError};
 
     #[test]
@@ -163,16 +140,21 @@ mod tests {
         );
         assert!(event_loop.source().is_some());
 
-        let capability = WinitHostError::UnsupportedAdapterLimit {
-            name: "max_immediate_size",
-            required: 16,
-            supported: 8,
+        // Capability failures are the shared type's to describe, and the
+        // host forwards both the message and the cause rather than
+        // restating them.
+        let capability = WinitHostError::Requirements {
+            source: UnmetRequirements::Limit {
+                name: "max_immediate_size",
+                required: 16,
+                available: 8,
+            },
         };
         assert_eq!(
             capability.to_string(),
-            "graphics adapter limit max_immediate_size is 8, but Palantir requires 16"
+            "graphics device limit max_immediate_size is 8, but Palantir requires 16"
         );
-        assert!(capability.source().is_none());
+        assert!(capability.source().is_some());
     }
 
     #[test]

@@ -139,6 +139,16 @@ pub mod internals {
 /// `OffscreenHost::gpu_pass_stats` is the canonical handle.
 pub use diagnostics::gpu_stats::{BatchKind, GpuPassStats, PipelineStats};
 
+/// The `wgpu` Palantir was built against.
+///
+/// Re-exported because Palantir's surface is not wgpu-free: [`GpuPaint`] hands
+/// out a `Device` and a `CommandEncoder`, [`OffscreenHost`] is handed a
+/// `Device` and a `Queue` and renders into a `Texture`. A consumer naming
+/// those from its own `wgpu` dependency has to keep that dependency
+/// semver-identical to this one by hand, and a mismatch turns every one of
+/// those types foreign at the call site. Going through this one cannot skew.
+pub use wgpu;
+
 pub use animation::animatable::Animatable;
 pub use animation::easing::Easing;
 pub use animation::{AnimSlot, AnimSpec};
@@ -154,6 +164,11 @@ pub use display::Display;
 #[cfg(any(feature = "bench", feature = "showcase"))]
 pub use frame_fixture::FrameFixture;
 pub use host::clock::{Clock, FixedClock, RealtimeClock};
+/// What to ask an adapter for so the device it returns can run Palantir, and
+/// the shortest route to one when there is no window to get a device from.
+pub use host::device_requirements::DeviceRequirements;
+pub use host::error::{HeadlessGpuError, UnmetRequirements};
+pub use host::headless_gpu::HeadlessGpu;
 /// The headless render-to-texture host — the offscreen peer of
 /// [`WinitHost`]. Renders a `Ui` to a caller-supplied `wgpu::Texture`
 /// instead of a swapchain (screenshots, thumbnails, server-side
