@@ -164,10 +164,10 @@ pub use display::Display;
 #[cfg(any(feature = "bench", feature = "showcase"))]
 pub use frame_fixture::FrameFixture;
 pub use host::clock::{Clock, FixedClock, RealtimeClock};
-/// What to ask an adapter for so the device it returns can run Palantir, and
-/// the shortest route to one when there is no window to get a device from.
+/// What to ask an adapter for so the device it returns can run Palantir.
 pub use host::device_requirements::DeviceRequirements;
 pub use host::error::{HeadlessGpuError, UnmetRequirements};
+/// The short way to a usable device when there is no window to get one from.
 pub use host::headless_gpu::HeadlessGpu;
 /// The headless render-to-texture host — the offscreen peer of
 /// [`WinitHost`]. Renders a `Ui` to a caller-supplied `wgpu::Texture`

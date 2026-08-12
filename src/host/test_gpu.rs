@@ -6,6 +6,7 @@ use std::sync::OnceLock;
 use std::thread;
 use std::time::{Duration, Instant};
 
+use crate::host::error::HeadlessGpuError;
 use crate::host::headless_gpu::HeadlessGpu;
 
 const ADAPTER_RETRY_INTERVAL: Duration = Duration::from_millis(25);
@@ -25,11 +26,20 @@ impl ProcessGpu {
         let gpu = loop {
             match HeadlessGpu::new(wgpu::PowerPreference::LowPower, wgpu::Features::empty()) {
                 Ok(gpu) => break gpu,
-                Err(_) if started.elapsed() < ADAPTER_RETRY_TIMEOUT => {
+                // Only a missing adapter is worth waiting on — another test
+                // binary may still be tearing its own down. No backend at all,
+                // an adapter that cannot meet the requirements, or a refused
+                // device will say exactly the same thing two seconds later.
+                Err(HeadlessGpuError::RequestAdapter { .. })
+                    if started.elapsed() < ADAPTER_RETRY_TIMEOUT =>
+                {
                     thread::sleep(ADAPTER_RETRY_INTERVAL);
                 }
                 Err(error) => {
-                    panic!("lease headless test gpu after {ADAPTER_RETRY_TIMEOUT:?}: {error:?}");
+                    panic!(
+                        "lease headless test gpu after {:?}: {error}",
+                        started.elapsed()
+                    );
                 }
             }
         };

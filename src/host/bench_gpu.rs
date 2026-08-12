@@ -66,11 +66,9 @@ fn build(timing: Timing) -> BenchGpu {
         .expect("lease headless bench gpu");
     let timing_features = gpu.device.features() & timing_features;
     let info = gpu.adapter.get_info();
-    let (device, queue) = (gpu.device, gpu.queue);
-
     BenchGpu {
-        device,
-        queue,
+        device: gpu.device,
+        queue: gpu.queue,
         info,
         timing_features,
     }
