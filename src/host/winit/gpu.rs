@@ -103,9 +103,9 @@ impl GpuInit {
         // are requested, so the per-frame `resolve_query_set` +
         // `map_async` + `device.poll(Poll)` + readback are all
         // dead-stripped. When on, the three optional features degrade
-        // independently per adapter advertisement: the intersection with
-        // `adapter.features()` below drops bits the adapter doesn't
-        // support. `TIMESTAMP_QUERY` alone → pass begin/end only;
+        // independently per adapter advertisement: `DeviceRequirements`
+        // intersects them with what the adapter offers and drops the rest,
+        // rather than failing. `TIMESTAMP_QUERY` alone → pass begin/end only;
         // `+ TIMESTAMP_QUERY_INSIDE_PASSES` → per-batch attribution;
         // `+ PIPELINE_STATISTICS_QUERY` → vert/frag invocation counts.
         let timing_features = if cfg.collect_gpu_stats {

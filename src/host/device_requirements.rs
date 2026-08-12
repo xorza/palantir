@@ -13,9 +13,11 @@ use crate::host::error::UnmetRequirements;
 /// than one per host that drifts from the others.
 #[derive(Clone, Debug)]
 pub struct DeviceRequirements {
-    /// Ask for exactly these.
+    /// Palantir's own, plus whichever optional ones the adapter turned out to
+    /// have. Union with the caller's before requesting.
     pub features: wgpu::Features,
-    /// Ask for exactly these.
+    /// Already resolved against the adapter, so these are requestable as they
+    /// stand rather than a floor to raise.
     pub limits: wgpu::Limits,
 }
 

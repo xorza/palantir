@@ -66,10 +66,14 @@ impl Display for HeadlessGpuError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::NoBackend => f.write_str("no wgpu backend is compiled in for this target"),
-            Self::RequestAdapter { .. } => f.write_str("no graphics adapter was available"),
-            Self::Requirements { .. } => f.write_str("the graphics adapter cannot run Palantir"),
-            Self::RequestDevice { .. } => {
-                f.write_str("the graphics adapter could not create a device")
+            Self::RequestAdapter { source } => {
+                write!(f, "failed to find a graphics adapter: {source}")
+            }
+            Self::Requirements { source } => {
+                write!(f, "the graphics adapter cannot run Palantir: {source}")
+            }
+            Self::RequestDevice { source } => {
+                write!(f, "failed to create the graphics device: {source}")
             }
         }
     }
