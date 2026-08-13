@@ -143,7 +143,7 @@ fn stale_traces_drained_between_audits() {
 #[test]
 fn run_audit_panics_with_diagnostic_message_on_budget_violation() {
     let result = catch_unwind(AssertUnwindSafe(|| {
-        run_audit("synthetic_overshoot", 0, 4, 0, |_ui: &mut Ui| {
+        run_audit(0, 4, 0, |_ui: &mut Ui| {
             one_alloc();
         });
     }));
@@ -156,9 +156,12 @@ fn run_audit_panics_with_diagnostic_message_on_budget_violation() {
         msg.contains("alloc budget exceeded"),
         "panic message missing diagnostic header: {msg}",
     );
+    // The fixture names itself by where it is, not by a string it repeats:
+    // `run_audit` is `#[track_caller]`, so the location is this file and the
+    // line the call above sits on.
     assert!(
-        msg.contains("synthetic_overshoot"),
-        "panic message missing fixture name: {msg}",
+        msg.contains(file!()),
+        "panic message missing the caller's location: {msg}",
     );
 }
 

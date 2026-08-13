@@ -47,7 +47,7 @@ const ROWS: u32 = 8;
 fn width_drag_alloc_free() {
     let mut step = 0u32;
     // 13 measured: one shaped buffer per run, all inside cosmic.
-    audit_text_steady_state("width_drag", 16, move |ui| {
+    audit_text_steady_state(16, move |ui| {
         // A whole pixel per frame, which is what a drag commits after
         // the wrap width is quantized.
         let width = 240.0 + (step % 64) as f32;
@@ -74,7 +74,7 @@ fn ellipsis_width_drag_alloc_free() {
     let mut step = 0u32;
     // 11 measured - two below the wrapping drag, since the cut
     // reshapes only the prefix rather than the whole run.
-    audit_text_steady_state("ellipsis_width_drag", 16, move |ui| {
+    audit_text_steady_state(16, move |ui| {
         let width = 180.0 + (step % 64) as f32;
         step += 1;
         Panel::vstack()
@@ -98,7 +98,7 @@ fn ellipsis_width_drag_alloc_free() {
 #[test]
 fn scrolling_row_window_alloc_free() {
     let mut first = 0u32;
-    audit_steady_state("scrolling_row_window", 0, move |ui| {
+    audit_steady_state(0, move |ui| {
         first += 1;
         Panel::vstack()
             .id_salt("scroll-root")
@@ -131,7 +131,7 @@ fn widget_add_remove_alloc_free() {
     // allocate when the damage engine's snapshot arena compacts, which
     // ratio-based amortization makes periodic rather than per-frame. A
     // still frame never trips it, which is why nothing caught it before.
-    run_audit("widget_add_remove", 4 * ROWS as usize, 64, 4, move |ui| {
+    run_audit(4 * ROWS as usize, 64, 4, move |ui| {
         step += 1;
         let count = 1 + step % ROWS;
         Panel::vstack()
@@ -172,7 +172,7 @@ fn changing_label_text_alloc_free() {
     // 99 measured: eight runs whose text is new every frame, at the
     // ~10-per-run cosmic floor. The highest here, and rightly so - a
     // fresh text hash cannot reuse anything.
-    run_audit("changing_label_text", 128, 64, 112, move |ui| {
+    run_audit(128, 64, 112, move |ui| {
         step += 1;
         Panel::vstack()
             .id_salt("ticker-root")
@@ -202,7 +202,7 @@ fn changing_label_text_alloc_free() {
 /// a handle is `Copy`, owns nothing, and cannot outlive its pass.
 #[test]
 fn reinterned_text_alloc_free() {
-    run_audit("intern_per_frame", 8, 64, 0, move |ui| {
+    run_audit(8, 64, 0, move |ui| {
         let label = ui.intern("re-interned every frame");
         std::hint::black_box(label);
         Panel::vstack()
