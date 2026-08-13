@@ -24,7 +24,17 @@ impl ProcessGpu {
         let process_lock = lock_gpu_process();
         let started = Instant::now();
         let gpu = loop {
-            match HeadlessGpu::new(wgpu::PowerPreference::LowPower, wgpu::Features::empty()) {
+            // The same preference the benches take, and the one a windowed
+            // host is normally configured with. A test is worth little if it
+            // draws on an adapter no user is looking at: where a machine
+            // offers more than one — a laptop with its integrated GPU exposed,
+            // or anywhere a software rasterizer is installed alongside a real
+            // driver — `LowPower` picks the other one, and every golden then
+            // records what that other one drew.
+            match HeadlessGpu::new(
+                wgpu::PowerPreference::HighPerformance,
+                wgpu::Features::empty(),
+            ) {
                 Ok(gpu) => break gpu,
                 // Only a missing adapter is worth waiting on — another test
                 // binary may still be tearing its own down. No backend at all,
