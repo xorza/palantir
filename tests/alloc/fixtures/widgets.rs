@@ -6,12 +6,12 @@ use palantir::{
 
 #[test]
 fn empty_frame_alloc_free() {
-    audit_steady_state("empty_frame", 0, |_ui| {});
+    audit_steady_state(0, |_ui| {});
 }
 
 #[test]
 fn button_only_alloc_free() {
-    audit_steady_state("button_only", 0, |ui| {
+    audit_steady_state(0, |ui| {
         Button::new()
             .auto_id()
             .label("hello")
@@ -22,7 +22,7 @@ fn button_only_alloc_free() {
 
 #[test]
 fn nested_vstack_64_alloc_free() {
-    audit_steady_state("nested_vstack_64", 0, |ui| {
+    audit_steady_state(0, |ui| {
         fn rec(ui: &mut Ui, depth: u32) {
             if depth == 0 {
                 return;
@@ -38,7 +38,7 @@ fn nested_vstack_64_alloc_free() {
 
 #[test]
 fn grid_8x8_alloc_free() {
-    audit_steady_state("grid_8x8", 0, |ui| {
+    audit_steady_state(0, |ui| {
         Grid::new()
             .auto_id()
             .cols([Track::fill(); 8])
@@ -64,7 +64,7 @@ fn grid_8x8_alloc_free() {
 #[test]
 fn splitter_alloc_free() {
     let mut ratio = 0.5;
-    audit_steady_state("splitter", 0, move |ui| {
+    audit_steady_state(0, move |ui| {
         Splitter::horizontal(&mut ratio)
             .id_salt("splitter")
             .min_pane(80.0)
@@ -75,7 +75,7 @@ fn splitter_alloc_free() {
 #[test]
 fn damage_animated_rect_alloc_free() {
     let mut tick: u32 = 0;
-    audit_steady_state("damage_animated_rect", 0, move |ui| {
+    audit_steady_state(0, move |ui| {
         tick = tick.wrapping_add(1);
         let w = 100.0 + (tick % 200) as f32;
         Panel::vstack().auto_id().show(ui, |ui| {
@@ -93,7 +93,7 @@ fn damage_animated_rect_alloc_free() {
 
 #[test]
 fn static_text_label_alloc_free() {
-    audit_steady_state("static_text_label", 0, |ui| {
+    audit_steady_state(0, |ui| {
         Text::new("hello world").auto_id().show(ui);
     });
 }
@@ -106,7 +106,7 @@ fn static_text_label_alloc_free() {
 #[test]
 fn text_edit_alloc_free() {
     let mut buf = String::from("the quick brown fox jumps over the lazy dog");
-    audit_steady_state("text_edit", 0, move |ui| {
+    audit_steady_state(0, move |ui| {
         TextEdit::new(&mut buf)
             .id_salt("edit")
             .size((Sizing::FILL, Sizing::fixed(28.0)))
@@ -118,7 +118,7 @@ fn text_edit_alloc_free() {
 fn open_context_menu_shortcuts_alloc_free() {
     let trigger_id = WidgetId::from_hash("alloc-context-menu-trigger");
     let mut needs_open = true;
-    audit_steady_state("open_context_menu_shortcuts", 0, move |ui| {
+    audit_steady_state(0, move |ui| {
         let trigger = Button::new()
             .id(trigger_id)
             .label("Actions")
@@ -143,7 +143,7 @@ fn open_context_menu_shortcuts_alloc_free() {
 fn long_multiline_selection_alloc_free() {
     let editor_id = WidgetId::from_hash("alloc-long-selection");
     let mut document = "selected line\n".repeat(32);
-    audit_text_steady_state("long_multiline_selection", 0, move |ui| {
+    audit_text_steady_state(0, move |ui| {
         ui.request_focus(Some(editor_id));
         TextEdit::new(&mut document)
             .id(editor_id)
@@ -157,7 +157,7 @@ fn long_multiline_selection_alloc_free() {
 #[test]
 fn state_map_counter_alloc_free() {
     let id = WidgetId::from_hash("counter");
-    audit_steady_state("state_map_counter", 0, move |ui| {
+    audit_steady_state(0, move |ui| {
         Frame::new().id_salt("counter").show(ui);
         let n = ui.state_mut::<u32>(id);
         *n = n.wrapping_add(1);
@@ -167,7 +167,7 @@ fn state_map_counter_alloc_free() {
 /// Scroll w/ overflow: pins `PostArrangeRegistry` typed-bucket reuse + `ScrollHook::run` in-place.
 #[test]
 fn scroll_overflow_alloc_free() {
-    audit_steady_state("scroll_overflow", 0, |ui| {
+    audit_steady_state(0, |ui| {
         Scroll::vertical()
             .id_salt("scroll")
             .size((Sizing::FILL, Sizing::FILL))
@@ -183,7 +183,7 @@ fn scroll_overflow_alloc_free() {
 /// Scroll w/ content fitting viewport: pins the hook's `overflow == new_overflow` early-exit.
 #[test]
 fn scroll_fits_alloc_free() {
-    audit_steady_state("scroll_fits", 0, |ui| {
+    audit_steady_state(0, |ui| {
         Scroll::vertical()
             .id_salt("scroll")
             .size((Sizing::FILL, Sizing::FILL))

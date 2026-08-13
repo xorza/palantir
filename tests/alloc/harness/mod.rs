@@ -8,6 +8,10 @@
 //!   audits a fixed window after that — use for new fixtures so you
 //!   don't have to hand-tune warmup numbers per scene.
 //!
+//! Neither is told which fixture it is auditing: both are
+//! `#[track_caller]`, so the call site names itself, and cargo prints
+//! the failing test's own name above whatever it captured.
+//!
 //! Both run inside [`with_audit`] so per-thread counters + backtrace
 //! capture stay scoped to the measured window. The counter is
 //! per-thread (see `allocator.rs`), so cargo's parallel test runner
@@ -18,6 +22,8 @@ mod format;
 
 #[cfg(test)]
 pub(crate) use format::user_frames;
+
+use std::panic::Location;
 
 use crate::allocator::{AuditResult, with_audit};
 use palantir::Ui;
@@ -36,11 +42,13 @@ pub(crate) fn new_ui() -> UiHarness {
 /// Run `scene` for `warmup` frames untracked, then audit each of
 /// `audit` frames individually. Fails as soon as a single frame
 /// exceeds `max_allocs`, dumping that frame's captured backtraces.
-pub(crate) fn run_audit<S>(name: &str, warmup: usize, audit: usize, max_allocs: u64, mut scene: S)
+#[track_caller]
+pub(crate) fn run_audit<S>(warmup: usize, audit: usize, max_allocs: u64, mut scene: S)
 where
     S: FnMut(&mut Ui),
 {
     assert!(audit > 0, "audit frame count must be > 0");
+    let at = Location::caller();
 
     let mut ui = new_ui();
 
@@ -51,12 +59,12 @@ where
     for i in 0..audit {
         let result = with_audit(|| run_frame(&mut ui, &mut scene));
         if result.allocs > max_allocs {
-            fail_audit(name, i, audit, warmup, max_allocs, result);
+            fail_audit(at, i, audit, warmup, max_allocs, result);
         }
     }
 
     println!(
-        "alloc-audit {name}: 0..={max_allocs} allocs/frame over {audit} frames \
+        "alloc-audit {at}: 0..={max_allocs} allocs/frame over {audit} frames \
          after {warmup} warmup",
     );
 }
@@ -67,24 +75,42 @@ where
 /// individually — any frame over budget fails.
 ///
 /// Use this for new fixtures so you don't have to eyeball a warmup count.
-pub(crate) fn audit_steady_state<S>(name: &str, max_allocs: u64, mut scene: S)
+///
+/// **Not for a scene that cycles.** The probe settles as soon as it sees
+/// `STABLE_RUN` quiet frames, and it can find those *within* one cycle —
+/// before the widest frame of that cycle has ever been recorded. The audit
+/// window then meets that frame's one-off growth and reads it as a per-frame
+/// cost. A scene whose work varies from frame to frame wants [`run_audit`]
+/// with a warmup counted in whole cycles, which is what the churn fixtures do.
+#[track_caller]
+pub(crate) fn audit_steady_state<S>(max_allocs: u64, mut scene: S)
 where
     S: FnMut(&mut Ui),
 {
-    audit_steady_state_with_ui(name, max_allocs, new_ui(), &mut scene);
+    audit_steady_state_with_ui(Location::caller(), max_allocs, new_ui(), &mut scene);
 }
 
 /// Cosmic-text counterpart used when a fixture must exercise real
 /// multi-line shaping rather than the mono fallback.
-pub(crate) fn audit_text_steady_state<S>(name: &str, max_allocs: u64, mut scene: S)
+#[track_caller]
+pub(crate) fn audit_text_steady_state<S>(max_allocs: u64, mut scene: S)
 where
     S: FnMut(&mut Ui),
 {
-    audit_steady_state_with_ui(name, max_allocs, UiHarness::with_text(SURFACE), &mut scene);
+    audit_steady_state_with_ui(
+        Location::caller(),
+        max_allocs,
+        UiHarness::with_text(SURFACE),
+        &mut scene,
+    );
 }
 
-fn audit_steady_state_with_ui<S>(name: &str, max_allocs: u64, mut ui: UiHarness, scene: &mut S)
-where
+fn audit_steady_state_with_ui<S>(
+    at: &'static Location<'static>,
+    max_allocs: u64,
+    mut ui: UiHarness,
+    scene: &mut S,
+) where
     S: FnMut(&mut Ui),
 {
     const MAX_WARMUP: usize = 8;
@@ -106,12 +132,12 @@ where
         }
     }
 
-    println!("alloc-audit {name}: warmup={warmup} (stable_run={stable})");
+    println!("alloc-audit {at}: warmup={warmup} (stable_run={stable})");
 
     for i in 0..AUDIT_FRAMES {
         let result = with_audit(|| run_frame(&mut ui, scene));
         if result.allocs > max_allocs {
-            fail_audit(name, i, AUDIT_FRAMES, warmup, max_allocs, result);
+            fail_audit(at, i, AUDIT_FRAMES, warmup, max_allocs, result);
         }
     }
 }
@@ -122,7 +148,7 @@ fn run_frame<S: FnMut(&mut Ui)>(ui: &mut UiHarness, scene: &mut S) {
 }
 
 fn fail_audit(
-    name: &str,
+    at: &'static Location<'static>,
     frame_idx: usize,
     audit: usize,
     warmup: usize,
@@ -130,7 +156,7 @@ fn fail_audit(
     mut result: AuditResult,
 ) -> ! {
     eprintln!(
-        "alloc-audit {name}: frame {frame_idx}/{audit} (after {warmup} warmup) \
+        "alloc-audit {at}: frame {frame_idx}/{audit} (after {warmup} warmup) \
          allocated {} times, {} B — budget is {max_allocs}/frame",
         result.allocs, result.bytes,
     );
@@ -139,7 +165,7 @@ fn fail_audit(
     }
     eprintln!("(set PALANTIR_ALLOC_FULL_BT=1 to disable user-code filtering and see full stacks)");
     panic!(
-        "alloc budget exceeded for `{name}` on frame {frame_idx} \
+        "alloc budget exceeded at {at} on frame {frame_idx} \
          (budget {max_allocs}/frame, got {})",
         result.allocs,
     );

@@ -13,7 +13,7 @@ use palantir::{Color, Configure, Frame, Grid, Mesh, Panel, PolylineColors, Shape
 /// in the encoder shape vec or composer quad vec shows up here.
 #[test]
 fn many_rects_compose_alloc_free() {
-    audit_steady_state("many_rects_compose", 0, |ui| {
+    audit_steady_state(0, |ui| {
         Grid::new()
             .auto_id()
             .cols([Track::fill(); 16])
@@ -45,7 +45,7 @@ fn polyline_static_alloc_free() {
     let points: Vec<glam::Vec2> = (0..32)
         .map(|i| glam::Vec2::new(i as f32 * 20.0, 100.0 + (i as f32).sin() * 30.0))
         .collect();
-    audit_steady_state("polyline_static", 0, move |ui| {
+    audit_steady_state(0, move |ui| {
         Panel::vstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
@@ -74,7 +74,7 @@ fn mesh_static_alloc_free() {
         m.triangle(a, b, c);
         m
     };
-    audit_steady_state("mesh_static", 0, move |ui| {
+    audit_steady_state(0, move |ui| {
         Panel::vstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
