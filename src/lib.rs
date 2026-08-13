@@ -122,6 +122,12 @@ pub(crate) mod window;
 /// privates they expose, and this is only the door out of the crate for
 /// integration tests. Benchmark entry points have their own gated facade in
 /// [`mod@bench`].
+/// Golden-image regression testing, for suites that draw through Palantir and
+/// want to know when the drawing changes. Behind its own feature: it is the
+/// only thing here that costs an image codec.
+#[cfg(feature = "golden")]
+pub mod golden;
+
 #[cfg(any(test, feature = "internals"))]
 pub mod internals {
     pub use crate::app::internals::RecordApp;

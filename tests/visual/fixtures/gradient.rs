@@ -6,9 +6,9 @@ use glam::UVec2;
 use image::RgbaImage;
 use palantir::{Color, ColorU8, Configure, LinearGradient, Panel, Rect, Shape, Sizing};
 
-use crate::diff::Tolerance;
-use crate::golden::assert_matches_golden;
+use crate::goldens::assert_matches_golden;
 use crate::harness::Harness;
+use palantir::golden::Tolerance;
 
 /// More distinct gradients than the atlas's 256 initial rows (255
 /// usable), so one frame forces it to grow. 20 × 16 swatches.

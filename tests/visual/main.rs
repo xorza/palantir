@@ -4,13 +4,12 @@
 //! are auto-created on first run; failures dump artifacts under
 //! `tests/visual/output/<name>/`.
 //!
-//! Layout: harness/diff/golden are the infrastructure; `fixtures/`
-//! holds the actual UI scenes grouped by topic. Add new fixtures
-//! there.
+//! Layout: `harness` raises the UI, `palantir::golden` does the comparing,
+//! and `fixtures/` holds the actual UI scenes grouped by topic. Add new
+//! fixtures there.
 
-mod diff;
 mod fixtures;
-mod golden;
+mod goldens;
 mod harness;
 
 use glam::UVec2;

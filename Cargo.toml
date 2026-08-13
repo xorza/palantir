@@ -58,6 +58,8 @@ fixedbitset = "0.5"
 # Window/image extents use i32/u16/u32; Shadow and GPU wires need the integration features.
 glam = { version = "0.33", default-features = false, features = ["std", "i32", "u16", "u32", "bytemuck", "serde"] }
 etagere = "0.3"
+image = { version = "0.25", default-features = false, features = ["png"], optional = true }
+rayon = { version = "1.12", optional = true }
 half = { version = "2.7", features = ["bytemuck"] }
 memchr = "2.8"
 rustc-hash = "2.1"
@@ -91,15 +93,13 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"], optional = tr
 
 [dev-dependencies]
 backtrace = "0.3"
-image = { version = "0.25", default-features = false, features = ["png"] }
-rayon = "1.12"
 static_assertions = "1.1"
 toml = "1.1"
 
 [[test]]
 name = "visual"
 path = "tests/visual/main.rs"
-required-features = ["internals"]
+required-features = ["internals", "golden"]
 
 [[test]]
 name = "alloc"
@@ -144,6 +144,11 @@ default = ["system-clipboard", "winit-host"]
 # reach past the published surface, and neither should pay to compile a
 # benchmark harness for the privilege.
 internals = []
+# The golden-image suite: `image` to read and write PNGs, `rayon` to diff them
+# a row at a time. Kept off `internals`, which is deliberately dependency-free
+# — a crate reaching past the published surface should not have to build an
+# image codec to do it.
+golden = ["dep:image", "dep:rayon"]
 # Compiles the source-level benchmark drivers and exposes their function-only
 # facade to the thin external targets. Implies `internals` — the drivers reach
 # into the same privates the tests do, and add the harness crates on top.
