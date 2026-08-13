@@ -10,10 +10,10 @@ use palantir::{
 };
 use std::f32::consts::{FRAC_PI_2, FRAC_PI_4};
 
-use crate::diff::Tolerance;
 use crate::fixtures::DARK_BG;
-use crate::golden::assert_matches_golden;
+use crate::goldens::assert_matches_golden;
 use crate::harness::Harness;
+use palantir::golden::Tolerance;
 
 #[test]
 fn button_hello_matches_golden() {

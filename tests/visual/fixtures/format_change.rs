@@ -18,9 +18,9 @@ use palantir::{
 use std::cell::RefCell;
 use wgpu::TextureFormat;
 
-use crate::diff::{Tolerance, diff};
 use crate::fixtures::DARK_BG;
 use crate::harness::Harness;
+use palantir::golden::{Tolerance, diff};
 
 /// A scene touching multiple format-dependent pipelines: a stroked,
 /// rounded frame (quad pipeline) wrapping a button with a text label

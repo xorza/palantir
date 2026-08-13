@@ -7,10 +7,10 @@ use palantir::{
     Text, TextStyle, Track,
 };
 
-use crate::diff::Tolerance;
 use crate::fixtures::DARK_BG;
-use crate::golden::assert_matches_golden;
+use crate::goldens::assert_matches_golden;
 use crate::harness::Harness;
+use palantir::golden::Tolerance;
 
 /// Complex multi-region scene at scale 2.0. Exercises:
 ///   - header / sidebar / content / footer grid layout,

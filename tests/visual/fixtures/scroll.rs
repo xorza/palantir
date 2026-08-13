@@ -7,10 +7,10 @@ use palantir::{
     Background, Color, Configure, Corners, Frame, Panel, Scroll, ScrollbarTheme, Sizing,
 };
 
-use crate::diff::Tolerance;
 use crate::fixtures::DARK_BG;
-use crate::golden::assert_matches_golden;
+use crate::goldens::assert_matches_golden;
 use crate::harness::Harness;
+use palantir::golden::Tolerance;
 
 const CARD: Color = Color::rgb(0.16, 0.20, 0.28);
 const ROW: Color = Color::rgb(0.42, 0.55, 0.78);

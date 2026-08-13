@@ -7,10 +7,10 @@ use palantir::{
     Stroke, Text, TextStyle, TextWrap, Track,
 };
 
-use crate::diff::Tolerance;
 use crate::fixtures::DARK_BG;
-use crate::golden::assert_matches_golden;
+use crate::goldens::assert_matches_golden;
 use crate::harness::Harness;
+use palantir::golden::Tolerance;
 
 /// Three rows of `Fill(1)` / `Fill(2)` / `Fill(1)` — should split the
 /// available height in 25/50/25 ratios.

@@ -2,8 +2,8 @@ use glam::UVec2;
 use image::RgbaImage;
 use palantir::{Color, Configure, Panel, Rect, Shape, Sizing, Ui};
 
-use crate::diff::{Tolerance, diff};
 use crate::harness::Harness;
+use palantir::golden::{Tolerance, diff};
 
 const VIEWPORT: UVec2 = UVec2::new(128, 128);
 const CLEAR: Color = Color::WHITE;

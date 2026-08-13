@@ -4,10 +4,10 @@ use glam::UVec2;
 use image::Rgba;
 use palantir::{Background, Color, Configure, Panel, Sizing, Text, TextStyle};
 
-use crate::diff::Tolerance;
 use crate::fixtures::DARK_BG;
-use crate::golden::assert_matches_golden;
+use crate::goldens::assert_matches_golden;
 use crate::harness::Harness;
+use palantir::golden::Tolerance;
 
 /// Multi-line paragraph with mixed sizes/colors. Slightly looser
 /// tolerance — glyph AA varies more across drivers than rect-only
