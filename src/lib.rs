@@ -253,7 +253,7 @@ pub use shape::triangle::TriangleShape;
 // Shaping and rasterization for a caller that draws its own text — see
 // [`TextShaper::glyphs`]. The atlas and the pipeline stay the caller's; what is
 // shared is the font stack.
-pub use text::glyphs::{GlyphFont, GlyphLine, TextGlyphs};
+pub use text::glyphs::{GlyphFont, TextGlyphs};
 pub use text::probe::TextProbe;
 pub use text::probe::layout::Caret;
 pub use text::render::{GlyphImage, GlyphImageKind, GlyphPlacement, GlyphRasterKey, PlacedGlyph};
