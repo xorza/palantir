@@ -286,6 +286,13 @@ impl TextBackend {
     /// for disjoint tails of the same Vec, and a mid-frame grow's full
     /// re-upload happens at most once; batch `ranges` index into the
     /// shared buffer, so per-batch draws are unaffected.
+    /// The shaper this backend encodes against, for lending to a `GpuView`
+    /// through [`GpuInitCtx`](crate::GpuInitCtx) — the one the whole window is
+    /// already drawing text with.
+    pub(crate) fn shaper(&self) -> &TextShaper {
+        &self.shaper
+    }
+
     pub(crate) fn flush(&mut self, ctx: &mut GpuCtx<'_>) {
         self.vbuf.upload_instances(ctx, &self.encoder.instances);
         self.encoder.atlas.flush_pending_uploads(ctx);

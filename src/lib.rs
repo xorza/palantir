@@ -250,8 +250,13 @@ pub use shape::shadow::ShadowShape;
 pub use shape::style::{LineCap, LineJoin};
 pub use shape::text::TextShape;
 pub use shape::triangle::TriangleShape;
+// Shaping and rasterization for a caller that draws its own text — see
+// [`TextShaper::glyphs`]. The atlas and the pipeline stay the caller's; what is
+// shared is the font stack.
+pub use text::glyphs::{GlyphFont, GlyphLine, TextGlyphs};
 pub use text::probe::TextProbe;
 pub use text::probe::layout::Caret;
+pub use text::render::{GlyphImage, GlyphImageKind, GlyphPlacement, GlyphRasterKey, PlacedGlyph};
 pub use text::run::TextRun;
 pub use text::shaper::TextShaper;
 pub use text::wrap::TextWrap;

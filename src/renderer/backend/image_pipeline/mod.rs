@@ -25,6 +25,7 @@ use crate::renderer::render_buffer::image::{
     IMG_FLAG_TILED, ImageInstance, RenderTargetDraw,
 };
 use crate::renderer::render_owner::RenderOwnerId;
+use crate::text::shaper::TextShaper;
 use std::time::Duration;
 
 #[derive(Debug)]
@@ -154,9 +155,10 @@ impl ImagePipeline {
         frame_targets: &[RenderTargetDraw],
         owner: RenderOwnerId,
         now: Duration,
+        text: &TextShaper,
     ) {
         self.gpu_view_targets
-            .paint(ctx, frame_targets, owner, now, &mut self.textures);
+            .paint(ctx, frame_targets, owner, now, &mut self.textures, text);
     }
 
     /// Free every `GpuView` target owned by a retired render stream.
