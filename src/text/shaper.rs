@@ -250,12 +250,12 @@ impl TextShaper {
     /// Lay glyphs out and rasterize them directly, for a caller drawing its own
     /// text — a [`GpuView`](crate::GpuView) labelling a 3D scene, say.
     ///
-    /// The public half of [`Self::render_session`], and the same exclusive
-    /// borrow: palantir's own text backend takes one per batch of atlas misses,
-    /// and a caller outside takes one for as long as it is laying out. Holding
-    /// one across a call that measures text — anything on [`Ui`](crate::Ui) that
-    /// lays out a widget — would ask this `RefCell` for a second borrow and
-    /// panic, so a view takes one inside its own paint and drops it there.
+    /// The public half of the lease palantir's own text backend takes per batch
+    /// of atlas misses, and the same exclusive borrow: a caller outside holds
+    /// one for as long as it is laying out. Holding one across a call that
+    /// measures text — anything on [`Ui`](crate::Ui) that lays out a widget —
+    /// would ask this `RefCell` for a second borrow and panic, so a view takes
+    /// one inside its own paint and drops it there.
     ///
     /// Reached through [`GpuInitCtx`](crate::GpuInitCtx), which hands a view the
     /// shaper the rest of the window is already drawing with — so a label in a

@@ -9,10 +9,9 @@
 //!
 //! This is that pair, and nothing else. The atlas, the pipeline and the
 //! blending are the caller's: what is shared is the font stack, which is the
-//! part worth sharing — one [`FontSystem`](cosmic_text::FontSystem) scans the
-//! platform's fonts once, and a view drawing text in the same faces as the UI
-//! around it is not a coincidence to be arranged but a consequence of asking
-//! the same shaper.
+//! part worth sharing — the platform's fonts are scanned once, and a view
+//! drawing text in the same faces as the UI around it is not a coincidence to
+//! be arranged but a consequence of asking the same shaper.
 
 use crate::primitives::size::Size;
 use crate::primitives::urect::URect;
@@ -40,6 +39,9 @@ pub struct GlyphFont {
 
 impl GlyphFont {
     /// `size_px` in the default family and weight, led at its own size.
+    ///
+    /// Every field is public, so anything else is a struct update over this —
+    /// `GlyphFont { family: FontFamily::Mono, ..GlyphFont::new(16.0) }`.
     pub fn new(size_px: f32) -> Self {
         Self {
             size_px,
@@ -48,33 +50,6 @@ impl GlyphFont {
             weight: FontWeight::default(),
         }
     }
-
-    pub fn family(mut self, family: FontFamily) -> Self {
-        self.family = family;
-        self
-    }
-
-    pub fn weight(mut self, weight: FontWeight) -> Self {
-        self.weight = weight;
-        self
-    }
-
-    pub fn line_height(mut self, line_height_px: f32) -> Self {
-        self.line_height_px = line_height_px;
-        self
-    }
-}
-
-/// How far a laid-out line reaches, in physical pixels at the scale it was laid
-/// out for.
-///
-/// What a caller anchoring text needs and cannot get from the glyphs: a run's
-/// advance is not the span of its bitmaps — the last glyph's ink stops short of
-/// where the next one would start, and a leading space has no ink at all.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct GlyphLine {
-    pub width: f32,
-    pub height: f32,
 }
 
 /// A lease on the shaper for laying out and rasterizing glyphs directly.
@@ -125,16 +100,21 @@ impl<'a> TextGlyphs<'a> {
             .extract_glyphs(request(text, font), placement(scale), out);
     }
 
-    /// How far `text` reaches when laid out in `font` at `scale`, without
-    /// laying it out.
+    /// How far `text` reaches when laid out in `font` at `scale`, in physical
+    /// pixels — without laying it out.
+    ///
+    /// What a caller anchoring text needs and cannot get from the glyphs: a
+    /// run's advance is not the span of its bitmaps, since the last glyph's ink
+    /// stops short of where the next one would start and a leading space has no
+    /// ink at all.
     ///
     /// The shaper caches the shaped buffer, so asking this and then
     /// [`TextGlyphs::line`] for the same run shapes once.
-    pub fn measure(&mut self, text: &str, font: GlyphFont, scale: f32) -> GlyphLine {
+    pub fn measure(&mut self, text: &str, font: GlyphFont, scale: f32) -> Size {
         let Size { w, h } = self.session.measure(request(text, font));
-        GlyphLine {
-            width: w * scale,
-            height: h * scale,
+        Size {
+            w: w * scale,
+            h: h * scale,
         }
     }
 
@@ -229,13 +209,7 @@ mod tests {
 
         glyphs.line("", font, 1.0, &mut out);
         assert!(out.is_empty(), "an empty run left glyphs behind: {out:?}");
-        assert_eq!(
-            glyphs.measure("", font, 1.0),
-            GlyphLine {
-                width: 0.0,
-                height: 0.0
-            }
-        );
+        assert_eq!(glyphs.measure("", font, 1.0), Size::ZERO);
     }
 
     /// The raster scale changes what is rasterized, not what is laid out.
@@ -266,8 +240,8 @@ mod tests {
 
         let at_one = glyphs.measure("abc", font, 1.0);
         let at_two = glyphs.measure("abc", font, 2.0);
-        assert!((at_two.width - at_one.width * 2.0).abs() < 1e-3);
-        assert!(at_one.width > 0.0 && at_one.height > 0.0);
+        assert!((at_two.w - at_one.w * 2.0).abs() < 1e-3);
+        assert!(at_one.w > 0.0 && at_one.h > 0.0);
     }
 
     /// A laid-out glyph rasterizes to a bitmap of exactly the size it claims.
