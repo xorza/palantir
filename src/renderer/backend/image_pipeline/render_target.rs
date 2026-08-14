@@ -7,6 +7,7 @@ use crate::renderer::backend::image_pipeline::textures::ImageTextures;
 use crate::renderer::gpu_view::{GpuFrameCtx, GpuInitCtx};
 use crate::renderer::render_buffer::image::RenderTargetDraw;
 use crate::renderer::render_owner::RenderOwnerId;
+use crate::text::shaper::TextShaper;
 use glam::UVec2;
 use rustc_hash::FxHashMap;
 use std::collections::hash_map::Entry;
@@ -29,6 +30,7 @@ impl GpuViewTargets {
         owner: RenderOwnerId,
         now: Duration,
         textures: &mut ImageTextures,
+        text: &TextShaper,
     ) {
         self.submit_epoch = self
             .submit_epoch
@@ -51,6 +53,7 @@ impl GpuViewTargets {
                 paint.init(&GpuInitCtx {
                     device: ctx.device,
                     target_format: TARGET_FORMAT,
+                    text,
                 });
                 debug_marker::pop_encoder(ctx.encoder);
                 target.initialized = true;

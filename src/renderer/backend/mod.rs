@@ -516,8 +516,13 @@ impl WgpuBackend {
             // (eviction is owner-scoped — the shared backend serves every
             // window).
             // `submit` itself carries no render-target logic.
-            self.image
-                .paint_gpu_views(&mut ctx, &buffer.frame_targets, owner, buffer.time);
+            self.image.paint_gpu_views(
+                &mut ctx,
+                &buffer.frame_targets,
+                owner,
+                buffer.time,
+                self.text.shaper(),
+            );
             self.curve.upload(&mut ctx, &buffer.curves);
 
             if is_partial {
