@@ -10,7 +10,8 @@ use soa_rs::Soars;
 /// One `GpuView` off-screen target to paint this frame (see
 /// [`RenderBuffer::frame_targets`](crate::renderer::render_buffer::RenderBuffer::frame_targets)):
 /// the view's stable texture `id`, its used
-/// physical size (`used`), the display and effective raster scales, and the app
+/// physical size (`used`), where that sits in the view, the display and
+/// effective raster scales, and the app
 /// `paint` callback (threaded from `Ui::gpu_views` through the typed image
 /// command, so the backend reaches the renderer without a `Ui`-side registry).
 /// The backend allocates the target to exactly `used` and runs `paint` into it
@@ -18,7 +19,19 @@ use soa_rs::Soars;
 #[derive(Clone, Debug)]
 pub(crate) struct RenderTargetDraw {
     pub(crate) id: TextureId,
+    /// The target's size: the part of the view that is actually on screen,
+    /// which is the whole of it whenever nothing clips the view.
     pub(crate) used: UVec2,
+    /// What the whole view measures, on screen and off.
+    ///
+    /// Apart from `used` because layout is *allowed* to overflow — see the
+    /// contains-content rule in [`resolve_axis_size`](crate::layout) — so a
+    /// view's rect can reach past the surface or past a scroll's viewport. The
+    /// target follows what can be seen; this says what that is a part of, so a
+    /// caller can still place its content against the whole.
+    pub(crate) full: UVec2,
+    /// Where `used` begins within `full`, in the same pixels.
+    pub(crate) offset: UVec2,
     pub(crate) display_scale: f32,
     pub(crate) raster_scale: f32,
     pub(crate) paint: GpuPaintRef,

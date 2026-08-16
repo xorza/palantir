@@ -69,6 +69,8 @@ impl GpuViewTargets {
                 encoder: ctx.encoder,
                 target: &target.view,
                 size_px: draw.used,
+                full_px: draw.full,
+                offset_px: draw.offset,
                 display_scale: draw.display_scale,
                 raster_scale: draw.raster_scale,
                 dt,
