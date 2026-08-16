@@ -133,23 +133,13 @@ impl URect {
     #[inline]
     pub(crate) const fn clamp_to(self, bounds: Self) -> Self {
         let (a, b) = (self.max(), bounds.max());
-        // Written out rather than through `Ord::max`, which is not `const`.
-        let x0 = if self.min.x > bounds.min.x {
-            self.min.x
-        } else {
-            bounds.min.x
-        };
-        let y0 = if self.min.y > bounds.min.y {
-            self.min.y
-        } else {
-            bounds.min.y
-        };
-        let x1 = if a.x < b.x { a.x } else { b.x };
-        let y1 = if a.y < b.y { a.y } else { b.y };
-        Self {
-            min: UVec2::new(x0, y0),
-            size: UVec2::new(x1.saturating_sub(x0), y1.saturating_sub(y0)),
-        }
+        Self::from_min_max(
+            UVec2::new(
+                larger(self.min.x, bounds.min.x),
+                larger(self.min.y, bounds.min.y),
+            ),
+            UVec2::new(smaller(a.x, b.x), smaller(a.y, b.y)),
+        )
     }
 
     /// Smallest axis-aligned rect enclosing both. A rect that paints nothing
@@ -165,22 +155,13 @@ impl URect {
             return self;
         }
         let (a, b) = (self.max(), other.max());
-        let x0 = if self.min.x < other.min.x {
-            self.min.x
-        } else {
-            other.min.x
-        };
-        let y0 = if self.min.y < other.min.y {
-            self.min.y
-        } else {
-            other.min.y
-        };
-        let x1 = if a.x > b.x { a.x } else { b.x };
-        let y1 = if a.y > b.y { a.y } else { b.y };
-        Self {
-            min: UVec2::new(x0, y0),
-            size: UVec2::new(x1 - x0, y1 - y0),
-        }
+        Self::from_min_max(
+            UVec2::new(
+                smaller(self.min.x, other.min.x),
+                smaller(self.min.y, other.min.y),
+            ),
+            UVec2::new(larger(a.x, b.x), larger(a.y, b.y)),
+        )
     }
 }
 
@@ -308,6 +289,17 @@ impl From<URect16> for URect {
     fn from(r: URect16) -> Self {
         r.to_urect()
     }
+}
+
+/// `Ord::min` and `Ord::max` are not callable from a `const fn`, and every
+/// rectangle operation here wants one — so the branch is written once under a
+/// name rather than four times inside each.
+const fn smaller(a: u32, b: u32) -> u32 {
+    if a < b { a } else { b }
+}
+
+const fn larger(a: u32, b: u32) -> u32 {
+    if a > b { a } else { b }
 }
 
 const fn sat_u16(v: u32) -> u16 {

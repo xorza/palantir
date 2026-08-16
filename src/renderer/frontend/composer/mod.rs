@@ -317,9 +317,7 @@ impl Composer {
     /// reject shape at every shape-draw site; centralising it keeps each
     /// handler from growing its own variant.
     fn cull_bounds(&self, bounds: URect) -> bool {
-        bounds.size.x == 0
-            || bounds.size.y == 0
-            || self.current_scissor.is_some_and(|s| !bounds.intersects(s))
+        bounds.is_paint_empty() || self.current_scissor.is_some_and(|s| !bounds.intersects(s))
     }
 
     /// Cull a higher-kind (mesh / image / curve) draw against the active
@@ -777,7 +775,7 @@ impl ComposeSession<'_> {
     /// take the other branch to the same numbers.
     fn seen(&self, whole: Rect) -> Option<Rect> {
         let surface = self.display.physical;
-        let mut clipped = whole.clamp_to(URect::new(0, 0, surface.x, surface.y).into());
+        let mut clipped = whole.clamp_to(Rect::new(0.0, 0.0, surface.x as f32, surface.y as f32));
         if let Some(scissor) = self.composer.current_scissor {
             clipped = clipped.clamp_to(scissor.into());
         }
@@ -1505,7 +1503,7 @@ impl PaintSink for ComposeSession<'_> {
             Some(parent) => unclipped.clamp_to(parent.scissor),
             None => unclipped,
         };
-        if bounds.size.x == 0 || bounds.size.y == 0 {
+        if bounds.is_paint_empty() {
             return;
         }
         // Text sits below mesh/image/curve/polyline in the

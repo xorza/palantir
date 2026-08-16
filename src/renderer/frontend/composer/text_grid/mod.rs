@@ -161,13 +161,13 @@ impl TextRectGrid {
         self.touched.clear();
         self.spill.clear();
         self.rects.clear();
-        self.union = URect::default();
+        self.union = URect::ZERO;
     }
 
     /// Register `r`. No-op for zero-area input (degenerate text rects
     /// can't intersect anything anyway).
     pub(crate) fn push(&mut self, r: URect) {
-        if r.size.x == 0 || r.size.y == 0 {
+        if r.is_paint_empty() {
             return;
         }
         let idx = self.rects.len();
@@ -221,7 +221,7 @@ impl TextRectGrid {
     pub(crate) fn any_overlap(&self, q: URect) -> bool {
         // The union check subsumes the empty-grid case (an empty grid's
         // zero-sized union intersects nothing).
-        if q.size.x == 0 || q.size.y == 0 || !self.union.intersects(q) {
+        if q.is_paint_empty() || !self.union.intersects(q) {
             return false;
         }
         let max_x = self.cols - 1;
