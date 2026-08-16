@@ -590,7 +590,7 @@ fn screen_rects_by_fill(cmds: &PaintCapture) -> Vec<(ColorF16, Rect)> {
             PaintCall::Clip(p) => {
                 let screen = t.apply_rect(p.rect);
                 let intersected = match clip {
-                    Some(c) => screen.intersect(c),
+                    Some(c) => screen.clamp_to(c),
                     None => screen,
                 };
                 clip_stack.push(clip);
@@ -603,7 +603,7 @@ fn screen_rects_by_fill(cmds: &PaintCapture) -> Vec<(ColorF16, Rect)> {
                 let p = as_rect(call).unwrap();
                 let screen = t.apply_rect(quad_rect(p));
                 let visible = match clip {
-                    Some(c) => screen.intersect(c),
+                    Some(c) => screen.clamp_to(c),
                     None => screen,
                 };
                 out.push((p.fill, visible));

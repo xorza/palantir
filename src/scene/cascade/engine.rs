@@ -379,7 +379,7 @@ impl CascadeEngine {
             }
 
             let screen_rect = parent_transform.apply_rect(layout_rect);
-            let visible_rect = parent_clip.map_or(screen_rect, |c| screen_rect.intersect(c));
+            let visible_rect = parent_clip.map_or(screen_rect, |c| screen_rect.clamp_to(c));
             // The transform descendants inherit *and* direct shapes paint
             // under (the `Panel::transform` contract): `parent ∘
             // self_anchored`. Computed once here — `transform_of` is a
@@ -410,7 +410,7 @@ impl CascadeEngine {
             let shape_clip = if clips {
                 let mask_local = layout_rect.deflated_by(layout_core.padding);
                 let mask_screen = parent_transform.apply_rect(mask_local);
-                Some(parent_clip.map_or(mask_screen, |c| mask_screen.intersect(c)))
+                Some(parent_clip.map_or(mask_screen, |c| mask_screen.clamp_to(c)))
             } else {
                 parent_clip
             };
@@ -619,7 +619,7 @@ fn lift_to_screen(local: Rect, origin: Vec2, t: TranslateScale, clip: Option<Rec
 
 #[inline]
 fn clip_screen(screen: Rect, clip: Option<Rect>) -> Rect {
-    clip.map_or(screen, |c| screen.intersect(c))
+    clip.map_or(screen, |c| screen.clamp_to(c))
 }
 
 /// Pad a text shape's screen rect by half a `TEXT_SCALE_STEP` of its
@@ -658,7 +658,7 @@ fn inflate_text_damage(screen: Rect, measured: Size, clip: Option<Rect>) -> Rect
         },
     };
     match clip {
-        Some(c) => inflated.intersect(c),
+        Some(c) => inflated.clamp_to(c),
         None => inflated,
     }
 }

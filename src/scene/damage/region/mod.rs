@@ -131,7 +131,7 @@ impl DamageRegion {
         for r in rects {
             // `add` re-gates on `is_paint_empty`, so the pre-check is
             // only an intersect-cost saver, not load-bearing.
-            let clipped = r.intersect(surface);
+            let clipped = r.clamp_to(surface);
             if !clipped.is_paint_empty() {
                 region.add(clipped);
             }

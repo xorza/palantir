@@ -260,7 +260,7 @@ fn compose_with_clip_groups_inner_draws_under_scissor() {
     let s = buf.groups[1]
         .scissor
         .expect("clipped group must have a scissor");
-    assert_eq!((s.x, s.y, s.w, s.h), (50, 50, 100, 100));
+    assert_eq!((s.min.x, s.min.y, s.size.x, s.size.y), (50, 50, 100, 100));
     assert_eq!(buf.groups[1].quads, Span::new(1, 2));
 
     assert!(buf.groups[2].scissor.is_none());
@@ -284,7 +284,7 @@ fn compose_intersects_nested_clips() {
     let s = buf.groups[0]
         .scissor
         .expect("nested clip group must have a scissor");
-    assert_eq!((s.x, s.y, s.w, s.h), (50, 50, 50, 50));
+    assert_eq!((s.min.x, s.min.y, s.size.x, s.size.y), (50, 50, 50, 50));
 }
 
 #[test]
@@ -1000,7 +1000,7 @@ fn compose_transforms_clip_rects_to_screen_space() {
     let s = buf.groups[0]
         .scissor
         .expect("clipped group must have a scissor");
-    assert_eq!((s.x, s.y, s.w, s.h), (20, 20, 40, 40));
+    assert_eq!((s.min.x, s.min.y, s.size.x, s.size.y), (20, 20, 40, 40));
 }
 
 /// Pin: a `Quad → Text → Quad` paint sequence inside a single scissor
@@ -1251,10 +1251,10 @@ fn compose_clipped_text_overflow_does_not_widen_batch_scissor() {
     let strict = buf
         .text_batches
         .iter()
-        .find(|tb| tb.scissor.w == 20)
+        .find(|tb| tb.scissor.size.x == 20)
         .expect("expected a batch with 20px-wide scissor");
-    assert_eq!(strict.scissor.w, 20);
-    assert_eq!(strict.scissor.h, 20);
+    assert_eq!(strict.scissor.size.x, 20);
+    assert_eq!(strict.scissor.size.y, 20);
 }
 
 /// Pin: two strict runs whose clips happen to be IDENTICAL rects can

@@ -142,12 +142,7 @@ fn dummy_quad() -> Quad {
 fn dummy_text() -> TextDrawRow {
     TextDrawRow {
         origin: glam::Vec2::ZERO,
-        bounds: URect {
-            x: 0,
-            y: 0,
-            w: 0,
-            h: 0,
-        },
+        bounds: URect::ZERO,
         text: ShapedTextRef {
             key: TextShapeKey::INVALID,
             source: TextSource {

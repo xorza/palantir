@@ -43,8 +43,8 @@ impl CosmicMeasure {
         // Folding it into the origin rather than into each `physical.x`
         // keeps the subpixel binning consistent with the shift.
         let origin_x = origin.x - left * scale;
-        let bounds_top = bounds.y as f32;
-        let bounds_bot = (bounds.y + bounds.h) as f32;
+        let bounds_top = bounds.min.y as f32;
+        let bounds_bot = bounds.max().y as f32;
         let mut culled = false;
         for run in buffer.layout_runs() {
             if (run.line_top + run.line_height) * scale + origin.y < bounds_top {
