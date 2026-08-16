@@ -895,7 +895,7 @@ impl WgpuBackend {
                     debug_marker::pop(pass);
                 }
                 RenderStep::SetScissor(r) => {
-                    pass.set_scissor_rect(r.x, r.y, r.w, r.h);
+                    pass.set_scissor_rect(r.min.x, r.min.y, r.size.x, r.size.y);
                 }
                 RenderStep::SetStencilRef(v) => {
                     pass.set_stencil_reference(v);

@@ -44,7 +44,7 @@ fn emit_inverted_overlaps_into(out: &mut Vec<Rect>, matched: &[u32], extents: &[
             if p1 == ROW_UNMATCHED || p1 < p2 {
                 continue;
             }
-            push_screen(out, extents[j1].intersect(extents[j2]));
+            push_screen(out, extents[j1].clamp_to(extents[j2]));
         }
     }
 }

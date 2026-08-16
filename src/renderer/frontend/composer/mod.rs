@@ -317,11 +317,9 @@ impl Composer {
     /// reject shape at every shape-draw site; centralising it keeps each
     /// handler from growing its own variant.
     fn cull_bounds(&self, bounds: URect) -> bool {
-        bounds.w == 0
-            || bounds.h == 0
-            || self
-                .current_scissor
-                .is_some_and(|s| bounds.intersect(s).is_none())
+        bounds.size.x == 0
+            || bounds.size.y == 0
+            || self.current_scissor.is_some_and(|s| !bounds.intersects(s))
     }
 
     /// Cull a higher-kind (mesh / image / curve) draw against the active
@@ -404,10 +402,7 @@ impl Composer {
     /// closed text never pay the per-rect fill.
     fn closed_hit(&mut self, q: URect, out: &RenderBuffer) -> bool {
         let pending = &out.text_batches[self.batch.pending_batch_cursor..];
-        if pending
-            .iter()
-            .any(|batch| batch.scissor.intersect(q).is_some())
-        {
+        if pending.iter().any(|batch| batch.scissor.intersects(q)) {
             for batch in pending {
                 for ti in batch.texts.range() {
                     self.batch.closed_grid.push(out.texts[ti].bounds);
@@ -629,30 +624,15 @@ fn snap_text_scale(s: f32) -> f32 {
     (s / TEXT_SCALE_STEP).fast_round() * TEXT_SCALE_STEP
 }
 
-/// Clamp a physical-px AABB to the viewport, returning the
-/// non-negative `URect` the GPU can consume. NaN/non-finite inputs
-/// collapse to `URect::default()` (zero-sized).
+/// The pixels a physical-px AABB covers, held inside the viewport — the
+/// `URect` the GPU can consume.
 ///
-/// Floor on min, ceil on max — so unsnapped float inputs (curve/
-/// polyline bbox with `snap=false`) expand outward to fully cover
-/// their source rect. For snapped inputs the edges are already
-/// integer floats so floor == ceil and behavior is unchanged.
-/// Under-bounding the bbox would feed false-negatives to overlap
-/// tracking (paint reorder) and cull (dropped paints).
+/// Both halves belong to the rectangles rather than here: which pixels a float
+/// rect touches is [`URect::covering`], and holding one inside another is
+/// [`URect::clamp_to`]. What this adds is the pairing, and the name the
+/// composer knows it by.
 fn urect_from_phys(min: Vec2, max: Vec2, viewport: UVec2) -> URect {
-    if !(min.x.is_finite() && min.y.is_finite() && max.x.is_finite() && max.y.is_finite()) {
-        return URect::default();
-    }
-    let x = (min.x.max(0.0) as u32).min(viewport.x);
-    let y = (min.y.max(0.0) as u32).min(viewport.y);
-    let right = (max.x.max(0.0).ceil() as u32).min(viewport.x);
-    let bottom = (max.y.max(0.0).ceil() as u32).min(viewport.y);
-    URect {
-        x,
-        y,
-        w: right.saturating_sub(x),
-        h: bottom.saturating_sub(y),
-    }
+    URect::covering(Rect::from_min_max(min, max)).clamp_to(URect::new(0, 0, viewport.x, viewport.y))
 }
 
 fn scissor_from_logical(r: Rect, scale: f32, snap: bool, viewport: UVec2) -> URect {
@@ -797,14 +777,9 @@ impl ComposeSession<'_> {
     /// take the other branch to the same numbers.
     fn seen(&self, whole: Rect) -> Option<Rect> {
         let surface = self.display.physical;
-        let mut clipped = whole.intersect(Rect::new(0.0, 0.0, surface.x as f32, surface.y as f32));
+        let mut clipped = whole.clamp_to(URect::new(0, 0, surface.x, surface.y).into());
         if let Some(scissor) = self.composer.current_scissor {
-            clipped = clipped.intersect(Rect::new(
-                scissor.x as f32,
-                scissor.y as f32,
-                scissor.w as f32,
-                scissor.h as f32,
-            ));
+            clipped = clipped.clamp_to(scissor.into());
         }
         (clipped != whole).then_some(clipped)
     }
@@ -1530,7 +1505,7 @@ impl PaintSink for ComposeSession<'_> {
             Some(parent) => unclipped.clamp_to(parent.scissor),
             None => unclipped,
         };
-        if bounds.w == 0 || bounds.h == 0 {
+        if bounds.size.x == 0 || bounds.size.y == 0 {
             return;
         }
         // Text sits below mesh/image/curve/polyline in the

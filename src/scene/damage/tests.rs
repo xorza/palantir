@@ -2246,7 +2246,7 @@ fn drop_shadow_overhang_contributes_to_damage_on_remove() {
         // damage is the visible portion of `prev_rect`.
         assert_eq!(
             rects,
-            vec![prev_rect.intersect(TEST_SURFACE)],
+            vec![prev_rect.clamp_to(TEST_SURFACE)],
             "[{label}] damage region",
         );
     }
@@ -2333,7 +2333,7 @@ fn partial_when_oversized_rect_lies_mostly_off_surface() {
     // ≪ 0.7 ⇒ Partial.
     let oversized = Rect::new(90.0, 90.0, 1000.0, 1000.0);
     assert_eq!(
-        oversized.intersect(surface),
+        oversized.clamp_to(surface),
         Rect::new(90.0, 90.0, 10.0, 10.0),
         "sanity: 1000×1000 rect at (90,90) intersects surface in a 10×10 corner",
     );

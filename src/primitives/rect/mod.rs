@@ -79,12 +79,12 @@ impl Rect {
 
     /// Bottom-right corner — exclusive, per the half-open convention.
     #[inline]
-    pub const fn max(&self) -> Vec2 {
+    pub const fn max(self) -> Vec2 {
         Vec2::new(self.min.x + self.size.w, self.min.y + self.size.h)
     }
     /// Midpoint of the rect.
     #[inline]
-    pub const fn center(&self) -> Vec2 {
+    pub const fn center(self) -> Vec2 {
         Vec2::new(
             self.min.x + self.size.w * 0.5,
             self.min.y + self.size.h * 0.5,
@@ -92,7 +92,7 @@ impl Rect {
     }
     /// `width * height`.
     #[inline]
-    pub const fn area(&self) -> f32 {
+    pub const fn area(self) -> f32 {
         self.size.w * self.size.h
     }
 
@@ -120,7 +120,7 @@ impl Rect {
     /// Half-open containment: the min edges are inside, the max edges are
     /// not, so tiled rects never both claim the same point.
     #[inline]
-    pub const fn contains(&self, p: Vec2) -> bool {
+    pub const fn contains(self, p: Vec2) -> bool {
         let mx = self.max();
         p.x >= self.min.x && p.y >= self.min.y && p.x < mx.x && p.y < mx.y
     }
@@ -130,7 +130,7 @@ impl Rect {
     /// damage-region merge policy to drop rects already covered by a
     /// bigger one.
     #[inline]
-    pub const fn contains_rect(&self, other: Self) -> bool {
+    pub const fn contains_rect(self, other: Self) -> bool {
         let self_max = self.max();
         let other_max = other.max();
         other.min.x >= self.min.x
@@ -146,7 +146,7 @@ impl Rect {
     /// without clamping — callers needing the size clamp should use
     /// `deflated_by` instead.
     #[inline]
-    pub const fn inflated(&self, amount: f32) -> Self {
+    pub const fn inflated(self, amount: f32) -> Self {
         Self {
             min: Vec2::new(self.min.x - amount, self.min.y - amount),
             size: Size::new(self.size.w + 2.0 * amount, self.size.h + 2.0 * amount),
@@ -163,9 +163,9 @@ impl Rect {
     /// by the renderer's occlusion-prune to derive the opaque cover
     /// area of a rounded fill.
     #[inline]
-    pub fn inscribed_for_corners(&self, corners: Corners) -> Self {
+    pub fn inscribed_for_corners(self, corners: Corners) -> Self {
         if corners.approx_zero() {
-            return *self;
+            return self;
         }
         // `1 - 1/√2 ≈ 0.2929`: the inscribed-square offset per unit
         // radius for a quarter-circle arc. Multiplying a corner
@@ -191,7 +191,7 @@ impl Rect {
     /// Inset by `s` on each side, clamping the resulting size at zero. Used for
     /// margin / padding insets in the layout pass.
     #[inline]
-    pub fn deflated_by(&self, s: Spacing) -> Self {
+    pub fn deflated_by(self, s: Spacing) -> Self {
         let [l, t, r, b] = s.as_array();
         Self {
             min: Vec2::new(self.min.x + l, self.min.y + t),
@@ -206,7 +206,7 @@ impl Rect {
     /// edges don't count). Used by the encoder's damage-rect filter to
     /// decide whether a node's paint commands can be skipped.
     #[inline]
-    pub const fn intersects(&self, other: Self) -> bool {
+    pub const fn intersects(self, other: Self) -> bool {
         let a_max = self.max();
         let b_max = other.max();
         self.min.x < b_max.x
@@ -215,12 +215,35 @@ impl Rect {
             && other.min.y < a_max.y
     }
 
-    /// Axis-aligned intersection. Returns a zero-size rect if the inputs
-    /// don't overlap (either dimension goes negative).
+    /// Strict axis-aligned intersection. `None` when the inputs don't overlap,
+    /// touching edges included — the same answer [`Self::intersects`] gives as
+    /// a bool, and the counterpart of
+    /// [`URect::intersect`](crate::primitives::urect::URect::intersect).
+    ///
+    /// [`Self::clamp_to`] beside it is the saturating one, for a caller that
+    /// wants a rect either way. The pair is named the same on both rectangles
+    /// so that reading one does not teach the wrong thing about the other.
     #[inline]
-    pub const fn intersect(&self, other: Self) -> Self {
-        let (a, b) = (self.max(), other.max());
-        let min = Vec2::new(self.min.x.max(other.min.x), self.min.y.max(other.min.y));
+    pub const fn intersect(self, other: Self) -> Option<Self> {
+        let clamped = self.clamp_to(other);
+        if clamped.size.w > 0.0 && clamped.size.h > 0.0 {
+            Some(clamped)
+        } else {
+            None
+        }
+    }
+
+    /// Saturating intersection: clamps `self` to fit inside `bounds`, giving a
+    /// possibly zero-sized rect rather than nothing at all.
+    ///
+    /// The counterpart of
+    /// [`URect::clamp_to`](crate::primitives::urect::URect::clamp_to), and what
+    /// this method was called `intersect` for before there was a strict one to
+    /// tell it apart from.
+    #[inline]
+    pub const fn clamp_to(self, bounds: Self) -> Self {
+        let (a, b) = (self.max(), bounds.max());
+        let min = Vec2::new(self.min.x.max(bounds.min.x), self.min.y.max(bounds.min.y));
         let max = Vec2::new(a.x.min(b.x), a.y.min(b.y));
         Self {
             min,
@@ -238,12 +261,12 @@ impl Rect {
     /// `Option<Rect>` only when "no rects at all" must stay
     /// distinguishable from "some rects".
     #[inline]
-    pub const fn union(&self, other: Self) -> Self {
+    pub const fn union(self, other: Self) -> Self {
         if self.is_paint_empty() {
             return other;
         }
         if other.is_paint_empty() {
-            return *self;
+            return self;
         }
         // `f32::min`/`max` rather than `Vec2::min`/`max` only because
         // glam's aren't `const fn`.
@@ -261,7 +284,7 @@ impl Rect {
     /// width/height from rounded edges (not from `size * scale`) to avoid
     /// creeping width drift across rows of identical rects.
     #[inline]
-    pub fn scaled_by(&self, scale: f32, snap: bool) -> Self {
+    pub fn scaled_by(self, scale: f32, snap: bool) -> Self {
         // Scalar lanes because glam's `Vec2` ops aren't `const fn`.
         let m = self.max();
         let mut min = Vec2::new(self.min.x * scale, self.min.y * scale);

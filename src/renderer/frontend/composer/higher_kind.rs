@@ -51,8 +51,7 @@ impl TierRects {
     }
 
     fn any_overlap(&self, rect: URect) -> bool {
-        self.union.intersect(rect).is_some()
-            && self.rects.iter().any(|r| r.intersect(rect).is_some())
+        self.union.intersects(rect) && self.rects.iter().any(|r| r.intersects(rect))
     }
 
     fn clear(&mut self) {
@@ -81,7 +80,7 @@ impl HigherKindRects {
     }
 
     pub(super) fn any_overlap(&self, rect: URect) -> bool {
-        self.union.intersect(rect).is_some()
+        self.union.intersects(rect)
             && (self.meshes.any_overlap(rect)
                 || self.images.any_overlap(rect)
                 || self.curves.any_overlap(rect))

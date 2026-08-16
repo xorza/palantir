@@ -128,8 +128,13 @@ impl RealisticFixture {
         }
         let mut queries = Vec::new();
         for (i, t) in texts.iter().enumerate() {
-            queries.push(URect::new(t.x, t.y, 140, 18));
-            queries.push(URect::new(t.x + (i as u32 % 7) * 13, t.y + 16, 60, 6));
+            queries.push(URect::new(t.min.x, t.min.y, 140, 18));
+            queries.push(URect::new(
+                t.min.x + (i as u32 % 7) * 13,
+                t.min.y + 16,
+                60,
+                6,
+            ));
         }
         Self {
             grid: TextRectGrid::default(),

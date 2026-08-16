@@ -167,7 +167,7 @@ impl TextRectGrid {
     /// Register `r`. No-op for zero-area input (degenerate text rects
     /// can't intersect anything anyway).
     pub(crate) fn push(&mut self, r: URect) {
-        if r.w == 0 || r.h == 0 {
+        if r.size.x == 0 || r.size.y == 0 {
             return;
         }
         let idx = self.rects.len();
@@ -181,10 +181,10 @@ impl TextRectGrid {
         let idx = idx as u16;
         let max_x = self.cols - 1;
         let max_y = self.rows - 1;
-        let cx0 = (r.x / TILE_SIZE).min(max_x);
-        let cy0 = (r.y / TILE_SIZE).min(max_y);
-        let cx1 = ((r.x + r.w - 1) / TILE_SIZE).min(max_x);
-        let cy1 = ((r.y + r.h - 1) / TILE_SIZE).min(max_y);
+        let cx0 = (r.min.x / TILE_SIZE).min(max_x);
+        let cy0 = (r.min.y / TILE_SIZE).min(max_y);
+        let cx1 = ((r.max().x - 1) / TILE_SIZE).min(max_x);
+        let cy1 = ((r.max().y - 1) / TILE_SIZE).min(max_y);
         let mut spilled = false;
         for ty in cy0..=cy1 {
             let row = ty * self.cols;
@@ -221,22 +221,22 @@ impl TextRectGrid {
     pub(crate) fn any_overlap(&self, q: URect) -> bool {
         // The union check subsumes the empty-grid case (an empty grid's
         // zero-sized union intersects nothing).
-        if q.w == 0 || q.h == 0 || self.union.intersect(q).is_none() {
+        if q.size.x == 0 || q.size.y == 0 || !self.union.intersects(q) {
             return false;
         }
         let max_x = self.cols - 1;
         let max_y = self.rows - 1;
-        let cx0 = (q.x / TILE_SIZE).min(max_x);
-        let cy0 = (q.y / TILE_SIZE).min(max_y);
-        let cx1 = ((q.x + q.w - 1) / TILE_SIZE).min(max_x);
-        let cy1 = ((q.y + q.h - 1) / TILE_SIZE).min(max_y);
+        let cx0 = (q.min.x / TILE_SIZE).min(max_x);
+        let cy0 = (q.min.y / TILE_SIZE).min(max_y);
+        let cx1 = ((q.max().x - 1) / TILE_SIZE).min(max_x);
+        let cy1 = ((q.max().y - 1) / TILE_SIZE).min(max_y);
         for ty in cy0..=cy1 {
             let row = ty * self.cols;
             for tx in cx0..=cx1 {
                 let t = (row + tx) as usize;
                 let n = self.lens[t] as usize;
                 for &i in &self.slots[t][..n] {
-                    if self.rects[i as usize].intersect(q).is_some() {
+                    if self.rects[i as usize].intersects(q) {
                         return true;
                     }
                 }
@@ -248,13 +248,13 @@ impl TextRectGrid {
         if self
             .spill
             .iter()
-            .any(|&i| self.rects[i as usize].intersect(q).is_some())
+            .any(|&i| self.rects[i as usize].intersects(q))
         {
             return true;
         }
         self.rects[TILE_INDEX_CAPACITY.min(self.rects.len())..]
             .iter()
-            .any(|r| r.intersect(q).is_some())
+            .any(|r| r.intersects(q))
     }
 }
 
@@ -416,7 +416,7 @@ mod tests {
         for qy in (0..600).step_by(37) {
             for qx in (0..800).step_by(43) {
                 let q = URect::new(qx, qy, 20, 20);
-                let linear = rects.iter().any(|r| r.intersect(q).is_some());
+                let linear = rects.iter().any(|r| r.intersects(q));
                 let grid = g.any_overlap(q);
                 assert_eq!(linear, grid, "disagreement at q={q:?}");
             }
