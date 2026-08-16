@@ -190,7 +190,7 @@ pub use host::winit::{
 pub use input::InputEvent;
 pub use input::key_class::{KeyClass, KeyFilter};
 pub use input::keyboard::{Key, KeyPress, KeyboardEvent, Modifiers, TextChunk};
-pub use input::pointer::{PointerButton, PointerEvent};
+pub use input::pointer::{PointerAction, PointerButton, PointerEdge, PointerEvent};
 pub use input::policy::{FocusPolicy, InputPolicy};
 pub use input::response::{ButtonPhase, ButtonState, Drag, InputDelta, ResponseState, ScrollDelta};
 pub use input::sense::Sense;

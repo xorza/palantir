@@ -529,3 +529,77 @@ fn press_started_counts_multi_press_runs() {
     assert_eq!(probe(&mut h), (true, 1), "far press restarts the run");
     h.release();
 }
+
+/// **The collation and the poll never disagree about what happened.**
+///
+/// [`Ui::pointer_actions`] and [`Ui::response_for`] read the same capture state
+/// from opposite ends — one walks the buttons and says what each did, the other
+/// asks one widget whether any of it was about them. Two answers to one question
+/// is a thing to pin rather than to trust, so every edge below is checked
+/// against the `Response` the same frame hands back.
+///
+/// Accumulated across passes rather than read off the last, like every action
+/// test here: a frame carrying action input records twice and the second pass is
+/// given none of it, so the last pass's answer is `false` for the poll and empty
+/// for the collation alike. That the two agree *about that too* is half of what
+/// this is checking.
+#[test]
+fn pointer_actions_report_the_edges_the_response_reports() {
+    use crate::input::pointer::{PointerAction, PointerButton, PointerEdge};
+    use crate::input::response::ButtonPhase;
+
+    let id = WidgetId::from_hash("collated");
+    let mut h = UiHarness::new(UVec2::new(200, 80));
+    let build = |ui: &mut Ui| {
+        Panel::hstack().auto_id().show(ui, |ui| {
+            Button::new()
+                .id(id)
+                .label("hi")
+                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
+                .show(ui);
+        });
+    };
+    h.frame(build);
+
+    let at = |edge| PointerAction {
+        id,
+        button: PointerButton::Left,
+        edge,
+    };
+
+    // The press frame. A capture is latched on the press and destroyed by the
+    // release, so no frame carries both edges.
+    h.press_at(Vec2::new(50.0, 20.0));
+    let mut edges = Vec::new();
+    let mut down = false;
+    h.frame(|ui| {
+        edges.extend(ui.pointer_actions());
+        down |= matches!(ui.response_for(id).left.phase, ButtonPhase::Down { .. });
+        build(ui);
+    });
+    assert_eq!(edges, [at(PointerEdge::Pressed { count: 1 })]);
+    assert!(down, "the response disagreed with the collation");
+
+    // The release frame.
+    h.release();
+    let mut edges = Vec::new();
+    let mut clicked = false;
+    h.frame(|ui| {
+        edges.extend(ui.pointer_actions());
+        clicked |= ui.response_for(id).left.clicked();
+        build(ui);
+    });
+    assert_eq!(edges, [at(PointerEdge::Clicked { count: 1 })]);
+    assert!(clicked, "the response disagreed with the collation");
+
+    // A quiet frame collates nothing — these are edges, not levels.
+    let mut edges = Vec::new();
+    h.frame(|ui| {
+        edges.extend(ui.pointer_actions());
+        build(ui);
+    });
+    assert!(
+        edges.is_empty(),
+        "an edge outlived the frame it happened on"
+    );
+}

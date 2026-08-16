@@ -13,7 +13,7 @@ pub(crate) mod zoom;
 
 use crate::input::key_class::KeyClass;
 use crate::input::keyboard::{Key, KeyPress, KeyboardEvent, Modifiers, TextChunk};
-use crate::input::pointer::{PointerButton, PointerEvent};
+use crate::input::pointer::{PointerAction, PointerButton, PointerEdge, PointerEvent};
 use crate::input::policy::FocusPolicy;
 use crate::input::policy::InputSignal;
 use crate::input::response::{
@@ -544,6 +544,56 @@ impl InputState {
     }
 
     #[inline]
+    /// Every edge the pointer produced this frame, widget by widget.
+    ///
+    /// Reads the same capture state [`Self::response_for`] does, so the two
+    /// cannot disagree about what happened — this walks the buttons and reports
+    /// what each one's capture says, where `response_for` asks one widget
+    /// whether any of it was about them.
+    ///
+    /// At most two edges per button: a press frame can also cross the drag
+    /// threshold, and a release frame has no press left to report. Nothing is
+    /// allocated — the per-button pair is an array.
+    pub(crate) fn pointer_actions(&self) -> impl Iterator<Item = PointerAction> + '_ {
+        PointerButton::all().flat_map(move |button| {
+            let cap = self.capture(button);
+            let pressed = cap.press.as_ref().and_then(|press| {
+                press
+                    .fresh
+                    .then_some(PointerEdge::Pressed { count: press.seq })
+            });
+            let dragging = cap
+                .press
+                .as_ref()
+                .filter(|press| press.drag == PressDrag::Started)
+                .map(|_| PointerEdge::DragStarted);
+            // A release destroys the press, so these are the other frame: never
+            // both, which is why one array covers the pair either way.
+            let ended = cap.release.as_ref().and_then(|release| match release.kind {
+                ReleaseKind::Click { count } => Some(PointerEdge::Clicked { count }),
+                ReleaseKind::DragStopped => Some(PointerEdge::DragStopped),
+                // A release that landed off its widget ended nothing anyone
+                // asked about — the capture simply dissolves.
+                ReleaseKind::Miss => None,
+            });
+            let target = move |edge| {
+                let id = match edge {
+                    PointerEdge::Clicked { .. } | PointerEdge::DragStopped => {
+                        cap.release.as_ref().map(|r| r.target)
+                    }
+                    PointerEdge::Pressed { .. } | PointerEdge::DragStarted => {
+                        cap.press.as_ref().map(|p| p.target)
+                    }
+                }?;
+                Some(PointerAction { id, button, edge })
+            };
+            [pressed, dragging, ended]
+                .into_iter()
+                .flatten()
+                .filter_map(target)
+        })
+    }
+
     fn capture(&self, b: PointerButton) -> &Capture {
         &self.captures[b.idx()]
     }
