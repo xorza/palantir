@@ -469,7 +469,7 @@ impl<'a> TextEdit<'a> {
             ctx,
             caret_pos,
             caret_width,
-            content_width: geometry.content_width,
+            content_width: geometry.content_size.w,
             focused: is_focused,
             caret_moved,
             edited: changed,
