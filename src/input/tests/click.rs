@@ -545,8 +545,8 @@ fn press_started_counts_multi_press_runs() {
 /// this is checking.
 #[test]
 fn pointer_actions_report_the_edges_the_response_reports() {
-    use crate::input::pointer::{PointerAction, PointerButton, PointerEdge};
-    use crate::input::response::ButtonPhase;
+    use crate::input::pointer::PointerButton;
+    use crate::input::response::{ButtonPhase, PointerAction, PointerEdge};
 
     let id = WidgetId::from_hash("collated");
     let mut h = UiHarness::new(UVec2::new(200, 80));
