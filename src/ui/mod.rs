@@ -16,7 +16,7 @@ use crate::app::App;
 use crate::diagnostics::DebugOverlayConfig;
 use crate::display::Display;
 use crate::input::keyboard::{KeyboardEvent, Modifiers};
-use crate::input::pointer::PointerEvent;
+use crate::input::pointer::{PointerAction, PointerEvent};
 use crate::input::policy::FocusPolicy;
 use crate::input::policy::InputPolicy;
 use crate::input::response::{InputDelta, ResponseState};
@@ -934,6 +934,29 @@ impl Ui {
     /// unchanged text is a lookup, not a reshape.
     pub fn probe_text<'a>(&'a mut self, run: TextRun<'a>) -> TextProbe<'a> {
         TextProbe::new(self.resources.text.layout(run.request()))
+    }
+
+    /// Every edge the pointer produced this frame, widget by widget.
+    ///
+    /// **The collation half of the input API**, against
+    /// [`Self::response_for`]'s polling half. Poll when a widget wants its own
+    /// state — that is what every widget in this crate does, and what a
+    /// `Response` is for. Reach for this when the *application* wants to know
+    /// what the pointer did without naming everything it could have done it to:
+    /// a list whose ids come from data rather than from call sites, a router
+    /// that dispatches by what was hit, a log.
+    ///
+    /// **Edges, not levels.** A drag's travel is a level, and this reports only
+    /// that a drag started and on what — take the id and poll that one widget
+    /// for as long as the gesture lasts. See [`PointerEdge`].
+    ///
+    /// Read it during the frame's record, for the reason
+    /// [`Self::response_for`] gives: the edges are one-frame state cleared
+    /// between frames, and routed against a snapshot taken when the pass opened.
+    /// Order is by button, then press before release; two widgets touched by
+    /// two buttons in one frame both appear.
+    pub fn pointer_actions(&self) -> impl Iterator<Item = PointerAction> + '_ {
+        self.input.pointer_actions()
     }
 
     /// Programmatically set or clear focus. Bypasses [`FocusPolicy`].
