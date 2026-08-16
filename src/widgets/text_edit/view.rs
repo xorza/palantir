@@ -1,11 +1,15 @@
 //! TextEdit layout, viewport state, and shape recording.
 
 use crate::layout::types::align::{self, Align, HAlign};
+use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
+use crate::primitives::transform::TranslateScale;
+use crate::primitives::widget_id::WidgetId;
+use crate::scene::node::Node;
 use crate::scene::tree::paint_anims::PaintAnim;
 use crate::shape::Shape;
 use crate::text::probe::layout::Caret;
@@ -258,13 +262,24 @@ pub(super) struct GeometryInput<'a> {
 #[derive(Clone, Copy, Debug)]
 pub(super) struct TextGeometry {
     pub(super) layout: TextLayout,
-    /// Where the shaped block sits inside the inner rect **this** frame.
-    /// Stored back into `ViewState` at the end of the pass, which is
+    /// Where the shaped block sits inside the inner rect, as the *record*
+    /// pass can work it out — from last pass's rect, since arrange has not
+    /// run.
+    ///
+    /// **Read by the hit-test and by nothing else.** Painting stopped needing
+    /// it when the block became a child the engine places: what a click has to
+    /// undo is where the text was when the user aimed at it, which is last
+    /// frame's, so a value one frame behind is the right one here and the wrong
+    /// one there. Stored back into `ViewState` at the end of the pass, which is
     /// what makes it next frame's [`TextLayout::prev_block_offset`].
     pub(super) block_offset: Vec2,
     pub(super) content_width: f32,
     pub(super) display_width: f32,
-    pub(super) placeholder_offset: Vec2,
+    /// What the run and the placeholder measured, whole. The width alone
+    /// drives horizontal scroll; the block node the shapes hang on wants
+    /// both axes — see [`record`].
+    pub(super) content_size: Size,
+    pub(super) display_size: Size,
     pub(super) caret_pos: Caret,
     pub(super) text_hash: u64,
 }
@@ -330,7 +345,8 @@ pub(super) fn resolve_geometry(
         block_offset: aligned(measured),
         content_width: measured.w,
         display_width: placeholder_measured.w,
-        placeholder_offset: aligned(placeholder_measured),
+        content_size: measured,
+        display_size: placeholder_measured,
         caret_pos,
         text_hash,
     }
@@ -368,6 +384,10 @@ pub(super) struct CaretPaint {
 #[derive(Debug)]
 pub(super) struct PaintInput<'a> {
     pub(super) chrome: Background,
+    /// Identity of the node the text block is recorded on — a child of the
+    /// field, so the layout engine is what places it. Derived from the
+    /// field's own id, so it is as stable across frames as the field is.
+    pub(super) block_id: WidgetId,
     pub(super) text: &'a str,
     pub(super) placeholder: &'a str,
     pub(super) geometry: TextGeometry,
@@ -388,30 +408,45 @@ pub(super) fn record(ui: &mut Ui, mut widget: Widget, input: PaintInput<'_>) {
     if !ctx.multiline {
         let node = &mut widget.node;
         let min_size = node.min_size.get_or_insert(Size::ZERO);
-        min_size.h = min_size.h.max(ctx.line_height_px + ctx.padding.vert());
+        // The block's own height rather than the theme's leading, because a
+        // panned axis contributes no max-content — so this floor is what the
+        // field's height *is*, and a floor a thousandth under what the shaper
+        // measured is a field a thousandth shorter than the chip it replaces.
+        min_size.h = min_size
+            .h
+            .max(block_height(&input, ctx) + ctx.padding.vert());
         if node.size.unwrap_or_default().w().is_hug() {
             let reserved =
                 input.geometry.display_width + ctx.padding.horiz() + 2.0 * layout.caret_room;
             let min_size = node.min_size.get_or_insert(Size::ZERO);
             min_size.w = min_size.w.max(reserved);
+        } else {
+            // **A field that is not hugging floors at its own box, never at its
+            // content.** It clips and scrolls, so a container narrower than the
+            // buffer is a field that scrolls rather than one that overflows —
+            // which is what the `TextWrap::Scroll` min-content of zero used to
+            // say on its own, before the block became a child with a width of
+            // its own. Said here instead, because a child's width is a floor the
+            // engine would otherwise hold the field to.
+            let min_size = node.min_size.get_or_insert(Size::ZERO);
+            min_size.w = min_size.w.max(ctx.padding.horiz());
         }
     }
 
+    let block_id = input.block_id;
     widget.record(ui, Some(&input.chrome), |ui| {
-        let [pad_l, pad_t, _, _] = ctx.padding.as_array();
-        let block_offset = input.geometry.block_offset;
-        let text_origin = Vec2::new(
-            pad_l + block_offset.x - input.scroll.x,
-            pad_t + block_offset.y - input.scroll.y,
-        );
+        // **The block is a child, and where it sits is the layout engine's.**
+        // Its offset inside the inner rect is an alignment, and an alignment
+        // needs the rect — which record time does not have. Recording the run,
+        // the wash and the caret against a node that `arrange` places resolves
+        // it with *this* frame's rect, so a field aligns the same on the frame
+        // it appears as on every frame after. Held at the measured size so the
+        // engine has something to align, and translated by the scroll so a
+        // long value slides inside a box that does not move.
+        let block = block_node(&input, ctx, layout);
+        ui.forest.open_node(block_id, block, None);
         for rect in input.selection_rects {
-            ui.add_shape(
-                Shape::rect(Rect {
-                    min: rect.min + text_origin,
-                    size: rect.size,
-                })
-                .fill(input.selection_color),
-            );
+            ui.add_shape(Shape::rect(*rect).fill(input.selection_color));
         }
 
         let (display, color) = if input.text.is_empty() {
@@ -420,18 +455,9 @@ pub(super) fn record(ui: &mut Ui, mut widget: Widget, input: PaintInput<'_>) {
             (ui.intern(input.text), input.text_color)
         };
         if !display.is_empty() {
-            let display_offset = if input.text.is_empty() {
-                input.geometry.placeholder_offset
-            } else {
-                block_offset
-            };
-            let display_origin = Vec2::new(
-                pad_l + display_offset.x - input.scroll.x,
-                pad_t + display_offset.y - input.scroll.y,
-            );
             ui.add_shape(
                 Shape::text(display, ctx.font_size, ctx.line_height_px)
-                    .at(display_origin)
+                    .at(Vec2::ZERO)
                     .color(color)
                     .wrap(if ctx.multiline {
                         TextWrap::Wrap
@@ -445,10 +471,13 @@ pub(super) fn record(ui: &mut Ui, mut widget: Widget, input: PaintInput<'_>) {
         }
 
         if let Some(caret) = input.caret {
-            let max_x = (pad_l + layout.inner_size.w - caret.width).max(pad_l);
+            // Block-local, and unclamped: what the clamp used to hold the caret
+            // inside was the *widget's* box, which is the one thing here that is
+            // still a frame stale. The block carries the caret with it now, and
+            // the field's own clip is what keeps it from painting outside.
             let rect = Rect::new(
-                (text_origin.x + caret.pos.x).clamp(pad_l, max_x),
-                text_origin.y + caret.pos.y_top,
+                caret.pos.x,
+                caret.pos.y_top,
                 caret.width,
                 caret.pos.line_height,
             );
@@ -458,5 +487,84 @@ pub(super) fn record(ui: &mut Ui, mut widget: Widget, input: PaintInput<'_>) {
                 None => ui.add_shape(shape),
             }
         }
+        ui.forest.close_node();
     });
+}
+
+/// The node the run, the wash and the caret are recorded against.
+///
+/// Sized to what the text measured — the placeholder's own measurement when
+/// that is what is being shown, since it is what has to be aligned — and floored
+/// at one line so an empty field still has a caret's worth of height to stand
+/// up in. Aligned by [`TextLayout::text_align`], which is the whole point: the
+/// engine resolves it against the rect it has just arranged.
+///
+/// The scroll rides here as a transform rather than being folded into every
+/// shape's coordinates, so the three shapes stay in one frame of reference and
+/// a scrolled field is the same picture slid sideways.
+/// How tall the block is: what the shaper measured, floored at one line so an
+/// empty field still has a caret's worth of height to stand up in.
+///
+/// The shaper's answer rather than the theme's leading, because the two differ
+/// in the last thousandth of a pixel — the shaped one is quantized to 1/64 px —
+/// and the field's box has to agree with the run inside it.
+fn block_height(input: &PaintInput<'_>, ctx: ShapeCtx) -> f32 {
+    let measured = if input.text.is_empty() {
+        input.geometry.display_size
+    } else {
+        input.geometry.content_size
+    };
+    measured.h.max(ctx.line_height_px)
+}
+
+fn block_node(input: &PaintInput<'_>, ctx: ShapeCtx, layout: TextLayout) -> Node {
+    let mut block = Node::leaf();
+    // Pinned to what the probe measured, because that is what has to be
+    // aligned and a field's text is shaped to scroll — left to hug, the block
+    // would take the *minimum* a scrolling run reports, which is nothing.
+    //
+    // The caret's room is added rather than deflated out of the rect the block
+    // is aligned in. Same arithmetic, better placed: the caret at the end of a
+    // line now falls *inside* the block it belongs to instead of just past it.
+    // Single-line only, matching `resolve_geometry` — a wrapped block reserves
+    // nothing, because its caret has a next line to fall to.
+    let room = if ctx.multiline {
+        0.0
+    } else {
+        layout.caret_room
+    };
+    let measured = if input.text.is_empty() {
+        input.geometry.display_size
+    } else {
+        input.geometry.content_size
+    };
+    // **Never wider than the field**, so a pinned child cannot become a floor
+    // the field is unable to shrink below — a `Fill` editor in a container
+    // narrower than its content has to give. The cap is the one thing here
+    // still read off last frame's rect, and it costs nothing: it only binds
+    // when the text overflows, and an overflowing block aligns at zero either
+    // way. Absent on the frame a field appears, which is exactly the frame the
+    // alignment has to be right on.
+    let cap = if layout.inner_size.w > 0.0 {
+        layout.inner_size.w
+    } else {
+        f32::INFINITY
+    };
+    block.size = Some(
+        (
+            Sizing::fixed((measured.w + room).min(cap)),
+            Sizing::fixed(block_height(input, ctx)),
+        )
+            .into(),
+    );
+    // Only the axes the field aligns on: a multi-line field aligns its block
+    // vertically and lets the shaper align each line inside it, which is what
+    // `resolve_geometry` says the same way.
+    block.align = if ctx.multiline {
+        Align::v(layout.text_align.valign())
+    } else {
+        layout.text_align
+    };
+    block.transform = TranslateScale::from_translation(-input.scroll);
+    block
 }

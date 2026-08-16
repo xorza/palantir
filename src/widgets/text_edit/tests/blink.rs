@@ -19,7 +19,9 @@ fn caret_painted(ui: &Ui, leaf: NodeId) -> bool {
     let tree = &ui.forest.trees[Layer::Main];
     let now = ui.frame_runtime.time;
     let mut paint_anims = tree.paint_anims.cursor();
-    TreeItems::new(&tree.records, &tree.shapes.records, leaf)
+    // The caret is recorded on the block child that carries the field's
+    // alignment, not on the field's own node — see [`block_of`].
+    TreeItems::new(&tree.records, &tree.shapes.records, block_of(ui, leaf))
         .filter_map(|item| match item {
             TreeItem::ShapeRecord(idx, s) => Some((idx, s)),
             TreeItem::Child(_) => None,

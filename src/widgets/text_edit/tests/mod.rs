@@ -44,6 +44,41 @@ use crate::widgets::panel::Panel;
 use crate::widgets::text_edit::TextEdit;
 use glam::{UVec2, Vec2};
 
+/// Every shape a widget paints, its descendants' included.
+///
+/// A [`Text`](crate::Text) paints on its own leaf; a [`TextEdit`] paints on the
+/// block child that carries its alignment — see [`block_of`] — so a reader
+/// asking "what did this widget draw" has to look through the subtree rather
+/// than at one node. Written once here because several tests below hand the
+/// same closure both kinds.
+fn painted_shapes(
+    ui: &Ui,
+    node: crate::scene::tree::record::NodeId,
+) -> impl Iterator<Item = &crate::scene::shapes::record::ShapeRecord> + '_ {
+    let tree = &ui.forest.trees[Layer::Main];
+    std::iter::once(node)
+        .chain(tree.children(node).map(|child| child.id))
+        .flat_map(move |n| tree.shapes_of(n))
+}
+
+/// The block child a field records its shapes on.
+///
+/// A field paints nothing itself but its chrome: the run, the selection wash
+/// and the caret go on a child whose placement inside the inner rect *is* the
+/// text alignment, so that the layout engine resolves it against the rect it
+/// has just arranged rather than the widget guessing from last frame's. See
+/// [`record`](crate::widgets::text_edit::view).
+fn block_of(
+    ui: &Ui,
+    field: crate::scene::tree::record::NodeId,
+) -> crate::scene::tree::record::NodeId {
+    ui.forest.trees[Layer::Main]
+        .children(field)
+        .next()
+        .expect("the field records one block child")
+        .id
+}
+
 fn press(key: Key) -> KeyPress {
     KeyPress {
         key,
