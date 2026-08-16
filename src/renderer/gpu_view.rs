@@ -91,10 +91,37 @@ pub struct GpuFrameCtx<'a> {
     pub target: &'a wgpu::TextureView,
     /// The target's actual size in physical pixels, after the widget's composed
     /// transform and any uniform downsampling required by the device texture
-    /// cap. Set your viewport to this, derive your projection from it, and size
-    /// your own attachments (depth, MSAA) to it — the target is reallocated
-    /// whenever this changes (every frame while the view is being resized).
+    /// cap. Set your viewport to this and size your own attachments (depth,
+    /// MSAA) to it — the target is reallocated whenever this changes (every
+    /// frame while the view is being resized).
+    ///
+    /// **What is on screen, which is not always the whole view.** A widget's
+    /// rect may reach past the window or past the pane a scroll clips it to,
+    /// and nothing is allocated for the part that cannot be seen. Where they
+    /// differ, [`Self::full_px`] is the whole and [`Self::offset_px`] says where
+    /// this sits in it.
     pub size_px: UVec2,
+    /// What the whole view measures, in the same pixels — equal to
+    /// [`Self::size_px`] whenever nothing clips the view, which is the usual
+    /// case.
+    ///
+    /// Derive your projection's *shape* from this rather than from `size_px`:
+    /// it is the aspect the view was laid out at, and it does not change as a
+    /// scroll slides the view past its pane.
+    pub full_px: UVec2,
+    /// Where [`Self::size_px`] begins within [`Self::full_px`], in the same
+    /// pixels. `ZERO` whenever nothing clips the view.
+    ///
+    /// Treat this and `size_px` as a window onto `full_px` and skew your
+    /// projection by it, the way a tile renderer does.
+    ///
+    /// **Not optional for a view that is also picked.** A renderer that framed
+    /// its content to `size_px` instead would draw a different picture from the
+    /// one its own hit-testing assumes — the widget's rect is still the whole
+    /// view, so a cursor is reported against `full_px` — and the two would
+    /// disagree by however much is clipped. It would also reframe as a scroll
+    /// slid the view past its pane, which reads as the content zooming.
+    pub offset_px: UVec2,
     /// Logical→display scale for this window's current monitor. This is the
     /// display pixel density only; widget transforms and target downsampling do
     /// not affect it.

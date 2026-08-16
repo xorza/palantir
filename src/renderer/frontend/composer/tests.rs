@@ -1845,6 +1845,109 @@ fn compose_gpu_view_carries_nested_transform_and_dpr_to_raster_target() {
     }
 }
 
+/// A view reaching past the surface is allocated for what is on screen, and
+/// composited over that much of itself.
+///
+/// Layout is allowed to hand back a rect larger than the window — the
+/// contains-content rule has a node overflow its parent rather than clip its own
+/// content — so this is a state the composer must expect rather than one that
+/// says something upstream went wrong. Following the rect would allocate pixels
+/// the window can never show and ask the app to draw them.
+///
+/// Both halves are asked. A target sized to the visible part and a composite
+/// still stretched across the whole rect would sample the view squashed, which
+/// is worse than the waste it set out to save.
+#[test]
+fn compose_gpu_view_sized_to_what_the_surface_can_show() {
+    // Twice as wide as the 100px surface, and a third taller.
+    let buf = run(
+        |b, _arena| {
+            b.draw_image(
+                gpu_view_payload(rect(0.0, 0.0, 200.0, 120.0), TextureId(0xc0ffee)),
+                Some(&gpu_paint()),
+            );
+        },
+        &params(1.0, UVec2::new(100, 90)),
+    );
+
+    assert_eq!(buf.frame_targets.len(), 1);
+    let target = &buf.frame_targets[0];
+    assert_eq!(
+        target.used,
+        UVec2::new(100, 90),
+        "allocated past the window"
+    );
+    // The whole view is still reported, because that is the shape it was laid
+    // out at and a projection derived from the visible part alone would be a
+    // different aspect.
+    assert_eq!(target.full, UVec2::new(200, 120));
+    assert_eq!(
+        target.offset,
+        UVec2::ZERO,
+        "cut off the far side, not the near"
+    );
+    // And the composite covers exactly what the target holds.
+    assert_eq!(
+        buf.images.instance()[0].rect,
+        rect(0.0, 0.0, 100.0, 90.0),
+        "the visible target was stretched over the whole rect"
+    );
+}
+
+/// A view a clip cuts on its near side reports where the target begins.
+///
+/// What a scroll does: the pane shows a window onto the view, and the part
+/// above and left of it is as unshowable as the part past the surface. The
+/// offset is the half that only this case pins — an overflowing view is cut off
+/// its far side, so its offset stays zero and a sign error there would not show.
+#[test]
+fn compose_gpu_view_sized_to_what_a_clip_leaves() {
+    let buf = run(
+        |b, _arena| {
+            b.clip(PushClipPayload::rect(rect(30.0, 20.0, 40.0, 25.0)));
+            b.draw_image(
+                gpu_view_payload(rect(10.0, 10.0, 100.0, 60.0), TextureId(0xc0ffee)),
+                Some(&gpu_paint()),
+            );
+            b.pop_clip();
+        },
+        &params(1.0, UVec2::new(200, 200)),
+    );
+
+    assert_eq!(buf.frame_targets.len(), 1);
+    let target = &buf.frame_targets[0];
+    // The clip runs 30..70 across and 20..45 down; the view runs 10..110 and
+    // 10..70. What survives is the clip itself, 20 in and 10 down of the view.
+    assert_eq!(target.used, UVec2::new(40, 25));
+    assert_eq!(target.full, UVec2::new(100, 60));
+    assert_eq!(target.offset, UVec2::new(20, 10));
+    assert_eq!(buf.images.instance()[0].rect, rect(30.0, 20.0, 40.0, 25.0));
+}
+
+/// A view nothing cuts is left exactly as it was.
+///
+/// The path almost every frame takes, and the one the change above must not
+/// disturb: the target is the whole view, it begins at its own corner, and the
+/// composite covers the rect.
+#[test]
+fn compose_gpu_view_whole_when_nothing_clips_it() {
+    let buf = run(
+        |b, _arena| {
+            b.draw_image(
+                gpu_view_payload(rect(10.0, 20.0, 80.0, 40.0), TextureId(0xc0ffee)),
+                Some(&gpu_paint()),
+            );
+        },
+        &params(1.0, UVec2::new(200, 200)),
+    );
+
+    let target = &buf.frame_targets[0];
+    assert_eq!(target.used, UVec2::new(80, 40));
+    assert_eq!(target.full, target.used, "a whole view is its own whole");
+    assert_eq!(target.offset, UVec2::ZERO);
+    assert_eq!(buf.images.instance()[0].rect, rect(10.0, 20.0, 80.0, 40.0));
+}
+
 #[test]
 fn compose_gpu_view_caps_wide_and_tall_targets_uniformly() {
     #[derive(Debug)]

@@ -781,6 +781,36 @@ impl ComposeSession<'_> {
             urect: urect_from_phys(phys.min, phys.max(), self.display.physical),
         }
     }
+
+    /// The part of `whole` that can be seen — inside the surface and inside the
+    /// active clip — in physical pixels, or `None` where that is all of it.
+    ///
+    /// Two things cut a rect down, and both have to be here: the surface, since
+    /// layout may hand back a rect larger than the window, and the scissor, for
+    /// a view scrolled partly out of its pane.
+    ///
+    /// `None` for the unclipped case rather than the rect itself, and the
+    /// comparison that decides it is exact rather than tolerant: clamping a rect
+    /// already inside its bounds is the identity, so an untouched rect compares
+    /// equal to itself bit for bit. That keeps the usual view — nothing clipping
+    /// it — on the path it was always on.
+    fn seen(&self, whole: Rect) -> Option<Rect> {
+        let surface = self.display.physical;
+        let mut min = whole.min.max(Vec2::ZERO);
+        let mut max = whole
+            .max()
+            .min(Vec2::new(surface.x as f32, surface.y as f32));
+        if let Some(scissor) = self.composer.current_scissor {
+            min = min.max(Vec2::new(scissor.x as f32, scissor.y as f32));
+            max = max.min(Vec2::new(
+                (scissor.x + scissor.w) as f32,
+                (scissor.y + scissor.h) as f32,
+            ));
+        }
+        let size = (max - min).max(Vec2::ZERO);
+        (min != whole.min || size != Vec2::new(whole.size.w, whole.size.h))
+            .then(|| Rect::new(min.x, min.y, size.x, size.y))
+    }
 }
 
 impl Drop for ComposeSession<'_> {
@@ -1123,6 +1153,13 @@ impl PaintSink for ComposeSession<'_> {
         {
             return;
         }
+        // A `GpuView` is drawn over the part of itself that can be seen rather
+        // than over the whole rect, because that is all its target holds — see
+        // the scheduling below. Its UV stays whole, since the target *is* the
+        // visible part; every other image keeps the rect and UV the encoder
+        // resolved.
+        let seen = paint.and_then(|_| self.seen(phys_rect));
+        let composite = seen.unwrap_or(phys_rect);
         self.out.images.push(ImageDrawRow {
             // Just the registration id — the backend looks it
             // up in its texture cache; the encoder already
@@ -1132,7 +1169,7 @@ impl PaintSink for ComposeSession<'_> {
             // schedules the off-screen paint.
             id: p.handle,
             instance: ImageInstance {
-                rect: phys_rect,
+                rect: composite,
                 uv_min: p.uv_min,
                 uv_size: p.uv_size,
                 tint: p.tint.into(),
@@ -1140,20 +1177,43 @@ impl PaintSink for ComposeSession<'_> {
                 ..bytemuck::Zeroable::zeroed()
             },
         });
-        // A `GpuView` also needs its off-screen target painted:
-        // list it with the used physical size + display/raster
-        // scales + the app paint callback riding alongside the
-        // payload. The draw above already composites the result by
-        // `id`.
+        // A `GpuView` also needs its off-screen target painted: list it with
+        // the size it will be allocated at, where that sits in the view, the
+        // display and raster scales, and the app paint callback riding
+        // alongside the payload. The draw above already composites the result
+        // by `id`.
+        //
+        // **Sized to what is on screen, not to the rect.** Layout is allowed to
+        // hand back a rect larger than the surface — the contains-content rule
+        // says a node overflows its parent rather than clipping its own content
+        // — and a scroll can put most of a view outside its viewport. Following
+        // the rect would allocate, and ask the app to draw, pixels that are
+        // then thrown away: a status line long enough to widen the window's
+        // root is enough to do it, which is how this was found.
         if let Some(paint) = paint {
             let scale = self.display.scale_factor;
             let cap = i64::from(self.composer.max_texture_dim.get());
-            let s = phys_rect.size;
-            let downsample = (self.composer.max_texture_dim.get() as f32 / s.w.max(s.h)).min(1.0);
+            let whole = phys_rect.size;
+            // The cap is measured against the *whole* view, so how much a view
+            // is downsampled does not change with how much of it happens to be
+            // scrolled into sight — a target that resampled itself as the view
+            // slid past would shimmer.
+            let downsample =
+                (self.composer.max_texture_dim.get() as f32 / whole.w.max(whole.h)).min(1.0);
             let px = |v: f32| ((v * downsample).ceil() as i64).clamp(1, cap) as u32;
+            // Floored at zero rather than at one, unlike a size: a target has
+            // to have a pixel in it, and a corner has to be allowed to be the
+            // origin — which it is for every view nothing clips.
+            let at = |v: f32| ((v * downsample).floor() as i64).clamp(0, cap) as u32;
+            let (used, offset) = match seen {
+                Some(seen) => (seen.size, seen.min - phys_rect.min),
+                None => (whole, Vec2::ZERO),
+            };
             self.out.frame_targets.push(RenderTargetDraw {
                 id: p.handle,
-                used: UVec2::new(px(s.w), px(s.h)),
+                used: UVec2::new(px(used.w), px(used.h)),
+                full: UVec2::new(px(whole.w), px(whole.h)),
+                offset: UVec2::new(at(offset.x), at(offset.y)),
                 display_scale: scale,
                 raster_scale: self.current_transform.scale * scale * downsample,
                 paint: paint.clone(),
