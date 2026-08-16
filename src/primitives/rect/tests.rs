@@ -70,7 +70,33 @@ fn intersects_cases() {
     for (label, a, b, want) in cases {
         assert_eq!(a.intersects(*b), *want, "case: {label}");
         assert_eq!(b.intersects(*a), *want, "case: {label} (swapped)");
+        // The predicate and the two rectangle-valued forms are one question
+        // asked three ways, and they have to agree: `intersect` answers `Some`
+        // exactly when `intersects` is true, and `clamp_to` answers the same
+        // rect where it does. The pair replaced a single `intersect` that
+        // returned a zero-sized rect on a miss, so what is pinned here is that
+        // the strict one now says so rather than handing back an empty rect a
+        // caller has to remember to test.
+        assert_eq!(a.intersect(*b).is_some(), *want, "strict: {label}");
+        match a.intersect(*b) {
+            Some(overlap) => assert_eq!(overlap, a.clamp_to(*b), "agree: {label}"),
+            None => assert!(a.clamp_to(*b).is_paint_empty(), "saturating: {label}"),
+        }
     }
+
+    // Clamping is not symmetric the way overlapping is: it keeps the *origin*
+    // of the overlap, so a rect wholly inside its bounds comes back untouched
+    // while its bounds clamped the other way come back as the inner rect.
+    let inner = Rect::new(2.0, 3.0, 4.0, 5.0);
+    let outer = Rect::new(0.0, 0.0, 10.0, 10.0);
+    assert_eq!(inner.clamp_to(outer), inner);
+    assert_eq!(outer.clamp_to(inner), inner);
+
+    // And a miss clamps to an empty rect rather than to a negative one.
+    let away = Rect::new(50.0, 50.0, 5.0, 5.0);
+    let missed = outer.clamp_to(away);
+    assert!(missed.is_paint_empty(), "{missed:?}");
+    assert!(missed.size.w >= 0.0 && missed.size.h >= 0.0, "{missed:?}");
 }
 
 #[test]

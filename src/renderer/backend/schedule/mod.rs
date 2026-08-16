@@ -237,7 +237,7 @@ pub(super) fn for_each_step(
             },
             None => group_scissor,
         };
-        if effective.size.x == 0 || effective.size.y == 0 {
+        if effective.is_paint_empty() {
             continue;
         }
         // Drain batches stuck behind earlier damage-skipped groups
@@ -510,7 +510,7 @@ fn drain_text_batches(
                 .unwrap_or_default(),
             None => buffer.text_batches[*cursor].scissor,
         };
-        if s.size.x != 0 && s.size.y != 0 {
+        if !s.is_paint_empty() {
             state.narrow(&masks.batches, *cursor, s);
             state.push(RenderStep::Text { batch: *cursor });
         }

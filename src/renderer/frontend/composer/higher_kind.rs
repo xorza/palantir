@@ -56,7 +56,7 @@ impl TierRects {
 
     fn clear(&mut self) {
         self.rects.clear();
-        self.union = URect::default();
+        self.union = URect::ZERO;
     }
 }
 
@@ -90,7 +90,7 @@ impl HigherKindRects {
         self.meshes.clear();
         self.images.clear();
         self.curves.clear();
-        self.union = URect::default();
+        self.union = URect::ZERO;
     }
 }
 
