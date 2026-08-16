@@ -168,8 +168,12 @@ winit-host = ["dep:winit"]
 # automatically because `profiling` is a singleton in the dep graph.
 profile-with-tracy = ["profiling/profile-with-tracy", "dep:tracy-client"]
 
+
+[profile.dev]
+debug = "line-tables-only"
+
 [profile.bench]
-debug = true
+debug = "line-tables-only"
 opt-level = 3
 strip = "none"
 split-debuginfo = "off"
@@ -177,7 +181,7 @@ lto = "fat"
 codegen-units = 1
 
 [profile.release]
-debug = true
+debug = "line-tables-only"
 opt-level = 3
 strip = "none"
 split-debuginfo = "off"
