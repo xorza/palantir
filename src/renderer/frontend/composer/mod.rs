@@ -789,27 +789,24 @@ impl ComposeSession<'_> {
     /// layout may hand back a rect larger than the window, and the scissor, for
     /// a view scrolled partly out of its pane.
     ///
-    /// `None` for the unclipped case rather than the rect itself, and the
-    /// comparison that decides it is exact rather than tolerant: clamping a rect
-    /// already inside its bounds is the identity, so an untouched rect compares
-    /// equal to itself bit for bit. That keeps the usual view — nothing clipping
-    /// it — on the path it was always on.
+    /// `None` where nothing was cut, so that the usual view — which nothing
+    /// clips — stays on the path it was always on. A fast path rather than a
+    /// distinction that has to hold: an intersection reconstructs its size as
+    /// `(min + size) - min`, which is exact at the coordinates a surface reaches
+    /// but is not exact in general, and answering `Some` where it drifted would
+    /// take the other branch to the same numbers.
     fn seen(&self, whole: Rect) -> Option<Rect> {
         let surface = self.display.physical;
-        let mut min = whole.min.max(Vec2::ZERO);
-        let mut max = whole
-            .max()
-            .min(Vec2::new(surface.x as f32, surface.y as f32));
+        let mut clipped = whole.intersect(Rect::new(0.0, 0.0, surface.x as f32, surface.y as f32));
         if let Some(scissor) = self.composer.current_scissor {
-            min = min.max(Vec2::new(scissor.x as f32, scissor.y as f32));
-            max = max.min(Vec2::new(
-                (scissor.x + scissor.w) as f32,
-                (scissor.y + scissor.h) as f32,
+            clipped = clipped.intersect(Rect::new(
+                scissor.x as f32,
+                scissor.y as f32,
+                scissor.w as f32,
+                scissor.h as f32,
             ));
         }
-        let size = (max - min).max(Vec2::ZERO);
-        (min != whole.min || size != Vec2::new(whole.size.w, whole.size.h))
-            .then(|| Rect::new(min.x, min.y, size.x, size.y))
+        (clipped != whole).then_some(clipped)
     }
 }
 
@@ -1209,6 +1206,13 @@ impl PaintSink for ComposeSession<'_> {
                 Some(seen) => (seen.size, seen.min - phys_rect.min),
                 None => (whole, Vec2::ZERO),
             };
+            // The window lands inside the view without being made to: an origin
+            // that rounds down and a size that rounds up sum to less than
+            // `offset + used + 1`, and the only integer that can be is at most
+            // the rounded-up whole. So `offset + used <= full` holds of the
+            // arithmetic rather than of a clamp, which is why there is none —
+            // it could never fire. Pinned by
+            // `compose_gpu_view_caps_wide_and_tall_targets_uniformly`.
             self.out.frame_targets.push(RenderTargetDraw {
                 id: p.handle,
                 used: UVec2::new(px(used.w), px(used.h)),

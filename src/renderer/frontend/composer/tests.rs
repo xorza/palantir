@@ -2000,7 +2000,41 @@ fn compose_gpu_view_caps_wide_and_tall_targets_uniformly() {
             target.used.y as f32 * case.logical_size.w,
             "the capped target preserves the composite aspect ratio: {case:?}"
         );
+        assert_eq!(target.full, target.used, "nothing clipped this one");
+        assert_eq!(target.offset, UVec2::ZERO, "{case:?}");
     }
+
+    // Capped *and* clipped, which is where the window could come apart from the
+    // view it is a window onto: at a downsample its origin rounds down and its
+    // size rounds up, so the pair is not obviously still inside the rounded-up
+    // whole. It always is — the two roundings cannot sum past it — and this is
+    // where that is held to, since nothing clamps it.
+    //
+    // The clip is deliberately off a whole number of target pixels — 45 logical
+    // is 22.5 at half — so both roundings actually happen rather than the case
+    // passing on exact arithmetic.
+    let buf = run_with_texture_cap(
+        |b, _arena| {
+            b.clip(PushClipPayload::rect(rect(45.0, 45.0, 155.0, 155.0)));
+            b.draw_image(
+                gpu_view_payload(rect(0.0, 0.0, 200.0, 200.0), TextureId(0xc0ffee)),
+                Some(&gpu_paint()),
+            );
+            b.pop_clip();
+        },
+        &params(1.0, UVec2::new(400, 400)),
+        100,
+    );
+    let target = &buf.frame_targets[0];
+    assert_eq!(target.full, UVec2::new(100, 100), "the whole view, halved");
+    assert!(
+        target.used.cmple(target.full).all(),
+        "a window larger than the view it is a window onto: {target:?}"
+    );
+    assert!(
+        (target.offset + target.used).cmple(target.full).all(),
+        "a window reaching past the view: {target:?}"
+    );
 }
 
 #[test]
