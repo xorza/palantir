@@ -12,6 +12,7 @@ use crate::input::key_class::KeyFilter;
 use crate::input::sense::Sense;
 use crate::layout::types::align::Align;
 use crate::layout::types::clip_mode::ClipMode;
+use crate::layout::types::layout_mode::ScrollSpec;
 use crate::primitives::approx::noop_f32;
 use crate::primitives::spacing::Spacing;
 use crate::scene::node::Node;
@@ -78,7 +79,21 @@ pub struct TextEdit<'a> {
 impl<'a> TextEdit<'a> {
     #[track_caller]
     pub fn new(text: &'a mut String) -> Self {
-        let mut node = Node::leaf();
+        // **A scrolling viewport over one child**, which is what a field is.
+        //
+        // A child, because where the text sits inside the inner rect is an
+        // alignment and an alignment wants the arranged rect — so the engine
+        // resolves it, and a field's first frame paints its text where its
+        // second frame keeps it. A *leaf* arranges no children, so this cannot
+        // be one; `Layered` scroll arranges like a ZStack and honours the
+        // block's align.
+        //
+        // Scrolling, because that is what makes the field able to shrink under
+        // its own text: a panned axis reports no min-content, so a `Fill` field
+        // in a container narrower than its buffer scrolls rather than refusing
+        // to fit. The leaf said the same thing through `TextWrap::Scroll`; a
+        // child with a width of its own needs the viewport to say it instead.
+        let mut node = Node::scroll(ScrollSpec::BOTH);
         node.flags.set_sense(Sense::CLICK);
         node.flags.set_focusable(true);
         // Clip glyphs, caret, and selection wash to the editor's own
@@ -470,6 +485,7 @@ impl<'a> TextEdit<'a> {
             widget,
             PaintInput {
                 chrome: look.background,
+                block_id: id.with("text-block"),
                 text: self.text,
                 placeholder: &placeholder,
                 geometry,

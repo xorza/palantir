@@ -39,11 +39,14 @@ const LINE_H: f32 = 19.203_125;
 const TEXT_W_4CH: f32 = 32.0; // mono "abcd" width
 
 /// Drive one frame of a single-line editor at `text_align` + buffer +
-/// optional placeholder, returning the leaf `NodeId` so the caller
-/// can read shapes back. `response.rect` is one frame stale (cascade
-/// runs in `post_record`), so callers must warm up at least one
-/// frame before reading shapes for align assertions — `warmup_then`
-/// below packages that.
+/// optional placeholder, returning the field's `NodeId` so the caller
+/// can read shapes back.
+///
+/// One frame is enough for alignment — the engine places the block against the
+/// rect it has just arranged, so there is nothing stale to warm up; see
+/// [`the_first_frame_aligns_like_the_ones_after_it`]. What still lags a frame
+/// is `response.rect` itself, which the hit-test and the scroll read, so tests
+/// about *those* go through [`warmup_then`].
 fn frame(
     h: &mut UiHarness,
     buf: &mut String,
@@ -54,7 +57,7 @@ fn frame(
     let mut record = |ui: &mut Ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             let mut e = TextEdit::new(buf)
-                .id(WidgetId::from_hash("align-ed"))
+                .id(ed_id())
                 .size((Sizing::fixed(EDIT_W), Sizing::fixed(EDIT_H)));
             if let Some(a) = text_align {
                 e = e.text_align(a);
@@ -69,9 +72,12 @@ fn frame(
     node.unwrap()
 }
 
-/// Two-frame helper: first frame warms up the cascade so the editor
-/// has a real `response.rect`; the second frame's shape stream is
-/// what every align assertion reads.
+/// Two-frame helper: the first warms up the cascade so the editor has a real
+/// `response.rect`, the second is the one that gets read.
+///
+/// Alignment no longer needs it — see [`frame`] — and these keep it so that
+/// what they assert is the *settled* answer, which is what the first-frame test
+/// compares against.
 fn warmup_then(
     h: &mut UiHarness,
     buf: &mut String,
@@ -82,26 +88,53 @@ fn warmup_then(
     frame(h, buf, text_align, placeholder)
 }
 
-/// `(text_origin, caret_origin)` from the leaf's shape stream. The
-/// paint order is selection-wash → text → caret, so the text shape
-/// is the only `Shape::Text` and the caret is the *last* rounded rect
-/// with a `local_rect` (selection rects come before the text; the
-/// caret comes after — for empty focused editors it's the only
-/// rounded rect in the stream).
+/// The id every field below is recorded under.
+fn ed_id() -> WidgetId {
+    WidgetId::from_hash("align-ed")
+}
+
+/// Where the block child was arranged, relative to its field's own corner.
+///
+/// The block is where the run, the wash and the caret are recorded — see
+/// [`record`](crate::widgets::text_edit::view) — because *where* it sits inside
+/// the inner rect is an alignment, and an alignment is the layout engine's to
+/// resolve. Every origin below is asked for in the field's own coordinates,
+/// which is this composed with the shape's origin inside the block.
+///
+/// Taken off the tree rather than off a name the caller passes, so a test that
+/// records its field under some other id needs to say nothing about it.
+fn block_at(ui: &Ui, field: NodeId) -> glam::Vec2 {
+    let tree = &ui.forest.trees[Layer::Main];
+    let of = |node: NodeId| {
+        ui.response_for(tree.records.widget_id()[node.idx()])
+            .layout_rect
+            .expect("arranged")
+    };
+    of(block_of(ui, field)).min - of(field).min
+}
+
+/// `(text_origin, caret_origin)` in the field's own coordinates. The paint
+/// order is selection-wash → text → caret, so the text shape is the only
+/// `Shape::Text` and the caret is the *last* rounded rect with a `local_rect`
+/// (selection rects come before the text; the caret comes after — for empty
+/// focused editors it's the only rounded rect in the stream).
 fn shape_origins(ui: &Ui, node: NodeId) -> (Option<glam::Vec2>, Option<glam::Vec2>) {
+    let at = block_at(ui, node);
+    let block = block_of(ui, node);
+    let tree = &ui.forest.trees[Layer::Main];
     let mut text_origin = None;
     let mut caret_origin = None;
-    for s in ui.forest.trees[Layer::Main].shapes_of(node) {
+    for s in tree.shapes_of(block) {
         match s {
             ShapeRecord::Text {
                 local_origin: Some(o),
                 ..
-            } => text_origin = Some(*o),
+            } => text_origin = Some(*o + at),
             ShapeRecord::Quad(QuadShape::Rect {
                 kind: RectKind::Rounded,
                 local_rect: Some(r),
                 ..
-            }) => caret_origin = Some(glam::Vec2::new(r.min.x, r.min.y)),
+            }) => caret_origin = Some(glam::Vec2::new(r.min.x, r.min.y) + at),
             _ => {}
         }
     }
@@ -119,6 +152,52 @@ fn shift_arrow_right(ui: &mut Ui) {
         repeat: false,
         physical: Key::Other,
     });
+}
+
+/// **The first frame an editor exists on aligns like the ones after it.**
+///
+/// Where the text block sits inside the inner rect is an alignment, and an
+/// alignment wants the rect — which the *record* pass does not have, because
+/// arrange has not run. Resolved at record time it read last pass's rect, absent
+/// on the frame a field appears: a centred field painted hard left for one
+/// frame and snapped across on the next, and the vertical half of it misplaced
+/// even a field that asked for nothing.
+///
+/// The fix is not to guess better but to stop guessing — the block is a child,
+/// and the engine places it against the rect it has just arranged. So one
+/// `frame` here is enough where every other test in this file warms up first.
+///
+/// Both axes, and both against the settled answer rather than against numbers
+/// written out again: the claim is that the two *agree*, so a test restating
+/// the arithmetic could pass with both of them wrong.
+#[test]
+fn the_first_frame_aligns_like_the_ones_after_it() {
+    let settled = {
+        let mut h = ui_at_no_cosmic(NARROW);
+        let mut buf = String::from("abcd");
+        let node = warmup_then(&mut h, &mut buf, Some(Align::CENTER), None);
+        shape_origins(&h.ui, node).0.expect("text shape emitted")
+    };
+    // Centred rather than left, so a zero-sized box is a wrong answer rather
+    // than accidentally the right one.
+    assert!(settled.x > PAD_L + 1.0, "x = {} is not centred", settled.x);
+
+    let mut h = ui_at_no_cosmic(NARROW);
+    let mut buf = String::from("abcd");
+    let node = frame(&mut h, &mut buf, Some(Align::CENTER), None);
+    let first = shape_origins(&h.ui, node).0.expect("text shape emitted");
+    assert!(
+        (first.x - settled.x).abs() < 1e-3,
+        "first frame painted x = {} where the settled frame paints {}",
+        first.x,
+        settled.x
+    );
+    assert!(
+        (first.y - settled.y).abs() < 1e-3,
+        "first frame painted y = {} where the settled frame paints {}",
+        first.y,
+        settled.y
+    );
 }
 
 #[test]
@@ -315,9 +394,11 @@ fn selection_rects_offset_matches_text() {
     let node = frame(&mut h, &mut buf, Some(Align::RIGHT), None);
 
     // Selection wash is emitted *before* the text shape; pick the
-    // first rounded rect with a `local_rect` in the leaf's stream.
+    // first rounded rect with a `local_rect` in the block's stream.
+    let at = block_at(&h.ui, node);
+    let block = block_of(&h.ui, node);
     let first_rounded = h.ui.forest.trees[Layer::Main]
-        .shapes_of(node)
+        .shapes_of(block)
         .find_map(|s| match s {
             ShapeRecord::Quad(QuadShape::Rect {
                 kind: RectKind::Rounded,
@@ -329,9 +410,9 @@ fn selection_rects_offset_matches_text() {
     let r = first_rounded.expect("selection wash rect present");
     let dx = ALIGN_W - TEXT_W_4CH;
     assert!(
-        (r.min.x - (PAD_L + dx)).abs() < 1e-3,
+        (r.min.x + at.x - (PAD_L + dx)).abs() < 1e-3,
         "selection wash must align with right-aligned text: x = {}",
-        r.min.x,
+        r.min.x + at.x,
     );
 }
 /// Per-line halign tests use real cosmic shaping (`ui_with_text`).
@@ -627,11 +708,12 @@ mod per_line {
         h.frame(&mut record);
         // Read the layout's `ShapedText.key` for the rendered text.
         // `text_spans[node]` indexes one entry per `ShapeRecord::Text`
-        // on the leaf; multi-line TextEdit emits a single text shape.
-        let node = node.unwrap();
+        // on the node; a multi-line field emits a single text shape, and
+        // records it on the block child that carries its alignment.
+        let node = block_of(&h.ui, node.unwrap());
         let main = &h.ui.layout[Layer::Main];
         let span = main.text_spans[node.idx()];
-        assert_eq!(span.len, 1, "one Shape::Text expected on the leaf");
+        assert_eq!(span.len, 1, "one Shape::Text expected on the block");
         let shaped = main.text_shapes[span.start as usize];
         // `HAlign::Right as u8 = 3` — pin the discriminant directly
         // so a variant reordering trips here instead of silently
@@ -737,6 +819,7 @@ mod per_line {
         // (a) `Shape::Text.align` reflects the user's text_align.
         let payloads = h.ui.forest.record_store.payloads.borrow();
         let interned_text = payloads.interned_text();
+        let node = block_of(&h.ui, node);
         let tree = &h.ui.forest.trees[Layer::Main];
         let shape_align = tree.shapes_of(node).find_map(|s| match s {
             ShapeRecord::Text { align, text, .. } => {
@@ -753,7 +836,7 @@ mod per_line {
         // (b) + (c) cached buffer key.
         let main = &h.ui.layout[Layer::Main];
         let span = main.text_spans[node.idx()];
-        assert_eq!(span.len, 1, "one Shape::Text expected on the leaf");
+        assert_eq!(span.len, 1, "one Shape::Text expected on the block");
         let shaped = main.text_shapes[span.start as usize];
         assert_eq!(
             shaped.key.halign_q,
@@ -825,7 +908,7 @@ fn multiline_default_is_top_left() {
         Panel::hstack().auto_id().show(ui, |ui| {
             node = Some(
                 TextEdit::new(&mut buf)
-                    .id(WidgetId::from_hash("align-ed"))
+                    .id(ed_id())
                     .multiline(true)
                     .size((Sizing::fixed(EDIT_W), Sizing::fixed(80.0)))
                     .show(ui)

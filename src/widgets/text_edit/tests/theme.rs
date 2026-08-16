@@ -39,8 +39,7 @@ fn each_text_widget_reads_its_own_theme_path_for_font_size() {
         });
     });
     let read_fs = |node: NodeId| -> f32 {
-        h.ui.forest.trees[Layer::Main]
-            .shapes_of(node)
+        painted_shapes(&h.ui, node)
             .find_map(|s| match s {
                 ShapeRecord::Text { font_size_px, .. } => Some(*font_size_px),
                 _ => None,
@@ -79,8 +78,7 @@ fn theme_text_color_used_when_text_widget_does_not_override() {
             node = Some(Text::new("hi").auto_id().show(ui).node());
         });
     });
-    let color = h.ui.forest.trees[Layer::Main]
-        .shapes_of(node.unwrap())
+    let color = painted_shapes(&h.ui, node.unwrap())
         .find_map(|s| match s {
             ShapeRecord::Text { color, .. } => Some(*color),
             _ => None,
@@ -111,8 +109,7 @@ fn text_widget_color_override_wins_over_theme() {
             );
         });
     });
-    let color = h.ui.forest.trees[Layer::Main]
-        .shapes_of(node.unwrap())
+    let color = painted_shapes(&h.ui, node.unwrap())
         .find_map(|s| match s {
             ShapeRecord::Text { color, .. } => Some(*color),
             _ => None,
@@ -159,8 +156,7 @@ fn each_text_widget_reads_its_own_theme_path_for_line_height() {
         });
     });
     let read_lh = |node: NodeId| -> f32 {
-        h.ui.forest.trees[Layer::Main]
-            .shapes_of(node)
+        painted_shapes(&h.ui, node)
             .find_map(|s| match s {
                 ShapeRecord::Text { line_height_px, .. } => Some(*line_height_px),
                 _ => None,
@@ -254,9 +250,7 @@ fn invalid_runtime_metrics_record_no_text_or_shaping_state() {
 
         for node in [text_node.unwrap(), editor_node.unwrap()] {
             assert!(
-                h.ui.forest.trees[Layer::Main]
-                    .shapes_of(node)
-                    .all(|shape| !matches!(shape, ShapeRecord::Text { .. })),
+                painted_shapes(&h.ui, node).all(|shape| !matches!(shape, ShapeRecord::Text { .. })),
                 "{label}: invalid text entered the recorded shape stream",
             );
         }
@@ -319,8 +313,7 @@ fn textedit_style_override_replaces_default_theme() {
                 );
             });
         });
-        let lh = h.ui.forest.trees[Layer::Main]
-            .shapes_of(leaf.unwrap())
+        let lh = painted_shapes(&h.ui, leaf.unwrap())
             .find_map(|s| match s {
                 ShapeRecord::Text { line_height_px, .. } => Some(*line_height_px),
                 _ => None,
@@ -348,16 +341,14 @@ fn pushed_shape_carries_default_line_height_from_theme() {
             );
         });
     });
-    let text_shape = h.ui.forest.trees[Layer::Main]
-        .shapes_of(leaf_node.unwrap())
-        .find_map(|s| match s {
-            ShapeRecord::Text {
-                font_size_px,
-                line_height_px,
-                ..
-            } => Some((*font_size_px, *line_height_px)),
-            _ => None,
-        });
+    let text_shape = painted_shapes(&h.ui, leaf_node.unwrap()).find_map(|s| match s {
+        ShapeRecord::Text {
+            font_size_px,
+            line_height_px,
+            ..
+        } => Some((*font_size_px, *line_height_px)),
+        _ => None,
+    });
     let (fs, lh) = text_shape.expect("TextEdit pushes a ShapeRecord::Text for non-empty buffer");
     assert_eq!(fs, 16.0);
     assert!(
@@ -391,8 +382,7 @@ fn no_selection_paints_no_highlight_rect() {
     h.click_at(Vec2::new(20.0, 20.0));
     h.frame(|ui| body(ui, &mut leaf, &mut buf));
 
-    let rects: usize = h.ui.forest.trees[Layer::Main]
-        .shapes_of(leaf.unwrap())
+    let rects: usize = painted_shapes(&h.ui, leaf.unwrap())
         .filter(|s| {
             matches!(
                 s,
@@ -438,8 +428,7 @@ fn shift_end_paints_selection_highlight() {
     h.key(Key::End);
     h.frame(|ui| body(ui, &mut leaf, &mut buf));
 
-    let rects: Vec<_> = h.ui.forest.trees[Layer::Main]
-        .shapes_of(leaf.unwrap())
+    let rects: Vec<_> = painted_shapes(&h.ui, leaf.unwrap())
         .filter_map(|s| match s {
             ShapeRecord::Quad(QuadShape::Rect {
                 kind: RectKind::Rounded,
@@ -551,8 +540,7 @@ fn line_height_override_changes_caret_rect_height() {
         h.frame(|ui| body(ui, &mut leaf, &mut buf, &style));
         h.click_at(Vec2::new(20.0, 20.0));
         h.frame(|ui| body(ui, &mut leaf, &mut buf, &style));
-        h.ui.forest.trees[Layer::Main]
-            .shapes_of(leaf.unwrap())
+        painted_shapes(&h.ui, leaf.unwrap())
             .find_map(|s| match s {
                 ShapeRecord::Quad(QuadShape::Rect {
                     kind: RectKind::Rounded,
