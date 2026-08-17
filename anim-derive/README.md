@@ -26,5 +26,5 @@ the arithmetic. It only applies to structs with named fields.
 
 ## License
 
-GPL-3.0-or-later, and commercially — see
+Apache-2.0 or MIT, at your option — see
 [the Palantir README](https://github.com/xorza/palantir#license).

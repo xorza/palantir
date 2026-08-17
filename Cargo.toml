@@ -12,16 +12,14 @@ keywords = ["gui", "ui", "immediate-mode", "wgpu", "graphics"]
 categories = ["gui", "graphics", "rendering::engine"]
 # The bundled Inter / JetBrains Mono faces in `assets/fonts` ship under the
 # SIL Open Font License, so the tarball as a whole carries both terms.
-license = "GPL-3.0-or-later AND OFL-1.1"
+license = "(MIT OR Apache-2.0) AND OFL-1.1"
 exclude = [
     ".github/",
     ".notes/",
     ".tmp/",
     ".zed/",
     "AGENTS.md",
-    "CLA.md",
     "CLAUDE.md",
-    "CONTRIBUTING.md",
     "docs/",
     "scripts/",
 ]

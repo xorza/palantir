@@ -205,27 +205,13 @@ cargo run --example custom_widget
 
 ## License
 
-Palantir is dual-licensed:
+Licensed under either of
 
-- **Open source / non-commercial use** —
-  [GPL-3.0-or-later](https://github.com/xorza/palantir/blob/master/LICENSE).
-  Free to use, modify, and redistribute, provided your combined work is also
-  released under GPL-3.0-or-later with complete corresponding source.
+- [Apache License, Version 2.0](https://github.com/xorza/palantir/blob/master/LICENSE-APACHE)
+- [MIT license](https://github.com/xorza/palantir/blob/master/LICENSE-MIT)
 
-- **Commercial use** — see
-  [LICENSE-COMMERCIAL.md](https://github.com/xorza/palantir/blob/master/LICENSE-COMMERCIAL.md).
-  If you want to ship Palantir as part of a proprietary, closed-source
-  product, contact xxorza@gmail.com for a commercial license.
+at your option.
 
 The bundled Inter and JetBrains Mono faces under `assets/fonts` are licensed
 separately under the SIL Open Font License 1.1; their `*-OFL.txt` sit beside
 them.
-
-## Contributing
-
-See
-[CONTRIBUTING.md](https://github.com/xorza/palantir/blob/master/CONTRIBUTING.md).
-All contributions are accepted under the
-[Contributor License Agreement](https://github.com/xorza/palantir/blob/master/CLA.md),
-which preserves the dual-license model by granting the maintainer the right to
-relicense contributions (including commercially).

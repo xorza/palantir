@@ -10,7 +10,7 @@ documentation = "https://docs.rs/palantir-anim-derive"
 readme = "README.md"
 keywords = ["palantir", "gui", "animation", "derive", "macro"]
 categories = ["gui", "rust-patterns"]
-license = "GPL-3.0-or-later"
+license = "MIT OR Apache-2.0"
 exclude = ["AGENTS.md", "CLAUDE.md"]
 
 [lints.rust]
