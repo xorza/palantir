@@ -10,6 +10,7 @@
 //! clicks in. Effective padding is (6.5, 4.5), inner rect 267×31.
 
 use crate::Align;
+use crate::primitives::size::Size;
 use crate::primitives::transform::TranslateScale;
 use crate::scene::layer::Layer;
 use crate::scene::shapes::paint::QuadShape;
@@ -982,4 +983,75 @@ fn text_origin_invariant_under_ancestor_transform_zoom() {
             zoomed.y - unscaled.y,
         );
     }
+}
+
+/// **A field placed by
+/// [`TextEditTheme::corner_centring`](crate::TextEditTheme::corner_centring)
+/// lands its glyphs on the point it was asked for.**
+///
+/// The claim an in-place edit rests on: something is drawn, and a field stands
+/// where it was drawn without the value moving under the reader. What makes it
+/// worth pinning is that the offset it names is not one number but four facts in
+/// three passes — the theme's padding, the chrome stroke `Tree::open_node` folds
+/// into it, the hug reservation in [`record`](crate::widgets::text_edit::view),
+/// and the single caret's room
+/// [`resolve_geometry`](crate::widgets::text_edit::view) takes off the box the
+/// run is centred in. An application working that out for itself would be
+/// copying all four and could not be told when one moved.
+///
+/// Against a field actually laid out rather than against the same arithmetic
+/// spelled twice, so the two are checked to *agree* — the theme's own padding
+/// and stroke, so restyling a field moves both together.
+#[test]
+fn a_field_placed_by_its_own_text_centres_that_text_where_it_was_asked() {
+    let mut h = ui_at_no_cosmic(WIDE);
+    // What the mono fallback measures "abcd" as. Its height rather than the
+    // glyphs' own, because that is the box a line is laid in — see
+    // `resolve_geometry`, which floors the run at the leading.
+    let text = Size::new(TEXT_W_4CH, LINE_H);
+    // Clear of every edge, so a field that fell back to the surface's own
+    // corner is a wrong answer rather than a near miss.
+    let at = glam::Vec2::new(200.0, 40.0);
+    // The theme the field below will be shown with, since it asks for none of
+    // its own — so the two cannot be answering about different fields.
+    let corner = h.ui.theme().text_edit.corner_centring(text, at);
+
+    let mut buf = String::from("abcd");
+    let mut node: Option<NodeId> = None;
+    let mut record = |ui: &mut Ui| {
+        Panel::canvas().auto_id().show(ui, |ui| {
+            node = Some(
+                TextEdit::new(&mut buf)
+                    .id(ed_id())
+                    .text_align(Align::CENTER)
+                    .size((Sizing::HUG, Sizing::HUG))
+                    .position(corner)
+                    .show(ui)
+                    .response
+                    .node(),
+            );
+        });
+    };
+    // Two frames: the block is placed against the rect arrange has just
+    // resolved, and `response.layout_rect` is a frame behind on the first.
+    h.frame(&mut record);
+    h.frame(&mut record);
+
+    let field =
+        h.ui.response_for(ed_id())
+            .layout_rect
+            .expect("the field was arranged");
+    assert!(
+        (field.min - corner).abs().max_element() < 1e-3,
+        "the field was put at {:?} having been placed at {corner:?}",
+        field.min,
+    );
+    let origin = shape_origins(&h.ui, node.unwrap())
+        .0
+        .expect("text shape emitted");
+    let centre = field.min + origin + glam::Vec2::new(text.w, text.h) * 0.5;
+    assert!(
+        (centre - at).abs().max_element() < 1e-3,
+        "the glyphs centred on {centre:?} for a field asked to centre them on {at:?}",
+    );
 }

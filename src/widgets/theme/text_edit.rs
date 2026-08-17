@@ -1,14 +1,17 @@
 use crate::animation::AnimSpec;
 use crate::input::response::ResponseState;
+use crate::primitives::approx::noop_f32;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
+use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
 use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::theme::widget_look::WidgetLook;
 use crate::widgets::theme::widget_look::stateful_look::StatefulLook;
+use glam::Vec2;
 
 /// Four-state TextEdit theme: a [`StatefulLook`] where `active` =
 /// **focused** (the editor's engaged state), picked with the uniform
@@ -77,6 +80,49 @@ impl TextEditTheme {
     #[inline(always)]
     pub fn pick(&self, state: &ResponseState) -> &WidgetLook {
         self.looks.pick(state, state.focused)
+    }
+
+    /// Where a field must put its own corner for a run measuring `text` to come
+    /// out centred on `at`.
+    ///
+    /// **What keeps a value from moving as it becomes editable.** An
+    /// application that edits something in place draws it, then stands a field
+    /// where it was — and a field is a box *around* a run rather than the run
+    /// itself, so a corner set at the run's own corner lays the glyphs a
+    /// padding, a stroke and a caret's room off the pixels they were read at.
+    /// Which is a jump on the frame the field opens, in a direction nothing
+    /// about the value explains.
+    ///
+    /// The answer for a field that **hugs its content, centres it, and holds
+    /// one line** — which is what an in-place edit is. Anything wider has room
+    /// its alignment spends rather than its theme, and a theme could not say
+    /// where that went.
+    ///
+    /// The run's own width cancels — the field centres the same text on the
+    /// same point — but the caret's room does not: it is reserved at the
+    /// trailing edge alone and the run is centred in what is left, so the
+    /// glyphs sit half a caret to the leading side of the box's own middle.
+    pub fn corner_centring(&self, text: Size, at: Vec2) -> Vec2 {
+        let [left, top, ..] = self.padding.as_array();
+        // `Tree::open_node` folds the chrome's stroke into the padding, so the
+        // inner rect a run is laid in sits inside the ring as well — and
+        // `TextEdit::show` mirrors that fold rather than reading the node back.
+        //
+        // Off `normal`, and safe to be: the width is one number across all four
+        // states so that focus changes a field's colour without moving its
+        // text — see [`TextEditTheme::from_palette`].
+        let width = self
+            .looks
+            .normal
+            .background
+            .as_ref()
+            .map_or(0.0, |bg| bg.stroke.width);
+        // On the width alone, like `TextEdit::show`'s own guard — a stroke the
+        // colour makes invisible is still a stroke the fold makes room for, so
+        // `Stroke::is_noop` is the wrong question here.
+        let ring = if noop_f32(width) { 0.0 } else { width };
+        at - Vec2::new(text.w, text.h) * 0.5
+            - Vec2::new(left + ring + self.caret_width * 0.5, top + ring)
     }
 
     pub fn from_palette(p: &Palette) -> Self {

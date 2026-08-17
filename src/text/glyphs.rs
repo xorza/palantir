@@ -41,13 +41,18 @@ impl GlyphFont {
     /// `size_px` in the default family and weight, led at its own size.
     ///
     /// Every field is public, so anything else is a struct update over this —
-    /// `GlyphFont { family: FontFamily::Mono, ..GlyphFont::new(16.0) }`.
-    pub fn new(size_px: f32) -> Self {
+    /// `GlyphFont { family: FontFamily::Mono, ..GlyphFont::new(16.0) }`, which
+    /// holds in a `const` too.
+    ///
+    /// The two defaults are spelled out rather than asked of [`Default`],
+    /// which a derive does not make a `const fn`. They are the `#[default]`
+    /// variants of the enums beside them and have to stay that.
+    pub const fn new(size_px: f32) -> Self {
         Self {
             size_px,
             line_height_px: size_px,
-            family: FontFamily::default(),
-            weight: FontWeight::default(),
+            family: FontFamily::Sans,
+            weight: FontWeight::Regular,
         }
     }
 }
@@ -164,6 +169,24 @@ mod tests {
     /// nothing of it to test against a measurer that only measures.
     fn shaper() -> TextShaper {
         TextShaper::new()
+    }
+
+    /// The face and weight [`GlyphFont::new`] writes out are the ones the
+    /// enums beside it call default.
+    ///
+    /// A `const fn` cannot ask a derived [`Default`], so the two are spelled
+    /// there — and a `#[default]` moved to the other variant would leave that
+    /// silently disagreeing with every other caller of the same enum.
+    #[test]
+    fn the_stock_font_is_the_default_face_and_weight() {
+        // In a const context, which is the whole point of the constructor
+        // being one: a caller pinning a font it never varies gets to state it
+        // as a value rather than build one per call.
+        const STOCK: GlyphFont = GlyphFont::new(16.0);
+        assert_eq!(STOCK.family, FontFamily::default());
+        assert_eq!(STOCK.weight, FontWeight::default());
+        // Led at its own size, which is what "no stack to sit in" comes to.
+        assert_eq!(STOCK.line_height_px, 16.0);
     }
 
     /// A run lays out one glyph per character, left to right, and lays out the
