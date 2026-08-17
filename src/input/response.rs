@@ -387,7 +387,8 @@ impl ResponseState {
 
 /// One thing the pointer did to one widget this frame.
 ///
-/// The collation half of the input API, against [`Ui::response_for`]'s polling
+/// The collation half of the input API, against
+/// [`Ui::response_for`](crate::Ui::response_for)'s polling
 /// half — see [`Ui::pointer_actions`](crate::Ui::pointer_actions) for which to
 /// reach for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

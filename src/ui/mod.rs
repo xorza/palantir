@@ -948,7 +948,8 @@ impl Ui {
     ///
     /// **Edges, not levels.** A drag's travel is a level, and this reports only
     /// that a drag started and on what — take the id and poll that one widget
-    /// for as long as the gesture lasts. See [`PointerEdge`].
+    /// for as long as the gesture lasts. See
+    /// [`PointerEdge`](crate::PointerEdge).
     ///
     /// Read it during the frame's record, for the reason
     /// [`Self::response_for`] gives: the edges are one-frame state cleared

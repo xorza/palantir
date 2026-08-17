@@ -217,8 +217,7 @@ impl Rect {
 
     /// Strict axis-aligned intersection. `None` when the inputs don't overlap,
     /// touching edges included — the same answer [`Self::intersects`] gives as
-    /// a bool, and the counterpart of
-    /// [`URect::intersect`](crate::primitives::urect::URect::intersect).
+    /// a bool, and the counterpart of the crate-internal `URect::intersect`.
     ///
     /// [`Self::clamp_to`] beside it is the saturating one, for a caller that
     /// wants a rect either way. The pair is named the same on both rectangles
@@ -236,10 +235,9 @@ impl Rect {
     /// Saturating intersection: clamps `self` to fit inside `bounds`, giving a
     /// possibly zero-sized rect rather than nothing at all.
     ///
-    /// The counterpart of
-    /// [`URect::clamp_to`](crate::primitives::urect::URect::clamp_to), and what
-    /// this method was called `intersect` for before there was a strict one to
-    /// tell it apart from.
+    /// The counterpart of the crate-internal `URect::clamp_to`, and what this
+    /// method was called `intersect` for before there was a strict one to tell
+    /// it apart from.
     #[inline]
     pub const fn clamp_to(self, bounds: Self) -> Self {
         let (a, b) = (self.max(), bounds.max());
