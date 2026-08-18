@@ -17,6 +17,7 @@ pub(crate) mod counters;
 pub(crate) mod engine;
 pub(crate) mod entry;
 pub(crate) mod paint;
+mod paint_rect;
 
 use crate::common::content_hash::ContentHash;
 use crate::input::sense::Sense;

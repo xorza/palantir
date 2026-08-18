@@ -83,7 +83,7 @@ impl Frontend {
 
     /// Encode straight into the composer, filling the staged output
     /// buffer. One pass: the encoder's paint calls land in a live
-    /// [`ComposeSession`](composer::ComposeSession) rather than an
+    /// [`ComposeSession`](composer::session::ComposeSession) rather than an
     /// intermediate command stream, so
     /// nothing is serialized only to be read back a line later.
     #[profiling::function]

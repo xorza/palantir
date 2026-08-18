@@ -40,7 +40,8 @@ use crate::renderer::render_buffer::text::TextDrawRow;
 use crate::text::render::RunPlacement;
 use crate::text::shaper::TextShaper;
 
-use encode::{TextEncoder, encode_key_for};
+use encode::encode_key_for;
+use encode::encoder::TextEncoder;
 
 /// One per-instance vertex record. 20 bytes, `Pod`.
 #[repr(C)]
