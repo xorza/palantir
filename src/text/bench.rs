@@ -2,6 +2,7 @@ use crate::layout::ShapedText;
 use crate::layout::types::align::HAlign;
 use crate::primitives::widget_id::WidgetId;
 use crate::text::cosmic;
+use crate::text::key::WrapBound;
 use crate::text::request::TextShapeRequest;
 use crate::text::shaper::TextShaper;
 use crate::text::system::{TextRunSlot, TextSystem};
@@ -170,7 +171,7 @@ fn bench_reuse_layer(c: &mut Criterion) {
             let request = request_for(text);
             shaper.shape(request, WrapFloor::Skip);
             shaper.shape(
-                request.bounded(WRAP_W, HAlign::Left, LineFit::Wrap),
+                request.with_bound(WrapBound::new(WRAP_W, HAlign::Left, LineFit::Wrap)),
                 WrapFloor::Skip,
             );
         }
@@ -179,7 +180,7 @@ fn bench_reuse_layer(c: &mut Criterion) {
                 let request = request_for(text);
                 black_box(shaper.shape(request, WrapFloor::Skip));
                 black_box(shaper.shape(
-                    request.bounded(WRAP_W, HAlign::Left, LineFit::Wrap),
+                    request.with_bound(WrapBound::new(WRAP_W, HAlign::Left, LineFit::Wrap)),
                     WrapFloor::Skip,
                 ));
             }

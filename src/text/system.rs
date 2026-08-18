@@ -34,11 +34,11 @@ use crate::layout::ShapedText;
 use crate::layout::types::align::HAlign;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
-use crate::text::key::TextShapeKey;
+use crate::text::key::{TextShapeKey, WrapBound};
 use crate::text::request::TextShapeRequest;
 use crate::text::root::TextRoot;
 use crate::text::shaper::TextShaper;
-use crate::text::wrap::{LineFit, TextWrap, WrapFloor};
+use crate::text::wrap::{TextWrap, WrapFloor};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 /// Both entry points take the run's *unbounded* request and derive every
@@ -215,12 +215,12 @@ impl TextSystem {
             return shaped(shapes_buffers, request.key, entry.root.size);
         }
         let width = wrap_policy.target_width(width, &entry.root);
-        let slot_key = WrapSlotKey::new(width, halign, fit);
-        let size = match entry.wrap.filter(|slot| slot.key == slot_key) {
+        let bound = WrapBound::new(width, halign, fit);
+        let size = match entry.wrap.filter(|slot| slot.bound == bound) {
             Some(slot) => slot.size,
             None => {
                 let size = shaper
-                    .shape(request.bounded(width, halign, fit), WrapFloor::Skip)
+                    .shape(request.with_bound(bound), WrapFloor::Skip)
                     .size;
                 // The width this row used to answer is now unreachable
                 // through it. A resize drag leaves the *unbounded* key
@@ -229,20 +229,13 @@ impl TextSystem {
                 // `measure_truncated` re-reads every frame stays on the
                 // long window, which is what keeps a drag cheap.
                 if let Some(stale) = entry.wrap {
-                    shaper.supersede(stale.key.bound(request.key));
+                    shaper.supersede(request.key.with_bound(stale.bound));
                 }
-                entry.wrap = Some(WrapSlot {
-                    key: slot_key,
-                    size,
-                });
+                entry.wrap = Some(WrapSlot { bound, size });
                 size
             }
         };
-        shaped(
-            shapes_buffers,
-            request.key.bounded(width, halign, fit),
-            size,
-        )
+        shaped(shapes_buffers, request.key.with_bound(bound), size)
     }
 
     /// Reuse row for `slot`, reshaped if it answers a different run.
@@ -313,12 +306,12 @@ struct TextReuseEntry {
     key: TextShapeKey,
     root: TextRoot,
     /// `None` until the row has answered a bounded width. An `Option`
-    /// rather than a reserved key value: the only `max_w_q` no bounded
-    /// key can take is the *unbounded* sentinel, so an "empty" key
-    /// rebuilt through [`WrapSlotKey::bound`] became the row's own root
-    /// key — and handing that to `supersede` demotes the unbounded probe
-    /// a width drag re-reads every frame, the one buffer it most needs
-    /// kept. Emptiness is not a width, so it does not live in the key.
+    /// rather than a reserved bound: the only `max_w_q` no bound can take
+    /// is the *unbounded* sentinel, so an "empty" bound re-attached
+    /// through [`TextShapeKey::with_bound`] became the row's own root key
+    /// — and handing that to `supersede` demotes the unbounded probe a
+    /// width drag re-reads every frame, the one buffer it most needs
+    /// kept. Emptiness is not a width, so it does not live in the bound.
     wrap: Option<WrapSlot>,
 }
 
@@ -331,51 +324,15 @@ struct TextReuseEntry {
 /// protected window with nothing left that can ask for them.
 fn retire_row(shaper: &TextShaper, row: &TextReuseEntry) {
     if let Some(slot) = row.wrap {
-        shaper.supersede(slot.key.bound(row.key));
+        shaper.supersede(row.key.with_bound(slot.bound));
     }
     shaper.supersede(row.key);
 }
 
-/// What distinguishes one bounded resolve of a row from another.
-///
-/// Six bytes rather than a second 24-byte [`TextShapeKey`]: the row's `key`
-/// already pins text, size, leading, family, and weight, and
-/// [`TextShapeKey::bounded`] varies nothing else.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct WrapSlotKey {
-    max_w_q: u32,
-    halign_q: u8,
-    fit_q: u8,
-}
-
-impl WrapSlotKey {
-    /// The full bounded key this slot answered, rebuilt from the row's
-    /// unbounded `root`. [`TextShapeKey::bounded`] varies nothing the
-    /// row's key already pins, so re-attaching these three fields
-    /// reconstructs it exactly.
-    fn bound(self, root: TextShapeKey) -> TextShapeKey {
-        TextShapeKey {
-            max_w_q: self.max_w_q,
-            halign_q: self.halign_q,
-            fit_q: self.fit_q,
-            ..root
-        }
-    }
-
-    fn new(target_width_px: f32, halign: HAlign, fit: LineFit) -> Self {
-        let key = TextShapeKey::INVALID.bounded(target_width_px, halign, fit);
-        Self {
-            max_w_q: key.max_w_q,
-            halign_q: key.halign_q,
-            fit_q: key.fit_q,
-        }
-    }
-}
-
-/// One cached width-bounded extent.
+/// One cached width-bounded extent, under the bound that produced it.
 #[derive(Clone, Copy, Debug)]
 struct WrapSlot {
-    key: WrapSlotKey,
+    bound: WrapBound,
     size: Size,
 }
 

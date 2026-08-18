@@ -9,6 +9,7 @@
 //! a selection.
 
 use crate::layout::types::align::Align;
+use crate::text::key::WrapBound;
 use crate::text::request::TextShapeRequest;
 use crate::text::wrap::TextWrap;
 use crate::text::{FontFamily, FontWeight};
@@ -67,7 +68,9 @@ impl<'a> TextRun<'a> {
             self.weight,
         );
         match (self.max_width_px, self.wrap.line_fit()) {
-            (Some(width), Some(fit)) => request.bounded(width, self.align.halign(), fit),
+            (Some(width), Some(fit)) => {
+                request.with_bound(WrapBound::new(width, self.align.halign(), fit))
+            }
             _ => request,
         }
     }

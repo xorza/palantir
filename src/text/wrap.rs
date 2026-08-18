@@ -3,7 +3,7 @@ use crate::primitives::size::Size;
 use crate::text::root::TextRoot;
 
 /// Canonical width used by width-bounded cache identity
-/// ([`crate::text::key::TextShapeKey::bounded`]) and the fitting-truncate
+/// ([`crate::text::key::WrapBound::new`]) and the fitting-truncate
 /// check in `TextSystem::measure`.
 ///
 /// Snapped with [`F32Ext::quantize_px`], the same grid the measure cache
