@@ -34,6 +34,18 @@
 //! module documents locally is what it measures and why that is worth
 //! separating — not which gate it picked.
 //!
+//! ## Declaring a set that a test reads deltas off
+//!
+//! A probe whose tallies accumulate wants a snapshot type beside it, so a
+//! test can subtract two readings. That is three lists of the same fields
+//! — the cells, the snapshot, and the subtraction — and writing them out
+//! let a new counter reach the cells and silently miss the other two.
+//! [`counter_snapshot!`] takes the list once and generates all three; it
+//! is what `CacheCounters` (the shaped-buffer cache) and `EncodedCounters`
+//! (the encoded-run cache) are declared with — both in private modules, so
+//! neither is linkable from here. A probe with no snapshot just declares
+//! its cells directly.
+//!
 //! [`LayoutCounters`]: crate::layout::counters::LayoutCounters
 //! [`DamageCounters`]: crate::scene::damage::counters::DamageCounters
 //! [`CascadeCounters`]: crate::scene::cascade::counters::CascadeCounters
@@ -132,3 +144,59 @@ gated_cell! {
     /// counters a benchmark asserts on.
     BenchOnly, any(test, feature = "internals")
 }
+
+/// Declare a counter set together with the snapshot a test reads off it.
+///
+/// The field list appears once and generates three things that must agree:
+/// the gated cells, the plain-`u32` snapshot, and the `Sub` that turns two
+/// readings into what a span did. Written out by hand, adding a counter
+/// updated the cells and silently left it out of the snapshot — nothing
+/// forces three separate lists to grow together, and the omission reads as
+/// a counter that never fires.
+///
+/// Both visibilities are taken because they differ in practice: a probe is
+/// usually as private as the type it measures, while its snapshot travels
+/// to wherever the tests live.
+macro_rules! counter_snapshot {
+    (
+        $(#[$counters_meta:meta])*
+        $cvis:vis struct $counters:ident;
+        $(#[$snapshot_meta:meta])*
+        $svis:vis struct $snapshot:ident;
+        $($(#[$field_meta:meta])* $field:ident,)+
+    ) => {
+        $(#[$counters_meta])*
+        #[derive(Debug, Default)]
+        $cvis struct $counters {
+            $($(#[$field_meta])* $cvis $field: $crate::common::counters::TestOnly<u32>,)+
+        }
+
+        $(#[$snapshot_meta])*
+        #[cfg(test)]
+        #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+        $svis struct $snapshot {
+            $($svis $field: u32,)+
+        }
+
+        /// Reads are test-only: nothing in a shipping build has a reason
+        /// to ask, and gating them is what lets the cells themselves be
+        /// absent.
+        #[cfg(test)]
+        impl $counters {
+            $cvis fn counts(&self) -> $snapshot {
+                $snapshot { $($field: self.$field.count(),)+ }
+            }
+        }
+
+        #[cfg(test)]
+        impl std::ops::Sub for $snapshot {
+            type Output = Self;
+
+            fn sub(self, base: Self) -> Self {
+                Self { $($field: self.$field - base.$field,)+ }
+            }
+        }
+    };
+}
+
+pub(crate) use counter_snapshot;
