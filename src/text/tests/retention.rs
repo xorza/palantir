@@ -29,10 +29,7 @@ fn ensure_buffer_exactly_restores_wrap_and_truncation() {
     let original_glyphs = glyph_positions(&wrap, original.key);
     wrap.drop_all_buffers();
     assert!(wrap.shaped_run(original.key).is_none());
-    wrap.ensure_buffer(TextShapeRequest {
-        text,
-        key: original.key,
-    });
+    wrap.ensure_buffer(TextShapeRequest::for_key(text, original.key));
     let restored = wrap.measure(text, wrap_params);
     assert_eq!(restored.size, original.size);
     assert_eq!(restored.intrinsic_min, original.intrinsic_min);
@@ -51,10 +48,7 @@ fn ensure_buffer_exactly_restores_wrap_and_truncation() {
             "fit: {fit:?}",
         );
 
-        truncated.ensure_buffer(TextShapeRequest {
-            text,
-            key: original.key,
-        });
+        truncated.ensure_buffer(TextShapeRequest::for_key(text, original.key));
         assert!(
             truncated.shaped_run(unbounded.key).is_some(),
             "truncation restoration must rebuild its unbounded probe for {fit:?}",
@@ -188,10 +182,7 @@ fn a_lookup_promotes_an_entry_to_the_protected_window() {
     let keys = fill_distinct_widths(&mut c, 4);
 
     // An encoder ensure is a lookup like any other.
-    c.ensure_buffer(TextShapeRequest {
-        text: BODY,
-        key: keys[0],
-    });
+    c.ensure_buffer(TextShapeRequest::for_key(BODY, keys[0]));
     // A layout-side measure of the same key is too — asked for by index
     // rather than by re-deriving index 1's width.
     let reshaped = c.measure(BODY, distinct_width_shape(1));
@@ -244,10 +235,7 @@ fn steady_key_churn_costs_a_bounded_cache_and_spares_the_working_set() {
                 c.shaped_run(*key).is_some(),
                 "a working-set key must never be evicted",
             );
-            c.ensure_buffer(TextShapeRequest {
-                text: BODY,
-                key: *key,
-            });
+            c.ensure_buffer(TextShapeRequest::for_key(BODY, *key));
         }
     };
 
@@ -369,10 +357,7 @@ fn a_demote_still_evicts_on_time_with_an_older_ticket_outstanding() {
 
     // Promote it, then let its insert-time ticket fire and re-file far
     // out — now the outstanding ticket sits at the protected deadline.
-    c.ensure_buffer(TextShapeRequest {
-        text: BODY,
-        key: keys[0],
-    });
+    c.ensure_buffer(TextShapeRequest::for_key(BODY, keys[0]));
     idle_frames(&mut c, cosmic::PROBATION_KEEP_FRAMES + 1);
     assert_eq!(c.cache_len(), 1, "promoted, so it outlives probation");
 
@@ -397,20 +382,14 @@ fn a_supplanted_ticket_does_not_evict_an_entry_promoted_since() {
     let mut c = CosmicMeasure::with_bundled_fonts();
     let keys = fill_distinct_widths(&mut c, 1);
 
-    c.ensure_buffer(TextShapeRequest {
-        text: BODY,
-        key: keys[0],
-    });
+    c.ensure_buffer(TextShapeRequest::for_key(BODY, keys[0]));
     idle_frames(&mut c, cosmic::PROBATION_KEEP_FRAMES + 1);
 
     // Demote, then come back to it one frame before it would lapse —
     // exactly what a width rotation does.
     c.supersede(keys[0]);
     idle_frames(&mut c, cosmic::PROBATION_KEEP_FRAMES);
-    c.ensure_buffer(TextShapeRequest {
-        text: BODY,
-        key: keys[0],
-    });
+    c.ensure_buffer(TextShapeRequest::for_key(BODY, keys[0]));
 
     // Walk past both the probation deadline the demote set and the
     // frame the supplanted ticket was filed for.

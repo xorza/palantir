@@ -336,10 +336,7 @@ fn drag_frame(
 ) -> ShapedText {
     let width = 40.0 + (step % DRAG_WIDTHS) as f32 * 0.25;
     let measured = measure_truncated_width(text, slot, TEXT, width);
-    shaper.render_ensure(TextShapeRequest {
-        text: TEXT,
-        key: measured.key,
-    });
+    shaper.render_ensure(TextShapeRequest::for_key(TEXT, measured.key));
     text.end_full_record(&FxHashSet::default());
     measured
 }
