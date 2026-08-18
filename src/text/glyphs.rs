@@ -129,24 +129,29 @@ impl<'a> TextGlyphs<'a> {
         self.extract_glyphs(request(text, font), placement(scale), out);
     }
 
-    /// How far `text` reaches when laid out in `font` at `scale`, in physical
-    /// pixels — without laying it out.
+    /// How far `text` reaches when laid out in `font`, in the logical pixels
+    /// `font` is sized in — without laying it out.
     ///
     /// What a caller anchoring text needs and cannot get from the glyphs: a
     /// run's advance is not the span of its bitmaps, since the last glyph's ink
     /// stops short of where the next one would start and a leading space has no
     /// ink at all.
     ///
+    /// **Takes no raster scale, where [`TextGlyphs::line`] does.** A scale here
+    /// could only multiply this extent, and that is not what `line` does with
+    /// its own: it hands each glyph to cosmic's subpixel binning, which rounds
+    /// every position at the raster size. The two therefore disagree by the
+    /// rounding at any scale above 1 — so rather than take a `scale` that
+    /// invites the two to be read as one measurement, this answers in logical
+    /// pixels and leaves scaling to the caller that knows what it is for.
+    /// Anchor from this; position glyphs from `line`.
+    ///
     /// The shaper caches the shaped buffer, so asking this and then
     /// [`TextGlyphs::line`] for the same run shapes once.
-    pub fn measure(&mut self, text: &str, font: GlyphFont, scale: f32) -> Size {
+    pub fn measure(&mut self, text: &str, font: GlyphFont) -> Size {
         // Empty text answers inside `shape`, which is where every entry point
         // into the measurer answers it — this one needs no guard of its own.
-        let Size { w, h } = self.cosmic.shape(request(text, font), WrapFloor::Skip).size;
-        Size {
-            w: w * scale,
-            h: h * scale,
-        }
+        self.cosmic.shape(request(text, font), WrapFloor::Skip).size
     }
 
     /// The bitmap for one glyph, or `None` where the face cannot produce an
@@ -258,7 +263,7 @@ mod tests {
 
         glyphs.line("", font, 1.0, &mut out);
         assert!(out.is_empty(), "an empty run left glyphs behind: {out:?}");
-        assert_eq!(glyphs.measure("", font, 1.0), Size::ZERO);
+        assert_eq!(glyphs.measure("", font), Size::ZERO);
     }
 
     /// The raster scale changes what is rasterized, not what is laid out.
@@ -287,10 +292,20 @@ mod tests {
         // Laid out twice as far across, because every advance is.
         assert!(double[2].x > single[2].x, "{single:?} {double:?}");
 
-        let at_one = glyphs.measure("abc", font, 1.0);
-        let at_two = glyphs.measure("abc", font, 2.0);
-        assert!((at_two.w - at_one.w * 2.0).abs() < 1e-3);
-        assert!(at_one.w > 0.0 && at_one.h > 0.0);
+        // The measured extent is the run's own, in logical pixels — the raster
+        // scale cannot reach it, which is why it takes none. What it *is* is
+        // the advance, so the last glyph starts inside it: that is the whole
+        // reason a caller anchors from `measure` and positions from `line`,
+        // and the pair is only usable together while it holds.
+        let measured = glyphs.measure("abc", font);
+        assert!(measured.w > 0.0 && measured.h > 0.0);
+        assert!(
+            (single[2].x as f32) < measured.w,
+            "the last glyph of {:?} starts at {} but the run measures {}",
+            "abc",
+            single[2].x,
+            measured.w,
+        );
     }
 
     /// A laid-out glyph rasterizes to a bitmap of exactly the size it claims.

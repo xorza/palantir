@@ -4,6 +4,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::text::cosmic;
 use crate::text::key::WrapBound;
 use crate::text::request::TextShapeRequest;
+use crate::text::request::internals::TestShape;
 use crate::text::shaper::TextShaper;
 use crate::text::system::{TextRunSlot, TextSystem};
 use crate::text::wrap::{LineFit, TextWrap, WrapFloor};
@@ -40,14 +41,32 @@ const DRAG_RESIDENCY_LIMIT: usize = cosmic::PROBATION_KEEP_FRAMES as usize * 2 +
 /// see real cache pressure rather than one L1-resident entry.
 const REUSE_LAYER_LABELS: usize = 64;
 
+/// The face every arm shapes in, stated once. `TestShape` is the same
+/// fixture the in-tree tests describe a face with — `bench` implies
+/// `internals`, so this side gets it too rather than re-deriving the
+/// constants per helper.
+/// Leading as a multiple of the font size. Named because two faces here
+/// want the same proportion — [`UI_FACE`] and whatever size the
+/// interleaving arm asks [`measure_truncated_face`] for — and a ratio
+/// spelled twice is one that can be changed in one of them.
+const LEADING_RATIO: f32 = 1.2;
+
+const UI_FACE: TestShape = TestShape {
+    font_size_px: 14.0,
+    line_height_px: 14.0 * LEADING_RATIO,
+    max_width_px: None,
+    family: FontFamily::Sans,
+    weight: FontWeight::Regular,
+    halign: HAlign::Auto,
+};
+
 fn measure_truncated_width(
     text_system: &mut TextSystem,
     slot: TextRunSlot,
     text: &str,
     width: f32,
 ) -> ShapedText {
-    let request =
-        TextShapeRequest::unbounded(text, 14.0, 16.8, FontFamily::Sans, FontWeight::Regular);
+    let request = UI_FACE.unbounded_request(text);
     text_system.measure(slot, request, TextWrap::Ellipsis, HAlign::Left, Some(width))
 }
 
@@ -61,13 +80,13 @@ fn measure_truncated_face(
     font_size_px: f32,
     weight: FontWeight,
 ) -> ShapedText {
-    let request = TextShapeRequest::unbounded(
-        text,
+    let request = TestShape {
         font_size_px,
-        font_size_px * 1.2,
-        FontFamily::Sans,
+        line_height_px: font_size_px * LEADING_RATIO,
         weight,
-    );
+        ..UI_FACE
+    }
+    .unbounded_request(text);
     text_system.measure(slot, request, TextWrap::Ellipsis, HAlign::Left, Some(width))
 }
 
@@ -99,7 +118,7 @@ fn bench_reuse_layer(c: &mut Criterion) {
         })
         .collect();
     fn request_for(text: &str) -> TextShapeRequest<'_> {
-        TextShapeRequest::unbounded(text, 14.0, 16.8, FontFamily::Sans, FontWeight::Regular)
+        UI_FACE.unbounded_request(text)
     }
     const WRAP_W: f32 = 150.0;
 
@@ -209,7 +228,7 @@ fn bench_shared_content(c: &mut Criterion) {
         })
         .collect();
     fn request() -> TextShapeRequest<'static> {
-        TextShapeRequest::unbounded(REPEATED, 14.0, 16.8, FontFamily::Sans, FontWeight::Regular)
+        UI_FACE.unbounded_request(REPEATED)
     }
 
     c.bench_function("text_shape/reuse_layer/shared_content_x64", |b| {

@@ -69,21 +69,17 @@ pub(super) struct ShaperInner {
     /// `renderer::backend::text`, which mirror it through
     /// [`TextShaper::frame`] rather than counting for themselves.
     ///
-    /// One counter because the two sides tick on different events and
-    /// no pair of separately-incremented counters can be kept in step:
-    /// this one advances on the record path
-    /// (`TextSystem::end_full_record`, plus the bare clock tick a
-    /// `PaintOnly` frame owes through `end_paint_only`), while the
-    /// backend's caches are swept on the submit path, which also runs
-    /// for `PaintOnly` frames and can run more than once per frame
-    /// (offscreen targets). Equal retention *constants* over unequal
-    /// clocks bought nothing; see
-    /// [`RENDERED_RUN_KEEP_FRAMES`](crate::text::RENDERED_RUN_KEEP_FRAMES).
+    /// Why one counter rather than one per cache is
+    /// [`RENDERED_RUN_KEEP_FRAMES`](crate::text::RENDERED_RUN_KEEP_FRAMES)'s
+    /// to explain — it is the constant the ordering is stated on.
     ///
-    /// Readers must therefore tolerate a clock that jumps (two windows
-    /// record before one submit) and one that stalls (two submits
-    /// inside one recorded frame). Both are fine for an age comparison;
-    /// neither is fine for a cadence gate written as
+    /// What belongs to the field itself is the shape of the clock it
+    /// hands readers. It advances on the record path
+    /// (`TextSystem::end_full_record`, plus the bare tick a `PaintOnly`
+    /// frame owes through `end_paint_only`) while the backend sweeps on
+    /// the submit path, so it both jumps — two windows recording before
+    /// one submit — and stalls — two submits inside one recorded frame.
+    /// Fine for an age comparison; never for a cadence gate written as
     /// `frame % INTERVAL == 0`.
     frame: u64,
     /// Total [`ShaperInner::dispatch`] calls: `TextSystem` reuse misses
