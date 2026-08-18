@@ -113,11 +113,10 @@ pub(super) const PROBATION_KEEP_FRAMES: u64 = 4;
 /// Frames a *protected* entry — one that has been looked up at least once
 /// since insertion — survives untouched.
 ///
-/// Sourced from [`crate::text::RENDERED_RUN_KEEP_FRAMES`], which is the
-/// *ceiling* the encoded-run cache's window stays under rather than a
-/// value it shares: that cache is what generates the render-side
-/// lookups this one exists to answer, so a buffer has to outlive the
-/// encoded entry that would come asking.
+/// The name cosmic's two-tier policy reads
+/// [`crate::text::RENDERED_RUN_KEEP_FRAMES`] under, beside
+/// [`PROBATION_KEEP_FRAMES`]. Why that number is a ceiling the encoded
+/// cache stays under rather than one it shares is stated there.
 pub(super) const PROTECTED_KEEP_FRAMES: u64 = crate::text::RENDERED_RUN_KEEP_FRAMES;
 
 fn recycle_buffer(pool: &mut Vec<Buffer>, buffer: Buffer) {
