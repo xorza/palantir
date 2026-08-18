@@ -175,7 +175,8 @@ impl TextSystem {
 
     /// The run's extent at a committed width, plus the key of the shaped
     /// buffer the renderer replays. A width-bounded policy resolves its
-    /// [`LineFit`] against the reuse root and caches the most recent bounded
+    /// [`LineFit`](crate::text::wrap::LineFit) against the reuse root and
+    /// caches the most recent bounded
     /// result in the same operation; without a width — or for policies that
     /// never bind — the root's own shape stands in.
     #[inline]

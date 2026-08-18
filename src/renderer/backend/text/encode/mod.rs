@@ -6,7 +6,7 @@
 //! - **Cache hit**: prior frames laid this exact `(TextShapeKey,
 //!   scale, subpixel origin bin, area color)` run out into the atlas;
 //!   the resulting origin-relative `GlyphInstance` templates are stored
-//!   in the [`EncodedCache`]. Emit = a copy with origin-shifted
+//!   in the [`EncodedCache`](cache::EncodedCache). Emit = a copy with
 //!   positions, no shaper lease, no per-glyph atlas hashmap lookup.
 //!   This is the ~37% of frame time we're targeting.
 //! - **Cache miss**: extracts the run's glyph placements through the
@@ -40,7 +40,8 @@ pub(super) mod encoder;
 /// atlas slots and can't share an entry).
 ///
 /// `area_color` is in the key because the run's colour is baked into
-/// every cached [`GlyphInstance::color`] at insert time. **This is only
+/// every cached [`GlyphInstance`](crate::renderer::backend::text::GlyphInstance)
+/// colour at insert time. **This is only
 /// sufficient because palantir shapes every run with one uniform
 /// colour** — `attrs_for` (`cosmic.rs`) sets no per-span colour, so
 /// cosmic never emits a per-glyph `color_opt`. If per-span colours are

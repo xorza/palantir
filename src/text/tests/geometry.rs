@@ -58,12 +58,12 @@ fn cursor_xy_walks_with_the_paragraph_direction() {
     // and making the sequence oscillate rather than descend.
     let rtl_text = "\u{5e9}\u{5dc}\u{5d5}\u{5dd}";
     let rtl = carets(rtl_text);
-    let line_right = shaper.measure(rtl_text, shape).size.w;
+    let line_right = shaper.measure(rtl_text, shape).measured.w;
     // The measured extent has to span every glyph rather than stop at the
     // last one in the array, which in an RTL run is the leftmost — that
     // would report a four-character run as one character wide and let the
     // backend clip it.
-    let one_char = shaper.measure("\u{5e9}", shape).size.w;
+    let one_char = shaper.measure("\u{5e9}", shape).measured.w;
     assert!(
         line_right > one_char * 2.0,
         "an RTL run must measure its full extent: {line_right} vs one glyph {one_char}",
@@ -335,7 +335,7 @@ fn cursor_xy_on_empty_line_respects_right_align() {
     // pre-prime is needed — the shaper builds whatever cache
     // entry it needs on first hit.
     let shape = ui_shape(font).width(wrap).halign(HAlign::Right);
-    let block = m.measure(text, shape).size.w;
+    let block = m.measure(text, shape).measured.w;
     let pos = m.cursor_xy(text, text.len(), shape);
     assert!(
         (pos.x - block).abs() < 0.5,

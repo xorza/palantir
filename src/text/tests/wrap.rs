@@ -232,7 +232,7 @@ fn cosmic_empty_text_returns_invalid_zero_size() {
     let shaper = TextShaper::test_mono();
     let calls = shaper.measure_calls();
     let r = shaper.measure("", ui_shape(16.0));
-    assert_eq!(r.size, Size::ZERO);
+    assert_eq!(r.measured, Size::ZERO);
     assert!(r.key.is_invalid(), "empty text mints no shaped buffer");
     assert_eq!(shaper.measure_calls(), calls);
 }

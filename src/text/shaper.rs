@@ -111,7 +111,7 @@ impl ShaperInner {
     /// place that question is asked, so no caller matches the field for
     /// itself.
     ///
-    /// Reached from [`TextProbe`](crate::text::probe::TextProbe) too,
+    /// Reached from [`TextProbe`] too,
     /// which holds this borrow while it answers geometry queries.
     pub(super) fn cosmic(&self) -> Option<&CosmicMeasure> {
         match &self.metric {
@@ -289,32 +289,29 @@ impl TextShaper {
 pub(crate) mod internals {
     #![allow(dead_code)]
     use super::*;
-    use crate::primitives::size::Size;
+    use crate::layout::ShapedText;
     #[cfg(test)]
     use crate::text::cosmic::counters::CacheCounts;
     use crate::text::probe::Caret;
     use crate::text::request::internals::TestShape;
     use crate::text::wrap::LineFit;
 
-    /// Everything a layout probe can answer: the extent, and the key of
-    /// the buffer it shaped under.
-    ///
-    /// Deliberately *not* a [`TestMeasure`]. The probe keeps only the
-    /// extent — the wrap floor and the line count are the root's — so
-    /// handing back a `TestMeasure` meant inventing two of its four
-    /// fields, and a test that read one was pinning the invention rather
-    /// than the shaper. Two fields, both real.
-    #[derive(Clone, Copy, Debug)]
-    pub(crate) struct ProbeMeasure {
-        pub(crate) size: Size,
-        pub(crate) key: TextShapeKey,
-    }
-
     impl TextShaper {
-        pub(crate) fn measure(&self, text: &str, shape: TestShape) -> ProbeMeasure {
+        /// Everything a layout probe can answer: the extent, and the key
+        /// of the buffer it shaped under — which is a [`ShapedText`], the
+        /// same pair layout carries out of `TextSystem::measure`, so it
+        /// is that rather than a second spelling of it.
+        ///
+        /// Deliberately not a [`TestMeasure`](crate::text::root::internals::TestMeasure):
+        /// the probe keeps only the
+        /// extent — the wrap floor and the line count are the root's — so
+        /// handing one back meant inventing two of its four fields, and a
+        /// test that read one was pinning the invention rather than the
+        /// shaper.
+        pub(crate) fn measure(&self, text: &str, shape: TestShape) -> ShapedText {
             let shapes_buffers = self.shapes_buffers();
-            self.probe_layout(text, shape, |probe| ProbeMeasure {
-                size: probe.size(),
+            self.probe_layout(text, shape, |probe| ShapedText {
+                measured: probe.size(),
                 key: if shapes_buffers && !probe.request.text.is_empty() {
                     probe.request.key
                 } else {

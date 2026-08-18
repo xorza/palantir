@@ -488,10 +488,10 @@ mod per_line {
             .text
             .measure(text, shape(300.0, HAlign::Right));
         assert!(
-            (xs[0] - measured.size.w).abs() <= 1.0,
+            (xs[0] - measured.measured.w).abs() <= 1.0,
             "end-of-line caret {} must sit at the block's right edge {}",
             xs[0],
-            measured.size.w,
+            measured.measured.w,
         );
         assert!(
             xs[0] < 100.0,
@@ -514,7 +514,7 @@ mod per_line {
             .resources
             .text
             .measure(text, shape(wrap, HAlign::Right))
-            .size
+            .measured
             .w;
         let caret = |halign| {
             ui.ui
@@ -562,7 +562,7 @@ mod per_line {
         let wrap = 290.0_f32;
         let widths: Vec<f32> = ALL
             .iter()
-            .map(|&halign| c.measure("hi\nyo", shape(wrap, halign)).size.w)
+            .map(|&halign| c.measure("hi\nyo", shape(wrap, halign)).measured.w)
             .collect();
         for (halign, w) in ALL.iter().zip(&widths) {
             assert!(
@@ -878,7 +878,7 @@ mod per_line {
             h.ui.resources
                 .text
                 .measure(&buf, shape(wrap, HAlign::Right))
-                .size
+                .measured
                 .w;
         let caret_short =
             h.ui.resources
