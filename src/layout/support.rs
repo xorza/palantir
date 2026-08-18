@@ -3,7 +3,6 @@
 //! `LayoutEngine` references threaded through where needed for intrinsic
 //! caching and result writing.
 
-use crate::common::hash;
 use crate::layout::axis::Axis;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange};
@@ -51,21 +50,16 @@ pub(super) struct TextShapeInput<'a> {
 
 impl<'a> TextShapeInput<'a> {
     pub(super) fn shape_request(&self) -> TextShapeRequest<'a> {
-        debug_assert_eq!(
-            self.text_hash,
-            hash::hash_str(self.text),
-            "retained text hash out of sync with the resolved source bytes",
-        );
-        TextShapeRequest {
-            text: self.text,
-            key: TextShapeKey::unbounded(
+        TextShapeRequest::for_key(
+            self.text,
+            TextShapeKey::unbounded(
                 self.text_hash,
                 self.font_size_px,
                 self.line_height_px,
                 self.family,
                 self.weight,
             ),
-        }
+        )
     }
 }
 

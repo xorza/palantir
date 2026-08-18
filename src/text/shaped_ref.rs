@@ -1,7 +1,6 @@
 //! One shaped run's render-handoff identity, carried from the encoder to
 //! the text backend.
 
-use crate::common::hash;
 use crate::primitives::interned_str::{InternedText, RecordedText, TextSource};
 use crate::text::key::TextShapeKey;
 use crate::text::request::TextShapeRequest;
@@ -22,8 +21,10 @@ pub(crate) struct ShapedTextRef {
 
 impl ShapedTextRef {
     /// Pair a measured cache key with the recorded source it was shaped
-    /// from. The O(1) hash comparison catches a mis-paired key/source at
-    /// the only place both sides are still individually known.
+    /// from. The O(1) hash comparison catches a mis-paired key/source
+    /// here, while the recorded hash is still to hand and nothing has to
+    /// re-read the bytes; [`Self::resolve_request`] checks the resolved
+    /// bytes themselves on the way back out.
     pub(crate) fn new(key: TextShapeKey, text: &RecordedText) -> Self {
         debug_assert_eq!(
             key.text_hash,
@@ -37,21 +38,16 @@ impl ShapedTextRef {
     }
 
     /// Resolve the retained bytes and rebuild the shaping request the
-    /// backend replays on an encoded-cache miss. Debug-checks that the
-    /// resolved bytes still hash to the key's content hash — the contract
-    /// that makes reusing a cached shaped buffer sound.
+    /// backend replays on an encoded-cache miss.
+    ///
+    /// [`TextShapeRequest::for_key`] is what checks the resolved bytes
+    /// against the key's content hash — the contract that makes reusing a
+    /// cached shaped buffer sound, and the reason this is a pairing call
+    /// rather than a struct literal.
     pub(crate) fn resolve_request<'a>(
         self,
         interned_text: &'a InternedText<'_>,
     ) -> TextShapeRequest<'a> {
-        let text = self.source.resolve(interned_text);
-        debug_assert_eq!(
-            TextShapeKey::content_hash(hash::hash_str(text)),
-            self.key.text_hash,
-        );
-        TextShapeRequest {
-            text,
-            key: self.key,
-        }
+        TextShapeRequest::for_key(self.source.resolve(interned_text), self.key)
     }
 }

@@ -15,6 +15,10 @@ pub(crate) struct TextShapeRequest<'a> {
 impl<'a> TextShapeRequest<'a> {
     /// Metrics were validated at record time; invalid values here are a
     /// logic error, debug-asserted by [`TextShapeKey::unbounded`].
+    ///
+    /// Hashes `text` itself. A caller holding the hash already — layout
+    /// retains one per recorded run — mints the key and pairs it through
+    /// [`Self::for_key`] rather than paying for it twice.
     pub(crate) fn unbounded(
         text: &'a str,
         font_size_px: f32,
@@ -34,17 +38,36 @@ impl<'a> TextShapeRequest<'a> {
         }
     }
 
+    /// Pair `text` with a key already minted for it — off a hash layout
+    /// retained, or off a key carried through the paint payload.
+    ///
+    /// **The one place a key is checked against the bytes themselves.**
+    /// That a key describes the text beside it is what makes reusing a
+    /// cached shaped buffer sound, and every caller that built the pair by
+    /// hand used to carry its own version of this assertion — so one could
+    /// drift, or be forgotten by the next caller to write the literal.
+    /// (`ShapedTextRef::new` checks the same pairing against a *recorded*
+    /// hash, which costs no re-read; this is the one that reads.)
+    pub(crate) fn for_key(text: &'a str, key: TextShapeKey) -> Self {
+        debug_assert_eq!(
+            key.text_hash,
+            TextShapeKey::content_hash(hash::hash_str(text)),
+            "text paired with a key minted from different bytes",
+        );
+        Self { text, key }
+    }
+
     pub(super) fn with_bound(self, bound: WrapBound) -> Self {
         Self {
-            text: self.text,
             key: self.key.with_bound(bound),
+            ..self
         }
     }
 
     pub(super) fn unbounded_version(self) -> Self {
         Self {
-            text: self.text,
             key: self.key.unbounded_version(),
+            ..self
         }
     }
 }
