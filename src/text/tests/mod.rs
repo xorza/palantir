@@ -16,7 +16,7 @@ use crate::text::cosmic::truncate::ClusterGlyph;
 use crate::text::cosmic::{self, CosmicMeasure};
 use crate::text::key::TextShapeKey;
 use crate::text::mono;
-use crate::text::probe::layout;
+use crate::text::probe::internals as probe;
 use crate::text::request::TextShapeRequest;
 use crate::text::request::internals::TestShape;
 use crate::text::root::internals::TestMeasure;

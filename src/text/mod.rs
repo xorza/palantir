@@ -29,7 +29,10 @@
 //! shaping call is asked, [`root`] what an unbounded shape answers,
 //! [`key`] the quantized cache identity, [`shaped_ref`] the render
 //! handoff, [`run`] how a caller describes a run to probe, [`probe`] the
-//! public geometry surface over its own `layout` lease.
+//! public geometry surface over the lease it holds, [`glyphs`] the
+//! render-side lease itself — held by the wgpu backend and by a
+//! `GpuView` drawing its own text, which want the same answers off the
+//! same borrow.
 //!
 //! **Vocabulary modules** hold the small value types one layer speaks in,
 //! where naming a module per type would scatter a set that is only ever

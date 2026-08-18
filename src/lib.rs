@@ -257,8 +257,8 @@ pub use shape::triangle::TriangleShape;
 // [`TextShaper::glyphs`]. The atlas and the pipeline stay the caller's; what is
 // shared is the font stack.
 pub use text::glyphs::{GlyphFont, TextGlyphs};
+pub use text::probe::Caret;
 pub use text::probe::TextProbe;
-pub use text::probe::layout::Caret;
 pub use text::render::{GlyphImage, GlyphImageKind, GlyphPlacement, GlyphRasterKey, PlacedGlyph};
 pub use text::run::TextRun;
 pub use text::shaper::TextShaper;

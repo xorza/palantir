@@ -7,10 +7,10 @@
 //!   scale, subpixel origin bin, area color)` run out into the atlas;
 //!   the resulting origin-relative `GlyphInstance` templates are stored
 //!   in the [`EncodedCache`]. Emit = a copy with origin-shifted
-//!   positions, no shaper session, no per-glyph atlas hashmap lookup.
+//!   positions, no shaper lease, no per-glyph atlas hashmap lookup.
 //!   This is the ~37% of frame time we're targeting.
 //! - **Cache miss**: extracts the run's glyph placements through the
-//!   shaper's render-session lease, touches/inserts atlas slots, emits
+//!   shaper's glyph lease, touches/inserts atlas slots, emits
 //!   to `out`, and populates the cache entry with the origin-relative
 //!   templates so the next frame at the same `(key, scale, bins,
 //!   color)` lands on the fast path. Runs that came out short — lines
@@ -52,7 +52,7 @@ pub(super) mod encoder;
 /// cosmic never emits a per-glyph `color_opt`. If per-span colours are
 /// ever added, fold a colour-span fingerprint into this key *first*, or
 /// the cache will serve a stale run's baked colours. The assertion in
-/// `TextRenderSession::extract_glyphs`'s glyph loop is the tripwire for
+/// `TextGlyphs::extract_glyphs`'s glyph loop is the tripwire for
 /// that invariant.
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub(super) struct EncodedKey {
