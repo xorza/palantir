@@ -2,11 +2,12 @@
 //! the four operations that move it between the windows.
 //!
 //! Insert files a probationary ticket, a lookup promotes, a supersede
-//! demotes, and the end-of-frame sweep settles whatever came due. They
-//! live together because they are one protocol — the [`ExpiryWheel`]
-//! contract in [`crate::common::expiry_wheel`] is only upheld by all four
-//! agreeing, and reading any one of them alone is how the ticket-leak
-//! regression got written.
+//! demotes, and the end-of-frame sweep settles whatever came due. They live
+//! together because they are one protocol — the
+//! [`ExpiryWheel`](crate::common::expiry_wheel::ExpiryWheel) contract in
+//! [`crate::common::expiry_wheel`] is only upheld by all four agreeing, and
+//! reading any one of them alone is how the ticket-leak regression got
+//! written.
 
 use crate::common::expiry_wheel::TicketSeq;
 use crate::text::cosmic::geometry::ShapedGeometry;

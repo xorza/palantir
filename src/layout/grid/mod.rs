@@ -69,9 +69,9 @@ struct AxisScratch {
 /// The per-track content range one axis solves against: `min[i]` is
 /// track `i`'s min-content floor, `max[i]` its preferred extent.
 ///
-/// Bundled because they were two adjacent same-typed `&[f32]`
-/// parameters on [`resolve_axis`] — swapping them compiles, and the
-/// common path (every Hug track fits at its max) wouldn't even fail a
+/// Bundled because they were two adjacent same-typed `&[f32]` parameters on
+/// [`resolve_axis`](resolving::resolve_axis) — swapping them compiles, and
+/// the common path (every Hug track fits at its max) wouldn't even fail a
 /// test.
 #[derive(Clone, Copy, Debug)]
 struct HugRanges<'a> {
@@ -156,15 +156,14 @@ impl GridDepthStack {
 /// Flat per-track pool with one `(rows, cols)` slot per recorded
 /// `GridDef` — every grid's track state for the whole layout pass.
 ///
-/// Three things per track, not just the hug ranges the name used to
-/// claim: the content ranges (`max`/`min`, fed by Phase-1 cell
-/// intrinsics and Phase-2 cell-height accumulation), the
-/// measure-resolved track sizes (`sizes`, the output of
-/// [`resolve_axis`]), and the input `total` each axis was resolved
-/// against (`totals`). Measure pass
-/// writes; arrange pass reads. Per-depth scratch in `depth_stack`
-/// gets clobbered by sibling grids before arrange runs, so the pool
-/// persists for the whole layout pass instead.
+/// Three things per track, not just the hug ranges the name used to claim:
+/// the content ranges (`max`/`min`, fed by Phase-1 cell intrinsics and
+/// Phase-2 cell-height accumulation), the measure-resolved track sizes
+/// (`sizes`, the output of [`resolve_axis`](resolving::resolve_axis)), and
+/// the input `total` each axis was resolved against (`totals`). Measure
+/// pass writes; arrange pass reads. Per-depth scratch in `depth_stack` gets
+/// clobbered by sibling grids before arrange runs, so the pool persists for
+/// the whole layout pass instead.
 ///
 /// `reset_for` zeroes every slot at the top of each pass — load-bearing
 /// for `max`/`min`/`sizes` because the Phase 1 column loop and the
@@ -347,12 +346,13 @@ impl GridTrackStore {
     }
 }
 
-/// WPF-style grid measure. Resolves Fixed tracks, walks children once feeding
-/// each `Σ spanned-track sizes` (or `∞` if any spanned track is unresolved —
-/// the WPF infinity trick → child reports intrinsic), then resolves Hug
-/// tracks from span-1 children's desired sizes. Star tracks contribute 0 to
-/// the grid's content size — final star sizes only resolve in arrange. The
-/// full constraint solver is documented on [`resolve_axis`].
+/// WPF-style grid measure. Resolves Fixed tracks, walks children once
+/// feeding each `Σ spanned-track sizes` (or `∞` if any spanned track is
+/// unresolved — the WPF infinity trick → child reports intrinsic), then
+/// resolves Hug tracks from span-1 children's desired sizes. Star tracks
+/// contribute 0 to the grid's content size — final star sizes only resolve
+/// in arrange. The full constraint solver is documented on
+/// [`resolve_axis`](resolving::resolve_axis).
 ///
 /// Per-depth scratch (`AxisScratch` columns) lives in `grid.depth_stack`
 /// and gets clobbered by sibling grids between this measure and the

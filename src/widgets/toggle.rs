@@ -14,10 +14,11 @@ use crate::widgets::widget::Widget;
 /// label, and the indicator body.
 ///
 /// The theme arrives **resolved**. Each toggle reads its own slot
-/// (`theme.checkbox` / `theme.radio` / `theme.switch`) — they share a
-/// theme *type* but not a *slot*, and only the caller knows which is
-/// its own — so the caller is also where [`WidgetTheme::resolve`] runs,
-/// beside the geometry scalars it already copies off that same slot.
+/// (`theme.checkbox` / `theme.radio` / `theme.switch`) — they share a theme
+/// *type* but not a *slot*, and only the caller knows which is its own — so
+/// the caller is also where
+/// [`WidgetTheme::resolve`](crate::widgets::theme::WidgetTheme::resolve)
+/// runs, beside the geometry scalars it already copies off that same slot.
 /// What crosses into here is owned, which is what keeps the shared
 /// scaffolding out of the business of naming theme fields.
 #[derive(Debug)]

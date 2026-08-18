@@ -236,7 +236,7 @@ pub(super) struct CosmicMeasure {
     /// into a retained buffer keeps that path free of `String` allocs,
     /// while the unbounded probe itself comes from `cache`.
     truncate_scratch: String,
-    /// Retained scratch for [`collect_break_offsets`], so the unbounded
+    /// Retained scratch for `collect_break_offsets`, so the unbounded
     /// shape's segment scan allocates nothing per miss.
     break_scratch: Vec<u32>,
     /// Retained scratch holding the truncation probe's glyph indices in

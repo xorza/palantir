@@ -358,8 +358,9 @@ pub(crate) struct InputState {
     /// [`Self::finish_record`] so `Ui::frame` can re-record the pass.
     frame_had_action: bool,
     /// Strongest input seen since the last frame, thresholded by
-    /// [`InputPolicy`] in `FrameRuntime::take_frame_plan`. Cleared with
-    /// the per-frame event queues.
+    /// [`InputPolicy`](crate::input::policy::InputPolicy) in
+    /// `FrameRuntime::take_frame_plan`. Cleared with the per-frame event
+    /// queues.
     pub(crate) signal_since_last_frame: InputSignal,
     /// Wake-gate watches ([`PointerWake`] / [`KeyboardWake`]
     /// flag masks + specific-chord list). Cleared pre-record (in

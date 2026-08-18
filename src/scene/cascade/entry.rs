@@ -12,7 +12,7 @@ use crate::scene::layer::Layer;
 use crate::scene::seen_ids::Endpoint;
 
 /// One per-node cascade row, in `Vec<EntryRow>` on
-/// [`Cascade::entries`].
+/// [`Cascade::entries`](super::Cascade::entries).
 ///
 /// **Array-of-structs on purpose.** Every consumer of this table is a
 /// single-index gather, never a column walk:
@@ -47,12 +47,12 @@ pub(crate) struct EntryRow {
 /// topmost-first.
 ///
 /// **Self-sufficient on purpose.** This table carries the geometry and
-/// gates the hit tests need so a hit test is a dense sequential scan
-/// over interactive rows alone, with no indirection into the all-node
-/// [`Cascade::entries`]. Holding only `(entry_idx, widget_id)` and
-/// gathering `rect` / `sense` / `focusable` from `entries` instead
-/// costs one random access per candidate row, over a table sized by
-/// *every* node rather than the interactive subset.
+/// gates the hit tests need so a hit test is a dense sequential scan over
+/// interactive rows alone, with no indirection into the all-node
+/// [`Cascade::entries`](super::Cascade::entries). Holding only
+/// `(entry_idx, widget_id)` and gathering `rect` / `sense` / `focusable`
+/// from `entries` instead costs one random access per candidate row, over a
+/// table sized by *every* node rather than the interactive subset.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct HitRow {
     /// Visible screen rect — the same value as `EntryRow::rect` for
@@ -70,8 +70,9 @@ pub(crate) struct HitRow {
 }
 
 /// Where one widget's per-frame rows live — the flat
-/// [`Cascade::entries`] index plus the `(layer, node)` [`Endpoint`]
-/// the layout columns are keyed by. Produced by [`Cascade::locate`].
+/// [`Cascade::entries`](super::Cascade::entries) index plus the
+/// `(layer, node)` [`Endpoint`] the layout columns are keyed by. Produced
+/// by [`Cascade::locate`](super::Cascade::locate).
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct WidgetLocation {
     pub(crate) entry_idx: u32,
@@ -83,10 +84,10 @@ pub(crate) struct WidgetLocation {
 ///
 /// Deliberately *not* a column on [`EntryRow`]: scopes are a handful per
 /// frame while entries are one per node, and containment is answered by
-/// [`Cascade::is_within`] rather than by anything stored here. Same
-/// lifecycle as [`HitRow`] — cleared on a full rebuild, repopulated by
-/// the non-incremental walk, retained across incremental runs whose
-/// subtree hashes matched.
+/// [`Cascade::is_within`](super::Cascade::is_within) rather than by
+/// anything stored here. Same lifecycle as [`HitRow`] — cleared on a full
+/// rebuild, repopulated by the non-incremental walk, retained across
+/// incremental runs whose subtree hashes matched.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ScopeRow {
     pub(crate) layer: Layer,

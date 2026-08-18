@@ -1,6 +1,5 @@
-//! Observability for the encoded-run cache. Built on
-//! [`TestOnly`](crate::common::counters::TestOnly), whose module doc
-//! explains the gated-cell pattern and why the two gates exist.
+//! Observability for the encoded-run cache. Built on [`TestOnly`], whose
+//! module doc explains the gated-cell pattern and why the two gates exist.
 //!
 //! These were added to size a probation tier for gesture churn, which
 //! the measurement then argued *against* building for now — so every
@@ -15,14 +14,14 @@
 //! a memcpy with an origin shift.
 //!
 //! Retention needs the same treatment, and needs it *before* a policy is
-//! chosen rather than after. The open question is whether a stable run
-//! is looked up often enough for "has it been asked for again" to work
-//! as a promotion signal at all: under `RenderKind::Partial` the encoder
-//! walk is culled to the damage region, so a run that is on screen and
-//! unchanged is not consulted on frames that do not damage it.
-//! [`Self::hits`] against [`Self::encodes`] is what answers that, and
-//! [`Self::refiles`] says what the sweep pays per frame to keep the
-//! population alive.
+//! chosen rather than after. The open question is whether a stable run is
+//! looked up often enough for "has it been asked for again" to work as a
+//! promotion signal at all: under `RenderKind::Partial` the encoder walk is
+//! culled to the damage region, so a run that is on screen and unchanged is
+//! not consulted on frames that do not damage it. [`EncodedCounters::hits`]
+//! against [`EncodedCounters::encodes`] is what answers that, and
+//! [`EncodedCounters::refiles`] says what the sweep pays per frame to keep
+//! the population alive.
 //!
 //! Counters accumulate for the life of the backend, so readers take a
 //! delta.

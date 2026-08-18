@@ -108,11 +108,13 @@ pub(crate) struct DamageEngine {
     /// per-frame allocation in steady state.
     pub(crate) raw_rects: Vec<Rect>,
 
-    /// Retained scratch for [`build_row_extents`] — the per-row screen
-    /// extents (child markers swapped for their subtree's painted
-    /// extent) fed to [`emit_inverted_overlaps`]. Only filled on the
-    /// rare frame a node's row order actually inverted; capacity
-    /// persists so that frame allocates nothing.
+    /// Retained scratch for
+    /// [`build_row_extents`](walk::LayerWalk::build_row_extents) — the
+    /// per-row screen extents (child markers swapped for their subtree's
+    /// painted extent) fed to
+    /// [`emit_inverted_overlaps`](walk::LayerWalk::emit_inverted_overlaps).
+    /// Only filled on the rare frame a node's row order actually inverted;
+    /// capacity persists so that frame allocates nothing.
     order_extents: Vec<Rect>,
     /// Retained scratch for the diff walk's parent tracking: one frame
     /// per open ancestor, `(subtree_end, WidgetId bits)`. Feeds each

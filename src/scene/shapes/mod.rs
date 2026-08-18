@@ -51,10 +51,10 @@ impl Shapes {
         self.hashes.clear();
     }
 
-    /// Lower a user-facing [`Shape`] and append it to `records`:
-    /// passthrough for rect/text, cubic promotion for beziers,
-    /// span-stamping for the variable-length variants (polyline /
-    /// mesh) whose payload bytes land on the [`RecordStore`].
+    /// Lower a user-facing [`Shape`](crate::Shape) and append it to
+    /// `records`: passthrough for rect/text, cubic promotion for beziers,
+    /// span-stamping for the variable-length variants (polyline / mesh)
+    /// whose payload bytes land on the [`RecordStore`].
     ///
     /// Drops any shape whose authoring inputs would emit no visible
     /// pixels, before lowering runs — the shape buffer's half of tier 2
@@ -102,10 +102,10 @@ impl Shapes {
 
     /// Append a [`ImageSource::GpuView`]-sourced [`ShapeRecord::Image`]
     /// directly — assembled by `Ui::gpu_view`, not lowered from a
-    /// user-facing [`Shape`], so this bypasses the [`Self::add`]
-    /// lowering. The view's `id` + `paint` live in `Ui::gpu_views` keyed
-    /// by the owner's `WidgetId`; the record carries only `epoch` (which
-    /// the per-frame damage hash reads).
+    /// user-facing [`Shape`](crate::Shape), so this bypasses the
+    /// [`Self::add`] lowering. The view's `id` + `paint` live in
+    /// `Ui::gpu_views` keyed by the owner's `WidgetId`; the record carries
+    /// only `epoch` (which the per-frame damage hash reads).
     ///
     /// The placement fields are the neutral ones that reproduce a
     /// full-owner-rect composite: no sub-rect, untinted, and a `Fill`

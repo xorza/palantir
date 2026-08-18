@@ -4,9 +4,10 @@
 use crate::common::content_hash::ContentHash;
 use fixedbitset::FixedBitSet;
 
-/// Per-node derived data populated by [`crate::scene::Tree::post_record`].
-/// The hash columns index by `NodeId.0` and are length `records.len()`
-/// after `post_record`. Storage capacity is retained across frames.
+/// Per-node derived data populated by
+/// [`Tree::post_record`](crate::scene::tree::Tree::post_record). The hash
+/// columns index by `NodeId.0` and are length `records.len()` after
+/// `post_record`. Storage capacity is retained across frames.
 ///
 /// - `node[i]` — authoring hash of node `i` alone (layout / paint /
 ///   extras / shapes / grid def). Read by damage diff and the leaf

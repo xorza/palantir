@@ -223,7 +223,7 @@ impl URect {
 }
 
 /// Widening is exact and has nothing to decide, so it is the direction that
-/// gets a [`From`] — see [`URect::covering`] for the way back, which has to
+/// gets a [`From`] — see `URect::covering` for the way back, which has to
 /// pick a rounding and is named for it.
 impl From<URect> for Rect {
     #[inline]

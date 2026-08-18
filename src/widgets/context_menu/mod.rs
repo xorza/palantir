@@ -22,8 +22,8 @@ use crate::primitives::interned_str::TextInput;
 use glam::Vec2;
 
 /// Cross-frame response for one context-menu site, keyed off the trigger
-/// widget's id in [`crate::ui::response::StateMap`]. `anchor = Some` is
-/// the single source of truth for "menu open".
+/// widget's id in [`StateMap`](crate::ui::state::StateMap). `anchor = Some`
+/// is the single source of truth for "menu open".
 #[derive(Default, Clone, Copy, Debug)]
 struct ContextMenuState {
     anchor: Option<Vec2>,

@@ -27,7 +27,7 @@ impl ShapedTextRef {
     pub(crate) fn new(key: TextShapeKey, text: &RecordedText) -> Self {
         debug_assert_eq!(
             key.text_hash,
-            text.hash.max(1),
+            TextShapeKey::content_hash(text.hash),
             "shaped-text key paired with a different run's source bytes",
         );
         Self {
@@ -45,7 +45,10 @@ impl ShapedTextRef {
         interned_text: &'a InternedText<'_>,
     ) -> TextShapeRequest<'a> {
         let text = self.source.resolve(interned_text);
-        debug_assert_eq!(hash::hash_str(text).max(1), self.key.text_hash);
+        debug_assert_eq!(
+            TextShapeKey::content_hash(hash::hash_str(text)),
+            self.key.text_hash,
+        );
         TextShapeRequest {
             text,
             key: self.key,

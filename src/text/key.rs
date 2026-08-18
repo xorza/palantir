@@ -90,6 +90,19 @@ impl TextShapeKey {
         self.text_hash == 0
     }
 
+    /// The content hash a key carries, given the raw hash of its source:
+    /// never zero, because zero is what [`Self::INVALID`] tags a
+    /// bufferless run with.
+    ///
+    /// Stated once because three sites derive it — this key's constructor
+    /// and both of `ShapedTextRef`'s pairing checks — and a rule spelled
+    /// three times is one that can be changed in only one of them, leaving
+    /// the checks agreeing with a hash nothing mints any more.
+    pub(super) const fn content_hash(raw: u64) -> u64 {
+        // `Ord::max` is not const yet, and the zero case is the whole rule.
+        if raw == 0 { 1 } else { raw }
+    }
+
     /// Record time already rejected invalid metrics (`Shape::is_noop`,
     /// theme validation), so reaching here with them is a logic error —
     /// debug-asserted rather than re-validated on the shaping hot path.
@@ -105,7 +118,7 @@ impl TextShapeKey {
             "{TEXT_METRICS_ERROR}",
         );
         Self {
-            text_hash: text_hash.max(1),
+            text_hash: Self::content_hash(text_hash),
             size_q: quantize_metric(font_size_px),
             max_w_q: MAX_W_NONE,
             lh_q: quantize_metric(line_height_px),
