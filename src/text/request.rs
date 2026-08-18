@@ -154,6 +154,23 @@ pub(crate) mod internals {
             )
         }
 
+        /// Bound to this shape's width under `fit`, or unbounded where it
+        /// has no width.
+        ///
+        /// Takes the [`LineFit`] rather than a [`TextWrap`](crate::TextWrap)
+        /// because this is a shaper-level fixture: `LineFit` is what
+        /// [`TextShapeKey`] stores and what `CosmicMeasure::shape`
+        /// switches on, while the policy is layout's to resolve. So the
+        /// gate here is a width alone, where `TextRun::request` gates on
+        /// `(width, wrap.line_fit())`.
+        ///
+        /// The two still reach the same requests, which is what keeps a
+        /// fixture from describing a run layout cannot produce: both bind
+        /// through [`WrapBound::new`], a shape with no width lowers to
+        /// exactly what a non-binding policy does, and every [`LineFit`]
+        /// is some policy's — pinned by `wrap`'s
+        /// `every_line_fit_is_some_policys_…` rather than restated here,
+        /// since a copy of that mapping is a copy that can go stale.
         pub(crate) fn request<'a>(self, text: &'a str, fit: LineFit) -> TextShapeRequest<'a> {
             let request = self.unbounded_request(text);
             match self.max_width_px {

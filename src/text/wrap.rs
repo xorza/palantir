@@ -194,6 +194,51 @@ mod tests {
     use crate::text::wrap;
     use crate::text::wrap::{LineFit, TextWrap};
 
+    /// Every policy, in declaration order — so a new one has to be added
+    /// here to compile, rather than quietly escaping the sweeps below.
+    const ALL: [TextWrap; 6] = [
+        TextWrap::SingleLine,
+        TextWrap::Scroll,
+        TextWrap::Truncate,
+        TextWrap::Ellipsis,
+        TextWrap::Wrap,
+        TextWrap::WrapWithOverflow,
+    ];
+
+    /// The whole policy-to-fit mapping, plus the reachability it implies.
+    ///
+    /// Pinned because two things lean on it and neither would fail loudly.
+    /// A policy that changed which fit it binds under would reshape every
+    /// run beneath it against a different cache identity. And the
+    /// shaper-level `TestShape` fixture takes a [`LineFit`] directly
+    /// rather than a policy, which only stays honest while every fit is
+    /// some policy's — a fit no policy yields would let a test describe a
+    /// run layout cannot produce.
+    #[test]
+    fn every_line_fit_is_some_policys_and_only_the_two_unbounded_ones_have_none() {
+        for (policy, expected) in [
+            (TextWrap::SingleLine, None),
+            (TextWrap::Scroll, None),
+            (TextWrap::Truncate, Some(LineFit::Clip)),
+            (TextWrap::Ellipsis, Some(LineFit::Ellipsis)),
+            (TextWrap::Wrap, Some(LineFit::Wrap)),
+            (TextWrap::WrapWithOverflow, Some(LineFit::Wrap)),
+        ] {
+            assert_eq!(policy.line_fit(), expected, "{policy:?}");
+        }
+        for fit in [LineFit::Wrap, LineFit::Clip, LineFit::Ellipsis] {
+            assert!(
+                ALL.iter().any(|policy| policy.line_fit() == Some(fit)),
+                "{fit:?} is reachable from no TextWrap, so a fixture taking \
+                 one directly can build a request layout never does",
+            );
+        }
+        // Exactly two policies keep their unbounded shape; if that grew,
+        // the `(width, fit)` gate would be letting more through than the
+        // two documented on `line_fit`.
+        assert_eq!(ALL.iter().filter(|p| p.line_fit().is_none()).count(), 2);
+    }
+
     /// Unbounded root standing in for a shaped measurement — the only
     /// input the bounded-shaping decisions read.
     fn root(width_px: f32, single_line: bool, intrinsic_min: f32) -> TextRoot {
