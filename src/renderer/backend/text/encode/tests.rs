@@ -1,4 +1,7 @@
 use super::*;
+use crate::renderer::backend::text::ContentType;
+use crate::renderer::backend::text::encode::cache::NIL;
+use crate::renderer::backend::text::encode::encoder::pack_uv;
 
 fn key(scale_q: u32) -> EncodedKey {
     EncodedKey {
