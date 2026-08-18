@@ -94,9 +94,15 @@ impl<'a> TextProbe<'a> {
     /// shapes non-empty text before minting the probe, and the probe
     /// holds the shaper's borrow for its whole life, so no sweep can
     /// evict that buffer out from under it.
+    ///
+    /// **The gate asks which metric is installed, not whether the text is
+    /// empty.** Those are different questions, and gating on emptiness put
+    /// the mono arm in front of the assertion below — so under the very
+    /// builds that compile the assertion, a cosmic run that had somehow
+    /// lost its buffer took a mono estimate instead of tripping it.
     fn unshaped_caret_x(&self, byte_offset: usize) -> f32 {
         #[cfg(any(test, feature = "internals"))]
-        if !self.request.text.is_empty() {
+        if self.inner.cosmic().is_none() {
             return crate::text::mono::single_line_caret_x(
                 self.request.text,
                 byte_offset,
@@ -112,11 +118,11 @@ impl<'a> TextProbe<'a> {
     }
 
     /// [`Self::unshaped_caret_x`]'s inverse, and unreachable on the same
-    /// terms. Empty text has exactly one position, so production always
-    /// answers 0.
+    /// terms — including which question the gate asks. Empty text has
+    /// exactly one position, so production always answers 0.
     fn unshaped_byte_at(&self, target_x: f32) -> usize {
         #[cfg(any(test, feature = "internals"))]
-        if !self.request.text.is_empty() {
+        if self.inner.cosmic().is_none() {
             return crate::text::mono::nearest_byte(
                 self.request.text,
                 target_x,

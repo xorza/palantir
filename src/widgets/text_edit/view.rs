@@ -198,7 +198,7 @@ pub(super) struct TextLayout {
 
 pub(super) fn resolve_layout(input: LayoutInput) -> TextLayout {
     let caret_room = input.caret_width.max(0.0);
-    // Raw inner width; `TextShapeKey::bounded` owns the canonical rounding.
+    // Raw inner width; `WrapBound::new` owns the canonical rounding.
     let wrap_target = if input.multiline {
         input
             .response_rect

@@ -2,9 +2,7 @@
 //! the canonical parameters it shapes under.
 
 use crate::common::hash;
-use crate::layout::types::align::HAlign;
-use crate::text::key::TextShapeKey;
-use crate::text::wrap::LineFit;
+use crate::text::key::{TextShapeKey, WrapBound};
 use crate::text::{FontFamily, FontWeight};
 
 /// Source text paired with its canonical shaping parameters.
@@ -36,14 +34,14 @@ impl<'a> TextShapeRequest<'a> {
         }
     }
 
-    pub(crate) fn bounded(self, max_width_px: f32, halign: HAlign, fit: LineFit) -> Self {
+    pub(super) fn with_bound(self, bound: WrapBound) -> Self {
         Self {
             text: self.text,
-            key: self.key.bounded(max_width_px, halign, fit),
+            key: self.key.with_bound(bound),
         }
     }
 
-    pub(crate) fn unbounded_version(self) -> Self {
+    pub(super) fn unbounded_version(self) -> Self {
         Self {
             text: self.text,
             key: self.key.unbounded_version(),
@@ -56,6 +54,8 @@ pub(crate) mod internals {
     // See [`crate::text::root::internals`] — same gate, same reason.
     #![allow(dead_code)]
     use super::*;
+    use crate::layout::types::align::HAlign;
+    use crate::text::wrap::LineFit;
 
     /// A shaping request's parameters without its text, so a test can
     /// describe one face once and measure many strings through it.
@@ -134,7 +134,7 @@ pub(crate) mod internals {
         pub(crate) fn request<'a>(self, text: &'a str, fit: LineFit) -> TextShapeRequest<'a> {
             let request = self.unbounded_request(text);
             match self.max_width_px {
-                Some(width) => request.bounded(width, self.halign, fit),
+                Some(width) => request.with_bound(WrapBound::new(width, self.halign, fit)),
                 None => request,
             }
         }

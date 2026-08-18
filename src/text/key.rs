@@ -37,7 +37,7 @@ pub(crate) struct TextShapeKey {
     /// `max_width_px * 64`, rounded; `u32::MAX` encodes `None` (unbounded).
     ///
     /// Unlike its 1/64-px neighbours this carries only whole pixels:
-    /// [`Self::bounded`] snaps the width to the measure cache's grid via
+    /// [`WrapBound::new`] snaps the width to the measure cache's grid via
     /// [`wrap::canonical_wrap_width`] first, so the value is always a
     /// multiple of 64. The scale is kept so all three quantized fields
     /// dequantize the same way, not because the precision is reachable.
@@ -116,19 +116,19 @@ impl TextShapeKey {
         }
     }
 
-    /// Owns width normalization: the raw width canonicalizes to the whole-px
-    /// wrap grid here, so every construction path mints the same identity.
-    /// Negative widths (over-constrained layouts) clamp to zero; non-finite
-    /// widths are a logic error — callers gate on `is_finite`.
-    pub(crate) fn bounded(self, max_width_px: f32, halign: HAlign, fit: LineFit) -> Self {
-        debug_assert!(max_width_px.is_finite(), "text wrap width must be finite");
+    /// Bind this root to a committed width. The bound varies nothing a root
+    /// key pins, so this both *mints* a bounded key and *reconstructs* one
+    /// from a retained [`WrapBound`] — which is what lets `TextSystem` keep
+    /// six bytes per resolve rather than a second whole key.
+    ///
+    /// Taking the bound rather than `(width, halign, fit)` is what keeps a
+    /// caller that needs the bound for something else — a slot comparison,
+    /// say — from quantizing the same width twice.
+    pub(super) fn with_bound(self, bound: WrapBound) -> Self {
         Self {
-            max_w_q: quantize_width(wrap::canonical_wrap_width(max_width_px)).min(MAX_W_NONE - 1),
-            halign_q: match fit {
-                LineFit::Wrap => halign as u8,
-                LineFit::Clip | LineFit::Ellipsis => HAlign::Auto as u8,
-            },
-            fit_q: fit as u8,
+            max_w_q: bound.max_w_q,
+            halign_q: bound.halign_q,
+            fit_q: bound.fit_q,
             ..self
         }
     }
@@ -204,6 +204,41 @@ impl TextShapeKey {
             0 => LineFit::Wrap,
             1 => LineFit::Clip,
             _ => LineFit::Ellipsis,
+        }
+    }
+}
+
+/// Everything a committed width varies on a [`TextShapeKey`]: the three
+/// fields [`TextShapeKey::with_bound`] writes, and nothing else.
+///
+/// Owns the width normalization — the raw width canonicalizes to the
+/// whole-px wrap grid here. Negative widths (over-constrained layouts)
+/// clamp to zero; non-finite widths are a logic error, and callers gate on
+/// `is_finite`.
+///
+/// Separate from the key because `TextSystem`'s reuse rows retain one per
+/// bounded resolve, and eight bytes beside a root key they already hold
+/// beats a second 24-byte key. Computing it *here* rather than by
+/// quantizing through a throwaway key is what keeps the sentinel meaning
+/// one thing: [`TextShapeKey::INVALID`] names a run with no shaped buffer,
+/// never a scratch value to hang a width off.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct WrapBound {
+    max_w_q: u32,
+    halign_q: u8,
+    fit_q: u8,
+}
+
+impl WrapBound {
+    pub(super) fn new(max_width_px: f32, halign: HAlign, fit: LineFit) -> Self {
+        debug_assert!(max_width_px.is_finite(), "text wrap width must be finite");
+        Self {
+            max_w_q: quantize_width(wrap::canonical_wrap_width(max_width_px)).min(MAX_W_NONE - 1),
+            halign_q: match fit {
+                LineFit::Wrap => halign as u8,
+                LineFit::Clip | LineFit::Ellipsis => HAlign::Auto as u8,
+            },
+            fit_q: fit as u8,
         }
     }
 }
