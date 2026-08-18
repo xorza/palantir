@@ -176,9 +176,15 @@ impl TextShapeKey {
     /// bad data — and these run per shape, which release builds must not
     /// pay a check for. The restore path is what forces the round-trip to
     /// exist at all; see `CosmicMeasure::measure_truncated`.
+    ///
+    /// They stay four hand-written functions rather than one generic
+    /// decoder: each has to name its own variants, so a macro or a trait
+    /// would relocate that list rather than remove it. What *is* shared —
+    /// the assumption that tag `n` means the `n`th variant — is pinned
+    /// once by the `const _` assertion below this block instead.
     pub(super) fn family(self) -> FontFamily {
         debug_assert!(
-            self.family_q <= 1,
+            self.family_q <= FontFamily::Mono as u8,
             "invalid FontFamily tag {}",
             self.family_q
         );
@@ -190,7 +196,7 @@ impl TextShapeKey {
 
     pub(super) fn weight(self) -> FontWeight {
         debug_assert!(
-            self.weight_q <= 1,
+            self.weight_q <= FontWeight::Bold as u8,
             "invalid FontWeight tag {}",
             self.weight_q
         );
@@ -201,7 +207,11 @@ impl TextShapeKey {
     }
 
     pub(super) fn halign(self) -> HAlign {
-        debug_assert!(self.halign_q <= 4, "invalid HAlign tag {}", self.halign_q);
+        debug_assert!(
+            self.halign_q <= HAlign::Stretch as u8,
+            "invalid HAlign tag {}",
+            self.halign_q
+        );
         match self.halign_q {
             0 => HAlign::Auto,
             1 => HAlign::Left,
@@ -212,7 +222,11 @@ impl TextShapeKey {
     }
 
     pub(super) fn fit(self) -> LineFit {
-        debug_assert!(self.fit_q <= 2, "invalid LineFit tag {}", self.fit_q);
+        debug_assert!(
+            self.fit_q <= LineFit::Ellipsis as u8,
+            "invalid LineFit tag {}",
+            self.fit_q
+        );
         match self.fit_q {
             0 => LineFit::Wrap,
             1 => LineFit::Clip,
@@ -220,6 +234,27 @@ impl TextShapeKey {
         }
     }
 }
+
+/// Every discriminant the tag decoders resolve positionally.
+///
+/// The decoders map tag `n` to the `n`th variant and let the last arm
+/// swallow everything above it, so a renumbered or reordered variant would
+/// resolve every cached key to the *wrong* one — in release, silently,
+/// with the value still inside the range the `debug_assert`s check. Naming
+/// each discriminant here turns that into a build failure beside the code
+/// that depends on it.
+const _: () = {
+    assert!(FontFamily::Sans as u8 == 0 && FontFamily::Mono as u8 == 1);
+    assert!(FontWeight::Regular as u8 == 0 && FontWeight::Bold as u8 == 1);
+    assert!(
+        HAlign::Auto as u8 == 0
+            && HAlign::Left as u8 == 1
+            && HAlign::Center as u8 == 2
+            && HAlign::Right as u8 == 3
+            && HAlign::Stretch as u8 == 4
+    );
+    assert!(LineFit::Wrap as u8 == 0 && LineFit::Clip as u8 == 1 && LineFit::Ellipsis as u8 == 2);
+};
 
 /// Everything a committed width varies on a [`TextShapeKey`]: the three
 /// fields [`TextShapeKey::with_bound`] writes, and nothing else.
