@@ -77,7 +77,7 @@ impl<'a> TextProbe<'a> {
     /// takes [`ShapedRun::left`] off the buffer's own x, or adds it back
     /// when going the other way.
     fn shaped(&self) -> Option<ShapedRun<'_>> {
-        self.inner.cosmic.as_ref()?.shaped_run(self.request.key)
+        self.inner.cosmic()?.shaped_run(self.request.key)
     }
 
     /// Caret-x for a layout with no shaped buffer.
