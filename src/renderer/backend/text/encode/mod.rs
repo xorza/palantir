@@ -31,12 +31,6 @@ use crate::renderer::render_buffer::text::TextDrawRow;
 use crate::text::key::TextShapeKey;
 use crate::text::render::{self};
 
-use crate::renderer::backend::text::encode::cache::{
-    ENCODED_CACHE_KEEP_FRAMES, EncodedCache, EncodedGlyph,
-};
-
-use crate::renderer::backend::text::GlyphInstance;
-
 pub(super) mod cache;
 pub(super) mod encoder;
 
@@ -114,6 +108,10 @@ pub(super) fn encode_key_for(r: &TextDrawRow, frame_scale: f32) -> EncodedRunKey
 pub(super) mod internals {
     #![allow(dead_code)]
     use super::*;
+    use crate::renderer::backend::text::GlyphInstance;
+    use crate::renderer::backend::text::encode::cache::{
+        ENCODED_CACHE_KEEP_FRAMES, EncodedCache, EncodedGlyph,
+    };
     #[cfg(test)]
     use crate::renderer::backend::text::encoded_counters::EncodedCounts;
 
