@@ -53,14 +53,13 @@ impl EncodedGlyph {
     /// A freed block with `next` as the following block in its size
     /// class.
     ///
-    /// The free list is **intrusive**: a block's first slot holds the
-    /// link, so the per-class index is a single `u32` head rather than a
-    /// `Vec` per class — no second allocation, no pointer chase off to
-    /// the side, and the link lands in the very cache line
-    /// [`EncodedCache::alloc_block`] is about to hand back. It rides in
-    /// `atlas_slot` because a free block is not a glyph: nothing reads
-    /// any field of these slots until the block is re-allocated, and
-    /// re-allocation overwrites them.
+    /// The free list is **intrusive**: a block's first slot holds the link,
+    /// so the per-class index is a single `u32` head rather than a `Vec`
+    /// per class — no second allocation, no pointer chase off to the side,
+    /// and the link lands in the very cache line [`alloc_block`] is about
+    /// to hand back. It rides in `atlas_slot` because a free block is not a
+    /// glyph: nothing reads any field of these slots until the block is
+    /// re-allocated, and re-allocation overwrites them.
     ///
     /// Doubles as the fill for the slack slots of a freshly extended
     /// block, which are equally never read — a row's `span.len` covers
@@ -160,10 +159,11 @@ pub(crate) struct EncodedCache {
     /// Flat by construction: one `u32` per class, and the chain itself
     /// costs nothing because it lives in space that is already free.
     pub(crate) free_heads: Vec<u32>,
-    /// Where [`TextEncoder::encode_run`] accumulates a row's glyphs
-    /// before its final length is known. [`Self::settle`] either copies
-    /// it into a block or drops it, so an incomplete encode costs
-    /// nothing but the clear.
+    /// Where
+    /// [`TextEncoder::encode_run`](super::encoder::TextEncoder::encode_run)
+    /// accumulates a row's glyphs before its final length is known.
+    /// [`Self::settle`] either copies it into a block or drops it, so an
+    /// incomplete encode costs nothing but the clear.
     ///
     /// A separate buffer rather than the arena tail: the tail is no
     /// longer a bump frontier, and sizing the block from the finished
@@ -254,9 +254,10 @@ impl EncodedCache {
         });
     }
 
-    /// Settle the glyphs [`TextEncoder::encode_run`] accumulated in
-    /// `pending`: publish them as `key`'s template when the encode was
-    /// `complete`, else drop them.
+    /// Settle the glyphs
+    /// [`TextEncoder::encode_run`](super::encoder::TextEncoder::encode_run)
+    /// accumulated in `pending`: publish them as `key`'s template when the
+    /// encode was `complete`, else drop them.
     ///
     /// **Only complete encodes may become templates.** `EncodedKey`
     /// carries neither the run's bounds nor the atlas's occupancy, so a
@@ -388,10 +389,10 @@ fn alloc_block(
 /// from inside [`EncodedCache::sweep`]'s drain closure, which already
 /// holds `map` and `probe` borrowed.
 ///
-/// The class is recovered from `span.len` rather than stored: every
-/// block was allocated by [`EncodedCache::alloc_block`] for exactly this
-/// length, so `block_class` maps it back to the list it came from. An
-/// empty span owns no block.
+/// The class is recovered from `span.len` rather than stored: every block
+/// was allocated by [`alloc_block`] for exactly this length, so
+/// `block_class` maps it back to the list it came from. An empty span owns
+/// no block.
 pub(super) fn release(arena: &mut [EncodedGlyph], free_heads: &mut [u32], span: Span) {
     if span.len == 0 {
         return;
@@ -407,11 +408,11 @@ pub(super) fn release(arena: &mut [EncodedGlyph], free_heads: &mut [u32], span: 
     free_heads[class] = span.start;
 }
 
-/// Frames an unused [`EncodedCache`] entry survives before being swept
-/// in [`TextEncoder::end_frame`]. Keeps the cache from growing
-/// unboundedly under a long zoom gesture while comfortably outliving
-/// any short flicker (visibility toggle, hover paint) that drops a run
-/// for a frame.
+/// Frames an unused [`EncodedCache`] entry survives before being swept in
+/// [`TextEncoder::end_frame`](super::encoder::TextEncoder::end_frame).
+/// Keeps the cache from growing unboundedly under a long zoom gesture while
+/// comfortably outliving any short flicker (visibility toggle, hover paint)
+/// that drops a run for a frame.
 ///
 /// # Why this is below [`crate::text::RENDERED_RUN_KEEP_FRAMES`]
 ///
@@ -422,15 +423,15 @@ pub(super) fn release(arena: &mut [EncodedGlyph], free_heads: &mut [u32], span: 
 /// `const _` assertion below is what stops a later edit from inverting
 /// it.
 ///
-/// Making the two *equal* would cost population for nothing.
-/// `EncodedKey` folds `scale_q` and (through [`TextShapeKey`])
-/// `max_w_q`, so a zoom or width drag mints a fresh key per run per
-/// frame that will never be asked for again — and with one window and
-/// no demotion signal each of those lives the full span. The resident
-/// population is `runs × (KEEP + 1)`, so the window *is* the population
-/// multiplier: 120 held 121 frames of dead gesture keys, ~27 MB of
-/// glyph templates for a text-dense drag, on an arena that never
-/// shrinks.
+/// Making the two *equal* would cost population for nothing. `EncodedKey`
+/// folds `scale_q` and (through
+/// [`TextShapeKey`](crate::text::key::TextShapeKey)) `max_w_q`, so a zoom
+/// or width drag mints a fresh key per run per frame that will never be
+/// asked for again — and with one window and no demotion signal each of
+/// those lives the full span. The resident population is
+/// `runs × (KEEP + 1)`, so the window *is* the population multiplier: 120
+/// held 121 frames of dead gesture keys, ~27 MB of glyph templates for a
+/// text-dense drag, on an arena that never shrinks.
 ///
 /// 30 frames is half a second at 60 Hz. What it costs is a re-encode
 /// for a run that goes untouched for 0.5–2 s and then comes back, which

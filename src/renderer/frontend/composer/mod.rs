@@ -1,8 +1,8 @@
 //! Turning a frame of paint calls into the buffer the backend draws.
 //!
 //! [`Composer`] owns the output and the scratch it is built in; a
-//! [`ComposeSession`](session::ComposeSession) is one frame passing through it,
-//! and [`geometry`] is the arithmetic both are cut with.
+//! [`ComposeSession`] is one frame passing through it, and [`geometry`] is
+//! the arithmetic both are cut with.
 
 use crate::display::Display;
 use crate::primitives::span::Span;
@@ -419,10 +419,9 @@ impl Composer {
         }
     }
 
-    /// Open a compose session over `out`: stamp the frame's display,
-    /// reset scratch + walk state, and hand back the sink paint streams
-    /// into. Dropping the [`ComposeSession`] closes the trailing batch
-    /// and group.
+    /// Open a compose session over `out`: stamp the frame's display, reset
+    /// scratch + walk state, and hand back the sink paint streams into.
+    /// Dropping the [`ComposeSession`] closes the trailing batch and group.
     pub(crate) fn begin<'a>(
         &'a mut self,
         display: Display,

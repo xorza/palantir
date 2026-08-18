@@ -3,12 +3,12 @@
 //! exist until measure has run.
 //!
 //! `Scroll` cannot do this while recording. A thumb's extent is a
-//! content/viewport *ratio*, and on a scroll's first frame neither term
-//! is available: the viewport comes from the previous pass's arranged
-//! rect, and the content extent is written by `scroll::measure` into
-//! [`LayerLayout::scroll_content`]. Resolving it here is what lets
-//! `Scroll` record its bars unconditionally instead of asking `Ui` to
-//! re-record the whole frame.
+//! content/viewport *ratio*, and on a scroll's first frame neither term is
+//! available: the viewport comes from the previous pass's arranged rect,
+//! and the content extent is written by `scroll::measure` into
+//! [`LayerLayout::scroll_content`](crate::layout::LayerLayout::scroll_content).
+//! Resolving it here is what lets `Scroll` record its bars unconditionally
+//! instead of asking `Ui` to re-record the whole frame.
 //!
 //! Children are recorded in a fixed order (vertical track, vertical
 //! thumb, horizontal track, horizontal thumb) and an *absent* bar
@@ -46,10 +46,11 @@ pub(crate) fn viewport(outer: Size, reserve_y: f32, reserve_x: f32, padding: Spa
 /// handle to the viewport whose measured content it isn't.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct ScrollbarsDef {
-    /// Viewport node whose [`LayerLayout::scroll_content`] sizes the
-    /// thumbs. Resolved at record time out of the *current* pass's id
-    /// map, so it is valid for exactly the pass that recorded it — the
-    /// tree is rebuilt every pass and every pass re-records this def.
+    /// Viewport node whose
+    /// [`LayerLayout::scroll_content`](crate::layout::LayerLayout::scroll_content)
+    /// sizes the thumbs. Resolved at record time out of the *current*
+    /// pass's id map, so it is valid for exactly the pass that recorded it
+    /// — the tree is rebuilt every pass and every pass re-records this def.
     pub(crate) content: NodeId,
     pub(crate) offset: Vec2,
     pub(crate) zoom: f32,

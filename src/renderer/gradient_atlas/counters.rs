@@ -1,6 +1,5 @@
-//! Observability for the gradient LUT atlas. Built on
-//! [`BenchOnly`](crate::common::counters::BenchOnly), whose module doc
-//! explains the gated-cell pattern and why the two gates exist.
+//! Observability for the gradient LUT atlas. Built on [`BenchOnly`], whose
+//! module doc explains the gated-cell pattern and why the two gates exist.
 //!
 //! On the wider gate rather than test-only because
 //! [`gradient_atlas`](crate::renderer::gradient_atlas::bench) benches

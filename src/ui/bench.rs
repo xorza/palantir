@@ -1,6 +1,6 @@
 //! Per-frame aggregate benchmark — two cleanly-separated benches in one
-//! file, selected by the [`Arms`](crate::bench::Arms) the runner hands
-//! [`bench`] (`cpu` / `gpu` / `both`):
+//! file, selected by the [`Arms`] the runner hands [`bench`](fn@bench)
+//! (`cpu` / `gpu` / `both`):
 //!
 //! - **`bench_cpu`** (`frame/*_cpu`) — palantir's CPU pipeline in
 //!   isolation, driven on a **bare `Ui` + standalone `Frontend` with no

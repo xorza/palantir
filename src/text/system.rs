@@ -135,17 +135,16 @@ impl TextSystem {
     /// Close a `FramePlan::PaintOnly` frame: advance the shared text
     /// clock, and nothing else.
     ///
-    /// A `PaintOnly` frame repaints the retained tree and records
-    /// nothing, so it never reaches [`Self::end_frame`] — and it has no
+    /// A `PaintOnly` frame repaints the retained tree and records nothing,
+    /// so it never reaches [`Self::end_full_record`] — and it has no
     /// `removed` set to sweep against, since no ids were seen. It must
-    /// still tick, because the clock is what every text cache ages on
-    /// and freezing it does more than delay eviction: the glyph atlas
-    /// only considers a slot evictable while `last_use < current_frame`,
-    /// so a stalled clock makes a full atlas unable to reclaim
-    /// *anything*, and every insert starves until a record frame
-    /// arrives. That surfaces as glyphs missing from painted text with
-    /// no path to recovery, which is why this is not merely a retention
-    /// nicety.
+    /// still tick, because the clock is what every text cache ages on and
+    /// freezing it does more than delay eviction: the glyph atlas only
+    /// considers a slot evictable while `last_use < current_frame`, so a
+    /// stalled clock makes a full atlas unable to reclaim *anything*, and
+    /// every insert starves until a record frame arrives. That surfaces as
+    /// glyphs missing from painted text with no path to recovery, which is
+    /// why this is not merely a retention nicety.
     pub(crate) fn end_paint_only(&self) {
         self.shaper.tick_frame();
     }

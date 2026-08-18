@@ -70,10 +70,11 @@ impl CascadeInputHash {
     }
 }
 
-/// All per-layer cascade state grouped on one struct. The
-/// `cascade_inputs`, `subtree_paint_rects`, and `paint_arena` columns
-/// are produced together by [`CascadeEngine::run_tree`], retained together between
-/// frames, and read together by the damage diff and encoder.
+/// All per-layer cascade state grouped on one struct. The `cascade_inputs`,
+/// `subtree_paint_rects`, and `paint_arena` columns are produced together
+/// by [`CascadeEngine::run_tree`](engine::CascadeEngine::run_tree),
+/// retained together between frames, and read together by the damage diff
+/// and encoder.
 ///
 /// ## Columnar split
 ///
@@ -92,7 +93,7 @@ impl CascadeInputHash {
 ///   ancestry lookups — sparse random access, never a walk, so it
 ///   must not fatten the walked columns.
 /// - [`Self::paint_arena`] holds per-paint-row data (chrome + per-shape
-///   [`Paint`]s plus the `node_spans` index). Read only on damage's
+///   [`Paint`](paint::Paint)s plus the `node_spans` index). Read only on damage's
 ///   per-shape legs (vacant insert, hash mismatch, paint-anim lookup),
 ///   so it sits behind a `node_spans[i]` indirection that damage's
 ///   subtree-skip fast path skips entirely.
@@ -106,11 +107,11 @@ pub(crate) struct LayerCascade {
     /// walked part of the tree; comparing this first turns that wasted
     /// half-walk into an immediate full rebuild.
     paint_cardinality: u64,
-    /// `LayerLayout::rect_hash` as of the last full rebuild — the
-    /// arranged geometry these retained rows were built against.
-    /// [`CascadeEngine::can_update`] compares it to the live layout's
-    /// hash to decide whether the retained non-paint columns still
-    /// describe the current arrangement.
+    /// `LayerLayout::rect_hash` as of the last full rebuild — the arranged
+    /// geometry these retained rows were built against.
+    /// [`CascadeEngine::can_update`](engine::CascadeEngine::can_update)
+    /// compares it to the live layout's hash to decide whether the retained
+    /// non-paint columns still describe the current arrangement.
     layout_hash: ContentHash,
     /// Per-node `cascade_input` fingerprint, indexed the same way as
     /// `Tree::records`: `cascade_inputs[node.idx()]`. Packs the
@@ -121,13 +122,14 @@ pub(crate) struct LayerCascade {
     pub(crate) cascade_inputs: Vec<CascadeInputHash>,
     /// Per-node subtree paint rect — the node's own paint extent rolled
     /// up with every descendant's `subtree_paint_rects[i]`. Computed
-    /// inline in [`CascadeEngine::run_tree`] via a stack-frame accumulator. Read by
-    /// the encoder for the viewport + damage subtree culls where
-    /// "may I skip the whole subtree?" must consider overhanging
-    /// descendants — Canvas-positioned children outside the parent's
-    /// `Fixed` bound, shapes with negative-margin overhang, etc.
-    /// Invisible subtrees seed with `Rect::ZERO` so a long-lived
-    /// hidden subtree doesn't keep the cull from firing at ancestors.
+    /// inline in [`CascadeEngine::run_tree`](engine::CascadeEngine::run_tree)
+    /// via a stack-frame accumulator. Read by the encoder for the
+    /// viewport + damage subtree culls where "may I skip the whole
+    /// subtree?" must consider overhanging descendants — Canvas-positioned
+    /// children outside the parent's `Fixed` bound, shapes with
+    /// negative-margin overhang, etc. Invisible subtrees seed with
+    /// `Rect::ZERO` so a long-lived hidden subtree doesn't keep the cull
+    /// from firing at ancestors.
     pub(crate) subtree_paint_rects: Vec<Rect>,
     /// Previous authoring hashes used to skip unchanged subtrees.
     /// Dirty ancestors recompute their own paint rows, so no separate

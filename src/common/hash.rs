@@ -83,13 +83,12 @@ impl Hasher {
     /// two different splits of the same bytes collide.
     ///
     /// **Not hash-equal to a per-element [`Self::pod`] loop.**
-    /// `FxHasher::write` consumes its input in `usize`-sized chunks, so
-    /// one 16-byte write and two 8-byte writes end in different states.
-    /// Switching a loop to this method changes the value it produces —
-    /// fine for a hash only ever compared against itself (a cache key
-    /// recomputed each run), wrong for anything persisted or compared
-    /// across a version boundary. Pinned by
-    /// [`pod_slice_differs_from_element_wise_pod`].
+    /// `FxHasher::write` consumes its input in `usize`-sized chunks, so one
+    /// 16-byte write and two 8-byte writes end in different states.
+    /// Switching a loop to this method changes the value it produces — fine
+    /// for a hash only ever compared against itself (a cache key recomputed
+    /// each run), wrong for anything persisted or compared across a version
+    /// boundary. Pinned by `pod_slice_differs_from_element_wise_pod`.
     #[inline]
     pub(crate) fn pod_slice<T: bytemuck::NoUninit>(&mut self, v: &[T]) {
         self.0.write(bytemuck::cast_slice(v));

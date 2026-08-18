@@ -1,13 +1,12 @@
-//! Build-gated observability for the layout pass. Built on
-//! [`TestOnly`](crate::common::counters::TestOnly), whose module doc
-//! explains the gated-cell pattern and why the gates differ between
-//! passes.
+//! Build-gated observability for the layout pass. Built on [`TestOnly`],
+//! whose module doc explains the gated-cell pattern and why the gates
+//! differ between passes.
 //!
-//! Test-only rather than the wider gate because [`Self::cache_hit`]
-//! pushes to a `Vec` on *every* cache hit, which in steady state is
-//! every subtree root — the alloc bench requires `bench` and
-//! asserts steady-state frames allocate nothing, so it would end up
-//! measuring this probe instead of the frame.
+//! Test-only rather than the wider gate because
+//! [`LayoutCounters::cache_hits`] pushes to a `Vec` on *every* cache hit,
+//! which in steady state is every subtree root — the alloc bench requires
+//! `bench` and asserts steady-state frames allocate nothing, so it would
+//! end up measuring this probe instead of the frame.
 //!
 //! ## The one field still hand-gated
 //!

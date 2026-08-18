@@ -1,6 +1,6 @@
 //! Layout-side scroll driver. Measure records the content extent on
-//! [`LayerLayout::scroll_content`]; arrange delegates child placement
-//! to the matching stack driver.
+//! [`LayerLayout::scroll_content`](crate::layout::LayerLayout::scroll_content);
+//! arrange delegates child placement to the matching stack driver.
 
 use crate::layout::axis::Axis;
 use crate::layout::pass::LayoutPass;

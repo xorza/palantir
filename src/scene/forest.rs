@@ -266,10 +266,10 @@ impl Forest {
         );
     }
 
-    /// Lower a user-facing [`Shape`] (curve flattening, span
-    /// stamping, hashing) and append it to the active tree's shape
-    /// buffer. Asserts a node is currently open so widgets can't leak
-    /// shapes outside an `open_node` / `close_node` scope.
+    /// Lower a user-facing [`Shape`](crate::Shape) (curve flattening, span
+    /// stamping, hashing) and append it to the active tree's shape buffer.
+    /// Asserts a node is currently open so widgets can't leak shapes
+    /// outside an `open_node` / `close_node` scope.
     pub(crate) fn add_shape<S: Lower>(&mut self, shape: S) {
         self.push_shape("add_shape", |tree, store| tree.shapes.add(shape, store));
     }
@@ -278,11 +278,11 @@ impl Forest {
     /// [`ShapeRecord::Image`](crate::scene::shapes::record::ShapeRecord::Image)
     /// sourced from an
     /// [`ImageSource::GpuView`](crate::scene::shapes::paint::ImageSource::GpuView))
-    /// to the active
-    /// node. Only the redraw `epoch` rides the shape — the view's `id` + app
-    /// `paint` live in `Ui::gpu_views` keyed by the owner's `WidgetId`; this is
-    /// assembled by `Ui::gpu_view`, not lowered from a user-facing [`Shape`],
-    /// so it skips the lowering path and can never noop-collapse.
+    /// to the active node. Only the redraw `epoch` rides the shape — the
+    /// view's `id` + app `paint` live in `Ui::gpu_views` keyed by the
+    /// owner's `WidgetId`; this is assembled by `Ui::gpu_view`, not lowered
+    /// from a user-facing [`Shape`](crate::Shape), so it skips the lowering
+    /// path and can never noop-collapse.
     pub(crate) fn add_gpu_view(&mut self, epoch: u64) {
         self.push_shape("add_gpu_view", |tree, _| {
             tree.shapes.add_gpu_view(epoch);

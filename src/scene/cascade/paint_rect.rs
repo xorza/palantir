@@ -1,7 +1,8 @@
 //! How much of the screen one node's paint can reach, and what the damage of
 //! it comes to.
 
-//! The cascade walk: [`CascadeEngine`] and the scratch it carries.
+//! The cascade walk: [`CascadeEngine`](super::engine::CascadeEngine) and
+//! the scratch it carries.
 //!
 //! Mirrors `layout::engine` — the module root holds the retained
 //! product, this file holds the machinery that fills it.

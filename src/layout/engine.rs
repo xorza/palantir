@@ -71,7 +71,8 @@ use crate::text::system::TextSystem;
 ///
 /// `arrange_src` is the one category-(2) field arrange *consumes* rather
 /// than reads through: measure stamps the snapshot arena base of every
-/// subtree it short-circuited, and [`LayoutEngine::replay_arranged`]
+/// subtree it short-circuited, and
+/// [`LayoutPass::replay_arranged`](crate::layout::pass::LayoutPass::replay_arranged)
 /// replays that subtree's rects instead of re-running the drivers.
 #[derive(Debug, Default)]
 pub(crate) struct LayoutScratch {

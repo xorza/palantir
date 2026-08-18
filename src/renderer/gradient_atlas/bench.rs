@@ -40,10 +40,11 @@
 //!   is what a per-frame animated gradient produces, and the arm the
 //!   old O(capacity) probe-plus-LRU-scan dominated.
 //!
-//! Both arms assert against [`GradientAtlasCounters`] before measuring, so
-//! a fixture that quietly stopped doing what its name says fails loudly
-//! instead of reporting a plausible-looking time. `miss/*` in particular
-//! would read as a *speedup* if it started hitting.
+//! Both arms assert against
+//! [`GradientAtlasCounters`](super::counters::GradientAtlasCounters) before
+//! measuring, so a fixture that quietly stopped doing what its name says
+//! fails loudly instead of reporting a plausible-looking time. `miss/*` in
+//! particular would read as a *speedup* if it started hitting.
 //!
 //! Requires the `internals` feature. Run with
 //! `cargo bench --features bench --bench criterion -- gradient_atlas`.

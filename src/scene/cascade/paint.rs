@@ -50,9 +50,9 @@ pub(crate) struct PaintArena {
 }
 
 impl PaintArena {
-    /// Reset both columns for a new frame. `n_nodes` resizes
-    /// `node_spans`; every retained slot is overwritten by
-    /// [`compute_paint_rect`].
+    /// Reset both columns for a new frame. `n_nodes` resizes `node_spans`;
+    /// every retained slot is overwritten by
+    /// [`compute_paint_rect`](super::paint_rect::compute_paint_rect).
     ///
     /// `rows` is cleared and seeded with `n_nodes` — a rough seed, not a
     /// bound in either direction. The row count tracks chrome rows,

@@ -1,6 +1,5 @@
-//! Observability for the shaped-buffer cache. Built on
-//! [`TestOnly`](crate::common::counters::TestOnly), whose module doc
-//! explains the gated-cell pattern and why the two gates exist.
+//! Observability for the shaped-buffer cache. Built on [`TestOnly`], whose
+//! module doc explains the gated-cell pattern and why the two gates exist.
 //!
 //! ## What this exists to separate
 //!
@@ -27,10 +26,9 @@ use crate::common::counters::TestOnly;
 
 /// What the shaped-buffer cache did.
 ///
-/// The counters are reached through directly rather than through
-/// per-field forwarders: [`TestOnly`] already owns the gate, so
-/// `probe.hits.bump()` is the whole call site and a wrapper would only
-/// restate the field name.
+/// The counters are reached through directly rather than through per-field
+/// forwarders: [`TestOnly`] already owns the gate, so `probe.hits.bump()`
+/// is the whole call site and a wrapper would only restate the field name.
 #[derive(Debug, Default)]
 pub(crate) struct CacheCounters {
     /// Runs actually pushed through cosmic — `set_text` plus
