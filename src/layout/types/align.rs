@@ -6,6 +6,12 @@ use crate::primitives::size::Size;
 /// `Auto` defers to the parent's `child_align` (if set) and then to the
 /// child's own cross-axis `Sizing` (Fill → stretch, otherwise → start). Any
 /// non-`Auto` variant overrides both.
+///
+/// `#[repr(u8)]` with explicit discriminants pins the on-disk tag:
+/// `TextShapeKey::halign_q` stores this as a byte and decodes it back
+/// positionally, so a reordered variant would resolve every cached shaped
+/// buffer to the wrong alignment. The same reason
+/// [`FontFamily`](crate::FontFamily) pins its own.
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum HAlign {
@@ -13,34 +19,62 @@ pub enum HAlign {
     /// cross-axis [`Sizing`](crate::Sizing) — `Fill` stretches, anything
     /// else starts.
     #[default]
-    Auto,
+    Auto = 0,
     /// Pin to the inner rect's left edge.
-    Left,
+    Left = 1,
     /// Center within the inner rect.
-    Center,
+    Center = 2,
     /// Pin to the inner rect's right edge.
-    Right,
+    Right = 3,
     /// Fill the inner rect's width, overriding the child's measured width.
-    Stretch,
+    Stretch = 4,
 }
 
 /// Vertical alignment of a child inside its parent's inner rect. See
 /// [`HAlign`] for the `Auto` resolution rule.
+///
+/// Discriminants are pinned for the reason [`HAlign`]'s are: [`Align`]
+/// packs this into three bits and [`Align::valign`] unpacks it
+/// positionally.
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum VAlign {
     /// Inherit, by the same rule as [`HAlign::Auto`].
     #[default]
-    Auto,
+    Auto = 0,
     /// Pin to the inner rect's top edge.
-    Top,
+    Top = 1,
     /// Center within the inner rect.
-    Center,
+    Center = 2,
     /// Pin to the inner rect's bottom edge.
-    Bottom,
+    Bottom = 3,
     /// Fill the inner rect's height, overriding the child's measured height.
-    Stretch,
+    Stretch = 4,
 }
+
+/// Both alignment enums' discriminants, which [`Align::new`] packs into
+/// bits and [`Align::halign`] / [`Align::valign`] unpack positionally.
+///
+/// A reordered variant would decode every packed `Align` to the wrong one
+/// — silently, since the bits stay inside the mask and the `unreachable!`
+/// arms never fire. `TextShapeKey` decodes `HAlign` the same way off a
+/// stored tag byte, so this guards that too.
+const _: () = {
+    assert!(
+        HAlign::Auto as u8 == 0
+            && HAlign::Left as u8 == 1
+            && HAlign::Center as u8 == 2
+            && HAlign::Right as u8 == 3
+            && HAlign::Stretch as u8 == 4
+    );
+    assert!(
+        VAlign::Auto as u8 == 0
+            && VAlign::Top as u8 == 1
+            && VAlign::Center as u8 == 2
+            && VAlign::Bottom as u8 == 3
+            && VAlign::Stretch as u8 == 4
+    );
+};
 
 /// Two-axis alignment packed into a single byte. Lower 3 bits hold the
 /// `HAlign`, next 3 hold the `VAlign`. Recorded inside `PackedLayoutMeta`.
