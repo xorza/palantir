@@ -503,7 +503,7 @@ mod internals {
         }
 
         /// Advance the shared clock by one frame and sweep — what
-        /// `ShaperInner::tick_frame` does for a measurer reached through
+        /// `TextShaper::tick_frame` does for a measurer reached through
         /// a `TextShaper`. The retention tests drive `CosmicMeasure`
         /// directly, with no shaper to hold the clock, so they own the
         /// tick; production never increments here.
