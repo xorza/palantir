@@ -1,5 +1,6 @@
-//! Observability for the encoded-run cache. Built on [`TestOnly`], whose
-//! module doc explains the gated-cell pattern and why the two gates exist.
+//! Observability for the encoded-run cache. Built on
+//! [`TestOnly`](crate::common::counters::TestOnly), whose module doc
+//! explains the gated-cell pattern and why the two gates exist.
 //!
 //! These were added to size a probation tier for gesture churn, which
 //! the measurement then argued *against* building for now — so every
@@ -26,23 +27,30 @@
 //! Counters accumulate for the life of the backend, so readers take a
 //! delta.
 
-use crate::common::counters::TestOnly;
+use crate::common::counters::counter_snapshot;
 
-/// What the encoded-run cache did.
-#[derive(Debug, Default)]
-pub(super) struct EncodedCounters {
+counter_snapshot! {
+    /// What the encoded-run cache did.
+    pub(super) struct EncodedCounters;
+
+    /// One reading of an [`EncodedCounters`]'s tallies. Subtract two to get
+    /// what a span of frames did — the counters accumulate for the life of
+    /// the backend. Copied out rather than borrowed so a caller can hold a
+    /// "before" reading across calls that need the backend again.
+    pub(crate) struct EncodedCounts;
+
     /// Runs pushed through the full miss path — glyph extraction through
     /// the shaper lease, then an atlas touch or rasterization per glyph.
     /// The cost every other counter here exists to explain.
-    pub(super) encodes: TestOnly<u32>,
+    encodes,
     /// Runs emitted from a resident template, origin-shifted.
-    pub(super) hits: TestOnly<u32>,
+    hits,
     /// Rows dropped by the sweep because their window lapsed.
-    pub(super) expiries: TestOnly<u32>,
+    expiries,
     /// Tickets whose row was still live, so the sweep re-filed rather
     /// than dropped. The per-frame drain cost, and the number a
     /// probation tier is meant to cut.
-    pub(super) refiles: TestOnly<u32>,
+    refiles,
     /// Rows that took a recycled block off a free list.
     ///
     /// Paired with [`Self::block_allocs`], this is the whole health
@@ -51,57 +59,11 @@ pub(super) struct EncodedCounters {
     /// landing in size classes their predecessors freed. `reuses`
     /// climbing while `allocs` stays flat is the statement "the arena
     /// has reached its working set and stopped growing".
-    pub(super) block_reuses: TestOnly<u32>,
+    block_reuses,
     /// Rows that had to extend the arena because their size class had no
     /// free block. Expected during warm-up and whenever a genuinely new
     /// row length appears; a workload where this never settles is one
     /// whose row lengths keep drifting across class boundaries, and its
     /// arena grows to the sum of every class's peak.
-    pub(super) block_allocs: TestOnly<u32>,
-}
-
-/// Reads are gated with the counters themselves.
-#[cfg(test)]
-impl EncodedCounters {
-    pub(super) fn counts(&self) -> EncodedCounts {
-        EncodedCounts {
-            encodes: self.encodes.count(),
-            hits: self.hits.count(),
-            expiries: self.expiries.count(),
-            refiles: self.refiles.count(),
-            block_reuses: self.block_reuses.count(),
-            block_allocs: self.block_allocs.count(),
-        }
-    }
-}
-
-/// One reading of an [`EncodedCounters`]'s tallies. Subtract two to get
-/// what a span of frames did — the counters accumulate for the life of
-/// the backend. Copied out rather than borrowed so a caller can hold a
-/// "before" reading across calls that need the backend again.
-#[cfg(test)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct EncodedCounts {
-    pub(crate) encodes: u32,
-    pub(crate) hits: u32,
-    pub(crate) expiries: u32,
-    pub(crate) refiles: u32,
-    pub(crate) block_reuses: u32,
-    pub(crate) block_allocs: u32,
-}
-
-#[cfg(test)]
-impl std::ops::Sub for EncodedCounts {
-    type Output = Self;
-
-    fn sub(self, base: Self) -> Self {
-        Self {
-            encodes: self.encodes - base.encodes,
-            hits: self.hits - base.hits,
-            expiries: self.expiries - base.expiries,
-            refiles: self.refiles - base.refiles,
-            block_reuses: self.block_reuses - base.block_reuses,
-            block_allocs: self.block_allocs - base.block_allocs,
-        }
-    }
+    block_allocs,
 }
