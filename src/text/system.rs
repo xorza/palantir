@@ -219,7 +219,9 @@ impl TextSystem {
         let size = match entry.wrap.filter(|slot| slot.key == slot_key) {
             Some(slot) => slot.size,
             None => {
-                let size = shaper.shape_bounded(request.bounded(width, halign, fit));
+                let size = shaper
+                    .shape(request.bounded(width, halign, fit), WrapFloor::Skip)
+                    .size;
                 // The width this row used to answer is now unreachable
                 // through it. A resize drag leaves the *unbounded* key
                 // alone and replaces only this slot, so it is the drag's
@@ -266,7 +268,7 @@ impl TextSystem {
     ) -> &'a mut TextReuseEntry {
         let fresh = || TextReuseEntry {
             key: request.key,
-            root: shaper.shape_root(request, floor),
+            root: shaper.shape(request, floor),
             wrap: None,
         };
         let entry = entries
@@ -276,7 +278,7 @@ impl TextSystem {
             let stale = std::mem::replace(entry, fresh());
             retire_row(shaper, &stale);
         } else if floor == WrapFloor::Scan && entry.root.intrinsic_min.is_none() {
-            entry.root = shaper.shape_root(request, WrapFloor::Scan);
+            entry.root = shaper.shape(request, WrapFloor::Scan);
         }
         entry
     }

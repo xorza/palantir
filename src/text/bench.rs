@@ -130,11 +130,11 @@ fn bench_reuse_layer(c: &mut Criterion) {
     c.bench_function("text_shape/reuse_layer/single_line_dispatch_x64", |b| {
         let shaper = TextShaper::new();
         for text in &labels {
-            shaper.shape_root(request_for(text), WrapFloor::Skip);
+            shaper.shape(request_for(text), WrapFloor::Skip);
         }
         b.iter(|| {
             for text in &labels {
-                black_box(shaper.shape_root(request_for(text), WrapFloor::Skip));
+                black_box(shaper.shape(request_for(text), WrapFloor::Skip));
             }
         });
     });
@@ -168,18 +168,20 @@ fn bench_reuse_layer(c: &mut Criterion) {
         let shaper = TextShaper::new();
         for text in &labels {
             let request = request_for(text);
-            shaper.shape_root(request, WrapFloor::Skip);
-            shaper.shape_bounded(request.bounded(WRAP_W, HAlign::Left, LineFit::Wrap));
+            shaper.shape(request, WrapFloor::Skip);
+            shaper.shape(
+                request.bounded(WRAP_W, HAlign::Left, LineFit::Wrap),
+                WrapFloor::Skip,
+            );
         }
         b.iter(|| {
             for text in &labels {
                 let request = request_for(text);
-                black_box(shaper.shape_root(request, WrapFloor::Skip));
-                black_box(shaper.shape_bounded(request.bounded(
-                    WRAP_W,
-                    HAlign::Left,
-                    LineFit::Wrap,
-                )));
+                black_box(shaper.shape(request, WrapFloor::Skip));
+                black_box(shaper.shape(
+                    request.bounded(WRAP_W, HAlign::Left, LineFit::Wrap),
+                    WrapFloor::Skip,
+                ));
             }
         });
     });

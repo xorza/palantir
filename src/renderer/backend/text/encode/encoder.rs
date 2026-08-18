@@ -9,10 +9,10 @@
 //!   scale, subpixel origin bin, area color)` run out into the atlas;
 //!   the resulting origin-relative `GlyphInstance` templates are stored
 //!   in the [`EncodedCache`]. Emit = a copy with origin-shifted
-//!   positions, no shaper session, no per-glyph atlas hashmap lookup.
+//!   positions, no shaper lease, no per-glyph atlas hashmap lookup.
 //!   This is the ~37% of frame time we're targeting.
 //! - **Cache miss**: extracts the run's glyph placements through the
-//!   shaper's render-session lease, touches/inserts atlas slots, emits
+//!   shaper's glyph lease, touches/inserts atlas slots, emits
 //!   to `out`, and populates the cache entry with the origin-relative
 //!   templates so the next frame at the same `(key, scale, bins,
 //!   color)` lands on the fast path. Runs that came out short — lines
@@ -27,9 +27,8 @@
 //! re-checks it while emitting. Atlas growth preserves rects
 //! (`etagere::grow`), so no invalidation is needed there.
 
-use crate::text::render::{
-    GlyphImageKind, GlyphRasterKey, PlacedGlyph, RunPlacement, TextRenderSession,
-};
+use crate::text::glyphs::TextGlyphs;
+use crate::text::render::{GlyphImageKind, GlyphRasterKey, PlacedGlyph, RunPlacement};
 use crate::text::request::TextShapeRequest;
 
 use crate::renderer::backend::text::atlas::{GlyphAtlas, PackedGlyphMetadata};
@@ -163,7 +162,7 @@ impl TextEncoder {
     }
 
     /// Encode one run that missed the encoded cache: extract its glyph
-    /// placements through the shaper `session` (which restores evicted
+    /// placements through the shaper's glyph lease (which restores evicted
     /// buffers and applies the y-cull), touch/insert atlas slots, emit
     /// `GlyphInstance`s and populate the encoded cache as a side
     /// effect. Callers are expected to have already filtered out
@@ -171,7 +170,7 @@ impl TextEncoder {
     pub(crate) fn encode_run(
         &mut self,
         device: &wgpu::Device,
-        session: &mut TextRenderSession<'_>,
+        glyphs: &mut TextGlyphs<'_>,
         request: TextShapeRequest<'_>,
         placement: RunPlacement,
         run_key: EncodedRunKey,
@@ -184,7 +183,7 @@ impl TextEncoder {
 
         // `culled` records whether the extraction dropped any line — see
         // `EncodedCache::settle` for why that bars caching.
-        let culled = session.extract_glyphs(request, placement, &mut self.placed);
+        let culled = glyphs.extract_glyphs(request, placement, &mut self.placed);
         // …and `starved` the same for a glyph the atlas had no room for.
         let mut starved = false;
 
@@ -200,16 +199,14 @@ impl TextEncoder {
         for g in self.placed.iter() {
             let idx = match self.atlas.touch(&g.raster_key) {
                 Some(i) => i,
-                None => {
-                    match rasterize_and_insert(device, session, &mut self.atlas, g.raster_key) {
-                        Rasterized::Slot(i) => i,
-                        Rasterized::NoImage => continue,
-                        Rasterized::AtlasFull => {
-                            starved = true;
-                            continue;
-                        }
+                None => match rasterize_and_insert(device, glyphs, &mut self.atlas, g.raster_key) {
+                    Rasterized::Slot(i) => i,
+                    Rasterized::NoImage => continue,
+                    Rasterized::AtlasFull => {
+                        starved = true;
+                        continue;
                     }
-                }
+                },
             };
             let slot = self.atlas.slots[idx as usize];
 
@@ -279,17 +276,17 @@ enum Rasterized {
     AtlasFull,
 }
 
-/// Cache miss path: ask the shaper session for the bitmap, push into
+/// Cache miss path: ask the shaper's glyph lease for the bitmap, push into
 /// the atlas. A free fn, not a `TextEncoder` method: it's called while
 /// `self.placed` is being iterated, so it may borrow only the disjoint
 /// atlas field.
 fn rasterize_and_insert(
     device: &wgpu::Device,
-    session: &mut TextRenderSession<'_>,
+    glyphs: &mut TextGlyphs<'_>,
     atlas: &mut GlyphAtlas,
     key: GlyphRasterKey,
 ) -> Rasterized {
-    let Some(image) = session.rasterize(key) else {
+    let Some(image) = glyphs.rasterize(key) else {
         return Rasterized::NoImage;
     };
     let content = match image.kind {

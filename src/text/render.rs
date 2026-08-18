@@ -1,66 +1,12 @@
 //! Palantir-native vocabulary for the render side of the shaper: the wgpu
-//! text backend drives `CosmicMeasure` through these glyph placements
+//! text backend drives the measurer through these glyph placements
 //! ([`PlacedGlyph`]) and bitmaps ([`GlyphImage`]), so cosmic types
 //! (`Buffer`, `FontSystem`, `SwashCache`) never cross out of `src/text/`.
-//! `TextShaper::render_session` leases the measurer for the duration of
-//! one batch's encoded-cache misses; the backend's all-hit fast path
-//! never opens one.
+//! [`TextGlyphs`](crate::TextGlyphs) is the lease it drives them through.
 
-use crate::primitives::size::Size;
 use crate::primitives::urect::URect;
-use crate::text::cosmic::CosmicMeasure;
-use crate::text::request::TextShapeRequest;
-use crate::text::wrap::WrapFloor;
 use cosmic_text::{CacheKey, SubpixelBin};
 use glam::Vec2;
-use std::cell::RefMut;
-
-/// Exclusive render-side lease on the shared shaper, minted by
-/// `TextShaper::render_session`. The backend drives shaping through this
-/// and never names [`CosmicMeasure`], which keeps `text::cosmic` private
-/// to this module tree; dropping the lease releases the `RefCell` borrow.
-#[derive(Debug)]
-pub(crate) struct TextRenderSession<'a> {
-    cosmic: RefMut<'a, CosmicMeasure>,
-}
-
-impl<'a> TextRenderSession<'a> {
-    pub(super) fn new(cosmic: RefMut<'a, CosmicMeasure>) -> Self {
-        Self { cosmic }
-    }
-
-    /// Resolve one run's glyphs, restoring an evicted shaped buffer on the
-    /// way. Returns whether any line was y-culled (partial extractions
-    /// must not be cached).
-    pub(crate) fn extract_glyphs(
-        &mut self,
-        request: TextShapeRequest<'_>,
-        placement: RunPlacement,
-        out: &mut Vec<PlacedGlyph>,
-    ) -> bool {
-        self.cosmic.extract_glyphs(request, placement, out)
-    }
-
-    /// Rasterize one glyph; `None` when the face cannot produce an image.
-    pub(crate) fn rasterize(&mut self, key: GlyphRasterKey) -> Option<GlyphImage> {
-        self.cosmic.rasterize_glyph(key)
-    }
-
-    /// Shape one run and answer how far it reaches, without walking its glyphs.
-    ///
-    /// Through the lease rather than through [`TextShaper::shape_root`], which
-    /// is the same measurement by a route this cannot take: the lease *is* the
-    /// shaper's borrow, and asking the shaper again while holding one would
-    /// panic on the second `borrow_mut`.
-    ///
-    /// [`TextShaper::shape_root`]: crate::text::shaper::TextShaper::shape_root
-    pub(crate) fn measure(&mut self, request: TextShapeRequest<'_>) -> Size {
-        if request.text.is_empty() {
-            return Size::ZERO;
-        }
-        self.cosmic.shape(request, WrapFloor::Skip).size
-    }
-}
 
 /// Physical-px placement of one text run, input to glyph extraction.
 #[derive(Clone, Copy, Debug)]

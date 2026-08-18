@@ -36,9 +36,6 @@ use crate::renderer::frontend::composer::geometry::{
     scissor_from_logical, snap_text_scale, spin_pivot, stroke_bbox_urect, sub_instance_count,
     urect_from_phys,
 };
-#[cfg(feature = "bench")]
-// `pub(crate)` only so the `text_grid` benchmark can reach the gated
-// `internals` harness; every item inside stays `pub(super)`.
 use crate::renderer::frontend::composer::{ClipFrame, Composer, PolylineScratch};
 
 /// One compose pass in flight: the running walk transform bound to the

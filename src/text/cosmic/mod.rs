@@ -14,7 +14,7 @@
 //! a deadline wheel, so it costs what expires rather than what is
 //! resident — see [`CosmicMeasure::expiry`].
 //!
-//! The render side never sees cosmic types: `TextShaper::render_session`
+//! The render side never sees cosmic types: `TextShaper::glyphs`
 //! lends a `RefMut<CosmicMeasure>` whose
 //! [`CosmicMeasure::extract_glyphs`] / [`CosmicMeasure::rasterize_glyph`]
 //! translate shaped buffers into palantir-native placements and bitmaps;

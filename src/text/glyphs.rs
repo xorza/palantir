@@ -15,12 +15,13 @@
 
 use crate::primitives::size::Size;
 use crate::primitives::urect::URect;
-use crate::text::render::{
-    GlyphImage, GlyphRasterKey, PlacedGlyph, RunPlacement, TextRenderSession,
-};
+use crate::text::cosmic::CosmicMeasure;
+use crate::text::render::{GlyphImage, GlyphRasterKey, PlacedGlyph, RunPlacement};
 use crate::text::request::TextShapeRequest;
+use crate::text::wrap::WrapFloor;
 use crate::text::{FontFamily, FontWeight};
 use glam::Vec2;
+use std::cell::RefMut;
 
 /// Which face to shape in, and how big.
 ///
@@ -65,14 +66,38 @@ impl GlyphFont {
 ///
 /// Minted by [`TextShaper::glyphs`](crate::TextShaper::glyphs), which a
 /// `GpuView` reaches through [`GpuInitCtx`](crate::GpuInitCtx).
+///
+/// **Palantir's own text backend holds one too**, for the length of a batch's
+/// encoded-cache misses — its `extract_glyphs` is the crate-facing half of
+/// [`Self::line`], with the y-cull and the run placement a widget's own
+/// scissor makes unnecessary. One lease type rather than two: the backend and
+/// a `GpuView` want the same three answers off the same borrow, and a second
+/// wrapper around it only restated the signatures. Cosmic types stay inside
+/// `src/text/` because the field is private, not because a further type is
+/// interposed.
 #[derive(Debug)]
 pub struct TextGlyphs<'a> {
-    session: TextRenderSession<'a>,
+    cosmic: RefMut<'a, CosmicMeasure>,
 }
 
 impl<'a> TextGlyphs<'a> {
-    pub(crate) fn new(session: TextRenderSession<'a>) -> Self {
-        Self { session }
+    pub(super) fn new(cosmic: RefMut<'a, CosmicMeasure>) -> Self {
+        Self { cosmic }
+    }
+
+    /// Resolve one run's glyphs at `placement`, restoring an evicted shaped
+    /// buffer on the way. Returns whether any line was y-culled — a partial
+    /// extraction must not become a renderer cache template.
+    ///
+    /// [`Self::line`] is this without the placement: a caller drawing into its
+    /// own target positions the run itself and clips with its own scissor.
+    pub(crate) fn extract_glyphs(
+        &mut self,
+        request: TextShapeRequest<'_>,
+        placement: RunPlacement,
+        out: &mut Vec<PlacedGlyph>,
+    ) -> bool {
+        self.cosmic.extract_glyphs(request, placement, out)
     }
 
     /// Lay `text` out as one unwrapped line at `scale`, rewriting `out` with a
@@ -101,8 +126,7 @@ impl<'a> TextGlyphs<'a> {
             out.clear();
             return;
         }
-        self.session
-            .extract_glyphs(request(text, font), placement(scale), out);
+        self.extract_glyphs(request(text, font), placement(scale), out);
     }
 
     /// How far `text` reaches when laid out in `font` at `scale`, in physical
@@ -116,7 +140,9 @@ impl<'a> TextGlyphs<'a> {
     /// The shaper caches the shaped buffer, so asking this and then
     /// [`TextGlyphs::line`] for the same run shapes once.
     pub fn measure(&mut self, text: &str, font: GlyphFont, scale: f32) -> Size {
-        let Size { w, h } = self.session.measure(request(text, font));
+        // Empty text answers inside `shape`, which is where every entry point
+        // into the measurer answers it — this one needs no guard of its own.
+        let Size { w, h } = self.cosmic.shape(request(text, font), WrapFloor::Skip).size;
         Size {
             w: w * scale,
             h: h * scale,
@@ -130,7 +156,7 @@ impl<'a> TextGlyphs<'a> {
     /// the same call palantir's own text backend makes on an atlas miss, and
     /// caching it twice would be paying for a copy nobody reads.
     pub fn rasterize(&mut self, glyph: GlyphRasterKey) -> Option<GlyphImage> {
-        self.session.rasterize(glyph)
+        self.cosmic.rasterize_glyph(glyph)
     }
 }
 

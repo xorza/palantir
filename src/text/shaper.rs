@@ -1,11 +1,9 @@
 //! The app-global shaping coordinator every window measures through.
 
-use crate::primitives::size::Size;
 use crate::text::cosmic::CosmicMeasure;
 use crate::text::glyphs::TextGlyphs;
 use crate::text::key::TextShapeKey;
-use crate::text::probe::layout::TextLayoutProbe;
-use crate::text::render::TextRenderSession;
+use crate::text::probe::TextProbe;
 use crate::text::request::TextShapeRequest;
 use crate::text::root::TextRoot;
 use crate::text::wrap::WrapFloor;
@@ -37,7 +35,7 @@ pub struct TextShaper {
 /// Both [`crate::Ui`] (layout-time measurement) and
 /// [`crate::renderer::backend::WgpuBackend`]
 /// (shaping during render) borrow this; backend only touches `cosmic` via
-/// [`TextShaper::render_session`].
+/// [`TextShaper::glyphs`].
 #[derive(Debug)]
 pub(crate) struct ShaperInner {
     /// `None` ⇒ the test/internals-only mono fallback. `TextShaper::new`
@@ -45,8 +43,8 @@ pub(crate) struct ShaperInner {
     /// `None` construction, so production never observes it.
     ///
     /// Visible to the module tree because
-    /// [`TextLayoutProbe`](crate::text::probe::layout::TextLayoutProbe)
-    /// reads it through the borrow it holds.
+    /// [`TextProbe`](crate::text::probe::TextProbe) reads it through the
+    /// borrow it holds.
     pub(super) cosmic: Option<CosmicMeasure>,
     /// **The** frame clock every text cache ages against — the shaped
     /// buffers here, and the encoded-run cache plus glyph atlas in
@@ -88,20 +86,6 @@ impl ShaperInner {
             frame: 0,
             #[cfg(any(test, feature = "internals"))]
             measure_calls: 0,
-        }
-    }
-
-    /// Advance the shared clock and age out the ordinary content cache.
-    /// Layout and reuse entries may retain dropped keys because the
-    /// encoder reconstructs every emitted run.
-    ///
-    /// The tick lives here rather than beside the backend's sweep so a
-    /// headless `Ui` — and every `TextSystem` test — ages text the same
-    /// way a presenting window does.
-    fn tick_frame(&mut self) {
-        self.frame += 1;
-        if let Some(cosmic) = self.cosmic.as_mut() {
-            cosmic.end_frame(self.frame);
         }
     }
 
@@ -154,41 +138,35 @@ impl TextShaper {
     /// queries. The probe holds the shaper's exclusive borrow until
     /// dropped, so its buffer-backed queries stay coherent with the
     /// measurement.
-    pub(crate) fn layout<'t>(&self, request: TextShapeRequest<'t>) -> TextLayoutProbe<'_, 't> {
+    pub(crate) fn layout<'a>(&'a self, request: TextShapeRequest<'a>) -> TextProbe<'a> {
         let mut inner = self.inner.borrow_mut();
         let size = inner.dispatch(request, WrapFloor::Skip).size;
-        TextLayoutProbe::new(size, request, inner)
+        TextProbe::new(size, request, inner)
     }
 
-    /// Shape a run at its natural width. `TextSystem` calls this on a
-    /// reuse-slot miss; the shaper's own content cache may still hit, so
-    /// this is "no reuse slot", not "reshape".
+    /// Shape `request` and hand back what it measured to. `TextSystem`
+    /// calls this on a reuse-slot miss; the shaper's own content cache may
+    /// still hit, so this is "no reuse slot", not "reshape".
+    ///
+    /// Bounded and unbounded alike — which one this is, the request's own
+    /// key already says, and both answer a [`TextRoot`]. A bounded resolve
+    /// reads only `size` off it: it has no wrapping floor of its own and
+    /// its line count describes the resolve rather than the run.
     ///
     /// `floor` opts into the segment scan behind
     /// [`TextRoot::intrinsic_min`]; only `WrapWithOverflow` reads it, and
     /// it dominates the cost of a shape, so everyone else leaves it off.
     /// Passing [`WrapFloor::Scan`] for a root already shaped without one
-    /// backfills it from the resident buffer rather than reshaping.
-    pub(crate) fn shape_root(&self, request: TextShapeRequest<'_>, floor: WrapFloor) -> TextRoot {
+    /// backfills it from the resident buffer rather than reshaping. The
+    /// floor belongs to the unbounded root, so asking for it against a
+    /// committed width is a wiring bug — the same contract
+    /// `CosmicMeasure::measure_wrapped` asserts on the other side.
+    pub(super) fn shape(&self, request: TextShapeRequest<'_>, floor: WrapFloor) -> TextRoot {
         debug_assert!(
-            request.key.max_width_px().is_none(),
-            "a root shape must be unbounded",
+            floor == WrapFloor::Skip || request.key.max_width_px().is_none(),
+            "the wrap floor is a property of the unbounded root",
         );
         self.inner.borrow_mut().dispatch(request, floor)
-    }
-
-    /// Shape a run against a committed width. Only its extent survives —
-    /// a bounded shape has no wrapping floor of its own and its line count
-    /// describes the resolve, not the run.
-    pub(crate) fn shape_bounded(&self, request: TextShapeRequest<'_>) -> Size {
-        debug_assert!(
-            request.key.max_width_px().is_some(),
-            "a bounded shape needs a committed width",
-        );
-        self.inner
-            .borrow_mut()
-            .dispatch(request, WrapFloor::Skip)
-            .size
     }
 
     /// Report that `key` is no longer reachable through the reuse slot
@@ -209,12 +187,17 @@ impl TextShaper {
         self.inner.borrow().cosmic.is_some()
     }
 
-    /// Advance the shared frame clock and bound the reconstructible
-    /// cosmic buffer LRU. Called by both of `TextSystem`'s frame
-    /// teardowns, so it runs
+    /// Advance the shared frame clock and age out the ordinary content
+    /// cache. Called by both of `TextSystem`'s frame teardowns, so it runs
     /// once per window per recorded frame; the cache sweep is a no-op on
     /// the mono fallback but the clock ticks either way, since the
     /// backend's caches read it through [`Self::frame`].
+    ///
+    /// Layout and reuse entries may retain dropped keys because the
+    /// encoder reconstructs every emitted run. The tick lives here rather
+    /// than beside the backend's sweep so a headless `Ui` — and every
+    /// `TextSystem` test — ages text the same way a presenting window
+    /// does.
     ///
     /// `tick_frame`, not `end_frame`, because this is the one production
     /// method that *advances* the clock. Everything downstream — the
@@ -222,7 +205,12 @@ impl TextShaper {
     /// receives it as an `end_frame(frame)` argument instead, and the
     /// two names are what say which side of that line a method is on.
     pub(crate) fn tick_frame(&self) {
-        self.inner.borrow_mut().tick_frame();
+        let mut inner = self.inner.borrow_mut();
+        inner.frame += 1;
+        let frame = inner.frame;
+        if let Some(cosmic) = inner.cosmic.as_mut() {
+            cosmic.end_frame(frame);
+        }
     }
 
     /// The current value of the shared frame clock — see
@@ -234,25 +222,15 @@ impl TextShaper {
         self.inner.borrow().frame
     }
 
-    /// Exclusive render-side lease for one batch's encoded-cache misses:
-    /// glyph extraction (restoring evicted buffers on the way) and
-    /// rasterization, all in palantir-native terms — see
-    /// [`crate::text::render`].
-    pub(crate) fn render_session(&self) -> TextRenderSession<'_> {
-        TextRenderSession::new(RefMut::map(self.inner.borrow_mut(), |inner| {
-            inner
-                .cosmic
-                .as_mut()
-                .expect("text render sessions require a cosmic text shaper")
-        }))
-    }
-
-    /// Lay glyphs out and rasterize them directly, for a caller drawing its own
-    /// text — a [`GpuView`](crate::GpuView) labelling a 3D scene, say.
+    /// Lay glyphs out and rasterize them directly: the exclusive render-side
+    /// lease, in palantir-native terms — [`PlacedGlyph`](crate::PlacedGlyph)
+    /// placements and [`GlyphImage`](crate::GlyphImage) bitmaps, with no
+    /// cosmic type in sight.
     ///
-    /// The public half of the lease palantir's own text backend takes per batch
-    /// of atlas misses, and the same exclusive borrow: a caller outside holds
-    /// one for as long as it is laying out. Holding one across a call that
+    /// **The one lease, taken by both sides.** Palantir's own text backend
+    /// holds it for a batch of encoded-cache misses; a caller drawing its own
+    /// text — a [`GpuView`](crate::GpuView) labelling a 3D scene, say — holds
+    /// it for as long as it is laying out. Holding one across a call that
     /// measures text — anything on [`Ui`](crate::Ui) that lays out a widget —
     /// would ask this `RefCell` for a second borrow and panic, so a view takes
     /// one inside its own paint and drops it there.
@@ -262,7 +240,12 @@ impl TextShaper {
     /// scene is in the same faces as the UI around it without anyone arranging
     /// for that.
     pub fn glyphs(&self) -> TextGlyphs<'_> {
-        TextGlyphs::new(self.render_session())
+        TextGlyphs::new(RefMut::map(self.inner.borrow_mut(), |inner| {
+            inner
+                .cosmic
+                .as_mut()
+                .expect("laying glyphs out requires a cosmic text shaper")
+        }))
     }
 }
 
@@ -270,9 +253,10 @@ impl TextShaper {
 pub(crate) mod internals {
     #![allow(dead_code)]
     use super::*;
+    use crate::primitives::size::Size;
     #[cfg(test)]
     use crate::text::cosmic::counters::CacheCounts;
-    use crate::text::probe::layout::Caret;
+    use crate::text::probe::Caret;
     use crate::text::request::internals::TestShape;
     use crate::text::wrap::LineFit;
 
@@ -294,7 +278,7 @@ pub(crate) mod internals {
         pub(crate) fn measure(&self, text: &str, shape: TestShape) -> ProbeMeasure {
             let shapes_buffers = self.shapes_buffers();
             self.probe_layout(text, shape, |probe| ProbeMeasure {
-                size: probe.size,
+                size: probe.size(),
                 key: if shapes_buffers && !probe.request.text.is_empty() {
                     probe.request.key
                 } else {
@@ -307,17 +291,17 @@ pub(crate) mod internals {
             &self,
             text: &str,
             shape: TestShape,
-            body: impl FnOnce(TextLayoutProbe<'_, '_>) -> R,
+            body: impl FnOnce(TextProbe<'_>) -> R,
         ) -> R {
             body(self.layout(shape.request(text, LineFit::Wrap)))
         }
 
         pub(crate) fn cursor_xy(&self, text: &str, byte_offset: usize, shape: TestShape) -> Caret {
-            self.probe_layout(text, shape, |probe| probe.cursor_xy(byte_offset))
+            self.probe_layout(text, shape, |probe| probe.caret_at(byte_offset))
         }
 
         pub(crate) fn byte_at_xy(&self, text: &str, x: f32, y: f32, shape: TestShape) -> usize {
-            self.probe_layout(text, shape, |probe| probe.byte_at_xy(x, y))
+            self.probe_layout(text, shape, |probe| probe.byte_at(x, y))
         }
 
         /// Deterministic mono-fallback shaper for tests and headless

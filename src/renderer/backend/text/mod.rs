@@ -211,7 +211,7 @@ impl TextBackend {
     }
 
     /// Append-mode prepare. Encoded-cache hits bypass shaping; the
-    /// first miss opens the exclusive shaper session, and each miss
+    /// first miss opens the exclusive glyph lease, and each miss
     /// extracts and rasterizes its glyphs in place. Rebinds the atlas
     /// bind group if it grew.
     pub(crate) fn prepare_batch(
@@ -230,9 +230,9 @@ impl TextBackend {
         let start = self.encoder.instances.len() as u32;
 
         // One walk: hits emit straight to `instances`; misses encode
-        // through the lazily-opened session. An all-hit frame never
+        // through the lazily-opened lease. An all-hit frame never
         // cracks the RefCell or hits cosmic.
-        let mut session = None;
+        let mut glyphs = None;
         for r in runs {
             if r.text.key.is_invalid() {
                 // Backstop: the encoder already drops runs with no shaped
@@ -243,10 +243,10 @@ impl TextBackend {
             if self.encoder.try_emit_cached(&run_key) {
                 continue;
             }
-            let session = session.get_or_insert_with(|| self.shaper.render_session());
+            let glyphs = glyphs.get_or_insert_with(|| self.shaper.glyphs());
             self.encoder.encode_run(
                 ctx.device,
-                session,
+                glyphs,
                 r.text.resolve_request(interned_text),
                 RunPlacement {
                     origin: r.origin,
@@ -256,7 +256,7 @@ impl TextBackend {
                 run_key,
             );
         }
-        drop(session);
+        drop(glyphs);
 
         let end = self.encoder.instances.len() as u32;
 
