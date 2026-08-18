@@ -43,15 +43,21 @@ impl TextRoot {
 
     /// The wrap floor, for the one policy that reads it.
     ///
-    /// Panics if the run was shaped without the scan: that means
-    /// [`TextWrap::floor_scan`](crate::text::wrap::TextWrap) and the policy
-    /// actually asking have drifted apart, which is a wiring bug rather
-    /// than bad data.
+    /// Panics with [`WRAP_FLOOR_ERROR`] when the run was shaped without
+    /// the scan — a wiring bug rather than bad data.
     pub(super) fn wrap_floor(&self) -> f32 {
-        self.intrinsic_min
-            .expect("WrapWithOverflow must shape its root with the wrap-floor scan")
+        self.intrinsic_min.expect(WRAP_FLOOR_ERROR)
     }
 }
+
+/// What reading an unscanned wrap floor means, stated once.
+///
+/// Two types answer this question — [`TextRoot`] and the gated
+/// `TestMeasure` — off the same `intrinsic_min`, under the same contract.
+/// They had a message each, so a change to when the scan runs would have
+/// left one of them describing the old rule.
+const WRAP_FLOOR_ERROR: &str = "the wrap floor was never scanned for this shape: TextWrap::floor_scan \
+     and the policy asking for it have drifted apart";
 
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {
@@ -63,12 +69,11 @@ pub(crate) mod internals {
     use super::*;
     use crate::text::key::TextShapeKey;
 
-    /// Shaping result as the in-tree tests read it: a production
-    /// [`TextRoot`] flattened alongside the shaped-buffer key its request
-    /// minted. Production derives that key in
-    /// [`TextSystem`](crate::text::system::TextSystem) rather than carrying
-    /// it on the measurement, but tests assert on buffer identity, so the
-    /// helpers hand both back together.
+    /// Shaping result as the in-tree tests read it: the measurement plus
+    /// the shaped-buffer key its request minted. Production derives that
+    /// key in [`TextSystem`](crate::text::system::TextSystem) rather than
+    /// carrying it on the measurement, but tests assert on buffer
+    /// identity, so the helpers hand both back together.
     ///
     /// **Flattened rather than holding a [`TextRoot`], because it is not
     /// always one.** `TextSystem::shape_run` fills `size` from the
@@ -88,11 +93,11 @@ pub(crate) mod internals {
 
     impl TestMeasure {
         /// The scanned wrap floor, for tests that assert on it. Panics
-        /// if the run was shaped without the scan — mirrors
-        /// [`TextRoot::wrap_floor`].
+        /// with [`WRAP_FLOOR_ERROR`] exactly as [`TextRoot::wrap_floor`]
+        /// does — same field, same contract, so a drift in one must not
+        /// leave the other explaining the old one.
         pub(crate) fn wrap_floor(&self) -> f32 {
-            self.intrinsic_min
-                .expect("this measurement was shaped without the wrap-floor scan")
+            self.intrinsic_min.expect(WRAP_FLOOR_ERROR)
         }
 
         pub(crate) fn new(root: TextRoot, key: TextShapeKey) -> Self {
