@@ -103,12 +103,19 @@ impl sealed::Lower for IconShape {
     }
 
     fn lower(self, _store: &RecordStore) -> ShapeRecord {
+        let Self {
+            handle,
+            local_rect,
+            fit,
+            tint,
+            desaturate,
+        } = self;
         ShapeRecord::Icon {
-            local_rect: self.local_rect,
-            handle: self.handle,
-            fit: self.fit,
-            tint: self.tint.into(),
-            desaturate: self.desaturate,
+            local_rect,
+            handle,
+            fit,
+            tint: tint.into(),
+            desaturate,
         }
     }
 }

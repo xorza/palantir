@@ -238,53 +238,30 @@ from what it describes, and nothing catches it.
 
 One idea modelled more than once, with the copies kept in step by hand.
 
-Most of this group was investigated and **rejected** — the "copies" were one
+Investigated in full and **closed**. Most were rejected — the "copies" were one
 concept at layers that deliberately do not depend on each other
 (`GlyphImageKind`/`IconRasterKind`/`ContentType`), types encoding different
 facts (`FramePlan` vs `FrameProcessing`, `WindowRequests` vs `WindowOutput`),
 extractions that already exist (`toggle_row` for the three toggles), or shapes
 whose remaining overlap is smaller than the cost of removing it (gradients:
 1 of 7 items verbatim; `Rect`/`URect`: blocked by `const fn`; the theme bundle:
-a triple, not a quadruple, and `ToggleTheme` has no `looks`). What is left:
+a triple, not a quadruple, and `ToggleTheme` has no `looks`).
 
-- [ ] One paint kind is spelled out independently at sixteen sites across six
-      enums: a `Shape` constructor + `Lower` impl, a `ShapeRecord` variant plus
-      arms in `bbox_local` and `NanCheck`, a lowering fn, a hash arm, a cascade
-      paint-rect arm, a `Draw*Payload` + `is_noop`, two `PaintSink` methods, a
-      `PaintCall` row, an encoder arm, a `ComposeSession` method, a `PaintTier`
-      variant, two `RenderBuffer` columns listed again in `new` and
-      `discard_scene`, a `RenderStep` variant, a backend replay arm, and a
-      `BatchKind` variant. Only `capture.rs` is table-driven, via `paint_calls!`.
-      Measured: commit `689c0e25` ("Add SVG icon rendering support") modified
-      **36 pre-existing production files**, none inside the new `src/icons/` or
-      `src/renderer/backend/icon/` modules, on top of 12 new files.
+Three survived and are done:
 
-      **This is an architecture question, not a refactor.** Every tier of the
-      pipeline enumerates paint kinds independently, and collapsing that means
-      choosing one of: a trait-object draw path (forfeits the SoA batching a
-      `RenderBuffer` column exists for), a columnar record store, or a
-      code-generating macro spanning six modules. Each is a different
-      framework. Worth a design study in `.notes/` before any code, the way
-      `record-time-geometry.md` handles the other open architectural question.
-
-- [ ] `src/renderer/render_buffer/mod.rs:59`, `:81`, `:96`, `:98` — the four
-      `Vec<GroupBatch>` columns are still four fields. The *ordering* is now
-      single-source (`PaintTier::ALL` + `RenderBuffer::batches`), and
-      `HigherKindRects` and `Composer::flush` are indexed by tier, so what
-      remains is only the four field declarations plus `draws_len` /
-      `batches`/`batches_mut`'s three-arm matches. One
-      `[Vec<GroupBatch>; PaintTier::COUNT]` would retire those, at the cost of
-      the four columns' distinct upstream instance types no longer being
-      visible in the struct.
-
-- [ ] `src/text/run.rs:30`, `src/layout/support.rs:28`, `src/text/glyphs.rs:31`,
-      `src/shape/text.rs:15`, `src/scene/shapes/record/mod.rs:83` — five (not
-      four) spellings of a text run's parameters. The shared *core* is now one
-      named type (`GlyphFont`, taken by both `unbounded` constructors), so the
-      argument-order hazard is closed; the types themselves still repeat the
-      four metric fields inline. `TextShape` ↔ `ShapeRecord::Text` are
-      field-for-field identical and nothing pins the mirror — the doc's
-      "reads as one in review" is still the only enforcement.
+- The four `Vec<GroupBatch>` columns are one
+  `[Vec<GroupBatch>; PaintTier::COUNT]`, so a new tier is a variant rather than
+  a field plus an init plus a clear plus two match arms.
+- The five spellings of a text run's parameters share one `GlyphFont` field.
+  `TextShape` ↔ `ShapeRecord::Text` now mirror in one field instead of four,
+  and every `Lower::lower` destructures `Self`, so an authoring field that
+  never reaches the record is a build error rather than a silent drop.
+  Measured free: nesting leaves the `Text` variant at 56 bytes and
+  `ShapeRecord` at its pinned 88.
+- The paint-kind fanout is an architecture question, not a refactor. Surveyed
+  in `.notes/paint-kind-fanout.md` — four options, the trade each forfeits,
+  and the missing input (a workload that adds kinds often enough to justify
+  any of them).
 
 ---
 

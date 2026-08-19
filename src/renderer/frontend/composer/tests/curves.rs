@@ -9,6 +9,7 @@ use crate::renderer::frontend::composer::tests::support::{
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::{DrawPolylinePayload, Spin, StrokeBounds};
+use crate::renderer::render_buffer::batch::PaintTier;
 use crate::scene::record_store::RecordPayloads;
 use crate::scene::shapes::record::ColorMode;
 use crate::shape::style::{LineCap, LineJoin};
@@ -45,9 +46,10 @@ fn compose_polyline_between_texts_splits_text_batch() {
     );
     // A polyline lowers to GPU stroke instances riding the curve
     // batches — a 2-point polyline is one segment, no join chrome.
-    assert_eq!(buf.curve_batches.len(), 1);
+    assert_eq!(buf.batches(PaintTier::Curve).len(), 1);
     assert_eq!(
-        buf.curve_batches[0].items.len, 1,
+        buf.batches(PaintTier::Curve)[0].items.len,
+        1,
         "one segment instance for a 2-point polyline",
     );
     assert!(buf.meshes.is_empty(), "no CPU-tessellated mesh");
@@ -311,8 +313,12 @@ fn compose_emits_one_curve_batch_per_scissor_group() {
         },
         &params(1.0, UVec2::new(200, 200)),
     );
-    assert_eq!(buf.curve_batches.len(), 1, "one batch per group");
-    let batch = buf.curve_batches[0];
+    assert_eq!(
+        buf.batches(PaintTier::Curve).len(),
+        1,
+        "one batch per group"
+    );
+    let batch = buf.batches(PaintTier::Curve)[0];
     assert_eq!(batch.last_group, 0);
     // Sub-instance count depends on adaptive subdivision, but both
     // curves contribute the *same* per-curve count (identical shape),
@@ -363,12 +369,12 @@ fn compose_splits_curve_batches_across_scissor_groups() {
         &params(1.0, UVec2::new(200, 200)),
     );
     assert_eq!(
-        buf.curve_batches.len(),
+        buf.batches(PaintTier::Curve).len(),
         2,
         "scissor change closes the open batch and opens a new one",
     );
     assert!(
-        buf.curve_batches[0].last_group < buf.curve_batches[1].last_group,
+        buf.batches(PaintTier::Curve)[0].last_group < buf.batches(PaintTier::Curve)[1].last_group,
         "batches anchor to monotonically increasing groups",
     );
 }
@@ -459,8 +465,8 @@ fn compose_arc_scales_geometry_and_subdivides_by_exact_length() {
         }
     }
     // One batch covers every instance — arcs ride the curve batching.
-    assert_eq!(buf.curve_batches.len(), 1);
-    assert_eq!(buf.curve_batches[0].items.len, 8);
+    assert_eq!(buf.batches(PaintTier::Curve).len(), 1);
+    assert_eq!(buf.batches(PaintTier::Curve)[0].items.len, 8);
 }
 
 #[test]
@@ -650,8 +656,15 @@ fn compose_arc_and_curve_share_one_batch_per_group() {
         },
         &params(1.0, UVec2::new(300, 300)),
     );
-    assert_eq!(buf.curve_batches.len(), 1, "arcs batch with cubics");
-    assert_eq!(buf.curve_batches[0].items.len as usize, buf.curves.len());
+    assert_eq!(
+        buf.batches(PaintTier::Curve).len(),
+        1,
+        "arcs batch with cubics"
+    );
+    assert_eq!(
+        buf.batches(PaintTier::Curve)[0].items.len as usize,
+        buf.curves.len()
+    );
     assert!(buf.curves.iter().any(|c| c.kind == CURVE_KIND_ARC));
     assert!(buf.curves.iter().any(|c| c.kind == CURVE_KIND_CUBIC));
 }
@@ -674,10 +687,10 @@ fn compose_curve_then_overlapping_mesh_splits_group() {
         &params(1.0, UVec2::new(200, 200)),
     );
     assert_eq!(buf.groups.len(), 2, "cross-kind conflict must split");
-    assert_eq!(buf.curve_batches.len(), 1);
-    assert_eq!(buf.curve_batches[0].last_group, 0);
-    assert_eq!(buf.mesh_batches.len(), 1);
-    assert_eq!(buf.mesh_batches[0].last_group, 1);
+    assert_eq!(buf.batches(PaintTier::Curve).len(), 1);
+    assert_eq!(buf.batches(PaintTier::Curve)[0].last_group, 0);
+    assert_eq!(buf.batches(PaintTier::Mesh).len(), 1);
+    assert_eq!(buf.batches(PaintTier::Mesh)[0].last_group, 1);
 }
 
 #[test]

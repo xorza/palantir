@@ -15,10 +15,8 @@ corners = 4.0
 Solid = "#3e3e3e"
 
 [button.normal.background.stroke]
+color = "#aaaaa82e"
 width = 1.0
-
-[button.normal.background.stroke.brush]
-Solid = "#aaaaa82e"
 
 [button.hovered.background]
 corners = 4.0
@@ -27,22 +25,18 @@ corners = 4.0
 Solid = "#4b4b4b"
 
 [button.hovered.background.stroke]
+color = "#aaaaa82e"
 width = 1.0
 
-[button.hovered.background.stroke.brush]
-Solid = "#aaaaa82e"
-
-[button.pressed.background]
+[button.active.background]
 corners = 4.0
 
-[button.pressed.background.fill]
+[button.active.background.fill]
 Solid = "#4b4b4b"
 
-[button.pressed.background.stroke]
+[button.active.background.stroke]
+color = "#105577"
 width = 1.0
-
-[button.pressed.background.stroke.brush]
-Solid = "#105577"
 
 [button.disabled.background]
 corners = 4.0
@@ -51,10 +45,8 @@ corners = 4.0
 Solid = "#343434"
 
 [button.disabled.background.stroke]
+color = "#aaaaa82e"
 width = 1.0
-
-[button.disabled.background.stroke.brush]
-Solid = "#aaaaa82e"
 
 [button.disabled.text]
 font_size_px = 16.0
@@ -82,10 +74,10 @@ corners = 4.0
 [menu_button.hovered.background.fill]
 Solid = "#3e3e3e"
 
-[menu_button.pressed.background]
+[menu_button.active.background]
 corners = 4.0
 
-[menu_button.pressed.background.fill]
+[menu_button.active.background.fill]
 Solid = "#4b4b4b"
 
 [menu_button.disabled.background]
@@ -98,8 +90,25 @@ Solid = "#00000000"
 indicator = "#1a1a1a"
 box_size = 16.0
 indicator_stroke = 2.0
+check_pts = [
+    [
+    0.21875,
+    0.53125,
+],
+    [
+    0.4375,
+    0.75,
+],
+    [
+    0.78125,
+    0.28125,
+],
+]
 indicator_inset = 4.0
 row_gap = 8.0
+track_aspect = 1.0
+padding = 0.0
+margin = 0.0
 
 [checkbox.unchecked.normal.background]
 corners = 3.0
@@ -108,10 +117,8 @@ corners = 3.0
 Solid = "#3e3e3e"
 
 [checkbox.unchecked.normal.background.stroke]
+color = "#aaaaa859"
 width = 1.0
-
-[checkbox.unchecked.normal.background.stroke.brush]
-Solid = "#aaaaa859"
 
 [checkbox.unchecked.hovered.background]
 corners = 3.0
@@ -120,22 +127,18 @@ corners = 3.0
 Solid = "#4b4b4b"
 
 [checkbox.unchecked.hovered.background.stroke]
+color = "#aaaaa859"
 width = 1.0
 
-[checkbox.unchecked.hovered.background.stroke.brush]
-Solid = "#aaaaa859"
-
-[checkbox.unchecked.pressed.background]
+[checkbox.unchecked.active.background]
 corners = 3.0
 
-[checkbox.unchecked.pressed.background.fill]
+[checkbox.unchecked.active.background.fill]
 Solid = "#4b4b4b"
 
-[checkbox.unchecked.pressed.background.stroke]
+[checkbox.unchecked.active.background.stroke]
+color = "#105577"
 width = 1.0
-
-[checkbox.unchecked.pressed.background.stroke.brush]
-Solid = "#105577"
 
 [checkbox.unchecked.disabled.background]
 corners = 3.0
@@ -144,10 +147,8 @@ corners = 3.0
 Solid = "#343434"
 
 [checkbox.unchecked.disabled.background.stroke]
+color = "#aaaaa82e"
 width = 1.0
-
-[checkbox.unchecked.disabled.background.stroke.brush]
-Solid = "#aaaaa82e"
 
 [checkbox.unchecked.disabled.text]
 font_size_px = 16.0
@@ -168,17 +169,15 @@ corners = 3.0
 [checkbox.checked.hovered.background.fill]
 Solid = "#9adbfb"
 
-[checkbox.checked.pressed.background]
+[checkbox.checked.active.background]
 corners = 3.0
 
-[checkbox.checked.pressed.background.fill]
+[checkbox.checked.active.background.fill]
 Solid = "#9adbfb"
 
-[checkbox.checked.pressed.background.stroke]
+[checkbox.checked.active.background.stroke]
+color = "#105577"
 width = 1.0
-
-[checkbox.checked.pressed.background.stroke.brush]
-Solid = "#105577"
 
 [checkbox.checked.disabled.background]
 corners = 3.0
@@ -197,8 +196,25 @@ weight = "Regular"
 indicator = "#1a1a1a"
 box_size = 16.0
 indicator_stroke = 2.0
+check_pts = [
+    [
+    0.21875,
+    0.53125,
+],
+    [
+    0.4375,
+    0.75,
+],
+    [
+    0.78125,
+    0.28125,
+],
+]
 indicator_inset = 4.0
 row_gap = 8.0
+track_aspect = 1.0
+padding = 0.0
+margin = 0.0
 
 [radio.unchecked.normal.background]
 corners = 8.0
@@ -207,10 +223,8 @@ corners = 8.0
 Solid = "#3e3e3e"
 
 [radio.unchecked.normal.background.stroke]
+color = "#aaaaa859"
 width = 1.0
-
-[radio.unchecked.normal.background.stroke.brush]
-Solid = "#aaaaa859"
 
 [radio.unchecked.hovered.background]
 corners = 8.0
@@ -219,22 +233,18 @@ corners = 8.0
 Solid = "#4b4b4b"
 
 [radio.unchecked.hovered.background.stroke]
+color = "#aaaaa859"
 width = 1.0
 
-[radio.unchecked.hovered.background.stroke.brush]
-Solid = "#aaaaa859"
-
-[radio.unchecked.pressed.background]
+[radio.unchecked.active.background]
 corners = 8.0
 
-[radio.unchecked.pressed.background.fill]
+[radio.unchecked.active.background.fill]
 Solid = "#4b4b4b"
 
-[radio.unchecked.pressed.background.stroke]
+[radio.unchecked.active.background.stroke]
+color = "#105577"
 width = 1.0
-
-[radio.unchecked.pressed.background.stroke.brush]
-Solid = "#105577"
 
 [radio.unchecked.disabled.background]
 corners = 8.0
@@ -243,10 +253,8 @@ corners = 8.0
 Solid = "#343434"
 
 [radio.unchecked.disabled.background.stroke]
+color = "#aaaaa82e"
 width = 1.0
-
-[radio.unchecked.disabled.background.stroke.brush]
-Solid = "#aaaaa82e"
 
 [radio.unchecked.disabled.text]
 font_size_px = 16.0
@@ -267,17 +275,15 @@ corners = 8.0
 [radio.checked.hovered.background.fill]
 Solid = "#9adbfb"
 
-[radio.checked.pressed.background]
+[radio.checked.active.background]
 corners = 8.0
 
-[radio.checked.pressed.background.fill]
+[radio.checked.active.background.fill]
 Solid = "#9adbfb"
 
-[radio.checked.pressed.background.stroke]
+[radio.checked.active.background.stroke]
+color = "#105577"
 width = 1.0
-
-[radio.checked.pressed.background.stroke.brush]
-Solid = "#105577"
 
 [radio.checked.disabled.background]
 corners = 8.0
@@ -296,8 +302,25 @@ weight = "Regular"
 indicator = "#ffffff"
 box_size = 20.0
 indicator_stroke = 2.0
+check_pts = [
+    [
+    0.21875,
+    0.53125,
+],
+    [
+    0.4375,
+    0.75,
+],
+    [
+    0.78125,
+    0.28125,
+],
+]
 indicator_inset = 3.0
 row_gap = 8.0
+track_aspect = 1.75
+padding = 0.0
+margin = 0.0
 
 [switch.unchecked.normal.background]
 corners = 10.0
@@ -306,10 +329,8 @@ corners = 10.0
 Solid = "#3e3e3e"
 
 [switch.unchecked.normal.background.stroke]
+color = "#aaaaa859"
 width = 1.0
-
-[switch.unchecked.normal.background.stroke.brush]
-Solid = "#aaaaa859"
 
 [switch.unchecked.hovered.background]
 corners = 10.0
@@ -318,22 +339,18 @@ corners = 10.0
 Solid = "#4b4b4b"
 
 [switch.unchecked.hovered.background.stroke]
+color = "#aaaaa859"
 width = 1.0
 
-[switch.unchecked.hovered.background.stroke.brush]
-Solid = "#aaaaa859"
-
-[switch.unchecked.pressed.background]
+[switch.unchecked.active.background]
 corners = 10.0
 
-[switch.unchecked.pressed.background.fill]
+[switch.unchecked.active.background.fill]
 Solid = "#4b4b4b"
 
-[switch.unchecked.pressed.background.stroke]
+[switch.unchecked.active.background.stroke]
+color = "#105577"
 width = 1.0
-
-[switch.unchecked.pressed.background.stroke.brush]
-Solid = "#105577"
 
 [switch.unchecked.disabled.background]
 corners = 10.0
@@ -342,10 +359,8 @@ corners = 10.0
 Solid = "#343434"
 
 [switch.unchecked.disabled.background.stroke]
+color = "#aaaaa82e"
 width = 1.0
-
-[switch.unchecked.disabled.background.stroke.brush]
-Solid = "#aaaaa82e"
 
 [switch.unchecked.disabled.text]
 font_size_px = 16.0
@@ -366,17 +381,15 @@ corners = 10.0
 [switch.checked.hovered.background.fill]
 Solid = "#9adbfb"
 
-[switch.checked.pressed.background]
+[switch.checked.active.background]
 corners = 10.0
 
-[switch.checked.pressed.background.fill]
+[switch.checked.active.background.fill]
 Solid = "#9adbfb"
 
-[switch.checked.pressed.background.stroke]
+[switch.checked.active.background.stroke]
+color = "#105577"
 width = 1.0
-
-[switch.checked.pressed.background.stroke.brush]
-Solid = "#105577"
 
 [switch.checked.disabled.background]
 corners = 10.0
@@ -424,22 +437,28 @@ corners = 4.0
 Solid = "#3e3e3e"
 
 [text_edit.normal.background.stroke]
+color = "#aaaaa82e"
 width = 1.5
 
-[text_edit.normal.background.stroke.brush]
-Solid = "#aaaaa82e"
-
-[text_edit.focused.background]
+[text_edit.hovered.background]
 corners = 4.0
 
-[text_edit.focused.background.fill]
+[text_edit.hovered.background.fill]
 Solid = "#3e3e3e"
 
-[text_edit.focused.background.stroke]
+[text_edit.hovered.background.stroke]
+color = "#aaaaa82e"
 width = 1.5
 
-[text_edit.focused.background.stroke.brush]
-Solid = "#105577"
+[text_edit.active.background]
+corners = 4.0
+
+[text_edit.active.background.fill]
+Solid = "#3e3e3e"
+
+[text_edit.active.background.stroke]
+color = "#105577"
+width = 1.5
 
 [text_edit.disabled.background]
 corners = 4.0
@@ -448,10 +467,8 @@ corners = 4.0
 Solid = "#343434"
 
 [text_edit.disabled.background.stroke]
+color = "#aaaaa82e"
 width = 1.5
-
-[text_edit.disabled.background.stroke.brush]
-Solid = "#aaaaa82e"
 
 [text_edit.disabled.text]
 font_size_px = 16.0
@@ -474,10 +491,8 @@ corners = 4.0
 Solid = "#3e3e3e"
 
 [drag_value.chip.normal.background.stroke]
+color = "#aaaaa82e"
 width = 1.0
-
-[drag_value.chip.normal.background.stroke.brush]
-Solid = "#aaaaa82e"
 
 [drag_value.chip.hovered.background]
 corners = 4.0
@@ -486,22 +501,18 @@ corners = 4.0
 Solid = "#4b4b4b"
 
 [drag_value.chip.hovered.background.stroke]
+color = "#aaaaa82e"
 width = 1.0
 
-[drag_value.chip.hovered.background.stroke.brush]
-Solid = "#aaaaa82e"
-
-[drag_value.chip.pressed.background]
+[drag_value.chip.active.background]
 corners = 4.0
 
-[drag_value.chip.pressed.background.fill]
+[drag_value.chip.active.background.fill]
 Solid = "#4b4b4b"
 
-[drag_value.chip.pressed.background.stroke]
+[drag_value.chip.active.background.stroke]
+color = "#105577"
 width = 1.0
-
-[drag_value.chip.pressed.background.stroke.brush]
-Solid = "#105577"
 
 [drag_value.chip.disabled.background]
 corners = 4.0
@@ -510,10 +521,8 @@ corners = 4.0
 Solid = "#343434"
 
 [drag_value.chip.disabled.background.stroke]
+color = "#aaaaa82e"
 width = 1.0
-
-[drag_value.chip.disabled.background.stroke.brush]
-Solid = "#aaaaa82e"
 
 [drag_value.chip.disabled.text]
 font_size_px = 16.0
@@ -540,22 +549,28 @@ corners = 4.0
 Solid = "#3e3e3e"
 
 [drag_value.editor.normal.background.stroke]
+color = "#aaaaa82e"
 width = 1.0
 
-[drag_value.editor.normal.background.stroke.brush]
-Solid = "#aaaaa82e"
-
-[drag_value.editor.focused.background]
+[drag_value.editor.hovered.background]
 corners = 4.0
 
-[drag_value.editor.focused.background.fill]
+[drag_value.editor.hovered.background.fill]
 Solid = "#4b4b4b"
 
-[drag_value.editor.focused.background.stroke]
+[drag_value.editor.hovered.background.stroke]
+color = "#aaaaa82e"
 width = 1.0
 
-[drag_value.editor.focused.background.stroke.brush]
-Solid = "#aaaaa82e"
+[drag_value.editor.active.background]
+corners = 4.0
+
+[drag_value.editor.active.background.fill]
+Solid = "#4b4b4b"
+
+[drag_value.editor.active.background.stroke]
+color = "#aaaaa82e"
+width = 1.0
 
 [drag_value.editor.disabled.background]
 corners = 4.0
@@ -564,10 +579,8 @@ corners = 4.0
 Solid = "#343434"
 
 [drag_value.editor.disabled.background.stroke]
+color = "#aaaaa82e"
 width = 1.0
-
-[drag_value.editor.disabled.background.stroke.brush]
-Solid = "#aaaaa82e"
 
 [drag_value.editor.disabled.text]
 font_size_px = 16.0
@@ -579,33 +592,49 @@ weight = "Regular"
 [context_menu]
 padding = 4.0
 min_width = 160.0
-separator = "#aaaaa82e"
+gap = 0.0
 
 [context_menu.panel]
-corners = 6.0
+corners = 4.0
 
 [context_menu.panel.fill]
 Solid = "#343434"
 
 [context_menu.panel.stroke]
+color = "#aaaaa838"
 width = 1.0
 
-[context_menu.panel.stroke.brush]
-Solid = "#aaaaa838"
+[context_menu.panel.shadow]
+color = "#00000080"
+offset = [
+    0.0,
+    3.0,
+]
+blur = 6.0
+spread = 0.0
+inset = false
 
 [context_menu.item]
 shortcut = "#aaaaa8"
 padding = [
-    10.0,
-    6.0,
+    8.0,
+    5.0,
 ]
+margin = 0.0
+gap = 16.0
 
 [context_menu.item.normal]
 
 [context_menu.item.hovered.background]
-corners = 4.0
+corners = 3.0
 
 [context_menu.item.hovered.background.fill]
+Solid = "#3e3e3e"
+
+[context_menu.item.active.background]
+corners = 3.0
+
+[context_menu.item.active.background.fill]
 Solid = "#3e3e3e"
 
 [context_menu.item.disabled.text]
@@ -614,6 +643,22 @@ color = "#878a8d"
 line_height_mult = 1.2
 family = "Sans"
 weight = "Regular"
+
+[context_menu.separator]
+color = "#aaaaa82e"
+thickness = 1.0
+margin = [
+    0.0,
+    4.0,
+]
+
+[combo_box]
+row_gap = 12.0
+arrow_size = [
+    10.0,
+    6.0,
+]
+arrow_stroke = 1.5
 
 [modal]
 backdrop = "#00000080"
@@ -627,10 +672,8 @@ corners = 12.0
 Solid = "#3e3e3e"
 
 [modal.card.stroke]
+color = "#aaaaa838"
 width = 1.0
-
-[modal.card.stroke.brush]
-Solid = "#aaaaa840"
 
 [tooltip]
 padding = [
@@ -648,10 +691,8 @@ corners = 4.0
 Solid = "#343434"
 
 [tooltip.panel.stroke]
+color = "#aaaaa838"
 width = 1.0
-
-[tooltip.panel.stroke.brush]
-Solid = "#aaaaa838"
 
 [tooltip.panel.shadow]
 color = "#00000099"
@@ -681,6 +722,7 @@ height = 6.0
 [separator]
 color = "#aaaaa82e"
 thickness = 1.0
+margin = 0.0
 
 [slider]
 rail = "#3e3e3e"
@@ -692,6 +734,10 @@ rail_thickness = 4.0
 [spinner]
 color = "#9adbfb"
 diameter = 24.0
+sweep = 4.712389
+speed = 4.5
+thickness_ratio = 0.12
+min_thickness = 1.5
 
 [splitter]
 thickness = 6.0

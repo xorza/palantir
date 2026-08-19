@@ -107,11 +107,6 @@ impl TextShapeKey {
     /// Record time already rejected invalid metrics (`Shape::is_noop`,
     /// theme validation), so reaching here with them is a logic error —
     /// debug-asserted rather than re-validated on the shaping hot path.
-    /// Takes the face as one [`GlyphFont`] rather than four positional
-    /// arguments. The two `f32` metrics and the two one-byte enums are
-    /// each swappable at a call site and would compile silently — and a
-    /// swap here mis-keys the shape cache rather than failing, so every
-    /// later lookup quietly misses.
     pub(crate) fn unbounded(text_hash: u64, font: GlyphFont) -> Self {
         let GlyphFont {
             size_px: font_size_px,

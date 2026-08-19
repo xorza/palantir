@@ -63,6 +63,14 @@ impl sealed::Lower for TriangleShape {
     }
 
     fn lower(self, _store: &RecordStore) -> ShapeRecord {
-        lower::triangle(self.a, self.b, self.c, self.radius, self.fill, self.stroke)
+        let Self {
+            a,
+            b,
+            c,
+            radius,
+            fill,
+            stroke,
+        } = self;
+        lower::triangle(a, b, c, radius, fill, stroke)
     }
 }

@@ -85,31 +85,26 @@ impl sealed::Lower for CurveShape {
     }
 
     fn lower(self, store: &RecordStore) -> ShapeRecord {
-        match self.geometry {
-            CurveGeometry::Line { a, b } => {
-                lower::line(store, a, b, self.width, self.brush, self.cap)
-            }
+        let Self {
+            geometry,
+            width,
+            brush,
+            cap,
+        } = self;
+        match geometry {
+            CurveGeometry::Line { a, b } => lower::line(store, a, b, width, brush, cap),
             CurveGeometry::CubicBezier { p0, p1, p2, p3 } => {
-                lower::cubic_bezier(store, [p0, p1, p2, p3], self.width, self.brush, self.cap)
+                lower::cubic_bezier(store, [p0, p1, p2, p3], width, brush, cap)
             }
             CurveGeometry::QuadraticBezier { p0, p1, p2 } => {
-                lower::quadratic_bezier(store, [p0, p1, p2], self.width, self.brush, self.cap)
+                lower::quadratic_bezier(store, [p0, p1, p2], width, brush, cap)
             }
             CurveGeometry::Arc {
                 center,
                 radius,
                 start_angle,
                 sweep,
-            } => lower::arc(
-                store,
-                center,
-                radius,
-                start_angle,
-                sweep,
-                self.width,
-                self.brush,
-                self.cap,
-            ),
+            } => lower::arc(store, center, radius, start_angle, sweep, width, brush, cap),
         }
     }
 }

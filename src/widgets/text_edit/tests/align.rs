@@ -426,6 +426,7 @@ fn selection_rects_offset_matches_text() {
 /// relative to the widest one — never as an offset of the block itself,
 /// which would be the same alignment applied twice.
 mod per_line {
+    use crate::text::glyph_font::GlyphFont;
     use crate::text::request::internals::TestShape;
     use crate::text::shaper::TextShaper;
     use crate::text::{FontFamily, FontWeight};
@@ -442,11 +443,13 @@ mod per_line {
 
     fn shape(wrap: f32, halign: HAlign) -> TestShape {
         TestShape {
-            font_size_px: FS,
-            line_height_px: LH,
+            font: GlyphFont {
+                size_px: FS,
+                line_height_px: LH,
+                family: FontFamily::Sans,
+                weight: FontWeight::Regular,
+            },
             max_width_px: Some(wrap),
-            family: FontFamily::Sans,
-            weight: FontWeight::Regular,
             halign,
         }
     }
@@ -605,11 +608,13 @@ mod per_line {
             .measure(
                 "hi",
                 TestShape {
-                    font_size_px: 16.0,
-                    line_height_px: 19.2,
+                    font: GlyphFont {
+                        size_px: 16.0,
+                        line_height_px: 19.2,
+                        family: FontFamily::Sans,
+                        weight: FontWeight::Regular,
+                    },
                     max_width_px: Some(100.0),
-                    family: FontFamily::Sans,
-                    weight: FontWeight::Regular,
                     halign: HAlign::Left,
                 },
             )
@@ -618,11 +623,13 @@ mod per_line {
             .measure(
                 "hi",
                 TestShape {
-                    font_size_px: 16.0,
-                    line_height_px: 19.2,
+                    font: GlyphFont {
+                        size_px: 16.0,
+                        line_height_px: 19.2,
+                        family: FontFamily::Sans,
+                        weight: FontWeight::Regular,
+                    },
                     max_width_px: Some(100.0),
-                    family: FontFamily::Sans,
-                    weight: FontWeight::Regular,
                     halign: HAlign::Right,
                 },
             )
@@ -646,11 +653,13 @@ mod per_line {
             .measure(
                 "hi",
                 TestShape {
-                    font_size_px: 16.0,
-                    line_height_px: 19.2,
+                    font: GlyphFont {
+                        size_px: 16.0,
+                        line_height_px: 19.2,
+                        family: FontFamily::Sans,
+                        weight: FontWeight::Regular,
+                    },
                     max_width_px: None,
-                    family: FontFamily::Sans,
-                    weight: FontWeight::Regular,
                     halign: HAlign::Left,
                 },
             )
@@ -659,11 +668,13 @@ mod per_line {
             .measure(
                 "hi",
                 TestShape {
-                    font_size_px: 16.0,
-                    line_height_px: 19.2,
+                    font: GlyphFont {
+                        size_px: 16.0,
+                        line_height_px: 19.2,
+                        family: FontFamily::Sans,
+                        weight: FontWeight::Regular,
+                    },
                     max_width_px: None,
-                    family: FontFamily::Sans,
-                    weight: FontWeight::Regular,
                     halign: HAlign::Right,
                 },
             )

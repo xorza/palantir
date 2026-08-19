@@ -20,7 +20,6 @@ use crate::text::glyph_font::GlyphFont;
 use crate::text::key::TextShapeKey;
 use crate::text::request::TextShapeRequest;
 use crate::text::wrap::TextWrap;
-use crate::text::{FontFamily, FontWeight};
 
 /// One `ShapeRecord::Text` worth of layout-side inputs. Yielded by
 /// [`leaf_text_shapes`] and [`container_text_shapes`]; named so the fields
@@ -35,11 +34,11 @@ pub(super) struct TextShapeInput<'a> {
     ///
     /// [`RecordedText`]: crate::primitives::interned_str::RecordedText
     pub(super) text_hash: u64,
-    pub(super) font_size_px: f32,
-    pub(super) line_height_px: f32,
+    /// The face this shapes in, carried whole from
+    /// [`ShapeRecord::Text`] so the record and the shaper cannot
+    /// disagree about what four separate fields meant.
+    pub(super) font: GlyphFont,
     pub(super) wrap: TextWrap,
-    pub(super) family: FontFamily,
-    pub(super) weight: FontWeight,
     /// Horizontal alignment from `Shape::Text.align`. Cosmic-text
     /// bakes per-line offsets into the shaped buffer when wrap is on,
     /// so the layout pass has to thread this all the way down to
@@ -50,19 +49,10 @@ pub(super) struct TextShapeInput<'a> {
 }
 
 impl<'a> TextShapeInput<'a> {
-    fn font(&self) -> GlyphFont {
-        GlyphFont {
-            size_px: self.font_size_px,
-            line_height_px: self.line_height_px,
-            family: self.family,
-            weight: self.weight,
-        }
-    }
-
     pub(super) fn shape_request(&self) -> TextShapeRequest<'a> {
         TextShapeRequest::for_key(
             self.text,
-            TextShapeKey::unbounded(self.text_hash, self.font()),
+            TextShapeKey::unbounded(self.text_hash, self.font),
         )
     }
 }
@@ -127,22 +117,16 @@ fn text_shape_input<'a>(
     match shape {
         ShapeRecord::Text {
             text,
-            font_size_px,
-            line_height_px,
+            font,
             wrap,
-            family,
-            weight,
             align,
             ..
         } => Some(TextShapeInput {
             ordinal: checked_text_ordinal(ordinal),
             text: text.resolve(interned_text),
             text_hash: text.hash,
-            font_size_px: *font_size_px,
-            line_height_px: *line_height_px,
+            font: *font,
             wrap: *wrap,
-            family: *family,
-            weight: *weight,
             halign: align.halign(),
         }),
         _ => None,
@@ -486,11 +470,13 @@ mod tests {
             ordinal: 0,
             text: "hello",
             text_hash,
-            font_size_px: 16.0,
-            line_height_px: 19.2,
+            font: GlyphFont {
+                size_px: 16.0,
+                line_height_px: 19.2,
+                family: FontFamily::Sans,
+                weight: FontWeight::Regular,
+            },
             wrap: TextWrap::SingleLine,
-            family: FontFamily::Sans,
-            weight: FontWeight::Regular,
             halign: HAlign::Auto,
         };
         let request = input(hash::hash_str("hello")).shape_request();

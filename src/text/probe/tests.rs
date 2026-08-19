@@ -1,4 +1,5 @@
 use crate::layout::types::align::Align;
+use crate::text::glyph_font::GlyphFont;
 use crate::text::run::TextRun;
 use crate::text::wrap::TextWrap;
 use crate::text::{FontFamily, FontWeight};
@@ -22,12 +23,14 @@ fn probing_a_run_maps_bytes_and_positions_both_ways() {
     fn run(text: &str, max_width_px: Option<f32>) -> TextRun<'_> {
         TextRun {
             text,
-            font_size_px: 16.0,
-            line_height_px: 20.0,
+            font: GlyphFont {
+                size_px: 16.0,
+                line_height_px: 20.0,
+                family: FontFamily::Sans,
+                weight: FontWeight::Regular,
+            },
             wrap: TextWrap::SingleLine,
             align: Align::LEFT,
-            family: FontFamily::Sans,
-            weight: FontWeight::Regular,
             max_width_px,
         }
     }
@@ -94,12 +97,14 @@ fn a_wrapping_run_binds_its_width_and_a_single_line_run_does_not() {
     let ui = harness.ui();
     let run = |wrap, max_width_px| TextRun {
         text: "hello world",
-        font_size_px: 16.0,
-        line_height_px: 20.0,
+        font: GlyphFont {
+            size_px: 16.0,
+            line_height_px: 20.0,
+            family: FontFamily::Sans,
+            weight: FontWeight::Regular,
+        },
         wrap,
         align: Align::LEFT,
-        family: FontFamily::Sans,
-        weight: FontWeight::Regular,
         max_width_px,
     };
 

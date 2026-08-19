@@ -12,7 +12,6 @@ use crate::layout::types::align::Align;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::request::TextShapeRequest;
 use crate::text::wrap::TextWrap;
-use crate::text::{FontFamily, FontWeight};
 
 /// One text run, described the way [`Shape::Text`](crate::Shape)
 /// describes one.
@@ -29,16 +28,16 @@ use crate::text::{FontFamily, FontWeight};
 #[derive(Clone, Copy, Debug)]
 pub struct TextRun<'a> {
     pub text: &'a str,
-    pub font_size_px: f32,
-    pub line_height_px: f32,
+    /// The face and metrics the run is shaped in — the same
+    /// [`GlyphFont`] `Shape::Text` carries, so describing a probe means
+    /// naming one value rather than restating four.
+    pub font: GlyphFont,
     pub wrap: TextWrap,
     /// Only the horizontal half is read — cosmic lays out per-line `x`
     /// offsets from it, so it changes the shaped result. The vertical
     /// half places the block within its owner and is the encoder's
     /// business, exactly as in `Shape::Text`.
     pub align: Align,
-    pub family: FontFamily,
-    pub weight: FontWeight,
     /// The width the run is shaped against, or `None` for unbounded.
     ///
     /// The one field `Shape::Text` has no counterpart for: a painted run
@@ -53,15 +52,6 @@ pub struct TextRun<'a> {
 }
 
 impl<'a> TextRun<'a> {
-    fn font(&self) -> GlyphFont {
-        GlyphFont {
-            size_px: self.font_size_px,
-            line_height_px: self.line_height_px,
-            family: self.family,
-            weight: self.weight,
-        }
-    }
-
     /// Lower to the shaper's *unbounded* request — the run's root, before
     /// any width is bound to it.
     ///
@@ -72,6 +62,6 @@ impl<'a> TextRun<'a> {
     /// shaping call, so [`TextShaper::layout`](crate::TextShaper) applies
     /// them and this stays the part that needs no shaper.
     pub(crate) fn unbounded_request(&self) -> TextShapeRequest<'a> {
-        TextShapeRequest::unbounded(self.text, self.font())
+        TextShapeRequest::unbounded(self.text, self.font)
     }
 }

@@ -87,6 +87,7 @@ mod tests {
     use crate::primitives::span::Span;
     use crate::scene::shapes::hash::compute_record_hash;
     use crate::scene::shapes::record::ShapeRecord;
+    use crate::text::glyph_font::GlyphFont;
     use crate::text::wrap::TextWrap;
     use crate::text::{FontFamily, FontWeight};
 
@@ -99,12 +100,14 @@ mod tests {
             local_origin,
             text: RecordedText::new(Span::default(), hash_str("hi")),
             color: Color::WHITE.into(),
-            font_size_px: 16.0,
-            line_height_px,
+            font: GlyphFont {
+                size_px: 16.0,
+                line_height_px,
+                family: FontFamily::Sans,
+                weight,
+            },
             wrap: TextWrap::Truncate,
             align: Align::default(),
-            family: FontFamily::Sans,
-            weight,
         }
     }
 

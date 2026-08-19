@@ -46,11 +46,13 @@ mod wrap;
 /// about reads on one line: `shape(16.0).width(32.0).halign(HAlign::Right)`.
 fn shape(font_size_px: f32) -> TestShape {
     TestShape {
-        font_size_px,
-        line_height_px: font_size_px,
+        font: GlyphFont {
+            size_px: font_size_px,
+            line_height_px: font_size_px,
+            family: FontFamily::Sans,
+            weight: FontWeight::Regular,
+        },
         max_width_px: None,
-        family: FontFamily::Sans,
-        weight: FontWeight::Regular,
         halign: HAlign::Auto,
     }
 }
@@ -64,7 +66,7 @@ fn ui_shape(font_size_px: f32) -> TestShape {
 /// Height of one line at `shape`'s leading, as a measured extent reports
 /// it — `Size` ceils, so a fractional leading rounds up.
 fn one_line_h(shape: TestShape) -> f32 {
-    shape.line_height_px.ceil()
+    shape.font.line_height_px.ceil()
 }
 
 fn slot(widget_id: WidgetId) -> TextRunSlot {

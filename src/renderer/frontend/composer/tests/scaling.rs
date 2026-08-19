@@ -8,6 +8,7 @@ use crate::renderer::frontend::composer::geometry::stroke_bbox_urect;
 use crate::renderer::frontend::composer::tests::support::{clip, draw, params, rect, run, text};
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::{BrushSource, DrawQuadPayload};
+use crate::renderer::render_buffer::batch::PaintTier;
 use crate::scene::shapes::paint::ShapeStroke;
 use crate::shape::style::{LineCap, LineJoin};
 use glam::{UVec2, Vec2};
@@ -317,7 +318,7 @@ fn icon_resolves_to_a_whole_pixel_raster_at_the_display_scale() {
     // so centring shifts nothing.
     assert_eq!(row.origin, IVec2::new(15, 30));
     assert_eq!(
-        out.icon_batches.len(),
+        out.batches(PaintTier::Icon).len(),
         1,
         "icons in one group coalesce into one batch, and so one draw",
     );
@@ -347,6 +348,6 @@ fn icons_batch_together_and_respect_tier_order() {
         &params(1.0, UVec2::new(200, 200)),
     );
     assert_eq!(out.icons.len(), 2);
-    assert_eq!(out.icon_batches.len(), 1, "two icons, one draw");
-    assert_eq!(out.icon_batches[0].items.len, 2);
+    assert_eq!(out.batches(PaintTier::Icon).len(), 1, "two icons, one draw");
+    assert_eq!(out.batches(PaintTier::Icon)[0].items.len, 2);
 }

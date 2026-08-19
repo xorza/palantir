@@ -34,24 +34,23 @@ impl sealed::Lower for MeshShape<'_> {
     }
 
     fn lower(self, store: &RecordStore) -> ShapeRecord {
+        let Self {
+            mesh,
+            local_rect,
+            tint,
+        } = self;
         let mut payloads = store.payloads.borrow_mut();
         let v_start = payloads.meshes.vertices.len() as u32;
-        payloads
-            .meshes
-            .vertices
-            .extend_from_slice(&self.mesh.vertices);
+        payloads.meshes.vertices.extend_from_slice(&mesh.vertices);
         let i_start = payloads.meshes.indices.len() as u32;
-        payloads
-            .meshes
-            .indices
-            .extend_from_slice(&self.mesh.indices);
+        payloads.meshes.indices.extend_from_slice(&mesh.indices);
         ShapeRecord::Mesh {
-            local_rect: self.local_rect,
-            tint: self.tint.into(),
-            vertices: Span::new(v_start, self.mesh.vertices.len() as u32),
-            indices: Span::new(i_start, self.mesh.indices.len() as u32),
-            bbox: self.mesh.bbox(),
-            content_hash: self.mesh.content_hash(),
+            local_rect,
+            tint: tint.into(),
+            vertices: Span::new(v_start, mesh.vertices.len() as u32),
+            indices: Span::new(i_start, mesh.indices.len() as u32),
+            bbox: mesh.bbox(),
+            content_hash: mesh.content_hash(),
         }
     }
 }

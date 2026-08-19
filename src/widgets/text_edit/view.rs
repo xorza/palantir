@@ -12,6 +12,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::Node;
 use crate::scene::tree::paint_anims::PaintAnim;
 use crate::shape::Shape;
+use crate::text::glyph_font::GlyphFont;
 use crate::text::probe::Caret;
 use crate::text::run::TextRun;
 use crate::text::wrap::TextWrap;
@@ -178,16 +179,18 @@ impl ShapeCtx {
     pub(super) fn run<'a>(&self, text: &'a str) -> TextRun<'a> {
         TextRun {
             text,
-            font_size_px: self.font_size,
-            line_height_px: self.line_height_px,
+            font: GlyphFont {
+                size_px: self.font_size,
+                line_height_px: self.line_height_px,
+                family: self.family,
+                weight: self.weight,
+            },
             wrap: if self.multiline {
                 TextWrap::Wrap
             } else {
                 TextWrap::SingleLine
             },
             align: Align::h(self.halign),
-            family: self.family,
-            weight: self.weight,
             max_width_px: self.wrap_target,
         }
     }

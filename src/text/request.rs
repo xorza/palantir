@@ -71,6 +71,9 @@ pub(crate) mod internals {
     use crate::layout::types::align::HAlign;
     #[cfg(test)]
     use crate::text::wrap::LineFit;
+    // The face is a `GlyphFont` now, so only the assertion-side builders
+    // that override one of its enums still name them.
+    #[cfg(test)]
     use crate::text::{FontFamily, FontWeight};
 
     /// A shaping request's parameters without its text, so a test can
@@ -78,31 +81,19 @@ pub(crate) mod internals {
     /// Override with struct-update syntax.
     #[derive(Clone, Copy, Debug)]
     pub(crate) struct TestShape {
-        pub(crate) font_size_px: f32,
-        pub(crate) line_height_px: f32,
+        pub(crate) font: GlyphFont,
         /// Assertion-side, with [`TestShape::halign`]: the benches build
         /// one const face and shape it unbounded, so only a test ever
         /// binds a width or asks for an alignment.
         #[cfg(test)]
         pub(crate) max_width_px: Option<f32>,
-        pub(crate) family: FontFamily,
-        pub(crate) weight: FontWeight,
         #[cfg(test)]
         pub(crate) halign: HAlign,
     }
 
     impl TestShape {
-        fn font(&self) -> GlyphFont {
-            GlyphFont {
-                size_px: self.font_size_px,
-                line_height_px: self.line_height_px,
-                family: self.family,
-                weight: self.weight,
-            }
-        }
-
         pub(crate) fn unbounded_request<'a>(self, text: &'a str) -> TextShapeRequest<'a> {
-            TextShapeRequest::unbounded(text, self.font())
+            TextShapeRequest::unbounded(text, self.font)
         }
     }
 
@@ -119,16 +110,22 @@ pub(crate) mod internals {
     /// both things only a test does.
     #[cfg(test)]
     impl TestShape {
-        pub(crate) fn font_size(self, font_size_px: f32) -> Self {
+        pub(crate) fn font_size(self, size_px: f32) -> Self {
             Self {
-                font_size_px,
+                font: GlyphFont {
+                    size_px,
+                    ..self.font
+                },
                 ..self
             }
         }
 
         pub(crate) fn leading(self, line_height_px: f32) -> Self {
             Self {
-                line_height_px,
+                font: GlyphFont {
+                    line_height_px,
+                    ..self.font
+                },
                 ..self
             }
         }
@@ -155,11 +152,23 @@ pub(crate) mod internals {
         }
 
         pub(crate) fn family(self, family: FontFamily) -> Self {
-            Self { family, ..self }
+            Self {
+                font: GlyphFont {
+                    family,
+                    ..self.font
+                },
+                ..self
+            }
         }
 
         pub(crate) fn weight(self, weight: FontWeight) -> Self {
-            Self { weight, ..self }
+            Self {
+                font: GlyphFont {
+                    weight,
+                    ..self.font
+                },
+                ..self
+            }
         }
 
         /// Bound to this shape's width under `fit`, or unbounded where it

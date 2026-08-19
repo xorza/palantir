@@ -41,7 +41,7 @@ fn each_text_widget_reads_its_own_theme_path_for_font_size() {
     let read_fs = |node: NodeId| -> f32 {
         painted_shapes(&h.ui, node)
             .find_map(|s| match s {
-                ShapeRecord::Text { font_size_px, .. } => Some(*font_size_px),
+                ShapeRecord::Text { font, .. } => Some(font.size_px),
                 _ => None,
             })
             .unwrap()
@@ -158,7 +158,7 @@ fn each_text_widget_reads_its_own_theme_path_for_line_height() {
     let read_lh = |node: NodeId| -> f32 {
         painted_shapes(&h.ui, node)
             .find_map(|s| match s {
-                ShapeRecord::Text { line_height_px, .. } => Some(*line_height_px),
+                ShapeRecord::Text { font, .. } => Some(font.line_height_px),
                 _ => None,
             })
             .unwrap()
@@ -315,7 +315,7 @@ fn textedit_style_override_replaces_default_theme() {
         });
         let lh = painted_shapes(&h.ui, leaf.unwrap())
             .find_map(|s| match s {
-                ShapeRecord::Text { line_height_px, .. } => Some(*line_height_px),
+                ShapeRecord::Text { font, .. } => Some(font.line_height_px),
                 _ => None,
             })
             .unwrap();
@@ -342,11 +342,7 @@ fn pushed_shape_carries_default_line_height_from_theme() {
         });
     });
     let text_shape = painted_shapes(&h.ui, leaf_node.unwrap()).find_map(|s| match s {
-        ShapeRecord::Text {
-            font_size_px,
-            line_height_px,
-            ..
-        } => Some((*font_size_px, *line_height_px)),
+        ShapeRecord::Text { font, .. } => Some((font.size_px, font.line_height_px)),
         _ => None,
     });
     let (fs, lh) = text_shape.expect("TextEdit pushes a ShapeRecord::Text for non-empty buffer");

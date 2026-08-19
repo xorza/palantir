@@ -1,11 +1,15 @@
 //! The face a shaping call is asked for: the four parameters that pick a
 //! font and a size, named once so they travel together.
 //!
-//! Shared vocabulary rather than one caller's parameter bundle — the public
-//! [`TextGlyphs`](crate::TextGlyphs) lease, the shape-cache key, and layout's
-//! own lowering all state a face this way, so a swapped pair of metrics is a
-//! type error in each of them instead of a silent mis-key.
+//! Shared vocabulary rather than one caller's parameter bundle. The
+//! authoring shape, the record it lowers to, the probe input, layout's
+//! own lowering, the shape-cache key, and the public
+//! [`TextGlyphs`](crate::TextGlyphs) lease all state a face as this one
+//! value — so the five that mirror each other mirror in one field, and a
+//! swapped pair of metrics is a type error rather than a silent mis-key
+//! that only shows up as a cache miss.
 
+use crate::primitives::nan::NanCheck;
 use crate::text::{FontFamily, FontWeight};
 
 /// Which face to shape in, and how big.
@@ -41,6 +45,13 @@ impl GlyphFont {
             family: FontFamily::Sans,
             weight: FontWeight::Regular,
         }
+    }
+}
+
+impl NanCheck for GlyphFont {
+    /// Only the two metrics can be NaN; the family and weight are enums.
+    fn has_nan(&self) -> bool {
+        self.size_px.is_nan() || self.line_height_px.is_nan()
     }
 }
 

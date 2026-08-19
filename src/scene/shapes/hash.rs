@@ -103,12 +103,9 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
             local_origin,
             text,
             color,
-            font_size_px,
-            line_height_px,
+            font,
             wrap,
             align,
-            family,
-            weight,
         } => {
             match local_origin {
                 None => h.write_u8(0),
@@ -119,15 +116,15 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
             }
             text.hash(&mut h);
             color.hash(&mut h);
-            approx::hash_visual_f32(*font_size_px, &mut h);
-            approx::hash_visual_f32(*line_height_px, &mut h);
+            approx::hash_visual_f32(font.size_px, &mut h);
+            approx::hash_visual_f32(font.line_height_px, &mut h);
             // `weight` rides the free high byte of `style`; `align`/`wrap`/
             // `family` occupy bytes 2/1/0, so bold vs regular can't collide
             // in the node hash (would break damage/reuse).
-            let style = ((*weight as u32) << 24)
+            let style = ((font.weight as u32) << 24)
                 | ((align.raw() as u32) << 16)
                 | ((*wrap as u32) << 8)
-                | (*family as u32);
+                | (font.family as u32);
             h.write_u32(style);
         }
         // Fields named exhaustively for the reason given on the

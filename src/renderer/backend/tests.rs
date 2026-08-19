@@ -79,16 +79,16 @@ fn simplify(buffer: &RenderBuffer, steps: &[RenderStep]) -> Vec<DrawOp> {
             }
             RenderStep::Text { batch } => out.push(DrawOp::Text(*batch)),
             RenderStep::MeshBatch { batch } => out.push(DrawOp::Meshes(
-                buffer.mesh_batches[*batch].last_group as usize,
+                buffer.batches(PaintTier::Mesh)[*batch].last_group as usize,
             )),
             RenderStep::ImageBatch { batch } => out.push(DrawOp::Images(
-                buffer.image_batches[*batch].last_group as usize,
+                buffer.batches(PaintTier::Image)[*batch].last_group as usize,
             )),
             RenderStep::IconBatch { batch } => out.push(DrawOp::Icons(
-                buffer.icon_batches[*batch].last_group as usize,
+                buffer.batches(PaintTier::Icon)[*batch].last_group as usize,
             )),
             RenderStep::CurveBatch { batch } => out.push(DrawOp::Curves(
-                buffer.curve_batches[*batch].last_group as usize,
+                buffer.batches(PaintTier::Curve)[*batch].last_group as usize,
             )),
         }
     }
@@ -201,7 +201,7 @@ fn text_batch(texts: Span, last_group: u32) -> TextBatch {
 fn buf_with_mesh_anchors(groups: Vec<DrawGroup>, anchors: &[u32]) -> RenderBuffer {
     let mut buf = buf_with(groups);
     for (i, &g) in anchors.iter().enumerate() {
-        buf.mesh_batches.push(GroupBatch {
+        buf.batches_mut(PaintTier::Mesh).push(GroupBatch {
             items: Span::new(i as u32, 1),
             last_group: g,
         });
@@ -213,7 +213,7 @@ fn buf_with_mesh_anchors(groups: Vec<DrawGroup>, anchors: &[u32]) -> RenderBuffe
 fn buf_with_image_anchors(groups: Vec<DrawGroup>, anchors: &[u32]) -> RenderBuffer {
     let mut buf = buf_with(groups);
     for (i, &g) in anchors.iter().enumerate() {
-        buf.image_batches.push(GroupBatch {
+        buf.batches_mut(PaintTier::Image).push(GroupBatch {
             items: Span::new(i as u32, 1),
             last_group: g,
         });
@@ -1457,10 +1457,10 @@ fn higher_kind_replay_follows_paint_tier_order() {
         items: Span::new(0, 1),
         last_group: 0,
     };
-    buf.mesh_batches.push(anchored);
-    buf.image_batches.push(anchored);
-    buf.icon_batches.push(anchored);
-    buf.curve_batches.push(anchored);
+    buf.batches_mut(PaintTier::Mesh).push(anchored);
+    buf.batches_mut(PaintTier::Image).push(anchored);
+    buf.batches_mut(PaintTier::Icon).push(anchored);
+    buf.batches_mut(PaintTier::Curve).push(anchored);
 
     let emitted: Vec<PaintTier> = simplify(&buf, &collect(&buf, None, &MaskPlan::default(), false))
         .into_iter()

@@ -41,8 +41,7 @@ use std::f32::consts::TAU;
 /// variant, no `From`, and no authoring-side dispatch to keep in step.
 ///
 /// That buys the *authoring* surface only, and only for a kind that
-/// lowers into an existing [`ShapeRecord`](crate::scene::shapes::record)
-/// variant — which is what `Shape::circle`, `line` and `cubic_bezier`
+/// lowers into an existing `ShapeRecord` variant — which is what `Shape::circle`, `line` and `cubic_bezier`
 /// do (all `Curve`), and `rect`, `shadow` and `triangle` (all `Quad`).
 /// A kind that needs a *new* record variant is a different job: the
 /// record enum is the pipeline's dispatch point, and a new variant has
@@ -64,10 +63,6 @@ pub(crate) mod sealed {
     use crate::scene::record_store::RecordStore;
     use crate::scene::shapes::record::ShapeRecord;
 
-    // `pub` is what seals it: a public trait cannot have a private
-    // supertrait, so this has to be `pub` even though the private module
-    // keeps it unreachable from outside. That unreachability *is* the
-    // seal, so the lint is describing the intent rather than a mistake.
     // Two lints fire on this pattern and both are describing the seal
     // rather than a mistake:
     //
@@ -91,6 +86,14 @@ pub(crate) mod sealed {
         /// Convert to the stored form, appending any bulk payload
         /// (polyline points, mesh vertices, gradients, text bytes) to
         /// `store` on the way.
+        ///
+        /// **Every impl opens by destructuring `Self`.** Taking `self` by
+        /// value and reading `self.field` one at a time makes an
+        /// authoring field that never reaches the record compile clean:
+        /// `dead_code` only catches one nothing reads at all, and a field
+        /// `is_noop` validates counts as read. Naming them all turns the
+        /// omission into a build error, which is the enforcement the
+        /// record side already gets for free from its struct literal.
         fn lower(self, store: &RecordStore) -> ShapeRecord;
     }
 }
