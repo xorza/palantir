@@ -786,7 +786,7 @@ fn epoch_current_rows_form_an_mru_prefix() {
             let g = distinct_grad(*i as f32 * 0.01);
             atlas
                 .resident_row(&g.stops, g.interp)
-                .is_some_and(|row| atlas.row_epoch[row as usize] == atlas.epoch)
+                .is_some_and(|row| atlas.slots[row as usize].epoch == atlas.epoch)
         })
         .count();
     assert_eq!(protected, 13);

@@ -96,8 +96,8 @@ impl LayoutPass<'_> {
     /// The durable per-grid track store alone, for the sites that don't
     /// also need the depth stack.
     #[inline]
-    pub(super) fn grid_tracks_mut(&mut self) -> &mut GridTrackStore {
-        &mut self.engine.scratch.grid.hugs
+    pub(super) fn grid_track_state_mut(&mut self) -> &mut GridTrackStore {
+        &mut self.engine.scratch.grid.track_state
     }
 
     /// Stack's flat Fill-entry pool, shared across nesting depths.

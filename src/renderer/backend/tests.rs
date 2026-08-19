@@ -191,7 +191,7 @@ fn text_batch(texts: Span, last_group: u32) -> TextBatch {
     }
 }
 
-/// Adds one `MeshBatch` per entry in `anchors`, each anchored at the
+/// Adds one mesh-tier batch per entry in `anchors`, each anchored at the
 /// group index listed. Span values are stub indices into a parallel
 /// `meshes.draws` vec — the schedule only reads `last_group`, so the
 /// span content doesn't matter for these tests.
@@ -1326,7 +1326,7 @@ fn two_text_batches_emit_at_their_own_last_groups() {
     );
 }
 
-/// Pin: each mesh-emitting group contributes its own `MeshBatch`,
+/// Pin: each mesh-emitting group contributes its own mesh-tier batch,
 /// drained at the group iteration anchored by `last_group`. Two
 /// adjacent mesh groups → two emit steps, in order.
 #[test]
@@ -1354,7 +1354,7 @@ fn mesh_batches_emit_per_group_in_order() {
 
 /// Pin: a mesh batch anchored in a damage-skipped group is silently
 /// dropped — the stale-cursor advance at the top of each schedule
-/// iteration moves past it, so no `MeshBatch` step is emitted for
+/// iteration moves past it, so no mesh-tier step is emitted for
 /// invisible meshes. Counter-pin: the visible group still drains
 /// its own batch.
 #[test]
@@ -1381,7 +1381,7 @@ fn mesh_batch_in_damage_skipped_group_drops_silently() {
     );
 }
 
-/// Pin: an image batch anchored at group `j` emits `ImageBatch` after
+/// Pin: an image batch anchored at group `j` replays after
 /// that group's quads and meshes (image sits at mesh tier in the
 /// kind order). Counter-pin to ensure the new `next_image_batch`
 /// cursor wires through both stencil and non-stencil paths.

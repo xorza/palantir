@@ -237,6 +237,17 @@ impl FrameRuntime {
     /// drive exactly one frame. Named `take_` for that reason: a reader is
     /// entitled to assume a `classify_*` is pure, and this is the frame's
     /// single entry decision.
+    /// No frame has been stamped yet, so there is no previous display to
+    /// compare against and no retained pixels to keep.
+    ///
+    /// Named rather than spelled `prev_stamp.is_none()` at each of the two
+    /// sites that ask — the plan classifier below, and `FrameCycle::run`,
+    /// which gates its warmup pass and its damage assertion on the same
+    /// fact.
+    pub(crate) fn is_first_frame(&self) -> bool {
+        self.prev_stamp.is_none()
+    }
+
     pub(super) fn take_frame_plan(&mut self, input: FrameClassifyInput) -> FramePlan {
         let fired_count = self
             .repaint_wakes
@@ -246,7 +257,7 @@ impl FrameRuntime {
             .drain(..fired_count)
             .fold(WakeReasons::default(), |acc, wake| acc.merge(wake.reasons));
 
-        let first_frame = self.prev_stamp.is_none();
+        let first_frame = self.is_first_frame();
         let display_changed = self
             .prev_stamp
             .is_some_and(|previous| !previous.display.raster_eq(&input.display));

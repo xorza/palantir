@@ -95,11 +95,13 @@ impl TextShapeKey {
     /// never zero, because zero is what [`Self::INVALID`] tags a
     /// bufferless run with.
     ///
-    /// Stated once because three sites derive it — this key's constructor
-    /// and both of `ShapedTextRef`'s pairing checks — and a rule spelled
-    /// three times is one that can be changed in only one of them, leaving
-    /// the checks agreeing with a hash nothing mints any more.
-    pub(super) const fn content_hash(raw: u64) -> u64 {
+    /// Stated once because four sites derive it — this key's constructor,
+    /// both of `ShapedTextRef`'s pairing checks, and `TextEdit`'s
+    /// history reconciliation, which compares a hash it mints itself
+    /// against one that came off a key. A rule spelled at each of them is
+    /// one that can be changed in only some, leaving the checks agreeing
+    /// with a hash nothing mints any more.
+    pub(crate) const fn content_hash(raw: u64) -> u64 {
         // `Ord::max` is not const yet, and the zero case is the whole rule.
         if raw == 0 { 1 } else { raw }
     }

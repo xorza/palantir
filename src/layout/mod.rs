@@ -31,7 +31,7 @@ use std::ops::{Index, IndexMut};
 
 /// Per-layer layout output — the SoA columns the encoder + hit-index
 /// read after the layout pass. Intermediate scratch (desired sizes,
-/// grid track hugs) lives on `LayoutScratch` directly. SoA columns
+/// grid track state) lives on `LayoutScratch` directly. SoA columns
 /// indexed by `NodeId.0`. Capacity is reused across frames via
 /// `resize_for`.
 #[derive(Debug, Default)]

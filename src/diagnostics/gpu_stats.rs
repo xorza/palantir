@@ -47,14 +47,14 @@ pub enum BatchKind {
     /// `RenderStep::Text` — text batches via the inlined text
     /// pipeline.
     Text = 4,
-    /// `RenderStep::MeshBatch` — the mesh pipeline.
+    /// `PaintTier::Mesh`'s replay — the mesh pipeline.
     Mesh = 5,
-    /// `RenderStep::ImageBatch` — the image pipeline.
+    /// `PaintTier::Image`'s replay — the image pipeline.
     Image = 6,
-    /// `RenderStep::CurveBatch` — the curve pipeline.
+    /// `PaintTier::Curve`'s replay — the curve pipeline.
     Curve = 7,
-    /// `RenderStep::IconBatch` — the icon pipeline (the glyph shader over
-    /// the icon atlas).
+    /// `PaintTier::Icon`'s replay — the icon pipeline (the glyph shader
+    /// over the icon atlas).
     Icon = 8,
 }
 

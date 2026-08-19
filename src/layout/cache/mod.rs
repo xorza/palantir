@@ -24,7 +24,7 @@ struct ArenaSnapshot {
     subtree_hash: ContentHash,
     available_q: AvailableKey,
     nodes: Span,
-    hugs: Span,
+    tracks: Span,
     text_shapes: Span,
 }
 
@@ -50,7 +50,7 @@ pub(super) struct CachedSubtree<'a> {
     pub(super) text_spans: &'a [Span],
     pub(super) intrinsics: &'a [[f32; SLOT_COUNT]],
     pub(super) available_q: &'a [AvailableKey],
-    pub(super) hugs: &'a [f32],
+    pub(super) tracks: &'a [f32],
     pub(super) text_shapes: &'a [ShapedText],
     pub(super) text_shapes_base: u32,
 }
@@ -62,7 +62,7 @@ pub(super) struct CaptureTreeInput<'a> {
     pub(super) scroll_content: &'a [Size],
     pub(super) intrinsics: &'a [[f32; SLOT_COUNT]],
     pub(super) available_q: &'a mut Vec<AvailableKey>,
-    pub(super) grid_hugs: &'a GridTrackStore,
+    pub(super) grid_track_state: &'a GridTrackStore,
     pub(super) text_spans: &'a [Span],
     pub(super) text_shapes: &'a [ShapedText],
 }
@@ -125,7 +125,7 @@ impl NodeArenas {
 #[derive(Debug, Default)]
 pub(crate) struct MeasureSnapshot {
     pub(crate) nodes: NodeArenas,
-    hugs: Vec<f32>,
+    tracks: Vec<f32>,
     text_shapes: Vec<ShapedText>,
     snapshots: WidgetIdMap<u32>,
     descriptors: Vec<ArenaSnapshot>,
@@ -147,7 +147,7 @@ pub(crate) struct MeasureSnapshot {
 impl MeasureSnapshot {
     fn begin_capture(&mut self) {
         self.nodes.clear();
-        self.hugs.clear();
+        self.tracks.clear();
         self.text_shapes.clear();
         self.descriptors.clear();
         self.descriptor_wids.clear();
@@ -247,7 +247,7 @@ impl MeasureCache {
             text_spans: &self.previous.nodes.text_spans[nodes.clone()],
             intrinsics: &self.previous.nodes.intrinsics[nodes.clone()],
             available_q: &self.previous.nodes.available_q[nodes],
-            hugs: &self.previous.hugs[snap.hugs.range()],
+            tracks: &self.previous.tracks[snap.tracks.range()],
             text_shapes: &self.previous.text_shapes[snap.text_shapes.range()],
             text_shapes_base: snap.text_shapes.start,
         })
@@ -276,7 +276,7 @@ impl MeasureCache {
             scroll_content,
             intrinsics,
             available_q,
-            grid_hugs,
+            grid_track_state,
             text_spans,
             text_shapes,
         } = input;
@@ -356,12 +356,16 @@ impl MeasureCache {
             // wants the length, not the zeroes.
             self.hug_offsets.resize(node_count + 1, 0);
             for (index, layout) in layouts.iter().copied().enumerate() {
-                self.hug_offsets[index] = self.current.hugs.len() as u32;
+                self.hug_offsets[index] = self.current.tracks.len() as u32;
                 if matches!(LayoutMode::from(layout.meta), LayoutMode::Grid(_)) {
-                    grid_hugs.snapshot_subtree(tree, index..index + 1, &mut self.current.hugs);
+                    grid_track_state.snapshot_subtree(
+                        tree,
+                        index..index + 1,
+                        &mut self.current.tracks,
+                    );
                 }
             }
-            self.hug_offsets[node_count] = self.current.hugs.len() as u32;
+            self.hug_offsets[node_count] = self.current.tracks.len() as u32;
         }
 
         for slot in &tree.roots {
@@ -380,7 +384,7 @@ impl MeasureCache {
                 continue;
             }
             let end = tree.subtree_end_of(index) as usize;
-            let hugs = if has_grids {
+            let tracks = if has_grids {
                 let start = self.hug_offsets[index];
                 Span::new(start, self.hug_offsets[end] - start)
             } else {
@@ -399,7 +403,7 @@ impl MeasureCache {
                 subtree_hash: tree.rollups.subtree[index],
                 available_q: available_q[index],
                 nodes: Span::new(node_base + index as u32, (end - index) as u32),
-                hugs,
+                tracks,
                 text_shapes,
             });
             self.current.descriptor_wids.push(wid);

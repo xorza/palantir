@@ -59,14 +59,14 @@ use crate::text::system::TextSystem;
 ///    state rather than reading measure's.)
 ///
 /// 2. **Retained measure → arrange/record** — `desired`,
-///    `LayerLayout::scroll_content`, and `grid.hugs`.
+///    `LayerLayout::scroll_content`, and `grid.track_state`.
 ///    `desired` is node-indexed and the cache transparently round-
 ///    trips it through [`CachedSubtree::desired`]. Scroll content is
 ///    likewise node-indexed and restored into the current layout
-///    result for the next record pass. `grid.hugs` is
+///    result for the next record pass. `grid.track_state` is
 ///    indexed per-grid (not per-node) so the cache hit path has to
 ///    explicitly call [`restore_after_cache_hit`] to splat
-///    [`CachedSubtree::hugs`] back into the live pool — without
+///    [`CachedSubtree::tracks`] back into the live pool — without
 ///    that, arrange reads zeros and every cell collapses to (0, 0).
 ///
 /// 3. **Node-indexed measure memos, round-tripped by the cache** —
@@ -139,7 +139,7 @@ impl LayoutScratch {
         intrinsics.resize(n, [f32::NAN; SLOT_COUNT]);
         available_q.clear();
         available_q.resize(n, INVALID_AVAILABLE);
-        grid.hugs.reset_for(tree);
+        grid.track_state.reset_for(tree);
     }
 }
 
@@ -229,7 +229,7 @@ pub(super) fn restore_after_cache_hit(
         text_spans,
         intrinsics,
         available_q,
-        hugs,
+        tracks,
         text_shapes,
         text_shapes_base,
     } = cached;
@@ -263,11 +263,14 @@ pub(super) fn restore_after_cache_hit(
         }
         scratch.available_q[subtree.clone()].copy_from_slice(available_q);
     }
-    // `grid.hugs` — gated on `Tree::subtree_has_grid` (one bit-test
+    // `grid.track_state` — gated on `Tree::subtree_has_grid` (one bit-test
     // off the same `subtree_end` word the caller already read) so
     // grid-free subtrees pay nothing.
     if tree.subtree_has_grid(subtree.start) {
-        scratch.grid.hugs.restore_subtree(tree, subtree, hugs);
+        scratch
+            .grid
+            .track_state
+            .restore_subtree(tree, subtree, tracks);
     }
 }
 
@@ -601,7 +604,7 @@ impl LayoutEngine {
                         scroll_content: &layer_out.scroll_content,
                         intrinsics: &self.scratch.intrinsics,
                         available_q: &mut self.scratch.available_q,
-                        grid_hugs: &self.scratch.grid.hugs,
+                        grid_track_state: &self.scratch.grid.track_state,
                         text_spans: &layer_out.text_spans,
                         text_shapes: &layer_out.text_shapes,
                     },

@@ -78,7 +78,7 @@ impl<'a> FrameCycle<'a> {
             stamp.display.scale_factor,
         );
 
-        let first_frame = self.ui.frame_runtime.prev_stamp.is_none();
+        let first_frame = self.ui.frame_runtime.is_first_frame();
         self.ui.frame_runtime.advance_clock(stamp.time);
         // Refresh the input clock so input handlers running before the
         // next frame timestamp double-clicks on this deterministic time.

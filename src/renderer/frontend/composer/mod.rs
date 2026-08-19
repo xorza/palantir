@@ -382,12 +382,11 @@ impl Composer {
 
     /// The clip in force: the stack top, or none at the root.
     ///
-    /// **Derived, not cached.** These used to be mirrored into a
-    /// `current_scissor` / `current_chain` pair reassigned in lockstep
-    /// with every push and pop — and then read from different places,
-    /// the cull test and the clear fold from the mirror, the text path
-    /// from the stack, with nothing but the pairing keeping the two
-    /// agreeing. The stack is the only owner now, so they cannot.
+    /// **Derived, not cached.** A mirror of the top would have to be
+    /// reassigned in lockstep with every push and pop, and the readers
+    /// split across it: the cull test and the clear fold ask one
+    /// question, the text path another. The stack is the only owner, so
+    /// there is nothing for them to disagree about.
     fn clip_top(&self) -> Option<ClipFrame> {
         self.clip_stack.last().copied()
     }

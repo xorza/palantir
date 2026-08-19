@@ -130,6 +130,29 @@ struct GradientLutKey {
 /// a side effect, lets [`Self::grow`] leave lookup completely alone:
 /// resident gradients keep their rows and cannot be baked into a
 /// second one.
+/// One row's bookkeeping, held beside the baked texels rather than in
+/// them.
+///
+/// `baked` stays its own `Vec<LutRowTexels>` because the upload casts it
+/// to `&[u8]` in one reinterpret; everything *about* a row lives here, so
+/// the atlas carries two per-row columns and an MRU list instead of five
+/// containers whose lengths agreed only by convention.
+#[derive(Clone, Debug, Default)]
+struct RowSlot {
+    /// The key this row currently holds, so evicting it can drop the
+    /// outgoing gradient's index entry. `None` for a row never claimed.
+    /// Row 0 stays `None` — it is not a member of the MRU list, so
+    /// nothing can claim it; `baked[0]` carries the fallback payload.
+    key: Option<GradientLutKey>,
+    /// The [`CpuGradientAtlas::epoch`] the row was last registered in.
+    /// A row stamped with the *current* epoch cannot be evicted — its
+    /// `LutRow` id is already captured in this frame's lowered draw
+    /// payloads, so re-baking it would silently repaint those draws with
+    /// the wrong gradient after the end-of-frame upload. `0` means never
+    /// claimed, which is why the epoch starts at 1.
+    epoch: u64,
+}
+
 #[derive(Debug)]
 pub(crate) struct CpuGradientAtlas {
     /// Bake key → the row holding it. A pure lookup index: it says
@@ -137,11 +160,11 @@ pub(crate) struct CpuGradientAtlas {
     /// eviction take the LRU row and growth append rows without either
     /// one disturbing it.
     index: FxHashMap<GradientLutKey, u32>,
-    /// Row → the key it currently holds, so evicting a row can drop the
-    /// outgoing gradient's index entry. `None` for a row never claimed.
-    /// Row 0 stays `None` — it is not a member of the MRU list, so
-    /// nothing can claim it; `baked[0]` carries the fallback payload.
-    rows: Vec<Option<GradientLutKey>>,
+    /// Per-row bookkeeping: what the row holds and when it was last
+    /// registered. One column rather than two, because every site reads
+    /// or writes both together and two parallel `Vec`s were two lengths
+    /// to keep equal by hand.
+    slots: Vec<RowSlot>,
     /// Baked LUT row bytes, indexed by row id. Row 0's contents are
     /// the magenta-fallback fill. Storage is a single heap allocation
     /// (512 KB at the initial capacity) — `Vec<LutRowTexels>` is
@@ -153,13 +176,6 @@ pub(crate) struct CpuGradientAtlas {
     /// to compare and no clock to overflow. See
     /// [`mru`] for why its tail alone answers "what may be evicted".
     mru: MruList,
-    /// Per-row: the [`Self::epoch`] the row was last registered in.
-    /// A row stamped with the *current* epoch cannot be evicted — its
-    /// `LutRow` id is already captured in this frame's lowered draw
-    /// payloads, so re-baking it would silently repaint those draws
-    /// with the wrong gradient after the end-of-frame upload. `0` means
-    /// never claimed, which is why [`Self::epoch`] starts at 1.
-    row_epoch: Vec<u64>,
     /// Hard row ceiling: `min(device max_texture_dimension_2d,
     /// MAX_ATLAS_ROWS)`, since the atlas is one texture row per
     /// gradient. Registrations past a full table at this capacity paint
@@ -172,8 +188,8 @@ pub(crate) struct CpuGradientAtlas {
     /// is safe under cross-window interleaving (cross-frame eviction is
     /// harmless — the evictee re-bakes on its next register).
     ///
-    /// Starts at 1 so a never-claimed row's `row_epoch` of 0 can never
-    /// read as epoch-current.
+    /// Starts at 1 so a never-claimed row's `epoch` of 0 can never read
+    /// as epoch-current.
     epoch: u64,
     /// How each registration resolved — see [`GradientAtlasCounters`].
     /// Zero-sized in a shipping build.
@@ -224,10 +240,9 @@ impl CpuGradientAtlas {
     pub(crate) fn new(max_rows: u32) -> Self {
         let mut atlas = Self {
             index: FxHashMap::default(),
-            rows: vec![None; INITIAL_ATLAS_ROWS as usize],
+            slots: vec![RowSlot::default(); INITIAL_ATLAS_ROWS as usize],
             baked: vec![[ColorF16::TRANSPARENT; LUT_ROW_TEXELS]; INITIAL_ATLAS_ROWS as usize],
             mru: MruList::seeded(INITIAL_ATLAS_ROWS),
-            row_epoch: vec![0; INITIAL_ATLAS_ROWS as usize],
             max_rows: max_rows.max(INITIAL_ATLAS_ROWS),
             epoch: 1,
             dirty: None,
@@ -300,7 +315,7 @@ impl CpuGradientAtlas {
             // a head prefix (see `mru`), so this single check is the
             // whole eviction decision.
             let victim = self.mru.tail();
-            if self.row_epoch[victim as usize] != self.epoch {
+            if self.slots[victim as usize].epoch != self.epoch {
                 return self.claim_row(victim, key);
             }
             // Every row is spoken for by this frame's draws. Grow and
@@ -321,7 +336,7 @@ impl CpuGradientAtlas {
     #[inline]
     fn touch(&mut self, row: u32) {
         self.mru.touch(row);
-        self.row_epoch[row as usize] = self.epoch;
+        self.slots[row as usize].epoch = self.epoch;
     }
 
     /// Double the row count (capped at [`Self::max_rows`]), reporting
@@ -339,11 +354,7 @@ impl CpuGradientAtlas {
         if grown <= capacity {
             return false;
         }
-        self.rows.resize(grown as usize, None);
-        self.baked
-            .resize(grown as usize, [ColorF16::TRANSPARENT; LUT_ROW_TEXELS]);
-        self.row_epoch.resize(grown as usize, 0);
-        self.mru.extend_to(capacity, grown);
+        self.resize_rows(grown);
         self.counters.growths.bump();
         // The backend replaces its texture at the new height and wgpu
         // zero-initializes the replacement, so every row — not just the
@@ -352,16 +363,32 @@ impl CpuGradientAtlas {
             first: 0,
             last: grown - 1,
         });
-        // Independent resizes make equal lengths a convention rather
-        // than a type invariant, and `capacity` reads only `baked`. Cold
-        // path — growth happens at most once per doubling — so the MRU
-        // walk rides along.
-        debug_assert!(
-            self.rows.len() == self.baked.len() && self.row_epoch.len() == self.baked.len(),
+        debug_assert!(self.mru.is_well_formed(), "growth corrupted the MRU list");
+        true
+    }
+
+    /// Move every per-row column to `to` rows, together.
+    ///
+    /// **The one place any of them is resized.** `slots` and `baked` are
+    /// separate `Vec`s because the second is uploaded as one contiguous
+    /// `&[u8]`, and the MRU list keeps its own links — so equal lengths
+    /// cannot be a type invariant, and this is the next best thing: a
+    /// single site, with the assert stating what the types cannot.
+    fn resize_rows(&mut self, to: u32) {
+        // Read before anything moves: the MRU list has to be extended
+        // from the old row count, and taking that as a parameter would
+        // put one of the lengths this method exists to keep together back
+        // in the caller's hands.
+        let from = self.capacity();
+        self.slots.resize(to as usize, RowSlot::default());
+        self.baked
+            .resize(to as usize, [ColorF16::TRANSPARENT; LUT_ROW_TEXELS]);
+        self.mru.extend_to(from, to);
+        debug_assert_eq!(
+            self.slots.len(),
+            self.baked.len(),
             "per-row columns must resize together",
         );
-        debug_assert!(self.mru.is_well_formed(), "growth corrupted the MRU list",);
-        true
     }
 
     /// Bake `key` into `row` and take over the slot: index entry,
@@ -373,7 +400,7 @@ impl CpuGradientAtlas {
         // Evicting: the outgoing gradient's index entry has to go with
         // its row, or a later lookup resolves to a row now holding
         // somebody else's bake.
-        let displaced = self.rows[row as usize].replace(key);
+        let displaced = self.slots[row as usize].key.replace(key);
         if let Some(evicted) = displaced {
             self.index.remove(&evicted);
         }
@@ -432,14 +459,14 @@ mod internals {
         /// Whether the rows registered this epoch form a head prefix of
         /// the MRU list — the property [`Self::register_stops`] decides
         /// eviction from, by checking the tail alone. Every registration
-        /// path must move its row to the head; one that stamps
-        /// `row_epoch` without doing so would leave an evictable-looking
+        /// path must move its row to the head; one that stamps a row's
+        /// `epoch` without doing so would leave an evictable-looking
         /// row ahead of a protected one, and the atlas would repaint a
         /// row this frame's draws already reference.
         pub(crate) fn epoch_prefix_holds(&self) -> bool {
             let mut seen_stale = false;
             for row in self.mru.to_vec() {
-                match self.row_epoch[row as usize] == self.epoch {
+                match self.slots[row as usize].epoch == self.epoch {
                     true if seen_stale => return false,
                     true => {}
                     false => seen_stale = true,

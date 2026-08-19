@@ -68,12 +68,14 @@ pub(super) fn measure_inner(
             let i = cell.col as usize;
             if t.size.is_hug() {
                 let range = pass.intrinsic_range(c, Axis::X);
-                let (cols_min, cols_max) = pass.grid_tracks_mut().slice_mut_pair(idx, Axis::X);
+                let (cols_min, cols_max) = pass.grid_track_state_mut().slice_mut_pair(idx, Axis::X);
                 cols_min[i] = cols_min[i].max(range.min);
                 cols_max[i] = cols_max[i].max(range.max);
             } else if t.size.fill_weight().is_some() {
                 let min = pass.intrinsic(c, Axis::X, LenReq::MinContent);
-                let cols_min = pass.grid_tracks_mut().slice_mut(idx, Axis::X, HugKind::Min);
+                let cols_min = pass
+                    .grid_track_state_mut()
+                    .slice_mut(idx, Axis::X, HugKind::Min);
                 cols_min[i] = cols_min[i].max(min);
             }
         }
@@ -97,20 +99,22 @@ pub(super) fn measure_inner(
     let grid_sizing_h = grid_sizing.h();
     {
         let GridContext {
-            depth_stack, hugs, ..
+            depth_stack,
+            track_state,
+            ..
         } = pass.grid_mut();
         let s = depth_stack.at(depth);
         resolve_axis(
             &mut s.col,
             col_tracks,
-            hugs.ranges(idx, Axis::X),
+            track_state.ranges(idx, Axis::X),
             inner_avail.w,
             col_gap,
             !grid_sizing_w.is_hug(),
         );
         // Stash col sizes for arrange's reuse path (skips a redundant
         // `resolve_axis` when the arrange-time slot matches `inner_avail.w`).
-        hugs.record_resolution(idx, Axis::X, inner_avail.w, &s.col.sizes);
+        track_state.record_resolution(idx, Axis::X, inner_avail.w, &s.col.sizes);
         // Resolve Fixed rows once before the per-cell loop — values are
         // constant per GridDef and `resolve_fixed` is idempotent, so
         // calling it inside the loop just re-set the same slots.
@@ -164,14 +168,14 @@ pub(super) fn measure_inner(
         // Skip multi-row spans: their height is distributed across rows,
         // not attributable to one row.
         if cell.row_span == 1 {
-            let hugs = pass.grid_tracks_mut();
+            let tracks = pass.grid_track_state_mut();
             let row = cell.row as usize;
             let sizing = row_tracks[row].size;
             if sizing.is_hug() {
-                let hug_max = hugs.slice_mut(idx, Axis::Y, HugKind::Max);
+                let hug_max = tracks.slice_mut(idx, Axis::Y, HugKind::Max);
                 hug_max[row] = hug_max[row].max(d.h);
             } else if sizing.fill_weight().is_some() {
-                let hug_min = hugs.slice_mut(idx, Axis::Y, HugKind::Min);
+                let hug_min = tracks.slice_mut(idx, Axis::Y, HugKind::Min);
                 hug_min[row] = hug_min[row].max(d.h);
             }
         }
@@ -185,18 +189,20 @@ pub(super) fn measure_inner(
     // Only the resolved `sizes` recorded below matter past this point.
     {
         let GridContext {
-            depth_stack, hugs, ..
+            depth_stack,
+            track_state,
+            ..
         } = pass.grid_mut();
         let s = depth_stack.at(depth);
         resolve_axis(
             &mut s.row,
             row_tracks,
-            hugs.ranges(idx, Axis::Y),
+            track_state.ranges(idx, Axis::Y),
             inner_avail.h,
             row_gap,
             !grid_sizing_h.is_hug(),
         );
-        hugs.record_resolution(idx, Axis::Y, inner_avail.h, &s.row.sizes);
+        track_state.record_resolution(idx, Axis::Y, inner_avail.h, &s.row.sizes);
     }
 
     // Returned content size: sum of non-Fill track sizes + gaps. Fill
