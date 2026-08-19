@@ -106,7 +106,9 @@ impl TextSystem {
     /// Named for the `FramePlan::FullRecord` frame it closes, because
     /// this type has two teardowns and the frame kind is what picks
     /// between them: only a frame that recorded has a `removed` set to
-    /// sweep against. [`Self::end_paint_only`] is the other half.
+    /// sweep against. A `PaintOnly` frame never reaches here, and owes
+    /// the clock tick below directly — `FrameCycle::run` takes it through
+    /// [`TextShaper::tick_frame`](crate::TextShaper).
     ///
     /// This is also where the shared text frame clock ticks — the one
     /// the renderer's glyph atlas and encoded-run cache age against too,
@@ -124,29 +126,15 @@ impl TextSystem {
     /// (`StateMap::sweep_removed`, `AnimMap::sweep_removed`, the
     /// `gpu_views` retain) gates the same way.
     pub(crate) fn end_full_record(&mut self, removed: &FxHashSet<WidgetId>) {
-        self.end_paint_only();
+        // The frame's one clock tick, matching the paint-only arm in
+        // `FrameCycle::run` — see `TextShaper::tick_frame` for what a
+        // frozen clock does to atlas eviction.
+        self.shaper.tick_frame();
         if removed.is_empty() {
             return;
         }
         self.entries
             .retain(|slot, _| !removed.contains(&slot.widget_id));
-    }
-
-    /// Close a `FramePlan::PaintOnly` frame: advance the shared text
-    /// clock, and nothing else.
-    ///
-    /// A `PaintOnly` frame repaints the retained tree and records nothing,
-    /// so it never reaches [`Self::end_full_record`] — and it has no
-    /// `removed` set to sweep against, since no ids were seen. It must
-    /// still tick, because the clock is what every text cache ages on and
-    /// freezing it does more than delay eviction: the glyph atlas only
-    /// considers a slot evictable while `last_use < current_frame`, so a
-    /// stalled clock makes a full atlas unable to reclaim *anything*, and
-    /// every insert starves until a record frame arrives. That surfaces as
-    /// glyphs missing from painted text with no path to recovery, which is
-    /// why this is not merely a retention nicety.
-    pub(crate) fn end_paint_only(&self) {
-        self.shaper.tick_frame();
     }
 
     /// The run's natural shape, for the intrinsic pass. `TextWrap`'s

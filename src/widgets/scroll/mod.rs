@@ -46,7 +46,9 @@ struct ScrollGeometry {
     /// handed to the bar overlay's driver so it deflates by the same.
     padding: Spacing,
     space: BarSpace,
-    bounds: ScrollBounds,
+    /// The builder's, carried so [`Self::bounds`] can hand the offset
+    /// solver a whole [`ScrollBounds`].
+    content_margin: Spacing,
 }
 
 impl ScrollGeometry {
@@ -55,6 +57,21 @@ impl ScrollGeometry {
     /// zoomed viewport tracks the cursor 1:1 with what's on screen.
     fn scaled_content(&self, zoom: f32) -> Size {
         Size::new(self.content.w * zoom, self.content.h * zoom)
+    }
+
+    /// What the offset solver works in, projected rather than stored.
+    ///
+    /// Both halves are already here — `content` is this struct's, and the
+    /// viewport is the one the bars reserved — so holding a
+    /// [`ScrollBounds`] beside them put the same two numbers in the
+    /// struct twice, with nothing keeping the copies equal but the one
+    /// construction site that set them together.
+    fn bounds(&self) -> ScrollBounds {
+        ScrollBounds {
+            content: self.content,
+            viewport: self.space.bar_viewport,
+            content_margin: self.content_margin,
+        }
     }
 }
 
@@ -354,11 +371,7 @@ impl<'a> Scroll<'a> {
             content,
             padding,
             space,
-            bounds: ScrollBounds {
-                content,
-                viewport: space.bar_viewport,
-                content_margin: self.content_margin,
-            },
+            content_margin: self.content_margin,
         }
     }
 
@@ -385,14 +398,14 @@ impl<'a> Scroll<'a> {
         }
         let preserve_zoom_underflow = self.zoom.is_some();
         state.apply_wheel_pan(
-            geom.bounds,
+            geom.bounds(),
             pan.x,
             pan.y,
             input.pan_delta,
             preserve_zoom_underflow,
         );
         if !preserve_zoom_underflow {
-            state.clamp_to_natural(geom.bounds);
+            state.clamp_to_natural(geom.bounds());
         }
     }
 

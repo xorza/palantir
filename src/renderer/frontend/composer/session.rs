@@ -114,7 +114,7 @@ impl ComposeSession<'_> {
     fn seen(&self, whole: Rect) -> Option<Rect> {
         let surface = self.display.physical;
         let mut clipped = whole.clamp_to(Rect::new(0.0, 0.0, surface.x as f32, surface.y as f32));
-        if let Some(scissor) = self.composer.current_scissor {
+        if let Some(scissor) = self.composer.clip_scissor() {
             clipped = clipped.clamp_to(scissor.into());
         }
         (clipped != whole).then_some(clipped)
@@ -144,7 +144,7 @@ impl PaintSink for ComposeSession<'_> {
         let logical_radius = (!p.corners.approx_zero()).then_some(p.corners);
         let world = self.current_transform.apply_rect(p.rect);
         let me = scissor_from_logical(world, scale, snap, viewport_phys);
-        let parent = self.composer.clip_stack.last().copied();
+        let parent = self.composer.clip_top();
         let scissor = match parent {
             Some(parent) => me.clamp_to(parent.scissor),
             None => me,
@@ -192,21 +192,12 @@ impl PaintSink for ComposeSession<'_> {
             // stencil_test pipeline would discard every fragment.
             parent_chain
         };
-        self.composer.clip_stack.push(ClipFrame { scissor, chain });
-        self.composer.set_clip(Some(scissor), chain, self.out);
+        self.composer
+            .push_clip(ClipFrame { scissor, chain }, self.out);
     }
 
     fn pop_clip(&mut self) {
-        self.composer
-            .clip_stack
-            .pop()
-            .expect("PopClip without matching PushClip");
-        let parent = self.composer.clip_stack.last().copied();
-        self.composer.set_clip(
-            parent.map(|f| f.scissor),
-            parent.map_or(Span::default(), |f| f.chain),
-            self.out,
-        );
+        self.composer.pop_clip(self.out);
     }
 
     fn push_transform(&mut self, t: TranslateScale) {
@@ -255,8 +246,8 @@ impl PaintSink for ComposeSession<'_> {
                 // Only a rect can reach this: the `SOLID` test rules
                 // out shadows and triangles, which carry their own
                 // `FillKind`.
-                if self.composer.current_scissor.is_none()
-                    && self.composer.current_chain.len == 0
+                if self.composer.clip_scissor().is_none()
+                    && self.composer.clip_chain().len == 0
                     && p.fill_kind == FillKind::SOLID
                     && p.fill.is_opaque()
                     && noop_f32(p.stroke.width)
@@ -878,8 +869,8 @@ impl PaintSink for ComposeSession<'_> {
         // ancestor `clip = true` panels actually clip glyphs;
         // an empty intersection means the run can't reach
         // pixels — skip the push entirely (cull).
-        let bounds = match self.composer.clip_stack.last() {
-            Some(parent) => unclipped.clamp_to(parent.scissor),
+        let bounds = match self.composer.clip_scissor() {
+            Some(scissor) => unclipped.clamp_to(scissor),
             None => unclipped,
         };
         if bounds.is_paint_empty() {

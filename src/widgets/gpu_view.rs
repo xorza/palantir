@@ -1,5 +1,6 @@
 use crate::layout::types::sizing::Sizing;
 use crate::renderer::gpu_view::GpuPaint;
+use crate::renderer::gpu_view::GpuPaintRef;
 use crate::scene::node::Node;
 use crate::ui::Ui;
 use crate::widgets::response::Response;
@@ -44,19 +45,15 @@ use std::rc::Rc;
 /// intrinsic size); override sizing / id via [`Configure`](crate::Configure). Doesn't sense
 /// by default — opt in with [`Configure::sense`](crate::Configure::sense) to drive interaction
 /// (drag / click) from the returned [`Response`].
+#[derive(Debug)]
 pub struct GpuView {
     node: Node,
-    paint: Rc<RefCell<dyn GpuPaint>>,
+    /// Wrapped at construction rather than carried raw: [`GpuPaintRef`]
+    /// exists so a struct holding a `dyn GpuPaint` can still derive
+    /// `Debug`, and holding the `Rc` directly meant hand-writing the one
+    /// impl the wrapper was introduced to remove.
+    paint: GpuPaintRef,
     repaint: bool,
-}
-
-impl std::fmt::Debug for GpuView {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("GpuView")
-            .field("node", &self.node)
-            .field("repaint", &self.repaint)
-            .finish_non_exhaustive()
-    }
 }
 
 impl GpuView {
@@ -70,7 +67,7 @@ impl GpuView {
         node.size = Some((Sizing::fill(1.0), Sizing::fill(1.0)).into());
         Self {
             node,
-            paint,
+            paint: GpuPaintRef(paint),
             repaint: true,
         }
     }

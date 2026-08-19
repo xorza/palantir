@@ -379,6 +379,11 @@ impl WindowDriver {
             requests.commands.closes.push(self.token);
         }
         commands.append(&mut requests.commands);
+        // The veto lives exactly one frame, and this is where that is
+        // enforced — for both hosts, since the offscreen counterpart
+        // below clears the same field for the same reason. Every winit
+        // frame reaches here, occluded ones included, so no caller needs
+        // to clear it on the way in.
         requests.close_vetoed = false;
         self.ui.window_frame = WindowFrameState::default();
         WindowOutput {
