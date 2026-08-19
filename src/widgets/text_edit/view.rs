@@ -23,23 +23,11 @@ use glam::Vec2;
 use std::ops::Range;
 use std::time::Duration;
 
-/// Retained buffer for the caret selection wash. Holds a selection up to
-/// 16 visual lines inline; a longer one keeps its spill allocation, which
-/// is what makes a held drag across a big multi-line selection
-/// allocation-free after the first frame (`long_multiline_selection_alloc_free`).
-///
-/// Lives here rather than beside the probe that fills it: the probe
-/// streams rects to a sink and retains nothing, so this is purely
-/// `ViewState`'s storage choice.
-pub(super) const SELECTION_RECTS_INLINE_CAPACITY: usize = 16;
-pub(super) type SelectionRects = tinyvec::TinyVec<[Rect; SELECTION_RECTS_INLINE_CAPACITY]>;
-
 const BLINK_HALF: Duration = Duration::from_millis(500);
 const BLINK_STOP_AFTER_IDLE: Duration = Duration::from_secs(30);
 
 #[derive(Clone, Default, Debug)]
 pub(super) struct ViewState {
-    pub(super) selection_rects: Option<Box<SelectionRects>>,
     pub(super) prev_focused: bool,
     pub(super) scroll: Vec2,
     pub(super) block_offset: Vec2,
@@ -301,10 +289,13 @@ pub(super) struct TextGeometry {
     pub(super) text_hash: u64,
 }
 
+/// Measure the run and fill `selection_rects` with the wash for
+/// `input.selection` — an out-parameter so the caller's retained buffer is
+/// refilled in place instead of a fresh one being handed back each frame.
 pub(super) fn resolve_geometry(
     ui: &mut Ui,
     input: GeometryInput<'_>,
-    selection_rects: &mut SelectionRects,
+    selection_rects: &mut Vec<Rect>,
 ) -> TextGeometry {
     let layout = input.layout;
     // The block is load-bearing: the content probe holds the shaper's
@@ -414,7 +405,7 @@ pub(super) struct PaintInput<'a> {
     pub(super) text: &'a str,
     pub(super) placeholder: &'a str,
     pub(super) geometry: TextGeometry,
-    pub(super) selection_rects: &'a SelectionRects,
+    pub(super) selection_rects: &'a [Rect],
     pub(super) selection_color: Color,
     pub(super) text_color: Color,
     pub(super) placeholder_color: Color,

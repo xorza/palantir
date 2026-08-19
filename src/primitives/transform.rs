@@ -63,6 +63,39 @@ impl TranslateScale {
         Self { translation, scale }
     }
 
+    /// Build from parts that are already known good.
+    ///
+    /// The invariant is closed under the operations below: composing or
+    /// re-anchoring finite, positive-scale transforms yields another one,
+    /// short of an overflow to infinity that finite inputs at this magnitude
+    /// cannot reach. So the release checks [`Self::new`] owes a public caller
+    /// handing in raw numbers are a debug contract here — and these run per
+    /// transformed node per frame, where a release build must pay only the
+    /// arithmetic.
+    const fn from_parts(translation: Vec2, scale: f32) -> Self {
+        debug_assert!(
+            translation.x.is_finite() && translation.y.is_finite(),
+            "TranslateScale translation must be finite"
+        );
+        debug_assert!(
+            scale.is_finite() && scale > 0.0,
+            "TranslateScale scale must be positive and finite"
+        );
+        Self { translation, scale }
+    }
+
+    /// Fold a pivot into a translation: `p ↦ (p - center) * s + center +
+    /// translation` is `p * s + (center * (1 - s) + translation)`, and this
+    /// is that parenthesised half. The one place the pivot algebra lives; the
+    /// three constructors below differ in where the pivot comes from and in
+    /// whether they validate the result.
+    const fn pivoted_translation(translation: Vec2, center: Vec2, s: f32) -> Vec2 {
+        Vec2::new(
+            center.x * (1.0 - s) + translation.x,
+            center.y * (1.0 - s) + translation.y,
+        )
+    }
+
     pub const fn from_translation(t: Vec2) -> Self {
         Self::new(t, 1.0)
     }
@@ -85,7 +118,7 @@ impl TranslateScale {
     /// effects where origin-relative scaling would translate the content away
     /// from where the user expects.
     pub const fn from_scale_about(center: Vec2, s: f32) -> Self {
-        Self::new(Vec2::new(center.x * (1.0 - s), center.y * (1.0 - s)), s)
+        Self::new(Self::pivoted_translation(Vec2::ZERO, center, s), s)
     }
 
     /// Scale by `s` about `center`, then translate by `translation`. The
@@ -103,13 +136,7 @@ impl TranslateScale {
     /// zoom in one step (e.g. "zoom toward cursor while easing the
     /// content into view").
     pub const fn from_translate_scale_about(translation: Vec2, center: Vec2, s: f32) -> Self {
-        Self::new(
-            Vec2::new(
-                center.x * (1.0 - s) + translation.x,
-                center.y * (1.0 - s) + translation.y,
-            ),
-            s,
-        )
+        Self::new(Self::pivoted_translation(translation, center, s), s)
     }
 
     /// Re-anchor `self` so its scale pivots about `origin` instead of
@@ -131,20 +158,27 @@ impl TranslateScale {
     ///
     /// Identity-preserving: when `scale == 1`, `origin * (1 - scale)
     /// == 0` so the translation is unchanged.
+    ///
+    /// Re-anchors an already-valid `self`, so it builds
+    /// `from_parts` rather than revalidating through
+    /// [`Self::from_translate_scale_about`] — this is the cascade's
+    /// per-transformed-node path.
     pub const fn anchored_at(self, origin: Vec2) -> Self {
-        Self::from_translate_scale_about(self.translation, origin, self.scale)
+        Self::from_parts(
+            Self::pivoted_translation(self.translation, origin, self.scale),
+            self.scale,
+        )
     }
 
     /// Apply `self` after `other`: `result(p) == self.apply_point(other.apply_point(p))`.
     /// Matches matrix multiplication conventions — descend the tree by composing
     /// `parent_cumulative.compose(child_local)`.
     ///
-    /// # Panics
-    ///
-    /// Panics when the composed translation or scale is not representable as a
-    /// finite positive-scale transform.
+    /// Both operands are already valid, and the invariant is closed under
+    /// composition, so this is the bare 3×mul + 3×add in a release build —
+    /// see `from_parts` for what that costs in debug.
     pub const fn compose(self, other: Self) -> Self {
-        Self::new(
+        Self::from_parts(
             Vec2::new(
                 other.translation.x * self.scale + self.translation.x,
                 other.translation.y * self.scale + self.translation.y,

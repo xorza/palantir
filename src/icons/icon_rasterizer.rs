@@ -20,6 +20,31 @@ pub(crate) enum IconRasterKind {
     Color,
 }
 
+/// Resident parsed documents. Past this, a parse that would be the
+/// `MAX_PARSED_TREES + 1`th retires the one longest unused.
+///
+/// A ceiling rather than a frame window, because a parse is not per-frame
+/// work: the atlas caches the *pixels*, so this map is only consulted when
+/// both caches miss. Sweeping it on a clock would walk a table sized by the
+/// session's peak parse count every frame to find nothing; sizing it instead
+/// puts the whole cost on the miss that is already about to parse an SVG.
+/// 128 is generous against a screenful of distinct icons and bounded against
+/// a session that browses a thousand-icon set once.
+const MAX_PARSED_TREES: usize = 128;
+
+/// One icon's parse, with the stamp that decides which parse leaves when the
+/// cache is full.
+#[derive(Debug)]
+struct ParsedIcon {
+    /// `None` marks an icon whose SVG failed to parse, so a broken icon is
+    /// parsed once and skipped thereafter rather than retried every frame.
+    tree: Option<usvg::Tree>,
+    /// [`IconRasterizer::uses`] at the last rasterize through this entry.
+    /// Use order, not frame order — two icons drawn on the same frame still
+    /// rank, which is what a screenful of icons over the ceiling needs.
+    last_use: u64,
+}
+
 /// Turns a baked icon into pixels at an exact physical size.
 ///
 /// Owned by the icon backend and driven on atlas misses. Two caches sit
@@ -30,12 +55,14 @@ pub(crate) enum IconRasterKind {
 /// its largest size.
 ///
 /// The parses are the set's, not the rasterizer's: they are keyed by
-/// [`IconRef`] and dropped by [`Self::forget_sets`] when the set unloads. The
-/// scratch buffer belongs to nobody and stays.
+/// [`IconRef`] and dropped by [`Self::forget_sets`] when the set unloads —
+/// and capped at [`MAX_PARSED_TREES`] before that, so a session that draws
+/// its way through a large set keeps a working set rather than all of it.
+/// The scratch buffer belongs to nobody and stays.
 pub(crate) struct IconRasterizer {
-    /// `None` marks an icon whose SVG failed to parse, so a broken icon is
-    /// parsed once and skipped thereafter rather than retried every frame.
-    trees: FxHashMap<IconRef, Option<usvg::Tree>>,
+    trees: FxHashMap<IconRef, ParsedIcon>,
+    /// Monotonic rasterize counter — the clock `ParsedIcon::last_use` reads.
+    uses: u64,
     /// Premultiplied RGBA that resvg renders into, whatever the icon's kind —
     /// a mask is the alpha channel of this, extracted after the render.
     rgba: Vec<u8>,
@@ -51,6 +78,7 @@ impl Default for IconRasterizer {
     fn default() -> Self {
         Self {
             trees: FxHashMap::default(),
+            uses: 0,
             rgba: Vec::new(),
             options: svg_facts::parse_options(),
         }
@@ -84,16 +112,26 @@ impl IconRasterizer {
         // Destructured so the parsed tree (borrowed from `trees`) and the
         // scratch buffer are held at once — disjoint fields that method calls
         // on `&mut self` could not express.
+        self.uses += 1;
+        // Room made before the probe, so the ceiling counts the entry about
+        // to land rather than the one after it. The extra lookup rides the
+        // miss path of the atlas, which is already parsing or scaling an SVG.
+        if self.trees.len() >= MAX_PARSED_TREES && !self.trees.contains_key(&key.icon) {
+            self.retire_least_used();
+        }
         let Self {
             trees,
+            uses,
             rgba,
             options,
         } = self;
         let def = atlas.def(key.icon.icon);
-        let tree = trees
-            .entry(key.icon)
-            .or_insert_with(|| usvg::Tree::from_data(atlas.svg_bytes(key.icon.icon), options).ok())
-            .as_ref()?;
+        let entry = trees.entry(key.icon).or_insert_with(|| ParsedIcon {
+            tree: usvg::Tree::from_data(atlas.svg_bytes(key.icon.icon), options).ok(),
+            last_use: *uses,
+        });
+        entry.last_use = *uses;
+        let tree = entry.tree.as_ref()?;
 
         let w = u32::from(key.size.x);
         let h = u32::from(key.size.y);
@@ -136,6 +174,23 @@ impl IconRasterizer {
         }
     }
 
+    /// Drop the parse that has gone longest without a rasterize.
+    ///
+    /// Linear in the map, and only ever reached by a call that is about to
+    /// parse an SVG — orders of magnitude more work than the scan — so the
+    /// cache needs no second structure to keep an order in.
+    fn retire_least_used(&mut self) {
+        let Some(&coldest) = self
+            .trees
+            .iter()
+            .min_by_key(|(_, parsed)| parsed.last_use)
+            .map(|(icon, _)| icon)
+        else {
+            return;
+        };
+        self.trees.remove(&coldest);
+    }
+
     /// Drop the parses held for every set in `sets`, whose last
     /// [`IconSet`](crate::IconSet) has gone.
     ///
@@ -165,7 +220,7 @@ impl IconRasterizer {
 mod tests {
     use crate::icons::icon_atlas::{IconAtlas, IconDef, IconId};
     use crate::icons::icon_raster_key::IconRasterKey;
-    use crate::icons::icon_rasterizer::{IconRasterKind, IconRasterizer};
+    use crate::icons::icon_rasterizer::{IconRasterKind, IconRasterizer, MAX_PARSED_TREES};
     use crate::icons::icon_registry::IconSetId;
     use crate::icons::icon_set::IconRef;
     use crate::primitives::span::Span;
@@ -200,6 +255,47 @@ mod tests {
             },
             size: U16Vec2::new(w, h),
         }
+    }
+
+    /// The parse cache is capped, and what leaves is what has gone longest
+    /// without a rasterize — a session that draws its way through a large
+    /// set keeps a working set instead of every document it ever parsed.
+    #[test]
+    fn parse_cache_caps_at_the_ceiling_and_drops_the_coldest() {
+        // `from_svgs` sorts by name and keys ids in that order, so the
+        // zero-padded names make `IconId(i)` the `i`th icon.
+        let atlas = IconAtlas::from_svgs((0..=MAX_PARSED_TREES).map(|i| {
+            let name: &'static str = Box::leak(format!("i{i:03}").into_boxed_str());
+            (name, SOLID)
+        }));
+        let icon = |n: usize| key(IconId(n as u16), 4, 4).icon;
+        let mut r = IconRasterizer::default();
+        let mut out = Vec::new();
+        for i in 0..MAX_PARSED_TREES {
+            r.rasterize(&atlas, key(IconId(i as u16), 4, 4), &mut out);
+        }
+        assert_eq!(r.parsed_count(), MAX_PARSED_TREES, "filled to the ceiling");
+
+        // Re-drawing icon 0 makes icon 1 the coldest; re-drawing a resident
+        // icon must not evict anything, since nothing new lands.
+        r.rasterize(&atlas, key(IconId(0), 4, 4), &mut out);
+        assert_eq!(r.parsed_count(), MAX_PARSED_TREES, "a hit evicts nothing");
+
+        // The next *distinct* icon costs exactly one resident: icon 1.
+        r.rasterize(&atlas, key(IconId(MAX_PARSED_TREES as u16), 4, 4), &mut out);
+        assert_eq!(r.parsed_count(), MAX_PARSED_TREES);
+        assert!(
+            r.trees.contains_key(&icon(0)),
+            "the icon touched most recently stays",
+        );
+        assert!(
+            !r.trees.contains_key(&icon(1)),
+            "the icon untouched longest is the one that left",
+        );
+        assert!(
+            r.trees.contains_key(&icon(MAX_PARSED_TREES)),
+            "and the newcomer is resident",
+        );
     }
 
     #[test]

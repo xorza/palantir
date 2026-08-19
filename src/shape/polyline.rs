@@ -46,17 +46,22 @@ pub enum PolylineColors<'a> {
 }
 
 impl PolylineColors<'_> {
-    pub(crate) fn assert_matches(&self, points_len: usize) {
+    /// Check the per-point / per-segment cardinality contract.
+    ///
+    /// Debug-only: every polyline authored every frame reaches this, and a
+    /// release build must not pay for a caller contract on an immediate-mode
+    /// path. Named for what it compiles to so the call site reads honestly.
+    pub(crate) fn debug_assert_matches(&self, points_len: usize) {
         match self {
             PolylineColors::Single(_) => {}
-            PolylineColors::PerPoint(colors) => assert_eq!(
+            PolylineColors::PerPoint(colors) => debug_assert_eq!(
                 colors.len(),
                 points_len,
                 "Shape::Polyline PerPoint colors len {} != points len {}",
                 colors.len(),
                 points_len,
             ),
-            PolylineColors::PerSegment(colors) => assert_eq!(
+            PolylineColors::PerSegment(colors) => debug_assert_eq!(
                 colors.len(),
                 points_len.saturating_sub(1),
                 "Shape::Polyline PerSegment colors len {} != points len - 1 ({})",
@@ -70,10 +75,6 @@ impl PolylineColors<'_> {
 #[allow(private_interfaces)]
 impl sealed::Lower for PolylineShape<'_> {
     fn is_noop(&self) -> bool {
-        // Cardinality is a caller contract, not a paint question, so it
-        // is asserted rather than filtered — and asserted here because
-        // this is the first thing `Shapes::add` calls.
-        self.colors.assert_matches(self.points.len());
         if noop_f32(self.width) || self.points.len() < 2 {
             return true;
         }

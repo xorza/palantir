@@ -22,6 +22,7 @@ use std::hash::Hash;
 use crate::layout::axis::Axis;
 use crate::layout::pass::LayoutPass;
 use crate::primitives::approx;
+use crate::primitives::num::F32Ext;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
@@ -172,8 +173,8 @@ pub(crate) fn bar_geometry(
     // to integer physical ones at integer DPR, which pins the length; at
     // fractional DPR it only narrows the wobble, since the real cause is
     // in the snap.
-    let thumb_size = thumb_size.round().min(viewport.floor()).max(1.0);
-    let thumb_offset = thumb_offset.round().min(viewport.floor() - thumb_size);
+    let thumb_size = thumb_size.fast_round().min(viewport.floor()).max(1.0);
+    let thumb_offset = thumb_offset.fast_round().min(viewport.floor() - thumb_size);
     Some(BarGeometry {
         thumb_size,
         thumb_offset,

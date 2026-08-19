@@ -510,13 +510,21 @@ impl<'a> Scroll<'a> {
             inner_value
         });
 
-        let resp_state = ui.response_for(id);
         InnerResponse {
-            // Eager: Scroll already paid for `response_for` here
-            // and the caller almost always reads at least one field
-            // (drag delta, scroll delta, hovered). Hand the cached
-            // state through.
-            response: Response::eager(id, ui, resp_state),
+            // Eager: the probe above already answered for this id, and the
+            // caller almost always reads at least one field (drag delta,
+            // scroll delta, hovered). Nothing the body records can move a
+            // cascade or layout answer — both are frozen for the pass — so
+            // the only field worth re-reading is `focused`, which the body
+            // may have taken.
+            response: Response::eager(
+                id,
+                ui,
+                ResponseState {
+                    focused: ui.focused_id() == Some(id),
+                    ..response
+                },
+            ),
             inner: inner_value,
         }
     }

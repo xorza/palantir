@@ -39,10 +39,27 @@ pub(super) struct SelectionState {
     pub(super) selection: Option<usize>,
 }
 
-/// One undoable buffer edit. Fields are `pub(super)` because
-/// [`Editor`](super::editor::Editor) is what builds and replays them —
-/// the data lives here with the stacks that retain it, the behaviour
-/// lives there.
+/// One edit as its parts, before the history decides whether to keep it.
+///
+/// The text is borrowed — from the buffer for `removed`, from the caller
+/// for `inserted` — so [`EditState::record_edit`] can try to extend the
+/// open undo group first and copy nothing at all in the case that matters:
+/// a keystroke appended to the group it opened. Only an edit that starts a
+/// new group is turned into an owning [`EditDelta`].
+#[derive(Clone, Copy, Debug)]
+pub(super) struct EditParts<'a> {
+    pub(super) start: usize,
+    pub(super) removed: &'a str,
+    pub(super) inserted: &'a str,
+    pub(super) before: SelectionState,
+    pub(super) after: SelectionState,
+}
+
+/// One undoable buffer edit. Built here — from the borrowed [`EditParts`]
+/// an edit arrives as — and replayed by
+/// [`Editor`](super::editor::Editor), which is why the fields are
+/// `pub(super)`: the data and the stacks that retain it live here, the
+/// behaviour that applies one lives there.
 #[derive(Clone, Debug)]
 pub(super) struct EditDelta {
     pub(super) start: usize,
@@ -60,12 +77,26 @@ pub(super) enum EditKind {
     Other,
 }
 
-/// Cap on retained undo entries; `Editor::push_delta` drops the
+/// Cap on retained undo entries; [`EditState::record_edit`] drops the
 /// oldest past this.
 pub(super) const UNDO_LIMIT: usize = 128;
 
 impl EditDelta {
-    pub(super) fn coalesce(&mut self, next: &Self, kind: EditKind) -> bool {
+    /// Take ownership of `parts` — the two `String`s the history keeps.
+    fn from_parts(parts: EditParts<'_>) -> Self {
+        Self {
+            start: parts.start,
+            removed: parts.removed.to_owned(),
+            inserted: parts.inserted.to_owned(),
+            before: parts.before,
+            after: parts.after,
+        }
+    }
+
+    /// Extend this delta with an edit that abuts it, reporting whether it
+    /// did. Takes the parts rather than a built [`EditDelta`] so the caller
+    /// pays for the strings only when this says no.
+    fn coalesce(&mut self, next: EditParts<'_>, kind: EditKind) -> bool {
         if self.after != next.before {
             return false;
         }
@@ -73,7 +104,7 @@ impl EditDelta {
             EditKind::Typing
                 if next.removed.is_empty() && next.start == self.start + self.inserted.len() =>
             {
-                self.inserted.push_str(&next.inserted);
+                self.inserted.push_str(next.inserted);
                 true
             }
             EditKind::Delete
@@ -82,7 +113,7 @@ impl EditDelta {
                     && next.start + next.removed.len() == self.start =>
             {
                 self.start = next.start;
-                self.removed.insert_str(0, &next.removed);
+                self.removed.insert_str(0, next.removed);
                 true
             }
             EditKind::Delete
@@ -90,7 +121,7 @@ impl EditDelta {
                     && next.inserted.is_empty()
                     && next.start == self.start =>
             {
-                self.removed.push_str(&next.removed);
+                self.removed.push_str(next.removed);
                 true
             }
             EditKind::Typing | EditKind::Delete | EditKind::Other => false,
@@ -103,6 +134,30 @@ impl EditDelta {
 }
 
 impl EditState {
+    /// Fold one edit into the undo history: appended to the open group when
+    /// it abuts one of the same kind, otherwise pushed as a new entry with
+    /// the oldest dropped past [`UNDO_LIMIT`]. Redo dies either way — the
+    /// timeline just forked.
+    ///
+    /// Takes borrowed parts, so a keystroke that lands in the open group
+    /// copies its character into that group's `String` and allocates
+    /// nothing. That is the steady state of typing.
+    pub(super) fn record_edit(&mut self, parts: EditParts<'_>, kind: EditKind) {
+        let coalesced = self.last_edit_kind == Some(kind)
+            && self
+                .undo
+                .back_mut()
+                .is_some_and(|previous| previous.coalesce(parts, kind));
+        if !coalesced {
+            if self.undo.len() == UNDO_LIMIT {
+                self.undo.pop_front();
+            }
+            self.undo.push_back(EditDelta::from_parts(parts));
+        }
+        self.redo.clear();
+        self.last_edit_kind = Some(kind);
+    }
+
     /// Wipe the history if `text_hash` is not the buffer it describes,
     /// then adopt it as the expectation.
     ///

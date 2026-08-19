@@ -1,7 +1,7 @@
 //! One frame's semantic editing session over the host-owned buffer.
 
 use crate::widgets::text_edit::edit_state::{
-    EditDelta, EditKind, EditState, SelectionState, UNDO_LIMIT,
+    EditDelta, EditKind, EditParts, EditState, SelectionState,
 };
 use crate::widgets::text_edit::unicode::{
     next_grapheme_boundary, next_word_boundary, prev_grapheme_boundary, prev_word_boundary,
@@ -65,23 +65,6 @@ impl<'a> Editor<'a> {
         self.state.local_edit_pending = true;
     }
 
-    fn push_delta(&mut self, delta: EditDelta, kind: EditKind) {
-        let coalesced = self.state.last_edit_kind == Some(kind)
-            && self
-                .state
-                .undo
-                .back_mut()
-                .is_some_and(|previous| previous.coalesce(&delta, kind));
-        if !coalesced {
-            if self.state.undo.len() == UNDO_LIMIT {
-                self.state.undo.pop_front();
-            }
-            self.state.undo.push_back(delta);
-        }
-        self.state.redo.clear();
-        self.state.last_edit_kind = Some(kind);
-    }
-
     fn replace_range(&mut self, range: std::ops::Range<usize>, replacement: &str, kind: EditKind) {
         debug_assert!(self.text.is_char_boundary(range.start));
         debug_assert!(self.text.is_char_boundary(range.end));
@@ -94,28 +77,32 @@ impl<'a> Editor<'a> {
         }
         self.ensure_history_matches();
         let before = self.selection_state();
-        let removed = self.text[range.clone()].to_owned();
-        let removed_chars = self
-            .state
-            .char_count
-            .is_some()
-            .then(|| removed.chars().count());
-        let inserted_chars = self
-            .state
-            .char_count
-            .is_some()
-            .then(|| replacement.chars().count());
-        self.text.replace_range(range.clone(), replacement);
-        self.state.caret = range.start + replacement.len();
-        self.state.selection = None;
-        let delta = EditDelta {
-            start: range.start,
-            removed,
-            inserted: replacement.to_owned(),
-            before,
-            after: self.selection_state(),
+        // Where the caret lands, derived rather than read back after the
+        // splice: the history wants it *before* the buffer moves.
+        let after = SelectionState {
+            caret: range.start + replacement.len(),
+            selection: None,
         };
-        self.push_delta(delta, kind);
+        let removed = &self.text[range.clone()];
+        let counts_chars = self.state.char_count.is_some();
+        let removed_chars = counts_chars.then(|| removed.chars().count());
+        let inserted_chars = counts_chars.then(|| replacement.chars().count());
+        // Recorded first, while `removed` is still a borrow of the live
+        // buffer: typing appends into the open undo group, and a group that
+        // takes the edit takes no allocation with it.
+        self.state.record_edit(
+            EditParts {
+                start: range.start,
+                removed,
+                inserted: replacement,
+                before,
+                after,
+            },
+            kind,
+        );
+        self.text.replace_range(range, replacement);
+        self.state.caret = after.caret;
+        self.state.selection = after.selection;
         if let Some(count) = &mut self.state.char_count {
             *count = *count - removed_chars.unwrap() + inserted_chars.unwrap();
         }

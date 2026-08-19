@@ -173,8 +173,8 @@ pub(crate) trait PaintSink {
     /// directly (so the encoder can apply the owner-rect offset inline
     /// without an intermediate scratch buffer) and passes the resulting
     /// spans in the payload. The `color_mode`-dictated `colors_len` is a
-    /// caller invariant enforced upstream by
-    /// `PolylineColors::assert_matches` in `Shapes::add`.
+    /// caller invariant checked upstream by
+    /// `PolylineColors::debug_assert_matches` in `lower::polyline`.
     fn draw_polyline(&mut self, payload: DrawPolylinePayload) {
         // Asserted, not gated — the one payload whose no-op conditions
         // are *already guaranteed* when it gets here, so a failure is a

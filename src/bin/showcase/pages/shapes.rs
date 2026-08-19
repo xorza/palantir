@@ -8,7 +8,7 @@
 use crate::support;
 use crate::support::{demo_cell, section, tiles};
 use glam::Vec2;
-use palantir::{Color, ColorU8, LinearGradient, Mesh, Shape, Stroke, Ui};
+use palantir::{Color, ColorU8, LinearGradient, Mesh, Shape, Stroke, Ui, WidgetId};
 use std::f32::consts::{FRAC_PI_2, PI};
 
 pub(crate) fn build(ui: &mut Ui) {
@@ -156,30 +156,45 @@ fn gradient_quad(ui: &mut Ui) {
 /// 2 500 verts / ~5 000 after triangle pairing. Exercises the alloc-free
 /// claim and the index-buffer growth path; renders as a teal wash since
 /// every vertex shares one colour.
+///
+/// The grid is geometry, not state: built once into a retained row and
+/// redrawn from there. A fresh `Mesh` per frame would allocate ~90 KB and
+/// re-hash all 2 500 vertices every frame, because `Mesh` memoizes its
+/// content hash and a new one is always cold — which is the opposite of the
+/// retention this page is here to demonstrate.
 fn stress(ui: &mut Ui) {
     const SIDE: u32 = 50;
     const STEP: f32 = 3.0;
-    let teal = Color::hex(0x2fa8a8);
-    let mut m = Mesh::with_capacity((SIDE as usize).pow(2), (SIDE as usize - 1).pow(2) * 6);
-    for j in 0..SIDE {
-        for i in 0..SIDE {
-            m.vertex(
-                Vec2::new(10.0 + i as f32 * STEP, 10.0 + j as f32 * STEP),
-                teal,
-            );
+    let mesh_id = WidgetId::from_hash("showcase::shapes::stress-grid");
+    // Moved out for the draw, moved back after: `add_shape` wants `&mut Ui`,
+    // and a `Mesh` is two `Vec` handles plus two memo cells, so the round
+    // trip moves a header rather than the grid.
+    let fresh = ui.try_state::<Mesh>(mesh_id).is_none();
+    let mut m = std::mem::take(ui.state_mut::<Mesh>(mesh_id));
+    if fresh {
+        let teal = Color::hex(0x2fa8a8);
+        m = Mesh::with_capacity((SIDE as usize).pow(2), (SIDE as usize - 1).pow(2) * 6);
+        for j in 0..SIDE {
+            for i in 0..SIDE {
+                m.vertex(
+                    Vec2::new(10.0 + i as f32 * STEP, 10.0 + j as f32 * STEP),
+                    teal,
+                );
+            }
         }
-    }
-    for j in 0..SIDE - 1 {
-        for i in 0..SIDE - 1 {
-            let a = j * SIDE + i;
-            let b = a + 1;
-            let c = a + SIDE;
-            let d = c + 1;
-            m.triangle(a, b, d);
-            m.triangle(a, d, c);
+        for j in 0..SIDE - 1 {
+            for i in 0..SIDE - 1 {
+                let a = j * SIDE + i;
+                let b = a + 1;
+                let c = a + SIDE;
+                let d = c + 1;
+                m.triangle(a, b, d);
+                m.triangle(a, d, c);
+            }
         }
     }
     ui.add_shape(Shape::mesh(&m));
+    *ui.state_mut::<Mesh>(mesh_id) = m;
 }
 
 /// The headline use case: rounded-corner clipping without a stencil

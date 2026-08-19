@@ -1,3 +1,5 @@
+use glam::Vec2;
+
 /// Libm-free `f32` helpers for the hot snap/quantize paths.
 pub(crate) trait F32Ext {
     /// Exact `f32::round` (round half away from zero) without the libm
@@ -72,6 +74,21 @@ impl F32Ext for f32 {
     }
 }
 
+/// [`F32Ext`] applied per component, for the paint paths that snap a point.
+pub(crate) trait Vec2Ext {
+    /// Componentwise [`F32Ext::fast_round`]. `Vec2::round` is two
+    /// out-of-line `roundf` calls on baseline x86-64, which is what this
+    /// exists to keep off the per-icon and per-quad snap paths.
+    fn fast_round(self) -> Vec2;
+}
+
+impl Vec2Ext for Vec2 {
+    #[inline]
+    fn fast_round(self) -> Vec2 {
+        Vec2::new(self.x.fast_round(), self.y.fast_round())
+    }
+}
+
 /// Marker trait for primitive numeric types accepted by `From` impls on
 /// `Sizing`, `Size`, `Corners`, `Spacing`, etc.
 pub(crate) trait Num: Copy {
@@ -92,7 +109,8 @@ impl_num!(f32, f64, i8, i16, i32, i64, isize, u8, u16, u32, u64, usize);
 
 #[cfg(test)]
 mod tests {
-    use crate::primitives::num::F32Ext;
+    use crate::primitives::num::{F32Ext, Vec2Ext};
+    use glam::Vec2;
 
     #[test]
     fn fast_round_matches_std_round() {
@@ -123,6 +141,13 @@ mod tests {
             );
         }
         assert!(f32::NAN.fast_round().is_nan());
+
+        // Componentwise, and per axis: the two lanes carry different
+        // cases (up vs away-from-zero down) so a swapped or duplicated
+        // component fails.
+        let v = Vec2::new(2.5, -0.5).fast_round();
+        assert_eq!(v.x.to_bits(), 3.0f32.to_bits());
+        assert_eq!(v.y.to_bits(), (-1.0f32).to_bits());
 
         // Dense sweep: bit-identical to `f32::round` across mixed
         // magnitudes and signs (0.0173 step avoids hitting only halves).

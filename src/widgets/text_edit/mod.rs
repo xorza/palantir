@@ -9,11 +9,13 @@ mod unicode;
 mod view;
 
 use crate::input::key_class::KeyFilter;
+use crate::input::response::ResponseState;
 use crate::input::sense::Sense;
 use crate::layout::types::align::Align;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::layout_mode::ScrollSpec;
 use crate::primitives::approx::noop_f32;
+use crate::primitives::rect::Rect;
 use crate::primitives::spacing::Spacing;
 use crate::scene::node::Node;
 use crate::ui::Ui;
@@ -21,8 +23,8 @@ use crate::widgets::response::{Response, ResponseSnapshot};
 use crate::widgets::text_edit::edit_state::EditState;
 use crate::widgets::text_edit::input::{AcceptPolicy, InputResult, run_input};
 use crate::widgets::text_edit::view::{
-    CaretPaint, GeometryInput, InteractionState, LayoutInput, PaintInput,
-    SELECTION_RECTS_INLINE_CAPACITY, SelectionRects, ViewState, ViewUpdateInput,
+    CaretPaint, GeometryInput, InteractionState, LayoutInput, PaintInput, ViewState,
+    ViewUpdateInput,
 };
 use crate::widgets::theme::WidgetTheme;
 use crate::widgets::theme::text_edit::TextEditTheme;
@@ -35,6 +37,15 @@ struct TextEditState {
     edit: EditState,
     interaction: InteractionState,
     view: ViewState,
+    /// Selection wash for the painter, refilled every frame and retained
+    /// so a held drag across a long multi-line selection allocates once and
+    /// never again (`long_multiline_selection_alloc_free`).
+    ///
+    /// On the row rather than inside [`ViewState`] because the pass fills it
+    /// while `ViewState::update` runs: as sibling fields the two borrows are
+    /// disjoint, where a field of `view` would have to be moved out and put
+    /// back around every call that touches the rest of the view.
+    selection_rects: Vec<Rect>,
 }
 
 /// Editable text leaf. Supports typing (`KeyDown` printable chars or
@@ -292,11 +303,11 @@ impl<'a> TextEdit<'a> {
         let signals = self.pass(ui, widget, &mut state);
         *ui.state_mut::<TextEditState>(id) = state;
 
-        // Built after the write-back: the response borrows `ui`, so it
-        // cannot exist while the row still has to go home.
-        let response = ui.response_for(id);
         TextEditResponse {
-            response: Response::eager(id, ui, response),
+            // The pass already probed this id and tracked the one field that
+            // can move under it mid-pass (focus), so it hands the state back
+            // rather than paying a second cascade + layout lookup here.
+            response: Response::eager(id, ui, signals.state),
             changed: signals.changed,
             submitted: signals.submitted,
             cancelled: signals.cancelled,
@@ -311,13 +322,18 @@ impl<'a> TextEdit<'a> {
     fn pass(mut self, ui: &mut Ui, mut widget: Widget, state: &mut TextEditState) -> EditSignals {
         let id = widget.id();
         let mut is_focused = ui.focused_id() == Some(id);
+        // The pass's one probe, and what `show` hands back at the end.
+        // Nothing below can move a cascade or layout answer — both are frozen
+        // for the pass — so the only field kept current is `focused`, updated
+        // wherever the pass moves focus.
+        let mut probed = ui.response_for(id);
         // Pick the per-state look + animate its visual components.
         // Disabled wins over focus — a disabled editor that still
         // happens to hold focus paints with its disabled visuals
         // (mirrors Button). State.disabled comes from the cascade
         // (one-frame stale); OR self-disabled in for lag-free
         // response to a freshly toggled `.disabled(true)`.
-        let mut response = ui.response_for(id);
+        let mut response = probed;
         response.disabled |= self.node.flags.is_disabled();
         // A disabled editor must not keep keyboard focus — it would
         // paint disabled while still routing typing / paste / undo
@@ -327,6 +343,7 @@ impl<'a> TextEdit<'a> {
         if is_focused && response.disabled {
             ui.request_focus(None);
             is_focused = false;
+            probed.focused = false;
         }
         // A focused editor takes the classes it edits with, so an
         // app-level Ctrl+Z undoes *this buffer* rather than the document
@@ -370,6 +387,7 @@ impl<'a> TextEdit<'a> {
                 cancelled: false,
                 gained_focus: is_focused && !was_focused,
                 lost_focus: was_focused && !is_focused,
+                state: probed,
             };
         }
         let font = look.text.font();
@@ -414,7 +432,7 @@ impl<'a> TextEdit<'a> {
             edited,
         } = run_input(
             ui,
-            id,
+            &response,
             is_focused,
             self.text,
             &layout,
@@ -428,14 +446,12 @@ impl<'a> TextEdit<'a> {
         if blur_after {
             ui.request_focus(None);
             is_focused = false;
+            probed.focused = false;
         }
         let gained_focus = is_focused && !was_focused;
         let lost_focus = was_focused && !is_focused;
 
-        let snapshot = ResponseSnapshot {
-            id,
-            state: ui.response_for(id),
-        };
+        let snapshot = ResponseSnapshot { id, state: probed };
         let menu_edited = menu::show(
             ui,
             &snapshot,
@@ -458,9 +474,6 @@ impl<'a> TextEdit<'a> {
             response.scroll.pixels + response.scroll.lines * ctx.font.line_height_px
         };
 
-        let mut retained = state.view.selection_rects.take();
-        let mut inline = SelectionRects::new();
-        let selection_rects = retained.as_deref_mut().unwrap_or(&mut inline);
         let geometry = view::resolve_geometry(
             ui,
             GeometryInput {
@@ -470,7 +483,7 @@ impl<'a> TextEdit<'a> {
                 caret: caret_byte,
                 selection: is_focused.then_some(selection).flatten(),
             },
-            selection_rects,
+            &mut state.selection_rects,
         );
         let caret_pos = geometry.caret_pos;
         state.edit.observe_text_hash(geometry.text_hash);
@@ -502,7 +515,7 @@ impl<'a> TextEdit<'a> {
                 text: self.text,
                 placeholder: &placeholder,
                 geometry,
-                selection_rects,
+                selection_rects: &state.selection_rects,
                 selection_color,
                 text_color,
                 placeholder_color,
@@ -515,17 +528,13 @@ impl<'a> TextEdit<'a> {
                 }),
             },
         );
-        if retained.is_none() && inline.len() > SELECTION_RECTS_INLINE_CAPACITY {
-            retained = Some(Box::new(inline));
-        }
-        state.view.selection_rects = retained;
-
         EditSignals {
             changed,
             submitted,
             cancelled: blur_after,
             gained_focus,
             lost_focus,
+            state: probed,
         }
     }
 }
@@ -542,6 +551,11 @@ struct EditSignals {
     cancelled: bool,
     gained_focus: bool,
     lost_focus: bool,
+    /// The response the pass probed, with `focused` as the pass left it —
+    /// what `show` hands to [`Response::eager`] instead of re-probing.
+    /// Every other field is frozen for the pass, so this is the same answer
+    /// a second `response_for` would give.
+    state: ResponseState,
 }
 
 /// What [`TextEdit::show`] returns: the widget's [`Response`] plus the

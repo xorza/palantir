@@ -9,7 +9,12 @@ use crate::primitives::corners::Corners;
 use crate::primitives::fill_wire::FillKind;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::span::Span;
-use crate::primitives::{num::F32Ext, rect::Rect, transform::TranslateScale, urect::URect};
+use crate::primitives::{
+    num::{F32Ext, Vec2Ext},
+    rect::Rect,
+    transform::TranslateScale,
+    urect::URect,
+};
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::{
     DrawCurvePayload, DrawIconPayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload,
@@ -466,7 +471,7 @@ impl PaintSink for ComposeSession<'_> {
         let centred = phys_rect.min + (Vec2::new(phys_rect.size.w, phys_rect.size.h) - size) * 0.5;
         self.out.icons.push(IconDrawRow {
             key,
-            origin: centred.round().as_ivec2(),
+            origin: centred.fast_round().as_ivec2(),
             color: p.tint.into(),
             desaturate: p.desaturate,
         });

@@ -12,7 +12,7 @@ use palantir::{
     Button, Checkbox, ComboBox, Configure, Modal, Panel, Sizing, Text, Ui, WidgetId, WindowToken,
 };
 
-#[derive(Default, Debug)]
+#[derive(Clone, Copy, Default, Debug)]
 struct State {
     fruit: usize,
     modal_open: bool,
@@ -21,7 +21,7 @@ struct State {
 /// Shared between the page (writes `pretend_dirty`) and [`intercept`]
 /// (reads it, drives `show_dialog`). Keyed on one stable id so both
 /// reach the same row regardless of which page is open.
-#[derive(Debug, Default)]
+#[derive(Clone, Copy, Debug, Default)]
 struct ExitState {
     /// Stand-in for "unsaved changes exist".
     pretend_dirty: bool,
@@ -39,6 +39,12 @@ fn exit_state_id() -> WidgetId {
 
 pub(crate) fn build(ui: &mut Ui) {
     let state_id = state_id();
+    let exit_id = exit_state_id();
+    // Both rows are read and written from several nested closures below, so
+    // they come out once and go back once. Probing the map at each use was
+    // sixteen lookups a frame to move four bytes around.
+    let mut state = *ui.state_mut::<State>(state_id);
+    let mut exit = *ui.state_mut::<ExitState>(exit_id);
     let options = ["Apple", "Banana", "Cherry", "Durian", "Elderberry"];
 
     section(
@@ -47,13 +53,11 @@ pub(crate) fn build(ui: &mut Ui) {
         "combo box — click to open the dropdown",
         |ui| {
             row(ui, "combo-row", |ui| {
-                let mut fruit = ui.state_mut::<State>(state_id).fruit;
-                ComboBox::new(&mut fruit, &options)
+                ComboBox::new(&mut state.fruit, &options)
                     .size((Sizing::fixed(180.0), Sizing::HUG))
                     .id_salt("combo")
                     .show(ui);
-                ui.state_mut::<State>(state_id).fruit = fruit;
-                let chosen = ui.fmt(format_args!("selected: {}", options[fruit]));
+                let chosen = ui.fmt(format_args!("selected: {}", options[state.fruit]));
                 Text::new(chosen)
                     .id_salt("chosen")
                     .style(&note_style())
@@ -75,7 +79,7 @@ pub(crate) fn build(ui: &mut Ui) {
                 .left
                 .clicked()
             {
-                ui.state_mut::<State>(state_id).modal_open = true;
+                state.modal_open = true;
             }
         },
     );
@@ -90,17 +94,14 @@ pub(crate) fn build(ui: &mut Ui) {
                 "Turn on 'unsaved changes', then close the window: the app vetoes \
                  the OS request via ui.keep_open() and prompts instead of vanishing.",
             );
-            let id = exit_state_id();
-            let mut dirty = ui.state_mut::<ExitState>(id).pretend_dirty;
-            Checkbox::new(&mut dirty)
+            Checkbox::new(&mut exit.pretend_dirty)
                 .id_salt("dirty")
                 .label("simulate unsaved changes")
                 .show(ui);
-            ui.state_mut::<ExitState>(id).pretend_dirty = dirty;
         },
     );
 
-    if ui.state_mut::<State>(state_id).modal_open {
+    if state.modal_open {
         let resp = Modal::new().id_salt("confirm-modal").show(ui, |ui| {
             Panel::vstack().id_salt("mbody").gap(16.0).show(ui, |ui| {
                 Text::new("Delete all the things?")
@@ -114,7 +115,7 @@ pub(crate) fn build(ui: &mut Ui) {
                         .left
                         .clicked()
                     {
-                        ui.state_mut::<State>(state_id).modal_open = false;
+                        state.modal_open = false;
                     }
                     if Button::new()
                         .id_salt("ok")
@@ -123,15 +124,18 @@ pub(crate) fn build(ui: &mut Ui) {
                         .left
                         .clicked()
                     {
-                        ui.state_mut::<State>(state_id).modal_open = false;
+                        state.modal_open = false;
                     }
                 });
             });
         });
         if resp.dismissed {
-            ui.state_mut::<State>(state_id).modal_open = false;
+            state.modal_open = false;
         }
     }
+
+    *ui.state_mut::<State>(state_id) = state;
+    *ui.state_mut::<ExitState>(exit_id) = exit;
 }
 
 /// Wire into the window's frame after the page content. With no pending
@@ -139,11 +143,14 @@ pub(crate) fn build(ui: &mut Ui) {
 /// prompts. `win` is the window closed for real once the user confirms.
 pub(crate) fn intercept(ui: &mut Ui, win: WindowToken) {
     let id = exit_state_id();
-    if ui.close_requested() && ui.state_mut::<ExitState>(id).pretend_dirty {
+    let mut exit = *ui.state_mut::<ExitState>(id);
+    if ui.close_requested() && exit.pretend_dirty {
         ui.keep_open();
-        ui.state_mut::<ExitState>(id).show_dialog = true;
+        exit.show_dialog = true;
     }
-    if !ui.state_mut::<ExitState>(id).show_dialog {
+    // No write-back on this path: the only assignment above sets the flag
+    // that would have skipped this return.
+    if !exit.show_dialog {
         return;
     }
 
@@ -166,9 +173,8 @@ pub(crate) fn intercept(ui: &mut Ui, win: WindowToken) {
                             .left
                             .clicked()
                         {
-                            let s = ui.state_mut::<ExitState>(id);
-                            s.pretend_dirty = false;
-                            s.show_dialog = false;
+                            exit.pretend_dirty = false;
+                            exit.show_dialog = false;
                             ui.close_window(win);
                         }
                         if Button::new()
@@ -178,7 +184,7 @@ pub(crate) fn intercept(ui: &mut Ui, win: WindowToken) {
                             .left
                             .clicked()
                         {
-                            ui.state_mut::<ExitState>(id).show_dialog = false;
+                            exit.show_dialog = false;
                             ui.close_window(win);
                         }
                         if Button::new()
@@ -188,12 +194,13 @@ pub(crate) fn intercept(ui: &mut Ui, win: WindowToken) {
                             .left
                             .clicked()
                         {
-                            ui.state_mut::<ExitState>(id).show_dialog = false;
+                            exit.show_dialog = false;
                         }
                     });
             });
     });
     if resp.dismissed {
-        ui.state_mut::<ExitState>(id).show_dialog = false;
+        exit.show_dialog = false;
     }
+    *ui.state_mut::<ExitState>(id) = exit;
 }

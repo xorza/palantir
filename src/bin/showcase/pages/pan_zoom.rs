@@ -257,9 +257,13 @@ fn cell_grid(
 
 fn cell(ui: &mut Ui, salt: &'static str, r: u32, c: u32) -> bool {
     let style = cell_theme(r, c);
+    // Formatted into the record arena rather than a `String`: this runs for
+    // every cell of every grid every frame, and the page is the pan/zoom
+    // benchmark workload.
+    let label = ui.fmt(format_args!("{r},{c}"));
     Button::new()
         .id_salt((salt, "cell", r, c))
-        .label(format!("{r},{c}"))
+        .label(label)
         .size((Sizing::fixed(56.0), Sizing::fixed(40.0)))
         .padding((6.0, 4.0))
         .style(&style)
@@ -326,15 +330,16 @@ fn canvas_polylines(ui: &mut Ui) {
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui);
             for line in 0..6 {
-                let mut pts: Vec<Vec2> = (0..32)
-                    .map(|i| {
-                        let x = i as f32 * 24.0 + 8.0;
-                        let phase = line as f32 * 0.6 + i as f32 * 0.25;
-                        let y = 60.0 + phase.sin() * (16.0 + line as f32 * 3.0);
-                        Vec2::new(x, y)
-                    })
-                    .collect();
-                pts.dedup_by(|a, b| (a.x - b.x).abs() < 0.01 && (a.y - b.y).abs() < 0.01);
+                // Fixed count, so the points sit on the stack — a `Vec` per
+                // line per frame was six allocations for a shape whose size
+                // is a literal. Adjacent points are 24 px apart in x, so
+                // there is nothing for a coincident-point dedup to find.
+                let pts: [Vec2; 32] = std::array::from_fn(|i| {
+                    let x = i as f32 * 24.0 + 8.0;
+                    let phase = line as f32 * 0.6 + i as f32 * 0.25;
+                    let y = 60.0 + phase.sin() * (16.0 + line as f32 * 3.0);
+                    Vec2::new(x, y)
+                });
                 let c = Color::rgb(
                     0.4 + line as f32 * 0.1,
                     0.85 - line as f32 * 0.08,
