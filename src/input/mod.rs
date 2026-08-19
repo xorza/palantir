@@ -1085,7 +1085,6 @@ impl InputState {
         // completed click outranks the lost press edge) and a
         // same-batch re-press collapses to `Down` (the live capture
         // outranks the stale release).
-        let mut buttons = [ButtonState::default(); PointerButton::COUNT];
         // Drag exclusivity: only the priority-first latched button
         // owns the widget's drag, so at most one slot goes live.
         let mut drag_owned = false;
@@ -1135,9 +1134,8 @@ impl InputState {
                 };
                 drag_owned = true;
             }
-            buttons[btn.idx()] = ButtonState { phase, drag };
+            *state.button_mut(btn) = ButtonState { phase, drag };
         }
-        [state.left, state.right, state.middle] = buttons;
 
         state.scroll = self.scroll_delta_for(id);
         state.pointer_local = self

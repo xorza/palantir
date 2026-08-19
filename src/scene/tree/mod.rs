@@ -74,10 +74,6 @@ use std::hash::{Hash, Hasher as _};
 pub(crate) struct Tree {
     pub(crate) records: Soa<NodeRecord>,
 
-    /// One row per node; each optional two-byte field indexes the matching
-    /// dense `*_table` `Vec`. See
-    /// [`ExtrasIdx`] for the packing rationale.
-    pub(crate) extras_idx: Vec<ExtrasIdx>,
     pub(crate) bounds_table: Vec<BoundsExtras>,
     pub(crate) panel_table: Vec<PanelExtras>,
     /// One row per node with chrome OR with `ClipMode::Rounded` —
@@ -131,7 +127,6 @@ impl Tree {
 
     pub(crate) fn pre_record(&mut self) {
         self.records.clear();
-        self.extras_idx.clear();
         self.bounds_table.clear();
         self.panel_table.clear();
         self.chrome_table.clear();
@@ -184,7 +179,8 @@ impl Tree {
         // owner's node hasher in record order.
         let shape_hashes = self.shapes.hashes.as_slice();
         let widget_ids = self.records.widget_id();
-        let extras = self.extras_idx.as_slice();
+        let subtree_ends = self.records.subtree_end();
+        let extras = self.records.extras();
         let bounds_tab = self.bounds_table.as_slice();
         let panel_tab = self.panel_table.as_slice();
         let chrome_tab = self.chrome_table.as_slice();
@@ -222,6 +218,16 @@ impl Tree {
             }
             cascade_static_hasher.write_u64(widget_ids[i].0);
             cascade_static_hasher.write_u64(h.finish());
+            // Nesting, folded in so this hash actually describes the
+            // tree's *shape* and not just its nodes. Without it two
+            // trees with the same node count and the same per-node
+            // hashes but different nesting collide, and `can_update`
+            // had to zip the whole `subtree_ends` column every cascade
+            // run to notice — an O(nodes) walk per layer per frame on
+            // the incremental fast path, and the reason
+            // `Cascade::subtree_ends` could not be the sparse
+            // random-access column its doc describes.
+            cascade_static_hasher.write_u32(subtree_ends[i].end());
             // Chrome authoring hash is pre-computed at lowering time
             // (`shapes::lower::background`) and stored inline on
             // `ChromeRow.hash`. Both arms write a 1-byte discriminant
@@ -429,8 +435,6 @@ impl Tree {
                 self.chrome_table.push(row);
             }
         }
-        self.extras_idx.push(ex);
-
         // Stamp the self-Grid bit at open time — the mode is already
         // decoded above. Lets `close_node` drop its `layout[i].meta` read
         // (3 record columns → 2). `new_open` asserts the 31-bit arena
@@ -442,13 +446,8 @@ impl Tree {
             subtree_end: init_end,
             layout: cols.layout,
             attrs: cols.attrs,
+            extras: ex,
         });
-        // Column length-equality. `records` + `extras_idx` are the two
-        // per-node SoA columns and must agree on `len`; a missed push
-        // silently shifts every later node's index. (The `bounds`/`panel`/
-        // `chrome` tables are `Index16`-indexed and sparse, so they're not
-        // 1:1 with `records`.)
-        debug_assert_eq!(self.extras_idx.len(), self.records.len());
         let ancestor_or_self_disabled =
             parent_frame.is_some_and(|f| f.ancestor_or_self_disabled) || cols.attrs.is_disabled();
         let effectively_visible = parent_frame.is_none_or(|f| f.effectively_visible)
@@ -500,16 +499,36 @@ impl Tree {
     }
 
     pub(crate) fn close_node(&mut self, scratch: &mut RecordingScratch) {
-        let closing = scratch
+        let popped = scratch
             .open_frames
             .pop()
-            .expect("close_node called with no open node")
-            .node;
+            .expect("close_node called with no open node");
+        let closing = popped.node;
 
         let i = closing.idx();
         let shapes_len = self.shapes.records.len() as u32;
         let shapes = &mut self.records.shape_span_mut()[i];
         shapes.len = shapes_len - shapes.start;
+
+        // The paint-row stream is derived twice — counted here as the
+        // record pass runs (`OpenFrame::paint_rows`, which is what
+        // `PaintAnimEntry::row` indexes by), and re-derived at cascade
+        // time by `compute_paint_rect` walking `TreeItems`. Nothing
+        // structural ties the two, so check them against each other at
+        // the one point both are knowable: `shape_span.len` was stamped
+        // on the line above, which is all `TreeItems` was waiting for.
+        //
+        // Debug-only and once per node, against the *cascade's own*
+        // enumerator rather than a second hand-written count — so this
+        // fails on any drift, not only on nodes that happen to carry a
+        // paint anim (the pre-existing `debug_assert!` in `damage` only
+        // sees those).
+        debug_assert_eq!(
+            popped.paint_rows,
+            u32::from(self.chrome(closing).is_some())
+                + TreeItems::new(&self.records, &self.shapes.records, closing).count() as u32,
+            "paint-row count drifted from the cascade's row stream at node {i}",
+        );
 
         // `subtree_end[i]` is already the finalized "subtree contains
         // Grid" answer: self-Grid was stamped at `open_node`, and
@@ -555,7 +574,7 @@ impl Tree {
     /// API, so transforms always live alongside panel knobs.
     #[inline]
     pub(crate) fn transform_of(&self, id: NodeId) -> Option<TranslateScale> {
-        self.extras_idx[id.idx()]
+        self.records.extras()[id.idx()]
             .panel
             .map(|s| self.panel_table[s.idx()].transform)
             .filter(|t| !t.is_noop())
@@ -567,14 +586,14 @@ impl Tree {
     /// the field they want.
     #[inline]
     pub(crate) fn bounds(&self, id: NodeId) -> &BoundsExtras {
-        self.extras_idx[id.idx()]
+        self.records.extras()[id.idx()]
             .bounds
             .map_or(&BoundsExtras::DEFAULT, |s| &self.bounds_table[s.idx()])
     }
 
     #[inline]
     pub(crate) fn panel(&self, id: NodeId) -> &PanelExtras {
-        self.extras_idx[id.idx()]
+        self.records.extras()[id.idx()]
             .panel
             .map_or(&PanelExtras::DEFAULT, |s| &self.panel_table[s.idx()])
     }
@@ -586,7 +605,7 @@ impl Tree {
     /// `PaintSink::draw_*` drop the no-paint slices; the radius
     /// always survives.
     pub(crate) fn chrome(&self, id: NodeId) -> Option<&ChromeRow> {
-        self.extras_idx[id.idx()]
+        self.records.extras()[id.idx()]
             .chrome
             .map(|s| &self.chrome_table[s.idx()])
     }

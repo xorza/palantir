@@ -91,7 +91,9 @@ impl<'a> FrameCycle<'a> {
             close_requested: self.ui.window_frame.close_requested,
         });
 
-        self.ui.frame_runtime.repaint_requested = false;
+        // `repaint_requested` is not cleared here: `take_frame_plan`
+        // consumed it, so anything set from now on belongs to *this*
+        // frame and is what `FrameReport` ships.
         self.ui.frame_runtime.relayout_requested = false;
         self.ui.display = stamp.display;
 

@@ -3,6 +3,7 @@
 use crate::primitives::span::Span;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::columns::{LayoutCore, NodeFlags};
+use crate::scene::tree::extras::ExtrasIdx;
 use soa_rs::Soars;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -42,6 +43,14 @@ pub(crate) struct NodeRecord {
     /// Packed paint/input flags (2 B: sense / disabled / clip /
     /// focusable). Read by cascade / encoder / hit-test.
     pub attrs: NodeFlags,
+    /// Optional two-byte indices into the sparse `bounds_table` /
+    /// `panel_table` / `chrome_table`. A field rather than a `Vec`
+    /// beside `records`, so "one row per node" is what `Soa` already
+    /// guarantees instead of a `debug_assert` on two lengths — a
+    /// missed push cannot happen when there is only one push. Rides
+    /// free: 6 B at align 2 lands in the tail padding `NodeRecord`
+    /// already had, so the record stays 56 B.
+    pub extras: ExtrasIdx,
 }
 
 const SUBTREE_GRID_FLAG: u32 = 1 << 31;

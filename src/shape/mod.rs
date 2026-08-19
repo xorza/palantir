@@ -37,8 +37,19 @@ use std::f32::consts::TAU;
 ///
 /// The bound on [`crate::Ui::add_shape`], and the reason there is no
 /// `Shape` enum: every kind is a concrete type that knows how to lower
-/// itself, so adding one is a struct plus this impl — no variant, no
-/// `From`, and no arm in a dispatch match to keep in step.
+/// itself, so an authoring kind is a struct plus this impl — no
+/// variant, no `From`, and no authoring-side dispatch to keep in step.
+///
+/// That buys the *authoring* surface only, and only for a kind that
+/// lowers into an existing [`ShapeRecord`](crate::scene::shapes::record)
+/// variant — which is what `Shape::circle`, `line` and `cubic_bezier`
+/// do (all `Curve`), and `rect`, `shadow` and `triangle` (all `Quad`).
+/// A kind that needs a *new* record variant is a different job: the
+/// record enum is the pipeline's dispatch point, and a new variant has
+/// to be answered in `bbox_local`, `NanCheck`, `compute_record_hash`,
+/// the encoder's `emit_one_shape`, and cascade's `compute_paint_rect`.
+/// All five are exhaustive matches, so the compiler names them; none of
+/// them is optional.
 ///
 /// Sealed. The real methods live on a supertrait in a private module,
 /// which is what lets them name the crate-private `RecordStore` and

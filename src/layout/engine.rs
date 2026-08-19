@@ -39,16 +39,24 @@ use crate::text::system::TextSystem;
 ///   memoize within a frame. Flat `Vec` indexed by node, four slots
 ///   per node (one per `(axis, req)` combination). NaN means "not yet
 ///   computed".
+/// - `available_q` — quantized offer per node, the key
+///   [`MeasureCache`] records a subtree under.
+/// - `arrange_src` — snapshot arena base of each subtree measure
+///   restored from the cache this frame.
+/// - `stack_fill` — Fill-freeze scratch, same depth-shared shape as
+///   `wrap`.
+/// - `counters` — test-only observability for the run.
 /// ## Cache-hit contract
 ///
-/// Fields split into two lifecycle categories:
+/// Fields split into three lifecycle categories:
 ///
-/// 1. **Drained on measure exit** — `wrap.pool`,
-///    `stack_fill.pool`, `grid.depth_stack`, `grid.track_aggregator`,
-///    `intrinsics`. Each driver pushes on enter and
-///    truncates on exit; arrange never reads them. A
-///    [`MeasureCache`] hit that skips a subtree's measure is
-///    invisible to these — they were never going to carry state out.
+/// 1. **Drained on measure exit** — `wrap.pool`, `stack_fill.pool`,
+///    `grid.depth_stack`, `grid.track_aggregator`. Driver stacks:
+///    pushed on enter, truncated on exit, so a [`MeasureCache`] hit that
+///    skips a subtree's measure is invisible to them — they were never
+///    going to carry state out. (`stack_fill.pool` and
+///    `grid.depth_stack` are used by arrange too, but rebuild their own
+///    state rather than reading measure's.)
 ///
 /// 2. **Retained measure → arrange/record** — `desired`,
 ///    `LayerLayout::scroll_content`, and `grid.hugs`.
@@ -60,6 +68,17 @@ use crate::text::system::TextSystem;
 ///    explicitly call [`restore_after_cache_hit`] to splat
 ///    [`CachedSubtree::hugs`] back into the live pool — without
 ///    that, arrange reads zeros and every cell collapses to (0, 0).
+///
+/// 3. **Node-indexed measure memos, round-tripped by the cache** —
+///    `intrinsics` and `available_q`. Not stacks: `resize_for` fills
+///    them per node and nothing truncates them. They look drainable
+///    because arrange never queries them, but they *do* carry state out
+///    — [`MeasureCache::capture_tree`] reads both after arrange, so on a
+///    cache-hit subtree (whose slots measure never filled) they have to
+///    be splatted back by [`restore_after_cache_hit`] first or the next
+///    snapshot records NaN for `intrinsics` and `INVALID_AVAILABLE` for
+///    `available_q` — which silently makes that subtree uncacheable from
+///    then on.
 ///
 /// **Adding a new field to category (2)** requires three coordinated
 /// edits: a column in the whole-tree snapshot, a [`CachedSubtree`]
@@ -170,18 +189,44 @@ pub(super) fn restore_after_cache_hit(
     layer: &mut LayerLayout,
     cache_rebuild: bool,
 ) {
-    layer.scroll_content[subtree.clone()].copy_from_slice(cached.scroll_content);
+    // Destructured exhaustively — no `..` — so a new `CachedSubtree`
+    // column cannot be captured and then silently never restored. That
+    // is the failure `LayoutScratch`'s doc warns about in prose ("three
+    // coordinated edits … forgetting any one corrupts arrange
+    // silently"); `capture_tree` already destructures its input the
+    // same way, so this closes the other end.
+    //
+    // The three `_` bindings are the fields that are deliberately not
+    // this function's job: `root` and `nodes_base` describe the
+    // snapshot rather than being columns of it, and `desired` is
+    // restored by the measure-hit site itself
+    // (`LayoutPass::replay_arranged`'s caller) because it is what
+    // decides the hit.
+    let CachedSubtree {
+        root: _,
+        nodes_base: _,
+        desired: _,
+        scroll_content,
+        text_spans,
+        intrinsics,
+        available_q,
+        hugs,
+        text_shapes,
+        text_shapes_base,
+    } = cached;
+
+    layer.scroll_content[subtree.clone()].copy_from_slice(scroll_content);
     // Append the snapshot's flat text-shape range to the live
     // per-frame buffer, then rebase its subtree-local spans by
     // `dest_start` into the per-node `text_spans` column.
     let dest_start = layer.text_shapes.len() as u32;
-    layer.text_shapes.extend_from_slice(cached.text_shapes);
-    for (i, snap_span) in cached.text_spans.iter().copied().enumerate() {
+    layer.text_shapes.extend_from_slice(text_shapes);
+    for (i, snap_span) in text_spans.iter().copied().enumerate() {
         layer.text_spans[subtree.start + i] = if snap_span.len == 0 {
             Span::default()
         } else {
             Span {
-                start: dest_start + snap_span.start - cached.text_shapes_base,
+                start: dest_start + snap_span.start - *text_shapes_base,
                 len: snap_span.len,
             }
         };
@@ -189,7 +234,7 @@ pub(super) fn restore_after_cache_hit(
     if cache_rebuild {
         for (dst, src) in scratch.intrinsics[subtree.clone()]
             .iter_mut()
-            .zip(cached.intrinsics)
+            .zip(*intrinsics)
         {
             for (dst_slot, src_slot) in dst.iter_mut().zip(src) {
                 if dst_slot.is_nan() {
@@ -197,16 +242,13 @@ pub(super) fn restore_after_cache_hit(
                 }
             }
         }
-        scratch.available_q[subtree.clone()].copy_from_slice(cached.available_q);
+        scratch.available_q[subtree.clone()].copy_from_slice(available_q);
     }
     // `grid.hugs` — gated on `Tree::subtree_has_grid` (one bit-test
     // off the same `subtree_end` word the caller already read) so
     // grid-free subtrees pay nothing.
     if tree.subtree_has_grid(subtree.start) {
-        scratch
-            .grid
-            .hugs
-            .restore_subtree(tree, subtree, cached.hugs);
+        scratch.grid.hugs.restore_subtree(tree, subtree, hugs);
     }
 }
 

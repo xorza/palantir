@@ -372,6 +372,26 @@ impl ResponseState {
         }
     }
 
+    /// [`Self::button`], mutably — the one way the router writes a
+    /// button's slot.
+    ///
+    /// Routing used to fill a `[ButtonState; COUNT]` indexed by
+    /// `PointerButton::idx()` and then land it with
+    /// `[left, right, middle] = buttons`, which made the enum's
+    /// declaration order a silent part of the wire: reorder two variants
+    /// and every button routes to the wrong field, with nothing in the
+    /// type system objecting. Going through this match means the two
+    /// directions read the same mapping, so the order stops being a
+    /// contract anyone has to remember.
+    #[inline]
+    pub(crate) fn button_mut(&mut self, button: PointerButton) -> &mut ButtonState {
+        match button {
+            PointerButton::Left => &mut self.left,
+            PointerButton::Right => &mut self.right,
+            PointerButton::Middle => &mut self.middle,
+        }
+    }
+
     /// Left-button press with the pointer still over the widget — the
     /// "shows pressed visuals" predicate. Derived: `left.held &&
     /// hovered` (a held press whose pointer wandered off reports

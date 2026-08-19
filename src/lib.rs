@@ -435,9 +435,9 @@ mod hot_struct_sizes {
     /// than either. Read these as a drift tripwire, not as the production
     /// footprint.
     #[cfg(feature = "bench")]
-    const UI_SIZE: usize = 6880;
+    const UI_SIZE: usize = 6800;
     #[cfg(not(feature = "bench"))]
-    const UI_SIZE: usize = 6856;
+    const UI_SIZE: usize = 6776;
 
     hot_structs! {
         // One instance per window, not per frame — pinned because every

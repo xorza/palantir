@@ -263,8 +263,16 @@ impl FrameRuntime {
         // The policy names a cut on `InputSignal`'s ordered scale; the
         // gate is the comparison.
         let input_forces_record = input.input_signal >= input.input_policy.record_threshold();
+        // Consumed, like the wakes above and for the same reason: a
+        // request drives exactly one frame. Taking it here rather than
+        // clearing it in `FrameCycle::run` a few lines later is what
+        // keeps the field to one meaning — before this call it is
+        // "someone has asked for a frame", after it is "this frame asked
+        // for another". Clearing it separately left both meanings live
+        // on one field, told apart only by statement order.
+        let repaint_requested = std::mem::take(&mut self.repaint_requested);
         let paint_only = !force_full
-            && !self.repaint_requested
+            && !repaint_requested
             && !input_forces_record
             && !input.close_requested
             && fired_reasons.is_anim_only();
