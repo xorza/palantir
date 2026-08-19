@@ -234,51 +234,6 @@ from what it describes, and nothing catches it.
       `src/text/wrap.rs`.
 ---
 
-## Abstractions extracted halfway
-
-A shared core was factored out and the surface around it was not, so each tenant
-re-implements the same wrapper. Distinct from plain duplication: the right
-seam exists and stops one layer short.
-
-Investigated in full and **closed**. What was real is fixed: the `AnyTyped`
-container written twice, `emit_text_chunks` shadowing `TextChunk::split`, the
-press path walking the hit table twice, four sweeps with three emptiness
-guards, `FillAxis::scaled` open-coding the slow form on a per-quad path, eight
-byte-identical `background()` builders, three inline text-emission chains (and
-the `Shape::text` signature underneath them), the `Corners`/`Spacing` wrapper
-surface, the `Spacing` NaN gap, and `lower::`'s two conventions.
-
-The rest were rejected with evidence:
-
-- **`PerGroupBatch` is not bypassed.** `pending_at` is generic over both batch
-  types and called with both; `drain_text_batches` drains on a range predicate
-  because each text batch also needs its own scissor, damage intersection and
-  mask chain.
-- **The four rect pipelines already share their seam** — all end in
-  `urect_from_phys`, and the mesh path's "shared scaler" is `Rect::scaled_by`,
-  exactly as its comment says. Transform, snap and fringe are per-tier policy.
-- **`resolve_container`'s "four spellings" are `Option::unwrap_or`.** Tooltip
-  and Modal borrow, `ContextMenu` needs an owned value because
-  `Popup::background` takes ownership, `Frame` has no theme slot. The only
-  thing `resolve_container` adds is the clip default, which none of them has.
-- **`toggle_row`'s seam is where its doc says it is.** The three toggles read
-  three *different* theme slots with different fields, and the reads must
-  happen before the `&mut Ui` reborrow. What survives above it is the
-  three-line preamble below, not toggle-specific logic.
-- **The nine eager preambles are three lines, and a helper saves one.**
-  `let mut widget` / `response` / `id` — the last two both derive from the
-  first, and `id` must be bound before `widget` is mutably borrowed. A named
-  result struct would trade nine lines for a concept. Worth doing only to
-  *name* the eager path the way `Widget::show` names the lazy one, which is a
-  documentation change.
-- **The stack/grid fill solvers diverge on purpose.** `freeze_distribute`
-  freezes every violator per pass, grid freezes the first found, and
-  `cross_driver_tests/fill_solvers.rs` pins the difference. Unifying them
-  changes how `Sizing::fill` resolves for users once two clamps are violated
-  at once — a product decision, not a refactor.
-
----
-
 ## One fact with several owners
 
 State that is copied rather than referenced, so the copies can disagree and

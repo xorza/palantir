@@ -433,8 +433,17 @@ struct ScheduleCursors {
 }
 
 /// A batch that anchors to a single draw group via its `last_group`
-/// index. Lets the advance / drain / pending helpers operate uniformly
-/// over the four batch kinds.
+/// index.
+///
+/// **One generic helper, not a family.** Only [`pending_at`] is written
+/// over this trait; the anchoring rule is the one thing text batches and
+/// higher-kind batches genuinely share. [`advance_past_skipped`] is
+/// concrete because only higher-kind cursors skip, and
+/// [`drain_text_batches`] drains on a *range* predicate rather than
+/// [`drain_group_batches`]'s equality one because every text batch also
+/// needs its own bounds-union scissor, a damage intersection, an
+/// empty-skip and its own mask chain. That is different work, not a
+/// missed reuse.
 trait PerGroupBatch {
     fn last_group(&self) -> usize;
 }

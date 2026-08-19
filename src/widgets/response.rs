@@ -55,10 +55,15 @@ impl<'a> Response<'a> {
         }
     }
 
-    /// Pre-filled-cache constructor — bypasses the first-deref
-    /// probe by handing in the already-known `ResponseState`. Used
-    /// by widgets that called `ui.response_for(id)` themselves (e.g.
-    /// for theme picking) so the caller doesn't re-probe.
+    /// Pre-filled-cache constructor — bypasses the first-deref probe by
+    /// handing in the already-known `ResponseState`.
+    ///
+    /// **The closing half of the eager path.** An interactive widget
+    /// needs its response before it records — theme picking reads it,
+    /// and a value-writing widget acts on it — so it probes once through
+    /// `Widget::response`, carries the owned state across `record`, and
+    /// hands it back here rather than letting the caller re-probe. `Widget::show` packages
+    /// the lazy path for widgets that need none of that.
     #[inline]
     pub fn eager(id: WidgetId, ui: &'a Ui, state: ResponseState) -> Self {
         Self {

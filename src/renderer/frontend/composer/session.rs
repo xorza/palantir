@@ -402,9 +402,13 @@ impl PaintSink for ComposeSession<'_> {
             min: p.bbox.min + p.origin,
             size: p.bbox.size,
         });
-        // Mesh skips snapping (matches polyline/curve); route
-        // through the shared scaler so the cull tracks the quad tier
-        // instead of open-coding `* scale`.
+        // Mesh skips snapping (matches polyline/curve), so it cannot use
+        // `scaled_rect` — but the *scaling* still goes through
+        // `Rect::scaled_by`, the same call `scaled_rect` makes, rather
+        // than open-coding `* scale`. That is what keeps the cull
+        // tracking the quad tier. Snap, transform and the AA fringe are
+        // per-tier policy; the integer bounds below are `urect_from_phys`
+        // like every other tier's.
         let phys_bbox = world_bbox.scaled_by(scale, false);
         let fringe = Vec2::splat(0.5);
         let mesh_urect = urect_from_phys(

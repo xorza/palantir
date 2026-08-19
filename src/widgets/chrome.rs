@@ -15,6 +15,12 @@ use crate::ui::Ui;
 /// fills in; the clip default only applies when the caller did not configure
 /// clipping. Returns the chrome to pass to [`Widget::record`].
 ///
+/// **Not every container wants this.** Tooltip, Modal and ContextMenu
+/// resolve their own with `Option::unwrap_or`, and `Frame` has no theme
+/// slot to fall back to at all — the three differ in what the consumer
+/// needs (a borrow, an owned value, nothing), and none of them has a
+/// clip default, which is the only thing this adds over `.or()`.
+///
 /// [`Widget::record`]: crate::widgets::widget::Widget::record
 pub(super) fn resolve_container(
     node: &mut Node,
