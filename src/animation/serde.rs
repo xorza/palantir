@@ -5,6 +5,15 @@ use crate::animation::easing::Easing;
 use crate::animation::spring::{params_are_valid as spring_params_are_valid, stable_substep_dt};
 use crate::animation::{AnimMotion, AnimSpec, DURATION_ERROR, SPRING_ERROR, duration_is_valid};
 
+/// [`AnimSpec`]'s *authored* form — [`AnimMotion`] minus what
+/// deserialization derives.
+///
+/// Not redundant with `AnimMotion`: `substep_dt` falls out of
+/// `(stiffness, damping)` rather than being written by a theme author,
+/// so it has no wire field, and `Deserialize` recomputes *and validates*
+/// it. That validation is the reason this is a hand-written impl over a
+/// separate type rather than `#[serde(skip)]` on the field — a skipped
+/// field would deserialize to `0.0` and silently bypass `SPRING_ERROR`.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 enum AnimSpecWire {
@@ -19,8 +28,13 @@ impl Serialize for AnimSpec {
     {
         let wire = match self.motion {
             AnimMotion::Duration { secs, ease } => AnimSpecWire::Duration { secs, ease },
+            // `substep_dt: _`, not `..`: a field added to `Spring` is
+            // then a compile error here, forcing the one decision that
+            // matters — is it authored, or derived like this one?
             AnimMotion::Spring {
-                stiffness, damping, ..
+                stiffness,
+                damping,
+                substep_dt: _,
             } => AnimSpecWire::Spring { stiffness, damping },
         };
         wire.serialize(serializer)

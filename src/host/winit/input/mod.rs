@@ -62,108 +62,116 @@ pub(super) fn translate(event: &WindowEvent, scale_factor: f32, mut emit: impl F
     }
 }
 
+/// The keys winit spells the same way in both of its vocabularies, and
+/// the [`Key`] each denotes.
+///
+/// Written once and expanded against `NamedKey` (the logical side) and
+/// `KeyCode` (the physical one). A macro rather than a lookup table
+/// because the two winit enums share only these variant *names* — there
+/// is nothing to index, just a shape to repeat.
+///
+/// The two must agree: `Shortcut::matches`'s non-Latin fallback
+/// (`src/input/shortcut.rs`) consults `physical` alone, so a key present
+/// on one side and missing from the other stops matching under a
+/// non-Latin layout and nothing says so.
+macro_rules! shared_key {
+    ($winit:ident, $value:expr) => {
+        match $value {
+            $winit::ArrowLeft => Some(Key::ArrowLeft),
+            $winit::ArrowRight => Some(Key::ArrowRight),
+            $winit::ArrowUp => Some(Key::ArrowUp),
+            $winit::ArrowDown => Some(Key::ArrowDown),
+            $winit::Backspace => Some(Key::Backspace),
+            $winit::Delete => Some(Key::Delete),
+            $winit::Home => Some(Key::Home),
+            $winit::End => Some(Key::End),
+            $winit::PageUp => Some(Key::PageUp),
+            $winit::PageDown => Some(Key::PageDown),
+            $winit::Enter => Some(Key::Enter),
+            $winit::Tab => Some(Key::Tab),
+            $winit::Escape => Some(Key::Escape),
+            $winit::F1 => Some(Key::F1),
+            $winit::F2 => Some(Key::F2),
+            $winit::F3 => Some(Key::F3),
+            $winit::F4 => Some(Key::F4),
+            $winit::F5 => Some(Key::F5),
+            $winit::F6 => Some(Key::F6),
+            $winit::F7 => Some(Key::F7),
+            $winit::F8 => Some(Key::F8),
+            $winit::F9 => Some(Key::F9),
+            $winit::F10 => Some(Key::F10),
+            $winit::F11 => Some(Key::F11),
+            $winit::F12 => Some(Key::F12),
+            // The one whose `Key` is not the same name.
+            $winit::Space => Some(Key::Char(' ')),
+            _ => None,
+        }
+    };
+}
+
 fn logical_key(key: &WinitKey) -> Key {
     match key {
-        WinitKey::Named(NamedKey::ArrowLeft) => Key::ArrowLeft,
-        WinitKey::Named(NamedKey::ArrowRight) => Key::ArrowRight,
-        WinitKey::Named(NamedKey::ArrowUp) => Key::ArrowUp,
-        WinitKey::Named(NamedKey::ArrowDown) => Key::ArrowDown,
-        WinitKey::Named(NamedKey::Backspace) => Key::Backspace,
-        WinitKey::Named(NamedKey::Delete) => Key::Delete,
-        WinitKey::Named(NamedKey::Home) => Key::Home,
-        WinitKey::Named(NamedKey::End) => Key::End,
-        WinitKey::Named(NamedKey::PageUp) => Key::PageUp,
-        WinitKey::Named(NamedKey::PageDown) => Key::PageDown,
-        WinitKey::Named(NamedKey::Enter) => Key::Enter,
-        WinitKey::Named(NamedKey::Tab) => Key::Tab,
-        WinitKey::Named(NamedKey::Escape) => Key::Escape,
-        WinitKey::Named(NamedKey::F1) => Key::F1,
-        WinitKey::Named(NamedKey::F2) => Key::F2,
-        WinitKey::Named(NamedKey::F3) => Key::F3,
-        WinitKey::Named(NamedKey::F4) => Key::F4,
-        WinitKey::Named(NamedKey::F5) => Key::F5,
-        WinitKey::Named(NamedKey::F6) => Key::F6,
-        WinitKey::Named(NamedKey::F7) => Key::F7,
-        WinitKey::Named(NamedKey::F8) => Key::F8,
-        WinitKey::Named(NamedKey::F9) => Key::F9,
-        WinitKey::Named(NamedKey::F10) => Key::F10,
-        WinitKey::Named(NamedKey::F11) => Key::F11,
-        WinitKey::Named(NamedKey::F12) => Key::F12,
-        WinitKey::Named(NamedKey::Space) => Key::Char(' '),
+        WinitKey::Named(named) => shared_key!(NamedKey, named).unwrap_or(Key::Other),
         WinitKey::Character(text) => text.chars().next().map(Key::Char).unwrap_or(Key::Other),
         _ => Key::Other,
     }
+}
+
+/// The Latin letter and digit positions, which exist only on the
+/// physical side — the logical side reports whatever the layout puts
+/// there, as a `Character`.
+fn latin_position(code: &KeyCode) -> Option<Key> {
+    let c = match code {
+        KeyCode::KeyA => 'a',
+        KeyCode::KeyB => 'b',
+        KeyCode::KeyC => 'c',
+        KeyCode::KeyD => 'd',
+        KeyCode::KeyE => 'e',
+        KeyCode::KeyF => 'f',
+        KeyCode::KeyG => 'g',
+        KeyCode::KeyH => 'h',
+        KeyCode::KeyI => 'i',
+        KeyCode::KeyJ => 'j',
+        KeyCode::KeyK => 'k',
+        KeyCode::KeyL => 'l',
+        KeyCode::KeyM => 'm',
+        KeyCode::KeyN => 'n',
+        KeyCode::KeyO => 'o',
+        KeyCode::KeyP => 'p',
+        KeyCode::KeyQ => 'q',
+        KeyCode::KeyR => 'r',
+        KeyCode::KeyS => 's',
+        KeyCode::KeyT => 't',
+        KeyCode::KeyU => 'u',
+        KeyCode::KeyV => 'v',
+        KeyCode::KeyW => 'w',
+        KeyCode::KeyX => 'x',
+        KeyCode::KeyY => 'y',
+        KeyCode::KeyZ => 'z',
+        KeyCode::Digit0 => '0',
+        KeyCode::Digit1 => '1',
+        KeyCode::Digit2 => '2',
+        KeyCode::Digit3 => '3',
+        KeyCode::Digit4 => '4',
+        KeyCode::Digit5 => '5',
+        KeyCode::Digit6 => '6',
+        KeyCode::Digit7 => '7',
+        KeyCode::Digit8 => '8',
+        KeyCode::Digit9 => '9',
+        _ => return None,
+    };
+    Some(Key::Char(c))
 }
 
 fn physical_key(physical: &PhysicalKey) -> Key {
     let PhysicalKey::Code(code) = physical else {
         return Key::Other;
     };
-    match code {
-        KeyCode::KeyA => Key::Char('a'),
-        KeyCode::KeyB => Key::Char('b'),
-        KeyCode::KeyC => Key::Char('c'),
-        KeyCode::KeyD => Key::Char('d'),
-        KeyCode::KeyE => Key::Char('e'),
-        KeyCode::KeyF => Key::Char('f'),
-        KeyCode::KeyG => Key::Char('g'),
-        KeyCode::KeyH => Key::Char('h'),
-        KeyCode::KeyI => Key::Char('i'),
-        KeyCode::KeyJ => Key::Char('j'),
-        KeyCode::KeyK => Key::Char('k'),
-        KeyCode::KeyL => Key::Char('l'),
-        KeyCode::KeyM => Key::Char('m'),
-        KeyCode::KeyN => Key::Char('n'),
-        KeyCode::KeyO => Key::Char('o'),
-        KeyCode::KeyP => Key::Char('p'),
-        KeyCode::KeyQ => Key::Char('q'),
-        KeyCode::KeyR => Key::Char('r'),
-        KeyCode::KeyS => Key::Char('s'),
-        KeyCode::KeyT => Key::Char('t'),
-        KeyCode::KeyU => Key::Char('u'),
-        KeyCode::KeyV => Key::Char('v'),
-        KeyCode::KeyW => Key::Char('w'),
-        KeyCode::KeyX => Key::Char('x'),
-        KeyCode::KeyY => Key::Char('y'),
-        KeyCode::KeyZ => Key::Char('z'),
-        KeyCode::Digit0 => Key::Char('0'),
-        KeyCode::Digit1 => Key::Char('1'),
-        KeyCode::Digit2 => Key::Char('2'),
-        KeyCode::Digit3 => Key::Char('3'),
-        KeyCode::Digit4 => Key::Char('4'),
-        KeyCode::Digit5 => Key::Char('5'),
-        KeyCode::Digit6 => Key::Char('6'),
-        KeyCode::Digit7 => Key::Char('7'),
-        KeyCode::Digit8 => Key::Char('8'),
-        KeyCode::Digit9 => Key::Char('9'),
-        KeyCode::Space => Key::Char(' '),
-        KeyCode::ArrowLeft => Key::ArrowLeft,
-        KeyCode::ArrowRight => Key::ArrowRight,
-        KeyCode::ArrowUp => Key::ArrowUp,
-        KeyCode::ArrowDown => Key::ArrowDown,
-        KeyCode::Backspace => Key::Backspace,
-        KeyCode::Delete => Key::Delete,
-        KeyCode::Home => Key::Home,
-        KeyCode::End => Key::End,
-        KeyCode::PageUp => Key::PageUp,
-        KeyCode::PageDown => Key::PageDown,
-        KeyCode::Enter => Key::Enter,
-        KeyCode::Tab => Key::Tab,
-        KeyCode::Escape => Key::Escape,
-        KeyCode::F1 => Key::F1,
-        KeyCode::F2 => Key::F2,
-        KeyCode::F3 => Key::F3,
-        KeyCode::F4 => Key::F4,
-        KeyCode::F5 => Key::F5,
-        KeyCode::F6 => Key::F6,
-        KeyCode::F7 => Key::F7,
-        KeyCode::F8 => Key::F8,
-        KeyCode::F9 => Key::F9,
-        KeyCode::F10 => Key::F10,
-        KeyCode::F11 => Key::F11,
-        KeyCode::F12 => Key::F12,
-        _ => Key::Other,
-    }
+    // `or`, not `or_else`: the macro expands to a match, not a call, so
+    // there is nothing to defer.
+    latin_position(code)
+        .or(shared_key!(KeyCode, code))
+        .unwrap_or(Key::Other)
 }
 
 fn normalize_modifiers(modifiers: &ModifiersState) -> Modifiers {

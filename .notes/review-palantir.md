@@ -293,13 +293,6 @@ crate.
       two are written the same way, field for field, and a mismatch reads as one
       in review."
 
-- [ ] `src/text/render.rs:47`, `src/icons/icon_rasterizer.rs:12`,
-      `src/renderer/backend/raster_atlas/content_type.rs:10` —
-      `GlyphImageKind`, `IconRasterKind` and `ContentType` are three two-variant
-      enums meaning "one coverage byte per pixel" vs "straight sRGB RGBA", with
-      the same doc wording, for one shared atlas. Two hand-written conversions
-      at the boundary are the only thing aligning them.
-
 - [ ] `src/layout/engine.rs:78` and `:165`, `src/layout/cache/mod.rs:43`, `:59`,
       `:89`, `src/layout/mod.rs:38`, `src/layout/pass.rs:216` — the same per-node
       column set is declared five times (`LayoutScratch`/`LayerLayout`,
@@ -319,12 +312,6 @@ crate.
       pair is named the same on both rectangles") but nothing enforces it, so a
       semantic change to one — `union`'s paint-empty identity rule, say — has to
       be replayed by hand in the other.
-
-- [ ] `src/host/winit/input/mod.rs:65` and `:98` — `logical_key` and
-      `physical_key` are two hand-maintained tables mapping winit keys onto
-      `crate::input::Key`, sharing 25 identical targets. A mismatch breaks
-      `Shortcut::matches`'s non-Latin fallback (`src/input/shortcut.rs:432`)
-      silently, since that path only consults `physical`.
 
 - [ ] `src/widgets/theme/button.rs:22`, `text_edit.rs:29`,
       `context_menu/menu_item.rs:17`, `toggle.rs:26` — four theme bundles
@@ -358,13 +345,6 @@ crate.
 - [ ] `src/window.rs:303` vs `:278` — `WindowOutput { cursor, vsync }` is a
       hand-maintained copy of two `WindowRequests` fields, built field-for-field
       at `src/host/window_driver/mod.rs:384`, carrying near-identical vsync docs.
-
-- [ ] `src/ui/frame_report.rs:18` — `FrameProcessing::PaintOnly` and
-      `FramePlan::PaintOnly` are the same fact, mapped by hand at
-      `src/ui/frame_cycle.rs:98`.
-
-- [ ] `src/animation/serde.rs:8` — `AnimSpecWire` re-declares `AnimMotion`'s two
-      variants minus `substep_dt`.
 
 ---
 
