@@ -17,7 +17,7 @@ pub(crate) mod animated_look;
 pub(crate) mod look_plan;
 pub(crate) mod stateful_look;
 
-use crate::animation::AnimSlot;
+use crate::animation::anim_slot::AnimSlot;
 use crate::primitives::background::Background;
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::theme::widget_look::animated_look::AnimatedLook;

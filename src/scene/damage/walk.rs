@@ -26,7 +26,7 @@ use crate::scene::damage::row_matcher::{ROW_UNMATCHED, RowMatcher};
 use crate::scene::layer::Layer;
 use crate::scene::tree::Tree;
 use crate::scene::tree::iter::TreeItem;
-use crate::scene::tree::record::NodeId;
+use crate::scene::tree::node_id::NodeId;
 
 /// Damage the overlap of every pair of rows whose relative paint order
 /// flipped, given the pairing [`RowMatcher::diff_changed_leg`] left and

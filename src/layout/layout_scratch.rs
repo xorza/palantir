@@ -4,7 +4,7 @@
 use crate::layout::LayerLayout;
 use crate::layout::cache::{AvailableKey, CachedSubtree, INVALID_AVAILABLE};
 use crate::layout::counters::LayoutCounters;
-use crate::layout::grid::GridContext;
+use crate::layout::grid::grid_context::GridContext;
 use crate::layout::intrinsic::SLOT_COUNT;
 use crate::layout::stack::StackScratch;
 use crate::layout::wrapstack::WrapScratch;

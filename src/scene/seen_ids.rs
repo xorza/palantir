@@ -34,7 +34,7 @@
 
 use crate::primitives::widget_id::{WidgetId, WidgetIdMap};
 use crate::scene::layer::Layer;
-use crate::scene::tree::record::NodeId;
+use crate::scene::tree::node_id::NodeId;
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::hash_map::Entry;
 
@@ -290,7 +290,7 @@ impl SeenIds {
 #[cfg(test)]
 mod tests {
     use crate::scene::seen_ids::*;
-    use crate::scene::tree::record::NodeId;
+    use crate::scene::tree::node_id::NodeId;
 
     fn ep(node: u32) -> Endpoint {
         Endpoint {

@@ -8,7 +8,7 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::interned_text::InternedText;
 use crate::primitives::{rect::Rect, size::Size};
 use crate::scene::tree::Tree;
-use crate::scene::tree::record::NodeId;
+use crate::scene::tree::node_id::NodeId;
 
 /// One Fill child as the freeze loop sees it. Pushed onto
 /// `LayoutScratch::stack_fill` during measure; popped at the end of
@@ -415,7 +415,7 @@ mod tests;
 #[cfg(test)]
 pub(crate) mod internals {
     use crate::layout::stack::{FillEntry, freeze_distribute};
-    use crate::scene::tree::record::NodeId;
+    use crate::scene::tree::node_id::NodeId;
 
     /// Run the Fill freeze loop over `(weight, floor, cap)` triples and
     /// hand back each entry's allocation.

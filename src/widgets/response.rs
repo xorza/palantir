@@ -140,7 +140,7 @@ pub struct InnerResponse<'a, R> {
 #[cfg(test)]
 pub(crate) mod internals {
     use crate::scene::layer::Layer;
-    use crate::scene::tree::record::NodeId;
+    use crate::scene::tree::node_id::NodeId;
     use crate::widgets::drag_value::DragValueResponse;
     use crate::widgets::response::{InnerResponse, Response};
     use crate::widgets::text_edit::TextEditResponse;

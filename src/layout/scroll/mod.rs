@@ -9,7 +9,7 @@ use crate::layout::types::layout_mode::{ScrollChildLayout, ScrollSpec};
 use crate::layout::zstack;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
-use crate::scene::tree::record::NodeId;
+use crate::scene::tree::node_id::NodeId;
 
 /// Measures scroll children with unbounded space on the panned axes,
 /// records their full content extent, and returns the viewport's

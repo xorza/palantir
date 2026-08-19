@@ -183,7 +183,7 @@ macro_rules! fmt {
     };
 }
 
-pub use animation::AnimSlot;
+pub use animation::anim_slot::AnimSlot;
 pub use animation::anim_spec::AnimSpec;
 pub use animation::animatable::Animatable;
 pub use animation::easing::Easing;
@@ -360,7 +360,7 @@ pub use window::window_token::WindowToken;
 
 #[cfg(test)]
 mod hot_struct_sizes {
-    use crate::animation::AnimRow;
+    use crate::animation::anim_row::AnimRow;
     use crate::common::content_hash::ContentHash;
     use crate::input::response::ResponseState;
     use crate::input::target_scroll_delta::TargetScrollDelta;
@@ -397,8 +397,8 @@ mod hot_struct_sizes {
     use crate::scene::record_store::recorded_gradient::RecordedGradient;
     use crate::scene::shapes::paint::{ChromeRow, LoweredShadow, ShapeStroke};
     use crate::scene::shapes::record::ShapeRecord;
-    use crate::scene::tree::extras::ExtrasIdx;
-    use crate::scene::tree::record::NodeRecord;
+    use crate::scene::tree::extras_idx::ExtrasIdx;
+    use crate::scene::tree::node_record::NodeRecord;
     use crate::text::key::TextShapeKey;
     use crate::text::render::PlacedGlyph;
     use crate::text::shaped_ref::ShapedTextRef;

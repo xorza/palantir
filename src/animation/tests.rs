@@ -3,7 +3,11 @@
 //! spring convergence, settle clears repaint, removed-widget eviction,
 //! plus typed-slot dispatch via `Vec2` and `Color`.
 
-use crate::animation::anim_spec::AnimSpec;
+use crate::animation::anim_map_typed::AnimMapTyped;
+use crate::animation::anim_row::{AnimRow, MotionRow};
+use crate::animation::anim_slot::AnimSlot;
+use crate::animation::anim_spec::{AnimMotion, AnimSpec};
+use crate::animation::animatable::Animatable;
 use crate::animation::easing::Easing;
 use crate::animation::*;
 use crate::common::time::MAX_ANIM_DT;
@@ -17,22 +21,6 @@ use std::time::Duration;
 
 const SURFACE: UVec2 = UVec2::new(100, 100);
 const SLOT: AnimSlot = AnimSlot::new("test");
-
-/// Pins the `AnimSlot` identity contract: the cached hash is FNV-1a
-/// of the name bytes (checked against the published 64-bit test
-/// vectors), both construction routes agree, equality is by contents,
-/// and distinct names make distinct slots.
-#[test]
-fn anim_slot_hash_is_const_fnv1a_of_name() {
-    const A: AnimSlot = AnimSlot::new("a");
-    assert_eq!(A.hash, 0xaf63_dc4c_8601_ec8c);
-    assert_eq!(AnimSlot::new("foobar").hash, 0x8594_4171_f739_67e8);
-
-    let from: AnimSlot = "a".into();
-    assert_eq!(from, A, "From<&str> and const ctor must agree");
-    assert_eq!(from.hash, A.hash);
-    assert_ne!(AnimSlot::new("a"), AnimSlot::new("b"));
-}
 
 /// Process-global counter handed to `AnimMapTyped::tick` for tests
 /// that don't care about pass A/B semantics — every call gets a

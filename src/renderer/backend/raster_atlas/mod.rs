@@ -231,76 +231,80 @@ struct BoundSides {
     atlas_px: [u32; 2],
 }
 
-/// Bind `sides` for sampling. One definition rather than one per call
-/// site: [`RasterAtlas::new`] and `RasterAtlas::grow` both need the
-/// pair, and building it two ways is how the extents and the views they
-/// describe drift apart.
-/// Group 0: mask at 0, colour at 1, one shared sampler at 2 — the same entry
-/// shapes every other group uses, two textures deep instead of one.
-fn atlas_bind_group_layout(device: &wgpu::Device, label: &str) -> wgpu::BindGroupLayout {
-    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-        label: Some(label),
-        entries: &[
-            texture_binding::texture_entry(0),
-            texture_binding::texture_entry(1),
-            texture_binding::sampler_entry(2),
-        ],
-    })
-}
+impl BoundSides {
+    /// Group 0: mask at 0, colour at 1, one shared sampler at 2 — the same entry
+    /// shapes every other group uses, two textures deep instead of one.
+    pub(super) fn layout(device: &wgpu::Device, label: &str) -> wgpu::BindGroupLayout {
+        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some(label),
+            entries: &[
+                texture_binding::texture_entry(0),
+                texture_binding::texture_entry(1),
+                texture_binding::sampler_entry(2),
+            ],
+        })
+    }
 
-/// Nearest on both axes: a quad is drawn at its slot's own pixel dimensions,
-/// so every texel maps 1:1 and filtering could only blur what the rasterizer
-/// already got exactly right.
-fn atlas_sampler(device: &wgpu::Device, label: &str) -> wgpu::Sampler {
-    device.create_sampler(&wgpu::SamplerDescriptor {
-        label: Some(label),
-        min_filter: wgpu::FilterMode::Nearest,
-        mag_filter: wgpu::FilterMode::Nearest,
-        mipmap_filter: wgpu::MipmapFilterMode::Nearest,
-        ..Default::default()
-    })
-}
+    /// Nearest on both axes: a quad is drawn at its slot's own pixel dimensions,
+    /// so every texel maps 1:1 and filtering could only blur what the rasterizer
+    /// already got exactly right.
+    pub(super) fn sampler(device: &wgpu::Device, label: &str) -> wgpu::Sampler {
+        device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some(label),
+            min_filter: wgpu::FilterMode::Nearest,
+            mag_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
+            ..Default::default()
+        })
+    }
 
-fn atlas_bind_group(
-    device: &wgpu::Device,
-    layout: &wgpu::BindGroupLayout,
-    mask_view: &wgpu::TextureView,
-    color_view: &wgpu::TextureView,
-    sampler: &wgpu::Sampler,
-    label: &str,
-) -> wgpu::BindGroup {
-    device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some(label),
-        layout,
-        entries: &[
-            wgpu::BindGroupEntry {
-                binding: 0,
-                resource: wgpu::BindingResource::TextureView(mask_view),
-            },
-            wgpu::BindGroupEntry {
-                binding: 1,
-                resource: wgpu::BindingResource::TextureView(color_view),
-            },
-            wgpu::BindGroupEntry {
-                binding: 2,
-                resource: wgpu::BindingResource::Sampler(sampler),
-            },
-        ],
-    })
-}
+    /// The group-0 bind group itself, over the two side views and the
+    /// shared sampler.
+    fn bind_group(
+        device: &wgpu::Device,
+        layout: &wgpu::BindGroupLayout,
+        mask_view: &wgpu::TextureView,
+        color_view: &wgpu::TextureView,
+        sampler: &wgpu::Sampler,
+        label: &str,
+    ) -> wgpu::BindGroup {
+        device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some(label),
+            layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(mask_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(color_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Sampler(sampler),
+                },
+            ],
+        })
+    }
 
-fn bind_sides(
-    device: &wgpu::Device,
-    sides: &[Side; 2],
-    bgl: &wgpu::BindGroupLayout,
-    sampler: &wgpu::Sampler,
-    label: &str,
-) -> BoundSides {
-    let mask = &sides[ContentType::Mask as usize];
-    let color = &sides[ContentType::Color as usize];
-    BoundSides {
-        bind_group: atlas_bind_group(device, bgl, &mask.view, &color.view, sampler, label),
-        atlas_px: [color.size, mask.size],
+    /// Bind `sides` for sampling. One definition rather than one per call
+    /// site: [`RasterAtlas::new`] and `RasterAtlas::grow` both need the
+    /// pair, and building it two ways is how the extents and the views they
+    /// describe drift apart.
+    pub(super) fn new(
+        device: &wgpu::Device,
+        sides: &[Side; 2],
+        bgl: &wgpu::BindGroupLayout,
+        sampler: &wgpu::Sampler,
+        label: &str,
+    ) -> Self {
+        let mask = &sides[ContentType::Mask as usize];
+        let color = &sides[ContentType::Color as usize];
+        Self {
+            bind_group: Self::bind_group(device, bgl, &mask.view, &color.view, sampler, label),
+            atlas_px: [color.size, mask.size],
+        }
     }
 }
 
@@ -336,9 +340,9 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
         // Built here rather than by each tenant: the pair is a function
         // of `sides`, so the atlas is the only thing that can keep them
         // in step across a grow.
-        let bgl = atlas_bind_group_layout(device, &format!("{} atlas layout", config.label));
-        let sampler = atlas_sampler(device, &format!("{} sampler", config.label));
-        let bound = bind_sides(device, &sides, &bgl, &sampler, &labels.bind_group);
+        let bgl = BoundSides::layout(device, &format!("{} atlas layout", config.label));
+        let sampler = BoundSides::sampler(device, &format!("{} sampler", config.label));
+        let bound = BoundSides::new(device, &sides, &bgl, &sampler, &labels.bind_group);
 
         Self {
             sides,
@@ -823,7 +827,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
         self.counters.grows.bump();
         // In the same step that invalidated them, so no caller can
         // observe the stale pair.
-        let bound = bind_sides(
+        let bound = BoundSides::new(
             device,
             &self.sides,
             &self.bgl,

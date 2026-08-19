@@ -10,7 +10,8 @@ use crate::common::block_arena::BlockSlot;
 use crate::common::content_hash::ContentHash;
 use crate::primitives::rect::Rect;
 use crate::primitives::span::Span;
-use crate::scene::tree::record::{NodeId, SubtreeEnd};
+use crate::scene::tree::node_id::NodeId;
+use crate::scene::tree::subtree_end::SubtreeEnd;
 
 /// One row of a node's paint span — chrome (row 0 when the node has
 /// chrome), one direct shape, or a child marker, in record order.

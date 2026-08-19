@@ -1,13 +1,14 @@
 //! What a grid asks of its children, and the size that falls out.
 
 use crate::layout::axis::Axis;
-use crate::layout::grid::{GridContext, HugKind, reset_hugs_for};
+use crate::layout::grid::grid_context::GridContext;
+use crate::layout::grid::grid_track_store::HugKind;
 use crate::layout::intrinsic::LenReq;
 use crate::layout::pass::LayoutPass;
 use crate::layout::types::layout_mode::GridDefId;
 use crate::layout::types::track::Track;
 use crate::primitives::size::Size;
-use crate::scene::tree::record::NodeId;
+use crate::scene::tree::node_id::NodeId;
 
 pub(super) fn measure_inner(
     pass: &mut LayoutPass<'_>,
@@ -27,7 +28,7 @@ pub(super) fn measure_inner(
     let scratch = pass.grid_mut().depth_stack.at(depth);
     scratch.col.reset(n_cols);
     scratch.row.reset(n_rows);
-    reset_hugs_for(pass, idx);
+    pass.grid_track_state_mut().reset_hugs(idx);
 
     if n_rows == 0 || n_cols == 0 {
         // Recurse with `Size::ZERO` so leaves still take the Leaf measure arm

@@ -8,7 +8,7 @@ use crate::renderer::frontend::Frontend;
 use crate::renderer::render_plan::{RenderKind, RenderPlan};
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
-use crate::scene::tree::record::NodeId;
+use crate::scene::tree::node_id::NodeId;
 use crate::ui::harness::UiHarness;
 use crate::ui::tests::support::SURFACE;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};

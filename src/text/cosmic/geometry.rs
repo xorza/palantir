@@ -116,3 +116,21 @@ pub(super) fn intrinsic_min_width(buffer: &Buffer, breaks: &mut Vec<u32>) -> f32
     }
     intrinsic_min
 }
+
+/// Right edge (widest `x + w` across glyphs — an RTL run's last glyph is
+/// its leftmost) of a shaped buffer's first layout run, or `0.0` when
+/// empty — the rendered width of one line.
+///
+/// For the one-glyph unbounded probe [`CosmicMeasure::ellipsis_advance`]
+/// shapes, whose line starts at 0, the right edge is the width.
+/// [`shaped_geometry`] spans `left..right` instead because it also
+/// measures width-bounded buffers, which cosmic may anchor away from the
+/// origin — and every caller that has a measured [`TextRoot`] to hand
+/// reads `size.w` off that rather than walking glyphs again.
+pub(super) fn first_line_right(buffer: &Buffer) -> f32 {
+    buffer
+        .layout_runs()
+        .next()
+        .and_then(|r| r.glyphs.iter().map(|g| g.x + g.w).reduce(f32::max))
+        .unwrap_or(0.0)
+}

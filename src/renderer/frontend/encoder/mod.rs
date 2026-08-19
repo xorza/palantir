@@ -40,8 +40,8 @@ use crate::scene::shapes::paint::{
 use crate::scene::shapes::record::ShapeRecord;
 use crate::scene::tree::Tree;
 use crate::scene::tree::iter::TreeItem;
+use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::paint_anims::PaintAnimCursor;
-use crate::scene::tree::record::NodeId;
 use crate::shape::icon::IconFit;
 use crate::shape::rect::RectKind;
 use crate::text::shaped_ref::ShapedTextRef;

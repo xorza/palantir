@@ -52,7 +52,7 @@ use glam::{UVec2, Vec2};
 /// same closure both kinds.
 fn painted_shapes(
     ui: &Ui,
-    node: crate::scene::tree::record::NodeId,
+    node: crate::scene::tree::node_id::NodeId,
 ) -> impl Iterator<Item = &crate::scene::shapes::record::ShapeRecord> + '_ {
     let tree = &ui.forest.trees[Layer::Main];
     std::iter::once(node)
@@ -69,8 +69,8 @@ fn painted_shapes(
 /// [`PaintInput::record`](crate::widgets::text_edit::paint_input::PaintInput::record).
 fn block_of(
     ui: &Ui,
-    field: crate::scene::tree::record::NodeId,
-) -> crate::scene::tree::record::NodeId {
+    field: crate::scene::tree::node_id::NodeId,
+) -> crate::scene::tree::node_id::NodeId {
     ui.forest.trees[Layer::Main]
         .children(field)
         .next()

@@ -15,9 +15,10 @@ pub(crate) mod wake_reasons;
 
 use std::num::NonZeroU32;
 
+use crate::animation::AnimMap;
+use crate::animation::anim_slot::AnimSlot;
 use crate::animation::anim_spec::AnimSpec;
 use crate::animation::animatable::Animatable;
-use crate::animation::{AnimMap, AnimSlot};
 use crate::app::App;
 use crate::diagnostics::DebugOverlayConfig;
 use crate::display::Display;

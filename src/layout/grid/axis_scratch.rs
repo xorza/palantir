@@ -6,7 +6,7 @@
 //! other: `measuring` and `arranging` both depend *down* on this one.
 
 use crate::layout::axis::Axis;
-use crate::layout::grid::GridTrackStore;
+use crate::layout::grid::grid_track_store::GridTrackStore;
 use crate::layout::types::layout_mode::GridDefId;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;

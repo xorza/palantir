@@ -22,7 +22,8 @@ use crate::layout::axis_ctx::AxisCtx;
 use crate::layout::cache::quantize_available;
 use crate::layout::counters::PhaseSpan;
 use crate::layout::engine::LayoutEngine;
-use crate::layout::grid::{GridContext, GridTrackStore};
+use crate::layout::grid::grid_context::GridContext;
+use crate::layout::grid::grid_track_store::GridTrackStore;
 use crate::layout::intrinsic::{IntrinsicRange, LenReq};
 use crate::layout::layout_scratch::NO_ARRANGE_SRC;
 use crate::layout::stack::StackScratch;
@@ -36,7 +37,7 @@ use crate::primitives::size::Size;
 use crate::primitives::span::Span;
 use crate::scene::node::layout_core::LayoutCore;
 use crate::scene::tree::Tree;
-use crate::scene::tree::record::NodeId;
+use crate::scene::tree::node_id::NodeId;
 use crate::text::system::TextRunSlot;
 use glam::Vec2;
 

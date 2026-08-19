@@ -43,9 +43,10 @@ use tinyvec::ArrayVec;
 
 use crate::primitives::num::F32Ext;
 use crate::text::cosmic::cache_entry::CacheEntry;
-use crate::text::cosmic::geometry::{ShapedGeometry, intrinsic_min_width, shaped_geometry};
-use crate::text::cosmic::truncate::{
-    ClusterGlyph, EllipsisMemo, first_line_right, fitting_prefix, truncation_probe,
+use crate::text::cosmic::cluster_glyph::{ClusterGlyph, fitting_prefix};
+use crate::text::cosmic::ellipsis_memo::EllipsisMemo;
+use crate::text::cosmic::geometry::{
+    ShapedGeometry, first_line_right, intrinsic_min_width, shaped_geometry,
 };
 use crate::text::render::{
     GlyphImage, GlyphImageKind, GlyphPlacement, GlyphRasterKey, PlacedGlyph, RunPlacement,
@@ -54,9 +55,10 @@ use cosmic_text::SwashContent;
 use std::collections::hash_map::Entry;
 
 pub(super) mod cache_entry;
+pub(super) mod cluster_glyph;
 pub(super) mod counters;
+pub(super) mod ellipsis_memo;
 pub(super) mod geometry;
-pub(super) mod truncate;
 
 /// Bundled fonts shipped with the crate. Inter is the default UI /
 /// proportional body font; JetBrains Mono is the monospace. Both ship as
@@ -734,7 +736,7 @@ impl CosmicMeasure {
         // probe's own measurement already answers it, which is why this
         // reads the entry rather than re-walking its glyphs.
         let fits_whole =
-            fit.resolves_to_unbounded(&truncation_probe(&self.cache, probe_key).root, width);
+            fit.resolves_to_unbounded(&CacheEntry::probe(&self.cache, probe_key).root, width);
 
         // Shape unbounded on one line: the cut already fit it to `w`, and the
         // encoder owns single-line placement. Binding to `Some(w)` + align
@@ -759,7 +761,7 @@ impl CosmicMeasure {
             // bottoms out at the empty prefix.
             let mut max_end = usize::MAX;
             loop {
-                let cut = match truncation_probe(&self.cache, probe_key)
+                let cut = match CacheEntry::probe(&self.cache, probe_key)
                     .buffer
                     .layout_runs()
                     .next()

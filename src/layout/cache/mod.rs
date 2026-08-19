@@ -8,7 +8,7 @@ pub(crate) mod bench;
 
 use crate::common::content_hash::ContentHash;
 use crate::layout::ShapedText;
-use crate::layout::grid::GridTrackStore;
+use crate::layout::grid::grid_track_store::GridTrackStore;
 use crate::layout::intrinsic::SLOT_COUNT;
 use crate::layout::types::layout_mode::LayoutMode;
 use crate::primitives::num::F32Ext;

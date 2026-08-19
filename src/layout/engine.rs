@@ -16,7 +16,7 @@ use crate::primitives::size::Size;
 use crate::scene::forest::Forest;
 use crate::scene::layer::Layer;
 use crate::scene::tree::Tree;
-use crate::scene::tree::record::NodeId;
+use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::root_slot::RootSlot;
 use crate::text::shaper::TextShaper;
 use crate::text::system::TextSystem;

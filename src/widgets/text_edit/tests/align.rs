@@ -15,7 +15,7 @@ use crate::primitives::translate_scale::TranslateScale;
 use crate::scene::layer::Layer;
 use crate::scene::shapes::paint::QuadShape;
 use crate::scene::shapes::record::ShapeRecord;
-use crate::scene::tree::record::NodeId;
+use crate::scene::tree::node_id::NodeId;
 use crate::shape::rect::RectKind;
 use crate::ui::harness::UiHarness;
 use crate::widgets::text_edit::tests::*;
