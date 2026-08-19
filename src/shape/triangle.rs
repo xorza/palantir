@@ -1,10 +1,12 @@
 use crate::primitives::approx::noop_f32;
 use crate::primitives::color::Color;
+use crate::primitives::rect::aabb::Aabb;
 use crate::primitives::stroke::Stroke;
 use crate::scene::record_store::RecordStore;
-use crate::scene::shapes::lower;
+use crate::scene::shapes::paint::{QuadShape, ShapeStroke};
 use crate::scene::shapes::record::ShapeRecord;
 use crate::shape::sealed;
+use crate::shape::stroke_bounds::HALF_FRINGE;
 use glam::Vec2;
 
 /// Filled and/or stroked triangle with optional uniform corner rounding.
@@ -62,6 +64,11 @@ impl sealed::Lower for TriangleShape {
             || triangle_paint_empty(self.a, self.b, self.c)
     }
 
+    /// `bbox` is the owner-local AABB of `a`/`b`/`c` inflated by
+    /// `radius + AA fringe` — the SDF offsets the shape outward by
+    /// `radius`, and the stroke is inner-edge and adds no outward reach —
+    /// so damage and clip-cull cover the rounded, antialiased extent.
+    /// Nothing is staged, so nothing goes through `lower::`.
     fn lower(self, _store: &RecordStore) -> ShapeRecord {
         let Self {
             a,
@@ -71,6 +78,19 @@ impl sealed::Lower for TriangleShape {
             fill,
             stroke,
         } = self;
-        lower::triangle(a, b, c, radius, fill, stroke)
+        // Through `Aabb`, not raw `min`/`max`: those launder a NaN corner
+        // out of the bounds, which would leave the record-level gate
+        // testing a finite bbox for a shape that has one.
+        let pad = radius.max(0.0) + HALF_FRINGE;
+        let bbox = Aabb::of(&[a, b, c]).inflated(pad);
+        ShapeRecord::Quad(QuadShape::Triangle {
+            a,
+            b,
+            c,
+            radius,
+            fill: fill.into(),
+            stroke: ShapeStroke::from(stroke),
+            bbox,
+        })
     }
 }

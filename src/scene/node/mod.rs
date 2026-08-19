@@ -412,11 +412,11 @@ pub trait Configure: Sized {
         self
     }
     fn padding(mut self, p: impl Into<Spacing>) -> Self {
-        self.node_mut().node.padding = Some(p.into());
+        self.node_mut().node.padding = Some(checked_spacing(p, "padding"));
         self
     }
     fn margin(mut self, m: impl Into<Spacing>) -> Self {
-        self.node_mut().node.margin = Some(m.into());
+        self.node_mut().node.margin = Some(checked_spacing(m, "margin"));
         self
     }
 
@@ -655,3 +655,20 @@ impl Configure for Node {
 
 #[cfg(test)]
 mod tests;
+
+/// Screen one spacing on the way in, and say which knob it came from.
+///
+/// A NaN edge does not fail here — it poisons every extent derived from
+/// it and surfaces frames later as a widget that measured to nothing,
+/// with no way back to the call that set it. `Corners` is screened at
+/// shape lowering for the same reason; this is the equivalent gate for
+/// the two spacings, which reach layout instead of the record.
+///
+/// `debug_assert!` because it is per widget per frame, and because a NaN
+/// here is a caller's arithmetic rather than untrusted data — the theme's
+/// own spacing is checked where the theme is built.
+fn checked_spacing(value: impl Into<Spacing>, knob: &str) -> Spacing {
+    let value = value.into();
+    debug_assert!(!value.has_nan(), "NaN in {knob}: {value:?}");
+    value
+}

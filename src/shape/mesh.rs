@@ -1,8 +1,8 @@
 use crate::primitives::color::Color;
 use crate::primitives::mesh::Mesh;
 use crate::primitives::rect::Rect;
-use crate::primitives::span::Span;
 use crate::scene::record_store::RecordStore;
+use crate::scene::shapes::lower;
 use crate::scene::shapes::record::ShapeRecord;
 use crate::shape::local_rect_paint_empty;
 use crate::shape::sealed;
@@ -39,18 +39,6 @@ impl sealed::Lower for MeshShape<'_> {
             local_rect,
             tint,
         } = self;
-        let mut payloads = store.payloads.borrow_mut();
-        let v_start = payloads.meshes.vertices.len() as u32;
-        payloads.meshes.vertices.extend_from_slice(&mesh.vertices);
-        let i_start = payloads.meshes.indices.len() as u32;
-        payloads.meshes.indices.extend_from_slice(&mesh.indices);
-        ShapeRecord::Mesh {
-            local_rect,
-            tint: tint.into(),
-            vertices: Span::new(v_start, mesh.vertices.len() as u32),
-            indices: Span::new(i_start, mesh.indices.len() as u32),
-            bbox: mesh.bbox(),
-            content_hash: mesh.content_hash(),
-        }
+        lower::mesh(store, mesh, local_rect, tint)
     }
 }

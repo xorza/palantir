@@ -1,7 +1,5 @@
 use crate::primitives::half_simd::F16x4;
-use crate::primitives::nan::NanCheck;
-use crate::primitives::num::Num;
-use crate::primitives::serde::{LaneCodec, deserialize_lanes, serialize_lanes};
+use crate::primitives::serde::LaneCodec;
 use crate::primitives::size::Size;
 use glam::Vec2;
 
@@ -21,21 +19,9 @@ use glam::Vec2;
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Default, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Corners(F16x4);
 
-impl std::fmt::Debug for Corners {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let [tl, tr, br, bl] = self.as_array();
-        f.debug_struct("Corners")
-            .field("tl", &tl)
-            .field("tr", &tr)
-            .field("br", &br)
-            .field("bl", &bl)
-            .finish()
-    }
-}
+f16x4_lanes!(Corners, [tl, tr, br, bl]);
 
 impl Corners {
-    pub const ZERO: Self = Self(F16x4::ZERO);
-
     #[inline]
     pub fn all(r: f32) -> Self {
         Self(F16x4::from_lanes([r, r, r, r]))
@@ -88,23 +74,6 @@ impl Corners {
         Self(F16x4::from_lanes([0.0, r, 0.0, r]))
     }
 
-    /// All four lanes unpacked at once. See `Spacing::as_array` for the
-    /// SIMD rationale — same `half` slice path.
-    #[inline]
-    pub fn as_array(self) -> [f32; 4] {
-        self.0.lanes()
-    }
-
-    /// Inverse of [`Self::as_array`] — pack 4 runtime f32s into the
-    /// lane array via the batched f32→f16 path (`fcvtn` on aarch64-fp16,
-    /// `vcvtps2ph` on x86-f16c, scalar fallback). Use at hot sites that
-    /// compute all 4 lanes at runtime. `Self::new` is the same path with
-    /// the corners passed as separate args instead of an array.
-    #[inline]
-    pub fn from_array(v: [f32; 4]) -> Self {
-        Self(F16x4::from_lanes(v))
-    }
-
     #[inline]
     pub fn scaled_by(self, scale: f32) -> Self {
         Self(self.0.scaled(scale))
@@ -126,20 +95,6 @@ impl Corners {
         // it. The shape-level NaN gate is what drops such a shape.
         const EPS_BITS: u16 = half::f16::from_f32_const(crate::primitives::approx::EPS).to_bits();
         !self.0.any_lane_above(EPS_BITS)
-    }
-
-    /// True if any radius is NaN. `const`, so the predicates that gate
-    /// on it can be too; [`NanCheck`] delegates here rather than
-    /// keeping a second copy.
-    #[inline]
-    pub(crate) const fn has_nan(self) -> bool {
-        self.0.has_nan()
-    }
-}
-
-impl<T: Num> From<T> for Corners {
-    fn from(r: T) -> Self {
-        Self::all(r.as_f32())
     }
 }
 
@@ -176,25 +131,6 @@ impl LaneCodec for Corners {
 
     fn expand_two([top, bottom]: [f32; 2]) -> [f32; 4] {
         [top, top, bottom, bottom]
-    }
-}
-
-impl ::serde::Serialize for Corners {
-    fn serialize<S: ::serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serialize_lanes(self, serializer)
-    }
-}
-
-impl<'de> ::serde::Deserialize<'de> for Corners {
-    fn deserialize<D: ::serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        deserialize_lanes(deserializer)
-    }
-}
-
-impl NanCheck for Corners {
-    #[inline]
-    fn has_nan(&self) -> bool {
-        Corners::has_nan(*self)
     }
 }
 
