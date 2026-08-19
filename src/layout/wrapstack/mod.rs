@@ -14,13 +14,12 @@
 //! height without shrinking below their measured content.
 
 use crate::layout::axis::Axis;
+use crate::layout::axis_placement::AxisPlacement;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange, LenReq};
+use crate::layout::justify_offsets::JustifyOffsets;
 use crate::layout::pass::LayoutPass;
-use crate::layout::support::{
-    JustifyOffsets, children_max_intrinsic, cross_place, justify_offsets, no_offset,
-};
-use crate::primitives::interned_str::InternedText;
+use crate::primitives::interned_text::InternedText;
 use crate::primitives::{rect::Rect, size::Size};
 use crate::scene::tree::Tree;
 use crate::scene::tree::record::NodeId;
@@ -216,7 +215,7 @@ pub(super) fn arrange(pass: &mut LayoutPass<'_>, node: NodeId, inner: Rect, axis
         let JustifyOffsets {
             start: start_offset,
             gap: eff_gap,
-        } = justify_offsets(justify, leftover, gap, count);
+        } = JustifyOffsets::new(justify, leftover, gap, count);
         let mut main_cursor = axis.main_v(inner.min) + start_offset;
         // Iterate by index so we copy each `NodeId` out before
         // calling `layout.arrange`, which needs `&mut layout`.
@@ -232,7 +231,7 @@ pub(super) fn arrange(pass: &mut LayoutPass<'_>, node: NodeId, inner: Rect, axis
             // extent. Same rule as Stack cross — Fill stretches to
             // line_cross, Hug aligns per child.
             let bounds = tree.bounds(c);
-            let cross_p = cross_place(axis, &s, bounds, parent_child_align, d, line_cross);
+            let cross_p = AxisPlacement::cross(axis, &s, bounds, parent_child_align, d, line_cross);
             let main_size = axis.main(d);
             let child_rect = axis.compose_rect(
                 main_cursor,
@@ -314,15 +313,7 @@ pub(super) fn intrinsic(
         // wrapped cross depends on resolved main width — height-given-
         // width — which we don't compute here. Conservative for typical
         // toolbar/badge use cases.
-        return children_max_intrinsic(
-            layout,
-            tree,
-            node,
-            query_axis,
-            query,
-            interned_text,
-            no_offset,
-        );
+        return query.children_max_at_origin(layout, tree, node, query_axis, interned_text);
     }
     let mut range = IntrinsicRange::ZERO;
     let mut count = 0_usize;

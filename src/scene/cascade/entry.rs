@@ -6,7 +6,7 @@
 use crate::input::key_class::KeyFilter;
 use crate::input::sense::Sense;
 use crate::primitives::rect::Rect;
-use crate::primitives::transform::TranslateScale;
+use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::scene::seen_ids::Endpoint;
@@ -16,7 +16,7 @@ use crate::scene::seen_ids::Endpoint;
 ///
 /// **Array-of-structs on purpose.** Every consumer of this table is a
 /// single-index gather, never a column walk:
-/// [`crate::input::InputState::response_for`] reads all three fields at
+/// [`crate::input::input_state::InputState::response_for`] reads all three fields at
 /// one index once per widget per frame, and `pointer_local_for` reads
 /// two. Splitting them into `soa_rs` columns put those fields on three
 /// separate cache lines per lookup; interleaved they share one 32-byte
@@ -80,7 +80,7 @@ pub(crate) struct WidgetLocation {
 }
 
 /// One declared input scope, in record order across every layer — the
-/// table [`crate::input::InputState`] resolves a key press against.
+/// table [`crate::input::input_state::InputState`] resolves a key press against.
 ///
 /// Deliberately *not* a column on [`EntryRow`]: scopes are a handful per
 /// frame while entries are one per node, and containment is answered by

@@ -116,6 +116,15 @@ impl Sizing {
         matches!(self.0, SizingValue::Hug)
     }
 
+    /// One participant's cut of `space`, given its own [`Self::fill`]
+    /// weight and the total across every participant sharing it. Shared
+    /// by the stack's Fill distribution and the grid's Phase-3 track
+    /// solve, which divide the same way.
+    #[inline]
+    pub(crate) fn weighted_share(space: f32, weight: f32, total_weight: f64) -> f32 {
+        (f64::from(space) * f64::from(weight) / total_weight) as f32
+    }
+
     #[inline]
     pub(crate) fn hash_visual<H: std::hash::Hasher>(&self, h: &mut H) {
         let (tag, value) = match self.0 {

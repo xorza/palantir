@@ -1,5 +1,5 @@
 use crate::primitives::color::Color;
-use crate::text::key::{self, TEXT_METRICS_ERROR};
+use crate::text::glyph_font::GlyphFont;
 use crate::text::{FontFamily, FontWeight};
 use crate::widgets::theme::text_style::TextStyle;
 
@@ -16,11 +16,11 @@ impl TryFrom<UncheckedTextStyle> for TextStyle {
     type Error = &'static str;
 
     fn try_from(style: UncheckedTextStyle) -> Result<Self, Self::Error> {
-        if !key::text_metrics_valid(
+        if !GlyphFont::metrics_are_valid(
             style.font_size_px,
             style.font_size_px * style.line_height_mult,
         ) {
-            return Err(TEXT_METRICS_ERROR);
+            return Err(GlyphFont::METRICS_ERROR);
         }
         Ok(Self {
             font_size_px: style.font_size_px,

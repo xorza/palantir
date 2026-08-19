@@ -1,7 +1,7 @@
 //! Keyboard event vocabulary. The shape was sized for `TextEdit`'s
 //! step-1 needs: a small `Key` enum covering navigation/editing keys
 //! plus printable characters, a `Modifiers` struct, and an inline
-//! `TextChunk` so [`crate::input::InputEvent`] stays `Copy`.
+//! `TextChunk` so [`crate::input::input_event::InputEvent`] stays `Copy`.
 //!
 //! Consumers: `TextEdit`, the [`crate::Shortcut`] matcher, and global
 //! [`crate::input::watch::KeyboardWake`] watchers, fed from
@@ -111,7 +111,7 @@ impl Modifiers {
 /// commits split across multiple events at the translation boundary.
 /// Inline storage keeps `InputEvent: Copy`.
 ///
-/// [`InputEvent::Text`]: crate::input::InputEvent::Text
+/// [`InputEvent::Text`]: crate::input::input_event::InputEvent::Text
 #[derive(Clone, Copy)]
 pub struct TextChunk {
     bytes: [u8; Self::INLINE_CAP],

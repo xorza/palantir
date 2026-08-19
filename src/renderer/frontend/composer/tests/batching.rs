@@ -1,7 +1,7 @@
 //! Which draws share a group and a batch, and what forces a split.
 
 use crate::primitives::brush::gradient::FillAxis;
-use crate::primitives::fill_wire::FillKind;
+use crate::primitives::fill_kind::FillKind;
 use crate::primitives::span::Span;
 use crate::primitives::{color::Color, corners::Corners, rect::Rect, stroke::Stroke, urect::URect};
 use crate::renderer::frontend::capture::PaintCapture;
@@ -10,11 +10,14 @@ use crate::renderer::frontend::composer::tests::support::{
     render_buffer, run, text,
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
-use crate::renderer::frontend::payload::{
-    BrushSource, DrawPolylinePayload, DrawQuadPayload, ResolvedGradient, Spin, StrokeBounds,
-};
-use crate::renderer::render_buffer::batch::PaintTier;
-use crate::scene::record_store::RecordPayloads;
+use crate::renderer::frontend::payload::brush_source::BrushSource;
+use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
+use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
+use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
+use crate::renderer::frontend::payload::stroke_bounds::Spin;
+use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
+use crate::renderer::render_buffer::paint_tier::PaintTier;
+use crate::scene::record_store::record_payloads::RecordPayloads;
 use crate::scene::shapes::record::ColorMode;
 use crate::shape::style::{LineCap, LineJoin};
 use glam::{UVec2, Vec2};
@@ -657,7 +660,8 @@ fn quad_flushes_text_in_already_closed_batch_same_group() {
 fn quad_fast_path_flag_cases() {
     use crate::primitives::brush::gradient::FillAxis;
     use crate::primitives::brush::gradient::Spread;
-    use crate::primitives::fill_wire::{FillKind, LutRow};
+    use crate::primitives::fill_kind::FillKind;
+    use crate::primitives::lut_row::LutRow;
 
     let solid = |c: Color| BrushSource::Solid(c.into());
     let opaque = Color::rgb(0.5, 0.5, 0.5);

@@ -1,9 +1,7 @@
 //! What a grid asks of its children, and the size that falls out.
 
 use crate::layout::axis::Axis;
-use crate::layout::grid::arranging::known_span_size;
-use crate::layout::grid::resolving::resolve_axis;
-use crate::layout::grid::{AxisScratch, GridContext, HugKind, reset_hugs_for};
+use crate::layout::grid::{GridContext, HugKind, reset_hugs_for};
 use crate::layout::intrinsic::LenReq;
 use crate::layout::pass::LayoutPass;
 use crate::layout::types::layout_mode::GridDefId;
@@ -114,8 +112,7 @@ pub(super) fn measure_inner(
             ..
         } = pass.grid_mut();
         let s = depth_stack.at(depth);
-        resolve_axis(
-            &mut s.col,
+        s.col.resolve_axis(
             col_tracks,
             track_state.ranges(idx, Axis::X),
             inner_avail.w,
@@ -128,7 +125,7 @@ pub(super) fn measure_inner(
         // Resolve Fixed rows once before the per-cell loop — values are
         // constant per GridDef and `resolve_fixed` is idempotent, so
         // calling it inside the loop just re-set the same slots.
-        resolve_fixed(&mut s.row, row_tracks);
+        s.row.resolve_fixed(row_tracks);
     }
 
     // Phase 2: measure cells with resolved col widths. Rows are still
@@ -150,20 +147,10 @@ pub(super) fn measure_inner(
             // cols would measure at a different width than they're
             // arranged at, and that discrepancy commits row heights
             // based on a width arrange doesn't honor.
-            let avail_w = known_span_size(
-                &s.col.sizes,
-                &s.col.resolved,
-                cell.track_span(Axis::X),
-                col_gap,
-            );
+            let avail_w = s.col.known_span_size(cell.track_span(Axis::X), col_gap);
             // Rows: only Fixed is known yet; Hug and Fill are unresolved
             // → INF (WPF intrinsic trick), as before.
-            let avail_h = known_span_size(
-                &s.row.sizes,
-                &s.row.resolved,
-                cell.track_span(Axis::Y),
-                row_gap,
-            );
+            let avail_h = s.row.known_span_size(cell.track_span(Axis::Y), row_gap);
             Size::new(avail_w, avail_h)
         };
 
@@ -204,8 +191,7 @@ pub(super) fn measure_inner(
             ..
         } = pass.grid_mut();
         let s = depth_stack.at(depth);
-        resolve_axis(
-            &mut s.row,
+        s.row.resolve_axis(
             row_tracks,
             track_state.ranges(idx, Axis::Y),
             inner_avail.h,
@@ -238,22 +224,4 @@ fn sum_non_fill(tracks: &[Track], sizes: &[f32]) -> f32 {
             }
         })
         .sum()
-}
-
-/// Phase 1 of [`resolve_axis`], also run standalone by `measure_inner`
-/// before the per-cell loop so `known_span_size` reads Fixed rows as
-/// resolved while Hug and Fill rows are still unknown. Returns the total
-/// extent the Fixed tracks consumed, which is what `resolve_axis` needs
-/// and the standalone caller ignores. Callers reset `a` first — both do,
-/// via `AxisScratch::reset` or `resolve_axis`'s own `fill`/`clear`.
-pub(super) fn resolve_fixed(a: &mut AxisScratch, tracks: &[Track]) -> f32 {
-    let mut consumed = 0.0;
-    for (i, t) in tracks.iter().enumerate() {
-        if let Some(value) = t.size.fixed_value() {
-            a.sizes[i] = value.clamp(t.min, t.max);
-            a.resolved.insert(i);
-            consumed += a.sizes[i];
-        }
-    }
-    consumed
 }

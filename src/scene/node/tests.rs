@@ -4,7 +4,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::ThemeDefaults;
 use crate::scene::node::*;
 use crate::scene::visibility::Visibility;
-use crate::widgets::context_menu::MenuItem;
+use crate::widgets::context_menu::menu_item::MenuItem;
 use crate::widgets::drag_value::DragValue;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::{button::Button, frame::Frame, grid::Grid, panel::Panel, text::Text};

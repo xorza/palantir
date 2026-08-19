@@ -65,14 +65,14 @@
 
 use crate::app::internals::RecordApp;
 use crate::bench::{Arms, Fixture, Run};
-use crate::diagnostics::gpu_stats::BatchKind;
+use crate::diagnostics::gpu_pass_stats::BatchKind;
 use crate::frame_fixture::{BENCH_SCALE, FrameFixture, build_ui};
 use crate::host::bench_gpu::{BenchGpu, Timing};
 use crate::host::offscreen::OffscreenHost;
 use crate::primitives::color::Color;
 use crate::renderer::backend::write_stats;
 use crate::renderer::frontend::Frontend;
-use crate::renderer::plan::{RenderKind, RenderPlan};
+use crate::renderer::render_plan::{RenderKind, RenderPlan};
 use crate::ui::Ui;
 use crate::ui::frame_report::FramePaint;
 use crate::ui::harness::UiHarness;

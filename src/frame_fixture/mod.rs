@@ -46,7 +46,7 @@ mod tokens;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
 use crate::primitives::background::Background;
-use crate::primitives::transform::TranslateScale;
+use crate::primitives::translate_scale::TranslateScale;
 use crate::scene::node::Configure;
 use crate::ui::Ui;
 use crate::widgets::panel::Panel;

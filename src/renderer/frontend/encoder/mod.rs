@@ -6,27 +6,34 @@ use crate::layout::types::align;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::primitives::approx::noop_f32;
 use crate::primitives::brush::gradient::FillAxis;
-use crate::primitives::fill_wire::FillKind;
+use crate::primitives::fill_kind::FillKind;
 use crate::primitives::image::{ImageDownsample, ImageFilter, ImageFit};
 use crate::primitives::nan::NanCheck;
 use crate::primitives::widget_id::WidgetIdMap;
 use crate::primitives::{corners::Corners, rect::Rect, size::Size};
 use crate::renderer::frontend::FrameScene;
 use crate::renderer::frontend::paint_sink::PaintSink;
-use crate::renderer::frontend::payload::{
-    BrushSource, DrawCurvePayload, DrawIconPayload, DrawImagePayload, DrawMeshPayload,
-    DrawPolylinePayload, DrawQuadPayload, PushClipPayload, ResolvedGradient, Spin, StrokeBounds,
-};
-use crate::renderer::gpu_view::GpuViewEntry;
-use crate::renderer::gradient_atlas::handle::SharedGradientAtlas;
-use crate::renderer::plan::{RenderKind, RenderPlan, damage_cull_margin};
+use crate::renderer::frontend::payload::brush_source::BrushSource;
+use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
+use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
+use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
+use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
+use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
+use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
+use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
+use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
+use crate::renderer::frontend::payload::stroke_bounds::Spin;
+use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
+use crate::renderer::gpu_paint::gpu_view_entry::GpuViewEntry;
+use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
 use crate::renderer::render_buffer::image::{
     IMG_FLAG_MAG_NEAREST, IMG_FLAG_MIN_NEAREST, IMG_FLAG_TAPS_MEAN, IMG_FLAG_TAPS_PEAK,
     IMG_FLAG_TILED,
 };
+use crate::renderer::render_plan::{RenderKind, RenderPlan};
 use crate::scene::cascade::CascadeInputHash;
 use crate::scene::damage::region::DamageRegion;
-use crate::scene::record_store::RecordedGradient;
+use crate::scene::record_store::recorded_gradient::RecordedGradient;
 use crate::scene::shapes::paint::{
     ImageSource, LoweredShadow, QuadShape, ShadowGeom, ShapeBrush, shadow_paint_rect_local,
 };
@@ -177,8 +184,8 @@ impl Encoder {
         let gradients = scene.payloads.gradients.records.as_slice();
         gradient_resolver.begin(gradients.len());
         // Matches the backend's padded physical scissor; both derive from
-        // `renderer::plan::DAMAGE_AA_PADDING`.
-        let damage_cull_margin = damage_cull_margin(scene.display.scale_factor);
+        // `renderer::render_plan::RenderPlan::AA_PADDING`.
+        let damage_cull_margin = RenderPlan::cull_margin(scene.display.scale_factor);
         for (layer, tree) in scene.forest.trees.iter_paint_order() {
             let layer_cascades = &scene.cascade.layers[layer];
             let mut ctx = LayerCtx {
@@ -848,8 +855,8 @@ pub(crate) mod internals {
     use crate::renderer::frontend::FrameScene;
     use crate::renderer::frontend::capture::PaintCapture;
     use crate::renderer::frontend::encoder::Encoder;
-    use crate::renderer::gradient_atlas::handle::SharedGradientAtlas;
-    use crate::renderer::plan::RenderPlan;
+    use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
+    use crate::renderer::render_plan::RenderPlan;
 
     pub(crate) fn encode(
         scene: FrameScene<'_>,

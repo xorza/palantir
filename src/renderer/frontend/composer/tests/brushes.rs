@@ -1,12 +1,13 @@
 //! Fills, images and raster targets: what each emits and what rides with it.
 
 use crate::primitives::brush::gradient::FillAxis;
-use crate::primitives::fill_wire::{FillKind, LutRow};
+use crate::primitives::fill_kind::FillKind;
+use crate::primitives::lut_row::LutRow;
 use crate::primitives::span::Span;
 use crate::primitives::texture_id::TextureId;
 use crate::primitives::{
     color::Color, color::ColorU8, corners::Corners, rect::Rect, size::Size, stroke::Stroke,
-    transform::TranslateScale,
+    translate_scale::TranslateScale,
 };
 use crate::renderer::frontend::capture::PaintCapture;
 use crate::renderer::frontend::composer::tests::support::{
@@ -14,11 +15,13 @@ use crate::renderer::frontend::composer::tests::support::{
     run_with_texture_cap,
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
-use crate::renderer::frontend::payload::{
-    BrushSource, DrawImagePayload, DrawQuadPayload, PushClipPayload, ResolvedGradient,
-};
-use crate::renderer::render_buffer::batch::PaintTier;
-use crate::scene::record_store::RecordPayloads;
+use crate::renderer::frontend::payload::brush_source::BrushSource;
+use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
+use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
+use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
+use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
+use crate::renderer::render_buffer::paint_tier::PaintTier;
+use crate::scene::record_store::record_payloads::RecordPayloads;
 use glam::{UVec2, Vec2};
 use std::time::Duration;
 
@@ -72,7 +75,7 @@ fn compose_solid_brush_emits_kind_zero_quad() {
 /// window bit this exact draw would trigger all three.
 #[test]
 fn windowed_rect_is_not_an_opaque_cover() {
-    use crate::primitives::fill_wire::FillKind;
+    use crate::primitives::fill_kind::FillKind;
     let buf = run(
         |b, _| {
             draw(b, rect(10.0, 10.0, 50.0, 50.0));
@@ -107,8 +110,8 @@ fn windowed_rect_is_not_an_opaque_cover() {
 fn compose_linear_brush_emits_kind_one_with_atlas_row() {
     use crate::primitives::brush::gradient::Spread;
     use crate::primitives::brush::gradient::linear::LinearGradient;
-    use crate::primitives::fill_wire::FillKind;
-    use crate::renderer::gradient_atlas::handle::SharedGradientAtlas;
+    use crate::primitives::fill_kind::FillKind;
+    use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
     let g =
         LinearGradient::two_stop(0.0, ColorU8::WHITE, ColorU8::BLACK).with_spread(Spread::Reflect);
     let expected_axis = g.axis();
@@ -148,8 +151,8 @@ fn compose_linear_brush_emits_kind_one_with_atlas_row() {
 #[test]
 fn compose_repeated_linear_brush_shares_atlas_row() {
     use crate::primitives::brush::gradient::linear::LinearGradient;
-    use crate::primitives::fill_wire::FillKind;
-    use crate::renderer::gradient_atlas::handle::SharedGradientAtlas;
+    use crate::primitives::fill_kind::FillKind;
+    use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
     let g = LinearGradient::two_stop(0.5, ColorU8::hex(0x336699), ColorU8::hex(0xddaa44));
     let atlas = SharedGradientAtlas::default();
     let lowered = ResolvedGradient {

@@ -144,7 +144,7 @@ pub mod internals {
 /// Consumers (debug overlay, benches) hold a `Clone` of the same
 /// `GpuPassStats` the backend writes into — no global state;
 /// `OffscreenHost::gpu_pass_stats` is the canonical handle.
-pub use diagnostics::gpu_stats::{BatchKind, GpuPassStats, PipelineStats};
+pub use diagnostics::gpu_pass_stats::{BatchKind, GpuPassStats, PipelineStats};
 
 /// The `wgpu` Palantir was built against.
 ///
@@ -183,9 +183,10 @@ macro_rules! fmt {
     };
 }
 
+pub use animation::AnimSlot;
+pub use animation::anim_spec::AnimSpec;
 pub use animation::animatable::Animatable;
 pub use animation::easing::Easing;
-pub use animation::{AnimSlot, AnimSpec};
 pub use app::App;
 // Same-name re-export: the derive lives in the macro namespace,
 // the trait in the type namespace — `use palantir::Animatable;` pulls
@@ -215,7 +216,7 @@ pub use host::winit::{
     error::{HostDisconnected, WinitHostError},
     handle::{HostHandle, UserEvent},
 };
-pub use input::InputEvent;
+pub use input::input_event::InputEvent;
 pub use input::key_class::{KeyClass, KeyFilter};
 pub use input::keyboard::{Key, KeyPress, KeyboardEvent, Modifiers, TextChunk};
 pub use input::pointer::{PointerButton, PointerEvent};
@@ -245,12 +246,13 @@ pub use primitives::color::Color;
 pub use primitives::color::ColorU8;
 pub use primitives::corners::Corners;
 pub use primitives::image::{Image, ImageDownsample, ImageFilter, ImageFit};
-pub use primitives::interned_str::{InternedStr, TextInput};
+pub use primitives::interned_str::InternedStr;
 pub use primitives::mesh::{Mesh, MeshVertex};
 pub use primitives::rect::Rect;
 pub use primitives::shadow::Shadow;
 pub use primitives::size::Size;
 pub use primitives::spacing::{Spacing, Sums};
+pub use primitives::text_input::TextInput;
 pub use scene::layer::Layer;
 pub use scene::node::{Configure, ConfigureNode, Node};
 pub use scene::visibility::Visibility;
@@ -266,9 +268,11 @@ pub use icons::icon_atlas::{IconAtlas, IconDef, IconId};
 pub use icons::icon_set::{IconHandle, IconSet};
 pub use primitives::span::Span;
 pub use primitives::stroke::Stroke;
-pub use primitives::transform::TranslateScale;
+pub use primitives::translate_scale::TranslateScale;
 pub use primitives::widget_id::WidgetId;
-pub use renderer::gpu_view::{GpuFrameCtx, GpuInitCtx, GpuPaint};
+pub use renderer::gpu_paint::GpuPaint;
+pub use renderer::gpu_paint::gpu_frame_ctx::GpuFrameCtx;
+pub use renderer::gpu_paint::gpu_init_ctx::GpuInitCtx;
 pub use renderer::image_registry::{ImageHandle, RegisterImageError};
 /// The bound on [`Ui::add_shape`] — sealed, so it names the shape kinds
 /// the crate ships and nothing else.
@@ -302,7 +306,9 @@ pub use ui::layer_scope::LayerScope;
 pub use widgets::button::Button;
 pub use widgets::checkbox::Checkbox;
 pub use widgets::combo_box::ComboBox;
-pub use widgets::context_menu::{ContextMenu, MenuItem, MenuSeparator};
+pub use widgets::context_menu::ContextMenu;
+pub use widgets::context_menu::menu_item::MenuItem;
+pub use widgets::context_menu::menu_separator::MenuSeparator;
 pub use widgets::drag_value::{DragNum, DragValue, DragValueResponse};
 pub use widgets::frame::Frame;
 pub use widgets::gpu_view::GpuView;
@@ -346,24 +352,33 @@ pub use widgets::theme::widget_look::animated_look::AnimatedLook;
 pub use widgets::theme::widget_look::stateful_look::StatefulLook;
 pub use widgets::tooltip::Tooltip;
 pub use widgets::widget::Widget;
-pub use window::{CursorIcon, Vsync, WindowConfig, WindowGeometry, WindowToken};
+pub use window::cursor_icon::CursorIcon;
+pub use window::vsync::Vsync;
+pub use window::window_config::WindowConfig;
+pub use window::window_geometry::WindowGeometry;
+pub use window::window_token::WindowToken;
 
 #[cfg(test)]
 mod hot_struct_sizes {
     use crate::animation::AnimRow;
     use crate::common::content_hash::ContentHash;
-    use crate::input::{TargetScrollDelta, response::ResponseState};
+    use crate::input::response::ResponseState;
+    use crate::input::target_scroll_delta::TargetScrollDelta;
     use crate::layout::ShapedText;
     use crate::primitives::background::Background;
     use crate::primitives::brush::Brush;
-    use crate::primitives::interned_str::RecordedText;
     use crate::primitives::mesh::MeshVertex;
+    use crate::primitives::recorded_text::RecordedText;
     use crate::primitives::span::Span;
-    use crate::renderer::backend::raster_atlas::quad::RasterQuad;
-    use crate::renderer::frontend::payload::{
-        DrawCurvePayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload, DrawQuadPayload,
-        DrawTextPayload, PushClipPayload, ResolvedGradient,
-    };
+    use crate::renderer::backend::raster_atlas::raster_quad::RasterQuad;
+    use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
+    use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
+    use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
+    use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
+    use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
+    use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
+    use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
+    use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
     use crate::renderer::quad::Quad;
     use crate::renderer::render_buffer::curve::CurveInstance;
     use crate::renderer::render_buffer::image::ImageInstance;
@@ -375,8 +390,11 @@ mod hot_struct_sizes {
     use crate::scene::damage::node_snapshot::NodeSnapshot;
     use crate::scene::damage::region::DamageRegion;
     use crate::scene::node::Node;
-    use crate::scene::node::columns::{BoundsExtras, LayoutCore, NodeFlags, PanelExtras};
-    use crate::scene::record_store::RecordedGradient;
+    use crate::scene::node::bounds_extras::BoundsExtras;
+    use crate::scene::node::layout_core::LayoutCore;
+    use crate::scene::node::node_flags::NodeFlags;
+    use crate::scene::node::panel_extras::PanelExtras;
+    use crate::scene::record_store::recorded_gradient::RecordedGradient;
     use crate::scene::shapes::paint::{ChromeRow, LoweredShadow, ShapeStroke};
     use crate::scene::shapes::record::ShapeRecord;
     use crate::scene::tree::extras::ExtrasIdx;
@@ -515,7 +533,7 @@ mod hot_struct_sizes {
         // Cross-frame animation rows.
         AnimRow<AnimatedLook> => "animation::AnimRow<AnimatedLook>": 472 / 8,
         // Cross-frame hash keys.
-        ContentHash => "rollups::ContentHash": 8 / 8,
+        ContentHash => "common::ContentHash": 8 / 8,
         CascadeInputHash => "cascade::CascadeInputHash": 8 / 8,
         // Cascade per-node and input per-target rows.
         EntryRow => "cascade::EntryRow": 32 / 4,

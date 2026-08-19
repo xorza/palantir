@@ -18,7 +18,7 @@ use crate::text::request::TextShapeRequest;
 
 use crate::renderer::backend::raster_atlas::content_type::ContentType;
 use crate::renderer::backend::raster_atlas::packed_metadata::PackedMetadata;
-use crate::renderer::backend::raster_atlas::quad::{RasterQuad, pack_uv};
+use crate::renderer::backend::raster_atlas::raster_quad::RasterQuad;
 use crate::renderer::backend::raster_atlas::{RasterAtlas, RasterAtlasConfig};
 use crate::renderer::backend::text::encode::EncodedRunKey;
 use crate::renderer::backend::text::encode::cache::{EncodedCache, EncodedGlyph};
@@ -223,7 +223,7 @@ impl TextEncoder {
             let abs_x = g.x + slot.left as i32;
             let abs_y = g.y - slot.top as i32;
             let dim = RasterQuad::dim(slot.width, slot.height);
-            let uv_and_kind = pack_uv(slot.x, slot.y, slot.content);
+            let uv_and_kind = RasterQuad::pack_uv(slot.x, slot.y, slot.content);
 
             self.instances.push(RasterQuad {
                 pos: [abs_x, abs_y],

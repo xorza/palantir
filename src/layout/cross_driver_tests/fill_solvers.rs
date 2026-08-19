@@ -1,6 +1,6 @@
 //! Differential tests over the two Fill distributors.
 //!
-//! `stack::freeze_distribute` and `grid::resolve_axis`'s Phase 3 solve
+//! `stack::freeze_distribute` and `AxisScratch::resolve_axis`'s Phase 3 solve
 //! the same problem — hand each weighted item its proportional share of
 //! a budget, clamped to `[floor, cap]`, and re-divide whatever the
 //! clamps free. They are deliberately *not* merged, and the comment on

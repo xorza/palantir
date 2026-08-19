@@ -1,7 +1,7 @@
 use crate::input::sense::Sense;
 use crate::layout::types::overlay::OverlayPosition;
 use crate::primitives::background::Background;
-use crate::primitives::interned_str::TextInput;
+use crate::primitives::text_input::TextInput;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::scene::node::Node;

@@ -71,7 +71,7 @@ counter_snapshot! {
     /// ratio of these two is what says whether a workload is paying it.
     rows_uploaded: u32,
     /// Registrations that resolved to
-    /// [`LutRow::FALLBACK`](crate::primitives::fill_wire::LutRow) because
+    /// [`LutRow::FALLBACK`](crate::primitives::lut_row::LutRow) because
     /// the table was full, every row was spoken for this epoch, and the
     /// row cap refused to grow.
     fallbacks: u32,

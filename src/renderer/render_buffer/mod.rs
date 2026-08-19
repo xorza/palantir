@@ -6,19 +6,28 @@ use glam::{UVec2, Vec2};
 use soa_rs::Soa;
 use std::time::Duration;
 
-pub(crate) mod batch;
 pub(crate) mod curve;
+pub(crate) mod draw_group;
+pub(crate) mod group_batch;
 pub(crate) mod icon;
 pub(crate) mod image;
 pub(crate) mod mesh;
+pub(crate) mod paint_tier;
 pub(crate) mod text;
+pub(crate) mod text_batch;
 
-use crate::renderer::render_buffer::batch::{DrawGroup, GroupBatch, PaintTier, TextBatch};
+use crate::renderer::render_buffer::draw_group::DrawGroup;
+
+use crate::renderer::render_buffer::group_batch::GroupBatch;
+
+use crate::renderer::render_buffer::paint_tier::PaintTier;
+
 use crate::renderer::render_buffer::curve::CurveInstance;
 use crate::renderer::render_buffer::icon::IconDrawRow;
 use crate::renderer::render_buffer::image::{FrameViews, ImageDrawRow, RenderTargetDraw};
 use crate::renderer::render_buffer::mesh::MeshDrawRow;
 use crate::renderer::render_buffer::text::TextDrawRow;
+use crate::renderer::render_buffer::text_batch::TextBatch;
 
 /// Deepest rounded-mask chain representable by the renderer's
 /// eight-bit stencil counter.
@@ -37,7 +46,7 @@ pub(crate) struct RenderBuffer {
     pub(crate) texts: Vec<TextDrawRow>,
     /// Scene-wide mesh rows, SoA-stored. The underlying vertex/index
     /// bytes live in the recording's
-    /// [`RecordPayloads::meshes`](crate::scene::record_store::RecordPayloads::meshes);
+    /// [`RecordPayloads::meshes`](crate::scene::record_store::record_payloads::RecordPayloads::meshes);
     /// each row's `draw` field carries spans into those payloads, and the
     /// `instance` field carries the Pod GPU state the backend uploads
     /// verbatim (read as a contiguous `&[MeshInstance]` via

@@ -72,7 +72,7 @@ use crate::primitives::image::{Image, ImageFit};
 use crate::primitives::rect::Rect;
 use crate::renderer::backend::schedule::internals::Walk;
 use crate::renderer::image_registry::ImageHandle;
-use crate::renderer::render_buffer::batch::PaintTier;
+use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::scene::node::Configure;
 use crate::shape::Shape;
 use crate::ui::Ui;

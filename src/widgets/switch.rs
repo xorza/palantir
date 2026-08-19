@@ -3,13 +3,13 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::approx::noop_f32;
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
-use crate::primitives::interned_str::TextInput;
+use crate::primitives::text_input::TextInput;
 use crate::scene::node::{Configure, Node};
 use crate::ui::Ui;
 use crate::widgets::response::Response;
 use crate::widgets::theme::toggle::ToggleTheme;
 use crate::widgets::theme::widget_look::look_plan::LookPlan;
-use crate::widgets::toggle::{self, ToggleChrome};
+use crate::widgets::toggle_chrome::ToggleChrome;
 use glam::Vec2;
 
 /// Two-response boolean toggle drawn as a pill track with a knob that
@@ -60,8 +60,8 @@ impl<'a> Switch<'a> {
         let on = *self.value;
 
         // Everything this widget takes off its theme slot, before
-        // `toggle_row`'s `&mut Ui` reborrow: the geometry it paints with, and
-        // the plan for the look. `toggle_row` is shared by three toggles
+        // `ToggleChrome::record_row`'s `&mut Ui` reborrow: the geometry it paints with, and
+        // the plan for the look. `record_row` is shared by three toggles
         // reading three different slots, so which slot is `Switch`'s own
         // business — and `style_setter!`'s `slot` is where it says so, once.
         let theme = ui.theme();
@@ -78,7 +78,7 @@ impl<'a> Switch<'a> {
             margin: slot.margin,
             anim: slot.anim,
         }
-        .apply(ui, id, &mut widget.node);
+        .apply(ui, &mut widget);
 
         let knob_id = id.with("knob");
         let chrome = ToggleChrome {
@@ -93,7 +93,7 @@ impl<'a> Switch<'a> {
             )),
             pill: Some(track_h * 0.5),
         };
-        toggle::toggle_row(ui, widget, response, chrome, self.label, |ui, track| {
+        chrome.record_row(ui, widget, response, self.label, |ui, track| {
             // The track's stroke auto-insets the Canvas content box by
             // its width on every side (`Tree::open_node`), so the knob's
             // declared position is content-box-relative. Feed the stroke

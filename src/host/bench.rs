@@ -172,7 +172,7 @@ struct FixtureApp<'a> {
 }
 
 impl App for FixtureApp<'_> {
-    fn record(&mut self, _win: crate::window::WindowToken, ui: &mut Ui) {
+    fn record(&mut self, _win: crate::window::window_token::WindowToken, ui: &mut Ui) {
         self.state.render(RENDER_NODE_SCALE, ui);
     }
 }

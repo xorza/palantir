@@ -1,5 +1,5 @@
 use crate::Ui;
-use crate::input::InputEvent;
+use crate::input::input_event::InputEvent;
 use crate::input::keyboard::Key;
 use crate::input::pointer::PointerButton;
 use crate::layout::types::sizing::Sizing;
@@ -115,7 +115,7 @@ fn scrub_commits_once_on_release_for_deferred_caller() {
 
 #[test]
 fn scrub_distance_is_scale_invariant() {
-    use crate::primitives::transform::TranslateScale;
+    use crate::primitives::translate_scale::TranslateScale;
 
     let id = WidgetId::from_hash("scaled-drag-value");
     for scale in [0.5, 1.0, 2.0] {
@@ -637,7 +637,7 @@ fn editing_under_a_scaled_canvas_does_not_panic() {
     use super::DragValue;
     use crate::Ui;
     use crate::layout::types::sizing::Sizing;
-    use crate::primitives::transform::TranslateScale;
+    use crate::primitives::translate_scale::TranslateScale;
     use crate::primitives::widget_id::WidgetId;
     use crate::scene::node::Configure;
     use crate::widgets::panel::Panel;
@@ -650,7 +650,7 @@ fn editing_under_a_scaled_canvas_does_not_panic() {
     // A scaled parent (0.5×) halves the chip's post-transform rect to ~60px
     // while `min_size` is 100 — the cap must read the pre-transform
     // (logical, 120) width and floor at `min_size`, else feeding the 60px
-    // post-transform width makes `resolve_axis_size`'s `clamp(100, 60)`
+    // post-transform width makes `AxisCtx::resolve`'s `clamp(100, 60)`
     // panic.
     let mut h = UiHarness::new(surface);
     let draw = |ui: &mut Ui, v: &mut f64| {

@@ -1,6 +1,11 @@
 //! Public node authoring data and the builder configuration surface.
 
-pub(crate) mod columns;
+pub(crate) mod bounds_extras;
+pub(crate) mod gaps;
+pub(crate) mod layout_core;
+pub(crate) mod node_columns;
+pub(crate) mod node_flags;
+pub(crate) mod panel_extras;
 
 use crate::input::key_class::KeyFilter;
 use crate::input::sense::Sense;
@@ -11,13 +16,17 @@ use crate::layout::types::justify::Justify;
 use crate::layout::types::layout_mode::{GridDefId, LayoutMode, ScrollSpec, ScrollbarsDefId};
 use crate::layout::types::limits::{valid_lower_bound, valid_upper_bound};
 use crate::layout::types::sizing::Sizes;
+use crate::primitives::background::Background;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
-use crate::primitives::transform::TranslateScale;
+use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::node::columns::{
-    BoundsExtras, Gaps, LayoutCore, NodeColumns, NodeFlags, PanelExtras,
-};
+use crate::scene::node::bounds_extras::BoundsExtras;
+use crate::scene::node::gaps::Gaps;
+use crate::scene::node::layout_core::LayoutCore;
+use crate::scene::node::node_columns::NodeColumns;
+use crate::scene::node::node_flags::NodeFlags;
+use crate::scene::node::panel_extras::PanelExtras;
 use crate::scene::visibility::Visibility;
 use glam::Vec2;
 use std::hash::Hash;
@@ -182,6 +191,32 @@ pub struct Node {
 }
 
 impl Node {
+    /// Resolve this container node's chrome + clip against the theme
+    /// fallbacks, setting the clip mode in place. Shared by
+    /// `Panel`/`Grid`/`Popup` (theme slot `panel_background` /
+    /// `panel_clip`): an explicit `.background(...)` wins, otherwise the
+    /// theme default fills in; the clip default only applies when the
+    /// caller did not configure clipping. Returns the chrome to pass to
+    /// [`Widget::record`].
+    ///
+    /// **Not every container wants this.** Tooltip, Modal and ContextMenu
+    /// resolve their own with `Option::unwrap_or`, and `Frame` has no theme
+    /// slot to fall back to at all — the three differ in what the consumer
+    /// needs (a borrow, an owned value, nothing), and none of them has a
+    /// clip default, which is the only thing this adds over `.or()`.
+    ///
+    /// [`Widget::record`]: crate::widgets::widget::Widget::record
+    pub(crate) fn resolve_container_chrome(
+        &mut self,
+        explicit: Option<Background>,
+        theme_bg: Option<&Background>,
+        theme_clip: ClipMode,
+    ) -> Option<Background> {
+        let chrome = explicit.or_else(|| theme_bg.cloned());
+        self.clip.get_or_insert(theme_clip);
+        chrome
+    }
+
     /// Paint/layout leaf for custom widget content.
     #[track_caller]
     pub fn leaf() -> Self {

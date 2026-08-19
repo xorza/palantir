@@ -2,7 +2,8 @@
 
 use crate::primitives::span::Span;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::node::columns::{LayoutCore, NodeFlags};
+use crate::scene::node::layout_core::LayoutCore;
+use crate::scene::node::node_flags::NodeFlags;
 use crate::scene::tree::extras::ExtrasIdx;
 use soa_rs::Soars;
 

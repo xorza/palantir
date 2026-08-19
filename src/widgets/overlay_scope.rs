@@ -2,10 +2,10 @@
 //! input scope.
 
 use crate::input::key_class::KeyFilter;
+use crate::layout::types::placement::Placement;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::scene::node::Node;
-use crate::scene::tree::recording::Placement;
 use crate::ui::Ui;
 
 /// One overlay's ownership of its layer's key scope, held from the

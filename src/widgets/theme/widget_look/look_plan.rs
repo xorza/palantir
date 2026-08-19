@@ -1,10 +1,9 @@
-use crate::animation::AnimSpec;
+use crate::animation::anim_spec::AnimSpec;
 use crate::primitives::spacing::Spacing;
-use crate::primitives::widget_id::WidgetId;
-use crate::scene::node::Node;
 use crate::ui::Ui;
 use crate::widgets::theme::widget_look::WidgetLook;
 use crate::widgets::theme::widget_look::animated_look::AnimatedLook;
+use crate::widgets::widget::Widget;
 
 /// Everything a themed widget takes out of its theme slot, held as owned
 /// values so the borrow on [`Ui::theme`] can end.
@@ -33,12 +32,22 @@ pub(crate) struct LookPlan {
 }
 
 impl LookPlan {
-    /// Fill in the padding/margin the caller did not configure, then animate
-    /// toward the planned look.
+    /// Dress `widget` in this look: fill in the padding/margin its builder
+    /// did not configure, then animate toward the planned look.
+    ///
+    /// Takes the whole [`Widget`] rather than its id and node separately —
+    /// both halves come from it, and the animation row this keys is the same
+    /// identity the node is about to record under.
+    ///
+    /// The returned look is **not** stashed on the widget, because it does not
+    /// always belong to it: a toggle configures its *row* here and paints the
+    /// look on the box node inside it (see `ToggleChrome::record_row`). Widgets that
+    /// do wear it themselves pass `Some(&look.background)` to
+    /// [`Widget::record`].
     ///
     /// **The only route from a theme bundle to a painted look** — `Button`,
     /// `ComboBox`, `DragValue`'s chip, `TextEdit`, `MenuItem`, and the three
-    /// toggles (through `toggle::toggle_row`) all arrive here, so per-state
+    /// toggles (through `ToggleChrome::record_row`) all arrive here, so per-state
     /// precedence, spacing defaults, and transitions are one behaviour rather
     /// than one per widget.
     // This crosses the theme/widget codegen-unit boundary. Leaving it to the
@@ -47,13 +56,14 @@ impl LookPlan {
     // self-time. Force the whole chain into each widget so state picking,
     // default resolution and target construction optimize as one block.
     #[inline(always)]
-    pub(crate) fn apply(self, ui: &mut Ui, id: WidgetId, node: &mut Node) -> AnimatedLook {
+    pub(crate) fn apply(self, ui: &mut Ui, widget: &mut Widget) -> AnimatedLook {
         let Self {
             target,
             padding,
             margin,
             anim,
         } = self;
+        let node = &mut widget.node;
         // `get_or_insert`, not `ThemeDefaults::default_padding` — same
         // "fill in only where the caller stayed silent" rule, and the trait's
         // body is this same guarded write. Routing through it would move a
@@ -63,6 +73,6 @@ impl LookPlan {
         // outlined.
         node.padding.get_or_insert(padding);
         node.margin.get_or_insert(margin);
-        ui.animate(id, WidgetLook::SLOT_LOOK, target, anim)
+        ui.animate(widget.id(), WidgetLook::SLOT_LOOK, target, anim)
     }
 }

@@ -9,8 +9,8 @@ use crate::renderer::frontend::composer::tests::support::{
     rect, render_buffer, run, text,
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
-use crate::renderer::render_buffer::batch::PaintTier;
-use crate::scene::record_store::RecordPayloads;
+use crate::renderer::render_buffer::paint_tier::PaintTier;
+use crate::scene::record_store::record_payloads::RecordPayloads;
 use glam::{UVec2, Vec2};
 use std::time::Duration;
 

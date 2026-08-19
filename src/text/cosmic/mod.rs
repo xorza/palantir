@@ -41,14 +41,21 @@ use rustc_hash::FxHashMap;
 use std::sync::Arc;
 use tinyvec::ArrayVec;
 
-use crate::text::cosmic::geometry::{intrinsic_min_width, shaped_geometry};
-use crate::text::cosmic::retention::CacheEntry;
-use crate::text::cosmic::truncate::EllipsisMemo;
+use crate::primitives::num::F32Ext;
+use crate::text::cosmic::cache_entry::CacheEntry;
+use crate::text::cosmic::geometry::{ShapedGeometry, intrinsic_min_width, shaped_geometry};
+use crate::text::cosmic::truncate::{
+    ClusterGlyph, EllipsisMemo, first_line_right, fitting_prefix, truncation_probe,
+};
+use crate::text::render::{
+    GlyphImage, GlyphImageKind, GlyphPlacement, GlyphRasterKey, PlacedGlyph, RunPlacement,
+};
+use cosmic_text::SwashContent;
+use std::collections::hash_map::Entry;
 
+pub(super) mod cache_entry;
 pub(super) mod counters;
 pub(super) mod geometry;
-pub(super) mod glyphs;
-pub(super) mod retention;
 pub(super) mod truncate;
 
 /// Bundled fonts shipped with the crate. Inter is the default UI /
@@ -414,6 +421,443 @@ impl CosmicMeasure {
         };
         buffer.set_metrics_and_size(metrics, width, None);
         buffer
+    }
+
+    // ---- shaped-buffer cache retention ----
+
+    /// Store a freshly shaped buffer. Entries start probationary; only a
+    /// later lookup promotes them (see [`PROBATION_KEEP_FRAMES`]).
+    fn insert(&mut self, key: TextShapeKey, buffer: Buffer, geometry: ShapedGeometry) {
+        // Counted here rather than per `shape_until_scroll` so one
+        // cached run is one tally: `measure_truncated`'s back-off can
+        // reshape a prefix several times to land inside the committed
+        // width, and a workload test cares that the run was shaped, not
+        // how many attempts the cut took. The memoized ellipsis probe
+        // shapes without inserting and is deliberately not counted.
+        self.counters.shapes.bump();
+        let keep_until = self.frame + PROBATION_KEEP_FRAMES;
+        // First frame on which the entry is dead, matching the sweep's
+        // own `keep_until < frame` test.
+        let ticket_seq = self.expiry.schedule(key, keep_until + 1);
+        let displaced = self.cache.insert(
+            key,
+            CacheEntry {
+                buffer,
+                root: geometry.root,
+                left: geometry.left,
+                keep_until,
+                ticket_seq,
+            },
+        );
+        // Unreachable today — every caller checks `cache_hit` first, so a
+        // key is inserted once — but the pool must not silently leak a
+        // buffer the moment a second insert path appears.
+        if let Some(old) = displaced {
+            recycle_buffer(&mut self.recycle_pool, old.buffer);
+        }
+    }
+
+    /// A cached entry's [`TextRoot`] for `key`, or `None` on a miss.
+    /// Layout hits and encoder ensures both land here, and both push the
+    /// entry's deadline out to the protected window — being asked for at
+    /// all is the evidence that separates reuse from scan traffic, so no
+    /// separate promotion step is needed.
+    pub(super) fn cache_hit(&mut self, key: TextShapeKey) -> Option<TextRoot> {
+        let keep_until = self.frame + PROTECTED_KEEP_FRAMES;
+        let hit = self.cache.get_mut(&key).map(|entry| {
+            entry.keep_until = keep_until;
+            entry.root
+        });
+        if hit.is_some() {
+            self.counters.hits.bump();
+        }
+        hit
+    }
+
+    /// Demote `key` to the probation window: the reuse slot that owned
+    /// it now answers a different key, so nothing can ask for it through
+    /// that slot again. See [`PROBATION_KEEP_FRAMES`] for why this is
+    /// the signal the two-tier policy runs on.
+    ///
+    /// Only ever shortens a deadline — a supersede must not extend the
+    /// life of an entry already closer to expiry — and files a second
+    /// ticket for the earlier frame, since the outstanding one sits at
+    /// the deadline this just retracted.
+    ///
+    /// Silent on a key that isn't resident: the buffer may already have
+    /// aged out, and superseding what is gone is a no-op, not an error.
+    pub(crate) fn supersede(&mut self, key: TextShapeKey) {
+        if key.is_invalid() {
+            return;
+        }
+        let keep_until = self.frame + PROBATION_KEEP_FRAMES;
+        let Some(entry) = self.cache.get_mut(&key) else {
+            return;
+        };
+        self.counters.supersedes.bump();
+        // Never *extends* a life: an entry already closer to expiry —
+        // one that was inserted and never looked up — keeps its own
+        // deadline.
+        if entry.keep_until > keep_until {
+            entry.keep_until = keep_until;
+            // The new ticket is earlier than the outstanding one, so it
+            // is the one that decides this entry's fate: stamping it
+            // here retires the supplanted ticket when it fires.
+            entry.ticket_seq = self.expiry.schedule(key, keep_until + 1);
+        }
+    }
+
+    /// Take the shaper's `frame` clock and drop every buffer whose
+    /// deadline has passed.
+    ///
+    /// `frame` is only ever read, never derived from a local counter, so
+    /// a clock that jumps several frames at once is handled by the same
+    /// comparison as one that advances by one.
+    ///
+    /// Age, not capacity. A count budget cannot express what this cache
+    /// needs: set below the live working set it thrashes — UI redraw is a
+    /// cyclic access pattern, LRU's worst case, so the overflow misses
+    /// every frame forever — and set above it, a resize drag fills it with
+    /// widths that can never be hit again. Ageing bounds both without a
+    /// number to guess: an app keeps exactly what it keeps touching, and
+    /// scan traffic falls out on its own.
+    ///
+    /// Cost tracks what expires, not what is resident: [`Self::expiry`]
+    /// hands back only the keys whose ticket came due, so a frame holding
+    /// a scrolled document's whole working set pays the same as an empty
+    /// one unless something actually lapsed.
+    ///
+    /// A ticket is a hint, never authority to drop. Deadlines move after
+    /// it is filed — [`Self::cache_hit`] pushes one out and deliberately
+    /// files nothing, which is what keeps a re-read entry from filing a
+    /// ticket per frame — so the real `keep_until` is re-read here and a
+    /// still-live entry is simply re-filed.
+    pub(crate) fn end_frame(&mut self, frame: u64) {
+        debug_assert!(frame >= self.frame, "the shared frame clock ran backwards");
+        self.frame = frame;
+        let cache = &mut self.cache;
+        let recycle_pool = &mut self.recycle_pool;
+        let probe = &mut self.counters;
+        self.expiry.retire(frame, |key, seq| {
+            // Retired already — a demote leaves two tickets outstanding
+            // and both can come due in one drain, so whichever settled
+            // first may have evicted the entry this one is holding.
+            let Entry::Occupied(slot) = cache.entry(key) else {
+                return None;
+            };
+            // Supplanted by a later `supersede`: the entry's live ticket
+            // is still outstanding and will settle it, so this one is
+            // surplus and dies here. Re-filing it instead is what let the
+            // per-entry ticket count — and with it the per-frame drain —
+            // grow for as long as the entry stayed resident.
+            if seq != slot.get().ticket_seq {
+                return None;
+            }
+            if slot.get().keep_until >= frame {
+                // Re-filed under the same serial, so the entry's stamp
+                // still names it and nothing has to be written back.
+                return Some(slot.get().keep_until + 1);
+            }
+            probe.expiries.bump();
+            recycle_buffer(recycle_pool, slot.remove().buffer);
+            None
+        });
+    }
+
+    // ---- render-side glyph resolution ----
+
+    /// Resolve `request` to palantir-native glyph placements for the
+    /// renderer. Restores the shaped buffer if evicted (truncated runs
+    /// restore their unbounded probe internally), walks its layout runs,
+    /// y-culls whole lines against `placement.bounds`, and rewrites
+    /// `out` with one [`PlacedGlyph`] per surviving glyph. Returns
+    /// whether any line was culled — such partial extractions must not
+    /// become renderer cache templates (its encoded key carries no
+    /// bounds).
+    pub(crate) fn extract_glyphs(
+        &mut self,
+        request: TextShapeRequest<'_>,
+        placement: RunPlacement,
+        out: &mut Vec<PlacedGlyph>,
+    ) -> bool {
+        let ShapedRun { buffer, left } = self.ensure_buffer(request);
+
+        out.clear();
+        let RunPlacement {
+            origin,
+            scale,
+            bounds,
+        } = placement;
+        // `origin` positions the *measured block*, whose left edge is
+        // `left` in buffer space — so pull the origin back by it and the
+        // per-glyph offsets land where the measurement said they would.
+        // Folding it into the origin rather than into each `physical.x`
+        // keeps the subpixel binning consistent with the shift.
+        let origin_x = origin.x - left * scale;
+        let bounds_top = bounds.min.y as f32;
+        let bounds_bot = bounds.max().y as f32;
+        let mut culled = false;
+        for run in buffer.layout_runs() {
+            if (run.line_top + run.line_height) * scale + origin.y < bounds_top {
+                culled = true;
+                continue;
+            }
+            if run.line_top * scale + origin.y > bounds_bot {
+                culled = true;
+                break;
+            }
+            let line_y_px = (run.line_y * scale).fast_round() as i32;
+            for glyph in run.glyphs.iter() {
+                // The renderer caches encoded runs on one uniform area
+                // colour — correct only while cosmic never produces a
+                // per-glyph override ([`attrs_for`] sets no per-span
+                // colour). If this fires, per-span colour was added
+                // without folding a colour fingerprint into the
+                // renderer's `EncodedKey`.
+                debug_assert!(
+                    glyph.color_opt.is_none(),
+                    "per-glyph colour override requires folding colour into EncodedKey",
+                );
+                let physical = glyph.physical((origin_x, origin.y), scale);
+                out.push(PlacedGlyph {
+                    raster_key: GlyphRasterKey(physical.cache_key),
+                    x: physical.x,
+                    y: line_y_px + physical.y,
+                });
+            }
+        }
+        culled
+    }
+
+    /// Rasterize one glyph via swash, uncached on the cosmic side — the
+    /// renderer's atlas is the real cache. `None` when swash cannot
+    /// produce an image for the key (e.g. a glyph the face lacks).
+    pub(crate) fn rasterize_glyph(&mut self, key: GlyphRasterKey) -> Option<GlyphImage> {
+        let image = self
+            .swash_cache
+            .get_image_uncached(&mut self.font_system, key.0)?;
+        let kind = match image.content {
+            SwashContent::Color => GlyphImageKind::Color,
+            SwashContent::Mask | SwashContent::SubpixelMask => GlyphImageKind::Mask,
+        };
+        Some(GlyphImage {
+            kind,
+            placement: GlyphPlacement {
+                left: image.placement.left,
+                top: image.placement.top,
+                width: image.placement.width,
+                height: image.placement.height,
+            },
+            data: image.data,
+        })
+    }
+
+    // ---- cluster-precise truncation ----
+
+    /// Shape `text` as a single line truncated to fit `w`. Truncation is
+    /// cluster-precise: the cached unbounded shape gives per-glyph advances,
+    /// [`fitting_prefix`] cuts after the last fully paid-for cluster, then we
+    /// shape the (possibly truncated) prefix on one **natural** line — no
+    /// per-line align. The committed width only decides the cut; the encoder
+    /// positions/aligns the single line, so the measured extent is the glyph
+    /// width, not `w` (binding to `w` + center align would inflate a
+    /// fits-anyway label to ~half the box). `LineFit::Ellipsis` reserves room
+    /// for and appends a trailing `…`; `LineFit::Clip` cuts flush to `w`
+    /// with no marker. The buffer caches under a fit-discriminated key (so it
+    /// can't collide with the wrapped buffer — or the other truncation mode —
+    /// at the same width). `intrinsic_min` is 0 — a truncated run can shrink
+    /// to nothing.
+    ///
+    /// The shaped prefix is verified against `w` and retires a further
+    /// cluster until it fits, so the measured extent never exceeds the
+    /// committed width — the cut alone cannot guarantee that, since
+    /// reshaping the prefix changes its shaping context.
+    ///
+    /// # Why not `Buffer::set_ellipsize`
+    ///
+    /// Cosmic 0.19 can do this itself, and delegating to it deletes
+    /// roughly 290 lines: this function, [`fitting_prefix`],
+    /// [`ClusterGlyph`], the ellipsis memo, and three retained scratch
+    /// fields. That was written, measured, and reverted — **4.9x slower**
+    /// on `text_shape/resize_drag_frame` (1.42 µs -> 7.13 µs per run per
+    /// frame).
+    ///
+    /// The reason is not the wrap mode (`Wrap::Glyph`, `Wrap::None` and a
+    /// one-line height cap all measure within 10% of each other) but how
+    /// much text is reshaped per committed width. Cosmic has to see the
+    /// whole string to decide where to cut, so every new width reshapes
+    /// all of it; shaping a 108-character label costs ~9x what its
+    /// seven-character cut prefix costs.
+    ///
+    /// **So the dependency on the cached unbounded probe is the point,
+    /// not a wart.** It is what a drag reuses: the full-string shape is
+    /// paid once, [`fitting_prefix`] finds the cut by scanning glyphs
+    /// that are already there, and only the short prefix is reshaped per
+    /// frame. Anything that revisits this has to keep the full-string
+    /// shape cached across widths — cosmic allows that (`set_size`
+    /// re-lays-out without re-shaping), but one buffer holds one layout
+    /// and the cache is keyed per width, so it needs a different
+    /// buffer/key model rather than a different call.
+    pub(super) fn measure_truncated(&mut self, request: TextShapeRequest<'_>) -> TextRoot {
+        let key = request.key;
+        let fit = key.fit();
+        let width = key
+            .max_width_px()
+            .expect("measure_truncated requires a finite width");
+        debug_assert!(
+            matches!(fit, LineFit::Clip | LineFit::Ellipsis),
+            "measure_truncated requires Clip or Ellipsis",
+        );
+        if let Some(hit) = self.cache_hit(key) {
+            return hit;
+        }
+        let unbounded = request.unbounded_version();
+        self.ensure_buffer(unbounded);
+        let metrics = Metrics::new(key.font_size_px(), key.line_height_px());
+        let family = key.family();
+        let weight = key.weight();
+        let attrs = attrs_for(family, weight);
+        // Reserve the ellipsis width only when we'll append one; a plain
+        // clip cuts flush to the full available width. Resolved before
+        // borrowing the probe, since shaping "…" needs `&mut self`.
+        let mut append_ellipsis = false;
+        let avail = if matches!(fit, LineFit::Ellipsis) {
+            let ellipsis_w = self.ellipsis_advance(key.size_q, metrics, family, weight);
+            append_ellipsis = ellipsis_w <= width;
+            (width - ellipsis_w).max(0.0)
+        } else {
+            width
+        };
+        let probe_key = unbounded.key;
+        // Same question `TextSystem::measure` asks before it ever gets
+        // here, against the same root — so it is asked the same way. The
+        // probe's own measurement already answers it, which is why this
+        // reads the entry rather than re-walking its glyphs.
+        let fits_whole =
+            fit.resolves_to_unbounded(&truncation_probe(&self.cache, probe_key).root, width);
+
+        // Shape unbounded on one line: the cut already fit it to `w`, and the
+        // encoder owns single-line placement. Binding to `Some(w)` + align
+        // would measure the aligned glyph position, inflating a fits-anyway
+        // label toward the box width.
+        let mut buffer = self.acquire_buffer(metrics, None);
+        let size = if fits_whole {
+            // Re-shaping the identical text reproduces the probe, so this
+            // branch cannot overrun `width`.
+            buffer.set_text(request.text, &attrs, Shaping::Advanced, None);
+            buffer.shape_until_scroll(&mut self.font_system, false);
+            shaped_geometry(&buffer, WrapFloor::Skip, &mut self.break_scratch)
+                .root
+                .size
+        } else {
+            // The cut spends advances measured in the *whole* run's shaping,
+            // but the prefix reshapes in its own context: a joining script's
+            // last letter is exposed at a new word end and takes a final form
+            // wider than the medial one the budget paid for. So verify the
+            // shaped result, and while it overruns, retire one more cluster.
+            // `max_end` makes every retry strictly shorter, so the sequence
+            // bottoms out at the empty prefix.
+            let mut max_end = usize::MAX;
+            loop {
+                let cut = match truncation_probe(&self.cache, probe_key)
+                    .buffer
+                    .layout_runs()
+                    .next()
+                {
+                    Some(run) => fitting_prefix(
+                        run.glyphs.len(),
+                        |i| ClusterGlyph {
+                            start: run.glyphs[i].start,
+                            end: run.glyphs[i].end,
+                            advance: run.glyphs[i].w,
+                        },
+                        &mut self.logical_order,
+                        avail,
+                        max_end,
+                    ),
+                    None => 0,
+                };
+                self.truncate_scratch.clear();
+                self.truncate_scratch
+                    .push_str(request.text[..cut].trim_end());
+                if append_ellipsis {
+                    self.truncate_scratch.push('…');
+                }
+                // `set_text` resets the buffer in place, so a retry reuses
+                // the line, shaping, and layout allocations it just filled.
+                buffer.set_text(
+                    self.truncate_scratch.as_str(),
+                    &attrs,
+                    Shaping::Advanced,
+                    None,
+                );
+                buffer.shape_until_scroll(&mut self.font_system, false);
+                let size = shaped_geometry(&buffer, WrapFloor::Skip, &mut self.break_scratch)
+                    .root
+                    .size;
+                if size.w <= width || cut == 0 {
+                    break size;
+                }
+                max_end = cut;
+            }
+        };
+
+        // Truncated runs are one natural line by construction: the cut
+        // prefix comes from the unbounded probe's first layout run, and a
+        // truncated run can shrink to nothing, so its floor is zero.
+        // The prefix reshapes on an unbounded buffer with no per-line
+        // align, so its block already starts at 0.
+        let geometry = ShapedGeometry {
+            root: TextRoot {
+                size,
+                // Genuinely zero, not unscanned: a truncated run can
+                // shrink to nothing.
+                intrinsic_min: Some(0.0),
+                single_line: true,
+            },
+            left: 0.0,
+        };
+        self.insert(key, buffer, geometry);
+        geometry.root
+    }
+
+    /// Trailing advance of "…" at `metrics`/`family`/`weight`, memoized for
+    /// the last face asked about.
+    ///
+    /// Only the *opening* budget: [`Self::measure_truncated`] verifies the
+    /// shaped result against the committed width either way, so a stale or
+    /// imprecise reservation costs retries, never correctness. What it buys
+    /// is measured on `text_shape/ellipsis_width_churn`, whose arms hold
+    /// the width churning so every frame is a truncation miss and the
+    /// reservation is asked for again. See [`CosmicMeasure::ellipsis`]
+    /// for what the slot count buys there.
+    fn ellipsis_advance(
+        &mut self,
+        size_q: u32,
+        metrics: Metrics,
+        family: FontFamily,
+        weight: FontWeight,
+    ) -> f32 {
+        let want = EllipsisMemo::wanted(size_q, family, weight);
+        if let Some(advance) = self
+            .ellipsis
+            .iter()
+            .find_map(|memo| memo.advance_for(&want))
+        {
+            return advance;
+        }
+        let mut buffer = self.acquire_buffer(metrics, None);
+        buffer.set_text("…", &attrs_for(family, weight), Shaping::Advanced, None);
+        buffer.shape_until_scroll(&mut self.font_system, false);
+        let advance = first_line_right(&buffer);
+        recycle_buffer(&mut self.recycle_pool, buffer);
+        self.counters.ellipsis_misses.bump();
+        // `insert` panics at capacity, so retire the oldest first.
+        if self.ellipsis.len() == ELLIPSIS_MEMO_SLOTS {
+            self.ellipsis.pop();
+        }
+        self.ellipsis.insert(0, want.measured(advance));
+        advance
     }
 }
 

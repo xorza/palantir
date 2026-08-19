@@ -15,8 +15,8 @@ use crate::renderer::backend::curve_pipeline::CurvePipeline;
 use crate::renderer::backend::icon::IconBackend;
 use crate::renderer::backend::image_pipeline::ImagePipeline;
 use crate::renderer::backend::mesh_pipeline::MeshPipeline;
-use crate::renderer::backend::pipeline_utils::StencilVariant;
 use crate::renderer::backend::quad_pipeline::QuadPipeline;
+use crate::renderer::backend::stencil_variant::StencilVariant;
 use crate::renderer::backend::text::TextBackend;
 
 /// All render pipelines built against one swapchain color format. Keyed

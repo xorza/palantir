@@ -139,7 +139,7 @@ fn text_noop_rejects_invalid_metrics() {
         ("infinite line height", 16.0, f32::INFINITY, true),
     ];
 
-    // `local_origin` is the one Text scalar `text_metrics_valid` does
+    // `local_origin` is the one Text scalar `GlyphFont::metrics_valid` does
     // not cover, and it is checked here rather than at the record gate
     // on purpose: lowering interns the string into the text arena, so a
     // shape dropped afterwards would have paid for that and left the

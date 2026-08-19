@@ -1,14 +1,14 @@
 use crate::input::sense::Sense;
 use crate::layout::types::sizing::Sizing;
-use crate::primitives::interned_str::TextInput;
 use crate::primitives::rect::Rect;
+use crate::primitives::text_input::TextInput;
 use crate::scene::node::{Configure, ConfigureNode, Node};
 use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::widgets::response::Response;
 use crate::widgets::theme::toggle::ToggleTheme;
 use crate::widgets::theme::widget_look::look_plan::LookPlan;
-use crate::widgets::toggle::{self, ToggleChrome};
+use crate::widgets::toggle_chrome::ToggleChrome;
 
 /// One option in a radio group. `current` is the group's shared
 /// selection; `value` is the option this row represents. Selected
@@ -55,11 +55,10 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
         let mut widget = ui.widget(self.node);
         let response = widget.response(ui);
-        let id = widget.id();
 
         // Everything this widget takes off its theme slot, before
-        // `toggle_row`'s `&mut Ui` reborrow: the geometry it paints with, and
-        // the plan for the look. `toggle_row` is shared by three toggles
+        // `ToggleChrome::record_row`'s `&mut Ui` reborrow: the geometry it paints with, and
+        // the plan for the look. `record_row` is shared by three toggles
         // reading three different slots, so which slot is `RadioButton`'s own
         // business — and `style_setter!`'s `slot` is where it says so, once.
         //
@@ -89,7 +88,7 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
             margin: slot.margin,
             anim: slot.anim,
         }
-        .apply(ui, id, &mut widget.node);
+        .apply(ui, &mut widget);
 
         let chrome = ToggleChrome {
             look,
@@ -100,7 +99,7 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
             // radio pip must never square-corner.
             pill: Some(pip_size * 0.5),
         };
-        toggle::toggle_row(ui, widget, response, chrome, self.label, |ui, _| {
+        chrome.record_row(ui, widget, response, self.label, |ui, _| {
             if selected {
                 let dot_size = pip_size - 2.0 * dot_inset;
                 let dot = Rect::new(dot_inset, dot_inset, dot_size, dot_size);

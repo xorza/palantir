@@ -5,6 +5,7 @@
 
 use crate::layout::scrollbars::ScrollbarsDef;
 use crate::layout::types::layout_mode::{GridDefId, ScrollbarsDefId};
+use crate::layout::types::placement::Placement;
 use crate::layout::types::track::Track;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
@@ -12,11 +13,11 @@ use crate::scene::layer::{Layer, PerLayer};
 use crate::scene::node::{Node, Salt};
 use crate::scene::record_store::RecordStore;
 use crate::scene::seen_ids::{CollisionRecord, Endpoint, EndpointOutcome, SeenIds};
-use crate::scene::shapes::lower::ChromeInput;
+use crate::scene::tree::ChromeInput;
 use crate::scene::tree::Tree;
 use crate::scene::tree::paint_anims::{PaintAnim, PaintAnimEntry};
 use crate::scene::tree::record::NodeId;
-use crate::scene::tree::recording::{Placement, RecordingScratch};
+use crate::scene::tree::recording_scratch::RecordingScratch;
 use crate::shape::Lower;
 use std::time::Duration;
 

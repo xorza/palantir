@@ -26,11 +26,12 @@ use crate::icons::icon_set::IconRef;
 use crate::primitives::span::Span;
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
-use crate::renderer::backend::pipeline_utils::{ColorVariantSpec, StencilVariant};
 use crate::renderer::backend::raster_atlas::content_type::ContentType;
 use crate::renderer::backend::raster_atlas::packed_metadata::PackedMetadata;
-use crate::renderer::backend::raster_atlas::quad::{self, RasterQuad};
+use crate::renderer::backend::raster_atlas::raster_quad::RasterQuad;
 use crate::renderer::backend::raster_atlas::{RasterAtlas, RasterAtlasConfig};
+use crate::renderer::backend::stencil_variant::ColorVariantSpec;
+use crate::renderer::backend::stencil_variant::StencilVariant;
 use crate::renderer::backend::viewport::ViewportPush;
 use crate::renderer::render_buffer::icon::IconDrawRow;
 
@@ -77,7 +78,7 @@ pub(crate) struct IconBackend {
 
 impl IconBackend {
     pub(crate) fn new(device: &wgpu::Device, icons: IconRegistry) -> Self {
-        let shader = quad::shader_module(device, "palantir.icon.shader");
+        let shader = RasterQuad::shader_module(device, "palantir.icon.shader");
         let atlas = RasterAtlas::new(
             device,
             RasterAtlasConfig {
@@ -132,7 +133,7 @@ impl IconBackend {
                 layout_label: "palantir.icon.pl",
                 shader: &self.shader,
                 bind_group_layouts: &[Some(self.atlas.bind_group_layout())],
-                vertex_buffers: &[Some(quad::instance_layout())],
+                vertex_buffers: &[Some(RasterQuad::instance_layout())],
                 topology: wgpu::PrimitiveTopology::TriangleStrip,
             },
             format,
@@ -201,8 +202,12 @@ impl IconBackend {
             self.instances.push(RasterQuad {
                 pos: [row.origin.x, row.origin.y],
                 dim: RasterQuad::dim(slot.width, slot.height),
-                uv_and_kind: quad::pack_uv(slot.x, slot.y, slot.content)
-                    | if row.desaturate { quad::DESATURATE } else { 0 },
+                uv_and_kind: RasterQuad::pack_uv(slot.x, slot.y, slot.content)
+                    | if row.desaturate {
+                        RasterQuad::DESATURATE
+                    } else {
+                        0
+                    },
                 color: bytemuck::cast(row.color),
             });
         }

@@ -17,14 +17,15 @@ use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::image_pipeline::render_target::GpuViewTargets;
 use crate::renderer::backend::image_pipeline::textures::ImageTextures;
-use crate::renderer::backend::pipeline_utils::{ColorVariantSpec, StencilVariant};
 use crate::renderer::backend::shader_template::{ShaderConstant, specialize};
+use crate::renderer::backend::stencil_variant::ColorVariantSpec;
+use crate::renderer::backend::stencil_variant::StencilVariant;
 use crate::renderer::image_registry::ImageRegistry;
 use crate::renderer::render_buffer::image::{
     FrameViews, IMG_FLAG_MAG_NEAREST, IMG_FLAG_MIN_NEAREST, IMG_FLAG_TAPS_MEAN, IMG_FLAG_TAPS_PEAK,
     IMG_FLAG_TILED, ImageInstance,
 };
-use crate::renderer::render_owner::RenderOwnerId;
+use crate::renderer::render_owner_id::RenderOwnerId;
 use crate::text::shaper::TextShaper;
 use std::time::Duration;
 
@@ -135,7 +136,7 @@ impl ImagePipeline {
     /// frame into its off-screen target, before the main pass. Called once per
     /// frame from `WgpuBackend::submit`'s upload phase. The target store
     /// allocates or resizes each entry, registers its bind group in the shared
-    /// image-texture store, and runs [`GpuPaint::init`](crate::renderer::gpu_view::GpuPaint::init)
+    /// image-texture store, and runs [`GpuPaint::init`](crate::renderer::gpu_paint::GpuPaint::init)
     /// once, then `GpuPaint::paint` into it. Never touches the instance buffer,
     /// so it only has to run before the main pass samples the targets.
     ///

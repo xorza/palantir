@@ -32,13 +32,13 @@ use crate::layout::Layout;
 use crate::primitives::widget_id::WidgetIdMap;
 use crate::renderer::frontend::composer::Composer;
 use crate::renderer::frontend::encoder::Encoder;
-use crate::renderer::gpu_view::GpuViewEntry;
-use crate::renderer::gradient_atlas::handle::SharedGradientAtlas;
-use crate::renderer::plan::RenderPlan;
+use crate::renderer::gpu_paint::gpu_view_entry::GpuViewEntry;
+use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
 use crate::renderer::render_buffer::RenderBuffer;
+use crate::renderer::render_plan::RenderPlan;
 use crate::scene::cascade::Cascade;
 use crate::scene::forest::Forest;
-use crate::scene::record_store::RecordPayloads;
+use crate::scene::record_store::record_payloads::RecordPayloads;
 
 /// Frozen inputs consumed by the CPU renderer for one frame.
 #[derive(Debug)]

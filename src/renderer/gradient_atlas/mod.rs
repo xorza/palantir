@@ -40,10 +40,10 @@
 use crate::primitives::brush::gradient::Interp;
 use crate::primitives::brush::gradient::stops::GradientStops;
 use crate::primitives::color::{Color, ColorF16};
-use crate::primitives::fill_wire::LutRow;
+use crate::primitives::lut_row::LutRow;
 use crate::renderer::gradient_atlas::bake::{LUT_ROW_TEXELS, LutRowTexels, bake_stops};
 use crate::renderer::gradient_atlas::counters::GradientAtlasCounters;
-use crate::renderer::gradient_atlas::mru::MruList;
+use crate::renderer::gradient_atlas::mru_list::MruList;
 use rustc_hash::FxHashMap;
 
 #[cfg(feature = "bench")]
@@ -51,8 +51,8 @@ pub(crate) mod bench;
 
 pub(crate) mod bake;
 mod counters;
-pub(crate) mod handle;
-mod mru;
+mod mru_list;
+pub(crate) mod shared_gradient_atlas;
 
 /// Rows the LUT atlas texture starts with. One row per distinct
 /// gradient currently in use. Row 0 is reserved as a debug-magenta

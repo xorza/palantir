@@ -4,7 +4,7 @@
 use crate::display::Display;
 use crate::primitives::approx::EPS;
 use crate::primitives::span::Span;
-use crate::primitives::{num::F32Ext, rect::Rect, transform::TranslateScale, urect::URect};
+use crate::primitives::{num::F32Ext, rect::Rect, translate_scale::TranslateScale, urect::URect};
 use crate::renderer::render_buffer::curve::{
     CURVE_KIND_JOIN_BEVEL, CURVE_KIND_JOIN_MITER, CURVE_KIND_JOIN_ROUND, CurveInstance,
     SEGMENTS_PER_INSTANCE,

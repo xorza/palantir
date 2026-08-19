@@ -18,11 +18,12 @@
 pub(crate) mod bench;
 
 use crate::primitives::brush::gradient::Spread;
-use crate::primitives::fill_wire::FillKind;
+use crate::primitives::fill_kind::FillKind;
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
-use crate::renderer::backend::pipeline_utils::{ColorVariantSpec, StencilVariant};
 use crate::renderer::backend::shader_template::{ShaderConstant, specialize};
+use crate::renderer::backend::stencil_variant::ColorVariantSpec;
+use crate::renderer::backend::stencil_variant::StencilVariant;
 use crate::renderer::render_buffer::curve::{
     CURVE_KIND_ARC, CURVE_KIND_CUBIC, CURVE_KIND_JOIN_BEVEL, CURVE_KIND_JOIN_MITER,
     CURVE_KIND_JOIN_ROUND, CURVE_KIND_SEGMENT, CurveInstance, SEGMENTS_PER_INSTANCE,

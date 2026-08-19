@@ -2,7 +2,7 @@
 //! cache (liveness, clipping) and the atlas empty-entry sweep.
 //!
 //! The GPU-wire layout pins live with the type they pin, in
-//! `raster_atlas::quad` — both passes draw through it, so neither owns it.
+//! `raster_atlas::raster_quad` — both passes draw through it, so neither owns it.
 //!
 //! The GPU suite and its `make_inner_run` fixture stay gated on
 //! `internals` rather than bare `test`, so the default headless

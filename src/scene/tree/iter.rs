@@ -8,7 +8,7 @@
 use soa_rs::Soa;
 
 use crate::primitives::span::Span;
-use crate::scene::node::columns::LayoutCore;
+use crate::scene::node::layout_core::LayoutCore;
 use crate::scene::shapes::record::ShapeRecord;
 use crate::scene::tree::record::{NodeId, NodeRecord, SubtreeEnd};
 use crate::scene::visibility::Visibility;

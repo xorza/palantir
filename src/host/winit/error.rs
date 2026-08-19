@@ -2,7 +2,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 
 use crate::host::error::UnmetRequirements;
-use crate::window::WindowToken;
+use crate::window::window_token::WindowToken;
 
 /// The event loop has exited, so a [`HostHandle`](crate::HostHandle) can no
 /// longer deliver to it.

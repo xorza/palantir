@@ -1,11 +1,11 @@
 use crate::layout::axis::Axis;
+use crate::layout::axis_placement::AxisPlacement;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange, LenReq};
+use crate::layout::justify_offsets::JustifyOffsets;
 use crate::layout::pass::LayoutPass;
-use crate::layout::support::{
-    JustifyOffsets, children_max_intrinsic, cross_place, justify_offsets, no_offset, weighted_share,
-};
-use crate::primitives::interned_str::InternedText;
+use crate::layout::types::sizing::Sizing;
+use crate::primitives::interned_text::InternedText;
 use crate::primitives::{rect::Rect, size::Size};
 use crate::scene::tree::Tree;
 use crate::scene::tree::record::NodeId;
@@ -25,7 +25,7 @@ struct FillEntry {
     /// `arrange` uses the child's measured `desired.main` (post-WPF
     /// Stretch this is the child's content size). Invariant:
     /// arrange-floor ≥ measure-floor for the same child, since
-    /// `resolve_axis_size` floors `desired` by `intrinsic_min`.
+    /// `AxisCtx::resolve` floors `desired` by `intrinsic_min`.
     floor: f32,
     cap: f32,
     frozen_alloc: Option<f32>,
@@ -42,7 +42,7 @@ struct FillEntry {
 /// arranged slot). Same algorithm in both phases — the only difference
 /// is the floor source the caller pushes into each entry.
 ///
-/// Grid's Phase-3 Fill loop (`grid::resolve_axis`) solves the identical
+/// Grid's Phase-3 Fill loop (`AxisScratch::resolve_axis`) solves the identical
 /// `[lo, hi]`-clamped weighted distribution. The two are kept in sync by
 /// hand rather than physically merged: this one freezes every violator
 /// per pass while grid freezes one, and the two converge differently for
@@ -60,7 +60,7 @@ fn freeze_distribute(entries: &mut [FillEntry], mut leftover: f32, mut active_we
             if e.frozen_alloc.is_some() {
                 continue;
             }
-            let share = weighted_share(leftover, e.weight, active_weight);
+            let share = Sizing::weighted_share(leftover, e.weight, active_weight);
             // Freeze any entry whose proportional share falls outside
             // `[floor, cap]`: it takes the violated bound and the rest
             // re-divide (CSS Flexbox-style). A `cap` below `floor`
@@ -84,7 +84,7 @@ fn freeze_distribute(entries: &mut [FillEntry], mut leftover: f32, mut active_we
     for e in entries.iter_mut() {
         if e.frozen_alloc.is_none() {
             let share = if active_weight > 0.0 {
-                weighted_share(leftover, e.weight, active_weight)
+                Sizing::weighted_share(leftover, e.weight, active_weight)
             } else {
                 e.floor
             };
@@ -240,7 +240,7 @@ pub(super) fn measure(
     // sees, otherwise wrap text in Fill children shapes against the wrong
     // width. It does, because the Stack's outer main size is a
     // deterministic function of (its own `Sizing` + parent-supplied
-    // `available`) via `resolve_axis_size`, and the parent passes the
+    // `available`) via `AxisCtx::resolve`, and the parent passes the
     // same `available` to `measure` that determines its arranged outer
     // size. Any future driver that clamps a child's slot
     // *between* its own measure and arrange would break this.
@@ -290,7 +290,7 @@ pub(super) fn arrange(pass: &mut LayoutPass<'_>, node: NodeId, inner: Rect, axis
     // Shares the count / weight / gap accounting with `measure`; the
     // closure supplies the per-phase main source — here the cached
     // `desired.main` (Fill children's content size, since the
-    // resolve_axis_size change pins Fill at content).
+    // `AxisCtx::resolve` change pins Fill at content).
     let StackPlan {
         sum_non_fill_main,
         total_weight,
@@ -334,7 +334,7 @@ pub(super) fn arrange(pass: &mut LayoutPass<'_>, node: NodeId, inner: Rect, axis
     let JustifyOffsets {
         start: start_offset,
         gap: effective_gap,
-    } = justify_offsets(justify, leftover_for_justify, gap, count);
+    } = JustifyOffsets::new(justify, leftover_for_justify, gap, count);
 
     let cross_min = axis.cross_v(inner.min);
     let mut cursor = axis.main_v(inner.min) + start_offset;
@@ -368,7 +368,7 @@ pub(super) fn arrange(pass: &mut LayoutPass<'_>, node: NodeId, inner: Rect, axis
         };
 
         let bounds = tree.bounds(c);
-        let cross_p = cross_place(axis, &s, bounds, parent_child_align, d, cross);
+        let cross_p = AxisPlacement::cross(axis, &s, bounds, parent_child_align, d, cross);
 
         let child_rect =
             axis.compose_rect(cursor, cross_min + cross_p.offset, main_size, cross_p.size);
@@ -391,15 +391,7 @@ pub(super) fn intrinsic(
     interned_text: &InternedText<'_>,
 ) -> IntrinsicRange {
     if main_axis != query_axis {
-        return children_max_intrinsic(
-            layout,
-            tree,
-            node,
-            query_axis,
-            query,
-            interned_text,
-            no_offset,
-        );
+        return query.children_max_at_origin(layout, tree, node, query_axis, interned_text);
     }
     let mut range = IntrinsicRange::ZERO;
     let mut count = 0_usize;

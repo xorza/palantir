@@ -1,12 +1,17 @@
 mod action;
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
+mod caret_paint;
 mod edit_state;
 mod editor;
 mod input;
 mod menu;
+mod paint_input;
+mod shape_ctx;
+mod text_geometry;
+mod text_layout;
 mod unicode;
-mod view;
+mod view_state;
 
 use crate::input::key_class::KeyFilter;
 use crate::input::response::ResponseState;
@@ -20,12 +25,13 @@ use crate::primitives::spacing::Spacing;
 use crate::scene::node::Node;
 use crate::ui::Ui;
 use crate::widgets::response::{Response, ResponseSnapshot};
+use crate::widgets::text_edit::caret_paint::CaretPaint;
 use crate::widgets::text_edit::edit_state::EditState;
 use crate::widgets::text_edit::input::{AcceptPolicy, InputResult, run_input};
-use crate::widgets::text_edit::view::{
-    CaretPaint, GeometryInput, InteractionState, LayoutInput, PaintInput, ViewState,
-    ViewUpdateInput,
-};
+use crate::widgets::text_edit::paint_input::PaintInput;
+use crate::widgets::text_edit::text_geometry::{GeometryInput, TextGeometry};
+use crate::widgets::text_edit::text_layout::{LayoutInput, TextLayout};
+use crate::widgets::text_edit::view_state::{ViewState, ViewUpdateInput};
 use crate::widgets::theme::text_edit::TextEditTheme;
 use crate::widgets::theme::widget_look::look_plan::LookPlan;
 use crate::widgets::widget::Widget;
@@ -35,7 +41,6 @@ use std::borrow::Cow;
 #[derive(Clone, Default, Debug)]
 struct TextEditState {
     edit: EditState,
-    interaction: InteractionState,
     view: ViewState,
     /// Selection wash for the painter, refilled every frame and retained
     /// so a held drag across a long multi-line selection allocates once and
@@ -283,9 +288,6 @@ impl<'a> TextEdit<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> TextEditResponse<'_> {
-        // Identity resolves on its own: `self.node` keeps being written
-        // below (key filter, then `LookPlan::apply`'s spacing defaults), so
-        // a copy staged now would be stale by the time it records.
         let widget = ui.widget(self.node);
         let id = widget.id();
         // **The state row is moved out for the whole pass and moved back
@@ -319,7 +321,10 @@ impl<'a> TextEdit<'a> {
     /// One record pass over a state row the caller owns — see
     /// [`Self::show`] for why it is passed in rather than looked up.
     /// Returns the borrow-free half of [`TextEditResponse`].
-    fn pass(mut self, ui: &mut Ui, mut widget: Widget, state: &mut TextEditState) -> EditSignals {
+    /// `widget` owns the node from here on — the key filter and
+    /// `LookPlan::apply`'s spacing defaults both write `widget.node`, so there
+    /// is one copy and no point at which it can be recorded stale.
+    fn pass(self, ui: &mut Ui, mut widget: Widget, state: &mut TextEditState) -> EditSignals {
         let id = widget.id();
         let mut is_focused = ui.focused_id() == Some(id);
         // The pass's one probe, and what `show` hands back at the end.
@@ -334,7 +339,7 @@ impl<'a> TextEdit<'a> {
         // (one-frame stale); OR self-disabled in for lag-free
         // response to a freshly toggled `.disabled(true)`.
         let mut response = probed;
-        response.disabled |= self.node.flags.is_disabled();
+        response.disabled |= widget.node.flags.is_disabled();
         // A disabled editor must not keep keyboard focus — it would
         // paint disabled while still routing typing / paste / undo
         // into the host's buffer. Kick focus out (mirrors `DragValue`'s
@@ -358,7 +363,7 @@ impl<'a> TextEdit<'a> {
         let mut filter = KeyFilter::TEXT_FIELD;
         filter.set(KeyFilter::ESCAPE, !self.escape_falls_through);
         if is_focused {
-            self.node.flags.set_key_filter(filter);
+            widget.node.flags.set_key_filter(filter);
         }
         // One borrow of the slot covers both halves: the state-independent
         // caret / selection scalars this widget paints with, and the plan for
@@ -378,12 +383,11 @@ impl<'a> TextEdit<'a> {
             margin: slot.margin,
             anim: slot.anim,
         }
-        .apply(ui, id, &mut self.node);
+        .apply(ui, &mut widget);
         if !look.text.metrics_valid() {
             let was_focused = state.view.prev_focused;
             state.view.prev_focused = is_focused;
             let chrome = look.background;
-            widget.node = self.node;
             widget.record(ui, Some(&chrome), |_| {});
             return EditSignals {
                 changed: false,
@@ -408,10 +412,16 @@ impl<'a> TextEdit<'a> {
         } else {
             look.background.stroke.width
         };
-        let padding =
-            Spacing::from_array(self.node.padding.unwrap().as_array().map(|v| v + stroke_w));
+        let padding = Spacing::from_array(
+            widget
+                .node
+                .padding
+                .unwrap()
+                .as_array()
+                .map(|v| v + stroke_w),
+        );
         let previous_block_offset = state.view.block_offset;
-        let layout = view::resolve_layout(LayoutInput {
+        let layout = TextLayout::resolve(LayoutInput {
             response_rect: response.layout_rect,
             padding,
             caret_width,
@@ -478,7 +488,7 @@ impl<'a> TextEdit<'a> {
             response.scroll.pixels + response.scroll.lines * ctx.font.line_height_px
         };
 
-        let geometry = view::resolve_geometry(
+        let geometry = TextGeometry::resolve(
             ui,
             GeometryInput {
                 layout,
@@ -509,29 +519,25 @@ impl<'a> TextEdit<'a> {
         });
         let text_color = look.text.color;
         let placeholder = self.placeholder;
-        widget.node = self.node;
-        view::record(
-            ui,
-            widget,
-            PaintInput {
-                chrome: look.background,
-                block_id: id.with("text-block"),
-                text: self.text,
-                placeholder: &placeholder,
-                geometry,
-                selection_rects: &state.selection_rects,
-                selection_color,
-                text_color,
-                placeholder_color,
-                scroll: view.scroll,
-                caret: is_focused.then_some(CaretPaint {
-                    pos: caret_pos,
-                    width: caret_width,
-                    color: caret_color,
-                    anim: view.caret_anim,
-                }),
-            },
-        );
+        PaintInput {
+            chrome: look.background,
+            block_id: id.with("text-block"),
+            text: self.text,
+            placeholder: &placeholder,
+            geometry,
+            selection_rects: &state.selection_rects,
+            selection_color,
+            text_color,
+            placeholder_color,
+            scroll: view.scroll,
+            caret: is_focused.then_some(CaretPaint {
+                pos: caret_pos,
+                width: caret_width,
+                color: caret_color,
+                anim: view.caret_anim,
+            }),
+        }
+        .record(ui, widget);
         EditSignals {
             changed,
             submitted,

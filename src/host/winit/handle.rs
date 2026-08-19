@@ -7,7 +7,7 @@
 use winit::event_loop::EventLoopProxy;
 
 use crate::host::winit::error::HostDisconnected;
-use crate::window::WindowToken;
+use crate::window::window_token::WindowToken;
 
 /// A main-thread closure scheduled via [`HostHandle::run_on_main`],
 /// invoked with `&mut` the host's app `T`.
@@ -119,7 +119,7 @@ impl<T: 'static> HostHandle<T> {
 #[cfg(test)]
 mod tests {
     use crate::host::winit::handle::UserEvent;
-    use crate::window::WindowToken;
+    use crate::window::window_token::WindowToken;
 
     #[test]
     fn user_event_debug_formats_every_variant_without_an_app_bound() {

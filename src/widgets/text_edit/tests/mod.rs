@@ -9,7 +9,6 @@ use crate::widgets::text_edit::unicode::{
     next_grapheme_boundary, next_word_boundary, prev_grapheme_boundary, prev_word_boundary,
     word_range_at,
 };
-use crate::widgets::text_edit::view::InteractionState;
 
 fn apply_key(text: &mut String, state: &mut EditState, kp: KeyPress) -> bool {
     let clipboard = Clipboard::default();
@@ -33,7 +32,7 @@ use crate::Spacing;
 use crate::Ui;
 use crate::common::clipboard::Clipboard;
 use crate::common::platform::{PLATFORM, Platform};
-use crate::input::InputEvent;
+use crate::input::input_event::InputEvent;
 use crate::input::keyboard::{Key, KeyPress, Modifiers};
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
@@ -67,7 +66,7 @@ fn painted_shapes(
 /// and the caret go on a child whose placement inside the inner rect *is* the
 /// text alignment, so that the layout engine resolves it against the rect it
 /// has just arranged rather than the widget guessing from last frame's. See
-/// [`record`](crate::widgets::text_edit::view).
+/// [`PaintInput::record`](crate::widgets::text_edit::paint_input::PaintInput::record).
 fn block_of(
     ui: &Ui,
     field: crate::scene::tree::record::NodeId,

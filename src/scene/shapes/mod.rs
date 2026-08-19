@@ -27,7 +27,7 @@ use crate::shape::Lower;
 /// points/colors, gradients) live on the `RecordStore` passed into
 /// [`Self::add`]; `ShapeRecord` variants reference them via spans /
 /// ids. `ShapeRecord::Text.text` holds a
-/// [`RecordedText`](crate::primitives::interned_str::RecordedText)
+/// [`RecordedText`](crate::primitives::recorded_text::RecordedText)
 /// span and content hash after normalizing its source into the active
 /// text arena. Cleared per record pass, capacity retained.
 #[derive(Debug, Default)]

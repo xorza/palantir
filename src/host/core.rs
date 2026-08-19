@@ -20,10 +20,11 @@ use crate::common::clipboard::Clipboard;
 use crate::host::device_requirements::DeviceRequirements;
 use crate::host::shared::HostShared;
 use crate::host::window_driver::{CpuFrame, PresentMode, WindowDriver, WindowDriverBuilder};
-use crate::renderer::backend::{BackendConfig, WgpuBackend};
+use crate::renderer::backend::WgpuBackend;
+use crate::renderer::backend::backend_config::BackendConfig;
 use crate::renderer::frontend::Frontend;
 use crate::text::shaper::TextShaper;
-use crate::window::WindowToken;
+use crate::window::window_token::WindowToken;
 
 #[derive(Debug)]
 pub(super) struct HostCore {

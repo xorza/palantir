@@ -19,13 +19,17 @@
 // Test-support surface: which parts are live depends on whether the
 // build enables `test`, `internals`, or both.
 
-use crate::primitives::transform::TranslateScale;
+use crate::primitives::translate_scale::TranslateScale;
 use crate::renderer::frontend::paint_sink::PaintSink;
-use crate::renderer::frontend::payload::{
-    DrawCurvePayload, DrawIconPayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload,
-    DrawQuadPayload, DrawTextPayload, PushClipPayload,
-};
-use crate::renderer::gpu_view::GpuPaintRef;
+use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
+use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
+use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
+use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
+use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
+use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
+use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
+use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
+use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
 
 /// Declare [`PaintCall`] alongside the three transcriptions that have
 /// to stay in lockstep with it — the variant name used in assertion

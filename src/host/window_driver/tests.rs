@@ -7,7 +7,7 @@ mod present_mode_tests {
     use crate::host::window_driver::{PresentMode, present_mode};
     use crate::primitives::color::Color;
     use crate::primitives::rect::Rect;
-    use crate::renderer::plan::{RenderKind, RenderPlan};
+    use crate::renderer::render_plan::{RenderKind, RenderPlan};
     use crate::scene::damage::region::{DEFAULT_PASS_BUDGET_PX, DamageRegion};
 
     /// 100×100 logical surface (10_000 px²) the partial fixtures collapse
@@ -119,10 +119,11 @@ mod output_validity_tests {
     use crate::host::window_driver::{PresentMode, PresentStrategy, TargetKey, WindowDriver};
     use crate::primitives::color::Color;
     use crate::renderer::frontend::Frontend;
-    use crate::renderer::plan::{RenderKind, RenderPlan};
+    use crate::renderer::render_plan::{RenderKind, RenderPlan};
     use crate::text::shaper::TextShaper;
     use crate::ui::frame_report::{FrameProcessing, FrameReport};
-    use crate::window::{WindowConfig, WindowToken};
+    use crate::window::window_config::WindowConfig;
+    use crate::window::window_token::WindowToken;
 
     fn driver(token: WindowToken, shared: &HostShared) -> WindowDriver {
         WindowDriver::builder(token, shared).build()

@@ -3,21 +3,20 @@ use crate::layout::engine::LayoutEngine;
 use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange, LenReq};
 use crate::layout::pass::LayoutPass;
 use crate::layout::types::layout_mode::{GridDefId, LayoutMode};
-use crate::primitives::interned_str::InternedText;
+use crate::primitives::interned_text::InternedText;
 use crate::primitives::span::Span;
 use crate::primitives::{rect::Rect, size::Size};
 use crate::scene::tree::Tree;
 use crate::scene::tree::record::NodeId;
-use fixedbitset::FixedBitSet;
 use std::ops::Range;
 
 mod arranging;
+mod axis_scratch;
 mod measuring;
-mod resolving;
 
 use crate::layout::grid::arranging::arrange_inner;
+use crate::layout::grid::axis_scratch::{AxisScratch, HugRanges};
 use crate::layout::grid::measuring::measure_inner;
-use crate::layout::grid::resolving::content_floor;
 #[derive(Clone, Copy, Debug)]
 enum HugKind {
     Max,
@@ -50,55 +49,6 @@ fn reset_hugs_for(pass: &mut LayoutPass<'_>, idx: GridDefId) {
     }
 }
 
-/// Per-axis scratch for one nesting depth. `flexible` and `hug_bounds`
-/// are transient lists used only inside `resolve_axis`; they live on
-/// the per-axis struct so their capacity is retained across frames.
-///
-/// Per-track content-driven `[min, max]` Hug ranges live in
-/// `GridTrackStore` (durable across the whole layout pass); they're passed
-/// into `resolve_axis` as slices alongside this scratch.
-#[derive(Debug, Default)]
-struct AxisScratch {
-    sizes: Vec<f32>,
-    resolved: FixedBitSet,
-    offsets: Vec<f32>,
-    flexible: Vec<usize>,
-    hug_bounds: Vec<HugBound>,
-}
-
-/// The per-track content range one axis solves against: `min[i]` is
-/// track `i`'s min-content floor, `max[i]` its preferred extent.
-///
-/// Bundled because they were two adjacent same-typed `&[f32]` parameters on
-/// [`resolve_axis`](resolving::resolve_axis) — swapping them compiles, and
-/// the common path (every Hug track fits at its max) wouldn't even fail a
-/// test.
-#[derive(Clone, Copy, Debug)]
-struct HugRanges<'a> {
-    min: &'a [f32],
-    max: &'a [f32],
-}
-
-#[derive(Clone, Copy, Debug)]
-struct HugBound {
-    idx: usize,
-    lo: f32,
-    hi: f32,
-}
-
-impl AxisScratch {
-    /// Resize the per-track arrays. All arrays are zeroed; `resolved` is
-    /// reset to all-false. Capacity is retained across frames.
-    fn reset(&mut self, n: usize) {
-        self.sizes.clear();
-        self.sizes.resize(n, 0.0);
-        self.resolved.clear();
-        self.resolved.grow(n);
-        self.offsets.clear();
-        self.offsets.resize(n, 0.0);
-    }
-}
-
 /// Per-frame scratch for `Grid` layout. Capacity is retained across frames; a
 /// `Vec<GridScratch>` indexed by nesting depth lets nested grids each have
 /// their own slot. Pushed on first descent to a new depth.
@@ -110,7 +60,7 @@ struct GridScratch {
 
 /// All grid-layout scratch held by `LayoutEngine`, in one bag. `depth_stack`
 /// and `track_state` are separate fields so callers can disjoint-borrow them —
-/// `resolve_axis` takes `&mut AxisScratch` (from `depth_stack`) and `&[f32]`
+/// `AxisScratch::resolve_axis` takes `&mut self` (from `depth_stack`) and `&[f32]`
 /// hug slices (from `track_state`) in the same expression via destructuring.
 /// `track_aggregator` is a bump-stack scratch for `grid::intrinsic`'s
 /// per-track aggregator: each call extends by `n_tracks`, recurses (which
@@ -159,7 +109,7 @@ impl GridDepthStack {
 /// Three things per track, not just the hug ranges the name used to claim:
 /// the content ranges (`max`/`min`, fed by Phase-1 cell intrinsics and
 /// Phase-2 cell-height accumulation), the measure-resolved track sizes
-/// (`sizes`, the output of [`resolve_axis`](resolving::resolve_axis)), and
+/// (`sizes`, the output of [`AxisScratch::resolve_axis`]), and
 /// the input `total` each axis was resolved against (`totals`). Measure
 /// pass writes; arrange pass reads. Per-depth scratch in `depth_stack` gets
 /// clobbered by sibling grids before arrange runs, so the pool persists for
@@ -179,7 +129,7 @@ pub(crate) struct GridTrackStore {
     min_pool: Vec<f32>,
     /// Resolved track sizes from the last measure of each grid. Parallel
     /// indexing to `max_pool`/`min_pool` via the same per-slot spans.
-    /// Read by arrange to skip a redundant `resolve_axis` call when the
+    /// Read by arrange to skip a redundant `AxisScratch::resolve_axis` call when the
     /// arrange-time slot matches the measure-time total.
     sizes_pool: Vec<f32>,
     /// `[col_total, row_total]` per grid slot — the `total` each axis
@@ -281,7 +231,7 @@ impl GridTrackStore {
         &self.sizes_pool[r]
     }
 
-    /// `total` (measure-time `resolve_axis` input) for `(idx, axis)`, or
+    /// `total` (measure-time `AxisScratch::resolve_axis` input) for `(idx, axis)`, or
     /// `None` for grids measure hasn't reached this frame (e.g. cache-hit
     /// descendants); arrange treats that as "no persisted state" and
     /// re-resolves.
@@ -291,8 +241,8 @@ impl GridTrackStore {
 
     /// Snapshot the just-resolved `(sizes, total)` for `(idx, axis)`
     /// so a sibling-clobber-resistant arrange can read them back
-    /// without re-running `resolve_axis`. Caller passes the same
-    /// `total` it just handed to `resolve_axis` plus the resolved
+    /// without re-running `AxisScratch::resolve_axis`. Caller passes the same
+    /// `total` it just handed to `AxisScratch::resolve_axis` plus the resolved
     /// `sizes` slice from the per-depth scratch.
     fn record_resolution(&mut self, idx: GridDefId, axis: Axis, total: f32, sizes: &[f32]) {
         let r = self.axis_slice(idx, axis);
@@ -352,7 +302,7 @@ impl GridTrackStore {
 /// resolves Hug tracks from span-1 children's desired sizes. Star tracks
 /// contribute 0 to the grid's content size — final star sizes only resolve
 /// in arrange. The full constraint solver is documented on
-/// [`resolve_axis`](resolving::resolve_axis).
+/// [`AxisScratch::resolve_axis`].
 ///
 /// Per-depth scratch (`AxisScratch` columns) lives in `grid.depth_stack`
 /// and gets clobbered by sibling grids between this measure and the
@@ -450,11 +400,11 @@ pub(super) fn intrinsic(
         let child = query.child(layout, tree, c, axis, interned_text);
         if wants_min {
             let slot = &mut layout.grid_track_aggregator()[min_base + track_idx];
-            *slot = slot.max(content_floor(t, child.min));
+            *slot = slot.max(t.content_floor(child.min));
         }
         if wants_max {
             let slot = &mut layout.grid_track_aggregator()[max_base + track_idx];
-            *slot = slot.max(content_floor(t, child.max));
+            *slot = slot.max(t.content_floor(child.max));
         }
     }
 
@@ -481,8 +431,7 @@ mod tests;
 
 #[cfg(test)]
 pub(crate) mod internals {
-    use crate::layout::grid::resolving::resolve_axis;
-    use crate::layout::grid::{AxisScratch, HugRanges};
+    use crate::layout::grid::axis_scratch::{AxisScratch, HugRanges};
     use crate::layout::types::track::Track;
 
     /// Grid's Phase-3 Fill distributor over the same `(weight, floor,
@@ -497,8 +446,7 @@ pub(crate) mod internals {
         let unused_max = vec![0.0; items.len()];
         let mut axis = AxisScratch::default();
         axis.reset(items.len());
-        resolve_axis(
-            &mut axis,
+        axis.resolve_axis(
             &tracks,
             HugRanges {
                 min: &floors,

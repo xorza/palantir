@@ -27,14 +27,15 @@ use crate::primitives::brush::gradient::linear::LinearGradient;
 use crate::primitives::brush::{Brush, CurveBrush};
 use crate::primitives::color::{Color, ColorU8};
 use crate::primitives::corners::Corners;
-use crate::primitives::fill_wire::FillKind;
+use crate::primitives::fill_kind::FillKind;
 use crate::primitives::mesh::Mesh;
 use crate::primitives::nan::NanCheck;
 use crate::primitives::rect::Rect;
 use crate::primitives::rect::aabb::Aabb;
 use crate::primitives::span::Span;
 use crate::primitives::stroke::Stroke;
-use crate::scene::record_store::{RecordStore, RecordedGradient};
+use crate::scene::record_store::RecordStore;
+use crate::scene::record_store::recorded_gradient::RecordedGradient;
 use crate::scene::shapes::paint::{
     ChromeRow, CurveBasis, LoweredShadow, QuadShape, ShapeBrush, ShapeStroke,
 };
@@ -45,12 +46,6 @@ use crate::shape::style::{LineCap, LineJoin};
 use glam::Vec2;
 use std::f32::consts::TAU;
 use std::hash::Hasher as _;
-
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct ChromeInput<'a> {
-    pub(crate) bg: &'a Background,
-    pub(crate) store: &'a RecordStore,
-}
 
 /// Result of lowering a user-side `Brush`. `brush` is the storage form
 /// (`Solid` inline or `Gradient(id)` indexing into the store's
@@ -517,7 +512,8 @@ mod tests {
     use crate::primitives::brush::gradient::radial::RadialGradient;
     use crate::primitives::brush::gradient::{Interp, Spread};
     use crate::primitives::color::ColorU8;
-    use crate::scene::record_store::{GradientId, RecordStore};
+    use crate::scene::record_store::RecordStore;
+    use crate::scene::record_store::recorded_gradients::GradientId;
     use crate::scene::shapes::paint::ShapeBrush;
     use std::collections::HashSet;
 

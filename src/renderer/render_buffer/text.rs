@@ -32,7 +32,7 @@ pub(crate) struct TextDrawRow {
     /// snap. The backend only y-culls whole lines against this (keeps
     /// off-screen lines out of the glyph atlas); the actual pixel clip is
     /// the batch GPU scissor
-    /// ([`TextBatch::scissor`](crate::renderer::render_buffer::batch::TextBatch::scissor), the union of the
+    /// ([`TextBatch::scissor`](crate::renderer::render_buffer::text_batch::TextBatch::scissor), the union of the
     /// batch's bounds), which the composer's strict-bounds batching rule
     /// keeps no wider than any ancestor-clipped run's bounds.
     pub(crate) bounds: URect,

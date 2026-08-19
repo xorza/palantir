@@ -1,5 +1,6 @@
 use crate::input::sense::Sense;
 use crate::layout::types::align::Align;
+use crate::layout::types::placement::Placement;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
@@ -7,7 +8,6 @@ use crate::primitives::size::Size;
 use crate::scene::layer::Layer;
 use crate::scene::node::ThemeDefaults;
 use crate::scene::node::{Configure, Node};
-use crate::scene::tree::recording::Placement;
 use crate::ui::Ui;
 use crate::widgets::overlay_scope::OverlayScope;
 use crate::widgets::theme::modal::ModalTheme;

@@ -10,8 +10,9 @@ use crate::widgets::text_edit::TextEditState;
 use crate::widgets::text_edit::action::EditAction;
 use crate::widgets::text_edit::edit_state::EditKind;
 use crate::widgets::text_edit::editor::Editor;
+use crate::widgets::text_edit::shape_ctx::ShapeCtx;
+use crate::widgets::text_edit::text_layout::TextLayout;
 use crate::widgets::text_edit::unicode::word_range_at;
-use crate::widgets::text_edit::view::{ShapeCtx, TextLayout};
 
 /// Result of one frame's input pass over a TextEdit: the caret byte,
 /// the (sorted) selection range for the painter, and the edge signals
@@ -86,7 +87,6 @@ pub(super) fn run_input(
 
     let TextEditState {
         edit,
-        interaction,
         view,
         // Filled by the geometry pass after this one, and read only by the
         // painter — the input pass has no business in it.
@@ -97,7 +97,6 @@ pub(super) fn run_input(
     // Application code may have replaced `*text` with a same-length or
     // longer string whose UTF-8 boundaries differ from the prior frame.
     edit.normalize(text);
-    interaction.normalize(text);
     let mut ed = Editor::new(text, edit, ctx.multiline, max_chars);
     ed.enforce_single_line();
 
@@ -153,43 +152,42 @@ pub(super) fn run_input(
                     // Double-click: select the word under the caret.
                     let r = word_range_at(ed.text, hit);
                     if r.is_empty() {
-                        interaction.drag_anchor = Some(hit);
+                        ed.state.drag_anchor = Some(hit);
                         ed.state.selection = None;
                         ed.state.caret = hit;
                     } else {
-                        interaction.drag_anchor = None;
+                        ed.state.drag_anchor = None;
                         ed.state.selection = Some(r.start);
                         ed.state.caret = r.end;
                     }
                 }
                 3.. => {
                     // Triple-click and beyond: select everything.
-                    interaction.drag_anchor = None;
+                    ed.state.drag_anchor = None;
                     ed.select_all();
                 }
                 _ => {
-                    interaction.drag_anchor = Some(hit);
+                    ed.state.drag_anchor = Some(hit);
                     ed.state.selection = None;
                     ed.state.caret = hit;
                 }
             }
-        } else if interaction.drag_anchor.is_some() {
+        } else if ed.state.drag_anchor.is_some() {
             // Held drag from a single-click press — caret follows
             // pointer, selection grows from the anchor. Multi-click
             // sequences clear `drag_anchor` so they don't enter this
             // branch and the selection stays locked at the word/all
             // range chosen on the press.
-            let anchor = interaction.drag_anchor.unwrap_or(hit);
+            let anchor = ed.state.drag_anchor.unwrap_or(hit);
             ed.state.caret = hit;
             ed.state.selection = if hit == anchor { None } else { Some(anchor) };
         }
     } else if !resp_state.left.held() {
-        interaction.drag_anchor = None;
+        ed.state.drag_anchor = None;
     }
 
     if !is_focused {
         ed.state.normalize(ed.text);
-        interaction.normalize(ed.text);
         return InputResult {
             was_focused,
             blur,
@@ -247,7 +245,6 @@ pub(super) fn run_input(
     }
 
     ed.state.normalize(ed.text);
-    interaction.normalize(ed.text);
     InputResult {
         was_focused,
         blur,

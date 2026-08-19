@@ -5,5 +5,6 @@ pub(crate) mod justify;
 pub(crate) mod layout_mode;
 pub(crate) mod limits;
 pub(crate) mod overlay;
+pub(crate) mod placement;
 pub(crate) mod sizing;
 pub(crate) mod track;

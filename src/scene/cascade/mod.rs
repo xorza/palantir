@@ -103,7 +103,7 @@ impl CascadeInputHash {
 pub(crate) struct LayerCascade {
     /// Paint-excluding authoring hash from the last full rebuild.
     static_hash: ContentHash,
-    /// `Tree::rollups.paint_cardinality` as of the last full rebuild.
+    /// `Tree::fingerprint.paint_cardinality` as of the last full rebuild.
     /// The incremental walk can only repair paint rows in place, so a
     /// changed row count sends it home empty-handed after it has already
     /// walked part of the tree; comparing this first turns that wasted
@@ -195,7 +195,7 @@ pub(crate) struct Cascade {
     /// Declared input scopes in record order — see [`ScopeRow`].
     pub(crate) scopes: Vec<ScopeRow>,
     /// `WidgetId → Endpoint` lookup for hit-test consumers
-    /// ([`crate::input::InputState::response_for`], capture / focus
+    /// ([`crate::input::input_state::InputState::response_for`], capture / focus
     /// eviction). **Invariant: equals `SeenIds.curr` as observed at
     /// the end of the most recent `CascadeEngine::run`** — a full
     /// rebuild populates it with `clone_from(&seen.curr)`; paint-only

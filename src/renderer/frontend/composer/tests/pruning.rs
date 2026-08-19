@@ -1,16 +1,18 @@
 //! What the occlusion pass drops, and what it must not.
 
-use crate::primitives::fill_wire::LutRow;
+use crate::primitives::lut_row::LutRow;
 use crate::primitives::{
-    color::Color, corners::Corners, rect::Rect, stroke::Stroke, transform::TranslateScale,
+    color::Color, corners::Corners, rect::Rect, stroke::Stroke, translate_scale::TranslateScale,
 };
 use crate::renderer::frontend::capture::PaintCapture;
 use crate::renderer::frontend::composer::tests::support::{
     clip, composer, draw, params, rect, render_buffer, run, text,
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
-use crate::renderer::frontend::payload::{BrushSource, DrawQuadPayload, ResolvedGradient};
-use crate::scene::record_store::RecordPayloads;
+use crate::renderer::frontend::payload::brush_source::BrushSource;
+use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
+use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
+use crate::scene::record_store::record_payloads::RecordPayloads;
 use glam::UVec2;
 use std::time::Duration;
 
@@ -101,7 +103,7 @@ fn prune_keeps_quads_in_separate_groups_even_when_covered() {
 #[test]
 fn prune_does_not_drop_stroked_quad_under_solid_cover() {
     use crate::primitives::stroke::Stroke;
-    use crate::renderer::frontend::payload::BrushSource;
+    use crate::renderer::frontend::payload::brush_source::BrushSource;
     // A stroked quad's stroke spills outside the rect; pruning a
     // stroked quad on the strict containment test below would lose
     // the stroke fringe. Predicate requires zero-stroke as
@@ -142,7 +144,7 @@ fn prune_rounded_on_top_uses_deflated_cover() {
     // a sharp opaque quad on top exactly covers a rounded under,
     // the under is dropped (sharp cover == its own bounding rect,
     // which contains the rounded's bounding rect).
-    use crate::renderer::frontend::payload::BrushSource;
+    use crate::renderer::frontend::payload::brush_source::BrushSource;
     let buf_rounded_on_top = run(
         |b, _| {
             draw(b, rect(0.0, 0.0, 100.0, 100.0)); // solid sharp under
@@ -183,7 +185,7 @@ fn prune_rounded_on_top_uses_deflated_cover() {
 #[test]
 fn prune_keeps_transparent_solid_as_non_occluder() {
     use crate::primitives::stroke::Stroke;
-    use crate::renderer::frontend::payload::BrushSource;
+    use crate::renderer::frontend::payload::brush_source::BrushSource;
     // alpha=0.5 quad on top doesn't occlude anything beneath.
     let buf = run(
         |b, _| {
@@ -208,7 +210,7 @@ fn prune_rounded_occluder_drops_smaller_under_inside_inscribed_rect() {
     // gives a cover deflation of ≈3.43 per side.
     // An under-quad at (10,10,80,80) is well inside cover and
     // should be dropped.
-    use crate::renderer::frontend::payload::BrushSource;
+    use crate::renderer::frontend::payload::brush_source::BrushSource;
     let buf = run(
         |b, _| {
             draw(b, rect(10.0, 10.0, 80.0, 80.0)); // sharp opaque under
@@ -237,7 +239,7 @@ fn prune_rounded_occluder_keeps_under_overlapping_corner_cutout() {
     // Rounded r=20 ⇒ inset ≈ 5.86. An under at (0,0,5,5) lies
     // entirely inside the [0,20]×[0,20] corner-cutout zone and is
     // never covered.
-    use crate::renderer::frontend::payload::BrushSource;
+    use crate::renderer::frontend::payload::brush_source::BrushSource;
     let buf = run(
         |b, _| {
             draw(b, rect(0.0, 0.0, 5.0, 5.0)); // sharp under in corner
@@ -298,7 +300,7 @@ fn rect_inscribed_for_corners_uses_max_of_adjacent_radii() {
 #[test]
 fn prune_keeps_shadow_under_opaque_cover() {
     use crate::primitives::brush::gradient::FillAxis;
-    use crate::primitives::fill_wire::FillKind;
+    use crate::primitives::fill_kind::FillKind;
     // A shadow's blur fringe extends past the stored rect — even if
     // a later opaque solid fully contains its rect, the visible
     // outer halo would be lost. Predicate must never drop shadows.
@@ -350,7 +352,7 @@ fn prune_stroked_occluder_drops_smaller_sharp_under() {
     // (Translucent strokes shrink the cover — see
     // `prune_occluder_stroke_translucency_gates_cover`.)
     use crate::primitives::stroke::Stroke;
-    use crate::renderer::frontend::payload::BrushSource;
+    use crate::renderer::frontend::payload::brush_source::BrushSource;
     let buf = run(
         |b, _| {
             draw(b, rect(10.0, 10.0, 50.0, 50.0)); // sharp opaque under
@@ -391,7 +393,7 @@ fn prune_stroked_occluder_drops_smaller_sharp_under() {
 #[test]
 fn prune_occluder_stroke_translucency_gates_cover() {
     use crate::primitives::stroke::Stroke;
-    use crate::renderer::frontend::payload::BrushSource;
+    use crate::renderer::frontend::payload::brush_source::BrushSource;
     #[derive(Debug)]
     struct Case {
         label: &'static str,
@@ -585,7 +587,7 @@ fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
     use crate::primitives::brush::gradient::FillAxis;
     use crate::primitives::brush::gradient::Spread;
     use crate::primitives::color::ColorF16;
-    use crate::primitives::fill_wire::FillKind;
+    use crate::primitives::fill_kind::FillKind;
 
     let vp = UVec2::new(200, 200);
     let bg = Color::rgb(0.14, 0.16, 0.22);

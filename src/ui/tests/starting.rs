@@ -5,7 +5,7 @@ use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::Color, rect::Rect};
 use crate::renderer::frontend::Frontend;
-use crate::renderer::plan::{RenderKind, RenderPlan};
+use crate::renderer::render_plan::{RenderKind, RenderPlan};
 use crate::scene::damage::Damage;
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;

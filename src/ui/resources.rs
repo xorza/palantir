@@ -4,7 +4,7 @@ use crate::icons::icon_registry::IconRegistry;
 use crate::renderer::image_registry::ImageRegistry;
 use crate::renderer::texture_id_source::TextureIdSource;
 use crate::text::shaper::TextShaper;
-use crate::window::WindowDirectory;
+use crate::window::window_directory::WindowDirectory;
 use std::num::NonZeroU32;
 
 /// Capabilities available to a recorder. Every field is app-global and

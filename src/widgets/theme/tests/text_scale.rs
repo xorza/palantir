@@ -96,7 +96,7 @@ fn scale_text_reaches_every_font_size() {
 
 #[test]
 fn theme_deserialization_rejects_invalid_text_metrics() {
-    use crate::text::key::TEXT_METRICS_ERROR;
+    use crate::text::glyph_font::GlyphFont;
 
     let valid = toml::to_string_pretty(&Theme::default()).expect("serialize default theme");
     let cases = [
@@ -154,7 +154,7 @@ fn theme_deserialization_rejects_invalid_text_metrics() {
         let invalid = valid.replacen(from, to, 1);
         let error = toml::from_str::<Theme>(&invalid).expect_err(label);
         assert!(
-            error.to_string().contains(TEXT_METRICS_ERROR),
+            error.to_string().contains(GlyphFont::METRICS_ERROR),
             "{label}: unexpected serde error: {error}",
         );
     }

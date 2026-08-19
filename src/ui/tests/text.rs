@@ -503,7 +503,7 @@ fn widget_text_inputs_lower_exact_bytes() {
     ]) {
         match record {
             ShapeRecord::Text { text, .. } => {
-                assert_eq!(text.resolve(&interned_text), expected);
+                assert_eq!(text.source.resolve(&interned_text), expected);
             }
             shape => panic!("expected text shape, got {shape:?}"),
         }
@@ -591,7 +591,7 @@ fn interning_per_pass_records_the_expected_bytes() {
         panic!("expected one text shape, got {records:?}");
     };
     assert_eq!(
-        text.resolve(&interned_text),
+        text.source.resolve(&interned_text),
         "second pass",
         "the recorded bytes come from the pass that survived",
     );

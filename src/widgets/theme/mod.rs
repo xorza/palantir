@@ -42,7 +42,7 @@ mod tests;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
-use crate::text::key;
+use crate::text::glyph_font::GlyphFont;
 use crate::widgets::theme::button::ButtonTheme;
 use crate::widgets::theme::combo_box::ComboBoxTheme;
 use crate::widgets::theme::context_menu::ContextMenuTheme;
@@ -190,7 +190,7 @@ impl Theme {
         self.for_each_text(|style| {
             let font_size_px = style.font_size_px * factor;
             metrics_valid &=
-                key::text_metrics_valid(font_size_px, style.line_height_for(font_size_px));
+                GlyphFont::metrics_are_valid(font_size_px, style.line_height_for(font_size_px));
         });
         assert!(metrics_valid, "{SCALED_TEXT_METRICS_ERROR}");
         self.for_each_text(|t| t.font_size_px *= factor);

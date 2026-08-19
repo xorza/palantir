@@ -6,7 +6,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::Color, rect::Rect};
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
-use crate::ui::frame::FrameRuntime;
+use crate::ui::frame_runtime::FrameRuntime;
 use crate::ui::harness::UiHarness;
 use crate::ui::tests::support::{COLD, SURFACE, blue_frame};
 use crate::widgets::response::ResponseSnapshot;
@@ -177,7 +177,7 @@ fn prev_frame_updates_on_authoring_change() {
 /// negatives leave the popup-dismissal class of bugs unfixed.
 #[test]
 fn frame_pass_count_matches_action_trigger() {
-    use crate::input::InputEvent;
+    use crate::input::input_event::InputEvent;
     use crate::input::keyboard::{Key, Modifiers};
     use crate::input::pointer::PointerButton;
     use crate::input::sense::Sense;
@@ -796,7 +796,8 @@ fn freshly_disabled_subtree_masks_stale_interactions() {
 /// per frame — dedup by token, last config wins.
 #[test]
 fn open_window_dedups_by_token_within_a_frame() {
-    use crate::window::{WindowConfig, WindowToken};
+    use crate::window::window_config::WindowConfig;
+    use crate::window::window_token::WindowToken;
     let mut h = UiHarness::new(SURFACE);
     let cfg = WindowConfig::new;
     h.ui.open_window(WindowToken(7), cfg("first"));

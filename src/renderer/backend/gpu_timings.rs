@@ -28,7 +28,7 @@
 //! explicit `device.poll(Wait)` and then read the `GpuPassStats`
 //! handle (e.g. via `OffscreenHost::gpu_pass_stats`).
 
-use crate::diagnostics::gpu_stats::{BatchKind, GpuPassStats, PipelineStats};
+use crate::diagnostics::gpu_pass_stats::{BatchKind, GpuPassStats, PipelineStats};
 use std::cell::{Cell, RefCell};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering::Acquire, Ordering::Release};

@@ -12,7 +12,7 @@ use crate::layout::LayerLayout;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::span::Span;
-use crate::primitives::transform::TranslateScale;
+use crate::primitives::translate_scale::TranslateScale;
 use crate::scene::cascade::paint::{Paint, PaintArena};
 use crate::scene::shapes::paint::shadow_paint_rect_local;
 use crate::scene::shapes::record::{ShapeRecord, text_paint_bbox_local};

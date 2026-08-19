@@ -279,3 +279,92 @@ fn hash_fit(fit: &ImageFit, h: &mut Hasher) {
         scale.hash_visual(h);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::common::hash::hash_str;
+    use crate::layout::types::align::Align;
+    use crate::primitives::color::Color;
+    use crate::primitives::recorded_text::RecordedText;
+    use crate::primitives::span::Span;
+    use crate::scene::shapes::hash::compute_record_hash;
+    use crate::scene::shapes::record::ShapeRecord;
+    use crate::text::glyph_font::GlyphFont;
+    use crate::text::wrap::TextWrap;
+    use crate::text::{FontFamily, FontWeight};
+
+    fn text_shape(
+        line_height_px: f32,
+        weight: FontWeight,
+        local_origin: Option<glam::Vec2>,
+    ) -> ShapeRecord {
+        ShapeRecord::Text {
+            local_origin,
+            text: RecordedText::new(Span::default(), hash_str("hi")),
+            color: Color::WHITE.into(),
+            font: GlyphFont {
+                size_px: 16.0,
+                line_height_px,
+                family: FontFamily::Sans,
+                weight,
+            },
+            wrap: TextWrap::Truncate,
+            align: Align::default(),
+        }
+    }
+
+    fn hash_shape(s: &ShapeRecord) -> u64 {
+        compute_record_hash(s).0
+    }
+
+    /// Pin: every authoring-relevant `ShapeRecord::Text` field participates
+    /// in the node hash so layout and paint caches invalidate when text
+    /// metrics, appearance, or position changes. New fields go in the table,
+    /// not in a new test.
+    #[test]
+    fn text_shape_hash_distinguishes_each_authoring_field() {
+        use FontWeight::{Bold, Regular};
+        let o_a = Some(glam::Vec2::new(0.0, 0.0));
+        let o_b = Some(glam::Vec2::new(5.0, 5.0));
+        let cases: [(&str, ShapeRecord, ShapeRecord); 4] = [
+            (
+                "line_height_px",
+                text_shape(16.0 * 1.2, Regular, None),
+                text_shape(16.0 * 1.5, Regular, None),
+            ),
+            (
+                "weight Regular vs Bold",
+                text_shape(19.2, Regular, None),
+                text_shape(19.2, Bold, None),
+            ),
+            (
+                "local_origin None vs Some",
+                text_shape(19.2, Regular, None),
+                text_shape(19.2, Regular, o_a),
+            ),
+            (
+                "local_origin Some(a) vs Some(b)",
+                text_shape(19.2, Regular, o_a),
+                text_shape(19.2, Regular, o_b),
+            ),
+        ];
+        for (label, a, b) in cases {
+            assert_ne!(
+                hash_shape(&a),
+                hash_shape(&b),
+                "case `{label}`: distinct fields must hash differently",
+            );
+        }
+    }
+
+    /// Sanity counterpart: identical shapes hash identically (guards
+    /// against accidental non-determinism, e.g. a future field
+    /// hashed via a `RandomState` or rand call).
+    #[test]
+    fn text_shape_hash_matches_when_inputs_match() {
+        assert_eq!(
+            hash_shape(&text_shape(19.2, FontWeight::Regular, None)),
+            hash_shape(&text_shape(19.2, FontWeight::Regular, None)),
+        );
+    }
+}

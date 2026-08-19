@@ -31,23 +31,28 @@ use crate::layout::scrollbars::ScrollbarsDef;
 use crate::layout::types::layout_mode::{GridDefId, LayoutMode, ScrollbarsDefId};
 use crate::layout::types::track::{GridDef, Track};
 use crate::primitives::approx::noop_f32;
+use crate::primitives::background::Background;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::span::Span;
-use crate::primitives::transform::TranslateScale;
+use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::Node;
-use crate::scene::node::columns::{BoundsExtras, PanelExtras};
+use crate::scene::node::bounds_extras::BoundsExtras;
+use crate::scene::node::panel_extras::PanelExtras;
+use crate::scene::record_store::RecordStore;
 use crate::scene::shapes::Shapes;
 use crate::scene::shapes::lower;
-use crate::scene::shapes::lower::ChromeInput;
 use crate::scene::shapes::paint::ChromeRow;
 use crate::scene::shapes::record::ShapeRecord;
 use crate::scene::tree::extras::ExtrasIdx;
 use crate::scene::tree::iter::{Child, ChildIter, TreeItem, TreeItems};
 use crate::scene::tree::paint_anims::PaintAnims;
 use crate::scene::tree::record::{NodeId, NodeRecord, SubtreeEnd};
-use crate::scene::tree::recording::{OpenFrame, RecordingScratch, RootSlot};
-use crate::scene::tree::rollups::SubtreeRollups;
+use crate::scene::tree::recording_scratch::{OpenFrame, RecordingScratch};
+use crate::scene::tree::root_slot::RootSlot;
+use crate::scene::tree::subtree_rollups::SubtreeRollups;
+use crate::scene::tree::tree_fingerprint::TreeFingerprint;
+use fixedbitset::FixedBitSet;
 use soa_rs::Soa;
 use std::hash::{Hash, Hasher as _};
 
@@ -109,6 +114,23 @@ pub(crate) struct Tree {
     pub(crate) paint_anims: PaintAnims,
 
     pub(crate) rollups: SubtreeRollups,
+    /// Whole-tree fingerprints, stamped alongside the per-node columns.
+    pub(crate) fingerprint: TreeFingerprint,
+    /// Non-leaf owners of direct text shapes. Layout iterates the set
+    /// after arrange to shape paint-only text against its final padded
+    /// width — a worklist, not a hash, which is why it sits here rather
+    /// than with the rollup columns.
+    pub(crate) container_text: FixedBitSet,
+}
+
+/// The chrome half of a [`Tree::open_node`] call: the background to
+/// lower, and the store its gradient and text payloads land in. One
+/// parameter rather than two because a node either has chrome and both,
+/// or has neither.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ChromeInput<'a> {
+    pub(crate) bg: &'a Background,
+    pub(crate) store: &'a RecordStore,
 }
 
 impl Tree {
@@ -156,12 +178,15 @@ impl Tree {
                 .is_none_or(|&idx| idx < self.shapes.records.len() as u32),
             "paint animation shape index exceeds shapes.records",
         );
-        self.rollups.reset_for(self.records.len());
-        self.rollups.paint_cardinality = paint_cardinality(
-            self.shapes.records.len(),
-            self.chrome_table.len(),
-            self.records.len(),
-        );
+        let n = self.records.len();
+        self.rollups.reset_for(n);
+        // `clear` keeps the length, so the grow only does work the first
+        // time the tree reaches this size. Sized here rather than at the
+        // insert site so `compute_rollups`' loop carries no sizing call.
+        self.container_text.clear();
+        self.container_text.grow(n);
+        self.fingerprint.paint_cardinality =
+            paint_cardinality(self.shapes.records.len(), self.chrome_table.len(), n);
         self.compute_rollups();
     }
 
@@ -187,15 +212,11 @@ impl Tree {
         let grid_tracks = &self.grid_tracks;
         let grid_defs = &self.grid_defs;
         let scrollbar_defs = &self.scrollbar_defs;
-        let SubtreeRollups {
-            node,
-            subtree,
-            cascade_static,
-            container_text,
-            // Stamped by `post_record` before this pass — a whole-tree
-            // count, not a per-node fold.
-            paint_cardinality: _,
-        } = &mut self.rollups;
+        let SubtreeRollups { node, subtree } = &mut self.rollups;
+        let container_text = &mut self.container_text;
+        // `paint_cardinality` is stamped by `post_record` before this
+        // pass — a whole-tree count, not a per-node fold.
+        let cascade_static = &mut self.fingerprint.cascade_static;
         let node_out = node.as_mut_slice();
         let subtree_out = subtree.as_mut_slice();
         let mut cascade_static_hasher = Hasher::new();
@@ -625,8 +646,10 @@ pub(crate) mod extras;
 pub(crate) mod iter;
 pub(crate) mod paint_anims;
 pub(crate) mod record;
-pub(crate) mod recording;
-pub(crate) mod rollups;
+pub(crate) mod recording_scratch;
+pub(crate) mod root_slot;
+pub(crate) mod subtree_rollups;
+pub(crate) mod tree_fingerprint;
 
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {

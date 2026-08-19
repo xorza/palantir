@@ -1,6 +1,6 @@
 use crate::Ui;
 use crate::layout::types::sizing::Sizing;
-use crate::primitives::transform::TranslateScale;
+use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;

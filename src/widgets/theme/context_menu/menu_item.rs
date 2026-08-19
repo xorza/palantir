@@ -1,4 +1,4 @@
-use crate::animation::AnimSpec;
+use crate::animation::anim_spec::AnimSpec;
 use crate::input::response::ResponseState;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
@@ -9,7 +9,7 @@ use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::theme::widget_look::WidgetLook;
 use crate::widgets::theme::widget_look::stateful_look::StatefulLook;
 
-/// Four-state row look for [`crate::widgets::context_menu::MenuItem`]
+/// Four-state row look for [`crate::widgets::context_menu::menu_item::MenuItem`]
 /// (`active` = pressed). The default `active` look equals `hovered` —
 /// a row's click auto-closes the menu, so a louder pressed state is
 /// opt-in.

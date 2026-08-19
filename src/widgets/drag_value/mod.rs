@@ -370,7 +370,7 @@ impl<'a> DragValue<'a> {
             margin: chip.margin,
             anim: chip.anim,
         }
-        .apply(ui, id, &mut widget.node);
+        .apply(ui, &mut widget);
 
         widget.record(ui, Some(&look.background), |ui| {
             ui.add_shape(

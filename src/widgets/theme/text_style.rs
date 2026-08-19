@@ -1,6 +1,5 @@
 use crate::primitives::color::Color;
 use crate::text::glyph_font::GlyphFont;
-use crate::text::key;
 use crate::text::{FontFamily, FontWeight};
 use crate::widgets::theme::palette::Palette;
 
@@ -69,7 +68,7 @@ impl Default for TextStyle {
 
 impl TextStyle {
     pub(crate) fn metrics_valid(&self) -> bool {
-        key::text_metrics_valid(self.font_size_px, self.line_height_for(self.font_size_px))
+        GlyphFont::metrics_are_valid(self.font_size_px, self.line_height_for(self.font_size_px))
     }
 
     /// This style as the face the shaper is asked for, at its own size.

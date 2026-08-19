@@ -15,7 +15,8 @@ use crate::primitives::mesh::MeshVertex;
 use crate::primitives::span::Span;
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
-use crate::renderer::backend::pipeline_utils::{ColorVariantSpec, StencilVariant};
+use crate::renderer::backend::stencil_variant::ColorVariantSpec;
+use crate::renderer::backend::stencil_variant::StencilVariant;
 use crate::renderer::render_buffer::mesh::{MeshDraw, MeshInstance};
 
 #[derive(Debug)]

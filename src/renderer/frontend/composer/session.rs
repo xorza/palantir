@@ -6,32 +6,37 @@ use crate::primitives::approx::{EPS, noop_f32};
 use crate::primitives::brush::gradient::FillAxis;
 use crate::primitives::color::ColorU8;
 use crate::primitives::corners::Corners;
-use crate::primitives::fill_wire::FillKind;
+use crate::primitives::fill_kind::FillKind;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::span::Span;
 use crate::primitives::{
     num::{F32Ext, Vec2Ext},
     rect::Rect,
-    transform::TranslateScale,
+    translate_scale::TranslateScale,
     urect::URect,
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
-use crate::renderer::frontend::payload::{
-    DrawCurvePayload, DrawIconPayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload,
-    DrawQuadPayload, DrawTextPayload, PushClipPayload, QuadGeom,
-};
-use crate::renderer::gpu_view::GpuPaintRef;
+use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
+use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
+use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
+use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
+use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
+use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
+use crate::renderer::frontend::payload::draw_quad_payload::QuadGeom;
+use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
+use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
+use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
 use crate::renderer::quad::{AA_RADIUS, Quad};
-use crate::renderer::render_buffer::batch::PaintTier;
 use crate::renderer::render_buffer::curve::{
     CURVE_KIND_ARC, CURVE_KIND_CUBIC, CURVE_KIND_SEGMENT, CurveInstance, cap_lanes,
 };
 use crate::renderer::render_buffer::icon::IconDrawRow;
 use crate::renderer::render_buffer::image::{ImageDrawRow, ImageInstance, RenderTargetDraw};
 use crate::renderer::render_buffer::mesh::{MeshDraw, MeshDrawRow, MeshInstance};
+use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::renderer::render_buffer::text::TextDrawRow;
 use crate::renderer::render_buffer::{MAX_ROUNDED_CLIP_DEPTH, RenderBuffer, RoundedClip};
-use crate::scene::record_store::RecordPayloads;
+use crate::scene::record_store::record_payloads::RecordPayloads;
 use crate::scene::shapes::paint::CurveBasis;
 use crate::scene::shapes::record::ColorMode;
 use crate::shape::style::LineCap;

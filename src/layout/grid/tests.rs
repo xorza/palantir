@@ -1,7 +1,7 @@
 use crate::layout::axis::Axis;
-use crate::layout::grid::arranging::known_span_size;
-use crate::layout::grid::resolving::resolve_axis;
-use crate::layout::grid::{AxisScratch, GridDepthStack, HugRanges};
+use crate::layout::grid::GridDepthStack;
+use crate::layout::grid::axis_scratch::AxisScratch;
+use crate::layout::grid::axis_scratch::HugRanges;
 use crate::layout::intrinsic::LenReq;
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::rect::Rect;
@@ -784,19 +784,19 @@ fn resolve_axis_marks_fixed_and_hug_resolved_but_leaves_fill_unresolved() {
         max: &[0.0, 30.0, 0.0],
     };
 
-    resolve_axis(&mut a, &tracks, hugs, 200.0, 0.0, false);
+    a.resolve_axis(&tracks, hugs, 200.0, 0.0, false);
 
     assert!(
         a.resolved.contains(0) && a.resolved.contains(1) && !a.resolved.contains(2),
         "Fill cols must stay unresolved so `known_span_size` returns INF for them"
     );
     assert_eq!(
-        known_span_size(&a.sizes, &a.resolved, Span::new(0, 2), 10.0),
+        a.known_span_size(Span::new(0, 2), 10.0),
         50.0 + 10.0 + 30.0,
         "the fully resolved Fixed + Hug span includes its internal gap",
     );
     assert!(
-        known_span_size(&a.sizes, &a.resolved, Span::new(0, 3), 10.0).is_infinite(),
+        a.known_span_size(Span::new(0, 3), 10.0).is_infinite(),
         "a span containing unresolved Fill remains uncommitted",
     );
 }

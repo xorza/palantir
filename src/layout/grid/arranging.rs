@@ -1,15 +1,14 @@
 //! Where a grid puts what it measured.
 
 use crate::layout::axis::Axis;
+use crate::layout::axis_align_pair::AxisAlignPair;
+use crate::layout::axis_placement::AxisPlacement;
 use crate::layout::grid::GridContext;
-use crate::layout::grid::resolving::resolve_or_reuse;
 use crate::layout::pass::LayoutPass;
-use crate::layout::support::{AxisAlignPair, arrange_axis, resolved_axis_align};
 use crate::layout::types::layout_mode::GridDefId;
 use crate::primitives::span::Span;
 use crate::primitives::{rect::Rect, size::Size};
 use crate::scene::tree::record::NodeId;
-use fixedbitset::FixedBitSet;
 use glam::Vec2;
 
 pub(super) fn arrange_inner(
@@ -59,24 +58,10 @@ pub(super) fn arrange_inner(
             ..
         } = pass.grid_mut();
         let s = depth_stack.at(depth);
-        resolve_or_reuse(
-            &mut s.col,
-            col_tracks,
-            track_state,
-            idx,
-            Axis::X,
-            inner.size.w,
-            col_gap,
-        );
-        resolve_or_reuse(
-            &mut s.row,
-            row_tracks,
-            track_state,
-            idx,
-            Axis::Y,
-            inner.size.h,
-            row_gap,
-        );
+        s.col
+            .resolve_or_reuse(col_tracks, track_state, idx, Axis::X, inner.size.w, col_gap);
+        s.row
+            .resolve_or_reuse(row_tracks, track_state, idx, Axis::Y, inner.size.h, row_gap);
         track_offsets(&s.col.sizes, col_gap, &mut s.col.offsets);
         track_offsets(&s.row.sizes, row_gap, &mut s.row.offsets);
     }
@@ -104,33 +89,15 @@ pub(super) fn arrange_inner(
         };
 
         // Grid's default alignment stretches non-Fixed children to their cell.
-        let AxisAlignPair { h, v } = resolved_axis_align(&s_node, parent_child_align);
-        let x = arrange_axis(Axis::X, h.or_stretch_if_auto(), &s_node, bounds, d, slot_w);
-        let y = arrange_axis(Axis::Y, v.or_stretch_if_auto(), &s_node, bounds, d, slot_h);
+        let AxisAlignPair { h, v } = AxisAlignPair::resolve(&s_node, parent_child_align);
+        let x = AxisPlacement::arrange(Axis::X, h.or_stretch_if_auto(), &s_node, bounds, d, slot_w);
+        let y = AxisPlacement::arrange(Axis::Y, v.or_stretch_if_auto(), &s_node, bounds, d, slot_h);
         let child_rect = Rect {
             min: inner.min + Vec2::new(slot_x + x.offset, slot_y + y.offset),
             size: Size::new(x.size, y.size),
         };
         pass.arrange(c, child_rect);
     }
-}
-
-/// Sum of spanned tracks' resolved sizes, or `∞` if any spanned track is not
-/// yet resolved (Hug / Fill at measure time). Internal gaps contribute only
-/// when the whole span is known. Infinity makes the child fall back to its
-/// intrinsic size on that axis (the WPF trick).
-pub(super) fn known_span_size(sizes: &[f32], resolved: &FixedBitSet, span: Span, gap: f32) -> f32 {
-    // Cells are range-checked against the parent's track counts at record
-    // time (`Tree::check_grid_cell`), so `span.range()` is always in
-    // bounds here — index directly.
-    let mut sum = 0.0;
-    for i in span.range() {
-        if !resolved.contains(i) {
-            return f32::INFINITY;
-        }
-        sum += sizes[i];
-    }
-    sum + gap * span.len.saturating_sub(1) as f32
 }
 
 fn track_offsets(sizes: &[f32], gap: f32, out: &mut [f32]) {

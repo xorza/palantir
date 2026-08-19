@@ -1,7 +1,8 @@
 //! Curve-pipeline wire constants and per-instance GPU data.
 
 use crate::primitives::color::ColorU8;
-use crate::primitives::fill_wire::{FillKind, LutRow};
+use crate::primitives::fill_kind::FillKind;
+use crate::primitives::lut_row::LutRow;
 use glam::Vec2;
 
 /// Chord-subdivisions per curve sub-instance. The shader expands one

@@ -1,6 +1,6 @@
 use crate::input::sense::Sense;
 use crate::layout::types::align::Align;
-use crate::primitives::interned_str::TextInput;
+use crate::primitives::text_input::TextInput;
 use crate::scene::node::Node;
 use crate::shape::Shape;
 use crate::text::wrap::TextWrap;
@@ -77,7 +77,7 @@ impl<'a> Button<'a> {
             margin: slot.margin,
             anim: slot.anim,
         }
-        .apply(ui, id, &mut widget.node);
+        .apply(ui, &mut widget);
         let label = self.label;
         let label_align = self.label_align;
         let label_wrap = self.label_wrap;

@@ -11,7 +11,7 @@ use crate::primitives::shadow::Shadow;
 use crate::primitives::size::Size;
 use crate::primitives::stroke::Stroke;
 use crate::primitives::texture_id::TextureId;
-use crate::scene::record_store::GradientId;
+use crate::scene::record_store::recorded_gradients::GradientId;
 use crate::shape::rect::RectKind;
 use glam::{UVec2, Vec2};
 

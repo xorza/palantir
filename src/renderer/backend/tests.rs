@@ -5,15 +5,18 @@
 
 use crate::primitives::color::{Color, ColorF16, ColorU8};
 use crate::primitives::corners::Corners;
-use crate::primitives::interned_str::TextSource;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::span::Span;
+use crate::primitives::text_source::TextSource;
 use crate::primitives::urect::URect;
 use crate::renderer::backend::schedule::{MaskPlan, RenderStep, build_mask_plan, for_each_step};
 use crate::renderer::quad::Quad;
-use crate::renderer::render_buffer::batch::{DrawGroup, GroupBatch, PaintTier, TextBatch};
+use crate::renderer::render_buffer::draw_group::DrawGroup;
+use crate::renderer::render_buffer::group_batch::GroupBatch;
+use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::renderer::render_buffer::text::TextDrawRow;
+use crate::renderer::render_buffer::text_batch::TextBatch;
 use crate::renderer::render_buffer::{RenderBuffer, RoundedClip};
 use crate::text::key::TextShapeKey;
 use crate::text::shaped_ref::ShapedTextRef;

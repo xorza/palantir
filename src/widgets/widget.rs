@@ -118,7 +118,7 @@ impl Widget {
     /// interactive widget needs its response *before* recording — to pick
     /// a theme, to write a bound value — so it opens with
     /// `Widget::response` and closes with [`Response::eager`], with the
-    /// probe in hand throughout — including `toggle_row`, which takes it
+    /// probe in hand throughout — including `ToggleChrome::record_row`, which takes it
     /// once on behalf of the three toggles. There is deliberately no
     /// helper for it: `response` and `id` both come off the widget, and
     /// `id` has to be bound before `record` consumes it, so a packager

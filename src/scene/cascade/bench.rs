@@ -2,7 +2,7 @@ use crate::display::Display;
 use crate::frame_fixture::{BENCH_SCALE, FrameFixture, build_ui};
 use crate::input::sense::Sense;
 use crate::primitives::rect::Rect;
-use crate::primitives::transform::TranslateScale;
+use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::cascade::Cascade;
 use crate::scene::cascade::engine::CascadeEngine;
