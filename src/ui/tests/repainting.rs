@@ -641,3 +641,50 @@ fn fps_ema_reads_unclamped_frame_delta() {
         h.ui.frame_runtime.fps_ema
     );
 }
+
+/// `Ui::request_relayout` outside a record pass is a caller error, not a
+/// no-op.
+///
+/// It re-runs *this* frame's record after measure, so there is nothing
+/// for it to retry when no record is in flight — and `FrameCycle::run`
+/// clears the flag on its way in, so an out-of-frame call used to set a
+/// bit the next line dropped. The retry silently never happened. Inside
+/// a record it stays legal, which is what the second half pins.
+#[test]
+#[should_panic(expected = "outside a record pass")]
+fn request_relayout_between_frames_is_a_caller_error() {
+    let mut h = UiHarness::new(SURFACE);
+    h.frame(|_| {});
+    // Between frames: no node open, so no record is in flight.
+    h.ui.request_relayout();
+}
+
+#[test]
+fn request_relayout_during_record_is_honoured() {
+    let mut h = UiHarness::new(SURFACE);
+    let mut asked = false;
+    h.frame(|ui| {
+        if !asked {
+            asked = true;
+            ui.request_relayout();
+        }
+    });
+    assert!(asked, "the record closure ran");
+}
+
+/// The record-pass gate is a *frame*-level question, not a per-layer
+/// one. `Ui::layer` pushes a layer without opening anything in it, so a
+/// gate that asked "is a node open on the current layer" rejected a
+/// perfectly legal call made from an overlay scope before that scope had
+/// recorded its first widget.
+#[test]
+fn request_relayout_is_legal_from_a_layer_scope_with_nothing_recorded_yet() {
+    let mut h = UiHarness::new(SURFACE);
+    h.frame(|ui| {
+        ui.layer(Layer::Popup).show(|ui| {
+            // First statement in the overlay body: the layer is pushed,
+            // but nothing has been recorded into it yet.
+            ui.request_relayout();
+        });
+    });
+}

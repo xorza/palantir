@@ -325,3 +325,61 @@ fn shrinking_content_unstrands_offset_without_input() {
         "offset must clamp to the new max (300 - 200) after a passive content shrink",
     );
 }
+
+/// Content that fits its viewport rests at offset zero even when a
+/// leading `content_margin` opens a band below it.
+///
+/// `content_margin` is documented as invisible overscroll that leaves
+/// child layout alone, so it may only widen the pannable range — never
+/// move where content sits at rest. The old `natural_bounds` folded the
+/// trailing margin in before flooring the overflow, so once content fit
+/// the trailing endpoint fell *below* the leading one, `hi.max(lo)`
+/// collapsed the band to the single value `-m`, and the settle clamp
+/// pinned the content there: a 100 px margin shoved a fitting child
+/// 100 px sideways and left it stuck.
+#[test]
+fn content_margin_does_not_shift_content_that_fits() {
+    let mut h = UiHarness::new(SURFACE);
+    let m = 100.0;
+    let build = |ui: &mut Ui| {
+        Scroll::both()
+            .id(WidgetId::from_hash("scroll"))
+            .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
+            .hide_bars()
+            .content_margin(m)
+            .show(ui, |ui| {
+                // Smaller than the 200x200 viewport, so there is no
+                // overflow to pan and the resting offset must be zero.
+                Frame::new()
+                    .id(WidgetId::from_hash("content"))
+                    .size((Sizing::fixed(80.0), Sizing::fixed(80.0)))
+                    .show(ui);
+            });
+    };
+    h.frame(build);
+    h.frame(build);
+    assert_eq!(
+        read_state(&mut h).offset,
+        Vec2::ZERO,
+        "fitting content must rest at the origin, not at the leading margin",
+    );
+
+    // The margin still opens its band — the user can pan into it and
+    // back out to rest. This is what distinguishes the fix from simply
+    // dropping the margin when content fits.
+    h.move_to(Vec2::new(50.0, 50.0));
+    h.scroll_pixels(Vec2::new(-9_999.0, -9_999.0));
+    h.frame(build);
+    assert_eq!(
+        read_state(&mut h).offset,
+        Vec2::new(-m, -m),
+        "the leading band is still reachable for content that fits",
+    );
+    h.scroll_pixels(Vec2::new(9_999.0, 9_999.0));
+    h.frame(build);
+    assert_eq!(
+        read_state(&mut h).offset,
+        Vec2::new(m, m),
+        "and so is the trailing band",
+    );
+}
