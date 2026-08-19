@@ -53,6 +53,9 @@ pub enum BatchKind {
     Image = 6,
     /// `RenderStep::CurveBatch` — the curve pipeline.
     Curve = 7,
+    /// `RenderStep::IconBatch` — the icon pipeline (the glyph shader over
+    /// the icon atlas).
+    Icon = 8,
 }
 
 impl BatchKind {

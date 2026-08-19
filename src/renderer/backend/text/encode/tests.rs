@@ -1,9 +1,8 @@
 use super::*;
+use crate::renderer::backend::raster_atlas::quad::RasterQuad;
 use crate::renderer::backend::text::encode::cache::{
     ENCODED_CACHE_KEEP_FRAMES, EncodedCache, EncodedGlyph, NIL,
 };
-use crate::renderer::backend::text::encode::encoder::pack_uv;
-use crate::renderer::backend::text::{ContentType, GlyphInstance};
 
 fn key(scale_q: u32) -> EncodedKey {
     EncodedKey {
@@ -19,7 +18,7 @@ fn key(scale_q: u32) -> EncodedKey {
 /// actually holds, can't pass.
 fn glyph(tag: u32) -> EncodedGlyph {
     EncodedGlyph {
-        instance: GlyphInstance {
+        instance: RasterQuad {
             pos: [tag as i32, -(tag as i32)],
             dim: tag,
             uv_and_kind: tag << 8,
@@ -30,7 +29,7 @@ fn glyph(tag: u32) -> EncodedGlyph {
     }
 }
 
-/// Byte-exact comparison: `GlyphInstance` is `Pod`, so this catches
+/// Byte-exact comparison: `RasterQuad` is `Pod`, so this catches
 /// any field the copy dropped.
 fn same(a: &EncodedGlyph, b: &EncodedGlyph) -> bool {
     bytemuck::bytes_of(&a.instance) == bytemuck::bytes_of(&b.instance)
@@ -436,15 +435,4 @@ fn a_saturated_gesture_reaches_a_steady_state_where_no_frame_allocates() {
         RUNS as usize * (window + 1) * GLYPHS as usize,
         "one frame of headroom over the {window}-frame resident window",
     );
-}
-
-#[test]
-fn pack_uv_round_trip() {
-    let p = pack_uv(12345, 54321, ContentType::Color);
-    assert_eq!(p & 0x7FFF, 12345);
-    assert_eq!((p >> 15) & 1, 1);
-    assert_eq!(p >> 16, 54321);
-
-    let p = pack_uv(12345, 54321, ContentType::Mask);
-    assert_eq!((p >> 15) & 1, 0);
 }

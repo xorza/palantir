@@ -14,8 +14,8 @@ use crate::primitives::{corners::Corners, rect::Rect, size::Size};
 use crate::renderer::frontend::FrameScene;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::{
-    BrushSource, DrawCurvePayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload,
-    DrawQuadPayload, PushClipPayload, ResolvedGradient,
+    BrushSource, DrawCurvePayload, DrawIconPayload, DrawImagePayload, DrawMeshPayload,
+    DrawPolylinePayload, DrawQuadPayload, PushClipPayload, ResolvedGradient,
 };
 use crate::renderer::gpu_view::GpuViewEntry;
 use crate::renderer::gradient_atlas::handle::SharedGradientAtlas;
@@ -35,6 +35,7 @@ use crate::scene::tree::Tree;
 use crate::scene::tree::iter::TreeItem;
 use crate::scene::tree::paint_anims::PaintAnimCursor;
 use crate::scene::tree::record::NodeId;
+use crate::shape::icon::IconFit;
 use crate::shape::rect::RectKind;
 use crate::text::shaped_ref::ShapedTextRef;
 use std::time::Duration;
@@ -452,6 +453,19 @@ fn emit_one_shape(
                 fill_lut_row: fill.lut_row,
             });
         }
+        ShapeRecord::Icon {
+            local_rect,
+            handle,
+            fit,
+            tint,
+        } => {
+            let base = resolve_local_rect(owner_rect, *local_rect);
+            out.draw_icon(DrawIconPayload {
+                rect: resolve_icon_fit(base, handle.view_box, *fit),
+                icon: handle.icon,
+                tint: *tint,
+            });
+        }
         ShapeRecord::Image {
             local_rect,
             tint,
@@ -727,6 +741,41 @@ fn emit_shadow(
     ));
 }
 
+/// Map an icon's `(base, view_box, fit)` onto the logical-px rect it paints.
+///
+/// Sibling of [`resolve_fit`] and deliberately smaller: an icon has no UV to
+/// crop, so every mode is a rect and nothing else. A degenerate viewBox falls
+/// through to the base rect — the same fail-safe the image path takes for a
+/// missing intrinsic size.
+pub(super) fn resolve_icon_fit(base: Rect, view_box: glam::Vec2, fit: IconFit) -> Rect {
+    let (iw, ih) = (view_box.x, view_box.y);
+    let (bw, bh) = (base.size.w, base.size.h);
+    if iw <= 0.0 || ih <= 0.0 || bw <= 0.0 || bh <= 0.0 {
+        return base;
+    }
+    match fit {
+        IconFit::Fill => base,
+        IconFit::Contain => {
+            // Preserve aspect; the tighter axis ratio decides the scale.
+            let scale = (bw / iw).min(bh / ih);
+            centered_in(base, iw * scale, ih * scale)
+        }
+        // Intrinsic logical px, centred. Overflows a smaller rect, exactly as
+        // `ImageFit::None` does.
+        IconFit::None => centered_in(base, iw, ih),
+    }
+}
+
+/// A `w`x`h` box centred inside `base`. Every aspect-preserving fit resolves
+/// through here — icon and image alike — so the three of them cannot disagree
+/// about where the leftover space goes.
+fn centered_in(base: Rect, w: f32, h: f32) -> Rect {
+    Rect {
+        min: base.min + glam::Vec2::new((base.size.w - w) * 0.5, (base.size.h - h) * 0.5),
+        size: Size { w, h },
+    }
+}
+
 /// Output of [`resolve_fit`]: the final paint rect + UV crop the
 /// encoder hands to the sink.
 #[derive(Debug)]
@@ -765,15 +814,8 @@ fn resolve_fit(base: Rect, image_size: glam::UVec2, fit: ImageFit) -> Resolved {
         ImageFit::Contain => {
             // Preserve aspect; the smaller axis ratio decides scale.
             let scale = (bw / iw).min(bh / ih);
-            let w = iw * scale;
-            let h = ih * scale;
-            let dx = (bw - w) * 0.5;
-            let dy = (bh - h) * 0.5;
             Resolved {
-                rect: Rect {
-                    min: base.min + glam::Vec2::new(dx, dy),
-                    size: Size { w, h },
-                },
+                rect: centered_in(base, iw * scale, ih * scale),
                 uv_min: FULL_UV_MIN,
                 uv_size: FULL_UV_SIZE,
             }
@@ -796,13 +838,8 @@ fn resolve_fit(base: Rect, image_size: glam::UVec2, fit: ImageFit) -> Resolved {
         ImageFit::None => {
             // Paint at intrinsic px, centered. Image may exceed `base`
             // — currently uncropped; future slice can add a scissor.
-            let dx = (bw - iw) * 0.5;
-            let dy = (bh - ih) * 0.5;
             Resolved {
-                rect: Rect {
-                    min: base.min + glam::Vec2::new(dx, dy),
-                    size: Size { w: iw, h: ih },
-                },
+                rect: centered_in(base, iw, ih),
                 uv_min: FULL_UV_MIN,
                 uv_size: FULL_UV_SIZE,
             }

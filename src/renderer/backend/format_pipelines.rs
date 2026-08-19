@@ -12,6 +12,7 @@
 //! it exists.
 
 use crate::renderer::backend::curve_pipeline::CurvePipeline;
+use crate::renderer::backend::icon::IconBackend;
 use crate::renderer::backend::image_pipeline::ImagePipeline;
 use crate::renderer::backend::mesh_pipeline::MeshPipeline;
 use crate::renderer::backend::pipeline_utils::StencilVariant;
@@ -33,6 +34,10 @@ pub(super) struct FormatPipelines {
     pub(super) quad_mask_clear: wgpu::RenderPipeline,
     pub(super) mesh: StencilVariant,
     pub(super) image: StencilVariant,
+    /// Icon base + stencil-test pipelines. Same shader and layout as `text`
+    /// — the two differ only in which atlas they bind — but a separate
+    /// pipeline object, because each carries its own bind-group layout.
+    pub(super) icon: StencilVariant,
     pub(super) curve: StencilVariant,
     /// Text base + stencil-test pipelines; selected by `use_stencil` like
     /// the other four. Built from `TextBackend::build_variants`.
@@ -51,6 +56,7 @@ impl FormatPipelines {
         quad: &QuadPipeline,
         mesh: &MeshPipeline,
         image: &ImagePipeline,
+        icon: &IconBackend,
         curve: &CurvePipeline,
         text: &TextBackend,
     ) -> Self {
@@ -60,6 +66,7 @@ impl FormatPipelines {
             quad_mask_clear: quad.build_mask_clear(device, gradient_bgl, format),
             mesh: mesh.build_variants(device, format),
             image: image.build_variants(device, format),
+            icon: icon.build_variants(device, format),
             curve: curve.build_variants(device, gradient_bgl, format),
             text: text.build_variants(device, format),
         }

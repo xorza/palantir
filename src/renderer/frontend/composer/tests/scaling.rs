@@ -294,3 +294,59 @@ fn compose_transforms_clip_rects_to_screen_space() {
         .expect("clipped group must have a scissor");
     assert_eq!((s.min.x, s.min.y, s.size.x, s.size.y), (20, 20, 40, 40));
 }
+
+/// The composer is where an icon stops being a logical rect and becomes a
+/// raster: it applies the display scale, runs the size ladder, and lands the
+/// quad on whole pixels. Hand-computed at the scale that makes the point —
+/// 1.5, where a 24 px icon is 36 physical and nothing divides evenly.
+#[test]
+fn icon_resolves_to_a_whole_pixel_raster_at_the_display_scale() {
+    use crate::renderer::frontend::composer::tests::support::{icon, icon_ref};
+    use glam::{IVec2, U16Vec2};
+
+    // 24 logical px at 1.5 → 36 physical, inside the exact band.
+    let out = run(
+        |buf, _| icon(buf, rect(10.0, 20.0, 24.0, 24.0), icon_ref(3)),
+        &params(1.5, UVec2::new(200, 200)),
+    );
+    assert_eq!(out.icons.len(), 1, "one row per icon");
+    let row = out.icons[0];
+    assert_eq!(row.key.size, U16Vec2::new(36, 36));
+    assert_eq!(row.key.icon, icon_ref(3), "identity survives compose");
+    // Origin 10*1.5 = 15, 20*1.5 = 30, and the raster fills the box exactly,
+    // so centring shifts nothing.
+    assert_eq!(row.origin, IVec2::new(15, 30));
+    assert_eq!(
+        out.icon_batches.len(),
+        1,
+        "icons in one group coalesce into one batch, and so one draw",
+    );
+
+    // 50 logical px at 1.5 → 75 physical, past the exact band: the ladder
+    // rounds up to 76, and the extra pixel is split either side of the box
+    // (75 - 76)/2 = -0.5, so the origin rounds from 14.5 to 15.
+    let out = run(
+        |buf, _| icon(buf, rect(10.0, 10.0, 50.0, 50.0), icon_ref(0)),
+        &params(1.5, UVec2::new(200, 200)),
+    );
+    assert_eq!(out.icons[0].key.size, U16Vec2::new(76, 76));
+    assert_eq!(out.icons[0].origin, IVec2::new(15, 15));
+}
+
+/// Two icons in one group share a batch; an overlapping curve above them
+/// splits the group, exactly as it would for any other higher-kind tier.
+#[test]
+fn icons_batch_together_and_respect_tier_order() {
+    use crate::renderer::frontend::composer::tests::support::{icon, icon_ref};
+
+    let out = run(
+        |buf, _| {
+            icon(buf, rect(0.0, 0.0, 16.0, 16.0), icon_ref(0));
+            icon(buf, rect(20.0, 0.0, 16.0, 16.0), icon_ref(1));
+        },
+        &params(1.0, UVec2::new(200, 200)),
+    );
+    assert_eq!(out.icons.len(), 2);
+    assert_eq!(out.icon_batches.len(), 1, "two icons, one draw");
+    assert_eq!(out.icon_batches[0].items.len, 2);
+}

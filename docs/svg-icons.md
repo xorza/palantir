@@ -232,9 +232,11 @@ pub struct IconDef {
 }
 ```
 
-Generated `icons.rs` holds the table plus `include_bytes!("icons.svgblob")` and
-one `IconId` constant per icon (`icons::SAVE`), with a `FORMAT_VERSION` assert
-so a stale generated file is a compile error rather than a runtime surprise.
+Generated `icons.rs` holds the table plus `include_bytes!("icons.svgblob")`,
+wrapped in a `const fn baked(..)` call that borrows both — so a compiled-in set
+copies and parses nothing at startup — and one `IconId` constant per icon
+(`icons::SAVE`), with a `FORMAT_VERSION` assert so a stale generated file is a
+compile error rather than a runtime surprise.
 
 Size, measured (§M): normalizing makes an icon **bigger**, not smaller —
 +63 % to +83 % on the three fixtures, since usvg expands shorthand and
@@ -252,19 +254,34 @@ so startup pays nothing for icons the session never draws.
 ## 5. API
 
 ```rust
-// startup — no GPU work, no parsing; registers the &'static table
-let icons: IconSet = ui.load_icons(&my_icons::ATLAS);
+// startup — no GPU work, no parsing; registers the set and mints its id
+let icons: IconSet = ui.load_icons(Rc::new(my_icons::atlas()));
 
 // per frame
 ui.widget(Node::leaf().size(icons.nominal(my_icons::SAVE)))
-  .record(ui, None, |ui| ui.add_shape(Shape::icon(icons[my_icons::SAVE])));
+  .record(ui, None, |ui| ui.add_shape(icons.shape(my_icons::SAVE)));
 ```
 
+- `IconSet::shape(id) -> IconShape` — the draw-site call; the same as
+  `Shape::icon(set.handle(id))`, which stays available for a handle held
+  across frames.
 - `IconSet::nominal(id) -> Vec2` — the viewBox size, for sizing the node.
-- `IconSet::by_name(&str) -> Option<IconId>` — binary search over bake-sorted
-  names; the generated constant is the compile-checked path.
+- `IconSet::by_name(&str) -> Option<IconId>` — binary search over the
+  name-sorted table; the generated constant is the compile-checked path.
 - `IconShape`: `at(rect)`, `fit(IconFit)` — `Contain` (default, aspect
   preserved) / `Fill` / `None` — and `tint(color)`, per §3.
+
+A set is held behind an `Rc` and `load_icons` keys on that allocation, so
+loading every frame from a handle the app holds costs one refcount bump and
+adds no second entry — the immediate-mode-friendly behaviour, without a
+per-frame rebuild.
+
+**Before the baker exists**, `IconAtlas::from_svgs([(name, svg), …])` builds a
+set at runtime, deriving each icon's viewBox, tintability, and filter use by
+parsing it — the same classification `bake-icons` will do at build time, so the
+two cannot drift into different answers for one icon. It owns its buffers and
+frees with the last `IconSet` holding it; the only thing `baked` buys over it is
+skipping the parse and the copy.
 
 ---
 

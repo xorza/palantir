@@ -2,6 +2,9 @@
 //! back through.
 
 use crate::display::Display;
+use crate::icons::icon_atlas::IconId;
+use crate::icons::icon_registry::IconSetId;
+use crate::icons::icon_set::IconRef;
 use crate::primitives::interned_str::TextSource;
 use crate::primitives::span::Span;
 use crate::primitives::texture_id::TextureId;
@@ -12,8 +15,8 @@ use crate::renderer::frontend::capture::PaintCapture;
 use crate::renderer::frontend::composer::Composer;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::{
-    BrushSource, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload, DrawQuadPayload,
-    PushClipPayload,
+    BrushSource, DrawIconPayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload,
+    DrawQuadPayload, PushClipPayload,
 };
 use crate::renderer::gpu_view::{GpuFrameCtx, GpuPaint, GpuPaintRef};
 use crate::renderer::render_buffer::RenderBuffer;
@@ -116,6 +119,23 @@ pub(super) fn gpu_paint() -> GpuPaintRef {
 /// `Some(&paint)` — that's what makes the sink flag it as a view.
 pub(super) fn gpu_view_payload(rect: Rect, handle: TextureId) -> DrawImagePayload {
     DrawImagePayload::image(rect, Vec2::ZERO, Vec2::ONE, Color::WHITE.into(), handle, 0)
+}
+
+/// The payload the encoder builds for an icon: a fit-resolved logical rect,
+/// an identity, and a tint.
+pub(super) fn icon(buf: &mut PaintCapture, r: Rect, icon: IconRef) {
+    buf.draw_icon(DrawIconPayload {
+        rect: r,
+        icon,
+        tint: Color::WHITE.into(),
+    });
+}
+
+pub(super) fn icon_ref(id: u16) -> IconRef {
+    IconRef {
+        set: IconSetId(0),
+        icon: IconId(id),
+    }
 }
 
 pub(super) fn mesh(buf: &mut PaintCapture, bbox: Rect) {

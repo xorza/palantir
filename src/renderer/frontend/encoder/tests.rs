@@ -613,6 +613,7 @@ fn screen_rects_by_fill(cmds: &PaintCapture) -> Vec<(ColorF16, Rect)> {
             | PaintCall::Mesh(_)
             | PaintCall::Polyline(_)
             | PaintCall::Image { .. }
+            | PaintCall::Icon(_)
             | PaintCall::Curve(_) => {}
         }
     }
@@ -1542,4 +1543,41 @@ fn transformed_panel_chrome_stays_in_parent_space() {
         "chrome height must not be scaled by self transform: got {:?}",
         chrome_rect
     );
+}
+
+/// `IconFit` picks a rasterization box, so every mode is a rect and the
+/// numbers are hand-checkable. A 24x12 artwork in a 100x100 rect:
+/// `Contain` scales by min(100/24, 100/12) = 4.166.., giving 100x50 centred
+/// vertically; `Fill` takes the rect whole; `None` paints 24x12 centred.
+#[test]
+fn icon_fit_resolves_to_hand_computed_rects() {
+    use crate::renderer::frontend::encoder::resolve_icon_fit;
+    use crate::shape::icon::IconFit;
+
+    let base = Rect::new(10.0, 20.0, 100.0, 100.0);
+    let art = Vec2::new(24.0, 12.0);
+
+    // scale = 100/24 = 4.1666667 → 100 x 50, dy = (100 - 50)/2 = 25.
+    let contained = resolve_icon_fit(base, art, IconFit::Contain);
+    assert_eq!(contained.min, Vec2::new(10.0, 45.0));
+    assert_eq!((contained.size.w, contained.size.h), (100.0, 50.0));
+
+    assert_eq!(resolve_icon_fit(base, art, IconFit::Fill), base);
+
+    // Intrinsic px, centred: dx = (100-24)/2 = 38, dy = (100-12)/2 = 44.
+    let intrinsic = resolve_icon_fit(base, art, IconFit::None);
+    assert_eq!(intrinsic.min, Vec2::new(48.0, 64.0));
+    assert_eq!((intrinsic.size.w, intrinsic.size.h), (24.0, 12.0));
+
+    // A square artwork in a square rect is the same rect under every mode
+    // that preserves aspect — the case that would hide an axis mix-up.
+    let square = Rect::new(0.0, 0.0, 32.0, 32.0);
+    assert_eq!(
+        resolve_icon_fit(square, Vec2::splat(16.0), IconFit::Contain),
+        square,
+    );
+
+    // A degenerate viewBox falls through to the base rect rather than
+    // dividing by zero — the same fail-safe the image path takes.
+    assert_eq!(resolve_icon_fit(base, Vec2::ZERO, IconFit::Contain), base);
 }

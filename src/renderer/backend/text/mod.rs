@@ -24,7 +24,6 @@
 //! - **No `Viewport` object.** Atlas sizes ride the shared immediate
 //!   region as two `u32`s, pushed per batch — no uniform buffer.
 
-mod atlas;
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
 mod encode;
@@ -34,7 +33,8 @@ use crate::primitives::interned_str::InternedText;
 use crate::primitives::span::Span;
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
-use crate::renderer::backend::pipeline_utils::{self, ColorVariantSpec, StencilVariant};
+use crate::renderer::backend::pipeline_utils::{ColorVariantSpec, StencilVariant};
+use crate::renderer::backend::raster_atlas::quad::{self, PARAMS_OFFSET, RasterQuad};
 use crate::renderer::backend::viewport::ViewportPush;
 use crate::renderer::render_buffer::text::TextDrawRow;
 use crate::text::render::RunPlacement;
@@ -42,60 +42,6 @@ use crate::text::shaper::TextShaper;
 
 use encode::encode_key_for;
 use encode::encoder::TextEncoder;
-
-/// One per-instance vertex record. 20 bytes, `Pod`.
-#[repr(C)]
-#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-pub(crate) struct GlyphInstance {
-    pos: [i32; 2],
-    dim: u32,
-    uv_and_kind: u32,
-    color: u32,
-}
-
-/// Offset of `[color_atlas_size, mask_atlas_size]` in the shared
-/// immediate region: straight after the viewport, which is what
-/// `shader.wgsl` declares as `Immediates { viewport_size, atlas_px }`
-/// — flat members, for the Dx12 constant-buffer reason documented there.
-///
-/// Derived rather than written as `8`, because the offset and
-/// `ViewportPush`'s size are the same fact — a literal would let a field
-/// added to the viewport silently overlap these. It replaces an
-/// assertion that `size_of::<[u32; 2]>() == 8`, which restated the
-/// params' own width (true by construction) rather than their placement.
-const PARAMS_OFFSET: u32 = ViewportPush::BYTES as u32;
-
-/// 0 = mask, 1 = color. Encoded in the high bit of `uv.u`.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[repr(u8)]
-enum ContentType {
-    Mask = 0,
-    Color = 1,
-}
-
-impl ContentType {
-    fn format(self) -> wgpu::TextureFormat {
-        match self {
-            Self::Mask => wgpu::TextureFormat::R8Unorm,
-            Self::Color => wgpu::TextureFormat::Rgba8UnormSrgb,
-        }
-    }
-
-    fn bytes_per_pixel(self) -> u32 {
-        match self {
-            Self::Mask => 1,
-            Self::Color => 4,
-        }
-    }
-
-    fn label(self) -> &'static str {
-        match self {
-            Self::Mask => "palantir text mask atlas",
-            Self::Color => "palantir text color atlas",
-        }
-    }
-}
-
 #[derive(Debug)]
 pub(crate) struct TextBackend {
     shaper: TextShaper,
@@ -117,7 +63,7 @@ pub(crate) struct TextBackend {
     /// `[color_atlas_size, mask_atlas_size]`, updated only when an atlas grows.
     atlas_px: [u32; 2],
 
-    vbuf: DynamicBuffer<GlyphInstance>,
+    vbuf: DynamicBuffer<RasterQuad>,
 
     /// Per-batch slice of the encoder's `instances`; empty span =
     /// nothing to draw.
@@ -132,43 +78,23 @@ impl TextBackend {
     pub(crate) fn new(device: &wgpu::Device, shaper: TextShaper) -> Self {
         let encoder = TextEncoder::new(device);
 
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("palantir.text.shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
-        });
-
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("palantir text sampler"),
-            min_filter: wgpu::FilterMode::Nearest,
-            mag_filter: wgpu::FilterMode::Nearest,
-            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
-            ..Default::default()
-        });
-
-        let atlas_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("palantir text atlas layout"),
-            // Mask at 0, colour at 1, one shared sampler at 2 — the
-            // same entry shapes every other group uses, two textures
-            // deep instead of one.
-            entries: &[
-                pipeline_utils::fragment_texture_entry(0),
-                pipeline_utils::fragment_texture_entry(1),
-                pipeline_utils::fragment_sampler_entry(2),
-            ],
-        });
+        let shader = quad::shader_module(device, "palantir.text.shader");
+        let sampler = quad::sampler(device, "palantir text sampler");
+        let atlas_bgl = quad::bind_group_layout(device, "palantir text atlas layout");
 
         let bindings = encoder.atlas.bindings();
         let atlas_px = bindings.atlas_px;
 
-        let atlas_bg = build_atlas_bg(
+        let atlas_bg = quad::bind_group(
             device,
             &atlas_bgl,
             bindings.mask_view,
             bindings.color_view,
             &sampler,
+            "palantir text atlas bg",
         );
 
-        let vbuf = DynamicBuffer::<GlyphInstance>::vertex(device, "palantir text vbuf", 4096);
+        let vbuf = DynamicBuffer::<RasterQuad>::vertex(device, "palantir text vbuf", 4096);
 
         Self {
             shaper,
@@ -203,7 +129,7 @@ impl TextBackend {
                 layout_label: "palantir.text.pl",
                 shader: &self.shader,
                 bind_group_layouts: &[Some(&self.atlas_bgl)],
-                vertex_buffers: &[Some(glyph_instance_layout())],
+                vertex_buffers: &[Some(quad::instance_layout())],
                 topology: wgpu::PrimitiveTopology::TriangleStrip,
             },
             format,
@@ -263,12 +189,13 @@ impl TextBackend {
         // Rebuild bind group if atlas grew during encode.
         if self.encoder.atlas.bind_group_dirty {
             let bindings = self.encoder.atlas.bindings();
-            self.atlas_bg = build_atlas_bg(
+            self.atlas_bg = quad::bind_group(
                 ctx.device,
                 &self.atlas_bgl,
                 bindings.mask_view,
                 bindings.color_view,
                 &self.sampler,
+                "palantir text atlas bg",
             );
             self.atlas_px = bindings.atlas_px;
             self.encoder.atlas.bind_group_dirty = false;
@@ -353,65 +280,6 @@ impl TextBackend {
         );
         self.encoder.end_frame(self.shaper.frame());
         self.ranges.clear();
-    }
-}
-
-fn build_atlas_bg(
-    device: &wgpu::Device,
-    layout: &wgpu::BindGroupLayout,
-    mask_view: &wgpu::TextureView,
-    color_view: &wgpu::TextureView,
-    sampler: &wgpu::Sampler,
-) -> wgpu::BindGroup {
-    device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some("palantir text atlas bg"),
-        layout,
-        entries: &[
-            wgpu::BindGroupEntry {
-                binding: 0,
-                resource: wgpu::BindingResource::TextureView(mask_view),
-            },
-            wgpu::BindGroupEntry {
-                binding: 1,
-                resource: wgpu::BindingResource::TextureView(color_view),
-            },
-            wgpu::BindGroupEntry {
-                binding: 2,
-                resource: wgpu::BindingResource::Sampler(sampler),
-            },
-        ],
-    })
-}
-
-// `pos: Sint32x2 @0`, `dim: Uint32 @8`, `uv_and_kind: Uint32 @12`,
-// `color: Unorm8x4 @16` — the per-instance `GlyphInstance` stream.
-// Color rides as `Unorm8x4` so the vertex fetch normalizes the
-// linear-u8 bytes to `vec4<f32>` in hardware (spec-exact `x/255`) —
-// same convention as the mesh / image tint attributes.
-const GLYPH_INSTANCE_ATTRS: [wgpu::VertexAttribute; 4] = wgpu::vertex_attr_array![
-    0 => Sint32x2,
-    1 => Uint32,
-    2 => Uint32,
-    3 => Unorm8x4,
-];
-
-// Compile-time guard: attribute offsets must match the struct fields they
-// feed. `array_stride == size_of` alone wouldn't catch a same-size field
-// reorder; `offset_of!` does. Matches the guards on the quad / mesh / image
-// / curve pipelines.
-const _: () = {
-    use std::mem::offset_of;
-    assert!(GLYPH_INSTANCE_ATTRS[0].offset == offset_of!(GlyphInstance, pos) as u64);
-    assert!(GLYPH_INSTANCE_ATTRS[1].offset == offset_of!(GlyphInstance, dim) as u64);
-    assert!(GLYPH_INSTANCE_ATTRS[2].offset == offset_of!(GlyphInstance, uv_and_kind) as u64);
-    assert!(GLYPH_INSTANCE_ATTRS[3].offset == offset_of!(GlyphInstance, color) as u64);
-};
-
-fn glyph_instance_layout() -> wgpu::VertexBufferLayout<'static> {
-    wgpu::VertexBufferLayout {
-        array_stride: std::mem::size_of::<GlyphInstance>() as u64,
-        step_mode: wgpu::VertexStepMode::Instance,
-        attributes: &GLYPH_INSTANCE_ATTRS,
     }
 }
 

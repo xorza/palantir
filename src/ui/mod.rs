@@ -15,6 +15,8 @@ use crate::animation::{AnimMap, AnimSlot, AnimSpec};
 use crate::app::App;
 use crate::diagnostics::DebugOverlayConfig;
 use crate::display::Display;
+use crate::icons::icon_atlas::IconAtlas;
+use crate::icons::icon_set::IconSet;
 use crate::input::keyboard::{KeyboardEvent, Modifiers};
 use crate::input::pointer::PointerEvent;
 use crate::input::policy::FocusPolicy;
@@ -539,6 +541,22 @@ impl Ui {
     /// that container's final padded width.
     pub fn add_shape<S: Lower>(&mut self, shape: S) {
         self.forest.add_shape(shape);
+    }
+
+    /// Load an icon set and get back an [`IconSet`] to draw from.
+    ///
+    /// Cheap and idempotent: registering an `Rc` the host already holds hands
+    /// back the same set rather than a second entry, so an immediate-mode
+    /// caller may load on every frame if that reads better than threading the
+    /// handle through. No parsing and no GPU work happen here.
+    ///
+    /// Each icon's SVG is parsed the first time that icon is rasterized, and
+    /// each raster happens at the exact physical pixel size the icon is drawn
+    /// at — so a set the session never draws from costs nothing beyond its
+    /// bytes.
+    pub fn load_icons(&self, atlas: Rc<IconAtlas>) -> IconSet {
+        let id = self.resources.icons.register(Rc::clone(&atlas));
+        IconSet::new(id, atlas)
     }
 
     /// Upload an image and get back an owning [`ImageHandle`]. **Hold the

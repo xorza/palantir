@@ -131,6 +131,7 @@ struct GroupCursors {
     texts: u32,
     meshes: u32,
     images: u32,
+    icons: u32,
     curves: u32,
 }
 
@@ -187,11 +188,13 @@ impl Composer {
         let t_end = out.texts.len() as u32;
         let m_end = out.meshes.len() as u32;
         let i_end = out.images.len() as u32;
+        let n_end = out.icons.len() as u32;
         let c_end = out.curves.len() as u32;
         if q_end > self.cursors.quads
             || t_end > self.cursors.texts
             || m_end > self.cursors.meshes
             || i_end > self.cursors.images
+            || n_end > self.cursors.icons
             || c_end > self.cursors.curves
         {
             // Push the mesh/image batches BEFORE the group itself so
@@ -206,6 +209,12 @@ impl Composer {
             if i_end > self.cursors.images {
                 out.image_batches.push(GroupBatch {
                     items: (self.cursors.images..i_end).into(),
+                    last_group: out.groups.len() as u32,
+                });
+            }
+            if n_end > self.cursors.icons {
+                out.icon_batches.push(GroupBatch {
+                    items: (self.cursors.icons..n_end).into(),
                     last_group: out.groups.len() as u32,
                 });
             }
@@ -226,6 +235,7 @@ impl Composer {
             texts: t_end,
             meshes: m_end,
             images: i_end,
+            icons: n_end,
             curves: c_end,
         };
         self.higher_kinds.clear();
