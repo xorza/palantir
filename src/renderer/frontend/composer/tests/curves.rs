@@ -8,7 +8,7 @@ use crate::renderer::frontend::composer::tests::support::{
     clip, composer, curve, image, mesh, params, polyline_cmd, rect, render_buffer, run, text,
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
-use crate::renderer::frontend::payload::DrawPolylinePayload;
+use crate::renderer::frontend::payload::{DrawPolylinePayload, Spin, StrokeBounds};
 use crate::scene::record_store::RecordPayloads;
 use crate::scene::shapes::record::ColorMode;
 use crate::shape::style::{LineCap, LineJoin};
@@ -295,7 +295,7 @@ fn compose_emits_one_curve_batch_per_scissor_group() {
             // many curves the group contains.
             for offset in [0.0_f32, 50.0] {
                 b.draw_curve(DrawCurvePayload {
-                    bbox: rect(0.0, 0.0, 100.0, 100.0),
+                    bounds: StrokeBounds::Still(rect(0.0, 0.0, 100.0, 100.0)),
                     origin: Vec2::ZERO,
                     basis: CurveBasis::Cubic {
                         p0: Vec2::new(offset, 0.0),
@@ -332,7 +332,7 @@ fn compose_splits_curve_batches_across_scissor_groups() {
     let buf = run(
         |b, _arena| {
             b.draw_curve(DrawCurvePayload {
-                bbox: rect(0.0, 0.0, 100.0, 100.0),
+                bounds: StrokeBounds::Still(rect(0.0, 0.0, 100.0, 100.0)),
                 origin: Vec2::ZERO,
                 basis: CurveBasis::Cubic {
                     p0: Vec2::new(0.0, 0.0),
@@ -346,7 +346,7 @@ fn compose_splits_curve_batches_across_scissor_groups() {
             });
             clip(b, rect(0.0, 0.0, 50.0, 200.0));
             b.draw_curve(DrawCurvePayload {
-                bbox: rect(0.0, 0.0, 50.0, 50.0),
+                bounds: StrokeBounds::Still(rect(0.0, 0.0, 50.0, 50.0)),
                 origin: Vec2::ZERO,
                 basis: CurveBasis::Cubic {
                     p0: Vec2::new(0.0, 0.0),
@@ -384,7 +384,7 @@ fn compose_threads_curve_fill_kind_and_lut_row_into_instances() {
             // Linear gradient curve: fill_kind low byte = 1, lut_row = 7.
             // Every sub-instance must carry the same fill_kind and row.
             b.draw_curve(DrawCurvePayload {
-                bbox: rect(0.0, 0.0, 100.0, 100.0),
+                bounds: StrokeBounds::Still(rect(0.0, 0.0, 100.0, 100.0)),
                 origin: Vec2::ZERO,
                 basis: CurveBasis::Cubic {
                     p0: Vec2::new(0.0, 0.0),
@@ -426,7 +426,7 @@ fn compose_arc_scales_geometry_and_subdivides_by_exact_length() {
     let buf = run(
         |b, _arena| {
             b.draw_curve(DrawCurvePayload {
-                bbox: rect(0.0, 0.0, 100.0, 100.0),
+                bounds: StrokeBounds::Still(rect(0.0, 0.0, 100.0, 100.0)),
                 origin: Vec2::ZERO,
                 basis: CurveBasis::Arc {
                     center: Vec2::new(50.0, 50.0),
@@ -474,7 +474,13 @@ fn compose_arc_spin_rotates_center_about_bbox_pivot_and_offsets_angles() {
     let buf = run(
         |b, _arena| {
             b.draw_curve(DrawCurvePayload {
-                bbox: rect(0.0, 0.0, 100.0, 100.0),
+                bounds: StrokeBounds::Spun {
+                    spin: Spin {
+                        pivot: Vec2::splat(50.0),
+                        angle: FRAC_PI_2,
+                    },
+                    radius: Vec2::splat(50.0).length(),
+                },
                 origin: Vec2::ZERO,
                 basis: CurveBasis::Arc {
                     center: Vec2::new(70.0, 50.0),
@@ -482,7 +488,6 @@ fn compose_arc_spin_rotates_center_about_bbox_pivot_and_offsets_angles() {
                     a0: 0.0,
                     a1: PI,
                 },
-                rotation: FRAC_PI_2,
                 color: Color::WHITE.into(),
                 width: 2.0,
                 ..Default::default()
@@ -512,7 +517,7 @@ fn compose_flat_cubic_emits_single_instance_curved_emits_many() {
     // → ⌈⌈800/1.5⌉/16⌉ = 34 instances).
     let straight = |b: &mut PaintCapture| {
         b.draw_curve(DrawCurvePayload {
-            bbox: rect(0.0, 0.0, 800.0, 10.0),
+            bounds: StrokeBounds::Still(rect(0.0, 0.0, 800.0, 10.0)),
             origin: Vec2::ZERO,
             basis: CurveBasis::Cubic {
                 p0: Vec2::new(0.0, 5.0),
@@ -527,7 +532,7 @@ fn compose_flat_cubic_emits_single_instance_curved_emits_many() {
     };
     let curved = |b: &mut PaintCapture| {
         b.draw_curve(DrawCurvePayload {
-            bbox: rect(0.0, 0.0, 800.0, 400.0),
+            bounds: StrokeBounds::Still(rect(0.0, 0.0, 800.0, 400.0)),
             origin: Vec2::ZERO,
             basis: CurveBasis::Cubic {
                 p0: Vec2::new(0.0, 5.0),
@@ -553,46 +558,6 @@ fn compose_flat_cubic_emits_single_instance_curved_emits_many() {
     );
 }
 
-/// The consuming end of the encoder's pivot contract. `spin_bbox`
-/// guarantees a spun payload's bbox is the rotation-invariant *square*
-/// whose centre is the pivot; the composer reads `bbox.center()` as
-/// that pivot and has no other way to know it. A payload that carries a
-/// rotation without having gone through `spin_bbox` would spin about
-/// the wrong point and paint subtly-wrong pixels, so `spin_pivot`
-/// debug-asserts the square rather than trusting the producer.
-///
-/// The producer half is covered by
-/// `encoder::tests::spun_*_bbox_is_rotation_invariant_square_about_owner_centre`;
-/// this is the half that catches a *new* emit path skipping it.
-#[test]
-#[should_panic(expected = "is not the rotation-invariant square")]
-fn spun_payload_with_unsquared_bbox_trips_the_pivot_contract() {
-    use crate::renderer::frontend::payload::DrawCurvePayload;
-    use crate::scene::shapes::paint::CurveBasis;
-    use std::f32::consts::FRAC_PI_2;
-    run(
-        |b, _arena| {
-            b.draw_curve(DrawCurvePayload {
-                // 100×40 — a centerline bbox that never went through
-                // `spin_bbox`, so its centre is not the owner-box pivot.
-                bbox: rect(0.0, 0.0, 100.0, 40.0),
-                origin: Vec2::ZERO,
-                rotation: FRAC_PI_2,
-                basis: CurveBasis::Cubic {
-                    p0: Vec2::new(70.0, 20.0),
-                    p1: Vec2::new(70.0, 15.0),
-                    p2: Vec2::new(60.0, 10.0),
-                    p3: Vec2::new(50.0, 10.0),
-                },
-                color: Color::WHITE.into(),
-                width: 2.0,
-                ..Default::default()
-            });
-        },
-        &params(1.0, UVec2::new(200, 200)),
-    );
-}
-
 #[test]
 fn compose_curve_spin_rotates_control_points_about_bbox_pivot() {
     use crate::renderer::frontend::payload::DrawCurvePayload;
@@ -604,9 +569,14 @@ fn compose_curve_spin_rotates_control_points_about_bbox_pivot() {
     let buf = run(
         |b, _arena| {
             b.draw_curve(DrawCurvePayload {
-                bbox: rect(0.0, 0.0, 100.0, 100.0),
+                bounds: StrokeBounds::Spun {
+                    spin: Spin {
+                        pivot: Vec2::splat(50.0),
+                        angle: FRAC_PI_2,
+                    },
+                    radius: Vec2::splat(50.0).length(),
+                },
                 origin: Vec2::ZERO,
-                rotation: FRAC_PI_2,
                 basis: CurveBasis::Cubic {
                     p0: Vec2::new(70.0, 50.0),
                     p1: Vec2::new(70.0, 40.0),
@@ -652,7 +622,7 @@ fn compose_arc_and_curve_share_one_batch_per_group() {
     let buf = run(
         |b, _arena| {
             b.draw_curve(DrawCurvePayload {
-                bbox: rect(0.0, 0.0, 40.0, 40.0),
+                bounds: StrokeBounds::Still(rect(0.0, 0.0, 40.0, 40.0)),
                 origin: Vec2::ZERO,
                 basis: CurveBasis::Arc {
                     center: Vec2::new(20.0, 20.0),
@@ -665,7 +635,7 @@ fn compose_arc_and_curve_share_one_batch_per_group() {
                 ..Default::default()
             });
             b.draw_curve(DrawCurvePayload {
-                bbox: rect(100.0, 0.0, 100.0, 100.0),
+                bounds: StrokeBounds::Still(rect(100.0, 0.0, 100.0, 100.0)),
                 origin: Vec2::ZERO,
                 basis: CurveBasis::Cubic {
                     p0: Vec2::new(100.0, 0.0),
@@ -772,7 +742,7 @@ fn degenerate_polyline_emits_nothing_rather_than_panicking() {
                 arena.polyline_points.push(Vec2::ZERO);
                 arena.polyline_colors.push(ColorU8::WHITE);
                 b.polyline(DrawPolylinePayload {
-                    bbox: rect(0.0, 0.0, 4.0, 4.0),
+                    bounds: StrokeBounds::Still(rect(0.0, 0.0, 4.0, 4.0)),
                     origin: Vec2::ZERO,
                     width: 2.0,
                     points_len,

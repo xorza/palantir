@@ -8,41 +8,30 @@
 //! `#[repr(C)]`, and injected trailing padding a `bytemuck::Pod` command
 //! arena would require.
 //!
-//! ## The spin pivot contract
+//! ## Stroked-shape bounds
 //!
-//! Stated once here because it binds two payload fields across three
-//! tiers, and three separate restatements are three things to keep in
-//! step.
-//!
-//! `DrawPolylinePayload` and `DrawCurvePayload` each carry a `bbox`
-//! and a `rotation`. **Whenever `rotation != 0`, `bbox` is not the
-//! shape's centerline AABB** — the encoder's `spin_bbox` has replaced
-//! it with the smallest square centred on the owner-box centre that
-//! still contains that AABB. Two things follow, and both are relied on:
-//!
-//! - The square is rotation-invariant, so the composer's cull and
-//!   overlap tracking stay correct at every angle. Stroke reach is
-//!   applied after it, in physical space.
-//! - `bbox.center()` **is** the spin pivot, by construction. It is the
-//!   only way the composer can recover the pivot: the owner rect is
-//!   long gone by then.
-//!
-//! Producer: `spin_bbox` (encoder), covered by
-//! `encoder::tests::spun_*_bbox_is_rotation_invariant_square_about_owner_centre`.
-//! Consumer: `spin_pivot` (composer), which debug-asserts the square so
-//! a future emit path that skips `spin_bbox` trips instead of spinning
-//! about the wrong point.
+//! `DrawPolylinePayload` and `DrawCurvePayload` carry their cull bound
+//! and their spin as one [`StrokeBounds`] value rather than a `bbox`
+//! plus a `rotation`. The two used to be separate fields whose meaning
+//! depended on each other — a non-zero `rotation` silently redefined
+//! `bbox` from "centerline AABB" to "the square whose centre is the
+//! pivot" — which took a section of prose here, a producer doc, a
+//! consumer doc and a `debug_assert` to hold together. The enum says it
+//! instead: you cannot read an AABB off a spun shape, and you cannot
+//! get a pivot without one.
 
 use crate::icons::icon_set::IconRef;
 use crate::primitives::approx::noop_f32;
 use crate::primitives::brush::gradient::FillAxis;
 use crate::primitives::fill_wire::{FillKind, LutRow};
+use crate::primitives::size::Size;
 use crate::primitives::texture_id::TextureId;
 use crate::primitives::{color::ColorF16, corners::Corners, rect::Rect};
 use crate::scene::shapes::paint::{CurveBasis, ShapeStroke};
 use crate::scene::shapes::record::ColorMode;
 use crate::shape::style::{LineCap, LineJoin};
 use crate::text::shaped_ref::ShapedTextRef;
+use glam::Vec2;
 
 /// Physical gradient identity resolved for this encode pass.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -357,6 +346,68 @@ impl DrawTextPayload {
 
 /// Stroked polyline payload. `width` is logical px. Points + colors
 /// live in the window's [`RecordPayloads`] (`polyline_points` /
+/// Where a stroked shape rotates, for the shapes that do.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Spin {
+    /// Owner-local point the shape turns about.
+    pub(crate) pivot: Vec2,
+    /// Radians, applied to each point before the ancestor transform.
+    pub(crate) angle: f32,
+}
+
+/// A stroked shape's owner-local cull bound, and its spin if it has one.
+///
+/// One value rather than a `bbox: Rect` beside a `rotation: f32`,
+/// because the two were not independent: a non-zero rotation meant the
+/// rect was no longer the centerline AABB but the rotation-invariant
+/// square about the pivot, and `bbox.center()` was the only way the
+/// composer could recover that pivot once the owner rect was gone.
+/// Encoding it here means the still case cannot carry a stale pivot and
+/// the spun case cannot lose one.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum StrokeBounds {
+    /// Centerline AABB, owner-local.
+    Still(Rect),
+    /// A spun shape sweeps a disc about `spin.pivot`, so what it is
+    /// culled and batched against is that disc's bounding square —
+    /// rotation-invariant, which is what keeps the composer's overlap
+    /// tracking correct at every angle. Stroke reach is applied after
+    /// it, in physical space.
+    Spun { spin: Spin, radius: f32 },
+}
+
+impl Default for StrokeBounds {
+    fn default() -> Self {
+        Self::Still(Rect::default())
+    }
+}
+
+impl StrokeBounds {
+    /// Owner-local rect the composer culls and batches against.
+    #[inline]
+    pub(crate) fn cull_rect(self) -> Rect {
+        match self {
+            Self::Still(bbox) => bbox,
+            Self::Spun { spin, radius } => Rect {
+                min: spin.pivot - Vec2::splat(radius),
+                size: Size {
+                    w: 2.0 * radius,
+                    h: 2.0 * radius,
+                },
+            },
+        }
+    }
+
+    /// The spin to draw under, or `None` for the common still case.
+    #[inline]
+    pub(crate) fn spin(self) -> Option<Spin> {
+        match self {
+            Self::Still(_) => None,
+            Self::Spun { spin, .. } => Some(spin),
+        }
+    }
+}
+
 /// `polyline_colors`) — the payload only carries the spans.
 /// `colors_len` is 1 (broadcast), `points_len` (per-point), or
 /// `points_len - 1` (per-segment), selected by `color_mode`.
@@ -369,17 +420,13 @@ impl DrawTextPayload {
 /// [`RecordPayloads`]: crate::scene::record_store::RecordPayloads
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub(crate) struct DrawPolylinePayload {
-    pub(crate) bbox: Rect,
-    pub(crate) origin: glam::Vec2,
-    pub(crate) width: f32,
-    /// Paint-time rotation (radians) about `bbox.center()`, applied to
-    /// each point before the ancestor transform. `0.0` = none, the
-    /// common case. Set from a [`PaintAnim::Spin`] sample. Non-zero
-    /// means `bbox` is the widened square the pivot contract describes
-    /// — see the module doc.
+    /// Cull bound plus the spin, if any — set from a
+    /// [`PaintAnim::Spin`] sample.
     ///
     /// [`PaintAnim::Spin`]: crate::scene::tree::paint_anims::PaintAnim::Spin
-    pub(crate) rotation: f32,
+    pub(crate) bounds: StrokeBounds,
+    pub(crate) origin: glam::Vec2,
+    pub(crate) width: f32,
     pub(crate) points_start: u32,
     pub(crate) points_len: u32,
     pub(crate) colors_start: u32,
@@ -556,9 +603,11 @@ impl DrawImagePayload {
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub(crate) struct DrawCurvePayload {
     pub(crate) basis: CurveBasis,
-    pub(crate) bbox: Rect,
+    /// Cull bound plus the spin, if any. The composer rotates about the
+    /// pivot exactly — a Bézier by affine invariance, a circle by moving
+    /// its centre and shifting both angles.
+    pub(crate) bounds: StrokeBounds,
     pub(crate) origin: glam::Vec2,
-    pub(crate) rotation: f32,
     /// Solid stroke colour. Zeroed when `fill_kind` is a gradient —
     /// the LUT row at `fill_lut_row` supplies the colour in that case.
     pub(crate) color: ColorF16,

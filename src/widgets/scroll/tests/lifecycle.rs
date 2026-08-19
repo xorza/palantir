@@ -2,6 +2,7 @@
 
 use crate::Ui;
 use crate::layout::axis::Axis;
+use crate::layout::scrollbars::BarDomain;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::size::Size;
@@ -101,7 +102,8 @@ fn state_is_swept_when_scroll_disappears() {
 fn thumb_drag_anchor_dies_with_its_geometry() {
     let geom = Some(ThumbTravel {
         factor: 2.0,
-        max_off: 100.0,
+        // Track 20, content 120 => the bar's domain is [0, 100].
+        domain: BarDomain::new(120.0, 20.0),
     });
     let mut state = ScrollState::default();
     state.offset = Vec2::new(0.0, 10.0);
@@ -334,7 +336,8 @@ fn cascade_skip_busts_on_scroll_offset_change() {
 fn thumb_drag_anchors_in_the_bar_domain_not_the_offset_domain() {
     let geom = Some(ThumbTravel {
         factor: 2.0,
-        max_off: 100.0,
+        // Track 20, content 120 => the bar's domain is [0, 100].
+        domain: BarDomain::new(120.0, 20.0),
     });
     let mut state = ScrollState::default();
     // Panned into the leading band, as a wheel over a scroll with a

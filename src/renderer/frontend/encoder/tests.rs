@@ -1339,21 +1339,27 @@ fn spun_polyline_bbox_is_rotation_invariant_square_about_owner_centre() {
             _ => None,
         })
         .expect("spun polyline must emit a DrawPolyline");
-    assert!(p.rotation != 0.0, "spin must sample a non-zero rotation");
+    let spin = p
+        .bounds
+        .spin()
+        .expect("spin must sample a non-zero rotation");
 
     let c = Vec2::new(40.0, 20.0);
     let r = (30.0_f32 * 30.0 + 10.0 * 10.0).sqrt();
     let eps = 1e-3;
-    assert!((p.bbox.min.x - (c.x - r)).abs() < eps, "bbox {:?}", p.bbox);
-    assert!((p.bbox.min.y - (c.y - r)).abs() < eps, "bbox {:?}", p.bbox);
-    assert!((p.bbox.size.w - 2.0 * r).abs() < eps, "bbox {:?}", p.bbox);
-    assert!((p.bbox.size.h - 2.0 * r).abs() < eps, "bbox {:?}", p.bbox);
-    // Pivot contract: the composer rotates about `bbox.center()`,
-    // which must still be the owner-box centre.
-    assert!((p.bbox.center() - c).length() < eps);
-    // The far endpoint rotated 90° about c stays inside the new bbox…
+    // The pivot is carried, not inferred from the cull rect's centre.
+    assert!((spin.pivot - c).length() < eps, "pivot {:?}", spin.pivot);
+    assert!(spin.angle != 0.0);
+    // The cull rect is still the rotation-invariant square about it, so
+    // the composer's overlap tracking holds at every angle.
+    let cull = p.bounds.cull_rect();
+    assert!((cull.min.x - (c.x - r)).abs() < eps, "cull {cull:?}");
+    assert!((cull.min.y - (c.y - r)).abs() < eps, "cull {cull:?}");
+    assert!((cull.size.w - 2.0 * r).abs() < eps, "cull {cull:?}");
+    assert!((cull.size.h - 2.0 * r).abs() < eps, "cull {cull:?}");
+    // The far endpoint rotated 90° about c stays inside it…
     let p_rot = c + Vec2::new(-10.0, 30.0);
-    assert!(p.bbox.contains(p_rot), "bbox {:?} misses {p_rot:?}", p.bbox);
+    assert!(cull.contains(p_rot), "cull {cull:?} misses {p_rot:?}");
     // …but not inside the owner box the old code used.
     assert!(!Rect::new(0.0, 0.0, 80.0, 40.0).contains(p_rot));
 }
@@ -1400,7 +1406,10 @@ fn spun_arc_bbox_is_rotation_invariant_square_about_owner_centre() {
             _ => None,
         })
         .expect("spun arc must emit a curve draw");
-    assert!(p.rotation != 0.0, "spin must sample a non-zero rotation");
+    let spin = p
+        .bounds
+        .spin()
+        .expect("spin must sample a non-zero rotation");
     // Geometry rides owner-local and unrotated, on the arc basis.
     assert_eq!(
         p.basis,
@@ -1418,11 +1427,12 @@ fn spun_arc_bbox_is_rotation_invariant_square_about_owner_centre() {
     let c = Vec2::new(40.0, 20.0);
     let r = (20.0_f32 * 20.0 + 10.0 * 10.0).sqrt();
     let eps = 1e-3;
-    assert!((p.bbox.min.x - (c.x - r)).abs() < eps, "bbox {:?}", p.bbox);
-    assert!((p.bbox.min.y - (c.y - r)).abs() < eps, "bbox {:?}", p.bbox);
-    assert!((p.bbox.size.w - 2.0 * r).abs() < eps, "bbox {:?}", p.bbox);
-    assert!((p.bbox.size.h - 2.0 * r).abs() < eps, "bbox {:?}", p.bbox);
-    assert!((p.bbox.center() - c).length() < eps);
+    let cull = p.bounds.cull_rect();
+    assert!((cull.min.x - (c.x - r)).abs() < eps, "cull {cull:?}");
+    assert!((cull.min.y - (c.y - r)).abs() < eps, "cull {cull:?}");
+    assert!((cull.size.w - 2.0 * r).abs() < eps, "cull {cull:?}");
+    assert!((cull.size.h - 2.0 * r).abs() < eps, "cull {cull:?}");
+    assert!((spin.pivot - c).length() < eps, "pivot {:?}", spin.pivot);
 }
 
 /// `Panel::transform` applies to the panel's body — both direct

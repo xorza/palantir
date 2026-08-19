@@ -15,7 +15,7 @@ use crate::renderer::frontend::FrameScene;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::{
     BrushSource, DrawCurvePayload, DrawIconPayload, DrawImagePayload, DrawMeshPayload,
-    DrawPolylinePayload, DrawQuadPayload, PushClipPayload, ResolvedGradient,
+    DrawPolylinePayload, DrawQuadPayload, PushClipPayload, ResolvedGradient, Spin, StrokeBounds,
 };
 use crate::renderer::gpu_view::GpuViewEntry;
 use crate::renderer::gradient_atlas::handle::SharedGradientAtlas;
@@ -102,25 +102,27 @@ fn resolve_local_rect(owner_rect: Rect, local_rect: Option<Rect>) -> Rect {
 /// Payload bbox for a possibly-spinning stroke shape — **the producing
 /// end of the spin pivot contract** (stated in the payload module doc).
 ///
-/// A spun shape sweeps a disc about the owner-box centre `c`, so when
-/// `rotation != 0` the lowered centerline bbox is replaced by the
-/// smallest square centred on `c` that contains it: half-extent = max
-/// distance from `c` to the bbox's corners. That square is what makes
-/// `bbox.center() == c` hold downstream, which is the only way the
-/// composer can recover the pivot.
-fn spin_bbox(owner_rect: Rect, bbox: Rect, rotation: f32) -> Rect {
+/// Pair a lowered centerline bbox with the spin it will be drawn under.
+///
+/// A spun shape sweeps a disc about the owner-box centre, so what it is
+/// culled against is that disc's bounding square — half-extent = max
+/// distance from the centre to the bbox's corners — which is
+/// rotation-invariant and keeps the composer's overlap tracking correct
+/// at every angle. The pivot rides along explicitly instead of being
+/// recovered from the square's centre, so neither end has to know that
+/// the rect changed meaning.
+fn stroke_bounds(owner_rect: Rect, bbox: Rect, rotation: f32) -> StrokeBounds {
     if rotation == 0.0 {
-        return bbox;
+        return StrokeBounds::Still(bbox);
     }
-    let c = glam::Vec2::new(owner_rect.size.w, owner_rect.size.h) * 0.5;
-    let d = (bbox.min - c).abs().max((bbox.max() - c).abs());
-    let r = d.length();
-    Rect {
-        min: c - glam::Vec2::splat(r),
-        size: Size {
-            w: 2.0 * r,
-            h: 2.0 * r,
+    let pivot = glam::Vec2::new(owner_rect.size.w, owner_rect.size.h) * 0.5;
+    let d = (bbox.min - pivot).abs().max((bbox.max() - pivot).abs());
+    StrokeBounds::Spun {
+        spin: Spin {
+            pivot,
+            angle: rotation,
         },
+        radius: d.length(),
     }
 }
 
@@ -387,13 +389,10 @@ fn emit_one_shape(
             // Points + colors live in the window's RecordStore; spans
             // are forwarded verbatim. Owner-local convention — the
             // composer folds `origin` into the per-point transform.
-            let rotation = paint_mod.rotation;
-            let bbox = spin_bbox(owner_rect, *bbox, rotation);
             out.draw_polyline(DrawPolylinePayload {
-                bbox,
+                bounds: stroke_bounds(owner_rect, *bbox, paint_mod.rotation),
                 origin: owner_rect.min,
                 width: *width,
-                rotation,
                 points_start: points.start,
                 points_len: points.len,
                 colors_start: colors.start,
@@ -440,12 +439,10 @@ fn emit_one_shape(
             // both bases' cull, spin, and sub-instance sizing stay one
             // code path from here through the composer.
             let fill = ctx.brush_source(*fill).to_gpu_fields();
-            let rotation = paint_mod.rotation;
             out.draw_curve(DrawCurvePayload {
                 basis: *basis,
-                bbox: spin_bbox(owner_rect, *bbox, rotation),
+                bounds: stroke_bounds(owner_rect, *bbox, paint_mod.rotation),
                 origin: owner_rect.min,
-                rotation,
                 color: fill.color,
                 width: *width,
                 cap: *cap,

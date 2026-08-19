@@ -11,7 +11,7 @@ use crate::renderer::frontend::composer::tests::support::{
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::{
-    BrushSource, DrawPolylinePayload, DrawQuadPayload, ResolvedGradient,
+    BrushSource, DrawPolylinePayload, DrawQuadPayload, ResolvedGradient, Spin, StrokeBounds,
 };
 use crate::scene::record_store::RecordPayloads;
 use crate::scene::shapes::record::ColorMode;
@@ -355,10 +355,21 @@ fn compose_spins_polyline_about_bbox_center() {
         let c_start = payloads.polyline_colors.len() as u32;
         payloads.polyline_colors.push(Color::WHITE.into());
         buffer.draw_polyline(DrawPolylinePayload {
-            bbox: rect(0.0, 0.0, 100.0, 100.0),
+            // Pivot is the 100x100 box centre, which `stroke_bounds`
+            // derives from the owner rect on the production path.
+            bounds: if rotation == 0.0 {
+                StrokeBounds::Still(rect(0.0, 0.0, 100.0, 100.0))
+            } else {
+                StrokeBounds::Spun {
+                    spin: Spin {
+                        pivot: Vec2::splat(50.0),
+                        angle: rotation,
+                    },
+                    radius: Vec2::splat(50.0).length(),
+                }
+            },
             origin: Vec2::ZERO,
             width: 2.0,
-            rotation,
             points_start: p_start,
             points_len: 2,
             colors_start: c_start,

@@ -51,18 +51,6 @@ pub(crate) struct TextBackend {
     /// reads it to build each format's pipelines.
     shader: wgpu::ShaderModule,
 
-    /// Group-0 layout (atlas textures + sampler). Format-independent;
-    /// [`Self::build_variants`] composes each format's pipeline layout
-    /// against it. The pipelines themselves live in `FormatPipelines`,
-    /// keyed by swapchain format, and are passed into
-    /// [`Self::render_batch`].
-    atlas_bgl: wgpu::BindGroupLayout,
-    atlas_bg: wgpu::BindGroup,
-    sampler: wgpu::Sampler,
-
-    /// `[color_atlas_size, mask_atlas_size]`, updated only when an atlas grows.
-    atlas_px: [u32; 2],
-
     vbuf: DynamicBuffer<RasterQuad>,
 
     /// Per-batch slice of the encoder's `instances`; empty span =
@@ -79,31 +67,12 @@ impl TextBackend {
         let encoder = TextEncoder::new(device);
 
         let shader = quad::shader_module(device, "palantir.text.shader");
-        let sampler = quad::sampler(device, "palantir text sampler");
-        let atlas_bgl = quad::bind_group_layout(device, "palantir text atlas layout");
-
-        let bindings = encoder.atlas.bindings();
-        let atlas_px = bindings.atlas_px;
-
-        let atlas_bg = quad::bind_group(
-            device,
-            &atlas_bgl,
-            bindings.mask_view,
-            bindings.color_view,
-            &sampler,
-            "palantir text atlas bg",
-        );
-
         let vbuf = DynamicBuffer::<RasterQuad>::vertex(device, "palantir text vbuf", 4096);
 
         Self {
             shaper,
             encoder,
             shader,
-            atlas_bgl,
-            atlas_bg,
-            sampler,
-            atlas_px,
             vbuf,
             ranges: Vec::new(),
         }
@@ -128,7 +97,7 @@ impl TextBackend {
                 stencil_label: "palantir.text.pipeline.stencil_test",
                 layout_label: "palantir.text.pl",
                 shader: &self.shader,
-                bind_group_layouts: &[Some(&self.atlas_bgl)],
+                bind_group_layouts: &[Some(self.encoder.atlas.bind_group_layout())],
                 vertex_buffers: &[Some(quad::instance_layout())],
                 topology: wgpu::PrimitiveTopology::TriangleStrip,
             },
@@ -186,21 +155,6 @@ impl TextBackend {
 
         let end = self.encoder.instances.len() as u32;
 
-        // Rebuild bind group if atlas grew during encode.
-        if self.encoder.atlas.bind_group_dirty {
-            let bindings = self.encoder.atlas.bindings();
-            self.atlas_bg = quad::bind_group(
-                ctx.device,
-                &self.atlas_bgl,
-                bindings.mask_view,
-                bindings.color_view,
-                &self.sampler,
-                "palantir text atlas bg",
-            );
-            self.atlas_px = bindings.atlas_px;
-            self.encoder.atlas.bind_group_dirty = false;
-        }
-
         self.ranges.push(Span::new(start, end - start));
     }
 
@@ -242,14 +196,17 @@ impl TextBackend {
             return;
         }
         pass.set_pipeline(pipelines.select(use_stencil));
-        pass.set_bind_group(0, &self.atlas_bg, &[]);
+        pass.set_bind_group(0, self.encoder.atlas.bind_group(), &[]);
         // Both halves of the shared immediate region — write
         // viewport (offset 0) here as well as params (offset 8)
         // because text can be the very first pipeline bound in the
         // pass, so the backend hasn't pushed viewport elsewhere yet.
         // Cheap: register-mapped, no buffer round-trip.
         viewport.push_into(pass);
-        pass.set_immediates(PARAMS_OFFSET, bytemuck::bytes_of(&self.atlas_px));
+        pass.set_immediates(
+            PARAMS_OFFSET,
+            bytemuck::bytes_of(&self.encoder.atlas.atlas_px()),
+        );
         pass.set_vertex_buffer(0, self.vbuf.buffer.slice(..));
         pass.draw(0..4, span.start..span.start + span.len);
     }

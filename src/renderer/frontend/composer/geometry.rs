@@ -178,31 +178,6 @@ pub(super) fn rounded_clip_depth_overflow(depth: u32) -> ! {
     panic!("rounded clip chain depth {depth} exceeds stencil capacity {MAX_ROUNDED_CLIP_DEPTH}");
 }
 
-/// Owner-local point a spun stroke rotates about — **the consuming end
-/// of the encoder's pivot contract**, shared by the curve and polyline
-/// paths so the two cannot drift apart.
-///
-/// `spin_bbox` (encoder) replaces a spun shape's centerline bbox with
-/// the smallest square centred on the owner-box centre, precisely so
-/// that `bbox.center()` *is* the pivot here — see it for the producer
-/// side and the reason the square is rotation-invariant.
-///
-/// The `debug_assert` is what keeps the two ends honest: a square bbox
-/// is the observable half of that contract, so an encoder path that
-/// emits a non-zero `rotation` without routing through `spin_bbox`
-/// trips here instead of silently spinning about the wrong point. Debug
-/// only — this runs per spun shape per frame.
-#[inline]
-pub(super) fn spin_pivot(bbox: Rect, rotation: f32) -> Vec2 {
-    debug_assert!(
-        rotation == 0.0 || (bbox.size.w - bbox.size.h).abs() <= 1.0e-3 * bbox.size.w.max(1.0),
-        "spun payload bbox {:?} is not the rotation-invariant square `spin_bbox` produces — \
-         its centre is not the spin pivot",
-        bbox.size,
-    );
-    bbox.center()
-}
-
 /// Physical-px painted bounds for a stroked shape's owner-local
 /// centerline `bbox`. Folds `origin` + the active transform into physical space,
 /// applies the shared stroke/cap/join/AA bound once, then clamps to the

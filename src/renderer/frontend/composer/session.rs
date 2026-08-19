@@ -35,8 +35,7 @@ use glam::{UVec2, Vec2};
 use crate::renderer::frontend::composer::geometry::POLYLINE_COINCIDENT_EPS_SQ;
 use crate::renderer::frontend::composer::geometry::{
     cubic_is_flat, polyline_join_kind, push_sub_instances, rounded_clip_depth_overflow,
-    scissor_from_logical, snap_text_scale, spin_pivot, stroke_bbox_urect, sub_instance_count,
-    urect_from_phys,
+    scissor_from_logical, snap_text_scale, stroke_bbox_urect, sub_instance_count, urect_from_phys,
 };
 use crate::renderer::frontend::composer::{ClipFrame, Composer, PolylineScratch};
 
@@ -572,8 +571,15 @@ impl PaintSink for ComposeSession<'_> {
         let xform = self.current_transform;
         let width_phys = p.width * xform.scale * scale;
         let cap = p.cap;
-        let bbox_urect =
-            stroke_bbox_urect(xform, p.bbox, p.origin, width_phys, cap, None, self.display);
+        let bbox_urect = stroke_bbox_urect(
+            xform,
+            p.bounds.cull_rect(),
+            p.origin,
+            width_phys,
+            cap,
+            None,
+            self.display,
+        );
         // Clip-cull + batch-close: a curve sits above text in the
         // kind order (same as mesh/image), so a surviving draw
         // closes the open text batch first.
@@ -591,8 +597,7 @@ impl PaintSink for ComposeSession<'_> {
         // Both bases below rotate about the pivot exactly — a Bézier by
         // affine invariance, a circle by moving its centre and shifting
         // both angles.
-        let pivot = spin_pivot(p.bbox, p.rotation);
-        let rotor = (p.rotation != 0.0).then(|| Vec2::from_angle(p.rotation));
+        let spin = p.bounds.spin();
         // Style lanes are basis-independent; each arm below fills in
         // the geometry and its own `kind`.
         let color: ColorU8 = p.color.into();
@@ -608,9 +613,10 @@ impl PaintSink for ComposeSession<'_> {
         let (proto, n) = match p.basis {
             CurveBasis::Cubic { p0, p1, p2, p3 } => {
                 let mut ctrl = [p0, p1, p2, p3];
-                if let Some(rotor) = rotor {
+                if let Some(spin) = spin {
+                    let rotor = Vec2::from_angle(spin.angle);
                     for q in &mut ctrl {
-                        *q = rotor.rotate(*q - pivot) + pivot;
+                        *q = rotor.rotate(*q - spin.pivot) + spin.pivot;
                     }
                 }
                 let [p0, p1, p2, p3] = ctrl.map(to_phys);
@@ -646,10 +652,10 @@ impl PaintSink for ComposeSession<'_> {
                 mut a1,
             } => {
                 let mut center = center;
-                if let Some(rotor) = rotor {
-                    center = rotor.rotate(center - pivot) + pivot;
-                    a0 += p.rotation;
-                    a1 += p.rotation;
+                if let Some(spin) = spin {
+                    center = Vec2::from_angle(spin.angle).rotate(center - spin.pivot) + spin.pivot;
+                    a0 += spin.angle;
+                    a1 += spin.angle;
                 }
                 // The transform stack is translate + uniform scale (no
                 // rotation/skew — see `TranslateScale`), so a circle
@@ -692,7 +698,7 @@ impl PaintSink for ComposeSession<'_> {
         // list — the win for long dense point runs.
         let bbox_urect = stroke_bbox_urect(
             self.current_transform,
-            p.bbox,
+            p.bounds.cull_rect(),
             p.origin,
             width_phys,
             cap,
@@ -717,18 +723,12 @@ impl PaintSink for ComposeSession<'_> {
         // lines off-axis. Hairline regime (<1 phys px) is
         // the shader's trapezoid-plateau coverage.
         self.composer.polyline.points.clear();
-        if p.rotation == 0.0 {
-            self.composer.polyline.points.extend(
-                src_points
-                    .iter()
-                    .map(|&q| self.current_transform.apply_point(q + p.origin) * scale),
-            );
-        } else {
+        if let Some(spin) = p.bounds.spin() {
             // Spin: rotate each owner-local point about the pivot
             // before placing it via the ancestor transform, so the
             // shape rotates in place.
-            let pivot = spin_pivot(p.bbox, p.rotation);
-            let rotor = Vec2::from_angle(p.rotation);
+            let pivot = spin.pivot;
+            let rotor = Vec2::from_angle(spin.angle);
             self.composer
                 .polyline
                 .points
@@ -736,6 +736,12 @@ impl PaintSink for ComposeSession<'_> {
                     let local = rotor.rotate(q - pivot) + pivot;
                     self.current_transform.apply_point(local + p.origin) * scale
                 }));
+        } else {
+            self.composer.polyline.points.extend(
+                src_points
+                    .iter()
+                    .map(|&q| self.current_transform.apply_point(q + p.origin) * scale),
+            );
         }
 
         // Keep only points beyond the coincidence threshold

@@ -14,7 +14,7 @@ use crate::primitives::urect::URect;
 use crate::primitives::{color::Color, color::ColorF16};
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::RenderBuffer;
-use crate::renderer::render_buffer::batch::{GroupBatch, TextBatch};
+use crate::renderer::render_buffer::batch::{GroupBatch, PaintTier, TextBatch};
 
 /// Per-group and per-text-batch spans into the staged mask-quad buffer.
 #[derive(Debug, Default)]
@@ -229,10 +229,9 @@ pub(super) fn for_each_step(
         // Silently drop mesh/image/curve batches that anchored in
         // earlier damage-skipped groups — they had no visible scissor
         // so their draws don't paint.
-        advance_past_skipped(&buffer.mesh_batches, &mut cursors.mesh, i);
-        advance_past_skipped(&buffer.image_batches, &mut cursors.image, i);
-        advance_past_skipped(&buffer.icon_batches, &mut cursors.icon, i);
-        advance_past_skipped(&buffer.curve_batches, &mut cursors.curve, i);
+        for tier in PaintTier::ALL {
+            advance_past_skipped(buffer.batches(tier), &mut cursors.higher[tier.idx()], i);
+        }
 
         let group_scissor = g.scissor.unwrap_or(full_viewport);
         let effective = match damage_scissor {
@@ -268,10 +267,9 @@ pub(super) fn for_each_step(
         // next consumer establishes its own state regardless).
         let has_content = g.quads.len != 0
             || pending_at(&buffer.text_batches, cursors.text, i)
-            || pending_at(&buffer.mesh_batches, cursors.mesh, i)
-            || pending_at(&buffer.image_batches, cursors.image, i)
-            || pending_at(&buffer.icon_batches, cursors.icon, i)
-            || pending_at(&buffer.curve_batches, cursors.curve, i);
+            || PaintTier::ALL
+                .iter()
+                .any(|&t| pending_at(buffer.batches(t), cursors.higher[t.idx()], i));
         if has_content {
             state.narrow(&masks.groups, i, effective);
             emit_group_body(
@@ -432,10 +430,8 @@ impl PassState<'_> {
 #[derive(Debug, Default)]
 struct ScheduleCursors {
     text: usize,
-    mesh: usize,
-    image: usize,
-    icon: usize,
-    curve: usize,
+    /// One per [`PaintTier`], indexed by `PaintTier::idx`.
+    higher: [usize; PaintTier::COUNT],
 }
 
 /// A batch that anchors to a single draw group via its `last_group`
@@ -554,10 +550,9 @@ fn emit_group_body(
         masks,
         state,
     );
-    if !(pending_at(&buffer.mesh_batches, cursors.mesh, i)
-        || pending_at(&buffer.image_batches, cursors.image, i)
-        || pending_at(&buffer.icon_batches, cursors.icon, i)
-        || pending_at(&buffer.curve_batches, cursors.curve, i))
+    if !PaintTier::ALL
+        .iter()
+        .any(|&t| pending_at(buffer.batches(t), cursors.higher[t.idx()], i))
     {
         return;
     }
@@ -566,34 +561,22 @@ fn emit_group_body(
     // collapse to nothing when it didn't — the common case, since most
     // groups with a higher-kind batch carry no text at all.
     state.narrow(&masks.groups, i, effective);
-    drain_group_batches(
-        &buffer.mesh_batches,
-        &mut cursors.mesh,
-        i,
-        |batch| RenderStep::MeshBatch { batch },
-        state,
-    );
-    drain_group_batches(
-        &buffer.image_batches,
-        &mut cursors.image,
-        i,
-        |batch| RenderStep::ImageBatch { batch },
-        state,
-    );
-    drain_group_batches(
-        &buffer.icon_batches,
-        &mut cursors.icon,
-        i,
-        |batch| RenderStep::IconBatch { batch },
-        state,
-    );
-    drain_group_batches(
-        &buffer.curve_batches,
-        &mut cursors.curve,
-        i,
-        |batch| RenderStep::CurveBatch { batch },
-        state,
-    );
+    // Paint order is `PaintTier::ALL`'s order, which is `Ord`'s — the
+    // property the composer's flush arbitration rests on.
+    for tier in PaintTier::ALL {
+        drain_group_batches(
+            buffer.batches(tier),
+            &mut cursors.higher[tier.idx()],
+            i,
+            |batch| match tier {
+                PaintTier::Mesh => RenderStep::MeshBatch { batch },
+                PaintTier::Image => RenderStep::ImageBatch { batch },
+                PaintTier::Icon => RenderStep::IconBatch { batch },
+                PaintTier::Curve => RenderStep::CurveBatch { batch },
+            },
+            state,
+        );
+    }
 }
 
 // `bench` only, not `any(test, …)`: the sole consumer is the

@@ -5,7 +5,7 @@
 use crate::input::response::ResponseState;
 use crate::input::sense::Sense;
 use crate::layout::axis::Axis;
-use crate::layout::scrollbars::{self, ScrollbarsDef};
+use crate::layout::scrollbars::{self, BarDomain, ScrollbarsDef};
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
@@ -125,15 +125,16 @@ struct ResolvedBar {
 }
 
 impl ResolvedBar {
-    /// Offset at which the content's trailing edge meets the track's.
-    fn max_off(&self) -> f32 {
-        (self.content_main - self.track_main).max(0.0)
+    /// The offset range this bar can express.
+    fn domain(&self) -> BarDomain {
+        BarDomain::new(self.content_main, self.track_main)
     }
 
     fn travel(&self) -> ThumbTravel {
+        let domain = self.domain();
         ThumbTravel {
-            factor: self.max_off() / (self.track_main - self.thumb_size).max(f32::EPSILON),
-            max_off: self.max_off(),
+            factor: domain.max_off() / (self.track_main - self.thumb_size).max(f32::EPSILON),
+            domain,
         }
     }
 
@@ -143,7 +144,7 @@ impl ResolvedBar {
             thumb_offset: self.thumb_offset,
             thumb_size: self.thumb_size,
             page_step: self.track_main,
-            max_off: self.max_off(),
+            domain: self.domain(),
         }
     }
 }

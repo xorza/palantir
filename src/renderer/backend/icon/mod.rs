@@ -60,13 +60,7 @@ pub(crate) struct IconBackend {
     staging: Vec<u8>,
 
     shader: wgpu::ShaderModule,
-    atlas_bgl: wgpu::BindGroupLayout,
-    atlas_bg: wgpu::BindGroup,
-    sampler: wgpu::Sampler,
     /// `[color_atlas_size, mask_atlas_size]`, refreshed only when a side
-    /// grows.
-    atlas_px: [u32; 2],
-
     instances: Vec<RasterQuad>,
     vbuf: DynamicBuffer<RasterQuad>,
     /// Per-batch slice of [`Self::instances`]; an empty span draws nothing.
@@ -84,8 +78,6 @@ pub(crate) struct IconBackend {
 impl IconBackend {
     pub(crate) fn new(device: &wgpu::Device, icons: IconRegistry) -> Self {
         let shader = quad::shader_module(device, "palantir.icon.shader");
-        let sampler = quad::sampler(device, "palantir icon sampler");
-        let atlas_bgl = quad::bind_group_layout(device, "palantir icon atlas layout");
         let atlas = RasterAtlas::new(
             device,
             RasterAtlasConfig {
@@ -110,26 +102,12 @@ impl IconBackend {
                 eager_growth_bytes: 4 << 20,
             },
         );
-        let bindings = atlas.bindings();
-        let atlas_px = bindings.atlas_px;
-        let atlas_bg = quad::bind_group(
-            device,
-            &atlas_bgl,
-            bindings.mask_view,
-            bindings.color_view,
-            &sampler,
-            "palantir icon atlas bg",
-        );
         Self {
             atlas,
             rasterizer: IconRasterizer::default(),
             icons,
             staging: Vec::new(),
             shader,
-            atlas_bgl,
-            atlas_bg,
-            sampler,
-            atlas_px,
             instances: Vec::new(),
             vbuf: DynamicBuffer::<RasterQuad>::vertex(device, "palantir icon vbuf", 256),
             ranges: Vec::new(),
@@ -153,7 +131,7 @@ impl IconBackend {
                 stencil_label: "palantir.icon.pipeline.stencil_test",
                 layout_label: "palantir.icon.pl",
                 shader: &self.shader,
-                bind_group_layouts: &[Some(&self.atlas_bgl)],
+                bind_group_layouts: &[Some(self.atlas.bind_group_layout())],
                 vertex_buffers: &[Some(quad::instance_layout())],
                 topology: wgpu::PrimitiveTopology::TriangleStrip,
             },
@@ -228,19 +206,6 @@ impl IconBackend {
                 color: bytemuck::cast(row.color),
             });
         }
-        if self.atlas.bind_group_dirty {
-            let bindings = self.atlas.bindings();
-            self.atlas_bg = quad::bind_group(
-                ctx.device,
-                &self.atlas_bgl,
-                bindings.mask_view,
-                bindings.color_view,
-                &self.sampler,
-                "palantir icon atlas bg",
-            );
-            self.atlas_px = bindings.atlas_px;
-            self.atlas.bind_group_dirty = false;
-        }
         self.ranges
             .push(Span::new(start, self.instances.len() as u32 - start));
     }
@@ -298,12 +263,12 @@ impl IconBackend {
             return;
         }
         pass.set_pipeline(pipelines.select(use_stencil));
-        pass.set_bind_group(0, &self.atlas_bg, &[]);
+        pass.set_bind_group(0, self.atlas.bind_group(), &[]);
         // Both halves of the shared immediate region, for the same reason the
         // text pass writes both: icons can be the first pipeline bound in a
         // pass, so no earlier step is guaranteed to have pushed the viewport.
         viewport.push_into(pass);
-        pass.set_immediates(PARAMS_OFFSET, bytemuck::bytes_of(&self.atlas_px));
+        pass.set_immediates(PARAMS_OFFSET, bytemuck::bytes_of(&self.atlas.atlas_px()));
         pass.set_vertex_buffer(0, self.vbuf.buffer.slice(..));
         pass.draw(0..4, span.start..span.start + span.len);
     }

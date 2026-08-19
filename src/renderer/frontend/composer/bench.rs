@@ -5,7 +5,9 @@ use crate::primitives::texture_id::TextureId;
 use crate::renderer::frontend::capture::PaintCapture;
 use crate::renderer::frontend::composer::Composer;
 use crate::renderer::frontend::paint_sink::PaintSink;
-use crate::renderer::frontend::payload::{DrawCurvePayload, DrawImagePayload, DrawMeshPayload};
+use crate::renderer::frontend::payload::{
+    DrawCurvePayload, DrawImagePayload, DrawMeshPayload, StrokeBounds,
+};
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::scene::record_store::RecordPayloads;
 use crate::scene::shapes::paint::CurveBasis;
@@ -39,7 +41,7 @@ impl ComposeBench {
         let mut cmds = PaintCapture::default();
         for _ in 0..curve_count {
             cmds.draw_curve(DrawCurvePayload {
-                bbox: Rect::new(16.0, 63.0, 96.0, 2.0),
+                bounds: StrokeBounds::Still(Rect::new(16.0, 63.0, 96.0, 2.0)),
                 origin: Vec2::ZERO,
                 basis: CurveBasis::Cubic {
                     p0: Vec2::new(16.0, 64.0),
