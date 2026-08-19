@@ -141,12 +141,11 @@ pub(crate) trait PaintSink {
     /// Paint a textured rect. `paint` is `Some` exactly when this
     /// composites a `GpuView`, and carries the callback its off-screen
     /// target is painted with — so the composite and the target it needs
-    /// cannot come apart. Deciding `payload.gpu_view` here, rather than
-    /// at either construction site, is what keeps the flag and the
-    /// callback from disagreeing.
-    fn draw_image(&mut self, mut payload: DrawImagePayload, paint: Option<&GpuPaintRef>) {
-        payload.gpu_view = paint.is_some();
-        if payload.is_noop() {
+    /// cannot come apart. That one argument is also what the no-op gate
+    /// reads, so the fact travels on one channel rather than being
+    /// mirrored onto the payload.
+    fn draw_image(&mut self, payload: DrawImagePayload, paint: Option<&GpuPaintRef>) {
+        if payload.is_noop(paint.is_some()) {
             return;
         }
         self.image(payload, paint);
@@ -281,9 +280,15 @@ mod tests {
     /// draw and no callback, so the composer schedules no off-screen
     /// target for a widget that can't paint. A live one records the
     /// payload and its callback as a single call — the composite and the
-    /// target it needs can't come apart. The null-handle arm of
-    /// `is_noop` is deliberately unreachable here: a `GpuView`'s texture
-    /// is framework-painted and `TextureId(0)` is never minted.
+    /// target it needs can't come apart.
+    ///
+    /// The null-handle rows are what say the two callers of that arm are
+    /// told apart by the `paint` argument alone. `TextureId(0)` means
+    /// "no texture to sample" for a registered image and is dropped; for
+    /// a `GpuView` it means nothing, because the target is
+    /// framework-painted this frame rather than registered. Production
+    /// never mints `TextureId(0)` for a view, but the branch decides on
+    /// `paint.is_some()` and nothing else would notice if it stopped.
     #[test]
     fn gpu_view_gate_drops_zero_extent_and_pairs_payload_with_paint() {
         #[derive(Debug)]
@@ -294,14 +299,30 @@ mod tests {
         }
 
         let paint = GpuPaintRef(Rc::new(RefCell::new(NoopGpuPaint)));
-        let handle = TextureId(7);
+        let live = Rect::new(1.0, 2.0, 10.0, 10.0);
         let cases = [
-            ("zero_width", Rect::new(0.0, 0.0, 0.0, 10.0), false),
-            ("zero_height", Rect::new(0.0, 0.0, 10.0, 0.0), false),
-            ("live", Rect::new(1.0, 2.0, 10.0, 10.0), true),
+            (
+                "zero_width",
+                Rect::new(0.0, 0.0, 0.0, 10.0),
+                TextureId(7),
+                true,
+                false,
+            ),
+            (
+                "zero_height",
+                Rect::new(0.0, 0.0, 10.0, 0.0),
+                TextureId(7),
+                true,
+                false,
+            ),
+            ("live", live, TextureId(7), true, true),
+            // The two halves of the null-handle arm, which is the whole
+            // reason the gate needs to know about the callback at all.
+            ("null_handle_image", live, TextureId(0), false, false),
+            ("null_handle_view", live, TextureId(0), true, true),
         ];
 
-        for (label, rect, expect_call) in cases {
+        for (label, rect, handle, has_paint, expect_call) in cases {
             let mut sink = PaintCapture::default();
             sink.draw_image(
                 DrawImagePayload::image(
@@ -312,7 +333,7 @@ mod tests {
                     handle,
                     0,
                 ),
-                Some(&paint),
+                has_paint.then_some(&paint),
             );
             if !expect_call {
                 assert!(sink.calls.is_empty(), "case {label}: {:?}", sink.calls);

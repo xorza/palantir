@@ -127,8 +127,7 @@ impl GpuInit {
         }))
         .map_err(|source| WinitHostError::RequestDevice { source })?;
 
-        let max_texture_dim = NonZeroU32::new(device.limits().max_texture_dimension_2d)
-            .expect("device texture dimension limit is zero");
+        let max_texture_dim = DeviceRequirements::max_texture_dim(&device);
         let surfaces = SurfaceManager {
             instance,
             adapter,

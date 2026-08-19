@@ -1,6 +1,7 @@
 //! What Palantir needs from the device it draws on.
 
 use crate::host::error::UnmetRequirements;
+use std::num::NonZeroU32;
 
 /// The features and limits to ask an adapter for, so that the device it
 /// returns can run Palantir's pipelines.
@@ -84,6 +85,22 @@ impl DeviceRequirements {
     /// For hosts built on a caller-supplied device, where the request has
     /// already happened and the only question left is whether it asked for
     /// enough.
+    /// The device's `max_texture_dimension_2d`, which every host has to
+    /// read and hand on: it is the ceiling on a registered image, on a
+    /// `GpuView` target, and on the glyph and gradient atlases.
+    ///
+    /// Here rather than at each host, because both spelled the same
+    /// `NonZeroU32::new(..).expect(..)` with the same message — and this
+    /// is the type that already answers what the device owes Palantir.
+    /// A zero limit is not a device Palantir can draw on at all, so it
+    /// panics rather than joining [`Self::met_by`]'s `Result`: no adapter
+    /// reports one, and threading an error for it would put a match on
+    /// every host's startup path for a case that cannot arise.
+    pub(crate) fn max_texture_dim(device: &wgpu::Device) -> NonZeroU32 {
+        NonZeroU32::new(device.limits().max_texture_dimension_2d)
+            .expect("device texture dimension limit is zero")
+    }
+
     pub fn met_by(device: &wgpu::Device) -> Result<(), UnmetRequirements> {
         let available = device.features();
         if !available.contains(Self::FEATURES) {

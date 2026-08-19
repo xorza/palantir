@@ -12,6 +12,7 @@ use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::render_buffer::batch::PaintTier;
 use crate::scene::record_store::RecordPayloads;
 use glam::{UVec2, Vec2};
+use std::time::Duration;
 
 #[test]
 #[should_panic(expected = "composer texture dimension limit must be positive")]
@@ -46,7 +47,7 @@ fn dropping_a_session_emits_the_trailing_group_and_batch() {
     let mut composer = composer();
     let mut out = render_buffer();
     {
-        let mut session = composer.begin(display, &payloads, &mut out);
+        let mut session = composer.begin(display, Duration::ZERO, &payloads, &mut out);
         let mut recorded = PaintCapture::default();
         draw(&mut recorded, rect(0.0, 0.0, 10.0, 10.0));
         text(&mut recorded, rect(0.0, 20.0, 10.0, 10.0));

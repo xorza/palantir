@@ -28,6 +28,7 @@ use crate::renderer::frontend::composer::geometry::chains_equal;
 use crate::renderer::frontend::composer::session::ComposeSession;
 use higher_kind::HigherKindRects;
 use occlusion::OcclusionPruner;
+use std::time::Duration;
 use text_grid::TextRectGrid;
 
 /// CPU-only compose engine: turns the encoder's paint calls into a `RenderBuffer`
@@ -414,10 +415,11 @@ impl Composer {
     pub(crate) fn begin<'a>(
         &'a mut self,
         display: Display,
+        time: Duration,
         payloads: &'a RecordPayloads,
         out: &'a mut RenderBuffer,
     ) -> ComposeSession<'a> {
-        out.start_frame(display);
+        out.start_frame(display, time);
 
         self.reset_group_scratch(display.physical);
         self.clip_stack.clear();

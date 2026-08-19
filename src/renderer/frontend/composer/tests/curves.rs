@@ -14,6 +14,7 @@ use crate::scene::record_store::RecordPayloads;
 use crate::scene::shapes::record::ColorMode;
 use crate::shape::style::{LineCap, LineJoin};
 use glam::{UVec2, Vec2};
+use std::time::Duration;
 
 /// Pin: a higher-kind stroke (a polyline, riding the curve tier)
 /// recorded between two text runs splits the batch. Strokes paint
@@ -85,7 +86,12 @@ fn compose_polyline_emits_segments_and_join_chrome() {
     let mut composer = composer();
     let mut buf = render_buffer();
     composer
-        .begin(params(1.0, UVec2::new(200, 200)), &payloads, &mut buf)
+        .begin(
+            params(1.0, UVec2::new(200, 200)),
+            Duration::ZERO,
+            &payloads,
+            &mut buf,
+        )
         .replay_from(&commands);
     let segs: Vec<_> = buf
         .curves

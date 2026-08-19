@@ -14,11 +14,10 @@
 //! [`OffscreenHost`](crate::OffscreenHost) — so the map lives with the host
 //! and the drivers are passed back in per frame.
 
-use std::num::NonZeroU32;
-
 use crate::Display;
 use crate::app::App;
 use crate::common::clipboard::Clipboard;
+use crate::host::device_requirements::DeviceRequirements;
 use crate::host::shared::HostShared;
 use crate::host::window_driver::{CpuFrame, PresentMode, WindowDriver, WindowDriverBuilder};
 use crate::renderer::backend::{BackendConfig, WgpuBackend};
@@ -44,8 +43,7 @@ impl HostCore {
         clipboard: Clipboard,
         config: BackendConfig,
     ) -> Self {
-        let max_texture_dim = NonZeroU32::new(device.limits().max_texture_dimension_2d)
-            .expect("device texture dimension limit is zero");
+        let max_texture_dim = DeviceRequirements::max_texture_dim(&device);
         let shared = HostShared::with_clipboard(shaper, clipboard, Some(max_texture_dim));
         let backend = WgpuBackend::new(device, queue, shared.backend_resources(), config);
         let frontend = Frontend::new(max_texture_dim.get(), shared.gradient_atlas.clone());

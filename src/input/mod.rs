@@ -1008,6 +1008,14 @@ impl InputState {
                 .all(|c| c.press.is_none() && c.release.is_none());
     }
 
+    /// The pointer in `id`'s local space, gathered from scratch.
+    ///
+    /// The cheap path for a caller that wants *only* this: it does the
+    /// three lookups itself rather than running the whole
+    /// [`Self::response_for`] probe, which computes the same value into
+    /// [`ResponseState::pointer_local`] as one field of a much larger
+    /// gather. Both end at `pointer_in_widget_space`, so the arithmetic
+    /// is shared even though the lookups are not.
     pub(crate) fn pointer_local_for(
         &self,
         id: WidgetId,

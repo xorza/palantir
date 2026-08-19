@@ -12,6 +12,7 @@ use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::{BrushSource, DrawQuadPayload, ResolvedGradient};
 use crate::scene::record_store::RecordPayloads;
 use glam::UVec2;
+use std::time::Duration;
 
 #[test]
 fn prune_drops_quad_fully_covered_by_later_opaque_quad() {
@@ -548,7 +549,12 @@ fn prune_steady_state_across_repeated_compose_calls() {
         draw(&mut buffer, rect(0.0, 0.0, 100.0, 100.0));
         let mut out = render_buffer();
         composer
-            .begin(display, &RecordPayloads::default(), &mut out)
+            .begin(
+                display,
+                Duration::ZERO,
+                &RecordPayloads::default(),
+                &mut out,
+            )
             .replay_from(&buffer);
         assert_eq!(out.quads.len(), 1, "prune runs cleanly each frame");
     }
@@ -786,13 +792,13 @@ fn clear_fold_resets_across_frames() {
     draw(&mut covered, rect(10.0, 10.0, 20.0, 20.0));
 
     composer
-        .begin(display, &payloads, &mut out)
+        .begin(display, Duration::ZERO, &payloads, &mut out)
         .replay_from(&covered);
     assert!(out.clear_override.is_some(), "frame 1 folds");
     assert_eq!(out.quads.len(), 1);
 
     composer
-        .begin(display, &payloads, &mut out)
+        .begin(display, Duration::ZERO, &payloads, &mut out)
         .replay_from(&covered);
     assert!(out.clear_override.is_some(), "steady state re-folds");
     assert_eq!(out.quads.len(), 1);
@@ -800,7 +806,7 @@ fn clear_fold_resets_across_frames() {
     let mut uncovered = PaintCapture::default();
     draw(&mut uncovered, rect(10.0, 10.0, 20.0, 20.0));
     composer
-        .begin(display, &payloads, &mut out)
+        .begin(display, Duration::ZERO, &payloads, &mut out)
         .replay_from(&uncovered);
     assert_eq!(out.clear_override, None, "no cover, no override");
     assert_eq!(out.quads.len(), 1);
