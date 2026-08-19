@@ -235,8 +235,7 @@ pub use glam::UVec2;
 // `Vec2` is in the public surface (Shape polyline points, `Configure::position`,
 // `Canvas` placement); re-export so widget authors don't need a direct `glam` dep.
 pub use glam::Vec2;
-pub use icons::icon_atlas::{ICON_FORMAT_VERSION, IconAtlas, IconDef, IconId};
-pub use icons::icon_registry::IconSetId;
+pub use icons::icon_atlas::{IconAtlas, IconDef, IconId};
 pub use icons::icon_set::{IconHandle, IconSet};
 pub use primitives::span::Span;
 pub use primitives::stroke::Stroke;

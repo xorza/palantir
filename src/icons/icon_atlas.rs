@@ -3,16 +3,9 @@ use glam::Vec2;
 use resvg::usvg;
 use std::borrow::Cow;
 
-/// Layout version of the baked data `bake-icons` writes and this crate reads.
-///
-/// A generated `icons.rs` asserts against this in a `const` block, so a stale
-/// generated file is a compile error rather than a blob read against the wrong
-/// field order.
-pub const ICON_FORMAT_VERSION: u32 = 1;
-
 /// Index of one icon within its [`IconAtlas`]. `bake-icons` emits a named
 /// constant per icon, so a call site says `icons::SAVE` rather than a number.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct IconId(pub u16);
 
 /// One baked icon: what it is called, the size it was drawn at, where its
@@ -124,9 +117,10 @@ impl IconAtlas {
         }
     }
 
-    /// The name-sorted table. `bake-icons` and the renderer's prewarm pass
-    /// both walk it; everything else goes through an [`IconId`].
-    pub fn icons(&self) -> &[IconDef] {
+    /// The name-sorted table, for the two places that walk the whole set —
+    /// the prewarm pass and `by_name`. Everything else goes through an
+    /// [`IconId`].
+    pub(crate) fn icons(&self) -> &[IconDef] {
         &self.icons
     }
 
@@ -168,6 +162,10 @@ struct PaintSurvey {
     /// Some group carries an SVG filter — 10-20x the raster cost, which is
     /// what the renderer prewarms against.
     filtered: bool,
+    /// The one colour seen so far, if the walk has seen exactly one. Walk
+    /// state rather than a result: a second distinct colour clears
+    /// [`Self::tintable`] and this stops mattering.
+    only: Option<usvg::Color>,
 }
 
 impl PaintSurvey {
@@ -175,26 +173,26 @@ impl PaintSurvey {
         let mut survey = Self {
             tintable: true,
             filtered: false,
+            only: None,
         };
-        let mut only: Option<usvg::Color> = None;
-        survey.walk(tree.root(), &mut only);
+        survey.walk(tree.root());
         survey
     }
 
-    fn walk(&mut self, group: &usvg::Group, only: &mut Option<usvg::Color>) {
+    fn walk(&mut self, group: &usvg::Group) {
         if !group.filters().is_empty() {
             self.filtered = true;
         }
         for node in group.children() {
             match node {
-                usvg::Node::Group(child) => self.walk(child, only),
+                usvg::Node::Group(child) => self.walk(child),
                 usvg::Node::Path(path) => {
                     let paints = [
                         path.fill().map(usvg::Fill::paint),
                         path.stroke().map(usvg::Stroke::paint),
                     ];
                     for paint in paints.into_iter().flatten() {
-                        self.note(paint, only);
+                        self.note(paint);
                     }
                 }
                 // A raster image or unresolved text carries colour this walk
@@ -206,12 +204,12 @@ impl PaintSurvey {
 
     /// Fold one paint into the survey: a second distinct colour, or any
     /// gradient or pattern, means the artwork's own colours have to survive.
-    fn note(&mut self, paint: &usvg::Paint, only: &mut Option<usvg::Color>) {
+    fn note(&mut self, paint: &usvg::Paint) {
         match paint {
-            usvg::Paint::Color(color) => match only {
-                Some(seen) if seen != color => self.tintable = false,
+            usvg::Paint::Color(color) => match self.only {
+                Some(seen) if seen != *color => self.tintable = false,
                 Some(_) => {}
-                None => *only = Some(*color),
+                None => self.only = Some(*color),
             },
             usvg::Paint::LinearGradient(_)
             | usvg::Paint::RadialGradient(_)

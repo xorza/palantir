@@ -23,7 +23,7 @@ const COARSE_STEP_PX: u32 = 4;
 /// magnifies, which is the one place icons are not pixel-exact and the one
 /// place nobody is looking. Divisible by [`COARSE_STEP_PX`], so the clamp
 /// lands on a rung rather than beside one.
-pub(crate) const MAX_RASTER_PX: u32 = 512;
+const MAX_RASTER_PX: u32 = 512;
 
 /// What one cached icon raster is keyed by: which icon, at what physical pixel
 /// size. Eight bytes, against the 24 of cosmic's glyph `CacheKey` — an icon

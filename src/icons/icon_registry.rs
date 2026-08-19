@@ -5,8 +5,8 @@ use std::rc::Rc;
 /// Identity of a loaded icon set — an index into [`IconRegistry`]'s table.
 /// Half of an [`IconHandle`](crate::IconHandle), and half of the atlas cache
 /// key, which is why it is a `u16` rather than a pointer.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct IconSetId(pub(crate) u16);
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(crate) struct IconSetId(pub(crate) u16);
 
 /// The icon sets a host has loaded, shared between the `Ui` side that loads
 /// them and the backend that rasterizes from them — the icon counterpart of
