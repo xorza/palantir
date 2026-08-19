@@ -16,12 +16,11 @@ use crate::widgets::widget::Widget;
 /// The theme arrives **resolved**. Each toggle reads its own slot
 /// (`theme.checkbox` / `theme.radio` / `theme.switch`) — they share a theme
 /// *type* but not a *slot*, and only the caller knows which is its own — so
-/// the caller is also where
-/// [`WidgetTheme::plan`](crate::widgets::theme::WidgetTheme::plan) and
-/// [`LookPlan::apply`](crate::widgets::theme::widget_look::look_plan::LookPlan::apply)
-/// run, off the same slot the geometry scalars come from. What crosses into
-/// here is owned, which is what keeps the shared scaffolding out of the
-/// business of naming theme fields.
+/// the caller is also where the
+/// [`LookPlan`](crate::widgets::theme::widget_look::look_plan::LookPlan) is
+/// built and applied, off the same slot the geometry scalars come from. What
+/// crosses into here is owned, which is what keeps the shared scaffolding out
+/// of the business of naming theme fields.
 #[derive(Debug)]
 pub(crate) struct ToggleChrome {
     /// The picked, animated look for this response and on/off state.

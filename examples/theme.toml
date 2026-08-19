@@ -622,7 +622,8 @@ padding = [
 margin = 0.0
 gap = 16.0
 
-[context_menu.item.normal]
+[context_menu.item.normal.background.fill]
+Solid = "#00000000"
 
 [context_menu.item.hovered.background]
 corners = 3.0
@@ -635,6 +636,9 @@ corners = 3.0
 
 [context_menu.item.active.background.fill]
 Solid = "#3e3e3e"
+
+[context_menu.item.disabled.background.fill]
+Solid = "#00000000"
 
 [context_menu.item.disabled.text]
 font_size_px = 16.0

@@ -17,68 +17,6 @@ macro_rules! palette_default {
     };
 }
 
-/// Implement [`WidgetTheme`] for a bundle that stores its box defaults
-/// in fields called `padding` / `margin` / `anim` and its per-state pick
-/// in an inherent `pick`.
-///
-/// The three accessors forward to identically-named fields on every
-/// implementor, so only `Mode` and the shape of `pick` actually vary:
-///
-/// - `impl_widget_theme!(ButtonTheme)` — `Mode = ()`, the engaged state
-///   falls out of the response, so `pick` takes only the state.
-/// - `impl_widget_theme!(ToggleTheme, mode: bool)` — the mode reaches
-///   `pick` as a second argument, because a toggle's look pack is chosen
-///   by a flag the response can't answer.
-///
-/// Invoke it **in the bundle's own file**, next to its inherent `pick`.
-macro_rules! impl_widget_theme {
-    ($ty:ty) => {
-        impl $crate::widgets::theme::WidgetTheme for $ty {
-            type Mode = ();
-            #[inline(always)]
-            fn pick(
-                &self,
-                state: &$crate::input::response::ResponseState,
-                (): (),
-            ) -> &$crate::widgets::theme::widget_look::WidgetLook {
-                <$ty>::pick(self, state)
-            }
-            impl_widget_theme!(@box_defaults);
-        }
-    };
-    ($ty:ty, mode: $mode:ty) => {
-        impl $crate::widgets::theme::WidgetTheme for $ty {
-            type Mode = $mode;
-            #[inline(always)]
-            fn pick(
-                &self,
-                state: &$crate::input::response::ResponseState,
-                mode: $mode,
-            ) -> &$crate::widgets::theme::widget_look::WidgetLook {
-                // Path form, not `self.pick(…)`: the inherent method and
-                // this one have the same arity here, so the receiver form
-                // would read as though it might recurse.
-                <$ty>::pick(self, state, mode)
-            }
-            impl_widget_theme!(@box_defaults);
-        }
-    };
-    (@box_defaults) => {
-        #[inline(always)]
-        fn padding(&self) -> $crate::primitives::spacing::Spacing {
-            self.padding
-        }
-        #[inline(always)]
-        fn margin(&self) -> $crate::primitives::spacing::Spacing {
-            self.margin
-        }
-        #[inline(always)]
-        fn anim(&self) -> Option<$crate::animation::AnimSpec> {
-            self.anim
-        }
-    };
-}
-
 pub(crate) mod button;
 pub(crate) mod combo_box;
 pub(crate) mod context_menu;
@@ -101,12 +39,9 @@ pub(crate) mod widget_look;
 #[cfg(test)]
 mod tests;
 
-use crate::animation::AnimSpec;
-use crate::input::response::ResponseState;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
-use crate::primitives::spacing::Spacing;
 use crate::text::key;
 use crate::widgets::theme::button::ButtonTheme;
 use crate::widgets::theme::combo_box::ComboBoxTheme;
@@ -124,8 +59,6 @@ use crate::widgets::theme::text_edit::TextEditTheme;
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::theme::toggle::ToggleTheme;
 use crate::widgets::theme::tooltip::TooltipTheme;
-use crate::widgets::theme::widget_look::WidgetLook;
-use crate::widgets::theme::widget_look::look_plan::LookPlan;
 /// Global theme. Aggregates per-widget themes. Widgets opt in by reading
 /// from `Ui::theme`.
 ///
@@ -344,58 +277,6 @@ impl Theme {
             window_clear: p.terminal_bg,
             panel_background: None,
             panel_clip: ClipMode::None,
-        }
-    }
-}
-
-/// A per-widget theme bundle that can resolve into a painted look: a
-/// per-state [`WidgetLook`] pick plus the box defaults (padding /
-/// margin / motion) that fill in fields the builder did not configure.
-///
-/// Every widget that paints state-dependent chrome implements it —
-/// [`ButtonTheme`], [`TextEditTheme`], `MenuItemTheme`, [`ToggleTheme`]
-/// — so [`Self::plan`] into
-/// [`LookPlan::apply`](crate::widgets::theme::widget_look::look_plan::LookPlan::apply)
-/// is the one path from a theme bundle to a rendered look, and a widget
-/// cannot quietly grow a fifth. Each impl
-/// defines its own `active` semantics by delegating to its inherent
-/// `pick`; `impl_widget_theme!` writes the forwarding for all four.
-pub(super) trait WidgetTheme: Sized {
-    /// Pick input the [`ResponseState`] can't supply.
-    ///
-    /// `()` wherever the engaged state falls out of the response alone
-    /// (pressed for `Button` / `MenuItem`, focused for `TextEdit`);
-    /// `bool` for [`ToggleTheme`], whose checked flag chooses *which of
-    /// its two look packs* the four-state pick then runs inside.
-    type Mode: Copy;
-
-    fn pick(&self, state: &ResponseState, mode: Self::Mode) -> &WidgetLook;
-    fn padding(&self) -> Spacing;
-    fn margin(&self) -> Spacing;
-    fn anim(&self) -> Option<AnimSpec>;
-
-    /// Everything this bundle contributes to the widget's look, taken out
-    /// as owned values so the theme borrow can end before `Ui` is reborrowed
-    /// mutably. Hand the result to
-    /// [`LookPlan::apply`](crate::widgets::theme::widget_look::look_plan::LookPlan::apply).
-    ///
-    /// A method on the resolved slot rather than an associated function
-    /// taking `Option<&Self>` plus a fallback closure: the widget already
-    /// holds its slot (its `slot(theme)`, from `style_setter!`) to copy its
-    /// own geometry scalars out of, so naming it a second time here was pure
-    /// duplication — and one a typo could break silently.
-    ///
-    /// `fallback_text` is [`Theme::text`], passed by reference and read only
-    /// when the picked look declines to override text. That is what keeps it
-    /// out of every themed widget's per-frame cost: it is copied into the
-    /// target of a look that wants it, not cloned for all of them.
-    #[inline(always)]
-    fn plan(&self, fallback_text: &TextStyle, state: &ResponseState, mode: Self::Mode) -> LookPlan {
-        LookPlan {
-            target: self.pick(state, mode).to_animated(fallback_text),
-            padding: self.padding(),
-            margin: self.margin(),
-            anim: self.anim(),
         }
     }
 }

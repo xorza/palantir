@@ -349,22 +349,22 @@ fn outlined_style() -> ButtonTheme {
     ButtonTheme {
         looks: StatefulLook {
             normal: WidgetLook {
-                background: Some(bg(Color::TRANSPARENT, stroke)),
+                background: bg(Color::TRANSPARENT, stroke),
                 text: None,
             },
             hovered: WidgetLook {
-                background: Some(bg(accent.with_alpha(0.18), stroke)),
+                background: bg(accent.with_alpha(0.18), stroke),
                 text: None,
             },
             active: WidgetLook {
-                background: Some(bg(accent.with_alpha(0.35), stroke)),
+                background: bg(accent.with_alpha(0.35), stroke),
                 text: None,
             },
             disabled: WidgetLook {
-                background: Some(bg(
+                background: bg(
                     Color::TRANSPARENT,
                     Stroke::solid(accent.with_alpha(0.35), 1.5),
-                )),
+                ),
                 text: Some(TextStyle::default().with_color(support::INK_FAINT)),
             },
         },
@@ -375,7 +375,7 @@ fn outlined_style() -> ButtonTheme {
 fn danger_style() -> ButtonTheme {
     let red = support::E;
     let look = |fill: Color, ink: Color| WidgetLook {
-        background: Some(Background::rounded(fill, Corners::all(4.0))),
+        background: Background::rounded(fill, Corners::all(4.0)),
         text: Some(TextStyle::default().with_color(ink)),
     };
     ButtonTheme {

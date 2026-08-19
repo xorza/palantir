@@ -6,8 +6,8 @@ use crate::shape::Shape;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
 use crate::widgets::response::Response;
-use crate::widgets::theme::WidgetTheme;
 use crate::widgets::theme::button::ButtonTheme;
+use crate::widgets::theme::widget_look::look_plan::LookPlan;
 
 #[derive(Debug)]
 pub struct Button<'a> {
@@ -70,10 +70,14 @@ impl<'a> Button<'a> {
         let response = widget.response(ui);
         let id = widget.id();
         let theme = ui.theme();
-        let look =
-            self.slot(theme)
-                .plan(&theme.text, &response, ())
-                .apply(ui, id, &mut widget.node);
+        let slot = self.slot(theme);
+        let look = LookPlan {
+            target: slot.pick(&response).to_animated(&theme.text),
+            padding: slot.padding,
+            margin: slot.margin,
+            anim: slot.anim,
+        }
+        .apply(ui, id, &mut widget.node);
         let label = self.label;
         let label_align = self.label_align;
         let label_wrap = self.label_wrap;
@@ -119,7 +123,7 @@ mod tests {
             margin: Spacing::all(4.0),
             ..ButtonTheme::default()
         };
-        theme.looks.normal.background = Some(Background::NONE);
+        theme.looks.normal.background = Background::NONE;
 
         let mut h = UiHarness::new(UVec2::new(200, 120));
         let (mut explicit, mut inherited) = (None, None);

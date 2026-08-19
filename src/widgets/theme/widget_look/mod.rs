@@ -1,8 +1,17 @@
-//! The per-state look a themed widget paints with: [`WidgetLook`]
-//! as authored, [`animated_look::AnimatedLook`] as resolved,
-//! [`stateful_look::StatefulLook`] as the four-state pack a theme
-//! bundle stores, and [`look_plan::LookPlan`] as the owned hand-off
-//! between reading the theme and animating toward what it said.
+//! The per-state look a themed widget paints with, in the four shapes it
+//! passes through:
+//!
+//! - [`WidgetLook`] — one state, as authored in a theme file.
+//! - [`stateful_look::StatefulLook`] — the four-state pack a theme bundle
+//!   stores, and the `normal` / `hovered` / `active` / `disabled` precedence
+//!   every widget picks from.
+//! - [`animated_look::AnimatedLook`] — one state with the ambient text
+//!   fallback resolved, which is what `Ui::animate` interpolates.
+//! - [`look_plan::LookPlan`] — that target plus the bundle's box defaults,
+//!   owned, so the theme borrow can end before the `Ui` is reborrowed.
+//!
+//! No trait spans them: a widget holds its bundle, calls the bundle's own
+//! `pick`, and builds a `LookPlan` from fields every bundle spells alike.
 
 pub(crate) mod animated_look;
 pub(crate) mod look_plan;
@@ -15,22 +24,23 @@ use crate::widgets::theme::widget_look::animated_look::AnimatedLook;
 
 /// Paint settings for one widget state — the same shape that Button
 /// (`normal`/`hovered`/`pressed`/`disabled`) and TextEdit
-/// (`normal`/`focused`/`disabled`) both reach for. `Some(x)`
-/// overrides; `None` inherits the framework default for that field.
-/// `background = None` inherits [`Background::default`] (paints
-/// nothing — `Ui::add_shape` filters no-op shapes). `text = None`
-/// inherits [`crate::Theme::text`], so an app changing
-/// `theme.text.color` moves every label that didn't override it.
+/// (`normal`/`focused`/`disabled`) both reach for.
+///
+/// `text` is the one optional axis: `None` inherits
+/// [`crate::Theme::text`], so an app changing `theme.text.color` moves
+/// every label that didn't override it. `background` has no such ambient
+/// to inherit — [`Background::NONE`] already *is* "paints nothing", and
+/// `Ui::add_shape` filters no-op chrome — so it is a plain value rather
+/// than an `Option` whose empty case would mean the same thing.
 ///
 /// Per-theme `pick(state)` returns `&WidgetLook`; [`Self::to_animated`]
-/// flattens the selected look into the [`AnimatedLook`] target
+/// resolves the text fallback into the [`AnimatedLook`] target
 /// `Ui::animate` interpolates toward.
 // **Not `Copy`** because `Background` isn't — `WidgetLook` shows up in
-// theme definitions and is cheap to `.clone()` (one branch for each
-// `Option` + the underlying field clones).
+// theme definitions and is cheap to `.clone()`.
 #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct WidgetLook {
-    pub background: Option<Background>,
+    pub background: Background,
     pub text: Option<TextStyle>,
 }
 
@@ -40,7 +50,7 @@ impl WidgetLook {
     /// `Ui::animate` call traffic compared to per-component slots.
     pub(crate) const SLOT_LOOK: AnimSlot = AnimSlot::new("look");
 
-    /// Flatten the look into the target `Ui::animate` interpolates
+    /// Resolve the look into the target `Ui::animate` interpolates
     /// toward: `Background` (fill + stroke) animates, `TextStyle`
     /// carries its animated colour and snapped font/leading.
     ///
@@ -54,7 +64,7 @@ impl WidgetLook {
     #[inline(always)]
     pub fn to_animated(&self, fallback_text: &TextStyle) -> AnimatedLook {
         AnimatedLook {
-            background: self.background.clone().unwrap_or_default(),
+            background: self.background.clone(),
             text: self.text.clone().unwrap_or_else(|| fallback_text.clone()),
         }
     }

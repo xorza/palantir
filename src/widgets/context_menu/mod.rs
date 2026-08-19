@@ -12,11 +12,11 @@ use crate::widgets::popup::{ClickOutside, Popup, PopupHandle, PopupResponse};
 use crate::widgets::response::{Response, ResponseSnapshot};
 use crate::widgets::separator::Separator;
 use crate::widgets::text::Text;
-use crate::widgets::theme::WidgetTheme;
 use crate::widgets::theme::context_menu::ContextMenuTheme;
 use crate::widgets::theme::context_menu::menu_item::MenuItemTheme;
 use crate::widgets::theme::separator::SeparatorTheme;
 use crate::widgets::theme::text_style::TextStyle;
+use crate::widgets::theme::widget_look::look_plan::LookPlan;
 
 use crate::primitives::interned_str::TextInput;
 use glam::Vec2;
@@ -284,9 +284,13 @@ impl<'a> MenuItem<'a> {
         let item = self.slot(theme);
         let shortcut_color = item.shortcut;
         let gap = item.gap;
-        let look = item
-            .plan(&theme.text, &response, ())
-            .apply(ui, id, &mut widget.node);
+        let look = LookPlan {
+            target: item.pick(&response).to_animated(&theme.text),
+            padding: item.padding,
+            margin: item.margin,
+            anim: item.anim,
+        }
+        .apply(ui, id, &mut widget.node);
         // Already fallen back to `theme.text` by `WidgetLook::animate`.
         let text_style = look.text;
         // Shortcut hint reads muted — same style as the label but the

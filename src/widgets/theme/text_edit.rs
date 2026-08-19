@@ -111,12 +111,7 @@ impl TextEditTheme {
         // Off `normal`, and safe to be: the width is one number across all four
         // states so that focus changes a field's colour without moving its
         // text — see [`TextEditTheme::from_palette`].
-        let width = self
-            .looks
-            .normal
-            .background
-            .as_ref()
-            .map_or(0.0, |bg| bg.stroke.width);
+        let width = self.looks.normal.background.stroke.width;
         // On the width alone, like `TextEdit::show`'s own guard — a stroke the
         // colour makes invisible is still a stroke the fold makes room for, so
         // `Stroke::is_noop` is the wrong question here.
@@ -148,7 +143,7 @@ impl TextEditTheme {
         // hover feedback out of the box; the slot exists for themes
         // that want it.
         let normal = WidgetLook {
-            background: Some(normal_bg),
+            background: normal_bg,
             text: None,
         };
         Self {
@@ -156,11 +151,11 @@ impl TextEditTheme {
                 hovered: normal.clone(),
                 normal,
                 active: WidgetLook {
-                    background: Some(focused_bg),
+                    background: focused_bg,
                     text: None,
                 },
                 disabled: WidgetLook {
-                    background: Some(disabled_bg),
+                    background: disabled_bg,
                     text: Some(TextStyle::default().with_color(p.text_disabled)),
                 },
             },
@@ -174,7 +169,5 @@ impl TextEditTheme {
         }
     }
 }
-
-impl_widget_theme!(TextEditTheme);
 
 palette_default!(TextEditTheme);

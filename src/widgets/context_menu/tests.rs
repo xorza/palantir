@@ -423,45 +423,24 @@ fn with_radius_rerounds_panel_and_nests_the_row_chip() {
     let derived = ContextMenuTheme::default().with_radius(10.0, None);
     assert_eq!(derived.panel.corners, Corners::all(10.0), "panel radius");
     assert_eq!(
-        derived
-            .item
-            .looks
-            .hovered
-            .background
-            .as_ref()
-            .unwrap()
-            .corners,
+        derived.item.looks.hovered.background.corners,
         Corners::all(9.0),
         "chip derives one px under the panel",
     );
     assert_eq!(
-        derived
-            .item
-            .looks
-            .active
-            .background
-            .as_ref()
-            .unwrap()
-            .corners,
+        derived.item.looks.active.background.corners,
         Corners::all(9.0),
         "every state that paints a chip follows",
     );
     assert!(
-        derived.item.looks.normal.background.is_none(),
-        "rows stay transparent at rest — with_radius must not materialize a chip",
+        derived.item.looks.normal.background.is_noop(),
+        "rows stay transparent at rest — rerounding an invisible chip leaves it invisible",
     );
 
     let explicit = ContextMenuTheme::default().with_radius(10.0, Some(2.0));
     assert_eq!(explicit.panel.corners, Corners::all(10.0));
     assert_eq!(
-        explicit
-            .item
-            .looks
-            .hovered
-            .background
-            .as_ref()
-            .unwrap()
-            .corners,
+        explicit.item.looks.hovered.background.corners,
         Corners::all(2.0),
         "an explicit chip radius wins over the derived one",
     );
@@ -470,14 +449,7 @@ fn with_radius_rerounds_panel_and_nests_the_row_chip() {
     let square = ContextMenuTheme::default().with_radius(0.0, None);
     assert_eq!(square.panel.corners, Corners::all(0.0));
     assert_eq!(
-        square
-            .item
-            .looks
-            .hovered
-            .background
-            .as_ref()
-            .unwrap()
-            .corners,
+        square.item.looks.hovered.background.corners,
         Corners::all(0.0),
         "derived chip floors at 0 rather than going negative",
     );

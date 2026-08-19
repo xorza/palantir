@@ -133,9 +133,8 @@ impl ToggleTheme {
     ) -> Self {
         let radius = Corners::all(corner);
         let edge = p.border_strong();
-        let bg = |fill: Color, stroke: Stroke| {
-            Some(Background::rounded(fill, radius).with_stroke(stroke))
-        };
+        let bg =
+            |fill: Color, stroke: Stroke| Background::rounded(fill, radius).with_stroke(stroke);
         let disabled_text = Some(TextStyle::default().with_color(p.text_disabled));
         let unchecked = StatefulLook {
             normal: WidgetLook {
@@ -194,5 +193,3 @@ impl ToggleTheme {
         }
     }
 }
-
-impl_widget_theme!(ToggleTheme, mode: bool);

@@ -2,7 +2,6 @@ use crate::input::response::{ButtonPhase, ButtonState, ResponseState};
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::text::{FontFamily, FontWeight};
-use crate::widgets::theme::WidgetTheme;
 use crate::widgets::theme::button::ButtonTheme;
 use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::text_edit::TextEditTheme;
@@ -154,18 +153,15 @@ fn toggle_theme_pick_selects_pack_then_state() {
     ];
     for (state, checked, expected, label) in cases {
         assert!(
-            std::ptr::eq(WidgetTheme::pick(&theme, state, *checked), *expected),
+            std::ptr::eq(theme.pick(state, *checked), *expected),
             "{label}: pick should return the matching slot",
         );
     }
 
-    // The `Mode` decides the answer on its own: one state, two packs.
+    // The checked flag decides the answer on its own: one state, two packs.
     let idle = state(false, false, false);
     assert!(
-        !std::ptr::eq(
-            WidgetTheme::pick(&theme, &idle, false),
-            WidgetTheme::pick(&theme, &idle, true),
-        ),
+        !std::ptr::eq(theme.pick(&idle, false), theme.pick(&idle, true)),
         "checked and unchecked must not resolve to the same look",
     );
 }

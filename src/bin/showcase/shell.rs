@@ -516,8 +516,7 @@ fn showcase_palette() -> Palette {
 /// the open page.
 fn nav_style(selected: bool) -> ButtonTheme {
     let label = |c: Color| Some(TextStyle::default().with_font_size(12.0).with_color(c));
-    let wash =
-        |alpha: f32, c: Color| Some(Background::rounded(c.with_alpha(alpha), Corners::all(5.0)));
+    let wash = |alpha: f32, c: Color| Background::rounded(c.with_alpha(alpha), Corners::all(5.0));
     let (rest, hover, press, ink) = if selected {
         (0.16, 0.22, 0.28, support::ACCENT)
     } else {
@@ -543,7 +542,7 @@ fn nav_style(selected: bool) -> ButtonTheme {
                 text: label(support::INK),
             },
             disabled: WidgetLook {
-                background: None,
+                background: Background::NONE,
                 text: label(support::INK_FAINT),
             },
         },

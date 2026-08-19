@@ -10,20 +10,19 @@ use crate::widgets::theme::widget_look::animated_look::AnimatedLook;
 /// values so the borrow on [`Ui::theme`] can end.
 ///
 /// The two halves of resolving a look need different borrows of the `Ui`:
-/// picking the per-state [`WidgetLook`] and reading the spacing defaults reads
+/// picking the per-state [`WidgetLook`] and reading the spacing defaults read
 /// the theme, while animating toward the result reborrows the `Ui` mutably.
-/// Splitting them at this value is what lets the widget name its theme slot
-/// **once** — it holds the slot across both the scalars it copies out for
-/// itself and the plan it builds here, instead of copying scalars off one
-/// naming and handing a second naming to a resolver as a fallback closure.
+/// This value is where they meet — the widget fills it from its slot while the
+/// theme borrow is live, then [`Self::apply`] consumes it after that borrow
+/// has ended.
 ///
-/// Build with [`WidgetTheme::plan`](crate::widgets::theme::WidgetTheme::plan)
-/// and consume with [`Self::apply`]; between the two, every theme borrow is
-/// released.
-///
-/// Built by struct literal rather than through a constructor: `padding` and
-/// `margin` are the same type and sit next to each other, so a positional
-/// constructor is a swap that compiles.
+/// **Built by struct literal, at the widget.** Every themed bundle spells its
+/// box defaults the same way (`padding` / `margin` / `anim` fields, an
+/// inherent `pick`), so the four inputs need no trait to reach: the widget
+/// writes them out, which is both one fewer indirection than an accessor per
+/// field and the place a reader is already looking. Named fields rather than a
+/// constructor because `padding` and `margin` are the same type and adjacent —
+/// a positional one is a swap that compiles.
 #[derive(Debug)]
 pub(crate) struct LookPlan {
     /// The flattened look to animate toward.

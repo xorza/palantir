@@ -47,10 +47,8 @@ impl ButtonTheme {
     /// active button labels. The historical 4 px radius is retained.
     pub fn from_palette(p: &Palette) -> Self {
         let bg = |fill: Color| {
-            Some(
-                Background::rounded(fill, Corners::all(4.0))
-                    .with_stroke(Stroke::solid(p.border_soft(), 1.0)),
-            )
+            Background::rounded(fill, Corners::all(4.0))
+                .with_stroke(Stroke::solid(p.border_soft(), 1.0))
         };
         // Pressed = hovered fill + focused stroke (the palette has no further fill tier).
         let pressed_bg = Background::rounded(p.elem_active, Corners::all(4.0))
@@ -66,7 +64,7 @@ impl ButtonTheme {
                     text: None,
                 },
                 active: WidgetLook {
-                    background: Some(pressed_bg),
+                    background: pressed_bg,
                     text: None,
                 },
                 disabled: WidgetLook {
@@ -103,7 +101,7 @@ impl ButtonTheme {
     /// `ContextMenu` and is themed via `theme.context_menu.item`.
     pub fn menu_button(p: &Palette) -> Self {
         let flat = |fill: Brush| WidgetLook {
-            background: Some(Background::rounded(fill, Corners::all(4.0))),
+            background: Background::rounded(fill, Corners::all(4.0)),
             text: None,
         };
         Self {
@@ -130,7 +128,5 @@ impl ButtonTheme {
         self.looks.pick(state, state.pressed())
     }
 }
-
-impl_widget_theme!(ButtonTheme);
 
 palette_default!(ButtonTheme);
