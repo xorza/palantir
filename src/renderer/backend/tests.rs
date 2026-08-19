@@ -78,18 +78,15 @@ fn simplify(buffer: &RenderBuffer, steps: &[RenderStep]) -> Vec<DrawOp> {
                 out.push(DrawOp::Quads(group));
             }
             RenderStep::Text { batch } => out.push(DrawOp::Text(*batch)),
-            RenderStep::MeshBatch { batch } => out.push(DrawOp::Meshes(
-                buffer.batches(PaintTier::Mesh)[*batch].last_group as usize,
-            )),
-            RenderStep::ImageBatch { batch } => out.push(DrawOp::Images(
-                buffer.batches(PaintTier::Image)[*batch].last_group as usize,
-            )),
-            RenderStep::IconBatch { batch } => out.push(DrawOp::Icons(
-                buffer.batches(PaintTier::Icon)[*batch].last_group as usize,
-            )),
-            RenderStep::CurveBatch { batch } => out.push(DrawOp::Curves(
-                buffer.batches(PaintTier::Curve)[*batch].last_group as usize,
-            )),
+            RenderStep::TierBatch { tier, batch } => {
+                let group = buffer.batches(*tier)[*batch].last_group as usize;
+                out.push(match tier {
+                    PaintTier::Mesh => DrawOp::Meshes(group),
+                    PaintTier::Image => DrawOp::Images(group),
+                    PaintTier::Icon => DrawOp::Icons(group),
+                    PaintTier::Curve => DrawOp::Curves(group),
+                });
+            }
         }
     }
     out
@@ -1084,7 +1081,10 @@ fn scissor_steps_emit_once_per_transition() {
             RenderStep::Quads {
                 range: Span::new(0, 1),
             },
-            RenderStep::ImageBatch { batch: 0 },
+            RenderStep::TierBatch {
+                tier: PaintTier::Image,
+                batch: 0,
+            },
         ],
     );
 
@@ -1102,7 +1102,10 @@ fn scissor_steps_emit_once_per_transition() {
             RenderStep::Text { batch: 0 },
             // So the group's restore is a real transition, not a repeat.
             RenderStep::SetScissor(narrow),
-            RenderStep::ImageBatch { batch: 0 },
+            RenderStep::TierBatch {
+                tier: PaintTier::Image,
+                batch: 0,
+            },
         ],
     );
 
