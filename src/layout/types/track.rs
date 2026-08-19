@@ -1,6 +1,6 @@
 use crate::layout::types::limits::{valid_lower_bound, valid_upper_bound};
 use crate::layout::types::sizing::Sizing;
-use crate::primitives::approx;
+use crate::primitives::approx::FloatHash;
 use crate::primitives::span::Span;
 
 /// One row or column definition for a `Grid`. Wraps a `Sizing` (Pixel / Auto /
@@ -68,8 +68,8 @@ impl Track {
     #[inline]
     pub(crate) fn hash_visual<H: std::hash::Hasher>(&self, h: &mut H) {
         self.size.hash_visual(h);
-        approx::hash_visual_f32(self.min, h);
-        approx::hash_visual_f32(self.max, h);
+        self.min.hash_visual(h);
+        self.max.hash_visual(h);
     }
 }
 
@@ -83,8 +83,8 @@ impl std::hash::Hash for Track {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
         self.size.hash(h);
-        approx::hash_f32(self.min, h);
-        approx::hash_f32(self.max, h);
+        self.min.hash_eq(h);
+        self.max.hash_eq(h);
     }
 }
 
@@ -107,8 +107,8 @@ impl GridDef {
         for t in &tracks[self.cols.range()] {
             t.hash_visual(h);
         }
-        approx::hash_visual_f32(self.row_gap, h);
-        approx::hash_visual_f32(self.col_gap, h);
+        self.row_gap.hash_visual(h);
+        self.col_gap.hash_visual(h);
     }
 }
 
