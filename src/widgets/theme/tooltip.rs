@@ -41,7 +41,7 @@ pub struct TooltipTheme {
 }
 
 impl TooltipTheme {
-    /// Visit every `TextStyle` this theme owns — drives `Theme::set_text_scale`.
+    /// Visit every `TextStyle` this theme owns — drives `Theme::scale_text`.
     /// Destructured so a new field fails to compile here — see
     /// [`Theme::for_each_text`](crate::Theme).
     pub(super) fn for_each_text<F: FnMut(&mut TextStyle)>(&mut self, f: &mut F) {

@@ -107,10 +107,7 @@ use crate::layout::types::clip_mode::ClipMode;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::primitives::spacing::Spacing;
-use crate::primitives::widget_id::WidgetId;
-use crate::scene::node::Node;
 use crate::text::key;
-use crate::ui::Ui;
 use crate::widgets::theme::button::ButtonTheme;
 use crate::widgets::theme::combo_box::ComboBoxTheme;
 use crate::widgets::theme::context_menu::ContextMenuTheme;
@@ -128,7 +125,7 @@ use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::theme::toggle::ToggleTheme;
 use crate::widgets::theme::tooltip::TooltipTheme;
 use crate::widgets::theme::widget_look::WidgetLook;
-use crate::widgets::theme::widget_look::animated_look::AnimatedLook;
+use crate::widgets::theme::widget_look::look_plan::LookPlan;
 /// Global theme. Aggregates per-widget themes. Widgets opt in by reading
 /// from `Ui::theme`.
 ///
@@ -220,18 +217,9 @@ pub struct Theme {
     /// rounded-clip mask geometry.
     #[serde(default, skip_serializing_if = "is_clip_none")]
     pub panel_clip: ClipMode,
-    /// Global text-size multiplier (1.0 = unscaled). Read-only — it's
-    /// kept in sync with the stored font sizes, which are *already
-    /// scaled*. Change it through [`Theme::set_text_scale`]; a direct
-    /// write would desync the recorded sizes from the factor.
-    #[serde(
-        default = "default_text_scale",
-        deserialize_with = "crate::widgets::theme::serde::deserialize_text_scale"
-    )]
-    text_scale: f32,
 }
 
-const TEXT_SCALE_ERROR: &str = "text scale must be finite and positive";
+const TEXT_SCALE_ERROR: &str = "text scale factor must be finite and positive";
 const SCALED_TEXT_METRICS_ERROR: &str = "text scale would make font size or line height invalid";
 
 #[inline]
@@ -240,52 +228,51 @@ fn is_clip_none(c: &ClipMode) -> bool {
 }
 
 #[inline]
-fn default_text_scale() -> f32 {
-    1.0
-}
-
-#[inline]
 fn text_scale_is_valid(scale: f32) -> bool {
     scale.is_finite() && scale > 0.0
 }
 
 impl Theme {
-    /// Current global text scale (1.0 = unscaled).
-    #[inline]
-    pub fn text_scale(&self) -> f32 {
-        self.text_scale
-    }
-
-    /// Set the global text scale, rescaling every `TextStyle` in the
-    /// theme by the delta from the current scale (`new / old`). So
-    /// `set_text_scale(1.25)` then `set_text_scale(2.0)` ends at a 2.0×
-    /// size (not 2.5×) — it's an absolute target, not cumulative.
-    /// Affects only font sizes; colors / spacing / chrome are
-    /// untouched. The theme is the single owner of this; widgets read
-    /// the already-scaled sizes and know nothing about the factor.
-    pub fn set_text_scale(&mut self, scale: f32) {
-        assert!(text_scale_is_valid(scale), "{TEXT_SCALE_ERROR}");
-        let ratio = scale / self.text_scale;
+    /// Multiply every `TextStyle` in the theme by `factor`.
+    ///
+    /// **Relative, and it composes**: `scale_text(1.25)` then
+    /// `scale_text(1.6)` lands at 2.0×. The theme stores font sizes and
+    /// nothing else — there is no scale factor beside them to fall out of
+    /// step with, which is why this is a multiply rather than an absolute
+    /// target. An app offering the user a "125% text" setting keeps that
+    /// number itself and applies it to a freshly built theme, the same way
+    /// it keeps which palette it built from.
+    ///
+    /// Affects only font sizes; colors / spacing / chrome are untouched.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `factor` is not finite and positive, or if it would drive
+    /// any font size or line height outside the range the shaper accepts.
+    /// Both checks run before the first write, so a rejected factor leaves
+    /// the theme untouched.
+    pub fn scale_text(&mut self, factor: f32) {
+        assert!(text_scale_is_valid(factor), "{TEXT_SCALE_ERROR}");
         let mut metrics_valid = true;
         self.for_each_text(|style| {
-            let font_size_px = style.font_size_px * ratio;
+            let font_size_px = style.font_size_px * factor;
             metrics_valid &=
                 key::text_metrics_valid(font_size_px, style.line_height_for(font_size_px));
         });
         assert!(metrics_valid, "{SCALED_TEXT_METRICS_ERROR}");
-        self.for_each_text(|t| t.font_size_px *= ratio);
-        self.text_scale = scale;
+        self.for_each_text(|t| t.font_size_px *= factor);
     }
 
-    /// Visit every `TextStyle` in the theme. `set_text_scale` drives the
-    /// walk; each sub-theme owns its own visit (see each `for_each_text`).
+    /// Visit every `TextStyle` in the theme. [`Self::scale_text`] drives
+    /// the walk; each sub-theme owns its own visit (see each
+    /// `for_each_text`).
     ///
     /// **Every `for_each_text` in this module destructures its whole
     /// struct**, binding the text-free fields to `_`, so a new field
     /// anywhere in the theme tree fails to compile here until someone
     /// classifies it as text-bearing or not. That is the guarantee; the
     /// runtime backstop is
-    /// `tests::text_scale::set_text_scale_reaches_every_font_size`,
+    /// `tests::text_scale::scale_text_reaches_every_font_size`,
     /// which scales a default theme and asserts over its serialized
     /// form that every `font_size_px` moved. The test can only see
     /// styles the default theme materializes — an `Option<TextStyle>`
@@ -315,7 +302,6 @@ impl Theme {
             window_clear: _,
             panel_background: _,
             panel_clip: _,
-            text_scale: _,
         } = self;
         let f = &mut f;
         f(text);
@@ -358,7 +344,6 @@ impl Theme {
             window_clear: p.terminal_bg,
             panel_background: None,
             panel_clip: ClipMode::None,
-            text_scale: default_text_scale(),
         }
     }
 }
@@ -369,8 +354,10 @@ impl Theme {
 ///
 /// Every widget that paints state-dependent chrome implements it —
 /// [`ButtonTheme`], [`TextEditTheme`], `MenuItemTheme`, [`ToggleTheme`]
-/// — so [`Self::resolve`] is the one path from a theme bundle to a
-/// rendered look, and a widget cannot quietly grow a fifth. Each impl
+/// — so [`Self::plan`] into
+/// [`LookPlan::apply`](crate::widgets::theme::widget_look::look_plan::LookPlan::apply)
+/// is the one path from a theme bundle to a rendered look, and a widget
+/// cannot quietly grow a fifth. Each impl
 /// defines its own `active` semantics by delegating to its inherent
 /// `pick`; `impl_widget_theme!` writes the forwarding for all four.
 pub(super) trait WidgetTheme: Sized {
@@ -387,59 +374,29 @@ pub(super) trait WidgetTheme: Sized {
     fn margin(&self) -> Spacing;
     fn anim(&self) -> Option<AnimSpec>;
 
-    /// Resolve a widget's animated look: pick the per-state
-    /// [`WidgetLook`], fill in padding/margin the caller did not
-    /// configure, and animate. **The only route from a theme bundle to
-    /// a painted look** — `Button`, `ComboBox`, `DragValue`'s chip,
-    /// `TextEdit`, `MenuItem`, and the three toggles (through
-    /// `toggle::toggle_row`) all arrive here, so per-state precedence,
-    /// spacing defaults, and transitions are one behaviour rather than
-    /// one per widget.
+    /// Everything this bundle contributes to the widget's look, taken out
+    /// as owned values so the theme borrow can end before `Ui` is reborrowed
+    /// mutably. Hand the result to
+    /// [`LookPlan::apply`](crate::widgets::theme::widget_look::look_plan::LookPlan::apply).
     ///
-    /// An associated function rather than a method: `style` is an
-    /// `Option`, and the `None` case is the whole point — it inherits
-    /// `fallback(ui.theme())`, the widget's own global slot
-    /// (`theme.button` for Button/ComboBox, `theme.drag_value.chip` for
-    /// the DragValue chip, `theme.text_edit` for TextEdit,
-    /// `theme.context_menu.item` for MenuItem, and one of
-    /// `theme.checkbox` / `theme.radio` / `theme.switch` for the
-    /// toggles, which share a theme *type* but not a *slot*). `Self` is
-    /// inferred from `style`, so call sites read
-    /// `WidgetTheme::resolve(ui, …)` with no turbofish.
+    /// A method on the resolved slot rather than an associated function
+    /// taking `Option<&Self>` plus a fallback closure: the widget already
+    /// holds its slot (its `slot(theme)`, from `style_setter!`) to copy its
+    /// own geometry scalars out of, so naming it a second time here was pure
+    /// duplication — and one a typo could break silently.
     ///
-    /// The scalars are copied out, and the look is flattened into an
-    /// owned target, so every borrow on [`Ui::theme`] ends before
-    /// [`Ui::animate`] reborrows `ui` mutably. That split is what lets
-    /// [`Theme::text`] be passed by reference: it is copied only into
-    /// the target of a look that declines to override it, rather than
-    /// cloned for every themed widget to launder the borrow. A widget
-    /// that also needs a bundle *after* this call — `TextEdit`'s caret
-    /// scalars, `ComboBox`'s arrow geometry — holds an [`Ui::theme`]
-    /// handle rather than paying a second lookup here.
-    // This generic crosses the theme/widget codegen-unit boundary. Leaving it
-    // to the default inliner kept the resolver plus its tiny trait accessors
-    // outlined in release builds; the frame bench measured that path at 3.9%
-    // precise self-time. Force the whole lookup chain into each widget so state
-    // picking, default resolution and target construction optimize as one block.
+    /// `fallback_text` is [`Theme::text`], passed by reference and read only
+    /// when the picked look declines to override text. That is what keeps it
+    /// out of every themed widget's per-frame cost: it is copied into the
+    /// target of a look that wants it, not cloned for all of them.
     #[inline(always)]
-    fn resolve(
-        ui: &mut Ui,
-        id: WidgetId,
-        node: &mut Node,
-        state: &ResponseState,
-        mode: Self::Mode,
-        style: Option<&Self>,
-        fallback: impl FnOnce(&Theme) -> &Self,
-    ) -> AnimatedLook {
-        let theme = ui.theme();
-        let style = style.unwrap_or_else(|| fallback(theme));
-        let padding = style.padding();
-        let margin = style.margin();
-        let anim = style.anim();
-        let target = style.pick(state, mode).to_animated(&theme.text);
-        node.padding.get_or_insert(padding);
-        node.margin.get_or_insert(margin);
-        ui.animate(id, WidgetLook::SLOT_LOOK, target, anim)
+    fn plan(&self, fallback_text: &TextStyle, state: &ResponseState, mode: Self::Mode) -> LookPlan {
+        LookPlan {
+            target: self.pick(state, mode).to_animated(fallback_text),
+            padding: self.padding(),
+            margin: self.margin(),
+            anim: self.anim(),
+        }
     }
 }
 

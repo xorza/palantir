@@ -1,6 +1,5 @@
 use crate::input::sense::Sense;
 use crate::layout::axis::Axis;
-use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
 use crate::primitives::background::Background;
@@ -67,12 +66,10 @@ impl<'a> Splitter<'a> {
 
     #[track_caller]
     fn new(ratio: &'a mut f32, axis: Axis) -> Self {
-        // The clipped root contains the grab overlay's overhang within the splitter.
-        let mut node = Node::grid();
-        node.size = Some((Sizing::FILL, Sizing::FILL).into());
-        node.clip = Some(ClipMode::Rect);
         Self {
-            node,
+            // The clipped root contains the grab overlay's overhang within
+            // the splitter.
+            node: Node::grid().size((Sizing::FILL, Sizing::FILL)).clip_rect(),
             ratio,
             axis,
             min_pane: 0.0,
@@ -87,12 +84,7 @@ impl<'a> Splitter<'a> {
         self
     }
 
-    /// Borrow a theme override for this splitter. The default inherits
-    /// [`crate::Theme::splitter`].
-    pub fn style(mut self, s: &'a SplitterTheme) -> Self {
-        self.style = Some(s);
-        self
-    }
+    style_setter!('a, SplitterTheme, splitter);
 
     pub fn show<'u>(
         self,
@@ -103,7 +95,7 @@ impl<'a> Splitter<'a> {
         let response = widget.response(ui);
         let id = widget.id();
 
-        let theme = self.style.unwrap_or(&ui.theme().splitter);
+        let theme = self.slot(ui.theme());
         let thickness = theme.thickness.max(1.0);
         let rule_thickness = theme.rule_thickness.max(0.0);
         let rule_color = theme.rule;
@@ -200,8 +192,10 @@ impl<'a> Splitter<'a> {
             let mut bar = Node::leaf()
                 .id(divider_id)
                 .sense(Sense::DRAG)
-                .size((Sizing::FILL, Sizing::FILL));
-            bar.margin = Some(axis.compose_spacing(inset, 0.0));
+                .size((Sizing::FILL, Sizing::FILL))
+                .margin(axis.compose_spacing(inset, 0.0));
+            // No `Configure` twin: cell placement there is `(row, col)`, and
+            // which of the two this axis means is the whole point here.
             bar.grid.set_main(axis, 1);
             ui.widget(bar).record(ui, Some(&bar_bg), |_| {});
         });

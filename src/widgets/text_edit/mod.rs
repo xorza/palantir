@@ -195,16 +195,16 @@ impl<'a> TextEdit<'a> {
         self
     }
 
-    /// Borrow a whole TextEdit theme override — all-or-nothing. To tweak
-    /// one axis, build and share a bundle:
-    /// `TextEditTheme { caret: red, ..ui.theme().text_edit.clone() }`. Buffer
-    /// font/leading/color live on the per-state `text` slot (a
-    /// [`crate::TextStyle`]) — `None` inherits [`crate::Theme::text`]
-    /// like every other text-rendering widget.
-    pub fn style(mut self, s: &'a TextEditTheme) -> Self {
-        self.style = Some(s);
-        self
-    }
+    style_setter!(
+        'a,
+        TextEditTheme,
+        text_edit,
+        "All-or-nothing. To tweak one axis, build and share a bundle: \
+         `TextEditTheme { caret: red, ..ui.theme().text_edit.clone() }`. \
+         Buffer font/leading/color live on the per-state `text` slot (a \
+         [`crate::TextStyle`]) — `None` there inherits \
+         [`crate::Theme::text`] like every other text-rendering widget.",
+    );
 
     /// Take over the placement half of `from` — where the widget sits in
     /// its parent, not what it looks like.
@@ -284,7 +284,7 @@ impl<'a> TextEdit<'a> {
 
     pub fn show(self, ui: &mut Ui) -> TextEditResponse<'_> {
         // Identity resolves on its own: `self.node` keeps being written
-        // below (key filter, then `WidgetTheme::resolve`'s spacing defaults), so
+        // below (key filter, then `LookPlan::apply`'s spacing defaults), so
         // a copy staged now would be stale by the time it records.
         let widget = ui.widget(self.node);
         let id = widget.id();
@@ -360,21 +360,21 @@ impl<'a> TextEdit<'a> {
         if is_focused {
             self.node.flags.set_key_filter(filter);
         }
-        // `WidgetTheme::resolve` also substitutes theme padding/margin where
-        // the builder left those fields unconfigured. The renderer
-        // reads `node.padding` to deflate the buffer layout, and
-        // the caret hit-test reads it back below — both see the
-        // resolved value.
-        let look = WidgetTheme::resolve(ui, id, &mut self.node, &response, (), self.style, |t| {
-            &t.text_edit
-        });
-        // State-independent scalars off the same style source, copied
-        // out so no theme borrow (or whole-theme clone) survives.
-        let style = self.style.unwrap_or(&ui.theme().text_edit);
-        let caret_color = style.caret;
-        let caret_width = style.caret_width;
-        let selection_color = style.selection;
-        let placeholder_color = style.placeholder;
+        // One borrow of the slot covers both halves: the state-independent
+        // caret / selection scalars this widget paints with, and the plan for
+        // the state-varying look. `apply` also substitutes theme
+        // padding/margin where the builder left those unconfigured — the
+        // renderer reads `node.padding` to deflate the buffer layout and the
+        // caret hit-test reads it back below, so both see the resolved value.
+        let theme = ui.theme();
+        let slot = self.slot(theme);
+        let caret_color = slot.caret;
+        let caret_width = slot.caret_width;
+        let selection_color = slot.selection;
+        let placeholder_color = slot.placeholder;
+        let look = slot
+            .plan(&theme.text, &response, ())
+            .apply(ui, id, &mut self.node);
         if !look.text.metrics_valid() {
             let was_focused = state.view.prev_focused;
             state.view.prev_focused = is_focused;

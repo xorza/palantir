@@ -10,6 +10,7 @@ use crate::support;
 use crate::support::{note_style, row, section};
 use palantir::{
     Button, Checkbox, ComboBox, Configure, Modal, Panel, Sizing, Text, Ui, WidgetId, WindowToken,
+    fmt,
 };
 
 #[derive(Clone, Copy, Default, Debug)]
@@ -38,37 +39,33 @@ fn exit_state_id() -> WidgetId {
 }
 
 pub(crate) fn build(ui: &mut Ui) {
-    let state_id = state_id();
-    let exit_id = exit_state_id();
     // Both rows are read and written from several nested closures below, so
-    // they come out once and go back once. Probing the map at each use was
-    // sixteen lookups a frame to move four bytes around.
-    let mut state = *ui.state_mut::<State>(state_id);
-    let mut exit = *ui.state_mut::<ExitState>(exit_id);
+    // each is lent to the whole page body once. Probing the map at each use
+    // was sixteen lookups a frame to move four bytes around.
+    ui.with_state::<State, _>(state_id(), |ui, state| {
+        ui.with_state::<ExitState, _>(exit_state_id(), |ui, exit| page(ui, state, exit))
+    });
+}
+
+fn page(ui: &mut Ui, state: &mut State, exit: &mut ExitState) {
     let options = ["Apple", "Banana", "Cherry", "Durian", "Elderberry"];
 
-    section(
-        ui,
-        "combo box",
-        "combo box — click to open the dropdown",
-        |ui| {
-            row(ui, "combo-row", |ui| {
-                ComboBox::new(&mut state.fruit, &options)
-                    .size((Sizing::fixed(180.0), Sizing::HUG))
-                    .id_salt("combo")
-                    .show(ui);
-                let chosen = ui.fmt(format_args!("selected: {}", options[state.fruit]));
-                Text::new(chosen)
-                    .id_salt("chosen")
-                    .style(&note_style())
-                    .show(ui);
-            });
-        },
-    );
+    section(ui, "combo box — click to open the dropdown", |ui| {
+        row(ui, |ui| {
+            ComboBox::new(&mut state.fruit, &options)
+                .size((Sizing::fixed(180.0), Sizing::HUG))
+                .id_salt("combo")
+                .show(ui);
+            let chosen = fmt!(ui, "selected: {}", options[state.fruit]);
+            Text::new(chosen)
+                .id_salt("chosen")
+                .style(&note_style())
+                .show(ui);
+        });
+    });
 
     section(
         ui,
-        "modal",
         "modal — dims the background and takes every pointer; Esc or a backdrop \
          click closes",
         |ui| {
@@ -86,7 +83,6 @@ pub(crate) fn build(ui: &mut Ui) {
 
     section(
         ui,
-        "close interception",
         "close interception — the app decides whether the window may go away",
         |ui| {
             support::note(
@@ -133,23 +129,20 @@ pub(crate) fn build(ui: &mut Ui) {
             state.modal_open = false;
         }
     }
-
-    *ui.state_mut::<State>(state_id) = state;
-    *ui.state_mut::<ExitState>(exit_id) = exit;
 }
 
 /// Wire into the window's frame after the page content. With no pending
 /// changes the OS close proceeds untouched; with changes it vetoes and
 /// prompts. `win` is the window closed for real once the user confirms.
 pub(crate) fn intercept(ui: &mut Ui, win: WindowToken) {
-    let id = exit_state_id();
-    let mut exit = *ui.state_mut::<ExitState>(id);
+    ui.with_state::<ExitState, _>(exit_state_id(), |ui, exit| exit_dialog(ui, win, exit));
+}
+
+fn exit_dialog(ui: &mut Ui, win: WindowToken, exit: &mut ExitState) {
     if ui.close_requested() && exit.pretend_dirty {
         ui.keep_open();
         exit.show_dialog = true;
     }
-    // No write-back on this path: the only assignment above sets the flag
-    // that would have skipped this return.
     if !exit.show_dialog {
         return;
     }
@@ -202,5 +195,4 @@ pub(crate) fn intercept(ui: &mut Ui, win: WindowToken) {
     if resp.dismissed {
         exit.show_dialog = false;
     }
-    *ui.state_mut::<ExitState>(id) = exit;
 }

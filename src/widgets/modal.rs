@@ -51,13 +51,12 @@ impl<'a> Modal<'a> {
         }
     }
 
-    /// Borrow a theme override for this modal. The default inherits
-    /// [`crate::Theme::modal`]. Per-field [`Self::background`] /
-    /// [`Self::backdrop`] still win over it.
-    pub fn style(mut self, s: &'a ModalTheme) -> Self {
-        self.style = Some(s);
-        self
-    }
+    style_setter!(
+        'a,
+        ModalTheme,
+        modal,
+        "Per-field [`Self::background`] / [`Self::backdrop`] still win over it.",
+    );
 
     /// Override the card chrome (fill / stroke / corners / shadow). Pass
     /// [`Background::NONE`] to suppress the themed card chrome.
@@ -80,7 +79,7 @@ impl<'a> Modal<'a> {
         // Handle: `mt.card` is still borrowed at `scope.record`, which owns
         // `ui` mutably.
         let ui_theme = ui.theme().clone();
-        let mt = self.style.unwrap_or(&ui_theme.modal);
+        let mt = self.slot(&ui_theme);
         let dim = Background::fill(self.backdrop.unwrap_or(mt.backdrop));
         let card_bg = self.chrome.as_ref().unwrap_or(&mt.card);
         let theme_padding = mt.padding;

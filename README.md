@@ -155,7 +155,7 @@ an app that already owns its window and event loop.
 ```rust,no_run
 use palantir::{
     App, Button, Configure, Panel, Sizing, Text, Ui, WindowToken, WinitHost,
-    WinitHostError,
+    WinitHostError, fmt,
 };
 
 struct Counter { clicks: u32 }
@@ -165,11 +165,11 @@ impl App for Counter {
     // apps. This one has a single window, so it's ignored.
     fn record(&mut self, _win: WindowToken, ui: &mut Ui) {
         Panel::vstack()
-            .auto_id()
             .gap(8.0)
             .size((Sizing::HUG, Sizing::HUG))
             .show(ui, |ui| {
-                Text::new(format!("clicks: {}", self.clicks)).auto_id().show(ui);
+                // `fmt!` formats into the frame's text arena — no `String`.
+                Text::new(fmt!(ui, "clicks: {}", self.clicks)).show(ui);
                 if Button::new().label("click me").show(ui).left.clicked() {
                     self.clicks += 1;
                 }

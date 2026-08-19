@@ -317,7 +317,6 @@ pub(crate) fn build(ui: &mut Ui, cube: &Rc<RefCell<Cube>>) {
     // GpuView doesn't sense by default — opt into drag so the returned
     // `Response` reports the orbit delta.
     let resp = GpuView::new(paint)
-        .auto_id()
         .sense(Sense::DRAG)
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui);

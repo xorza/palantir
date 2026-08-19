@@ -38,7 +38,6 @@ fn easing(ui: &mut Ui) {
     let demo_id = WidgetId::from_hash("motion::bars");
     support::section(
         ui,
-        "easing",
         "easing — Ui::animate; every bar retargets at once, one AnimSpec each",
         |ui| {
             if Button::new()
@@ -111,7 +110,6 @@ fn drag(ui: &mut Ui) {
 
     support::section(
         ui,
-        "drag",
         "drag — grab a card; the active one raises above its neighbors",
         |ui| {
             Panel::canvas()

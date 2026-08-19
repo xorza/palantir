@@ -2,51 +2,55 @@
 //! policy toggle, a right-aligned multi-line editor, and a 3×3 grid
 //! covering every `(HAlign, VAlign)` combination.
 //!
-//! Buffer storage: stashed in `Ui::state_mut::<String>` under non-widget
-//! ids, so buffers survive across page switches. The widget takes
-//! `&mut String`, so we `mem::take` out of the state map for the body
-//! and put it back at the end — two moves of a small `String` per buffer.
+//! Buffer storage: one [`Page`] row under a non-widget id, lent to the whole
+//! page body by `Ui::with_state`, so the buffers survive page switches and
+//! the editors can take `&mut String` straight out of it.
 
 use crate::support::{note_style, row, section};
 use palantir::{
     Align, Button, Configure, FocusPolicy, HAlign, Panel, Sizing, Text, TextEdit, Ui, VAlign,
-    WidgetId,
+    WidgetId, fmt,
 };
 
-pub(crate) fn build(ui: &mut Ui) {
-    let buf_a_id = WidgetId::from_hash("textedit_showcase__buffer_a");
-    let buf_b_id = WidgetId::from_hash("textedit_showcase__buffer_b");
-    let buf_ml_id = WidgetId::from_hash("textedit_showcase__buffer_ml");
-    let policy_id = WidgetId::from_hash("textedit_showcase__policy");
+/// Everything this page keeps across frames. One row rather than four,
+/// because they are one page's worth of state and nothing outside reads them.
+#[derive(Debug, Default)]
+struct Page {
+    a: String,
+    b: String,
+    multiline: String,
+    policy: FocusPolicy,
+}
 
-    let mut buf_a = std::mem::take(ui.state_mut::<String>(buf_a_id));
-    let mut buf_b = std::mem::take(ui.state_mut::<String>(buf_b_id));
-    let mut buf_ml = std::mem::take(ui.state_mut::<String>(buf_ml_id));
-    let policy = *ui.state_mut::<FocusPolicy>(policy_id);
-    ui.set_focus_policy(policy);
+pub(crate) fn build(ui: &mut Ui) {
+    let page_id = WidgetId::from_hash("showcase::text_edit::page");
+    ui.with_state::<Page, _>(page_id, page);
+}
+
+fn page(ui: &mut Ui, state: &mut Page) {
+    ui.set_focus_policy(state.policy);
 
     section(
         ui,
-        "single line",
         "single line — the default ClearOnMiss policy drops focus on an outside \
          click; toggle to PreserveOnMiss for sticky focus",
         |ui| {
-            row(ui, "editors", |ui| {
-                TextEdit::new(&mut buf_a)
+            row(ui, |ui| {
+                TextEdit::new(&mut state.a)
                     .id_salt("editor_a")
                     .placeholder("first field")
                     .size((Sizing::FILL, Sizing::HUG))
                     .min_size((180.0, 32.0))
                     .show(ui);
-                TextEdit::new(&mut buf_b)
+                TextEdit::new(&mut state.b)
                     .id_salt("editor_b")
                     .placeholder("second field")
                     .size((Sizing::FILL, Sizing::HUG))
                     .min_size((180.0, 32.0))
                     .show(ui);
             });
-            row(ui, "controls", |ui| {
-                let label = match policy {
+            row(ui, |ui| {
+                let label = match state.policy {
                     FocusPolicy::ClearOnMiss => "policy: ClearOnMiss",
                     FocusPolicy::PreserveOnMiss => "policy: PreserveOnMiss",
                 };
@@ -58,11 +62,10 @@ pub(crate) fn build(ui: &mut Ui) {
                     .left
                     .clicked()
                 {
-                    let next = match policy {
+                    state.policy = match state.policy {
                         FocusPolicy::ClearOnMiss => FocusPolicy::PreserveOnMiss,
                         FocusPolicy::PreserveOnMiss => FocusPolicy::ClearOnMiss,
                     };
-                    *ui.state_mut::<FocusPolicy>(policy_id) = next;
                 }
                 if Button::new()
                     .id_salt("clear")
@@ -72,32 +75,23 @@ pub(crate) fn build(ui: &mut Ui) {
                     .left
                     .clicked()
                 {
-                    buf_a.clear();
-                    buf_b.clear();
+                    state.a.clear();
+                    state.b.clear();
                 }
             });
-            let a = ui.fmt(format_args!(
-                "buffer A ({:>2} bytes): {}",
-                buf_a.len(),
-                buf_a
-            ));
-            Text::new(a).auto_id().style(&note_style()).show(ui);
-            let b = ui.fmt(format_args!(
-                "buffer B ({:>2} bytes): {}",
-                buf_b.len(),
-                buf_b
-            ));
-            Text::new(b).auto_id().style(&note_style()).show(ui);
+            let a = fmt!(ui, "buffer A ({:>2} bytes): {}", state.a.len(), state.a);
+            Text::new(a).style(&note_style()).show(ui);
+            let b = fmt!(ui, "buffer B ({:>2} bytes): {}", state.b.len(), state.b);
+            Text::new(b).style(&note_style()).show(ui);
         },
     );
 
     section(
         ui,
-        "multi-line",
         "multi-line — Enter inserts a newline, Up/Down navigate visual lines, \
          selection spans newlines, paste preserves a multi-line clipboard",
         |ui| {
-            TextEdit::new(&mut buf_ml)
+            TextEdit::new(&mut state.multiline)
                 .id_salt("editor_ml")
                 .multiline(true)
                 .text_align(Align::RIGHT)
@@ -114,14 +108,9 @@ pub(crate) fn build(ui: &mut Ui) {
     // text sits inside the rect.
     section(
         ui,
-        "text alignment",
         "text alignment — one editor per (HAlign, VAlign) combination",
         align_grid,
     );
-
-    *ui.state_mut::<String>(buf_a_id) = buf_a;
-    *ui.state_mut::<String>(buf_b_id) = buf_b;
-    *ui.state_mut::<String>(buf_ml_id) = buf_ml;
 }
 
 fn align_grid(ui: &mut Ui) {
@@ -159,25 +148,26 @@ fn align_grid(ui: &mut Ui) {
                             // being empty, so a cell the user clears stays
                             // cleared and its placeholder can actually show.
                             let fresh = ui.try_state::<String>(buf_id).is_none();
-                            let mut buf = std::mem::take(ui.state_mut::<String>(buf_id));
-                            if fresh {
-                                buf = format!("{vname}-{hname}");
-                            }
-                            let empty = buf.is_empty();
-                            let mut edit = TextEdit::new(&mut buf)
-                                .id_salt(key)
-                                .text_align(Align::new(h, v))
-                                .size((Sizing::FILL, Sizing::fixed(56.0)))
-                                .min_size((140.0, 56.0));
-                            // Composed only when it can be seen: `placeholder`
-                            // takes an owned `Cow`, so building one every frame
-                            // would allocate per cell for text that shows only
-                            // while a cell is empty.
-                            if empty {
-                                edit = edit.placeholder(format!("{vname} / {hname}"));
-                            }
-                            edit.show(ui);
-                            *ui.state_mut::<String>(buf_id) = buf;
+                            ui.with_state::<String, _>(buf_id, |ui, buf| {
+                                if fresh {
+                                    *buf = format!("{vname}-{hname}");
+                                }
+                                let empty = buf.is_empty();
+                                let mut edit = TextEdit::new(buf)
+                                    .id_salt(key)
+                                    .text_align(Align::new(h, v))
+                                    .size((Sizing::FILL, Sizing::fixed(56.0)))
+                                    .min_size((140.0, 56.0));
+                                // Composed only when it can be seen:
+                                // `placeholder` takes an owned `Cow`, so
+                                // building one every frame would allocate per
+                                // cell for text that shows only while a cell
+                                // is empty.
+                                if empty {
+                                    edit = edit.placeholder(format!("{vname} / {hname}"));
+                                }
+                                edit.show(ui);
+                            });
                         }
                     });
             }

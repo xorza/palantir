@@ -116,10 +116,9 @@ pub(crate) fn build(ui: &mut Ui) {
 
     section(
         ui,
-        "sizes",
         "sizes — each cell rasterizes at its own physical size, not a scaled copy",
         |ui| {
-            tiles(ui, "size-tiles", |ui| {
+            tiles(ui, |ui| {
                 for (px, label) in SIZES {
                     demo_cell_at(ui, label, px + 24.0, px + 24.0, |ui| {
                         draw(ui, &icons, icons.save, Color::WHITE);
@@ -131,10 +130,9 @@ pub(crate) fn build(ui: &mut Ui) {
 
     section(
         ui,
-        "artwork",
         "artwork — gradients, a filter, a tintable outline, and a 2:1 aspect",
         |ui| {
-            tiles(ui, "artwork-tiles", |ui| {
+            tiles(ui, |ui| {
                 demo_cell_at(ui, "save — gradient + clip path", 120.0, 120.0, |ui| {
                     draw(ui, &icons, icons.save, Color::WHITE);
                 });
@@ -153,10 +151,9 @@ pub(crate) fn build(ui: &mut Ui) {
 
     section(
         ui,
-        "tint",
         "tint — whole for a tintable icon, alpha and desaturation for a colour one",
         |ui| {
-            tiles(ui, "tint-tiles", |ui| {
+            tiles(ui, |ui| {
                 for (label, tint) in [
                     ("tintable, white", Color::WHITE),
                     ("tintable, amber", Color::rgb(0.98, 0.75, 0.15)),

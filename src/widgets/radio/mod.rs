@@ -50,17 +50,27 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
         self
     }
 
-    /// Borrow a theme override for this radio button. The default
-    /// inherits [`crate::Theme::radio`].
-    pub fn style(mut self, s: &'a ToggleTheme) -> Self {
-        self.style = Some(s);
-        self
-    }
+    style_setter!('a, ToggleTheme, radio);
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
         let mut widget = ui.widget(self.node);
         let response = widget.response(ui);
         let id = widget.id();
+
+        // Everything this widget takes off its theme slot, before
+        // `toggle_row`'s `&mut Ui` reborrow: the geometry it paints with, and
+        // the plan for the look. `toggle_row` is shared by three toggles
+        // reading three different slots, so which slot is `RadioButton`'s own
+        // business — and `style_setter!`'s `slot` is where it says so, once.
+        //
+        // Ahead of the latch below, which moves `self.value` and so leaves
+        // `self` unborrowable.
+        let theme = ui.theme();
+        let slot = self.slot(theme);
+        let pip_size = slot.box_size;
+        let indicator = slot.indicator;
+        let dot_inset = slot.indicator_inset;
+        let row_gap = slot.row_gap;
 
         let mut selected = *self.current == self.value;
         // Radios latch — re-clicking the selected option is a no-op,
@@ -73,25 +83,9 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
             selected = true;
         }
 
-        // Everything off `theme.radio` in one place, before `toggle_row`'s
-        // `&mut Ui` reborrow: the geometry this widget paints with, and the
-        // look itself. `toggle_row` is shared by three toggles reading three
-        // different slots, so naming the slot is the caller's job — and this
-        // is the only place it is named.
-        let theme = self.style.unwrap_or(&ui.theme().radio);
-        let pip_size = theme.box_size;
-        let indicator = theme.indicator;
-        let dot_inset = theme.indicator_inset;
-        let row_gap = theme.row_gap;
-        let look = WidgetTheme::resolve(
-            ui,
-            id,
-            &mut widget.node,
-            &response,
-            selected,
-            self.style,
-            |t| &t.radio,
-        );
+        let look = slot
+            .plan(&theme.text, &response, selected)
+            .apply(ui, id, &mut widget.node);
 
         let chrome = ToggleChrome {
             look,

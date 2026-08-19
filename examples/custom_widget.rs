@@ -19,7 +19,7 @@
 use palantir::{
     Align, App, Background, Color, Configure, ConfigureNode, Corners, HostHandle, LineCap,
     LineJoin, Node, Panel, PolylineColors, Response, ResponseState, Sense, Shadow, Shape, Sizing,
-    Stroke, Text, Ui, VAlign, Vec2, WidgetId, WindowToken, WinitHost, WinitHostError,
+    Stroke, Text, Ui, VAlign, Vec2, WidgetId, WindowToken, WinitHost, WinitHostError, fmt,
 };
 
 /// A horizontal integer stepper bound to a caller-owned `&mut i32`.
@@ -80,9 +80,9 @@ impl<'a> Stepper<'a> {
             *self.value = (*self.value + self.step).min(self.max);
         }
 
-        // Intern the formatted number into the record store (no
-        // lingering `String` alloc).
-        let label = ui.intern(self.value.to_string());
+        // Format the number straight into the record store — `fmt!` is
+        // `Ui::fmt` over `format_args!`, so no `String` is built at all.
+        let label = fmt!(ui, "{}", self.value);
 
         // 2) Open the container, record its three children, and hand back
         //    a Response for the container so callers can chain
@@ -172,26 +172,18 @@ impl Demo {
 
 impl App for Demo {
     fn record(&mut self, _win: WindowToken, ui: &mut Ui) {
-        Panel::vstack()
-            .auto_id()
-            .gap(16.0)
-            .padding(24.0)
-            .show(ui, |ui| {
-                Text::new("Custom Stepper widget").auto_id().show(ui);
+        Panel::vstack().gap(16.0).padding(24.0).show(ui, |ui| {
+            Text::new("Custom Stepper widget").show(ui);
 
-                Text::new(format!("volume: {}", self.volume))
-                    .auto_id()
-                    .show(ui);
-                Stepper::new(&mut self.volume)
-                    .range(0, 100)
-                    .step(5)
-                    .show(ui);
+            Text::new(fmt!(ui, "volume: {}", self.volume)).show(ui);
+            Stepper::new(&mut self.volume)
+                .range(0, 100)
+                .step(5)
+                .show(ui);
 
-                Text::new(format!("count: {}", self.count))
-                    .auto_id()
-                    .show(ui);
-                Stepper::new(&mut self.count).range(-10, 10).show(ui);
-            });
+            Text::new(fmt!(ui, "count: {}", self.count)).show(ui);
+            Stepper::new(&mut self.count).range(-10, 10).show(ui);
+        });
     }
 }
 

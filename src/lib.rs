@@ -156,6 +156,33 @@ pub use diagnostics::gpu_stats::{BatchKind, GpuPassStats, PipelineStats};
 /// those types foreign at the call site. Going through this one cannot skew.
 pub use wgpu;
 
+/// Format text straight into the frame's record store, with no `String` in
+/// between.
+///
+/// `fmt!(ui, "…", args…)` is [`Ui::fmt`] over `format_args!` — the
+/// allocation-free way to author a dynamic label. Widget text setters also
+/// accept a `String`, so `format!` compiles and reads the same; this is the
+/// form to reach for, because the bytes land directly in the arena the
+/// widget was going to copy them into anyway.
+///
+/// ```
+/// # use palantir::{Button, Configure, Text, Ui, fmt};
+/// # fn demo(ui: &mut Ui, clicks: u32, total: usize) {
+/// Text::new(fmt!(ui, "clicks: {clicks}")).show(ui);
+/// Button::new().label(fmt!(ui, "{total} items")).show(ui);
+/// # }
+/// ```
+///
+/// The result is an [`InternedStr`] valid only for the pass that minted it —
+/// hand it to a widget in the same breath, as above. See [`Ui::fmt`] for the
+/// retention rules and [`Ui::intern`] for the format-less twin.
+#[macro_export]
+macro_rules! fmt {
+    ($ui:expr, $($args:tt)*) => {
+        $ui.fmt(::core::format_args!($($args)*))
+    };
+}
+
 pub use animation::animatable::Animatable;
 pub use animation::easing::Easing;
 pub use animation::{AnimSlot, AnimSpec};

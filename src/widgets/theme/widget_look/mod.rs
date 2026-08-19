@@ -1,9 +1,11 @@
 //! The per-state look a themed widget paints with: [`WidgetLook`]
-//! as authored, [`animated_look::AnimatedLook`] as resolved, and
+//! as authored, [`animated_look::AnimatedLook`] as resolved,
 //! [`stateful_look::StatefulLook`] as the four-state pack a theme
-//! bundle stores.
+//! bundle stores, and [`look_plan::LookPlan`] as the owned hand-off
+//! between reading the theme and animating toward what it said.
 
 pub(crate) mod animated_look;
+pub(crate) mod look_plan;
 pub(crate) mod stateful_look;
 
 use crate::animation::AnimSlot;

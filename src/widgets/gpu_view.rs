@@ -1,7 +1,7 @@
 use crate::layout::types::sizing::Sizing;
 use crate::renderer::gpu_view::GpuPaint;
 use crate::renderer::gpu_view::GpuPaintRef;
-use crate::scene::node::Node;
+use crate::scene::node::{Configure, Node};
 use crate::ui::Ui;
 use crate::widgets::response::Response;
 use std::cell::RefCell;
@@ -15,12 +15,11 @@ use std::rc::Rc;
 /// callback into it during submit, and composites the result through the image
 /// pipeline — so the view clips, rounds, and z-orders like any other widget.
 ///
-/// The renderer callback persists across frames in the widget's per-`WidgetId`
-/// response. The framework-owned off-screen texture has a shorter lifetime: it is
-/// reclaimed whenever this view is absent from a backend submission, including
-/// when unchanged content is culled. [`GpuPaint::init`] can therefore run again
-/// when the view next paints. Per-frame parameters are natural: mutate your own
-/// `Rc` before constructing the widget.
+/// Both the renderer callback and the framework-owned off-screen texture
+/// persist for as long as the widget keeps being recorded — skipping paints
+/// does not cost the texture, so [`GpuPaint::init`] runs once per view.
+/// Per-frame parameters are natural: mutate your own `Rc` before constructing
+/// the widget.
 ///
 /// ```
 /// # use std::{cell::RefCell, rc::Rc};
@@ -63,10 +62,8 @@ impl GpuView {
     /// sized to this widget's effective raster resolution.
     #[track_caller]
     pub fn new(paint: Rc<RefCell<dyn GpuPaint>>) -> Self {
-        let mut node = Node::leaf();
-        node.size = Some((Sizing::fill(1.0), Sizing::fill(1.0)).into());
         Self {
-            node,
+            node: Node::leaf().size((Sizing::fill(1.0), Sizing::fill(1.0))),
             paint: GpuPaintRef(paint),
             repaint: true,
         }
@@ -76,13 +73,14 @@ impl GpuView {
     /// repaint every frame). Pass `false` when your scene is unchanged: the
     /// widget is then treated as **undamaged**, so a frame forced by other
     /// widgets leaves its already-presented surface pixels untouched and skips
-    /// `GpuPaint::paint`. Because a culled view is absent from the backend's
-    /// target list, its off-screen texture is reclaimed; a later repaint
-    /// allocates a new target and calls [`GpuPaint::init`] again. Guard expensive
-    /// setup against re-entry. The authoritative callback contract is
-    /// [`GpuPaint::init`]; target retention is implemented in
-    /// `src/renderer/backend/image_pipeline/render_target.rs`. Drive the dirty
-    /// signal from your own change tracking (camera moved, sim ticked).
+    /// `GpuPaint::paint`.
+    ///
+    /// Purely a saving. The view keeps its off-screen texture — retention
+    /// follows what the frame *recorded*, not what it painted — so sitting a
+    /// frame out costs nothing and does not re-run [`GpuPaint::init`]. Drive
+    /// the dirty signal from your own change tracking (camera moved, sim
+    /// ticked); target retention is implemented in
+    /// `src/renderer/backend/image_pipeline/render_target.rs`.
     pub fn repaint(mut self, repaint: bool) -> Self {
         self.repaint = repaint;
         self
@@ -115,9 +113,14 @@ mod tests {
     use crate::ui::harness::UiHarness;
 
     use crate::input::sense::Sense;
+    use crate::layout::types::align::{Align, HAlign, VAlign};
     use crate::layout::types::sizing::Sizing;
+    use crate::primitives::rect::Rect;
     use crate::primitives::widget_id::WidgetId;
+    use crate::renderer::frontend::Frontend;
     use crate::renderer::gpu_view::GpuFrameCtx;
+    use crate::renderer::plan::{RenderKind, RenderPlan};
+    use crate::scene::damage::region::DamageRegion;
     use crate::scene::layer::Layer;
     use crate::scene::node::Configure;
     use crate::scene::shapes::paint::ImageSource;
@@ -174,6 +177,61 @@ mod tests {
         let node = h.frame_value(|ui| GpuView::new(scene()).show(ui).node());
         let r = h.ui.layout[Layer::Main].rect[node.idx()];
         assert_eq!((r.size.w, r.size.h), (160.0, 100.0));
+    }
+
+    /// Retention is keyed on what the frame *recorded*, painting on what it
+    /// *damaged* — so a view culled out of a partial repaint keeps its
+    /// off-screen target, and `GpuPaint::init` is not re-run when it next
+    /// paints.
+    ///
+    /// Composed twice off one recorded frame: a `Full` plan draws the view,
+    /// a `Partial` plan whose region sits nowhere near it does not. The live
+    /// roster is the same both times, which is the whole property — it must
+    /// not move with the damage.
+    #[test]
+    fn the_live_roster_lists_a_view_the_damage_plan_culls() {
+        let mut h = UiHarness::new(UVec2::new(200, 200));
+        h.frame(|ui| {
+            GpuView::new(scene())
+                .id(WidgetId::from_hash("gpu_view_retained"))
+                .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
+                .align(Align::new(HAlign::Right, VAlign::Bottom))
+                .show(ui);
+        });
+
+        let mut frontend = Frontend::for_test();
+        let plan = |kind| RenderPlan {
+            clear: h.ui.theme().window_clear,
+            kind,
+        };
+
+        frontend.build(h.ui.frame_scene(), plan(RenderKind::Full));
+        assert_eq!(
+            frontend.buffer.frame_targets.len(),
+            1,
+            "a full repaint paints the view",
+        );
+        let live = frontend.buffer.live_targets.clone();
+        assert_eq!(
+            live,
+            [frontend.buffer.frame_targets[0].id],
+            "the roster names the view's target",
+        );
+
+        // Damage confined to the opposite corner from the bottom-right view.
+        let elsewhere = DamageRegion::from(Rect::new(0.0, 0.0, 20.0, 20.0));
+        frontend.build(
+            h.ui.frame_scene(),
+            plan(RenderKind::Partial { region: elsewhere }),
+        );
+        assert!(
+            frontend.buffer.frame_targets.is_empty(),
+            "the view is outside the damage region, so nothing repaints it",
+        );
+        assert_eq!(
+            frontend.buffer.live_targets, live,
+            "but it is still recorded, so its target must not be freed",
+        );
     }
 
     /// Doesn't sense by default, but a caller can opt in via

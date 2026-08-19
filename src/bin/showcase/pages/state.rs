@@ -9,7 +9,7 @@
 //! value rather than copies that have to be kept in sync.
 
 use crate::support;
-use palantir::{Button, Configure, Panel, Sizing, Text, Ui, WindowConfig, WindowToken};
+use palantir::{Button, Configure, Panel, Sizing, Text, Ui, WindowConfig, WindowToken, fmt};
 
 /// State threaded through the entire showcase frame. Lives on the
 /// shell's `State` and is handed to [`build`] by the page dispatcher.
@@ -19,24 +19,18 @@ pub(crate) struct AppState {
 }
 
 pub(crate) fn build(ui: &mut Ui, app: &mut AppState, inspector: WindowToken) {
-    support::section(
-        ui,
-        "counter",
-        "counter — the value every reader shares",
-        |ui| {
-            counter(ui, app);
-        },
-    );
+    support::section(ui, "counter — the value every reader shares", |ui| {
+        counter(ui, app);
+    });
 
     support::section(
         ui,
-        "nesting",
         "nesting — the parameter threads through arbitrary depth",
         |ui| {
             Panel::vstack().id_salt("deep-0").gap(4.0).show(ui, |ui| {
                 Panel::hstack().id_salt("deep-1").show(ui, |ui| {
                     Panel::vstack().id_salt("deep-2").show(ui, |ui| {
-                        let deep = ui.fmt(format_args!("four levels down, still {}", app.counter));
+                        let deep = fmt!(ui, "four levels down, still {}", app.counter);
                         Text::new(deep)
                             .id_salt("deep-readout")
                             .style(&support::note_style())
@@ -49,7 +43,6 @@ pub(crate) fn build(ui: &mut Ui, app: &mut AppState, inspector: WindowToken) {
 
     support::section(
         ui,
-        "windows",
         "windows — a second OS window recording the same state",
         |ui| {
             support::note(
@@ -91,9 +84,9 @@ pub(crate) fn counter(ui: &mut Ui, app: &mut AppState) {
         .size((Sizing::FILL, Sizing::HUG))
         .gap(10.0)
         .show(ui, |ui| {
-            let value = ui.fmt(format_args!("counter: {}", app.counter));
+            let value = fmt!(ui, "counter: {}", app.counter);
             Text::new(value).id_salt("counter-value").show(ui);
-            support::row(ui, "counter-buttons", |ui| {
+            support::row(ui, |ui| {
                 if Button::new()
                     .id_salt("dec")
                     .label("−")

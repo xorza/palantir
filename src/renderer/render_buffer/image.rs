@@ -37,6 +37,25 @@ pub(crate) struct RenderTargetDraw {
     pub(crate) paint: GpuPaintRef,
 }
 
+/// The frame's two views of its `GpuView`s, handed to the backend together
+/// because keeping them apart is what the design turns on.
+///
+/// They answer different questions and neither implies the other:
+/// [`Self::draws`] is what *changed* and has to be repainted,
+/// [`Self::live`] is what still *exists*. Retention follows the second — a
+/// view whose content is unchanged is culled out of the first and keeps its
+/// off-screen texture, so sitting a frame out costs it nothing and does not
+/// re-run `GpuPaint::init`.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct FrameViews<'a> {
+    /// The views to paint this frame, each with its target geometry and the
+    /// app callback that fills it.
+    pub(crate) draws: &'a [RenderTargetDraw],
+    /// Every view the frame recorded, painted or not — the retention roster.
+    /// A superset of the ids in [`Self::draws`].
+    pub(crate) live: &'a [TextureId],
+}
+
 /// One image draw row. Composer pushes one of these per image; the
 /// SoA storage splits `id` and `instance` into their own contiguous
 /// slices, so the backend uploads `rows.instance()` as a single

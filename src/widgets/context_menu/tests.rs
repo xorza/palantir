@@ -488,7 +488,7 @@ fn with_radius_rerounds_panel_and_nests_the_row_chip() {
 /// the rule — recorded by the caller's closure, not by `ContextMenu` —
 /// take their own halves.
 ///
-/// Rows resolve their box through the shared `WidgetTheme::resolve`, so both
+/// Rows resolve their box through the shared `WidgetTheme::plan`, so both
 /// halves of that contract hold: the theme's `padding` / `margin` fill
 /// in where the builder was silent, and an explicit value wins. The
 /// second was not true while `MenuItem` stamped `node.padding`

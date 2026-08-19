@@ -281,12 +281,14 @@ pub(crate) struct WindowRequests {
     pub(crate) close_vetoed: bool,
     /// Last cursor requested during a record pass; retained across PaintOnly.
     pub(crate) cursor: CursorIcon,
-    /// A vsync change asked for this pass, taken by the drain. `None` —
-    /// the common case — means "leave it alone", which is why this is a
-    /// one-shot request rather than a per-frame value like `cursor`:
-    /// reconfiguring a swapchain is expensive, so the recorder must not
-    /// have to re-assert the current setting every frame to keep it.
-    pub(crate) vsync: Option<Vsync>,
+    /// The presentation pacing this window is currently set to — a level
+    /// like `cursor`, not an edge. Seeded from the swapchain the host
+    /// actually opened, so it answers [`Ui::set_vsync`](crate::Ui::set_vsync)
+    /// truthfully from the first frame, and retained across frames so a
+    /// recorder never has to re-assert it. Reconfiguring a swapchain is
+    /// expensive, so the *host* compares this against the mode in force and
+    /// acts only on a real flip.
+    pub(crate) vsync: Vsync,
 }
 
 /// What the host applies after draining a frame's recorder output.
@@ -303,8 +305,9 @@ pub(crate) struct WindowRequests {
 pub(crate) struct WindowOutput {
     /// The cursor this frame asked for; applied on change.
     pub(crate) cursor: CursorIcon,
-    /// A vsync change this frame asked for, if any.
-    pub(crate) vsync: Option<Vsync>,
+    /// The pacing this frame wants. A level: the host diffs it against the
+    /// swapchain it has open and reconfigures only on a change.
+    pub(crate) vsync: Vsync,
 }
 
 /// Host-owned facts copied into `Ui` at the start of a window frame.

@@ -11,7 +11,7 @@ use crate::support::{note_style, row, section};
 use palantir::{
     AnimSpec, Background, Button, ButtonTheme, Checkbox, Color, Configure, Corners, DragValue,
     Panel, ProgressBar, RadioButton, Separator, Sizing, Slider, Spinner, StatefulLook, Stroke,
-    Switch, Text, TextStyle, TextWrap, Tooltip, Ui, WidgetId, WidgetLook,
+    Switch, Text, TextStyle, TextWrap, Tooltip, Ui, WidgetId, WidgetLook, fmt,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
@@ -53,32 +53,30 @@ impl Default for State {
 
 pub(crate) fn build(ui: &mut Ui) {
     let state_id = WidgetId::from_hash("showcase::controls::state");
-    let mut s = std::mem::take(ui.state_mut::<State>(state_id));
     let outlined = outlined_style();
     let danger = danger_style();
 
-    Panel::hstack()
-        .id_salt("columns")
-        .gap(24.0)
-        .size((Sizing::FILL, Sizing::HUG))
-        .show(ui, |ui| {
-            section(
-                ui,
-                "form",
-                "settings form — switches, radios, a slider, a DragValue, and buttons \
+    ui.with_state::<State, _>(state_id, |ui, s| {
+        Panel::hstack()
+            .id_salt("columns")
+            .gap(24.0)
+            .size((Sizing::FILL, Sizing::HUG))
+            .show(ui, |ui| {
+                section(
+                    ui,
+                    "settings form — switches, radios, a slider, a DragValue, and buttons \
                  wired together",
-                |ui| {
-                    form(ui, &mut s, &outlined, &danger);
-                },
-            );
-            Panel::vstack()
-                .id_salt("col-r")
-                .size((Sizing::FILL, Sizing::HUG))
-                .gap(support::PAGE_GAP)
-                .show(ui, |ui| side(ui, &s, &outlined, &danger));
-        });
-
-    *ui.state_mut::<State>(state_id) = s;
+                    |ui| {
+                        form(ui, s, &outlined, &danger);
+                    },
+                );
+                Panel::vstack()
+                    .id_salt("col-r")
+                    .size((Sizing::FILL, Sizing::HUG))
+                    .gap(support::PAGE_GAP)
+                    .show(ui, |ui| side(ui, s, &outlined, &danger));
+            });
+    });
 }
 
 fn form(ui: &mut Ui, s: &mut State, outlined: &ButtonTheme, danger: &ButtonTheme) {
@@ -146,7 +144,7 @@ fn form(ui: &mut Ui, s: &mut State, outlined: &ButtonTheme, danger: &ButtonTheme
             Slider::new(&mut s.volume, 0.0..=1.0)
                 .id_salt("volume")
                 .show(ui);
-            let vol = ui.fmt(format_args!("volume {:.0}%", s.volume * 100.0));
+            let vol = fmt!(ui, "volume {:.0}%", s.volume * 100.0);
             Text::new(vol)
                 .id_salt("volume-pct")
                 .style(&note_style())
@@ -213,7 +211,7 @@ fn form(ui: &mut Ui, s: &mut State, outlined: &ButtonTheme, danger: &ButtonTheme
             if s.syncing {
                 Panel::hstack().id_salt("sync-row").gap(8.0).show(ui, |ui| {
                     Spinner::new().diameter(16.0).id_salt("sync-spin").show(ui);
-                    let pct = ui.fmt(format_args!("syncing {:.0}%", frac * 100.0));
+                    let pct = fmt!(ui, "syncing {:.0}%", frac * 100.0);
                     Text::new(pct)
                         .id_salt("sync-pct")
                         .style(&note_style())
@@ -226,10 +224,9 @@ fn form(ui: &mut Ui, s: &mut State, outlined: &ButtonTheme, danger: &ButtonTheme
 fn side(ui: &mut Ui, s: &State, outlined: &ButtonTheme, danger: &ButtonTheme) {
     section(
         ui,
-        "styles",
         "button styles — default · outlined · danger, each with a disabled state",
         |ui| {
-            row(ui, "b-default", |ui| {
+            row(ui, |ui| {
                 Button::new().id_salt("d-1").label("normal").show(ui);
                 Button::new()
                     .id_salt("d-2")
@@ -263,10 +260,9 @@ fn side(ui: &mut Ui, s: &State, outlined: &ButtonTheme, danger: &ButtonTheme) {
     // button commits its natural width.
     section(
         ui,
-        "label overflow",
         "label overflow — hard cut (default) · SingleLine opt-out · Hug width",
         |ui| {
-            row(ui, "b-elide", |ui| {
+            row(ui, |ui| {
                 Button::new()
                     .id_salt("e-1")
                     .size((Sizing::fixed(140.0), Sizing::HUG))
@@ -288,7 +284,6 @@ fn side(ui: &mut Ui, s: &State, outlined: &ButtonTheme, danger: &ButtonTheme) {
 
     section(
         ui,
-        "spinners",
         "spinners — indeterminate, three diameters plus a custom colour",
         |ui| {
             Panel::hstack()
@@ -308,21 +303,28 @@ fn side(ui: &mut Ui, s: &State, outlined: &ButtonTheme, danger: &ButtonTheme) {
 
     section(
         ui,
-        "live state",
         "live state — what the form above currently holds",
         |ui| {
-            let net = ui.fmt(format_args!(
+            let net = fmt!(
+                ui,
                 "airplane={}  wifi={}  bluetooth={}  metered={}",
-                s.airplane, s.wifi, s.bluetooth, s.metered
-            ));
+                s.airplane,
+                s.wifi,
+                s.bluetooth,
+                s.metered
+            );
             Text::new(net)
                 .id_salt("st-net")
                 .style(&note_style())
                 .show(ui);
-            let app = ui.fmt(format_args!(
+            let app = fmt!(
+                ui,
                 "appearance={:?}  reduce_motion={}  volume={:.2}  fps={}",
-                s.appearance, s.reduce_motion, s.volume, s.fps
-            ));
+                s.appearance,
+                s.reduce_motion,
+                s.volume,
+                s.fps
+            );
             Text::new(app)
                 .id_salt("st-app")
                 .style(&note_style())

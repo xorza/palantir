@@ -5,7 +5,6 @@ pub(crate) mod zoom_config;
 use crate::input::response::ResponseState;
 use crate::input::sense::Sense;
 use crate::input::zoom;
-use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::layout_mode::ScrollSpec;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
@@ -207,14 +206,11 @@ impl<'a> Scroll<'a> {
     /// to fill it.
     #[track_caller]
     fn with_axes(spec: ScrollSpec) -> Self {
-        let mut node = Node::scroll(spec);
-        node.flags.set_sense(Sense::SCROLL);
-        // Scroll requires clipping; default to `Rect` so callers that
-        // don't override get the cheap scissor path. Callers can still
-        // call `Configure::clip_rounded` to upgrade to a stencil mask.
-        node.clip = Some(ClipMode::Rect);
         Self {
-            node,
+            // Scroll requires clipping; default to `Rect` so callers that
+            // don't override get the cheap scissor path. Callers can still
+            // call `Configure::clip_rounded` to upgrade to a stencil mask.
+            node: Node::scroll(spec).sense(Sense::SCROLL).clip_rect(),
             style: None,
             zoom: None,
             chrome: None,
@@ -223,12 +219,7 @@ impl<'a> Scroll<'a> {
         }
     }
 
-    /// Borrow a scrollbar theme override for this viewport. The
-    /// default inherits [`crate::Theme::scrollbar`].
-    pub fn style(mut self, s: &'a ScrollbarTheme) -> Self {
-        self.style = Some(s);
-        self
-    }
+    style_setter!('a, ScrollbarTheme, scrollbar);
 
     /// Set the scrollbar layout mode. See [`BarMode`].
     pub fn bar_mode(mut self, mode: BarMode) -> Self {
@@ -350,7 +341,7 @@ impl<'a> Scroll<'a> {
     /// This viewport's scrollbar bundle: the per-instance override if
     /// the caller set one, else the global slot.
     fn bars_theme<'u>(&'u self, ui: &'u Ui) -> &'u ScrollbarTheme {
-        self.style.unwrap_or(&ui.theme().scrollbar)
+        self.slot(ui.theme())
     }
 
     /// Last frame's measurements, in the shape every later step reads

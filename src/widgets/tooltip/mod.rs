@@ -102,17 +102,12 @@ impl<'r> Tooltip<'r, 'static> {
 }
 
 impl<'r, 'a> Tooltip<'r, 'a> {
-    /// Paint chrome (fill / stroke / corner radius / shadow). `None`
-    /// is the default; theme fallback in [`Self::show`] fills it in
-    /// from `ui.theme().tooltip.panel` when unset. Pass [`Background::NONE`]
-    /// to suppress the themed bubble chrome.
-    /// Borrow a theme override for this bubble. The default inherits
-    /// [`crate::Theme::tooltip`]. Per-field [`Self::background`] /
-    /// [`Self::delay`] still win over it.
-    pub fn style(mut self, s: &'r TooltipTheme) -> Self {
-        self.style = Some(s);
-        self
-    }
+    style_setter!(
+        'r,
+        TooltipTheme,
+        tooltip,
+        "Per-field [`Self::background`] / [`Self::delay`] still win over it.",
+    );
 
     pub fn text<'text>(self, text: impl Into<TextInput<'text>>) -> Tooltip<'r, 'text> {
         Tooltip {
@@ -147,7 +142,7 @@ impl<'r, 'a> Tooltip<'r, 'a> {
         // Handle, not a borrow: the bundle may point into the `Ui`'s own
         // theme, and the record below reborrows `ui` mutably.
         let ui_theme = ui.theme().clone();
-        let theme = self.style.unwrap_or(&ui_theme.tooltip);
+        let theme = self.slot(&ui_theme);
         let delay = self.delay.unwrap_or(theme.delay);
         let warmup = theme.warmup;
         let gap = theme.gap;

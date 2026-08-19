@@ -252,12 +252,12 @@ impl<'a> DragValue<'a> {
         self
     }
 
-    /// Borrow a theme override for both the chip and the inline editor. The
-    /// default inherits [`crate::Theme::drag_value`].
-    pub fn style(mut self, s: &'a DragValueTheme) -> Self {
-        self.style = Some(s);
-        self
-    }
+    style_setter!(
+        'a,
+        DragValueTheme,
+        drag_value,
+        "Covers both modes at once — the scrub chip and the inline editor.",
+    );
 
     pub fn show(mut self, ui: &mut Ui) -> DragValueResponse<'_> {
         let mut widget = ui.widget(self.node);
@@ -359,13 +359,15 @@ impl<'a> DragValue<'a> {
             DragNum::F64(v) => ui.fmt(format_args!("{:.*}{}", self.decimals, **v, self.suffix)),
         };
 
-        // Default to `theme.drag_value.chip` — the same bundle the edit
-        // mode's editor defaults to — so the two modes stay in sync
-        // under a global restyle.
-        let chip = self.style.map(|s| &s.chip);
-        let look = WidgetTheme::resolve(ui, id, &mut widget.node, &response, (), chip, |t| {
-            &t.drag_value.chip
-        });
+        // The chip half of the bundle — the same one the edit mode's editor
+        // takes its half from, so the two modes stay in sync under a global
+        // restyle.
+        let theme = ui.theme();
+        let look = self
+            .slot(theme)
+            .chip
+            .plan(&theme.text, &response, ())
+            .apply(ui, id, &mut widget.node);
 
         widget.record(ui, Some(&look.background), |ui| {
             ui.add_shape(

@@ -1,7 +1,7 @@
 use crate::widgets::theme::Theme;
 
 #[test]
-fn set_text_scale_is_absolute_and_total() {
+fn scale_text_is_relative_and_total() {
     let mut theme = Theme::default();
     let body = theme.text.font_size_px;
     let tooltip = theme.tooltip.text.font_size_px;
@@ -14,8 +14,7 @@ fn set_text_scale_is_absolute_and_total() {
         .expect("button disabled has a text override")
         .font_size_px;
 
-    theme.set_text_scale(2.0);
-    assert_eq!(theme.text_scale(), 2.0);
+    theme.scale_text(2.0);
     assert!((theme.text.font_size_px - body * 2.0).abs() < 1e-3);
     assert!((theme.tooltip.text.font_size_px - tooltip * 2.0).abs() < 1e-3);
     assert!(
@@ -32,11 +31,13 @@ fn set_text_scale_is_absolute_and_total() {
             < 1e-3
     );
 
-    theme.set_text_scale(1.5);
-    assert_eq!(theme.text_scale(), 1.5);
+    // Composes: 2.0 × 0.75 = 1.5, not 0.75.
+    theme.scale_text(0.75);
     assert!((theme.text.font_size_px - body * 1.5).abs() < 1e-3);
+    assert!((theme.tooltip.text.font_size_px - tooltip * 1.5).abs() < 1e-3);
 
-    theme.set_text_scale(1.0);
+    // And inverts back to the baseline: 1.5 × (1 / 1.5) = 1.0.
+    theme.scale_text(1.0 / 1.5);
     assert!((theme.text.font_size_px - body).abs() < 1e-3);
     assert!((theme.tooltip.text.font_size_px - tooltip).abs() < 1e-3);
     assert!(
@@ -55,7 +56,7 @@ fn set_text_scale_is_absolute_and_total() {
 }
 
 #[test]
-fn set_text_scale_reaches_every_font_size() {
+fn scale_text_reaches_every_font_size() {
     fn walk(path: &str, before: &toml::Value, after: &toml::Value) {
         match (before, after) {
             (toml::Value::Table(before), toml::Value::Table(after)) => {
@@ -75,7 +76,7 @@ fn set_text_scale_reaches_every_font_size() {
                 }
             }
             (toml::Value::Float(before), toml::Value::Float(after))
-                if path.ends_with("font_size_px") || path == "theme.text_scale" =>
+                if path.ends_with("font_size_px") =>
             {
                 assert!(
                     (after - before * 2.0).abs() < 1e-3,
@@ -88,31 +89,9 @@ fn set_text_scale_reaches_every_font_size() {
 
     let mut theme = Theme::default();
     let before = toml::Value::try_from(&theme).expect("serialize");
-    theme.set_text_scale(2.0);
+    theme.scale_text(2.0);
     let after = toml::Value::try_from(&theme).expect("serialize");
     walk("theme", &before, &after);
-}
-
-#[test]
-fn theme_deserialization_rejects_invalid_text_scales() {
-    let valid = toml::to_string_pretty(&Theme::default()).expect("serialize default theme");
-
-    for (label, literal) in [
-        ("zero", "0.0"),
-        ("negative", "-1.0"),
-        ("not a number", "nan"),
-        ("positive infinity", "inf"),
-        ("negative infinity", "-inf"),
-    ] {
-        let invalid = valid.replacen("text_scale = 1.0", &format!("text_scale = {literal}"), 1);
-        let error = toml::from_str::<Theme>(&invalid).expect_err(label);
-        assert!(
-            error
-                .to_string()
-                .contains("text scale must be finite and positive"),
-            "{label}: unexpected serde error: {error}",
-        );
-    }
 }
 
 #[test]
@@ -182,22 +161,33 @@ fn theme_deserialization_rejects_invalid_text_metrics() {
 }
 
 #[test]
-fn set_text_scale_rejects_invalid_results_without_partial_mutation() {
+fn scale_text_rejects_invalid_factors_without_partial_mutation() {
     use crate::primitives::approx::EPS;
     use std::panic::{AssertUnwindSafe, catch_unwind};
 
-    for (label, scale) in [("overflow", f32::MAX), ("sub-epsilon result", EPS / 32.0)] {
+    for (label, factor) in [
+        ("zero", 0.0),
+        ("negative", -1.0),
+        ("not a number", f32::NAN),
+        ("infinite", f32::INFINITY),
+        ("overflow", f32::MAX),
+        ("sub-epsilon result", EPS / 32.0),
+    ] {
         let mut theme = Theme::default();
         let before = toml::to_string_pretty(&theme).expect("serialize before");
-        let panic = catch_unwind(AssertUnwindSafe(|| theme.set_text_scale(scale)));
-        assert!(panic.is_err(), "{label}: invalid scale result was accepted");
+        let panic = catch_unwind(AssertUnwindSafe(|| theme.scale_text(factor)));
+        assert!(panic.is_err(), "{label}: invalid factor was accepted");
         let after = toml::to_string_pretty(&theme).expect("serialize after");
         assert_eq!(after, before, "{label}: theme was partially mutated");
     }
 }
 
+/// A scaled theme is just a theme with bigger fonts: nothing beside the
+/// sizes records that a scale was applied, so a round-trip through TOML
+/// reproduces it exactly and a further scale composes off the parsed
+/// sizes.
 #[test]
-fn scaled_theme_roundtrip_preserves_the_next_absolute_scale_change() {
+fn scaled_theme_survives_a_serde_roundtrip() {
     let baseline = Theme::default();
     let body_font_size = baseline.text.font_size_px;
     let tooltip_font_size = baseline.tooltip.text.font_size_px;
@@ -210,11 +200,10 @@ fn scaled_theme_roundtrip_preserves_the_next_absolute_scale_change() {
         .expect("button disabled has a text override")
         .font_size_px;
     let mut scaled = baseline;
-    scaled.set_text_scale(2.0);
+    scaled.scale_text(2.0);
 
     let serialized = toml::to_string_pretty(&scaled).expect("serialize scaled theme");
     let mut parsed = toml::from_str::<Theme>(&serialized).expect("parse scaled theme");
-    assert_eq!(parsed.text_scale(), 2.0);
     assert_eq!(parsed.text.font_size_px, body_font_size * 2.0);
     assert_eq!(parsed.tooltip.text.font_size_px, tooltip_font_size * 2.0);
     assert_eq!(
@@ -229,8 +218,7 @@ fn scaled_theme_roundtrip_preserves_the_next_absolute_scale_change() {
         disabled_font_size * 2.0,
     );
 
-    parsed.set_text_scale(1.5);
-    assert_eq!(parsed.text_scale(), 1.5);
+    parsed.scale_text(0.75);
     assert_eq!(parsed.text.font_size_px, body_font_size * 1.5);
     assert_eq!(parsed.tooltip.text.font_size_px, tooltip_font_size * 1.5);
     assert_eq!(

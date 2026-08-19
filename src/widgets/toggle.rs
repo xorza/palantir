@@ -17,10 +17,11 @@ use crate::widgets::widget::Widget;
 /// (`theme.checkbox` / `theme.radio` / `theme.switch`) — they share a theme
 /// *type* but not a *slot*, and only the caller knows which is its own — so
 /// the caller is also where
-/// [`WidgetTheme::resolve`](crate::widgets::theme::WidgetTheme::resolve)
-/// runs, beside the geometry scalars it already copies off that same slot.
-/// What crosses into here is owned, which is what keeps the shared
-/// scaffolding out of the business of naming theme fields.
+/// [`WidgetTheme::plan`](crate::widgets::theme::WidgetTheme::plan) and
+/// [`LookPlan::apply`](crate::widgets::theme::widget_look::look_plan::LookPlan::apply)
+/// run, off the same slot the geometry scalars come from. What crosses into
+/// here is owned, which is what keeps the shared scaffolding out of the
+/// business of naming theme fields.
 #[derive(Debug)]
 pub(crate) struct ToggleChrome {
     /// The picked, animated look for this response and on/off state.
@@ -103,7 +104,7 @@ mod tests {
     use crate::widgets::switch::Switch;
     use glam::UVec2;
 
-    /// All three toggles resolve their box through `WidgetTheme::resolve`,
+    /// All three toggles resolve their box through `WidgetTheme::plan`,
     /// so [`crate::ToggleTheme`]'s `padding` / `margin` reach the row and
     /// an explicit builder value still wins — the same contract `Button`
     /// and `TextEdit` hold to.
@@ -115,7 +116,7 @@ mod tests {
     /// Each toggle gets its **own** spacing, so this also pins which slot
     /// each one reads. `toggle_row` is shared but the slots are not —
     /// restyling `checkbox` must leave `radio` and `switch` alone — and the
-    /// three now name their slot at their own `WidgetTheme::resolve` call.
+    /// three name their slot exactly once, in their own `style_setter!`.
     /// Writing one value to all three slots could not tell them apart, so a
     /// toggle reading its neighbour's slot passed.
     #[test]

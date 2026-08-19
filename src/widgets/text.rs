@@ -67,14 +67,14 @@ impl<'a> Text<'a> {
         }
     }
 
-    /// Override the whole text style for this run. All-or-nothing —
-    /// every axis the bundle covers (font size, color, leading) is
-    /// replaced. To tweak one axis, build the bundle from the theme:
-    /// `TextStyle { color: red, ..ui.theme().text.clone() }`.
-    pub fn style(mut self, s: &'a TextStyle) -> Self {
-        self.style = Some(s);
-        self
-    }
+    style_setter!(
+        'a,
+        TextStyle,
+        text,
+        "All-or-nothing — every axis the bundle covers (font size, color, \
+         leading) is replaced. To tweak one axis, build the bundle from the \
+         theme: `TextStyle { color: red, ..ui.theme().text.clone() }`.",
+    );
 
     /// Shape this run bold, overriding just the weight of the resolved
     /// style (whether that came from `.style(...)` or the theme default).
@@ -108,7 +108,7 @@ impl<'a> Text<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        let style = self.style.unwrap_or(&ui.theme().text);
+        let style = self.slot(ui.theme());
         let color = style.color;
         // The builder's weight over the style's; everything else is the
         // style's face as-is.

@@ -27,6 +27,56 @@ macro_rules! impl_background {
     };
 }
 
+/// Declare a themed widget's per-instance style override, and the
+/// resolution that pairs with it, from **one** naming of its theme slot.
+///
+/// Invoke it inside the builder's own `impl` block, next to the other
+/// setters, for any widget keeping its override in a field called
+/// `style: Option<&'lt T>`. It expands to two methods:
+///
+/// - `style(…)` — the public setter. Takes anything that converts into
+///   `Option<&T>`, so both `.style(&theme)` and `.style(maybe_theme)`
+///   compile: "styled or default" is expressible as *data* rather than as a
+///   branch around the whole call.
+/// - `slot(&self, theme)` — private: the caller's override, or the named
+///   slot off the app theme.
+///
+/// The slot path is written exactly once, in the invocation. Every themed
+/// widget used to name it twice — once to copy geometry scalars out before
+/// the `&mut Ui` reborrow, once in a fallback closure handed to the look
+/// resolver — where a typo in one half of the pair was silent.
+macro_rules! style_setter {
+    ($lt:lifetime, $theme:ty, $($slot:ident).+ $(, $note:expr)* $(,)?) => {
+        #[doc = concat!(
+            "Per-instance theme override, replacing [`crate::Theme`]'s `",
+            stringify!($($slot).+),
+            "` for this instance alone.",
+        )]
+        ///
+        /// Takes an `Option` as readily as a reference, so a caller that
+        /// styles some instances and not others passes the `Option` itself
+        /// instead of branching: `.style(overrides.as_ref())`.
+        $(
+            #[doc = ""]
+            #[doc = $note]
+        )*
+        pub fn style(mut self, s: impl Into<Option<&$lt $theme>>) -> Self {
+            self.style = s.into();
+            self
+        }
+
+        /// This instance's theme — the caller's override, or the slot off
+        /// `theme`. The one place this widget names its slot.
+        #[inline(always)]
+        fn slot<'slot>(&self, theme: &'slot $crate::widgets::theme::Theme) -> &'slot $theme
+        where
+            $lt: 'slot,
+        {
+            self.style.unwrap_or(&theme.$($slot).+)
+        }
+    };
+}
+
 /// Implement [`Configure`](crate::scene::node::Configure) for widget
 /// builders that keep their [`Node`](crate::scene::node::Node) in a
 /// field called `node`.

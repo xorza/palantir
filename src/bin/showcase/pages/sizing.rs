@@ -40,10 +40,9 @@ fn column(ui: &mut Ui, id: &'static str, body: impl FnOnce(&mut Ui)) {
 fn sizing(ui: &mut Ui) {
     section(
         ui,
-        "sizing",
         "sizing — Fixed exact px · Hug content · Fill splits leftover 1:2:1",
         |ui| {
-            support::row(ui, "sz-fixed", |ui| {
+            support::row(ui, |ui| {
                 for (i, w) in [50.0, 100.0, 200.0].into_iter().enumerate() {
                     chip(
                         ui,
@@ -53,7 +52,7 @@ fn sizing(ui: &mut Ui) {
                     );
                 }
             });
-            support::row(ui, "sz-hug", |ui| {
+            support::row(ui, |ui| {
                 // Padded frames hug their empty content box — effectively
                 // just padding, so the two boxes differ only by pad width.
                 for (i, pad) in [20.0, 40.0].into_iter().enumerate() {
@@ -65,7 +64,7 @@ fn sizing(ui: &mut Ui) {
                         .show(ui);
                 }
             });
-            support::row(ui, "sz-fill", |ui| {
+            support::row(ui, |ui| {
                 for (i, weight) in [1.0, 2.0, 1.0].into_iter().enumerate() {
                     chip(
                         ui,
@@ -82,7 +81,6 @@ fn sizing(ui: &mut Ui) {
 fn justify(ui: &mut Ui) {
     section(
         ui,
-        "justify",
         "justify — Start · Center · End · SpaceBetween · SpaceAround",
         |ui| {
             for (id, j) in [
@@ -116,7 +114,6 @@ fn justify(ui: &mut Ui) {
 fn visibility(ui: &mut Ui) {
     section(
         ui,
-        "visibility",
         "visibility — middle chip Visible · Hidden keeps its slot · Collapsed releases it",
         |ui| {
             for (id, vis) in [
@@ -152,7 +149,6 @@ fn visibility(ui: &mut Ui) {
 fn alignment(ui: &mut Ui) {
     section(
         ui,
-        "alignment",
         "alignment — child_align on the container, overridden per child by the orange chip",
         |ui| {
             // HStack: children inherit VAlign::Center; orange opts out to Bottom.
@@ -189,7 +185,6 @@ fn alignment(ui: &mut Ui) {
 fn spacing(ui: &mut Ui) {
     section(
         ui,
-        "spacing",
         "spacing — padding reserves space inside the parent · margin shrinks the \
          child's slot · negative margin overlaps the neighbor",
         |ui| {
@@ -254,7 +249,7 @@ fn spacing(ui: &mut Ui) {
 }
 
 fn gap(ui: &mut Ui) {
-    section(ui, "gap", "gap — 0 · 8 · 24 px between siblings", |ui| {
+    section(ui, "gap — 0 · 8 · 24 px between siblings", |ui| {
         for g in [0.0, 8.0, 24.0] {
             Panel::hstack()
                 .id_salt(("gap", g as u32))

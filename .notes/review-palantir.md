@@ -110,11 +110,6 @@ crate — grep-checkable and still wrong.
       (`src/widgets/text.rs:118`), `ProgressBar` (`progress_bar.rs:56`) and
       `Spinner` (`spinner.rs:93`) also call it.
 
-- [ ] `src/widgets/checkbox/mod.rs:69`, `src/widgets/radio/mod.rs:76`,
-      `src/widgets/switch.rs:67` — the same pasted comment claims the theme slot
-      is named there and "**this is the only place it is named**". Each names it
-      again in the `WidgetTheme::resolve` fallback closure a dozen lines below.
-
 - [ ] `src/widgets/theme/toggle.rs:14` — `ToggleTheme`'s doc lists its consumers
       as "`Checkbox`, `RadioButton`, future toggle/segmented controls" and omits
       `Switch`, a current consumer with fields (`track_aspect`) in that struct.
@@ -171,14 +166,6 @@ crate — grep-checkable and still wrong.
       "Exercises the alloc-free claim"; `stress` (`:163`) allocates a
       ~90 KB `Mesh` every frame.
 
-- [ ] `examples/custom_widget.rs:85` — `ui.intern(self.value.to_string())`
-      carries the comment "no lingering `String` alloc". `to_string()` allocates
-      every frame and the intern then copies it.
-
-- [ ] `src/bin/showcase/pages/overlays.rs:246` — the comment "Static strings
-      only — no per-frame alloc" sits forty lines below `:206`, which allocates
-      five.
-
 - [ ] `src/bin/showcase/shell.rs:41` — `Body`'s doc says "the two that own
       cross-frame resources"; the enum has three such variants, and two further
       pages need the same thing and use `thread_local!` statics instead.
@@ -232,97 +219,6 @@ from what it describes, and nothing catches it.
       `clock_sweep.rs`, `atlas_slot.rs`, `content_type.rs`,
       `packed_metadata.rs`), as are all six files in `src/icons/` and
       `src/text/wrap.rs`.
-
----
-
-## Library API gaps that push boilerplate into every app
-
-Found from the call site: the showcase and examples repeat the same
-workarounds, which makes these library-side findings rather than app ones.
-
-- [ ] `src/ui/mod.rs:797` — `Ui::state_mut` lends out of `&mut Ui`, so the
-      borrow cannot survive the widget calls that read it. Eight showcase pages
-      consequently `std::mem::take` the row out and write it back at the end of
-      `build`, or re-probe per field access; `src/bin/showcase/pages/text_edit.rs:5`
-      documents the workaround as if it were a design. There is no page- or
-      subtree-scoped state carrier between "app root struct" and "per-widget
-      row".
-
-- [ ] `src/ui/mod.rs:524` — `Ui::debug_overlay_mut` hands out a `RefMut` that
-      cannot survive `&mut Ui` widget calls, and has no read-only accessor to
-      pair with a setter, so `src/bin/showcase/shell.rs:451` takes three separate
-      borrows to copy three bools onto the stack and re-borrows to write them
-      back.
-
-- [ ] `src/ui/mod.rs:364` — `Ui::set_vsync` queues a one-shot request that
-      nothing reads back, so apps mirror it (`src/bin/showcase/shell.rs:239`) to
-      avoid recreating the swapchain. The neighbouring `Ui::window_open`
-      (`:528`) is documented as the source of truth precisely "instead of
-      mirroring the state in app code" — two adjacent capabilities taking
-      opposite positions.
-
-- [ ] Widget text setters take `impl Into<TextInput>`, so `format!(…)` compiles
-      and reads naturally while the non-allocating `ui.fmt(format_args!(…))` is
-      a separate two-step call nothing steers toward. Both examples
-      (`examples/counter.rs:23`, `examples/custom_widget.rs:85`) — the crate's
-      teaching surface, one of them the README doctest — use the allocating
-      form.
-
-- [ ] `src/widgets/context_menu/mod.rs` — `ContextMenu::style` and
-      `MenuItem::style` accept only `&Theme`, so "styled or default" cannot be
-      expressed as data and becomes control flow at every row:
-      `src/bin/showcase/pages/overlays.rs:310` builds an `Option`, branches for
-      the panel, defines a closure whose only job is the match, and then writes
-      the separator twice under a `match` because `#[track_caller]` cannot reach
-      through a closure body.
-
-- [ ] `src/scene/node/mod.rs:391` — three id mechanisms (implicit `Salt::Auto`
-      from `Node::new`, explicit `.auto_id()`, `.id_salt(…)`) with no call-site
-      signal for which a given widget needs. `Node::new` already stores
-      `Salt::Auto(WidgetId::auto_stable())` and every builder constructor is
-      `#[track_caller]`, so the ~20 `.auto_id()` calls in the showcase are
-      ceremony; the case where it matters occurs nowhere in it.
-
-- [ ] `src/widgets/panel/mod.rs:55` and `src/widgets/grid.rs:98` — `Configure`
-      exposes ~25 node setters but not `transform`, so `Panel::transform` and
-      `Grid::transform` are two copies of `self.node.transform = t` with a
-      cross-referencing doc. Inside `show()` bodies the crate then mixes both
-      styles freely, writing `bar.margin`, `node.gaps`, `child_align` and
-      `justify` as raw fields on nodes that implement `Configure`
-      (`splitter/mod.rs:204`, `toggle.rs:74`, `combo_box/mod.rs:83`,
-      `context_menu/mod.rs:317`, `slider.rs:95`, `separator.rs:87`).
-
-- [ ] `src/widgets/theme/mod.rs:226` — `Theme::text_scale` stores font sizes
-      already multiplied by the scale *plus* the scale factor, so the two can
-      desync. The field is therefore private, needs a bespoke
-      `deserialize_text_scale` (`theme/serde.rs:38`), and `set_text_scale` must
-      compute a ratio, pre-validate every metric, then walk the theme tree twice
-      — a walk whose sole purpose is ten hand-written destructuring visitors
-      across ten files, each re-listing every field with `_` bindings, plus a
-      runtime backstop test for what destructuring cannot cover. One caller.
-
-- [ ] `src/widgets/checkbox/mod.rs:74` and `:87` (and the same shape in
-      `radio/mod.rs`, `switch.rs`, `context_menu/mod.rs`, `drag_value/mod.rs`) —
-      every themed widget names its theme slot twice, once to copy out geometry
-      scalars and once in the `WidgetTheme::resolve` fallback closure, which
-      re-reads `ui.theme()` and re-runs the same `unwrap_or_else`. A mistyped
-      slot in one of the two halves is silent. All 19 `style()` builders across
-      the crate are byte-identical bodies with near-identical docs.
-
-- [ ] `src/widgets/gpu_view.rs:78` — `repaint(false)`, the "save work" knob, is
-      what destroys the framework-owned target: retention is keyed to appearing
-      in this submit's `frame_targets`, which conflates "unchanged" with "gone".
-      A frame forced by any other widget frees the off-screen texture and the
-      next repaint calls `GpuPaint::init` again — which is why the public trait's
-      `init` cannot promise once-per-view and its doc has to instruct every
-      implementor to guard against re-entry.
-
-- [ ] `src/bin/showcase/support.rs:166` — `section` takes an id argument that
-      restates its title in 59 of 62 call sites; `row` and `tiles` (`:199`,
-      `:209`) take `"<section>-tiles"` string literals at all 46. All three are
-      generic over `<H: Hash + Copy>` with a single instantiation. `demo_cell`
-      and `note` (`:190`, `:261`) key widget identity on display copy, so editing
-      a caption resets that cell's state.
 
 ---
 
@@ -908,10 +804,6 @@ pass rather than argued one at a time.
       re-derived at three sites differing only in the alignment policy applied;
       `support.rs` already has the single-axis consolidation (`cross_place`,
       `:439`) but nothing covering the two-axis case.
-
-- [ ] `src/widgets/theme/mod.rs:440` — `WidgetTheme::resolve` re-implements
-      `ThemeDefaults::default_padding`/`default_margin`
-      (`src/scene/node/mod.rs:594`).
 
 - [ ] `src/shape/mod.rs:43` — the module is declared `pub(crate) mod sealed` but
       the `Lower` doc calls it "a private module" and the inline block calls it

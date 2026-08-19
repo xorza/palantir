@@ -31,15 +31,10 @@ impl<'a> ProgressBar<'a> {
         }
     }
 
-    /// Borrow a theme override for this bar. The default inherits
-    /// [`crate::Theme::progress_bar`].
-    pub fn style(mut self, s: &'a ProgressBarTheme) -> Self {
-        self.style = Some(s);
-        self
-    }
+    style_setter!('a, ProgressBarTheme, progress_bar);
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        let theme = self.style.unwrap_or(&ui.theme().progress_bar);
+        let theme = self.slot(ui.theme());
         let [fill, spacer] = Sizing::split(self.fraction);
         let height = theme.height.max(0.0);
         let radius = Corners::all(height * 0.5);

@@ -384,9 +384,9 @@ impl WindowDriver {
     /// scratch buffer it then drops, since a headless render has no window
     /// lifecycle to service.
     ///
-    /// The vsync request is **taken**, not copied: it is a one-shot ask, so
-    /// leaving it set would re-apply the same swapchain reconfigure every
-    /// frame.
+    /// The vsync setting is copied, not taken: it is a level the recorder
+    /// keeps (and reads back through `Ui::vsync`), so the host is the one
+    /// that diffs it against the swapchain it has open.
     ///
     /// Uses `Vec::append` rather than `mem::take` so the recorder keeps its
     /// buffers' capacity across frames.
@@ -412,7 +412,7 @@ impl WindowDriver {
         self.ui.window_frame = WindowFrameState::default();
         WindowOutput {
             cursor: requests.cursor,
-            vsync: requests.vsync.take(),
+            vsync: requests.vsync,
         }
     }
 
@@ -441,16 +441,15 @@ impl WindowDriver {
             commands.closes[0]
         );
         // Clear exactly what `drain_window_output` clears, so the two
-        // paths leave the recorder in the same state. `keep_open` vetoes
-        // a close this host never requests, and `vsync` is a one-shot
-        // request nothing here can service — left set, it would linger
-        // as a pending change for the life of the host.
+        // paths leave the recorder in the same state — which here is the
+        // one-frame close veto and nothing else.
         //
-        // `cursor` is deliberately not touched: it is a level, not an
-        // edge, and the windowed drain retains it too. Both it and
-        // `vsync` are simply inert on a host that renders to a texture.
+        // `cursor` and `vsync` are deliberately untouched: both are levels,
+        // not edges, and the windowed drain retains both. Both are simply
+        // inert on a host that renders to a texture, and `vsync` still
+        // reads back through `Ui::vsync` so an app's control keeps working
+        // in a headless test.
         self.ui.window_requests.close_vetoed = false;
-        self.ui.window_requests.vsync = None;
     }
 
     /// GPU submit against a caller-supplied texture, through the shared

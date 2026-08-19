@@ -1,4 +1,5 @@
 use crate::display::Display;
+use crate::primitives::texture_id::TextureId;
 use crate::primitives::{color::Color, corners::Corners, rect::Rect};
 use crate::renderer::quad::Quad;
 use glam::{UVec2, Vec2};
@@ -15,7 +16,7 @@ pub(crate) mod text;
 use crate::renderer::render_buffer::batch::{DrawGroup, GroupBatch, PaintTier, TextBatch};
 use crate::renderer::render_buffer::curve::CurveInstance;
 use crate::renderer::render_buffer::icon::IconDrawRow;
-use crate::renderer::render_buffer::image::{ImageDrawRow, RenderTargetDraw};
+use crate::renderer::render_buffer::image::{FrameViews, ImageDrawRow, RenderTargetDraw};
 use crate::renderer::render_buffer::mesh::MeshDrawRow;
 use crate::renderer::render_buffer::text::TextDrawRow;
 
@@ -82,6 +83,13 @@ pub(crate) struct RenderBuffer {
     /// it to allocate + paint. Carries the callback, so the backend reaches the
     /// renderer without any `Ui`-side registry.
     pub(crate) frame_targets: Vec<RenderTargetDraw>,
+    /// Every `GpuView` this frame *recorded*, painted or not — the backend's
+    /// retention roster. Filled by `Frontend::build` from the frame's live
+    /// view map, so it is a per-frame stamp rather than a scene column: an
+    /// undamaged view is culled out of [`Self::frame_targets`] but stays
+    /// here, which is what keeps its off-screen texture (and everything
+    /// `GpuPaint::init` built into it) alive across frames the view sits out.
+    pub(crate) live_targets: Vec<TextureId>,
     /// Icon draws in composite order, each already resolved to a physical-px
     /// origin and a raster key. Drained one batch at a time — the backend
     /// rasterizes any miss and binds its own atlas, so a run of icons is
@@ -136,6 +144,7 @@ impl RenderBuffer {
             batches: [const { Vec::new() }; PaintTier::COUNT],
             images: Soa::default(),
             frame_targets: Vec::new(),
+            live_targets: Vec::new(),
             icons: Vec::new(),
             curves: Vec::new(),
             rounded_clips: Vec::new(),
@@ -190,11 +199,21 @@ impl RenderBuffer {
         &self.batches[tier.idx()]
     }
 
+    /// This frame's `GpuView`s, as the backend takes them: what to repaint,
+    /// and what to keep. See [`FrameViews`].
+    pub(crate) fn frame_views(&self) -> FrameViews<'_> {
+        FrameViews {
+            draws: &self.frame_targets,
+            live: &self.live_targets,
+        }
+    }
+
     /// Drop every scene column (capacity retained), leaving the per-frame
-    /// stamps (`clear_override`, viewport, scale, time) untouched. Shared by
-    /// [`Self::start_frame`] and the composer's clear fold, which discards
-    /// everything composed so far when a fullscreen opaque cover proves it
-    /// invisible — a new scene column added here resets on both paths at once.
+    /// stamps (`clear_override`, `live_targets`, viewport, scale, time)
+    /// untouched. Shared by [`Self::start_frame`] and the composer's clear
+    /// fold, which discards everything composed so far when a fullscreen
+    /// opaque cover proves it invisible — a new scene column added here
+    /// resets on both paths at once.
     pub(crate) fn discard_scene(&mut self) {
         self.quads.clear();
         self.texts.clear();

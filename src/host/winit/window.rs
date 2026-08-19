@@ -14,7 +14,7 @@ use crate::host::winit::gpu::{self, SurfaceManager, WindowSurface};
 use crate::host::winit::native;
 use crate::input::InputEvent;
 use crate::input::response::InputDelta;
-use crate::window::{CursorIcon, WindowCommands, WindowFrameState};
+use crate::window::{CursorIcon, Vsync, WindowCommands, WindowFrameState};
 
 /// Everything one native window owns: its handle, swapchain state, target-
 /// agnostic render driver, input/display facts, and event-loop schedule.
@@ -39,9 +39,14 @@ impl Window {
     pub(super) fn new(
         window: Arc<WinitWindow>,
         surface: WindowSurface,
-        driver: WindowDriver,
+        mut driver: WindowDriver,
     ) -> Self {
         let scale_factor = window.scale_factor() as f32;
+        // Seed the recorder's pacing level from the swapchain that was
+        // actually opened, so `Ui::vsync` is truthful before any frame runs
+        // and a control writing its own value back doesn't reconfigure an
+        // explicitly-configured present mode out from under the host.
+        driver.ui.window_requests.vsync = gpu::vsync_of(surface.config.present_mode);
         Self {
             window,
             surface: surface.surface,
@@ -230,28 +235,31 @@ impl Window {
             self.window.set_cursor(native::cursor(output.cursor));
             self.cursor = output.cursor;
         }
-        if let Some(vsync) = output.vsync {
-            self.set_present_mode(gpu::present_mode(vsync));
-        }
+        self.set_vsync(output.vsync);
         self.close_requested = false;
     }
 
-    /// Point the swapchain config at `mode`. The reconfigure itself is left
-    /// to the next frame's [`TargetKey`] check rather than done here: that
-    /// check is the one gate on the retained target state, and recreating the
-    /// swapchain invalidates it (the images are new, so the damage baseline
-    /// and last-frame pixels describe nothing). Doing it here would reconfigure
-    /// behind the gate's back and leave the next partial repaint loading
-    /// contents that no longer exist.
+    /// Point the swapchain config at `vsync`, if it isn't already paced that
+    /// way. The comparison runs in [`Vsync`]'s two-state vocabulary rather
+    /// than wgpu's: a window opened on an explicit `Mailbox` already *is*
+    /// [`Vsync::Off`], so a recorder asking for `Off` must leave that finer
+    /// choice standing rather than flatten it to `AutoNoVsync`.
+    ///
+    /// The reconfigure itself is left to the next frame's [`TargetKey`] check
+    /// rather than done here: that check is the one gate on the retained
+    /// target state, and recreating the swapchain invalidates it (the images
+    /// are new, so the damage baseline and last-frame pixels describe
+    /// nothing). Doing it here would reconfigure behind the gate's back and
+    /// leave the next partial repaint loading contents that no longer exist.
     ///
     /// Hence the forced repaint: an idle window schedules no next frame, so
     /// without it the change would sit in `config` until something else
     /// happened to wake the window.
-    fn set_present_mode(&mut self, mode: wgpu::PresentMode) {
-        if mode == self.config.present_mode {
+    fn set_vsync(&mut self, vsync: Vsync) {
+        if gpu::vsync_of(self.config.present_mode) == vsync {
             return;
         }
-        self.config.present_mode = mode;
+        self.config.present_mode = gpu::present_mode(vsync);
         self.next = FramePresent::Immediate;
     }
 }
@@ -302,7 +310,11 @@ mod tests {
 
         let output = driver.drain_window_output(&mut commands);
         assert_eq!(output.cursor, CursorIcon::Pointer);
-        assert_eq!(output.vsync, None, "no vsync change was asked for");
+        assert_eq!(
+            output.vsync,
+            Vsync::On,
+            "a frame that asked for nothing reports the standing level"
+        );
         assert_eq!(commands.opens.len(), 1);
         assert_eq!(commands.opens[0].token, opened);
         assert_eq!(
@@ -342,40 +354,33 @@ mod tests {
         );
     }
 
-    /// A vsync change is a one-shot request, not a per-frame value like the
-    /// cursor: the drain **takes** it. Re-delivering would re-apply the same
-    /// swapchain reconfigure — a GPU-idle wait and a fresh swapchain — on
-    /// every subsequent frame.
+    /// Vsync is a level like the cursor, not a one-shot request: the drain
+    /// copies it, it survives the drain that delivered it, and it reads back
+    /// through `Ui::vsync` so an app never mirrors it. Collapsing a repeated
+    /// level into no swapchain work is the host's job, not the recorder's —
+    /// see `Window::set_vsync`.
     #[test]
-    fn a_vsync_request_drains_once_and_then_clears() {
+    fn vsync_is_a_level_the_drain_copies_and_the_recorder_keeps() {
         let shared = HostShared::new(TextShaper::test_mono(), None);
         let mut driver = WindowDriver::builder(WindowToken(3), &shared).build();
         let mut commands = WindowCommands::default();
 
-        assert_eq!(
-            driver.drain_window_output(&mut commands).vsync,
-            None,
-            "a frame that asked for nothing reports no change"
-        );
+        assert_eq!(driver.ui.vsync(), Vsync::On, "vsync is on unless asked off");
+        assert_eq!(driver.drain_window_output(&mut commands).vsync, Vsync::On);
 
         driver.ui.set_vsync(Vsync::Off);
+        assert_eq!(driver.ui.vsync(), Vsync::Off, "the setter reads back");
+        assert_eq!(driver.drain_window_output(&mut commands).vsync, Vsync::Off);
         assert_eq!(
             driver.drain_window_output(&mut commands).vsync,
-            Some(Vsync::Off)
-        );
-        assert_eq!(
-            driver.drain_window_output(&mut commands).vsync,
-            None,
-            "the request is consumed by the drain that delivered it"
+            Vsync::Off,
+            "the level survives the drain that delivered it",
         );
 
         // Within one pass the last writer wins, matching `set_cursor`.
-        driver.ui.set_vsync(Vsync::Off);
         driver.ui.set_vsync(Vsync::On);
-        assert_eq!(
-            driver.drain_window_output(&mut commands).vsync,
-            Some(Vsync::On)
-        );
+        driver.ui.set_vsync(Vsync::Off);
+        assert_eq!(driver.drain_window_output(&mut commands).vsync, Vsync::Off);
     }
 
     #[test]

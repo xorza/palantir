@@ -22,7 +22,6 @@ use palantir::{
     Background, Color, Configure, Corners, FontWeight, Panel, Sizing, Stroke, Text, TextStyle,
     TextWrap, Ui,
 };
-use std::hash::Hash;
 
 /// Window clear — the darkest tier, visible around the card.
 pub(crate) const WINDOW: Color = Color::hex(0x131417);
@@ -163,21 +162,19 @@ pub(crate) fn raised_bg() -> Background {
 
 /// Section title above a block of demo content. The title is what makes
 /// a page scannable, so every section has one.
-pub(crate) fn section<H: Hash + Copy>(
-    ui: &mut Ui,
-    id: H,
-    title: &'static str,
-    body: impl FnOnce(&mut Ui),
-) {
+///
+/// Identity comes from the call site, not from the title: every helper in
+/// this module is `#[track_caller]` and chains `.auto_id()`, so each `section`
+/// in each page is a distinct widget without a page having to invent a key
+/// for it — and editing a title doesn't re-key the section's contents.
+#[track_caller]
+pub(crate) fn section(ui: &mut Ui, title: &'static str, body: impl FnOnce(&mut Ui)) {
     Panel::vstack()
-        .id_salt(id)
+        .auto_id()
         .size((Sizing::FILL, Sizing::HUG))
         .gap(TITLE_GAP)
         .show(ui, |ui| {
-            Text::new(title)
-                .id_salt((id, "section-title"))
-                .style(&section_style())
-                .show(ui);
+            Text::new(title).style(&section_style()).show(ui);
             body(ui);
         });
 }
@@ -185,9 +182,10 @@ pub(crate) fn section<H: Hash + Copy>(
 /// Wrapping prose under a section title, for the rare demo whose rules
 /// can't be inferred from looking at it. Capped at a readable measure
 /// rather than running the full width of the card.
+#[track_caller]
 pub(crate) fn note(ui: &mut Ui, text: &'static str) {
     Text::new(text)
-        .id_salt(("note", text))
+        .auto_id()
         .style(&note_style())
         .size((Sizing::FILL, Sizing::HUG))
         .max_size((680.0, f32::INFINITY))
@@ -196,9 +194,10 @@ pub(crate) fn note(ui: &mut Ui, text: &'static str) {
 }
 
 /// Horizontal row of controls, hugging its content height.
-pub(crate) fn row<H: Hash + Copy>(ui: &mut Ui, id: H, body: impl FnOnce(&mut Ui)) {
+#[track_caller]
+pub(crate) fn row(ui: &mut Ui, body: impl FnOnce(&mut Ui)) {
     Panel::hstack()
-        .id_salt(id)
+        .auto_id()
         .size((Sizing::FILL, Sizing::HUG))
         .gap(ROW_GAP)
         .show(ui, body);
@@ -206,9 +205,10 @@ pub(crate) fn row<H: Hash + Copy>(ui: &mut Ui, id: H, body: impl FnOnce(&mut Ui)
 
 /// Flowing line of demo tiles. Wraps rather than shrinking, so a tile is
 /// the same size at every window width.
-pub(crate) fn tiles<H: Hash + Copy>(ui: &mut Ui, id: H, body: impl FnOnce(&mut Ui)) {
+#[track_caller]
+pub(crate) fn tiles(ui: &mut Ui, body: impl FnOnce(&mut Ui)) {
     Panel::wrap_hstack()
-        .id_salt(id)
+        .auto_id()
         .size((Sizing::FILL, Sizing::HUG))
         .gap(TILE_GAP)
         .line_gap(TILE_GAP)
@@ -216,17 +216,20 @@ pub(crate) fn tiles<H: Hash + Copy>(ui: &mut Ui, id: H, body: impl FnOnce(&mut U
 }
 
 /// Captioned [`TILE`]-square demo cell on the recessed surface.
+#[track_caller]
 pub(crate) fn demo_cell(ui: &mut Ui, label: &'static str, body: impl FnOnce(&mut Ui)) {
     demo_cell_on(ui, label, TILE, TILE, Some(well_bg()), body);
 }
 
 /// [`demo_cell`] on the bright surface — for shadow / dark-stroke content.
+#[track_caller]
 pub(crate) fn demo_cell_light(ui: &mut Ui, label: &'static str, body: impl FnOnce(&mut Ui)) {
     demo_cell_on(ui, label, TILE, TILE, Some(light_well_bg()), body);
 }
 
 /// [`demo_cell`] at a custom size, for the demos whose point only reads
 /// in a box that isn't [`TILE`]-square.
+#[track_caller]
 pub(crate) fn demo_cell_at(
     ui: &mut Ui,
     label: &'static str,
@@ -239,6 +242,7 @@ pub(crate) fn demo_cell_at(
 
 /// Caption above a bare body — for demos that paint their own surface
 /// (clip cards, gradients) where a recessed well would double up.
+#[track_caller]
 pub(crate) fn captioned_cell(
     ui: &mut Ui,
     label: &'static str,
@@ -249,6 +253,11 @@ pub(crate) fn captioned_cell(
     demo_cell_on(ui, label, w, h, None, body);
 }
 
+/// `#[track_caller]` all the way down: each of the four public cells forwards
+/// here, so the outer panel's `.auto_id()` reads the *page's* call site rather
+/// than any line in this file. Everything inside it — the caption, the body
+/// cell — is parent-scoped under that panel and needs no id of its own.
+#[track_caller]
 fn demo_cell_on(
     ui: &mut Ui,
     label: &'static str,
@@ -258,14 +267,12 @@ fn demo_cell_on(
     body: impl FnOnce(&mut Ui),
 ) {
     Panel::vstack()
-        .id_salt(label)
+        .auto_id()
         .size((Sizing::fixed(w), Sizing::HUG))
         .gap(6.0)
         .show(ui, |ui| {
             caption(ui, label);
-            let mut cell = Panel::zstack()
-                .id_salt((label, "cell-body"))
-                .size((Sizing::FILL, Sizing::fixed(h)));
+            let mut cell = Panel::zstack().size((Sizing::FILL, Sizing::fixed(h)));
             if let Some(bg) = bg {
                 cell = cell.padding(8.0).background(bg);
             }
@@ -275,7 +282,6 @@ fn demo_cell_on(
 
 fn caption(ui: &mut Ui, label: &'static str) {
     Text::new(label)
-        .id_salt((label, "cell-caption"))
         .style(&caption_style())
         .size((Sizing::FILL, Sizing::fixed(CAPTION_H)))
         .text_wrap(TextWrap::WrapWithOverflow)

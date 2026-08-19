@@ -2,8 +2,8 @@ use crate::layout::types::align::{Align, HAlign, VAlign};
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
-use crate::scene::node::Node;
 use crate::scene::node::ThemeDefaults;
+use crate::scene::node::{Configure, Node};
 use crate::ui::Ui;
 use crate::widgets::response::Response;
 use crate::widgets::theme::separator::SeparatorTheme;
@@ -50,15 +50,14 @@ impl<'a> Separator<'a> {
         }
     }
 
-    /// Borrow a theme override for this rule. The default inherits
-    /// [`crate::Theme::separator`]; [`crate::MenuSeparator`] passes
-    /// `theme.context_menu.separator` instead. Per-field
-    /// [`Self::color`] / [`Self::thickness`] still win over whichever
-    /// bundle is in play.
-    pub fn style(mut self, s: &'a SeparatorTheme) -> Self {
-        self.style = Some(s);
-        self
-    }
+    style_setter!(
+        'a,
+        SeparatorTheme,
+        separator,
+        "[`crate::MenuSeparator`] passes `theme.context_menu.separator` here \
+         instead. Per-field [`Self::color`] / [`Self::thickness`] still win \
+         over whichever bundle is in play.",
+    );
 
     /// Line thickness in logical px, defaulting to
     /// [`crate::Theme::separator`]'s. One-axis hatch over the resolved bundle — see [`crate::Theme`].
@@ -75,21 +74,21 @@ impl<'a> Separator<'a> {
     }
 
     pub fn show(mut self, ui: &mut Ui) -> Response<'_> {
-        let theme = self.style.unwrap_or(&ui.theme().separator);
+        let theme = self.slot(ui.theme());
         let t = self.thickness.unwrap_or(theme.thickness).max(0.0);
         let margin = theme.margin;
         let default_size = if self.horizontal {
-            (Sizing::HUG, Sizing::fixed(t)).into()
+            (Sizing::HUG, Sizing::fixed(t))
         } else {
-            (Sizing::fixed(t), Sizing::HUG).into()
+            (Sizing::fixed(t), Sizing::HUG)
         };
         if self.node.size.is_none() {
-            self.node.size = Some(default_size);
-            self.node.align = if self.horizontal {
+            // `Node` is `Copy`, so the chain reads back into the field.
+            self.node = self.node.size(default_size).align(if self.horizontal {
                 Align::h(HAlign::Stretch)
             } else {
                 Align::v(VAlign::Stretch)
-            };
+            });
         }
         let chrome = Background::fill(self.color.unwrap_or(theme.color));
         // Theme margin fills in only where the caller stayed silent —
