@@ -1180,10 +1180,10 @@ fn damage_filter_repaints_neighbor_in_aa_pad_ring() {
 fn image_fit_modes_resolve_to_expected_rects_and_uv() {
     use crate::ImageFit;
     use crate::renderer::frontend::encoder::resolve_fit;
-    use glam::{UVec2, Vec2};
+    use glam::Vec2;
 
     let base = Rect::new(0.0, 0.0, 200.0, 200.0);
-    let img = UVec2::new(100, 50);
+    let img = Vec2::new(100.0, 50.0);
 
     let r = resolve_fit(base, img, ImageFit::Fill);
     assert_eq!(r.rect, base);
@@ -1208,7 +1208,7 @@ fn image_fit_modes_resolve_to_expected_rects_and_uv() {
     assert_eq!(r.uv_size, Vec2::ONE);
 
     // Missing registry entry → falls through to base + full UV.
-    let r = resolve_fit(base, UVec2::ZERO, ImageFit::Contain);
+    let r = resolve_fit(base, Vec2::ZERO, ImageFit::Contain);
     assert_eq!(r.rect, base);
     assert_eq!(r.uv_size, Vec2::ONE);
 

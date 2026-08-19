@@ -129,10 +129,9 @@ struct BatchState {
 struct GroupCursors {
     quads: u32,
     texts: u32,
-    meshes: u32,
-    images: u32,
-    icons: u32,
-    curves: u32,
+    /// One per [`PaintTier`], indexed by `PaintTier::idx` — the four
+    /// higher-kind columns are walked, never named individually.
+    higher: [u32; PaintTier::COUNT],
 }
 
 /// State carried while a text batch is mid-accumulation. Pushed onto
@@ -186,43 +185,26 @@ impl Composer {
         self.occlusion.prune(out, self.cursors.quads);
         let q_end = out.quads.len() as u32;
         let t_end = out.texts.len() as u32;
-        let m_end = out.meshes.len() as u32;
-        let i_end = out.images.len() as u32;
-        let n_end = out.icons.len() as u32;
-        let c_end = out.curves.len() as u32;
+        let higher_end = PaintTier::ALL.map(|tier| out.draws_len(tier));
         if q_end > self.cursors.quads
             || t_end > self.cursors.texts
-            || m_end > self.cursors.meshes
-            || i_end > self.cursors.images
-            || n_end > self.cursors.icons
-            || c_end > self.cursors.curves
+            || PaintTier::ALL
+                .iter()
+                .any(|&t| higher_end[t.idx()] > self.cursors.higher[t.idx()])
         {
-            // Push the mesh/image batches BEFORE the group itself so
+            // Push the higher-kind batches BEFORE the group itself so
             // their `last_group` matches the in-flight group's
             // eventual index (= current `out.groups.len()`).
-            if m_end > self.cursors.meshes {
-                out.mesh_batches.push(GroupBatch {
-                    items: (self.cursors.meshes..m_end).into(),
-                    last_group: out.groups.len() as u32,
-                });
-            }
-            if i_end > self.cursors.images {
-                out.image_batches.push(GroupBatch {
-                    items: (self.cursors.images..i_end).into(),
-                    last_group: out.groups.len() as u32,
-                });
-            }
-            if n_end > self.cursors.icons {
-                out.icon_batches.push(GroupBatch {
-                    items: (self.cursors.icons..n_end).into(),
-                    last_group: out.groups.len() as u32,
-                });
-            }
-            if c_end > self.cursors.curves {
-                out.curve_batches.push(GroupBatch {
-                    items: (self.cursors.curves..c_end).into(),
-                    last_group: out.groups.len() as u32,
-                });
+            let last_group = out.groups.len() as u32;
+            for tier in PaintTier::ALL {
+                let start = self.cursors.higher[tier.idx()];
+                let end = higher_end[tier.idx()];
+                if end > start {
+                    out.batches_mut(tier).push(GroupBatch {
+                        items: (start..end).into(),
+                        last_group,
+                    });
+                }
             }
             out.groups.push(DrawGroup {
                 scissor: self.current_scissor,
@@ -233,10 +215,7 @@ impl Composer {
         self.cursors = GroupCursors {
             quads: q_end,
             texts: t_end,
-            meshes: m_end,
-            images: i_end,
-            icons: n_end,
-            curves: c_end,
+            higher: higher_end,
         };
         self.higher_kinds.clear();
         self.occlusion.clear();

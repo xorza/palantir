@@ -455,7 +455,7 @@ impl PerGroupBatch for GroupBatch {
 /// Advance `cursor` past every batch whose `last_group` falls before
 /// group `before` — they anchored in damage-skipped groups and don't
 /// paint this pass.
-fn advance_past_skipped<B: PerGroupBatch>(batches: &[B], cursor: &mut usize, before: usize) {
+fn advance_past_skipped(batches: &[GroupBatch], cursor: &mut usize, before: usize) {
     while *cursor < batches.len() && batches[*cursor].last_group() < before {
         *cursor += 1;
     }
@@ -463,17 +463,20 @@ fn advance_past_skipped<B: PerGroupBatch>(batches: &[B], cursor: &mut usize, bef
 
 /// `true` if the batch at `cursor` anchors to group `group` — i.e. this
 /// group has a pending batch of that kind to emit.
+///
+/// The one helper that is genuinely generic: text batches and
+/// higher-kind batches are different types that share this anchoring
+/// rule, which is what [`PerGroupBatch`] exists for.
 fn pending_at<B: PerGroupBatch>(batches: &[B], cursor: usize, group: usize) -> bool {
     cursor < batches.len() && batches[cursor].last_group() == group
 }
 
 /// Drain every batch anchored to group `group`, emitting `step(idx)`
 /// for the batch's render step. The caller has already narrowed the
-/// scissor (and stencil state) back to the group's own. Shared by the
-/// mesh / image / curve drains so their per-group emit shape can't
-/// drift.
-fn drain_group_batches<B: PerGroupBatch>(
-    batches: &[B],
+/// scissor (and stencil state) back to the group's own. One call per
+/// [`PaintTier`], so every tier's per-group emit shape is this one.
+fn drain_group_batches(
+    batches: &[GroupBatch],
     cursor: &mut usize,
     group: usize,
     mut step: impl FnMut(usize) -> RenderStep,

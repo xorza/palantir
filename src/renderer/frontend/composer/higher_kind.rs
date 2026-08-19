@@ -32,10 +32,14 @@ use crate::renderer::render_buffer::batch::PaintTier;
 
 #[derive(Debug, Default)]
 pub(super) struct HigherKindRects {
-    meshes: TierRects,
-    images: TierRects,
-    icons: TierRects,
-    curves: TierRects,
+    /// One slot per [`PaintTier`], indexed by `PaintTier::idx`.
+    ///
+    /// An array rather than four named fields, because every operation
+    /// below is a fold over the tiers in `Ord` order — and with named
+    /// fields `conflicts` had to spell that order out as a triangular
+    /// matrix of six hand-written disjunctions, which is one more copy
+    /// of the replay order to keep in step with the backend's.
+    tiers: [TierRects; PaintTier::COUNT],
     union: URect,
 }
 
@@ -63,42 +67,34 @@ impl TierRects {
 
 impl HigherKindRects {
     pub(super) fn push(&mut self, tier: PaintTier, rect: URect) {
-        let tier_rects = match tier {
-            PaintTier::Mesh => &mut self.meshes,
-            PaintTier::Image => &mut self.images,
-            PaintTier::Icon => &mut self.icons,
-            PaintTier::Curve => &mut self.curves,
-        };
-        tier_rects.push(rect);
+        self.tiers[tier.idx()].push(rect);
         self.union = self.union.union(rect);
     }
 
+    /// Whether painting `incoming` over `rect` would land under
+    /// something already recorded — the group-flush test.
+    ///
+    /// A draw conflicts with the tiers that paint *after* it, which is
+    /// exactly the tiers that sort above it: the backend replays in
+    /// `PaintTier::ALL` order, so "recorded and higher" means "already
+    /// on top". Reading that off `Ord` rather than restating it as a
+    /// matrix is what keeps this end and the schedule's drain order from
+    /// drifting.
     pub(super) fn conflicts(&self, incoming: PaintTier, rect: URect) -> bool {
-        match incoming {
-            PaintTier::Mesh => {
-                self.images.any_overlap(rect)
-                    || self.icons.any_overlap(rect)
-                    || self.curves.any_overlap(rect)
-            }
-            PaintTier::Image => self.icons.any_overlap(rect) || self.curves.any_overlap(rect),
-            PaintTier::Icon => self.curves.any_overlap(rect),
-            PaintTier::Curve => false,
-        }
+        PaintTier::ALL
+            .iter()
+            .filter(|&&recorded| incoming < recorded)
+            .any(|&recorded| self.tiers[recorded.idx()].any_overlap(rect))
     }
 
     pub(super) fn any_overlap(&self, rect: URect) -> bool {
-        self.union.intersects(rect)
-            && (self.meshes.any_overlap(rect)
-                || self.images.any_overlap(rect)
-                || self.icons.any_overlap(rect)
-                || self.curves.any_overlap(rect))
+        self.union.intersects(rect) && self.tiers.iter().any(|t| t.any_overlap(rect))
     }
 
     pub(super) fn clear(&mut self) {
-        self.meshes.clear();
-        self.images.clear();
-        self.icons.clear();
-        self.curves.clear();
+        for tier in &mut self.tiers {
+            tier.clear();
+        }
         self.union = URect::ZERO;
     }
 }

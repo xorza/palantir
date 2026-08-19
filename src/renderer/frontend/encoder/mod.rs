@@ -498,7 +498,7 @@ fn emit_one_shape(
                 rect,
                 uv_min,
                 uv_size,
-            } = resolve_fit(base, size, *fit);
+            } = resolve_fit(base, size.as_vec2(), *fit);
             let mut flags = 0;
             if matches!(*fit, ImageFit::Tile { .. }) {
                 flags |= IMG_FLAG_TILED;
@@ -746,23 +746,12 @@ fn emit_shadow(
 /// crop, so every mode is a rect and nothing else. A degenerate viewBox falls
 /// through to the base rect — the same fail-safe the image path takes for a
 /// missing intrinsic size.
-pub(super) fn resolve_icon_fit(base: Rect, view_box: glam::Vec2, fit: IconFit) -> Rect {
-    let (iw, ih) = (view_box.x, view_box.y);
-    let (bw, bh) = (base.size.w, base.size.h);
-    if iw <= 0.0 || ih <= 0.0 || bw <= 0.0 || bh <= 0.0 {
-        return base;
-    }
-    match fit {
-        IconFit::Fill => base,
-        IconFit::Contain => {
-            // Preserve aspect; the tighter axis ratio decides the scale.
-            let scale = (bw / iw).min(bh / ih);
-            centered_in(base, iw * scale, ih * scale)
-        }
-        // Intrinsic logical px, centred. Overflows a smaller rect, exactly as
-        // `ImageFit::None` does.
-        IconFit::None => centered_in(base, iw, ih),
-    }
+fn resolve_icon_fit(base: Rect, view_box: glam::Vec2, fit: IconFit) -> Rect {
+    // Through the image resolver, not a second copy of it: the three
+    // variants an icon can express mean exactly what they mean for an
+    // image, and an icon needs only the rect half of the answer (it
+    // rasterizes to its box, so there is no UV to crop).
+    resolve_fit(base, view_box, fit.to_image_fit()).rect
 }
 
 /// A `w`x`h` box centred inside `base`. Every aspect-preserving fit resolves
@@ -792,9 +781,9 @@ const FULL_UV_SIZE: glam::Vec2 = glam::Vec2::ONE;
 /// `image_size = UVec2::ZERO` (missing registry entry at lowering time)
 /// falls through to the base rect with full UV — the backend's
 /// lookup-miss branch then skips the actual draw.
-fn resolve_fit(base: Rect, image_size: glam::UVec2, fit: ImageFit) -> Resolved {
-    let iw = image_size.x as f32;
-    let ih = image_size.y as f32;
+fn resolve_fit(base: Rect, image_size: glam::Vec2, fit: ImageFit) -> Resolved {
+    let iw = image_size.x;
+    let ih = image_size.y;
     let bw = base.size.w;
     let bh = base.size.h;
     if iw <= 0.0 || ih <= 0.0 || bw <= 0.0 || bh <= 0.0 {

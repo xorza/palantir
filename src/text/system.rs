@@ -55,7 +55,7 @@ const UNBOUND_REQUEST: &str = "TextSystem entry points take an unbounded request
 #[derive(Debug)]
 pub(crate) struct TextSystem {
     pub(super) shaper: TextShaper,
-    entries: FxHashMap<(WidgetId, u16), TextReuseEntry>,
+    entries: FxHashMap<TextRunSlot, TextReuseEntry>,
     /// Held once rather than asked per run: whether this window's shaper
     /// mints shaped buffers at all. False only under the gated mono metric.
     shapes_buffers: bool,
@@ -66,7 +66,7 @@ pub(crate) struct TextSystem {
 /// identity — [`TextSystem::measure`] validates the stored key against the
 /// request, so a stale slot costs one refresh dispatch, never a wrong
 /// result.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct TextRunSlot {
     pub(crate) widget_id: WidgetId,
     pub(crate) ordinal: u16,
@@ -129,7 +129,7 @@ impl TextSystem {
             return;
         }
         self.entries
-            .retain(|(widget_id, _), _| !removed.contains(widget_id));
+            .retain(|slot, _| !removed.contains(&slot.widget_id));
     }
 
     /// Close a `FramePlan::PaintOnly` frame: advance the shared text
@@ -253,7 +253,7 @@ impl TextSystem {
     /// [`Self::measure`] read a row and write its wrap slot back on one
     /// lookup.
     fn refresh<'a>(
-        entries: &'a mut FxHashMap<(WidgetId, u16), TextReuseEntry>,
+        entries: &'a mut FxHashMap<TextRunSlot, TextReuseEntry>,
         shaper: &TextShaper,
         slot: TextRunSlot,
         request: TextShapeRequest<'_>,
@@ -264,9 +264,7 @@ impl TextSystem {
             root: shaper.shape(request, floor),
             wrap: None,
         };
-        let entry = entries
-            .entry((slot.widget_id, slot.ordinal))
-            .or_insert_with(&fresh);
+        let entry = entries.entry(slot).or_insert_with(&fresh);
         if entry.key != request.key {
             let stale = std::mem::replace(entry, fresh());
             retire_row(shaper, &stale);
@@ -386,7 +384,10 @@ pub(crate) mod internals {
 
         /// `true` iff a reuse row exists for `(wid, ordinal)`.
         pub(crate) fn has_entry(&self, wid: WidgetId, ordinal: u16) -> bool {
-            self.entries.contains_key(&(wid, ordinal))
+            self.entries.contains_key(&TextRunSlot {
+                widget_id: wid,
+                ordinal,
+            })
         }
 
         /// Live reuse rows, for the sweep tests.

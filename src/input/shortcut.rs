@@ -87,11 +87,18 @@ impl Mods {
     /// the platform input boundary, so there's nothing
     /// to disambiguate here.
     pub fn from_event(m: Modifiers) -> Self {
-        Self {
-            ctrl: m.ctrl,
-            shift: m.shift,
-            alt: m.alt,
-        }
+        // Destructured exhaustively so a modifier added to `Modifiers`
+        // is a compile error here rather than one that silently never
+        // reaches shortcut matching. `mac_ctrl` is dropped on purpose —
+        // a `Shortcut` cannot express it, and
+        // [`Modifiers::any_command`] is what reads it instead.
+        let Modifiers {
+            ctrl,
+            shift,
+            alt,
+            mac_ctrl: _,
+        } = m;
+        Self { ctrl, shift, alt }
     }
 }
 

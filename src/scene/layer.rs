@@ -4,7 +4,19 @@ use std::array;
 use strum::EnumCount as _;
 
 #[repr(u8)]
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, strum::EnumCount)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    strum::EnumCount,
+    strum::VariantArray,
+)]
 /// Which recording arena a widget lands in. Each layer is an independent
 /// tree; they are painted bottom-up in declaration order and hit-tested
 /// top-down, so a popup rejects a pointer before the content beneath it
@@ -28,30 +40,30 @@ pub enum Layer {
 }
 
 impl Layer {
-    pub(crate) const PAINT_ORDER: [Layer; <Layer as strum::EnumCount>::COUNT] = [
-        Layer::Main,
-        Layer::Popup,
-        Layer::Modal,
-        Layer::Tooltip,
-        Layer::Debug,
-    ];
+    /// Every layer, back to front. Hit order is this reversed.
+    ///
+    /// Copied out of the derived `VARIANTS` at const-eval rather than
+    /// written out, because paint order *is* declaration order — the
+    /// discriminants are the paint sequence. A hand-written table could
+    /// only ever agree with the enum or be wrong, which is why it used
+    /// to need a `const` block asserting `PAINT_ORDER[i] as usize == i`.
+    /// An array rather than the slice so callers keep iterating by
+    /// value.
+    pub(crate) const PAINT_ORDER: [Layer; <Layer as strum::EnumCount>::COUNT] = {
+        let mut out = [Layer::Main; <Layer as strum::EnumCount>::COUNT];
+        let mut i = 0;
+        while i < out.len() {
+            out[i] = <Layer as strum::VariantArray>::VARIANTS[i];
+            i += 1;
+        }
+        out
+    };
 
     #[inline]
     pub(crate) const fn idx(self) -> usize {
         self as usize
     }
 }
-
-const _: () = {
-    let mut i = 0;
-    while i < Layer::PAINT_ORDER.len() {
-        assert!(
-            Layer::PAINT_ORDER[i] as usize == i,
-            "Layer::PAINT_ORDER must match the discriminant order",
-        );
-        i += 1;
-    }
-};
 
 /// Fixed-size `[T; Layer::COUNT]` indexed by [`Layer`].
 ///
