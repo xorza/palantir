@@ -13,6 +13,7 @@ use crate::scene::tree::record::NodeId;
 use crate::shape::Shape;
 use crate::shape::style::LineCap;
 use crate::text::TEXT_SCALE_STEP;
+use crate::text::glyph_font::GlyphFont;
 use crate::ui::harness::UiHarness;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};
@@ -666,12 +667,18 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
                 ui.widget(node).record(ui, None, |ui| {
                     let text = ui.intern(text);
                     ui.add_shape(
-                        Shape::text(text, FONT, FONT)
-                            .at(ORIGIN)
-                            .color(Color::WHITE)
-                            .wrap(TextWrap::Truncate)
-                            .family(FontFamily::Sans)
-                            .weight(FontWeight::Regular),
+                        Shape::text(
+                            text,
+                            GlyphFont {
+                                line_height_px: FONT,
+                                ..GlyphFont::new(FONT)
+                            },
+                        )
+                        .at(ORIGIN)
+                        .color(Color::WHITE)
+                        .wrap(TextWrap::Truncate)
+                        .family(FontFamily::Sans)
+                        .weight(FontWeight::Regular),
                     );
                 });
             });

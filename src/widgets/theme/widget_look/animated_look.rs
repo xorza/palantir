@@ -16,12 +16,3 @@ pub struct AnimatedLook {
     pub background: Background,
     pub text: TextStyle,
 }
-
-impl AnimatedLook {
-    /// Convenience: `text.line_height_for(text.font_size_px)`. Widgets
-    /// rendering `ShapeRecord::Text` need this paired with `font_size_px`
-    /// for the shaper.
-    pub fn line_height_px(&self) -> f32 {
-        self.text.line_height_for(self.text.font_size_px)
-    }
-}

@@ -3,6 +3,7 @@ use crate::primitives::interned_str::TextInput;
 use crate::scene::node::Node;
 use crate::shape::Shape;
 use crate::text::FontWeight;
+use crate::text::glyph_font::GlyphFont;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
 use crate::widgets::response::Response;
@@ -109,24 +110,25 @@ impl<'a> Text<'a> {
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
         let style = self.style.unwrap_or(&ui.theme().text);
         let color = style.color;
-        let family = style.family;
-        let weight = self.weight.unwrap_or(style.weight);
-        let metrics_valid = style.metrics_valid();
-        let font_size_px = style.font_size_px;
-        let line_height_px = style.line_height_for(font_size_px);
+        // The builder's weight over the style's; everything else is the
+        // style's face as-is.
+        let font = GlyphFont {
+            weight: self.weight.unwrap_or(style.weight),
+            ..style.font()
+        };
+        // No metrics guard here: `TextShape::is_noop` rejects a non-finite
+        // size or leading at `add_shape`, which is where Button and
+        // DragValue leave it too. One owner of the rule, and it is the one
+        // downstream of every recorder.
         ui.widget(self.node)
             .show(ui, None, |ui| {
-                if metrics_valid {
-                    let text = ui.intern(self.text);
-                    ui.add_shape(
-                        Shape::text(text, font_size_px, line_height_px)
-                            .color(color)
-                            .wrap(self.wrap)
-                            .align(self.align)
-                            .family(family)
-                            .weight(weight),
-                    );
-                }
+                let text = ui.intern(self.text);
+                ui.add_shape(
+                    Shape::text(text, font)
+                        .color(color)
+                        .wrap(self.wrap)
+                        .align(self.align),
+                );
             })
             .response
     }

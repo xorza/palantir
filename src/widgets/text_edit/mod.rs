@@ -372,8 +372,7 @@ impl<'a> TextEdit<'a> {
                 lost_focus: was_focused && !is_focused,
             };
         }
-        let font_size = look.text.font_size_px;
-        let line_height_px = look.text.line_height_for(font_size);
+        let font = look.text.font();
         // `Tree::open_node` folds chrome stroke width into the stored
         // padding so children sit inside the painted stroke ring (see
         // `scene/tree/mod.rs::open_node`). Encoder's clip mask is
@@ -394,10 +393,7 @@ impl<'a> TextEdit<'a> {
             response_rect: response.layout_rect,
             padding,
             caret_width,
-            font_size,
-            line_height_px,
-            family: look.text.family,
-            weight: look.text.weight,
+            font,
             multiline: self.multiline,
             text_align: self.text_align,
             previous_block_offset,
@@ -459,7 +455,7 @@ impl<'a> TextEdit<'a> {
         let wheel = if response.disabled {
             Vec2::ZERO
         } else {
-            response.scroll.pixels + response.scroll.lines * ctx.line_height_px
+            response.scroll.pixels + response.scroll.lines * ctx.font.line_height_px
         };
 
         let mut retained = state.view.selection_rects.take();

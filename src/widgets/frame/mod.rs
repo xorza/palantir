@@ -25,11 +25,6 @@ impl Frame {
     }
 
     /// Paint chrome (fill / stroke / corner radius / shadow).
-    pub fn background(mut self, bg: Background) -> Self {
-        self.chrome = Some(bg);
-        self
-    }
-
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
         let chrome = self.chrome;
         ui.widget(self.node)
@@ -38,6 +33,7 @@ impl Frame {
     }
 }
 
+impl_background!(Frame);
 impl_configure!(Frame);
 
 #[cfg(test)]

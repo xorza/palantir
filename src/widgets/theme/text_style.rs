@@ -1,4 +1,5 @@
 use crate::primitives::color::Color;
+use crate::text::glyph_font::GlyphFont;
 use crate::text::key;
 use crate::text::{FontFamily, FontWeight};
 use crate::widgets::theme::palette::Palette;
@@ -69,6 +70,27 @@ impl Default for TextStyle {
 impl TextStyle {
     pub(crate) fn metrics_valid(&self) -> bool {
         key::text_metrics_valid(self.font_size_px, self.line_height_for(self.font_size_px))
+    }
+
+    /// This style as the face the shaper is asked for, at its own size.
+    ///
+    /// The bridge between the theme's spelling of a face — a size plus a
+    /// *ratio* — and the shaper's, which wants leading resolved. Every
+    /// widget that records text goes through here rather than pairing
+    /// `font_size_px` with a separately-computed line height, so the two
+    /// cannot arrive at the shaper disagreeing.
+    ///
+    /// A builder that overrides one field writes a struct update over
+    /// this — `GlyphFont { weight: bold, ..style.font() }` — which is why
+    /// there is no per-field variant here.
+    #[inline]
+    pub fn font(&self) -> GlyphFont {
+        GlyphFont {
+            size_px: self.font_size_px,
+            line_height_px: self.line_height_for(self.font_size_px),
+            family: self.family,
+            weight: self.weight,
+        }
     }
 
     /// Resolve the absolute line-height-in-px the shaper will use for

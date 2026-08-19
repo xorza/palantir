@@ -188,11 +188,6 @@ impl<'a> Scroll<'a> {
     /// **not** fall back to `theme.panel_background` when unset — an
     /// unstyled scroll surface paints no background. Pass one explicitly
     /// to fill it.
-    pub fn background(mut self, bg: Background) -> Self {
-        self.chrome = Some(bg);
-        self
-    }
-
     #[track_caller]
     fn with_axes(spec: ScrollSpec) -> Self {
         let mut node = Node::scroll(spec);
@@ -514,6 +509,7 @@ impl<'a> Scroll<'a> {
     }
 }
 
+impl_background!(Scroll<'_>);
 impl_configure!(Scroll<'_>);
 
 #[cfg(test)]

@@ -88,12 +88,10 @@ impl<'a> Button<'a> {
                     // `Truncate` by default so an over-wide label is cut to
                     // one line instead of spilling outside the chrome; see the
                     // `.text_wrap(TextWrap::Ellipsis)` / `.text_wrap(TextWrap::WrapWithOverflow)` / `.text_wrap(TextWrap::SingleLine)` builders.
-                    Shape::text(label, look.text.font_size_px, look.line_height_px())
+                    Shape::text(label, look.text.font())
                         .color(look.text.color)
                         .wrap(label_wrap)
-                        .align(label_align)
-                        .family(look.text.family)
-                        .weight(look.text.weight),
+                        .align(label_align),
                 );
             }
         });

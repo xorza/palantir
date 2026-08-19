@@ -259,14 +259,6 @@ seam exists and stops one layer short.
       from `record` onward but not from `show` onward, which is why the
       preceding finding's triplication survives above it.
 
-- [ ] `src/widgets/chrome.rs:19` — `chrome::resolve_container` implements
-      "explicit `.background(…)` wins, else the theme slot" and is used by
-      Panel, Grid and Popup. Tooltip (`tooltip/mod.rs:205`), Modal
-      (`modal.rs:90`), ContextMenu (`context_menu/mod.rs:147`) and Frame
-      (`frame/mod.rs:34`, no fallback at all) each spell it differently — four
-      spellings for seven container widgets, whose seven `background()` builders
-      are identical one-line bodies.
-
 - [ ] `src/layout/stack/mod.rs:51` vs `src/layout/grid/resolving.rs:160` —
       `freeze_distribute` and `resolve_axis`'s Phase 3 both distribute a budget
       by weight under `[floor, cap]` clamps with re-division; they differ only
@@ -274,15 +266,6 @@ seam exists and stops one layer short.
       found. The result is that `Sizing::fill(w)` resolves differently under an
       `HStack` than under a `Grid` once two clamps are violated at once, pinned
       by `cross_driver_tests/fill_solvers.rs` as intended divergence.
-
-- [ ] `src/widgets/button.rs:87`, `src/widgets/drag_value/mod.rs:371`,
-      `src/widgets/text.rs:121` — the same six-call text-emission chain written
-      out three times, while `MenuItem`, `ComboBox` and `toggle_row` render
-      labels by recording a child `Text` widget instead. Two unreconciled
-      mechanisms, and the three inline copies disagree on validation: `Text`
-      guards on `style.metrics_valid()`, the other two do not, and
-      `TextShape::is_noop` already performs the check downstream
-      (`src/shape/text.rs:102`).
 
 - [ ] `src/widgets/button.rs:74` and eight peers (`checkbox/mod.rs:60`,
       `radio/mod.rs:61`, `switch.rs:58`, `slider.rs:62`, `combo_box/mod.rs:69`,
