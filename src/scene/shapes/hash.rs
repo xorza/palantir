@@ -195,11 +195,12 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
             handle,
             fit,
             tint,
+            desaturate,
         } => {
             hash_optional_rect(*local_rect, &mut h);
             tint.hash(&mut h);
             h.write_u32(u32::from(handle.icon.set.0) | (u32::from(handle.icon.icon.0) << 16));
-            h.write_u8(*fit as u8);
+            h.write_u8((*fit as u8) | (u8::from(*desaturate) << 2));
         }
         // Geometry + style hashed inline — every input lives on the
         // record, so no lowering-time content hash is needed (unlike

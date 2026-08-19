@@ -149,6 +149,9 @@ pub(crate) enum ShapeRecord {
         handle: IconHandle,
         fit: IconFit,
         tint: ColorF16,
+        /// Draw a colour icon as its own luminance — see
+        /// [`IconShape::desaturate`](crate::IconShape::desaturate).
+        desaturate: bool,
     },
     /// Native GPU stroke — a cubic Bézier or an exact circular arc, per
     /// [`CurveBasis`] (quadratics promote to cubic at lowering, lines

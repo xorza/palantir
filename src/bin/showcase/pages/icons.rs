@@ -145,7 +145,7 @@ pub(crate) fn build(ui: &mut Ui) {
     section(
         ui,
         "tint",
-        "tint — whole for a tintable icon, alpha only for a colour one",
+        "tint — whole for a tintable icon, alpha and desaturation for a colour one",
         |ui| {
             tiles(ui, "tint-tiles", |ui| {
                 for (label, tint) in [
@@ -157,10 +157,24 @@ pub(crate) fn build(ui: &mut Ui) {
                         draw(ui, &icons, icons.new_file, tint);
                     });
                 }
-                // The same alpha on a colour icon fades it rather than
-                // recolouring it — the disabled state a colour icon gets.
+                // A colour icon takes only the tint's alpha, so fading is
+                // what it gets instead of recolouring.
                 demo_cell_at(ui, "colour icon at 40% alpha", 96.0, 96.0, |ui| {
                     draw(ui, &icons, icons.save, Color::rgba(1.0, 1.0, 1.0, 0.4));
+                });
+                // …and `desaturate` is the other half of a disabled state:
+                // the artwork's own luminance, hue gone.
+                demo_cell_at(ui, "colour icon desaturated", 96.0, 96.0, |ui| {
+                    ui.add_shape(icons.set.shape(icons.save).desaturate(true));
+                });
+                demo_cell_at(ui, "desaturated + 50% alpha", 96.0, 96.0, |ui| {
+                    ui.add_shape(
+                        icons
+                            .set
+                            .shape(icons.save)
+                            .desaturate(true)
+                            .tint(Color::rgba(1.0, 1.0, 1.0, 0.5)),
+                    );
                 });
             });
         },

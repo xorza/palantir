@@ -20,3 +20,4 @@ pub(crate) mod icon_raster_key;
 pub(crate) mod icon_rasterizer;
 pub(crate) mod icon_registry;
 pub(crate) mod icon_set;
+pub(crate) mod svg_facts;

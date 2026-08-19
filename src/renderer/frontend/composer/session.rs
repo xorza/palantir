@@ -474,6 +474,7 @@ impl PaintSink for ComposeSession<'_> {
             key,
             origin: centred.round().as_ivec2(),
             color: p.tint.into(),
+            desaturate: p.desaturate,
         });
     }
 

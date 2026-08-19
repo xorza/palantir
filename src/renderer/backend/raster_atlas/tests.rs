@@ -139,14 +139,17 @@ fn a_drained_ticket_retires_only_its_own_stale_empty() {
 /// one short or clamping to an odd size.
 #[test]
 fn growth_stops_at_the_byte_budget_not_the_device_limit() {
+    // What both tenants configure today. Per-instance now, so this pins the
+    // arithmetic rather than a shared constant.
+    const BUDGET: u64 = 16 << 20;
     for device_max in [8192, 16384, 32768] {
         assert_eq!(
-            growth_ceiling(device_max, ContentType::Mask),
+            growth_ceiling(device_max, ContentType::Mask, BUDGET),
             4096,
             "16 MiB of 1-byte pixels is 4096², whatever device_max={device_max} allows",
         );
         assert_eq!(
-            growth_ceiling(device_max, ContentType::Color),
+            growth_ceiling(device_max, ContentType::Color, BUDGET),
             2048,
             "16 MiB of 4-byte pixels is 2048², device_max={device_max}",
         );
@@ -155,11 +158,17 @@ fn growth_stops_at_the_byte_budget_not_the_device_limit() {
     // doubling nor overshoots it.
     for (content, side) in [(ContentType::Mask, 4096u64), (ContentType::Color, 2048)] {
         let bytes = side * side * u64::from(content.bytes_per_pixel());
-        assert_eq!(bytes, MAX_ATLAS_BYTE_BUDGET, "{content:?}");
+        assert_eq!(bytes, BUDGET, "{content:?}");
     }
     // A device meaner than the budget still binds.
-    assert_eq!(growth_ceiling(1024, ContentType::Mask), 1024);
-    assert_eq!(growth_ceiling(512, ContentType::Color), 512);
+    assert_eq!(growth_ceiling(1024, ContentType::Mask, BUDGET), 1024);
+    assert_eq!(growth_ceiling(512, ContentType::Color, BUDGET), 512);
+
+    // The budget is per instance, so a tenant can buy itself more room
+    // without moving the other's ceiling. Quadrupling the bytes doubles the
+    // side, which is the relationship a caller has to reason about.
+    assert_eq!(growth_ceiling(16384, ContentType::Color, BUDGET * 4), 4096);
+    assert_eq!(growth_ceiling(16384, ContentType::Mask, BUDGET / 4), 2048);
 }
 
 /// The clock skips exactly three things — wrong content, no

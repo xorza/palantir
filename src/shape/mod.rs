@@ -234,6 +234,7 @@ impl Shape {
             local_rect: None,
             fit: IconFit::default(),
             tint: Color::WHITE,
+            desaturate: false,
         }
     }
 

@@ -67,6 +67,32 @@ pub(crate) struct RasterAtlasConfig {
     pub(crate) label: &'static str,
     pub(crate) initial_mask_px: u32,
     pub(crate) initial_color_px: u32,
+    /// Hard ceiling on one side's backing texture, whatever the device allows.
+    ///
+    /// Per instance rather than shared, because the two tenants store
+    /// different things: the budget is in *bytes*, so it buys a mask side four
+    /// times the side length it buys a colour side, and a number tuned against
+    /// 1-byte glyph coverage is not automatically the right number for 4-byte
+    /// colour rasters.
+    ///
+    /// Stopping growth at `max_texture_dimension_2d` alone admits 16384 on a
+    /// routine desktop adapter — a 256 MB mask or a 1 GB colour atlas. The
+    /// failure mode when this binds is mild: refusing to grow yields
+    /// `Rasterized::AtlasFull`, whose only cost is that the entry re-encodes
+    /// each frame instead of being cached.
+    pub(crate) max_bytes: u64,
+    /// Byte budget below which [`RasterAtlas::allocate`] grows a side rather
+    /// than evicting from it.
+    ///
+    /// Trying eviction first unconditionally would pin an atlas at its initial
+    /// size no matter how badly it fits: measured that way on
+    /// `text_atlas/cache_churn`, a 1024² mask holding ~1k live glyphs performs
+    /// 2668 evictions and *zero* growths, walking 4.06M cache entries to pick
+    /// victims — `evict_one` is O(live entries) and `allocate` calls it in a
+    /// loop. Sizing to the working set first turns that into one texture
+    /// allocation plus a preserved-rect blit: one growth, zero evictions, and
+    /// 61 µs a frame rather than 609 µs.
+    pub(crate) eager_growth_bytes: u64,
 }
 
 /// GPU debug labels, built once at construction. Held as owned strings rather
@@ -83,50 +109,6 @@ struct AtlasLabels {
 }
 
 const ATLAS_GROWTH_FACTOR: u32 = 2;
-
-/// Hard ceiling on a side's backing texture, whatever the device allows.
-///
-/// Stopping [`RasterAtlas::grow`] at `max_texture_dimension_2d` alone
-/// admits 16384 on a routine desktop adapter — a 256 MB mask or a
-/// 1 GB colour atlas, for text. Nothing observed reaches that, but the
-/// failure mode if anything did is far worse than the alternative:
-/// refusing to grow yields `Rasterized::AtlasFull`, whose only cost is
-/// that the run re-encodes each frame instead of being cached.
-///
-/// 16 MiB is `2^24`, and both `bytes_per_pixel` values are powers of
-/// two, so [`growth_ceiling`] divides and square-roots to an exact
-/// power-of-two side on either: a 4096² mask or a 2048² colour atlas.
-/// The measured `text_atlas/cache_churn` working set is 3700 glyphs in
-/// a 2048² mask, so the mask ceiling is roughly 4x the largest set any
-/// bench here produces.
-const MAX_ATLAS_BYTE_BUDGET: u64 = 16 << 20;
-
-/// Byte budget below which [`RasterAtlas::allocate`] grows a side rather
-/// than evicting from it.
-///
-/// Trying eviction first unconditionally would pin an atlas at its
-/// initial size no matter how badly it fits: measured that way on
-/// `text_atlas/cache_churn`, a 1024² mask holding ~1k live glyphs
-/// performs 2668 evictions and *zero* growths, walking 4.06M cache
-/// entries to pick victims — `evict_one` is O(live glyphs) and
-/// `allocate` calls it in a loop, so the scan repeats for every glyph
-/// the gesture brings in.
-///
-/// Sizing to the working set first turns that into one texture
-/// allocation plus a preserved-rect blit: the same arm performs a
-/// single growth, zero evictions and zero scanning, and its frame costs
-/// 61 µs rather than 609 µs — the same ~55-60 µs band as the other
-/// `text_atlas` arms instead of a 10x outlier. Its real working set is
-/// 3700 glyphs, so a 1024² mask was recycling roughly seven of every
-/// ten rasters it held.
-///
-/// The budget is what keeps that from being unbounded — without a
-/// ceiling a thrashing atlas would run to the device maximum, which for
-/// an R8 mask is 8192² = 64 MB. In bytes rather than pixels so both
-/// sides get the same deal: 4 MiB is a 2048² mask or a 1024² colour
-/// atlas, and the mask growing 1 MB -> 4 MB is what the measurement
-/// above cost.
-const EAGER_GROWTH_BYTE_BUDGET: u64 = 4 << 20;
 
 /// Frames a non-drawing entry (`alloc: None`) survives unused.
 /// `evict_one` skips them — there is no rectangle to deallocate — so
@@ -228,6 +210,8 @@ pub(crate) struct AtlasBindings<'a> {
 pub(crate) struct RasterAtlas<K> {
     sides: [Side; 2],
     labels: AtlasLabels,
+    max_bytes: u64,
+    eager_growth_bytes: u64,
     /// Dense slot slab; `cache` maps each key to an index into it.
     /// Encoded-run caches record these indices so their hot-path LRU
     /// refresh is an indexed store instead of a map probe per glyph —
@@ -338,6 +322,8 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
         Self {
             sides,
             labels,
+            max_bytes: config.max_bytes,
+            eager_growth_bytes: config.eager_growth_bytes,
             slots: Vec::new(),
             slot_keys: Vec::new(),
             cache: FxHashMap::default(),
@@ -638,12 +624,12 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
     }
 
     /// Whether `content`'s side is still small enough to grow in
-    /// preference to evicting — see [`EAGER_GROWTH_BYTE_BUDGET`].
+    /// preference to evicting — see [`RasterAtlasConfig::eager_growth_bytes`].
     fn eager_growth(&self, content: ContentType) -> bool {
         let side = &self.sides[content as usize];
         let bytes =
             u64::from(side.size) * u64::from(side.size) * u64::from(content.bytes_per_pixel());
-        bytes < EAGER_GROWTH_BYTE_BUDGET
+        bytes < self.eager_growth_bytes
     }
 
     /// Evict one glyph of `target` content that was not drawn this
@@ -718,7 +704,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
     /// shared encoder. etagere preserves rects on `packer.grow`, so
     /// the cache stays valid — no re-rasterization.
     fn grow(&mut self, device: &wgpu::Device, content: ContentType) -> bool {
-        let ceiling = growth_ceiling(self.max_texture_dimension_2d, content);
+        let ceiling = growth_ceiling(self.max_texture_dimension_2d, content, self.max_bytes);
         // Read before the side is borrowed mutably below.
         let label = format!("{} {} atlas", self.labels.stem, content.side_name());
         let side = &mut self.sides[content as usize];
@@ -780,12 +766,12 @@ impl Side {
 }
 
 /// Largest side length a `content` atlas will grow to: whichever of the
-/// device maximum and [`MAX_ATLAS_BYTE_BUDGET`] binds first.
+/// device maximum and the instance's byte budget binds first.
 ///
 /// A free function taking the device limit rather than a method, so the
 /// arithmetic is testable without a `wgpu::Device`.
-fn growth_ceiling(max_texture_dimension_2d: u32, content: ContentType) -> u32 {
-    let by_bytes = (MAX_ATLAS_BYTE_BUDGET / u64::from(content.bytes_per_pixel())).isqrt() as u32;
+fn growth_ceiling(max_texture_dimension_2d: u32, content: ContentType, max_bytes: u64) -> u32 {
+    let by_bytes = (max_bytes / u64::from(content.bytes_per_pixel())).isqrt() as u32;
     max_texture_dimension_2d.min(by_bytes)
 }
 

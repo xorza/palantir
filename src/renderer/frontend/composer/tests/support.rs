@@ -128,6 +128,7 @@ pub(super) fn icon(buf: &mut PaintCapture, r: Rect, icon: IconRef) {
         rect: r,
         icon,
         tint: Color::WHITE.into(),
+        desaturate: false,
     });
 }
 

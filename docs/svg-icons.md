@@ -1,7 +1,10 @@
 # SVG icons — proposal and implementation plan
 
-Status: **slice 1 shipped** — the runtime is built, tested, and rendering.
-Slices 2 and 3 (§7) are still proposals.
+Status: **shipped**. The runtime and the polish pass (§7, slices 1 and 3) are
+built, tested, and rendering. **Slice 2 — the build-time baker — is dropped**:
+`IconAtlas::from_svgs` derives the same metadata at load, and
+`IconAtlas::baked` is there for anyone who later wants a generated `const`, so
+the baker buys a parse at startup and nothing else.
 
 **Bake SVGs at build time into a normalized, compiled-in blob; rasterize each
 icon at its exact physical pixel size on first use; cache in a glyph-style
@@ -193,7 +196,7 @@ icon exactly:
 
 | Icon kind | Atlas side | Tint semantics |
 | --- | --- | --- |
-| **Colour** (gradients, multiple fills) | colour, straight sRGB RGBA | alpha only — `vec4(s.rgb * s.a, s.a) * tint.a`. Fades for disabled/ghost states; does not recolour |
+| **Colour** (gradients, multiple fills) | colour, straight sRGB RGBA | alpha only — `vec4(s.rgb * s.a, s.a) * tint.a`. Fades for disabled/ghost states; does not recolour. `IconShape::desaturate` collapses it to its own Rec. 709 luminance, which is the other half of a disabled look |
 | **Tintable** (one paint, or `currentColor`) | mask, R8 coverage | full — `tint.rgb * coverage`. One icon serves every theme colour |
 
 The baker classifies each icon and records a `tintable` flag; both kinds live
@@ -203,10 +206,12 @@ Two consequences worth designing around:
 
 - **Hover / pressed states on colour icons** can't be a tint. **Decision: the
   background chip carries the state**, which is what real toolbars do — the
-  icon itself does not change. Disabled is an alpha step for now; one spare bit
-  in `RasterQuad::uv_and_kind` (u needs 12 bits of the 15 it has, so bits
-  12–14 are free) is reserved for a desaturate flag if a greyed-out look is
-  wanted later, at the cost of one `mix` in the colour path.
+  icon itself does not change. **Disabled is `desaturate` plus an alpha step**,
+  shipped: the flag rides one spare bit of `RasterQuad::uv_and_kind`, directly
+  above `u` and below the content type, so it costs no instance lane and one
+  `select` in the colour path. `quad.rs` derives the whole layout — and the
+  three numbers the WGSL needs — from a single `U_BITS`, and substitutes them
+  into the shader through `shader_template` so the two cannot drift.
 - **`tiny_skia::Pixmap` is premultiplied sRGB**; the colour side wants straight
   (the shader premultiplies in linear). Demultiply before upload —
   `Pixmap::demultiply` — which is also the better colour pipeline.
@@ -360,11 +365,34 @@ profile. Bundle a small MIT colour set in `assets/icons/` (add the licence to
 `Cargo.toml`'s `license` field, as the bundled fonts already do); add the
 showcase page.
 
-**Slice 3 — polish.** The desaturate bit for disabled colour icons; tune the
-icon atlas's eviction constants against a real workload (the glyph values were
-measured on 1-byte masks, and a 32² colour icon is 4 KB); fold the icon atlas
-into the glyph atlas if the extra draw call on a labelled toolbar ever
-measures.
+**Slice 2 — the baker. Dropped.** `IconAtlas::from_svgs` runs the same
+classification at load that a baker would have run at build time, sharing one
+implementation (`SvgFacts`) so the two could not have disagreed anyway. What a
+baker would still buy is skipping the parse and the copy at startup —
+`IconAtlas::baked` accepts exactly that shape whenever someone wants to
+generate it.
+
+**Slice 3 — polish. Done.**
+
+- **Desaturate**, shipped as above, pinned by a visual fixture against
+  hand-computed luminance greys (`#e63c3c` → 125, `#3c78e6` → 124).
+- **Eviction budgets are per instance now** (`RasterAtlasConfig::max_bytes` /
+  `eager_growth_bytes`) rather than two tenants sharing one constant. The
+  values land the same for both, which is the honest result rather than a
+  tuning win: 16 MiB caps the icon colour side at 2048², about 450 icons at
+  48² and far past any plausible working set, and a larger budget would only
+  matter under a zoom deep enough that `MAX_ICON_RASTER_PX` has already bound
+  the raster. The point is that changing text's number no longer moves icons'.
+- **Folding the two atlases: measured, and don't.** A labelled toolbar of
+  eight icon+label buttons composes to **one icon batch and eight text
+  batches** — every icon closes the open text batch because icons are a higher
+  paint tier. Merging the atlases would not recover those eight: the split is
+  the tier boundary, not the second texture, and a control test shows eight
+  *images* between the same labels split text identically. What the separate
+  atlas actually costs is **one draw call**. Removing the splits would mean
+  making icons a text-tier participant sharing the batch stream, with an
+  ordering rule between icon and text rows inside one batch — a far larger
+  change than the one draw it saves.
 
 **Testing (slice 1, in place).** Runtime: the size ladder, hand-computed — 24 logical px at 1.5
 scale → exactly 36 (exact rung); 50 logical px at 1.5 scale → 75 → 76 (4 px

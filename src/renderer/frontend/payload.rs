@@ -494,6 +494,8 @@ pub(crate) struct DrawIconPayload {
     pub(crate) icon: IconRef,
     /// Whole tint for a tintable icon, alpha only for a colour one.
     pub(crate) tint: ColorF16,
+    /// Draw a colour icon as its own luminance.
+    pub(crate) desaturate: bool,
 }
 
 impl DrawIconPayload {
