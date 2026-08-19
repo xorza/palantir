@@ -186,7 +186,10 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
         }
         // The handle's `view_box` is baked data — constant for a given
         // `(set, icon)` — so identity plus the rect, fit and tint is the
-        // whole of what can change. The raster size is *not* hashed: it is a
+        // whole of what can change. Constant because `IconSetId` carries a
+        // generation: a slot reused by another set answers to a different
+        // id, so one `(slot, icon)` pair can never name two artworks. The
+        // raster size is *not* hashed: it is a
         // function of the resolved screen rect, which the paint bound already
         // tracks, and folding it in would need the display scale the record
         // does not carry.
@@ -199,7 +202,8 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
         } => {
             hash_optional_rect(*local_rect, &mut h);
             tint.hash(&mut h);
-            h.write_u32(u32::from(handle.icon.set.0) | (u32::from(handle.icon.icon.0) << 16));
+            h.write_u32(handle.icon.set.bits());
+            h.write_u16(handle.icon.icon.0);
             h.write_u8((*fit as u8) | (u8::from(*desaturate) << 2));
         }
         // Geometry + style hashed inline — every input lives on the

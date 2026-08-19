@@ -11,10 +11,11 @@
 //! is pixel-exact at every display scale and every zoom level.
 //!
 //! [`IconHandle`](crate::icons::icon_set::IconHandle) names one icon of one
-//! loaded set in twelve `Copy` bytes — two ids plus the artwork's viewBox, so
+//! loaded set in sixteen `Copy` bytes — two ids plus the artwork's viewBox, so
 //! resolving [`IconFit`](crate::IconFit) at encode time needs no lookup. Unlike
 //! [`ImageHandle`](crate::ImageHandle) it owns nothing: the set behind it is
-//! kept alive by the [`IconSet`](crate::IconSet) the app holds.
+//! kept alive by the [`IconSet`](crate::IconSet) the app holds, and unloaded
+//! when the last clone of that goes.
 
 pub(crate) mod icon_atlas;
 pub(crate) mod icon_raster_key;

@@ -42,7 +42,10 @@ struct PrewarmMark {
     /// Raster scale, by bits — the value is only ever compared, never used
     /// as a number, so exact equality is what is wanted here.
     scale_bits: u32,
-    sets: usize,
+    /// [`IconRegistry::epoch`], not a count of resident sets: a set
+    /// released and another loaded leaves the count where it was while
+    /// leaving nothing this pass warmed still loaded.
+    epoch: u64,
 }
 
 #[derive(Debug)]
@@ -172,7 +175,7 @@ impl IconBackend {
     pub(crate) fn prewarm(&mut self, ctx: &mut GpuCtx<'_>, scale: f32) {
         let mark = PrewarmMark {
             scale_bits: scale.to_bits(),
-            sets: self.icons.len(),
+            epoch: self.icons.epoch(),
         };
         if self.warmed == Some(mark) {
             return;
@@ -307,11 +310,33 @@ impl IconBackend {
 
     /// Frame teardown, run for every submit — including one that prepared no
     /// icon batch, so a frame whose damage missed every icon still ages the
-    /// atlas.
+    /// atlas and still unloads what a dropped set left behind.
     pub(crate) fn end_frame(&mut self) {
         self.frame += 1;
+        {
+            // Destructured so the drain's closure can hold the two caches
+            // mutably while the registry is borrowed — disjoint fields
+            // that `self.icons.drain_released(|s| self.…)` could not
+            // express.
+            let Self {
+                icons,
+                rasterizer,
+                atlas,
+                ..
+            } = self;
+            // Both stores key on `IconSetId`, and the registry is about to
+            // hand the slot to another set — so this has to happen before
+            // any later frame can mint an id that reads as the same slot.
+            icons.drain_released(|set| {
+                rasterizer.forget_set(set);
+                atlas.forget(|key| key.icon.set != set);
+            });
+        }
         self.atlas.end_frame(self.frame);
         self.instances.clear();
         self.ranges.clear();
     }
 }
+
+#[cfg(test)]
+mod tests;

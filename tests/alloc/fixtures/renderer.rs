@@ -6,8 +6,8 @@
 
 use crate::harness::audit_steady_state;
 use palantir::{
-    Color, Configure, Frame, Grid, IconAtlas, IconId, Mesh, Panel, PolylineColors, Shape, Sizing,
-    Track,
+    Color, Configure, Frame, Grid, IconAtlas, IconId, IconSet, Mesh, Panel, PolylineColors, Shape,
+    Sizing, Track,
 };
 use std::rc::Rc;
 
@@ -93,19 +93,29 @@ fn mesh_static_alloc_free() {
 /// raster and its atlas slot are resolved once, on the frame that first drew
 /// the icon, and re-found by a map probe thereafter.
 ///
-/// The set is loaded inside the scene, which is the shape an immediate-mode
-/// caller writes — so this also pins that re-loading a set every frame does
-/// not allocate. `IconRegistry::register` walks its table and hands back the
-/// existing id; a regression that pushed a duplicate entry would show up here
-/// before it showed up as unbounded growth.
+/// The set is re-loaded inside the scene, which is the shape an
+/// immediate-mode caller writes — so this also pins that re-loading a set
+/// every frame is a refcount bump. `IconRegistry::register` finds the live
+/// `IconSet` over that allocation and hands back a clone of it; a
+/// regression that took a second slot would show up here before it showed
+/// up as unbounded growth.
+///
+/// The set is *parked* across frames, which is the contract: an `IconSet`
+/// owns its parses and its atlas rasters, so a scene that dropped the one
+/// it loaded would unload them at every submit and rasterize afresh at
+/// every frame. Keeping it is what the `#[must_use]` on `load_icons` is
+/// telling the caller to do.
 #[test]
 fn many_icons_compose_alloc_free() {
     const SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect width="16" height="16" rx="3" fill="#fff"/></svg>"##;
     let atlas = Rc::new(IconAtlas::from_svgs([("chip", SVG)]));
     let chip = IconId(0);
+    let mut held: Option<IconSet> = None;
 
     audit_steady_state(0, move |ui| {
-        let icons = ui.load_icons(Rc::clone(&atlas));
+        // `insert` drops last frame's clone *after* this frame's exists,
+        // so the shared owner never reaches zero and nothing is released.
+        let icons = held.insert(ui.load_icons(Rc::clone(&atlas)));
         Grid::new()
             .auto_id()
             .cols([Track::fill(); 20])

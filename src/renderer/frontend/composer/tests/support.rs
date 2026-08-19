@@ -134,7 +134,7 @@ pub(super) fn icon(buf: &mut PaintCapture, r: Rect, icon: IconRef) {
 
 pub(super) fn icon_ref(id: u16) -> IconRef {
     IconRef {
-        set: IconSetId(0),
+        set: IconSetId::new(0, 0),
         icon: IconId(id),
     }
 }
