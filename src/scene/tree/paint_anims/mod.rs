@@ -81,7 +81,8 @@ pub(crate) struct PaintMod {
     /// [`PaintAnim::Spin`] produces a non-zero value today; the
     /// polyline, curve, and arc emits honour it (the composer rotates
     /// points / control points / center + angles before the ancestor
-    /// transform — see the encoder's `spin_bbox` pivot contract).
+    /// transform). The encoder folds it and the pivot into the payload's
+    /// [`StrokeBounds`](crate::renderer::frontend::payload::StrokeBounds).
     pub(crate) rotation: f32,
 }
 

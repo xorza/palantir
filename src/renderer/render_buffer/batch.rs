@@ -39,3 +39,38 @@ pub(crate) enum PaintTier {
     Icon,
     Curve,
 }
+
+impl PaintTier {
+    /// Every tier in paint order, which is also `Ord` order.
+    ///
+    /// **The single source of the replay sequence.** The composer's
+    /// group-flush arbitration (`HigherKindRects::conflicts`) is sound
+    /// only while the backend replays tiers in this order, and that
+    /// order used to be written out by hand in five places — the drain
+    /// block, the cursor struct, the emptiness test, the stale-cursor
+    /// advance, and the composer's field order — each of which had to be
+    /// edited in step to add a tier. Iterating this instead means adding
+    /// one is a variant plus the arms the compiler names.
+    pub(crate) const ALL: [Self; Self::COUNT] = [Self::Mesh, Self::Image, Self::Icon, Self::Curve];
+
+    pub(crate) const COUNT: usize = 4;
+
+    #[inline]
+    pub(crate) fn idx(self) -> usize {
+        self as usize
+    }
+}
+
+// `ALL` must stay in ascending `Ord` order: `conflicts` compares tiers
+// with `<`, so a table out of step with the derive would silently
+// reorder which tier paints on top.
+const _: () = {
+    let mut i = 1;
+    while i < PaintTier::COUNT {
+        assert!(
+            PaintTier::ALL[i - 1] as u8 <= PaintTier::ALL[i] as u8,
+            "PaintTier::ALL must be in ascending Ord order",
+        );
+        i += 1;
+    }
+};

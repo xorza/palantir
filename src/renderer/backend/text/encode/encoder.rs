@@ -143,10 +143,10 @@ impl TextEncoder {
             return;
         }
         self.starved_reported = true;
-        let bindings = self.atlas.bindings();
+        let atlas_px = self.atlas.atlas_px();
         tracing::warn!(
-            mask_px = bindings.atlas_px[1],
-            color_px = bindings.atlas_px[0],
+            mask_px = atlas_px[1],
+            color_px = atlas_px[0],
             live_glyphs = self.atlas.cache.len(),
             "glyph atlas is full and cannot grow further; affected runs \
              drop glyphs and re-encode every frame until pressure clears",

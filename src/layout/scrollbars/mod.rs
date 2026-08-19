@@ -85,6 +85,50 @@ impl ScrollbarsDef {
     }
 }
 
+/// The offset range a scrollbar can express: `[0, max_off]`.
+///
+/// Deliberately narrower than the wheel's range. `content_margin` opens
+/// a band below zero, and [`Scroll::content_margin`](crate::Scroll::content_margin)
+/// documents that a thumb does not show that extra travel — so the bar
+/// and the wheel legitimately disagree about the offset's lower bound.
+/// What is *not* legitimate is each interaction path re-deriving the
+/// bar's half by hand: the thumb drag, the track page, and the thumb's
+/// own position each used to spell the `0.0` end and the `max_off` end
+/// themselves, which is how a drag anchored in the wheel's domain and
+/// clamped in the bar's went unnoticed.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct BarDomain {
+    max_off: f32,
+}
+
+impl BarDomain {
+    /// The domain a bar of `track_main` showing `content_main` covers.
+    #[inline]
+    pub(crate) fn new(content_main: f32, track_main: f32) -> Self {
+        Self {
+            max_off: (content_main - track_main).max(0.0),
+        }
+    }
+
+    /// Offset at which the content's trailing edge meets the track's.
+    #[inline]
+    pub(crate) fn max_off(self) -> f32 {
+        self.max_off
+    }
+
+    /// Pull `offset` into the range. The one place either end is named.
+    #[inline]
+    pub(crate) fn clamp(self, offset: f32) -> f32 {
+        offset.clamp(0.0, self.max_off)
+    }
+
+    /// `offset` as a 0..1 position along the bar's travel.
+    #[inline]
+    pub(crate) fn fraction(self, offset: f32) -> f32 {
+        (offset / self.max_off.max(f32::EPSILON)).clamp(0.0, 1.0)
+    }
+}
+
 /// Thumb extent and travel along one axis, or `None` when the bar can't
 /// be drawn meaningfully — a non-positive viewport, or content that fits.
 /// The "content fits" arm is what makes an idle scroll show no thumb.
@@ -112,9 +156,8 @@ pub(crate) fn bar_geometry(
     }
     let raw = viewport / content * viewport;
     let thumb_size = raw.max(min_thumb).min(viewport);
-    let max_off = (content - viewport).max(f32::EPSILON);
     let travel = (viewport - thumb_size).max(0.0);
-    let thumb_offset = (offset / max_off).clamp(0.0, 1.0) * travel;
+    let thumb_offset = BarDomain::new(content, viewport).fraction(offset) * travel;
     // Quantize here rather than at the paint site: the widget reads
     // this to map a drag or a track click back onto an offset, so the
     // bar the user grabs has to be the bar that was drawn. Rounding on

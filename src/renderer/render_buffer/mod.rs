@@ -12,7 +12,7 @@ pub(crate) mod image;
 pub(crate) mod mesh;
 pub(crate) mod text;
 
-use crate::renderer::render_buffer::batch::{DrawGroup, GroupBatch, TextBatch};
+use crate::renderer::render_buffer::batch::{DrawGroup, GroupBatch, PaintTier, TextBatch};
 use crate::renderer::render_buffer::curve::CurveInstance;
 use crate::renderer::render_buffer::icon::IconDrawRow;
 use crate::renderer::render_buffer::image::{ImageDrawRow, RenderTargetDraw};
@@ -174,6 +174,19 @@ impl RenderBuffer {
     /// [`Self::start_frame`] and the composer's clear fold, which discards
     /// everything composed so far when a fullscreen opaque cover proves it
     /// invisible — a new scene column added here resets on both paths at once.
+    /// This tier's per-group batches. The four columns stay separate
+    /// fields — they hold different instance types upstream — but every
+    /// consumer that walks all of them reaches them through here and
+    /// [`PaintTier::ALL`], so the replay order lives in one place.
+    pub(crate) fn batches(&self, tier: PaintTier) -> &[GroupBatch] {
+        match tier {
+            PaintTier::Mesh => &self.mesh_batches,
+            PaintTier::Image => &self.image_batches,
+            PaintTier::Icon => &self.icon_batches,
+            PaintTier::Curve => &self.curve_batches,
+        }
+    }
+
     pub(crate) fn discard_scene(&mut self) {
         self.quads.clear();
         self.texts.clear();

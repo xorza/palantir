@@ -3,6 +3,7 @@
 //! another retained widget-state copy.
 
 use crate::layout::axis::Axis;
+use crate::layout::scrollbars::BarDomain;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use glam::Vec2;
@@ -51,8 +52,10 @@ struct OffsetBounds {
 pub(super) struct ThumbTravel {
     /// Content pixels bought per pixel of thumb travel.
     pub(super) factor: f32,
-    /// Offset at which the content's trailing edge meets the track's.
-    pub(super) max_off: f32,
+    /// The range the thumb can express — carried rather than a bare
+    /// `max_off`, so the drag clamps through one definition instead of
+    /// naming `0.0` itself.
+    pub(super) domain: BarDomain,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -61,7 +64,7 @@ pub(super) struct TrackPage {
     pub(super) thumb_offset: f32,
     pub(super) thumb_size: f32,
     pub(super) page_step: f32,
-    pub(super) max_off: f32,
+    pub(super) domain: BarDomain,
 }
 
 impl ScrollState {
@@ -180,7 +183,7 @@ impl ScrollState {
             // `-offset / factor` px of the gesture climbing back to 0
             // with the thumb not moving at all.
             let start = axis.main_v(self.offset);
-            self.drag_anchor = Some((axis, travel.map_or(start, |t| start.clamp(0.0, t.max_off))));
+            self.drag_anchor = Some((axis, travel.map_or(start, |t| t.domain.clamp(start))));
         }
         let Some((anchor_axis, anchor)) = self.drag_anchor else {
             return;
@@ -203,7 +206,7 @@ impl ScrollState {
             return;
         };
         let target = anchor + axis.main_v(delta) * travel.factor;
-        let clamped = target.clamp(0.0, travel.max_off);
+        let clamped = travel.domain.clamp(target);
         match axis {
             Axis::X => self.offset.x = clamped,
             Axis::Y => self.offset.y = clamped,
@@ -215,10 +218,12 @@ impl ScrollState {
             return;
         };
         let current = axis.main_v(self.offset);
+        // Both directions clamp through the same domain: a page is a
+        // bar interaction, so it lands where the thumb can follow it.
         let next = if page.click_main < page.thumb_offset {
-            (current - page.page_step).max(0.0)
+            page.domain.clamp(current - page.page_step)
         } else if page.click_main > page.thumb_offset + page.thumb_size {
-            (current + page.page_step).min(page.max_off)
+            page.domain.clamp(current + page.page_step)
         } else {
             current
         };

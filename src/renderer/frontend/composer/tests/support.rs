@@ -14,6 +14,7 @@ use crate::primitives::{
 use crate::renderer::frontend::capture::PaintCapture;
 use crate::renderer::frontend::composer::Composer;
 use crate::renderer::frontend::paint_sink::PaintSink;
+use crate::renderer::frontend::payload::StrokeBounds;
 use crate::renderer::frontend::payload::{
     BrushSource, DrawIconPayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload,
     DrawQuadPayload, PushClipPayload,
@@ -187,7 +188,7 @@ pub(super) fn polyline_cmd(
         hi = hi.max(p);
     }
     b.draw_polyline(DrawPolylinePayload {
-        bbox: Rect::from_min_max(lo, hi),
+        bounds: StrokeBounds::Still(Rect::from_min_max(lo, hi)),
         origin: Vec2::ZERO,
         width,
         points_start: p_start,
@@ -197,7 +198,6 @@ pub(super) fn polyline_cmd(
         color_mode: mode,
         cap,
         join,
-        ..Default::default()
     });
 }
 
@@ -205,7 +205,7 @@ pub(super) fn curve(b: &mut PaintCapture, bbox: Rect) {
     use crate::renderer::frontend::payload::DrawCurvePayload;
     use crate::scene::shapes::paint::CurveBasis;
     b.draw_curve(DrawCurvePayload {
-        bbox,
+        bounds: StrokeBounds::Still(bbox),
         origin: Vec2::ZERO,
         basis: CurveBasis::Cubic {
             p0: bbox.min,
