@@ -34,6 +34,11 @@ impl sealed::Lower for ShadowShape {
     }
 
     fn lower(self, _store: &RecordStore) -> ShapeRecord {
-        lower::shadow(self.local_rect, self.corners, self.shadow)
+        let Self {
+            local_rect,
+            corners,
+            shadow,
+        } = self;
+        lower::shadow(local_rect, corners, shadow)
     }
 }

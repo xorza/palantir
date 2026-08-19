@@ -49,6 +49,7 @@ use crate::renderer::gradient_atlas::handle::SharedGradientAtlas;
 use crate::renderer::image_registry::ImageRegistry;
 use crate::renderer::plan::RenderPlan;
 use crate::renderer::render_buffer::RenderBuffer;
+use crate::renderer::render_buffer::batch::PaintTier;
 use crate::renderer::render_owner::RenderOwnerId;
 use crate::scene::record_store::RecordPayloads;
 use crate::text::shaper::TextShaper;
@@ -574,10 +575,10 @@ impl WgpuBackend {
             {
                 profiling::scope!(
                     "icon.prepare_batches",
-                    &format!("count={}", buffer.icon_batches.len())
+                    &format!("count={}", buffer.batches(PaintTier::Icon).len())
                 );
                 self.icon.prewarm(&mut ctx, buffer.scale);
-                for (i, b) in buffer.icon_batches.iter().enumerate() {
+                for (i, b) in buffer.batches(PaintTier::Icon).iter().enumerate() {
                     let rows = &buffer.icons[b.items.range()];
                     self.icon.prepare_batch(&mut ctx, i, rows);
                 }
@@ -977,7 +978,7 @@ impl WgpuBackend {
                     mark(pass, BatchKind::Mesh);
                     debug_marker::push(pass, "meshes");
                     rebind!(Bound::Mesh, self.mesh.bind(pass, &fmt.mesh, use_stencil));
-                    let items = buffer.mesh_batches[batch].items;
+                    let items = buffer.batches(PaintTier::Mesh)[batch].items;
                     self.mesh.draw_batch(pass, buffer.meshes.draw(), items);
                     debug_marker::pop(pass);
                 }
@@ -985,7 +986,7 @@ impl WgpuBackend {
                     mark(pass, BatchKind::Image);
                     debug_marker::push(pass, "images");
                     rebind!(Bound::Image, self.image.bind(pass, &fmt.image, use_stencil));
-                    let items = buffer.image_batches[batch].items;
+                    let items = buffer.batches(PaintTier::Image)[batch].items;
                     self.image.draw_batch(pass, buffer.images.id(), items);
                     debug_marker::pop(pass);
                 }
@@ -1009,7 +1010,7 @@ impl WgpuBackend {
                             .bind(pass, &fmt.curve, use_stencil, &self.gradient.bg)
                     );
                     self.curve
-                        .draw(pass, buffer.curve_batches[batch].items.into());
+                        .draw(pass, buffer.batches(PaintTier::Curve)[batch].items.into());
                     debug_marker::pop(pass);
                 }
             },

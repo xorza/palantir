@@ -55,7 +55,7 @@ fn mono_measure_cases() {
         assert_eq!(r.single_line, single_line, "case: {label}");
         assert_eq!(
             r.single_line,
-            r.size.h <= params.line_height_px,
+            r.size.h <= params.font.line_height_px,
             "case: {label}: single_line must agree with the measured height",
         );
     }
@@ -423,12 +423,9 @@ fn a_probe_shapes_under_the_key_the_paint_committed() {
 
         let probed = system.shaper.layout(&TextRun {
             text,
-            font_size_px: params.font_size_px,
-            line_height_px: params.line_height_px,
+            font: params.font,
             wrap,
             align: Align::h(HAlign::Auto),
-            family: params.family,
-            weight: params.weight,
             max_width_px: Some(width),
         });
         assert_eq!(
@@ -440,21 +437,13 @@ fn a_probe_shapes_under_the_key_the_paint_committed() {
         // committed key is *not* the one a raw bind of `width` produces,
         // so the agreement above is the resolution working rather than
         // both sides trivially binding the same number.
-        let raw = TextShapeRequest::unbounded(
-            text,
-            GlyphFont {
-                size_px: params.font_size_px,
-                line_height_px: params.line_height_px,
-                family: params.family,
-                weight: params.weight,
-            },
-        )
-        .with_bound(WrapBound::new(
-            width,
-            HAlign::Auto,
-            wrap.line_fit().expect("all four policies bind"),
-        ))
-        .key;
+        let raw = TextShapeRequest::unbounded(text, params.font)
+            .with_bound(WrapBound::new(
+                width,
+                HAlign::Auto,
+                wrap.line_fit().expect("all four policies bind"),
+            ))
+            .key;
         match wrap {
             TextWrap::Wrap => assert_eq!(raw, painted, "Wrap commits the width it was offered"),
             _ => assert_ne!(

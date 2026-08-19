@@ -16,6 +16,7 @@ mod internals {
     use crate::primitives::urect::URect;
     use crate::renderer::render_buffer::text::TextDrawRow;
     use crate::scene::record_store::RecordStore;
+    use crate::text::glyph_font::GlyphFont;
     use crate::text::run::TextRun;
     use crate::text::shaped_ref::ShapedTextRef;
     use crate::text::shaper::TextShaper;
@@ -41,12 +42,14 @@ mod internals {
         // policy: the unbounded root and nothing else.
         let run = TextRun {
             text,
-            font_size_px,
-            line_height_px,
+            font: GlyphFont {
+                size_px: font_size_px,
+                line_height_px,
+                family: FontFamily::Sans,
+                weight: FontWeight::Regular,
+            },
             wrap: TextWrap::SingleLine,
             align: Align::default(),
-            family: FontFamily::Sans,
-            weight: FontWeight::Regular,
             max_width_px: None,
         };
         let request = run.unbounded_request();

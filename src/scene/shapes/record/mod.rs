@@ -11,8 +11,8 @@ use crate::primitives::span::Span;
 use crate::scene::shapes::paint::{CurveBasis, ImageSource, QuadShape, ShapeBrush};
 use crate::shape::icon::IconFit;
 use crate::shape::style::{LineCap, LineJoin};
+use crate::text::glyph_font::GlyphFont;
 use crate::text::wrap::TextWrap;
-use crate::text::{FontFamily, FontWeight};
 use glam::Vec2;
 
 #[repr(u8)]
@@ -87,22 +87,24 @@ pub(crate) enum ShapeRecord {
         /// is built, so its span and hash cannot belong to different passes.
         text: RecordedText,
         color: ColorF16,
-        font_size_px: f32,
-        /// Line-height in logical px, fed straight to the shaper's
-        /// `Metrics::new`. Authoring-side widgets typically set this to
-        /// `font_size_px * line_height_mult` where the multiplier
-        /// defaults to [`LINE_HEIGHT_MULT`](crate::widgets::theme::text_style::LINE_HEIGHT_MULT) (1.2). Carrying
-        /// the resolved px on the shape — instead of a multiplier the
-        /// shaper would re-resolve — means the shaper doesn't have to
-        /// know about widget conventions, and two `ShapeRecord::Text` runs at
-        /// the same font-size but different leading correctly produce
-        /// distinct cached shaped buffers (via
+        /// The face and metrics to shape in, the same named type
+        /// [`TextShape`](crate::TextShape) authors and
+        /// [`TextShapeKey`](crate::text::key::TextShapeKey) is minted from
+        /// — so the mirror between the three is one field, not four kept
+        /// in step by eye.
+        ///
+        /// `line_height_px` is a resolved logical-px leading, fed straight
+        /// to the shaper's `Metrics::new`. Authoring-side widgets set it to
+        /// `size_px * line_height_mult` where the multiplier defaults to
+        /// [`LINE_HEIGHT_MULT`](crate::widgets::theme::text_style::LINE_HEIGHT_MULT)
+        /// (1.2). Carrying the resolved px — instead of a multiplier the
+        /// shaper would re-resolve — keeps widget conventions out of the
+        /// shaper, and makes two runs at one font-size but different
+        /// leading produce distinct cached buffers (via
         /// [`TextShapeKey::lh_q`](crate::text::key::TextShapeKey::lh_q)).
-        line_height_px: f32,
+        font: GlyphFont,
         wrap: TextWrap,
         align: Align,
-        family: FontFamily,
-        weight: FontWeight,
     },
     /// User-supplied colored triangle mesh. Vertex/index data lives on
     /// the `RecordPayloads`' `meshes` pool; these spans index into its
@@ -302,15 +304,9 @@ impl NanCheck for ShapeRecord {
             ShapeRecord::Text {
                 local_origin,
                 color,
-                font_size_px,
-                line_height_px,
+                font,
                 ..
-            } => {
-                local_origin.has_nan()
-                    || color.has_nan()
-                    || font_size_px.is_nan()
-                    || line_height_px.is_nan()
-            }
+            } => local_origin.has_nan() || color.has_nan() || font.has_nan(),
             ShapeRecord::Mesh {
                 local_rect,
                 tint,

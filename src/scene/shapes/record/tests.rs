@@ -12,6 +12,8 @@ use crate::scene::record_store::GradientId;
 use crate::scene::shapes::hash::compute_record_hash;
 use crate::scene::shapes::paint::{LoweredShadow, ShapeStroke, shadow_paint_rect_local};
 use crate::shape::rect::RectKind;
+use crate::text::glyph_font::GlyphFont;
+use crate::text::{FontFamily, FontWeight};
 use glam::Vec2;
 
 #[test]
@@ -487,30 +489,29 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         },
         hash,
     };
-    let text =
-        |local_origin, t, color, font_size_px, line_height_px, wrap, align, family, weight| {
-            ShapeRecord::Text {
-                local_origin,
-                text: t,
-                color,
-                font_size_px,
-                line_height_px,
-                wrap,
-                align,
-                family,
-                weight,
-            }
-        };
+    // The face is one argument now, so a case that varies a metric says
+    // so with a struct update instead of restating the other three.
+    let face = GlyphFont {
+        size_px: 12.0,
+        line_height_px: 14.0,
+        family: FontFamily::Sans,
+        weight: FontWeight::Regular,
+    };
+    let text = |local_origin, t, color, font, wrap, align| ShapeRecord::Text {
+        local_origin,
+        text: t,
+        color,
+        font,
+        wrap,
+        align,
+    };
     let base = text(
         None,
         recorded(1),
         white,
-        12.0,
-        14.0,
+        face,
         TextWrap::SingleLine,
         Align::CENTER,
-        FontFamily::Sans,
-        FontWeight::Regular,
     );
     moves(
         "Text.local_origin",
@@ -519,12 +520,9 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             Some(pt(1.0)),
             recorded(1),
             white,
-            12.0,
-            14.0,
+            face,
             TextWrap::SingleLine,
             Align::CENTER,
-            FontFamily::Sans,
-            FontWeight::Regular,
         ),
     );
     moves(
@@ -534,12 +532,9 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             None,
             recorded(2),
             white,
-            12.0,
-            14.0,
+            face,
             TextWrap::SingleLine,
             Align::CENTER,
-            FontFamily::Sans,
-            FontWeight::Regular,
         ),
     );
     moves(
@@ -549,42 +544,39 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             None,
             recorded(1),
             red,
-            12.0,
-            14.0,
+            face,
             TextWrap::SingleLine,
             Align::CENTER,
-            FontFamily::Sans,
-            FontWeight::Regular,
         ),
     );
     moves(
-        "Text.font_size_px",
+        "Text.font.size_px",
         &base,
         &text(
             None,
             recorded(1),
             white,
-            13.0,
-            14.0,
+            GlyphFont {
+                size_px: 13.0,
+                ..face
+            },
             TextWrap::SingleLine,
             Align::CENTER,
-            FontFamily::Sans,
-            FontWeight::Regular,
         ),
     );
     moves(
-        "Text.line_height_px",
+        "Text.font.line_height_px",
         &base,
         &text(
             None,
             recorded(1),
             white,
-            12.0,
-            15.0,
+            GlyphFont {
+                line_height_px: 15.0,
+                ..face
+            },
             TextWrap::SingleLine,
             Align::CENTER,
-            FontFamily::Sans,
-            FontWeight::Regular,
         ),
     );
     moves(
@@ -594,12 +586,9 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             None,
             recorded(1),
             white,
-            12.0,
-            14.0,
+            face,
             TextWrap::Wrap,
             Align::CENTER,
-            FontFamily::Sans,
-            FontWeight::Regular,
         ),
     );
     moves(
@@ -609,42 +598,39 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             None,
             recorded(1),
             white,
-            12.0,
-            14.0,
+            face,
             TextWrap::SingleLine,
             Align::TOP_LEFT,
-            FontFamily::Sans,
-            FontWeight::Regular,
         ),
     );
     moves(
-        "Text.family",
+        "Text.font.family",
         &base,
         &text(
             None,
             recorded(1),
             white,
-            12.0,
-            14.0,
+            GlyphFont {
+                family: FontFamily::Mono,
+                ..face
+            },
             TextWrap::SingleLine,
             Align::CENTER,
-            FontFamily::Mono,
-            FontWeight::Regular,
         ),
     );
     moves(
-        "Text.weight",
+        "Text.font.weight",
         &base,
         &text(
             None,
             recorded(1),
             white,
-            12.0,
-            14.0,
+            GlyphFont {
+                weight: FontWeight::Bold,
+                ..face
+            },
             TextWrap::SingleLine,
             Align::CENTER,
-            FontFamily::Sans,
-            FontWeight::Bold,
         ),
     );
 

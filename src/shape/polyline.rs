@@ -86,13 +86,13 @@ impl sealed::Lower for PolylineShape<'_> {
     }
 
     fn lower(self, store: &RecordStore) -> ShapeRecord {
-        lower::polyline(
-            store,
-            self.points,
-            self.colors,
-            self.width,
-            self.cap,
-            self.join,
-        )
+        let Self {
+            points,
+            colors,
+            width,
+            cap,
+            join,
+        } = self;
+        lower::polyline(store, points, colors, width, cap, join)
     }
 }

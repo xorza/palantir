@@ -51,12 +51,20 @@ pub(crate) struct RenderBuffer {
     /// in `RenderBuffer.texts` by composer construction; batches anchor
     /// to groups via `TextBatch.last_group`.
     pub(crate) text_batches: Vec<TextBatch>,
-    /// One entry per *batch* of mesh draws. Currently one [`GroupBatch`]
-    /// per group that emitted meshes (mesh batches don't span scissor
-    /// boundaries since meshes have no per-run bounds). Schedule and
-    /// backend treat meshes structurally like text — drained via the
-    /// same cursor-walking pattern as `text_batches`.
-    pub(crate) mesh_batches: Vec<GroupBatch>,
+    /// Per-group batches for every [`PaintTier`], indexed by
+    /// [`PaintTier::idx`] and reached through [`Self::batches`] /
+    /// [`Self::batches_mut`].
+    ///
+    /// One array rather than a column per tier: the four held the same
+    /// type and the same shape, so a new tier meant a field, an init, a
+    /// clear and two match arms that nothing checked were all present.
+    /// Sized by [`PaintTier::COUNT`], so now it means a variant.
+    ///
+    /// Currently one batch per group that emitted into that tier —
+    /// none of these span scissor boundaries, since only text carries
+    /// per-run bounds. Schedule and backend drain them with the same
+    /// cursor walk as `text_batches`.
+    batches: [Vec<GroupBatch>; PaintTier::COUNT],
     /// Scene-wide image rows, SoA-stored; structurally mirrors
     /// [`Self::meshes`]. The backend binds a per-handle texture and
     /// issues one draw per row (no shared vertex/index buffers — every
@@ -74,28 +82,17 @@ pub(crate) struct RenderBuffer {
     /// it to allocate + paint. Carries the callback, so the backend reaches the
     /// renderer without any `Ui`-side registry.
     pub(crate) frame_targets: Vec<RenderTargetDraw>,
-    /// One entry per *batch* of image draws (currently one
-    /// [`GroupBatch`] per group that emitted images). Schedule walks
-    /// these in lockstep with `groups` via a cursor — same pattern as
-    /// `text_batches` / `mesh_batches`.
-    pub(crate) image_batches: Vec<GroupBatch>,
-    /// Native GPU stroke instances + per-scissor-group batches. One
-    /// [`GroupBatch`] per group that emitted strokes; the schedule walks
-    /// them in lockstep with `mesh_batches` / `image_batches` via a
-    /// cursor. Each instance is one [`CurveInstance`] basis kind —
-    /// a `[t0, t1]` sub-range of a cubic/arc (adaptive count from
+    /// Icon draws in composite order, each already resolved to a physical-px
+    /// origin and a raster key. Drained one batch at a time — the backend
+    /// rasterizes any miss and binds its own atlas, so a run of icons is
+    /// one draw.
+    pub(crate) icons: Vec<IconDrawRow>,
+    /// Native GPU stroke instances. Each is one [`CurveInstance`] basis
+    /// kind — a `[t0, t1]` sub-range of a cubic/arc (adaptive count from
     /// on-screen length), a polyline segment, or joint chrome. The
     /// pipeline draws all instances in a batch with one indexed
     /// instanced draw over its immutable strip indices.
-    /// Icon draws in composite order, each already resolved to a physical-px
-    /// origin and a raster key. Drained one [`GroupBatch`] at a time, in
-    /// lockstep with `image_batches` — the backend rasterizes any miss and
-    /// binds its own atlas, so a run of icons is one draw.
-    pub(crate) icons: Vec<IconDrawRow>,
-    /// One [`GroupBatch`] per group that emitted icons.
-    pub(crate) icon_batches: Vec<GroupBatch>,
     pub(crate) curves: Vec<CurveInstance>,
-    pub(crate) curve_batches: Vec<GroupBatch>,
     /// Flat pool of rounded-clip mask geometry. `DrawGroup.rounded_clips`
     /// and `TextBatch.rounded_clips` are spans into it, each an
     /// outer→inner chain of the rounded masks active for that group /
@@ -136,14 +133,11 @@ impl RenderBuffer {
             meshes: Soa::default(),
             groups: Vec::new(),
             text_batches: Vec::new(),
-            mesh_batches: Vec::new(),
+            batches: [const { Vec::new() }; PaintTier::COUNT],
             images: Soa::default(),
             frame_targets: Vec::new(),
-            image_batches: Vec::new(),
             icons: Vec::new(),
-            icon_batches: Vec::new(),
             curves: Vec::new(),
-            curve_batches: Vec::new(),
             rounded_clips: Vec::new(),
             clear_override: None,
             viewport_phys: UVec2::ZERO,
@@ -169,15 +163,10 @@ impl RenderBuffer {
         self.time = Duration::ZERO;
     }
 
-    /// Drop every scene column (capacity retained), leaving the per-frame
-    /// stamps (`clear_override`, viewport, scale, time) untouched. Shared by
-    /// [`Self::start_frame`] and the composer's clear fold, which discards
-    /// everything composed so far when a fullscreen opaque cover proves it
-    /// invisible — a new scene column added here resets on both paths at once.
-    /// How many draws this tier has emitted so far. Paired with
-    /// [`Self::batches_mut`] so the composer can close a group over
-    /// every tier by iterating [`PaintTier::ALL`] instead of naming the
-    /// four columns.
+    /// How many draws this tier has emitted so far — the one place the
+    /// per-tier row columns are still named, since each holds a different
+    /// instance type. Paired with [`Self::batches_mut`] so the composer
+    /// closes a group over every tier by iterating [`PaintTier::ALL`].
     pub(crate) fn draws_len(&self, tier: PaintTier) -> u32 {
         let len = match tier {
             PaintTier::Mesh => self.meshes.len(),
@@ -190,27 +179,21 @@ impl RenderBuffer {
 
     /// This tier's per-group batches, for appending.
     pub(crate) fn batches_mut(&mut self, tier: PaintTier) -> &mut Vec<GroupBatch> {
-        match tier {
-            PaintTier::Mesh => &mut self.mesh_batches,
-            PaintTier::Image => &mut self.image_batches,
-            PaintTier::Icon => &mut self.icon_batches,
-            PaintTier::Curve => &mut self.curve_batches,
-        }
+        &mut self.batches[tier.idx()]
     }
 
-    /// This tier's per-group batches. The four columns stay separate
-    /// fields — they hold different instance types upstream — but every
-    /// consumer that walks all of them reaches them through here and
-    /// [`PaintTier::ALL`], so the replay order lives in one place.
+    /// This tier's per-group batches. Named rather than indexed at the
+    /// call site so every consumer that walks all of them goes through
+    /// here and [`PaintTier::ALL`], keeping the replay order in one place.
     pub(crate) fn batches(&self, tier: PaintTier) -> &[GroupBatch] {
-        match tier {
-            PaintTier::Mesh => &self.mesh_batches,
-            PaintTier::Image => &self.image_batches,
-            PaintTier::Icon => &self.icon_batches,
-            PaintTier::Curve => &self.curve_batches,
-        }
+        &self.batches[tier.idx()]
     }
 
+    /// Drop every scene column (capacity retained), leaving the per-frame
+    /// stamps (`clear_override`, viewport, scale, time) untouched. Shared by
+    /// [`Self::start_frame`] and the composer's clear fold, which discards
+    /// everything composed so far when a fullscreen opaque cover proves it
+    /// invisible — a new scene column added here resets on both paths at once.
     pub(crate) fn discard_scene(&mut self) {
         self.quads.clear();
         self.texts.clear();
@@ -219,12 +202,11 @@ impl RenderBuffer {
         self.frame_targets.clear();
         self.groups.clear();
         self.text_batches.clear();
-        self.mesh_batches.clear();
-        self.image_batches.clear();
+        for batches in &mut self.batches {
+            batches.clear();
+        }
         self.icons.clear();
-        self.icon_batches.clear();
         self.curves.clear();
-        self.curve_batches.clear();
         self.rounded_clips.clear();
     }
 }

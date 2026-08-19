@@ -381,12 +381,9 @@ pub(crate) mod internals {
         ) -> R {
             body(self.layout(&TextRun {
                 text,
-                font_size_px: shape.font_size_px,
-                line_height_px: shape.line_height_px,
+                font: shape.font,
                 wrap: TextWrap::Wrap,
                 align: Align::h(shape.halign),
-                family: shape.family,
-                weight: shape.weight,
                 max_width_px: shape.max_width_px,
             }))
         }

@@ -63,19 +63,28 @@ impl sealed::Lower for ImageShape {
     }
 
     fn lower(self, _store: &RecordStore) -> ShapeRecord {
+        let Self {
+            handle,
+            local_rect,
+            fit,
+            min_filter,
+            mag_filter,
+            downsample,
+            tint,
+        } = self;
         ShapeRecord::Image {
-            local_rect: self.local_rect,
-            tint: self.tint.into(),
+            local_rect,
+            tint: tint.into(),
             // Extract the cheap id + size; the owning `ImageHandle` the
             // caller holds is what keeps the GPU texture alive.
             source: ImageSource::Texture {
-                id: self.handle.id(),
-                size: self.handle.size(),
+                id: handle.id(),
+                size: handle.size(),
             },
-            fit: self.fit,
-            min_filter: self.min_filter,
-            mag_filter: self.mag_filter,
-            downsample: self.downsample,
+            fit,
+            min_filter,
+            mag_filter,
+            downsample,
         }
     }
 }

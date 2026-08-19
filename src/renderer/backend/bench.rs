@@ -72,6 +72,7 @@ use crate::primitives::image::{Image, ImageFit};
 use crate::primitives::rect::Rect;
 use crate::renderer::backend::schedule::internals::Walk;
 use crate::renderer::image_registry::ImageHandle;
+use crate::renderer::render_buffer::batch::PaintTier;
 use crate::scene::node::Configure;
 use crate::shape::Shape;
 use crate::ui::Ui;
@@ -337,7 +338,7 @@ impl Fixture {
             scissors: counts.scissors,
             quads: buffer.quads.len(),
             images: buffer.images.len(),
-            image_batches: buffer.image_batches.len(),
+            image_batches: buffer.batches(PaintTier::Image).len(),
             text_batches: buffer.text_batches.len(),
         }
     }

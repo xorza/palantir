@@ -17,6 +17,7 @@ use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::{
     BrushSource, DrawImagePayload, DrawQuadPayload, PushClipPayload, ResolvedGradient,
 };
+use crate::renderer::render_buffer::batch::PaintTier;
 use crate::scene::record_store::RecordPayloads;
 use glam::{UVec2, Vec2};
 
@@ -198,8 +199,8 @@ fn compose_emits_image_batch_for_drawimage() {
     );
     assert_eq!(buf.images.len(), 1, "one image draw");
     assert_eq!(buf.images.len(), 1, "one image instance");
-    assert_eq!(buf.image_batches.len(), 1, "one image batch");
-    assert_eq!(buf.image_batches[0].items, Span::new(0, 1));
+    assert_eq!(buf.batches(PaintTier::Image).len(), 1, "one image batch");
+    assert_eq!(buf.batches(PaintTier::Image)[0].items, Span::new(0, 1));
     assert_eq!(buf.images.id()[0], TextureId(0xc0ffee));
     // Physical-px rect = logical * scale (no snap in `params`).
     assert_eq!(buf.images.instance()[0].rect, rect(20.0, 40.0, 60.0, 80.0));
@@ -541,8 +542,8 @@ fn compose_image_curve_record_order_and_same_tier_gate_group_split() {
         &params(1.0, UVec2::new(200, 200)),
     );
     assert_eq!(buf.groups.len(), 1, "image then curve: replay == record");
-    assert_eq!(buf.image_batches[0].last_group, 0);
-    assert_eq!(buf.curve_batches[0].last_group, 0);
+    assert_eq!(buf.batches(PaintTier::Image)[0].last_group, 0);
+    assert_eq!(buf.batches(PaintTier::Curve)[0].last_group, 0);
 
     let buf = run(
         |b, _| {
@@ -556,8 +557,8 @@ fn compose_image_curve_record_order_and_same_tier_gate_group_split() {
         2,
         "curve then image: replay inverts record",
     );
-    assert_eq!(buf.curve_batches[0].last_group, 0);
-    assert_eq!(buf.image_batches[0].last_group, 1);
+    assert_eq!(buf.batches(PaintTier::Curve)[0].last_group, 0);
+    assert_eq!(buf.batches(PaintTier::Image)[0].last_group, 1);
 
     let buf = run(
         |b, _| {
@@ -568,6 +569,6 @@ fn compose_image_curve_record_order_and_same_tier_gate_group_split() {
     );
     assert_eq!(buf.groups.len(), 1, "same-tier order is stable");
     assert_eq!(buf.curves.len(), 2);
-    assert_eq!(buf.curve_batches.len(), 1);
-    assert_eq!(buf.curve_batches[0].last_group, 0);
+    assert_eq!(buf.batches(PaintTier::Curve).len(), 1);
+    assert_eq!(buf.batches(PaintTier::Curve)[0].last_group, 0);
 }

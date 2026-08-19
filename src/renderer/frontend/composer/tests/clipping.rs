@@ -9,6 +9,7 @@ use crate::renderer::frontend::composer::tests::support::{
     rect, render_buffer, run, text,
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
+use crate::renderer::render_buffer::batch::PaintTier;
 use crate::scene::record_store::RecordPayloads;
 use glam::{UVec2, Vec2};
 
@@ -442,7 +443,7 @@ fn compose_culls_non_text_draws_outside_each_viewport_edge_without_clip() {
     assert!(buf.images.is_empty());
     assert!(buf.curves.is_empty());
     assert!(buf.groups.is_empty());
-    assert!(buf.mesh_batches.is_empty());
-    assert!(buf.image_batches.is_empty());
-    assert!(buf.curve_batches.is_empty());
+    assert!(buf.batches(PaintTier::Mesh).is_empty());
+    assert!(buf.batches(PaintTier::Image).is_empty());
+    assert!(buf.batches(PaintTier::Curve).is_empty());
 }

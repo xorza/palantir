@@ -13,6 +13,7 @@ use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::{
     BrushSource, DrawPolylinePayload, DrawQuadPayload, ResolvedGradient, Spin, StrokeBounds,
 };
+use crate::renderer::render_buffer::batch::PaintTier;
 use crate::scene::record_store::RecordPayloads;
 use crate::scene::shapes::record::ColorMode;
 use crate::shape::style::{LineCap, LineJoin};
@@ -507,8 +508,8 @@ fn compose_mesh_then_overlapping_curve_keeps_one_group() {
         &params(1.0, UVec2::new(200, 200)),
     );
     assert_eq!(buf.groups.len(), 1, "record order matches replay order");
-    assert_eq!(buf.mesh_batches[0].last_group, 0);
-    assert_eq!(buf.curve_batches[0].last_group, 0);
+    assert_eq!(buf.batches(PaintTier::Mesh)[0].last_group, 0);
+    assert_eq!(buf.batches(PaintTier::Curve)[0].last_group, 0);
 }
 
 /// Mesh→image replays in record order (mesh drains before image in
@@ -524,8 +525,8 @@ fn compose_mesh_image_record_order_gates_group_split() {
         &params(1.0, UVec2::new(200, 200)),
     );
     assert_eq!(buf.groups.len(), 1, "mesh then image: replay == record");
-    assert_eq!(buf.mesh_batches[0].last_group, 0);
-    assert_eq!(buf.image_batches[0].last_group, 0);
+    assert_eq!(buf.batches(PaintTier::Mesh)[0].last_group, 0);
+    assert_eq!(buf.batches(PaintTier::Image)[0].last_group, 0);
 
     let buf = run(
         |b, _| {
@@ -539,8 +540,8 @@ fn compose_mesh_image_record_order_gates_group_split() {
         2,
         "image then mesh: replay inverts record",
     );
-    assert_eq!(buf.image_batches[0].last_group, 0);
-    assert_eq!(buf.mesh_batches[0].last_group, 1);
+    assert_eq!(buf.batches(PaintTier::Image)[0].last_group, 0);
+    assert_eq!(buf.batches(PaintTier::Mesh)[0].last_group, 1);
 }
 
 /// Non-overlapping mixed kinds never conflict — record order between
@@ -560,9 +561,9 @@ fn compose_disjoint_mixed_kinds_share_one_group() {
         &params(1.0, UVec2::new(200, 200)),
     );
     assert_eq!(buf.groups.len(), 1, "disjoint kinds must not split");
-    assert_eq!(buf.curve_batches[0].last_group, 0);
-    assert_eq!(buf.mesh_batches[0].last_group, 0);
-    assert_eq!(buf.image_batches[0].last_group, 0);
+    assert_eq!(buf.batches(PaintTier::Curve)[0].last_group, 0);
+    assert_eq!(buf.batches(PaintTier::Mesh)[0].last_group, 0);
+    assert_eq!(buf.batches(PaintTier::Image)[0].last_group, 0);
 }
 
 //
@@ -795,7 +796,7 @@ fn labelled_toolbar_costs_one_icon_batch_and_a_text_batch_per_label() {
 
     assert_eq!(out.icons.len(), BUTTONS);
     assert_eq!(
-        out.icon_batches.len(),
+        out.batches(PaintTier::Icon).len(),
         1,
         "every icon shares one atlas, so they are one draw however many buttons",
     );

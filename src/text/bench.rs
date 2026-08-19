@@ -2,6 +2,7 @@ use crate::layout::ShapedText;
 use crate::layout::types::align::HAlign;
 use crate::primitives::widget_id::WidgetId;
 use crate::text::cosmic;
+use crate::text::glyph_font::GlyphFont;
 use crate::text::key::WrapBound;
 use crate::text::request::TextShapeRequest;
 use crate::text::request::internals::TestShape;
@@ -41,21 +42,23 @@ const DRAG_RESIDENCY_LIMIT: usize = cosmic::PROBATION_KEEP_FRAMES as usize * 2 +
 /// see real cache pressure rather than one L1-resident entry.
 const REUSE_LAYER_LABELS: usize = 64;
 
-/// The face every arm shapes in, stated once. `TestShape` is the same
-/// fixture the in-tree tests describe a face with — `bench` implies
-/// `internals`, so this side gets it too rather than re-deriving the
-/// constants per helper.
 /// Leading as a multiple of the font size. Named because two faces here
 /// want the same proportion — [`UI_FACE`] and whatever size the
 /// interleaving arm asks [`measure_truncated_face`] for — and a ratio
 /// spelled twice is one that can be changed in one of them.
 const LEADING_RATIO: f32 = 1.2;
 
+/// The face every arm shapes in, stated once. `TestShape` is the same
+/// fixture the in-tree tests describe a face with — `bench` implies
+/// `internals`, so this side gets it too rather than re-deriving the
+/// constants per helper.
 const UI_FACE: TestShape = TestShape {
-    font_size_px: 14.0,
-    line_height_px: 14.0 * LEADING_RATIO,
-    family: FontFamily::Sans,
-    weight: FontWeight::Regular,
+    font: GlyphFont {
+        size_px: 14.0,
+        line_height_px: 14.0 * LEADING_RATIO,
+        family: FontFamily::Sans,
+        weight: FontWeight::Regular,
+    },
     #[cfg(test)]
     max_width_px: None,
     #[cfg(test)]
@@ -82,13 +85,14 @@ fn measure_truncated_face(
     font_size_px: f32,
     weight: FontWeight,
 ) -> ShapedText {
-    let request = TestShape {
-        font_size_px,
-        line_height_px: font_size_px * LEADING_RATIO,
-        weight,
-        ..UI_FACE
-    }
-    .unbounded_request(text);
+    // Overridden field by field rather than by struct update: outside
+    // `cfg(test)` the fixture is `font` alone, so `..UI_FACE` would be
+    // updating nothing.
+    let mut shape = UI_FACE;
+    shape.font.size_px = font_size_px;
+    shape.font.line_height_px = font_size_px * LEADING_RATIO;
+    shape.font.weight = weight;
+    let request = shape.unbounded_request(text);
     text_system.measure(slot, request, TextWrap::Ellipsis, HAlign::Left, Some(width))
 }
 

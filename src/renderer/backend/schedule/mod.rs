@@ -114,13 +114,13 @@ pub(super) enum RenderStep {
     Text { batch: usize },
     /// Bind the mesh pipeline + issue one `draw_indexed` per
     /// `MeshDraw` in the referenced batch. Consumer pulls per-draw spans
-    /// from `RenderBuffer.mesh_batches[batch].items` (then via
+    /// from `RenderBuffer::batches(Mesh)[batch].items` (then via
     /// `RenderBuffer.meshes`). One `MeshBatch { batch }` step → one
     /// pipeline+buffer bind → N `draw_indexed` calls.
     MeshBatch { batch: usize },
     /// Bind the image pipeline + issue one `draw` per `ImageDraw` in
     /// the referenced batch. Consumer pulls per-draw handles from
-    /// `RenderBuffer.image_batches[batch].items` (then via
+    /// `RenderBuffer::batches(Image)[batch].items` (then via
     /// `RenderBuffer.images.draws`). The pipeline switches the per-image
     /// bind group between draws.
     ImageBatch { batch: usize },

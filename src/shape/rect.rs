@@ -61,13 +61,13 @@ impl sealed::Lower for RectShape {
     }
 
     fn lower(self, store: &RecordStore) -> ShapeRecord {
-        lower::rect(
-            store,
-            self.kind,
-            self.local_rect,
-            self.corners,
-            &self.fill,
-            self.stroke,
-        )
+        let Self {
+            kind,
+            local_rect,
+            corners,
+            fill,
+            stroke,
+        } = self;
+        lower::rect(store, kind, local_rect, corners, &fill, stroke)
     }
 }

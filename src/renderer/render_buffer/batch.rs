@@ -45,12 +45,13 @@ impl PaintTier {
     ///
     /// **The single source of the replay sequence.** The composer's
     /// group-flush arbitration (`HigherKindRects::conflicts`) is sound
-    /// only while the backend replays tiers in this order, and that
-    /// order used to be written out by hand in five places — the drain
-    /// block, the cursor struct, the emptiness test, the stale-cursor
-    /// advance, and the composer's field order — each of which had to be
-    /// edited in step to add a tier. Iterating this instead means adding
-    /// one is a variant plus the arms the compiler names.
+    /// only while the backend replays tiers in this order, so every
+    /// consumer that walks all tiers iterates this rather than spelling
+    /// the order out: the drain block, the cursor struct, the emptiness
+    /// test, and the stale-cursor advance. With
+    /// [`RenderBuffer::batches`](crate::renderer::render_buffer::RenderBuffer)
+    /// sized by [`Self::COUNT`], adding a tier is a variant plus the arms
+    /// the compiler names.
     pub(crate) const ALL: [Self; Self::COUNT] = [Self::Mesh, Self::Image, Self::Icon, Self::Curve];
 
     pub(crate) const COUNT: usize = 4;

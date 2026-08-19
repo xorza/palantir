@@ -33,6 +33,7 @@ use crate::primitives::span::Span;
 use crate::primitives::urect::URect;
 use crate::renderer::backend::schedule::internals::Walk;
 use crate::renderer::quad::Quad;
+use crate::renderer::render_buffer::batch::PaintTier;
 use crate::renderer::render_buffer::batch::{DrawGroup, GroupBatch, TextBatch};
 use crate::renderer::render_buffer::{RenderBuffer, RoundedClip};
 use criterion::{BenchmarkId, Criterion, Throughput};
@@ -116,7 +117,7 @@ impl Workload {
             });
             match self {
                 Self::QuadsThenImage | Self::TextThenImage => {
-                    buffer.image_batches.push(GroupBatch {
+                    buffer.batches_mut(PaintTier::Image).push(GroupBatch {
                         items: Span::new(group as u32, 1),
                         last_group: group as u32,
                     });
