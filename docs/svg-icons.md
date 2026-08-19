@@ -93,28 +93,38 @@ exists:
 | Authoring | `Shape::text(…)` | `Shape::icon(handle)` → `IconShape` (`at`, `fit`, `tint`) |
 | Record | `ShapeRecord::Text` | `ShapeRecord::Icon { local_rect, handle, fit, tint }` — 33 B payload, under the 75 B `Image` variant that sets the 88-byte pin, so **`ShapeRecord` does not grow** |
 | Encode | `DrawTextPayload` | `DrawIconPayload { rect, handle, tint }` |
-| Compose | `TextDrawRow { origin, bounds, colour, snapped scale }` | `IconDrawRow { key, origin, bounds, colour }` — the physical box is resolved and **rounded to whole pixels here** |
+| Compose | `TextDrawRow { origin, bounds, colour, snapped scale }` | `IconDrawRow { key, origin, colour }` — the physical box is resolved and **rounded to whole pixels here**. No `bounds`: an icon is one quad, so the group's own scissor is the whole of its clipping |
 | Backend prepare | glyph walk → `atlas.touch` / `atlas.insert`, swash raster on miss | `atlas.touch` / `atlas.insert`, **resvg raster on miss** |
 | Draw | glyph pipeline + atlas bind group | same shader and pipeline layout, icon atlas bind group |
 
-**Reused verbatim:** `GlyphInstance` (20 B), `text/shader.wgsl` with both its
-mask and colour paths, `ContentType`, the atlas's clock-sweep eviction,
-growth-with-blit, batched staging uploads, `ExpiryWheel`, `DynamicBuffer`, and
-the composer's tier-conflict flush machinery.
+**Reused verbatim:** the 20-byte `RasterQuad`, `raster_atlas/shader.wgsl` with
+both its mask and colour paths, `ContentType`, the atlas's clock-sweep
+eviction, growth-with-blit, batched staging uploads, `ExpiryWheel`,
+`DynamicBuffer`, and the composer's tier-conflict flush machinery.
 
-**New:** the atlas generalizes over its key; the baked blob and its baker; the
+An icon quad *is* a glyph quad, so the instance type, the shader, the vertex
+layout, and the group-0 bind-group shape live in `raster_atlas::quad` — with
+the atlas both passes read through, rather than inside whichever pass needed
+them first.
+
+**New:** the atlas generalizes over its key; the icon set and its baker; the
 resvg raster wrapper; `PaintTier::Icon`; the authoring types.
 
 ### 2.1 Handle
 
-Because a baked set is `&'static` data compiled into the binary, there is
-nothing to reference-count — the handle is strictly nicer than `ImageHandle`:
+The handle owns nothing and is `Copy`, so the per-frame path never touches a
+refcount — what keeps a set alive is the `IconSet` the app holds:
 
 ```rust
-/// 4 bytes, `Copy`. No `Rc`, no clone at the call site, no RAII lifetime.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct IconHandle { set: IconSetId, icon: IconId }
+/// 12 bytes, `Copy`. No `Rc`, no clone at the call site, no RAII lifetime.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct IconHandle { icon: IconRef, view_box: Vec2 }
 ```
+
+It carries `view_box` so resolving `IconFit` at encode time needs no registry
+lookup: the aspect ratio travels with the handle rather than being fetched on
+the hot path. `IconRef` — the `(set, icon)` pair alone — is what the atlas
+caches against.
 
 `IconShape` has three knobs and all of them mean something. This is why it is
 not an `ImageShape`: on a vector source `min_filter`, `mag_filter`,
@@ -149,7 +159,7 @@ a 24.6 px box draws at 25 px. Glyphs already take that deal.
 ### 2.4 Cache key and quantization
 
 ```rust
-struct IconRasterKey { set: u16, icon: u16, w: u16, h: u16 }   // 8 bytes
+struct IconRasterKey { icon: IconRef, size: U16Vec2 }   // 8 bytes
 ```
 
 No subpixel bins — icons snap to integer positions, unlike glyphs. Compare
@@ -194,7 +204,7 @@ Two consequences worth designing around:
 - **Hover / pressed states on colour icons** can't be a tint. **Decision: the
   background chip carries the state**, which is what real toolbars do — the
   icon itself does not change. Disabled is an alpha step for now; one spare bit
-  in `GlyphInstance::uv_and_kind` (u needs 12 bits of the 15 it has, so bits
+  in `RasterQuad::uv_and_kind` (u needs 12 bits of the 15 it has, so bits
   12–14 are free) is reserved for a desaturate flag if a greyed-out look is
   wanted later, at the cost of one `mix` in the colour path.
 - **`tiny_skia::Pixmap` is premultiplied sRGB**; the colour side wants straight
@@ -235,8 +245,10 @@ pub struct IconDef {
 Generated `icons.rs` holds the table plus `include_bytes!("icons.svgblob")`,
 wrapped in a `const fn baked(..)` call that borrows both — so a compiled-in set
 copies and parses nothing at startup — and one `IconId` constant per icon
-(`icons::SAVE`), with a `FORMAT_VERSION` assert so a stale generated file is a
-compile error rather than a runtime surprise.
+(`icons::SAVE`). Slice 2 adds a `FORMAT_VERSION` constant and the generated
+`const _: () = assert!(..)` that reads it, so a stale generated file is a
+compile error rather than a runtime surprise — it is not in the crate yet,
+since a version nobody checks is worse than none.
 
 Size, measured (§M): normalizing makes an icon **bigger**, not smaller —
 +63 % to +83 % on the three fixtures, since usvg expands shorthand and
@@ -320,12 +332,14 @@ the session may never draw. Both are why only the flagged ones prewarm.
 ## 7. Implementation slices
 
 **Slice 1 — the runtime. Done.** `GlyphAtlas` became `RasterAtlas<K>` and
-moved to `renderer::backend::raster_atlas`, with `ContentType` and the
-per-instance label/initial-size config alongside; text keys it on its cosmic
-`CacheKey` and icons on `IconRasterKey`. `src/icons/` holds the baked types,
+moved to `renderer::backend::raster_atlas`, with `ContentType`, the
+per-instance label/initial-size config, and the shared draw program
+(`quad.rs`: `RasterQuad`, the shader, the vertex layout, the bind-group
+helpers) alongside; text keys it on its cosmic `CacheKey` and icons on
+`IconRasterKey`. `src/icons/` holds the baked types,
 the registry, the size ladder, and the resvg wrapper;
 `renderer::backend::icon` holds the pass, which reuses the glyph shader,
-`GlyphInstance`, and the vertex layout verbatim. `ShapeRecord::Icon` →
+`RasterQuad`, and the vertex layout verbatim. `ShapeRecord::Icon` →
 `DrawIconPayload` → `IconDrawRow` → `PaintTier::Icon` → `RenderStep::IconBatch`.
 Driven from hand-written `IconAtlas` values, as planned.
 
