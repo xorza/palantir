@@ -87,10 +87,19 @@ const IMMEDIATES_BYTES: u32 = 16;
 pub(crate) struct Backbuffer {
     tex: wgpu::Texture,
     view: wgpu::TextureView,
-    /// The extent `tex` was created at, mirrored here so
-    /// `ensure_backbuffer`'s recreate test reads size and format off
-    /// the same struct it already holds.
-    size: wgpu::Extent3d,
+}
+
+impl Backbuffer {
+    /// Whether this backbuffer is the one a target of `size` and `format`
+    /// wants — the question `ensure_backbuffer` asks before recreating and
+    /// the skip-copy assert asks before copying.
+    ///
+    /// Format is half of it: the per-window backbuffer carries one surface's
+    /// pixels, and a format flip (window moved to an HDR output) needs a fresh
+    /// texture at the new format to match this submit's pipeline set.
+    fn describes(&self, size: wgpu::Extent3d, format: wgpu::TextureFormat) -> bool {
+        self.tex.size() == size && self.tex.format() == format
+    }
 }
 
 /// Per-window stencil attachment for rounded-clip masking, allocated lazily on
@@ -101,16 +110,16 @@ pub(crate) struct Backbuffer {
 /// `WindowDriver`.
 #[derive(Debug)]
 pub(crate) struct Stencil {
+    /// Held for its extent, which [`WgpuBackend::ensure_stencil`] compares
+    /// against the target's before reusing the attachment. The view keeps
+    /// the texture alive either way, so this is a handle, not a second
+    /// record of a size the texture already knows.
+    tex: wgpu::Texture,
     pub(crate) view: wgpu::TextureView,
-    /// Current size, so [`WgpuBackend::ensure_stencil`] can skip
-    /// recreation when unchanged.
-    size: wgpu::Extent3d,
 }
 
 impl Stencil {
-    /// Private, so [`WgpuBackend::ensure_stencil`] is the only way to one
-    /// — which is what lets `size` stay a field nobody can set out of
-    /// step with the texture it describes.
+    /// Private, so [`WgpuBackend::ensure_stencil`] is the only way to one.
     fn new(device: &wgpu::Device, size: wgpu::Extent3d) -> Self {
         let tex = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("palantir.renderer.stencil"),
@@ -124,7 +133,7 @@ impl Stencil {
         });
         Self {
             view: tex.create_view(&wgpu::TextureViewDescriptor::default()),
-            size,
+            tex,
         }
     }
 }
@@ -335,11 +344,7 @@ impl WgpuBackend {
     ) -> bool {
         let needs_new = match &*bb {
             None => true,
-            // Recreate on a size *or* format change: the per-window
-            // backbuffer carries one surface's pixels, and a format flip
-            // (window moved to an HDR output) needs a fresh texture at the
-            // new format to match this submit's pipeline set.
-            Some(b) => b.size != size || b.tex.format() != format,
+            Some(b) => !b.describes(size, format),
         };
         if !needs_new {
             return false;
@@ -355,7 +360,7 @@ impl WgpuBackend {
             view_formats: &[],
         });
         let view = tex.create_view(&wgpu::TextureViewDescriptor::default());
-        *bb = Some(Backbuffer { tex, view, size });
+        *bb = Some(Backbuffer { tex, view });
         true
     }
 
@@ -380,7 +385,7 @@ impl WgpuBackend {
         // Drop a stale one first, then a plain get-or-insert: the two
         // steps are what let this hand back a `&Stencil` without an
         // `expect` re-reading the slot it just filled.
-        if stencil.as_ref().is_some_and(|held| held.size != size) {
+        if stencil.as_ref().is_some_and(|held| held.tex.size() != size) {
             *stencil = None;
         }
         stencil.get_or_insert_with(|| Stencil::new(&self.device, size))
@@ -1084,8 +1089,7 @@ impl WgpuBackend {
         surface_tex: &wgpu::Texture,
     ) {
         debug_assert!(
-            backbuffer.size == surface_tex.size()
-                && backbuffer.tex.format() == surface_tex.format(),
+            backbuffer.describes(surface_tex.size(), surface_tex.format()),
             "skip-copy backbuffer doesn't match the target — a Skip frame \
              implies the previous frame painted this size/format"
         );
