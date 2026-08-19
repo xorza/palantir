@@ -8,7 +8,7 @@ use crate::layout::types::layout_mode::LayoutMode;
 use crate::primitives::interned_text::InternedText;
 use crate::primitives::{rect::Rect, size::Size};
 use crate::scene::tree::Tree;
-use crate::scene::tree::record::NodeId;
+use crate::scene::tree::node_id::NodeId;
 use glam::Vec2;
 
 /// Intrinsic size of a ZStack: max over children on the queried axis.

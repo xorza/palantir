@@ -9,7 +9,7 @@ use crate::scene::damage::Damage;
 use crate::scene::damage::tests::support::{BLUE, DISPLAY, RED, frame, one_frame};
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
-use crate::scene::tree::record::NodeId;
+use crate::scene::tree::node_id::NodeId;
 use crate::shape::Shape;
 use crate::shape::style::LineCap;
 use crate::text::TEXT_SCALE_STEP;

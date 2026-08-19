@@ -5,7 +5,7 @@ use crate::primitives::interned_text::InternedText;
 use crate::scene::shapes::record::ShapeRecord;
 use crate::scene::tree::Tree;
 use crate::scene::tree::iter::TreeItem;
-use crate::scene::tree::record::NodeId;
+use crate::scene::tree::node_id::NodeId;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::key::TextShapeKey;
 use crate::text::request::TextShapeRequest;

@@ -69,7 +69,7 @@ mod bars {
     use crate::scene::node::Configure;
     use crate::scene::shapes::paint::QuadShape;
     use crate::scene::shapes::record::ShapeRecord;
-    use crate::scene::tree::record::NodeId;
+    use crate::scene::tree::node_id::NodeId;
     use crate::shape::rect::RectKind;
     use crate::ui::frame_report::FrameProcessing;
     use crate::ui::harness::UiHarness;

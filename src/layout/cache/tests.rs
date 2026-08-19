@@ -7,7 +7,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::Color, size::Size};
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
-use crate::scene::tree::record::NodeId;
+use crate::scene::tree::node_id::NodeId;
 use crate::text::wrap::TextWrap;
 use crate::ui::harness::UiHarness;
 use crate::widgets::{frame::Frame, panel::Panel, text::Text};

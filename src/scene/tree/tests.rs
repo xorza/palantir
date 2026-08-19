@@ -12,7 +12,7 @@ use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
 use crate::scene::shapes::paint::QuadShape;
 use crate::scene::shapes::record::ShapeRecord;
-use crate::scene::tree::record::NodeId;
+use crate::scene::tree::node_id::NodeId;
 use crate::shape::Shape;
 use crate::shape::polyline::PolylineColors;
 use crate::shape::rect::{RectKind, RectShape};

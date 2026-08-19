@@ -4,7 +4,7 @@
 //! `Forest::pre_record`.
 
 use crate::layout::types::placement::Placement;
-use crate::scene::tree::record::NodeId;
+use crate::scene::tree::node_id::NodeId;
 
 /// One entry on the recording ancestor stack
 /// ([`RecordingScratch::open_frames`]). Carries the open node's

@@ -1,7 +1,7 @@
 use crate::layout::axis::Axis;
-use crate::layout::grid::GridDepthStack;
 use crate::layout::grid::axis_scratch::AxisScratch;
 use crate::layout::grid::axis_scratch::HugRanges;
+use crate::layout::grid::grid_depth_stack::GridDepthStack;
 use crate::layout::intrinsic::LenReq;
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::rect::Rect;

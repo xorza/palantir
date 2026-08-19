@@ -20,7 +20,7 @@ use crate::layout::{canvas, grid, stack, wrapstack, zstack};
 use crate::primitives::interned_text::InternedText;
 use crate::scene::node::layout_core::LayoutCore;
 use crate::scene::tree::Tree;
-use crate::scene::tree::record::NodeId;
+use crate::scene::tree::node_id::NodeId;
 use crate::text::system::TextRunSlot;
 
 /// Intrinsic content-size kind, per CSS Grid spec terminology.

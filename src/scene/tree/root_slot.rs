@@ -1,7 +1,7 @@
 //! One top-level subtree within a layer's tree, and where it is placed.
 
 use crate::layout::types::placement::Placement;
-use crate::scene::tree::record::NodeId;
+use crate::scene::tree::node_id::NodeId;
 
 /// One root within a single layer's [`Tree`](crate::scene::tree::Tree).
 /// Multiple roots in the same tree happen for popups (eater + body

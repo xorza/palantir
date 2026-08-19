@@ -8,7 +8,7 @@ use crate::scene::damage::Damage;
 use crate::scene::damage::tests::support::{BLUE, RED};
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
-use crate::scene::tree::record::NodeId;
+use crate::scene::tree::node_id::NodeId;
 use crate::shape::Shape;
 use crate::ui::harness::UiHarness;
 use crate::widgets::{frame::Frame, panel::Panel};

@@ -12,7 +12,7 @@
 //! appends nothing), but affordable is not a reason to widen a gate.
 
 use crate::common::counters::{BenchOnly, TestOnly};
-use crate::scene::tree::record::NodeId;
+use crate::scene::tree::node_id::NodeId;
 
 /// What the diff walk did this pass.
 ///

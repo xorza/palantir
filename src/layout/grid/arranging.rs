@@ -3,12 +3,12 @@
 use crate::layout::axis::Axis;
 use crate::layout::axis_align_pair::AxisAlignPair;
 use crate::layout::axis_placement::AxisPlacement;
-use crate::layout::grid::GridContext;
+use crate::layout::grid::grid_context::GridContext;
 use crate::layout::pass::LayoutPass;
 use crate::layout::types::layout_mode::GridDefId;
 use crate::primitives::span::Span;
 use crate::primitives::{rect::Rect, size::Size};
-use crate::scene::tree::record::NodeId;
+use crate::scene::tree::node_id::NodeId;
 use glam::Vec2;
 
 pub(super) fn arrange_inner(

@@ -44,12 +44,14 @@ use crate::scene::shapes::Shapes;
 use crate::scene::shapes::lower;
 use crate::scene::shapes::paint::ChromeRow;
 use crate::scene::shapes::record::ShapeRecord;
-use crate::scene::tree::extras::ExtrasIdx;
+use crate::scene::tree::extras_idx::ExtrasIdx;
 use crate::scene::tree::iter::{Child, ChildIter, TreeItem, TreeItems};
+use crate::scene::tree::node_id::NodeId;
+use crate::scene::tree::node_record::NodeRecord;
 use crate::scene::tree::paint_anims::PaintAnims;
-use crate::scene::tree::record::{NodeId, NodeRecord, SubtreeEnd};
 use crate::scene::tree::recording_scratch::{OpenFrame, RecordingScratch};
 use crate::scene::tree::root_slot::RootSlot;
+use crate::scene::tree::subtree_end::SubtreeEnd;
 use crate::scene::tree::subtree_rollups::SubtreeRollups;
 use crate::scene::tree::tree_fingerprint::TreeFingerprint;
 use fixedbitset::FixedBitSet;
@@ -642,12 +644,14 @@ fn paint_cardinality(shapes: usize, chrome_rows: usize, nodes: usize) -> u64 {
     h.finish()
 }
 
-pub(crate) mod extras;
+pub(crate) mod extras_idx;
 pub(crate) mod iter;
+pub(crate) mod node_id;
+pub(crate) mod node_record;
 pub(crate) mod paint_anims;
-pub(crate) mod record;
 pub(crate) mod recording_scratch;
 pub(crate) mod root_slot;
+pub(crate) mod subtree_end;
 pub(crate) mod subtree_rollups;
 pub(crate) mod tree_fingerprint;
 
@@ -656,7 +660,7 @@ pub(crate) mod internals {
     #[cfg(test)]
     use crate::scene::shapes::record::ShapeRecord;
     #[cfg(test)]
-    use crate::scene::tree::record::NodeId;
+    use crate::scene::tree::node_id::NodeId;
     use crate::scene::tree::*;
 
     impl Tree {

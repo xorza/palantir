@@ -1,6 +1,7 @@
+use crate::animation::anim_map_typed::AnimMapTyped;
+use crate::animation::anim_slot::AnimSlot;
 use crate::animation::anim_spec::AnimSpec;
 use crate::animation::easing::Easing;
-use crate::animation::{AnimMapTyped, AnimSlot};
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::primitives::widget_id::WidgetId;

@@ -1,4 +1,4 @@
-use crate::scene::tree::record::NodeId;
+use crate::scene::tree::node_id::NodeId;
 use crate::ui::frame_report::FrameReport;
 use crate::widgets::text_edit::tests::*;
 use std::time::Duration;

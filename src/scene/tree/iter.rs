@@ -10,7 +10,9 @@ use soa_rs::Soa;
 use crate::primitives::span::Span;
 use crate::scene::node::layout_core::LayoutCore;
 use crate::scene::shapes::record::ShapeRecord;
-use crate::scene::tree::record::{NodeId, NodeRecord, SubtreeEnd};
+use crate::scene::tree::node_id::NodeId;
+use crate::scene::tree::node_record::NodeRecord;
+use crate::scene::tree::subtree_end::SubtreeEnd;
 use crate::scene::visibility::Visibility;
 
 #[derive(Debug)]

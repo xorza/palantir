@@ -229,7 +229,7 @@ fn fitting_prefix_cuts_on_logical_cluster_boundaries() {
             "backing off a cluster retires all of its glyphs",
         ),
     ] {
-        let cut = cosmic::truncate::fitting_prefix(
+        let cut = cosmic::cluster_glyph::fitting_prefix(
             run.len(),
             |i| ClusterGlyph {
                 start: run[i].0,

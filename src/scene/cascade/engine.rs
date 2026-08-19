@@ -22,7 +22,7 @@ use crate::scene::cascade::{Cascade, CascadeInputHash, LayerCascade};
 use crate::scene::forest::Forest;
 use crate::scene::layer::Layer;
 use crate::scene::tree::Tree;
-use crate::scene::tree::record::NodeId;
+use crate::scene::tree::node_id::NodeId;
 use std::hash::Hasher as _;
 
 /// The three tables one tree's walk appends to, plus the layer it is

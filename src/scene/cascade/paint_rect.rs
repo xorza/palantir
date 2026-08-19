@@ -18,7 +18,7 @@ use crate::scene::shapes::paint::shadow_paint_rect_local;
 use crate::scene::shapes::record::{ShapeRecord, text_paint_bbox_local};
 use crate::scene::tree::Tree;
 use crate::scene::tree::iter::{TreeItem, TreeItems};
-use crate::scene::tree::record::NodeId;
+use crate::scene::tree::node_id::NodeId;
 use crate::shape::stroke_bounds::{HALF_FRINGE, stroked_bbox};
 use crate::text::TEXT_SCALE_STEP;
 use glam::Vec2;

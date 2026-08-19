@@ -1,6 +1,6 @@
 use crate::scene::shapes::paint::QuadShape;
 use crate::shape::rect::RectKind;
-use crate::{scene::tree::record::NodeId, widgets::text_edit::tests::*};
+use crate::{scene::tree::node_id::NodeId, widgets::text_edit::tests::*};
 
 #[test]
 fn each_text_widget_reads_its_own_theme_path_for_font_size() {

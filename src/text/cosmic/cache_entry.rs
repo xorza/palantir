@@ -13,8 +13,10 @@
 //! got written.
 
 use crate::common::expiry_wheel::TicketSeq;
+use crate::text::key::TextShapeKey;
 use crate::text::root::TextRoot;
 use cosmic_text::Buffer;
+use rustc_hash::FxHashMap;
 
 #[derive(Debug)]
 pub(super) struct CacheEntry {
@@ -52,4 +54,28 @@ pub(super) struct CacheEntry {
     /// re-filing itself — without which a run that is demoted and
     /// promoted each frame accumulates one permanent ticket per cycle.
     pub(super) ticket_seq: TicketSeq,
+}
+
+impl CacheEntry {
+    /// The cached unbounded shape a truncating fit cuts from.
+    ///
+    /// [`CosmicMeasure::measure_truncated`] calls
+    /// [`CosmicMeasure::ensure_buffer`] on this key before reaching for it,
+    /// and re-reads it once per back-off round because the shaping in
+    /// between needs `&mut self`, so the borrow cannot be held across the
+    /// loop.
+    ///
+    /// Hands back the whole entry rather than its buffer: the caller wants
+    /// the measured [`TextRoot`] as well as the glyphs, and both come out of
+    /// the one lookup.
+    ///
+    /// Takes the map rather than `&self` on purpose: the caller holds
+    /// `&mut self.logical_order` at the same time, and only a borrow of the
+    /// one field stays disjoint from it.
+    #[inline]
+    pub(super) fn probe(cache: &FxHashMap<TextShapeKey, Self>, key: TextShapeKey) -> &Self {
+        cache
+            .get(&key)
+            .expect("truncation requires the cached unbounded shape")
+    }
 }

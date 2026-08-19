@@ -12,7 +12,7 @@ use crate::scene::cascade::engine::{
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
 use crate::scene::seen_ids::Endpoint;
-use crate::scene::tree::record::NodeId;
+use crate::scene::tree::node_id::NodeId;
 use crate::shape::Shape;
 use crate::shape::style::LineCap;
 use crate::ui::harness::UiHarness;
