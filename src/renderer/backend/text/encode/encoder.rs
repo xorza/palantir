@@ -1,13 +1,13 @@
 //! Turning a row of laid-out text into the glyph instances a pass draws.
 
 //! Per-batch instance emission: extracted glyph placements →
-//! `GlyphInstance`s.
+//! `RasterQuad`s.
 //!
 //! Two paths:
 //!
 //! - **Cache hit**: prior frames laid this exact `(TextShapeKey,
 //!   scale, subpixel origin bin, area color)` run out into the atlas;
-//!   the resulting origin-relative `GlyphInstance` templates are stored
+//!   the resulting origin-relative `RasterQuad` templates are stored
 //!   in the [`EncodedCache`]. Emit = a copy with origin-shifted
 //!   positions, no shaper lease, no per-glyph atlas hashmap lookup.
 //!   This is the ~37% of frame time we're targeting.
@@ -31,12 +31,13 @@ use crate::text::glyphs::TextGlyphs;
 use crate::text::render::{GlyphImageKind, GlyphRasterKey, PlacedGlyph, RunPlacement};
 use crate::text::request::TextShapeRequest;
 
-use crate::renderer::backend::text::atlas::{GlyphAtlas, PackedGlyphMetadata};
+use crate::renderer::backend::raster_atlas::ContentType;
+use crate::renderer::backend::raster_atlas::quad::{RasterQuad, pack_uv};
+use crate::renderer::backend::raster_atlas::{PackedMetadata, RasterAtlas, RasterAtlasConfig};
 use crate::renderer::backend::text::encode::EncodedRunKey;
 use crate::renderer::backend::text::encode::cache::{
     ENCODED_CACHE_KEEP_FRAMES, EncodedCache, EncodedGlyph, release,
 };
-use crate::renderer::backend::text::{ContentType, GlyphInstance};
 
 /// CPU-side glyph encoder: owns the atlas, the encoded-run cache, the
 /// per-miss extraction scratch, and the frame's accumulated instances.
@@ -45,13 +46,13 @@ use crate::renderer::backend::text::{ContentType, GlyphInstance};
 /// disjoint fields directly, with no per-call context bundle.
 #[derive(Debug)]
 pub(crate) struct TextEncoder {
-    pub(crate) atlas: GlyphAtlas,
+    pub(crate) atlas: RasterAtlas<GlyphRasterKey>,
     pub(crate) cache: EncodedCache,
     /// Retained per-miss extraction scratch.
     pub(crate) placed: Vec<PlacedGlyph>,
     /// Drawable glyph instances accumulated across this frame's
     /// batches.
-    pub(crate) instances: Vec<GlyphInstance>,
+    pub(crate) instances: Vec<RasterQuad>,
     /// Whether a run this frame hit a full atlas, and whether that has
     /// been reported since the last frame that didn't.
     ///
@@ -68,7 +69,30 @@ pub(crate) struct TextEncoder {
 impl TextEncoder {
     pub(crate) fn new(device: &wgpu::Device) -> Self {
         Self {
-            atlas: GlyphAtlas::new(device),
+            atlas: RasterAtlas::new(
+                device,
+                RasterAtlasConfig {
+                    label: "palantir.text",
+                    // Bumped from glyphon's 256 to skip the 256->512->1024
+                    // grow chain on the first frame with non-trivial text.
+                    initial_mask_px: 1024,
+                    // Colour glyphs (emoji) are rare in UI text: 256^2 RGBA is
+                    // 256 KB and holds dozens at UI sizes, where matching the
+                    // mask side would pin 4 MB most sessions never touch.
+                    initial_color_px: 256,
+                    // 16 MiB is 2^24, and both `bytes_per_pixel` values are
+                    // powers of two, so the ceiling lands on an exact power-of-
+                    // two side either way: a 4096² mask or a 2048² colour
+                    // atlas. The measured `text_atlas/cache_churn` working set
+                    // is 3700 glyphs in a 2048² mask, so the mask ceiling is
+                    // roughly 4x the largest set any bench here produces.
+                    max_bytes: 16 << 20,
+                    // 4 MiB is a 2048² mask or a 1024² colour atlas, and the
+                    // mask growing 1 MB -> 4 MB is what the measurement in
+                    // `eager_growth_bytes` cost.
+                    eager_growth_bytes: 4 << 20,
+                },
+            ),
             cache: EncodedCache::default(),
             placed: Vec::new(),
             instances: Vec::new(),
@@ -100,7 +124,7 @@ impl TextEncoder {
                 break;
             }
             let g = glyph.instance;
-            self.instances.push(GlyphInstance {
+            self.instances.push(RasterQuad {
                 pos: [g.pos[0] + run_key.origin_x, g.pos[1] + run_key.origin_y],
                 dim: g.dim,
                 uv_and_kind: g.uv_and_kind,
@@ -164,7 +188,7 @@ impl TextEncoder {
     /// Encode one run that missed the encoded cache: extract its glyph
     /// placements through the shaper's glyph lease (which restores evicted
     /// buffers and applies the y-cull), touch/insert atlas slots, emit
-    /// `GlyphInstance`s and populate the encoded cache as a side
+    /// `RasterQuad`s and populate the encoded cache as a side
     /// effect. Callers are expected to have already filtered out
     /// invalid keys and cache hits.
     pub(crate) fn encode_run(
@@ -216,17 +240,17 @@ impl TextEncoder {
 
             let abs_x = g.x + slot.left as i32;
             let abs_y = g.y - slot.top as i32;
-            let dim = (slot.width as u32) | ((slot.height as u32) << 16);
+            let dim = RasterQuad::dim(slot.width, slot.height);
             let uv_and_kind = pack_uv(slot.x, slot.y, slot.content);
 
-            self.instances.push(GlyphInstance {
+            self.instances.push(RasterQuad {
                 pos: [abs_x, abs_y],
                 dim,
                 uv_and_kind,
                 color,
             });
             self.cache.pending.push(EncodedGlyph {
-                instance: GlyphInstance {
+                instance: RasterQuad {
                     pos: [abs_x - run_key.origin_x, abs_y - run_key.origin_y],
                     dim,
                     uv_and_kind,
@@ -249,14 +273,6 @@ impl TextEncoder {
         let complete = !culled && !starved;
         self.cache.settle(run_key.key, current_frame, complete);
     }
-}
-
-/// Pack `(u, v, kind)` into the 32-bit `uv_and_kind` field. `u`'s
-/// high bit carries `content_type` (atlases cap at 16384 = 14 bits).
-#[inline]
-pub(super) fn pack_uv(u: u16, v: u16, kind: ContentType) -> u32 {
-    debug_assert!(u <= 0x7FFF, "uv high bit reserved for content_type");
-    (u as u32) | ((kind as u32) << 15) | ((v as u32) << 16)
 }
 
 /// What [`rasterize_and_insert`] managed to do with one glyph. The two
@@ -283,7 +299,7 @@ enum Rasterized {
 fn rasterize_and_insert(
     device: &wgpu::Device,
     glyphs: &mut TextGlyphs<'_>,
-    atlas: &mut GlyphAtlas,
+    atlas: &mut RasterAtlas<GlyphRasterKey>,
     key: GlyphRasterKey,
 ) -> Rasterized {
     let Some(image) = glyphs.rasterize(key) else {
@@ -293,7 +309,13 @@ fn rasterize_and_insert(
         GlyphImageKind::Color => ContentType::Color,
         GlyphImageKind::Mask => ContentType::Mask,
     };
-    let Ok(metadata): Result<PackedGlyphMetadata, _> = (&image.placement).try_into() else {
+    let placement = &image.placement;
+    let Some(metadata) = PackedMetadata::new(
+        placement.width,
+        placement.height,
+        placement.left,
+        placement.top,
+    ) else {
         tracing::warn!(
             ?key,
             width = image.placement.width,
@@ -302,11 +324,7 @@ fn rasterize_and_insert(
             top = image.placement.top,
             "skipping glyph raster outside packed atlas metadata range",
         );
-        return Rasterized::Slot(atlas.insert_unallocated(
-            key,
-            content,
-            PackedGlyphMetadata::EMPTY,
-        ));
+        return Rasterized::Slot(atlas.insert_unallocated(key, content, PackedMetadata::EMPTY));
     };
 
     if metadata.is_empty() {

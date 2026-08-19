@@ -8,6 +8,7 @@ use palantir::{
     Color, Configure, ImageDownsample, ImageFilter, ImageFit, Panel, Shape, Sizing, Ui,
 };
 
+use crate::fixtures::close;
 use crate::harness::Harness;
 
 /// Source texels for the filter fixture: a 2×1 red|blue strip. Upscaled
@@ -37,12 +38,6 @@ fn strip_pane(
                     .mag_filter(mag_filter),
             );
         });
-}
-
-/// Pixel comparison shared by the fixtures: sRGB round-trip through the
-/// f16 tint and the render target moves a channel by at most one step.
-fn close(a: [u8; 4], b: [u8; 4]) -> bool {
-    a.iter().zip(b).all(|(l, r)| l.abs_diff(r) <= 2)
 }
 
 /// Assert the pixel sits strictly between the two source texels on both

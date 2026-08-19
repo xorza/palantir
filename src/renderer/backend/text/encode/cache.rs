@@ -2,13 +2,13 @@
 //! packed into.
 
 //! Per-batch instance emission: extracted glyph placements →
-//! `GlyphInstance`s.
+//! `RasterQuad`s.
 //!
 //! Two paths:
 //!
 //! - **Cache hit**: prior frames laid this exact `(TextShapeKey,
 //!   scale, subpixel origin bin, area color)` run out into the atlas;
-//!   the resulting origin-relative `GlyphInstance` templates are stored
+//!   the resulting origin-relative `RasterQuad` templates are stored
 //!   in the [`EncodedCache`]. Emit = a copy with origin-shifted
 //!   positions, no shaper lease, no per-glyph atlas hashmap lookup.
 //!   This is the ~37% of frame time we're targeting.
@@ -33,7 +33,7 @@ use crate::primitives::span::Span;
 use rustc_hash::FxHashMap;
 use std::collections::hash_map::Entry;
 
-use crate::renderer::backend::text::GlyphInstance;
+use crate::renderer::backend::raster_atlas::quad::RasterQuad;
 use crate::renderer::backend::text::encode::{EncodedEntry, EncodedKey};
 use crate::renderer::backend::text::encoded_counters::EncodedCounters;
 
@@ -44,7 +44,7 @@ pub(super) const NIL: u32 = u32::MAX;
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct EncodedGlyph {
-    pub(crate) instance: GlyphInstance,
+    pub(crate) instance: RasterQuad,
     pub(crate) atlas_slot: u32,
     pub(crate) generation: u32,
 }
@@ -66,7 +66,7 @@ impl EncodedGlyph {
     /// only the glyphs actually written.
     const fn free_link(next: u32) -> Self {
         Self {
-            instance: GlyphInstance {
+            instance: RasterQuad {
                 pos: [0, 0],
                 dim: 0,
                 uv_and_kind: 0,

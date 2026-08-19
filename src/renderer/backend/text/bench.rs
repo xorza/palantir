@@ -76,9 +76,10 @@ const WARM_SCALE_CYCLE: u32 = 5;
 
 /// Rungs the churn arms cycle through.
 ///
-/// Sized to put the mask atlas **past** `EAGER_GROWTH_BYTE_BUDGET` — the
-/// point where it stops growing and starts recycling rectangles, which
-/// is where `GlyphAtlas::evict_one` bills. Measured on this fixture, the
+/// Sized to put the mask atlas **past** its
+/// `RasterAtlasConfig::eager_growth_bytes` — the point where it stops
+/// growing and starts recycling rectangles, which is where
+/// `RasterAtlas::evict_one` bills. Measured on this fixture, the
 /// side fills and eviction begins between rung 250 and 500; 512 keeps
 /// the benched iterations solidly on the far side of that.
 ///

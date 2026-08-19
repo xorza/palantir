@@ -124,6 +124,10 @@ pub(super) enum RenderStep {
     /// `RenderBuffer.images.draws`). The pipeline switches the per-image
     /// bind group between draws.
     ImageBatch { batch: usize },
+    /// Bind the icon pipeline + issue one instanced draw covering every icon
+    /// in the referenced batch. Every icon shares one atlas bind group, so a
+    /// run of them is a single draw whatever mix of icons it holds.
+    IconBatch { batch: usize },
     /// Bind the stroke pipeline + issue a single indexed instanced draw
     /// covering every `CurveInstance` in the referenced batch. One
     /// `CurveBatch { batch }` step → one bind → one `draw_indexed`. This
@@ -227,6 +231,7 @@ pub(super) fn for_each_step(
         // so their draws don't paint.
         advance_past_skipped(&buffer.mesh_batches, &mut cursors.mesh, i);
         advance_past_skipped(&buffer.image_batches, &mut cursors.image, i);
+        advance_past_skipped(&buffer.icon_batches, &mut cursors.icon, i);
         advance_past_skipped(&buffer.curve_batches, &mut cursors.curve, i);
 
         let group_scissor = g.scissor.unwrap_or(full_viewport);
@@ -265,6 +270,7 @@ pub(super) fn for_each_step(
             || pending_at(&buffer.text_batches, cursors.text, i)
             || pending_at(&buffer.mesh_batches, cursors.mesh, i)
             || pending_at(&buffer.image_batches, cursors.image, i)
+            || pending_at(&buffer.icon_batches, cursors.icon, i)
             || pending_at(&buffer.curve_batches, cursors.curve, i);
         if has_content {
             state.narrow(&masks.groups, i, effective);
@@ -428,6 +434,7 @@ struct ScheduleCursors {
     text: usize,
     mesh: usize,
     image: usize,
+    icon: usize,
     curve: usize,
 }
 
@@ -549,6 +556,7 @@ fn emit_group_body(
     );
     if !(pending_at(&buffer.mesh_batches, cursors.mesh, i)
         || pending_at(&buffer.image_batches, cursors.image, i)
+        || pending_at(&buffer.icon_batches, cursors.icon, i)
         || pending_at(&buffer.curve_batches, cursors.curve, i))
     {
         return;
@@ -570,6 +578,13 @@ fn emit_group_body(
         &mut cursors.image,
         i,
         |batch| RenderStep::ImageBatch { batch },
+        state,
+    );
+    drain_group_batches(
+        &buffer.icon_batches,
+        &mut cursors.icon,
+        i,
+        |batch| RenderStep::IconBatch { batch },
         state,
     );
     drain_group_batches(

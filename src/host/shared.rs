@@ -31,6 +31,7 @@ impl HostShared {
         BackendResources {
             text: self.resources.text.clone(),
             images: self.resources.images.clone(),
+            icons: self.resources.icons.clone(),
             gradient_atlas: self.gradient_atlas.clone(),
             gpu_pass_stats: self.resources.diagnostics.gpu_pass_stats.clone(),
         }

@@ -7,12 +7,14 @@ use std::time::Duration;
 
 pub(crate) mod batch;
 pub(crate) mod curve;
+pub(crate) mod icon;
 pub(crate) mod image;
 pub(crate) mod mesh;
 pub(crate) mod text;
 
 use crate::renderer::render_buffer::batch::{DrawGroup, GroupBatch, TextBatch};
 use crate::renderer::render_buffer::curve::CurveInstance;
+use crate::renderer::render_buffer::icon::IconDrawRow;
 use crate::renderer::render_buffer::image::{ImageDrawRow, RenderTargetDraw};
 use crate::renderer::render_buffer::mesh::MeshDrawRow;
 use crate::renderer::render_buffer::text::TextDrawRow;
@@ -85,6 +87,13 @@ pub(crate) struct RenderBuffer {
     /// on-screen length), a polyline segment, or joint chrome. The
     /// pipeline draws all instances in a batch with one indexed
     /// instanced draw over its immutable strip indices.
+    /// Icon draws in composite order, each already resolved to a physical-px
+    /// origin and a raster key. Drained one [`GroupBatch`] at a time, in
+    /// lockstep with `image_batches` — the backend rasterizes any miss and
+    /// binds its own atlas, so a run of icons is one draw.
+    pub(crate) icons: Vec<IconDrawRow>,
+    /// One [`GroupBatch`] per group that emitted icons.
+    pub(crate) icon_batches: Vec<GroupBatch>,
     pub(crate) curves: Vec<CurveInstance>,
     pub(crate) curve_batches: Vec<GroupBatch>,
     /// Flat pool of rounded-clip mask geometry. `DrawGroup.rounded_clips`
@@ -131,6 +140,8 @@ impl RenderBuffer {
             images: Soa::default(),
             frame_targets: Vec::new(),
             image_batches: Vec::new(),
+            icons: Vec::new(),
+            icon_batches: Vec::new(),
             curves: Vec::new(),
             curve_batches: Vec::new(),
             rounded_clips: Vec::new(),
@@ -173,6 +184,8 @@ impl RenderBuffer {
         self.text_batches.clear();
         self.mesh_batches.clear();
         self.image_batches.clear();
+        self.icons.clear();
+        self.icon_batches.clear();
         self.curves.clear();
         self.curve_batches.clear();
         self.rounded_clips.clear();
