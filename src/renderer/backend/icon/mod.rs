@@ -163,7 +163,7 @@ impl IconBackend {
     ///
     /// An SVG filter costs 10-20x an unfiltered icon of the same size and
     /// grows superlinearly, so a toolbar of them met lazily is a dropped
-    /// frame rather than a hitch. Only icons the baker flagged `filtered`
+    /// frame rather than a hitch. Only icons whose survey flagged `filtered`
     /// prewarm: everything else is cheap enough to meet on demand, and
     /// warming it would rasterize icons the session may never draw.
     ///

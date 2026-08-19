@@ -752,9 +752,9 @@ fn quad_fast_path_flag_cases() {
     }
 }
 
-/// What a labelled toolbar actually costs in batches — the measurement slice 3
-/// of `docs/svg-icons.md` defers the "fold the icon atlas into the glyph
-/// atlas" question to.
+/// What a labelled toolbar actually costs in batches — the measurement behind
+/// keeping the icon atlas separate from the glyph atlas rather than folding
+/// the two together.
 ///
 /// Eight buttons, each an icon beside its label, laid out left to right with
 /// no overlap. Icons are a higher kind than text, so every icon closes the

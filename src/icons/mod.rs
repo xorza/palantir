@@ -2,8 +2,9 @@
 //!
 //! An icon is a text glyph that came from an SVG. The set is
 //! [`IconAtlas`](crate::icons::icon_atlas::IconAtlas) — SVG sources plus a
-//! name table, either compiled into the binary by `bake-icons` or built at
-//! runtime. Nothing is rasterized ahead of time: the renderer rasterizes each
+//! name table, either compiled in as a generated `const` or built at runtime
+//! from the sources themselves. Nothing is rasterized ahead of time: the
+//! renderer rasterizes each
 //! icon at the exact physical pixel size it is about to be drawn at
 //! ([`IconRasterizer`](crate::icons::icon_rasterizer::IconRasterizer)) and
 //! caches the result in the same kind of atlas the glyph cache uses, so an icon
