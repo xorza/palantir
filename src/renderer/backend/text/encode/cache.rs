@@ -6,7 +6,7 @@ use crate::common::expiry_wheel::ExpiryWheel;
 use rustc_hash::FxHashMap;
 use std::collections::hash_map::Entry;
 
-use crate::renderer::backend::raster_atlas::quad::RasterQuad;
+use crate::renderer::backend::raster_atlas::raster_quad::RasterQuad;
 use crate::renderer::backend::text::encode::{EncodedEntry, EncodedKey};
 use crate::renderer::backend::text::encoded_counters::EncodedCounters;
 

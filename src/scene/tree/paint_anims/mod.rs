@@ -82,7 +82,7 @@ pub(crate) struct PaintMod {
     /// polyline, curve, and arc emits honour it (the composer rotates
     /// points / control points / center + angles before the ancestor
     /// transform). The encoder folds it and the pivot into the payload's
-    /// [`StrokeBounds`](crate::renderer::frontend::payload::StrokeBounds).
+    /// [`StrokeBounds`](crate::renderer::frontend::payload::stroke_bounds::StrokeBounds).
     pub(crate) rotation: f32,
 }
 

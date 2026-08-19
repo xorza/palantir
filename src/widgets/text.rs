@@ -1,5 +1,5 @@
 use crate::layout::types::align::Align;
-use crate::primitives::interned_str::TextInput;
+use crate::primitives::text_input::TextInput;
 use crate::scene::node::Node;
 use crate::shape::Shape;
 use crate::text::FontWeight;

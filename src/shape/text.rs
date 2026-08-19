@@ -6,7 +6,6 @@ use crate::scene::record_store::RecordStore;
 use crate::scene::shapes::record::ShapeRecord;
 use crate::shape::sealed;
 use crate::text::glyph_font::GlyphFont;
-use crate::text::key;
 use crate::text::wrap::TextWrap;
 use crate::text::{FontFamily, FontWeight};
 use glam::Vec2;
@@ -91,13 +90,13 @@ impl sealed::Lower for TextShape {
     fn is_noop(&self) -> bool {
         self.text.is_empty()
             || self.color.is_noop()
-            // `text_metrics_valid` rejects NaN via `is_finite`;
+            // `GlyphFont::metrics_valid` rejects NaN via `is_finite`;
             // `local_origin` needs saying. Worth catching here rather
             // than at the record gate: lowering interns the string into
             // the text arena, so a shape dropped afterwards would have
             // paid for that and left the bytes behind.
             || self.local_origin.has_nan()
-            || !key::text_metrics_valid(self.font.size_px, self.font.line_height_px)
+            || !self.font.metrics_valid()
     }
 
     fn lower(self, store: &RecordStore) -> ShapeRecord {

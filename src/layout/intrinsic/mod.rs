@@ -12,12 +12,13 @@
 //! per-driver-file convention as the rest of layout.
 
 use crate::layout::axis::Axis;
+use crate::layout::axis_ctx::AxisCtx;
 use crate::layout::engine::LayoutEngine;
-use crate::layout::support::{AxisCtx, leaf_text_shapes, resolve_axis_size};
+use crate::layout::text_shape_input::TextShapeInput;
 use crate::layout::types::layout_mode::{LayoutMode, ScrollChildLayout};
 use crate::layout::{canvas, grid, stack, wrapstack, zstack};
-use crate::primitives::interned_str::InternedText;
-use crate::scene::node::columns::LayoutCore;
+use crate::primitives::interned_text::InternedText;
+use crate::scene::node::layout_core::LayoutCore;
 use crate::scene::tree::Tree;
 use crate::scene::tree::record::NodeId;
 use crate::text::system::TextRunSlot;
@@ -94,6 +95,48 @@ pub(crate) struct IntrinsicQuery {
 }
 
 impl IntrinsicQuery {
+    /// Max over non-collapsed children's outer intrinsic on `axis`, each
+    /// child's contribution shifted by `offset`.
+    ///
+    /// Drivers whose own size on an axis is "the largest child wants this
+    /// much" (ZStack, Stack cross-axis, WrapStack) call
+    /// [`Self::children_max_at_origin`] — Canvas is the one that folds in
+    /// each child's declared position. Same closure-parameter shape the measure side uses for the
+    /// identical split (`LayoutPass::measure_per_axis_hug`, shared by
+    /// `zstack::measure` and `canvas::measure`).
+    pub(crate) fn children_max(
+        self,
+        layout: &mut LayoutEngine,
+        tree: &Tree,
+        node: NodeId,
+        axis: Axis,
+        interned_text: &InternedText<'_>,
+        mut offset: impl FnMut(&Tree, NodeId) -> f32,
+    ) -> IntrinsicRange {
+        let mut range = IntrinsicRange::ZERO;
+        for c in tree.active_children(node) {
+            let child = self.child(layout, tree, c, axis, interned_text);
+            let child_offset = offset(tree, c);
+            for (req, slot) in range.requested(self) {
+                *slot = slot.max(child.get(req) + child_offset);
+            }
+        }
+        range
+    }
+    /// [`Self::children_max`] for drivers that place children at the
+    /// container origin — every one except Canvas.
+    #[inline]
+    pub(crate) fn children_max_at_origin(
+        self,
+        layout: &mut LayoutEngine,
+        tree: &Tree,
+        node: NodeId,
+        axis: Axis,
+        interned_text: &InternedText<'_>,
+    ) -> IntrinsicRange {
+        self.children_max(layout, tree, node, axis, interned_text, |_, _| 0.0)
+    }
+
     pub(crate) const fn single(req: LenReq) -> Self {
         Self {
             single_req: Some(req),
@@ -201,10 +244,10 @@ pub(crate) fn compute(
 
     // Hug + Fill both report content-driven intrinsic: Fill in intrinsic
     // context returns its content's
-    // intrinsic, ignoring weight — `resolve_axis_size` with `available =
+    // intrinsic, ignoring weight — `AxisCtx::resolve` with `available =
     // INFINITY` enforces exactly that (Fill falls back to
     // `content_plus_padding`). Skip the content query and padding read
-    // for Fixed: `resolve_axis_size` short-circuits Fixed and never
+    // for Fixed: `AxisCtx::resolve` short-circuits Fixed and never
     // reads `content_plus_padding`.
     let mut content = if sizing.fixed_value().is_some() {
         IntrinsicRange::ZERO
@@ -218,7 +261,7 @@ pub(crate) fn compute(
     };
 
     for (_, value) in content.requested(query) {
-        *value = resolve_axis_size(AxisCtx {
+        *value = AxisCtx {
             sizing,
             content_plus_padding: *value,
             available: f32::INFINITY,
@@ -226,7 +269,8 @@ pub(crate) fn compute(
             margin,
             min: min_clamp,
             max: max_clamp,
-        });
+        }
+        .resolve();
     }
     content
 }
@@ -313,7 +357,7 @@ fn leaf(
 ) -> IntrinsicRange {
     let wid = tree.records.widget_id()[node.idx()];
     let mut range = IntrinsicRange::ZERO;
-    for ts in leaf_text_shapes(tree, interned_text, node) {
+    for ts in TextShapeInput::on_leaf(tree, interned_text, node) {
         let unbounded = engine.text.root(
             TextRunSlot {
                 widget_id: wid,

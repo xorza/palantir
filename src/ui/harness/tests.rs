@@ -226,7 +226,7 @@ fn layout_rect_is_pre_transform_and_rect_is_what_the_pointer_hits() {
     // disagree only there — so a test that reaches for the wrong one
     // passes everywhere except the scroll and canvas cases. Pinning both
     // sides here is what keeps that from being discovered the hard way.
-    use crate::primitives::transform::TranslateScale;
+    use crate::primitives::translate_scale::TranslateScale;
 
     let inner = WidgetId::from_hash("scaled-inner");
     let scaled = |ui: &mut Ui| {
@@ -667,7 +667,7 @@ fn arena_interns_without_ever_recording() {
     let store = &harness.ui.forest.record_store;
     let recorded = store.record_text(interned);
     let payloads = store.payloads.borrow();
-    assert_eq!(recorded.resolve(&payloads.interned_text()), "label");
+    assert_eq!(recorded.source.resolve(&payloads.interned_text()), "label");
 }
 
 #[test]

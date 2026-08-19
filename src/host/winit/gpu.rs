@@ -10,7 +10,7 @@ use winit::window::{Window as WinitWindow, WindowId};
 use crate::host::device_requirements::DeviceRequirements;
 use crate::host::winit::config::WinitHostConfig;
 use crate::host::winit::error::WinitHostError;
-use crate::window::Vsync;
+use crate::window::vsync::Vsync;
 
 const REQUIRED_SURFACE_USAGES: wgpu::TextureUsages =
     wgpu::TextureUsages::RENDER_ATTACHMENT.union(wgpu::TextureUsages::COPY_DST);
@@ -311,7 +311,7 @@ mod tests {
         REQUIRED_SURFACE_USAGES, build_surface_config, negotiate_present_mode, present_mode,
         vsync_of,
     };
-    use crate::window::Vsync;
+    use crate::window::vsync::Vsync;
 
     /// `Window::set_vsync` compares in [`Vsync`]'s vocabulary rather than
     /// wgpu's, and this is why it can: every present mode classifies, and

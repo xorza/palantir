@@ -1,16 +1,18 @@
 //! Polylines, arcs and cubics: the instances they emit and the chrome at
 //! their joins.
 
-use crate::primitives::fill_wire::LutRow;
+use crate::primitives::lut_row::LutRow;
 use crate::primitives::{color::Color, color::ColorU8};
 use crate::renderer::frontend::capture::PaintCapture;
 use crate::renderer::frontend::composer::tests::support::{
     clip, composer, curve, image, mesh, params, polyline_cmd, rect, render_buffer, run, text,
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
-use crate::renderer::frontend::payload::{DrawPolylinePayload, Spin, StrokeBounds};
-use crate::renderer::render_buffer::batch::PaintTier;
-use crate::scene::record_store::RecordPayloads;
+use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
+use crate::renderer::frontend::payload::stroke_bounds::Spin;
+use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
+use crate::renderer::render_buffer::paint_tier::PaintTier;
+use crate::scene::record_store::record_payloads::RecordPayloads;
 use crate::scene::shapes::record::ColorMode;
 use crate::shape::style::{LineCap, LineJoin};
 use glam::{UVec2, Vec2};
@@ -293,7 +295,7 @@ fn compose_polyline_color_modes_and_coincident_skip() {
 
 #[test]
 fn compose_emits_one_curve_batch_per_scissor_group() {
-    use crate::renderer::frontend::payload::DrawCurvePayload;
+    use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
     use crate::scene::shapes::paint::CurveBasis;
     let buf = run(
         |b, _arena| {
@@ -339,7 +341,7 @@ fn compose_emits_one_curve_batch_per_scissor_group() {
 
 #[test]
 fn compose_splits_curve_batches_across_scissor_groups() {
-    use crate::renderer::frontend::payload::DrawCurvePayload;
+    use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
     use crate::scene::shapes::paint::CurveBasis;
     let buf = run(
         |b, _arena| {
@@ -388,8 +390,8 @@ fn compose_splits_curve_batches_across_scissor_groups() {
 #[test]
 fn compose_threads_curve_fill_kind_and_lut_row_into_instances() {
     use crate::primitives::brush::gradient::Spread;
-    use crate::primitives::fill_wire::FillKind;
-    use crate::renderer::frontend::payload::DrawCurvePayload;
+    use crate::primitives::fill_kind::FillKind;
+    use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
     use crate::scene::shapes::paint::CurveBasis;
     let buf = run(
         |b, _arena| {
@@ -429,7 +431,7 @@ fn compose_threads_curve_fill_kind_and_lut_row_into_instances() {
 
 #[test]
 fn compose_arc_scales_geometry_and_subdivides_by_exact_length() {
-    use crate::renderer::frontend::payload::DrawCurvePayload;
+    use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
     use crate::renderer::render_buffer::curve::CURVE_KIND_ARC;
     use crate::scene::shapes::paint::CurveBasis;
     use std::f32::consts::PI;
@@ -477,7 +479,7 @@ fn compose_arc_scales_geometry_and_subdivides_by_exact_length() {
 
 #[test]
 fn compose_arc_spin_rotates_center_about_bbox_pivot_and_offsets_angles() {
-    use crate::renderer::frontend::payload::DrawCurvePayload;
+    use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
     use crate::scene::shapes::paint::CurveBasis;
     use std::f32::consts::{FRAC_PI_2, PI};
     // Pivot = bbox.center() = (50, 50); center (70, 50) is +20 along x.
@@ -521,7 +523,7 @@ fn compose_arc_spin_rotates_center_about_bbox_pivot_and_offsets_angles() {
 
 #[test]
 fn compose_flat_cubic_emits_single_instance_curved_emits_many() {
-    use crate::renderer::frontend::payload::DrawCurvePayload;
+    use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
     use crate::scene::shapes::paint::CurveBasis;
     // Same 800 px span: a straight cubic (CPs on the segment thirds —
     // exactly what Shape::line lowers to) must collapse to one
@@ -572,7 +574,7 @@ fn compose_flat_cubic_emits_single_instance_curved_emits_many() {
 
 #[test]
 fn compose_curve_spin_rotates_control_points_about_bbox_pivot() {
-    use crate::renderer::frontend::payload::DrawCurvePayload;
+    use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
     use crate::scene::shapes::paint::CurveBasis;
     use std::f32::consts::FRAC_PI_2;
     // Pivot = bbox.center() = (50, 50). A π/2 spin (clockwise on
@@ -628,7 +630,7 @@ fn compose_curve_spin_rotates_control_points_about_bbox_pivot() {
 
 #[test]
 fn compose_arc_and_curve_share_one_batch_per_group() {
-    use crate::renderer::frontend::payload::DrawCurvePayload;
+    use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
     use crate::renderer::render_buffer::curve::{CURVE_KIND_ARC, CURVE_KIND_CUBIC};
     use crate::scene::shapes::paint::CurveBasis;
     let buf = run(

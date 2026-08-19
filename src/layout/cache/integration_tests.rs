@@ -12,7 +12,7 @@ use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::background::Background;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::{
-    color::Color, corners::Corners, stroke::Stroke, transform::TranslateScale,
+    color::Color, corners::Corners, stroke::Stroke, translate_scale::TranslateScale,
 };
 use crate::renderer::frontend::capture::assert_same_capture;
 use crate::scene::layer::Layer;
@@ -534,7 +534,7 @@ fn cache_rects_match_cold_oracle_across_width_changes() {
 
 /// O1 regression: a measure-cache hit restores the subtree root's
 /// intrinsics, so when a deep sibling changes and forces the ancestor
-/// chain to re-measure, the ancestor's `children_max_intrinsic` reads the
+/// chain to re-measure, the ancestor's `IntrinsicQuery::children_max` reads the
 /// unchanged sibling's cached intrinsic instead of cold-recursing through
 /// its whole subtree (which would re-probe the text cache per leaf).
 /// Pinned via the per-frame `intrinsic_computes` counter.

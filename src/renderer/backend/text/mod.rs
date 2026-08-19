@@ -29,12 +29,13 @@ pub(crate) mod bench;
 mod encode;
 mod encoded_counters;
 
-use crate::primitives::interned_str::InternedText;
+use crate::primitives::interned_text::InternedText;
 use crate::primitives::span::Span;
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
-use crate::renderer::backend::pipeline_utils::{ColorVariantSpec, StencilVariant};
-use crate::renderer::backend::raster_atlas::quad::{self, RasterQuad};
+use crate::renderer::backend::raster_atlas::raster_quad::RasterQuad;
+use crate::renderer::backend::stencil_variant::ColorVariantSpec;
+use crate::renderer::backend::stencil_variant::StencilVariant;
 use crate::renderer::backend::viewport::ViewportPush;
 use crate::renderer::render_buffer::text::TextDrawRow;
 use crate::text::render::RunPlacement;
@@ -66,7 +67,7 @@ impl TextBackend {
     pub(crate) fn new(device: &wgpu::Device, shaper: TextShaper) -> Self {
         let encoder = TextEncoder::new(device);
 
-        let shader = quad::shader_module(device, "palantir.text.shader");
+        let shader = RasterQuad::shader_module(device, "palantir.text.shader");
         let vbuf = DynamicBuffer::<RasterQuad>::vertex(device, "palantir text vbuf", 4096);
 
         Self {
@@ -98,7 +99,7 @@ impl TextBackend {
                 layout_label: "palantir.text.pl",
                 shader: &self.shader,
                 bind_group_layouts: &[Some(self.encoder.atlas.bind_group_layout())],
-                vertex_buffers: &[Some(quad::instance_layout())],
+                vertex_buffers: &[Some(RasterQuad::instance_layout())],
                 topology: wgpu::PrimitiveTopology::TriangleStrip,
             },
             format,

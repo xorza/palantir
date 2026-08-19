@@ -3,7 +3,7 @@
 //! the resulting pane re-layout, and the resize-cursor request.
 
 use crate::layout::types::sizing::Sizing;
-use crate::primitives::transform::TranslateScale;
+use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
@@ -12,7 +12,7 @@ use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
 use crate::widgets::splitter::{SplitHalf, Splitter, pointer_to_ratio, sanitize_ratio};
 use crate::widgets::theme::splitter::SplitterTheme;
-use crate::window::CursorIcon;
+use crate::window::cursor_icon::CursorIcon;
 use glam::{UVec2, Vec2};
 
 const SURFACE: UVec2 = UVec2::new(500, 300);

@@ -4,9 +4,10 @@ use crate::primitives::texture_id::TextureId;
 use crate::renderer::backend::debug_marker;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::image_pipeline::textures::ImageTextures;
-use crate::renderer::gpu_view::{GpuFrameCtx, GpuInitCtx};
+use crate::renderer::gpu_paint::gpu_frame_ctx::GpuFrameCtx;
+use crate::renderer::gpu_paint::gpu_init_ctx::GpuInitCtx;
 use crate::renderer::render_buffer::image::FrameViews;
-use crate::renderer::render_owner::RenderOwnerId;
+use crate::renderer::render_owner_id::RenderOwnerId;
 use crate::text::shaper::TextShaper;
 use glam::UVec2;
 use rustc_hash::FxHashMap;
@@ -187,7 +188,7 @@ fn keep_target(entry_owner: RenderOwnerId, owner: RenderOwnerId, live: bool) -> 
 #[cfg(test)]
 mod tests {
     use super::keep_target;
-    use crate::renderer::render_owner::RenderOwnerId;
+    use crate::renderer::render_owner_id::RenderOwnerId;
 
     /// Which of `entries` (id, owner) a submit by `owner` frees, given the
     /// ids that submit still lists as live.

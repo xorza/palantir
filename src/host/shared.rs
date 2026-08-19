@@ -3,8 +3,8 @@
 //! backend's capability bundle from those shared authorities.
 
 use crate::common::clipboard::Clipboard;
-use crate::renderer::backend::BackendResources;
-use crate::renderer::gradient_atlas::handle::SharedGradientAtlas;
+use crate::renderer::backend::backend_resources::BackendResources;
+use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
 use crate::text::shaper::TextShaper;
 use crate::ui::resources::UiResources;
 use std::num::NonZeroU32;

@@ -5,7 +5,7 @@ use crate::primitives::brush::Brush;
 use crate::primitives::brush::gradient::linear::LinearGradient;
 use crate::primitives::color::{Color, ColorU8};
 use crate::renderer::frontend::Frontend;
-use crate::renderer::plan::{RenderKind, RenderPlan};
+use crate::renderer::render_plan::{RenderKind, RenderPlan};
 use crate::scene::node::Configure;
 use crate::ui::harness::UiHarness;
 use crate::widgets::frame::Frame;

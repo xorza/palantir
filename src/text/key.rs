@@ -2,21 +2,10 @@
 //! stable, purely integral cache key.
 
 use crate::layout::types::align::HAlign;
-use crate::primitives::approx::EPS;
 use crate::primitives::num::F32Ext;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::wrap::{self, LineFit};
 use crate::text::{FontFamily, FontWeight};
-
-pub(crate) const TEXT_METRICS_ERROR: &str =
-    "font size and line height must be finite and above the UI epsilon";
-
-pub(crate) fn text_metrics_valid(font_size_px: f32, line_height_px: f32) -> bool {
-    font_size_px.is_finite()
-        && font_size_px > EPS
-        && line_height_px.is_finite()
-        && line_height_px > EPS
-}
 
 /// Canonical shaping parameters and stable shaped-buffer identity. Layout
 /// derives it from `ShapeRecord::Text`; the encoder carries it through the
@@ -117,8 +106,9 @@ impl TextShapeKey {
             weight,
         } = font;
         debug_assert!(
-            text_metrics_valid(font_size_px, line_height_px),
-            "{TEXT_METRICS_ERROR}",
+            GlyphFont::metrics_are_valid(font_size_px, line_height_px),
+            "{}",
+            GlyphFont::METRICS_ERROR,
         );
         Self {
             text_hash: Self::content_hash(text_hash),

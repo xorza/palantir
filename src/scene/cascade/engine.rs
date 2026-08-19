@@ -7,12 +7,13 @@ use crate::common::hash::Hasher;
 use crate::display::Display;
 use crate::input::key_class::KeyFilter;
 use crate::input::sense::Sense;
+use crate::layout::types::placement::Placement;
 use crate::layout::{LayerLayout, Layout};
 use crate::primitives::approx;
 use crate::primitives::approx::FloatHash;
 use crate::primitives::rect::Rect;
 use crate::primitives::span::Span;
-use crate::primitives::transform::TranslateScale;
+use crate::primitives::translate_scale::TranslateScale;
 use crate::scene::cascade::counters::CascadeCounters;
 use crate::scene::cascade::entry::{EntryRow, HitRow, ScopeRow};
 use crate::scene::cascade::paint::PaintArena;
@@ -22,7 +23,6 @@ use crate::scene::forest::Forest;
 use crate::scene::layer::Layer;
 use crate::scene::tree::Tree;
 use crate::scene::tree::record::NodeId;
-use crate::scene::tree::recording::Placement;
 use std::hash::Hasher as _;
 
 /// The three tables one tree's walk appends to, plus the layer it is
@@ -137,8 +137,8 @@ impl CascadeEngine {
             let n = tree.records.len();
             let lc = &cascade.layers[layer];
             if lc.entries_base != entries_base
-                || lc.static_hash != tree.rollups.cascade_static
-                || lc.paint_cardinality != tree.rollups.paint_cardinality
+                || lc.static_hash != tree.fingerprint.cascade_static
+                || lc.paint_cardinality != tree.fingerprint.paint_cardinality
                 || lc.subtree_hashes.len() != n
             {
                 return false;
@@ -196,8 +196,8 @@ impl CascadeEngine {
                 n as u32,
                 "run_tree must emit one entry per recorded node",
             );
-            cascade.layers[layer].static_hash = tree.rollups.cascade_static;
-            cascade.layers[layer].paint_cardinality = tree.rollups.paint_cardinality;
+            cascade.layers[layer].static_hash = tree.fingerprint.cascade_static;
+            cascade.layers[layer].paint_cardinality = tree.fingerprint.paint_cardinality;
             cascade.layers[layer].layout_hash = layout[layer].rect_hash();
         }
 

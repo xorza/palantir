@@ -25,9 +25,11 @@ use crate::host::winit::gpu::{GpuInit, SurfaceManager, WindowSurface};
 use crate::host::winit::handle::HostHandle;
 use crate::host::winit::window::{FramePresent, Window};
 use crate::host::winit::{Bootstrap, native};
-use crate::renderer::backend::BackendConfig;
+use crate::renderer::backend::backend_config::BackendConfig;
 use crate::text::shaper::TextShaper;
-use crate::window::{WindowCommands, WindowConfig, WindowToken};
+use crate::window::window_commands::WindowCommands;
+use crate::window::window_config::WindowConfig;
+use crate::window::window_token::WindowToken;
 
 pub(super) struct WinitRuntime<T> {
     /// The caller's app, created once the first window's `Ui` existed.

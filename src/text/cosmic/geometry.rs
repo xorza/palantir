@@ -15,7 +15,7 @@ use cosmic_text::Buffer;
 #[derive(Clone, Copy, Debug)]
 pub(super) struct ShapedGeometry {
     pub(super) root: TextRoot,
-    /// See [`CacheEntry::left`](super::retention::CacheEntry::left).
+    /// See [`CacheEntry::left`](super::cache_entry::CacheEntry::left).
     pub(super) left: f32,
 }
 

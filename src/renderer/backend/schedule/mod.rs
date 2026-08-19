@@ -14,7 +14,9 @@ use crate::primitives::urect::URect;
 use crate::primitives::{color::Color, color::ColorF16};
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::RenderBuffer;
-use crate::renderer::render_buffer::batch::{GroupBatch, PaintTier, TextBatch};
+use crate::renderer::render_buffer::group_batch::GroupBatch;
+use crate::renderer::render_buffer::paint_tier::PaintTier;
+use crate::renderer::render_buffer::text_batch::TextBatch;
 
 /// Per-group and per-text-batch spans into the staged mask-quad buffer.
 #[derive(Debug, Default)]

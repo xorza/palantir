@@ -1,6 +1,6 @@
 use crate::input::sense::Sense;
 use crate::layout::types::sizing::Sizing;
-use crate::primitives::interned_str::TextInput;
+use crate::primitives::text_input::TextInput;
 use crate::scene::node::{Configure, Node};
 use crate::shape::Shape;
 use crate::shape::polyline::PolylineColors;
@@ -9,7 +9,7 @@ use crate::ui::Ui;
 use crate::widgets::response::Response;
 use crate::widgets::theme::toggle::ToggleTheme;
 use crate::widgets::theme::widget_look::look_plan::LookPlan;
-use crate::widgets::toggle::{self, ToggleChrome};
+use crate::widgets::toggle_chrome::ToggleChrome;
 
 /// Two-response boolean toggle. Takes a `&mut bool` whose owner controls
 /// the value — same pattern as egui. Clicking the row flips it.
@@ -54,7 +54,6 @@ impl<'a> Checkbox<'a> {
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
         let mut widget = ui.widget(self.node);
         let response = widget.response(ui);
-        let id = widget.id();
 
         if response.left.clicked() && !response.disabled {
             *self.value = !*self.value;
@@ -62,8 +61,8 @@ impl<'a> Checkbox<'a> {
         let checked = *self.value;
 
         // Everything this widget takes off its theme slot, before
-        // `toggle_row`'s `&mut Ui` reborrow: the geometry it paints with, and
-        // the plan for the look. `toggle_row` is shared by three toggles
+        // `ToggleChrome::record_row`'s `&mut Ui` reborrow: the geometry it paints with, and
+        // the plan for the look. `record_row` is shared by three toggles
         // reading three different slots, so which slot is `Checkbox`'s own
         // business — and `style_setter!`'s `slot` is where it says so, once.
         let theme = ui.theme();
@@ -79,7 +78,7 @@ impl<'a> Checkbox<'a> {
             margin: slot.margin,
             anim: slot.anim,
         }
-        .apply(ui, id, &mut widget.node);
+        .apply(ui, &mut widget);
 
         let chrome = ToggleChrome {
             look,
@@ -88,7 +87,7 @@ impl<'a> Checkbox<'a> {
             // Square box: the theme's own corner radius stands.
             pill: None,
         };
-        toggle::toggle_row(ui, widget, response, chrome, self.label, |ui, _| {
+        chrome.record_row(ui, widget, response, self.label, |ui, _| {
             if checked {
                 ui.add_shape(
                     Shape::polyline(&check, PolylineColors::Single(indicator), indicator_stroke)

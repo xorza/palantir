@@ -33,17 +33,17 @@ use crate::FrameReport;
 use crate::app::App;
 use crate::common::clipboard::Clipboard;
 use crate::diagnostics::DebugOverlayConfig;
-use crate::diagnostics::gpu_stats::GpuPassStats;
+use crate::diagnostics::gpu_pass_stats::GpuPassStats;
 use crate::display;
 use crate::host::clock::{Clock, RealtimeClock};
 use crate::host::core::HostCore;
 use crate::host::device_requirements::DeviceRequirements;
 use crate::host::window_driver::{CpuFrame, PresentStrategy, TargetKey, WindowDriver};
 use crate::primitives::approx::EPS;
-use crate::renderer::backend::BackendConfig;
+use crate::renderer::backend::backend_config::BackendConfig;
 use crate::text::shaper::TextShaper;
 use crate::ui::Ui;
-use crate::window::WindowToken;
+use crate::window::window_token::WindowToken;
 
 /// One shared renderer driving one render stream into a texture instead of a
 /// surface. The offscreen analogue of `WinitHost`.

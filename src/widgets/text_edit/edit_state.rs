@@ -18,6 +18,13 @@ pub(super) struct EditState {
     /// `Some(caret)` — every mutation site collapses an empty selection
     /// to `None` so "selection live" is a single `is_some()` check.
     pub(super) selection: Option<usize>,
+    /// Byte the pointer started the in-flight drag-select from. `None`
+    /// when no drag is latched. Here rather than beside the pointer
+    /// state because it is a byte offset into the same host buffer as
+    /// `caret` and `selection`, and [`Self::normalize`] has to repair
+    /// all three together or a drag that outlives a host edit selects
+    /// from a stale boundary.
+    pub(super) drag_anchor: Option<usize>,
     pub(super) undo: VecDeque<EditDelta>,
     pub(super) redo: Vec<EditDelta>,
     /// Kind of the most recent recorded edit, used to coalesce
@@ -236,6 +243,9 @@ impl EditState {
         self.caret = Self::repair_offset(text, self.caret);
         self.selection = self
             .selection
+            .map(|offset| Self::repair_offset(text, offset));
+        self.drag_anchor = self
+            .drag_anchor
             .map(|offset| Self::repair_offset(text, offset));
         if self.selection == Some(self.caret) {
             self.selection = None;

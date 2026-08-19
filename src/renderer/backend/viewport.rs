@@ -7,8 +7,8 @@
 
 use crate::primitives::rect::Rect;
 use crate::primitives::urect::URect;
-use crate::renderer::plan::{DAMAGE_AA_PADDING, RenderKind};
 use crate::renderer::render_buffer::RenderBuffer;
+use crate::renderer::render_plan::{RenderKind, RenderPlan};
 use crate::scene::damage::region::DAMAGE_RECT_CAP;
 use glam::Vec2;
 use tinyvec::ArrayVec;
@@ -51,12 +51,12 @@ impl PartialScissors {
 }
 
 /// Convert a logical-px damage rect to a physical-px scissor, padded
-/// by [`DAMAGE_AA_PADDING`] on every side and clamped to the viewport.
+/// by [`RenderPlan::AA_PADDING`] on every side and clamped to the viewport.
 /// Returns `None` if the result clamps to zero area — callers degrade
 /// that case to "loaded but not drawn" inside the pass.
 fn logical_rect_to_phys_scissor(r: Rect, buffer: &RenderBuffer) -> Option<URect> {
     let phys = r.scaled_by(buffer.scale, true);
-    let pad = DAMAGE_AA_PADDING as f32;
+    let pad = RenderPlan::AA_PADDING as f32;
     let mins_x = (phys.min.x - pad).max(0.0) as u32;
     let mins_y = (phys.min.y - pad).max(0.0) as u32;
     let maxs_x = ((phys.min.x + phys.size.w + pad).max(0.0) as u32).min(buffer.viewport_phys.x);
@@ -133,8 +133,8 @@ mod tests {
     use crate::renderer::backend::viewport::{
         RepaintScissors, ViewportPush, build_repaint_scissors,
     };
-    use crate::renderer::plan::RenderKind;
     use crate::renderer::render_buffer::RenderBuffer;
+    use crate::renderer::render_plan::RenderKind;
     use crate::scene::damage::region::DamageRegion;
     use glam::{UVec2, Vec2};
     use std::time::Duration;

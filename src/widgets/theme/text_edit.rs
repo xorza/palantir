@@ -1,4 +1,4 @@
-use crate::animation::AnimSpec;
+use crate::animation::anim_spec::AnimSpec;
 use crate::input::response::ResponseState;
 use crate::primitives::approx::noop_f32;
 use crate::primitives::background::Background;

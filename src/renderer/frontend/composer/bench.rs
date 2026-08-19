@@ -5,11 +5,12 @@ use crate::primitives::texture_id::TextureId;
 use crate::renderer::frontend::capture::PaintCapture;
 use crate::renderer::frontend::composer::Composer;
 use crate::renderer::frontend::paint_sink::PaintSink;
-use crate::renderer::frontend::payload::{
-    DrawCurvePayload, DrawImagePayload, DrawMeshPayload, StrokeBounds,
-};
+use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
+use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
+use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
+use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
 use crate::renderer::render_buffer::RenderBuffer;
-use crate::scene::record_store::RecordPayloads;
+use crate::scene::record_store::record_payloads::RecordPayloads;
 use crate::scene::shapes::paint::CurveBasis;
 use criterion::{BenchmarkId, Criterion, Throughput};
 use glam::{UVec2, Vec2};

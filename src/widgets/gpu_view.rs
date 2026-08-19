@@ -1,6 +1,6 @@
 use crate::layout::types::sizing::Sizing;
-use crate::renderer::gpu_view::GpuPaint;
-use crate::renderer::gpu_view::GpuPaintRef;
+use crate::renderer::gpu_paint::GpuPaint;
+use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
 use crate::scene::node::{Configure, Node};
 use crate::ui::Ui;
 use crate::widgets::response::Response;
@@ -118,8 +118,8 @@ mod tests {
     use crate::primitives::rect::Rect;
     use crate::primitives::widget_id::WidgetId;
     use crate::renderer::frontend::Frontend;
-    use crate::renderer::gpu_view::GpuFrameCtx;
-    use crate::renderer::plan::{RenderKind, RenderPlan};
+    use crate::renderer::gpu_paint::gpu_frame_ctx::GpuFrameCtx;
+    use crate::renderer::render_plan::{RenderKind, RenderPlan};
     use crate::scene::damage::region::DamageRegion;
     use crate::scene::layer::Layer;
     use crate::scene::node::Configure;

@@ -28,7 +28,7 @@
 //! [`text_grid`]: crate::renderer::frontend::composer::text_grid
 
 use crate::primitives::urect::URect;
-use crate::renderer::render_buffer::batch::PaintTier;
+use crate::renderer::render_buffer::paint_tier::PaintTier;
 
 #[derive(Debug, Default)]
 pub(super) struct HigherKindRects {
@@ -103,7 +103,7 @@ impl HigherKindRects {
 mod tests {
     use crate::primitives::urect::URect;
     use crate::renderer::frontend::composer::higher_kind::HigherKindRects;
-    use crate::renderer::render_buffer::batch::PaintTier;
+    use crate::renderer::render_buffer::paint_tier::PaintTier;
 
     #[test]
     fn conflict_matrix_matches_replay_order_and_kind_blind_queries() {

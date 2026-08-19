@@ -23,15 +23,23 @@ use glam::UVec2;
 use crate::app::App;
 use crate::host::clock::{Clock, RealtimeClock};
 use crate::host::shared::HostShared;
-use crate::renderer::backend::{Backbuffer, Stencil, Submission, SubmissionTargets, WgpuBackend};
+use crate::renderer::backend::WgpuBackend;
+use crate::renderer::backend::backbuffer::Backbuffer;
+use crate::renderer::backend::stencil::Stencil;
+use crate::renderer::backend::submission::Submission;
+use crate::renderer::backend::submission::SubmissionTargets;
 use crate::renderer::frontend::Frontend;
-use crate::renderer::plan::{RenderKind, RenderPlan};
 use crate::renderer::render_buffer::RenderBuffer;
-use crate::renderer::render_owner::RenderOwnerId;
+use crate::renderer::render_owner_id::RenderOwnerId;
+use crate::renderer::render_plan::{RenderKind, RenderPlan};
 use crate::scene::damage::FULL_REPAINT_THRESHOLD;
 use crate::ui::Ui;
-use crate::ui::frame::{FrameInput, FrameStamp};
-use crate::window::{WindowCommands, WindowFrameState, WindowOutput, WindowToken};
+use crate::ui::frame_input::FrameInput;
+use crate::ui::frame_stamp::FrameStamp;
+use crate::window::window_commands::WindowCommands;
+use crate::window::window_frame_state::WindowFrameState;
+use crate::window::window_output::WindowOutput;
+use crate::window::window_token::WindowToken;
 use crate::{Display, FrameReport};
 
 /// Per-window state driving the host's shared [`Frontend`] and [`WgpuBackend`].

@@ -1,5 +1,5 @@
 use crate::ui::Ui;
-use crate::window::WindowToken;
+use crate::window::window_token::WindowToken;
 
 /// Application lifecycle driven by a host for each window that records.
 pub trait App {
@@ -25,7 +25,7 @@ pub trait App {
 pub(crate) mod internals {
     use crate::app::App;
     use crate::ui::Ui;
-    use crate::window::WindowToken;
+    use crate::window::window_token::WindowToken;
 
     /// An [`App`] that is nothing but its record closure — what every
     /// test driving frames actually wants. `pub` because

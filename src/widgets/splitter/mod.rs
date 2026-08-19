@@ -8,7 +8,7 @@ use crate::scene::node::{Configure, Node};
 use crate::ui::Ui;
 use crate::widgets::response::Response;
 use crate::widgets::theme::splitter::SplitterTheme;
-use crate::window::CursorIcon;
+use crate::window::cursor_icon::CursorIcon;
 
 /// Two panes split by a draggable divider. [`Splitter::horizontal`] lays
 /// the panes side by side (vertical divider bar); [`Splitter::vertical`]

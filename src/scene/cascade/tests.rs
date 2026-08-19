@@ -3,9 +3,9 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::primitives::rect::Rect;
-use crate::primitives::transform::TranslateScale;
+use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
-use crate::renderer::plan::{RenderKind, RenderPlan};
+use crate::renderer::render_plan::{RenderKind, RenderPlan};
 use crate::scene::cascade::engine::{
     CascadePrefixBits, build_cascade_prefix, cascade_fingerprint, finish_cascade_input,
 };

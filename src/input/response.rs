@@ -5,7 +5,7 @@
 //! (the same frame collated the other way about — what the pointer did, widget
 //! by widget, rather than what one widget saw), and [`InputDelta`] (the
 //! repaint hint `Ui::on_input` returns). These are pure outputs — they
-//! never reference the [`crate::input::InputState`] machine (`super`) that
+//! never reference the [`crate::input::input_state::InputState`] machine (`super`) that
 //! produces
 //! them.
 
@@ -13,7 +13,7 @@ use glam::Vec2;
 
 use crate::input::pointer::PointerButton;
 use crate::primitives::rect::Rect;
-use crate::primitives::transform::TranslateScale;
+use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 
 /// Repaint hint returned by `Ui::on_input`: `true` when the event

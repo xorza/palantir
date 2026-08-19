@@ -939,7 +939,7 @@ fn eviction_drops_the_outgoing_key_from_the_index() {
 /// pathological frame pin 32 MB for the life of the process.
 #[test]
 fn shared_atlas_clamps_device_limit_to_the_policy_cap() {
-    use crate::renderer::gradient_atlas::handle::SharedGradientAtlas;
+    use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
     use std::num::NonZeroU32;
 
     let huge = SharedGradientAtlas::new(NonZeroU32::new(16384));

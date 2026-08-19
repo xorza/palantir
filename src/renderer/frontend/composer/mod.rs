@@ -6,11 +6,14 @@
 
 use crate::display::Display;
 use crate::primitives::span::Span;
-use crate::primitives::transform::TranslateScale;
+use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::urect::URect;
 use crate::renderer::render_buffer::RenderBuffer;
-use crate::renderer::render_buffer::batch::{DrawGroup, GroupBatch, PaintTier, TextBatch};
-use crate::scene::record_store::RecordPayloads;
+use crate::renderer::render_buffer::draw_group::DrawGroup;
+use crate::renderer::render_buffer::group_batch::GroupBatch;
+use crate::renderer::render_buffer::paint_tier::PaintTier;
+use crate::renderer::render_buffer::text_batch::TextBatch;
+use crate::scene::record_store::record_payloads::RecordPayloads;
 use glam::{UVec2, Vec2};
 use std::num::NonZeroU32;
 

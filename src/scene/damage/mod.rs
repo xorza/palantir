@@ -196,7 +196,7 @@ pub(crate) const FULL_REPAINT_THRESHOLD: f32 = 0.7;
 /// - `Partial(region)` — load + scissor; one render pass per rect.
 ///
 /// Knows nothing about clear colour — that's a presentation concern
-/// stamped in by [`crate::renderer::plan::RenderPlan`] when the
+/// stamped in by [`crate::renderer::render_plan::RenderPlan`] when the
 /// damage outcome is lifted into a host-facing report.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum Damage {

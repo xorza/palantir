@@ -3,7 +3,7 @@
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
-use crate::primitives::{color::Color, rect::Rect, transform::TranslateScale};
+use crate::primitives::{color::Color, rect::Rect, translate_scale::TranslateScale};
 use crate::scene::damage::Damage;
 use crate::scene::damage::tests::support::{BLUE, RED};
 use crate::scene::layer::Layer;

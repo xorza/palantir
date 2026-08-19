@@ -2,12 +2,12 @@
 //! module contains only shared state and plain data; UI construction lives in
 //! `ui::frame_stats`, while backend collection lives in `renderer::backend`.
 
-pub(crate) mod gpu_stats;
+pub(crate) mod gpu_pass_stats;
 
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::diagnostics::gpu_stats::GpuPassStats;
+use crate::diagnostics::gpu_pass_stats::GpuPassStats;
 
 /// Per-overlay flags. Each `bool` toggles one visualization.
 /// Default is all-off; flip the flags you want individually.

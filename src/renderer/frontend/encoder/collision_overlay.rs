@@ -16,7 +16,8 @@ use crate::primitives::color::{Color, ColorF16};
 use crate::primitives::corners::Corners;
 use crate::primitives::stroke::Stroke;
 use crate::renderer::frontend::paint_sink::PaintSink;
-use crate::renderer::frontend::payload::{BrushSource, DrawQuadPayload};
+use crate::renderer::frontend::payload::brush_source::BrushSource;
+use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::scene::forest::Forest;
 
 /// Magenta — distinct from the opt-in red damage-rect overlay. Painted

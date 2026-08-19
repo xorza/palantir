@@ -7,7 +7,7 @@
 //! [`Ui`]: crate::ui::Ui
 //! [`Ui::frame`]: crate::ui::Ui::frame
 
-use crate::renderer::plan::{RenderKind, RenderPlan};
+use crate::renderer::render_plan::{RenderKind, RenderPlan};
 use std::time::Duration;
 
 /// How `Ui::frame` resolved this frame — informational, useful to
@@ -81,7 +81,7 @@ impl FrameReport {
 mod tests {
     use crate::primitives::color::Color;
     use crate::primitives::rect::Rect;
-    use crate::renderer::plan::{RenderKind, RenderPlan};
+    use crate::renderer::render_plan::{RenderKind, RenderPlan};
     use crate::scene::damage::region::DamageRegion;
     use crate::ui::frame_report::{FramePaint, FrameProcessing, FrameReport};
 

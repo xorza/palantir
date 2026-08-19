@@ -3,7 +3,6 @@ use crate::layout::types::track::Track;
 use crate::primitives::background::Background;
 use crate::scene::node::{Configure, ConfigureNode, Node};
 use crate::ui::Ui;
-use crate::widgets::chrome;
 use crate::widgets::response::InnerResponse;
 
 /// WPF-style grid: explicit row + column track definitions, per-track
@@ -115,8 +114,7 @@ impl<Rows, Cols> Grid<Rows, Cols> {
         node.set_grid_def(id);
 
         // Theme fallback for chrome / clip — see `Panel::show`.
-        let chrome = chrome::resolve_container(
-            &mut node,
+        let chrome = node.resolve_container_chrome(
             self.chrome,
             ui.theme().panel_background.as_ref(),
             ui.theme().panel_clip,

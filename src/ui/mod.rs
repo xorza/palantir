@@ -1,22 +1,30 @@
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
-pub(crate) mod frame;
 mod frame_cycle;
+pub(crate) mod frame_input;
+pub(crate) mod frame_plan;
 pub(crate) mod frame_report;
+pub(crate) mod frame_runtime;
+pub(crate) mod frame_stamp;
 mod frame_stats;
 pub(crate) mod layer_scope;
 pub(crate) mod resources;
 pub(crate) mod state;
+pub(crate) mod wake;
+pub(crate) mod wake_reasons;
 
 use std::num::NonZeroU32;
 
+use crate::animation::anim_spec::AnimSpec;
 use crate::animation::animatable::Animatable;
-use crate::animation::{AnimMap, AnimSlot, AnimSpec};
+use crate::animation::{AnimMap, AnimSlot};
 use crate::app::App;
 use crate::diagnostics::DebugOverlayConfig;
 use crate::display::Display;
 use crate::icons::icon_atlas::IconAtlas;
 use crate::icons::icon_set::IconSet;
+use crate::input::input_event::InputEvent;
+use crate::input::input_state::InputState;
 use crate::input::keyboard::{KeyboardEvent, Modifiers};
 use crate::input::pointer::PointerEvent;
 use crate::input::policy::FocusPolicy;
@@ -24,17 +32,19 @@ use crate::input::policy::InputPolicy;
 use crate::input::response::{InputDelta, PointerAction, ResponseState};
 use crate::input::shortcut::Shortcut;
 use crate::input::watch::{KeyboardWake, PointerWake};
-use crate::input::{InputEvent, InputState};
 use crate::layout::Layout;
 use crate::layout::engine::LayoutEngine;
+use crate::layout::types::sizing::Sizes;
+use crate::primitives::background::Background;
 use crate::primitives::image::Image;
 use crate::primitives::widget_id::WidgetIdMap;
 use crate::renderer::frontend::FrameScene;
-use crate::renderer::gpu_view::{GpuPaintRef, GpuViewEntry};
+use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
+use crate::renderer::gpu_paint::gpu_view_entry::GpuViewEntry;
 use crate::renderer::image_registry::{ImageHandle, RegisterImageError};
 use crate::scene::forest::Forest;
 use crate::scene::layer::Layer;
-use crate::scene::node::Node;
+use crate::scene::node::{Configure, Node};
 use crate::scene::tree::paint_anims::PaintAnim;
 use crate::text::probe::TextProbe;
 use crate::text::run::TextRun;
@@ -45,18 +55,24 @@ use crate::scene::cascade::Cascade;
 use crate::scene::cascade::engine::CascadeEngine;
 use crate::scene::damage::DamageEngine;
 use crate::shape::Lower;
-use crate::ui::frame::{FrameInput, FrameRuntime, WakeReasons};
 use crate::ui::frame_cycle::FrameCycle;
+use crate::ui::frame_input::FrameInput;
 use crate::ui::frame_report::FrameReport;
+use crate::ui::frame_runtime::FrameRuntime;
 use crate::ui::layer_scope::LayerScope;
 use crate::ui::resources::UiResources;
 use crate::ui::state::StateMap;
+use crate::ui::wake_reasons::WakeReasons;
 use crate::widgets::theme::Theme;
 use crate::widgets::widget::Widget;
-use crate::window::{
-    CursorIcon, PendingWindow, Vsync, WindowConfig, WindowFrameState, WindowGeometry,
-    WindowRequests, WindowToken,
-};
+use crate::window::cursor_icon::CursorIcon;
+use crate::window::vsync::Vsync;
+use crate::window::window_commands::PendingWindow;
+use crate::window::window_config::WindowConfig;
+use crate::window::window_frame_state::WindowFrameState;
+use crate::window::window_geometry::WindowGeometry;
+use crate::window::window_requests::WindowRequests;
+use crate::window::window_token::WindowToken;
 use glam::UVec2;
 use std::collections::hash_map::Entry;
 use std::rc::Rc;
@@ -792,6 +808,28 @@ impl Ui {
         Widget::new(self.forest.widget_id(node.salt), node)
     }
 
+    /// Record a chrome-only leaf: a sized child that paints `bg` and
+    /// holds nothing.
+    ///
+    /// The shape every rail / fill / knob segment takes — a `Slider`'s
+    /// three and a `ProgressBar`'s two. Widgets whose leaf carries more
+    /// than a size and a background build the node themselves: a `Switch`
+    /// knob adds a `position`, a `Scroll` track/thumb a `Sense` (and no
+    /// size at all — its driver assigns the rects), a `Splitter` bar a
+    /// margin and a grid cell, a `ComboBox` arrow a shape body. Threading
+    /// those through here would cost more parameters than the sharing
+    /// saves.
+    pub(crate) fn chrome_leaf(
+        &mut self,
+        id: WidgetId,
+        size: impl Into<Sizes>,
+        bg: Option<&Background>,
+    ) {
+        let leaf = Node::leaf().id(id).size(size);
+        let widget = self.widget(leaf);
+        widget.record(self, bg, |_| {});
+    }
+
     /// Snapshot of input/cascade state for a widget. `rect` and
     /// `disabled` are from the previous frame's cascade; the interaction
     /// fields (`pressed`, `hovered`, `drag_started`, `drag_delta`, …) are
@@ -1176,7 +1214,7 @@ pub(crate) mod harness;
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {
     #[cfg(test)]
-    use crate::input::InputState;
+    use crate::input::input_state::InputState;
     use crate::ui::Ui;
     use crate::widgets::theme::Theme;
     use std::rc::Rc;

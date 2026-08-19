@@ -15,7 +15,7 @@
 //! to still be set when the next click outside lands.
 //!
 //! Delivery isn't routed through watches. Pointer and keyboard
-//! events flow into their per-frame [`InputState`](crate::input::InputState)
+//! events flow into their per-frame [`InputState`](crate::input::input_state::InputState)
 //! queues. Both buffers are populated only when a relevant watch
 //! is active (the mask check short-circuits the push), so idle frames
 //! pay nothing.

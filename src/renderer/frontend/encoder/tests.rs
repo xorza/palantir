@@ -1,5 +1,5 @@
 use crate::Ui;
-use crate::input::InputEvent;
+use crate::input::input_event::InputEvent;
 use crate::input::pointer::PointerButton;
 use crate::input::sense::Sense;
 use crate::layout::types::align;
@@ -9,21 +9,25 @@ use crate::primitives::brush::gradient::FillAxis;
 use crate::primitives::brush::gradient::stops::{GradientStops, Stop};
 use crate::primitives::brush::gradient::{Interp, Spread};
 use crate::primitives::color::{ColorF16, ColorU8};
-use crate::primitives::fill_wire::FillKind;
+use crate::primitives::fill_kind::FillKind;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{
-    color::Color, rect::Rect, size::Size, stroke::Stroke, transform::TranslateScale,
+    color::Color, rect::Rect, size::Size, stroke::Stroke, translate_scale::TranslateScale,
 };
 use crate::renderer::frontend::capture::{PaintCall, PaintCapture};
 use crate::renderer::frontend::encoder::GradientResolver;
-use crate::renderer::frontend::payload::{BrushSource, DrawQuadPayload, PushClipPayload, QuadGeom};
-use crate::renderer::gradient_atlas::handle::SharedGradientAtlas;
+use crate::renderer::frontend::payload::brush_source::BrushSource;
+use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
+use crate::renderer::frontend::payload::draw_quad_payload::QuadGeom;
+use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
+use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
 use crate::scene::damage::region::DamageRegion;
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
-use crate::scene::record_store::{GradientId, RecordedGradient};
+use crate::scene::record_store::recorded_gradient::RecordedGradient;
+use crate::scene::record_store::recorded_gradients::GradientId;
 use crate::scene::shapes::paint::{CurveBasis, ShapeBrush};
 use crate::ui::harness::UiHarness;
 use crate::widgets::{frame::Frame, panel::Panel};
@@ -288,7 +292,7 @@ fn manually_pushed_shapes_emit_expected_cmds() {
 fn shadows_lower_to_shifted_drop_and_source_bounded_inset() {
     use crate::Shadow;
 
-    use crate::primitives::fill_wire::FillKind;
+    use crate::primitives::fill_kind::FillKind;
     use crate::shape::Shape;
 
     let mut h = UiHarness::new(UVec2::new(200, 200));
@@ -1122,7 +1126,7 @@ fn damage_filter_includes_descendant_overflowing_parent_rect() {
 }
 
 /// Regression: a static node sitting in the backend's AA-padding ring —
-/// just *outside* the raw damage rect but inside the `DAMAGE_AA_PADDING`
+/// just *outside* the raw damage rect but inside the `RenderPlan::AA_PADDING`
 /// (2 physical px) the backend PreClears around each scissor — must still
 /// emit its draw. The backend clears the padded region every partial
 /// frame; if the encoder's subtree-cull only tested the raw (unpadded)
@@ -1136,7 +1140,7 @@ fn damage_filter_includes_descendant_overflowing_parent_rect() {
 #[test]
 fn damage_filter_repaints_neighbor_in_aa_pad_ring() {
     // At `scale_factor == 1` (UiHarness::new) the cull margin is
-    // `DAMAGE_AA_PADDING + 1 = 3` logical px. A neighbor 2 px away is
+    // `RenderPlan::AA_PADDING + 1 = 3` logical px. A neighbor 2 px away is
     // inside the pad the backend clears → must repaint; one 10 px away is
     // well past the margin → must stay culled.
     let cases: &[(&str, Rect, usize)] = &[

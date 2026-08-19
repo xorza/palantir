@@ -31,7 +31,7 @@
 //! (surface/device startup), [`native`] (winit type conversion + window
 //! creation), [`runtime`] ([`WinitRuntime`]), and [`window`] (per-window
 //! swapchain frames). The backend-agnostic window vocabulary
-//! ([`WindowToken`], [`WindowConfig`](crate::window::WindowConfig)) lives in
+//! ([`WindowToken`], [`WindowConfig`](crate::window::window_config::WindowConfig)) lives in
 //! [`crate::window`].
 //!
 //! Usage:
@@ -80,7 +80,8 @@ use crate::host::winit::handle::{HostHandle, MainTask, UserEvent};
 use crate::host::winit::runtime::WinitRuntime;
 use crate::host::winit::window::FramePresent;
 use crate::ui::Ui;
-use crate::window::{Vsync, WindowToken};
+use crate::window::vsync::Vsync;
+use crate::window::window_token::WindowToken;
 
 type AppFactory<T> = Box<dyn FnOnce(&mut Ui, HostHandle<T>) -> T>;
 
@@ -161,7 +162,7 @@ where
     }
 
     /// Set the bootstrap window's full configuration.
-    pub fn window(mut self, window: crate::window::WindowConfig) -> Self {
+    pub fn window(mut self, window: crate::window::window_config::WindowConfig) -> Self {
         self.config.window = window;
         self
     }

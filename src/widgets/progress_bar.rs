@@ -3,7 +3,6 @@ use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
 use crate::scene::node::Node;
 use crate::ui::Ui;
-use crate::widgets::chrome;
 use crate::widgets::response::Response;
 use crate::widgets::theme::progress_bar::ProgressBarTheme;
 
@@ -49,10 +48,10 @@ impl<'a> ProgressBar<'a> {
         let id = widget.id();
         widget
             .show(ui, Some(&track), |ui| {
-                chrome::leaf(ui, id.with("fill"), (fill, Sizing::FILL), Some(&fill_bg));
+                ui.chrome_leaf(id.with("fill"), (fill, Sizing::FILL), Some(&fill_bg));
                 // Remainder spacer — its `Fill` weight pushes the fill to the
                 // correct fraction of the track width.
-                chrome::leaf(ui, id.with("rest"), (spacer, Sizing::FILL), None);
+                ui.chrome_leaf(id.with("rest"), (spacer, Sizing::FILL), None);
             })
             .response
     }

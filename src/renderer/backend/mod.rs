@@ -1,3 +1,9 @@
+//! The wgpu backend: the one GPU renderer, its per-window attachments,
+//! and the pipeline sets it builds per swapchain format.
+
+pub(crate) mod backbuffer;
+pub(crate) mod backend_config;
+pub(crate) mod backend_resources;
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
 pub(crate) mod curve_pipeline;
@@ -11,7 +17,7 @@ pub(crate) mod icon;
 pub(crate) mod image_pipeline;
 mod mesh_pipeline;
 mod overlay_pass;
-pub(crate) mod pipeline_utils;
+pub(crate) mod pipeline_recipe;
 mod quad_pipeline;
 pub(crate) mod queue;
 pub(crate) mod raster_atlas;
@@ -19,8 +25,11 @@ pub(crate) mod raster_atlas;
 // `internals` harness; every item inside stays `pub(super)`.
 pub(crate) mod schedule;
 mod shader_template;
-mod stencil;
+pub(crate) mod stencil;
+pub(crate) mod stencil_variant;
+pub(crate) mod submission;
 pub(crate) mod text;
+pub(crate) mod texture_binding;
 pub(crate) mod viewport;
 #[cfg(feature = "internals")]
 #[cfg(feature = "bench")]
@@ -37,22 +46,21 @@ use self::overlay_pass::DebugOverlay;
 use self::quad_pipeline::QuadPipeline;
 use self::queue::Queue;
 use self::schedule::{RenderStep, for_each_step};
-use self::stencil::STENCIL_FORMAT;
+use self::stencil::Stencil;
 use self::viewport::{RepaintScissors, ViewportPush, build_repaint_scissors};
-use crate::diagnostics::DebugOverlayConfig;
-use crate::diagnostics::gpu_stats::{BatchKind, GpuPassStats};
-use crate::icons::icon_registry::IconRegistry;
+use crate::diagnostics::gpu_pass_stats::{BatchKind, GpuPassStats};
+use crate::primitives::color::Color;
 use crate::primitives::urect::URect;
+use crate::renderer::backend::backbuffer::Backbuffer;
+use crate::renderer::backend::backend_config::BackendConfig;
+use crate::renderer::backend::backend_resources::BackendResources;
 use crate::renderer::backend::gpu_gradient_atlas::GpuGradientAtlas;
+use crate::renderer::backend::submission::{Submission, SubmissionTargets};
 use crate::renderer::backend::text::TextBackend;
-use crate::renderer::gradient_atlas::handle::SharedGradientAtlas;
 use crate::renderer::image_registry::ImageRegistry;
-use crate::renderer::plan::RenderPlan;
 use crate::renderer::render_buffer::RenderBuffer;
-use crate::renderer::render_buffer::batch::PaintTier;
-use crate::renderer::render_owner::RenderOwnerId;
-use crate::scene::record_store::RecordPayloads;
-use crate::text::shaper::TextShaper;
+use crate::renderer::render_buffer::paint_tier::PaintTier;
+use crate::renderer::render_owner_id::RenderOwnerId;
 use rustc_hash::FxHashMap;
 use std::time::Instant;
 use wgpu::util::StagingBelt;
@@ -73,100 +81,17 @@ use wgpu::util::StagingBelt;
 /// after a pipeline switch.
 const IMMEDIATES_BYTES: u32 = 16;
 
-/// Persistent off-screen *color* target for the backbuffer-copy path: the
-/// frontend renders into it, then [`WgpuBackend::submit`] copies it onto the
-/// caller's surface. Keeping last frame's pixels in a texture *we* own is what
-/// lets `LoadOp::Load` work for incremental damage — a fresh or rotating
-/// surface texture can't be relied on. The direct-present path skips the
-/// backbuffer entirely and renders straight into the surface.
-///
-/// Sized to match the surface texture; recreated on resize or format change.
-/// Owned per-window by `WindowDriver`; the backend is otherwise
-/// window-agnostic.
-#[derive(Debug)]
-pub(crate) struct Backbuffer {
-    tex: wgpu::Texture,
-    view: wgpu::TextureView,
-}
-
-impl Backbuffer {
-    /// Whether this backbuffer is the one a target of `size` and `format`
-    /// wants — the question `ensure_backbuffer` asks before recreating and
-    /// the skip-copy assert asks before copying.
-    ///
-    /// Format is half of it: the per-window backbuffer carries one surface's
-    /// pixels, and a format flip (window moved to an HDR output) needs a fresh
-    /// texture at the new format to match this submit's pipeline set.
-    fn describes(&self, size: wgpu::Extent3d, format: wgpu::TextureFormat) -> bool {
-        self.tex.size() == size && self.tex.format() == format
-    }
-}
-
-/// Per-window stencil attachment for rounded-clip masking, allocated lazily on
-/// the first rounded-clip frame and resized to match the render target. Kept
-/// separate from [`Backbuffer`] so the direct-present path can have a stencil
-/// without paying for a backbuffer color texture it never uses. Transient:
-/// cleared at pass open, never read across frames. Owned per-window by
-/// `WindowDriver`.
-#[derive(Debug)]
-pub(crate) struct Stencil {
-    /// Held for its extent, which [`WgpuBackend::ensure_stencil`] compares
-    /// against the target's before reusing the attachment. The view keeps
-    /// the texture alive either way, so this is a handle, not a second
-    /// record of a size the texture already knows.
-    tex: wgpu::Texture,
-    pub(crate) view: wgpu::TextureView,
-}
-
-impl Stencil {
-    /// Private, so [`WgpuBackend::ensure_stencil`] is the only way to one.
-    fn new(device: &wgpu::Device, size: wgpu::Extent3d) -> Self {
-        let tex = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("palantir.renderer.stencil"),
-            size,
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: STENCIL_FORMAT,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            view_formats: &[],
-        });
-        Self {
-            view: tex.create_view(&wgpu::TextureViewDescriptor::default()),
-            tex,
-        }
-    }
-}
-
-#[derive(Debug)]
-pub(crate) struct SubmissionTargets<'a> {
-    pub(crate) surface: &'a wgpu::Texture,
-    pub(crate) backbuffer: Option<&'a Backbuffer>,
-    pub(crate) stencil: Option<&'a wgpu::TextureView>,
-}
-
-#[derive(Debug)]
-pub(crate) struct Submission<'a> {
-    pub(crate) owner: RenderOwnerId,
-    pub(crate) targets: SubmissionTargets<'a>,
-    pub(crate) payloads: &'a RecordPayloads,
-    pub(crate) buffer: &'a RenderBuffer,
-    pub(crate) plan: RenderPlan,
-    pub(crate) debug_overlay: DebugOverlayConfig,
-}
-
-#[derive(Clone, Copy, Debug, Default)]
-pub(crate) struct BackendConfig {
-    pub(crate) collect_gpu_stats: bool,
-}
-
-#[derive(Debug)]
-pub(crate) struct BackendResources {
-    pub(crate) text: TextShaper,
-    pub(crate) images: ImageRegistry,
-    pub(crate) icons: IconRegistry,
-    pub(crate) gradient_atlas: SharedGradientAtlas,
-    pub(crate) gpu_pass_stats: GpuPassStats,
+/// The four things [`WgpuBackend::submit`] settles about a frame before
+/// it opens the encoder. Everything else the upload phase needs is on
+/// the [`Submission`] itself, which is handed over whole rather than
+/// restated field by field here.
+#[derive(Clone, Copy, Debug)]
+struct UploadPlan {
+    /// Effective clear colour after `RenderBuffer::clear_override`.
+    clear: Color,
+    dim_undamaged: bool,
+    use_stencil: bool,
+    is_partial: bool,
 }
 
 /// Wgpu renderer owning its device/queue handles, pipelines, and text backend.
@@ -349,18 +274,7 @@ impl WgpuBackend {
         if !needs_new {
             return false;
         }
-        let tex = self.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("palantir.renderer.backbuffer"),
-            size,
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
-            view_formats: &[],
-        });
-        let view = tex.create_view(&wgpu::TextureViewDescriptor::default());
-        *bb = Some(Backbuffer { tex, view });
+        *bb = Some(Backbuffer::new(&self.device, size, format));
         true
     }
 
@@ -385,7 +299,7 @@ impl WgpuBackend {
         // Drop a stale one first, then a plain get-or-insert: the two
         // steps are what let this hand back a `&Stencil` without an
         // `expect` re-reading the slot it just filled.
-        if stencil.as_ref().is_some_and(|held| held.tex.size() != size) {
+        if stencil.as_ref().is_some_and(|held| held.size() != size) {
             *stencil = None;
         }
         stencil.get_or_insert_with(|| Stencil::new(&self.device, size))
@@ -432,18 +346,16 @@ impl WgpuBackend {
     /// [Damage::Partial]: crate::scene::damage::Damage::Partial
     #[profiling::function]
     pub(crate) fn submit(&mut self, submission: Submission<'_>) {
+        let SubmissionTargets {
+            surface: surface_tex,
+            backbuffer: via_backbuffer,
+            stencil: stencil_view,
+        } = submission.targets;
         let Submission {
-            owner,
-            targets:
-                SubmissionTargets {
-                    surface: surface_tex,
-                    backbuffer: via_backbuffer,
-                    stencil: stencil_view,
-                },
-            payloads,
             buffer,
             plan,
             debug_overlay,
+            ..
         } = submission;
         // The composer may have folded a viewport-covering root
         // background quad into the clear (see
@@ -503,123 +415,16 @@ impl WgpuBackend {
         // before the render-pass phase needs `&mut encoder` cleanly;
         // yields the damage-overlay instance count for the post-copy
         // overlay pass.
-        let overlay_count = {
-            let mut ctx = GpuCtx::new(
-                &self.device,
-                &self.queue,
-                &mut self.staging_belt,
-                &mut encoder,
-            );
-
-            // Texture-only uploads (the belt is buffer-only). Run
-            // first so any draws below see the right pixels:
-            // - gradient LUT atlas: idle frames drain an empty dirty
-            //   flag and do nothing; first frame uploads row 0's
-            //   magenta fallback plus any baked rows composer queued.
-            // - image registry: first-frame images need a bind group
-            //   ready when the schedule's draw call lands.
-            self.gradient.upload(&ctx);
-            self.image.drain_registry(&mut ctx, &self.images);
-
-            if dim_undamaged {
-                self.debug.upload_dim(&mut ctx, buffer.viewport_phys_f);
-            }
-            // Damage-rect overlay quads (debug). Uploaded alongside
-            // everything else; the overlay pass itself runs last, after
-            // the backbuffer→surface copy — same upload-early /
-            // draw-late split as the dim quad above.
-            let overlay_count = if debug_overlay.damage_rect {
-                self.debug.upload_damage_rects(&mut ctx, plan, buffer)
-            } else {
-                0
-            };
-            if use_stencil {
-                // After staging, `self.quad.mask_indices` parallels
-                // `buffer.groups` / `buffer.text_batches` and
-                // `render_groups` reads it directly.
-                self.quad.stage_masks(&mut ctx, buffer);
-            }
-
-            self.quad.upload(&mut ctx, &buffer.quads);
-            self.mesh.upload(
-                &mut ctx,
-                &payloads.meshes.vertices,
-                &payloads.meshes.indices,
-                buffer.meshes.instance(),
-            );
-            self.image
-                .upload_instances(&mut ctx, buffer.images.instance());
-            // Paint every GpuView composited this frame into its off-screen
-            // target on this same encoder, before the main pass samples it.
-            // The composer listed them in `buffer.frame_targets` (size + scales
-            // + paint callback); this allocates each + runs its callback, then
-            // frees this submitter's targets absent from `buffer.live_targets`
-            // — every view the frame *recorded*, which is a wider set than the
-            // ones it painted, so an unchanged view keeps its texture
-            // (eviction is owner-scoped — the shared backend serves every
-            // window).
-            // `submit` itself carries no render-target logic.
-            self.image.paint_gpu_views(
-                &mut ctx,
-                buffer.frame_views(),
-                owner,
-                buffer.time,
-                self.text.shaper(),
-            );
-            self.curve.upload(&mut ctx, &buffer.curves);
-
-            if is_partial {
-                self.quad
-                    .upload_clear(&mut ctx, buffer.viewport_phys_f, clear);
-            }
-
-            // Text prepare: per-batch glyph encoding. Routes its
-            // vertex/atlas-staging writes through the same ctx so
-            // every text-backend write lands as
-            // `copy_buffer_to_buffer` on the main encoder. Viewport
-            // and atlas-size params ride the shared immediate region,
-            // pushed per batch by `TextBackend::render_batch` — no
-            // per-frame sync from here.
-            {
-                profiling::scope!(
-                    "text.prepare_batches",
-                    &format!("count={}", buffer.text_batches.len())
-                );
-                let interned_text = payloads.interned_text();
-                for (i, b) in buffer.text_batches.iter().enumerate() {
-                    let runs = &buffer.texts[b.texts.range()];
-                    self.text
-                        .prepare_batch(&mut ctx, buffer.scale, i, runs, &interned_text);
-                }
-            }
-
-            // One deferred vbuf write covering every batch prepared
-            // above, then the queued glyph-atlas uploads (grow blits +
-            // per-glyph copy_buffer_to_texture) on the same encoder so
-            // they share the main render submit. The staging side of
-            // those copies also routes through the belt — see
-            // `TextBackend::flush` / `atlas::flush_pending_uploads`.
-            self.text.flush(&mut ctx);
-
-            // Icons: prewarm any filtered icon at this frame's scale (an SVG
-            // filter is 10-20x an ordinary raster, so meeting one lazily is a
-            // dropped frame), then encode each batch, rasterizing misses
-            // inline the way the text prepare does.
-            {
-                profiling::scope!(
-                    "icon.prepare_batches",
-                    &format!("count={}", buffer.batches(PaintTier::Icon).len())
-                );
-                self.icon.prewarm(&mut ctx, buffer.scale);
-                for (i, b) in buffer.batches(PaintTier::Icon).iter().enumerate() {
-                    let rows = &buffer.icons[b.items.range()];
-                    self.icon.prepare_batch(&mut ctx, i, rows);
-                }
-            }
-            self.icon.flush(&mut ctx);
-
-            overlay_count
-        };
+        let overlay_count = self.upload_frame(
+            &mut encoder,
+            &submission,
+            UploadPlan {
+                clear,
+                dim_undamaged,
+                use_stencil,
+                is_partial,
+            },
+        );
 
         // Both repaint shapes go through one `begin_render_pass`:
         // - Full: one schedule walk with no scissor,
@@ -651,7 +456,7 @@ impl WgpuBackend {
         // the direct-present path, a fresh view of the surface itself.
         let surface_view;
         let color_view: &wgpu::TextureView = match via_backbuffer {
-            Some(bb) => &bb.view,
+            Some(bb) => bb.view(),
             None => {
                 surface_view = surface_tex.create_view(&wgpu::TextureViewDescriptor::default());
                 &surface_view
@@ -722,6 +527,146 @@ impl WgpuBackend {
         self.icon.end_frame();
     }
 
+    /// The belt-routed upload phase of one [`Self::submit`]: every
+    /// texture and dynamic-buffer write the frame's passes will read,
+    /// recorded onto `encoder` before any render pass opens.
+    ///
+    /// Split out of `submit` because it is the half that holds
+    /// `&mut self` — the pass phase below it reads `self.pipelines`
+    /// through a shared borrow, and the two cannot overlap. Returns the
+    /// damage-overlay instance count for the post-copy overlay pass.
+    fn upload_frame(
+        &mut self,
+        encoder: &mut wgpu::CommandEncoder,
+        sub: &Submission<'_>,
+        uploads: UploadPlan,
+    ) -> u32 {
+        let Submission {
+            owner,
+            payloads,
+            buffer,
+            plan,
+            debug_overlay,
+            ..
+        } = *sub;
+        let UploadPlan {
+            clear,
+            dim_undamaged,
+            use_stencil,
+            is_partial,
+        } = uploads;
+        let mut ctx = GpuCtx::new(&self.device, &self.queue, &mut self.staging_belt, encoder);
+
+        // Texture-only uploads (the belt is buffer-only). Run
+        // first so any draws below see the right pixels:
+        // - gradient LUT atlas: idle frames drain an empty dirty
+        //   flag and do nothing; first frame uploads row 0's
+        //   magenta fallback plus any baked rows composer queued.
+        // - image registry: first-frame images need a bind group
+        //   ready when the schedule's draw call lands.
+        self.gradient.upload(&ctx);
+        self.image.drain_registry(&mut ctx, &self.images);
+
+        if dim_undamaged {
+            self.debug.upload_dim(&mut ctx, buffer.viewport_phys_f);
+        }
+        // Damage-rect overlay quads (debug). Uploaded alongside
+        // everything else; the overlay pass itself runs last, after
+        // the backbuffer→surface copy — same upload-early /
+        // draw-late split as the dim quad above.
+        let overlay_count = if debug_overlay.damage_rect {
+            self.debug.upload_damage_rects(&mut ctx, plan, buffer)
+        } else {
+            0
+        };
+        if use_stencil {
+            // After staging, `self.quad.mask_indices` parallels
+            // `buffer.groups` / `buffer.text_batches` and
+            // `render_groups` reads it directly.
+            self.quad.stage_masks(&mut ctx, buffer);
+        }
+
+        self.quad.upload(&mut ctx, &buffer.quads);
+        self.mesh.upload(
+            &mut ctx,
+            &payloads.meshes.vertices,
+            &payloads.meshes.indices,
+            buffer.meshes.instance(),
+        );
+        self.image
+            .upload_instances(&mut ctx, buffer.images.instance());
+        // Paint every GpuView composited this frame into its off-screen
+        // target on this same encoder, before the main pass samples it.
+        // The composer listed them in `buffer.frame_targets` (size + scales
+        // + paint callback); this allocates each + runs its callback, then
+        // frees this submitter's targets absent from `buffer.live_targets`
+        // — every view the frame *recorded*, which is a wider set than the
+        // ones it painted, so an unchanged view keeps its texture
+        // (eviction is owner-scoped — the shared backend serves every
+        // window).
+        // `submit` itself carries no render-target logic.
+        self.image.paint_gpu_views(
+            &mut ctx,
+            buffer.frame_views(),
+            owner,
+            buffer.time,
+            self.text.shaper(),
+        );
+        self.curve.upload(&mut ctx, &buffer.curves);
+
+        if is_partial {
+            self.quad
+                .upload_clear(&mut ctx, buffer.viewport_phys_f, clear);
+        }
+
+        // Text prepare: per-batch glyph encoding. Routes its
+        // vertex/atlas-staging writes through the same ctx so
+        // every text-backend write lands as
+        // `copy_buffer_to_buffer` on the main encoder. Viewport
+        // and atlas-size params ride the shared immediate region,
+        // pushed per batch by `TextBackend::render_batch` — no
+        // per-frame sync from here.
+        {
+            profiling::scope!(
+                "text.prepare_batches",
+                &format!("count={}", buffer.text_batches.len())
+            );
+            let interned_text = payloads.interned_text();
+            for (i, b) in buffer.text_batches.iter().enumerate() {
+                let runs = &buffer.texts[b.texts.range()];
+                self.text
+                    .prepare_batch(&mut ctx, buffer.scale, i, runs, &interned_text);
+            }
+        }
+
+        // One deferred vbuf write covering every batch prepared
+        // above, then the queued glyph-atlas uploads (grow blits +
+        // per-glyph copy_buffer_to_texture) on the same encoder so
+        // they share the main render submit. The staging side of
+        // those copies also routes through the belt — see
+        // `TextBackend::flush` / `atlas::flush_pending_uploads`.
+        self.text.flush(&mut ctx);
+
+        // Icons: prewarm any filtered icon at this frame's scale (an SVG
+        // filter is 10-20x an ordinary raster, so meeting one lazily is a
+        // dropped frame), then encode each batch, rasterizing misses
+        // inline the way the text prepare does.
+        {
+            profiling::scope!(
+                "icon.prepare_batches",
+                &format!("count={}", buffer.batches(PaintTier::Icon).len())
+            );
+            self.icon.prewarm(&mut ctx, buffer.scale);
+            for (i, b) in buffer.batches(PaintTier::Icon).iter().enumerate() {
+                let rows = &buffer.icons[b.items.range()];
+                self.icon.prepare_batch(&mut ctx, i, rows);
+            }
+        }
+        self.icon.flush(&mut ctx);
+
+        overlay_count
+    }
+
     /// Full-viewport pass that draws one 40%-translucent black quad
     /// over the backbuffer with `LoadOp::Load`. Runs before partial
     /// damage passes when the debug `dim_undamaged` flag is on (see
@@ -755,7 +700,7 @@ impl WgpuBackend {
     /// with a mask stamped emits a tail clear under the stamp's
     /// scissor. That — not rect disjointness — is what keeps one
     /// rect's stencil writes out of a later rect's reads:
-    /// `DAMAGE_AA_PADDING` can make nominally-disjoint rects' padded
+    /// `RenderPlan::AA_PADDING` can make nominally-disjoint rects' padded
     /// scissors overlap, and the stencil clears once per pass. Each
     /// `render_groups` call's fresh `active_mask = None` therefore
     /// always matches the true stencil contents.
@@ -791,7 +736,7 @@ impl WgpuBackend {
                     // One stencil clear per *pass*, not per rect. What
                     // makes that sufficient is the schedule's tail
                     // clear (see the method doc), not rect
-                    // disjointness: `DAMAGE_AA_PADDING` can make
+                    // disjointness: `RenderPlan::AA_PADDING` can make
                     // nominally-disjoint rects' scissors overlap.
                     load: wgpu::LoadOp::Clear(0),
                     store: wgpu::StoreOp::Discard,
@@ -1125,7 +1070,7 @@ impl WgpuBackend {
         encoder: &mut wgpu::CommandEncoder,
         surface_tex: &wgpu::Texture,
     ) {
-        let bb = &backbuffer.tex;
+        let bb = backbuffer.texture();
         encoder.copy_texture_to_texture(
             wgpu::TexelCopyTextureInfo {
                 texture: bb,

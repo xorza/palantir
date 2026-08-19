@@ -3,8 +3,8 @@
 use crate::primitives::image::Image;
 use crate::primitives::texture_id::TextureId;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
-use crate::renderer::backend::pipeline_utils;
 use crate::renderer::backend::queue::Queue;
+use crate::renderer::backend::texture_binding;
 use crate::renderer::image_registry::ImageRegistry;
 use rustc_hash::FxHashMap;
 
@@ -26,7 +26,7 @@ impl ImageTextures {
     pub(super) fn new(device: &wgpu::Device) -> Self {
         Self {
             bindings: FxHashMap::default(),
-            bgl: pipeline_utils::texture_sampler_bgl(device, "palantir.image.tex.bgl"),
+            bgl: texture_binding::layout(device, "palantir.image.tex.bgl"),
             sampler: device.create_sampler(&wgpu::SamplerDescriptor {
                 label: Some("palantir.image.sampler"),
                 address_mode_u: wgpu::AddressMode::ClampToEdge,
@@ -67,7 +67,7 @@ impl ImageTextures {
         view: &wgpu::TextureView,
         label: &str,
     ) -> wgpu::BindGroup {
-        pipeline_utils::texture_bind_group(device, &self.bgl, &self.sampler, view, label)
+        texture_binding::bind_group(device, &self.bgl, &self.sampler, view, label)
     }
 }
 
@@ -113,5 +113,5 @@ fn upload(
         size,
     );
     let view = texture.create_view(&Default::default());
-    pipeline_utils::texture_bind_group(device, layout, sampler, &view, &bind_group_label)
+    texture_binding::bind_group(device, layout, sampler, &view, &bind_group_label)
 }

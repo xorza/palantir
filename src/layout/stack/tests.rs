@@ -579,7 +579,7 @@ fn fill_cross_axis_stretches_regardless_of_align() {
 
 /// Cross-cutting min/max contract: a `Hug` panel clamps its
 /// content-driven size to `[min_size, max_size]` on each axis — the same
-/// `resolve_axis_size` clamp every widget/panel goes through, so this
+/// `AxisCtx::resolve` clamp every widget/panel goes through, so this
 /// pins the behavior for all of them. Small content floors at `min_size`;
 /// large content caps at `max_size`.
 #[test]

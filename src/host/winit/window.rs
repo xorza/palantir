@@ -12,9 +12,12 @@ use crate::host::core::HostCore;
 use crate::host::window_driver::{CpuFrame, TargetKey, WindowDriver};
 use crate::host::winit::gpu::{self, SurfaceManager, WindowSurface};
 use crate::host::winit::native;
-use crate::input::InputEvent;
+use crate::input::input_event::InputEvent;
 use crate::input::response::InputDelta;
-use crate::window::{CursorIcon, Vsync, WindowCommands, WindowFrameState};
+use crate::window::cursor_icon::CursorIcon;
+use crate::window::vsync::Vsync;
+use crate::window::window_commands::WindowCommands;
+use crate::window::window_frame_state::WindowFrameState;
 
 /// Everything one native window owns: its handle, swapchain state, target-
 /// agnostic render driver, input/display facts, and event-loop schedule.
@@ -292,7 +295,11 @@ mod tests {
     use crate::host::window_driver::WindowDriver;
     use crate::host::winit::window::FramePresent;
     use crate::text::shaper::TextShaper;
-    use crate::window::{CursorIcon, Vsync, WindowCommands, WindowConfig, WindowToken};
+    use crate::window::cursor_icon::CursorIcon;
+    use crate::window::vsync::Vsync;
+    use crate::window::window_commands::WindowCommands;
+    use crate::window::window_config::WindowConfig;
+    use crate::window::window_token::WindowToken;
 
     #[test]
     fn frame_drain_collects_commands_and_applies_close_veto() {

@@ -12,7 +12,7 @@
 //! curve timestamp and pipeline statistics printed before each case.
 
 use crate::app::internals::RecordApp;
-use crate::diagnostics::gpu_stats::BatchKind;
+use crate::diagnostics::gpu_pass_stats::BatchKind;
 use crate::host::bench_gpu::{BenchGpu, Timing};
 use crate::host::offscreen::OffscreenHost;
 use crate::primitives::color::Color;

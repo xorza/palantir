@@ -8,9 +8,9 @@
 
 use crate::primitives::color::ColorF16;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
-use crate::renderer::backend::pipeline_utils;
+use crate::renderer::backend::texture_binding;
 use crate::renderer::gradient_atlas::bake::LUT_ROW_TEXELS;
-use crate::renderer::gradient_atlas::handle::SharedGradientAtlas;
+use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
 
 /// Bytes per uploaded LUT row: texture width × `Rgba16Float` texel.
 /// Derived from the CPU-side `ColorF16` row store
@@ -78,7 +78,7 @@ impl GpuGradientAtlas {
     pub(super) fn new(device: &wgpu::Device, cpu: SharedGradientAtlas) -> Self {
         // Group 0 = gradient LUT atlas + sampler. Viewport rides
         // immediates (shared with every pipeline) — no bind-group slot.
-        let bgl = pipeline_utils::texture_sampler_bgl(device, "palantir.gradient.bgl");
+        let bgl = texture_binding::layout(device, "palantir.gradient.bgl");
 
         let texture = create_texture(device, cpu.rows());
         let view = texture.create_view(&Default::default());
@@ -97,13 +97,7 @@ impl GpuGradientAtlas {
             ..Default::default()
         });
 
-        let bg = pipeline_utils::texture_bind_group(
-            device,
-            &bgl,
-            &sampler,
-            &view,
-            "palantir.gradient.bg",
-        );
+        let bg = texture_binding::bind_group(device, &bgl, &sampler, &view, "palantir.gradient.bg");
 
         Self {
             cpu,
@@ -145,7 +139,7 @@ impl GpuGradientAtlas {
             if texture.height() != rows.total_rows {
                 *texture = create_texture(ctx.device, rows.total_rows);
                 let view = texture.create_view(&Default::default());
-                *bg = pipeline_utils::texture_bind_group(
+                *bg = texture_binding::bind_group(
                     ctx.device,
                     bgl,
                     sampler,

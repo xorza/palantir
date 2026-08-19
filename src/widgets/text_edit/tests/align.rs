@@ -11,7 +11,7 @@
 
 use crate::Align;
 use crate::primitives::size::Size;
-use crate::primitives::transform::TranslateScale;
+use crate::primitives::translate_scale::TranslateScale;
 use crate::scene::layer::Layer;
 use crate::scene::shapes::paint::QuadShape;
 use crate::scene::shapes::record::ShapeRecord;
@@ -97,7 +97,7 @@ fn ed_id() -> WidgetId {
 /// Where the block child was arranged, relative to its field's own corner.
 ///
 /// The block is where the run, the wash and the caret are recorded — see
-/// [`record`](crate::widgets::text_edit::view) — because *where* it sits inside
+/// [`PaintInput::record`](crate::widgets::text_edit::paint_input::PaintInput::record) — because *where* it sits inside
 /// the inner rect is an alignment, and an alignment is the layout engine's to
 /// resolve. Every origin below is asked for in the field's own coordinates,
 /// which is this composed with the shape's origin inside the block.
@@ -835,7 +835,7 @@ mod per_line {
         let tree = &h.ui.forest.trees[Layer::Main];
         let shape_align = tree.shapes_of(node).find_map(|s| match s {
             ShapeRecord::Text { align, text, .. } => {
-                Some((*align, text.resolve(&interned_text).to_owned()))
+                Some((*align, text.source.resolve(&interned_text).to_owned()))
             }
             _ => None,
         });
@@ -1004,9 +1004,9 @@ fn text_origin_invariant_under_ancestor_transform_zoom() {
 /// where it was drawn without the value moving under the reader. What makes it
 /// worth pinning is that the offset it names is not one number but four facts in
 /// three passes — the theme's padding, the chrome stroke `Tree::open_node` folds
-/// into it, the hug reservation in [`record`](crate::widgets::text_edit::view),
+/// into it, the hug reservation in [`PaintInput::record`](crate::widgets::text_edit::paint_input::PaintInput::record),
 /// and the single caret's room
-/// [`resolve_geometry`](crate::widgets::text_edit::view) takes off the box the
+/// [`TextGeometry::resolve`](crate::widgets::text_edit::text_geometry::TextGeometry::resolve) takes off the box the
 /// run is centred in. An application working that out for itself would be
 /// copying all four and could not be told when one moved.
 ///

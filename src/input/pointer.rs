@@ -1,7 +1,7 @@
 //! Pointer event taxonomy: the [`PointerButton`] enum identifying
 //! which mouse / touchpad button fired, and the unified
 //! [`PointerEvent`] stream watchers read from
-//! [`InputState::frame_pointer_events`](crate::input::InputState).
+//! [`InputState::frame_pointer_events`](crate::input::input_state::InputState).
 //!
 //! Wake-gate flags live in
 //! [`watches::PointerWake`](crate::input::watch::PointerWake);

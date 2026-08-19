@@ -157,7 +157,7 @@ impl KeyFilter {
 
     /// A scope declaring nothing is not a scope: [`Self::empty`] is how
     /// "this node is not a scope" is stored, which is what lets the
-    /// filter live in spare [`crate::scene::node::columns::NodeFlags`]
+    /// filter live in spare [`crate::scene::node::node_flags::NodeFlags`]
     /// bits without a separate presence flag.
     #[inline]
     pub(crate) fn is_scope(self) -> bool {

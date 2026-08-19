@@ -18,23 +18,23 @@
 
 use crate::layout::LayerLayout;
 use crate::layout::axis::Axis;
+use crate::layout::axis_ctx::AxisCtx;
 use crate::layout::cache::quantize_available;
 use crate::layout::counters::PhaseSpan;
-use crate::layout::engine::{
-    LayoutEngine, NO_ARRANGE_SRC, resolve_sizing, restore_after_cache_hit,
-};
+use crate::layout::engine::LayoutEngine;
 use crate::layout::grid::{GridContext, GridTrackStore};
 use crate::layout::intrinsic::{IntrinsicRange, LenReq};
+use crate::layout::layout_scratch::NO_ARRANGE_SRC;
 use crate::layout::stack::StackScratch;
-use crate::layout::support::{TextShapeInput, leaf_text_shapes};
+use crate::layout::text_shape_input::TextShapeInput;
 use crate::layout::types::layout_mode::LayoutMode;
 use crate::layout::wrapstack::WrapScratch;
 use crate::layout::{canvas, grid, scroll, scrollbars, stack, wrapstack, zstack};
-use crate::primitives::interned_str::InternedText;
+use crate::primitives::interned_text::InternedText;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::span::Span;
-use crate::scene::node::columns::LayoutCore;
+use crate::scene::node::layout_core::LayoutCore;
 use crate::scene::tree::Tree;
 use crate::scene::tree::record::NodeId;
 use crate::text::system::TextRunSlot;
@@ -59,6 +59,50 @@ pub(crate) struct LayoutPass<'a> {
 }
 
 impl<'a> LayoutPass<'a> {
+    /// Measure children of a per-axis-hug panel (ZStack / Canvas). Per
+    /// active child, calls `layout.measure` against the per-axis-hug
+    /// `child_avail`, then folds the child's contribution (size + offset
+    /// from `contrib`) into a per-axis max. Drivers differ only in
+    /// whether they add a positional offset.
+    pub(crate) fn measure_per_axis_hug(
+        &mut self,
+        node: NodeId,
+        inner_avail: Size,
+        mut contrib: impl FnMut(&Tree, NodeId, Size) -> Size,
+    ) -> Size {
+        let tree = self.tree;
+        let node_layout = tree.records.layout()[node.idx()];
+        // Per-axis-hug availability: a `Hug` axis passes `INF` so the child
+        // reports its natural size; a bounded axis passes the committed inner
+        // extent. `INF` here is *height-given-width* via measure, not an
+        // intrinsic-replaceable sentinel — replacing it with
+        // `intrinsic(MaxContent)` looks equivalent for leaves but is wrong for
+        // nested containers whose main-axis size depends on cross-axis (Grid
+        // with wrapping cells, etc.): intrinsic queries the unbounded shape,
+        // while INF-measure runs the child's full layout under the committed cross.
+        let child_avail = Size::new(
+            if node_layout.size.w().is_hug() {
+                f32::INFINITY
+            } else {
+                inner_avail.w
+            },
+            if node_layout.size.h().is_hug() {
+                f32::INFINITY
+            } else {
+                inner_avail.h
+            },
+        );
+        let mut max_w = 0.0f32;
+        let mut max_h = 0.0f32;
+        for c in tree.active_children(node) {
+            let d = self.measure(c, child_avail);
+            let cont = contrib(tree, c, d);
+            max_w = max_w.max(cont.w);
+            max_h = max_h.max(cont.h);
+        }
+        Size::new(max_w, max_h)
+    }
+
     pub(super) fn new(
         engine: &'a mut LayoutEngine,
         tree: &'a Tree,
@@ -215,13 +259,11 @@ impl LayoutPass<'_> {
                 debug_assert_eq!(curr_end, tree.subtree_end_of(curr_start) as usize);
                 self.engine.scratch.desired[curr_start..curr_end].copy_from_slice(hit.desired);
                 self.engine.scratch.arrange_src[curr_start] = hit.nodes_base;
-                restore_after_cache_hit(
-                    &mut self.engine.scratch,
+                self.engine.scratch.restore_after_cache_hit(
                     tree,
                     curr_start..curr_end,
                     &hit,
                     self.out,
-                    self.engine.cache_rebuild,
                 );
                 return hit.root;
             }
@@ -239,7 +281,7 @@ impl LayoutPass<'_> {
         // queries during the same `run` are O(1).
         //
         // Per-axis gate: `Sizing::fixed` ignores `intrinsic_min` in
-        // both `resolve_axis_size` (Fixed branch returns `v` verbatim)
+        // both `AxisCtx::resolve` (Fixed branch returns `v` verbatim)
         // and the `dispatch_avail.max(intrinsic_min)` floor below
         // (Fixed reads neither side). Skip the query on Fixed axes so
         // a Fixed leaf doesn't trigger a subtree intrinsic walk every
@@ -258,10 +300,10 @@ impl LayoutPass<'_> {
         );
 
         // Derive `inner_avail`, dispatch to the driver, fold its raw
-        // content into a margin-inclusive `desired`. `resolve_sizing`
+        // content into a margin-inclusive `desired`. `AxisCtx::resolve_node`
         // contains the rationale for each step (intrinsic_min floor,
         // outer clamp to `[min, max]`, single-dispatch monotonicity).
-        let desired = resolve_sizing(
+        let desired = AxisCtx::resolve_node(
             layout,
             available,
             intrinsic_min,
@@ -278,9 +320,9 @@ impl LayoutPass<'_> {
     /// Dispatch one driver measure for `node` against the
     /// already-derived `inner_avail`; returns the driver's raw content
     /// size. Called exactly once per `measure` (single dispatch — see
-    /// `resolve_sizing` for why no re-measure is needed when a Fill
+    /// `AxisCtx::resolve_node` for why no re-measure is needed when a Fill
     /// axis grows past `available`); the caller folds content into a
-    /// margin-inclusive `desired` via `resolve_axis_size`.
+    /// margin-inclusive `desired` via `AxisCtx::resolve`.
     ///
     /// ## Driver contract
     ///
@@ -322,7 +364,7 @@ impl LayoutPass<'_> {
         match LayoutMode::from(layout.meta) {
             LayoutMode::Leaf => {
                 let (tree, interned_text) = (self.tree, self.interned_text);
-                let runs = leaf_text_shapes(tree, interned_text, node);
+                let runs = TextShapeInput::on_leaf(tree, interned_text, node);
                 self.shape_text_runs(node, inner_avail.w, runs)
             }
             LayoutMode::HStack => stack::measure(self, node, inner_avail, Axis::X),

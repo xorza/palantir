@@ -7,7 +7,7 @@ use crate::shape::Shape;
 use crate::shape::polyline::PolylineColors;
 use crate::shape::style::{LineCap, LineJoin};
 use crate::ui::Ui;
-use crate::widgets::context_menu::MenuItem;
+use crate::widgets::context_menu::menu_item::MenuItem;
 use crate::widgets::popup::{ClickOutside, Popup};
 use crate::widgets::response::Response;
 use crate::widgets::text::Text;
@@ -81,7 +81,7 @@ impl<'a> ComboBox<'a> {
             margin: slot.margin,
             anim: slot.anim,
         }
-        .apply(ui, id, &mut widget.node);
+        .apply(ui, &mut widget);
 
         // Handle: the geometry is read again inside the `record` closure
         // below, which owns `ui` mutably.

@@ -4,17 +4,17 @@
 
 use crate::primitives::brush::gradient::Spread;
 use crate::primitives::color::ColorF16;
-use crate::primitives::fill_wire::FillKind;
+use crate::primitives::fill_kind::FillKind;
 use crate::primitives::span::Span;
 use crate::primitives::{color::Color, corners::Corners, rect::Rect, size::Size};
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
-use crate::renderer::backend::pipeline_utils::{
-    ColorVariantSpec, PipelineRecipe, StencilVariant, build_pipeline, build_pipeline_layout,
-};
+use crate::renderer::backend::pipeline_recipe::PipelineRecipe;
 use crate::renderer::backend::schedule::{MaskPlan, build_mask_plan};
 use crate::renderer::backend::shader_template::{ShaderConstant, specialize};
-use crate::renderer::backend::stencil::STENCIL_FORMAT;
+use crate::renderer::backend::stencil::Stencil;
+use crate::renderer::backend::stencil_variant::ColorVariantSpec;
+use crate::renderer::backend::stencil_variant::StencilVariant;
 use crate::renderer::quad::{AA_RADIUS, Quad};
 use crate::renderer::render_buffer::{MAX_ROUNDED_CLIP_DEPTH, RenderBuffer};
 use glam::Vec2;
@@ -211,34 +211,33 @@ impl QuadPipeline {
         label: &'static str,
         face: wgpu::StencilFaceState,
     ) -> wgpu::RenderPipeline {
-        let layout = build_pipeline_layout(device, "palantir.quad.pl.mask", &[Some(gradient_bgl)]);
+        let layout =
+            PipelineRecipe::pipeline_layout(device, "palantir.quad.pl.mask", &[Some(gradient_bgl)]);
         let instance = Some(quad_instance_layout());
-        build_pipeline(
-            device,
-            PipelineRecipe {
-                label,
-                shader: &self.shader,
-                layout: &layout,
-                vertex_buffers: std::slice::from_ref(&instance),
-                topology: wgpu::PrimitiveTopology::TriangleStrip,
-                color_format: format,
-                fragment_entry: "fs_mask",
-                color_writes: wgpu::ColorWrites::empty(),
-                blend: None,
-                depth_stencil: Some(wgpu::DepthStencilState {
-                    format: STENCIL_FORMAT,
-                    depth_write_enabled: Some(false),
-                    depth_compare: Some(wgpu::CompareFunction::Always),
-                    stencil: wgpu::StencilState {
-                        front: face,
-                        back: face,
-                        read_mask: MAX_ROUNDED_CLIP_DEPTH,
-                        write_mask: MAX_ROUNDED_CLIP_DEPTH,
-                    },
-                    bias: wgpu::DepthBiasState::default(),
-                }),
-            },
-        )
+        PipelineRecipe {
+            label,
+            shader: &self.shader,
+            layout: &layout,
+            vertex_buffers: std::slice::from_ref(&instance),
+            topology: wgpu::PrimitiveTopology::TriangleStrip,
+            color_format: format,
+            fragment_entry: "fs_mask",
+            color_writes: wgpu::ColorWrites::empty(),
+            blend: None,
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: Stencil::FORMAT,
+                depth_write_enabled: Some(false),
+                depth_compare: Some(wgpu::CompareFunction::Always),
+                stencil: wgpu::StencilState {
+                    front: face,
+                    back: face,
+                    read_mask: MAX_ROUNDED_CLIP_DEPTH,
+                    write_mask: MAX_ROUNDED_CLIP_DEPTH,
+                },
+                bias: wgpu::DepthBiasState::default(),
+            }),
+        }
+        .build(device)
     }
 
     pub(super) fn upload(&mut self, ctx: &mut GpuCtx<'_>, quads: &[Quad]) {

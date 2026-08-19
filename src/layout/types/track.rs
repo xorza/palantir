@@ -14,6 +14,16 @@ pub struct Track {
 }
 
 impl Track {
+    /// This track's Hug floor: its content's min-content extent, raised
+    /// to the track's own `min` and capped at its `max`. The one place
+    /// the three bounds are combined, so the measure solve, the arrange
+    /// solve, and the intrinsic aggregator cannot disagree about which
+    /// wins.
+    #[inline]
+    pub(crate) fn content_floor(&self, min_content: f32) -> f32 {
+        min_content.max(self.min).min(self.max)
+    }
+
     pub const fn new(size: Sizing) -> Self {
         Self {
             size,

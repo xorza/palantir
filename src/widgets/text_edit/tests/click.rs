@@ -252,7 +252,7 @@ fn drag_select_continues_past_editor_bounds() {
     );
     {
         let st = h.ui.state_mut::<TextEditState>(ed_id);
-        assert_eq!(st.interaction.drag_anchor, Some(anchor));
+        assert_eq!(st.edit.drag_anchor, Some(anchor));
         assert_eq!(
             st.edit.selection, None,
             "a single press selects nothing yet"
@@ -276,7 +276,7 @@ fn drag_select_continues_past_editor_bounds() {
             "selection extends from the anchor — not lost"
         );
         assert_eq!(
-            st.interaction.drag_anchor,
+            st.edit.drag_anchor,
             Some(anchor),
             "anchor survives the out-of-bounds drag"
         );
@@ -308,7 +308,7 @@ fn drag_select_continues_past_editor_bounds() {
             "off-surface must not drop the selection"
         );
         assert_eq!(
-            st.interaction.drag_anchor,
+            st.edit.drag_anchor,
             Some(anchor),
             "off-surface must not drop the anchor"
         );
@@ -324,10 +324,7 @@ fn drag_select_continues_past_editor_bounds() {
             Some(anchor),
             "selection survives release"
         );
-        assert_eq!(
-            st.interaction.drag_anchor, None,
-            "release clears the drag anchor"
-        );
+        assert_eq!(st.edit.drag_anchor, None, "release clears the drag anchor");
     }
 }
 
@@ -423,7 +420,7 @@ fn select_all_on_focus_gates_on_the_flag() {
 
 #[test]
 fn caret_click_is_scale_invariant_under_zoom() {
-    use crate::primitives::transform::TranslateScale;
+    use crate::primitives::translate_scale::TranslateScale;
 
     // Clicking the same fraction of the field must land the caret on the same
     // glyph whether the canvas is zoomed or not: the click arrives in surface

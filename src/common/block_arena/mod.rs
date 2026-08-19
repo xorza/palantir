@@ -62,7 +62,7 @@ use crate::primitives::span::Span;
 /// against *its* population. Sharing the constant would make the two
 /// arguments look like one.
 ///
-/// [`MruList`]: crate::renderer::gradient_atlas::mru
+/// [`MruList`]: crate::renderer::gradient_atlas::mru_list
 const NIL: u32 = u32::MAX;
 
 /// Size class of a span of `len` entries. `len` must be non-zero — an

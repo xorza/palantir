@@ -1,8 +1,8 @@
 //! [`LayerScope`] — the builder [`Ui::layer`] hands out.
 
+use crate::layout::types::placement::Placement;
 use crate::primitives::size::Size;
 use crate::scene::layer::Layer;
-use crate::scene::tree::recording::Placement;
 use crate::ui::Ui;
 use glam::Vec2;
 

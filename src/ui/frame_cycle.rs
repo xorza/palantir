@@ -25,15 +25,19 @@ use crate::app::App;
 use crate::display;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
-use crate::renderer::plan::RenderPlan;
+use crate::renderer::render_plan::RenderPlan;
 use crate::scene::cascade::engine::cascade_fingerprint;
 use crate::scene::damage::{Damage, DamageInput};
 use crate::scene::node::Node;
 use crate::ui::Ui;
-use crate::ui::frame::{FrameClassifyInput, FrameInput, FramePlan, WakeReasons};
+use crate::ui::frame_input::FrameInput;
+use crate::ui::frame_plan::FrameClassifyInput;
+use crate::ui::frame_plan::FramePlan;
 use crate::ui::frame_report::{FrameProcessing, FrameReport};
 use crate::ui::frame_stats;
-use crate::window::{CursorIcon, WindowToken};
+use crate::ui::wake_reasons::WakeReasons;
+use crate::window::cursor_icon::CursorIcon;
+use crate::window::window_token::WindowToken;
 
 /// The host-driven half of a frame, borrowing the [`Ui`] it drives.
 ///
@@ -254,7 +258,7 @@ impl<'a> FrameCycle<'a> {
     /// the `double_layout` arm on top of the warmup for three record
     /// passes on frame 1 instead of two.
     ///
-    /// [`InputState`]: crate::input::InputState
+    /// [`InputState`]: crate::input::input_state::InputState
     fn warmup<T: App>(&mut self, win: WindowToken, app: &mut T) {
         profiling::scope!("Ui::record_pass.warmup");
         let saved_input = std::mem::take(&mut self.ui.input);

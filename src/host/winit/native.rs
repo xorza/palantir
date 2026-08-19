@@ -13,7 +13,9 @@ use winit::window::{Icon, Window as WinitWindow, WindowAttributes};
 
 use crate::host::winit::error::WinitHostError;
 use crate::primitives::image::Image;
-use crate::window::{CursorIcon, WindowConfig, WindowToken};
+use crate::window::cursor_icon::CursorIcon;
+use crate::window::window_config::WindowConfig;
+use crate::window::window_token::WindowToken;
 
 /// Map the backend-agnostic cursor vocabulary onto winit's.
 pub(super) fn cursor(cursor: CursorIcon) -> winit::window::CursorIcon {

@@ -1,6 +1,6 @@
 //! Input-scope resolution: who owns a key this pass.
 //!
-//! The sub-machine [`crate::input::InputState`] delegates every routing
+//! The sub-machine [`crate::input::input_state::InputState`] delegates every routing
 //! question to, sibling of [`crate::input::watch::Watches`]. It holds one
 //! pass's worth of derived state — the path of scopes enclosing the
 //! focused widget, the layer that path sits on, and the layer's outermost

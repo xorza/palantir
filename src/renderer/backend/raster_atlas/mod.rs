@@ -17,7 +17,7 @@ mod clock_sweep;
 pub(crate) mod content_type;
 pub(crate) mod counters;
 pub(crate) mod packed_metadata;
-pub(crate) mod quad;
+pub(crate) mod raster_quad;
 mod side;
 
 use crate::common::expiry_wheel::ExpiryWheel;
@@ -25,14 +25,15 @@ use crate::primitives::span::Span;
 use crate::renderer::backend::debug_marker;
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
-use crate::renderer::backend::pipeline_utils::StencilVariant;
 use crate::renderer::backend::raster_atlas::atlas_slot::AtlasSlot;
 use crate::renderer::backend::raster_atlas::clock_sweep::ClockSweep;
 use crate::renderer::backend::raster_atlas::content_type::ContentType;
 use crate::renderer::backend::raster_atlas::counters::AtlasCounters;
 use crate::renderer::backend::raster_atlas::packed_metadata::PackedMetadata;
-use crate::renderer::backend::raster_atlas::quad::{PARAMS_OFFSET, RasterQuad};
+use crate::renderer::backend::raster_atlas::raster_quad::RasterQuad;
 use crate::renderer::backend::raster_atlas::side::Side;
+use crate::renderer::backend::stencil_variant::StencilVariant;
+use crate::renderer::backend::texture_binding;
 use crate::renderer::backend::viewport::ViewportPush;
 use etagere::size2;
 use rustc_hash::FxHashMap;
@@ -234,6 +235,60 @@ struct BoundSides {
 /// site: [`RasterAtlas::new`] and `RasterAtlas::grow` both need the
 /// pair, and building it two ways is how the extents and the views they
 /// describe drift apart.
+/// Group 0: mask at 0, colour at 1, one shared sampler at 2 — the same entry
+/// shapes every other group uses, two textures deep instead of one.
+fn atlas_bind_group_layout(device: &wgpu::Device, label: &str) -> wgpu::BindGroupLayout {
+    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some(label),
+        entries: &[
+            texture_binding::texture_entry(0),
+            texture_binding::texture_entry(1),
+            texture_binding::sampler_entry(2),
+        ],
+    })
+}
+
+/// Nearest on both axes: a quad is drawn at its slot's own pixel dimensions,
+/// so every texel maps 1:1 and filtering could only blur what the rasterizer
+/// already got exactly right.
+fn atlas_sampler(device: &wgpu::Device, label: &str) -> wgpu::Sampler {
+    device.create_sampler(&wgpu::SamplerDescriptor {
+        label: Some(label),
+        min_filter: wgpu::FilterMode::Nearest,
+        mag_filter: wgpu::FilterMode::Nearest,
+        mipmap_filter: wgpu::MipmapFilterMode::Nearest,
+        ..Default::default()
+    })
+}
+
+fn atlas_bind_group(
+    device: &wgpu::Device,
+    layout: &wgpu::BindGroupLayout,
+    mask_view: &wgpu::TextureView,
+    color_view: &wgpu::TextureView,
+    sampler: &wgpu::Sampler,
+    label: &str,
+) -> wgpu::BindGroup {
+    device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some(label),
+        layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(mask_view),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::TextureView(color_view),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: wgpu::BindingResource::Sampler(sampler),
+            },
+        ],
+    })
+}
+
 fn bind_sides(
     device: &wgpu::Device,
     sides: &[Side; 2],
@@ -244,7 +299,7 @@ fn bind_sides(
     let mask = &sides[ContentType::Mask as usize];
     let color = &sides[ContentType::Color as usize];
     BoundSides {
-        bind_group: quad::bind_group(device, bgl, &mask.view, &color.view, sampler, label),
+        bind_group: atlas_bind_group(device, bgl, &mask.view, &color.view, sampler, label),
         atlas_px: [color.size, mask.size],
     }
 }
@@ -281,8 +336,8 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
         // Built here rather than by each tenant: the pair is a function
         // of `sides`, so the atlas is the only thing that can keep them
         // in step across a grow.
-        let bgl = quad::bind_group_layout(device, &format!("{} atlas layout", config.label));
-        let sampler = quad::sampler(device, &format!("{} sampler", config.label));
+        let bgl = atlas_bind_group_layout(device, &format!("{} atlas layout", config.label));
+        let sampler = atlas_sampler(device, &format!("{} sampler", config.label));
         let bound = bind_sides(device, &sides, &bgl, &sampler, &labels.bind_group);
 
         Self {
@@ -334,7 +389,10 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
         pass.set_pipeline(pipelines.select(use_stencil));
         pass.set_bind_group(0, &self.bind_group, &[]);
         viewport.push_into(pass);
-        pass.set_immediates(PARAMS_OFFSET, bytemuck::bytes_of(&self.atlas_px));
+        pass.set_immediates(
+            RasterQuad::PARAMS_OFFSET,
+            bytemuck::bytes_of(&self.atlas_px),
+        );
         pass.set_vertex_buffer(0, vbuf.buffer.slice(..));
         pass.draw(0..4, span.start..span.start + span.len);
     }

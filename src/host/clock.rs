@@ -2,7 +2,7 @@
 //! [`WindowDriver`](crate::host::window_driver::WindowDriver).
 //!
 //! One trait, [`Clock`], resolves the monotonic timestamp fed to every
-//! [`FrameStamp`](crate::ui::frame::FrameStamp) and sampled by paint /
+//! [`FrameStamp`](crate::ui::frame_stamp::FrameStamp) and sampled by paint /
 //! value animations. Two implementations cover the two ways frames are
 //! driven: [`RealtimeClock`] off the wall clock for on-screen windows, and
 //! [`FixedClock`] off a caller-controlled value for reproducible offscreen

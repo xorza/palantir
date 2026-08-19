@@ -227,14 +227,11 @@ fn external_buffer_replacement_repairs_offsets_before_edit_and_navigation() {
         let mut state = EditState {
             caret: case.caret,
             selection: case.selection,
-            ..Default::default()
-        };
-        let mut interaction = InteractionState {
             drag_anchor: case.drag_anchor,
+            ..Default::default()
         };
 
         state.normalize(&text);
-        interaction.normalize(&text);
         assert_eq!(
             state.caret, case.repaired_caret,
             "{}: repair caret",
@@ -246,7 +243,7 @@ fn external_buffer_replacement_repairs_offsets_before_edit_and_navigation() {
             case.label,
         );
         assert_eq!(
-            interaction.drag_anchor, case.repaired_drag_anchor,
+            state.drag_anchor, case.repaired_drag_anchor,
             "{}: repair drag anchor",
             case.label,
         );

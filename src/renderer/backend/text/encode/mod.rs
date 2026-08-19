@@ -110,7 +110,7 @@ pub(super) mod internals {
     use super::*;
     #[cfg(test)]
     use crate::common::block_arena::BlockArenaCounts;
-    use crate::renderer::backend::raster_atlas::quad::RasterQuad;
+    use crate::renderer::backend::raster_atlas::raster_quad::RasterQuad;
     use crate::renderer::backend::text::encode::cache::{EncodedCache, EncodedGlyph};
     #[cfg(test)]
     use crate::renderer::backend::text::encoded_counters::EncodedCounts;

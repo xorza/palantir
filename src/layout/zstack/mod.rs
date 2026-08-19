@@ -1,13 +1,11 @@
 use crate::layout::axis::Axis;
+use crate::layout::axis_align_pair::AxisAlignPair;
+use crate::layout::axis_placement::AxisPlacement;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange};
 use crate::layout::pass::LayoutPass;
-use crate::layout::support::{
-    AxisAlignPair, arrange_axis, children_max_intrinsic, measure_per_axis_hug, no_offset,
-    resolved_axis_align,
-};
 use crate::layout::types::layout_mode::LayoutMode;
-use crate::primitives::interned_str::InternedText;
+use crate::primitives::interned_text::InternedText;
 use crate::primitives::{rect::Rect, size::Size};
 use crate::scene::tree::Tree;
 use crate::scene::tree::record::NodeId;
@@ -24,7 +22,7 @@ pub(super) fn intrinsic(
     query: IntrinsicQuery,
     interned_text: &InternedText<'_>,
 ) -> IntrinsicRange {
-    children_max_intrinsic(layout, tree, node, axis, query, interned_text, no_offset)
+    query.children_max_at_origin(layout, tree, node, axis, interned_text)
 }
 
 /// ZStack: children all at the same position (top-left of inner rect).
@@ -39,7 +37,7 @@ pub(super) fn intrinsic(
 /// Content size = `max(child desired)` per axis, so the panel hugs the
 /// largest child (cross-axis fall-back when ZStack is Hug).
 pub(super) fn measure(pass: &mut LayoutPass<'_>, node: NodeId, inner_avail: Size) -> Size {
-    measure_per_axis_hug(pass, node, inner_avail, |_, _, d| d)
+    pass.measure_per_axis_hug(node, inner_avail, |_, _, d| d)
 }
 
 /// Each child gets a slot inside `inner`, sized per its own `Sizing` and
@@ -66,9 +64,9 @@ pub(super) fn arrange(pass: &mut LayoutPass<'_>, node: NodeId, inner: Rect) {
             d = d.min(inner.size);
         }
 
-        let AxisAlignPair { h, v } = resolved_axis_align(&s, parent_child_align);
-        let x = arrange_axis(Axis::X, h, &s, bounds, d, inner.size.w);
-        let y = arrange_axis(Axis::Y, v, &s, bounds, d, inner.size.h);
+        let AxisAlignPair { h, v } = AxisAlignPair::resolve(&s, parent_child_align);
+        let x = AxisPlacement::arrange(Axis::X, h, &s, bounds, d, inner.size.w);
+        let y = AxisPlacement::arrange(Axis::Y, v, &s, bounds, d, inner.size.h);
         let child_rect = Rect {
             min: inner.min + Vec2::new(x.offset, y.offset),
             size: Size::new(x.size, y.size),

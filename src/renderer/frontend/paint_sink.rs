@@ -67,12 +67,16 @@
 
 use crate::primitives::color::ColorF16;
 use crate::primitives::rect::Rect;
-use crate::primitives::transform::TranslateScale;
-use crate::renderer::frontend::payload::{
-    DrawCurvePayload, DrawIconPayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload,
-    DrawQuadPayload, DrawTextPayload, PushClipPayload,
-};
-use crate::renderer::gpu_view::GpuPaintRef;
+use crate::primitives::translate_scale::TranslateScale;
+use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
+use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
+use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
+use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
+use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
+use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
+use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
+use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
+use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
 use crate::text::shaped_ref::ShapedTextRef;
 
 /// Sink for one frame's lowered paint operations, in authoring order.
@@ -211,8 +215,11 @@ mod tests {
     use crate::primitives::texture_id::TextureId;
     use crate::renderer::frontend::capture::{PaintCall, PaintCapture};
     use crate::renderer::frontend::paint_sink::PaintSink;
-    use crate::renderer::frontend::payload::{DrawImagePayload, DrawPolylinePayload};
-    use crate::renderer::gpu_view::{GpuFrameCtx, GpuPaint, GpuPaintRef};
+    use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
+    use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
+    use crate::renderer::gpu_paint::GpuPaint;
+    use crate::renderer::gpu_paint::gpu_frame_ctx::GpuFrameCtx;
+    use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
     use glam::Vec2;
     use std::cell::RefCell;
     use std::rc::Rc;

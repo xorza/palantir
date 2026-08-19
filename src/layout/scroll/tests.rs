@@ -364,7 +364,7 @@ fn toggling_scroll_sizing_busts_measure_cache() {
 /// left `Hug` — that is what makes a scroll size to its content. Measure
 /// honoured that bit from the start; the intrinsic query did not, and
 /// answered zero for every panned axis. Nothing downstream of `measure`
-/// noticed, because `resolve_axis_size` takes `max(content,
+/// noticed, because `AxisCtx::resolve` takes `max(content,
 /// intrinsic_min)` and content won. A Hug grid column is where it
 /// showed: column widths come from the Phase-1 *intrinsic* walk, so the
 /// column resolved to zero and the cell it was meant to size overflowed

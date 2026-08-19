@@ -5,8 +5,8 @@ use crate::display::Display;
 use crate::icons::icon_atlas::IconId;
 use crate::icons::icon_registry::IconSetId;
 use crate::icons::icon_set::IconRef;
-use crate::primitives::interned_str::TextSource;
 use crate::primitives::span::Span;
+use crate::primitives::text_source::TextSource;
 use crate::primitives::texture_id::TextureId;
 use crate::primitives::{
     color::Color, color::ColorU8, corners::Corners, rect::Rect, stroke::Stroke,
@@ -14,14 +14,19 @@ use crate::primitives::{
 use crate::renderer::frontend::capture::PaintCapture;
 use crate::renderer::frontend::composer::Composer;
 use crate::renderer::frontend::paint_sink::PaintSink;
-use crate::renderer::frontend::payload::StrokeBounds;
-use crate::renderer::frontend::payload::{
-    BrushSource, DrawIconPayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload,
-    DrawQuadPayload, PushClipPayload,
-};
-use crate::renderer::gpu_view::{GpuFrameCtx, GpuPaint, GpuPaintRef};
+use crate::renderer::frontend::payload::brush_source::BrushSource;
+use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
+use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
+use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
+use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
+use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
+use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
+use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
+use crate::renderer::gpu_paint::GpuPaint;
+use crate::renderer::gpu_paint::gpu_frame_ctx::GpuFrameCtx;
+use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
 use crate::renderer::render_buffer::RenderBuffer;
-use crate::scene::record_store::RecordPayloads;
+use crate::scene::record_store::record_payloads::RecordPayloads;
 use crate::scene::shapes::record::ColorMode;
 use crate::shape::style::{LineCap, LineJoin};
 use crate::text::key::TextShapeKey;
@@ -203,7 +208,7 @@ pub(super) fn polyline_cmd(
 }
 
 pub(super) fn curve(b: &mut PaintCapture, bbox: Rect) {
-    use crate::renderer::frontend::payload::DrawCurvePayload;
+    use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
     use crate::scene::shapes::paint::CurveBasis;
     b.draw_curve(DrawCurvePayload {
         bounds: StrokeBounds::Still(bbox),
@@ -221,7 +226,7 @@ pub(super) fn curve(b: &mut PaintCapture, bbox: Rect) {
 }
 
 pub(super) fn image(b: &mut PaintCapture, r: Rect) {
-    use crate::renderer::frontend::payload::DrawImagePayload;
+    use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
     b.draw_image(
         DrawImagePayload::image(
             r,

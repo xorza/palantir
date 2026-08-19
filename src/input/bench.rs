@@ -21,7 +21,7 @@
 //!   accumulator-only path.
 //! - `input/mixed_stream` — interleaved moves / clicks / scrolls.
 
-use crate::input::InputEvent;
+use crate::input::input_event::InputEvent;
 use crate::input::sense::Sense;
 use crate::layout::types::sizing::Sizing;
 use crate::scene::node::Configure;

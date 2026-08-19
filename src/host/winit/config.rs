@@ -1,6 +1,6 @@
 //! [`WinitHostConfig`] — startup tunables for [`WinitHost`](super::WinitHost).
 
-use crate::window::WindowConfig;
+use crate::window::window_config::WindowConfig;
 
 /// Startup tunables for [`WinitHost`](super::WinitHost): the first
 /// window's [`WindowConfig`] plus the **app-global** GPU knobs that are

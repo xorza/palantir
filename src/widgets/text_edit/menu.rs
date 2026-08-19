@@ -2,7 +2,8 @@
 
 use crate::input::keyboard::KeyboardEvent;
 use crate::ui::Ui;
-use crate::widgets::context_menu::{ContextMenu, MenuItem};
+use crate::widgets::context_menu::ContextMenu;
+use crate::widgets::context_menu::menu_item::MenuItem;
 use crate::widgets::response::ResponseSnapshot;
 use crate::widgets::text_edit::action::{ActionAvailability, EditAction};
 use crate::widgets::text_edit::edit_state::EditState;

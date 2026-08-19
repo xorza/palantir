@@ -6,7 +6,7 @@ use crate::host::shared::HostShared;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::Color, rect::Rect};
-use crate::renderer::plan::{RenderKind, RenderPlan};
+use crate::renderer::render_plan::{RenderKind, RenderPlan};
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
 use crate::ui::harness::UiHarness;
@@ -410,12 +410,12 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
     use crate::primitives::brush::gradient::linear::LinearGradient;
     use crate::primitives::color::ColorU8;
 
-    use crate::primitives::fill_wire::LutRow;
+    use crate::primitives::lut_row::LutRow;
 
     use crate::renderer::frontend::capture::PaintCall;
     use crate::renderer::frontend::encoder;
     use crate::renderer::gradient_atlas::INITIAL_ATLAS_ROWS;
-    use crate::renderer::gradient_atlas::handle::SharedGradientAtlas;
+    use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
     use crate::shape::Shape;
     use crate::text::shaper::TextShaper;
     use crate::ui::frame_report::FrameProcessing;

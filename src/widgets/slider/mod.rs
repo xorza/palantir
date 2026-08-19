@@ -5,7 +5,6 @@ use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
 use crate::scene::node::Node;
 use crate::ui::Ui;
-use crate::widgets::chrome;
 use crate::widgets::response::Response;
 use crate::widgets::theme::slider::SliderTheme;
 use std::ops::RangeInclusive;
@@ -139,10 +138,10 @@ impl<'a> Slider<'a> {
         let [filled, remainder] = Sizing::split(fraction);
         widget.record(ui, None, |ui| {
             let rail = Sizing::fixed(rail_h);
-            chrome::leaf(ui, id.with("fill"), (filled, rail), Some(&fill_bg));
+            ui.chrome_leaf(id.with("fill"), (filled, rail), Some(&fill_bg));
             let knob = Sizing::fixed(knob);
-            chrome::leaf(ui, id.with("knob"), (knob, knob), Some(&knob_bg));
-            chrome::leaf(ui, id.with("rail"), (remainder, rail), Some(&rail_bg));
+            ui.chrome_leaf(id.with("knob"), (knob, knob), Some(&knob_bg));
+            ui.chrome_leaf(id.with("rail"), (remainder, rail), Some(&rail_bg));
         });
         SliderResponse {
             response: Response::eager(id, ui, response),

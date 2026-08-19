@@ -106,7 +106,6 @@ macro_rules! impl_configure {
 
 pub(crate) mod button;
 pub(crate) mod checkbox;
-mod chrome;
 pub(crate) mod combo_box;
 pub(crate) mod context_menu;
 pub(crate) mod drag_value;
@@ -129,6 +128,6 @@ pub(crate) mod switch;
 pub(crate) mod text;
 pub(crate) mod text_edit;
 pub(crate) mod theme;
-pub(crate) mod toggle;
+pub(crate) mod toggle_chrome;
 pub(crate) mod tooltip;
 pub(crate) mod widget;

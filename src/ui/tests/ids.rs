@@ -5,7 +5,7 @@ use crate::primitives::rect::Rect;
 use crate::primitives::span::Span;
 use crate::primitives::widget_id::WidgetId;
 use crate::renderer::frontend::Frontend;
-use crate::renderer::plan::{RenderKind, RenderPlan};
+use crate::renderer::render_plan::{RenderKind, RenderPlan};
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
 use crate::scene::tree::record::NodeId;

@@ -9,6 +9,7 @@
 //! swapped pair of metrics is a type error rather than a silent mis-key
 //! that only shows up as a cache miss.
 
+use crate::primitives::approx::EPS;
 use crate::primitives::nan::NanCheck;
 use crate::text::{FontFamily, FontWeight};
 
@@ -29,6 +30,26 @@ pub struct GlyphFont {
 }
 
 impl GlyphFont {
+    /// What every caller that rejects a face says when
+    /// [`Self::metrics_are_valid`] fails — an assert message here, a
+    /// deserialization error in the theme, so a bad size reads the same
+    /// wherever it was authored.
+    pub(crate) const METRICS_ERROR: &'static str =
+        "font size and line height must be finite and above the UI epsilon";
+
+    /// Whether a `(size, leading)` pair names a face the shaper can be
+    /// asked for. Takes the two scalars rather than a whole `GlyphFont`
+    /// because the theme validates a line height it has just derived
+    /// from a scaled size, before any face exists to hold them.
+    pub(crate) fn metrics_are_valid(size_px: f32, line_height_px: f32) -> bool {
+        size_px.is_finite() && size_px > EPS && line_height_px.is_finite() && line_height_px > EPS
+    }
+
+    /// This face's own metrics, per [`Self::metrics_are_valid`].
+    pub(crate) fn metrics_valid(&self) -> bool {
+        Self::metrics_are_valid(self.size_px, self.line_height_px)
+    }
+
     /// `size_px` in the default family and weight, led at its own size.
     ///
     /// Every field is public, so anything else is a struct update over this —

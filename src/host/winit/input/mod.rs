@@ -5,7 +5,7 @@ use winit::event::{ElementState, Ime, MouseButton, MouseScrollDelta, WindowEvent
 use winit::keyboard::{Key as WinitKey, KeyCode, ModifiersState, NamedKey, PhysicalKey};
 
 use crate::common::platform::{PLATFORM, Platform};
-use crate::input::InputEvent;
+use crate::input::input_event::InputEvent;
 use crate::input::keyboard::{Key, Modifiers, TextChunk};
 use crate::input::pointer::PointerButton;
 use crate::input::zoom;

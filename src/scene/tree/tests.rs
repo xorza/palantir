@@ -1,5 +1,6 @@
 use crate::Ui;
 use crate::common::content_hash::ContentHash;
+use crate::layout::types::placement::Placement;
 use crate::layout::types::{justify::Justify, sizing::Sizing};
 use crate::primitives::approx::EPS;
 use crate::primitives::background::Background;
@@ -12,7 +13,6 @@ use crate::scene::node::Configure;
 use crate::scene::shapes::paint::QuadShape;
 use crate::scene::shapes::record::ShapeRecord;
 use crate::scene::tree::record::NodeId;
-use crate::scene::tree::recording::Placement;
 use crate::shape::Shape;
 use crate::shape::polyline::PolylineColors;
 use crate::shape::rect::{RectKind, RectShape};
@@ -191,7 +191,7 @@ fn record_hash<F: FnMut(&mut Ui) -> NodeId>(mut f: F) -> ContentHash {
 fn record_cascade_static<F: FnMut(&mut Ui) -> NodeId>(mut f: F) -> ContentHash {
     let mut h = UiHarness::new(SURFACE);
     let _ = h.frame_value(|ui| f(ui));
-    h.ui.forest.trees[Layer::Main].rollups.cascade_static
+    h.ui.forest.trees[Layer::Main].fingerprint.cascade_static
 }
 
 #[test]
@@ -606,7 +606,7 @@ fn subtree_hash_changes_on_sibling_reorder() {
 /// keys self-paint damage off `node_hash`, so the bit must live there.
 #[test]
 fn self_transform_change_flips_node_hash() {
-    use crate::primitives::transform::TranslateScale;
+    use crate::primitives::translate_scale::TranslateScale;
     use glam::Vec2;
     fn build(ui: &mut Ui, t: TranslateScale) -> NodeId {
         Panel::hstack()
@@ -1025,7 +1025,7 @@ fn mid_recording_popup_with_text_renders_through_encoder() {
         [outer_span.start as usize..(outer_span.start + outer_span.len) as usize]
         .iter()
         .filter_map(|s| match s {
-            ShapeRecord::Text { text, .. } => Some(text.resolve(&interned_text)),
+            ShapeRecord::Text { text, .. } => Some(text.source.resolve(&interned_text)),
             _ => None,
         })
         .collect();
@@ -1036,7 +1036,7 @@ fn mid_recording_popup_with_text_renders_through_encoder() {
         [popup_root_span.start as usize..(popup_root_span.start + popup_root_span.len) as usize]
         .iter()
         .filter_map(|s| match s {
-            ShapeRecord::Text { text, .. } => Some(text.resolve(&interned_text)),
+            ShapeRecord::Text { text, .. } => Some(text.source.resolve(&interned_text)),
             _ => None,
         })
         .collect();

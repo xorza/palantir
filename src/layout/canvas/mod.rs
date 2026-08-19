@@ -1,10 +1,10 @@
 use crate::layout::axis::Axis;
+use crate::layout::axis_placement::AxisPlacement;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange};
 use crate::layout::pass::LayoutPass;
-use crate::layout::support::{arrange_size, children_max_intrinsic, measure_per_axis_hug};
 use crate::layout::types::sizing::Sizing;
-use crate::primitives::interned_str::InternedText;
+use crate::primitives::interned_text::InternedText;
 use crate::primitives::{rect::Rect, size::Size};
 use crate::scene::tree::Tree;
 use crate::scene::tree::record::NodeId;
@@ -42,7 +42,7 @@ pub(super) fn measure(pass: &mut LayoutPass<'_>, node: NodeId, inner_avail: Size
     // inflate the canvas's content size. `desired` is already ZERO for
     // collapsed children (reset at the top of `run`); arrange zeros
     // their subtrees regardless.
-    measure_per_axis_hug(pass, node, inner_avail, |tree, c, d| {
+    pass.measure_per_axis_hug(node, inner_avail, |tree, c, d| {
         let pos = tree.bounds(c).position;
         let off_x = if pos_inflates_x { pos.x } else { 0.0 };
         let off_y = if pos_inflates_y { pos.y } else { 0.0 };
@@ -79,7 +79,7 @@ pub(super) fn arrange(pass: &mut LayoutPass<'_>, node: NodeId, inner: Rect) {
         };
         let child_rect = Rect {
             min: inner.min + pos,
-            size: arrange_size(&child_layout, bounds, d, Size::new(slot_w, slot_h)),
+            size: AxisPlacement::arrange_size(&child_layout, bounds, d, Size::new(slot_w, slot_h)),
         };
         pass.arrange(c, child_rect);
     }
@@ -104,7 +104,7 @@ pub(super) fn intrinsic(
         axis.main_sizing(tree.records.layout()[node.idx()].size),
         Sizing::HUG
     );
-    children_max_intrinsic(layout, tree, node, axis, query, interned_text, |tree, c| {
+    query.children_max(layout, tree, node, axis, interned_text, |tree, c| {
         if pos_inflates {
             axis.main_v(tree.bounds(c).position)
         } else {

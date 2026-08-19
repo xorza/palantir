@@ -8,22 +8,19 @@
 //! `#[derive(Animatable)]` from `palantir-anim-derive` wires the
 //! math; this module wires the storage.
 
+pub(crate) mod anim_spec;
 pub(crate) mod animatable;
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
+mod duration;
 pub(crate) mod easing;
-mod serde;
 mod spring;
 
+use crate::animation::anim_spec::{AnimMotion, AnimSpec};
 use crate::animation::animatable::Animatable;
-use crate::animation::easing::Easing;
-use crate::animation::spring::{
-    params_are_valid as spring_params_are_valid, stable_substep_dt, step as spring_step,
-    within_duration_snap_eps, within_settle_eps,
-};
-use crate::common::time::ANIM_SUBSTEP_DT;
+use crate::animation::duration::within_duration_snap_eps;
+use crate::animation::spring::{step as spring_step, within_settle_eps};
 use crate::common::typed_stores::{TypedStore, TypedStores};
-use crate::primitives::approx::EPS;
 use crate::primitives::widget_id::WidgetId;
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::hash_map::Entry;
@@ -98,138 +95,6 @@ impl From<&'static str> for AnimSlot {
     #[inline]
     fn from(s: &'static str) -> Self {
         Self::new(s)
-    }
-}
-
-/// How a value moves toward its target. Animation itself is opt-in
-/// at the call site — pass `None` to [`crate::Ui::animate`] (or omit
-/// the field on a theme) when you want snap-to-target behavior.
-/// `AnimSpec` only describes what motion looks like *when there is
-/// motion*; "no animation" lives in `Option<AnimSpec>`, not as a
-/// variant here.
-///
-/// Wire format is internally tagged on `kind` (snake_case), so theme
-/// files read cleanly:
-///
-/// ```toml
-/// [theme.button.anim]
-/// kind = "duration"
-/// secs = 0.12
-/// ease = "out_cubic"
-///
-/// [theme.button.anim]
-/// kind = "spring"
-/// stiffness = 170.0
-/// damping = 26.0
-/// ```
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct AnimSpec {
-    motion: AnimMotion,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-enum AnimMotion {
-    Duration {
-        secs: f32,
-        ease: Easing,
-    },
-    Spring {
-        stiffness: f32,
-        damping: f32,
-        substep_dt: f32,
-    },
-}
-
-const MAX_DURATION_SECS: f32 = 60.0;
-const DURATION_ERROR: &str = "animation duration must be finite and in 0.0..=60.0 seconds";
-const SPRING_ERROR: &str =
-    "spring parameters must be positive, finite, convergent, and within the integration limit";
-
-const fn duration_is_valid(secs: f32) -> bool {
-    secs.is_finite() && secs >= 0.0 && secs <= MAX_DURATION_SECS
-}
-
-impl AnimSpec {
-    /// 120 ms ease-out-cubic. Snappy hover/press default.
-    pub const FAST: Self = Self {
-        motion: AnimMotion::Duration {
-            secs: 0.12,
-            ease: Easing::OutCubic,
-        },
-    };
-    /// 200 ms ease-out-cubic. Popup reveal / panel slide default.
-    pub const MEDIUM: Self = Self {
-        motion: AnimMotion::Duration {
-            secs: 0.2,
-            ease: Easing::OutCubic,
-        },
-    };
-    /// Near-critically-damped spring tuned as a general-purpose default.
-    pub const SPRING: Self = Self {
-        motion: AnimMotion::Spring {
-            stiffness: 170.0,
-            damping: 26.0,
-            substep_dt: ANIM_SUBSTEP_DT,
-        },
-    };
-
-    /// Construct a duration animation. Values below `1e-4` canonicalize to an
-    /// instant snap.
-    ///
-    /// # Panics
-    ///
-    /// Panics unless `secs` is finite and in `0.0..=60.0`.
-    pub const fn duration(secs: f32, ease: Easing) -> Self {
-        assert!(
-            duration_is_valid(secs),
-            "animation duration must be finite and in 0.0..=60.0 seconds"
-        );
-        Self::duration_from_validated(secs, ease)
-    }
-
-    const fn duration_from_validated(secs: f32, ease: Easing) -> Self {
-        let secs = if secs < EPS { 0.0 } else { secs };
-        Self {
-            motion: AnimMotion::Duration { secs, ease },
-        }
-    }
-
-    /// Construct a damped spring whose convergence rate and adaptive
-    /// integration cost stay within the supported UI-animation domain.
-    ///
-    /// # Panics
-    ///
-    /// Panics when either parameter is non-positive/non-finite, the slowest
-    /// decay rate is below 1/s, or a maximally clamped frame would require
-    /// more than 256 integration substeps.
-    pub fn spring(stiffness: f32, damping: f32) -> Self {
-        let substep_dt = stable_substep_dt(stiffness, damping);
-        assert!(
-            spring_params_are_valid(stiffness, damping, substep_dt),
-            "{SPRING_ERROR}"
-        );
-        Self::spring_from_validated(stiffness, damping, substep_dt)
-    }
-
-    fn spring_from_validated(stiffness: f32, damping: f32, substep_dt: f32) -> Self {
-        Self {
-            motion: AnimMotion::Spring {
-                stiffness,
-                damping,
-                substep_dt,
-            },
-        }
-    }
-
-    /// True when this spec collapses to a single-frame snap — a
-    /// `Duration` canonicalized to zero seconds. Springs are never instant by
-    /// construction. `Ui::animate` short-circuits on this and on `None`.
-    #[inline(always)]
-    pub fn is_instant(self) -> bool {
-        match self.motion {
-            AnimMotion::Duration { secs, .. } => secs == 0.0,
-            AnimMotion::Spring { .. } => false,
-        }
     }
 }
 
