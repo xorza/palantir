@@ -232,45 +232,6 @@ from what it describes, and nothing catches it.
       `clock_sweep.rs`, `atlas_slot.rs`, `content_type.rs`,
       `packed_metadata.rs`), as are all six files in `src/icons/` and
       `src/text/wrap.rs`.
----
-
-## One fact with several owners
-
-State that is copied rather than referenced, so the copies can disagree and
-usually need an assert or a reset protocol to keep them from doing so.
-
-Investigated in full and **closed**. What was real is fixed: the composer's
-active clip (a cached projection of `clip_stack` read inconsistently against
-it), `DrawImagePayload.gpu_view`, `RenderBuffer.time`, the two derivations of
-`max_texture_dimension_2d`, `close_vetoed`'s unreachable third clear, the
-`TextShaper` clock ticked through the layout engine, `ScrollGeometry`'s
-embedded copy of its own two numbers, `GpuPaintRef` being defeated by
-`GpuView`, `pixel_snap`'s forgettable splice, `ensure_stencil`'s out-parameter
-and the infallible `expect` undoing it, the gradient atlas's two parallel
-bookkeeping columns, `first_frame`'s two derivations, and — the only one where
-the copies could actually disagree — `TextEdit`'s two mints of the
-buffer-identity hash, which differed on the `0 → 1` mapping and so agreed only
-*usually*.
-
-The rest were rejected with evidence:
-
-- **`seen_ids` has four owners because four consumers need four lifetimes.**
-  `prev` is a map rather than a set deliberately: `Endpoint` is 8 bytes, so
-  the unread value costs ~8 KB on a thousand-widget UI, while a set would
-  replace an O(1) `mem::swap` with an O(N) hash-insert pass *every frame*.
-  `Cascade::by_id` holds the previous **pass**, which is what a second record
-  pass needs and what `prev` explicitly cannot supply.
-- **`Ui` is a one-way mailbox in each direction**, and `Window::close_requested`
-  is not a third copy — the two extra writes are inside `mod tests`. The
-  production flow is latch → per-frame view → drain → clear.
-- **Grid track state's duplication is load-bearing.** The durable store exists
-  because the depth scratch is clobbered by sibling grids before arrange, and
-  making it per-grid means an allocation per grid per frame. What *was* wrong
-  was the name: the store is bound as `track_state` now, not `hugs`, which it
-  outgrew — the `HugRanges` view keeps the name, being the thing it describes.
-- **The surface size's three copies are three subsystems' own.** The two
-  `debug_assert!`s in `render_to_texture` are the seam where they must agree,
-  which is the right place to check rather than a copy to remove.
 
 ---
 
