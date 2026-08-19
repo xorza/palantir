@@ -50,14 +50,17 @@
 //! builds skip the per-node `Vec::push` entirely; tests and benches
 //! assert on it through this gate.
 
+use crate::common::block_arena::BlockArena;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::widget_id::WidgetIdMap;
 use crate::scene::cascade::Cascade;
+use crate::scene::cascade::paint::Paint;
 use crate::scene::cascade::paint::PaintRows;
 use crate::scene::damage::counters::DamageCounters;
+use crate::scene::damage::node_snapshot::NodeSnapshot;
 use crate::scene::damage::region::{DEFAULT_PASS_BUDGET_PX, DamageRegion};
-use crate::scene::damage::snapshot::{NodeSnapshot, PaintSnapArena};
+use crate::scene::damage::row_matcher::RowMatcher;
 use crate::scene::damage::walk::{LayerWalk, ParentFrame};
 use crate::scene::forest::Forest;
 use rustc_hash::FxHashSet;
@@ -66,8 +69,9 @@ use std::time::Duration;
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
 pub(crate) mod counters;
+pub(crate) mod node_snapshot;
 pub(crate) mod region;
-pub(crate) mod snapshot;
+pub(crate) mod row_matcher;
 mod walk;
 
 /// Output of one frame's damage pass plus the cross-frame state it
@@ -75,9 +79,9 @@ mod walk;
 ///
 /// `prev` is the per-`WidgetId` snapshot map carried over from last
 /// frame; it's mutated in place during `compute` (read old, write
-/// new) so steady-state frames don't allocate. `arena` holds the
-/// per-paint backing storage for those snapshots — see
-/// [`PaintSnapArena`].
+/// new) so steady-state frames don't allocate. `paints` holds the
+/// per-paint backing storage those snapshots span — see
+/// [`NodeSnapshot`].
 ///
 /// Capacities on `prev` are retained across frames; the returned
 /// [`Damage`] / [`DamageRegion`] is `Copy` and threads through
@@ -97,9 +101,14 @@ pub(crate) struct DamageEngine {
     /// already enforced by `SeenIds::record` at recording time, so
     /// the bare `WidgetId` key is safe.
     pub(crate) prev: WidgetIdMap<NodeSnapshot>,
-    /// Paint-snap arena referenced by every `NodeSnapshot.paint_span`.
-    /// See [`PaintSnapArena`] for the lifecycle.
-    pub(crate) arena: PaintSnapArena,
+    /// Per-paint backing storage every `NodeSnapshot.paint_span` points
+    /// into. See [`NodeSnapshot`] for the block lifecycle.
+    pub(crate) paints: BlockArena<Paint>,
+    /// Retained scratch for the per-node row pairing. Beside the storage
+    /// rather than wrapped with it: the diff slices live spans out of
+    /// `paints.slots` on every leg, so a wrapper that owned both only hid
+    /// where the storage was.
+    matcher: RowMatcher,
     /// Pass-1 scratch buffer. `compute` walks every damage source
     /// (structural diff, predamaged anim rects, removed-widget evict)
     /// and appends each contribution here without applying the merge
@@ -131,7 +140,8 @@ impl Default for DamageEngine {
             counters: DamageCounters::default(),
             budget_px: DEFAULT_PASS_BUDGET_PX,
             prev: WidgetIdMap::default(),
-            arena: PaintSnapArena::default(),
+            paints: BlockArena::default(),
+            matcher: RowMatcher::default(),
             raw_rects: Vec::new(),
             order_extents: Vec::new(),
             parent_stack: Vec::new(),
@@ -225,7 +235,7 @@ impl DamageEngine {
     /// from scratch but still returns `Damage::Full`.
     fn invalidate_prev(&mut self) {
         self.prev.clear();
-        self.arena.paints.clear();
+        self.paints.clear();
     }
 
     /// Diff against the just-finished frame and return a
@@ -296,7 +306,8 @@ impl DamageEngine {
         for (layer, tree) in forest.trees.iter_paint_order() {
             LayerWalk {
                 prev: &mut self.prev,
-                arena: &mut self.arena,
+                paints: &mut self.paints,
+                matcher: &mut self.matcher,
                 raw_rects: &mut self.raw_rects,
                 order_extents: &mut self.order_extents,
                 parents: &mut self.parent_stack,
@@ -338,8 +349,8 @@ impl DamageEngine {
         for wid in removed {
             if let Some(snap) = self.prev.remove(wid) {
                 self.raw_rects
-                    .extend(self.arena.paints.slots[snap.paint_span.range()].screens());
-                self.arena.paints.release(snap.paint_span);
+                    .extend(self.paints.slots[snap.paint_span.range()].screens());
+                self.paints.release(snap.paint_span);
             }
         }
 
@@ -432,7 +443,7 @@ impl DamageEngine {
     /// didn't paint last frame (no `prev` entry).
     pub(crate) fn prev_paint_rect(&self, wid: WidgetId) -> Option<Rect> {
         let snap = self.prev.get(&wid)?;
-        self.arena.paints.slots[snap.paint_span.range()].union_screens()
+        self.paints.slots[snap.paint_span.range()].union_screens()
     }
 }
 

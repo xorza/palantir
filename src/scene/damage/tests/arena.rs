@@ -56,11 +56,11 @@ fn canvas(ui: &mut Ui, id: &'static str, shapes: u32) {
 }
 
 fn arena_len(h: &UiHarness) -> usize {
-    h.ui.damage_engine.arena.paints.slots.len()
+    h.ui.damage_engine.paints.slots.len()
 }
 
 fn free_classes(h: &UiHarness) -> usize {
-    h.ui.damage_engine.arena.paints.classes_with_free_blocks()
+    h.ui.damage_engine.paints.classes_with_free_blocks()
 }
 
 fn span_of(h: &UiHarness, id: &'static str) -> Span {
@@ -95,7 +95,7 @@ fn a_toggling_shape_count_trades_two_blocks_forever() {
     assert_eq!(settled, 10);
     assert_eq!(free_classes(&h), 1, "the 4-row block is parked");
 
-    let before = h.ui.damage_engine.arena.paints.counters.counts();
+    let before = h.ui.damage_engine.paints.counters.counts();
     const FRAMES: u32 = 200;
     for f in 0..FRAMES {
         frame(&mut h, build(3 + f % 2));
@@ -112,7 +112,7 @@ fn a_toggling_shape_count_trades_two_blocks_forever() {
         assert_eq!(free_classes(&h), 1, "exactly one block sits idle");
     }
 
-    let delta = h.ui.damage_engine.arena.paints.counters.counts() - before;
+    let delta = h.ui.damage_engine.paints.counters.counts() - before;
     assert_eq!(
         (delta.allocs, delta.reuses),
         (0, FRAMES),
@@ -180,7 +180,7 @@ fn a_quiet_node_keeps_its_span_while_a_neighbour_churns() {
     frame(&mut h, build(4));
     frame(&mut h, build(4));
     let quiet_span = span_of(&h, "quiet");
-    let quiet_rows: Vec<_> = h.ui.damage_engine.arena.paints.slots[quiet_span.range()].to_vec();
+    let quiet_rows: Vec<_> = h.ui.damage_engine.paints.slots[quiet_span.range()].to_vec();
     assert_eq!(quiet_span.len, 4, "chrome plus three shapes");
 
     // Walk the churner across four size classes, several times over —
@@ -195,7 +195,7 @@ fn a_quiet_node_keeps_its_span_while_a_neighbour_churns() {
         );
     }
     assert_eq!(
-        h.ui.damage_engine.arena.paints.slots[quiet_span.range()],
+        h.ui.damage_engine.paints.slots[quiet_span.range()],
         quiet_rows[..],
         "and its rows are byte-identical, not merely at the same index",
     );
@@ -284,7 +284,7 @@ fn a_forced_full_frame_resets_the_arena_without_stale_free_heads() {
     let span = span_of(&h, "a");
     assert_eq!(span.len, 1, "the 50x50 frame contributes its chrome row");
     assert_eq!(
-        h.ui.damage_engine.arena.paints.slots[span.range()][0].screen,
+        h.ui.damage_engine.paints.slots[span.range()][0].screen,
         Rect::new(0.0, 0.0, 50.0, 50.0),
     );
 }

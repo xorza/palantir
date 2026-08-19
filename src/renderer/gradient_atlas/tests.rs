@@ -409,10 +409,10 @@ fn register_full_atlas_evicts_lru_and_preserves_row_zero() {
     let _ = atlas.flush();
     let lru = filled_rows[0];
     // Push one more distinct gradient → forces eviction.
-    let evictions = atlas.counters.evictions();
+    let evictions = atlas.counters.counts().evictions;
     let new_row = register_for(&mut atlas, distinct_grad(9999.0));
     assert_eq!(
-        atlas.counters.evictions(),
+        atlas.counters.counts().evictions,
         evictions + 1,
         "the newcomer must have displaced a resident, not taken a free row",
     );
@@ -517,16 +517,16 @@ fn growth_stops_at_max_rows_and_falls_back() {
     assert_eq!(atlas.capacity(), INITIAL_ATLAS_ROWS * 2);
     assert_eq!(rows.len(), (INITIAL_ATLAS_ROWS * 2 - 1) as usize);
 
-    let bakes = atlas.counters.bakes();
+    let bakes = atlas.counters.counts().bakes;
     let overflow = register_for(&mut atlas, distinct_grad(9999.0));
     assert_eq!(
         overflow,
         LutRow::FALLBACK,
         "capped atlas must fall back to magenta, not evict a live row",
     );
-    assert_eq!(atlas.counters.fallbacks(), 1);
+    assert_eq!(atlas.counters.counts().fallbacks, 1);
     assert_eq!(
-        atlas.counters.bakes(),
+        atlas.counters.counts().bakes,
         bakes,
         "a fallback must not bake — there is no row to bake into",
     );
@@ -706,6 +706,43 @@ fn flush_range_covers_min_to_max_dirty_rows() {
     assert!(atlas.flush().is_none());
 }
 
+/// What the span above *costs*, reported rather than left to be
+/// inferred from a byte length nothing reads back.
+///
+/// Two rows re-baked with a resident row between them upload three, and
+/// `rows_uploaded` against `bakes` is the only place that shows. The
+/// gap is what a scattered dirty set pays: the tracker is a `(min, max)`
+/// pair, so it can say "rows 1 through 3" and never "rows 1 and 3".
+#[test]
+fn rows_uploaded_counts_the_whole_span_not_the_rows_that_changed() {
+    let mut atlas = CpuGradientAtlas::default();
+    let _ = atlas.flush(); // drain the magenta init row
+
+    // Three consecutive rows, then a flush that clears the dirty range.
+    let a = register_for(&mut atlas, distinct_grad(0.1));
+    let b = register_for(&mut atlas, distinct_grad(0.2));
+    let c = register_for(&mut atlas, distinct_grad(0.3));
+    assert_eq!((a.0, b.0, c.0), (1, 2, 3), "claims walk ascending from 1");
+    let _ = atlas.flush();
+    let before = atlas.counters.counts();
+
+    // Re-bake only the outer two, by evicting them: register two fresh
+    // gradients after filling the table would be a bigger fixture, so
+    // dirty them directly through the one path that marks rows.
+    atlas.mark_row_dirty(1);
+    atlas.mark_row_dirty(3);
+    let f = atlas.flush().expect("two dirtied rows must flush");
+    assert_eq!(f.first_row, 1);
+    assert_eq!(f.bytes.len(), 3 * size_of::<LutRowTexels>());
+
+    let delta = atlas.counters.counts() - before;
+    assert_eq!(delta.bakes, 0, "nothing was re-baked, only re-uploaded");
+    assert_eq!(
+        delta.rows_uploaded, 3,
+        "row 2 rode along because it sits between the two that changed",
+    );
+}
+
 /// The invariant `register_stops` reads eviction off: rows registered
 /// this epoch form a head prefix of the MRU list, so checking the tail
 /// alone is equivalent to scanning for the oldest unprotected row.
@@ -774,7 +811,7 @@ fn growth_leaves_resident_lookups_on_their_original_rows() {
     register_for(&mut atlas, distinct_grad(9999.0));
     assert_eq!(atlas.capacity(), INITIAL_ATLAS_ROWS * 2);
 
-    let bakes = atlas.counters.bakes();
+    let bakes = atlas.counters.counts().bakes;
     for (g, &row) in resident.iter().zip(&before) {
         assert_eq!(
             atlas.resident_row(&g.stops, g.interp),
@@ -789,7 +826,7 @@ fn growth_leaves_resident_lookups_on_their_original_rows() {
         );
     }
     assert_eq!(
-        atlas.counters.bakes(),
+        atlas.counters.counts().bakes,
         bakes,
         "re-registering after growth baked at all — the open-addressed \
          table used to duplicate here because its probe modulus moved",
@@ -879,8 +916,8 @@ fn steady_state_frames_never_rebake() {
         .iter()
         .map(|g| register_for(&mut atlas, g.clone()))
         .collect();
-    assert_eq!(atlas.counters.bakes(), GRADIENTS);
-    let after_warmup = atlas.counters.bakes();
+    let after_warmup = atlas.counters.counts().bakes;
+    assert_eq!(after_warmup, GRADIENTS);
 
     for _ in 0..FRAMES {
         atlas.flush();
@@ -893,16 +930,16 @@ fn steady_state_frames_never_rebake() {
         }
     }
 
+    let counts = atlas.counters.counts();
     assert_eq!(
-        atlas.counters.bakes(),
-        after_warmup,
+        counts.bakes, after_warmup,
         "a steady-state frame must not bake",
     );
-    assert_eq!(atlas.counters.evictions(), 0);
-    assert_eq!(atlas.counters.growths(), 0);
-    assert_eq!(atlas.counters.hits(), GRADIENTS * FRAMES);
+    assert_eq!(counts.evictions, 0);
+    assert_eq!(counts.growths, 0);
+    assert_eq!(counts.hits, GRADIENTS * FRAMES);
     assert_eq!(
-        atlas.counters.registrations(),
+        counts.registrations,
         GRADIENTS * (FRAMES + 1),
         "warm-up misses plus every frame's hits",
     );
@@ -944,17 +981,15 @@ fn cross_epoch_churn_evicts_without_growing() {
     }
 
     let registrations = (working_set * 4) as u32;
-    assert_eq!(atlas.counters.registrations(), registrations);
-    assert_eq!(atlas.counters.growths(), 0);
+    let counts = atlas.counters.counts();
+    assert_eq!(counts.registrations, registrations);
+    assert_eq!(counts.growths, 0);
     // Cyclic access over 2x the table never reuses a resident row, so
     // every registration misses; the first INITIAL_ATLAS_ROWS - 1 take
     // never-claimed rows and the rest evict.
-    assert_eq!(atlas.counters.hits(), 0, "cyclic churn cannot hit");
-    assert_eq!(atlas.counters.bakes(), registrations);
-    assert_eq!(
-        atlas.counters.evictions(),
-        registrations - (INITIAL_ATLAS_ROWS - 1),
-    );
+    assert_eq!(counts.hits, 0, "cyclic churn cannot hit");
+    assert_eq!(counts.bakes, registrations);
+    assert_eq!(counts.evictions, registrations - (INITIAL_ATLAS_ROWS - 1),);
     assert_eq!(atlas.index_len(), (INITIAL_ATLAS_ROWS - 1) as usize);
 }
 
@@ -981,20 +1016,13 @@ fn every_miss_bakes_exactly_one_row() {
         register_for(&mut atlas, content[i].clone());
     }
 
-    assert_eq!(atlas.counters.bakes(), expected_bakes);
+    let counts = atlas.counters.counts();
+    assert_eq!(counts.bakes, expected_bakes);
+    assert_eq!(counts.bakes, 40, "each distinct gradient baked once");
     assert_eq!(
-        atlas.counters.bakes(),
-        40,
-        "each distinct gradient baked once"
-    );
-    assert_eq!(
-        atlas.counters.hits(),
+        counts.hits,
         sequence.len() as u32 - expected_bakes,
         "every non-first occurrence must resolve from the index",
     );
-    assert_eq!(
-        atlas.counters.evictions(),
-        0,
-        "40 gradients fit in 255 rows"
-    );
+    assert_eq!(counts.evictions, 0, "40 gradients fit in 255 rows");
 }

@@ -55,6 +55,14 @@ use crate::primitives::span::Span;
 /// block start: a start is an index into the arena, which is bounded by
 /// the owner population, and `u32::MAX` slots is a buffer no tenant can
 /// reach.
+///
+/// The gradient atlas's [`MruList`] carries a sentinel of the same value
+/// for the same reason, and the two stay apart deliberately: they index
+/// unrelated spaces, and each is only sound because of a bound argued
+/// against *its* population. Sharing the constant would make the two
+/// arguments look like one.
+///
+/// [`MruList`]: crate::renderer::gradient_atlas::mru
 const NIL: u32 = u32::MAX;
 
 /// Size class of a span of `len` entries. `len` must be non-zero — an
@@ -234,6 +242,8 @@ impl<T: BlockSlot> BlockArena<T> {
 }
 
 counter_snapshot! {
+    cells TestOnly, reads cfg(test);
+
     /// What the allocator did. See [`BlockArena::alloc_block`] for why
     /// these two are the health check on the whole scheme.
     pub(crate) struct BlockArenaCounters;
@@ -251,13 +261,13 @@ counter_snapshot! {
     /// predecessors freed. `reuses` climbing while `allocs` stays flat is
     /// the statement "the arena has reached its working set and stopped
     /// growing".
-    reuses,
+    reuses: u32,
     /// Spans that had to extend the arena because their size class had no
     /// free block. Expected during warm-up and whenever a genuinely new
     /// length appears; a workload where this never settles is one whose
     /// lengths keep drifting across class boundaries, and its arena grows
     /// to the sum of every class's peak.
-    allocs,
+    allocs: u32,
 }
 
 /// Gated with its readers — this module's own tests and the damage

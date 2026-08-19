@@ -36,7 +36,7 @@ fn resident(reg: &IconRegistry) -> Vec<IconSetId> {
 /// Drain with no backend to notify, answering which ids were freed.
 fn drain(reg: &IconRegistry) -> Vec<IconSetId> {
     let mut freed = Vec::new();
-    reg.drain_released(|id| freed.push(id));
+    reg.drain_released(|ids| freed.extend_from_slice(ids));
     freed
 }
 
@@ -186,6 +186,33 @@ fn loading_a_fresh_atlas_every_frame_cycles_a_fixed_pair_of_slots() {
     // Slots alternate, so each took 32 turns and the last is the 32nd of
     // slot 1 — generations 0..=31.
     assert_eq!(last, IconSetId::new(1, 31));
+}
+
+/// Several sets released between two drains are reported in one call,
+/// not one call each. The backend's stores are keyed on the set, so
+/// finding a doomed family in either means walking all of it — a
+/// per-id callback made unloading N sets cost N walks of each.
+#[test]
+fn one_drain_reports_every_set_released_since_the_last() {
+    let reg = IconRegistry::default();
+    let (first, second, held) = (reg.register(a()), reg.register(b()), reg.register(a()));
+    let ids = [
+        first.handle(IconId(0)).icon.set,
+        second.handle(IconId(0)).icon.set,
+    ];
+    drop((first, second));
+
+    let mut batches: Vec<Vec<IconSetId>> = Vec::new();
+    reg.drain_released(|released| batches.push(released.to_vec()));
+    assert_eq!(batches, vec![ids.to_vec()], "one call, both ids, in order");
+    assert_eq!(resident(&reg).len(), 1, "the held set stayed");
+
+    // Nothing released: the closure is not run at all, which is what
+    // keeps the every-frame drain free.
+    let mut ran = false;
+    reg.drain_released(|_| ran = true);
+    assert!(!ran, "an empty drain must not call back");
+    drop(held);
 }
 
 /// A public handle must not print the host's whole icon table. The token

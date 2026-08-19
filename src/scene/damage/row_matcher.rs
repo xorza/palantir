@@ -1,10 +1,9 @@
-//! Cross-frame node and paint snapshot storage used by the damage diff.
+//! Pairing one node's paint rows against last frame's, and turning what
+//! did not pair into damage.
 
 use crate::common::block_arena::BlockArena;
-use crate::common::content_hash::ContentHash;
 use crate::primitives::rect::Rect;
 use crate::primitives::span::Span;
-use crate::scene::cascade::CascadeInputHash;
 use crate::scene::cascade::paint::Paint;
 use crate::scene::damage::push_screen;
 use std::cmp::Ordering;
@@ -14,118 +13,66 @@ use std::cmp::Ordering;
 /// damages those over their full rects).
 pub(super) const ROW_UNMATCHED: u32 = u32::MAX;
 
-/// Per-widget snapshot held in [`crate::scene::damage::DamageEngine::prev`], keyed by stable
-/// [`WidgetId`](crate::primitives::widget_id::WidgetId). Only widgets with
-/// paint rows last frame have an entry
-/// — rowless nodes (e.g. a popup's childless invisible click-eater)
-/// are skipped on insert, so their full-surface rect can't trip the
-/// full-repaint coverage threshold on add or remove.
-///
-/// **Storage shape.** Per-paint snapshots don't live inline here —
-/// they live in [`crate::scene::damage::DamageEngine::arena`], a single contiguous
-/// arena shared by every widget, and this struct just holds a `Span`
-/// into it. Each row is chrome (row 0 when present), one direct
-/// shape, or a child marker, mirroring `LayerCascade::paint_arena`.
-///
-/// **No cached `rect`.** The node's own paint extent — the union of its
-/// `paint_arena` rows, folded by
-/// [`PaintRows::union_screens`](crate::scene::cascade::paint::PaintRows::union_screens)
-/// — is a pure function of `(hash, cascade_input)`:
-/// every geometry input (`layout_rect`, ancestor transform/clip) lives
-/// in `cascade_input` and every shape input lives in `hash`, so a
-/// snapshot field would be a redundant cache of those two. The diff
-/// keys the "node unchanged" fast path on `(hash, cascade_input)`
-/// directly; the per-shape screen rects needed when something *did*
-/// change are recovered from `paint_span`.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct NodeSnapshot {
-    /// Slice into [`crate::scene::damage::DamageEngine::arena`] describing this
-    /// widget's per-paint snapshots in record order (chrome at row 0
-    /// when present, then shapes + child markers). Never empty — the
-    /// row invariant means rowless nodes don't get an entry in `prev`
-    /// at all.
-    pub(super) paint_span: Span,
-    /// Authoring hash from last frame's `Tree.rollups.node`.
-    pub(crate) hash: ContentHash,
-    /// Rollup hash of this node + its entire subtree from last frame's
-    /// `Tree.rollups.subtree`. Pair with `cascade_input` to drive the
-    /// subtree-skip fast path: if both match the current frame, every
-    /// descendant is bit-identical and the per-node diff can jump to
-    /// `subtree_end[i]`.
-    pub(super) subtree_hash: ContentHash,
-    /// Fingerprint of last frame's cascade inputs at this node (parent
-    /// transform/clip/disabled/invisible + own arranged rect). See
-    /// [`CascadeInputHash`].
-    pub(super) cascade_input: CascadeInputHash,
-    /// Paint-order position: the immediate parent's `WidgetId` bits,
-    /// or the layer discriminant for a root. A widget reparented (or
-    /// moved to another layer) at an identical rect with identical
-    /// content keeps `hash`, `subtree_hash`, AND `cascade_input`
-    /// (which folds ancestor *state*, not identity) — yet its
-    /// compositing order against outside overlappers flipped, so the
-    /// skip tiers must not treat it as unchanged.
-    pub(super) parent_key: u64,
-}
-
-/// Per-widget paint snapshots over a [`BlockArena`]. Each
-/// [`NodeSnapshot::paint_span`] is a block of it; chrome lives at row 0
-/// of the owner's span when present, followed by direct shapes and child
-/// markers in record order.
-///
-/// Lifecycle: a snapshot takes a block when its widget enters the map
-/// and hands it back when the widget leaves, and a paint-count change is
-/// those two in sequence. Same-count refreshes write in place. **Nothing
-/// is ever relocated**, so a `paint_span` is stable for the snapshot's
-/// whole life and no pass has to be able to reach the map to reclaim
-/// storage — see [`crate::common::block_arena`] for why that matters
-/// more than the slack the size classes cost.
-#[derive(Debug, Default)]
-pub(crate) struct PaintSnapArena {
-    /// Reached directly for all three of read, `store` and `release` —
-    /// the diff slices live spans out of `paints.slots` on every leg, so
-    /// wrapping the two writes while the reads went through the field
-    /// only hid where the storage was.
-    ///
-    /// A widget entering the map takes a block; one leaving hands it
-    /// back, **after** its [`NodeSnapshot`] is out of the map — the span
-    /// is dead from that call on, and a second release would link the
-    /// block into its class twice. `clear` is for the caller that just
-    /// dropped the whole map (`DamageEngine::invalidate_prev`), where
-    /// reclaiming one span at a time would be the same work with more
-    /// chances to miss one.
-    pub(crate) paints: BlockArena<Paint>,
-    /// The content-keyed matcher's scratch. Its own type so each phase
-    /// can be a method that names the precondition it inherits.
-    matcher: RowMatcher,
-}
-
-/// Result of [`PaintSnapArena::diff_changed_leg`].
+/// Result of [`RowMatcher::diff_changed_leg`].
 #[derive(Debug)]
 pub(super) struct ChangedLeg {
     /// Span covering this frame's paints — `prev_span` reused when the
     /// row count is stable, a freshly taken block when it changes.
     pub(super) span: Span,
-    /// True when every `Paint` matched bit-identically (the fast path),
-    /// so the per-shape diff emitted *no* damage. Reaching the
-    /// changed-paints arm at all means `hash` or `cascade_input`
-    /// changed, so a `true` here means a cascade-state toggle (ancestor
-    /// disabled / clip-saturated pan) altered the node's pixels without
-    /// moving any shape — the caller must damage the union to repaint
-    /// it.
-    pub(super) geometry_unchanged: bool,
+    /// True when some pair of matched rows swapped relative order.
+    ///
+    /// Answered here rather than left for the caller to ask, because the
+    /// question is only meaningful about the pairing *this* call
+    /// produced: [`RowMatcher::matched_positions`] is retained scratch,
+    /// and on the fast path it still holds some earlier node's answer.
+    /// A caller that reads it only when this is `true` cannot get the
+    /// stale one.
+    pub(super) order_inverted: bool,
 }
 
-impl PaintSnapArena {
+/// Scratch for the content-keyed row matcher, and the phases that fill
+/// it.
+///
+/// One type rather than four loose `Vec`s so the phase order reads as a
+/// call sequence and each phase's doc can state what the previous one
+/// left behind. The sort order in particular is load-bearing twice over,
+/// and stating it on [`PaintKey`] alone would leave it forty lines from
+/// the merge that depends on it.
+///
+/// Every column keeps its capacity across frames, so a steady-state
+/// content reshuffle allocates nothing.
+#[derive(Debug, Default)]
+pub(super) struct RowMatcher {
+    /// Which prev rows have been claimed by some phase.
+    prev_matched: Vec<bool>,
+    /// For each curr row, the prev row it paired with, or
+    /// [`ROW_UNMATCHED`]. Survives the call for the caller's
+    /// order-inversion work: an exact pair emits no content damage, but
+    /// two of them swapping paint order still flips their overlap.
+    matched_pos: Vec<u32>,
+    /// `(key, row)` for the rows each side still has unclaimed, sorted.
+    /// Sorting and merging replaced a restart-from-zero first-fit scan,
+    /// bounding the all-rows-shifted case (one shape inserted at the
+    /// front of a big node) at O(n log n) rather than O(n²).
+    prev_keyed: Vec<(PaintKey, u32)>,
+    curr_keyed: Vec<(PaintKey, u32)>,
+}
+
+impl RowMatcher {
     /// Which prev row each curr row paired with on the last
-    /// [`Self::diff_changed_leg`], for the caller's order-inversion
-    /// check. `ROW_UNMATCHED` where nothing paired.
+    /// [`Self::diff_changed_leg`], for the caller's overlap enumeration.
+    /// `ROW_UNMATCHED` where nothing paired.
+    ///
+    /// Only read under [`ChangedLeg::order_inverted`], which no fast-path
+    /// call can set — that is what keeps a caller from reading the
+    /// previous node's pairing.
     #[inline]
     pub(super) fn matched_positions(&self) -> &[u32] {
-        &self.matcher.matched_pos
+        &self.matched_pos
     }
 
-    /// Per-paint diff leg for the changed-paints arm. Three strategies
-    /// in order of cost:
+    /// Per-paint diff leg for the changed-paints arm, against the block
+    /// `prev_span` names in `paints`. Three strategies in order of cost:
     ///
     /// **Fast path** — bit-identical positional match across the whole
     /// span. Common when only ancestor state changed: the per-node hash
@@ -157,50 +104,42 @@ impl PaintSnapArena {
     /// them swapping paint order still flips their overlap's pixels
     /// (two coincident wires trading which is on top, a raised node,
     /// a shape crossing a child boundary — child markers make all of
-    /// these row reorders). This leg only *records* the pairing: on
-    /// the slow path `matched_pos` is left populated for the caller,
-    /// who runs [`has_order_inversion`] and emits each inverted pair's
-    /// extent overlap — child-marker extents need tree context this
-    /// arena doesn't hold.
+    /// these row reorders). This leg only *reports* that it happened;
+    /// the caller enumerates the pairs and emits each one's extent
+    /// overlap, because child-marker extents need tree context no part
+    /// of this file holds.
     ///
     /// Pass 1's positional pre-pass pairs in-place rows in O(n); only
-    /// the leftovers pay the keyed sort + merge. The retained
-    /// `prev_matched` / `matched_pos` / `prev_keyed` / `curr_keyed`
-    /// scratch keeps every pass alloc-free across frames; empty
-    /// leftovers (every shape paired positionally) make both merges
-    /// trivially skip. The slow path refreshes the existing span when
-    /// the row count is stable. Count changes spill `curr_paints` to
-    /// the tail of `snaps` and route the prev span through
-    /// [`Self::mark_orphaned`]; `maybe_compact` reclaims the tail once
-    /// orphans accumulate.
+    /// the leftovers pay the keyed sort + merge. The retained scratch
+    /// keeps every pass alloc-free across frames; empty leftovers (every
+    /// shape paired positionally) make both merges trivially skip. A
+    /// stable row count refreshes the existing block in place; a changed
+    /// one hands the old block back to its size class and takes one for
+    /// the new length.
     pub(super) fn diff_changed_leg(
         &mut self,
+        paints: &mut BlockArena<Paint>,
         out: &mut Vec<Rect>,
         prev_span: Span,
         curr_paints: &[Paint],
     ) -> ChangedLeg {
         let prev_start = prev_span.start as usize;
         let prev_len = prev_span.len as usize;
-        let prev_slice = &self.paints.slots[prev_start..prev_start + prev_len];
+        let prev_slice = &paints.slots[prev_start..prev_start + prev_len];
 
         if prev_len == curr_paints.len() && prev_slice.iter().zip(curr_paints).all(|(p, c)| p == c)
         {
             return ChangedLeg {
                 span: prev_span,
-                geometry_unchanged: true,
+                order_inverted: false,
             };
         }
 
-        // Split-borrow: the phases read `prev` out of the arena while
-        // writing the matcher's columns. Disjoint fields, one
-        // destructure.
-        let Self { paints, matcher } = self;
         let prev = &paints.slots[prev_start..prev_start + prev_len];
-
-        matcher.begin(prev, curr_paints);
-        matcher.claim_exact(prev, curr_paints);
-        matcher.emit_moves_and_adds(out, prev, curr_paints);
-        matcher.emit_removals(out, prev);
+        self.begin(prev, curr_paints);
+        self.claim_exact(prev, curr_paints);
+        self.emit_moves_and_adds(out, prev, curr_paints);
+        self.emit_removals(out, prev);
 
         let span = if prev_len == curr_paints.len() {
             paints.slots[prev_span.range()].copy_from_slice(curr_paints);
@@ -220,40 +159,10 @@ impl PaintSnapArena {
         };
         ChangedLeg {
             span,
-            geometry_unchanged: false,
+            order_inverted: self.has_order_inversion(),
         }
     }
-}
 
-/// Scratch for the content-keyed row matcher, and the phases that fill
-/// it.
-///
-/// One type rather than four loose `Vec`s on the arena so the phase
-/// order reads as a call sequence and each phase's doc can state what
-/// the previous one left behind. The sort order in particular is
-/// load-bearing twice over, and stating it on [`PaintKey`] alone would
-/// leave it forty lines from the merge that depends on it.
-///
-/// Every column keeps its capacity across frames, so a steady-state
-/// content reshuffle allocates nothing.
-#[derive(Debug, Default)]
-struct RowMatcher {
-    /// Which prev rows have been claimed by some phase.
-    prev_matched: Vec<bool>,
-    /// For each curr row, the prev row it paired with, or
-    /// [`ROW_UNMATCHED`]. Survives the call for the caller's
-    /// order-inversion check: an exact pair emits no content damage, but
-    /// two of them swapping paint order still flips their overlap.
-    matched_pos: Vec<u32>,
-    /// `(key, row)` for the rows each side still has unclaimed, sorted.
-    /// Sorting and merging replaced a restart-from-zero first-fit scan,
-    /// bounding the all-rows-shifted case (one shape inserted at the
-    /// front of a big node) at O(n log n) rather than O(n²).
-    prev_keyed: Vec<(PaintKey, u32)>,
-    curr_keyed: Vec<(PaintKey, u32)>,
-}
-
-impl RowMatcher {
     /// Phase 1 — reset, claim every same-index bit-identical pair, and
     /// key whatever is left over.
     ///
@@ -381,6 +290,19 @@ impl RowMatcher {
             }
         }
     }
+
+    /// True when some pair of matched rows inverted its relative order —
+    /// i.e. the matched prev positions aren't non-decreasing in curr
+    /// order. O(n) gate in front of the caller's quadratic pair
+    /// enumeration. Equal adjacent positions can't occur (each prev row
+    /// is claimed at most once), so allow-equal `is_sorted` is exact.
+    fn has_order_inversion(&self) -> bool {
+        !self
+            .matched_pos
+            .iter()
+            .filter(|&&pos| pos != ROW_UNMATCHED)
+            .is_sorted()
+    }
 }
 
 /// Sort key for the content-keyed matcher: hash-major (so one sorted
@@ -411,16 +333,4 @@ impl PaintKey {
             ],
         }
     }
-}
-
-/// True when some pair of matched rows inverted its relative order —
-/// i.e. the matched prev positions aren't non-decreasing in curr order.
-/// O(n) gate in front of the quadratic pair enumeration. Equal
-/// adjacent positions can't occur (each prev row is claimed at most
-/// once), so allow-equal `is_sorted` is exact.
-pub(super) fn has_order_inversion(matched_pos: &[u32]) -> bool {
-    !matched_pos
-        .iter()
-        .filter(|&&pos| pos != ROW_UNMATCHED)
-        .is_sorted()
 }

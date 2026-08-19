@@ -27,6 +27,13 @@
 /// Absent link. Distinguishable from every real row id because the row
 /// count is bounded by
 /// [`MAX_ATLAS_ROWS`](crate::renderer::gradient_atlas::MAX_ATLAS_ROWS).
+///
+/// The block arena's free lists carry the same value for the same
+/// reason; see [`crate::common::block_arena`] for why the two are not
+/// one constant. The lists themselves have less in common than the
+/// sentinel suggests — this one is a doubly-linked total order over a
+/// fixed membership, that one a per-class LIFO stack whose members come
+/// and go.
 const NIL: u32 = u32::MAX;
 
 #[derive(Debug)]

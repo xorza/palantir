@@ -27,10 +27,10 @@ use crate::primitives::span::Span;
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::pipeline_utils::{ColorVariantSpec, StencilVariant};
+use crate::renderer::backend::raster_atlas::content_type::ContentType;
+use crate::renderer::backend::raster_atlas::packed_metadata::PackedMetadata;
 use crate::renderer::backend::raster_atlas::quad::{self, PARAMS_OFFSET, RasterQuad};
-use crate::renderer::backend::raster_atlas::{
-    ContentType, PackedMetadata, RasterAtlas, RasterAtlasConfig,
-};
+use crate::renderer::backend::raster_atlas::{RasterAtlas, RasterAtlasConfig};
 use crate::renderer::backend::viewport::ViewportPush;
 use crate::renderer::render_buffer::icon::IconDrawRow;
 
@@ -327,9 +327,12 @@ impl IconBackend {
             // Both stores key on `IconSetId`, and the registry is about to
             // hand the slot to another set — so this has to happen before
             // any later frame can mint an id that reads as the same slot.
-            icons.drain_released(|set| {
-                rasterizer.forget_set(set);
-                atlas.forget(|key| key.icon.set != set);
+            // One pass over each store however many sets went, which is
+            // what keeps a caller that loads a fresh atlas per frame from
+            // paying a full walk of both on every one of them.
+            icons.drain_released(|sets| {
+                rasterizer.forget_sets(sets);
+                atlas.forget(|key| !sets.contains(&key.icon.set));
             });
         }
         self.atlas.end_frame(self.frame);

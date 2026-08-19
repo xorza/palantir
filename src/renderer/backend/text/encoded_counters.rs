@@ -37,6 +37,8 @@
 use crate::common::counters::counter_snapshot;
 
 counter_snapshot! {
+    cells TestOnly, reads cfg(test);
+
     /// What the encoded-run cache did.
     pub(super) struct EncodedCounters;
 
@@ -49,13 +51,13 @@ counter_snapshot! {
     /// Runs pushed through the full miss path — glyph extraction through
     /// the shaper lease, then an atlas touch or rasterization per glyph.
     /// The cost every other counter here exists to explain.
-    encodes,
+    encodes: u32,
     /// Runs emitted from a resident template, origin-shifted.
-    hits,
+    hits: u32,
     /// Rows dropped by the sweep because their window lapsed.
-    expiries,
+    expiries: u32,
     /// Tickets whose row was still live, so the sweep re-filed rather
     /// than dropped. The per-frame drain cost, and the number a
     /// probation tier is meant to cut.
-    refiles,
+    refiles: u32,
 }

@@ -130,9 +130,9 @@ impl PaintArena {
 
 /// Slice-level reads over a run of paint rows.
 ///
-/// Both arenas holding `Paint`s hand out bare slices — the cascade's live
+/// Both stores holding `Paint`s hand out bare slices — the cascade's live
 /// [`PaintArena::rows`] and the damage diff's retained
-/// `PaintSnapArena::paints` — so these belong on the slice rather than on
+/// `DamageEngine::paints` — so these belong on the slice rather than on
 /// either owner, which is what kept them scattered as free functions
 /// across two damage files.
 pub(crate) trait PaintRows {

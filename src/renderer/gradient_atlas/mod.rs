@@ -281,7 +281,7 @@ impl CpuGradientAtlas {
     /// crashes nor corrupts the rows this frame's other draws already
     /// captured.
     pub(crate) fn register_stops(&mut self, stops: &GradientStops, interp: Interp) -> LutRow {
-        self.counters.registration();
+        self.counters.registrations.bump();
         let key = GradientLutKey {
             stops: *stops,
             interp,
@@ -290,7 +290,7 @@ impl CpuGradientAtlas {
         // — its `LutRow` id is now in a draw payload, so it must not be
         // evicted before the upload.
         if let Some(&row) = self.index.get(&key) {
-            self.counters.hit();
+            self.counters.hits.bump();
             self.touch(row);
             return LutRow(row);
         }
@@ -307,7 +307,7 @@ impl CpuGradientAtlas {
             // retry: the grown rows land at the tail unclaimed, so the
             // next pass takes one and this loop runs at most twice.
             if !self.grow() {
-                self.counters.fallback();
+                self.counters.fallbacks.bump();
                 return LutRow::FALLBACK;
             }
         }
@@ -344,7 +344,7 @@ impl CpuGradientAtlas {
             .resize(grown as usize, [ColorF16::TRANSPARENT; LUT_ROW_TEXELS]);
         self.row_epoch.resize(grown as usize, 0);
         self.mru.extend_to(capacity, grown);
-        self.counters.growth();
+        self.counters.growths.bump();
         // The backend replaces its texture at the new height and wgpu
         // zero-initializes the replacement, so every row — not just the
         // new ones — has to re-upload.
@@ -412,6 +412,10 @@ impl CpuGradientAtlas {
         let dirty = self.dirty.take()?;
         let total_rows = self.capacity();
         let rows = &self.baked[dirty.first as usize..=dirty.last as usize];
+        let uploaded = rows.len() as u32;
+        self.counters
+            .rows_uploaded
+            .edit(|n| *n = n.saturating_add(uploaded));
         Some(FlushedRows {
             first_row: dirty.first,
             bytes: bytemuck::cast_slice(rows),
@@ -444,10 +448,6 @@ mod internals {
             true
         }
 
-        /// The row `key`'s gradient currently occupies, straight out of
-        /// the index — so a test can tell "resolved to the same row"
-        /// from "re-baked into a new one" without registering (which
-        /// would itself move the row).
         /// Live index entries — one per occupied row, so a duplicate
         /// bake or a leaked eviction entry shows up as a mismatch
         /// against the rows actually claimed.
@@ -459,6 +459,10 @@ mod internals {
             self.max_rows
         }
 
+        /// The row `key`'s gradient currently occupies, straight out of
+        /// the index — so a test can tell "resolved to the same row"
+        /// from "re-baked into a new one" without registering (which
+        /// would itself move the row).
         pub(crate) fn resident_row(&self, stops: &GradientStops, interp: Interp) -> Option<u32> {
             self.index
                 .get(&GradientLutKey {

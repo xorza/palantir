@@ -1,4 +1,5 @@
 use super::*;
+use etagere::AllocId;
 
 /// The atlas is generic over its key, so its own tests use the cheapest one
 /// that satisfies the bounds rather than either tenant's — nothing here
@@ -79,14 +80,14 @@ fn packed_metadata_checks_every_wire_boundary() {
 }
 
 /// Each non-drawing entry retires on its own last use rather than on
-/// a shared tick. At frame 1024 with a 512-frame window, an entry
-/// dies once `last_use + 512 + 1 <= 1024`, i.e. `last_use <= 511`.
+/// a shared tick. At frame 1024 with a 120-frame window, an entry
+/// dies once `last_use + 120 + 1 <= 1024`, i.e. `last_use <= 903`.
 #[test]
 fn a_drained_ticket_retires_only_its_own_stale_empty() {
     let slots = vec![
-        slot(None, 1),                          // 1 + 513 = 514 <= 1024 -> reclaimed
-        slot(None, 511),                        // 511 + 513 = 1024 <= 1024 -> reclaimed
-        slot(None, 512),                        // 512 + 513 = 1025 > 1024 -> re-filed
+        slot(None, 1),                          // 1 + 121 = 122 <= 1024 -> reclaimed
+        slot(None, 903),                        // 903 + 121 = 1024 <= 1024 -> reclaimed
+        slot(None, 904),                        // 904 + 121 = 1025 > 1024 -> re-filed
         slot(None, 1024),                       // freshly touched -> re-filed
         slot(Some(AllocId::deserialize(0)), 1), // allocated -> evict_one's job
     ];
@@ -106,7 +107,7 @@ fn a_drained_ticket_retires_only_its_own_stale_empty() {
         Some(1025),
         "an entry still inside its window is re-filed for its own deadline",
     );
-    assert_eq!(refile(&mut cache, &mut free, key(4)), Some(1537));
+    assert_eq!(refile(&mut cache, &mut free, key(4)), Some(1145));
     assert_eq!(
         refile(&mut cache, &mut free, key(5)),
         None,
@@ -144,12 +145,12 @@ fn growth_stops_at_the_byte_budget_not_the_device_limit() {
     const BUDGET: u64 = 16 << 20;
     for device_max in [8192, 16384, 32768] {
         assert_eq!(
-            growth_ceiling(device_max, ContentType::Mask, BUDGET),
+            Side::growth_ceiling(device_max, ContentType::Mask, BUDGET),
             4096,
             "16 MiB of 1-byte pixels is 4096², whatever device_max={device_max} allows",
         );
         assert_eq!(
-            growth_ceiling(device_max, ContentType::Color, BUDGET),
+            Side::growth_ceiling(device_max, ContentType::Color, BUDGET),
             2048,
             "16 MiB of 4-byte pixels is 2048², device_max={device_max}",
         );
@@ -161,14 +162,20 @@ fn growth_stops_at_the_byte_budget_not_the_device_limit() {
         assert_eq!(bytes, BUDGET, "{content:?}");
     }
     // A device meaner than the budget still binds.
-    assert_eq!(growth_ceiling(1024, ContentType::Mask, BUDGET), 1024);
-    assert_eq!(growth_ceiling(512, ContentType::Color, BUDGET), 512);
+    assert_eq!(Side::growth_ceiling(1024, ContentType::Mask, BUDGET), 1024);
+    assert_eq!(Side::growth_ceiling(512, ContentType::Color, BUDGET), 512);
 
     // The budget is per instance, so a tenant can buy itself more room
     // without moving the other's ceiling. Quadrupling the bytes doubles the
     // side, which is the relationship a caller has to reason about.
-    assert_eq!(growth_ceiling(16384, ContentType::Color, BUDGET * 4), 4096);
-    assert_eq!(growth_ceiling(16384, ContentType::Mask, BUDGET / 4), 2048);
+    assert_eq!(
+        Side::growth_ceiling(16384, ContentType::Color, BUDGET * 4),
+        4096
+    );
+    assert_eq!(
+        Side::growth_ceiling(16384, ContentType::Mask, BUDGET / 4),
+        2048
+    );
 }
 
 /// The clock skips exactly three things — wrong content, no
@@ -197,7 +204,7 @@ fn the_clock_resumes_where_it_stopped_and_skips_ineligible_slots() {
 
     // From rest, the first eligible mask slot is 0 — not 5, which is
     // older. One step examined, and the hand parks past it.
-    let first = clock_victim(&slots, 0, ContentType::Mask, 10);
+    let first = ClockSweep::over(&slots, 0, ContentType::Mask, 10);
     assert_eq!(
         first,
         ClockSweep {
@@ -208,7 +215,7 @@ fn the_clock_resumes_where_it_stopped_and_skips_ineligible_slots() {
     );
     // Resuming from there takes slot 1 — again one step, because the
     // hand did not restart.
-    let second = clock_victim(&slots, first.hand, ContentType::Mask, 10);
+    let second = ClockSweep::over(&slots, first.hand, ContentType::Mask, 10);
     assert_eq!(
         second,
         ClockSweep {
@@ -219,7 +226,7 @@ fn the_clock_resumes_where_it_stopped_and_skips_ineligible_slots() {
     );
     // Now it must walk over the unallocated slot 2, the colour slot
     // 3, and the current-frame slot 4 to reach 5.
-    let third = clock_victim(&slots, second.hand, ContentType::Mask, 10);
+    let third = ClockSweep::over(&slots, second.hand, ContentType::Mask, 10);
     assert_eq!(
         third,
         ClockSweep {
@@ -230,7 +237,7 @@ fn the_clock_resumes_where_it_stopped_and_skips_ineligible_slots() {
     );
     // The colour side sees only its own slot, wherever the hand is.
     assert_eq!(
-        clock_victim(&slots, 5, ContentType::Color, 10).victim,
+        ClockSweep::over(&slots, 5, ContentType::Color, 10).victim,
         Some(3),
     );
     // Nothing eligible: one full rotation, no victim, and the hand
@@ -238,7 +245,7 @@ fn the_clock_resumes_where_it_stopped_and_skips_ineligible_slots() {
     // Frame 1, not 2 — slot 5's `last_use` of 1 still qualifies at
     // frame 2, and the oldest mask slot has to be *at* the frame for
     // the side to be genuinely dry.
-    let dry = clock_victim(&slots, 2, ContentType::Mask, 1);
+    let dry = ClockSweep::over(&slots, 2, ContentType::Mask, 1);
     assert_eq!(
         dry,
         ClockSweep {
@@ -249,7 +256,7 @@ fn the_clock_resumes_where_it_stopped_and_skips_ineligible_slots() {
     );
     // An empty slab is not a rotation over nothing.
     assert_eq!(
-        clock_victim(&[], 7, ContentType::Mask, 10),
+        ClockSweep::over(&[], 7, ContentType::Mask, 10),
         ClockSweep {
             victim: None,
             hand: 0,
@@ -464,6 +471,20 @@ mod gpu {
         atlas.forget(|k| *k != 100);
         assert!(atlas.touch(&key(100)).is_none());
         assert_eq!(atlas.cache.len(), 4);
+
+        // A freed slab index still holds its old key in `slot_keys`, so
+        // a walk that decided liveness from that column would reclaim it
+        // a second time and hand one index to two future inserts. This
+        // pass rejects every key already retired above and must find
+        // nothing: the map is the only authority on which indices live.
+        let free_before = atlas.free.len();
+        atlas.forget(|k| k % 2 == 0 && *k != 100);
+        assert_eq!(
+            atlas.free.len(),
+            free_before,
+            "keys already retired must not be freed twice",
+        );
+        assert_eq!(atlas.cache.len(), 4, "and the live entries are untouched");
 
         // The reclaimed rectangles are genuinely back: the side had room
         // for eight and holds four, so four more must land without a grow

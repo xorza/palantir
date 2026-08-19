@@ -106,9 +106,16 @@ pub(crate) struct ExpiryWheel<K> {
     /// A boxed slice because the ring is sized once and never grows —
     /// and one `Vec` per bucket because that is what makes a drain a
     /// memcpy of a contiguous run. Threading the tickets through a flat
-    /// arena instead would save the bucket headers (a few KB across every
-    /// wheel in the crate) and cost a pointer chase per ticket on the one
-    /// path that has to be fast.
+    /// arena instead would save the bucket headers and cost a pointer
+    /// chase per ticket on the one path that has to be fast.
+    ///
+    /// The headers are worth about 10 KB across the four wheels in the
+    /// crate — 128 buckets each for the shaped-buffer cache and the two
+    /// raster atlases, 32 for the encoded-run cache, at 24 bytes a
+    /// `Vec`. That is a number set by the owners' retention windows, not
+    /// by this type: an owner that files deadlines a thousand frames out
+    /// buys a thousand-bucket ring, so a window is a memory decision as
+    /// well as a retention one.
     buckets: Box<[Vec<Ticket<K>>]>,
     mask: u64,
     /// Highest frame whose bucket has been drained. Tickets must be
@@ -271,6 +278,9 @@ pub(crate) mod internals {
 
         /// Outstanding tickets across the whole ring.
         ///
+        /// `cfg(test)` where its sibling is wider, because the two have
+        /// different callers: this one only ever answers an assertion.
+        ///
         /// The number that says whether an owner is holding up its end
         /// of the protocol: file on insert, file again only when a
         /// deadline moves *in*, and let a supplanted ticket die rather
@@ -279,6 +289,7 @@ pub(crate) mod internals {
         /// expire correctly — just with the ticket count, and the
         /// per-frame drain, growing without bound. `EncodedCache`'s and
         /// `CosmicMeasure`'s tests assert against exactly that.
+        #[cfg(test)]
         pub(crate) fn pending(&self) -> usize {
             self.buckets.iter().map(Vec::len).sum()
         }

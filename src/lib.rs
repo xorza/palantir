@@ -344,8 +344,8 @@ mod hot_struct_sizes {
     use crate::scene::cascade::CascadeInputHash;
     use crate::scene::cascade::entry::{EntryRow, HitRow};
     use crate::scene::cascade::paint::Paint;
+    use crate::scene::damage::node_snapshot::NodeSnapshot;
     use crate::scene::damage::region::DamageRegion;
-    use crate::scene::damage::snapshot::NodeSnapshot;
     use crate::scene::node::Node;
     use crate::scene::node::columns::{BoundsExtras, LayoutCore, NodeFlags, PanelExtras};
     use crate::scene::record_store::RecordedGradient;
@@ -498,7 +498,7 @@ mod hot_struct_sizes {
         TargetScrollDelta => "input::TargetScrollDelta": 32 / 8,
         // Damage.
         DamageRegion => "damage::DamageRegion": 140 / 4,
-        NodeSnapshot => "damage::snapshot::NodeSnapshot": 40 / 8,
+        NodeSnapshot => "damage::node_snapshot::NodeSnapshot": 40 / 8,
         // Encoder↔composer wire payloads.
         PushClipPayload => "payload::PushClipPayload": 24 / 4,
         DrawQuadPayload => "payload::DrawQuadPayload": 76 / 4,
