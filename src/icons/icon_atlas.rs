@@ -43,9 +43,11 @@ pub struct IconDef {
 /// Both are held behind an `Rc` once loaded, so a set is shared rather than
 /// duplicated and nothing has to outlive the app to stay reachable.
 ///
-/// Either way the SVG is parsed lazily, per icon, the first time that icon is
-/// rasterized — a set the session never draws from costs nothing beyond its
-/// bytes.
+/// Rasterization parses lazily either way — per icon, the first time that icon
+/// is drawn — so a set the session never draws from rasterizes nothing. What
+/// differs is the *table*: [`Self::baked`] arrives with one already built and
+/// so parses nothing at construction, while [`Self::from_svgs`] has to read
+/// each source to fill it.
 ///
 /// The table is sorted by [`IconDef::name`], which is what lets
 /// [`IconSet::by_name`](crate::IconSet::by_name) binary-search it.
@@ -79,6 +81,15 @@ impl IconAtlas {
     /// [`IconSet`](crate::IconSet) holding it. It does pay a parse per icon,
     /// which is why a set that ships with the app should come from
     /// [`Self::baked`] instead.
+    ///
+    /// **That parse is paid twice for any icon the session goes on to draw**:
+    /// the tree read here is dropped once its three facts are off it, and
+    /// `IconRasterizer` parses the same bytes again to get pixels. Keeping this
+    /// one instead would mean an [`IconAtlas`] that holds `usvg::Tree`s — a
+    /// parser type in a data type, and one retained tree per icon in the set
+    /// rather than per icon actually drawn. At ~180 µs a parse, once, on the
+    /// path that already tells you to prefer [`Self::baked`], the memory and
+    /// the coupling cost more than the microseconds do.
     ///
     /// Entries are sorted by name, which is the order a baked set guarantees
     /// and [`IconSet::by_name`](crate::IconSet::by_name) binary-searches — so
