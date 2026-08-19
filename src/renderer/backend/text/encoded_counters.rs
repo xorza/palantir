@@ -24,6 +24,13 @@
 //! [`EncodedCounters::refiles`] says what the sweep pays per frame to keep
 //! the population alive.
 //!
+//! What the *arena* under the cache did — blocks allocated against
+//! blocks recycled — is
+//! [`BlockArenaCounters`](crate::common::block_arena::BlockArenaCounters)
+//! instead, read off `EncodedCache::arena`. It belongs to the allocator
+//! rather than to this cache because the paint-snapshot arena asks the
+//! same question of the same mechanism.
+//!
 //! Counters accumulate for the life of the backend, so readers take a
 //! delta.
 
@@ -51,19 +58,4 @@ counter_snapshot! {
     /// than dropped. The per-frame drain cost, and the number a
     /// probation tier is meant to cut.
     refiles,
-    /// Rows that took a recycled block off a free list.
-    ///
-    /// Paired with [`Self::block_allocs`], this is the whole health
-    /// check on the block allocator: recycling is what replaced the
-    /// arena compaction, and it only holds if a gesture's rows keep
-    /// landing in size classes their predecessors freed. `reuses`
-    /// climbing while `allocs` stays flat is the statement "the arena
-    /// has reached its working set and stopped growing".
-    block_reuses,
-    /// Rows that had to extend the arena because their size class had no
-    /// free block. Expected during warm-up and whenever a genuinely new
-    /// row length appears; a workload where this never settles is one
-    /// whose row lengths keep drifting across class boundaries, and its
-    /// arena grows to the sum of every class's peak.
-    block_allocs,
 }

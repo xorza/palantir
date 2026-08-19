@@ -160,7 +160,7 @@ mod gpu_regression {
             shaper.has_cosmic_buffer(runs[0].text.key),
             "an encoded-cache miss must restore its shaped buffer",
         );
-        let arena_after_warmup = backend.encoder.cache.arena.len();
+        let arena_after_warmup = backend.encoder.cache.arena.slots.len();
         backend.tick_frame();
         assert!(
             !backend.encoder.atlas.cache.is_empty(),
@@ -197,7 +197,7 @@ mod gpu_regression {
         // The refresh must have gone through the entry's *recorded*
         // slab indices — the exact path the hot loop writes.
         for entry in backend.encoder.cache.map.values() {
-            for glyph in &backend.encoder.cache.arena[entry.span.range()] {
+            for glyph in &backend.encoder.cache.arena.slots[entry.span.range()] {
                 let idx = glyph.atlas_slot;
                 assert_eq!(
                     backend.encoder.atlas.slots[idx as usize].last_use, cf,
@@ -206,7 +206,7 @@ mod gpu_regression {
             }
         }
         assert_eq!(
-            backend.encoder.cache.arena.len(),
+            backend.encoder.cache.arena.slots.len(),
             arena_after_warmup,
             "a pure cache-hit frame must not append a replacement span",
         );
@@ -271,17 +271,18 @@ mod gpu_regression {
             .copied()
             .find(|(_, span)| span.len == 2)
             .expect("the two-glyph run must have a cached span");
-        let invalidated_slot = backend.encoder.cache.arena[invalidated_span.range()][1].atlas_slot;
+        let invalidated_slot =
+            backend.encoder.cache.arena.slots[invalidated_span.range()][1].atlas_slot;
         let (stable_key, stable_span) = entries
             .iter()
             .copied()
             .find(|(_, span)| {
-                backend.encoder.cache.arena[span.range()]
+                backend.encoder.cache.arena.slots[span.range()]
                     .iter()
                     .all(|glyph| glyph.atlas_slot != invalidated_slot)
             })
             .expect("test runs must use disjoint atlas slots");
-        let arena_before = backend.encoder.cache.arena.len();
+        let arena_before = backend.encoder.cache.arena.slots.len();
 
         let slot = &mut backend.encoder.atlas.slots[invalidated_slot as usize];
         slot.generation = slot
@@ -318,12 +319,12 @@ mod gpu_regression {
             "the rebuilt run must reclaim the block its stale template freed",
         );
         assert_eq!(
-            backend.encoder.cache.arena.len(),
+            backend.encoder.cache.arena.slots.len(),
             arena_before,
             "a slot invalidation must not grow the arena",
         );
         assert_eq!(
-            backend.encoder.cache.arena[replacement.range()][1].generation,
+            backend.encoder.cache.arena.slots[replacement.range()][1].generation,
             expected_generation,
             "the replacement must record the slot's new generation",
         );
@@ -505,7 +506,7 @@ mod gpu_regression {
         // Blocks round up to `BLOCK_GRANULE`, so nine glyphs occupy a
         // twelve-slot block. The row's own length is the invariant here;
         // the arena length is the allocator's business.
-        assert_eq!(backend.encoder.cache.arena.len(), 12);
+        assert_eq!(backend.encoder.cache.arena.slots.len(), 12);
         backend.tick_frame();
 
         // Frame 4 replays the cached template: same 9 instances with
@@ -521,7 +522,7 @@ mod gpu_regression {
         assert_eq!(backend.encoder.instances.len(), 9);
         assert_eq!(backend.encoder.cache.map.len(), 1);
         assert_eq!(
-            backend.encoder.cache.arena.len(),
+            backend.encoder.cache.arena.slots.len(),
             12,
             "a hit must not re-encode"
         );

@@ -39,8 +39,16 @@ pub struct IconHandle {
 ///
 /// Returned by [`Ui::load_icons`](crate::Ui::load_icons). Cloning is a
 /// refcount bump, so an app parks one in its state and hands copies to widget
-/// constructors without ceremony — and the set is freed when the last one
-/// goes, rather than living as long as the process.
+/// constructors without ceremony.
+///
+/// **Loading is one-way.** The host's registry keeps its own strong
+/// reference for the life of the process — an [`IconId`] is an index into
+/// that table, so a loaded set can never be moved or dropped out from
+/// under a handle — and dropping every `IconSet` therefore frees nothing.
+/// Park the `Rc<IconAtlas>` and re-load *it* if the call sits inside a
+/// frame closure: registration deduplicates on the allocation, so
+/// re-loading a held handle is a refcount bump, while handing it a
+/// freshly built atlas every frame registers a new set every frame.
 #[derive(Clone, Debug)]
 pub struct IconSet {
     id: IconSetId,

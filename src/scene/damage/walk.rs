@@ -236,7 +236,8 @@ impl LayerWalk<'_> {
         let span = self.cascade.paint_arena.node_spans[i];
         let paint_span = self
             .arena
-            .append(&self.cascade.paint_arena.rows[span.range()]);
+            .paints
+            .store(&self.cascade.paint_arena.rows[span.range()]);
         if !self.force_full {
             for screen in self.cascade.paint_arena.rows[span.range()].screens() {
                 self.raw_rects.push(screen);
@@ -264,11 +265,11 @@ impl LayerWalk<'_> {
     fn on_evicted(&mut self, i: usize, prev: NodeSnapshot) -> usize {
         // Rows → rowless: push everything the node *was* painting, then
         // drop it.
-        for screen in self.arena.snaps[prev.paint_span.range()].screens() {
+        for screen in self.arena.paints.slots[prev.paint_span.range()].screens() {
             self.raw_rects.push(screen);
         }
-        self.arena.mark_orphaned(prev.paint_span.len);
         self.prev.remove(&self.tree.records.widget_id()[i]);
+        self.arena.paints.release(prev.paint_span);
         self.probe.mark_dirty(NodeId(i as u32));
         1
     }
@@ -357,11 +358,13 @@ impl LayerWalk<'_> {
             let wid = self.tree.records.widget_id()[j];
             match self.prev.get(&wid).copied() {
                 Some(snap) => {
-                    if let Some(union) = self.arena.snaps[snap.paint_span.range()].union_screens() {
+                    if let Some(union) =
+                        self.arena.paints.slots[snap.paint_span.range()].union_screens()
+                    {
                         prev_extent = Some(prev_extent.map_or(union, |a| a.union(union)));
                     }
                     let curr = &self.cascade.paint_arena.rows[span.range()];
-                    self.arena.snaps[snap.paint_span.range()].copy_from_slice(curr);
+                    self.arena.paints.slots[snap.paint_span.range()].copy_from_slice(curr);
                     if let Some(slot) = self.prev.get_mut(&wid) {
                         slot.cascade_input = self.cascade.cascade_inputs[j];
                     }
@@ -371,7 +374,7 @@ impl LayerWalk<'_> {
                     if !curr.any_on_surface(self.surface) {
                         continue;
                     }
-                    let paint_span = self.arena.append(curr);
+                    let paint_span = self.arena.paints.store(curr);
                     let snapshot = self.snapshot(j, j_parent_key, paint_span);
                     self.prev.insert(wid, snapshot);
                 }

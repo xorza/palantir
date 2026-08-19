@@ -35,9 +35,7 @@ use crate::renderer::backend::raster_atlas::ContentType;
 use crate::renderer::backend::raster_atlas::quad::{RasterQuad, pack_uv};
 use crate::renderer::backend::raster_atlas::{PackedMetadata, RasterAtlas, RasterAtlasConfig};
 use crate::renderer::backend::text::encode::EncodedRunKey;
-use crate::renderer::backend::text::encode::cache::{
-    ENCODED_CACHE_KEEP_FRAMES, EncodedCache, EncodedGlyph, release,
-};
+use crate::renderer::backend::text::encode::cache::{EncodedCache, EncodedGlyph};
 
 /// CPU-side glyph encoder: owns the atlas, the encoded-run cache, the
 /// per-miss extraction scratch, and the frame's accumulated instances.
@@ -109,7 +107,7 @@ impl TextEncoder {
         let Some(entry) = self.cache.map.get_mut(&run_key.key) else {
             return false;
         };
-        let glyphs = &self.cache.arena[entry.span.range()];
+        let glyphs = &self.cache.arena.slots[entry.span.range()];
         let out_start = self.instances.len();
         self.instances.reserve(glyphs.len());
         let mut stale = false;
@@ -140,8 +138,7 @@ impl TextEncoder {
             // if this run also survives the y-cull, so a culled run
             // would otherwise pay the failed lookup indefinitely.
             if let Some(dead) = self.cache.map.remove(&run_key.key) {
-                let cache = &mut self.cache;
-                release(&mut cache.arena, &mut cache.free_heads, dead.span);
+                self.cache.arena.release(dead.span);
             }
             return false;
         }
@@ -174,8 +171,7 @@ impl TextEncoder {
     /// sweep both caches against it.
     pub(crate) fn end_frame(&mut self, frame: u64) {
         self.atlas.end_frame(frame);
-        self.cache
-            .sweep(self.atlas.current_frame, ENCODED_CACHE_KEEP_FRAMES);
+        self.cache.sweep(self.atlas.current_frame);
         self.instances.clear();
         // A frame that fit everything closes the episode, so a later
         // recurrence is reported again rather than swallowed forever.

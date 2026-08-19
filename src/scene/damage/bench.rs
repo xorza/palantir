@@ -153,6 +153,67 @@ fn warm_and_assert(
     assert_eq!(kind, expect_kind, "warmup did not settle on {expect_kind}");
 }
 
+/// Run frames until the paint-snapshot arena stops growing, and answer
+/// the size it settled at.
+///
+/// The property this replaced compaction to get: a churn workload takes
+/// blocks out of its size classes' free lists rather than extending the
+/// arena, so after warm-up the storage is flat and no frame pays for
+/// another frame's churn. Warming on that — rather than on a fixed frame
+/// count — is also what makes the arms below measure a *settled* arena
+/// instead of one still climbing, and the matching post-bench assertion
+/// is the regression guard: a change that reintroduced tail-appending
+/// would show up as an arena that never stops growing.
+fn warm_until_arena_settles<B: FnMut(&mut Ui)>(
+    h: &mut UiHarness,
+    build: impl Fn(u32) -> B,
+    from_frame: u32,
+) -> ArenaSettle {
+    /// Consecutive flat frames that count as settled. Comfortably past
+    /// the 256-canvas rotation in the partial-churn arm, whose period is
+    /// the canvas count.
+    const FLAT_FRAMES: u32 = 512;
+    /// Give up rather than spin: a workload that never settles is a
+    /// finding, and the assertion below reports it.
+    const MAX_FRAMES: u32 = 4096;
+
+    let mut frame = from_frame;
+    let mut settled_at = h.ui.damage_engine.arena.paints.slots.len();
+    let mut flat = 0;
+    while flat < FLAT_FRAMES && frame - from_frame < MAX_FRAMES {
+        run_and_ack(h, build(frame));
+        frame += 1;
+        let now = h.ui.damage_engine.arena.paints.slots.len();
+        flat = if now == settled_at { flat + 1 } else { 0 };
+        settled_at = now;
+    }
+    assert!(
+        flat >= FLAT_FRAMES,
+        "the paint arena never stopped growing in {MAX_FRAMES} frames (at {settled_at} entries) \
+         — block recycling is not reclaiming what the churn frees",
+    );
+    ArenaSettle {
+        entries: settled_at,
+        classes: h.ui.damage_engine.arena.paints.classes_with_free_blocks(),
+        next_frame: frame,
+    }
+}
+
+/// Where [`warm_until_arena_settles`] left off.
+#[derive(Clone, Copy, Debug)]
+struct ArenaSettle {
+    /// Arena entries once it went flat — the working set's high-water
+    /// mark, which is what the arm reports and re-checks afterwards.
+    entries: usize,
+    /// Size classes parked with at least one free block. The other half
+    /// of the health check: a churn whose row counts stay inside a
+    /// handful of classes recycles, and a count that tracks the frame
+    /// number is one whose lengths are drifting.
+    classes: usize,
+    /// The frame number the caller's own loop resumes at.
+    next_frame: u32,
+}
+
 fn bench_workloads(c: &mut Criterion) {
     let cold = Color::rgb(0.2, 0.4, 0.8);
     let hot = Color::rgb(0.9, 0.4, 0.2);
@@ -394,45 +455,23 @@ fn bench_workloads(c: &mut Criterion) {
         };
 
         let mut h = UiHarness::new(SURFACE).scale(2.0);
-        run_and_ack(&mut h, build(0));
-        run_and_ack(&mut h, build(1));
-        // Drive enough warmup frames to force at least one
-        // compaction so the bench measures both steady-state diff
-        // and post-compaction frames.
-        let warm_target_compactions = 2u32;
-        let mut warm_frame = 2u32;
-        while h.ui.damage_engine.arena.compactions_run < warm_target_compactions
-            && warm_frame < 4096
-        {
-            run_and_ack(&mut h, build(warm_frame));
-            warm_frame += 1;
-        }
+        let settled = warm_until_arena_settles(&mut h, build, 0);
+        // Sanity: the arena should hold roughly STABLE_COUNT × CANVASES
+        // live entries. Catches off-surface regressions where most
+        // canvases skip insert and the bench silently measures a much
+        // smaller pool.
         assert!(
-            h.ui.damage_engine.arena.compactions_run >= warm_target_compactions,
-            "partial churn never compacted in {warm_frame} frames \
-             (orphaned={}, total={})",
-            h.ui.damage_engine.arena.orphaned,
-            h.ui.damage_engine.arena.snaps.len(),
-        );
-        // Sanity: arena should hold roughly STABLE_COUNT × CANVASES
-        // live entries (post-compaction may shrink to exactly that).
-        // Catches off-surface regressions where most canvases skip
-        // insert and the bench silently measures a much smaller pool.
-        assert!(
-            h.ui.damage_engine.arena.snaps.len() >= CANVASES * (STABLE_COUNT as usize - 1),
+            settled.entries >= CANVASES * (STABLE_COUNT as usize - 1),
             "partial churn: arena underpopulated (len={}, expected >= {})",
-            h.ui.damage_engine.arena.snaps.len(),
+            settled.entries,
             CANVASES * (STABLE_COUNT as usize - 1),
         );
         eprintln!(
-            "[shape_churn_partial] warmup: {warm_frame} frames, \
-             {} compactions, arena {} entries",
-            h.ui.damage_engine.arena.compactions_run,
-            h.ui.damage_engine.arena.snaps.len(),
+            "[shape_churn_partial] warmup: {} frames, arena settled at {} entries \
+             across {} recycling size classes",
+            settled.next_frame, settled.entries, settled.classes,
         );
-        let bench_start_compactions = h.ui.damage_engine.arena.compactions_run;
-        let bench_start_frame = warm_frame;
-        let mut frame_n = warm_frame;
+        let mut frame_n = settled.next_frame;
         group.bench_function("shape_churn_partial", |b| {
             b.iter(|| {
                 frame_n = frame_n.wrapping_add(1);
@@ -440,14 +479,15 @@ fn bench_workloads(c: &mut Criterion) {
                 black_box(&h);
             });
         });
-        eprintln!(
-            "[shape_churn_partial] post-bench: {} compactions over {} bench frames \
-             (1 per {:.1} frames)",
-            h.ui.damage_engine.arena.compactions_run - bench_start_compactions,
-            frame_n - bench_start_frame,
-            (frame_n - bench_start_frame) as f64
-                / (h.ui.damage_engine.arena.compactions_run - bench_start_compactions).max(1)
-                    as f64,
+        // The regression guard: thousands of measured churn frames must
+        // not add one entry. A tail-appending arena would climb here,
+        // and so would a size class that stopped reclaiming its own
+        // blocks.
+        assert_eq!(
+            h.ui.damage_engine.arena.paints.slots.len(),
+            settled.entries,
+            "[shape_churn_partial] the arena grew over {} measured frames",
+            frame_n - settled.next_frame,
         );
     }
 
@@ -473,31 +513,19 @@ fn bench_workloads(c: &mut Criterion) {
         };
 
         let mut h = UiHarness::new(SURFACE).scale(2.0);
-        run_and_ack(&mut h, build(0));
-        run_and_ack(&mut h, build(1));
-        let mut warm = 2u32;
-        while h.ui.damage_engine.arena.compactions_run < 2 && warm < 64 {
-            run_and_ack(&mut h, build(warm));
-            warm += 1;
-        }
+        let settled = warm_until_arena_settles(&mut h, build, 0);
         assert!(
-            h.ui.damage_engine.arena.compactions_run >= 2,
-            "full churn never compacted in {warm} frames",
-        );
-        assert!(
-            h.ui.damage_engine.arena.snaps.len() >= CANVASES * BASE_SHAPES as usize,
+            settled.entries >= CANVASES * BASE_SHAPES as usize,
             "full churn: arena underpopulated (len={}, expected >= {})",
-            h.ui.damage_engine.arena.snaps.len(),
+            settled.entries,
             CANVASES * BASE_SHAPES as usize,
         );
         eprintln!(
-            "[shape_churn_full] warmup: {warm} frames, {} compactions, arena {} entries",
-            h.ui.damage_engine.arena.compactions_run,
-            h.ui.damage_engine.arena.snaps.len(),
+            "[shape_churn_full] warmup: {} frames, arena settled at {} entries \
+             across {} recycling size classes",
+            settled.next_frame, settled.entries, settled.classes,
         );
-        let bench_start_compactions = h.ui.damage_engine.arena.compactions_run;
-        let bench_start_frame = warm;
-        let mut frame_n = warm;
+        let mut frame_n = settled.next_frame;
         group.bench_function("shape_churn_full", |b| {
             b.iter(|| {
                 frame_n = frame_n.wrapping_add(1);
@@ -505,14 +533,14 @@ fn bench_workloads(c: &mut Criterion) {
                 black_box(&h);
             });
         });
-        eprintln!(
-            "[shape_churn_full] post-bench: {} compactions over {} bench frames \
-             (1 per {:.1} frames)",
-            h.ui.damage_engine.arena.compactions_run - bench_start_compactions,
-            frame_n - bench_start_frame,
-            (frame_n - bench_start_frame) as f64
-                / (h.ui.damage_engine.arena.compactions_run - bench_start_compactions).max(1)
-                    as f64,
+        // Every canvas changes its row count every frame, so this is the
+        // harder half of the guard: four size classes in rotation, and
+        // still not one new entry over the measured run.
+        assert_eq!(
+            h.ui.damage_engine.arena.paints.slots.len(),
+            settled.entries,
+            "[shape_churn_full] the arena grew over {} measured frames",
+            frame_n - settled.next_frame,
         );
     }
 

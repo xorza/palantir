@@ -109,10 +109,10 @@ pub(super) fn encode_key_for(r: &TextDrawRow, frame_scale: f32) -> EncodedRunKey
 pub(super) mod internals {
     #![allow(dead_code)]
     use super::*;
+    #[cfg(test)]
+    use crate::common::block_arena::BlockArenaCounts;
     use crate::renderer::backend::raster_atlas::quad::RasterQuad;
-    use crate::renderer::backend::text::encode::cache::{
-        ENCODED_CACHE_KEEP_FRAMES, EncodedCache, EncodedGlyph,
-    };
+    use crate::renderer::backend::text::encode::cache::{EncodedCache, EncodedGlyph};
     #[cfg(test)]
     use crate::renderer::backend::text::encoded_counters::EncodedCounts;
 
@@ -169,7 +169,7 @@ pub(super) mod internals {
                 };
                 self.cache.settle(key, self.frame, true);
             }
-            self.cache.sweep(self.frame, ENCODED_CACHE_KEEP_FRAMES);
+            self.cache.sweep(self.frame);
             self.cache.map.len()
         }
 
@@ -178,12 +178,19 @@ pub(super) mod internals {
         }
 
         pub(crate) fn arena_len(&self) -> usize {
-            self.cache.arena.len()
+            self.cache.arena.slots.len()
         }
 
         #[cfg(test)]
         pub(crate) fn counts(&self) -> EncodedCounts {
             self.cache.counters.counts()
+        }
+
+        /// The *arena*'s tallies rather than the cache's — whether a
+        /// saturated gesture still extends the block storage.
+        #[cfg(test)]
+        pub(crate) fn block_counts(&self) -> BlockArenaCounts {
+            self.cache.arena.counters.counts()
         }
     }
 
@@ -249,7 +256,7 @@ pub(super) mod internals {
                 // Keep the wheel's clock in step with the inserts, or
                 // tickets more than a ring out get clamped together and
                 // the stagger is lost before the bench starts.
-                cache.sweep(frame, ENCODED_CACHE_KEEP_FRAMES);
+                cache.sweep(frame);
             }
             Self { cache, frame }
         }
@@ -265,7 +272,7 @@ pub(super) mod internals {
         /// harness would measure an early return and guard nothing.
         pub(crate) fn sweep_steady(&mut self) -> usize {
             self.frame += 1;
-            self.cache.sweep(self.frame, ENCODED_CACHE_KEEP_FRAMES);
+            self.cache.sweep(self.frame);
             self.cache.map.len()
         }
     }

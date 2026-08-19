@@ -257,3 +257,200 @@ fn the_clock_resumes_where_it_stopped_and_skips_ineligible_slots() {
         },
     );
 }
+
+/// The escalation ladder in [`RasterAtlas::allocate`], driven against a
+/// real device because growing a side allocates a texture.
+///
+/// Gated on `internals` rather than bare `test` so a default headless
+/// `cargo test` stays GPU-free, matching the text backend's own suite.
+#[cfg(feature = "internals")]
+mod gpu {
+    use super::*;
+    use crate::host::test_gpu::headless_test_gpu;
+    use crate::renderer::backend::raster_atlas::RasterAtlasConfig;
+
+    /// A mask side that starts at 128² and tops out at 256², so one
+    /// insert can walk the whole ladder — fits, grows, or is refused —
+    /// without allocating anything a test machine notices.
+    ///
+    /// `eager_growth_bytes` is zero on purpose: the eager arm is
+    /// [`growth_stops_at_the_byte_budget_not_the_device_limit`]'s
+    /// business, and leaving it on here would hide which arm answered.
+    fn small_atlas(device: &wgpu::Device) -> RasterAtlas<TestKey> {
+        RasterAtlas::new(
+            device,
+            RasterAtlasConfig {
+                label: "palantir.test",
+                initial_mask_px: 128,
+                initial_color_px: 128,
+                // 64 KiB is 256² of 1-byte mask and 128² of 4-byte colour.
+                max_bytes: 256 * 256,
+                eager_growth_bytes: 0,
+            },
+        )
+    }
+
+    /// Insert `count` 16² mask entries, all stamped with the current
+    /// frame.
+    fn fill(atlas: &mut RasterAtlas<TestKey>, device: &wgpu::Device, count: u16) {
+        let pixels = [0u8; 16 * 16];
+        let metadata = PackedMetadata::new(16, 16, 0, 0).unwrap();
+        for i in 0..count {
+            assert!(
+                atlas
+                    .insert(device, key(i), ContentType::Mask, metadata, &pixels)
+                    .is_some(),
+                "16² entry {i} must fit a 128² side",
+            );
+        }
+    }
+
+    /// An entry taller or wider than the side will *ever* be cannot be
+    /// made to fit by freeing rectangles, so the eviction loop must not
+    /// run for it. Left unguarded this is the worst thrash the atlas can
+    /// reach: one oversized glyph — a canvas zoomed past the mask
+    /// ceiling, an emoji past the colour one — empties the whole side
+    /// every frame it is asked for, and the run it belongs to is refused
+    /// as a template, so it *is* asked for again next frame.
+    #[test]
+    fn an_entry_past_the_ceiling_is_refused_without_evicting_anything() {
+        let gpu = headless_test_gpu();
+        let mut atlas = small_atlas(&gpu.device);
+        fill(&mut atlas, &gpu.device, 16);
+        // Age every entry out of the current frame so all 16 are
+        // eligible victims — otherwise the clock would protect them and
+        // the test would pass for the wrong reason.
+        atlas.end_frame(1);
+
+        let metadata = PackedMetadata::new(300, 300, 0, 0).unwrap();
+        assert_eq!(
+            atlas.insert(&gpu.device, key(999), ContentType::Mask, metadata, &[]),
+            None,
+            "300² cannot fit a side whose ceiling is 256²",
+        );
+        assert_eq!(
+            atlas.cache.len(),
+            16,
+            "a refused entry must leave the resident set alone",
+        );
+    }
+
+    /// A frame that asks for more than its atlas holds must not pay a
+    /// clock rotation per starving entry.
+    ///
+    /// Once every slot of a side carries the current frame's stamp,
+    /// nothing can become evictable until the clock advances — so the
+    /// first rotation that comes up empty is the last one worth walking.
+    /// Unmemoized this is O(slab) per starving entry, quadratic in the
+    /// slab, and it lands on exactly the frame already too busy to draw
+    /// what it was asked for.
+    #[test]
+    fn a_side_walked_dry_is_not_walked_again_until_the_clock_moves() {
+        let gpu = headless_test_gpu();
+        let mut atlas = small_atlas(&gpu.device);
+        let pixels = [0u8; 16 * 16];
+        let metadata = PackedMetadata::new(16, 16, 0, 0).unwrap();
+
+        // Saturate the side. How many 16² tiles a 256² atlas takes is
+        // etagere's shelf packing, not this crate's business, so the
+        // count is read out rather than asserted — what matters below is
+        // that the slab is `placed` long and every slot is live.
+        let mut placed = 0u16;
+        while atlas
+            .insert(
+                &gpu.device,
+                key(placed),
+                ContentType::Mask,
+                metadata,
+                &pixels,
+            )
+            .is_some()
+        {
+            placed += 1;
+        }
+        assert!(placed > 0, "a fresh 128² side must take at least one tile");
+        assert_eq!(atlas.slots.len(), placed as usize, "no evictions yet");
+
+        // Redraw the whole working set on the next frame, which is what
+        // a real frame does before it starts starving: every slot is now
+        // stamped with the current frame and none of them is a victim.
+        atlas.end_frame(1);
+        for i in 0..placed {
+            assert!(atlas.touch(&key(i)).is_some(), "tile {i} is resident");
+        }
+
+        let before = *atlas.counters.evict_scans.get();
+        for extra in 0..8 {
+            assert_eq!(
+                atlas.insert(
+                    &gpu.device,
+                    key(1000 + extra),
+                    ContentType::Mask,
+                    metadata,
+                    &pixels,
+                ),
+                None,
+                "the side is full of entries drawn this frame",
+            );
+        }
+        assert_eq!(
+            *atlas.counters.evict_scans.get() - before,
+            placed as u64,
+            "one rotation over the slab for the first refusal and none \
+             for the seven after it — not eight rotations",
+        );
+
+        // The clock advancing is what makes the side worth walking
+        // again, and now every slot is a victim, so the entry lands.
+        atlas.end_frame(2);
+        let evicted_before = atlas.counters.evictions.count();
+        assert!(
+            atlas
+                .insert(&gpu.device, key(2000), ContentType::Mask, metadata, &pixels)
+                .is_some(),
+            "an aged-out tile is evictable again",
+        );
+        // How *many* victims one tile costs is etagere's bucket
+        // granularity — a bucket only returns its shelf space once every
+        // item in it is gone — so the count is read rather than pinned.
+        // What this atlas owes is the conservation law around it: every
+        // entry that left, left through `evict_one`, so the resident set
+        // shrank by exactly the evictions and not by a wipe.
+        let evicted = atlas.counters.evictions.count() - evicted_before;
+        assert!(
+            evicted > 0,
+            "the side was full — the tile had to displace something"
+        );
+        assert_eq!(
+            atlas.cache.len(),
+            placed as usize - evicted as usize + 1,
+            "everything not evicted is still resident",
+        );
+    }
+
+    /// An entry that fits the ceiling but not the *current* side has to
+    /// grow, whatever the byte budget says: eviction frees rectangles
+    /// and never widens the texture, so every victim it takes is
+    /// spent for nothing.
+    #[test]
+    fn an_entry_wider_than_the_side_grows_rather_than_evicting() {
+        let gpu = headless_test_gpu();
+        let mut atlas = small_atlas(&gpu.device);
+        fill(&mut atlas, &gpu.device, 16);
+        atlas.end_frame(1);
+
+        let pixels = vec![0u8; 200 * 200];
+        let metadata = PackedMetadata::new(200, 200, 0, 0).unwrap();
+        assert!(
+            atlas
+                .insert(&gpu.device, key(999), ContentType::Mask, metadata, &pixels)
+                .is_some(),
+            "200² fits once the 128² side has grown to its 256² ceiling",
+        );
+        assert_eq!(
+            atlas.cache.len(),
+            17,
+            "growing is what made room, so nothing should have been evicted",
+        );
+    }
+}

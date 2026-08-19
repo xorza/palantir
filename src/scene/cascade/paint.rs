@@ -6,6 +6,7 @@
 //! touch them, behind a `node_spans[i]` indirection its subtree-skip
 //! fast path never follows.
 
+use crate::common::block_arena::BlockSlot;
 use crate::common::content_hash::ContentHash;
 use crate::primitives::rect::Rect;
 use crate::primitives::span::Span;
@@ -30,6 +31,39 @@ pub(crate) struct Paint {
     /// the child's `WidgetId` bits — its stable identity across
     /// reorders.
     pub(crate) hash: ContentHash,
+}
+
+/// The link rides in `hash` because a free block is not a paint row:
+/// nothing reads any field of these slots until the block is
+/// re-allocated, and re-allocation overwrites them.
+///
+/// This is the *damage* arena's element, not this module's `rows` — that
+/// one is cleared and refilled wholesale every frame and needs no
+/// allocator. The impl lives here because the type does.
+impl BlockSlot for Paint {
+    /// Exact fit. A node's paint span is short — one chrome row plus a
+    /// shape or child marker each, so a handful of rows for almost every
+    /// widget — and against 24-byte rows a 4-slot granule wastes up to
+    /// 96 bytes per span. Measured on `damage/workload/shape_churn_*`
+    /// that inflated the arena by 20-30% and cost 2.9% and 6.8% of the
+    /// two arms purely in lost cache density, because the diff reads
+    /// these spans back every frame.
+    ///
+    /// Exact fit mints a class per distinct row count, which is what
+    /// makes it affordable here: row counts are small integers drawn
+    /// from a bounded set, not the hundreds a glyph run can reach.
+    const GRANULE: u32 = 1;
+
+    fn free_link(next: u32) -> Self {
+        Self {
+            screen: Rect::ZERO,
+            hash: ContentHash(next as u64),
+        }
+    }
+
+    fn next_free(self) -> u32 {
+        self.hash.0 as u32
+    }
 }
 
 /// Per-layer paint state: the unified [`Paint`] arena plus a per-node
@@ -98,7 +132,7 @@ impl PaintArena {
 ///
 /// Both arenas holding `Paint`s hand out bare slices — the cascade's live
 /// [`PaintArena::rows`] and the damage diff's retained
-/// `PaintSnapArena::snaps` — so these belong on the slice rather than on
+/// `PaintSnapArena::paints` — so these belong on the slice rather than on
 /// either owner, which is what kept them scattered as free functions
 /// across two damage files.
 pub(crate) trait PaintRows {
