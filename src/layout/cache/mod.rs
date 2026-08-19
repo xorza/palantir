@@ -198,12 +198,13 @@ pub(crate) struct MeasureCache {
     /// Snapshot-map rebuilds run so far. Lets a test prove the reuse gate
     /// in [`Self::finish_frame`] both fires and busts — without it the
     /// `debug_assert` guarding reuse passes vacuously on any frame that
-    /// silently stopped reusing. Same arrangement as
-    /// [`PaintSnapArena::compactions_run`]: accumulates for the life of
-    /// the cache, so readers take a delta.
+    /// silently stopped reusing.
     ///
-    /// [`PaintSnapArena::compactions_run`]:
-    ///     crate::scene::damage::snapshot::PaintSnapArena::compactions_run
+    /// Accumulates for the life of the cache rather than resetting per
+    /// frame, so readers take a delta — the shape every counter over a
+    /// pass that may not run takes, for the reason
+    /// [`CascadeCounters`](crate::scene::cascade::counters::CascadeCounters)
+    /// states.
     #[cfg(any(test, feature = "internals"))]
     pub(crate) snapshot_rebuilds: u32,
 }
@@ -412,11 +413,10 @@ impl MeasureCache {
     }
 
     /// Bump the rebuild counter. Gated in here so `finish_frame` carries
-    /// no `#[cfg]` of its own — the pattern
-    /// [`PaintSnapArena::note_compaction`] uses.
-    ///
-    /// [`PaintSnapArena::note_compaction`]:
-    ///     crate::scene::damage::snapshot::PaintSnapArena
+    /// no `#[cfg]` of its own — the same placement
+    /// [`BenchOnly`](crate::common::counters::BenchOnly) exists to make
+    /// unnecessary for the counters that can use it, and that a plain
+    /// `u32` field still needs.
     #[inline]
     fn note_snapshot_rebuild(&mut self) {
         #[cfg(any(test, feature = "internals"))]

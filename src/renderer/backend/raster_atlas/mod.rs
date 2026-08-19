@@ -182,6 +182,28 @@ struct Side {
     texture: wgpu::Texture,
     view: wgpu::TextureView,
     size: u32,
+    /// Largest edge this side will ever reach — see [`growth_ceiling`].
+    ///
+    /// Resolved once at construction because its three inputs never
+    /// change, and [`RasterAtlas::allocate`] reads it per entry it is
+    /// asked to place: recomputing meant a `u64` divide and an `isqrt`
+    /// on every glyph and icon that missed the cache.
+    ceiling: u32,
+    /// The frame a full clock rotation over this side last came up
+    /// empty on, or `None` until one has.
+    ///
+    /// A rotation is O(slab), and [`RasterAtlas::allocate`] calls
+    /// [`RasterAtlas::evict_one`] once for every entry it cannot place —
+    /// so a frame asking for more than the ceiling holds pays that walk
+    /// per starving entry, which is quadratic in the slab. Every one of
+    /// those walks is provably wasted: a slot is eligible only while
+    /// `last_use < current_frame`, and `last_use` never moves *down*
+    /// within a frame (`touch` and `store` both stamp it with
+    /// `current_frame`), so once a side has been walked dry nothing can
+    /// become evictable until the clock advances. Remembering which
+    /// frame that happened on turns the second and every later miss into
+    /// one comparison.
+    dry_frame: Option<u64>,
     packer: BucketedAtlasAllocator,
     /// On grow, the previous-frame texture is moved here so the
     /// shared-encoder flush can record the copy alongside pending
@@ -210,7 +232,6 @@ pub(crate) struct AtlasBindings<'a> {
 pub(crate) struct RasterAtlas<K> {
     sides: [Side; 2],
     labels: AtlasLabels,
-    max_bytes: u64,
     eager_growth_bytes: u64,
     /// Dense slot slab; `cache` maps each key to an index into it.
     /// Encoded-run caches record these indices so their hot-path LRU
@@ -255,7 +276,6 @@ pub(crate) struct RasterAtlas<K> {
     /// caches above this one — see [`ExpiryWheel`] — so `touch` stays a
     /// single indexed store on the hot path and files nothing.
     unallocated_expiry: ExpiryWheel<K>,
-    max_texture_dimension_2d: u32,
     /// Set on grow; the renderer rebuilds its bind group and clears it.
     pub(crate) bind_group_dirty: bool,
     /// Evictions performed, growths performed, and slots *examined*
@@ -303,12 +323,14 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
                 device,
                 ContentType::Mask,
                 config.initial_mask_px.min(max),
+                growth_ceiling(max, ContentType::Mask, config.max_bytes),
                 config.label,
             ),
             Side::new(
                 device,
                 ContentType::Color,
                 config.initial_color_px.min(max),
+                growth_ceiling(max, ContentType::Color, config.max_bytes),
                 config.label,
             ),
         ];
@@ -322,7 +344,6 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
         Self {
             sides,
             labels,
-            max_bytes: config.max_bytes,
             eager_growth_bytes: config.eager_growth_bytes,
             slots: Vec::new(),
             slot_keys: Vec::new(),
@@ -331,7 +352,6 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
             hand: 0,
             current_frame: 0,
             unallocated_expiry: ExpiryWheel::with_horizon(UNALLOCATED_SWEEP_INTERVAL + 2),
-            max_texture_dimension_2d: max,
             bind_group_dirty: false,
             counters: AtlasCounters::default(),
             pending_staging: Vec::new(),
@@ -597,6 +617,23 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
 
     /// Allocate a slot in the right packer, evicting then growing as
     /// needed.
+    ///
+    /// # Why eviction is gated on the entry fitting at all
+    ///
+    /// Freeing rectangles cannot widen a texture, so for an entry that
+    /// does not fit the side's *edge* every victim the loop takes is
+    /// spent for nothing — and the loop takes them until the side runs
+    /// dry, which empties the whole atlas. Past the ceiling that is the
+    /// worst state this type can reach: the entry never fits however
+    /// much is freed, the run it belongs to is refused as a template
+    /// (see [`EncodedCache::settle`]), so it is asked for again on the
+    /// next frame and the side is wiped again, for as long as it stays
+    /// on screen. Both gates below are the same predicate — a rect
+    /// taller or wider than an edge cannot be placed inside it — applied
+    /// once to the ceiling and once to the current size.
+    ///
+    /// [`EncodedCache::settle`]:
+    ///     crate::renderer::backend::text::encode::cache::EncodedCache
     fn allocate(
         &mut self,
         device: &wgpu::Device,
@@ -604,16 +641,24 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
         width: u16,
         height: u16,
     ) -> Option<etagere::Allocation> {
+        if !fits_edge(width, height, self.sides[content as usize].ceiling) {
+            self.counters.oversized.bump();
+            return None;
+        }
         let need = size2(width as i32, height as i32);
         loop {
             if let Some(a) = self.sides[content as usize].packer.allocate(need) {
                 return Some(a);
             }
-            // Under the budget, buy space before paying for a victim:
-            // one grow is a texture plus a rect-preserving blit, while
-            // eviction is an O(live glyphs) scan that this loop repeats
-            // for every glyph still waiting.
-            let grew = self.eager_growth(content) && self.grow(device, content);
+            // Two reasons to buy space before paying for a victim. Under
+            // the budget it is simply cheaper: one grow is a texture plus
+            // a rect-preserving blit, while eviction is an O(live glyphs)
+            // scan that this loop repeats for every glyph still waiting.
+            // Too wide for the current edge it is the *only* thing that
+            // can work, budget or not — and the check above already
+            // proved a large enough edge is reachable.
+            let must_grow = !fits_edge(width, height, self.sides[content as usize].size);
+            let grew = (must_grow || self.eager_growth(content)) && self.grow(device, content);
             // Past the budget — or already at the device maximum, where
             // the grow above returned false — the atlas holds its size
             // by recycling rectangles instead.
@@ -671,12 +716,17 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
     /// (`TextEncoder::try_emit_cached`), which is the hottest path in
     /// text rendering. Move-to-head would tax that to speed this up.
     fn evict_one(&mut self, target: ContentType) -> bool {
+        // Already walked dry on this frame — see [`Side::dry_frame`].
+        if self.sides[target as usize].dry_frame == Some(self.current_frame) {
+            return false;
+        }
         let sweep = clock_victim(&self.slots, self.hand, target, self.current_frame);
         self.hand = sweep.hand;
         self.counters
             .evict_scans
             .edit(|n| *n += sweep.examined as u64);
         let Some(idx) = sweep.victim else {
+            self.sides[target as usize].dry_frame = Some(self.current_frame);
             return false;
         };
         self.counters.evictions.bump();
@@ -704,15 +754,14 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
     /// shared encoder. etagere preserves rects on `packer.grow`, so
     /// the cache stays valid — no re-rasterization.
     fn grow(&mut self, device: &wgpu::Device, content: ContentType) -> bool {
-        let ceiling = growth_ceiling(self.max_texture_dimension_2d, content, self.max_bytes);
         // Read before the side is borrowed mutably below.
         let label = format!("{} {} atlas", self.labels.stem, content.side_name());
         let side = &mut self.sides[content as usize];
-        if side.size >= ceiling {
+        if side.size >= side.ceiling {
             return false;
         }
         self.counters.grows.bump();
-        let new_size = (side.size * ATLAS_GROWTH_FACTOR).min(ceiling);
+        let new_size = (side.size * ATLAS_GROWTH_FACTOR).min(side.ceiling);
         let new_texture = make_texture(device, content.format(), new_size, &label);
         let old_size = side.size;
         let old_texture = std::mem::replace(&mut side.texture, new_texture);
@@ -747,7 +796,13 @@ impl std::fmt::Debug for Side {
 }
 
 impl Side {
-    fn new(device: &wgpu::Device, content: ContentType, size: u32, label: &str) -> Self {
+    fn new(
+        device: &wgpu::Device,
+        content: ContentType,
+        size: u32,
+        ceiling: u32,
+        label: &str,
+    ) -> Self {
         let texture = make_texture(
             device,
             content.format(),
@@ -759,6 +814,8 @@ impl Side {
             texture,
             view,
             size,
+            ceiling,
+            dry_frame: None,
             packer: BucketedAtlasAllocator::new(size2(size as i32, size as i32)),
             pending_grow: None,
         }
@@ -773,6 +830,19 @@ impl Side {
 fn growth_ceiling(max_texture_dimension_2d: u32, content: ContentType, max_bytes: u64) -> u32 {
     let by_bytes = (max_bytes / u64::from(content.bytes_per_pixel())).isqrt() as u32;
     max_texture_dimension_2d.min(by_bytes)
+}
+
+/// Whether a `width × height` rect can be placed inside a square side of
+/// `edge` texels — the one question [`RasterAtlas::allocate`] has to
+/// answer before it is allowed to evict anything.
+///
+/// Exact rather than conservative, and that is what makes it usable as a
+/// gate: the packer is configured with one column and unit alignment, so
+/// its own reject is `w > edge || h > edge` and this agrees with it
+/// texel for texel. A stricter test here would refuse entries the packer
+/// would have taken.
+const fn fits_edge(width: u16, height: u16, edge: u32) -> bool {
+    width as u32 <= edge && height as u32 <= edge
 }
 
 /// Settle one drained non-drawing ticket: `Some(due)` to re-file it,
@@ -917,6 +987,16 @@ pub(crate) struct AtlasCounters {
     /// toward the slab length means the skip conditions are rejecting
     /// nearly everything.
     pub(crate) evict_scans: BenchOnly<u64>,
+    /// Entries refused because they exceed the side's growth ceiling.
+    ///
+    /// Distinct from a plain full atlas, and the distinction is the
+    /// point: a full atlas recovers on its own once the frame's pressure
+    /// clears, while this one never does — the same entry is refused on
+    /// every frame it is drawn. A non-zero reading means content is
+    /// asking for rasters the configured budget cannot hold, so the
+    /// answer is a bigger `max_bytes` or a size ladder that clamps
+    /// earlier, not anything the atlas can do at runtime.
+    pub(crate) oversized: BenchOnly<u32>,
 }
 
 /// Reads are gated with their sole consumer: the `text_atlas`
@@ -929,6 +1009,7 @@ impl AtlasCounters {
             evictions: self.evictions.count(),
             grows: self.grows.count(),
             evict_scans: *self.evict_scans.get(),
+            oversized: self.oversized.count(),
         }
     }
 }
@@ -940,6 +1021,7 @@ pub(crate) struct AtlasCounts {
     pub(crate) evictions: u32,
     pub(crate) grows: u32,
     pub(crate) evict_scans: u64,
+    pub(crate) oversized: u32,
 }
 
 #[cfg(test)]

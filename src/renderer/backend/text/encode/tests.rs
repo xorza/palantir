@@ -1,7 +1,7 @@
 use super::*;
 use crate::renderer::backend::raster_atlas::quad::RasterQuad;
 use crate::renderer::backend::text::encode::cache::{
-    ENCODED_CACHE_KEEP_FRAMES, EncodedCache, EncodedGlyph, NIL,
+    ENCODED_CACHE_KEEP_FRAMES, EncodedCache, EncodedGlyph,
 };
 
 fn key(scale_q: u32) -> EncodedKey {
@@ -57,7 +57,7 @@ fn unused_rows_die_one_frame_past_the_keep_window() {
         insert(&mut cache, key(1), 0..1, last_use);
         let mut died = None;
         for frame in last_use + 1..=last_use + 400 {
-            cache.sweep(frame, ENCODED_CACHE_KEEP_FRAMES);
+            cache.sweep(frame);
             if cache.map.is_empty() {
                 died = Some(frame);
                 break;
@@ -92,25 +92,25 @@ fn a_reencoded_row_reclaims_its_own_block_and_the_arena_stops_growing() {
     // Untouched row: 10 glyphs, well inside its keep window.
     insert(&mut cache, key(1), 1000..1010, 0);
     assert_eq!(
-        cache.arena.len(),
+        cache.arena.slots.len(),
         12,
         "10 glyphs round up to a 12-slot block"
     );
 
-    let before = cache.counters.counts();
+    let before = cache.arena.counters.counts();
     for frame in 1u64..=8 {
         let base = frame as u32 * 10;
         insert(&mut cache, key(2), base..base + 4, frame);
-        cache.sweep(frame, ENCODED_CACHE_KEEP_FRAMES);
+        cache.sweep(frame);
         assert_eq!(
-            cache.arena.len(),
+            cache.arena.slots.len(),
             16,
             "after frame {frame}: the re-encode must reuse its own block",
         );
     }
-    let delta = cache.counters.counts() - before;
+    let delta = cache.arena.counters.counts() - before;
     assert_eq!(
-        (delta.block_allocs, delta.block_reuses),
+        (delta.allocs, delta.reuses),
         (1, 7),
         "only the first re-encode extends the arena; the rest recycle",
     );
@@ -128,7 +128,7 @@ fn a_reencoded_row_reclaims_its_own_block_and_the_arena_stops_growing() {
         "live blocks must not overlap: {untouched:?} / {churned:?}",
     );
     for (span, tags) in [(untouched, 1000..1010), (churned, 80..84)] {
-        for (got, want) in cache.arena[span.range()].iter().zip(tags.map(glyph)) {
+        for (got, want) in cache.arena.slots[span.range()].iter().zip(tags.map(glyph)) {
             assert!(same(got, &want), "a live block was disturbed: {got:?}");
         }
     }
@@ -144,18 +144,18 @@ fn blocks_recycle_only_within_their_size_class() {
     for (i, len) in [2u32, 5, 9].into_iter().enumerate() {
         insert(&mut cache, key(i as u32), 0..len, 0);
     }
-    assert_eq!(cache.arena.len(), 4 + 8 + 12);
+    assert_eq!(cache.arena.slots.len(), 4 + 8 + 12);
     let spans: Vec<Span> = (0..3).map(|i| cache.map[&key(i)].span).collect();
 
     // Expire all three.
     for frame in 1..=ENCODED_CACHE_KEEP_FRAMES + 1 {
-        cache.sweep(frame, ENCODED_CACHE_KEEP_FRAMES);
+        cache.sweep(frame);
     }
     assert!(cache.map.is_empty());
 
     // Re-insert in the reverse order: each must land back in the
     // block of its own class, so the arena does not grow at all.
-    let before = cache.counters.counts();
+    let before = cache.arena.counters.counts();
     for (i, len) in [9u32, 5, 2].into_iter().enumerate() {
         insert(
             &mut cache,
@@ -165,12 +165,12 @@ fn blocks_recycle_only_within_their_size_class() {
         );
     }
     assert_eq!(
-        cache.arena.len(),
+        cache.arena.slots.len(),
         4 + 8 + 12,
         "no class needed a fresh block"
     );
-    let delta = cache.counters.counts() - before;
-    assert_eq!((delta.block_allocs, delta.block_reuses), (0, 3));
+    let delta = cache.arena.counters.counts() - before;
+    assert_eq!((delta.allocs, delta.reuses), (0, 3));
     assert_eq!(
         cache.map[&key(100)].span.start,
         spans[2].start,
@@ -198,14 +198,14 @@ fn a_shorter_row_reusing_a_block_exposes_only_its_own_glyphs() {
     insert(&mut cache, key(1), 700..704, 0); // 4 glyphs, class 0
     let block = cache.map[&key(1)].span;
     for frame in 1..=ENCODED_CACHE_KEEP_FRAMES + 1 {
-        cache.sweep(frame, ENCODED_CACHE_KEEP_FRAMES);
+        cache.sweep(frame);
     }
     // 1 glyph, same class — takes the same block, writes one slot.
     insert(&mut cache, key(2), 900..901, ENCODED_CACHE_KEEP_FRAMES + 1);
     let span = cache.map[&key(2)].span;
     assert_eq!(span.start, block.start, "same class, recycled block");
     assert_eq!(span.len, 1, "the span covers only what was written");
-    assert!(same(&cache.arena[span.range()][0], &glyph(900)));
+    assert!(same(&cache.arena.slots[span.range()][0], &glyph(900)));
 }
 
 /// An incomplete encode leaves nothing behind: no map row for the
@@ -222,7 +222,7 @@ fn only_complete_encodes_become_templates() {
         let mut cache = EncodedCache::default();
         // A prior run's template — must survive either outcome.
         insert(&mut cache, key(1), 100..103, 7);
-        let arena_before = cache.arena.len();
+        let arena_before = cache.arena.slots.len();
         cache.pending.extend((200..202).map(glyph));
 
         cache.settle(key(2), 9, complete);
@@ -235,7 +235,7 @@ fn only_complete_encodes_become_templates() {
         );
         assert_eq!(cache.map.len(), 1 + expect_rows, "complete = {complete}");
         assert_eq!(
-            cache.arena.len(),
+            cache.arena.slots.len(),
             if complete {
                 arena_before + 4
             } else {
@@ -244,7 +244,7 @@ fn only_complete_encodes_become_templates() {
             "an incomplete encode must reserve no block",
         );
         let survivor = cache.map[&key(1)].span;
-        for (got, want) in cache.arena[survivor.range()]
+        for (got, want) in cache.arena.slots[survivor.range()]
             .iter()
             .zip((100..103).map(glyph))
         {
@@ -284,7 +284,7 @@ fn a_steadily_drawn_row_holds_one_ticket_not_one_per_frame() {
                 .expect("a drawn row stays resident")
                 .last_use = frame;
         }
-        cache.sweep(frame, ENCODED_CACHE_KEEP_FRAMES);
+        cache.sweep(frame);
     }
 
     assert_eq!(cache.map.len(), ROWS as usize, "every row is still live");
@@ -294,7 +294,7 @@ fn a_steadily_drawn_row_holds_one_ticket_not_one_per_frame() {
         "three windows of redraw must not accumulate tickets",
     );
     assert_eq!(
-        cache.arena.len(),
+        cache.arena.slots.len(),
         ROWS as usize * 4,
         "steady redraw allocates one block per row and never another",
     );
@@ -303,11 +303,11 @@ fn a_steadily_drawn_row_holds_one_ticket_not_one_per_frame() {
     // not push the deadline out of reach.
     let last = ENCODED_CACHE_KEEP_FRAMES * 3;
     for frame in last + 1..=last + ENCODED_CACHE_KEEP_FRAMES + 1 {
-        cache.sweep(frame, ENCODED_CACHE_KEEP_FRAMES);
+        cache.sweep(frame);
     }
     assert!(cache.map.is_empty(), "rows outlived their window");
     assert_eq!(
-        cache.free_heads.iter().filter(|&&h| h != NIL).count(),
+        cache.arena.classes_with_free_blocks(),
         1,
         "every expired row's block went back to its one size class",
     );
@@ -378,7 +378,7 @@ fn a_gesture_frame_retains_a_full_keep_window_of_single_use_rows() {
 /// frame in the steady state does anything another does not.
 ///
 /// This is what replaced the compaction, so it is asserted as an
-/// absolute rather than a ratio: `block_allocs == 0` says the arena
+/// absolute rather than a ratio: `allocs == 0` says the arena
 /// did not grow by a single slot, and the arena length holding
 /// constant says nothing was relocated. The old design could not
 /// state either — its arena grew every frame by construction and
@@ -395,25 +395,25 @@ fn a_saturated_gesture_reaches_a_steady_state_where_no_frame_allocates() {
         churn.churn_frame();
     }
     let saturated_arena = churn.arena_len();
-    let before = churn.counts();
+    let before = churn.block_counts();
 
     const MEASURED: u64 = ENCODED_CACHE_KEEP_FRAMES;
     for _ in 0..MEASURED {
         churn.churn_frame();
     }
 
-    let delta = churn.counts() - before;
+    let delta = churn.block_counts() - before;
     assert_eq!(
         churn.arena_len(),
         saturated_arena,
         "a saturated gesture must not grow the arena by one slot",
     );
     assert_eq!(
-        delta.block_allocs, 0,
+        delta.allocs, 0,
         "every row in the steady state must come off a free list",
     );
     assert_eq!(
-        delta.block_reuses,
+        delta.reuses,
         RUNS * MEASURED as u32,
         "and every row must take exactly one block",
     );
@@ -434,5 +434,77 @@ fn a_saturated_gesture_reaches_a_steady_state_where_no_frame_allocates() {
         saturated_arena,
         RUNS as usize * (window + 1) * GLYPHS as usize,
         "one frame of headroom over the {window}-frame resident window",
+    );
+}
+
+/// What the arena is *actually* bounded by, which is not the working
+/// set: a block only ever returns to a row of its own size class, so a
+/// workload whose run lengths drift upward strands every class it leaves
+/// behind. The bound is the sum over classes of each one's peak
+/// concurrent block count, and nothing brings it back down.
+///
+/// Traced with one fresh key per frame carrying `16 × frame` glyphs — a
+/// run that grows, which is what a long unwrapped line being typed into
+/// produces. `16 × frame` is a multiple of [`BLOCK_GRANULE`], so each
+/// frame's block is exactly that many slots and each frame lands in a
+/// class of its own, never revisited:
+///
+/// ```text
+///   arena(F) = Σ 16f = 8·F·(F + 1)          quadratic in the longest run
+///   live(F)  = Σ 16f over the resident window     linear in it
+/// ```
+///
+/// So the divergence is real but slow, and the number that has to stay
+/// small is the *longest run ever encoded*, not the row count: wrapped
+/// text bounds it at a line's worth of glyphs, and at 12 glyphs a row
+/// (`a_saturated_gesture_reaches_a_steady_state_where_no_frame_allocates`)
+/// there is one class and nothing strands at all.
+#[test]
+fn drifting_run_lengths_strand_a_block_in_every_class_they_leave() {
+    let mut cache = EncodedCache::default();
+    let mut arena_at = Vec::new();
+    for frame in 1u64..=100 {
+        let len = 16 * frame as u32;
+        insert(&mut cache, key(len), 0..len, frame);
+        cache.sweep(frame);
+        if frame == 40 || frame == 100 {
+            arena_at.push(cache.arena.slots.len());
+        }
+    }
+    assert_eq!(
+        arena_at,
+        vec![8 * 40 * 41, 8 * 100 * 101],
+        "one block per frame, of 16·frame slots, never reclaimed",
+    );
+
+    // The resident window is `KEEP + 1` rows — frames 70..=100 here —
+    // and it is what the arena *would* be bounded by if blocks were
+    // interchangeable. 42 160 against 80 800: the arena is 1.9x its
+    // working set after a hundred frames, and the ratio keeps climbing.
+    let window = ENCODED_CACHE_KEEP_FRAMES + 1;
+    assert_eq!(cache.map.len(), window as usize);
+    let live: usize = cache.map.values().map(|e| e.span.len as usize).sum();
+    assert_eq!(live, 16 * (70..=100).sum::<usize>());
+    assert_eq!((live, cache.arena.slots.len()), (42_160, 80_800));
+
+    // Bounded, not merely slow-growing: a length that comes back through
+    // a class it already left takes the block parked there. Frame 5's
+    // 80-glyph block has been free since frame 36, and re-encoding one
+    // row at that length holds the arena flat.
+    let before = cache.arena.counters.counts();
+    for frame in 101u64..=110 {
+        insert(&mut cache, key(9999), 0..80, frame);
+        cache.sweep(frame);
+    }
+    assert_eq!(
+        cache.arena.slots.len(),
+        80_800,
+        "a returning length reuses what its class stranded",
+    );
+    let delta = cache.arena.counters.counts() - before;
+    assert_eq!(
+        (delta.allocs, delta.reuses),
+        (0, 10),
+        "the first row takes frame 5's parked block and the rest take their own",
     );
 }

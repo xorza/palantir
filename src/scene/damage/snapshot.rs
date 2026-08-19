@@ -1,30 +1,13 @@
 //! Cross-frame node and paint snapshot storage used by the damage diff.
 
+use crate::common::block_arena::BlockArena;
 use crate::common::content_hash::ContentHash;
 use crate::primitives::rect::Rect;
 use crate::primitives::span::Span;
-use crate::primitives::widget_id::WidgetIdMap;
 use crate::scene::cascade::CascadeInputHash;
 use crate::scene::cascade::paint::Paint;
 use crate::scene::damage::push_screen;
-use crate::scene::forest::Forest;
 use std::cmp::Ordering;
-
-/// Minimum [`PaintSnapArena::snaps`] length before [`PaintSnapArena::maybe_compact`]
-/// considers running. Below this the arena is small enough that the
-/// reseat walk costs more than the orphaned-slot memory it would
-/// reclaim — capacity is `Vec`-amortised and these entries stay hot
-/// in cache. Empirically tuned against `src/scene/damage/bench.rs`; change
-/// with a benchmark on the damage-merge fixture.
-const COMPACT_MIN_TOTAL: u32 = 256;
-
-/// Orphan-ratio threshold (in 1/4 units) above which compaction
-/// triggers — `orphaned * 4 >= total * COMPACT_ORPHAN_RATIO_NUM` is
-/// the predicate. `3/4 = 75%` orphaned means three quarters of the
-/// arena is dead bytes before a reseat pays off; lower values cause
-/// thrash on churn-heavy frames. Tuned the same way as
-/// [`COMPACT_MIN_TOTAL`] — change it with a benchmark, not by feel.
-const COMPACT_ORPHAN_RATIO_NUM: u32 = 3;
 
 /// `matched_pos` sentinel for a curr row with no exact match in the
 /// prev span (moved / added / content-changed — the content diff
@@ -84,42 +67,43 @@ pub(crate) struct NodeSnapshot {
     pub(super) parent_key: u64,
 }
 
-/// Per-widget paint snapshots packed contiguously, plus the
-/// scratch buffer + orphan counter that drive double-buffered
-/// compaction. Each [`NodeSnapshot::paint_span`] is a slice into
-/// `snaps`; chrome lives at row 0 of the owner's span when present,
-/// followed by direct shapes and child markers in record order.
+/// Per-widget paint snapshots over a [`BlockArena`]. Each
+/// [`NodeSnapshot::paint_span`] is a block of it; chrome lives at row 0
+/// of the owner's span when present, followed by direct shapes and child
+/// markers in record order.
 ///
-/// Lifecycle: append-only on count-change paths (new span at end,
-/// old slice orphaned); in-place on same-count refreshes;
-/// [`Self::maybe_compact`] reseats live spans into `scratch` once
-/// orphans exceed the threshold, then swaps. Retained capacity —
-/// steady-state alloc-free even under paint-count churn.
+/// Lifecycle: a snapshot takes a block when its widget enters the map
+/// and hands it back when the widget leaves, and a paint-count change is
+/// those two in sequence. Same-count refreshes write in place. **Nothing
+/// is ever relocated**, so a `paint_span` is stable for the snapshot's
+/// whole life and no pass has to be able to reach the map to reclaim
+/// storage — see [`crate::common::block_arena`] for why that matters
+/// more than the slack the size classes cost.
 #[derive(Debug, Default)]
 pub(crate) struct PaintSnapArena {
-    pub(crate) snaps: Vec<Paint>,
-    /// Reusable destination for compaction (and a swap target). Same
-    /// invariants as `snaps` after a `swap`.
-    scratch: Vec<Paint>,
+    /// Reached directly for all three of read, `store` and `release` —
+    /// the diff slices live spans out of `paints.slots` on every leg, so
+    /// wrapping the two writes while the reads went through the field
+    /// only hid where the storage was.
+    ///
+    /// A widget entering the map takes a block; one leaving hands it
+    /// back, **after** its [`NodeSnapshot`] is out of the map — the span
+    /// is dead from that call on, and a second release would link the
+    /// block into its class twice. `clear` is for the caller that just
+    /// dropped the whole map (`DamageEngine::invalidate_prev`), where
+    /// reclaiming one span at a time would be the same work with more
+    /// chances to miss one.
+    pub(crate) paints: BlockArena<Paint>,
     /// The content-keyed matcher's scratch. Its own type so each phase
     /// can be a method that names the precondition it inherits.
     matcher: RowMatcher,
-    /// Count of `Paint` entries in `snaps` that no live
-    /// `NodeSnapshot::paint_span` points into. Drives the compaction
-    /// trigger.
-    pub(crate) orphaned: u32,
-    /// Compaction-event counter — bumped each time [`Self::compact`]
-    /// runs. Gated behind `internals` so benches can verify the path
-    /// was actually exercised.
-    #[cfg(any(test, feature = "internals"))]
-    pub(crate) compactions_run: u32,
 }
 
 /// Result of [`PaintSnapArena::diff_changed_leg`].
 #[derive(Debug)]
 pub(super) struct ChangedLeg {
     /// Span covering this frame's paints — `prev_span` reused when the
-    /// row count is stable, a fresh tail span when it changes.
+    /// row count is stable, a freshly taken block when it changes.
     pub(super) span: Span,
     /// True when every `Paint` matched bit-identically (the fast path),
     /// so the per-shape diff emitted *no* damage. Reaching the
@@ -138,20 +122,6 @@ impl PaintSnapArena {
     #[inline]
     pub(super) fn matched_positions(&self) -> &[u32] {
         &self.matcher.matched_pos
-    }
-
-    /// Reset to empty — caller's next `compute` will repopulate.
-    pub(super) fn clear(&mut self) {
-        self.snaps.clear();
-        self.orphaned = 0;
-    }
-
-    /// Append `paints` to the tail and return the covering [`Span`].
-    /// Used by the Vacant-insert arm of `compute`.
-    pub(super) fn append(&mut self, paints: &[Paint]) -> Span {
-        let start = self.snaps.len() as u32;
-        self.snaps.extend_from_slice(paints);
-        Span::new(start, paints.len() as u32)
     }
 
     /// Per-paint diff leg for the changed-paints arm. Three strategies
@@ -211,7 +181,7 @@ impl PaintSnapArena {
     ) -> ChangedLeg {
         let prev_start = prev_span.start as usize;
         let prev_len = prev_span.len as usize;
-        let prev_slice = &self.snaps[prev_start..prev_start + prev_len];
+        let prev_slice = &self.paints.slots[prev_start..prev_start + prev_len];
 
         if prev_len == curr_paints.len() && prev_slice.iter().zip(curr_paints).all(|(p, c)| p == c)
         {
@@ -221,11 +191,11 @@ impl PaintSnapArena {
             };
         }
 
-        // Split-borrow: the phases read `prev` out of `snaps` while
+        // Split-borrow: the phases read `prev` out of the arena while
         // writing the matcher's columns. Disjoint fields, one
         // destructure.
-        let Self { snaps, matcher, .. } = self;
-        let prev = &snaps[prev_start..prev_start + prev_len];
+        let Self { paints, matcher } = self;
+        let prev = &paints.slots[prev_start..prev_start + prev_len];
 
         matcher.begin(prev, curr_paints);
         matcher.claim_exact(prev, curr_paints);
@@ -233,83 +203,24 @@ impl PaintSnapArena {
         matcher.emit_removals(out, prev);
 
         let span = if prev_len == curr_paints.len() {
-            snaps[prev_span.range()].copy_from_slice(curr_paints);
+            paints.slots[prev_span.range()].copy_from_slice(curr_paints);
             prev_span
         } else {
-            let new_start = snaps.len() as u32;
-            snaps.extend_from_slice(curr_paints);
-            self.mark_orphaned(prev_len as u32);
-            Span::new(new_start, curr_paints.len() as u32)
+            // A row-count change is a different size class as often as
+            // not, so this is a release-then-take rather than a resize.
+            // Release first: a count that moved within its class — a
+            // 40-shape node dropping to 39 — then reclaims *its own*
+            // block, which is what keeps a shape toggled every frame
+            // from growing the arena at all after warm-up. The old block
+            // is unreachable from the moment this returns the new span,
+            // and `curr_paints` is the cascade's buffer, not ours, so
+            // handing it back before the copy cannot alias anything.
+            paints.release(prev_span);
+            paints.store(curr_paints)
         };
         ChangedLeg {
             span,
             geometry_unchanged: false,
-        }
-    }
-
-    /// Mark `n` paint entries as orphaned (their owning snapshot was
-    /// evicted or its span was relocated). Saturating to avoid wrap
-    /// in the unlikely 4-billion-orphan edge case.
-    #[inline]
-    pub(super) fn mark_orphaned(&mut self, n: u32) {
-        self.orphaned = self.orphaned.saturating_add(n);
-    }
-
-    /// Walk live `NodeSnapshot::paint_span`s in pre-order paint
-    /// order and reseat into `scratch`, then swap.
-    pub(super) fn compact(&mut self, forest: &Forest, prev: &mut WidgetIdMap<NodeSnapshot>) {
-        self.scratch.clear();
-        for (_layer, tree) in forest.trees.iter_paint_order() {
-            for wid in tree.records.widget_id() {
-                let Some(snap) = prev.get_mut(wid) else {
-                    continue;
-                };
-                // Row invariant: every entry in `prev` covers at least
-                // one Paint row (chrome at row 0 OR ≥1 shape / child
-                // marker). A zero-len snap would have a stale `start`
-                // after the swap below — assert rather than silently
-                // skip.
-                debug_assert!(
-                    snap.paint_span.len > 0,
-                    "PaintSnapArena::compact: prev entry for {wid:?} has zero-len paint_span, \
-                     violating the row invariant",
-                );
-                let new_start = self.scratch.len() as u32;
-                self.scratch
-                    .extend_from_slice(&self.snaps[snap.paint_span.range()]);
-                snap.paint_span = Span::new(new_start, snap.paint_span.len);
-            }
-        }
-        std::mem::swap(&mut self.snaps, &mut self.scratch);
-        self.orphaned = 0;
-        self.note_compaction();
-    }
-
-    /// Bump the compaction counter. Same principle as
-    /// [`DamageCounters`](crate::scene::damage::counters::DamageCounters): the gate
-    /// lives in here so the call site above carries none.
-    ///
-    /// Kept on the arena rather than folded into `DamageCounters` because the
-    /// lifetimes differ — that probe's counters reset every pass, while
-    /// this one accumulates for the life of the arena and the bench reads
-    /// it as a delta across many passes.
-    #[inline]
-    fn note_compaction(&mut self) {
-        #[cfg(any(test, feature = "internals"))]
-        {
-            self.compactions_run = self.compactions_run.saturating_add(1);
-        }
-    }
-
-    /// Trigger compaction when the arena is large enough
-    /// ([`COMPACT_MIN_TOTAL`]) and orphaned entries are ≥ 75 % of the
-    /// buffer ([`COMPACT_ORPHAN_RATIO_NUM`]/4).
-    pub(super) fn maybe_compact(&mut self, forest: &Forest, prev: &mut WidgetIdMap<NodeSnapshot>) {
-        let total = self.snaps.len() as u32;
-        if total >= COMPACT_MIN_TOTAL
-            && self.orphaned.saturating_mul(4) >= total * COMPACT_ORPHAN_RATIO_NUM
-        {
-            self.compact(forest, prev);
         }
     }
 }

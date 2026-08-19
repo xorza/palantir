@@ -12,7 +12,15 @@ pub(crate) struct IconSetId(pub(crate) u16);
 /// them and the backend that rasterizes from them — the icon counterpart of
 /// [`ImageRegistry`](crate::renderer::image_registry::ImageRegistry), and much
 /// smaller, because a baked set is `'static` data with no GPU resource and no
-/// lifecycle. Nothing is ever unloaded.
+/// lifecycle.
+///
+/// **Nothing is ever unloaded**, and that is what
+/// [`Self::register`]'s identity check has to hold the line on: a caller
+/// that hands over a freshly built [`IconAtlas`] every frame grows this
+/// table every frame, and with it the backend's parsed-SVG cache and the
+/// icon atlas's key space, none of which have any way to know the older
+/// sets are dead. The panic at 65 536 sets is the backstop, not the
+/// bound — memory goes long before it.
 ///
 /// Single-threaded `Rc<RefCell<…>>`; cheap to clone, with shared inner state.
 #[derive(Clone, Debug, Default)]

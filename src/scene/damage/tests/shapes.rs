@@ -382,7 +382,7 @@ fn node_snapshot_decomposition_matches_cascade() {
     );
 
     // Snapshot mirrors the cascade arena slice.
-    let snap_paints = &h.ui.damage_engine.arena.snaps[snap.paint_span.range()];
+    let snap_paints = &h.ui.damage_engine.arena.paints.slots[snap.paint_span.range()];
     assert_eq!(snap_paints.len(), 3, "chrome + 2 direct shapes ⇒ 3 rows");
     let cascade_paints = &layer_paints[node_span.range()];
     for (ord, p) in snap_paints.iter().enumerate() {
@@ -433,7 +433,7 @@ fn node_snapshot_decomposition_matches_cascade() {
             .show(ui, |ui| two_lines(ui));
     });
     let snap2 = h.ui.damage_engine.prev[&WidgetId::from_hash("multi2")];
-    let snap2_paints = &h.ui.damage_engine.arena.snaps[snap2.paint_span.range()];
+    let snap2_paints = &h.ui.damage_engine.arena.paints.slots[snap2.paint_span.range()];
     assert_eq!(
         h.ui.damage_engine.raw_rects.len(),
         3,
@@ -498,22 +498,24 @@ fn per_shape_damage_only_pushes_changed_shapes() {
     // geometry AND authoring → no chrome push. Shapes 0 and 1 are
     // bit-identical → no push.
     let prev_snap = h.ui.damage_engine.prev[&WidgetId::from_hash("canvas")];
-    let prev_arena_len = h.ui.damage_engine.arena.snaps.len();
-    let prev_orphaned = h.ui.damage_engine.arena.orphaned;
+    let prev_arena_len = h.ui.damage_engine.arena.paints.slots.len();
     // paint_snaps row 0 is chrome; shapes follow at offset 1.
     let prev_shape2_rect =
-        h.ui.damage_engine.arena.snaps[prev_snap.paint_span.range()][1 + 2].screen;
+        h.ui.damage_engine.arena.paints.slots[prev_snap.paint_span.range()][1 + 2].screen;
     frame(&mut h, |ui| build(140.0, ui));
 
     let canvas_snap = h.ui.damage_engine.prev[&WidgetId::from_hash("canvas")];
     let curr_shape2_rect =
-        h.ui.damage_engine.arena.snaps[canvas_snap.paint_span.range()][1 + 2].screen;
+        h.ui.damage_engine.arena.paints.slots[canvas_snap.paint_span.range()][1 + 2].screen;
     assert_eq!(
         canvas_snap.paint_span, prev_snap.paint_span,
         "same-count paint changes must refresh the existing arena span",
     );
-    assert_eq!(h.ui.damage_engine.arena.snaps.len(), prev_arena_len);
-    assert_eq!(h.ui.damage_engine.arena.orphaned, prev_orphaned);
+    assert_eq!(
+        h.ui.damage_engine.arena.paints.slots.len(),
+        prev_arena_len,
+        "an in-place refresh must not touch the allocator at all",
+    );
 
     // The damage region must intersect both old and new positions of
     // shape 2 (so the pixels-at-old-position get cleared and
@@ -570,7 +572,7 @@ fn chrome_authoring_change_pushes_chrome_paint_row() {
     frame(&mut h, |ui| build(BLUE, ui));
     frame(&mut h, |ui| build(BLUE, ui)); // settle
     let snap = h.ui.damage_engine.prev[&WidgetId::from_hash("c")];
-    let snap_rect = h.ui.damage_engine.arena.snaps[snap.paint_span.start as usize].screen;
+    let snap_rect = h.ui.damage_engine.arena.paints.slots[snap.paint_span.start as usize].screen;
 
     frame(&mut h, |ui| build(RED, ui));
     let region = h.damage_region();
@@ -587,8 +589,10 @@ fn chrome_authoring_change_pushes_chrome_paint_row() {
 /// with `shape_span.len == 0` (chrome was tracked in a separate
 /// column); under the unified `paint_arena`, chrome is row 0 of the
 /// node's span, so the same owner now has `paint_span.len == 1`.
-/// `compact_paint_snaps` asserts on zero-len entries — this test
-/// pins the producer side of that contract.
+/// The removal tail in `DamageEngine::compute` pushes every prev
+/// entry's rows on the frame its widget leaves, so an entry with no rows
+/// would leave pixels unrepainted — this test pins the producer side of
+/// that contract.
 #[test]
 fn chrome_only_owner_has_nonzero_paint_span() {
     let mut h = UiHarness::new(DISPLAY.physical);
@@ -619,10 +623,6 @@ fn chrome_only_owner_has_nonzero_paint_span() {
             "prev entry {k:?} has zero-len paint_span, violating painting-only invariant",
         );
     }
-
-    // Compaction must accept the live state without tripping the
-    // invariant assert.
-    h.ui.damage_engine.compact_paint_snaps(&h.ui.forest);
 }
 
 /// Pin: changing the *content* of a `Shape::Text` with
@@ -693,7 +693,8 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
     // same factor.
     let inflate = 1.0 + TEXT_SCALE_STEP;
     let prev_snap = h.ui.damage_engine.prev[&leaf_id];
-    let prev_text_rect = h.ui.damage_engine.arena.snaps[prev_snap.paint_span.range()][0].screen;
+    let prev_text_rect =
+        h.ui.damage_engine.arena.paints.slots[prev_snap.paint_span.range()][0].screen;
     let prev_size_short: Size = Size::new(FONT * 0.5 * 3.0 * inflate, FONT * inflate);
     assert!(
         (prev_text_rect.size.w - prev_size_short.w).abs() < 0.5
@@ -704,7 +705,8 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
     frame(&mut h, |ui| build("abcdef", ui));
 
     let curr_snap = h.ui.damage_engine.prev[&leaf_id];
-    let curr_text_rect = h.ui.damage_engine.arena.snaps[curr_snap.paint_span.range()][0].screen;
+    let curr_text_rect =
+        h.ui.damage_engine.arena.paints.slots[curr_snap.paint_span.range()][0].screen;
     let curr_size_long: Size = Size::new(FONT * 0.5 * 6.0 * inflate, FONT * inflate);
     assert!(
         (curr_text_rect.size.w - curr_size_long.w).abs() < 0.5

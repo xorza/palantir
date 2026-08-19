@@ -225,7 +225,7 @@ impl DamageEngine {
     /// from scratch but still returns `Damage::Full`.
     fn invalidate_prev(&mut self) {
         self.prev.clear();
-        self.arena.clear();
+        self.arena.paints.clear();
     }
 
     /// Diff against the just-finished frame and return a
@@ -338,13 +338,10 @@ impl DamageEngine {
         for wid in removed {
             if let Some(snap) = self.prev.remove(wid) {
                 self.raw_rects
-                    .extend(self.arena.snaps[snap.paint_span.range()].screens());
-                self.arena.mark_orphaned(snap.paint_span.len);
+                    .extend(self.arena.paints.slots[snap.paint_span.range()].screens());
+                self.arena.paints.release(snap.paint_span);
             }
         }
-
-        // Reclaim the arena once orphaned slots exceed the threshold.
-        self.arena.maybe_compact(forest, &mut self.prev);
 
         // Pass 2: collapse to the bounded region.
         self.finish_region(surface)
@@ -435,11 +432,7 @@ impl DamageEngine {
     /// didn't paint last frame (no `prev` entry).
     pub(crate) fn prev_paint_rect(&self, wid: WidgetId) -> Option<Rect> {
         let snap = self.prev.get(&wid)?;
-        self.arena.snaps[snap.paint_span.range()].union_screens()
-    }
-
-    fn compact_paint_snaps(&mut self, forest: &Forest) {
-        self.arena.compact(forest, &mut self.prev);
+        self.arena.paints.slots[snap.paint_span.range()].union_screens()
     }
 }
 

@@ -11,12 +11,12 @@
 //! numbers as though they were its own — the exact reading error the
 //! reset is supposed to prevent. Accumulating for the life of the engine
 //! and letting readers take a delta is the shape that survives a pass
-//! that may not run, the same call [`PaintSnapArena::compactions_run`]
-//! makes.
+//! that may not run — the same call
+//! [`MeasureCache::snapshot_rebuilds`] makes.
 //!
 //! [`CascadeEngine::run`]: crate::scene::cascade::engine::CascadeEngine
-//! [`PaintSnapArena::compactions_run`]:
-//!     crate::scene::damage::snapshot::PaintSnapArena
+//! [`MeasureCache::snapshot_rebuilds`]:
+//!     crate::layout::cache::MeasureCache
 
 use crate::common::counters::TestOnly;
 

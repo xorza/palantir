@@ -414,11 +414,21 @@ fn report_atlas_pressure(label: &str, backend: &BenchText, frames: u32) {
     let per_frame = counts.evict_scans as f64 / frames.max(1) as f64;
     eprintln!(
         "[text_atlas] {label}: live_glyphs={} evictions={} grows={} \
-         scanned={} ({per_frame:.0}/frame over {frames} frames)",
+         scanned={} ({per_frame:.0}/frame over {frames} frames) oversized={}",
         atlas.cache.len(),
         counts.evictions,
         counts.grows,
         counts.evict_scans,
+        counts.oversized,
+    );
+    // Not a tuning number like the rest of the line: an entry past the
+    // ceiling is refused on every frame it is drawn, so a fixture that
+    // produces one is measuring a permanently degraded atlas and its
+    // timings mean nothing.
+    assert_eq!(
+        counts.oversized, 0,
+        "[text_atlas] {label}: a glyph exceeded the atlas ceiling — \
+         this arm no longer measures what it claims to",
     );
 }
 
