@@ -138,3 +138,75 @@ fn click_hit_test_compensates_for_scroll() {
         "click should land near byte {expected} (visible left edge), got {caret}",
     );
 }
+
+/// The wheel pans a multi-line editor whose content overflows, and the
+/// caret does not immediately drag the view back.
+///
+/// The editor's node is a scroll viewport, but it carried only
+/// `Sense::CLICK`, so wheel events routed straight past it and the only
+/// way to pan was to move the caret. Both halves are pinned here: the
+/// sense has to be on the node for the delta to arrive, and the
+/// caret-follow has to be conditional or it would undo the scroll on the
+/// very next frame.
+///
+/// Mono wraps by character count rather than by newline, so the fixture
+/// is sized by total bytes: ~600 chars over a ~33-char line is ~18
+/// wrapped lines at 16 px each, comfortably past the ~87 px inner
+/// height of a 100 px editor.
+#[test]
+fn wheel_pans_a_multiline_editor_and_the_caret_does_not_snap_it_back() {
+    let ed_id = WidgetId::from_hash("wheel-ed");
+    fn body(ui: &mut Ui, buf: &mut String) {
+        Panel::hstack().auto_id().show(ui, |ui| {
+            TextEdit::new(buf)
+                .id(WidgetId::from_hash("wheel-ed"))
+                .multiline(true)
+                .size((Sizing::fixed(280.0), Sizing::fixed(100.0)))
+                .show(ui);
+        });
+    }
+
+    let mut h = ui_at_no_cosmic(NARROW);
+    let mut buf = (0..100).map(|i| format!("line{i}\n")).collect::<String>();
+
+    // Caret at the top, so anything that follows it would pull the view
+    // back to zero and the assertions below could not pass by accident.
+    h.frame(|ui| body(ui, &mut buf));
+    h.ui.state_mut::<TextEditState>(ed_id).edit.caret = 0;
+    h.frame(|ui| body(ui, &mut buf));
+    assert_eq!(
+        h.ui.state_mut::<TextEditState>(ed_id).view.scroll.y,
+        0.0,
+        "precondition: caret at the top holds the view at the top",
+    );
+
+    // One wheel gesture over the editor.
+    h.scroll_pixels_at(Vec2::new(140.0, 50.0), Vec2::new(0.0, 48.0));
+    h.frame(|ui| body(ui, &mut buf));
+    let scrolled = h.ui.state_mut::<TextEditState>(ed_id).view.scroll.y;
+    assert!(
+        scrolled > 0.0,
+        "wheel over a multi-line editor must pan it; scroll.y = {scrolled}",
+    );
+
+    // A frame with no input and no caret movement must leave it where
+    // the wheel put it — this is the half a caret-follow-every-frame
+    // would break.
+    h.frame(|ui| body(ui, &mut buf));
+    assert_eq!(
+        h.ui.state_mut::<TextEditState>(ed_id).view.scroll.y,
+        scrolled,
+        "an idle frame must not drag the view back to the caret",
+    );
+
+    // Moving the caret *does* pull the view back, so the wheel has not
+    // simply disabled caret-following.
+    h.ui.state_mut::<TextEditState>(ed_id).edit.caret = 0;
+    h.ui.state_mut::<TextEditState>(ed_id).edit.caret = 1;
+    h.frame(|ui| body(ui, &mut buf));
+    assert_eq!(
+        h.ui.state_mut::<TextEditState>(ed_id).view.scroll.y,
+        0.0,
+        "a caret move must scroll it back into view",
+    );
+}

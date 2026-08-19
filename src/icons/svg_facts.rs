@@ -19,11 +19,22 @@ pub(crate) struct SvgFacts {
     pub(crate) filtered: bool,
 }
 
+/// The parse settings every icon in the crate is read under.
+///
+/// One source for both parses of the same bytes: this survey, and the
+/// rasterizer's own tree. `tintable`, `filtered` and `view_box` describe
+/// the tree parsed here while the pixels come from the tree parsed there,
+/// so the two are only describing the same artwork for as long as they
+/// are configured identically — which nothing else would notice.
+pub(crate) fn parse_options() -> usvg::Options<'static> {
+    usvg::Options::default()
+}
+
 impl SvgFacts {
     /// Parse `svg` and survey it. `None` when it does not parse — the caller
     /// drops the icon, since it could not have been rasterized either.
     pub(crate) fn of(svg: &[u8]) -> Option<Self> {
-        let tree = usvg::Tree::from_data(svg, &usvg::Options::default()).ok()?;
+        let tree = usvg::Tree::from_data(svg, &parse_options()).ok()?;
         let mut survey = Survey {
             tintable: true,
             filtered: false,

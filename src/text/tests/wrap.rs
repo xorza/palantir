@@ -372,3 +372,93 @@ fn the_wrap_floor_is_scanned_on_demand_and_backfilled_for_a_later_policy() {
     );
     assert_eq!(TextWrap::Wrap.target_width(1.0, &overflow), 1.0);
 }
+
+/// A probe and the paint must shape under the same key, for every policy
+/// whose committed width is not simply the width it was offered.
+///
+/// `TextRun` cannot resolve either case for itself — both need the run's
+/// unbounded root — so the resolution lives in `TextShaper::layout`
+/// beside the shaping call. Before it did, a probe bound the raw width
+/// and got a *different* buffer than layout painted: `WrapWithOverflow`
+/// below its floor wrapped where the paint overflowed, and a fitting
+/// `Ellipsis` minted a bounded buffer layout never asks for. Both are
+/// silent — the caret simply sits in the wrong place.
+#[test]
+fn a_probe_shapes_under_the_key_the_paint_committed() {
+    // One unbreakable word wider than the probed width, so the floor is
+    // strictly above it and `target_width` has to raise it.
+    let content = "a extraordinarily b";
+    let params = shape(16.0).leading(19.2);
+    let wid = WidgetId::from_hash("probe-key-parity");
+    // Below the floor for the overflow case, and wide enough that the
+    // short truncating run still fits.
+    let probed_width = 1.0;
+
+    for (ordinal, wrap) in [
+        TextWrap::WrapWithOverflow,
+        TextWrap::Ellipsis,
+        TextWrap::Truncate,
+        TextWrap::Wrap,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let (text, width) = match wrap {
+            // A run that already fits is what sends a truncating fit down
+            // the `resolves_to_unbounded` arm.
+            TextWrap::Ellipsis | TextWrap::Truncate => ("hi", 512.0),
+            _ => (content, probed_width),
+        };
+        let mut system = TextSystem::cosmic();
+        let request = params.unbounded_request(text);
+        let painted = system
+            .measure(
+                slot_at(wid, ordinal as u16),
+                request,
+                wrap,
+                HAlign::Auto,
+                Some(width),
+            )
+            .key;
+
+        let probed = system.shaper.layout(&TextRun {
+            text,
+            font_size_px: params.font_size_px,
+            line_height_px: params.line_height_px,
+            wrap,
+            align: Align::h(HAlign::Auto),
+            family: params.family,
+            weight: params.weight,
+            max_width_px: Some(width),
+        });
+        assert_eq!(
+            probed.request.key, painted,
+            "{wrap:?}: probe and paint must share one shaped buffer",
+        );
+
+        // Prove the case is live: for the two policies that resolve, the
+        // committed key is *not* the one a raw bind of `width` produces,
+        // so the agreement above is the resolution working rather than
+        // both sides trivially binding the same number.
+        let raw = TextShapeRequest::unbounded(
+            text,
+            params.font_size_px,
+            params.line_height_px,
+            params.family,
+            params.weight,
+        )
+        .with_bound(WrapBound::new(
+            width,
+            HAlign::Auto,
+            wrap.line_fit().expect("all four policies bind"),
+        ))
+        .key;
+        match wrap {
+            TextWrap::Wrap => assert_eq!(raw, painted, "Wrap commits the width it was offered"),
+            _ => assert_ne!(
+                raw, painted,
+                "{wrap:?}: a raw bind must differ, or this case proves nothing",
+            ),
+        }
+    }
+}

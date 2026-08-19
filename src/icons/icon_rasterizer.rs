@@ -2,6 +2,7 @@ use crate::icons::icon_atlas::IconAtlas;
 use crate::icons::icon_raster_key::IconRasterKey;
 use crate::icons::icon_registry::IconSetId;
 use crate::icons::icon_set::IconRef;
+use crate::icons::svg_facts;
 use resvg::tiny_skia;
 use resvg::usvg;
 use rustc_hash::FxHashMap;
@@ -31,7 +32,6 @@ pub(crate) enum IconRasterKind {
 /// The parses are the set's, not the rasterizer's: they are keyed by
 /// [`IconRef`] and dropped by [`Self::forget_sets`] when the set unloads. The
 /// scratch buffer belongs to nobody and stays.
-#[derive(Default)]
 pub(crate) struct IconRasterizer {
     /// `None` marks an icon whose SVG failed to parse, so a broken icon is
     /// parsed once and skipped thereafter rather than retried every frame.
@@ -40,6 +40,21 @@ pub(crate) struct IconRasterizer {
     /// a mask is the alpha channel of this, extracted after the render.
     rgba: Vec<u8>,
     options: usvg::Options<'static>,
+}
+
+/// Hand-written rather than derived so the parse settings come from
+/// [`svg_facts::parse_options`] — the same ones the survey read the icon's
+/// `tintable` / `filtered` / `view_box` under. A `Default` here would be a
+/// second, independent spelling of them, and the two trees would describe
+/// the same artwork only for as long as nobody changed one.
+impl Default for IconRasterizer {
+    fn default() -> Self {
+        Self {
+            trees: FxHashMap::default(),
+            rgba: Vec::new(),
+            options: svg_facts::parse_options(),
+        }
+    }
 }
 
 /// `usvg::Options` holds a font database and is not `Debug`; the caches are

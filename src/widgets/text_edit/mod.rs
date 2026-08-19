@@ -27,6 +27,7 @@ use crate::widgets::text_edit::view::{
 use crate::widgets::theme::WidgetTheme;
 use crate::widgets::theme::text_edit::TextEditTheme;
 use crate::widgets::widget::Widget;
+use glam::Vec2;
 use std::borrow::Cow;
 
 #[derive(Clone, Default, Debug)]
@@ -94,7 +95,12 @@ impl<'a> TextEdit<'a> {
         // to fit. The leaf said the same thing through `TextWrap::Scroll`; a
         // child with a width of its own needs the viewport to say it instead.
         let mut node = Node::scroll(ScrollSpec::BOTH);
-        node.flags.set_sense(Sense::CLICK);
+        // `SCROLL` as well as `CLICK`: the node is a scroll viewport, so
+        // an editor whose content overflows has somewhere to go, and
+        // without the sense the wheel routed straight past it to
+        // whatever container sat behind — a multi-line editor could only
+        // be panned by moving the caret.
+        node.flags.set_sense(Sense::CLICK | Sense::SCROLL);
         node.flags.set_focusable(true);
         // Clip glyphs, caret, and selection wash to the editor's own
         // rect so a `Fixed`-sized editor with long content doesn't
@@ -447,6 +453,15 @@ impl<'a> TextEdit<'a> {
         let caret_byte = state.edit.caret;
         let selection = state.edit.sel_range();
 
+        // Same pixel + line fold `Scroll` applies, against the editor's
+        // own line height rather than the theme's default text size:
+        // one notch should advance this editor by its own lines.
+        let wheel = if response.disabled {
+            Vec2::ZERO
+        } else {
+            response.scroll.pixels + response.scroll.lines * ctx.line_height_px
+        };
+
         let mut retained = state.view.selection_rects.take();
         let mut inline = SelectionRects::new();
         let selection_rects = retained.as_deref_mut().unwrap_or(&mut inline);
@@ -469,7 +484,9 @@ impl<'a> TextEdit<'a> {
             ctx,
             caret_pos,
             caret_width,
-            content_width: geometry.content_size.w,
+            content_size: geometry.content_size,
+            wheel,
+            caret_byte,
             focused: is_focused,
             caret_moved,
             edited: changed,

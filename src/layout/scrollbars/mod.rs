@@ -88,6 +88,10 @@ impl ScrollbarsDef {
 /// Thumb extent and travel along one axis, or `None` when the bar can't
 /// be drawn meaningfully — a non-positive viewport, or content that fits.
 /// The "content fits" arm is what makes an idle scroll show no thumb.
+///
+/// Both fields are already quantized to whole logical pixels, so the
+/// driver paints them as they arrive and `Scroll` maps pointer input
+/// against the same numbers that were drawn.
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub(crate) struct BarGeometry {
     pub(crate) thumb_size: f32,
@@ -111,6 +115,22 @@ pub(crate) fn bar_geometry(
     let max_off = (content - viewport).max(f32::EPSILON);
     let travel = (viewport - thumb_size).max(0.0);
     let thumb_offset = (offset / max_off).clamp(0.0, 1.0) * travel;
+    // Quantize here rather than at the paint site: the widget reads
+    // this to map a drag or a track click back onto an offset, so the
+    // bar the user grabs has to be the bar that was drawn. Rounding on
+    // one side only put drag scaling up to a pixel out and made a click
+    // in the rounding sliver page away from the thumb.
+    //
+    // Whole logical pixels because physical snapping rounds a rect's
+    // min and max *independently* (`Rect::scaled_by`), which keeps
+    // adjacent rects flush but makes a rect's snapped *length* depend on
+    // where it sits — so a thumb on fractional coordinates visibly grows
+    // and shrinks by a pixel as it travels. Integer logical edges scale
+    // to integer physical ones at integer DPR, which pins the length; at
+    // fractional DPR it only narrows the wobble, since the real cause is
+    // in the snap.
+    let thumb_size = thumb_size.round().min(viewport.floor()).max(1.0);
+    let thumb_offset = thumb_offset.round().min(viewport.floor() - thumb_size);
     Some(BarGeometry {
         thumb_size,
         thumb_offset,
@@ -151,19 +171,9 @@ fn axis_rects(
     // The bar sits in the far-edge strip of the *outer* extent, not the
     // viewport's: that strip is exactly what `reserve_*` set aside.
     let cross_pos = axis.cross(outer) - def.bar_width;
-    // Quantize the thumb's main axis to whole logical pixels. Physical
-    // snapping rounds a rect's min and max *independently*
-    // (`Rect::scaled_by`), which keeps adjacent rects flush but makes a
-    // rect's snapped *length* depend on where it sits — so a thumb on
-    // fractional coordinates visibly grows and shrinks by a pixel as it
-    // travels. Integer logical edges scale to integer physical ones at
-    // integer DPR, which pins the length; at fractional DPR it only
-    // narrows the wobble, since the real cause is in the snap.
-    let thumb_size = geom.thumb_size.round().min(main.floor()).max(1.0);
-    let thumb_offset = geom.thumb_offset.round().min(main.floor() - thumb_size);
     Some(BarRects {
         track: axis.compose_rect(0.0, cross_pos, main, def.bar_width),
-        thumb: axis.compose_rect(thumb_offset, cross_pos, thumb_size, def.bar_width),
+        thumb: axis.compose_rect(geom.thumb_offset, cross_pos, geom.thumb_size, def.bar_width),
     })
 }
 

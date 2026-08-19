@@ -9,7 +9,6 @@
 //! a selection.
 
 use crate::layout::types::align::Align;
-use crate::text::key::WrapBound;
 use crate::text::request::TextShapeRequest;
 use crate::text::wrap::TextWrap;
 use crate::text::{FontFamily, FontWeight};
@@ -53,25 +52,22 @@ pub struct TextRun<'a> {
 }
 
 impl<'a> TextRun<'a> {
-    /// Lower to the shaper's request.
+    /// Lower to the shaper's *unbounded* request — the run's root, before
+    /// any width is bound to it.
     ///
-    /// Bounded exactly when layout would bind it — same
-    /// [`TextWrap::line_fit`] mapping, same `halign` — so probing a run
-    /// hits the buffer the paint shaped rather than minting a second one
-    /// that answers slightly differently.
-    pub(crate) fn request(&self) -> TextShapeRequest<'a> {
-        let request = TextShapeRequest::unbounded(
+    /// Binding is deliberately not done here. Which width layout actually
+    /// commits depends on the root itself: a truncating fit whose text
+    /// already fits keeps the unbounded buffer, and `WrapWithOverflow`
+    /// raises a too-narrow width to the root's wrap floor. Both need a
+    /// shaping call, so [`TextShaper::layout`](crate::TextShaper) applies
+    /// them and this stays the part that needs no shaper.
+    pub(crate) fn unbounded_request(&self) -> TextShapeRequest<'a> {
+        TextShapeRequest::unbounded(
             self.text,
             self.font_size_px,
             self.line_height_px,
             self.family,
             self.weight,
-        );
-        match (self.max_width_px, self.wrap.line_fit()) {
-            (Some(width), Some(fit)) => {
-                request.with_bound(WrapBound::new(width, self.align.halign(), fit))
-            }
-            _ => request,
-        }
+        )
     }
 }

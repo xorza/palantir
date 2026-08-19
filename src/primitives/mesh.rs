@@ -223,37 +223,36 @@ impl Mesh {
         let i1 = m.vertex(b, color);
         let i2 = m.vertex(c, color);
         m.triangle(i0, i1, i2);
-        let lo = a.min(b).min(c);
-        let hi = a.max(b).max(c);
-        m.cached_bbox.set(Some(Rect::from_min_max(lo, hi)));
+        // Through `Aabb`, not a bare `min`/`max` fold: those are IEEE
+        // `minNum`/`maxNum` and drop a NaN operand, which would hand
+        // `is_noop` a finite box for a NaN vertex and pass it to the GPU.
+        m.cached_bbox.set(Some(Aabb::of_iter([a, b, c])));
         m
     }
 
     /// Convenience: filled convex polygon (fan triangulation around the
     /// first vertex). For non-convex polygons the result is visually
     /// wrong — caller's responsibility. `color` accepts `Color` or
-    /// `ColorU8`. Bbox tracked during the fan loop and pre-cached, so
-    /// the first `bbox()` call is free.
+    /// `ColorU8`. Bbox is pre-cached, so the first `bbox()` call is
+    /// free.
     pub fn filled_polygon(points: &[Vec2], color: impl Into<ColorU8>) -> Self {
         if points.len() < 3 {
             return Self::new();
         }
         let color = color.into();
         let mut m = Self::with_capacity(points.len(), (points.len() - 2) * 3);
-        let mut lo = points[0];
-        let mut hi = points[0];
         let i0 = m.vertex(points[0], color);
         let mut prev = m.vertex(points[1], color);
-        lo = lo.min(points[1]);
-        hi = hi.max(points[1]);
         for &p in &points[2..] {
             let next = m.vertex(p, color);
             m.triangle(i0, prev, next);
             prev = next;
-            lo = lo.min(p);
-            hi = hi.max(p);
         }
-        m.cached_bbox.set(Some(Rect::from_min_max(lo, hi)));
+        // Separate pass through `Aabb` rather than folded into the fan
+        // above: a bare `min`/`max` fold is IEEE `minNum`/`maxNum` and
+        // drops a NaN operand, which would hand `is_noop` a finite box
+        // for a NaN vertex and pass it to the GPU.
+        m.cached_bbox.set(Some(Aabb::of(points)));
         m
     }
 }

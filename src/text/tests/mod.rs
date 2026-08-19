@@ -7,19 +7,20 @@
 //! per-window rows and the supersede signal they carry.
 
 use crate::common::hash::hash_str;
-use crate::layout::types::align::HAlign;
+use crate::layout::types::align::{Align, HAlign};
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::record_store::RecordStore;
 use crate::text::cosmic::truncate::ClusterGlyph;
 use crate::text::cosmic::{self, CosmicMeasure};
-use crate::text::key::TextShapeKey;
+use crate::text::key::{TextShapeKey, WrapBound};
 use crate::text::mono;
 use crate::text::probe::internals as probe;
 use crate::text::request::TextShapeRequest;
 use crate::text::request::internals::TestShape;
 use crate::text::root::internals::TestMeasure;
+use crate::text::run::TextRun;
 use crate::text::shaped_ref::ShapedTextRef;
 use crate::text::shaper::TextShaper;
 use crate::text::system::{TextRunSlot, TextSystem};

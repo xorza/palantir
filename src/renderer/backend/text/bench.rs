@@ -44,6 +44,7 @@ use std::sync::OnceLock;
 use std::time::Duration;
 
 use crate::host::bench_gpu::{BenchGpu, TARGET_FORMAT, Timing};
+use crate::layout::types::align::Align;
 use crate::primitives::color::ColorU8;
 use crate::primitives::interned_str::InternedText;
 use crate::primitives::urect::URect;
@@ -56,9 +57,10 @@ use crate::renderer::backend::viewport::ViewportPush;
 use crate::renderer::render_buffer::text::TextDrawRow;
 use crate::scene::record_store::RecordStore;
 use crate::text::RENDERED_RUN_KEEP_FRAMES;
-use crate::text::request::TextShapeRequest;
+use crate::text::run::TextRun;
 use crate::text::shaped_ref::ShapedTextRef;
 use crate::text::shaper::TextShaper;
+use crate::text::wrap::TextWrap;
 use crate::text::{FontFamily, FontWeight};
 use criterion::{BenchmarkId, Criterion, Throughput};
 use glam::{UVec2, Vec2};
@@ -206,14 +208,22 @@ fn make_run(
     color: ColorU8,
 ) -> TextDrawRow {
     let recorded = store.record_text(store.intern_str(text));
-    let request = TextShapeRequest::unbounded(
+    // Warm through the run rather than a hand-built request, so the key
+    // stamped into the row below is by construction the one the shaped
+    // buffer landed under. No width and a non-binding policy, so this is
+    // the unbounded root and nothing else.
+    let run = TextRun {
         text,
         font_size_px,
         line_height_px,
-        FontFamily::Sans,
-        FontWeight::Regular,
-    );
-    shaper.layout(request);
+        wrap: TextWrap::SingleLine,
+        align: Align::default(),
+        family: FontFamily::Sans,
+        weight: FontWeight::Regular,
+        max_width_px: None,
+    };
+    let request = run.unbounded_request();
+    shaper.layout(&run);
     TextDrawRow {
         text: ShapedTextRef::new(request.key, &recorded),
         origin,
