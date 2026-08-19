@@ -3,8 +3,9 @@ use crate::primitives::span::Span;
 use glam::Vec2;
 use std::borrow::Cow;
 
-/// Index of one icon within its [`IconAtlas`]. `bake-icons` emits a named
-/// constant per icon, so a call site says `icons::SAVE` rather than a number.
+/// Index of one icon within its [`IconAtlas`]. A generated set emits a named
+/// constant per icon, so a call site says `icons::SAVE` rather than a number;
+/// a runtime-built one resolves through [`IconSet::by_name`](crate::IconSet::by_name).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct IconId(pub u16);
 
@@ -37,7 +38,7 @@ pub struct IconDef {
 /// An icon set: a name-sorted table plus every icon's SVG in one blob.
 ///
 /// Two ways in, and the difference is only who owns the bytes. [`Self::baked`]
-/// borrows data compiled into the binary — `bake-icons` output — and copies
+/// borrows data compiled into the binary — a generated `const` — and copies
 /// nothing; [`Self::from_svgs`] builds one at runtime and owns its buffers.
 /// Both are held behind an `Rc` once loaded, so a set is shared rather than
 /// duplicated and nothing has to outlive the app to stay reachable.
@@ -61,8 +62,9 @@ impl IconAtlas {
     /// parses nothing.
     ///
     /// `icons` must be sorted by [`IconDef::name`] and each entry's
-    /// [`IconDef::svg`] must span its own slice of `svg`; `bake-icons`
-    /// guarantees both.
+    /// [`IconDef::svg`] must span its own slice of `svg` — the two invariants
+    /// name lookup and per-icon slicing rest on. Whatever generates the table
+    /// owes them; [`Self::from_svgs`] establishes them itself.
     pub const fn baked(icons: &'static [IconDef], svg: &'static [u8]) -> Self {
         Self {
             icons: Cow::Borrowed(icons),

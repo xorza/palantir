@@ -3,10 +3,10 @@
 //! the whole path — parse, resvg raster, atlas insert, glyph shader — and the
 //! size ladder runs again on every window scale change.
 //!
-//! The set is assembled here rather than baked, because `bake-icons` is the
-//! next slice. An [`IconAtlas`] is two `'static` slices and nothing else, so
-//! what this builds at startup is exactly the shape the generated file will
-//! emit as a `const`.
+//! The set is built at startup from the sources below rather than compiled in
+//! as a generated `const` — which is the point of `IconAtlas::from_svgs`: it
+//! derives each icon's viewBox, tintability, and filter use from the artwork
+//! itself, so a demo page states only its SVGs.
 
 use crate::support;
 use crate::support::{demo_cell_at, section, tiles};
@@ -66,9 +66,8 @@ const WIDE_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 
 </svg>"##;
 
 /// The set, plus the ids resolved once. `from_svgs` parses each source to
-/// derive its viewBox, tintability, and filter use — the classification
-/// `bake-icons` will do at build time — and sorts by name, so ids come back
-/// through `by_name` rather than being counted off by hand.
+/// derive its viewBox, tintability, and filter use, and sorts by name — so
+/// ids come back through `by_name` rather than being counted off by hand.
 #[derive(Clone, Debug)]
 struct Icons {
     set: IconSet,
