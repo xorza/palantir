@@ -59,7 +59,7 @@ impl ComposeBench {
 
     fn compose(&mut self) -> usize {
         self.composer
-            .begin(self.display, &self.payloads, &mut self.out)
+            .begin(self.display, Duration::ZERO, &self.payloads, &mut self.out)
             .replay_from(&self.cmds);
         self.out.meshes.len() + self.out.images.len() + self.out.curves.len()
     }

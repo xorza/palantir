@@ -515,17 +515,6 @@ pub(crate) struct DrawImagePayload {
     /// `0` (the common case, including a `GpuView`) takes one bilinear tap at
     /// the UV.
     pub(crate) flags: u32,
-    /// Whether this draw composites a `GpuView`'s off-screen target
-    /// rather than a registered image. **Written in exactly one place** —
-    /// [`PaintSink::draw_image`], from `paint.is_some()` — so the flag
-    /// cannot disagree with whether a paint callback actually rode
-    /// along. It only tells [`Self::is_noop`] not to null-skip a
-    /// framework-painted texture; `handle` carries the view's stable
-    /// `TextureId` either way, so the draw + cache path stays identical
-    /// to an image.
-    ///
-    /// [`PaintSink::draw_image`]: crate::renderer::frontend::paint_sink::PaintSink::draw_image
-    pub(crate) gpu_view: bool,
 }
 
 /// One baked-icon draw, in logical px.
@@ -556,10 +545,7 @@ impl DrawIconPayload {
 }
 
 impl DrawImagePayload {
-    /// An image draw. `gpu_view` starts `false` and is decided by the
-    /// [`PaintSink`](crate::renderer::frontend::paint_sink::PaintSink)
-    /// gate; callers pass the paint callback there rather than flagging
-    /// the payload themselves.
+    /// An image draw.
     #[inline]
     pub(crate) fn image(
         rect: Rect,
@@ -576,17 +562,22 @@ impl DrawImagePayload {
             tint,
             handle,
             flags,
-            gpu_view: false,
         }
     }
 
     /// Paints nothing when: zero-extent rect, fully transparent tint,
-    /// or null handle (paints no pixels, no texture to sample). A
-    /// `GpuView` is never null-skipped — its texture is framework-painted
-    /// this frame, not a registered image that could have been dropped.
+    /// or null handle (paints no pixels, no texture to sample).
+    ///
+    /// `is_gpu_view` rather than a field, because it is the same fact as
+    /// the `paint` callback the sink already carries beside the payload —
+    /// a `GpuView` is never null-skipped, since its texture is
+    /// framework-painted this frame rather than a registered image that
+    /// could have been dropped. Held on the payload it would ride in
+    /// every `PartialEq` and every captured call for one read, two lines
+    /// after the write.
     #[inline]
-    pub(crate) fn is_noop(&self) -> bool {
-        self.rect.is_paint_empty() || self.tint.is_noop() || (self.handle.0 == 0 && !self.gpu_view)
+    pub(crate) fn is_noop(&self, is_gpu_view: bool) -> bool {
+        self.rect.is_paint_empty() || self.tint.is_noop() || (self.handle.0 == 0 && !is_gpu_view)
     }
 }
 

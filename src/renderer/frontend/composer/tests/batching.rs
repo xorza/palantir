@@ -19,6 +19,7 @@ use crate::scene::shapes::record::ColorMode;
 use crate::shape::style::{LineCap, LineJoin};
 use glam::{UVec2, Vec2};
 use std::f32::consts::FRAC_PI_2;
+use std::time::Duration;
 
 /// Pin: a `Quad → Text → Quad` paint sequence inside a single scissor
 /// produces TWO groups so the second quad renders *after* the text.
@@ -382,7 +383,12 @@ fn compose_spins_polyline_about_bbox_center() {
         let mut composer = composer();
         let mut out = render_buffer();
         composer
-            .begin(params(1.0, UVec2::new(200, 200)), &payloads, &mut out)
+            .begin(
+                params(1.0, UVec2::new(200, 200)),
+                Duration::ZERO,
+                &payloads,
+                &mut out,
+            )
             .replay_from(&buffer);
         // GPU path: the polyline emits one segment instance whose
         // p0/p3 lanes carry the transformed (spun) endpoints.

@@ -88,14 +88,13 @@ impl Frontend {
     /// nothing is serialized only to be read back a line later.
     #[profiling::function]
     pub(crate) fn build(&mut self, scene: FrameScene<'_>, plan: RenderPlan) {
-        let mut sink = self
-            .composer
-            .begin(scene.display, &scene.payloads, &mut self.buffer);
+        let mut sink =
+            self.composer
+                .begin(scene.display, scene.time, &scene.payloads, &mut self.buffer);
         self.encoder.encode(&scene, plan, &mut sink);
         // Dropping the session closes the trailing batch and group;
         // explicit because it also releases the `buffer` borrow.
         drop(sink);
-        self.buffer.time = scene.time;
     }
 }
 

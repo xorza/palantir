@@ -20,6 +20,7 @@ use crate::renderer::frontend::payload::{
 use crate::renderer::render_buffer::batch::PaintTier;
 use crate::scene::record_store::RecordPayloads;
 use glam::{UVec2, Vec2};
+use std::time::Duration;
 
 /// Solid `Brush::Solid` panel: composer emits a Quad with
 /// `fill_kind = BRUSH_KIND_SOLID = 0`, `fill_lut_row = 0` (sentinel
@@ -41,6 +42,7 @@ fn compose_solid_brush_emits_kind_zero_quad() {
     composer
         .begin(
             params(1.0, UVec2::new(200, 200)),
+            Duration::ZERO,
             &RecordPayloads::default(),
             &mut out,
         )
@@ -129,6 +131,7 @@ fn compose_linear_brush_emits_kind_one_with_atlas_row() {
     composer
         .begin(
             params(1.0, UVec2::new(100, 100)),
+            Duration::ZERO,
             &RecordPayloads::default(),
             &mut out,
         )
@@ -168,6 +171,7 @@ fn compose_repeated_linear_brush_shares_atlas_row() {
     composer
         .begin(
             params(1.0, UVec2::new(100, 100)),
+            Duration::ZERO,
             &RecordPayloads::default(),
             &mut out,
         )

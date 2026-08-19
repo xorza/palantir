@@ -152,15 +152,16 @@ impl RenderBuffer {
     /// `Composer::compose` at frame start — the reset lives here,
     /// beside the fields, so adding a column forces choosing its reset
     /// in the same edit instead of in the composer's preamble.
-    pub(crate) fn start_frame(&mut self, display: Display) {
+    pub(crate) fn start_frame(&mut self, display: Display, time: Duration) {
         self.discard_scene();
         self.clear_override = None;
         self.viewport_phys = display.physical;
         self.viewport_phys_f = display.physical.as_vec2();
         self.scale = display.scale_factor;
-        // Not derivable from `display`; `Frontend::build` stamps the real
-        // value after compose.
-        self.time = Duration::ZERO;
+        // Stamped here rather than after compose: not derivable from
+        // `display`, and a field that held a placeholder for the whole
+        // pass is one anything composing against it would read wrong.
+        self.time = time;
     }
 
     /// How many draws this tier has emitted so far — the one place the

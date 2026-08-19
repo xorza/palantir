@@ -137,10 +137,14 @@ mod tests {
     use crate::renderer::render_buffer::RenderBuffer;
     use crate::scene::damage::region::DamageRegion;
     use glam::{UVec2, Vec2};
+    use std::time::Duration;
 
     fn buffer() -> RenderBuffer {
         let mut buffer = RenderBuffer::new();
-        buffer.start_frame(Display::from_physical(UVec2::new(100, 100), 2.0));
+        buffer.start_frame(
+            Display::from_physical(UVec2::new(100, 100), 2.0),
+            Duration::ZERO,
+        );
         buffer
     }
 

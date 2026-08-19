@@ -29,6 +29,7 @@ use crate::text::shaped_ref::ShapedTextRef;
 use glam::{UVec2, Vec2};
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::time::Duration;
 
 pub(super) fn composer() -> Composer {
     Composer::new(16_384)
@@ -99,7 +100,7 @@ pub(super) fn run_with_texture_cap(
     let mut composer = Composer::new(max_texture_dim);
     let mut out = render_buffer();
     composer
-        .begin(*display, &payloads, &mut out)
+        .begin(*display, Duration::ZERO, &payloads, &mut out)
         .replay_from(&recorded);
     out
 }
