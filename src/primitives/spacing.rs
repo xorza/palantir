@@ -1,6 +1,6 @@
 use crate::primitives::half_simd::F16x4;
 use crate::primitives::num::Num;
-use crate::primitives::serde::{LaneCodec, deserialize_lanes, serialize_lanes};
+use crate::primitives::serde::LaneCodec;
 
 /// Per-side spacing (padding / margin), packed as four f16 lanes in
 /// `[u16; 4]` (8 bytes). Lane order: `left | top | right | bottom`.
@@ -15,6 +15,8 @@ use crate::primitives::serde::{LaneCodec, deserialize_lanes, serialize_lanes};
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Default, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Spacing(F16x4);
 
+f16x4_lanes!(Spacing, [left, top, right, bottom]);
+
 impl Spacing {
     /// Packed 8-byte form. Used by `LayoutCore::hash` to fold the
     /// padding + margin lanes into the parent hasher write.
@@ -24,22 +26,8 @@ impl Spacing {
     }
 }
 
-impl std::fmt::Debug for Spacing {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let [left, top, right, bottom] = self.as_array();
-        f.debug_struct("Spacing")
-            .field("left", &left)
-            .field("top", &top)
-            .field("right", &right)
-            .field("bottom", &bottom)
-            .finish()
-    }
-}
-
 impl Spacing {
     /// No spacing on any edge.
-    pub const ZERO: Self = Self(F16x4::ZERO);
-
     /// The same value on all four edges.
     #[inline]
     pub fn all(v: f32) -> Self {
@@ -57,22 +45,6 @@ impl Spacing {
     #[inline]
     pub fn new(left: f32, top: f32, right: f32, bottom: f32) -> Self {
         Self(F16x4::from_lanes([left, top, right, bottom]))
-    }
-
-    /// All four lanes unpacked at once. Routes through `half`'s
-    /// platform-specific batched f16→f32 path (single `fcvtl` on
-    /// aarch64-fp16, `vcvtph2ps` on x86-f16c, scalar fallback elsewhere).
-    /// Use at hot sites that read 3+ lanes to amortize feature dispatch.
-    #[inline]
-    pub fn as_array(self) -> [f32; 4] {
-        self.0.lanes()
-    }
-
-    /// Inverse of [`Self::as_array`] — batched runtime f32→f16 pack.
-    /// See `Corners::from_array` for the SIMD rationale.
-    #[inline]
-    pub fn from_array(v: [f32; 4]) -> Self {
-        Self(F16x4::from_lanes(v))
     }
 
     /// `left + right` — how much width this spacing costs.
@@ -119,12 +91,6 @@ impl std::ops::Add for Spacing {
     }
 }
 
-impl<T: Num> From<T> for Spacing {
-    fn from(v: T) -> Self {
-        Self::all(v.as_f32())
-    }
-}
-
 /// `(horizontal, vertical)` — both sides on each axis.
 impl<X: Num, Y: Num> From<(X, Y)> for Spacing {
     fn from((x, y): (X, Y)) -> Self {
@@ -162,20 +128,36 @@ impl LaneCodec for Spacing {
     }
 }
 
-impl ::serde::Serialize for Spacing {
-    fn serialize<S: ::serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serialize_lanes(self, serializer)
-    }
-}
-
-impl<'de> ::serde::Deserialize<'de> for Spacing {
-    fn deserialize<D: ::serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        deserialize_lanes(deserializer)
-    }
-}
-
 #[cfg(test)]
 mod tests {
+
+    /// A NaN edge is reportable, and reported per-lane — the four are one
+    /// `u64` and a check that only looked at the first would pass a NaN
+    /// bottom margin straight into layout.
+    ///
+    /// Paired with `Corners`, which is the same eight bytes: the two
+    /// agreeing here is what says the screening `Corners` has had all
+    /// along now covers spacing too.
+    #[test]
+    fn a_nan_on_any_edge_is_screened_like_a_nan_corner() {
+        use crate::primitives::corners::Corners;
+        use crate::primitives::nan::NanCheck;
+
+        assert!(!Spacing::all(4.0).has_nan(), "a whole spacing is finite");
+        for lane in 0..4 {
+            let mut lanes = [1.0, 2.0, 3.0, 4.0];
+            lanes[lane] = f32::NAN;
+            assert!(
+                NanCheck::has_nan(&Spacing::from_array(lanes)),
+                "lane {lane} went unseen",
+            );
+            assert!(
+                NanCheck::has_nan(&Corners::from_array(lanes)),
+                "lane {lane} went unseen on the sibling",
+            );
+        }
+    }
+
     use crate::primitives::spacing::*;
 
     fn ser(s: Spacing) -> String {

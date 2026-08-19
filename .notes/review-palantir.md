@@ -240,49 +240,45 @@ A shared core was factored out and the surface around it was not, so each tenant
 re-implements the same wrapper. Distinct from plain duplication: the right
 seam exists and stops one layer short.
 
-- [ ] `src/primitives/corners.rs:22`, `src/primitives/spacing.rs:16`,
-      `src/primitives/color/mod.rs:404`,
-      `src/primitives/brush/gradient/mod.rs:128` — four hand-copied `F16x4`
-      newtypes, each repeating a manual `Debug` that unpacks four named lanes,
-      an `as_array`/`from_array` pair, a `ZERO` const, and (for two of them) an
-      identical `impl<T: Num> From<T>`, `LaneCodec`, and serde forwarders.
-      `FillAxis::scaled` (`gradient/mod.rs:157`) open-codes
-      `from_lanes(lanes().map(*k))` — the exact spelling `F16x4::scaled` was
-      written to replace and measures 1.3× faster than — on a path that runs per
-      quad. The wrappers also disagree on receiver: `&self` on an 8-byte `Copy`
-      type where `F16x4`, `Rect`, `Size` and `Color` take `self`. And they
-      disagree on screening: `Corners` implements `NanCheck` while `Spacing` does
-      not, so a NaN corner radius is caught crate-wide and a NaN padding or
-      margin is not.
+Investigated in full and **closed**. What was real is fixed: the `AnyTyped`
+container written twice, `emit_text_chunks` shadowing `TextChunk::split`, the
+press path walking the hit table twice, four sweeps with three emptiness
+guards, `FillAxis::scaled` open-coding the slow form on a per-quad path, eight
+byte-identical `background()` builders, three inline text-emission chains (and
+the `Shape::text` signature underneath them), the `Corners`/`Spacing` wrapper
+surface, the `Spacing` NaN gap, and `lower::`'s two conventions.
 
-- [ ] `src/widgets/toggle.rs:55` — `toggle_row` factors the three toggle widgets
-      from `record` onward but not from `show` onward, which is why the
-      preceding finding's triplication survives above it.
+The rest were rejected with evidence:
 
-- [ ] `src/layout/stack/mod.rs:51` vs `src/layout/grid/resolving.rs:160` —
-      `freeze_distribute` and `resolve_axis`'s Phase 3 both distribute a budget
-      by weight under `[floor, cap]` clamps with re-division; they differ only
-      in that stack freezes every violator per pass while grid freezes the first
-      found. The result is that `Sizing::fill(w)` resolves differently under an
-      `HStack` than under a `Grid` once two clamps are violated at once, pinned
-      by `cross_driver_tests/fill_solvers.rs` as intended divergence.
+- **`PerGroupBatch` is not bypassed.** `pending_at` is generic over both batch
+  types and called with both; `drain_text_batches` drains on a range predicate
+  because each text batch also needs its own scissor, damage intersection and
+  mask chain.
+- **The four rect pipelines already share their seam** — all end in
+  `urect_from_phys`, and the mesh path's "shared scaler" is `Rect::scaled_by`,
+  exactly as its comment says. Transform, snap and fringe are per-tier policy.
+- **`resolve_container`'s "four spellings" are `Option::unwrap_or`.** Tooltip
+  and Modal borrow, `ContextMenu` needs an owned value because
+  `Popup::background` takes ownership, `Frame` has no theme slot. The only
+  thing `resolve_container` adds is the clip default, which none of them has.
+- **`toggle_row`'s seam is where its doc says it is.** The three toggles read
+  three *different* theme slots with different fields, and the reads must
+  happen before the `&mut Ui` reborrow. What survives above it is the
+  three-line preamble below, not toggle-specific logic.
+- **The nine eager preambles are three lines, and a helper saves one.**
+  `let mut widget` / `response` / `id` — the last two both derive from the
+  first, and `id` must be bound before `widget` is mutably borrowed. A named
+  result struct would trade nine lines for a concept. Worth doing only to
+  *name* the eager path the way `Widget::show` names the lazy one, which is a
+  documentation change.
+- **The stack/grid fill solvers diverge on purpose.** `freeze_distribute`
+  freezes every violator per pass, grid freezes the first found, and
+  `cross_driver_tests/fill_solvers.rs` pins the difference. Unifying them
+  changes how `Sizing::fill` resolves for users once two clamps are violated
+  at once — a product decision, not a refactor.
 
-- [ ] `src/widgets/button.rs:74` and eight peers (`checkbox/mod.rs:60`,
-      `radio/mod.rs:61`, `switch.rs:58`, `slider.rs:62`, `combo_box/mod.rs:69`,
-      `drag_value/mod.rs:263`, `splitter/mod.rs:102`, `context_menu/mod.rs:286`)
-      — every interactive widget opens with the same three lines and closes with
-      the same `Response::eager`. `Widget::show` packages the decorative
-      equivalent, so the crate has a helper for the lazy path and none for the
-      eager path nine widgets take.
+---
 
-- [ ] `src/scene/shapes/lower.rs:235` and seven peers — half the shapes lower
-      through single-caller `pub(crate)` free functions (`lower::rect` is a
-      `brush()` call plus a literal; `lower::shadow` is a five-line struct
-      literal), while `TextShape`, `ImageShape`, `IconShape` and `MeshShape`
-      build their record inline in `lower` (`src/shape/text.rs:105` etc.). Two
-      conventions for one job, with no rule distinguishing them —
-      and `MeshShape::lower` reaches into `store.payloads.borrow_mut()` from the
-      authoring side, the coupling `lower::` appears to exist to contain.
 ## One fact with several owners
 
 State that is copied rather than referenced, so the copies can disagree and

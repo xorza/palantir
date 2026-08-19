@@ -4,6 +4,13 @@
 //! gradients) append to the window's [`RecordStore`]; functions that
 //! never touch the store (e.g. [`triangle`]) don't take it.
 //!
+//! **What lives here is what touches the store.** A shape whose record
+//! is a repacking of its own fields builds it in its own `Lower` impl,
+//! beside the type that knows the fields; a shape that has to *stage*
+//! something — gradient stops, polyline points, mesh vertices — lowers
+//! through a function here, so the `RecordStore` borrow stays on this
+//! side of the authoring boundary and no builder reaches for it.
+//!
 //! Entry points: [`super::Shapes::add`] dispatches shapes here;
 //! `Tree::open_node` calls [`background`] for chrome.
 //!
@@ -20,10 +27,10 @@ use crate::primitives::brush::{Brush, CurveBrush};
 use crate::primitives::color::{Color, ColorU8};
 use crate::primitives::corners::Corners;
 use crate::primitives::fill_wire::FillKind;
+use crate::primitives::mesh::Mesh;
 use crate::primitives::nan::NanCheck;
 use crate::primitives::rect::Rect;
 use crate::primitives::rect::aabb::Aabb;
-use crate::primitives::shadow::Shadow;
 use crate::primitives::span::Span;
 use crate::primitives::stroke::Stroke;
 use crate::scene::record_store::{RecordStore, RecordedGradient};
@@ -33,7 +40,6 @@ use crate::scene::shapes::paint::{
 use crate::scene::shapes::record::{ColorMode, ShapeRecord};
 use crate::shape::polyline::PolylineColors;
 use crate::shape::rect::RectKind;
-use crate::shape::stroke_bounds::HALF_FRINGE;
 use crate::shape::style::{LineCap, LineJoin};
 use glam::Vec2;
 use std::f32::consts::TAU;
@@ -251,18 +257,33 @@ pub(crate) fn rect(
     })
 }
 
-/// Lower a box-shadow onto the quad tier. Pure repacking — the f16
-/// lane squeeze happens in `LoweredShadow`'s `From<Shadow>`, and the
-/// paint extent is derived downstream by
-/// [`shadow_paint_rect_local`](crate::scene::shapes::paint::shadow_paint_rect_local)
-/// so damage and the encoder can't disagree about the halo. No store
-/// needed (a shadow's colour is always solid).
-pub(crate) fn shadow(local_rect: Option<Rect>, corners: Corners, shadow: Shadow) -> ShapeRecord {
-    ShapeRecord::Quad(QuadShape::Shadow {
+/// Lower a mesh: copy its vertices and indices into the store and
+/// freeze the bbox and content hash the record carries.
+///
+/// Here rather than in `MeshShape::lower` because staging is the whole
+/// of what it does — the builder held a `&Mesh` and the record holds two
+/// spans into the store, and reaching for `store.payloads` from the
+/// authoring side is the coupling this module exists to keep on one side
+/// of the line.
+pub(crate) fn mesh(
+    store: &RecordStore,
+    mesh: &Mesh,
+    local_rect: Option<Rect>,
+    tint: Color,
+) -> ShapeRecord {
+    let mut payloads = store.payloads.borrow_mut();
+    let v_start = payloads.meshes.vertices.len() as u32;
+    payloads.meshes.vertices.extend_from_slice(&mesh.vertices);
+    let i_start = payloads.meshes.indices.len() as u32;
+    payloads.meshes.indices.extend_from_slice(&mesh.indices);
+    ShapeRecord::Mesh {
         local_rect,
-        corners,
-        shadow: shadow.into(),
-    })
+        tint: tint.into(),
+        vertices: Span::new(v_start, mesh.vertices.len() as u32),
+        indices: Span::new(i_start, mesh.indices.len() as u32),
+        bbox: mesh.bbox(),
+        content_hash: mesh.content_hash(),
+    }
 }
 
 /// Lower a (points, colors, width) authoring shape into a
@@ -440,35 +461,6 @@ pub(crate) fn arc(
         curve_brush(store, &brush),
         cap,
     )
-}
-
-/// Lower a triangle onto the quad tier. `bbox` is the owner-local AABB
-/// of `a`/`b`/`c` inflated by `radius + AA fringe` (the SDF offsets the
-/// shape outward by `radius`; the stroke is inner-edge and adds no
-/// outward reach), so damage and clip-cull cover the rounded,
-/// antialiased extent. No store needed (no gradient to register).
-pub(crate) fn triangle(
-    a: Vec2,
-    b: Vec2,
-    c: Vec2,
-    radius: f32,
-    fill: Color,
-    stroke: Stroke,
-) -> ShapeRecord {
-    // Through `Aabb`, not raw `min`/`max`: those launder a NaN corner
-    // out of the bounds, which would leave the record-level gate
-    // testing a finite bbox for a shape that has one.
-    let pad = radius.max(0.0) + HALF_FRINGE;
-    let bbox = Aabb::of(&[a, b, c]).inflated(pad);
-    ShapeRecord::Quad(QuadShape::Triangle {
-        a,
-        b,
-        c,
-        radius,
-        fill: fill.into(),
-        stroke: ShapeStroke::from(stroke),
-        bbox,
-    })
 }
 
 /// Build a `ShapeRecord::Curve` from cubic control points, deriving the
