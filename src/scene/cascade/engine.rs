@@ -145,14 +145,11 @@ impl CascadeEngine {
             if lc.layout_hash != layout[layer].rect_hash() {
                 return false;
             }
-            if lc
-                .subtree_ends
-                .iter()
-                .zip(tree.records.subtree_end())
-                .any(|(&previous, current)| previous != current.end())
-            {
-                return false;
-            }
+            // No structural walk here: `cascade_static` folds each
+            // node's `subtree_end`, so the scalar compare above already
+            // covers nesting. This used to zip the whole column every
+            // run — the one walk standing between `Cascade::subtree_ends`
+            // and the sparse ancestry column it is documented to be.
             entries_base += n as u32;
         }
         true

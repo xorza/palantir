@@ -1331,3 +1331,57 @@ fn one_shape_change_only_flips_its_own_hash() {
     assert_eq!(h0_a, h1_a, "unchanged shape 0 must keep its hash");
     assert_ne!(h0_b, h1_b, "changed shape 1 must flip its hash");
 }
+
+/// Nesting reaches `cascade_static`, so re-parenting alone invalidates a
+/// retained cascade.
+///
+/// Same three widget ids, same per-node configuration, same node count —
+/// only the shape differs: two siblings under the root versus one nested
+/// inside the other. Every per-node hash is therefore identical and the
+/// count matches, so nothing *but* `subtree_end` distinguishes the two.
+///
+/// `CascadeEngine::can_update` used to catch this by zipping the whole
+/// `subtree_ends` column against the tree on every run — an O(nodes) walk
+/// per layer per frame, on the incremental fast path. Folding the end into
+/// this hash covers the same ground for free, which is what lets
+/// `Cascade::subtree_ends` be the sparse ancestry column its doc claims.
+/// If the fold is ever dropped, these two collide and a re-parent silently
+/// keeps the stale cascade.
+#[test]
+fn nesting_alone_changes_cascade_static() {
+    let leaf = |ui: &mut Ui, name: &'static str| {
+        Panel::hstack()
+            .id(WidgetId::from_hash(name))
+            .show(ui, |_| {})
+            .response
+            .node()
+    };
+
+    let siblings = record_cascade_static(|ui| {
+        Panel::hstack()
+            .id(WidgetId::from_hash("root"))
+            .show(ui, |ui| {
+                leaf(ui, "a");
+                leaf(ui, "b");
+            })
+            .response
+            .node()
+    });
+    let nested = record_cascade_static(|ui| {
+        Panel::hstack()
+            .id(WidgetId::from_hash("root"))
+            .show(ui, |ui| {
+                Panel::hstack().id(WidgetId::from_hash("a")).show(ui, |ui| {
+                    leaf(ui, "b");
+                });
+            })
+            .response
+            .node()
+    });
+
+    assert_ne!(
+        siblings, nested,
+        "re-parenting must invalidate the retained cascade; without \
+         `subtree_end` in the fold these two hash the same",
+    );
+}

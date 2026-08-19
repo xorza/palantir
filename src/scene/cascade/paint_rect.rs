@@ -149,14 +149,20 @@ pub(super) struct PaintRectCtx<'a> {
 ///
 /// # Invariant
 ///
-/// The returned `Rect` is bit-identical to the screen-space union of
-/// the non-paint-empty rows in
-/// `arena.rows[paints_start..arena.rows.len()]` — the same union
-/// `damage::union_screens` recomputes from the stored rows.
-/// [`push_paint`] keeps the union and the pushed rows in lockstep;
-/// child markers bypass it (zero rect, no pixels), and the chromeless
-/// clip-only branch is the sole fold-without-push case (it contributes
-/// a cull rect but emits no pixels).
+/// The returned `Rect` is the screen-space union of the non-paint-empty
+/// rows in `arena.rows[paints_start..arena.rows.len()]`, **plus the
+/// clip-only fold below** — so it is bit-identical to what
+/// `damage::union_screens` recomputes from the stored rows for every
+/// node except a chromeless clip-only container, where it is larger by
+/// that container's visible rect.
+///
+/// The difference is deliberate and the two consumers want opposite
+/// halves of it: the encoder culls against this return value and needs
+/// the container's extent, while damage reads the rows and must not
+/// invent pixels for a node that painted none. [`push_paint`] keeps the
+/// union and the pushed rows in lockstep everywhere else; child markers
+/// bypass it (zero rect, no pixels), and the clip-only branch is the
+/// sole fold-without-push case.
 pub(super) fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) -> Rect {
     let PaintRectCtx {
         tree,
@@ -289,7 +295,14 @@ pub(super) fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) 
                     );
                     clip_screen(screen, shape_clip)
                 }
-                _ => lift_to_screen(
+                // Listed rather than `_`: this arm is what keeps
+                // `bbox_local`'s `Text` panic unreachable, so a new
+                // variant has to be routed here deliberately instead of
+                // falling into it.
+                ShapeRecord::Quad(_)
+                | ShapeRecord::Mesh { .. }
+                | ShapeRecord::Image { .. }
+                | ShapeRecord::Icon { .. } => lift_to_screen(
                     s.bbox_local(layout_rect.size),
                     layout_rect.min,
                     shape_transform,

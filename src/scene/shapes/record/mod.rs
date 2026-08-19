@@ -223,9 +223,12 @@ impl ShapeRecord {
                     size: owner_size,
                 })
             }
-            // Cascade dispatches Text to `text_paint_bbox_local`
-            // before reaching this method — a direct call here would
-            // silently lose the shaped extent.
+            // Cascade dispatches Text to `text_paint_bbox_local` before
+            // reaching this method — a direct call here would silently
+            // lose the shaped extent. Unreachable by construction rather
+            // than by convention: the cascade arm that calls this lists
+            // its variants explicitly, so a new one is a compile error
+            // there instead of a panic here.
             ShapeRecord::Text { .. } => {
                 unreachable!("Text shapes resolve via text_paint_bbox_local in cascade")
             }
