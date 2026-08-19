@@ -35,21 +35,14 @@ fn column(ui: &mut Ui, id: &'static str, body: impl FnOnce(&mut Ui)) {
 }
 
 fn wrapping(ui: &mut Ui) {
-    section(
-        ui,
-        "single line",
-        "single line — hugs its natural width",
-        |ui| {
-            Text::new("The quick brown fox jumps over the lazy dog")
-                .auto_id()
-                .style(&body_style())
-                .show(ui);
-        },
-    );
+    section(ui, "single line — hugs its natural width", |ui| {
+        Text::new("The quick brown fox jumps over the lazy dog")
+            .style(&body_style())
+            .show(ui);
+    });
 
     section(
         ui,
-        "wrapping",
         "wrapping — the same text at two container widths",
         |ui| {
             wrap_panel(ui, "wide-inner", 360.0, PARAGRAPH);
@@ -59,7 +52,6 @@ fn wrapping(ui: &mut Ui) {
 
     section(
         ui,
-        "overflow",
         "overflow — an unbreakable word in a 40 px slot spills at intrinsic_min \
          rather than breaking mid-word",
         |ui| {
@@ -76,7 +68,6 @@ fn wrap_panel(ui: &mut Ui, id: &'static str, width: f32, text: &'static str) {
         .background(well_bg())
         .show(ui, |ui| {
             Text::new(text)
-                .auto_id()
                 .style(&body_style())
                 .text_wrap(TextWrap::WrapWithOverflow)
                 .show(ui);
@@ -86,7 +77,6 @@ fn wrap_panel(ui: &mut Ui, id: &'static str, width: f32, text: &'static str) {
 fn compositions(ui: &mut Ui) {
     section(
         ui,
-        "two Hug columns",
         "two Hug columns — the paragraph wraps to fit, the label keeps its \
          natural width",
         |ui| {
@@ -97,13 +87,11 @@ fn compositions(ui: &mut Ui) {
                 .gap_xy(0.0, 16.0)
                 .show(ui, |ui| {
                     Text::new(PARAGRAPH)
-                        .auto_id()
                         .style(&body_style())
                         .text_wrap(TextWrap::WrapWithOverflow)
                         .grid_cell((0, 0))
                         .show(ui);
                     Text::new("right column")
-                        .auto_id()
                         .style(&body_style())
                         .grid_cell((0, 1))
                         .show(ui);
@@ -113,7 +101,6 @@ fn compositions(ui: &mut Ui) {
 
     section(
         ui,
-        "property grid",
         "property grid — a Hug label column plus a Fill value column that wraps",
         |ui| {
             Grid::new()
@@ -151,7 +138,6 @@ fn compositions(ui: &mut Ui) {
 
     section(
         ui,
-        "chat",
         "chat — a Fixed avatar plus a Fill message that reflows with the window",
         |ui| {
             Panel::vstack()

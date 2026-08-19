@@ -13,52 +13,42 @@ use palantir::{
 use std::hash::Hash;
 
 pub(crate) fn build(ui: &mut Ui) {
-    section(
-        ui,
-        "stacks",
-        "stacks — one axis each, plus free positioning",
-        |ui| {
-            tiles(ui, "stack-tiles", |ui| {
-                demo_cell(ui, "HStack — left to right", |ui| {
-                    Panel::hstack().auto_id().gap(6.0).show(ui, |ui| {
-                        for k in ["h-a", "h-b", "h-c"] {
-                            sw(ui, k, 40.0, 40.0, support::A);
-                        }
-                    });
-                });
-                demo_cell(ui, "VStack — top to bottom", |ui| {
-                    Panel::vstack().auto_id().gap(6.0).show(ui, |ui| {
-                        for k in ["v-a", "v-b", "v-c"] {
-                            sw(ui, k, 60.0, 24.0, support::A);
-                        }
-                    });
-                });
-                demo_cell(ui, "ZStack — stacked in record order", |ui| {
-                    Panel::zstack()
-                        .auto_id()
-                        .child_align(Align::CENTER)
-                        .show(ui, |ui| {
-                            sw(ui, "z-back", 96.0, 96.0, support::A);
-                            sw(ui, "z-front", 56.0, 56.0, support::B);
-                        });
-                });
-                demo_cell(ui, "Canvas — positioned children", |ui| {
-                    Panel::canvas()
-                        .auto_id()
-                        .size((Sizing::FILL, Sizing::FILL))
-                        .show(ui, |ui| {
-                            positioned(ui, "p1", 8.0, 8.0, support::A);
-                            positioned(ui, "p2", 64.0, 40.0, support::B);
-                            positioned(ui, "p3", 30.0, 88.0, support::C);
-                        });
+    section(ui, "stacks — one axis each, plus free positioning", |ui| {
+        tiles(ui, |ui| {
+            demo_cell(ui, "HStack — left to right", |ui| {
+                Panel::hstack().gap(6.0).show(ui, |ui| {
+                    for k in ["h-a", "h-b", "h-c"] {
+                        sw(ui, k, 40.0, 40.0, support::A);
+                    }
                 });
             });
-        },
-    );
+            demo_cell(ui, "VStack — top to bottom", |ui| {
+                Panel::vstack().gap(6.0).show(ui, |ui| {
+                    for k in ["v-a", "v-b", "v-c"] {
+                        sw(ui, k, 60.0, 24.0, support::A);
+                    }
+                });
+            });
+            demo_cell(ui, "ZStack — stacked in record order", |ui| {
+                Panel::zstack().child_align(Align::CENTER).show(ui, |ui| {
+                    sw(ui, "z-back", 96.0, 96.0, support::A);
+                    sw(ui, "z-front", 56.0, 56.0, support::B);
+                });
+            });
+            demo_cell(ui, "Canvas — positioned children", |ui| {
+                Panel::canvas()
+                    .size((Sizing::FILL, Sizing::FILL))
+                    .show(ui, |ui| {
+                        positioned(ui, "p1", 8.0, 8.0, support::A);
+                        positioned(ui, "p2", 64.0, 40.0, support::B);
+                        positioned(ui, "p3", 30.0, 88.0, support::C);
+                    });
+            });
+        });
+    });
 
     section(
         ui,
-        "wrapping flow",
         "wrapping flow — children flow along the main axis and wrap when the next \
          one wouldn't fit",
         |ui| {
@@ -77,11 +67,10 @@ pub(crate) fn build(ui: &mut Ui) {
 
     section(
         ui,
-        "wrap axis & justification",
         "wrap axis — WrapVStack wraps to a new column; Justify applies per line, \
          not to the block",
         |ui| {
-            tiles(ui, "wrap-tiles", |ui| {
+            tiles(ui, |ui| {
                 demo_cell_at(ui, "WrapVStack — wraps into columns", 200.0, 200.0, |ui| {
                     Panel::wrap_vstack()
                         .id_salt("vwrap")
@@ -119,11 +108,10 @@ pub(crate) fn build(ui: &mut Ui) {
 
     section(
         ui,
-        "grid",
         "grid — two-axis tracks with spanning cells; resize the window to watch \
          Fill tracks re-divide",
         |ui| {
-            tiles(ui, "grid-tiles", |ui| {
+            tiles(ui, |ui| {
                 // Classic three-column app shell: fixed sidebar | flexible
                 // content | hugging right rail; the header spans all three.
                 demo_cell_at(
@@ -250,6 +238,7 @@ fn badge<H: Hash>(ui: &mut Ui, key: H, w: f32) {
         .show(ui);
 }
 
+#[track_caller]
 fn grid_tile(
     ui: &mut Ui,
     label: &'static str,
@@ -259,7 +248,7 @@ fn grid_tile(
     color: Color,
 ) {
     let mut tile = Panel::zstack()
-        .id_salt(label)
+        .auto_id()
         .padding(5.0)
         .grid_cell(cell)
         .background(swatch_bg(color));
@@ -271,7 +260,6 @@ fn grid_tile(
     }
     tile.show(ui, |ui| {
         Text::new(label)
-            .id_salt((label, "tile-label"))
             .style(&on_swatch_style().with_font_size(11.0))
             .show(ui);
     });

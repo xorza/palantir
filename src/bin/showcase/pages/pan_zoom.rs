@@ -18,7 +18,7 @@ use palantir::{
     AnimSpec, Background, Brush, Button, ButtonTheme, Checkbox, Color, Configure, Corners, Frame,
     Grid, InputEvent, LineCap, LineJoin, LinearGradient, Panel, PolylineColors, RadioButton,
     Scroll, Shape, Sizing, Spacing, StatefulLook, Stroke, Text, TextStyle, TextWrap, Track, Ui,
-    WidgetId, WidgetLook,
+    WidgetId, WidgetLook, fmt,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
@@ -39,8 +39,10 @@ struct State {
 
 pub(crate) fn build(ui: &mut Ui) {
     let state_id = WidgetId::from_hash("showcase::pan_zoom::state");
-    let mut s = std::mem::take(ui.state_mut::<State>(state_id));
+    ui.with_state::<State, _>(state_id, page);
+}
 
+fn page(ui: &mut Ui, s: &mut State) {
     if s.auto {
         // Seed the pointer over the scroll viewport on the first frame
         // only — enough to latch scroll_target. Re-injecting every frame
@@ -81,10 +83,11 @@ pub(crate) fn build(ui: &mut Ui) {
                 .label("auto-drive input")
                 .show(ui);
             let click = match s.last_click {
-                Some((r, c)) => ui.fmt(format_args!("last click: r{r} c{c}")),
-                None => ui.fmt(format_args!(
+                Some((r, c)) => fmt!(ui, "last click: r{r} c{c}"),
+                None => fmt!(
+                    ui,
                     "click a cell to confirm hit-testing through the transform"
-                )),
+                ),
             };
             Text::new(click)
                 .id_salt("pz-click")
@@ -94,7 +97,6 @@ pub(crate) fn build(ui: &mut Ui) {
 
     let mut clicked = None;
     Scroll::both()
-        .auto_id()
         .with_zoom()
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| match s.content {
@@ -104,8 +106,6 @@ pub(crate) fn build(ui: &mut Ui) {
     if clicked.is_some() {
         s.last_click = clicked;
     }
-
-    *ui.state_mut::<State>(state_id) = s;
 }
 
 /// The heavy mixed document — a long vertical run of grids, wrapping
@@ -133,7 +133,6 @@ fn header_band(ui: &mut Ui) {
         .size((Sizing::FILL, Sizing::HUG))
         .show(ui, |ui| {
             Text::new("Complex document")
-                .auto_id()
                 .style(&TextStyle::default().with_font_size(18.0))
                 .show(ui);
             Frame::new()
@@ -143,7 +142,7 @@ fn header_band(ui: &mut Ui) {
             for i in 0..6 {
                 Button::new()
                     .id_salt(("hdr-btn", i))
-                    .label(format!("Action {i}"))
+                    .label(fmt!(ui, "Action {i}"))
                     .show(ui);
             }
         });
@@ -260,7 +259,7 @@ fn cell(ui: &mut Ui, salt: &'static str, r: u32, c: u32) -> bool {
     // Formatted into the record arena rather than a `String`: this runs for
     // every cell of every grid every frame, and the page is the pan/zoom
     // benchmark workload.
-    let label = ui.fmt(format_args!("{r},{c}"));
+    let label = fmt!(ui, "{r},{c}");
     Button::new()
         .id_salt((salt, "cell", r, c))
         .label(label)
@@ -297,7 +296,7 @@ fn chat_messages(ui: &mut Ui, count: u32) {
                             .gap(2.0)
                             .size((Sizing::FILL, Sizing::HUG))
                             .show(ui, |ui| {
-                                Text::new(format!("user_{i}"))
+                                Text::new(fmt!(ui, "user_{i}"))
                                     .id_salt(("from", i))
                                     .style(&TextStyle::default().with_font_size(12.0))
                                     .show(ui);

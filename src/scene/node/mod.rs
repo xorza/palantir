@@ -354,18 +354,40 @@ pub trait Configure: Sized {
     fn node_mut(&mut self) -> ConfigureNode<'_>;
 
     /// Override this widget's id with a hash of `key`, scoped to the
-    /// parent. The stored hash is mixed with the parent node's
+    /// parent.
+    ///
+    /// # Which id a widget needs
+    ///
+    /// Every builder already has one: `*::new()` is `#[track_caller]`, so a
+    /// widget's default id is its own call site, mixed with its parent's.
+    /// **That is the answer unless one of the two below applies**, and a
+    /// widget written out in source — including one inside a `show` closure,
+    /// however deeply nested — is always the default case.
+    ///
+    /// - **The call site repeats.** A `for` loop, or one helper drawing many
+    ///   widgets, gives every instance the same call site. Distinguish them
+    ///   with `id_salt(key)`, keyed on whatever makes the instance itself
+    ///   distinct — the item's own id, not its index or its label, unless
+    ///   those are stable (an index re-keys every widget when a row is
+    ///   inserted; a label re-keys when someone edits the caption).
+    /// - **The call site is a helper's, and you wanted the caller's.**
+    ///   `fn card(ui: &mut Ui)` gives all its callers one id. Mark the helper
+    ///   `#[track_caller]` and chain [`Self::auto_id`] inside it — no keys to
+    ///   invent and no keys to collide.
+    ///
+    /// [`Self::id`] is the third, for an id computed elsewhere that must
+    /// match exactly.
+    ///
+    /// # Scoping
+    ///
+    /// The stored hash is mixed with the parent node's
     /// already-disambiguated [`WidgetId`] when the node opens, so
     /// `.id_salt("row")` resolves to distinct ids under
     /// different parents — same scoping rule egui uses. At the root
-    /// (no parent) the salt hash is used as-is. Use whenever the
-    /// default call-site-derived id wouldn't survive across frames or
-    /// loop iterations — e.g. a `for` loop where each iteration must
-    /// keep per-widget state separate. Marks the id as a hash salt:
+    /// (no parent) the salt hash is used as-is. Marks the id as a hash salt:
     /// same-parent sibling collisions are disambiguated
     /// (so state stays well-formed) but flagged with a magenta runtime
-    /// outline because they're caller bugs. For an unscoped "use this
-    /// exact id" override, see [`Self::id`].
+    /// outline because they're caller bugs.
     fn id_salt(mut self, key: impl Hash) -> Self {
         self.node_mut().node.salt = Salt::Hash(WidgetId::from_hash(key));
         self
@@ -376,17 +398,39 @@ pub trait Configure: Sized {
     /// derived elsewhere and must match exactly (parent → child via
     /// [`WidgetId::with`], a shared seed for sibling widgets across
     /// layers, cross-frame state lookups that key off a domain id).
-    /// For the parent-scoped path, prefer [`Self::id_salt`]. Stores
-    /// the id verbatim.
+    /// For the parent-scoped path, prefer [`Self::id_salt`] — see the
+    /// "which id a widget needs" rule there.
     fn id(mut self, id: WidgetId) -> Self {
         self.node_mut().node.salt = Salt::Verbatim(id);
         self
     }
 
-    /// Re-derive an auto id at the *current* call site. Use when a builder
-    /// helper constructs the widget (so `*::new()` resolved to the helper's
-    /// source location) and you want each caller to get a distinct id —
-    /// `helper().auto_id().show(ui)` reads the caller's `(file, line, col)`.
+    /// Re-derive this widget's auto id at the *current* call site.
+    ///
+    /// **Only useful inside a `#[track_caller]` helper**, where "the current
+    /// call site" is the helper's caller rather than the helper. That is the
+    /// whole of what it is for: a helper that records widgets gives them all
+    /// one id, and this is how each caller gets its own instead —
+    ///
+    /// ```
+    /// # use palantir::{Configure, Panel, Sizing, Text, Ui};
+    /// /// One section per caller, each with its own id.
+    /// #[track_caller]
+    /// fn section(ui: &mut Ui, title: &str, body: impl FnOnce(&mut Ui)) {
+    ///     Panel::vstack()
+    ///         .auto_id()                 // ← the caller's location, not this one
+    ///         .size((Sizing::FILL, Sizing::HUG))
+    ///         .show(ui, |ui| {
+    ///             Text::new(title).show(ui);
+    ///             body(ui);
+    ///         });
+    /// }
+    /// ```
+    ///
+    /// Chaining it onto a widget written out in source is a no-op with extra
+    /// steps: `*::new()` is already `#[track_caller]`, so the widget's id is
+    /// already its own call site's. See [`Self::id_salt`] for which of the
+    /// three id mechanisms a given widget wants.
     #[track_caller]
     fn auto_id(mut self) -> Self {
         self.node_mut().node.salt = Salt::Auto(WidgetId::auto_stable());
@@ -417,6 +461,34 @@ pub trait Configure: Sized {
     }
     fn margin(mut self, m: impl Into<Spacing>) -> Self {
         self.node_mut().node.margin = Some(checked_spacing(m, "margin"));
+        self
+    }
+
+    /// Apply a pan/zoom transform to this node's body — both child
+    /// subtrees AND shapes recorded directly on it via `Ui::add_shape`.
+    /// Layout runs in untransformed space; the transform only affects
+    /// paint and hit-test. Composes with any ancestor transform.
+    ///
+    /// **Scale anchors at the node's own origin** (its `layout_rect.min`),
+    /// not at the cascade's (0, 0). The transform's translation component
+    /// is then applied in post-scale, node-local space —
+    /// `TranslateScale::new(pan, zoom)` means "scale my body 2× about my
+    /// top-left, then shift by `pan`" regardless of where the node sits on
+    /// the surface. See [`TranslateScale::anchored_at`] for the math.
+    /// Translation is identity-preserving (when `scale == 1`, the anchor is
+    /// a no-op).
+    ///
+    /// Widget chrome — [`Panel::background`](crate::Panel::background) and
+    /// its siblings — is the one exception: it paints in the *parent's*
+    /// space, anchored under any ancestor clip/transform. That's
+    /// deliberate: a transformed container acts as a pan/zoom viewport over
+    /// its body, and the background frames the viewport rather than panning
+    /// with it. For a background that scales/pans *with* the body, nest one
+    /// container deep — transform on the outer, chrome on its child.
+    ///
+    /// Inert on a leaf that records no shapes of its own.
+    fn transform(mut self, t: TranslateScale) -> Self {
+        self.node_mut().node.transform = t;
         self
     }
 

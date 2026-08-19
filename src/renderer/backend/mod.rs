@@ -553,13 +553,15 @@ impl WgpuBackend {
             // target on this same encoder, before the main pass samples it.
             // The composer listed them in `buffer.frame_targets` (size + scales
             // + paint callback); this allocates each + runs its callback, then
-            // evicts this submitter's targets absent from `frame_targets`
+            // frees this submitter's targets absent from `buffer.live_targets`
+            // — every view the frame *recorded*, which is a wider set than the
+            // ones it painted, so an unchanged view keeps its texture
             // (eviction is owner-scoped — the shared backend serves every
             // window).
             // `submit` itself carries no render-target logic.
             self.image.paint_gpu_views(
                 &mut ctx,
-                &buffer.frame_targets,
+                buffer.frame_views(),
                 owner,
                 buffer.time,
                 self.text.shaper(),

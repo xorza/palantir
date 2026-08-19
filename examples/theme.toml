@@ -1,5 +1,4 @@
 window_clear = "#1a1a1a"
-text_scale = 1.0
 
 [button]
 padding = [

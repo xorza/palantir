@@ -1,10 +1,7 @@
-use ::serde::de::Error as _;
-
 use crate::primitives::color::Color;
 use crate::text::key::{self, TEXT_METRICS_ERROR};
 use crate::text::{FontFamily, FontWeight};
 use crate::widgets::theme::text_style::TextStyle;
-use crate::widgets::theme::{TEXT_SCALE_ERROR, text_scale_is_valid};
 
 #[derive(Debug, ::serde::Deserialize)]
 pub(super) struct UncheckedTextStyle {
@@ -33,17 +30,6 @@ impl TryFrom<UncheckedTextStyle> for TextStyle {
             weight: style.weight,
         })
     }
-}
-
-pub(super) fn deserialize_text_scale<'de, D>(deserializer: D) -> Result<f32, D::Error>
-where
-    D: ::serde::Deserializer<'de>,
-{
-    let scale = <f32 as ::serde::Deserialize>::deserialize(deserializer)?;
-    if !text_scale_is_valid(scale) {
-        return Err(D::Error::custom(TEXT_SCALE_ERROR));
-    }
-    Ok(scale)
 }
 
 pub(super) mod duration_seconds {

@@ -1,6 +1,6 @@
 use palantir::{
     App, Button, Configure, HostHandle, Panel, Sizing, Text, Ui, WindowToken, WinitHost,
-    WinitHostError,
+    WinitHostError, fmt,
 };
 
 struct Counter {
@@ -16,13 +16,11 @@ impl Counter {
 impl App for Counter {
     fn record(&mut self, _win: WindowToken, ui: &mut Ui) {
         Panel::vstack()
-            .auto_id()
             .gap(8.0)
             .size((Sizing::HUG, Sizing::HUG))
             .show(ui, |ui| {
-                Text::new(format!("clicks: {}", self.clicks))
-                    .auto_id()
-                    .show(ui);
+                // `fmt!` formats into the frame's text arena — no `String`.
+                Text::new(fmt!(ui, "clicks: {}", self.clicks)).show(ui);
                 if Button::new().label("click me").show(ui).left.clicked() {
                     self.clicks += 1;
                 }

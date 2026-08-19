@@ -21,25 +21,19 @@ const RED: ColorU8 = ColorU8::hex(0xff5e44);
 const GREEN: ColorU8 = ColorU8::hex(0x46c46c);
 
 pub(crate) fn build(ui: &mut Ui) {
-    section(
-        ui,
-        "linear",
-        "linear — angle in radians from the +x axis",
-        |ui| {
-            tiles(ui, "linear-tiles", |ui| {
-                demo_cell(ui, "horizontal", horizontal);
-                demo_cell(ui, "vertical", vertical);
-                demo_cell(ui, "45°", diagonal);
-            });
-        },
-    );
+    section(ui, "linear — angle in radians from the +x axis", |ui| {
+        tiles(ui, |ui| {
+            demo_cell(ui, "horizontal", horizontal);
+            demo_cell(ui, "vertical", vertical);
+            demo_cell(ui, "45°", diagonal);
+        });
+    });
 
     section(
         ui,
-        "radial",
         "radial — centre and per-axis radius in unit space",
         |ui| {
-            tiles(ui, "radial-tiles", |ui| {
+            tiles(ui, |ui| {
                 demo_cell(ui, "centred, circular", radial_centered);
                 demo_cell(ui, "offset centre, three stops", radial_offset);
                 demo_cell(ui, "elliptical radius", radial_ellipse);
@@ -49,10 +43,9 @@ pub(crate) fn build(ui: &mut Ui) {
 
     section(
         ui,
-        "conic",
         "conic — sweep about a centre from a start angle",
         |ui| {
-            tiles(ui, "conic-tiles", |ui| {
+            tiles(ui, |ui| {
                 demo_cell(ui, "colour wheel", conic_wheel);
                 demo_cell(ui, "rotated 90°", conic_rotated);
             });
@@ -61,11 +54,10 @@ pub(crate) fn build(ui: &mut Ui) {
 
     section(
         ui,
-        "spread & interpolation",
         "spread & interpolation — what happens outside the stop range, and the \
          space stops blend in",
         |ui| {
-            tiles(ui, "mode-tiles", |ui| {
+            tiles(ui, |ui| {
                 demo_cell(ui, "Spread::Reflect — rings mirror out", reflect);
                 demo_cell(ui, "Spread::Repeat — stripes", repeat);
                 demo_cell(ui, "Interp::Oklab — perceptual midpoint", oklab);
@@ -84,7 +76,6 @@ fn filled(brush: Brush) -> Background {
 
 fn gradient_frame(ui: &mut Ui, bg: Background) {
     Frame::new()
-        .auto_id()
         .size((Sizing::FILL, Sizing::FILL))
         .background(bg)
         .show(ui);

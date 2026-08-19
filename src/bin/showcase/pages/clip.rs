@@ -14,7 +14,6 @@ use glam::Vec2;
 use palantir::{
     Align, Background, Color, Configure, Corners, Frame, Panel, Sizing, Stroke, TranslateScale, Ui,
 };
-use std::hash::Hash;
 
 const CARD: f32 = 200.0;
 /// How far the child overhangs the card on every side. The cell is the
@@ -26,10 +25,9 @@ const CELL: f32 = CARD + 2.0 * SPILL;
 pub(crate) fn build(ui: &mut Ui) {
     section(
         ui,
-        "clip modes",
         "clip modes — the same overflowing child under each mode",
         |ui| {
-            tiles(ui, "clip-tiles", |ui| {
+            tiles(ui, |ui| {
                 clip_card(ui, "None — the child spills", Mode::None, 0.0);
                 clip_card(ui, "Rect — square cut at the bounds", Mode::Rect, 0.0);
                 clip_card(ui, "Rounded — follows the radius", Mode::Rounded, 0.0);
@@ -39,10 +37,9 @@ pub(crate) fn build(ui: &mut Ui) {
 
     section(
         ui,
-        "clip & padding",
         "clip & padding — padding moves the boundary inward to the content rect",
         |ui| {
-            tiles(ui, "padded-tiles", |ui| {
+            tiles(ui, |ui| {
                 clip_card(ui, "padded, no clip", Mode::None, 28.0);
                 clip_card(ui, "padded, Rect", Mode::Rect, 28.0);
                 clip_card(ui, "padded, Rounded", Mode::Rounded, 14.0);
@@ -52,22 +49,21 @@ pub(crate) fn build(ui: &mut Ui) {
 
     section(
         ui,
-        "subtree transform",
         "subtree transform — TranslateScale on a container moves everything \
          beneath it",
         |ui| {
-            tiles(ui, "transform-tiles", |ui| {
+            tiles(ui, |ui| {
                 demo_cell(ui, "translate (30, 24)", |ui| {
                     Panel::zstack()
                         .id_salt("t-outer")
                         .transform(TranslateScale::from_translation(Vec2::new(30.0, 24.0)))
-                        .show(ui, |ui| tile(ui, "t-tile"));
+                        .show(ui, |ui| tile(ui));
                 });
                 demo_cell(ui, "scale 1.5 — strokes scale too", |ui| {
                     Panel::zstack()
                         .id_salt("s-outer")
                         .transform(TranslateScale::from_scale(1.5))
-                        .show(ui, |ui| tile(ui, "s-tile"));
+                        .show(ui, |ui| tile(ui));
                 });
                 demo_cell(ui, "composed — scale 1.25, then translate", |ui| {
                     Panel::zstack()
@@ -77,7 +73,7 @@ pub(crate) fn build(ui: &mut Ui) {
                             Panel::zstack()
                                 .id_salt("c-inner")
                                 .transform(TranslateScale::from_translation(Vec2::new(20.0, 10.0)))
-                                .show(ui, |ui| tile(ui, "c-tile"));
+                                .show(ui, |ui| tile(ui));
                         });
                 });
             });
@@ -98,15 +94,15 @@ fn card_bg() -> Background {
         .with_stroke(Stroke::solid(Color::hex(0x4d5663), 1.5))
 }
 
+#[track_caller]
 fn clip_card(ui: &mut Ui, label: &'static str, mode: Mode, padding: f32) {
     captioned_cell(ui, label, CELL, CELL, |ui| {
         Panel::zstack()
-            .id_salt((label, "bleed"))
+            .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
             .child_align(Align::CENTER)
             .show(ui, |ui| {
                 let mut panel = Panel::zstack()
-                    .id_salt((label, "card"))
                     .size((Sizing::fixed(CARD), Sizing::fixed(CARD)))
                     .padding(padding)
                     .background(card_bg());
@@ -115,7 +111,7 @@ fn clip_card(ui: &mut Ui, label: &'static str, mode: Mode, padding: f32) {
                     Mode::Rect => panel.clip_rect(),
                     Mode::Rounded => panel.clip_rounded(),
                 };
-                panel.show(ui, |ui| spiller(ui, (label, "spill")));
+                panel.show(ui, spiller);
             });
     });
 }
@@ -124,9 +120,8 @@ fn clip_card(ui: &mut Ui, label: &'static str, mode: Mode, padding: f32) {
 /// margin grows its slot past the content rect and `Fill` takes all of
 /// it, so the overhang stays exactly [`SPILL`] whether or not the card
 /// is padded.
-fn spiller(ui: &mut Ui, id: impl Hash) {
+fn spiller(ui: &mut Ui) {
     Frame::new()
-        .id_salt(id)
         .size((Sizing::FILL, Sizing::FILL))
         .margin((-SPILL, -SPILL, -SPILL, -SPILL))
         // Translucent so the card's own edge stays visible underneath —
@@ -136,9 +131,10 @@ fn spiller(ui: &mut Ui, id: impl Hash) {
         .show(ui);
 }
 
-fn tile(ui: &mut Ui, id: &'static str) {
+#[track_caller]
+fn tile(ui: &mut Ui) {
     Frame::new()
-        .id_salt(id)
+        .auto_id()
         .size((Sizing::fixed(56.0), Sizing::fixed(56.0)))
         .background(support::swatch_bg(support::A))
         .show(ui);

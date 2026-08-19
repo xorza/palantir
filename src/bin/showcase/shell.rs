@@ -237,10 +237,6 @@ const PAGES: &[Page] = &[
 #[derive(Debug)]
 pub(crate) struct State {
     active: usize,
-    /// Mirrors what the host was last told, so the toggle only *asks* on a
-    /// real flip — `Ui::set_vsync` is a one-shot request and applying one
-    /// recreates the swapchain.
-    vsync: Vsync,
     app: pages::state::AppState,
     /// Persistent renderer for the `gpu view` page — its GPU resources
     /// build lazily on first paint (no device at construction).
@@ -260,7 +256,6 @@ impl State {
         ui.set_theme(theme);
         State {
             active: 0,
-            vsync: Vsync::default(),
             app: pages::state::AppState { counter: 0 },
             cube: Rc::new(RefCell::new(pages::gpu_view::Cube::new())),
             fixture: FrameFixture::default(),
@@ -271,7 +266,6 @@ impl State {
         handle_shortcuts(ui);
 
         Panel::hstack()
-            .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 self.rail(ui);
@@ -323,7 +317,7 @@ impl State {
                             }
                         }
                     });
-                debug_toggles(ui, &mut self.vsync);
+                debug_toggles(ui);
             });
     }
 
@@ -383,7 +377,6 @@ impl App for State {
         match win {
             INSPECTOR_WINDOW => {
                 Panel::vstack()
-                    .auto_id()
                     .padding(16.0)
                     .gap(12.0)
                     .size((Sizing::FILL, Sizing::FILL))
@@ -442,30 +435,28 @@ fn group_heading(ui: &mut Ui, name: &'static str, first: bool) {
 
 /// The overlay switches, mirroring the F-key shortcuts so they're
 /// discoverable instead of living only in a comment.
-fn debug_toggles(ui: &mut Ui, vsync: &mut Vsync) {
+fn debug_toggles(ui: &mut Ui) {
     Frame::new()
         .id_salt("footer-rule")
         .size((Sizing::FILL, Sizing::fixed(1.0)))
         .background(Background::fill(support::HAIRLINE))
         .show(ui);
-    let mut damage = ui.debug_overlay_mut().damage_rect;
-    let mut dim = ui.debug_overlay_mut().dim_undamaged;
-    let mut stats = ui.debug_overlay_mut().frame_stats;
-    let mut vsync_on = *vsync == Vsync::On;
+    let mut overlay = ui.debug_overlay();
+    let mut vsync_on = ui.vsync() == Vsync::On;
     Panel::vstack()
         .id_salt("debug-toggles")
         .size((Sizing::FILL, Sizing::HUG))
         .gap(6.0)
         .show(ui, |ui| {
-            Checkbox::new(&mut damage)
+            Checkbox::new(&mut overlay.damage_rect)
                 .id_salt("dbg-damage")
                 .label("damage rects  F12")
                 .show(ui);
-            Checkbox::new(&mut dim)
+            Checkbox::new(&mut overlay.dim_undamaged)
                 .id_salt("dbg-dim")
                 .label("dim undamaged  F10")
                 .show(ui);
-            Checkbox::new(&mut stats)
+            Checkbox::new(&mut overlay.frame_stats)
                 .id_salt("dbg-stats")
                 .label("frame stats  F9")
                 .show(ui);
@@ -476,15 +467,8 @@ fn debug_toggles(ui: &mut Ui, vsync: &mut Vsync) {
                 .label("vsync")
                 .show(ui);
         });
-    let requested = if vsync_on { Vsync::On } else { Vsync::Off };
-    if requested != *vsync {
-        *vsync = requested;
-        ui.set_vsync(requested);
-    }
-    let mut overlay = ui.debug_overlay_mut();
-    overlay.damage_rect = damage;
-    overlay.dim_undamaged = dim;
-    overlay.frame_stats = stats;
+    ui.set_vsync(if vsync_on { Vsync::On } else { Vsync::Off });
+    ui.set_debug_overlay(overlay);
 }
 
 fn page_header(ui: &mut Ui, title: &'static str, blurb: &'static str) {
@@ -584,16 +568,61 @@ fn handle_shortcuts(ui: &mut Ui) {
             ui.open_window(INSPECTOR_WINDOW, WindowConfig::new("inspector"));
         }
     }
-    if ui.key_pressed(Shortcut::key(Key::F12)) {
-        let mut o = ui.debug_overlay_mut();
-        o.damage_rect = !o.damage_rect;
-    }
-    if ui.key_pressed(Shortcut::key(Key::F10)) {
-        let mut o = ui.debug_overlay_mut();
-        o.dim_undamaged = !o.dim_undamaged;
-    }
-    if ui.key_pressed(Shortcut::key(Key::F9)) {
-        let mut o = ui.debug_overlay_mut();
-        o.frame_stats = !o.frame_stats;
+    // One read and one write for all three: `^= pressed` is "toggle if the
+    // key fired", and every `key_pressed` was evaluated on this path anyway.
+    let mut overlay = ui.debug_overlay();
+    overlay.damage_rect ^= ui.key_pressed(Shortcut::key(Key::F12));
+    overlay.dim_undamaged ^= ui.key_pressed(Shortcut::key(Key::F10));
+    overlay.frame_stats ^= ui.key_pressed(Shortcut::key(Key::F9));
+    ui.set_debug_overlay(overlay);
+}
+
+/// The automated half of "the showcase still feels right by eye": every page
+/// records, twice, without panicking and without colliding ids.
+///
+/// Two frames because the first is the recorder's warmup — a page that reads
+/// last frame's response, or whose state row only exists after one pass, only
+/// exercises that path on the second.
+///
+/// This is what stands behind an identity scheme built on `#[track_caller]`
+/// helpers rather than hand-written keys: `UiHarness::collisions` reports
+/// every pair of siblings that resolved to the same *caller-supplied* id, so a
+/// page whose `id_salt`s stopped being distinct fails here rather than
+/// silently sharing one widget's cross-frame state between two.
+#[cfg(all(test, feature = "internals"))]
+mod tests {
+    use super::{MAIN_WINDOW, PAGES, State};
+    use glam::UVec2;
+    use palantir::App;
+    use palantir::internals::UiHarness;
+
+    #[test]
+    fn every_page_records_two_clean_frames() {
+        for (index, page) in PAGES.iter().enumerate() {
+            let mut h = UiHarness::new(UVec2::new(1280, 800));
+            let mut state = State::new(h.ui());
+            state.active = index;
+            for frame in 0..2 {
+                h.frame(|ui| state.record(MAIN_WINDOW, ui));
+                // `fixtures` reuses one explicit id across siblings on
+                // purpose — the magenta collision outline is the framework
+                // behaviour that page exists to pin. Asserted rather than
+                // skipped, so the fixture losing its point also fails here.
+                if page.label == "fixtures" {
+                    assert!(
+                        !h.collisions().is_empty(),
+                        "fixtures (frame {frame}): the id-collision fixture \
+                         stopped colliding",
+                    );
+                    continue;
+                }
+                assert_eq!(
+                    h.collisions(),
+                    [],
+                    "{} (frame {frame}): sibling widgets share an explicit id",
+                    page.label,
+                );
+            }
+        }
     }
 }

@@ -25,11 +25,10 @@ use palantir::{
 pub(crate) fn build(ui: &mut Ui) {
     section(
         ui,
-        "id collisions",
         "id collisions — the first row reuses one explicit id across siblings and \
          gets the magenta outline; the second row is clean",
         |ui| {
-            support::row(ui, "idcol-r1", |ui| {
+            support::row(ui, |ui| {
                 for label in ["dup A", "dup B", "dup C"] {
                     Button::new().id_salt("idcol-dup-btn").label(label).show(ui);
                 }
@@ -41,7 +40,7 @@ pub(crate) fn build(ui: &mut Ui) {
                         .show(ui);
                 }
             });
-            support::row(ui, "idcol-r2", |ui| {
+            support::row(ui, |ui| {
                 Button::new()
                     .id_salt("idcol-clean-a")
                     .label("clean A")
@@ -56,10 +55,9 @@ pub(crate) fn build(ui: &mut Ui) {
 
     section(
         ui,
-        "text z-order",
         "text z-order — record order decides who covers whom, quads and text alike",
         |ui| {
-            tiles(ui, "z-tiles", |ui| {
+            tiles(ui, |ui| {
                 zorder_cell(ui, "text over an earlier quad", false);
                 zorder_cell(ui, "quad recorded AFTER the text covers it", true);
             });
@@ -68,11 +66,10 @@ pub(crate) fn build(ui: &mut Ui) {
 
     section(
         ui,
-        "chrome & blending",
         "chrome & blending — concentric corners, and premultiplied-alpha repros \
          over a magenta backdrop",
         |ui| {
-            tiles(ui, "blend-tiles", |ui| {
+            tiles(ui, |ui| {
                 captioned_cell(
                     ui,
                     "chrome concentricity",
@@ -94,20 +91,19 @@ pub(crate) fn build(ui: &mut Ui) {
 
 /// ZStack of background + label, optionally with an occluder recorded
 /// after the text, which must paint over it.
+#[track_caller]
 fn zorder_cell(ui: &mut Ui, label: &'static str, quad_after: bool) {
     captioned_cell(ui, label, support::TILE, support::TILE, |ui| {
         Panel::zstack()
-            .id_salt((label, "box"))
+            .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
             .padding(12.0)
             .show(ui, |ui| {
                 Frame::new()
-                    .id_salt((label, "bg"))
                     .size((Sizing::FILL, Sizing::FILL))
                     .background(swatch_bg(if quad_after { support::B } else { support::A }))
                     .show(ui);
                 Text::new("T-shirt")
-                    .id_salt((label, "label"))
                     .style(
                         &TextStyle::default()
                             .with_font_size(28.0)
@@ -116,7 +112,6 @@ fn zorder_cell(ui: &mut Ui, label: &'static str, quad_after: bool) {
                     .show(ui);
                 if quad_after {
                     Frame::new()
-                        .id_salt((label, "occluder"))
                         .size((Sizing::fixed(120.0), Sizing::fixed(60.0)))
                         .background(swatch_bg(Color::hex(0x14161a)))
                         .show(ui);
@@ -132,13 +127,11 @@ fn concentricity(ui: &mut Ui) {
     const STROKE: f32 = 8.0;
     const OUTER: f32 = 40.0;
     Panel::zstack()
-        .auto_id()
         .size((Sizing::FILL, Sizing::FILL))
         .child_align(Align::CENTER)
         .background(Background::rounded(Color::hex(0xff0000), Corners::all(4.0)))
         .show(ui, |ui| {
             Panel::zstack()
-                .auto_id()
                 .size((Sizing::fixed(130.0), Sizing::fixed(100.0)))
                 .child_align(Align::CENTER)
                 .background(
@@ -147,7 +140,6 @@ fn concentricity(ui: &mut Ui) {
                 )
                 .show(ui, |ui| {
                     Frame::new()
-                        .auto_id()
                         .size((Sizing::FILL, Sizing::FILL))
                         .background(Background::rounded(
                             Color::hex(0x000000),

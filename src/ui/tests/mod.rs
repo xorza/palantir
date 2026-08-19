@@ -4,5 +4,6 @@ mod frames;
 mod ids;
 mod repainting;
 mod starting;
+mod state;
 mod support;
 mod text;

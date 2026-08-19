@@ -16,9 +16,13 @@
 //! windows, and refreshing the [`GpuPaintRef`]. The shape records only the
 //! redraw `epoch`; the encoder looks the view up by the node's `WidgetId`,
 //! forwards the callback alongside the image payload, and the composer lists it in
-//! `RenderBuffer::frame_targets` for the backend. The map is swept by the same
-//! `removed` set as every other per-widget cache; the backend then frees the
-//! orphaned texture (see `ImagePipeline::paint_gpu_views`).
+//! `RenderBuffer::frame_targets` for the backend. `Frontend::build` separately
+//! lists the whole map in `RenderBuffer::live_targets` — what the frame
+//! *recorded*, as against what it *painted* — and that is what the backend
+//! keys target retention on, so an unchanged view culled out of a frame keeps
+//! its texture. The map is swept by the same `removed` set as every other
+//! per-widget cache; the backend then frees the orphaned texture (see
+//! `ImagePipeline::paint_gpu_views`).
 
 use crate::primitives::texture_id::TextureId;
 use crate::text::shaper::TextShaper;
@@ -34,16 +38,20 @@ use std::time::Duration;
 /// time, after `App::record` has returned, so it can't borrow frame-local
 /// state.
 pub trait GpuPaint: 'static {
-    /// Build GPU resources (pipelines, persistent buffers). Called the first
-    /// time the device is available for this view, and **again** if the view's
-    /// off-screen texture is later reclaimed and rebuilt — which happens when a
-    /// frame is forced by other widgets while this view is marked
-    /// [`repaint(false)`](crate::widgets::gpu_view::GpuView::repaint) (it's
-    /// culled, so its target is freed). Guard expensive one-time setup against
-    /// re-entry (e.g. `if self.pipeline.is_none()`). Not re-run merely on
-    /// resize — the resolved color target is framework-owned; recreate any of
-    /// your own depth / MSAA attachments inside [`Self::paint`] when
-    /// [`GpuFrameCtx::size_px`] changes.
+    /// Build GPU resources (pipelines, persistent buffers). Called **once**
+    /// per view, the first time the device is available for it. Skipping
+    /// paints does not re-run it — a view marked
+    /// [`repaint(false)`](crate::widgets::gpu_view::GpuView::repaint) keeps its
+    /// off-screen texture — and neither does a resize, since the resolved
+    /// color target is framework-owned. Recreate your own depth / MSAA
+    /// attachments inside [`Self::paint`] when [`GpuFrameCtx::size_px`]
+    /// changes.
+    ///
+    /// It runs again only after the view is genuinely gone and comes back:
+    /// the widget stopped being recorded (so its state was swept, like every
+    /// other per-widget cache), or its window closed. A renderer that outlives
+    /// its widget — one parked in app state across a page switch — is handed
+    /// a fresh target when it returns and is initialized into it.
     fn init(&mut self, ctx: &GpuInitCtx<'_>) {
         let _ = ctx;
     }

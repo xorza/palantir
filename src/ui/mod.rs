@@ -58,7 +58,6 @@ use crate::window::{
     WindowRequests, WindowToken,
 };
 use glam::UVec2;
-use std::cell::RefMut;
 use std::collections::hash_map::Entry;
 use std::rc::Rc;
 use std::time::Duration;
@@ -362,20 +361,33 @@ impl Ui {
         self.window_requests.cursor = cursor;
     }
 
-    /// Ask the host to switch this window's swapchain to `vsync`.
+    /// Set this window's presentation pacing.
     ///
-    /// Unlike [`Self::set_cursor`] this is a **one-shot request**, not a
-    /// per-frame value: call it when the setting changes, not every
-    /// frame. Applying one recreates the swapchain, which waits for the
-    /// GPU to go idle — cheap to ask for repeatedly (the host drops a
-    /// request matching the mode already in force) but not something to
-    /// re-assert from a hot record pass.
+    /// A **level**, retained across frames — [`Self::vsync`] reads it back,
+    /// so this is the source of truth for "is vsync on?" rather than
+    /// something app code mirrors. Setting the mode already in force costs
+    /// nothing: the host diffs against the swapchain it has open and only
+    /// then reconfigures, so a control can write its checkbox's value every
+    /// frame.
     ///
-    /// The host applies it after the frame and schedules the repaint that
-    /// carries it, so an idle window still picks the change up. Ignored by
-    /// hosts with no swapchain, which is every headless one.
+    /// Applying a real change recreates the swapchain, which waits for the
+    /// GPU to go idle. The host does that after the frame and schedules the
+    /// repaint that carries it, so an idle window still picks the change up.
+    /// Inert on hosts with no swapchain, which is every headless one — the
+    /// level is still recorded and still reads back.
     pub fn set_vsync(&mut self, vsync: Vsync) {
-        self.window_requests.vsync = Some(vsync);
+        self.window_requests.vsync = vsync;
+    }
+
+    /// This window's presentation pacing, as last set by
+    /// [`Self::set_vsync`] or as the host opened the swapchain with.
+    ///
+    /// Read it as the source of truth instead of mirroring the setting in
+    /// app code — the same position [`Self::window_open`] takes for window
+    /// liveness. A host launched with an explicit backend present mode
+    /// reports whichever of the two states that mode paces like.
+    pub fn vsync(&self) -> Vsync {
+        self.window_requests.vsync
     }
 
     /// Ask the host to schedule another frame after this one. Cleared
@@ -527,15 +539,32 @@ impl Ui {
         }
     }
 
-    /// Mutable handle to this app's debug overlay; the guard derefs to
-    /// `&mut DebugOverlayConfig`, so write fields straight on it
-    /// (`ui.debug_overlay_mut().damage_rect = true`). The overlay is
-    /// app-global: the write is visible to every window at once, and the
-    /// host repaints idle windows so it shows everywhere — not just the
-    /// window that handled the key. Drop the guard before other `Ui`
-    /// calls; the `&mut self` borrow enforces that.
-    pub fn debug_overlay_mut(&mut self) -> RefMut<'_, DebugOverlayConfig> {
-        self.resources.diagnostics.overlay.borrow_mut()
+    /// This app's debug-overlay flags, by value.
+    ///
+    /// Read-modify-write through [`Self::set_debug_overlay`] rather than
+    /// through a borrow guard: the config is a handful of `Copy` flags, and
+    /// a guard could not survive the widget calls that sit between reading
+    /// a toggle's current value and writing back what the user chose.
+    ///
+    /// ```
+    /// # use palantir::{Checkbox, Configure, Ui};
+    /// # fn demo(ui: &mut Ui) {
+    /// let mut overlay = ui.debug_overlay();
+    /// Checkbox::new(&mut overlay.damage_rect).label("damage rects").show(ui);
+    /// Checkbox::new(&mut overlay.frame_stats).label("frame stats").show(ui);
+    /// ui.set_debug_overlay(overlay);
+    /// # }
+    /// ```
+    pub fn debug_overlay(&self) -> DebugOverlayConfig {
+        *self.resources.diagnostics.overlay.borrow()
+    }
+
+    /// Replace this app's debug-overlay flags. The overlay is app-global:
+    /// the write is visible to every window at once, and the host repaints
+    /// idle windows so it shows everywhere — not just the window that
+    /// handled the key.
+    pub fn set_debug_overlay(&mut self, overlay: DebugOverlayConfig) {
+        *self.resources.diagnostics.overlay.borrow_mut() = overlay;
     }
 
     /// Whether a window addressed by `token` is currently live. Reflects
@@ -654,6 +683,9 @@ impl Ui {
     /// any text-taking widget. The bytes are already in the destination
     /// buffer, so same-arena lowering is zero-copy and steady-state authoring
     /// of dynamic labels skips per-call `String` allocations.
+    ///
+    /// Call sites normally reach for [`fmt!`](crate::fmt), which is this over
+    /// `format_args!` — `fmt!(ui, "clicks: {n}")`.
     ///
     /// **Valid only for the pass that minted it.** Lower it here, in this
     /// window; holding it into a later frame, into the second pass of a
@@ -802,8 +834,57 @@ impl Ui {
     /// detected — each `T` lives in its own store, so two call sites
     /// using different types at the same id silently coexist (see the
     /// `state` module doc).
+    ///
+    /// The returned borrow is out of `&mut Ui`, so it ends at the next
+    /// widget call — fine for a single read or write, useless for state a
+    /// whole subtree edits. Use [`Self::with_state`] for that.
     pub fn state_mut<S: Default + 'static>(&mut self, id: WidgetId) -> &mut S {
         self.state.get_or_insert_with(id, S::default)
+    }
+
+    /// Lend the cross-frame state row for `id` to `body`, **alongside** the
+    /// `Ui` — the scope in which a page, a panel, or any other subtree
+    /// larger than one widget owns state.
+    ///
+    /// [`Self::state_mut`] hands back a borrow of the `Ui`, which the first
+    /// widget call inside the scope invalidates; the row is instead moved
+    /// out for the duration of the call and moved back after, so both are
+    /// live at once:
+    ///
+    /// ```
+    /// # use palantir::{Button, Configure, Text, Ui, WidgetId};
+    /// # #[derive(Default)]
+    /// # struct Page { clicks: u32, note: String }
+    /// # fn demo(ui: &mut Ui, page_id: WidgetId) {
+    /// ui.with_state::<Page, _>(page_id, |ui, page| {
+    ///     if Button::new().label("click").show(ui).left.clicked() {
+    ///         page.clicks += 1;
+    ///     }
+    ///     Text::new(&page.note).show(ui);
+    /// });
+    /// # }
+    /// ```
+    ///
+    /// The row is `S::default()` on first access and follows the same
+    /// eviction rule as [`Self::state_mut`], so a subtree that stops being
+    /// recorded drops its state — key it off a [`WidgetId`] that lives as
+    /// long as the state should.
+    ///
+    /// Re-entering the same `(id, S)` from within `body` is a caller bug:
+    /// the inner scope sees a default row and its writes are overwritten
+    /// when the outer one restores. Nesting *different* rows is fine, which
+    /// is what makes this compose down a tree.
+    pub fn with_state<S: Default + 'static, R>(
+        &mut self,
+        id: WidgetId,
+        body: impl FnOnce(&mut Self, &mut S) -> R,
+    ) -> R {
+        let mut value = std::mem::take(self.state_mut::<S>(id));
+        let out = body(self, &mut value);
+        // Re-probed rather than held: `body` may have inserted rows of the
+        // same `S` at other ids, which can reallocate the store's data vec.
+        *self.state_mut::<S>(id) = value;
+        out
     }
 
     /// Read-only peek at the cross-frame state row for `id`. `None` if

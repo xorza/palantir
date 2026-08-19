@@ -21,8 +21,8 @@ use crate::renderer::backend::pipeline_utils::{ColorVariantSpec, StencilVariant}
 use crate::renderer::backend::shader_template::{ShaderConstant, specialize};
 use crate::renderer::image_registry::ImageRegistry;
 use crate::renderer::render_buffer::image::{
-    IMG_FLAG_MAG_NEAREST, IMG_FLAG_MIN_NEAREST, IMG_FLAG_TAPS_MEAN, IMG_FLAG_TAPS_PEAK,
-    IMG_FLAG_TILED, ImageInstance, RenderTargetDraw,
+    FrameViews, IMG_FLAG_MAG_NEAREST, IMG_FLAG_MIN_NEAREST, IMG_FLAG_TAPS_MEAN, IMG_FLAG_TAPS_PEAK,
+    IMG_FLAG_TILED, ImageInstance,
 };
 use crate::renderer::render_owner::RenderOwnerId;
 use crate::text::shaper::TextShaper;
@@ -139,26 +139,30 @@ impl ImagePipeline {
     /// once, then `GpuPaint::paint` into it. Never touches the instance buffer,
     /// so it only has to run before the main pass samples the targets.
     ///
-    /// Eviction is **immediate but owner-scoped**: any target `owner`
-    /// painted before that is absent from this `frame_targets` is freed.
-    /// Correct because every composited view is repainted, so a
-    /// freed-then-recomposited target is never sampled blank — but a
-    /// `repaint(false)` view culled from a frame frees its texture, so
-    /// `GpuPaint::init` re-runs when it next composites (guard expensive
-    /// setup). `owner` is the submitting window's stable render-stream
-    /// identity: the one shared backend serves all windows, so a submit may only
-    /// evict its *own* absent targets — another window's targets survive
-    /// both this submit and their owner's idle (non-submitting) frames.
+    /// Eviction is **immediate but owner-scoped**, and keyed on
+    /// [`FrameViews::live`] — every view `owner` recorded this frame — rather
+    /// than on [`FrameViews::draws`], which lists only the ones that
+    /// painted. A view
+    /// marked [`repaint(false)`](crate::widgets::gpu_view::GpuView::repaint)
+    /// is culled out of the second and stays in the first, so it keeps its
+    /// texture and `GpuPaint::init` is not re-run. A target is freed when its
+    /// widget stops being recorded, which is the same sweep every other
+    /// per-widget cache rides.
+    ///
+    /// `owner` is the submitting window's stable render-stream identity: the
+    /// one shared backend serves all windows, so a submit may only evict its
+    /// *own* dropped targets — another window's targets survive both this
+    /// submit and their owner's idle (non-submitting) frames.
     pub(super) fn paint_gpu_views(
         &mut self,
         ctx: &mut GpuCtx<'_>,
-        frame_targets: &[RenderTargetDraw],
+        views: FrameViews<'_>,
         owner: RenderOwnerId,
         now: Duration,
         text: &TextShaper,
     ) {
         self.gpu_view_targets
-            .paint(ctx, frame_targets, owner, now, &mut self.textures, text);
+            .paint(ctx, views, owner, now, &mut self.textures, text);
     }
 
     /// Free every `GpuView` target owned by a retired render stream.

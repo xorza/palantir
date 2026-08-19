@@ -1,6 +1,7 @@
 //! When a frame is asked for again, and what a paint-only one may skip.
 
 use crate::Ui;
+use crate::diagnostics::DebugOverlayConfig;
 use crate::host::shared::HostShared;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
@@ -20,7 +21,10 @@ use std::time::Duration;
 #[test]
 fn frame_stats_overlay_records_partial_damage() {
     let mut h = UiHarness::new(SURFACE);
-    h.ui.debug_overlay_mut().frame_stats = true;
+    h.ui.set_debug_overlay(DebugOverlayConfig {
+        frame_stats: true,
+        ..h.ui.debug_overlay()
+    });
 
     // Warm-up frame at t = 0. `fps_ema` stays zero (no prior `time` to
     // diff against), but the Debug layer should already carry the
@@ -62,7 +66,10 @@ fn frame_stats_overlay_records_partial_damage() {
 
     // Disabling the flag mid-stream evicts the Debug-layer node next
     // frame.
-    h.ui.debug_overlay_mut().frame_stats = false;
+    h.ui.set_debug_overlay(DebugOverlayConfig {
+        frame_stats: false,
+        ..h.ui.debug_overlay()
+    });
     h.at(Duration::from_millis(32)).frame(&mut body);
     assert!(
         h.ui.forest.trees[Layer::Debug].records.is_empty(),

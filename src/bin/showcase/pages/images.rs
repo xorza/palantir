@@ -152,10 +152,9 @@ pub(crate) fn build(ui: &mut Ui) {
 
     section(
         ui,
-        "fit",
         "fit — how the source is mapped onto a non-square destination rect",
         |ui| {
-            tiles(ui, "fit-tiles", |ui| {
+            tiles(ui, |ui| {
                 for (label, fit) in [
                     ("Fill — stretch to the rect", ImageFit::Fill),
                     ("Contain — whole image, letterboxed", ImageFit::Contain),
@@ -172,10 +171,9 @@ pub(crate) fn build(ui: &mut Ui) {
 
     section(
         ui,
-        "tint",
         "tint — the tint colour multiplies the sampled texel",
         |ui| {
-            tiles(ui, "tint-tiles", |ui| {
+            tiles(ui, |ui| {
                 demo_cell(ui, "no tint", |ui| {
                     image(ui, &src.gradient, ImageFit::Fill, Color::WHITE);
                 });
@@ -194,37 +192,31 @@ pub(crate) fn build(ui: &mut Ui) {
         },
     );
 
-    section(
-        ui,
-        "tiling",
-        "tiling — UV wrap with a scale and an offset",
-        |ui| {
-            tiles(ui, "tile-tiles", |ui| {
-                demo_cell(ui, "tile 3×3", |ui| {
-                    let fit = ImageFit::Tile {
-                        offset: Vec2::ZERO,
-                        scale: Vec2::splat(3.0),
-                    };
-                    image(ui, &src.checker, fit, Color::WHITE);
-                });
-                demo_cell(ui, "tile 2×4, offset 0.25", |ui| {
-                    let fit = ImageFit::Tile {
-                        offset: Vec2::new(0.25, 0.0),
-                        scale: Vec2::new(2.0, 4.0),
-                    };
-                    image(ui, &src.gradient, fit, Color::WHITE);
-                });
+    section(ui, "tiling — UV wrap with a scale and an offset", |ui| {
+        tiles(ui, |ui| {
+            demo_cell(ui, "tile 3×3", |ui| {
+                let fit = ImageFit::Tile {
+                    offset: Vec2::ZERO,
+                    scale: Vec2::splat(3.0),
+                };
+                image(ui, &src.checker, fit, Color::WHITE);
             });
-        },
-    );
+            demo_cell(ui, "tile 2×4, offset 0.25", |ui| {
+                let fit = ImageFit::Tile {
+                    offset: Vec2::new(0.25, 0.0),
+                    scale: Vec2::new(2.0, 4.0),
+                };
+                image(ui, &src.gradient, fit, Color::WHITE);
+            });
+        });
+    });
 
     section(
         ui,
-        "filtering",
         "filtering — magnification on a 4×4 sprite, minification on a 64×64 \
          checker tiled 32×",
         |ui| {
-            tiles(ui, "filter-tiles", |ui| {
+            tiles(ui, |ui| {
                 demo_cell(ui, "magnify — Linear", |ui| {
                     magnified(ui, &src.sprite, ImageFilter::Linear);
                 });
@@ -243,12 +235,11 @@ pub(crate) fn build(ui: &mut Ui) {
 
     section(
         ui,
-        "downsampling",
         "downsampling — a 512×512 starfield minified ~5×. One tap keeps a \
          shifting subset of the stars, Mean keeps all of them and dims each by \
          the footprint area, Peak keeps them at their own brightness",
         |ui| {
-            tiles(ui, "downsample-tiles", |ui| {
+            tiles(ui, |ui| {
                 demo_cell(ui, "Single (default)", |ui| {
                     downsampled(ui, &src.starfield, ImageDownsample::Single);
                 });

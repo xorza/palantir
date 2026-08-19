@@ -5,7 +5,7 @@ use crate::renderer::backend::debug_marker;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::image_pipeline::textures::ImageTextures;
 use crate::renderer::gpu_view::{GpuFrameCtx, GpuInitCtx};
-use crate::renderer::render_buffer::image::RenderTargetDraw;
+use crate::renderer::render_buffer::image::FrameViews;
 use crate::renderer::render_owner::RenderOwnerId;
 use crate::text::shaper::TextShaper;
 use glam::UVec2;
@@ -18,34 +18,28 @@ const TARGET_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 #[derive(Debug, Default)]
 pub(super) struct GpuViewTargets {
     entries: FxHashMap<TextureId, RenderTarget>,
-    submit_epoch: u64,
 }
 
 impl GpuViewTargets {
+    /// Paint [`FrameViews::draws`], then free this owner's targets that
+    /// [`FrameViews::live`] no longer lists.
     #[profiling::function]
     pub(super) fn paint(
         &mut self,
         ctx: &mut GpuCtx<'_>,
-        frame_targets: &[RenderTargetDraw],
+        views: FrameViews<'_>,
         owner: RenderOwnerId,
         now: Duration,
         textures: &mut ImageTextures,
         text: &TextShaper,
     ) {
-        self.submit_epoch = self
-            .submit_epoch
-            .checked_add(1)
-            .expect("GpuView target submit epoch overflowed");
-        let submit_epoch = self.submit_epoch;
-        for draw in frame_targets {
-            let target = self.ensure(
-                ctx.device,
-                draw.id,
-                draw.used,
-                owner,
-                submit_epoch,
-                textures,
-            );
+        let FrameViews { draws, live } = views;
+        debug_assert!(
+            draws.iter().all(|draw| live.contains(&draw.id)),
+            "a painted GpuView target is missing from the frame's live roster",
+        );
+        for draw in draws {
+            let target = self.ensure(ctx.device, draw.id, draw.used, owner, textures);
             let mut paint = draw.paint.0.borrow_mut();
             if !target.initialized {
                 profiling::scope!("GpuView::init");
@@ -79,7 +73,7 @@ impl GpuViewTargets {
             target.last_paint = Some(now);
         }
         self.entries.retain(|id, target| {
-            let keep = keep_target(target.owner, target.submit_epoch, owner, submit_epoch);
+            let keep = keep_target(target.owner, owner, live.contains(id));
             if !keep {
                 textures.bindings.remove(id);
             }
@@ -110,14 +104,12 @@ impl GpuViewTargets {
         id: TextureId,
         size: UVec2,
         owner: RenderOwnerId,
-        submit_epoch: u64,
         textures: &mut ImageTextures,
     ) -> &mut RenderTarget {
         match self.entries.entry(id) {
             Entry::Occupied(entry) => {
                 let target = entry.into_mut();
                 target.owner = owner;
-                target.submit_epoch = submit_epoch;
                 if target.size != size {
                     let allocated = allocate(device, textures, size);
                     target.view = allocated.view;
@@ -133,7 +125,6 @@ impl GpuViewTargets {
                     view: allocated.view,
                     size,
                     owner,
-                    submit_epoch,
                     initialized: false,
                     last_paint: None,
                 })
@@ -147,7 +138,9 @@ struct RenderTarget {
     view: wgpu::TextureView,
     size: UVec2,
     owner: RenderOwnerId,
-    submit_epoch: u64,
+    /// `GpuPaint::init` has run against this texture. Survives every frame
+    /// the view is merely undamaged, because the texture does — see
+    /// [`GpuViewTargets::paint`].
     initialized: bool,
     last_paint: Option<Duration>,
 }
@@ -178,18 +171,17 @@ fn allocate(device: &wgpu::Device, textures: &ImageTextures, size: UVec2) -> All
     AllocatedTarget { view, bind_group }
 }
 
-/// Per-submit eviction: keep an entry unless the submitting owner skipped
-/// it this frame. Another owner's entries always survive, since an idle
-/// window is not evidence that its views are gone — which is exactly why a
-/// *closed* owner has to be retired explicitly through
-/// [`GpuViewTargets::retire_owner`], never having a submit to be absent from.
-fn keep_target(
-    entry_owner: RenderOwnerId,
-    entry_submit_epoch: u64,
-    owner: RenderOwnerId,
-    submit_epoch: u64,
-) -> bool {
-    entry_owner != owner || entry_submit_epoch == submit_epoch
+/// Per-submit eviction: keep an entry unless the submitting owner has
+/// stopped recording it. `live` says the submitter still has the view — not
+/// that it painted one this frame, which is what makes an undamaged view
+/// free to sit a frame out.
+///
+/// Another owner's entries always survive, since an idle window is not
+/// evidence that its views are gone — which is exactly why a *closed* owner
+/// has to be retired explicitly through [`GpuViewTargets::retire_owner`],
+/// never having a submit to be absent from.
+fn keep_target(entry_owner: RenderOwnerId, owner: RenderOwnerId, live: bool) -> bool {
+    entry_owner != owner || live
 }
 
 #[cfg(test)]
@@ -197,37 +189,44 @@ mod tests {
     use super::keep_target;
     use crate::renderer::render_owner::RenderOwnerId;
 
-    fn evicted(
-        entries: &[(u64, RenderOwnerId, u64)],
-        owner: RenderOwnerId,
-        submit_epoch: u64,
-    ) -> Vec<u64> {
+    /// Which of `entries` (id, owner) a submit by `owner` frees, given the
+    /// ids that submit still lists as live.
+    fn evicted(entries: &[(u64, RenderOwnerId)], owner: RenderOwnerId, live: &[u64]) -> Vec<u64> {
         entries
             .iter()
-            .filter(|(_, entry_owner, entry_submit_epoch)| {
-                !keep_target(*entry_owner, *entry_submit_epoch, owner, submit_epoch)
-            })
-            .map(|(id, _, _)| *id)
+            .filter(|(id, entry_owner)| !keep_target(*entry_owner, owner, live.contains(id)))
+            .map(|(id, _)| *id)
             .collect()
     }
 
+    /// Eviction asks "does the submitter still record this view?", never
+    /// "did it paint one this frame" — so a view that skipped its paint is
+    /// indistinguishable from one that painted, and only a view the app
+    /// stopped recording is freed.
+    ///
+    /// Note `2` (owner `b`) surviving every one of `a`'s submits below: a
+    /// submit is never evidence about another stream's targets. That is what
+    /// leaves a *closed* stream's targets unreachable by eviction and makes
+    /// `GpuViewTargets::retire_owner` the only thing that frees them.
     #[test]
-    fn eviction_uses_current_submit_epoch_and_is_owner_scoped() {
-        // Note `2` (owner `b`) surviving every one of `a`'s submits below:
-        // a submit is never evidence about another stream's targets. That is
-        // what leaves a *closed* stream's targets unreachable by eviction and
-        // makes `GpuViewTargets::retire_owner` the only thing that frees them.
+    fn eviction_follows_the_live_roster_and_is_owner_scoped() {
         let a = RenderOwnerId::reserve();
         let b = RenderOwnerId::reserve();
-        let entries = [(1, a, 7), (3, a, 6), (2, b, 4)];
+        let entries = [(1, a), (3, a), (2, b)];
         let cases = [
-            (a, 7, vec![3]),
-            (a, 8, vec![1, 3]),
-            (b, 4, vec![]),
-            (b, 5, vec![2]),
+            // `a` still records both of its views — nothing freed, whatever
+            // subset of them actually painted this frame.
+            (a, &[1u64, 3][..], vec![]),
+            // `a` dropped view 3.
+            (a, &[1][..], vec![3]),
+            // `a` dropped both.
+            (a, &[][..], vec![1, 3]),
+            // `b` submitting frees nothing of `a`'s, and keeps its own.
+            (b, &[2][..], vec![]),
+            (b, &[][..], vec![2]),
         ];
-        for (owner, submit_epoch, expected) in cases {
-            assert_eq!(evicted(&entries, owner, submit_epoch), expected);
+        for (owner, live, expected) in cases {
+            assert_eq!(evicted(&entries, owner, live), expected, "live={live:?}");
         }
     }
 }

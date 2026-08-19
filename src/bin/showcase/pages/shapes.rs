@@ -14,11 +14,10 @@ use std::f32::consts::{FRAC_PI_2, PI};
 pub(crate) fn build(ui: &mut Ui) {
     section(
         ui,
-        "triangles",
         "triangles — one instanced quad each; coverage, rounding, and stroke all \
          come from the SDF",
         |ui| {
-            tiles(ui, "triangle-tiles", |ui| {
+            tiles(ui, |ui| {
                 demo_cell(ui, "sharp fill", sharp);
                 demo_cell(ui, "rounded 12 px", rounded);
                 demo_cell(ui, "fill + inner stroke", stroked);
@@ -30,10 +29,9 @@ pub(crate) fn build(ui: &mut Ui) {
 
     section(
         ui,
-        "meshes",
         "meshes — raw vertices and indices, uploaded straight to the mesh pipeline",
         |ui| {
-            tiles(ui, "mesh-tiles", |ui| {
+            tiles(ui, |ui| {
                 demo_cell(ui, "single triangle", mesh_triangle);
                 demo_cell(ui, "star — centroid fan", polygon_star);
                 demo_cell(ui, "per-vertex gradient", gradient_quad);
@@ -44,11 +42,10 @@ pub(crate) fn build(ui: &mut Ui) {
 
     section(
         ui,
-        "windowed rect",
         "windowed rect — an inverted rounded-rect fill: paints the corner wedges, \
          leaves the window alone",
         |ui| {
-            tiles(ui, "window-tiles", |ui| {
+            tiles(ui, |ui| {
                 demo_cell(ui, "corner mask over content", window_mask);
                 demo_cell(ui, "anatomy — translucent fill", window_anatomy);
             });
@@ -166,35 +163,34 @@ fn stress(ui: &mut Ui) {
     const SIDE: u32 = 50;
     const STEP: f32 = 3.0;
     let mesh_id = WidgetId::from_hash("showcase::shapes::stress-grid");
-    // Moved out for the draw, moved back after: `add_shape` wants `&mut Ui`,
-    // and a `Mesh` is two `Vec` handles plus two memo cells, so the round
-    // trip moves a header rather than the grid.
+    // Lent for the draw rather than copied: `add_shape` wants `&mut Ui`, and
+    // the grid stays put in the state row.
     let fresh = ui.try_state::<Mesh>(mesh_id).is_none();
-    let mut m = std::mem::take(ui.state_mut::<Mesh>(mesh_id));
-    if fresh {
-        let teal = Color::hex(0x2fa8a8);
-        m = Mesh::with_capacity((SIDE as usize).pow(2), (SIDE as usize - 1).pow(2) * 6);
-        for j in 0..SIDE {
-            for i in 0..SIDE {
-                m.vertex(
-                    Vec2::new(10.0 + i as f32 * STEP, 10.0 + j as f32 * STEP),
-                    teal,
-                );
+    ui.with_state::<Mesh, _>(mesh_id, |ui, m| {
+        if fresh {
+            let teal = Color::hex(0x2fa8a8);
+            *m = Mesh::with_capacity((SIDE as usize).pow(2), (SIDE as usize - 1).pow(2) * 6);
+            for j in 0..SIDE {
+                for i in 0..SIDE {
+                    m.vertex(
+                        Vec2::new(10.0 + i as f32 * STEP, 10.0 + j as f32 * STEP),
+                        teal,
+                    );
+                }
+            }
+            for j in 0..SIDE - 1 {
+                for i in 0..SIDE - 1 {
+                    let a = j * SIDE + i;
+                    let b = a + 1;
+                    let c = a + SIDE;
+                    let d = c + 1;
+                    m.triangle(a, b, d);
+                    m.triangle(a, d, c);
+                }
             }
         }
-        for j in 0..SIDE - 1 {
-            for i in 0..SIDE - 1 {
-                let a = j * SIDE + i;
-                let b = a + 1;
-                let c = a + SIDE;
-                let d = c + 1;
-                m.triangle(a, b, d);
-                m.triangle(a, d, c);
-            }
-        }
-    }
-    ui.add_shape(Shape::mesh(&m));
-    *ui.state_mut::<Mesh>(mesh_id) = m;
+        ui.add_shape(Shape::mesh(m));
+    });
 }
 
 /// The headline use case: rounded-corner clipping without a stencil

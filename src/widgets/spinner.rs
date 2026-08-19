@@ -47,13 +47,13 @@ impl<'a> Spinner<'a> {
         }
     }
 
-    /// Borrow a theme override for this spinner. The default inherits
-    /// [`crate::Theme::spinner`]. Per-field [`Self::color`] /
-    /// [`Self::diameter`] / [`Self::thickness`] still win over it.
-    pub fn style(mut self, s: &'a SpinnerTheme) -> Self {
-        self.style = Some(s);
-        self
-    }
+    style_setter!(
+        'a,
+        SpinnerTheme,
+        spinner,
+        "Per-field [`Self::color`] / [`Self::diameter`] / [`Self::thickness`] \
+         still win over it.",
+    );
 
     /// Diameter in logical px, defaulting to
     /// [`crate::Theme::spinner`]'s. One-axis hatch over the resolved bundle — see [`crate::Theme`].
@@ -77,7 +77,7 @@ impl<'a> Spinner<'a> {
     }
 
     pub fn show(mut self, ui: &mut Ui) -> Response<'_> {
-        let theme = self.style.unwrap_or(&ui.theme().spinner);
+        let theme = self.slot(ui.theme());
         let diameter = self.diameter.unwrap_or(theme.diameter).max(1.0);
         let width = self
             .thickness

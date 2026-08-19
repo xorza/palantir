@@ -40,12 +40,7 @@ impl<'a> Button<'a> {
         }
     }
 
-    /// Borrow a theme override for this button. The default inherits
-    /// [`crate::Theme::button`].
-    pub fn style(mut self, s: &'a ButtonTheme) -> Self {
-        self.style = Some(s);
-        self
-    }
+    style_setter!('a, ButtonTheme, button);
     pub fn label(mut self, label: impl Into<TextInput<'a>>) -> Self {
         self.label = label.into();
         self
@@ -74,9 +69,11 @@ impl<'a> Button<'a> {
         let mut widget = ui.widget(self.node);
         let response = widget.response(ui);
         let id = widget.id();
-        let look = WidgetTheme::resolve(ui, id, &mut widget.node, &response, (), self.style, |t| {
-            &t.button
-        });
+        let theme = ui.theme();
+        let look =
+            self.slot(theme)
+                .plan(&theme.text, &response, ())
+                .apply(ui, id, &mut widget.node);
         let label = self.label;
         let label_align = self.label_align;
         let label_wrap = self.label_wrap;

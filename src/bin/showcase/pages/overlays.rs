@@ -12,7 +12,7 @@ use crate::support::{note_style, raised_bg, row, section};
 use palantir::{
     Align, Button, Configure, ContextMenu, ContextMenuTheme, Frame, Justify, Key, MenuItem, Mods,
     Panel, Popup, Rect, ResponseSnapshot, Sense, Shortcut, Sizing, Spacing, Text, Tooltip, Ui,
-    WidgetId,
+    WidgetId, fmt,
 };
 
 pub(crate) fn build(ui: &mut Ui) {
@@ -29,16 +29,19 @@ struct MenuState {
 
 fn popup_section(ui: &mut Ui) {
     let menu_id = WidgetId::from_hash("showcase::overlays::popup");
+    ui.with_state::<MenuState, _>(menu_id, popup_menu);
+}
+
+fn popup_menu(ui: &mut Ui, menu: &mut MenuState) {
     let mut trigger_rect: Option<Rect> = None;
     let mut clicked = false;
 
     section(
         ui,
-        "popup",
         "popup — paints on the Popup layer, above and outside the main tree; an \
          outside click dismisses it",
         |ui| {
-            row(ui, "popup-trigger-row", |ui| {
+            row(ui, |ui| {
                 let r = Button::new()
                     .id_salt("popup-trigger")
                     .label("menu")
@@ -48,10 +51,7 @@ fn popup_section(ui: &mut Ui) {
                 }
                 trigger_rect = r.rect;
 
-                let label = ui
-                    .state_mut::<MenuState>(menu_id)
-                    .last_choice
-                    .unwrap_or("(no selection yet)");
+                let label = menu.last_choice.unwrap_or("(no selection yet)");
                 Text::new(label)
                     .id_salt("popup-choice")
                     .style(&note_style())
@@ -60,11 +60,8 @@ fn popup_section(ui: &mut Ui) {
         },
     );
 
-    if clicked {
-        let s = ui.state_mut::<MenuState>(menu_id);
-        s.open = !s.open;
-    }
-    if !ui.state_mut::<MenuState>(menu_id).open {
+    menu.open ^= clicked;
+    if !menu.open {
         return;
     }
     let Some(trigger) = trigger_rect else {
@@ -101,22 +98,20 @@ fn popup_section(ui: &mut Ui) {
             }
         });
 
-    let s = ui.state_mut::<MenuState>(menu_id);
     if let Some(label) = chosen {
-        s.last_choice = Some(label);
-        s.open = false;
+        menu.last_choice = Some(label);
+        menu.open = false;
     } else if resp.dismissed {
-        s.open = false;
+        menu.open = false;
     }
 }
 
 fn tooltip_section(ui: &mut Ui) {
     section(
         ui,
-        "tooltips",
         "tooltips — hover ~0.5 s; delays, wrap width, and the disabled rules",
         |ui| {
-            row(ui, "tt-delays", |ui| {
+            row(ui, |ui| {
                 let r = Button::new()
                     .id_salt("d-default")
                     .label("default")
@@ -195,15 +190,14 @@ fn tooltip_section(ui: &mut Ui) {
 
     section(
         ui,
-        "tooltip warmup",
         "tooltip warmup — hover one, then move along the row within ~1 s and the \
          next bubble skips its delay; pause and it re-delays",
         |ui| {
-            row(ui, "tt-warm", |ui| {
+            row(ui, |ui| {
                 for i in 0..5 {
                     let r = Button::new()
                         .id_salt(("warm", i))
-                        .label(format!("item {}", i + 1))
+                        .label(fmt!(ui, "item {}", i + 1))
                         .show(ui)
                         .snapshot();
                     Tooltip::on(&r)
@@ -231,11 +225,10 @@ fn context_menu_section(ui: &mut Ui) {
 
     section(
         ui,
-        "context menu",
         "context menu — right-click the button or either surface; an item click, an \
          outside click, or Esc dismisses",
         |ui| {
-            row(ui, "ctx-trigger-row", |ui| {
+            row(ui, |ui| {
                 let trigger = Button::new()
                     .id_salt("ctx-button-trigger")
                     .label("right-click me")
@@ -310,28 +303,27 @@ fn roomy_menu_theme(ui: &Ui) -> ContextMenuTheme {
 fn attach_menu(ui: &mut Ui, trigger: &ResponseSnapshot, state_id: WidgetId, flavor: Flavor) {
     // `Wide` restyles through the theme bundle every menu widget reads;
     // the panel takes it via `.style`, and the rows — recorded by this
-    // closure, not by `ContextMenu` — take their own halves of it.
+    // closure, not by `ContextMenu` — take their own halves of it. Every
+    // `style` setter takes an `Option`, so "styled or default" stays a value
+    // threaded through the tree rather than a branch around each widget.
     let style = matches!(flavor, Flavor::Wide).then(|| roomy_menu_theme(ui));
-    let mut menu = ContextMenu::attach(ui, trigger).size((Sizing::HUG, Sizing::HUG));
-    if let Some(style) = &style {
-        menu = menu
-            .style(style)
-            .min_size((260.0, 0.0))
-            .max_size((320.0, 280.0));
+    let mut menu = ContextMenu::attach(ui, trigger)
+        .size((Sizing::HUG, Sizing::HUG))
+        .style(style.as_ref());
+    if style.is_some() {
+        menu = menu.min_size((260.0, 0.0)).max_size((320.0, 280.0));
     }
     menu.show(ui, |ui, popup| {
         let item = style.as_ref().map(|s| &s.item);
         let rule = style.as_ref().map(|s| &s.separator);
-        let row = |m: MenuItem<'static>| match item {
-            Some(s) => m.style(s),
-            None => m,
-        };
         for (label, shortcut, action) in [
             ("Copy", Shortcut::ctrl('C'), "last action: Copy"),
             ("Cut", Shortcut::ctrl('X'), "last action: Cut"),
             ("Paste", Shortcut::ctrl('V'), "last action: Paste"),
         ] {
-            if row(MenuItem::new(label).shortcut(shortcut))
+            if MenuItem::new(label)
+                .shortcut(shortcut)
+                .style(item)
                 .show(ui, popup)
                 .left
                 .clicked()
@@ -339,19 +331,15 @@ fn attach_menu(ui: &mut Ui, trigger: &ResponseSnapshot, state_id: WidgetId, flav
                 ui.state_mut::<CtxState>(state_id).last_action = Some(action);
             }
         }
-        // Written out rather than folded into a helper: `MenuSeparator::show`
-        // is what captures the authoring call site, and `#[track_caller]`
-        // doesn't reach through a closure body.
-        match rule {
-            Some(r) => MenuItem::separator().style(r).show(ui),
-            None => MenuItem::separator().show(ui),
-        };
-        row(MenuItem::new("Disabled").enabled(false)).show(ui, popup);
-        match rule {
-            Some(r) => MenuItem::separator().style(r).show(ui),
-            None => MenuItem::separator().show(ui),
-        };
-        if row(MenuItem::new("Delete").shortcut(Shortcut::new(Mods::NONE, Key::Backspace)))
+        MenuItem::separator().style(rule).show(ui);
+        MenuItem::new("Disabled")
+            .enabled(false)
+            .style(item)
+            .show(ui, popup);
+        MenuItem::separator().style(rule).show(ui);
+        if MenuItem::new("Delete")
+            .shortcut(Shortcut::new(Mods::NONE, Key::Backspace))
+            .style(item)
             .show(ui, popup)
             .left
             .clicked()

@@ -1,5 +1,4 @@
 use crate::primitives::background::Background;
-use crate::primitives::transform::TranslateScale;
 use crate::scene::node::Node;
 use crate::ui::Ui;
 use crate::widgets::chrome;
@@ -27,34 +26,6 @@ pub struct Panel {
 impl Panel {
     fn auto(node: Node) -> Self {
         Self { node, chrome: None }
-    }
-
-    /// Apply a pan/zoom transform to the panel's body — both child
-    /// subtrees AND shapes recorded directly on the panel via
-    /// `Ui::add_shape`. Layout runs in untransformed space; the
-    /// transform only affects paint and hit-test. Composes with any
-    /// ancestor transform.
-    ///
-    /// **Scale anchors at the panel's own origin** (its
-    /// `layout_rect.min`), not at the cascade's (0, 0). The
-    /// The transform's translation component is then applied in post-scale,
-    /// panel-local space — `TranslateScale::new(pan, zoom)` means "scale my
-    /// body 2× about my top-left, then shift by `pan`" regardless of where the
-    /// panel sits on the surface.
-    /// See [`TranslateScale::anchored_at`] for the math. Translation
-    /// is identity-preserving (when `scale == 1`, the anchor is a
-    /// no-op).
-    ///
-    /// Chrome ([`Self::background`]) is the one exception — it
-    /// paints in the *parent's* space, anchored under any ancestor
-    /// clip/transform. That's deliberate: a transformed panel acts as
-    /// a pan/zoom viewport over its body, and the background frames
-    /// the viewport rather than panning with it. To get a background
-    /// that scales/pans *with* the body, nest one panel deep: put the
-    /// transform on the outer panel and the chrome on its child.
-    pub fn transform(mut self, t: TranslateScale) -> Self {
-        self.node.transform = t;
-        self
     }
 
     /// Paint chrome (fill / stroke / corner radius / shadow). `None` is

@@ -70,12 +70,7 @@ impl<'a> Slider<'a> {
         self
     }
 
-    /// Borrow a theme override for this slider. The default inherits
-    /// [`crate::Theme::slider`].
-    pub fn style(mut self, s: &'a SliderTheme) -> Self {
-        self.style = Some(s);
-        self
-    }
+    style_setter!('a, SliderTheme, slider);
 
     /// Record the slider and report what the drag did to the bound
     /// value.
@@ -92,7 +87,7 @@ impl<'a> Slider<'a> {
         let response = widget.response(ui);
         let id = widget.id();
 
-        let theme = self.style.unwrap_or(&ui.theme().slider);
+        let theme = self.slot(ui.theme());
         let knob = theme.knob_size;
         let rail_h = theme.rail_thickness;
         let fill_color = theme.fill;

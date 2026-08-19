@@ -264,6 +264,26 @@ pub(super) fn present_mode(vsync: Vsync) -> wgpu::PresentMode {
     }
 }
 
+/// Which of [`Vsync`]'s two states `mode` paces like — the classification
+/// [`present_mode`] is a right inverse of.
+///
+/// Not injective, and that is the point: an explicit mode from
+/// [`WinitHostConfig`] is a finer choice than the runtime toggle can express,
+/// so this answers what the toggle would have to say about it. A swapchain
+/// opened on `Mailbox` reads back as [`Vsync::Off`] and stays `Mailbox` until
+/// something asks for [`Vsync::On`] — the explicit choice survives a control
+/// that writes its own value back every frame.
+pub(super) fn vsync_of(mode: wgpu::PresentMode) -> Vsync {
+    match mode {
+        wgpu::PresentMode::AutoVsync | wgpu::PresentMode::Fifo | wgpu::PresentMode::FifoRelaxed => {
+            Vsync::On
+        }
+        wgpu::PresentMode::AutoNoVsync
+        | wgpu::PresentMode::Immediate
+        | wgpu::PresentMode::Mailbox => Vsync::Off,
+    }
+}
+
 fn negotiate_present_mode(
     requested: wgpu::PresentMode,
     supported: &[wgpu::PresentMode],
@@ -289,8 +309,33 @@ mod tests {
     use crate::host::winit::error::WinitHostError;
     use crate::host::winit::gpu::{
         REQUIRED_SURFACE_USAGES, build_surface_config, negotiate_present_mode, present_mode,
+        vsync_of,
     };
     use crate::window::Vsync;
+
+    /// `Window::set_vsync` compares in [`Vsync`]'s vocabulary rather than
+    /// wgpu's, and this is why it can: every present mode classifies, and
+    /// `present_mode` is a right inverse of the classification. So a
+    /// swapchain opened on an explicit mode reports the state it actually
+    /// paces like, and a recorder writing that same state back — which is
+    /// what a checkbox bound to `Ui::vsync` does every frame — leaves the
+    /// explicit choice standing instead of flattening it to an automatic one.
+    #[test]
+    fn every_present_mode_classifies_and_the_classification_round_trips() {
+        for (mode, expected) in [
+            (PresentMode::AutoVsync, Vsync::On),
+            (PresentMode::Fifo, Vsync::On),
+            (PresentMode::FifoRelaxed, Vsync::On),
+            (PresentMode::AutoNoVsync, Vsync::Off),
+            (PresentMode::Immediate, Vsync::Off),
+            (PresentMode::Mailbox, Vsync::Off),
+        ] {
+            assert_eq!(vsync_of(mode), expected, "{mode:?}");
+        }
+        for vsync in [Vsync::On, Vsync::Off] {
+            assert_eq!(vsync_of(present_mode(vsync)), vsync, "{vsync:?}");
+        }
+    }
 
     /// The runtime vsync toggle maps onto *automatic* policies on purpose:
     /// every surface accepts those, so switching a live swapchain needs no

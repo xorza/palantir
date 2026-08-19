@@ -95,6 +95,17 @@ impl Frontend {
         // Dropping the session closes the trailing batch and group;
         // explicit because it also releases the `buffer` borrow.
         drop(sink);
+        // The retention roster, filled from the live view map rather than
+        // from what composed: `buffer.frame_targets` holds only the views
+        // this frame *paints*, and an unchanged view is culled out of it by
+        // the damage diff. Keyed on that alone, the backend could not tell
+        // "unchanged" from "gone" and would free a live view's target.
+        // Written after the session drops, since the composer's clear fold
+        // discards scene columns mid-compose and this is not one.
+        let live = &mut self.buffer.live_targets;
+        live.clear();
+        live.reserve_exact(scene.gpu_views.len());
+        live.extend(scene.gpu_views.values().map(|view| view.texture_id));
     }
 }
 

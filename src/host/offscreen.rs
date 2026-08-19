@@ -168,7 +168,7 @@ impl OffscreenHost {
 
     /// Set the app-global debug overlay for subsequent frames. The
     /// headless analogue of a `WinitHost` window toggling it via
-    /// `Ui::debug_overlay_mut` — it writes the same shared diagnostics state
+    /// `Ui::set_debug_overlay` — it writes the same shared diagnostics state
     /// every window's `Ui` reads.
     pub fn set_debug_overlay(&mut self, overlay: DebugOverlayConfig) {
         *self.core.shared.resources.diagnostics.overlay.borrow_mut() = overlay;

@@ -58,12 +58,14 @@ impl<'a> ComboBox<'a> {
         }
     }
 
-    /// Borrow a trigger chrome theme override. The default inherits
-    /// [`crate::Theme::button`].
-    pub fn style(mut self, s: &'a ButtonTheme) -> Self {
-        self.style = Some(s);
-        self
-    }
+    style_setter!(
+        'a,
+        ButtonTheme,
+        button,
+        "Restyles the trigger chrome. The dropdown reads \
+         [`crate::Theme::context_menu`], and the arrow geometry \
+         [`crate::Theme::combo_box`].",
+    );
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
         let mut widget = ui.widget(self.node);
@@ -71,9 +73,11 @@ impl<'a> ComboBox<'a> {
         let id = widget.id();
 
         // Trigger chrome from the button theme (same flow as `Button`).
-        let look = WidgetTheme::resolve(ui, id, &mut widget.node, &response, (), self.style, |t| {
-            &t.button
-        });
+        let theme = ui.theme();
+        let look =
+            self.slot(theme)
+                .plan(&theme.text, &response, ())
+                .apply(ui, id, &mut widget.node);
 
         // Handle: the geometry is read again inside the `record` closure
         // below, which owns `ui` mutably.

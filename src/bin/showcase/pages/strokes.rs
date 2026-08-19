@@ -12,11 +12,10 @@ use palantir::{Color, LineCap, LineJoin, LinearGradient, PolylineColors, Shape, 
 pub(crate) fn build(ui: &mut Ui) {
     section(
         ui,
-        "width",
         "width — a float, not an integer; sub-pixel widths fade rather than \
          snapping to 1 px",
         |ui| {
-            tiles(ui, "width-tiles", |ui| {
+            tiles(ui, |ui| {
                 demo_cell(ui, "widths 1–8 px", widths);
                 demo_cell(ui, "hairlines 0.1–1 px", hairlines);
             });
@@ -25,10 +24,9 @@ pub(crate) fn build(ui: &mut Ui) {
 
     section(
         ui,
-        "joins & caps",
         "joins & caps — how a stroke turns, and how it ends",
         |ui| {
-            tiles(ui, "join-tiles", |ui| {
+            tiles(ui, |ui| {
                 demo_cell(ui, "joins — Miter / Bevel / Round", joins);
                 demo_cell(ui, "line caps — Butt / Square / Round", caps);
                 demo_cell(ui, "curve caps — Butt / Square / Round", curve_caps);
@@ -38,10 +36,9 @@ pub(crate) fn build(ui: &mut Ui) {
 
     section(
         ui,
-        "colour",
         "colour — per point, per segment, or from a gradient brush",
         |ui| {
-            tiles(ui, "colour-tiles", |ui| {
+            tiles(ui, |ui| {
                 demo_cell(ui, "per-point colours", per_point);
                 demo_cell(ui, "per-segment colours", per_segment);
                 demo_cell(ui, "gradient along t", gradient_cubic);
@@ -50,18 +47,13 @@ pub(crate) fn build(ui: &mut Ui) {
         },
     );
 
-    section(
-        ui,
-        "curves & arcs",
-        "curves & arcs — béziers and circular sweeps",
-        |ui| {
-            tiles(ui, "curve-tiles", |ui| {
-                demo_cell(ui, "cubic bézier", cubic);
-                demo_cell(ui, "quadratic bézier", quadratic);
-                demo_cell(ui, "arcs & circles", arcs);
-            });
-        },
-    );
+    section(ui, "curves & arcs — béziers and circular sweeps", |ui| {
+        tiles(ui, |ui| {
+            demo_cell(ui, "cubic bézier", cubic);
+            demo_cell(ui, "quadratic bézier", quadratic);
+            demo_cell(ui, "arcs & circles", arcs);
+        });
+    });
 }
 
 fn widths(ui: &mut Ui) {

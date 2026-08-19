@@ -87,12 +87,14 @@ impl<'a> ContextMenu<'a> {
         }
     }
 
-    /// Per-instance theme override. `None` (the default) reads
-    /// [`crate::Theme::context_menu`].
-    pub fn style(mut self, s: &'a ContextMenuTheme) -> Self {
-        self.style = Some(s);
-        self
-    }
+    style_setter!(
+        'a,
+        ContextMenuTheme,
+        context_menu,
+        "Restyles the *panel* only — the rows are recorded by the caller's \
+         body closure, so pass the matching sub-bundles to them \
+         ([`MenuItem::style`], [`MenuSeparator::style`]).",
+    );
 
     /// Paint chrome (fill / stroke / corner radius / shadow). `None`
     /// is the default; theme fallback in [`Self::show`] fills it in
@@ -140,7 +142,7 @@ impl<'a> ContextMenu<'a> {
         // `Popup::background` owns its chrome, so the panel is copied even
         // though the rest of the bundle is only read — once per open frame.
         let ui_theme = ui.theme().clone();
-        let ctx = self.style.unwrap_or(&ui_theme.context_menu);
+        let ctx = self.slot(&ui_theme);
         let panel = self.chrome.unwrap_or_else(|| ctx.panel.clone());
 
         // The menu is the popup, configured: the caller's `Configure`
@@ -236,12 +238,7 @@ impl<'a> MenuItem<'a> {
         }
     }
 
-    /// Per-instance theme override. `None` (the default) reads
-    /// [`crate::Theme::context_menu`]'s `item`.
-    pub fn style(mut self, s: &'a MenuItemTheme) -> Self {
-        self.style = Some(s);
-        self
-    }
+    style_setter!('a, MenuItemTheme, context_menu.item);
 
     /// Attach a keyboard shortcut. Renders the right-aligned hint
     /// using the platform's native form (`⌘C` / `Ctrl+C`) and
@@ -278,18 +275,18 @@ impl<'a> MenuItem<'a> {
         let id = widget.id();
         let disabled = response.disabled;
 
-        // Row-only scalars first, off a borrow that ends before
-        // `WidgetTheme::resolve` reborrows `ui` mutably. Everything response-varying
-        // — the four-response pick, the padding/margin defaults, the
-        // transition — comes back from the shared resolver instead, so a
-        // menu row picks and animates exactly like a Button.
-        let item = self.style.unwrap_or(&ui.theme().context_menu.item);
+        // Row-only scalars and the look plan come off one borrow of the row's
+        // theme, which ends before `apply` reborrows `ui` mutably. Everything
+        // response-varying — the four-response pick, the padding/margin
+        // defaults, the transition — rides the shared plan, so a menu row
+        // picks and animates exactly like a Button.
+        let theme = ui.theme();
+        let item = self.slot(theme);
         let shortcut_color = item.shortcut;
         let gap = item.gap;
-
-        let look = WidgetTheme::resolve(ui, id, &mut widget.node, &response, (), self.style, |t| {
-            &t.context_menu.item
-        });
+        let look = item
+            .plan(&theme.text, &response, ())
+            .apply(ui, id, &mut widget.node);
         // Already fallen back to `theme.text` by `WidgetLook::animate`.
         let text_style = look.text;
         // Shortcut hint reads muted — same style as the label but the
@@ -377,12 +374,7 @@ pub struct MenuSeparator<'a> {
 }
 
 impl<'a> MenuSeparator<'a> {
-    /// Per-instance theme override. `None` (the default) reads
-    /// [`crate::Theme::context_menu`]'s `separator`.
-    pub fn style(mut self, s: &'a SeparatorTheme) -> Self {
-        self.style = Some(s);
-        self
-    }
+    style_setter!('a, SeparatorTheme, context_menu.separator);
 
     #[track_caller]
     pub fn show<'ui>(self, ui: &'ui mut Ui) -> Response<'ui> {
@@ -390,8 +382,7 @@ impl<'a> MenuSeparator<'a> {
         // across `show`'s `&mut Ui`, and this one may point into the
         // `Ui`'s own theme.
         let ui_theme = ui.theme().clone();
-        let sep = self.style.unwrap_or(&ui_theme.context_menu.separator);
-        Separator::horizontal().style(sep).show(ui)
+        Separator::horizontal().style(self.slot(&ui_theme)).show(ui)
     }
 }
 

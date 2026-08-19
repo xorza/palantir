@@ -24,10 +24,9 @@ fn card_corners() -> Corners {
 pub(crate) fn build(ui: &mut Ui) {
     section(
         ui,
-        "elevation",
         "elevation — drop shadow under a rounded card, the standard ladder",
         |ui| {
-            tiles(ui, "elevation-tiles", |ui| {
+            tiles(ui, |ui| {
                 demo_cell_light(ui, "soft — elevation 2", soft);
                 demo_cell_light(ui, "elevated — offset 12, blur 20", elevated);
                 demo_cell_light(ui, "tight — button rest state", tight);
@@ -36,26 +35,20 @@ pub(crate) fn build(ui: &mut Ui) {
         },
     );
 
-    section(
-        ui,
-        "variants",
-        "variants — colour, direction, and stacking",
-        |ui| {
-            tiles(ui, "variant-tiles", |ui| {
-                demo_cell_light(ui, "glow — coloured, zero offset", glow);
-                demo_cell_light(ui, "inset — pressed feel", inset);
-                demo_cell_light(ui, "stacked — CSS box-shadow a, b, c", stacked);
-            });
-        },
-    );
+    section(ui, "variants — colour, direction, and stacking", |ui| {
+        tiles(ui, |ui| {
+            demo_cell_light(ui, "glow — coloured, zero offset", glow);
+            demo_cell_light(ui, "inset — pressed feel", inset);
+            demo_cell_light(ui, "stacked — CSS box-shadow a, b, c", stacked);
+        });
+    });
 
     section(
         ui,
-        "chrome",
         "chrome — the same shadows attached to a widget's Background instead of \
          pushed as shapes",
         |ui| {
-            tiles(ui, "chrome-tiles", |ui| {
+            tiles(ui, |ui| {
                 demo_cell_light(ui, "chrome — soft", |ui| chrome_card(ui, chrome_soft()));
                 demo_cell_light(ui, "chrome — elevated", |ui| {
                     chrome_card(ui, chrome_elevated());
@@ -152,12 +145,10 @@ fn stacked(ui: &mut Ui) {
 /// chrome rect.
 fn chrome_card(ui: &mut Ui, bg: Background) {
     Panel::zstack()
-        .auto_id()
         .size((Sizing::FILL, Sizing::FILL))
         .padding(16.0)
         .show(ui, |ui| {
             Panel::zstack()
-                .auto_id()
                 .size((Sizing::fixed(112.0), Sizing::fixed(66.0)))
                 .background(bg)
                 .show(ui, |_| {});

@@ -1,7 +1,6 @@
 use crate::layout::types::limits::valid_gap;
 use crate::layout::types::track::Track;
 use crate::primitives::background::Background;
-use crate::primitives::transform::TranslateScale;
 use crate::scene::node::{Configure, ConfigureNode, Node};
 use crate::ui::Ui;
 use crate::widgets::chrome;
@@ -89,14 +88,6 @@ impl<Rows, Cols> Grid<Rows, Cols> {
         );
         self.row_gap = row_gap;
         self.col_gap = col_gap;
-        self
-    }
-
-    /// See [`Panel::transform`](crate::Panel::transform) — same contract:
-    /// applies to body (children + direct shapes), not to chrome;
-    /// scale anchors at the grid's own origin.
-    pub fn transform(mut self, t: TranslateScale) -> Self {
-        self.node.transform = t;
         self
     }
 
