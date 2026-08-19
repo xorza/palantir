@@ -1,3 +1,4 @@
+use crate::primitives::approx::FloatHash;
 use crate::primitives::nan::NanCheck;
 use crate::primitives::{approx, half_simd::F16x4};
 use ::serde::de::Error as _;
@@ -48,10 +49,10 @@ pub struct Color {
 impl std::hash::Hash for Color {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        approx::hash_f32(self.r, state);
-        approx::hash_f32(self.g, state);
-        approx::hash_f32(self.b, state);
-        approx::hash_f32(self.a, state);
+        self.r.hash_eq(state);
+        self.g.hash_eq(state);
+        self.b.hash_eq(state);
+        self.a.hash_eq(state);
     }
 }
 

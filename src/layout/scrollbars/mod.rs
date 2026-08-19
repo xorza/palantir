@@ -21,7 +21,7 @@ use std::hash::Hash;
 
 use crate::layout::axis::Axis;
 use crate::layout::pass::LayoutPass;
-use crate::primitives::approx;
+use crate::primitives::approx::FloatHash;
 use crate::primitives::num::F32Ext;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
@@ -75,14 +75,14 @@ impl ScrollbarsDef {
     /// The owning node's `WidgetId` is folded separately and is what
     /// actually distinguishes two scrolls.
     pub(crate) fn hash_visual<H: std::hash::Hasher>(&self, h: &mut H) {
-        approx::hash_visual_vec2(self.offset, h);
-        approx::hash_visual_f32(self.zoom, h);
+        self.offset.hash_visual(h);
+        self.zoom.hash_visual(h);
         h.write_u8(u8::from(self.pan.x) | (u8::from(self.pan.y) << 1));
-        approx::hash_visual_f32(self.reserve_y, h);
-        approx::hash_visual_f32(self.reserve_x, h);
+        self.reserve_y.hash_visual(h);
+        self.reserve_x.hash_visual(h);
         self.padding.hash(h);
-        approx::hash_visual_f32(self.bar_width, h);
-        approx::hash_visual_f32(self.min_thumb, h);
+        self.bar_width.hash_visual(h);
+        self.min_thumb.hash_visual(h);
     }
 }
 

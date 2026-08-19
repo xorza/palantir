@@ -1,5 +1,3 @@
-use crate::primitives::rect::Rect;
-use crate::primitives::size::Size;
 use glam::Vec2;
 use std::hash::Hasher;
 
@@ -38,46 +36,54 @@ pub(crate) const fn canon_bits(f: f32) -> u32 {
     }
 }
 
-#[inline]
-pub(crate) fn hash_f32<H: Hasher>(value: f32, state: &mut H) {
-    state.write_u32(eq_bits(value));
+/// Feeding a value to a hasher under one of the two float tolerances this
+/// crate keeps apart.
+///
+/// - [`hash_eq`](Self::hash_eq) is the `Hash` half of `Hash`/`PartialEq`
+///   agreement: only the signed zeros are folded together, because only
+///   they compare equal.
+/// - [`hash_visual`](Self::hash_visual) is content-cache identity: a
+///   difference the eye cannot resolve must not split a cache key, so
+///   sub-`EPS` magnitudes collapse to one zero and every NaN to one
+///   quiet NaN.
+///
+/// A trait rather than a `hash_visual_{f32,vec2,size,rect}` family: the
+/// suffix was type dispatch spelled by hand, and it kept a type's second
+/// hashing policy in a module the type knows nothing about — while its
+/// first sat in its own `Hash` impl.
+pub(crate) trait FloatHash {
+    /// Feed `self` under equality-compatible canonicalization.
+    fn hash_eq<H: Hasher>(&self, state: &mut H);
+
+    /// Feed `self` under visual canonicalization.
+    fn hash_visual<H: Hasher>(&self, state: &mut H);
 }
 
-#[inline]
-pub(crate) fn hash_vec2<H: Hasher>(value: Vec2, state: &mut H) {
-    state.write_u64(((eq_bits(value.x) as u64) << 32) | eq_bits(value.y) as u64);
+impl FloatHash for f32 {
+    #[inline]
+    fn hash_eq<H: Hasher>(&self, state: &mut H) {
+        state.write_u32(eq_bits(*self));
+    }
+
+    #[inline]
+    fn hash_visual<H: Hasher>(&self, state: &mut H) {
+        state.write_u32(canon_bits(*self));
+    }
 }
 
-#[inline]
-pub(crate) fn hash_size<H: Hasher>(value: Size, state: &mut H) {
-    state.write_u64(((eq_bits(value.w) as u64) << 32) | eq_bits(value.h) as u64);
-}
+/// Both lanes in one `write_u64` rather than two `hash_eq` calls on the
+/// components — one hasher round per point, on a path that runs per vertex
+/// and per shape.
+impl FloatHash for Vec2 {
+    #[inline]
+    fn hash_eq<H: Hasher>(&self, state: &mut H) {
+        state.write_u64(((eq_bits(self.x) as u64) << 32) | eq_bits(self.y) as u64);
+    }
 
-#[inline]
-pub(crate) fn hash_rect<H: Hasher>(value: Rect, state: &mut H) {
-    hash_vec2(value.min, state);
-    hash_size(value.size, state);
-}
-
-#[inline]
-pub(crate) fn hash_visual_f32<H: Hasher>(value: f32, state: &mut H) {
-    state.write_u32(canon_bits(value));
-}
-
-#[inline]
-pub(crate) fn hash_visual_vec2<H: Hasher>(value: Vec2, state: &mut H) {
-    state.write_u64(((canon_bits(value.x) as u64) << 32) | canon_bits(value.y) as u64);
-}
-
-#[inline]
-pub(crate) fn hash_visual_size<H: Hasher>(value: Size, state: &mut H) {
-    state.write_u64(((canon_bits(value.w) as u64) << 32) | canon_bits(value.h) as u64);
-}
-
-#[inline]
-pub(crate) fn hash_visual_rect<H: Hasher>(value: Rect, state: &mut H) {
-    hash_visual_vec2(value.min, state);
-    hash_visual_size(value.size, state);
+    #[inline]
+    fn hash_visual<H: Hasher>(&self, state: &mut H) {
+        state.write_u64(((canon_bits(self.x) as u64) << 32) | canon_bits(self.y) as u64);
+    }
 }
 
 /// True if `v` would produce no visible paint when used as a
@@ -137,9 +143,7 @@ pub(crate) const fn vec2_approx_eq(a: glam::Vec2, b: glam::Vec2) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use crate::primitives::approx::{
-        EPS, approx_zero, canon_bits, hash_rect, hash_visual_f32, hash_visual_rect, noop_f32,
-    };
+    use crate::primitives::approx::{EPS, FloatHash, approx_zero, canon_bits, noop_f32};
     use crate::primitives::rect::Rect;
     use std::collections::hash_map::DefaultHasher;
     use std::hash::Hasher as _;
@@ -336,12 +340,12 @@ mod tests {
         let sub_eps = Rect::new(EPS * 0.5, 0.0, 0.0, 0.0);
 
         assert_eq!(
-            finish_hash(|h| hash_rect(positive, h)),
-            finish_hash(|h| hash_rect(negative, h)),
+            finish_hash(|h| positive.hash_eq(h)),
+            finish_hash(|h| negative.hash_eq(h)),
         );
         assert_ne!(
-            finish_hash(|h| hash_rect(positive, h)),
-            finish_hash(|h| hash_rect(sub_eps, h)),
+            finish_hash(|h| positive.hash_eq(h)),
+            finish_hash(|h| sub_eps.hash_eq(h)),
         );
     }
 
@@ -350,16 +354,16 @@ mod tests {
         let zero = Rect::ZERO;
         let sub_eps = Rect::new(EPS * 0.5, -EPS * 0.5, EPS, -EPS);
         assert_eq!(
-            finish_hash(|h| hash_visual_rect(zero, h)),
-            finish_hash(|h| hash_visual_rect(sub_eps, h)),
+            finish_hash(|h| zero.hash_visual(h)),
+            finish_hash(|h| sub_eps.hash_visual(h)),
         );
 
         let nan_a = f32::from_bits(0x7fc0_0001);
         let nan_b = f32::from_bits(0x7fc0_0002);
         assert_eq!(canon_bits(nan_a), canon_bits(nan_b));
         assert_eq!(
-            finish_hash(|h| hash_visual_f32(nan_a, h)),
-            finish_hash(|h| hash_visual_f32(nan_b, h)),
+            finish_hash(|h| nan_a.hash_visual(h)),
+            finish_hash(|h| nan_b.hash_visual(h)),
         );
     }
 }

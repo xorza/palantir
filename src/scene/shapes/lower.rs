@@ -19,6 +19,7 @@
 use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher;
 use crate::primitives::approx;
+use crate::primitives::approx::FloatHash;
 use crate::primitives::arc::arc_bbox;
 use crate::primitives::background::Background;
 use crate::primitives::bezier::{CurveBounds, cubic_bezier_bbox, quadratic_to_cubic};
@@ -357,7 +358,7 @@ pub(crate) fn polyline(
     // `compute_record_hash` writes the record tag anyway.
     let mut h = Hasher::new();
     for &point in points {
-        approx::hash_visual_vec2(point, &mut h);
+        point.hash_visual(&mut h);
     }
     h.pod_slice(lowered_colors);
     let style = (approx::canon_bits(width) as u64) << 24

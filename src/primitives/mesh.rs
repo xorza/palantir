@@ -1,8 +1,9 @@
 use crate::common::hash::Hasher;
+use crate::primitives::approx::FloatHash;
+use crate::primitives::color::ColorU8;
 use crate::primitives::nan::NanCheck;
 use crate::primitives::rect::Rect;
 use crate::primitives::rect::aabb::Aabb;
-use crate::primitives::{approx, color::ColorU8};
 use bytemuck::{Pod, Zeroable};
 use glam::Vec2;
 use std::cell::Cell;
@@ -123,7 +124,7 @@ impl Mesh {
         }
         let mut h = Hasher::new();
         for vertex in &self.vertices {
-            approx::hash_visual_vec2(vertex.pos, &mut h);
+            vertex.pos.hash_visual(&mut h);
             h.write_u32(vertex.color.to_u32());
         }
         h.pod_slice(self.indices.as_slice());
@@ -281,6 +282,7 @@ fn compute_aabb(verts: &[MeshVertex]) -> Rect {
 
 #[cfg(test)]
 mod tests {
+    use crate::primitives::approx;
     use crate::primitives::color::Color;
     use crate::primitives::mesh::*;
     use crate::primitives::size::Size;

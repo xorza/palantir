@@ -14,6 +14,7 @@
 use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher;
 use crate::primitives::approx;
+use crate::primitives::approx::FloatHash;
 use crate::primitives::image::ImageFit;
 use crate::primitives::rect::Rect;
 use crate::scene::shapes::paint::{CurveBasis, ImageSource, QuadShape, ShapeBrush};
@@ -72,10 +73,10 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
                     stroke,
                     bbox: _,
                 } => {
-                    approx::hash_visual_vec2(*a, &mut h);
-                    approx::hash_visual_vec2(*b, &mut h);
-                    approx::hash_visual_vec2(*c, &mut h);
-                    approx::hash_visual_f32(*radius, &mut h);
+                    a.hash_visual(&mut h);
+                    b.hash_visual(&mut h);
+                    c.hash_visual(&mut h);
+                    radius.hash_visual(&mut h);
                     fill.hash(&mut h);
                     h.pod(stroke);
                 }
@@ -111,13 +112,13 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
                 None => h.write_u8(0),
                 Some(origin) => {
                     h.write_u8(1);
-                    approx::hash_visual_vec2(*origin, &mut h);
+                    origin.hash_visual(&mut h);
                 }
             }
             text.hash(&mut h);
             color.hash(&mut h);
-            approx::hash_visual_f32(font.size_px, &mut h);
-            approx::hash_visual_f32(font.line_height_px, &mut h);
+            font.size_px.hash_visual(&mut h);
+            font.line_height_px.hash_visual(&mut h);
             // `weight` rides the free high byte of `style`; `align`/`wrap`/
             // `family` occupy bytes 2/1/0, so bold vs regular can't collide
             // in the node hash (would break damage/reuse).
@@ -224,7 +225,7 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
             match basis {
                 CurveBasis::Cubic { p0, p1, p2, p3 } => {
                     for point in [p0, p1, p2, p3] {
-                        approx::hash_visual_vec2(*point, &mut h);
+                        point.hash_visual(&mut h);
                     }
                 }
                 CurveBasis::Arc {
@@ -233,10 +234,10 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
                     a0,
                     a1,
                 } => {
-                    approx::hash_visual_vec2(*center, &mut h);
-                    approx::hash_visual_f32(*radius, &mut h);
-                    approx::hash_visual_f32(*a0, &mut h);
-                    approx::hash_visual_f32(*a1, &mut h);
+                    center.hash_visual(&mut h);
+                    radius.hash_visual(&mut h);
+                    a0.hash_visual(&mut h);
+                    a1.hash_visual(&mut h);
                 }
             }
             h.write_u64((u64::from(approx::canon_bits(*width)) << 8) | u64::from(*cap as u8));
@@ -251,7 +252,7 @@ fn hash_optional_rect(rect: Option<Rect>, h: &mut Hasher) {
         None => h.write_u8(0),
         Some(rect) => {
             h.write_u8(1);
-            approx::hash_visual_rect(rect, h);
+            rect.hash_visual(h);
         }
     }
 }
@@ -274,7 +275,7 @@ fn hash_brush(fill: &ShapeBrush, fill_grad_hash: u64, h: &mut Hasher) {
 fn hash_fit(fit: &ImageFit, h: &mut Hasher) {
     mem::discriminant(fit).hash(h);
     if let ImageFit::Tile { offset, scale } = fit {
-        approx::hash_visual_vec2(*offset, h);
-        approx::hash_visual_vec2(*scale, h);
+        offset.hash_visual(h);
+        scale.hash_visual(h);
     }
 }

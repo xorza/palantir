@@ -9,6 +9,7 @@ use crate::input::key_class::KeyFilter;
 use crate::input::sense::Sense;
 use crate::layout::{LayerLayout, Layout};
 use crate::primitives::approx;
+use crate::primitives::approx::FloatHash;
 use crate::primitives::rect::Rect;
 use crate::primitives::span::Span;
 use crate::primitives::transform::TranslateScale;
@@ -227,7 +228,7 @@ pub(crate) fn cascade_fingerprint(forest: &Forest, display: Display) -> u64 {
     let mut h = Hasher::new();
     h.write_u32(display.physical.x);
     h.write_u32(display.physical.y);
-    approx::hash_f32(display.scale_factor, &mut h);
+    display.scale_factor.hash_eq(&mut h);
     for (layer, tree) in forest.trees.iter_paint_order() {
         // Layer discriminant: an identical root subtree migrating
         // between side layers (Popup → Tooltip) must not alias, or
@@ -245,21 +246,21 @@ pub(crate) fn cascade_fingerprint(forest: &Forest, display: Display) -> u64 {
             match slot.placement {
                 Placement::Fixed { anchor, size } => {
                     h.write_u8(0);
-                    approx::hash_visual_vec2(anchor, &mut h);
+                    anchor.hash_visual(&mut h);
                     match size {
                         Some(size) => {
                             h.write_u8(1);
-                            approx::hash_visual_size(size, &mut h);
+                            size.hash_visual(&mut h);
                         }
                         None => h.write_u8(0),
                     }
                 }
                 Placement::Overlay(position) => {
                     h.write_u8(1);
-                    approx::hash_visual_rect(position.anchor, &mut h);
+                    position.anchor.hash_visual(&mut h);
                     h.write_u8(position.side as u8);
                     h.write_u8(position.align as u8);
-                    approx::hash_visual_f32(position.gap, &mut h);
+                    position.gap.hash_visual(&mut h);
                 }
             }
         }
@@ -589,6 +590,6 @@ pub(super) fn finish_cascade_input(
     invisible: bool,
 ) -> CascadeInputHash {
     let mut h = prefix.clone();
-    approx::hash_visual_rect(layout_rect, &mut h);
+    layout_rect.hash_visual(&mut h);
     CascadeInputHash::pack(h.finish(), invisible)
 }

@@ -1,7 +1,9 @@
 pub(crate) mod aabb;
 
 use crate::primitives::nan::{self, NanCheck};
-use crate::primitives::{approx, corners::Corners, num::F32Ext, size::Size, spacing::Spacing};
+use crate::primitives::{
+    approx::FloatHash, corners::Corners, num::F32Ext, size::Size, spacing::Spacing,
+};
 use core::f32::consts::FRAC_1_SQRT_2;
 use glam::Vec2;
 
@@ -25,7 +27,23 @@ pub struct Rect {
 impl std::hash::Hash for Rect {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        approx::hash_rect(*self, state);
+        self.hash_eq(state);
+    }
+}
+
+/// Origin then extent, each packed by its own impl — so a rect and the
+/// `(Vec2, Size)` pair it is made of feed a hasher the same bytes.
+impl FloatHash for Rect {
+    #[inline]
+    fn hash_eq<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.min.hash_eq(state);
+        self.size.hash_eq(state);
+    }
+
+    #[inline]
+    fn hash_visual<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.min.hash_visual(state);
+        self.size.hash_visual(state);
     }
 }
 

@@ -7,7 +7,7 @@ use crate::layout::types::justify::Justify;
 use crate::layout::types::layout_mode::{LayoutMode, PackedLayoutMeta};
 use crate::layout::types::limits::valid_packed_gap;
 use crate::layout::types::sizing::Sizes;
-use crate::primitives::approx;
+use crate::primitives::approx::{self, FloatHash};
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::transform::TranslateScale;
@@ -127,10 +127,10 @@ pub(crate) struct PanelExtras {
 impl Hash for BoundsExtras {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
-        approx::hash_visual_vec2(self.position, h);
+        self.position.hash_visual(h);
         self.grid.hash(h);
-        approx::hash_visual_size(self.min_size, h);
-        approx::hash_visual_size(self.max_size, h);
+        self.min_size.hash_visual(h);
+        self.max_size.hash_visual(h);
     }
 }
 
@@ -144,8 +144,8 @@ impl Hash for PanelExtras {
         h.write_u64(packed);
         if !self.transform.is_noop() {
             h.write_u8(1);
-            approx::hash_visual_vec2(self.transform.translation, h);
-            approx::hash_visual_f32(self.transform.scale - 1.0, h);
+            self.transform.translation.hash_visual(h);
+            (self.transform.scale - 1.0).hash_visual(h);
         } else {
             h.write_u8(0);
         }

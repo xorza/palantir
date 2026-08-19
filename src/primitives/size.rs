@@ -1,5 +1,8 @@
 use crate::primitives::nan::NanCheck;
-use crate::primitives::{approx, num::Num};
+use crate::primitives::{
+    approx::{self, FloatHash},
+    num::Num,
+};
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Default, bytemuck::Pod, bytemuck::Zeroable)]
@@ -19,7 +22,23 @@ pub struct Size {
 impl std::hash::Hash for Size {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        approx::hash_size(*self, state);
+        self.hash_eq(state);
+    }
+}
+
+/// Both axes in one `write_u64` rather than two component calls: one hasher
+/// round per size, matching [`Vec2`](glam::Vec2)'s packing.
+impl FloatHash for Size {
+    #[inline]
+    fn hash_eq<H: std::hash::Hasher>(&self, state: &mut H) {
+        state.write_u64(((approx::eq_bits(self.w) as u64) << 32) | approx::eq_bits(self.h) as u64);
+    }
+
+    #[inline]
+    fn hash_visual<H: std::hash::Hasher>(&self, state: &mut H) {
+        state.write_u64(
+            ((approx::canon_bits(self.w) as u64) << 32) | approx::canon_bits(self.h) as u64,
+        );
     }
 }
 
