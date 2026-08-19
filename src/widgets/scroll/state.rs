@@ -11,8 +11,13 @@ use glam::Vec2;
 pub(crate) struct ScrollState {
     pub(crate) offset: Vec2,
     pub(super) zoom: f32,
-    /// Cumulative drag deltas compose against this stable snapshot.
-    drag_anchor: Option<(Axis, Vec2)>,
+    /// Where the live thumb drag started, so cumulative drag deltas
+    /// compose against a stable snapshot rather than the moving offset.
+    ///
+    /// Held **in the bar's own domain** (`[0, max_off]`), not the
+    /// offset's, and only for the driven axis — that is all a thumb can
+    /// express or move.
+    drag_anchor: Option<(Axis, f32)>,
 }
 
 impl Default for ScrollState {
@@ -30,12 +35,6 @@ pub(super) struct ScrollBounds {
     pub(super) content: Size,
     pub(super) viewport: Size,
     pub(super) content_margin: Spacing,
-}
-
-#[derive(Clone, Copy, Debug)]
-struct OffsetEndpoints {
-    leading: Vec2,
-    trailing: Vec2,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -66,33 +65,53 @@ pub(super) struct TrackPage {
 }
 
 impl ScrollState {
-    fn offset_endpoints(&self, bounds: ScrollBounds) -> OffsetEndpoints {
-        let [cml, cmt, cmr, cmb] = bounds.content_margin.as_array();
-        OffsetEndpoints {
-            leading: Vec2::new(-cml * self.zoom, -cmt * self.zoom),
-            trailing: Vec2::new(
-                bounds.content.w * self.zoom - bounds.viewport.w + cmr * self.zoom,
-                bounds.content.h * self.zoom - bounds.viewport.h + cmb * self.zoom,
-            ),
-        }
-    }
-
+    /// The offset range the wheel and the settle clamp work in:
+    /// the overflow, **floored at zero first**, then widened by
+    /// `content_margin` on each side.
+    ///
+    /// The flooring is the whole point. Taking
+    /// `trailing.max(leading)` off the raw endpoints instead let the
+    /// trailing end fall *below* the leading one once content fit
+    /// inside the viewport — the band collapsed to the single value
+    /// `-left * zoom`, so a scroll with a leading margin shoved content
+    /// that fitted sideways by exactly that margin and pinned it there.
+    /// `content_margin` is documented as invisible overscroll that
+    /// leaves child layout alone, so the margin may only ever *widen*
+    /// this range, never move its resting point: flooring first keeps
+    /// `lo <= 0 <= hi`, and content that fits stays at 0.
     fn natural_bounds(&self, bounds: ScrollBounds) -> OffsetBounds {
-        let endpoints = self.offset_endpoints(bounds);
-        // Undersized content settles at its leading edge.
+        let [cml, cmt, cmr, cmb] = bounds.content_margin.as_array();
+        let overflow = Vec2::new(
+            bounds.content.w * self.zoom - bounds.viewport.w,
+            bounds.content.h * self.zoom - bounds.viewport.h,
+        )
+        .max(Vec2::ZERO);
         OffsetBounds {
-            lo: endpoints.leading,
-            hi: endpoints.trailing.max(endpoints.leading),
+            lo: Vec2::new(-cml, -cmt) * self.zoom,
+            hi: overflow + Vec2::new(cmr, cmb) * self.zoom,
         }
     }
 
+    /// The wider band a *zoomable* scroll pans in, off the **raw**
+    /// endpoints rather than [`Self::natural_bounds`]' floored ones.
+    ///
+    /// Pivot zoom may legitimately leave undersized content between the
+    /// two, so the trailing end is deliberately not floored at zero here
+    /// and the pair is taken as `min`/`max` — for content that fits, the
+    /// raw trailing end sits *below* the leading one and the band is the
+    /// inverted interval between them. That inversion is exactly what
+    /// `natural_bounds` must not inherit, which is why the two do their
+    /// own arithmetic instead of sharing a helper.
     fn zoom_rubber_band_bounds(&self, bounds: ScrollBounds) -> OffsetBounds {
-        let endpoints = self.offset_endpoints(bounds);
-        // Pivot zoom may legitimately place undersized content between
-        // the raw endpoints.
+        let [cml, cmt, cmr, cmb] = bounds.content_margin.as_array();
+        let leading = Vec2::new(-cml, -cmt) * self.zoom;
+        let trailing = Vec2::new(
+            bounds.content.w * self.zoom - bounds.viewport.w + cmr * self.zoom,
+            bounds.content.h * self.zoom - bounds.viewport.h + cmb * self.zoom,
+        );
         OffsetBounds {
-            lo: endpoints.leading.min(endpoints.trailing),
-            hi: endpoints.leading.max(endpoints.trailing),
+            lo: leading.min(trailing),
+            hi: leading.max(trailing),
         }
     }
 
@@ -154,7 +173,14 @@ impl ScrollState {
         travel: Option<ThumbTravel>,
     ) {
         if drag_started {
-            self.drag_anchor = Some((axis, self.offset));
+            // Projected into the bar domain at snapshot time. The thumb
+            // can only express `[0, max_off]`, so anchoring at a raw
+            // offset — which may sit below zero inside a
+            // `content_margin` leading band — spent the first
+            // `-offset / factor` px of the gesture climbing back to 0
+            // with the thumb not moving at all.
+            let start = axis.main_v(self.offset);
+            self.drag_anchor = Some((axis, travel.map_or(start, |t| start.clamp(0.0, t.max_off))));
         }
         let Some((anchor_axis, anchor)) = self.drag_anchor else {
             return;
@@ -176,7 +202,7 @@ impl ScrollState {
             self.drag_anchor = None;
             return;
         };
-        let target = axis.main_v(anchor) + axis.main_v(delta) * travel.factor;
+        let target = anchor + axis.main_v(delta) * travel.factor;
         let clamped = target.clamp(0.0, travel.max_off);
         match axis {
             Axis::X => self.offset.x = clamped,

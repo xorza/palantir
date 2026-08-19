@@ -317,3 +317,37 @@ fn cascade_skip_busts_on_scroll_offset_change() {
         "scroll offset change must re-run the cascade (offset is in the fingerprint)",
     );
 }
+
+/// A thumb drag that starts while the offset sits inside a
+/// `content_margin` leading band moves the thumb on the very first
+/// tracked pixel.
+///
+/// The bar's domain is `[0, max_off]` — `content_margin` is documented
+/// as not showing extra thumb travel — but the offset's runs lower, into
+/// the negative leading band the wheel can reach. Anchoring the drag at
+/// the raw offset mixed the two: the target was composed from a negative
+/// anchor and then clamped to the bar domain, so the first
+/// `-offset / factor` px of the gesture were spent climbing back to zero
+/// with nothing moving. Anchoring in the bar domain is what makes the
+/// gesture start where the thumb is.
+#[test]
+fn thumb_drag_anchors_in_the_bar_domain_not_the_offset_domain() {
+    let geom = Some(ThumbTravel {
+        factor: 2.0,
+        max_off: 100.0,
+    });
+    let mut state = ScrollState::default();
+    // Panned into the leading band, as a wheel over a scroll with a
+    // `content_margin` can leave it.
+    state.offset = Vec2::new(0.0, -30.0);
+
+    state.apply_thumb_drag(Axis::Y, true, Some(Vec2::ZERO), geom);
+    // One pixel of thumb travel buys `factor` px of offset, from the
+    // clamped anchor 0 — not from -30, which would have needed 15 px of
+    // drag before the offset left zero at all.
+    state.apply_thumb_drag(Axis::Y, false, Some(Vec2::new(0.0, 1.0)), geom);
+    assert_eq!(
+        state.offset.y, 2.0,
+        "the first tracked pixel must move the thumb, not repay the band",
+    );
+}

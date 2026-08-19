@@ -266,6 +266,24 @@ impl Forest {
         );
     }
 
+    /// Whether a record pass is in flight — i.e. *some* layer has a node
+    /// open.
+    ///
+    /// `record_pass` opens `WidgetId::VIEWPORT` on `Main` before handing
+    /// the `Ui` to the app and closes it after, so this is `true` for
+    /// exactly the window in which recording-only entry points are legal.
+    ///
+    /// Deliberately not `current_layer()`: [`Ui::layer`] pushes a layer
+    /// without opening anything in it, so an overlay scope that has not
+    /// recorded a widget yet would read as "not recording" on its own
+    /// layer while the frame's record is very much in flight. This is a
+    /// frame-level question, not a per-layer one — unlike
+    /// [`Self::assert_node_open`], which really is asking about the layer
+    /// a shape is about to attach to.
+    pub(crate) fn is_recording(&self) -> bool {
+        self.scratch.iter().any(|s| !s.open_frames.is_empty())
+    }
+
     /// Lower a user-facing [`Shape`](crate::Shape) (curve flattening, span
     /// stamping, hashing) and append it to the active tree's shape buffer.
     /// Asserts a node is currently open so widgets can't leak shapes
