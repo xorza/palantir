@@ -182,5 +182,5 @@ fn animated_look_line_height_px_delegates_to_text_style() {
             weight: FontWeight::Regular,
         },
     };
-    assert!((look.line_height_px() - 24.0).abs() < 1e-6);
+    assert!((look.text.font().line_height_px - 24.0).abs() < 1e-6);
 }

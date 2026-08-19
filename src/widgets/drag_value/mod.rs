@@ -369,12 +369,10 @@ impl<'a> DragValue<'a> {
 
         widget.record(ui, Some(&look.background), |ui| {
             ui.add_shape(
-                Shape::text(text, look.text.font_size_px, look.line_height_px())
+                Shape::text(text, look.text.font())
                     .color(look.text.color)
                     .wrap(TextWrap::Truncate)
-                    .align(Align::CENTER)
-                    .family(look.text.family)
-                    .weight(look.text.weight),
+                    .align(Align::CENTER),
             );
         });
         DragValueResponse {

@@ -98,11 +98,6 @@ impl<'a> ContextMenu<'a> {
     /// is the default; theme fallback in [`Self::show`] fills it in
     /// from the resolved theme's `panel` when unset. Pass
     /// [`Background::NONE`] to suppress the themed menu chrome.
-    pub fn background(mut self, bg: Background) -> Self {
-        self.chrome = Some(bg);
-        self
-    }
-
     /// Derive `for_id` from a trigger widget's response snapshot, and
     /// auto-open at the current pointer position if the trigger
     /// reported a right-click this frame. Pass via
@@ -190,6 +185,8 @@ impl<'a> ContextMenu<'a> {
             .is_some_and(|st| st.anchor.is_some())
     }
 }
+
+impl_background!(ContextMenu<'_>);
 
 /// Forwards to the popup this menu wraps, so `.size(...)` /
 /// `.padding(...)` / `.id(...)` configure the node that actually

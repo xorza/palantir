@@ -106,11 +106,6 @@ impl<'r, 'a> Tooltip<'r, 'a> {
     /// is the default; theme fallback in [`Self::show`] fills it in
     /// from `ui.theme().tooltip.panel` when unset. Pass [`Background::NONE`]
     /// to suppress the themed bubble chrome.
-    pub fn background(mut self, bg: Background) -> Self {
-        self.chrome = Some(bg);
-        self
-    }
-
     /// Borrow a theme override for this bubble. The default inherits
     /// [`crate::Theme::tooltip`]. Per-field [`Self::background`] /
     /// [`Self::delay`] still win over it.
@@ -227,6 +222,7 @@ impl<'r, 'a> Tooltip<'r, 'a> {
     }
 }
 
+impl_background!(Tooltip<'_, '_>);
 impl_configure!(Tooltip<'_, '_>);
 
 #[cfg(test)]

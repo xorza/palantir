@@ -9,6 +9,7 @@ use crate::scene::record_store::RecordStore;
 use crate::shape::Shape;
 use crate::shape::rect::RectKind;
 use crate::shape::sealed::Lower as _;
+use crate::text::glyph_font::GlyphFont;
 use crate::text::wrap::TextWrap;
 use crate::text::{FontFamily, FontWeight};
 use glam::Vec2;
@@ -149,7 +150,14 @@ fn text_noop_rejects_invalid_metrics() {
         ("NaN origin x", Some(Vec2::new(f32::NAN, 2.0)), true),
         ("NaN origin y", Some(Vec2::new(1.0, f32::NAN)), true),
     ] {
-        let shape = Shape::text(store.intern_str("visible"), 16.0, 19.2).color(Color::WHITE);
+        let shape = Shape::text(
+            store.intern_str("visible"),
+            GlyphFont {
+                line_height_px: 19.2,
+                ..GlyphFont::new(16.0)
+            },
+        )
+        .color(Color::WHITE);
         let shape = match local_origin {
             Some(origin) => shape.at(origin),
             None => shape,
@@ -158,12 +166,18 @@ fn text_noop_rejects_invalid_metrics() {
     }
 
     for (label, font_size_px, line_height_px, expected_noop) in cases {
-        let shape = Shape::text(store.intern_str("visible"), font_size_px, line_height_px)
-            .color(Color::WHITE)
-            .wrap(TextWrap::SingleLine)
-            .align(Align::TOP_LEFT)
-            .family(FontFamily::Sans)
-            .weight(FontWeight::Regular);
+        let shape = Shape::text(
+            store.intern_str("visible"),
+            GlyphFont {
+                line_height_px,
+                ..GlyphFont::new(font_size_px)
+            },
+        )
+        .color(Color::WHITE)
+        .wrap(TextWrap::SingleLine)
+        .align(Align::TOP_LEFT)
+        .family(FontFamily::Sans)
+        .weight(FontWeight::Regular);
         assert_eq!(shape.is_noop(), expected_noop, "{label}");
     }
 }

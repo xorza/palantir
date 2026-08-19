@@ -61,11 +61,6 @@ impl<'a> Modal<'a> {
 
     /// Override the card chrome (fill / stroke / corners / shadow). Pass
     /// [`Background::NONE`] to suppress the themed card chrome.
-    pub fn background(mut self, bg: Background) -> Self {
-        self.chrome = Some(bg);
-        self
-    }
-
     /// Backdrop scrim color, defaulting to [`crate::Theme::modal`]'s.
     /// One-axis hatch over the resolved bundle — see [`crate::Theme`].
     pub fn backdrop(mut self, c: Color) -> Self {
@@ -123,6 +118,7 @@ impl<'a> Modal<'a> {
     }
 }
 
+impl_background!(Modal<'_>);
 impl_configure!(Modal<'_>);
 
 #[cfg(test)]

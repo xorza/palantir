@@ -30,6 +30,7 @@ use crate::shape::shadow::ShadowShape;
 use crate::shape::style::{LineCap, LineJoin};
 use crate::shape::text::TextShape;
 use crate::shape::triangle::TriangleShape;
+use crate::text::glyph_font::GlyphFont;
 use glam::Vec2;
 use std::f32::consts::TAU;
 
@@ -201,17 +202,22 @@ impl Shape {
         Self::arc(center, radius, 0.0, TAU, width)
     }
 
-    /// A shaped text run at `font_size_px` with `line_height_px`
-    /// leading, both in logical px. Starts white, single-line,
-    /// top-left, sans regular — chain [`TextShape::color`] /
-    /// [`TextShape::wrap`] / [`TextShape::align`] and friends.
+    /// A shaped text run in `font`. Starts white, single-line, top-left
+    /// — chain [`TextShape::color`] / [`TextShape::wrap`] /
+    /// [`TextShape::align`] and friends.
+    ///
+    /// One [`GlyphFont`] rather than a size and a leading: it is the same
+    /// value the record stores and the shape cache is keyed on, and a
+    /// theme-driven caller gets it from
+    /// [`TextStyle::font`](crate::TextStyle::font) rather than pairing
+    /// two numbers itself.
     ///
     /// `text` comes from [`crate::Ui::intern`] or [`crate::Ui::fmt`],
     /// which place the bytes in the frame's text arena. Widget
     /// constructors take borrowed or owned text directly because they
     /// defer interning until `show`.
-    pub fn text(text: InternedStr, font_size_px: f32, line_height_px: f32) -> TextShape {
-        TextShape::new(text, font_size_px, line_height_px)
+    pub fn text(text: InternedStr, font: GlyphFont) -> TextShape {
+        TextShape::new(text, font)
     }
 
     /// A `shadow` of the owner's full rect.

@@ -1,3 +1,32 @@
+/// Implement the `background` builder for container widgets that keep
+/// their override in a field called `chrome: Option<Background>`.
+///
+/// Eight widgets offer one and every body is the same assignment over
+/// the same field — the *resolution* differs (a theme slot to fall back
+/// to, or none at all, and whether a clip default rides along), but
+/// taking the caller's value never does. Invoke it **in the widget's own
+/// file**, next to the type.
+///
+/// Only for the plain case: `Grid` carries generic parameters the macro
+/// can't take, and writes the builder by hand — same exemption
+/// `impl_configure!` below has for the same type.
+macro_rules! impl_background {
+    ($($ty:ty),+ $(,)?) => {
+        $(
+            impl $ty {
+                /// Paint `bg` as this widget's background.
+                ///
+                /// What an unset one falls back to is each widget's own —
+                /// a theme slot for most, nothing at all for `Frame`.
+                pub fn background(mut self, bg: $crate::primitives::background::Background) -> Self {
+                    self.chrome = Some(bg);
+                    self
+                }
+            }
+        )+
+    };
+}
+
 /// Implement [`Configure`](crate::scene::node::Configure) for widget
 /// builders that keep their [`Node`](crate::scene::node::Node) in a
 /// field called `node`.

@@ -16,6 +16,7 @@ use crate::scene::shapes::record::ShapeRecord;
 use crate::scene::tree::record::NodeId;
 use crate::scene::visibility::Visibility;
 use crate::shape::Shape;
+use crate::text::glyph_font::GlyphFont;
 use crate::text::wrap::TextWrap;
 use crate::text::{FontFamily, FontWeight};
 use crate::ui::harness::UiHarness;
@@ -33,12 +34,18 @@ fn add_direct_text(
     local_origin: Option<glam::Vec2>,
 ) {
     let text = ui.intern(text);
-    let shape = Shape::text(text, font_size_px, line_height_px)
-        .color(Color::WHITE)
-        .wrap(wrap)
-        .align(Align::default())
-        .family(FontFamily::Sans)
-        .weight(FontWeight::Regular);
+    let shape = Shape::text(
+        text,
+        GlyphFont {
+            line_height_px,
+            ..GlyphFont::new(font_size_px)
+        },
+    )
+    .color(Color::WHITE)
+    .wrap(wrap)
+    .align(Align::default())
+    .family(FontFamily::Sans)
+    .weight(FontWeight::Regular);
     ui.add_shape(match local_origin {
         Some(origin) => shape.at(origin),
         None => shape,
@@ -570,13 +577,19 @@ fn build_multi_text_leaf(ui: &mut Ui) -> NodeId {
         ui.widget(node).record(ui, None, |ui| {
             let first = ui.intern("first");
             ui.add_shape(
-                Shape::text(first, 14.0, 16.0)
-                    .at(glam::Vec2::new(0.0, 0.0))
-                    .color(Color::WHITE)
-                    .wrap(TextWrap::Truncate)
-                    .align(Align::default())
-                    .family(FontFamily::Sans)
-                    .weight(FontWeight::Regular),
+                Shape::text(
+                    first,
+                    GlyphFont {
+                        line_height_px: 16.0,
+                        ..GlyphFont::new(14.0)
+                    },
+                )
+                .at(glam::Vec2::new(0.0, 0.0))
+                .color(Color::WHITE)
+                .wrap(TextWrap::Truncate)
+                .align(Align::default())
+                .family(FontFamily::Sans)
+                .weight(FontWeight::Regular),
             );
             ui.add_shape(
                 Shape::rect(crate::Rect::new(0.0, 20.0, 4.0, 2.0))
@@ -586,13 +599,19 @@ fn build_multi_text_leaf(ui: &mut Ui) -> NodeId {
             );
             let second = ui.intern("second-with-different-text");
             ui.add_shape(
-                Shape::text(second, 14.0, 16.0)
-                    .at(glam::Vec2::new(0.0, 22.0))
-                    .color(Color::WHITE)
-                    .wrap(TextWrap::Truncate)
-                    .align(Align::default())
-                    .family(FontFamily::Sans)
-                    .weight(FontWeight::Regular),
+                Shape::text(
+                    second,
+                    GlyphFont {
+                        line_height_px: 16.0,
+                        ..GlyphFont::new(14.0)
+                    },
+                )
+                .at(glam::Vec2::new(0.0, 22.0))
+                .color(Color::WHITE)
+                .wrap(TextWrap::Truncate)
+                .align(Align::default())
+                .family(FontFamily::Sans)
+                .weight(FontWeight::Regular),
             );
         });
     });

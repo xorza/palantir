@@ -16,7 +16,6 @@ use crate::text::glyph_font::GlyphFont;
 use crate::text::probe::Caret;
 use crate::text::run::TextRun;
 use crate::text::wrap::TextWrap;
-use crate::text::{FontFamily, FontWeight};
 use crate::ui::Ui;
 use crate::widgets::text_edit::edit_state::EditState;
 use crate::widgets::widget::Widget;
@@ -156,12 +155,9 @@ impl ViewState {
 /// [`TextGeometry::block_offset`].
 #[derive(Clone, Copy, Debug)]
 pub(super) struct ShapeCtx {
-    pub(super) font_size: f32,
-    pub(super) line_height_px: f32,
+    pub(super) font: GlyphFont,
     pub(super) padding: Spacing,
     wrap_target: Option<f32>,
-    pub(super) family: FontFamily,
-    pub(super) weight: FontWeight,
     pub(super) multiline: bool,
     halign: HAlign,
 }
@@ -179,12 +175,7 @@ impl ShapeCtx {
     pub(super) fn run<'a>(&self, text: &'a str) -> TextRun<'a> {
         TextRun {
             text,
-            font: GlyphFont {
-                size_px: self.font_size,
-                line_height_px: self.line_height_px,
-                family: self.family,
-                weight: self.weight,
-            },
+            font: self.font,
             wrap: if self.multiline {
                 TextWrap::Wrap
             } else {
@@ -201,10 +192,7 @@ pub(super) struct LayoutInput {
     pub(super) response_rect: Option<Rect>,
     pub(super) padding: Spacing,
     pub(super) caret_width: f32,
-    pub(super) font_size: f32,
-    pub(super) line_height_px: f32,
-    pub(super) family: FontFamily,
-    pub(super) weight: FontWeight,
+    pub(super) font: GlyphFont,
     pub(super) multiline: bool,
     pub(super) text_align: Option<Align>,
     pub(super) previous_block_offset: Vec2,
@@ -246,12 +234,9 @@ pub(super) fn resolve_layout(input: LayoutInput) -> TextLayout {
         Align::LEFT
     });
     let ctx = ShapeCtx {
-        font_size: input.font_size,
-        line_height_px: input.line_height_px,
+        font: input.font,
         padding: input.padding,
         wrap_target,
-        family: input.family,
-        weight: input.weight,
         multiline: input.multiline,
         halign: text_align.halign(),
     };
@@ -367,7 +352,7 @@ pub(super) fn resolve_geometry(
     let aligned = |size: Size| {
         align::align_in_rect(
             containing,
-            Size::new(size.w, size.h.max(layout.ctx.line_height_px)),
+            Size::new(size.w, size.h.max(layout.ctx.font.line_height_px)),
             widget_align,
         )
         .min
@@ -475,7 +460,7 @@ pub(super) fn record(ui: &mut Ui, mut widget: Widget, input: PaintInput<'_>) {
             };
             if !display.is_empty() {
                 ui.add_shape(
-                    Shape::text(display, ctx.font_size, ctx.line_height_px)
+                    Shape::text(display, ctx.font)
                         .at(Vec2::ZERO)
                         .color(color)
                         .wrap(if ctx.multiline {
@@ -483,9 +468,7 @@ pub(super) fn record(ui: &mut Ui, mut widget: Widget, input: PaintInput<'_>) {
                         } else {
                             TextWrap::Scroll
                         })
-                        .align(layout.text_align)
-                        .family(ctx.family)
-                        .weight(ctx.weight),
+                        .align(layout.text_align),
                 );
             }
 
@@ -528,7 +511,7 @@ fn measured(input: &PaintInput<'_>) -> Size {
 /// in the last thousandth of a pixel — the shaped one is quantized to 1/64 px —
 /// and the field's box has to agree with the run inside it.
 fn block_height(input: &PaintInput<'_>, ctx: ShapeCtx) -> f32 {
-    measured(input).h.max(ctx.line_height_px)
+    measured(input).h.max(ctx.font.line_height_px)
 }
 
 /// The node the run, the wash and the caret are recorded against.

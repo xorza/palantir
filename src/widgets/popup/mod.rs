@@ -188,11 +188,6 @@ impl Popup {
     /// is the default; theme fallback in [`Self::show`] fills it in
     /// from `ui.theme().panel_background` when unset. Pass
     /// [`Background::NONE`] to suppress that fallback for this popup.
-    pub fn background(mut self, bg: Background) -> Self {
-        self.chrome = Some(bg);
-        self
-    }
-
     pub fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, &PopupHandle)) -> PopupResponse {
         let Self {
             position,
@@ -275,6 +270,7 @@ impl Popup {
     }
 }
 
+impl_background!(Popup);
 impl_configure!(Popup);
 
 #[cfg(test)]

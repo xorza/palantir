@@ -40,15 +40,12 @@ pub struct TextShape {
 }
 
 impl TextShape {
-    pub(super) fn new(text: InternedStr, font_size_px: f32, line_height_px: f32) -> Self {
+    pub(super) fn new(text: InternedStr, font: GlyphFont) -> Self {
         Self {
             local_origin: None,
             text,
             color: Color::WHITE,
-            font: GlyphFont {
-                line_height_px,
-                ..GlyphFont::new(font_size_px)
-            },
+            font,
             wrap: TextWrap::SingleLine,
             align: Align::TOP_LEFT,
         }
