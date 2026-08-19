@@ -100,13 +100,25 @@ pub(crate) struct NodeArenas {
 }
 
 impl NodeArenas {
+    /// Destructured rather than a statement list: `node_base` is taken
+    /// from `desired.len()`, so an arena left longer than the others
+    /// offsets every later slice of that column by the leftover — stale
+    /// rows from a previous frame, with nothing to assert on.
     fn clear(&mut self) {
-        self.desired.clear();
-        self.rect.clear();
-        self.scroll_content.clear();
-        self.text_spans.clear();
-        self.intrinsics.clear();
-        self.available_q.clear();
+        let Self {
+            desired,
+            rect,
+            scroll_content,
+            text_spans,
+            intrinsics,
+            available_q,
+        } = self;
+        desired.clear();
+        rect.clear();
+        scroll_content.clear();
+        text_spans.clear();
+        intrinsics.clear();
+        available_q.clear();
     }
 }
 

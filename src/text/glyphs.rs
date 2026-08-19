@@ -16,47 +16,12 @@
 use crate::primitives::size::Size;
 use crate::primitives::urect::URect;
 use crate::text::cosmic::CosmicMeasure;
+use crate::text::glyph_font::GlyphFont;
 use crate::text::render::{GlyphImage, GlyphRasterKey, PlacedGlyph, RunPlacement};
 use crate::text::request::TextShapeRequest;
 use crate::text::wrap::WrapFloor;
-use crate::text::{FontFamily, FontWeight};
 use glam::Vec2;
 use std::cell::RefMut;
-
-/// Which face to shape in, and how big.
-///
-/// Sizes are logical pixels; the raster scale is [`TextGlyphs::line`]'s, because
-/// it is a property of the surface being drawn into rather than of the text.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct GlyphFont {
-    pub size_px: f32,
-    /// Leading is the caller's to choose. Palantir's own widgets derive one
-    /// from the type scale; a single line pinned to a point in space has no
-    /// stack to sit in, so this defaults to the size itself.
-    pub line_height_px: f32,
-    pub family: FontFamily,
-    pub weight: FontWeight,
-}
-
-impl GlyphFont {
-    /// `size_px` in the default family and weight, led at its own size.
-    ///
-    /// Every field is public, so anything else is a struct update over this —
-    /// `GlyphFont { family: FontFamily::Mono, ..GlyphFont::new(16.0) }`, which
-    /// holds in a `const` too.
-    ///
-    /// The two defaults are spelled out rather than asked of [`Default`],
-    /// which a derive does not make a `const fn`. They are the `#[default]`
-    /// variants of the enums beside them and have to stay that.
-    pub const fn new(size_px: f32) -> Self {
-        Self {
-            size_px,
-            line_height_px: size_px,
-            family: FontFamily::Sans,
-            weight: FontWeight::Regular,
-        }
-    }
-}
 
 /// A lease on the shaper for laying out and rasterizing glyphs directly.
 ///
@@ -167,13 +132,7 @@ impl<'a> TextGlyphs<'a> {
 
 /// One unwrapped line's shape request.
 fn request(text: &str, font: GlyphFont) -> TextShapeRequest<'_> {
-    TextShapeRequest::unbounded(
-        text,
-        font.size_px,
-        font.line_height_px,
-        font.family,
-        font.weight,
-    )
+    TextShapeRequest::unbounded(text, font)
 }
 
 /// The run placed at its own origin, culled against nothing.
@@ -200,24 +159,6 @@ mod tests {
     /// nothing of it to test against a measurer that only measures.
     fn shaper() -> TextShaper {
         TextShaper::new()
-    }
-
-    /// The face and weight [`GlyphFont::new`] writes out are the ones the
-    /// enums beside it call default.
-    ///
-    /// A `const fn` cannot ask a derived [`Default`], so the two are spelled
-    /// there — and a `#[default]` moved to the other variant would leave that
-    /// silently disagreeing with every other caller of the same enum.
-    #[test]
-    fn the_stock_font_is_the_default_face_and_weight() {
-        // In a const context, which is the whole point of the constructor
-        // being one: a caller pinning a font it never varies gets to state it
-        // as a value rather than build one per call.
-        const STOCK: GlyphFont = GlyphFont::new(16.0);
-        assert_eq!(STOCK.family, FontFamily::default());
-        assert_eq!(STOCK.weight, FontWeight::default());
-        // Led at its own size, which is what "no stack to sit in" comes to.
-        assert_eq!(STOCK.line_height_px, 16.0);
     }
 
     /// A run lays out one glyph per character, left to right, and lays out the

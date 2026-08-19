@@ -29,7 +29,7 @@ use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::pipeline_utils::{ColorVariantSpec, StencilVariant};
 use crate::renderer::backend::raster_atlas::content_type::ContentType;
 use crate::renderer::backend::raster_atlas::packed_metadata::PackedMetadata;
-use crate::renderer::backend::raster_atlas::quad::{self, PARAMS_OFFSET, RasterQuad};
+use crate::renderer::backend::raster_atlas::quad::{self, RasterQuad};
 use crate::renderer::backend::raster_atlas::{RasterAtlas, RasterAtlasConfig};
 use crate::renderer::backend::viewport::ViewportPush;
 use crate::renderer::render_buffer::icon::IconDrawRow;
@@ -259,18 +259,8 @@ impl IconBackend {
             .ranges
             .get(batch_idx)
             .expect("render schedule referenced an unprepared icon batch");
-        if span.len == 0 {
-            return;
-        }
-        pass.set_pipeline(pipelines.select(use_stencil));
-        pass.set_bind_group(0, self.atlas.bind_group(), &[]);
-        // Both halves of the shared immediate region, for the same reason the
-        // text pass writes both: icons can be the first pipeline bound in a
-        // pass, so no earlier step is guaranteed to have pushed the viewport.
-        viewport.push_into(pass);
-        pass.set_immediates(PARAMS_OFFSET, bytemuck::bytes_of(&self.atlas.atlas_px()));
-        pass.set_vertex_buffer(0, self.vbuf.buffer.slice(..));
-        pass.draw(0..4, span.start..span.start + span.len);
+        self.atlas
+            .draw_span(pass, pipelines, use_stencil, viewport, &self.vbuf, span);
     }
 
     /// Frame teardown, run for every submit — including one that prepared no

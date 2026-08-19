@@ -309,10 +309,12 @@ fn shaped_text_ref_resolves_the_recorded_pair_and_rejects_mismatches() {
     assert_eq!(recorded.hash, hash_str("hi"));
     let key = TextShapeKey::unbounded(
         recorded.hash,
-        16.0,
-        19.2,
-        FontFamily::Sans,
-        FontWeight::Regular,
+        GlyphFont {
+            size_px: 16.0,
+            line_height_px: 19.2,
+            family: FontFamily::Sans,
+            weight: FontWeight::Regular,
+        },
     );
     let text_ref = ShapedTextRef::new(key, &recorded);
     let other = store.record_text(store.intern_str("bye"));

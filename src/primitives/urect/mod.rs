@@ -165,63 +165,6 @@ impl URect {
     }
 }
 
-/// The rest of the surface [`Rect`] has, so that the two rectangles are one
-/// vocabulary rather than two overlapping ones — a caller reaching across from
-/// the float rect finds what it went looking for.
-///
-/// Nothing calls these yet, which is the whole reason they are gathered here
-/// rather than left among the methods that are: the parity is deliberate, and
-/// the first of them to earn a caller should be moved up rather than have the
-/// allowance quietly widened around it.
-#[allow(dead_code)]
-impl URect {
-    /// Midpoint, truncated — the pixel the middle falls in rather than the
-    /// middle itself, which on an odd extent is half a pixel further on.
-    #[inline]
-    pub(crate) const fn center(self) -> UVec2 {
-        UVec2::new(self.min.x + self.size.x / 2, self.min.y + self.size.y / 2)
-    }
-
-    /// `width * height`, widened because a surface-sized rect squares past
-    /// `u32` — 65 536² already does.
-    #[inline]
-    pub(crate) const fn area(self) -> u64 {
-        self.size.x as u64 * self.size.y as u64
-    }
-
-    /// Half-open containment: the min edges are inside, the max edges are not,
-    /// so tiled rects never both claim the same pixel.
-    #[inline]
-    pub(crate) const fn contains(self, p: UVec2) -> bool {
-        let max = self.max();
-        p.x >= self.min.x && p.y >= self.min.y && p.x < max.x && p.y < max.y
-    }
-
-    /// True when `self` fully encloses `other`. Equality on the far edges
-    /// counts, so `r.contains_rect(r)` holds.
-    #[inline]
-    pub(crate) const fn contains_rect(self, other: Self) -> bool {
-        let (a, b) = (self.max(), other.max());
-        other.min.x >= self.min.x && other.min.y >= self.min.y && b.x <= a.x && b.y <= a.y
-    }
-
-    /// Outset by `amount` on every side, saturating at both ends — the origin
-    /// cannot go below zero and the extent cannot wrap.
-    #[inline]
-    pub(crate) const fn inflated(self, amount: u32) -> Self {
-        Self {
-            min: UVec2::new(
-                self.min.x.saturating_sub(amount),
-                self.min.y.saturating_sub(amount),
-            ),
-            size: UVec2::new(
-                self.size.x.saturating_add(2 * amount),
-                self.size.y.saturating_add(2 * amount),
-            ),
-        }
-    }
-}
-
 /// Widening is exact and has nothing to decide, so it is the direction that
 /// gets a [`From`] — see `URect::covering` for the way back, which has to
 /// pick a rounding and is named for it.
@@ -237,60 +180,6 @@ impl From<URect> for Rect {
     }
 }
 
-/// 8-byte half-precision variant of [`URect`]. Same physical-px
-/// semantics, but components saturate at `u16::MAX` (65 535 px) —
-/// enough for 8K surfaces and 4×-DPI 16K. Used where many rects
-/// are stored in a hot Pod struct (e.g. `TextRun.bounds`); halving
-/// the footprint shrinks the per-frame `Vec<TextRun>` and the
-/// bytemuck hash input.
-#[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, bytemuck::Pod, bytemuck::Zeroable)]
-pub(crate) struct URect16 {
-    pub x: u16,
-    pub y: u16,
-    pub w: u16,
-    pub h: u16,
-}
-
-impl std::hash::Hash for URect16 {
-    #[inline]
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        state.write(bytemuck::bytes_of(self));
-    }
-}
-
-impl URect16 {
-    /// Saturating constructor from `u32` components.
-    pub(crate) const fn new(x: u32, y: u32, w: u32, h: u32) -> Self {
-        Self {
-            x: sat_u16(x),
-            y: sat_u16(y),
-            w: sat_u16(w),
-            h: sat_u16(h),
-        }
-    }
-
-    /// Widen to [`URect`] for boundary code (wgpu `set_scissor_rect`,
-    /// glyphon `TextBounds`).
-    pub(crate) const fn to_urect(self) -> URect {
-        URect::new(self.x as u32, self.y as u32, self.w as u32, self.h as u32)
-    }
-}
-
-impl From<URect> for URect16 {
-    #[inline]
-    fn from(r: URect) -> Self {
-        Self::new(r.min.x, r.min.y, r.size.x, r.size.y)
-    }
-}
-
-impl From<URect16> for URect {
-    #[inline]
-    fn from(r: URect16) -> Self {
-        r.to_urect()
-    }
-}
-
 /// `Ord::min` and `Ord::max` are not callable from a `const fn`, and every
 /// rectangle operation here wants one — so the branch is written once under a
 /// name rather than four times inside each.
@@ -300,14 +189,6 @@ const fn smaller(a: u32, b: u32) -> u32 {
 
 const fn larger(a: u32, b: u32) -> u32 {
     if a > b { a } else { b }
-}
-
-const fn sat_u16(v: u32) -> u16 {
-    if v > u16::MAX as u32 {
-        u16::MAX
-    } else {
-        v as u16
-    }
 }
 
 #[cfg(test)]

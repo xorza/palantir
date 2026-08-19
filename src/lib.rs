@@ -260,7 +260,8 @@ pub use shape::triangle::TriangleShape;
 // Shaping and rasterization for a caller that draws its own text — see
 // [`TextShaper::glyphs`]. The atlas and the pipeline stay the caller's; what is
 // shared is the font stack.
-pub use text::glyphs::{GlyphFont, TextGlyphs};
+pub use text::glyph_font::GlyphFont;
+pub use text::glyphs::TextGlyphs;
 pub use text::probe::Caret;
 pub use text::probe::TextProbe;
 pub use text::render::{GlyphImage, GlyphImageKind, GlyphPlacement, GlyphRasterKey, PlacedGlyph};
@@ -274,7 +275,7 @@ pub use ui::layer_scope::LayerScope;
 pub use widgets::button::Button;
 pub use widgets::checkbox::Checkbox;
 pub use widgets::combo_box::ComboBox;
-pub use widgets::context_menu::{ContextMenu, ContextMenuResponse, MenuItem, MenuSeparator};
+pub use widgets::context_menu::{ContextMenu, MenuItem, MenuSeparator};
 pub use widgets::drag_value::{DragNum, DragValue, DragValueResponse};
 pub use widgets::frame::Frame;
 pub use widgets::gpu_view::GpuView;
@@ -289,7 +290,7 @@ pub use widgets::scroll::Scroll;
 pub use widgets::scroll::bars::BarMode;
 pub use widgets::scroll::zoom_config::{ZoomConfig, ZoomModifier, ZoomPivot};
 pub use widgets::separator::Separator;
-pub use widgets::slider::Slider;
+pub use widgets::slider::{Slider, SliderResponse};
 pub use widgets::spinner::Spinner;
 pub use widgets::splitter::{SplitHalf, Splitter};
 pub use widgets::switch::Switch;
