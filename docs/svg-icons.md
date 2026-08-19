@@ -1,6 +1,7 @@
 # SVG icons — proposal and implementation plan
 
-Status: proposal. Nothing here is built yet.
+Status: **slice 1 shipped** — the runtime is built, tested, and rendering.
+Slices 2 and 3 (§7) are still proposals.
 
 **Bake SVGs at build time into a normalized, compiled-in blob; rasterize each
 icon at its exact physical pixel size on first use; cache in a glyph-style
@@ -301,12 +302,19 @@ the session may never draw. Both are why only the flagged ones prewarm.
 
 ## 7. Implementation slices
 
-**Slice 1 — the runtime.** Generalize the atlas over its key; add
-`IconRasterKey`, the icon atlas instance, and the resvg raster wrapper;
-`ShapeRecord::Icon` → `DrawIconPayload` → `IconDrawRow` → backend prepare;
-`PaintTier::Icon`; `IconShape` / `IconHandle` / `IconSet`. Drive it from a
-hand-written `IconAtlas` const holding two inline SVG strings — one flat-colour,
-one gradient — so the whole runtime is testable before the baker exists.
+**Slice 1 — the runtime. Done.** `GlyphAtlas` became `RasterAtlas<K>` and
+moved to `renderer::backend::raster_atlas`, with `ContentType` and the
+per-instance label/initial-size config alongside; text keys it on its cosmic
+`CacheKey` and icons on `IconRasterKey`. `src/icons/` holds the baked types,
+the registry, the size ladder, and the resvg wrapper;
+`renderer::backend::icon` holds the pass, which reuses the glyph shader,
+`GlyphInstance`, and the vertex layout verbatim. `ShapeRecord::Icon` →
+`DrawIconPayload` → `IconDrawRow` → `PaintTier::Icon` → `RenderStep::IconBatch`.
+Driven from hand-written `IconAtlas` values, as planned.
+
+The pins held: `ShapeRecord` is still **88 bytes** — the whole point of putting
+`view_box` on the handle and keeping the record's payload at 41. `Ui` grew by
+exactly 8, the registry's `Rc`.
 
 **Slice 2 — the baker.** `bake-icons` crate: usvg parse (system fonts on, text
 → paths) → `Tree::to_string` → concatenated blob + generated `icons.rs` +
@@ -327,7 +335,7 @@ measured on 1-byte masks, and a 32² colour icon is 4 KB); fold the icon atlas
 into the glyph atlas if the extra draw call on a labelled toolbar ever
 measures.
 
-**Testing.** Runtime: the size ladder, hand-computed — 24 logical px at 1.5
+**Testing (slice 1, in place).** Runtime: the size ladder, hand-computed — 24 logical px at 1.5
 scale → exactly 36 (exact rung); 50 logical px at 1.5 scale → 75 → 76 (4 px
 grid, and the rung *above* 64 that a naive `round` would miss); prewarm
 rasterizes every `filtered` icon and nothing else; cache hit on redraw, miss on
