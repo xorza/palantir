@@ -47,7 +47,9 @@ struct FillEntry {
 /// hand rather than physically merged: this one freezes every violator
 /// per pass while grid freezes one, and the two converge differently for
 /// mixed min/max violations — so a shared solver would silently change
-/// one driver's edge-case results.
+/// one driver's edge-case results. `cross_driver_tests/fill_solvers.rs`
+/// pins that difference, which makes merging them a decision about what
+/// `Sizing::fill` should mean rather than a refactor.
 fn freeze_distribute(entries: &mut [FillEntry], mut leftover: f32, mut active_weight: f64) {
     loop {
         if active_weight <= 0.0 {

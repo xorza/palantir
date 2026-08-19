@@ -113,6 +113,16 @@ impl Widget {
     /// pays for the `response_for` probe — which is why opening through
     /// `record` directly, as the other ~50 sites do, costs nothing extra
     /// over this and keeps `&Ui` unborrowed afterwards.
+    ///
+    /// **The eager path is the other one, and it has no packager.** Every
+    /// interactive widget needs its response *before* recording — to pick
+    /// a theme, to write a bound value — so it opens with
+    /// `Widget::response` and closes with [`Response::eager`], with the
+    /// probe in hand throughout — including `toggle_row`, which takes it
+    /// once on behalf of the three toggles. There is deliberately no
+    /// helper for it: `response` and `id` both come off the widget, and
+    /// `id` has to be bound before `record` consumes it, so a packager
+    /// would save one line and cost a type.
     pub fn show<'a, R>(
         self,
         ui: &'a mut Ui,
