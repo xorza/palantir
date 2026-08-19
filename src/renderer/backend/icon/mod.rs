@@ -93,6 +93,18 @@ impl IconBackend {
                 // without an immediate grow chain.
                 initial_mask_px: 256,
                 initial_color_px: 512,
+                // The same 16 MiB as text, and for once the arithmetic agrees
+                // across a 4x difference in bytes per texel: it caps the
+                // colour side at 2048², which holds roughly 450 icons at 48²
+                // — far past any plausible working set — while a larger
+                // budget would only matter under a zoom deep enough that
+                // `MAX_ICON_RASTER_PX` has already bound the raster. A
+                // separate knob because that agreement is a coincidence of the
+                // numbers, not a property of the two tenants.
+                max_bytes: 16 << 20,
+                // 4 MiB reaches 1024² on the colour side, which holds a
+                // working set of a few hundred icons without evicting once.
+                eager_growth_bytes: 4 << 20,
             },
         );
         let bindings = atlas.bindings();
@@ -208,7 +220,8 @@ impl IconBackend {
             self.instances.push(RasterQuad {
                 pos: [row.origin.x, row.origin.y],
                 dim: RasterQuad::dim(slot.width, slot.height),
-                uv_and_kind: quad::pack_uv(slot.x, slot.y, slot.content),
+                uv_and_kind: quad::pack_uv(slot.x, slot.y, slot.content)
+                    | if row.desaturate { quad::DESATURATE } else { 0 },
                 color: bytemuck::cast(row.color),
             });
         }

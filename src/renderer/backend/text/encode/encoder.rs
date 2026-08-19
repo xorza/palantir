@@ -80,6 +80,17 @@ impl TextEncoder {
                     // 256 KB and holds dozens at UI sizes, where matching the
                     // mask side would pin 4 MB most sessions never touch.
                     initial_color_px: 256,
+                    // 16 MiB is 2^24, and both `bytes_per_pixel` values are
+                    // powers of two, so the ceiling lands on an exact power-of-
+                    // two side either way: a 4096² mask or a 2048² colour
+                    // atlas. The measured `text_atlas/cache_churn` working set
+                    // is 3700 glyphs in a 2048² mask, so the mask ceiling is
+                    // roughly 4x the largest set any bench here produces.
+                    max_bytes: 16 << 20,
+                    // 4 MiB is a 2048² mask or a 1024² colour atlas, and the
+                    // mask growing 1 MB -> 4 MB is what the measurement in
+                    // `eager_growth_bytes` cost.
+                    eager_growth_bytes: 4 << 20,
                 },
             ),
             cache: EncodedCache::default(),

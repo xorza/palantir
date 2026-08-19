@@ -38,6 +38,18 @@ fn atlas() -> Rc<IconAtlas> {
 /// One icon in an exactly placed pane, so the pixels it owns are known from
 /// the pane's position and size alone.
 fn pane(ui: &mut Ui, id: &'static str, at: Vec2, size: Vec2, name: &str, tint: Color) {
+    pane_desaturated(ui, id, at, size, name, tint, false);
+}
+
+fn pane_desaturated(
+    ui: &mut Ui,
+    id: &'static str,
+    at: Vec2,
+    size: Vec2,
+    name: &str,
+    tint: Color,
+    desaturate: bool,
+) {
     let icons = ui.load_icons(atlas());
     let icon = icons.by_name(name).expect("fixture icon");
     Panel::zstack()
@@ -45,7 +57,13 @@ fn pane(ui: &mut Ui, id: &'static str, at: Vec2, size: Vec2, name: &str, tint: C
         .position(at)
         .size((Sizing::fixed(size.x), Sizing::fixed(size.y)))
         .show(ui, |ui| {
-            ui.add_shape(icons.shape(icon).fit(IconFit::Fill).tint(tint));
+            ui.add_shape(
+                icons
+                    .shape(icon)
+                    .fit(IconFit::Fill)
+                    .tint(tint)
+                    .desaturate(desaturate),
+            );
         });
 }
 
@@ -180,4 +198,56 @@ fn icon_rasterizes_to_whole_physical_pixels_at_fractional_scale() {
     assert!(dark(36, 20), "pixel 36 is outside the 30 px box");
     assert!(dark(20, 5), "pixel 5 is outside the 30 px box");
     assert!(dark(20, 36), "pixel 36 is outside the 30 px box");
+}
+
+/// `desaturate` collapses a colour icon to its own luminance — the disabled
+/// look for artwork a tint cannot recolour.
+///
+/// Both greys are hand-computed, which is what pins the *coefficients* rather
+/// than merely "something grey came out". Per half: sRGB → linear, dot with
+/// Rec. 709 (0.2126, 0.7152, 0.0722), then sRGB-encode.
+///
+/// - `#e63c3c` → linear (0.7913, 0.0452, 0.0452) → luma 0.2038 → **125**
+/// - `#3c78e6` → linear (0.0452, 0.1878, 0.7913) → luma 0.2011 → **124**
+///
+/// The two land a byte apart because these particular colours are very nearly
+/// isoluminant — which is exactly why the test asserts the computed values and
+/// not an ordering between them.
+#[test]
+fn desaturate_greys_a_colour_icon_by_its_luminance() {
+    let mut h = Harness::new();
+    let img = h.render(UVec2::new(48, 32), 1.0, Color::BLACK, |ui| {
+        Panel::canvas()
+            .id_salt("icon_grey")
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                pane_desaturated(
+                    ui,
+                    "halves",
+                    Vec2::new(8.0, 4.0),
+                    Vec2::new(32.0, 24.0),
+                    "halves",
+                    Color::WHITE,
+                    true,
+                );
+            });
+    });
+
+    let left = img.get_pixel(14, 16).0;
+    let right = img.get_pixel(34, 16).0;
+    for (label, px, expected) in [("left", left, 125u8), ("right", right, 124)] {
+        assert!(
+            px[0] == px[1] && px[1] == px[2],
+            "{label} half = {px:?} must be neutral grey after desaturation",
+        );
+        assert!(
+            px[0].abs_diff(expected) <= 2,
+            "{label} half = {} but its luminance works out to {expected}",
+            px[0],
+        );
+        assert_eq!(px[3], 255, "{label} half keeps its alpha");
+    }
+    // A flat channel average would put both at 117; the artwork's own colours
+    // would leave them at LEFT / RIGHT. Neither is what luminance gives.
+    assert!(left != LEFT && right != RIGHT, "grey is not the artwork");
 }

@@ -9,6 +9,7 @@
 
 use crate::renderer::backend::pipeline_utils;
 use crate::renderer::backend::raster_atlas::ContentType;
+use crate::renderer::backend::shader_template::{ShaderConstant, specialize};
 use crate::renderer::backend::viewport::ViewportPush;
 
 /// One per-instance vertex record. 20 bytes, `Pod`.
@@ -43,12 +44,51 @@ impl RasterQuad {
 /// added to the viewport silently overlap these.
 pub(crate) const PARAMS_OFFSET: u32 = ViewportPush::BYTES as u32;
 
+/// Bits of `uv_and_kind` that hold `u`, and so the shift the two flags sit at.
+///
+/// Fourteen is more than either side can use: the byte budget caps a mask
+/// atlas at 4096 and a colour atlas at 2048, both inside 12 bits. Every other
+/// number in the layout derives from this one — including the shader's, which
+/// [`shader_module`] substitutes rather than restates.
+const U_BITS: u32 = 14;
+
+/// Largest `u` the layout can carry.
+const U_MAX: u32 = (1 << U_BITS) - 1;
+
+/// Collapse a colour raster to its luminance when drawn — OR into the value
+/// [`pack_uv`] returns.
+///
+/// The disabled look for a **colour** icon, whose own colours a tint cannot
+/// replace (the colour path ignores tint RGB and takes only its alpha). Has no
+/// effect on the mask path, where the draw already chooses the colour outright.
+pub(crate) const DESATURATE: u32 = 1 << U_BITS;
+
+/// Where the content type sits: straight above [`DESATURATE`].
+const KIND_SHIFT: u32 = U_BITS + 1;
+
+// Compile-time guard on the layout: the three fields must tile the `u32`
+// without overlapping, and the shader reads the flags as a two-bit field
+// directly above `u` — so the values substituted into the WGSL have to come
+// out as exactly 1 and 2. Same shape as the vertex-attribute guard below.
+const _: () = {
+    assert!(DESATURATE >> U_BITS == 1, "shader's FLAG_DESATURATE");
+    assert!(
+        (ContentType::Color as u32) << (KIND_SHIFT - U_BITS) == 2,
+        "shader's FLAG_COLOR",
+    );
+    // `v` starts at bit 16, so neither flag may reach it.
+    assert!(KIND_SHIFT < 16);
+};
+
 /// Pack an atlas slot's origin plus its content type into the one `u32` the
-/// vertex shader unpacks: `u` in the low 15 bits, the type in bit 15, `v` in
-/// the high 16.
+/// vertex shader unpacks: `u` in the low [`U_BITS`], [`DESATURATE`] above it,
+/// the content type above that, `v` in the high 16.
 pub(crate) fn pack_uv(u: u16, v: u16, kind: ContentType) -> u32 {
-    debug_assert!(u <= 0x7FFF, "uv high bit reserved for content_type");
-    (u as u32) | ((kind as u32) << 15) | ((v as u32) << 16)
+    debug_assert!(
+        u32::from(u) <= U_MAX,
+        "u must fit {U_BITS} bits; the rest carry the content type and DESATURATE",
+    );
+    (u as u32) | ((kind as u32) << KIND_SHIFT) | ((v as u32) << 16)
 }
 
 const RASTER_QUAD_ATTRS: [wgpu::VertexAttribute; 4] = wgpu::vertex_attr_array![
@@ -79,10 +119,26 @@ pub(crate) fn instance_layout() -> wgpu::VertexBufferLayout<'static> {
 }
 
 /// The shader both passes build their pipelines from.
+///
+/// Rust owns the `uv_and_kind` bit layout; the shader declares the three
+/// numbers it needs as markers so the two cannot drift (`specialize` panics on
+/// an unsubstituted one). The flags arrive already shifted down by
+/// [`U_BITS`], which is how the shader reads them.
 pub(crate) fn shader_module(device: &wgpu::Device, label: &str) -> wgpu::ShaderModule {
+    let wgsl = specialize(
+        include_str!("shader.wgsl"),
+        &[
+            ShaderConstant::uint("U_BITS", U_BITS),
+            ShaderConstant::uint("FLAG_DESATURATE", DESATURATE >> U_BITS),
+            ShaderConstant::uint(
+                "FLAG_COLOR",
+                (ContentType::Color as u32) << (KIND_SHIFT - U_BITS),
+            ),
+        ],
+    );
     device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some(label),
-        source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
+        source: wgpu::ShaderSource::Wgsl(wgsl.into()),
     })
 }
 
@@ -143,7 +199,9 @@ pub(crate) fn bind_group(
 #[cfg(test)]
 mod tests {
     use crate::renderer::backend::raster_atlas::ContentType;
-    use crate::renderer::backend::raster_atlas::quad::{PARAMS_OFFSET, RasterQuad, pack_uv};
+    use crate::renderer::backend::raster_atlas::quad::{
+        DESATURATE, PARAMS_OFFSET, RasterQuad, U_MAX, pack_uv,
+    };
     use std::mem::{align_of, offset_of, size_of};
 
     /// The GPU wire format. Pinned here rather than in either pass, because
@@ -168,15 +226,28 @@ mod tests {
         assert!(PARAMS_OFFSET as usize + size_of::<[u32; 2]>() <= IMMEDIATES_BYTES as usize);
     }
 
+    /// The three fields share one `u32`, so each has to survive the other
+    /// two. `u` is taken at the top of its range to catch a mask that is one
+    /// bit too wide.
     #[test]
     fn pack_uv_round_trip() {
-        let p = pack_uv(12345, 54321, ContentType::Color);
-        assert_eq!(p & 0x7FFF, 12345);
+        let p = pack_uv(U_MAX as u16, 54321, ContentType::Color);
+        assert_eq!(p & U_MAX, U_MAX);
         assert_eq!((p >> 15) & 1, 1);
         assert_eq!(p >> 16, 54321);
+        assert_eq!(p & DESATURATE, 0, "not desaturated unless asked");
 
         let p = pack_uv(12345, 54321, ContentType::Mask);
         assert_eq!((p >> 15) & 1, 0);
+        assert_eq!(p & U_MAX, 12345);
+
+        // The flag rides above `u` and below the content type, so setting it
+        // must disturb neither.
+        let p = pack_uv(U_MAX as u16, 54321, ContentType::Color) | DESATURATE;
+        assert_eq!(p & U_MAX, U_MAX);
+        assert_eq!((p >> 15) & 1, 1);
+        assert_eq!(p >> 16, 54321);
+        assert_ne!(p & DESATURATE, 0);
     }
 
     /// `dim` is a packed pair, so a swapped shift shows up as a swapped box.

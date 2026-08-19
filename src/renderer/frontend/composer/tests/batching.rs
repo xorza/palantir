@@ -751,3 +751,72 @@ fn quad_fast_path_flag_cases() {
         assert_eq!(got, want, "{name}: fill_kind");
     }
 }
+
+/// What a labelled toolbar actually costs in batches — the measurement slice 3
+/// of `docs/svg-icons.md` defers the "fold the icon atlas into the glyph
+/// atlas" question to.
+///
+/// Eight buttons, each an icon beside its label, laid out left to right with
+/// no overlap. Icons are a higher kind than text, so every icon closes the
+/// open text batch: the icons coalesce into one batch (they accumulate in the
+/// group until it flushes) while the text splits into one batch per run.
+///
+/// The number this pins is that the split is **text's**, not the icon
+/// atlas's — merging the two atlases would remove the tier boundary and so the
+/// splits, but the same 8-way split already happens today for eight images or
+/// eight meshes interleaved with labels. That is what makes this a general
+/// tier-ordering cost rather than something icons introduced.
+#[test]
+fn labelled_toolbar_costs_one_icon_batch_and_a_text_batch_per_label() {
+    use crate::renderer::frontend::composer::tests::support::{icon, icon_ref};
+
+    const BUTTONS: usize = 8;
+    let out = run(
+        |buf, _| {
+            for i in 0..BUTTONS {
+                let x = i as f32 * 100.0;
+                icon(buf, rect(x, 0.0, 16.0, 16.0), icon_ref(i as u16));
+                text(buf, rect(x + 20.0, 0.0, 60.0, 16.0));
+            }
+        },
+        &params(1.0, UVec2::new(1024, 64)),
+    );
+
+    assert_eq!(out.icons.len(), BUTTONS);
+    assert_eq!(
+        out.icon_batches.len(),
+        1,
+        "every icon shares one atlas, so they are one draw however many buttons",
+    );
+    assert_eq!(
+        out.text_batches.len(),
+        BUTTONS,
+        "each icon closes the open text batch, so labels do not coalesce",
+    );
+    assert_eq!(out.groups.len(), 1, "disjoint draws need no group flush");
+}
+
+/// The control for the test above: the same eight labels with an *image*
+/// between them instead of an icon split text identically. The cost belongs to
+/// the tier boundary, not to icons having their own atlas.
+#[test]
+fn images_between_labels_split_text_the_same_way() {
+    use crate::primitives::texture_id::TextureId;
+    use crate::renderer::frontend::composer::tests::support::gpu_view_payload;
+
+    const BUTTONS: usize = 8;
+    let out = run(
+        |buf, _| {
+            for i in 0..BUTTONS {
+                let x = i as f32 * 100.0;
+                buf.draw_image(
+                    gpu_view_payload(rect(x, 0.0, 16.0, 16.0), TextureId(1)),
+                    None,
+                );
+                text(buf, rect(x + 20.0, 0.0, 60.0, 16.0));
+            }
+        },
+        &params(1.0, UVec2::new(1024, 64)),
+    );
+    assert_eq!(out.text_batches.len(), BUTTONS);
+}
