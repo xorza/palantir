@@ -1,6 +1,6 @@
 //! Cross-frame widget state. Per-T dense `Vec<T>` stores indexed by
-//! `WidgetId`; one `Box<dyn AnyTyped>` per *distinct T* (typically a
-//! handful), not per widget. Steady-state allocation is zero after
+//! `WidgetId`, held in a [`TypedStores`] — one boxed store per
+//! *distinct T* (typically a handful), not per widget. Steady-state allocation is zero after
 //! warmup — `Vec<T>` capacity is reused across frames, no per-row
 //! `Box`, no `Any` downcast on the hot path.
 //!
@@ -14,22 +14,14 @@
 //! and patches the swapped neighbour's index in O(1) using the
 //! parallel `owners` vec.
 
+use crate::common::typed_stores::{TypedStore, TypedStores};
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::widget_id::WidgetIdMap;
-use rustc_hash::{FxHashMap, FxHashSet};
-use std::any::{Any, TypeId};
+use rustc_hash::FxHashSet;
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub(crate) struct StateMap {
-    by_type: FxHashMap<TypeId, Box<dyn AnyTyped>>,
-}
-
-impl std::fmt::Debug for StateMap {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("StateMap")
-            .field("stores", &self.by_type.len())
-            .finish_non_exhaustive()
-    }
+    stores: TypedStores,
 }
 
 impl StateMap {
@@ -42,38 +34,26 @@ impl StateMap {
     }
 
     pub(super) fn try_get<T: 'static>(&self, id: WidgetId) -> Option<&T> {
-        let store = (self.by_type.get(&TypeId::of::<T>())?.as_ref() as &dyn Any)
-            .downcast_ref::<Store<T>>()
-            .expect("TypeId is stable per T, downcast cannot fail");
+        let store = self.stores.get::<Store<T>>()?;
         let idx = *store.map.get(&id)? as usize;
         Some(&store.data[idx])
     }
 
     pub(super) fn try_get_mut<T: 'static>(&mut self, id: WidgetId) -> Option<&mut T> {
-        let store = (self.by_type.get_mut(&TypeId::of::<T>())?.as_mut() as &mut dyn Any)
-            .downcast_mut::<Store<T>>()
-            .expect("TypeId is stable per T, downcast cannot fail");
+        let store = self.stores.get_mut::<Store<T>>()?;
         let idx = *store.map.get(&id)? as usize;
         Some(&mut store.data[idx])
     }
 
+    /// Caller guards on `removed` being non-empty — see
+    /// `FrameCycle::finalize_frame`, which shares that one guard with the
+    /// other removal-driven sweep.
     pub(super) fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>) {
-        if removed.is_empty() {
-            return;
-        }
-        for typed in self.by_type.values_mut() {
-            typed.sweep_removed(removed);
-        }
+        self.stores.sweep_removed(removed);
     }
 
     fn typed_mut<T: 'static>(&mut self) -> &mut Store<T> {
-        (self
-            .by_type
-            .entry(TypeId::of::<T>())
-            .or_insert_with(|| Box::<Store<T>>::default())
-            .as_mut() as &mut dyn Any)
-            .downcast_mut::<Store<T>>()
-            .expect("TypeId is stable per T, downcast cannot fail")
+        self.stores.get_or_default::<Store<T>>()
     }
 }
 
@@ -127,15 +107,16 @@ impl<T> Store<T> {
     }
 }
 
-/// `: Any` is what lets the downcast sites upcast a `&(mut) dyn
-/// AnyTyped` straight to `&(mut) dyn Any` — no `as_any` boilerplate.
-trait AnyTyped: Any {
-    fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>);
-}
-
-impl<T: 'static> AnyTyped for Store<T> {
+impl<T: 'static> TypedStore for Store<T> {
     fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>) {
         Store::<T>::sweep_removed(self, removed);
+    }
+
+    /// Only read by the drop-drained sweep, which state does not use —
+    /// an empty per-`T` store costs one hashmap slot and is reused the
+    /// next time a widget of that type appears.
+    fn is_empty(&self) -> bool {
+        self.data.is_empty()
     }
 }
 
@@ -152,7 +133,7 @@ mod tests {
         let mut map = StateMap::default();
         assert!(map.try_get_mut::<u32>(wid(1)).is_none());
         assert!(
-            map.by_type.is_empty(),
+            map.stores.is_empty(),
             "missing mutable probe must not create a typed store",
         );
         *map.get_or_insert_with(wid(1), || 0u32) = 42;

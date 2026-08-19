@@ -91,7 +91,7 @@ impl Corners {
     /// All four lanes unpacked at once. See `Spacing::as_array` for the
     /// SIMD rationale — same `half` slice path.
     #[inline]
-    pub fn as_array(&self) -> [f32; 4] {
+    pub fn as_array(self) -> [f32; 4] {
         self.0.lanes()
     }
 
@@ -106,7 +106,7 @@ impl Corners {
     }
 
     #[inline]
-    pub fn scaled_by(&self, scale: f32) -> Self {
+    pub fn scaled_by(self, scale: f32) -> Self {
         Self(self.0.scaled(scale))
     }
 
@@ -114,6 +114,9 @@ impl Corners {
     /// through `F16x4::any_lane_above` (crate-private, in
     /// `primitives::half_simd`) so the lane compare lives in one place —
     /// see that method for the SWAR rationale.
+    /// `&self` where its neighbours take `self`: serde's
+    /// `skip_serializing_if` requires `fn(&T) -> bool`, and
+    /// [`Background::corners`](crate::Background) uses this as one.
     #[inline]
     pub const fn approx_zero(&self) -> bool {
         // "Every lane within EPS" is the negation of "some lane above
@@ -129,7 +132,7 @@ impl Corners {
     /// on it can be too; [`NanCheck`] delegates here rather than
     /// keeping a second copy.
     #[inline]
-    pub(crate) const fn has_nan(&self) -> bool {
+    pub(crate) const fn has_nan(self) -> bool {
         self.0.has_nan()
     }
 }
@@ -191,7 +194,7 @@ impl<'de> ::serde::Deserialize<'de> for Corners {
 impl NanCheck for Corners {
     #[inline]
     fn has_nan(&self) -> bool {
-        Corners::has_nan(self)
+        Corners::has_nan(*self)
     }
 }
 

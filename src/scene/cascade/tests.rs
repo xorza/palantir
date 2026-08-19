@@ -526,7 +526,11 @@ fn hits_track_only_sensing_or_focusable_rows_in_paint_order() {
     let pos = Vec2::splat(50.0);
     assert_eq!(h.ui.cascade.hit_test(pos, Sense::hovers), Some(hover),);
     assert_eq!(h.ui.cascade.hit_test(pos, Sense::clicks), None);
-    assert_eq!(h.ui.cascade.hit_test_focusable(pos), Some(focus));
+    // One walk must agree with the two separate filters above it: the
+    // press path resolves both from a single scan.
+    let press = h.ui.cascade.hit_test_press(pos);
+    assert_eq!(press.focus, Some(focus));
+    assert_eq!(press.click, None);
     let targets =
         h.ui.cascade
             .hit_test_targets(pos, Sense::hovers, Sense::scrolls, Sense::pinches);

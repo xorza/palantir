@@ -710,7 +710,10 @@ impl InputState {
                 // widget under the pointer). Hover-only widgets are
                 // transparent to presses even though they show as hovered.
                 let pointer_pos = self.pointer_pos;
-                let hit = pointer_pos.and_then(|p| cascade.hit_test(p, Sense::clicks));
+                // One walk for both answers: the press target and the focus
+                // target are independent filters over the same hit table.
+                let targets = pointer_pos.map(|p| cascade.hit_test_press(p));
+                let hit = targets.and_then(|t| t.click);
                 let buttons_subbed =
                     self.push_pointer_event(PointerWake::BUTTONS, pointer_pos, |pos| {
                         PointerEvent::Down { pos, button: btn }
@@ -732,8 +735,7 @@ impl InputState {
                 // from a TextEdit either, hence the separate test).
                 let prev_focus = self.focused;
                 if btn == PointerButton::Left {
-                    let focus_hit = pointer_pos.and_then(|p| cascade.hit_test_focusable(p));
-                    match (focus_hit, self.focus_policy) {
+                    match (targets.and_then(|t| t.focus), self.focus_policy) {
                         (Some(id), _) => self.focused = Some(id),
                         (None, FocusPolicy::ClearOnMiss) => self.focused = None,
                         (None, FocusPolicy::PreserveOnMiss) => {}

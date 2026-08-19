@@ -240,14 +240,6 @@ A shared core was factored out and the surface around it was not, so each tenant
 re-implements the same wrapper. Distinct from plain duplication: the right
 seam exists and stops one layer short.
 
-- [ ] `src/ui/state.rs:23` and `src/animation/mod.rs:547` — `StateMap` and
-      `AnimMap` are the same type-erased container written twice. Both are
-      `FxHashMap<TypeId, Box<dyn AnyTyped>>`; both declare a private trait
-      *literally named* `AnyTyped` with the same `sweep_removed` method; both
-      carry the same `: Any` justification comment nearly verbatim; both spell
-      the same downcast incantation (three copies in one file, two in the
-      other). The only real difference is an `is_empty` on the animation side.
-
 - [ ] `src/primitives/corners.rs:22`, `src/primitives/spacing.rs:16`,
       `src/primitives/color/mod.rs:404`,
       `src/primitives/brush/gradient/mod.rs:128` — four hand-copied `F16x4`
@@ -275,12 +267,6 @@ seam exists and stops one layer short.
       spellings for seven container widgets, whose seven `background()` builders
       are identical one-line bodies.
 
-- [ ] `src/renderer/backend/schedule/mod.rs:444` — `PerGroupBatch` exists to let
-      three helpers be written once, has two implementors with identical bodies,
-      and is then bypassed by the fourth caller: `drain_text_batches` (`:503`)
-      open-codes its own loop instead of reusing `pending_at`/
-      `drain_group_batches`.
-
 - [ ] `src/layout/stack/mod.rs:51` vs `src/layout/grid/resolving.rs:160` —
       `freeze_distribute` and `resolve_axis`'s Phase 3 both distribute a budget
       by weight under `[floor, cap]` clamps with re-division; they differ only
@@ -288,17 +274,6 @@ seam exists and stops one layer short.
       found. The result is that `Sizing::fill(w)` resolves differently under an
       `HStack` than under a `Grid` once two clamps are violated at once, pinned
       by `cross_driver_tests/fill_solvers.rs` as intended divergence.
-
-- [ ] `src/host/winit/input/mod.rs:183` — `emit_text_chunks` is a hand-rolled
-      copy of `TextChunk::split` (`src/input/keyboard.rs:155`), down to the
-      identical `expect` message. `TextChunk::split` is live and is the copy
-      with the test.
-
-- [ ] `src/input/mod.rs:713` and `:735` — the `PointerPressed` arm calls
-      `hit_test` then `hit_test_focusable`, walking the whole hit table twice
-      against one position. `hit_test_targets`
-      (`src/scene/cascade/mod.rs:292`) is the "one walk, several filters"
-      primitive and its doc says so; the press path does not use it.
 
 - [ ] `src/widgets/button.rs:87`, `src/widgets/drag_value/mod.rs:371`,
       `src/widgets/text.rs:121` — the same six-call text-emission chain written
@@ -325,23 +300,6 @@ seam exists and stops one layer short.
       conventions for one job, with no rule distinguishing them —
       and `MeshShape::lower` reaches into `store.payloads.borrow_mut()` from the
       authoring side, the coupling `lower::` appears to exist to contain.
-
-- [ ] `src/ui/frame_cycle.rs:369` — one `removed` set is fanned out through four
-      hand-written sweeps with three different emptiness guards: `StateMap`
-      guards on `removed.is_empty()`, `AnimMap` on `by_type.is_empty()`,
-      `TextSystem` internally after ticking, and `gpu_views` inline at the call
-      site under a comment claiming it matches "the sweep_removed family" —
-      which it does not, because the family does not agree with itself.
-
-- [ ] `src/renderer/frontend/composer/session.rs:93`,
-      `src/renderer/frontend/composer/geometry.rs:161`, `session.rs:402`,
-      `geometry.rs:211` — four logical-rect → physical-`URect` pipelines varying
-      along two axes (snap on/off, inflation rule) written as four unrelated
-      bodies. The mesh one open-codes a third variant under a comment claiming
-      it routes "through the shared scaler".
-
----
-
 ## One fact with several owners
 
 State that is copied rather than referenced, so the copies can disagree and

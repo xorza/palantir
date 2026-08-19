@@ -369,14 +369,20 @@ impl<'a> FrameCycle<'a> {
     fn finalize_frame(&mut self) {
         profiling::scope!("Ui::finalize_frame");
         let removed = self.ui.forest.ids.rollover();
+        // Two families, and the split is the point. These two run every
+        // frame whatever `removed` holds, because both also expire rows
+        // the frame didn't touch: text ticks the clock its caches age on,
+        // and the animation sweep drops slots no call site reached for.
+        // Each carries its own early-out for the nothing-to-do case.
         self.ui.layout_engine.text.end_full_record(removed);
-        self.ui.state.sweep_removed(removed);
         self.ui.anim.sweep_removed(removed);
-        // Evict views whose widget vanished this frame; the backend frees the
-        // orphaned texture the next frame it's no longer in `frame_targets`.
-        // Guarded like the sweep_removed family — `retain` walks the whole
-        // map even when nothing was removed.
+        // These two react to removals only, and both walk their whole map
+        // to do it — so the one guard sits here rather than being spelled
+        // differently inside each.
         if !removed.is_empty() {
+            self.ui.state.sweep_removed(removed);
+            // The backend frees an orphaned texture the next frame it is
+            // no longer in `frame_targets`.
             self.ui.gpu_views.retain(|wid, _| !removed.contains(wid));
         }
 

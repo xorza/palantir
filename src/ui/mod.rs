@@ -846,7 +846,7 @@ impl Ui {
         // Skip the `slot.into()`, filter closure, and TypeId-keyed
         // HashMap probe — they're per-widget per-frame on a widget
         // that never animates (the dominant case in static UIs).
-        if self.anim.by_type.is_empty() && spec.is_none_or(|s| s.is_instant()) {
+        if self.anim.is_empty() && spec.is_none_or(|s| s.is_instant()) {
             return target;
         }
         let slot = slot.into();
