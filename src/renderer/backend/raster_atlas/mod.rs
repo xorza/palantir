@@ -730,6 +730,17 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
             return false;
         };
         self.counters.evictions.bump();
+        self.reclaim(idx);
+        true
+    }
+
+    /// Reclaim allocated slab index `idx`: drop its cache entry, hand its
+    /// rectangle back to its side's packer, and advance the generation so
+    /// an encoded run still holding the index reads it as stale.
+    ///
+    /// Takes the side from the slot rather than from the caller, because
+    /// [`Self::forget`] reclaims across both at once.
+    fn reclaim(&mut self, idx: u32) {
         let key = self.slot_keys[idx as usize];
         let removed = self.cache.remove(&key);
         debug_assert_eq!(
@@ -738,14 +749,48 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
             "slot_keys disagreed with cache about slab index {idx}",
         );
         let slot = &mut self.slots[idx as usize];
+        let content = slot.content;
         let id = slot.alloc.take().unwrap();
         slot.generation = slot
             .generation
             .checked_add(1)
             .expect("glyph slot generation overflowed");
-        self.sides[target as usize].packer.deallocate(id);
+        self.sides[content as usize].packer.deallocate(id);
         self.free.push(idx);
-        true
+    }
+
+    /// Drop every entry whose key `keep` rejects.
+    ///
+    /// O(slab), and for the one thing the clock cannot do on its own:
+    /// retire a whole *family* of keys at once because what they name is
+    /// gone. The icon backend calls it when a set is unloaded — those
+    /// rasters can never be asked for again, and left in place they would
+    /// hold their rectangles until ordinary pressure happened to sweep
+    /// them, which on an atlas sized for the working set may be never.
+    ///
+    /// Everything else lets the clock reclaim on its own schedule; an
+    /// entry that is merely cold is not the same as one that is dead.
+    pub(crate) fn forget(&mut self, keep: impl Fn(&K) -> bool) {
+        for idx in 0..self.slots.len() as u32 {
+            let key = self.slot_keys[idx as usize];
+            // A slab index already on the free list still holds its old
+            // key, so the cache — not the key column — is what says
+            // whether this entry is live.
+            if self.cache.get(&key) != Some(&idx) || keep(&key) {
+                continue;
+            }
+            if self.slots[idx as usize].alloc.is_some() {
+                self.reclaim(idx);
+            } else {
+                // A non-drawing entry owns no rectangle, so only its
+                // expiry ticket would ever have retired it. Drop it here
+                // and let that ticket fire on nothing — the same
+                // already-reclaimed case `retire_unallocated` handles,
+                // and the reason neither advances the generation.
+                self.cache.remove(&key);
+                self.free.push(idx);
+            }
+        }
     }
 
     /// Double the atlas of `content`. Returns `false` at GPU-max. On

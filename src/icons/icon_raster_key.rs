@@ -26,7 +26,7 @@ const COARSE_STEP_PX: u32 = 4;
 const MAX_RASTER_PX: u32 = 512;
 
 /// What one cached icon raster is keyed by: which icon, at what physical pixel
-/// size. Eight bytes, against the 24 of cosmic's glyph `CacheKey` — an icon
+/// size. Ten bytes, against the 24 of cosmic's glyph `CacheKey` — an icon
 /// needs no subpixel bins, because unlike a glyph it snaps to whole pixels.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct IconRasterKey {
@@ -83,18 +83,39 @@ mod tests {
     use crate::icons::icon_atlas::IconId;
     use crate::icons::icon_raster_key::{IconRasterKey, MAX_RASTER_PX};
     use crate::icons::icon_registry::IconSetId;
-    use crate::icons::icon_set::IconRef;
+    use crate::icons::icon_set::{IconHandle, IconRef};
     use glam::{U16Vec2, Vec2};
 
     fn icon() -> IconRef {
         IconRef {
-            set: IconSetId(0),
+            set: IconSetId::new(0, 0),
             icon: IconId(0),
         }
     }
 
     fn size(w: f32, h: f32) -> U16Vec2 {
         IconRasterKey::for_box(icon(), Vec2::new(w, h)).size
+    }
+
+    /// The sizes three doc comments quote as design justification, pinned
+    /// so they cannot go stale silently — which they did when
+    /// [`IconSetId`] grew the generation that makes a slot reusable, and
+    /// every one of the four was wrong until someone measured.
+    ///
+    /// Each is a sum of the one below it: an id is a slot plus a
+    /// generation, a ref is an id plus an icon index, and a key is a ref
+    /// plus a `u16` box. Nothing here is padded, which is the property
+    /// worth keeping — a key is hashed per icon draw.
+    #[test]
+    fn the_key_chain_is_as_wide_as_its_docs_claim() {
+        assert_eq!(size_of::<IconSetId>(), 4, "two u16s");
+        assert_eq!(size_of::<IconRef>(), 6, "an id plus an icon index");
+        assert_eq!(size_of::<IconRasterKey>(), 10, "a ref plus a U16Vec2");
+        assert_eq!(
+            size_of::<IconHandle>(),
+            16,
+            "a ref plus a Vec2, aligned to 4"
+        );
     }
 
     /// Hand-computed rungs. The interesting ones are just above the exact

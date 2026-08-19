@@ -428,6 +428,62 @@ mod gpu {
         );
     }
 
+    /// [`RasterAtlas::forget`] retires a whole family of keys at once —
+    /// what the clock cannot do, because a dead entry looks exactly like a
+    /// cold one to it. Everything the predicate keeps must come through
+    /// untouched, rectangles included.
+    #[test]
+    fn forget_retires_the_keys_it_rejects_and_nothing_else() {
+        let gpu = headless_test_gpu();
+        let mut atlas = small_atlas(&gpu.device);
+        let pixels = [0u8; 16 * 16];
+        let metadata = PackedMetadata::new(16, 16, 0, 0).unwrap();
+        for i in 0..8 {
+            atlas
+                .insert(&gpu.device, key(i), ContentType::Mask, metadata, &pixels)
+                .expect("eight 16² tiles fit a 128² side");
+        }
+        // A non-drawing entry too: it owns no rectangle, so only its
+        // expiry ticket would ever have retired it.
+        atlas.insert_unallocated(key(100), ContentType::Mask, PackedMetadata::EMPTY);
+        assert_eq!(atlas.cache.len(), 9);
+
+        // Keep the even keys and the empty; drop the odd ones.
+        atlas.forget(|k| k % 2 == 0);
+        assert_eq!(atlas.cache.len(), 5, "four odd keys retired");
+        for i in 0..8u16 {
+            assert_eq!(
+                atlas.touch(&key(i)).is_some(),
+                i % 2 == 0,
+                "key {i} resident-ness",
+            );
+        }
+        assert!(atlas.touch(&key(100)).is_some(), "the empty was kept");
+
+        // A rejected empty goes too, and its slab index is reusable.
+        atlas.forget(|k| *k != 100);
+        assert!(atlas.touch(&key(100)).is_none());
+        assert_eq!(atlas.cache.len(), 4);
+
+        // The reclaimed rectangles are genuinely back: the side had room
+        // for eight and holds four, so four more must land without a grow
+        // or an eviction.
+        let before = atlas.counters.evictions.count();
+        for i in 200..204u16 {
+            assert!(
+                atlas
+                    .insert(&gpu.device, key(i), ContentType::Mask, metadata, &pixels)
+                    .is_some(),
+                "forget must have handed the rectangles back",
+            );
+        }
+        assert_eq!(
+            atlas.counters.evictions.count(),
+            before,
+            "the refills came out of reclaimed space, not out of victims",
+        );
+    }
+
     /// An entry that fits the ceiling but not the *current* side has to
     /// grow, whatever the byte budget says: eviction frees rectangles
     /// and never widens the texture, so every victim it takes is

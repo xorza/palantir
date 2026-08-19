@@ -543,20 +543,27 @@ impl Ui {
         self.forest.add_shape(shape);
     }
 
-    /// Load an icon set and get back an [`IconSet`] to draw from.
+    /// Load an icon set and get back an owning [`IconSet`] to draw from.
     ///
-    /// Cheap and idempotent: registering an `Rc` the host already holds hands
-    /// back the same set rather than a second entry, so an immediate-mode
-    /// caller may load on every frame if that reads better than threading the
-    /// handle through. No parsing and no GPU work happen here.
+    /// **Hold the set.** It owns everything the host caches for those icons —
+    /// the data, the SVG parses, the atlas rasters — and dropping the last
+    /// clone unloads all three at the next submit, exactly as
+    /// [`Self::register_image`] does for a texture. Park it in your state and
+    /// clone it where it needs to live.
+    ///
+    /// Loading is cheap and idempotent *while a set is held*: registering an
+    /// `Rc` a live `IconSet` already covers hands back a clone of that set
+    /// rather than a second entry, so an immediate-mode caller may re-load on
+    /// every frame if that reads better than threading the handle through —
+    /// as long as what comes back outlives the frame. No parsing and no GPU
+    /// work happen here.
     ///
     /// Each icon's SVG is parsed the first time that icon is rasterized, and
     /// each raster happens at the exact physical pixel size the icon is drawn
     /// at — so a set the session never draws from costs nothing beyond its
     /// bytes.
     pub fn load_icons(&self, atlas: Rc<IconAtlas>) -> IconSet {
-        let id = self.resources.icons.register(Rc::clone(&atlas));
-        IconSet::new(id, atlas)
+        self.resources.icons.register(atlas)
     }
 
     /// Upload an image and get back an owning [`ImageHandle`]. **Hold the

@@ -1,5 +1,6 @@
 use crate::icons::icon_atlas::IconAtlas;
 use crate::icons::icon_raster_key::IconRasterKey;
+use crate::icons::icon_registry::IconSetId;
 use crate::icons::icon_set::IconRef;
 use resvg::tiny_skia;
 use resvg::usvg;
@@ -26,6 +27,10 @@ pub(crate) enum IconRasterKind {
 /// scratch buffer that every raster renders through — so a steady state that
 /// re-rasterizes (a zoom gesture) allocates nothing after the first frame at
 /// its largest size.
+///
+/// The parses are the set's, not the rasterizer's: they are keyed by
+/// [`IconRef`] and dropped by [`Self::forget_set`] when the set unloads. The
+/// scratch buffer belongs to nobody and stays.
 #[derive(Default)]
 pub(crate) struct IconRasterizer {
     /// `None` marks an icon whose SVG failed to parse, so a broken icon is
@@ -116,6 +121,17 @@ impl IconRasterizer {
         }
     }
 
+    /// Drop the parses held for `set`, whose last
+    /// [`IconSet`](crate::IconSet) has gone.
+    ///
+    /// This is the expensive half of unloading: a `usvg::Tree` is a parsed
+    /// document, and one is retained per icon the session ever drew. The
+    /// scratch buffer stays — it belongs to no set and the next raster
+    /// wants it.
+    pub(crate) fn forget_set(&mut self, set: IconSetId) {
+        self.trees.retain(|icon, _| icon.set != set);
+    }
+
     /// Icons whose parse has already been paid for. Lets a test assert that
     /// re-rastering one icon at many sizes parses it once.
     #[cfg(test)]
@@ -158,7 +174,7 @@ mod tests {
     fn key(icon: IconId, w: u16, h: u16) -> IconRasterKey {
         IconRasterKey {
             icon: IconRef {
-                set: IconSetId(0),
+                set: IconSetId::new(0, 0),
                 icon,
             },
             size: U16Vec2::new(w, h),
@@ -236,6 +252,37 @@ mod tests {
             1,
             "the failure is cached, so a broken icon costs one parse, not one per frame",
         );
+    }
+
+    /// Unloading a set drops its parses and nothing else's. This is the
+    /// expensive half of the unload: one parsed document per icon the
+    /// session drew, held for as long as the set was loaded.
+    #[test]
+    fn forgetting_a_set_drops_its_parses_and_leaves_its_neighbours() {
+        let (mut r, atlas) = (IconRasterizer::default(), fixtures());
+        let mut out = Vec::new();
+        for set in [0u16, 1] {
+            for icon in [HALF_ID, SOLID_ID] {
+                let mut k = key(icon, 8, 8);
+                k.icon.set = IconSetId::new(set, 0);
+                r.rasterize(&atlas, k, &mut out);
+            }
+        }
+        assert_eq!(r.parsed_count(), 4, "two icons in each of two sets");
+
+        r.forget_set(IconSetId::new(0, 0));
+        assert_eq!(r.parsed_count(), 2, "only set 0's parses go");
+
+        // The generation is part of the identity: the slot's next occupant
+        // is not the set that was forgotten.
+        r.forget_set(IconSetId::new(1, 1));
+        assert_eq!(
+            r.parsed_count(),
+            2,
+            "a different generation is a different set"
+        );
+        r.forget_set(IconSetId::new(1, 0));
+        assert_eq!(r.parsed_count(), 0);
     }
 
     /// Non-square boxes must render the artwork stretched to fill them, not
