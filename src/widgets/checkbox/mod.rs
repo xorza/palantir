@@ -7,8 +7,8 @@ use crate::shape::polyline::PolylineColors;
 use crate::shape::style::{LineCap, LineJoin};
 use crate::ui::Ui;
 use crate::widgets::response::Response;
-use crate::widgets::theme::WidgetTheme;
 use crate::widgets::theme::toggle::ToggleTheme;
+use crate::widgets::theme::widget_look::look_plan::LookPlan;
 use crate::widgets::toggle::{self, ToggleChrome};
 
 /// Two-response boolean toggle. Takes a `&mut bool` whose owner controls
@@ -73,9 +73,13 @@ impl<'a> Checkbox<'a> {
         let indicator_stroke = slot.indicator_stroke;
         let check = slot.check_polyline();
         let row_gap = slot.row_gap;
-        let look = slot
-            .plan(&theme.text, &response, checked)
-            .apply(ui, id, &mut widget.node);
+        let look = LookPlan {
+            target: slot.pick(&response, checked).to_animated(&theme.text),
+            padding: slot.padding,
+            margin: slot.margin,
+            anim: slot.anim,
+        }
+        .apply(ui, id, &mut widget.node);
 
         let chrome = ToggleChrome {
             look,

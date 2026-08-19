@@ -1048,7 +1048,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
         shadow: Shadow::NONE,
     };
     let look = WidgetLook {
-        background: Some(bg.clone()),
+        background: bg.clone(),
         text: None, // → falls back to TextStyle default
     };
     let fallback = TextStyle::default();
@@ -1086,10 +1086,10 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     // change, so the snap-if-close fast path leaves TextStyle row
     // unallocated.
     let look2 = WidgetLook {
-        background: Some(Background {
+        background: Background {
             fill: Color::hex(0xff0000).into(),
             ..bg.clone()
-        }),
+        },
         text: None,
     };
     let _ = h.at(Duration::from_millis(32)).frame(|ui| {
@@ -1120,7 +1120,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
         ..fallback.clone()
     };
     let look3 = WidgetLook {
-        background: Some(bg.clone()),
+        background: bg.clone(),
         text: Some(own_text.clone()),
     };
     let captured: Cell<Option<AnimatedLook>> = Cell::new(None);

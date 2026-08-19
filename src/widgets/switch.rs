@@ -7,8 +7,8 @@ use crate::primitives::interned_str::TextInput;
 use crate::scene::node::{Configure, Node};
 use crate::ui::Ui;
 use crate::widgets::response::Response;
-use crate::widgets::theme::WidgetTheme;
 use crate::widgets::theme::toggle::ToggleTheme;
+use crate::widgets::theme::widget_look::look_plan::LookPlan;
 use crate::widgets::toggle::{self, ToggleChrome};
 use glam::Vec2;
 
@@ -72,9 +72,13 @@ impl<'a> Switch<'a> {
         let knob_color = slot.indicator;
         let anim = slot.anim;
         let row_gap = slot.row_gap;
-        let look = slot
-            .plan(&theme.text, &response, on)
-            .apply(ui, id, &mut widget.node);
+        let look = LookPlan {
+            target: slot.pick(&response, on).to_animated(&theme.text),
+            padding: slot.padding,
+            margin: slot.margin,
+            anim: slot.anim,
+        }
+        .apply(ui, id, &mut widget.node);
 
         let knob_id = id.with("knob");
         let chrome = ToggleChrome {

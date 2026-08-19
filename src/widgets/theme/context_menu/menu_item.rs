@@ -68,9 +68,7 @@ impl MenuItemTheme {
     pub fn with_radius(mut self, radius: f32) -> Self {
         let corners = Corners::all(radius);
         for look in self.looks.each_mut() {
-            if let Some(bg) = &mut look.background {
-                bg.corners = corners;
-            }
+            look.background.corners = corners;
         }
         self
     }
@@ -89,7 +87,7 @@ impl MenuItemTheme {
         // corners, and anything rounder than the panel itself reads as a
         // pill floating in a box.
         let hovered = WidgetLook {
-            background: Some(Background::rounded(p.elem_hover, Corners::all(3.0))),
+            background: Background::rounded(p.elem_hover, Corners::all(3.0)),
             text: None,
         };
         Self {
@@ -98,7 +96,7 @@ impl MenuItemTheme {
                 active: hovered.clone(),
                 hovered,
                 disabled: WidgetLook {
-                    background: None,
+                    background: Background::NONE,
                     text: Some(TextStyle::default().with_color(p.text_disabled)),
                 },
             },
@@ -113,7 +111,5 @@ impl MenuItemTheme {
         }
     }
 }
-
-impl_widget_theme!(MenuItemTheme);
 
 palette_default!(MenuItemTheme);

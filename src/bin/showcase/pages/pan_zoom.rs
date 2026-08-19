@@ -369,19 +369,19 @@ fn cell_theme(r: u32, c: u32) -> ButtonTheme {
     ButtonTheme {
         looks: StatefulLook {
             normal: WidgetLook {
-                background: Some(bg(base)),
+                background: bg(base),
                 text: Some(label.clone()),
             },
             hovered: WidgetLook {
-                background: Some(bg(brighten(base, 0.15))),
+                background: bg(brighten(base, 0.15)),
                 text: Some(label.clone()),
             },
             active: WidgetLook {
-                background: Some(pressed_bg),
+                background: pressed_bg,
                 text: Some(label.clone()),
             },
             disabled: WidgetLook {
-                background: Some(bg(base)),
+                background: bg(base),
                 text: Some(label),
             },
         },

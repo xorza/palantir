@@ -6,8 +6,8 @@ use crate::scene::node::{Configure, ConfigureNode, Node};
 use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::widgets::response::Response;
-use crate::widgets::theme::WidgetTheme;
 use crate::widgets::theme::toggle::ToggleTheme;
+use crate::widgets::theme::widget_look::look_plan::LookPlan;
 use crate::widgets::toggle::{self, ToggleChrome};
 
 /// One option in a radio group. `current` is the group's shared
@@ -83,9 +83,13 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
             selected = true;
         }
 
-        let look = slot
-            .plan(&theme.text, &response, selected)
-            .apply(ui, id, &mut widget.node);
+        let look = LookPlan {
+            target: slot.pick(&response, selected).to_animated(&theme.text),
+            padding: slot.padding,
+            margin: slot.margin,
+            anim: slot.anim,
+        }
+        .apply(ui, id, &mut widget.node);
 
         let chrome = ToggleChrome {
             look,
