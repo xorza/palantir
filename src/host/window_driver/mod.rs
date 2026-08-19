@@ -411,9 +411,17 @@ impl WindowDriver {
              host to release it",
             commands.closes[0]
         );
-        // `keep_open` vetoes a close this host never requests; clear it so the
-        // flag can't carry across frames.
+        // Clear exactly what `drain_window_output` clears, so the two
+        // paths leave the recorder in the same state. `keep_open` vetoes
+        // a close this host never requests, and `vsync` is a one-shot
+        // request nothing here can service — left set, it would linger
+        // as a pending change for the life of the host.
+        //
+        // `cursor` is deliberately not touched: it is a level, not an
+        // edge, and the windowed drain retains it too. Both it and
+        // `vsync` are simply inert on a host that renders to a texture.
         self.ui.window_requests.close_vetoed = false;
+        self.ui.window_requests.vsync = None;
     }
 
     /// GPU submit against a caller-supplied texture, through the shared

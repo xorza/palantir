@@ -9,20 +9,18 @@ pub(crate) const LUT_ROW_TEXELS: usize = 256;
 pub(crate) type LutRowTexels = [ColorF16; LUT_ROW_TEXELS];
 
 pub(crate) fn bake_stops(stops: &GradientStops, interp: Interp, out: &mut LutRowTexels) {
-    let mut sorted: [Stop; MAX_STOPS] = Default::default();
+    // No sort here: `GradientStops` holds its stops in ascending offset
+    // order as a type invariant, precisely so the value that keys this
+    // row and the row it bakes cannot disagree.
     let count = stops.len();
-    sorted[..count].copy_from_slice(stops);
-    for index in 1..count {
-        let mut current = index;
-        while current > 0 && sorted[current - 1].offset() > sorted[current].offset() {
-            sorted.swap(current - 1, current);
-            current -= 1;
-        }
-    }
+    debug_assert!(
+        stops.windows(2).all(|w| w[0].offset_u8 <= w[1].offset_u8),
+        "GradientStops must arrive sorted",
+    );
 
     let mut linear_stops = [Color::TRANSPARENT; MAX_STOPS];
     for index in 0..count {
-        linear_stops[index] = sorted[index].color.into();
+        linear_stops[index] = stops[index].color.into();
     }
     let mut oklab_stops = [[0.0; 3]; MAX_STOPS];
     if matches!(interp, Interp::Oklab) {
@@ -35,7 +33,7 @@ pub(crate) fn bake_stops(stops: &GradientStops, interp: Interp, out: &mut LutRow
     for (index, texel) in out.iter_mut().enumerate() {
         let t = index as f32 / (LUT_ROW_TEXELS - 1) as f32;
         *texel = ColorF16::from(lerp_at(
-            &sorted[..count],
+            &stops[..count],
             &linear_stops[..count],
             &oklab_stops[..count],
             t,

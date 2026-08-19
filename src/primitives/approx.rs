@@ -253,6 +253,23 @@ mod tests {
                 .is_noop(),
             ),
             ("Mesh::is_noop", nan_mesh.is_noop()),
+            // The convenience constructors pre-cache their own bbox
+            // instead of routing through `Mesh::vertex`, so they need
+            // covering separately — a bare fold there is how a NaN
+            // vertex used to reach the shader with a finite box.
+            (
+                "Mesh::filled_triangle/is_noop",
+                Mesh::filled_triangle(Vec2::new(N, 0.0), Vec2::ZERO, Vec2::X, Color::WHITE)
+                    .is_noop(),
+            ),
+            (
+                "Mesh::filled_polygon/is_noop",
+                Mesh::filled_polygon(
+                    &[Vec2::new(N, 0.0), Vec2::ZERO, Vec2::X, Vec2::Y],
+                    Color::WHITE,
+                )
+                .is_noop(),
+            ),
             // Chrome has no record-level gate to fall back on — it does
             // not pass through `Shapes::add` — so these four are the
             // only thing standing between a NaN `Background` and the

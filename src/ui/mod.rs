@@ -958,7 +958,7 @@ impl Ui {
     /// cached by the run's own parameters, so a per-frame probe of
     /// unchanged text is a lookup, not a reshape.
     pub fn probe_text<'a>(&'a mut self, run: TextRun<'a>) -> TextProbe<'a> {
-        self.resources.text.layout(run.request())
+        self.resources.text.layout(&run)
     }
 
     /// Every edge the pointer produced this frame, widget by widget.

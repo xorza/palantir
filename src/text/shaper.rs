@@ -2,11 +2,12 @@
 
 use crate::text::cosmic::CosmicMeasure;
 use crate::text::glyphs::TextGlyphs;
-use crate::text::key::TextShapeKey;
+use crate::text::key::{TextShapeKey, WrapBound};
 use crate::text::probe::TextProbe;
 use crate::text::request::TextShapeRequest;
 use crate::text::root::TextRoot;
-use crate::text::wrap::WrapFloor;
+use crate::text::run::TextRun;
+use crate::text::wrap::{LineFit, WrapFloor};
 use std::cell::{RefCell, RefMut};
 use std::rc::Rc;
 
@@ -167,13 +168,53 @@ impl TextShaper {
         }
     }
 
-    /// Shape `request` once and lease its measurement + geometry
-    /// queries. The probe holds the shaper's exclusive borrow until
-    /// dropped, so its buffer-backed queries stay coherent with the
-    /// measurement.
-    pub(crate) fn layout<'a>(&'a self, request: TextShapeRequest<'a>) -> TextProbe<'a> {
+    /// Shape `run` once and lease its measurement + geometry queries.
+    /// The probe holds the shaper's exclusive borrow until dropped, so
+    /// its buffer-backed queries stay coherent with the measurement.
+    ///
+    /// The width is resolved here rather than by [`TextRun`] itself
+    /// because both steps need the run's *unbounded* root, which only a
+    /// shaping call produces — the same two steps, in the same order,
+    /// that `TextSystem::measure` applies before it binds. Doing them
+    /// anywhere else mints a key layout never shaped, and the caret then
+    /// answers against a buffer wrapped at a different width than the
+    /// one that was drawn.
+    pub(crate) fn layout<'a>(&'a self, run: &TextRun<'a>) -> TextProbe<'a> {
+        let unbounded = run.unbounded_request();
         let mut inner = self.inner.borrow_mut();
-        let size = inner.dispatch(request, WrapFloor::Skip).size;
+        let (request, size) = match (run.max_width_px, run.wrap.line_fit()) {
+            // Shape the root only for the policies whose binding decision
+            // reads it, derived from the two accessors that define them
+            // rather than restated as a third mapping: `WrapWithOverflow`
+            // raises a too-narrow width to the root's wrap floor (and is
+            // exactly the policy that asks for the floor scan), while a
+            // truncating fit asks the root whether the text already fits.
+            //
+            // A plain `Wrap` consults neither — `target_width` is the
+            // identity and `resolves_to_unbounded` is false — so it binds
+            // without paying for a root shape, and an invalid width still
+            // fails in `WrapBound::new` before anything is shaped.
+            (Some(width), Some(fit)) => {
+                let committed = if run.wrap.floor_scan() == WrapFloor::Scan || fit != LineFit::Wrap
+                {
+                    let root = inner.dispatch(unbounded, run.wrap.floor_scan());
+                    if fit.resolves_to_unbounded(&root, width) {
+                        // A truncating fit whose text already fits keeps
+                        // the unbounded buffer; binding would mint a
+                        // second one layout never asks for.
+                        return TextProbe::new(root.size, unbounded, inner);
+                    }
+                    run.wrap.target_width(width, &root)
+                } else {
+                    width
+                };
+                let bound =
+                    unbounded.with_bound(WrapBound::new(committed, run.align.halign(), fit));
+                let size = inner.dispatch(bound, WrapFloor::Skip).size;
+                (bound, size)
+            }
+            _ => (unbounded, inner.dispatch(unbounded, WrapFloor::Skip).size),
+        };
         TextProbe::new(size, request, inner)
     }
 
@@ -287,13 +328,15 @@ pub(crate) mod internals {
     #[cfg(test)]
     use crate::layout::ShapedText;
     #[cfg(test)]
+    use crate::layout::types::align::Align;
+    #[cfg(test)]
     use crate::text::cosmic::counters::CacheCounts;
     #[cfg(test)]
     use crate::text::probe::Caret;
     #[cfg(test)]
     use crate::text::request::internals::TestShape;
     #[cfg(test)]
-    use crate::text::wrap::LineFit;
+    use crate::text::wrap::TextWrap;
 
     /// What only an assertion asks: probes that shape a fixture face,
     /// the cache-identity and borrow checks, and the two reach-ins that
@@ -325,13 +368,27 @@ pub(crate) mod internals {
             })
         }
 
+        /// Describes the fixture as a [`TextRun`] rather than lowering it
+        /// straight to a request, because binding the width is now
+        /// `layout`'s job — going around it here would test a path no
+        /// caller takes. `TextWrap::Wrap` is the policy whose `line_fit`
+        /// is the `LineFit::Wrap` this used to pass.
         pub(crate) fn probe_layout<R>(
             &self,
             text: &str,
             shape: TestShape,
             body: impl FnOnce(TextProbe<'_>) -> R,
         ) -> R {
-            body(self.layout(shape.request(text, LineFit::Wrap)))
+            body(self.layout(&TextRun {
+                text,
+                font_size_px: shape.font_size_px,
+                line_height_px: shape.line_height_px,
+                wrap: TextWrap::Wrap,
+                align: Align::h(shape.halign),
+                family: shape.family,
+                weight: shape.weight,
+                max_width_px: shape.max_width_px,
+            }))
         }
 
         pub(crate) fn cursor_xy(&self, text: &str, byte_offset: usize, shape: TestShape) -> Caret {

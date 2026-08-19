@@ -46,15 +46,30 @@ impl Stop {
     }
 }
 
-/// Inline gradient-stop sequence whose length is always two through eight.
+/// Inline gradient-stop sequence whose length is always two through
+/// eight, **held in ascending offset order**.
+///
+/// The ordering is an invariant of the type, not a step the bake does,
+/// because this value *is* the gradient's cache identity: `Eq`/`Hash`
+/// run over the raw array, so two sequences differing only in the order
+/// they were written hash apart while baking a byte-identical LUT row —
+/// two atlas rows, two bakes and two eviction slots for one gradient.
+/// Sorting at construction makes identity and bake agree by
+/// construction. That is also why there is no `DerefMut`: handing out
+/// `&mut [Stop]` would let a caller reorder the offsets afterwards and
+/// put the two back out of step.
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct GradientStops(ArrayVec<[Stop; MAX_STOPS]>);
 
 impl GradientStops {
     /// Collect stops into inline storage, panicking on an invalid count.
+    ///
+    /// Sorted on the way in; equal offsets keep their written order, so a
+    /// hard colour break authored as two stops at the same position still
+    /// reads in the direction it was written.
     pub fn new(stops: impl IntoIterator<Item = Stop>) -> Self {
-        let mut values = ArrayVec::new();
+        let mut values: ArrayVec<[Stop; MAX_STOPS]> = ArrayVec::new();
         for stop in stops {
             assert!(
                 values.len() < MAX_STOPS,
@@ -67,6 +82,15 @@ impl GradientStops {
             "gradient requires at least 2 stops, got {}",
             values.len(),
         );
+        // Insertion sort: `MAX_STOPS` is 8 and the input is nearly always
+        // already ordered, so this is a comparison pass and no swaps.
+        for index in 1..values.len() {
+            let mut current = index;
+            while current > 0 && values[current - 1].offset_u8 > values[current].offset_u8 {
+                values.swap(current - 1, current);
+                current -= 1;
+            }
+        }
         Self(values)
     }
 }
@@ -76,12 +100,6 @@ impl std::ops::Deref for GradientStops {
 
     fn deref(&self) -> &Self::Target {
         self.0.as_slice()
-    }
-}
-
-impl std::ops::DerefMut for GradientStops {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.0.as_mut_slice()
     }
 }
 
@@ -217,5 +235,38 @@ mod tests {
         assert_ne!(digest(&base), digest(&colour_swapped));
         assert_ne!(digest(&base), digest(&offset_moved));
         assert_eq!(digest(&base), digest(&base.clone()));
+    }
+
+    /// Written order must not reach cache identity: the stops *are* the
+    /// gradient's key, so two spellings of one ramp that bake the same
+    /// LUT row have to hash and compare the same, or they take two atlas
+    /// rows and two eviction slots apiece.
+    #[test]
+    fn written_order_does_not_reach_identity() {
+        let a = ColorU8::rgb(1, 2, 3);
+        let b = ColorU8::rgb(4, 5, 6);
+        let c = ColorU8::rgb(7, 8, 9);
+        let ascending =
+            GradientStops::new([Stop::new(0.0, a), Stop::new(0.5, b), Stop::new(1.0, c)]);
+        let shuffled =
+            GradientStops::new([Stop::new(1.0, c), Stop::new(0.0, a), Stop::new(0.5, b)]);
+
+        let digest = |s: &GradientStops| {
+            let mut h = Hasher::new();
+            s.hash(&mut h);
+            h.finish()
+        };
+        assert_eq!(ascending, shuffled, "reordered input is the same gradient");
+        assert_eq!(digest(&ascending), digest(&shuffled));
+        // Sorted on the way in, so the stored sequence is ascending
+        // whichever order it was written in.
+        let offsets: Vec<u8> = shuffled.iter().map(|s| s.offset_u8).collect();
+        assert_eq!(offsets, vec![0, 128, 255]);
+
+        // Equal offsets keep their written order, so a hard break still
+        // reads in the direction it was authored.
+        let break_ab = GradientStops::new([Stop::new(0.5, a), Stop::new(0.5, b)]);
+        let break_ba = GradientStops::new([Stop::new(0.5, b), Stop::new(0.5, a)]);
+        assert_ne!(break_ab, break_ba);
     }
 }

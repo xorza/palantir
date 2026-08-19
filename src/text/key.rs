@@ -283,7 +283,16 @@ impl WrapBound {
         Self {
             max_w_q: quantize_width(wrap::canonical_wrap_width(max_width_px)).min(MAX_W_NONE - 1),
             halign_q: match fit {
-                LineFit::Wrap => halign as u8,
+                // Projected onto what shaping actually varies on, not
+                // stored raw: `cosmic_align` maps `Auto` and `Stretch`
+                // alike to "no per-line align", so keeping them apart
+                // here minted two keys, two cache entries and two
+                // reshapes for a byte-identical buffer. `Stretch` is a
+                // box-alignment concept with no per-line meaning.
+                LineFit::Wrap => match halign {
+                    HAlign::Auto | HAlign::Stretch => HAlign::Auto as u8,
+                    other => other as u8,
+                },
                 LineFit::Clip | LineFit::Ellipsis => HAlign::Auto as u8,
             },
             fit_q: fit as u8,

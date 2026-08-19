@@ -93,7 +93,7 @@ fn recreate_backend_on_format_change_renders_identically() {
     };
     let report = diff(&after, &before, tol);
     assert!(
-        report.passes(tol),
+        report.passes(),
         "recreated backend rendered differently after format change: \
          {} differing pixels (ratio {:.4}), max channel delta {}",
         report.differing_pixels,
@@ -124,7 +124,7 @@ fn repeated_format_changes_keep_rendering() {
     };
     let report = diff(&restored, &baseline, tol);
     assert!(
-        report.passes(tol),
+        report.passes(),
         "round-tripping the surface format back to the original changed the render: \
          {} differing pixels (ratio {:.4})",
         report.differing_pixels,
@@ -234,7 +234,7 @@ fn images_survive_format_change_without_reupload() {
     };
     let report = diff(&after, &before, tol);
     assert!(
-        report.passes(tol),
+        report.passes(),
         "image rendered differently after format change: {} differing pixels (ratio {:.4})",
         report.differing_pixels,
         report.differing_ratio,

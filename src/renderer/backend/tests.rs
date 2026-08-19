@@ -12,7 +12,7 @@ use crate::primitives::span::Span;
 use crate::primitives::urect::URect;
 use crate::renderer::backend::schedule::{MaskPlan, RenderStep, build_mask_plan, for_each_step};
 use crate::renderer::quad::Quad;
-use crate::renderer::render_buffer::batch::{DrawGroup, GroupBatch, TextBatch};
+use crate::renderer::render_buffer::batch::{DrawGroup, GroupBatch, PaintTier, TextBatch};
 use crate::renderer::render_buffer::text::TextDrawRow;
 use crate::renderer::render_buffer::{RenderBuffer, RoundedClip};
 use crate::text::key::TextShapeKey;
@@ -1427,5 +1427,67 @@ fn image_batch_in_damage_skipped_group_drops_silently() {
     assert_eq!(
         simplify(&buf, &collect(&buf, damage, &MaskPlan::default(), false)),
         vec![DrawOp::PreClear, DrawOp::Images(1)],
+    );
+}
+
+/// Pin: the backend replays higher-kind batches in `PaintTier` order.
+///
+/// The composer's flush arbitration reads that ordering directly —
+/// `HigherKindRects::conflicts` flushes only when the incoming tier
+/// sorts *below* one already recorded, which is correct exactly when the
+/// backend paints them in the same sequence. Until this test the only
+/// check was `higher_kind`'s own, comparing `conflicts` against
+/// `PaintTier`'s derived `Ord` — both sides of one file, so reordering
+/// the enum kept it green while silently changing which tier paints on
+/// top.
+///
+/// Written as "the emitted order equals the tiers sorted by `Ord`" so
+/// the assertion follows the enum rather than restating a fourth
+/// hand-written copy of Mesh → Image → Icon → Curve.
+#[test]
+fn higher_kind_replay_follows_paint_tier_order() {
+    let mut buf = buf_with(vec![DrawGroup {
+        scissor: None,
+        rounded_clips: Span::default(),
+        quads: Span::default(),
+    }]);
+    // One batch of every tier anchored in the single group, so the emit
+    // sequence is entirely the drain order.
+    let anchored = GroupBatch {
+        items: Span::new(0, 1),
+        last_group: 0,
+    };
+    buf.mesh_batches.push(anchored);
+    buf.image_batches.push(anchored);
+    buf.icon_batches.push(anchored);
+    buf.curve_batches.push(anchored);
+
+    let emitted: Vec<PaintTier> = simplify(&buf, &collect(&buf, None, &MaskPlan::default(), false))
+        .into_iter()
+        .filter_map(|op| match op {
+            DrawOp::Meshes(_) => Some(PaintTier::Mesh),
+            DrawOp::Images(_) => Some(PaintTier::Image),
+            DrawOp::Icons(_) => Some(PaintTier::Icon),
+            DrawOp::Curves(_) => Some(PaintTier::Curve),
+            _ => None,
+        })
+        .collect();
+
+    let mut expected = vec![
+        PaintTier::Mesh,
+        PaintTier::Image,
+        PaintTier::Icon,
+        PaintTier::Curve,
+    ];
+    expected.sort();
+    assert_eq!(
+        emitted.len(),
+        expected.len(),
+        "every tier must contribute exactly one step",
+    );
+    assert_eq!(
+        emitted, expected,
+        "backend replay order must match PaintTier's Ord — the composer's \
+         flush arbitration is only sound while the two agree",
     );
 }

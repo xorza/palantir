@@ -200,8 +200,11 @@ fn reflect(ui: &mut Ui) {
 
 /// Linear whose stops end at 25% of the axis; the ramp tiles from there.
 fn repeat(ui: &mut Ui) {
-    let mut g = LinearGradient::two_stop(0.0, NAVY, BLUE).with_spread(Spread::Repeat);
-    g.stops[1].offset_u8 = (0.25 * 255.0 + 0.5) as u8;
+    let g = LinearGradient::builder(0.0)
+        .stop(0.0, NAVY)
+        .stop(0.25, BLUE)
+        .with_spread(Spread::Repeat)
+        .build();
     gradient_frame(ui, filled(Brush::Linear(g)));
 }
 

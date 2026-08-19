@@ -87,7 +87,7 @@ impl Goldens {
         }
 
         let report = diff(actual, &expected, self.tolerance);
-        if report.passes(self.tolerance) {
+        if report.passes() {
             return;
         }
 
