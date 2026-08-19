@@ -29,7 +29,7 @@ pub(crate) enum IconRasterKind {
 /// its largest size.
 ///
 /// The parses are the set's, not the rasterizer's: they are keyed by
-/// [`IconRef`] and dropped by [`Self::forget_set`] when the set unloads. The
+/// [`IconRef`] and dropped by [`Self::forget_sets`] when the set unloads. The
 /// scratch buffer belongs to nobody and stays.
 #[derive(Default)]
 pub(crate) struct IconRasterizer {
@@ -121,15 +121,21 @@ impl IconRasterizer {
         }
     }
 
-    /// Drop the parses held for `set`, whose last
+    /// Drop the parses held for every set in `sets`, whose last
     /// [`IconSet`](crate::IconSet) has gone.
     ///
     /// This is the expensive half of unloading: a `usvg::Tree` is a parsed
     /// document, and one is retained per icon the session ever drew. The
     /// scratch buffer stays — it belongs to no set and the next raster
     /// wants it.
-    pub(crate) fn forget_set(&mut self, set: IconSetId) {
-        self.trees.retain(|icon, _| icon.set != set);
+    ///
+    /// Takes every doomed set at once because `retain` walks the map's
+    /// raw table, which is sized by the session's peak parse count and
+    /// never shrinks — so the walk is the cost, not the matching, and
+    /// paying it per released set was the waste. `sets` is a handful, so
+    /// the linear membership test per entry is free beside the walk.
+    pub(crate) fn forget_sets(&mut self, sets: &[IconSetId]) {
+        self.trees.retain(|icon, _| !sets.contains(&icon.set));
     }
 
     /// Icons whose parse has already been paid for. Lets a test assert that
@@ -270,18 +276,41 @@ mod tests {
         }
         assert_eq!(r.parsed_count(), 4, "two icons in each of two sets");
 
-        r.forget_set(IconSetId::new(0, 0));
+        r.forget_sets(&[IconSetId::new(0, 0)]);
         assert_eq!(r.parsed_count(), 2, "only set 0's parses go");
 
         // The generation is part of the identity: the slot's next occupant
         // is not the set that was forgotten.
-        r.forget_set(IconSetId::new(1, 1));
+        r.forget_sets(&[IconSetId::new(1, 1)]);
         assert_eq!(
             r.parsed_count(),
             2,
             "a different generation is a different set"
         );
-        r.forget_set(IconSetId::new(1, 0));
+        r.forget_sets(&[IconSetId::new(1, 0)]);
+        assert_eq!(r.parsed_count(), 0);
+    }
+
+    /// Several sets released on one frame are forgotten in one walk, and
+    /// the batch is what makes that possible: `retain` costs the map's
+    /// whole raw table, so a per-set call paid that once per set.
+    #[test]
+    fn forgetting_a_batch_drops_exactly_its_members() {
+        let (mut r, atlas) = (IconRasterizer::default(), fixtures());
+        let mut out = Vec::new();
+        for set in [0u16, 1, 2] {
+            let mut k = key(SOLID_ID, 8, 8);
+            k.icon.set = IconSetId::new(set, 0);
+            r.rasterize(&atlas, k, &mut out);
+        }
+        assert_eq!(r.parsed_count(), 3);
+
+        r.forget_sets(&[IconSetId::new(0, 0), IconSetId::new(2, 0)]);
+        assert_eq!(r.parsed_count(), 1, "both named sets go, in one pass");
+        // And it is set 1 that survived, not whichever was cheapest to keep.
+        let mut survivor = key(SOLID_ID, 8, 8);
+        survivor.icon.set = IconSetId::new(1, 0);
+        r.forget_sets(&[survivor.icon.set]);
         assert_eq!(r.parsed_count(), 0);
     }
 

@@ -222,6 +222,7 @@ pub(super) struct CosmicMeasure {
     /// nothing in the easy case. Four covers the interleavings a frame
     /// actually produces, and a lookup is four compares against a
     /// `Copy` struct.
+    ///
     /// Newest first: a miss pushes to the front and drops the back, so
     /// the entry evicted is the one shaped longest ago and the linear
     /// scan meets the most recently shaped face first. With four
@@ -437,12 +438,14 @@ impl std::fmt::Debug for CosmicMeasure {
 // without `cfg(test)`.
 #[cfg(any(test, feature = "internals"))]
 mod internals {
-    #![allow(dead_code)]
     use super::*;
+    #[cfg(test)]
     use crate::text::request::internals::TestShape;
+    #[cfg(test)]
     use crate::text::root::internals::TestMeasure;
 
     #[derive(Debug, PartialEq, Eq)]
+    #[cfg(test)]
     pub(crate) struct RecyclePoolStats {
         pub(crate) len: usize,
         pub(crate) capacity: usize,
@@ -450,12 +453,14 @@ mod internals {
     }
 
     impl CosmicMeasure {
+        #[cfg(test)]
         pub(crate) fn measure(&mut self, text: &str, shape: TestShape) -> TestMeasure {
             self.measure_with_fit_key(shape.request(text, LineFit::Wrap))
         }
 
         /// Shape `request` and pair the result with the key it shaped
         /// under — invalid for empty text, which mints no buffer.
+        #[cfg(test)]
         fn measure_with_fit_key(&mut self, request: TextShapeRequest<'_>) -> TestMeasure {
             let key = if request.text.is_empty() {
                 TextShapeKey::INVALID
@@ -475,6 +480,7 @@ mod internals {
 
         /// Truncating-fit measure. Named apart from the production
         /// `measure_truncated` — inherent methods can't share a name.
+        #[cfg(test)]
         pub(crate) fn measure_with_fit(
             &mut self,
             text: &str,
@@ -498,6 +504,7 @@ mod internals {
         /// wheel's protocol: a demote files a ticket that supplants the
         /// outstanding one, and if the supplanted ticket re-files itself
         /// this grows by one per demote for as long as the entry lives.
+        #[cfg(test)]
         pub(crate) fn pending_tickets(&self) -> usize {
             self.expiry.pending()
         }
@@ -507,6 +514,7 @@ mod internals {
         /// a `TextShaper`. The retention tests drive `CosmicMeasure`
         /// directly, with no shaper to hold the clock, so they own the
         /// tick; production never increments here.
+        #[cfg(test)]
         pub(crate) fn tick_frame(&mut self) {
             self.end_frame(self.frame + 1);
         }
@@ -525,6 +533,7 @@ mod internals {
             self.expiry.clear();
         }
 
+        #[cfg(test)]
         pub(crate) fn recycle_pool_stats(&self) -> RecyclePoolStats {
             RecyclePoolStats {
                 len: self.recycle_pool.len(),
@@ -538,6 +547,7 @@ mod internals {
         /// [`FontFamily`] to the intended physical face — a measured-
         /// width comparison can't, since two different faces can share
         /// an advance.
+        #[cfg(test)]
         pub(crate) fn resolved_family(&mut self, text: &str, family: FontFamily) -> Option<String> {
             let mut buf = Buffer::new(&mut self.font_system, Metrics::new(16.0, 19.2));
             buf.set_text(

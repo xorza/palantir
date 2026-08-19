@@ -13,24 +13,24 @@
 //! and hands back a plain [`Tier`]; by the time any arm runs, nothing is
 //! borrowed and each arm is an ordinary `&mut self` method.
 
+use crate::common::block_arena::BlockArena;
 use crate::primitives::rect::Rect;
 use crate::primitives::span::Span;
 use crate::primitives::widget_id::WidgetIdMap;
 use crate::scene::cascade::LayerCascade;
 use crate::scene::cascade::paint::{Paint, PaintRows};
 use crate::scene::damage::counters::DamageCounters;
+use crate::scene::damage::node_snapshot::NodeSnapshot;
 use crate::scene::damage::push_screen;
-use crate::scene::damage::snapshot::{
-    NodeSnapshot, PaintSnapArena, ROW_UNMATCHED, has_order_inversion,
-};
+use crate::scene::damage::row_matcher::{ROW_UNMATCHED, RowMatcher};
 use crate::scene::layer::Layer;
 use crate::scene::tree::Tree;
 use crate::scene::tree::iter::TreeItem;
 use crate::scene::tree::record::NodeId;
 
 /// Damage the overlap of every pair of rows whose relative paint order
-/// flipped, given the pairing [`PaintSnapArena::diff_changed_leg`] left
-/// and the per-row extents [`LayerWalk::build_row_extents`] resolved.
+/// flipped, given the pairing [`RowMatcher::diff_changed_leg`] left and
+/// the per-row extents [`LayerWalk::build_row_extents`] resolved.
 ///
 /// A free function over its two inputs so the pair enumeration can be
 /// measured and tested without a tree or a cascade behind it.
@@ -103,7 +103,8 @@ enum Tier {
 #[derive(Debug)]
 pub(super) struct LayerWalk<'a> {
     pub(super) prev: &'a mut WidgetIdMap<NodeSnapshot>,
-    pub(super) arena: &'a mut PaintSnapArena,
+    pub(super) paints: &'a mut BlockArena<Paint>,
+    pub(super) matcher: &'a mut RowMatcher,
     pub(super) raw_rects: &'a mut Vec<Rect>,
     /// Per-row screen extents for the order-inversion check. Only filled
     /// on the rare frame a node's row order actually inverted.
@@ -235,7 +236,6 @@ impl LayerWalk<'_> {
     fn on_added(&mut self, i: usize, parent_key: u64) -> usize {
         let span = self.cascade.paint_arena.node_spans[i];
         let paint_span = self
-            .arena
             .paints
             .store(&self.cascade.paint_arena.rows[span.range()]);
         if !self.force_full {
@@ -265,11 +265,11 @@ impl LayerWalk<'_> {
     fn on_evicted(&mut self, i: usize, prev: NodeSnapshot) -> usize {
         // Rows → rowless: push everything the node *was* painting, then
         // drop it.
-        for screen in self.arena.paints.slots[prev.paint_span.range()].screens() {
+        for screen in self.paints.slots[prev.paint_span.range()].screens() {
             self.raw_rects.push(screen);
         }
         self.prev.remove(&self.tree.records.widget_id()[i]);
-        self.arena.paints.release(prev.paint_span);
+        self.paints.release(prev.paint_span);
         self.probe.mark_dirty(NodeId(i as u32));
         1
     }
@@ -279,17 +279,16 @@ impl LayerWalk<'_> {
         let span = self.cascade.paint_arena.node_spans[i];
         let curr = &self.cascade.paint_arena.rows[span.range()];
         let leg = self
-            .arena
-            .diff_changed_leg(self.raw_rects, prev.paint_span, curr);
+            .matcher
+            .diff_changed_leg(self.paints, self.raw_rects, prev.paint_span, curr);
 
         // Exact-matched rows emitted no content damage, but a pair whose
         // relative paint order inverted (a raised node, a shape crossing
         // a child boundary, two coincident shapes swapping) still flips
-        // its overlap's pixels. `matched_pos` is populated only on the
-        // slow path — the fast path is order-identical by construction —
-        // and moved/added rows already pushed full rects covering any
-        // overlap they sit in, so only exact pairs participate.
-        if !leg.geometry_unchanged && has_order_inversion(self.arena.matched_positions()) {
+        // its overlap's pixels. Moved and added rows already pushed full
+        // rects covering any overlap they sit in, so only exact pairs
+        // participate.
+        if leg.order_inverted {
             self.emit_inverted_overlaps(node);
         }
 
@@ -335,9 +334,10 @@ impl LayerWalk<'_> {
     /// painted and what it paints now, then re-baseline every node in it
     /// without re-deriving anything the induction already gives us.
     ///
-    /// Equal `subtree_hash` pins the row *count* per node, so each
-    /// snapshot's screens can be copied in place — no arena append, no
-    /// orphan churn — and only `cascade_input` needs refreshing.
+    /// Equal `subtree_hash` pins the row *count* per node, which is what
+    /// makes the in-place `copy_from_slice` below sound: each snapshot
+    /// keeps the block it already holds, so no span moves and only
+    /// `cascade_input` needs refreshing.
     /// A node with no snapshot was skipped as [`Tier::Untracked`] back
     /// when it painted nothing visible; the frame a move brings its rows
     /// on-surface it gets inserted here, which is what keeps every node
@@ -358,13 +358,12 @@ impl LayerWalk<'_> {
             let wid = self.tree.records.widget_id()[j];
             match self.prev.get(&wid).copied() {
                 Some(snap) => {
-                    if let Some(union) =
-                        self.arena.paints.slots[snap.paint_span.range()].union_screens()
+                    if let Some(union) = self.paints.slots[snap.paint_span.range()].union_screens()
                     {
                         prev_extent = Some(prev_extent.map_or(union, |a| a.union(union)));
                     }
                     let curr = &self.cascade.paint_arena.rows[span.range()];
-                    self.arena.paints.slots[snap.paint_span.range()].copy_from_slice(curr);
+                    self.paints.slots[snap.paint_span.range()].copy_from_slice(curr);
                     if let Some(slot) = self.prev.get_mut(&wid) {
                         slot.cascade_input = self.cascade.cascade_inputs[j];
                     }
@@ -374,7 +373,7 @@ impl LayerWalk<'_> {
                     if !curr.any_on_surface(self.surface) {
                         continue;
                     }
-                    let paint_span = self.arena.paints.store(curr);
+                    let paint_span = self.paints.store(curr);
                     let snapshot = self.snapshot(j, j_parent_key, paint_span);
                     self.prev.insert(wid, snapshot);
                 }
@@ -410,7 +409,7 @@ impl LayerWalk<'_> {
         self.build_row_extents(node);
         emit_inverted_overlaps_into(
             self.raw_rects,
-            self.arena.matched_positions(),
+            self.matcher.matched_positions(),
             self.order_extents,
         );
     }

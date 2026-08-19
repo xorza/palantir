@@ -54,7 +54,7 @@ impl ImageTextures {
             bindings.insert(id, bind_group);
         });
         images.drain_dropped(|id| {
-            self.bindings.remove(&id);
+            bindings.remove(&id);
         });
     }
 

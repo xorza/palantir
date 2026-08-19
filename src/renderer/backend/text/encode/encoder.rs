@@ -1,39 +1,25 @@
 //! Turning a row of laid-out text into the glyph instances a pass draws.
-
-//! Per-batch instance emission: extracted glyph placements →
-//! `RasterQuad`s.
 //!
-//! Two paths:
+//! Both halves of the hit/miss split [the module doc](super) states live
+//! here, and the atlas traffic each owes is what separates them. A hit
+//! copies the cached templates with an origin shift, but must first
+//! re-check every glyph's recorded slot generation: eviction hands a slot
+//! rectangle to another glyph, and a template holding the old uv would
+//! draw that glyph instead. A miss takes the shaper's glyph lease,
+//! touches or rasterizes each glyph, and hands the finished row to
+//! [`EncodedCache::settle`].
 //!
-//! - **Cache hit**: prior frames laid this exact `(TextShapeKey,
-//!   scale, subpixel origin bin, area color)` run out into the atlas;
-//!   the resulting origin-relative `RasterQuad` templates are stored
-//!   in the [`EncodedCache`]. Emit = a copy with origin-shifted
-//!   positions, no shaper lease, no per-glyph atlas hashmap lookup.
-//!   This is the ~37% of frame time we're targeting.
-//! - **Cache miss**: extracts the run's glyph placements through the
-//!   shaper's glyph lease, touches/inserts atlas slots, emits
-//!   to `out`, and populates the cache entry with the origin-relative
-//!   templates so the next frame at the same `(key, scale, bins,
-//!   color)` lands on the fast path. Runs that came out short — lines
-//!   y-culled against their bounds, or a glyph the full atlas had no
-//!   room for — are *not* cached: the key records neither bounds nor
-//!   atlas occupancy, so a template with a hole would replay it on
-//!   every hit and never retry.
-//!
-//! Atlas eviction reuses slot rectangles for new glyphs; any cached
-//! entry holding the old uv would point at the wrong image. Each
-//! encoded glyph therefore records its atlas slot's generation and
-//! re-checks it while emitting. Atlas growth preserves rects
-//! (`etagere::grow`), so no invalidation is needed there.
+//! Growth needs no such check — `etagere::grow` preserves rectangles, so
+//! a cached uv survives it.
 
 use crate::text::glyphs::TextGlyphs;
 use crate::text::render::{GlyphImageKind, GlyphRasterKey, PlacedGlyph, RunPlacement};
 use crate::text::request::TextShapeRequest;
 
-use crate::renderer::backend::raster_atlas::ContentType;
+use crate::renderer::backend::raster_atlas::content_type::ContentType;
+use crate::renderer::backend::raster_atlas::packed_metadata::PackedMetadata;
 use crate::renderer::backend::raster_atlas::quad::{RasterQuad, pack_uv};
-use crate::renderer::backend::raster_atlas::{PackedMetadata, RasterAtlas, RasterAtlasConfig};
+use crate::renderer::backend::raster_atlas::{RasterAtlas, RasterAtlasConfig};
 use crate::renderer::backend::text::encode::EncodedRunKey;
 use crate::renderer::backend::text::encode::cache::{EncodedCache, EncodedGlyph};
 

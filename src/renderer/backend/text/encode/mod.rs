@@ -100,14 +100,13 @@ pub(super) fn encode_key_for(r: &TextDrawRow, frame_scale: f32) -> EncodedRunKey
     }
 }
 
-// Wider than `feature = "internals"`: `ChurnBench` is read by the
-// `text_atlas` benchmark *and* by the retention test below, which builds
-// under bare `cfg(test)`. `pub(super)` reaches both — the benchmark's
-// caller lives in this module's sibling `bench.rs`, not outside the text
-// backend.
-#[cfg(any(test, feature = "internals"))]
+// Gated with its two readers exactly — the `text_atlas` benchmark and
+// the retention tests below — rather than on `internals`, which the two
+// integration suites enable without ever building a churn fixture.
+// `pub(super)` reaches both: the benchmark's caller lives in this
+// module's sibling `bench.rs`, not outside the text backend.
+#[cfg(any(test, feature = "bench"))]
 pub(super) mod internals {
-    #![allow(dead_code)]
     use super::*;
     #[cfg(test)]
     use crate::common::block_arena::BlockArenaCounts;
@@ -173,6 +172,7 @@ pub(super) mod internals {
             self.cache.map.len()
         }
 
+        #[cfg(test)]
         pub(crate) fn rows(&self) -> usize {
             self.cache.map.len()
         }
@@ -199,12 +199,16 @@ pub(super) mod internals {
     /// steady-state shape a text-heavy frame leaves behind — so a
     /// benchmark iteration measures [`EncodedCache::sweep`] alone,
     /// isolated from the encode work that surrounds it in `end_frame`.
+    /// Gated with that benchmark alone — unlike [`ChurnBench`], nothing
+    /// here answers a question a test asks.
+    #[cfg(feature = "bench")]
     #[derive(Debug, Default)]
     pub(crate) struct SweepBench {
         cache: EncodedCache,
         frame: u64,
     }
 
+    #[cfg(feature = "bench")]
     impl SweepBench {
         /// Build `rows` rows **one per frame**, so their expiry tickets
         /// land on distinct buckets exactly as a real scene's inserts

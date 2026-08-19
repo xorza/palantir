@@ -24,10 +24,16 @@
 //! steady-state frames allocate nothing and would measure the probe
 //! instead of the frame.
 //!
-//! [`BenchOnly`] is `cfg(any(test, feature = "internals"))`: for the
+//! [`BenchOnly`] is `cfg(any(test, feature = "bench"))`: for the
 //! counters a benchmark reads. Widening one costs a build's worth of
 //! increments, so it is done for a real bench rather than a hypothetical
 //! one — [`crate::scene::damage::counters`] explains its own case.
+//!
+//! `bench` and not `internals`, though `bench` implies it: the two
+//! integration suites turn `internals` on to reach past the published
+//! surface and never ask a counter anything, so gating on it retained
+//! every cell — and left every reader dead — in exactly the build that
+//! has no use for either.
 //!
 //! **This is the whole rule; a counter module does not restate it.**
 //! `TestOnly` unless a benchmark actually reads the counter. What each
@@ -40,11 +46,29 @@
 //! test can subtract two readings. That is three lists of the same fields
 //! — the cells, the snapshot, and the subtraction — and writing them out
 //! let a new counter reach the cells and silently miss the other two.
-//! [`counter_snapshot!`] takes the list once and generates all three; it
-//! is what `CacheCounters` (the shaped-buffer cache) and `EncodedCounters`
-//! (the encoded-run cache) are declared with — both in private modules, so
-//! neither is linkable from here. A probe with no snapshot just declares
-//! its cells directly.
+//! [`counter_snapshot!`] takes the list once and generates all three, and
+//! takes both gates on its header line so a set that a *benchmark* reads
+//! is declared the same way as one only tests read. Every cache and atlas
+//! set in the crate goes through it — the shaped-buffer cache, the
+//! encoded-run cache, the block arena, both raster atlases, and the
+//! gradient atlas. A probe with no snapshot just declares its cells
+//! directly.
+//!
+//! ## The counter every bounded store owes
+//!
+//! Each store that can *refuse* work at its ceiling reports that refusal
+//! under its own name: `AtlasCounters::oversized` (a raster bigger than
+//! the byte budget will ever hold), `GradientAtlasCounters::fallbacks` (a
+//! registration that got the magenta row), and `BlockArenaCounters::allocs`
+//! (an arena still growing, so the working set has not settled).
+//!
+//! These are the three a workload test or bench should assert stay at
+//! zero, because a non-zero steady-state reading is a configuration
+//! problem rather than a load one — no amount of waiting clears them, and
+//! nothing else in the pipeline says so. They are *not* a production
+//! signal: like every cell here they are gated out of a shipping build,
+//! so the assertion has to be written while the workload is still one a
+//! test can drive.
 //!
 //! [`LayoutCounters`]: crate::layout::counters::LayoutCounters
 //! [`DamageCounters`]: crate::scene::damage::counters::DamageCounters
@@ -53,10 +77,10 @@
 /// Declare a gated cell type: `T` when `$gate` holds, zero-sized
 /// otherwise, with unconditional mutators.
 ///
-/// The `u32` and `Vec<T>` conveniences are inherent impls on the
-/// concrete instantiations, so a counter reads `c.bump()` and a log
-/// reads `l.push(id)` rather than every call site spelling out a
-/// closure.
+/// The `u32` convenience is an inherent impl on the concrete
+/// instantiation, so a counter reads `c.bump()` rather than every call
+/// site spelling out a closure. The `Vec<T>` one is written out below
+/// for [`TestOnly`] alone — see there.
 macro_rules! gated_cell {
     ($(#[$meta:meta])* $name:ident, $gate:meta) => {
         $(#[$meta])*
@@ -111,25 +135,6 @@ macro_rules! gated_cell {
             }
         }
 
-        impl<T> $name<Vec<T>> {
-            /// Append, retaining the backing capacity across resets so a
-            /// gated build doesn't reallocate every pass.
-            #[inline]
-            pub(crate) fn push(&mut self, item: T) {
-                self.edit(move |log| log.push(item));
-            }
-
-            #[inline]
-            pub(crate) fn clear(&mut self) {
-                self.edit(Vec::clear);
-            }
-
-            #[cfg($gate)]
-            #[inline]
-            pub(crate) fn as_slice(&self) -> &[T] {
-                self.get()
-            }
-        }
     };
 }
 
@@ -140,55 +145,98 @@ gated_cell! {
 }
 
 gated_cell! {
-    /// Retained in `cfg(test)` *and* `internals` builds, for the
-    /// counters a benchmark asserts on.
-    BenchOnly, any(test, feature = "internals")
+    /// Retained in `cfg(test)` *and* `bench` builds, for the counters a
+    /// benchmark asserts on.
+    BenchOnly, any(test, feature = "bench")
 }
 
-/// Declare a counter set together with the snapshot a test reads off it.
+/// Log conveniences, so a probe reads `l.push(id)` rather than spelling
+/// out a closure.
+///
+/// [`TestOnly`] alone, which is what makes the module rule above a
+/// property of the types rather than a line of prose: a cell that
+/// allocates must not be live in a non-test build, and a `BenchOnly` one
+/// has no way to append to begin with.
+impl<T> TestOnly<Vec<T>> {
+    /// Append, retaining the backing capacity across resets so a gated
+    /// build doesn't reallocate every pass.
+    #[inline]
+    pub(crate) fn push(&mut self, item: T) {
+        self.edit(move |log| log.push(item));
+    }
+
+    #[inline]
+    pub(crate) fn clear(&mut self) {
+        self.edit(Vec::clear);
+    }
+
+    #[cfg(test)]
+    #[inline]
+    pub(crate) fn as_slice(&self) -> &[T] {
+        self.get()
+    }
+}
+
+/// Declare a counter set together with the snapshot its readers take
+/// deltas off.
 ///
 /// The field list appears once and generates three things that must agree:
-/// the gated cells, the plain-`u32` snapshot, and the `Sub` that turns two
+/// the gated cells, the plain snapshot, and the `Sub` that turns two
 /// readings into what a span did. Written out by hand, adding a counter
 /// updated the cells and silently left it out of the snapshot — nothing
 /// forces three separate lists to grow together, and the omission reads as
 /// a counter that never fires.
 ///
+/// The header line names both gates, because they are separate questions
+/// and every set answers them differently:
+///
+/// - `cells` picks [`TestOnly`] or [`BenchOnly`] — which builds retain the
+///   values at all. The rule for choosing is in this module's doc.
+/// - `reads` is the `cfg` the snapshot and its `counts()` are compiled
+///   under, and it must name **exactly** the builds that call `counts()`.
+///   Wider and the accessor is dead in some build combination, which is
+///   how a set ends up carrying a blanket `allow(dead_code)`; narrower and
+///   it does not compile. It must also imply `cells`, since `counts()`
+///   reads values only the cell gate retains.
+///
 /// Both visibilities are taken because they differ in practice: a probe is
 /// usually as private as the type it measures, while its snapshot travels
-/// to wherever the tests live.
+/// to wherever the tests live. Field types are spelled out because not
+/// every tally is a count — a scan total wants a `u64`.
 macro_rules! counter_snapshot {
     (
+        cells $cell:ident, reads $reads:meta;
+
         $(#[$counters_meta:meta])*
         $cvis:vis struct $counters:ident;
         $(#[$snapshot_meta:meta])*
         $svis:vis struct $snapshot:ident;
-        $($(#[$field_meta:meta])* $field:ident,)+
+        $($(#[$field_meta:meta])* $field:ident: $fty:ty,)+
     ) => {
         $(#[$counters_meta])*
         #[derive(Debug, Default)]
         $cvis struct $counters {
-            $($(#[$field_meta])* $cvis $field: $crate::common::counters::TestOnly<u32>,)+
+            $($(#[$field_meta])* $cvis $field: $crate::common::counters::$cell<$fty>,)+
         }
 
         $(#[$snapshot_meta])*
-        #[cfg(test)]
+        #[$reads]
         #[derive(Clone, Copy, Debug, PartialEq, Eq)]
         $svis struct $snapshot {
-            $($svis $field: u32,)+
+            $($svis $field: $fty,)+
         }
 
-        /// Reads are test-only: nothing in a shipping build has a reason
-        /// to ask, and gating them is what lets the cells themselves be
-        /// absent.
-        #[cfg(test)]
+        /// One reading of every cell. Gated with its callers: nothing in
+        /// a shipping build has a reason to ask, and gating the reads is
+        /// what lets the cells themselves be absent.
+        #[$reads]
         impl $counters {
             $cvis fn counts(&self) -> $snapshot {
-                $snapshot { $($field: self.$field.count(),)+ }
+                $snapshot { $($field: *self.$field.get(),)+ }
             }
         }
 
-        #[cfg(test)]
+        #[$reads]
         impl std::ops::Sub for $snapshot {
             type Output = Self;
 

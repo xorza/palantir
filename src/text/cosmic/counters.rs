@@ -26,6 +26,8 @@
 use crate::common::counters::counter_snapshot;
 
 counter_snapshot! {
+    cells TestOnly, reads cfg(test);
+
     /// What the shaped-buffer cache did.
     ///
     /// The counters are reached through directly rather than through
@@ -46,17 +48,17 @@ counter_snapshot! {
     /// Runs actually pushed through cosmic — `set_text` plus
     /// `shape_until_scroll`. The cost every other counter here exists to
     /// explain.
-    shapes,
+    shapes: u32,
     /// Lookups answered from the cache, layout-side and render-side
     /// alike.
-    hits,
+    hits: u32,
     /// Entries demoted to the probation window because the reuse slot
     /// that owned them moved on to a different key.
-    supersedes,
+    supersedes: u32,
     /// Buffers dropped by the end-of-frame sweep.
-    expiries,
+    expiries: u32,
     /// Times the "…" advance had to be reshaped because no slot held
     /// that face. Separate from `shapes`, which counts runs that landed
     /// in the cache — the ellipsis probe shapes without inserting.
-    ellipsis_misses,
+    ellipsis_misses: u32,
 }

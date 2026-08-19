@@ -1,13 +1,17 @@
 //! Observability for the damage diff. Built on [`BenchOnly`], whose module
 //! doc explains the gated-cell pattern and why the two gates exist.
 //!
-//! This one is on the wider gate rather than test-only because the
-//! `damage` bench asserts against the counters. It can afford that where
-//! [`LayoutCounters`](crate::layout::counters::LayoutCounters) cannot: `dirty`
+//! The two cells take different gates, because they answer to different
+//! callers. `subtree_skips` is the `damage` bench's headline metric, so
+//! it is [`BenchOnly`]; `dirty` is a `Vec` cell only tests read, and the
+//! module rule puts anything that allocates on
+//! [`TestOnly`](crate::common::counters::TestOnly) — the alloc suite
+//! asserts steady-state frames allocate nothing and would otherwise
+//! measure the probe. It would have been affordable either way (`dirty`
 //! pushes only on a node that actually changed, so a steady-state frame
-//! appends nothing and the alloc benches see no allocation from here.
+//! appends nothing), but affordable is not a reason to widen a gate.
 
-use crate::common::counters::BenchOnly;
+use crate::common::counters::{BenchOnly, TestOnly};
 use crate::scene::tree::record::NodeId;
 
 /// What the diff walk did this pass.
@@ -17,8 +21,11 @@ use crate::scene::tree::record::NodeId;
 #[derive(Debug, Default)]
 pub(crate) struct DamageCounters {
     /// Nodes whose paint rows the diff re-read — the ones that actually
-    /// changed. Tests assert both the count and the identities.
-    dirty: BenchOnly<Vec<NodeId>>,
+    /// changed. Tests assert both the count and the identities, and
+    /// nothing else asks — so this one takes the narrow gate, which is
+    /// also the gate the module rule demands of a cell that pushes to a
+    /// `Vec`.
+    dirty: TestOnly<Vec<NodeId>>,
     /// Whole-subtree skips taken. The headline steady-state metric: a
     /// tree that skips at the root does one of these and nothing else.
     subtree_skips: BenchOnly<u32>,
@@ -52,17 +59,19 @@ impl DamageCounters {
     }
 }
 
-/// Reads are gated: only tests and benches ask. Not every accessor has
-/// both consumers — `subtree_skips` is the bench's headline metric while
-/// `dirty` is asserted only by tests — so an `internals`-without-`test`
-/// build legitimately leaves one unused.
-#[cfg(any(test, feature = "internals"))]
-#[allow(dead_code)]
+/// Reads are gated with their callers, one gate each rather than one
+/// wide gate and an `allow(dead_code)`: `dirty` is asserted only by
+/// tests, while `subtree_skips` is also the `damage` bench's headline
+/// metric.
+#[cfg(test)]
 impl DamageCounters {
     pub(crate) fn dirty(&self) -> &[NodeId] {
         self.dirty.as_slice()
     }
+}
 
+#[cfg(any(test, feature = "bench"))]
+impl DamageCounters {
     pub(crate) fn subtree_skips(&self) -> u32 {
         self.subtree_skips.count()
     }

@@ -125,6 +125,14 @@ struct Inner {
 /// icon index in a cache key — so it must be reusable, so the table has to
 /// own the row and stamp it with a generation.
 ///
+/// That difference reaches the drains too, which is why the two are not
+/// the same shape. An image's release is one hash removal from a map
+/// keyed by its own id, so `ImageRegistry` reports them one at a time.
+/// A set's release is a whole *family* of keys — every parse, every
+/// packed raster — that only a full walk of each store can find, so
+/// [`Self::drain_released`] hands over the whole batch and the backend
+/// walks once.
+///
 /// Single-threaded `Rc<RefCell<…>>`; cheap to clone, with shared inner state.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct IconRegistry {
@@ -142,10 +150,15 @@ impl IconRegistry {
     /// loads a set every frame; each is released as its `IconSet` drops,
     /// so the table cycles one slot rather than growing.
     ///
+    /// Resident sets are scanned linearly for the `Rc` match, so "a host
+    /// loads a handful" is a real constraint and not only a slot-width
+    /// one — the panic below is three orders of magnitude past where the
+    /// scan stops being free.
+    ///
     /// # Panics
     ///
     /// Panics past 65 536 sets resident **at once**, which would overflow a
-    /// slot index. A host loads a handful.
+    /// slot index.
     pub(crate) fn register(&self, atlas: Rc<IconAtlas>) -> IconSet {
         let mut inner = self.inner.borrow_mut();
         let resident = inner.slots.iter().find_map(|slot| {
@@ -213,14 +226,20 @@ impl IconRegistry {
         }))
     }
 
-    /// Free the slots of sets released since the last drain, calling
-    /// `forget` with each id so the backend can drop what it cached
-    /// against it.
+    /// Free the slots of sets released since the last drain, then hand
+    /// `forget` **all** of their ids at once so the backend can drop what
+    /// it cached against them.
+    ///
+    /// One call, not one per id: everything the backend keys on a set —
+    /// parsed SVGs, packed rasters — is a store it has to walk in full to
+    /// find a doomed family in, so a per-id callback made unloading N
+    /// sets cost N walks of each. Not called at all when nothing was
+    /// released, which is every frame but the rare one.
     ///
     /// The registry borrow is held across `forget`, so the closure must not
     /// re-enter the registry — the backend's does not, and nothing else
     /// drains.
-    pub(crate) fn drain_released(&self, mut forget: impl FnMut(IconSetId)) {
+    pub(crate) fn drain_released(&self, forget: impl FnOnce(&[IconSetId])) {
         let mut inner = self.inner.borrow_mut();
         let Inner {
             slots,
@@ -228,7 +247,10 @@ impl IconRegistry {
             released,
             ..
         } = &mut *inner;
-        for id in released.drain(..) {
+        if released.is_empty() {
+            return;
+        }
+        for &id in released.iter() {
             let slot = &mut slots[id.slot as usize];
             // One token per slot, and only its drop queues an id, so the
             // stamp cannot have moved since.
@@ -236,8 +258,11 @@ impl IconRegistry {
             slot.atlas = None;
             slot.generation = slot.generation.wrapping_add(1);
             free.push(id.slot);
-            forget(id);
         }
+        // Drained after the callback rather than during, because
+        // `forget` is handed the batch as a slice.
+        forget(released);
+        released.clear();
     }
 
     /// Counts every load and every release, so a consumer that caches
@@ -250,10 +275,14 @@ impl IconRegistry {
         self.inner.borrow().epoch
     }
 
-    /// Every resident set with the id it answers to. Collected rather than
-    /// borrowed, so the caller can rasterize from each without holding the
-    /// registry — and cheap for it, since each entry is one refcount bump
-    /// and a host loads a handful of sets.
+    /// Every resident set with the id it answers to.
+    ///
+    /// Collected rather than borrowed, so the caller can rasterize from
+    /// each without holding the registry — which means it **allocates a
+    /// `Vec` per call**, and belongs on a cold path. Its one caller is
+    /// the icon backend's prewarm, gated behind a mark that only moves
+    /// when the scale changes or a set is loaded, so it runs on the order
+    /// of once a session rather than once a frame.
     pub(crate) fn sets(&self) -> Vec<(IconSetId, Rc<IconAtlas>)> {
         self.inner
             .borrow()

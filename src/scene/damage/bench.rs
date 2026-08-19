@@ -178,12 +178,12 @@ fn warm_until_arena_settles<B: FnMut(&mut Ui)>(
     const MAX_FRAMES: u32 = 4096;
 
     let mut frame = from_frame;
-    let mut settled_at = h.ui.damage_engine.arena.paints.slots.len();
+    let mut settled_at = h.ui.damage_engine.paints.slots.len();
     let mut flat = 0;
     while flat < FLAT_FRAMES && frame - from_frame < MAX_FRAMES {
         run_and_ack(h, build(frame));
         frame += 1;
-        let now = h.ui.damage_engine.arena.paints.slots.len();
+        let now = h.ui.damage_engine.paints.slots.len();
         flat = if now == settled_at { flat + 1 } else { 0 };
         settled_at = now;
     }
@@ -194,7 +194,7 @@ fn warm_until_arena_settles<B: FnMut(&mut Ui)>(
     );
     ArenaSettle {
         entries: settled_at,
-        classes: h.ui.damage_engine.arena.paints.classes_with_free_blocks(),
+        classes: h.ui.damage_engine.paints.classes_with_free_blocks(),
         next_frame: frame,
     }
 }
@@ -484,7 +484,7 @@ fn bench_workloads(c: &mut Criterion) {
         // and so would a size class that stopped reclaiming its own
         // blocks.
         assert_eq!(
-            h.ui.damage_engine.arena.paints.slots.len(),
+            h.ui.damage_engine.paints.slots.len(),
             settled.entries,
             "[shape_churn_partial] the arena grew over {} measured frames",
             frame_n - settled.next_frame,
@@ -537,7 +537,7 @@ fn bench_workloads(c: &mut Criterion) {
         // harder half of the guard: four size classes in rotation, and
         // still not one new entry over the measured run.
         assert_eq!(
-            h.ui.damage_engine.arena.paints.slots.len(),
+            h.ui.damage_engine.paints.slots.len(),
             settled.entries,
             "[shape_churn_full] the arena grew over {} measured frames",
             frame_n - settled.next_frame,
