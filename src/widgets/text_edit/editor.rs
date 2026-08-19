@@ -1,6 +1,5 @@
 //! One frame's semantic editing session over the host-owned buffer.
 
-use crate::common::hash;
 use crate::widgets::text_edit::edit_state::{
     EditDelta, EditKind, EditState, SelectionState, UNDO_LIMIT,
 };
@@ -48,27 +47,18 @@ impl<'a> Editor<'a> {
         }
     }
 
+    /// Reconcile the history against the buffer once per editor.
+    ///
+    /// `history_checked` is the once-per-frame latch, not a second copy
+    /// of the rule: the `Editor` is built per frame and several entry
+    /// points below open with this, so the first one pays and the rest
+    /// are free. The rule itself is [`EditState::reconcile_before_edit`].
     fn ensure_history_matches(&mut self) {
         if self.history_checked {
             return;
         }
-        if self.state.local_edit_pending {
-            self.history_checked = true;
-            return;
-        }
-        let current_hash = hash::hash_str(self.text);
-        if self
-            .state
-            .expected_hash
-            .is_some_and(|expected| expected != current_hash)
-        {
-            self.state.undo.clear();
-            self.state.redo.clear();
-            self.state.last_edit_kind = None;
-            self.state.char_count = None;
-        }
-        self.state.expected_hash = Some(current_hash);
         self.history_checked = true;
+        self.state.reconcile_before_edit(self.text);
     }
 
     fn mark_local_edit(&mut self) {

@@ -40,7 +40,7 @@ pub(super) fn arrange_inner(
 
     // Resolve track sizes (Fixed + Hug + Fill) and compute offsets.
     // Fast path: when measure already resolved this axis against the
-    // same `total` (recorded in `hugs.total_used`), copy the persisted
+    // same `total` (recorded in `track_state.total_used`), copy the persisted
     // sizes instead of re-running the constraint solver. The path is
     // safe when:
     //   - measure ran for this grid this frame (`total_used` is `Some` —
@@ -54,13 +54,15 @@ pub(super) fn arrange_inner(
     // which path produced `sizes`.
     {
         let GridContext {
-            depth_stack, hugs, ..
+            depth_stack,
+            track_state,
+            ..
         } = pass.grid_mut();
         let s = depth_stack.at(depth);
         resolve_or_reuse(
             &mut s.col,
             col_tracks,
-            hugs,
+            track_state,
             idx,
             Axis::X,
             inner.size.w,
@@ -69,7 +71,7 @@ pub(super) fn arrange_inner(
         resolve_or_reuse(
             &mut s.row,
             row_tracks,
-            hugs,
+            track_state,
             idx,
             Axis::Y,
             inner.size.h,

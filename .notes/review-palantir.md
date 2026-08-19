@@ -239,128 +239,38 @@ from what it describes, and nothing catches it.
 State that is copied rather than referenced, so the copies can disagree and
 usually need an assert or a reset protocol to keep them from doing so.
 
-- [ ] `src/renderer/frontend/composer/mod.rs:60` and `:75` — the active clip is
-      stored twice. `set_clip` is called immediately after every `clip_stack`
-      push/pop with the top frame's values, so `current_scissor` is a cached
-      projection of the stack. The two are then read inconsistently:
-      `cull_bounds` and the clear-fold test consult `current_scissor`, while
-      `ComposeSession::text` (`session.rs:871`) reaches into `clip_stack.last()`
-      for the same value.
+Investigated in full and **closed**. What was real is fixed: the composer's
+active clip (a cached projection of `clip_stack` read inconsistently against
+it), `DrawImagePayload.gpu_view`, `RenderBuffer.time`, the two derivations of
+`max_texture_dimension_2d`, `close_vetoed`'s unreachable third clear, the
+`TextShaper` clock ticked through the layout engine, `ScrollGeometry`'s
+embedded copy of its own two numbers, `GpuPaintRef` being defeated by
+`GpuView`, `pixel_snap`'s forgettable splice, `ensure_stencil`'s out-parameter
+and the infallible `expect` undoing it, the gradient atlas's two parallel
+bookkeeping columns, `first_frame`'s two derivations, and — the only one where
+the copies could actually disagree — `TextEdit`'s two mints of the
+buffer-identity hash, which differed on the `0 → 1` mapping and so agreed only
+*usually*.
 
-- [ ] `src/scene/seen_ids.rs:109`, `:113`, `:133` and
-      `src/scene/cascade/mod.rs:211` — "which widgets exist this frame" has four
-      owners with three lifetimes: `curr`, `prev` (whose own doc says "Only the
-      keys matter — values are stale across frames", so it stores an unread
-      `Endpoint` per widget per frame purely to keep a `mem::swap` alloc-free),
-      `discarded`, and `Cascade::by_id`, produced by an O(N) `clone_from` on
-      every full rebuild.
+The rest were rejected with evidence:
 
-- [ ] `src/ui/frame_cycle.rs:82` — one `FrameStamp` is fanned into
-      `FrameRuntime::time`, `Ui::display`, `InputState::frame_time`, and
-      `FrameRuntime::prev_stamp`, which after the frame holds a byte-identical
-      copy of the first two. `first_frame` is derived twice from
-      `prev_stamp.is_none()` (`:81` and `src/ui/frame.rs:249`), and `FrameStamp`
-      itself is both the host's per-frame input and the retained prior-frame
-      record.
-
-- [ ] `src/layout/grid/mod.rs:61`, `:177`, `src/layout/grid/resolving.rs:16` —
-      grid track state has three simultaneous owners plus a fourth in the
-      snapshot: `AxisScratch` per nesting depth, `GridTrackStore` with a
-      duplicate `sizes_pool`, and the measure cache's packed copy. The durable
-      store exists only because the depth-stack scratch is clobbered by sibling
-      grids before arrange, so `resolve_or_reuse` compares against a recorded
-      `total` to decide whether to copy sizes back into the scratch that
-      computed them. Its own doc admits the type outgrew its name.
-
-- [ ] `src/widgets/scroll/mod.rs:42` — `ScrollGeometry` carries `content` and
-      `space.bar_viewport`, then embeds a `ScrollBounds` whose `content` and
-      `viewport` are copies of those same two values, so `geom.content` and
-      `geom.bounds.content` are one number stored twice in one `Copy` struct.
-
-- [ ] `src/host/winit/window.rs:112`, `src/host/window_driver/mod.rs:96` and
-      `:433`, `src/host/offscreen.rs:203` — the surface's physical size lives in
-      three places (`Window::config`, `WindowDriver::target.physical`,
-      `Ui::display.physical`), and `render_to_texture` spends two
-      `debug_assert!`s checking they still agree; `TargetKey::describes` exists
-      solely to serve the second. `pixel_snap` has the same shape: the
-      authoritative value is on `WindowDriver`, but `Display::pixel_snap`
-      defaults to `true`, so a host that forgets to splice it back silently gets
-      snapping regardless of `OffscreenHostBuilder::pixel_snap(false)`.
-
-- [ ] `src/ui/resources.rs:14` and `src/ui/mod.rs:149` — the `TextShaper` handle
-      sits on `Ui` twice, as `ui.resources.text` (used by `probe_text`) and
-      `ui.layout_engine.text.shaper` (used by measure). `FrameCycle` then ticks
-      the shared text clock by reaching two levels into another subsystem
-      (`src/ui/frame_cycle.rs:111`, `:370`) for state that belongs to
-      `UiResources`.
-
-- [ ] `src/ui/mod.rs:119` and `:121` — `Ui` is used as a two-way mailbox for
-      host state. `window_frame` is never written by the recorder — the winit
-      host assigns the whole struct each frame and the driver resets it to
-      `default()` after drain — while `window_requests` is appended by the
-      recorder and cleared by the host at two different points
-      (`src/host/winit/window.rs:98`, `src/host/window_driver/mod.rs:381`). The
-      host's own `Window::close_requested` is a third copy of the same bool.
-
-- [ ] `src/host/winit/gpu.rs:130` and `src/host/core.rs:47` — both derive
-      `max_texture_dimension_2d` from the same device with a character-identical
-      panic message, and `SurfaceManager`'s field doc explains the caching as if
-      it were the only copy.
-
-- [ ] `src/host/winit/window.rs:98`, `src/host/window_driver/mod.rs:382` and
-      `:416` — `close_vetoed` is cleared in three places. Since `Window::frame`
-      always reaches `finish`, the drain clears it at the end of every winit
-      frame, making the pre-frame clear unreachable-by-effect. The veto's
-      one-frame lifetime is stated in three files and enforced by none.
-
-- [ ] `src/renderer/backend/mod.rs:86` and `:101` — `Backbuffer` and `Stencil`
-      are declared with private fields by the backend, which provides the only
-      constructors and stores neither: `WindowDriver` holds the `Option`s and
-      hands `&mut` back in. The seam shows at
-      `src/host/window_driver/mod.rs:469`, an infallible `expect` placed
-      immediately after the call whose only job was to make it infallible, and
-      in `ensure_backbuffer`'s bare `-> bool` that the host decodes into a
-      `debug_assert` about plan escalation.
-
-- [ ] `src/widgets/text_edit/edit_state.rs:104` and
-      `src/widgets/text_edit/editor.rs:51` — two copies of the
-      "did the host replace the buffer" rule, body for body, one fed the probe's
-      hash and one recomputing `hash::hash_str` over the whole buffer. Three
-      pieces of state exist only to keep them from fighting (`expected_hash`,
-      `local_edit_pending`, `history_checked`), and the two hashes are minted
-      differently — `TextShapeKey::content_hash` maps `0 → 1`, the raw one does
-      not — so they are only usually equal.
-
-- [ ] `src/renderer/render_buffer/mod.rs:167` — `time` is written twice per
-      frame: `start_frame` sets `Duration::ZERO` with a comment explaining this
-      is not the real value, and `Frontend::build` stamps it unconditionally
-      after compose (`src/renderer/frontend/mod.rs:98`). The field is
-      meaningless for the whole compose pass.
-
-- [ ] `src/input/mod.rs:1009` vs `:1143` — `pointer_local_for` recomputes the
-      three lookups whose result `response_for` already stored in
-      `ResponseState::pointer_local`.
-
-- [ ] `src/renderer/frontend/payload.rs:481` — `DrawImagePayload.gpu_view` is
-      set two lines before `is_noop` reads it and is read nowhere else;
-      `ComposeSession::image` branches on the `paint: Option<&GpuPaintRef>`
-      argument and ignores the flag. The same fact travels on two channels into
-      one call, one of them a field on every `DrawImagePayload`, its
-      `PartialEq`, and the capture enum.
-
-- [ ] `src/renderer/gradient_atlas/mod.rs:139` — five per-row columns
-      (`rows`, `baked`, `row_epoch`, and `MruList`'s `prev`/`next`) that must
-      always agree, with `capacity()` answering from one, `grow()` resizing each
-      by hand, and a comment admitting "Independent resizes make equal lengths a
-      convention rather than a type invariant" above the `debug_assert!` that
-      papers over it. `rows` additionally stores a second copy of every live
-      `GradientLutKey` so eviction can find the outgoing key.
-
-- [ ] `src/renderer/gpu_view.rs:154` vs `src/widgets/gpu_view.rs:49` —
-      `GpuPaintRef` exists so carriers can keep `derive(Debug)`, but `GpuView`
-      stores the raw `Rc<RefCell<dyn GpuPaint>>` and therefore hand-writes the
-      very `Debug` impl the wrapper was introduced to eliminate; `Ui::gpu_view`
-      also takes the raw type and wraps it at two match arms.
+- **`seen_ids` has four owners because four consumers need four lifetimes.**
+  `prev` is a map rather than a set deliberately: `Endpoint` is 8 bytes, so
+  the unread value costs ~8 KB on a thousand-widget UI, while a set would
+  replace an O(1) `mem::swap` with an O(N) hash-insert pass *every frame*.
+  `Cascade::by_id` holds the previous **pass**, which is what a second record
+  pass needs and what `prev` explicitly cannot supply.
+- **`Ui` is a one-way mailbox in each direction**, and `Window::close_requested`
+  is not a third copy — the two extra writes are inside `mod tests`. The
+  production flow is latch → per-frame view → drain → clear.
+- **Grid track state's duplication is load-bearing.** The durable store exists
+  because the depth scratch is clobbered by sibling grids before arrange, and
+  making it per-grid means an allocation per grid per frame. What *was* wrong
+  was the name: the store is bound as `track_state` now, not `hugs`, which it
+  outgrew — the `HugRanges` view keeps the name, being the thing it describes.
+- **The surface size's three copies are three subsystems' own.** The two
+  `debug_assert!`s in `render_to_texture` are the seam where they must agree,
+  which is the right place to check rather than a copy to remove.
 
 ---
 

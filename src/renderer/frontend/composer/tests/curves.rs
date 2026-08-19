@@ -298,7 +298,7 @@ fn compose_emits_one_curve_batch_per_scissor_group() {
     let buf = run(
         |b, _arena| {
             // Two curves under one (implicit) scissor group → must
-            // batch into a single `CurveBatch`. That's the load-bearing
+            // batch into a single curve-tier batch. That's the load-bearing
             // promise: one draw call per scissor group, no matter how
             // many curves the group contains.
             for offset in [0.0_f32, 50.0] {

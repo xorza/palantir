@@ -2,6 +2,8 @@
 //! history it retains. [`Editor`](super::editor::Editor) is the
 //! behaviour over this data.
 
+use crate::common::hash;
+use crate::text::key::TextShapeKey;
 use std::collections::VecDeque;
 
 /// Semantic state for the host-owned text buffer.
@@ -101,7 +103,16 @@ impl EditDelta {
 }
 
 impl EditState {
-    pub(super) fn observe_text_hash(&mut self, text_hash: u64) {
+    /// Wipe the history if `text_hash` is not the buffer it describes,
+    /// then adopt it as the expectation.
+    ///
+    /// **The one statement of "did the host replace the buffer".** The
+    /// undo stack holds byte ranges into text the application owns; if
+    /// that text changed and we did not change it, every range in the
+    /// stack refers to something gone. Both entry points below reach the
+    /// rule here — written out at each of them, the two bodies drifted on
+    /// which hash they compared.
+    fn adopt_text_hash(&mut self, text_hash: u64) {
         if !self.local_edit_pending
             && self
                 .expected_hash
@@ -113,7 +124,39 @@ impl EditState {
             self.char_count = None;
         }
         self.expected_hash = Some(text_hash);
+    }
+
+    /// Paint-path entry: the shape probe already hashed this buffer, so
+    /// its hash is the one to adopt. Also closes the local-edit window —
+    /// whatever we changed this frame has now been seen.
+    pub(super) fn observe_text_hash(&mut self, text_hash: u64) {
+        self.adopt_text_hash(text_hash);
         self.local_edit_pending = false;
+    }
+
+    /// Input-path entry, before an edit is applied: no probe has run for
+    /// this frame's buffer yet, so mint the hash.
+    ///
+    /// A pending local edit means we moved the buffer ourselves and the
+    /// hash it settles at is not known until paint, which adopts it —
+    /// so there is nothing to reconcile against here.
+    pub(super) fn reconcile_before_edit(&mut self, text: &str) {
+        if self.local_edit_pending {
+            return;
+        }
+        self.adopt_text_hash(Self::text_hash(text));
+    }
+
+    /// The identity of `text`, minted the way the shape probe mints the
+    /// hash [`Self::observe_text_hash`] is fed.
+    ///
+    /// Through [`TextShapeKey::content_hash`] and not a bare `hash_str`: that rule
+    /// maps a raw zero to one, because zero is what tags a bufferless
+    /// run — so for exactly the content that hashes to zero, a raw hash
+    /// here would compare unequal against the probe's for the *same*
+    /// buffer and silently wipe the undo stack.
+    pub(super) fn text_hash(text: &str) -> u64 {
+        TextShapeKey::content_hash(hash::hash_str(text))
     }
 
     pub(super) fn sel_range(&self) -> Option<std::ops::Range<usize>> {
@@ -142,5 +185,44 @@ impl EditState {
         if self.selection == Some(self.caret) {
             self.selection = None;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::common::hash;
+    use crate::text::glyph_font::GlyphFont;
+    use crate::text::key::TextShapeKey;
+    use crate::widgets::text_edit::edit_state::EditState;
+
+    /// The two entry points into the history rule must mint one buffer's
+    /// identity identically, because they write and read the same
+    /// `expected_hash`: the paint path adopts the probe's, the input path
+    /// mints its own, and a disagreement reads as "the host replaced the
+    /// buffer" and wipes the undo stack under the user.
+    ///
+    /// The zero case is why this is a test rather than a comment.
+    /// `content_hash` maps a raw zero to one — zero tags a bufferless run
+    /// — so a bare `hash_str` on the input side would differ for exactly
+    /// the content that hashes to zero, and for nothing else.
+    #[test]
+    fn both_entry_points_mint_one_buffers_identity_alike() {
+        for text in ["", "a", "hello world", "\u{1f600} multi\nline"] {
+            let probe = TextShapeKey::unbounded(hash::hash_str(text), GlyphFont::new(16.0));
+            assert_eq!(
+                EditState::text_hash(text),
+                probe.text_hash,
+                "input path disagrees with the probe for {text:?}",
+            );
+            assert_ne!(
+                EditState::text_hash(text),
+                0,
+                "{text:?} minted the invalid tag"
+            );
+        }
+        // The mapped case, driven directly: a raw zero is the one input
+        // where the two spellings part company.
+        assert_eq!(TextShapeKey::content_hash(0), 1);
+        assert_ne!(TextShapeKey::content_hash(0), 0);
     }
 }

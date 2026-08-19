@@ -6,7 +6,6 @@ use std::time::Instant;
 use glam::{IVec2, UVec2};
 use winit::window::Window as WinitWindow;
 
-use crate::Display;
 use crate::app::App;
 use crate::common::tracy::FrameSet;
 use crate::host::core::HostCore;
@@ -117,15 +116,13 @@ impl Window {
             self.next = FramePresent::Idle;
         } else {
             let physical = UVec2::new(self.config.width, self.config.height);
-            let display = Display {
+            let display = self.driver.display(
                 physical,
-                scale_factor: self.scale_factor,
-                pixel_snap: self.driver.pixel_snap,
-                refresh_millihertz: self
-                    .window
+                self.scale_factor,
+                self.window
                     .current_monitor()
                     .and_then(|monitor| monitor.refresh_rate_millihertz()),
-            };
+            );
 
             // A size, format, or present-mode change invalidates the driver's
             // retained target state *and* needs the swapchain reconfigured before

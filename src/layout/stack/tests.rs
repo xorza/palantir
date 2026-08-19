@@ -308,7 +308,7 @@ fn negative_left_margin_spills_outside_slot() {
 }
 
 /// Pass-2 must not double-count non-Fill children in `total_main`. A Hug
-/// HStack with a Hug button and a Fill frame in a 200-wide parent hugs
+/// HStack with a Hug button and a Fill frame in a 200-wide parent tracks
 /// to the button's content width (WPF Stretch semantics: the Fill
 /// frame contributes its content — zero, here — to the measure, then
 /// expands at arrange). Pre-WPF behavior reported 200 (parent's

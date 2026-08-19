@@ -184,11 +184,11 @@ pub(crate) struct RasterAtlas<K> {
     /// side extents the shader reads as params.
     ///
     /// Owned here rather than by each tenant because they are a function
-    /// of the atlas's own textures, and those move under a grow. When
-    /// this was a `bind_group_dirty` flag every tenant had to remember
-    /// to test it and clear it after rebuilding — twelve identical lines
-    /// apiece, and a protocol whose failure mode is sampling a destroyed
-    /// texture view. Rebuilding inside [`Self::grow`] means there is no
+    /// of the atlas's own textures, and those move under a grow. A
+    /// dirty flag would put the rebuild on every tenant — a dozen
+    /// identical lines apiece, and a protocol whose failure mode is
+    /// sampling a destroyed texture view. Rebuilding inside
+    /// [`Self::grow`] means there is no
     /// window in which the two disagree and nothing for a third tenant
     /// to forget.
     bgl: wgpu::BindGroupLayout,

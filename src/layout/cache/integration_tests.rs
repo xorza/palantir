@@ -62,7 +62,7 @@ fn assert_warm_rects_match_cold(
 /// computes zero column widths, collapsing every cell to x=0.
 ///
 /// Topologies pinned: a single grid, nested grids (outer + inner), and
-/// two sibling grids inside a vstack (cache hit must restore hugs for
+/// two sibling grids inside a vstack (cache hit must restore tracks for
 /// both, in pre-order).
 #[test]
 fn cache_hit_preserves_grid_cell_rects() {

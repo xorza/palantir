@@ -34,7 +34,7 @@ use crate::app::App;
 use crate::common::clipboard::Clipboard;
 use crate::diagnostics::DebugOverlayConfig;
 use crate::diagnostics::gpu_stats::GpuPassStats;
-use crate::display::{self, Display};
+use crate::display;
 use crate::host::clock::{Clock, RealtimeClock};
 use crate::host::core::HostCore;
 use crate::host::device_requirements::DeviceRequirements;
@@ -200,10 +200,8 @@ impl OffscreenHost {
         let key = TargetKey::of(target);
         let driver = &mut self.driver;
         driver.note_target(key);
-        let display = Display {
-            pixel_snap: driver.pixel_snap,
-            ..Display::from_physical(key.physical, scale_factor)
-        };
+        // No monitor, so no refresh rate to declare.
+        let display = driver.display(key.physical, scale_factor, None);
         let CpuFrame { report, mode } = self.core.cpu_frame(driver, display, app);
         // Before submitting: a frame that asked for a window it can never get
         // is a caller error, and reporting it against an untouched target

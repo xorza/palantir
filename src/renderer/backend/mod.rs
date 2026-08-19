@@ -102,8 +102,31 @@ pub(crate) struct Backbuffer {
 #[derive(Debug)]
 pub(crate) struct Stencil {
     pub(crate) view: wgpu::TextureView,
-    /// Current size, so `ensure_stencil` can skip recreation when unchanged.
+    /// Current size, so [`WgpuBackend::ensure_stencil`] can skip
+    /// recreation when unchanged.
     size: wgpu::Extent3d,
+}
+
+impl Stencil {
+    /// Private, so [`WgpuBackend::ensure_stencil`] is the only way to one
+    /// — which is what lets `size` stay a field nobody can set out of
+    /// step with the texture it describes.
+    fn new(device: &wgpu::Device, size: wgpu::Extent3d) -> Self {
+        let tex = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("palantir.renderer.stencil"),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: STENCIL_FORMAT,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        });
+        Self {
+            view: tex.create_view(&wgpu::TextureViewDescriptor::default()),
+            size,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -340,24 +363,27 @@ impl WgpuBackend {
     /// created on the first rounded-clip frame; recreated when the render
     /// target's size changes (a mismatched-size attachment fails wgpu
     /// validation). The [`Stencil`] is owned per-window by the caller.
-    pub(crate) fn ensure_stencil(&self, stencil: &mut Option<Stencil>, size: wgpu::Extent3d) {
-        if stencil.as_ref().is_some_and(|s| s.size == size) {
-            return;
+    /// The window's stencil attachment at `size`, building it if the
+    /// slot is empty or holds a differently-sized one.
+    ///
+    /// Returns the attachment rather than only filling the slot: the
+    /// caller needs it immediately, and handing back `()` left it
+    /// re-reading its own `Option` behind an `expect` whose only job was
+    /// to undo this call's out-parameter. `Stencil` keeps private fields
+    /// and this is its only constructor, so the borrow out is the whole
+    /// interface.
+    pub(crate) fn ensure_stencil<'s>(
+        &self,
+        stencil: &'s mut Option<Stencil>,
+        size: wgpu::Extent3d,
+    ) -> &'s Stencil {
+        // Drop a stale one first, then a plain get-or-insert: the two
+        // steps are what let this hand back a `&Stencil` without an
+        // `expect` re-reading the slot it just filled.
+        if stencil.as_ref().is_some_and(|held| held.size != size) {
+            *stencil = None;
         }
-        let tex = self.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("palantir.renderer.stencil"),
-            size,
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: STENCIL_FORMAT,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            view_formats: &[],
-        });
-        *stencil = Some(Stencil {
-            view: tex.create_view(&wgpu::TextureViewDescriptor::default()),
-            size,
-        });
+        stencil.get_or_insert_with(|| Stencil::new(&self.device, size))
     }
 
     /// Render one frame to the persistent backbuffer, then copy the

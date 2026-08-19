@@ -16,7 +16,7 @@ use crate::layout::types::track::Track;
 pub(super) fn resolve_or_reuse(
     a: &mut AxisScratch,
     tracks: &[Track],
-    hugs: &mut GridTrackStore,
+    track_state: &mut GridTrackStore,
     idx: GridDefId,
     axis: Axis,
     total: f32,
@@ -27,11 +27,11 @@ pub(super) fn resolve_or_reuse(
     // means the slot moved since it did. An infinite measure-time total
     // (a Hug grid) never equals arrange's finite slot, so it falls
     // through to the re-resolve like any other mismatch.
-    if hugs.total_used(idx, axis) == Some(total) {
-        a.sizes.copy_from_slice(hugs.sizes_slice(idx, axis));
+    if track_state.total_used(idx, axis) == Some(total) {
+        a.sizes.copy_from_slice(track_state.sizes_slice(idx, axis));
         return;
     }
-    resolve_axis(a, tracks, hugs.ranges(idx, axis), total, gap, false);
+    resolve_axis(a, tracks, track_state.ranges(idx, axis), total, gap, false);
 }
 
 #[inline]

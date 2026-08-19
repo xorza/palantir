@@ -76,8 +76,9 @@ pub(super) struct WindowDriver {
     /// [`FixedClock`](crate::host::clock::FixedClock) for a reproducible
     /// offscreen render) so the pipeline doesn't branch on it.
     pub(super) clock: Box<dyn Clock>,
-    /// Whether axis-aligned paint edges snap to physical pixels.
-    pub(super) pixel_snap: bool,
+    /// Whether axis-aligned paint edges snap to physical pixels. Reaches
+    /// a frame only through [`Self::display`].
+    pixel_snap: bool,
     /// The target the last [`Self::note_target`] saw. `None` until the first
     /// frame; a mismatch is what invalidates the retained target state.
     target: Option<TargetKey>,
@@ -295,6 +296,29 @@ impl WindowDriver {
         }
     }
 
+    /// This driver's [`Display`] for a frame of the given surface.
+    ///
+    /// **The one place `pixel_snap` reaches a frame.** It is the driver's,
+    /// fixed by the builder — but `Display`'s own default is `true`, so a
+    /// host that assembled one itself would snap regardless of what it
+    /// asked for, and nothing would say so. Minting it here leaves
+    /// nothing to remember: a caller supplies what it knows (the surface,
+    /// and the monitor's refresh where it has one) and the driver
+    /// supplies what it owns.
+    pub(super) fn display(
+        &self,
+        physical: UVec2,
+        scale_factor: f32,
+        refresh_millihertz: Option<u32>,
+    ) -> Display {
+        Display {
+            physical,
+            scale_factor,
+            pixel_snap: self.pixel_snap,
+            refresh_millihertz,
+        }
+    }
+
     /// Declare the target the next [`Self::cpu_frame`] renders into, returning
     /// whether it differs from the last one. A change invalidates every piece
     /// of state whose correctness depends on the target — retained pixels and
@@ -478,8 +502,7 @@ impl WindowDriver {
             PresentMode::Direct(_) | PresentMode::ViaBackbuffer(_)
                 if !buffer.rounded_clips.is_empty() =>
             {
-                backend.ensure_stencil(&mut self.stencil, size);
-                Some(&self.stencil.as_ref().expect("ensure_stencil ran").view)
+                Some(&backend.ensure_stencil(&mut self.stencil, size).view)
             }
             _ => None,
         };

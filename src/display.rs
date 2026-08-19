@@ -61,9 +61,14 @@ impl Default for Display {
 }
 
 impl Display {
-    /// Build from physical surface size + scale factor. `pixel_snap`
-    /// defaults to `true` — flip with struct update if you need the
-    /// off variant: `Display { pixel_snap: false, ..Display::from_physical(...) }`.
+    /// Build from physical surface size + scale factor, snapping on and
+    /// no declared refresh rate.
+    ///
+    /// For an embedder assembling a frame itself. Palantir's own hosts do
+    /// not use it: `pixel_snap` is theirs to configure, and a `Display`
+    /// built here would silently take this default instead — so both
+    /// hosts mint theirs through the `WindowDriver` that owns the
+    /// setting, and that is the only place it reaches a frame.
     pub fn from_physical(physical: UVec2, scale_factor: f32) -> Self {
         Self {
             physical,

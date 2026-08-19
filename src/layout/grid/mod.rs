@@ -44,9 +44,9 @@ const HUG_ORDER: [(Axis, HugKind); 4] = [
 /// preserve these. Pinned by
 /// `cross_driver_tests::parent_contains_child::two_hug_cols_section_height_matches_post_grow_text`.
 fn reset_hugs_for(pass: &mut LayoutPass<'_>, idx: GridDefId) {
-    let hugs = pass.grid_tracks_mut();
+    let track_state = pass.grid_track_state_mut();
     for (axis, kind) in HUG_ORDER {
-        hugs.slice_mut(idx, axis, kind).fill(0.0);
+        track_state.slice_mut(idx, axis, kind).fill(0.0);
     }
 }
 
@@ -109,9 +109,9 @@ struct GridScratch {
 }
 
 /// All grid-layout scratch held by `LayoutEngine`, in one bag. `depth_stack`
-/// and `hugs` are separate fields so callers can disjoint-borrow them —
+/// and `track_state` are separate fields so callers can disjoint-borrow them —
 /// `resolve_axis` takes `&mut AxisScratch` (from `depth_stack`) and `&[f32]`
-/// hug slices (from `hugs`) in the same expression via destructuring.
+/// hug slices (from `track_state`) in the same expression via destructuring.
 /// `track_aggregator` is a bump-stack scratch for `grid::intrinsic`'s
 /// per-track aggregator: each call extends by `n_tracks`, recurses (which
 /// may extend further but always truncates back), then truncates to its
@@ -119,7 +119,7 @@ struct GridScratch {
 #[derive(Debug, Default)]
 pub(crate) struct GridContext {
     pub(crate) depth_stack: GridDepthStack,
-    pub(crate) hugs: GridTrackStore,
+    pub(crate) track_state: GridTrackStore,
     pub(super) track_aggregator: Vec<f32>,
 }
 
@@ -323,7 +323,7 @@ impl GridTrackStore {
     /// current frame's `idx`. `subtree_hash` equality on the cache key
     /// guarantees same Grid count and same `(n_cols, n_rows)` per
     /// Grid in the same order, so the slice and the walk align.
-    pub(crate) fn restore_subtree(&mut self, tree: &Tree, subtree: Range<usize>, hugs: &[f32]) {
+    pub(crate) fn restore_subtree(&mut self, tree: &Tree, subtree: Range<usize>, tracks: &[f32]) {
         let layouts = tree.records.layout();
         let mut pos = 0usize;
         for i in subtree {
@@ -332,14 +332,14 @@ impl GridTrackStore {
                 for (axis, kind) in HUG_ORDER {
                     let dst = self.slice_mut(idx, axis, kind);
                     let n = dst.len();
-                    dst.copy_from_slice(&hugs[pos..pos + n]);
+                    dst.copy_from_slice(&tracks[pos..pos + n]);
                     pos += n;
                 }
             }
         }
         debug_assert_eq!(
             pos,
-            hugs.len(),
+            tracks.len(),
             "snapshot hug slice length disagrees with current subtree's grid descendants \
              (cache key let through a structural change?)",
         );
@@ -356,7 +356,7 @@ impl GridTrackStore {
 ///
 /// Per-depth scratch (`AxisScratch` columns) lives in `grid.depth_stack`
 /// and gets clobbered by sibling grids between this measure and the
-/// matching arrange. Hug sizes therefore live in `grid.hugs`
+/// matching arrange. Hug sizes therefore live in `grid.track_state`
 /// (`GridTrackStore`), keyed by `GridDef` index, durable for the whole
 /// layout pass. Both are heap-resident and capacity-retained across
 /// frames; no fixed track-count limit.
