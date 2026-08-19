@@ -136,6 +136,64 @@ fn three_stop_quarter_brackets_first_pair() {
     assert!(q.b <= 0.02, "quarter-texel b={} leaked from stop 2", q.b);
 }
 
+/// The segment search resumes where the previous texel left it, which is
+/// sound only because `t` never decreases across the row. A scan that
+/// re-brackets from the first segment every time is the reference: eight
+/// stops, a hard stop (two at one offset) and segments narrower than the
+/// texel step, every texel bit-identical.
+#[test]
+fn cursor_scan_matches_restart_scan_across_eight_stops() {
+    /// The pre-cursor bracketing, transcribed: restart at segment 1 and
+    /// walk forward. Same arithmetic in the same order, so agreement is
+    /// exact rather than approximate.
+    fn restart_scan(stops: &GradientStops, t: f32) -> Color {
+        let linear: Vec<Color> = stops.iter().map(|stop| stop.color.into()).collect();
+        if t <= stops[0].offset() {
+            return linear[0];
+        }
+        if t >= stops[stops.len() - 1].offset() {
+            return linear[stops.len() - 1];
+        }
+        let mut upper = 1;
+        while upper < stops.len() && stops[upper].offset() < t {
+            upper += 1;
+        }
+        let lower_offset = stops[upper - 1].offset();
+        let upper_offset = stops[upper].offset();
+        let denominator = upper_offset - lower_offset;
+        if denominator.abs() <= f32::EPSILON {
+            return linear[upper];
+        }
+        Color::lerp(
+            linear[upper - 1],
+            linear[upper],
+            (t - lower_offset) / denominator,
+        )
+    }
+
+    let g = LinearGradient::new(
+        0.0,
+        [
+            Stop::new(0.0, ColorU8::rgb(0, 0, 0)),
+            Stop::new(0.002, ColorU8::rgb(255, 0, 0)), // narrower than one texel
+            Stop::new(0.25, ColorU8::rgb(0, 255, 0)),
+            Stop::new(0.5, ColorU8::rgb(0, 0, 255)),
+            Stop::new(0.5, ColorU8::rgb(255, 255, 0)), // hard stop
+            Stop::new(0.75, ColorU8::rgb(0, 255, 255)),
+            Stop::new(0.9, ColorU8::rgb(255, 0, 255)),
+            Stop::new(1.0, ColorU8::rgb(255, 255, 255)),
+        ],
+    )
+    .with_interp(Interp::Linear);
+    let mut out = fresh_row();
+    bake_stops(&g.stops, g.interp, &mut out);
+    for (i, got) in out.iter().enumerate() {
+        let t = i as f32 / (LUT_ROW_TEXELS - 1) as f32;
+        let want = ColorF16::from(restart_scan(&g.stops, t));
+        assert_eq!(*got, want, "texel {i} at t={t}");
+    }
+}
+
 /// Pin the row layout: 256 `ColorF16` texels = 2048 bytes total,
 /// `[r, g, b, a]` f16 lanes per texel. Endpoint texels decode back
 /// to their stops' linear values.

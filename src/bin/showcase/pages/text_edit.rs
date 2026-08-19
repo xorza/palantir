@@ -148,19 +148,35 @@ fn align_grid(ui: &mut Ui) {
                     .size((Sizing::FILL, Sizing::HUG))
                     .show(ui, |ui| {
                         for (h, hname) in COLS {
-                            let key = format!("textedit_align__{vname}_{hname}");
-                            let buf_id = WidgetId::from_hash(key.as_str());
+                            // Hashed from the parts: `WidgetId::from_hash`
+                            // takes anything `Hash`, so building a `String`
+                            // to name the cell allocated once per cell per
+                            // frame to describe two `&'static str`s.
+                            let key = ("textedit_align", vname, hname);
+                            let buf_id = WidgetId::from_hash(key);
+                            // Seeded on the first frame only — keyed on the
+                            // row not existing yet, rather than on the buffer
+                            // being empty, so a cell the user clears stays
+                            // cleared and its placeholder can actually show.
+                            let fresh = ui.try_state::<String>(buf_id).is_none();
                             let mut buf = std::mem::take(ui.state_mut::<String>(buf_id));
-                            if buf.is_empty() {
+                            if fresh {
                                 buf = format!("{vname}-{hname}");
                             }
-                            TextEdit::new(&mut buf)
-                                .id_salt(key.as_str())
+                            let empty = buf.is_empty();
+                            let mut edit = TextEdit::new(&mut buf)
+                                .id_salt(key)
                                 .text_align(Align::new(h, v))
-                                .placeholder(format!("{vname} / {hname}"))
                                 .size((Sizing::FILL, Sizing::fixed(56.0)))
-                                .min_size((140.0, 56.0))
-                                .show(ui);
+                                .min_size((140.0, 56.0));
+                            // Composed only when it can be seen: `placeholder`
+                            // takes an owned `Cow`, so building one every frame
+                            // would allocate per cell for text that shows only
+                            // while a cell is empty.
+                            if empty {
+                                edit = edit.placeholder(format!("{vname} / {hname}"));
+                            }
+                            edit.show(ui);
                             *ui.state_mut::<String>(buf_id) = buf;
                         }
                     });

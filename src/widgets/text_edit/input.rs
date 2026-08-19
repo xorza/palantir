@@ -4,7 +4,7 @@ use crate::common::clipboard::Clipboard;
 use crate::common::platform::{PLATFORM, Platform};
 use crate::input::key_class::{KeyClass, KeyFilter};
 use crate::input::keyboard::{Key, KeyPress, KeyboardEvent, Modifiers};
-use crate::primitives::widget_id::WidgetId;
+use crate::input::response::ResponseState;
 use crate::ui::Ui;
 use crate::widgets::text_edit::TextEditState;
 use crate::widgets::text_edit::action::EditAction;
@@ -67,7 +67,7 @@ pub(super) struct AcceptPolicy {
 /// unconditional.
 pub(super) fn run_input(
     ui: &mut Ui,
-    id: WidgetId,
+    resp_state: &ResponseState,
     is_focused: bool,
     text: &mut String,
     layout: &TextLayout,
@@ -82,13 +82,15 @@ pub(super) fn run_input(
     } = policy;
     let mut blur = false;
     let mut submitted = false;
-    let resp_state = ui.response_for(id);
     let clipboard = ui.resources.clipboard.clone();
 
     let TextEditState {
         edit,
         interaction,
         view,
+        // Filled by the geometry pass after this one, and read only by the
+        // painter — the input pass has no business in it.
+        selection_rects: _,
     } = state;
     let was_focused = view.prev_focused;
     // Repair persisted byte offsets before any range/slice operation.

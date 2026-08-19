@@ -13,6 +13,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
 use crate::scene::tree::record::NodeId;
+use crate::ui::Ui;
 use crate::ui::harness::UiHarness;
 use crate::widgets::button::Button;
 use crate::widgets::panel::Panel;
@@ -259,13 +260,29 @@ fn tooltip_state_is_swept_with_trigger_while_global_state_persists() {
     let mut h = UiHarness::new(SURFACE);
     let trigger_id = WidgetId::from_hash("transient-trigger");
     let root_id = WidgetId::from_hash("root");
-
-    h.frame(|ui| {
+    let record = |ui: &mut Ui| {
         Panel::vstack().id(root_id).show(ui, |ui| {
             let trigger = Button::new().id(trigger_id).label("hi").show(ui).snapshot();
             Tooltip::on(&trigger).text("tip").show(ui);
         });
-    });
+    };
+
+    h.frame(record);
+    assert!(
+        h.ui.try_state::<TooltipState>(trigger_id).is_none(),
+        "an idle trigger must not materialise a state row",
+    );
+    assert!(
+        h.ui.try_state::<TooltipGlobal>(global_state_id()).is_none(),
+        "nothing has been visible yet, so the singleton has no row either",
+    );
+
+    // Hover lands a frame late — the response reads the previous frame's
+    // cascade — so the timer starts on the second frame and the 500 ms
+    // theme delay elapses on the third.
+    h.move_onto(trigger_id);
+    h.frame(record);
+    h.advance(Duration::from_millis(600)).frame(record);
 
     assert!(h.ui.try_state::<TooltipState>(trigger_id).is_some());
     assert!(
@@ -278,7 +295,7 @@ fn tooltip_state_is_swept_with_trigger_while_global_state_persists() {
         "the intentional global singleton must exist",
     );
 
-    h.at(Duration::from_millis(16)).frame(|ui| {
+    h.advance(Duration::from_millis(16)).frame(|ui| {
         Panel::vstack().id(root_id).show(ui, |_ui| {});
     });
 

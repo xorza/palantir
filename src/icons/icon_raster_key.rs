@@ -1,4 +1,5 @@
 use crate::icons::icon_set::IconRef;
+use crate::primitives::num::F32Ext;
 use glam::{U16Vec2, Vec2};
 
 /// Physical sizes at or below this rasterize at exactly the pixel box asked
@@ -47,12 +48,12 @@ impl IconRasterKey {
             "icon raster box must be positive and finite, got {box_px:?}",
         );
         let long = box_px.x.max(box_px.y).max(1.0);
-        let target = snap_px(long.round() as u32);
+        let target = snap_px(long.fast_round() as u32);
         // Scale from the *unrounded* long axis, so the short one tracks the
         // true aspect rather than the rounding of its sibling.
         let k = target as f32 / long;
         let short = (box_px.x.min(box_px.y) * k)
-            .round()
+            .fast_round()
             .clamp(1.0, MAX_RASTER_PX as f32) as u32;
         let size = if box_px.x >= box_px.y {
             U16Vec2::new(target as u16, short as u16)

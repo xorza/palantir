@@ -23,48 +23,96 @@ pub(crate) fn bake_stops(stops: &GradientStops, interp: Interp, out: &mut LutRow
         linear_stops[index] = stops[index].color.into();
     }
     let mut oklab_stops = [[0.0; 3]; MAX_STOPS];
-    if matches!(interp, Interp::Oklab) {
-        for index in 0..count {
-            let color = linear_stops[index];
-            oklab_stops[index] = linear_to_oklab(color.r, color.g, color.b);
+    // Only the Oklab ramp reads these, and an empty slice is what says so:
+    // a linear bake neither computes nor carries a second colour space.
+    let oklab: &[[f32; 3]] = match interp {
+        Interp::Oklab => {
+            for index in 0..count {
+                let color = linear_stops[index];
+                oklab_stops[index] = linear_to_oklab(color.r, color.g, color.b);
+            }
+            &oklab_stops[..count]
         }
-    }
+        Interp::Linear => &[],
+    };
 
+    let mut ramp = Ramp::new(&stops[..count], &linear_stops[..count], oklab, interp);
     for (index, texel) in out.iter_mut().enumerate() {
         let t = index as f32 / (LUT_ROW_TEXELS - 1) as f32;
-        *texel = ColorF16::from(lerp_at(
-            &stops[..count],
-            &linear_stops[..count],
-            &oklab_stops[..count],
-            t,
-            interp,
-        ));
+        *texel = ColorF16::from(ramp.color_at(t));
     }
 }
 
-fn lerp_at(stops: &[Stop], linear: &[Color], oklab: &[[f32; 3]], t: f32, interp: Interp) -> Color {
-    if t <= stops[0].offset() {
-        return linear[0];
+/// The stop list plus a cursor into it, evaluated at a `t` that only ever
+/// increases.
+///
+/// That monotonicity is the point: the row walks `t` from 0 to 1, so the
+/// segment holding it never moves backwards and the search resumes where
+/// the last texel left it. The whole row costs one pass over the stops
+/// instead of a restart-from-the-first-segment per texel — the same
+/// reasoning that hoists the linear decode out of this loop (see the
+/// module doc in `gradient_atlas`), applied to the search.
+#[derive(Debug)]
+struct Ramp<'a> {
+    stops: &'a [Stop],
+    linear: &'a [Color],
+    /// Oklab coordinates of `linear`, empty under [`Interp::Linear`].
+    oklab: &'a [[f32; 3]],
+    interp: Interp,
+    /// Index of the segment's upper stop — the invariant is
+    /// `stops[upper - 1].offset() <= t`, restored by `color_at`.
+    upper: usize,
+}
+
+impl<'a> Ramp<'a> {
+    /// Seat the cursor on the first segment. `stops` must hold at least two
+    /// entries, which [`GradientStops`] guarantees by construction.
+    fn new(stops: &'a [Stop], linear: &'a [Color], oklab: &'a [[f32; 3]], interp: Interp) -> Self {
+        Self {
+            stops,
+            linear,
+            oklab,
+            interp,
+            upper: 1,
+        }
     }
-    if t >= stops[stops.len() - 1].offset() {
-        return linear[stops.len() - 1];
-    }
-    let mut upper = 1;
-    while upper < stops.len() && stops[upper].offset() < t {
-        upper += 1;
-    }
-    let lower_offset = stops[upper - 1].offset();
-    let upper_offset = stops[upper].offset();
-    let denominator = upper_offset - lower_offset;
-    if denominator.abs() <= f32::EPSILON {
-        return linear[upper];
-    }
-    let amount = (t - lower_offset) / denominator;
-    let lower = linear[upper - 1];
-    let upper_color = linear[upper];
-    match interp {
-        Interp::Linear => Color::lerp(lower, upper_color, amount),
-        Interp::Oklab => lerp_oklab(lower, upper_color, oklab[upper - 1], oklab[upper], amount),
+
+    /// The ramp colour at `t`. **Callers must pass a non-decreasing `t`**;
+    /// the cursor cannot walk back, and a smaller `t` would read the
+    /// segment it has already passed.
+    fn color_at(&mut self, t: f32) -> Color {
+        if t <= self.stops[0].offset() {
+            return self.linear[0];
+        }
+        let last = self.stops.len() - 1;
+        if t >= self.stops[last].offset() {
+            return self.linear[last];
+        }
+        // `t` is inside the ramp, so `stops[last].offset() > t` bounds this
+        // walk before it can run off the end.
+        while self.stops[self.upper].offset() < t {
+            self.upper += 1;
+        }
+        let upper = self.upper;
+        let lower_offset = self.stops[upper - 1].offset();
+        let upper_offset = self.stops[upper].offset();
+        let denominator = upper_offset - lower_offset;
+        if denominator.abs() <= f32::EPSILON {
+            return self.linear[upper];
+        }
+        let amount = (t - lower_offset) / denominator;
+        let lower = self.linear[upper - 1];
+        let upper_color = self.linear[upper];
+        match self.interp {
+            Interp::Linear => Color::lerp(lower, upper_color, amount),
+            Interp::Oklab => lerp_oklab(
+                lower,
+                upper_color,
+                self.oklab[upper - 1],
+                self.oklab[upper],
+                amount,
+            ),
+        }
     }
 }
 

@@ -125,11 +125,18 @@ pub(crate) struct SeenIds {
     /// endpoint arrives when `record_endpoint` opens it). Cleared
     /// each frame.
     pending: Vec<PendingExplicitCollision>,
-    /// Ids recorded by a pass this frame that was then discarded —
-    /// drained from `curr` by the next `pre_record` of the same
-    /// frame. Folded into `removed` at [`Self::rollover`] (unless
-    /// re-recorded by the final pass) so rows created during a
-    /// discarded pass don't leak. Capacity retained.
+    /// Ids that exist *only* inside this frame's discarded passes —
+    /// recorded by a pass that was then thrown away, and absent from
+    /// `prev`. Drained from `curr` by the next `pre_record` of the same
+    /// frame, folded into `removed` at [`Self::rollover`] (unless
+    /// re-recorded by the final pass) so rows created during a discarded
+    /// pass don't leak. Capacity retained.
+    ///
+    /// A discarded id that `prev` also holds stays out: the
+    /// prev-minus-curr diff already reports it. That filter is what keeps
+    /// this empty on the frames that matter — a settling second pass over
+    /// a thousand steady widgets adds nothing here instead of a thousand
+    /// entries.
     discarded: FxHashSet<WidgetId>,
 }
 
@@ -141,12 +148,20 @@ impl SeenIds {
     /// A two-pass frame calls `pre_record` then
     /// never reaches `rollover`, so `prev` must be preserved across
     /// the discard. A non-empty `curr` here IS such a discarded pass
-    /// (rollover empties it at frame end) — its ids move to
-    /// `discarded` so rows they created can be swept if the final
-    /// pass drops them.
+    /// (rollover empties it at frame end) — the ids it holds that `prev`
+    /// has never seen move to `discarded`, so rows they created can be
+    /// swept if the final pass drops them. The ones `prev`
+    /// does hold need no help: [`Self::rollover`]'s prev-minus-curr diff
+    /// reports exactly those, so copying them here would be a hash insert
+    /// per widget per settling pass to restate what the diff already says.
     pub(crate) fn pre_record(&mut self) {
         self.counters.clear();
-        self.discarded.extend(self.curr.keys().copied());
+        self.discarded.extend(
+            self.curr
+                .keys()
+                .filter(|wid| !self.prev.contains_key(*wid))
+                .copied(),
+        );
         self.curr.clear();
         self.pending.clear();
     }
@@ -455,6 +470,29 @@ mod tests {
         open(&mut ids, a, false, 1);
         let removed = ids.rollover();
         assert!(removed.is_empty(), "got {removed:?}");
+
+        // The other path: an id the *previous frame* also recorded, dropped
+        // by the settling pass. `discarded` never has to carry it — the
+        // prev-minus-curr diff reports exactly this case — so a settling
+        // pass over steady widgets adds nothing to the set.
+        let c = WidgetId::from_hash("c");
+        open(&mut ids, a, false, 1);
+        open(&mut ids, c, false, 2);
+        ids.rollover();
+        open(&mut ids, a, false, 1);
+        open(&mut ids, c, false, 2);
+        ids.pre_record();
+        assert!(
+            ids.discarded.is_empty(),
+            "ids `prev` already holds must cost no entry, got {:?}",
+            ids.discarded
+        );
+        open(&mut ids, a, false, 1);
+        let removed = ids.rollover();
+        assert!(
+            removed.contains(&c) && !removed.contains(&a),
+            "the diff still sweeps the dropped survivor, got {removed:?}"
+        );
     }
 
     #[test]

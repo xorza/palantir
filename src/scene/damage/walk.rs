@@ -16,7 +16,7 @@
 use crate::common::block_arena::BlockArena;
 use crate::primitives::rect::Rect;
 use crate::primitives::span::Span;
-use crate::primitives::widget_id::WidgetIdMap;
+use crate::primitives::widget_id::{WidgetId, WidgetIdMap};
 use crate::scene::cascade::LayerCascade;
 use crate::scene::cascade::paint::{Paint, PaintRows};
 use crate::scene::damage::counters::DamageCounters;
@@ -129,14 +129,17 @@ impl LayerWalk<'_> {
         let mut i = 0;
         while i < n {
             let parent_key = self.parent_key_at(i);
-            let advance = match self.classify(i, parent_key) {
+            // Loaded once and handed down: it is what every tier below
+            // keys on, and the column read was repeated in each of them.
+            let wid = self.tree.records.widget_id()[i];
+            let advance = match self.classify(i, wid, parent_key) {
                 Tier::Untracked => 1,
-                Tier::Added => self.on_added(i, parent_key),
+                Tier::Added => self.on_added(i, wid, parent_key),
                 Tier::SubtreeUnchanged => self.on_subtree_unchanged(i),
                 Tier::SubtreeMoved => self.on_subtree_moved(i),
-                Tier::DescendantChanged => self.on_descendant_changed(i),
-                Tier::PaintsChanged(prev) => self.on_paints_changed(i, prev, parent_key),
-                Tier::Evicted(prev) => self.on_evicted(i, prev),
+                Tier::DescendantChanged => self.on_descendant_changed(i, wid),
+                Tier::PaintsChanged(prev) => self.on_paints_changed(i, wid, prev, parent_key),
+                Tier::Evicted(prev) => self.on_evicted(i, wid, prev),
             };
             // Descending into children opens a parent frame. A subtree
             // jump doesn't: `SubtreeUnchanged` never visits them, and
@@ -204,8 +207,13 @@ impl LayerWalk<'_> {
 
     // ---- classification ---------------------------------------------
 
-    fn classify(&self, i: usize, parent_key: u64) -> Tier {
-        let Some(prev) = self.prev.get(&self.tree.records.widget_id()[i]).copied() else {
+    /// The map read here *is* the classification; the arms that write probe
+    /// the same bucket again. Deliberate — see the module doc for what
+    /// holding a live `Entry` across the tier dispatch cost — and cheap:
+    /// `prev` hashes by identity, so the repeat is a touch on the line the
+    /// classification just pulled in.
+    fn classify(&self, i: usize, wid: WidgetId, parent_key: u64) -> Tier {
+        let Some(prev) = self.prev.get(&wid).copied() else {
             let childless = self.subtree_end(i) == i + 1;
             return if childless && !self.rows(i).any_on_surface(self.surface) {
                 Tier::Untracked
@@ -233,7 +241,7 @@ impl LayerWalk<'_> {
 
     // ---- one method per tier ----------------------------------------
 
-    fn on_added(&mut self, i: usize, parent_key: u64) -> usize {
+    fn on_added(&mut self, i: usize, wid: WidgetId, parent_key: u64) -> usize {
         let span = self.cascade.paint_arena.node_spans[i];
         let paint_span = self
             .paints
@@ -244,7 +252,7 @@ impl LayerWalk<'_> {
             }
         }
         let snapshot = self.snapshot(i, parent_key, paint_span);
-        self.prev.insert(self.tree.records.widget_id()[i], snapshot);
+        self.prev.insert(wid, snapshot);
         self.probe.mark_dirty(NodeId(i as u32));
         1
     }
@@ -255,26 +263,32 @@ impl LayerWalk<'_> {
         span
     }
 
-    fn on_descendant_changed(&mut self, i: usize) -> usize {
-        if let Some(snap) = self.prev.get_mut(&self.tree.records.widget_id()[i]) {
+    fn on_descendant_changed(&mut self, i: usize, wid: WidgetId) -> usize {
+        if let Some(snap) = self.prev.get_mut(&wid) {
             snap.subtree_hash = self.tree.rollups.subtree[i];
         }
         1
     }
 
-    fn on_evicted(&mut self, i: usize, prev: NodeSnapshot) -> usize {
+    fn on_evicted(&mut self, i: usize, wid: WidgetId, prev: NodeSnapshot) -> usize {
         // Rows → rowless: push everything the node *was* painting, then
         // drop it.
         for screen in self.paints.slots[prev.paint_span.range()].screens() {
             self.raw_rects.push(screen);
         }
-        self.prev.remove(&self.tree.records.widget_id()[i]);
+        self.prev.remove(&wid);
         self.paints.release(prev.paint_span);
         self.probe.mark_dirty(NodeId(i as u32));
         1
     }
 
-    fn on_paints_changed(&mut self, i: usize, prev: NodeSnapshot, parent_key: u64) -> usize {
+    fn on_paints_changed(
+        &mut self,
+        i: usize,
+        wid: WidgetId,
+        prev: NodeSnapshot,
+        parent_key: u64,
+    ) -> usize {
         let node = NodeId(i as u32);
         let span = self.cascade.paint_arena.node_spans[i];
         let curr = &self.cascade.paint_arena.rows[span.range()];
@@ -325,7 +339,7 @@ impl LayerWalk<'_> {
         }
 
         let snapshot = self.snapshot(i, parent_key, leg.span);
-        self.prev.insert(self.tree.records.widget_id()[i], snapshot);
+        self.prev.insert(wid, snapshot);
         self.probe.mark_dirty(NodeId(i as u32));
         1
     }
@@ -356,17 +370,19 @@ impl LayerWalk<'_> {
                 continue;
             }
             let wid = self.tree.records.widget_id()[j];
-            match self.prev.get(&wid).copied() {
+            // One probe: the refresh below is the only write, so it takes the
+            // `&mut` up front rather than reading the snapshot and coming back
+            // for the same bucket — this runs per moved node, which is every
+            // node under a pan.
+            match self.prev.get_mut(&wid) {
                 Some(snap) => {
-                    if let Some(union) = self.paints.slots[snap.paint_span.range()].union_screens()
-                    {
+                    snap.cascade_input = self.cascade.cascade_inputs[j];
+                    let paint_span = snap.paint_span;
+                    if let Some(union) = self.paints.slots[paint_span.range()].union_screens() {
                         prev_extent = Some(prev_extent.map_or(union, |a| a.union(union)));
                     }
                     let curr = &self.cascade.paint_arena.rows[span.range()];
-                    self.paints.slots[snap.paint_span.range()].copy_from_slice(curr);
-                    if let Some(slot) = self.prev.get_mut(&wid) {
-                        slot.cascade_input = self.cascade.cascade_inputs[j];
-                    }
+                    self.paints.slots[paint_span.range()].copy_from_slice(curr);
                 }
                 None => {
                     let curr = &self.cascade.paint_arena.rows[span.range()];

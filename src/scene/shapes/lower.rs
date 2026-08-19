@@ -309,11 +309,14 @@ pub(crate) fn polyline(
 
     // `Shape::is_noop` drops < 2-point polylines before lowering
     // (`Shapes::add` gates on it), so a degenerate slice here is a
-    // caller bug, not an input case.
+    // caller bug, not an input case. Colour cardinality is the same kind
+    // of contract, checked here beside it rather than from the no-op
+    // query it used to open — a query answers, it does not validate.
     debug_assert!(
         points.len() >= 2,
         "polyline with < 2 points reached lowering"
     );
+    colors.debug_assert_matches(points.len());
     let mut payloads = store.payloads.borrow_mut();
     let p_start = payloads.polyline_points.len() as u32;
     let c_start = payloads.polyline_colors.len() as u32;

@@ -16,7 +16,7 @@ use std::time::Duration;
 /// Per-trigger tooltip state. `hover_started_at` is Ui-time at first
 /// hovered frame; elapsed = `now - hover_started_at`, immune to
 /// the frame runtime's `MAX_DT` clamp on idle wakes.
-#[derive(Default, Clone, Copy, Debug)]
+#[derive(Default, Clone, Copy, Debug, PartialEq)]
 struct TooltipState {
     hover_started_at: Option<Duration>,
     visible: bool,
@@ -31,9 +31,9 @@ struct TooltipGlobal {
 }
 
 /// Row key for the process-wide warmup state shared by every tooltip.
-/// Hashed on call rather than held in a `LazyLock`: it is read once per
-/// `Tooltip::show`, and hashing a short literal costs less than the
-/// lazy cell's init check.
+/// Hashed on call rather than held in a `LazyLock`: hashing a short
+/// literal costs less than the lazy cell's init check, and only a
+/// hovered trigger asks for it at all.
 fn global_state_id() -> WidgetId {
     WidgetId::from_hash("palantir.tooltip.global")
 }
@@ -154,7 +154,6 @@ impl<'r, 'a> Tooltip<'r, 'a> {
 
         let trigger_id = self.snapshot.id;
         let bubble_id = trigger_id.with("bubble");
-        let g_id = global_state_id();
 
         let trigger_hovered = self.snapshot.state.hovered;
         let trigger_disabled = self.snapshot.state.disabled;
@@ -163,14 +162,22 @@ impl<'r, 'a> Tooltip<'r, 'a> {
 
         let now = ui.now();
 
-        let mut state: TooltipState = *ui.state_mut::<TooltipState>(trigger_id);
-        let mut global: TooltipGlobal = *ui.state_mut::<TooltipGlobal>(g_id);
-
-        let warmup_active = global
-            .last_visible_at
-            .is_some_and(|t| now.saturating_sub(t) < warmup);
+        // A tooltip attaches to a trigger that is idle on almost every
+        // frame it is recorded, so nothing here may touch the state map
+        // unconditionally: the read probes without materialising a row, the
+        // warmup singleton is only asked for by a hovered trigger, and the
+        // write-back below is gated on an actual change.
+        let prev: TooltipState = ui
+            .try_state::<TooltipState>(trigger_id)
+            .copied()
+            .unwrap_or_default();
+        let mut state = prev;
 
         if active_trigger {
+            let warmup_active = ui
+                .try_state::<TooltipGlobal>(global_state_id())
+                .and_then(|global| global.last_visible_at)
+                .is_some_and(|t| now.saturating_sub(t) < warmup);
             let started = match state.hover_started_at {
                 Some(t) => t,
                 None => {
@@ -194,7 +201,8 @@ impl<'r, 'a> Tooltip<'r, 'a> {
         if state.visible
             && let Some(trigger_rect) = trigger_rect
         {
-            global.last_visible_at = Some(now);
+            ui.state_mut::<TooltipGlobal>(global_state_id())
+                .last_visible_at = Some(now);
             let position = OverlayPosition::below(trigger_rect, gap);
             let text = self.text;
             let chrome = self.chrome.as_ref().unwrap_or(&theme.panel);
@@ -217,8 +225,9 @@ impl<'r, 'a> Tooltip<'r, 'a> {
             });
         }
 
-        *ui.state_mut::<TooltipState>(trigger_id) = state;
-        *ui.state_mut::<TooltipGlobal>(g_id) = global;
+        if state != prev {
+            *ui.state_mut::<TooltipState>(trigger_id) = state;
+        }
     }
 }
 

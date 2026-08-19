@@ -122,7 +122,13 @@ impl<'a> ComboBox<'a> {
         });
 
         let trigger_rect = response.rect;
-        let mut open = ui.state_mut::<ComboState>(id).open;
+        // Probed, not inserted: a combo box spends nearly every frame closed,
+        // and a closed one is the default — so an unopened trigger keeps no
+        // row at all, and the write-back below happens only on a real flip.
+        let was_open = ui
+            .try_state::<ComboState>(id)
+            .is_some_and(|state| state.open);
+        let mut open = was_open;
         if !response.disabled && response.left.clicked() {
             open = !open;
         }
@@ -150,7 +156,9 @@ impl<'a> ComboBox<'a> {
                 open = false;
             }
         }
-        ui.state_mut::<ComboState>(id).open = open;
+        if open != was_open {
+            ui.state_mut::<ComboState>(id).open = open;
+        }
 
         Response::eager(id, ui, response)
     }

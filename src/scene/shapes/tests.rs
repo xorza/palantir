@@ -46,8 +46,12 @@ impl ColorSource {
     }
 }
 
+/// The colour-cardinality contract is checked where it is consumed —
+/// `lower::polyline` — not by the no-op query that used to open with it. So a
+/// polyline that never lowers (fewer than two points) is dropped in silence
+/// whatever its colour slice says, and one that does lower is checked.
 #[test]
-fn polyline_color_cardinality_is_enforced_before_noop_lowering() {
+fn polyline_color_cardinality_is_enforced_at_lowering() {
     let points = [Vec2::ZERO, Vec2::new(10.0, 10.0)];
     let colors = [Color::WHITE; 3];
 
@@ -71,7 +75,17 @@ fn polyline_color_cardinality_is_enforced_before_noop_lowering() {
                     1.0,
                 );
                 let result = catch_unwind(AssertUnwindSafe(|| shapes.add(shape, &store)));
-                let accepted = source.accepts(points_len, colors_len);
+                // What the no-op gate drops never reaches lowering, and so is
+                // never checked: fewer than two points, or a per-vertex colour
+                // slice with nothing visible in it — which an *empty* slice is,
+                // vacuously. What does lower is checked, and a mismatch panics
+                // in a debug build (the check is `debug_assert`, off the
+                // release paint path).
+                let colors_invisible =
+                    matches!(source, ColorSource::PerPoint | ColorSource::PerSegment)
+                        && colors_len == 0;
+                let lowers = points_len >= 2 && !colors_invisible;
+                let accepted = !lowers || source.accepts(points_len, colors_len);
 
                 assert_eq!(
                     result.is_ok(),
@@ -88,7 +102,7 @@ fn polyline_color_cardinality_is_enforced_before_noop_lowering() {
                     continue;
                 }
 
-                let stored = points_len == 2;
+                let stored = lowers;
                 assert_eq!(result.unwrap(), stored.then_some(0));
                 assert_eq!(shapes.records.len(), usize::from(stored));
                 assert_eq!(shapes.hashes.len(), usize::from(stored));

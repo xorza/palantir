@@ -44,6 +44,16 @@ pub(super) fn measure_inner(
     }
 
     // Phase 1: query column intrinsics for Hug-column span-1 cells.
+    //
+    // The second walk over `active_children` this measure — `grid::intrinsic`
+    // made the first, for the grid's own `intrinsic_min` — and not a repeat
+    // of it. Per-child intrinsics are memoized per (node, axis, req), so the
+    // min half every cell asks for below is a scratch read; the max half is
+    // new work that the min-content query never computed. What the two folds
+    // produce also differs: that one sums track contributions clamped to
+    // `[Track.min, Track.max]` into transient aggregator slots, this one
+    // seeds the durable per-track store the resolver then clamps.
+
     // Resolves the col axis without measuring children — the whole
     // point is to give cells a committed column width before they
     // shape (otherwise wrap text in Hug cols would always shape at INF
