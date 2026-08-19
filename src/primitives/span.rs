@@ -16,8 +16,14 @@ pub struct Span {
 }
 
 impl Span {
+    /// A span of `len` entries starting at `start`.
+    ///
+    /// `const` and public because the baked icon format is a flat blob with
+    /// spans beside it, and `bake-icons` writes those spans into a generated
+    /// `const` that this crate then reads — see
+    /// [`IconDef::svg`](crate::IconDef::svg).
     #[inline]
-    pub(crate) const fn new(start: u32, len: u32) -> Self {
+    pub const fn new(start: u32, len: u32) -> Self {
         Self { start, len }
     }
 

@@ -96,25 +96,3 @@ pub(crate) struct SubpixelOrigin {
     /// bins, 2 bits each).
     pub(crate) bins: u8,
 }
-
-#[cfg(test)]
-mod internals {
-    use crate::text::render::GlyphRasterKey;
-    use cosmic_text::{CacheKey, CacheKeyFlags, SubpixelBin, Weight, fontdb};
-
-    impl GlyphRasterKey {
-        /// Distinct dummy keys for the renderer's atlas tests — the
-        /// only way to mint one outside a real glyph walk.
-        pub(crate) fn for_test(glyph_id: u16) -> Self {
-            Self(CacheKey {
-                font_id: fontdb::ID::dummy(),
-                glyph_id,
-                font_size_bits: 14.0_f32.to_bits(),
-                x_bin: SubpixelBin::Zero,
-                y_bin: SubpixelBin::Zero,
-                font_weight: Weight::NORMAL,
-                flags: CacheKeyFlags::empty(),
-            })
-        }
-    }
-}

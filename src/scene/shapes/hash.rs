@@ -184,6 +184,23 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
                 (*min_filter as u8) | ((*mag_filter as u8) << 1) | ((*downsample as u8) << 2),
             );
         }
+        // The handle's `view_box` is baked data — constant for a given
+        // `(set, icon)` — so identity plus the rect, fit and tint is the
+        // whole of what can change. The raster size is *not* hashed: it is a
+        // function of the resolved screen rect, which the paint bound already
+        // tracks, and folding it in would need the display scale the record
+        // does not carry.
+        ShapeRecord::Icon {
+            local_rect,
+            handle,
+            fit,
+            tint,
+        } => {
+            hash_optional_rect(*local_rect, &mut h);
+            tint.hash(&mut h);
+            h.write_u32(u32::from(handle.icon.set.0) | (u32::from(handle.icon.icon.0) << 16));
+            h.write_u8(*fit as u8);
+        }
         // Geometry + style hashed inline — every input lives on the
         // record, so no lowering-time content hash is needed (unlike
         // `Polyline`/`Mesh`, whose payload bytes live in the record store).

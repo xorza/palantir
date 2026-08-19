@@ -69,8 +69,8 @@ use crate::primitives::color::ColorF16;
 use crate::primitives::rect::Rect;
 use crate::primitives::transform::TranslateScale;
 use crate::renderer::frontend::payload::{
-    DrawCurvePayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload, DrawQuadPayload,
-    DrawTextPayload, PushClipPayload,
+    DrawCurvePayload, DrawIconPayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload,
+    DrawQuadPayload, DrawTextPayload, PushClipPayload,
 };
 use crate::renderer::gpu_view::GpuPaintRef;
 use crate::text::shaped_ref::ShapedTextRef;
@@ -101,6 +101,8 @@ pub(crate) trait PaintSink {
     /// `paint` is `Some` exactly when this image composites a `GpuView`,
     /// carrying the app callback the off-screen target is painted with.
     fn image(&mut self, payload: DrawImagePayload, paint: Option<&GpuPaintRef>);
+
+    fn icon(&mut self, payload: DrawIconPayload);
 
     fn curve(&mut self, payload: DrawCurvePayload);
 
@@ -148,6 +150,16 @@ pub(crate) trait PaintSink {
             return;
         }
         self.image(payload, paint);
+    }
+
+    /// Paint a baked icon. Nothing is rasterized here — the sink records
+    /// which icon at which logical rect, and the backend resolves that to
+    /// pixels once the physical size is known.
+    fn draw_icon(&mut self, payload: DrawIconPayload) {
+        if payload.is_noop() {
+            return;
+        }
+        self.icon(payload);
     }
 
     fn draw_curve(&mut self, payload: DrawCurvePayload) {

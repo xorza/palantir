@@ -1,0 +1,188 @@
+//! Baked SVG icons. Each one is rasterized at the exact physical pixel size
+//! it lands on and cached in the icon atlas, so drawing this page exercises
+//! the whole path — parse, resvg raster, atlas insert, glyph shader — and the
+//! size ladder runs again on every window scale change.
+//!
+//! The set is assembled here rather than baked, because `bake-icons` is the
+//! next slice. An [`IconAtlas`] is two `'static` slices and nothing else, so
+//! what this builds at startup is exactly the shape the generated file will
+//! emit as a `const`.
+
+use crate::support;
+use crate::support::{demo_cell_at, section, tiles};
+use palantir::{Color, IconAtlas, IconId, IconSet, Ui};
+use std::rc::Rc;
+
+/// A diskette: several flat fills over a vertical gradient, inside a clip
+/// path. The "real toolbar icon" case.
+const SAVE_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+<defs>
+<linearGradient id="b" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#5b9cf8"/><stop offset="1" stop-color="#1b4fa8"/>
+</linearGradient>
+<clipPath id="c"><rect x="2" y="2" width="20" height="20" rx="2.5"/></clipPath>
+</defs>
+<g clip-path="url(#c)">
+<path d="M2 4a2 2 0 0 1 2-2h13l5 5v13a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2Z" fill="url(#b)"/>
+<rect x="7" y="2" width="10" height="7" fill="#e8eefc"/>
+<rect x="13" y="3" width="2" height="5" fill="#31456b"/>
+<rect x="6" y="13" width="12" height="9" fill="#f7faff"/>
+<rect x="8" y="15.5" width="8" height="1.4" fill="#9fb4d8"/>
+<rect x="8" y="18" width="8" height="1.4" fill="#9fb4d8"/>
+</g></svg>"##;
+
+/// A folder with a radial gradient and a soft drop shadow. The filter case —
+/// 10-20x the raster cost of the others, and so the one the backend prewarms
+/// at load instead of meeting on the frame that first draws it.
+const FOLDER_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+<defs>
+<filter id="s" x="-40%" y="-40%" width="180%" height="180%">
+<feGaussianBlur in="SourceAlpha" stdDeviation="0.7"/><feOffset dy="0.7" result="o"/>
+<feMerge><feMergeNode in="o"/><feMergeNode in="SourceGraphic"/></feMerge>
+</filter>
+<radialGradient id="g" cx="35%" cy="28%" r="85%">
+<stop offset="0" stop-color="#ffdc93"/><stop offset="1" stop-color="#e08a1f"/>
+</radialGradient>
+</defs>
+<g filter="url(#s)">
+<path d="M3 6a2 2 0 0 1 2-2h4.5l2 2H19a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" fill="url(#g)"/>
+<path d="M3 18.2 6.2 11H22l-3.2 7.2Z" fill="#ffefcb"/>
+</g></svg>"##;
+
+/// A single-colour outline. Every paint resolves to one colour, so it is
+/// marked tintable and takes a shape's full tint rather than only its alpha.
+const NEW_FILE_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+<path d="M6 2h8l5 5v15H6Z" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/>
+<path d="M14 2v5h5" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/>
+<path d="M12 11v7M8.5 14.5h7" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>
+</svg>"##;
+
+/// A 2:1 artwork, so `Contain` has an aspect ratio to preserve and the size
+/// ladder has a short axis to carry along with the long one.
+const WIDE_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 16">
+<rect width="32" height="16" rx="3" fill="#2b3c5e"/>
+<circle cx="8" cy="8" r="4" fill="#6ee7c8"/><circle cx="20" cy="8" r="4" fill="#f0a5d0"/>
+<rect x="26" y="4" width="3" height="8" rx="1.5" fill="#facc15"/>
+</svg>"##;
+
+/// The set, plus the ids resolved once. `from_svgs` parses each source to
+/// derive its viewBox, tintability, and filter use — the classification
+/// `bake-icons` will do at build time — and sorts by name, so ids come back
+/// through `by_name` rather than being counted off by hand.
+#[derive(Clone, Debug)]
+struct Icons {
+    set: IconSet,
+    folder: IconId,
+    new_file: IconId,
+    save: IconId,
+    wide: IconId,
+}
+
+fn icons(ui: &Ui) -> Icons {
+    // Built once and held here rather than rebuilt per frame; a set owns its
+    // buffers, so the `Rc` is what keeps one alive across frames without
+    // leaking it. `load_icons` keys on that allocation, so calling it every
+    // frame costs a refcount bump and adds no second entry.
+    thread_local! {
+        static BUILT: Rc<IconAtlas> = Rc::new(IconAtlas::from_svgs([
+            ("folder", FOLDER_SVG),
+            ("new-file", NEW_FILE_SVG),
+            ("save", SAVE_SVG),
+            ("wide", WIDE_SVG),
+        ]));
+    }
+    let set = BUILT.with(|atlas| ui.load_icons(Rc::clone(atlas)));
+    let id = |name| set.by_name(name).expect("bundled icon");
+    Icons {
+        folder: id("folder"),
+        new_file: id("new-file"),
+        save: id("save"),
+        wide: id("wide"),
+        set,
+    }
+}
+
+pub(crate) fn build(ui: &mut Ui) {
+    let icons = icons(ui);
+
+    section(
+        ui,
+        "sizes",
+        "sizes — each cell rasterizes at its own physical size, not a scaled copy",
+        |ui| {
+            tiles(ui, "size-tiles", |ui| {
+                for (px, label) in SIZES {
+                    demo_cell_at(ui, label, px + 24.0, px + 24.0, |ui| {
+                        draw(ui, &icons, icons.save, Color::WHITE);
+                    });
+                }
+            });
+        },
+    );
+
+    section(
+        ui,
+        "artwork",
+        "artwork — gradients, a filter, a tintable outline, and a 2:1 aspect",
+        |ui| {
+            tiles(ui, "artwork-tiles", |ui| {
+                demo_cell_at(ui, "save — gradient + clip path", 120.0, 120.0, |ui| {
+                    draw(ui, &icons, icons.save, Color::WHITE);
+                });
+                demo_cell_at(ui, "folder — radial + drop shadow", 120.0, 120.0, |ui| {
+                    draw(ui, &icons, icons.folder, Color::WHITE);
+                });
+                demo_cell_at(ui, "new-file — tintable outline", 120.0, 120.0, |ui| {
+                    draw(ui, &icons, icons.new_file, Color::WHITE);
+                });
+                demo_cell_at(ui, "wide — 2:1, Contain", 160.0, 120.0, |ui| {
+                    draw(ui, &icons, icons.wide, Color::WHITE);
+                });
+            });
+        },
+    );
+
+    section(
+        ui,
+        "tint",
+        "tint — whole for a tintable icon, alpha only for a colour one",
+        |ui| {
+            tiles(ui, "tint-tiles", |ui| {
+                for (label, tint) in [
+                    ("tintable, white", Color::WHITE),
+                    ("tintable, amber", Color::rgb(0.98, 0.75, 0.15)),
+                    ("tintable, teal", Color::rgb(0.30, 0.85, 0.78)),
+                ] {
+                    demo_cell_at(ui, label, 96.0, 96.0, |ui| {
+                        draw(ui, &icons, icons.new_file, tint);
+                    });
+                }
+                // The same alpha on a colour icon fades it rather than
+                // recolouring it — the disabled state a colour icon gets.
+                demo_cell_at(ui, "colour icon at 40% alpha", 96.0, 96.0, |ui| {
+                    draw(ui, &icons, icons.save, Color::rgba(1.0, 1.0, 1.0, 0.4));
+                });
+            });
+        },
+    );
+
+    support::note(
+        ui,
+        "Resize the window between display scales: every cell re-rasterizes at \
+         the new physical size rather than resampling, so edges stay exact.",
+    );
+}
+
+fn draw(ui: &mut Ui, icons: &Icons, icon: IconId, tint: Color) {
+    ui.add_shape(icons.set.shape(icon).tint(tint));
+}
+
+/// Cell captions need a `&'static str`, and the sizes are a fixed list, so
+/// the label rides alongside the number rather than being formatted.
+const SIZES: [(f32, &str); 5] = [
+    (16.0, "16 px"),
+    (24.0, "24 px"),
+    (32.0, "32 px"),
+    (48.0, "48 px"),
+    (96.0, "96 px"),
+];

@@ -1,5 +1,6 @@
 use crate::common::clipboard::Clipboard;
 use crate::diagnostics::Diagnostics;
+use crate::icons::icon_registry::IconRegistry;
 use crate::renderer::image_registry::ImageRegistry;
 use crate::renderer::texture_id_source::TextureIdSource;
 use crate::text::shaper::TextShaper;
@@ -12,6 +13,7 @@ use std::num::NonZeroU32;
 pub(crate) struct UiResources {
     pub(crate) text: TextShaper,
     pub(crate) images: ImageRegistry,
+    pub(crate) icons: IconRegistry,
     pub(super) texture_ids: TextureIdSource,
     pub(crate) clipboard: Clipboard,
     pub(crate) diagnostics: Diagnostics,
@@ -28,6 +30,7 @@ impl UiResources {
         Self {
             text,
             images: ImageRegistry::new(texture_ids.clone(), max_texture_dimension_2d),
+            icons: IconRegistry::default(),
             texture_ids,
             clipboard,
             diagnostics: Diagnostics::default(),

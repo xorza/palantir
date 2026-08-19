@@ -5,7 +5,11 @@
 //! per-frame `Vec::new()` in those paths can't slip in unnoticed.
 
 use crate::harness::audit_steady_state;
-use palantir::{Color, Configure, Frame, Grid, Mesh, Panel, PolylineColors, Shape, Sizing, Track};
+use palantir::{
+    Color, Configure, Frame, Grid, IconAtlas, IconId, Mesh, Panel, PolylineColors, Shape, Sizing,
+    Track,
+};
+use std::rc::Rc;
 
 /// 16×16 grid of `Frame`s — 256 quads per frame. Stresses
 /// `RenderCmdBuffer` and `RenderBuffer.quads` capacity reuse much
@@ -80,6 +84,44 @@ fn mesh_static_alloc_free() {
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 ui.add_shape(Shape::mesh(&mesh));
+            });
+    });
+}
+
+/// 200 icons per frame. Every one goes record → encode → compose, so the
+/// per-frame cost is a push onto `RenderBuffer.icons` and nothing else: the
+/// raster and its atlas slot are resolved once, on the frame that first drew
+/// the icon, and re-found by a map probe thereafter.
+///
+/// The set is loaded inside the scene, which is the shape an immediate-mode
+/// caller writes — so this also pins that re-loading a set every frame does
+/// not allocate. `IconRegistry::register` walks its table and hands back the
+/// existing id; a regression that pushed a duplicate entry would show up here
+/// before it showed up as unbounded growth.
+#[test]
+fn many_icons_compose_alloc_free() {
+    const SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect width="16" height="16" rx="3" fill="#fff"/></svg>"##;
+    let atlas = Rc::new(IconAtlas::from_svgs([("chip", SVG)]));
+    let chip = IconId(0);
+
+    audit_steady_state(0, move |ui| {
+        let icons = ui.load_icons(Rc::clone(&atlas));
+        Grid::new()
+            .auto_id()
+            .cols([Track::fill(); 20])
+            .rows([Track::fill(); 10])
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                for r in 0..10u16 {
+                    for c in 0..20u16 {
+                        Panel::zstack()
+                            .id_salt((r, c))
+                            .grid_cell((r, c))
+                            .show(ui, |ui| {
+                                ui.add_shape(icons.shape(chip));
+                            });
+                    }
+                }
             });
     });
 }

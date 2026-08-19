@@ -1,4 +1,5 @@
 pub(crate) mod curve;
+pub(crate) mod icon;
 pub(crate) mod image;
 pub(crate) mod mesh;
 pub(crate) mod polyline;
@@ -9,6 +10,7 @@ pub(crate) mod style;
 pub(crate) mod text;
 pub(crate) mod triangle;
 
+use crate::icons::icon_set::IconHandle;
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
 use crate::primitives::image::{ImageDownsample, ImageFilter, ImageFit};
@@ -19,6 +21,7 @@ use crate::primitives::shadow::Shadow;
 use crate::primitives::stroke::Stroke;
 use crate::renderer::image_registry::ImageHandle;
 use crate::shape::curve::{CurveGeometry, CurveShape};
+use crate::shape::icon::{IconFit, IconShape};
 use crate::shape::image::ImageShape;
 use crate::shape::mesh::MeshShape;
 use crate::shape::polyline::{PolylineColors, PolylineShape};
@@ -216,6 +219,20 @@ impl Shape {
             min_filter: ImageFilter::default(),
             mag_filter: ImageFilter::default(),
             downsample: ImageDownsample::default(),
+            tint: Color::WHITE,
+        }
+    }
+
+    /// A baked SVG icon painting the owner's full rect, aspect preserved and
+    /// untinted. The icon is rasterized at the exact physical pixel size the
+    /// rect resolves to, so it is crisp at every display scale.
+    ///
+    /// `handle` comes from [`IconSet::handle`](crate::IconSet::handle).
+    pub fn icon(handle: IconHandle) -> IconShape {
+        IconShape {
+            handle,
+            local_rect: None,
+            fit: IconFit::default(),
             tint: Color::WHITE,
         }
     }

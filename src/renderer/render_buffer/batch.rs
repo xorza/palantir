@@ -34,5 +34,8 @@ pub(crate) struct GroupBatch {
 pub(crate) enum PaintTier {
     Mesh,
     Image,
+    /// Above `Image`, so an icon drawn over an image backdrop lands on top of
+    /// it without forcing a group flush — the common toolbar-button shape.
+    Icon,
     Curve,
 }

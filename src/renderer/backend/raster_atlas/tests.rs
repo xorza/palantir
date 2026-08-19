@@ -1,11 +1,16 @@
 use super::*;
 
-fn key(glyph_id: u16) -> GlyphRasterKey {
-    GlyphRasterKey::for_test(glyph_id)
+/// The atlas is generic over its key, so its own tests use the cheapest one
+/// that satisfies the bounds rather than either tenant's — nothing here
+/// depends on what a key means.
+type TestKey = u16;
+
+fn key(id: u16) -> TestKey {
+    id
 }
 
-fn slot(alloc: Option<AllocId>, last_use: u64) -> GlyphSlot {
-    GlyphSlot {
+fn slot(alloc: Option<AllocId>, last_use: u64) -> AtlasSlot {
+    AtlasSlot {
         x: 0,
         y: 0,
         width: 0,
@@ -20,16 +25,12 @@ fn slot(alloc: Option<AllocId>, last_use: u64) -> GlyphSlot {
 }
 
 #[test]
-fn packed_glyph_metadata_checks_every_wire_boundary() {
-    let placement = |width, height, left, top| GlyphPlacement {
-        left,
-        top,
-        width,
-        height,
-    };
+fn packed_metadata_checks_every_wire_boundary() {
+    let placement = |width, height, left, top| (width, height, left, top);
+    let packed = |(width, height, left, top)| PackedMetadata::new(width, height, left, top);
     assert_eq!(
-        PackedGlyphMetadata::try_from(&placement(0, 0, 0, 0)).unwrap(),
-        PackedGlyphMetadata {
+        packed(placement(0, 0, 0, 0)).unwrap(),
+        PackedMetadata {
             width: 0,
             height: 0,
             left: 0,
@@ -37,14 +38,14 @@ fn packed_glyph_metadata_checks_every_wire_boundary() {
         }
     );
     assert_eq!(
-        PackedGlyphMetadata::try_from(&placement(
+        packed(placement(
             u16::MAX as u32,
             u16::MAX as u32,
             i16::MIN as i32,
             i16::MAX as i32,
         ))
         .unwrap(),
-        PackedGlyphMetadata {
+        PackedMetadata {
             width: u16::MAX,
             height: u16::MAX,
             left: i16::MIN,
@@ -52,8 +53,8 @@ fn packed_glyph_metadata_checks_every_wire_boundary() {
         }
     );
     assert_eq!(
-        PackedGlyphMetadata::try_from(&placement(1, 1, i16::MAX as i32, i16::MIN as i32,)).unwrap(),
-        PackedGlyphMetadata {
+        packed(placement(1, 1, i16::MAX as i32, i16::MIN as i32)).unwrap(),
+        PackedMetadata {
             width: 1,
             height: 1,
             left: i16::MAX,
@@ -71,7 +72,7 @@ fn packed_glyph_metadata_checks_every_wire_boundary() {
     ];
     for (width, height, left, top, case) in invalid {
         assert!(
-            PackedGlyphMetadata::try_from(&placement(width, height, left, top)).is_err(),
+            packed(placement(width, height, left, top)).is_none(),
             "{case}"
         );
     }
@@ -94,7 +95,7 @@ fn a_drained_ticket_retires_only_its_own_stale_empty() {
         cache.insert(key(i as u16 + 1), i);
     }
     let mut free = Vec::new();
-    let refile = |cache: &mut FxHashMap<GlyphRasterKey, u32>, free: &mut Vec<u32>, k| {
+    let refile = |cache: &mut FxHashMap<TestKey, u32>, free: &mut Vec<u32>, k| {
         retire_unallocated(cache, &slots, free, k, 1024)
     };
 
@@ -177,7 +178,7 @@ fn the_clock_resumes_where_it_stopped_and_skips_ineligible_slots() {
         slot(Some(AllocId::deserialize(0)), 8),
         slot(Some(AllocId::deserialize(1)), 2),
         slot(None, 1), // never drew — nothing to deallocate
-        GlyphSlot {
+        AtlasSlot {
             content: ContentType::Color,
             ..slot(Some(AllocId::deserialize(3)), 0)
         },

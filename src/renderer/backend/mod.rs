@@ -7,12 +7,14 @@ mod format_pipelines;
 pub(crate) mod gpu_ctx;
 mod gpu_gradient_atlas;
 mod gpu_timings;
+pub(crate) mod icon;
 pub(crate) mod image_pipeline;
 mod mesh_pipeline;
 mod overlay_pass;
 pub(crate) mod pipeline_utils;
 mod quad_pipeline;
 pub(crate) mod queue;
+pub(crate) mod raster_atlas;
 // `pub(crate)` only so the `schedule` benchmark can reach the gated
 // `internals` harness; every item inside stays `pub(super)`.
 pub(crate) mod schedule;
@@ -28,6 +30,7 @@ use self::curve_pipeline::CurvePipeline;
 use self::format_pipelines::FormatPipelines;
 use self::gpu_ctx::GpuCtx;
 use self::gpu_timings::GpuTimings;
+use self::icon::IconBackend;
 use self::image_pipeline::ImagePipeline;
 use self::mesh_pipeline::MeshPipeline;
 use self::overlay_pass::DebugOverlay;
@@ -38,6 +41,7 @@ use self::stencil::STENCIL_FORMAT;
 use self::viewport::{RepaintScissors, ViewportPush, build_repaint_scissors};
 use crate::diagnostics::DebugOverlayConfig;
 use crate::diagnostics::gpu_stats::{BatchKind, GpuPassStats};
+use crate::icons::icon_registry::IconRegistry;
 use crate::primitives::urect::URect;
 use crate::renderer::backend::gpu_gradient_atlas::GpuGradientAtlas;
 use crate::renderer::backend::text::TextBackend;
@@ -127,6 +131,7 @@ pub(crate) struct BackendConfig {
 pub(crate) struct BackendResources {
     pub(crate) text: TextShaper,
     pub(crate) images: ImageRegistry,
+    pub(crate) icons: IconRegistry,
     pub(crate) gradient_atlas: SharedGradientAtlas,
     pub(crate) gpu_pass_stats: GpuPassStats,
 }
@@ -159,6 +164,7 @@ pub(crate) struct WgpuBackend {
     quad: QuadPipeline,
     mesh: MeshPipeline,
     image: ImagePipeline,
+    icon: IconBackend,
     curve: CurvePipeline,
     text: TextBackend,
     debug: DebugOverlay,
@@ -213,6 +219,7 @@ impl WgpuBackend {
         let image = ImagePipeline::new(&device);
         let curve = CurvePipeline::new(&device);
         let text = TextBackend::new(&device, resources.text);
+        let icon = IconBackend::new(&device, resources.icons);
         let debug = DebugOverlay::new(&device);
         // Per-format pipeline sets build lazily on the first submit that
         // targets each format (`ensure_format`); none at construction.
@@ -246,6 +253,7 @@ impl WgpuBackend {
             quad,
             mesh,
             image,
+            icon,
             curve,
             text,
             debug,
@@ -278,6 +286,7 @@ impl WgpuBackend {
                 &self.quad,
                 &self.mesh,
                 &self.image,
+                &self.icon,
                 &self.curve,
                 &self.text,
             );
@@ -558,6 +567,23 @@ impl WgpuBackend {
             // `TextBackend::flush` / `atlas::flush_pending_uploads`.
             self.text.flush(&mut ctx);
 
+            // Icons: prewarm any filtered icon at this frame's scale (an SVG
+            // filter is 10-20x an ordinary raster, so meeting one lazily is a
+            // dropped frame), then encode each batch, rasterizing misses
+            // inline the way the text prepare does.
+            {
+                profiling::scope!(
+                    "icon.prepare_batches",
+                    &format!("count={}", buffer.icon_batches.len())
+                );
+                self.icon.prewarm(&mut ctx, buffer.scale);
+                for (i, b) in buffer.icon_batches.iter().enumerate() {
+                    let rows = &buffer.icons[b.items.range()];
+                    self.icon.prepare_batch(&mut ctx, i, rows);
+                }
+            }
+            self.icon.flush(&mut ctx);
+
             overlay_count
         };
 
@@ -659,6 +685,7 @@ impl WgpuBackend {
         }
 
         self.text.end_frame();
+        self.icon.end_frame();
     }
 
     /// Full-viewport pass that draws one 40%-translucent black quad
@@ -960,6 +987,17 @@ impl WgpuBackend {
                     rebind!(Bound::Image, self.image.bind(pass, &fmt.image, use_stencil));
                     let items = buffer.image_batches[batch].items;
                     self.image.draw_batch(pass, buffer.images.id(), items);
+                    debug_marker::pop(pass);
+                }
+                RenderStep::IconBatch { batch } => {
+                    mark(pass, BatchKind::Icon);
+                    debug_marker::push(pass, "icons");
+                    // Like text, `render_batch` pushes both halves of the
+                    // immediate region itself, so the next step must re-push
+                    // the viewport after its own bind.
+                    self.icon
+                        .render_batch(batch, pass, &fmt.icon, use_stencil, &viewport);
+                    bound = Bound::None;
                     debug_marker::pop(pass);
                 }
                 RenderStep::CurveBatch { batch } => {
