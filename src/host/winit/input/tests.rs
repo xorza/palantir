@@ -170,3 +170,59 @@ fn pinch_translation_rejects_invalid_factors() {
         assert_eq!(count, 0, "invalid pinch delta {delta:?} emitted an event");
     }
 }
+
+/// The logical and physical tables must denote the same [`Key`] for
+/// every key winit names in both vocabularies.
+///
+/// `Shortcut::matches`'s non-Latin fallback consults `physical` alone,
+/// so a key that resolves on one side and not the other stops matching
+/// under a non-Latin layout — silently, and only for users of that
+/// layout. `shared_key!` makes them agree by construction; this pins it
+/// against someone hand-adding an arm to one side instead.
+#[test]
+fn shared_keys_denote_the_same_key_on_both_sides() {
+    // Every name `shared_key!` lists — a subset would not catch an
+    // arm hand-added to one side outside the macro, which is the whole
+    // failure this guards.
+    let cases: &[(NamedKey, KeyCode)] = &[
+        (NamedKey::ArrowLeft, KeyCode::ArrowLeft),
+        (NamedKey::ArrowRight, KeyCode::ArrowRight),
+        (NamedKey::ArrowUp, KeyCode::ArrowUp),
+        (NamedKey::ArrowDown, KeyCode::ArrowDown),
+        (NamedKey::Backspace, KeyCode::Backspace),
+        (NamedKey::Delete, KeyCode::Delete),
+        (NamedKey::Home, KeyCode::Home),
+        (NamedKey::End, KeyCode::End),
+        (NamedKey::PageUp, KeyCode::PageUp),
+        (NamedKey::PageDown, KeyCode::PageDown),
+        (NamedKey::Enter, KeyCode::Enter),
+        (NamedKey::Tab, KeyCode::Tab),
+        (NamedKey::Escape, KeyCode::Escape),
+        (NamedKey::Space, KeyCode::Space),
+        (NamedKey::F1, KeyCode::F1),
+        (NamedKey::F2, KeyCode::F2),
+        (NamedKey::F3, KeyCode::F3),
+        (NamedKey::F4, KeyCode::F4),
+        (NamedKey::F5, KeyCode::F5),
+        (NamedKey::F6, KeyCode::F6),
+        (NamedKey::F7, KeyCode::F7),
+        (NamedKey::F8, KeyCode::F8),
+        (NamedKey::F9, KeyCode::F9),
+        (NamedKey::F10, KeyCode::F10),
+        (NamedKey::F11, KeyCode::F11),
+        (NamedKey::F12, KeyCode::F12),
+    ];
+    for &(named, code) in cases {
+        let from_logical = logical_key(&WinitKey::Named(named));
+        let from_physical = physical_key(&PhysicalKey::Code(code));
+        assert_eq!(
+            from_logical, from_physical,
+            "{named:?} / {code:?} must denote one Key",
+        );
+        assert_ne!(
+            from_logical,
+            Key::Other,
+            "{named:?} must resolve on both sides, not fall through",
+        );
+    }
+}
