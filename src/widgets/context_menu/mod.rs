@@ -8,7 +8,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::ThemeDefaults;
 use crate::scene::node::{Configure, ConfigureNode, Node};
 use crate::ui::Ui;
-use crate::widgets::popup::{ClickOutside, Popup, PopupHandle};
+use crate::widgets::popup::{ClickOutside, Popup, PopupHandle, PopupResponse};
 use crate::widgets::response::{Response, ResponseSnapshot};
 use crate::widgets::separator::Separator;
 use crate::widgets::text::Text;
@@ -117,14 +117,16 @@ impl<'a> ContextMenu<'a> {
         ContextMenu::for_id(snapshot.id)
     }
 
-    /// Record the menu and return per-frame outcome. The body closure
-    /// records [`MenuItem`]s inside `Layer::Popup`; the menu auto-
-    /// closes on outside-click, Esc, or an item click.
-    pub fn show(
-        self,
-        ui: &mut Ui,
-        body: impl FnOnce(&mut Ui, &PopupHandle),
-    ) -> ContextMenuResponse {
+    /// Record the menu and return the popup's own per-frame outcome.
+    ///
+    /// [`PopupResponse`] directly rather than a menu-specific wrapper: a
+    /// context menu *is* a popup here, so it reports
+    /// [`closed`](PopupResponse::closed) — the same close predicate every
+    /// other overlay-trigger widget branches on.
+    ///
+    /// The body closure records [`MenuItem`]s inside `Layer::Popup`; the
+    /// menu auto-closes on outside-click, Esc, or an item click.
+    pub fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, &PopupHandle)) -> PopupResponse {
         // Esc dismissal is owned by the `Dismiss` popup below — it folds into
         // `resp.closed()`, so no hand-rolled `escape_pressed` here.
         //
@@ -135,7 +137,7 @@ impl<'a> ContextMenu<'a> {
             .try_state::<ContextMenuState>(self.for_id)
             .and_then(|st| st.anchor)
         else {
-            return ContextMenuResponse::default();
+            return PopupResponse::default();
         };
 
         let body_id = self.for_id.with("body");
@@ -164,10 +166,7 @@ impl<'a> ContextMenu<'a> {
             ContextMenu::close(ui, self.for_id);
         }
 
-        ContextMenuResponse {
-            dismissed: resp.dismissed,
-            item_clicked: resp.close_requested,
-        }
+        resp
     }
 
     /// Open the context menu keyed off `for_id` at surface-space
@@ -199,12 +198,6 @@ impl Configure for ContextMenu<'_> {
     fn node_mut(&mut self) -> ConfigureNode<'_> {
         self.popup.node_mut()
     }
-}
-
-#[derive(Clone, Copy, Debug, Default)]
-pub struct ContextMenuResponse {
-    pub dismissed: bool,
-    pub item_clicked: bool,
 }
 
 /// One row inside a [`ContextMenu`]. Label on the left, optional

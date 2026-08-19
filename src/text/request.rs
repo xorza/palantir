@@ -2,8 +2,8 @@
 //! the canonical parameters it shapes under.
 
 use crate::common::hash;
+use crate::text::glyph_font::GlyphFont;
 use crate::text::key::{TextShapeKey, WrapBound};
-use crate::text::{FontFamily, FontWeight};
 
 /// Source text paired with its canonical shaping parameters.
 #[derive(Clone, Copy, Debug)]
@@ -19,22 +19,10 @@ impl<'a> TextShapeRequest<'a> {
     /// Hashes `text` itself. A caller holding the hash already — layout
     /// retains one per recorded run — mints the key and pairs it through
     /// [`Self::for_key`] rather than paying for it twice.
-    pub(crate) fn unbounded(
-        text: &'a str,
-        font_size_px: f32,
-        line_height_px: f32,
-        family: FontFamily,
-        weight: FontWeight,
-    ) -> Self {
+    pub(crate) fn unbounded(text: &'a str, font: GlyphFont) -> Self {
         Self {
             text,
-            key: TextShapeKey::unbounded(
-                hash::hash_str(text),
-                font_size_px,
-                line_height_px,
-                family,
-                weight,
-            ),
+            key: TextShapeKey::unbounded(hash::hash_str(text), font),
         }
     }
 
@@ -83,6 +71,7 @@ pub(crate) mod internals {
     use crate::layout::types::align::HAlign;
     #[cfg(test)]
     use crate::text::wrap::LineFit;
+    use crate::text::{FontFamily, FontWeight};
 
     /// A shaping request's parameters without its text, so a test can
     /// describe one face once and measure many strings through it.
@@ -103,14 +92,17 @@ pub(crate) mod internals {
     }
 
     impl TestShape {
+        fn font(&self) -> GlyphFont {
+            GlyphFont {
+                size_px: self.font_size_px,
+                line_height_px: self.line_height_px,
+                family: self.family,
+                weight: self.weight,
+            }
+        }
+
         pub(crate) fn unbounded_request<'a>(self, text: &'a str) -> TextShapeRequest<'a> {
-            TextShapeRequest::unbounded(
-                text,
-                self.font_size_px,
-                self.line_height_px,
-                self.family,
-                self.weight,
-            )
+            TextShapeRequest::unbounded(text, self.font())
         }
     }
 

@@ -442,10 +442,12 @@ fn a_probe_shapes_under_the_key_the_paint_committed() {
         // both sides trivially binding the same number.
         let raw = TextShapeRequest::unbounded(
             text,
-            params.font_size_px,
-            params.line_height_px,
-            params.family,
-            params.weight,
+            GlyphFont {
+                size_px: params.font_size_px,
+                line_height_px: params.line_height_px,
+                family: params.family,
+                weight: params.weight,
+            },
         )
         .with_bound(WrapBound::new(
             width,

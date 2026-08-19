@@ -118,15 +118,25 @@ pub(crate) struct ShapedText {
 }
 
 impl LayerLayout {
+    /// Destructured so a column added to `LayerLayout` cannot be left
+    /// un-resized here — the per-node columns are indexed by `NodeId`
+    /// without a bounds story of their own.
     fn resize_for(&mut self, tree: &Tree) {
         let n = tree.records.len();
-        self.rect.clear();
-        self.rect.resize(n, Rect::ZERO);
-        self.scroll_content.clear();
-        self.scroll_content.resize(n, Size::ZERO);
-        self.text_shapes.clear();
-        self.text_spans.clear();
-        self.text_spans.resize(n, Span::default());
+        let Self {
+            rect,
+            scroll_content,
+            text_shapes,
+            text_spans,
+        } = self;
+        rect.clear();
+        rect.resize(n, Rect::ZERO);
+        scroll_content.clear();
+        scroll_content.resize(n, Size::ZERO);
+        // Flat, not per-node: spans index into it.
+        text_shapes.clear();
+        text_spans.clear();
+        text_spans.resize(n, Span::default());
     }
 
     /// Summary of the arranged rects, for the cascade's

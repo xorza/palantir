@@ -21,14 +21,19 @@ pub(crate) mod quad;
 mod side;
 
 use crate::common::expiry_wheel::ExpiryWheel;
+use crate::primitives::span::Span;
 use crate::renderer::backend::debug_marker;
+use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
+use crate::renderer::backend::pipeline_utils::StencilVariant;
 use crate::renderer::backend::raster_atlas::atlas_slot::AtlasSlot;
 use crate::renderer::backend::raster_atlas::clock_sweep::ClockSweep;
 use crate::renderer::backend::raster_atlas::content_type::ContentType;
 use crate::renderer::backend::raster_atlas::counters::AtlasCounters;
 use crate::renderer::backend::raster_atlas::packed_metadata::PackedMetadata;
+use crate::renderer::backend::raster_atlas::quad::{PARAMS_OFFSET, RasterQuad};
 use crate::renderer::backend::raster_atlas::side::Side;
+use crate::renderer::backend::viewport::ViewportPush;
 use etagere::size2;
 use rustc_hash::FxHashMap;
 use std::fmt::Debug;
@@ -303,11 +308,35 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
         }
     }
 
-    /// Group-0 bind group for the atlas's two sides. Always current:
-    /// [`Self::grow`] rebuilds it in the same step that replaces the
-    /// texture views behind it.
-    pub(crate) fn bind_group(&self) -> &wgpu::BindGroup {
-        &self.bind_group
+    /// Bind this atlas and draw `span` of `vbuf`'s quad instances.
+    ///
+    /// The whole per-batch draw sequence, once. Text and icon are two
+    /// tenants of one atlas with one shader and one bind-group shape
+    /// (see [`quad`]), so their draws were byte-identical apart from the
+    /// atlas path — including the comment explaining why the viewport is
+    /// pushed here.
+    ///
+    /// Both halves of the shared immediate region get written because
+    /// either tenant can be the first pipeline bound in a pass, so no
+    /// earlier step is guaranteed to have pushed the viewport.
+    pub(super) fn draw_span<'a>(
+        &'a self,
+        pass: &mut wgpu::RenderPass<'a>,
+        pipelines: &'a StencilVariant,
+        use_stencil: bool,
+        viewport: &ViewportPush,
+        vbuf: &'a DynamicBuffer<RasterQuad>,
+        span: Span,
+    ) {
+        if span.len == 0 {
+            return;
+        }
+        pass.set_pipeline(pipelines.select(use_stencil));
+        pass.set_bind_group(0, &self.bind_group, &[]);
+        viewport.push_into(pass);
+        pass.set_immediates(PARAMS_OFFSET, bytemuck::bytes_of(&self.atlas_px));
+        pass.set_vertex_buffer(0, vbuf.buffer.slice(..));
+        pass.draw(0..4, span.start..span.start + span.len);
     }
 
     /// The layout the bind group was built against, for pipeline

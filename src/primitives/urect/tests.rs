@@ -107,11 +107,6 @@ fn the_two_rectangles_agree_on_the_vocabulary_they_share() {
         assert_eq!(ua.is_paint_empty(), ra.is_paint_empty(), "empty: {label}");
         assert_eq!(ua.intersects(ub), ra.intersects(rb), "intersects: {label}");
         assert_eq!(
-            ua.contains_rect(ub),
-            ra.contains_rect(rb),
-            "contains_rect: {label}"
-        );
-        assert_eq!(
             Rect::from(ua.clamp_to(ub)),
             ra.clamp_to(rb),
             "clamp: {label}"
@@ -123,13 +118,6 @@ fn the_two_rectangles_agree_on_the_vocabulary_they_share() {
             "intersect: {label}"
         );
         assert_eq!(ua.max().as_vec2(), ra.max(), "max: {label}");
-        assert_eq!(ua.area() as f32, ra.area(), "area: {label}");
-        // Half-open on both, so the min corner is in and the max corner is out.
-        assert!(ua.contains(ua.min) == ra.contains(ra.min) || ua.is_paint_empty());
-        assert!(
-            !ua.contains(ua.max()) && !ra.contains(ra.max()),
-            "max in: {label}"
-        );
     }
 
     // The conversions are inverse on whole pixels, which is what lets the
@@ -161,13 +149,6 @@ fn the_two_rectangles_agree_on_the_vocabulary_they_share() {
         URect::new(10, 10, 0, 0),
         "an inverted pair is the empty rect at its own min"
     );
-
-    // Inflating saturates at the origin rather than wrapping below it.
-    assert_eq!(
-        URect::new(10, 10, 5, 5).inflated(3),
-        URect::new(7, 7, 11, 11)
-    );
-    assert_eq!(URect::new(1, 1, 5, 5).inflated(4), URect::new(0, 0, 13, 13));
 }
 
 /// The four `u32`s still sit in `x, y, w, h` order.

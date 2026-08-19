@@ -236,115 +236,55 @@ from what it describes, and nothing catches it.
 
 ## Parallel taxonomies for one concept
 
-The same idea is modelled two or more times, and the copies are kept in step by
-hand. This is the largest source of both bulk and shotgun-surgery risk in the
-crate.
+One idea modelled more than once, with the copies kept in step by hand.
+
+Most of this group was investigated and **rejected** — the "copies" were one
+concept at layers that deliberately do not depend on each other
+(`GlyphImageKind`/`IconRasterKind`/`ContentType`), types encoding different
+facts (`FramePlan` vs `FrameProcessing`, `WindowRequests` vs `WindowOutput`),
+extractions that already exist (`toggle_row` for the three toggles), or shapes
+whose remaining overlap is smaller than the cost of removing it (gradients:
+1 of 7 items verbatim; `Rect`/`URect`: blocked by `const fn`; the theme bundle:
+a triple, not a quadruple, and `ToggleTheme` has no `looks`). What is left:
 
 - [ ] One paint kind is spelled out independently at sixteen sites across six
-      enums: a `Shape` constructor + `Lower` impl (`src/shape/mod.rs`), a
-      `ShapeRecord` variant plus arms in `bbox_local` and `NanCheck`
-      (`src/scene/shapes/record/mod.rs:39`), a lowering fn
-      (`src/scene/shapes/lower.rs`), a hash arm (`src/scene/shapes/hash.rs`), a
-      cascade paint-rect arm (`src/scene/cascade/paint_rect.rs`), a
-      `Draw*Payload` + `is_noop` (`src/renderer/frontend/payload.rs:129`), two
-      `PaintSink` methods (`src/renderer/frontend/paint_sink.rs:84`), a
-      `PaintCall` row (`src/renderer/frontend/capture.rs:102`), an encoder arm
-      (`src/renderer/frontend/encoder/mod.rs:288`), a `ComposeSession` method, a
-      `PaintTier` variant (`src/renderer/render_buffer/batch.rs:34`), two
-      `RenderBuffer` columns listed again in `new` and `discard_scene`, a
-      `RenderStep` variant (`src/renderer/backend/schedule/mod.rs:79`), a backend
-      replay arm (`src/renderer/backend/mod.rs:552`), and a `BatchKind` variant
-      (`src/diagnostics/gpu_stats.rs:35`). Only `capture.rs` is table-driven, via
-      the `paint_calls!` macro; every other site is hand-written and unchecked
-      against its neighbours. The measurement: commit `689c0e25` ("Add SVG icon
-      rendering support") modified **36 pre-existing production `.rs` files**,
-      none of them inside the new `src/icons/` or `src/renderer/backend/icon/`
-      modules, on top of 12 new files.
+      enums: a `Shape` constructor + `Lower` impl, a `ShapeRecord` variant plus
+      arms in `bbox_local` and `NanCheck`, a lowering fn, a hash arm, a cascade
+      paint-rect arm, a `Draw*Payload` + `is_noop`, two `PaintSink` methods, a
+      `PaintCall` row, an encoder arm, a `ComposeSession` method, a `PaintTier`
+      variant, two `RenderBuffer` columns listed again in `new` and
+      `discard_scene`, a `RenderStep` variant, a backend replay arm, and a
+      `BatchKind` variant. Only `capture.rs` is table-driven, via `paint_calls!`.
+      Measured: commit `689c0e25` ("Add SVG icon rendering support") modified
+      **36 pre-existing production files**, none inside the new `src/icons/` or
+      `src/renderer/backend/icon/` modules, on top of 12 new files.
 
-- [ ] `src/widgets/checkbox/mod.rs:26`, `src/widgets/radio/mod.rs:25`,
-      `src/widgets/switch.rs:24` — three copies of one widget. Same four-field
-      struct, same `new()` building an `hstack` with `Sense::CLICK`, same
-      `label()`, same `style()`, same theme copy-out block (with the same pasted
-      comment), same `WidgetTheme::resolve` call, same `ToggleChrome`
-      construction, same `toggle::toggle_row` tail. What actually differs is the
-      click semantics, the box node, and ~6 lines of indicator paint.
+      **This is an architecture question, not a refactor.** Every tier of the
+      pipeline enumerates paint kinds independently, and collapsing that means
+      choosing one of: a trait-object draw path (forfeits the SoA batching a
+      `RenderBuffer` column exists for), a columnar record store, or a
+      code-generating macro spanning six modules. Each is a different
+      framework. Worth a design study in `.notes/` before any code, the way
+      `record-time-geometry.md` handles the other open architectural question.
 
-- [ ] `src/renderer/backend/icon/mod.rs:51` and
-      `src/renderer/backend/text/mod.rs:45` — `IconBackend` and `TextBackend`
-      carry an identical field set and an identical pass. `render_batch` and
-      `flush` are the same code modulo one `expect` string and one field path,
-      down to a paraphrase of the same explanatory comment; `build_variants`
-      differs only in three label strings. `raster_atlas/quad.rs` factored
-      out the shader, and the bind group, layout, sampler and `atlas_px`
-      have since moved onto `RasterAtlas` — but the vertex buffer, the
-      per-batch `ranges`, and the whole draw call are still per tenant.
-      The copies have already drifted: the
-      "non-drawing slot" predicate is `slot.width == 0 || slot.height == 0` on
-      one side (`icon/mod.rs:220`) and `slot.alloc.is_none()` on the other
-      (`text/encode/encoder.rs:219`).
+- [ ] `src/renderer/render_buffer/mod.rs:59`, `:81`, `:96`, `:98` — the four
+      `Vec<GroupBatch>` columns are still four fields. The *ordering* is now
+      single-source (`PaintTier::ALL` + `RenderBuffer::batches`), and
+      `HigherKindRects` and `Composer::flush` are indexed by tier, so what
+      remains is only the four field declarations plus `draws_len` /
+      `batches`/`batches_mut`'s three-arm matches. One
+      `[Vec<GroupBatch>; PaintTier::COUNT]` would retire those, at the cost of
+      the four columns' distinct upstream instance types no longer being
+      visible in the struct.
 
 - [ ] `src/text/run.rs:30`, `src/layout/support.rs:28`, `src/text/glyphs.rs:31`,
-      `src/scene/shapes/record.rs` (`ShapeRecord::Text`), plus
-      `src/text/request.rs:91` — four (five with the test fixture) spellings of
-      "the parameters one text run shapes under", each carrying `font_size_px`,
-      `line_height_px`, `family`, `weight` and some subset of
-      `wrap`/`align`/`max_width_px`, each with its own lowering to
-      `TextShapeRequest`. `TextRun`'s doc delegates enforcement to review: "the
-      two are written the same way, field for field, and a mismatch reads as one
-      in review."
-
-- [ ] `src/layout/engine.rs:78` and `:165`, `src/layout/cache/mod.rs:43`, `:59`,
-      `:89`, `src/layout/mod.rs:38`, `src/layout/pass.rs:216` — the same per-node
-      column set is declared five times (`LayoutScratch`/`LayerLayout`,
-      `CaptureTreeInput`, `NodeArenas`, `CachedSubtree`) and re-listed twice more
-      as copy statements. `LayoutScratch`'s own doc concedes that adding a column
-      takes "three coordinated edits" and that "forgetting any one corrupts
-      arrange silently". The split is already inconsistent — `desired` is
-      restored in `pass.rs`, `rect` by `replay_arranged`, the rest by
-      `restore_after_cache_hit`, which claims to own all of them.
-
-- [ ] `src/primitives/rect/mod.rs:82` and `src/primitives/urect/mod.rs:43` —
-      `Rect` and `URect` are two hand-maintained copies of one 14-method API
-      (`new`, `from_min_max`, `max`, `center`, `area`, `is_paint_empty`,
-      `contains`, `contains_rect`, `inflated`, `intersects`, `intersect`,
-      `clamp_to`, `union`) with matching names, several near-verbatim docs, and
-      matching semantics in f32 and u32. The docs acknowledge the pairing ("The
-      pair is named the same on both rectangles") but nothing enforces it, so a
-      semantic change to one — `union`'s paint-empty identity rule, say — has to
-      be replayed by hand in the other.
-
-- [ ] `src/widgets/theme/button.rs:22`, `text_edit.rs:29`,
-      `context_menu/menu_item.rs:17`, `toggle.rs:26` — four theme bundles
-      repeating the same `looks / padding / margin / anim` quadruple, the same
-      `#[serde(flatten)]`, the same skip-if-none on `anim`, the same padding doc
-      paragraph, the same `for_each_text` destructure, the same `pick`
-      delegation. `impl_widget_theme!` (`theme/mod.rs:34`) exists solely to
-      write four accessor bodies that would be trivial if the quadruple were one
-      embedded value, and `DragValueTheme::from_chip` (`theme/drag_value.rs:30`)
-      copies the four fields across by hand for the same reason.
-
-- [ ] `src/primitives/brush/gradient/{linear,radial,conic}.rs` — three ~123-line
-      files repeating seven items each with only the geometry swapped: struct,
-      hand-written `Hash`, `builder`, `new`, `two_stop*`, `axis`, a `…Builder`
-      with `new`/`build`, `From<Builder>`, and `NanCheck`. The existing
-      `gradient_builder_common!`/`gradient_common!` macros
-      (`gradient/mod.rs:5`) generate only five one-line methods — the repetition
-      that actually costs is left by hand.
-
-- [ ] `src/widgets/response.rs:29`, `src/widgets/popup/mod.rs:85`,
-      `src/widgets/modal.rs:35`, `src/widgets/context_menu/mod.rs:204`,
-      `src/widgets/drag_value/mod.rs:143` — six mutually inconsistent response
-      shapes. `DragValue` and `TextEdit` return parallel
-      `{response, changed, committed}` structs while `Slider`, `Checkbox`,
-      `Switch` and `ComboBox` return a bare `Response` despite writing through
-      `&mut` bindings the same way; the three overlay widgets each define their
-      own dismissal struct carrying no `Response`, and `ContextMenuResponse` is
-      a field rename of `PopupResponse` built by copying two fields across
-      (`context_menu/mod.rs:167`). `Tooltip::show` returns `()`.
-
-- [ ] `src/window.rs:303` vs `:278` — `WindowOutput { cursor, vsync }` is a
-      hand-maintained copy of two `WindowRequests` fields, built field-for-field
-      at `src/host/window_driver/mod.rs:384`, carrying near-identical vsync docs.
+      `src/shape/text.rs:15`, `src/scene/shapes/record/mod.rs:83` — five (not
+      four) spellings of a text run's parameters. The shared *core* is now one
+      named type (`GlyphFont`, taken by both `unbounded` constructors), so the
+      argument-order hazard is closed; the types themselves still repeat the
+      four metric fields inline. `TextShape` ↔ `ShapeRecord::Text` are
+      field-for-field identical and nothing pins the mirror — the doc's
+      "reads as one in review" is still the only enforcement.
 
 ---
 

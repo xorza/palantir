@@ -53,6 +53,7 @@
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
 mod cosmic;
+pub(crate) mod glyph_font;
 pub(crate) mod glyphs;
 pub(crate) mod key;
 #[cfg(any(test, feature = "internals"))]

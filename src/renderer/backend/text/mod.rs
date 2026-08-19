@@ -34,7 +34,7 @@ use crate::primitives::span::Span;
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::pipeline_utils::{ColorVariantSpec, StencilVariant};
-use crate::renderer::backend::raster_atlas::quad::{self, PARAMS_OFFSET, RasterQuad};
+use crate::renderer::backend::raster_atlas::quad::{self, RasterQuad};
 use crate::renderer::backend::viewport::ViewportPush;
 use crate::renderer::render_buffer::text::TextDrawRow;
 use crate::text::render::RunPlacement;
@@ -192,23 +192,9 @@ impl TextBackend {
             .ranges
             .get(batch_idx)
             .expect("render schedule referenced an unprepared text batch");
-        if span.len == 0 {
-            return;
-        }
-        pass.set_pipeline(pipelines.select(use_stencil));
-        pass.set_bind_group(0, self.encoder.atlas.bind_group(), &[]);
-        // Both halves of the shared immediate region — write
-        // viewport (offset 0) here as well as params (offset 8)
-        // because text can be the very first pipeline bound in the
-        // pass, so the backend hasn't pushed viewport elsewhere yet.
-        // Cheap: register-mapped, no buffer round-trip.
-        viewport.push_into(pass);
-        pass.set_immediates(
-            PARAMS_OFFSET,
-            bytemuck::bytes_of(&self.encoder.atlas.atlas_px()),
-        );
-        pass.set_vertex_buffer(0, self.vbuf.buffer.slice(..));
-        pass.draw(0..4, span.start..span.start + span.len);
+        self.encoder
+            .atlas
+            .draw_span(pass, pipelines, use_stencil, viewport, &self.vbuf, span);
     }
 
     /// Frame teardown, run for every submit — including one that

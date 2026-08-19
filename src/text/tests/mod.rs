@@ -14,6 +14,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::scene::record_store::RecordStore;
 use crate::text::cosmic::truncate::ClusterGlyph;
 use crate::text::cosmic::{self, CosmicMeasure};
+use crate::text::glyph_font::GlyphFont;
 use crate::text::key::{TextShapeKey, WrapBound};
 use crate::text::mono;
 use crate::text::probe::internals as probe;

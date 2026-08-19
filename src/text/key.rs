@@ -4,6 +4,7 @@
 use crate::layout::types::align::HAlign;
 use crate::primitives::approx::EPS;
 use crate::primitives::num::F32Ext;
+use crate::text::glyph_font::GlyphFont;
 use crate::text::wrap::{self, LineFit};
 use crate::text::{FontFamily, FontWeight};
 
@@ -106,13 +107,18 @@ impl TextShapeKey {
     /// Record time already rejected invalid metrics (`Shape::is_noop`,
     /// theme validation), so reaching here with them is a logic error —
     /// debug-asserted rather than re-validated on the shaping hot path.
-    pub(crate) fn unbounded(
-        text_hash: u64,
-        font_size_px: f32,
-        line_height_px: f32,
-        family: FontFamily,
-        weight: FontWeight,
-    ) -> Self {
+    /// Takes the face as one [`GlyphFont`] rather than four positional
+    /// arguments. The two `f32` metrics and the two one-byte enums are
+    /// each swappable at a call site and would compile silently — and a
+    /// swap here mis-keys the shape cache rather than failing, so every
+    /// later lookup quietly misses.
+    pub(crate) fn unbounded(text_hash: u64, font: GlyphFont) -> Self {
+        let GlyphFont {
+            size_px: font_size_px,
+            line_height_px,
+            family,
+            weight,
+        } = font;
         debug_assert!(
             text_metrics_valid(font_size_px, line_height_px),
             "{TEXT_METRICS_ERROR}",

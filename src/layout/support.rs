@@ -16,6 +16,7 @@ use crate::scene::shapes::record::ShapeRecord;
 use crate::scene::tree::Tree;
 use crate::scene::tree::iter::TreeItem;
 use crate::scene::tree::record::NodeId;
+use crate::text::glyph_font::GlyphFont;
 use crate::text::key::TextShapeKey;
 use crate::text::request::TextShapeRequest;
 use crate::text::wrap::TextWrap;
@@ -49,16 +50,19 @@ pub(super) struct TextShapeInput<'a> {
 }
 
 impl<'a> TextShapeInput<'a> {
+    fn font(&self) -> GlyphFont {
+        GlyphFont {
+            size_px: self.font_size_px,
+            line_height_px: self.line_height_px,
+            family: self.family,
+            weight: self.weight,
+        }
+    }
+
     pub(super) fn shape_request(&self) -> TextShapeRequest<'a> {
         TextShapeRequest::for_key(
             self.text,
-            TextShapeKey::unbounded(
-                self.text_hash,
-                self.font_size_px,
-                self.line_height_px,
-                self.family,
-                self.weight,
-            ),
+            TextShapeKey::unbounded(self.text_hash, self.font()),
         )
     }
 }
@@ -461,6 +465,7 @@ mod tests {
     use crate::common::hash;
     use crate::layout::support::{TextShapeInput, checked_text_ordinal};
     use crate::layout::types::align::HAlign;
+    use crate::text::glyph_font::GlyphFont;
     use crate::text::key::TextShapeKey;
     use crate::text::wrap::TextWrap;
     use crate::text::{FontFamily, FontWeight};
@@ -494,10 +499,12 @@ mod tests {
             request.key,
             TextShapeKey::unbounded(
                 hash::hash_str("hello"),
-                16.0,
-                19.2,
-                FontFamily::Sans,
-                FontWeight::Regular,
+                GlyphFont {
+                    size_px: 16.0,
+                    line_height_px: 19.2,
+                    family: FontFamily::Sans,
+                    weight: FontWeight::Regular,
+                },
             ),
             "the retained hash must mint the same key re-hashing would",
         );

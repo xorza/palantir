@@ -80,12 +80,16 @@ use crate::text::system::TextSystem;
 ///    `available_q` — which silently makes that subtree uncacheable from
 ///    then on.
 ///
-/// **Adding a new field to category (2)** requires three coordinated
+/// **Adding a new field to category (2)** takes three coordinated
 /// edits: a column in the whole-tree snapshot, a [`CachedSubtree`]
-/// field carrying it through
-/// the cache, and a restore branch inside the free function
-/// [`restore_after_cache_hit`] in this module. Forgetting any one
-/// corrupts arrange silently — pinned per-driver by the fixtures in
+/// field carrying it through the cache, and a restore branch inside
+/// [`restore_after_cache_hit`]. All four sites are compiler-enforced —
+/// `capture_tree` and `restore_after_cache_hit` destructure
+/// exhaustively, the other two are struct literals — so a missed edit
+/// is a build error, not a silent arrange corruption. The reset
+/// functions (`NodeArenas::clear`, `LayerLayout::resize_for`, and the
+/// one below) destructure to buy the same thing for a field left
+/// un-reset. Behaviour is pinned per-driver by the fixtures in
 /// `src/layout/cache/integration_tests.rs`.
 ///
 /// `arrange_src` is the one category-(2) field arrange *consumes* rather
@@ -110,17 +114,32 @@ pub(crate) struct LayoutScratch {
 }
 
 impl LayoutScratch {
+    /// Destructured so a field added to `LayoutScratch` cannot be left
+    /// un-reset here. The three driver stacks are reset by their own
+    /// drivers on enter/exit, so they are bound and ignored by name
+    /// rather than by `..` — that is still a decision the compiler makes
+    /// someone make.
     fn resize_for(&mut self, tree: &Tree) {
         let n = tree.records.len();
-        self.desired.clear();
-        self.desired.resize(n, Size::ZERO);
-        self.arrange_src.clear();
-        self.arrange_src.resize(n, NO_ARRANGE_SRC);
-        self.intrinsics.clear();
-        self.intrinsics.resize(n, [f32::NAN; SLOT_COUNT]);
-        self.available_q.clear();
-        self.available_q.resize(n, INVALID_AVAILABLE);
-        self.grid.hugs.reset_for(tree);
+        let Self {
+            counters: _,
+            grid,
+            wrap: _,
+            stack_fill: _,
+            desired,
+            arrange_src,
+            intrinsics,
+            available_q,
+        } = self;
+        desired.clear();
+        desired.resize(n, Size::ZERO);
+        arrange_src.clear();
+        arrange_src.resize(n, NO_ARRANGE_SRC);
+        intrinsics.clear();
+        intrinsics.resize(n, [f32::NAN; SLOT_COUNT]);
+        available_q.clear();
+        available_q.resize(n, INVALID_AVAILABLE);
+        grid.hugs.reset_for(tree);
     }
 }
 
