@@ -10,6 +10,7 @@ pub(crate) mod fixtures;
 pub(crate) mod frame_bench;
 pub(crate) mod gpu_view;
 pub(crate) mod gradients;
+pub(crate) mod icons;
 pub(crate) mod images;
 pub(crate) mod motion;
 pub(crate) mod overlays;

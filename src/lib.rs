@@ -104,6 +104,7 @@ pub(crate) mod display;
 #[cfg(any(feature = "bench", feature = "showcase"))]
 pub(crate) mod frame_fixture;
 pub(crate) mod host;
+pub(crate) mod icons;
 pub(crate) mod input;
 pub(crate) mod layout;
 pub(crate) mod primitives;
@@ -234,6 +235,8 @@ pub use glam::UVec2;
 // `Vec2` is in the public surface (Shape polyline points, `Configure::position`,
 // `Canvas` placement); re-export so widget authors don't need a direct `glam` dep.
 pub use glam::Vec2;
+pub use icons::icon_atlas::{IconAtlas, IconDef, IconId};
+pub use icons::icon_set::{IconHandle, IconSet};
 pub use primitives::span::Span;
 pub use primitives::stroke::Stroke;
 pub use primitives::transform::TranslateScale;
@@ -245,6 +248,7 @@ pub use renderer::image_registry::{ImageHandle, RegisterImageError};
 pub use shape::Lower;
 pub use shape::Shape;
 pub use shape::curve::CurveShape;
+pub use shape::icon::{IconFit, IconShape};
 pub use shape::image::ImageShape;
 pub use shape::mesh::MeshShape;
 pub use shape::polyline::{PolylineColors, PolylineShape};
@@ -327,7 +331,7 @@ mod hot_struct_sizes {
     use crate::primitives::interned_str::RecordedText;
     use crate::primitives::mesh::MeshVertex;
     use crate::primitives::span::Span;
-    use crate::renderer::backend::text::GlyphInstance;
+    use crate::renderer::backend::raster_atlas::quad::RasterQuad;
     use crate::renderer::frontend::payload::{
         DrawCurvePayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload, DrawQuadPayload,
         DrawTextPayload, PushClipPayload, ResolvedGradient,
@@ -431,9 +435,9 @@ mod hot_struct_sizes {
     /// than either. Read these as a drift tripwire, not as the production
     /// footprint.
     #[cfg(feature = "bench")]
-    const UI_SIZE: usize = 6872;
+    const UI_SIZE: usize = 6880;
     #[cfg(not(feature = "bench"))]
-    const UI_SIZE: usize = 6848;
+    const UI_SIZE: usize = 6856;
 
     hot_structs! {
         // One instance per window, not per frame — pinned because every
@@ -509,7 +513,7 @@ mod hot_struct_sizes {
         MeshInstance => "renderer::MeshInstance": 16 / 4,
         ImageInstance => "renderer::ImageInstance": 40 / 4,
         MeshVertex => "primitives::MeshVertex": 12 / 4,
-        GlyphInstance => "text::GlyphInstance": 20 / 4,
+        RasterQuad => "atlas::RasterQuad": 20 / 4,
         PlacedGlyph => "text::PlacedGlyph": 32 / 4,
         ShapedTextRef => "text::ShapedTextRef": 32 / 8,
         TextDrawRow => "renderer::TextDrawRow": 64 / 8,

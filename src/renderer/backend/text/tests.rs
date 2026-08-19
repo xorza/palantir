@@ -1,7 +1,8 @@
-//! Text-backend tests: GPU-wire layout pins for `GlyphInstance` and the
-//! shared immediate region, plus the GPU regression suite covering the
-//! encoded-glyph cache (liveness, clipping) and the atlas empty-entry
-//! sweep.
+//! Text-backend tests: the GPU regression suite covering the encoded-glyph
+//! cache (liveness, clipping) and the atlas empty-entry sweep.
+//!
+//! The GPU-wire layout pins live with the type they pin, in
+//! `raster_atlas::quad` — both passes draw through it, so neither owns it.
 //!
 //! The GPU suite and its `make_inner_run` fixture stay gated on
 //! `internals` rather than bare `test`, so the default headless
@@ -48,41 +49,6 @@ mod internals {
             color,
             scale,
         }
-    }
-}
-
-mod wire {
-    use crate::renderer::backend::text::{GlyphInstance, PARAMS_OFFSET};
-    use std::mem::{align_of, offset_of, size_of};
-
-    #[test]
-    fn glyph_instance_is_20_bytes() {
-        assert_eq!(size_of::<GlyphInstance>(), 20);
-        assert_eq!(align_of::<GlyphInstance>(), 4);
-        assert_eq!(offset_of!(GlyphInstance, pos), 0);
-        assert_eq!(offset_of!(GlyphInstance, dim), 8);
-        assert_eq!(offset_of!(GlyphInstance, uv_and_kind), 12);
-        assert_eq!(offset_of!(GlyphInstance, color), 16);
-    }
-
-    /// The viewport and the atlas sizes share one immediate region, and
-    /// the shader reads them as `Immediates { viewport, params }`.
-    ///
-    /// Their *adjacency* is no longer worth asserting — `PARAMS_OFFSET`
-    /// is defined as `ViewportPush::BYTES`, so a test comparing the two
-    /// would restate the definition. (It used to be the literal `8`,
-    /// which is why that assertion, and a second one pinning
-    /// `PARAMS_BYTES == 8`, existed at all.) What a wider viewport or a
-    /// third params field can still break is the pair fitting inside the
-    /// region at all, which nothing else checks.
-    #[test]
-    fn viewport_and_params_fit_the_immediate_region() {
-        use crate::renderer::backend::IMMEDIATES_BYTES;
-        // The type of `TextBackend::atlas_px`, which `render_batch`
-        // writes with `bytemuck::bytes_of` — so the width is the field's
-        // and needs no constant of its own beside it.
-        let params = size_of::<[u32; 2]>();
-        assert!(PARAMS_OFFSET as usize + params <= IMMEDIATES_BYTES as usize);
     }
 }
 

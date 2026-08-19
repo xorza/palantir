@@ -1,6 +1,7 @@
 //! One frame being composed, and the sink the paint calls arrive through.
 
 use crate::display::Display;
+use crate::icons::icon_raster_key::IconRasterKey;
 use crate::primitives::approx::{EPS, noop_f32};
 use crate::primitives::brush::gradient::FillAxis;
 use crate::primitives::color::ColorU8;
@@ -11,8 +12,8 @@ use crate::primitives::span::Span;
 use crate::primitives::{num::F32Ext, rect::Rect, transform::TranslateScale, urect::URect};
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::{
-    DrawCurvePayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload, DrawQuadPayload,
-    DrawTextPayload, PushClipPayload, QuadGeom,
+    DrawCurvePayload, DrawIconPayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload,
+    DrawQuadPayload, DrawTextPayload, PushClipPayload, QuadGeom,
 };
 use crate::renderer::gpu_view::GpuPaintRef;
 use crate::renderer::quad::{AA_RADIUS, Quad};
@@ -20,6 +21,7 @@ use crate::renderer::render_buffer::batch::PaintTier;
 use crate::renderer::render_buffer::curve::{
     CURVE_KIND_ARC, CURVE_KIND_CUBIC, CURVE_KIND_SEGMENT, CurveInstance, cap_lanes,
 };
+use crate::renderer::render_buffer::icon::IconDrawRow;
 use crate::renderer::render_buffer::image::{ImageDrawRow, ImageInstance, RenderTargetDraw};
 use crate::renderer::render_buffer::mesh::{MeshDraw, MeshDrawRow, MeshInstance};
 use crate::renderer::render_buffer::text::TextDrawRow;
@@ -443,6 +445,36 @@ impl PaintSink for ComposeSession<'_> {
                 tint: p.tint.into(),
                 ..bytemuck::Zeroable::zeroed()
             },
+        });
+    }
+
+    fn icon(&mut self, p: DrawIconPayload) {
+        let ScaledRect {
+            phys: phys_rect,
+            urect,
+        } = self.scaled_rect(p.rect);
+        if !self
+            .composer
+            .enter_higher_kind(PaintTier::Icon, urect, self.out)
+        {
+            return;
+        }
+        // The raster size is decided here, not upstream: this is the first
+        // point that knows the display scale and every ancestor transform, and
+        // so the first point that knows how many device pixels the icon covers.
+        let key = IconRasterKey::for_box(p.icon, Vec2::new(phys_rect.size.w, phys_rect.size.h));
+        // Whole-pixel origin, with the raster centred in the box it was sized
+        // from. The ladder can round the raster a pixel or two off that box
+        // (§ `IconRasterKey`), and centring spreads the difference instead of
+        // piling it on one edge; the `Nearest` atlas sampler is why the origin
+        // itself must land on integers.
+        let size = key.size.as_vec2();
+        let centred = phys_rect.min + (Vec2::new(phys_rect.size.w, phys_rect.size.h) - size) * 0.5;
+        self.out.icons.push(IconDrawRow {
+            key,
+            origin: centred.round().as_ivec2(),
+            color: p.tint.into(),
+            desaturate: p.desaturate,
         });
     }
 

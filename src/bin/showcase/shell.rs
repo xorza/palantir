@@ -177,6 +177,14 @@ const PAGES: &[Page] = &[
     },
     Page {
         group: "PAINT",
+        label: "icons",
+        blurb: "Baked SVG icons rasterized at their exact physical size — gradients, a \
+                filtered drop shadow, tintable outlines, and non-square artwork.",
+        flow: Flow::Scroll,
+        body: Body::Simple(pages::icons::build),
+    },
+    Page {
+        group: "PAINT",
         label: "images",
         blurb: "Fit modes, tint and alpha, tiled repeat, and linear vs nearest sampling \
                 under magnification and minification.",

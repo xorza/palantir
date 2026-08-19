@@ -34,6 +34,7 @@ use crate::renderer::render_buffer::batch::PaintTier;
 pub(super) struct HigherKindRects {
     meshes: TierRects,
     images: TierRects,
+    icons: TierRects,
     curves: TierRects,
     union: URect,
 }
@@ -65,6 +66,7 @@ impl HigherKindRects {
         let tier_rects = match tier {
             PaintTier::Mesh => &mut self.meshes,
             PaintTier::Image => &mut self.images,
+            PaintTier::Icon => &mut self.icons,
             PaintTier::Curve => &mut self.curves,
         };
         tier_rects.push(rect);
@@ -73,8 +75,13 @@ impl HigherKindRects {
 
     pub(super) fn conflicts(&self, incoming: PaintTier, rect: URect) -> bool {
         match incoming {
-            PaintTier::Mesh => self.images.any_overlap(rect) || self.curves.any_overlap(rect),
-            PaintTier::Image => self.curves.any_overlap(rect),
+            PaintTier::Mesh => {
+                self.images.any_overlap(rect)
+                    || self.icons.any_overlap(rect)
+                    || self.curves.any_overlap(rect)
+            }
+            PaintTier::Image => self.icons.any_overlap(rect) || self.curves.any_overlap(rect),
+            PaintTier::Icon => self.curves.any_overlap(rect),
             PaintTier::Curve => false,
         }
     }
@@ -83,12 +90,14 @@ impl HigherKindRects {
         self.union.intersects(rect)
             && (self.meshes.any_overlap(rect)
                 || self.images.any_overlap(rect)
+                || self.icons.any_overlap(rect)
                 || self.curves.any_overlap(rect))
     }
 
     pub(super) fn clear(&mut self) {
         self.meshes.clear();
         self.images.clear();
+        self.icons.clear();
         self.curves.clear();
         self.union = URect::ZERO;
     }
@@ -102,7 +111,12 @@ mod tests {
 
     #[test]
     fn conflict_matrix_matches_replay_order_and_kind_blind_queries() {
-        let tiers = [PaintTier::Mesh, PaintTier::Image, PaintTier::Curve];
+        let tiers = [
+            PaintTier::Mesh,
+            PaintTier::Image,
+            PaintTier::Icon,
+            PaintTier::Curve,
+        ];
         let recorded_rect = URect::new(10, 10, 20, 20);
         let disjoint = URect::new(40, 40, 10, 10);
 

@@ -1,3 +1,4 @@
+use crate::icons::icon_set::IconHandle;
 use crate::layout::types::align::{self, Align};
 use crate::primitives::color::ColorF16;
 use crate::primitives::image::{ImageDownsample, ImageFilter, ImageFit};
@@ -8,6 +9,7 @@ use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::span::Span;
 use crate::scene::shapes::paint::{CurveBasis, ImageSource, QuadShape, ShapeBrush};
+use crate::shape::icon::IconFit;
 use crate::shape::style::{LineCap, LineJoin};
 use crate::text::wrap::TextWrap;
 use crate::text::{FontFamily, FontWeight};
@@ -137,6 +139,20 @@ pub(crate) enum ShapeRecord {
         mag_filter: ImageFilter,
         downsample: ImageDownsample,
     },
+    /// A baked SVG icon, rasterized on demand at the exact physical pixel
+    /// size it lands on and cached in the icon atlas. Carries the artwork's
+    /// viewBox on the [`IconHandle`], so resolving `fit` needs no registry
+    /// lookup on the encode path. `tint` multiplies a tintable icon whole and
+    /// a colour icon's alpha only — see [`IconShape`](crate::IconShape).
+    Icon {
+        local_rect: Option<Rect>,
+        handle: IconHandle,
+        fit: IconFit,
+        tint: ColorF16,
+        /// Draw a colour icon as its own luminance — see
+        /// [`IconShape::desaturate`](crate::IconShape::desaturate).
+        desaturate: bool,
+    },
     /// Native GPU stroke — a cubic Bézier or an exact circular arc, per
     /// [`CurveBasis`] (quadratics promote to cubic at lowering, lines
     /// degenerate to one — see `shapes::lower`). One record kind, because
@@ -201,10 +217,12 @@ impl ShapeRecord {
                     size: bbox.size,
                 }
             }
-            ShapeRecord::Image { local_rect, .. } => local_rect.unwrap_or(Rect {
-                min: Vec2::ZERO,
-                size: owner_size,
-            }),
+            ShapeRecord::Image { local_rect, .. } | ShapeRecord::Icon { local_rect, .. } => {
+                local_rect.unwrap_or(Rect {
+                    min: Vec2::ZERO,
+                    size: owner_size,
+                })
+            }
             // Cascade dispatches Text to `text_paint_bbox_local`
             // before reaching this method — a direct call here would
             // silently lose the shaped extent.
@@ -302,6 +320,11 @@ impl NanCheck for ShapeRecord {
                 fit,
                 ..
             } => local_rect.has_nan() || tint.has_nan() || fit.has_nan(),
+            // `fit` is a bare tag and the handle's viewBox comes from baked
+            // data, so the rect and the tint are the whole surface.
+            ShapeRecord::Icon {
+                local_rect, tint, ..
+            } => local_rect.has_nan() || tint.has_nan(),
             // `bbox` is derived from `basis`, so it stands in for the
             // control points / centre / radius / angles.
             ShapeRecord::Curve {

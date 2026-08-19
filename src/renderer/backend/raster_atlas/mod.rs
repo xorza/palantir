@@ -1,69 +1,114 @@
-//! Glyph atlas: one struct for both mask + color content.
+//! Rasterized-quad atlas: one struct for both mask + colour content, keyed by
+//! whatever its tenant rasterizes from.
+//!
+//! Two instances exist. The text backend keys one on a glyph's cosmic
+//! `CacheKey`; the icon backend keys another on
+//! [`IconRasterKey`](crate::icons::icon_raster_key::IconRasterKey). They share
+//! every policy below — bucketed packing, clock-sweep eviction, grow-with-blit,
+//! and batched staging uploads — and share nothing else: separate textures,
+//! separate bind groups, separate eviction budgets.
 
 use crate::common::counters::BenchOnly;
 use crate::common::expiry_wheel::ExpiryWheel;
+pub(crate) mod quad;
+
 use crate::renderer::backend::debug_marker;
-use crate::text::render::{GlyphPlacement, GlyphRasterKey};
 use etagere::{AllocId, BucketedAtlasAllocator, size2};
 use rustc_hash::FxHashMap;
+use std::fmt::Debug;
+use std::hash::Hash;
 use wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
 
 use crate::renderer::backend::gpu_ctx::GpuCtx;
-use crate::renderer::backend::text::ContentType;
 
-/// Initial mask-atlas side length. Bumped from glyphon's 256 to skip
-/// the 256→512→1024 grow chain on first frame with non-trivial text.
-const INITIAL_MASK_ATLAS_SIZE: u32 = 1024;
-/// Initial color-atlas side length. Color glyphs (emoji) are rare in
-/// UI text: 256² RGBA is 256 KB and holds dozens at UI sizes, where
-/// matching the mask side's 1024² would pin 4 MB of GPU memory most
-/// sessions never touch. Grows on demand through the same blit path.
-const INITIAL_COLOR_ATLAS_SIZE: u32 = 256;
+/// Which of an atlas's two sides content lives on. `Mask` is one coverage
+/// byte per texel and takes the draw's colour; `Color` is straight sRGB RGBA
+/// and supplies its own.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u8)]
+pub(crate) enum ContentType {
+    Mask = 0,
+    Color = 1,
+}
+
+impl ContentType {
+    pub(crate) fn format(self) -> wgpu::TextureFormat {
+        match self {
+            Self::Mask => wgpu::TextureFormat::R8Unorm,
+            Self::Color => wgpu::TextureFormat::Rgba8UnormSrgb,
+        }
+    }
+
+    pub(crate) fn bytes_per_pixel(self) -> u32 {
+        match self {
+            Self::Mask => 1,
+            Self::Color => 4,
+        }
+    }
+
+    fn side_name(self) -> &'static str {
+        match self {
+            Self::Mask => "mask",
+            Self::Color => "color",
+        }
+    }
+}
+
+/// How one [`RasterAtlas`] differs from the other: what it calls itself in GPU
+/// debug labels, and how big each side starts.
+///
+/// Initial sizes are a tenant's judgement about its own content, not a shared
+/// default — a session full of text and no emoji wants the opposite split from
+/// one full of colour icons.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct RasterAtlasConfig {
+    /// Label stem, e.g. `"palantir.text"`. Every texture, marker, and buffer
+    /// this atlas creates is named from it.
+    pub(crate) label: &'static str,
+    pub(crate) initial_mask_px: u32,
+    pub(crate) initial_color_px: u32,
+    /// Hard ceiling on one side's backing texture, whatever the device allows.
+    ///
+    /// Per instance rather than shared, because the two tenants store
+    /// different things: the budget is in *bytes*, so it buys a mask side four
+    /// times the side length it buys a colour side, and a number tuned against
+    /// 1-byte glyph coverage is not automatically the right number for 4-byte
+    /// colour rasters.
+    ///
+    /// Stopping growth at `max_texture_dimension_2d` alone admits 16384 on a
+    /// routine desktop adapter — a 256 MB mask or a 1 GB colour atlas. The
+    /// failure mode when this binds is mild: refusing to grow yields
+    /// `Rasterized::AtlasFull`, whose only cost is that the entry re-encodes
+    /// each frame instead of being cached.
+    pub(crate) max_bytes: u64,
+    /// Byte budget below which [`RasterAtlas::allocate`] grows a side rather
+    /// than evicting from it.
+    ///
+    /// Trying eviction first unconditionally would pin an atlas at its initial
+    /// size no matter how badly it fits: measured that way on
+    /// `text_atlas/cache_churn`, a 1024² mask holding ~1k live glyphs performs
+    /// 2668 evictions and *zero* growths, walking 4.06M cache entries to pick
+    /// victims — `evict_one` is O(live entries) and `allocate` calls it in a
+    /// loop. Sizing to the working set first turns that into one texture
+    /// allocation plus a preserved-rect blit: one growth, zero evictions, and
+    /// 61 µs a frame rather than 609 µs.
+    pub(crate) eager_growth_bytes: u64,
+}
+
+/// GPU debug labels, built once at construction. Held as owned strings rather
+/// than formatted per flush because two of them are pushed on the encoder
+/// every frame that uploads, and a per-frame `format!` is exactly the
+/// allocation this crate does not do.
+#[derive(Debug)]
+struct AtlasLabels {
+    /// The configured stem, kept so `grow` can re-derive a texture name.
+    stem: &'static str,
+    grow_blit: String,
+    batch_upload: String,
+    staging: String,
+}
+
 const ATLAS_GROWTH_FACTOR: u32 = 2;
-
-/// Hard ceiling on a side's backing texture, whatever the device allows.
-///
-/// Stopping [`GlyphAtlas::grow`] at `max_texture_dimension_2d` alone
-/// admits 16384 on a routine desktop adapter — a 256 MB mask or a
-/// 1 GB colour atlas, for text. Nothing observed reaches that, but the
-/// failure mode if anything did is far worse than the alternative:
-/// refusing to grow yields `Rasterized::AtlasFull`, whose only cost is
-/// that the run re-encodes each frame instead of being cached.
-///
-/// 16 MiB is `2^24`, and both `bytes_per_pixel` values are powers of
-/// two, so [`growth_ceiling`] divides and square-roots to an exact
-/// power-of-two side on either: a 4096² mask or a 2048² colour atlas.
-/// The measured `text_atlas/cache_churn` working set is 3700 glyphs in
-/// a 2048² mask, so the mask ceiling is roughly 4x the largest set any
-/// bench here produces.
-const MAX_ATLAS_BYTE_BUDGET: u64 = 16 << 20;
-
-/// Byte budget below which [`GlyphAtlas::allocate`] grows a side rather
-/// than evicting from it.
-///
-/// Trying eviction first unconditionally would pin an atlas at its
-/// initial size no matter how badly it fits: measured that way on
-/// `text_atlas/cache_churn`, a 1024² mask holding ~1k live glyphs
-/// performs 2668 evictions and *zero* growths, walking 4.06M cache
-/// entries to pick victims — `evict_one` is O(live glyphs) and
-/// `allocate` calls it in a loop, so the scan repeats for every glyph
-/// the gesture brings in.
-///
-/// Sizing to the working set first turns that into one texture
-/// allocation plus a preserved-rect blit: the same arm performs a
-/// single growth, zero evictions and zero scanning, and its frame costs
-/// 61 µs rather than 609 µs — the same ~55-60 µs band as the other
-/// `text_atlas` arms instead of a 10x outlier. Its real working set is
-/// 3700 glyphs, so a 1024² mask was recycling roughly seven of every
-/// ten rasters it held.
-///
-/// The budget is what keeps that from being unbounded — without a
-/// ceiling a thrashing atlas would run to the device maximum, which for
-/// an R8 mask is 8192² = 64 MB. In bytes rather than pixels so both
-/// sides get the same deal: 4 MiB is a 2048² mask or a 1024² colour
-/// atlas, and the mask growing 1 MB -> 4 MB is what the measurement
-/// above cost.
-const EAGER_GROWTH_BYTE_BUDGET: u64 = 4 << 20;
 
 /// Frames a non-drawing entry (`alloc: None`) survives unused.
 /// `evict_one` skips them — there is no rectangle to deallocate — so
@@ -72,7 +117,7 @@ const EAGER_GROWTH_BYTE_BUDGET: u64 = 4 << 20;
 /// walks without ever offering it a victim. 512 ≈ 8 s at 60 fps, far
 /// outside any flicker.
 ///
-/// A per-entry deadline on [`GlyphAtlas::unallocated_expiry`], not a
+/// A per-entry deadline on [`RasterAtlas::unallocated_expiry`], not a
 /// cadence. A periodic `cache.retain` over the whole glyph map would be
 /// the shape this crate avoids everywhere else — one frame in 512 paying
 /// for all of them — and it would have to be spelled as a threshold
@@ -83,51 +128,53 @@ const EAGER_GROWTH_BYTE_BUDGET: u64 = 4 << 20;
 const UNALLOCATED_SWEEP_INTERVAL: u64 = 512;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) struct PackedGlyphMetadata {
+pub(crate) struct PackedMetadata {
     width: u16,
     height: u16,
     left: i16,
     top: i16,
 }
 
-impl PackedGlyphMetadata {
-    pub(super) const EMPTY: Self = Self {
+impl PackedMetadata {
+    pub(crate) const EMPTY: Self = Self {
         width: 0,
         height: 0,
         left: 0,
         top: 0,
     };
 
-    pub(super) fn is_empty(self) -> bool {
+    pub(crate) fn is_empty(self) -> bool {
         self.width == 0 || self.height == 0
     }
 }
 
-impl TryFrom<&GlyphPlacement> for PackedGlyphMetadata {
-    type Error = std::num::TryFromIntError;
-
-    fn try_from(placement: &GlyphPlacement) -> Result<Self, Self::Error> {
-        Ok(Self {
-            width: placement.width.try_into()?,
-            height: placement.height.try_into()?,
-            left: placement.left.try_into()?,
-            top: placement.top.try_into()?,
+impl PackedMetadata {
+    /// Narrow a rasterizer's extents and bearing into the atlas's packed
+    /// form. `None` when any of them is out of range, which the caller treats
+    /// as "too big to cache" rather than an error — an atlas side tops out far
+    /// below `u16::MAX` anyway.
+    pub(crate) fn new(width: u32, height: u32, left: i32, top: i32) -> Option<Self> {
+        Some(Self {
+            width: width.try_into().ok()?,
+            height: height.try_into().ok()?,
+            left: left.try_into().ok()?,
+            top: top.try_into().ok()?,
         })
     }
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(super) struct GlyphSlot {
-    pub(super) x: u16,
-    pub(super) y: u16,
-    pub(super) width: u16,
-    pub(super) height: u16,
-    pub(super) left: i16,
-    pub(super) top: i16,
-    pub(super) content: ContentType,
-    pub(super) alloc: Option<AllocId>,
-    pub(super) generation: u32,
-    pub(super) last_use: u64,
+pub(crate) struct AtlasSlot {
+    pub(crate) x: u16,
+    pub(crate) y: u16,
+    pub(crate) width: u16,
+    pub(crate) height: u16,
+    pub(crate) left: i16,
+    pub(crate) top: i16,
+    pub(crate) content: ContentType,
+    pub(crate) alloc: Option<AllocId>,
+    pub(crate) generation: u32,
+    pub(crate) last_use: u64,
 }
 
 /// One per-content-type backing store. Indexed by `ContentType as usize`.
@@ -153,33 +200,36 @@ struct PendingGrow {
 }
 
 #[derive(Debug)]
-pub(super) struct AtlasBindings<'a> {
-    pub(super) mask_view: &'a wgpu::TextureView,
-    pub(super) color_view: &'a wgpu::TextureView,
-    pub(super) atlas_px: [u32; 2],
+pub(crate) struct AtlasBindings<'a> {
+    pub(crate) mask_view: &'a wgpu::TextureView,
+    pub(crate) color_view: &'a wgpu::TextureView,
+    pub(crate) atlas_px: [u32; 2],
 }
 
 #[derive(Debug)]
-pub(super) struct GlyphAtlas {
+pub(crate) struct RasterAtlas<K> {
     sides: [Side; 2],
+    labels: AtlasLabels,
+    max_bytes: u64,
+    eager_growth_bytes: u64,
     /// Dense slot slab; `cache` maps each key to an index into it.
     /// Encoded-run caches record these indices so their hot-path LRU
     /// refresh is an indexed store instead of a map probe per glyph —
     /// safe because every recorded index carries the slot generation
     /// that `evict_one` advances before making the index reusable.
-    pub(super) slots: Vec<GlyphSlot>,
+    pub(crate) slots: Vec<AtlasSlot>,
     /// Key held by each slab entry, parallel to [`Self::slots`]. The
     /// reverse of [`Self::cache`], and the only reason eviction can pick
     /// a victim by slab position at all — it has to drop the outgoing
     /// glyph's map entry, and the map alone only answers key → index.
     ///
-    /// A parallel column rather than a field on `GlyphSlot`: the slot is
+    /// A parallel column rather than a field on `AtlasSlot`: the slot is
     /// hot (copied whole by `encode_run`, and read per glyph by
     /// `try_emit_cached`) while the key is touched only when a slot is
     /// stored or evicted, so folding a ~24-byte key in would cost the
     /// hot path density for a cold path's convenience.
-    slot_keys: Vec<GlyphRasterKey>,
-    pub(super) cache: FxHashMap<GlyphRasterKey, u32>,
+    slot_keys: Vec<K>,
+    pub(crate) cache: FxHashMap<K, u32>,
     /// Slab indices freed by `evict_one` / the empty sweep, reused by
     /// the next `store`.
     free: Vec<u32>,
@@ -199,15 +249,15 @@ pub(super) struct GlyphAtlas {
     /// text ages buffers only; a `PaintOnly` frame ages the atlas only).
     /// Reading one clock is what makes the shared constant mean what it
     /// says.
-    pub(super) current_frame: u64,
+    pub(crate) current_frame: u64,
     /// Deadlines for non-drawing entries, which `evict_one` cannot
     /// reclaim. Same file-once/re-file-on-fire protocol as the two
     /// caches above this one — see [`ExpiryWheel`] — so `touch` stays a
     /// single indexed store on the hot path and files nothing.
-    unallocated_expiry: ExpiryWheel<GlyphRasterKey>,
+    unallocated_expiry: ExpiryWheel<K>,
     max_texture_dimension_2d: u32,
     /// Set on grow; the renderer rebuilds its bind group and clears it.
-    pub(super) bind_group_dirty: bool,
+    pub(crate) bind_group_dirty: bool,
     /// Evictions performed, growths performed, and slots *examined*
     /// choosing a victim.
     ///
@@ -218,7 +268,7 @@ pub(super) struct GlyphAtlas {
     /// one-for-one. It is also the number that says whether this atlas
     /// reaches the
     /// region where F2's curve matters.
-    pub(super) counters: AtlasCounters,
+    pub(crate) counters: AtlasCounters,
 
     /// Glyph pixel data queued by `insert`, packed with per-row padding
     /// so each glyph's copy can satisfy
@@ -243,22 +293,37 @@ struct PendingCopy {
     staging_offset: u64,
 }
 
-impl GlyphAtlas {
-    pub(super) fn new(device: &wgpu::Device) -> Self {
+impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
+    pub(crate) fn new(device: &wgpu::Device, config: RasterAtlasConfig) -> Self {
         let max = device.limits().max_texture_dimension_2d;
 
         // Order matches `ContentType as usize`: [Mask, Color].
         let sides = [
-            Side::new(device, ContentType::Mask, INITIAL_MASK_ATLAS_SIZE.min(max)),
+            Side::new(
+                device,
+                ContentType::Mask,
+                config.initial_mask_px.min(max),
+                config.label,
+            ),
             Side::new(
                 device,
                 ContentType::Color,
-                INITIAL_COLOR_ATLAS_SIZE.min(max),
+                config.initial_color_px.min(max),
+                config.label,
             ),
         ];
+        let labels = AtlasLabels {
+            stem: config.label,
+            grow_blit: format!("{} atlas grow blit", config.label),
+            batch_upload: format!("{} atlas batch upload", config.label),
+            staging: format!("{} atlas staging", config.label),
+        };
 
         Self {
             sides,
+            labels,
+            max_bytes: config.max_bytes,
+            eager_growth_bytes: config.eager_growth_bytes,
             slots: Vec::new(),
             slot_keys: Vec::new(),
             cache: FxHashMap::default(),
@@ -276,7 +341,7 @@ impl GlyphAtlas {
         }
     }
 
-    pub(super) fn bindings(&self) -> AtlasBindings<'_> {
+    pub(crate) fn bindings(&self) -> AtlasBindings<'_> {
         let mask = &self.sides[ContentType::Mask as usize];
         let color = &self.sides[ContentType::Color as usize];
         AtlasBindings {
@@ -288,7 +353,7 @@ impl GlyphAtlas {
 
     /// Cache-hit fast path: bump the slot's LRU stamp and return its
     /// slab index (read the slot itself via `self.slots[idx]`).
-    pub(super) fn touch(&mut self, key: &GlyphRasterKey) -> Option<u32> {
+    pub(crate) fn touch(&mut self, key: &K) -> Option<u32> {
         let &idx = self.cache.get(key)?;
         self.slots[idx as usize].last_use = self.current_frame;
         Some(idx)
@@ -301,12 +366,12 @@ impl GlyphAtlas {
     /// `queue.write_texture` calls. Grows if full; returns `None`
     /// only at GPU-max and still doesn't fit. On success returns the
     /// new slot's slab index.
-    pub(super) fn insert(
+    pub(crate) fn insert(
         &mut self,
         device: &wgpu::Device,
-        key: GlyphRasterKey,
+        key: K,
         content: ContentType,
-        metadata: PackedGlyphMetadata,
+        metadata: PackedMetadata,
         pixels: &[u8],
     ) -> Option<u32> {
         let alloc = self.allocate(device, content, metadata.width, metadata.height)?;
@@ -319,7 +384,7 @@ impl GlyphAtlas {
             pixels,
         );
 
-        let slot = GlyphSlot {
+        let slot = AtlasSlot {
             x: alloc.rectangle.min.x as u16,
             y: alloc.rectangle.min.y as u16,
             width: metadata.width,
@@ -336,7 +401,7 @@ impl GlyphAtlas {
 
     /// Park `slot` in the slab (reusing a freed index when available)
     /// and map `key` to it.
-    fn store(&mut self, key: GlyphRasterKey, mut slot: GlyphSlot) -> u32 {
+    fn store(&mut self, key: K, mut slot: AtlasSlot) -> u32 {
         let idx = match self.free.pop() {
             Some(i) => {
                 slot.generation = self.slots[i as usize].generation;
@@ -353,7 +418,7 @@ impl GlyphAtlas {
         let prev = self.cache.insert(key, idx);
         // A double-insert would leak the previous slab slot; callers
         // only insert after a failed `touch`, so the key must be new.
-        assert!(prev.is_none(), "glyph inserted over a live cache entry");
+        assert!(prev.is_none(), "raster inserted over a live cache entry");
         idx
     }
 
@@ -407,7 +472,7 @@ impl GlyphAtlas {
     /// `copy_buffer_to_buffer` into our retained staging buffer), plus
     /// N `copy_buffer_to_texture` commands recorded on `ctx.encoder`.
     /// The renderer owns the submit; this method adds no extra one.
-    pub(super) fn flush_pending_uploads(&mut self, ctx: &mut GpuCtx<'_>) {
+    pub(crate) fn flush_pending_uploads(&mut self, ctx: &mut GpuCtx<'_>) {
         // Grow blits first: old→new copy must complete before any new
         // glyph writes hit the new texture. wgpu serialises commands
         // within an encoder, so recording in this order is enough.
@@ -415,7 +480,7 @@ impl GlyphAtlas {
         for side in &mut self.sides {
             if let Some(pg) = side.pending_grow.take() {
                 if !any_grow {
-                    debug_marker::push_encoder(ctx.encoder, "palantir text atlas grow blit");
+                    debug_marker::push_encoder(ctx.encoder, &self.labels.grow_blit);
                     any_grow = true;
                 }
                 ctx.encoder.copy_texture_to_texture(
@@ -441,7 +506,7 @@ impl GlyphAtlas {
         if bytes > current_cap {
             let new_cap = bytes.next_power_of_two().max(current_cap * 2).max(4096);
             self.staging_buf = Some(ctx.device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("palantir text atlas staging"),
+                label: Some(&self.labels.staging),
                 size: new_cap,
                 usage: wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
@@ -450,7 +515,7 @@ impl GlyphAtlas {
         let buf = self.staging_buf.as_ref().unwrap();
         ctx.write(buf, 0, &self.pending_staging[..self.pending_staging_used]);
 
-        debug_marker::push_encoder(ctx.encoder, "palantir text atlas batch upload");
+        debug_marker::push_encoder(ctx.encoder, &self.labels.batch_upload);
         for c in &self.pending_copies {
             let side = &self.sides[c.side as usize];
             ctx.encoder.copy_buffer_to_texture(
@@ -487,16 +552,16 @@ impl GlyphAtlas {
 
     /// Cache a non-drawing glyph (no atlas slot or upload). Subsequent
     /// lookups still hit the cache and skip swash.
-    pub(super) fn insert_unallocated(
+    pub(crate) fn insert_unallocated(
         &mut self,
-        key: GlyphRasterKey,
+        key: K,
         content: ContentType,
-        metadata: PackedGlyphMetadata,
+        metadata: PackedMetadata,
     ) -> u32 {
         debug_assert!(metadata.is_empty());
         self.unallocated_expiry
             .schedule(key, self.current_frame + UNALLOCATED_SWEEP_INTERVAL + 1);
-        let slot = GlyphSlot {
+        let slot = AtlasSlot {
             x: 0,
             y: 0,
             width: 0,
@@ -513,7 +578,7 @@ impl GlyphAtlas {
 
     /// Frame teardown: take the shaper's `frame` clock and retire the
     /// non-drawing entries whose deadline came due on it.
-    pub(super) fn end_frame(&mut self, frame: u64) {
+    pub(crate) fn end_frame(&mut self, frame: u64) {
         debug_assert!(
             frame >= self.current_frame,
             "the shared frame clock ran backwards",
@@ -559,12 +624,12 @@ impl GlyphAtlas {
     }
 
     /// Whether `content`'s side is still small enough to grow in
-    /// preference to evicting — see [`EAGER_GROWTH_BYTE_BUDGET`].
+    /// preference to evicting — see [`RasterAtlasConfig::eager_growth_bytes`].
     fn eager_growth(&self, content: ContentType) -> bool {
         let side = &self.sides[content as usize];
         let bytes =
             u64::from(side.size) * u64::from(side.size) * u64::from(content.bytes_per_pixel());
-        bytes < EAGER_GROWTH_BYTE_BUDGET
+        bytes < self.eager_growth_bytes
     }
 
     /// Evict one glyph of `target` content that was not drawn this
@@ -639,14 +704,16 @@ impl GlyphAtlas {
     /// shared encoder. etagere preserves rects on `packer.grow`, so
     /// the cache stays valid — no re-rasterization.
     fn grow(&mut self, device: &wgpu::Device, content: ContentType) -> bool {
-        let ceiling = growth_ceiling(self.max_texture_dimension_2d, content);
+        let ceiling = growth_ceiling(self.max_texture_dimension_2d, content, self.max_bytes);
+        // Read before the side is borrowed mutably below.
+        let label = format!("{} {} atlas", self.labels.stem, content.side_name());
         let side = &mut self.sides[content as usize];
         if side.size >= ceiling {
             return false;
         }
         self.counters.grows.bump();
         let new_size = (side.size * ATLAS_GROWTH_FACTOR).min(ceiling);
-        let new_texture = make_texture(device, content.format(), new_size, content.label());
+        let new_texture = make_texture(device, content.format(), new_size, &label);
         let old_size = side.size;
         let old_texture = std::mem::replace(&mut side.texture, new_texture);
 
@@ -680,8 +747,13 @@ impl std::fmt::Debug for Side {
 }
 
 impl Side {
-    fn new(device: &wgpu::Device, content: ContentType, size: u32) -> Self {
-        let texture = make_texture(device, content.format(), size, content.label());
+    fn new(device: &wgpu::Device, content: ContentType, size: u32, label: &str) -> Self {
+        let texture = make_texture(
+            device,
+            content.format(),
+            size,
+            &format!("{label} {} atlas", content.side_name()),
+        );
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         Self {
             texture,
@@ -694,12 +766,12 @@ impl Side {
 }
 
 /// Largest side length a `content` atlas will grow to: whichever of the
-/// device maximum and [`MAX_ATLAS_BYTE_BUDGET`] binds first.
+/// device maximum and the instance's byte budget binds first.
 ///
 /// A free function taking the device limit rather than a method, so the
 /// arithmetic is testable without a `wgpu::Device`.
-fn growth_ceiling(max_texture_dimension_2d: u32, content: ContentType) -> u32 {
-    let by_bytes = (MAX_ATLAS_BYTE_BUDGET / u64::from(content.bytes_per_pixel())).isqrt() as u32;
+fn growth_ceiling(max_texture_dimension_2d: u32, content: ContentType, max_bytes: u64) -> u32 {
+    let by_bytes = (max_bytes / u64::from(content.bytes_per_pixel())).isqrt() as u32;
     max_texture_dimension_2d.min(by_bytes)
 }
 
@@ -715,11 +787,11 @@ fn growth_ceiling(max_texture_dimension_2d: u32, content: ContentType) -> u32 {
 /// A free function, and one that borrows the three fields rather than
 /// `&mut self`, so the caller can hold `unallocated_expiry` borrowed
 /// across the call to re-file into it.
-fn retire_unallocated(
-    cache: &mut FxHashMap<GlyphRasterKey, u32>,
-    slots: &[GlyphSlot],
+fn retire_unallocated<K: Copy + Eq + Hash + Debug>(
+    cache: &mut FxHashMap<K, u32>,
+    slots: &[AtlasSlot],
     free: &mut Vec<u32>,
-    key: GlyphRasterKey,
+    key: K,
     frame: u64,
 ) -> Option<u64> {
     // Gone: reclaimed by an earlier ticket, or its key removed by
@@ -744,7 +816,7 @@ fn retire_unallocated(
     None
 }
 
-/// One turn of [`GlyphAtlas::evict_one`]'s clock: where the hand ended
+/// One turn of [`RasterAtlas::evict_one`]'s clock: where the hand ended
 /// up, what it found, and how far it walked.
 ///
 /// A named result rather than a tuple, and a free function rather than a
@@ -768,7 +840,7 @@ struct ClockSweep {
 /// eviction: allocated, of `target` content, and not drawn on
 /// `current_frame`. Gives up after one full rotation.
 fn clock_victim(
-    slots: &[GlyphSlot],
+    slots: &[AtlasSlot],
     hand: u32,
     target: ContentType,
     current_frame: u64,
@@ -827,7 +899,7 @@ fn make_texture(
     })
 }
 
-/// What the glyph atlas paid to keep itself packed. Zero-sized outside
+/// What a raster atlas paid to keep itself packed. Zero-sized outside
 /// benchmark and test builds.
 ///
 /// `BenchOnly` rather than `TestOnly`: the question these answer — does a
@@ -835,16 +907,16 @@ fn make_texture(
 /// all — is only reachable from `text_atlas`, which the `internals`
 /// feature gates.
 #[derive(Debug, Default)]
-pub(super) struct AtlasCounters {
-    pub(super) evictions: BenchOnly<u32>,
-    pub(super) grows: BenchOnly<u32>,
+pub(crate) struct AtlasCounters {
+    pub(crate) evictions: BenchOnly<u32>,
+    pub(crate) grows: BenchOnly<u32>,
     /// Slots the clock hand walked past, summed over every call. Divided
     /// by [`Self::evictions`] this is the hand's average stride, which is
     /// the whole health check on the policy: a healthy thrash state
     /// stops on the first or second slot, and a number that climbs
     /// toward the slab length means the skip conditions are rejecting
     /// nearly everything.
-    pub(super) evict_scans: BenchOnly<u64>,
+    pub(crate) evict_scans: BenchOnly<u64>,
 }
 
 /// Reads are gated with their sole consumer: the `text_atlas`
@@ -852,7 +924,7 @@ pub(super) struct AtlasCounters {
 /// has no caller.
 #[cfg(feature = "bench")]
 impl AtlasCounters {
-    pub(super) fn counts(&self) -> AtlasCounts {
+    pub(crate) fn counts(&self) -> AtlasCounts {
         AtlasCounts {
             evictions: self.evictions.count(),
             grows: self.grows.count(),
@@ -864,10 +936,10 @@ impl AtlasCounters {
 /// One reading of an [`AtlasCounters`].
 #[cfg(feature = "bench")]
 #[derive(Clone, Copy, Debug)]
-pub(super) struct AtlasCounts {
-    pub(super) evictions: u32,
-    pub(super) grows: u32,
-    pub(super) evict_scans: u64,
+pub(crate) struct AtlasCounts {
+    pub(crate) evictions: u32,
+    pub(crate) grows: u32,
+    pub(crate) evict_scans: u64,
 }
 
 #[cfg(test)]

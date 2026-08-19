@@ -1,11 +1,11 @@
 //! Per-batch instance emission: extracted glyph placements →
-//! `GlyphInstance`s.
+//! `RasterQuad`s.
 //!
 //! Two paths:
 //!
 //! - **Cache hit**: prior frames laid this exact `(TextShapeKey,
 //!   scale, subpixel origin bin, area color)` run out into the atlas;
-//!   the resulting origin-relative `GlyphInstance` templates are stored
+//!   the resulting origin-relative `RasterQuad` templates are stored
 //!   in the [`EncodedCache`](cache::EncodedCache). Emit = a copy with
 //!   positions, no shaper lease, no per-glyph atlas hashmap lookup.
 //!   This is the ~37% of frame time we're targeting.
@@ -40,7 +40,7 @@ pub(super) mod encoder;
 /// atlas slots and can't share an entry).
 ///
 /// `area_color` is in the key because the run's colour is baked into
-/// every cached [`GlyphInstance`](crate::renderer::backend::text::GlyphInstance)
+/// every cached [`RasterQuad`](crate::renderer::backend::text::RasterQuad)
 /// colour at insert time. **This is only
 /// sufficient because palantir shapes every run with one uniform
 /// colour** — `attrs_for` (`cosmic.rs`) sets no per-span colour, so
@@ -109,7 +109,7 @@ pub(super) fn encode_key_for(r: &TextDrawRow, frame_scale: f32) -> EncodedRunKey
 pub(super) mod internals {
     #![allow(dead_code)]
     use super::*;
-    use crate::renderer::backend::text::GlyphInstance;
+    use crate::renderer::backend::raster_atlas::quad::RasterQuad;
     use crate::renderer::backend::text::encode::cache::{
         ENCODED_CACHE_KEEP_FRAMES, EncodedCache, EncodedGlyph,
     };
@@ -149,7 +149,7 @@ pub(super) mod internals {
             for run in 0..self.runs {
                 for glyph in 0..self.glyphs_per_row {
                     self.cache.pending.push(EncodedGlyph {
-                        instance: GlyphInstance {
+                        instance: RasterQuad {
                             pos: [glyph as i32, run as i32],
                             dim: 0,
                             uv_and_kind: 0,
@@ -215,7 +215,7 @@ pub(super) mod internals {
                 frame += 1;
                 for glyph in 0..glyphs_per_row {
                     cache.pending.push(EncodedGlyph {
-                        instance: GlyphInstance {
+                        instance: RasterQuad {
                             pos: [glyph as i32, row as i32],
                             dim: 0,
                             uv_and_kind: 0,
