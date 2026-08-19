@@ -611,13 +611,15 @@ pub(crate) mod rollups;
 
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {
-    #![allow(dead_code)]
+    #[cfg(test)]
     use crate::scene::shapes::record::ShapeRecord;
+    #[cfg(test)]
     use crate::scene::tree::record::NodeId;
     use crate::scene::tree::*;
 
     impl Tree {
         /// Direct shapes of `node`, including parent-pushed sub-rects interleaved between children.
+        #[cfg(test)]
         pub(crate) fn shapes_of(&self, node: NodeId) -> impl Iterator<Item = &ShapeRecord> + '_ {
             self.tree_items(node).filter_map(|item| match item {
                 TreeItem::ShapeRecord(_, s) => Some(s),

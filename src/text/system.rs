@@ -336,9 +336,8 @@ struct WrapSlot {
     size: Size,
 }
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(test)]
 pub(crate) mod internals {
-    #![allow(dead_code)]
     use crate::primitives::widget_id::WidgetId;
     use crate::text::request::internals::TestShape;
     use crate::text::root::internals::TestMeasure;

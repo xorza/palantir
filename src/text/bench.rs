@@ -54,9 +54,11 @@ const LEADING_RATIO: f32 = 1.2;
 const UI_FACE: TestShape = TestShape {
     font_size_px: 14.0,
     line_height_px: 14.0 * LEADING_RATIO,
-    max_width_px: None,
     family: FontFamily::Sans,
     weight: FontWeight::Regular,
+    #[cfg(test)]
+    max_width_px: None,
+    #[cfg(test)]
     halign: HAlign::Auto,
 };
 

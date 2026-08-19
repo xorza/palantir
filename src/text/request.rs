@@ -72,12 +72,16 @@ impl<'a> TextShapeRequest<'a> {
     }
 }
 
-#[cfg(any(test, feature = "internals"))]
+// Wider than `cfg(test)`, unlike its sibling in `text::root`: the text
+// benches state one const face as a `TestShape` and lower it through
+// `unbounded_request`. Everything else here is assertion-side and says so
+// item by item.
+#[cfg(any(test, feature = "bench"))]
 pub(crate) mod internals {
-    // See [`crate::text::root::internals`] — same gate, same reason.
-    #![allow(dead_code)]
     use super::*;
+    #[cfg(test)]
     use crate::layout::types::align::HAlign;
+    #[cfg(test)]
     use crate::text::wrap::LineFit;
 
     /// A shaping request's parameters without its text, so a test can
@@ -87,10 +91,27 @@ pub(crate) mod internals {
     pub(crate) struct TestShape {
         pub(crate) font_size_px: f32,
         pub(crate) line_height_px: f32,
+        /// Assertion-side, with [`TestShape::halign`]: the benches build
+        /// one const face and shape it unbounded, so only a test ever
+        /// binds a width or asks for an alignment.
+        #[cfg(test)]
         pub(crate) max_width_px: Option<f32>,
         pub(crate) family: FontFamily,
         pub(crate) weight: FontWeight,
+        #[cfg(test)]
         pub(crate) halign: HAlign,
+    }
+
+    impl TestShape {
+        pub(crate) fn unbounded_request<'a>(self, text: &'a str) -> TextShapeRequest<'a> {
+            TextShapeRequest::unbounded(
+                text,
+                self.font_size_px,
+                self.line_height_px,
+                self.family,
+                self.weight,
+            )
+        }
     }
 
     /// Builders, because a case almost always wants one or two overrides
@@ -100,6 +121,11 @@ pub(crate) mod internals {
     ///
     /// Named for the field each sets, so `shape(16.0).halign(Right)` and
     /// a `halign:` literal stay obviously the same thing.
+    ///
+    /// Assertion-side as a block: a bench states one face as a const and
+    /// lowers it unbounded, so overriding a field and binding a width are
+    /// both things only a test does.
+    #[cfg(test)]
     impl TestShape {
         pub(crate) fn font_size(self, font_size_px: f32) -> Self {
             Self {
@@ -142,16 +168,6 @@ pub(crate) mod internals {
 
         pub(crate) fn weight(self, weight: FontWeight) -> Self {
             Self { weight, ..self }
-        }
-
-        pub(crate) fn unbounded_request<'a>(self, text: &'a str) -> TextShapeRequest<'a> {
-            TextShapeRequest::unbounded(
-                text,
-                self.font_size_px,
-                self.line_height_px,
-                self.family,
-                self.weight,
-            )
         }
 
         /// Bound to this shape's width under `fit`, or unbounded where it

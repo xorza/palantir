@@ -17,7 +17,7 @@
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
-#[cfg(any(test, feature = "internals"))]
+#[cfg(any(test, feature = "bench"))]
 pub(crate) mod capture;
 pub(crate) mod composer;
 pub(crate) mod encoder;

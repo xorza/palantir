@@ -283,15 +283,24 @@ impl TextShaper {
 
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {
-    #![allow(dead_code)]
     use super::*;
+    #[cfg(test)]
     use crate::layout::ShapedText;
     #[cfg(test)]
     use crate::text::cosmic::counters::CacheCounts;
+    #[cfg(test)]
     use crate::text::probe::Caret;
+    #[cfg(test)]
     use crate::text::request::internals::TestShape;
+    #[cfg(test)]
     use crate::text::wrap::LineFit;
 
+    /// What only an assertion asks: probes that shape a fixture face,
+    /// the cache-identity and borrow checks, and the two reach-ins that
+    /// read or clear the shaped-buffer cache wholesale. Split from the
+    /// block below so the module's gate can stay as wide as the
+    /// integration suites need without leaving these dead there.
+    #[cfg(test)]
     impl TextShaper {
         /// Everything a layout probe can answer: the extent, and the key
         /// of the buffer it shaped under — which is a [`ShapedText`], the
@@ -333,14 +342,6 @@ pub(crate) mod internals {
             self.probe_layout(text, shape, |probe| probe.byte_at(x, y))
         }
 
-        /// Deterministic mono-fallback shaper for tests and headless
-        /// tools — no font system, every glyph `font_size_px * 0.5` wide.
-        pub fn test_mono() -> Self {
-            Self {
-                inner: Rc::new(RefCell::new(ShaperInner::new(Metric::Mono))),
-            }
-        }
-
         /// Whether both handles front the same shaped-buffer cache — the
         /// `HostShared` contract that a window's recorder and the backend
         /// never shape into separate caches.
@@ -351,27 +352,17 @@ pub(crate) mod internals {
         /// Hold the shaper's exclusive borrow for the caller's scope, so
         /// the backend can prove an encoded-cache hit never reaches for
         /// the shaper: anything that did would panic on the live borrow.
+        ///
+        /// Its one caller is the text backend's GPU suite, which stays on
+        /// `internals` so a default `cargo test` needs no adapter.
+        #[cfg(feature = "internals")]
         pub(crate) fn hold_borrow(&self) -> ShaperLease<'_> {
             ShaperLease {
                 _inner: self.inner.borrow_mut(),
             }
         }
 
-        /// Total cache-miss `measure` dispatches.
-        pub(crate) fn measure_calls(&self) -> u64 {
-            self.inner.borrow().measure_calls
-        }
-
-        /// Shaped buffers currently resident.
-        pub(crate) fn cosmic_cache_len(&self) -> usize {
-            self.inner
-                .borrow()
-                .cosmic()
-                .map_or(0, CosmicMeasure::cache_len)
-        }
-
         /// Snapshot of the shaped-buffer cache's tallies.
-        #[cfg(test)]
         pub(crate) fn cache_counts(&self) -> CacheCounts {
             self.inner
                 .borrow()
@@ -381,18 +372,9 @@ pub(crate) mod internals {
                 .counts()
         }
 
-        /// The lookup `TextEncoder::encode_run` performs on an
-        /// encoded-cache miss: restore the shaped buffer if it aged out,
-        /// and promote it onto the protected window if it is resident.
-        ///
-        /// Tests that model a *rendered* frame need this. Layout only
-        /// ever inserts, so without the render half a buffer is never
-        /// looked up and the protected window is unreachable — which is
-        /// exactly the asymmetry `PROBATION_KEEP_FRAMES` documents.
-        pub(crate) fn render_ensure(&self, request: TextShapeRequest<'_>) {
-            if let Some(cosmic) = self.inner.borrow_mut().cosmic_mut() {
-                cosmic.ensure_buffer(request);
-            }
+        /// Total cache-miss `measure` dispatches.
+        pub(crate) fn measure_calls(&self) -> u64 {
+            self.inner.borrow().measure_calls
         }
 
         pub(crate) fn has_cosmic_buffer(&self, key: TextShapeKey) -> bool {
@@ -413,7 +395,52 @@ pub(crate) mod internals {
         }
     }
 
+    /// What the integration suites reach through `UiHarness`, and what
+    /// the text benches drive.
+    impl TextShaper {
+        /// Deterministic mono-fallback shaper for tests and headless
+        /// tools — no font system, every glyph `font_size_px * 0.5` wide.
+        pub fn test_mono() -> Self {
+            Self {
+                inner: Rc::new(RefCell::new(ShaperInner::new(Metric::Mono))),
+            }
+        }
+
+        /// Shaped buffers currently resident.
+        ///
+        /// Narrower than the block: it reads through
+        /// `CosmicMeasure::cache_len`, whose own module is gated to the
+        /// tests and benches that ask.
+        #[cfg(any(test, feature = "bench"))]
+        pub(crate) fn cosmic_cache_len(&self) -> usize {
+            self.inner
+                .borrow()
+                .cosmic()
+                .map_or(0, CosmicMeasure::cache_len)
+        }
+
+        /// The lookup `TextEncoder::encode_run` performs on an
+        /// encoded-cache miss: restore the shaped buffer if it aged out,
+        /// and promote it onto the protected window if it is resident.
+        ///
+        /// Tests that model a *rendered* frame need this. Layout only
+        /// ever inserts, so without the render half a buffer is never
+        /// looked up and the protected window is unreachable — which is
+        /// exactly the asymmetry `PROBATION_KEEP_FRAMES` documents.
+        ///
+        /// Narrower than the block, like [`Self::cosmic_cache_len`]: the
+        /// retention tests and the text bench ask, and nothing the
+        /// integration suites reach does.
+        #[cfg(any(test, feature = "bench"))]
+        pub(crate) fn render_ensure(&self, request: TextShapeRequest<'_>) {
+            if let Some(cosmic) = self.inner.borrow_mut().cosmic_mut() {
+                cosmic.ensure_buffer(request);
+            }
+        }
+    }
+
     /// Live exclusive borrow minted by [`TextShaper::hold_borrow`].
+    #[cfg(all(test, feature = "internals"))]
     #[derive(Debug)]
     pub(crate) struct ShaperLease<'a> {
         _inner: RefMut<'a, ShaperInner>,
