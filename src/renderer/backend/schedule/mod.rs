@@ -112,28 +112,26 @@ pub(super) enum RenderStep {
     /// follow). One `Text { batch }` step → one text-backend render →
     /// one wgpu draw call covering every run in the batch.
     Text { batch: usize },
-    /// Bind the mesh pipeline + issue one `draw_indexed` per
-    /// `MeshDraw` in the referenced batch. Consumer pulls per-draw spans
-    /// from `RenderBuffer::batches(Mesh)[batch].items` (then via
-    /// `RenderBuffer.meshes`). One `MeshBatch { batch }` step → one
-    /// pipeline+buffer bind → N `draw_indexed` calls.
-    MeshBatch { batch: usize },
-    /// Bind the image pipeline + issue one `draw` per `ImageDraw` in
-    /// the referenced batch. Consumer pulls per-draw handles from
-    /// `RenderBuffer::batches(Image)[batch].items` (then via
-    /// `RenderBuffer.images.draws`). The pipeline switches the per-image
-    /// bind group between draws.
-    ImageBatch { batch: usize },
-    /// Bind the icon pipeline + issue one instanced draw covering every icon
-    /// in the referenced batch. Every icon shares one atlas bind group, so a
-    /// run of them is a single draw whatever mix of icons it holds.
-    IconBatch { batch: usize },
-    /// Bind the stroke pipeline + issue a single indexed instanced draw
-    /// covering every `CurveInstance` in the referenced batch. One
-    /// `CurveBatch { batch }` step → one bind → one `draw_indexed`. This
-    /// is the "one draw call per scissor group" the architecture targets
-    /// for native GPU strokes.
-    CurveBatch { batch: usize },
+    /// Bind `tier`'s pipeline and replay batch `batch` of it, pulling
+    /// the batch's items from `RenderBuffer::batches(tier)[batch]`.
+    ///
+    /// **One variant carrying the tier, not one variant per tier.** The
+    /// step a tier maps to is not a decision — it is the same tier — so
+    /// carrying it leaves nothing to state wrongly, and a new tier needs
+    /// no variant here at all.
+    ///
+    /// What each tier does with the batch differs, which is why the
+    /// backend still matches on it:
+    ///
+    /// - **Mesh** — one bind, then N `draw_indexed`, one per `MeshDraw`.
+    /// - **Image** — one `draw` per row, switching the per-image bind
+    ///   group between draws.
+    /// - **Icon** — one instanced draw for the whole batch; every icon
+    ///   shares one atlas bind group whatever mix the batch holds.
+    /// - **Curve** — one bind, one `draw_indexed` covering every
+    ///   `CurveInstance`. The "one draw call per scissor group" native
+    ///   strokes target.
+    TierBatch { tier: PaintTier, batch: usize },
 }
 
 /// Walk `buffer.groups` and emit one [`RenderStep`] at a time via
@@ -571,12 +569,7 @@ fn emit_group_body(
             buffer.batches(tier),
             &mut cursors.higher[tier.idx()],
             i,
-            |batch| match tier {
-                PaintTier::Mesh => RenderStep::MeshBatch { batch },
-                PaintTier::Image => RenderStep::ImageBatch { batch },
-                PaintTier::Icon => RenderStep::IconBatch { batch },
-                PaintTier::Curve => RenderStep::CurveBatch { batch },
-            },
+            |batch| RenderStep::TierBatch { tier, batch },
             state,
         );
     }

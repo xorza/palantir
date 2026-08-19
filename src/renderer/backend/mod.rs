@@ -974,43 +974,40 @@ impl WgpuBackend {
                     bound = Bound::None;
                     debug_marker::pop(pass);
                 }
-                RenderStep::MeshBatch { batch } => {
-                    mark(pass, BatchKind::Mesh);
-                    debug_marker::push(pass, "meshes");
-                    rebind!(Bound::Mesh, self.mesh.bind(pass, &fmt.mesh, use_stencil));
-                    let items = buffer.batches(PaintTier::Mesh)[batch].items;
-                    self.mesh.draw_batch(pass, buffer.meshes.draw(), items);
-                    debug_marker::pop(pass);
-                }
-                RenderStep::ImageBatch { batch } => {
-                    mark(pass, BatchKind::Image);
-                    debug_marker::push(pass, "images");
-                    rebind!(Bound::Image, self.image.bind(pass, &fmt.image, use_stencil));
-                    let items = buffer.batches(PaintTier::Image)[batch].items;
-                    self.image.draw_batch(pass, buffer.images.id(), items);
-                    debug_marker::pop(pass);
-                }
-                RenderStep::IconBatch { batch } => {
-                    mark(pass, BatchKind::Icon);
-                    debug_marker::push(pass, "icons");
-                    // Like text, `render_batch` pushes both halves of the
-                    // immediate region itself, so the next step must re-push
-                    // the viewport after its own bind.
-                    self.icon
-                        .render_batch(batch, pass, &fmt.icon, use_stencil, &viewport);
-                    bound = Bound::None;
-                    debug_marker::pop(pass);
-                }
-                RenderStep::CurveBatch { batch } => {
-                    mark(pass, BatchKind::Curve);
-                    debug_marker::push(pass, "curves");
-                    rebind!(
-                        Bound::Curve,
-                        self.curve
-                            .bind(pass, &fmt.curve, use_stencil, &self.gradient.bg)
-                    );
-                    self.curve
-                        .draw(pass, buffer.batches(PaintTier::Curve)[batch].items.into());
+                RenderStep::TierBatch { tier, batch } => {
+                    // Timing bucket and debug label both come off the tier,
+                    // so a new one cannot land in the pass untimed or
+                    // unlabelled the way a forgotten `mark` call would.
+                    let kind = batch_kind(tier);
+                    mark(pass, kind);
+                    debug_marker::push(pass, kind.label());
+                    let items = buffer.batches(tier)[batch].items;
+                    match tier {
+                        PaintTier::Mesh => {
+                            rebind!(Bound::Mesh, self.mesh.bind(pass, &fmt.mesh, use_stencil));
+                            self.mesh.draw_batch(pass, buffer.meshes.draw(), items);
+                        }
+                        PaintTier::Image => {
+                            rebind!(Bound::Image, self.image.bind(pass, &fmt.image, use_stencil));
+                            self.image.draw_batch(pass, buffer.images.id(), items);
+                        }
+                        PaintTier::Icon => {
+                            // Like text, `render_batch` pushes both halves of
+                            // the immediate region itself, so the next step
+                            // must re-push the viewport after its own bind.
+                            self.icon
+                                .render_batch(batch, pass, &fmt.icon, use_stencil, &viewport);
+                            bound = Bound::None;
+                        }
+                        PaintTier::Curve => {
+                            rebind!(
+                                Bound::Curve,
+                                self.curve
+                                    .bind(pass, &fmt.curve, use_stencil, &self.gradient.bg)
+                            );
+                            self.curve.draw(pass, items.into());
+                        }
+                    }
                     debug_marker::pop(pass);
                 }
             },
@@ -1119,6 +1116,23 @@ impl WgpuBackend {
 /// the dim pre-pass and the damage-overlay pass (no stencil, no
 /// timestamps; only the label and target view differ). Both passes run
 /// the debug overlay's quad draws standalone, outside the main pass.
+/// The timing bucket and debug label a [`PaintTier`] replay lands in.
+///
+/// Here rather than on either type: `BatchKind` lives in `diagnostics`,
+/// which everything reports into and which depends on nothing, and
+/// `PaintTier` lives in the render buffer, which has no business knowing
+/// about instrumentation. The replay below is the one place both are
+/// already in scope. Exhaustive, so a new tier cannot reach the pass
+/// untimed and unlabelled the way a forgotten `mark` call could.
+fn batch_kind(tier: PaintTier) -> BatchKind {
+    match tier {
+        PaintTier::Mesh => BatchKind::Mesh,
+        PaintTier::Image => BatchKind::Image,
+        PaintTier::Icon => BatchKind::Icon,
+        PaintTier::Curve => BatchKind::Curve,
+    }
+}
+
 fn begin_load_pass<'e>(
     encoder: &'e mut wgpu::CommandEncoder,
     label: &'static str,
