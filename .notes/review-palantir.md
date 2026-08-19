@@ -261,19 +261,6 @@ crate.
       none of them inside the new `src/icons/` or `src/renderer/backend/icon/`
       modules, on top of 12 new files.
 
-- [ ] `src/renderer/render_buffer/mod.rs:59`, `:81`, `:96`, `:98` —
-      `mesh_batches`, `image_batches`, `icon_batches` and `curve_batches` are
-      four `Vec<GroupBatch>` fields with identical element type and semantics.
-      `PaintTier { Mesh, Image, Icon, Curve }` names the axis they are
-      indexed by, and the backend now walks them through `PaintTier::ALL`
-      and `RenderBuffer::batches` — but the columns themselves are still
-      four fields, so `Composer::flush` keeps four textually identical
-      push blocks (`src/renderer/frontend/composer/mod.rs:204`),
-      `HigherKindRects` keeps four named `TierRects`
-      (`composer/higher_kind.rs:34`), and the backend still carries a
-      `PerGroupBatch` trait so its helpers can be written once. One
-      `[Vec<GroupBatch>; PaintTier::COUNT]` would retire all three.
-
 - [ ] `src/widgets/checkbox/mod.rs:26`, `src/widgets/radio/mod.rs:25`,
       `src/widgets/switch.rs:24` — three copies of one widget. Same four-field
       struct, same `new()` building an `hstack` with `Sense::CLICK`, same
@@ -312,13 +299,6 @@ crate.
       enums meaning "one coverage byte per pixel" vs "straight sRGB RGBA", with
       the same doc wording, for one shared atlas. Two hand-written conversions
       at the boundary are the only thing aligning them.
-
-- [ ] `src/primitives/image.rs:19` vs `src/shape/icon.rs:17` — `IconFit`
-      {Contain, Fill, None} is a strict subset of `ImageFit` {Fill, Contain,
-      Cover, None}, and forces two resolvers: `resolve_fit` and
-      `resolve_icon_fit` (`src/renderer/frontend/encoder/mod.rs:798` and `:752`)
-      share the same degenerate guard and implement the three common variants
-      identically. `resolve_icon_fit` is also `pub(super)` for no caller.
 
 - [ ] `src/layout/engine.rs:78` and `:165`, `src/layout/cache/mod.rs:43`, `:59`,
       `:89`, `src/layout/mod.rs:38`, `src/layout/pass.rs:216` — the same per-node
@@ -379,29 +359,12 @@ crate.
       hand-maintained copy of two `WindowRequests` fields, built field-for-field
       at `src/host/window_driver/mod.rs:384`, carrying near-identical vsync docs.
 
-- [ ] `src/input/shortcut.rs:315` — `Mods` mirrors `Modifiers` minus `mac_ctrl`
-      via a three-field manual copy (`:367`) that a new modifier must be added
-      to or it silently never reaches shortcut matching. The field that
-      justifies the split has no consumer: `mac_ctrl` is written once
-      (`src/host/winit/input/mod.rs:179`) and read only by
-      `Modifiers::any_command()`, and `Shortcut` cannot express it.
-
 - [ ] `src/ui/frame_report.rs:18` — `FrameProcessing::PaintOnly` and
       `FramePlan::PaintOnly` are the same fact, mapped by hand at
       `src/ui/frame_cycle.rs:98`.
 
 - [ ] `src/animation/serde.rs:8` — `AnimSpecWire` re-declares `AnimMotion`'s two
       variants minus `substep_dt`.
-
-- [ ] `src/text/system.rs:70` — `TextRunSlot { widget_id, ordinal }` names a
-      reuse-row address, but `TextSystem.entries` is keyed
-      `FxHashMap<(WidgetId, u16), _>`, so every site destructures the struct
-      back into the tuple or rebuilds it (`:58`, `:132`, `:255`, `:268`).
-
-- [ ] `src/scene/layer.rs:45` — `Layer::PAINT_ORDER` writes the five variants out
-      again in declaration order, and a `const` block then asserts
-      `PAINT_ORDER[i] as usize == i`, proving the table redundant with the
-      discriminants it duplicates.
 
 ---
 

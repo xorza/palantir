@@ -1,5 +1,6 @@
 use crate::icons::icon_set::IconHandle;
 use crate::primitives::color::Color;
+use crate::primitives::image::ImageFit;
 use crate::primitives::rect::Rect;
 use crate::scene::record_store::RecordStore;
 use crate::scene::shapes::record::ShapeRecord;
@@ -25,6 +26,20 @@ pub enum IconFit {
     /// Rasterize at the artwork's own viewBox size in logical px, centered.
     /// Overflows a smaller rect.
     None,
+}
+
+impl IconFit {
+    /// The [`ImageFit`] this means, so the variants the two share
+    /// resolve through the image path's one implementation rather than
+    /// a second copy of it. The subset stays a subset — that is what
+    /// keeps `Cover` and `Tile` unrepresentable for an icon.
+    pub(crate) fn to_image_fit(self) -> ImageFit {
+        match self {
+            Self::Contain => ImageFit::Contain,
+            Self::Fill => ImageFit::Fill,
+            Self::None => ImageFit::None,
+        }
+    }
 }
 
 /// A baked SVG icon painted into the owner's rect, rasterized at the exact

@@ -174,6 +174,30 @@ impl RenderBuffer {
     /// [`Self::start_frame`] and the composer's clear fold, which discards
     /// everything composed so far when a fullscreen opaque cover proves it
     /// invisible — a new scene column added here resets on both paths at once.
+    /// How many draws this tier has emitted so far. Paired with
+    /// [`Self::batches_mut`] so the composer can close a group over
+    /// every tier by iterating [`PaintTier::ALL`] instead of naming the
+    /// four columns.
+    pub(crate) fn draws_len(&self, tier: PaintTier) -> u32 {
+        let len = match tier {
+            PaintTier::Mesh => self.meshes.len(),
+            PaintTier::Image => self.images.len(),
+            PaintTier::Icon => self.icons.len(),
+            PaintTier::Curve => self.curves.len(),
+        };
+        len as u32
+    }
+
+    /// This tier's per-group batches, for appending.
+    pub(crate) fn batches_mut(&mut self, tier: PaintTier) -> &mut Vec<GroupBatch> {
+        match tier {
+            PaintTier::Mesh => &mut self.mesh_batches,
+            PaintTier::Image => &mut self.image_batches,
+            PaintTier::Icon => &mut self.icon_batches,
+            PaintTier::Curve => &mut self.curve_batches,
+        }
+    }
+
     /// This tier's per-group batches. The four columns stay separate
     /// fields — they hold different instance types upstream — but every
     /// consumer that walks all of them reaches them through here and
