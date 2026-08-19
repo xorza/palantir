@@ -234,37 +234,6 @@ from what it describes, and nothing catches it.
       `src/text/wrap.rs`.
 ---
 
-## Parallel taxonomies for one concept
-
-One idea modelled more than once, with the copies kept in step by hand.
-
-Investigated in full and **closed**. Most were rejected — the "copies" were one
-concept at layers that deliberately do not depend on each other
-(`GlyphImageKind`/`IconRasterKind`/`ContentType`), types encoding different
-facts (`FramePlan` vs `FrameProcessing`, `WindowRequests` vs `WindowOutput`),
-extractions that already exist (`toggle_row` for the three toggles), or shapes
-whose remaining overlap is smaller than the cost of removing it (gradients:
-1 of 7 items verbatim; `Rect`/`URect`: blocked by `const fn`; the theme bundle:
-a triple, not a quadruple, and `ToggleTheme` has no `looks`).
-
-Three survived and are done:
-
-- The four `Vec<GroupBatch>` columns are one
-  `[Vec<GroupBatch>; PaintTier::COUNT]`, so a new tier is a variant rather than
-  a field plus an init plus a clear plus two match arms.
-- The five spellings of a text run's parameters share one `GlyphFont` field.
-  `TextShape` ↔ `ShapeRecord::Text` now mirror in one field instead of four,
-  and every `Lower::lower` destructures `Self`, so an authoring field that
-  never reaches the record is a build error rather than a silent drop.
-  Measured free: nesting leaves the `Text` variant at 56 bytes and
-  `ShapeRecord` at its pinned 88.
-- The paint-kind fanout is an architecture question, not a refactor. Surveyed
-  in `.notes/paint-kind-fanout.md` — four options, the trade each forfeits,
-  and the missing input (a workload that adds kinds often enough to justify
-  any of them).
-
----
-
 ## Abstractions extracted halfway
 
 A shared core was factored out and the surface around it was not, so each tenant
