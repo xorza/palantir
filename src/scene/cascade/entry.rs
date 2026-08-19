@@ -95,6 +95,20 @@ pub(crate) struct ScopeRow {
     pub(crate) filter: KeyFilter,
 }
 
+/// What a press lands on: the topmost clickable row under the point and
+/// the topmost focusable one, from a single reverse scan.
+///
+/// Two slots rather than two calls because the answers are independent —
+/// clicking a `Button` must not steal focus from a `TextEdit`, so the
+/// press target and the focus target are routinely different rows — and
+/// resolving them separately walked the same hit table twice for one
+/// position.
+#[derive(Default, Clone, Copy, Debug)]
+pub(crate) struct PressTargets {
+    pub(crate) click: Option<WidgetId>,
+    pub(crate) focus: Option<WidgetId>,
+}
+
 /// Topmost interactive row under a point for each of three
 /// independent sense filters — the result of one reverse scan.
 #[derive(Default, Clone, Copy, Debug)]

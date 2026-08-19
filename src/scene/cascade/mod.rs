@@ -23,7 +23,9 @@ use crate::common::content_hash::ContentHash;
 use crate::input::sense::Sense;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::{WidgetId, WidgetIdMap};
-use crate::scene::cascade::entry::{EntryRow, HitRow, HitTargets, ScopeRow, WidgetLocation};
+use crate::scene::cascade::entry::{
+    EntryRow, HitRow, HitTargets, PressTargets, ScopeRow, WidgetLocation,
+};
 use crate::scene::cascade::paint::PaintArena;
 use crate::scene::layer::PerLayer;
 use crate::scene::seen_ids::Endpoint;
@@ -268,9 +270,7 @@ impl Cascade {
             .filter(move |row| row.rect.contains(pos))
     }
 
-    /// Topmost row under `pos` passing `gate`. Shared by [`Self::hit_test`]
-    /// and [`Self::hit_test_focusable`], which differ only in the field of
-    /// the row they gate on.
+    /// Topmost row under `pos` passing `gate`.
     fn hit_first(&self, pos: Vec2, gate: impl Fn(&HitRow) -> bool) -> Option<WidgetId> {
         self.hits_under(pos)
             .find(|row| gate(row))
@@ -286,6 +286,7 @@ impl Cascade {
     /// One reverse walk that finds the topmost match for each of three
     /// filters at once. Used on `PointerMoved` and at `post_record` to
     /// recompute hover + scroll + pinch targets in a single pass.
+    /// [`Self::hit_test_press`] is the same shape for the press path.
     /// Independent filters: a `Sense::DRAG | Sense::SCROLL` widget sits in
     /// both hover and scroll target slots if it's the topmost match for
     /// each. Stops as soon as all three are filled.
@@ -316,8 +317,27 @@ impl Cascade {
         targets
     }
 
-    pub(crate) fn hit_test_focusable(&self, pos: Vec2) -> Option<WidgetId> {
-        self.hit_first(pos, |row| row.focusable)
+    /// The press target and the focus target in one reverse walk — see
+    /// [`PressTargets`]. Same shape as [`Self::hit_test_targets`], and
+    /// explicit arms for the same reason: this runs per press and the
+    /// filters stay monomorphised rather than boxed. The two a press
+    /// needs are `Sense::clicks` for the press itself and
+    /// `HitRow::focusable` for what the click focuses — different
+    /// fields, which is why one filter parameter could not serve both.
+    pub(crate) fn hit_test_press(&self, pos: Vec2) -> PressTargets {
+        let mut targets = PressTargets::default();
+        for row in self.hits_under(pos) {
+            if targets.click.is_none() && Sense::clicks(row.sense) {
+                targets.click = Some(row.widget_id);
+            }
+            if targets.focus.is_none() && row.focusable {
+                targets.focus = Some(row.widget_id);
+            }
+            if targets.click.is_some() && targets.focus.is_some() {
+                break;
+            }
+        }
+        targets
     }
 }
 

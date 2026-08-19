@@ -22,10 +22,10 @@ use crate::animation::spring::{
     within_duration_snap_eps, within_settle_eps,
 };
 use crate::common::time::ANIM_SUBSTEP_DT;
+use crate::common::typed_stores::{TypedStore, TypedStores};
 use crate::primitives::approx::EPS;
 use crate::primitives::widget_id::WidgetId;
 use rustc_hash::{FxHashMap, FxHashSet};
-use std::any::{Any, TypeId};
 use std::collections::hash_map::Entry;
 
 /// Slot tag for stacking multiple animations on one widget. Widgets
@@ -540,16 +540,7 @@ impl<T: Animatable> AnimMapTyped<T> {
     }
 }
 
-/// Type-erased operations every typed map exposes — end-of-frame
-/// sweep plus an emptiness probe so the parent can drop drained maps.
-/// `: Any` is what lets the downcast sites upcast a `&mut dyn
-/// AnyTyped` straight to `&mut dyn Any` — no `as_any` boilerplate.
-pub(crate) trait AnyTyped: Any {
-    fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>);
-    fn is_empty(&self) -> bool;
-}
-
-impl<T: Animatable> AnyTyped for AnimMapTyped<T> {
+impl<T: Animatable> TypedStore for AnimMapTyped<T> {
     fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>) {
         AnimMapTyped::<T>::sweep_removed(self, removed);
     }
@@ -562,41 +553,29 @@ impl<T: Animatable> AnyTyped for AnimMapTyped<T> {
 /// keyed by `TypeId`. Adding a new [`Animatable`] type costs no
 /// central edits — first `Ui::animate::<T>` call boxes a fresh
 /// `AnimMapTyped<T>`.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub(crate) struct AnimMap {
-    pub(crate) by_type: FxHashMap<TypeId, Box<dyn AnyTyped>>,
-}
-
-// Manual: the values are `dyn AnyTyped`, which has no `Debug` and can't
-// gain one without a supertrait every `AnimMapTyped<T>` would have to
-// satisfy. The row count is the shape worth reporting.
-impl std::fmt::Debug for AnimMap {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("AnimMap")
-            .field("typed_maps", &self.by_type.len())
-            .finish()
-    }
+    stores: TypedStores,
 }
 
 impl AnimMap {
     /// Get-or-create the typed map for `T`. Allocates on first call
     /// per `T`; subsequent calls hit the hashmap and downcast.
     pub(crate) fn typed_mut<T: Animatable>(&mut self) -> &mut AnimMapTyped<T> {
-        (self
-            .by_type
-            .entry(TypeId::of::<T>())
-            .or_insert_with(|| Box::<AnimMapTyped<T>>::default())
-            .as_mut() as &mut dyn Any)
-            .downcast_mut::<AnimMapTyped<T>>()
-            .expect("TypeId is stable per T, downcast cannot fail")
+        self.stores.get_or_default::<AnimMapTyped<T>>()
+    }
+
+    /// No typed map exists yet — the `Ui::animate` fast path for an app
+    /// that has never animated, and again once every map has drained.
+    pub(crate) fn is_empty(&self) -> bool {
+        self.stores.is_empty()
     }
 
     /// Borrow the typed map for `T` if it exists. Used by the
     /// `Ui::animate(.., None)` short-circuit to drop a stale row
     /// without allocating a fresh typed map.
     pub(crate) fn try_typed_mut<T: Animatable>(&mut self) -> Option<&mut AnimMapTyped<T>> {
-        (self.by_type.get_mut(&TypeId::of::<T>())?.as_mut() as &mut dyn Any)
-            .downcast_mut::<AnimMapTyped<T>>()
+        self.stores.get_mut::<AnimMapTyped<T>>()
     }
 
     /// Drop rows for removed widgets and for slots that weren't
@@ -609,19 +588,13 @@ impl AnimMap {
     /// abandoned slots would accumulate forever for any widget
     /// whose id lingers across motion-toggle states.
     ///
-    /// A typed map that drains to empty is dropped entirely: it's
-    /// re-created lazily on the next `typed_mut::<T>`, and keeping it
-    /// would leave `by_type` non-empty forever, permanently disabling
-    /// the `by_type.is_empty()` fast path in `Ui::animate` once *any*
-    /// widget has ever animated — even after the app goes idle.
+    /// A typed map that drains to empty is dropped entirely — see
+    /// [`TypedStores::sweep_removed_dropping_drained`]. Keeping it would
+    /// leave the container non-empty forever, permanently disabling the
+    /// [`Self::is_empty`] fast path in `Ui::animate` once *any* widget
+    /// has ever animated, even after the app goes idle.
     pub(crate) fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>) {
-        if self.by_type.is_empty() {
-            return;
-        }
-        self.by_type.retain(|_, typed| {
-            typed.sweep_removed(removed);
-            !typed.is_empty()
-        });
+        self.stores.sweep_removed_dropping_drained(removed);
     }
 }
 

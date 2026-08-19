@@ -12,3 +12,4 @@ pub(crate) mod index16;
 pub(crate) mod platform;
 pub(crate) mod time;
 pub(crate) mod tracy;
+pub(crate) mod typed_stores;

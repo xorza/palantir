@@ -64,7 +64,7 @@ impl Spacing {
     /// aarch64-fp16, `vcvtph2ps` on x86-f16c, scalar fallback elsewhere).
     /// Use at hot sites that read 3+ lanes to amortize feature dispatch.
     #[inline]
-    pub fn as_array(&self) -> [f32; 4] {
+    pub fn as_array(self) -> [f32; 4] {
         self.0.lanes()
     }
 
@@ -77,20 +77,20 @@ impl Spacing {
 
     /// `left + right` — how much width this spacing costs.
     #[inline]
-    pub fn horiz(&self) -> f32 {
+    pub fn horiz(self) -> f32 {
         let [l, _t, r, _b] = self.as_array();
         l + r
     }
     /// `top + bottom` — how much height this spacing costs.
     #[inline]
-    pub fn vert(&self) -> f32 {
+    pub fn vert(self) -> f32 {
         let [_l, t, _r, b] = self.as_array();
         t + b
     }
     /// Both totals in a single SIMD unpack. Use when both axes are
     /// needed; otherwise prefer `horiz()` / `vert()`.
     #[inline]
-    pub fn sums(&self) -> Sums {
+    pub fn sums(self) -> Sums {
         let [l, t, r, b] = self.as_array();
         Sums {
             horiz: l + r,

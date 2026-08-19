@@ -150,13 +150,17 @@ impl FillAxis {
         self.0.lanes()
     }
 
-    /// Per-lane f32 setter helper for the composer's
-    /// `current_transform.scale` multiply path. Re-quantizes via the
-    /// scalar f16 round-trip.
+    /// Scale every lane — the composer's `current_transform.scale`
+    /// multiply, run per quad.
+    ///
+    /// Delegates to [`F16x4::scaled`] rather than composing
+    /// `from_lanes(lanes().map(..))`: that spelling bounces through two
+    /// `[f32; 4]` arrays and measures 1.3x slower, which is the whole
+    /// reason the fused form exists. `Corners::scaled_by` delegates the
+    /// same way.
     #[inline]
     pub(crate) fn scaled(self, s: f32) -> Self {
-        let [a, b, c, d] = self.lanes();
-        Self::from_lanes(a * s, b * s, c * s, d * s)
+        Self(self.0.scaled(s))
     }
 }
 

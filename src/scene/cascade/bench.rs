@@ -236,10 +236,7 @@ pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Run<'_>) {
                 });
             });
             group.bench_function(id("click_focus"), |b| {
-                b.iter(|| {
-                    black_box(cascade.hit_test(black_box(query), Sense::clicks));
-                    black_box(cascade.hit_test_focusable(black_box(query)));
-                });
+                b.iter(|| black_box(cascade.hit_test_press(black_box(query))));
             });
         }
     }

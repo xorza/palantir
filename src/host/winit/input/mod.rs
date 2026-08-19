@@ -189,17 +189,8 @@ fn normalize_modifiers(modifiers: &ModifiersState) -> Modifiers {
 }
 
 fn emit_text_chunks(text: &str, emit: &mut impl FnMut(InputEvent)) {
-    let mut rest = text;
-    while !rest.is_empty() {
-        let mut end = rest.len().min(TextChunk::INLINE_CAP);
-        while !rest.is_char_boundary(end) {
-            end -= 1;
-        }
-        let (head, tail) = rest.split_at(end);
-        emit(InputEvent::Text(
-            TextChunk::new(head).expect("chunk fits by construction"),
-        ));
-        rest = tail;
+    for chunk in TextChunk::split(text) {
+        emit(InputEvent::Text(chunk));
     }
 }
 
