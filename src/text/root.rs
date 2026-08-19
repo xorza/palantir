@@ -59,13 +59,8 @@ impl TextRoot {
 const WRAP_FLOOR_ERROR: &str = "the wrap floor was never scanned for this shape: TextWrap::floor_scan \
      and the policy asking for it have drifted apart";
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(test)]
 pub(crate) mod internals {
-    // Wider than `cfg(test)`: an `internals`-only build reaches
-    // `TestShape`/`TestMeasure` through the shaper's gated helpers but
-    // runs none of the in-tree tests, so the assertion-side accessors
-    // have no caller there.
-    #![allow(dead_code)]
     use super::*;
     use crate::text::key::TextShapeKey;
 

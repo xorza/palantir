@@ -436,7 +436,7 @@ impl std::fmt::Debug for CosmicMeasure {
 // Wider than `cfg(test)`: `drop_all_buffers` is reached from the
 // `internals`-gated GPU tests in `renderer::backend::text`, which build
 // without `cfg(test)`.
-#[cfg(any(test, feature = "internals"))]
+#[cfg(any(test, feature = "bench"))]
 mod internals {
     use super::*;
     #[cfg(test)]
@@ -524,6 +524,7 @@ mod internals {
         /// *restore* path (which any eviction can trigger) set up a
         /// guaranteed-cold cache in one call, instead of encoding this
         /// cache's retention policy into tests that aren't about it.
+        #[cfg(test)]
         pub(crate) fn drop_all_buffers(&mut self) {
             let cache = &mut self.cache;
             let recycle_pool = &mut self.recycle_pool;

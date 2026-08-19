@@ -18,7 +18,6 @@
 
 // Test-support surface: which parts are live depends on whether the
 // build enables `test`, `internals`, or both.
-#![allow(dead_code)]
 
 use crate::primitives::transform::TranslateScale;
 use crate::renderer::frontend::paint_sink::PaintSink;
@@ -60,6 +59,7 @@ macro_rules! paint_calls {
         impl PaintCall {
             /// Short name for assertion messages — the variant alone,
             /// without the payload a `Debug` dump would print.
+            #[cfg(test)]
             pub(crate) fn kind(&self) -> &'static str {
                 match self {
                     $( Self::$variant(_) => stringify!($variant), )*
@@ -136,6 +136,7 @@ impl PaintCapture {
 
     /// Number of recorded calls matching `pred` — the shape most
     /// encoder assertions want ("how many clips did this subtree emit").
+    #[cfg(test)]
     pub(crate) fn count(&self, pred: impl Fn(&PaintCall) -> bool) -> usize {
         self.calls.iter().filter(|call| pred(call)).count()
     }
@@ -143,6 +144,7 @@ impl PaintCapture {
 
 /// Assert two encodes painted the same sequence, reporting the first
 /// divergence by index and kind instead of dumping both call lists.
+#[cfg(test)]
 pub(crate) fn assert_same_capture(left: &PaintCapture, right: &PaintCapture) {
     for (i, (l, r)) in left.calls.iter().zip(&right.calls).enumerate() {
         // Compare rendered `Debug`, not `PartialEq`: the payloads are

@@ -258,7 +258,7 @@ impl<K: Copy + Debug> ExpiryWheel<K> {
     }
 }
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(test)]
 pub(crate) mod internals {
     use super::*;
 
@@ -278,8 +278,6 @@ pub(crate) mod internals {
 
         /// Outstanding tickets across the whole ring.
         ///
-        /// `cfg(test)` where its sibling is wider, because the two have
-        /// different callers: this one only ever answers an assertion.
         ///
         /// The number that says whether an owner is holding up its end
         /// of the protocol: file on insert, file again only when a
@@ -289,7 +287,6 @@ pub(crate) mod internals {
         /// expire correctly — just with the ticket count, and the
         /// per-frame drain, growing without bound. `EncodedCache`'s and
         /// `CosmicMeasure`'s tests assert against exactly that.
-        #[cfg(test)]
         pub(crate) fn pending(&self) -> usize {
             self.buckets.iter().map(Vec::len).sum()
         }
