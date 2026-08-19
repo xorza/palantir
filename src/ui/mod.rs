@@ -30,7 +30,7 @@ use crate::layout::engine::LayoutEngine;
 use crate::primitives::image::Image;
 use crate::primitives::widget_id::WidgetIdMap;
 use crate::renderer::frontend::FrameScene;
-use crate::renderer::gpu_view::{GpuPaint, GpuPaintRef, GpuViewEntry};
+use crate::renderer::gpu_view::{GpuPaintRef, GpuViewEntry};
 use crate::renderer::image_registry::{ImageHandle, RegisterImageError};
 use crate::scene::forest::Forest;
 use crate::scene::layer::Layer;
@@ -58,7 +58,7 @@ use crate::window::{
     WindowRequests, WindowToken,
 };
 use glam::UVec2;
-use std::cell::{RefCell, RefMut};
+use std::cell::RefMut;
 use std::collections::hash_map::Entry;
 use std::rc::Rc;
 use std::time::Duration;
@@ -625,17 +625,12 @@ impl Ui {
     /// paint and reusing last frame's pixels). First sight always paints (the
     /// texture doesn't exist yet). The entry rides the map's `removed` sweep
     /// when the widget disappears.
-    pub(crate) fn gpu_view(
-        &mut self,
-        id: WidgetId,
-        paint: Rc<RefCell<dyn GpuPaint>>,
-        repaint: bool,
-    ) {
+    pub(crate) fn gpu_view(&mut self, id: WidgetId, paint: GpuPaintRef, repaint: bool) {
         let epoch = self.frame_runtime.render_frame_id;
         let entry = match self.gpu_views.entry(id) {
             Entry::Occupied(e) => {
                 let entry = e.into_mut();
-                entry.paint = GpuPaintRef(paint);
+                entry.paint = paint;
                 // Bump only on a repaint request; held stable otherwise so a
                 // static view stays undamaged (culled, its paint skipped).
                 if repaint {
@@ -647,7 +642,7 @@ impl Ui {
             // The shared id source is disjoint from `self.gpu_views`.
             Entry::Vacant(e) => e.insert(GpuViewEntry {
                 texture_id: self.resources.texture_ids.reserve(),
-                paint: GpuPaintRef(paint),
+                paint,
                 epoch,
             }),
         };

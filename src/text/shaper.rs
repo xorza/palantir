@@ -77,7 +77,7 @@ pub(super) struct ShaperInner {
     /// What belongs to the field itself is the shape of the clock it
     /// hands readers. It advances on the record path
     /// (`TextSystem::end_full_record`, plus the bare tick a `PaintOnly`
-    /// frame owes through `end_paint_only`) while the backend sweeps on
+    /// frame owes through [`Self::tick_frame`]) while the backend sweeps on
     /// the submit path, so it both jumps — two windows recording before
     /// one submit — and stalls — two submits inside one recorded frame.
     /// Fine for an age comparison; never for a cadence gate written as
@@ -278,6 +278,16 @@ impl TextShaper {
     /// shaped-buffer cache, the glyph atlas, the encoded-run cache —
     /// receives it as an `end_frame(frame)` argument instead, and the
     /// two names are what say which side of that line a method is on.
+    ///
+    /// **Every frame owes this, including one that records nothing.** A
+    /// `FramePlan::PaintOnly` frame repaints the retained tree and never
+    /// reaches `TextSystem::end_full_record`, so `FrameCycle::run` calls
+    /// this directly on that arm. Skipping it does more than delay
+    /// eviction: the glyph atlas only considers a slot evictable while
+    /// `last_use < current_frame`, so a stalled clock leaves a full atlas
+    /// unable to reclaim *anything* and every insert starves until a
+    /// record frame arrives. That surfaces as glyphs missing from painted
+    /// text with no path to recovery.
     pub(crate) fn tick_frame(&self) {
         let mut inner = self.inner.borrow_mut();
         inner.frame += 1;

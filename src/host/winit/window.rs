@@ -95,7 +95,16 @@ impl Window {
             position,
             maximized: self.window.is_maximized(),
         };
-        self.driver.ui.window_requests.close_vetoed = false;
+        // Asserted, not cleared. The veto's one-frame life is owned by
+        // `drain_window_output`, which clears it on the way out — and
+        // `finish` below sits outside the occlusion branch, so every
+        // winit frame reaches that drain including a skipped one. A
+        // second clear here would be a write that can never change
+        // anything; a check says so and fails if that ever stops holding.
+        debug_assert!(
+            !self.driver.ui.window_requests.close_vetoed,
+            "a veto outlived the frame that raised it",
+        );
 
         // An occluded window skips its frame, except the one carrying a
         // close request: `finish` below closes unless the app vetoed,

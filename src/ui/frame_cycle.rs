@@ -107,10 +107,15 @@ impl<'a> FrameCycle<'a> {
                 self.ui.input.drain_per_frame_queues();
                 // The one piece of frame teardown a paint-only frame
                 // still owes: the shared text clock. `finalize_frame`
-                // would tick it, but this arm never gets there, and a
-                // frozen clock stops the glyph atlas evicting at all —
-                // see `TextSystem::end_paint_only`.
-                self.ui.layout_engine.text.end_paint_only();
+                // would tick it, but this arm never gets there.
+                //
+                // Through the shaper `UiResources` owns, not down two
+                // levels into the layout engine's `TextSystem`: the
+                // clock is the shaper's, and the method there was a
+                // passthrough that made a shared handle look like layout
+                // state. A frozen clock stops the glyph atlas evicting at
+                // all — see `TextShaper::tick_frame`.
+                self.ui.resources.text.tick_frame();
                 FrameProcessing::PaintOnly
             }
             FramePlan::FullRecord { .. } => {

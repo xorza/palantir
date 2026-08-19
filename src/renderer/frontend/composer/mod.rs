@@ -68,13 +68,6 @@ pub(crate) struct Composer {
     /// Cleared per flush — independent of batch state since every
     /// higher-kind draw also closes the batch.
     higher_kinds: HigherKindRects,
-    /// In-flight group clip state: the active scissor + rounded-mask
-    /// chain stamped onto the group at [`Self::flush`]. Changed only
-    /// through [`Self::set_clip`], which flushes when either differs
-    /// (chains compare by value, so a pop/re-push of an identical
-    /// rounded clip stays a no-op).
-    current_scissor: Option<URect>,
-    current_chain: Span,
     /// `*_start` cursors marking where the open group's per-kind slices
     /// begin in `out`. [`Self::flush`] closes each slice and advances
     /// the matching cursor.
@@ -169,8 +162,6 @@ impl Composer {
             polyline: PolylineScratch::default(),
             batch: BatchState::default(),
             higher_kinds: HigherKindRects::default(),
-            current_scissor: None,
-            current_chain: Span::default(),
             cursors: GroupCursors::default(),
             occlusion: OcclusionPruner::default(),
             max_texture_dim: NonZeroU32::new(max_texture_dim)
@@ -208,8 +199,8 @@ impl Composer {
                 }
             }
             out.groups.push(DrawGroup {
-                scissor: self.current_scissor,
-                rounded_clips: self.current_chain,
+                scissor: self.clip_scissor(),
+                rounded_clips: self.clip_chain(),
                 quads: (self.cursors.quads..q_end).into(),
             });
         }
@@ -268,10 +259,11 @@ impl Composer {
             // scissor any wider than this would let a clipped run's
             // glyphs paint past their intended bound.
             scissor,
-            // Every close site runs before `current_chain` can change
-            // (set_clip closes ahead of the update), so this is the
-            // chain all the batch's runs were recorded under.
-            rounded_clips: self.current_chain,
+            // Every close site runs while the outgoing clip is still the
+            // stack top (`break_for_clip` closes ahead of the push/pop),
+            // so this is the chain all the batch's runs were recorded
+            // under.
+            rounded_clips: self.clip_chain(),
         });
     }
 
@@ -294,7 +286,7 @@ impl Composer {
     /// reject shape at every shape-draw site; centralising it keeps each
     /// handler from growing its own variant.
     fn cull_bounds(&self, bounds: URect) -> bool {
-        bounds.is_paint_empty() || self.current_scissor.is_some_and(|s| !bounds.intersects(s))
+        bounds.is_paint_empty() || self.clip_scissor().is_some_and(|s| !bounds.intersects(s))
     }
 
     /// Cull a higher-kind (mesh / image / curve) draw against the active
@@ -388,24 +380,67 @@ impl Composer {
         self.batch.closed_grid.any_overlap(q)
     }
 
-    /// Switch to a new clip (scissor + rounded-mask chain), flushing
-    /// the in-flight group only if anything actually differs. Chains
-    /// compare by value, so a same-clip Push/Pop is a no-op and
-    /// accumulated overlap state persists through redundant clip
-    /// transitions.
-    fn set_clip(&mut self, scissor: Option<URect>, chain: Span, out: &mut RenderBuffer) {
-        let chain_changed = !chains_equal(out, chain, self.current_chain);
+    /// The clip in force: the stack top, or none at the root.
+    ///
+    /// **Derived, not cached.** These used to be mirrored into a
+    /// `current_scissor` / `current_chain` pair reassigned in lockstep
+    /// with every push and pop — and then read from different places,
+    /// the cull test and the clear fold from the mirror, the text path
+    /// from the stack, with nothing but the pairing keeping the two
+    /// agreeing. The stack is the only owner now, so they cannot.
+    fn clip_top(&self) -> Option<ClipFrame> {
+        self.clip_stack.last().copied()
+    }
+
+    fn clip_scissor(&self) -> Option<URect> {
+        self.clip_top().map(|frame| frame.scissor)
+    }
+
+    fn clip_chain(&self) -> Span {
+        self.clip_top().map_or(Span::default(), |frame| frame.chain)
+    }
+
+    /// Push `frame` as the clip in force, closing the batch and group
+    /// first if it differs from the one it replaces.
+    ///
+    /// The break runs **before** the stack moves, because [`Self::flush`]
+    /// stamps the closing group with the stack top: the outgoing clip has
+    /// to still be on top when it does.
+    fn push_clip(&mut self, frame: ClipFrame, out: &mut RenderBuffer) {
+        self.break_for_clip(Some(frame), out);
+        self.clip_stack.push(frame);
+    }
+
+    /// Restore the parent clip. Panics on a `PopClip` with no matching
+    /// push, which is a malformed paint stream rather than a state the
+    /// composer can answer for.
+    fn pop_clip(&mut self, out: &mut RenderBuffer) {
+        let parent = self
+            .clip_stack
+            .len()
+            .checked_sub(2)
+            .map(|below| self.clip_stack[below]);
+        self.break_for_clip(parent, out);
+        self.clip_stack
+            .pop()
+            .expect("PopClip without matching PushClip");
+    }
+
+    /// Close what the clip in force owns, if `next` differs from it.
+    /// Chains compare by value, so a same-clip push/pop is a no-op and
+    /// accumulated overlap state persists through redundant transitions.
+    fn break_for_clip(&mut self, next: Option<ClipFrame>, out: &mut RenderBuffer) {
+        let next_chain = next.map_or(Span::default(), |frame| frame.chain);
+        let chain_changed = !chains_equal(out, next_chain, self.clip_chain());
         if chain_changed {
-            // The stencil mask stack is tied to the active chain;
-            // batched text under the wrong masks would either over- or
-            // under-clip. Close before the group transition (while
-            // `current_chain` still names the batch's chain).
+            // The stencil mask stack is tied to the active chain; batched
+            // text under the wrong masks would either over- or
+            // under-clip. Close before the group transition, while the
+            // stack top still names the batch's chain.
             self.close_batch(out);
         }
-        if scissor != self.current_scissor || chain_changed {
+        if next.map(|frame| frame.scissor) != self.clip_scissor() || chain_changed {
             self.flush(out);
-            self.current_scissor = scissor;
-            self.current_chain = chain;
         }
     }
 
@@ -424,8 +459,6 @@ impl Composer {
         self.reset_group_scratch(display.physical);
         self.clip_stack.clear();
         self.transform_stack.clear();
-        self.current_scissor = None;
-        self.current_chain = Span::default();
 
         ComposeSession {
             composer: self,
@@ -438,9 +471,9 @@ impl Composer {
 
     /// Clear-fold discard: a fullscreen opaque cover proved everything
     /// composed so far invisible — drop the scene output and every piece of
-    /// scratch that describes it. The *walk* state survives: `clip_stack` /
-    /// `current_scissor` / `current_chain` are empty by the fold's
-    /// precondition, and `transform_stack` + the caller's running transform
+    /// scratch that describes it. The *walk* state survives: `clip_stack`
+    /// is empty by the fold's precondition, and `transform_stack` + the
+    /// caller's running transform
     /// stay untouched (the cover may sit under an active transform whose
     /// pops are still ahead in the stream).
     fn discard_composed(&mut self, out: &mut RenderBuffer) {
