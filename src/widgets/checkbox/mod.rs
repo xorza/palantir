@@ -44,10 +44,7 @@ impl<'a> Checkbox<'a> {
         }
     }
 
-    pub fn label(mut self, label: impl Into<TextInput<'a>>) -> Self {
-        self.label = label.into();
-        self
-    }
+    label_setter!('a, "Drawn to the right of the box; an empty label leaves the box alone.");
 
     style_setter!('a, ToggleTheme, checkbox);
 

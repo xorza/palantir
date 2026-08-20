@@ -40,10 +40,11 @@ impl<'a> Button<'a> {
     }
 
     style_setter!('a, ButtonTheme, button);
-    pub fn label(mut self, label: impl Into<TextInput<'a>>) -> Self {
-        self.label = label.into();
-        self
-    }
+    label_setter!(
+        'a,
+        "Drawn inside the button and centered by default; \
+         [`Self::text_align`] moves it.",
+    );
 
     /// Set how the label handles a width narrower than its natural line.
     /// Default [`TextWrap::Truncate`] (hard-cut to one line, no marker); pass

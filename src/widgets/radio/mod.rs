@@ -45,10 +45,7 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
         }
     }
 
-    pub fn label(mut self, label: impl Into<TextInput<'a>>) -> Self {
-        self.label = label.into();
-        self
-    }
+    label_setter!('a, "Drawn to the right of the dot; an empty label leaves the dot alone.");
 
     style_setter!('a, ToggleTheme, radio);
 

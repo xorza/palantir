@@ -226,7 +226,12 @@ impl<'r, 'a> Tooltip<'r, 'a> {
     }
 }
 
-impl_background!(Tooltip<'_, '_>);
+impl_background!(
+    Tooltip<'_, '_>,
+    "`None` is the default; theme fallback in [`Self::show`] fills it in from \
+     `ui.theme().tooltip.panel` when unset. Pass [`Background::NONE`] to \
+     suppress the themed bubble chrome.",
+);
 impl_configure!(Tooltip<'_, '_>);
 
 #[cfg(test)]

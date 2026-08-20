@@ -23,7 +23,6 @@ impl Frame {
         }
     }
 
-    /// Paint chrome (fill / stroke / corner radius / shadow).
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
         let chrome = self.chrome;
         ui.widget(self.node)
@@ -32,7 +31,11 @@ impl Frame {
     }
 }
 
-impl_background!(Frame);
+impl_background!(
+    Frame,
+    "`Frame` is the unthemed container: there is no slot to fall back to, \
+     so an unset background paints nothing.",
+);
 impl_configure!(Frame);
 
 #[cfg(test)]

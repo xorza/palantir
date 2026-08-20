@@ -6,14 +6,12 @@
 /// impl is the same line each time and only the type varies. Invoke it
 /// **in the bundle's own file**, next to `from_palette`.
 macro_rules! palette_default {
-    ($($ty:ty),+ $(,)?) => {
-        $(
-            impl Default for $ty {
-                fn default() -> Self {
-                    Self::from_palette(&$crate::widgets::theme::palette::Palette::DEFAULT)
-                }
+    ($ty:ty) => {
+        impl Default for $ty {
+            fn default() -> Self {
+                Self::from_palette(&$crate::widgets::theme::palette::Palette::DEFAULT)
             }
-        )+
+        }
     };
 }
 

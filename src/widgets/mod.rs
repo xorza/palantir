@@ -9,32 +9,66 @@
 //! is the same for every widget, so it is decided once here.
 #![allow(clippy::new_without_default)]
 
-/// Implement the `background` builder for container widgets that keep
-/// their override in a field called `chrome: Option<Background>`.
+/// Implement the `background` builder for a container widget that keeps
+/// its override in a field called `chrome: Option<Background>`.
 ///
 /// Eight widgets offer one and every body is the same assignment over
-/// the same field — the *resolution* differs (a theme slot to fall back
-/// to, or none at all, and whether a clip default rides along), but
-/// taking the caller's value never does. Invoke it **in the widget's own
-/// file**, next to the type.
+/// the same field. What differs is the *resolution* — which theme slot an
+/// unset background falls back to, or whether one exists at all. Invoke
+/// it **in the widget's own file**, next to the type.
+///
+/// `note` is required, and carries that resolution. Unlike
+/// `style_setter!` — which derives its slot path from its own arguments,
+/// so a note there only adds to it — this macro has nothing to derive a
+/// fallback rule from: prose is the rule's only home, and one shared
+/// default sentence would quietly stand in for eight different answers.
 ///
 /// Only for the plain case: `Grid` carries generic parameters the macro
 /// can't take, and writes the builder by hand — same exemption
 /// `impl_configure!` below has for the same type.
 macro_rules! impl_background {
-    ($($ty:ty),+ $(,)?) => {
-        $(
-            impl $ty {
-                /// Paint `bg` as this widget's background.
-                ///
-                /// What an unset one falls back to is each widget's own —
-                /// a theme slot for most, nothing at all for `Frame`.
-                pub fn background(mut self, bg: $crate::primitives::background::Background) -> Self {
-                    self.chrome = Some(bg);
-                    self
-                }
+    ($ty:ty, $note:expr $(,)?) => {
+        impl $ty {
+            /// Paint `bg` as this widget's background.
+            #[doc = ""]
+            #[doc = $note]
+            pub fn background(mut self, bg: $crate::primitives::background::Background) -> Self {
+                self.chrome = Some(bg);
+                self
             }
-        )+
+        }
+    };
+}
+
+/// Declare the `label` builder for a widget keeping its text in a field
+/// called `label: TextInput<'lt>`.
+///
+/// `Button` and the three toggles take a label the same way, over the
+/// same field, through the same conversion. Invoke it inside the
+/// builder's own `impl` block, next to the other setters.
+///
+/// `note` is required and says where the text lands — inside the chip for
+/// `Button`, beside the box for the toggles. That is per-widget and lives
+/// nowhere else, so it is spelled at the invocation for the same reason
+/// `impl_background!` demands its own note.
+///
+/// Expanded into the caller's block rather than emitting an `impl` of its
+/// own, which is what lets it reach `RadioButton<'a, T>`: a macro
+/// spelling the header itself would have to name the generic parameters,
+/// and that is precisely what exempts that type from `impl_configure!`.
+macro_rules! label_setter {
+    ($lt:lifetime, $note:expr $(,)?) => {
+        /// The text this widget draws. Empty (the default) draws none —
+        /// no text child is recorded at all.
+        #[doc = ""]
+        #[doc = $note]
+        pub fn label(
+            mut self,
+            label: impl Into<$crate::primitives::text_input::TextInput<$lt>>,
+        ) -> Self {
+            self.label = label.into();
+            self
+        }
     };
 }
 
@@ -97,21 +131,19 @@ macro_rules! style_setter {
 /// widget is pure noise. Invoke it **in the widget's own file**, next to
 /// the type — the impl still lives where the struct does.
 ///
-/// Only for the plain case: `Grid` and `RadioButton` carry generic
-/// parameters the macro can't take, and write the impl by hand.
-///
-/// Declared above the module list so textual scoping reaches every
-/// widget file, same as `gradient_common!` in `primitives::brush`.
+/// Three widgets write the impl by hand instead, for two different
+/// reasons: `Grid` and `RadioButton` carry generic parameters the macro
+/// can't take, and `ContextMenu` has no `node` of its own — it forwards
+/// to the `Popup` it wraps, which is delegation the macro's fixed
+/// `self.node` body can't express.
 macro_rules! impl_configure {
-    ($($ty:ty),+ $(,)?) => {
-        $(
-            impl $crate::scene::node::Configure for $ty {
-                #[inline]
-                fn node_mut(&mut self) -> $crate::scene::node::ConfigureNode<'_> {
-                    $crate::scene::node::Configure::node_mut(&mut self.node)
-                }
+    ($ty:ty) => {
+        impl $crate::scene::node::Configure for $ty {
+            #[inline]
+            fn node_mut(&mut self) -> $crate::scene::node::ConfigureNode<'_> {
+                $crate::scene::node::Configure::node_mut(&mut self.node)
             }
-        )+
+        }
     };
 }
 
