@@ -90,10 +90,6 @@ impl<'a> ContextMenu<'a> {
          ([`MenuItem::style`](crate::widgets::context_menu::menu_item::MenuItem::style), [`MenuSeparator::style`](crate::widgets::context_menu::menu_separator::MenuSeparator::style)).",
     );
 
-    /// Paint chrome (fill / stroke / corner radius / shadow). `None`
-    /// is the default; theme fallback in [`Self::show`] fills it in
-    /// from the resolved theme's `panel` when unset. Pass
-    /// [`Background::NONE`] to suppress the themed menu chrome.
     /// Derive `for_id` from a trigger widget's response snapshot, and
     /// auto-open at the current pointer position if the trigger
     /// reported a right-click this frame. Pass via
@@ -182,7 +178,12 @@ impl<'a> ContextMenu<'a> {
     }
 }
 
-impl_background!(ContextMenu<'_>);
+impl_background!(
+    ContextMenu<'_>,
+    "`None` is the default; theme fallback in [`Self::show`] fills it in from \
+     the resolved theme's `panel` when unset. Pass [`Background::NONE`] to \
+     suppress the themed menu chrome.",
+);
 
 /// Forwards to the popup this menu wraps, so `.size(...)` /
 /// `.padding(...)` / `.id(...)` configure the node that actually

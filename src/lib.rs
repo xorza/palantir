@@ -77,6 +77,15 @@
 
 extern crate self as palantir;
 
+// Crate-internal macros are declared at the top of the `mod.rs` that owns
+// them, above its module list. `macro_rules!` without `#[macro_export]` is
+// scoped textually, so that placement — and only that placement — hands the
+// macro to every file in that subtree and to nothing outside it. `widgets`,
+// `widgets::theme`, `shape`, `primitives`, and `primitives::brush::gradient`
+// each carry their own set on those terms. Collecting them into one shared
+// module would take `#[macro_use]` and would widen every macro's reach to the
+// whole crate, which is the property this arrangement exists to deny.
+
 pub(crate) mod animation;
 pub(crate) mod app;
 #[cfg(feature = "bench")]

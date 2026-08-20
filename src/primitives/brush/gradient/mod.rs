@@ -2,6 +2,16 @@ use crate::primitives::brush::gradient::stops::{MAX_STOPS, Stop};
 use crate::primitives::half_simd::F16x4;
 use tinyvec::ArrayVec;
 
+/// The stop and modifier setters every gradient *builder* shares.
+///
+/// All three kinds (linear, radial, conic) are authored through a
+/// `…Builder` that accumulates into a `common` field, so `stop` pushes
+/// into it and the two modifiers write through it. Non-`const`, unlike the
+/// finished-gradient twin below, because pushing a stop is a runtime write.
+///
+/// Paired with [`gradient_common!`]: the two spell `with_spread` /
+/// `with_interp` alike on purpose, so a caller needn't know which side of
+/// the build it is holding.
 macro_rules! gradient_builder_common {
     ($t:ty) => {
         impl $t {
@@ -24,6 +34,13 @@ macro_rules! gradient_builder_common {
     };
 }
 
+/// The modifier setters and the no-op test every *finished* gradient shares.
+///
+/// The `const` counterpart to [`gradient_builder_common!`]'s modifiers:
+/// once a builder is resolved, `spread` and `interp` are flat fields rather
+/// than entries in an accumulator, so overriding either is a const move.
+/// `is_noop` rides along because it reads the resolved stop list, which
+/// only exists on this side.
 macro_rules! gradient_common {
     ($t:ty) => {
         impl $t {

@@ -42,10 +42,7 @@ impl<'a> Switch<'a> {
         }
     }
 
-    pub fn label(mut self, label: impl Into<TextInput<'a>>) -> Self {
-        self.label = label.into();
-        self
-    }
+    label_setter!('a, "Drawn to the right of the track; an empty label leaves the track alone.");
 
     style_setter!('a, ToggleTheme, switch);
 

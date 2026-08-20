@@ -11,9 +11,6 @@
 /// Not every `F16x4` newtype wants this. `ColorF16` and `FillAxis` are
 /// the same packing with a different surface — no lane names to print,
 /// no wire format — and derive `Debug` like ordinary structs.
-///
-/// Declared above the module list so textual scoping reaches every
-/// primitive, same as `impl_configure!` in `widgets`.
 macro_rules! f16x4_lanes {
     ($t:ident, [$($lane:ident),+ $(,)?]) => {
         impl $t {

@@ -27,10 +27,6 @@ impl Panel {
         Self { node, chrome: None }
     }
 
-    /// Paint chrome (fill / stroke / corner radius / shadow). `None` is
-    /// the default; theme fallback in [`Self::show`] fills it in from
-    /// `ui.theme().panel_background` when unset. Pass [`Background::NONE`]
-    /// to suppress that fallback for this panel.
     pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<'_, R> {
         // Theme fallback: if the caller left chrome / clip unset,
         // inherit from `theme.panel_*`. Caller intent (any non-None
@@ -91,7 +87,12 @@ impl Panel {
     }
 }
 
-impl_background!(Panel);
+impl_background!(
+    Panel,
+    "`None` is the default; theme fallback in [`Self::show`] fills it in from \
+     `ui.theme().panel_background` when unset. Pass [`Background::NONE`] to \
+     suppress that fallback for this panel.",
+);
 impl_configure!(Panel);
 
 #[cfg(test)]

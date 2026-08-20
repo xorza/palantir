@@ -199,13 +199,6 @@ impl<'a> Scroll<'a> {
         Self::with_axes(ScrollSpec::BOTH)
     }
 
-    /// Paint chrome for the inner scroll surface (background under
-    /// children, painted before the scrollbar overlay).
-    ///
-    /// Unlike the other containers (`Panel`/`Grid`/`Popup`), Scroll does
-    /// **not** fall back to `theme.panel_background` when unset — an
-    /// unstyled scroll surface paints no background. Pass one explicitly
-    /// to fill it.
     #[track_caller]
     fn with_axes(spec: ScrollSpec) -> Self {
         Self {
@@ -517,7 +510,13 @@ impl<'a> Scroll<'a> {
     }
 }
 
-impl_background!(Scroll<'_>);
+impl_background!(
+    Scroll<'_>,
+    "Chrome for the inner scroll surface — painted under the children, before \
+     the scrollbar overlay. Unlike the other containers (`Panel`/`Grid`/`Popup`), \
+     Scroll does **not** fall back to `theme.panel_background` when unset: an \
+     unstyled scroll surface paints no background. Pass one explicitly to fill it.",
+);
 impl_configure!(Scroll<'_>);
 
 #[cfg(test)]
