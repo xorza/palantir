@@ -94,7 +94,6 @@ struct AtlasLabels {
     grow_blit: String,
     batch_upload: String,
     staging: String,
-    bind_group: String,
 }
 
 /// Frames a non-drawing entry (`alloc: None`) survives unused.
@@ -182,21 +181,17 @@ pub(crate) struct RasterAtlas<K> {
     /// caches above this one — see [`ExpiryWheel`] — so `touch` stays a
     /// single indexed store on the hot path and files nothing.
     unallocated_expiry: ExpiryWheel<K>,
-    /// Group-0 layout, sampler, bind group and the `[color, mask]`
-    /// side extents the shader reads as params.
+    /// Everything group 0 needs to sample [`Self::sides`] — see
+    /// [`BoundSides`].
     ///
-    /// Owned here rather than by each tenant because they are a function
-    /// of the atlas's own textures, and those move under a grow. A
-    /// dirty flag would put the rebuild on every tenant — a dozen
-    /// identical lines apiece, and a protocol whose failure mode is
-    /// sampling a destroyed texture view. Rebuilding inside
-    /// [`Self::grow`] means there is no
-    /// window in which the two disagree and nothing for a third tenant
-    /// to forget.
-    bgl: wgpu::BindGroupLayout,
-    sampler: wgpu::Sampler,
-    bind_group: wgpu::BindGroup,
-    atlas_px: [u32; 2],
+    /// Owned here rather than by each tenant because it is a function of
+    /// the atlas's own textures, and those move under a grow. A dirty flag
+    /// would put the rebuild on every tenant — a dozen identical lines
+    /// apiece, and a protocol whose failure mode is sampling a destroyed
+    /// texture view. Rebinding inside [`Self::grow`] means there is no
+    /// window in which the binding and the textures disagree, and nothing
+    /// for a third tenant to forget.
+    bound: BoundSides,
     /// Evictions, growths, refusals, and slots *examined* choosing a
     /// victim — see [`AtlasCounters`].
     pub(crate) counters: AtlasCounters,
@@ -250,15 +245,12 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
             grow_blit: format!("{} atlas grow blit", config.label),
             batch_upload: format!("{} atlas batch upload", config.label),
             staging: format!("{} atlas staging", config.label),
-            bind_group: format!("{} atlas bg", config.label),
         };
 
-        // Built here rather than by each tenant: the pair is a function
-        // of `sides`, so the atlas is the only thing that can keep them
-        // in step across a grow.
-        let bgl = BoundSides::layout(device, &format!("{} atlas layout", config.label));
-        let sampler = BoundSides::sampler(device, &format!("{} sampler", config.label));
-        let bound = BoundSides::new(device, &sides, &bgl, &sampler, &labels.bind_group);
+        // Built here rather than by each tenant: the binding is a function
+        // of `sides`, so the atlas is the only thing that can keep it in
+        // step across a grow.
+        let bound = BoundSides::new(device, &sides, config.label);
 
         Self {
             sides,
@@ -271,10 +263,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
             hand: 0,
             current_frame: 0,
             unallocated_expiry: ExpiryWheel::with_horizon(UNALLOCATED_KEEP_FRAMES + 2),
-            bgl,
-            sampler,
-            bind_group: bound.bind_group,
-            atlas_px: bound.atlas_px,
+            bound,
             counters: AtlasCounters::default(),
             pending_staging: Vec::new(),
             pending_staging_used: 0,
@@ -307,11 +296,11 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
             return;
         }
         pass.set_pipeline(pipelines.select(use_stencil));
-        pass.set_bind_group(0, &self.bind_group, &[]);
+        pass.set_bind_group(0, self.bound.bind_group(), &[]);
         viewport.push_into(pass);
         pass.set_immediates(
             RasterQuad::PARAMS_OFFSET,
-            bytemuck::bytes_of(&self.atlas_px),
+            bytemuck::bytes_of(&self.bound.atlas_px()),
         );
         pass.set_vertex_buffer(0, vbuf.buffer.slice(..));
         pass.draw(0..4, span.start..span.start + span.len);
@@ -321,12 +310,12 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
     /// creation. Format-independent, so it survives a swapchain
     /// reformat.
     pub(crate) fn bind_group_layout(&self) -> &wgpu::BindGroupLayout {
-        &self.bgl
+        self.bound.layout()
     }
 
     /// `[color, mask]` side extents, as the shader reads them.
     pub(crate) fn atlas_px(&self) -> [u32; 2] {
-        self.atlas_px
+        self.bound.atlas_px()
     }
 
     /// Cache-hit fast path: bump the slot's LRU stamp and return its
@@ -741,17 +730,10 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
             return false;
         }
         self.counters.grows.bump();
-        // In the same step that invalidated them, so no caller can
-        // observe the stale pair.
-        let bound = BoundSides::new(
-            device,
-            &self.sides,
-            &self.bgl,
-            &self.sampler,
-            &self.labels.bind_group,
-        );
-        self.bind_group = bound.bind_group;
-        self.atlas_px = bound.atlas_px;
+        // Here rather than deferred behind a dirty flag: the side's old
+        // texture is already gone, so any frame between the two would
+        // sample a destroyed view.
+        self.bound.rebind(device, &self.sides);
         true
     }
 }

@@ -59,10 +59,11 @@ use crate::renderer::frontend::composer::{Composer, GroupCursors, OpenBatch, Pol
 ///
 /// **This is the algorithm.** Paint streams in through [`PaintSink`], one
 /// call per lowered draw, in authoring order; the group and batch state
-/// machine those handlers drive lives here too, because it reads and
-/// writes the same buffer they do. The `Composer` behind `composer` is the
-/// arena the whole pass is built in — nothing on it takes an output
-/// buffer, and nothing here has to hand one back to it.
+/// machine those handlers drive — what decides where one draw's output
+/// lands relative to the last one's — lives here too, because it reads
+/// and writes the same buffer they do. The `Composer` behind `composer`
+/// is the arena the whole pass is built in — nothing on it takes an
+/// output buffer, and nothing here has to hand one back to it.
 #[derive(Debug)]
 pub(crate) struct ComposeSession<'a> {
     pub(super) composer: &'a mut Composer,
@@ -85,6 +86,29 @@ struct PackedQuad {
     corners: Corners,
     fill_axis: FillAxis,
     stroke_width: f32,
+}
+
+impl PackedQuad {
+    /// Nothing rounded off its corners and nothing painted outside its
+    /// rect — the shape both the clear fold and the fragment fast path
+    /// start from.
+    fn is_sharp(&self) -> bool {
+        noop_f32(self.stroke_width) && self.corners.approx_zero()
+    }
+
+    /// [`Self::is_sharp`] plus a rect whose physical edges land on whole
+    /// pixels. Alignment is exact, not approximate: exactness is what
+    /// makes the fragment fast path bitwise-identical to the SDF (host
+    /// pixel snapping yields exact integers when active; unsnapped
+    /// fractional rects keep the full SDF for edge AA).
+    fn is_pixel_aligned(&self) -> bool {
+        let max = self.phys_rect.max();
+        self.is_sharp()
+            && self.phys_rect.min.x.is_integral()
+            && self.phys_rect.min.y.is_integral()
+            && max.x.is_integral()
+            && max.y.is_integral()
+    }
 }
 
 /// A draw's rect in the two forms every rect-shaped handler needs, from
@@ -799,9 +823,6 @@ impl PaintSink for ComposeSession<'_> {
     }
 }
 
-/// The quad tier, in the two halves [`PackedQuad`] separates: reducing one
-/// shape to physical space, and what every reduced quad is then put
-/// through.
 impl ComposeSession<'_> {
     /// Reduce a quad-tier draw's geometry to physical space. Each arm owns
     /// both reused `Quad` lanes: a rect fills them with scaled corner
@@ -934,40 +955,7 @@ impl ComposeSession<'_> {
             self.composer.occlusion.record_opaque(idx, cover);
         }
     }
-}
 
-impl PackedQuad {
-    /// Nothing rounded off its corners and nothing painted outside its
-    /// rect — the shape both the clear fold and the fragment fast path
-    /// start from.
-    fn is_sharp(&self) -> bool {
-        noop_f32(self.stroke_width) && self.corners.approx_zero()
-    }
-
-    /// [`Self::is_sharp`] plus a rect whose physical edges land on whole
-    /// pixels. Alignment is exact, not approximate: exactness is what
-    /// makes the fragment fast path bitwise-identical to the SDF (host
-    /// pixel snapping yields exact integers when active; unsnapped
-    /// fractional rects keep the full SDF for edge AA).
-    fn is_pixel_aligned(&self) -> bool {
-        let max = self.phys_rect.max();
-        self.is_sharp()
-            && self.phys_rect.min.x.is_integral()
-            && self.phys_rect.min.y.is_integral()
-            && max.x.is_integral()
-            && max.y.is_integral()
-    }
-}
-
-/// The group and batch state machine: what decides where one draw's
-/// output lands relative to the last one's.
-///
-/// Lives on the session rather than on the [`Composer`] because every
-/// step of it reads or writes the output buffer, which the session holds.
-/// Splitting it off meant handing that buffer back at every call — and
-/// left the handlers that drive the machine in one file with the machine
-/// itself in another.
-impl ComposeSession<'_> {
     /// Close the in-flight group: if anything was emitted into it,
     /// push a `DrawGroup` covering the open slice; either way advance
     /// the per-kind cursors and clear the overlap scratches. Scissor
