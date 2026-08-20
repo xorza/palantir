@@ -16,8 +16,8 @@ fn caret_painted(ui: &Ui, leaf: NodeId) -> bool {
     use crate::scene::tree::iter::{TreeItem, TreeItems};
     use crate::shape::rect::RectKind;
 
-    let tree = &ui.forest.trees[Layer::Main];
-    let now = ui.frame_runtime.time;
+    let tree = ui.tree(Layer::Main);
+    let now = ui.now();
     let mut paint_anims = tree.paint_anims.cursor();
     // The caret is recorded on the block child that carries the field's
     // alignment, not on the field's own node — see [`block_of`].

@@ -34,13 +34,14 @@ fn shapes_attached_to_button_node() {
 
     // Button chrome lives in `chrome_table`, not in shapes — only the
     // label `Text` shape lands here.
-    let shapes: Vec<&ShapeRecord> = h.ui.forest.trees[Layer::Main]
-        .shapes_of(button_node.unwrap())
-        .collect();
+    let shapes: Vec<&ShapeRecord> =
+        h.ui.tree(Layer::Main)
+            .shapes_of(button_node.unwrap())
+            .collect();
     assert_eq!(shapes.len(), 1);
     assert!(matches!(shapes[0], ShapeRecord::Text { .. }));
     assert!(
-        h.ui.forest.trees[Layer::Main]
+        h.ui.tree(Layer::Main)
             .chrome(button_node.unwrap())
             .is_some(),
     );
@@ -86,29 +87,30 @@ fn interleaved_shapes_record_correct_order() {
             .node()
     });
     let pi = p.idx();
-    let p_shapes = h.ui.forest.trees[Layer::Main].records.shape_span()[pi];
+    let p_shapes = h.ui.tree(Layer::Main).records.shape_span()[pi];
     assert_eq!(p_shapes.len, 3);
     let children: Vec<_> = h.main_child_ids(p);
     assert_eq!(children.len(), 2);
-    let c0_shapes = h.ui.forest.trees[Layer::Main].records.shape_span()[children[0].idx()];
-    let c1_shapes = h.ui.forest.trees[Layer::Main].records.shape_span()[children[1].idx()];
+    let c0_shapes = h.ui.tree(Layer::Main).records.shape_span()[children[0].idx()];
+    let c1_shapes = h.ui.tree(Layer::Main).records.shape_span()[children[1].idx()];
     assert_eq!(c0_shapes.start, p_shapes.start + 1);
     assert_eq!(c1_shapes.start, p_shapes.start + 2);
     assert_eq!(
         p_shapes.start + p_shapes.len,
         c1_shapes.start + c1_shapes.len + 1
     );
-    let sizes: Vec<f32> = h.ui.forest.trees[Layer::Main]
-        .shapes_of(p)
-        .map(|s| match s {
-            ShapeRecord::Quad(QuadShape::Rect {
-                kind: RectKind::Rounded,
-                local_rect: Some(rect),
-                ..
-            }) => rect.size.w,
-            _ => panic!("unexpected shape variant"),
-        })
-        .collect();
+    let sizes: Vec<f32> =
+        h.ui.tree(Layer::Main)
+            .shapes_of(p)
+            .map(|s| match s {
+                ShapeRecord::Quad(QuadShape::Rect {
+                    kind: RectKind::Rounded,
+                    local_rect: Some(rect),
+                    ..
+                }) => rect.size.w,
+                _ => panic!("unexpected shape variant"),
+            })
+            .collect();
     assert_eq!(sizes, vec![10.0, 20.0, 30.0]);
 
     let cmds = h.encode_paint();
@@ -164,16 +166,13 @@ fn parent_post_child_shapes_dont_inflate_child_subtree_count() {
     let child = child_id.unwrap().idx();
 
     assert_eq!(
-        h.ui.forest.trees[Layer::Main].records.subtree_end()[parent],
-        h.ui.forest.trees[Layer::Main].records.subtree_end()[child],
+        h.ui.tree(Layer::Main).records.subtree_end()[parent],
+        h.ui.tree(Layer::Main).records.subtree_end()[child],
         "test setup: parent's only child shares the parent's end NodeId"
     );
+    assert_eq!(h.ui.tree(Layer::Main).records.shape_span()[parent].len, 2);
     assert_eq!(
-        h.ui.forest.trees[Layer::Main].records.shape_span()[parent].len,
-        2
-    );
-    assert_eq!(
-        h.ui.forest.trees[Layer::Main].records.shape_span()[child].len,
+        h.ui.tree(Layer::Main).records.shape_span()[child].len,
         0,
         "child's subtree must NOT include parent's slot-N shapes"
     );
@@ -185,13 +184,13 @@ fn parent_post_child_shapes_dont_inflate_child_subtree_count() {
 fn record_hash<F: FnMut(&mut Ui) -> NodeId>(mut f: F) -> ContentHash {
     let mut h = UiHarness::new(SURFACE);
     let target = h.frame_value(|ui| f(ui));
-    h.ui.forest.trees[Layer::Main].rollups.node[target.idx()]
+    h.ui.tree(Layer::Main).rollups.node[target.idx()]
 }
 
 fn record_cascade_static<F: FnMut(&mut Ui) -> NodeId>(mut f: F) -> ContentHash {
     let mut h = UiHarness::new(SURFACE);
     let _ = h.frame_value(|ui| f(ui));
-    h.ui.forest.trees[Layer::Main].fingerprint.cascade_static
+    h.ui.tree(Layer::Main).fingerprint.cascade_static
 }
 
 #[test]
@@ -199,9 +198,9 @@ fn empty_tree_has_no_hashes() {
     let mut h = UiHarness::new(SURFACE);
     h.frame(|_| {});
     // Synthetic viewport root: present even for an empty user record.
-    assert_eq!(h.ui.forest.trees[Layer::Main].records.len(), 1);
-    assert_eq!(h.ui.forest.trees[Layer::Main].rollups.node.len(), 1);
-    assert_eq!(h.ui.forest.trees[Layer::Main].rollups.subtree.len(), 1);
+    assert_eq!(h.ui.tree(Layer::Main).records.len(), 1);
+    assert_eq!(h.ui.tree(Layer::Main).rollups.node.len(), 1);
+    assert_eq!(h.ui.tree(Layer::Main).rollups.subtree.len(), 1);
 }
 
 #[test]
@@ -501,7 +500,7 @@ fn child_hash_does_not_affect_parent_hash() {
 fn record_subtree_hash<F: FnMut(&mut Ui) -> NodeId>(mut f: F) -> ContentHash {
     let mut h = UiHarness::new(SURFACE);
     let target = h.frame_value(|ui| f(ui));
-    h.ui.forest.trees[Layer::Main].rollups.subtree[target.idx()]
+    h.ui.tree(Layer::Main).rollups.subtree[target.idx()]
 }
 
 #[test]
@@ -699,8 +698,8 @@ fn grid_per_node_hash_independent_of_arena_slot() {
             });
     });
     assert_eq!(
-        ui1.ui.forest.trees[Layer::Main].rollups.node[g1.unwrap().idx()],
-        ui2.ui.forest.trees[Layer::Main].rollups.node[g2.unwrap().idx()],
+        ui1.ui.tree(Layer::Main).rollups.node[g1.unwrap().idx()],
+        ui2.ui.tree(Layer::Main).rollups.node[g2.unwrap().idx()],
     );
 }
 
@@ -736,8 +735,8 @@ fn subtree_end_rolls_up_during_recording() {
             .node()
     });
     // Pre-order: 0=viewport 1=root 2=a 3=inner 4=b 5=c 6=d
-    assert_eq!(h.ui.forest.trees[Layer::Main].records.len(), 7);
-    let ends = h.ui.forest.trees[Layer::Main].records.subtree_end();
+    assert_eq!(h.ui.tree(Layer::Main).records.len(), 7);
+    let ends = h.ui.tree(Layer::Main).records.subtree_end();
     assert_eq!(ends[0].end(), 7, "synthetic viewport spans everything");
     assert_eq!(ends[root.idx()].end(), 7, "root");
     assert_eq!(ends[2].end(), 3, "leaf a");
@@ -763,18 +762,18 @@ fn subtree_end_handles_deep_nesting() {
     }
     let mut h = UiHarness::new(SURFACE);
     h.frame(|ui| nest(ui, 16));
-    let n = h.ui.forest.trees[Layer::Main].records.len() as u32;
+    let n = h.ui.tree(Layer::Main).records.len() as u32;
     // Synthetic viewport + 16 nested vstacks + 1 leaf frame.
     assert_eq!(n, 18);
     for i in 0..(n - 1) {
         assert_eq!(
-            h.ui.forest.trees[Layer::Main].records.subtree_end()[i as usize].end(),
+            h.ui.tree(Layer::Main).records.subtree_end()[i as usize].end(),
             n,
             "every ancestor on the chain points past the leaf",
         );
     }
     assert_eq!(
-        h.ui.forest.trees[Layer::Main].records.subtree_end()[(n - 1) as usize].end(),
+        h.ui.tree(Layer::Main).records.subtree_end()[(n - 1) as usize].end(),
         n,
     );
 }
@@ -797,7 +796,7 @@ fn subtree_hash_rollup_root_local_across_two_roots() {
                     })
                     .show(ui);
             });
-        let b_first = ui.forest.trees[Layer::Main].records.len() as u32;
+        let b_first = ui.tree(Layer::Main).records.len() as u32;
         Panel::vstack()
             .id(WidgetId::from_hash("root-b"))
             .show(ui, |ui| {
@@ -813,14 +812,14 @@ fn subtree_hash_rollup_root_local_across_two_roots() {
     ui1.frame(|ui| {
         b_first1 = build(ui, Color::rgb(1.0, 0.0, 0.0));
     });
-    let h_b1 = ui1.ui.forest.trees[Layer::Main].rollups.subtree[b_first1 as usize];
+    let h_b1 = ui1.ui.tree(Layer::Main).rollups.subtree[b_first1 as usize];
 
     let mut ui2 = UiHarness::new(SURFACE);
     let mut b_first2 = 0;
     ui2.frame(|ui| {
         b_first2 = build(ui, Color::rgb(0.0, 1.0, 0.0));
     });
-    let h_b2 = ui2.ui.forest.trees[Layer::Main].rollups.subtree[b_first2 as usize];
+    let h_b2 = ui2.ui.tree(Layer::Main).rollups.subtree[b_first2 as usize];
     assert_eq!(b_first1, b_first2);
     assert_eq!(h_b1, h_b2, "root B's subtree_hash must not fold root A");
 }
@@ -853,8 +852,8 @@ fn ui_layer_records_popup_into_separate_tree() {
                 });
         });
     });
-    let main_tree = &h.ui.forest.trees[Layer::Main];
-    let popup_tree = &h.ui.forest.trees[Layer::Popup];
+    let main_tree = h.ui.tree(Layer::Main);
+    let popup_tree = h.ui.tree(Layer::Popup);
     assert_eq!(main_tree.roots.len(), 1);
     assert_eq!(popup_tree.roots.len(), 1);
     assert_eq!(main_tree.roots[0].first_node.idx(), 0);
@@ -918,9 +917,9 @@ fn ui_layer_size_caps_overlay_available() {
                     .show(ui, |_| {});
             });
         });
-        let popup_tree = &h.ui.forest.trees[Layer::Popup];
+        let popup_tree = h.ui.tree(Layer::Popup);
         let root = popup_tree.roots[0].first_node.idx();
-        let rect = h.ui.layout[Layer::Popup].rect[root];
+        let rect = h.ui.layout(Layer::Popup).rect[root];
         assert_eq!(rect.min, anchor, "cap={cap:?}");
         assert_eq!(rect.size, *expected, "cap={cap:?}");
     }
@@ -940,9 +939,9 @@ fn empty_popup_body_leaves_popup_tree_empty() {
             });
         ui.layer(Layer::Popup).show(|_| {});
     });
-    assert_eq!(h.ui.forest.trees[Layer::Main].roots.len(), 1);
-    assert!(h.ui.forest.trees[Layer::Popup].roots.is_empty());
-    assert!(h.ui.forest.trees[Layer::Popup].records.is_empty());
+    assert_eq!(h.ui.tree(Layer::Main).roots.len(), 1);
+    assert!(h.ui.tree(Layer::Popup).roots.is_empty());
+    assert!(h.ui.tree(Layer::Popup).records.is_empty());
 }
 
 #[test]
@@ -982,8 +981,8 @@ fn forest_independence_across_recording_orders() {
     });
     for layer in [Layer::Main, Layer::Popup] {
         assert_eq!(
-            ui_p_first.ui.forest.trees[layer].records.len(),
-            ui_m_first.ui.forest.trees[layer].records.len(),
+            ui_p_first.ui.tree(layer).records.len(),
+            ui_m_first.ui.tree(layer).records.len(),
             "{layer:?} record count independent of recording order",
         );
     }
@@ -1015,10 +1014,10 @@ fn mid_recording_popup_with_text_renders_through_encoder() {
     });
     let _cmds = h.encode_paint();
 
-    let payloads = h.ui.forest.record_store.payloads.borrow();
+    let payloads = h.ui.payloads();
     let interned_text = payloads.interned_text();
-    let main_tree = &h.ui.forest.trees[Layer::Main];
-    let popup_tree = &h.ui.forest.trees[Layer::Popup];
+    let main_tree = h.ui.tree(Layer::Main);
+    let popup_tree = h.ui.tree(Layer::Popup);
 
     let outer_span = main_tree.records.shape_span()[0];
     let main_texts: Vec<&str> = main_tree.shapes.records
@@ -1110,8 +1109,8 @@ fn mid_recording_popup_keeps_trees_independent() {
             .response
             .node()
     });
-    let main_tree = &h.ui.forest.trees[Layer::Main];
-    let popup_tree = &h.ui.forest.trees[Layer::Popup];
+    let main_tree = h.ui.tree(Layer::Main);
+    let popup_tree = h.ui.tree(Layer::Popup);
 
     // Synthetic viewport at NodeId(0); user "main-parent" at NodeId(1).
     assert_eq!(main_tree.records.len(), 6);
@@ -1169,8 +1168,8 @@ fn extras_columns_split_by_field_kind() {
                     .show(ui);
             });
     });
-    assert_eq!(h.ui.forest.trees[Layer::Main].panel_table.len(), 1);
-    assert_eq!(h.ui.forest.trees[Layer::Main].bounds_table.len(), 1);
+    assert_eq!(h.ui.tree(Layer::Main).panel_table.len(), 1);
+    assert_eq!(h.ui.tree(Layer::Main).bounds_table.len(), 1);
 }
 
 #[test]
@@ -1200,16 +1199,18 @@ fn child_iter_traverses_correctly_after_finalize() {
             .response
             .node()
     });
-    let kids: Vec<u32> = h.ui.forest.trees[Layer::Main]
-        .children(root)
-        .map(|c| c.id.0)
-        .collect();
+    let kids: Vec<u32> =
+        h.ui.tree(Layer::Main)
+            .children(root)
+            .map(|c| c.id.0)
+            .collect();
     // Synthetic viewport at NodeId(0); user "root" at NodeId(1).
     assert_eq!(kids, vec![2, 3, 5], "root's direct children: a, inner, c");
-    let inner_kids: Vec<u32> = h.ui.forest.trees[Layer::Main]
-        .children(NodeId(3))
-        .map(|c| c.id.0)
-        .collect();
+    let inner_kids: Vec<u32> =
+        h.ui.tree(Layer::Main)
+            .children(NodeId(3))
+            .map(|c| c.id.0)
+            .collect();
     assert_eq!(inner_kids, vec![4], "inner's direct child: b");
 }
 
@@ -1242,7 +1243,7 @@ fn shape_hashes_column_sized_to_shape_records() {
                 );
             });
     });
-    let tree = &h.ui.forest.trees[Layer::Main];
+    let tree = h.ui.tree(Layer::Main);
     assert_eq!(
         tree.shapes.hashes.len(),
         tree.shapes.records.len(),
@@ -1288,9 +1289,9 @@ fn shape_hash_stable_across_frames() {
     };
     let mut h = UiHarness::new(SURFACE);
     h.frame(build);
-    let h0 = h.ui.forest.trees[Layer::Main].shapes.hashes[0];
+    let h0 = h.ui.tree(Layer::Main).shapes.hashes[0];
     h.frame(build);
-    let h1 = h.ui.forest.trees[Layer::Main].shapes.hashes[0];
+    let h1 = h.ui.tree(Layer::Main).shapes.hashes[0];
     assert_eq!(
         h0, h1,
         "same shape authoring must hash identically across frames",
@@ -1323,11 +1324,11 @@ fn one_shape_change_only_flips_its_own_hash() {
     };
     let mut h = UiHarness::new(SURFACE);
     h.frame(|ui| build(glam::Vec2::new(20.0, 20.0), ui));
-    let h0_a = h.ui.forest.trees[Layer::Main].shapes.hashes[0];
-    let h0_b = h.ui.forest.trees[Layer::Main].shapes.hashes[1];
+    let h0_a = h.ui.tree(Layer::Main).shapes.hashes[0];
+    let h0_b = h.ui.tree(Layer::Main).shapes.hashes[1];
     h.frame(|ui| build(glam::Vec2::new(30.0, 30.0), ui));
-    let h1_a = h.ui.forest.trees[Layer::Main].shapes.hashes[0];
-    let h1_b = h.ui.forest.trees[Layer::Main].shapes.hashes[1];
+    let h1_a = h.ui.tree(Layer::Main).shapes.hashes[0];
+    let h1_b = h.ui.tree(Layer::Main).shapes.hashes[1];
     assert_eq!(h0_a, h1_a, "unchanged shape 0 must keep its hash");
     assert_ne!(h0_b, h1_b, "changed shape 1 must flip its hash");
 }

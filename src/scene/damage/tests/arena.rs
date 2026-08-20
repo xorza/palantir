@@ -56,15 +56,15 @@ fn canvas(ui: &mut Ui, id: &'static str, shapes: u32) {
 }
 
 fn arena_len(h: &UiHarness) -> usize {
-    h.ui.damage_engine.paints.slots.len()
+    h.engines.damage.paints.slots.len()
 }
 
 fn free_classes(h: &UiHarness) -> usize {
-    h.ui.damage_engine.paints.classes_with_free_blocks()
+    h.engines.damage.paints.classes_with_free_blocks()
 }
 
 fn span_of(h: &UiHarness, id: &'static str) -> Span {
-    h.ui.damage_engine.prev[&WidgetId::from_hash(id)].paint_span
+    h.engines.damage.prev[&WidgetId::from_hash(id)].paint_span
 }
 
 /// The headline: a node whose paint-row count changes every frame
@@ -95,7 +95,7 @@ fn a_toggling_shape_count_trades_two_blocks_forever() {
     assert_eq!(settled, 10);
     assert_eq!(free_classes(&h), 1, "the 4-row block is parked");
 
-    let before = h.ui.damage_engine.paints.counters.counts();
+    let before = h.engines.damage.paints.counters.counts();
     const FRAMES: u32 = 200;
     for f in 0..FRAMES {
         frame(&mut h, build(3 + f % 2));
@@ -112,7 +112,7 @@ fn a_toggling_shape_count_trades_two_blocks_forever() {
         assert_eq!(free_classes(&h), 1, "exactly one block sits idle");
     }
 
-    let delta = h.ui.damage_engine.paints.counters.counts() - before;
+    let delta = h.engines.damage.paints.counters.counts() - before;
     assert_eq!(
         (delta.allocs, delta.reuses),
         (0, FRAMES),
@@ -180,7 +180,7 @@ fn a_quiet_node_keeps_its_span_while_a_neighbour_churns() {
     frame(&mut h, build(4));
     frame(&mut h, build(4));
     let quiet_span = span_of(&h, "quiet");
-    let quiet_rows: Vec<_> = h.ui.damage_engine.paints.slots[quiet_span.range()].to_vec();
+    let quiet_rows: Vec<_> = h.engines.damage.paints.slots[quiet_span.range()].to_vec();
     assert_eq!(quiet_span.len, 4, "chrome plus three shapes");
 
     // Walk the churner across four size classes, several times over —
@@ -195,7 +195,7 @@ fn a_quiet_node_keeps_its_span_while_a_neighbour_churns() {
         );
     }
     assert_eq!(
-        h.ui.damage_engine.paints.slots[quiet_span.range()],
+        h.engines.damage.paints.slots[quiet_span.range()],
         quiet_rows[..],
         "and its rows are byte-identical, not merely at the same index",
     );
@@ -236,8 +236,8 @@ fn swapping_one_widget_for_another_settles_at_a_single_spare_block() {
         };
         frame(&mut h, build(arriving));
         assert!(
-            !h.ui
-                .damage_engine
+            !h.engines
+                .damage
                 .prev
                 .contains_key(&WidgetId::from_hash(departing)),
             "round {round}: {departing} must be out of the snapshot map",
@@ -274,7 +274,7 @@ fn a_forced_full_frame_resets_the_arena_without_stale_free_heads() {
     assert_eq!(free_classes(&h), 0, "the free lists went with the storage");
     assert_eq!(
         arena_len(&h),
-        h.ui.damage_engine.prev.len(),
+        h.engines.damage.prev.len(),
         "every snapshot in the rebuilt map holds one single-row block and \
          nothing else is allocated",
     );
@@ -284,7 +284,7 @@ fn a_forced_full_frame_resets_the_arena_without_stale_free_heads() {
     let span = span_of(&h, "a");
     assert_eq!(span.len, 1, "the 50x50 frame contributes its chrome row");
     assert_eq!(
-        h.ui.damage_engine.paints.slots[span.range()][0].screen,
+        h.engines.damage.paints.slots[span.range()][0].screen,
         Rect::new(0.0, 0.0, 50.0, 50.0),
     );
 }

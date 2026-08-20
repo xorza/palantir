@@ -151,7 +151,7 @@ mod tests {
         });
 
         let card_id = root_id.with("card");
-        let tree = &h.ui.forest.trees[Layer::Modal];
+        let tree = h.ui.tree(Layer::Modal);
         let index = tree
             .records
             .widget_id()

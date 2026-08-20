@@ -103,7 +103,7 @@ impl<Rows, Cols> Grid<Rows, Cols> {
         Rows: AsRef<[Track]>,
         Cols: AsRef<[Track]>,
     {
-        let id = ui.forest.push_grid_def(
+        let id = ui.push_grid_def(
             self.rows.as_ref(),
             self.cols.as_ref(),
             self.row_gap,

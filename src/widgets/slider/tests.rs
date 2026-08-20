@@ -115,7 +115,7 @@ fn explicit_size_overrides_fill_default() {
             default = Some(Slider::new(&mut v, 0.0..=1.0).show(ui).response.node());
         });
     });
-    let rects = &h.ui.layout[Layer::Main].rect;
+    let rects = &h.ui.layout(Layer::Main).rect;
     let s = rects[sized.unwrap().idx()];
     assert_eq!((s.size.w, s.size.h), (120.0, 30.0), "explicit size");
     let h = rects[hug.unwrap().idx()];

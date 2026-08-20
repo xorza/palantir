@@ -258,8 +258,8 @@ impl Bars {
         // The viewport was opened on the line above, so this pass's id
         // map already holds its node — the handle the driver needs to
         // reach `scroll_content`.
-        let content = ui.forest.current_node(scroll_id);
-        let def_id = ui.forest.push_scrollbars_def(ScrollbarsDef {
+        let content = ui.current_node(scroll_id);
+        let def_id = ui.push_scrollbars_def(ScrollbarsDef {
             content,
             offset: state.offset,
             zoom: state.zoom,

@@ -505,7 +505,7 @@ impl<'a> TextEdit<'a> {
         );
         let caret_pos = geometry.caret_pos;
         state.edit.observe_text_hash(geometry.text_hash);
-        let now = ui.frame_runtime.time;
+        let now = ui.now();
         let view = state.view.update(ViewUpdateInput {
             response_rect: response.layout_rect,
             ctx,

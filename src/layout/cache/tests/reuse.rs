@@ -38,8 +38,8 @@ struct SnapView<'a> {
     avail: AvailableKey,
 }
 
-fn snap_for(ui: &Ui, wid: WidgetId) -> Option<SnapView<'_>> {
-    let snapshot = &ui.layout_engine.cache.previous;
+fn snap_for(h: &UiHarness, wid: WidgetId) -> Option<SnapView<'_>> {
+    let snapshot = &h.engines.layout.cache.previous;
     let descriptor = *snapshot.snapshots.get(&wid)? as usize;
     let snap = snapshot.descriptors[descriptor];
     Some(SnapView {
@@ -49,8 +49,8 @@ fn snap_for(ui: &Ui, wid: WidgetId) -> Option<SnapView<'_>> {
     })
 }
 
-fn assert_snapshot_is_linear(ui: &Ui) {
-    let snapshot = &ui.layout_engine.cache.previous;
+fn assert_snapshot_is_linear(h: &UiHarness) {
+    let snapshot = &h.engines.layout.cache.previous;
     let len = snapshot.nodes.desired.len();
     assert_eq!(snapshot.nodes.scroll_content.len(), len);
     assert_eq!(snapshot.nodes.text_spans.len(), len);
@@ -58,7 +58,7 @@ fn assert_snapshot_is_linear(ui: &Ui) {
     assert_eq!(snapshot.nodes.available_q.len(), len);
     let recorded = Layer::PAINT_ORDER
         .iter()
-        .map(|layer| ui.forest.trees[*layer].records.len())
+        .map(|layer| h.ui.tree(*layer).records.len())
         .sum::<usize>();
     assert_eq!(
         len, recorded,
@@ -94,8 +94,8 @@ fn whole_tree_snapshot_populates_subtree_ranges_once() {
             });
     });
 
-    assert_snapshot_is_linear(&h.ui);
-    let view = snap_for(&h.ui, WidgetId::from_hash("group")).unwrap();
+    assert_snapshot_is_linear(&h);
+    let view = snap_for(&h, WidgetId::from_hash("group")).unwrap();
     assert_eq!(view.snap.nodes.len, 4);
     assert_eq!(
         view.desired,
@@ -114,24 +114,21 @@ fn unchanged_subtree_hits_and_replays_exact_output() {
     let build = |ui: &mut Ui| build_wrapped_frame(ui, "a", 50.0, Color::rgb(0.2, 0.4, 0.8));
 
     run_frame(&mut h, build);
-    let first_hash = snap_for(&h.ui, WidgetId::from_hash("a"))
+    let first_hash = snap_for(&h, WidgetId::from_hash("a"))
         .unwrap()
         .snap
         .subtree_hash;
-    let first_desired = h.ui.layout_engine.cache.previous.nodes.desired.clone();
-    let first_rects = h.ui.layout[Layer::Main].rect.clone();
+    let first_desired = h.engines.layout.cache.previous.nodes.desired.clone();
+    let first_rects = h.ui.layout(Layer::Main).rect.clone();
 
     run_frame(&mut h, build);
-    let second = snap_for(&h.ui, WidgetId::from_hash("a")).unwrap();
+    let second = snap_for(&h, WidgetId::from_hash("a")).unwrap();
 
     assert_eq!(first_hash, second.snap.subtree_hash);
+    assert_eq!(first_desired, h.engines.layout.cache.previous.nodes.desired);
+    assert_eq!(first_rects, h.ui.layout(Layer::Main).rect);
     assert_eq!(
-        first_desired,
-        h.ui.layout_engine.cache.previous.nodes.desired
-    );
-    assert_eq!(first_rects, h.ui.layout[Layer::Main].rect);
-    assert_eq!(
-        h.ui.layout_engine.scratch.counters.cache_hits().len(),
+        h.engines.layout.scratch.counters.cache_hits().len(),
         1,
         "the highest unchanged subtree must short-circuit the frame"
     );
@@ -139,14 +136,14 @@ fn unchanged_subtree_hits_and_replays_exact_output() {
     // re-deriving them — identical output either way, so without this the
     // assertion says nothing about which path ran.
     assert_eq!(
-        h.ui.layout_engine.scratch.counters.arrange_replays(),
+        h.engines.layout.scratch.counters.arrange_replays(),
         crate::layout::counters::ReplayCounts {
             copied: 1,
             translated: 0,
         },
         "an unchanged frame must replay its one hit subtree verbatim",
     );
-    assert_snapshot_is_linear(&h.ui);
+    assert_snapshot_is_linear(&h);
 }
 
 #[test]
@@ -155,19 +152,19 @@ fn changing_descendant_hash_replaces_ancestor_descriptor() {
     run_frame(&mut h, |ui| {
         build_wrapped_frame(ui, "a", 50.0, Color::rgb(0.2, 0.4, 0.8));
     });
-    let first = snap_for(&h.ui, WidgetId::from_hash("a")).unwrap().snap;
+    let first = snap_for(&h, WidgetId::from_hash("a")).unwrap().snap;
 
     run_frame(&mut h, |ui| {
         build_wrapped_frame(ui, "a", 50.0, Color::rgb(0.9, 0.4, 0.8));
     });
-    let second = snap_for(&h.ui, WidgetId::from_hash("a")).unwrap().snap;
+    let second = snap_for(&h, WidgetId::from_hash("a")).unwrap().snap;
 
     assert_ne!(first.subtree_hash, second.subtree_hash);
     assert_eq!(
         first.nodes.start, second.nodes.start,
         "stable pre-order position must map to the same whole-tree row"
     );
-    assert_snapshot_is_linear(&h.ui);
+    assert_snapshot_is_linear(&h);
 }
 
 #[test]
@@ -178,7 +175,8 @@ fn removed_widget_is_absent_from_next_snapshot() {
         build_wrapped_frame(ui, "kept", 40.0, Color::rgb(0.5, 0.5, 0.5));
     });
     assert!(
-        h.ui.layout_engine
+        h.engines
+            .layout
             .cache
             .previous
             .snapshots
@@ -190,21 +188,22 @@ fn removed_widget_is_absent_from_next_snapshot() {
     });
 
     assert!(
-        !h.ui
-            .layout_engine
+        !h.engines
+            .layout
             .cache
             .previous
             .snapshots
             .contains_key(&WidgetId::from_hash("gone"))
     );
     assert!(
-        h.ui.layout_engine
+        h.engines
+            .layout
             .cache
             .previous
             .snapshots
             .contains_key(&WidgetId::from_hash("kept"))
     );
-    assert_snapshot_is_linear(&h.ui);
+    assert_snapshot_is_linear(&h);
 }
 
 #[test]
@@ -232,12 +231,12 @@ fn reordered_widgets_rebuild_the_dense_descriptor_index() {
     run_frame(&mut h, |ui| build(ui, false));
     run_frame(&mut h, |ui| build(ui, true));
 
-    let a = snap_for(&h.ui, WidgetId::from_hash("a")).unwrap();
-    let b = snap_for(&h.ui, WidgetId::from_hash("b")).unwrap();
+    let a = snap_for(&h, WidgetId::from_hash("a")).unwrap();
+    let b = snap_for(&h, WidgetId::from_hash("b")).unwrap();
     assert!(b.snap.nodes.start < a.snap.nodes.start);
     assert_eq!(a.desired, &[Size::new(10.0, 10.0), Size::new(10.0, 10.0)]);
     assert_eq!(b.desired, &[Size::new(20.0, 20.0), Size::new(20.0, 20.0)]);
-    assert_snapshot_is_linear(&h.ui);
+    assert_snapshot_is_linear(&h);
 }
 
 #[test]
@@ -263,16 +262,16 @@ fn changing_available_remeasures_wrapping_text() {
     };
 
     run_frame_at(&mut h, UVec2::new(400, 400), build);
-    let first = snap_for(&h.ui, WidgetId::from_hash("inner")).unwrap();
+    let first = snap_for(&h, WidgetId::from_hash("inner")).unwrap();
     let first_avail = first.avail;
     let first_leaf = first.desired[1];
 
     run_frame_at(&mut h, UVec2::new(100, 400), build);
-    let second = snap_for(&h.ui, WidgetId::from_hash("inner")).unwrap();
+    let second = snap_for(&h, WidgetId::from_hash("inner")).unwrap();
 
     assert_ne!(first_avail, second.avail);
     assert_ne!(first_leaf, second.desired[1]);
-    assert_snapshot_is_linear(&h.ui);
+    assert_snapshot_is_linear(&h);
 }
 
 #[test]
@@ -303,32 +302,33 @@ fn solver_order_text_runs_form_contiguous_subtree_snapshots() {
     let mut nodes = Vec::new();
     run_frame_at(&mut h, UVec2::new(400, 200), |ui| build(ui, &mut nodes));
 
-    let cold_fill = h.ui.layout[Layer::Main].text_spans[nodes[0].idx()];
-    let cold_hug = h.ui.layout[Layer::Main].text_spans[nodes[1].idx()];
+    let cold_fill = h.ui.layout(Layer::Main).text_spans[nodes[0].idx()];
+    let cold_hug = h.ui.layout(Layer::Main).text_spans[nodes[1].idx()];
     assert_eq!(cold_hug, Span::new(0, 1));
     assert_eq!(cold_fill, Span::new(1, 1));
-    let inner = snap_for(&h.ui, WidgetId::from_hash("solver-order")).unwrap();
+    let inner = snap_for(&h, WidgetId::from_hash("solver-order")).unwrap();
     assert_eq!(inner.snap.text_shapes, Span::new(0, 2));
-    let cold_fill_key = h.ui.layout[Layer::Main].text_shapes[cold_fill.start as usize].key;
-    let cold_hug_key = h.ui.layout[Layer::Main].text_shapes[cold_hug.start as usize].key;
+    let cold_fill_key = h.ui.layout(Layer::Main).text_shapes[cold_fill.start as usize].key;
+    let cold_hug_key = h.ui.layout(Layer::Main).text_shapes[cold_hug.start as usize].key;
     assert_ne!(cold_fill_key, cold_hug_key);
 
     run_frame_at(&mut h, UVec2::new(400, 200), |ui| build(ui, &mut nodes));
 
-    let warm_fill = h.ui.layout[Layer::Main].text_spans[nodes[0].idx()];
-    let warm_hug = h.ui.layout[Layer::Main].text_spans[nodes[1].idx()];
+    let warm_fill = h.ui.layout(Layer::Main).text_spans[nodes[0].idx()];
+    let warm_hug = h.ui.layout(Layer::Main).text_spans[nodes[1].idx()];
     assert_eq!(warm_fill, cold_fill);
     assert_eq!(warm_hug, cold_hug);
     assert_eq!(
-        h.ui.layout[Layer::Main].text_shapes[warm_fill.start as usize].key,
+        h.ui.layout(Layer::Main).text_shapes[warm_fill.start as usize].key,
         cold_fill_key
     );
     assert_eq!(
-        h.ui.layout[Layer::Main].text_shapes[warm_hug.start as usize].key,
+        h.ui.layout(Layer::Main).text_shapes[warm_hug.start as usize].key,
         cold_hug_key
     );
     assert!(
-        h.ui.layout_engine
+        h.engines
+            .layout
             .scratch
             .counters
             .cache_hits()
@@ -366,7 +366,7 @@ fn localized_change_hits_unchanged_sibling() {
     };
     let mut h = UiHarness::new(UVec2::new(200, 200));
     run_frame(&mut h, |ui| build(ui, Color::rgb(1.0, 0.0, 0.0)));
-    let stable_hash = snap_for(&h.ui, WidgetId::from_hash("stable"))
+    let stable_hash = snap_for(&h, WidgetId::from_hash("stable"))
         .unwrap()
         .snap
         .subtree_hash;
@@ -374,15 +374,16 @@ fn localized_change_hits_unchanged_sibling() {
     run_frame(&mut h, |ui| build(ui, Color::rgb(0.0, 1.0, 0.0)));
 
     assert!(
-        h.ui.layout_engine
+        h.engines
+            .layout
             .scratch
             .counters
             .cache_hits()
             .contains(&WidgetId::from_hash("stable"))
     );
     assert!(
-        !h.ui
-            .layout_engine
+        !h.engines
+            .layout
             .scratch
             .counters
             .cache_hits()
@@ -390,12 +391,12 @@ fn localized_change_hits_unchanged_sibling() {
     );
     assert_eq!(
         stable_hash,
-        snap_for(&h.ui, WidgetId::from_hash("stable"))
+        snap_for(&h, WidgetId::from_hash("stable"))
             .unwrap()
             .snap
             .subtree_hash
     );
-    assert_snapshot_is_linear(&h.ui);
+    assert_snapshot_is_linear(&h);
 }
 
 #[test]
@@ -423,17 +424,17 @@ fn widget_reappearance_matches_cold_snapshot() {
             .id(WidgetId::from_hash("inner"))
             .show(ui, |_| {});
     });
-    assert!(snap_for(&h.ui, blip).is_none());
+    assert!(snap_for(&h, blip).is_none());
 
     run_frame(&mut h, with_widget);
-    let warm = snap_for(&h.ui, blip).unwrap().desired.to_vec();
+    let warm = snap_for(&h, blip).unwrap().desired.to_vec();
 
-    h.ui.layout_engine.cache.clear();
+    h.engines.layout.cache.clear();
     run_frame(&mut h, with_widget);
-    let cold = snap_for(&h.ui, blip).unwrap().desired.to_vec();
+    let cold = snap_for(&h, blip).unwrap().desired.to_vec();
 
     assert_eq!(warm, cold);
-    assert_snapshot_is_linear(&h.ui);
+    assert_snapshot_is_linear(&h);
 }
 
 #[test]
@@ -469,31 +470,31 @@ fn oscillating_tree_size_reuses_both_snapshot_buffers() {
     // the retained map rather than refilling it. Counted because the
     // `debug_assert` inside the reuse branch is vacuous on a frame that
     // rebuilt instead.
-    let rebuilds_after_warmup = h.ui.layout_engine.cache.snapshot_rebuilds;
+    let rebuilds_after_warmup = h.engines.layout.cache.snapshot_rebuilds;
     let mut node_capacities = [
-        h.ui.layout_engine.cache.previous.nodes.desired.capacity(),
-        h.ui.layout_engine.cache.current.nodes.desired.capacity(),
-        h.ui.layout_engine.scratch.desired.capacity(),
+        h.engines.layout.cache.previous.nodes.desired.capacity(),
+        h.engines.layout.cache.current.nodes.desired.capacity(),
+        h.engines.layout.scratch.desired.capacity(),
     ];
     node_capacities.sort_unstable();
     let mut descriptor_capacities = [
-        h.ui.layout_engine.cache.previous.snapshots.capacity(),
-        h.ui.layout_engine.cache.current.snapshots.capacity(),
+        h.engines.layout.cache.previous.snapshots.capacity(),
+        h.engines.layout.cache.current.snapshots.capacity(),
     ];
     descriptor_capacities.sort_unstable();
 
     for frame in 8..40 {
         render(&mut h, frame % 2 == 0);
-        assert_snapshot_is_linear(&h.ui);
+        assert_snapshot_is_linear(&h);
         let mut current_node_capacities = [
-            h.ui.layout_engine.cache.previous.nodes.desired.capacity(),
-            h.ui.layout_engine.cache.current.nodes.desired.capacity(),
-            h.ui.layout_engine.scratch.desired.capacity(),
+            h.engines.layout.cache.previous.nodes.desired.capacity(),
+            h.engines.layout.cache.current.nodes.desired.capacity(),
+            h.engines.layout.scratch.desired.capacity(),
         ];
         current_node_capacities.sort_unstable();
         let mut current_descriptor_capacities = [
-            h.ui.layout_engine.cache.previous.snapshots.capacity(),
-            h.ui.layout_engine.cache.current.snapshots.capacity(),
+            h.engines.layout.cache.previous.snapshots.capacity(),
+            h.engines.layout.cache.current.snapshots.capacity(),
         ];
         current_descriptor_capacities.sort_unstable();
         assert_eq!(
@@ -503,7 +504,7 @@ fn oscillating_tree_size_reuses_both_snapshot_buffers() {
         assert_eq!(descriptor_capacities, current_descriptor_capacities);
     }
     assert_eq!(
-        h.ui.layout_engine.cache.snapshot_rebuilds, rebuilds_after_warmup,
+        h.engines.layout.cache.snapshot_rebuilds, rebuilds_after_warmup,
         "steady-state oscillation must reuse each buffer's descriptor map",
     );
 
@@ -523,11 +524,12 @@ fn oscillating_tree_size_reuses_both_snapshot_buffers() {
             });
     });
     assert!(
-        h.ui.layout_engine.cache.snapshot_rebuilds > rebuilds_after_warmup,
+        h.engines.layout.cache.snapshot_rebuilds > rebuilds_after_warmup,
         "an unseen descriptor sequence must rebuild the map",
     );
     assert!(
-        h.ui.layout_engine
+        h.engines
+            .layout
             .cache
             .previous
             .snapshots

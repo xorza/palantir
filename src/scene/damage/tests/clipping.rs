@@ -135,10 +135,11 @@ fn drop_shadow_overhang_contributes_to_damage_on_remove() {
                 .id(WidgetId::from_hash("root"))
                 .show(ui, build);
         });
-        let prev_rect =
-            h.ui.damage_engine
-                .prev_paint_rect(WidgetId::from_hash("card"))
-                .expect("card painted last frame");
+        let prev_rect = h
+            .engines
+            .damage
+            .prev_paint_rect(WidgetId::from_hash("card"))
+            .expect("card painted last frame");
         assert_eq!(
             prev_rect.size,
             Size::new(expected_paint_size, expected_paint_size),
@@ -151,7 +152,7 @@ fn drop_shadow_overhang_contributes_to_damage_on_remove() {
                 .show(ui, |_| {});
         });
         let rects: Vec<Rect> = h.damage_region().iter_rects().collect();
-        // `damage_engine.prev` stores the raw paint_rect including
+        // `DamageEngine::prev` stores the raw paint_rect including
         // the shadow halo, which extends off the top-left of the
         // 200×200 surface for a 50×50 frame at origin. The damage
         // region, however, clips each rect to the surface in
@@ -277,11 +278,11 @@ fn direct_shape_on_clipped_node_clips_to_own_mask() {
     // Locate the host node by widget id and read its first shape's
     // cascaded screen rect. Pre-fix the rect spans the full 400 px;
     // post-fix it's clamped to (host_width − padding-fold).
-    let cascade = &h.ui.cascade;
+    let cascade = &h.ui.cascade();
     let host_ep = *cascade.by_id.get(&host_id).expect("host node recorded");
     let host_entry_idx = (cascade.layers[host_ep.layer].entries_base + host_ep.node.0) as usize;
     let host_rect = cascade.entries[host_entry_idx].rect;
-    let tree = &h.ui.forest.trees[Layer::Main];
+    let tree = h.ui.tree(Layer::Main);
     let shape_span = tree.records.shape_span()[host_ep.node.idx()];
     assert!(shape_span.len >= 1, "host should have at least one shape");
     // The host paints chrome (the BLUE background), so row 0 of its

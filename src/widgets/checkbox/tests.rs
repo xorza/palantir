@@ -104,7 +104,7 @@ fn checkmark_polyline_is_themed_and_scales_with_box_size() {
                     .show(ui);
             });
         });
-        let tree = &h.ui.forest.trees[Layer::Main];
+        let tree = h.ui.tree(Layer::Main);
         let span = tree
             .shapes
             .records
@@ -115,7 +115,7 @@ fn checkmark_polyline_is_themed_and_scales_with_box_size() {
             })
             .expect("a checked Checkbox records its tick as a polyline");
         // Points live in the shared record store, addressed by the span.
-        let store = h.ui.forest.record_store.payloads.borrow();
+        let store = h.ui.payloads();
         store.polyline_points[span.range()].to_vec()
     }
 

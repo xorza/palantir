@@ -328,9 +328,9 @@ fn quiescent_and_full_paths_agree_on_geometry() {
     };
 
     s.frame_quiescent = true;
-    let quiet = s.response_for(focusable_id(), &h.ui.cascade, &h.ui.layout);
+    let quiet = s.response_for(focusable_id(), h.ui.cascade(), h.ui.layout_tables());
     s.frame_quiescent = false;
-    let full = s.response_for(focusable_id(), &h.ui.cascade, &h.ui.layout);
+    let full = s.response_for(focusable_id(), h.ui.cascade(), h.ui.layout_tables());
 
     assert_eq!(quiet.rect, full.rect);
     assert_eq!(quiet.layout_rect, full.layout_rect);

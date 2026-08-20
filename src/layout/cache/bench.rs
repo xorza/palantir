@@ -9,7 +9,8 @@
 //!   hit at the highest stable subtree root every frame (in steady
 //!   state, the root itself).
 //! - `forced_miss`: warm-up primes the cache; each iteration clears
-//!   `Ui.layout_engine.cache` before recording, so measure rebuilds from scratch.
+//!   `FrameEngines::layout`'s cache before recording, so measure rebuilds from
+//!   scratch.
 //! - `resizing`: rotates four viewport widths so `available_q` misses
 //!   at the root while unchanged branches remain eligible for reuse.
 //! - `localized`: broad-tree only; toggles one leaf's paint hash while
@@ -342,7 +343,7 @@ fn bench_cache_pair(
         let mut h = make_ui();
         report_phases(&format!("{name}/cached"), || {
             let _ = h.frame(build);
-            h.ui.layout_engine.scratch.counters.phase_timings()
+            h.engines.layout.scratch.counters.phase_timings()
         });
     }
     group.bench_function(format!("{name}/cached"), |b| {
@@ -356,16 +357,16 @@ fn bench_cache_pair(
     {
         let mut h = make_ui();
         report_phases(&format!("{name}/forced_miss"), || {
-            h.ui.layout_engine.cache.clear();
+            h.engines.layout.cache.clear();
             let _ = h.frame(build);
-            h.ui.layout_engine.scratch.counters.phase_timings()
+            h.engines.layout.scratch.counters.phase_timings()
         });
     }
     group.bench_function(format!("{name}/forced_miss"), |b| {
         let mut h = make_ui();
         let _ = h.frame(build);
         b.iter(|| {
-            h.ui.layout_engine.cache.clear();
+            h.engines.layout.cache.clear();
             black_box(h.frame(build));
         });
     });
@@ -386,7 +387,7 @@ fn bench_cache_workload(
         report_phases(&format!("{name}/resizing"), || {
             frame = (frame + 1) % resize_widths.len();
             let _ = h.resize(resize_widths[frame]).frame(build);
-            h.ui.layout_engine.scratch.counters.phase_timings()
+            h.engines.layout.scratch.counters.phase_timings()
         });
     }
     group.bench_function(format!("{name}/resizing"), |b| {
@@ -409,7 +410,7 @@ fn bench_broad_localized(group: &mut BenchmarkGroup<'_, WallTime>, name: &str) {
             let _ = h.frame(|ui| {
                 build_broad_variant(ui, changed);
             });
-            h.ui.layout_engine.scratch.counters.phase_timings()
+            h.engines.layout.scratch.counters.phase_timings()
         });
     }
     group.bench_function(format!("{name}/localized"), |b| {
@@ -473,7 +474,7 @@ fn bench_virtual_scroll(group: &mut BenchmarkGroup<'_, WallTime>) {
             let _ = h.frame(|ui| build_scroll_window(ui, first));
             first += stride;
         }
-        let before = h.ui.layout_engine.cache.snapshot_rebuilds;
+        let before = h.engines.layout.cache.snapshot_rebuilds;
         const FRAMES: usize = 64;
         for _ in 0..FRAMES {
             let _ = h.frame(|ui| build_scroll_window(ui, first));
@@ -482,7 +483,7 @@ fn bench_virtual_scroll(group: &mut BenchmarkGroup<'_, WallTime>) {
         eprintln!(
             "[caches] virtual_scroll/{name}: {} snapshot rebuilds over {FRAMES} frames \
              ({SCROLL_ROWS} rows)",
-            h.ui.layout_engine.cache.snapshot_rebuilds - before,
+            h.engines.layout.cache.snapshot_rebuilds - before,
         );
 
         group.bench_function(format!("virtual_scroll/{name}"), |b| {
@@ -556,12 +557,12 @@ mod tests {
         let deep = cold_frame(build_deep);
         let deep_nodes = DEEP_DEPTH + 2;
         assert_eq!(
-            deep.ui.forest.trees[Layer::Main].records.len(),
+            deep.ui.tree(Layer::Main).records.len(),
             deep_nodes,
             "viewport + {DEEP_DEPTH} nested panels + leaf",
         );
         assert_eq!(
-            deep.ui.layout_engine.cache.previous.nodes.desired.len(),
+            deep.engines.layout.cache.previous.nodes.desired.len(),
             deep_nodes,
             "deep trees retain one row per node",
         );
@@ -572,13 +573,13 @@ mod tests {
             .sum::<usize>();
         let leaf_count = BROAD_FANOUT.pow(BROAD_DEPTH as u32);
         assert_eq!(
-            broad.ui.forest.trees[Layer::Main].records.len(),
+            broad.ui.tree(Layer::Main).records.len(),
             1 + panel_count + leaf_count,
             "viewport + balanced panels + one leaf per terminal panel",
         );
         let broad_nodes = 1 + panel_count + leaf_count;
         assert_eq!(
-            broad.ui.layout_engine.cache.previous.nodes.desired.len(),
+            broad.engines.layout.cache.previous.nodes.desired.len(),
             broad_nodes,
             "balanced trees retain one row per node",
         );
@@ -594,7 +595,7 @@ mod tests {
             build_broad_variant(ui, true);
         });
         assert_eq!(
-            h.ui.layout_engine.scratch.counters.cache_hits().len(),
+            h.engines.layout.scratch.counters.cache_hits().len(),
             21,
             "seven unchanged siblings hit at each of the three branch levels",
         );

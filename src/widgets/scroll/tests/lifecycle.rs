@@ -50,7 +50,7 @@ fn explicit_no_clip_overrides_scroll_default() {
             .show(ui, |_| {});
     });
 
-    let tree = &h.ui.forest.trees[Layer::Main];
+    let tree = h.ui.tree(Layer::Main);
     let clip_for = |id: WidgetId| {
         let viewport_id = id.with("viewport");
         let index = tree
@@ -232,7 +232,7 @@ fn scroll_records_content_extent() {
             *expected,
             "case: {label} content"
         );
-        let rect = h.ui.layout[Layer::Main].rect[scroll_node.idx()];
+        let rect = h.ui.arranged_rect(Layer::Main, scroll_node);
         let want_view = match axis {
             Axis::V => (200.0, 200.0),
             Axis::H => (200.0, 60.0),
@@ -279,7 +279,8 @@ fn scroll_content_is_restored_on_measure_cache_hit() {
     h.frame(build);
     let after_second = scroll_content(&h.ui, scroll_id);
     assert!(
-        h.ui.layout_engine
+        h.engines
+            .layout
             .scratch
             .counters
             .cache_hits()
@@ -300,13 +301,13 @@ fn cascade_skip_busts_on_scroll_offset_change() {
     let mut h = UiHarness::new(SURFACE);
     h.frame(|ui| build(ui, 200.0, 800.0));
     assert!(
-        h.ui.frame_runtime.cascade_ran(),
+        h.ui.frame_runtime().cascade_ran(),
         "first frame runs the cascade"
     );
 
     h.frame(|ui| build(ui, 200.0, 800.0));
     assert!(
-        !h.ui.frame_runtime.cascade_ran(),
+        !h.ui.frame_runtime().cascade_ran(),
         "unchanged scroll frame skips the cascade"
     );
 
@@ -316,7 +317,7 @@ fn cascade_skip_busts_on_scroll_offset_change() {
     h.frame(|ui| build(ui, 200.0, 800.0));
     assert_eq!(read_state(&mut h).offset.y, 50.0, "offset advanced");
     assert!(
-        h.ui.frame_runtime.cascade_ran(),
+        h.ui.frame_runtime().cascade_ran(),
         "scroll offset change must re-run the cascade (offset is in the fingerprint)",
     );
 }

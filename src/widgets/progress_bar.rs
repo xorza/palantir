@@ -95,7 +95,7 @@ mod tests {
                 default = Some(ProgressBar::new(0.3).show(ui).node());
             });
         });
-        let rects = &h.ui.layout[Layer::Main].rect;
+        let rects = &h.ui.layout(Layer::Main).rect;
         let s = rects[sized.unwrap().idx()];
         assert_eq!((s.size.w, s.size.h), (80.0, 10.0), "explicit size");
         let h = rects[hug.unwrap().idx()];

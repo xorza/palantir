@@ -5,6 +5,7 @@ use crate::host::winit::config::WinitHostConfig;
 use crate::host::winit::error::WinitHostError;
 use crate::host::winit::{WinitHost, finish_run};
 use crate::input::input_event::InputEvent;
+use crate::ui::frame_engines::FrameEngines;
 use crate::ui::frame_input::FrameInput;
 use crate::ui::frame_report::FrameProcessing;
 use crate::ui::frame_stamp::FrameStamp;
@@ -29,7 +30,7 @@ struct CountingApp {
 impl App for CountingApp {
     fn update(&mut self, win: WindowToken, ui: &Ui) {
         assert_eq!(win, WindowToken(7));
-        assert_eq!(ui.display.physical, SURFACE);
+        assert_eq!(ui.display().physical, SURFACE);
         assert_eq!(ui.input().pointer_pos, self.expected_pointer);
         self.updates += 1;
     }
@@ -99,8 +100,14 @@ fn run_result_preserves_normal_exit_and_prioritizes_host_failure() {
     assert!(matches!(host_failure, WinitHostError::NoGpuBackend));
 }
 
-fn run_frame(ui: &mut Ui, app: &mut CountingApp, now: Duration) -> FrameProcessing {
+fn run_frame(
+    ui: &mut Ui,
+    engines: &mut FrameEngines,
+    app: &mut CountingApp,
+    now: Duration,
+) -> FrameProcessing {
     let report = ui.frame(
+        engines,
         FrameInput {
             stamp: FrameStamp::new(Display::from_physical(SURFACE, 1.0), now),
             damage_baseline_valid: true,
@@ -113,29 +120,31 @@ fn run_frame(ui: &mut Ui, app: &mut CountingApp, now: Duration) -> FrameProcessi
 
 #[test]
 fn app_lifecycle_follows_frame_plan_and_record_replays() {
-    let mut ui = Ui::new(UiResources::isolated_mono());
+    let resources = UiResources::isolated_mono();
+    let mut engines = FrameEngines::new(&resources);
+    let mut ui = Ui::new(resources);
     let mut app = CountingApp::default();
     let pointer = Vec2::new(24.0, 12.0);
     ui.on_input(InputEvent::PointerMoved(pointer));
     app.expected_pointer = Some(pointer);
 
-    let processing = run_frame(&mut ui, &mut app, Duration::ZERO);
+    let processing = run_frame(&mut ui, &mut engines, &mut app, Duration::ZERO);
     assert_eq!(processing, FrameProcessing::SingleLayout);
     assert_eq!(app.updates, 1, "cold-start frame updates once");
     assert_eq!(app.records, 2, "cold-start warmup and pass A both record");
 
     app.relayout_on_next_record = true;
     ui.request_repaint();
-    let processing = run_frame(&mut ui, &mut app, Duration::from_millis(16));
+    let processing = run_frame(&mut ui, &mut engines, &mut app, Duration::from_millis(16));
     assert_eq!(processing, FrameProcessing::DoubleLayout);
     assert_eq!(app.updates, 2, "relayout frame adds one update");
     assert_eq!(app.records, 4, "relayout frame records pass A and pass B");
 
-    ui.frame_runtime.repaint_wakes.push(Wake {
+    ui.frame_runtime_mut().repaint_wakes.push(Wake {
         deadline: Duration::from_millis(32),
         reasons: WakeReasons::ANIM,
     });
-    let processing = run_frame(&mut ui, &mut app, Duration::from_millis(32));
+    let processing = run_frame(&mut ui, &mut engines, &mut app, Duration::from_millis(32));
     assert_eq!(processing, FrameProcessing::PaintOnly);
     assert_eq!(app.updates, 2, "paint-only frame skips update");
     assert_eq!(app.records, 4, "paint-only frame skips record");

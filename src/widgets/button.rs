@@ -139,7 +139,7 @@ mod tests {
             inherited = Some(Button::new().style(&theme).show(ui).node());
         });
 
-        let layouts = h.ui.forest.trees[Layer::Main].records.layout();
+        let layouts = h.ui.tree(Layer::Main).records.layout();
         let explicit = layouts[explicit.unwrap().idx()];
         let inherited = layouts[inherited.unwrap().idx()];
         assert_eq!(explicit.padding, Spacing::ZERO);

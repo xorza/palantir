@@ -114,13 +114,13 @@ fn grid_hug_column_takes_max_span1_child_intrinsic() {
     let min_slot = LenReq::MinContent.slot(Axis::X);
     let max_slot = LenReq::MaxContent.slot(Axis::X);
     for node in &nodes[..2] {
-        let cached = h.ui.layout_engine.scratch.intrinsics[node.idx()];
+        let cached = h.engines.layout.scratch.intrinsics[node.idx()];
         assert!(
             !cached[min_slot].is_nan() && !cached[max_slot].is_nan(),
             "a Hug cell must populate both intrinsic slots in one query",
         );
     }
-    let fill_cached = h.ui.layout_engine.scratch.intrinsics[nodes[2].idx()];
+    let fill_cached = h.engines.layout.scratch.intrinsics[nodes[2].idx()];
     assert!(!fill_cached[min_slot].is_nan());
     assert!(
         fill_cached[max_slot].is_nan(),
@@ -506,7 +506,7 @@ fn spanned_text_measures_against_track_sizes_plus_internal_column_gaps() {
         });
 
         let text = text_node.unwrap();
-        let desired = h.ui.layout_engine.cache.previous.nodes.desired[text.idx()];
+        let desired = h.engines.layout.cache.previous.nodes.desired[text.idx()];
         assert_eq!(
             desired,
             Size::new(case.text.len() as f32 * 8.0, 16.0),
@@ -514,13 +514,13 @@ fn spanned_text_measures_against_track_sizes_plus_internal_column_gaps() {
             case.label,
         );
         assert_eq!(
-            h.ui.layout[Layer::Main].rect[text.idx()].size,
+            h.ui.arranged_rect(Layer::Main, text).size,
             Size::new(case.slot, 16.0),
             "{} arranged text",
             case.label,
         );
         assert_eq!(
-            h.ui.layout[Layer::Main].rect[grid_node.unwrap().idx()].size,
+            h.ui.arranged_rect(Layer::Main, grid_node.unwrap()).size,
             Size::new(case.slot, 16.0),
             "{} grid extent",
             case.label,
@@ -586,18 +586,18 @@ fn spanned_nested_wrap_measures_against_internal_gaps_on_both_axes() {
             let panel = panel_node.unwrap();
             let expected_desired = axis.compose_size(case.child_main * 2.0, 20.0);
             assert_eq!(
-                h.ui.layout_engine.cache.previous.nodes.desired[panel.idx()],
+                h.engines.layout.cache.previous.nodes.desired[panel.idx()],
                 expected_desired,
                 "{axis:?} {} measured panel",
                 case.label,
             );
             assert_eq!(
-                h.ui.layout[Layer::Main].rect[panel.idx()].size,
+                h.ui.arranged_rect(Layer::Main, panel).size,
                 axis.compose_size(case.slot, 20.0),
                 "{axis:?} {} arranged panel",
                 case.label,
             );
-            let second = h.ui.layout[Layer::Main].rect[second_node.unwrap().idx()];
+            let second = h.ui.arranged_rect(Layer::Main, second_node.unwrap());
             assert_eq!(
                 axis.main_v(second.min),
                 case.child_main,
@@ -686,7 +686,7 @@ fn hug_grid_fill_track_contributes_nested_rigid_floor() {
             .node()
     });
 
-    let grid = h.ui.layout[Layer::Main].rect[root.idx()];
+    let grid = h.ui.arranged_rect(Layer::Main, root);
     let cell = h.main_child_rects(root)[0];
     let rigid = h
         .layout_rect(WidgetId::from_hash("rigid"))
@@ -1026,9 +1026,9 @@ fn grid_multi_row_hug_heights_resolve_independently() {
                 );
             });
     });
-    assert_eq!(h.ui.layout[Layer::Main].rect[kids[0].idx()].size.h, 10.0);
-    assert_eq!(h.ui.layout[Layer::Main].rect[kids[1].idx()].size.h, 80.0);
-    assert_eq!(h.ui.layout[Layer::Main].rect[kids[2].idx()].size.h, 30.0);
+    assert_eq!(h.ui.layout(Layer::Main).rect[kids[0].idx()].size.h, 10.0);
+    assert_eq!(h.ui.layout(Layer::Main).rect[kids[1].idx()].size.h, 80.0);
+    assert_eq!(h.ui.layout(Layer::Main).rect[kids[2].idx()].size.h, 30.0);
     assert_eq!(
         h.layout_rect(WidgetId::from_hash("multi-row"))
             .expect("arranged")

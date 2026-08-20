@@ -105,7 +105,7 @@ pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Run<'_>) {
             fixture
                 .harness
                 .ui
-                .forest
+                .forest()
                 .record_store
                 .payloads
                 .borrow()

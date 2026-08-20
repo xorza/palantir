@@ -172,6 +172,7 @@ use crate::scene::damage::region::{CollapsedDamage, DamageRegion};
 use crate::scene::seen_ids::Endpoint;
 use crate::text::shaper::TextShaper;
 use crate::ui::Ui;
+use crate::ui::frame_engines::FrameEngines;
 use crate::ui::frame_input::FrameInput;
 use crate::ui::frame_report::FrameReport;
 use crate::ui::frame_stamp::FrameStamp;
@@ -186,11 +187,17 @@ const ARENA_SURFACE: UVec2 = UVec2::splat(1);
 
 #[derive(Debug)]
 pub struct UiHarness {
-    /// `pub(crate)` rather than behind an accessor so in-crate tests
-    /// reach the engines they assert on (`h.ui.damage_engine`,
-    /// `h.ui.cascade`) the way they reach them off a bare `Ui` today.
-    /// Consumers cannot see the field and go through [`Self::ui`].
+    /// `pub(crate)` rather than behind an accessor: the recorder state the
+    /// in-crate suites assert on is reached through `Ui`'s own gated
+    /// accessors (`h.ui.cascade()`, `h.ui.forest()`), so wrapping the field
+    /// too would only add a hop. Consumers cannot see it and go through
+    /// [`Self::ui`].
     pub(crate) ui: Ui,
+    /// The engines this harness's frames run on. `pub(crate)` for the same
+    /// reason [`Self::ui`] is: in-crate damage and layout tests assert on
+    /// engine internals, and reaching them off the harness is the only door
+    /// now that `Ui` no longer holds them.
+    pub(crate) engines: FrameEngines,
     /// What every frame stamps with — the harness owns it so no caller
     /// has to rebuild one. `physical` is in physical pixels; pointer
     /// positions are logical (see [`Self::scale`]).
@@ -719,6 +726,7 @@ impl UiHarness {
     /// idle/active-window tests.
     pub(crate) fn from_resources(resources: UiResources, surface: UVec2) -> Self {
         let mut harness = Self {
+            engines: FrameEngines::new(&resources),
             ui: Ui::new(resources),
             display: Display::from_physical(surface, 1.0),
             time: Duration::ZERO,
@@ -735,6 +743,7 @@ impl UiHarness {
     fn drive(&mut self, damage_baseline_valid: bool, record: impl FnMut(&mut Ui)) -> FrameReport {
         let mut app = RecordApp::new(record);
         self.ui.frame(
+            &mut self.engines,
             FrameInput {
                 stamp: FrameStamp::new(self.display, self.time),
                 damage_baseline_valid,
@@ -763,8 +772,8 @@ impl UiHarness {
     #[cfg(any(test, feature = "bench"))]
     pub(crate) fn collapsed_damage(&self) -> CollapsedDamage {
         DamageRegion::collapse_from(
-            &self.ui.damage_engine.raw_rects,
-            self.ui.damage_engine.budget_px,
+            &self.engines.damage.raw_rects,
+            self.engines.damage.budget_px,
             self.ui.display.logical_rect(),
         )
     }

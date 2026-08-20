@@ -32,18 +32,18 @@ fn frame_paints_a_single_rounded_rect() {
     });
     // Chrome lives in `Tree::chrome_table`, not in the shape stream.
     assert!(
-        h.ui.forest.trees[Layer::Main]
+        h.ui.tree(Layer::Main)
             .shapes_of(frame_node)
             .next()
             .is_none()
     );
     assert!(
-        h.ui.forest.trees[Layer::Main].chrome(frame_node).is_some(),
+        h.ui.tree(Layer::Main).chrome(frame_node).is_some(),
         "frame chrome recorded in chrome table",
     );
 
     // Default sense is None — frame is not a hit-test target.
-    let r = h.ui.layout[Layer::Main].rect[frame_node.idx()];
+    let r = h.ui.arranged_rect(Layer::Main, frame_node);
     assert_eq!(r.size.w, 80.0);
     assert_eq!(r.size.h, 40.0);
 }

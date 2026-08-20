@@ -154,7 +154,7 @@ mod tests {
                 })
                 .inner
         });
-        let tree = &h.ui.forest.trees[Layer::Main];
+        let tree = h.ui.tree(Layer::Main);
         let mut shapes = tree.shapes_of(node);
         assert!(
             matches!(
@@ -167,7 +167,7 @@ mod tests {
             "records exactly one view-sourced image shape",
         );
         assert!(shapes.next().is_none());
-        let r = h.ui.layout[Layer::Main].rect[node.idx()];
+        let r = h.ui.arranged_rect(Layer::Main, node);
         assert_eq!((r.size.w, r.size.h), (150.0, 90.0));
     }
 
@@ -176,7 +176,7 @@ mod tests {
     fn default_fills_parent() {
         let mut h = UiHarness::new(UVec2::new(160, 100));
         let node = h.frame_value(|ui| GpuView::new(scene()).show(ui).node());
-        let r = h.ui.layout[Layer::Main].rect[node.idx()];
+        let r = h.ui.arranged_rect(Layer::Main, node);
         assert_eq!((r.size.w, r.size.h), (160.0, 100.0));
     }
 

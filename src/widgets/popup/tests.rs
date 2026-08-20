@@ -172,7 +172,7 @@ fn run_frame_settles_popup_dismissal_in_one_call() {
     h.frame(|ui| scene(ui, &mut open));
     assert!(!open, "host flag must flip to false in pass 1");
     assert_eq!(
-        h.ui.forest.trees[Layer::Popup].records.len(),
+        h.ui.tree(Layer::Popup).records.len(),
         0,
         "painted tree (pass 2) must contain no Popup-layer widgets",
     );
@@ -224,9 +224,9 @@ fn popup_body_sizing_matches_sizing_mode() {
                         });
                 });
         });
-        let popup_tree = &h.ui.forest.trees[Layer::Popup];
+        let popup_tree = h.ui.tree(Layer::Popup);
         let body_root = popup_tree.roots[1].first_node.idx();
-        let body_rect = h.ui.layout[Layer::Popup].rect[body_root];
+        let body_rect = h.ui.layout(Layer::Popup).rect[body_root];
         assert_eq!(
             body_rect.size, expected_size,
             "size=({:?},{:?}) → expected {:?}, got {:?}",
@@ -267,9 +267,9 @@ fn popup_near_bottom_flips_upward() {
     };
     h.frame(scene);
 
-    let popup_tree = &h.ui.forest.trees[Layer::Popup];
+    let popup_tree = h.ui.tree(Layer::Popup);
     let body_root = popup_tree.roots[1].first_node.idx();
-    let body_rect = h.ui.layout[Layer::Popup].rect[body_root];
+    let body_rect = h.ui.layout(Layer::Popup).rect[body_root];
     assert_eq!(
         body_rect.size, content,
         "body measured at full content size (anchor-independent available)",
@@ -313,8 +313,8 @@ fn popup_flip_reaches_cascade_not_just_layout() {
     h.frame(scene);
 
     let flipped_min = Vec2::new(anchor.x, anchor.y - content.h); // (20, 80)
-    let body_root = h.ui.forest.trees[Layer::Popup].roots[1].first_node.idx();
-    let layout_min = h.ui.layout[Layer::Popup].rect[body_root].min;
+    let body_root = h.ui.tree(Layer::Popup).roots[1].first_node.idx();
+    let layout_min = h.ui.layout(Layer::Popup).rect[body_root].min;
     assert_eq!(layout_min, flipped_min, "layout sanity: popup flipped");
 
     // The cascade-backed response rect is what the encoder paints. It
@@ -374,11 +374,11 @@ fn popup_with_scroll_settles_in_one_frame() {
     let first = body_rect(&h.ui);
     let viewport_id = WidgetId::from_hash("popup-scroll").with("viewport");
     let viewport =
-        h.ui.cascade
+        h.ui.cascade()
             .endpoint(viewport_id)
             .expect("popup scroll viewport endpoint");
     assert_eq!(viewport.layer, Layer::Popup);
-    assert_eq!(h.ui.layout.scroll_content(viewport), Size::new(80.0, 300.0));
+    assert_eq!(h.ui.scroll_content(viewport_id), Size::new(80.0, 300.0));
     // Subsequent input frames must hit the same rect — no drift.
     for _ in 0..3 {
         h.move_to(Vec2::new(50.0, 50.0));

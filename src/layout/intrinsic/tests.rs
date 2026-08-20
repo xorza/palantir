@@ -38,13 +38,14 @@ fn intrinsic_cache_populated_after_run() {
             .node();
     });
 
-    let child = h.ui.forest.trees[Layer::Main]
-        .children(root)
-        .map(|c| c.id)
-        .next()
-        .expect("hstack has child");
+    let child =
+        h.ui.tree(Layer::Main)
+            .children(root)
+            .map(|c| c.id)
+            .next()
+            .expect("hstack has child");
     let slot = LenReq::MinContent.slot(Axis::X);
-    let cached = h.ui.layout_engine.scratch.intrinsics[child.idx()][slot];
+    let cached = h.engines.layout.scratch.intrinsics[child.idx()][slot];
     assert!(
         !cached.is_nan(),
         "MinContent X for the Fill+wrap child must be cached after run"
@@ -73,20 +74,21 @@ fn intrinsic_query_short_circuits_on_cache_hit() {
             .node();
     });
 
-    let child = h.ui.forest.trees[Layer::Main]
-        .children(root)
-        .map(|c| c.id)
-        .next()
-        .unwrap();
+    let child =
+        h.ui.tree(Layer::Main)
+            .children(root)
+            .map(|c| c.id)
+            .next()
+            .unwrap();
     let slot = LenReq::MinContent.slot(Axis::X);
 
     const SENTINEL: f32 = 1234.5;
-    h.ui.layout_engine.scratch.intrinsics[child.idx()][slot] = SENTINEL;
+    h.engines.layout.scratch.intrinsics[child.idx()][slot] = SENTINEL;
 
-    let payloads = h.ui.forest.record_store.payloads.borrow();
+    let payloads = h.ui.payloads();
     let interned_text = payloads.interned_text();
-    let v = h.ui.layout_engine.intrinsic(
-        &h.ui.forest.trees[Layer::Main],
+    let v = h.engines.layout.intrinsic(
+        h.ui.tree(Layer::Main),
         child,
         Axis::X,
         LenReq::MinContent,
@@ -97,25 +99,20 @@ fn intrinsic_query_short_circuits_on_cache_hit() {
         "cache hit must return the stored value verbatim, not recompute"
     );
 
-    let expected_max = h.ui.layout_engine.intrinsic(
-        &h.ui.forest.trees[Layer::Main],
+    let expected_max = h.engines.layout.intrinsic(
+        h.ui.tree(Layer::Main),
         child,
         Axis::X,
         LenReq::MaxContent,
         &interned_text,
     );
     let max_slot = LenReq::MaxContent.slot(Axis::X);
-    h.ui.layout_engine.scratch.intrinsics[child.idx()][max_slot] = f32::NAN;
-    h.ui.layout_engine
-        .scratch
-        .counters
-        .reset_intrinsic_computes();
-    let range = h.ui.layout_engine.intrinsic_range(
-        &h.ui.forest.trees[Layer::Main],
-        child,
-        Axis::X,
-        &interned_text,
-    );
+    h.engines.layout.scratch.intrinsics[child.idx()][max_slot] = f32::NAN;
+    h.engines.layout.scratch.counters.reset_intrinsic_computes();
+    let range =
+        h.engines
+            .layout
+            .intrinsic_range(h.ui.tree(Layer::Main), child, Axis::X, &interned_text);
     assert_eq!(
         range,
         IntrinsicRange {
@@ -125,7 +122,7 @@ fn intrinsic_query_short_circuits_on_cache_hit() {
         "a partially cached range must preserve the populated side",
     );
     assert_eq!(
-        h.ui.layout_engine.scratch.counters.intrinsic_computes(),
+        h.engines.layout.scratch.counters.intrinsic_computes(),
         1,
         "only the missing max-content side should compute",
     );
@@ -159,16 +156,16 @@ fn parent_intrinsic_query_populates_descendant_cache() {
     // answer the root query from last frame's cached intrinsic — this
     // test pins the *recursive compute* path that populates descendant
     // scratch slots, which the cross-frame lookup would otherwise skip.
-    h.ui.layout_engine.cache.clear();
+    h.engines.layout.cache.clear();
     let slot = LenReq::MaxContent.slot(Axis::X);
-    for entry in h.ui.layout_engine.scratch.intrinsics.iter_mut() {
+    for entry in h.engines.layout.scratch.intrinsics.iter_mut() {
         entry[slot] = f32::NAN;
     }
 
-    let payloads = h.ui.forest.record_store.payloads.borrow();
+    let payloads = h.ui.payloads();
     let interned_text = payloads.interned_text();
-    let _ = h.ui.layout_engine.intrinsic(
-        &h.ui.forest.trees[Layer::Main],
+    let _ = h.engines.layout.intrinsic(
+        h.ui.tree(Layer::Main),
         root,
         Axis::X,
         LenReq::MaxContent,
@@ -177,12 +174,12 @@ fn parent_intrinsic_query_populates_descendant_cache() {
     drop(payloads);
 
     assert!(
-        !h.ui.layout_engine.scratch.intrinsics[root.idx()][slot].is_nan(),
+        !h.engines.layout.scratch.intrinsics[root.idx()][slot].is_nan(),
         "root slot must be cached"
     );
-    for c in h.ui.forest.trees[Layer::Main].children(root).map(|c| c.id) {
+    for c in h.ui.tree(Layer::Main).children(root).map(|c| c.id) {
         assert!(
-            !h.ui.layout_engine.scratch.intrinsics[c.idx()][slot].is_nan(),
+            !h.engines.layout.scratch.intrinsics[c.idx()][slot].is_nan(),
             "child {} slot must be cached after parent query",
             c.idx()
         );
@@ -251,7 +248,7 @@ fn intrinsic_range_exactly_matches_separate_queries_for_every_driver() {
                 });
         });
     });
-    h.ui.layout_engine.cache.clear();
+    h.engines.layout.cache.clear();
 
     let expected_modes = [
         LayoutMode::Leaf,
@@ -264,7 +261,7 @@ fn intrinsic_range_exactly_matches_separate_queries_for_every_driver() {
         LayoutMode::Grid(GridDefId::from_index(0)),
         LayoutMode::Scroll(ScrollSpec::VERTICAL),
     ];
-    let tree = &h.ui.forest.trees[Layer::Main];
+    let tree = h.ui.tree(Layer::Main);
     for expected in expected_modes {
         assert!(
             tree.records.layout().iter().any(|layout| {
@@ -275,40 +272,39 @@ fn intrinsic_range_exactly_matches_separate_queries_for_every_driver() {
         );
     }
 
-    let payloads = h.ui.forest.record_store.payloads.borrow();
+    let payloads = h.ui.payloads();
     let interned_text = payloads.interned_text();
     for idx in 0..tree.records.len() {
         let node = NodeId(idx as u32);
         let mode = LayoutMode::from(tree.records.layout()[idx].meta);
         for axis in [Axis::X, Axis::Y] {
-            h.ui.layout_engine
+            h.engines
+                .layout
                 .scratch
                 .intrinsics
                 .fill([f32::NAN; SLOT_COUNT]);
-            h.ui.layout_engine
-                .scratch
-                .counters
-                .reset_intrinsic_computes();
+            h.engines.layout.scratch.counters.reset_intrinsic_computes();
             let min =
-                h.ui.layout_engine
+                h.engines
+                    .layout
                     .intrinsic(tree, node, axis, LenReq::MinContent, &interned_text);
             let max =
-                h.ui.layout_engine
+                h.engines
+                    .layout
                     .intrinsic(tree, node, axis, LenReq::MaxContent, &interned_text);
-            let separate_computes = h.ui.layout_engine.scratch.counters.intrinsic_computes();
+            let separate_computes = h.engines.layout.scratch.counters.intrinsic_computes();
 
-            h.ui.layout_engine
+            h.engines
+                .layout
                 .scratch
                 .intrinsics
                 .fill([f32::NAN; SLOT_COUNT]);
-            h.ui.layout_engine
-                .scratch
-                .counters
-                .reset_intrinsic_computes();
-            let range =
-                h.ui.layout_engine
-                    .intrinsic_range(tree, node, axis, &interned_text);
-            let range_computes = h.ui.layout_engine.scratch.counters.intrinsic_computes();
+            h.engines.layout.scratch.counters.reset_intrinsic_computes();
+            let range = h
+                .engines
+                .layout
+                .intrinsic_range(tree, node, axis, &interned_text);
+            let range_computes = h.engines.layout.scratch.counters.intrinsic_computes();
 
             assert_eq!(range.min, min, "{mode:?} {axis:?} min-content");
             assert_eq!(range.max, max, "{mode:?} {axis:?} max-content");

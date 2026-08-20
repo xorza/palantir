@@ -88,7 +88,7 @@ fn fill_siblings_with_unequal_min_content_do_not_overflow_parent() {
                 .node();
         });
 
-        let row = h.ui.layout[Layer::Main].rect[row_node.idx()];
+        let row = h.ui.arranged_rect(Layer::Main, row_node);
         let left = h
             .layout_rect(WidgetId::from_hash("left"))
             .expect("arranged");

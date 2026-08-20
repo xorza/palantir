@@ -103,7 +103,9 @@ fn tooltip_breaks_long_tokens_inside_bubble() {
     );
     let bubble_id = WidgetId::from_hash("edge-trigger").with("bubble");
     let bubble = ui.ui.response_for(bubble_id).rect.expect("tooltip bubble");
-    let shaped = ui.ui.layout[Layer::Tooltip]
+    let shaped = ui
+        .ui
+        .layout(Layer::Tooltip)
         .text_shapes
         .first()
         .expect("tooltip text shaped");
@@ -118,7 +120,7 @@ fn tooltip_breaks_long_tokens_inside_bubble() {
 /// Record index of the bubble node carrying `id`, or `None` when no
 /// node in the tooltip layer has it.
 fn bubble_node(h: &UiHarness, id: WidgetId) -> Option<usize> {
-    h.ui.forest.trees[Layer::Tooltip]
+    h.ui.tree(Layer::Tooltip)
         .records
         .widget_id()
         .iter()
@@ -160,7 +162,7 @@ fn configure_reaches_the_bubble_and_explicit_id_beats_the_derived_one() {
 
     let derived = trigger_id.with("bubble");
     let index = bubble_node(&h, derived).expect("tooltip bubble node");
-    let tree = &h.ui.forest.trees[Layer::Tooltip];
+    let tree = h.ui.tree(Layer::Tooltip);
     assert_eq!(tree.records.layout()[index].padding, Spacing::ZERO);
     assert_eq!(tree.records.layout()[index].margin, Spacing::all(7.0));
     assert_eq!(tree.bounds(NodeId(index as u32)).max_size, Size::INF);
@@ -369,7 +371,7 @@ fn delay_gates_visibility() {
         "tooltip must become visible after delay (started_at={:?})",
         late.hover_started_at
     );
-    let tooltip_tree = &h.ui.forest.trees[Layer::Tooltip];
+    let tooltip_tree = h.ui.tree(Layer::Tooltip);
     assert!(
         tooltip_tree.records.len() > 1,
         "Tooltip layer must contain at least one recorded node",
@@ -515,7 +517,7 @@ fn tooltip_inside_popup_records_without_panic() {
 
     // The bubble records into the Tooltip layer — a root distinct from
     // the Popup layer it was raised inside.
-    let tooltip_tree = &h.ui.forest.trees[Layer::Tooltip];
+    let tooltip_tree = h.ui.tree(Layer::Tooltip);
     assert!(
         tooltip_tree.records.len() > 1,
         "Tooltip layer must contain the bubble recorded from inside the popup",

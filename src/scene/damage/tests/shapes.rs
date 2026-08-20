@@ -28,19 +28,19 @@ fn first_frame_marks_every_painting_node_dirty() {
     frame(&mut h, |ui| {
         one_frame(ui, BLUE);
     });
-    let painting = h.ui.cascade.layers[Layer::Main]
+    let painting = h.ui.cascade().layers[Layer::Main]
         .paint_arena
         .node_spans
         .iter()
         .filter(|s| s.len > 0)
         .count();
-    assert_eq!(h.ui.damage_engine.counters.dirty().len(), painting);
+    assert_eq!(h.engines.damage.counters.dirty().len(), painting);
     // First frame is `force_full`, so `compute` short-circuits to
     // `Damage::Full` after the structural diff — and the Vacant arm
     // skips its raw-rect pushes (the region would be discarded), so
     // the buffer stays empty and its retained capacity never balloons
     // to whole-tree size on the first frame or a resize storm.
-    assert!(h.ui.damage_engine.raw_rects.is_empty());
+    assert!(h.engines.damage.raw_rects.is_empty());
 }
 
 /// Pin: re-recording identical authoring → zero dirty nodes,
@@ -55,7 +55,7 @@ fn unchanged_authoring_produces_no_damage() {
     frame(&mut h, build);
     frame(&mut h, build);
 
-    assert!(h.ui.damage_engine.counters.dirty().is_empty());
+    assert!(h.engines.damage.counters.dirty().is_empty());
     assert!(h.damage_region().rects.is_empty());
     assert_eq!(Damage::new(h.collapsed_damage()), Damage::Skip,);
 }
@@ -73,10 +73,10 @@ fn fill_change_marks_only_the_changed_leaf() {
         one_frame(ui, RED);
     });
 
-    assert_eq!(h.ui.damage_engine.counters.dirty().len(), 1);
-    let dirty_id = h.ui.damage_engine.counters.dirty()[0];
+    assert_eq!(h.engines.damage.counters.dirty().len(), 1);
+    let dirty_id = h.engines.damage.counters.dirty()[0];
     assert_eq!(
-        h.ui.forest.trees[Layer::Main].records.widget_id()[dirty_id.idx()],
+        h.ui.tree(Layer::Main).records.widget_id()[dirty_id.idx()],
         WidgetId::from_hash("a")
     );
     // DamageEngine rect = Frame's rect (50x50 at (0,0)). Color change
@@ -84,7 +84,7 @@ fn fill_change_marks_only_the_changed_leaf() {
     // single rect.
     assert_eq!(
         h.damage_region().iter_rects().next(),
-        Some(h.ui.layout[Layer::Main].rect[dirty_id.idx()])
+        Some(h.ui.arranged_rect(Layer::Main, dirty_id))
     );
 }
 
@@ -121,13 +121,14 @@ fn sibling_reflow_marks_downstream_neighbor_dirty() {
 
     // `a` changed authoring (size). `b`'s authoring is unchanged
     // but its arranged x shifts from 50 → 80. Both are dirty.
-    let dirty_ids: Vec<WidgetId> =
-        h.ui.damage_engine
-            .counters
-            .dirty()
-            .iter()
-            .map(|n| h.ui.forest.trees[Layer::Main].records.widget_id()[n.idx()])
-            .collect();
+    let dirty_ids: Vec<WidgetId> = h
+        .engines
+        .damage
+        .counters
+        .dirty()
+        .iter()
+        .map(|n| h.ui.tree(Layer::Main).records.widget_id()[n.idx()])
+        .collect();
     assert!(dirty_ids.contains(&WidgetId::from_hash("a")));
     assert!(dirty_ids.contains(&WidgetId::from_hash("b")));
 }
@@ -148,10 +149,11 @@ fn removed_widget_contributes_prev_rect_to_damage() {
                     .show(ui);
             });
     });
-    let prev_button_rect =
-        h.ui.damage_engine
-            .prev_paint_rect(WidgetId::from_hash("gone"))
-            .expect("gone painted last frame");
+    let prev_button_rect = h
+        .engines
+        .damage
+        .prev_paint_rect(WidgetId::from_hash("gone"))
+        .expect("gone painted last frame");
 
     frame(&mut h, |ui| {
         Panel::hstack()
@@ -191,13 +193,14 @@ fn added_widget_contributes_curr_rect_to_damage() {
             });
     });
 
-    let dirty_ids: Vec<WidgetId> =
-        h.ui.damage_engine
-            .counters
-            .dirty()
-            .iter()
-            .map(|n| h.ui.forest.trees[Layer::Main].records.widget_id()[n.idx()])
-            .collect();
+    let dirty_ids: Vec<WidgetId> = h
+        .engines
+        .damage
+        .counters
+        .dirty()
+        .iter()
+        .map(|n| h.ui.tree(Layer::Main).records.widget_id()[n.idx()])
+        .collect();
     assert!(dirty_ids.contains(&WidgetId::from_hash("new")));
     assert!(!h.damage_region().rects.is_empty());
 }
@@ -244,11 +247,11 @@ fn button_hover_damage_covers_only_the_button() {
     build(&mut h, &mut hot_node, &mut cold_node);
     build(&mut h, &mut hot_node, &mut cold_node);
     assert!(
-        h.ui.damage_engine.counters.dirty().is_empty(),
+        h.engines.damage.counters.dirty().is_empty(),
         "off-button pointer should reach a no-diff steady state"
     );
 
-    let hot_rect = h.ui.layout[Layer::Main].rect[hot_node.unwrap().idx()];
+    let hot_rect = h.ui.arranged_rect(Layer::Main, hot_node.unwrap());
     let target = hot_rect.min + Vec2::new(5.0, 5.0);
 
     // Move pointer onto the hot button. The *next* post_record computes
@@ -261,13 +264,13 @@ fn button_hover_damage_covers_only_the_button() {
     build(&mut h, &mut hot_node, &mut cold_node);
 
     assert_eq!(
-        h.ui.damage_engine.counters.dirty().len(),
+        h.engines.damage.counters.dirty().len(),
         1,
         "only the hovered button should be dirty"
     );
-    let dirty_id = h.ui.damage_engine.counters.dirty()[0];
+    let dirty_id = h.engines.damage.counters.dirty()[0];
     assert_eq!(
-        h.ui.forest.trees[Layer::Main].records.widget_id()[dirty_id.idx()],
+        h.ui.tree(Layer::Main).records.widget_id()[dirty_id.idx()],
         WidgetId::from_hash("hot"),
     );
     assert_eq!(h.damage_region().iter_rects().next(), Some(hot_rect));
@@ -280,7 +283,7 @@ fn button_hover_damage_covers_only_the_button() {
     // Next frame at same cursor → no diff (settled).
     build(&mut h, &mut hot_node, &mut cold_node);
     assert!(
-        h.ui.damage_engine.counters.dirty().is_empty(),
+        h.engines.damage.counters.dirty().is_empty(),
         "settled hover should produce no further damage"
     );
 }
@@ -317,22 +320,21 @@ fn button_unhover_damage_covers_only_the_button() {
 
     // Settle two frames with cursor over the hot button.
     build(&mut h, &mut hot_node, &mut cold_node);
-    let hot_rect = h.ui.layout[Layer::Main].rect[hot_node.unwrap().idx()];
+    let hot_rect = h.ui.arranged_rect(Layer::Main, hot_node.unwrap());
     h.move_to(hot_rect.min + Vec2::new(5.0, 5.0));
     build(&mut h, &mut hot_node, &mut cold_node);
     build(&mut h, &mut hot_node, &mut cold_node);
     assert!(
-        h.ui.damage_engine.counters.dirty().is_empty(),
+        h.engines.damage.counters.dirty().is_empty(),
         "settled hover"
     );
 
     // Pointer leaves the button.
     h.move_to(Vec2::new(380.0, 380.0));
     build(&mut h, &mut hot_node, &mut cold_node);
-    assert_eq!(h.ui.damage_engine.counters.dirty().len(), 1);
+    assert_eq!(h.engines.damage.counters.dirty().len(), 1);
     assert_eq!(
-        h.ui.forest.trees[Layer::Main].records.widget_id()
-            [h.ui.damage_engine.counters.dirty()[0].idx()],
+        h.ui.tree(Layer::Main).records.widget_id()[h.engines.damage.counters.dirty()[0].idx()],
         WidgetId::from_hash("hot"),
     );
     assert_eq!(h.damage_region().iter_rects().next(), Some(hot_rect));
@@ -369,11 +371,13 @@ fn node_snapshot_decomposition_matches_cascade() {
             });
     });
 
-    let snap = h.ui.damage_engine.prev[&WidgetId::from_hash("multi")];
+    let snap = h.engines.damage.prev[&WidgetId::from_hash("multi")];
     let layer = Layer::Main;
-    let node_idx = h.ui.cascade.by_id[&WidgetId::from_hash("multi")].node.idx();
-    let node_span = h.ui.cascade.layers[layer].paint_arena.node_spans[node_idx];
-    let layer_paints = &h.ui.cascade.layers[layer].paint_arena.rows;
+    let node_idx = h.ui.cascade().by_id[&WidgetId::from_hash("multi")]
+        .node
+        .idx();
+    let node_span = h.ui.cascade().layers[layer].paint_arena.node_spans[node_idx];
+    let layer_paints = &h.ui.cascade().layers[layer].paint_arena.rows;
 
     // Chrome lands at row 0 of the node's paint span when present.
     let chrome_paint = layer_paints[node_span.start as usize];
@@ -383,7 +387,7 @@ fn node_snapshot_decomposition_matches_cascade() {
     );
 
     // Snapshot mirrors the cascade arena slice.
-    let snap_paints = &h.ui.damage_engine.paints.slots[snap.paint_span.range()];
+    let snap_paints = &h.engines.damage.paints.slots[snap.paint_span.range()];
     assert_eq!(snap_paints.len(), 3, "chrome + 2 direct shapes ⇒ 3 rows");
     let cascade_paints = &layer_paints[node_span.range()];
     for (ord, p) in snap_paints.iter().enumerate() {
@@ -399,7 +403,7 @@ fn node_snapshot_decomposition_matches_cascade() {
 
     // The force-full first frame skips the Vacant pushes (its region
     // is discarded) — the buffer stays empty.
-    assert!(h.ui.damage_engine.raw_rects.is_empty());
+    assert!(h.engines.damage.raw_rects.is_empty());
 
     // A widget added on an *incremental* frame hits the same Vacant
     // arm with the pushes live: one rect per paint row (chrome + each
@@ -433,16 +437,16 @@ fn node_snapshot_decomposition_matches_cascade() {
             })
             .show(ui, |ui| two_lines(ui));
     });
-    let snap2 = h.ui.damage_engine.prev[&WidgetId::from_hash("multi2")];
-    let snap2_paints = &h.ui.damage_engine.paints.slots[snap2.paint_span.range()];
+    let snap2 = h.engines.damage.prev[&WidgetId::from_hash("multi2")];
+    let snap2_paints = &h.engines.damage.paints.slots[snap2.paint_span.range()];
     assert_eq!(
-        h.ui.damage_engine.raw_rects.len(),
+        h.engines.damage.raw_rects.len(),
         3,
         "incremental Vacant insert pushes one rect per paint row",
     );
-    assert_eq!(h.ui.damage_engine.raw_rects[0], snap2_paints[0].screen);
-    assert_eq!(h.ui.damage_engine.raw_rects[1], snap2_paints[1].screen);
-    assert_eq!(h.ui.damage_engine.raw_rects[2], snap2_paints[2].screen);
+    assert_eq!(h.engines.damage.raw_rects[0], snap2_paints[0].screen);
+    assert_eq!(h.engines.damage.raw_rects[1], snap2_paints[1].screen);
+    assert_eq!(h.engines.damage.raw_rects[2], snap2_paints[2].screen);
 }
 
 /// Slice 4 headline: a multi-shape owner whose shapes are spatially
@@ -489,7 +493,7 @@ fn per_shape_damage_only_pushes_changed_shapes() {
     frame(&mut h, |ui| build(120.0, ui));
     frame(&mut h, |ui| build(120.0, ui));
     assert!(
-        h.ui.damage_engine.counters.dirty().is_empty(),
+        h.engines.damage.counters.dirty().is_empty(),
         "steady frame must produce no diff"
     );
 
@@ -498,22 +502,22 @@ fn per_shape_damage_only_pushes_changed_shapes() {
     // the damage region. Chrome (canvas background) is unchanged in
     // geometry AND authoring → no chrome push. Shapes 0 and 1 are
     // bit-identical → no push.
-    let prev_snap = h.ui.damage_engine.prev[&WidgetId::from_hash("canvas")];
-    let prev_arena_len = h.ui.damage_engine.paints.slots.len();
+    let prev_snap = h.engines.damage.prev[&WidgetId::from_hash("canvas")];
+    let prev_arena_len = h.engines.damage.paints.slots.len();
     // paint_snaps row 0 is chrome; shapes follow at offset 1.
     let prev_shape2_rect =
-        h.ui.damage_engine.paints.slots[prev_snap.paint_span.range()][1 + 2].screen;
+        h.engines.damage.paints.slots[prev_snap.paint_span.range()][1 + 2].screen;
     frame(&mut h, |ui| build(140.0, ui));
 
-    let canvas_snap = h.ui.damage_engine.prev[&WidgetId::from_hash("canvas")];
+    let canvas_snap = h.engines.damage.prev[&WidgetId::from_hash("canvas")];
     let curr_shape2_rect =
-        h.ui.damage_engine.paints.slots[canvas_snap.paint_span.range()][1 + 2].screen;
+        h.engines.damage.paints.slots[canvas_snap.paint_span.range()][1 + 2].screen;
     assert_eq!(
         canvas_snap.paint_span, prev_snap.paint_span,
         "same-count paint changes must refresh the existing arena span",
     );
     assert_eq!(
-        h.ui.damage_engine.paints.slots.len(),
+        h.engines.damage.paints.slots.len(),
         prev_arena_len,
         "an in-place refresh must not touch the allocator at all",
     );
@@ -572,8 +576,8 @@ fn chrome_authoring_change_pushes_chrome_paint_row() {
     };
     frame(&mut h, |ui| build(BLUE, ui));
     frame(&mut h, |ui| build(BLUE, ui)); // settle
-    let snap = h.ui.damage_engine.prev[&WidgetId::from_hash("c")];
-    let snap_rect = h.ui.damage_engine.paints.slots[snap.paint_span.start as usize].screen;
+    let snap = h.engines.damage.prev[&WidgetId::from_hash("c")];
+    let snap_rect = h.engines.damage.paints.slots[snap.paint_span.start as usize].screen;
 
     frame(&mut h, |ui| build(RED, ui));
     let region = h.damage_region();
@@ -611,14 +615,14 @@ fn chrome_only_owner_has_nonzero_paint_span() {
     frame(&mut h, build); // settle prev
 
     let wid = WidgetId::from_hash("chrome_only");
-    let snap = h.ui.damage_engine.prev[&wid];
+    let snap = h.engines.damage.prev[&wid];
     assert_eq!(
         snap.paint_span.len, 1,
         "chrome-only owner must contribute exactly one Paint row (chrome)",
     );
 
     // Every entry in `prev` covers at least one row.
-    for (k, s) in &h.ui.damage_engine.prev {
+    for (k, s) in &h.engines.damage.prev {
         assert!(
             s.paint_span.len > 0,
             "prev entry {k:?} has zero-len paint_span, violating painting-only invariant",
@@ -687,7 +691,7 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
     frame(&mut h, |ui| build("abc", ui));
     frame(&mut h, |ui| build("abc", ui));
     assert!(
-        h.ui.damage_engine.counters.dirty().is_empty(),
+        h.engines.damage.counters.dirty().is_empty(),
         "steady frame must produce no diff"
     );
 
@@ -699,8 +703,8 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
     // `text_paint_bbox_local`. Expected shaped size scales by the
     // same factor.
     let inflate = 1.0 + TEXT_SCALE_STEP;
-    let prev_snap = h.ui.damage_engine.prev[&leaf_id];
-    let prev_text_rect = h.ui.damage_engine.paints.slots[prev_snap.paint_span.range()][0].screen;
+    let prev_snap = h.engines.damage.prev[&leaf_id];
+    let prev_text_rect = h.engines.damage.paints.slots[prev_snap.paint_span.range()][0].screen;
     let prev_size_short: Size = Size::new(FONT * 0.5 * 3.0 * inflate, FONT * inflate);
     assert!(
         (prev_text_rect.size.w - prev_size_short.w).abs() < 0.5
@@ -710,8 +714,8 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
 
     frame(&mut h, |ui| build("abcdef", ui));
 
-    let curr_snap = h.ui.damage_engine.prev[&leaf_id];
-    let curr_text_rect = h.ui.damage_engine.paints.slots[curr_snap.paint_span.range()][0].screen;
+    let curr_snap = h.engines.damage.prev[&leaf_id];
+    let curr_text_rect = h.engines.damage.paints.slots[curr_snap.paint_span.range()][0].screen;
     let curr_size_long: Size = Size::new(FONT * 0.5 * 6.0 * inflate, FONT * inflate);
     assert!(
         (curr_text_rect.size.w - curr_size_long.w).abs() < 0.5

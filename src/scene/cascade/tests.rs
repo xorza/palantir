@@ -25,8 +25,8 @@ use glam::{UVec2, Vec2};
 /// Screen rect of the first paint row for the widget keyed by
 /// `WidgetId::from_hash(key)` on `Layer::Main`.
 fn first_paint_screen(ui: &Ui, key: &str) -> Rect {
-    let node = ui.cascade.by_id[&WidgetId::from_hash(key)].node;
-    let arena = &ui.cascade.layers[Layer::Main].paint_arena;
+    let node = ui.cascade().by_id[&WidgetId::from_hash(key)].node;
+    let arena = &ui.cascade().layers[Layer::Main].paint_arena;
     let span = arena.node_spans[node.idx()];
     arena.rows[span.start as usize].screen
 }
@@ -278,7 +278,7 @@ fn node_spans_rows_mirror_chrome_and_children() {
     });
 
     let layer = Layer::Main;
-    let cascade = &h.ui.cascade;
+    let cascade = h.ui.cascade();
     let arena = &cascade.layers[layer].paint_arena;
     let chrome_idx = cascade.by_id[&WidgetId::from_hash("chrome")].node.idx();
     let bare_idx = cascade.by_id[&WidgetId::from_hash("bare")].node.idx();
@@ -338,8 +338,8 @@ fn per_node_columns_track_tree_size() {
                 });
         });
         let layer = Layer::Main;
-        let nodes = h.ui.forest.trees[layer].records.len();
-        let cascade = &h.ui.cascade.layers[layer];
+        let nodes = h.ui.tree(layer).records.len();
+        let cascade = &h.ui.cascade().layers[layer];
         assert_eq!(cascade.cascade_inputs.len(), nodes);
         assert_eq!(cascade.subtree_paint_rects.len(), nodes);
         assert_eq!(cascade.subtree_ends.len(), nodes);
@@ -464,8 +464,8 @@ fn non_painting_sibling_does_not_origin_anchor_subtree_rollup() {
                 .show(ui);
         });
     });
-    let ep = h.ui.cascade.by_id[&row];
-    let rollup = h.ui.cascade.layers[ep.layer].subtree_paint_rects[ep.node.idx()];
+    let ep = h.ui.cascade().by_id[&row];
+    let rollup = h.ui.cascade().layers[ep.layer].subtree_paint_rects[ep.node.idx()];
     assert_eq!(
         rollup,
         Rect::new(50.0, 0.0, 50.0, 50.0),
@@ -520,7 +520,7 @@ fn hits_track_only_sensing_or_focusable_rows_in_paint_order() {
     // `hits` is interactive-rows-only, in paint order, and carries its
     // own geometry — so identity is all that needs asserting here.
     assert_eq!(
-        h.ui.cascade
+        h.ui.cascade()
             .hits
             .iter()
             .map(|r| r.widget_id)
@@ -528,14 +528,14 @@ fn hits_track_only_sensing_or_focusable_rows_in_paint_order() {
         [hover, focus, popup_scroll],
     );
     let pos = Vec2::splat(50.0);
-    assert_eq!(h.ui.cascade.hit_test(pos, Sense::hovers), Some(hover),);
-    assert_eq!(h.ui.cascade.hit_test(pos, Sense::clicks), None);
+    assert_eq!(h.ui.cascade().hit_test(pos, Sense::hovers), Some(hover),);
+    assert_eq!(h.ui.cascade().hit_test(pos, Sense::clicks), None);
     // One walk must agree with the two separate filters above it: the
     // press path resolves both from a single scan.
-    let press = h.ui.cascade.hit_test_press(pos);
+    let press = h.ui.cascade().hit_test_press(pos);
     assert_eq!(press.focus, Some(focus));
     assert_eq!(press.click, None);
-    let targets = h.ui.cascade.hit_test_targets(pos);
+    let targets = h.ui.cascade().hit_test_targets(pos);
     assert_eq!(targets.hover, Some(hover));
     assert_eq!(targets.scroll, Some(popup_scroll));
     assert_eq!(targets.pinch, None);
@@ -543,7 +543,7 @@ fn hits_track_only_sensing_or_focusable_rows_in_paint_order() {
     h.frame(|ui| {
         Frame::new().id(inert).size(Sizing::FILL).show(ui);
     });
-    assert_eq!(h.ui.cascade.hits.len(), 0);
+    assert_eq!(h.ui.cascade().hits.len(), 0);
     assert_eq!(
         h.ui.response_for(inert).layout_rect,
         Some(Rect::new(0.0, 0.0, 100.0, 100.0)),
@@ -557,22 +557,22 @@ fn assert_cascades_match_full(ui: &Ui, label: &str) {
 
     let mut engine = CascadeEngine::default();
     let mut full = Cascade::default();
-    engine.run_full(&ui.forest, &ui.layout, ui.display, &mut full);
+    engine.run_full(ui.forest(), ui.layout_tables(), ui.display(), &mut full);
 
     // Whole-row compares: `entries` / `hits` are AoS and `PartialEq`,
     // so this covers every field and keeps covering any field added
     // later — the previous column-by-column form silently skipped new
     // ones.
-    assert_eq!(ui.cascade.entries, full.entries, "{label}");
-    assert_eq!(ui.cascade.hits, full.hits, "{label}");
+    assert_eq!(ui.cascade().entries, full.entries, "{label}");
+    assert_eq!(ui.cascade().hits, full.hits, "{label}");
 
     let mut id_count = 0;
     for layer in Layer::PAINT_ORDER {
-        let widget_ids = ui.forest.trees[layer].records.widget_id();
+        let widget_ids = ui.tree(layer).records.widget_id();
         id_count += widget_ids.len();
         for (index, wid) in widget_ids.iter().copied().enumerate() {
             assert_eq!(
-                ui.cascade.by_id[&wid],
+                ui.cascade().by_id[&wid],
                 Endpoint {
                     layer,
                     node: NodeId(index as u32),
@@ -580,7 +580,7 @@ fn assert_cascades_match_full(ui: &Ui, label: &str) {
                 "{label}: {layer:?} by-id endpoint"
             );
         }
-        let actual = &ui.cascade.layers[layer];
+        let actual = &ui.cascade().layers[layer];
         let expected = &full.layers[layer];
         assert_eq!(
             actual.cascade_inputs, expected.cascade_inputs,
@@ -615,7 +615,7 @@ fn assert_cascades_match_full(ui: &Ui, label: &str) {
             "{label}: {layer:?} entry base"
         );
     }
-    assert_eq!(ui.cascade.by_id.len(), id_count, "{label}: by-id length");
+    assert_eq!(ui.cascade().by_id.len(), id_count, "{label}: by-id length");
 }
 
 fn assert_incremental_case(label: &str, base: impl Fn(&mut Ui), changed: impl Fn(&mut Ui)) {
@@ -845,12 +845,12 @@ fn rect_hash_tracks_geometry_and_ignores_paint() {
 
     let mut h = UiHarness::new(UVec2::splat(300));
     h.frame(build(50.0, Color::rgb(1.0, 0.0, 0.0)));
-    let base = h.ui.layout[Layer::Main].rect_hash();
+    let base = h.ui.layout(Layer::Main).rect_hash();
 
     // Same geometry, same paint — a rebuild of an identical frame.
     h.frame(build(50.0, Color::rgb(1.0, 0.0, 0.0)));
     assert_eq!(
-        h.ui.layout[Layer::Main].rect_hash(),
+        h.ui.layout(Layer::Main).rect_hash(),
         base,
         "an identical frame must hash equal, or the cascade never takes its incremental path",
     );
@@ -859,14 +859,14 @@ fn rect_hash_tracks_geometry_and_ignores_paint() {
     // to retain its rows and repair paint only.
     h.frame(build(50.0, Color::rgb(0.0, 1.0, 0.0)));
     assert_eq!(
-        h.ui.layout[Layer::Main].rect_hash(),
+        h.ui.layout(Layer::Main).rect_hash(),
         base,
         "a paint-only change must not move the rect hash",
     );
 
     // Geometry moved — the one case that must invalidate.
     h.frame(build(80.0, Color::rgb(1.0, 0.0, 0.0)));
-    let moved = h.ui.layout[Layer::Main].rect_hash();
+    let moved = h.ui.layout(Layer::Main).rect_hash();
     assert_ne!(
         moved, base,
         "a resized child must move the rect hash, or a stale cascade survives relayout",
@@ -876,7 +876,7 @@ fn rect_hash_tracks_geometry_and_ignores_paint() {
     // going back to the original size returns the original hash.
     h.frame(build(50.0, Color::rgb(1.0, 0.0, 0.0)));
     assert_eq!(
-        h.ui.layout[Layer::Main].rect_hash(),
+        h.ui.layout(Layer::Main).rect_hash(),
         base,
         "the hash must be a pure function of the arranged rects",
     );
@@ -903,7 +903,7 @@ fn hit_rows_carry_the_entry_rect() {
             });
     });
 
-    let cascade = &h.ui.cascade;
+    let cascade = h.ui.cascade();
     assert!(!cascade.hits.is_empty(), "expected interactive rows");
     for row in &cascade.hits {
         let entry_idx = cascade
@@ -946,18 +946,18 @@ fn adding_a_shape_skips_the_doomed_incremental_walk() {
 
     let mut h = UiHarness::new(UVec2::new(200, 200));
     h.frame(|ui| build(ui, false));
-    let baseline = h.ui.cascade_engine.counters.abandoned_incrementals();
+    let baseline = h.engines.cascade.counters.abandoned_incrementals();
 
     h.frame(|ui| build(ui, true));
     assert_eq!(
-        h.ui.cascade_engine.counters.abandoned_incrementals(),
+        h.engines.cascade.counters.abandoned_incrementals(),
         baseline,
         "a row-count change must be caught by `can_update`, not discovered mid-walk",
     );
 
     // And the cascade it produced is still right: the host now owns two
     // shape rows where it owned one.
-    let rows = h.ui.cascade.layers[Layer::Main]
+    let rows = h.ui.cascade().layers[Layer::Main]
         .paint_arena
         .node_spans
         .iter()
@@ -1030,24 +1030,24 @@ fn every_cascade_input_busts_both_reuse_gates() {
     for &(label, mutate) in mutations {
         let mut h = UiHarness::new(UVec2::new(200, 200));
         h.frame(|ui| scene(ui, 100.0, false));
-        let base_fp = cascade_fingerprint(&h.ui.forest, h.ui.display);
-        let rebuilds = h.ui.cascade_engine.counters.full_rebuilds();
-        let abandoned = h.ui.cascade_engine.counters.abandoned_incrementals();
+        let base_fp = cascade_fingerprint(h.ui.forest(), h.ui.display());
+        let rebuilds = h.engines.cascade.counters.full_rebuilds();
+        let abandoned = h.engines.cascade.counters.abandoned_incrementals();
 
         mutate(&mut h);
 
         assert_ne!(
             base_fp,
-            cascade_fingerprint(&h.ui.forest, h.ui.display),
+            cascade_fingerprint(h.ui.forest(), h.ui.display()),
             "`{label}` left the fingerprint unmoved — the frame would reuse a stale cascade",
         );
         assert!(
-            h.ui.cascade_engine.counters.full_rebuilds() > rebuilds,
+            h.engines.cascade.counters.full_rebuilds() > rebuilds,
             "`{label}` did not force a full rebuild — `can_update` kept columns \
              that no longer describe the frame",
         );
         assert_eq!(
-            h.ui.cascade_engine.counters.abandoned_incrementals(),
+            h.engines.cascade.counters.abandoned_incrementals(),
             abandoned,
             "`{label}` should be caught by `can_update`, not discovered mid-walk",
         );
@@ -1057,16 +1057,16 @@ fn every_cascade_input_busts_both_reuse_gates() {
     // assertions above would hold for any frame at all.
     let mut h = UiHarness::new(UVec2::new(200, 200));
     h.frame(|ui| scene(ui, 100.0, false));
-    let base_fp = cascade_fingerprint(&h.ui.forest, h.ui.display);
-    let rebuilds = h.ui.cascade_engine.counters.full_rebuilds();
+    let base_fp = cascade_fingerprint(h.ui.forest(), h.ui.display());
+    let rebuilds = h.engines.cascade.counters.full_rebuilds();
     h.frame(|ui| scene(ui, 100.0, false));
     assert_eq!(
         base_fp,
-        cascade_fingerprint(&h.ui.forest, h.ui.display),
+        cascade_fingerprint(h.ui.forest(), h.ui.display()),
         "an unchanged frame must keep its fingerprint",
     );
     assert_eq!(
-        h.ui.cascade_engine.counters.full_rebuilds(),
+        h.engines.cascade.counters.full_rebuilds(),
         rebuilds,
         "an unchanged frame must not rebuild",
     );

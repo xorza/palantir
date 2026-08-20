@@ -105,7 +105,7 @@ fn ed_id() -> WidgetId {
 /// Taken off the tree rather than off a name the caller passes, so a test that
 /// records its field under some other id needs to say nothing about it.
 fn block_at(ui: &Ui, field: NodeId) -> glam::Vec2 {
-    let tree = &ui.forest.trees[Layer::Main];
+    let tree = ui.tree(Layer::Main);
     let of = |node: NodeId| {
         ui.response_for(tree.records.widget_id()[node.idx()])
             .layout_rect
@@ -122,7 +122,7 @@ fn block_at(ui: &Ui, field: NodeId) -> glam::Vec2 {
 fn shape_origins(ui: &Ui, node: NodeId) -> (Option<glam::Vec2>, Option<glam::Vec2>) {
     let at = block_at(ui, node);
     let block = block_of(ui, node);
-    let tree = &ui.forest.trees[Layer::Main];
+    let tree = ui.tree(Layer::Main);
     let mut text_origin = None;
     let mut caret_origin = None;
     for s in tree.shapes_of(block) {
@@ -398,16 +398,17 @@ fn selection_rects_offset_matches_text() {
     // first rounded rect with a `local_rect` in the block's stream.
     let at = block_at(&h.ui, node);
     let block = block_of(&h.ui, node);
-    let first_rounded = h.ui.forest.trees[Layer::Main]
-        .shapes_of(block)
-        .find_map(|s| match s {
-            ShapeRecord::Quad(QuadShape::Rect {
-                kind: RectKind::Rounded,
-                local_rect,
-                ..
-            }) => *local_rect,
-            _ => None,
-        });
+    let first_rounded =
+        h.ui.tree(Layer::Main)
+            .shapes_of(block)
+            .find_map(|s| match s {
+                ShapeRecord::Quad(QuadShape::Rect {
+                    kind: RectKind::Rounded,
+                    local_rect,
+                    ..
+                }) => *local_rect,
+                _ => None,
+            });
     let r = first_rounded.expect("selection wash rect present");
     let dx = ALIGN_W - TEXT_W_4CH;
     assert!(
@@ -471,8 +472,7 @@ mod per_line {
             .iter()
             .map(|&halign| {
                 ui.ui
-                    .resources
-                    .text
+                    .shaper()
                     .cursor_xy(text, text.len(), shape(300.0, halign))
                     .x
             })
@@ -485,11 +485,7 @@ mod per_line {
             );
         }
         // …and it is the run's own width, not the wrap target.
-        let measured = ui
-            .ui
-            .resources
-            .text
-            .measure(text, shape(300.0, HAlign::Right));
+        let measured = ui.ui.shaper().measure(text, shape(300.0, HAlign::Right));
         assert!(
             (xs[0] - measured.measured.w).abs() <= 1.0,
             "end-of-line caret {} must sit at the block's right edge {}",
@@ -514,15 +510,13 @@ mod per_line {
         let wrap = 300.0;
         let block = ui
             .ui
-            .resources
-            .text
+            .shaper()
             .measure(text, shape(wrap, HAlign::Right))
             .measured
             .w;
         let caret = |halign| {
             ui.ui
-                .resources
-                .text
+                .shaper()
                 .cursor_xy(text, text.len(), shape(wrap, halign))
                 .x
         };
@@ -588,12 +582,7 @@ mod per_line {
     fn an_empty_buffer_caret_is_at_the_block_origin() {
         let ui = cosmic_ui();
         for halign in ALL {
-            let x = ui
-                .ui
-                .resources
-                .text
-                .cursor_xy("", 0, shape(300.0, halign))
-                .x;
+            let x = ui.ui.shaper().cursor_xy("", 0, shape(300.0, halign)).x;
             assert!(x.abs() < 1e-3, "{halign:?} empty caret must be 0, got {x}");
         }
     }
@@ -723,7 +712,7 @@ mod per_line {
         // on the node; a multi-line field emits a single text shape, and
         // records it on the block child that carries its alignment.
         let node = block_of(&h.ui, node.unwrap());
-        let main = &h.ui.layout[Layer::Main];
+        let main = h.ui.layout(Layer::Main);
         let span = main.text_spans[node.idx()];
         assert_eq!(span.len, 1, "one Shape::Text expected on the block");
         let shaped = main.text_shapes[span.start as usize];
@@ -775,16 +764,16 @@ mod per_line {
         // is primed.
         h.frame(&mut record);
         h.frame(&mut record);
-        let a = h.ui.resources.text.measure_calls();
+        let a = h.ui.shaper().measure_calls();
         h.frame(&mut record);
-        let b = h.ui.resources.text.measure_calls();
+        let b = h.ui.shaper().measure_calls();
         let per_frame = b - a;
         // Drive several more frames with identical inputs and verify
         // each one costs exactly the same number of `measure_calls`.
         for i in 0..5 {
-            let before = h.ui.resources.text.measure_calls();
+            let before = h.ui.shaper().measure_calls();
             h.frame(&mut record);
-            let after = h.ui.resources.text.measure_calls();
+            let after = h.ui.shaper().measure_calls();
             assert_eq!(
                 after - before,
                 per_frame,
@@ -829,10 +818,10 @@ mod per_line {
         h.frame(&mut record);
         let node = node.unwrap();
         // (a) `Shape::Text.align` reflects the user's text_align.
-        let payloads = h.ui.forest.record_store.payloads.borrow();
+        let payloads = h.ui.payloads();
         let interned_text = payloads.interned_text();
         let node = block_of(&h.ui, node);
-        let tree = &h.ui.forest.trees[Layer::Main];
+        let tree = h.ui.tree(Layer::Main);
         let shape_align = tree.shapes_of(node).find_map(|s| match s {
             ShapeRecord::Text { align, text, .. } => {
                 Some((*align, text.source.resolve(&interned_text).to_owned()))
@@ -846,7 +835,7 @@ mod per_line {
             "rendered text must be the placeholder, got {shape_text:?}",
         );
         // (b) + (c) cached buffer key.
-        let main = &h.ui.layout[Layer::Main];
+        let main = h.ui.layout(Layer::Main);
         let span = main.text_spans[node.idx()];
         assert_eq!(span.len, 1, "one Shape::Text expected on the block");
         let shaped = main.text_shapes[span.start as usize];
@@ -886,14 +875,12 @@ mod per_line {
         // wrap target = inner width = 300 - 2*5 = 290.
         let wrap = 290.0;
         let block =
-            h.ui.resources
-                .text
+            h.ui.shaper()
                 .measure(&buf, shape(wrap, HAlign::Right))
                 .measured
                 .w;
         let caret_short =
-            h.ui.resources
-                .text
+            h.ui.shaper()
                 .cursor_xy(&buf, 5, shape(wrap, HAlign::Right))
                 .x;
         // "short" is the narrow line, so right-align carries its caret to

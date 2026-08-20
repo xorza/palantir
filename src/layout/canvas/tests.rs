@@ -24,7 +24,7 @@ fn canvas_places_child_at_position_within_inner_rect() {
             .response
             .node()
     });
-    let panel_rect = h.ui.layout[Layer::Main].rect[panel.idx()];
+    let panel_rect = h.ui.arranged_rect(Layer::Main, panel);
     let kids: Vec<_> = h.main_child_rects(panel);
     let a = kids[0];
     assert_eq!(a.min.x - panel_rect.min.x, 40.0);
@@ -55,7 +55,7 @@ fn canvas_hugs_to_bounding_box_of_placed_children() {
             .response
             .node()
     });
-    let r = h.ui.layout[Layer::Main].rect[panel.idx()];
+    let r = h.ui.arranged_rect(Layer::Main, panel);
     // bbox = max(pos + desired) per axis: 50+20=70, 60+20=80
     assert_eq!(r.size.w, 70.0);
     assert_eq!(r.size.h, 80.0);
@@ -87,7 +87,7 @@ fn canvas_fill_canvas_positioned_overflow_does_not_grow_bbox() {
             .response
             .node()
     });
-    let r = h.ui.layout[Layer::Main].rect[panel.idx()];
+    let r = h.ui.arranged_rect(Layer::Main, panel);
     // FILL canvas in a 200×200 outer: stays at 200×200 regardless of
     // the child's position. Pre-fix this was 860×200 (700 + 160).
     assert_eq!(
@@ -125,7 +125,7 @@ fn canvas_negative_position_does_not_extend_bbox() {
             .response
             .node()
     });
-    let r = h.ui.layout[Layer::Main].rect[panel.idx()];
+    let r = h.ui.arranged_rect(Layer::Main, panel);
     // pos + desired = (15, 15) per axis.
     assert_eq!(r.size.w, 15.0);
     assert_eq!(r.size.h, 15.0);
@@ -199,7 +199,7 @@ fn canvas_collapsed_child_does_not_grow_bbox() {
             .response
             .node()
     });
-    let r = h.ui.layout[Layer::Main].rect[panel.idx()];
+    let r = h.ui.arranged_rect(Layer::Main, panel);
     assert_eq!(r.size.w, 10.0);
     assert_eq!(r.size.h, 10.0);
 }
