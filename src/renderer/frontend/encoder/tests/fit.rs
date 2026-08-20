@@ -20,22 +20,22 @@ use glam::{UVec2, Vec2};
 #[test]
 fn image_fit_modes_resolve_to_expected_rects_and_uv() {
     use crate::ImageFit;
-    use crate::renderer::frontend::encoder::resolve_fit;
+    use crate::renderer::frontend::encoder::geometry;
     use glam::Vec2;
 
     let base = Rect::new(0.0, 0.0, 200.0, 200.0);
     let img = Vec2::new(100.0, 50.0);
 
-    let r = resolve_fit(base, img, ImageFit::Fill);
+    let r = geometry::resolve_fit(base, img, ImageFit::Fill);
     assert_eq!(r.rect, base);
     assert_eq!(r.uv_min, Vec2::ZERO);
     assert_eq!(r.uv_size, Vec2::ONE);
 
-    let r = resolve_fit(base, img, ImageFit::Contain);
+    let r = geometry::resolve_fit(base, img, ImageFit::Contain);
     assert_eq!(r.rect, Rect::new(0.0, 50.0, 200.0, 100.0));
     assert_eq!(r.uv_size, Vec2::ONE);
 
-    let r = resolve_fit(base, img, ImageFit::Cover);
+    let r = geometry::resolve_fit(base, img, ImageFit::Cover);
     assert_eq!(r.rect, base);
     // 200×200 paint rect over a 400×200 scaled image → keep 0.5 of the
     // width centered; full height. UVs sample the centered band.
@@ -44,18 +44,18 @@ fn image_fit_modes_resolve_to_expected_rects_and_uv() {
     assert!((r.uv_min.x - 0.25).abs() < 1e-5);
     assert!((r.uv_min.y - 0.0).abs() < 1e-5);
 
-    let r = resolve_fit(base, img, ImageFit::None);
+    let r = geometry::resolve_fit(base, img, ImageFit::None);
     assert_eq!(r.rect, Rect::new(50.0, 75.0, 100.0, 50.0));
     assert_eq!(r.uv_size, Vec2::ONE);
 
     // Missing registry entry → falls through to base + full UV.
-    let r = resolve_fit(base, Vec2::ZERO, ImageFit::Contain);
+    let r = geometry::resolve_fit(base, Vec2::ZERO, ImageFit::Contain);
     assert_eq!(r.rect, base);
     assert_eq!(r.uv_size, Vec2::ONE);
 
     // Tile: raw caller UV, full rect, intrinsic size ignored. `scale`
     // (3×2 repeats) → uv_size; `offset` (0.5, 0.25) → uv_min.
-    let r = resolve_fit(
+    let r = geometry::resolve_fit(
         base,
         img,
         ImageFit::Tile {
@@ -139,21 +139,21 @@ fn downsample_modes_encode_to_distinct_tap_flags() {
 /// vertically; `Fill` takes the rect whole; `None` paints 24x12 centred.
 #[test]
 fn icon_fit_resolves_to_hand_computed_rects() {
-    use crate::renderer::frontend::encoder::resolve_icon_fit;
+    use crate::renderer::frontend::encoder::geometry;
     use crate::shape::icon::IconFit;
 
     let base = Rect::new(10.0, 20.0, 100.0, 100.0);
     let art = Vec2::new(24.0, 12.0);
 
     // scale = 100/24 = 4.1666667 → 100 x 50, dy = (100 - 50)/2 = 25.
-    let contained = resolve_icon_fit(base, art, IconFit::Contain);
+    let contained = geometry::resolve_icon_fit(base, art, IconFit::Contain);
     assert_eq!(contained.min, Vec2::new(10.0, 45.0));
     assert_eq!((contained.size.w, contained.size.h), (100.0, 50.0));
 
-    assert_eq!(resolve_icon_fit(base, art, IconFit::Fill), base);
+    assert_eq!(geometry::resolve_icon_fit(base, art, IconFit::Fill), base);
 
     // Intrinsic px, centred: dx = (100-24)/2 = 38, dy = (100-12)/2 = 44.
-    let intrinsic = resolve_icon_fit(base, art, IconFit::None);
+    let intrinsic = geometry::resolve_icon_fit(base, art, IconFit::None);
     assert_eq!(intrinsic.min, Vec2::new(48.0, 64.0));
     assert_eq!((intrinsic.size.w, intrinsic.size.h), (24.0, 12.0));
 
@@ -161,11 +161,14 @@ fn icon_fit_resolves_to_hand_computed_rects() {
     // that preserves aspect — the case that would hide an axis mix-up.
     let square = Rect::new(0.0, 0.0, 32.0, 32.0);
     assert_eq!(
-        resolve_icon_fit(square, Vec2::splat(16.0), IconFit::Contain),
+        geometry::resolve_icon_fit(square, Vec2::splat(16.0), IconFit::Contain),
         square,
     );
 
     // A degenerate viewBox falls through to the base rect rather than
     // dividing by zero — the same fail-safe the image path takes.
-    assert_eq!(resolve_icon_fit(base, Vec2::ZERO, IconFit::Contain), base);
+    assert_eq!(
+        geometry::resolve_icon_fit(base, Vec2::ZERO, IconFit::Contain),
+        base
+    );
 }
