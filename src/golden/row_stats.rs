@@ -14,9 +14,11 @@ impl RowStats {
     pub(super) fn scan_row(a_row: &[u8], e_row: &[u8], d_row: &mut [u8], per_channel: u8) -> Self {
         let mut stats = Self::default();
         for ((a, e), d) in a_row
-            .chunks_exact(4)
-            .zip(e_row.chunks_exact(4))
-            .zip(d_row.chunks_exact_mut(4))
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .zip(e_row.as_chunks::<4>().0)
+            .zip(d_row.as_chunks_mut::<4>().0)
         {
             let delta = (0..4).map(|c| a[c].abs_diff(e[c])).max().unwrap();
             if delta > stats.max_delta {
@@ -24,7 +26,7 @@ impl RowStats {
             }
             if delta > per_channel {
                 stats.differing += 1;
-                d.copy_from_slice(&[255, 0, 0, 255]);
+                *d = [255, 0, 0, 255];
             } else {
                 d[0] = a[0] / 4;
                 d[1] = a[1] / 4;

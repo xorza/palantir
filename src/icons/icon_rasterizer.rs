@@ -157,7 +157,7 @@ impl IconRasterizer {
             // — a tintable icon is defined as one whose paint is a single
             // colour, and the draw supplies that colour.
             out.reserve_exact(bytes / 4);
-            out.extend(rgba.chunks_exact(4).map(|texel| texel[3]));
+            out.extend(rgba.as_chunks::<4>().0.iter().map(|texel| texel[3]));
             Some(IconRasterKind::Mask)
         } else {
             out.reserve_exact(bytes);

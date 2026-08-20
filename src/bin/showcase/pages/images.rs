@@ -77,8 +77,8 @@ fn starfield() -> Image {
     const N: u32 = 512;
     const STARS: usize = 900;
     let mut pixels = vec![0u8; (N * N * 4) as usize];
-    for px in pixels.chunks_exact_mut(4) {
-        px.copy_from_slice(&[6, 8, 14, 255]);
+    for px in pixels.as_chunks_mut::<4>().0 {
+        *px = [6, 8, 14, 255];
     }
     let mut state = 0x2545_f491_4f6c_dd1d_u64;
     let mut next = move || {
