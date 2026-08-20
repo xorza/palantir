@@ -5,7 +5,7 @@ use crate::text::cosmic;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::key::WrapBound;
 use crate::text::request::TextShapeRequest;
-use crate::text::request::internals::TestShape;
+use crate::text::request::test_support::TestShape;
 use crate::text::shaper::TextShaper;
 use crate::text::system::{TextRunSlot, TextSystem};
 use crate::text::wrap::{LineFit, TextWrap, WrapFloor};

@@ -110,7 +110,7 @@ impl Frontend {
 }
 
 #[cfg(any(test, feature = "bench"))]
-pub(crate) mod internals {
+pub(crate) mod test_support {
     use crate::renderer::frontend::Frontend;
 
     /// Baseline `max_texture_dimension_2d` for deviceless test/bench

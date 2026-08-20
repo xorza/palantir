@@ -21,8 +21,7 @@
 //! on a comparable workload. The encode and compose caches were removed
 //! after their contributions turned out to be < 1%.
 //!
-//! Requires the `internals` feature for the cache reach-in. Run with
-//! `cargo bench --features bench --bench criterion -- caches`.
+//! Run with `cargo bench --features bench --bench criterion -- caches`.
 //!
 //! The `measure/*` arms use `UiHarness::new(glam::UVec2::new(1280, 800))` (cosmic shaper unset → mono
 //! text fallback, same path as the colocated frame bench); the `heavy/*` arms

@@ -118,12 +118,6 @@ pub struct Ui {
     /// on. Tests reach the machine itself through this module's
     /// test-gated `internals`.
     input: InputState,
-    /// Selects which "did input arrive?" signal `take_frame_plan`
-    /// consults to gate the full record path. Default
-    /// [`InputPolicy::OnDelta`] skips record on inert pointer moves
-    /// and scroll-over-nothing; flip to [`InputPolicy::Always`] for
-    /// telemetry / custom canvases that need every event.
-    pub input_policy: InputPolicy,
     pub(crate) cascade_engine: CascadeEngine,
     pub(crate) display: Display,
     pub(crate) damage_engine: DamageEngine,
@@ -173,7 +167,6 @@ impl Ui {
             layout: Default::default(),
             cascade: Default::default(),
             input: Default::default(),
-            input_policy: Default::default(),
             cascade_engine: Default::default(),
             display: Default::default(),
             damage_engine: Default::default(),
@@ -1206,6 +1199,20 @@ impl Ui {
     /// Set the press-on-non-focusable behavior. See [`FocusPolicy`].
     pub fn set_focus_policy(&mut self, p: FocusPolicy) {
         self.input.focus_policy = p;
+    }
+
+    /// Which "did input arrive?" signal the frame gate consults before
+    /// it commits to a full record pass. See [`InputPolicy`].
+    pub fn input_policy(&self) -> InputPolicy {
+        self.input.input_policy
+    }
+
+    /// Set the record gate's input signal. Default
+    /// [`InputPolicy::OnDelta`] skips record on inert pointer moves and
+    /// scroll-over-nothing; [`InputPolicy::Always`] is for telemetry /
+    /// custom canvases that need every event.
+    pub fn set_input_policy(&mut self, p: InputPolicy) {
+        self.input.input_policy = p;
     }
 }
 

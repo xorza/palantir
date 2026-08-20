@@ -344,7 +344,7 @@ pub(crate) mod internals {
     #[cfg(test)]
     use crate::text::probe::Caret;
     #[cfg(test)]
-    use crate::text::request::internals::TestShape;
+    use crate::text::request::test_support::TestShape;
     #[cfg(test)]
     use crate::text::wrap::TextWrap;
 
@@ -360,7 +360,7 @@ pub(crate) mod internals {
         /// same pair layout carries out of `TextSystem::measure`, so it
         /// is that rather than a second spelling of it.
         ///
-        /// Deliberately not a [`TestMeasure`](crate::text::root::internals::TestMeasure):
+        /// Deliberately not a [`TestMeasure`](crate::text::root::test_support::TestMeasure):
         /// the probe keeps only the
         /// extent — the wrap floor and the line count are the root's — so
         /// handing one back meant inventing two of its four fields, and a

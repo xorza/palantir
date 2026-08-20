@@ -70,6 +70,7 @@ fn spring_velocity<T: Animatable>(row: &AnimRow<T>) -> &T {
 /// bodies still need to re-record the
 /// widget (`Frame::new().id(WidgetId::from_hash(salt)).show(ui)`) so the persistent
 /// state survives end-of-frame sweeps.
+#[derive(Debug)]
 struct AnimUi {
     h: UiHarness,
     id: WidgetId,

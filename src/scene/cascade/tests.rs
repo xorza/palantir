@@ -7,7 +7,8 @@ use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::renderer::render_plan::{RenderKind, RenderPlan};
 use crate::scene::cascade::engine::{
-    CascadePrefixBits, build_cascade_prefix, cascade_fingerprint, finish_cascade_input,
+    CascadeContext, CascadePrefixBits, build_cascade_prefix, cascade_fingerprint,
+    finish_cascade_input,
 };
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
@@ -36,7 +37,10 @@ fn cascade_input_hash_collapses_visual_zero_noise() {
 
     assert_eq!(std::mem::size_of::<CascadePrefixBits>(), 32);
     let hash = |transform, rect| {
-        let prefix = build_cascade_prefix(transform, None, false, false);
+        let prefix = build_cascade_prefix(CascadeContext {
+            transform,
+            ..CascadeContext::ROOT
+        });
         finish_cascade_input(&prefix, rect, false)
     };
     let baseline = hash(TranslateScale::IDENTITY, Rect::ZERO);

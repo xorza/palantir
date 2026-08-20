@@ -42,12 +42,41 @@ struct TreeSink<'a> {
     layer: Layer,
 }
 
+/// The four values a node hands its descendants, and the only inputs
+/// [`build_cascade_prefix`] hashes. Bundled because they travel together
+/// everywhere — down the stack, into the prefix, out of a frame — and two
+/// of the four are adjacent `bool`s that swap silently.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct CascadeContext {
+    pub(super) transform: TranslateScale,
+    pub(super) clip: Option<Rect>,
+    pub(super) disabled: bool,
+    pub(super) invisible: bool,
+}
+
+impl CascadeContext {
+    /// What a layer root inherits: no transform, no clip, enabled, visible.
+    pub(super) const ROOT: Self = Self {
+        transform: TranslateScale::IDENTITY,
+        clip: None,
+        disabled: false,
+        invisible: false,
+    };
+}
+
+/// What a node reads off the frame above it — the cascaded values plus the
+/// hash prefix they were already folded into.
+#[derive(Debug)]
+struct Inherited<'a> {
+    cascade: CascadeContext,
+    /// `None` while repairing: the retained `cascade_input`s stay valid,
+    /// so nothing folds a prefix and nothing reads one.
+    prefix: Option<&'a Hasher>,
+}
+
 #[derive(Debug)]
 struct Frame {
-    transform: TranslateScale,
-    clip: Option<Rect>,
-    disabled: bool,
-    invisible: bool,
+    cascade: CascadeContext,
     subtree_end: u32,
     /// Node index this frame represents — used to write back
     /// `subtree_paint_rect` into `Cascade::subtree_paint_rects` when
@@ -313,10 +342,7 @@ impl CascadeEngine {
         let widget_ids = tree.records.widget_id();
         let ends = tree.records.subtree_end();
         let subtree_hashes = tree.rollups.subtree.as_slice();
-        // `None` while repairing: the retained `cascade_input`s stay
-        // valid, so nothing folds a prefix and nothing reads one.
-        let root_prefix = (!INCREMENTAL)
-            .then(|| build_cascade_prefix(TranslateScale::IDENTITY, None, false, false));
+        let root_prefix = (!INCREMENTAL).then(|| build_cascade_prefix(CascadeContext::ROOT));
 
         let mut i: u32 = 0;
         while i < n {
@@ -328,32 +354,28 @@ impl CascadeEngine {
                 let popped = self.stack.pop().unwrap();
                 finalize_frame(&mut self.stack, &mut lc.subtree_paint_rects, popped);
             }
-            let (parent_transform, parent_clip, parent_dis, parent_inv, parent_prefix) =
-                match self.stack.last() {
-                    Some(p) => (
-                        p.transform,
-                        p.clip,
-                        p.disabled,
-                        p.invisible,
-                        p.cascade_prefix.as_ref(),
-                    ),
-                    None => (
-                        TranslateScale::IDENTITY,
-                        None,
-                        false,
-                        false,
-                        root_prefix.as_ref(),
-                    ),
-                };
+            let Inherited {
+                cascade: parent,
+                prefix: parent_prefix,
+            } = match self.stack.last() {
+                Some(p) => Inherited {
+                    cascade: p.cascade,
+                    prefix: p.cascade_prefix.as_ref(),
+                },
+                None => Inherited {
+                    cascade: CascadeContext::ROOT,
+                    prefix: root_prefix.as_ref(),
+                },
+            };
 
             let iu = i as usize;
             let id = NodeId(i);
             let attrs = attrs_col[iu];
             let layout_core = layout_col[iu];
 
-            let disabled = parent_dis || attrs.is_disabled();
+            let disabled = parent.disabled || attrs.is_disabled();
             let owner_visible = layout_core.meta.visibility().is_visible();
-            let invisible = parent_inv || !owner_visible;
+            let invisible = parent.invisible || !owner_visible;
 
             let layout_rect = layout.rect[iu];
             // `.end()` strips the packed grid flag — downstream uses (walk
@@ -361,16 +383,17 @@ impl CascadeEngine {
             let subtree_end = ends[iu].end();
             let has_children = subtree_end != i + 1;
             if INCREMENTAL && lc.subtree_hashes[iu] == subtree_hashes[iu] {
-                if let Some(parent) = self.stack.last_mut() {
-                    parent.subtree_paint_rect =
-                        parent.subtree_paint_rect.union(lc.subtree_paint_rects[iu]);
+                if let Some(parent_frame) = self.stack.last_mut() {
+                    parent_frame.subtree_paint_rect = parent_frame
+                        .subtree_paint_rect
+                        .union(lc.subtree_paint_rects[iu]);
                 }
                 i = subtree_end;
                 continue;
             }
 
-            let screen_rect = parent_transform.apply_rect(layout_rect);
-            let visible_rect = parent_clip.map_or(screen_rect, |c| screen_rect.clamp_to(c));
+            let screen_rect = parent.transform.apply_rect(layout_rect);
+            let visible_rect = parent.clip.map_or(screen_rect, |c| screen_rect.clamp_to(c));
             // The transform descendants inherit *and* direct shapes paint
             // under (the `Panel::transform` contract): `parent ∘
             // self_anchored`. Computed once here — `transform_of` is a
@@ -387,8 +410,8 @@ impl CascadeEngine {
             // `TranslateScale::anchored_at`.
             let node_transform = tree.transform_of(id);
             let desc_transform = match node_transform {
-                Some(t) => parent_transform.compose(t.anchored_at(layout_rect.min)),
-                None => parent_transform,
+                Some(t) => parent.transform.compose(t.anchored_at(layout_rect.min)),
+                None => parent.transform,
             };
             let clips = attrs.clip_mode().is_clip();
             // Encoder's clip mask is `rect.deflated_by(padding)`, pushed
@@ -400,18 +423,18 @@ impl CascadeEngine {
             // on every scroll tick.
             let shape_clip = if clips {
                 let mask_local = layout_rect.deflated_by(layout_core.padding);
-                let mask_screen = parent_transform.apply_rect(mask_local);
-                Some(parent_clip.map_or(mask_screen, |c| mask_screen.clamp_to(c)))
+                let mask_screen = parent.transform.apply_rect(mask_local);
+                Some(parent.clip.map_or(mask_screen, |c| mask_screen.clamp_to(c)))
             } else {
-                parent_clip
+                parent.clip
             };
             let ctx = PaintRectCtx {
                 tree,
                 layout,
                 node: id,
                 visible_rect,
-                parent_transform,
-                parent_clip,
+                parent_transform: parent.transform,
+                parent_clip: parent.clip,
                 shape_clip,
                 shape_transform: desc_transform,
                 display_scale,
@@ -488,7 +511,7 @@ impl CascadeEngine {
                 }
                 sink.entries.push(EntryRow {
                     rect: visible_rect,
-                    transform: parent_transform,
+                    transform: parent.transform,
                     disabled,
                 });
             }
@@ -501,21 +524,23 @@ impl CascadeEngine {
                 // identity). Skips a per-leaf Frame push/pop and the 32 B
                 // full-rebuild prefix-hash work leaves could never hand to
                 // a child.
-                if let Some(parent) = self.stack.last_mut() {
-                    parent.subtree_paint_rect = parent.subtree_paint_rect.union(subtree_seed);
+                if let Some(parent_frame) = self.stack.last_mut() {
+                    parent_frame.subtree_paint_rect =
+                        parent_frame.subtree_paint_rect.union(subtree_seed);
                 }
             } else {
-                self.stack.push(Frame {
+                let cascade = CascadeContext {
                     transform: desc_transform,
                     clip: desc_clip,
                     disabled,
                     invisible,
+                };
+                self.stack.push(Frame {
+                    cascade,
                     subtree_end,
                     node_idx: iu,
                     subtree_paint_rect: subtree_seed,
-                    cascade_prefix: (!INCREMENTAL).then(|| {
-                        build_cascade_prefix(desc_transform, shape_clip, disabled, invisible)
-                    }),
+                    cascade_prefix: (!INCREMENTAL).then(|| build_cascade_prefix(cascade)),
                 });
             }
             i += 1;
@@ -550,13 +575,8 @@ pub(super) struct CascadePrefixBits {
 }
 
 #[inline]
-pub(super) fn build_cascade_prefix(
-    parent_transform: TranslateScale,
-    parent_clip: Option<Rect>,
-    parent_dis: bool,
-    parent_inv: bool,
-) -> Hasher {
-    let (clip, clip_present) = match parent_clip {
+pub(super) fn build_cascade_prefix(parent: CascadeContext) -> Hasher {
+    let (clip, clip_present) = match parent.clip {
         Some(rect) => (
             [
                 approx::canon_bits(rect.min.x),
@@ -568,12 +588,13 @@ pub(super) fn build_cascade_prefix(
         ),
         None => ([0; 4], false),
     };
-    let flags = (clip_present as u32) | ((parent_dis as u32) << 1) | ((parent_inv as u32) << 2);
+    let flags =
+        (clip_present as u32) | ((parent.disabled as u32) << 1) | ((parent.invisible as u32) << 2);
     let packed = CascadePrefixBits {
         transform: [
-            approx::canon_bits(parent_transform.translation.x),
-            approx::canon_bits(parent_transform.translation.y),
-            approx::canon_bits(parent_transform.scale - 1.0),
+            approx::canon_bits(parent.transform.translation.x),
+            approx::canon_bits(parent.transform.translation.y),
+            approx::canon_bits(parent.transform.scale - 1.0),
             flags,
         ],
         clip,

@@ -42,6 +42,15 @@ pub(super) struct HugRanges<'a> {
     pub(super) max: &'a [f32],
 }
 
+/// [`HugRanges`] as the measure pass writes it — same two pools for one
+/// `(idx, axis)`, mutable, and named for the same reason: two adjacent
+/// `&mut [f32]`s swap silently.
+#[derive(Debug)]
+pub(super) struct HugRangesMut<'a> {
+    pub(super) min: &'a mut [f32],
+    pub(super) max: &'a mut [f32],
+}
+
 #[derive(Clone, Copy, Debug)]
 pub(super) struct HugBound {
     idx: usize,

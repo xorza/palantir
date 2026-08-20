@@ -58,14 +58,6 @@ do not exist anywhere in the crate — grep-checkable and still wrong.
       `src/primitives/brush/gradient/mod.rs:146` ("via the batched slice path").
       Both go through `F16x4::lanes`, which calls `_mm_cvtph_ps` directly.
 
-- [ ] `src/renderer/frontend/composer/mod.rs:23` — the comment says `pub(crate)`
-      is "only so the `text_grid` benchmark can reach the gated `internals`
-      harness; every item inside stays `pub(super)`." Neither half is true:
-      `TILE_SIZE`, `TILE_CAP`, `TextRectGrid`, `spill`, `start_frame`, `clear`,
-      `push` and `any_overlap` are all `pub(crate)`, there is no `internals`
-      harness in `text_grid`, and the only outside consumer is
-      `text_grid::bench`, a child module that already sees private items.
-
 - [ ] `src/input/bench.rs:8` and `:102` — describes what it measures as
       "`recompute_hover` + `recompute_scroll_target` linear walk over cascade
       entries", and says the scroll region exists "so `recompute_scroll_target`
@@ -104,10 +96,6 @@ do not exist anywhere in the crate — grep-checkable and still wrong.
 - [ ] `src/primitives/span.rs:7` — directs readers to the `Range<u32>`
       conversions; three of `Span`'s four `From` impls (`:35`, `:55`, `:62`)
       have no callers.
-
-- [ ] `src/renderer/gradient_atlas/bench.rs:49` — says "Requires the `internals`
-      feature" one line above a run command using `--features bench`, in a
-      module gated `#[cfg(feature = "bench")]`.
 
 - [ ] `src/primitives/image.rs:22` — `ImageFit::Fill`'s doc calls it "the legacy
       'no fit' behaviour", a compatibility framing the project's stated posture
@@ -343,101 +331,3 @@ which call site asks it.
       `coverage` forces a hand-written `PartialEq` (`:82`) that excludes it — a
       type whose equality has to lie because one field is only sometimes
       meaningful.
-
----
-
-## Convention drift
-
-Smaller, mechanical, and cheap to settle; grouped so they can be swept in one
-pass rather than argued one at a time.
-
-- [ ] `mod internals` has drifted into six cfg gates and four visibilities across
-      34 sites: 14 use `#[cfg(test)]`, 8 use
-      `#[cfg(any(test, feature = "internals"))]`, 8 use
-      `#[cfg(any(test, feature = "bench"))]`, 2 use `#[cfg(feature = "bench")]`,
-      1 uses `#[cfg(feature = "internals")]`, and
-      `src/renderer/backend/text/mod.rs:290` invents
-      `#[cfg(any(feature = "bench", all(test, feature = "internals")))]`.
-      Visibility ranges from private (`src/text/cosmic/mod.rs:440`,
-      `src/scene/forest.rs:426`, three in `src/renderer/gradient_atlas/`) through
-      `pub(super)` (`src/text/probe/mod.rs:371`,
-      `src/widgets/scroll/state.rs:207`) to `pub(crate)` (24 sites) and `pub`
-      (`src/lib.rs:133`). Because `bench = ["internals"]` and not the reverse,
-      the eight `bench`-gated modules are invisible to both integration suites,
-      and the fourteen `cfg(test)` ones are invisible to any integration test —
-      so a module named `internals` may or may not be an integration reach-in,
-      with nothing at the name to say which.
-
-- [ ] `src/renderer/backend/mod.rs:29` vs `:46` — two items from the same module
-      tree are imported via `crate::renderer::backend::…` while the other eleven
-      use `self::…`, in one contiguous import block, making "one canonical path
-      per item" false at the module root.
-
-- [ ] `src/ui/frame_cycle.rs:29` imports `cascade_fingerprint` bare and calls it
-      unqualified at `:360`, while the same file correctly qualifies two others.
-
-- [ ] `src/text/cosmic/retention.rs:122`, `:168`, `glyphs.rs:26`, `:84`,
-      `truncate.rs:87`, `:119` — declared `pub(crate)` inside a privately
-      declared `mod cosmic` whose own type is `pub(super)`, so the wider marker
-      is inert and misdescribes the surface.
-
-- [ ] `src/ui/mod.rs:110` — `input_policy` is a bare `pub` field on the god
-      object while `FocusPolicy`, the other input-configuration knob, lives
-      inside the private `InputState` behind an accessor pair. The only in-crate
-      writers of `input_policy` are tests.
-
-- [ ] `src/scene/damage/mod.rs:392` — `push_screen` is `pub(super)`, exposing it
-      to all of `scene`, when a private fn would already be visible to the two
-      descendant modules that use it.
-
-- [ ] `src/layout/grid/mod.rs:264` — `slice_mut_pair` returns a bare
-      `(&mut [f32], &mut [f32])` twenty lines below `ranges` (`:257`), which
-      returns a named `HugRanges` specifically because two adjacent `&[f32]`
-      parameters were swappable and its doc says so.
-      `src/layout/grid/arranging.rs:95` builds a four-element tuple of
-      same-typed `f32`s.
-
-- [ ] `src/scene/cascade/engine.rs:333` — `run_tree` destructures a five-element
-      tuple out of a `match` where the five parent-context fields already exist
-      as a named `Frame`.
-
-- [ ] `src/layout/zstack/mod.rs:69` and `src/layout/grid/arranging.rs:105` —
-      placing a child on both axes is re-derived at both sites, differing only in
-      the alignment policy applied, with no two-axis consolidation anywhere.
-
-- [ ] `src/shape/mod.rs:43` — the module is declared `pub(crate) mod sealed` but
-      the `Lower` doc calls it "a private module" and the inline block calls it
-      "the private module" twice more; within that block, lines 56–60 are then
-      restated word-for-word as the bullet at 63–67. Two traits named `Lower`
-      also live in the file, so every impl site and doc link must disambiguate.
-
-- [ ] `src/shape/image.rs:24`, `mesh.rs:19`, `shadow.rs:19`, `icon.rs:54` (`at`);
-      `image.rs:53`, `mesh.rs:24`, `icon.rs:66` (`tint`); `rect.rs:51`,
-      `shadow.rs:24` (`corners`); `curve.rs:59`, `polyline.rs:21` (`cap`);
-      `rect.rs:46`, `triangle.rs:27` (`stroke`) — eleven byte-identical setter
-      bodies over four field names, five identical `is_noop` opening lines, nine
-      repetitions of the same `#[allow(private_interfaces)]` plus the identical
-      comment, and `local_rect: Option<Rect>` declared five times.
-
-- [ ] `src/golden/mod.rs:15` — `pub use` re-exports out of a `pub(crate) mod
-      diff` from a `mod.rs`, against the rule that only `lib.rs` defines the
-      published surface. `RowStats` (`src/golden/diff.rs:198`) lacks
-      `#[derive(Debug)]`, as does `enum Mode` at
-      `src/bin/showcase/pages/clip.rs:88`.
-
-- [ ] `src/layout/cache/integration_tests.rs` — a test file in a production
-      directory under a name that is neither `tests.rs` nor a gated module at the
-      end of the file it reaches into.
-
-- [ ] `src/widgets/modal.rs:41`, `src/widgets/spinner.rs:38`,
-      `src/widgets/grid.rs:36`, `src/widgets/button.rs:22`,
-      `src/widgets/frame/mod.rs:18` — five `#[allow(clippy::new_without_default)]`
-      suppressions on widget constructors, a repeated friction rather than five
-      independent decisions.
-
-- [ ] `src/widgets/scroll/mod.rs:31`, `:93` — `previous_scroll_content` and
-      `scroll_wrappers` are free functions with one caller each in a module whose
-      convention prefers methods; `hide_bars` (`:238`) assigns `self.bar_mode`
-      directly while its sibling `overlay_bars` delegates to `bar_mode(…)`.
-</content>
-</invoke>

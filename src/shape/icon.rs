@@ -4,7 +4,6 @@ use crate::primitives::image::ImageFit;
 use crate::primitives::rect::Rect;
 use crate::scene::record_store::RecordStore;
 use crate::scene::shapes::record::ShapeRecord;
-use crate::shape::local_rect_paint_empty;
 use crate::shape::sealed;
 
 /// How a baked icon's artwork maps onto its paint rect.
@@ -63,26 +62,16 @@ pub struct IconShape {
     pub(crate) desaturate: bool,
 }
 
-impl IconShape {
-    /// Paint into `rect`, in owner-relative coords, instead of the owner's
-    /// whole arranged rect.
-    pub fn at(mut self, rect: impl Into<Rect>) -> Self {
-        self.local_rect = Some(rect.into());
-        self
-    }
+local_rect_shape!(IconShape);
 
-    pub fn fit(mut self, fit: impl Into<IconFit>) -> Self {
-        self.fit = fit.into();
-        self
-    }
-
+shape_setters!(IconShape {
+    fit: IconFit => fit,
     /// Multiply the icon by `tint` — whole for a tintable icon, alpha only
     /// for a colour one. See the type docs.
-    pub fn tint(mut self, tint: impl Into<Color>) -> Self {
-        self.tint = tint.into();
-        self
-    }
+    tint: Color => tint,
+});
 
+impl IconShape {
     /// Draw a **colour** icon in greyscale — its own luminance, hue gone.
     ///
     /// The disabled look for artwork whose colours a tint cannot replace.
@@ -95,11 +84,9 @@ impl IconShape {
     }
 }
 
-// See the `sealed` module in `shape/mod.rs` for why.
-#[allow(private_interfaces)]
-impl sealed::Lower for IconShape {
+impl sealed::LowerShape for IconShape {
     fn is_noop(&self) -> bool {
-        local_rect_paint_empty(&self.local_rect) || self.tint.is_noop()
+        self.rect_is_noop() || self.tint.is_noop()
     }
 
     fn lower(self, _store: &RecordStore) -> ShapeRecord {

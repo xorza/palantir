@@ -20,18 +20,6 @@ use crate::widgets::scroll::state::{ScrollBounds, ScrollState};
 use crate::widgets::scroll::zoom_config::{ZoomConfig, ZoomModifier, ZoomPivot};
 use crate::widgets::theme::scrollbar::ScrollbarTheme;
 use glam::{BVec2, Vec2};
-/// Last frame's measured content extent for this scroll, keyed by the
-/// **inner viewport** node because that is the `LayoutMode::Scroll` one.
-/// `Size::ZERO` until the node has been through one layout pass.
-///
-/// Resolves through the cascade, so like `Ui::response_for` it answers
-/// for the previous frame — which is the lag `Scroll` wants: the bars
-/// describe the content the user is looking at.
-fn previous_scroll_content(ui: &Ui, scroll_id: WidgetId) -> Size {
-    ui.cascade
-        .endpoint(scroll_id)
-        .map_or(Size::ZERO, |endpoint| ui.layout.scroll_content(endpoint))
-}
 
 /// What one scroll frame resolves against, all read from *last* frame's
 /// layout before any of this frame's input applies. Taken once at the
@@ -51,6 +39,19 @@ struct ScrollGeometry {
 }
 
 impl ScrollGeometry {
+    /// Last frame's measured content extent for this scroll, keyed by the
+    /// **inner viewport** node because that is the `LayoutMode::Scroll`
+    /// one. `Size::ZERO` until the node has been through one layout pass.
+    ///
+    /// Resolves through the cascade, so like `Ui::response_for` it answers
+    /// for the previous frame — which is the lag `Scroll` wants: the bars
+    /// describe the content the user is looking at.
+    fn previous_content(ui: &Ui, scroll_id: WidgetId) -> Size {
+        ui.cascade
+            .endpoint(scroll_id)
+            .map_or(Size::ZERO, |endpoint| ui.layout.scroll_content(endpoint))
+    }
+
     /// Content extent at the current zoom. The bars measure against
     /// this rather than the raw extent so dragging a thumb inside a
     /// zoomed viewport tracks the cursor 1:1 with what's on screen.
@@ -94,67 +95,69 @@ struct ScrollWrappers {
     inner: Node,
 }
 
-/// Split a user `Scroll` node into its outer/inner wrappers.
-///
-/// **This routes every `Node` field that should survive on a
-/// `Scroll`** — the destructure below binds every field with no `..`, so
-/// adding one to `Node` fails to compile here, forcing the decision
-/// whether it lands on `outer` (sizing/placement) or `inner`
-/// (layout/panel knobs).
-/// `Scroll::show` patches the remaining inner fields it computes per
-/// frame (`salt`, the reservation `margin`, layout fit flags,
-/// `clip` — read off `flags` before this runs — and the pan
-/// `transform`). The user salt stays on the `Widget` resolved in
-/// `Scroll::show`; neither wrapper carries it.
-fn scroll_wrappers(node: Node) -> ScrollWrappers {
-    let scroll_spec = node.scroll_spec();
-    let Node {
-        salt: _,
-        mode: _,
-        size,
-        min_size,
-        max_size,
-        padding,
-        margin,
-        gaps,
-        justify,
-        align,
-        child_align,
-        position,
-        grid,
-        flags,
-        visibility,
-        // Re-derived by `Scroll::show` once the wrappers exist: it copies
-        // `clip` from the user node onto `inner` and replaces `transform`
-        // with the pan offset. Named rather than elided — a `..` here would
-        // let a newly added `Node` field vanish silently, which is exactly
-        // what this destructure exists to prevent.
-        clip: _,
-        transform: _,
-    } = node;
+impl ScrollWrappers {
+    /// Split a user `Scroll` node into its outer/inner wrappers.
+    ///
+    /// **This routes every `Node` field that should survive on a
+    /// `Scroll`** — the destructure below binds every field with no `..`,
+    /// so adding one to `Node` fails to compile here, forcing the decision
+    /// whether it lands on `outer` (sizing/placement) or `inner`
+    /// (layout/panel knobs).
+    /// `Scroll::show` patches the remaining inner fields it computes per
+    /// frame (`salt`, the reservation `margin`, layout fit flags,
+    /// `clip` — read off `flags` before this runs — and the pan
+    /// `transform`). The user salt stays on the `Widget` resolved in
+    /// `Scroll::show`; neither wrapper carries it.
+    fn split(node: Node) -> Self {
+        let scroll_spec = node.scroll_spec();
+        let Node {
+            salt: _,
+            mode: _,
+            size,
+            min_size,
+            max_size,
+            padding,
+            margin,
+            gaps,
+            justify,
+            align,
+            child_align,
+            position,
+            grid,
+            flags,
+            visibility,
+            // Re-derived by `Scroll::show` once the wrappers exist: it copies
+            // `clip` from the user node onto `inner` and replaces `transform`
+            // with the pan offset. Named rather than elided — a `..` here would
+            // let a newly added `Node` field vanish silently, which is exactly
+            // what this destructure exists to prevent.
+            clip: _,
+            transform: _,
+        } = node;
 
-    let mut outer = Node::zstack();
-    outer.size = size;
-    outer.min_size = min_size;
-    outer.max_size = max_size;
-    outer.margin = margin;
-    outer.align = align;
-    outer.position = position;
-    outer.grid = grid;
-    outer.flags.set_sense(flags.sense());
-    outer.flags.set_disabled(flags.is_disabled());
-    outer.flags.set_focusable(flags.is_focusable());
-    outer.visibility = visibility;
+        let mut outer = Node::zstack();
+        outer.size = size;
+        outer.min_size = min_size;
+        outer.max_size = max_size;
+        outer.margin = margin;
+        outer.align = align;
+        outer.position = position;
+        outer.grid = grid;
+        outer.flags.set_sense(flags.sense());
+        outer.flags.set_disabled(flags.is_disabled());
+        outer.flags.set_focusable(flags.is_focusable());
+        outer.visibility = visibility;
 
-    let mut inner = Node::scroll(scroll_spec);
-    // Inner fills the outer wrapper; the outer carries the user's
-    // `Sizing` and drives the actual size.
-    inner.size = Some((Sizing::FILL, Sizing::FILL).into());
-    inner.padding = padding;
-    inner.gaps = gaps;
-    inner.justify = justify;
-    inner.child_align = child_align;
-    ScrollWrappers { outer, inner }
+        let mut inner = Node::scroll(scroll_spec);
+        // Inner fills the outer wrapper; the outer carries the user's
+        // `Sizing` and drives the actual size.
+        inner.size = Some((Sizing::FILL, Sizing::FILL).into());
+        inner.padding = padding;
+        inner.gaps = gaps;
+        inner.justify = justify;
+        inner.child_align = child_align;
+        Self { outer, inner }
+    }
 }
 
 /// Scroll viewport. Three flavors via constructor:
@@ -238,9 +241,8 @@ impl<'a> Scroll<'a> {
     /// viewport just doesn't paint indicators. Useful for canvas-style
     /// scopes (node graphs, infinite boards) where the bars would be
     /// noise.
-    pub fn hide_bars(mut self) -> Self {
-        self.bar_mode = BarMode::Hidden;
-        self
+    pub fn hide_bars(self) -> Self {
+        self.bar_mode(BarMode::Hidden)
     }
 
     /// Extends the offset clamp on each side without touching the
@@ -355,7 +357,7 @@ impl<'a> Scroll<'a> {
         response: &ResponseState,
     ) -> ScrollGeometry {
         let outer = response.layout_rect.map_or(Size::ZERO, |r| r.size);
-        let content = previous_scroll_content(ui, scroll_id);
+        let content = ScrollGeometry::previous_content(ui, scroll_id);
         let padding = self.node.padding.unwrap_or(Spacing::ZERO);
         let space = bar_space(outer, pan, padding, self.bars_theme(ui), self.bar_mode);
         ScrollGeometry {
@@ -408,7 +410,7 @@ impl<'a> Scroll<'a> {
     /// same ZStack, can reach into the gutter strip with absolute
     /// positions.
     ///
-    /// `scroll_wrappers` routes the *static* half: which user field
+    /// [`ScrollWrappers::split`] routes the *static* half: which user field
     /// lands on which wrapper. Everything patched here is per-frame —
     /// the fit bits the user's `Sizing` implies, the viewport id, the
     /// reservation margin, the clip read back off the user node, and the
@@ -420,7 +422,7 @@ impl<'a> Scroll<'a> {
         space: BarSpace,
         state: ScrollState,
     ) -> ScrollWrappers {
-        let ScrollWrappers { outer, inner } = scroll_wrappers(self.node);
+        let ScrollWrappers { outer, inner } = ScrollWrappers::split(self.node);
 
         // Inner viewport owns the clip, the pan transform, the user-set
         // padding (encoder deflates the clip mask by it), and the

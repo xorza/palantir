@@ -38,7 +38,6 @@ pub struct ModalResponse {
 }
 
 impl<'a> Modal<'a> {
-    #[allow(clippy::new_without_default)]
     #[track_caller]
     pub fn new() -> Self {
         let mut node = Node::vstack();

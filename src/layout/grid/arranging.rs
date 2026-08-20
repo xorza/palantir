@@ -79,24 +79,27 @@ pub(super) fn arrange_inner(
         let cell = bounds.grid;
         let d = pass.desired(c);
 
-        let (slot_x, slot_y, slot_w, slot_h) = {
+        let slot = {
             let s = pass.grid_mut().depth_stack.at(depth);
-            let slot_x = s.col.offsets[cell.col as usize];
-            let slot_y = s.row.offsets[cell.row as usize];
-            let slot_w = span_size(&s.col.sizes, cell.track_span(Axis::X), col_gap);
-            let slot_h = span_size(&s.row.sizes, cell.track_span(Axis::Y), row_gap);
-            (slot_x, slot_y, slot_w, slot_h)
+            Rect {
+                min: inner.min
+                    + Vec2::new(
+                        s.col.offsets[cell.col as usize],
+                        s.row.offsets[cell.row as usize],
+                    ),
+                size: Size::new(
+                    span_size(&s.col.sizes, cell.track_span(Axis::X), col_gap),
+                    span_size(&s.row.sizes, cell.track_span(Axis::Y), row_gap),
+                ),
+            }
         };
 
         // Grid's default alignment stretches non-Fixed children to their cell.
-        let AxisAlignPair { h, v } = AxisAlignPair::resolve(&s_node, parent_child_align);
-        let x = AxisPlacement::arrange(Axis::X, h.or_stretch_if_auto(), &s_node, bounds, d, slot_w);
-        let y = AxisPlacement::arrange(Axis::Y, v.or_stretch_if_auto(), &s_node, bounds, d, slot_h);
-        let child_rect = Rect {
-            min: inner.min + Vec2::new(slot_x + x.offset, slot_y + y.offset),
-            size: Size::new(x.size, y.size),
-        };
-        pass.arrange(c, child_rect);
+        let align = AxisAlignPair::resolve(&s_node, parent_child_align).or_stretch_if_auto();
+        pass.arrange(
+            c,
+            AxisPlacement::arrange_rect(align, &s_node, bounds, d, slot),
+        );
     }
 }
 

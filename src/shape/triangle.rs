@@ -20,22 +20,11 @@ pub struct TriangleShape {
     pub(crate) stroke: Stroke,
 }
 
-impl TriangleShape {
-    pub fn fill(mut self, fill: impl Into<Color>) -> Self {
-        self.fill = fill.into();
-        self
-    }
-
-    pub fn stroke(mut self, stroke: impl Into<Stroke>) -> Self {
-        self.stroke = stroke.into();
-        self
-    }
-
-    pub fn radius(mut self, radius: impl Into<f32>) -> Self {
-        self.radius = radius.into();
-        self
-    }
-}
+shape_setters!(TriangleShape {
+    fill: Color => fill,
+    stroke: Stroke => stroke,
+    radius: f32 => radius,
+});
 
 #[inline]
 fn triangle_paint_empty(a: Vec2, b: Vec2, c: Vec2) -> bool {
@@ -50,9 +39,7 @@ fn triangle_paint_empty(a: Vec2, b: Vec2, c: Vec2) -> bool {
     let normalized_twice_area = ab.perp_dot(ac).abs() / max_edge_len_sq;
     noop_f32(normalized_twice_area)
 }
-// See the `sealed` module in `shape/mod.rs` for why.
-#[allow(private_interfaces)]
-impl sealed::Lower for TriangleShape {
+impl sealed::LowerShape for TriangleShape {
     fn is_noop(&self) -> bool {
         (self.fill.is_noop() && self.stroke.is_noop())
             // A NaN corner falls out of this for free — the area

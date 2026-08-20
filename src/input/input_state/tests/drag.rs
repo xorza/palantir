@@ -416,6 +416,7 @@ fn card_id(label: &str) -> WidgetId {
     WidgetId::from_hash(label)
 }
 
+#[derive(Debug)]
 struct Card {
     label: &'static str,
     pos: Vec2,

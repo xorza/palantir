@@ -1,3 +1,68 @@
+//! Authoring shapes: one concrete builder type per paint primitive, each
+//! lowering itself into a `ShapeRecord`.
+//!
+//! `private_interfaces` is allowed module-wide: every `impl
+//! sealed::LowerShape` names the crate-private `RecordStore` and
+//! `ShapeRecord` in a publicly *reachable* signature, which is the seal
+//! working as designed (see `sealed` below). The lint fires per impl site,
+//! so the decision belongs here rather than over each one.
+#![allow(private_interfaces)]
+
+/// Chainable builder setters — `self.field = value.into(); self` — for the
+/// authoring surface a shape kind exposes.
+///
+/// A macro because the bodies are identical across kinds while the names are
+/// not — `at`, `tint`, `corners`, `cap` and `stroke` repeat over four or
+/// five kinds each. Spelled out, that is how one of them ends up taking a
+/// concrete type instead of `impl Into`, or setting the wrong field.
+macro_rules! shape_setters {
+    ($ty:ty {
+        $(
+            $(#[$meta:meta])*
+            $name:ident: $arg:ty => $($field:ident).+,
+        )*
+    }) => {
+        impl $ty {
+            $(
+                $(#[$meta])*
+                pub fn $name(mut self, $name: impl Into<$arg>) -> Self {
+                    self.$($field).+ = $name.into();
+                    self
+                }
+            )*
+        }
+    };
+}
+
+/// The owner-relative paint rect the rect-shaped kinds carry: the `at`
+/// setter that authors one, and the `is_noop` clause that reads it.
+///
+/// `Shape::rect` and `Shape::owner_rect` take theirs up front, so
+/// `RectShape` gets the clause without the setter — the `@noop_only` arm.
+macro_rules! local_rect_shape {
+    ($ty:ty) => {
+        local_rect_shape!(@noop_only $ty);
+
+        impl $ty {
+            /// Paint into `rect`, in owner-relative coords, instead of the
+            /// owner's whole arranged rect.
+            pub fn at(mut self, rect: impl Into<$crate::primitives::rect::Rect>) -> Self {
+                self.local_rect = Some(rect.into());
+                self
+            }
+        }
+    };
+    (@noop_only $ty:ty) => {
+        impl $ty {
+            /// True when an explicit paint rect was authored and it covers
+            /// no pixels — what every such kind's `is_noop` opens with.
+            fn rect_is_noop(&self) -> bool {
+                self.local_rect.is_some_and(|rect| rect.is_paint_empty())
+            }
+        }
+    };
+}
+
 pub(crate) mod curve;
 pub(crate) mod icon;
 pub(crate) mod image;
@@ -51,34 +116,29 @@ use std::f32::consts::TAU;
 /// All five are exhaustive matches, so the compiler names them; none of
 /// them is optional.
 ///
-/// Sealed. The real methods live on a supertrait in a private module,
-/// which is what lets them name the crate-private `RecordStore` and
-/// `ShapeRecord` while the bound itself stays public. Implementing it
-/// outside the crate would mean building a `ShapeRecord`, which is not
-/// reachable, so sealing costs callers nothing they could have used.
-pub trait Lower: sealed::Lower {}
+/// Sealed: the methods live on `sealed::LowerShape`, in a module private
+/// to `crate::shape`, which is what lets them name the crate-private
+/// `RecordStore` and `ShapeRecord` while the bound itself stays public.
+/// Implementing it outside the crate would mean building a `ShapeRecord`,
+/// which is not reachable, so sealing costs callers nothing they could
+/// have used.
+pub trait Lower: sealed::LowerShape {}
 
-impl<T: sealed::Lower> Lower for T {}
+impl<T: sealed::LowerShape> Lower for T {}
 
-pub(crate) mod sealed {
+mod sealed {
     use crate::scene::record_store::RecordStore;
     use crate::scene::shapes::record::ShapeRecord;
 
-    // Two lints fire on this pattern and both are describing the seal
-    // rather than a mistake:
-    //
-    // - `unreachable_pub`: the trait must be `pub` because a public
-    //   trait cannot have a private supertrait, yet the private module
-    //   keeps it unnameable from outside. That unreachability *is* the
-    //   seal.
-    // - `private_interfaces`: making it a supertrait of the public
-    //   `Lower` leaks it into public *reachability*, so rustc flags the
-    //   crate-private `RecordStore` / `ShapeRecord` in these signatures.
-    //   Nothing outside the crate can name the trait to call or
-    //   implement it, so the exposure it warns about cannot occur. Each
-    //   `impl` repeats the allow because the lint fires per impl site.
+    // `unreachable_pub` and `private_interfaces` both fire here, and both
+    // describe the seal rather than a mistake: the trait must be `pub`
+    // because a public trait cannot have a private supertrait, and making
+    // it one puts the crate-private `RecordStore` / `ShapeRecord` into a
+    // publicly *reachable* signature. Nothing outside the crate can name
+    // the trait to call or implement it, so neither exposure can occur.
+    // Each `impl` repeats the second allow, which fires per impl site.
     #[allow(unreachable_pub, private_interfaces)]
-    pub trait Lower {
+    pub trait LowerShape {
         /// True if this shape paints nothing visible. Checked before
         /// [`Self::lower`] so a no-op never pays for payload staging,
         /// mesh hashing, or text interning.
@@ -266,11 +326,6 @@ impl Shape {
             tint: Color::WHITE,
         }
     }
-}
-
-#[inline]
-fn local_rect_paint_empty(local_rect: &Option<Rect>) -> bool {
-    local_rect.is_some_and(|rect| rect.is_paint_empty())
 }
 
 #[cfg(test)]

@@ -427,7 +427,7 @@ fn selection_rects_offset_matches_text() {
 /// which would be the same alignment applied twice.
 mod per_line {
     use crate::text::glyph_font::GlyphFont;
-    use crate::text::request::internals::TestShape;
+    use crate::text::request::test_support::TestShape;
     use crate::text::shaper::TextShaper;
     use crate::text::{FontFamily, FontWeight};
     use crate::widgets::text_edit::tests::*;

@@ -103,10 +103,8 @@ pub(super) fn encode_key_for(r: &TextDrawRow, frame_scale: f32) -> EncodedRunKey
 // Gated with its two readers exactly — the `text_atlas` benchmark and
 // the retention tests below — rather than on `internals`, which the two
 // integration suites enable without ever building a churn fixture.
-// `pub(super)` reaches both: the benchmark's caller lives in this
-// module's sibling `bench.rs`, not outside the text backend.
 #[cfg(any(test, feature = "bench"))]
-pub(super) mod internals {
+pub(crate) mod test_support {
     use super::*;
     #[cfg(test)]
     use crate::common::block_arena::BlockArenaCounts;

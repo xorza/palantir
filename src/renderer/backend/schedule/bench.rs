@@ -31,7 +31,7 @@ use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::span::Span;
 use crate::primitives::urect::URect;
-use crate::renderer::backend::schedule::internals::Walk;
+use crate::renderer::backend::schedule::test_support::Walk;
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::draw_group::DrawGroup;
 use crate::renderer::render_buffer::group_batch::GroupBatch;

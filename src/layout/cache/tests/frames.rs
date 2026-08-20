@@ -3,6 +3,7 @@
 //! reproduces the cold-frame layout (and encoded commands). Catches
 //! per-frame engine state we forgot to snapshot/restore on a cache
 //! hit.
+
 use crate::primitives::widget_id::WidgetId;
 use crate::text::wrap::TextWrap;
 

@@ -82,7 +82,7 @@ pub(super) const NO_ARRANGE_SRC: u32 = u32::MAX;
 /// functions (`NodeArenas::clear`, `LayerLayout::resize_for`, and the
 /// one below) destructure to buy the same thing for a field left
 /// un-reset. Behaviour is pinned per-driver by the fixtures in
-/// `src/layout/cache/integration_tests.rs`.
+/// `src/layout/cache/tests/frames.rs`.
 ///
 /// `arrange_src` is the one category-(2) field arrange *consumes* rather
 /// than reads through: measure stamps the snapshot arena base of every
@@ -154,7 +154,7 @@ impl LayoutScratch {
     /// an immutable borrow of `engine.cache` via the cached-subtree handle —
     /// taking `&mut self` here and `&mut LayerLayout` separately keeps those
     /// borrows disjoint. Pinned by
-    /// `cache::integration_tests::cache_hit_preserves_grid_cell_rects`
+    /// `cache::tests::frames::cache_hit_preserves_grid_cell_rects`
     /// and the per-driver `cache_hit_preserves_*_rects` fixtures.
     /// `#[inline]`-marked because every cache hit takes this path and the
     /// grid-free common path is a single bitset test.

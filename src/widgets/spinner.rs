@@ -35,7 +35,6 @@ pub struct Spinner<'a> {
 }
 
 impl<'a> Spinner<'a> {
-    #[allow(clippy::new_without_default)]
     #[track_caller]
     pub fn new() -> Self {
         Self {

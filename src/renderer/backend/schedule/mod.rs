@@ -593,7 +593,7 @@ fn emit_group_body(
 // `bench` only, not `any(test, …)`: the sole consumer is the
 // `schedule` benchmark, which that feature gates too.
 #[cfg(feature = "bench")]
-pub(crate) mod internals {
+pub(crate) mod test_support {
     use super::*;
 
     /// What one schedule walk emitted: the step total plus the two

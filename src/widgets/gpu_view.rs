@@ -128,6 +128,7 @@ mod tests {
     use crate::widgets::panel::Panel;
     use glam::{UVec2, Vec2};
 
+    #[derive(Debug)]
     struct NoopPaint;
     impl GpuPaint for NoopPaint {
         fn paint(&mut self, _ctx: &mut GpuFrameCtx<'_>) {}

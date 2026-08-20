@@ -141,7 +141,7 @@ mod tests {
 
     /// Wrap in a tiny struct so we can use TOML — top-level must be a table.
     fn ser(c: Corners) -> String {
-        #[derive(serde::Serialize)]
+        #[derive(Debug, serde::Serialize)]
         struct W {
             v: Corners,
         }
@@ -149,7 +149,7 @@ mod tests {
     }
 
     fn de(toml_str: &str) -> Corners {
-        #[derive(serde::Deserialize)]
+        #[derive(Debug, serde::Deserialize)]
         struct W {
             v: Corners,
         }

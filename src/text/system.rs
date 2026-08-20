@@ -323,10 +323,10 @@ struct WrapSlot {
 }
 
 #[cfg(test)]
-pub(crate) mod internals {
+pub(crate) mod test_support {
     use crate::primitives::widget_id::WidgetId;
-    use crate::text::request::internals::TestShape;
-    use crate::text::root::internals::TestMeasure;
+    use crate::text::request::test_support::TestShape;
+    use crate::text::root::test_support::TestMeasure;
     use crate::text::shaper::TextShaper;
     use crate::text::system::{TextRunSlot, TextSystem};
     use crate::text::wrap::TextWrap;

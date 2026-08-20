@@ -17,7 +17,7 @@ impl Serialize for Stop {
 
 impl<'de> Deserialize<'de> for Stop {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        #[derive(Deserialize)]
+        #[derive(Debug, Deserialize)]
         struct RawStop {
             offset: f32,
             color: ColorU8,

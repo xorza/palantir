@@ -35,7 +35,7 @@ const OUTSIDE: Vec2 = Vec2::new(150.0, 100.0);
 
 /// Counts record-closure invocations per frame — the fact the whole
 /// protocol follows from.
-#[derive(Default)]
+#[derive(Debug, Default)]
 struct PassCounter(u32);
 
 impl PassCounter {

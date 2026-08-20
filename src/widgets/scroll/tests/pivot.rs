@@ -98,6 +98,7 @@ mod bars {
     /// (viewport - thumb_size)`.
     #[test]
     fn bar_geometry_thumb_size_and_offset_cases() {
+        #[derive(Debug)]
         struct Want {
             thumb_size: Option<f32>,
             thumb_offset: Option<f32>,

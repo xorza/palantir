@@ -140,6 +140,7 @@ fn thumb_drag_anchor_dies_with_its_geometry() {
 /// per axis. An empty scroll records zero.
 #[test]
 fn scroll_records_content_extent() {
+    #[derive(Debug)]
     enum Axis {
         V,
         H,

@@ -52,7 +52,7 @@ fn rgb_is_const_constructible() {
 /// Roundtrip a Color through TOML and parse the emitted hex back.
 /// Wraps in a tiny struct because TOML's top level must be a table.
 fn toml_roundtrip(c: Color) -> (String, Color) {
-    #[derive(serde::Serialize, serde::Deserialize)]
+    #[derive(Debug, serde::Serialize, serde::Deserialize)]
     struct W {
         c: Color,
     }

@@ -368,7 +368,7 @@ fn cursor_to_byte(text: &str, cursor: cosmic_text::Cursor) -> usize {
 }
 
 #[cfg(test)]
-pub(super) mod internals {
+pub(crate) mod test_support {
     use super::*;
 
     impl TextProbe<'_> {

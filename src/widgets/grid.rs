@@ -31,7 +31,6 @@ pub struct Grid<Rows = [Track; 0], Cols = [Track; 0]> {
 }
 
 impl Grid {
-    #[allow(clippy::new_without_default)]
     #[track_caller]
     pub fn new() -> Self {
         Self {

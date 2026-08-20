@@ -305,7 +305,7 @@ unsafe fn f16x4_from_f32x4_f16c(src: [f32; 4]) -> [u16; 4] {
 /// test reaches the storage form, so the wider gate would leave both
 /// items dead in an `internals`-only build.
 #[cfg(any(test, feature = "bench"))]
-pub(crate) mod internals {
+pub(crate) mod test_support {
     use crate::primitives::half_simd::F16x4;
 
     impl F16x4 {

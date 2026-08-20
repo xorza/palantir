@@ -8,7 +8,7 @@ use crate::primitives::stroke::Stroke;
 use crate::scene::record_store::RecordStore;
 use crate::shape::Shape;
 use crate::shape::rect::RectKind;
-use crate::shape::sealed::Lower as _;
+use crate::shape::sealed::LowerShape as _;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::wrap::TextWrap;
 use crate::text::{FontFamily, FontWeight};

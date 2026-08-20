@@ -74,8 +74,8 @@ const AGREEING: &[Case] = &[
 #[test]
 fn the_two_fill_distributors_agree_on_the_ordinary_shapes() {
     for &(label, items, budget) in AGREEING {
-        let from_stack = stack::internals::distribute_fill(items, budget);
-        let from_grid = grid::internals::distribute_fill(items, budget);
+        let from_stack = stack::test_support::distribute_fill(items, budget);
+        let from_grid = grid::test_support::distribute_fill(items, budget);
         for (i, (s, g)) in from_stack.iter().zip(&from_grid).enumerate() {
             assert!(
                 (s - g).abs() < 1e-3,
@@ -115,12 +115,12 @@ fn the_two_fill_distributors_diverge_on_freeze_order() {
     const BUDGET: f32 = 379.0;
 
     assert_eq!(
-        stack::internals::distribute_fill(ITEMS, BUDGET),
+        stack::test_support::distribute_fill(ITEMS, BUDGET),
         vec![28.0, 173.0, 78.0],
         "stack freezes item 1 at its floor before item 2's cap frees room",
     );
     assert_eq!(
-        grid::internals::distribute_fill(ITEMS, BUDGET),
+        grid::test_support::distribute_fill(ITEMS, BUDGET),
         vec![28.0, 273.0, 78.0],
         "grid caps item 2 first, so item 1's share clears its floor",
     );
@@ -173,8 +173,8 @@ fn the_two_fill_distributors_are_not_interchangeable() {
             mixed_sign_cases += 1;
         }
 
-        let from_stack = stack::internals::distribute_fill(&items, budget);
-        let from_grid = grid::internals::distribute_fill(&items, budget);
+        let from_stack = stack::test_support::distribute_fill(&items, budget);
+        let from_grid = grid::test_support::distribute_fill(&items, budget);
         if from_stack
             .iter()
             .zip(&from_grid)

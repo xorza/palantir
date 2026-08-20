@@ -161,7 +161,7 @@ mod tests {
     use crate::primitives::spacing::*;
 
     fn ser(s: Spacing) -> String {
-        #[derive(serde::Serialize)]
+        #[derive(Debug, serde::Serialize)]
         struct W {
             v: Spacing,
         }
@@ -169,7 +169,7 @@ mod tests {
     }
 
     fn de(toml_str: &str) -> Spacing {
-        #[derive(serde::Deserialize)]
+        #[derive(Debug, serde::Deserialize)]
         struct W {
             v: Spacing,
         }

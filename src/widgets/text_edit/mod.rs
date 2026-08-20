@@ -263,7 +263,7 @@ impl<'a> TextEdit<'a> {
             // chip.
             flags: _,
             // `TextEdit` wraps a `Scroll`, which overwrites `transform`
-            // with its pan offset (see `scroll::scroll_wrappers`), so
+            // with its pan offset (see `ScrollWrappers::split`), so
             // forwarding one would read as supported while doing nothing.
             transform: _,
             // Everything below places the widget inside its parent or

@@ -5,7 +5,7 @@ use image::RgbaImage;
 use palantir::{Color, Configure, Panel, Rect, Shadow, Shape, Sizing};
 
 use crate::harness::Harness;
-use palantir::golden::{Tolerance, diff};
+use palantir::golden::Tolerance;
 
 const VIEWPORT: UVec2 = UVec2::new(220, 180);
 const CLEAR: Color = Color::WHITE;
@@ -84,7 +84,7 @@ fn shifted_drop_bbox_preserves_positive_and_negative_offset_pixels() {
             4.0,
             false,
         );
-        let report = diff(&shifted, &reference, tolerance);
+        let report = tolerance.diff(&shifted, &reference);
         assert_eq!(
             report.differing_pixels, 0,
             "offset {offset:?}: max channel delta {}, differing ratio {}",

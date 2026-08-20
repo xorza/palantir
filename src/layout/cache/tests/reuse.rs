@@ -1,3 +1,6 @@
+//! What a cache hit is allowed to reuse: keys, arena snapshots, and
+//! the invalidations that must miss.
+
 use crate::Ui;
 use crate::layout::cache::{ArenaSnapshot, AvailableKey};
 use crate::layout::types::sizing::Sizing;

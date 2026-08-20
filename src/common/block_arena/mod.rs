@@ -274,7 +274,7 @@ counter_snapshot! {
 /// benchmark's arena-settle guard — rather than on `internals`, which
 /// the two integration suites enable without ever asking this question.
 #[cfg(any(test, feature = "bench"))]
-pub(crate) mod internals {
+pub(crate) mod test_support {
     use super::*;
 
     impl<T> BlockArena<T> {

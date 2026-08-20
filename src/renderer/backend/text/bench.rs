@@ -51,7 +51,7 @@ use crate::primitives::urect::URect;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::stencil_variant::StencilVariant;
 use crate::renderer::backend::text::TextBackend;
-use crate::renderer::backend::text::encode::internals::{ChurnBench, SweepBench};
+use crate::renderer::backend::text::encode::test_support::{ChurnBench, SweepBench};
 use crate::renderer::backend::viewport::ViewportPush;
 use crate::renderer::render_buffer::text::TextDrawRow;
 use crate::scene::record_store::RecordStore;

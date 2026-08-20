@@ -441,7 +441,7 @@ impl Forest {
 }
 
 #[cfg(test)]
-mod internals {
+pub(crate) mod test_support {
     use crate::primitives::widget_id::WidgetId;
     use crate::scene::forest::Forest;
     use crate::scene::layer::Layer;

@@ -50,18 +50,15 @@ impl CurveShape {
             cap: LineCap::Butt,
         }
     }
+}
 
-    pub fn brush(mut self, brush: impl Into<CurveBrush>) -> Self {
-        self.brush = brush.into();
-        self
-    }
+shape_setters!(CurveShape {
+    brush: CurveBrush => brush,
+    cap: LineCap => cap,
+});
 
-    pub fn cap(mut self, cap: impl Into<LineCap>) -> Self {
-        self.cap = cap.into();
-        self
-    }
-
-    pub(crate) fn is_noop(&self) -> bool {
+impl sealed::LowerShape for CurveShape {
+    fn is_noop(&self) -> bool {
         if noop_f32(self.width) || self.brush.is_noop() {
             return true;
         }
@@ -75,13 +72,6 @@ impl CurveShape {
             }
             CurveGeometry::Arc { radius, sweep, .. } => noop_f32(*radius) || noop_f32(sweep.abs()),
         }
-    }
-}
-// See the `sealed` module in `shape/mod.rs` for why.
-#[allow(private_interfaces)]
-impl sealed::Lower for CurveShape {
-    fn is_noop(&self) -> bool {
-        CurveShape::is_noop(self)
     }
 
     fn lower(self, store: &RecordStore) -> ShapeRecord {

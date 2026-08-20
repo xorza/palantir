@@ -53,6 +53,7 @@ fn pinch_zoom_keeps_point_under_cursor_fixed() {
     const OUTER_PAD: f32 = 16.0;
     const TEXT_GAP: f32 = 24.0;
 
+    #[derive(Debug)]
     struct Case {
         label: &'static str,
         content_size: f32,

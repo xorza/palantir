@@ -238,7 +238,7 @@ impl OffscreenHost {
 }
 
 #[cfg(feature = "bench")]
-pub(crate) mod internals {
+pub(crate) mod test_support {
     use crate::host::offscreen::OffscreenHost;
     use crate::renderer::render_buffer::RenderBuffer;
 

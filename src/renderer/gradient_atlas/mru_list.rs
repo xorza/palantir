@@ -156,7 +156,7 @@ impl MruList {
 }
 
 #[cfg(test)]
-mod internals {
+pub(crate) mod test_support {
     use super::*;
 
     impl MruList {
