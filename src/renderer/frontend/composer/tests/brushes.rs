@@ -14,7 +14,7 @@ use crate::renderer::frontend::composer::tests::support::{
     composer, curve, draw, gpu_paint, gpu_view_payload, image, params, rect, render_buffer, run,
     run_with_texture_cap,
 };
-use crate::renderer::frontend::paint_sink::PaintSink;
+use crate::renderer::frontend::paint_sink::{PaintGate, PaintSink};
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;

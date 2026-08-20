@@ -12,7 +12,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::{Layer, PerLayer};
 use crate::scene::node::{Node, Salt};
 use crate::scene::record_store::RecordStore;
-use crate::scene::seen_ids::{CollisionRecord, Endpoint, EndpointOutcome, SeenIds};
+use crate::scene::seen_ids::{CollisionRecord, Endpoint, SeenIds};
 use crate::scene::tree::ChromeInput;
 use crate::scene::tree::Tree;
 use crate::scene::tree::node_id::NodeId;
@@ -226,10 +226,8 @@ impl Forest {
             layer,
             node: node_id,
         };
-        if let EndpointOutcome::ExplicitCollision { first, second } =
-            self.ids.record_endpoint(widget_id, endpoint)
-        {
-            self.report_explicit_collision(first, second);
+        if let Some(collision) = self.ids.record_endpoint(widget_id, endpoint) {
+            self.report_explicit_collision(collision);
         }
     }
 
@@ -239,7 +237,8 @@ impl Forest {
     /// caller bug.
     #[cold]
     #[inline(never)]
-    fn report_explicit_collision(&mut self, first: Endpoint, second: Endpoint) {
+    fn report_explicit_collision(&mut self, collision: CollisionRecord) {
+        let CollisionRecord { first, second } = collision;
         tracing::error!(
             first_layer = ?first.layer,
             first_node = ?first.node,
@@ -247,7 +246,7 @@ impl Forest {
             second_node = ?second.node,
             "explicit WidgetId collision — disambiguated; per-widget state will not survive between the colliding call sites",
         );
-        self.collisions.push(CollisionRecord { first, second });
+        self.collisions.push(collision);
     }
 
     pub(crate) fn close_node(&mut self) {
@@ -290,7 +289,9 @@ impl Forest {
     /// Asserts a node is currently open so widgets can't leak shapes
     /// outside an `open_node` / `close_node` scope.
     pub(crate) fn add_shape<S: Lower>(&mut self, shape: S) {
-        self.push_shape("add_shape", |tree, store| tree.shapes.add(shape, store));
+        self.push_shape("add_shape", |tree, store| {
+            tree.shapes.add(shape, store).is_some()
+        });
     }
 
     /// Append a `GpuView` shape (a
@@ -305,7 +306,7 @@ impl Forest {
     pub(crate) fn add_gpu_view(&mut self, epoch: u64) {
         self.push_shape("add_gpu_view", |tree, _| {
             tree.shapes.add_gpu_view(epoch);
-            Some(0)
+            true
         });
     }
 
@@ -344,24 +345,22 @@ impl Forest {
     /// node, hand `push` the active tree, and charge the open frame one
     /// paint row for whatever it actually stored.
     ///
-    /// `push` returns `None` when the shape noop-collapsed — a static
-    /// shape must not pay a sentinel push into the sparse registry, so
-    /// the row counter only advances for shapes that survived.
+    /// `push` answers "did this store a paint row" — `false` when the
+    /// shape noop-collapsed, so the row counter only advances for shapes
+    /// that survived. A bare `bool` because no `add_*` entry point here
+    /// wants the record index; `add_shape_animated` is the one that does,
+    /// and it calls `Shapes::add` directly.
     /// `add_shape_animated` doesn't route through here: it needs the row
     /// index *and* the open frame after the push, which would mean
     /// handing the closure the frame too.
     #[inline]
-    fn push_shape(
-        &mut self,
-        what: &str,
-        push: impl FnOnce(&mut Tree, &RecordStore) -> Option<u32>,
-    ) {
+    fn push_shape(&mut self, what: &str, push: impl FnOnce(&mut Tree, &RecordStore) -> bool) {
         let layer = self.current_layer();
         self.assert_node_open(layer, what);
         // Disjoint borrow: record storage, `trees`, and `scratch` are
         // separate fields, so all three can be borrowed for the same call.
         let tree = &mut self.trees[layer];
-        if push(tree, &self.record_store).is_some() {
+        if push(tree, &self.record_store) {
             self.scratch[layer]
                 .open_frames
                 .last_mut()

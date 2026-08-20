@@ -15,12 +15,10 @@
 //! every uploader. Dropping the ctx releases all four borrows so
 //! render passes can resume using the encoder afterward.
 
-use crate::renderer::backend::queue::Queue;
-
 #[derive(Debug)]
 pub(crate) struct GpuCtx<'a> {
     pub(super) device: &'a wgpu::Device,
-    pub(super) queue: &'a Queue,
+    pub(super) queue: &'a wgpu::Queue,
     belt: &'a mut wgpu::util::StagingBelt,
     pub(super) encoder: &'a mut wgpu::CommandEncoder,
 }
@@ -28,7 +26,7 @@ pub(crate) struct GpuCtx<'a> {
 impl<'a> GpuCtx<'a> {
     pub(crate) fn new(
         device: &'a wgpu::Device,
-        queue: &'a Queue,
+        queue: &'a wgpu::Queue,
         belt: &'a mut wgpu::util::StagingBelt,
         encoder: &'a mut wgpu::CommandEncoder,
     ) -> Self {

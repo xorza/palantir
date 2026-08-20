@@ -7,7 +7,7 @@ use crate::renderer::frontend::capture::PaintCapture;
 use crate::renderer::frontend::composer::tests::support::{
     clip, composer, curve, image, mesh, params, polyline_cmd, rect, render_buffer, run, text,
 };
-use crate::renderer::frontend::paint_sink::PaintSink;
+use crate::renderer::frontend::paint_sink::{PaintGate, PaintSink};
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
 use crate::renderer::frontend::payload::stroke_bounds::Spin;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;

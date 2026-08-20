@@ -188,11 +188,15 @@ pub(super) fn for_each_step(
     damage_scissor: Option<URect>,
     masks: &MaskPlan,
     use_stencil: bool,
-    mut emit: impl FnMut(RenderStep),
+    // `&mut dyn` rather than `impl FnMut`: [`PassState`] is the single
+    // emit point and holds the callback for the whole walk, so a generic
+    // parameter would be erased there anyway — buying a monomorphisation
+    // per caller and no devirtualised call.
+    emit: &mut dyn FnMut(RenderStep),
 ) {
     let full_viewport = URect::new(0, 0, buffer.viewport_phys.x, buffer.viewport_phys.y);
     let mut state = PassState {
-        emit: &mut emit,
+        emit,
         use_stencil,
         cur_scissor: None,
         cur_ref: 0,
@@ -625,7 +629,7 @@ pub(crate) mod internals {
             use_stencil: bool,
         ) -> WalkCounts {
             let mut counts = WalkCounts::default();
-            for_each_step(buffer, damage, &self.plan, use_stencil, |step| {
+            for_each_step(buffer, damage, &self.plan, use_stencil, &mut |step| {
                 counts.steps += 1;
                 match step {
                     RenderStep::SetScissor(_) => counts.scissors += 1,

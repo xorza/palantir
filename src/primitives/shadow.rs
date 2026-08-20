@@ -81,7 +81,18 @@ impl Shadow {
         // Geometry is screened for NaN only, not magnitude: a zero-σ
         // zero-offset shadow still paints a hard-edged rect, so the
         // tint is the only thing whose *size* decides visibility.
-        self.color.is_noop()
+        self.color.is_noop() || self.has_nan()
+    }
+
+    /// True if any scalar the shadow carries is NaN. `const`, so
+    /// [`Self::is_noop`] can reuse it instead of repeating the field
+    /// walk; the [`NanCheck`] impl below delegates here for the same
+    /// reason.
+    ///
+    /// [`NanCheck`]: crate::primitives::nan::NanCheck
+    #[inline]
+    pub(crate) const fn has_nan(&self) -> bool {
+        self.color.has_nan()
             || nan::vec2_has_nan(self.offset)
             || self.blur.is_nan()
             || self.spread.is_nan()
@@ -102,6 +113,6 @@ impl std::hash::Hash for Shadow {
 impl NanCheck for Shadow {
     #[inline]
     fn has_nan(&self) -> bool {
-        self.color.has_nan() || self.offset.has_nan() || self.blur.is_nan() || self.spread.is_nan()
+        Shadow::has_nan(self)
     }
 }

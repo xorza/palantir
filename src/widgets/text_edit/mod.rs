@@ -332,6 +332,11 @@ impl<'a> TextEdit<'a> {
         // for the pass — so the only field kept current is `focused`, updated
         // wherever the pass moves focus.
         let mut probed = ui.response_for(id);
+        // Snapshotted before anything can move it: `run_input` reads it
+        // for the select-all-on-focus edge and `ViewState::update` writes
+        // this frame's value over it, so both focus edges below are
+        // derived from the same one read.
+        let was_focused = state.view.prev_focused;
         // Pick the per-state look + animate its visual components.
         // Disabled wins over focus — a disabled editor that still
         // happens to hold focus paints with its disabled visuals
@@ -385,7 +390,6 @@ impl<'a> TextEdit<'a> {
         }
         .apply(ui, &mut widget);
         if !look.text.metrics_valid() {
-            let was_focused = state.view.prev_focused;
             state.view.prev_focused = is_focused;
             let chrome = look.background;
             widget.record(ui, Some(&chrome), |_| {});
@@ -440,7 +444,6 @@ impl<'a> TextEdit<'a> {
         let caret_before = state.edit.caret;
         let sel_before = state.edit.selection;
         let InputResult {
-            was_focused,
             blur: blur_after,
             submitted,
             edited,

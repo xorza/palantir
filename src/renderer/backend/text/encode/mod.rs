@@ -29,7 +29,7 @@ use crate::primitives::num::F32Ext;
 use crate::primitives::span::Span;
 use crate::renderer::render_buffer::text::TextDrawRow;
 use crate::text::key::TextShapeKey;
-use crate::text::render::{self};
+use crate::text::render::SubpixelOrigin;
 
 pub(super) mod cache;
 pub(super) mod encoder;
@@ -87,7 +87,7 @@ pub(super) struct EncodedEntry {
 pub(super) fn encode_key_for(r: &TextDrawRow, frame_scale: f32) -> EncodedRunKey {
     let scale = frame_scale * r.scale;
     let area_color: u32 = bytemuck::cast(r.color);
-    let sub = render::subpixel_origin(r.origin);
+    let sub = SubpixelOrigin::of(r.origin);
     EncodedRunKey {
         key: EncodedKey {
             text: r.text.key,

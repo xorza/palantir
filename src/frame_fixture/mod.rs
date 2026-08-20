@@ -117,70 +117,67 @@ impl Default for FrameFixture {
 }
 
 impl FrameFixture {
+    /// Record the whole fixture page into `ui` at `scale`.
     pub fn render(&mut self, scale: usize, ui: &mut Ui) {
-        build_ui(self, scale, ui);
+        let sidebar_items = 5 * scale;
+        let chat_messages = 2 * scale;
+        let film_cells = 2 * scale;
+        let prop_rows = 4 + scale;
+        let tag_count = 3 * scale;
+        let badge_count = scale;
+        self.grid_rows.resize(prop_rows, Track::hug());
+
+        Panel::vstack()
+            .gap(10.0)
+            .padding(12.0)
+            .size((Sizing::FILL, Sizing::FILL))
+            .background(Background {
+                fill: tokens::APP_BG.into(),
+                ..Default::default()
+            })
+            .show(ui, |ui| {
+                chrome::app_bar(ui);
+
+                Panel::hstack()
+                    .id_salt("body")
+                    .gap(12.0)
+                    .size((Sizing::FILL, Sizing::FILL))
+                    .transform(TranslateScale::from_translation(self.scroll_offset))
+                    .show(ui, |ui| {
+                        chrome::sidebar(ui, sidebar_items);
+
+                        // Page scroll, not a bare VStack: the card column is taller
+                        // than a normal window, and an overflowing column paints
+                        // over the status bar — which occludes the footer counter
+                        // and collapses the `frame/partial_*` arms to `Damage::Skip`.
+                        // Clipping the overflow here keeps the counter visible at
+                        // every viewport size. Every child must therefore be Hug or
+                        // Fixed: a scroll passes ∞ on its main axis, so a `Fill`
+                        // child would resolve against nothing.
+                        Scroll::vertical()
+                            .id_salt("page-scroll")
+                            .gap(10.0)
+                            .size((Sizing::FILL, Sizing::FILL))
+                            .show(ui, |ui| {
+                                // Ordered diverse-first: the visually varied cards lead so
+                                // they fill the showcase page's viewport, while the bulky
+                                // repetitive lists (properties, tags) trail.
+                                stat_strip::show(ui);
+                                forms::request_card(self, ui);
+                                forms::settings_card(self, ui);
+                                specimen::sheet(ui);
+                                panes::panes_card(self, ui);
+                                lists::filmstrip(ui, film_cells);
+                                lists::activity_card(ui, chat_messages);
+                                forms::properties_card(self, ui, prop_rows);
+                                lists::tags_card(ui, tag_count, badge_count);
+                                forms::notes_card(self, ui);
+                            });
+                    });
+
+                chrome::status_bar(self, ui);
+            });
     }
-}
-
-pub(crate) fn build_ui(state: &mut FrameFixture, scale: usize, ui: &mut Ui) {
-    let sidebar_items = 5 * scale;
-    let chat_messages = 2 * scale;
-    let film_cells = 2 * scale;
-    let prop_rows = 4 + scale;
-    let tag_count = 3 * scale;
-    let badge_count = scale;
-    state.grid_rows.resize(prop_rows, Track::hug());
-
-    Panel::vstack()
-        .gap(10.0)
-        .padding(12.0)
-        .size((Sizing::FILL, Sizing::FILL))
-        .background(Background {
-            fill: tokens::APP_BG.into(),
-            ..Default::default()
-        })
-        .show(ui, |ui| {
-            chrome::app_bar(ui);
-
-            Panel::hstack()
-                .id_salt("body")
-                .gap(12.0)
-                .size((Sizing::FILL, Sizing::FILL))
-                .transform(TranslateScale::from_translation(state.scroll_offset))
-                .show(ui, |ui| {
-                    chrome::sidebar(ui, sidebar_items);
-
-                    // Page scroll, not a bare VStack: the card column is taller
-                    // than a normal window, and an overflowing column paints
-                    // over the status bar — which occludes the footer counter
-                    // and collapses the `frame/partial_*` arms to `Damage::Skip`.
-                    // Clipping the overflow here keeps the counter visible at
-                    // every viewport size. Every child must therefore be Hug or
-                    // Fixed: a scroll passes ∞ on its main axis, so a `Fill`
-                    // child would resolve against nothing.
-                    Scroll::vertical()
-                        .id_salt("page-scroll")
-                        .gap(10.0)
-                        .size((Sizing::FILL, Sizing::FILL))
-                        .show(ui, |ui| {
-                            // Ordered diverse-first: the visually varied cards lead so
-                            // they fill the showcase page's viewport, while the bulky
-                            // repetitive lists (properties, tags) trail.
-                            stat_strip::show(ui);
-                            forms::request_card(state, ui);
-                            forms::settings_card(state, ui);
-                            specimen::sheet(ui);
-                            panes::panes_card(state, ui);
-                            lists::filmstrip(ui, film_cells);
-                            lists::activity_card(ui, chat_messages);
-                            forms::properties_card(state, ui, prop_rows);
-                            lists::tags_card(ui, tag_count, badge_count);
-                            forms::notes_card(state, ui);
-                        });
-                });
-
-            chrome::status_bar(state, ui);
-        });
 }
 
 #[cfg(test)]
@@ -373,7 +370,7 @@ mod tests {
                         .label("nav")
                         .size((Sizing::fixed(120.0), Sizing::fixed(40.0)))
                         .show(ui);
-                    build_ui(&mut state.borrow_mut(), 2, ui);
+                    state.borrow_mut().render(2, ui);
                 });
         };
 
@@ -417,7 +414,7 @@ mod tests {
                 state.tick = state.tick.wrapping_add(1);
                 paint = h
                     .at(Duration::from_millis(i * 16))
-                    .frame(|ui| build_ui(&mut state, scale, ui))
+                    .frame(|ui| state.render(scale, ui))
                     .paint();
             }
             assert_eq!(

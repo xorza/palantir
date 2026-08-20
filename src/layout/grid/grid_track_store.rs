@@ -17,8 +17,8 @@ pub(super) enum HugKind {
 }
 
 /// Pack/unpack order for hug arrays inside a snapshot. Single source of
-/// truth — `snapshot_subtree` and `restore_subtree` both iterate this,
-/// so reordering one without the other is impossible.
+/// truth — `snapshot_grid` and `restore_subtree` both iterate this, so
+/// reordering one without the other is impossible.
 const HUG_ORDER: [(Axis, HugKind); 4] = [
     (Axis::X, HugKind::Max),
     (Axis::X, HugKind::Min),
@@ -198,29 +198,28 @@ impl GridTrackStore {
         self.totals_pool[usize::from(idx)][Self::axis_total_idx(axis)] = Some(total);
     }
 
-    /// Pack per-grid hug arrays for every `LayoutMode::Grid` descendant
-    /// in `subtree` (pre-order node-index range) into `out`. Used by
-    /// the cross-frame measure cache: when a subtree is snapshotted,
-    /// arrange's hug state must be saved so a later cache hit at any
-    /// ancestor can restore it via [`Self::restore_subtree`]. Order is
-    /// dictated by [`HUG_ORDER`] per Grid, in pre-order.
-    pub(crate) fn snapshot_subtree(&self, tree: &Tree, subtree: Range<usize>, out: &mut Vec<f32>) {
-        let layouts = tree.records.layout();
-        for i in subtree {
-            let core = layouts[i];
-            if let LayoutMode::Grid(idx) = LayoutMode::from(core.meta) {
-                for (axis, kind) in HUG_ORDER {
-                    out.extend_from_slice(self.slice(idx, axis, kind));
-                }
-            }
+    /// Append one Grid's four hug arrays to `out`, in [`HUG_ORDER`].
+    /// Used by the cross-frame measure cache: when a subtree is
+    /// snapshotted, arrange's hug state must be saved so a later cache
+    /// hit at any ancestor can restore it via [`Self::restore_subtree`].
+    ///
+    /// Per Grid rather than per subtree because the caller is already
+    /// walking every node in pre-order to lay down `hug_offsets`, and
+    /// has already matched the mode to know a Grid is here — a range
+    /// parameter would make it re-read the layout row and re-match to
+    /// recover the `GridDefId` it just discarded.
+    pub(crate) fn snapshot_grid(&self, idx: GridDefId, out: &mut Vec<f32>) {
+        for (axis, kind) in HUG_ORDER {
+            out.extend_from_slice(self.slice(idx, axis, kind));
         }
     }
 
-    /// Inverse of `snapshot_subtree`: walks the same pre-order range
-    /// and pours four hug arrays per Grid back into the slot at the
-    /// current frame's `idx`. `subtree_hash` equality on the cache key
-    /// guarantees same Grid count and same `(n_cols, n_rows)` per
-    /// Grid in the same order, so the slice and the walk align.
+    /// Inverse of [`Self::snapshot_grid`], for a whole subtree at once:
+    /// walks `subtree` in pre-order and pours four hug arrays per Grid
+    /// back into the slot at the current frame's `idx`. `subtree_hash`
+    /// equality on the cache key guarantees same Grid count and same
+    /// `(n_cols, n_rows)` per Grid in the same order, so the slice and
+    /// the walk align.
     pub(crate) fn restore_subtree(&mut self, tree: &Tree, subtree: Range<usize>, tracks: &[f32]) {
         let layouts = tree.records.layout();
         let mut pos = 0usize;

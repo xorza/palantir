@@ -61,7 +61,7 @@ impl<'a> TextShapeInput<'a> {
         // leaf's own direct shapes — contiguous, no child boundaries to skip.
         debug_assert_eq!(
             tree.subtree_end_of(node.idx()),
-            node.0 + 1,
+            node.idx() + 1,
             "TextShapeInput::on_leaf called on non-leaf node {node:?}",
         );
         let span = tree.records.shape_span()[node.idx()];

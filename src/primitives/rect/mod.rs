@@ -114,15 +114,6 @@ impl Rect {
         self.size.w * self.size.h
     }
 
-    /// True if this rect is approximately `Rect::ZERO` — `min` within
-    /// `EPS` of `(0, 0)` AND `size.approx_zero()`. Strict, matches
-    /// [`Size::approx_zero`] semantic.
-    #[inline]
-    pub const fn approx_zero(self) -> bool {
-        use crate::primitives::approx::approx_zero;
-        approx_zero(self.min.x) && approx_zero(self.min.y) && self.size.approx_zero()
-    }
-
     /// True when this rect paints no pixels — at least one axis is
     /// `<= EPS` (including NaN / negative). Defers to
     /// [`Size::is_paint_empty`]; shared between every paint-payload
@@ -133,6 +124,17 @@ impl Rect {
         // half — a rect at a negative origin paints fine, one at an
         // undefined origin does not.
         self.size.is_paint_empty() || nan::vec2_has_nan(self.min)
+    }
+
+    /// True if any of the four lanes is NaN. `const`, so the const
+    /// predicates that need the sweep can call it; the [`NanCheck`] impl
+    /// below delegates here rather than keeping a second copy of the
+    /// field walk.
+    ///
+    /// [`NanCheck`]: crate::primitives::nan::NanCheck
+    #[inline]
+    pub(crate) const fn has_nan(self) -> bool {
+        nan::vec2_has_nan(self.min) || self.size.has_nan()
     }
 
     /// Half-open containment: the min edges are inside, the max edges are
@@ -319,7 +321,7 @@ impl Rect {
 impl NanCheck for Rect {
     #[inline]
     fn has_nan(&self) -> bool {
-        self.min.has_nan() || self.size.has_nan()
+        Rect::has_nan(*self)
     }
 }
 

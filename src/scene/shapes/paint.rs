@@ -2,7 +2,7 @@
 
 use crate::common::content_hash::ContentHash;
 use crate::primitives::approx::noop_f32;
-use crate::primitives::color::{Color, ColorF16};
+use crate::primitives::color::ColorF16;
 use crate::primitives::corners::Corners;
 use crate::primitives::half_simd::F16x4;
 use crate::primitives::nan::NanCheck;
@@ -80,13 +80,6 @@ impl From<Stroke> for ShapeStroke {
     #[inline]
     fn from(stroke: Stroke) -> Self {
         Self::from(&stroke)
-    }
-}
-
-impl From<ShapeStroke> for Stroke {
-    #[inline]
-    fn from(stroke: ShapeStroke) -> Self {
-        Stroke::solid(Color::from(stroke.color), stroke.width)
     }
 }
 

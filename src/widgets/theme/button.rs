@@ -99,6 +99,15 @@ impl ButtonTheme {
     /// conventional menu-bar look (Figma / VS Code / macOS).
     /// Distinct from a popup-row `MenuItem`, which lives inside a
     /// `ContextMenu` and is themed via `theme.context_menu.item`.
+    ///
+    /// Deliberately a recipe rather than a [`Theme`] slot: no widget in
+    /// the crate resolves against a menu-bar style, so a slot would be a
+    /// theme field, a serde shape, and a text-walk arm that nothing
+    /// reads. An app with a menu bar builds one from its own palette and
+    /// hands it to [`Button::style`].
+    ///
+    /// [`Theme`]: crate::Theme
+    /// [`Button::style`]: crate::Button::style
     pub fn menu_button(p: &Palette) -> Self {
         let flat = |fill: Brush| WidgetLook {
             background: Background::rounded(fill, Corners::all(4.0)),

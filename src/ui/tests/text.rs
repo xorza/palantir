@@ -489,7 +489,7 @@ fn widget_text_inputs_lower_exact_bytes() {
     let payloads = h.ui.forest.record_store.payloads.borrow();
     let interned_text = payloads.interned_text();
     assert_eq!(
-        &*interned_text.bytes,
+        interned_text.bytes,
         "borrowedownedowned internedinternedformatted 7"
     );
     let records = &h.ui.forest.trees[Layer::Main].shapes.records;

@@ -43,6 +43,8 @@ pub struct Mods {
     pub alt: bool,
 }
 
+/// The named sets are the ones the crate's own constructors reach for;
+/// any other combination is a struct literal, which is all `Mods` is.
 impl Mods {
     /// No modifiers — a bare key.
     pub const NONE: Self = Self {
@@ -56,29 +58,11 @@ impl Mods {
         shift: false,
         alt: false,
     };
-    /// Shift alone.
-    pub const SHIFT: Self = Self {
-        ctrl: false,
-        shift: true,
-        alt: false,
-    };
-    /// Alt alone.
-    pub const ALT: Self = Self {
-        ctrl: false,
-        shift: false,
-        alt: true,
-    };
     /// Primary command key plus Shift.
     pub const CTRL_SHIFT: Self = Self {
         ctrl: true,
         shift: true,
         alt: false,
-    };
-    /// Primary command key plus Alt.
-    pub const CTRL_ALT: Self = Self {
-        ctrl: true,
-        shift: false,
-        alt: true,
     };
 
     /// Project event-state [`Modifiers`] into shortcut vocabulary. A
@@ -138,11 +122,6 @@ impl Shortcut {
     /// `Ctrl+Shift+<c>`. Same casing convention as [`Self::ctrl`].
     pub const fn ctrl_shift(c: char) -> Self {
         Self::new(Mods::CTRL_SHIFT, Key::Char(c))
-    }
-
-    /// `Ctrl+Alt+<c>`. Same casing convention as [`Self::ctrl`].
-    pub const fn ctrl_alt(c: char) -> Self {
-        Self::new(Mods::CTRL_ALT, Key::Char(c))
     }
 
     /// True iff `kp` matches this shortcut. Modifier comparison is

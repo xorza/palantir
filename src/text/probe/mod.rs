@@ -6,7 +6,7 @@
 //! [`Ui::probe_text`](crate::Ui::probe_text), never by the shaping hot path.
 //! Placing a measured block inside its leaf rect is plain box alignment with
 //! no text state, so it lives with `Align` as
-//! [`crate::layout::types::align::align_in_rect`].
+//! [`crate::layout::types::align::Align::place_in`].
 //!
 //! Nothing shaped escapes `src/text/`: [`TextProbe`] answers in plain
 //! geometry and the cosmic-text buffer behind it stays private to this file.

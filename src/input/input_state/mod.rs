@@ -680,7 +680,7 @@ impl InputState {
     /// frame 1 reflects the actual content under the cursor.
     pub(crate) fn refresh_pointer_targets(&mut self, cascade: &Cascade) {
         if let Some(p) = self.pointer_pos {
-            let hits = cascade.hit_test_targets(p, Sense::hovers, Sense::scrolls, Sense::pinches);
+            let hits = cascade.hit_test_targets(p);
             self.hovered = hits.hover;
             self.scroll_target = hits.scroll;
             self.pinch_target = hits.pinch;

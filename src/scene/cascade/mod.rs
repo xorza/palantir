@@ -283,31 +283,23 @@ impl Cascade {
         self.hit_first(pos, |row| filter(row.sense))
     }
 
-    /// One reverse walk that finds the topmost match for each of three
-    /// filters at once. Used on `PointerMoved` and at `post_record` to
-    /// recompute hover + scroll + pinch targets in a single pass.
+    /// One reverse walk that finds the topmost hover, scroll and pinch
+    /// target at once. Used on `PointerMoved` and at `post_record` to
+    /// recompute all three in a single pass.
     /// [`Self::hit_test_press`] is the same shape for the press path.
-    /// Independent filters: a `Sense::DRAG | Sense::SCROLL` widget sits in
-    /// both hover and scroll target slots if it's the topmost match for
+    /// The three are independent: a `Sense::DRAG | Sense::SCROLL` widget
+    /// sits in both hover and scroll slots if it's the topmost match for
     /// each. Stops as soon as all three are filled.
-    pub(crate) fn hit_test_targets(
-        &self,
-        pos: Vec2,
-        hover_filter: impl Fn(Sense) -> bool,
-        scroll_filter: impl Fn(Sense) -> bool,
-        pinch_filter: impl Fn(Sense) -> bool,
-    ) -> HitTargets {
-        // Three explicit arms rather than a loop over boxed filters: this
-        // runs per pointer move, and the closures stay monomorphised.
+    pub(crate) fn hit_test_targets(&self, pos: Vec2) -> HitTargets {
         let mut targets = HitTargets::default();
         for row in self.hits_under(pos) {
-            if targets.hover.is_none() && hover_filter(row.sense) {
+            if targets.hover.is_none() && Sense::hovers(row.sense) {
                 targets.hover = Some(row.widget_id);
             }
-            if targets.scroll.is_none() && scroll_filter(row.sense) {
+            if targets.scroll.is_none() && Sense::scrolls(row.sense) {
                 targets.scroll = Some(row.widget_id);
             }
-            if targets.pinch.is_none() && pinch_filter(row.sense) {
+            if targets.pinch.is_none() && Sense::pinches(row.sense) {
                 targets.pinch = Some(row.widget_id);
             }
             if targets.hover.is_some() && targets.scroll.is_some() && targets.pinch.is_some() {
@@ -318,12 +310,11 @@ impl Cascade {
     }
 
     /// The press target and the focus target in one reverse walk — see
-    /// [`PressTargets`]. Same shape as [`Self::hit_test_targets`], and
-    /// explicit arms for the same reason: this runs per press and the
-    /// filters stay monomorphised rather than boxed. The two a press
-    /// needs are `Sense::clicks` for the press itself and
-    /// `HitRow::focusable` for what the click focuses — different
-    /// fields, which is why one filter parameter could not serve both.
+    /// [`PressTargets`]. Same shape as [`Self::hit_test_targets`]: the
+    /// predicates are named here rather than passed, because there is one
+    /// press path and it wants `Sense::clicks` for the press itself and
+    /// `HitRow::focusable` for what the click focuses — different fields,
+    /// which is why one filter parameter could not have served both.
     pub(crate) fn hit_test_press(&self, pos: Vec2) -> PressTargets {
         let mut targets = PressTargets::default();
         for row in self.hits_under(pos) {

@@ -6,7 +6,7 @@ use crate::primitives::{
 };
 use crate::renderer::frontend::composer::geometry::stroke_bbox_urect;
 use crate::renderer::frontend::composer::tests::support::{clip, draw, params, rect, run, text};
-use crate::renderer::frontend::paint_sink::PaintSink;
+use crate::renderer::frontend::paint_sink::{PaintGate, PaintSink};
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::render_buffer::paint_tier::PaintTier;

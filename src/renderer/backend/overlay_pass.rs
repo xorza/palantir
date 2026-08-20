@@ -75,7 +75,7 @@ impl DebugOverlay {
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        // `upload_overlays` grows it on demand when the damage region
+        // `upload_damage_rects` grows it on demand when the damage region
         // carries more rects (8-quad start avoids tiny early regrows).
         let overlay_buffer = DynamicBuffer::<Quad>::vertex(device, "palantir.quad.overlay", 8);
         Self {
@@ -123,6 +123,11 @@ impl DebugOverlay {
     /// `0` means nothing survived and the caller skips the overlay
     /// pass. All quads ride one instanced draw inside one pass, so a
     /// single belt write covers them.
+    ///
+    /// Outlines are stroked rects in physical px with a transparent
+    /// fill. [`DynamicBuffer`] grows the buffer when needed; staging uses
+    /// stack-bounded scratch (≤ `DAMAGE_RECT_CAP`), so steady-state
+    /// frames are alloc-free.
     pub(super) fn upload_damage_rects(
         &mut self,
         ctx: &mut GpuCtx<'_>,
@@ -130,8 +135,17 @@ impl DebugOverlay {
         buffer: &RenderBuffer,
     ) -> u32 {
         let gap_px = (DAMAGE_OVERLAY_GAP * buffer.scale).max(1.0);
+        let stroke_color = ColorF16::from(DAMAGE_OVERLAY_COLOR);
         let stroke_width = DAMAGE_OVERLAY_STROKE_WIDTH * buffer.scale;
-        let mut rects: ArrayVec<[Rect; DAMAGE_RECT_CAP]> = Default::default();
+        let outline = |rect: Rect| Quad {
+            rect,
+            fill: ColorF16::TRANSPARENT,
+            corners: Corners::default(),
+            stroke_color,
+            stroke_width,
+            ..Default::default()
+        };
+        let mut quads: ArrayVec<[Quad; DAMAGE_RECT_CAP]> = Default::default();
         match plan.kind {
             RenderKind::Partial { region } => {
                 // Outset, not inset: damage rects can be thinner than
@@ -142,48 +156,22 @@ impl DebugOverlay {
                 // and the surface clips, so spilling a few px past the
                 // damage edge is fine.
                 for r in region.iter_rects() {
-                    rects.push(r.scaled_by(buffer.scale, true).inflated(gap_px));
+                    quads.push(outline(r.scaled_by(buffer.scale, true).inflated(gap_px)));
                 }
             }
             // The full-viewport outline insets instead: outsetting it
             // would push the whole box off-screen, leaving only a
             // half-clipped edge line.
-            RenderKind::Full => rects.push(
+            RenderKind::Full => quads.push(outline(
                 Rect {
                     min: Vec2::ZERO,
                     size: Size::new(buffer.viewport_phys_f.x, buffer.viewport_phys_f.y),
                 }
                 .deflated_by(Spacing::all(gap_px)),
-            ),
-        }
-        self.upload_overlays(ctx, &rects, DAMAGE_OVERLAY_COLOR, stroke_width);
-        rects.len() as u32
-    }
-
-    /// Upload one or more damage-rect outline quads (stroked rects in
-    /// physical px, transparent fill). [`DynamicBuffer`] grows the
-    /// buffer when needed; the staging uses stack-bounded scratch
-    /// (≤ `DAMAGE_RECT_CAP`) so steady-state frames are alloc-free.
-    fn upload_overlays(
-        &mut self,
-        ctx: &mut GpuCtx<'_>,
-        rects: &[Rect],
-        stroke_color: Color,
-        stroke_width: f32,
-    ) {
-        let stroke_color_f16: ColorF16 = stroke_color.into();
-        let mut quads: ArrayVec<[Quad; DAMAGE_RECT_CAP]> = Default::default();
-        for r in rects {
-            quads.push(Quad {
-                rect: *r,
-                fill: ColorF16::TRANSPARENT,
-                corners: Corners::default(),
-                stroke_color: stroke_color_f16,
-                stroke_width,
-                ..Default::default()
-            });
+            )),
         }
         self.overlay_buffer.upload_instances(ctx, quads.as_slice());
+        quads.len() as u32
     }
 
     /// Draw `count` damage-rect outline quads. Used in the post-copy

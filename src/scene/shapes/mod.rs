@@ -11,7 +11,6 @@ use crate::primitives::color::{Color, ColorF16};
 use crate::primitives::image::{ImageDownsample, ImageFilter, ImageFit};
 use crate::primitives::nan::NanCheck;
 use crate::scene::record_store::RecordStore;
-use crate::scene::shapes::hash::compute_record_hash;
 use crate::scene::shapes::paint::ImageSource;
 use crate::scene::shapes::record::ShapeRecord;
 use crate::shape::Lower;
@@ -63,10 +62,8 @@ impl Shapes {
     /// staging, mesh hashing, text shaping downstream — which the
     /// emit-time gate cannot, having already paid it.
     /// Returns the index of the pushed `ShapeRecord` in `self.records`,
-    /// or `None` if the shape was dropped as a no-op. Callers that want
-    /// to attach side data keyed by shape-index (e.g. paint-anim
-    /// registry) use the returned index; the legacy "fire and forget"
-    /// path ignores it.
+    /// or `None` if the shape was dropped as a no-op — the index is what
+    /// `Forest::add_shape_animated` keys its paint-anim row by.
     pub(crate) fn add<S: Lower>(&mut self, shape: S, store: &RecordStore) -> Option<u32> {
         if shape.is_noop() {
             return None;
@@ -94,7 +91,7 @@ impl Shapes {
     /// Append an already-lowered record, returning its index.
     fn push(&mut self, record: ShapeRecord) -> u32 {
         let idx = self.records.len() as u32;
-        let hash = compute_record_hash(&record);
+        let hash = hash::compute_record_hash(&record);
         self.records.push(record);
         self.hashes.push(hash);
         idx
@@ -123,8 +120,6 @@ impl Shapes {
             // it is never minified and has no footprint to cover.
             downsample: ImageDownsample::Single,
         };
-        let hash = compute_record_hash(&record);
-        self.records.push(record);
-        self.hashes.push(hash);
+        self.push(record);
     }
 }

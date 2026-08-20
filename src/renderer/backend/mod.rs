@@ -19,7 +19,6 @@ mod mesh_pipeline;
 mod overlay_pass;
 pub(crate) mod pipeline_recipe;
 mod quad_pipeline;
-pub(crate) mod queue;
 pub(crate) mod raster_atlas;
 // `pub(crate)` only so the `schedule` benchmark can reach the gated
 // `internals` harness; every item inside stays `pub(super)`.
@@ -30,10 +29,8 @@ pub(crate) mod stencil_variant;
 pub(crate) mod submission;
 pub(crate) mod text;
 pub(crate) mod texture_binding;
+pub(crate) mod texture_region;
 pub(crate) mod viewport;
-#[cfg(feature = "internals")]
-#[cfg(feature = "bench")]
-pub(crate) mod write_stats;
 
 use self::curve_pipeline::CurvePipeline;
 use self::format_pipelines::FormatPipelines;
@@ -44,7 +41,6 @@ use self::image_pipeline::ImagePipeline;
 use self::mesh_pipeline::MeshPipeline;
 use self::overlay_pass::DebugOverlay;
 use self::quad_pipeline::QuadPipeline;
-use self::queue::Queue;
 use self::schedule::{RenderStep, for_each_step};
 use self::stencil::Stencil;
 use self::viewport::{RepaintScissors, ViewportPush, build_repaint_scissors};
@@ -106,7 +102,7 @@ struct UploadPlan {
 #[derive(Debug)]
 pub(crate) struct WgpuBackend {
     device: wgpu::Device,
-    queue: Queue,
+    queue: wgpu::Queue,
     /// All per-frame dynamic-buffer uploads route through this belt so
     /// the resulting `copy_buffer_to_buffer` commands ride the main
     /// encoder. On Metal that collapses N `queue.write_buffer` calls
@@ -187,7 +183,6 @@ impl WgpuBackend {
         // steady state. wgpu allocates a new chunk only when the
         // active one can't fit a write.
         let staging_belt = StagingBelt::new(device.clone(), 1 << 20);
-        let queue = Queue::new(queue);
         let features = device.features();
         let timestamp_period = queue.get_timestamp_period();
         let pass_stats = resources.gpu_pass_stats.clone();
@@ -881,7 +876,7 @@ impl WgpuBackend {
             damage_scissor,
             &self.quad.mask_indices,
             use_stencil,
-            |step| match step {
+            &mut |step| match step {
                 RenderStep::PreClear => {
                     mark(pass, BatchKind::PreClear);
                     debug_marker::push(pass, "preclear");

@@ -107,17 +107,6 @@ impl PaintInput<'_> {
         });
     }
 
-    /// What the block has to be sized to: the run's measurement, or the
-    /// placeholder's when that is what is on show, since it is what has to be
-    /// aligned.
-    fn measured(&self) -> Size {
-        if self.text.is_empty() {
-            self.geometry.display_size
-        } else {
-            self.geometry.content_size
-        }
-    }
-
     /// How tall the block is: what the shaper measured, floored at one line so an
     /// empty field still has a caret's worth of height to stand up in.
     ///
@@ -125,7 +114,7 @@ impl PaintInput<'_> {
     /// in the last thousandth of a pixel — the shaped one is quantized to 1/64 px —
     /// and the field's box has to agree with the run inside it.
     fn block_height(&self, ctx: ShapeCtx) -> f32 {
-        self.measured().h.max(ctx.font.line_height_px)
+        self.geometry.display_size.h.max(ctx.font.line_height_px)
     }
 
     /// The node the run, the wash and the caret are recorded against.
@@ -161,7 +150,7 @@ impl PaintInput<'_> {
         let mut block = Node::leaf();
         block.size = Some(
             (
-                Sizing::fixed(self.measured().w + room),
+                Sizing::fixed(self.geometry.display_size.w + room),
                 Sizing::fixed(self.block_height(ctx)),
             )
                 .into(),

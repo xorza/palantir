@@ -3,8 +3,8 @@
 use crate::primitives::image::Image;
 use crate::primitives::texture_id::TextureId;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
-use crate::renderer::backend::queue::Queue;
 use crate::renderer::backend::texture_binding;
+use crate::renderer::backend::texture_region::TextureRegion;
 use crate::renderer::image_registry::ImageRegistry;
 use rustc_hash::FxHashMap;
 
@@ -40,6 +40,17 @@ impl ImageTextures {
         }
     }
 
+    /// Reconcile the GPU texture cache with the registry, once per frame
+    /// from `WgpuBackend::submit` before the render pass. Uploads newly
+    /// registered images (dropping each `Image` right after upload, so the
+    /// CPU bytes don't outlive the GPU copy), then frees textures whose
+    /// owning [`ImageHandle`](crate::ImageHandle) dropped. After this,
+    /// every still-owned image has a bind group in the cache; a draw for
+    /// any other id is silently skipped.
+    ///
+    /// Uploads run *before* drop-frees so an image registered and dropped
+    /// in the same frame uploads then frees (no orphan) rather than
+    /// free-then-upload (which would leak it into the cache un-owned).
     pub(super) fn drain_registry(&mut self, ctx: &mut GpuCtx<'_>, images: &ImageRegistry) {
         // Destructured so the upload borrows `bgl`/`sampler` while the
         // closure holds `bindings` mutably — disjoint fields, which
@@ -73,7 +84,7 @@ impl ImageTextures {
 
 fn upload(
     device: &wgpu::Device,
-    queue: &Queue,
+    queue: &wgpu::Queue,
     layout: &wgpu::BindGroupLayout,
     sampler: &wgpu::Sampler,
     id: TextureId,
@@ -97,21 +108,13 @@ fn upload(
         usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
         view_formats: &[],
     });
-    queue.write_texture(
-        wgpu::TexelCopyTextureInfo {
-            texture: &texture,
-            mip_level: 0,
-            origin: wgpu::Origin3d::ZERO,
-            aspect: wgpu::TextureAspect::All,
-        },
-        &image.pixels,
-        wgpu::TexelCopyBufferLayout {
-            offset: 0,
-            bytes_per_row: Some(image.size.x * 4),
-            rows_per_image: Some(image.size.y),
-        },
-        size,
-    );
+    TextureRegion {
+        texture: &texture,
+        first_row: 0,
+        size: image.size,
+        bytes_per_row: image.size.x * 4,
+    }
+    .write(queue, &image.pixels);
     let view = texture.create_view(&Default::default());
     texture_binding::bind_group(device, layout, sampler, &view, &bind_group_label)
 }

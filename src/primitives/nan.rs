@@ -21,12 +21,24 @@
 //! [`Aabb`](crate::primitives::rect::aabb::Aabb)) — one `Rect` test
 //! stands in for scanning the data behind it.
 //!
-//! `f32` is the leaf every other impl bottoms out in.
+//! Scalar lanes bottom out in `f32::is_nan` directly; the trait starts
+//! at the composite types, which is where a caller has something worth
+//! naming.
 
 use glam::Vec2;
 
 /// True if any scalar the value carries is NaN. See the module doc for
 /// where this is checked.
+///
+/// A type whose `const` predicates also need the sweep — [`Shadow`],
+/// [`Color`], [`Rect`], [`Size`] — carries it as an inherent `const fn`
+/// and implements this trait by delegating there, so the field walk is
+/// written once.
+///
+/// [`Shadow`]: crate::primitives::shadow::Shadow
+/// [`Color`]: crate::primitives::color::Color
+/// [`Rect`]: crate::primitives::rect::Rect
+/// [`Size`]: crate::primitives::size::Size
 pub(crate) trait NanCheck {
     fn has_nan(&self) -> bool;
 }
@@ -43,13 +55,6 @@ pub(crate) const fn vec2_has_nan(v: Vec2) -> bool {
     v.x.is_nan() || v.y.is_nan()
 }
 
-impl NanCheck for f32 {
-    #[inline]
-    fn has_nan(&self) -> bool {
-        self.is_nan()
-    }
-}
-
 impl NanCheck for Vec2 {
     #[inline]
     fn has_nan(&self) -> bool {
@@ -62,12 +67,5 @@ impl<T: NanCheck> NanCheck for Option<T> {
     #[inline]
     fn has_nan(&self) -> bool {
         self.as_ref().is_some_and(NanCheck::has_nan)
-    }
-}
-
-impl<T: NanCheck> NanCheck for [T] {
-    #[inline]
-    fn has_nan(&self) -> bool {
-        self.iter().any(NanCheck::has_nan)
     }
 }

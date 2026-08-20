@@ -222,6 +222,7 @@ impl<'a> FrameCycle<'a> {
                 .first()
                 .map(|w| w.deadline),
             plan: RenderPlan::from_damage(damage, self.ui.theme.window_clear),
+            #[cfg(test)]
             processing,
         }
     }
@@ -344,7 +345,9 @@ impl<'a> FrameCycle<'a> {
             self.ui.display.logical_rect(),
             &mut self.ui.layout,
         );
-        drop(interned_text);
+        // `interned_text` borrows `payloads`, so releasing the arena is
+        // one drop now that it is a plain `&str` rather than a second
+        // borrow guard of its own.
         drop(payloads);
         // O5 stage 0: skip the cascade when nothing feeding it changed.
         // The cascade is a pure function of subtree authoring + arranged

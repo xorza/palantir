@@ -22,8 +22,31 @@ pub(super) struct GpuViewTargets {
 }
 
 impl GpuViewTargets {
-    /// Paint [`FrameViews::draws`], then free this owner's targets that
-    /// [`FrameViews::live`] no longer lists.
+    /// Paint every [`GpuView`](crate::widgets::gpu_view::GpuView) drawn
+    /// this frame into its off-screen target, before the main pass.
+    /// Called once per frame from `WgpuBackend::submit`'s upload phase,
+    /// through `ImagePipeline::paint_gpu_views`. This store allocates or
+    /// resizes each entry, registers its bind group in the shared
+    /// image-texture store, and runs
+    /// [`GpuPaint::init`](crate::renderer::gpu_paint::GpuPaint::init)
+    /// once, then `GpuPaint::paint` into it. Never touches the instance
+    /// buffer, so it only has to run before the main pass samples the
+    /// targets.
+    ///
+    /// Eviction is **immediate but owner-scoped**, and keyed on
+    /// [`FrameViews::live`] — every view `owner` recorded this frame —
+    /// rather than on [`FrameViews::draws`], which lists only the ones
+    /// that painted. A view marked
+    /// [`repaint(false)`](crate::widgets::gpu_view::GpuView::repaint) is
+    /// culled out of the second and stays in the first, so it keeps its
+    /// texture and `GpuPaint::init` is not re-run. A target is freed when
+    /// its widget stops being recorded, which is the same sweep every
+    /// other per-widget cache rides.
+    ///
+    /// `owner` is the submitting window's stable render-stream identity: the
+    /// one shared backend serves all windows, so a submit may only evict its
+    /// *own* dropped targets — another window's targets survive both this
+    /// submit and their owner's idle (non-submitting) frames.
     #[profiling::function]
     pub(super) fn paint(
         &mut self,

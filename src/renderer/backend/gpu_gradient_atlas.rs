@@ -9,8 +9,10 @@
 use crate::primitives::color::ColorF16;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::texture_binding;
+use crate::renderer::backend::texture_region::TextureRegion;
 use crate::renderer::gradient_atlas::bake::LUT_ROW_TEXELS;
 use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
+use glam::UVec2;
 
 /// Bytes per uploaded LUT row: texture width × `Rgba16Float` texel.
 /// Derived from the CPU-side `ColorF16` row store
@@ -150,29 +152,13 @@ impl GpuGradientAtlas {
             // Whole rows by the `FlushedRows` contract, so this divides
             // exactly.
             let height = rows.bytes.len() as u32 / ROW_PITCH;
-            ctx.queue.write_texture(
-                wgpu::TexelCopyTextureInfo {
-                    texture,
-                    mip_level: 0,
-                    origin: wgpu::Origin3d {
-                        x: 0,
-                        y: rows.first_row,
-                        z: 0,
-                    },
-                    aspect: wgpu::TextureAspect::All,
-                },
-                rows.bytes,
-                wgpu::TexelCopyBufferLayout {
-                    offset: 0,
-                    bytes_per_row: Some(ROW_PITCH),
-                    rows_per_image: Some(height),
-                },
-                wgpu::Extent3d {
-                    width: LUT_ROW_TEXELS as u32,
-                    height,
-                    depth_or_array_layers: 1,
-                },
-            );
+            TextureRegion {
+                texture,
+                first_row: rows.first_row,
+                size: UVec2::new(LUT_ROW_TEXELS as u32, height),
+                bytes_per_row: ROW_PITCH,
+            }
+            .write(ctx.queue, rows.bytes);
         });
     }
 }

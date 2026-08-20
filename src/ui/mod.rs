@@ -196,7 +196,7 @@ impl Ui {
     ///
     /// ```ignore
     /// let theme = ui.theme().clone();
-    /// Button::new().label("File").style(&theme.menu_button).show(ui);
+    /// Button::new().label("File").style(&theme.button).show(ui);
     /// ```
     #[inline]
     pub fn theme(&self) -> &Rc<Theme> {
