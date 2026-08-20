@@ -1,3 +1,14 @@
+//! The bundled widgets: one builder type per widget, each recording a
+//! `Node` and its chrome into the frame.
+//!
+//! `clippy::new_without_default` is allowed module-wide. Every widget
+//! constructor is `#[track_caller]` — the call site is what mints the
+//! widget id — and `#[derive(Default)]` cannot capture one. A hand-written
+//! `Default` could, but it would only be a second name for `new()` on a
+//! builder that is constructed and consumed in one expression. The answer
+//! is the same for every widget, so it is decided once here.
+#![allow(clippy::new_without_default)]
+
 /// Implement the `background` builder for container widgets that keep
 /// their override in a field called `chrome: Option<Background>`.
 ///

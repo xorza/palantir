@@ -116,19 +116,18 @@ pub(crate) mod ui;
 pub(crate) mod widgets;
 pub(crate) mod window;
 
-/// Test reach-ins the supported surface deliberately excludes, gathered here
-/// rather than scattered through it so the published API stays exactly the
-/// list below. Everything in scope is the root re-export of a colocated
-/// crate-private `internals` module — those live beside the code whose
-/// privates they expose, and this is only the door out of the crate for
-/// integration tests. Benchmark entry points have their own gated facade in
-/// [`mod@bench`].
 /// Golden-image regression testing, for suites that draw through Palantir and
 /// want to know when the drawing changes. Behind its own feature: it is the
 /// only thing here that costs an image codec.
 #[cfg(feature = "golden")]
 pub mod golden;
 
+/// Test reach-ins the supported surface deliberately excludes, gathered here
+/// rather than scattered through it so the published API stays exactly the
+/// list below. Each item is re-exported from the gated module that owns it —
+/// which lives beside the code whose privates it exposes — and this is the
+/// only door out of the crate for integration tests. Benchmark entry points
+/// have their own gated facade in the `bench` module, behind that feature.
 #[cfg(any(test, feature = "internals"))]
 pub mod internals {
     pub use crate::app::internals::RecordApp;
@@ -481,9 +480,9 @@ mod hot_struct_sizes {
     /// than either. Read these as a drift tripwire, not as the production
     /// footprint.
     #[cfg(feature = "bench")]
-    const UI_SIZE: usize = 6768;
+    const UI_SIZE: usize = 6760;
     #[cfg(not(feature = "bench"))]
-    const UI_SIZE: usize = 6744;
+    const UI_SIZE: usize = 6736;
 
     hot_structs! {
         // One instance per window, not per frame — pinned because every

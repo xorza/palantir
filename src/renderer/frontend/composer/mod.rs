@@ -23,16 +23,16 @@ mod geometry;
 mod higher_kind;
 mod occlusion;
 pub(crate) mod session;
-// `pub(crate)` only so the `text_grid` benchmark can reach the gated
-// `internals` harness; every item inside stays `pub(super)`.
+// `pub(crate)` only so `bench::driver` — the crate-root facade the
+// external criterion target calls through — can name `text_grid::bench`.
 pub(crate) mod text_grid;
 
 use crate::renderer::frontend::composer::geometry::chains_equal;
+use crate::renderer::frontend::composer::higher_kind::HigherKindRects;
+use crate::renderer::frontend::composer::occlusion::OcclusionPruner;
 use crate::renderer::frontend::composer::session::ComposeSession;
-use higher_kind::HigherKindRects;
-use occlusion::OcclusionPruner;
+use crate::renderer::frontend::composer::text_grid::TextRectGrid;
 use std::time::Duration;
-use text_grid::TextRectGrid;
 
 /// CPU-only compose engine: turns the encoder's paint calls into a `RenderBuffer`
 /// (physical-px quads + text runs + scissor groups), one [`ComposeSession`] per frame. Owns its output buffer
@@ -502,7 +502,7 @@ impl Composer {
 }
 
 #[cfg(any(test, feature = "bench"))]
-pub(crate) mod internals {
+pub(crate) mod test_support {
     //! Replay driver for the composer tests and the compose bench.
 
     use crate::renderer::frontend::capture::PaintCapture;

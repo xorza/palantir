@@ -138,22 +138,31 @@ pub struct InnerResponse<'a, R> {
 }
 
 #[cfg(test)]
-pub(crate) mod internals {
+pub(crate) mod test_support {
     use crate::scene::layer::Layer;
     use crate::scene::tree::node_id::NodeId;
-    use crate::widgets::drag_value::DragValueResponse;
-    use crate::widgets::response::{InnerResponse, Response};
-    use crate::widgets::text_edit::TextEditResponse;
-    use static_assertions::assert_not_impl_any;
-    use std::ops::Deref;
-
-    assert_not_impl_any!(InnerResponse<'static, ()>: Deref);
-    assert_not_impl_any!(DragValueResponse<'static>: Deref);
-    assert_not_impl_any!(TextEditResponse<'static>: Deref);
+    use crate::widgets::response::Response;
 
     impl Response<'_> {
         pub(crate) fn node(&self) -> NodeId {
             self.ui.forest.node_for_widget_id(Layer::Main, self.id)
         }
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::widgets::drag_value::DragValueResponse;
+    use crate::widgets::response::InnerResponse;
+    use crate::widgets::text_edit::TextEditResponse;
+    use static_assertions::assert_not_impl_any;
+    use std::ops::Deref;
+
+    // The wrappers that carry a `Response` alongside something else stay
+    // explicit: reaching interaction state through `.response` is what
+    // keeps the body result and the response distinguishable at the call
+    // site.
+    assert_not_impl_any!(InnerResponse<'static, ()>: Deref);
+    assert_not_impl_any!(DragValueResponse<'static>: Deref);
+    assert_not_impl_any!(TextEditResponse<'static>: Deref);
 }

@@ -413,7 +413,7 @@ pub(super) fn intrinsic(
 mod tests;
 
 #[cfg(test)]
-pub(crate) mod internals {
+pub(crate) mod test_support {
     use crate::layout::stack::{FillEntry, freeze_distribute};
     use crate::scene::tree::node_id::NodeId;
 

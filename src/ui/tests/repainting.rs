@@ -426,7 +426,7 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
             clear: ui.theme.window_clear,
             kind: RenderKind::Full,
         };
-        encoder::internals::encode(ui.frame_scene(), atlas, plan)
+        encoder::test_support::encode(ui.frame_scene(), atlas, plan)
             .calls
             .iter()
             .filter_map(|command| match command {
@@ -554,7 +554,7 @@ fn input_policy_routes_paint_only_gate() {
 
     {
         let mut h = UiHarness::new(SURFACE);
-        h.ui.input_policy = InputPolicy::OnDelta;
+        h.ui.set_input_policy(InputPolicy::OnDelta);
         let r0 = h.frame(|ui| body(ui, half));
         assert_eq!(r0.processing, FrameProcessing::SingleLayout);
 
@@ -580,7 +580,7 @@ fn input_policy_routes_paint_only_gate() {
 
     {
         let mut h = UiHarness::new(SURFACE);
-        h.ui.input_policy = InputPolicy::Always;
+        h.ui.set_input_policy(InputPolicy::Always);
         let _ = h.frame(|ui| body(ui, half));
 
         h.move_to(Vec2::new(40.0, 40.0));
@@ -596,7 +596,7 @@ fn input_policy_routes_paint_only_gate() {
     {
         use crate::primitives::widget_id::WidgetId;
         let mut h = UiHarness::new(SURFACE);
-        h.ui.input_policy = InputPolicy::OnDelta;
+        h.ui.set_input_policy(InputPolicy::OnDelta);
         let _ = h.frame(|ui| body(ui, half));
         h.ui.input.focused = Some(WidgetId::from_hash("editor"));
 

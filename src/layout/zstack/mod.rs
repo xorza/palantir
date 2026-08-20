@@ -9,7 +9,6 @@ use crate::primitives::interned_text::InternedText;
 use crate::primitives::{rect::Rect, size::Size};
 use crate::scene::tree::Tree;
 use crate::scene::tree::node_id::NodeId;
-use glam::Vec2;
 
 /// Intrinsic size of a ZStack: max over children on the queried axis.
 /// Children stack at the same origin, so the parent hugs the largest
@@ -64,14 +63,8 @@ pub(super) fn arrange(pass: &mut LayoutPass<'_>, node: NodeId, inner: Rect) {
             d = d.min(inner.size);
         }
 
-        let AxisAlignPair { h, v } = AxisAlignPair::resolve(&s, parent_child_align);
-        let x = AxisPlacement::arrange(Axis::X, h, &s, bounds, d, inner.size.w);
-        let y = AxisPlacement::arrange(Axis::Y, v, &s, bounds, d, inner.size.h);
-        let child_rect = Rect {
-            min: inner.min + Vec2::new(x.offset, y.offset),
-            size: Size::new(x.size, y.size),
-        };
-        pass.arrange(c, child_rect);
+        let align = AxisAlignPair::resolve(&s, parent_child_align);
+        pass.arrange(c, AxisPlacement::arrange_rect(align, &s, bounds, d, inner));
     }
 }
 

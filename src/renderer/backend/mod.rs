@@ -20,8 +20,8 @@ mod overlay_pass;
 pub(crate) mod pipeline_recipe;
 mod quad_pipeline;
 pub(crate) mod raster_atlas;
-// `pub(crate)` only so the `schedule` benchmark can reach the gated
-// `internals` harness; every item inside stays `pub(super)`.
+// `pub(crate)` only so `bench::driver` — the crate-root facade the
+// external criterion target calls through — can name `schedule::bench`.
 pub(crate) mod schedule;
 mod shader_template;
 pub(crate) mod stencil;
@@ -32,27 +32,27 @@ pub(crate) mod texture_binding;
 pub(crate) mod texture_region;
 pub(crate) mod viewport;
 
-use self::curve_pipeline::CurvePipeline;
-use self::format_pipelines::FormatPipelines;
-use self::gpu_ctx::GpuCtx;
-use self::gpu_timings::GpuTimings;
-use self::icon::IconBackend;
-use self::image_pipeline::ImagePipeline;
-use self::mesh_pipeline::MeshPipeline;
-use self::overlay_pass::DebugOverlay;
-use self::quad_pipeline::QuadPipeline;
-use self::schedule::{RenderStep, for_each_step};
-use self::stencil::Stencil;
-use self::viewport::{RepaintScissors, ViewportPush, build_repaint_scissors};
 use crate::diagnostics::gpu_pass_stats::{BatchKind, GpuPassStats};
 use crate::primitives::color::Color;
 use crate::primitives::urect::URect;
 use crate::renderer::backend::backbuffer::Backbuffer;
 use crate::renderer::backend::backend_config::BackendConfig;
 use crate::renderer::backend::backend_resources::BackendResources;
+use crate::renderer::backend::curve_pipeline::CurvePipeline;
+use crate::renderer::backend::format_pipelines::FormatPipelines;
+use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::gpu_gradient_atlas::GpuGradientAtlas;
+use crate::renderer::backend::gpu_timings::GpuTimings;
+use crate::renderer::backend::icon::IconBackend;
+use crate::renderer::backend::image_pipeline::ImagePipeline;
+use crate::renderer::backend::mesh_pipeline::MeshPipeline;
+use crate::renderer::backend::overlay_pass::DebugOverlay;
+use crate::renderer::backend::quad_pipeline::QuadPipeline;
+use crate::renderer::backend::schedule::{RenderStep, for_each_step};
+use crate::renderer::backend::stencil::Stencil;
 use crate::renderer::backend::submission::{Submission, SubmissionTargets};
 use crate::renderer::backend::text::TextBackend;
+use crate::renderer::backend::viewport::{RepaintScissors, ViewportPush, build_repaint_scissors};
 use crate::renderer::image_registry::ImageRegistry;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
@@ -824,7 +824,7 @@ impl WgpuBackend {
         // `PreClear` and the text backend's render set their own state,
         // so we reset to `None` after them and re-bind on the next
         // non-text step.
-        #[derive(PartialEq, Eq)]
+        #[derive(Debug, PartialEq, Eq)]
         enum Bound {
             None,
             QuadInstance,

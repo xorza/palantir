@@ -7,8 +7,7 @@ use crate::input::input_event::InputEvent;
 use crate::input::key_class::KeyClass;
 use crate::input::keyboard::{KeyPress, KeyboardEvent, Modifiers};
 use crate::input::pointer::{PointerButton, PointerEvent};
-use crate::input::policy::FocusPolicy;
-use crate::input::policy::InputSignal;
+use crate::input::policy::{FocusPolicy, InputPolicy, InputSignal};
 use crate::input::response::{
     ButtonPhase, ButtonState, Drag, InputDelta, ResponseState, ScrollDelta,
 };
@@ -93,6 +92,9 @@ pub(crate) struct InputState {
     scopes: Scopes,
     /// Press-on-non-focusable-widget behavior. See [`FocusPolicy`].
     pub(crate) focus_policy: FocusPolicy,
+    /// Which "did input arrive?" signal the frame gate thresholds
+    /// against. See [`InputPolicy`].
+    pub(crate) input_policy: InputPolicy,
     /// Whether any event this record pass wrote state that an
     /// earlier-recorded widget could already have read — see
     /// [`EventOutcome::settles`], which is where each arm decides.
@@ -146,6 +148,7 @@ impl Default for InputState {
             focused: None,
             scopes: Scopes::default(),
             focus_policy: FocusPolicy::default(),
+            input_policy: InputPolicy::default(),
             frame_had_action: false,
             signal_since_last_frame: InputSignal::None,
             subs: Watches::default(),

@@ -389,7 +389,7 @@ impl DamageEngine {
 /// produce no pixels, so they have nothing to clear or repaint. Lives
 /// beside `DamageEngine::raw_rects`, the buffer every caller is filling.
 #[inline]
-pub(super) fn push_screen(out: &mut Vec<Rect>, screen: Rect) {
+fn push_screen(out: &mut Vec<Rect>, screen: Rect) {
     if !screen.is_paint_empty() {
         out.push(screen);
     }

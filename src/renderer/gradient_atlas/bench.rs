@@ -46,8 +46,7 @@
 //! fails loudly instead of reporting a plausible-looking time. `miss/*` in
 //! particular would read as a *speedup* if it started hitting.
 //!
-//! Requires the `internals` feature. Run with
-//! `cargo bench --features bench --bench criterion -- gradient_atlas`.
+//! Run with `cargo bench --features bench --bench criterion -- gradient_atlas`.
 
 use crate::primitives::brush::gradient::Interp;
 use crate::primitives::brush::gradient::stops::{GradientStops, Stop};

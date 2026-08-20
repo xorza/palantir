@@ -54,7 +54,7 @@ impl SharedGradientAtlas {
 }
 
 #[cfg(test)]
-mod internals {
+pub(crate) mod test_support {
     use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
 
     impl SharedGradientAtlas {

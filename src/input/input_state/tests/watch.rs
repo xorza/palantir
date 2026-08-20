@@ -260,7 +260,7 @@ fn pointer_local_read_keeps_hover_local_indicator_reactive() {
     let id = WidgetId::from_hash("pointer-local-indicator");
     let surface = UVec2::new(200, 200);
     let mut h = UiHarness::new(surface);
-    h.ui.input_policy = InputPolicy::OnDelta;
+    h.ui.set_input_policy(InputPolicy::OnDelta);
     let mut painted_at = None;
     h.frame(|ui| indicator(ui, id, &mut painted_at));
 
@@ -303,7 +303,7 @@ fn modifiers_read_keeps_alt_ctrl_visual_reactive_through_release() {
 
     let surface = UVec2::new(200, 200);
     let mut h = UiHarness::new(surface);
-    h.ui.input_policy = InputPolicy::OnDelta;
+    h.ui.set_input_policy(InputPolicy::OnDelta);
     let mut painted = Color::TRANSPARENT;
     h.frame(|ui| visual(ui, &mut painted));
     assert_eq!(painted, Color::BLACK);

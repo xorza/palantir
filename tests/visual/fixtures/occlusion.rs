@@ -3,7 +3,7 @@ use image::RgbaImage;
 use palantir::{Color, Configure, Panel, Rect, Shape, Sizing, Ui};
 
 use crate::harness::Harness;
-use palantir::golden::{Tolerance, diff};
+use palantir::golden::Tolerance;
 
 const VIEWPORT: UVec2 = UVec2::new(128, 128);
 const CLEAR: Color = Color::WHITE;
@@ -39,14 +39,11 @@ fn render_fractional_layers(split_groups: bool) -> RgbaImage {
 fn fractional_opaque_quads_match_unpruned_reference() {
     let optimized = render_fractional_layers(false);
     let unpruned = render_fractional_layers(true);
-    let report = diff(
-        &optimized,
-        &unpruned,
-        Tolerance {
-            per_channel: 0,
-            max_ratio: 0.0,
-        },
-    );
+    let report = Tolerance {
+        per_channel: 0,
+        max_ratio: 0.0,
+    }
+    .diff(&optimized, &unpruned);
     assert_eq!(
         report.differing_pixels, 0,
         "max channel delta {}, differing ratio {}",

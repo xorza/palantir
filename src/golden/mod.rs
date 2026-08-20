@@ -6,13 +6,91 @@
 //! wants the same workflow. Feature-gated so nothing pays for `image` and
 //! `rayon` unless it asks.
 
-pub(crate) mod diff;
+mod row_stats;
 
 use std::path::{Path, PathBuf};
 
+use crate::golden::row_stats::RowStats;
 use image::RgbaImage;
+use rayon::prelude::*;
 
-pub use crate::golden::diff::{DiffReport, Tolerance, diff};
+/// Per-channel + ratio thresholds for [`Tolerance::diff`]. A pixel
+/// "differs" when any R/G/B/A channel deviates by more than
+/// `per_channel`; the image passes when the fraction of differing pixels
+/// is at most `max_ratio`.
+#[derive(Clone, Copy, Debug)]
+pub struct Tolerance {
+    pub per_channel: u8,
+    pub max_ratio: f32,
+}
+
+impl Default for Tolerance {
+    fn default() -> Self {
+        Self {
+            per_channel: 2,
+            max_ratio: 0.001,
+        }
+    }
+}
+
+impl Tolerance {
+    /// Compare two equal-sized RGBA images under these thresholds. The
+    /// diff image marks each differing pixel red (alpha 255) and dims the
+    /// rest of the `actual` image to 25% so failures pop visually.
+    ///
+    /// Per-row parallel via rayon; rows are independent, so the reduction
+    /// is a trivial `(max, sum)`.
+    pub fn diff(self, actual: &RgbaImage, expected: &RgbaImage) -> DiffReport {
+        assert_eq!(
+            actual.dimensions(),
+            expected.dimensions(),
+            "image sizes differ: actual {:?} vs expected {:?}",
+            actual.dimensions(),
+            expected.dimensions(),
+        );
+        let (w, h) = actual.dimensions();
+        let mut diff_image = RgbaImage::new(w, h);
+
+        let row_bytes = w as usize * 4;
+        let per_channel = self.per_channel;
+        let totals = actual
+            .as_raw()
+            .par_chunks_exact(row_bytes)
+            .zip(expected.as_raw().par_chunks_exact(row_bytes))
+            .zip(diff_image.par_chunks_exact_mut(row_bytes))
+            .map(|((a_row, e_row), d_row)| RowStats::scan_row(a_row, e_row, d_row, per_channel))
+            .reduce(RowStats::default, RowStats::merge);
+
+        DiffReport {
+            max_channel_delta: totals.max_delta,
+            differing_pixels: totals.differing,
+            differing_ratio: totals.differing as f32 / (w * h) as f32,
+            diff_image,
+            tolerance: self,
+        }
+    }
+}
+
+/// What one [`Tolerance::diff`] measured.
+#[derive(Debug)]
+pub struct DiffReport {
+    pub max_channel_delta: u8,
+    pub differing_pixels: u32,
+    pub differing_ratio: f32,
+    pub diff_image: RgbaImage,
+    /// The tolerance the comparison ran under. Carried rather than
+    /// re-taken by [`Self::passes`]: `per_channel` is spent inside the
+    /// scan deciding which pixels count as differing, so a `passes` that
+    /// accepted its own `Tolerance` could only honour `max_ratio` and
+    /// would silently pair one threshold with the other's ratio.
+    pub tolerance: Tolerance,
+}
+
+impl DiffReport {
+    pub fn passes(&self) -> bool {
+        self.differing_ratio <= self.tolerance.max_ratio
+    }
+}
 
 /// Set to anything non-empty to rewrite every golden the run touches, rather
 /// than compare against it.
@@ -86,7 +164,7 @@ impl Goldens {
             );
         }
 
-        let report = diff(actual, &expected, self.tolerance);
+        let report = self.tolerance.diff(actual, &expected);
         if report.passes() {
             return;
         }
@@ -124,3 +202,6 @@ impl Goldens {
         actual.save(golden).expect("save golden");
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -173,6 +173,7 @@ fn frame_offscreen(
 /// (`self.start.elapsed()`) so paint-anim / tooltip wakes fire on the
 /// same cadence as production — otherwise a frozen clock could classify
 /// frames as `PaintOnly` and skip the record closure the arms depend on.
+#[derive(Debug)]
 struct CpuHarness {
     harness: UiHarness,
     frontend: Frontend,
@@ -605,7 +606,7 @@ fn prepend_block(dir: &Path, machine: &str, block: &str) {
     eprintln!("[machine-results] prepended to {}", path.display());
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 struct Estimate {
     lo_ns: f64,
     mid_ns: f64,

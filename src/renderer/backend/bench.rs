@@ -65,12 +65,12 @@
 
 use crate::app::internals::RecordApp;
 use crate::host::bench_gpu::{BenchGpu, Timing};
-use crate::host::offscreen::{OffscreenHost, internals as offscreen_internals};
+use crate::host::offscreen::{OffscreenHost, test_support as offscreen_support};
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::color::Color;
 use crate::primitives::image::{Image, ImageFit};
 use crate::primitives::rect::Rect;
-use crate::renderer::backend::schedule::internals::Walk;
+use crate::renderer::backend::schedule::test_support::Walk;
 use crate::renderer::image_registry::ImageHandle;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::scene::node::Configure;
@@ -329,7 +329,7 @@ impl Fixture {
     /// steps the measured pass dispatched. Runs outside the measured
     /// window, on the same `damage = None` full walk `run_main_pass` used.
     fn counts(&self) -> Counts {
-        let buffer = offscreen_internals::last_render_buffer(&self.host);
+        let buffer = offscreen_support::last_render_buffer(&self.host);
         let walk = Walk::new(buffer);
         let counts = walk.run(buffer, None, false);
         Counts {

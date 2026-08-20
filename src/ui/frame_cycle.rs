@@ -26,7 +26,7 @@ use crate::display;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
 use crate::renderer::render_plan::RenderPlan;
-use crate::scene::cascade::engine::cascade_fingerprint;
+use crate::scene::cascade;
 use crate::scene::damage::{Damage, DamageInput};
 use crate::scene::node::Node;
 use crate::ui::Ui;
@@ -90,7 +90,7 @@ impl<'a> FrameCycle<'a> {
         let plan = self.ui.frame_runtime.take_frame_plan(FrameClassifyInput {
             display: stamp.display,
             damage_baseline_valid,
-            input_policy: self.ui.input_policy,
+            input_policy: self.ui.input_policy(),
             input_signal: self.ui.input.signal_since_last_frame,
             close_requested: self.ui.window_frame.close_requested,
         });
@@ -357,7 +357,7 @@ impl<'a> FrameCycle<'a> {
         // `Ui::cascade` can be reused verbatim (the tree is rebuilt
         // with identical structure when `subtree_hash` matches, so its
         // NodeId-indexed rows still line up).
-        let fp = cascade_fingerprint(&self.ui.forest, self.ui.display);
+        let fp = cascade::engine::cascade_fingerprint(&self.ui.forest, self.ui.display);
         let skip = self.ui.frame_runtime.prev_cascade_fp == Some(fp);
         self.ui.frame_runtime.note_cascade_ran(!skip);
         if skip {

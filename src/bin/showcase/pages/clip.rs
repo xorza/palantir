@@ -81,6 +81,7 @@ pub(crate) fn build(ui: &mut Ui) {
     );
 }
 
+#[derive(Debug)]
 enum Mode {
     None,
     Rect,

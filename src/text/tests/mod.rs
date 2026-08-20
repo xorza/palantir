@@ -17,10 +17,10 @@ use crate::text::cosmic::{self, CosmicMeasure};
 use crate::text::glyph_font::GlyphFont;
 use crate::text::key::{TextShapeKey, WrapBound};
 use crate::text::mono;
-use crate::text::probe::internals as probe;
+use crate::text::probe::test_support as probe;
 use crate::text::request::TextShapeRequest;
-use crate::text::request::internals::TestShape;
-use crate::text::root::internals::TestMeasure;
+use crate::text::request::test_support::TestShape;
+use crate::text::root::test_support::TestMeasure;
 use crate::text::run::TextRun;
 use crate::text::shaped_ref::ShapedTextRef;
 use crate::text::shaper::TextShaper;
@@ -88,6 +88,7 @@ fn mono_shape(text: &str, shape: TestShape, fit: LineFit) -> TestMeasure {
 /// reads the cached unbounded shape, so the probe has to be measured
 /// first — returning both keeps a caller that needs the probe's key from
 /// re-deriving the shape by hand.
+#[derive(Debug)]
 struct Truncated {
     fitted: TestMeasure,
     unbounded: TestMeasure,

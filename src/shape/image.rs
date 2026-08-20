@@ -5,7 +5,6 @@ use crate::renderer::image_registry::ImageHandle;
 use crate::scene::record_store::RecordStore;
 use crate::scene::shapes::paint::ImageSource;
 use crate::scene::shapes::record::ShapeRecord;
-use crate::shape::local_rect_paint_empty;
 use crate::shape::sealed;
 
 /// Textured rectangle painted from a registered [`ImageHandle`].
@@ -20,46 +19,23 @@ pub struct ImageShape {
     pub(crate) tint: Color,
 }
 
-impl ImageShape {
-    pub fn at(mut self, rect: impl Into<Rect>) -> Self {
-        self.local_rect = Some(rect.into());
-        self
-    }
+local_rect_shape!(ImageShape);
 
-    pub fn fit(mut self, fit: impl Into<ImageFit>) -> Self {
-        self.fit = fit.into();
-        self
-    }
-
-    pub fn min_filter(mut self, filter: impl Into<ImageFilter>) -> Self {
-        self.min_filter = filter.into();
-        self
-    }
-
-    pub fn mag_filter(mut self, filter: impl Into<ImageFilter>) -> Self {
-        self.mag_filter = filter.into();
-        self
-    }
-
+shape_setters!(ImageShape {
+    fit: ImageFit => fit,
+    min_filter: ImageFilter => min_filter,
+    mag_filter: ImageFilter => mag_filter,
     /// Take extra taps where this image minifies, instead of the sampler's
-    /// lone bilinear one — see [`ImageDownsample`] for what that buys and what
-    /// it costs. Off by default; only worth setting on an image that actually
-    /// shrinks, and that has detail fine enough to alias.
-    pub fn downsample(mut self, downsample: impl Into<ImageDownsample>) -> Self {
-        self.downsample = downsample.into();
-        self
-    }
+    /// lone bilinear one — see [`ImageDownsample`] for what that buys and
+    /// what it costs. Off by default; only worth setting on an image that
+    /// actually shrinks, and that has detail fine enough to alias.
+    downsample: ImageDownsample => downsample,
+    tint: Color => tint,
+});
 
-    pub fn tint(mut self, tint: impl Into<Color>) -> Self {
-        self.tint = tint.into();
-        self
-    }
-}
-// See the `sealed` module in `shape/mod.rs` for why.
-#[allow(private_interfaces)]
-impl sealed::Lower for ImageShape {
+impl sealed::LowerShape for ImageShape {
     fn is_noop(&self) -> bool {
-        local_rect_paint_empty(&self.local_rect) || self.tint.is_noop()
+        self.rect_is_noop() || self.tint.is_noop()
     }
 
     fn lower(self, _store: &RecordStore) -> ShapeRecord {

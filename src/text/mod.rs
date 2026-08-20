@@ -41,17 +41,22 @@
 //! [`render`] the cosmic-free render terms.
 //!
 //! A backend gets a directory, because one type with five separable jobs
-//! is neither shape. [`cosmic`] is `CosmicMeasure` plus wrapped shaping
-//! in `mod.rs`, with `retention` (the two-tier windows and the four
-//! operations that move an entry between them), `truncate` (the
-//! cluster-precise cut), `geometry` (reading measurements back off a
-//! shaped buffer), `glyphs` (the render side), and `counters` beside it.
-//! Its children reach the measurer's private fields directly — privacy
-//! descends — so the split costs no widening, and each file is one
-//! answerable question.
+//! is neither shape. [`cosmic`] is `CosmicMeasure` plus wrapped shaping,
+//! retention and truncation in `mod.rs`, with `cache_entry` (one resident
+//! shaped buffer), `cluster_glyph` (the cluster-precise cut's glyph view
+//! and prefix scan), `ellipsis_memo` (the reshaped "…" advance),
+//! `geometry` (reading measurements back off a shaped buffer), and
+//! `counters` beside it. Its children reach the measurer's private fields
+//! directly — privacy descends — so the split costs no widening, and each
+//! file is one answerable question.
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
+// Private on purpose: no cosmic type is nameable outside `crate::text`, and
+// this declaration is what enforces it. `pub(crate)` inside the directory
+// therefore means "as far as the ladder reaches without `pub(in path)`" —
+// `crate::text`, not the crate — and is what a consumer in a sibling of
+// `cosmic` needs, since `pub(super)` there stops at `cosmic` itself.
 mod cosmic;
 pub(crate) mod glyph_font;
 pub(crate) mod glyphs;

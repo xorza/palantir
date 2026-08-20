@@ -1,4 +1,4 @@
-use crate::common::clipboard::{Clipboard, internals};
+use crate::common::clipboard::{Clipboard, test_support};
 use crate::widgets::text_edit::tests::*;
 
 /// Default context menu wires Cut / Copy / Paste / Clear against
@@ -205,7 +205,7 @@ fn clipboard_shortcuts_apply_keypresses() {
     apply_key_with_clipboard(&mut text2, &mut state2, non_primary('v'), &clipboard);
     assert_eq!(text2, "hello", "non-primary must not paste");
 
-    let rejecting = internals::rejecting();
+    let rejecting = test_support::rejecting();
     let mut rejected_text = String::from("hello");
     let mut rejected_state = EditState {
         caret: 4,

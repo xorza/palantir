@@ -1,5 +1,6 @@
 use crate::widgets::text_edit::tests::*;
 
+#[derive(Debug)]
 struct SelCase {
     label: &'static str,
     buf: &'static str,

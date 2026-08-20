@@ -15,7 +15,6 @@ pub struct Frame {
 }
 
 impl Frame {
-    #[allow(clippy::new_without_default)]
     #[track_caller]
     pub fn new() -> Self {
         Self {

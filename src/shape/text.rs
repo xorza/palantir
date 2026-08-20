@@ -50,31 +50,6 @@ impl TextShape {
         }
     }
 
-    pub fn color(mut self, color: impl Into<Color>) -> Self {
-        self.color = color.into();
-        self
-    }
-
-    pub fn wrap(mut self, wrap: impl Into<TextWrap>) -> Self {
-        self.wrap = wrap.into();
-        self
-    }
-
-    pub fn align(mut self, align: impl Into<Align>) -> Self {
-        self.align = align.into();
-        self
-    }
-
-    pub fn family(mut self, family: impl Into<FontFamily>) -> Self {
-        self.font.family = family.into();
-        self
-    }
-
-    pub fn weight(mut self, weight: impl Into<FontWeight>) -> Self {
-        self.font.weight = weight.into();
-        self
-    }
-
     /// Hand positioning to the caller: the glyph bbox origin becomes
     /// `owner.min + origin` and the encoder stops placing it, so
     /// `align`'s placement axes go unread. Used by TextEdit, which
@@ -84,9 +59,15 @@ impl TextShape {
         self
     }
 }
-// See the `sealed` module in `shape/mod.rs` for why.
-#[allow(private_interfaces)]
-impl sealed::Lower for TextShape {
+shape_setters!(TextShape {
+    color: Color => color,
+    wrap: TextWrap => wrap,
+    align: Align => align,
+    family: FontFamily => font.family,
+    weight: FontWeight => font.weight,
+});
+
+impl sealed::LowerShape for TextShape {
     fn is_noop(&self) -> bool {
         self.text.is_empty()
             || self.color.is_noop()

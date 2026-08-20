@@ -1,7 +1,7 @@
 //! Every grid's per-track state for the whole layout pass, in one flat pool.
 
 use crate::layout::axis::Axis;
-use crate::layout::grid::axis_scratch::HugRanges;
+use crate::layout::grid::axis_scratch::{HugRanges, HugRangesMut};
 use crate::layout::types::layout_mode::{GridDefId, LayoutMode};
 use crate::primitives::span::Span;
 use crate::scene::tree::Tree;
@@ -137,9 +137,6 @@ impl GridTrackStore {
         }
     }
 
-    /// Both pools' slices for one `(idx, axis)` in one call. Single
-    /// slot lookup; the borrow checker splits the `&mut self` because
-    /// `min_pool` and `max_pool` are separate fields.
     /// Both content-range pools for `(idx, axis)`, as the solver's
     /// input bundle.
     pub(super) fn ranges(&self, idx: GridDefId, axis: Axis) -> HugRanges<'_> {
@@ -149,13 +146,15 @@ impl GridTrackStore {
         }
     }
 
-    pub(super) fn slice_mut_pair(
-        &mut self,
-        idx: GridDefId,
-        axis: Axis,
-    ) -> (&mut [f32], &mut [f32]) {
+    /// [`Self::ranges`] for the measure pass to write through. One slot
+    /// lookup, and the borrow checker splits the `&mut self` because
+    /// `min_pool` and `max_pool` are separate fields.
+    pub(super) fn ranges_mut(&mut self, idx: GridDefId, axis: Axis) -> HugRangesMut<'_> {
         let r = self.axis_slice(idx, axis);
-        (&mut self.min_pool[r.clone()], &mut self.max_pool[r])
+        HugRangesMut {
+            min: &mut self.min_pool[r.clone()],
+            max: &mut self.max_pool[r],
+        }
     }
 
     fn axis_total_idx(axis: Axis) -> usize {

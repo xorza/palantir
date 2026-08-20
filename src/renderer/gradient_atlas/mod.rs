@@ -452,7 +452,7 @@ impl CpuGradientAtlas {
 }
 
 #[cfg(test)]
-mod internals {
+pub(crate) mod test_support {
     use super::*;
 
     impl CpuGradientAtlas {

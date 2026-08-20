@@ -868,7 +868,11 @@ mod unit {
                 clear: self.ui.theme.window_clear,
                 kind,
             };
-            encoder::internals::encode(self.ui.frame_scene(), &SharedGradientAtlas::default(), plan)
+            encoder::test_support::encode(
+                self.ui.frame_scene(),
+                &SharedGradientAtlas::default(),
+                plan,
+            )
         }
     }
 }

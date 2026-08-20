@@ -133,6 +133,7 @@ fn gradient_resolution_runs_once_per_id_and_restarts_each_encode() {
 /// chrome-paint time filters them.
 #[test]
 fn baseline_draw_rect_count_cases() {
+    #[derive(Debug)]
     enum Scene {
         Empty,
         FrameWithFill,
@@ -917,6 +918,7 @@ fn damage_filter_partitions_drawrects_by_dirty_region() {
 /// children stay inside the parent's screen_rect.
 #[test]
 fn damage_filter_culls_subtree_outside_damage() {
+    #[derive(Debug)]
     enum Wrap {
         Clipped,
         Transformed,

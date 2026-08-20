@@ -509,6 +509,7 @@ fn invisible_or_disabled_focusable_refuses_focus() {
     use crate::scene::visibility::Visibility;
     use crate::widgets::{button::Button, panel::Panel};
 
+    #[derive(Debug)]
     enum Mode {
         Hidden,
         Disabled,

@@ -41,8 +41,7 @@ use crate::renderer::render_buffer::text::TextDrawRow;
 use crate::text::render::RunPlacement;
 use crate::text::shaper::TextShaper;
 
-use encode::encode_key_for;
-use encode::encoder::TextEncoder;
+use crate::renderer::backend::text::encode::encoder::TextEncoder;
 #[derive(Debug)]
 pub(crate) struct TextBackend {
     shaper: TextShaper,
@@ -135,7 +134,7 @@ impl TextBackend {
                 // buffer, so nothing production-emitted reaches this.
                 continue;
             }
-            let run_key = encode_key_for(r, scale);
+            let run_key = encode::encode_key_for(r, scale);
             if self.encoder.try_emit_cached(&run_key) {
                 continue;
             }
@@ -227,12 +226,12 @@ impl TextBackend {
     }
 }
 
-// Exactly its two consumers, no wider: the `text_atlas` benchmark, and the
-// GPU regression suite in `tests.rs` — which needs a real device and so is
-// itself `internals`-gated inside `cfg(test)`. A plain `cargo test` build
-// has neither, and neither does a non-test `internals` build.
-#[cfg(any(feature = "bench", all(test, feature = "internals")))]
-pub(crate) mod internals {
+// Both consumers need a real device, so both sit behind `internals`: the
+// `text_atlas` benchmark (`bench` implies it) and the GPU regression suite
+// in `tests.rs`. A plain `cargo test` build has neither, and neither does a
+// non-test `internals` build.
+#[cfg(all(feature = "internals", any(test, feature = "bench")))]
+pub(crate) mod test_support {
     use crate::renderer::backend::text::TextBackend;
 
     impl TextBackend {

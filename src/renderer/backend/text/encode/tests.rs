@@ -334,7 +334,7 @@ fn a_steadily_drawn_row_holds_one_ticket_not_one_per_frame() {
 fn a_gesture_frame_retains_a_full_keep_window_of_single_use_rows() {
     const RUNS: u32 = 8;
     const GLYPHS: u32 = 12;
-    let mut churn = internals::ChurnBench::new(RUNS, GLYPHS);
+    let mut churn = test_support::ChurnBench::new(RUNS, GLYPHS);
 
     // Run past the window so the population reaches steady state.
     const FRAMES: u64 = ENCODED_CACHE_KEEP_FRAMES * 2;
@@ -387,7 +387,7 @@ fn a_gesture_frame_retains_a_full_keep_window_of_single_use_rows() {
 fn a_saturated_gesture_reaches_a_steady_state_where_no_frame_allocates() {
     const RUNS: u32 = 8;
     const GLYPHS: u32 = 12;
-    let mut churn = internals::ChurnBench::new(RUNS, GLYPHS);
+    let mut churn = test_support::ChurnBench::new(RUNS, GLYPHS);
 
     // Warm past the keep window so every frame both mints and
     // expires a full complement of rows.

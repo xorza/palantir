@@ -12,6 +12,13 @@ pub(super) struct AxisAlignPair {
 }
 
 impl AxisAlignPair {
+    /// Neither axis aligned — what a caller passes when it positions the
+    /// child by other means and wants only the arranged extents.
+    pub(super) const AUTO: Self = Self {
+        h: AxisAlign::Auto,
+        v: AxisAlign::Auto,
+    };
+
     /// Resolve a child's alignment on both axes: child's own value if not
     /// `Auto`, else the parent's `child_align` for that axis. Single source
     /// of truth for the alignment cascade — every layout (stack, grid,
@@ -22,6 +29,15 @@ impl AxisAlignPair {
         Self {
             h: a.halign().or(parent_child_align.halign()).to_axis(),
             v: a.valign().or(parent_child_align.valign()).to_axis(),
+        }
+    }
+
+    /// Both axes with `Auto` read as `Stretch` — Grid's default, where a
+    /// child that named no alignment fills its cell.
+    pub(super) const fn or_stretch_if_auto(self) -> Self {
+        Self {
+            h: self.h.or_stretch_if_auto(),
+            v: self.v.or_stretch_if_auto(),
         }
     }
 }

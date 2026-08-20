@@ -488,7 +488,7 @@ impl CosmicMeasure {
     ///
     /// Silent on a key that isn't resident: the buffer may already have
     /// aged out, and superseding what is gone is a no-op, not an error.
-    pub(crate) fn supersede(&mut self, key: TextShapeKey) {
+    pub(super) fn supersede(&mut self, key: TextShapeKey) {
         if key.is_invalid() {
             return;
         }
@@ -534,7 +534,7 @@ impl CosmicMeasure {
     /// files nothing, which is what keeps a re-read entry from filing a
     /// ticket per frame — so the real `keep_until` is re-read here and a
     /// still-live entry is simply re-filed.
-    pub(crate) fn end_frame(&mut self, frame: u64) {
+    pub(super) fn end_frame(&mut self, frame: u64) {
         debug_assert!(frame >= self.frame, "the shared frame clock ran backwards");
         self.frame = frame;
         let cache = &mut self.cache;
@@ -576,7 +576,7 @@ impl CosmicMeasure {
     /// whether any line was culled — such partial extractions must not
     /// become renderer cache templates (its encoded key carries no
     /// bounds).
-    pub(crate) fn extract_glyphs(
+    pub(super) fn extract_glyphs(
         &mut self,
         request: TextShapeRequest<'_>,
         placement: RunPlacement,
@@ -634,7 +634,7 @@ impl CosmicMeasure {
     /// Rasterize one glyph via swash, uncached on the cosmic side — the
     /// renderer's atlas is the real cache. `None` when swash cannot
     /// produce an image for the key (e.g. a glyph the face lacks).
-    pub(crate) fn rasterize_glyph(&mut self, key: GlyphRasterKey) -> Option<GlyphImage> {
+    pub(super) fn rasterize_glyph(&mut self, key: GlyphRasterKey) -> Option<GlyphImage> {
         let image = self
             .swash_cache
             .get_image_uncached(&mut self.font_system, key.0)?;
@@ -883,12 +883,12 @@ impl std::fmt::Debug for CosmicMeasure {
 // `internals`-gated GPU tests in `renderer::backend::text`, which build
 // without `cfg(test)`.
 #[cfg(any(test, feature = "bench"))]
-mod internals {
+pub(crate) mod test_support {
     use super::*;
     #[cfg(test)]
-    use crate::text::request::internals::TestShape;
+    use crate::text::request::test_support::TestShape;
     #[cfg(test)]
-    use crate::text::root::internals::TestMeasure;
+    use crate::text::root::test_support::TestMeasure;
 
     #[derive(Debug, PartialEq, Eq)]
     #[cfg(test)]

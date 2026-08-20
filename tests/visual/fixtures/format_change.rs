@@ -20,7 +20,7 @@ use wgpu::TextureFormat;
 
 use crate::fixtures::DARK_BG;
 use crate::harness::Harness;
-use palantir::golden::{Tolerance, diff};
+use palantir::golden::Tolerance;
 
 /// A scene touching multiple format-dependent pipelines: a stroked,
 /// rounded frame (quad pipeline) wrapping a button with a text label
@@ -91,7 +91,7 @@ fn recreate_backend_on_format_change_renders_identically() {
         per_channel: 2,
         max_ratio: 0.01,
     };
-    let report = diff(&after, &before, tol);
+    let report = tol.diff(&after, &before);
     assert!(
         report.passes(),
         "recreated backend rendered differently after format change: \
@@ -122,7 +122,7 @@ fn repeated_format_changes_keep_rendering() {
         per_channel: 2,
         max_ratio: 0.01,
     };
-    let report = diff(&restored, &baseline, tol);
+    let report = tol.diff(&restored, &baseline);
     assert!(
         report.passes(),
         "round-tripping the surface format back to the original changed the render: \
@@ -232,7 +232,7 @@ fn images_survive_format_change_without_reupload() {
         per_channel: 2,
         max_ratio: 0.01,
     };
-    let report = diff(&after, &before, tol);
+    let report = tol.diff(&after, &before);
     assert!(
         report.passes(),
         "image rendered differently after format change: {} differing pixels (ratio {:.4})",

@@ -3,7 +3,7 @@ use crate::widgets::text_edit::tests::*;
 
 /// The edit signals off one `TextEdit::show`, snapshotted out (the response
 /// itself borrows `ui`, so it can't escape the frame closure).
-#[derive(Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy)]
 struct Signals {
     changed: bool,
     submitted: bool,

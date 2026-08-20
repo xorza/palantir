@@ -5,7 +5,6 @@ use crate::primitives::stroke::Stroke;
 use crate::scene::record_store::RecordStore;
 use crate::scene::shapes::lower;
 use crate::scene::shapes::record::ShapeRecord;
-use crate::shape::local_rect_paint_empty;
 use crate::shape::sealed;
 
 #[repr(u8)]
@@ -37,27 +36,19 @@ impl RectShape {
             stroke: Stroke::ZERO,
         }
     }
-
-    pub fn fill(mut self, fill: impl Into<Brush>) -> Self {
-        self.fill = fill.into();
-        self
-    }
-
-    pub fn stroke(mut self, stroke: impl Into<Stroke>) -> Self {
-        self.stroke = stroke.into();
-        self
-    }
-
-    pub fn corners(mut self, corners: impl Into<Corners>) -> Self {
-        self.corners = corners.into();
-        self
-    }
 }
-// See the `sealed` module in `shape/mod.rs` for why.
-#[allow(private_interfaces)]
-impl sealed::Lower for RectShape {
+
+local_rect_shape!(@noop_only RectShape);
+
+shape_setters!(RectShape {
+    fill: Brush => fill,
+    stroke: Stroke => stroke,
+    corners: Corners => corners,
+});
+
+impl sealed::LowerShape for RectShape {
     fn is_noop(&self) -> bool {
-        local_rect_paint_empty(&self.local_rect) || (self.fill.is_noop() && self.stroke.is_noop())
+        self.rect_is_noop() || (self.fill.is_noop() && self.stroke.is_noop())
     }
 
     fn lower(self, store: &RecordStore) -> ShapeRecord {

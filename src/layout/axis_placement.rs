@@ -3,9 +3,11 @@
 use crate::layout::axis::Axis;
 use crate::layout::axis_align_pair::AxisAlignPair;
 use crate::layout::types::align::{Align, AxisAlign};
+use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::scene::node::bounds_extras::BoundsExtras;
 use crate::scene::node::layout_core::LayoutCore;
+use glam::Vec2;
 
 /// Per-axis placement: chosen extent + offset within the parent's inner span.
 #[derive(Debug)]
@@ -47,27 +49,56 @@ impl AxisPlacement {
         Self { size, offset }
     }
 
+    /// A child placed into `slot` on both axes: [`Self::arrange`] per axis
+    /// under `align`, folded into the rect its parent hands
+    /// `LayoutPass::arrange`.
+    ///
+    /// `slot` is the cell in the parent's own coordinates — a Grid's cell,
+    /// a ZStack's whole inner rect — and the per-axis alignment offset moves
+    /// the child inside it. The drivers differ only in the pair they pass:
+    /// Grid stretches an `Auto` axis to the cell
+    /// ([`AxisAlignPair::or_stretch_if_auto`]), ZStack pins it.
+    pub(super) fn arrange_rect(
+        align: AxisAlignPair,
+        child: &LayoutCore,
+        bounds: &BoundsExtras,
+        desired: Size,
+        slot: Rect,
+    ) -> Rect {
+        let x = Self::arrange(Axis::X, align.h, child, bounds, desired, slot.size.w);
+        let y = Self::arrange(Axis::Y, align.v, child, bounds, desired, slot.size.h);
+        Rect {
+            min: slot.min + Vec2::new(x.offset, y.offset),
+            size: Size::new(x.size, y.size),
+        }
+    }
+
     /// Outer size of a node arranged into `slot` on both axes with no
-    /// alignment — [`Self::arrange`] twice under [`AxisAlign::Auto`], keeping
-    /// only the extents.
+    /// alignment — [`Self::arrange_rect`] under [`AxisAlignPair::AUTO`],
+    /// keeping only the extents.
     ///
     /// The two callers that place a node without needing its alignment offset:
     /// `LayoutEngine::run` sizing a layer root against the surface, and
     /// `canvas::arrange` sizing an absolutely-positioned child against its
     /// slot. Both position by other means (the root's `Placement`, the child's
-    /// declared `pos`), so the offset `Self::arrange` returns is dead to them.
-    /// Grid and ZStack call `Self::arrange` directly precisely because they do
-    /// use that offset.
+    /// declared `pos`), so the offset the placement carries is dead to them.
     pub(super) fn arrange_size(
         child: &LayoutCore,
         bounds: &BoundsExtras,
         desired: Size,
         slot: Size,
     ) -> Size {
-        Size::new(
-            Self::arrange(Axis::X, AxisAlign::Auto, child, bounds, desired, slot.w).size,
-            Self::arrange(Axis::Y, AxisAlign::Auto, child, bounds, desired, slot.h).size,
+        Self::arrange_rect(
+            AxisAlignPair::AUTO,
+            child,
+            bounds,
+            desired,
+            Rect {
+                min: Vec2::ZERO,
+                size: slot,
+            },
         )
+        .size
     }
 
     /// Cross-axis placement for a child of a main-axis stack (Stack /

@@ -19,7 +19,6 @@ pub struct Button<'a> {
 }
 
 impl<'a> Button<'a> {
-    #[allow(clippy::new_without_default)]
     #[track_caller]
     pub fn new() -> Self {
         let mut node = Node::leaf();

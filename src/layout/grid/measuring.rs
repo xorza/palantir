@@ -77,9 +77,9 @@ pub(super) fn measure_inner(
             let i = cell.col as usize;
             if t.size.is_hug() {
                 let range = pass.intrinsic_range(c, Axis::X);
-                let (cols_min, cols_max) = pass.grid_track_state_mut().slice_mut_pair(idx, Axis::X);
-                cols_min[i] = cols_min[i].max(range.min);
-                cols_max[i] = cols_max[i].max(range.max);
+                let cols = pass.grid_track_state_mut().ranges_mut(idx, Axis::X);
+                cols.min[i] = cols.min[i].max(range.min);
+                cols.max[i] = cols.max[i].max(range.max);
             } else if t.size.fill_weight().is_some() {
                 let min = pass.intrinsic(c, Axis::X, LenReq::MinContent);
                 let cols_min = pass

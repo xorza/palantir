@@ -439,7 +439,7 @@ impl MeasureCache {
 }
 
 #[cfg(any(test, feature = "bench"))]
-pub(crate) mod internals {
+pub(crate) mod test_support {
     use super::*;
 
     impl MeasureSnapshot {
@@ -466,7 +466,5 @@ pub(crate) mod internals {
     }
 }
 
-#[cfg(test)]
-mod integration_tests;
 #[cfg(test)]
 mod tests;

@@ -132,7 +132,7 @@ impl ::serde::Serialize for Size {
 
 impl<'de> ::serde::Deserialize<'de> for Size {
     fn deserialize<D: ::serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        #[derive(::serde::Deserialize)]
+        #[derive(Debug, ::serde::Deserialize)]
         struct RawSize {
             w: Option<f32>,
             h: Option<f32>,

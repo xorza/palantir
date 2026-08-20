@@ -149,7 +149,7 @@ mod tests {
         // through `write`. Pin the equivalence for a scalar and a
         // multi-field repr(C) Pod struct.
         #[repr(C)]
-        #[derive(Clone, Copy, bytemuck::NoUninit)]
+        #[derive(Debug, Clone, Copy, bytemuck::NoUninit)]
         struct Pair {
             a: u32,
             b: u32,
@@ -202,7 +202,7 @@ mod tests {
         // it for a persisted key gets a silent mismatch rather than a
         // failure.
         #[repr(C)]
-        #[derive(Clone, Copy, bytemuck::NoUninit)]
+        #[derive(Debug, Clone, Copy, bytemuck::NoUninit)]
         struct Pair {
             a: u32,
             b: u32,

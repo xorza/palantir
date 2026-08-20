@@ -4,7 +4,6 @@ use crate::primitives::shadow::Shadow;
 use crate::scene::record_store::RecordStore;
 use crate::scene::shapes::paint::QuadShape;
 use crate::scene::shapes::record::ShapeRecord;
-use crate::shape::local_rect_paint_empty;
 use crate::shape::sealed;
 
 /// Gaussian-blurred rounded rectangle shadow.
@@ -15,22 +14,15 @@ pub struct ShadowShape {
     pub(crate) shadow: Shadow,
 }
 
-impl ShadowShape {
-    pub fn at(mut self, rect: impl Into<Rect>) -> Self {
-        self.local_rect = Some(rect.into());
-        self
-    }
+local_rect_shape!(ShadowShape);
 
-    pub fn corners(mut self, corners: impl Into<Corners>) -> Self {
-        self.corners = corners.into();
-        self
-    }
-}
-// See the `sealed` module in `shape/mod.rs` for why.
-#[allow(private_interfaces)]
-impl sealed::Lower for ShadowShape {
+shape_setters!(ShadowShape {
+    corners: Corners => corners,
+});
+
+impl sealed::LowerShape for ShadowShape {
     fn is_noop(&self) -> bool {
-        local_rect_paint_empty(&self.local_rect) || self.shadow.is_noop()
+        self.rect_is_noop() || self.shadow.is_noop()
     }
 
     /// Pure repacking — the f16 lane squeeze happens in

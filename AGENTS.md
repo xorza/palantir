@@ -44,3 +44,26 @@ Performance work starts at `benches/AGENTS.md` — the manual for both bench
 harnesses and for `scripts/bench-perf.sh`. Read it before measuring or reaching
 for `perf`; it carries the A/B protocol, the profiling recipes, and the traps
 that otherwise get rediscovered one wasted capture at a time.
+
+## Gated reach-in modules
+
+Test and bench code that needs past a file's privates goes in one gated module
+at the end of that file, `pub(crate)`, named for who reaches in:
+
+- **`internals`** — reached from *outside* the crate: `tests/visual`,
+  `tests/alloc`, the showcase binary. Always
+  `#[cfg(any(test, feature = "internals"))]`, and `src/lib.rs` re-exports the
+  published subset through `pub mod internals`.
+- **`test_support`** — reached from *inside* the crate only: another module's
+  unit tests, a `bench.rs` driver, or both. Its `cfg` is exactly the builds
+  those consumers exist in — `test`, `feature = "bench"`, or a disjunction of
+  them — because anything wider is dead code in the builds that miss the
+  consumer, and `-W dead_code` says so.
+
+Helpers only the file's own `mod tests` uses get no module of their own; they
+live in `mod tests`.
+
+Support that is a subsystem rather than a reach-in — `ui::harness`,
+`host::test_gpu`, `text::mono` — stays a module of its own under the same
+`cfg`, named for what it is. The rule above is about reaching past *one
+file's* privates.

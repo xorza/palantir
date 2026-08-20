@@ -17,17 +17,10 @@ pub struct PolylineShape<'a> {
     pub(crate) join: LineJoin,
 }
 
-impl PolylineShape<'_> {
-    pub fn cap(mut self, cap: impl Into<LineCap>) -> Self {
-        self.cap = cap.into();
-        self
-    }
-
-    pub fn join(mut self, join: impl Into<LineJoin>) -> Self {
-        self.join = join.into();
-        self
-    }
-}
+shape_setters!(PolylineShape<'_> {
+    cap: LineCap => cap,
+    join: LineJoin => join,
+});
 
 /// Color source for [`Shape::polyline`](crate::Shape::polyline).
 #[derive(Clone, Copy, Debug)]
@@ -71,9 +64,7 @@ impl PolylineColors<'_> {
         }
     }
 }
-// See the `sealed` module in `shape/mod.rs` for why.
-#[allow(private_interfaces)]
-impl sealed::Lower for PolylineShape<'_> {
+impl sealed::LowerShape for PolylineShape<'_> {
     fn is_noop(&self) -> bool {
         if noop_f32(self.width) || self.points.len() < 2 {
             return true;

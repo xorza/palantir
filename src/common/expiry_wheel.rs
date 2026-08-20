@@ -259,7 +259,7 @@ impl<K: Copy + Debug> ExpiryWheel<K> {
 }
 
 #[cfg(test)]
-pub(crate) mod internals {
+pub(crate) mod test_support {
     use super::*;
 
     impl<K: Copy + Debug> ExpiryWheel<K> {

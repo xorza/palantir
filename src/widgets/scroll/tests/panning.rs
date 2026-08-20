@@ -215,6 +215,7 @@ fn click_on_track_before_thumb_pages_back_after_pages_forward() {
     // Both axes follow the same code path; pin both so the symmetric
     // helper can't drift. For each axis: click far end of track →
     // page forward by one viewport; click near end → page back to 0.
+    #[derive(Debug)]
     enum AxisCase {
         V,
         H,
