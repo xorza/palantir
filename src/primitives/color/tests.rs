@@ -161,7 +161,7 @@ fn equal_signed_zero_colors_have_equal_hashes() {
 }
 
 #[test]
-fn lerp_spans_both_endpoints_and_agrees_with_midpoint() {
+fn lerp_spans_both_endpoints_and_overshoots() {
     // Every channel here is an exact binary fraction, so the arithmetic
     // below is checkable by eye and by `==`.
     let a = Color::linear_rgba(1.0, 0.0, 0.5, 0.5);
@@ -179,17 +179,10 @@ fn lerp_spans_both_endpoints_and_agrees_with_midpoint() {
         (0.75, 0.25, 0.5, 0.375)
     );
 
-    // `midpoint` is the symmetric spelling of the same blend.
+    // Hand-computed half step: r 1.0→0.5, g 0.0→0.5, b flat at 0.5,
+    // a 0.5→0.25.
     let mid = a.lerp(b, 0.5);
-    let sym = a.midpoint(b);
-    for (l, r) in [
-        (mid.r, sym.r),
-        (mid.g, sym.g),
-        (mid.b, sym.b),
-        (mid.a, sym.a),
-    ] {
-        assert!((l - r).abs() < 1e-6, "lerp(0.5) = {l}, midpoint = {r}");
-    }
+    assert_eq!((mid.r, mid.g, mid.b, mid.a), (0.5, 0.5, 0.5, 0.25));
 
     // `t` is deliberately unclamped, so a caller can overshoot: t = 2
     // continues past `b` by the same delta again (r 1.0 → -1.0).

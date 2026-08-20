@@ -49,7 +49,7 @@ fn collect(
     use_stencil: bool,
 ) -> Vec<RenderStep> {
     let mut steps = Vec::new();
-    for_each_step(buffer, damage_scissor, masks, use_stencil, |s| {
+    for_each_step(buffer, damage_scissor, masks, use_stencil, &mut |s| {
         steps.push(s);
     });
     steps

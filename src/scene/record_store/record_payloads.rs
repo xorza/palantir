@@ -35,6 +35,23 @@ pub(crate) struct RecordPayloads {
 }
 
 impl RecordPayloads {
+    /// Drop every payload the last record pass appended, keeping the
+    /// capacity a steady scene re-fills each frame.
+    pub(crate) fn clear(&mut self) {
+        let Self {
+            meshes,
+            polyline_points,
+            polyline_colors,
+            gradients,
+            text,
+        } = self;
+        meshes.clear();
+        polyline_points.clear();
+        polyline_colors.clear();
+        gradients.clear();
+        text.clear();
+    }
+
     pub(crate) fn interned_text(&self) -> InternedText<'_> {
         InternedText {
             bytes: self.text.bytes(),

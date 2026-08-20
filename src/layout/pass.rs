@@ -176,7 +176,7 @@ impl LayoutPass<'_> {
     #[inline]
     pub(super) fn zero_subtree(&mut self, node: NodeId, anchor: Vec2) {
         let start = node.idx();
-        let end = self.tree.subtree_end_of(start) as usize;
+        let end = self.tree.subtree_end_of(start);
         self.out.rect[start..end].fill(Rect {
             min: anchor,
             size: Size::ZERO,
@@ -257,7 +257,7 @@ impl LayoutPass<'_> {
                 let curr_end = curr_start + hit.desired.len();
                 // Subtree hash includes child count + per-child rollups,
                 // so a length mismatch here would mean the rollup is broken.
-                debug_assert_eq!(curr_end, tree.subtree_end_of(curr_start) as usize);
+                debug_assert_eq!(curr_end, tree.subtree_end_of(curr_start));
                 self.engine.scratch.desired[curr_start..curr_end].copy_from_slice(hit.desired);
                 self.engine.scratch.arrange_src[curr_start] = hit.nodes_base;
                 self.engine.scratch.restore_after_cache_hit(
@@ -466,7 +466,7 @@ impl LayoutPass<'_> {
             return false;
         }
         let start = node.idx();
-        let end = self.tree.subtree_end_of(start) as usize;
+        let end = self.tree.subtree_end_of(start);
         let base = base as usize;
         let src = &self.engine.cache.previous.nodes.rect[base..base + (end - start)];
         if src[0].size != rendered.size {

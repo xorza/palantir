@@ -14,6 +14,7 @@ use crate::widgets::theme::context_menu::menu_item::MenuItemTheme;
 use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::separator::SeparatorTheme;
 use crate::widgets::theme::text_style::TextStyle;
+use crate::widgets::theme::widget_look::stateful_look::StatefulLook;
 use glam::Vec2;
 
 /// Visuals for [`crate::Popup`]-hosted context menus.
@@ -71,9 +72,19 @@ impl ContextMenuTheme {
     /// `panel`, the relationship [`Self::from_palette`] ships.
     pub fn with_radius(mut self, panel: f32, chip: Option<f32>) -> Self {
         self.panel.corners = Corners::all(panel);
-        self.item = self
-            .item
-            .with_radius(chip.unwrap_or((panel - 1.0).max(0.0)));
+        let corners = Corners::all(chip.unwrap_or((panel - 1.0).max(0.0)));
+        // Destructured so a new row state fails to compile here rather
+        // than quietly keeping the radius this method was called to
+        // change — same guarantee `for_each_text` keeps above.
+        let StatefulLook {
+            normal,
+            hovered,
+            active,
+            disabled,
+        } = &mut self.item.looks;
+        for look in [normal, hovered, active, disabled] {
+            look.background.corners = corners;
+        }
         self
     }
 

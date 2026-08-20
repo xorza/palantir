@@ -301,7 +301,7 @@ pub use text::shaper::TextShaper;
 pub use text::wrap::TextWrap;
 pub use text::{FontFamily, FontWeight};
 pub use ui::Ui;
-pub use ui::frame_report::{FramePaint, FrameProcessing, FrameReport};
+pub use ui::frame_report::{FramePaint, FrameReport};
 pub use ui::layer_scope::LayerScope;
 pub use widgets::button::Button;
 pub use widgets::checkbox::Checkbox;
@@ -481,9 +481,9 @@ mod hot_struct_sizes {
     /// than either. Read these as a drift tripwire, not as the production
     /// footprint.
     #[cfg(feature = "bench")]
-    const UI_SIZE: usize = 6800;
+    const UI_SIZE: usize = 6768;
     #[cfg(not(feature = "bench"))]
-    const UI_SIZE: usize = 6776;
+    const UI_SIZE: usize = 6744;
 
     hot_structs! {
         // One instance per window, not per frame — pinned because every

@@ -13,13 +13,14 @@ use crate::primitives::{
 };
 use crate::renderer::frontend::capture::PaintCapture;
 use crate::renderer::frontend::composer::Composer;
-use crate::renderer::frontend::paint_sink::PaintSink;
+use crate::renderer::frontend::paint_sink::{PaintGate, PaintSink};
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
 use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
+use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
 use crate::renderer::gpu_paint::GpuPaint;
@@ -66,16 +67,16 @@ pub(super) fn draw(buf: &mut PaintCapture, r: Rect) {
 }
 
 pub(super) fn text(buf: &mut PaintCapture, r: Rect) {
-    buf.draw_text(
-        r,
-        Color::WHITE.into(),
-        ShapedTextRef {
+    buf.draw_text(DrawTextPayload {
+        rect: r,
+        color: Color::WHITE.into(),
+        text: ShapedTextRef {
             key: TextShapeKey::INVALID,
             source: TextSource {
                 span: Span::default(),
             },
         },
-    );
+    });
 }
 
 pub(super) fn params(scale: f32, physical: UVec2) -> Display {

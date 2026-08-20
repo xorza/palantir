@@ -17,11 +17,10 @@ Behavioural defects found along the way are logged separately in
 
 ## Documentation that contradicts the code it describes
 
-Distinct from the group above: these do not state invariants, they simply
-describe something that is no longer there. Every reviewer hit this
-independently, in every subsystem, which makes it a process problem rather than
-a set of isolated slips. Several name symbols that do not exist anywhere in the
-crate — grep-checkable and still wrong.
+These do not state invariants, they simply describe something that is no longer
+there. Every reviewer hit this independently, in every subsystem, which makes it
+a process problem rather than a set of isolated slips. Several name symbols that
+do not exist anywhere in the crate — grep-checkable and still wrong.
 
 - [ ] `src/scene/damage/mod.rs:2` — the module doc says the prev-frame snapshot
       is rebuilt "via the `entry()` API — vacant slots get inserted, occupied
@@ -53,21 +52,11 @@ crate — grep-checkable and still wrong.
 
 - [ ] `src/primitives/half_simd/mod.rs:5` opens by explaining that the module
       exists to bypass `half::slice::HalfFloatSliceExt`, with the frame win
-      quantified. Four wrapper docs still describe the path it replaced:
+      quantified. Two wrapper docs still describe the path it replaced:
       `src/primitives/color/mod.rs:394` ("go through
-      `half::slice::HalfFloatSliceExt::{…}`"), `src/primitives/spacing.rs:62`
-      ("Routes through `half`'s platform-specific batched f16→f32 path"),
-      `src/primitives/corners.rs:91` ("same `half` slice path"), and
-      `src/primitives/brush/gradient/mod.rs:139` ("via the batched slice path").
-      All four go through `F16x4::lanes`, which calls `_mm_cvtph_ps` directly.
-
-- [ ] `src/renderer/backend/queue.rs:1` — says the tally happens "with the
-      `internals` feature enabled" and that "without `internals`, the wrapper is
-      a zero-cost passthrough"; the gate at `:32` is `bench`.
-      `src/renderer/backend/write_stats.rs:1` says "gated behind the `bench`
-      feature" while `src/renderer/backend/mod.rs:25` stacks `internals` on top
-      of `bench` — and since `bench = ["internals", …]` the first attribute is
-      dead.
+      `half::slice::HalfFloatSliceExt::{…}`") and
+      `src/primitives/brush/gradient/mod.rs:146` ("via the batched slice path").
+      Both go through `F16x4::lanes`, which calls `_mm_cvtph_ps` directly.
 
 - [ ] `src/renderer/frontend/composer/mod.rs:23` — the comment says `pub(crate)`
       is "only so the `text_grid` benchmark can reach the gated `internals`
@@ -76,11 +65,6 @@ crate — grep-checkable and still wrong.
       `push` and `any_overlap` are all `pub(crate)`, there is no `internals`
       harness in `text_grid`, and the only outside consumer is
       `text_grid::bench`, a child module that already sees private items.
-
-- [ ] `src/primitives/urect/mod.rs:240` — `URect16`'s doc says it is "Used where
-      many rects are stored in a hot Pod struct (e.g. `TextRun.bounds`)".
-      `TextRun.bounds` is a plain `URect` (`src/renderer/backend/text/mod.rs:180`),
-      and `URect16` has zero references outside its own definition.
 
 - [ ] `src/input/bench.rs:8` and `:102` — describes what it measures as
       "`recompute_hover` + `recompute_scroll_target` linear walk over cascade
@@ -91,19 +75,9 @@ crate — grep-checkable and still wrong.
 - [ ] `src/display.rs:18` — says the host "hands it to `WindowDriver::frame`".
       `WindowDriver` has `cpu_frame` and `render_to_texture`, no `frame`.
 
-- [ ] `src/input/sense.rs:112` — claims `DOUBLE_CLICK_RADIUS` matches
-      "`TextEdit`'s `MULTI_CLICK_RADIUS`", the only mention of that identifier in
-      the crate. `:106` and `:112` also intra-doc-link `[crate::input::Capture]`,
-      a private struct in another module.
-
 - [ ] `src/renderer/image_registry.rs:16` — points at `renderer::texture_id` for
       "`TextureId` + its source". No such module exists: the id is
       `primitives::texture_id`, the source is `renderer::texture_id_source`.
-
-- [ ] `src/shape/curve.rs:64` — `impl Default for CurveBasis`'s doc calls it
-      "the `Default` a `DrawCurvePayload` literal falls back to".
-      `DrawCurvePayload` (`src/renderer/frontend/payload.rs:557`) derives no
-      `Default`, and the impl has no caller.
 
 - [ ] `src/widgets/widget.rs:107` — `Widget::show`'s doc names "the handful
       (`Frame`, `Panel`, `Grid`, `Separator`)" as its callers. `Text`
@@ -123,21 +97,6 @@ crate — grep-checkable and still wrong.
       longer exists. `src/renderer/frontend/composer/mod.rs:127` says
       `GroupCursors` bundles "five parallel fields"; it has six.
 
-- [ ] `src/ui/frame_cycle.rs:153` — the comment says the `PaintOnly` path should
-      "pass an empty set instead of stale state from the previous frame".
-      `compute_paint_only` (`src/scene/damage/mod.rs:373`) takes no removed set
-      at all.
-
-- [ ] `src/primitives/color/mod.rs:549` — the note above `linear_to_oklab` says
-      there is "no other in-crate caller until slice 2 wires the atlas through
-      the encoder/composer" and explains a `dead_code` concern. The function has
-      had callers in `src/renderer/gradient_atlas/bake.rs:31` and `:85` since,
-      and carries no allow.
-
-- [ ] `src/primitives/nan.rs:24` — the module doc's closing line, "`f32` is the
-      leaf every other impl bottoms out in", is wrong: the impls bottom out in
-      `f32::is_nan`, not in `NanCheck for f32`, which is never reached.
-
 - [ ] `src/primitives/half_simd/mod.rs:67` — claims "Both f16 lane predicates in
       the crate are this one test"; `src/primitives/approx.rs:105` and `:121`
       hold two more.
@@ -146,17 +105,9 @@ crate — grep-checkable and still wrong.
       conversions; three of `Span`'s four `From` impls (`:35`, `:55`, `:62`)
       have no callers.
 
-- [ ] `src/primitives/size.rs:45` — `is_inf`'s doc describes "callers using this
-      as a 'no upper bound' sentinel". It has zero callers, tests included.
-
 - [ ] `src/renderer/gradient_atlas/bench.rs:49` — says "Requires the `internals`
       feature" one line above a run command using `--features bench`, in a
       module gated `#[cfg(feature = "bench")]`.
-
-- [ ] `src/scene/layer.rs:31` — the `PerLayer` doc says "Three ways in… The
-      backing array is private so those stay the only spellings", immediately
-      above two `IntoIterator` impls (`:109`, `:117`) that add a fourth and have
-      no callers.
 
 - [ ] `src/primitives/image.rs:22` — `ImageFit::Fill`'s doc calls it "the legacy
       'no fit' behaviour", a compatibility framing the project's stated posture
@@ -222,350 +173,6 @@ from what it describes, and nothing catches it.
 
 ---
 
-## Files organised by topic rather than by owning type
-
-The stated convention is one major struct per file, named after it, with impls
-in that file. It is followed in most of the crate and abandoned in a consistent
-set of places — usually a `mod.rs` or a `*_utils`/`support` file that became a
-bag.
-
-- [ ] `src/renderer/backend/mod.rs:149` — 1168 lines holding `WgpuBackend` (which
-      owns nine subsystems and every render pass) plus six independent types
-      (`Backbuffer`, `Stencil`, `SubmissionTargets`, `Submission`,
-      `BackendConfig`, `BackendResources`), none a satellite of the others, and
-      `submit` at 295 lines.
-
-- [ ] `src/renderer/frontend/payload.rs:102` — eight standalone payload types
-      plus `BrushSource`/`GpuFillFields`/`ResolvedGradient`, each with its own
-      `is_noop` and constructors. The consequence is already visible:
-      `impl DrawIconPayload` (`:501`) sits between the `DrawImagePayload` struct
-      (`:455`) and its own impl (`:511`).
-
-- [ ] `src/window.rs:30` — eleven top-level types (`WindowToken`,
-      `WindowDirectory`, `WindowConfig`, `WindowGeometry`, `CursorIcon`, `Vsync`,
-      `PendingWindow`, `WindowCommands`, `WindowRequests`, `WindowOutput`,
-      `WindowFrameState`) and no `Window` struct.
-
-- [ ] `src/widgets/text_edit/view.rs:41` — twelve types (`ViewState`,
-      `InteractionState`, `ShapeCtx`, `LayoutInput`, `TextLayout`, `Probed`,
-      `GeometryInput`, `TextGeometry`, `ViewUpdateInput`, `ViewUpdate`,
-      `CaretPaint`, `PaintInput`) plus six free functions. The sharpest case is
-      `InteractionState` (`:49`), a one-field drag anchor — pointer state, not
-      view state — whose `normalize` is a byte-offset repair identical in
-      schedule to `EditState::normalize`; `input.rs` calls the two as a pair at
-      three separate points.
-
-- [ ] `src/input/mod.rs:47` — 1153 lines holding `Capture`, `Press`, `PressDrag`,
-      `Release`, `ReleaseKind`, `PressRun`, `EventOutcome`, `TargetScrollDelta`,
-      `InputEvent` and `InputState`. `InputEvent` is the crate's public
-      host-facing event vocabulary and the direct sibling of `PointerEvent` and
-      `KeyboardEvent`, both of which have their own files. The press-capture
-      cluster is a self-contained state machine.
-
-- [ ] `src/ui/frame.rs:23` — seven types (`WakeReasons`, `FrameStamp`,
-      `FrameInput`, `FrameClassifyInput`, `Wake`, `FrameRuntime`, `FramePlan`)
-      and no `Frame`.
-
-- [ ] `src/primitives/interned_str.rs:26` — six types (`InternedStr`,
-      `TextEpoch`, `TextInput`, `InternedText`, `TextSource`, `RecordedText`).
-      Within it, `TextSource` is a `repr(transparent)` one-field wrapper over
-      `Span` whose only method indexes that span, and `RecordedText::resolve`
-      does nothing but forward to it.
-
-- [ ] `src/scene/record_store.rs:32` — six types, of which `RecordedGradients` is
-      an independent interner with its own lifecycle, in a file named for
-      `RecordStore`.
-
-- [ ] `src/scene/node/columns.rs:22` — six independent types (`Gaps`,
-      `BoundsExtras`, `PanelExtras`, `LayoutCore`, `NodeFlags`, `NodeColumns`),
-      five of them substantial and each pinned individually in `lib.rs`'s
-      `hot_struct_sizes` table, i.e. treated as first-class layout-critical types
-      everywhere else.
-
-- [ ] `src/widgets/context_menu/mod.rs:222` and `:385` — three public widget
-      types (`ContextMenu`, `MenuItem`, `MenuSeparator`) plus two response/state
-      types and `MenuShortcut`, in a directory module that already has a
-      `tests.rs` sibling.
-
-- [ ] `src/layout/support.rs:201` — five structs and twelve free functions
-      spanning four unrelated jobs (text-run extraction, axis size resolution,
-      justify distribution, alignment placement). Several take their own type as
-      the sole meaningful argument where a method would do. `AxisAlignPair`
-      (`:348`) is the only struct in the module without `#[derive(Debug)]`,
-      escaping the crate's `missing_debug_implementations = "deny"` only because
-      it is `pub(super)`.
-
-- [ ] `src/layout/engine.rs:78` — the file named for `LayoutEngine` also defines
-      `LayoutScratch` (its own major struct with its own lifecycle doc), the
-      `NO_ARRANGE_SRC` sentinel, and `resolve_sizing` (`:238`), the whole
-      per-node sizing pipeline. `cache_rebuild` (`:145`) is per-frame state on
-      the persistent engine, then threaded into `restore_after_cache_hit` as a
-      bare `bool`.
-
-- [ ] `src/renderer/gpu_view.rs` — defines no `GpuView`; the struct of that name
-      is in `src/widgets/gpu_view.rs`. The crate has two `gpu_view.rs` files and
-      the one that is not the widget holds the trait, two ctx structs,
-      `GpuPaintRef` and `GpuViewEntry`.
-
-- [ ] `src/renderer/backend/stencil.rs:19` — holds `STENCIL_FORMAT` and
-      `stencil_test_state()` but not `struct Stencil`, which is in
-      `src/renderer/backend/mod.rs:101`. "The stencil" is two files and neither
-      is named for the other's half.
-
-- [ ] `src/renderer/backend/pipeline_utils.rs:76` — a grab-bag of one real struct
-      (`StencilVariant`), two param bundles and five free functions.
-      `raster_atlas/quad.rs:18` defines `RasterQuad` plus six `pub(crate)` free
-      functions that are the natural surface of the type or of `RasterAtlas`.
-
-- [ ] `src/renderer/gradient_atlas/handle.rs:14`, `mru.rs:40`,
-      `src/renderer/plan.rs:22`, `src/renderer/render_owner.rs:6`,
-      `src/diagnostics/gpu_stats.rs:98`, `src/primitives/transform.rs:16`,
-      `src/primitives/fill_wire.rs:30` — files named for a topic holding a single
-      type named something else (`SharedGradientAtlas`, `MruList`, `RenderPlan`,
-      `RenderOwnerId`, `GpuPassStats`, `TranslateScale`; `fill_wire.rs` names
-      neither of its two). `handle.rs` is the generic-filename shape the
-      convention exists to prevent.
-
-- [ ] `src/renderer/render_buffer/batch.rs:7` — four independent types
-      (`DrawGroup`, `TextBatch`, `GroupBatch`, `PaintTier`), none named `Batch`.
-
-- [ ] `src/widgets/chrome.rs:19` and `src/widgets/toggle.rs:25` — neither holds a
-      struct of its name; both are files of `pub(super)` free functions, which
-      also cuts against the crate's method-over-free-function preference.
-
-- [ ] `src/text/cosmic/mod.rs:251`, `retention.rs:60`, `truncate.rs:160`,
-      `glyphs.rs:17` — `CosmicMeasure`'s inherent impl is spread over four files
-      reaching its `pub(super)` fields directly. The cost is documented in the
-      code: `retention.rs:9` says "reading any one of them alone is how the
-      ticket-leak regression got written."
-
-- [ ] `src/scene/tree/recording.rs:94` — `Placement` is not recording state: it
-      carries `available(surface)` and `origin(measured, surface)`, whose callers
-      are `src/layout/engine.rs:120` and `:523`, and it is read by
-      `cascade_fingerprint`. A layout-policy type with layout math sits in the
-      scene recorder's scratch file, in a file where no type matches the name.
-
-- [ ] `src/scene/tree/rollups.rs:31` — `SubtreeRollups` holds two per-node hash
-      columns, one whole-tree authoring hash, one count fingerprint, and
-      `container_text: FixedBitSet` (a layout worklist). Only the first two are
-      subtree rollups, and `reset_for` resets four of five fields, leaving
-      `cascade_static` to be overwritten later.
-
-- [ ] `src/scene/shapes/lower.rs:43` — `ChromeInput` is a parameter bundle for
-      `Tree::open_node`, declared in a module of lowering functions that never
-      mentions it; it is constructed at `src/scene/forest.rs:215` and
-      destructured at `src/scene/tree/mod.rs:408`.
-
-- [ ] `src/text/key.rs:10` — `TEXT_METRICS_ERROR` and `text_metrics_valid` are a
-      shared validation predicate used by shape recording, theme scaling and
-      theme deserialization; four of the five call sites are outside `src/text`
-      entirely. They live in the file named for `TextShapeKey`, which uses them
-      once in a `debug_assert`.
-
-- [ ] `src/animation/spring.rs:251` — `DURATION_SNAP_EPS_SQ` and
-      `within_duration_snap_eps` are the *duration* motion model's snap floor, in
-      a file documented as "Damped spring step", with a comment existing only to
-      explain why they are there. `src/animation/serde.rs:8` holds `AnimSpec`'s
-      serde impls, where the convention puts a foreign-trait impl in the file of
-      the type it is for.
-
-- [ ] `src/input/sense.rs:99`, `:107`, `:113` — `DRAG_THRESHOLD`,
-      `DOUBLE_CLICK_WINDOW` and `DOUBLE_CLICK_RADIUS` are press-run and drag-latch
-      tunables read only by the capture state machine, parked in the bitflags
-      file that describes which interactions a widget participates in. Two are
-      `pub(crate)` and one `pub(super)` despite identical reach.
-
-- [ ] `src/layout/grid/{measuring,resolving,arranging}.rs` — the split is not a
-      layering: `measuring` imports from `resolving` *and* `arranging`, while
-      `resolving` imports `resolve_fixed` back from `measuring`. `resolve_fixed`
-      is documented as "Phase 1 of `resolve_axis`" but lives in the measure file
-      because `measure_inner` also calls it standalone, which is what creates the
-      cycle. No file can be read or changed independently.
-
----
-
-## Dead, speculative, and single-caller surface
-
-The convention is to remove unused code, or say why it is kept and silence the
-warning. Several of these do the second half without the first being true.
-
-- [ ] `src/primitives/urect/mod.rs:168` — 14 functions across ~140 lines of a
-      314-line file, behind a blanket `#[allow(dead_code)]`, whose own doc says
-      "Nothing calls these yet, which is the whole reason they are gathered
-      here". The blanket allow also means any future method added there goes
-      unchecked.
-
-- [ ] `src/primitives/urect/mod.rs:240` — `URect16`, its `Hash`, `new`,
-      `to_urect` and both `From` conversions have zero references outside their
-      own definitions. It is also a second major struct in a file named for the
-      first, and breaks that file's accessor vocabulary (`min`/`size` vs bare
-      `x`/`y`/`w`/`h`).
-
-- [ ] Trait impls with no callers, invisible to the dead-code lint:
-      `impl From<ShapeStroke> for Stroke` (`src/scene/shapes/paint.rs:86` — every
-      real conversion goes the other way), `impl Default for CurveBasis`
-      (`src/shape/curve.rs:64`), and both `IntoIterator` impls for `PerLayer`
-      (`src/scene/layer.rs:109`, `:117`).
-
-- [ ] `src/primitives/nan.rs:30`, `:46`, `:61` — `NanCheck` never appears as a
-      bound outside its own file; all 42 `.has_nan()` call sites are concrete
-      method calls, so the `f32`, `Option<T>` and `[T]` impls are unreachable.
-      The trait also duplicates the NaN half of every type's `is_noop`:
-      `Shadow::is_noop` and `Shadow::has_nan` walk the identical four fields, as
-      do the `Color` and `Rect` pairs.
-
-- [ ] `src/primitives/approx.rs:41` — two eight-function hash families identical
-      apart from `eq_bits` vs `canon_bits`. `hash_vec2` (`:47`) has zero callers;
-      `hash_size` and `hash_rect` have one each.
-
-- [ ] `src/primitives/size.rs:45` (`is_inf`), `src/primitives/rect/mod.rs:103`
-      (`approx_zero`) — zero callers anywhere including tests.
-      `Color::midpoint` (`color/mod.rs:134`) and `Mesh::append`
-      (`mesh.rs:175`) are reached only from their own test modules.
-
-- [ ] `src/widgets/theme/mod.rs:175` — `Theme::menu_button` is a full second
-      `ButtonTheme` that no `show()` resolves against; it is reachable only if an
-      app writes `Button::style(&theme.menu_button)` by hand. It still costs a
-      theme field, a `from_palette` line, a `for_each_text` line and full serde
-      surface, and `ButtonTheme::menu_button(p)` already exists as a constructor
-      producing the same value.
-
-- [ ] `src/widgets/theme/widget_look/stateful_look.rs:58` →
-      `context_menu/menu_item.rs:68` → `context_menu/mod.rs:72` — a three-level
-      `pub` chain, each level existing for exactly one caller, the top of which
-      is called from nowhere outside `context_menu/tests.rs`. All three are
-      re-exported from `lib.rs` with multi-sentence docs.
-
-- [ ] `src/lib.rs:272` — `FrameProcessing` is exported but has no non-test
-      consumer; its own doc and `FrameReport::processing`'s doc both say it is
-      "informational, used by tests / benches / profilers".
-
-- [ ] `src/input/shortcut.rs` — `Mods::ALT`, `Mods::SHIFT` and
-      `Shortcut::ctrl_alt` have zero references anywhere in the repo, tests
-      included.
-
-- [ ] `src/scene/cascade/mod.rs:292` — `hit_test_targets` is generic over three
-      independent `impl Fn(Sense) -> bool` closures, and every non-test caller
-      passes exactly `Sense::hovers`, `Sense::scrolls`, `Sense::pinches`. The
-      comment defends the arms on monomorphisation grounds; there is one
-      instantiation.
-
-- [ ] `src/renderer/backend/schedule/mod.rs:186` — `for_each_step` is generic
-      over `impl FnMut(RenderStep)` and immediately stores `&mut emit` as
-      `&mut dyn FnMut` (`:338`), so every push goes through a vtable anyway. The
-      generic costs a monomorphisation per caller plus a hand-written `Debug`
-      (`:346`) whose only reason to exist is that the `dyn` field has nothing to
-      format.
-
-- [ ] `src/renderer/frontend/paint_sink.rs:82` — `PaintSink` carries a doubled
-      method surface (an ungated `quad`/`text`/… and a provided `draw_*` gate)
-      for a single production implementor. Four gates have byte-identical
-      bodies, `draw_text` breaks the pattern by taking three loose arguments,
-      and the gate is documented as unenforceable because the ungated half is
-      crate-visible. The encoder still pays `&mut dyn PaintSink` dispatch per
-      paint call for a trait whose second implementor is test-only.
-
-- [ ] `src/renderer/backend/queue.rs:32` — a `Deref` newtype and a second module
-      exist to tally `write_texture`, which has exactly two call sites in the
-      crate (`gpu_gradient_atlas.rs:159`, `image_pipeline/textures.rs:333`), yet
-      `&Queue` is threaded through `GpuCtx` and every uploader.
-
-- [ ] `src/renderer/backend/image_pipeline/mod.rs:130`, `:152`, `:170`, `:177` —
-      four of nine methods are one-line forwarders carrying 10–20 lines of doc
-      apiece duplicating the delegate's. `retire_render_owner` is a three-hop
-      chain, each hop one statement, each repeating the same `cfg_attr` and its
-      own justification comment.
-
-- [ ] `src/renderer/backend/overlay_pass.rs:167` — `upload_overlays` has one
-      caller, exists only to copy an `ArrayVec<Rect>` into an
-      `ArrayVec<Quad>` differing by four constant fields, and parameterises a
-      `stroke_color` that is always `DAMAGE_OVERLAY_COLOR`.
-
-- [ ] `src/layout/cache/mod.rs:346` — `snapshot_subtree` takes a range to mirror
-      `restore_subtree`, but every caller passes `index..index + 1`; it then
-      re-reads `layouts[i]` and re-matches `LayoutMode` to recover the id the
-      caller just discarded, so capture pays a double mode-match per node.
-
-- [ ] `src/scene/shapes/mod.rs:114` — `add_gpu_view` ends with the verbatim body
-      of `push` (`:95`) minus the return, so `Forest::add_gpu_view`
-      (`src/scene/forest.rs:286`) writes `Some(0)` — a sentinel index that means
-      nothing — to satisfy `push_shape`'s protocol. The doc on `Shapes::add`
-      calls the index-ignoring path "the legacy 'fire and forget' path", but
-      `push_shape` reads it and there is no caller that ignores it.
-
-- [ ] `src/scene/seen_ids.rs:59` and `:209` — four types
-      (`Endpoint`, `CollisionRecord`, `PendingExplicitCollision`,
-      `EndpointOutcome`), a `pending` queue and a linear `position()` scan exist
-      so `record_endpoint` can return a two-variant enum matched on for every
-      node opened every frame. The only consumer is `collision_overlay::emit`,
-      gated `#[cfg(debug_assertions)]`; the `tracing::error!` at
-      `src/scene/forest.rs:242` already carries both endpoints and is what
-      survives into release.
-
-- [ ] `src/scene/damage/walk.rs:158` — `subtree_end` re-implements
-      `Tree::subtree_end_of` (`src/scene/tree/mod.rs:121`).
-      `src/scene/damage/region/mod.rs:249` — `impl From<Rect> for DamageRegion`
-      is ungated production code whose only callers are test modules, while its
-      near-twin `from_rects` twenty lines above *is* gated.
-
-- [ ] `src/widgets/text_edit/input.rs:257` — `dispatch_action` is a five-line
-      `pub(super)` wrapper around two calls with one caller; `:180` has
-      `drag_anchor.unwrap_or(hit)` inside a branch already guarded by
-      `drag_anchor.is_some()`. Five `unicode.rs` helpers (`:102`, `:127`, `:141`,
-      `:175`, `:200`) are `pub(crate)` with no caller outside `text_edit`.
-
-- [ ] `src/widgets/text_edit/view.rs:474` — `measured(input)` branches on
-      `text.is_empty()` to choose between `display_size` and `content_size`, but
-      `resolve_geometry` sets `display_size` to exactly `measured` whenever the
-      text is non-empty, so both arms return the same value. `record` already
-      reads `display_size` directly for the same quantity (`:416`) while
-      `block_node` goes through the helper (`:523`), and `block_offset` aligns
-      from `measured` while the node it describes is sized from `display_size`.
-
-- [ ] `src/widgets/text_edit/mod.rs:526` and `src/widgets/text_edit/input.rs:19`
-      — three parallel signal structs relay the same booleans with each hop
-      renaming rather than adding (`blur` → `cancelled`, `edited` → `changed`).
-      `InputResult::was_focused` is pure pass-through, read from
-      `view.prev_focused` and returned to a caller holding the same
-      `&mut TextEditState`; the `EditSignals` literal is duplicated at `:361` and
-      `:510`.
-
-- [ ] `src/frame_fixture/mod.rs:119` — `FrameFixture::render` is a one-line
-      delegate to `pub(crate) fn build_ui(state: &mut FrameFixture, …)`, and both
-      are live. A free function whose first parameter is `&mut FrameFixture` is
-      the method it wraps.
-
-- [ ] `src/text/shaper.rs:49` — `Metric` is gated to a single variant in
-      production, so `ShaperInner::cosmic()` returns an `Option` that is always
-      `Some`, `shapes_buffers()` always returns `true`, `TextSystem` caches that
-      constant in a field it destructures on every `measure`, and `supersede`,
-      `tick_frame` and `glyphs` each carry an `if let Some`/`.expect` for an
-      unreachable case. None of it is `cfg`-gated, so a shipping build pays for a
-      state only `TextShaper::test_mono` can reach.
-
-- [ ] `src/renderer/frontend/composer/higher_kind.rs:34` — `conflicts`
-      hand-writes the tier ordering as four match arms and six disjunctions
-      though `PaintTier` derives `Ord` and the module's own test (`:132`) asserts
-      the whole matrix is just `incoming < recorded`.
-      `Composer::any_higher_kind_overlap` (`composer/mod.rs:356`) is a one-line
-      forward with two callers.
-
-- [ ] `src/scene/record_store.rs:112` — `RecordStore` contains nothing but
-      `payloads: RefCell<RecordPayloads>` (pinned by a test at `:279`), its four
-      methods are borrow-then-delegate one-liners, and `payloads` is
-      `pub(crate)` and borrowed directly by callers anyway. Inside it,
-      `TextStore.bytes` is a *second* `RefCell`, so `intern_str` takes a shared
-      borrow of the outer and a mutable borrow of the inner; `clear` takes
-      `&self` and mutates through the cell though its only caller holds
-      `&mut self`.
-
-- [ ] `src/scene/record_store.rs:61` — `RecordedGradients` hand-implements
-      separate chaining (`heads: FxHashMap<u64, GradientId>`, a `next: Vec<u32>`
-      link array, a `GRADIENT_CHAIN_END` sentinel) on top of an `FxHashMap` that
-      already resolves collisions with equality confirmation.
-
----
-
 ## Numeric predicates re-derived per call site
 
 The crate owns named predicates and constants for these, and the copies use
@@ -615,18 +222,18 @@ which call site asks it.
       convention forbids. These are `F16x4`'s domain, not that of a module
       documented as f32 comparisons.
 
-- [ ] `src/layout/types/align.rs:241`, `src/layout/support.rs:425`,
+- [ ] `src/layout/types/align.rs:174` and
       `src/layout/types/overlay/mod.rs:113` — "offset a box inside a slot per
-      alignment" exists three times. `align_in_rect` computes
+      alignment" exists twice. `Align::place_in` computes
       `Center => (outer - content) * 0.5`, `Right/Bottom => outer - content`,
-      else `0`, floored at zero; `arrange_axis` computes exactly that per axis
-      over `AxisAlign` instead of `HAlign`/`VAlign`; `align_cross` computes the
-      same offsets but clamps to a `bounds` rect rather than flooring. The first
-      is consumed outside layout entirely (`src/scene/shapes/record/mod.rs:273`,
-      `src/renderer/frontend/encoder/mod.rs:368`,
-      `src/widgets/text_edit/view.rs:334`) and its doc at `align.rs:229` claims
-      it is "one definition for all of them" — true for text, not for the layout
-      pass beside it. Two alignment vocabularies each grew their own placement
+      else `0`, floored at zero; `align_cross` computes the same offsets over
+      `AxisAlign` instead of `HAlign`/`VAlign`, and clamps to a `bounds` rect
+      rather than flooring. The first is consumed outside layout entirely
+      (`src/scene/shapes/record/mod.rs:278`,
+      `src/renderer/frontend/encoder/mod.rs:378`,
+      `src/widgets/text_edit/text_geometry.rs:116`) and its doc claims it is
+      "one definition for all of them" — true for text, not for the layout pass
+      beside it. Two alignment vocabularies each grew their own placement
       arithmetic.
 
 - [ ] `src/widgets/slider.rs:135` vs `src/widgets/splitter/mod.rs:258` —
@@ -697,7 +304,7 @@ which call site asks it.
 
 - [ ] `src/widgets/text_edit/mod.rs:96` — `TextEdit` builds
       `Node::scroll(ScrollSpec::BOTH)`, keeps its own `ViewState::scroll`,
-      computes its own clamp (`view.rs:63`) and applies it as a negative
+      computes its own clamp (`view_state.rs:63`) and applies it as a negative
       translation — a second implementation of what `Scroll` does with
       `ScrollState::offset`, `clamp_to_natural` and its own transform.
 
@@ -766,13 +373,8 @@ pass rather than argued one at a time.
       use `self::…`, in one contiguous import block, making "one canonical path
       per item" false at the module root.
 
-- [ ] `src/animation/mod.rs:20`, `src/animation/serde.rs:5` — free functions
-      imported bare and aliased with `as` (`step as spring_step`,
-      `params_are_valid as spring_params_are_valid`) precisely because the bare
-      names are meaningless at the call site, which is the failure the
-      namespace-qualification rule exists to prevent.
-      `src/ui/frame_cycle.rs:29` imports `cascade_fingerprint` bare and calls it
-      unqualified at `:346`, while the same file correctly qualifies two others.
+- [ ] `src/ui/frame_cycle.rs:29` imports `cascade_fingerprint` bare and calls it
+      unqualified at `:360`, while the same file correctly qualifies two others.
 
 - [ ] `src/text/cosmic/retention.rs:122`, `:168`, `glyphs.rs:26`, `:84`,
       `truncate.rs:87`, `:119` — declared `pub(crate)` inside a privately
@@ -799,11 +401,9 @@ pass rather than argued one at a time.
       tuple out of a `match` where the five parent-context fields already exist
       as a named `Frame`.
 
-- [ ] `src/layout/support.rs:389`, `src/layout/zstack/mod.rs:69`,
-      `src/layout/grid/arranging.rs:105` — placing a child on both axes is
-      re-derived at three sites differing only in the alignment policy applied;
-      `support.rs` already has the single-axis consolidation (`cross_place`,
-      `:439`) but nothing covering the two-axis case.
+- [ ] `src/layout/zstack/mod.rs:69` and `src/layout/grid/arranging.rs:105` —
+      placing a child on both axes is re-derived at both sites, differing only in
+      the alignment policy applied, with no two-axis consolidation anywhere.
 
 - [ ] `src/shape/mod.rs:43` — the module is declared `pub(crate) mod sealed` but
       the `Lower` doc calls it "a private module" and the inline block calls it

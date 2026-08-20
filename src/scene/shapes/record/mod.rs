@@ -1,5 +1,5 @@
 use crate::icons::icon_set::IconHandle;
-use crate::layout::types::align::{self, Align};
+use crate::layout::types::align::Align;
 use crate::primitives::color::ColorF16;
 use crate::primitives::image::{ImageDownsample, ImageFilter, ImageFit};
 use crate::primitives::nan::NanCheck;
@@ -241,7 +241,7 @@ impl ShapeRecord {
 /// Tight owner-local paint bbox of a [`ShapeRecord::Text`], using the
 /// shaped extent the measure pass already computed (lives in
 /// `LayerLayout::text_shapes`). The encoder applies the same formula
-/// in screen space — `align_in_rect` is the sole source so cascade
+/// in screen space — [`Align::place_in`] is the sole source so cascade
 /// damage rects and encoder draw rects can't drift.
 ///
 /// **Damage inflation lives in cascade** (`scene::cascade`), not here —
@@ -256,7 +256,7 @@ impl ShapeRecord {
 /// - `local_origin: Some(origin)` ⇒ widget owns positioning; rect is
 ///   `origin + measured`.
 /// - `local_origin: None` ⇒ encoder owns positioning via
-///   [`crate::layout::types::align::align_in_rect`] against the owner's padded inner
+///   [`Align::place_in`] against the owner's padded inner
 ///   rect.
 pub(crate) fn text_paint_bbox_local(
     local_origin: Option<Vec2>,
@@ -275,7 +275,7 @@ pub(crate) fn text_paint_bbox_local(
                 min: Vec2::ZERO,
                 size: owner_size,
             };
-            align::align_in_rect(owner_local.deflated_by(padding), measured, align)
+            align.place_in(owner_local.deflated_by(padding), measured)
         }
     }
 }

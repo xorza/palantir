@@ -1,6 +1,5 @@
 //! Per-frame pointer and keyboard dispatch for TextEdit.
 
-use crate::common::clipboard::Clipboard;
 use crate::common::platform::{PLATFORM, Platform};
 use crate::input::key_class::{KeyClass, KeyFilter};
 use crate::input::keyboard::{Key, KeyPress, KeyboardEvent, Modifiers};
@@ -19,9 +18,6 @@ use crate::widgets::text_edit::unicode::word_range_at;
 /// `show()` folds into [`crate::widgets::text_edit::TextEditResponse`].
 #[derive(Debug)]
 pub(super) struct InputResult {
-    /// The view state's focus bit before this pass. `show()` derives
-    /// gained/lost edges before the view update stores the new value.
-    pub(super) was_focused: bool,
     /// Escape asked to blur before view recording.
     pub(super) blur: bool,
     /// Enter accepted a single-line value this frame.
@@ -172,13 +168,12 @@ pub(super) fn run_input(
                     ed.state.caret = hit;
                 }
             }
-        } else if ed.state.drag_anchor.is_some() {
+        } else if let Some(anchor) = ed.state.drag_anchor {
             // Held drag from a single-click press — caret follows
             // pointer, selection grows from the anchor. Multi-click
             // sequences clear `drag_anchor` so they don't enter this
             // branch and the selection stays locked at the word/all
             // range chosen on the press.
-            let anchor = ed.state.drag_anchor.unwrap_or(hit);
             ed.state.caret = hit;
             ed.state.selection = if hit == anchor { None } else { Some(anchor) };
         }
@@ -189,7 +184,6 @@ pub(super) fn run_input(
     if !is_focused {
         ed.state.normalize(ed.text);
         return InputResult {
-            was_focused,
             blur,
             submitted,
             edited: ed.edited,
@@ -230,7 +224,8 @@ pub(super) fn run_input(
                     submitted = true;
                     continue;
                 }
-                if dispatch_action(&mut ed, kp, &clipboard) {
+                if let Some(action) = EditAction::from_keypress(kp) {
+                    action.execute(&mut ed, &clipboard);
                     continue;
                 }
                 match apply_key(&mut ed, kp) {
@@ -246,23 +241,10 @@ pub(super) fn run_input(
 
     ed.state.normalize(ed.text);
     InputResult {
-        was_focused,
         blur,
         submitted,
         edited: ed.edited,
     }
-}
-
-pub(super) fn dispatch_action(
-    editor: &mut Editor<'_>,
-    keypress: KeyPress,
-    clipboard: &Clipboard,
-) -> bool {
-    let Some(action) = EditAction::from_keypress(keypress) else {
-        return false;
-    };
-    action.execute(editor, clipboard);
-    true
 }
 
 pub(super) fn apply_key(editor: &mut Editor<'_>, keypress: KeyPress) -> KeyOutcome {

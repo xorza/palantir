@@ -129,7 +129,6 @@ fn intrinsic_query_short_circuits_on_cache_hit() {
         1,
         "only the missing max-content side should compute",
     );
-    drop(interned_text);
     drop(payloads);
 }
 
@@ -175,7 +174,6 @@ fn parent_intrinsic_query_populates_descendant_cache() {
         LenReq::MaxContent,
         &interned_text,
     );
-    drop(interned_text);
     drop(payloads);
 
     assert!(

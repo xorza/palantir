@@ -62,17 +62,6 @@ impl MenuItemTheme {
         self.looks.pick(state, state.pressed())
     }
 
-    /// Reround the row chip in every state that paints one. States with
-    /// no background (`normal` by default — rows are transparent at
-    /// rest) stay transparent.
-    pub fn with_radius(mut self, radius: f32) -> Self {
-        let corners = Corners::all(radius);
-        for look in self.looks.each_mut() {
-            look.background.corners = corners;
-        }
-        self
-    }
-
     pub fn from_palette(p: &Palette) -> Self {
         // Rows are transparent at rest; hover paints one surface-step
         // brighter (`ELEM_HOVER`) — same delta a menu-bar trigger uses

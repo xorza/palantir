@@ -245,7 +245,12 @@ impl DamageRegion {
     }
 }
 
-/// Wrap a single rect with the default pass-budget.
+/// Wrap a single rect with the default pass-budget. Gated with its
+/// callers, which are tests only — narrower than
+/// [`DamageRegion::from_rects`] above, which the damage bench also
+/// drives. Production builds a region by folding the frame's damage
+/// through [`DamageRegion::add`], never from one rect it already has.
+#[cfg(test)]
 impl From<Rect> for DamageRegion {
     fn from(r: Rect) -> Self {
         let mut region = Self::default();

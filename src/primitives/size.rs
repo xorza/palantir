@@ -57,14 +57,6 @@ impl Size {
         Self { w, h }
     }
 
-    /// True if both axes are positive infinity. Distinct from
-    /// `f32::is_infinite` (which also accepts `-INFINITY`) so callers using
-    /// this as a "no upper bound" sentinel can't be tripped by negative
-    /// infinity or NaN.
-    pub const fn is_inf(self) -> bool {
-        self.w == f32::INFINITY && self.h == f32::INFINITY
-    }
-
     /// True if both axes are within `EPS` of zero — i.e. this size
     /// is approximately `Size::ZERO`. Strict (both-axis) semantic to
     /// match the crate's scalar `approx_zero` predicate.
@@ -81,6 +73,14 @@ impl Size {
     #[inline]
     pub const fn is_paint_empty(self) -> bool {
         approx::noop_f32(self.w) || approx::noop_f32(self.h)
+    }
+
+    /// True if either axis is NaN. `const`, so the const predicates that
+    /// need the sweep can call it; the [`NanCheck`] impl below delegates
+    /// here rather than keeping a second copy of the field walk.
+    #[inline]
+    pub(crate) const fn has_nan(self) -> bool {
+        self.w.is_nan() || self.h.is_nan()
     }
 
     /// Per-axis minimum — clamping a desired size down to what's available.
@@ -149,7 +149,7 @@ impl<'de> ::serde::Deserialize<'de> for Size {
 impl NanCheck for Size {
     #[inline]
     fn has_nan(&self) -> bool {
-        self.w.is_nan() || self.h.is_nan()
+        Size::has_nan(*self)
     }
 }
 

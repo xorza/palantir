@@ -43,13 +43,12 @@ impl RecordStore {
     /// Drop all record-pass storage.
     /// PaintOnly skips this so the retained tree and payload storage remain
     /// valid together.
-    pub(crate) fn clear(&self) {
-        let mut payloads = self.payloads.borrow_mut();
-        payloads.meshes.clear();
-        payloads.polyline_points.clear();
-        payloads.polyline_colors.clear();
-        payloads.gradients.clear();
-        payloads.text.clear();
+    ///
+    /// `&mut self` because the only caller (`Forest::pre_record`) holds
+    /// one: a reset that went through the cell would be asking at runtime
+    /// what the borrow checker already knows here.
+    pub(crate) fn clear(&mut self) {
+        self.payloads.get_mut().clear();
     }
 
     /// Copy `s` into the record-pass text storage and return an arena-backed
@@ -57,8 +56,7 @@ impl RecordStore {
     /// case (plain `&str` borrow, no `format_args!`).
     #[must_use]
     pub(crate) fn intern_str(&self, s: &str) -> InternedStr {
-        let payloads = self.payloads.borrow();
-        payloads.text.intern_str(s)
+        self.payloads.borrow_mut().text.intern_str(s)
     }
 
     /// Format `args` directly into the record-pass text storage and return
@@ -66,16 +64,14 @@ impl RecordStore {
     /// Backs [`crate::Ui::fmt`].
     #[must_use]
     pub(crate) fn intern_fmt(&self, args: std::fmt::Arguments<'_>) -> InternedStr {
-        let payloads = self.payloads.borrow();
-        payloads.text.intern_fmt(args)
+        self.payloads.borrow_mut().text.intern_fmt(args)
     }
 
     /// Normalize user-facing text into storage owned by this record pass.
     /// Handles from another arena are copied once so every recorded span
     /// resolves against `RecordPayloads::interned_text`.
     pub(crate) fn record_text(&self, text: InternedStr) -> RecordedText {
-        let payloads = self.payloads.borrow();
-        payloads.text.record(text)
+        self.payloads.borrow().text.record(text)
     }
 }
 
@@ -115,6 +111,13 @@ mod tests {
         assert!(second.payloads.borrow().polyline_points.is_empty());
     }
 
+    /// Two properties, in priority order. **A hit is confirmed by
+    /// equality**, so two distinct gradients that land on one hash never
+    /// share an id — that one is correctness, and a shape painted with
+    /// the wrong gradient is what it buys off. **Dedup is by hash**, so
+    /// the repeat of a gradient whose key is uncontested returns the id
+    /// it already has, while a colliding pair each mint a fresh record:
+    /// wasted rows, never a wrong one.
     #[test]
     fn gradient_interner_confirms_equality_across_hash_collisions_and_clears() {
         let stops = GradientStops::new([
@@ -133,14 +136,25 @@ mod tests {
         };
         let mut gradients = RecordedGradients::default();
         let first_id = gradients.intern(7, first.clone());
-        let colliding_id = gradients.intern(7, colliding.clone());
-        let repeated_first_id = gradients.intern(7, first);
-        let repeated_colliding_id = gradients.intern(7, colliding);
+        // The uncontested repeat: same hash, same content, same id, no
+        // second record.
+        assert_eq!(gradients.intern(7, first.clone()), first_id);
+        assert_eq!(gradients.records.len(), 1);
 
+        // The collision: same hash, different content. Equality
+        // confirmation refuses to hand back `first_id`, which is the
+        // property that matters, and mints a record of its own.
+        let colliding_id = gradients.intern(7, colliding.clone());
         assert_ne!(first_id, colliding_id);
-        assert_eq!(repeated_first_id, first_id);
-        assert_eq!(repeated_colliding_id, colliding_id);
         assert_eq!(gradients.records.len(), 2);
+        assert_eq!(gradients.records[colliding_id.0 as usize], colliding);
+
+        // Dedup — and only dedup — is what the collision costs: each of
+        // the pair now displaces the other's candidate, so both keep
+        // minting records rather than one being wrongly reused.
+        assert_ne!(gradients.intern(7, first), first_id);
+        assert_ne!(gradients.intern(7, colliding), colliding_id);
+        assert_eq!(gradients.records.len(), 4);
 
         gradients.clear();
         let after_clear = RecordedGradient {

@@ -1,7 +1,6 @@
 use crate::common::hash::Hasher;
 use crate::primitives::approx::FloatHash;
 use crate::primitives::color::ColorU8;
-use crate::primitives::nan::NanCheck;
 use crate::primitives::rect::Rect;
 use crate::primitives::rect::aabb::Aabb;
 use bytemuck::{Pod, Zeroable};
@@ -169,6 +168,12 @@ impl Mesh {
 
     /// Append another mesh, offsetting its indices into this mesh's
     /// vertex space.
+    ///
+    /// Published surface with no in-crate caller on purpose: `vertices`
+    /// and `indices` are private, so rebasing one mesh onto another is
+    /// not something a consumer can write from outside. Every other
+    /// builder method has a spelling a caller could reach for instead;
+    /// this one is the whole of mesh composition.
     ///
     /// # Panics
     ///

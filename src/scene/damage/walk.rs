@@ -158,10 +158,6 @@ impl LayerWalk<'_> {
         &self.cascade.paint_arena.rows[span.range()]
     }
 
-    fn subtree_end(&self, i: usize) -> usize {
-        self.tree.records.subtree_end()[i].end() as usize
-    }
-
     fn snapshot(&self, i: usize, parent_key: u64, paint_span: Span) -> NodeSnapshot {
         NodeSnapshot {
             paint_span,
@@ -196,7 +192,7 @@ impl LayerWalk<'_> {
     /// Open `i` as the enclosing parent for the nodes that follow it,
     /// if it has any.
     fn open_parent(&mut self, i: usize) {
-        let end = self.subtree_end(i);
+        let end = self.tree.subtree_end_of(i);
         if end > i + 1 {
             self.parents.push(ParentFrame {
                 end: end as u32,
@@ -214,7 +210,7 @@ impl LayerWalk<'_> {
     /// classification just pulled in.
     fn classify(&self, i: usize, wid: WidgetId, parent_key: u64) -> Tier {
         let Some(prev) = self.prev.get(&wid).copied() else {
-            let childless = self.subtree_end(i) == i + 1;
+            let childless = self.tree.subtree_end_of(i) == i + 1;
             return if childless && !self.rows(i).any_on_surface(self.surface) {
                 Tier::Untracked
             } else {
@@ -258,7 +254,7 @@ impl LayerWalk<'_> {
     }
 
     fn on_subtree_unchanged(&mut self, i: usize) -> usize {
-        let span = self.subtree_end(i) - i;
+        let span = self.tree.subtree_end_of(i) - i;
         self.probe.subtree_skipped(span);
         span
     }
@@ -358,7 +354,7 @@ impl LayerWalk<'_> {
     /// painting visible pixels in the map for later prev-extent folds
     /// and for the removed-widget eviction tail.
     fn on_subtree_moved(&mut self, i: usize) -> usize {
-        let end = self.subtree_end(i);
+        let end = self.tree.subtree_end_of(i);
         let mut prev_extent: Option<Rect> = None;
         for j in i..end {
             // Same stack as the outer walk: at `j == i` nothing is

@@ -2,7 +2,6 @@
 mod collision_overlay;
 
 use crate::layout::LayerLayout;
-use crate::layout::types::align;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::primitives::approx::noop_f32;
 use crate::primitives::brush::gradient::FillAxis;
@@ -12,7 +11,7 @@ use crate::primitives::nan::NanCheck;
 use crate::primitives::widget_id::WidgetIdMap;
 use crate::primitives::{corners::Corners, rect::Rect, size::Size};
 use crate::renderer::frontend::FrameScene;
-use crate::renderer::frontend::paint_sink::PaintSink;
+use crate::renderer::frontend::paint_sink::{PaintGate, PaintSink};
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
@@ -20,6 +19,7 @@ use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
+use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
 use crate::renderer::frontend::payload::stroke_bounds::Spin;
@@ -363,7 +363,7 @@ fn emit_one_shape(
             // Two paths share the same `DrawText` payload:
             // - `local_rect: None` → encoder owns positioning. Place
             //   the shaped bbox inside the owner's padded inner rect
-            //   via `align_in_rect`.
+            //   via `Align::place_in`.
             // - `local_rect: Some(origin)` → widget owns positioning.
             //   Origin is `owner.min + origin`; bbox size is the
             //   shaped measurement. `align`'s placement axes are
@@ -374,14 +374,18 @@ fn emit_one_shape(
                 None => {
                     let padded =
                         owner_rect.deflated_by(ctx.tree.records.layout()[id.idx()].padding);
-                    align::align_in_rect(padded, shaped.measured, *align)
+                    align.place_in(padded, shaped.measured)
                 }
                 Some(origin) => Rect {
                     min: owner_rect.min + *origin,
                     size: shaped.measured,
                 },
             };
-            out.draw_text(rect, *color, ShapedTextRef::new(shaped.key, text));
+            out.draw_text(DrawTextPayload {
+                rect,
+                color: *color,
+                text: ShapedTextRef::new(shaped.key, text),
+            });
         }
         ShapeRecord::Polyline {
             width,

@@ -531,9 +531,7 @@ fn hits_track_only_sensing_or_focusable_rows_in_paint_order() {
     let press = h.ui.cascade.hit_test_press(pos);
     assert_eq!(press.focus, Some(focus));
     assert_eq!(press.click, None);
-    let targets =
-        h.ui.cascade
-            .hit_test_targets(pos, Sense::hovers, Sense::scrolls, Sense::pinches);
+    let targets = h.ui.cascade.hit_test_targets(pos);
     assert_eq!(targets.hover, Some(hover));
     assert_eq!(targets.scroll, Some(popup_scroll));
     assert_eq!(targets.pinch, None);

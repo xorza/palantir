@@ -77,7 +77,6 @@ mod gpu_regression {
     use crate::primitives::span::Span;
     use crate::primitives::urect::URect;
     use crate::renderer::backend::gpu_ctx::GpuCtx;
-    use crate::renderer::backend::queue::Queue;
     use crate::renderer::backend::text::TextBackend;
     use crate::renderer::backend::text::tests::internals::make_inner_run;
     use crate::renderer::render_buffer::text::TextDrawRow;
@@ -89,19 +88,19 @@ mod gpu_regression {
 
     #[derive(Debug)]
     struct TestGpu {
-        queue: Queue,
+        queue: wgpu::Queue,
         lease: HeadlessTestGpuLease,
     }
 
     fn test_gpu() -> TestGpu {
         let lease = headless_test_gpu();
-        let queue = Queue::new(lease.queue.clone());
+        let queue = lease.queue.clone();
         TestGpu { queue, lease }
     }
 
     fn run_one_frame(
         device: &wgpu::Device,
-        queue: &Queue,
+        queue: &wgpu::Queue,
         backend: &mut TextBackend,
         store: &RecordStore,
         scale: f32,

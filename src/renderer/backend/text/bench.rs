@@ -49,7 +49,6 @@ use crate::primitives::color::ColorU8;
 use crate::primitives::interned_text::InternedText;
 use crate::primitives::urect::URect;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
-use crate::renderer::backend::queue::Queue;
 use crate::renderer::backend::stencil_variant::StencilVariant;
 use crate::renderer::backend::text::TextBackend;
 use crate::renderer::backend::text::encode::internals::{ChurnBench, SweepBench};
@@ -113,7 +112,7 @@ const DISTINCT_RUNS: usize = 512;
 #[derive(Debug)]
 struct Gpu {
     device: wgpu::Device,
-    queue: Queue,
+    queue: wgpu::Queue,
 }
 
 #[derive(Debug)]
@@ -190,7 +189,7 @@ fn gpu() -> &'static Gpu {
         let shared = BenchGpu::shared(Timing::Bare);
         Gpu {
             device: shared.device.clone(),
-            queue: Queue::new(shared.queue.clone()),
+            queue: shared.queue.clone(),
         }
     })
 }

@@ -1,5 +1,5 @@
 use crate::display::Display;
-use crate::frame_fixture::{BENCH_SCALE, FrameFixture, build_ui};
+use crate::frame_fixture::{BENCH_SCALE, FrameFixture};
 use crate::input::sense::Sense;
 use crate::primitives::rect::Rect;
 use crate::primitives::translate_scale::TranslateScale;
@@ -174,7 +174,7 @@ impl CascadeRunFixture {
 fn record_fixture(mut state: FrameFixture) -> UiHarness {
     let mut h = UiHarness::with_text(FRAME_SIZE).scale(DISPLAY_SCALE);
     let _ = h.frame(|ui| {
-        build_ui(&mut state, BENCH_SCALE, ui);
+        state.render(BENCH_SCALE, ui);
     });
     h
 }
@@ -226,14 +226,7 @@ pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Run<'_>) {
             let id =
                 |name: &str| BenchmarkId::new(name, format!("{}/{}", query_label, density.label));
             group.bench_function(id("targets"), |b| {
-                b.iter(|| {
-                    black_box(cascade.hit_test_targets(
-                        black_box(query),
-                        Sense::hovers,
-                        Sense::scrolls,
-                        Sense::pinches,
-                    ))
-                });
+                b.iter(|| black_box(cascade.hit_test_targets(black_box(query))));
             });
             group.bench_function(id("click_focus"), |b| {
                 b.iter(|| black_box(cascade.hit_test_press(black_box(query))));

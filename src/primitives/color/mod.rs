@@ -89,7 +89,17 @@ impl Color {
         // Alpha decides visibility; the colour channels are screened
         // for NaN only. See `ColorF16::is_noop` for why a NaN in a
         // non-alpha lane has to count as invisible.
-        approx::noop_f32(self.a) || self.r.is_nan() || self.g.is_nan() || self.b.is_nan()
+        approx::noop_f32(self.a) || self.has_nan()
+    }
+
+    /// True if any channel is NaN. `const`, so [`Self::is_noop`] can
+    /// reuse it instead of repeating the channel walk; the [`NanCheck`]
+    /// impl below delegates here for the same reason.
+    ///
+    /// [`NanCheck`]: crate::primitives::nan::NanCheck
+    #[inline]
+    pub(crate) const fn has_nan(self) -> bool {
+        self.r.is_nan() || self.g.is_nan() || self.b.is_nan() || self.a.is_nan()
     }
 
     /// `(r, g, b)` in 0..1 sRGB space (the default — matches CSS, Figma, Photoshop).
@@ -127,17 +137,6 @@ impl Color {
             g: self.g,
             b: self.b,
             a,
-        }
-    }
-
-    /// Per-channel midpoint of two colors. The symmetric form of
-    /// [`Self::lerp`] at `t = 0.5`.
-    pub const fn midpoint(self, other: Self) -> Self {
-        Self {
-            r: (self.r + other.r) * 0.5,
-            g: (self.g + other.g) * 0.5,
-            b: (self.b + other.b) * 0.5,
-            a: (self.a + other.a) * 0.5,
         }
     }
 
@@ -623,7 +622,7 @@ impl NanCheck for ColorF16 {
 impl NanCheck for Color {
     #[inline]
     fn has_nan(&self) -> bool {
-        self.r.is_nan() || self.g.is_nan() || self.b.is_nan() || self.a.is_nan()
+        Color::has_nan(*self)
     }
 }
 

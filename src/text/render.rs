@@ -73,21 +73,8 @@ pub struct GlyphPlacement {
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub struct GlyphRasterKey(pub(crate) CacheKey);
 
-/// Split a physical-px origin into its integer part plus cosmic's
-/// packed 4-bin subpixel remainder — the exact binning
-/// `LayoutGlyph::physical` folds into each glyph's raster key, so the
-/// renderer's encoded-run identity can't drift from cosmic's.
-pub(crate) fn subpixel_origin(origin: Vec2) -> SubpixelOrigin {
-    let (x, x_bin) = SubpixelBin::new(origin.x);
-    let (y, y_bin) = SubpixelBin::new(origin.y);
-    SubpixelOrigin {
-        x,
-        y,
-        bins: ((x_bin as u8) << 2) | (y_bin as u8),
-    }
-}
-
-/// [`subpixel_origin`]'s named result.
+/// A physical-px origin split into its integer part plus cosmic's packed
+/// 4-bin subpixel remainder.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct SubpixelOrigin {
     pub(crate) x: i32,
@@ -95,4 +82,19 @@ pub(crate) struct SubpixelOrigin {
     /// Bits 0-1: `y_bin`; bits 2-3: `x_bin` (cosmic's four subpixel
     /// bins, 2 bits each).
     pub(crate) bins: u8,
+}
+
+impl SubpixelOrigin {
+    /// Split `origin` — the exact binning `LayoutGlyph::physical` folds
+    /// into each glyph's raster key, so the renderer's encoded-run
+    /// identity can't drift from cosmic's.
+    pub(crate) fn of(origin: Vec2) -> Self {
+        let (x, x_bin) = SubpixelBin::new(origin.x);
+        let (y, y_bin) = SubpixelBin::new(origin.y);
+        Self {
+            x,
+            y,
+            bins: ((x_bin as u8) << 2) | (y_bin as u8),
+        }
+    }
 }

@@ -1,6 +1,6 @@
 //! The editor's text layout plus everything only the shape probe answers.
 
-use crate::layout::types::align::{self, Align};
+use crate::layout::types::align::Align;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::text::probe::Caret;
@@ -46,10 +46,15 @@ pub(super) struct TextGeometry {
     /// one there. Stored back into `ViewState` at the end of the pass, which is
     /// what makes it next frame's [`TextLayout::prev_block_offset`].
     pub(super) block_offset: Vec2,
-    /// What the run measured, and what the placeholder measured. Both axes:
-    /// the width alone drives horizontal scroll and the hug reservation, and
-    /// the block node the shapes hang on wants the height too — see [`record`].
+    /// What the *run* measured, placeholder or not. Both axes: the width
+    /// drives horizontal scroll, and the height is what the caret and the
+    /// wash are positioned against.
     pub(super) content_size: Size,
+    /// What is on show measured — [`Self::content_size`], except in the
+    /// one case they differ: an empty run with a placeholder set, where
+    /// the placeholder is what the field is painting and therefore what
+    /// it has to be sized to. The block node takes both axes from this,
+    /// and the hug reservation the width.
     pub(super) display_size: Size,
     pub(super) caret_pos: Caret,
     pub(super) text_hash: u64,
@@ -109,12 +114,12 @@ impl TextGeometry {
             size: align_size,
         };
         let aligned = |size: Size| {
-            align::align_in_rect(
-                containing,
-                Size::new(size.w, size.h.max(layout.ctx.font.line_height_px)),
-                widget_align,
-            )
-            .min
+            widget_align
+                .place_in(
+                    containing,
+                    Size::new(size.w, size.h.max(layout.ctx.font.line_height_px)),
+                )
+                .min
         };
         TextGeometry {
             layout,

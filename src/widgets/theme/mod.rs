@@ -97,12 +97,6 @@ use crate::widgets::theme::tooltip::TooltipTheme;
 #[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize)]
 pub struct Theme {
     pub button: ButtonTheme,
-    /// Theme slot for `Button`s used as menu-bar triggers — flat,
-    /// hover-on-only, opens a popup on click. Distinct from `button`
-    /// so apps can restyle one without affecting in-flow buttons,
-    /// and from `context_menu.item` which is for *rows inside* the
-    /// popup. Default built by [`ButtonTheme::menu_button`].
-    pub menu_button: ButtonTheme,
     /// The three toggle widgets share a theme *type* but not a *slot* —
     /// restyling one leaves the other two alone.
     pub checkbox: ToggleTheme,
@@ -215,7 +209,6 @@ impl Theme {
         let Self {
             text,
             button,
-            menu_button,
             checkbox,
             radio,
             switch,
@@ -239,7 +232,6 @@ impl Theme {
         let f = &mut f;
         f(text);
         button.for_each_text(f);
-        menu_button.for_each_text(f);
         checkbox.for_each_text(f);
         radio.for_each_text(f);
         switch.for_each_text(f);
@@ -257,7 +249,6 @@ impl Theme {
     pub fn from_palette(p: &Palette) -> Self {
         Self {
             button: ButtonTheme::from_palette(p),
-            menu_button: ButtonTheme::menu_button(p),
             checkbox: ToggleTheme::checkbox(p),
             radio: ToggleTheme::radio(p),
             switch: ToggleTheme::switch(p),

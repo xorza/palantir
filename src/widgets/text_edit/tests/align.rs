@@ -421,7 +421,7 @@ fn selection_rects_offset_matches_text() {
 /// These assert the *block-local* half of alignment. A shaped run is
 /// measured and reported as a block whose own left edge is x = 0; the
 /// owner then places that block inside its rect with the same halign
-/// (`TextGeometry::block_offset`, and `align_in_rect` for encoder-placed
+/// (`TextGeometry::block_offset`, and `Align::place_in` for encoder-placed
 /// text). So halign shows up here only as the offset of a *narrow* line
 /// relative to the widest one — never as an offset of the block itself,
 /// which would be the same alignment applied twice.

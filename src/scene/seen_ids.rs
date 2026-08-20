@@ -49,12 +49,11 @@ pub(crate) struct Endpoint {
     pub(crate) node: NodeId,
 }
 
-/// Both nodes of one explicit-id collision, in recording order.
-/// Accumulated into `Forest.collisions` in every profile, but read only
-/// by `encoder::collision_overlay` (`debug_assertions`) and
-/// `UiHarness::collisions` (`internals`) — so a release build without
-/// `internals` records the pair and never looks at it.
-#[cfg_attr(not(debug_assertions), allow(dead_code))]
+/// Both nodes of one explicit-id collision, in recording order. What
+/// [`SeenIds::record_endpoint`] hands back when the endpoint it just
+/// filed completed a pair. Logged by `Forest` in every profile, then
+/// accumulated into `Forest.collisions` for `encoder::collision_overlay`
+/// (`debug_assertions`) and `UiHarness::collisions` (`internals`).
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct CollisionRecord {
     pub(crate) first: Endpoint,
@@ -70,22 +69,6 @@ pub(crate) struct CollisionRecord {
 struct PendingExplicitCollision {
     first_raw_id: WidgetId,
     second_final_id: WidgetId,
-}
-
-/// Outcome of [`SeenIds::record_endpoint`] — either the endpoint
-/// recorded cleanly, or it completed a queued explicit-collision
-/// pair (caller pushes a [`CollisionRecord`] from the
-/// two endpoints).
-#[derive(Clone, Copy, Debug)]
-pub(crate) enum EndpointOutcome {
-    /// No collision — id was unique this frame (or it was a silent
-    /// auto-collision whose endpoint just got filed away in `curr`).
-    Recorded,
-    /// The endpoint just recorded completed a pending explicit
-    /// collision. `first` is where the un-disambiguated id was
-    /// opened earlier this frame; `second` is the endpoint passed
-    /// to this `record_endpoint` call.
-    ExplicitCollision { first: Endpoint, second: Endpoint },
 }
 
 #[derive(Debug, Default)]
@@ -211,11 +194,11 @@ impl SeenIds {
         final_id
     }
 
-    /// Record the endpoint where `final_id` is being opened. Returns
-    /// any [`PendingExplicitCollision`] queued at [`Self::resolve`]
-    /// for this final id paired with the first occurrence's
-    /// endpoint, so the caller can push a `CollisionRecord` —
-    /// emitted to `Forest.collisions` for the magenta overlay.
+    /// Record the endpoint where `final_id` is being opened. `Some`
+    /// when this endpoint completed a [`PendingExplicitCollision`]
+    /// queued at [`Self::resolve`], pairing it with the first
+    /// occurrence's endpoint — `None` on every other open, which is the
+    /// common case for every node of every frame.
     ///
     /// Panics if the `curr` slot is occupied. [`Self::resolve`] must
     /// return an available id, and using the entry API enforces that
@@ -225,18 +208,19 @@ impl SeenIds {
         &mut self,
         final_id: WidgetId,
         endpoint: Endpoint,
-    ) -> EndpointOutcome {
+    ) -> Option<CollisionRecord> {
         let Entry::Vacant(entry) = self.curr.entry(final_id) else {
             panic!("record_endpoint called twice for {final_id:?}");
         };
         entry.insert(endpoint);
-        let Some(idx) = self
+        // Scanned rather than mapped: an explicit collision is a caller
+        // bug, so `pending` is empty on the frames that matter and this
+        // is a length test — where a hash probe would cost every node of
+        // every frame.
+        let idx = self
             .pending
             .iter()
-            .position(|p| p.second_final_id == final_id)
-        else {
-            return EndpointOutcome::Recorded;
-        };
+            .position(|p| p.second_final_id == final_id)?;
         let pending = self.pending.swap_remove(idx);
         // First occurrence's endpoint is filed under the
         // un-disambiguated raw id and MUST already be present:
@@ -251,10 +235,10 @@ impl SeenIds {
             .get(&pending.first_raw_id)
             .copied()
             .expect("pending explicit collision references a raw id whose first endpoint hasn't been recorded — recording order violated");
-        EndpointOutcome::ExplicitCollision {
+        Some(CollisionRecord {
             first,
             second: endpoint,
-        }
+        })
     }
 
     /// Populate `self.removed` with widgets present in `prev` but
@@ -380,19 +364,14 @@ mod tests {
         let x = WidgetId::from_hash("x");
         // First occurrence resolves + opens.
         let first = ids.resolve(x, true);
-        assert!(matches!(
-            ids.record_endpoint(first, ep(1)),
-            EndpointOutcome::Recorded
-        ));
+        assert!(ids.record_endpoint(first, ep(1)).is_none());
         // Second occurrence resolves + opens — should hand back the pair.
         let second = ids.resolve(x, true);
-        match ids.record_endpoint(second, ep(2)) {
-            EndpointOutcome::ExplicitCollision { first, second } => {
-                assert_eq!(first, ep(1));
-                assert_eq!(second, ep(2));
-            }
-            EndpointOutcome::Recorded => panic!("expected collision pair"),
-        }
+        let pair = ids
+            .record_endpoint(second, ep(2))
+            .expect("expected collision pair");
+        assert_eq!(pair.first, ep(1));
+        assert_eq!(pair.second, ep(2));
         // Pending drained.
         assert!(ids.pending.is_empty());
     }
@@ -404,10 +383,7 @@ mod tests {
         let first = ids.resolve(x, false);
         ids.record_endpoint(first, ep(1));
         let second = ids.resolve(x, false);
-        assert!(matches!(
-            ids.record_endpoint(second, ep(2)),
-            EndpointOutcome::Recorded
-        ));
+        assert!(ids.record_endpoint(second, ep(2)).is_none());
     }
 
     #[test]

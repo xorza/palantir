@@ -137,9 +137,13 @@ pub(crate) struct ChromeInput<'a> {
 
 impl Tree {
     /// Exclusive pre-order end for node `i`, grid flag stripped.
+    ///
+    /// `usize` rather than the stored `u32`: every caller indexes or spans
+    /// with the result, so the cast belongs here once instead of at each
+    /// of them. The one that stores it again narrows explicitly.
     #[inline]
-    pub(crate) fn subtree_end_of(&self, i: usize) -> u32 {
-        self.records.subtree_end()[i].end()
+    pub(crate) fn subtree_end_of(&self, i: usize) -> usize {
+        self.records.subtree_end()[i].end() as usize
     }
 
     /// `true` iff the subtree rooted at `i` (inclusive) contains any

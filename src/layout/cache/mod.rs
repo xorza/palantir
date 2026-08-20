@@ -326,7 +326,7 @@ impl MeasureCache {
             debug_assert_eq!(owned_text_count as usize, text_shapes.len());
 
             for index in (0..node_count).rev() {
-                let end = tree.subtree_end_of(index) as usize;
+                let end = tree.subtree_end_of(index);
                 let mut bound = self.text_bounds[index];
                 let mut run_count = bound.len;
                 let mut child = index + 1;
@@ -334,7 +334,7 @@ impl MeasureCache {
                     let child_bound = self.text_bounds[child];
                     run_count += child_bound.len;
                     bound = union_spans(bound, child_bound);
-                    child = tree.subtree_end_of(child) as usize;
+                    child = tree.subtree_end_of(child);
                 }
                 debug_assert_eq!(
                     bound.len, run_count,
@@ -357,12 +357,8 @@ impl MeasureCache {
             self.hug_offsets.resize(node_count + 1, 0);
             for (index, layout) in layouts.iter().copied().enumerate() {
                 self.hug_offsets[index] = self.current.tracks.len() as u32;
-                if matches!(LayoutMode::from(layout.meta), LayoutMode::Grid(_)) {
-                    grid_track_state.snapshot_subtree(
-                        tree,
-                        index..index + 1,
-                        &mut self.current.tracks,
-                    );
+                if let LayoutMode::Grid(idx) = LayoutMode::from(layout.meta) {
+                    grid_track_state.snapshot_grid(idx, &mut self.current.tracks);
                 }
             }
             self.hug_offsets[node_count] = self.current.tracks.len() as u32;
@@ -383,7 +379,7 @@ impl MeasureCache {
             {
                 continue;
             }
-            let end = tree.subtree_end_of(index) as usize;
+            let end = tree.subtree_end_of(index);
             let tracks = if has_grids {
                 let start = self.hug_offsets[index];
                 Span::new(start, self.hug_offsets[end] - start)

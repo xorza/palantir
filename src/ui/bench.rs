@@ -66,11 +66,11 @@
 use crate::app::internals::RecordApp;
 use crate::bench::{Arms, Fixture, Run};
 use crate::diagnostics::gpu_pass_stats::BatchKind;
-use crate::frame_fixture::{BENCH_SCALE, FrameFixture, build_ui};
+use crate::frame_fixture::{BENCH_SCALE, FrameFixture};
 use crate::host::bench_gpu::{BenchGpu, Timing};
 use crate::host::offscreen::OffscreenHost;
 use crate::primitives::color::Color;
-use crate::renderer::backend::write_stats;
+use crate::renderer::backend::texture_region::WriteStats;
 use crate::renderer::frontend::Frontend;
 use crate::renderer::render_plan::{RenderKind, RenderPlan};
 use crate::ui::Ui;
@@ -235,7 +235,7 @@ where
 
 fn cpu_cached(c: &mut Criterion, surface: &Surface) {
     run_cpu_arm(c, "frame/cached_cpu", surface, |h, state| {
-        h.frame(|ui| build_ui(state, BENCH_SCALE, ui));
+        h.frame(|ui| state.render(BENCH_SCALE, ui));
     });
 }
 
@@ -246,7 +246,7 @@ fn cpu_partial(c: &mut Criterion, surface: &Surface) {
         // resizing arms — so every arm sets up this frame's input then
         // records it, rather than relying on the prior iter's leftover.
         state.tick = state.tick.wrapping_add(1);
-        h.frame(|ui| build_ui(state, BENCH_SCALE, ui));
+        h.frame(|ui| state.render(BENCH_SCALE, ui));
     });
 }
 
@@ -256,7 +256,7 @@ fn cpu_scrolling(c: &mut Criterion, surface: &Surface) {
         // transform stays in-bounds. `scroll_offset` is `glam::Vec2`.
         state.scroll_offset.x = (state.scroll_offset.x + 1.5) % 256.0;
         state.scroll_offset.y = (state.scroll_offset.y + 0.7) % 256.0;
-        h.frame(|ui| build_ui(state, BENCH_SCALE, ui));
+        h.frame(|ui| state.render(BENCH_SCALE, ui));
     });
 }
 
@@ -267,7 +267,7 @@ fn cpu_resizing(c: &mut Criterion, surface: &Surface) {
         let size = pool[idx % pool.len()];
         idx = idx.wrapping_add(1);
         h.harness.resize(size);
-        h.frame(|ui| build_ui(state, BENCH_SCALE, ui));
+        h.frame(|ui| state.render(BENCH_SCALE, ui));
     });
 }
 
@@ -280,13 +280,13 @@ fn assert_partial_invariant(surface: &Surface) {
     let mut h = CpuHarness::new(surface);
     let mut state = FrameFixture::default();
     for _ in 0..2 {
-        h.frame(|ui| build_ui(&mut state, BENCH_SCALE, ui));
+        h.frame(|ui| state.render(BENCH_SCALE, ui));
         state.tick = state.tick.wrapping_add(1);
     }
     let report = h
         .harness
         .at(h.start.elapsed())
-        .frame(|ui| build_ui(&mut state, BENCH_SCALE, ui));
+        .frame(|ui| state.render(BENCH_SCALE, ui));
     assert_eq!(
         report.paint(),
         FramePaint::Partial,
@@ -321,7 +321,7 @@ fn gpu_cached(c: &mut Criterion, surface: &Surface) {
     let target = gpu().target(surface.size, "palantir.frame_bench.cached");
     let scale = surface.scale;
     run_gpu_arm(c, "frame/cached_gpu", |host, state| {
-        frame_offscreen(host, &target, scale, |ui| build_ui(state, BENCH_SCALE, ui));
+        frame_offscreen(host, &target, scale, |ui| state.render(BENCH_SCALE, ui));
         gpu().wait();
         black_box(&target);
     });
@@ -332,7 +332,7 @@ fn gpu_partial(c: &mut Criterion, surface: &Surface) {
     let scale = surface.scale;
     run_gpu_arm(c, "frame/partial_gpu", |host, state| {
         state.tick = state.tick.wrapping_add(1);
-        frame_offscreen(host, &target, scale, |ui| build_ui(state, BENCH_SCALE, ui));
+        frame_offscreen(host, &target, scale, |ui| state.render(BENCH_SCALE, ui));
         gpu().wait();
         black_box(&target);
     });
@@ -344,7 +344,7 @@ fn gpu_scrolling(c: &mut Criterion, surface: &Surface) {
     run_gpu_arm(c, "frame/scrolling_gpu", |host, state| {
         state.scroll_offset.x = (state.scroll_offset.x + 1.5) % 256.0;
         state.scroll_offset.y = (state.scroll_offset.y + 0.7) % 256.0;
-        frame_offscreen(host, &target, scale, |ui| build_ui(state, BENCH_SCALE, ui));
+        frame_offscreen(host, &target, scale, |ui| state.render(BENCH_SCALE, ui));
         gpu().wait();
         black_box(&target);
     });
@@ -362,7 +362,7 @@ fn gpu_resizing(c: &mut Criterion, surface: &Surface) {
     run_gpu_arm(c, "frame/resizing_gpu", move |host, state| {
         let t = &targets[idx % targets.len()];
         idx = idx.wrapping_add(1);
-        frame_offscreen(host, t, scale, |ui| build_ui(state, BENCH_SCALE, ui));
+        frame_offscreen(host, t, scale, |ui| state.render(BENCH_SCALE, ui));
         gpu().wait();
         black_box(t);
     });
@@ -390,13 +390,11 @@ fn report_write_stats(surface: &Surface) {
         eprintln!("[write_stats] {label}:");
         for frame in 0..6 {
             mutate(&mut state, frame);
-            let _ = write_stats::take();
+            let _ = WriteStats::take();
             let target = &targets[frame % targets.len()];
-            frame_offscreen(&mut host, target, scale, |ui| {
-                build_ui(&mut state, BENCH_SCALE, ui)
-            });
+            frame_offscreen(&mut host, target, scale, |ui| state.render(BENCH_SCALE, ui));
             g.wait();
-            let s = write_stats::take();
+            let s = WriteStats::take();
             // The pass-time readout lags by one frame (the
             // `map_async` callback that publishes a value fires off
             // the *next* `device.poll`). One extra Poll here drains

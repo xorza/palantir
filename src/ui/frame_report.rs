@@ -10,12 +10,15 @@
 use crate::renderer::render_plan::{RenderKind, RenderPlan};
 use std::time::Duration;
 
-/// How `Ui::frame` resolved this frame — informational, useful to
-/// tests / benches / profilers asking "did the short-circuit fire?"
-/// or "did the relayout retry kick in?". Self-classifying so callers
-/// don't need to derive it from the renderer plan or input flags.
+/// How `Ui::frame` resolved this frame: which passes actually ran.
+///
+/// Crate-private, for the same reason the [`RenderPlan`] behind
+/// [`FrameReport::paint`] is: it names the internal pass structure, and
+/// that structure is free to change. A consumer asking "was anything
+/// repainted" reads [`FramePaint`]; this answers "which passes got
+/// there", which only the crate's own tests have a stake in.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum FrameProcessing {
+pub(crate) enum FrameProcessing {
     /// Paint-anim-only short-circuit fired: no pre_record, no user
     /// closure, no post_record, no layout, no cascade. Just damage
     /// compute + encode + paint against the retained tree.
@@ -54,10 +57,13 @@ pub struct FrameReport {
     /// facades convert this Ui-time deadline to their own clock.
     pub repaint_after: Option<Duration>,
     pub(crate) plan: Option<RenderPlan>,
-    /// How `Ui::frame` resolved this frame — informational, used by
-    /// tests / benches / profilers to assert the short-circuit fired
-    /// or the double-layout retry didn't. See [`FrameProcessing`].
-    pub processing: FrameProcessing,
+    /// Which passes ran. Gated with its readers — the crate's own
+    /// tests, asserting that the paint-only short-circuit fired or that
+    /// the double-layout retry didn't. The value itself is live in every
+    /// build; `FrameRuntime::note_processing` is what consumes it.
+    /// See [`FrameProcessing`].
+    #[cfg(test)]
+    pub(crate) processing: FrameProcessing,
 }
 
 impl FrameReport {

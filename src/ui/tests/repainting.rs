@@ -368,7 +368,7 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
     assert_eq!(r0.processing, FrameProcessing::SingleLayout);
     {
         let payloads = h.ui.forest.record_store.payloads.borrow();
-        assert_eq!(&*payloads.interned_text().bytes, "retained 7");
+        assert_eq!(payloads.interned_text().bytes, "retained 7");
     }
 
     // Frame 1 at the blink boundary: only the anim wake fires →
@@ -394,7 +394,7 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
     {
         let payloads = h.ui.forest.record_store.payloads.borrow();
         assert_eq!(
-            &*payloads.interned_text().bytes,
+            payloads.interned_text().bytes,
             "retained 7",
             "PaintOnly must preserve bytes referenced by retained text",
         );

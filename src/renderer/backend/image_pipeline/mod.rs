@@ -117,43 +117,15 @@ impl ImagePipeline {
         )
     }
 
-    /// Reconcile the GPU texture cache with the registry, once per frame
-    /// from `WgpuBackend::submit` before the render pass. Uploads newly
-    /// registered images (dropping each `Image` right after upload, so the
-    /// CPU bytes don't outlive the GPU copy), then frees textures whose
-    /// owning [`ImageHandle`](crate::ImageHandle) dropped. After this,
-    /// every still-owned image has a bind group in the cache; a draw for
-    /// any other id is silently skipped.
-    ///
-    /// Uploads run *before* drop-frees so an image registered and dropped
-    /// in the same frame uploads then frees (no orphan) rather than
-    /// free-then-upload (which would leak it into the cache un-owned).
+    /// Reconcile the GPU texture cache with the registry — see
+    /// [`ImageTextures::drain_registry`].
     pub(super) fn drain_registry(&mut self, ctx: &mut GpuCtx<'_>, images: &ImageRegistry) {
         self.textures.drain_registry(ctx, images);
     }
 
-    /// Paint every [`GpuView`](crate::widgets::gpu_view::GpuView) drawn this
-    /// frame into its off-screen target, before the main pass. Called once per
-    /// frame from `WgpuBackend::submit`'s upload phase. The target store
-    /// allocates or resizes each entry, registers its bind group in the shared
-    /// image-texture store, and runs [`GpuPaint::init`](crate::renderer::gpu_paint::GpuPaint::init)
-    /// once, then `GpuPaint::paint` into it. Never touches the instance buffer,
-    /// so it only has to run before the main pass samples the targets.
-    ///
-    /// Eviction is **immediate but owner-scoped**, and keyed on
-    /// [`FrameViews::live`] — every view `owner` recorded this frame — rather
-    /// than on [`FrameViews::draws`], which lists only the ones that
-    /// painted. A view
-    /// marked [`repaint(false)`](crate::widgets::gpu_view::GpuView::repaint)
-    /// is culled out of the second and stays in the first, so it keeps its
-    /// texture and `GpuPaint::init` is not re-run. A target is freed when its
-    /// widget stops being recorded, which is the same sweep every other
-    /// per-widget cache rides.
-    ///
-    /// `owner` is the submitting window's stable render-stream identity: the
-    /// one shared backend serves all windows, so a submit may only evict its
-    /// *own* dropped targets — another window's targets survive both this
-    /// submit and their owner's idle (non-submitting) frames.
+    /// Paint this frame's [`GpuView`](crate::widgets::gpu_view::GpuView)
+    /// targets and evict the submitter's dropped ones — see
+    /// [`GpuViewTargets::paint`].
     pub(super) fn paint_gpu_views(
         &mut self,
         ctx: &mut GpuCtx<'_>,
@@ -166,11 +138,9 @@ impl ImagePipeline {
             .paint(ctx, views, owner, now, &mut self.textures, text);
     }
 
-    /// Free every `GpuView` target owned by a retired render stream.
-    ///
-    /// Per-submit eviction only ever frees the *submitting* owner's absent
-    /// targets, so a closed window's targets have no submit left to be absent
-    /// from and would be retained by every surviving window forever.
+    /// Free every `GpuView` target owned by a retired render stream — see
+    /// [`GpuViewTargets::retire_owner`]. Gated with its entry point,
+    /// `WgpuBackend::retire_render_owner`, which carries the reason.
     #[cfg_attr(not(feature = "winit-host"), allow(dead_code))]
     pub(super) fn retire_render_owner(&mut self, owner: RenderOwnerId) {
         self.gpu_view_targets
