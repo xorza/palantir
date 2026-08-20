@@ -160,7 +160,7 @@ fn drive_visible(
 ) -> TextShapeKey {
     let key = drive(text, slot, body, width);
     text.shaper
-        .render_ensure(TextShapeRequest::for_key(body, key));
+        .render_ensure(TextShapeRequest::for_key(body, key).unwrap());
     key
 }
 

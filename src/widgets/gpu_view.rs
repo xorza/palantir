@@ -220,10 +220,10 @@ mod tests {
         );
 
         // Damage confined to the opposite corner from the bottom-right view.
-        let elsewhere = DamageRegion::from(Rect::new(0.0, 0.0, 20.0, 20.0));
+        let elsewhere = DamageRegion::from(Rect::new(0.0, 0.0, 20.0, 20.0)).unmeasured();
         frontend.build(
             h.ui.frame_scene(),
-            plan(RenderKind::Partial { region: elsewhere }),
+            plan(RenderKind::Partial { damage: elsewhere }),
         );
         assert!(
             frontend.buffer.frame_targets.is_empty(),

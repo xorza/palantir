@@ -57,7 +57,7 @@ fn unchanged_authoring_produces_no_damage() {
 
     assert!(h.ui.damage_engine.counters.dirty().is_empty());
     assert!(h.damage_region().rects.is_empty());
-    assert_eq!(Damage::new(h.damage_region()), Damage::Skip,);
+    assert_eq!(Damage::new(h.collapsed_damage()), Damage::Skip,);
 }
 
 /// Pin: an authoring change on one leaf marks just that leaf
@@ -272,8 +272,8 @@ fn button_hover_damage_covers_only_the_button() {
     );
     assert_eq!(h.damage_region().iter_rects().next(), Some(hot_rect));
     assert_eq!(
-        Damage::new(h.damage_region()),
-        Damage::Partial(hot_rect.into()),
+        Damage::new(h.collapsed_damage()).expect_partial(),
+        hot_rect.into(),
         "small per-button damage must not trip the full-repaint heuristic",
     );
 
@@ -337,8 +337,8 @@ fn button_unhover_damage_covers_only_the_button() {
     );
     assert_eq!(h.damage_region().iter_rects().next(), Some(hot_rect));
     assert_eq!(
-        Damage::new(h.damage_region()),
-        Damage::Partial(hot_rect.into()),
+        Damage::new(h.collapsed_damage()).expect_partial(),
+        hot_rect.into()
     );
 }
 
@@ -780,9 +780,7 @@ fn visibility_flip_with_coincident_shape_change_damages_whole_node() {
     let mut h = UiHarness::new(DISPLAY.physical);
     frame(&mut h, |ui| node(ui, false, BLUE));
     let damage = frame(&mut h, |ui| node(ui, true, RED));
-    let Damage::Partial(region) = damage else {
-        panic!("expected Partial, got {damage:?}");
-    };
+    let region = damage.expect_partial();
     assert!(
         region.any_intersects(LINE_PROBE),
         "changed shape's own rect must be damaged",

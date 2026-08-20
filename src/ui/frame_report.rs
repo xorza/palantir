@@ -106,7 +106,7 @@ mod tests {
                 Some(RenderPlan {
                     clear: Color::BLACK,
                     kind: RenderKind::Partial {
-                        region: DamageRegion::from(Rect::new(1.0, 2.0, 3.0, 4.0)),
+                        damage: DamageRegion::from(Rect::new(1.0, 2.0, 3.0, 4.0)).unmeasured(),
                     },
                 }),
                 FramePaint::Partial,

@@ -1,23 +1,35 @@
 //! Everything a frame's recorder asks of its window host.
 
-use crate::window::cursor_icon::CursorIcon;
-use crate::window::vsync::Vsync;
 use crate::window::window_commands::WindowCommands;
+use crate::window::window_output::WindowOutput;
 
 /// Deferred recorder output consumed by the window host after a frame.
+///
+/// **Split by what a host can do about it**, because that is the one
+/// distinction every host has to act on. `commands` are *edges*: one-shot
+/// lifecycle requests that mean nothing unless something services them, so
+/// a host that cannot has to say so rather than swallow them. `levels` are
+/// *settings*: the recorder retains them and reads them back through `Ui`,
+/// so a host with nothing to apply them to leaves the app's own view of
+/// them intact by doing nothing.
+///
+/// That split is why `WindowDriver::drain_window_output` hands the two
+/// halves to different places, and why the offscreen host can reject one
+/// half while accepting the other without either being an arbitrary
+/// per-field choice.
 #[derive(Debug, Default)]
 pub(crate) struct WindowRequests {
     pub(crate) commands: WindowCommands,
     /// Whether app code vetoed the current close request.
     pub(crate) close_vetoed: bool,
-    /// Last cursor requested during a record pass; retained across PaintOnly.
-    pub(crate) cursor: CursorIcon,
-    /// The presentation pacing this window is currently set to — a level
-    /// like `cursor`, not an edge. Seeded from the swapchain the host
-    /// actually opened, so it answers [`Ui::set_vsync`](crate::Ui::set_vsync)
-    /// truthfully from the first frame, and retained across frames so a
-    /// recorder never has to re-assert it. Reconfiguring a swapchain is
-    /// expensive, so the *host* compares this against the mode in force and
-    /// acts only on a real flip.
-    pub(crate) vsync: Vsync,
+    /// The cursor and presentation pacing this window is currently set to.
+    ///
+    /// Both are levels rather than edges: `cursor` is re-asserted per
+    /// record pass and retained across a `PaintOnly` frame, and `vsync` is
+    /// seeded from the swapchain the host actually opened — so it answers
+    /// [`Ui::set_vsync`](crate::Ui::set_vsync) truthfully from the first
+    /// frame and a recorder never has to re-assert it. Reconfiguring a
+    /// swapchain is expensive, so the *host* compares these against what
+    /// is in force and acts only on a real flip.
+    pub(crate) levels: WindowOutput,
 }

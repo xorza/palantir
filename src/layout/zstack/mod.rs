@@ -4,7 +4,6 @@ use crate::layout::axis_placement::AxisPlacement;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange};
 use crate::layout::pass::LayoutPass;
-use crate::layout::types::layout_mode::LayoutMode;
 use crate::primitives::interned_text::InternedText;
 use crate::primitives::{rect::Rect, size::Size};
 use crate::scene::tree::Tree;
@@ -57,12 +56,7 @@ pub(super) fn arrange(pass: &mut LayoutPass<'_>, node: NodeId, inner: Rect) {
         let i = c.idx();
         let s = layouts[i];
         let bounds = tree.bounds(c);
-        let mut d = pass.desired(c);
-        if matches!(LayoutMode::from(s.meta), LayoutMode::Scroll(_)) {
-            // Scroll content sizes its Hug wrapper, but its viewport clips to the slot.
-            d = d.min(inner.size);
-        }
-
+        let d = pass.desired(c);
         let align = AxisAlignPair::resolve(&s, parent_child_align);
         pass.arrange(c, AxisPlacement::arrange_rect(align, &s, bounds, d, inner));
     }

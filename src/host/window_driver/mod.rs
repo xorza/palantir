@@ -209,10 +209,11 @@ fn present_mode(
             Some(p) => match p.kind {
                 // Already a whole-surface repaint — straight into the target.
                 RenderKind::Full => PresentMode::Direct(p),
-                RenderKind::Partial { region } => {
-                    // `region.coverage` was sealed when the damage engine built
-                    // this region (`collapse_from`); see `DIRECT_PROMOTE_COVERAGE`.
-                    if region.coverage > DIRECT_PROMOTE_COVERAGE {
+                RenderKind::Partial { damage } => {
+                    // The coverage the damage engine measured when it
+                    // collapsed this frame's rects against the surface; see
+                    // `DIRECT_PROMOTE_COVERAGE`.
+                    if damage.coverage > DIRECT_PROMOTE_COVERAGE {
                         // Large partial: skip the copy, repaint direct.
                         PresentMode::Direct(p.to_full())
                     } else if backbuffer_fresh {
@@ -398,13 +399,9 @@ impl WindowDriver {
     ///
     /// Uses `Vec::append` rather than `mem::take` so the recorder keeps its
     /// buffers' capacity across frames.
-    #[cfg_attr(
-        not(feature = "winit-host"),
-        expect(
-            dead_code,
-            reason = "multi-window lifecycle plumbing: every caller is under                       src/host/winit/, so a build without that feature has                       nothing to call it"
-        )
-    )]
+    ///
+    /// Reached in every build: the windowed host drains through it, and so —
+    /// via [`Self::deny_window_commands`] — does the offscreen one.
     pub(super) fn drain_window_output(&mut self, commands: &mut WindowCommands) -> WindowOutput {
         let requests = &mut self.ui.window_requests;
         if self.ui.window_frame.close_requested && !requests.close_vetoed {
@@ -413,51 +410,50 @@ impl WindowDriver {
         commands.append(&mut requests.commands);
         // The veto lives exactly one frame, and this is where that is
         // enforced — for both hosts, since the offscreen counterpart
-        // below clears the same field for the same reason. Every winit
-        // frame reaches here, occluded ones included, so no caller needs
-        // to clear it on the way in.
+        // below drains through here too. Every winit frame reaches this,
+        // occluded ones included, so no caller needs to clear it on the
+        // way in.
         requests.close_vetoed = false;
         self.ui.window_frame = WindowFrameState::default();
-        WindowOutput {
-            cursor: requests.cursor,
-            vsync: requests.vsync,
-        }
+        requests.levels
     }
 
-    /// The counterpart to [`Self::drain_window_output`] for a host with no
-    /// window lifecycle. Nothing there can service an open or close, and
-    /// silently dropping one hides a real mistake — the app believes a window
-    /// appeared — so a recorded request is a caller error, not a no-op.
+    /// [`Self::drain_window_output`] for a host with no window lifecycle:
+    /// drain the same way, then reject the half of the output nothing here
+    /// can service.
+    ///
+    /// **The split does the deciding, not a per-field choice.** The
+    /// *levels* — cursor and vsync — are settings the recorder retains and
+    /// reads back through `Ui`, so a host with no window to apply them to
+    /// drops its copy and leaves the app's own view of them intact; they
+    /// are inert here, not lost. The *commands* — open and close — are
+    /// edges that mean nothing unless something services them, and
+    /// swallowing one leaves the app believing a window appeared. So they
+    /// are a caller error rather than a no-op, and an app can tell which
+    /// of its window calls this host honours by which half the call is in.
     ///
     /// # Panics
     ///
     /// Panics if this frame recorded any window open or close request.
-    pub(super) fn deny_window_requests(&mut self) {
-        let commands = &self.ui.window_requests.commands;
+    pub(super) fn deny_window_commands(&mut self) {
+        // Empty by the contract below, so the two `append`s inside the
+        // drain move nothing and this allocates on no path that returns.
+        let mut denied = WindowCommands::default();
+        self.drain_window_output(&mut denied);
         assert!(
-            commands.opens.is_empty(),
+            denied.opens.is_empty(),
             "Ui::open_window({:?}) during an offscreen frame: the offscreen \
              host drives one window and has no window lifecycle — use \
              WinitHost if the app needs to open windows",
-            commands.opens[0].token
+            denied.opens[0].token
         );
         assert!(
-            commands.closes.is_empty(),
+            denied.closes.is_empty(),
             "Ui::close_window({:?}) during an offscreen frame: the offscreen \
              host drives one window and has no window lifecycle — drop the \
              host to release it",
-            commands.closes[0]
+            denied.closes[0]
         );
-        // Clear exactly what `drain_window_output` clears, so the two
-        // paths leave the recorder in the same state — which here is the
-        // one-frame close veto and nothing else.
-        //
-        // `cursor` and `vsync` are deliberately untouched: both are levels,
-        // not edges, and the windowed drain retains both. Both are simply
-        // inert on a host that renders to a texture, and `vsync` still
-        // reads back through `Ui::vsync` so an app's control keeps working
-        // in a headless test.
-        self.ui.window_requests.close_vetoed = false;
     }
 
     /// GPU submit against a caller-supplied texture, through the shared

@@ -4,6 +4,7 @@ use crate::primitives::brush::gradient::linear::LinearGradient;
 use crate::primitives::brush::gradient::stops::{GradientStops, Stop};
 use crate::primitives::color::ColorU8;
 use crate::renderer::gradient_atlas::*;
+use crate::renderer::texture_limit::TextureLimit;
 use std::collections::HashSet;
 use std::hash::Hasher as _;
 
@@ -942,14 +943,14 @@ fn shared_atlas_clamps_device_limit_to_the_policy_cap() {
     use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
     use std::num::NonZeroU32;
 
-    let huge = SharedGradientAtlas::new(NonZeroU32::new(16384));
+    let huge = SharedGradientAtlas::new(TextureLimit::from_device(NonZeroU32::new(16384).unwrap()));
     assert_eq!(huge.max_rows(), MAX_ATLAS_ROWS);
     // A device below the cap still binds.
-    let small = SharedGradientAtlas::new(NonZeroU32::new(1024));
+    let small = SharedGradientAtlas::new(TextureLimit::from_device(NonZeroU32::new(1024).unwrap()));
     assert_eq!(small.max_rows(), 1024);
     // Deviceless keeps the conservative downlevel fallback.
     assert_eq!(
-        SharedGradientAtlas::new(None).max_rows(),
+        SharedGradientAtlas::new(TextureLimit::default()).max_rows(),
         DEFAULT_MAX_ATLAS_ROWS,
     );
 }

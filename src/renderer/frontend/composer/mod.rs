@@ -1,24 +1,21 @@
 //! Turning a frame of paint calls into the buffer the backend draws.
 //!
-//! [`Composer`] owns the output and the scratch it is built in; a
-//! [`ComposeSession`] is one frame passing through it, and [`geometry`] is
-//! the arithmetic both are cut with.
+//! [`Composer`] owns the scratch a compose pass is built in; a
+//! [`ComposeSession`] is one pass, holding that scratch together with the
+//! buffer it fills, and [`geometry`] is the arithmetic both are cut with.
 
 use crate::display::Display;
-use crate::primitives::span::Span;
-use crate::primitives::translate_scale::TranslateScale;
-use crate::primitives::urect::URect;
+use crate::renderer::frontend::composer::clip_stack::ClipStack;
+use crate::renderer::frontend::composer::transform_stack::TransformStack;
 use crate::renderer::render_buffer::RenderBuffer;
-use crate::renderer::render_buffer::draw_group::DrawGroup;
-use crate::renderer::render_buffer::group_batch::GroupBatch;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
-use crate::renderer::render_buffer::text_batch::TextBatch;
 use crate::scene::record_store::record_payloads::RecordPayloads;
 use glam::{UVec2, Vec2};
 use std::num::NonZeroU32;
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
+mod clip_stack;
 mod geometry;
 mod higher_kind;
 mod occlusion;
@@ -26,20 +23,27 @@ pub(crate) mod session;
 // `pub(crate)` only so `bench::driver` — the crate-root facade the
 // external criterion target calls through — can name `text_grid::bench`.
 pub(crate) mod text_grid;
+mod transform_stack;
 
-use crate::renderer::frontend::composer::geometry::chains_equal;
 use crate::renderer::frontend::composer::higher_kind::HigherKindRects;
 use crate::renderer::frontend::composer::occlusion::OcclusionPruner;
 use crate::renderer::frontend::composer::session::ComposeSession;
 use crate::renderer::frontend::composer::text_grid::TextRectGrid;
 use std::time::Duration;
 
-/// CPU-only compose engine: turns the encoder's paint calls into a `RenderBuffer`
-/// (physical-px quads + text runs + scissor groups), one [`ComposeSession`] per frame. Owns its output buffer
-/// + compose-time scratch stacks so steady-state rendering is alloc-free.
+/// The retained half of the CPU compose engine: every buffer and stack a
+/// pass is built in, kept across frames so steady-state rendering is
+/// alloc-free, plus the one device constant a pass needs.
 ///
-/// Composer doesn't know about `Tree` or `encode` — it's pure algorithm +
-/// scratch + output. [`Frontend`](crate::renderer::frontend::Frontend) orchestrates
+/// **Scratch, not algorithm.** The pass itself is
+/// [`ComposeSession`] — it holds this alongside the `RenderBuffer` being
+/// filled, and every step that reads or writes that buffer is a method on
+/// it. The split is by *lifetime*: what survives a frame lives here, what
+/// belongs to one frame lives there. Nothing here takes an output buffer,
+/// which is what keeps that line honest.
+///
+/// Composer doesn't know about `Tree` or `encode` —
+/// [`Frontend`](crate::renderer::frontend::Frontend) orchestrates
 /// encode + compose.
 ///
 /// Render order *within* a group is fixed by the backend:
@@ -47,22 +51,24 @@ use std::time::Duration;
 /// (`schedule::emit_group_body`; polylines ride the curve tier as
 /// segment + join-chrome instances). That
 /// reorder is safe iff no overlapping pair of draws swaps its record
-/// order — two rules, both enforced by forcing a [`Self::flush`]:
+/// order — two rules, both enforced by forcing a
+/// [`ComposeSession::flush`]:
 /// a *lower*-kind draw must not follow an overlapping higher-kind draw
 /// in the same group (it would replay under it), and a *higher*-kind
 /// draw must not follow an overlapping higher-kind draw of a
 /// later-replaying kind (e.g. a mesh recorded after an overlapping
 /// image or curve). The checks use
 /// the batch state's open text grid (per-batch text AABBs, spatially indexed)
-/// and [`higher_kinds`](Self::higher_kinds) (per-group, per-tier
+/// and [`Self::higher_kinds`] (per-group, per-tier
 /// AABBs of mesh/image/curve draws).
 #[derive(Debug)]
 pub(crate) struct Composer {
-    /// Compose-time scratch — bounded by tree depth (typically <8).
-    /// Pairs the resolved scissor with its rounded-mask chain; both
-    /// ride together so a `PopClip` restores them as a unit.
-    clip_stack: Vec<ClipFrame>,
-    transform_stack: Vec<TranslateScale>,
+    /// The nested clips the walk has open — resolved scissor plus
+    /// rounded-mask chain per level.
+    clip: ClipStack,
+    /// The walk transform: live product plus the ancestors a pop
+    /// restores it from.
+    transform: TransformStack,
     polyline: PolylineScratch,
     batch: BatchState,
     /// Per-group AABBs partitioned by above-text replay tier. A later
@@ -72,8 +78,8 @@ pub(crate) struct Composer {
     /// higher-kind draw also closes the batch.
     higher_kinds: HigherKindRects,
     /// `*_start` cursors marking where the open group's per-kind slices
-    /// begin in `out`. [`Self::flush`] closes each slice and advances
-    /// the matching cursor.
+    /// begin in the output. [`ComposeSession::flush`] closes each slice
+    /// and advances the matching cursor.
     cursors: GroupCursors,
     /// Per-group occlusion-prune scratch: the solid-opaque occluders
     /// pushed into the in-flight group and the sweep that drops earlier
@@ -84,16 +90,6 @@ pub(crate) struct Composer {
     /// `GpuView` whose physical rect exceeds it. Fixed for the device's
     /// lifetime, so it rides the ctor, not every compose.
     max_texture_dim: NonZeroU32,
-}
-
-#[derive(Clone, Copy, Debug)]
-struct ClipFrame {
-    scissor: URect,
-    /// Outer→inner chain of rounded masks active for this frame's
-    /// subtree — a span into `RenderBuffer.rounded_clips`. A rounded
-    /// push extends the parent chain with its own mask; a rect push
-    /// inherits it verbatim. Empty = no rounded ancestor.
-    chain: Span,
 }
 
 #[derive(Debug, Default)]
@@ -115,13 +111,13 @@ struct BatchState {
 }
 
 /// Per-kind slice cursors for the in-flight group. Each field marks
-/// where the open group's slice begins in the matching `out` buffer;
-/// [`Composer::flush`] closes the slices and advances every cursor to
-/// the buffer's current length. Bundled so the flush-boundary contract
+/// where the open group's slice begins in the matching output buffer;
+/// [`ComposeSession::flush`] closes the slices and advances every cursor
+/// to the buffer's current length. Bundled so the flush-boundary contract
 /// is one value instead of five parallel fields. `texts` feeds only the
 /// did-anything-emit check — a text-only group must still push a
 /// `DrawGroup` so its batch's `last_group` index resolves; the run
-/// spans themselves live on [`TextBatch`].
+/// spans themselves live on [`TextBatch`](crate::renderer::render_buffer::text_batch::TextBatch).
 #[derive(Default, Clone, Copy, Debug)]
 struct GroupCursors {
     quads: u32,
@@ -132,13 +128,14 @@ struct GroupCursors {
 }
 
 /// State carried while a text batch is mid-accumulation. Pushed onto
-/// `out.text_batches` as a [`TextBatch`] when [`Composer::close_batch`]
-/// finalizes it.
+/// `out.text_batches` as a
+/// [`TextBatch`](crate::renderer::render_buffer::text_batch::TextBatch)
+/// when [`ComposeSession::close_batch`] finalizes it.
 #[derive(Clone, Copy, Debug)]
 struct OpenBatch {
     /// Cursor into `out.texts` where this batch's run span begins.
     /// Combined with `out.texts.len()` at close-time to compute the
-    /// finalized [`Span`].
+    /// finalized [`Span`](crate::primitives::span::Span).
     texts_start: u32,
     /// Index (into `out.groups`) of the last group whose text
     /// contributed to this batch. Refreshed on every text push (the
@@ -160,8 +157,8 @@ impl Composer {
     /// `GpuView` target-size ceiling). All scratch starts empty.
     pub(crate) fn new(max_texture_dim: u32) -> Self {
         Self {
-            clip_stack: Vec::new(),
-            transform_stack: Vec::new(),
+            clip: ClipStack::default(),
+            transform: TransformStack::default(),
             polyline: PolylineScratch::default(),
             batch: BatchState::default(),
             higher_kinds: HigherKindRects::default(),
@@ -169,280 +166,6 @@ impl Composer {
             occlusion: OcclusionPruner::default(),
             max_texture_dim: NonZeroU32::new(max_texture_dim)
                 .expect("composer texture dimension limit must be positive"),
-        }
-    }
-
-    /// Close the in-flight group: if anything was emitted into it,
-    /// push a `DrawGroup` covering the open slice; either way advance
-    /// the per-kind cursors and clear the overlap scratches. Scissor
-    /// + rounded clip are preserved for the next group.
-    fn flush(&mut self, out: &mut RenderBuffer) {
-        self.occlusion.prune(out, self.cursors.quads);
-        let q_end = out.quads.len() as u32;
-        let t_end = out.texts.len() as u32;
-        let higher_end = PaintTier::ALL.map(|tier| out.draws_len(tier));
-        if q_end > self.cursors.quads
-            || t_end > self.cursors.texts
-            || PaintTier::ALL
-                .iter()
-                .any(|&t| higher_end[t.idx()] > self.cursors.higher[t.idx()])
-        {
-            // Push the higher-kind batches BEFORE the group itself so
-            // their `last_group` matches the in-flight group's
-            // eventual index (= current `out.groups.len()`).
-            let last_group = out.groups.len() as u32;
-            for tier in PaintTier::ALL {
-                let start = self.cursors.higher[tier.idx()];
-                let end = higher_end[tier.idx()];
-                if end > start {
-                    out.batches_mut(tier).push(GroupBatch {
-                        items: (start..end).into(),
-                        last_group,
-                    });
-                }
-            }
-            out.groups.push(DrawGroup {
-                scissor: self.clip_scissor(),
-                rounded_clips: self.clip_chain(),
-                quads: (self.cursors.quads..q_end).into(),
-            });
-        }
-        self.cursors = GroupCursors {
-            quads: q_end,
-            texts: t_end,
-            higher: higher_end,
-        };
-        self.higher_kinds.clear();
-        self.occlusion.clear();
-        // Closed-batch text is group-scoped: once we cross a group
-        // boundary, any batch closed *in* this group has rendered (it
-        // drains at its `last_group`), so its rects no longer gate quads.
-        // The open-batch grid is NOT cleared here — it spans groups with
-        // its (still-open) batch.
-        self.batch.closed_grid.clear();
-        self.batch.pending_batch_cursor = out.text_batches.len();
-    }
-
-    /// Finalize the open text batch (if any): push a [`TextBatch`]
-    /// entry covering `batch_texts_start..out.texts.len()`. No-op when no
-    /// batch is active. Called at batch-split events — rounded-clip
-    /// change, a higher-kind append, or a strict-bounds mismatch. The
-    /// finalized output remains pending for the group-scoped closed
-    /// check, so a later quad still flushes for already-closed text that
-    /// shares this group. The grid fill is deferred to [`Self::closed_hit`].
-    fn close_batch(&mut self, out: &mut RenderBuffer) {
-        let Some(b) = self.batch.open.take() else {
-            return;
-        };
-        let texts_end = out.texts.len() as u32;
-        let scissor = self.batch.open_grid.union;
-        self.batch.open_grid.clear();
-        // Invariants the schedule cursor relies on: batches are pushed
-        // in walk order so `last_group` is monotonically non-decreasing
-        // (multiple batches can anchor to the same group when a mesh
-        // splits mid-group), and their `texts` spans concatenate
-        // without gaps in `out.texts`.
-        debug_assert!(
-            out.text_batches
-                .last()
-                .is_none_or(|prev| prev.last_group <= b.last_group),
-        );
-        debug_assert!(
-            out.text_batches
-                .last()
-                .is_none_or(|prev| prev.texts.start + prev.texts.len == b.texts_start),
-        );
-        out.text_batches.push(TextBatch {
-            texts: (b.texts_start..texts_end).into(),
-            last_group: b.last_group,
-            // `scissor` is already in physical pixels and clamped to
-            // every contributing run's clip-stack-narrowed bounds, so it
-            // is the GPU scissor for this batch. It has to be: the text
-            // backend implements no per-run shader clipping, so a
-            // scissor any wider than this would let a clipped run's
-            // glyphs paint past their intended bound.
-            scissor,
-            // Every close site runs while the outgoing clip is still the
-            // stack top (`break_for_clip` closes ahead of the push/pop),
-            // so this is the chain all the batch's runs were recorded
-            // under.
-            rounded_clips: self.clip_chain(),
-        });
-    }
-
-    /// Return a mutable handle to the open batch, opening a fresh one
-    /// when none exists. Idempotent within a batch — repeated calls
-    /// reuse the same `OpenBatch` and only refresh `last_group` to
-    /// the in-flight group's eventual index.
-    fn open_batch(&mut self, out: &RenderBuffer) -> &mut OpenBatch {
-        let b = self.batch.open.get_or_insert(OpenBatch {
-            texts_start: out.texts.len() as u32,
-            last_group: 0,
-            strict: false,
-        });
-        b.last_group = out.groups.len() as u32;
-        b
-    }
-
-    /// `true` when `bounds` has no viewport area or doesn't intersect
-    /// the active scissor — the caller should skip emission. Identical
-    /// reject shape at every shape-draw site; centralising it keeps each
-    /// handler from growing its own variant.
-    fn cull_bounds(&self, bounds: URect) -> bool {
-        bounds.is_paint_empty() || self.clip_scissor().is_some_and(|s| !bounds.intersects(s))
-    }
-
-    /// Cull a higher-kind (mesh / image / curve) draw against the active
-    /// clip and, if it survives, close any open text batch. Higher-kind
-    /// geometry paints above text under the backend's kind reorder, and a
-    /// batch renders at the END of its last group — past this draw if left
-    /// open — so the batch must close here for its text to emit first. Done
-    /// only after the cull: a culled draw must not split the batch. Also
-    /// flushes the group when the draw cross-kind-conflicts with an earlier
-    /// higher-kind draw (see [`HigherKindRects::conflicts`]), and then
-    /// records the draw's own rect for the group's overlap tracking (after
-    /// the flush, so it isn't wiped with the previous group's rects).
-    /// Returns `false` when culled — the caller should `continue`.
-    ///
-    /// Polyline calls this only after its kept-point walk proves the
-    /// stroke emits geometry (an all-coincident polyline must not split
-    /// the batch), gated behind an early [`Self::cull_bounds`].
-    fn enter_higher_kind(
-        &mut self,
-        tier: PaintTier,
-        bounds: URect,
-        out: &mut RenderBuffer,
-    ) -> bool {
-        if self.cull_bounds(bounds) {
-            return false;
-        }
-        self.close_batch(out);
-        if self.higher_kinds.conflicts(tier, bounds) {
-            self.flush(out);
-        }
-        self.higher_kinds.push(tier, bounds);
-        true
-    }
-
-    /// Conservative overlap of `rect` against every recorded higher-kind
-    /// draw, kind-blind: any non-empty intersection counts. False
-    /// positives are correctness-safe (extra flush, costs a drawcall);
-    /// false negatives would reorder paint and corrupt the frame.
-    fn any_higher_kind_overlap(&self, rect: URect) -> bool {
-        self.higher_kinds.any_overlap(rect)
-    }
-
-    /// Force a flush / batch-close if a quad-tier draw at `overlap`
-    /// overlaps something in the group that would be reordered above it.
-    /// Quad is the lowest paint kind, so any higher-kind draw it overlaps
-    /// would paint *under* it after the backend's intra-group reorder —
-    /// flush to keep record order. Text overlap is checked against both
-    /// the open batch's grid (which may span groups) and
-    /// batches already closed in this group ([`Self::closed_hit`]);
-    /// an open-batch hit additionally closes the batch so its text can't
-    /// coalesce forward and re-cover this quad. The open check goes
-    /// straight to the tiled grid — `any_overlap` pre-rejects on its
-    /// internal union AABB, so no caller-side pre-reject is needed.
-    fn quad_forces_flush(&mut self, overlap: URect, out: &mut RenderBuffer) {
-        // Text painted in (or scheduled after) this group sits in two
-        // places: the open batch (`open_grid`, spans groups with its
-        // batch) and batches already closed within this group
-        // (`closed_grid`). A quad overlapping either would be painted
-        // *under* that text by the backend's quads→text order, so flush so
-        // the text renders first.
-        //
-        // An open-batch hit additionally *closes* the batch: leaving it
-        // open would let the overlapping run coalesce forward and schedule
-        // at a later `last_group`, re-covering this quad. A closed-grid
-        // hit needs no close — that text's batch is already finalized at
-        // this group; flushing alone puts the quad in the next group.
-        if self.batch.open_grid.any_overlap(overlap) {
-            self.close_batch(out);
-            self.flush(out);
-        } else if self.closed_hit(overlap, out) || self.any_higher_kind_overlap(overlap) {
-            self.flush(out);
-        }
-    }
-
-    /// `true` if `q` overlaps text of a batch closed within the
-    /// in-flight group. Finalized batches remain pending in
-    /// `out.text_batches`; the first query whose `q` hits a pending
-    /// batch scissor drains every pending batch into the closed grid.
-    /// Later queries use the grid, and groups nothing probes near
-    /// closed text never pay the per-rect fill.
-    fn closed_hit(&mut self, q: URect, out: &RenderBuffer) -> bool {
-        let pending = &out.text_batches[self.batch.pending_batch_cursor..];
-        if pending.iter().any(|batch| batch.scissor.intersects(q)) {
-            for batch in pending {
-                for ti in batch.texts.range() {
-                    self.batch.closed_grid.push(out.texts[ti].bounds);
-                }
-            }
-            self.batch.pending_batch_cursor = out.text_batches.len();
-        }
-        self.batch.closed_grid.any_overlap(q)
-    }
-
-    /// The clip in force: the stack top, or none at the root.
-    ///
-    /// **Derived, not cached.** A mirror of the top would have to be
-    /// reassigned in lockstep with every push and pop, and the readers
-    /// split across it: the cull test and the clear fold ask one
-    /// question, the text path another. The stack is the only owner, so
-    /// there is nothing for them to disagree about.
-    fn clip_top(&self) -> Option<ClipFrame> {
-        self.clip_stack.last().copied()
-    }
-
-    fn clip_scissor(&self) -> Option<URect> {
-        self.clip_top().map(|frame| frame.scissor)
-    }
-
-    fn clip_chain(&self) -> Span {
-        self.clip_top().map_or(Span::default(), |frame| frame.chain)
-    }
-
-    /// Push `frame` as the clip in force, closing the batch and group
-    /// first if it differs from the one it replaces.
-    ///
-    /// The break runs **before** the stack moves, because [`Self::flush`]
-    /// stamps the closing group with the stack top: the outgoing clip has
-    /// to still be on top when it does.
-    fn push_clip(&mut self, frame: ClipFrame, out: &mut RenderBuffer) {
-        self.break_for_clip(Some(frame), out);
-        self.clip_stack.push(frame);
-    }
-
-    /// Restore the parent clip. Panics on a `PopClip` with no matching
-    /// push, which is a malformed paint stream rather than a state the
-    /// composer can answer for.
-    fn pop_clip(&mut self, out: &mut RenderBuffer) {
-        let parent = self
-            .clip_stack
-            .len()
-            .checked_sub(2)
-            .map(|below| self.clip_stack[below]);
-        self.break_for_clip(parent, out);
-        self.clip_stack
-            .pop()
-            .expect("PopClip without matching PushClip");
-    }
-
-    /// Close what the clip in force owns, if `next` differs from it.
-    /// Chains compare by value, so a same-clip push/pop is a no-op and
-    /// accumulated overlap state persists through redundant transitions.
-    fn break_for_clip(&mut self, next: Option<ClipFrame>, out: &mut RenderBuffer) {
-        let next_chain = next.map_or(Span::default(), |frame| frame.chain);
-        let chain_changed = !chains_equal(out, next_chain, self.clip_chain());
-        if chain_changed {
-            // The stencil mask stack is tied to the active chain; batched
-            // text under the wrong masks would either over- or
-            // under-clip. Close before the group transition, while the
-            // stack top still names the batch's chain.
-            self.close_batch(out);
-        }
-        if next.map(|frame| frame.scissor) != self.clip_scissor() || chain_changed {
-            self.flush(out);
         }
     }
 
@@ -459,37 +182,23 @@ impl Composer {
         out.start_frame(display, time);
 
         self.reset_group_scratch(display.physical);
-        self.clip_stack.clear();
-        self.transform_stack.clear();
+        self.clip.clear();
+        self.transform.reset();
 
         ComposeSession {
             composer: self,
             payloads,
             out,
             display,
-            current_transform: TranslateScale::IDENTITY,
         }
-    }
-
-    /// Clear-fold discard: a fullscreen opaque cover proved everything
-    /// composed so far invisible — drop the scene output and every piece of
-    /// scratch that describes it. The *walk* state survives: `clip_stack`
-    /// is empty by the fold's precondition, and `transform_stack` + the
-    /// caller's running transform
-    /// stay untouched (the cover may sit under an active transform whose
-    /// pops are still ahead in the stream).
-    fn discard_composed(&mut self, out: &mut RenderBuffer) {
-        out.discard_scene();
-        self.reset_group_scratch(out.viewport_phys);
     }
 
     /// Reset every piece of scratch that describes composed *scene*
     /// output — group cursors, batch state, overlap tracking. Shared
     /// by the per-compose prologue and the clear-fold
-    /// [`Self::discard_composed`], so a new scratch field added here
-    /// resets on both paths. Walk state (clip/transform stacks, the
-    /// active scissor + chain) is deliberately not touched — the
-    /// discard path must preserve it.
+    /// [`ComposeSession::discard_composed`], so a new scratch field added
+    /// here resets on both paths. Walk state (clip/transform stacks) is
+    /// deliberately not touched — the discard path must preserve it.
     fn reset_group_scratch(&mut self, viewport_phys: UVec2) {
         self.batch.open_grid.start_frame(viewport_phys);
         self.batch.closed_grid.start_frame(viewport_phys);

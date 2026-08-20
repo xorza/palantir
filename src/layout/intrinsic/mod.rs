@@ -15,8 +15,8 @@ use crate::layout::axis::Axis;
 use crate::layout::axis_ctx::AxisCtx;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::text_shape_input::TextShapeInput;
-use crate::layout::types::layout_mode::{LayoutMode, ScrollChildLayout};
-use crate::layout::{canvas, grid, stack, wrapstack, zstack};
+use crate::layout::types::layout_mode::LayoutMode;
+use crate::layout::{canvas, grid, scroll, scrollbars, stack, wrapstack, zstack};
 use crate::primitives::interned_text::InternedText;
 use crate::scene::node::layout_core::LayoutCore;
 use crate::scene::tree::Tree;
@@ -304,40 +304,9 @@ fn content_intrinsic(
         LayoutMode::Grid(grid_def_id) => {
             grid::intrinsic(engine, tree, node, grid_def_id, axis, query, interned_text)
         }
-        // Bars are absolutely placed chrome in a reserved gutter: they
-        // must never floor the scroll they decorate, on either axis.
-        LayoutMode::Scrollbars(_) => IntrinsicRange::ZERO,
-        // A scroll's intrinsic has to answer exactly what its measure
-        // would: same driver, same per-axis contribution rule. Both come
-        // off the spec so the two can't drift — `ScrollSpec::contributes`
-        // is where the `fit` case is stated.
-        // A scroll's two content sizes differ in kind, so one rule can't
-        // serve both. **Min**-content on a panned axis is zero: being
-        // able to shrink below the content is what scrolling *is*, and
-        // `resolve_sizing` floors the viewport's own size with this, so
-        // anything larger pins a `Hug` scroll open at its content.
-        // **Max**-content is what the viewport would take given room —
-        // the content extent exactly when the author asked it to `fit`
-        // ([`ScrollSpec::contributes`]). Either way the driver matches
-        // the one `scroll::measure` runs, off the same spec.
+        LayoutMode::Scrollbars(_) => scrollbars::intrinsic(),
         LayoutMode::Scroll(spec) => {
-            let wants_min = query.includes(LenReq::MinContent) && !spec.pans(axis);
-            let wants_max = query.includes(LenReq::MaxContent) && spec.contributes(axis);
-            let Some(content_query) = IntrinsicQuery::of(wants_min, wants_max) else {
-                return IntrinsicRange::ZERO;
-            };
-            let content = match spec.child_layout() {
-                ScrollChildLayout::Layered => {
-                    zstack::intrinsic(engine, tree, node, axis, content_query, interned_text)
-                }
-                ScrollChildLayout::Flow(main) => {
-                    stack::intrinsic(engine, tree, node, main, axis, content_query, interned_text)
-                }
-            };
-            IntrinsicRange {
-                min: if wants_min { content.min } else { 0.0 },
-                max: if wants_max { content.max } else { 0.0 },
-            }
+            scroll::intrinsic(engine, tree, node, spec, axis, query, interned_text)
         }
     }
 }

@@ -10,7 +10,6 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
-use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::{Configure, Node};
 use crate::ui::Ui;
@@ -444,14 +443,9 @@ impl<'a> Scroll<'a> {
         // `with_axes` set `ClipMode::Rect` by default; caller configuration
         // can replace it with rounded clipping or no clipping.
         inner.clip = self.node.clip;
-        // Raw pan/zoom — cascade anchors the scale at the inner's own
-        // `layout_rect.min` (`TranslateScale::anchored_at`), so we
-        // don't pre-bake the origin compensation. Translation is just
-        // the user's scroll offset, negated (scroll right shifts
-        // content left).
-        if state.offset != Vec2::ZERO || (state.zoom - 1.0).abs() > f32::EPSILON {
-            inner.transform = TranslateScale::new(-state.offset, state.zoom);
-        }
+        // Raw pan/zoom, from the one place a viewport's transform is
+        // derived — `TextEdit`'s text block reads the same method.
+        inner.transform = state.transform();
         ScrollWrappers { outer, inner }
     }
 

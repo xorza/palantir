@@ -8,8 +8,10 @@
 //! a widget needs to place a caret, turn a click into an offset, or paint
 //! a selection.
 
+use crate::common::hash;
 use crate::layout::types::align::Align;
 use crate::text::glyph_font::GlyphFont;
+use crate::text::key::TextShapeKey;
 use crate::text::request::TextShapeRequest;
 use crate::text::wrap::TextWrap;
 
@@ -53,7 +55,9 @@ pub struct TextRun<'a> {
 
 impl<'a> TextRun<'a> {
     /// Lower to the shaper's *unbounded* request — the run's root, before
-    /// any width is bound to it.
+    /// any width is bound to it. `None` for a run with no bytes, which
+    /// shapes nothing; [`TextShaper::layout`](crate::TextShaper) answers
+    /// that case with an empty probe.
     ///
     /// Binding is deliberately not done here. Which width layout actually
     /// commits depends on the root itself: a truncating fit whose text
@@ -61,7 +65,14 @@ impl<'a> TextRun<'a> {
     /// raises a too-narrow width to the root's wrap floor. Both need a
     /// shaping call, so [`TextShaper::layout`](crate::TextShaper) applies
     /// them and this stays the part that needs no shaper.
-    pub(crate) fn unbounded_request(&self) -> TextShapeRequest<'a> {
+    pub(crate) fn unbounded_request(&self) -> Option<TextShapeRequest<'a>> {
         TextShapeRequest::unbounded(self.text, self.font)
+    }
+
+    /// The key this run's unbounded shape is cached under, whether or not
+    /// there is anything to shape — the metrics a probe answers in live on
+    /// it, so an empty run still needs one.
+    pub(crate) fn unbounded_key(&self) -> TextShapeKey {
+        TextShapeKey::unbounded(hash::hash_str(self.text), self.font)
     }
 }

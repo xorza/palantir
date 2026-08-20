@@ -5,9 +5,9 @@
 use crate::common::clipboard::Clipboard;
 use crate::renderer::backend::backend_resources::BackendResources;
 use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
+use crate::renderer::texture_limit::TextureLimit;
 use crate::text::shaper::TextShaper;
 use crate::ui::resources::UiResources;
-use std::num::NonZeroU32;
 
 #[derive(Debug)]
 pub(crate) struct HostShared {
@@ -19,11 +19,11 @@ impl HostShared {
     pub(super) fn with_clipboard(
         text: TextShaper,
         clipboard: Clipboard,
-        max_texture_dimension_2d: Option<NonZeroU32>,
+        texture_limit: TextureLimit,
     ) -> Self {
         Self {
-            resources: UiResources::new(text, clipboard, max_texture_dimension_2d),
-            gradient_atlas: SharedGradientAtlas::new(max_texture_dimension_2d),
+            resources: UiResources::new(text, clipboard, texture_limit),
+            gradient_atlas: SharedGradientAtlas::new(texture_limit),
         }
     }
 
@@ -40,18 +40,17 @@ impl HostShared {
 
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {
-    use std::num::NonZeroU32;
-
     use crate::common::clipboard::Clipboard;
     use crate::host::shared::HostShared;
+    use crate::renderer::texture_limit::TextureLimit;
     use crate::text::shaper::TextShaper;
 
     impl HostShared {
         /// Resources over a memory clipboard, for tests that drive a
         /// `WindowDriver` without a host. Production hosts go through
         /// `HostCore::new`, which supplies the platform clipboard.
-        pub(crate) fn new(text: TextShaper, max_texture_dimension_2d: Option<NonZeroU32>) -> Self {
-            Self::with_clipboard(text, Clipboard::default(), max_texture_dimension_2d)
+        pub(crate) fn new(text: TextShaper, texture_limit: TextureLimit) -> Self {
+            Self::with_clipboard(text, Clipboard::default(), texture_limit)
         }
     }
 }
@@ -63,11 +62,12 @@ mod tests {
     use crate::diagnostics::DebugOverlayConfig;
     use crate::host::shared::HostShared;
     use crate::primitives::image::Image;
+    use crate::renderer::texture_limit::TextureLimit;
     use crate::text::shaper::TextShaper;
 
     #[test]
     fn diagnostics_are_shared_across_capability_bundles() {
-        let shared = HostShared::new(TextShaper::test_mono(), None);
+        let shared = HostShared::new(TextShaper::test_mono(), TextureLimit::default());
         let ui = shared.resources.clone();
         assert_eq!(
             *shared.resources.diagnostics.overlay.borrow(),
@@ -82,20 +82,19 @@ mod tests {
 
     #[test]
     fn backend_and_ui_share_text_images_and_gpu_stats() {
-        let shared = HostShared::new(TextShaper::test_mono(), Some(NonZeroU32::new(1).unwrap()));
+        let limit = TextureLimit::from_device(NonZeroU32::new(1).unwrap());
+        let shared = HostShared::new(TextShaper::test_mono(), limit);
         let ui = shared.resources.clone();
         let backend = shared.backend_resources();
 
         assert!(ui.text.shares_cache_with(&backend.text));
-        let rejected = ui
-            .images
-            .register(Image::from_rgba8(2, 1, vec![0; 8]))
-            .unwrap_err();
-        assert_eq!(rejected.max_dimension, 1);
+        assert_eq!(
+            ui.texture_limit, limit,
+            "the recorder bundle carries the ceiling the host was built with",
+        );
         let image = ui
             .images
-            .register(Image::from_rgba8(1, 1, vec![1, 2, 3, 4]))
-            .unwrap();
+            .register(Image::from_rgba8(1, 1, vec![1, 2, 3, 4]));
         let mut uploaded = None;
         backend.images.drain_pending(|id, data| {
             uploaded = Some(id);
@@ -108,10 +107,10 @@ mod tests {
 
     #[test]
     fn clipboard_is_shared_within_one_host_and_isolated_between_hosts() {
-        let first = HostShared::new(TextShaper::test_mono(), None);
+        let first = HostShared::new(TextShaper::test_mono(), TextureLimit::default());
         let first_window = first.resources.clone();
         let second_window = first.resources.clone();
-        let second = HostShared::new(TextShaper::test_mono(), None).resources;
+        let second = HostShared::new(TextShaper::test_mono(), TextureLimit::default()).resources;
 
         first_window.clipboard.set("shared").unwrap();
 

@@ -6,10 +6,25 @@ use crate::text::glyph_font::GlyphFont;
 use crate::text::key::{TextShapeKey, WrapBound};
 
 /// Source text paired with its canonical shaping parameters.
+///
+/// **The crate's one empty-text boundary.** A run with no bytes shapes
+/// nothing and mints no buffer, so there is no request to make of the
+/// shaper: both constructors answer `None` for it, and the fields are
+/// private so nothing can assemble one around them. Every layer past this
+/// type therefore holds text it can shape, which is why none of them —
+/// the reuse slots, the dispatch, either measurer — carries a guard of
+/// its own.
+///
+/// Only two things still meet an empty run, and both are crate edges with
+/// an answer of their own rather than a layer to hop through:
+/// [`TextShaper::layout`](crate::text::shaper::TextShaper::layout) mints
+/// an empty probe, and [`TextGlyphs`](crate::TextGlyphs) reports no
+/// glyphs. Recorded runs never reach either — `TextShape::is_noop` drops
+/// an empty one before it becomes a `ShapeRecord`.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct TextShapeRequest<'a> {
-    pub(crate) text: &'a str,
-    pub(crate) key: TextShapeKey,
+    pub(super) text: &'a str,
+    pub(super) key: TextShapeKey,
 }
 
 impl<'a> TextShapeRequest<'a> {
@@ -19,11 +34,13 @@ impl<'a> TextShapeRequest<'a> {
     /// Hashes `text` itself. A caller holding the hash already — layout
     /// retains one per recorded run — mints the key and pairs it through
     /// [`Self::for_key`] rather than paying for it twice.
-    pub(crate) fn unbounded(text: &'a str, font: GlyphFont) -> Self {
-        Self {
+    ///
+    /// `None` for empty text — see the type docs.
+    pub(crate) fn unbounded(text: &'a str, font: GlyphFont) -> Option<Self> {
+        (!text.is_empty()).then(|| Self {
             text,
             key: TextShapeKey::unbounded(hash::hash_str(text), font),
-        }
+        })
     }
 
     /// Pair `text` with a key already minted for it — off a hash layout
@@ -36,13 +53,15 @@ impl<'a> TextShapeRequest<'a> {
     /// drift, or be forgotten by the next caller to write the literal.
     /// (`ShapedTextRef::new` checks the same pairing against a *recorded*
     /// hash, which costs no re-read; this is the one that reads.)
-    pub(crate) fn for_key(text: &'a str, key: TextShapeKey) -> Self {
+    ///
+    /// `None` for empty text — see the type docs.
+    pub(crate) fn for_key(text: &'a str, key: TextShapeKey) -> Option<Self> {
         debug_assert_eq!(
             key.text_hash,
             TextShapeKey::content_hash(hash::hash_str(text)),
             "text paired with a key minted from different bytes",
         );
-        Self { text, key }
+        (!text.is_empty()).then_some(Self { text, key })
     }
 
     pub(super) fn with_bound(self, bound: WrapBound) -> Self {
@@ -91,9 +110,37 @@ pub(crate) mod test_support {
         pub(crate) halign: HAlign,
     }
 
+    /// Field reads a case asserts on. Production never needs them: every
+    /// layer that holds a request either shapes it or forwards it whole,
+    /// and the two paths that ask about a committed width read the key
+    /// they already have.
+    #[cfg(test)]
+    impl<'a> TextShapeRequest<'a> {
+        /// The bytes this request shapes. Never empty — see the type docs.
+        pub(crate) fn text(self) -> &'a str {
+            self.text
+        }
+
+        /// The shaped-buffer key this request is cached under.
+        pub(crate) fn key(self) -> TextShapeKey {
+            self.key
+        }
+
+        /// The width this request commits to, or `None` when it is the
+        /// run's unbounded root — the question that picks between the
+        /// shaper's two measure paths.
+        pub(crate) fn max_width_px(self) -> Option<f32> {
+            self.key.max_width_px()
+        }
+    }
+
     impl TestShape {
+        /// Fixtures always name text to shape, so the empty-run boundary
+        /// is a wiring bug here rather than a case a test drives — the
+        /// two crate edges that answer one do it in their own tests.
         pub(crate) fn unbounded_request<'a>(self, text: &'a str) -> TextShapeRequest<'a> {
             TextShapeRequest::unbounded(text, self.font)
+                .expect("a shaping fixture needs text to shape")
         }
     }
 
@@ -176,7 +223,7 @@ pub(crate) mod test_support {
         ///
         /// Takes the [`LineFit`] rather than a [`TextWrap`](crate::TextWrap)
         /// because this is a shaper-level fixture: `LineFit` is what
-        /// [`TextShapeKey`] stores and what `CosmicMeasure::shape`
+        /// [`TextShapeKey`] stores and what `CosmicMeasure::resolve`
         /// switches on, while the policy is layout's to resolve. So the
         /// gate here is a width alone, where `TextRun::request` gates on
         /// `(width, wrap.line_fit())`.

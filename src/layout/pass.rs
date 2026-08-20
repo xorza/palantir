@@ -327,10 +327,10 @@ impl LayoutPass<'_> {
     ///
     /// ## Driver contract
     ///
-    /// Every layout driver (`stack`, `wrapstack`, `zstack`, `canvas`,
-    /// `grid`) is a free module exporting three fns (visible at least to
-    /// the rest of `layout`), matched into here and into
-    /// [`Self::arrange`] / `intrinsic::compute`:
+    /// Every layout driver — `stack`, `wrapstack`, `zstack`, `canvas`,
+    /// `grid`, `scroll`, `scrollbars` — is a free module exporting three
+    /// fns (visible at least to the rest of `layout`), matched into here
+    /// and into [`Self::arrange`] / `intrinsic::content_intrinsic`:
     ///
     /// - `measure(pass, node, [variant_payload,] inner_avail) -> Size`
     ///   — bottom-up. Recurses into children via `pass.measure(...)`.
@@ -355,6 +355,13 @@ impl LayoutPass<'_> {
     /// `main_axis` and `query_axis` because the answer genuinely depends
     /// on both ("size on Y given you pack on X"). ZStack/Canvas/Grid
     /// take only `axis` — they have no main axis to ask about.
+    ///
+    /// **Every arm of all three dispatchers is a call into a driver
+    /// module**, so a driver's policy lives in its own file and the
+    /// dispatchers stay dispatch. `scrollbars::intrinsic` takes no
+    /// arguments at all — bars floor nothing — and is still a call rather
+    /// than a `ZERO` written inline, because "what does this driver
+    /// contribute" is the driver's answer to give.
     ///
     /// Adding a new driver = (1) new `LayoutMode` variant, (2) new
     /// module exporting the triple, (3) match arms in this dispatcher,

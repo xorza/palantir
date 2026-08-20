@@ -59,7 +59,7 @@ use crate::scene::cascade::paint::Paint;
 use crate::scene::cascade::paint::PaintRows;
 use crate::scene::damage::counters::DamageCounters;
 use crate::scene::damage::node_snapshot::NodeSnapshot;
-use crate::scene::damage::region::{DEFAULT_PASS_BUDGET_PX, DamageRegion};
+use crate::scene::damage::region::{CollapsedDamage, DEFAULT_PASS_BUDGET_PX, DamageRegion};
 use crate::scene::damage::row_matcher::RowMatcher;
 use crate::scene::damage::walk::{LayerWalk, ParentFrame};
 use crate::scene::forest::Forest;
@@ -176,7 +176,7 @@ pub(crate) struct DamageInput<'a> {
 /// and collapses straight to [`Damage::Full`]: once this much of the surface has
 /// changed, the per-node filter + per-pass scissor + `LoadOp::Load` + backbuffer
 /// copy bookkeeping costs more than just clearing and redrawing everything.
-/// Checked against the region's sealed [`DamageRegion::coverage`]. (The
+/// Checked against the coverage `DamageRegion::collapse_from` measured. (The
 /// renderer's `DirectAdaptive` strategy applies its own, lower promote threshold
 /// to the *Partial* range below this line — `DIRECT_PROMOTE_COVERAGE` in
 /// `window_driver` — but that's a present-path GPU-cost call kept out of this
@@ -204,26 +204,26 @@ pub(crate) enum Damage {
     Full,
     /// **Invariant:** the wrapped region is non-empty. [`Damage::new`]
     /// is the only constructor and returns [`Damage::Skip`] when the
-    /// region is empty, so consumers can iterate `region.iter_rects()`
-    /// without checking `is_empty` first.
-    Partial(DamageRegion),
+    /// region is empty, so consumers can iterate
+    /// `damage.region.iter_rects()` without checking `is_empty` first.
+    Partial(CollapsedDamage),
 }
 
 impl Damage {
-    /// Classify a region (already sealed against its surface by
-    /// [`DamageRegion::collapse_from`]) into the frame's paint decision. Pure
-    /// dispatch on the precomputed `coverage` — no surface needed here; the
-    /// degenerate-surface check lives at the seal site.
+    /// Classify a collapsed damage set into the frame's paint decision.
+    /// Pure dispatch on the coverage
+    /// [`DamageRegion::collapse_from`] measured — no surface needed here;
+    /// the degenerate-surface check lives at that site.
     ///
     /// [`DamageRegion::collapse_from`]: crate::scene::damage::region::DamageRegion::collapse_from
-    pub(crate) fn new(region: DamageRegion) -> Damage {
-        if region.rects.is_empty() {
+    pub(crate) fn new(damage: CollapsedDamage) -> Damage {
+        if damage.region.rects.is_empty() {
             return Damage::Skip;
         }
-        if region.coverage > FULL_REPAINT_THRESHOLD {
+        if damage.coverage > FULL_REPAINT_THRESHOLD {
             return Damage::Full;
         }
-        Damage::Partial(region)
+        Damage::Partial(damage)
     }
 }
 
@@ -362,8 +362,11 @@ impl DamageEngine {
     /// region and lift it to a [`Damage`]. Shared tail of both compute
     /// paths.
     fn finish_region(&self, surface: Rect) -> Damage {
-        let region = DamageRegion::collapse_from(&self.raw_rects, self.budget_px, surface);
-        Damage::new(region)
+        Damage::new(DamageRegion::collapse_from(
+            &self.raw_rects,
+            self.budget_px,
+            surface,
+        ))
     }
 
     /// PaintOnly fast path. The tree wasn't rebuilt this frame, so
@@ -444,6 +447,27 @@ impl DamageEngine {
     pub(crate) fn prev_paint_rect(&self, wid: WidgetId) -> Option<Rect> {
         let snap = self.prev.get(&wid)?;
         self.paints.slots[snap.paint_span.range()].union_screens()
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod test_support {
+    use crate::scene::damage::Damage;
+    use crate::scene::damage::region::DamageRegion;
+
+    impl Damage {
+        /// The rects of a partial frame; panics on any other outcome.
+        ///
+        /// A `Damage` carries the coverage the frame measured, which an
+        /// expected value assembled from rect literals has no way to know
+        /// — so a case that means "these rects" compares these, and one
+        /// that means "this outcome" matches on the variant.
+        pub(crate) fn expect_partial(self) -> DamageRegion {
+            match self {
+                Damage::Partial(damage) => damage.region,
+                other => panic!("expected partial damage, got {other:?}"),
+            }
+        }
     }
 }
 

@@ -6,6 +6,7 @@ use crate::host::shared::HostShared;
 use crate::primitives::color::Color;
 use crate::primitives::widget_id::WidgetId;
 use crate::renderer::frontend::Frontend;
+use crate::renderer::texture_limit::TextureLimit;
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
 use crate::text::glyph_font::GlyphFont;
@@ -158,7 +159,7 @@ fn text_reuse_is_window_local_while_cosmic_buffers_are_shared() {
             });
     }
 
-    let shared = HostShared::new(TextShaper::new(), None);
+    let shared = HostShared::new(TextShaper::new(), TextureLimit::default());
     let mut a = ui_with_shared(&shared);
     let mut b = ui_with_shared(&shared);
     let text_id = WidgetId::from_hash("shared-text");
@@ -266,7 +267,7 @@ fn paint_only_frames_advance_the_shared_text_clock() {
         });
     }
 
-    let shared = HostShared::new(TextShaper::new(), None);
+    let shared = HostShared::new(TextShaper::new(), TextureLimit::default());
     let mut ui = UiHarness::from_resources(shared.resources.clone(), SURFACE);
     let shaper = ui.ui.resources.text.clone();
 
@@ -367,7 +368,7 @@ fn shared_cache_eviction_preserves_idle_windows_paint_only_text_source() {
         });
     }
 
-    let shared = HostShared::new(TextShaper::new(), None);
+    let shared = HostShared::new(TextShaper::new(), TextureLimit::default());
     let mut idle = UiHarness::from_resources(shared.resources.clone(), SURFACE);
     let mut active = UiHarness::from_resources(shared.resources.clone(), SURFACE);
 

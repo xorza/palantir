@@ -83,15 +83,15 @@ impl<'a> TextGlyphs<'a> {
     /// Rewrites rather than appends, so a caller laying out the same label every
     /// frame keeps one buffer.
     pub fn line(&mut self, text: &str, font: GlyphFont, scale: f32, out: &mut Vec<PlacedGlyph>) {
-        // Nothing to say shapes no buffer, and extraction restores one rather
-        // than shaping it — so the empty run has to be answered here. Palantir's
-        // own encoder never reaches this because it drops empty runs upstream,
-        // which is what leaves the hot path free of the check.
-        if text.is_empty() {
+        // One of the two crate edges an empty run reaches — see
+        // `TextShapeRequest`. Nothing to say shapes no buffer, and
+        // extraction restores one rather than shaping it, so a run with no
+        // request has no glyphs.
+        let Some(request) = request(text, font) else {
             out.clear();
             return;
-        }
-        self.extract_glyphs(request(text, font), placement(scale), out);
+        };
+        self.extract_glyphs(request, placement(scale), out);
     }
 
     /// How far `text` reaches when laid out in `font`, in the logical pixels
@@ -114,9 +114,11 @@ impl<'a> TextGlyphs<'a> {
     /// The shaper caches the shaped buffer, so asking this and then
     /// [`TextGlyphs::line`] for the same run shapes once.
     pub fn measure(&mut self, text: &str, font: GlyphFont) -> Size {
-        // Empty text answers inside `shape`, which is where every entry point
-        // into the measurer answers it — this one needs no guard of its own.
-        self.cosmic.shape(request(text, font), WrapFloor::Skip).size
+        // The measuring half of the same edge [`Self::line`] answers: a run
+        // with nothing to shape reaches to nothing.
+        request(text, font).map_or(Size::ZERO, |request| {
+            self.cosmic.root(request, WrapFloor::Skip).size
+        })
     }
 
     /// The bitmap for one glyph, or `None` where the face cannot produce an
@@ -130,8 +132,9 @@ impl<'a> TextGlyphs<'a> {
     }
 }
 
-/// One unwrapped line's shape request.
-fn request(text: &str, font: GlyphFont) -> TextShapeRequest<'_> {
+/// One unwrapped line's shape request, or `None` where there is nothing
+/// to shape.
+fn request(text: &str, font: GlyphFont) -> Option<TextShapeRequest<'_>> {
     TextShapeRequest::unbounded(text, font)
 }
 

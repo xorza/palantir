@@ -80,8 +80,22 @@ fn slot_at(widget_id: WidgetId, ordinal: u16) -> TextRunSlot {
 /// Measure through the mono fallback. Mints no shaped buffer, so every
 /// run it measures carries the invalid sentinel.
 fn mono_shape(text: &str, shape: TestShape, fit: LineFit) -> TestMeasure {
-    let root = mono::measure(shape.request(text, fit), WrapFloor::Scan);
-    TestMeasure::new(root, TextShapeKey::INVALID)
+    let request = shape.request(text, fit);
+    // Size and line count come off the metric's own layout: these cases
+    // pin mono's arithmetic, and a *bounded* resolve reports no line count
+    // through any shaper path. The wrap floor still comes off the root,
+    // which is the only shape that has one.
+    let laid = mono::test_support::layout_of(request);
+    TestMeasure {
+        size: laid.size,
+        key: TextShapeKey::INVALID,
+        intrinsic_min: request
+            .max_width_px()
+            .is_none()
+            .then(|| mono::root(request, WrapFloor::Scan).intrinsic_min)
+            .flatten(),
+        single_line: laid.single_line,
+    }
 }
 
 /// A truncating measure and the unbounded probe it cuts from. Truncation

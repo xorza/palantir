@@ -33,9 +33,9 @@ pub(super) fn frame(h: &mut UiHarness, f: impl FnMut(&mut Ui)) -> Damage {
             ..
         }) => Damage::Full,
         Some(RenderPlan {
-            kind: RenderKind::Partial { region },
+            kind: RenderKind::Partial { damage },
             ..
-        }) => Damage::Partial(region),
+        }) => Damage::Partial(damage),
     }
 }
 

@@ -13,6 +13,7 @@
 //! got written.
 
 use crate::common::expiry_wheel::TicketSeq;
+use crate::primitives::size::Size;
 use crate::text::key::TextShapeKey;
 use crate::text::root::TextRoot;
 use cosmic_text::Buffer;
@@ -23,11 +24,9 @@ pub(super) struct CacheEntry {
     /// Shaped buffer. Looked up by [`TextShapeKey`] at render time so the
     /// text backend can build a `TextArea` without reshaping.
     pub(super) buffer: Buffer,
-    /// What this buffer measured to. A bounded entry's floor is `None`
-    /// and its single-line flag describes the resolve rather than the
-    /// run; both are inert, since only the unbounded root's copy is ever
-    /// read back.
-    pub(super) root: TextRoot,
+    /// What this buffer measured to, in whichever of the two kinds its
+    /// key names — see [`CachedExtent`].
+    pub(super) extent: CachedExtent,
     /// x of the block's left edge in buffer space — what every reader
     /// subtracts to put the block's own origin at 0.
     ///
@@ -79,3 +78,58 @@ impl CacheEntry {
             .expect("truncation requires the cached unbounded shape")
     }
 }
+
+/// What one cached buffer measured to.
+///
+/// The two kinds of shape answer different questions, and keeping them
+/// apart is what stops a reader taking one for the other. An **unbounded**
+/// buffer is a run's [`TextRoot`]: an extent plus the wrapping floor and
+/// the single-line flag every wrap policy reasons from. A **bounded** one
+/// answers an extent and nothing else — it never scanned for a floor, and
+/// its line count describes the resolve rather than the run. Storing the
+/// distinction rather than a `TextRoot` with two inert fields is what lets
+/// every reader take what it needs without knowing by convention which
+/// half of the value applies to it.
+///
+/// Which kind an entry is follows from its key alone: a bounded key names
+/// a bounded shape. [`Self::root`] asserts that pairing rather than
+/// answering for a mismatch.
+#[derive(Clone, Copy, Debug)]
+pub(super) enum CachedExtent {
+    Root(TextRoot),
+    Bounded(Size),
+}
+
+impl CachedExtent {
+    /// Extent of the shaped block — the one answer both kinds have.
+    pub(super) fn size(self) -> Size {
+        match self {
+            Self::Root(root) => root.size,
+            Self::Bounded(size) => size,
+        }
+    }
+
+    /// The run's unbounded root. Reached only through an unbounded key,
+    /// so a bounded entry here is a wiring bug rather than a case to
+    /// answer with a floorless stand-in.
+    pub(super) fn root(self) -> TextRoot {
+        match self {
+            Self::Root(root) => root,
+            Self::Bounded(_) => panic!("{BOUNDED_AS_ROOT}"),
+        }
+    }
+
+    /// The root, mutably — for the one writer there is, the wrap-floor
+    /// backfill on a resident entry shaped without the scan.
+    pub(super) fn root_mut(&mut self) -> &mut TextRoot {
+        match self {
+            Self::Root(root) => root,
+            Self::Bounded(_) => panic!("{BOUNDED_AS_ROOT}"),
+        }
+    }
+}
+
+/// What reading a bounded entry as a root means, stated once for the two
+/// accessors that can meet it.
+const BOUNDED_AS_ROOT: &str = "a bounded shape has no wrapping floor and no line count of the run: \
+     the key that reached this entry should have been the unbounded one";

@@ -8,7 +8,7 @@
 
 use bitflags::bitflags;
 
-use crate::input::keyboard::{Key, KeyPress};
+use crate::input::keyboard::{Key, KeyPress, KeyboardEvent};
 
 /// What kind of thing a key press *is*. Exactly one class per press.
 ///
@@ -155,6 +155,27 @@ impl KeyFilter {
         })
     }
 
+    /// `event` back when this filter takes its class, `None` otherwise.
+    ///
+    /// **The gate a reader applies to the stream it drains**, not only to
+    /// the scope it declares. The stream is the whole layer's, so a field
+    /// that told every other reader it does not take a class — a
+    /// [`TextEdit`](crate::TextEdit) with `escape_falls_through` — would
+    /// otherwise go on acting on it anyway, while the container the class
+    /// was yielded to acts on it too. One press, handled twice, which is
+    /// the exact double dispatch scopes exist to prevent.
+    ///
+    /// One place rather than one per drain: a field's key pass and its
+    /// context menu read the same stream through the same filter.
+    #[inline]
+    pub fn accepts(self, event: KeyboardEvent) -> Option<KeyboardEvent> {
+        let class = match event {
+            KeyboardEvent::Down(keypress) => KeyClass::of(keypress),
+            KeyboardEvent::Text(_) => KeyClass::Text,
+        };
+        self.takes(class).then_some(event)
+    }
+
     /// A scope declaring nothing is not a scope: [`Self::empty`] is how
     /// "this node is not a scope" is stored, which is what lets the
     /// filter live in spare [`crate::scene::node::node_flags::NodeFlags`]
@@ -162,5 +183,54 @@ impl KeyFilter {
     #[inline]
     pub(crate) fn is_scope(self) -> bool {
         !self.is_empty()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::input::key_class::{KeyClass, KeyFilter};
+    use crate::input::keyboard::{Key, KeyPress, KeyboardEvent, Modifiers, TextChunk};
+
+    fn press(key: Key, mods: Modifiers) -> KeyPress {
+        KeyPress {
+            key,
+            mods,
+            repeat: false,
+            physical: key,
+        }
+    }
+
+    /// `accepts` is `takes` over a whole event: it classifies a press the
+    /// way [`KeyClass::of`] does and reads a text commit as
+    /// [`KeyClass::Text`], so one gate covers both arms of the stream.
+    #[test]
+    fn accepts_gates_both_arms_of_the_stream_on_the_declared_classes() {
+        let field = KeyFilter::TEXT_FIELD;
+        let commit = KeyboardEvent::Text(TextChunk::new("a").expect("a one-char chunk fits"));
+        let escape = KeyboardEvent::Down(press(Key::Escape, Modifiers::default()));
+
+        assert_eq!(field.accepts(commit), Some(commit), "a field takes text");
+        assert_eq!(field.accepts(escape), Some(escape), "and Escape, to cancel");
+
+        // Dropping one class drops exactly that class — the shape
+        // `TextEdit::escape_falls_through` produces, and the reason its
+        // key pass and its context menu apply the same filter.
+        let yields_escape = field.difference(KeyFilter::ESCAPE);
+        assert_eq!(yields_escape.accepts(escape), None);
+        assert_eq!(yields_escape.accepts(commit), Some(commit));
+
+        // `ACCEL` is out of `TEXT_FIELD`, so an application chord walks
+        // past a focused field while the bare key it shares still types.
+        let save = press(
+            Key::Char('S'),
+            Modifiers {
+                ctrl: true,
+                ..Modifiers::default()
+            },
+        );
+        assert_eq!(KeyClass::of(save), KeyClass::Accel);
+        assert_eq!(field.accepts(KeyboardEvent::Down(save)), None);
+        let typed = KeyboardEvent::Down(press(Key::Char('S'), Modifiers::default()));
+        assert_eq!(field.accepts(typed), Some(typed));
     }
 }

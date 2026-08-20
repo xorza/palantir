@@ -6,6 +6,7 @@ use crate::primitives::lut_row::LutRow;
 use crate::renderer::gradient_atlas::{
     CpuGradientAtlas, DEFAULT_MAX_ATLAS_ROWS, FlushedRows, MAX_ATLAS_ROWS,
 };
+use crate::renderer::texture_limit::TextureLimit;
 use std::cell::RefCell;
 use std::num::NonZeroU32;
 use std::rc::Rc;
@@ -23,8 +24,9 @@ impl SharedGradientAtlas {
     /// and the hardware number is far above any sane frame. `None`
     /// (deviceless tests, benches) falls back to
     /// [`DEFAULT_MAX_ATLAS_ROWS`].
-    pub(crate) fn new(max_texture_dimension_2d: Option<NonZeroU32>) -> Self {
-        let max_rows = max_texture_dimension_2d
+    pub(crate) fn new(texture_limit: TextureLimit) -> Self {
+        let max_rows = texture_limit
+            .max_dimension()
             .map_or(DEFAULT_MAX_ATLAS_ROWS, NonZeroU32::get)
             .min(MAX_ATLAS_ROWS);
         Self {

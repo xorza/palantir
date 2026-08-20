@@ -2,17 +2,18 @@
 //! [`crate::layout::scroll::arrange`].
 
 use crate::Ui;
+use crate::layout::types::layout_mode::ScrollSpec;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::node::Configure;
+use crate::scene::node::{Configure, Node};
 use crate::ui::harness::UiHarness;
 use crate::widgets::frame::Frame;
 use crate::widgets::grid::Grid;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
-use glam::UVec2;
+use glam::{BVec2, UVec2};
 
 const SURFACE: UVec2 = UVec2::new(400, 300);
 
@@ -402,4 +403,110 @@ fn hug_scroll_drives_the_hug_grid_column_it_sits_in() {
         cell.size.w, CONTENT_W,
         "a Hug column must resolve to the Hug scroll's content width, not collapse to zero",
     );
+}
+
+/// **A scroll viewport takes the slot it is placed in, whichever driver
+/// places it.**
+///
+/// Its `desired` follows the content it scrolls — that is what lets a `Hug`
+/// wrapper size to it — so a bounded parent hands one a slot smaller than
+/// the desired it measured. The viewport clips, so it must not overflow that
+/// slot the way an ordinary node does.
+///
+/// One case per placing driver, because the clamp used to live inside
+/// `zstack::arrange`: a bare scroll node in a Grid or a stack's cross axis
+/// got no clamp at all, and `TextEdit` is exactly such a node. A stack's
+/// *main* axis is the one placement `AxisPlacement` does not own — its flex
+/// solver shrinks against the zero min-content a panned scroll reports — so
+/// it is covered here too, as the same outcome by another route.
+///
+/// Canvas is deliberately absent: on a `Hug` axis its slot *is* the child's
+/// own desired (a canvas takes its size from the children it positions, so
+/// it has no independent room to pull a viewport into), and on a sized axis
+/// it hands `inner`, which the measure pass already bounded the desired
+/// against. The clamp is the identity either way.
+#[test]
+fn a_scroll_viewport_takes_its_slot_under_every_driver_that_places_one() {
+    const SLOT: Size = Size { w: 200.0, h: 100.0 };
+    const CONTENT: Size = Size { w: 400.0, h: 400.0 };
+    const SCROLL: &str = "bare-scroll";
+
+    /// A bare `Node::scroll`, not the `Scroll` widget: the widget wraps its
+    /// viewport in a ZStack of its own, which is the one driver that always
+    /// clamped. `TextEdit` records the bare form, and this is its shape.
+    fn record_scroll(ui: &mut Ui) {
+        // `fit` on both panned axes is what makes a `Hug` scroll report its
+        // content extent — the state whose desired can outgrow the slot.
+        let mut node = Node::scroll(ScrollSpec::BOTH.with_fit(BVec2::TRUE));
+        node.size = Some((Sizing::HUG, Sizing::HUG).into());
+        ui.widget(node.id(WidgetId::from_hash(SCROLL)))
+            .record(ui, None, |ui| {
+                Frame::new()
+                    .id(WidgetId::from_hash("content"))
+                    .size((Sizing::fixed(CONTENT.w), Sizing::fixed(CONTENT.h)))
+                    .show(ui);
+            });
+    }
+
+    for driver in ["zstack", "hstack", "vstack", "grid"] {
+        let mut h = UiHarness::new(SURFACE);
+        h.frame(|ui| {
+            let parent = WidgetId::from_hash("parent");
+            // **Hug capped by `max_size`, not `Fixed`.** A Hug axis measures
+            // its children against `INFINITY`, so the scroll's desired is its
+            // content's; the cap is then what makes the slot smaller than
+            // that desired. A Fixed parent bounds the measure instead and
+            // never reaches the placement this is about.
+            let sized = (Sizing::HUG, Sizing::HUG);
+            let cap = (SLOT.w, SLOT.h);
+            match driver {
+                "zstack" => {
+                    Panel::zstack()
+                        .id(parent)
+                        .size(sized)
+                        .max_size(cap)
+                        .show(ui, record_scroll);
+                }
+                "hstack" => {
+                    Panel::hstack()
+                        .id(parent)
+                        .size(sized)
+                        .max_size(cap)
+                        .show(ui, record_scroll);
+                }
+                "vstack" => {
+                    Panel::vstack()
+                        .id(parent)
+                        .size(sized)
+                        .max_size(cap)
+                        .show(ui, record_scroll);
+                }
+                _ => {
+                    Grid::new()
+                        .id(parent)
+                        .size(sized)
+                        .max_size(cap)
+                        .cols([Track::hug()])
+                        .rows([Track::hug()])
+                        .show(ui, record_scroll);
+                }
+            }
+        });
+        let scroll_id = WidgetId::from_hash(SCROLL);
+        let rect =
+            h.ui.response_for(scroll_id)
+                .rect
+                .expect("the scroll arranged");
+        assert_eq!(
+            (rect.size.w, rect.size.h),
+            (SLOT.w, SLOT.h),
+            "{driver}: a viewport measuring {CONTENT:?} must still take its {SLOT:?} slot",
+        );
+        let endpoint = h.ui.cascade.endpoint(scroll_id).expect("scroll endpoint");
+        assert_eq!(
+            h.ui.layout.scroll_content(endpoint),
+            CONTENT,
+            "{driver}: and still record the full content extent for its bars",
+        );
+    }
 }

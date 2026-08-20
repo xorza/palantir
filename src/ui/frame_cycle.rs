@@ -323,7 +323,7 @@ impl<'a> FrameCycle<'a> {
         // Record-scoped input ownership and wake watches.
         self.ui.input.begin_record(&self.ui.cascade);
         // Re-asserted by whoever still wants the cursor this pass.
-        self.ui.window_requests.cursor = CursorIcon::default();
+        self.ui.window_requests.levels.cursor = CursorIcon::default();
     }
 
     /// Record-half of a pass: finalize hashes, run measure / arrange,

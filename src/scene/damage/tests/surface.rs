@@ -167,7 +167,7 @@ fn popup_eater_does_not_force_full_repaint() {
             .show(ui);
     });
     let Some(RenderPlan {
-        kind: RenderKind::Partial { region },
+        kind: RenderKind::Partial { damage },
         ..
     }) = out.plan
     else {
@@ -178,9 +178,9 @@ fn popup_eater_does_not_force_full_repaint() {
         );
     };
     assert!(
-        region.coverage < 0.5,
+        damage.coverage < 0.5,
         "damage region covers {:.1}% of surface — eater leaked into damage",
-        100.0 * region.coverage
+        100.0 * damage.coverage
     );
 }
 
@@ -288,7 +288,7 @@ fn damage_filter_returns_partial_when_small() {
         .iter_rects()
         .next()
         .expect("single-leaf change → some damage");
-    assert_eq!(Damage::new(h.damage_region()), Damage::Partial(r.into()),);
+    assert_eq!(Damage::new(h.collapsed_damage()).expect_partial(), r.into());
 }
 
 // DamageEngine rects must be in *screen space*. When an ancestor has a
@@ -343,9 +343,7 @@ fn offscreen_node_scrolling_into_view_is_covered_and_stays_sound() {
     // curr-extent push covers its pixels and the insert leg snapshots
     // it now that it's visible.
     let damage = frame(&mut h, |ui| build(-100.0, Some(RED), ui));
-    let Damage::Partial(region) = damage else {
-        panic!("expected Partial, got {damage:?}");
-    };
+    let region = damage.expect_partial();
     let covers_c = region
         .iter_rects()
         .any(|r| r.min.x <= 100.5 && r.max().x >= 200.0 - 0.5 && r.max().y >= 40.0 - 0.5);
@@ -363,9 +361,7 @@ fn offscreen_node_scrolling_into_view_is_covered_and_stays_sound() {
     // joins the prev-extent fold, so its old pixels at (100..200)
     // repaint alongside the new position.
     let damage = frame(&mut h, |ui| build(-200.0, Some(RED), ui));
-    let Damage::Partial(region) = damage else {
-        panic!("expected Partial, got {damage:?}");
-    };
+    let region = damage.expect_partial();
     for (label, probe) in [
         ("old", Rect::new(150.0, 0.0, 10.0, 40.0)),
         ("new", Rect::new(50.0, 0.0, 10.0, 40.0)),
@@ -380,9 +376,7 @@ fn offscreen_node_scrolling_into_view_is_covered_and_stays_sound() {
     // Content change on "c" (now snapshotted, at 0..100): the walk
     // descends and the changed-paints arm damages its rect.
     let damage = frame(&mut h, |ui| build(-200.0, Some(BLUE), ui));
-    let Damage::Partial(region) = damage else {
-        panic!("expected Partial, got {damage:?}");
-    };
+    let region = damage.expect_partial();
     let rects: Vec<Rect> = region.iter_rects().collect();
     assert_eq!(
         rects,
@@ -395,7 +389,9 @@ fn offscreen_node_scrolling_into_view_is_covered_and_stays_sound() {
     let damage = frame(&mut h, |ui| build(-200.0, None, ui));
     let covers_removed = match damage {
         Damage::Full => true,
-        Damage::Partial(region) => region.any_intersects(Rect::new(50.0, 0.0, 10.0, 40.0)),
+        Damage::Partial(damage) => damage
+            .region
+            .any_intersects(Rect::new(50.0, 0.0, 10.0, 40.0)),
         Damage::Skip => false,
     };
     assert!(
@@ -435,11 +431,7 @@ fn no_damage_means_skip() {
 fn damage_filter_threshold_cases() {
     use crate::scene::damage::region::{DEFAULT_PASS_BUDGET_PX, DamageRegion};
     fn region(rects: &[Rect]) -> DamageRegion {
-        let mut r = DamageRegion::default();
-        for rect in rects {
-            r.add(*rect);
-        }
-        r
+        DamageRegion::from_rects(rects)
     }
     // Adjacent halves on the 100×100 surface — a perfectly adjacent
     // pair has `union_excess = bbox − a − b = 0`, below any positive
@@ -460,42 +452,46 @@ fn damage_filter_threshold_cases() {
         Rect::new(0.0, 0.0, 36.0, 100.0),
         Rect::new(36.0, 0.0, 36.0, 100.0),
     ];
-    let cases: &[(&str, &[Rect], Rect, Damage)] = &[
+    // Expected damage as "which outcome, and — for a partial — which
+    // rects". The whole `Damage` is not the comparison: it carries the
+    // coverage the frame measured, which these rect literals have no way
+    // to state.
+    let cases: &[(&str, &[Rect], Rect, Option<DamageRegion>)] = &[
         (
             "small_1pct",
             &[Rect::new(0.0, 0.0, 10.0, 10.0)],
             TEST_SURFACE,
-            Damage::Partial(Rect::new(0.0, 0.0, 10.0, 10.0).into()),
+            Some(Rect::new(0.0, 0.0, 10.0, 10.0).into()),
         ),
         (
             "large_81pct_above_threshold",
             &[Rect::new(0.0, 0.0, 90.0, 90.0)],
             TEST_SURFACE,
-            Damage::Full,
+            None,
         ),
         (
             "below_threshold_64pct_stays_partial",
             &[Rect::new(0.0, 0.0, 80.0, 80.0)],
             TEST_SURFACE,
-            Damage::Partial(Rect::new(0.0, 0.0, 80.0, 80.0).into()),
+            Some(Rect::new(0.0, 0.0, 80.0, 80.0).into()),
         ),
         (
             "exact_70pct_stays_partial",
             &[Rect::new(0.0, 0.0, 70.0, 100.0)],
             TEST_SURFACE,
-            Damage::Partial(Rect::new(0.0, 0.0, 70.0, 100.0).into()),
+            Some(Rect::new(0.0, 0.0, 70.0, 100.0).into()),
         ),
         (
             "two_rect_sum_at_threshold_stays_partial",
             &PAIR_BELOW,
             TEST_SURFACE,
-            Damage::Partial(region(&PAIR_BELOW)),
+            Some(region(&PAIR_BELOW)),
         ),
         (
             "two_rect_sum_above_threshold_escalates_full",
             &PAIR_ABOVE,
             TEST_SURFACE,
-            Damage::Full,
+            None,
         ),
         // Zero-area-surface case dropped: `collapse_from` now asserts
         // `surface_area > EPS` (host filters resize-to-zero before we
@@ -503,8 +499,14 @@ fn damage_filter_threshold_cases() {
         // became unreachable.
     ];
     for (label, rects, surface, want) in cases {
-        let region = DamageRegion::collapse_from(rects, DEFAULT_PASS_BUDGET_PX, *surface);
-        assert_eq!(Damage::new(region), *want, "case: {label}");
+        let collapsed = DamageRegion::collapse_from(rects, DEFAULT_PASS_BUDGET_PX, *surface);
+        match (Damage::new(collapsed), want) {
+            (damage, Some(want)) => {
+                assert_eq!(damage.expect_partial(), *want, "case: {label}")
+            }
+            (Damage::Full, None) => {}
+            (other, None) => panic!("case: {label}: expected Full, got {other:?}"),
+        }
     }
 }
 
@@ -715,7 +717,7 @@ fn stable_surface_does_not_short_circuit() {
     // proves the surface-change short-circuit didn't fire.
     let changed = h.frame(|ui| build(ui, RED)).plan;
     let Some(RenderPlan {
-        kind: RenderKind::Partial { region },
+        kind: RenderKind::Partial { damage },
         ..
     }) = changed
     else {
@@ -726,8 +728,8 @@ fn stable_surface_does_not_short_circuit() {
     };
     // DamageEngine rect = the 50×50 frame's rect. Well below 50% of 200×200.
     assert!(
-        region.coverage < 0.5,
-        "damage region should be small (partial repaint range), got {region:?}",
+        damage.coverage < 0.5,
+        "damage region should be small (partial repaint range), got {damage:?}",
     );
 }
 
@@ -754,15 +756,15 @@ fn partial_when_oversized_rect_lies_mostly_off_surface() {
         Rect::new(90.0, 90.0, 10.0, 10.0),
         "sanity: 1000×1000 rect at (90,90) intersects surface in a 10×10 corner",
     );
-    let region = DamageRegion::collapse_from(&[oversized], f32::INFINITY, surface);
+    let collapsed = DamageRegion::collapse_from(&[oversized], f32::INFINITY, surface);
     // Region stores the clipped rect, not the raw input.
-    let stored: Vec<_> = region.iter_rects().collect();
+    let stored: Vec<_> = collapsed.region.iter_rects().collect();
     assert_eq!(
         stored,
         vec![Rect::new(90.0, 90.0, 10.0, 10.0)],
         "collapse_from must store the surface-clipped rect, not the raw input",
     );
-    let damage = Damage::new(region);
+    let damage = Damage::new(collapsed);
     assert!(
         matches!(damage, Damage::Partial(_)),
         "off-surface inflation must not trip FULL_REPAINT_THRESHOLD; got {damage:?}",
@@ -778,8 +780,9 @@ fn partial_when_oversized_rect_lies_mostly_off_surface() {
 fn full_when_visible_portion_covers_surface_even_if_rect_overflows() {
     let surface = Rect::new(0.0, 0.0, 100.0, 100.0);
     let covers_all_plus_overflow = Rect::new(-50.0, -50.0, 1000.0, 1000.0);
-    let region = DamageRegion::collapse_from(&[covers_all_plus_overflow], f32::INFINITY, surface);
-    let damage = Damage::new(region);
+    let collapsed =
+        DamageRegion::collapse_from(&[covers_all_plus_overflow], f32::INFINITY, surface);
+    let damage = Damage::new(collapsed);
     assert_eq!(
         damage,
         Damage::Full,
@@ -794,9 +797,9 @@ fn full_when_visible_portion_covers_surface_even_if_rect_overflows() {
 fn fully_off_surface_rect_is_dropped_from_region() {
     let surface = Rect::new(0.0, 0.0, 100.0, 100.0);
     let off_screen = Rect::new(500.0, 500.0, 50.0, 50.0);
-    let region = DamageRegion::collapse_from(&[off_screen], f32::INFINITY, surface);
+    let collapsed = DamageRegion::collapse_from(&[off_screen], f32::INFINITY, surface);
     assert!(
-        region.rects.is_empty(),
+        collapsed.region.rects.is_empty(),
         "wholly-off-surface rect must produce an empty region (no Damage::Skip vs Partial drift)",
     );
 }

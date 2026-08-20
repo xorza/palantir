@@ -3,6 +3,7 @@
 use crate::layout::axis::Axis;
 use crate::layout::axis_align_pair::AxisAlignPair;
 use crate::layout::types::align::{Align, AxisAlign};
+use crate::layout::types::layout_mode::LayoutMode;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::scene::node::bounds_extras::BoundsExtras;
@@ -32,7 +33,7 @@ impl AxisPlacement {
         let margin = axis.spacing(child.margin);
         let min = axis.main(bounds.min_size) + margin;
         let max = axis.main(bounds.max_size) + margin;
-        let desired = axis.main(desired).clamp(min, max);
+        let desired = clip_scroll_to_slot(child, axis.main(desired), slot).clamp(min, max);
         let sizing = axis.main_sizing(child.size);
         let stretch = sizing.fill_weight().is_some()
             || matches!(align, AxisAlign::Stretch) && sizing.fixed_value().is_none();
@@ -125,5 +126,30 @@ impl AxisPlacement {
             Axis::Y => Axis::X,
         };
         Self::arrange(cross_axis, cross_align, child, bounds, desired, inner_cross)
+    }
+}
+
+/// **The one node that does not overflow its slot.**
+///
+/// A non-stretching child otherwise keeps its measured extent whatever the
+/// parent reserved — the contains-content rule: a node overflows its parent
+/// rather than clipping its own content. A `Scroll` viewport is the
+/// exception, because clipping its content is exactly what it is for.
+/// `scroll::measure` reports the content extent so a `Hug` wrapper can size
+/// to it, and a `Hug` parent measures its children against `INFINITY`, so
+/// the desired that reaches placement is the content's rather than anything
+/// the slot can hold. Both axes, not just the panned ones: a viewport clips
+/// on every side, and a cross axis wider than the slot would paint outside
+/// the clip its own subtree is scissored to.
+///
+/// Stated here rather than in one driver because *every* placement goes
+/// through [`AxisPlacement::arrange`] — a scroll inside a Grid, a Canvas or
+/// a stack's cross axis used to get no such clamp, and only a ZStack's did.
+/// A stack's *main* axis needs none: its flex solver shrinks against the
+/// zero min-content a panned scroll reports.
+fn clip_scroll_to_slot(child: &LayoutCore, desired: f32, slot: f32) -> f32 {
+    match LayoutMode::from(child.meta) {
+        LayoutMode::Scroll(_) => desired.min(slot),
+        _ => desired,
     }
 }

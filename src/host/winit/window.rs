@@ -49,7 +49,7 @@ impl Window {
         // actually opened, so `Ui::vsync` is truthful before any frame runs
         // and a control writing its own value back doesn't reconfigure an
         // explicitly-configured present mode out from under the host.
-        driver.ui.window_requests.vsync = gpu::vsync_of(surface.config.present_mode);
+        driver.ui.window_requests.levels.vsync = gpu::vsync_of(surface.config.present_mode);
         Self {
             window,
             surface: surface.surface,
@@ -294,6 +294,7 @@ mod tests {
     use crate::host::shared::HostShared;
     use crate::host::window_driver::WindowDriver;
     use crate::host::winit::window::FramePresent;
+    use crate::renderer::texture_limit::TextureLimit;
     use crate::text::shaper::TextShaper;
     use crate::window::cursor_icon::CursorIcon;
     use crate::window::vsync::Vsync;
@@ -303,7 +304,7 @@ mod tests {
 
     #[test]
     fn frame_drain_collects_commands_and_applies_close_veto() {
-        let shared = HostShared::new(TextShaper::test_mono(), None);
+        let shared = HostShared::new(TextShaper::test_mono(), TextureLimit::default());
         let token = WindowToken(17);
         let mut driver = WindowDriver::builder(token, &shared).build();
         let opened = WindowToken(18);
@@ -368,7 +369,7 @@ mod tests {
     /// see `Window::set_vsync`.
     #[test]
     fn vsync_is_a_level_the_drain_copies_and_the_recorder_keeps() {
-        let shared = HostShared::new(TextShaper::test_mono(), None);
+        let shared = HostShared::new(TextShaper::test_mono(), TextureLimit::default());
         let mut driver = WindowDriver::builder(WindowToken(3), &shared).build();
         let mut commands = WindowCommands::default();
 

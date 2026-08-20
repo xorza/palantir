@@ -13,9 +13,12 @@
 //! first drain after registration — and are dropped immediately after
 //! upload; only the GPU texture persists. The pure data types live
 //! elsewhere — [`Image`] / [`ImageFit`](crate::primitives::image::ImageFit)
-//! in `primitives`, [`TextureId`] +
-//! its source in `renderer::texture_id` — so this module owns only the
-//! stateful lifecycle.
+//! in `primitives`, [`TextureId`] + its source in `renderer::texture_id`,
+//! and the device ceiling a source is measured against in
+//! [`TextureLimit`](crate::renderer::texture_limit::TextureLimit) — so this
+//! module owns only the stateful lifecycle. Registration here is
+//! infallible: `Ui::register_image` checks the ceiling before it queues
+//! anything, so a rejected image never reaches this module at all.
 //!
 //! Single-threaded `Rc<RefCell<…>>`; cheap to clone, with shared inner state.
 
@@ -23,30 +26,7 @@ use crate::primitives::image::Image;
 use crate::primitives::texture_id::TextureId;
 use crate::renderer::texture_id_source::TextureIdSource;
 use std::cell::RefCell;
-use std::fmt::{Display, Formatter};
-use std::num::NonZeroU32;
 use std::rc::Rc;
-
-/// Why an [`Image`] could not be registered for GPU upload.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct RegisterImageError {
-    /// Rejected intrinsic pixel dimensions.
-    pub size: glam::UVec2,
-    /// Maximum accepted width or height for the selected device.
-    pub max_dimension: u32,
-}
-
-impl Display for RegisterImageError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "image is {}x{} px but the device's maximum 2D texture dimension is {}",
-            self.size.x, self.size.y, self.max_dimension,
-        )
-    }
-}
-
-impl std::error::Error for RegisterImageError {}
 
 /// RAII owner of a registered image's GPU texture, returned by
 /// [`Ui::register_image`](crate::Ui::register_image). The texture lives exactly
@@ -122,7 +102,6 @@ pub(crate) struct ImageRegistry {
     /// Shared id source — also drawn from by each `GpuView` target so the two
     /// never mint colliding ids (see [`TextureIdSource`]).
     ids: TextureIdSource,
-    max_texture_dimension_2d: Option<NonZeroU32>,
 }
 
 #[derive(Debug, Default)]
@@ -141,47 +120,34 @@ struct Inner {
 impl ImageRegistry {
     /// Build a registry minting from `ids`. Shares the same [`TextureIdSource`]
     /// with `GpuView` target minting (`Ui::gpu_view`) so their ids can't collide.
-    /// `None` is reserved for standalone CPU recorders with no selected device.
-    pub(crate) fn new(ids: TextureIdSource, max_texture_dimension_2d: Option<NonZeroU32>) -> Self {
+    pub(crate) fn new(ids: TextureIdSource) -> Self {
         Self {
             inner: Rc::new(RefCell::new(Inner::default())),
             ids,
-            max_texture_dimension_2d,
         }
     }
 
-    /// The selected device's `max_texture_dimension_2d` — the one ceiling
-    /// [`Self::register`] enforces, and the only one this crate has. `None`
-    /// for a standalone CPU recorder, which has no device to ask and so
-    /// accepts any dimensions.
-    pub(crate) fn max_texture_dimension_2d(&self) -> Option<NonZeroU32> {
-        self.max_texture_dimension_2d
-    }
-
-    /// Upload `image` and return an owning [`ImageHandle`]. The texture
-    /// lives until the returned handle (and every clone of it) is
+    /// Queue `image` for upload and return an owning [`ImageHandle`]. The
+    /// texture lives until the returned handle (and every clone of it) is
     /// dropped. Each call uploads independently — share one image across
     /// call sites by cloning the handle, not by re-registering.
-    pub(crate) fn register(&self, image: Image) -> Result<ImageHandle, RegisterImageError> {
+    ///
+    /// Infallible: the device ceiling is
+    /// [`TextureLimit`](crate::renderer::texture_limit::TextureLimit)'s to
+    /// enforce, and `Ui::register_image` applies it before calling this —
+    /// so the id is minted and the queue borrowed only once the image is
+    /// known to be acceptable.
+    pub(crate) fn register(&self, image: Image) -> ImageHandle {
         let size = image.size;
-        let mut inner = self.inner.borrow_mut();
-        if let Some(max_dimension) = self.max_texture_dimension_2d.map(NonZeroU32::get)
-            && (size.x > max_dimension || size.y > max_dimension)
-        {
-            return Err(RegisterImageError {
-                size,
-                max_dimension,
-            });
-        }
         let id = self.ids.reserve();
-        inner.pending.push((id, image));
-        Ok(ImageHandle {
+        self.inner.borrow_mut().pending.push((id, image));
+        ImageHandle {
             inner: Rc::new(ImageToken {
                 id,
                 size,
                 shared: Rc::clone(&self.inner),
             }),
-        })
+        }
     }
 
     /// Drain images needing GPU upload, calling `upload` for each. The
@@ -213,15 +179,13 @@ impl ImageRegistry {
 
 #[cfg(test)]
 mod tests {
-    use crate::renderer::image_registry::*;
+    use crate::primitives::image::Image;
+    use crate::primitives::texture_id::TextureId;
+    use crate::renderer::image_registry::ImageRegistry;
     use crate::renderer::texture_id_source::TextureIdSource;
-    use std::num::NonZeroU32;
 
-    fn reg(max_dimension: u32) -> ImageRegistry {
-        ImageRegistry::new(
-            TextureIdSource::default(),
-            Some(NonZeroU32::new(max_dimension).unwrap()),
-        )
+    fn reg() -> ImageRegistry {
+        ImageRegistry::new(TextureIdSource::default())
     }
 
     fn img(w: u32, h: u32) -> Image {
@@ -230,14 +194,9 @@ mod tests {
 
     #[test]
     fn register_queues_one_upload_and_unique_ids() {
-        let reg = ImageRegistry::new(TextureIdSource::default(), None);
-        assert_eq!(
-            reg.max_texture_dimension_2d(),
-            None,
-            "a deviceless registry reports the ceiling it enforces: none"
-        );
-        let a = reg.register(img(2, 3)).unwrap();
-        let b = reg.register(img(4, 5)).unwrap();
+        let reg = reg();
+        let a = reg.register(img(2, 3));
+        let b = reg.register(img(4, 5));
         // Distinct registrations get distinct ids, both nonzero.
         assert_ne!(a.id(), b.id());
         assert_ne!(a.id().0, 0);
@@ -251,40 +210,9 @@ mod tests {
     }
 
     #[test]
-    fn registration_rejects_dimension_overflow_before_queueing() {
-        let reg = reg(4);
-        // What the accessor answers is exactly what registration enforces
-        // below — a caller sizing a downscale against it must land on the
-        // largest image that still registers, not one past it.
-        assert_eq!(reg.max_texture_dimension_2d(), NonZeroU32::new(4));
-        let accepted = reg.register(img(4, 4)).unwrap();
-        assert_eq!(
-            accepted.id(),
-            TextureId(1),
-            "rejection must not consume an id"
-        );
-        for size in [glam::UVec2::new(5, 1), glam::UVec2::new(1, 5)] {
-            assert_eq!(
-                reg.register(img(size.x, size.y)).unwrap_err(),
-                RegisterImageError {
-                    size,
-                    max_dimension: 4,
-                },
-            );
-        }
-        let next = reg.register(img(1, 1)).unwrap();
-        assert_eq!(next.id(), TextureId(2), "rejections must not consume ids");
-
-        let mut uploaded = Vec::new();
-        reg.drain_pending(|id, _| uploaded.push(id));
-        assert_eq!(uploaded, vec![accepted.id(), next.id()]);
-    }
-
-    #[test]
     fn dimensions_above_u16_are_preserved() {
         const WIDTH: u32 = u16::MAX as u32 + 1;
-        let reg = reg(WIDTH);
-        let handle = reg.register(img(WIDTH, 1)).unwrap();
+        let handle = reg().register(img(WIDTH, 1));
         assert_eq!(handle.size(), glam::UVec2::new(WIDTH, 1));
     }
 
@@ -298,8 +226,8 @@ mod tests {
 
     #[test]
     fn dropping_last_handle_queues_release() {
-        let reg = reg(1);
-        let h = reg.register(img(1, 1)).unwrap();
+        let reg = reg();
+        let h = reg.register(img(1, 1));
         let id = h.id();
         reg.drain_pending(|_, _| {});
         // A live clone keeps it alive: no release queued yet.
@@ -314,5 +242,15 @@ mod tests {
         assert_eq!(freed, vec![id]);
         reg.drain_dropped(|id| freed.push(id));
         assert_eq!(freed, vec![id], "drain consumes dropped");
+    }
+
+    /// The ceiling lives on `TextureLimit` and is applied by
+    /// `Ui::register_image`, so a rejection never consumes an id here —
+    /// pinned end to end in `ui::tests`.
+    #[test]
+    fn ids_are_minted_in_registration_order() {
+        let reg = reg();
+        assert_eq!(reg.register(img(1, 1)).id(), TextureId(1));
+        assert_eq!(reg.register(img(1, 1)).id(), TextureId(2));
     }
 }

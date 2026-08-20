@@ -127,7 +127,7 @@ fn run_and_ack(h: &mut UiHarness, mut record: impl FnMut(&mut Ui)) {
 }
 
 fn damage_kind(h: &UiHarness) -> &'static str {
-    match Damage::new(h.damage_region()) {
+    match Damage::new(h.collapsed_damage()) {
         Damage::Skip => "skip",
         Damage::Full => "full",
         Damage::Partial(_) => "partial",
@@ -671,7 +671,7 @@ fn bench_paint_order_inversion(c: &mut Criterion) {
                 flipped = !flipped;
                 let order = if flipped { &raised } else { &flat };
                 run_and_ack(&mut h, |ui| build_ordered_siblings(ui, order));
-                black_box(h.damage_region());
+                black_box(h.collapsed_damage());
             });
         });
     }

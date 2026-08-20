@@ -15,7 +15,7 @@ use crate::layout::types::align::HAlign;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::text::cosmic::ShapedRun;
-use crate::text::request::TextShapeRequest;
+use crate::text::key::TextShapeKey;
 use crate::text::shaper::ShaperInner;
 use std::cell::RefMut;
 use std::ops::Range;
@@ -40,19 +40,26 @@ use unicode_segmentation::UnicodeSegmentation;
 pub struct TextProbe<'a> {
     /// Extent of the shaped run. `Size::ZERO` for empty text.
     size: Size,
-    pub(super) request: TextShapeRequest<'a>,
+    /// The run's source bytes — what byte↔grapheme conversion walks.
+    text: &'a str,
+    /// Key of the buffer this probe answers against. Carried even where
+    /// no buffer was shaped (empty text, the gated mono metric), because
+    /// the metrics every answer is expressed in live on it.
+    key: TextShapeKey,
     inner: RefMut<'a, ShaperInner>,
 }
 
 impl<'a> TextProbe<'a> {
     pub(super) fn new(
         size: Size,
-        request: TextShapeRequest<'a>,
+        text: &'a str,
+        key: TextShapeKey,
         inner: RefMut<'a, ShaperInner>,
     ) -> Self {
         Self {
             size,
-            request,
+            text,
+            key,
             inner,
         }
     }
@@ -66,7 +73,7 @@ impl<'a> TextProbe<'a> {
     /// for a caller comparing "is this the same string as last frame?"
     /// without retaining a copy of it.
     pub fn text_hash(&self) -> u64 {
-        self.request.key.text_hash
+        self.key.text_hash
     }
 
     /// Shaped run behind this layout; `None` on the gated mono metric
@@ -77,7 +84,7 @@ impl<'a> TextProbe<'a> {
     /// takes [`ShapedRun::left`] off the buffer's own x, or adds it back
     /// when going the other way.
     fn shaped(&self) -> Option<ShapedRun<'_>> {
-        self.inner.cosmic()?.shaped_run(self.request.key)
+        self.inner.cosmic()?.shaped_run(self.key)
     }
 
     /// Caret-x for a layout with no shaped buffer.
@@ -104,13 +111,13 @@ impl<'a> TextProbe<'a> {
         #[cfg(any(test, feature = "internals"))]
         if self.inner.cosmic().is_none() {
             return crate::text::mono::single_line_caret_x(
-                self.request.text,
+                self.text,
                 byte_offset,
-                self.request.key.font_size_px(),
+                self.key.font_size_px(),
             );
         }
         assert!(
-            self.request.text.is_empty(),
+            self.text.is_empty(),
             "a non-empty run with no shaped buffer requires the mono metric \
              (caret at byte {byte_offset})",
         );
@@ -123,14 +130,10 @@ impl<'a> TextProbe<'a> {
     fn unshaped_byte_at(&self, target_x: f32) -> usize {
         #[cfg(any(test, feature = "internals"))]
         if self.inner.cosmic().is_none() {
-            return crate::text::mono::nearest_byte(
-                self.request.text,
-                target_x,
-                self.request.key.font_size_px(),
-            );
+            return crate::text::mono::nearest_byte(self.text, target_x, self.key.font_size_px());
         }
         assert!(
-            self.request.text.is_empty(),
+            self.text.is_empty(),
             "a non-empty run with no shaped buffer requires the mono metric \
              (hit-test at x {target_x})",
         );
@@ -150,9 +153,9 @@ impl<'a> TextProbe<'a> {
     /// right edge, and an offset interior to a ligature or Indic cluster
     /// interpolates across the cluster instead of jumping to its far end.
     pub fn caret_at(&self, byte_offset: usize) -> Caret {
-        let line_height_px = self.request.key.line_height_px();
-        let halign = self.request.key.halign();
-        let target = cursor_from_byte(self.request.text, byte_offset);
+        let line_height_px = self.key.line_height_px();
+        let halign = self.key.halign();
+        let target = cursor_from_byte(self.text, byte_offset);
         let Some(ShapedRun { buffer, left }) = self.shaped() else {
             // No shaped buffer means empty text (block-local x is 0, and
             // the owner aligns the empty block itself) or the mono metric.
@@ -216,8 +219,8 @@ impl<'a> TextProbe<'a> {
             // hit-test → caret round trip landing where it started.
             Some(ShapedRun { buffer, left }) => buffer
                 .hit(x + left, y)
-                .map(|cursor| cursor_to_byte(self.request.text, cursor))
-                .unwrap_or(self.request.text.len()),
+                .map(|cursor| cursor_to_byte(self.text, cursor))
+                .unwrap_or(self.text.len()),
             None => self.unshaped_byte_at(x),
         }
     }
@@ -239,16 +242,11 @@ impl<'a> TextProbe<'a> {
             // empty text collapses it to nothing.
             let x0 = self.unshaped_caret_x(range.start);
             let x1 = self.unshaped_caret_x(range.end);
-            out(Rect::new(
-                x0,
-                0.0,
-                x1 - x0,
-                self.request.key.line_height_px(),
-            ));
+            out(Rect::new(x0, 0.0, x1 - x0, self.key.line_height_px()));
             return;
         };
-        let start = cursor_from_byte(self.request.text, range.start);
-        let end = cursor_from_byte(self.request.text, range.end);
+        let start = cursor_from_byte(self.text, range.start);
+        let end = cursor_from_byte(self.text, range.end);
         for run in buffer.layout_runs() {
             push_run_selection_rects(&run, start, end, left, &mut out);
         }
@@ -378,6 +376,18 @@ pub(crate) mod test_support {
         /// `src/text/`.
         pub(crate) fn buffer_for_test(&self) -> Option<&cosmic_text::Buffer> {
             self.shaped().map(|shaped| shaped.buffer)
+        }
+
+        /// The key a caller can replay this run through, or
+        /// [`TextShapeKey::INVALID`] where no buffer backs it — empty
+        /// text, or the gated mono metric. Derived from whether a buffer
+        /// is actually resident rather than from a second reading of the
+        /// two conditions that produce one.
+        pub(crate) fn shaped_key(&self) -> TextShapeKey {
+            match self.shaped() {
+                Some(_) => self.key,
+                None => TextShapeKey::INVALID,
+            }
         }
     }
 

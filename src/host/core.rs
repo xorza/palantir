@@ -23,6 +23,7 @@ use crate::host::window_driver::{CpuFrame, PresentMode, WindowDriver, WindowDriv
 use crate::renderer::backend::WgpuBackend;
 use crate::renderer::backend::backend_config::BackendConfig;
 use crate::renderer::frontend::Frontend;
+use crate::renderer::texture_limit::TextureLimit;
 use crate::text::shaper::TextShaper;
 use crate::window::window_token::WindowToken;
 
@@ -45,7 +46,11 @@ impl HostCore {
         config: BackendConfig,
     ) -> Self {
         let max_texture_dim = DeviceRequirements::max_texture_dim(&device);
-        let shared = HostShared::with_clipboard(shaper, clipboard, Some(max_texture_dim));
+        let shared = HostShared::with_clipboard(
+            shaper,
+            clipboard,
+            TextureLimit::from_device(max_texture_dim),
+        );
         let backend = WgpuBackend::new(device, queue, shared.backend_resources(), config);
         let frontend = Frontend::new(max_texture_dim.get(), shared.gradient_atlas.clone());
         Self {

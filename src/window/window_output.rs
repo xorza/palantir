@@ -3,16 +3,14 @@
 use crate::window::cursor_icon::CursorIcon;
 use crate::window::vsync::Vsync;
 
-/// What the host applies after draining a frame's recorder output.
-#[cfg_attr(
-    not(feature = "winit-host"),
-    expect(
-        dead_code,
-        reason = "multi-window lifecycle plumbing: every caller is under \
-                  src/host/winit/, so a build without that feature has \
-                  nothing to call it"
-    )
-)]
+/// The per-window *levels* a recorder holds and a host applies: settings
+/// it re-reads every frame, as opposed to the one-shot lifecycle edges in
+/// [`WindowCommands`](crate::window::window_commands::WindowCommands).
+///
+/// Retained on [`WindowRequests`](crate::window::window_requests::WindowRequests)
+/// and copied out by each drain, which is what lets a host with no window
+/// to apply them to drop its copy without the app's own view of them
+/// changing.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct WindowOutput {
     /// The cursor this frame asked for; applied on change.

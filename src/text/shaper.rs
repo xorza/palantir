@@ -1,5 +1,6 @@
 //! The app-global shaping coordinator every window measures through.
 
+use crate::primitives::size::Size;
 use crate::text::cosmic::CosmicMeasure;
 use crate::text::glyphs::TextGlyphs;
 use crate::text::key::{TextShapeKey, WrapBound};
@@ -127,26 +128,41 @@ impl ShaperInner {
         }
     }
 
-    /// Bypass-cache dispatch. Test builds tally it into `measure_calls` —
-    /// cosmic may still hit its shaped-buffer cache, so the counter tracks
-    /// dispatches, not reshapes.
-    ///
-    /// Empty text answers here, ahead of the tally, so no shaper entry
-    /// point needs a guard of its own and a run with nothing to shape
-    /// never reads as a dispatch. Both backends keep their own guard for
-    /// the callers that reach them directly.
-    fn dispatch(&mut self, request: TextShapeRequest<'_>, floor: WrapFloor) -> TextRoot {
-        if request.text.is_empty() {
-            return TextRoot::ZERO;
+    /// The run's **unbounded** shape, dispatched to whichever metric is
+    /// installed. `floor` opts into the segment scan behind
+    /// [`TextRoot::intrinsic_min`].
+    pub(super) fn root(&mut self, request: TextShapeRequest<'_>, floor: WrapFloor) -> TextRoot {
+        self.tally_dispatch();
+        match &mut self.metric {
+            Metric::Cosmic(cosmic) => cosmic.root(request, floor),
+            #[cfg(any(test, feature = "internals"))]
+            Metric::Mono => crate::text::mono::root(request, floor),
         }
+    }
+
+    /// The extent this run resolves to at the width its key commits.
+    ///
+    /// **The bounded half takes no `floor`**, which is what retires the
+    /// contract two layers used to assert in identical words: a wrapping
+    /// floor belongs to the unbounded root, and there is now no way to ask
+    /// a bounded resolve for one.
+    pub(super) fn resolve(&mut self, request: TextShapeRequest<'_>) -> Size {
+        self.tally_dispatch();
+        match &mut self.metric {
+            Metric::Cosmic(cosmic) => cosmic.resolve(request),
+            #[cfg(any(test, feature = "internals"))]
+            Metric::Mono => crate::text::mono::resolve(request),
+        }
+    }
+
+    /// Count one bypass-cache dispatch. Test builds only — cosmic may
+    /// still hit its shaped-buffer cache, so the counter tracks
+    /// dispatches, not reshapes.
+    #[inline]
+    fn tally_dispatch(&mut self) {
         #[cfg(any(test, feature = "internals"))]
         {
             self.measure_calls += 1;
-        }
-        match &mut self.metric {
-            Metric::Cosmic(cosmic) => cosmic.shape(request, floor),
-            #[cfg(any(test, feature = "internals"))]
-            Metric::Mono => crate::text::mono::measure(request, floor),
         }
     }
 }
@@ -180,9 +196,16 @@ impl TextShaper {
     /// answers against a buffer wrapped at a different width than the
     /// one that was drawn.
     pub(crate) fn layout<'a>(&'a self, run: &TextRun<'a>) -> TextProbe<'a> {
-        let unbounded = run.unbounded_request();
         let mut inner = self.inner.borrow_mut();
-        let (request, size) = match (run.max_width_px, run.wrap.line_fit()) {
+        let Some(unbounded) = run.unbounded_request() else {
+            // One of the two crate edges an empty run reaches (the other
+            // is `TextGlyphs`). Nothing was shaped, so the block is empty
+            // and sits at its own origin — which is every answer the
+            // probe below can give, and the key still carries the metrics
+            // it expresses them in.
+            return TextProbe::new(Size::ZERO, run.text, run.unbounded_key(), inner);
+        };
+        let (key, size) = match (run.max_width_px, run.wrap.line_fit()) {
             // Shape the root only for the policies whose binding decision
             // reads it, derived from the two accessors that define them
             // rather than restated as a third mapping: `WrapWithOverflow`
@@ -197,12 +220,12 @@ impl TextShaper {
             (Some(width), Some(fit)) => {
                 let committed = if run.wrap.floor_scan() == WrapFloor::Scan || fit != LineFit::Wrap
                 {
-                    let root = inner.dispatch(unbounded, run.wrap.floor_scan());
+                    let root = inner.root(unbounded, run.wrap.floor_scan());
                     if fit.resolves_to_unbounded(&root, width) {
                         // A truncating fit whose text already fits keeps
                         // the unbounded buffer; binding would mint a
                         // second one layout never asks for.
-                        return TextProbe::new(root.size, unbounded, inner);
+                        return TextProbe::new(root.size, run.text, unbounded.key, inner);
                     }
                     run.wrap.target_width(width, &root)
                 } else {
@@ -210,37 +233,30 @@ impl TextShaper {
                 };
                 let bound =
                     unbounded.with_bound(WrapBound::new(committed, run.align.halign(), fit));
-                let size = inner.dispatch(bound, WrapFloor::Skip).size;
-                (bound, size)
+                (bound.key, inner.resolve(bound))
             }
-            _ => (unbounded, inner.dispatch(unbounded, WrapFloor::Skip).size),
+            _ => (unbounded.key, inner.root(unbounded, WrapFloor::Skip).size),
         };
-        TextProbe::new(size, request, inner)
+        TextProbe::new(size, run.text, key, inner)
     }
 
-    /// Shape `request` and hand back what it measured to. `TextSystem`
-    /// calls this on a reuse-slot miss; the shaper's own content cache may
-    /// still hit, so this is "no reuse slot", not "reshape".
-    ///
-    /// Bounded and unbounded alike — which one this is, the request's own
-    /// key already says, and both answer a [`TextRoot`]. A bounded resolve
-    /// reads only `size` off it: it has no wrapping floor of its own and
-    /// its line count describes the resolve rather than the run.
+    /// The run's unbounded shape. `TextSystem` calls this on a reuse-slot
+    /// miss; the shaper's own content cache may still hit, so this is "no
+    /// reuse slot", not "reshape".
     ///
     /// `floor` opts into the segment scan behind
     /// [`TextRoot::intrinsic_min`]; only `WrapWithOverflow` reads it, and
     /// it dominates the cost of a shape, so everyone else leaves it off.
     /// Passing [`WrapFloor::Scan`] for a root already shaped without one
-    /// backfills it from the resident buffer rather than reshaping. The
-    /// floor belongs to the unbounded root, so asking for it against a
-    /// committed width is a wiring bug — the same contract
-    /// `CosmicMeasure::measure_wrapped` asserts on the other side.
-    pub(super) fn shape(&self, request: TextShapeRequest<'_>, floor: WrapFloor) -> TextRoot {
-        debug_assert!(
-            floor == WrapFloor::Skip || request.key.max_width_px().is_none(),
-            "the wrap floor is a property of the unbounded root",
-        );
-        self.inner.borrow_mut().dispatch(request, floor)
+    /// backfills it from the resident buffer rather than reshaping.
+    pub(super) fn root(&self, request: TextShapeRequest<'_>, floor: WrapFloor) -> TextRoot {
+        self.inner.borrow_mut().root(request, floor)
+    }
+
+    /// The extent this run resolves to at the width its key commits — the
+    /// bounded half of [`Self::root`], and the shape a renderer replays.
+    pub(super) fn resolve(&self, request: TextShapeRequest<'_>) -> Size {
+        self.inner.borrow_mut().resolve(request)
     }
 
     /// Report that `key` is no longer reachable through the reuse slot
@@ -367,14 +383,9 @@ pub(crate) mod internals {
         /// test that read one was pinning the invention rather than the
         /// shaper.
         pub(crate) fn measure(&self, text: &str, shape: TestShape) -> ShapedText {
-            let shapes_buffers = self.shapes_buffers();
             self.probe_layout(text, shape, |probe| ShapedText {
                 measured: probe.size(),
-                key: if shapes_buffers && !probe.request.text.is_empty() {
-                    probe.request.key
-                } else {
-                    TextShapeKey::INVALID
-                },
+                key: probe.shaped_key(),
             })
         }
 

@@ -1,16 +1,50 @@
 use crate::primitives::rect::Rect;
 use crate::scene::damage::region::{DAMAGE_RECT_CAP, DEFAULT_PASS_BUDGET_PX, DamageRegion};
 
-fn collect(region: &DamageRegion) -> Vec<Rect> {
-    region.iter_rects().collect()
+/// A region and the budget its case folds under.
+///
+/// The budget is an argument of [`DamageRegion::add`] — it describes the
+/// fold, not the rects that come out of it — so a case that folds a dozen
+/// rects under one policy says which policy once, here, instead of on every
+/// call.
+#[derive(Debug)]
+struct Fold {
+    region: DamageRegion,
+    budget_px: f32,
+}
+
+impl Fold {
+    fn new(budget_px: f32) -> Self {
+        Self {
+            region: DamageRegion::default(),
+            budget_px,
+        }
+    }
+
+    /// The budget `DamageEngine` ships with.
+    fn default_budget() -> Self {
+        Self::new(DEFAULT_PASS_BUDGET_PX)
+    }
+
+    fn add(&mut self, r: Rect) {
+        self.region.add(r, self.budget_px);
+    }
+
+    fn rects(&self) -> Vec<Rect> {
+        self.region.iter_rects().collect()
+    }
+
+    fn len(&self) -> usize {
+        self.region.rects.len()
+    }
 }
 
 /// `add` ignores zero-area input — empty rects contribute nothing.
 #[test]
 fn add_empty_is_noop() {
-    let mut region = DamageRegion::default();
+    let mut region = Fold::default_budget();
     region.add(Rect::new(10.0, 10.0, 0.0, 0.0));
-    assert!(region.rects.is_empty());
+    assert!(region.rects().is_empty());
 }
 
 /// A rect already covered by an existing slot adds nothing (the
@@ -18,20 +52,20 @@ fn add_empty_is_noop() {
 /// loop runs).
 #[test]
 fn add_already_covered_is_noop() {
-    let mut region = DamageRegion::default();
+    let mut region = Fold::default_budget();
     region.add(Rect::new(0.0, 0.0, 100.0, 100.0));
     region.add(Rect::new(10.0, 10.0, 5.0, 5.0));
-    assert_eq!(collect(&region), vec![Rect::new(0.0, 0.0, 100.0, 100.0)]);
+    assert_eq!(region.rects(), vec![Rect::new(0.0, 0.0, 100.0, 100.0)]);
 }
 
 /// A rect that contains an existing slot replaces it — caught by
 /// the cluster-grow loop (cost = `−existing.area()` < 0 < budget).
 #[test]
 fn add_swallows_contained_existing() {
-    let mut region = DamageRegion::default();
+    let mut region = Fold::default_budget();
     region.add(Rect::new(10.0, 10.0, 5.0, 5.0));
     region.add(Rect::new(0.0, 0.0, 100.0, 100.0));
-    assert_eq!(collect(&region), vec![Rect::new(0.0, 0.0, 100.0, 100.0)]);
+    assert_eq!(region.rects(), vec![Rect::new(0.0, 0.0, 100.0, 100.0)]);
 }
 
 /// Pairs that the SAH cost predicate accepts under the default
@@ -70,10 +104,10 @@ fn add_merges_pair_under_budget() {
         ),
     ];
     for (label, p, q, want) in cases {
-        let mut region = DamageRegion::default();
+        let mut region = Fold::default_budget();
         region.add(*p);
         region.add(*q);
-        assert_eq!(collect(&region), vec![*want], "case: {label}");
+        assert_eq!(region.rects(), vec![*want], "case: {label}");
     }
 }
 
@@ -81,10 +115,10 @@ fn add_merges_pair_under_budget() {
 /// 10×10 rects, gap 15 → bbox 350, sum 200, cost 150 > 100 budget.
 #[test]
 fn add_keeps_pair_above_budget_split() {
-    let mut region = DamageRegion::with_budget(100.0);
+    let mut region = Fold::new(100.0);
     region.add(Rect::new(0.0, 0.0, 10.0, 10.0));
     region.add(Rect::new(25.0, 0.0, 10.0, 10.0));
-    assert_eq!(collect(&region).len(), 2);
+    assert_eq!(region.rects().len(), 2);
 }
 
 /// Intersecting pair always merges, even with the tightest
@@ -95,7 +129,7 @@ fn add_keeps_pair_above_budget_split() {
 /// layered under the SAH proximity merge.
 #[test]
 fn intersecting_pair_merges_at_zero_budget() {
-    let mut region = DamageRegion::with_budget(0.0);
+    let mut region = Fold::new(0.0);
     // Tall vertical rect on the left, wide horizontal rect at the
     // top — a geometry like the popup-tab debug-overlay screenshot.
     // bbox is much larger than `A.area + B.area`, so the SAH cost
@@ -104,7 +138,7 @@ fn intersecting_pair_merges_at_zero_budget() {
     let b = Rect::new(40.0, 140.0, 1450.0, 100.0);
     region.add(a);
     region.add(b);
-    assert_eq!(collect(&region), vec![a.union(b)]);
+    assert_eq!(region.rects(), vec![a.union(b)]);
 }
 
 /// Distant disjoint rects (the corner-pair pathology) stay split
@@ -112,12 +146,12 @@ fn intersecting_pair_merges_at_zero_budget() {
 /// per-pass budget we'd ship.
 #[test]
 fn add_keeps_far_corners_split() {
-    let mut region = DamageRegion::default();
+    let mut region = Fold::default_budget();
     let a = Rect::new(0.0, 0.0, 5.0, 5.0);
     let b = Rect::new(995.0, 995.0, 5.0, 5.0);
     region.add(a);
     region.add(b);
-    let rects = collect(&region);
+    let rects = region.rects();
     assert_eq!(rects.len(), 2);
     assert!(rects.contains(&a) && rects.contains(&b));
 }
@@ -128,12 +162,12 @@ fn add_keeps_far_corners_split() {
 /// swallows both (each contained → cost = −existing.area()).
 #[test]
 fn add_cascade_absorbs_through_bridge() {
-    let mut region = DamageRegion::with_budget(50.0);
+    let mut region = Fold::new(50.0);
     region.add(Rect::new(0.0, 0.0, 10.0, 10.0));
     region.add(Rect::new(100.0, 0.0, 10.0, 10.0));
-    assert_eq!(collect(&region).len(), 2);
+    assert_eq!(region.rects().len(), 2);
     region.add(Rect::new(0.0, 0.0, 110.0, 10.0));
-    assert_eq!(collect(&region), vec![Rect::new(0.0, 0.0, 110.0, 10.0)]);
+    assert_eq!(region.rects(), vec![Rect::new(0.0, 0.0, 110.0, 10.0)]);
 }
 
 /// At the cap, the ninth rect triggers the min-growth fallback. The
@@ -141,7 +175,7 @@ fn add_cascade_absorbs_through_bridge() {
 /// grown bbox newly overlaps.
 #[test]
 fn min_growth_at_cap_reabsorbs_new_overlaps() {
-    let mut region = DamageRegion::with_budget(0.0);
+    let mut region = Fold::new(0.0);
     let corners = [
         Rect::new(0.0, 0.0, 5.0, 5.0),
         Rect::new(995.0, 0.0, 5.0, 5.0),
@@ -155,13 +189,13 @@ fn min_growth_at_cap_reabsorbs_new_overlaps() {
     for c in corners {
         region.add(c);
     }
-    assert_eq!(region.iter_rects().count(), DAMAGE_RECT_CAP);
+    assert_eq!(region.len(), DAMAGE_RECT_CAP);
 
     let extra = Rect::new(490.0, 5.0, 10.0, 5.0);
     region.add(extra);
-    assert_eq!(region.iter_rects().count(), DAMAGE_RECT_CAP);
+    assert_eq!(region.len(), DAMAGE_RECT_CAP);
     let merged = Rect::new(495.0, 0.0, 5.0, 5.0).union(extra);
-    let rects = collect(&region);
+    let rects = region.rects();
     assert!(
         rects.contains(&merged),
         "expected the bbox of the colliding pair as one slot: {rects:?}",
@@ -177,18 +211,18 @@ fn min_growth_at_cap_reabsorbs_new_overlaps() {
         Rect::new(50_000.0, 10_000.0, 1.0, 1.0),
         Rect::new(60_000.0, 10_000.0, 1.0, 1.0),
     ];
-    let mut region = DamageRegion::with_budget(0.0);
+    let mut region = Fold::new(0.0);
     region.add(target);
     region.add(newly_overlapped);
     for filler in fillers {
         region.add(filler);
     }
-    assert_eq!(region.iter_rects().count(), DAMAGE_RECT_CAP);
+    assert_eq!(region.len(), DAMAGE_RECT_CAP);
 
     let extra = Rect::new(20.0, 0.0, 10.0, 10.0);
     region.add(extra);
     let absorbed = target.union(extra).union(newly_overlapped);
-    let rects = collect(&region);
+    let rects = region.rects();
     assert_eq!(rects.len(), DAMAGE_RECT_CAP - 1);
     assert!(
         rects.contains(&absorbed),
@@ -216,8 +250,7 @@ fn min_growth_at_cap_reabsorbs_new_overlaps() {
 /// Sanity-check that the cluster path actually fires.
 #[test]
 fn compact_cluster_of_four_collapses_at_default_budget() {
-    let mut region = DamageRegion::default();
-    assert_eq!(region.budget_px, DEFAULT_PASS_BUDGET_PX);
+    let mut region = Fold::default_budget();
     for r in [
         Rect::new(100.0, 100.0, 50.0, 50.0),
         Rect::new(200.0, 100.0, 50.0, 50.0),
@@ -226,10 +259,7 @@ fn compact_cluster_of_four_collapses_at_default_budget() {
     ] {
         region.add(r);
     }
-    assert_eq!(
-        collect(&region),
-        vec![Rect::new(100.0, 100.0, 150.0, 150.0)],
-    );
+    assert_eq!(region.rects(), vec![Rect::new(100.0, 100.0, 150.0, 150.0)],);
 }
 
 /// Screenshot regression fixture (four rects approximating the
@@ -249,29 +279,21 @@ fn screenshot_cluster_budget_sweep() {
         Rect::new(80.0, 580.0, 170.0, 20.0),
     ];
     let bbox = rs.iter().copied().reduce(|a, b| a.union(b)).unwrap();
-    let cases: &[(&str, DamageRegion, Vec<Rect>)] = &[
+    let cases: &[(&str, f32, Vec<Rect>)] = &[
         (
             "default_budget_stays_split",
-            DamageRegion::default(),
+            DEFAULT_PASS_BUDGET_PX,
             rs.to_vec(),
         ),
-        (
-            "tight_budget_stays_split",
-            DamageRegion::with_budget(7_000.0),
-            rs.to_vec(),
-        ),
-        (
-            "high_budget_collapses",
-            DamageRegion::with_budget(60_000.0),
-            vec![bbox],
-        ),
+        ("tight_budget_stays_split", 7_000.0, rs.to_vec()),
+        ("high_budget_collapses", 60_000.0, vec![bbox]),
     ];
-    for (label, base, want) in cases {
-        let mut region = *base;
+    for (label, budget_px, want) in cases {
+        let mut region = Fold::new(*budget_px);
         for r in rs {
             region.add(r);
         }
-        assert_eq!(collect(&region), *want, "case: {label}");
+        assert_eq!(region.rects(), *want, "case: {label}");
     }
 }
 
@@ -282,8 +304,8 @@ fn screenshot_cluster_budget_sweep() {
 /// the pair from merging.
 #[test]
 fn total_area_sums_disjoint_rects() {
-    let mut region = DamageRegion::with_budget(0.0);
+    let mut region = Fold::new(0.0);
     region.add(Rect::new(0.0, 0.0, 10.0, 10.0));
     region.add(Rect::new(100.0, 100.0, 20.0, 20.0));
-    assert_eq!(region.total_area(), 100.0 + 400.0);
+    assert_eq!(region.region.total_area(), 100.0 + 400.0);
 }

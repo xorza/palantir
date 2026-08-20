@@ -168,7 +168,7 @@ impl TextShapeKey {
     /// itself (`family as u8`), so a bad tag is a logic error here, never
     /// bad data — and these run per shape, which release builds must not
     /// pay a check for. The restore path is what forces the round-trip to
-    /// exist at all; see `CosmicMeasure::measure_truncated`.
+    /// exist at all; see `CosmicMeasure::shape_truncated`.
     ///
     /// They stay four hand-written functions rather than one generic
     /// decoder: each has to name its own variants, so a macro or a trait

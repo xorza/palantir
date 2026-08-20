@@ -25,6 +25,14 @@
 //! request leaves the app believing a window appeared. Multi-window ownership
 //! is `WinitHost`'s alone.
 //!
+//! **Window *settings* are accepted and inert**, which is the other half of
+//! the same rule: [`Ui::set_cursor`](crate::Ui::set_cursor) and
+//! [`Ui::set_vsync`](crate::Ui::set_vsync) are levels the recorder retains
+//! and reads back — `Ui::vsync` answers what the app set, headless or not —
+//! so there is nothing for this host to swallow. Opens and closes are edges
+//! that mean nothing unless serviced; settings are not. That is the whole of
+//! which window calls this host honours.
+//!
 //! Everything the host can reject is a caller mistake — an unusable scale
 //! factor, a window request it has no lifecycle for — so `frame_offscreen`
 //! panics rather than returning a `Result` no caller could act on.
@@ -206,7 +214,7 @@ impl OffscreenHost {
         // Before submitting: a frame that asked for a window it can never get
         // is a caller error, and reporting it against an untouched target
         // keeps the failure clean.
-        driver.deny_window_requests();
+        driver.deny_window_commands();
         self.core.submit(driver, target, mode);
         report
     }

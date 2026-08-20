@@ -147,7 +147,7 @@ impl DebugOverlay {
         };
         let mut quads: ArrayVec<[Quad; DAMAGE_RECT_CAP]> = Default::default();
         match plan.kind {
-            RenderKind::Partial { region } => {
+            RenderKind::Partial { damage } => {
                 // Outset, not inset: damage rects can be thinner than
                 // `2 * gap_px` (a 1px text caret), and insetting would
                 // collapse them to zero area — no outline drawn. An
@@ -155,7 +155,7 @@ impl DebugOverlay {
                 // from just outside. The overlay pass is unscissored
                 // and the surface clips, so spilling a few px past the
                 // damage edge is fine.
-                for r in region.iter_rects() {
+                for r in damage.region.iter_rects() {
                     quads.push(outline(r.scaled_by(buffer.scale, true).inflated(gap_px)));
                 }
             }

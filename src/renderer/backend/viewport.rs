@@ -81,9 +81,9 @@ pub(super) fn build_repaint_scissors(
 ) -> RepaintScissors {
     match render_kind {
         RenderKind::Full => RepaintScissors::Full,
-        RenderKind::Partial { region } => {
+        RenderKind::Partial { damage } => {
             let mut rects = ArrayVec::new();
-            for r in region.iter_rects() {
+            for r in damage.region.iter_rects() {
                 if let Some(s) = logical_rect_to_phys_scissor(r, buffer) {
                     rects.push(s);
                 }
@@ -156,7 +156,7 @@ mod tests {
 
     #[test]
     fn partial_repaint_preserves_padded_physical_scissors() {
-        let region = DamageRegion::collapse_from(
+        let damage = DamageRegion::collapse_from(
             &[
                 Rect::new(5.0, 5.0, 5.0, 5.0),
                 Rect::new(30.0, 20.0, 10.0, 5.0),
@@ -164,7 +164,7 @@ mod tests {
             0.0,
             Rect::new(0.0, 0.0, 50.0, 50.0),
         );
-        let repaint = build_repaint_scissors(RenderKind::Partial { region }, &buffer());
+        let repaint = build_repaint_scissors(RenderKind::Partial { damage }, &buffer());
         let RepaintScissors::Partial(rects) = repaint else {
             panic!("partial plan produced a full repaint");
         };
@@ -181,7 +181,7 @@ mod tests {
     fn partial_repaint_rejects_scissors_clamped_outside_viewport() {
         build_repaint_scissors(
             RenderKind::Partial {
-                region: DamageRegion::from(Rect::new(200.0, 200.0, 10.0, 10.0)),
+                damage: DamageRegion::from(Rect::new(200.0, 200.0, 10.0, 10.0)).unmeasured(),
             },
             &buffer(),
         );
