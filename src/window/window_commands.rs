@@ -23,13 +23,6 @@ pub(crate) struct WindowCommands {
 impl WindowCommands {
     /// Move every command out of `source` onto the end of `self`, leaving
     /// `source` empty with its buffers — and their capacity — intact.
-    #[cfg_attr(
-        not(feature = "winit-host"),
-        expect(
-            dead_code,
-            reason = "multi-window lifecycle plumbing: every caller is under                       src/host/winit/, so a build without that feature has                       nothing to call it"
-        )
-    )]
     pub(crate) fn append(&mut self, source: &mut Self) {
         self.opens.append(&mut source.opens);
         self.closes.append(&mut source.closes);

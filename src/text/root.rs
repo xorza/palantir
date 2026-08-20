@@ -33,14 +33,6 @@ pub(crate) struct TextRoot {
 }
 
 impl TextRoot {
-    /// Successful empty-text shape. Its floor is genuinely zero rather
-    /// than unscanned — there is nothing to scan.
-    pub(super) const ZERO: Self = Self {
-        size: Size::ZERO,
-        intrinsic_min: Some(0.0),
-        single_line: true,
-    };
-
     /// The wrap floor, for the one policy that reads it.
     ///
     /// Panics with [`WRAP_FLOOR_ERROR`] when the run was shaped without

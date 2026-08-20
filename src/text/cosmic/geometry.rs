@@ -10,13 +10,37 @@ use crate::text::root::TextRoot;
 use crate::text::wrap::WrapFloor;
 use cosmic_text::Buffer;
 
-/// Measured geometry of a shaped `buffer`: the run's own extent plus the
+/// Measured facts of a shaped `buffer`: what it laid out to, and the
 /// block origin every reader normalizes against.
+///
+/// Deliberately not a [`TextRoot`]: these are facts about *a* buffer, and
+/// only an unbounded one is a run's root. The bounded paths read `size`
+/// and drop the rest; the unbounded one lifts the whole thing through
+/// [`Self::root`].
 #[derive(Clone, Copy, Debug)]
 pub(super) struct ShapedGeometry {
-    pub(super) root: TextRoot,
+    /// Extent of the shaped block.
+    pub(super) size: Size,
+    /// Widest unbreakable segment, present exactly when `floor` asked for
+    /// the scan — see [`TextRoot::intrinsic_min`].
+    pub(super) intrinsic_min: Option<f32>,
+    /// Whether the buffer laid out as one visual line.
+    pub(super) single_line: bool,
     /// See [`CacheEntry::left`](super::cache_entry::CacheEntry::left).
     pub(super) left: f32,
+}
+
+impl ShapedGeometry {
+    /// These facts read as a run's unbounded shape. Sound only for a
+    /// buffer shaped without a width — the callers that lift one are the
+    /// unbounded paths, and they are the only ones.
+    pub(super) fn root(self) -> TextRoot {
+        TextRoot {
+            size: self.size,
+            intrinsic_min: self.intrinsic_min,
+            single_line: self.single_line,
+        }
+    }
 }
 
 /// Measure a shaped `buffer`: the union of its lines' glyph spans (ceil'd)
@@ -59,11 +83,9 @@ pub(super) fn shaped_geometry(
         (0.0, 0.0)
     };
     ShapedGeometry {
-        root: TextRoot {
-            size: Size::new(width.ceil(), total_h.ceil()),
-            intrinsic_min: (floor == WrapFloor::Scan).then(|| intrinsic_min_width(buffer, breaks)),
-            single_line: runs <= 1,
-        },
+        size: Size::new(width.ceil(), total_h.ceil()),
+        intrinsic_min: (floor == WrapFloor::Scan).then(|| intrinsic_min_width(buffer, breaks)),
+        single_line: runs <= 1,
         left,
     }
 }

@@ -3,8 +3,10 @@
 
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
+use crate::primitives::spacing::Spacing;
 use crate::scene::tree::paint_anims::PaintAnim;
 use crate::text::probe::Caret;
+use crate::widgets::scroll::state::{ScrollBounds, ScrollState};
 use crate::widgets::text_edit::shape_ctx::ShapeCtx;
 use glam::Vec2;
 use std::time::Duration;
@@ -15,7 +17,14 @@ const BLINK_STOP_AFTER_IDLE: Duration = Duration::from_secs(30);
 #[derive(Clone, Default, Debug)]
 pub(super) struct ViewState {
     pub(super) prev_focused: bool,
-    pub(super) scroll: Vec2,
+    /// Where the text block is scrolled to.
+    ///
+    /// The same [`ScrollState`] a [`Scroll`](crate::Scroll) viewport keeps,
+    /// because a field *is* a scrolling viewport over its own text: the
+    /// offset, the band it is clamped into, and the transform that carries
+    /// the block are one implementation. What differs is only what moves
+    /// it — a wheel and the caret here, a wheel and two bars there.
+    pub(super) scroll: ScrollState,
     pub(super) block_offset: Vec2,
     pub(super) last_caret_change: Duration,
     /// Caret byte the view last scrolled to. Compared against the
@@ -30,6 +39,11 @@ impl ViewState {
     /// Fold this frame's wheel delta into the offset, then keep the caret
     /// visible.
     ///
+    /// **The field pans exactly one axis**: a multi-line editor wraps to
+    /// its own width, and a single-line one has one line to slide along.
+    /// The other axis is pinned by handing the solver no content on it,
+    /// so the clamp does the pinning rather than an assignment beside it.
+    ///
     /// The caret only pulls the view when it has *moved* since the view
     /// last followed it, or the buffer changed under it, or focus just
     /// arrived. Following it every frame would undo a wheel scroll the
@@ -38,49 +52,60 @@ impl ViewState {
     /// bargain: the wheel roams freely, typing snaps back.
     fn update_scroll(&mut self, input: ViewUpdateInput) {
         let Some(rect) = input.response_rect else {
-            self.scroll = Vec2::ZERO;
+            self.scroll = ScrollState::default();
             return;
         };
-        let inner_w = (rect.size.w - input.ctx.padding.horiz()).max(0.0);
-        let inner_h = (rect.size.h - input.ctx.padding.vert()).max(0.0);
+        let ctx = input.ctx;
+        let viewport = Size::new(
+            (rect.size.w - ctx.padding.horiz()).max(0.0),
+            (rect.size.h - ctx.padding.vert()).max(0.0),
+        );
         let follow_caret =
             input.caret_byte != self.last_followed_caret || input.edited || input.gained_focus;
         self.last_followed_caret = input.caret_byte;
-        if input.ctx.multiline {
-            self.scroll.x = 0.0;
-            // A multi-line editor wraps to its own width, so only the
-            // vertical wheel has anywhere to go.
-            self.scroll.y += input.wheel.y;
-            let trailing = (inner_h - input.caret_width).max(0.0);
-            let caret_bottom = input.caret_pos.y_top + input.caret_pos.line_height;
-            if follow_caret {
-                if input.caret_pos.y_top < self.scroll.y {
-                    self.scroll.y = input.caret_pos.y_top;
-                } else if caret_bottom > self.scroll.y + trailing {
-                    self.scroll.y = caret_bottom - trailing;
-                }
-            }
-            let max_scroll = (input.content_size.h - inner_h).max(0.0);
-            self.scroll.y = self.scroll.y.clamp(0.0, max_scroll);
+        let bounds = ScrollBounds {
+            // A single line reserves room for the caret past its last
+            // glyph, on both ends; a wrapped block has a next line to
+            // fall to and reserves none.
+            content: if ctx.multiline {
+                Size::new(0.0, input.content_size.h)
+            } else {
+                Size::new(input.content_size.w + 2.0 * input.caret_width, 0.0)
+            },
+            viewport,
+            content_margin: Spacing::ZERO,
+        };
+        // One line, so both wheel axes pan a single-line field
+        // horizontally — a plain vertical wheel over one is the common
+        // gesture, and there is nothing vertical to spend it on.
+        let wheel = if ctx.multiline {
+            Vec2::new(0.0, input.wheel.y)
         } else {
-            self.scroll.y = 0.0;
-            // One line, so both wheel axes pan it horizontally — a
-            // plain vertical wheel over a single-line field is the
-            // common gesture, and there is nothing vertical to spend it
-            // on.
-            self.scroll.x += input.wheel.x + input.wheel.y;
-            let trailing = (inner_w - input.caret_width).max(0.0);
-            let caret_right = input.caret_pos.x + input.caret_width;
-            if follow_caret {
-                if input.caret_pos.x < self.scroll.x {
-                    self.scroll.x = input.caret_pos.x;
-                } else if caret_right > self.scroll.x + trailing {
-                    self.scroll.x = caret_right - trailing;
+            Vec2::new(input.wheel.x + input.wheel.y, 0.0)
+        };
+        self.scroll
+            .apply_wheel_pan(bounds, !ctx.multiline, ctx.multiline, wheel, false);
+        if follow_caret {
+            let offset = &mut self.scroll.offset;
+            if ctx.multiline {
+                let trailing = (viewport.h - input.caret_width).max(0.0);
+                let caret_bottom = input.caret_pos.y_top + input.caret_pos.line_height;
+                if input.caret_pos.y_top < offset.y {
+                    offset.y = input.caret_pos.y_top;
+                } else if caret_bottom > offset.y + trailing {
+                    offset.y = caret_bottom - trailing;
+                }
+            } else {
+                let trailing = (viewport.w - input.caret_width).max(0.0);
+                let caret_right = input.caret_pos.x + input.caret_width;
+                if input.caret_pos.x < offset.x {
+                    offset.x = input.caret_pos.x;
+                } else if caret_right > offset.x + trailing {
+                    offset.x = caret_right - trailing;
                 }
             }
-            let max_scroll = (input.content_size.w + 2.0 * input.caret_width - inner_w).max(0.0);
-            self.scroll.x = self.scroll.x.clamp(0.0, max_scroll);
         }
+        self.scroll.clamp_to_natural(bounds);
     }
 
     pub(super) fn update(&mut self, input: ViewUpdateInput) -> ViewUpdate {
@@ -131,6 +156,6 @@ pub(super) struct ViewUpdateInput {
 
 #[derive(Clone, Copy, Debug)]
 pub(super) struct ViewUpdate {
-    pub(super) scroll: Vec2,
+    pub(super) scroll: ScrollState,
     pub(super) caret_anim: Option<PaintAnim>,
 }

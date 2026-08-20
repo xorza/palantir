@@ -1,16 +1,14 @@
 //! Deterministic placeholder shaping for the mono fallback: every glyph is
 //! `font_size_px * 0.5` wide, so the engine can run in tests and headless
-//! tools without a font system. [`measure`] is the metric behind
-//! [`TextShaper::test_mono`](crate::text::shaper::TextShaper), and
+//! tools without a font system. [`root`] and [`resolve`] are the metric
+//! behind [`TextShaper::test_mono`](crate::text::shaper::TextShaper) — the
+//! same two-kind split the cosmic measurer offers — and
 //! [`single_line_caret_x`] / [`nearest_byte`] are the geometry
 //! [`probe`] falls back to for the runs it produces.
 //!
 //! Only [`TextShaper::test_mono`](crate::text::shaper::TextShaper) makes
 //! a run that reaches any of this, so the whole module is gated and
-//! production compiles none of it. A production build *does* reach the
-//! no-shaped-buffer case — empty text is unshaped everywhere — but the
-//! answer there is a constant, so it belongs with the caller that knows
-//! the text is empty rather than behind a gate here.
+//! production compiles none of it.
 //!
 //! [`probe`]: crate::text::probe
 
@@ -46,34 +44,39 @@ pub(super) fn nearest_byte(text: &str, target_x: f32, font_size_px: f32) -> usiz
     best_off
 }
 
-/// Deterministic placeholder metric behind `TextShaper::test_mono`.
-/// Every glyph is `font_size_px * 0.5` wide and the line uses
-/// `line_height_px`; wrapping is approximated by simple
-/// character-count division. At the historical 16 px font size this is the
-/// 8 px/char × 16 px line layout the engine was hard-coded to before text
-/// shaping landed, which is what existing layout tests pin.
+/// What the mono metric lays one run out to.
+#[derive(Debug)]
+pub(super) struct MonoLayout {
+    pub(super) size: Size,
+    pub(super) single_line: bool,
+}
+
+/// Lay `request` out under the mono metric: every glyph is
+/// `font_size_px * 0.5` wide and the line uses `line_height_px`; wrapping
+/// is approximated by simple character-count division. At the historical
+/// 16 px font size this is the 8 px/char × 16 px line layout the engine
+/// was hard-coded to before text shaping landed, which is what existing
+/// layout tests pin.
 ///
 /// Mints no shaped buffer, so `TextSystem` reports
 /// [`TextShapeKey::INVALID`](crate::text::key::TextShapeKey::INVALID) for
-/// every run measured this way and the
-/// renderer drops them cleanly.
-pub(crate) fn measure(request: TextShapeRequest<'_>, floor: WrapFloor) -> TextRoot {
+/// every run measured this way and the renderer drops them cleanly.
+///
+/// Reached only through [`root`] and [`resolve`], which are reached only
+/// through the shaper's dispatch — so the text is non-empty by the time it
+/// arrives, exactly as on the cosmic side.
+fn layout(request: TextShapeRequest<'_>) -> MonoLayout {
     let text = request.text;
-    if text.is_empty() {
-        return TextRoot::ZERO;
-    }
     let font_size_px = request.key.font_size_px();
-    let line_height_px = request.key.line_height_px();
+    let line_h = request.key.line_height_px();
     let max_width_px = request.key.max_width_px();
-    let fit = request.key.fit();
     let glyph_w = font_size_px * 0.5;
-    let line_h = line_height_px;
     // Mono is a deterministic stub — count one "char" per byte. Correct for
     // ASCII (which is what every test and bench uses); for multibyte input
     // it overcounts, but mono is not a production path.
     let total_chars = text.len() as f32;
     let unbroken_w = total_chars * glyph_w;
-    let truncating_fit = matches!(fit, LineFit::Clip | LineFit::Ellipsis);
+    let truncating_fit = matches!(request.key.fit(), LineFit::Clip | LineFit::Ellipsis);
 
     let (size, single_line) = match max_width_px {
         None => (Size::new(unbroken_w, line_h), true),
@@ -89,19 +92,21 @@ pub(crate) fn measure(request: TextShapeRequest<'_>, floor: WrapFloor) -> TextRo
             )
         }
     };
-    // A truncated run shrinks to nothing — zero floor. Otherwise mono has
-    // no real word boundaries, so fall back to "the longest run of
-    // non-space bytes" as the wrap floor. Skipped entirely when the
-    // caller's policy never reads it, matching the cosmic path so the
-    // two agree on when the floor is absent rather than zero.
-    let intrinsic_min = if floor == WrapFloor::Skip {
-        None
-    } else if truncating_fit {
-        Some(0.0)
-    } else {
+    MonoLayout { size, single_line }
+}
+
+/// The run's unbounded shape under the mono metric — the twin of
+/// [`CosmicMeasure::root`](crate::text::cosmic::CosmicMeasure).
+pub(super) fn root(request: TextShapeRequest<'_>, floor: WrapFloor) -> TextRoot {
+    let MonoLayout { size, single_line } = layout(request);
+    // Mono has no real word boundaries, so the wrap floor falls back to
+    // "the longest run of non-space bytes". Skipped entirely when the
+    // caller's policy never reads it, matching the cosmic path so the two
+    // agree on when the floor is absent rather than zero.
+    let intrinsic_min = (floor == WrapFloor::Scan).then(|| {
         let mut longest = 0u32;
         let mut run = 0u32;
-        for &b in text.as_bytes() {
+        for &b in request.text.as_bytes() {
             if b == b' ' || b == b'\t' || b == b'\n' || b == b'\r' {
                 if run > longest {
                     longest = run;
@@ -114,11 +119,30 @@ pub(crate) fn measure(request: TextShapeRequest<'_>, floor: WrapFloor) -> TextRo
         if run > longest {
             longest = run;
         }
-        Some(longest as f32 * glyph_w)
-    };
+        longest as f32 * request.key.font_size_px() * 0.5
+    });
     TextRoot {
         size,
         intrinsic_min,
         single_line,
+    }
+}
+
+/// The extent this run resolves to at its key's committed width — the
+/// twin of [`CosmicMeasure::resolve`](crate::text::cosmic::CosmicMeasure).
+pub(super) fn resolve(request: TextShapeRequest<'_>) -> Size {
+    layout(request).size
+}
+
+#[cfg(test)]
+pub(crate) mod test_support {
+    use super::*;
+
+    /// The metric's own layout, including the single-line flag no shaper
+    /// path reports off a *bounded* resolve. The mono arithmetic cases pin
+    /// the metric itself, so they read it here rather than through a
+    /// production entry point that would have nowhere to put it.
+    pub(crate) fn layout_of(request: TextShapeRequest<'_>) -> MonoLayout {
+        layout(request)
     }
 }

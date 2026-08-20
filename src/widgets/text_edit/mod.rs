@@ -27,6 +27,7 @@ use crate::ui::Ui;
 use crate::widgets::response::{Response, ResponseSnapshot};
 use crate::widgets::text_edit::caret_paint::CaretPaint;
 use crate::widgets::text_edit::edit_state::EditState;
+use crate::widgets::text_edit::editor::Editor;
 use crate::widgets::text_edit::input::{AcceptPolicy, InputResult, run_input};
 use crate::widgets::text_edit::paint_input::PaintInput;
 use crate::widgets::text_edit::text_geometry::{GeometryInput, TextGeometry};
@@ -469,14 +470,14 @@ impl<'a> TextEdit<'a> {
         let lost_focus = was_focused && !is_focused;
 
         let snapshot = ResponseSnapshot { id, state: probed };
-        let menu_edited = menu::show(
-            ui,
-            &snapshot,
-            self.text,
-            ctx.multiline,
-            self.max_chars,
-            &mut state.edit,
-        );
+        // One editing session for the whole menu pass, opened here rather
+        // than per action: the state row is out on loan for this pass, so
+        // it can be held mutably beside `&mut Ui`, and one session
+        // reconciles the undo history against the buffer once.
+        let menu_edited = {
+            let mut editor = Editor::new(self.text, &mut state.edit, ctx.multiline, self.max_chars);
+            menu::show(ui, &snapshot, &mut editor, filter)
+        };
         let changed = edited || menu_edited;
         let caret_moved = caret_before != state.edit.caret || sel_before != state.edit.selection;
         let caret_byte = state.edit.caret;

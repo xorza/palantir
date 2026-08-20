@@ -9,10 +9,10 @@
 //! pixels that would be redrawn if the pair were collapsed (also
 //! known as `union_excess`; identical to Iced's metric and the 2-D
 //! restriction of SAH used for BVH builds). A pair merges when
-//! `cost < self.budget_px` — the per-pass setup cost expressed in
-//! "extra-overdraw pixels equivalent". Each `DamageRegion` carries
-//! its own budget; the default ([`DEFAULT_PASS_BUDGET_PX`]) ships
-//! with `DamageEngine`'s region and is the right knob for most callers.
+//! `cost < budget_px` — the per-pass setup cost expressed in
+//! "extra-overdraw pixels equivalent", passed to each fold rather than
+//! stored on the result. The default ([`DEFAULT_PASS_BUDGET_PX`]) is
+//! `DamageEngine`'s and the right knob for most callers.
 //!
 //! `add(r)` cluster-grows a candidate by repeatedly absorbing the
 //! cheapest existing slot until no slot meets the budget, then
@@ -57,55 +57,45 @@ pub(crate) const DAMAGE_RECT_CAP: usize = 8;
 /// somewhat higher in practice.
 pub(crate) const DEFAULT_PASS_BUDGET_PX: f32 = 20_000.0;
 
-/// Set of damage rects, kept in screen space. `Copy` so
+/// Set of disjoint damage rects, kept in screen space. `Copy` so
 /// [`crate::scene::damage::Damage`] threads through `FrameOutput` and the
-/// encoder by value without lifetimes. The `budget_px` field drives
-/// the merge predicate — see the module docs.
-#[derive(Clone, Copy, Debug)]
+/// encoder by value without lifetimes.
+///
+/// **The rects and nothing else.** The merge budget is an argument of
+/// [`Self::add`], because it describes the fold rather than the result;
+/// the damaged fraction of the surface rides
+/// [`CollapsedDamage`](crate::scene::damage::region::CollapsedDamage),
+/// because it means nothing without the surface it was measured against.
+/// Neither has a reader past the merge — the encoder filter and the
+/// backend scissors take rects — and holding them here is what forced this
+/// type's equality to exclude a field it carried.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(crate) struct DamageRegion {
     /// Mutate only through [`Self::add`] — it owns the merge policy
     /// and the `len ≤ DAMAGE_RECT_CAP` invariant.
     pub(crate) rects: ArrayVec<[Rect; DAMAGE_RECT_CAP]>,
-    budget_px: f32,
-    /// Damaged fraction of the surface (`total_area / surface_area`),
-    /// precomputed by [`Self::collapse_from`] against the surface its rects were
-    /// clipped to — so the coverage thresholds that read it
-    /// (`FULL_REPAINT_THRESHOLD` in the damage engine, `DIRECT_PROMOTE_COVERAGE`
-    /// in the renderer) get a ready value instead of every caller threading the
-    /// surface area back in. `0.0` on a region built any other way (`default` /
-    /// `with_budget` / `From<Rect>`); those never reach a coverage check.
-    /// Excluded from [`PartialEq`] (a derived cache, not identity — two regions
-    /// covering the same rects are equal regardless of coverage).
+}
+
+/// One frame's damage after the merge: the bounded rect set, and how much
+/// of the surface those rects cover.
+///
+/// The pair is produced together by [`DamageRegion::collapse_from`] and
+/// consumed together — [`Damage::new`](crate::scene::damage::Damage::new)
+/// classifies the frame off the coverage, and
+/// `PresentStrategy::DirectAdaptive` reads the same number again to decide
+/// whether a partial repaint is worth the backbuffer copy. Pairing them is
+/// what keeps the ratio meaningful: it is measured against the surface the
+/// rects were clipped to, and nothing downstream still has that surface to
+/// re-derive it from.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct CollapsedDamage {
+    pub(crate) region: DamageRegion,
+    /// Damaged fraction of the surface (`total_area / surface_area`), in
+    /// logical space on both sides so the ratio is DPI-independent.
     pub(crate) coverage: f32,
 }
 
-impl PartialEq for DamageRegion {
-    /// Geometric identity only: same rects, same merge budget. The cached
-    /// [`Self::coverage`] is a sealed-surface derivative, not part of what the
-    /// region *is*, so an unsealed expected value still matches a sealed actual.
-    fn eq(&self, other: &Self) -> bool {
-        self.rects == other.rects && self.budget_px == other.budget_px
-    }
-}
-
-impl Default for DamageRegion {
-    fn default() -> Self {
-        Self::with_budget(DEFAULT_PASS_BUDGET_PX)
-    }
-}
-
 impl DamageRegion {
-    /// Empty region with the merge predicate's pass-budget set
-    /// explicitly (in extra-overdraw pixels). Pass `0.0` for
-    /// strict-overlap-only merging.
-    fn with_budget(budget_px: f32) -> Self {
-        Self {
-            rects: ArrayVec::new(),
-            budget_px,
-            coverage: 0.0,
-        }
-    }
-
     /// Build a region from `rects`, clipping each to `surface` before
     /// folding it through `add`. Off-surface pixels can never be
     /// painted, so storing them in the region biases every downstream
@@ -118,7 +108,7 @@ impl DamageRegion {
     /// `cascade::compute_paint_rect`) routinely overflow at high zoom,
     /// so the clip is mandatory at the chokepoint, not optional at
     /// individual callsites.
-    pub(crate) fn collapse_from(rects: &[Rect], budget_px: f32, surface: Rect) -> Self {
+    pub(crate) fn collapse_from(rects: &[Rect], budget_px: f32, surface: Rect) -> CollapsedDamage {
         // A degenerate surface is a logic error — the host filters resize-to-zero
         // before damage runs. Asserting at the one site that divides by surface
         // area lets `Damage::new` stay a pure classifier (no surface needed).
@@ -127,19 +117,19 @@ impl DamageRegion {
             surface_area > EPS,
             "damage collapsed against a degenerate surface: {surface:?}"
         );
-        let mut region = Self::with_budget(budget_px);
+        let mut region = Self::default();
         for r in rects {
             // `add` re-gates on `is_paint_empty`, so the pre-check is
             // only an intersect-cost saver, not load-bearing.
             let clipped = r.clamp_to(surface);
             if !clipped.is_paint_empty() {
-                region.add(clipped);
+                region.add(clipped, budget_px);
             }
         }
-        // Seal coverage against the surface its rects were clipped to — both in
-        // logical space, so the ratio is DPI-independent.
-        region.coverage = region.total_area() / surface_area;
-        region
+        CollapsedDamage {
+            coverage: region.total_area() / surface_area,
+            region,
+        }
     }
 
     pub(crate) fn iter_rects(&self) -> impl Iterator<Item = Rect> + '_ {
@@ -163,7 +153,12 @@ impl DamageRegion {
 
     /// Fold `r` into the region per the policy described at the top
     /// of this module.
-    pub(crate) fn add(&mut self, r: Rect) {
+    ///
+    /// `budget_px` is the per-pass setup cost the merge predicate spends,
+    /// in "extra-overdraw pixels equivalent" — an argument rather than a
+    /// field because it describes this fold, not the rects that come out
+    /// of it. Pass `0.0` for strict-overlap-only merging.
+    pub(crate) fn add(&mut self, r: Rect, budget_px: f32) {
         // `is_paint_empty`, not a bare `area() <= 0.0` — the shared
         // predicate also rejects NaN (which the bare compare admits,
         // poisoning every downstream intersects/cost comparison) and
@@ -171,7 +166,6 @@ impl DamageRegion {
         if r.is_paint_empty() {
             return;
         }
-        let budget = self.budget_px;
         let mut candidate = r;
         // Fused scan: in one pass over `self.rects` we (a) early-out if
         // an existing rect already contains the candidate, (b) note
@@ -205,7 +199,7 @@ impl DamageRegion {
                 continue;
             }
             match best_idx {
-                Some(i) if best_cost < budget => {
+                Some(i) if best_cost < budget_px => {
                     let e = self.rects.swap_remove(i);
                     candidate = candidate.union(e);
                     continue;
@@ -231,15 +225,29 @@ impl DamageRegion {
     }
 }
 
+#[cfg(test)]
+impl DamageRegion {
+    /// These rects, with no coverage measured against any surface.
+    ///
+    /// For a case driving a consumer that reads only the rects — the
+    /// encoder's damage filter, the backend's scissors — where the
+    /// surface the ratio would be taken against does not exist.
+    pub(crate) fn unmeasured(self) -> CollapsedDamage {
+        CollapsedDamage {
+            region: self,
+            coverage: 0.0,
+        }
+    }
+}
+
 #[cfg(any(test, feature = "bench"))]
 impl DamageRegion {
     /// Fold `rects` in order through [`Self::add`] with the default
-    /// pass-budget. Unsealed (`coverage` stays `0.0`) like every
-    /// non-`collapse_from` constructor.
+    /// pass-budget.
     pub(crate) fn from_rects(rects: &[Rect]) -> Self {
         let mut region = Self::default();
         for r in rects {
-            region.add(*r);
+            region.add(*r, DEFAULT_PASS_BUDGET_PX);
         }
         region
     }
@@ -253,9 +261,7 @@ impl DamageRegion {
 #[cfg(test)]
 impl From<Rect> for DamageRegion {
     fn from(r: Rect) -> Self {
-        let mut region = Self::default();
-        region.add(r);
-        region
+        Self::from_rects(&[r])
     }
 }
 

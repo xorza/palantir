@@ -14,6 +14,7 @@ pub(crate) mod pass;
 pub(crate) mod scroll;
 pub(crate) mod scrollbars;
 pub(crate) mod stack;
+pub(crate) mod text_runs;
 pub(crate) mod text_shape_input;
 pub(crate) mod types;
 pub(crate) mod wrapstack;

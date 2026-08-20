@@ -306,7 +306,7 @@ fn divider_requests_the_resize_cursor() {
     frame_with(&mut h, &mut ratio);
     frame_with(&mut h, &mut ratio);
     assert_eq!(
-        h.ui.window_requests.cursor,
+        h.ui.window_requests.levels.cursor,
         CursorIcon::Default,
         "idle frame keeps the arrow"
     );
@@ -316,7 +316,7 @@ fn divider_requests_the_resize_cursor() {
     h.move_onto(split_id().with("divider"));
     frame_with(&mut h, &mut ratio);
     assert_eq!(
-        h.ui.window_requests.cursor,
+        h.ui.window_requests.levels.cursor,
         CursorIcon::EwResize,
         "hover shows resize"
     );
@@ -327,7 +327,7 @@ fn divider_requests_the_resize_cursor() {
     h.drag_to(Vec2::new(320.0, 50.0));
     frame_with(&mut h, &mut ratio);
     assert_eq!(
-        h.ui.window_requests.cursor,
+        h.ui.window_requests.levels.cursor,
         CursorIcon::EwResize,
         "drag holds resize off-bar"
     );
@@ -338,7 +338,7 @@ fn divider_requests_the_resize_cursor() {
     h.move_to(Vec2::new(50.0, 50.0));
     frame_with(&mut h, &mut ratio);
     assert_eq!(
-        h.ui.window_requests.cursor,
+        h.ui.window_requests.levels.cursor,
         CursorIcon::Default,
         "leave resets to the arrow"
     );
@@ -360,7 +360,7 @@ fn divider_requests_the_resize_cursor() {
     h.move_onto(split_id().with("divider"));
     frame(&mut h, &mut ratio);
     assert_eq!(
-        h.ui.window_requests.cursor,
+        h.ui.window_requests.levels.cursor,
         CursorIcon::NsResize,
         "column split resizes vertically"
     );

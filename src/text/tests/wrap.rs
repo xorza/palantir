@@ -10,10 +10,11 @@ fn mono_measure_cases() {
     // tall must report `true`, two bands `false`. That flag is what gates
     // `TextSystem::measure`'s fitting-truncate skip, so a shape that lost
     // it would silently start reshaping every fitting label.
+    // No empty case: a run with no bytes never reaches a metric — see
+    // `an_empty_run_is_answered_at_the_boundary_and_shapes_nothing`.
     let base = shape(16.0);
     let tall = base.leading(24.0);
     for (label, text, params, expected, single_line) in [
-        ("empty", "", base, Size::ZERO, true),
         (
             "unbroken_legacy_short",
             "Hi",
@@ -59,8 +60,6 @@ fn mono_measure_cases() {
             "case: {label}: single_line must agree with the measured height",
         );
     }
-    // Empty also produces the INVALID sentinel.
-    assert!(mono_shape("", base, LineFit::Wrap).key.is_invalid());
 }
 
 #[test]
@@ -191,50 +190,46 @@ fn text_wrap_policy_resolves_shape_and_layout_sizes_together() {
             "{case:?}"
         );
     }
-
-    let empty_slot = slot_at(widget_id, cases.len() as u16);
-    let empty_request = params.unbounded_request("");
-    let empty = text.measure(
-        empty_slot,
-        empty_request,
-        TextWrap::Ellipsis,
-        HAlign::Auto,
-        Some(24.0),
-    );
-    assert_eq!(empty.measured, Size::ZERO);
-    assert_eq!(TextWrap::Ellipsis.content_size(empty.measured), Size::ZERO);
-    let empty_root = text.root(empty_slot, empty_request, TextWrap::Ellipsis);
-    assert_eq!(TextWrap::Ellipsis.min_content(&empty_root), Size::ZERO);
-    assert_eq!(TextWrap::Ellipsis.max_content(&empty_root), Size::ZERO);
 }
 
 #[test]
-fn cosmic_empty_text_returns_invalid_zero_size() {
-    // Empty-text early-return on the cosmic path: ZERO size, INVALID
-    // key, zero intrinsic_min. Pins the renderer's "drop INVALID
-    // runs" contract for empty strings.
-    let mut c = CosmicMeasure::with_bundled_fonts();
-    let r = c.measure("", ui_shape(16.0));
-    assert_eq!(r.size, Size::ZERO);
-    assert!(r.key.is_invalid());
-    assert_eq!(
-        r.intrinsic_min,
-        Some(0.0),
-        "empty text has a genuinely zero floor, not an unscanned one",
+fn an_empty_run_is_answered_at_the_boundary_and_shapes_nothing() {
+    // **The one empty-text boundary.** A `TextShapeRequest` cannot hold a
+    // run with no bytes, so no layer below it carries a guard — and the
+    // crate edge that still meets one answers it itself.
+    let params = ui_shape(16.0);
+    assert!(
+        TextShapeRequest::unbounded("", params.font).is_none(),
+        "an empty run has no request to make of the shaper",
     );
-    // Nothing was cached for the empty input. Asserted against the cache
-    // itself rather than by looking the sentinel up: it names no entry,
-    // so `shaped_run` treats being asked as a misuse rather than a miss.
-    assert_eq!(c.cache_len(), 0, "empty text must mint no shaped buffer");
 
-    // The mono fallback agrees, and empty text short-circuits ahead of
-    // the dispatch tally — a run with nothing to shape is not a shape.
-    let shaper = TextShaper::test_mono();
-    let calls = shaper.measure_calls();
-    let r = shaper.measure("", ui_shape(16.0));
-    assert_eq!(r.measured, Size::ZERO);
-    assert!(r.key.is_invalid(), "empty text mints no shaped buffer");
-    assert_eq!(shaper.measure_calls(), calls);
+    // Both metrics answer the same way through the probe edge: zero
+    // extent, the INVALID sentinel so the renderer drops the run, and no
+    // dispatch — a run with nothing to shape is not a shape.
+    for shaper in [TextShaper::new(), TextShaper::test_mono()] {
+        let calls = shaper.measure_calls();
+        let measured = shaper.measure("", params);
+        assert_eq!(measured.measured, Size::ZERO);
+        assert!(measured.key.is_invalid(), "empty text mints no buffer");
+        assert_eq!(shaper.measure_calls(), calls, "no dispatch for no bytes");
+        assert_eq!(shaper.cosmic_cache_len(), 0, "and no cached buffer");
+
+        // The geometry an empty block still has to answer: one position,
+        // at its own origin, on a band of the requested height.
+        shaper.probe_layout("", params, |probe| {
+            assert_eq!(probe.size(), Size::ZERO);
+            let caret = probe.caret_at(0);
+            assert_eq!(caret.x, 0.0);
+            assert_eq!(caret.y_top, 0.0);
+            // `TextShapeKey` quantizes leading to 1/64 px, so the band an
+            // empty block reports is the quantized one, not the request.
+            assert!(
+                (caret.line_height - params.font.line_height_px).abs() <= 1.0 / 64.0,
+                "{caret:?}",
+            );
+            assert_eq!(probe.byte_at(37.0, 5.0), 0, "every point is byte 0");
+        });
+    }
 }
 
 #[test]
@@ -429,7 +424,8 @@ fn a_probe_shapes_under_the_key_the_paint_committed() {
             max_width_px: Some(width),
         });
         assert_eq!(
-            probed.request.key, painted,
+            probed.shaped_key(),
+            painted,
             "{wrap:?}: probe and paint must share one shaped buffer",
         );
 
@@ -438,12 +434,13 @@ fn a_probe_shapes_under_the_key_the_paint_committed() {
         // so the agreement above is the resolution working rather than
         // both sides trivially binding the same number.
         let raw = TextShapeRequest::unbounded(text, params.font)
+            .expect("the fixture has text")
             .with_bound(WrapBound::new(
                 width,
                 HAlign::Auto,
                 wrap.line_fit().expect("all four policies bind"),
             ))
-            .key;
+            .key();
         match wrap {
             TextWrap::Wrap => assert_eq!(raw, painted, "Wrap commits the width it was offered"),
             _ => assert_ne!(

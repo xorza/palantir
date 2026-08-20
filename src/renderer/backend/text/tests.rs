@@ -71,10 +71,10 @@ fn make_inner_run(
         align: Align::default(),
         max_width_px: None,
     };
-    let request = run.unbounded_request();
+    let key = run.unbounded_key();
     shaper.layout(&run);
     TextDrawRow {
-        text: ShapedTextRef::new(request.key, &recorded),
+        text: ShapedTextRef::new(key, &recorded),
         origin,
         bounds: URect::new(0, 0, viewport.x, viewport.y),
         color,

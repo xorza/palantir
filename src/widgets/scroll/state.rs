@@ -6,8 +6,17 @@ use crate::layout::axis::Axis;
 use crate::layout::scrollbars::BarDomain;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
+use crate::primitives::translate_scale::TranslateScale;
 use glam::Vec2;
 
+/// Where a viewport is scrolled to, and the interaction state that moves
+/// it there.
+///
+/// **Every viewport in the crate stores its offset here** — the `Scroll`
+/// widget and `TextEdit`'s own text viewport alike. The two drive it
+/// differently (a wheel and bars versus a wheel and the caret), but the
+/// offset, the band [`Self::clamp_to_natural`] holds it in, and the
+/// transform that carries the content are one implementation.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ScrollState {
     pub(crate) offset: Vec2,
@@ -31,11 +40,13 @@ impl Default for ScrollState {
     }
 }
 
+/// The box an offset is solved in: how much content there is, how much of
+/// it fits, and how far past either edge the offset may still roam.
 #[derive(Clone, Copy, Debug)]
-pub(super) struct ScrollBounds {
-    pub(super) content: Size,
-    pub(super) viewport: Size,
-    pub(super) content_margin: Spacing,
+pub(crate) struct ScrollBounds {
+    pub(crate) content: Size,
+    pub(crate) viewport: Size,
+    pub(crate) content_margin: Spacing,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -137,7 +148,7 @@ impl ScrollState {
         }
     }
 
-    pub(super) fn apply_wheel_pan(
+    pub(crate) fn apply_wheel_pan(
         &mut self,
         bounds: ScrollBounds,
         pan_x: bool,
@@ -162,10 +173,19 @@ impl ScrollState {
         }
     }
 
-    pub(super) fn clamp_to_natural(&mut self, bounds: ScrollBounds) {
+    pub(crate) fn clamp_to_natural(&mut self, bounds: ScrollBounds) {
         let bounds = self.natural_bounds(bounds);
         self.offset.x = self.offset.x.clamp(bounds.lo.x, bounds.hi.x);
         self.offset.y = self.offset.y.clamp(bounds.lo.y, bounds.hi.y);
+    }
+
+    /// The transform a viewport applies to carry its content: the offset,
+    /// negated — scrolling right shifts content left — at the current
+    /// zoom. Cascade anchors the scale at the node's own `layout_rect.min`
+    /// (`TranslateScale::anchored_at`), so nothing here pre-bakes an
+    /// origin.
+    pub(crate) fn transform(&self) -> TranslateScale {
+        TranslateScale::new(-self.offset, self.zoom)
     }
 
     pub(super) fn apply_thumb_drag(

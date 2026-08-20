@@ -42,7 +42,8 @@ use crate::primitives::widget_id::WidgetIdMap;
 use crate::renderer::frontend::FrameScene;
 use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
 use crate::renderer::gpu_paint::gpu_view_entry::GpuViewEntry;
-use crate::renderer::image_registry::{ImageHandle, RegisterImageError};
+use crate::renderer::image_registry::ImageHandle;
+use crate::renderer::texture_limit::RegisterImageError;
 use crate::scene::forest::Forest;
 use crate::scene::layer::Layer;
 use crate::scene::node::{Configure, Node};
@@ -295,6 +296,28 @@ impl Ui {
         self.input.keyboard_events(self.forest.current_layer())
     }
 
+    /// Walk this frame's [`Self::keyboard_events`], handing each to
+    /// `visit` with `&mut Ui` free for the duration.
+    ///
+    /// **Indexed rather than iterated, and that is the whole point.** A
+    /// handler for a key almost always needs the `Ui` back — a text probe
+    /// for vertical caret motion, a clipboard read for paste — and an
+    /// iterator over the queue would hold a borrow of `Ui` across every
+    /// one of those calls. Taking one event at a time by index keeps that
+    /// borrow to the read itself, without a scratch `Vec` standing between
+    /// the queue and the handler.
+    ///
+    /// The queue does not change during a record pass, so the length is
+    /// read once and the walk is exactly the frame's events, in arrival
+    /// order.
+    pub(crate) fn each_keyboard_event(&mut self, mut visit: impl FnMut(&mut Self, KeyboardEvent)) {
+        let n = self.keyboard_events().len();
+        for i in 0..n {
+            let event = self.keyboard_events()[i];
+            visit(self, event);
+        }
+    }
+
     /// `true` if any [`KeyboardEvent::Down`] this frame matches
     /// `sc`. Iterates [`Self::keyboard_events`]; for repeat or
     /// stateful logic, iterate directly instead.
@@ -368,7 +391,7 @@ impl Ui {
     /// (typically off its hover/drag response). The host applies it
     /// after the frame, only on change; ignored in headless contexts.
     pub fn set_cursor(&mut self, cursor: CursorIcon) {
-        self.window_requests.cursor = cursor;
+        self.window_requests.levels.cursor = cursor;
     }
 
     /// Set this window's presentation pacing.
@@ -386,7 +409,7 @@ impl Ui {
     /// Inert on hosts with no swapchain, which is every headless one — the
     /// level is still recorded and still reads back.
     pub fn set_vsync(&mut self, vsync: Vsync) {
-        self.window_requests.vsync = vsync;
+        self.window_requests.levels.vsync = vsync;
     }
 
     /// This window's presentation pacing, as last set by
@@ -397,7 +420,7 @@ impl Ui {
     /// liveness. A host launched with an explicit backend present mode
     /// reports whichever of the two states that mode paces like.
     pub fn vsync(&self) -> Vsync {
-        self.window_requests.vsync
+        self.window_requests.levels.vsync
     }
 
     /// Ask the host to schedule another frame after this one. Cleared
@@ -631,7 +654,8 @@ impl Ui {
     /// texture limit. A rejected image is never queued for upload. Standalone
     /// CPU recorders have no device limit and retain the original dimensions.
     pub fn register_image(&self, image: Image) -> Result<ImageHandle, RegisterImageError> {
-        self.resources.images.register(image)
+        self.resources.texture_limit.accepts(image.size)?;
+        Ok(self.resources.images.register(image))
     }
 
     /// The largest width or height [`Self::register_image`] accepts — the
@@ -645,7 +669,7 @@ impl Ui {
     /// over-limit image rather than shrinking it, so a host that wants the
     /// biggest texture a machine will take has to ask first.
     pub fn max_image_dimension(&self) -> Option<NonZeroU32> {
-        self.resources.images.max_texture_dimension_2d()
+        self.resources.texture_limit.max_dimension()
     }
 
     /// Record a `GpuView` for widget `id`: upsert it into [`Self::gpu_views`]

@@ -272,7 +272,8 @@ pub use primitives::widget_id::WidgetId;
 pub use renderer::gpu_paint::GpuPaint;
 pub use renderer::gpu_paint::gpu_frame_ctx::GpuFrameCtx;
 pub use renderer::gpu_paint::gpu_init_ctx::GpuInitCtx;
-pub use renderer::image_registry::{ImageHandle, RegisterImageError};
+pub use renderer::image_registry::ImageHandle;
+pub use renderer::texture_limit::RegisterImageError;
 /// The bound on [`Ui::add_shape`] — sealed, so it names the shape kinds
 /// the crate ships and nothing else.
 pub use shape::Lower;
@@ -387,7 +388,7 @@ mod hot_struct_sizes {
     use crate::scene::cascade::entry::{EntryRow, HitRow};
     use crate::scene::cascade::paint::Paint;
     use crate::scene::damage::node_snapshot::NodeSnapshot;
-    use crate::scene::damage::region::DamageRegion;
+    use crate::scene::damage::region::{CollapsedDamage, DamageRegion};
     use crate::scene::node::Node;
     use crate::scene::node::bounds_extras::BoundsExtras;
     use crate::scene::node::layout_core::LayoutCore;
@@ -542,7 +543,8 @@ mod hot_struct_sizes {
         Widget => "widgets::Widget": 128 / 8,
         TargetScrollDelta => "input::TargetScrollDelta": 32 / 8,
         // Damage.
-        DamageRegion => "damage::DamageRegion": 140 / 4,
+        DamageRegion => "damage::DamageRegion": 132 / 4,
+        CollapsedDamage => "damage::CollapsedDamage": 136 / 4,
         NodeSnapshot => "damage::node_snapshot::NodeSnapshot": 40 / 8,
         // Encoder↔composer wire payloads.
         PushClipPayload => "payload::PushClipPayload": 24 / 4,

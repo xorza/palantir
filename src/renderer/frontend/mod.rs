@@ -4,7 +4,8 @@
 //!    a [`PaintSink`](paint_sink::PaintSink). Owns the encode scratch.
 //! 2. [`Composer`] — the production sink: scales, snaps, and groups each
 //!    operation into a `RenderBuffer` (physical-px quads + scissor
-//!    groups). Owns the output + scratch; no GPU handles.
+//!    groups). Owns the compose scratch; the buffer it fills is lent to it
+//!    per pass by (3). No GPU handles.
 //! 3. [`Frontend`] (this struct) — orchestrates (1) + (2) and owns every
 //!    persistent per-frame allocation. A host shares one frontend serially
 //!    across its windows: `WindowDriver` calls [`Frontend::build`] once per

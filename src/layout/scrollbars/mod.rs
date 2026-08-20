@@ -20,6 +20,7 @@ use glam::{BVec2, Vec2};
 use std::hash::Hash;
 
 use crate::layout::axis::Axis;
+use crate::layout::intrinsic::IntrinsicRange;
 use crate::layout::pass::LayoutPass;
 use crate::primitives::approx::FloatHash;
 use crate::primitives::num::F32Ext;
@@ -232,6 +233,14 @@ pub(super) fn measure(pass: &mut LayoutPass<'_>, node: NodeId, inner_avail: Size
         pass.measure(child.id, inner_avail);
     }
     Size::ZERO
+}
+
+/// Bars are absolutely placed chrome in a reserved gutter: they must never
+/// floor the scroll they decorate, on either axis. The whole driver
+/// contributes nothing to a parent's intrinsic, which is why this takes no
+/// arguments beyond the shape of the triple.
+pub(super) fn intrinsic() -> IntrinsicRange {
+    IntrinsicRange::ZERO
 }
 
 /// Assign each of the four bar leaves its resolved rect, zero-extent for

@@ -64,6 +64,7 @@ mod input;
 mod native;
 mod runtime;
 mod window;
+mod window_set;
 
 use std::marker::PhantomData;
 use std::time::Instant;
@@ -370,9 +371,12 @@ where
             return;
         };
         let max_texture_dim = runtime.surfaces.max_texture_dim.get();
-        let Some(win) = runtime.by_id(id) else {
+        // Resolved once for the whole event: the dispatch below names the
+        // window by its slot, so a redraw does not look it up again.
+        let Some(slot) = runtime.slot_of_id(id) else {
             return;
         };
+        let win = runtime.window(slot);
 
         let mut wants_repaint = false;
         input::translate(&event, win.scale_factor, |ev| {
@@ -383,7 +387,7 @@ where
         }
 
         match event {
-            WindowEvent::RedrawRequested => runtime.draw(id),
+            WindowEvent::RedrawRequested => runtime.draw(slot),
 
             WindowEvent::CloseRequested => {
                 // Don't remove the window here — flag it and force a frame.

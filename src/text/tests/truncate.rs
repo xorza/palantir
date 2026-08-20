@@ -87,9 +87,9 @@ fn a_truncating_fit_cuts_an_overflowing_label_to_one_fitting_line() {
             "{fit:?} must measure exactly one line",
         );
         assert_eq!(
-            cut.intrinsic_min,
-            Some(0.0),
-            "{fit:?} shrinks to nothing, so its floor is zero",
+            cut.intrinsic_min, None,
+            "{fit:?} is a bounded resolve, which has no wrapping floor to \
+             report — the floor belongs to the unbounded root",
         );
         assert_eq!(cut.key.fit_q, fit as u8);
         assert_eq!(
@@ -372,10 +372,10 @@ fn a_fitting_label_measures_its_natural_width_whatever_the_cap_or_align() {
 }
 
 #[test]
-fn mono_ellipsis_caps_width_with_zero_floor() {
-    // Mono fallback: an elided long word caps at the available width and
-    // reports zero min-content (shrinks to the ellipsis); the wrap
-    // counterpart instead grows height and keeps the longest-word floor.
+fn mono_ellipsis_caps_width_and_leaves_the_floor_to_the_root() {
+    // Mono fallback: an elided long word caps at the available width; the
+    // wrap counterpart instead grows height and keeps the longest-word
+    // floor, which only its unbounded root can report.
     let long = "abcdefghijklmnop"; // 16 ASCII bytes × 8 px = 128 px natural
     let params = shape(16.0).width(40.0);
     let w = params.max_width_px.unwrap();
@@ -384,16 +384,15 @@ fn mono_ellipsis_caps_width_with_zero_floor() {
     assert_eq!(elided.size.w, w, "elided mono caps at the width");
     assert_eq!(elided.size.h, 16.0, "elided mono is one line");
     assert_eq!(
-        elided.intrinsic_min,
-        Some(0.0),
-        "elided mono has zero floor"
+        elided.intrinsic_min, None,
+        "a bounded resolve reports no wrapping floor, on either metric",
     );
 
     let wrapped = mono_shape(long, params, LineFit::Wrap);
     assert!(wrapped.size.h > 16.0, "wrap grows height across lines");
     assert!(
-        wrapped.wrap_floor() > 0.0,
-        "wrap keeps a longest-word floor"
+        mono_shape(long, params.unbounded(), LineFit::Wrap).wrap_floor() > 0.0,
+        "wrap keeps a longest-word floor — reported by the root it belongs to",
     );
 }
 

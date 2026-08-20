@@ -2,7 +2,7 @@
 
 use crate::primitives::color::Color;
 use crate::scene::damage::Damage;
-use crate::scene::damage::region::DamageRegion;
+use crate::scene::damage::region::CollapsedDamage;
 
 /// WindowDriver-facing render plan, present only when there's actual render
 /// work this frame — `FrameReport.plan = None` is the skip signal, so neither
@@ -22,9 +22,11 @@ pub(crate) struct RenderPlan {
 pub(crate) enum RenderKind {
     /// Clear + repaint the whole surface.
     Full,
-    /// Load the backbuffer, then paint inside `region` after a
-    /// `clear`-coloured pre-fill quad per scissor.
-    Partial { region: DamageRegion },
+    /// Load the backbuffer, then paint inside the damage rects after a
+    /// `clear`-coloured pre-fill quad per scissor. The coverage rides
+    /// along for the present-path promote decision — see
+    /// `DIRECT_PROMOTE_COVERAGE`.
+    Partial { damage: CollapsedDamage },
 }
 
 impl RenderPlan {
@@ -48,7 +50,7 @@ impl RenderPlan {
         let kind = match damage {
             Damage::Skip => return None,
             Damage::Full => RenderKind::Full,
-            Damage::Partial(region) => RenderKind::Partial { region },
+            Damage::Partial(damage) => RenderKind::Partial { damage },
         };
         Some(RenderPlan { clear, kind })
     }

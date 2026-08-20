@@ -9,6 +9,7 @@
 
 use crate::common::content_hash::ContentHash;
 use crate::layout::LayerLayout;
+use crate::layout::text_runs::TextRuns;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::span::Span;
@@ -218,8 +219,7 @@ pub(super) fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) 
 
     let has_shapes = tree.records.shape_span()[node.idx()].len > 0;
     if has_shapes || has_children {
-        let text_span = layout.text_spans[node.idx()];
-        let mut text_ord: u32 = 0;
+        let mut text_runs = TextRuns::new(layout.text_spans[node.idx()]);
         let shape_hashes = tree.shapes.hashes.as_slice();
         let widget_ids = tree.records.widget_id();
         for item in TreeItems::new(&tree.records, &tree.shapes.records, node) {
@@ -235,19 +235,17 @@ pub(super) fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) 
             };
             // Every direct text shape has one layout-derived entry, whether
             // measure produced it for a leaf or post-arrange shaping produced
-            // it for a container.
+            // it for a container — handed out by the same cursor the encoder
+            // walks the column with.
+            let shaped = text_runs.shaped(s, layout);
             let screen = match s {
                 ShapeRecord::Text {
                     local_origin,
                     align,
                     ..
                 } => {
-                    debug_assert!(
-                        text_ord < text_span.len,
-                        "cascade saw a text shape without a matching ShapedText entry",
-                    );
-                    let shaped = layout.text_shapes[(text_span.start + text_ord) as usize];
-                    text_ord += 1;
+                    let shaped =
+                        shaped.expect("a text record always draws its run from the cursor");
                     // Read here rather than carried in: the text arm is
                     // the only reader, so a node with no text shape never
                     // touches the column.
@@ -311,8 +309,8 @@ pub(super) fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) 
             };
             push_paint(arena, &mut union, screen, shape_hashes[idx as usize]);
         }
-        debug_assert_eq!(
-            text_ord, text_span.len,
+        debug_assert!(
+            text_runs.is_drained(),
             "cascade text count differs from the node's shaped-text span",
         );
     }

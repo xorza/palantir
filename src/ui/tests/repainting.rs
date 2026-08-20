@@ -7,6 +7,7 @@ use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::Color, rect::Rect};
 use crate::renderer::render_plan::{RenderKind, RenderPlan};
+use crate::renderer::texture_limit::TextureLimit;
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
 use crate::ui::harness::UiHarness;
@@ -274,10 +275,10 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
     // blink phase actually flipped). Pin both invariants.
     match r1.plan {
         Some(RenderPlan {
-            kind: RenderKind::Partial { region },
+            kind: RenderKind::Partial { damage },
             ..
         }) => {
-            let rects: Vec<_> = region.iter_rects().collect();
+            let rects: Vec<_> = damage.region.iter_rects().collect();
             assert_eq!(rects.len(), 1, "expected single damage rect, got {rects:?}");
             let r = rects[0];
             assert!(
@@ -447,7 +448,7 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
         });
     }
 
-    let shared = HostShared::new(TextShaper::test_mono(), None);
+    let shared = HostShared::new(TextShaper::test_mono(), TextureLimit::default());
     let atlas = shared.gradient_atlas.clone();
     let mut a = ui_with_shared(&shared);
     let mut b = ui_with_shared(&shared);

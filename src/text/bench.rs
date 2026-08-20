@@ -156,11 +156,11 @@ fn bench_reuse_layer(c: &mut Criterion) {
     c.bench_function("text_shape/reuse_layer/single_line_dispatch_x64", |b| {
         let shaper = TextShaper::new();
         for text in &labels {
-            shaper.shape(request_for(text), WrapFloor::Skip);
+            shaper.root(request_for(text), WrapFloor::Skip);
         }
         b.iter(|| {
             for text in &labels {
-                black_box(shaper.shape(request_for(text), WrapFloor::Skip));
+                black_box(shaper.root(request_for(text), WrapFloor::Skip));
             }
         });
     });
@@ -194,20 +194,18 @@ fn bench_reuse_layer(c: &mut Criterion) {
         let shaper = TextShaper::new();
         for text in &labels {
             let request = request_for(text);
-            shaper.shape(request, WrapFloor::Skip);
-            shaper.shape(
-                request.with_bound(WrapBound::new(WRAP_W, HAlign::Left, LineFit::Wrap)),
-                WrapFloor::Skip,
-            );
+            shaper.root(request, WrapFloor::Skip);
+            shaper.resolve(request.with_bound(WrapBound::new(WRAP_W, HAlign::Left, LineFit::Wrap)));
         }
         b.iter(|| {
             for text in &labels {
                 let request = request_for(text);
-                black_box(shaper.shape(request, WrapFloor::Skip));
-                black_box(shaper.shape(
-                    request.with_bound(WrapBound::new(WRAP_W, HAlign::Left, LineFit::Wrap)),
-                    WrapFloor::Skip,
-                ));
+                black_box(shaper.root(request, WrapFloor::Skip));
+                black_box(shaper.resolve(request.with_bound(WrapBound::new(
+                    WRAP_W,
+                    HAlign::Left,
+                    LineFit::Wrap,
+                ))));
             }
         });
     });
@@ -361,7 +359,9 @@ fn drag_frame(
 ) -> ShapedText {
     let width = 40.0 + (step % DRAG_WIDTHS) as f32 * 0.25;
     let measured = measure_truncated_width(text, slot, TEXT, width);
-    shaper.render_ensure(TextShapeRequest::for_key(TEXT, measured.key));
+    shaper.render_ensure(
+        TextShapeRequest::for_key(TEXT, measured.key).expect("the bench fixture has text"),
+    );
     text.end_full_record(&FxHashSet::default());
     measured
 }
@@ -378,7 +378,7 @@ fn drag_frame(
 /// every call.
 ///
 /// The label is long enough that the cut keeps a short prefix: that is
-/// the asymmetry `measure_truncated` is built around, since the whole
+/// the asymmetry `shape_truncated` is built around, since the whole
 /// string is shaped once into the cached unbounded probe and only the
 /// prefix is reshaped per width.
 fn bench_ellipsis_churn(c: &mut Criterion) {

@@ -21,17 +21,17 @@ mod present_mode_tests {
         })
     }
     /// One `Rect` of `w·h` px², built through `collapse_from` against
-    /// [`SURFACE`] so its `region.coverage` is `w·h / 10_000` — exactly what the
+    /// [`SURFACE`] so its coverage is `w·h / 10_000` — exactly what the
     /// damage engine seals in the real path.
     fn partial(w: f32, h: f32) -> Option<RenderPlan> {
-        let region = DamageRegion::collapse_from(
+        let damage = DamageRegion::collapse_from(
             &[Rect::new(0.0, 0.0, w, h)],
             DEFAULT_PASS_BUDGET_PX,
             SURFACE,
         );
         Some(RenderPlan {
             clear: Color::BLACK,
-            kind: RenderKind::Partial { region },
+            kind: RenderKind::Partial { damage },
         })
     }
     const DIRECT_FULL: PresentMode = Direct(RenderPlan {
@@ -120,8 +120,11 @@ mod output_validity_tests {
     use crate::primitives::color::Color;
     use crate::renderer::frontend::Frontend;
     use crate::renderer::render_plan::{RenderKind, RenderPlan};
+    use crate::renderer::texture_limit::TextureLimit;
     use crate::text::shaper::TextShaper;
     use crate::ui::frame_report::{FrameProcessing, FrameReport};
+    use crate::window::cursor_icon::CursorIcon;
+    use crate::window::vsync::Vsync;
     use crate::window::window_config::WindowConfig;
     use crate::window::window_token::WindowToken;
 
@@ -129,42 +132,52 @@ mod output_validity_tests {
         WindowDriver::builder(token, shared).build()
     }
 
-    /// A host with no window lifecycle refuses the request instead of dropping
-    /// it, and clears the veto flag a `keep_open` may have left behind.
+    /// A host with no window lifecycle drains a quiet frame exactly as a
+    /// windowed one does — the veto lives a frame either way — and keeps
+    /// the *levels* the recorder reads back, which is the half of the
+    /// output it is allowed to leave inert.
     #[test]
-    fn deny_window_requests_accepts_a_quiet_frame_and_clears_the_veto() {
-        let shared = HostShared::new(TextShaper::test_mono(), None);
+    fn deny_window_commands_accepts_a_quiet_frame_and_clears_the_veto() {
+        let shared = HostShared::new(TextShaper::test_mono(), TextureLimit::default());
         let mut quiet = driver(WindowToken(1), &shared);
         quiet.ui.keep_open();
+        quiet.ui.set_vsync(Vsync::Off);
+        quiet.ui.set_cursor(CursorIcon::Text);
 
-        quiet.deny_window_requests();
+        quiet.deny_window_commands();
 
         assert!(
             !quiet.ui.window_requests.close_vetoed,
             "a veto against a close that was never requested must not persist"
         );
+        assert_eq!(
+            quiet.ui.vsync(),
+            Vsync::Off,
+            "a level the host cannot apply is still the one the app set",
+        );
+        assert_eq!(quiet.ui.window_requests.levels.cursor, CursorIcon::Text);
     }
 
     #[test]
     #[should_panic(expected = "Ui::open_window(WindowToken(9))")]
-    fn deny_window_requests_rejects_an_open() {
-        let shared = HostShared::new(TextShaper::test_mono(), None);
+    fn deny_window_commands_rejects_an_open() {
+        let shared = HostShared::new(TextShaper::test_mono(), TextureLimit::default());
         let mut opener = driver(WindowToken(1), &shared);
         opener
             .ui
             .open_window(WindowToken(9), WindowConfig::new("unservable"));
 
-        opener.deny_window_requests();
+        opener.deny_window_commands();
     }
 
     #[test]
     #[should_panic(expected = "Ui::close_window(WindowToken(4))")]
-    fn deny_window_requests_rejects_a_close() {
-        let shared = HostShared::new(TextShaper::test_mono(), None);
+    fn deny_window_commands_rejects_a_close() {
+        let shared = HostShared::new(TextShaper::test_mono(), TextureLimit::default());
         let mut closer = driver(WindowToken(1), &shared);
         closer.ui.close_window(WindowToken(4));
 
-        closer.deny_window_requests();
+        closer.deny_window_commands();
     }
 
     fn report(plan: Option<RenderPlan>) -> FrameReport {
@@ -186,7 +199,7 @@ mod output_validity_tests {
     /// leave the swapchain on the old mode forever.
     #[test]
     fn note_target_tracks_size_format_and_present_mode_and_invalidates_on_change() {
-        let shared = HostShared::new(TextShaper::test_mono(), None);
+        let shared = HostShared::new(TextShaper::test_mono(), TextureLimit::default());
         let mut driver = WindowDriver::builder(WindowToken(1), &shared).build();
         let first = TargetKey {
             physical: UVec2::new(64, 48),
@@ -294,7 +307,7 @@ mod output_validity_tests {
 
     #[test]
     fn window_drivers_have_distinct_render_owners() {
-        let shared = HostShared::new(TextShaper::test_mono(), None);
+        let shared = HostShared::new(TextShaper::test_mono(), TextureLimit::default());
         let first = WindowDriver::builder(WindowToken(1), &shared).build();
         let second = WindowDriver::builder(WindowToken(2), &shared).build();
 
@@ -303,7 +316,7 @@ mod output_validity_tests {
 
     #[test]
     fn output_validity_tracks_pending_and_completion() {
-        let shared = HostShared::new(TextShaper::test_mono(), None);
+        let shared = HostShared::new(TextShaper::test_mono(), TextureLimit::default());
         let mut frontend = Frontend::new(8192, shared.gradient_atlas.clone());
         let mut driver = WindowDriver::builder(WindowToken(1), &shared).build();
         assert!(!driver.output_valid, "first frame has no presented output");
@@ -358,6 +371,7 @@ mod record_store_tests {
     use crate::primitives::mesh::{Mesh, MeshVertex};
     use crate::primitives::widget_id::WidgetId;
     use crate::renderer::frontend::Frontend;
+    use crate::renderer::texture_limit::TextureLimit;
     use crate::shape::Shape;
     use crate::shape::polyline::PolylineColors;
     use crate::text::shaper::TextShaper;
@@ -435,7 +449,7 @@ mod record_store_tests {
 
     #[test]
     fn cpu_frame_forwards_token_through_app_lifecycle() {
-        let shared = HostShared::new(TextShaper::test_mono(), None);
+        let shared = HostShared::new(TextShaper::test_mono(), TextureLimit::default());
         let mut frontend = Frontend::new(8192, shared.gradient_atlas.clone());
         let token = WindowToken(17);
         let mut window = WindowDriver::builder(token, &shared)
@@ -465,7 +479,7 @@ mod record_store_tests {
     /// another window's animation-only frame.
     #[test]
     fn interleaved_window_paint_only_preserves_record_payloads() {
-        let shared = HostShared::new(TextShaper::test_mono(), None);
+        let shared = HostShared::new(TextShaper::test_mono(), TextureLimit::default());
         let mut frontend = Frontend::new(8192, shared.gradient_atlas.clone());
         let mut window_a = WindowDriver::builder(WindowToken(1), &shared)
             .clock(Box::new(FixedClock::new(Duration::ZERO)))

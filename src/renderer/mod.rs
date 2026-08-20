@@ -23,3 +23,4 @@ pub(crate) mod render_buffer;
 pub(crate) mod render_owner_id;
 pub(crate) mod render_plan;
 pub(crate) mod texture_id_source;
+pub(crate) mod texture_limit;

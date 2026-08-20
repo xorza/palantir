@@ -150,7 +150,7 @@ impl FillAxis {
         self.0.lanes()
     }
 
-    /// Scale every lane — the composer's `current_transform.scale`
+    /// Scale every lane — the composer's walk-transform scale
     /// multiply, run per quad.
     ///
     /// Delegates to [`F16x4::scaled`] rather than composing

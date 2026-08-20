@@ -728,9 +728,7 @@ fn reparent_at_same_rect_damages_moved_subtree() {
     let mut h = UiHarness::new(DISPLAY.physical);
     frame(&mut h, |ui| build(ui, false));
     let damage = frame(&mut h, |ui| build(ui, true));
-    let Damage::Partial(region) = damage else {
-        panic!("expected Partial for the moved leaf, got {damage:?}");
-    };
+    let region = damage.expect_partial();
     assert!(
         region.any_intersects(LEAF_PROBE),
         "moved leaf's extent must be damaged; region = {region:?}",
@@ -776,9 +774,7 @@ fn front_insert_damages_only_the_new_shape() {
     let mut h = UiHarness::new(DISPLAY.physical);
     frame(&mut h, |ui| build(ui, false));
     let damage = frame(&mut h, |ui| build(ui, true));
-    let Damage::Partial(region) = damage else {
-        panic!("expected Partial, got {damage:?}");
-    };
+    let region = damage.expect_partial();
     assert!(
         region.any_intersects(NEW_PROBE),
         "inserted shape must be damaged; region = {region:?}",

@@ -1,7 +1,7 @@
 //! Per-frame pointer and keyboard dispatch for TextEdit.
 
 use crate::common::platform::{PLATFORM, Platform};
-use crate::input::key_class::{KeyClass, KeyFilter};
+use crate::input::key_class::KeyFilter;
 use crate::input::keyboard::{Key, KeyPress, KeyboardEvent, Modifiers};
 use crate::input::response::ResponseState;
 use crate::ui::Ui;
@@ -57,11 +57,10 @@ pub(super) struct AcceptPolicy {
 ///
 /// Takes the state row as a plain `&mut` rather than reaching for it
 /// through `ui`. `Editor` holds it mutably across the keyboard drain,
-/// and the drain reads [`Ui::keyboard_events`] — a `&self` method, so it
-/// borrows all of `Ui` and the two cannot coexist. `TextEdit::show`
-/// moves the row out once for the whole pass, which is what makes this
-/// possible *and* is why the caller's write-back has to be
-/// unconditional.
+/// and the drain hands `&mut Ui` back to each handler, so a row borrowed
+/// *from* `ui` could not survive it. `TextEdit::show` moves the row out
+/// once for the whole pass, which is what makes this possible *and* is
+/// why the caller's write-back has to be unconditional.
 pub(super) fn run_input(
     ui: &mut Ui,
     resp_state: &ResponseState,
@@ -128,8 +127,8 @@ pub(super) fn run_input(
         // scroll are computed after this pass returns.
         let [pad_l, pad_t, _, _] = ctx.padding.as_array();
         let block = layout.prev_block_offset;
-        let local_x = pointer_offset.x - pad_l - block.x + view.scroll.x;
-        let local_y = pointer_offset.y - pad_t - block.y + view.scroll.y;
+        let local_x = pointer_offset.x - pad_l - block.x + view.scroll.offset.x;
+        let local_y = pointer_offset.y - pad_t - block.y + view.scroll.offset.y;
         // `byte_at_xy` handles both axes; single-line probes at
         // `y=0` (against an unwrapped layout) collapse to cosmic's
         // 1D `Buffer::hit` walk — one shaped lookup.
@@ -194,22 +193,13 @@ pub(super) fn run_input(
     // Text chunks splice into the buffer (sanitized for single-line);
     // Down events route through shared edit actions (clipboard / undo)
     // then `apply_key` (edit / nav). Vertical-nav probes happen inline
-    // because they need a text probe. Indexing keeps the borrow on the
-    // input queue short-lived, so the probe inside the loop can take its
-    // own without a scratch Vec standing between them.
-    //
-    // **`filter` gates the drain as well as the scope.** The stream is
-    // the whole layer's, so a field that told everyone else it does not
-    // take a class (`TextEdit::escape_falls_through`) would otherwise go
-    // on acting on it here — and the container the class was yielded to
-    // acts on it too. One press, handled twice, which is the exact
-    // double-dispatch scopes exist to prevent.
-    let n = ui.keyboard_events().len();
-    for i in 0..n {
-        let event = ui.keyboard_events()[i];
+    // because they need a text probe, which is what `Ui`'s walk keeps
+    // the borrow free for.
+    ui.each_keyboard_event(|ui, event| {
+        let Some(event) = filter.accepts(event) else {
+            return;
+        };
         match event {
-            KeyboardEvent::Down(kp) if !filter.takes(KeyClass::of(kp)) => continue,
-            KeyboardEvent::Text(_) if !filter.contains(KeyFilter::TEXT) => continue,
             KeyboardEvent::Text(chunk) => {
                 let to_insert = ed.sanitized(chunk.as_str());
                 if !to_insert.is_empty() {
@@ -222,11 +212,11 @@ pub(super) fn run_input(
                 // the caller learns the user accepted the value.
                 if !ed.multiline && kp.key == Key::Enter && !kp.mods.any_command() {
                     submitted = true;
-                    continue;
+                    return;
                 }
                 if let Some(action) = EditAction::from_keypress(kp) {
                     action.execute(&mut ed, &clipboard);
-                    continue;
+                    return;
                 }
                 match apply_key(&mut ed, kp) {
                     KeyOutcome::Blur => blur = true,
@@ -237,7 +227,7 @@ pub(super) fn run_input(
                 }
             }
         }
-    }
+    });
 
     ed.state.normalize(ed.text);
     InputResult {

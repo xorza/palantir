@@ -46,6 +46,10 @@ use rustc_hash::{FxHashMap, FxHashSet};
 /// silently key a row off the wrong identity. Layout only ever builds
 /// unbounded requests (`TextShapeInput::shape_request`), so this is a
 /// contract to assert, not a case to normalize.
+///
+/// Emptiness needs no such guard here: a [`TextShapeRequest`] cannot hold
+/// text with no bytes, so a run with nothing to shape never reaches these
+/// slots at all.
 const UNBOUND_REQUEST: &str = "TextSystem entry points take an unbounded request";
 
 /// Per-window text coordinator. Reuse slots belong to the window while
@@ -147,9 +151,6 @@ impl TextSystem {
         wrap_policy: TextWrap,
     ) -> TextRoot {
         debug_assert!(request.key.max_width_px().is_none(), "{UNBOUND_REQUEST}");
-        if request.text.is_empty() {
-            return TextRoot::ZERO;
-        }
         Self::refresh(
             &mut self.entries,
             &self.shaper,
@@ -176,12 +177,6 @@ impl TextSystem {
         available_width_px: Option<f32>,
     ) -> ShapedText {
         debug_assert!(request.key.max_width_px().is_none(), "{UNBOUND_REQUEST}");
-        if request.text.is_empty() {
-            return ShapedText {
-                measured: Size::ZERO,
-                key: TextShapeKey::INVALID,
-            };
-        }
         if let Some(width) = available_width_px {
             debug_assert!(width.is_finite());
         }
@@ -207,9 +202,7 @@ impl TextSystem {
         let size = match entry.wrap.filter(|slot| slot.bound == bound) {
             Some(slot) => slot.size,
             None => {
-                let size = shaper
-                    .shape(request.with_bound(bound), WrapFloor::Skip)
-                    .size;
+                let size = shaper.resolve(request.with_bound(bound));
                 // The width this row used to answer is now unreachable
                 // through it. A resize drag leaves the *unbounded* key
                 // alone and replaces only this slot, so it is the drag's
@@ -249,7 +242,7 @@ impl TextSystem {
     ) -> &'a mut TextReuseEntry {
         let fresh = || TextReuseEntry {
             key: request.key,
-            root: shaper.shape(request, floor),
+            root: shaper.root(request, floor),
             wrap: None,
         };
         let entry = entries.entry(slot).or_insert_with(&fresh);
@@ -257,7 +250,7 @@ impl TextSystem {
             let stale = std::mem::replace(entry, fresh());
             retire_row(shaper, &stale);
         } else if floor == WrapFloor::Scan && entry.root.intrinsic_min.is_none() {
-            entry.root = shaper.shape(request, WrapFloor::Scan);
+            entry.root = shaper.root(request, WrapFloor::Scan);
         }
         entry
     }

@@ -42,7 +42,7 @@ fn empty_ui_drives_a_frame_safely() {
     assert!(h.ui.damage_engine.prev.is_empty());
     assert!(h.ui.damage_engine.counters.dirty().is_empty());
     assert!(h.damage_region().rects.is_empty());
-    assert_eq!(Damage::new(h.damage_region()), Damage::Skip,);
+    assert_eq!(Damage::new(h.collapsed_damage()), Damage::Skip,);
 }
 
 /// Pin: an empty frame followed by a populated frame works (the

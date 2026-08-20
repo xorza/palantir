@@ -24,6 +24,7 @@ use crate::host::winit::error::WinitHostError;
 use crate::host::winit::gpu::{GpuInit, SurfaceManager, WindowSurface};
 use crate::host::winit::handle::HostHandle;
 use crate::host::winit::window::{FramePresent, Window};
+use crate::host::winit::window_set::{WindowSet, WindowSlot};
 use crate::host::winit::{Bootstrap, native};
 use crate::renderer::backend::backend_config::BackendConfig;
 use crate::text::shaper::TextShaper;
@@ -40,9 +41,8 @@ pub(super) struct WinitRuntime<T> {
     /// clones the first, and every window's frames run through the other two.
     pub(super) core: HostCore,
     observed_overlay: DebugOverlayConfig,
-    /// Live windows in registration order. Lookups by either key are linear
-    /// scans; window counts are tiny.
-    windows: Vec<Window>,
+    /// Live windows, addressed by either key through [`WindowSet`].
+    windows: WindowSet,
     pending_commands: WindowCommands,
 }
 
@@ -104,47 +104,51 @@ impl<T: App + 'static> WinitRuntime<T> {
         }
 
         let observed_overlay = *core.shared.resources.diagnostics.overlay.borrow();
+        let mut windows = WindowSet::default();
+        windows.push(Window::new(window, first_surface, driver));
         Ok(Self {
             app,
             surfaces,
             core,
             observed_overlay,
-            windows: vec![Window::new(window, first_surface, driver)],
+            windows,
             pending_commands: WindowCommands::default(),
         })
     }
 
-    pub(super) fn by_id(&mut self, id: WindowId) -> Option<&mut Window> {
-        self.windows.iter_mut().find(|win| win.window.id() == id)
+    /// Resolve the window winit reports events for as `id`, once per
+    /// event: the dispatch below acts on the slot rather than handing back
+    /// a borrow, so a redraw does not scan the set a second time to find
+    /// the window its caller has already found.
+    pub(super) fn slot_of_id(&self, id: WindowId) -> Option<WindowSlot> {
+        self.windows.slot_of_id(id)
+    }
+
+    pub(super) fn window(&mut self, slot: WindowSlot) -> &mut Window {
+        self.windows.at(slot)
     }
 
     pub(super) fn by_token(&mut self, token: WindowToken) -> Option<&mut Window> {
-        self.windows
-            .iter_mut()
-            .find(|win| win.driver.token == token)
+        self.windows.by_token(token)
     }
 
     /// Paint one window; it stores its own schedule and drains its commands
     /// into the runtime's pending queue.
-    pub(super) fn draw(&mut self, id: WindowId) {
-        let Some(win) = self.windows.iter_mut().find(|win| win.window.id() == id) else {
-            return;
-        };
-        win.frame(
+    pub(super) fn draw(&mut self, slot: WindowSlot) {
+        let single_window = self.windows.len() == 1;
+        self.windows.at(slot).frame(
             &self.surfaces,
             &mut self.core,
             &mut self.app,
             &mut self.pending_commands,
         );
-
-        let single_window = self.windows.len() == 1;
         if single_window {
             tracy::mark_main_frame();
         }
     }
 
     pub(super) fn repaint_all(&mut self) {
-        for win in &mut self.windows {
+        for win in self.windows.iter_mut() {
             win.next = FramePresent::Immediate;
         }
     }
@@ -195,7 +199,7 @@ impl<T: App + 'static> WinitRuntime<T> {
     /// window out-sleeps its own schedule.
     pub(super) fn schedule(&self, event_loop: &ActiveEventLoop, now: Instant) {
         let mut earliest: Option<Instant> = None;
-        for win in &self.windows {
+        for win in self.windows.iter() {
             match win.next.resolve(now) {
                 FramePresent::Immediate => win.window.request_redraw(),
                 FramePresent::At(at) => {
@@ -216,7 +220,7 @@ impl<T: App + 'static> WinitRuntime<T> {
         token: WindowToken,
         config: WindowConfig,
     ) -> Result<(), WinitHostError> {
-        if self.windows.iter().any(|win| win.driver.token == token) {
+        if self.windows.slot_of_token(token).is_some() {
             tracing::warn!(?token, "open_window: token already in use, ignoring");
             return Ok(());
         }
@@ -230,15 +234,9 @@ impl<T: App + 'static> WinitRuntime<T> {
     /// Tear down the window holding `token`; a no-op if none does. The render
     /// stream retires before the driver drops — see [`HostCore::retire`].
     fn close_window(&mut self, token: WindowToken) {
-        let Some(index) = self
-            .windows
-            .iter()
-            .position(|win| win.driver.token == token)
-        else {
-            return;
-        };
-        let win = self.windows.swap_remove(index);
-        self.core.retire(&win.driver);
+        if let Some(win) = self.windows.take(token) {
+            self.core.retire(&win.driver);
+        }
     }
 
     fn register_window(
@@ -247,11 +245,6 @@ impl<T: App + 'static> WinitRuntime<T> {
         surface: WindowSurface,
         driver: WindowDriver,
     ) {
-        let id = window.id();
-        assert!(
-            self.windows.iter().all(|win| win.window.id() != id),
-            "winit returned a duplicate WindowId"
-        );
         self.windows.push(Window::new(window, surface, driver));
     }
 }

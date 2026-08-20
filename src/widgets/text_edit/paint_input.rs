@@ -6,12 +6,12 @@ use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
-use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::Node;
 use crate::shape::Shape;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
+use crate::widgets::scroll::state::ScrollState;
 use crate::widgets::text_edit::caret_paint::CaretPaint;
 use crate::widgets::text_edit::shape_ctx::ShapeCtx;
 use crate::widgets::text_edit::text_geometry::TextGeometry;
@@ -33,7 +33,7 @@ pub(super) struct PaintInput<'a> {
     pub(super) selection_color: Color,
     pub(super) text_color: Color,
     pub(super) placeholder_color: Color,
-    pub(super) scroll: Vec2,
+    pub(super) scroll: ScrollState,
     pub(super) caret: Option<CaretPaint>,
 }
 
@@ -140,7 +140,8 @@ impl PaintInput<'_> {
     ///
     /// The scroll rides as a transform rather than being folded into every shape's
     /// coordinates, so the three shapes stay in one frame of reference and a
-    /// scrolled field is the same picture slid sideways.
+    /// scrolled field is the same picture slid sideways — through the same
+    /// [`ScrollState::transform`] a `Scroll` viewport carries its children with.
     fn block_node(&self, ctx: ShapeCtx, layout: TextLayout) -> Node {
         let room = if ctx.multiline {
             0.0
@@ -163,7 +164,7 @@ impl PaintInput<'_> {
         } else {
             layout.text_align
         };
-        block.transform = TranslateScale::from_translation(-self.scroll);
+        block.transform = self.scroll.transform();
         block
     }
 }

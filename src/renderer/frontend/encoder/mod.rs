@@ -2,6 +2,7 @@
 mod collision_overlay;
 
 use crate::layout::LayerLayout;
+use crate::layout::text_runs::TextRuns;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::primitives::approx::noop_f32;
 use crate::primitives::brush::gradient::FillAxis;
@@ -141,7 +142,7 @@ fn stroke_bounds(owner_rect: Rect, bbox: Rect, rotation: f32) -> StrokeBounds {
 /// `plan` is the paint plan for this frame:
 /// - `RenderKind::Full` paints everything (first frame, surface change,
 ///   full-repaint fallback).
-/// - `RenderKind::Partial { region }` runs damage-aware subtree
+/// - `RenderKind::Partial { damage }` runs damage-aware subtree
 ///   culling: a node whose `paint_rect` doesn't intersect any rect in
 ///   `region` short-circuits the whole subtree's recursion *and* its
 ///   Push/Pop emission. Caller's responsibility to skip the call
@@ -175,7 +176,7 @@ impl Encoder {
         } = self;
 
         let damage_filter = match &plan.kind {
-            RenderKind::Partial { region } => Some(region),
+            RenderKind::Partial { damage } => Some(&damage.region),
             RenderKind::Full => None,
         };
 
@@ -246,18 +247,15 @@ impl LayerCtx<'_> {
     }
 }
 
-/// Emit one shape at `owner_rect`. Pulled out of `encode_node` so the
+/// Emit one of a node's shapes. Pulled out of `encode_node` so the
 /// child-interleave loop can call it without duplicating the per-variant
-/// match. `text_ordinal` is the within-node index of the next
-/// `ShapeRecord::Text` to consume from `layout.text_spans[id]`; the caller
-/// increments it after this function emits a text run.
+/// match; `runs` is that node's [`TextRuns`] cursor, advanced here.
 fn emit_one_shape(
     ctx: &mut LayerCtx<'_>,
     id: NodeId,
-    owner_rect: Rect,
     shape_idx: u32,
     shape: &ShapeRecord,
-    text_ordinal: u32,
+    runs: &mut TextRuns,
     out: &mut dyn PaintSink,
 ) {
     // **The lowered-shape invariant**, asserted at the one point every
@@ -281,6 +279,9 @@ fn emit_one_shape(
         "a NaN reached the encoder — `Shapes::add`'s gate should have \
          dropped this shape: {shape:?}",
     );
+    // Ahead of the two gates below, because the cursor counts *records*:
+    // a run either of them drops still owns its slot in the node's span.
+    let shaped = runs.shaped(shape, ctx.layout);
     // Paint-anim gate. Today's only alpha source (`BlinkOpacity`) is
     // binary 0/1, so a "hidden" sample just skips emission;
     // fractional-alpha multiplication arrives with a future `Pulse`
@@ -290,6 +291,12 @@ fn emit_one_shape(
     if noop_f32(paint_mod.alpha) {
         return;
     }
+    // The node's arranged rect, which every shape resolves its geometry
+    // against. Read here rather than passed in: it is `layout.rect[id]`,
+    // the same column this function already indexes for padding and text
+    // spans, so taking it as an argument only made two spellings of one
+    // value that could disagree.
+    let owner_rect = ctx.layout.rect[id.idx()];
     match shape {
         // The three quad-tier shapes resolve their geometry against the
         // owner rect and hand it to the one `PaintSink` quad path; from
@@ -349,13 +356,7 @@ fn emit_one_shape(
             align,
             ..
         } => {
-            let span = ctx.layout.text_spans[id.idx()];
-            debug_assert!(
-                text_ordinal < span.len,
-                "encoder text-shape ordinal {text_ordinal} out of bounds for span len {}",
-                span.len,
-            );
-            let shaped = ctx.layout.text_shapes[(span.start + text_ordinal) as usize];
+            let shaped = shaped.expect("a text record always draws its run from the cursor");
             if shaped.key.is_invalid() {
                 tracing::trace!(?shape, "encoder: dropping text with invalid key");
                 return;
@@ -648,7 +649,7 @@ fn encode_node(ctx: &mut LayerCtx<'_>, id: NodeId, out: &mut dyn PaintSink) {
 
     // Skip Push/PopTransform when the transform is identity —
     // composing identity is a no-op, so emitting the pair just
-    // wastes two sink calls and a `transform_stack` push/pop in the
+    // wastes two sink calls and a transform-stack push/pop in the
     // composer.
     //
     // Anchor the raw transform at the node's own `layout_rect.min`
@@ -671,24 +672,20 @@ fn encode_node(ctx: &mut LayerCtx<'_>, id: NodeId, out: &mut dyn PaintSink) {
     if let Some(t) = transform {
         out.push_transform(t);
     }
-    let mut text_ordinal: u32 = 0;
+    let mut runs = TextRuns::new(ctx.layout.text_spans[id.idx()]);
     let tree = ctx.tree;
     for item in tree.tree_items(id) {
         match item {
             TreeItem::ShapeRecord(shape_idx, shape) => {
-                emit_one_shape(ctx, id, rect, shape_idx, shape, text_ordinal, out);
-                if matches!(shape, ShapeRecord::Text { .. }) {
-                    text_ordinal += 1;
-                }
+                emit_one_shape(ctx, id, shape_idx, shape, &mut runs, out);
             }
             TreeItem::Child(child) => {
                 encode_node(ctx, child.id, out);
             }
         }
     }
-    debug_assert_eq!(
-        text_ordinal,
-        ctx.layout.text_spans[id.idx()].len,
+    debug_assert!(
+        runs.is_drained(),
         "encoder text count differs from the node's shaped-text span",
     );
     if transform.is_some() {

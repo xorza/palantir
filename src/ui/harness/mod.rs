@@ -164,10 +164,11 @@ use crate::input::response::{InputDelta, ResponseState};
 use crate::input::sense::Sense;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
+use crate::renderer::texture_limit::TextureLimit;
 // Carries `damage_region`'s gate: this whole module is build-gated test
 // support, and under a non-test `internals` build that method is absent.
 #[cfg(any(test, feature = "bench"))]
-use crate::scene::damage::region::DamageRegion;
+use crate::scene::damage::region::{CollapsedDamage, DamageRegion};
 use crate::scene::seen_ids::Endpoint;
 use crate::text::shaper::TextShaper;
 use crate::ui::Ui;
@@ -219,7 +220,7 @@ impl UiHarness {
         thread_local! {
             static SHARED: TextShaper = TextShaper::new();
         }
-        let shared = HostShared::new(SHARED.with(Clone::clone), None);
+        let shared = HostShared::new(SHARED.with(Clone::clone), TextureLimit::default());
         Self::from_resources(shared.resources.clone(), surface)
     }
 
@@ -753,15 +754,25 @@ impl UiHarness {
         self.ui.frame_runtime.prev_stamp = Some(FrameStamp::new(self.display, self.time));
     }
 
+    /// Collapse this frame's accumulated raw rects the way
+    /// `DamageEngine::finish_region` does — the rects *and* the coverage
+    /// they cover the surface with.
+    ///
     /// Read by the crate's own damage tests and the `damage` bench; a
     /// non-test `internals` build has no caller.
     #[cfg(any(test, feature = "bench"))]
-    pub(crate) fn damage_region(&self) -> DamageRegion {
+    pub(crate) fn collapsed_damage(&self) -> CollapsedDamage {
         DamageRegion::collapse_from(
             &self.ui.damage_engine.raw_rects,
             self.ui.damage_engine.budget_px,
             self.ui.display.logical_rect(),
         )
+    }
+
+    /// Just the rects — what most damage assertions are about.
+    #[cfg(any(test, feature = "bench"))]
+    pub(crate) fn damage_region(&self) -> DamageRegion {
+        self.collapsed_damage().region
     }
 }
 
@@ -860,7 +871,9 @@ mod unit {
         }
 
         pub(crate) fn encode_paint_for(&self, region: DamageRegion) -> PaintCapture {
-            self.encode(RenderKind::Partial { region })
+            self.encode(RenderKind::Partial {
+                damage: region.unmeasured(),
+            })
         }
 
         fn encode(&self, kind: RenderKind) -> PaintCapture {

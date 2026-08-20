@@ -42,7 +42,8 @@ use std::sync::Arc;
 use tinyvec::ArrayVec;
 
 use crate::primitives::num::F32Ext;
-use crate::text::cosmic::cache_entry::CacheEntry;
+use crate::primitives::size::Size;
+use crate::text::cosmic::cache_entry::{CacheEntry, CachedExtent};
 use crate::text::cosmic::cluster_glyph::{ClusterGlyph, fitting_prefix};
 use crate::text::cosmic::ellipsis_memo::EllipsisMemo;
 use crate::text::cosmic::geometry::{
@@ -239,7 +240,7 @@ pub(super) struct CosmicMeasure {
     /// cursor an in-place ring would need.
     ellipsis: ArrayVec<[EllipsisMemo; ELLIPSIS_MEMO_SLOTS]>,
     /// Retained scratch for the truncated string
-    /// [`Self::measure_truncated`] builds on a miss (cut prefix +
+    /// [`Self::shape_truncated`] builds on a miss (cut prefix +
     /// optional `…`). Misses are the hot case — a continuous width drag
     /// mints a fresh quantized target per label per frame — so building
     /// into a retained buffer keeps that path free of `String` allocs,
@@ -298,9 +299,9 @@ impl CosmicMeasure {
     /// [`TextShapeKey::INVALID`] is not among the keys it answers for.
     /// The sentinel means "this run has no shaped buffer at all", which
     /// every caller knows before it gets here — the encoder drops those
-    /// runs — and nothing ever inserts one, since [`Self::insert`] is
-    /// reached only through [`Self::shape`], which returns before shaping
-    /// empty text. Asking the cache about it is a category error rather
+    /// runs — and nothing ever inserts one, since a
+    /// [`TextShapeRequest`] cannot hold the empty text the sentinel
+    /// stands for. Asking the cache about it is a category error rather
     /// than a miss, so it is asserted instead of answered.
     pub(super) fn shaped_run(&self, key: TextShapeKey) -> Option<ShapedRun<'_>> {
         debug_assert!(
@@ -313,40 +314,62 @@ impl CosmicMeasure {
         })
     }
 
-    /// Shape `request`, routing it to the wrapping or truncating path.
+    /// The run's **unbounded** shape: the root every wrap policy reasons
+    /// from, shaped or served from the cache.
     ///
-    /// Empty text answers here rather than in either path: it mints no
-    /// buffer, which is the contract [`TextShapeKey::INVALID`] pairs
-    /// with, and both `ensure_buffer` and the gated test helpers enter
-    /// through this function.
-    pub(super) fn shape(&mut self, request: TextShapeRequest<'_>, floor: WrapFloor) -> TextRoot {
-        if request.text.is_empty() {
-            return TextRoot::ZERO;
+    /// `floor` opts into the segment scan behind
+    /// [`TextRoot::intrinsic_min`]. It takes no width because the floor is
+    /// a property of the unbounded root and of nothing else — which is why
+    /// [`Self::resolve`], the bounded half, has no such parameter to get
+    /// wrong.
+    pub(super) fn root(&mut self, request: TextShapeRequest<'_>, floor: WrapFloor) -> TextRoot {
+        let key = request.key;
+        debug_assert!(
+            key.max_width_px().is_none(),
+            "a committed width has no unbounded root to answer with",
+        );
+        if let Some(hit) = self.cache_hit(key) {
+            let root = hit.root();
+            // A resident entry shaped by a policy that didn't want the
+            // floor still owes it to one that does.
+            if floor == WrapFloor::Scan && root.intrinsic_min.is_none() {
+                return TextRoot {
+                    intrinsic_min: Some(self.scan_wrap_floor(key)),
+                    ..root
+                };
+            }
+            return root;
         }
-        match (request.key.fit(), request.key.max_width_px()) {
-            (LineFit::Clip | LineFit::Ellipsis, Some(_)) => self.measure_truncated(request),
-            _ => self.measure_wrapped(request, floor),
+        self.shape_wrapped(request, floor).root()
+    }
+
+    /// The extent this run resolves to at the width its key commits,
+    /// routed to the wrapping or truncating path by the key's fit.
+    ///
+    /// An extent and nothing else, because that is all a bounded shape
+    /// has: it never scanned for a wrapping floor, and its line count
+    /// describes the resolve rather than the run.
+    pub(super) fn resolve(&mut self, request: TextShapeRequest<'_>) -> Size {
+        let key = request.key;
+        debug_assert!(
+            key.max_width_px().is_some(),
+            "an unbounded request commits no width to resolve against",
+        );
+        if let Some(hit) = self.cache_hit(key) {
+            return hit.size();
+        }
+        match key.fit() {
+            LineFit::Clip | LineFit::Ellipsis => self.shape_truncated(request),
+            _ => self.shape_wrapped(request, WrapFloor::Skip).size,
         }
     }
 
-    fn measure_wrapped(&mut self, request: TextShapeRequest<'_>, floor: WrapFloor) -> TextRoot {
-        debug_assert!(
-            floor == WrapFloor::Skip || request.key.max_width_px().is_none(),
-            "the wrap floor is a property of the unbounded root",
-        );
+    /// Shape `request` into a fresh buffer, file it under its key, and
+    /// hand back what the buffer laid out to. The one wrapping shape
+    /// path; [`Self::root`] and [`Self::resolve`] each check the cache
+    /// first and lift the result into their own kind.
+    fn shape_wrapped(&mut self, request: TextShapeRequest<'_>, floor: WrapFloor) -> ShapedGeometry {
         let key = request.key;
-        if let Some(hit) = self.cache_hit(key) {
-            // A resident entry shaped by a policy that didn't want the
-            // floor still owes it to one that does.
-            if floor == WrapFloor::Scan && hit.intrinsic_min.is_none() {
-                return TextRoot {
-                    intrinsic_min: Some(self.scan_wrap_floor(key)),
-                    ..hit
-                };
-            }
-            return hit;
-        }
-
         let metrics = Metrics::new(key.font_size_px(), key.line_height_px());
         let mut buffer = self.acquire_buffer(metrics, key.max_width_px());
         // Per-line alignment travels through cosmic's `set_text`
@@ -368,8 +391,14 @@ impl CosmicMeasure {
         buffer.shape_until_scroll(&mut self.font_system, false);
 
         let geometry = shaped_geometry(&buffer, floor, &mut self.break_scratch);
-        self.insert(key, buffer, geometry);
-        geometry.root
+        // Which kind the entry is follows from the key: a committed width
+        // means a bounded resolve, and nothing else can name that entry.
+        let extent = match key.max_width_px() {
+            None => CachedExtent::Root(geometry.root()),
+            Some(_) => CachedExtent::Bounded(geometry.size),
+        };
+        self.insert(key, buffer, extent, geometry.left);
+        geometry
     }
 
     /// Restore a missing shaped buffer from the retained source text and
@@ -389,8 +418,17 @@ impl CosmicMeasure {
             !request.key.is_invalid(),
             "restoring a buffer for a run the encoder should have dropped",
         );
-        if self.cache_hit(request.key).is_none() {
-            self.shape(request, WrapFloor::Skip);
+        // Residency is the whole point here, so the measurement is dropped
+        // either way — but the two paths shape differently, and the key is
+        // what says which one this run went through. Both open with the
+        // cache lookup, so a resident buffer costs one and no reshape.
+        match request.key.max_width_px() {
+            Some(_) => {
+                self.resolve(request);
+            }
+            None => {
+                self.root(request, WrapFloor::Skip);
+            }
         }
         self.shaped_run(request.key)
             .expect("restored text buffer did not land under its own TextShapeKey")
@@ -408,11 +446,12 @@ impl CosmicMeasure {
             .cache
             .get_mut(&key)
             .expect("a cache hit must still be resident");
-        if let Some(floor) = entry.root.intrinsic_min {
+        let root = entry.extent.root_mut();
+        if let Some(floor) = root.intrinsic_min {
             return floor;
         }
         let floor = intrinsic_min_width(&entry.buffer, breaks);
-        entry.root.intrinsic_min = Some(floor);
+        entry.extent.root_mut().intrinsic_min = Some(floor);
         floor
     }
 
@@ -429,7 +468,7 @@ impl CosmicMeasure {
 
     /// Store a freshly shaped buffer. Entries start probationary; only a
     /// later lookup promotes them (see [`PROBATION_KEEP_FRAMES`]).
-    fn insert(&mut self, key: TextShapeKey, buffer: Buffer, geometry: ShapedGeometry) {
+    fn insert(&mut self, key: TextShapeKey, buffer: Buffer, extent: CachedExtent, left: f32) {
         // Counted here rather than per `shape_until_scroll` so one
         // cached run is one tally: `measure_truncated`'s back-off can
         // reshape a prefix several times to land inside the committed
@@ -445,8 +484,8 @@ impl CosmicMeasure {
             key,
             CacheEntry {
                 buffer,
-                root: geometry.root,
-                left: geometry.left,
+                extent,
+                left,
                 keep_until,
                 ticket_seq,
             },
@@ -459,16 +498,16 @@ impl CosmicMeasure {
         }
     }
 
-    /// A cached entry's [`TextRoot`] for `key`, or `None` on a miss.
+    /// What the entry under `key` measured to, or `None` on a miss.
     /// Layout hits and encoder ensures both land here, and both push the
     /// entry's deadline out to the protected window — being asked for at
     /// all is the evidence that separates reuse from scan traffic, so no
     /// separate promotion step is needed.
-    pub(super) fn cache_hit(&mut self, key: TextShapeKey) -> Option<TextRoot> {
+    fn cache_hit(&mut self, key: TextShapeKey) -> Option<CachedExtent> {
         let keep_until = self.frame + PROTECTED_KEEP_FRAMES;
         let hit = self.cache.get_mut(&key).map(|entry| {
             entry.keep_until = keep_until;
-            entry.root
+            entry.extent
         });
         if hit.is_some() {
             self.counters.hits.bump();
@@ -700,19 +739,12 @@ impl CosmicMeasure {
     /// re-lays-out without re-shaping), but one buffer holds one layout
     /// and the cache is keyed per width, so it needs a different
     /// buffer/key model rather than a different call.
-    pub(super) fn measure_truncated(&mut self, request: TextShapeRequest<'_>) -> TextRoot {
+    fn shape_truncated(&mut self, request: TextShapeRequest<'_>) -> Size {
         let key = request.key;
         let fit = key.fit();
         let width = key
             .max_width_px()
-            .expect("measure_truncated requires a finite width");
-        debug_assert!(
-            matches!(fit, LineFit::Clip | LineFit::Ellipsis),
-            "measure_truncated requires Clip or Ellipsis",
-        );
-        if let Some(hit) = self.cache_hit(key) {
-            return hit;
-        }
+            .expect("a truncating fit resolves against a committed width");
         let unbounded = request.unbounded_version();
         self.ensure_buffer(unbounded);
         let metrics = Metrics::new(key.font_size_px(), key.line_height_px());
@@ -735,8 +767,10 @@ impl CosmicMeasure {
         // here, against the same root — so it is asked the same way. The
         // probe's own measurement already answers it, which is why this
         // reads the entry rather than re-walking its glyphs.
-        let fits_whole =
-            fit.resolves_to_unbounded(&CacheEntry::probe(&self.cache, probe_key).root, width);
+        let fits_whole = fit.resolves_to_unbounded(
+            &CacheEntry::probe(&self.cache, probe_key).extent.root(),
+            width,
+        );
 
         // Shape unbounded on one line: the cut already fit it to `w`, and the
         // encoder owns single-line placement. Binding to `Some(w)` + align
@@ -748,9 +782,7 @@ impl CosmicMeasure {
             // branch cannot overrun `width`.
             buffer.set_text(request.text, &attrs, Shaping::Advanced, None);
             buffer.shape_until_scroll(&mut self.font_system, false);
-            shaped_geometry(&buffer, WrapFloor::Skip, &mut self.break_scratch)
-                .root
-                .size
+            shaped_geometry(&buffer, WrapFloor::Skip, &mut self.break_scratch).size
         } else {
             // The cut spends advances measured in the *whole* run's shaping,
             // but the prefix reshapes in its own context: a joining script's
@@ -794,9 +826,7 @@ impl CosmicMeasure {
                     None,
                 );
                 buffer.shape_until_scroll(&mut self.font_system, false);
-                let size = shaped_geometry(&buffer, WrapFloor::Skip, &mut self.break_scratch)
-                    .root
-                    .size;
+                let size = shaped_geometry(&buffer, WrapFloor::Skip, &mut self.break_scratch).size;
                 if size.w <= width || cut == 0 {
                     break size;
                 }
@@ -804,29 +834,16 @@ impl CosmicMeasure {
             }
         };
 
-        // Truncated runs are one natural line by construction: the cut
-        // prefix comes from the unbounded probe's first layout run, and a
-        // truncated run can shrink to nothing, so its floor is zero.
         // The prefix reshapes on an unbounded buffer with no per-line
         // align, so its block already starts at 0.
-        let geometry = ShapedGeometry {
-            root: TextRoot {
-                size,
-                // Genuinely zero, not unscanned: a truncated run can
-                // shrink to nothing.
-                intrinsic_min: Some(0.0),
-                single_line: true,
-            },
-            left: 0.0,
-        };
-        self.insert(key, buffer, geometry);
-        geometry.root
+        self.insert(key, buffer, CachedExtent::Bounded(size), 0.0);
+        size
     }
 
     /// Trailing advance of "…" at `metrics`/`family`/`weight`, memoized for
     /// the last face asked about.
     ///
-    /// Only the *opening* budget: [`Self::measure_truncated`] verifies the
+    /// Only the *opening* budget: [`Self::shape_truncated`] verifies the
     /// shaped result against the committed width either way, so a stale or
     /// imprecise reservation costs retries, never correctness. What it buys
     /// is measured on `text_shape/ellipsis_width_churn`, whose arms hold
@@ -905,27 +922,29 @@ pub(crate) mod test_support {
         }
 
         /// Shape `request` and pair the result with the key it shaped
-        /// under — invalid for empty text, which mints no buffer.
+        /// under.
+        ///
+        /// The wrap-floor tests measure through this helper, so it asks
+        /// for the floor on every root it shapes — and a bounded request
+        /// takes the resolve path, which has no floor to ask for, exactly
+        /// as production does. The two answers differ in kind, so this
+        /// flattens them into the `TestMeasure` a case asserts on.
         #[cfg(test)]
         fn measure_with_fit_key(&mut self, request: TextShapeRequest<'_>) -> TestMeasure {
-            let key = if request.text.is_empty() {
-                TextShapeKey::INVALID
-            } else {
-                request.key
-            };
-            // The wrap-floor tests measure through this helper, so it
-            // asks for the floor on every root it shapes — but the floor
-            // is an unbounded-root property, so a bounded request skips
-            // it exactly as production does.
-            let floor = match request.key.max_width_px() {
-                Some(_) => WrapFloor::Skip,
-                None => WrapFloor::Scan,
-            };
-            TestMeasure::new(self.shape(request, floor), key)
+            let key = request.key;
+            match key.max_width_px() {
+                Some(_) => TestMeasure {
+                    size: self.resolve(request),
+                    key,
+                    intrinsic_min: None,
+                    single_line: true,
+                },
+                None => TestMeasure::new(self.root(request, WrapFloor::Scan), key),
+            }
         }
 
         /// Truncating-fit measure. Named apart from the production
-        /// `measure_truncated` — inherent methods can't share a name.
+        /// `shape_truncated` — inherent methods can't share a name.
         #[cfg(test)]
         pub(crate) fn measure_with_fit(
             &mut self,

@@ -39,11 +39,15 @@ pub(super) struct TextShapeInput<'a> {
 }
 
 impl<'a> TextShapeInput<'a> {
+    /// A recorded run always has bytes — `TextShape::is_noop` drops an
+    /// empty one before it becomes a `ShapeRecord` — so the shaping
+    /// boundary is a contract to assert here, not a case layout answers.
     pub(super) fn shape_request(&self) -> TextShapeRequest<'a> {
         TextShapeRequest::for_key(
             self.text,
             TextShapeKey::unbounded(self.text_hash, self.font),
         )
+        .expect("a recorded text run has bytes — `TextShape::is_noop` drops the empty one")
     }
 
     /// Iterate every `ShapeRecord::Text` on a leaf. Single source of truth
@@ -167,9 +171,9 @@ mod tests {
             halign: HAlign::Auto,
         };
         let request = input(hash::hash_str("hello")).shape_request();
-        assert_eq!(request.text, "hello");
+        assert_eq!(request.text(), "hello");
         assert_eq!(
-            request.key,
+            request.key(),
             TextShapeKey::unbounded(
                 hash::hash_str("hello"),
                 GlyphFont {

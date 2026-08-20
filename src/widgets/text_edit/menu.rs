@@ -1,12 +1,12 @@
 //! Default TextEdit context-menu policy.
 
+use crate::input::key_class::KeyFilter;
 use crate::input::keyboard::KeyboardEvent;
 use crate::ui::Ui;
 use crate::widgets::context_menu::ContextMenu;
 use crate::widgets::context_menu::menu_item::MenuItem;
 use crate::widgets::response::ResponseSnapshot;
 use crate::widgets::text_edit::action::{ActionAvailability, EditAction};
-use crate::widgets::text_edit::edit_state::EditState;
 use crate::widgets::text_edit::editor::Editor;
 
 /// Run the default context menu, returning whether it edited the
@@ -14,37 +14,39 @@ use crate::widgets::text_edit::editor::Editor;
 /// this call and the keyboard pass in one before/after comparison, so
 /// there is nothing here for a second one to add.
 ///
-/// `edit` is the caller's already-owned state row, not a fresh lookup:
-/// `TextEdit::show` moves the row out for the whole pass, so the body
-/// closure below can hold it mutably alongside `&mut Ui` — which a row
-/// borrowed *from* `ui` could never do.
+/// `editor` is the caller's session over the host buffer, not one built
+/// per action: `TextEdit::show` moves the state row out for the whole
+/// pass, so the session can be held mutably alongside `&mut Ui` — which
+/// a row borrowed *from* `ui` could never do. One session also means the
+/// undo history is reconciled against the buffer once for the menu,
+/// exactly as it is once for the key pass.
+///
+/// `filter` is the field's own — the menu drains the same layer-wide
+/// stream `run_input` does, so it owes the same
+/// [`KeyFilter::accepts`] gate against double dispatch.
 pub(super) fn show(
     ui: &mut Ui,
     snapshot: &ResponseSnapshot,
-    text: &mut String,
-    multiline: bool,
-    max_chars: Option<usize>,
-    edit: &mut EditState,
+    editor: &mut Editor<'_>,
+    filter: KeyFilter,
 ) -> bool {
-    let mut edited = false;
+    let clipboard = ui.resources.clipboard.clone();
     let mut clicked_action = None;
     ContextMenu::attach(ui, snapshot).show(ui, |ui, popup| {
-        let keyboard_event_count = ui.keyboard_events().len();
-        for index in 0..keyboard_event_count {
-            let event = ui.keyboard_events()[index];
-            let KeyboardEvent::Down(keypress) = event else {
-                continue;
+        ui.each_keyboard_event(|_, event| {
+            let Some(KeyboardEvent::Down(keypress)) = filter.accepts(event) else {
+                return;
             };
             if let Some(action) = EditAction::from_keypress(keypress) {
-                edited |= execute_action(ui, text, multiline, max_chars, action, edit);
+                action.execute(editor, &clipboard);
                 if EditAction::MENU.iter().any(|item| item.action == action) {
                     popup.close();
                 }
             }
-        }
+        });
 
-        let has_selection = edit.sel_range().is_some();
-        let has_text = !text.is_empty();
+        let has_selection = editor.state.sel_range().is_some();
+        let has_text = !editor.text.is_empty();
         for item in EditAction::MENU {
             if item.separator_before {
                 MenuItem::separator().show(ui);
@@ -64,21 +66,7 @@ pub(super) fn show(
         }
     });
     if let Some(action) = clicked_action {
-        edited |= execute_action(ui, text, multiline, max_chars, action, edit);
+        action.execute(editor, &clipboard);
     }
-    edited
-}
-
-fn execute_action(
-    ui: &mut Ui,
-    text: &mut String,
-    multiline: bool,
-    max_chars: Option<usize>,
-    action: EditAction,
-    edit: &mut EditState,
-) -> bool {
-    let clipboard = ui.resources.clipboard.clone();
-    let mut editor = Editor::new(text, edit, multiline, max_chars);
-    action.execute(&mut editor, &clipboard);
     editor.edited
 }

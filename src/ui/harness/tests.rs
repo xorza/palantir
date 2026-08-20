@@ -672,7 +672,7 @@ fn arena_interns_without_ever_recording() {
 
 #[test]
 fn from_resources_pairs_two_harnesses_onto_one_text_cache() {
-    let shared = HostShared::new(TextShaper::new(), None);
+    let shared = HostShared::new(TextShaper::new(), TextureLimit::default());
     let mut first = UiHarness::from_resources(shared.resources.clone(), SURFACE);
     let second = UiHarness::from_resources(shared.resources.clone(), SURFACE);
 
