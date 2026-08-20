@@ -38,7 +38,7 @@ impl RectShape {
     }
 }
 
-local_rect_shape!(@noop_only RectShape);
+local_rect_shape!(RectShape);
 
 shape_setters!(RectShape {
     fill: Brush => fill,

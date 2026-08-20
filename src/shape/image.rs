@@ -19,7 +19,7 @@ pub struct ImageShape {
     pub(crate) tint: Color,
 }
 
-local_rect_shape!(ImageShape);
+local_rect_shape!(ImageShape, at);
 
 shape_setters!(ImageShape {
     fit: ImageFit => fit,

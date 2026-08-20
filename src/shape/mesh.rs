@@ -14,7 +14,7 @@ pub struct MeshShape<'a> {
     pub(crate) tint: Color,
 }
 
-local_rect_shape!(MeshShape<'_>);
+local_rect_shape!(MeshShape<'_>, at);
 
 shape_setters!(MeshShape<'_> {
     tint: Color => tint,

@@ -62,7 +62,7 @@ pub struct IconShape {
     pub(crate) desaturate: bool,
 }
 
-local_rect_shape!(IconShape);
+local_rect_shape!(IconShape, at);
 
 shape_setters!(IconShape {
     fit: IconFit => fit,
