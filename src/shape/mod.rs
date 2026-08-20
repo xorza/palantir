@@ -34,14 +34,25 @@ macro_rules! shape_setters {
     };
 }
 
-/// The owner-relative paint rect the rect-shaped kinds carry: the `at`
-/// setter that authors one, and the `is_noop` clause that reads it.
+/// The owner-relative paint rect the rect-shaped kinds carry: the `is_noop`
+/// clause that reads it, and — for the kinds that let a caller author one —
+/// the `at` setter, named in the invocation.
 ///
-/// `Shape::rect` and `Shape::owner_rect` take theirs up front, so
-/// `RectShape` gets the clause without the setter — the `@noop_only` arm.
+/// `Shape::rect` and `Shape::owner_rect` take theirs up front, so `RectShape`
+/// asks for the clause alone; a second way to say the same thing would only
+/// make `Shape::rect(a).at(b)` expressible.
 macro_rules! local_rect_shape {
     ($ty:ty) => {
-        local_rect_shape!(@noop_only $ty);
+        impl $ty {
+            /// True when an explicit paint rect was authored and it covers
+            /// no pixels — what every such kind's `is_noop` opens with.
+            fn rect_is_noop(&self) -> bool {
+                self.local_rect.is_some_and(|rect| rect.is_paint_empty())
+            }
+        }
+    };
+    ($ty:ty, at) => {
+        local_rect_shape!($ty);
 
         impl $ty {
             /// Paint into `rect`, in owner-relative coords, instead of the
@@ -49,15 +60,6 @@ macro_rules! local_rect_shape {
             pub fn at(mut self, rect: impl Into<$crate::primitives::rect::Rect>) -> Self {
                 self.local_rect = Some(rect.into());
                 self
-            }
-        }
-    };
-    (@noop_only $ty:ty) => {
-        impl $ty {
-            /// True when an explicit paint rect was authored and it covers
-            /// no pixels — what every such kind's `is_noop` opens with.
-            fn rect_is_noop(&self) -> bool {
-                self.local_rect.is_some_and(|rect| rect.is_paint_empty())
             }
         }
     };

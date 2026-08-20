@@ -14,7 +14,7 @@ pub struct ShadowShape {
     pub(crate) shadow: Shadow,
 }
 
-local_rect_shape!(ShadowShape);
+local_rect_shape!(ShadowShape, at);
 
 shape_setters!(ShadowShape {
     corners: Corners => corners,
