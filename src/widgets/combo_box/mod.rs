@@ -37,23 +37,50 @@ struct ComboState {
 /// The trigger chrome reuses [`crate::Theme::button`]; the list reuses
 /// the context-menu panel + [`MenuItem`] rows
 /// ([`crate::Theme::context_menu`]).
+///
+/// `options` is the caller's own collection, handed over rather than
+/// projected: [`new`](Self::new) takes a slice whose elements *are* text
+/// (`&[&str]`, `&[String]`, `&[Cow<'_, str>]`) and
+/// [`labeled`](Self::labeled) one whose elements merely carry it. Either
+/// way nothing is copied to open a combo, and a closed one — nearly every
+/// frame — reads exactly one label.
 #[derive(Debug)]
-pub struct ComboBox<'a> {
+pub struct ComboBox<'a, S> {
     node: Node,
     selected: &'a mut usize,
-    options: &'a [&'a str],
+    options: &'a [S],
+    /// Reads one option's label. `new` fills this with `S::as_ref`.
+    label: fn(&S) -> &str,
     style: Option<&'a ButtonTheme>,
 }
 
-impl<'a> ComboBox<'a> {
+impl<'a, S: AsRef<str>> ComboBox<'a, S> {
+    /// A dropdown over options that are themselves text.
     #[track_caller]
-    pub fn new(selected: &'a mut usize, options: &'a [&'a str]) -> Self {
+    pub fn new(selected: &'a mut usize, options: &'a [S]) -> Self {
+        Self::labeled(selected, options, S::as_ref)
+    }
+}
+
+impl<'a, S> ComboBox<'a, S> {
+    /// A dropdown over rows that *carry* a label rather than being one:
+    /// `label` reads each row's text.
+    ///
+    /// For an option type no `AsRef<str>` impl could serve — a record with
+    /// an id beside a display name, where picking between the two is the
+    /// call site's business, not the type's.
+    ///
+    /// A plain `fn` pointer rather than a closure keeps `ComboBox`
+    /// non-generic over the projection; every real label is a field read.
+    #[track_caller]
+    pub fn labeled(selected: &'a mut usize, options: &'a [S], label: fn(&S) -> &str) -> Self {
         let mut node = Node::hstack();
         node.flags.set_sense(Sense::CLICK);
         Self {
             node,
             selected,
             options,
+            label,
             style: None,
         }
     }
@@ -94,19 +121,17 @@ impl<'a> ComboBox<'a> {
 
         let arrow_color = look.text.color;
         let text_style = look.text;
-        let chosen = self
-            .options
-            .get(*self.selected)
-            .copied()
-            .unwrap_or_else(|| {
-                panic!(
-                    "ComboBox selection {} is out of range for {} option(s)",
-                    self.selected,
-                    self.options.len(),
-                )
-            });
-        // Intern the selected label into the frame buffer — `&'a str`
-        // options aren't `'static`, so they route through `Ui::intern`.
+        let Some(option) = self.options.get(*self.selected) else {
+            panic!(
+                "ComboBox selection {} is out of range for {} option(s)",
+                self.selected,
+                self.options.len(),
+            )
+        };
+        let chosen = (self.label)(option);
+        // Intern the selected label into the frame buffer — an option
+        // borrows from the caller's collection rather than from `'static`,
+        // so it routes through `Ui::intern`.
         let label = ui.intern(chosen);
 
         widget.record(ui, Some(&look.background), |ui| {
@@ -146,6 +171,7 @@ impl<'a> ComboBox<'a> {
         if open && let Some(rect) = trigger_rect {
             let panel = ui_theme.context_menu.panel.clone();
             let options = self.options;
+            let label = self.label;
             let selected = self.selected;
             let popup = Popup::below(rect)
                 .click_outside(ClickOutside::Dismiss)
@@ -154,7 +180,7 @@ impl<'a> ComboBox<'a> {
                 .min_size((rect.size.w, 0.0));
             let resp = popup.show(ui, |ui, popup| {
                 for (i, opt) in options.iter().enumerate() {
-                    let lbl = ui.intern(opt);
+                    let lbl = ui.intern(label(opt));
                     if MenuItem::new(lbl).show(ui, popup).left.clicked() {
                         *selected = i;
                     }
@@ -172,7 +198,7 @@ impl<'a> ComboBox<'a> {
     }
 }
 
-impl_configure!(ComboBox<'_>);
+impl_configure!(<S> ComboBox<'_, S>);
 
 #[cfg(test)]
 mod tests;

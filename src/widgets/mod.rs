@@ -131,19 +131,25 @@ macro_rules! style_setter {
 /// widget is pure noise. Invoke it **in the widget's own file**, next to
 /// the type — the impl still lives where the struct does.
 ///
-/// Three widgets write the impl by hand instead, for two different
-/// reasons: `Grid` and `RadioButton` carry generic parameters the macro
-/// can't take, and `ContextMenu` has no `node` of its own — it forwards
-/// to the `Popup` it wraps, which is delegation the macro's fixed
-/// `self.node` body can't express.
+/// A widget generic over more than its own lifetimes names those
+/// parameters first, with any bounds its struct declares:
+/// `impl_configure!(<S> ComboBox<'_, S>)`,
+/// `impl_configure!(<T: PartialEq> RadioButton<'_, T>)`.
+///
+/// One widget writes the impl by hand instead: `ContextMenu` has no `node`
+/// of its own — it forwards to the `Popup` it wraps, which is delegation
+/// the macro's fixed `self.node` body can't express.
 macro_rules! impl_configure {
-    ($ty:ty) => {
-        impl $crate::scene::node::Configure for $ty {
+    (<$($param:ident $(: $bound:path)?),*> $ty:ty) => {
+        impl<$($param $(: $bound)?,)*> $crate::scene::node::Configure for $ty {
             #[inline]
             fn node_mut(&mut self) -> $crate::scene::node::ConfigureNode<'_> {
                 $crate::scene::node::Configure::node_mut(&mut self.node)
             }
         }
+    };
+    ($ty:ty) => {
+        impl_configure!(<> $ty);
     };
 }
 

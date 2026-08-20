@@ -34,10 +34,71 @@ fn an_empty_option_list_panics() {
     let mut h = UiHarness::new(SURFACE);
     let mut selected = 0;
     h.frame(|ui| {
-        ComboBox::new(&mut selected, &[])
+        ComboBox::new(&mut selected, &[] as &[&str])
             .id(WidgetId::from_hash("combo"))
             .show(ui);
     });
+}
+
+/// `labeled` reads the row's projected field, not the row: a dropdown over
+/// records measures exactly as one over the string it projects, and not as
+/// one over the row's other string.
+///
+/// Asserted through the trigger label's width because that is the only
+/// thing the option text can reach from outside — and it is enough, since
+/// the two candidate fields differ in length.
+#[test]
+fn a_labeled_dropdown_reads_the_projected_field() {
+    /// A row that is not itself text: no `AsRef<str>` impl could pick
+    /// between these two, which is the case `labeled` exists for.
+    #[derive(Debug)]
+    struct Row {
+        name: &'static str,
+        display: &'static str,
+    }
+    let rows = [Row {
+        name: "a",
+        display: "Elderberry",
+    }];
+
+    let (projected, other, literal) = (
+        WidgetId::from_hash("projected"),
+        WidgetId::from_hash("other"),
+        WidgetId::from_hash("literal"),
+    );
+    let (mut a, mut b, mut c) = (0, 0, 0);
+    let mut h = UiHarness::new(SURFACE);
+    h.frame(|ui| {
+        Panel::vstack()
+            .id(WidgetId::from_hash("root"))
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                ComboBox::labeled(&mut a, &rows, |r| r.display)
+                    .id(projected)
+                    .show(ui);
+                ComboBox::labeled(&mut b, &rows, |r| r.name)
+                    .id(other)
+                    .show(ui);
+                ComboBox::new(&mut c, &["Elderberry"]).id(literal).show(ui);
+            });
+    });
+
+    let width = |id: WidgetId| {
+        h.rect(id.with("label"))
+            .expect("trigger label arranged")
+            .size
+            .w
+    };
+    assert_eq!(
+        width(projected),
+        width(literal),
+        "the trigger measured the row's `display`, so it read that field",
+    );
+    assert_ne!(
+        width(projected),
+        width(other),
+        "and the projection is what chose it — `name` renders differently",
+    );
 }
 
 #[test]
