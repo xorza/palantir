@@ -528,7 +528,7 @@ mod hot_struct_sizes {
         Button<'static> => "widgets::Button": 160 / 8,
         Checkbox<'static> => "widgets::Checkbox": 160 / 8,
         Switch<'static> => "widgets::Switch": 160 / 8,
-        ComboBox<'static> => "widgets::ComboBox": 152 / 8,
+        ComboBox<'static, &'static str> => "widgets::ComboBox": 160 / 8,
         DragValue<'static> => "widgets::DragValue": 200 / 8,
         RadioButton<'static, u8> => "widgets::RadioButton<u8>": 168 / 8,
         TextEdit<'static> => "widgets::TextEdit": 184 / 8,

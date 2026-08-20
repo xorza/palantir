@@ -2,7 +2,7 @@ use crate::input::sense::Sense;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::rect::Rect;
 use crate::primitives::text_input::TextInput;
-use crate::scene::node::{Configure, ConfigureNode, Node};
+use crate::scene::node::{Configure, Node};
 use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::widgets::response::Response;
@@ -106,11 +106,7 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
     }
 }
 
-impl<T: PartialEq> Configure for RadioButton<'_, T> {
-    fn node_mut(&mut self) -> ConfigureNode<'_> {
-        self.node.node_mut()
-    }
-}
+impl_configure!(<T: PartialEq> RadioButton<'_, T>);
 
 #[cfg(test)]
 mod tests;

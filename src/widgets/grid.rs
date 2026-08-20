@@ -1,7 +1,7 @@
 use crate::layout::types::limits::valid_gap;
 use crate::layout::types::track::Track;
 use crate::primitives::background::Background;
-use crate::scene::node::{Configure, ConfigureNode, Node};
+use crate::scene::node::Node;
 use crate::ui::Ui;
 use crate::widgets::response::InnerResponse;
 
@@ -122,11 +122,7 @@ impl<Rows, Cols> Grid<Rows, Cols> {
     }
 }
 
-impl<Rows, Cols> Configure for Grid<Rows, Cols> {
-    fn node_mut(&mut self) -> ConfigureNode<'_> {
-        self.node.node_mut()
-    }
-}
+impl_configure!(<Rows, Cols> Grid<Rows, Cols>);
 
 #[cfg(all(test, debug_assertions))]
 mod tests {
