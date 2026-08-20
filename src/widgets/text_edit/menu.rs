@@ -30,7 +30,7 @@ pub(super) fn show(
     editor: &mut Editor<'_>,
     filter: KeyFilter,
 ) -> bool {
-    let clipboard = ui.resources.clipboard.clone();
+    let clipboard = ui.clipboard();
     let mut clicked_action = None;
     ContextMenu::attach(ui, snapshot).show(ui, |ui, popup| {
         ui.each_keyboard_event(|_, event| {

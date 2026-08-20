@@ -58,7 +58,7 @@ fn effectively_invisible_spinners_keep_their_shape_without_scheduling_frames() {
         let report = h.frame(|ui| {
             show_spinner_case(ui, case);
         });
-        let tree = &h.ui.forest.trees[Layer::Main];
+        let tree = h.ui.tree(Layer::Main);
 
         assert_eq!(
             tree.shapes.records.len(),
@@ -96,7 +96,7 @@ fn spinner_animation_stops_when_hidden_and_resumes_when_shown() {
         show_spinner(ui, Visibility::Visible);
     });
     assert_eq!(visible.repaint_after, Some(Duration::ZERO));
-    assert_eq!(h.ui.forest.trees[Layer::Main].paint_anims.entries.len(), 1,);
+    assert_eq!(h.ui.tree(Layer::Main).paint_anims.entries.len(), 1,);
 
     h.ui.request_repaint();
     let hidden_at = Duration::from_millis(16);
@@ -105,15 +105,12 @@ fn spinner_animation_stops_when_hidden_and_resumes_when_shown() {
     });
     assert_eq!(hidden.repaint_after, None);
     assert_eq!(
-        h.ui.forest.trees[Layer::Main].shapes.records.len(),
+        h.ui.tree(Layer::Main).shapes.records.len(),
         1,
         "hiding must retain the authored spinner shape",
     );
     assert!(
-        h.ui.forest.trees[Layer::Main]
-            .paint_anims
-            .entries
-            .is_empty(),
+        h.ui.tree(Layer::Main).paint_anims.entries.is_empty(),
         "hiding must drop the active animation row",
     );
 
@@ -124,7 +121,7 @@ fn spinner_animation_stops_when_hidden_and_resumes_when_shown() {
     });
     assert_eq!(shown.repaint_after, Some(shown_at));
     assert_eq!(
-        h.ui.forest.trees[Layer::Main].paint_anims.entries.len(),
+        h.ui.tree(Layer::Main).paint_anims.entries.len(),
         1,
         "showing must restore the active animation row",
     );

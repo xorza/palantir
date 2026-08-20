@@ -412,6 +412,7 @@ mod hot_struct_sizes {
     use crate::text::render::PlacedGlyph;
     use crate::text::shaped_ref::ShapedTextRef;
     use crate::ui::Ui;
+    use crate::ui::frame_engines::FrameEngines;
     use crate::widgets::button::Button;
     use crate::widgets::checkbox::Checkbox;
     use crate::widgets::combo_box::ComboBox;
@@ -480,19 +481,25 @@ mod hot_struct_sizes {
         };
     }
 
-    /// Expected `size_of::<Ui>()`. Two numbers because `LayoutCounters`
-    /// carries a `PhaseTimings` only under `bench` — the sole
-    /// feature-conditional footprint in the table below.
+    /// Expected `size_of::<Ui>()`. One number for every feature set: the
+    /// sole feature-conditional footprint a `Ui` used to carry was
+    /// `LayoutCounters`' `bench`-only `PhaseTimings`, and that rode
+    /// `LayoutEngine` into [`FrameEngines`](crate::ui::frame_engines).
+    const UI_SIZE: usize = 5256;
+
+    /// Expected `size_of::<FrameEngines>()`. Two numbers because
+    /// `LayoutCounters` carries a `PhaseTimings` only under `bench` — the
+    /// sole feature-conditional footprint in the table below.
     ///
     /// Both are the **`cfg(test)`** size, since that is what this module
     /// compiles as: `LayoutCounters`' `TestOnly` fields are live here and
-    /// zero-sized in a release build, so a shipped `Ui` is ~90 B smaller
-    /// than either. Read these as a drift tripwire, not as the production
-    /// footprint.
+    /// zero-sized in a release build, so a shipped `FrameEngines` is ~90 B
+    /// smaller than either. Read these as a drift tripwire, not as the
+    /// production footprint.
     #[cfg(feature = "bench")]
-    const UI_SIZE: usize = 6760;
+    const FRAME_ENGINES_SIZE: usize = 1504;
     #[cfg(not(feature = "bench"))]
-    const UI_SIZE: usize = 6736;
+    const FRAME_ENGINES_SIZE: usize = 1480;
 
     hot_structs! {
         // One instance per window, not per frame — pinned because every
@@ -505,6 +512,11 @@ mod hot_struct_sizes {
         // exists to catch; a new field is fine, a new multi-KB blob is
         // the thing to argue about.
         Ui => "ui::Ui": UI_SIZE / 8,
+        // The other per-window instance, holding the retained caches the
+        // passes run on. Pinned for the same locality reason, and split
+        // from `Ui` so a cache growing here cannot be mistaken for the
+        // recorder growing.
+        FrameEngines => "ui::FrameEngines": FRAME_ENGINES_SIZE / 8,
         // Per-node SoA columns (touched every node, every frame).
         NodeRecord => "scene::NodeRecord": 56 / 8,
         LayoutCore => "scene::LayoutCore": 28 / 4,

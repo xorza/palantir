@@ -65,18 +65,18 @@ fn stable_painting_subtree_triggers_skip_jump() {
     };
     frame(&mut h, build);
     assert_eq!(
-        h.ui.damage_engine.counters.subtree_skips(),
+        h.engines.damage.counters.subtree_skips(),
         0,
         "first frame populates prev — no prior snapshots to skip against"
     );
 
     frame(&mut h, build);
     assert!(
-        h.ui.damage_engine.counters.subtree_skips() >= 1,
+        h.engines.damage.counters.subtree_skips() >= 1,
         "identical second frame must skip at least the painting_parent subtree, got {}",
-        h.ui.damage_engine.counters.subtree_skips(),
+        h.engines.damage.counters.subtree_skips(),
     );
-    assert!(h.ui.damage_engine.counters.dirty().is_empty());
+    assert!(h.engines.damage.counters.dirty().is_empty());
 }
 
 /// Pin: a widget that loses its background between frames flips from
@@ -113,11 +113,11 @@ fn paints_to_non_paints_transition_evicts_and_clears() {
     };
     frame(&mut h, with_bg);
     let id = WidgetId::from_hash("a");
-    assert!(h.ui.damage_engine.prev.contains_key(&id));
+    assert!(h.engines.damage.prev.contains_key(&id));
 
     frame(&mut h, no_bg);
     assert!(
-        !h.ui.damage_engine.prev.contains_key(&id),
+        !h.engines.damage.prev.contains_key(&id),
         "paints→non-paints transition must evict the prev entry"
     );
     let rects: Vec<_> = h.damage_region().iter_rects().collect();
@@ -577,7 +577,7 @@ fn display_change_forces_full_repaint() {
         let f2 = h.frame(&mut build).plan;
         assert!(f2.is_none(), "case: {label} f2 must Skip");
         assert!(
-            h.ui.damage_engine.counters.dirty().is_empty(),
+            h.engines.damage.counters.dirty().is_empty(),
             "case: {label} steady"
         );
         // Mutate Display; identical authoring; must short-circuit to Full.
@@ -593,7 +593,7 @@ fn display_change_forces_full_repaint() {
             "case: {label} display change"
         );
         assert!(
-            !h.ui.damage_engine.counters.dirty().is_empty(),
+            !h.engines.damage.counters.dirty().is_empty(),
             "case: {label} display change should mark some nodes dirty (rects shifted)",
         );
 
@@ -604,7 +604,7 @@ fn display_change_forces_full_repaint() {
             "case: {label} post-mutation steady must Skip",
         );
         assert!(
-            h.ui.damage_engine.counters.dirty().is_empty(),
+            h.engines.damage.counters.dirty().is_empty(),
             "case: {label} post-mutation dirty empty"
         );
     }
@@ -660,18 +660,19 @@ fn small_damage_with_surface_change_forces_full_repaint() {
 
     h.frame(&mut scene);
     h.frame(&mut scene);
-    assert!(h.ui.damage_engine.counters.dirty().is_empty());
+    assert!(h.engines.damage.counters.dirty().is_empty());
 
     // Inject: flip widget "small"'s prev `cascade_input` so the next
     // diff sees it as a cascade-state change and damages its paint_rect
     // (50×60 = 3000 area) inside a 2000×2000 surface (4M area) —
     // ratio ≈ 0.075%, well below the full-repaint threshold.
     let target_wid = WidgetId::from_hash("small");
-    let snap =
-        h.ui.damage_engine
-            .prev
-            .get_mut(&target_wid)
-            .expect("small in prev");
+    let snap = h
+        .engines
+        .damage
+        .prev
+        .get_mut(&target_wid)
+        .expect("small in prev");
     snap.cascade_input = CascadeInputHash(snap.cascade_input.0 ^ 1);
 
     let resize_plan = h
@@ -711,7 +712,7 @@ fn stable_surface_does_not_short_circuit() {
     h.frame(|ui| build(ui, BLUE));
     let warm = h.frame(|ui| build(ui, BLUE)).plan;
     assert!(warm.is_none(), "warm steady-state must Skip");
-    assert!(h.ui.damage_engine.counters.dirty().is_empty());
+    assert!(h.engines.damage.counters.dirty().is_empty());
     // Frame 3: same surface, *one leaf* changes color. Diff must
     // produce a `Partial(small_rect)`, not `Full`/`Skip` — that
     // proves the surface-change short-circuit didn't fire.
@@ -852,8 +853,8 @@ fn off_surface_first_seen_node_skips_prev_insert() {
     });
 
     assert!(
-        !h.ui
-            .damage_engine
+        !h.engines
+            .damage
             .prev
             .contains_key(&WidgetId::from_hash("off")),
         "Vacant + off-surface paint_rect must not seed a prev entry — \

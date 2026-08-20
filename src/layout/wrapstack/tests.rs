@@ -771,7 +771,7 @@ fn wrap_hstack_buttons_never_overflow_parent_at_narrow_widths() {
     for surface_w in [800u32, 600, 500, 400, 350, 300, 250, 200, 150, 120] {
         let mut h = UiHarness::new(UVec2::new(surface_w, 600));
         let wrap = h.frame_value(build);
-        let wrap_rect = h.ui.layout[Layer::Main].rect[wrap.idx()];
+        let wrap_rect = h.ui.arranged_rect(Layer::Main, wrap);
         let wrap_right = wrap_rect.min.x + wrap_rect.size.w;
         for label in LABELS {
             let r = rect_of(&h, label);

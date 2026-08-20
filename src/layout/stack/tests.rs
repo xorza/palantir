@@ -31,7 +31,7 @@ fn hstack_arranges_two_buttons_side_by_side() {
             .node()
     });
     assert_eq!(
-        h.ui.layout[Layer::Main].rect[root.idx()],
+        h.ui.arranged_rect(Layer::Main, root),
         Rect::new(0.0, 0.0, 800.0, 600.0)
     );
 
@@ -328,7 +328,7 @@ fn hug_hstack_pass2_does_not_double_count_non_fill_children() {
         });
         [panel.inner, panel.response.node()]
     });
-    let desired = &h.ui.layout_engine.cache.previous.nodes.desired;
+    let desired = &h.engines.layout.cache.previous.nodes.desired;
     let button_w = desired[button_node.idx()].w;
     let root_w = desired[root.idx()].w;
     // Hug HStack tracks the button's content width — no inflation from
@@ -455,7 +455,7 @@ fn stack_mixed_sizing_modes_have_exact_axis_symmetric_layout() {
         ];
         assert_eq!(actual, expected, "case: {}", case.label);
         assert!(
-            h.ui.layout_engine.scratch.stack_fill.pool.is_empty(),
+            h.engines.layout.scratch.stack_fill.pool.is_empty(),
             "case: {} must release its planning scratch",
             case.label,
         );
@@ -518,7 +518,7 @@ fn parent_max_size_clamps_children_available() {
             .response
             .node()
     });
-    let parent_rect = h.ui.layout[Layer::Main].rect[parent_node.idx()];
+    let parent_rect = h.ui.arranged_rect(Layer::Main, parent_node);
     assert_eq!(
         parent_rect.size.w, 200.0,
         "parent must arrange at its own max_size cap",
@@ -561,7 +561,7 @@ fn fill_cross_axis_stretches_regardless_of_align() {
                     );
                 });
         });
-        let r = h.ui.layout[Layer::Main].rect[child.unwrap().idx()];
+        let r = h.ui.arranged_rect(Layer::Main, child.unwrap());
         assert_eq!(
             r.size.w, 400.0,
             "Fill child with align={align:?} must still stretch to parent's full width \
@@ -601,7 +601,7 @@ fn hug_panel_clamps_to_min_and_max_size() {
             .node()
     });
     assert_eq!(
-        h.ui.layout[Layer::Main].rect[small.idx()].size.h,
+        h.ui.arranged_rect(Layer::Main, small).size.h,
         100.0,
         "Hug floors at min_size when content is smaller",
     );
@@ -623,7 +623,7 @@ fn hug_panel_clamps_to_min_and_max_size() {
             .node()
     });
     assert_eq!(
-        h.ui.layout[Layer::Main].rect[big.idx()].size.h,
+        h.ui.arranged_rect(Layer::Main, big).size.h,
         120.0,
         "Hug caps at max_size when content is larger",
     );

@@ -26,7 +26,7 @@ fn zstack_hugs_to_largest_child_per_axis_independently() {
             .response
             .node()
     });
-    let r = h.ui.layout[Layer::Main].rect[panel.idx()];
+    let r = h.ui.arranged_rect(Layer::Main, panel);
     assert_eq!(r.size.w, 40.0);
     assert_eq!(r.size.h, 80.0);
 }
@@ -53,7 +53,7 @@ fn zstack_lays_children_at_inner_top_left_by_default() {
             .node()
     });
     let kids: Vec<_> = h.main_child_rects(panel);
-    let panel_rect = h.ui.layout[Layer::Main].rect[panel.idx()];
+    let panel_rect = h.ui.arranged_rect(Layer::Main, panel);
     let a = kids[0];
     let b = kids[1];
     assert_eq!(a.min.x, panel_rect.min.x + 8.0);
@@ -113,7 +113,7 @@ fn zstack_per_axis_alignment() {
             .response
             .node()
         });
-        let panel_rect = h.ui.layout[Layer::Main].rect[panel.idx()];
+        let panel_rect = h.ui.arranged_rect(Layer::Main, panel);
         let kids: Vec<_> = h.main_child_rects(panel);
         for (i, (_, _, expected)) in children.iter().enumerate() {
             let r = kids[i];
@@ -143,7 +143,7 @@ fn zstack_fill_child_stretches_to_inner() {
             .response
             .node()
     });
-    let panel_rect = h.ui.layout[Layer::Main].rect[panel.idx()];
+    let panel_rect = h.ui.arranged_rect(Layer::Main, panel);
     let kids: Vec<_> = h.main_child_rects(panel);
     let f = kids[0];
     assert_eq!(f.min.x - panel_rect.min.x, 10.0);
@@ -170,7 +170,7 @@ fn hug_zstack_with_only_fill_children_collapses_to_zero() {
             .response
             .node()
     });
-    let r = h.ui.layout[Layer::Main].rect[panel.idx()];
+    let r = h.ui.arranged_rect(Layer::Main, panel);
     assert_eq!(r.size.w, 0.0);
     assert_eq!(r.size.h, 0.0);
 }
@@ -196,7 +196,7 @@ fn zstack_collapsed_child_does_not_grow_panel() {
             .response
             .node()
     });
-    let r = h.ui.layout[Layer::Main].rect[panel.idx()];
+    let r = h.ui.arranged_rect(Layer::Main, panel);
     assert_eq!(r.size.w, 20.0);
     assert_eq!(r.size.h, 20.0);
     let kids: Vec<_> = h.main_child_rects(panel);

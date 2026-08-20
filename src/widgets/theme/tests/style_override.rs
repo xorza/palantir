@@ -50,7 +50,7 @@ fn style_takes_an_option_and_none_falls_back_to_the_slot() {
 
     let widths = |id: WidgetId| {
         let node = h.node_for_widget_id(id);
-        h.ui.layout[Layer::Main].rect[node.idx()].size.w
+        h.ui.arranged_rect(Layer::Main, node).size.w
     };
     // 20 px of padding a side against 4 px a side: the styled button is
     // exactly 2 × (20 − 4) = 32 px wider around the same one-glyph label.
@@ -85,7 +85,7 @@ fn text_style_none_inherits_the_ambient_text_style() {
 
     let height = |id: WidgetId| {
         let node = h.node_for_widget_id(id);
-        h.ui.layout[Layer::Main].rect[node.idx()].size.h
+        h.ui.arranged_rect(Layer::Main, node).size.h
     };
     // Twice the font size, twice the single line's height.
     assert_eq!(height(styled_id), height(plain_id) * 2.0);

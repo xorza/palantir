@@ -71,7 +71,7 @@ fn cascade_visible_to_relayout_pass() {
 #[test]
 fn prev_frame_empty_before_first_frame() {
     let h = UiHarness::new(SURFACE);
-    assert!(h.ui.damage_engine.prev.is_empty());
+    assert!(h.engines.damage.prev.is_empty());
 }
 
 /// Pin the row invariant: after the first frame, widgets with paint
@@ -94,18 +94,20 @@ fn prev_frame_captures_nodes_with_rows() {
             });
     });
     let frame_node = frame_node.unwrap();
-    let prev = &h.ui.damage_engine.prev;
+    let prev = &h.engines.damage.prev;
     let snap = &prev[&WidgetId::from_hash("a")];
 
     assert!(prev.contains_key(&WidgetId::from_hash("root")));
     assert!(!prev.contains_key(&WidgetId::from_hash("empty")));
     assert_eq!(
-        h.ui.damage_engine
+        h.engines
+            .damage
             .prev_paint_rect(WidgetId::from_hash("root")),
         None,
     );
     assert_eq!(
-        h.ui.damage_engine
+        h.engines
+            .damage
             .prev_paint_rect(WidgetId::from_hash("a"))
             .unwrap(),
         h.ui.layout[Layer::Main].rect[frame_node.idx()],
@@ -130,7 +132,8 @@ fn prev_frame_drops_disappeared_widgets() {
             });
     });
     assert!(
-        h.ui.damage_engine
+        h.engines
+            .damage
             .prev
             .contains_key(&WidgetId::from_hash("gone"))
     );
@@ -141,8 +144,8 @@ fn prev_frame_drops_disappeared_widgets() {
             .show(ui, |_| {});
     });
     assert!(
-        !h.ui
-            .damage_engine
+        !h.engines
+            .damage
             .prev
             .contains_key(&WidgetId::from_hash("gone"))
     );
@@ -164,10 +167,10 @@ fn prev_frame_updates_on_authoring_change() {
         }
     };
     h.frame(paint(Color::rgb(0.2, 0.4, 0.8)));
-    let h1 = h.ui.damage_engine.prev[&WidgetId::from_hash("a")].hash;
+    let h1 = h.engines.damage.prev[&WidgetId::from_hash("a")].hash;
 
     h.frame(paint(Color::rgb(0.9, 0.4, 0.8)));
-    let h2 = h.ui.damage_engine.prev[&WidgetId::from_hash("a")].hash;
+    let h2 = h.engines.damage.prev[&WidgetId::from_hash("a")].hash;
     assert_ne!(h1, h2);
 }
 

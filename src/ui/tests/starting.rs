@@ -39,8 +39,8 @@ fn empty_ui_drives_a_frame_safely() {
 
     // Synthetic viewport root: even an empty user record produces one node.
     assert_eq!(h.ui.forest.trees[Layer::Main].records.len(), 1);
-    assert!(h.ui.damage_engine.prev.is_empty());
-    assert!(h.ui.damage_engine.counters.dirty().is_empty());
+    assert!(h.engines.damage.prev.is_empty());
+    assert!(h.engines.damage.counters.dirty().is_empty());
     assert!(h.damage_region().rects.is_empty());
     assert_eq!(Damage::new(h.collapsed_damage()), Damage::Skip,);
 }
@@ -59,7 +59,7 @@ fn empty_then_populated_frame() {
     // The user Panel is rowless (no chrome, no shapes, no children) so
     // it gets no prev entry; the viewport root tracks it as a
     // child-marker row — one entry total.
-    assert_eq!(h.ui.damage_engine.prev.len(), 1);
+    assert_eq!(h.engines.damage.prev.len(), 1);
 }
 
 /// Pin: `Ui::frame` panics if `display.scale_factor` is below `EPS`.

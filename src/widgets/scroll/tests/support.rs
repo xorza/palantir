@@ -36,20 +36,19 @@ pub(super) fn read_state(h: &mut UiHarness) -> ScrollState {
 }
 
 fn scroll_viewport_endpoint(ui: &Ui, outer_id: WidgetId) -> Endpoint {
-    ui.cascade
+    ui.cascade()
         .endpoint(outer_id.with("viewport"))
         .expect("scroll viewport endpoint")
 }
 
 pub(super) fn scroll_content(ui: &Ui, outer_id: WidgetId) -> Size {
-    ui.layout
-        .scroll_content(scroll_viewport_endpoint(ui, outer_id))
+    ui.scroll_content(outer_id.with("viewport"))
 }
 
 pub(super) fn scroll_viewport(ui: &Ui, outer_id: WidgetId) -> Size {
     let endpoint = scroll_viewport_endpoint(ui, outer_id);
-    let tree = &ui.forest.trees[endpoint.layer];
-    ui.layout[endpoint.layer].rect[endpoint.node.idx()]
+    let tree = ui.tree(endpoint.layer);
+    ui.arranged_rect(endpoint.layer, endpoint.node)
         .deflated_by(tree.records.layout()[endpoint.node.idx()].padding)
         .size
 }

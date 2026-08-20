@@ -51,7 +51,7 @@ fn child_under_transformed_parent_damage_in_screen_space() {
     // in this layout). Screen rect after the parent's translate is at
     // (100, 0) — that's where the GPU actually paints. The damage
     // rect must cover *that* position, not the layout one.
-    let child_layout_rect = h.ui.layout[Layer::Main].rect[child_node.unwrap().idx()];
+    let child_layout_rect = h.ui.arranged_rect(Layer::Main, child_node.unwrap());
     let expected_screen_rect = Rect {
         min: child_layout_rect.min + translate,
         size: child_layout_rect.size,
@@ -123,13 +123,14 @@ fn animated_parent_transform_unions_old_and_new_positions() {
     // changed-paints arm — but that arm emits nothing for it: its
     // only row (the child marker) is unchanged and its own
     // `cascade_input` is stable, so all damage comes from the child.
-    let dirty_widget_ids: Vec<WidgetId> =
-        h.ui.damage_engine
-            .counters
-            .dirty()
-            .iter()
-            .map(|n| h.ui.forest.trees[Layer::Main].records.widget_id()[n.idx()])
-            .collect();
+    let dirty_widget_ids: Vec<WidgetId> = h
+        .engines
+        .damage
+        .counters
+        .dirty()
+        .iter()
+        .map(|n| h.ui.tree(Layer::Main).records.widget_id()[n.idx()])
+        .collect();
     assert_eq!(
         dirty_widget_ids,
         vec![WidgetId::from_hash("outer"), WidgetId::from_hash("c")],
@@ -146,7 +147,7 @@ fn transform_animation_keeps_far_positions_split() {
     // Drop the merge budget to strict-overlap-only so the prev/curr
     // pair (cost 6 400 < default budget) stays split. Pins both
     // ends of the merge rule against future budget tweaks.
-    h.ui.damage_engine.budget_px = 0.0;
+    h.engines.damage.budget_px = 0.0;
     let mut child_node = None;
     let build = |dx: f32, h: &mut UiHarness, child: &mut Option<NodeId>| {
         h.frame(|ui| {
@@ -424,7 +425,7 @@ fn moved_subtree_damages_extents_and_refreshes_snapshots() {
     // any snapshot field.
     build(60.0, &mut h);
     assert!(
-        h.ui.damage_engine.counters.dirty().is_empty(),
+        h.engines.damage.counters.dirty().is_empty(),
         "still frame after motion must not dirty any node",
     );
     assert_eq!(

@@ -129,7 +129,12 @@ impl CascadeRunFixture {
         let second = record_fixture(second_state);
         let mut engine = CascadeEngine::default();
         let mut cascade = Cascade::default();
-        engine.run(&first.ui.forest, &first.ui.layout, display, &mut cascade);
+        engine.run(
+            first.ui.forest(),
+            first.ui.layout_tables(),
+            display,
+            &mut cascade,
+        );
         Self {
             first,
             second,
@@ -147,8 +152,8 @@ impl CascadeRunFixture {
             &self.first
         };
         self.engine.run(
-            &source.ui.forest,
-            &source.ui.layout,
+            source.ui.forest(),
+            source.ui.layout_tables(),
             self.display,
             &mut self.cascade,
         );
@@ -162,8 +167,8 @@ impl CascadeRunFixture {
             &self.first
         };
         self.engine.run_full(
-            &source.ui.forest,
-            &source.ui.layout,
+            source.ui.forest(),
+            source.ui.layout_tables(),
             self.display,
             &mut self.cascade,
         );

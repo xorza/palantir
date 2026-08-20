@@ -232,7 +232,7 @@ fn invalid_runtime_metrics_record_no_text_or_shaping_state() {
         h.ui.theme_mut().text_edit.looks.normal.text = Some(style.clone());
         let mut text_node = None;
         let mut editor_node = None;
-        let calls = h.ui.resources.text.measure_calls();
+        let calls = h.ui.shaper().measure_calls();
 
         h.frame(|ui| {
             Panel::vstack().auto_id().show(ui, |ui| {
@@ -255,7 +255,7 @@ fn invalid_runtime_metrics_record_no_text_or_shaping_state() {
             );
         }
         assert_eq!(
-            h.ui.resources.text.measure_calls(),
+            h.ui.shaper().measure_calls(),
             calls,
             "{label}: invalid text reached the shaper",
         );

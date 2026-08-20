@@ -49,7 +49,9 @@ impl Window {
         // actually opened, so `Ui::vsync` is truthful before any frame runs
         // and a control writing its own value back doesn't reconfigure an
         // explicitly-configured present mode out from under the host.
-        driver.ui.window_requests.levels.vsync = gpu::vsync_of(surface.config.present_mode);
+        driver
+            .ui
+            .seed_vsync(gpu::vsync_of(surface.config.present_mode));
         Self {
             window,
             surface: surface.surface,
@@ -97,21 +99,15 @@ impl Window {
             .outer_position()
             .ok()
             .map(|position| IVec2::new(position.x, position.y));
-        self.driver.ui.window_frame = WindowFrameState {
+        // Also where the previous frame's veto is asserted spent — see
+        // `Ui::set_window_facts`. `finish` below sits outside the occlusion
+        // branch, so every winit frame reaches the drain that clears it,
+        // including a skipped one.
+        self.driver.ui.set_window_facts(WindowFrameState {
             close_requested: self.close_requested,
             position,
             maximized: self.window.is_maximized(),
-        };
-        // Asserted, not cleared. The veto's one-frame life is owned by
-        // `drain_window_output`, which clears it on the way out — and
-        // `finish` below sits outside the occlusion branch, so every
-        // winit frame reaches that drain including a skipped one. A
-        // second clear here would be a write that can never change
-        // anything; a check says so and fails if that ever stops holding.
-        debug_assert!(
-            !self.driver.ui.window_requests.close_vetoed,
-            "a veto outlived the frame that raised it",
-        );
+        });
 
         // An occluded window skips its frame, except the one carrying a
         // close request: `finish` below closes unless the app vetoed,
@@ -314,7 +310,7 @@ mod tests {
             .ui
             .open_window(opened, WindowConfig::new("inspector"));
         driver.ui.set_cursor(CursorIcon::Pointer);
-        driver.ui.window_frame.close_requested = true;
+        driver.ui.window_frame_mut().close_requested = true;
 
         let output = driver.drain_window_output(&mut commands);
         assert_eq!(output.cursor, CursorIcon::Pointer);
@@ -330,16 +326,16 @@ mod tests {
             [token],
             "an un-vetoed close becomes this window's own close command"
         );
-        assert!(driver.ui.window_requests.commands.opens.is_empty());
-        assert!(driver.ui.window_requests.commands.closes.is_empty());
+        assert!(driver.ui.window_requests().commands.opens.is_empty());
+        assert!(driver.ui.window_requests().commands.closes.is_empty());
         // Drained by `append`, not `mem::take`, so the recorder keeps its
         // buffers for the next frame instead of reallocating per window
         // command.
-        let open_capacity = driver.ui.window_requests.commands.opens.capacity();
-        let close_capacity = driver.ui.window_requests.commands.closes.capacity();
+        let open_capacity = driver.ui.window_requests().commands.opens.capacity();
+        let close_capacity = driver.ui.window_requests().commands.closes.capacity();
         assert!(open_capacity > 0 && close_capacity > 0);
 
-        driver.ui.window_frame.close_requested = true;
+        driver.ui.window_frame_mut().close_requested = true;
         driver.ui.keep_open();
         let mut vetoed = WindowCommands::default();
         driver.drain_window_output(&mut vetoed);
@@ -350,14 +346,14 @@ mod tests {
         let mut settled = WindowCommands::default();
         driver.drain_window_output(&mut settled);
         assert!(settled.closes.is_empty());
-        assert!(!driver.ui.window_requests.close_vetoed);
+        assert!(!driver.ui.window_requests().close_vetoed);
         assert_eq!(
-            driver.ui.window_requests.commands.opens.capacity(),
+            driver.ui.window_requests().commands.opens.capacity(),
             open_capacity,
             "draining must not hand away the recorder's buffer"
         );
         assert_eq!(
-            driver.ui.window_requests.commands.closes.capacity(),
+            driver.ui.window_requests().commands.closes.capacity(),
             close_capacity
         );
     }

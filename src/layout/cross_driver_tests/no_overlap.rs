@@ -104,7 +104,7 @@ fn grid_columns_with_wrapping_text_do_not_overlap() {
                 });
         });
 
-        let layout = &h.ui.layout[Layer::Main];
+        let layout = h.ui.layout(Layer::Main);
         let lr = layout.rect[left.unwrap().idx()];
         let rr = layout.rect[right.unwrap().idx()];
         assert!(lr.size.w > 0.0, "case: {label_id} left col width");
@@ -189,7 +189,7 @@ fn text_layouts_two_sections_back_to_back_no_overlap() {
             });
     });
 
-    let layout = &h.ui.layout[Layer::Main];
+    let layout = h.ui.layout(Layer::Main);
     let l1 = layout.rect[hug_left.unwrap().idx()];
     let r1 = layout.rect[hug_right.unwrap().idx()];
     let l2 = layout.rect[prop_label.unwrap().idx()];

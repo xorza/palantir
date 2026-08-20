@@ -140,7 +140,7 @@ mod tests {
             padding: Spacing,
             margin: Spacing,
         ) {
-            let layouts = h.ui.forest.trees[Layer::Main].records.layout();
+            let layouts = h.ui.tree(Layer::Main).records.layout();
             let explicit = layouts[nodes[0].idx()];
             let inherited = layouts[nodes[1].idx()];
             assert_eq!(explicit.padding, Spacing::ZERO, "{label}: explicit padding");

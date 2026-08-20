@@ -30,6 +30,7 @@ use crate::scene::cascade;
 use crate::scene::damage::{Damage, DamageInput};
 use crate::scene::node::Node;
 use crate::ui::Ui;
+use crate::ui::frame_engines::FrameEngines;
 use crate::ui::frame_input::FrameInput;
 use crate::ui::frame_plan::FrameClassifyInput;
 use crate::ui::frame_plan::FramePlan;
@@ -39,20 +40,25 @@ use crate::ui::wake_reasons::WakeReasons;
 use crate::window::cursor_icon::CursorIcon;
 use crate::window::window_token::WindowToken;
 
-/// The host-driven half of a frame, borrowing the [`Ui`] it drives.
+/// The host-driven half of a frame, borrowing the [`Ui`] it drives and the
+/// [`FrameEngines`] it drives it with.
 ///
 /// A separate type rather than more `impl Ui` because the passes reach
 /// across nearly every field on `Ui` — grouping those fields would only
 /// obscure the one consumer that legitimately wants all of them. This
 /// keeps `Ui`'s own file to the authoring surface.
+///
+/// The two borrows are disjoint by construction, which is what lets a pass
+/// hold `&ui.forest` while writing `&mut engines.layout`.
 #[derive(Debug)]
 pub(super) struct FrameCycle<'a> {
     ui: &'a mut Ui,
+    engines: &'a mut FrameEngines,
 }
 
 impl<'a> FrameCycle<'a> {
-    pub(super) fn new(ui: &'a mut Ui) -> Self {
-        Self { ui }
+    pub(super) fn new(ui: &'a mut Ui, engines: &'a mut FrameEngines) -> Self {
+        Self { ui, engines }
     }
 
     /// Drive one application frame for `win`. Runs [`App::update`] once on a
@@ -175,16 +181,16 @@ impl<'a> FrameCycle<'a> {
             now: self.ui.frame_runtime.time,
         };
         let damage = match plan {
-            FramePlan::PaintOnly => self.ui.damage_engine.compute_paint_only(input),
+            FramePlan::PaintOnly => self.engines.damage.compute_paint_only(input),
             FramePlan::FullRecord { force_full } => {
-                self.ui
-                    .damage_engine
+                self.engines
+                    .damage
                     .compute(input, &self.ui.forest.ids.removed, force_full)
             }
         };
 
         // First-frame contract: no prev snapshot to diff against, so
-        // every painting widget is "new" — `damage_engine.compute`
+        // every painting widget is "new" — `DamageEngine::compute`
         // must return `Damage::Full`. The walk itself is still
         // load-bearing (seeds `prev` for frame 2's incremental diff)
         // so we keep the call; the assert just pins the invariant.
@@ -286,7 +292,7 @@ impl<'a> FrameCycle<'a> {
         // Hard-coded `WidgetId::VIEWPORT` — a frame-stable parent id,
         // so top-level salts/auto ids resolve to `VIEWPORT.with(salt)`
         // like any other parent-scoped id (see `Ui::widget`).
-        self.ui.forest.open_node(WidgetId::VIEWPORT, viewport, None);
+        self.ui.open_node(WidgetId::VIEWPORT, viewport, None);
         {
             profiling::scope!("Ui::record_user");
             app.record(win, self.ui);
@@ -295,7 +301,7 @@ impl<'a> FrameCycle<'a> {
         if self.ui.resources.diagnostics.overlay.borrow().frame_stats {
             frame_stats::record(self.ui);
         }
-        self.ui.forest.close_node();
+        self.ui.close_node();
         self.post_record();
         action_flag
     }
@@ -337,9 +343,12 @@ impl<'a> FrameCycle<'a> {
     fn post_record(&mut self) {
         profiling::scope!("Ui::post_record");
         self.ui.forest.post_record();
+        // The field, not `Ui::payloads` — that takes `&self`, and the
+        // `layout_engine.run` below writes `&mut self.ui.layout` while this
+        // borrow is live. Reaching the one field keeps the two disjoint.
         let payloads = self.ui.forest.record_store.payloads.borrow();
         let interned_text = payloads.interned_text();
-        self.ui.layout_engine.run(
+        self.engines.layout.run(
             &self.ui.forest,
             &interned_text,
             self.ui.display.logical_rect(),
@@ -364,7 +373,7 @@ impl<'a> FrameCycle<'a> {
             return;
         }
         self.ui.frame_runtime.prev_cascade_fp = Some(fp);
-        self.ui.cascade_engine.run(
+        self.engines.cascade.run(
             &self.ui.forest,
             &self.ui.layout,
             self.ui.display,
@@ -386,7 +395,7 @@ impl<'a> FrameCycle<'a> {
         // the frame didn't touch: text ticks the clock its caches age on,
         // and the animation sweep drops slots no call site reached for.
         // Each carries its own early-out for the nothing-to-do case.
-        self.ui.layout_engine.text.end_full_record(removed);
+        self.engines.layout.text.end_full_record(removed);
         self.ui.anim.sweep_removed(removed);
         // These two react to removals only, and both walk their whole map
         // to do it — so the one guard sits here rather than being spelled

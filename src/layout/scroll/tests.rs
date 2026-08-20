@@ -28,23 +28,23 @@ fn layout_for(ui: &Ui, id_salt: &'static str) -> ScrollLayoutSnapshot {
     let outer_id = WidgetId::from_hash(id_salt);
     let viewport_id = outer_id.with("viewport");
     let outer = ui
-        .cascade
+        .cascade()
         .by_id
         .get(&outer_id)
         .expect("scroll outer endpoint");
     let viewport = ui
-        .cascade
+        .cascade()
         .by_id
         .get(&viewport_id)
         .expect("scroll viewport endpoint");
-    let viewport_tree = &ui.forest.trees[viewport.layer];
-    let viewport_rect = ui.layout[viewport.layer].rect[viewport.node.idx()];
+    let viewport_tree = ui.tree(viewport.layer);
+    let viewport_rect = ui.arranged_rect(viewport.layer, viewport.node);
     ScrollLayoutSnapshot {
-        outer: ui.layout[outer.layer].rect[outer.node.idx()].size,
+        outer: ui.arranged_rect(outer.layer, outer.node).size,
         viewport: viewport_rect
             .deflated_by(viewport_tree.records.layout()[viewport.node.idx()].padding)
             .size,
-        content: ui.layout[viewport.layer].scroll_content[viewport.node.idx()],
+        content: ui.layout(viewport.layer).scroll_content[viewport.node.idx()],
     }
 }
 
@@ -502,9 +502,8 @@ fn a_scroll_viewport_takes_its_slot_under_every_driver_that_places_one() {
             (SLOT.w, SLOT.h),
             "{driver}: a viewport measuring {CONTENT:?} must still take its {SLOT:?} slot",
         );
-        let endpoint = h.ui.cascade.endpoint(scroll_id).expect("scroll endpoint");
         assert_eq!(
-            h.ui.layout.scroll_content(endpoint),
+            h.ui.scroll_content(scroll_id),
             CONTENT,
             "{driver}: and still record the full content extent for its bars",
         );

@@ -37,21 +37,21 @@ fn assert_warm_rects_match_cold(
     h.frame(|ui| record(ui, &mut cold_nodes));
     let cold: Vec<_> = cold_nodes
         .iter()
-        .map(|n| h.ui.layout[Layer::Main].rect[n.idx()])
+        .map(|&n| h.ui.arranged_rect(Layer::Main, n))
         .collect();
 
     let mut warm_nodes = Vec::new();
     h.frame(|ui| record(ui, &mut warm_nodes));
     let warm: Vec<_> = warm_nodes
         .iter()
-        .map(|n| h.ui.layout[Layer::Main].rect[n.idx()])
+        .map(|&n| h.ui.arranged_rect(Layer::Main, n))
         .collect();
 
     // Guard against the test going inert: if hash stability ever
     // regresses and the warm frame misses everywhere, cold == warm
     // would pass vacuously while pinning nothing.
     assert!(
-        !h.ui.layout_engine.scratch.counters.cache_hits().is_empty(),
+        !h.engines.layout.scratch.counters.cache_hits().is_empty(),
         "warm frame produced no measure-cache hits — {msg} pins nothing",
     );
     assert_eq!(cold, warm, "{msg}");
@@ -219,14 +219,15 @@ fn cache_hit_preserves_grid_cell_rects() {
         // exercised. A descendant-level hit would re-run grid measure
         // and pin nothing.
         assert!(
-            h.ui.layout_engine
+            h.engines
+                .layout
                 .scratch
                 .counters
                 .cache_hits()
                 .contains(&WidgetId::VIEWPORT),
             "case {label}: warm cache hit didn't land at the viewport root — grid hug \
              restore not exercised. hits={:?}",
-            h.ui.layout_engine.scratch.counters.cache_hits(),
+            h.engines.layout.scratch.counters.cache_hits(),
         );
     }
 }
@@ -513,17 +514,17 @@ fn cache_rects_match_cold_oracle_across_width_changes() {
         });
         let warm_rects: Vec<_> = warm_nodes
             .iter()
-            .map(|n| h.ui.layout[Layer::Main].rect[n.idx()])
+            .map(|&n| h.ui.arranged_rect(Layer::Main, n))
             .collect();
 
-        h.ui.layout_engine.cache.clear();
+        h.engines.layout.cache.clear();
         let mut cold_nodes = Vec::new();
         h.frame(|ui| {
             record(ui, &mut cold_nodes);
         });
         let cold_rects: Vec<_> = cold_nodes
             .iter()
-            .map(|n| h.ui.layout[Layer::Main].rect[n.idx()])
+            .map(|&n| h.ui.arranged_rect(Layer::Main, n))
             .collect();
 
         assert_eq!(
@@ -570,7 +571,7 @@ fn measure_cache_restores_intrinsics_so_localized_change_skips_sibling_rewalk() 
 
     // Cold frame computes intrinsics across the whole tree.
     h.frame(|ui| build(ui, 0));
-    let cold = h.ui.layout_engine.scratch.counters.intrinsic_computes() as usize;
+    let cold = h.engines.layout.scratch.counters.intrinsic_computes() as usize;
     assert!(
         cold > HEAVY,
         "cold frame should compute the whole tree's intrinsics, got {cold}",
@@ -581,7 +582,7 @@ fn measure_cache_restores_intrinsics_so_localized_change_skips_sibling_rewalk() 
     // the count collapses to the changed ancestor chain (~root + tiny),
     // not ~2·HEAVY for a full sibling re-walk.
     h.frame(|ui| build(ui, 1));
-    let warm = h.ui.layout_engine.scratch.counters.intrinsic_computes() as usize;
+    let warm = h.engines.layout.scratch.counters.intrinsic_computes() as usize;
     assert!(
         warm < HEAVY / 2,
         "localized change re-walked the unchanged sibling: {warm} intrinsic \
@@ -643,7 +644,7 @@ fn moved_subtree_replays_translated_rects() {
     let rects = |ui: &Ui, nodes: &[NodeId]| -> Vec<_> {
         nodes
             .iter()
-            .map(|n| ui.layout[Layer::Main].rect[n.idx()])
+            .map(|&n| ui.arranged_rect(Layer::Main, n))
             .collect()
     };
 
@@ -659,14 +660,15 @@ fn moved_subtree_replays_translated_rects() {
     // Non-vacuity: the translate branch must be the one that ran. Without
     // this the test still passes if arrange re-derived every rect.
     assert!(
-        h.ui.layout_engine
+        h.engines
+            .layout
             .scratch
             .counters
             .arrange_replays()
             .translated
             > 0,
         "no subtree replayed via translation — fixture pins nothing, got {:?}",
-        h.ui.layout_engine.scratch.counters.arrange_replays(),
+        h.engines.layout.scratch.counters.arrange_replays(),
     );
 
     // The header grew 10 → 30, so everything below shifts down exactly 20
@@ -680,7 +682,7 @@ fn moved_subtree_replays_translated_rects() {
 
     // Ground truth: clearing the cache forces a full remeasure of the same
     // frame, which must land on the identical geometry.
-    h.ui.layout_engine.cache.clear();
+    h.engines.layout.cache.clear();
     let mut cold_nodes = Vec::new();
     h.frame(|ui| record(ui, 30.0, &mut cold_nodes));
     assert_eq!(

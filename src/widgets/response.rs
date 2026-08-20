@@ -145,7 +145,7 @@ pub(crate) mod test_support {
 
     impl Response<'_> {
         pub(crate) fn node(&self) -> NodeId {
-            self.ui.forest.node_for_widget_id(Layer::Main, self.id)
+            self.ui.forest().node_for_widget_id(Layer::Main, self.id)
         }
     }
 }

@@ -78,7 +78,7 @@ pub(super) fn run_input(
     } = policy;
     let mut blur = false;
     let mut submitted = false;
-    let clipboard = ui.resources.clipboard.clone();
+    let clipboard = ui.clipboard();
 
     let TextEditState {
         edit,

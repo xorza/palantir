@@ -96,6 +96,7 @@ impl Forest {
     /// debug-asserts that a grid node's handle resolves — pushing
     /// through the active layer here is what makes that hold by
     /// construction rather than by every caller remembering.
+    #[inline]
     pub(crate) fn push_grid_def(
         &mut self,
         rows: &[Track],
@@ -109,6 +110,7 @@ impl Forest {
 
     /// Intern a bar overlay's definition into the current layer's tree.
     /// Companion to [`Self::push_grid_def`]; same layer contract.
+    #[inline]
     pub(crate) fn push_scrollbars_def(&mut self, def: ScrollbarsDef) -> ScrollbarsDefId {
         let layer = self.current_layer();
         self.trees[layer].push_scrollbars_def(def)
@@ -125,6 +127,7 @@ impl Forest {
     /// disambiguated id that skipped the parent would move with record
     /// order — so they resolve together here rather than being paired up
     /// again by every caller.
+    #[inline]
     pub(crate) fn widget_id(&mut self, salt: Salt) -> WidgetId {
         let raw_id = salt.resolve(self.current_parent_id());
         self.ids.resolve(raw_id, salt.is_explicit())
@@ -137,6 +140,7 @@ impl Forest {
     /// — unlike the cascade lookups on `Ui`, which answer for last
     /// frame. `Scroll` uses it to hand its bar overlay a live handle to
     /// the viewport recorded one line earlier.
+    #[inline]
     pub(crate) fn current_node(&self, id: WidgetId) -> NodeId {
         self.ids.curr[&id].node
     }
@@ -249,6 +253,7 @@ impl Forest {
         self.collisions.push(collision);
     }
 
+    #[inline]
     pub(crate) fn close_node(&mut self) {
         let layer = self.current_layer();
         let tree = &mut self.trees[layer];

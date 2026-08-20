@@ -151,8 +151,8 @@ mod tests {
             });
         });
 
-        let layouts = h.ui.forest.trees[Layer::Main].records.layout();
-        let rects = &h.ui.layout[Layer::Main].rect;
+        let layouts = h.ui.tree(Layer::Main).records.layout();
+        let rects = &h.ui.layout(Layer::Main).rect;
         assert_eq!(
             layouts[inherited.unwrap().idx()].margin,
             Spacing::xy(0.0, 5.0),
@@ -200,7 +200,7 @@ mod tests {
                 default = Some(Separator::horizontal().show(ui).node());
             });
         });
-        let rects = &h.ui.layout[Layer::Main].rect;
+        let rects = &h.ui.layout(Layer::Main).rect;
         let s = rects[sized.unwrap().idx()];
         assert_eq!((s.size.w, s.size.h), (50.0, 3.0), "explicit size");
         let h = rects[hug.unwrap().idx()];

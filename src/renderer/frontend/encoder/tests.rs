@@ -274,7 +274,7 @@ fn manually_pushed_shapes_emit_expected_cmds() {
         "lines no longer lower to polylines"
     );
     assert_eq!(
-        h.ui.forest
+        h.ui.forest()
             .record_store
             .payloads
             .borrow()
@@ -359,10 +359,10 @@ fn text_shape_carries_source_without_reconstructing_buffer() {
 
     let mut h = UiHarness::with_text(UVec2::new(200, 200));
     h.frame(body);
-    let key = h.ui.layout[Layer::Main].text_shapes[0].key;
-    h.ui.resources.text.drop_cosmic_buffers();
+    let key = h.ui.layout(Layer::Main).text_shapes[0].key;
+    h.ui.shaper().drop_cosmic_buffers();
     assert!(
-        !h.ui.resources.text.has_cosmic_buffer(key),
+        !h.ui.shaper().has_cosmic_buffer(key),
         "fixture must evict the retained layout's key",
     );
 
@@ -379,24 +379,24 @@ fn text_shape_carries_source_without_reconstructing_buffer() {
     let interned_text = scene.payloads.interned_text();
     assert_eq!(payload.text.source.resolve(&interned_text), "hi");
     assert!(
-        !h.ui.resources.text.has_cosmic_buffer(key),
+        !h.ui.shaper().has_cosmic_buffer(key),
         "frontend encoding must not reconstruct an evicted text buffer",
     );
     drop(scene);
 
-    h.ui.resources.text.drop_cosmic_buffers();
-    let measure_calls = h.ui.resources.text.measure_calls();
+    h.ui.shaper().drop_cosmic_buffers();
+    let measure_calls = h.ui.shaper().measure_calls();
     h.ui.request_repaint();
     h.frame(body);
-    let replayed_key = h.ui.layout[Layer::Main].text_shapes[0].key;
+    let replayed_key = h.ui.layout(Layer::Main).text_shapes[0].key;
     assert_eq!(replayed_key, key);
     assert_eq!(
-        h.ui.resources.text.measure_calls(),
+        h.ui.shaper().measure_calls(),
         measure_calls,
         "unchanged full record must replay text layout without reshaping",
     );
     assert!(
-        !h.ui.resources.text.has_cosmic_buffer(replayed_key),
+        !h.ui.shaper().has_cosmic_buffer(replayed_key),
         "layout replay must be allowed to retain an evicted cache key",
     );
     let replayed = h.encode_paint();
@@ -412,7 +412,7 @@ fn text_shape_carries_source_without_reconstructing_buffer() {
     let interned_text = scene.payloads.interned_text();
     assert_eq!(payload.text.source.resolve(&interned_text), "hi");
     assert!(
-        !h.ui.resources.text.has_cosmic_buffer(replayed_key),
+        !h.ui.shaper().has_cosmic_buffer(replayed_key),
         "frontend replay must leave reconstruction to an encoded-cache miss",
     );
 }
@@ -796,7 +796,7 @@ fn disabled_ancestor_propagates_disabled_flag_to_descendants() {
             })
             .inner
     });
-    let cascade = &h.ui.cascade;
+    let cascade = &h.ui.cascade();
     // Main is first in `Layer::PAINT_ORDER`, so its `entries_base` is 0
     // and the node index doubles as the entry index.
     assert!(
@@ -1061,10 +1061,7 @@ fn viewport_and_damage_culls_advance_the_sparse_paint_anim_cursor() {
                 });
         });
 
-        assert_eq!(
-            h.ui.forest.trees[Layer::Main].paint_anims.shape_indices,
-            [0, 1],
-        );
+        assert_eq!(h.ui.tree(Layer::Main).paint_anims.shape_indices, [0, 1],);
         let cmds = match cull {
             Cull::Viewport => h.encode_paint(),
             Cull::Damage => {

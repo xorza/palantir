@@ -194,7 +194,7 @@ mod tests {
                         .show(ui);
                 });
             });
-            let tree = &h.ui.forest.trees[Layer::Main];
+            let tree = h.ui.tree(Layer::Main);
             let arc = tree
                 .shapes
                 .records
@@ -307,7 +307,7 @@ mod tests {
             });
         });
 
-        let rects = &h.ui.layout[Layer::Main].rect;
+        let rects = &h.ui.layout(Layer::Main).rect;
         let sized = rects[sized.unwrap().idx()];
         let hug = rects[hug.unwrap().idx()];
         let default = rects[default.unwrap().idx()];

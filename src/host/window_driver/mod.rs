@@ -34,10 +34,10 @@ use crate::renderer::render_owner_id::RenderOwnerId;
 use crate::renderer::render_plan::{RenderKind, RenderPlan};
 use crate::scene::damage::FULL_REPAINT_THRESHOLD;
 use crate::ui::Ui;
+use crate::ui::frame_engines::FrameEngines;
 use crate::ui::frame_input::FrameInput;
 use crate::ui::frame_stamp::FrameStamp;
 use crate::window::window_commands::WindowCommands;
-use crate::window::window_frame_state::WindowFrameState;
 use crate::window::window_output::WindowOutput;
 use crate::window::window_token::WindowToken;
 use crate::{Display, FrameReport};
@@ -51,6 +51,11 @@ pub(super) struct WindowDriver {
     /// retained `Ui` cannot be driven under a different token on a later frame.
     pub(super) token: WindowToken,
     pub(super) ui: Ui,
+    /// The layout / cascade / damage machinery this window's frames run on,
+    /// held here rather than on the recorder so authoring code cannot reach
+    /// it. Retained across frames — each engine's caches are what make its
+    /// pass incremental.
+    engines: FrameEngines,
     /// Stable submitter identity used by the shared backend to scope retained
     /// `GpuView` targets to this window.
     pub(super) render_owner: RenderOwnerId,
@@ -276,6 +281,7 @@ impl WindowDriverBuilder<'_> {
     pub(super) fn build(self) -> WindowDriver {
         WindowDriver {
             token: self.token,
+            engines: FrameEngines::new(&self.shared.resources),
             ui: Ui::new(self.shared.resources.clone()),
             render_owner: RenderOwnerId::reserve(),
             backbuffer: None,
@@ -361,6 +367,7 @@ impl WindowDriver {
         app: &mut T,
     ) -> CpuFrame {
         let report = self.ui.frame(
+            &mut self.engines,
             FrameInput {
                 stamp: FrameStamp::new(display, self.clock.now()),
                 damage_baseline_valid: self.output_valid,
@@ -385,37 +392,17 @@ impl WindowDriver {
         CpuFrame { report, mode }
     }
 
-    /// Drain the recorder's post-frame window scratch into `commands` and
-    /// return what the host applies afterwards. Settles the pending close
-    /// first: a close request app code did not veto becomes this window's own
-    /// close command, so every host applies the veto the same way. Shared by
-    /// the offscreen and surface adapters — the offscreen one drains into a
-    /// scratch buffer it then drops, since a headless render has no window
-    /// lifecycle to service.
+    /// [`Ui::drain_window_output`] bound to *this* driver's token — the
+    /// drain, the close settlement and the veto's one-frame life are all the
+    /// recorder's, since that is where the state lives.
     ///
-    /// The vsync setting is copied, not taken: it is a level the recorder
-    /// keeps (and reads back through `Ui::vsync`), so the host is the one
-    /// that diffs it against the swapchain it has open.
-    ///
-    /// Uses `Vec::append` rather than `mem::take` so the recorder keeps its
-    /// buffers' capacity across frames.
-    ///
-    /// Reached in every build: the windowed host drains through it, and so —
-    /// via [`Self::deny_window_commands`] — does the offscreen one.
+    /// Shared by the offscreen and surface adapters — the offscreen one
+    /// drains into a scratch buffer it then drops, since a headless render
+    /// has no window lifecycle to service. Reached in every build: the
+    /// windowed host drains through it, and so — via
+    /// [`Self::deny_window_commands`] — does the offscreen one.
     pub(super) fn drain_window_output(&mut self, commands: &mut WindowCommands) -> WindowOutput {
-        let requests = &mut self.ui.window_requests;
-        if self.ui.window_frame.close_requested && !requests.close_vetoed {
-            requests.commands.closes.push(self.token);
-        }
-        commands.append(&mut requests.commands);
-        // The veto lives exactly one frame, and this is where that is
-        // enforced — for both hosts, since the offscreen counterpart
-        // below drains through here too. Every winit frame reaches this,
-        // occluded ones included, so no caller needs to clear it on the
-        // way in.
-        requests.close_vetoed = false;
-        self.ui.window_frame = WindowFrameState::default();
-        requests.levels
+        self.ui.drain_window_output(self.token, commands)
     }
 
     /// [`Self::drain_window_output`] for a host with no window lifecycle:
@@ -470,7 +457,7 @@ impl WindowDriver {
         mode: PresentMode,
     ) {
         let size = target.size();
-        let display_phys = self.ui.display.physical;
+        let display_phys = self.ui.display().physical;
         debug_assert!(
             size.width == display_phys.x && size.height == display_phys.y,
             "render_to_texture: target size {}x{} doesn't match the display physical \
@@ -497,7 +484,7 @@ impl WindowDriver {
         // The CPU phase already composed `GpuView`s into
         // `buffer.frame_targets` (callback + raster target — see
         // `cpu_frame`); this is GPU submit only.
-        let debug_overlay = *self.ui.resources.diagnostics.overlay.borrow();
+        let debug_overlay = self.ui.debug_overlay();
         // Rounded-clip stencil, shared by both paint paths and sized to the
         // target. Gated to them: on a skip frame the frontend didn't build,
         // so `buffer.rounded_clips` is stale and no pass reads the stencil.
@@ -527,7 +514,7 @@ impl WindowDriver {
             // Full repaint straight into the target — no backbuffer at all, so
             // it goes stale: the next partial must resync it first.
             PresentMode::Direct(plan) => {
-                let payloads = self.ui.forest.record_store.payloads.borrow();
+                let payloads = self.ui.payloads();
                 backend.submit(Submission {
                     owner: self.render_owner,
                     targets: SubmissionTargets {
@@ -558,7 +545,7 @@ impl WindowDriver {
                     "backbuffer (re)created under a Partial plan whose draw \
                      list was culled for Partial"
                 );
-                let payloads = self.ui.forest.record_store.payloads.borrow();
+                let payloads = self.ui.payloads();
                 backend.submit(Submission {
                     owner: self.render_owner,
                     targets: SubmissionTargets {

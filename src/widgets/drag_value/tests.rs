@@ -726,7 +726,7 @@ fn entering_edit_mode_preserves_the_callers_node_placement() {
     /// node policy and comparing them would pin theme configuration rather
     /// than this fix.
     fn placement(ui: &Ui, id: WidgetId) -> (Spacing, Align, Vec2, Size) {
-        let tree = &ui.forest.trees[Layer::Main];
+        let tree = ui.tree(Layer::Main);
         let index = tree
             .records
             .widget_id()

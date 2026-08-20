@@ -252,11 +252,11 @@ mod tests {
         let mut h = UiHarness::new(UVec2::new(400, 400));
         let mut on = false;
         let root = h.under_outer(|ui| Switch::new(&mut on).label("Wi-Fi").show(ui).node());
-        let tree = &h.ui.forest.trees[Layer::Main];
+        let tree = h.ui.tree(Layer::Main);
         let track = tree.children(root).next().unwrap().id;
         let knob = tree.children(track).next().unwrap().id;
-        let tr = h.ui.layout[Layer::Main].rect[track.idx()];
-        let kr = h.ui.layout[Layer::Main].rect[knob.idx()];
+        let tr = h.ui.arranged_rect(Layer::Main, track);
+        let kr = h.ui.arranged_rect(Layer::Main, knob);
         let left = kr.min.x - tr.min.x;
         let top = kr.min.y - tr.min.y;
         let right = (tr.min.x + tr.size.w) - (kr.min.x + kr.size.w);

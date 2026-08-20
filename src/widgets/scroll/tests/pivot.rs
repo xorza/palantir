@@ -203,17 +203,18 @@ mod bars {
         h.frame(build);
         h.frame(build);
         let scroll_id = WidgetId::from_hash("scroll");
-        let idx = h.ui.forest.trees[Layer::Main]
-            .records
-            .widget_id()
-            .iter()
-            .position(|w| *w == scroll_id)
-            .expect("scroll widget recorded");
+        let idx =
+            h.ui.tree(Layer::Main)
+                .records
+                .widget_id()
+                .iter()
+                .position(|w| *w == scroll_id)
+                .expect("scroll widget recorded");
         (h, NodeId(idx as u32))
     }
 
     fn count_positioned(ui: &Ui, node: NodeId) -> usize {
-        ui.forest.trees[Layer::Main]
+        ui.tree(Layer::Main)
             .shapes_of(node)
             .filter(|s| {
                 matches!(
@@ -232,8 +233,8 @@ mod bars {
     /// are real `Sense::DRAG` leaf nodes under an overlay Canvas.
     /// Returns 0–2 rects (V and/or H) in vertical-then-horizontal order.
     fn thumb_rects(ui: &Ui, scroll_key: &str) -> Vec<Rect> {
-        let tree = &ui.forest.trees[Layer::Main];
-        let layout = &ui.layout[Layer::Main];
+        let tree = ui.tree(Layer::Main);
+        let layout = ui.layout(Layer::Main);
         let outer_id = WidgetId::from_hash(scroll_key);
         let scroll_id = outer_id.with("viewport");
         let widget_ids = tree.records.widget_id();
@@ -295,7 +296,7 @@ mod bars {
             "hidden cold mount must not settle bar visibility"
         );
 
-        let tree = &h.ui.forest.trees[Layer::Main];
+        let tree = h.ui.tree(Layer::Main);
         for tag in ["bars", "vtrack", "htrack", "vthumb", "hthumb"] {
             assert!(
                 !tree
@@ -406,8 +407,8 @@ mod bars {
 
     /// Every bar node's arranged rect, collapsed ones included.
     fn raw_bar_rects(ui: &Ui, scroll_key: &str) -> Vec<(&'static str, Rect)> {
-        let tree = &ui.forest.trees[Layer::Main];
-        let layout = &ui.layout[Layer::Main];
+        let tree = ui.tree(Layer::Main);
+        let layout = ui.layout(Layer::Main);
         let scroll_id = WidgetId::from_hash(scroll_key).with("viewport");
         let widget_ids = tree.records.widget_id();
         let mut out = Vec::new();

@@ -198,9 +198,9 @@ fn raising_an_overlapping_node_redamages_only_the_overlap() {
     // flipped.
     frame(&mut h, |ui| canvas(ui, [b, c, a]));
     assert!(
-        h.ui.damage_engine.counters.dirty().is_empty(),
+        h.engines.damage.counters.dirty().is_empty(),
         "a settled reorder must re-damage nothing; dirty = {:?}",
-        h.ui.damage_engine.counters.dirty(),
+        h.engines.damage.counters.dirty(),
     );
 }
 
@@ -572,9 +572,9 @@ fn shape_removed_from_middle_evicts_trailing_ordinals() {
 
     // Snapshot the prev rects for shapes 0/1/2 so we can verify the
     // post-delete damage region.
-    let prev = h.ui.damage_engine.prev[&WidgetId::from_hash("canvas")];
+    let prev = h.engines.damage.prev[&WidgetId::from_hash("canvas")];
     // Chromeless canvas ⇒ paint_snaps maps 1:1 to direct shapes.
-    let prev_shapes = &h.ui.damage_engine.paints.slots[prev.paint_span.range()];
+    let prev_shapes = &h.engines.damage.paints.slots[prev.paint_span.range()];
     assert_eq!(prev_shapes.len(), 3);
     let prev_middle_rect = prev_shapes[1].screen;
     let prev_blue_rect = prev_shapes[2].screen;
@@ -585,7 +585,7 @@ fn shape_removed_from_middle_evicts_trailing_ordinals() {
     // green's prev rect and nothing else.
     frame(&mut h, |ui| build(false, ui));
 
-    let post = h.ui.damage_engine.prev[&WidgetId::from_hash("canvas")];
+    let post = h.engines.damage.prev[&WidgetId::from_hash("canvas")];
     assert_eq!(
         post.paint_span.len, 2,
         "snapshot tail must be trimmed to the new paint count",
@@ -640,18 +640,18 @@ fn shape_added_in_middle_damages_only_new() {
     frame(&mut h, |ui| build(false, ui)); // red + blue
     frame(&mut h, |ui| build(false, ui)); // settle
 
-    let prev = h.ui.damage_engine.prev[&WidgetId::from_hash("canvas")];
-    let prev_shapes: Vec<_> = h.ui.damage_engine.paints.slots[prev.paint_span.range()].to_vec();
+    let prev = h.engines.damage.prev[&WidgetId::from_hash("canvas")];
+    let prev_shapes: Vec<_> = h.engines.damage.paints.slots[prev.paint_span.range()].to_vec();
     assert_eq!(prev_shapes.len(), 2);
     let prev_red_screen = prev_shapes[0].screen;
     let prev_blue_screen = prev_shapes[1].screen;
 
     frame(&mut h, |ui| build(true, ui)); // insert green between
 
-    let post = h.ui.damage_engine.prev[&WidgetId::from_hash("canvas")];
+    let post = h.engines.damage.prev[&WidgetId::from_hash("canvas")];
     assert_eq!(post.paint_span.len, 3);
 
-    let curr_shapes: Vec<_> = h.ui.damage_engine.paints.slots[post.paint_span.range()].to_vec();
+    let curr_shapes: Vec<_> = h.engines.damage.paints.slots[post.paint_span.range()].to_vec();
     let region = h.damage_region();
     let rects: Vec<_> = region.iter_rects().collect();
     let intersects = |r: Rect| rects.iter().any(|d| d.intersects(r));

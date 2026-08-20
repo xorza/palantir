@@ -100,9 +100,9 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
         });
     });
     for (name, id, expected_clip, expects_chrome) in &cases {
-        let clip = h.ui.forest.trees[Layer::Main].records.attrs()[id.idx()].clip_mode();
+        let clip = h.ui.tree(Layer::Main).records.attrs()[id.idx()].clip_mode();
         assert_eq!(clip, *expected_clip, "[{name}] clip mode");
-        let chrome = h.ui.forest.trees[Layer::Main].chrome(*id);
+        let chrome = h.ui.tree(Layer::Main).chrome(*id);
         assert_eq!(
             chrome.is_some(),
             *expects_chrome,
@@ -129,7 +129,7 @@ fn explicit_no_chrome_and_no_clip_override_panel_theme() {
         inherited = Some(Panel::vstack().show(ui, |_| {}).response.node());
     });
 
-    let tree = &h.ui.forest.trees[Layer::Main];
+    let tree = h.ui.tree(Layer::Main);
     let explicit = explicit.unwrap();
     let inherited = inherited.unwrap();
     assert_eq!(
@@ -178,26 +178,26 @@ fn panel_hugs_largest_child_and_layers_them() {
             .inner
     });
     // Panel hugs to (max(80, 60) + 2*10, max(30, 50) + 2*10) = (100, 70).
-    let panel = h.ui.layout[Layer::Main].rect[panel_node.idx()];
+    let panel = h.ui.arranged_rect(Layer::Main, panel_node);
     assert_eq!(panel.size.w, 100.0);
     assert_eq!(panel.size.h, 70.0);
 
-    let a = h.ui.layout[Layer::Main].rect[a_node.idx()];
-    let b = h.ui.layout[Layer::Main].rect[b_node.idx()];
+    let a = h.ui.arranged_rect(Layer::Main, a_node);
+    let b = h.ui.arranged_rect(Layer::Main, b_node);
     assert_eq!((a.min.x, a.min.y), (10.0, 10.0));
     assert_eq!((b.min.x, b.min.y), (10.0, 10.0));
     assert_eq!((a.size.w, a.size.h), (80.0, 30.0));
     assert_eq!((b.size.w, b.size.h), (60.0, 50.0));
 
     assert!(
-        h.ui.forest.trees[Layer::Main]
+        h.ui.tree(Layer::Main)
             .shapes_of(panel_node)
             .next()
             .is_none(),
         "panel chrome doesn't show up in the shape stream"
     );
     assert!(
-        h.ui.forest.trees[Layer::Main].chrome(panel_node).is_some(),
+        h.ui.tree(Layer::Main).chrome(panel_node).is_some(),
         "panel chrome recorded in chrome table",
     );
 }
@@ -228,7 +228,7 @@ fn panel_with_fill_child_grows_to_panel_inner() {
             })
             .inner
     });
-    let child = h.ui.layout[Layer::Main].rect[child_node.idx()];
+    let child = h.ui.arranged_rect(Layer::Main, child_node);
     // Panel = 200×100; inner (after padding 10) = 180×80, child fills it at (10, 10).
     assert_eq!(child.min.x, 10.0);
     assert_eq!(child.min.y, 10.0);
@@ -328,13 +328,13 @@ fn canvas_places_children_at_absolute_positions_and_hugs_bbox() {
             })
             .inner
     });
-    let c = h.ui.layout[Layer::Main].rect[canvas_node.idx()];
+    let c = h.ui.arranged_rect(Layer::Main, canvas_node);
     // Hugs bbox: max(10+40, 80+30)=110, max(5+20, 40+60)=100.
     assert_eq!(c.size.w, 110.0);
     assert_eq!(c.size.h, 100.0);
 
-    let a = h.ui.layout[Layer::Main].rect[a_node.idx()];
-    let b = h.ui.layout[Layer::Main].rect[b_node.idx()];
+    let a = h.ui.arranged_rect(Layer::Main, a_node);
+    let b = h.ui.arranged_rect(Layer::Main, b_node);
     assert_eq!((a.min.x, a.min.y), (10.0, 5.0));
     assert_eq!((a.size.w, a.size.h), (40.0, 20.0));
     assert_eq!((b.min.x, b.min.y), (80.0, 40.0));
@@ -374,14 +374,14 @@ fn zstack_layers_children_without_painting_background() {
             })
             .inner
     });
-    assert!(h.ui.forest.trees[Layer::Main].shapes_of(z).next().is_none());
+    assert!(h.ui.tree(Layer::Main).shapes_of(z).next().is_none());
 
-    let zr = h.ui.layout[Layer::Main].rect[z.idx()];
+    let zr = h.ui.arranged_rect(Layer::Main, z);
     assert_eq!(zr.size.w, 120.0);
     assert_eq!(zr.size.h, 80.0);
 
-    let bg = h.ui.layout[Layer::Main].rect[bg_node.idx()];
-    let fg = h.ui.layout[Layer::Main].rect[fg_node.idx()];
+    let bg = h.ui.arranged_rect(Layer::Main, bg_node);
+    let fg = h.ui.arranged_rect(Layer::Main, fg_node);
     assert_eq!((bg.min.x, bg.min.y), (0.0, 0.0));
     assert_eq!((fg.min.x, fg.min.y), (0.0, 0.0));
     assert_eq!((bg.size.w, bg.size.h), (120.0, 80.0));
@@ -426,7 +426,7 @@ fn zstack_aligns_child_per_axis() {
                 })
                 .inner
         });
-        let r = h.ui.layout[Layer::Main].rect[child_node.idx()];
+        let r = h.ui.arranged_rect(Layer::Main, child_node);
         assert_eq!((r.min.x, r.min.y), *expected, "case: {label}");
         assert_eq!(
             (r.size.w, r.size.h),

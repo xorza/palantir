@@ -38,19 +38,6 @@ struct ScrollGeometry {
 }
 
 impl ScrollGeometry {
-    /// Last frame's measured content extent for this scroll, keyed by the
-    /// **inner viewport** node because that is the `LayoutMode::Scroll`
-    /// one. `Size::ZERO` until the node has been through one layout pass.
-    ///
-    /// Resolves through the cascade, so like `Ui::response_for` it answers
-    /// for the previous frame — which is the lag `Scroll` wants: the bars
-    /// describe the content the user is looking at.
-    fn previous_content(ui: &Ui, scroll_id: WidgetId) -> Size {
-        ui.cascade
-            .endpoint(scroll_id)
-            .map_or(Size::ZERO, |endpoint| ui.layout.scroll_content(endpoint))
-    }
-
     /// Content extent at the current zoom. The bars measure against
     /// this rather than the raw extent so dragging a thumb inside a
     /// zoomed viewport tracks the cursor 1:1 with what's on screen.
@@ -349,7 +336,7 @@ impl<'a> Scroll<'a> {
         response: &ResponseState,
     ) -> ScrollGeometry {
         let outer = response.layout_rect.map_or(Size::ZERO, |r| r.size);
-        let content = ScrollGeometry::previous_content(ui, scroll_id);
+        let content = ui.scroll_content(scroll_id);
         let padding = self.node.padding.unwrap_or(Spacing::ZERO);
         let space = bar_space(outer, pan, padding, self.bars_theme(ui), self.bar_mode);
         ScrollGeometry {

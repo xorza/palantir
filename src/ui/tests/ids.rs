@@ -208,7 +208,7 @@ fn layout_outputs_stay_isolated_per_layer_across_cache_hits() {
 
     h.frame(&mut record);
     assert!(
-        !h.ui.layout_engine.scratch.counters.cache_hits().is_empty(),
+        !h.engines.layout.scratch.counters.cache_hits().is_empty(),
         "warm frame must exercise measure-cache restoration",
     );
     let main_node = node_for(&h.ui, Layer::Main, main_id);

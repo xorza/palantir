@@ -58,7 +58,7 @@ fn painted_shapes(
     ui: &Ui,
     node: crate::scene::tree::node_id::NodeId,
 ) -> impl Iterator<Item = &crate::scene::shapes::record::ShapeRecord> + '_ {
-    let tree = &ui.forest.trees[Layer::Main];
+    let tree = ui.tree(Layer::Main);
     std::iter::once(node)
         .chain(tree.children(node).map(|child| child.id))
         .flat_map(move |n| tree.shapes_of(n))
@@ -75,7 +75,7 @@ fn block_of(
     ui: &Ui,
     field: crate::scene::tree::node_id::NodeId,
 ) -> crate::scene::tree::node_id::NodeId {
-    ui.forest.trees[Layer::Main]
+    ui.tree(Layer::Main)
         .children(field)
         .next()
         .expect("the field records one block child")

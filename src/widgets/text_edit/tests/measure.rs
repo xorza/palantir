@@ -52,13 +52,13 @@ fn empty_editor_width_is_stable_across_focus() {
     // Two unfocused warm-up frames so layout cache stabilises.
     frame(&mut h, &mut buf);
     let node = frame(&mut h, &mut buf);
-    let w_unfocused = h.ui.layout[Layer::Main].rect[node.idx()].size.w;
+    let w_unfocused = h.ui.arranged_rect(Layer::Main, node).size.w;
 
     // Focus the editor and re-measure.
     h.request_focus(Some(id));
     frame(&mut h, &mut buf);
     let node = frame(&mut h, &mut buf);
-    let w_focused = h.ui.layout[Layer::Main].rect[node.idx()].size.w;
+    let w_focused = h.ui.arranged_rect(Layer::Main, node).size.w;
 
     assert!(
         w_unfocused > 0.0,
@@ -117,7 +117,7 @@ fn fill_width_editor_shrinks_below_text_content() {
     // Natural text width: a Hug editor in a wide container hugs its buffer.
     let mut buf = LONG.to_string();
     let hug = sized_editor(&mut h, &mut buf, 2000.0, Sizing::HUG);
-    let text_w = h.ui.layout[Layer::Main].rect[hug.idx()].size.w;
+    let text_w = h.ui.arranged_rect(Layer::Main, hug).size.w;
     assert!(
         text_w > NARROW_W,
         "fixture requires the text ({text_w}) to be wider than the narrow container ({NARROW_W})",
@@ -126,7 +126,7 @@ fn fill_width_editor_shrinks_below_text_content() {
     // Fill editor in a narrow container shrinks to fill it, well below the text.
     let mut buf = LONG.to_string();
     let fill = sized_editor(&mut h, &mut buf, NARROW_W, Sizing::FILL);
-    let fill_w = h.ui.layout[Layer::Main].rect[fill.idx()].size.w;
+    let fill_w = h.ui.arranged_rect(Layer::Main, fill).size.w;
     assert!(
         (fill_w - NARROW_W).abs() < 0.5,
         "sole Fill child must stretch to its {NARROW_W}px container, got {fill_w}",
@@ -160,10 +160,10 @@ fn stable_editor_uses_one_direct_layout_probe() {
             state.edit.caret = text_len;
             h.frame(&mut record);
         }
-        let before = h.ui.resources.text.measure_calls();
+        let before = h.ui.shaper().measure_calls();
         h.frame(&mut record);
         assert_eq!(
-            h.ui.resources.text.measure_calls() - before,
+            h.ui.shaper().measure_calls() - before,
             1,
             "multiline={multiline}, selected={selected}: measurement, caret, and selection must share one direct layout probe",
         );
