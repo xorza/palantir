@@ -348,11 +348,7 @@ impl CascadeEngine {
         let mut i: u32 = 0;
         while i < n {
             // Pop completed frames, rolling each up into its parent.
-            while let Some(top) = self.stack.last() {
-                if i < top.subtree_end {
-                    break;
-                }
-                let popped = self.stack.pop().unwrap();
+            while let Some(popped) = self.stack.pop_if(|top| i >= top.subtree_end) {
                 finalize_frame(&mut self.stack, &mut lc.subtree_paint_rects, popped);
             }
             let Inherited {

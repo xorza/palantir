@@ -255,7 +255,10 @@ impl AxisScratch {
         while !self.flexible.is_empty() && flexible_weight > 0.0 {
             let clamp_idx = self.flexible.iter().position(|&i| {
                 let t = &tracks[i];
-                let weight = t.size.fill_weight().unwrap();
+                let weight = t
+                    .size
+                    .fill_weight()
+                    .expect("`flexible` holds Fill tracks only");
                 let candidate = Sizing::weighted_share(remaining, weight, flexible_weight);
                 let lo = t.content_floor(hugs.min[i]);
                 candidate < lo || candidate > t.max
@@ -264,7 +267,10 @@ impl AxisScratch {
                 Some(k) => {
                     let i = self.flexible[k];
                     let t = &tracks[i];
-                    let weight = t.size.fill_weight().unwrap();
+                    let weight = t
+                        .size
+                        .fill_weight()
+                        .expect("`flexible` holds Fill tracks only");
                     let candidate = Sizing::weighted_share(remaining, weight, flexible_weight);
                     let lo = t.content_floor(hugs.min[i]);
                     let clamped = candidate.clamp(lo, t.max);
@@ -275,7 +281,10 @@ impl AxisScratch {
                 }
                 None => {
                     for &i in self.flexible.iter() {
-                        let weight = tracks[i].size.fill_weight().unwrap();
+                        let weight = tracks[i]
+                            .size
+                            .fill_weight()
+                            .expect("`flexible` holds Fill tracks only");
                         self.sizes[i] = Sizing::weighted_share(remaining, weight, flexible_weight);
                     }
                     break;

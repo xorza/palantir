@@ -34,21 +34,11 @@ impl<'a> LayerScope<'a> {
         }
     }
 
-    /// The anchor half of the current placement, or the defaults when
-    /// the last call set an overlay position instead.
-    fn anchored(&self) -> (Vec2, Option<Size>) {
-        match self.placement {
-            Placement::Fixed { anchor, size } => (anchor, size),
-            Placement::Overlay(_) => (Vec2::ZERO, None),
-        }
-    }
-
     /// Place the body's top-left at `anchor`. Without a
     /// [`Self::max_size`] the available extent runs from here to the
     /// surface's bottom-right.
     pub fn at(mut self, anchor: Vec2) -> Self {
-        let (_, size) = self.anchored();
-        self.placement = Placement::fixed(anchor, size);
+        self.placement = self.placement.with_anchor(anchor);
         self
     }
 
@@ -56,8 +46,7 @@ impl<'a> LayerScope<'a> {
     /// so an oversized cap can't bleed past the viewport. The root's own
     /// `Sizing` (Hug / Fill / Fixed) governs the painted size within it.
     pub fn max_size(mut self, size: impl Into<Size>) -> Self {
-        let (anchor, _) = self.anchored();
-        self.placement = Placement::fixed(anchor, Some(size.into()));
+        self.placement = self.placement.with_size(size.into());
         self
     }
 

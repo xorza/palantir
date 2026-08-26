@@ -328,7 +328,10 @@ impl Forest {
         self.assert_node_open(layer, "add_shape_animated");
         // Disjoint borrow: `trees` and `scratch` are separate fields.
         let tree = &mut self.trees[layer];
-        let frame = self.scratch[layer].open_frames.last_mut().unwrap();
+        let frame = self.scratch[layer]
+            .open_frames
+            .last_mut()
+            .expect("`assert_node_open` above found an open frame");
         let Some(shape_idx) = tree.shapes.add(shape, &self.record_store) else {
             return;
         };
@@ -354,11 +357,9 @@ impl Forest {
     /// `push` answers "did this store a paint row" — `false` when the
     /// shape noop-collapsed, so the row counter only advances for shapes
     /// that survived. A bare `bool` because no `add_*` entry point here
-    /// wants the record index; `add_shape_animated` is the one that does,
-    /// and it calls `Shapes::add` directly.
-    /// `add_shape_animated` doesn't route through here: it needs the row
-    /// index *and* the open frame after the push, which would mean
-    /// handing the closure the frame too.
+    /// wants the record index. `add_shape_animated` does, and it needs
+    /// the open frame after the push besides, which would mean handing
+    /// the closure the frame too — so it calls `Shapes::add` directly.
     #[inline]
     fn push_shape(&mut self, what: &str, push: impl FnOnce(&mut Tree, &RecordStore) -> bool) {
         let layer = self.current_layer();
@@ -370,7 +371,7 @@ impl Forest {
             self.scratch[layer]
                 .open_frames
                 .last_mut()
-                .unwrap()
+                .expect("`assert_node_open` above found an open frame")
                 .paint_rows += 1;
         }
     }

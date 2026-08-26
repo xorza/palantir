@@ -260,7 +260,9 @@ pub(super) fn measure(
     for i in fill_start..fill_end {
         let entry = pass.stack_scratch_mut().pool[i];
         let fill_avail = if main_finite {
-            entry.frozen_alloc.unwrap()
+            entry
+                .frozen_alloc
+                .expect("`freeze_distribute` allocates every Fill entry")
         } else {
             f32::INFINITY
         };
@@ -317,14 +319,15 @@ pub(super) fn arrange(pass: &mut LayoutPass<'_>, node: NodeId, inner: Rect, axis
     );
     // The sum we report to `justify` is the post-redistribute total —
     // i.e., what the children will *actually* occupy after arrange.
-    // unwrap: `freeze_distribute` post-condition guarantees every
-    // entry's `frozen_alloc` is `Some(_)`.
     let sum_main_arranged = sum_non_fill_main
         + pass
             .stack_scratch_mut()
             .from(fill_start)
             .iter()
-            .map(|e| e.frozen_alloc.unwrap())
+            .map(|e| {
+                e.frozen_alloc
+                    .expect("`freeze_distribute` allocates every Fill entry")
+            })
             .sum::<f32>();
     let leftover_for_justify = (main_total - sum_main_arranged - total_gap).max(0.0);
 
