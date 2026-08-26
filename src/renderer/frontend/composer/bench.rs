@@ -1,3 +1,4 @@
+use crate::bench::Run;
 use crate::display::Display;
 use crate::primitives::color::Color;
 use crate::primitives::rect::Rect;
@@ -157,8 +158,8 @@ fn push_image(cmds: &mut PaintCapture, rect: Rect) {
     );
 }
 
-pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Run<'_>) {
-    let mut group = c.benchmark_group("composer/curves");
+pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
+    let mut group = run.subgroup(c, "curves");
     group.sample_size(30);
     group.warm_up_time(Duration::from_secs(1));
     group.measurement_time(Duration::from_secs(2));
@@ -174,7 +175,7 @@ pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Run<'_>) {
     }
     group.finish();
 
-    let mut group = c.benchmark_group("composer/higher_kind_overlap");
+    let mut group = run.subgroup(c, "higher_kind_overlap");
     group.sample_size(30);
     group.warm_up_time(Duration::from_secs(1));
     group.measurement_time(Duration::from_secs(2));

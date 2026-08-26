@@ -1,3 +1,4 @@
+use crate::bench::Run;
 use crate::display::Display;
 use crate::frame_fixture::{BENCH_SCALE, FrameFixture};
 use crate::input::sense::Sense;
@@ -184,8 +185,8 @@ fn record_fixture(mut state: FrameFixture) -> UiHarness {
     h
 }
 
-pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Run<'_>) {
-    let mut group = c.benchmark_group("cascade/run");
+pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
+    let mut group = run.subgroup(c, "run");
     group.sample_size(50);
     group.warm_up_time(Duration::from_secs(2));
     group.measurement_time(Duration::from_secs(4));
@@ -211,7 +212,7 @@ pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Run<'_>) {
     });
     group.finish();
 
-    let mut group = c.benchmark_group("cascade/hit_test");
+    let mut group = run.subgroup(c, "hit_test");
     group.sample_size(30);
     group.warm_up_time(Duration::from_secs(1));
     group.measurement_time(Duration::from_secs(2));

@@ -26,6 +26,7 @@
 //! Step and scissor counts print once per workload as the secondary
 //! metric; wall time is the decision metric.
 
+use crate::bench::Run;
 use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
@@ -141,8 +142,8 @@ impl Workload {
     }
 }
 
-pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Run<'_>) {
-    let mut group = c.benchmark_group("schedule/walk");
+pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
+    let mut group = run.subgroup(c, "walk");
     group.sample_size(50);
     group.warm_up_time(Duration::from_secs(1));
     group.measurement_time(Duration::from_secs(2));

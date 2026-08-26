@@ -53,7 +53,8 @@ mod cli;
 mod driver;
 
 use cli::Cli;
-use criterion::Criterion;
+use criterion::measurement::WallTime;
+use criterion::{BenchmarkGroup, Criterion};
 use driver::DRIVERS;
 
 /// Which half of the pipeline is in play — on a driver row, what it
@@ -102,6 +103,10 @@ impl Arms {
 /// What the runner resolved for one driver's invocation.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Run<'a> {
+    /// The name the runner selected this driver by, and the namespace
+    /// every id it registers sits under. Reached through
+    /// [`Run::group`] rather than read directly.
+    driver: &'static str,
     /// The half of the pipeline to exercise — [`Arms::overlap`] of what
     /// the driver offers against what the command line asked for.
     /// Single-arm drivers ignore it.
@@ -118,6 +123,37 @@ pub(crate) struct Run<'a> {
     /// only one today; a second would read the same struct rather than
     /// grow `Run` sideways.
     pub(crate) fixture: Fixture<'a>,
+}
+
+impl Run<'_> {
+    /// A criterion group named for the driver the runner selected.
+    ///
+    /// Handing the name down beats writing it into each `bench.rs`: a
+    /// driver cannot spell its own namespace wrong, renaming a row in
+    /// `DRIVERS` renames its benchmarks with it, and an id can no longer
+    /// end up under a namespace no driver answers to — which is what
+    /// `text_atlas` had done with its `encoded_cache` group.
+    pub(crate) fn group<'c>(&self, c: &'c mut Criterion) -> BenchmarkGroup<'c, WallTime> {
+        c.benchmark_group(self.group_name())
+    }
+
+    /// [`Self::group`] one level deeper, for a driver that measures more
+    /// than one thing.
+    pub(crate) fn subgroup<'c>(
+        &self,
+        c: &'c mut Criterion,
+        sub: &str,
+    ) -> BenchmarkGroup<'c, WallTime> {
+        c.benchmark_group(self.subgroup_name(sub))
+    }
+
+    pub(crate) fn group_name(&self) -> &'static str {
+        self.driver
+    }
+
+    fn subgroup_name(&self, sub: &str) -> String {
+        format!("{}/{sub}", self.driver)
+    }
 }
 
 /// The surface the shared fixture renders into, and how the row it files
@@ -144,14 +180,17 @@ pub fn run() {
     // unoptimized, since `cargo test` builds the dev profile.
     let argv: Vec<String> = std::env::args().collect();
     if cli::delegates(argv.iter().map(String::as_str)) {
-        let run = Run {
-            arms: Arms::Both,
-            recording: false,
-            fixture: Fixture::default(),
-        };
         for driver in DRIVERS.iter().filter(|d| !d.opt_in) {
             let mut criterion = (driver.config)().configure_from_args();
-            (driver.run)(&mut criterion, run);
+            (driver.run)(
+                &mut criterion,
+                Run {
+                    driver: driver.name,
+                    arms: Arms::Both,
+                    recording: false,
+                    fixture: Fixture::default(),
+                },
+            );
         }
         Criterion::default().configure_from_args().final_summary();
         return;
@@ -177,6 +216,7 @@ pub fn run() {
         (driver.run)(
             &mut criterion,
             Run {
+                driver: driver.name,
                 arms,
                 recording: cli.records(),
                 fixture: cli.fixture(),
@@ -188,7 +228,33 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use crate::bench::Arms;
+    use crate::bench::{Arms, Fixture, Run};
+
+    fn run(driver: &'static str) -> Run<'static> {
+        Run {
+            driver,
+            arms: Arms::Both,
+            recording: false,
+            fixture: Fixture::default(),
+        }
+    }
+
+    /// The namespace rule `DRIVERS` documents, now that it is composed
+    /// rather than retyped per `bench.rs`: a group is the driver's name,
+    /// a subgroup sits under it, and criterion joins a leaf on with the
+    /// same separator — so `text_atlas` + `encoded_cache` + `steady` is
+    /// the id `text_atlas/encoded_cache/steady`.
+    #[test]
+    fn group_names_are_the_drivers_namespace() {
+        assert_eq!(
+            run("text_atlas").subgroup_name("encoded_cache"),
+            "text_atlas/encoded_cache",
+        );
+        assert_eq!(
+            run("damage").subgroup_name("region/add"),
+            "damage/region/add"
+        );
+    }
 
     /// `overlap` is the entire selection rule, so pin its table. `None`
     /// is the only answer that skips a driver.

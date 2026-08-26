@@ -21,6 +21,7 @@
 //!   accumulator-only path.
 //! - `input/mixed_stream` — interleaved moves / clicks / scrolls.
 
+use crate::bench::Run;
 use crate::input::input_event::InputEvent;
 use crate::input::sense::Sense;
 use crate::layout::types::sizing::Sizing;
@@ -144,11 +145,12 @@ fn pointer_at(i: u32) -> Vec2 {
     Vec2::new(x, y)
 }
 
-pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Run<'_>) {
+pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
+    let mut group = run.group(c);
     {
         let mut ui = warmed_ui();
         let mut i: u32 = 0;
-        c.bench_function("input/pointer_move_stream", |b| {
+        group.bench_function("pointer_move_stream", |b| {
             b.iter(|| {
                 let delta = ui.on_input(InputEvent::PointerMoved(pointer_at(i)));
                 i = i.wrapping_add(1);
@@ -160,7 +162,7 @@ pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Run<'_>) {
     {
         let mut ui = warmed_ui();
         let mut i: u32 = 0;
-        c.bench_function("input/click_stream", |b| {
+        group.bench_function("click_stream", |b| {
             b.iter(|| {
                 // Move first so the press hits a fresh cell — without
                 // this every press lands on the same active widget and
@@ -176,7 +178,7 @@ pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Run<'_>) {
     {
         let mut ui = warmed_ui();
         let mut i: u32 = 0;
-        c.bench_function("input/scroll_stream", |b| {
+        group.bench_function("scroll_stream", |b| {
             b.iter(|| {
                 let t = i as f32 * 0.05;
                 let d = ui.scroll_pixels(Vec2::new(t.cos() * 5.0, (t * 0.7).cos() * 5.0));
@@ -189,7 +191,7 @@ pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Run<'_>) {
     {
         let mut ui = warmed_ui();
         let mut i: u32 = 0;
-        c.bench_function("input/mixed_stream", |b| {
+        group.bench_function("mixed_stream", |b| {
             b.iter(|| {
                 // ~realistic burst between two redraws: several moves,
                 // a scroll, occasional click.
@@ -205,4 +207,5 @@ pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Run<'_>) {
             });
         });
     }
+    group.finish();
 }

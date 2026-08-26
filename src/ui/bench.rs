@@ -76,7 +76,8 @@ use crate::renderer::render_plan::{RenderKind, RenderPlan};
 use crate::ui::Ui;
 use crate::ui::frame_report::FramePaint;
 use crate::ui::harness::UiHarness;
-use criterion::Criterion;
+use criterion::measurement::WallTime;
+use criterion::{BenchmarkGroup, Criterion};
 use std::fs::OpenOptions;
 use std::hint::black_box;
 use std::io::Write;
@@ -208,8 +209,12 @@ impl CpuHarness {
 
 /// Shared CPU-arm scaffolding: build a fresh deviceless harness, run 4
 /// warmup frames to settle caches, then hand criterion the same closure.
-fn run_cpu_arm<F>(c: &mut Criterion, name: &str, surface: &Surface, mut iter: F)
-where
+fn run_cpu_arm<F>(
+    group: &mut BenchmarkGroup<'_, WallTime>,
+    leaf: &str,
+    surface: &Surface,
+    mut iter: F,
+) where
     F: FnMut(&mut CpuHarness, &mut FrameFixture),
 {
     let mut h = CpuHarness::new(surface);
@@ -217,20 +222,20 @@ where
     for _ in 0..4 {
         iter(&mut h, &mut state);
     }
-    c.bench_function(name, |b| {
+    group.bench_function(leaf, |b| {
         b.iter(|| iter(&mut h, &mut state));
     });
 }
 
-fn cpu_cached(c: &mut Criterion, surface: &Surface) {
-    run_cpu_arm(c, "frame/cached_cpu", surface, |h, state| {
+fn cpu_cached(group: &mut BenchmarkGroup<'_, WallTime>, surface: &Surface) {
+    run_cpu_arm(group, "cached_cpu", surface, |h, state| {
         h.frame(|ui| state.render(BENCH_SCALE, ui));
     });
 }
 
-fn cpu_partial(c: &mut Criterion, surface: &Surface) {
+fn cpu_partial(group: &mut BenchmarkGroup<'_, WallTime>, surface: &Surface) {
     assert_partial_invariant(surface);
-    run_cpu_arm(c, "frame/partial_cpu", surface, |h, state| {
+    run_cpu_arm(group, "partial_cpu", surface, |h, state| {
         // Mutate before recording — same cadence as the scrolling /
         // resizing arms — so every arm sets up this frame's input then
         // records it, rather than relying on the prior iter's leftover.
@@ -239,8 +244,8 @@ fn cpu_partial(c: &mut Criterion, surface: &Surface) {
     });
 }
 
-fn cpu_scrolling(c: &mut Criterion, surface: &Surface) {
-    run_cpu_arm(c, "frame/scrolling_cpu", surface, |h, state| {
+fn cpu_scrolling(group: &mut BenchmarkGroup<'_, WallTime>, surface: &Surface) {
+    run_cpu_arm(group, "scrolling_cpu", surface, |h, state| {
         // Wraparound after a viewport's worth of pixels so the
         // transform stays in-bounds. `scroll_offset` is `glam::Vec2`.
         state.scroll_offset.x = (state.scroll_offset.x + 1.5) % 256.0;
@@ -249,10 +254,10 @@ fn cpu_scrolling(c: &mut Criterion, surface: &Surface) {
     });
 }
 
-fn cpu_resizing(c: &mut Criterion, surface: &Surface) {
+fn cpu_resizing(group: &mut BenchmarkGroup<'_, WallTime>, surface: &Surface) {
     let mut idx = 0usize;
     let pool = surface.pool.clone();
-    run_cpu_arm(c, "frame/resizing_cpu", surface, move |h, state| {
+    run_cpu_arm(group, "resizing_cpu", surface, move |h, state| {
         let size = pool[idx % pool.len()];
         idx = idx.wrapping_add(1);
         h.harness.resize(size);
@@ -287,7 +292,7 @@ fn assert_partial_invariant(surface: &Surface) {
 /// warmup frames with `PollType::Wait`, then hand criterion the same
 /// closure. Each arm's `iter` closure owns target selection and per-iter
 /// state mutation.
-fn run_gpu_arm<F>(c: &mut Criterion, name: &str, mut iter: F)
+fn run_gpu_arm<F>(group: &mut BenchmarkGroup<'_, WallTime>, leaf: &str, mut iter: F)
 where
     F: FnMut(&mut OffscreenHost, &mut FrameFixture),
 {
@@ -298,7 +303,7 @@ where
     for _ in 0..4 {
         iter(&mut host, &mut state);
     }
-    c.bench_function(name, |b| {
+    group.bench_function(leaf, |b| {
         b.iter(|| iter(&mut host, &mut state));
     });
     // Drain pipelined GPU work before the next bench function reuses
@@ -306,20 +311,20 @@ where
     g.wait();
 }
 
-fn gpu_cached(c: &mut Criterion, surface: &Surface) {
+fn gpu_cached(group: &mut BenchmarkGroup<'_, WallTime>, surface: &Surface) {
     let target = gpu().target(surface.size, "palantir.frame_bench.cached");
     let scale = surface.scale;
-    run_gpu_arm(c, "frame/cached_gpu", |host, state| {
+    run_gpu_arm(group, "cached_gpu", |host, state| {
         frame_offscreen(host, &target, scale, |ui| state.render(BENCH_SCALE, ui));
         gpu().wait();
         black_box(&target);
     });
 }
 
-fn gpu_partial(c: &mut Criterion, surface: &Surface) {
+fn gpu_partial(group: &mut BenchmarkGroup<'_, WallTime>, surface: &Surface) {
     let target = gpu().target(surface.size, "palantir.frame_bench.partial");
     let scale = surface.scale;
-    run_gpu_arm(c, "frame/partial_gpu", |host, state| {
+    run_gpu_arm(group, "partial_gpu", |host, state| {
         state.tick = state.tick.wrapping_add(1);
         frame_offscreen(host, &target, scale, |ui| state.render(BENCH_SCALE, ui));
         gpu().wait();
@@ -327,10 +332,10 @@ fn gpu_partial(c: &mut Criterion, surface: &Surface) {
     });
 }
 
-fn gpu_scrolling(c: &mut Criterion, surface: &Surface) {
+fn gpu_scrolling(group: &mut BenchmarkGroup<'_, WallTime>, surface: &Surface) {
     let target = gpu().target(surface.size, "palantir.frame_bench.scrolling");
     let scale = surface.scale;
-    run_gpu_arm(c, "frame/scrolling_gpu", |host, state| {
+    run_gpu_arm(group, "scrolling_gpu", |host, state| {
         state.scroll_offset.x = (state.scroll_offset.x + 1.5) % 256.0;
         state.scroll_offset.y = (state.scroll_offset.y + 0.7) % 256.0;
         frame_offscreen(host, &target, scale, |ui| state.render(BENCH_SCALE, ui));
@@ -339,7 +344,7 @@ fn gpu_scrolling(c: &mut Criterion, surface: &Surface) {
     });
 }
 
-fn gpu_resizing(c: &mut Criterion, surface: &Surface) {
+fn gpu_resizing(group: &mut BenchmarkGroup<'_, WallTime>, surface: &Surface) {
     let targets: Vec<wgpu::Texture> = surface
         .pool
         .iter()
@@ -348,7 +353,7 @@ fn gpu_resizing(c: &mut Criterion, surface: &Surface) {
         .collect();
     let mut idx = 0usize;
     let scale = surface.scale;
-    run_gpu_arm(c, "frame/resizing_gpu", move |host, state| {
+    run_gpu_arm(group, "resizing_gpu", move |host, state| {
         let t = &targets[idx % targets.len()];
         idx = idx.wrapping_add(1);
         frame_offscreen(host, t, scale, |ui| state.render(BENCH_SCALE, ui));
@@ -449,34 +454,27 @@ fn report_write_stats(surface: &Surface) {
     });
 }
 
-/// Arm names criterion runs for a given mode, interleaved cpu/gpu per
+/// The workloads both halves run, in the order the results row lists
+/// them.
+const CATEGORIES: [&str; 4] = ["cached", "partial", "resizing", "scrolling"];
+
+/// Arm ids criterion runs for a given mode, interleaved cpu/gpu per
 /// category. Used by the per-machine results writer to know which
 /// criterion estimate files to read after all arms have finished.
-fn arm_names(arms: Arms) -> Vec<&'static str> {
-    let mut v = Vec::with_capacity(6);
-    if arms.includes_cpu() {
-        v.push("frame/cached_cpu");
-    }
-    if arms.includes_gpu() {
-        v.push("frame/cached_gpu");
-    }
-    if arms.includes_cpu() {
-        v.push("frame/partial_cpu");
-    }
-    if arms.includes_gpu() {
-        v.push("frame/partial_gpu");
-    }
-    if arms.includes_cpu() {
-        v.push("frame/resizing_cpu");
-    }
-    if arms.includes_gpu() {
-        v.push("frame/resizing_gpu");
-    }
-    if arms.includes_cpu() {
-        v.push("frame/scrolling_cpu");
-    }
-    if arms.includes_gpu() {
-        v.push("frame/scrolling_gpu");
+///
+/// Built from the same namespace `bench_cpu` / `bench_gpu` register
+/// under, so a renamed group cannot leave the writer looking for
+/// estimates that were never written.
+fn arm_names(run: Run<'_>) -> Vec<String> {
+    let group = run.group_name();
+    let mut v = Vec::with_capacity(CATEGORIES.len() * 2);
+    for category in CATEGORIES {
+        if run.arms.includes_cpu() {
+            v.push(format!("{group}/{category}_cpu"));
+        }
+        if run.arms.includes_gpu() {
+            v.push(format!("{group}/{category}_gpu"));
+        }
     }
     v
 }
@@ -485,27 +483,31 @@ fn arm_names(arms: Arms) -> Vec<&'static str> {
 /// `--arms gpu` so a GPU-only run executes no CPU-arm code (and, more
 /// importantly, an `--arms cpu` run reaches this without `bench_gpu` having
 /// touched the GPU at all — pristine for profiling).
-fn bench_cpu(c: &mut Criterion, arms: Arms, surface: &Surface) {
-    if !arms.includes_cpu() {
+fn bench_cpu(c: &mut Criterion, run: Run<'_>, surface: &Surface) {
+    if !run.arms.includes_cpu() {
         return;
     }
-    cpu_cached(c, surface);
-    cpu_partial(c, surface);
-    cpu_resizing(c, surface);
-    cpu_scrolling(c, surface);
+    let mut group = run.group(c);
+    cpu_cached(&mut group, surface);
+    cpu_partial(&mut group, surface);
+    cpu_resizing(&mut group, surface);
+    cpu_scrolling(&mut group, surface);
+    group.finish();
 }
 
 /// GPU bench: the full-pipeline `frame/*_gpu` arms plus the per-frame
 /// `write_stats` dump. Skipped wholesale when `--arms cpu`.
-fn bench_gpu(c: &mut Criterion, arms: Arms, surface: &Surface) {
-    if !arms.includes_gpu() {
+fn bench_gpu(c: &mut Criterion, run: Run<'_>, surface: &Surface) {
+    if !run.arms.includes_gpu() {
         return;
     }
     report_write_stats(surface);
-    gpu_cached(c, surface);
-    gpu_partial(c, surface);
-    gpu_resizing(c, surface);
-    gpu_scrolling(c, surface);
+    let mut group = run.group(c);
+    gpu_cached(&mut group, surface);
+    gpu_partial(&mut group, surface);
+    gpu_resizing(&mut group, surface);
+    gpu_scrolling(&mut group, surface);
+    group.finish();
 }
 
 /// Results finalizer — runs last in [`bench()`], and only when the run
@@ -530,7 +532,8 @@ fn prepend_machine_results(run: Run<'_>) {
         mode_tag,
         bench_annotation(run.fixture.note)
     ));
-    for &name in arm_names(run.arms).iter() {
+    for name in arm_names(run) {
+        let name = name.as_str();
         let row = match read_criterion_estimate(name) {
             Some(e) => format!("{name:<22} time: {}\n", fmt_estimate(e)),
             None => format!("{name:<22} time: (criterion estimates not found)\n"),
@@ -748,9 +751,9 @@ fn now_label() -> String {
 // thermals + scheduler noise share budget with everything else on the
 // machine. Doubling the window roughly halves the run-to-run spread;
 // total wall time goes from ~50 s to ~90 s, which is fine for an
-// on-demand bench. `cpu` and `gpu` are separate criterion groups so
-// `--arms cpu` can run (and be profiled) without any GPU code executing;
-// `results` runs last to prepend the per-machine row.
+// on-demand bench. `--arms cpu` skips `bench_gpu` outright, so a CPU run
+// (and a profile of one) executes no GPU code at all; the results row is
+// prepended last.
 pub(crate) fn config() -> Criterion {
     Criterion::default()
         .measurement_time(Duration::from_secs(12))
@@ -772,8 +775,8 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
         let _ = bench_annotation(run.fixture.note);
     }
     let surface = Surface::new(run.fixture);
-    bench_cpu(c, run.arms, &surface);
-    bench_gpu(c, run.arms, &surface);
+    bench_cpu(c, run, &surface);
+    bench_gpu(c, run, &surface);
     if run.recording {
         prepend_machine_results(run);
     }

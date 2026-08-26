@@ -19,6 +19,7 @@
 //! signal is the median image-batch timestamp printed before each case.
 
 use crate::app::internals::RecordApp;
+use crate::bench::Run;
 use crate::diagnostics::gpu_pass_stats::BatchKind;
 use crate::host::bench_gpu::{BenchGpu, Timing};
 use crate::host::offscreen::OffscreenHost;
@@ -259,7 +260,7 @@ fn report_evidence(gpu: &BenchGpu, workload: Workload) {
     );
 }
 
-pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Run<'_>) {
+pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
     let gpu = gpu();
     eprintln!(
         "[image_pipeline] adapter={} backend={:?} timestamp={} inside_pass={} pipeline_stats={}",
@@ -273,7 +274,7 @@ pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Run<'_>) {
             .contains(wgpu::Features::PIPELINE_STATISTICS_QUERY),
     );
 
-    let mut group = c.benchmark_group("image_pipeline/frame_wall");
+    let mut group = run.subgroup(c, "frame_wall");
     group.measurement_time(Duration::from_secs(5));
     group.sample_size(20);
     for workload in [

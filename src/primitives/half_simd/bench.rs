@@ -99,11 +99,11 @@ fn scalar_to_f32x4(bits: [u16; 4]) -> [f32; 4] {
     ]
 }
 
-pub(crate) fn bench(c: &mut Criterion, _run: Run<'_>) {
+pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
     let src = inputs();
     let bits = packed();
 
-    let mut g = c.benchmark_group("half_simd");
+    let mut g = run.group(c);
 
     // The composer's shape: a value unknowable at compile time. Inputs are
     // laundered so neither side can see them.

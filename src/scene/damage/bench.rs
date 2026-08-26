@@ -13,6 +13,7 @@
 //! runs through the mono fallback (matches the frame and measure-cache
 //! benches).
 
+use crate::bench::Run;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
@@ -214,10 +215,10 @@ struct ArenaSettle {
     next_frame: u32,
 }
 
-fn bench_workloads(c: &mut Criterion) {
+fn bench_workloads(c: &mut Criterion, run: Run<'_>) {
     let cold = Color::rgb(0.2, 0.4, 0.8);
     let hot = Color::rgb(0.9, 0.4, 0.2);
-    let mut group = c.benchmark_group("damage/workload");
+    let mut group = run.subgroup(c, "workload");
 
     // Skip path — identical scene every frame; nothing dirty. Rows
     // are non-painting Panels so the damage diff walks every painting
@@ -547,8 +548,8 @@ fn bench_workloads(c: &mut Criterion) {
     group.finish();
 }
 
-fn bench_region_add(c: &mut Criterion) {
-    let mut group = c.benchmark_group("damage/region/add");
+fn bench_region_add(c: &mut Criterion, run: Run<'_>) {
+    let mut group = run.subgroup(c, "region/add");
 
     // Three representative scenarios — one per branch of the
     // `DamageRegion::add` policy:
@@ -648,8 +649,8 @@ fn build_ordered_siblings(ui: &mut Ui, order: &[usize]) {
 /// Each iteration alternates between the raised and unraised orders so
 /// every frame trips the inversion; holding one order steady would
 /// settle into `skip` and measure nothing.
-fn bench_paint_order_inversion(c: &mut Criterion) {
-    let mut group = c.benchmark_group("damage/paint_order");
+fn bench_paint_order_inversion(c: &mut Criterion, run: Run<'_>) {
+    let mut group = run.subgroup(c, "paint_order");
 
     for count in ORDER_FANOUT {
         let flat: Vec<usize> = (0..count).collect();
@@ -678,8 +679,8 @@ fn bench_paint_order_inversion(c: &mut Criterion) {
     group.finish();
 }
 
-pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Run<'_>) {
-    bench_workloads(c);
-    bench_paint_order_inversion(c);
-    bench_region_add(c);
+pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
+    bench_workloads(c, run);
+    bench_paint_order_inversion(c, run);
+    bench_region_add(c, run);
 }

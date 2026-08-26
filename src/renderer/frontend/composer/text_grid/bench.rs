@@ -18,6 +18,7 @@
 //!   spanning all of them, so the spill list carries the spanning rects
 //!   and every query scans it linearly.
 
+use crate::bench::Run;
 use crate::primitives::urect::URect;
 use crate::renderer::frontend::composer::text_grid::{TILE_CAP, TILE_SIZE, TextRectGrid};
 use criterion::{BenchmarkId, Criterion, Throughput};
@@ -163,11 +164,11 @@ impl RealisticFixture {
     }
 }
 
-pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Run<'_>) {
+pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
     // Label-sized text rects and quad-sized probes in the proportions
     // the instrumented `frame/*_cpu` arms showed. This is the arm that
     // decides whether the tile walk pays for itself.
-    let mut group = c.benchmark_group("text_grid/realistic");
+    let mut group = run.subgroup(c, "realistic");
     group.sample_size(50);
     group.warm_up_time(Duration::from_secs(1));
     group.measurement_time(Duration::from_secs(2));
@@ -184,7 +185,7 @@ pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Run<'_>) {
 
     // Spill length prints as the secondary metric; the per-round wall
     // time is the decision metric.
-    let mut group = c.benchmark_group("text_grid/saturated");
+    let mut group = run.subgroup(c, "saturated");
     group.sample_size(30);
     group.warm_up_time(Duration::from_secs(1));
     group.measurement_time(Duration::from_secs(2));

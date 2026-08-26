@@ -43,6 +43,7 @@
 use std::sync::OnceLock;
 use std::time::Duration;
 
+use crate::bench::Run;
 use crate::host::bench_gpu::{BenchGpu, TARGET_FORMAT, Timing};
 use crate::layout::types::align::Align;
 use crate::primitives::color::ColorU8;
@@ -441,12 +442,12 @@ fn report_atlas_pressure(label: &str, backend: &BenchText, frames: u32) {
     );
 }
 
-pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Run<'_>) {
+pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
     let g = gpu();
     let target = BenchGpu::shared(Timing::Bare).target(PHYSICAL, "palantir.text_atlas.target");
     let view = target.create_view(&wgpu::TextureViewDescriptor::default());
 
-    let mut group = c.benchmark_group("text_atlas");
+    let mut group = run.group(c);
     group.measurement_time(Duration::from_secs(5));
 
     {
@@ -749,7 +750,7 @@ pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Run<'_>) {
 
     group.finish();
 
-    bench_encoded_cache(c);
+    bench_encoded_cache(c, run);
 }
 
 /// The encoded cache's per-frame maintenance, priced on its own in the
@@ -780,8 +781,8 @@ pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Run<'_>) {
 /// `a_saturated_gesture_reaches_a_steady_state_where_no_frame_allocates`,
 /// which asserts zero allocations and a constant arena outright. These
 /// arms guard the *constant*.
-fn bench_encoded_cache(c: &mut Criterion) {
-    let mut group = c.benchmark_group("encoded_cache");
+fn bench_encoded_cache(c: &mut Criterion, run: Run<'_>) {
+    let mut group = run.subgroup(c, "encoded_cache");
     group.measurement_time(Duration::from_secs(2));
 
     for rows in [128u32, 512] {
