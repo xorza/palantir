@@ -24,7 +24,7 @@
 //!
 //! It sits at the crate root rather than beside any one driver because no
 //! driver owns it: the frame benches ([`crate::ui::bench`]), the allocation
-//! gates ([`crate::host::bench`]) and the cascade bench
+//! gates in `tests/alloc/gates.rs` and the cascade bench
 //! ([`crate::scene::cascade::bench`]) all record this same tree, and its
 //! node structure is what makes their numbers comparable release to
 //! release. Treat the structure as frozen — retheming is free, but adding
@@ -55,8 +55,22 @@ use crate::widgets::scroll::Scroll;
 /// Content multiplier the bench arms record at. The showcase page uses a
 /// far smaller one — this is sized for the bench's tall offscreen target,
 /// not for a window.
-#[cfg(feature = "bench")]
-pub(crate) const BENCH_SCALE: usize = 32;
+#[cfg(any(test, feature = "internals"))]
+pub const BENCH_SCALE: usize = 32;
+
+/// Device pixel ratio every bench arm renders at.
+#[cfg(any(test, feature = "internals"))]
+pub const BENCH_DPR: f32 = 2.0;
+
+/// One 1440p display, which is what the reported numbers are meant to
+/// stand for. `BENCH_SCALE = 32` content (36-row prop grid, 96-chip
+/// wrap, specimen sheet, 64-cell filmstrip, activity scroll, notes) is
+/// far taller than this, so everything past the fold is clipped away and
+/// culled: the CPU arms still record, measure and arrange the whole
+/// tree, while paint and the GPU arms see only the visible part. Raise
+/// it with `--size` to measure the whole fixture painting at once.
+#[cfg(any(test, feature = "internals"))]
+pub const BENCH_SURFACE: glam::UVec2 = glam::UVec2::new(2560, 1440); // 1280x720 @ 2x
 
 /// Persistent state for widgets that mutate user data (TextEdit needs
 /// a `&mut String`, Checkbox a `&mut bool`, RadioButton a `&mut T`).

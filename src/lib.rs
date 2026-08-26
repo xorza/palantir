@@ -5,7 +5,7 @@
 // The README's counter example builds a `WinitHost`, so it only compiles as a
 // doctest when that feature is on. Without it the crate docs open at the
 // orientation section below instead.
-#![cfg_attr(feature = "winit-host", doc = include_str!("../README.md"))]
+#![cfg_attr(feature = "winit", doc = include_str!("../README.md"))]
 //!
 //! # Where to start
 //!
@@ -52,8 +52,7 @@
 //!
 //! | flag | default | what it does |
 //! | --- | --- | --- |
-//! | `winit-host` | yes | The winit-backed [`WinitHost`] — real windows, real event loop. Without it only [`OffscreenHost`] exists. |
-//! | `system-clipboard` | yes | Routes [`TextEdit`] cut/copy/paste through the OS clipboard. Without it clipboard traffic stays in an in-process buffer. |
+//! | `winit` | yes | The winit-backed [`WinitHost`] — real windows, a real event loop, and [`TextEdit`] cut/copy/paste through the OS clipboard. Without it only [`OffscreenHost`] exists, and clipboard traffic stays in an in-process buffer. |
 //! | `showcase` | no | Builds the bundled `showcase` binary, a tour of every widget. |
 //! | `gpu-debug-markers` | no | Emits GPU debug groups around every draw step for RenderDoc / Xcode captures. Costs two recorded commands and a label copy per step even with no capture tool attached, so it is off unless you intend to capture. |
 //! | `profile-with-tracy` | no | Opens a Tracy zone over each frame pass, and marks a frame set per window. Needs the external Tracy viewer. |
@@ -94,7 +93,7 @@ pub(crate) mod common;
 /// Accent swatches shared by the two bundled demo surfaces. Public only
 /// because the `showcase` binary is a separate crate from this library
 /// and cannot reach a `pub(crate)` one; not part of the supported API.
-#[cfg(any(feature = "bench", feature = "showcase"))]
+#[cfg(any(feature = "internals", feature = "showcase"))]
 pub mod demo_swatches;
 pub(crate) mod diagnostics;
 /// Per-output display state (physical size, DPR, pixel-snap, refresh) —
@@ -106,11 +105,12 @@ pub(crate) mod display;
 /// it lives here rather than under whichever driver happened to need it
 /// first.
 ///
-/// Gated on `showcase` as well as `bench` because the showcase carries it as
-/// a page — the only way to look at the workload the numbers come from. It is
-/// pure scene code with no harness dependency, so reaching it that way costs
-/// the showcase nothing.
-#[cfg(any(feature = "bench", feature = "showcase"))]
+/// Gated on `internals` and `showcase`: the allocation gates in
+/// `tests/alloc` clear against this tree, and the showcase carries it as a
+/// page — the only way to look at the workload the numbers come from. It is
+/// pure scene code with no harness dependency, so reaching it either way
+/// costs nothing.
+#[cfg(any(feature = "internals", feature = "showcase"))]
 pub(crate) mod frame_fixture;
 pub(crate) mod host;
 pub(crate) mod icons;
@@ -140,6 +140,13 @@ pub mod golden;
 #[cfg(any(test, feature = "internals"))]
 pub mod internals {
     pub use crate::app::internals::RecordApp;
+    /// The frame fixture's canonical geometry, so the allocation gates
+    /// in `tests/alloc` clear against the same tree the frame bench
+    /// times rather than a smaller stand-in of their own. Feature-gated
+    /// like the GPU lease below — the fixture is not compiled at all in a
+    /// plain `cargo test` build.
+    #[cfg(feature = "internals")]
+    pub use crate::frame_fixture::{BENCH_DPR, BENCH_SCALE, BENCH_SURFACE};
     /// Needs a real GPU device, so unlike its neighbours this one exists
     /// only under the feature — never in a plain `cargo test` build.
     #[cfg(feature = "internals")]
@@ -202,9 +209,9 @@ pub use app::App;
 pub use diagnostics::DebugOverlayConfig;
 pub use display::Display;
 /// The benchmark workload as a recordable scene. Not part of the supported
-/// surface — it exists so the `bench` targets and the showcase page can
-/// record the same tree.
-#[cfg(any(feature = "bench", feature = "showcase"))]
+/// surface — it exists so the bench target, the allocation gates and the
+/// showcase page can record the same tree.
+#[cfg(any(feature = "internals", feature = "showcase"))]
 pub use frame_fixture::FrameFixture;
 pub use host::clock::{Clock, FixedClock, RealtimeClock};
 /// What to ask an adapter for so the device it returns can run Palantir.
@@ -217,7 +224,7 @@ pub use host::headless_gpu::HeadlessGpu;
 /// instead of a swapchain (screenshots, thumbnails, server-side
 /// compositing); also backs the visual harness + GPU benches.
 pub use host::offscreen::{OffscreenHost, OffscreenHostBuilder};
-#[cfg(feature = "winit-host")]
+#[cfg(feature = "winit")]
 pub use host::winit::{
     WinitHost, WinitHostBuilder,
     config::WinitHostConfig,

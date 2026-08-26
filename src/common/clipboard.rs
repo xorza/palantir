@@ -12,10 +12,10 @@ trait Backend: fmt::Debug {
     fn set_text(&mut self, text: &str) -> Result<(), ClipboardUnavailable>;
 }
 
-#[cfg(feature = "system-clipboard")]
+#[cfg(feature = "winit")]
 struct SystemBackend(arboard::Clipboard);
 
-#[cfg(feature = "system-clipboard")]
+#[cfg(feature = "winit")]
 impl fmt::Debug for SystemBackend {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
@@ -24,7 +24,7 @@ impl fmt::Debug for SystemBackend {
     }
 }
 
-#[cfg(feature = "system-clipboard")]
+#[cfg(feature = "winit")]
 impl Backend for SystemBackend {
     fn get_text(&mut self) -> Result<String, ClipboardUnavailable> {
         self.0.get_text().map_err(|_| ClipboardUnavailable)
@@ -141,7 +141,7 @@ impl Clipboard {
         }
     }
 
-    #[cfg(feature = "system-clipboard")]
+    #[cfg(feature = "winit")]
     pub(crate) fn system_or_memory() -> Self {
         let primary = arboard::Clipboard::new()
             .ok()

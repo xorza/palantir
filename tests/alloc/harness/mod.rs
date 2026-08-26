@@ -1,18 +1,20 @@
 //! Frame-loop drivers around `Ui` that measure heap allocations
 //! attributable to one scene's per-frame work.
 //!
-//! Two entry points:
+//! Three entry points:
 //! - [`run_audit`] takes an explicit `warmup` count — use when you need
 //!   precise control or are debugging the harness itself.
 //! - [`audit_steady_state`] probes for a stable point on its own and
 //!   audits a fixed window after that — use for new fixtures so you
 //!   don't have to hand-tune warmup numbers per scene.
+//! - [`run_audit_with_ui`] is [`run_audit`] over a harness the caller
+//!   raised, which is what `gates.rs` needs.
 //!
-//! Neither is told which fixture it is auditing: both are
+//! None is told which fixture it is auditing: all three are
 //! `#[track_caller]`, so the call site names itself, and cargo prints
 //! the failing test's own name above whatever it captured.
 //!
-//! Both run inside [`with_audit`] so per-thread counters + backtrace
+//! All run inside [`with_audit`] so per-thread counters + backtrace
 //! capture stay scoped to the measured window. The counter is
 //! per-thread (see `allocator.rs`), so cargo's parallel test runner
 //! can't pollute one fixture's window with another's allocations —
@@ -43,14 +45,28 @@ pub(crate) fn new_ui() -> UiHarness {
 /// `audit` frames individually. Fails as soon as a single frame
 /// exceeds `max_allocs`, dumping that frame's captured backtraces.
 #[track_caller]
-pub(crate) fn run_audit<S>(warmup: usize, audit: usize, max_allocs: u64, mut scene: S)
+pub(crate) fn run_audit<S>(warmup: usize, audit: usize, max_allocs: u64, scene: S)
 where
+    S: FnMut(&mut Ui),
+{
+    run_audit_with_ui(warmup, audit, max_allocs, new_ui(), scene);
+}
+
+/// [`run_audit`] against a caller-supplied harness. The gates in
+/// `gates.rs` render the frame bench's own surface and dpr, which is
+/// exactly what [`new_ui`]'s small defaults are not.
+#[track_caller]
+pub(crate) fn run_audit_with_ui<S>(
+    warmup: usize,
+    audit: usize,
+    max_allocs: u64,
+    mut ui: UiHarness,
+    mut scene: S,
+) where
     S: FnMut(&mut Ui),
 {
     assert!(audit > 0, "audit frame count must be > 0");
     let at = Location::caller();
-
-    let mut ui = new_ui();
 
     for _ in 0..warmup {
         run_frame(&mut ui, &mut scene);
@@ -147,7 +163,7 @@ fn run_frame<S: FnMut(&mut Ui)>(ui: &mut UiHarness, scene: &mut S) {
     let _ = ui.frame(scene);
 }
 
-fn fail_audit(
+pub(crate) fn fail_audit(
     at: &'static Location<'static>,
     frame_idx: usize,
     audit: usize,
