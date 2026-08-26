@@ -70,7 +70,7 @@ use crate::frame_fixture::{BENCH_DPR, BENCH_SCALE, BENCH_SURFACE, FrameFixture};
 use crate::host::bench_gpu::{BenchGpu, Timing};
 use crate::host::offscreen::OffscreenHost;
 use crate::primitives::color::Color;
-use crate::renderer::backend::texture_region::WriteStats;
+use crate::renderer::backend::texture_region::counters::WriteStats;
 use crate::renderer::frontend::Frontend;
 use crate::renderer::render_plan::{RenderKind, RenderPlan};
 use crate::ui::Ui;

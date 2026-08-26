@@ -23,14 +23,6 @@
 
 use glam::UVec2;
 
-#[cfg(feature = "bench")]
-use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
-
-#[cfg(feature = "bench")]
-static TEXTURE_CALLS: AtomicU64 = AtomicU64::new(0);
-#[cfg(feature = "bench")]
-static TEXTURE_BYTES: AtomicU64 = AtomicU64::new(0);
-
 /// A destination band in a 2D texture: the whole upload shape the
 /// backend has. Mip 0, full aspect, one layer — spelled once here
 /// instead of three wgpu descriptors per call site.
@@ -58,10 +50,7 @@ impl TextureRegion<'_> {
     /// length is the recorded upload size.
     pub(super) fn write(self, queue: &wgpu::Queue, data: &[u8]) {
         #[cfg(feature = "bench")]
-        {
-            TEXTURE_CALLS.fetch_add(1, Relaxed);
-            TEXTURE_BYTES.fetch_add(data.len() as u64, Relaxed);
-        }
+        counters::note(data.len() as u64);
         queue.write_texture(
             wgpu::TexelCopyTextureInfo {
                 texture: self.texture,
@@ -88,27 +77,39 @@ impl TextureRegion<'_> {
     }
 }
 
-/// One frame's worth of [`TextureRegion::write`] traffic.
-///
-/// `pub(crate)` where [`TextureRegion`] is `pub(super)`: only the backend
-/// uploaders build a region, but the frame bench — which lives outside
-/// this module tree — reads the tally.
 #[cfg(feature = "bench")]
-#[derive(Default, Debug, Clone, Copy)]
-pub(crate) struct WriteStats {
-    pub(crate) texture_calls: u64,
-    pub(crate) texture_bytes: u64,
-}
+pub(crate) mod counters {
+    use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
 
-#[cfg(feature = "bench")]
-impl WriteStats {
-    /// Snapshot the counters and reset them to zero. Call between bench
-    /// iters (or between frames in an instrumented harness) to get
-    /// per-frame numbers.
-    pub(crate) fn take() -> Self {
-        Self {
-            texture_calls: TEXTURE_CALLS.swap(0, Relaxed),
-            texture_bytes: TEXTURE_BYTES.swap(0, Relaxed),
+    static TEXTURE_CALLS: AtomicU64 = AtomicU64::new(0);
+    static TEXTURE_BYTES: AtomicU64 = AtomicU64::new(0);
+
+    /// Tally one [`super::TextureRegion::write`] of `bytes`.
+    pub(super) fn note(bytes: u64) {
+        TEXTURE_CALLS.fetch_add(1, Relaxed);
+        TEXTURE_BYTES.fetch_add(bytes, Relaxed);
+    }
+
+    /// One frame's worth of [`super::TextureRegion::write`] traffic.
+    ///
+    /// `pub(crate)` where [`super::TextureRegion`] is `pub(super)`: only
+    /// the backend uploaders build a region, but the frame bench — which
+    /// lives outside this module tree — reads the tally.
+    #[derive(Default, Debug, Clone, Copy)]
+    pub(crate) struct WriteStats {
+        pub(crate) texture_calls: u64,
+        pub(crate) texture_bytes: u64,
+    }
+
+    impl WriteStats {
+        /// Snapshot the counters and reset them to zero. Call between bench
+        /// iters (or between frames in an instrumented harness) to get
+        /// per-frame numbers.
+        pub(crate) fn take() -> Self {
+            Self {
+                texture_calls: TEXTURE_CALLS.swap(0, Relaxed),
+                texture_bytes: TEXTURE_BYTES.swap(0, Relaxed),
+            }
         }
     }
 }
