@@ -217,7 +217,7 @@ Five facts decide the design.
    arranged rect at encode time. Anchors are that mechanism with the target
    generalized from *the owner* to *any widget*.
 2. **A live this-frame `WidgetId → (layer, node)` index exists.**
-   `SeenIds::curr` (`src/scene/seen_ids.rs`), filled by `record_endpoint`
+   `SeenIds::curr` (`src/scene/seen_ids/mod.rs`), filled by `record_endpoint`
    during record, reachable through `Forest::current_node`.
 3. **`Layout::arranged_rect(Endpoint)` is complete the instant
    `LayoutEngine::run` returns.** With (2), `wid → this-frame rect` is two
