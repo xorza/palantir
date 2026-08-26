@@ -1,0 +1,145 @@
+use glam::Vec2;
+use std::hash::Hasher;
+
+/// Float comparisons at UI tolerance.
+///
+/// `EPS = 1e-4` is below 8-bit color precision (1/255 ≈ 4e-3) and sub-pixel
+/// position resolution at typical display scales, so differences smaller
+/// than this are invisible to the user.
+pub(crate) const EPS: f32 = 1.0e-4;
+
+/// True if `c` is within `EPS` of zero.
+#[inline]
+pub(crate) const fn approx_zero(c: f32) -> bool {
+    c.abs() <= EPS
+}
+
+/// Equality-compatible bits for public `Hash` implementations. Rust float
+/// equality treats both signed zeros as equal, so they must share one hash;
+/// every other value retains its exact representation.
+#[inline]
+pub(crate) const fn eq_bits(f: f32) -> u32 {
+    if f == 0.0 { 0 } else { f.to_bits() }
+}
+
+/// Canonicalize an `f32` at visual content-cache boundaries: collapse values
+/// visually indistinguishable from zero to one bit pattern and every NaN to
+/// one quiet NaN. Values outside the zero tolerance retain their exact bits.
+#[inline]
+pub(crate) const fn canon_bits(f: f32) -> u32 {
+    if f.is_nan() {
+        f32::NAN.to_bits()
+    } else if approx_zero(f) {
+        0u32
+    } else {
+        f.to_bits()
+    }
+}
+
+/// Feeding a value to a hasher under one of the two float tolerances this
+/// crate keeps apart.
+///
+/// - [`hash_eq`](Self::hash_eq) is the `Hash` half of `Hash`/`PartialEq`
+///   agreement: only the signed zeros are folded together, because only
+///   they compare equal.
+/// - [`hash_visual`](Self::hash_visual) is content-cache identity: a
+///   difference the eye cannot resolve must not split a cache key, so
+///   sub-`EPS` magnitudes collapse to one zero and every NaN to one
+///   quiet NaN.
+///
+/// A trait rather than a `hash_visual_{f32,vec2,size,rect}` family: the
+/// suffix was type dispatch spelled by hand, and it kept a type's second
+/// hashing policy in a module the type knows nothing about — while its
+/// first sat in its own `Hash` impl.
+pub(crate) trait FloatHash {
+    /// Feed `self` under equality-compatible canonicalization.
+    fn hash_eq<H: Hasher>(&self, state: &mut H);
+
+    /// Feed `self` under visual canonicalization.
+    fn hash_visual<H: Hasher>(&self, state: &mut H);
+}
+
+impl FloatHash for f32 {
+    #[inline]
+    fn hash_eq<H: Hasher>(&self, state: &mut H) {
+        state.write_u32(eq_bits(*self));
+    }
+
+    #[inline]
+    fn hash_visual<H: Hasher>(&self, state: &mut H) {
+        state.write_u32(canon_bits(*self));
+    }
+}
+
+/// Both lanes in one `write_u64` rather than two `hash_eq` calls on the
+/// components — one hasher round per point, on a path that runs per vertex
+/// and per shape.
+impl FloatHash for Vec2 {
+    #[inline]
+    fn hash_eq<H: Hasher>(&self, state: &mut H) {
+        state.write_u64(((eq_bits(self.x) as u64) << 32) | eq_bits(self.y) as u64);
+    }
+
+    #[inline]
+    fn hash_visual<H: Hasher>(&self, state: &mut H) {
+        state.write_u64(((canon_bits(self.x) as u64) << 32) | canon_bits(self.y) as u64);
+    }
+}
+
+/// True if `v` would produce no visible paint when used as a
+/// magnitude (stroke width, alpha, etc.). Captures three cases in
+/// one comparison: `v <= EPS` is true for near-zero positives,
+/// exact zero, and any negative; the `is_nan` branch handles the
+/// NaN case (NaN compares false against everything). Useful as the
+/// shared predicate behind `Stroke::is_noop`, `Color::is_noop`,
+/// and per-variant `Shape::is_noop` checks — keeps the
+/// "non-paintable scalar" contract in one place.
+#[inline]
+pub(crate) const fn noop_f32(v: f32) -> bool {
+    v.is_nan() || v <= EPS
+}
+
+/// True if an f16 stored as `u16` bits is `≤ EPS` in absolute value.
+/// Branch-free bit-pattern check — masks the sign bit and compares
+/// directly against `EPS` as f16 bits, with no f16→f32 conversion.
+/// Works because positive f16 values are monotonic in their bit
+/// representation (IEEE 754 design). NaN's exponent bits land at
+/// `0x7C00`+, well above the threshold, so NaN classifies as
+/// non-zero — matches `Corners::approx_zero` semantics and treats
+/// NaN as a loud programming bug rather than a silent skip.
+#[inline]
+pub(crate) const fn noop_f16_bits(bits: u16) -> bool {
+    const EPS_BITS: u16 = half::f16::from_f32_const(EPS).to_bits();
+    const ABS_MASK: u16 = 0x7FFF;
+    (bits & ABS_MASK) <= EPS_BITS
+}
+
+/// True if an f16 stored as `u16` bits is within `EPS` below 1.0 (or
+/// above). Mirror of `noop_f16_bits` for the opacity end of the
+/// scale: positive f16 values are monotonic in their bit
+/// representation, so `>= f16(1.0 - EPS).to_bits()` catches every
+/// value visually indistinguishable from fully opaque. The upper
+/// bound `< 0x7C00` rejects NaN (NaN exponent starts at `0x7C01`+)
+/// — a NaN alpha is a loud bug, not a silent opaque pass. Negative
+/// f16s carry the sign bit (`>= 0x8000`), well above the NaN
+/// threshold, so they're rejected too.
+#[inline]
+pub(crate) const fn opaque_f16_bits(bits: u16) -> bool {
+    const ONE_MINUS_EPS_BITS: u16 = half::f16::from_f32_const(1.0 - EPS).to_bits();
+    const NAN_EXP: u16 = 0x7C00;
+    bits >= ONE_MINUS_EPS_BITS && bits < NAN_EXP
+}
+
+/// True if two 2D points are within `EPS` of each other (Euclidean
+/// distance). Compares squared distance against `EPS²` to avoid a
+/// `sqrt`. Use when two points should be treated as coincident
+/// (degenerate stroke endpoints, zero-length segments).
+#[inline]
+pub(crate) const fn vec2_approx_eq(a: glam::Vec2, b: glam::Vec2) -> bool {
+    let dx = a.x - b.x;
+    let dy = a.y - b.y;
+    dx * dx + dy * dy <= EPS * EPS
+}
+
+#[cfg(test)]
+mod tests;
