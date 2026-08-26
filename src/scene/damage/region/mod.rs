@@ -64,7 +64,7 @@ pub(crate) const DEFAULT_PASS_BUDGET_PX: f32 = 20_000.0;
 /// **The rects and nothing else.** The merge budget is an argument of
 /// [`Self::add`], because it describes the fold rather than the result;
 /// the damaged fraction of the surface rides
-/// [`CollapsedDamage`](crate::scene::damage::region::CollapsedDamage),
+/// [`CollapsedDamage`],
 /// because it means nothing without the surface it was measured against.
 /// Neither has a reader past the merge — the encoder filter and the
 /// backend scissors take rects — and holding them here is what forced this

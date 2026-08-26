@@ -276,7 +276,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
     ///
     /// The whole per-batch draw sequence, once. Text and icon are two
     /// tenants of one atlas with one shader and one bind-group shape
-    /// (see [`quad`]), so their draws were byte-identical apart from the
+    /// (see [`RasterQuad`]), so their draws were byte-identical apart from the
     /// atlas path — including the comment explaining why the viewport is
     /// pushed here.
     ///
@@ -573,14 +573,11 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
     /// dry, which empties the whole atlas. Past the ceiling that is the
     /// worst state this type can reach: the entry never fits however
     /// much is freed, the run it belongs to is refused as a template
-    /// (see [`EncodedCache::settle`]), so it is asked for again on the
+    /// (see `EncodedCache::settle`), so it is asked for again on the
     /// next frame and the side is wiped again, for as long as it stays
     /// on screen. Both gates below are the same predicate — a rect
     /// taller or wider than an edge cannot be placed inside it — applied
     /// once to the ceiling and once to the current size.
-    ///
-    /// [`EncodedCache::settle`]:
-    ///     crate::renderer::backend::text::encode::cache::EncodedCache
     fn allocate(
         &mut self,
         device: &wgpu::Device,

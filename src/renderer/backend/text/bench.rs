@@ -70,9 +70,9 @@ use wgpu::util::StagingBelt;
 const PHYSICAL: UVec2 = UVec2::new(1280, 800);
 const BASE_SCALE: f32 = 2.0;
 /// Matches `crate::text::TEXT_SCALE_STEP`, the ladder the composer
-/// actually snaps a zoom to. It used to be 0.025 here — 5x coarser, so
-/// a given zoom range minted a fifth of the rungs and the churn arms
-/// modelled a gentler gesture than any real one.
+/// actually snaps a zoom to. A coarser step — 0.025, 5x coarser — would
+/// mint a fifth of the rungs over a given zoom range, so the churn arms
+/// would model a gentler gesture than any real one.
 const TEXT_SCALE_STEP: f32 = crate::text::TEXT_SCALE_STEP;
 const WARM_SCALE_CYCLE: u32 = 5;
 
@@ -88,7 +88,7 @@ const WARM_SCALE_CYCLE: u32 = 5;
 /// This is the crate's only coverage of that regime. Every other
 /// `text_atlas` arm sits below it — `zoom_cold` peaks at 137 live
 /// glyphs and the pre-widening `cache_churn` at 3700, both with *zero*
-/// evictions — so a change to the eviction policy used to be
+/// evictions — so without this arm a change to the eviction policy is
 /// unmeasurable here. `report_atlas_pressure` prints which side of the
 /// line an arm landed on, so a future retune can tell at a glance.
 const CHURN_SCALE_CYCLE: u32 = 512;
@@ -768,9 +768,8 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
 /// - **`churn`** — a zoom or width drag. Every run is re-keyed, so every
 ///   frame settles a full complement of rows and expires the one from a
 ///   window ago. This is the only arm that executes `settle`'s
-///   allocate-and-copy at all — the per-row cost the block allocator
-///   introduced when it replaced an arena append with a copy out of
-///   `pending`.
+///   allocate-and-copy at all — the per-row cost of the block allocator's
+///   copy out of `pending`.
 ///
 /// The two are not redundant: they drive opposite branches of the drain
 /// closure, `refiles` against `expiries`, and only one of them allocates.

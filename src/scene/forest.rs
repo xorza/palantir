@@ -279,7 +279,7 @@ impl Forest {
     /// the `Ui` to the app and closes it after, so this is `true` for
     /// exactly the window in which recording-only entry points are legal.
     ///
-    /// Deliberately not `current_layer()`: [`Ui::layer`] pushes a layer
+    /// Deliberately not `current_layer()`: [`Ui::layer`](crate::Ui::layer) pushes a layer
     /// without opening anything in it, so an overlay scope that has not
     /// recorded a widget yet would read as "not recording" on its own
     /// layer while the frame's record is very much in flight. This is a

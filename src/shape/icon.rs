@@ -8,7 +8,7 @@ use crate::shape::sealed;
 
 /// How a baked icon's artwork maps onto its paint rect.
 ///
-/// Unlike [`ImageFit`](crate::ImageFit) this picks a *rasterization* box, not
+/// Unlike [`ImageFit`] this picks a *rasterization* box, not
 /// a UV crop: the icon is drawn at whatever size this resolves to, so there is
 /// no `Cover` and no `Tile` — cropping or repeating a vector would mean
 /// rasterizing something other than the icon.

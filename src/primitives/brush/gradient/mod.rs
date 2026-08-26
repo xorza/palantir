@@ -9,7 +9,7 @@ use tinyvec::ArrayVec;
 /// into it and the two modifiers write through it. Non-`const`, unlike the
 /// finished-gradient twin below, because pushing a stop is a runtime write.
 ///
-/// Paired with [`gradient_common!`]: the two spell `with_spread` /
+/// Paired with `gradient_common!`: the two spell `with_spread` /
 /// `with_interp` alike on purpose, so a caller needn't know which side of
 /// the build it is holding.
 macro_rules! gradient_builder_common {

@@ -146,7 +146,7 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
     });
 
     // The fused decode-multiply-encode the composer runs per quad, against
-    // the two-step spelling it replaced — `F16x4::scaled`'s doc quotes a
+    // the two-step spelling beside it — `F16x4::scaled`'s doc quotes a
     // ratio, and this is what keeps that number honest as codegen moves.
     g.bench_function("scaled/fused", |b| {
         b.iter(|| {

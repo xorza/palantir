@@ -36,7 +36,7 @@ impl Gaps {
     /// the non-NaN operand and so costs a `maxss`, not a branch.
     const UNSET: u16 = 0x7E00;
 
-    /// A pair with neither axis set. [`Node`]'s starting value, so a
+    /// A pair with neither axis set. [`Node`](crate::scene::node::Node)'s starting value, so a
     /// widget can tell an untouched gap from a caller's explicit `0.0`
     /// and fill in a themed default only for the former.
     pub(crate) const UNSET_PAIR: Self = Self([Self::UNSET; 2]);

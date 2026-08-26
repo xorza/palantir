@@ -143,8 +143,8 @@ impl AxisPlacement {
 /// the clip its own subtree is scissored to.
 ///
 /// Stated here rather than in one driver because *every* placement goes
-/// through [`AxisPlacement::arrange`] — a scroll inside a Grid, a Canvas or
-/// a stack's cross axis used to get no such clamp, and only a ZStack's did.
+/// through [`AxisPlacement::arrange`]. Stated per driver instead, a scroll
+/// inside a Grid, a Canvas or a stack's cross axis gets no such clamp.
 /// A stack's *main* axis needs none: its flex solver shrinks against the
 /// zero min-content a panned scroll reports.
 fn clip_scroll_to_slot(child: &LayoutCore, desired: f32, slot: f32) -> f32 {

@@ -29,8 +29,9 @@ pub(crate) const DOUBLE_CLICK_WINDOW: Duration = Duration::from_millis(500);
 
 /// Maximum pointer travel (logical px) between two clicks for the second
 /// to still count as a double-click. A slow drift past this reads as two
-/// separate clicks — matches native behaviour and `TextEdit`'s
-/// `MULTI_CLICK_RADIUS`. Tracked per-button on [`Capture`].
+/// separate clicks, which matches native behaviour. Tracked per-button on
+/// [`Capture`], and [`TextEdit`](crate::TextEdit)'s word and all-selection
+/// read the run it bounds rather than keeping a radius of their own.
 pub(super) const DOUBLE_CLICK_RADIUS: f32 = 5.0;
 
 /// Per-button capture. One slot per

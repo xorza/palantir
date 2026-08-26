@@ -5,7 +5,7 @@
 //! callers. `subtree_skips` is the `damage` bench's headline metric, so
 //! it is [`BenchOnly`]; `dirty` is a `Vec` cell only tests read, and the
 //! module rule puts anything that allocates on
-//! [`TestOnly`](crate::common::counters::TestOnly) — the alloc suite
+//! [`TestOnly`] — the alloc suite
 //! asserts steady-state frames allocate nothing and would otherwise
 //! measure the probe. It would have been affordable either way (`dirty`
 //! pushes only on a node that actually changed, so a steady-state frame

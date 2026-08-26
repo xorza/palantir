@@ -412,7 +412,7 @@ impl CosmicMeasure {
     /// [`TextShapeKey::INVALID`] runs before paint and the backend keeps
     /// its own backstop, so arriving with one is a wiring bug rather than
     /// a case to answer. Handing back an `Option` for it only moved the
-    /// panic to the caller, which is where it used to live.
+    /// panic to the caller.
     pub(super) fn ensure_buffer(&mut self, request: TextShapeRequest<'_>) -> ShapedRun<'_> {
         debug_assert!(
             !request.key.is_invalid(),

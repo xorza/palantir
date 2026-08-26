@@ -143,7 +143,7 @@ pub(super) fn intrinsic_min_width(buffer: &Buffer, breaks: &mut Vec<u32>) -> f32
 /// its leftmost) of a shaped buffer's first layout run, or `0.0` when
 /// empty — the rendered width of one line.
 ///
-/// For the one-glyph unbounded probe [`CosmicMeasure::ellipsis_advance`]
+/// For the one-glyph unbounded probe [`CosmicMeasure::ellipsis_advance`](crate::text::cosmic::CosmicMeasure::ellipsis_advance)
 /// shapes, whose line starts at 0, the right edge is the width.
 /// [`shaped_geometry`] spans `left..right` instead because it also
 /// measures width-bounded buffers, which cosmic may anchor away from the

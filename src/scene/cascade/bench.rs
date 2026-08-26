@@ -66,13 +66,13 @@ const DENSITIES: [Density; 4] = [
 /// `density.percent` of [`ENTRY_COUNT`] rows are interactive, tiled into
 /// a disjoint grid.
 ///
-/// **Disjoint is the whole point.** Every row used to carry the same
-/// full-screen rect, so `hits_under`'s reverse scan matched the first
-/// row it tested and returned — at every density, for every query. The
-/// group read 1-2 ns across the board and measured an early exit rather
-/// than the traversal it is named for. Only interactive rows reach
-/// `Cascade::hits` at all, so the old comment's "inert rows above
-/// interactive ones" described rows that were never there.
+/// **Disjoint is the whole point.** Rows carrying the same full-screen
+/// rect let `hits_under`'s reverse scan match the first row it tests and
+/// return — at every density, for every query. The group then reads
+/// 1-2 ns across the board and measures an early exit rather than the
+/// traversal it is named for. Only interactive rows reach
+/// `Cascade::hits` at all, so "inert rows above interactive ones"
+/// describes rows that are never there.
 ///
 /// With tiles, a query lands in at most one, and the two `QUERY_*`
 /// constants pick how far the scan runs before it stops.

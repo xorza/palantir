@@ -2,8 +2,10 @@
 
 /// Bitset over wake causes. OR-merged when two requests coalesce
 /// onto the same deadline slot, so the frame-entry classifier can see
-/// every reason behind a fired wake — used to pick `Full` vs
-/// `AnimOnly` processing in `Ui::frame`. Bit set, not enum, because
+/// every reason behind a fired wake — which is what picks
+/// [`FramePlan::PaintOnly`](crate::ui::frame_plan::FramePlan::PaintOnly)
+/// over [`FramePlan::FullRecord`](crate::ui::frame_plan::FramePlan::FullRecord)
+/// in `FrameRuntime::take_frame_plan`. Bit set, not enum, because
 /// a single deadline can legitimately have both bits at once
 /// (paint-anim quantum aligning with a widget-scheduled wake).
 #[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]

@@ -29,10 +29,10 @@ const HUG_ORDER: [(Axis, HugKind); 4] = [
 /// Flat per-track pool with one `(rows, cols)` slot per recorded
 /// `GridDef` — every grid's track state for the whole layout pass.
 ///
-/// Three things per track, not just the hug ranges the name used to claim:
+/// Three things per track, not just the hug ranges the name suggests:
 /// the content ranges (`max`/`min`, fed by Phase-1 cell intrinsics and
 /// Phase-2 cell-height accumulation), the measure-resolved track sizes
-/// (`sizes`, the output of [`AxisScratch::resolve_axis`]), and
+/// (`sizes`, the output of [`AxisScratch::resolve_axis`](crate::layout::grid::axis_scratch::AxisScratch::resolve_axis)), and
 /// the input `total` each axis was resolved against (`totals`). Measure
 /// pass writes; arrange pass reads. Per-depth scratch in `depth_stack` gets
 /// clobbered by sibling grids before arrange runs, so the pool persists for

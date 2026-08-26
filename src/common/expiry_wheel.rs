@@ -378,8 +378,8 @@ mod tests {
 
     /// The two mechanisms that make the *frame* an unusable identity, and
     /// which a serial is immune to: a ticket the clamp moved, and a drain
-    /// that aliased every bucket. Both used to mean an entry could stop
-    /// recognising its own live ticket.
+    /// that aliased every bucket. Either would let an entry stop recognising
+    /// its own live ticket.
     #[test]
     fn clamped_and_aliased_tickets_keep_true_serials() {
         // Horizon 8 rounds to 16 slots, so 200 is far past the ring.

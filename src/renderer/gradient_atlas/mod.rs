@@ -101,6 +101,29 @@ struct GradientLutKey {
     interp: Interp,
 }
 
+/// One row's bookkeeping, held beside the baked texels rather than in
+/// them.
+///
+/// `baked` stays its own `Vec<LutRowTexels>` because the upload casts it
+/// to `&[u8]` in one reinterpret; everything *about* a row lives here, so
+/// the atlas carries two per-row columns and an MRU list instead of five
+/// containers whose lengths agreed only by convention.
+#[derive(Clone, Debug, Default)]
+struct RowSlot {
+    /// The key this row currently holds, so evicting it can drop the
+    /// outgoing gradient's index entry. `None` for a row never claimed.
+    /// Row 0 stays `None` — it is not a member of the MRU list, so
+    /// nothing can claim it; `baked[0]` carries the fallback payload.
+    key: Option<GradientLutKey>,
+    /// The [`CpuGradientAtlas::epoch`] the row was last registered in.
+    /// A row stamped with the *current* epoch cannot be evicted — its
+    /// `LutRow` id is already captured in this frame's lowered draw
+    /// payloads, so re-baking it would silently repaint those draws with
+    /// the wrong gradient after the end-of-frame upload. `0` means never
+    /// claimed, which is why the epoch starts at 1.
+    epoch: u64,
+}
+
 /// CPU side of the gradient LUT atlas. Owns the baked row bytes and a
 /// bake-key → row-id map; the backend mirrors this into a wgpu
 /// texture each frame by draining [`Self::flush`].
@@ -130,29 +153,6 @@ struct GradientLutKey {
 /// a side effect, lets [`Self::grow`] leave lookup completely alone:
 /// resident gradients keep their rows and cannot be baked into a
 /// second one.
-/// One row's bookkeeping, held beside the baked texels rather than in
-/// them.
-///
-/// `baked` stays its own `Vec<LutRowTexels>` because the upload casts it
-/// to `&[u8]` in one reinterpret; everything *about* a row lives here, so
-/// the atlas carries two per-row columns and an MRU list instead of five
-/// containers whose lengths agreed only by convention.
-#[derive(Clone, Debug, Default)]
-struct RowSlot {
-    /// The key this row currently holds, so evicting it can drop the
-    /// outgoing gradient's index entry. `None` for a row never claimed.
-    /// Row 0 stays `None` — it is not a member of the MRU list, so
-    /// nothing can claim it; `baked[0]` carries the fallback payload.
-    key: Option<GradientLutKey>,
-    /// The [`CpuGradientAtlas::epoch`] the row was last registered in.
-    /// A row stamped with the *current* epoch cannot be evicted — its
-    /// `LutRow` id is already captured in this frame's lowered draw
-    /// payloads, so re-baking it would silently repaint those draws with
-    /// the wrong gradient after the end-of-frame upload. `0` means never
-    /// claimed, which is why the epoch starts at 1.
-    epoch: u64,
-}
-
 #[derive(Debug)]
 pub(crate) struct CpuGradientAtlas {
     /// Bake key → the row holding it. A pure lookup index: it says
@@ -174,7 +174,7 @@ pub(crate) struct CpuGradientAtlas {
     /// Recency order over rows `1..capacity`. The list order *is* the
     /// recency order, so unlike `last_used` timestamps there is nothing
     /// to compare and no clock to overflow. See
-    /// [`mru`] for why its tail alone answers "what may be evicted".
+    /// [`mru_list`] for why its tail alone answers "what may be evicted".
     mru: MruList,
     /// Hard row ceiling: `min(device max_texture_dimension_2d,
     /// MAX_ATLAS_ROWS)`, since the atlas is one texture row per
@@ -285,7 +285,7 @@ impl CpuGradientAtlas {
     ///
     /// Moves the row to the MRU head on every call — hit or claim — so
     /// eviction can read the least-recently-registered row off the tail
-    /// (see [`mru`]).
+    /// (see [`mru_list`]).
     ///
     /// Three escalating arms once every row is occupied: claim the
     /// tail if it isn't referenced this epoch, else [grow](Self::grow)

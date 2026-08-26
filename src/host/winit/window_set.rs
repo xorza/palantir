@@ -9,9 +9,9 @@ use crate::window::window_token::WindowToken;
 ///
 /// **Two keys, one place that knows how to match on either.** A window is
 /// addressed by its winit [`WindowId`] on the event path and by its
-/// [`WindowToken`] on the app path, and both used to be linear scans with
-/// the predicate spelled out at the call site — so a scan could be written
-/// a fifth time, or written twice for one event. Lookups stay linear
+/// [`WindowToken`] on the app path, and both are linear scans. This owns
+/// the predicate rather than leaving each call site to spell it out, where a
+/// fifth copy could appear or one event could scan twice. Lookups stay linear
 /// because window counts are tiny; what this owns is that they are spelled
 /// once.
 ///

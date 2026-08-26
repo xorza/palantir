@@ -56,13 +56,11 @@ use crate::primitives::span::Span;
 /// the owner population, and `u32::MAX` slots is a buffer no tenant can
 /// reach.
 ///
-/// The gradient atlas's [`MruList`] carries a sentinel of the same value
+/// The gradient atlas's `MruList` carries a sentinel of the same value
 /// for the same reason, and the two stay apart deliberately: they index
 /// unrelated spaces, and each is only sound because of a bound argued
 /// against *its* population. Sharing the constant would make the two
 /// arguments look like one.
-///
-/// [`MruList`]: crate::renderer::gradient_atlas::mru_list
 const NIL: u32 = u32::MAX;
 
 /// Size class of a span of `len` entries. `len` must be non-zero — an

@@ -49,7 +49,7 @@ impl<'a> TextShapeRequest<'a> {
     /// **The one place a key is checked against the bytes themselves.**
     /// That a key describes the text beside it is what makes reusing a
     /// cached shaped buffer sound, and every caller that built the pair by
-    /// hand used to carry its own version of this assertion — so one could
+    /// hand would carry its own version of this assertion — one that can
     /// drift, or be forgotten by the next caller to write the literal.
     /// (`ShapedTextRef::new` checks the same pairing against a *recorded*
     /// hash, which costs no re-read; this is the one that reads.)

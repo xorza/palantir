@@ -13,8 +13,8 @@ use crate::text::wrap::TextWrap;
 /// Deliberately carries no block offset: where the shaped block *sits*
 /// isn't a shaping input, and holding both here is what let one field
 /// mean last frame's offset before the probe and this frame's after it.
-/// The two now live apart — [`TextLayout::prev_block_offset`] and
-/// [`TextGeometry::block_offset`].
+/// The two now live apart — [`TextLayout::prev_block_offset`](crate::widgets::text_edit::text_layout::TextLayout::prev_block_offset) and
+/// [`TextGeometry::block_offset`](crate::widgets::text_edit::text_geometry::TextGeometry::block_offset).
 #[derive(Clone, Copy, Debug)]
 pub(super) struct ShapeCtx {
     pub(super) font: GlyphFont,

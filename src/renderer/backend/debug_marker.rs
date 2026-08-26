@@ -1,7 +1,7 @@
 //! GPU debug groups (RenderDoc / Xcode capture labels), compiled out
 //! unless the `gpu-debug-markers` feature is on.
 //!
-//! Every emitted draw step used to record a pair unconditionally. In
+//! Recording a pair from every emitted draw step is not free. In
 //! wgpu 30 a pair is not free on the CPU even when no capture tool is
 //! attached: `render_pass_push_debug_group` memcpys the label bytes into
 //! the pass's `string_data`, pushes two `ArcRenderCommand`s into the

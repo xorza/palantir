@@ -59,8 +59,8 @@ impl WidgetLook {
     /// It stays a reference — and this stays separate from the
     /// `Ui::animate` call that consumes the result — because the caller
     /// borrows it straight out of `ui.theme`, and that borrow has to end
-    /// before `ui` is reborrowed mutably. Folding the two together is
-    /// what forced the old unconditional clone.
+    /// before `ui` is reborrowed mutably. Folding the two together would
+    /// force an unconditional clone.
     #[inline(always)]
     pub fn to_animated(&self, fallback_text: &TextStyle) -> AnimatedLook {
         AnimatedLook {

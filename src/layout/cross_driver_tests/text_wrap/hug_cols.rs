@@ -247,8 +247,8 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
 /// paragraph wraps to absorb the squeeze. This pins the default: `Text`
 /// defaults to `TextWrap::Overflow`, whose MinContent equals its full line,
 /// so the grid's Hug solver floors the label column at the label width and
-/// never shrinks it (the old `SingleLine` default reported MinContent 0 and
-/// the slack split clipped "right column" → "right col").
+/// never shrinks it (a default reporting MinContent 0 would let the slack
+/// split clip "right column" → "right col").
 #[test]
 fn two_hug_cols_default_label_hugs_full_width() {
     fn build(ui: &mut Ui) -> NodeId {

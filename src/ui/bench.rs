@@ -10,8 +10,8 @@
 //!   compose and acks the present; nothing touches the GPU. This is the
 //!   clean signal: no queue submit, no `device.poll` ioctl, no
 //!   per-size framebuffer reconfiguration. Going through the offscreen renderer
-//!   driver + a poll (the old shape) charged every iter driver work that
-//!   profiled as NVIDIA / kernel self-time — ~20% on
+//!   driver plus a poll charges every iter driver work that
+//!   profiles as NVIDIA / kernel self-time — ~20% on
 //!   `cached_cpu` and ~50% on `resizing_cpu` (multi-MB backbuffer
 //!   reallocations per size) — swamping the palantir cost being measured.
 //! - **`bench_gpu`** (`frame/*_gpu`) — the full public path:

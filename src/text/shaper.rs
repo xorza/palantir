@@ -78,18 +78,18 @@ pub(super) struct ShaperInner {
     /// What belongs to the field itself is the shape of the clock it
     /// hands readers. It advances on the record path
     /// (`TextSystem::end_full_record`, plus the bare tick a `PaintOnly`
-    /// frame owes through [`Self::tick_frame`]) while the backend sweeps on
+    /// frame owes through [`TextShaper::tick_frame`](crate::text::shaper::TextShaper::tick_frame)) while the backend sweeps on
     /// the submit path, so it both jumps — two windows recording before
     /// one submit — and stalls — two submits inside one recorded frame.
     /// Fine for an age comparison; never for a cadence gate written as
     /// `frame % INTERVAL == 0`.
     frame: u64,
-    /// Total [`ShaperInner::dispatch`] calls: `TextSystem` reuse misses
+    /// Total [`Self::tally_dispatch`] calls: `TextSystem` reuse misses
     /// plus every bypass [`TextShaper::layout`] call —
     /// which may still hit the cosmic buffer cache, so this counts
     /// dispatches, not reshapes. Reuse-slot hits don't increment.
     /// Read by tests pinning reshape-skip behaviour via
-    /// [`TextShaper::measure_calls`]; production builds carry neither
+    /// `TextShaper::measure_calls`; production builds carry neither
     /// the field nor the write.
     #[cfg(any(test, feature = "internals"))]
     measure_calls: u64,
@@ -143,9 +143,9 @@ impl ShaperInner {
     /// The extent this run resolves to at the width its key commits.
     ///
     /// **The bounded half takes no `floor`**, which is what retires the
-    /// contract two layers used to assert in identical words: a wrapping
-    /// floor belongs to the unbounded root, and there is now no way to ask
-    /// a bounded resolve for one.
+    /// contract structural rather than asserted at two layers: a wrapping
+    /// floor belongs to the unbounded root, and there is no way to ask a
+    /// bounded resolve for one.
     pub(super) fn resolve(&mut self, request: TextShapeRequest<'_>) -> Size {
         self.tally_dispatch();
         match &mut self.metric {

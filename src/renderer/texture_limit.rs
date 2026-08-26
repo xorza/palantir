@@ -12,10 +12,10 @@ use std::num::NonZeroU32;
 /// count under it, image registration rejects a source past it, and
 /// [`Ui::max_image_dimension`](crate::Ui::max_image_dimension) reports it
 /// so a caller can size a downscale against the device actually in use.
-/// Those all used to receive a bare `Option<NonZeroU32>` from the same
-/// call site, with nothing but the argument name saying they were the same
-/// number — and the enforcement lived inside the image registry, whose job
-/// is the upload/release lifecycle and not this.
+/// A bare `Option<NonZeroU32>` threaded to all three from the same call site
+/// would leave nothing but the argument name saying they are the same
+/// number, and would put the enforcement inside the image registry, whose
+/// job is the upload/release lifecycle and not this.
 ///
 /// `None` is a standalone CPU recorder: no device to ask, and so no
 /// ceiling to enforce.
