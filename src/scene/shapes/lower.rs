@@ -40,6 +40,7 @@ use crate::scene::shapes::paint::{
     ChromeRow, CurveBasis, LoweredShadow, QuadShape, ShapeBrush, ShapeStroke,
 };
 use crate::scene::shapes::record::{ColorMode, ShapeRecord};
+use crate::shape::curve::CurveStroke;
 use crate::shape::polyline::PolylineColors;
 use crate::shape::rect::RectKind;
 use crate::shape::style::{LineCap, LineJoin};
@@ -375,17 +376,6 @@ pub(crate) fn polyline(
     }
 }
 
-/// The stroke properties every curve geometry carries into lowering, in the
-/// shape [`CurveShape`](crate::shape::curve::CurveShape) already holds them —
-/// they travel together from the setters to [`curve_record`], so the geometry
-/// is the only thing that varies between the lowering entry points.
-#[derive(Debug)]
-pub(crate) struct CurveStroke {
-    pub(crate) width: f32,
-    pub(crate) brush: CurveBrush,
-    pub(crate) cap: LineCap,
-}
-
 /// Lower a cubic bezier into a `ShapeRecord::Curve`. Tessellation
 /// happens GPU-side at draw time — no CPU flattening, no per-curve
 /// vertex/index allocation. The composer derives sub-instance count
@@ -397,8 +387,15 @@ pub(crate) fn cubic_bezier(
     stroke: CurveStroke,
 ) -> ShapeRecord {
     let CurveStroke { width, brush, cap } = stroke;
-    let lowered = curve_brush(store, &brush);
-    curve_inner(ctrl, width, lowered, cap)
+    let [p0, p1, p2, p3] = ctrl;
+    let CurveBounds { lo, hi } = cubic_bezier_bbox(p0, p1, p2, p3);
+    curve_record(
+        CurveBasis::Cubic { p0, p1, p2, p3 },
+        Rect::from_min_max(lo, hi),
+        width,
+        curve_brush(store, &brush),
+        cap,
+    )
 }
 
 /// Lower a quadratic bezier by promoting it to a cubic and going
@@ -409,11 +406,9 @@ pub(crate) fn quadratic_bezier(
     ctrl: [Vec2; 3],
     stroke: CurveStroke,
 ) -> ShapeRecord {
-    let CurveStroke { width, brush, cap } = stroke;
     let [p0, c, p2] = ctrl;
     let cubic = quadratic_to_cubic(p0, c, p2);
-    let lowered = curve_brush(store, &brush);
-    curve_inner([p0, cubic.c1, cubic.c2, p2], width, lowered, cap)
+    cubic_bezier(store, [p0, cubic.c1, cubic.c2, p2], stroke)
 }
 
 /// Lower a straight line as a degenerate cubic on the native GPU
@@ -422,10 +417,8 @@ pub(crate) fn quadratic_bezier(
 /// brush) runs linearly from `a` to `b`. The composer's flatness
 /// fast-path keeps the collinear cubic a single GPU instance.
 pub(crate) fn line(store: &RecordStore, a: Vec2, b: Vec2, stroke: CurveStroke) -> ShapeRecord {
-    let CurveStroke { width, brush, cap } = stroke;
-    let lowered = curve_brush(store, &brush);
     let third = (b - a) / 3.0;
-    curve_inner([a, a + third, b - third, b], width, lowered, cap)
+    cubic_bezier(store, [a, a + third, b - third, b], stroke)
 }
 
 /// Lower a circular arc onto [`CurveBasis::Arc`]. Same native-GPU
@@ -459,20 +452,6 @@ pub(crate) fn arc(
         Rect::from_min_max(lo, hi),
         width,
         curve_brush(store, &brush),
-        cap,
-    )
-}
-
-/// Build a `ShapeRecord::Curve` from cubic control points, deriving the
-/// tight centerline bbox from the control polygon.
-fn curve_inner(ctrl: [Vec2; 4], width: f32, fill: LoweredBrush, cap: LineCap) -> ShapeRecord {
-    let [p0, p1, p2, p3] = ctrl;
-    let CurveBounds { lo, hi } = cubic_bezier_bbox(p0, p1, p2, p3);
-    curve_record(
-        CurveBasis::Cubic { p0, p1, p2, p3 },
-        Rect::from_min_max(lo, hi),
-        width,
-        fill,
         cap,
     )
 }

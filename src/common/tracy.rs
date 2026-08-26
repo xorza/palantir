@@ -45,7 +45,7 @@ pub(crate) use zone;
 /// and `frame_name!` takes a literal. Windows past the table share the
 /// last entry, which says so rather than silently continuing
 /// `window 7`'s history.
-#[cfg(feature = "profile-with-tracy")]
+#[cfg(all(feature = "profile-with-tracy", feature = "winit"))]
 const NAMES: &[tracy_client::FrameName] = &[
     tracy_client::frame_name!("window 0"),
     tracy_client::frame_name!("window 1"),
@@ -67,6 +67,7 @@ const NAMES: &[tracy_client::FrameName] = &[
 ///
 /// Zero-sized without the profiler, so a normal build carries no
 /// per-window profiling state at all.
+#[cfg(feature = "winit")]
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct FrameSet {
     /// Index into [`NAMES`], clamped when claimed.
@@ -74,6 +75,7 @@ pub(crate) struct FrameSet {
     index: usize,
 }
 
+#[cfg(feature = "winit")]
 impl FrameSet {
     /// Claim the next set, in window creation order. Never reused, so a
     /// closed window's frame history stays its own instead of a later
@@ -106,6 +108,7 @@ impl FrameSet {
 /// while one window owns the cadence — the caller decides when that
 /// holds. The winit host marks it in `WinitRuntime::draw`, where the
 /// live window count is already known.
+#[cfg(feature = "winit")]
 pub(crate) fn mark_main_frame() {
     #[cfg(feature = "profile-with-tracy")]
     tracy_client::frame_mark();
