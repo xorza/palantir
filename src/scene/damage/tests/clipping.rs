@@ -284,14 +284,14 @@ fn direct_shape_on_clipped_node_clips_to_own_mask() {
     let host_rect = cascade.entries[host_entry_idx].rect;
     let tree = h.ui.tree(Layer::Main);
     let shape_span = tree.records.shape_span()[host_ep.node.idx()];
-    assert!(shape_span.len >= 1, "host should have at least one shape");
+    assert_eq!(shape_span.len, 1, "the fixture adds one shape to the host");
     // The host paints chrome (the BLUE background), so row 0 of its
     // span is the chrome `Paint` — whose screen always equals the
     // 80×40 arranged rect and would pass the assertion below even
     // with the clip regressed. The direct shape under test is row 1.
     let paint_arena = &cascade.layers[Layer::Main].paint_arena;
     let node_span = paint_arena.node_spans[host_ep.node.idx()];
-    assert!(node_span.len >= 2, "expected chrome row + shape row");
+    assert_eq!(node_span.len, 2, "chrome row + shape row");
     let shape_rect = paint_arena.rows[node_span.start as usize + 1].screen;
     assert!(
         shape_rect.size.w <= host_rect.size.w + 0.5,

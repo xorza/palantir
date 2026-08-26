@@ -115,8 +115,9 @@ fn three_stop_quarter_brackets_first_pair() {
         "quarter-texel r={} not ~0.502 (bracketing first pair)",
         q.r,
     );
-    // b should still be near 0 (stop 2's b=1.0 isn't reached yet).
-    assert!(q.b <= 0.02, "quarter-texel b={} leaked from stop 2", q.b);
+    // Stops 0 and 1 are both b=0, so the whole first segment bakes b=0 —
+    // stop 2's b=1.0 is not reached until past the midpoint.
+    assert_eq!(q.b, 0.0, "quarter-texel leaked blue from stop 2");
 }
 
 /// The segment search resumes where the previous texel left it, which is

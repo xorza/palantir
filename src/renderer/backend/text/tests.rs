@@ -397,7 +397,7 @@ fn deferred_upload_keeps_batches_distinct() {
     // Same text → same glyph count n per batch; ranges partition
     // the vec as [0..n] + [n..2n].
     let n = backend.encoder.instances.len() / 2;
-    assert!(n > 0, "'File' must emit glyphs");
+    assert_eq!(n, 4, "'File' shapes to one glyph per character");
     assert_eq!(backend.ranges[0], Span::new(0, n as u32));
     assert_eq!(backend.ranges[1], Span::new(n as u32, n as u32));
 

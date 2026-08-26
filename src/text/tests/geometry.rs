@@ -251,8 +251,11 @@ fn selection_rects_match_cosmic_highlight_spans() {
         match case.label {
             "single_line" => {
                 assert_eq!(ys.len(), 1, "single-line range → one rect, got {ys:?}");
-                assert!(actual[0].size.w > 0.0, "rect has positive width");
-                assert!(actual[0].size.h > 0.0, "rect has positive height");
+                assert!(
+                    (actual[0].size.h - lh).abs() < 0.5,
+                    "one line tall (16 px × {LINE_HEIGHT_MULT}), got {}",
+                    actual[0].size.h,
+                );
                 assert!(ys[0].abs() < 0.5, "the only line sits at y≈0, got {ys:?}");
             }
             "middle_line_only" => {
