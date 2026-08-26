@@ -375,6 +375,17 @@ pub(crate) fn polyline(
     }
 }
 
+/// The stroke properties every curve geometry carries into lowering, in the
+/// shape [`CurveShape`](crate::shape::curve::CurveShape) already holds them —
+/// they travel together from the setters to [`curve_record`], so the geometry
+/// is the only thing that varies between the lowering entry points.
+#[derive(Debug)]
+pub(crate) struct CurveStroke {
+    pub(crate) width: f32,
+    pub(crate) brush: CurveBrush,
+    pub(crate) cap: LineCap,
+}
+
 /// Lower a cubic bezier into a `ShapeRecord::Curve`. Tessellation
 /// happens GPU-side at draw time — no CPU flattening, no per-curve
 /// vertex/index allocation. The composer derives sub-instance count
@@ -383,10 +394,9 @@ pub(crate) fn polyline(
 pub(crate) fn cubic_bezier(
     store: &RecordStore,
     ctrl: [Vec2; 4],
-    width: f32,
-    brush: CurveBrush,
-    cap: LineCap,
+    stroke: CurveStroke,
 ) -> ShapeRecord {
+    let CurveStroke { width, brush, cap } = stroke;
     let lowered = curve_brush(store, &brush);
     curve_inner(ctrl, width, lowered, cap)
 }
@@ -397,10 +407,9 @@ pub(crate) fn cubic_bezier(
 pub(crate) fn quadratic_bezier(
     store: &RecordStore,
     ctrl: [Vec2; 3],
-    width: f32,
-    brush: CurveBrush,
-    cap: LineCap,
+    stroke: CurveStroke,
 ) -> ShapeRecord {
+    let CurveStroke { width, brush, cap } = stroke;
     let [p0, c, p2] = ctrl;
     let cubic = quadratic_to_cubic(p0, c, p2);
     let lowered = curve_brush(store, &brush);
@@ -412,14 +421,8 @@ pub(crate) fn quadratic_bezier(
 /// so `B(t) = a + (b - a)·t` exactly — `t` (and thus a gradient
 /// brush) runs linearly from `a` to `b`. The composer's flatness
 /// fast-path keeps the collinear cubic a single GPU instance.
-pub(crate) fn line(
-    store: &RecordStore,
-    a: Vec2,
-    b: Vec2,
-    width: f32,
-    brush: CurveBrush,
-    cap: LineCap,
-) -> ShapeRecord {
+pub(crate) fn line(store: &RecordStore, a: Vec2, b: Vec2, stroke: CurveStroke) -> ShapeRecord {
+    let CurveStroke { width, brush, cap } = stroke;
     let lowered = curve_brush(store, &brush);
     let third = (b - a) / 3.0;
     curve_inner([a, a + third, b - third, b], width, lowered, cap)
@@ -431,17 +434,15 @@ pub(crate) fn line(
 /// angles verbatim. A linear gradient is sampled along the sweep.
 /// `|sweep| ≤ 2π` is debug-asserted: a longer sweep would repaint
 /// pixels and double-blend a translucent stroke.
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn arc(
     store: &RecordStore,
     center: Vec2,
     radius: f32,
     start_angle: f32,
     sweep: f32,
-    width: f32,
-    brush: CurveBrush,
-    cap: LineCap,
+    stroke: CurveStroke,
 ) -> ShapeRecord {
+    let CurveStroke { width, brush, cap } = stroke;
     debug_assert!(
         sweep.abs() <= TAU + 1.0e-4,
         "Shape::arc sweep {sweep} exceeds a full circle (±2π)"
