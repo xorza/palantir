@@ -8,24 +8,19 @@
 //!
 //! | gate | covers | budget |
 //! |---|---|---|
-//! | [`full_tree_cpu_frame_allocates_nothing`] | record → measure → arrange → cascade → damage over the frame bench's own tree, through real cosmic shaping. `Ui::frame` stops before the frontend, so no paint | strict zero |
-//! | [`offscreen_frame_holds_the_wgpu_driver_floor`] | a whole frame through `OffscreenHost::frame_offscreen` — encode, compose, and the wgpu submission | the driver floor |
+//! | [`full_tree_cpu_frame_alloc_free`] | record → measure → arrange → cascade → damage over the frame bench's own tree, through real cosmic shaping. `Ui::frame` stops before the frontend, so no paint | strict zero |
+//! | [`offscreen_frame_stays_at_driver_floor`] | a whole frame through `OffscreenHost::frame_offscreen` — encode, compose, and the wgpu submission | the driver floor |
 //!
 //! Both audit each measured frame on its own rather than summing a
 //! window, so an intermittent grow-on-Nth-frame allocation (`Vec`
 //! doubling, a `HashMap` rehash) fails on the frame that did it and
 //! arrives with that frame's backtraces attached.
 
-use std::panic::Location;
-
 use glam::UVec2;
-use palantir::internals::{
-    BENCH_DPR, BENCH_SCALE, BENCH_SURFACE, RecordApp, UiHarness, headless_test_gpu,
-};
+use palantir::internals::{BENCH_DPR, BENCH_SCALE, BENCH_SURFACE, RecordApp, headless_test_gpu};
 use palantir::{Color, FrameFixture, OffscreenHost};
 
-use crate::allocator::with_audit;
-use crate::harness;
+use crate::harness::Audit;
 
 /// Measured, the fixture stabilizes by frame 4 — at 1 it still leaks
 /// ~10 blocks — so this is margin. Too short is safe in the direction
@@ -49,15 +44,15 @@ const MEASURE_FRAMES: usize = 256;
 /// compose passes need a `Frontend`; the gate below runs them as part of
 /// a whole frame, and `fixtures/renderer.rs` audits them directly.
 #[test]
-fn full_tree_cpu_frame_allocates_nothing() {
+fn full_tree_cpu_frame_alloc_free() {
     let mut state = FrameFixture::default();
-    harness::run_audit_with_ui(
-        WARMUP_FRAMES,
-        MEASURE_FRAMES,
-        0,
-        UiHarness::with_text(BENCH_SURFACE).scale(BENCH_DPR),
-        |ui| state.render(BENCH_SCALE, ui),
-    );
+    Audit::new()
+        .text()
+        .surface(BENCH_SURFACE)
+        .dpr(BENCH_DPR)
+        .warmup(WARMUP_FRAMES)
+        .frames(MEASURE_FRAMES)
+        .run(|ui| state.render(BENCH_SCALE, ui));
 }
 
 /// Driver floor on the current wgpu/cosmic-text pin. Bump it if a driver
@@ -83,8 +78,7 @@ const RENDER_NODE_SCALE: usize = 6;
 /// features, which matters: the queries an instrumented device runs
 /// allocate per frame, and that is the very thing being counted here.
 #[test]
-fn offscreen_frame_holds_the_wgpu_driver_floor() {
-    let at = Location::caller();
+fn offscreen_frame_stays_at_driver_floor() {
     let gpu = headless_test_gpu();
     // The public offscreen path always copies from its backbuffer, so
     // the floor pinned here excludes the direct-present path.
@@ -109,54 +103,31 @@ fn offscreen_frame_holds_the_wgpu_driver_floor() {
     });
 
     let mut state = FrameFixture::default();
-    let frame = |host: &mut OffscreenHost, state: &mut FrameFixture| {
-        host.frame_offscreen(
-            &target,
-            BENCH_DPR,
-            &mut RecordApp::new(|ui| state.render(RENDER_NODE_SCALE, ui)),
-        );
-        // Draining here is what puts GPU execution inside the frame that
-        // submitted it instead of the next one's window.
-        gpu.device
-            .poll(wgpu::PollType::Wait {
-                submission_index: None,
-                timeout: None,
-            })
-            .expect("device poll");
-    };
-
-    for _ in 0..WARMUP_FRAMES {
-        frame(&mut host, &mut state);
-    }
-
-    let mut total = 0u64;
-    let mut worst = 0u64;
-    for i in 0..MEASURE_FRAMES {
-        let result = with_audit(|| frame(&mut host, &mut state));
-        if result.allocs > RENDER_BLOCKS_PER_FRAME_MAX {
-            harness::fail_audit(
-                at,
-                i,
-                MEASURE_FRAMES,
-                WARMUP_FRAMES,
-                RENDER_BLOCKS_PER_FRAME_MAX,
-                result,
+    let report = Audit::new()
+        .warmup(WARMUP_FRAMES)
+        .frames(MEASURE_FRAMES)
+        .budget(RENDER_BLOCKS_PER_FRAME_MAX)
+        .run_frames(|| {
+            host.frame_offscreen(
+                &target,
+                BENCH_DPR,
+                &mut RecordApp::new(|ui| state.render(RENDER_NODE_SCALE, ui)),
             );
-        }
-        total += result.allocs;
-        worst = worst.max(result.allocs);
-    }
+            // Draining here is what puts GPU execution inside the frame
+            // that submitted it instead of the next one's window.
+            gpu.device
+                .poll(wgpu::PollType::Wait {
+                    submission_index: None,
+                    timeout: None,
+                })
+                .expect("device poll");
+        });
 
-    // The observed floor, not just the verdict: a gate that reads zero
-    // has stopped measuring, and only the number says so.
+    // A gate that reads zero has stopped measuring, and only the number
+    // says so.
     assert!(
-        worst > 0,
-        "alloc-gate {at}: counted no allocation at all across {MEASURE_FRAMES} frames — \
-         the wgpu submission path allocates, so this gate is no longer watching it",
-    );
-    println!(
-        "alloc-gate {at}: {:.2}/frame mean, {worst} worst, over {MEASURE_FRAMES} frames \
-         after {WARMUP_FRAMES} warmup (budget {RENDER_BLOCKS_PER_FRAME_MAX}/frame)",
-        total as f64 / MEASURE_FRAMES as f64,
+        report.worst > 0,
+        "counted no allocation at all across {MEASURE_FRAMES} frames — the wgpu \
+         submission path allocates, so this gate is no longer watching it",
     );
 }

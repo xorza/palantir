@@ -28,7 +28,7 @@
 //! Tighten a number when a change makes it smaller; a number that has to
 //! *rise* is the regression this file exists to catch.
 
-use crate::harness::{audit_steady_state, audit_text_steady_state, run_audit};
+use crate::harness::Audit;
 use palantir::{Configure, Panel, Sizing, Text, TextWrap};
 use std::fmt::Write as _;
 
@@ -44,10 +44,10 @@ const ROWS: u32 = 8;
 /// the one where a per-frame allocation would compound — a drag runs for
 /// hundreds of frames.
 #[test]
-fn width_drag_alloc_free() {
+fn width_drag_stays_flat() {
     let mut step = 0u32;
-    // 13 measured: one shaped buffer per run, all inside cosmic.
-    audit_text_steady_state(16, move |ui| {
+    // One shaped buffer per run, all of it inside cosmic.
+    Audit::new().text().budget(16).run(move |ui| {
         // A whole pixel per frame, which is what a drag commits after
         // the wrap width is quantized.
         let width = 240.0 + (step % 64) as f32;
@@ -70,11 +70,11 @@ fn width_drag_alloc_free() {
 /// branch: `measure_truncated` re-cuts against the cached unbounded
 /// probe and reshapes only the prefix, through retained scratch.
 #[test]
-fn ellipsis_width_drag_alloc_free() {
+fn ellipsis_width_drag_stays_flat() {
     let mut step = 0u32;
-    // 11 measured - two below the wrapping drag, since the cut
-    // reshapes only the prefix rather than the whole run.
-    audit_text_steady_state(16, move |ui| {
+    // Lands below the wrapping drag: the cut reshapes only the
+    // prefix rather than the whole run.
+    Audit::new().text().budget(16).run(move |ui| {
         let width = 180.0 + (step % 64) as f32;
         step += 1;
         Panel::vstack()
@@ -98,7 +98,7 @@ fn ellipsis_width_drag_alloc_free() {
 #[test]
 fn scrolling_row_window_alloc_free() {
     let mut first = 0u32;
-    audit_steady_state(0, move |ui| {
+    Audit::new().run(move |ui| {
         first += 1;
         Panel::vstack()
             .id_salt("scroll-root")
@@ -118,34 +118,37 @@ fn scrolling_row_window_alloc_free() {
 /// removed rather than shifted, so `removed` is non-empty on the shrink
 /// frames and every per-widget map takes its eviction path.
 #[test]
-fn widget_add_remove_alloc_free() {
+fn widget_add_remove_stays_flat() {
     let mut step = 0u32;
-    // An explicit warmup rather than `audit_steady_state`'s probe: the
+    // An explicit warmup rather than the probe: the
     // row count oscillates with period ROWS, and the probe stops after
     // two quiet frames - which it can find *within* one cycle, before
     // the widest frame has ever been recorded. The audit window then
     // catches that frame's one-off growth and reads it as a per-frame
-    // cost. Four full cycles of warmup is what makes the zero honest.
+    // cost. Four full cycles of warmup is what makes the number honest.
     // Budget 4, not 0, and the reason is a finding rather than a
     // concession: `PaintSnapArena::maybe_compact` / `diff_changed_leg`
     // allocate when the damage engine's snapshot arena compacts, which
     // ratio-based amortization makes periodic rather than per-frame. A
     // still frame never trips it, which is why nothing caught it before.
-    run_audit(4 * ROWS as usize, 64, 4, move |ui| {
-        step += 1;
-        let count = 1 + step % ROWS;
-        Panel::vstack()
-            .id_salt("add-remove-root")
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                for row in 0..count {
-                    Panel::hstack()
-                        .id_salt(row)
-                        .size((Sizing::FILL, Sizing::fixed(20.0)))
-                        .show(ui, |_ui| {});
-                }
-            });
-    });
+    Audit::new()
+        .warmup(4 * ROWS as usize)
+        .budget(4)
+        .run(move |ui| {
+            step += 1;
+            let count = 1 + step % ROWS;
+            Panel::vstack()
+                .id_salt("add-remove-root")
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    for row in 0..count {
+                        Panel::hstack()
+                            .id_salt(row)
+                            .size((Sizing::FILL, Sizing::fixed(20.0)))
+                            .show(ui, |_ui| {});
+                    }
+                });
+        });
 }
 
 /// Text whose *content* changes every frame — a clock, an FPS readout, a
@@ -157,7 +160,7 @@ fn widget_add_remove_alloc_free() {
 /// fixture's budget is whatever that costs — the guard is that it stays
 /// flat instead of growing with the frame count.
 #[test]
-fn changing_label_text_alloc_free() {
+fn changing_label_text_stays_flat() {
     let mut step = 0u32;
     // Formatted into a retained buffer, not `format!`: a `String` per
     // label would be the *fixture* allocating, and the audit cannot tell
@@ -169,10 +172,10 @@ fn changing_label_text_alloc_free() {
     // quiet frames the probe settles for. 128 frames is a long way past
     // where they stop growing.
     //
-    // 99 measured: eight runs whose text is new every frame, at the
-    // ~10-per-run cosmic floor. The highest here, and rightly so - a
-    // fresh text hash cannot reuse anything.
-    run_audit(128, 64, 112, move |ui| {
+    // Eight runs whose text is new every frame, at the ~10-per-run
+    // cosmic floor — the highest budget here, and rightly so: a fresh
+    // text hash cannot reuse anything.
+    Audit::new().warmup(128).budget(112).run(move |ui| {
         step += 1;
         Panel::vstack()
             .id_salt("ticker-root")
@@ -202,7 +205,7 @@ fn changing_label_text_alloc_free() {
 /// a handle is `Copy`, owns nothing, and cannot outlive its pass.
 #[test]
 fn reinterned_text_alloc_free() {
-    run_audit(8, 64, 0, move |ui| {
+    Audit::new().warmup(8).run(move |ui| {
         let label = ui.intern("re-interned every frame");
         std::hint::black_box(label);
         Panel::vstack()

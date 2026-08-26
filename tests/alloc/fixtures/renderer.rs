@@ -4,7 +4,7 @@
 //! the non-rectangle shape variants (`Polyline`, `Mesh`) so a
 //! per-frame `Vec::new()` in those paths can't slip in unnoticed.
 
-use crate::harness::audit_steady_state;
+use crate::harness::Audit;
 use palantir::{
     Color, Configure, Frame, Grid, IconAtlas, IconId, IconSet, Mesh, Panel, PolylineColors, Shape,
     Sizing, Track,
@@ -17,7 +17,7 @@ use std::rc::Rc;
 /// in the encoder shape vec or composer quad vec shows up here.
 #[test]
 fn many_rects_compose_alloc_free() {
-    audit_steady_state(0, |ui| {
+    Audit::new().run(|ui| {
         Grid::new()
             .auto_id()
             .cols([Track::fill(); 16])
@@ -49,7 +49,7 @@ fn polyline_static_alloc_free() {
     let points: Vec<glam::Vec2> = (0..32)
         .map(|i| glam::Vec2::new(i as f32 * 20.0, 100.0 + (i as f32).sin() * 30.0))
         .collect();
-    audit_steady_state(0, move |ui| {
+    Audit::new().run(move |ui| {
         Panel::vstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
@@ -78,7 +78,7 @@ fn mesh_static_alloc_free() {
         m.triangle(a, b, c);
         m
     };
-    audit_steady_state(0, move |ui| {
+    Audit::new().run(move |ui| {
         Panel::vstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
@@ -112,7 +112,7 @@ fn many_icons_compose_alloc_free() {
     let chip = IconId(0);
     let mut held: Option<IconSet> = None;
 
-    audit_steady_state(0, move |ui| {
+    Audit::new().run(move |ui| {
         // `insert` drops last frame's clone *after* this frame's exists,
         // so the shared owner never reaches zero and nothing is released.
         let icons = held.insert(ui.load_icons(Rc::clone(&atlas)));

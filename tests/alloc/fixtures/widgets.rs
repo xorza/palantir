@@ -1,4 +1,12 @@
-use crate::harness::{audit_steady_state, audit_text_steady_state};
+//! One widget, or one small composition of them, per fixture — the
+//! base layer of the suite.
+//!
+//! Every one of these paints the same tree every frame and budgets a
+//! strict zero, which is the whole claim: recording a settled scene
+//! touches the heap not at all. `churn.rs` covers the scenes that
+//! change, `renderer.rs` the shape counts that stress the frontend.
+
+use crate::harness::Audit;
 use palantir::{
     Background, Button, Color, Configure, ContextMenu, Frame, Grid, MenuItem, Panel, Scroll,
     Shortcut, Sizing, Splitter, Text, TextEdit, Track, Ui, Vec2, WidgetId,
@@ -6,12 +14,12 @@ use palantir::{
 
 #[test]
 fn empty_frame_alloc_free() {
-    audit_steady_state(0, |_ui| {});
+    Audit::new().run(|_ui| {});
 }
 
 #[test]
 fn button_only_alloc_free() {
-    audit_steady_state(0, |ui| {
+    Audit::new().run(|ui| {
         Button::new()
             .auto_id()
             .label("hello")
@@ -22,7 +30,7 @@ fn button_only_alloc_free() {
 
 #[test]
 fn nested_vstack_64_alloc_free() {
-    audit_steady_state(0, |ui| {
+    Audit::new().run(|ui| {
         fn rec(ui: &mut Ui, depth: u32) {
             if depth == 0 {
                 return;
@@ -38,7 +46,7 @@ fn nested_vstack_64_alloc_free() {
 
 #[test]
 fn grid_8x8_alloc_free() {
-    audit_steady_state(0, |ui| {
+    Audit::new().run(|ui| {
         Grid::new()
             .auto_id()
             .cols([Track::fill(); 8])
@@ -64,7 +72,7 @@ fn grid_8x8_alloc_free() {
 #[test]
 fn splitter_alloc_free() {
     let mut ratio = 0.5;
-    audit_steady_state(0, move |ui| {
+    Audit::new().run(move |ui| {
         Splitter::horizontal(&mut ratio)
             .id_salt("splitter")
             .min_pane(80.0)
@@ -75,7 +83,7 @@ fn splitter_alloc_free() {
 #[test]
 fn damage_animated_rect_alloc_free() {
     let mut tick: u32 = 0;
-    audit_steady_state(0, move |ui| {
+    Audit::new().run(move |ui| {
         tick = tick.wrapping_add(1);
         let w = 100.0 + (tick % 200) as f32;
         Panel::vstack().auto_id().show(ui, |ui| {
@@ -93,7 +101,7 @@ fn damage_animated_rect_alloc_free() {
 
 #[test]
 fn static_text_label_alloc_free() {
-    audit_steady_state(0, |ui| {
+    Audit::new().run(|ui| {
         Text::new("hello world").auto_id().show(ui);
     });
 }
@@ -106,7 +114,7 @@ fn static_text_label_alloc_free() {
 #[test]
 fn text_edit_alloc_free() {
     let mut buf = String::from("the quick brown fox jumps over the lazy dog");
-    audit_steady_state(0, move |ui| {
+    Audit::new().run(move |ui| {
         TextEdit::new(&mut buf)
             .id_salt("edit")
             .size((Sizing::FILL, Sizing::fixed(28.0)))
@@ -118,7 +126,7 @@ fn text_edit_alloc_free() {
 fn open_context_menu_shortcuts_alloc_free() {
     let trigger_id = WidgetId::from_hash("alloc-context-menu-trigger");
     let mut needs_open = true;
-    audit_steady_state(0, move |ui| {
+    Audit::new().run(move |ui| {
         let trigger = Button::new()
             .id(trigger_id)
             .label("Actions")
@@ -143,7 +151,7 @@ fn open_context_menu_shortcuts_alloc_free() {
 fn long_multiline_selection_alloc_free() {
     let editor_id = WidgetId::from_hash("alloc-long-selection");
     let mut document = "selected line\n".repeat(32);
-    audit_text_steady_state(0, move |ui| {
+    Audit::new().text().run(move |ui| {
         ui.request_focus(Some(editor_id));
         TextEdit::new(&mut document)
             .id(editor_id)
@@ -157,7 +165,7 @@ fn long_multiline_selection_alloc_free() {
 #[test]
 fn state_map_counter_alloc_free() {
     let id = WidgetId::from_hash("counter");
-    audit_steady_state(0, move |ui| {
+    Audit::new().run(move |ui| {
         Frame::new().id_salt("counter").show(ui);
         let n = ui.state_mut::<u32>(id);
         *n = n.wrapping_add(1);
@@ -167,7 +175,7 @@ fn state_map_counter_alloc_free() {
 /// Scroll w/ overflow: pins `PostArrangeRegistry` typed-bucket reuse + `ScrollHook::run` in-place.
 #[test]
 fn scroll_overflow_alloc_free() {
-    audit_steady_state(0, |ui| {
+    Audit::new().run(|ui| {
         Scroll::vertical()
             .id_salt("scroll")
             .size((Sizing::FILL, Sizing::FILL))
@@ -183,7 +191,7 @@ fn scroll_overflow_alloc_free() {
 /// Scroll w/ content fitting viewport: pins the hook's `overflow == new_overflow` early-exit.
 #[test]
 fn scroll_fits_alloc_free() {
-    audit_steady_state(0, |ui| {
+    Audit::new().run(|ui| {
         Scroll::vertical()
             .id_salt("scroll")
             .size((Sizing::FILL, Sizing::FILL))
