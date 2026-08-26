@@ -1,36 +1,8 @@
-use crate::primitives::color::Color;
-use crate::text::glyph_font::GlyphFont;
-use crate::text::{FontFamily, FontWeight};
-use crate::widgets::theme::text_style::TextStyle;
-
-#[derive(Debug, ::serde::Deserialize)]
-pub(super) struct UncheckedTextStyle {
-    font_size_px: f32,
-    color: Color,
-    line_height_mult: f32,
-    family: FontFamily,
-    weight: FontWeight,
-}
-
-impl TryFrom<UncheckedTextStyle> for TextStyle {
-    type Error = &'static str;
-
-    fn try_from(style: UncheckedTextStyle) -> Result<Self, Self::Error> {
-        if !GlyphFont::metrics_are_valid(
-            style.font_size_px,
-            style.font_size_px * style.line_height_mult,
-        ) {
-            return Err(GlyphFont::METRICS_ERROR);
-        }
-        Ok(Self {
-            font_size_px: style.font_size_px,
-            color: style.color,
-            line_height_mult: style.line_height_mult,
-            family: style.family,
-            weight: style.weight,
-        })
-    }
-}
+//! Wire-format policy that no single type owns.
+//!
+//! A `#[serde(with = ...)]` codec applies to one *field*, so it has no
+//! type of its own to sit beside. That is what keeps these here rather
+//! than in the file of the struct that reaches for one.
 
 pub(super) mod duration_seconds {
     use std::time::Duration;

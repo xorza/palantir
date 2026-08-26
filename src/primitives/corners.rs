@@ -1,3 +1,4 @@
+use crate::primitives::approx::EPS;
 use crate::primitives::half_simd::F16x4;
 use crate::primitives::serde::LaneCodec;
 use crate::primitives::size::Size;
@@ -93,7 +94,7 @@ impl Corners {
         // above EPS and so reports non-zero — deliberate: this gates
         // the sharp-corner fast path, and a NaN radius must not take
         // it. The shape-level NaN gate is what drops such a shape.
-        const EPS_BITS: u16 = half::f16::from_f32_const(crate::primitives::approx::EPS).to_bits();
+        const EPS_BITS: u16 = half::f16::from_f32_const(EPS).to_bits();
         !self.0.any_lane_above(EPS_BITS)
     }
 }

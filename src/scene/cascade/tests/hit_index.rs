@@ -1,5 +1,6 @@
 //! Which rows reach the hit index, in what order, carrying which rect.
 
+use crate::input::sense::Sense;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
@@ -98,12 +99,12 @@ fn hit_rows_carry_the_entry_rect() {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
             .size(Sizing::fixed(200.0))
-            .sense(crate::input::sense::Sense::HOVER)
+            .sense(Sense::HOVER)
             .show(ui, |ui| {
                 Panel::vstack()
                     .id(WidgetId::from_hash("inner"))
                     .size(Sizing::fixed(60.0))
-                    .sense(crate::input::sense::Sense::CLICK)
+                    .sense(Sense::CLICK)
                     .show(ui, |_| {});
             });
     });

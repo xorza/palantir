@@ -13,6 +13,7 @@ pub(crate) mod icon;
 pub(crate) mod image;
 pub(crate) mod mesh;
 pub(crate) mod paint_tier;
+pub(crate) mod per_group_batch;
 pub(crate) mod text;
 pub(crate) mod text_batch;
 

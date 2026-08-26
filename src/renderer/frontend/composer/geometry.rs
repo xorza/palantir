@@ -12,6 +12,7 @@ use crate::renderer::render_buffer::curve::{
 use crate::renderer::render_buffer::{MAX_ROUNDED_CLIP_DEPTH, RenderBuffer};
 use crate::shape::stroke_bounds::{HALF_FRINGE, MITER_LIMIT, stroked_bbox};
 use crate::shape::style::{LineCap, LineJoin};
+use crate::text::TEXT_SCALE_STEP;
 use glam::{UVec2, Vec2};
 
 /// Upper bound on sub-instances per curve. Long, fast-curving strokes
@@ -114,27 +115,6 @@ pub(super) fn cubic_is_flat(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2) -> bool {
     let d2 = chord.perp_dot(p2 - p0).abs();
     d1.max(d2) <= FLAT_EPS_PX * len
 }
-
-/// Additive step on the text-scale ladder. Same step in *scale units*
-/// across the range, so the step in *percent of current size* shrinks
-/// as zoom grows (0.005/4 ≈ 0.125% at 4×, 0.005/1 = 0.5% at 1×, 0.005/0.5
-/// = 1% at 0.5×). The user-perceptual case for this layout: at high
-/// zoom every percent of size change is visible, so we want fine steps;
-/// at low zoom text is small and crispness stepping doesn't matter, so
-/// coarse steps + fewer atlas keys is the right trade.
-///
-/// **Geometric note.** Measurement uses the unscaled `font_size_px`
-/// (text layout shaping) — only the paint-time scale is snapped. At a
-/// non-rung zoom level the rendered glyph block is up to `STEP/2`
-/// wider/narrower than the layout-space rect it nominally fills. The
-/// extra width is clipped at `TextDrawRow.bounds`, and the cascade
-/// inflates text damage rects by the same fraction so a rung-jump
-/// between consecutive frames repaints all affected pixels (see
-/// `scene::shapes::record::text_paint_bbox_local`).
-///
-/// Sourced from [`crate::text::TEXT_SCALE_STEP`] so the cascade's
-/// inflation and the composer's snap stay locked in step.
-const TEXT_SCALE_STEP: f32 = crate::text::TEXT_SCALE_STEP;
 
 /// Snap the ancestor-transform component of a text run's scale to the
 /// additive 0.5% ladder. Identity is preserved exactly so non-zoom UIs

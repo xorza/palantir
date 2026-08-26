@@ -27,6 +27,7 @@
 
 use crate::common::expiry_wheel::ExpiryWheel;
 use crate::layout::types::align::HAlign;
+use crate::text::RENDERED_RUN_KEEP_FRAMES;
 use crate::text::cosmic::counters::CacheCounters;
 use crate::text::key::TextShapeKey;
 use crate::text::request::TextShapeRequest;
@@ -127,7 +128,7 @@ pub(super) const PROBATION_KEEP_FRAMES: u64 = 4;
 /// [`crate::text::RENDERED_RUN_KEEP_FRAMES`] under, beside
 /// [`PROBATION_KEEP_FRAMES`]. Why that number is a ceiling the encoded
 /// cache stays under rather than one it shares is stated there.
-pub(super) const PROTECTED_KEEP_FRAMES: u64 = crate::text::RENDERED_RUN_KEEP_FRAMES;
+pub(super) const PROTECTED_KEEP_FRAMES: u64 = RENDERED_RUN_KEEP_FRAMES;
 
 fn recycle_buffer(pool: &mut Vec<Buffer>, buffer: Buffer) {
     if pool.len() < RECYCLE_POOL_CAP {
