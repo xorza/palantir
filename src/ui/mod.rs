@@ -611,6 +611,7 @@ impl Ui {
     /// still standing here means the drain was skipped. Checked rather than
     /// cleared — a second clear would be a write that can never change
     /// anything, while the check fails if that ever stops holding.
+    #[cfg(feature = "winit")]
     pub(crate) fn set_window_facts(&mut self, facts: WindowFrameState) {
         debug_assert!(
             !self.window_requests.close_vetoed,
@@ -623,6 +624,7 @@ impl Ui {
     /// [`Self::vsync`] is truthful before any frame runs and a control
     /// writing its own value back does not reconfigure an explicitly
     /// configured present mode out from under the host.
+    #[cfg(feature = "winit")]
     #[inline]
     pub(crate) fn seed_vsync(&mut self, vsync: Vsync) {
         self.window_requests.levels.vsync = vsync;
@@ -1511,7 +1513,7 @@ pub(crate) mod internals {
     #[cfg(test)]
     use crate::ui::frame_runtime::FrameRuntime;
     use crate::widgets::theme::Theme;
-    #[cfg(test)]
+    #[cfg(all(test, feature = "winit"))]
     use crate::window::window_frame_state::WindowFrameState;
     #[cfg(test)]
     use crate::window::window_requests::WindowRequests;
@@ -1631,6 +1633,8 @@ pub(crate) mod internals {
             &self.frame_runtime
         }
 
+        /// Narrower again: only the winit host's own tests write here.
+        #[cfg(feature = "winit")]
         pub(crate) fn frame_runtime_mut(&mut self) -> &mut FrameRuntime {
             &mut self.frame_runtime
         }
@@ -1639,6 +1643,8 @@ pub(crate) mod internals {
             &self.window_requests
         }
 
+        /// Narrower again: only the winit host's own tests write here.
+        #[cfg(feature = "winit")]
         pub(crate) fn window_frame_mut(&mut self) -> &mut WindowFrameState {
             &mut self.window_frame
         }

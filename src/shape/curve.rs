@@ -2,7 +2,6 @@ use crate::primitives::approx::{noop_f32, vec2_approx_eq};
 use crate::primitives::brush::CurveBrush;
 use crate::scene::record_store::RecordStore;
 use crate::scene::shapes::lower;
-use crate::scene::shapes::lower::CurveStroke;
 use crate::scene::shapes::record::ShapeRecord;
 use crate::shape::sealed;
 use crate::shape::style::LineCap;
@@ -33,34 +32,44 @@ pub(crate) enum CurveGeometry {
     },
 }
 
+/// The stroke properties every curve geometry carries into lowering. They travel
+/// together from the setters to the lowering entry points, so the geometry is the
+/// only thing that varies between them.
+#[derive(Clone, Debug)]
+pub(crate) struct CurveStroke {
+    pub(crate) width: f32,
+    pub(crate) brush: CurveBrush,
+    pub(crate) cap: LineCap,
+}
+
 /// Stroked line, Bézier, or circular arc.
 #[derive(Clone, Debug)]
 pub struct CurveShape {
     pub(crate) geometry: CurveGeometry,
-    pub(crate) width: f32,
-    pub(crate) brush: CurveBrush,
-    pub(crate) cap: LineCap,
+    pub(crate) stroke: CurveStroke,
 }
 
 impl CurveShape {
     pub(super) fn new(geometry: CurveGeometry, width: f32) -> Self {
         Self {
             geometry,
-            width,
-            brush: CurveBrush::TRANSPARENT,
-            cap: LineCap::Butt,
+            stroke: CurveStroke {
+                width,
+                brush: CurveBrush::TRANSPARENT,
+                cap: LineCap::Butt,
+            },
         }
     }
 }
 
 shape_setters!(CurveShape {
-    brush: CurveBrush => brush,
-    cap: LineCap => cap,
+    brush: CurveBrush => stroke.brush,
+    cap: LineCap => stroke.cap,
 });
 
 impl sealed::LowerShape for CurveShape {
     fn is_noop(&self) -> bool {
-        if noop_f32(self.width) || self.brush.is_noop() {
+        if noop_f32(self.stroke.width) || self.stroke.brush.is_noop() {
             return true;
         }
         match &self.geometry {
@@ -76,13 +85,7 @@ impl sealed::LowerShape for CurveShape {
     }
 
     fn lower(self, store: &RecordStore) -> ShapeRecord {
-        let Self {
-            geometry,
-            width,
-            brush,
-            cap,
-        } = self;
-        let stroke = CurveStroke { width, brush, cap };
+        let Self { geometry, stroke } = self;
         match geometry {
             CurveGeometry::Line { a, b } => lower::line(store, a, b, stroke),
             CurveGeometry::CubicBezier { p0, p1, p2, p3 } => {
