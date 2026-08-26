@@ -157,9 +157,6 @@ pub(super) fn intrinsic(
 }
 
 #[cfg(test)]
-mod tests;
-
-#[cfg(test)]
 pub(crate) mod test_support {
     use crate::layout::grid::axis_scratch::{AxisScratch, HugRanges};
     use crate::layout::types::track::Track;
@@ -189,3 +186,6 @@ pub(crate) mod test_support {
         axis.sizes.clone()
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -34,9 +34,6 @@ pub(crate) mod toggle;
 pub(crate) mod tooltip;
 pub(crate) mod widget_look;
 
-#[cfg(test)]
-mod tests;
-
 use crate::layout::types::clip_mode::ClipMode;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
@@ -271,3 +268,6 @@ impl Theme {
 }
 
 palette_default!(Theme);
+
+#[cfg(test)]
+mod tests;

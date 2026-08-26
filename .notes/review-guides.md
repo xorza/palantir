@@ -14,24 +14,6 @@ Clean: directory modules, intra-crate re-exports, nested collections,
 
 ---
 
-## Gated modules that are not the last item
-
-The rule makes the test module the last item in the file it reaches into.
-
-- [ ] `src/scene/node/mod.rs:764` — `mod tests;` sits above the production
-      `checked_spacing` at `:766`.
-
-- [ ] `src/scene/shapes/mod.rs:7` — `mod tests;` is declared with the submodule
-      list at the top of the file, ahead of every `use` and every item.
-
-- [ ] `src/widgets/theme/mod.rs:38` — same shape.
-
-- [ ] `src/layout/grid/mod.rs:160` and `src/layout/stack/mod.rs:413` — `mod
-      tests;` precedes `mod test_support`, so the test module is second-last.
-
----
-
-
 ## `#[cfg]`-gated `use` in a production file
 
 The rule allows a mid-file gate only where it cannot move — a struct field, or

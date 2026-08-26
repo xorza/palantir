@@ -760,9 +760,6 @@ impl Configure for Node {
     }
 }
 
-#[cfg(test)]
-mod tests;
-
 /// Screen one spacing on the way in, and say which knob it came from.
 ///
 /// A NaN edge does not fail here — it poisons every extent derived from
@@ -779,3 +776,6 @@ fn checked_spacing(value: impl Into<Spacing>, knob: &str) -> Spacing {
     debug_assert!(!value.has_nan(), "NaN in {knob}: {value:?}");
     value
 }
+
+#[cfg(test)]
+mod tests;

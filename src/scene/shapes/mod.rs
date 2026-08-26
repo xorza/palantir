@@ -3,9 +3,6 @@ pub(crate) mod lower;
 pub(crate) mod paint;
 pub(crate) mod record;
 
-#[cfg(test)]
-mod tests;
-
 use crate::common::content_hash::ContentHash;
 use crate::primitives::color::{Color, ColorF16};
 use crate::primitives::image::{ImageDownsample, ImageFilter, ImageFit};
@@ -123,3 +120,6 @@ impl Shapes {
         self.push(record);
     }
 }
+
+#[cfg(test)]
+mod tests;
