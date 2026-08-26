@@ -2,7 +2,7 @@
 //! and [`Background`] chrome into the [`ShapeRecord`] / [`ChromeRow`]
 //! forms the tree stores. Bulk payload bytes (polyline points/colors,
 //! gradients) append to the window's [`RecordStore`]; functions that
-//! never touch the store (e.g. [`triangle`]) don't take it.
+//! never touch the store (e.g. [`solid_brush`]) don't take it.
 //!
 //! **What lives here is what touches the store.** A shape whose record
 //! is a repacking of its own fields builds it in its own `Lower` impl,
@@ -308,7 +308,7 @@ pub(crate) fn polyline(
     // (`Shapes::add` gates on it), so a degenerate slice here is a
     // caller bug, not an input case. Colour cardinality is the same kind
     // of contract, checked here beside it rather than from the no-op
-    // query it used to open — a query answers, it does not validate.
+    // query — a query answers, it does not validate.
     debug_assert!(
         points.len() >= 2,
         "polyline with < 2 points reached lowering"

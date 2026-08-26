@@ -11,7 +11,7 @@ use crate::primitives::widget_id::WidgetId;
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::hash_map::Entry;
 
-/// Per-`T` animation table. Lives inside [`AnimMap`] behind a boxed
+/// Per-`T` animation table. Lives inside [`AnimMap`](crate::animation::AnimMap) behind a boxed
 /// trait object keyed by `TypeId`; allocated on first
 /// `Ui::animate::<T>` call.
 #[derive(Debug)]

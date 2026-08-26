@@ -48,7 +48,7 @@ fn root_available(layer: Layer, slot: &RootSlot, surface: Rect) -> Size {
 /// Per-frame *output* is **not** held here: `run` threads it through an
 /// `out: &mut Layout`, so the finalized layout is owned by the caller
 /// and read by the encoder, cascade, hit-index, scroll-state refresh,
-/// and tests. Recursive work receives only the current [`LayerLayout`]
+/// and tests. Recursive work receives only the current [`LayerLayout`](crate::layout::LayerLayout)
 /// slot.
 #[derive(Debug)]
 pub(crate) struct LayoutEngine {

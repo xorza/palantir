@@ -3,7 +3,7 @@
 //!
 //! The cut is measured against the cached *unbounded* shape rather than
 //! by reshaping the whole string per width, which is what keeps a resize
-//! drag cheap — [`CosmicMeasure::measure_truncated`](crate::text::cosmic::CosmicMeasure::measure_truncated)
+//! drag cheap — [`CosmicMeasure::shape_truncated`](crate::text::cosmic::CosmicMeasure::shape_truncated)
 //! carries the measurement that settled it, including why delegating to
 //! cosmic's own `set_ellipsize` was written, benchmarked and reverted.
 
@@ -28,7 +28,7 @@ pub(crate) struct ClusterGlyph {
 ///
 /// The result is always strictly below `max_end`, so passing the previous
 /// answer retires at least one more cluster — that is what makes
-/// [`CosmicMeasure::measure_truncated`]'s back-off terminate. Pass
+/// [`CosmicMeasure::shape_truncated`](crate::text::cosmic::CosmicMeasure::shape_truncated)'s back-off terminate. Pass
 /// `usize::MAX` for an unbounded first cut.
 ///
 /// Glyphs arrive in visual order, so a glyph's `x` follows the reading

@@ -86,10 +86,10 @@ macro_rules! label_setter {
 /// - `slot(&self, theme)` — private: the caller's override, or the named
 ///   slot off the app theme.
 ///
-/// The slot path is written exactly once, in the invocation. Every themed
-/// widget used to name it twice — once to copy geometry scalars out before
-/// the `&mut Ui` reborrow, once in a fallback closure handed to the look
-/// resolver — where a typo in one half of the pair was silent.
+/// The slot path is written exactly once, in the invocation. Naming it twice
+/// — once to copy geometry scalars out before the `&mut Ui` reborrow, once in
+/// a fallback closure handed to the look resolver — makes a typo in one half
+/// of the pair silent.
 macro_rules! style_setter {
     ($lt:lifetime, $theme:ty, $($slot:ident).+ $(, $note:expr)* $(,)?) => {
         #[doc = concat!(

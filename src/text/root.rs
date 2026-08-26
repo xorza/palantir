@@ -46,8 +46,8 @@ impl TextRoot {
 ///
 /// Two types answer this question — [`TextRoot`] and the gated
 /// `TestMeasure` — off the same `intrinsic_min`, under the same contract.
-/// They had a message each, so a change to when the scan runs would have
-/// left one of them describing the old rule.
+/// One message rather than one each, so a change to when the scan runs
+/// cannot leave one of them describing a rule the other dropped.
 const WRAP_FLOOR_ERROR: &str = "the wrap floor was never scanned for this shape: TextWrap::floor_scan \
      and the policy asking for it have drifted apart";
 
@@ -81,8 +81,8 @@ pub(crate) mod test_support {
     impl TestMeasure {
         /// The scanned wrap floor, for tests that assert on it. Panics
         /// with [`WRAP_FLOOR_ERROR`] exactly as [`TextRoot::wrap_floor`]
-        /// does — same field, same contract, so a drift in one must not
-        /// leave the other explaining the old one.
+        /// does — same field, same contract, so a drift in one cannot
+        /// leave the other explaining a rule it dropped.
         pub(crate) fn wrap_floor(&self) -> f32 {
             self.intrinsic_min.expect(WRAP_FLOOR_ERROR)
         }

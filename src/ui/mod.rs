@@ -206,7 +206,7 @@ impl Ui {
     /// That handle is what a widget builder needs when a style reference
     /// has to stay valid across the `show(ui)` that consumes it — the
     /// `&mut Ui` reborrow would otherwise end a plain `&ui.theme()`
-    /// borrow, and the only way out used to be cloning the whole bundle:
+    /// borrow, and the alternative is cloning the whole bundle:
     ///
     /// ```ignore
     /// let theme = ui.theme().clone();
@@ -1540,7 +1540,7 @@ pub(crate) mod internals {
     }
 
     /// The two authored tables the benches read as well as the tests: the
-    /// tree walkers and measure-cache cases take [`Self::forest`], and the
+    /// tree walkers and measure-cache cases take `Self::forest`, and the
     /// cascade bench runs its engine over both.
     ///
     /// `bench` rather than the mod's own `internals`, which is wider than

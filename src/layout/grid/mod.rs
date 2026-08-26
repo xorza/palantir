@@ -32,7 +32,7 @@ use crate::layout::grid::measuring::measure_inner;
 /// resolves Hug tracks from span-1 children's desired sizes. Star tracks
 /// contribute 0 to the grid's content size — final star sizes only resolve
 /// in arrange. The full constraint solver is documented on
-/// [`AxisScratch::resolve_axis`].
+/// [`AxisScratch::resolve_axis`](crate::layout::grid::axis_scratch::AxisScratch::resolve_axis).
 ///
 /// Per-depth scratch (`AxisScratch` columns) lives in `grid.depth_stack`
 /// and gets clobbered by sibling grids between this measure and the

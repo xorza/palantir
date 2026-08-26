@@ -37,8 +37,8 @@ pub(crate) struct EntryRow {
     /// coordinates — `IDENTITY` when untransformed.
     pub(crate) transform: TranslateScale,
     /// Effective disabled (self OR any ancestor). Mirrors what
-    /// `cascaded_off` already used to null `sense`/`focusable`,
-    /// preserved here so per-widget responses can read it.
+    /// `cascaded_off` already nulls `sense`/`focusable` from,
+    /// kept here so per-widget responses can read it.
     pub(crate) disabled: bool,
 }
 

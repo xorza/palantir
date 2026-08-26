@@ -3,7 +3,7 @@
 //! An icon quad and a glyph quad are the same thing at the GPU level: a
 //! tinted, atlas-sourced rectangle drawn at exactly the raster's pixel
 //! dimensions. So this pass borrows the text pass's
-//! [`RasterQuad`](crate::renderer::backend::text::RasterQuad), its
+//! [`RasterQuad`], its
 //! shader, and its vertex layout verbatim, and differs only in where the
 //! pixels come from: cosmic and swash there, a baked SVG and resvg here.
 //!

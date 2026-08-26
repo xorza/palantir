@@ -375,9 +375,9 @@ impl ResponseState {
     /// [`Self::button`], mutably — the one way the router writes a
     /// button's slot.
     ///
-    /// Routing used to fill a `[ButtonState; COUNT]` indexed by
-    /// `PointerButton::idx()` and then land it with
-    /// `[left, right, middle] = buttons`, which made the enum's
+    /// Routing through a `[ButtonState; COUNT]` indexed by
+    /// `PointerButton::idx()` and landed with
+    /// `[left, right, middle] = buttons` would make the enum's
     /// declaration order a silent part of the wire: reorder two variants
     /// and every button routes to the wrong field, with nothing in the
     /// type system objecting. Going through this match means the two

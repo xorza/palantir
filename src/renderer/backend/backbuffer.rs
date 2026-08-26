@@ -1,7 +1,7 @@
 //! The off-screen colour target the backbuffer-copy path renders into.
 
 /// Persistent off-screen *color* target for the backbuffer-copy path: the
-/// frontend renders into it, then [`WgpuBackend::submit`] copies it onto the
+/// frontend renders into it, then [`WgpuBackend::submit`](crate::renderer::backend::WgpuBackend::submit) copies it onto the
 /// caller's surface. Keeping last frame's pixels in a texture *we* own is what
 /// lets `LoadOp::Load` work for incremental damage — a fresh or rotating
 /// surface texture can't be relied on. The direct-present path skips the

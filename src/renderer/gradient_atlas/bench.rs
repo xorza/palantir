@@ -31,7 +31,7 @@
 //!
 //! - `hit/*` — a fixed [`WORKING_SET`] of already-resident gradients,
 //!   re-registered the way a frame redrawing unchanged chrome does. The
-//!   steady-state path, and the one that used to degrade with load
+//!   steady-state path, and the one a probing table degrades on with load
 //!   factor (1.1 probes at 25 % occupancy, 11.6 at 99 %). The table is
 //!   filled to one row short of full either way, so clustering would be
 //!   at its worst.
@@ -58,7 +58,8 @@ use std::hint::black_box;
 use std::time::Duration;
 
 /// Capacities compared. 256 is the initial size; 2048 is three
-/// doublings up, which the old probe made 8× more expensive per miss.
+/// doublings up, which a probe walking every row makes 8× more expensive
+/// per miss.
 const CAPACITIES: [u32; 2] = [256, 2048];
 
 /// Resident gradients the `hit` arms cycle through. Fixed across

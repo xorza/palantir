@@ -411,7 +411,7 @@ impl LayerWalk<'_> {
     /// relative paint order inverted since last frame.
     ///
     /// `O(rows²)` pair enumeration, reached only behind
-    /// [`has_order_inversion`] on the rare frame an order actually
+    /// [`RowMatcher::has_order_inversion`](crate::scene::damage::row_matcher::RowMatcher::has_order_inversion) on the rare frame an order actually
     /// flipped. Rows that merely shifted because a sibling was added or
     /// removed keep their relative order and contribute nothing.
     /// [`push_screen`] drops degenerate results — a zero-size extent

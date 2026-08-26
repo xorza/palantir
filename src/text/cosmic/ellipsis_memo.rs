@@ -5,7 +5,7 @@ use crate::text::{FontFamily, FontWeight};
 /// Memoized trailing advance of "…" for one face.
 ///
 /// `Default` only to satisfy `tinyvec`'s `Array` bound — it fills the
-/// unused tail of [`CosmicMeasure::ellipsis`], which `len` keeps out of
+/// unused tail of [`CosmicMeasure::ellipsis_advance`](crate::text::cosmic::CosmicMeasure::ellipsis_advance), which `len` keeps out of
 /// every read. A zeroed memo could not match a live face anyway:
 /// `quantize_metric` floors `size_q` at 1.
 #[derive(Clone, Copy, Debug, Default)]

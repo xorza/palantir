@@ -29,7 +29,7 @@ pub(super) struct GeometryInput<'a> {
 }
 
 /// The layout plus everything only the shape probe could answer. Paint
-/// reads this; nothing here exists before [`resolve_geometry`] runs,
+/// reads this; nothing here exists before [`TextGeometry::resolve`](crate::widgets::text_edit::text_geometry::TextGeometry::resolve) runs,
 /// which is why it is a separate type rather than zeroed fields on
 /// [`TextLayout`].
 #[derive(Clone, Copy, Debug)]

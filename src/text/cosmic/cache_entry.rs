@@ -41,7 +41,7 @@ pub(super) struct CacheEntry {
     /// Zero for every unbounded buffer, so only a wrapped, width-bounded
     /// run can carry a non-zero value.
     pub(super) left: f32,
-    /// Last frame on which this entry is kept; [`CosmicMeasure::end_frame`]
+    /// Last frame on which this entry is kept; [`CosmicMeasure::end_frame`](crate::text::cosmic::CosmicMeasure::end_frame)
     /// drops it once the clock passes this. Insertion sets it one
     /// probation window out and every lookup pushes it a protected window
     /// out, so the two-tier policy needs no separate "has been reused"
@@ -49,7 +49,7 @@ pub(super) struct CacheEntry {
     pub(super) keep_until: u64,
     /// Serial of this entry's live expiry ticket. A ticket firing under
     /// any other one was supplanted by a later
-    /// [`CosmicMeasure::supersede`] and dies in the sweep instead of
+    /// [`CosmicMeasure::supersede`](crate::text::cosmic::CosmicMeasure::supersede) and dies in the sweep instead of
     /// re-filing itself — without which a run that is demoted and
     /// promoted each frame accumulates one permanent ticket per cycle.
     pub(super) ticket_seq: TicketSeq,
@@ -58,8 +58,8 @@ pub(super) struct CacheEntry {
 impl CacheEntry {
     /// The cached unbounded shape a truncating fit cuts from.
     ///
-    /// [`CosmicMeasure::measure_truncated`] calls
-    /// [`CosmicMeasure::ensure_buffer`] on this key before reaching for it,
+    /// [`CosmicMeasure::shape_truncated`](crate::text::cosmic::CosmicMeasure::shape_truncated) calls
+    /// [`CosmicMeasure::ensure_buffer`](crate::text::cosmic::CosmicMeasure::ensure_buffer) on this key before reaching for it,
     /// and re-reads it once per back-off round because the shaping in
     /// between needs `&mut self`, so the borrow cannot be held across the
     /// loop.

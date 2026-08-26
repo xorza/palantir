@@ -87,9 +87,9 @@ impl PaintInput<'_> {
                 }
 
                 if let Some(caret) = self.caret {
-                    // Block-local, and unclamped: what the clamp used to hold the caret
-                    // inside was the *widget's* box, which is the one thing here that is
-                    // still a frame stale. The block carries the caret with it now, and
+                    // Block-local, and unclamped: a clamp here would hold the caret
+                    // inside the *widget's* box, which is the one thing here that is
+                    // still a frame stale. The block carries the caret with it, and
                     // the field's own clip is what keeps it from painting outside.
                     let rect = Rect::new(
                         caret.pos.x,
@@ -135,7 +135,7 @@ impl PaintInput<'_> {
     /// The caret's room is added rather than deflated out of the rect the block is
     /// aligned in. Same arithmetic, better placed: the caret at the end of a line
     /// falls *inside* the block it belongs to instead of just past it. Single-line
-    /// only, matching [`resolve_geometry`] — a wrapped block reserves nothing,
+    /// only, matching [`TextGeometry::resolve`](crate::widgets::text_edit::text_geometry::TextGeometry::resolve) — a wrapped block reserves nothing,
     /// because its caret has a next line to fall to.
     ///
     /// The scroll rides as a transform rather than being folded into every shape's

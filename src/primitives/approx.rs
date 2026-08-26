@@ -260,7 +260,7 @@ mod tests {
             // The convenience constructors pre-cache their own bbox
             // instead of routing through `Mesh::vertex`, so they need
             // covering separately — a bare fold there is how a NaN
-            // vertex used to reach the shader with a finite box.
+            // vertex reaches the shader with a finite box.
             (
                 "Mesh::filled_triangle/is_noop",
                 Mesh::filled_triangle(Vec2::new(N, 0.0), Vec2::ZERO, Vec2::X, Color::WHITE)

@@ -489,9 +489,9 @@ mod hot_struct_sizes {
     }
 
     /// Expected `size_of::<Ui>()`. One number for every feature set: the
-    /// sole feature-conditional footprint a `Ui` used to carry was
-    /// `LayoutCounters`' `bench`-only `PhaseTimings`, and that rode
-    /// `LayoutEngine` into [`FrameEngines`](crate::ui::frame_engines).
+    /// one feature-conditional footprint in reach, `LayoutCounters`'
+    /// `bench`-only `PhaseTimings`, rides `LayoutEngine` into
+    /// [`FrameEngines`](crate::ui::frame_engines) instead.
     const UI_SIZE: usize = 5256;
 
     /// Expected `size_of::<FrameEngines>()`. Two numbers because
@@ -512,9 +512,9 @@ mod hot_struct_sizes {
         // One instance per window, not per frame — pinned because every
         // pass walks `&mut Ui` to reach `forest` / `layout` / `anim` /
         // `input` / `cascade`, so anything parked inline between them
-        // costs locality on all of them. `Theme` used to be: at 8904 B
-        // it made `Ui` 15656 B, and moving it behind an `Rc` (halving
-        // `Ui`) measured -6% on `frame/cached_cpu` and -6% on
+        // costs locality on all of them. `Theme` is the measured case:
+        // inline at 8904 B it makes `Ui` 15656 B, and holding it behind
+        // an `Rc` (halving `Ui`) measured -6% on `frame/cached_cpu` and -6% on
         // `frame/partial_cpu`. That is the regression this number
         // exists to catch; a new field is fine, a new multi-KB blob is
         // the thing to argue about.

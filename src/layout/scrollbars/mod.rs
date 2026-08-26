@@ -95,9 +95,9 @@ impl ScrollbarsDef {
 /// and the wheel legitimately disagree about the offset's lower bound.
 /// What is *not* legitimate is each interaction path re-deriving the
 /// bar's half by hand: the thumb drag, the track page, and the thumb's
-/// own position each used to spell the `0.0` end and the `max_off` end
-/// themselves, which is how a drag anchored in the wheel's domain and
-/// clamped in the bar's went unnoticed.
+/// own position each spelling the `0.0` end and the `max_off` end for
+/// itself is how a drag anchored in the wheel's domain and clamped in the
+/// bar's goes unnoticed.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct BarDomain {
     max_off: f32,

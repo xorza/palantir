@@ -19,7 +19,7 @@ use crate::scene::tree::Tree;
 pub(super) const NO_ARRANGE_SRC: u32 = u32::MAX;
 
 /// Per-frame intermediate state: every field is reset / overwritten at
-/// the top of [`LayoutEngine::run`] and exists only for the duration of
+/// the top of [`LayoutEngine::run`](crate::layout::engine::LayoutEngine::run) and exists only for the duration of
 /// the layout pass. Capacity is retained across frames so steady state
 /// is alloc-free.
 ///
@@ -32,7 +32,7 @@ pub(super) const NO_ARRANGE_SRC: u32 = u32::MAX;
 ///   per node (one per `(axis, req)` combination). NaN means "not yet
 ///   computed".
 /// - `available_q` — quantized offer per node, the key
-///   [`MeasureCache`] records a subtree under.
+///   [`MeasureCache`](crate::layout::cache::MeasureCache) records a subtree under.
 /// - `arrange_src` — snapshot arena base of each subtree measure
 ///   restored from the cache this frame.
 /// - `stack_fill` — Fill-freeze scratch, same depth-shared shape as
@@ -44,7 +44,7 @@ pub(super) const NO_ARRANGE_SRC: u32 = u32::MAX;
 ///
 /// 1. **Drained on measure exit** — `wrap.pool`, `stack_fill.pool`,
 ///    `grid.depth_stack`, `grid.track_aggregator`. Driver stacks:
-///    pushed on enter, truncated on exit, so a [`MeasureCache`] hit that
+///    pushed on enter, truncated on exit, so a [`MeasureCache`](crate::layout::cache::MeasureCache) hit that
 ///    skips a subtree's measure is invisible to them — they were never
 ///    going to carry state out. (`stack_fill.pool` and
 ///    `grid.depth_stack` are used by arrange too, but rebuild their own
@@ -57,7 +57,7 @@ pub(super) const NO_ARRANGE_SRC: u32 = u32::MAX;
 ///    likewise node-indexed and restored into the current layout
 ///    result for the next record pass. `grid.track_state` is
 ///    indexed per-grid (not per-node) so the cache hit path has to
-///    explicitly call [`restore_after_cache_hit`] to splat
+///    explicitly call [`Self::restore_after_cache_hit`] to splat
 ///    [`CachedSubtree::tracks`] back into the live pool — without
 ///    that, arrange reads zeros and every cell collapses to (0, 0).
 ///
@@ -65,9 +65,9 @@ pub(super) const NO_ARRANGE_SRC: u32 = u32::MAX;
 ///    `intrinsics` and `available_q`. Not stacks: `resize_for` fills
 ///    them per node and nothing truncates them. They look drainable
 ///    because arrange never queries them, but they *do* carry state out
-///    — [`MeasureCache::capture_tree`] reads both after arrange, so on a
+///    — [`MeasureCache::capture_tree`](crate::layout::cache::MeasureCache::capture_tree) reads both after arrange, so on a
 ///    cache-hit subtree (whose slots measure never filled) they have to
-///    be splatted back by [`restore_after_cache_hit`] first or the next
+///    be splatted back by [`Self::restore_after_cache_hit`] first or the next
 ///    snapshot records NaN for `intrinsics` and `INVALID_AVAILABLE` for
 ///    `available_q` — which silently makes that subtree uncacheable from
 ///    then on.
@@ -75,7 +75,7 @@ pub(super) const NO_ARRANGE_SRC: u32 = u32::MAX;
 /// **Adding a new field to category (2)** takes three coordinated
 /// edits: a column in the whole-tree snapshot, a [`CachedSubtree`]
 /// field carrying it through the cache, and a restore branch inside
-/// [`restore_after_cache_hit`]. All four sites are compiler-enforced —
+/// [`Self::restore_after_cache_hit`]. All four sites are compiler-enforced —
 /// `capture_tree` and `restore_after_cache_hit` destructure
 /// exhaustively, the other two are struct literals — so a missed edit
 /// is a build error, not a silent arrange corruption. The reset
@@ -105,7 +105,7 @@ pub(crate) struct LayoutScratch {
     pub(super) available_q: Vec<AvailableKey>,
     /// Whether this frame is rebuilding the measure snapshot rather than
     /// reusing the previous one. Decided once at the top of
-    /// [`LayoutEngine::run`](crate::layout::engine::LayoutEngine::run) and
+    /// [`LayoutEngine::run`](crate::layout::engine::LayoutEngine::run)(crate::layout::engine::LayoutEngine::run) and
     /// read by the capture and cache-restore paths — per-frame state, so
     /// it lives here with the rest of the frame's scratch rather than on
     /// the persistent engine.

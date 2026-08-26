@@ -102,7 +102,7 @@ pub(crate) struct InputState {
     /// [`Self::finish_record`] so `Ui::frame` can re-record the pass.
     frame_had_action: bool,
     /// Strongest input seen since the last frame, thresholded by
-    /// [`InputPolicy`](crate::input::policy::InputPolicy) in
+    /// [`InputPolicy`] in
     /// `FrameRuntime::take_frame_plan`. Cleared with the per-frame event
     /// queues.
     pub(crate) signal_since_last_frame: InputSignal,
@@ -165,8 +165,7 @@ impl InputState {
     /// Resolution happens **here**, once, rather than live per read.
     /// Focus is already committed by this point, and a path fixed for
     /// the whole pass is what keeps grants independent of where in the
-    /// pass anything recorded — the same argument the claim resolution
-    /// it replaced made for deferring to end-of-pass.
+    /// pass anything recorded.
     pub(crate) fn begin_record(&mut self, cascade: &Cascade) {
         self.subs.clear();
         self.scopes.resolve(self.focused, cascade);

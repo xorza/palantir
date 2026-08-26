@@ -14,7 +14,7 @@ use crate::widgets::theme::separator::SeparatorTheme;
 ///
 /// Sized `Hug + Stretch` on its long axis so it fills the parent's cross
 /// extent without leaking an infinite size up to a `Hug` ancestor. An
-/// explicit [`Configure::size`](crate::Configure::size) replaces that default entirely — the
+/// explicit [`Configure::size`] replaces that default entirely — the
 /// given size describes the rule's box and `thickness` is ignored.
 /// Visuals come from [`crate::SeparatorTheme`] (theme slot `separator`).
 #[derive(Debug)]

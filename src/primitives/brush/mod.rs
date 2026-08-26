@@ -198,8 +198,8 @@ impl Animatable for Brush {
     fn lerp(a: Self, b: Self, t: f32) -> Self {
         // Match on `(&a, &b)` instead of `(a, b)` so the gradient
         // fallback can still hand back one of the originals without
-        // re-`Clone` — the tuple-by-value pattern used to work via
-        // `Brush: Copy`, but the trait now requires only `Clone`.
+        // re-`Clone` — the tuple-by-value pattern needs `Brush: Copy`,
+        // and the trait requires only `Clone`.
         match (&a, &b) {
             (Brush::Solid(x), Brush::Solid(y)) => Brush::Solid(Color::lerp(*x, *y, t)),
             // Gradient morphs snap until interpolation between gradient payloads exists.

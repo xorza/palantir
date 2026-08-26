@@ -41,8 +41,8 @@ use std::rc::Rc;
 /// ```
 ///
 /// Defaults to filling its parent on both axes (a viewport has no
-/// intrinsic size); override sizing / id via [`Configure`](crate::Configure). Doesn't sense
-/// by default — opt in with [`Configure::sense`](crate::Configure::sense) to drive interaction
+/// intrinsic size); override sizing / id via [`Configure`]. Doesn't sense
+/// by default — opt in with [`Configure::sense`] to drive interaction
 /// (drag / click) from the returned [`Response`].
 #[derive(Debug)]
 pub struct GpuView {

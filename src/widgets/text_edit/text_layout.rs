@@ -24,7 +24,7 @@ pub(super) struct LayoutInput {
 ///
 /// The input pass reads this — it hit-tests a click against the layout
 /// the user was looking at, which is last frame's. Everything the probe
-/// itself produces lands in [`TextGeometry`] instead, so neither type
+/// itself produces lands in [`TextGeometry`](crate::widgets::text_edit::text_geometry::TextGeometry) instead, so neither type
 /// ever holds a field that isn't answered yet.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct TextLayout {
