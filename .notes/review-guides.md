@@ -62,27 +62,6 @@ of the file or 150 lines. The crate splits 57 files and keeps 95 inline. These
 
 ---
 
-## `impl` blocks away from their type's file
-
-The rule puts every `impl` — inherent, local trait, foreign trait — in the file
-that declares the type. Three modules hold impls for types declared elsewhere.
-
-- [ ] `src/primitives/brush/gradient/stops/serde.rs:9`, `:18`, `:34`, `:40` —
-      `Serialize` and `Deserialize` for `Stop` and `GradientStops`, both
-      declared in `stops/mod.rs`. `src/primitives/serde.rs:8` states the
-      opposite policy in its own module doc: "the `Serialize` /
-      `Deserialize` impls that drive it live there too". `Corners` and
-      `Spacing` follow that; `Stop` and `GradientStops` do not.
-
-- [ ] `src/widgets/theme/serde.rs:15` — `TryFrom<UncheckedTextStyle> for
-      TextStyle`. `TextStyle` is declared in `text_style.rs`, and
-      `UncheckedTextStyle` (`:7`) is a satellite of it, so both belong there.
-
-- [ ] `src/renderer/backend/schedule/mod.rs:457`, `:462` — `PerGroupBatch` for
-      `TextBatch` and `GroupBatch`. Both types are declared in
-      `src/renderer/render_buffer/{text_batch,group_batch}.rs`.
-
----
 
 ## Gated modules that are not the last item
 
@@ -101,35 +80,6 @@ The rule makes the test module the last item in the file it reaches into.
 
 ---
 
-## Inline `crate::…` paths in expressions
-
-The rule forbids them: add a `use`, and keep a free function
-namespace-qualified through its module rather than its name.
-
-- [ ] `src/text/shaper.rs:139` and `:154` — `crate::text::mono::root(…)` and
-      `crate::text::mono::resolve(…)`.
-
-- [ ] `src/text/probe/mod.rs:113` and `:133` —
-      `crate::text::mono::single_line_caret_x(…)` and
-      `crate::text::mono::nearest_byte(…)`.
-
-- [ ] `src/text/cosmic/mod.rs:130` — `crate::text::RENDERED_RUN_KEEP_FRAMES` in
-      a `const` initializer.
-
-- [ ] `src/renderer/frontend/composer/geometry.rs:137` —
-      `crate::text::TEXT_SCALE_STEP`.
-
-- [ ] `src/renderer/backend/text/encode/cache.rs:272` —
-      `crate::text::RENDERED_RUN_KEEP_FRAMES` inside a `const _` assertion.
-
-- [ ] `src/host/winit/mod.rs:166` — the `window` builder spells
-      `crate::window::window_config::WindowConfig` in its parameter list.
-
-`src/bench/driver.rs:57`–`:100` holds a further 20, and they read as a
-deliberate table: one `use` per bench module would cost 20 imports to name each
-path once. Worth a decision either way rather than an accident.
-
----
 
 ## `#[cfg]`-gated `use` in a production file
 

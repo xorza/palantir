@@ -1,3 +1,4 @@
+use crate::primitives::approx::EPS;
 use crate::primitives::half_simd::*;
 
 /// The SWAR lane compare, checked **exhaustively** against the
@@ -13,7 +14,7 @@ use crate::primitives::half_simd::*;
 #[test]
 fn any_lane_above_matches_the_scalar_compare_for_every_pattern() {
     const F16_INFINITY: u16 = 0x7C00;
-    const EPS_BITS: u16 = f16::from_f32_const(crate::primitives::approx::EPS).to_bits();
+    const EPS_BITS: u16 = f16::from_f32_const(EPS).to_bits();
 
     for threshold in [F16_INFINITY, EPS_BITS, 0, 0x7FFF] {
         for bits in 0..=u16::MAX {

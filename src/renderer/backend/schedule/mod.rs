@@ -16,7 +16,7 @@ use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::group_batch::GroupBatch;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
-use crate::renderer::render_buffer::text_batch::TextBatch;
+use crate::renderer::render_buffer::per_group_batch::PerGroupBatch;
 
 /// Per-group and per-text-batch spans into the staged mask-quad buffer.
 #[derive(Debug, Default)]
@@ -438,33 +438,6 @@ struct ScheduleCursors {
     higher: [usize; PaintTier::COUNT],
 }
 
-/// A batch that anchors to a single draw group via its `last_group`
-/// index.
-///
-/// **One generic helper, not a family.** Only [`pending_at`] is written
-/// over this trait; the anchoring rule is the one thing text batches and
-/// higher-kind batches genuinely share. [`advance_past_skipped`] is
-/// concrete because only higher-kind cursors skip, and
-/// [`drain_text_batches`] drains on a *range* predicate rather than
-/// [`drain_group_batches`]'s equality one because every text batch also
-/// needs its own bounds-union scissor, a damage intersection, an
-/// empty-skip and its own mask chain. That is different work, not a
-/// missed reuse.
-trait PerGroupBatch {
-    fn last_group(&self) -> usize;
-}
-
-impl PerGroupBatch for TextBatch {
-    fn last_group(&self) -> usize {
-        self.last_group as usize
-    }
-}
-impl PerGroupBatch for GroupBatch {
-    fn last_group(&self) -> usize {
-        self.last_group as usize
-    }
-}
-
 /// Advance `cursor` past every batch whose `last_group` falls before
 /// group `before` — they anchored in damage-skipped groups and don't
 /// paint this pass.
@@ -477,9 +450,14 @@ fn advance_past_skipped(batches: &[GroupBatch], cursor: &mut usize, before: usiz
 /// `true` if the batch at `cursor` anchors to group `group` — i.e. this
 /// group has a pending batch of that kind to emit.
 ///
-/// The one helper that is genuinely generic: text batches and
-/// higher-kind batches are different types that share this anchoring
-/// rule, which is what [`PerGroupBatch`] exists for.
+/// **One generic helper, not a family.** This is the only one written
+/// over [`PerGroupBatch`], because anchoring is the only rule the two
+/// batch kinds share. [`advance_past_skipped`] is concrete because only
+/// higher-kind cursors skip, and [`drain_text_batches`] drains on a
+/// *range* predicate rather than [`drain_group_batches`]'s equality one
+/// because every text batch also needs its own bounds-union scissor, a
+/// damage intersection, an empty-skip and its own mask chain. That is
+/// different work, not a missed reuse.
 fn pending_at<B: PerGroupBatch>(batches: &[B], cursor: usize, group: usize) -> bool {
     cursor < batches.len() && batches[cursor].last_group() == group
 }

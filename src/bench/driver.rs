@@ -2,6 +2,7 @@
 //! crate has.
 
 use crate::bench::{Arms, Run};
+use crate::{animation, input, layout, primitives, renderer, scene, text, ui, widgets};
 use criterion::Criterion;
 
 /// One criterion driver, as [`run`](super::run) sees it.
@@ -54,18 +55,15 @@ pub(super) struct Driver {
 ///
 /// Sorted by `name` so `--list-drivers` and `--help` read in order.
 pub(super) const DRIVERS: &[Driver] = &[
-    driver("animation", crate::animation::bench::bench),
-    driver("caches", crate::layout::cache::bench::bench),
-    driver("cascade", crate::scene::cascade::bench::bench),
-    driver(
-        "composer",
-        crate::renderer::frontend::composer::bench::bench,
-    ),
+    driver("animation", animation::bench::bench),
+    driver("caches", layout::cache::bench::bench),
+    driver("cascade", scene::cascade::bench::bench),
+    driver("composer", renderer::frontend::composer::bench::bench),
     gpu_driver(
         "curve_pipeline",
-        crate::renderer::backend::curve_pipeline::bench::bench,
+        renderer::backend::curve_pipeline::bench::bench,
     ),
-    driver("damage", crate::scene::damage::bench::bench),
+    driver("damage", scene::damage::bench::bench),
     // The one row with both arms, and the reason `run` takes `Arms` at
     // all: `Cpu` executes zero GPU code while `Gpu` requests an adapter,
     // so it has to be told which was asked for. `opt_in` because the
@@ -74,30 +72,27 @@ pub(super) const DRIVERS: &[Driver] = &[
         name: "frame",
         arms: Arms::Both,
         opt_in: true,
-        config: crate::ui::bench::config,
-        run: crate::ui::bench::bench,
+        config: ui::bench::config,
+        run: ui::bench::bench,
     },
-    driver("gradient", crate::renderer::frontend::bench::bench),
-    driver(
-        "gradient_atlas",
-        crate::renderer::gradient_atlas::bench::bench,
-    ),
-    driver("half_simd", crate::primitives::half_simd::bench::bench),
+    driver("gradient", renderer::frontend::bench::bench),
+    driver("gradient_atlas", renderer::gradient_atlas::bench::bench),
+    driver("half_simd", primitives::half_simd::bench::bench),
     gpu_driver(
         "image_pipeline",
-        crate::renderer::backend::image_pipeline::bench::bench,
+        renderer::backend::image_pipeline::bench::bench,
     ),
-    driver("input", crate::input::bench::bench),
-    driver("paint_anims", crate::scene::tree::paint_anims::bench::bench),
-    gpu_driver("record_pass", crate::renderer::backend::bench::bench),
-    driver("schedule", crate::renderer::backend::schedule::bench::bench),
-    gpu_driver("text_atlas", crate::renderer::backend::text::bench::bench),
-    driver("text_edit", crate::widgets::text_edit::bench::bench),
+    driver("input", input::bench::bench),
+    driver("paint_anims", scene::tree::paint_anims::bench::bench),
+    gpu_driver("record_pass", renderer::backend::bench::bench),
+    driver("schedule", renderer::backend::schedule::bench::bench),
+    gpu_driver("text_atlas", renderer::backend::text::bench::bench),
+    driver("text_edit", widgets::text_edit::bench::bench),
     driver(
         "text_grid",
-        crate::renderer::frontend::composer::text_grid::bench::bench,
+        renderer::frontend::composer::text_grid::bench::bench,
     ),
-    driver("text_shape", crate::text::bench::bench),
+    driver("text_shape", text::bench::bench),
 ];
 
 /// A CPU driver on criterion's default configuration — the common row.

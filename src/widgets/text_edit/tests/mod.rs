@@ -42,6 +42,8 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
+use crate::scene::shapes::record::ShapeRecord;
+use crate::scene::tree::node_id::NodeId;
 use crate::ui::harness::UiHarness;
 use crate::widgets::panel::Panel;
 use crate::widgets::text_edit::TextEdit;
@@ -54,10 +56,7 @@ use glam::{UVec2, Vec2};
 /// asking "what did this widget draw" has to look through the subtree rather
 /// than at one node. Written once here because several tests below hand the
 /// same closure both kinds.
-fn painted_shapes(
-    ui: &Ui,
-    node: crate::scene::tree::node_id::NodeId,
-) -> impl Iterator<Item = &crate::scene::shapes::record::ShapeRecord> + '_ {
+fn painted_shapes(ui: &Ui, node: NodeId) -> impl Iterator<Item = &ShapeRecord> + '_ {
     let tree = ui.tree(Layer::Main);
     std::iter::once(node)
         .chain(tree.children(node).map(|child| child.id))
@@ -71,10 +70,7 @@ fn painted_shapes(
 /// text alignment, so that the layout engine resolves it against the rect it
 /// has just arranged rather than the widget guessing from last frame's. See
 /// [`PaintInput::record`](crate::widgets::text_edit::paint_input::PaintInput::record).
-fn block_of(
-    ui: &Ui,
-    field: crate::scene::tree::node_id::NodeId,
-) -> crate::scene::tree::node_id::NodeId {
+fn block_of(ui: &Ui, field: NodeId) -> NodeId {
     ui.tree(Layer::Main)
         .children(field)
         .next()

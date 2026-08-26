@@ -19,6 +19,7 @@ use crate::scene::tree::node_id::NodeId;
 use crate::shape::rect::RectKind;
 use crate::ui::harness::UiHarness;
 use crate::widgets::text_edit::tests::*;
+use crate::widgets::theme::text_style::LINE_HEIGHT_MULT;
 
 const EDIT_W: f32 = 280.0;
 const EDIT_H: f32 = 40.0;
@@ -309,7 +310,7 @@ fn empty_focused_caret_vcenters_against_one_line() {
     let node = frame(&mut h, &mut buf, None, None);
     let (_, caret_origin) = shape_origins(&h.ui, node);
     let c = caret_origin.expect("focused empty editor still paints caret");
-    let authored_line_height = 16.0 * crate::widgets::theme::text_style::LINE_HEIGHT_MULT;
+    let authored_line_height = 16.0 * LINE_HEIGHT_MULT;
     let dy = (INNER_H - authored_line_height) * 0.5;
     assert!((c.x - PAD_L).abs() < 1e-3, "caret.x = {}", c.x);
     assert!((c.y - (PAD_T + dy)).abs() < 1e-3, "caret.y = {}", c.y);

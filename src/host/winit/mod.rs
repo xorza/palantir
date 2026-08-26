@@ -82,6 +82,7 @@ use crate::host::winit::runtime::WinitRuntime;
 use crate::host::winit::window::FramePresent;
 use crate::ui::Ui;
 use crate::window::vsync::Vsync;
+use crate::window::window_config::WindowConfig;
 use crate::window::window_token::WindowToken;
 
 type AppFactory<T> = Box<dyn FnOnce(&mut Ui, HostHandle<T>) -> T>;
@@ -163,7 +164,7 @@ where
     }
 
     /// Set the bootstrap window's full configuration.
-    pub fn window(mut self, window: crate::window::window_config::WindowConfig) -> Self {
+    pub fn window(mut self, window: WindowConfig) -> Self {
         self.config.window = window;
         self
     }

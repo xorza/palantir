@@ -9,6 +9,7 @@ use crate::renderer::frontend::Frontend;
 use crate::renderer::texture_limit::TextureLimit;
 use crate::scene::layer::Layer;
 use crate::scene::node::Configure;
+use crate::text::RENDERED_RUN_KEEP_FRAMES;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::wrap::TextWrap;
 use crate::ui::harness::UiHarness;
@@ -303,7 +304,7 @@ fn paint_only_frames_advance_the_shared_text_clock() {
     // buffer was promoted to the protected window when it was recorded,
     // and no paint-only frame looks it up again.
     let before = shaper.cache_counts();
-    for step in 0..=crate::text::RENDERED_RUN_KEEP_FRAMES {
+    for step in 0..=RENDERED_RUN_KEEP_FRAMES {
         let report = ui
             .at(at)
             .frame(|_| panic!("PaintOnly must not re-record the tree"));

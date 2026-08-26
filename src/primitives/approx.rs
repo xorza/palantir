@@ -175,7 +175,7 @@ mod tests {
         use crate::primitives::shadow::Shadow;
         use crate::primitives::size::Size;
         use crate::primitives::stroke::Stroke;
-        use crate::scene::shapes::paint::ShapeStroke;
+        use crate::scene::shapes::paint::{LoweredShadow, ShapeStroke};
         use glam::Vec2;
 
         const N: f32 = f32::NAN;
@@ -288,7 +288,7 @@ mod tests {
             ),
             (
                 "LoweredShadow::is_noop/blur",
-                crate::scene::shapes::paint::LoweredShadow::from(Shadow {
+                LoweredShadow::from(Shadow {
                     color: Color::WHITE,
                     blur: N,
                     ..Shadow::default()
@@ -297,7 +297,7 @@ mod tests {
             ),
             (
                 "LoweredShadow::is_noop/offset",
-                crate::scene::shapes::paint::LoweredShadow::from(Shadow {
+                LoweredShadow::from(Shadow {
                     color: Color::WHITE,
                     offset: Vec2::new(N, 0.0),
                     ..Shadow::default()

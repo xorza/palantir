@@ -3,6 +3,7 @@
 
 use crate::Ui;
 use crate::layout::cache::{ArenaSnapshot, AvailableKey};
+use crate::layout::counters::ReplayCounts;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::span::Span;
@@ -137,7 +138,7 @@ fn unchanged_subtree_hits_and_replays_exact_output() {
     // assertion says nothing about which path ran.
     assert_eq!(
         h.engines.layout.scratch.counters.arrange_replays(),
-        crate::layout::counters::ReplayCounts {
+        ReplayCounts {
             copied: 1,
             translated: 0,
         },

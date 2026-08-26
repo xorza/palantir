@@ -56,12 +56,12 @@ use crate::renderer::backend::text::encode::test_support::{ChurnBench, SweepBenc
 use crate::renderer::backend::viewport::ViewportPush;
 use crate::renderer::render_buffer::text::TextDrawRow;
 use crate::scene::record_store::RecordStore;
-use crate::text::RENDERED_RUN_KEEP_FRAMES;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::run::TextRun;
 use crate::text::shaped_ref::ShapedTextRef;
 use crate::text::shaper::TextShaper;
 use crate::text::wrap::TextWrap;
+use crate::text::{RENDERED_RUN_KEEP_FRAMES, TEXT_SCALE_STEP};
 use criterion::{BenchmarkId, Criterion, Throughput};
 use glam::{UVec2, Vec2};
 use std::hint::black_box;
@@ -69,11 +69,6 @@ use wgpu::util::StagingBelt;
 
 const PHYSICAL: UVec2 = UVec2::new(1280, 800);
 const BASE_SCALE: f32 = 2.0;
-/// Matches `crate::text::TEXT_SCALE_STEP`, the ladder the composer
-/// actually snaps a zoom to. A coarser step — 0.025, 5x coarser — would
-/// mint a fifth of the rungs over a given zoom range, so the churn arms
-/// would model a gentler gesture than any real one.
-const TEXT_SCALE_STEP: f32 = crate::text::TEXT_SCALE_STEP;
 const WARM_SCALE_CYCLE: u32 = 5;
 
 /// Rungs the churn arms cycle through.

@@ -73,17 +73,26 @@ pub(crate) mod shaper;
 pub(crate) mod system;
 pub(crate) mod wrap;
 
-/// Additive step on the text-scale ladder used by the composer to snap
-/// continuous zoom scales to discrete glyph-cache keys (`composer::
-/// snap_text_scale`). The cascade computes text damage rects at the
-/// unscaled cascade scale; the composer paints glyphs at the snapped
-/// scale — between rungs the painted block can be up to
-/// `TEXT_SCALE_STEP / 2` wider than the damage rect on each axis.
-/// [`crate::scene::shapes::record::text_paint_bbox_local`] inflates
-/// by this fraction to keep damage covering the worst-case painted
-/// extent.
+/// Additive step on the text-scale ladder. The composer snaps a
+/// continuous zoom scale to a rung of this ladder before it picks a
+/// glyph-cache key (`composer::snap_text_scale`).
 ///
-/// Single source — `composer::TEXT_SCALE_STEP` re-exports this value.
+/// **Additive, not proportional.** The same step in *scale units* across
+/// the range makes the step in *percent of current size* shrink as zoom
+/// grows — 0.005/4 ≈ 0.125% at 4×, 0.5% at 1×, 1% at 0.5×. That is the
+/// trade the perceptual case asks for: at high zoom every percent of
+/// size change is visible, so the rungs want to be fine, and at low zoom
+/// text is small enough that crispness stepping does not read, so coarse
+/// rungs and fewer atlas keys win.
+///
+/// **Geometric note.** Measurement uses the unscaled `font_size_px` —
+/// only the paint-time scale snaps. At a non-rung zoom the painted glyph
+/// block is up to `TEXT_SCALE_STEP / 2` wider or narrower on each axis
+/// than the layout-space rect it nominally fills. `TextDrawRow.bounds`
+/// clips the extra width, and
+/// [`crate::scene::shapes::record::text_paint_bbox_local`] inflates text
+/// damage rects by the same fraction, so a rung jump between consecutive
+/// frames repaints every affected pixel.
 pub(crate) const TEXT_SCALE_STEP: f32 = 0.005;
 
 /// Frames a *rendered* run's shaped buffer survives untouched — the

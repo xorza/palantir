@@ -9,6 +9,7 @@ use std::collections::hash_map::Entry;
 use crate::renderer::backend::raster_atlas::raster_quad::RasterQuad;
 use crate::renderer::backend::text::encode::{EncodedEntry, EncodedKey};
 use crate::renderer::backend::text::encoded_counters::EncodedCounters;
+use crate::text::RENDERED_RUN_KEEP_FRAMES;
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct EncodedGlyph {
@@ -269,6 +270,6 @@ pub(super) const ENCODED_CACHE_KEEP_FRAMES: u64 = 30;
 /// constants now live apart, and the failure it guards is silent —
 /// crossing them costs a reshape per miss and nothing reports it.
 const _: () = assert!(
-    ENCODED_CACHE_KEEP_FRAMES <= crate::text::RENDERED_RUN_KEEP_FRAMES,
+    ENCODED_CACHE_KEEP_FRAMES <= RENDERED_RUN_KEEP_FRAMES,
     "the shaped-buffer window must cover the encoded-run window",
 );

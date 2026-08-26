@@ -23,7 +23,7 @@ pub(crate) const LINE_HEIGHT_MULT: f32 = 1.2;
 #[derive(
     Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, palantir_anim_derive::Animatable,
 )]
-#[serde(try_from = "crate::widgets::theme::serde::UncheckedTextStyle")]
+#[serde(try_from = "UncheckedTextStyle")]
 pub struct TextStyle {
     /// Default font size in logical px. Button labels read this
     /// directly; [`crate::Text`] / [`crate::TextEdit`] fall back to it
@@ -136,5 +136,39 @@ impl TextStyle {
     #[inline]
     pub const fn bold(self) -> Self {
         self.with_weight(FontWeight::Bold)
+    }
+}
+
+/// [`TextStyle`] as it arrives off the wire, before the metrics check.
+///
+/// Exists because a theme file is untrusted input: a non-finite or
+/// non-positive size reaches the shaper as a face it cannot resolve, and
+/// the failure surfaces frames later as text that measured to nothing.
+/// [`TextStyle`]'s `#[serde(try_from)]` routes every deserialize through
+/// this, so no path builds one without the check.
+#[derive(Debug, serde::Deserialize)]
+struct UncheckedTextStyle {
+    font_size_px: f32,
+    color: Color,
+    line_height_mult: f32,
+    family: FontFamily,
+    weight: FontWeight,
+}
+
+impl TryFrom<UncheckedTextStyle> for TextStyle {
+    type Error = &'static str;
+
+    fn try_from(style: UncheckedTextStyle) -> Result<Self, Self::Error> {
+        let style = Self {
+            font_size_px: style.font_size_px,
+            color: style.color,
+            line_height_mult: style.line_height_mult,
+            family: style.family,
+            weight: style.weight,
+        };
+        if !style.metrics_valid() {
+            return Err(GlyphFont::METRICS_ERROR);
+        }
+        Ok(style)
     }
 }

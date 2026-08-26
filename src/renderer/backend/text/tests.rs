@@ -21,6 +21,7 @@ use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::text::TextBackend;
 use crate::renderer::render_buffer::text::TextDrawRow;
 use crate::scene::record_store::RecordStore;
+use crate::text::RENDERED_RUN_KEEP_FRAMES;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::run::TextRun;
 use crate::text::shaped_ref::ShapedTextRef;
@@ -591,7 +592,7 @@ fn both_caches_age_on_one_clock_including_text_free_frames() {
         1,
         "premise: still inside the keep window",
     );
-    while shaper.frame() <= crate::text::RENDERED_RUN_KEEP_FRAMES {
+    while shaper.frame() <= RENDERED_RUN_KEEP_FRAMES {
         backend.tick_frame();
     }
     assert!(
