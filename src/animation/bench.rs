@@ -2,6 +2,7 @@ use crate::animation::anim_map_typed::AnimMapTyped;
 use crate::animation::anim_slot::AnimSlot;
 use crate::animation::anim_spec::AnimSpec;
 use crate::animation::easing::Easing;
+use crate::bench::Run;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::primitives::widget_id::WidgetId;
@@ -36,7 +37,7 @@ fn look(background: Color, text: Color) -> AnimatedLook {
     }
 }
 
-fn bench_motion(c: &mut Criterion, name: &str, motion: Motion) {
+fn bench_motion(c: &mut Criterion, run: Run<'_>, sub: &str, motion: Motion) {
     let ids: Vec<_> = (0..ROWS)
         .map(|index| WidgetId::from_hash(index as u64))
         .collect();
@@ -50,7 +51,7 @@ fn bench_motion(c: &mut Criterion, name: &str, motion: Motion) {
 
     let mut render_frame_id = 1u64;
     let mut use_second = true;
-    let mut group = c.benchmark_group(name);
+    let mut group = run.subgroup(c, sub);
     group.sample_size(30);
     group.warm_up_time(Duration::from_secs(2));
     group.measurement_time(Duration::from_secs(5));
@@ -68,7 +69,7 @@ fn bench_motion(c: &mut Criterion, name: &str, motion: Motion) {
     group.finish();
 }
 
-pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Run<'_>) {
-    bench_motion(c, "animation/duration", Motion::Duration);
-    bench_motion(c, "animation/spring", Motion::Spring);
+pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
+    bench_motion(c, run, "duration", Motion::Duration);
+    bench_motion(c, run, "spring", Motion::Spring);
 }

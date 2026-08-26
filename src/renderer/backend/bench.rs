@@ -64,6 +64,7 @@
 //! result — they don't replace its elapsed time.
 
 use crate::app::internals::RecordApp;
+use crate::bench::Run;
 use crate::host::bench_gpu::{BenchGpu, Timing};
 use crate::host::offscreen::{OffscreenHost, test_support as offscreen_support};
 use crate::layout::types::sizing::Sizing;
@@ -405,14 +406,14 @@ fn report_evidence(fixture: &mut Fixture) -> Counts {
     counts
 }
 
-pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Run<'_>) {
+pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
     let gpu = gpu();
     eprintln!(
         "[record_pass] adapter={} backend={:?}",
         gpu.info.name, gpu.info.backend,
     );
 
-    let mut group = c.benchmark_group("record_pass");
+    let mut group = run.group(c);
     // `iter_custom` reports only the recording window, but criterion still
     // has to pay a whole ~0.5 ms frame to harvest each ~microsecond
     // sample. Left at the defaults it would size its iteration count off

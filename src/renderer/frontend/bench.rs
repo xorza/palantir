@@ -1,5 +1,6 @@
 //! Record-to-compose comparison for repeated solid and gradient chrome.
 
+use crate::bench::Run;
 use crate::primitives::background::Background;
 use crate::primitives::brush::Brush;
 use crate::primitives::brush::gradient::linear::LinearGradient;
@@ -85,8 +86,8 @@ impl GradientBench {
     }
 }
 
-pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Run<'_>) {
-    let mut group = c.benchmark_group("gradient/repeated_chrome");
+pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
+    let mut group = run.subgroup(c, "repeated_chrome");
     group.sample_size(30);
     group.warm_up_time(Duration::from_secs(1));
     group.measurement_time(Duration::from_secs(3));

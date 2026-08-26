@@ -28,6 +28,7 @@
 //! text fallback, same path as the colocated frame bench); the `heavy/*` arms
 //! use `UiHarness::with_text(glam::UVec2::new(1280, 800))` so text-shaping cost is in the measurement.
 
+use crate::bench::Run;
 use crate::layout::counters::PhaseTimings;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
@@ -496,8 +497,8 @@ fn bench_virtual_scroll(group: &mut BenchmarkGroup<'_, WallTime>) {
     }
 }
 
-pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Run<'_>) {
-    let mut group = c.benchmark_group("caches");
+pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
+    let mut group = run.group(c);
 
     bench_cache_pair(
         &mut group,

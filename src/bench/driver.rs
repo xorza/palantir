@@ -16,6 +16,11 @@ pub(super) struct Driver {
     /// Selection name, and the namespace every id this driver registers
     /// begins with (`damage/workload`, `frame/cached_cpu`). Unique across
     /// the table, and what `--driver` takes.
+    ///
+    /// A driver never spells this itself: it is handed down in
+    /// [`Run::group`](super::Run::group), so renaming a row here renames
+    /// its benchmarks with it and an id cannot end up under a namespace
+    /// no row answers to.
     pub(super) name: &'static str,
     /// What this driver measures. Intersected with the run's request to
     /// decide whether it runs at all, and what it is handed.

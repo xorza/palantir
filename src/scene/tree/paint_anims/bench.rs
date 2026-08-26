@@ -1,3 +1,4 @@
+use crate::bench::Run;
 use crate::scene::tree::paint_anims::{PaintAnim, PaintAnimEntry, PaintAnims};
 use criterion::{Criterion, Throughput};
 use std::hint::black_box;
@@ -23,11 +24,11 @@ fn last_shape_registry() -> PaintAnims {
     anims
 }
 
-pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Run<'_>) {
+pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
     let anims = last_shape_registry();
     assert_eq!(anims.shape_indices, [SHAPE_COUNT - 1]);
 
-    let mut group = c.benchmark_group("paint_anims");
+    let mut group = run.group(c);
     group.sample_size(30);
     group.warm_up_time(Duration::from_secs(1));
     group.measurement_time(Duration::from_secs(3));

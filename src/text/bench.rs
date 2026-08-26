@@ -1,3 +1,4 @@
+use crate::bench::Run;
 use crate::layout::ShapedText;
 use crate::layout::types::align::HAlign;
 use crate::primitives::widget_id::WidgetId;
@@ -10,7 +11,8 @@ use crate::text::shaper::TextShaper;
 use crate::text::system::{TextRunSlot, TextSystem};
 use crate::text::wrap::{LineFit, TextWrap, WrapFloor};
 use crate::text::{FontFamily, FontWeight};
-use criterion::Criterion;
+use criterion::measurement::WallTime;
+use criterion::{BenchmarkGroup, Criterion};
 use rustc_hash::FxHashSet;
 use std::hint::black_box;
 
@@ -111,8 +113,9 @@ fn measure_truncated_face(
 /// retains every row it holds, once a frame, and the layer-less arms
 /// have no rows to retain. Leaving it out hands the layer a discount on
 /// the very comparison meant to justify it.
-fn bench_reuse_layer(c: &mut Criterion) {
-    bench_shared_content(c);
+fn bench_reuse_layer(c: &mut Criterion, run: Run<'_>) {
+    let mut group = run.subgroup(c, "reuse_layer");
+    bench_shared_content(&mut group);
 
     let labels: Vec<String> = (0..REUSE_LAYER_LABELS)
         .map(|i| format!("Reuse layer probe label number {i}"))
@@ -128,7 +131,7 @@ fn bench_reuse_layer(c: &mut Criterion) {
     }
     const WRAP_W: f32 = 150.0;
 
-    c.bench_function("text_shape/reuse_layer/single_line_hit_x64", |b| {
+    group.bench_function("single_line_hit_x64", |b| {
         let mut text_system = TextSystem::new(TextShaper::new());
         for (slot, text) in slots.iter().zip(&labels) {
             text_system.measure(
@@ -153,7 +156,7 @@ fn bench_reuse_layer(c: &mut Criterion) {
         });
     });
 
-    c.bench_function("text_shape/reuse_layer/single_line_dispatch_x64", |b| {
+    group.bench_function("single_line_dispatch_x64", |b| {
         let shaper = TextShaper::new();
         for text in &labels {
             shaper.root(request_for(text), WrapFloor::Skip);
@@ -165,7 +168,7 @@ fn bench_reuse_layer(c: &mut Criterion) {
         });
     });
 
-    c.bench_function("text_shape/reuse_layer/wrap_hit_x64", |b| {
+    group.bench_function("wrap_hit_x64", |b| {
         let mut text_system = TextSystem::new(TextShaper::new());
         for (slot, text) in slots.iter().zip(&labels) {
             text_system.measure(
@@ -190,7 +193,7 @@ fn bench_reuse_layer(c: &mut Criterion) {
         });
     });
 
-    c.bench_function("text_shape/reuse_layer/wrap_dispatch_x64", |b| {
+    group.bench_function("wrap_dispatch_x64", |b| {
         let shaper = TextShaper::new();
         for text in &labels {
             let request = request_for(text);
@@ -209,6 +212,7 @@ fn bench_reuse_layer(c: &mut Criterion) {
             }
         });
     });
+    group.finish();
 }
 
 /// The two workloads that separate a per-widget reuse address from a
@@ -222,7 +226,7 @@ fn bench_reuse_layer(c: &mut Criterion) {
 /// cannot. Content-keying was prototyped against both: it lost 46% and 170%
 /// respectively, and 37-43% on the plain hit paths, because a 24-byte
 /// `TextShapeKey` hash costs more than the row dedup saves.
-fn bench_shared_content(c: &mut Criterion) {
+fn bench_shared_content(group: &mut BenchmarkGroup<'_, WallTime>) {
     const REPEATED: &str = "Enabled";
     const WRAP_W: f32 = 150.0;
     let slots: Vec<TextRunSlot> = (0..REUSE_LAYER_LABELS)
@@ -235,7 +239,7 @@ fn bench_shared_content(c: &mut Criterion) {
         UI_FACE.unbounded_request(REPEATED)
     }
 
-    c.bench_function("text_shape/reuse_layer/shared_content_x64", |b| {
+    group.bench_function("shared_content_x64", |b| {
         let mut text_system = TextSystem::new(TextShaper::new());
         for slot in &slots {
             text_system.measure(*slot, request(), TextWrap::Wrap, HAlign::Left, Some(WRAP_W));
@@ -254,7 +258,7 @@ fn bench_shared_content(c: &mut Criterion) {
         });
     });
 
-    c.bench_function("text_shape/reuse_layer/contended_width_x64", |b| {
+    group.bench_function("contended_width_x64", |b| {
         let mut text_system = TextSystem::new(TextShaper::new());
         let widths = [WRAP_W, WRAP_W - 40.0];
         for (i, slot) in slots.iter().enumerate() {
@@ -305,7 +309,8 @@ fn bench_shared_content(c: &mut Criterion) {
 /// working the drag holds a handful of buffers; without it every
 /// rendered frame is promoted to the 120-frame window and residency
 /// tracks the drag's length instead.
-fn bench_resize_drag(c: &mut Criterion) {
+fn bench_resize_drag(c: &mut Criterion, run: Run<'_>) {
+    let mut group = run.group(c);
     let slot = TextRunSlot {
         widget_id: WidgetId::from_hash("text-shape-resize-drag"),
         ordinal: 0,
@@ -334,13 +339,14 @@ fn bench_resize_drag(c: &mut Criterion) {
     );
 
     let mut step = DRAG_PRIME_FRAMES;
-    c.bench_function("text_shape/resize_drag_frame", |b| {
+    group.bench_function("resize_drag_frame", |b| {
         b.iter(|| {
             let measured = drag_frame(&mut text, &shaper, slot, step);
             step = step.wrapping_add(1);
             black_box(measured.measured)
         });
     });
+    group.finish();
 }
 
 /// One drag frame end to end: layout commits a fresh width, the encoder
@@ -381,10 +387,10 @@ fn drag_frame(
 /// the asymmetry `shape_truncated` is built around, since the whole
 /// string is shaped once into the cached unbounded probe and only the
 /// prefix is reshaped per width.
-fn bench_ellipsis_churn(c: &mut Criterion) {
+fn bench_ellipsis_churn(c: &mut Criterion, run: Run<'_>) {
     const HEADING_PX: f32 = 20.0;
     let shaper = TextShaper::new();
-    let mut group = c.benchmark_group("text_shape/ellipsis_width_churn");
+    let mut group = run.subgroup(c, "ellipsis_width_churn");
 
     let mut text = TextSystem::new(shaper.clone());
     let slot = TextRunSlot {
@@ -437,8 +443,8 @@ fn bench_ellipsis_churn(c: &mut Criterion) {
     group.finish();
 }
 
-pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Run<'_>) {
-    bench_reuse_layer(c);
-    bench_resize_drag(c);
-    bench_ellipsis_churn(c);
+pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
+    bench_reuse_layer(c, run);
+    bench_resize_drag(c, run);
+    bench_ellipsis_churn(c, run);
 }

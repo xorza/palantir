@@ -1,9 +1,11 @@
+use crate::bench::Run;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::Configure;
 use crate::ui::harness::UiHarness;
 use crate::widgets::text_edit::{TextEdit, TextEditState};
-use criterion::Criterion;
+use criterion::measurement::WallTime;
+use criterion::{BenchmarkGroup, Criterion};
 use glam::UVec2;
 use std::hint::black_box;
 
@@ -21,7 +23,13 @@ fn run_frame(h: &mut UiHarness, text: &mut String, multiline: bool) {
     }));
 }
 
-fn bench_stable(c: &mut Criterion, name: &str, text: String, multiline: bool, selected: bool) {
+fn bench_stable(
+    group: &mut BenchmarkGroup<'_, WallTime>,
+    leaf: &str,
+    text: String,
+    multiline: bool,
+    selected: bool,
+) {
     let mut h = UiHarness::with_text(UVec2::new(800, 300));
     let mut text = text;
     for _ in 0..3 {
@@ -34,22 +42,23 @@ fn bench_stable(c: &mut Criterion, name: &str, text: String, multiline: bool, se
         state.edit.caret = text.len();
         run_frame(&mut h, &mut text, multiline);
     }
-    c.bench_function(name, |bencher| {
+    group.bench_function(leaf, |bencher| {
         bencher.iter(|| run_frame(&mut h, &mut text, multiline));
     });
 }
 
-pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Run<'_>) {
+pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
+    let mut group = run.group(c);
     bench_stable(
-        c,
-        "text_edit/stable_single_line",
+        &mut group,
+        "stable_single_line",
         String::from("A stable single-line editor with enough text to exercise shaping."),
         false,
         false,
     );
     bench_stable(
-        c,
-        "text_edit/stable_multiline_selection",
+        &mut group,
+        "stable_multiline_selection",
         String::from(
             "First selected line with enough text to wrap across the editor.\n\
              Second selected line keeps selection geometry in the shared probe.",
@@ -57,4 +66,5 @@ pub(crate) fn bench(c: &mut Criterion, _: crate::bench::Run<'_>) {
         true,
         true,
     );
+    group.finish();
 }
