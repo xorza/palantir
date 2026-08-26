@@ -22,6 +22,7 @@
 //! question — does the user closure re-assert it?
 
 use crate::app::App;
+use crate::common::tracy;
 use crate::display;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
@@ -71,7 +72,7 @@ impl<'a> FrameCycle<'a> {
         win: WindowToken,
         app: &mut T,
     ) -> FrameReport {
-        profiling::scope!("Ui::frame");
+        tracy::zone!("Ui::frame");
         let FrameInput {
             stamp,
             damage_baseline_valid,
@@ -109,7 +110,7 @@ impl<'a> FrameCycle<'a> {
 
         let processing = match plan {
             FramePlan::PaintOnly => {
-                profiling::scope!("Ui::frame.paint_only");
+                tracy::zone!("Ui::frame.paint_only");
                 // PaintOnly skips `record_pass` → skips `post_record`
                 // → skips the input cleanup. Under `OnDelta`, an
                 // unrouted event can still land here with the sticky
@@ -130,21 +131,21 @@ impl<'a> FrameCycle<'a> {
             }
             FramePlan::FullRecord { .. } => {
                 {
-                    profiling::scope!("Ui::update_user");
+                    tracy::zone!("Ui::update_user");
                     app.update(win, self.ui);
                 }
                 if first_frame {
                     self.warmup(win, app);
                 }
                 let action_flag = {
-                    profiling::scope!("Ui::record_pass.A");
+                    tracy::zone!("Ui::record_pass.A");
                     self.record_pass(win, app)
                 };
                 let double_layout = action_flag || self.ui.frame_runtime.relayout_requested;
                 if double_layout {
-                    profiling::scope!(
+                    tracy::zone!(
                         "Ui::record_pass.B",
-                        if self.ui.frame_runtime.relayout_requested {
+                        text = if self.ui.frame_runtime.relayout_requested {
                             "relayout"
                         } else {
                             "action"
@@ -267,7 +268,7 @@ impl<'a> FrameCycle<'a> {
     ///
     /// [`InputState`]: crate::input::input_state::InputState
     fn warmup<T: App>(&mut self, win: WindowToken, app: &mut T) {
-        profiling::scope!("Ui::record_pass.warmup");
+        tracy::zone!("Ui::record_pass.warmup");
         let saved_input = std::mem::take(&mut self.ui.input);
         let _ = self.record_pass(win, app);
         self.ui.input = saved_input;
@@ -294,7 +295,7 @@ impl<'a> FrameCycle<'a> {
         // like any other parent-scoped id (see `Ui::widget`).
         self.ui.open_node(WidgetId::VIEWPORT, viewport, None);
         {
-            profiling::scope!("Ui::record_user");
+            tracy::zone!("Ui::record_user");
             app.record(win, self.ui);
         }
         let action_flag = self.ui.input.finish_record();
@@ -322,7 +323,7 @@ impl<'a> FrameCycle<'a> {
     ///
     /// A fourth per-pass reset goes here, and nowhere else.
     fn begin_pass(&mut self) {
-        profiling::scope!("Ui::pre_record");
+        tracy::zone!("Ui::pre_record");
         // Clears both the trees and the retained payloads their shape
         // records index into.
         self.ui.forest.pre_record();
@@ -341,7 +342,7 @@ impl<'a> FrameCycle<'a> {
     /// can't match live keys — and reaped once in `finalize_frame`
     /// against the final pass's id set.
     fn post_record(&mut self) {
-        profiling::scope!("Ui::post_record");
+        tracy::zone!("Ui::post_record");
         self.ui.forest.post_record();
         // The field, not `Ui::payloads` — that takes `&self`, and the
         // `layout_engine.run` below writes `&mut self.ui.layout` while this
@@ -388,7 +389,7 @@ impl<'a> FrameCycle<'a> {
     /// so a widget that vanishes in pass A but returns in pass B keeps
     /// its state across the discard.
     fn finalize_frame(&mut self) {
-        profiling::scope!("Ui::finalize_frame");
+        tracy::zone!("Ui::finalize_frame");
         let removed = self.ui.forest.ids.rollover();
         // Two families, and the split is the point. These two run every
         // frame whatever `removed` holds, because both also expire rows

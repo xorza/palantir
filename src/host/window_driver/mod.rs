@@ -21,6 +21,7 @@
 use glam::UVec2;
 
 use crate::app::App;
+use crate::common::tracy;
 use crate::host::clock::{Clock, RealtimeClock};
 use crate::host::shared::HostShared;
 use crate::renderer::backend::WgpuBackend;
@@ -359,13 +360,13 @@ impl WindowDriver {
     /// list). No GPU input — the `GpuView` size cap was captured on the
     /// `Frontend` at construction. Shared by the offscreen and surface
     /// adapters.
-    #[profiling::function]
     pub(super) fn cpu_frame<T: App>(
         &mut self,
         frontend: &mut Frontend,
         display: Display,
         app: &mut T,
     ) -> CpuFrame {
+        tracy::zone!();
         let report = self.ui.frame(
             &mut self.engines,
             FrameInput {
@@ -448,7 +449,6 @@ impl WindowDriver {
     /// [`PresentMode::SkipCopy`], copies the persistent backbuffer onto
     /// `target` so callers that always present still see valid pixels.
     /// Shared by the offscreen and surface adapters.
-    #[profiling::function]
     pub(super) fn render_to_texture(
         &mut self,
         buffer: &RenderBuffer,
@@ -456,6 +456,7 @@ impl WindowDriver {
         target: &wgpu::Texture,
         mode: PresentMode,
     ) {
+        tracy::zone!();
         let size = target.size();
         let display_phys = self.ui.display().physical;
         debug_assert!(

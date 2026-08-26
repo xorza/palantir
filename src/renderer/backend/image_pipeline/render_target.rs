@@ -1,5 +1,6 @@
 //! Framework-owned off-screen targets for composited `GpuView`s.
 
+use crate::common::tracy;
 use crate::primitives::texture_id::TextureId;
 use crate::renderer::backend::debug_marker;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
@@ -47,7 +48,6 @@ impl GpuViewTargets {
     /// one shared backend serves all windows, so a submit may only evict its
     /// *own* dropped targets — another window's targets survive both this
     /// submit and their owner's idle (non-submitting) frames.
-    #[profiling::function]
     pub(super) fn paint(
         &mut self,
         ctx: &mut GpuCtx<'_>,
@@ -57,6 +57,7 @@ impl GpuViewTargets {
         textures: &mut ImageTextures,
         text: &TextShaper,
     ) {
+        tracy::zone!();
         let FrameViews { draws, live } = views;
         debug_assert!(
             draws.iter().all(|draw| live.contains(&draw.id)),
@@ -66,7 +67,7 @@ impl GpuViewTargets {
             let target = self.ensure(ctx.device, draw.id, draw.used, owner, textures);
             let mut paint = draw.paint.0.borrow_mut();
             if !target.initialized {
-                profiling::scope!("GpuView::init");
+                tracy::zone!("GpuView::init");
                 debug_marker::push_encoder(ctx.encoder, "palantir.gpu_view.init");
                 paint.init(&GpuInitCtx {
                     device: ctx.device,
@@ -79,7 +80,7 @@ impl GpuViewTargets {
             let dt = target
                 .last_paint
                 .map_or(Duration::ZERO, |last| now.saturating_sub(last));
-            profiling::scope!("GpuView::paint");
+            tracy::zone!("GpuView::paint");
             debug_marker::push_encoder(ctx.encoder, "palantir.gpu_view.paint");
             paint.paint(&mut GpuFrameCtx {
                 device: ctx.device,

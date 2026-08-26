@@ -51,6 +51,7 @@
 //! assert on it through this gate.
 
 use crate::common::block_arena::BlockArena;
+use crate::common::tracy;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::widget_id::WidgetIdMap;
@@ -267,13 +268,13 @@ impl DamageEngine {
     /// `surface` is the rect the host arranged the UI into this
     /// frame; see [`DamageInput::surface`] for the degenerate-surface
     /// behavior.
-    #[profiling::function]
     pub(crate) fn compute(
         &mut self,
         input: DamageInput<'_>,
         removed: &FxHashSet<WidgetId>,
         force_full: bool,
     ) -> Damage {
+        tracy::zone!();
         let DamageInput {
             forest,
             cascade,

@@ -7,7 +7,7 @@ use glam::{IVec2, UVec2};
 use winit::window::Window as WinitWindow;
 
 use crate::app::App;
-use crate::common::tracy::FrameSet;
+use crate::common::tracy::{self, FrameSet};
 use crate::host::core::HostCore;
 use crate::host::window_driver::{CpuFrame, TargetKey, WindowDriver};
 use crate::host::winit::gpu::{self, SurfaceManager, WindowSurface};
@@ -92,7 +92,7 @@ impl Window {
         app: &mut T,
         commands: &mut WindowCommands,
     ) {
-        profiling::scope!("Window::frame");
+        tracy::zone!("Window::frame");
 
         let position = self
             .window
@@ -178,7 +178,7 @@ impl Window {
             // folding the submit into it hides which of the two cost
             // the time.
             let acquired = {
-                profiling::scope!("Surface::acquire");
+                tracy::zone!("Surface::acquire");
                 self.surface.get_current_texture()
             };
             match acquired {

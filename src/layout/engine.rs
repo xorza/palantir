@@ -1,3 +1,4 @@
+use crate::common::tracy;
 use crate::layout::axis::Axis;
 use crate::layout::axis_placement::AxisPlacement;
 use crate::layout::cache::{
@@ -219,7 +220,6 @@ impl LayoutEngine {
     /// against `surface` (the viewport rect). Iterates trees in
     /// `Layer::PAINT_ORDER`; each tree's recursive work receives a
     /// [`LayoutPass`] bound to that layer's output slot.
-    #[profiling::function]
     pub(crate) fn run(
         &mut self,
         forest: &Forest,
@@ -227,6 +227,7 @@ impl LayoutEngine {
         surface: Rect,
         out: &mut Layout,
     ) {
+        tracy::zone!();
         debug_assert_eq!(
             self.scratch.grid.depth_stack.depth, 0,
             "LayoutEngine::run entered with non-zero grid depth"
@@ -260,7 +261,7 @@ impl LayoutEngine {
                     // count, so the zone budget stays flat.
                     let measure_span = PhaseSpan::start();
                     let desired = {
-                        profiling::scope!("Layout::measure");
+                        tracy::zone!("Layout::measure");
                         pass.measure(root, available)
                     };
                     pass.note_measure(measure_span);
@@ -280,7 +281,7 @@ impl LayoutEngine {
                     };
                     let arrange_span = PhaseSpan::start();
                     {
-                        profiling::scope!("Layout::arrange");
+                        tracy::zone!("Layout::arrange");
                         pass.arrange(root, Rect { min: origin, size });
                     }
                     pass.note_arrange(arrange_span);
