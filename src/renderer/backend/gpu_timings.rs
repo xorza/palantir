@@ -2,7 +2,7 @@
 //!
 //! Constructed only when at least `TIMESTAMP_QUERY` is enabled on the
 //! device (the host requests it at adapter time when supported — see
-//! `host/winit/gpu.rs`). Optionally adds:
+//! `host/winit/gpu/mod.rs`). Optionally adds:
 //!
 //! - **`TIMESTAMP_QUERY_INSIDE_PASSES`** (per-batch timestamps). When
 //!   on, we `RenderPass::write_timestamp` at every category transition

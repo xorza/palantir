@@ -71,7 +71,7 @@ pub(super) fn translate(event: &WindowEvent, scale_factor: f32, mut emit: impl F
 /// is nothing to index, just a shape to repeat.
 ///
 /// The two must agree: `Shortcut::matches`'s non-Latin fallback
-/// (`src/input/shortcut.rs`) consults `physical` alone, so a key present
+/// (`src/input/shortcut/mod.rs`) consults `physical` alone, so a key present
 /// on one side and missing from the other stops matching under a
 /// non-Latin layout and nothing says so.
 macro_rules! shared_key {

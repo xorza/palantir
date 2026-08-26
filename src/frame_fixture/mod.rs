@@ -9,7 +9,7 @@
 //! `disabled` / `hidden` cascade flattening, and the popup/tooltip layers.
 //!
 //! **The widget half of that claim is enforced, not asserted.** `COVERED`
-//! and `EXCLUDED` in this file's test module are the list, every exclusion
+//! and `EXCLUDED` in this module's `tests.rs` are the list, every exclusion
 //! carries its reason, and the two together are checked against `lib.rs`'s
 //! public exports — so a widget added to the crate fails the suite until
 //! someone decides which side it belongs on. The lists are deliberately
