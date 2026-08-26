@@ -14,40 +14,6 @@ Clean: directory modules, intra-crate re-exports, nested collections,
 
 ---
 
-## `#[cfg]`-gated `use` in a production file
-
-The rule allows a mid-file gate only where it cannot move — a struct field, or
-an inline statement in a production function, which takes a full path instead
-of a gated import.
-
-- [ ] `src/primitives/half_simd/mod.rs:136` and `:138` — `use half::f16;` and
-      `use half::slice::HalfFloatSliceExt;`, each behind a target gate.
-      `src/primitives/corners/mod.rs:96` already shows the alternative:
-      `half::f16::from_f32_const(…)` spelled inline.
-
-- [ ] `src/renderer/backend/texture_region.rs:26` — `use
-      std::sync::atomic::{AtomicU64, Ordering::Relaxed};` behind `feature =
-      "bench"`, at the top of the file.
-
----
-
-## Release `assert!` on a per-frame path
-
-The rule reserves release `assert!` for public-API misuse **outside** hot
-paths, and puts `debug_assert!` on everything per-frame, per-widget, or
-per-glyph.
-
-- [ ] `src/scene/record_store/text_store.rs:78` — `TextStore::record` bills one
-      comparison per interned string per frame. The doc at `:69` argues the
-      case for release, so this is a stated exception rather than an oversight;
-      it still contradicts the rule and should be settled one way.
-
-- [ ] `src/primitives/mesh/mod.rs:158` — `Mesh::triangle` bills a `max` of three
-      indices and a bounds comparison per triangle. `src/bin/showcase/pages/
-      shapes.rs:172` rebuilds a `SIDE²`-vertex mesh every frame through it.
-
----
-
 ## Tests that assert a threshold rather than a value
 
 The rule asks for hand-computed exact outputs. These accept a range where the

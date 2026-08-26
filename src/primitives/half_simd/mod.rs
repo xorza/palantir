@@ -133,11 +133,6 @@ impl std::hash::Hash for F16x4 {
     }
 }
 
-#[cfg(any(test, not(all(target_arch = "x86_64", target_feature = "f16c"))))]
-use half::f16;
-#[cfg(not(target_arch = "x86_64"))]
-use half::slice::HalfFloatSliceExt;
-
 /// The scalar encode every x86 fallback below shares.
 ///
 /// `from_f32_const`, **not** `from_f32`: `half`'s public converter runs
@@ -149,14 +144,14 @@ use half::slice::HalfFloatSliceExt;
 #[cfg(all(target_arch = "x86_64", not(target_feature = "f16c")))]
 #[inline]
 fn f16x4_from_f32x4_scalar(src: [f32; 4]) -> [u16; 4] {
-    src.map(|v| f16::from_f32_const(v).to_bits())
+    src.map(|v| half::f16::from_f32_const(v).to_bits())
 }
 
 /// [`f16x4_from_f32x4_scalar`]'s decode direction, same reasoning.
 #[cfg(all(target_arch = "x86_64", not(target_feature = "f16c")))]
 #[inline]
 fn f16x4_to_f32x4_scalar(bits: [u16; 4]) -> [f32; 4] {
-    bits.map(|b| f16::from_bits(b).to_f32_const())
+    bits.map(|b| half::f16::from_bits(b).to_f32_const())
 }
 
 /// Decode four packed f16 bit-patterns to f32 lanes.
@@ -180,9 +175,9 @@ pub(crate) fn f16x4_to_f32x4(bits: [u16; 4]) -> [f32; 4] {
     #[cfg(not(target_arch = "x86_64"))]
     {
         // `half`'s slice path: `fcvtl` on aarch64-fp16, scalar elsewhere.
-        let arr: &[f16; 4] = bytemuck::cast_ref(&bits);
+        let arr: &[half::f16; 4] = bytemuck::cast_ref(&bits);
         let mut out = [0.0f32; 4];
-        arr.as_slice().convert_to_f32_slice(&mut out);
+        half::slice::HalfFloatSliceExt::convert_to_f32_slice(arr.as_slice(), &mut out);
         out
     }
 }
@@ -205,8 +200,8 @@ pub(crate) fn f16x4_from_f32x4(src: [f32; 4]) -> [u16; 4] {
     }
     #[cfg(not(target_arch = "x86_64"))]
     {
-        let mut out = [f16::ZERO; 4];
-        out.as_mut_slice().convert_from_f32_slice(&src);
+        let mut out = [half::f16::ZERO; 4];
+        half::slice::HalfFloatSliceExt::convert_from_f32_slice(out.as_mut_slice(), &src);
         bytemuck::cast(out)
     }
 }

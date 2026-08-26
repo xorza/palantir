@@ -1,5 +1,6 @@
 use crate::primitives::approx::EPS;
 use crate::primitives::half_simd::*;
+use half::f16;
 
 /// The SWAR lane compare, checked **exhaustively** against the
 /// scalar form it replaces: every one of the 65 536 f16 bit

@@ -151,12 +151,13 @@ impl Mesh {
     ///
     /// # Panics
     ///
-    /// Panics if any index does not refer to an existing vertex.
+    /// Panics in a debug build if any index does not refer to an
+    /// existing vertex. Debug-only because this runs per triangle, and
+    /// a mesh is rebuilt per frame.
     #[inline]
     pub fn triangle(&mut self, a: u32, b: u32, c: u32) {
-        let max_index = a.max(b).max(c) as usize;
-        assert!(
-            max_index < self.vertices.len(),
+        debug_assert!(
+            (a.max(b).max(c) as usize) < self.vertices.len(),
             "mesh triangle indices [{a}, {b}, {c}] exceed vertex count {}",
             self.vertices.len(),
         );

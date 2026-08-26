@@ -69,13 +69,12 @@ impl TextStore {
     /// Lower a handle minted by this pass. Zero-copy — the bytes are
     /// already in place, so this is a bounds-checked slice and a hash.
     ///
-    /// A foreign epoch is public-API misuse, not bad data: the bytes the
-    /// span addressed are gone, and resolving anyway would silently
-    /// record whatever text now occupies those offsets. Asserted in
-    /// release for that reason — a wrong-label bug with no trace back to
-    /// its cause is far worse than a panic naming the rule.
+    /// A foreign epoch is caller error, not bad data: the bytes the span
+    /// addressed are gone, and resolving anyway would silently record
+    /// whatever text now occupies those offsets. Debug-only because this
+    /// runs per interned string per frame.
     pub(super) fn record(&self, text: InternedStr) -> RecordedText {
-        assert!(
+        debug_assert!(
             text.epoch == self.epoch,
             "InternedStr outlived the record pass that minted it — intern text \
              once per frame, in the window recording it",
