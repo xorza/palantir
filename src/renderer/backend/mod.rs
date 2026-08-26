@@ -32,6 +32,7 @@ pub(crate) mod texture_binding;
 pub(crate) mod texture_region;
 pub(crate) mod viewport;
 
+use crate::common::tracy;
 use crate::diagnostics::gpu_pass_stats::{BatchKind, GpuPassStats};
 use crate::primitives::color::Color;
 use crate::primitives::urect::URect;
@@ -339,8 +340,8 @@ impl WgpuBackend {
     ///
     /// [`Damage::Full`]: crate::scene::damage::Damage::Full
     /// [Damage::Partial]: crate::scene::damage::Damage::Partial
-    #[profiling::function]
     pub(crate) fn submit(&mut self, submission: Submission<'_>) {
+        tracy::zone!();
         let SubmissionTargets {
             surface: surface_tex,
             backbuffer: via_backbuffer,
@@ -622,9 +623,9 @@ impl WgpuBackend {
         // pushed per batch by `TextBackend::render_batch` — no
         // per-frame sync from here.
         {
-            profiling::scope!(
+            tracy::zone!(
                 "text.prepare_batches",
-                &format!("count={}", buffer.text_batches.len())
+                value = buffer.text_batches.len() as u64
             );
             let interned_text = payloads.interned_text();
             for (i, b) in buffer.text_batches.iter().enumerate() {
@@ -647,9 +648,9 @@ impl WgpuBackend {
         // dropped frame), then encode each batch, rasterizing misses
         // inline the way the text prepare does.
         {
-            profiling::scope!(
+            tracy::zone!(
                 "icon.prepare_batches",
-                &format!("count={}", buffer.batches(PaintTier::Icon).len())
+                value = buffer.batches(PaintTier::Icon).len() as u64
             );
             self.icon.prewarm(&mut ctx, buffer.scale);
             for (i, b) in buffer.batches(PaintTier::Icon).iter().enumerate() {
@@ -710,7 +711,6 @@ impl WgpuBackend {
     /// [`GpuPassStats::last_main_pass_cpu_ms`]. It is the one frame cost
     /// that scales with draw-step *count* rather than pixel count, so it
     /// is the metric the `record_pass` benchmark reads.
-    #[profiling::function]
     #[allow(clippy::too_many_arguments)]
     fn run_main_pass(
         &self,
@@ -722,6 +722,7 @@ impl WgpuBackend {
         repaint_scissors: &RepaintScissors,
         clear: wgpu::Color,
     ) {
+        tracy::zone!();
         let use_stencil = stencil_view.is_some();
         let depth_stencil_attachment =
             stencil_view.map(|view| wgpu::RenderPassDepthStencilAttachment {
@@ -808,7 +809,6 @@ impl WgpuBackend {
     /// this method is purely the wgpu translation layer for each
     /// `RenderStep`. Tests reuse the same schedule emitter to assert
     /// on the sequence without GPU.
-    #[profiling::function]
     fn render_groups<'a>(
         &'a self,
         fmt: &'a FormatPipelines,
@@ -817,6 +817,7 @@ impl WgpuBackend {
         damage_scissor: Option<URect>,
         use_stencil: bool,
     ) {
+        tracy::zone!();
         // Track what pipeline + vertex buffer is currently bound so we
         // can skip redundant `set_pipeline` / `set_vertex_buffer` calls
         // across consecutive same-kind steps. wgpu records every

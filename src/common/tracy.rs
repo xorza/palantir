@@ -1,12 +1,43 @@
-//! Tracy frame sets, and the `profile-with-tracy` gating that keeps them
-//! out of every other build.
+//! Tracy instrumentation: scoped zones, per-window frame sets, and the
+//! `profile-with-tracy` gating that keeps both out of every other build.
 //!
-//! The `profiling` facade this crate uses everywhere else covers zones
-//! but models only one frame set — `finish_frame!` marks the main one
-//! and has no secondary equivalent. Frame *sets* are the reason
-//! `tracy-client` is also a direct dependency, and this module is the
-//! only place that names it, so the `#[cfg]`s live here rather than at
-//! the call sites.
+//! The only place in the crate that names `tracy_client`, so the
+//! `#[cfg]`s live here instead of at every call site.
+
+/// Open a zone covering the rest of the enclosing block.
+///
+/// `zone!()` takes its name from the enclosing function; `zone!("name")`
+/// names it explicitly. A trailing `value =` or `text =` payload rides
+/// along in Tracy's zone panel; only a profiling build evaluates it, so
+/// a count that costs a `format!` still costs nothing here.
+macro_rules! zone {
+    () => {
+        #[cfg(feature = "profile-with-tracy")]
+        let _zone = ::tracy_client::span!();
+    };
+    ($name:literal) => {
+        #[cfg(feature = "profile-with-tracy")]
+        let _zone = ::tracy_client::span!($name, 0);
+    };
+    ($name:literal, value = $value:expr) => {
+        #[cfg(feature = "profile-with-tracy")]
+        let _zone = {
+            let zone = ::tracy_client::span!($name, 0);
+            zone.emit_value($value);
+            zone
+        };
+    };
+    ($name:literal, text = $text:expr) => {
+        #[cfg(feature = "profile-with-tracy")]
+        let _zone = {
+            let zone = ::tracy_client::span!($name, 0);
+            zone.emit_text($text);
+            zone
+        };
+    };
+}
+
+pub(crate) use zone;
 
 /// Names for the per-window frame sets.
 ///
@@ -63,9 +94,9 @@ impl FrameSet {
     /// End one frame in this window's set.
     pub(crate) fn mark(self) {
         #[cfg(feature = "profile-with-tracy")]
-        if let Some(client) = tracy_client::Client::running() {
-            client.secondary_frame_mark(NAMES[self.index]);
-        }
+        tracy_client::Client::running()
+            .expect("secondary_frame_mark without a running Client")
+            .secondary_frame_mark(NAMES[self.index]);
     }
 }
 
@@ -77,7 +108,5 @@ impl FrameSet {
 /// live window count is already known.
 pub(crate) fn mark_main_frame() {
     #[cfg(feature = "profile-with-tracy")]
-    if let Some(client) = tracy_client::Client::running() {
-        client.frame_mark();
-    }
+    tracy_client::frame_mark();
 }

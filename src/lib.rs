@@ -56,7 +56,7 @@
 //! | `system-clipboard` | yes | Routes [`TextEdit`] cut/copy/paste through the OS clipboard. Without it clipboard traffic stays in an in-process buffer. |
 //! | `showcase` | no | Builds the bundled `showcase` binary, a tour of every widget. |
 //! | `gpu-debug-markers` | no | Emits GPU debug groups around every draw step for RenderDoc / Xcode captures. Costs two recorded commands and a label copy per step even with no capture tool attached, so it is off unless you intend to capture. |
-//! | `profile-with-tracy` | no | Routes the crate's profiling spans to a Tracy client, and marks a frame set per window. Needs the external Tracy viewer. |
+//! | `profile-with-tracy` | no | Opens a Tracy zone over each frame pass, and marks a frame set per window. Needs the external Tracy viewer. |
 //! | `internals` | no | Test and benchmark reach-ins — adds the `internals` and `bench` modules. **Not a supported API**: it exists so the integration tests and benches under `tests/` and `benches/` can reach crate privates, and it breaks without notice. |
 //!
 //! # Colour

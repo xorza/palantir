@@ -4,6 +4,7 @@
 //! product, this file holds the machinery that fills it.
 
 use crate::common::hash::Hasher;
+use crate::common::tracy;
 use crate::display::Display;
 use crate::input::key_class::KeyFilter;
 use crate::input::sense::Sense;
@@ -111,7 +112,6 @@ impl CascadeEngine {
     /// Update the frozen cascade result. Stable subtrees are retained
     /// in place; a paint-row cardinality or tree-size change falls
     /// back to a complete rebuild.
-    #[profiling::function]
     pub(crate) fn run(
         &mut self,
         forest: &Forest,
@@ -119,6 +119,7 @@ impl CascadeEngine {
         display: Display,
         cascade: &mut Cascade,
     ) {
+        tracy::zone!();
         if !self.can_update(forest, layout, display, cascade) {
             self.run_full(forest, layout, display, cascade);
             return;

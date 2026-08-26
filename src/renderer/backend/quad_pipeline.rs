@@ -2,6 +2,7 @@
 //! buffer. Consumes `&[Quad]` (defined frontend-side) and binds the
 //! shader at `quad.wgsl` next to this file.
 
+use crate::common::tracy;
 use crate::primitives::brush::gradient::Spread;
 use crate::primitives::color::ColorF16;
 use crate::primitives::fill_kind::FillKind;
@@ -349,8 +350,8 @@ impl QuadPipeline {
     /// quads. After this call, `self.mask_indices.groups` parallels
     /// `buffer.groups` and `.batches` parallels `buffer.text_batches`,
     /// each entry the mask-quad span for that chain.
-    #[profiling::function]
     pub(super) fn stage_masks(&mut self, ctx: &mut GpuCtx<'_>, buffer: &RenderBuffer) {
+        tracy::zone!();
         build_mask_plan(buffer, &mut self.mask_indices, &mut self.masks);
         if self.masks.is_empty() {
             return;

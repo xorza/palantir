@@ -261,8 +261,10 @@ re-walk, not from microarchitecture tuning.
 ### Other tools
 
 `perf c2c` for false sharing (not wired in — the benches are
-single-threaded). RenderDoc or Tracy (`profile-with-tracy`) for GPU
-work. `iai-callgrind` for instruction counts when wall-clock variance
+single-threaded). RenderDoc for GPU work; Tracy (`profile-with-tracy`)
+for the CPU zones around it — wgpu's own internal zones stay dark,
+because reaching them means the `profiling` facade and a second Tracy
+client. `iai-callgrind` for instruction counts when wall-clock variance
 hides a small win.
 
 **Tracy frame sets.** Each window marks its own — `window 0`, `window 1`,

@@ -54,7 +54,6 @@ bitflags = "2.13"
 bytemuck = { version = "1.25", features = ["derive"] }
 cosmic-text = "0.19"
 fixedbitset = "0.5"
-# Window/image extents use i32/u16/u32; Shadow and GPU wires need the integration features.
 glam = { version = "0.33", default-features = false, features = ["std", "i32", "u16", "u32", "bytemuck", "serde"] }
 etagere = "0.3"
 resvg = { version = "0.48", default-features = false }
@@ -71,10 +70,7 @@ padding-struct = "0.2"
 soa-rs = "1.0"
 strum = { version = "0.28", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
-# Gradient stop arrays are part of the serialized public theme format.
 tinyvec = { version = "1.12", features = ["serde"] }
-# Same UAX #14 source cosmic-text splits its shape words on, so the
-# intrinsic-width scan agrees with the shaper about where a line can break.
 unicode-linebreak = "0.1"
 unicode-segmentation = "1.13"
 
@@ -82,13 +78,7 @@ criterion = { version = "0.8", optional = true }
 clap = { version = "4", optional = true, features = ["derive"] }
 dhat = { version = "0.3", optional = true }
 gethostname = { version = "1.1", optional = true }
-profiling = { version = "1.0", default-features = false, features = ["procmacros"] }
-# Named directly, not just through `profiling`: each window marks its own
-# Tracy frame set, and `secondary_frame_mark` has no equivalent in the
-# facade — `finish_frame!` marks the main set and nothing else. Pin to
-# whatever `profiling/profile-with-tracy` resolves to so cargo dedupes to
-# one tracy-client instance (one FFI connection); bump in lockstep.
-tracy-client = { version = "0.18", default-features = false, optional = true }
+tracy-client = { version = "0.19", optional = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter"], optional = true }
 
 [dev-dependencies]
@@ -163,10 +153,7 @@ showcase = ["dep:tracing-subscriber", "winit-host", "gpu-debug-markers"]
 gpu-debug-markers = []
 system-clipboard = ["winit-host", "dep:arboard"]
 winit-host = ["dep:winit"]
-# Profiler backend — off by default (zero overhead).
-# Tracy needs an external viewer; wgpu's own GPU zones light up
-# automatically because `profiling` is a singleton in the dep graph.
-profile-with-tracy = ["profiling/profile-with-tracy", "dep:tracy-client"]
+profile-with-tracy = ["dep:tracy-client"]
 
 
 [profile.dev]

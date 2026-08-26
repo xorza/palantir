@@ -28,6 +28,7 @@ pub(crate) mod payload;
 use std::cell::Ref;
 use std::time::Duration;
 
+use crate::common::tracy;
 use crate::display::Display;
 use crate::layout::Layout;
 use crate::primitives::widget_id::WidgetIdMap;
@@ -87,8 +88,8 @@ impl Frontend {
     /// [`ComposeSession`](composer::session::ComposeSession) rather than an
     /// intermediate command stream, so
     /// nothing is serialized only to be read back a line later.
-    #[profiling::function]
     pub(crate) fn build(&mut self, scene: FrameScene<'_>, plan: RenderPlan) {
+        tracy::zone!();
         let mut sink =
             self.composer
                 .begin(scene.display, scene.time, &scene.payloads, &mut self.buffer);

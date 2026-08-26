@@ -3,6 +3,7 @@
 //! `cascade` and `damage` turn what lands here into the immutable
 //! per-frame data input and rendering read.
 
+use crate::common::tracy;
 use crate::layout::scrollbars::ScrollbarsDef;
 use crate::layout::types::layout_mode::{GridDefId, ScrollbarsDefId};
 use crate::layout::types::placement::Placement;
@@ -163,8 +164,8 @@ impl Forest {
     /// The paint-anim wake fold is centralised in
     /// [`Self::min_paint_anim_wake`] and run at the tail of
     /// `Ui::frame` for both record + paint-only paths.
-    #[profiling::function]
     pub(crate) fn post_record(&mut self) {
+        tracy::zone!();
         let active = self.current_layer();
         debug_assert_eq!(
             active,
