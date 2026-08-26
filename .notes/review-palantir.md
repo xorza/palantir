@@ -85,7 +85,7 @@ do not exist anywhere in the crate — grep-checkable and still wrong.
       `GroupCursors` bundles "five parallel fields"; it has six.
 
 - [ ] `src/primitives/half_simd/mod.rs:67` — claims "Both f16 lane predicates in
-      the crate are this one test"; `src/primitives/approx.rs:105` and `:121`
+      the crate are this one test"; `src/primitives/approx/mod.rs:105` and `:121`
       hold two more.
 
 - [ ] `src/primitives/span.rs:7` — directs readers to the `Range<u32>`
@@ -152,7 +152,7 @@ from what it describes, and nothing catches it.
       `raster_atlas` satellites are also undocumented (`side.rs`,
       `clock_sweep.rs`, `atlas_slot.rs`, `content_type.rs`,
       `packed_metadata.rs`), as are all six files in `src/icons/` and
-      `src/text/wrap.rs`.
+      `src/text/wrap/mod.rs`.
 
 ---
 
@@ -198,9 +198,9 @@ which call site asks it.
       `scrollbars::axis_rects` (`src/layout/scrollbars/mod.rs:136`) each spell
       the match out by hand.
 
-- [ ] `src/primitives/approx.rs:105` and `:121` — `noop_f16_bits` and
+- [ ] `src/primitives/approx/mod.rs:105` and `:121` — `noop_f16_bits` and
       `opaque_f16_bits` each recompute `EPS_BITS`, and `Corners::approx_zero`
-      (`src/primitives/corners.rs:124`) computes it a third time with an inline
+      (`src/primitives/corners/mod.rs:124`) computes it a third time with an inline
       `crate::primitives::approx::EPS` path in the expression, which the
       convention forbids. These are `F16x4`'s domain, not that of a module
       documented as f32 comparisons.

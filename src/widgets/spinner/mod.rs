@@ -1,0 +1,140 @@
+use crate::layout::types::sizing::Sizing;
+use crate::primitives::brush::gradient::linear::LinearGradient;
+use crate::primitives::color::Color;
+use crate::scene::node::Node;
+use crate::scene::tree::paint_anims::PaintAnim;
+use crate::shape::Shape;
+use crate::shape::style::LineCap;
+use crate::ui::Ui;
+use crate::widgets::response::Response;
+use crate::widgets::theme::spinner::SpinnerTheme;
+use glam::Vec2;
+use std::time::Duration;
+
+/// Indeterminate activity spinner: a rounded arc that rotates with the
+/// frame clock, its tail fading to transparent (a "comet" trail). The
+/// internal spin animation's every-frame wake keeps the host repainting
+/// while the spinner is recorded — on the PaintOnly fast path, with no
+/// record/layout per tick — and costs nothing when it isn't.
+///
+/// The recorded [`Shape::arc`] is **identical every frame** (phase 0),
+/// so its `subtree_hash` is stable and measure/cascade skip the
+/// spinner's subtree; the live rotation is a paint-time
+/// spin animation sampled from the frame clock — the composer
+/// shifts the arc's angles when it emits the GPU instances, no
+/// geometry is rebuilt. The arc renders natively on the GPU (exact
+/// circle, adaptive subdivision), so it stays smooth at any size and
+/// DPI; the comet fade is a linear gradient sampled along the sweep.
+#[derive(Debug)]
+pub struct Spinner<'a> {
+    node: Node,
+    diameter: Option<f32>,
+    color: Option<Color>,
+    thickness: Option<f32>,
+    style: Option<&'a SpinnerTheme>,
+}
+
+impl<'a> Spinner<'a> {
+    #[track_caller]
+    pub fn new() -> Self {
+        Self {
+            node: Node::leaf(),
+            diameter: None,
+            color: None,
+            thickness: None,
+            style: None,
+        }
+    }
+
+    style_setter!(
+        'a,
+        SpinnerTheme,
+        spinner,
+        "Per-field [`Self::color`] / [`Self::diameter`] / [`Self::thickness`] \
+         still win over it.",
+    );
+
+    /// Diameter in logical px, defaulting to
+    /// [`crate::Theme::spinner`]'s. One-axis hatch over the resolved bundle — see [`crate::Theme`].
+    pub fn diameter(mut self, px: f32) -> Self {
+        self.diameter = Some(px);
+        self
+    }
+
+    /// Arc color (head of the comet), defaulting to
+    /// [`crate::Theme::spinner`]'s. One-axis hatch over the resolved bundle — see [`crate::Theme`].
+    pub fn color(mut self, c: Color) -> Self {
+        self.color = Some(c);
+        self
+    }
+
+    /// Stroke width in logical px, defaulting to the theme's
+    /// diameter-derived width. One-axis hatch over the resolved bundle — see [`crate::Theme`].
+    pub fn thickness(mut self, px: f32) -> Self {
+        self.thickness = Some(px);
+        self
+    }
+
+    pub fn show(mut self, ui: &mut Ui) -> Response<'_> {
+        let theme = self.slot(ui.theme());
+        let diameter = self.diameter.unwrap_or(theme.diameter).max(1.0);
+        let width = self
+            .thickness
+            .unwrap_or((diameter * theme.thickness_ratio).max(theme.min_thickness));
+        let color = self.color.unwrap_or(theme.color);
+        let sweep = theme.sweep;
+        let speed = theme.speed;
+        self.node
+            .size
+            .get_or_insert((Sizing::fixed(diameter), Sizing::fixed(diameter)).into());
+
+        ui.widget(self.node)
+            .show(ui, None, |ui| {
+                // Static arc (phase 0) + a paint-time spin: the recorded
+                // shape is identical every frame, so the spinner's subtree
+                // stays cache-stable and only the composer re-spins it.
+                let ArcGeometry { center, radius } = arc_geometry(diameter, width);
+                ui.add_shape_animated(
+                    Shape::arc(center, radius, 0.0, sweep, width)
+                        .brush(comet_brush(color))
+                        .cap(LineCap::Round),
+                    PaintAnim::Spin {
+                        speed,
+                        started_at: Duration::ZERO,
+                    },
+                );
+            })
+            .response
+    }
+}
+
+impl_configure!(Spinner<'_>);
+
+/// Node-local circle the arc traces.
+#[derive(Debug, PartialEq)]
+struct ArcGeometry {
+    center: Vec2,
+    radius: f32,
+}
+
+/// Inset the trace circle by half the stroke width so the stroke (and
+/// its round caps, which reach `width/2` past the centerline) stays
+/// inside the widget box.
+fn arc_geometry(diameter: f32, width: f32) -> ArcGeometry {
+    ArcGeometry {
+        center: Vec2::splat(diameter * 0.5),
+        radius: (diameter - width).max(0.0) * 0.5,
+    }
+}
+
+/// Comet-trail gradient along the sweep: fully transparent at the tail
+/// (t = 0, the arc's start angle), the full color at the head (t = 1).
+/// Scaling from the base alpha keeps a translucent base translucent.
+/// The gradient's `angle` is ignored on stroke shapes — the arc
+/// carries its own 1-D parameter.
+fn comet_brush(base: Color) -> LinearGradient {
+    LinearGradient::two_stop(0.0, base.with_alpha(0.0), base)
+}
+
+#[cfg(test)]
+mod tests;

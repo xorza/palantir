@@ -1,0 +1,98 @@
+//! The shared `HStack [box, label]` scaffolding behind the three
+//! toggle widgets, and the resolved chrome each hands it.
+
+use crate::input::response::ResponseState;
+use crate::layout::types::align::{Align, VAlign};
+use crate::primitives::background::Background;
+use crate::primitives::corners::Corners;
+use crate::primitives::text_input::TextInput;
+use crate::scene::node::{Configure, Node};
+use crate::ui::Ui;
+use crate::widgets::response::Response;
+use crate::widgets::text::Text;
+use crate::widgets::theme::widget_look::animated_look::AnimatedLook;
+use crate::widgets::widget::Widget;
+
+/// What [`ToggleChrome::record_row`] needs from its caller beyond the
+/// entry, the label, and the indicator body.
+///
+/// The theme arrives **resolved**. Each toggle reads its own slot
+/// (`theme.checkbox` / `theme.radio` / `theme.switch`) — they share a theme
+/// *type* but not a *slot*, and only the caller knows which is its own — so
+/// the caller is also where the
+/// [`LookPlan`](crate::widgets::theme::widget_look::look_plan::LookPlan) is
+/// built and applied, off the same slot the geometry scalars come from. What
+/// crosses into here is owned, which is what keeps the shared scaffolding out
+/// of the business of naming theme fields.
+#[derive(Debug)]
+pub(crate) struct ToggleChrome {
+    /// The picked, animated look for this response and on/off state.
+    pub(crate) look: AnimatedLook,
+    /// Gap between the box and the label, off the same slot as `look`.
+    pub(crate) row_gap: f32,
+    /// The box/track child recorded before the label, already sized and
+    /// in its layout mode — a square leaf for `Checkbox`/`RadioButton`,
+    /// a wide `Canvas` for `Switch`'s track. `toggle_row` only stamps
+    /// the id (`<row>.with("box")`) and the resolved chrome onto it.
+    pub(crate) boxed: Node,
+    /// Corner radius forced onto the box chrome, overriding whatever
+    /// radius the theme stored. The radio pip and the switch track must
+    /// read as pills however they are re-themed; `None` keeps the
+    /// theme's own corners (checkbox).
+    pub(crate) pill: Option<f32>,
+}
+
+impl ToggleChrome {
+    /// Shared `HStack [box, label]` scaffolding behind [`crate::Checkbox`],
+    /// [`crate::RadioButton`], and [`crate::Switch`]. The three differ only
+    /// in the toggle semantics (resolved by the caller before this runs),
+    /// the box child, and what `body` paints inside it. Everything
+    /// structural — the themed look resolution, the row gap /
+    /// cross-centering, the box chrome, the label leaf — lives here.
+    ///
+    /// The row `HStack` node (sense + salt already set) rides in
+    /// `widget`, its probed response in `probe`. `body` runs inside the box
+    /// child and is handed the box's resolved chrome: `Switch` measures its
+    /// knob inset against the *animating* stroke width, which is why the
+    /// background is passed in rather than re-derived from the theme.
+    pub(crate) fn record_row<'ui, 'text>(
+        self,
+        ui: &'ui mut Ui,
+        mut widget: Widget,
+        response: ResponseState,
+        label: TextInput<'text>,
+        body: impl FnOnce(&mut Ui, &Background),
+    ) -> Response<'ui> {
+        let id = widget.id();
+        let Self {
+            mut look,
+            row_gap,
+            boxed,
+            pill,
+        } = self;
+        if let Some(radius) = pill {
+            look.background.corners = Corners::all(radius);
+        }
+
+        widget.node.gaps.set_gap(row_gap);
+        widget.node.child_align = Align::v(VAlign::Center);
+
+        widget.record(ui, None, |ui| {
+            ui.widget(boxed.id(id.with("box")))
+                .record(ui, Some(&look.background), |ui| body(ui, &look.background));
+
+            if !label.is_empty() {
+                Text::new(label)
+                    .id(id.with("label"))
+                    .style(&look.text)
+                    .text_align(Align::v(VAlign::Center))
+                    .show(ui);
+            }
+        });
+
+        Response::eager(id, ui, response)
+    }
+}
+
+#[cfg(test)]
+mod tests;
