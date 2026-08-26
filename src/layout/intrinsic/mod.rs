@@ -275,7 +275,6 @@ pub(crate) fn compute(
     content
 }
 
-#[allow(clippy::too_many_arguments)]
 fn content_intrinsic(
     engine: &mut LayoutEngine,
     tree: &Tree,

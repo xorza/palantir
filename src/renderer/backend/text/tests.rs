@@ -43,6 +43,7 @@ fn test_gpu() -> TestGpu {
     TestGpu { queue, lease }
 }
 
+// Fixture builder: it mirrors the shape of the call under test rather than grouping.
 #[allow(clippy::too_many_arguments)]
 fn make_inner_run(
     store: &RecordStore,

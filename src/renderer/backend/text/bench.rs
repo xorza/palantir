@@ -195,6 +195,7 @@ fn gpu() -> &'static Gpu {
     })
 }
 
+// Fixture builder: it mirrors the shape of the call under test rather than grouping.
 #[allow(clippy::too_many_arguments)]
 fn make_run(
     store: &RecordStore,

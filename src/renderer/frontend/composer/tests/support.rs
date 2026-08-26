@@ -171,6 +171,7 @@ pub(super) fn push_distinct_rounded_clips(buffer: &mut PaintCapture, depth: u32)
     }
 }
 
+// Fixture builder: it mirrors the polyline command's own parameter list.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn polyline_cmd(
     b: &mut PaintCapture,

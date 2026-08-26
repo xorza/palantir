@@ -41,6 +41,7 @@ use crate::renderer::backend::backend_config::BackendConfig;
 use crate::renderer::backend::backend_resources::BackendResources;
 use crate::renderer::backend::curve_pipeline::CurvePipeline;
 use crate::renderer::backend::format_pipelines::FormatPipelines;
+use crate::renderer::backend::format_pipelines::PipelineSources;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::gpu_gradient_atlas::GpuGradientAtlas;
 use crate::renderer::backend::gpu_timings::GpuTimings;
@@ -151,6 +152,17 @@ pub(crate) struct WgpuBackend {
     pass_stats: GpuPassStats,
 }
 
+/// What [`WgpuBackend::run_main_pass`] draws into: the color attachment, the
+/// stencil attachment when the frame uses rounded clipping, and the color the
+/// pass clears to. One frame's attachments are picked together — backbuffer vs.
+/// surface view, stencil or no stencil — so they arrive together.
+#[derive(Debug)]
+struct PassTarget<'a> {
+    color_view: &'a wgpu::TextureView,
+    stencil_view: Option<&'a wgpu::TextureView>,
+    clear: wgpu::Color,
+}
+
 impl WgpuBackend {
     /// Build the one shared GPU renderer from its app-global render handles.
     /// Owns the device/queue and every
@@ -236,13 +248,15 @@ impl WgpuBackend {
             let built = FormatPipelines::new(
                 &self.device,
                 format,
-                &self.gradient.bgl,
-                &self.quad,
-                &self.mesh,
-                &self.image,
-                &self.icon,
-                &self.curve,
-                &self.text,
+                PipelineSources {
+                    gradient_bgl: &self.gradient.bgl,
+                    quad: &self.quad,
+                    mesh: &self.mesh,
+                    image: &self.image,
+                    icon: &self.icon,
+                    curve: &self.curve,
+                    text: &self.text,
+                },
             );
             self.pipelines.insert(format, built);
         }
@@ -472,12 +486,14 @@ impl WgpuBackend {
         }
         self.run_main_pass(
             fmt,
-            color_view,
-            stencil_view,
+            PassTarget {
+                color_view,
+                stencil_view,
+                clear: clear_color,
+            },
             &mut encoder,
             buffer,
             &repaint_scissors,
-            clear_color,
         );
 
         if let Some(bb) = via_backbuffer {
@@ -711,18 +727,20 @@ impl WgpuBackend {
     /// [`GpuPassStats::last_main_pass_cpu_ms`]. It is the one frame cost
     /// that scales with draw-step *count* rather than pixel count, so it
     /// is the metric the `record_pass` benchmark reads.
-    #[allow(clippy::too_many_arguments)]
     fn run_main_pass(
         &self,
         fmt: &FormatPipelines,
-        color_view: &wgpu::TextureView,
-        stencil_view: Option<&wgpu::TextureView>,
+        target: PassTarget<'_>,
         encoder: &mut wgpu::CommandEncoder,
         buffer: &RenderBuffer,
         repaint_scissors: &RepaintScissors,
-        clear: wgpu::Color,
     ) {
         tracy::zone!();
+        let PassTarget {
+            color_view,
+            stencil_view,
+            clear,
+        } = target;
         let use_stencil = stencil_view.is_some();
         let depth_stencil_attachment =
             stencil_view.map(|view| wgpu::RenderPassDepthStencilAttachment {

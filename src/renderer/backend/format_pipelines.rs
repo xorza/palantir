@@ -44,22 +44,39 @@ pub(super) struct FormatPipelines {
     pub(super) text: StencilVariant,
 }
 
+/// The format-independent resource structs [`FormatPipelines::new`] reads shaders
+/// and layouts off. They live side by side on the backend and are handed over as a
+/// set, so a new pipeline kind is one field here rather than one more parameter at
+/// every call.
+#[derive(Debug)]
+pub(super) struct PipelineSources<'a> {
+    /// The shared group-0 layout (quad/curve).
+    pub(super) gradient_bgl: &'a wgpu::BindGroupLayout,
+    pub(super) quad: &'a QuadPipeline,
+    pub(super) mesh: &'a MeshPipeline,
+    pub(super) image: &'a ImagePipeline,
+    pub(super) icon: &'a IconBackend,
+    pub(super) curve: &'a CurvePipeline,
+    pub(super) text: &'a TextBackend,
+}
+
 impl FormatPipelines {
     /// Build every pipeline for `format`, reading shaders + layouts off
-    /// the shared, format-independent resource structs. `gradient_bgl` is
-    /// the shared group-0 layout (quad/curve).
-    #[allow(clippy::too_many_arguments)]
+    /// the shared, format-independent resource structs.
     pub(super) fn new(
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
-        gradient_bgl: &wgpu::BindGroupLayout,
-        quad: &QuadPipeline,
-        mesh: &MeshPipeline,
-        image: &ImagePipeline,
-        icon: &IconBackend,
-        curve: &CurvePipeline,
-        text: &TextBackend,
+        sources: PipelineSources<'_>,
     ) -> Self {
+        let PipelineSources {
+            gradient_bgl,
+            quad,
+            mesh,
+            image,
+            icon,
+            curve,
+            text,
+        } = sources;
         Self {
             quad: quad.build_variants(device, gradient_bgl, format),
             quad_mask_stamp: quad.build_mask_stamp(device, gradient_bgl, format),
