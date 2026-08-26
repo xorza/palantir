@@ -21,5 +21,4 @@ mod allocator;
 mod fixtures;
 mod gates;
 mod harness;
-#[cfg(test)]
 mod harness_tests;

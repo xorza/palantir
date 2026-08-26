@@ -8,7 +8,7 @@
 
 use crate::allocator::with_audit;
 use crate::harness;
-use crate::harness::{run_audit, user_frames};
+use crate::harness::{Audit, user_frames};
 use palantir::{Button, Configure, Sizing, Ui};
 use std::hint::black_box;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -141,14 +141,14 @@ fn stale_traces_drained_between_audits() {
 }
 
 #[test]
-fn run_audit_panics_with_diagnostic_message_on_budget_violation() {
+fn audit_panics_with_diagnostic_message_on_budget_violation() {
     let result = catch_unwind(AssertUnwindSafe(|| {
-        run_audit(0, 4, 0, |_ui: &mut Ui| {
+        Audit::new().warmup(0).frames(4).run(|_ui: &mut Ui| {
             one_alloc();
         });
     }));
     let msg = result
-        .expect_err("run_audit should panic when budget exceeded")
+        .expect_err("the audit should panic when budget exceeded")
         .downcast::<String>()
         .map(|s| *s)
         .unwrap_or_else(|_| String::from("<non-string panic payload>"));
@@ -157,7 +157,7 @@ fn run_audit_panics_with_diagnostic_message_on_budget_violation() {
         "panic message missing diagnostic header: {msg}",
     );
     // The fixture names itself by where it is, not by a string it repeats:
-    // `run_audit` is `#[track_caller]`, so the location is this file and the
+    // `Audit::run` is `#[track_caller]`, so the location is this file and the
     // line the call above sits on.
     assert!(
         msg.contains(file!()),
