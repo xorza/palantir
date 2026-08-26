@@ -15,18 +15,15 @@ fn retarget_mid_flight_starts_new_segment_from_current() {
     let _ = map.tick(id, SLOT, 0.0, spec, 0.016, next_frame());
     let _ = map.tick(id, SLOT, 1.0, spec, 0.0, next_frame());
     let mid = map.tick(id, SLOT, 1.0, spec, 0.05, next_frame()).current;
-    assert!(mid > 0.4 && mid < 0.6, "halfway to 1.0; got {mid}");
+    // 50 ms of a 100 ms linear segment: progress 0.5, so lerp(0.0, 1.0, 0.5).
+    assert_eq!(mid, 0.5);
 
     let r = map.tick(id, SLOT, 2.0, spec, 0.0, next_frame());
     assert_eq!(r.current, mid, "retarget must preserve current");
     let r = map.tick(id, SLOT, 2.0, spec, 0.05, next_frame());
-    let expected = (mid + 2.0) * 0.5;
-    assert!(
-        (r.current - expected).abs() < 0.01,
-        "new segment should ease from mid to 2.0; got {} expected {}",
-        r.current,
-        expected,
-    );
+    // The retarget restarted the segment at 0.5, so another half of a
+    // linear 100 ms segment gives lerp(0.5, 2.0, 0.5).
+    assert_eq!(r.current, 1.25);
 }
 
 #[test]

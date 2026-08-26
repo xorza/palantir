@@ -91,10 +91,13 @@ fn bundled_faces_resolve_and_their_metrics_differ() {
     let mono = width(&mut c, FontFamily::Mono, FontWeight::Regular);
     let mono_bold = width(&mut c, FontFamily::Mono, FontWeight::Bold);
 
-    assert!(sans > 0.0 && sans.is_finite());
-    assert_ne!(
-        sans, mono,
-        "Inter (proportional) and JBMono (monospace) differ for 'MMMM'",
+    // Measured widths round up to whole pixels. JetBrains Mono's cell is
+    // 600/1000 em — 9.6 px at 16 px — so four of them is 38.4 → 39. Inter is
+    // proportional; 58.0 is four of its 'M' advances under the same rule.
+    assert_eq!(
+        (sans, mono),
+        (58.0, 39.0),
+        "bundled-face advances for 'MMMM'"
     );
     assert!(
         sans_bold > sans,

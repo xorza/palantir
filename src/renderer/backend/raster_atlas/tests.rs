@@ -358,10 +358,9 @@ mod gpu {
         let pixels = [0u8; 16 * 16];
         let metadata = PackedMetadata::new(16, 16, 0, 0).unwrap();
 
-        // Saturate the side. How many 16² tiles a 256² atlas takes is
-        // etagere's shelf packing, not this crate's business, so the
-        // count is read out rather than asserted — what matters below is
-        // that the slab is `placed` long and every slot is live.
+        // Saturate the side. Uniform 16² tiles shelf-pack a 256² side
+        // with no waste — 16 shelves of 16 — so the capacity is exact
+        // rather than a property of etagere's packing heuristics.
         let mut placed = 0u16;
         while atlas
             .insert(
@@ -375,7 +374,7 @@ mod gpu {
         {
             placed += 1;
         }
-        assert!(placed > 0, "a fresh 128² side must take at least one tile");
+        assert_eq!(placed, 256);
         assert_eq!(atlas.slots.len(), placed as usize, "no evictions yet");
 
         // Redraw the whole working set on the next frame, which is what

@@ -96,7 +96,9 @@ fn intersects_cases() {
     let away = Rect::new(50.0, 50.0, 5.0, 5.0);
     let missed = outer.clamp_to(away);
     assert!(missed.is_paint_empty(), "{missed:?}");
-    assert!(missed.size.w >= 0.0 && missed.size.h >= 0.0, "{missed:?}");
+    // `clamp_to` takes the bounds' origin (50, 50) and the smaller max
+    // (10, 10), so both extents saturate at zero rather than going negative.
+    assert_eq!(missed, Rect::new(50.0, 50.0, 0.0, 0.0));
 }
 
 #[test]

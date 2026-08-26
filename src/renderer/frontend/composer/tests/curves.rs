@@ -328,10 +328,12 @@ fn compose_emits_one_curve_batch_per_scissor_group() {
     );
     let batch = buf.batches(PaintTier::Curve)[0];
     assert_eq!(batch.last_group, 0);
-    // Sub-instance count depends on adaptive subdivision, but both
-    // curves contribute the *same* per-curve count (identical shape),
-    // so the total must be ≥ 2 and even.
-    assert!(batch.items.len >= 2 && batch.items.len.is_multiple_of(2));
+    // Each curve's control polygon is 2·√2600 + 80 ≈ 181.98 px, which
+    // `TARGET_CHORD_PX = 1.5` splits into ceil(181.98 / 1.5) = 122
+    // chords, and `SEGMENTS_PER_INSTANCE = 16` packs into
+    // 122.div_ceil(16) = 8 sub-instances. The two curves are the same
+    // shape translated, so the batch carries twice that.
+    assert_eq!(batch.items.len, 16);
     assert_eq!(
         buf.curves.len() as u32,
         batch.items.len,

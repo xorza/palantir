@@ -321,7 +321,10 @@ fn superseded_key_still_hits_inside_the_probation_window() {
         counts.shapes, 0,
         "a superseded key inside its window must be demoted, not evicted",
     );
-    assert!(counts.hits > 0);
+    assert_eq!(
+        counts.hits, 1,
+        "one run at one width is one lookup, and it hit"
+    );
 }
 
 /// Steady state must be untouched by any of this: a frame redrawing the

@@ -183,7 +183,9 @@ fn compose_repeated_linear_brush_shares_atlas_row() {
     assert_eq!(rows.len(), 3);
     assert_eq!(rows[0], rows[1]);
     assert_eq!(rows[1], rows[2]);
-    assert!(rows[0].0 >= 1);
+    // Row 0 is `LutRow::FALLBACK`, the permanent magenta row, so a fresh
+    // atlas hands the first real gradient row 1.
+    assert_eq!(rows[0], LutRow(1));
 }
 
 #[test]

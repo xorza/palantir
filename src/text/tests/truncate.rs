@@ -6,7 +6,13 @@ fn fitting_truncate_returns_the_unbounded_root_without_reshaping() {
     let wid = WidgetId::from_hash("fitting truncate");
     let fitting = shape(16.0).width(200.0).halign(HAlign::Center);
 
-    for (ordinal, wrap) in [(0u16, TextWrap::Truncate), (1, TextWrap::Ellipsis)] {
+    // `capped_w` is the run's Inter width once the fit has cut it to the
+    // 20 px bound. Ellipsis lands narrower than Truncate because the "…"
+    // it appends has to fit inside the same bound.
+    for (ordinal, wrap, capped_w) in [
+        (0u16, TextWrap::Truncate, 17.0),
+        (1, TextWrap::Ellipsis, 14.0),
+    ] {
         let run_slot = slot_at(wid, ordinal);
         let fit = wrap.line_fit().unwrap();
         let natural = text.shape_run(run_slot, "ok", fitting.unbounded(), wrap);
@@ -34,7 +40,7 @@ fn fitting_truncate_returns_the_unbounded_root_without_reshaping() {
         let truncated = text.shape_run(run_slot, "wider than twenty", fitting.width(20.0), wrap);
         assert_ne!(truncated.key, truncated.key.unbounded_version());
         assert_eq!(truncated.key.fit_q, fit as u8);
-        assert!(truncated.size.w <= 20.0);
+        assert_eq!(truncated.size.w, capped_w, "{wrap:?} caps inside 20 px");
     }
 
     // A multi-line source collapses to its first line under Clip/Ellipsis,
@@ -389,7 +395,8 @@ fn mono_ellipsis_caps_width_and_leaves_the_floor_to_the_root() {
     );
 
     let wrapped = mono_shape(long, params, LineFit::Wrap);
-    assert!(wrapped.size.h > 16.0, "wrap grows height across lines");
+    // 40 px holds five 8 px cells, so 16 characters wrap to four 16 px lines.
+    assert_eq!(wrapped.size.h, 64.0, "wrap grows height across lines");
     assert!(
         mono_shape(long, params.unbounded(), LineFit::Wrap).wrap_floor() > 0.0,
         "wrap keeps a longest-word floor — reported by the root it belongs to",
