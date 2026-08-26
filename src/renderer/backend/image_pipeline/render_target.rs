@@ -112,7 +112,7 @@ impl GpuViewTargets {
     /// [`keep_target`] preserves foreign owners' entries on every submit, so
     /// a closed window's targets would otherwise be held by the surviving
     /// windows for the life of the host.
-    #[cfg_attr(not(feature = "winit-host"), allow(dead_code))]
+    #[cfg_attr(not(feature = "winit"), allow(dead_code))]
     pub(super) fn retire_owner(&mut self, owner: RenderOwnerId, textures: &mut ImageTextures) {
         self.entries.retain(|id, target| {
             let keep = target.owner != owner;

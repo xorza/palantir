@@ -9,8 +9,11 @@
 //! keeps [`run`] and its selection rules unit-testable — a
 //! `harness = false` target collects no `#[test]` fns at all.
 //!
-//! `benches/criterion.rs` is therefore a three-line call into [`run`],
-//! and `benches/alloc.rs` the same into [`alloc::run`].
+//! `benches/criterion.rs` is therefore a three-line call into [`run`].
+//!
+//! The allocation gates are not here at all: they report counts rather
+//! than times, so they need no criterion and no optimized link, and they
+//! live with the rest of the allocation suite in `tests/alloc/gates.rs`.
 //!
 //! ## Why this owns `main`
 //!
@@ -46,7 +49,6 @@
 //! `connection`, which the own-branch keeps by construction. Baselines
 //! through `cargo criterion` are untested here.
 
-pub mod alloc;
 mod cli;
 mod driver;
 

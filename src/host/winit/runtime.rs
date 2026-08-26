@@ -56,17 +56,6 @@ impl<T> std::fmt::Debug for WinitRuntime<T> {
     }
 }
 
-fn window_clipboard() -> Clipboard {
-    #[cfg(feature = "system-clipboard")]
-    {
-        Clipboard::system_or_memory()
-    }
-    #[cfg(not(feature = "system-clipboard"))]
-    {
-        Clipboard::default()
-    }
-}
-
 impl<T: App + 'static> WinitRuntime<T> {
     pub(super) fn new(
         event_loop: &ActiveEventLoop,
@@ -86,7 +75,7 @@ impl<T: App + 'static> WinitRuntime<T> {
             device,
             queue,
             TextShaper::new(),
-            window_clipboard(),
+            Clipboard::system_or_memory(),
             BackendConfig {
                 collect_gpu_stats: config.collect_gpu_stats,
             },

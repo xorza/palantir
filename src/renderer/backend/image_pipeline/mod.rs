@@ -141,7 +141,7 @@ impl ImagePipeline {
     /// Free every `GpuView` target owned by a retired render stream — see
     /// [`GpuViewTargets::retire_owner`]. Gated with its entry point,
     /// `WgpuBackend::retire_render_owner`, which carries the reason.
-    #[cfg_attr(not(feature = "winit-host"), allow(dead_code))]
+    #[cfg_attr(not(feature = "winit"), allow(dead_code))]
     pub(super) fn retire_render_owner(&mut self, owner: RenderOwnerId) {
         self.gpu_view_targets
             .retire_owner(owner, &mut self.textures);

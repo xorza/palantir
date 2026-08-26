@@ -59,14 +59,14 @@
 //! of its own.
 //!
 //! The shared workload lives in [`crate::frame_fixture`] and also drives
-//! the allocation benches in [`crate::host::bench`] and the showcase's
+//! the allocation gates in `tests/alloc/gates.rs` and the showcase's
 //! `frame bench` page — run `cargo run --bin showcase --features showcase`
 //! to eyeball the tree these numbers come from.
 
 use crate::app::internals::RecordApp;
 use crate::bench::{Arms, Fixture, Run};
 use crate::diagnostics::gpu_pass_stats::BatchKind;
-use crate::frame_fixture::{BENCH_SCALE, FrameFixture};
+use crate::frame_fixture::{BENCH_DPR, BENCH_SCALE, BENCH_SURFACE, FrameFixture};
 use crate::host::bench_gpu::{BenchGpu, Timing};
 use crate::host::offscreen::OffscreenHost;
 use crate::primitives::color::Color;
@@ -85,23 +85,11 @@ use std::process::Command;
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
-/// Device pixel ratio every arm renders at. `pub(crate)` so the
-/// allocation gate in [`crate::host::bench`] measures this same tree
-/// rather than a smaller stand-in of its own.
-pub(crate) const SCALE: f32 = 2.0;
 // Surface clear colour. Set on `theme.window_clear` in both harnesses
 // and reused as the `clear` for the synthesized `Full` plan the CPU
 // `cached` arm encodes against (see `CpuHarness::frame`).
 const WINDOW_CLEAR: Color = Color::BLACK;
-// One 1440p display, which is what the reported numbers are meant to
-// stand for. `BENCH_SCALE = 32` content (36-row prop grid, 96-chip wrap,
-// specimen sheet, 64-cell filmstrip, activity scroll, notes) is far
-// taller than this, so everything past the fold is clipped away and
-// culled: the CPU arms still record, measure and arrange the whole tree,
-// while paint and the GPU arms see only the visible part. Raise it with
-// `--size` to measure the whole fixture painting at once.
-pub(crate) const CACHED_SIZE: glam::UVec2 = glam::UVec2::new(2560, 1440); // 1280x720 @ 2x
-// Proportioned against `CACHED_SIZE` — `Surface::new` rescales them by
+// Proportioned against `BENCH_SURFACE` — `Surface::new` rescales them by
 // whatever ratio `--size` asks for, so what matters is the spread
 // (-16%..+8% wide, -7%..+3% tall), not the absolute values. Multiples of
 // 16 so a resized surface stays tile-aligned.
@@ -126,11 +114,11 @@ struct Surface {
 
 impl Surface {
     fn new(fixture: Fixture<'_>) -> Self {
-        let size = fixture.size.unwrap_or(CACHED_SIZE);
-        let ratio = size.as_vec2() / CACHED_SIZE.as_vec2();
+        let size = fixture.size.unwrap_or(BENCH_SURFACE);
+        let ratio = size.as_vec2() / BENCH_SURFACE.as_vec2();
         Surface {
             size,
-            scale: fixture.scale.unwrap_or(SCALE),
+            scale: fixture.scale.unwrap_or(BENCH_DPR),
             pool: RESIZE_POOL
                 .iter()
                 .map(|s| (s.as_vec2() * ratio).round().as_uvec2())
@@ -794,7 +782,8 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
 #[cfg(test)]
 mod tests {
     use crate::bench::Fixture;
-    use crate::ui::bench::{CACHED_SIZE, RESIZE_POOL, SCALE, Surface, prepend_block};
+    use crate::frame_fixture::{BENCH_DPR, BENCH_SURFACE};
+    use crate::ui::bench::{RESIZE_POOL, Surface, prepend_block};
 
     /// The results directory is gitignored, so the common case on a
     /// fresh checkout is that it does not exist — a writer that only
@@ -831,8 +820,8 @@ mod tests {
     #[test]
     fn a_given_size_scales_the_resize_pool_by_the_same_ratio() {
         let d = Surface::new(Fixture::default());
-        assert_eq!(d.size, CACHED_SIZE);
-        assert_eq!(d.scale, SCALE);
+        assert_eq!(d.size, BENCH_SURFACE);
+        assert_eq!(d.scale, BENCH_DPR);
         assert_eq!(d.pool, RESIZE_POOL, "unset size leaves the pool alone");
 
         // Half the default in both axes: 2560x1440 -> 1280x720, ratio
@@ -861,6 +850,6 @@ mod tests {
             ..Fixture::default()
         });
         assert_eq!(odd.pool[0].x, 1759);
-        assert_eq!(odd.scale, SCALE, "unset scale keeps the default");
+        assert_eq!(odd.scale, BENCH_DPR, "unset scale keeps the default");
     }
 }

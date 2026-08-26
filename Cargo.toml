@@ -24,7 +24,7 @@ exclude = [
     "scripts/",
 ]
 
-# `internals` exposes test-only reach-ins and `bench` the criterion/dhat
+# `internals` exposes test-only reach-ins and `bench` the criterion
 # drivers on top; neither is part of the supported surface, so document the
 # default features — exactly what a consumer gets.
 [package.metadata.docs.rs]
@@ -76,7 +76,6 @@ unicode-segmentation = "1.13"
 
 criterion = { version = "0.8", optional = true }
 clap = { version = "4", optional = true, features = ["derive"] }
-dhat = { version = "0.3", optional = true }
 gethostname = { version = "1.1", optional = true }
 tracy-client = { version = "0.19", optional = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter"], optional = true }
@@ -98,11 +97,11 @@ required-features = ["internals"]
 
 [[example]]
 name = "counter"
-required-features = ["winit-host"]
+required-features = ["winit"]
 
 [[example]]
 name = "custom_widget"
-required-features = ["winit-host"]
+required-features = ["winit"]
 
 [[example]]
 name = "dump_theme"
@@ -112,23 +111,8 @@ name = "criterion"
 harness = false
 required-features = ["bench"]
 
-# The allocation bench stays out of `criterion`: it installs
-# `dhat::Alloc` as its `#[global_allocator]`, which is per-binary and
-# would distort every timing it shared a target with. That is the only
-# reason for the second target — the steps within it share one binary
-# and one profiler.
-#
-# Its record step needs `Ui::for_test_text()` (internals-gated, folded
-# into `bench`) so it clears the gate against real cosmic shaping and
-# the same tree the criterion frame bench times, not a quieter
-# stand-in — see the module docs.
-[[bench]]
-name = "alloc"
-harness = false
-required-features = ["bench"]
-
 [features]
-default = ["system-clipboard", "winit-host"]
+default = ["winit"]
 # Test reach-ins into crate privates — `UiHarness`, the probe counters, the
 # headless GPU lease. Deliberately cheap: both integration suites need it to
 # reach past the published surface, and neither should pay to compile a
@@ -142,17 +126,20 @@ golden = ["dep:image", "dep:rayon"]
 # Compiles the source-level benchmark drivers and exposes their function-only
 # facade to the thin external targets. Implies `internals` — the drivers reach
 # into the same privates the tests do, and add the harness crates on top.
-bench = ["internals", "dep:criterion", "dep:clap", "dep:dhat", "dep:gethostname"]
+bench = ["internals", "dep:criterion", "dep:clap", "dep:gethostname"]
 # Enables the bundled widget-tour binary and its logging setup. Carries
 # `gpu-debug-markers` because the showcase is what you capture.
-showcase = ["dep:tracing-subscriber", "winit-host", "gpu-debug-markers"]
+showcase = ["dep:tracing-subscriber", "winit", "gpu-debug-markers"]
 # GPU debug groups (RenderDoc / Xcode capture labels) around every draw
 # step. Off by default: wgpu-core records two commands plus a label
 # memcpy per pair even with no capture tool attached, and the step count
 # scales with UI complexity. Turn on when you intend to capture.
 gpu-debug-markers = []
-system-clipboard = ["winit-host", "dep:arboard"]
-winit-host = ["dep:winit"]
+# The winit-backed host: real windows, a real event loop, and the OS
+# clipboard behind `TextEdit`'s cut/copy/paste. One flag rather than two
+# because the clipboard only ever had a system backend to reach for when
+# a windowed host was already in the build.
+winit = ["dep:winit", "dep:arboard"]
 profile-with-tracy = ["dep:tracy-client"]
 
 

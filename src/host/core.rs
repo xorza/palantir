@@ -73,7 +73,7 @@ impl HostCore {
     /// targets have no submit left to be absent from and would otherwise be
     /// held until host shutdown.
     #[cfg_attr(
-        not(feature = "winit-host"),
+        not(feature = "winit"),
         expect(
             dead_code,
             reason = "multi-window lifecycle plumbing: every caller is under                       src/host/winit/, so a build without that feature has                       nothing to call it"

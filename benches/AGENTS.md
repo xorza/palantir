@@ -1,23 +1,18 @@
 # Benches
 
-Criterion benches over the frame pipeline, plus dhat allocation benches
-that pin the alloc-free-per-frame posture. The rest is the profiling
+Criterion benches over the frame pipeline. The rest is the profiling
 manual — how to invoke things is in `scripts/bench-perf.sh`'s header.
 
 ## Running them
 
-Two targets, each `harness = false` with its own `main`: `criterion`
-holds every timing driver, `alloc` every dhat one. That split — and only
-that one — is forced by `dhat::Alloc` being a `#[global_allocator]`:
-process-wide, and a 10-30x tax on any timing sharing the binary. Within
-each harness it is one target because `[profile.bench]` is fat-LTO with
-one codegen unit, and twenty parallel links of the whole dependency
-graph was an OOM risk.
+One target, `criterion`, `harness = false` with its own `main` and every
+timing driver in it: `[profile.bench]` is fat-LTO with one codegen unit,
+and twenty parallel links of the whole dependency graph was an OOM
+risk.
 
 `criterion` takes `--driver` (exact, repeatable) and `--list-drivers`;
 `--arms` picks a half of the pipeline, and a bare positional is
-criterion's own regex over benchmark ids. `alloc` takes no selection at
-all — two steps, both gated, both run:
+criterion's own regex over benchmark ids.
 
 ```sh
 cargo bench -p palantir --bench criterion -- --list-drivers
@@ -25,8 +20,6 @@ cargo bench -p palantir --bench criterion -- -d damage
 cargo bench -p palantir --bench criterion -- --arms cpu
 cargo bench -p palantir --bench criterion -- 'cascade/hit_test$'
 cargo bench -p palantir --bench criterion -- -d frame --arms cpu --note 'after belt rework'
-cargo bench -p palantir --bench alloc               # both steps
-cargo bench -p palantir --bench alloc -- --dump     # + dhat-heap.json
 ```
 
 `--help` lists the rest — `--profile-time`, `--sample-size`,
@@ -50,14 +43,6 @@ name; `--baseline-lenient` leaves it uncompared instead.
 own: one parser per target, and what it resolves is handed down in a
 `Run`. A knob that has to reach a driver goes on the CLI — never into
 the environment, where nothing declares it and `--help` can't list it.
-
-**`alloc` gates, `tests/alloc` attributes.** The bench answers the two
-questions only it can — does our per-frame code allocate at full scale,
-and has the wgpu driver floor drifted. Everything finer lives in
-`cargo test --test alloc`: ~20 fixtures, per-frame budgets, backtrace
-capture, under a second, no allocator tax. Reach for that one first when
-a number moves; add a step here only for something it structurally
-cannot see.
 
 **`frame` is opt-in** — `-d frame`. It is the one driver kept out of a
 bare run: the full matrix is ~90 s and appends a results row to
@@ -158,9 +143,7 @@ Before drawing conclusions:
   if those hit L2, catastrophic if they hit DRAM. `perf mem` tells you.
 - **Page-faults in steady state** are the cheap "did we allocate?"
   proxy — non-zero after warmup usually means a `Vec::reserve` crossed a
-  page. For attribution run `--bench alloc -- --dump` and load
-  `dhat-heap.json` at <https://nnethercote.github.io/dh_view/>.
-  Never time those; dhat adds 10-30× allocator overhead.
+  page. `tests/alloc` is where that gets attributed.
 
 ### Drilling in (Intel)
 

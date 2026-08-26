@@ -14,8 +14,6 @@
 //! `Ui` API must not depend on the host machinery.
 
 #[cfg(feature = "bench")]
-pub(crate) mod bench;
-#[cfg(feature = "bench")]
 pub(crate) mod bench_gpu;
 pub(crate) mod clock;
 mod core;
@@ -27,5 +25,5 @@ pub(crate) mod shared;
 #[cfg(feature = "internals")]
 pub(crate) mod test_gpu;
 mod window_driver;
-#[cfg(feature = "winit-host")]
+#[cfg(feature = "winit")]
 pub(crate) mod winit;
