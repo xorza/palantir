@@ -17,6 +17,24 @@ impl Placement {
         Self::Fixed { anchor, size }
     }
 
+    /// Replace the anchor, keeping any size cap. An overlay position
+    /// has no anchor half to keep — it resolves its origin from the
+    /// measured size — so it becomes a plain fixed placement.
+    pub(crate) const fn with_anchor(self, anchor: Vec2) -> Self {
+        match self {
+            Self::Fixed { size, .. } => Self::fixed(anchor, size),
+            Self::Overlay(_) => Self::fixed(anchor, None),
+        }
+    }
+
+    /// Replace the size cap, keeping the anchor, on the same terms.
+    pub(crate) const fn with_size(self, size: Size) -> Self {
+        match self {
+            Self::Fixed { anchor, .. } => Self::fixed(anchor, Some(size)),
+            Self::Overlay(_) => Self::fixed(Vec2::ZERO, Some(size)),
+        }
+    }
+
     pub(crate) fn available(self, surface: Rect) -> Size {
         match self {
             Self::Fixed { anchor, size: None } => {
