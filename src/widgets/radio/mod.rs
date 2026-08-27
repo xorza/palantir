@@ -7,7 +7,7 @@ use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::widgets::response::Response;
 use crate::widgets::theme::toggle::ToggleTheme;
-use crate::widgets::theme::widget_look::look_plan::LookPlan;
+use crate::widgets::theme::widget_look::theme_slot::ThemeSlot;
 use crate::widgets::toggle_chrome::ToggleChrome;
 
 /// One option in a radio group. `current` is the group's shared
@@ -50,7 +50,7 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
     style_setter!('a, ToggleTheme, radio);
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        let mut widget = ui.widget(self.node);
+        let widget = ui.widget(self.node);
         let response = widget.response(ui);
 
         // Read ahead of the latch below, which moves `self.value` and so
@@ -60,7 +60,6 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
         let pip_size = slot.box_size;
         let indicator = slot.indicator;
         let dot_inset = slot.indicator_inset;
-        let row_gap = slot.row_gap;
 
         let mut selected = *self.current == self.value;
         // Radios latch — re-clicking the selected option is a no-op,
@@ -73,17 +72,9 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
             selected = true;
         }
 
-        let look = LookPlan {
-            target: slot.pick(&response, selected).to_animated(&theme.text),
-            padding: slot.padding,
-            margin: slot.margin,
-            anim: slot.anim,
-        }
-        .apply(ui, &mut widget);
-
         let chrome = ToggleChrome {
-            look,
-            row_gap,
+            plan: slot.plan(&response, selected, &theme.text),
+            row_gap: slot.row_gap,
             boxed: Node::leaf().size((Sizing::fixed(pip_size), Sizing::fixed(pip_size))),
             // Forces the pip chrome to a circle regardless of any
             // re-themed `radio.checked.normal.background.radius` — a

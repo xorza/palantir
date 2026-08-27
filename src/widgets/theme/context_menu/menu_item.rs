@@ -8,6 +8,7 @@ use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::theme::widget_look::WidgetLook;
 use crate::widgets::theme::widget_look::stateful_look::StatefulLook;
+use crate::widgets::theme::widget_look::theme_slot::{SlotDefaults, ThemeSlot};
 
 /// Four-state row look for [`crate::widgets::context_menu::menu_item::MenuItem`]
 /// (`active` = pressed). The default `active` look equals `hovered` —
@@ -97,6 +98,22 @@ impl MenuItemTheme {
             margin: Spacing::ZERO,
             gap: 16.0,
             anim: None,
+        }
+    }
+}
+
+impl ThemeSlot for MenuItemTheme {
+    type Pick = ();
+
+    fn look(&self, response: &ResponseState, _pick: ()) -> &WidgetLook {
+        self.pick(response)
+    }
+
+    fn defaults(&self) -> SlotDefaults {
+        SlotDefaults {
+            padding: self.padding,
+            margin: self.margin,
+            anim: self.anim,
         }
     }
 }

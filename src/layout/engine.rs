@@ -100,7 +100,7 @@ impl LayoutEngine {
         true
     }
 
-    /// Grid's per-track intrinsic aggregator — a bump stack `grid::intrinsic`
+    /// Grid's per-track intrinsic aggregator — a bump stack `Grid::intrinsic`
     /// extends, recurses through, and truncates back. Reached by name for
     /// the same reason [`LayoutPass`]'s accessors exist; the intrinsic
     /// query itself stays off the pass, so it asks the engine directly.
@@ -139,8 +139,8 @@ impl LayoutEngine {
     /// still missing after the first two reach the walk, so a range query
     /// whose min is already cached costs a max-only recursion.
     ///
-    /// Consumed by `grid::measure` (Phase 1 column resolution) and
-    /// `stack::measure` (Fill min-content floor) via the thin
+    /// Consumed by `Grid::measure` (Phase 1 column resolution) and
+    /// `Stack::measure` (Fill min-content floor) via the thin
     /// [`Self::intrinsic`] / [`Self::intrinsic_range`] wrappers.
     pub(super) fn intrinsic_query(
         &mut self,

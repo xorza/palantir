@@ -6,6 +6,7 @@
 //! writes lives in [`GridContext`](grid_context::GridContext).
 
 use crate::layout::axis::Axis;
+use crate::layout::driver::LayoutDriver;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange, LenReq};
 use crate::layout::pass::LayoutPass;
@@ -25,136 +26,6 @@ mod measuring;
 
 use crate::layout::grid::arranging::arrange_inner;
 use crate::layout::grid::measuring::measure_inner;
-
-/// WPF-style grid measure. Resolves Fixed tracks, walks children once
-/// feeding each `Σ spanned-track sizes` (or `∞` if any spanned track is
-/// unresolved — the WPF infinity trick → child reports intrinsic), then
-/// resolves Hug tracks from span-1 children's desired sizes. Star tracks
-/// contribute 0 to the grid's content size — final star sizes only resolve
-/// in arrange. The full constraint solver is documented on
-/// [`AxisScratch::resolve_axis`](crate::layout::grid::axis_scratch::AxisScratch::resolve_axis).
-///
-/// Per-depth scratch (`AxisScratch` columns) lives in `grid.depth_stack`
-/// and gets clobbered by sibling grids between this measure and the
-/// matching arrange. Hug sizes therefore live in `grid.track_state`
-/// (`GridTrackStore`), keyed by `GridDef` index, durable for the whole
-/// layout pass. Both are heap-resident and capacity-retained across
-/// frames; no fixed track-count limit.
-pub(super) fn measure(
-    pass: &mut LayoutPass<'_>,
-    node: NodeId,
-    idx: GridDefId,
-    inner_avail: Size,
-) -> Size {
-    let depth = pass.grid_mut().depth_stack.enter();
-    let result = measure_inner(pass, node, idx, depth, inner_avail);
-    pass.grid_mut().depth_stack.exit();
-    result
-}
-
-pub(super) fn arrange(pass: &mut LayoutPass<'_>, node: NodeId, inner: Rect, idx: GridDefId) {
-    let depth = pass.grid_mut().depth_stack.enter();
-    arrange_inner(pass, node, inner, idx, depth);
-    pass.grid_mut().depth_stack.exit();
-}
-
-/// Intrinsic size of a Grid: per-track contribution aggregated from
-/// span-1 cells, summed across tracks plus gaps. Answers "what would
-/// the Grid prefer to be on this axis?" so callers can read it without
-/// running `measure`.
-///
-/// Per-track contribution mirrors `Track`'s `Sizing` interpretation:
-/// - `Fixed(v)`: contributes `v` clamped to `[Track.min, Track.max]`.
-/// - `Hug`: starts at `Track.min`, grown by span-1 cells' intrinsic on
-///   the same axis, clamped to `[Track.min, Track.max]`.
-/// - `Fill(_)`: same content floor as Hug; weight is ignored until
-///   distribution.
-///
-/// Span > 1 cells are excluded, matching `measure`.
-pub(super) fn intrinsic(
-    layout: &mut LayoutEngine,
-    tree: &Tree,
-    node: NodeId,
-    idx: GridDefId,
-    axis: Axis,
-    query: IntrinsicQuery,
-    interned_text: &InternedText<'_>,
-) -> IntrinsicRange {
-    let def = tree.grid_defs[usize::from(idx)];
-    // An empty dimension means no cells, so the grid measures to
-    // `Size::ZERO` (see `measure_inner`); its intrinsic must match on
-    // *both* axes — a declared `Fixed` track on the non-empty axis
-    // contributes nothing when there's nothing to place in it.
-    if def.cols.len == 0 || def.rows.len == 0 {
-        return IntrinsicRange::ZERO;
-    }
-    let (track_span, gap) = match axis {
-        Axis::X => (def.cols, def.col_gap),
-        Axis::Y => (def.rows, def.row_gap),
-    };
-    let tracks = &tree.grid_tracks[track_span.range()];
-    let n_tracks = tracks.len();
-
-    let wants_min = query.includes(LenReq::MinContent);
-    let wants_max = query.includes(LenReq::MaxContent);
-    let base = layout.grid_track_aggregator().len();
-    let min_base = base;
-    let max_base = base + usize::from(wants_min) * n_tracks;
-    let slot_count = (usize::from(wants_min) + usize::from(wants_max)) * n_tracks;
-    layout
-        .grid_track_aggregator()
-        .resize(base + slot_count, 0.0);
-    for (i, t) in tracks.iter().enumerate() {
-        let initial = t
-            .size
-            .fixed_value()
-            .map_or(t.min, |value| value.clamp(t.min, t.max));
-        if wants_min {
-            layout.grid_track_aggregator()[min_base + i] = initial;
-        }
-        if wants_max {
-            layout.grid_track_aggregator()[max_base + i] = initial;
-        }
-    }
-
-    for c in tree.active_children(node) {
-        let cell_span = tree.bounds(c).grid.track_span(axis);
-        if cell_span.len != 1 {
-            continue;
-        }
-        let track_idx = cell_span.start as usize;
-        let t = &tracks[track_idx];
-        if t.size.fixed_value().is_some() {
-            continue;
-        }
-        let child = query.child(layout, tree, c, axis, interned_text);
-        if wants_min {
-            let slot = &mut layout.grid_track_aggregator()[min_base + track_idx];
-            *slot = slot.max(t.content_floor(child.min));
-        }
-        if wants_max {
-            let slot = &mut layout.grid_track_aggregator()[max_base + track_idx];
-            *slot = slot.max(t.content_floor(child.max));
-        }
-    }
-
-    let gaps = gap * n_tracks.saturating_sub(1) as f32;
-    let mut range = IntrinsicRange::ZERO;
-    if wants_min {
-        range.min = layout.grid_track_aggregator()[min_base..min_base + n_tracks]
-            .iter()
-            .sum::<f32>()
-            + gaps;
-    }
-    if wants_max {
-        range.max = layout.grid_track_aggregator()[max_base..max_base + n_tracks]
-            .iter()
-            .sum::<f32>()
-            + gaps;
-    }
-    layout.grid_track_aggregator().truncate(base);
-    range
-}
 
 #[cfg(test)]
 pub(crate) mod test_support {
@@ -184,6 +55,146 @@ pub(crate) mod test_support {
             false,
         );
         axis.sizes.clone()
+    }
+}
+
+#[derive(Debug)]
+pub(super) struct Grid;
+
+impl LayoutDriver for Grid {
+    /// Index of this grid's track definition in `Tree::grid_defs`.
+    type Payload = GridDefId;
+
+    const ARRANGE_DEPENDS_ONLY_ON_SLOT: bool = true;
+
+    /// WPF-style grid measure. Resolves Fixed tracks, walks children once
+    /// feeding each `Σ spanned-track sizes` (or `∞` if any spanned track is
+    /// unresolved — the WPF infinity trick → child reports intrinsic), then
+    /// resolves Hug tracks from span-1 children's desired sizes. Star tracks
+    /// contribute 0 to the grid's content size — final star sizes only resolve
+    /// in arrange. The full constraint solver is documented on
+    /// [`AxisScratch::resolve_axis`](crate::layout::grid::axis_scratch::AxisScratch::resolve_axis).
+    ///
+    /// Per-depth scratch (`AxisScratch` columns) lives in `grid.depth_stack`
+    /// and gets clobbered by sibling grids between this measure and the
+    /// matching arrange. Hug sizes therefore live in `grid.track_state`
+    /// (`GridTrackStore`), keyed by `GridDef` index, durable for the whole
+    /// layout pass. Both are heap-resident and capacity-retained across
+    /// frames; no fixed track-count limit.
+    fn measure(
+        pass: &mut LayoutPass<'_>,
+        node: NodeId,
+        idx: Self::Payload,
+        inner_avail: Size,
+    ) -> Size {
+        let depth = pass.grid_mut().depth_stack.enter();
+        let result = measure_inner(pass, node, idx, depth, inner_avail);
+        pass.grid_mut().depth_stack.exit();
+        result
+    }
+
+    fn arrange(pass: &mut LayoutPass<'_>, node: NodeId, idx: Self::Payload, inner: Rect) {
+        let depth = pass.grid_mut().depth_stack.enter();
+        arrange_inner(pass, node, inner, idx, depth);
+        pass.grid_mut().depth_stack.exit();
+    }
+
+    /// Intrinsic size of a Grid: per-track contribution aggregated from
+    /// span-1 cells, summed across tracks plus gaps. Answers "what would
+    /// the Grid prefer to be on this axis?" so callers can read it without
+    /// running `measure`.
+    ///
+    /// Per-track contribution mirrors `Track`'s `Sizing` interpretation:
+    /// - `Fixed(v)`: contributes `v` clamped to `[Track.min, Track.max]`.
+    /// - `Hug`: starts at `Track.min`, grown by span-1 cells' intrinsic on
+    ///   the same axis, clamped to `[Track.min, Track.max]`.
+    /// - `Fill(_)`: same content floor as Hug; weight is ignored until
+    ///   distribution.
+    ///
+    /// Span > 1 cells are excluded, matching `measure`.
+    fn intrinsic(
+        layout: &mut LayoutEngine,
+        tree: &Tree,
+        node: NodeId,
+        idx: Self::Payload,
+        axis: Axis,
+        query: IntrinsicQuery,
+        interned_text: &InternedText<'_>,
+    ) -> IntrinsicRange {
+        let def = tree.grid_defs[usize::from(idx)];
+        // An empty dimension means no cells, so the grid measures to
+        // `Size::ZERO` (see `measure_inner`); its intrinsic must match on
+        // *both* axes — a declared `Fixed` track on the non-empty axis
+        // contributes nothing when there's nothing to place in it.
+        if def.cols.len == 0 || def.rows.len == 0 {
+            return IntrinsicRange::ZERO;
+        }
+        let (track_span, gap) = match axis {
+            Axis::X => (def.cols, def.col_gap),
+            Axis::Y => (def.rows, def.row_gap),
+        };
+        let tracks = &tree.grid_tracks[track_span.range()];
+        let n_tracks = tracks.len();
+
+        let wants_min = query.includes(LenReq::MinContent);
+        let wants_max = query.includes(LenReq::MaxContent);
+        let base = layout.grid_track_aggregator().len();
+        let min_base = base;
+        let max_base = base + usize::from(wants_min) * n_tracks;
+        let slot_count = (usize::from(wants_min) + usize::from(wants_max)) * n_tracks;
+        layout
+            .grid_track_aggregator()
+            .resize(base + slot_count, 0.0);
+        for (i, t) in tracks.iter().enumerate() {
+            let initial = t
+                .size
+                .fixed_value()
+                .map_or(t.min, |value| value.clamp(t.min, t.max));
+            if wants_min {
+                layout.grid_track_aggregator()[min_base + i] = initial;
+            }
+            if wants_max {
+                layout.grid_track_aggregator()[max_base + i] = initial;
+            }
+        }
+
+        for c in tree.active_children(node) {
+            let cell_span = tree.bounds(c).grid.track_span(axis);
+            if cell_span.len != 1 {
+                continue;
+            }
+            let track_idx = cell_span.start as usize;
+            let t = &tracks[track_idx];
+            if t.size.fixed_value().is_some() {
+                continue;
+            }
+            let child = query.child(layout, tree, c, axis, interned_text);
+            if wants_min {
+                let slot = &mut layout.grid_track_aggregator()[min_base + track_idx];
+                *slot = slot.max(t.content_floor(child.min));
+            }
+            if wants_max {
+                let slot = &mut layout.grid_track_aggregator()[max_base + track_idx];
+                *slot = slot.max(t.content_floor(child.max));
+            }
+        }
+
+        let gaps = gap * n_tracks.saturating_sub(1) as f32;
+        let mut range = IntrinsicRange::ZERO;
+        if wants_min {
+            range.min = layout.grid_track_aggregator()[min_base..min_base + n_tracks]
+                .iter()
+                .sum::<f32>()
+                + gaps;
+        }
+        if wants_max {
+            range.max = layout.grid_track_aggregator()[max_base..max_base + n_tracks]
+                .iter()
+                .sum::<f32>()
+                + gaps;
+        }
+        layout.grid_track_aggregator().truncate(base);
+        range
     }
 }
 

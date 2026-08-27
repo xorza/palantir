@@ -11,6 +11,7 @@ use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::theme::widget_look::WidgetLook;
 use crate::widgets::theme::widget_look::stateful_look::StatefulLook;
+use crate::widgets::theme::widget_look::theme_slot::{SlotDefaults, ThemeSlot};
 use glam::Vec2;
 
 /// Four-state TextEdit theme: a [`StatefulLook`] where `active` =
@@ -166,6 +167,22 @@ impl TextEditTheme {
             padding: Spacing::xy(5.0, 3.0),
             margin: Spacing::ZERO,
             anim: None,
+        }
+    }
+}
+
+impl ThemeSlot for TextEditTheme {
+    type Pick = ();
+
+    fn look(&self, response: &ResponseState, _pick: ()) -> &WidgetLook {
+        self.pick(response)
+    }
+
+    fn defaults(&self) -> SlotDefaults {
+        SlotDefaults {
+            padding: self.padding,
+            margin: self.margin,
+            anim: self.anim,
         }
     }
 }

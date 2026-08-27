@@ -80,7 +80,7 @@ impl AxisPlacement {
     ///
     /// The two callers that place a node without needing its alignment offset:
     /// `LayoutEngine::run` sizing a layer root against the surface, and
-    /// `canvas::arrange` sizing an absolutely-positioned child against its
+    /// `Canvas::arrange` sizing an absolutely-positioned child against its
     /// slot. Both position by other means (the root's `Placement`, the child's
     /// declared `pos`), so the offset the placement carries is dead to them.
     pub(super) fn arrange_size(
@@ -135,7 +135,7 @@ impl AxisPlacement {
 /// parent reserved — the contains-content rule: a node overflows its parent
 /// rather than clipping its own content. A `Scroll` viewport is the
 /// exception, because clipping its content is exactly what it is for.
-/// `scroll::measure` reports the content extent so a `Hug` wrapper can size
+/// `Scroll::measure` reports the content extent so a `Hug` wrapper can size
 /// to it, and a `Hug` parent measures its children against `INFINITY`, so
 /// the desired that reaches placement is the content's rather than anything
 /// the slot can hold. Both axes, not just the panned ones: a viewport clips

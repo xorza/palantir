@@ -18,7 +18,7 @@ use glam::UVec2;
 /// layout bench would balloon.
 ///
 /// Uses the HStack-with-Fill-wrap pattern: pass-2 of
-/// `stack::measure` queries `MinContent` on each Fill child.
+/// `Stack::measure` queries `MinContent` on each Fill child.
 #[test]
 fn intrinsic_cache_populated_after_run() {
     let mut h = UiHarness::new(UVec2::new(400, 300));
@@ -130,7 +130,7 @@ fn intrinsic_query_short_circuits_on_cache_hit() {
 }
 
 /// Recursive intrinsic queries must populate descendant slots too,
-/// not just the queried node — `stack::intrinsic` etc. recurse
+/// not just the queried node — `Stack::intrinsic` etc. recurse
 /// through `engine.intrinsic`, which writes the cache at every
 /// level. Without this, deep trees would re-walk on every parent
 /// query.

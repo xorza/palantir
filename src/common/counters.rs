@@ -177,6 +177,27 @@ impl<T> TestOnly<Vec<T>> {
     }
 }
 
+/// A counter set and the reading its readers subtract.
+///
+/// [`counter_snapshot!`] generates the snapshot type beside the cells, so
+/// the name a set declares for it appears exactly once and leads nowhere.
+/// This trait is where the pairing lives: `Self::Counts` resolves from the
+/// probe, [`Self::counts`] has a declaration to jump to, and every set a
+/// test or a benchmark reads deltas off is an implementor.
+///
+/// Gated with the union of the `reads` gates the sets declare, because a
+/// shipping build implements it for nothing.
+#[cfg(any(test, feature = "bench"))]
+pub(crate) trait CounterSet {
+    /// One reading of every cell. Subtract two to get what a span did.
+    type Counts: Copy + std::fmt::Debug + PartialEq + std::ops::Sub<Output = Self::Counts>;
+
+    /// Read every cell. Gated with its callers: nothing in a shipping
+    /// build has a reason to ask, and gating the reads is what lets the
+    /// cells themselves be absent.
+    fn counts(&self) -> Self::Counts;
+}
+
 /// Declare a counter set together with the snapshot its readers take
 /// deltas off.
 ///
@@ -187,13 +208,18 @@ impl<T> TestOnly<Vec<T>> {
 /// forces three separate lists to grow together, and the omission reads as
 /// a counter that never fires.
 ///
+/// The set reaches its snapshot through [`CounterSet`], which is the one
+/// declaration a reader has to follow — the snapshot's own name is written
+/// here and nowhere else.
+///
 /// The header line names both gates, because they are separate questions
 /// and every set answers them differently:
 ///
 /// - `cells` picks [`TestOnly`] or [`BenchOnly`] — which builds retain the
 ///   values at all. The rule for choosing is in this module's doc.
-/// - `reads` is the `cfg` the snapshot and its `counts()` are compiled
-///   under, and it must name **exactly** the builds that call `counts()`.
+/// - `reads` is the `cfg` the snapshot and the [`CounterSet`] impl are
+///   compiled under, and it must name **exactly** the builds that call
+///   [`CounterSet::counts`].
 ///   Wider and the accessor is dead in some build combination, which is
 ///   how a set ends up carrying a blanket `allow(dead_code)`; narrower and
 ///   it does not compile. It must also imply `cells`, since `counts()`
@@ -226,12 +252,11 @@ macro_rules! counter_snapshot {
             $($svis $field: $fty,)+
         }
 
-        /// One reading of every cell. Gated with its callers: nothing in
-        /// a shipping build has a reason to ask, and gating the reads is
-        /// what lets the cells themselves be absent.
         #[$reads]
-        impl $counters {
-            $cvis fn counts(&self) -> $snapshot {
+        impl $crate::common::counters::CounterSet for $counters {
+            type Counts = $snapshot;
+
+            fn counts(&self) -> $snapshot {
                 $snapshot { $($field: *self.$field.get(),)+ }
             }
         }

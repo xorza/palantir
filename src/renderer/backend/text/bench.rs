@@ -40,6 +40,7 @@
 //!   cargo bench --bench gpu --features bench -- text_atlas
 //!   cargo bench --bench gpu --features bench -- 'zoom_smooth$'
 
+use crate::common::counters::CounterSet;
 use std::sync::OnceLock;
 use std::time::Duration;
 

@@ -7,16 +7,17 @@
 //!   each driver's `intrinsic()` for content-driven sizes.
 //! - Leaf intrinsics (no driver module owns leaves).
 //!
-//! Per-driver intrinsic logic (`stack`, `zstack`, `canvas`, `grid`) lives
-//! alongside that driver's `measure`/`arrange` in its own module — same
+//! Per-driver intrinsic logic lives alongside that driver's
+//! `measure`/`arrange`, in its
+//! [`LayoutDriver`](crate::layout::driver::LayoutDriver) impl — same
 //! per-driver-file convention as the rest of layout.
 
 use crate::layout::axis::Axis;
 use crate::layout::axis_ctx::AxisCtx;
+use crate::layout::driver::{DriverOp, LayoutDriver};
 use crate::layout::engine::LayoutEngine;
 use crate::layout::text_shape_input::TextShapeInput;
 use crate::layout::types::layout_mode::LayoutMode;
-use crate::layout::{canvas, grid, scroll, scrollbars, stack, wrapstack, zstack};
 use crate::primitives::interned_text::InternedText;
 use crate::scene::node::layout_core::LayoutCore;
 use crate::scene::tree::Tree;
@@ -103,7 +104,7 @@ impl IntrinsicQuery {
     /// [`Self::children_max_at_origin`] — Canvas is the one that folds in
     /// each child's declared position. Same closure-parameter shape the measure side uses for the
     /// identical split (`LayoutPass::measure_per_axis_hug`, shared by
-    /// `zstack::measure` and `canvas::measure`).
+    /// `ZStack::measure` and `Canvas::measure`).
     pub(crate) fn children_max(
         self,
         layout: &mut LayoutEngine,
@@ -284,29 +285,56 @@ fn content_intrinsic(
     interned_text: &InternedText<'_>,
     layout: LayoutCore,
 ) -> IntrinsicRange {
-    match LayoutMode::from(layout.meta) {
-        LayoutMode::Leaf => leaf(engine, tree, node, axis, query, interned_text),
-        LayoutMode::HStack => {
-            stack::intrinsic(engine, tree, node, Axis::X, axis, query, interned_text)
-        }
-        LayoutMode::VStack => {
-            stack::intrinsic(engine, tree, node, Axis::Y, axis, query, interned_text)
-        }
-        LayoutMode::WrapHStack => {
-            wrapstack::intrinsic(engine, tree, node, Axis::X, axis, query, interned_text)
-        }
-        LayoutMode::WrapVStack => {
-            wrapstack::intrinsic(engine, tree, node, Axis::Y, axis, query, interned_text)
-        }
-        LayoutMode::ZStack => zstack::intrinsic(engine, tree, node, axis, query, interned_text),
-        LayoutMode::Canvas => canvas::intrinsic(engine, tree, node, axis, query, interned_text),
-        LayoutMode::Grid(grid_def_id) => {
-            grid::intrinsic(engine, tree, node, grid_def_id, axis, query, interned_text)
-        }
-        LayoutMode::Scrollbars(_) => scrollbars::intrinsic(),
-        LayoutMode::Scroll(spec) => {
-            scroll::intrinsic(engine, tree, node, spec, axis, query, interned_text)
-        }
+    IntrinsicOp {
+        engine,
+        tree,
+        node,
+        axis,
+        query,
+        interned_text,
+    }
+    .dispatch(LayoutMode::from(layout.meta))
+}
+
+/// The only [`DriverOp`] of the three that carries no `LayoutPass`. That is the
+/// point: a pure query of a subtree must not be able to write the frame's
+/// text shapes, and holding the engine and the tree separately is what
+/// keeps a `LayerLayout` out of reach.
+#[derive(Debug)]
+struct IntrinsicOp<'op, 'text> {
+    engine: &'op mut LayoutEngine,
+    tree: &'op Tree,
+    node: NodeId,
+    axis: Axis,
+    query: IntrinsicQuery,
+    interned_text: &'op InternedText<'text>,
+}
+
+impl DriverOp for IntrinsicOp<'_, '_> {
+    type Output = IntrinsicRange;
+
+    fn run<D: LayoutDriver>(self, payload: D::Payload) -> IntrinsicRange {
+        let Self {
+            engine,
+            tree,
+            node,
+            axis,
+            query,
+            interned_text,
+        } = self;
+        D::intrinsic(engine, tree, node, payload, axis, query, interned_text)
+    }
+
+    fn leaf(self) -> IntrinsicRange {
+        let Self {
+            engine,
+            tree,
+            node,
+            axis,
+            query,
+            interned_text,
+        } = self;
+        leaf(engine, tree, node, axis, query, interned_text)
     }
 }
 

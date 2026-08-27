@@ -9,6 +9,7 @@ use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::theme::widget_look::WidgetLook;
 use crate::widgets::theme::widget_look::stateful_look::StatefulLook;
+use crate::widgets::theme::widget_look::theme_slot::{SlotDefaults, ThemeSlot};
 use glam::Vec2;
 
 /// Visuals for two-state toggles — [`crate::Checkbox`],
@@ -190,6 +191,22 @@ impl ToggleTheme {
             padding: Spacing::ZERO,
             margin: Spacing::ZERO,
             anim: None,
+        }
+    }
+}
+
+impl ThemeSlot for ToggleTheme {
+    type Pick = bool;
+
+    fn look(&self, response: &ResponseState, checked: bool) -> &WidgetLook {
+        self.pick(response, checked)
+    }
+
+    fn defaults(&self) -> SlotDefaults {
+        SlotDefaults {
+            padding: self.padding,
+            margin: self.margin,
+            anim: self.anim,
         }
     }
 }

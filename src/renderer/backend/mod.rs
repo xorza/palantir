@@ -15,6 +15,7 @@ mod gpu_gradient_atlas;
 mod gpu_timings;
 pub(crate) mod icon;
 pub(crate) mod image_pipeline;
+mod instance_pipeline;
 mod mesh_pipeline;
 mod overlay_pass;
 pub(crate) mod pipeline_recipe;
@@ -46,8 +47,9 @@ use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::gpu_gradient_atlas::GpuGradientAtlas;
 use crate::renderer::backend::gpu_timings::GpuTimings;
 use crate::renderer::backend::icon::IconBackend;
-use crate::renderer::backend::image_pipeline::ImagePipeline;
-use crate::renderer::backend::mesh_pipeline::MeshPipeline;
+use crate::renderer::backend::image_pipeline::{ImageBatch, ImagePipeline};
+use crate::renderer::backend::instance_pipeline::InstancePipeline;
+use crate::renderer::backend::mesh_pipeline::{MeshBatch, MeshPipeline, MeshUpload};
 use crate::renderer::backend::overlay_pass::DebugOverlay;
 use crate::renderer::backend::quad_pipeline::QuadPipeline;
 use crate::renderer::backend::schedule::{RenderStep, for_each_step};
@@ -601,12 +603,13 @@ impl WgpuBackend {
         self.quad.upload(&mut ctx, &buffer.quads);
         self.mesh.upload(
             &mut ctx,
-            &payloads.meshes.vertices,
-            &payloads.meshes.indices,
-            buffer.meshes.instance(),
+            MeshUpload {
+                vertices: &payloads.meshes.vertices,
+                indices: &payloads.meshes.indices,
+                instances: buffer.meshes.instance(),
+            },
         );
-        self.image
-            .upload_instances(&mut ctx, buffer.images.instance());
+        self.image.upload(&mut ctx, buffer.images.instance());
         // Paint every GpuView composited this frame into its off-screen
         // target on this same encoder, before the main pass samples it.
         // The composer listed them in `buffer.frame_targets` (size + scales
@@ -950,7 +953,7 @@ impl WgpuBackend {
                         self.quad
                             .bind(pass, &fmt.quad, use_stencil, &self.gradient.bg)
                     );
-                    self.quad.draw_range(pass, range);
+                    self.quad.draw(pass, range);
                     debug_marker::pop(pass);
                 }
                 RenderStep::Text { batch } => {
@@ -976,12 +979,30 @@ impl WgpuBackend {
                     let items = buffer.batches(tier)[batch].items;
                     match tier {
                         PaintTier::Mesh => {
-                            rebind!(Bound::Mesh, self.mesh.bind(pass, &fmt.mesh, use_stencil));
-                            self.mesh.draw_batch(pass, buffer.meshes.draw(), items);
+                            rebind!(
+                                Bound::Mesh,
+                                self.mesh.bind(pass, &fmt.mesh, use_stencil, ())
+                            );
+                            self.mesh.draw(
+                                pass,
+                                MeshBatch {
+                                    draws: buffer.meshes.draw(),
+                                    items,
+                                },
+                            );
                         }
                         PaintTier::Image => {
-                            rebind!(Bound::Image, self.image.bind(pass, &fmt.image, use_stencil));
-                            self.image.draw_batch(pass, buffer.images.id(), items);
+                            rebind!(
+                                Bound::Image,
+                                self.image.bind(pass, &fmt.image, use_stencil, ())
+                            );
+                            self.image.draw(
+                                pass,
+                                ImageBatch {
+                                    ids: buffer.images.id(),
+                                    items,
+                                },
+                            );
                         }
                         PaintTier::Icon => {
                             // Like text, `render_batch` pushes both halves of
@@ -997,7 +1018,7 @@ impl WgpuBackend {
                                 self.curve
                                     .bind(pass, &fmt.curve, use_stencil, &self.gradient.bg)
                             );
-                            self.curve.draw(pass, items.into());
+                            self.curve.draw(pass, items);
                         }
                     }
                     debug_marker::pop(pass);

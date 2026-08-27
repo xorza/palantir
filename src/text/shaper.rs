@@ -352,6 +352,8 @@ impl TextShaper {
 pub(crate) mod internals {
     use super::*;
     #[cfg(test)]
+    use crate::common::counters::CounterSet;
+    #[cfg(test)]
     use crate::layout::ShapedText;
     #[cfg(test)]
     use crate::layout::types::align::Align;

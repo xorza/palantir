@@ -18,6 +18,7 @@
 //! [`Paint::GRANULE`]: crate::common::block_arena::BlockSlot::GRANULE
 
 use crate::Ui;
+use crate::common::counters::CounterSet;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;

@@ -12,7 +12,7 @@ use crate::widgets::popup::{ClickOutside, Popup};
 use crate::widgets::response::Response;
 use crate::widgets::text::Text;
 use crate::widgets::theme::button::ButtonTheme;
-use crate::widgets::theme::widget_look::look_plan::LookPlan;
+use crate::widgets::theme::widget_look::theme_slot::ThemeSlot;
 
 /// Open/closed flag for one combo site, keyed off the trigger id.
 #[derive(Default, Clone, Copy, Debug)]
@@ -102,13 +102,7 @@ impl<'a, S> ComboBox<'a, S> {
         // Trigger chrome from the button theme (same flow as `Button`).
         let theme = ui.theme();
         let slot = self.slot(theme);
-        let look = LookPlan {
-            target: slot.pick(&response).to_animated(&theme.text),
-            padding: slot.padding,
-            margin: slot.margin,
-            anim: slot.anim,
-        }
-        .apply(ui, &mut widget);
+        let look = slot.plan(&response, (), &theme.text).apply(ui, &mut widget);
 
         // Handle: the geometry is read again inside the `record` closure
         // below, which owns `ui` mutably.

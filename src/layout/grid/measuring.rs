@@ -44,7 +44,7 @@ pub(super) fn measure_inner(
 
     // Phase 1: query column intrinsics for Hug-column span-1 cells.
     //
-    // The second walk over `active_children` this measure — `grid::intrinsic`
+    // The second walk over `active_children` this measure — `Grid::intrinsic`
     // made the first, for the grid's own `intrinsic_min` — and not a repeat
     // of it. Per-child intrinsics are memoized per (node, axis, req), so the
     // min half every cell asks for below is a scratch read; the max half is

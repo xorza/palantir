@@ -17,6 +17,7 @@ use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::image_pipeline::render_target::GpuViewTargets;
 use crate::renderer::backend::image_pipeline::textures::ImageTextures;
+use crate::renderer::backend::instance_pipeline::InstancePipeline;
 use crate::renderer::backend::shader_template::{ShaderConstant, specialize};
 use crate::renderer::backend::stencil_variant::ColorVariantSpec;
 use crate::renderer::backend::stencil_variant::StencilVariant;
@@ -28,6 +29,18 @@ use crate::renderer::render_buffer::image::{
 use crate::renderer::render_owner_id::RenderOwnerId;
 use crate::text::shaper::TextShaper;
 use std::time::Duration;
+
+/// One batch of image draws: the frame's whole per-draw texture column,
+/// and the slice of it this batch owns.
+///
+/// `items` is the same [`Span`] that indexes the per-frame instance
+/// buffer, so the textures and the instances they draw cannot come from
+/// different batches.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct ImageBatch<'a> {
+    pub(super) ids: &'a [TextureId],
+    pub(super) items: Span,
+}
 
 #[derive(Debug)]
 pub(super) struct ImagePipeline {
@@ -57,66 +70,6 @@ pub(super) struct ImagePipeline {
 }
 
 impl ImagePipeline {
-    /// Format-independent image resources: the shader here, and the
-    /// layout / sampler / texture cache inside [`ImageTextures`]. The
-    /// pipelines are built by
-    /// [`FormatPipelines`](crate::renderer::backend::format_pipelines::FormatPipelines)
-    /// from [`Self::build_variants`].
-    pub(super) fn new(device: &wgpu::Device) -> Self {
-        // Rust owns the flag bits; the shader declares them as markers so the
-        // two cannot drift (`specialize` panics on an unsubstituted one).
-        let wgsl = specialize(
-            include_str!("image.wgsl"),
-            &[
-                ShaderConstant::uint("IMG_FLAG_TILED", IMG_FLAG_TILED),
-                ShaderConstant::uint("IMG_FLAG_MIN_NEAREST", IMG_FLAG_MIN_NEAREST),
-                ShaderConstant::uint("IMG_FLAG_MAG_NEAREST", IMG_FLAG_MAG_NEAREST),
-                ShaderConstant::uint("IMG_FLAG_TAPS_MEAN", IMG_FLAG_TAPS_MEAN),
-                ShaderConstant::uint("IMG_FLAG_TAPS_PEAK", IMG_FLAG_TAPS_PEAK),
-            ],
-        );
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("palantir.image.shader"),
-            source: wgpu::ShaderSource::Wgsl(wgsl.into()),
-        });
-
-        let instance_buffer =
-            DynamicBuffer::<ImageInstance>::vertex(device, "palantir.image.instances", 16);
-
-        Self {
-            instance_buffer,
-            shader,
-            textures: ImageTextures::new(device),
-            gpu_view_targets: GpuViewTargets::default(),
-        }
-    }
-
-    /// Build the base + stencil-test color pipelines against `format` —
-    /// the only format-dependent image objects; the per-image textures,
-    /// bind groups, sampler, and layout are all format-independent.
-    /// Called by `FormatPipelines` per format.
-    pub(super) fn build_variants(
-        &self,
-        device: &wgpu::Device,
-        format: wgpu::TextureFormat,
-    ) -> StencilVariant {
-        // Per-image tex+sampler at group 0 — viewport rides the
-        // shared immediate region.
-        StencilVariant::build(
-            device,
-            ColorVariantSpec {
-                label: "palantir.image.pipeline",
-                stencil_label: "palantir.image.pipeline.stencil_test",
-                layout_label: "palantir.image.pl",
-                shader: &self.shader,
-                bind_group_layouts: &[Some(&self.textures.bgl)],
-                vertex_buffers: &[Some(instance_layout())],
-                topology: wgpu::PrimitiveTopology::TriangleStrip,
-            },
-            format,
-        )
-    }
-
     /// Reconcile the GPU texture cache with the registry — see
     /// [`ImageTextures::drain_registry`].
     pub(super) fn drain_registry(&mut self, ctx: &mut GpuCtx<'_>, images: &ImageRegistry) {
@@ -146,22 +99,103 @@ impl ImagePipeline {
         self.gpu_view_targets
             .retire_owner(owner, &mut self.textures);
     }
+}
+
+impl InstancePipeline for ImagePipeline {
+    /// None past the device: group 0 is this pipeline's own per-image
+    /// texture and sampler layout.
+    type Layouts<'a> = ();
+    type Upload<'a> = &'a [ImageInstance];
+    /// None: group 0 is set per run inside [`Self::draw`], off the cached
+    /// per-texture bind group.
+    type Bindings<'a> = ();
+    type Batch<'a> = ImageBatch<'a>;
+
+    /// Format-independent image resources: the shader here, and the
+    /// layout / sampler / texture cache inside [`ImageTextures`]. The
+    /// pipelines are built by
+    /// [`FormatPipelines`](crate::renderer::backend::format_pipelines::FormatPipelines)
+    /// from [`Self::build_variants`].
+    fn new(device: &wgpu::Device) -> Self {
+        // Rust owns the flag bits; the shader declares them as markers so the
+        // two cannot drift (`specialize` panics on an unsubstituted one).
+        let wgsl = specialize(
+            include_str!("image.wgsl"),
+            &[
+                ShaderConstant::uint("IMG_FLAG_TILED", IMG_FLAG_TILED),
+                ShaderConstant::uint("IMG_FLAG_MIN_NEAREST", IMG_FLAG_MIN_NEAREST),
+                ShaderConstant::uint("IMG_FLAG_MAG_NEAREST", IMG_FLAG_MAG_NEAREST),
+                ShaderConstant::uint("IMG_FLAG_TAPS_MEAN", IMG_FLAG_TAPS_MEAN),
+                ShaderConstant::uint("IMG_FLAG_TAPS_PEAK", IMG_FLAG_TAPS_PEAK),
+            ],
+        );
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("palantir.image.shader"),
+            source: wgpu::ShaderSource::Wgsl(wgsl.into()),
+        });
+
+        let instance_buffer =
+            DynamicBuffer::<ImageInstance>::vertex(device, "palantir.image.instances", 16);
+
+        Self {
+            instance_buffer,
+            shader,
+            textures: ImageTextures::new(device),
+            gpu_view_targets: GpuViewTargets::default(),
+        }
+    }
+
+    fn instance_layout() -> wgpu::VertexBufferLayout<'static> {
+        wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<ImageInstance>() as u64,
+            step_mode: wgpu::VertexStepMode::Instance,
+            attributes: &IMAGE_INSTANCE_ATTRS,
+        }
+    }
+
+    /// Build the base + stencil-test color pipelines against `format` —
+    /// the only format-dependent image objects; the per-image textures,
+    /// bind groups, sampler, and layout are all format-independent.
+    /// Called by `FormatPipelines` per format.
+    fn build_variants(
+        &self,
+        device: &wgpu::Device,
+        _layouts: Self::Layouts<'_>,
+        format: wgpu::TextureFormat,
+    ) -> StencilVariant {
+        // Per-image tex+sampler at group 0 — viewport rides the
+        // shared immediate region.
+        StencilVariant::build(
+            device,
+            ColorVariantSpec {
+                label: "palantir.image.pipeline",
+                stencil_label: "palantir.image.pipeline.stencil_test",
+                layout_label: "palantir.image.pl",
+                shader: &self.shader,
+                bind_group_layouts: &[Some(&self.textures.bgl)],
+                vertex_buffers: &[Some(Self::instance_layout())],
+                topology: wgpu::PrimitiveTopology::TriangleStrip,
+            },
+            format,
+        )
+    }
 
     /// Sync the per-instance buffer — one contiguous, zero-copy upload from
     /// the shared slice; the schedule slices by batch at draw time.
-    pub(super) fn upload_instances(&mut self, ctx: &mut GpuCtx<'_>, instances: &[ImageInstance]) {
+    fn upload(&mut self, ctx: &mut GpuCtx<'_>, instances: Self::Upload<'_>) {
         self.instance_buffer.upload_instances(ctx, instances);
     }
 
     /// Bind once per pass. Viewport rides immediates; per-image
-    /// group 0 is set in [`Self::draw_batch`] from the cached bind group.
-    pub(super) fn bind<'a>(
+    /// group 0 is set in [`Self::draw`] from the cached bind group.
+    fn bind<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
-        pipelines: &'a StencilVariant,
+        variant: &'a StencilVariant,
         use_stencil: bool,
+        _bindings: Self::Bindings<'a>,
     ) {
-        pass.set_pipeline(pipelines.select(use_stencil));
+        pass.set_pipeline(variant.select(use_stencil));
         pass.set_vertex_buffer(0, self.instance_buffer.buffer.slice(..));
     }
 
@@ -182,11 +216,10 @@ impl ImagePipeline {
     /// defined behaviour for a missing texture. Every draw in a run
     /// shares one id, so the miss check runs once per run and skips the
     /// whole run, which is exactly the per-draw behaviour it replaces.
-    pub(super) fn draw_batch<'a>(
+    fn draw<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
-        ids: &[TextureId],
-        items: Span,
+        ImageBatch { ids, items }: Self::Batch<'_>,
     ) {
         for run in image_runs(&ids[items.range()], items.start) {
             let Some(bind_group) = self.textures.bindings.get(&run.id) else {
@@ -257,14 +290,6 @@ const _: () = {
     assert!(IMAGE_INSTANCE_ATTRS[4].offset == offset_of!(ImageInstance, tint) as u64);
     assert!(IMAGE_INSTANCE_ATTRS[5].offset == offset_of!(ImageInstance, flags) as u64);
 };
-
-fn instance_layout() -> wgpu::VertexBufferLayout<'static> {
-    wgpu::VertexBufferLayout {
-        array_stride: std::mem::size_of::<ImageInstance>() as u64,
-        step_mode: wgpu::VertexStepMode::Instance,
-        attributes: &IMAGE_INSTANCE_ATTRS,
-    }
-}
 
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {

@@ -1,4 +1,5 @@
 use super::*;
+use crate::common::counters::CounterSet;
 
 #[test]
 fn fitting_truncate_returns_the_unbounded_root_without_reshaping() {

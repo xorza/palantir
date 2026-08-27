@@ -21,6 +21,7 @@ use crate::layout::axis::Axis;
 use crate::layout::axis_ctx::AxisCtx;
 use crate::layout::cache::quantize_available;
 use crate::layout::counters::PhaseSpan;
+use crate::layout::driver::{DriverOp, LayoutDriver, ReplayOp};
 use crate::layout::engine::LayoutEngine;
 use crate::layout::grid::grid_context::GridContext;
 use crate::layout::grid::grid_track_store::GridTrackStore;
@@ -30,7 +31,6 @@ use crate::layout::stack::StackScratch;
 use crate::layout::text_shape_input::TextShapeInput;
 use crate::layout::types::layout_mode::LayoutMode;
 use crate::layout::wrapstack::WrapScratch;
-use crate::layout::{canvas, grid, scroll, scrollbars, stack, wrapstack, zstack};
 use crate::primitives::interned_text::InternedText;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
@@ -158,7 +158,7 @@ impl LayoutPass<'_> {
     }
 
     /// Measured content extent of a scroll viewport, written by
-    /// `scroll::measure` and read by `scrollbars::arrange` to size its
+    /// `Scroll::measure` and read by `Scrollbars::arrange` to size its
     /// thumbs — the one column one driver writes for another.
     #[inline]
     pub(super) fn scroll_content(&self, node: NodeId) -> Size {
@@ -325,69 +325,17 @@ impl LayoutPass<'_> {
     /// axis grows past `available`); the caller folds content into a
     /// margin-inclusive `desired` via `AxisCtx::resolve`.
     ///
-    /// ## Driver contract
-    ///
-    /// Every layout driver — `stack`, `wrapstack`, `zstack`, `canvas`,
-    /// `grid`, `scroll`, `scrollbars` — is a free module exporting three
-    /// fns (visible at least to the rest of `layout`), matched into here
-    /// and into [`Self::arrange`] / `intrinsic::content_intrinsic`:
-    ///
-    /// - `measure(pass, node, [variant_payload,] inner_avail) -> Size`
-    ///   — bottom-up. Recurses into children via `pass.measure(...)`.
-    ///   Returns the driver's content size (pre-padding/margin/clamp;
-    ///   the caller in [`Self::measure`] folds those in).
-    /// - `arrange(pass, node, [variant_payload,] inner)`
-    ///   — top-down. Assigns each child a final rect and recurses via
-    ///   `pass.arrange(...)`.
-    /// - `intrinsic(engine, tree, node, [variant_payload,] axis, req, interned_text) -> f32`
-    ///   — pure on-demand query, and the one that takes no pass: it must
-    ///   not reach the frame's text shapes. Used by `grid::measure`
-    ///   Phase-1 column resolution and `stack::measure`'s Fill
-    ///   min-content floor.
-    ///
-    /// `variant_payload` carries any per-instance config the driver
-    /// needs from `LayoutMode`: `Axis::X`/`Axis::Y` for HStack/VStack
-    /// and WrapHStack/WrapVStack (a single function pair per pack
-    /// orientation), `idx: u16` for `Grid(idx)`. ZStack and Canvas have
-    /// no payload.
-    ///
-    /// Stack and WrapStack `intrinsic` additionally take both a
-    /// `main_axis` and `query_axis` because the answer genuinely depends
-    /// on both ("size on Y given you pack on X"). ZStack/Canvas/Grid
-    /// take only `axis` — they have no main axis to ask about.
-    ///
-    /// **Every arm of all three dispatchers is a call into a driver
-    /// module**, so a driver's policy lives in its own file and the
-    /// dispatchers stay dispatch. `scrollbars::intrinsic` takes no
-    /// arguments at all — bars floor nothing — and is still a call rather
-    /// than a `ZERO` written inline, because "what does this driver
-    /// contribute" is the driver's answer to give.
-    ///
-    /// Adding a new driver = (1) new `LayoutMode` variant, (2) new
-    /// module exporting the triple, (3) match arms in this dispatcher,
-    /// `arrange`, and `intrinsic::content_intrinsic`. The compiler
-    /// flags the missing arms because `LayoutMode` matches are
-    /// exhaustive.
+    /// The contract every driver answers to is
+    /// [`LayoutDriver`](crate::layout::driver::LayoutDriver); the match
+    /// that picks one is `DriverOp::dispatch`, shared with
+    /// [`Self::arrange`] and `intrinsic::content_intrinsic`.
     fn measure_dispatch(&mut self, node: NodeId, layout: LayoutCore, inner_avail: Size) -> Size {
-        match LayoutMode::from(layout.meta) {
-            LayoutMode::Leaf => {
-                let (tree, interned_text) = (self.tree, self.interned_text);
-                let runs = TextShapeInput::on_leaf(tree, interned_text, node);
-                self.shape_text_runs(node, inner_avail.w, runs)
-            }
-            LayoutMode::HStack => stack::measure(self, node, inner_avail, Axis::X),
-            LayoutMode::VStack => stack::measure(self, node, inner_avail, Axis::Y),
-            LayoutMode::WrapHStack => wrapstack::measure(self, node, inner_avail, Axis::X),
-            LayoutMode::WrapVStack => wrapstack::measure(self, node, inner_avail, Axis::Y),
-            LayoutMode::ZStack => zstack::measure(self, node, inner_avail),
-            LayoutMode::Canvas => canvas::measure(self, node, inner_avail),
-            LayoutMode::Grid(grid_def_id) => grid::measure(self, node, grid_def_id, inner_avail),
-            // Scroll viewport. INF-axis measure of children.
-            LayoutMode::Scrollbars(_) => scrollbars::measure(self, node, inner_avail),
-            LayoutMode::Scroll(scroll_spec) => {
-                scroll::measure(self, node, inner_avail, scroll_spec)
-            }
+        MeasureOp {
+            pass: self,
+            node,
+            inner_avail,
         }
+        .dispatch(LayoutMode::from(layout.meta))
     }
 
     /// Top-down arrange dispatcher. `slot` is the rect the parent reserved
@@ -402,35 +350,18 @@ impl LayoutPass<'_> {
         }
         let rendered = slot.deflated_by(layout.margin);
         let mode = LayoutMode::from(layout.meta);
-        // Replay's precondition is that arrange is a pure function of the
-        // slot (see `replay_arranged`). `Scrollbars` is the one driver
-        // that isn't: it reads a *sibling's* measured `scroll_content`, so
-        // its bars must be re-placed even when its own subtree hash and
-        // slot are unchanged — otherwise a scroll whose content stopped
-        // overflowing keeps painting the old thumb.
-        // Replay is only sound for a driver whose arrange reads nothing
-        // but its own subtree and this slot; the mode declares that.
-        if mode.arrange_depends_only_on_slot() && self.replay_arranged(node, rendered) {
+        if ReplayOp.dispatch(mode) && self.replay_arranged(node, rendered) {
             return;
         }
         self.out.rect[node.idx()] = rendered;
         let inner = rendered.deflated_by(layout.padding);
 
-        match mode {
-            LayoutMode::Leaf => {}
-            LayoutMode::HStack => stack::arrange(self, node, inner, Axis::X),
-            LayoutMode::VStack => stack::arrange(self, node, inner, Axis::Y),
-            LayoutMode::WrapHStack => wrapstack::arrange(self, node, inner, Axis::X),
-            LayoutMode::WrapVStack => wrapstack::arrange(self, node, inner, Axis::Y),
-            LayoutMode::ZStack => zstack::arrange(self, node, inner),
-            LayoutMode::Canvas => canvas::arrange(self, node, inner),
-            LayoutMode::Grid(grid_def_id) => grid::arrange(self, node, inner, grid_def_id),
-            LayoutMode::Scroll(scroll_spec) => scroll::arrange(self, node, inner, scroll_spec),
-            LayoutMode::Scrollbars(id) => {
-                let def = tree.scrollbar_defs[usize::from(id)];
-                scrollbars::arrange(self, node, inner, def);
-            }
+        ArrangeOp {
+            pass: self,
+            node,
+            inner,
         }
+        .dispatch(mode);
     }
 
     /// Replay a measure-cache-hit subtree's arranged rects instead of
@@ -439,7 +370,7 @@ impl LayoutPass<'_> {
     ///
     /// Sound because arrange's **only** output is `out.rect` — every
     /// driver's `arrange` writes rects and recurses, and nothing else
-    /// (`scroll::arrange` merely delegates to stack/zstack; container text
+    /// (`Scroll::arrange` merely delegates to stack/zstack; container text
     /// shapes later in [`LayoutEngine::run`], off this path). So for a
     /// subtree whose authoring and `desired` are both known identical to
     /// the snapshot — which is exactly what a measure hit proves — arrange
@@ -447,7 +378,7 @@ impl LayoutPass<'_> {
     ///
     /// That reasoning covers every driver whose arrange stays inside its
     /// own subtree, which is not all of them; the caller gates on
-    /// [`LayoutMode::arrange_depends_only_on_slot`] so a driver reading
+    /// [`LayoutDriver::ARRANGE_DEPENDS_ONLY_ON_SLOT`] so a driver reading
     /// outside itself never reaches here.
     ///
     /// Two of the three slot outcomes replay:
@@ -537,4 +468,50 @@ impl LayoutPass<'_> {
         self.out.text_shapes.push(shaped);
         ts.wrap.content_size(shaped.measured)
     }
+}
+
+#[derive(Debug)]
+struct MeasureOp<'op, 'pass> {
+    pass: &'op mut LayoutPass<'pass>,
+    node: NodeId,
+    inner_avail: Size,
+}
+
+impl DriverOp for MeasureOp<'_, '_> {
+    type Output = Size;
+
+    fn run<D: LayoutDriver>(self, payload: D::Payload) -> Size {
+        D::measure(self.pass, self.node, payload, self.inner_avail)
+    }
+
+    /// A leaf's content size is its shaped text, wrapped against the
+    /// width it was offered.
+    fn leaf(self) -> Size {
+        let Self {
+            pass,
+            node,
+            inner_avail,
+        } = self;
+        let (tree, interned_text) = (pass.tree, pass.interned_text);
+        let runs = TextShapeInput::on_leaf(tree, interned_text, node);
+        pass.shape_text_runs(node, inner_avail.w, runs)
+    }
+}
+
+#[derive(Debug)]
+struct ArrangeOp<'op, 'pass> {
+    pass: &'op mut LayoutPass<'pass>,
+    node: NodeId,
+    inner: Rect,
+}
+
+impl DriverOp for ArrangeOp<'_, '_> {
+    type Output = ();
+
+    fn run<D: LayoutDriver>(self, payload: D::Payload) {
+        D::arrange(self.pass, self.node, payload, self.inner);
+    }
+
+    /// A leaf has no children to place; its own rect is already stored.
+    fn leaf(self) {}
 }
