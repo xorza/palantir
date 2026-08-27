@@ -7,6 +7,7 @@ use crate::input::sense::Sense;
 use crate::layout::axis::Axis;
 use crate::layout::scrollbars::{self, BarDomain, ScrollbarsDef};
 use crate::layout::types::sizing::Sizing;
+use crate::primitives::approx;
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
 use crate::primitives::size::Size;
@@ -134,7 +135,7 @@ impl ResolvedBar {
     fn travel(&self) -> ThumbTravel {
         let domain = self.domain();
         ThumbTravel {
-            factor: domain.max_off() / (self.track_main - self.thumb_size).max(f32::EPSILON),
+            factor: approx::ratio(domain.max_off(), self.track_main - self.thumb_size),
             domain,
         }
     }

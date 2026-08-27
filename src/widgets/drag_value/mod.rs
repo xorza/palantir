@@ -1,6 +1,7 @@
 use crate::input::sense::Sense;
 use crate::layout::types::align::Align;
 use crate::layout::types::sizing::Sizing;
+use crate::primitives::limits::Limits;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
@@ -43,7 +44,7 @@ impl DragNum<'_> {
     /// whether the stored value actually changed — exact for the integer,
     /// bit-exact for the float.
     fn commit_drag(&mut self, raw: f64, decimals: usize, min: f64, max: f64) -> bool {
-        let (lo, hi) = (min.min(max), min.max(max));
+        let Limits { lo, hi } = Limits::of(min, max);
         match self {
             DragNum::I64(v) => {
                 let next = (raw.round() as i64).clamp(lo as i64, hi as i64);
@@ -80,7 +81,7 @@ impl DragNum<'_> {
     /// Returns whether the stored value changed. Keyboard entry keeps full
     /// precision — only drags snap to `decimals`.
     fn parse_from(&mut self, text: &str, min: f64, max: f64) -> bool {
-        let (lo, hi) = (min.min(max), min.max(max));
+        let Limits { lo, hi } = Limits::of(min, max);
         match self {
             DragNum::I64(v) => {
                 let Ok(n) = text.parse::<i64>() else {

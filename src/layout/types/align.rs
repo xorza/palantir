@@ -174,16 +174,8 @@ impl Align {
     /// caret, and selection wash must shift by the same offset or the caret
     /// drifts off its glyph.
     pub(crate) fn place_in(self, outer: Rect, content: Size) -> Rect {
-        let dx = match self.halign() {
-            HAlign::Auto | HAlign::Left | HAlign::Stretch => 0.0,
-            HAlign::Center => (outer.size.w - content.w) * 0.5,
-            HAlign::Right => outer.size.w - content.w,
-        };
-        let dy = match self.valign() {
-            VAlign::Auto | VAlign::Top | VAlign::Stretch => 0.0,
-            VAlign::Center => (outer.size.h - content.h) * 0.5,
-            VAlign::Bottom => outer.size.h - content.h,
-        };
+        let dx = self.halign().to_axis().offset_in(outer.size.w, content.w);
+        let dy = self.valign().to_axis().offset_in(outer.size.h, content.h);
         Rect::new(
             outer.min.x + dx.max(0.0),
             outer.min.y + dy.max(0.0),
@@ -210,6 +202,23 @@ impl AxisAlign {
     /// is stretch (WPF semantics): a non-Fixed child with no explicit
     /// alignment fills its cell on each axis. Other drivers leave `Auto`
     /// alone (arrange-axis resolution consults the child's `Sizing`).
+    /// The offset that places `extent` inside a `slot` of that size,
+    /// before any overflow policy.
+    ///
+    /// The one definition of what an alignment *means* as a number.
+    /// Overflow is the caller's to decide and is where the two consumers
+    /// genuinely differ: [`Align::place_in`] floors the offset at zero,
+    /// pinning oversized content to the leading edge, while an overlay
+    /// clamps the placed position into the surface it must stay inside.
+    #[inline]
+    pub(crate) const fn offset_in(self, slot: f32, extent: f32) -> f32 {
+        match self {
+            AxisAlign::Center => (slot - extent) * 0.5,
+            AxisAlign::End => slot - extent,
+            AxisAlign::Auto | AxisAlign::Start | AxisAlign::Stretch => 0.0,
+        }
+    }
+
     #[inline]
     pub(crate) const fn or_stretch_if_auto(self) -> AxisAlign {
         match self {

@@ -342,7 +342,7 @@ fn grid_fill_row_floors_at_descendant_min_content() {
 fn resolve_axis_marks_fixed_and_hug_resolved_but_leaves_fill_unresolved() {
     let tracks = [Track::fixed(50.0), Track::hug(), Track::fill()];
     let mut a = AxisScratch::default();
-    a.reset(tracks.len());
+    a.reset_for(tracks.len());
     let hugs = HugRanges {
         min: &[0.0, 10.0, 0.0],
         max: &[0.0, 30.0, 0.0],

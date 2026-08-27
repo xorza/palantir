@@ -137,7 +137,7 @@ pub(crate) struct MeasureSnapshot {
     /// The `descriptor_identity` [`Self::snapshots`] was last built for.
     ///
     /// Held beside the map so the two travel together through
-    /// `finish_frame`'s buffer swap. That is the whole trick: this
+    /// `end_frame`'s buffer swap. That is the whole trick: this
     /// snapshot's map is reusable exactly when the capture that just
     /// filled the same struct produced the same identity, so nothing has
     /// to reason about which frame the retained map came from.
@@ -208,7 +208,7 @@ pub(crate) struct MeasureCache {
     hug_offsets: Vec<u32>,
     text_bounds: Vec<Span>,
     /// Snapshot-map rebuilds run so far. Lets a test prove the reuse gate
-    /// in [`Self::finish_frame`] both fires and busts — without it the
+    /// in [`Self::end_frame`] both fires and busts — without it the
     /// `debug_assert` guarding reuse passes vacuously on any frame that
     /// silently stopped reusing.
     ///
@@ -417,14 +417,14 @@ impl MeasureCache {
         }
     }
 
-    pub(super) fn finish_frame(&mut self) {
+    pub(super) fn end_frame(&mut self) {
         if self.current.refresh_snapshots() {
             self.note_snapshot_rebuild();
         }
         std::mem::swap(&mut self.previous, &mut self.current);
     }
 
-    /// Bump the rebuild counter. Gated in here so `finish_frame` carries
+    /// Bump the rebuild counter. Gated in here so `end_frame` carries
     /// no `#[cfg]` of its own — the same placement
     /// [`BenchOnly`](crate::common::counters::BenchOnly) exists to make
     /// unnecessary for the counters that can use it, and that a plain

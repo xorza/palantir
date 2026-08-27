@@ -24,6 +24,8 @@
 //! fallback goes through `half`'s slice path (`fcvtl` on aarch64-fp16),
 //! where the dispatch is the point.
 
+use crate::primitives::approx::EPS;
+
 /// Four f16 lanes packed in 8 B (`[u16; 4]`, align 2) — the shared
 /// storage core behind `Corners`, `Spacing`, `FillAxis`, `ColorF16`,
 /// and `LoweredShadow`'s geometry. Each wraps an `F16x4` for type
@@ -38,6 +40,19 @@
 pub(crate) struct F16x4([u16; 4]);
 
 impl F16x4 {
+    /// The crate's visual tolerance in this type's lane encoding, and the
+    /// mask and exponent the lane predicates classify against.
+    ///
+    /// Here rather than beside [`EPS`] itself, because the encoding is
+    /// this type's business: `approx` answers f32 questions, and a lane
+    /// pattern is not one.
+    const EPS_BITS: u16 = half::f16::from_f32_const(EPS).to_bits();
+    const ONE_MINUS_EPS_BITS: u16 = half::f16::from_f32_const(1.0 - EPS).to_bits();
+    /// Clears the sign bit, so a lane compares by magnitude.
+    const ABS_MASK: u16 = 0x7FFF;
+    /// f16 infinity. NaN is the only thing that sorts above it.
+    const NAN_EXP: u16 = 0x7C00;
+
     /// All-zero lanes (`0.0` in f16). Also the `Default`.
     pub(crate) const ZERO: Self = Self([0; 4]);
 
@@ -64,10 +79,9 @@ impl F16x4 {
     /// lets all four comparisons run as one masked add over the packed
     /// `u64`. Measured ~5× the scalar form.
     ///
-    /// Both four-lane magnitude predicates in the crate are this one
-    /// test: [`Self::has_nan`] and `Corners::approx_zero` (which passes
-    /// the `EPS` pattern and negates). The single-lane bit predicates
-    /// are `approx::noop_f16_bits` and `approx::opaque_f16_bits`.
+    /// Every four-lane magnitude predicate in the crate is this one
+    /// test: [`Self::has_nan`], [`Self::all_lanes_noop`], and the
+    /// single-lane [`Self::lane_is_noop`] / [`Self::lane_is_opaque`].
     ///
     /// Packing by shift instead of a cast keeps this `const` and
     /// endian-independent; LLVM folds it back to a single 64-bit load.
@@ -91,8 +105,45 @@ impl F16x4 {
     /// all four lanes, no per-lane branch.
     #[inline]
     pub(crate) const fn has_nan(self) -> bool {
-        const F16_INFINITY: u16 = 0x7C00;
-        self.any_lane_above(F16_INFINITY)
+        self.any_lane_above(Self::NAN_EXP)
+    }
+
+    /// True when every lane is within [`EPS`] of zero.
+    ///
+    /// "Every lane within `EPS`" is the negation of "some lane above
+    /// it", which is [`Self::any_lane_above`] at the `EPS` pattern. NaN
+    /// sorts above `EPS` and so reports non-zero — deliberate: a caller
+    /// gating a fast path on this must not take it on an undefined lane.
+    #[inline]
+    pub(crate) const fn all_lanes_noop(self) -> bool {
+        !self.any_lane_above(Self::EPS_BITS)
+    }
+
+    /// True when `lane` is within [`EPS`] of zero — the single-lane form
+    /// of [`Self::all_lanes_noop`].
+    ///
+    /// Masks the sign bit and compares against the `EPS` pattern
+    /// directly, with no f16 → f32 conversion: positive f16 values are
+    /// monotonic in their bit representation, which is what lets a
+    /// magnitude question be answered as an integer compare. NaN's
+    /// exponent lands at `NAN_EXP` or above, well past the threshold, so
+    /// NaN classifies as non-zero — a loud programming bug rather than a
+    /// silent skip.
+    #[inline]
+    pub(crate) const fn lane_is_noop(self, lane: usize) -> bool {
+        self.lane_bits(lane) & Self::ABS_MASK <= Self::EPS_BITS
+    }
+
+    /// True when `lane` is within [`EPS`] of 1.0 — [`Self::lane_is_noop`]
+    /// at the opaque end of the scale.
+    ///
+    /// The upper bound rejects NaN for the reason
+    /// [`Self::lane_is_noop`] gives. A negative lane carries the sign bit
+    /// and so sorts above `NAN_EXP` too, which rejects it as well.
+    #[inline]
+    pub(crate) const fn lane_is_opaque(self, lane: usize) -> bool {
+        let bits = self.lane_bits(lane);
+        bits >= Self::ONE_MINUS_EPS_BITS && bits < Self::NAN_EXP
     }
 
     /// Unpack all four lanes to f32 at once via the batched slice path.

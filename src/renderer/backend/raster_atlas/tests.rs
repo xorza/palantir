@@ -318,7 +318,7 @@ mod gpu {
         // Age every entry out of the current frame so all 16 are
         // eligible victims — otherwise the clock would protect them and
         // the test would pass for the wrong reason.
-        atlas.end_frame(1);
+        atlas.advance_to(1);
 
         let metadata = PackedMetadata::new(300, 300, 0, 0).unwrap();
         assert_eq!(
@@ -371,7 +371,7 @@ mod gpu {
         // Redraw the whole working set on the next frame, which is what
         // a real frame does before it starts starving: every slot is now
         // stamped with the current frame and none of them is a victim.
-        atlas.end_frame(1);
+        atlas.advance_to(1);
         for i in 0..placed {
             assert!(atlas.touch(&key(i)).is_some(), "tile {i} is resident");
         }
@@ -399,7 +399,7 @@ mod gpu {
 
         // The clock advancing is what makes the side worth walking
         // again, and now every slot is a victim, so the entry lands.
-        atlas.end_frame(2);
+        atlas.advance_to(2);
         let evicted_before = atlas.counters.evictions.count();
         assert!(
             atlas
@@ -508,7 +508,7 @@ mod gpu {
         let gpu = headless_test_gpu();
         let mut atlas = small_atlas(&gpu.device);
         fill(&mut atlas, &gpu.device, 16);
-        atlas.end_frame(1);
+        atlas.advance_to(1);
 
         assert_eq!(
             atlas.atlas_px(),

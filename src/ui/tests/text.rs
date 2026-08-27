@@ -221,7 +221,7 @@ fn text_reuse_is_window_local_while_cosmic_buffers_are_shared() {
 /// because the only thing that would free a slot is the clock the
 /// paint-only streak is not turning.
 ///
-/// The clock ticks in `TextSystem::end_full_record`, which lives in
+/// The clock ticks in `TextSystem::end_frame`, which lives in
 /// `finalize_frame` and so runs only for `FullRecord`. This pins the
 /// separate tick the `PaintOnly` arm owes.
 #[test]

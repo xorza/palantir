@@ -295,7 +295,7 @@ impl IconBackend {
                 atlas.forget(|key| !sets.contains(&key.icon.set));
             });
         }
-        self.atlas.end_frame(self.frame);
+        self.atlas.advance_to(self.frame);
         self.instances.clear();
         self.ranges.clear();
     }

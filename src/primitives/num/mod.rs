@@ -1,4 +1,45 @@
+//! Scalar helpers the crate keeps one definition of: the libm-free
+//! rounding and pixel-snap idioms on [`F32Ext`] / [`Vec2Ext`], and two
+//! conversions whose exact form is a contract rather than a detail.
+
+use crate::primitives::approx;
 use glam::Vec2;
+
+/// A 0..1 value as a byte: rounded half up, saturating outside the
+/// range, and zero for NaN.
+///
+/// The saturation is the whole body. Rust's float→int `as` is saturating
+/// by language guarantee, not by LLVM accident, so NaN already yields 0,
+/// anything under the range already yields 0, and anything over it
+/// already yields `u8::MAX`. Range checks would be three predicates paid
+/// per channel per colour to reach what the final instruction reaches
+/// anyway. Adding the half before the truncation is round-half-up, which
+/// over a non-negative product is `round`.
+///
+/// A free `const fn` rather than an [`F32Ext`] method: `Color::hexa` is
+/// `const`, and a trait method cannot be called from one.
+#[inline]
+pub(crate) const fn unit_to_u8(x: f32) -> u8 {
+    (x * 255.0 + 0.5) as u8
+}
+
+/// Where `pos` sits along a track of `extent` that reserves `band` to a
+/// centred thing the pointer drags, as a 0..1 share.
+///
+/// A slider's knob and a splitter's rule are the same placement problem:
+/// a fixed-width object whose *centre* follows the pointer, so half the
+/// band comes off each end before the division and the usable travel is
+/// `extent - band`. A track with no travel left has no share to report
+/// and yields zero, through
+/// [`approx::ratio`](crate::primitives::approx::ratio). What that zero
+/// means is the caller's, and the two callers disagree.
+///
+/// The result is unclamped — a pointer outside the track reports outside
+/// `0..1`, and each caller pins it with the bounds it enforces.
+#[inline]
+pub(crate) fn band_fraction(pos: f32, extent: f32, band: f32) -> f32 {
+    approx::ratio(pos - band * 0.5, extent - band)
+}
 
 /// Libm-free `f32` helpers for the hot snap/quantize paths.
 pub(crate) trait F32Ext {

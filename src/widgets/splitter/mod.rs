@@ -2,7 +2,9 @@ use crate::input::sense::Sense;
 use crate::layout::axis::Axis;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
+use crate::primitives::approx;
 use crate::primitives::background::Background;
+use crate::primitives::num;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::Node;
 use crate::scene::node::configure::Configure;
@@ -231,7 +233,7 @@ fn arranged_pane_ratio(
     let first_extent = axis.main(first.size);
     let second_extent = axis.main(second.size);
     let span = first_extent + second_extent;
-    (span > f32::EPSILON).then(|| sanitize_ratio(first_extent / span))
+    (!approx::noop_f32(span)).then(|| sanitize_ratio(first_extent / span))
 }
 
 /// A caller-supplied ratio, made safe to use as a `Fill` weight:
@@ -252,14 +254,13 @@ fn sanitize_ratio(r: f32) -> f32 {
 /// extents pin to `0.5`.
 fn pointer_to_ratio(pos: f32, extent: f32, reserved: f32, min_pane: f32) -> f32 {
     let span = extent - reserved;
-    if span <= f32::EPSILON {
+    if approx::noop_f32(span) {
         return 0.5;
     }
-    // `lo <= span/2 <= hi` by construction, so the clamp can't invert
-    // even when `2 * min_pane > span`.
-    let lo = min_pane.min(span * 0.5);
-    let hi = (span - min_pane).max(span * 0.5);
-    (pos - reserved * 0.5).clamp(lo, hi) / span
+    // `floor <= 0.5` by construction, so the clamp can't invert even
+    // when `2 * min_pane > span` — it collapses to the centre instead.
+    let floor = (min_pane / span).min(0.5);
+    num::band_fraction(pos, extent, reserved).clamp(floor, 1.0 - floor)
 }
 
 #[cfg(test)]

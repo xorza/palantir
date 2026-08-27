@@ -94,40 +94,36 @@ impl FloatHash for Vec2 {
 /// shared predicate behind `Stroke::is_noop`, `Color::is_noop`,
 /// and per-variant `Shape::is_noop` checks — keeps the
 /// "non-paintable scalar" contract in one place.
+///
+/// "Does this paint anything?" is asked at two tiers, and they compose
+/// rather than duplicate. `is_paint_empty` is the geometry half — does
+/// this `Size` / `Rect` / `URect` / `QuadGeom` cover any pixels at all —
+/// and bottoms out here. `is_noop` is the whole question, and a type
+/// that carries both geometry and paint answers it by calling the first
+/// and then testing its ink; `DrawQuadPayload` carries the pair and
+/// reads that way.
 #[inline]
 pub(crate) const fn noop_f32(v: f32) -> bool {
     v.is_nan() || v <= EPS
 }
 
-/// True if an f16 stored as `u16` bits is `≤ EPS` in absolute value.
-/// Branch-free bit-pattern check — masks the sign bit and compares
-/// directly against `EPS` as f16 bits, with no f16→f32 conversion.
-/// Works because positive f16 values are monotonic in their bit
-/// representation (IEEE 754 design). NaN's exponent bits land at
-/// `0x7C00`+, well above the threshold, so NaN classifies as
-/// non-zero — matches `Corners::approx_zero` semantics and treats
-/// NaN as a loud programming bug rather than a silent skip.
+/// `n / d`, or zero when `d` carries no paintable magnitude.
+///
+/// The one answer to "what share of `d` is `n`" for a `d` that geometry
+/// can legitimately collapse — a scroll range with nothing to scroll, a
+/// bar whose thumb fills its track, a line height with no font behind
+/// it, a slider rail narrower than its own knob. Flooring the divisor at
+/// a tolerance instead returns an enormous number for a quantity every
+/// caller then reads as a fraction: a wrong answer stated confidently.
+///
+/// The gate is [`noop_f32`], so a *negative* `d` is degenerate too and
+/// not merely a sign flip. Every `d` this divides is a distance, and one
+/// that came out backwards has no share to report any more than a zero
+/// one does — the negated share puts a splitter rule on the wrong side
+/// of a track narrower than its own bar.
 #[inline]
-pub(crate) const fn noop_f16_bits(bits: u16) -> bool {
-    const EPS_BITS: u16 = half::f16::from_f32_const(EPS).to_bits();
-    const ABS_MASK: u16 = 0x7FFF;
-    (bits & ABS_MASK) <= EPS_BITS
-}
-
-/// True if an f16 stored as `u16` bits is within `EPS` below 1.0 (or
-/// above). Mirror of `noop_f16_bits` for the opacity end of the
-/// scale: positive f16 values are monotonic in their bit
-/// representation, so `>= f16(1.0 - EPS).to_bits()` catches every
-/// value visually indistinguishable from fully opaque. The upper
-/// bound `< 0x7C00` rejects NaN (NaN exponent starts at `0x7C01`+)
-/// — a NaN alpha is a loud bug, not a silent opaque pass. Negative
-/// f16s carry the sign bit (`>= 0x8000`), well above the NaN
-/// threshold, so they're rejected too.
-#[inline]
-pub(crate) const fn opaque_f16_bits(bits: u16) -> bool {
-    const ONE_MINUS_EPS_BITS: u16 = half::f16::from_f32_const(1.0 - EPS).to_bits();
-    const NAN_EXP: u16 = 0x7C00;
-    bits >= ONE_MINUS_EPS_BITS && bits < NAN_EXP
+pub(crate) const fn ratio(n: f32, d: f32) -> f32 {
+    if noop_f32(d) { 0.0 } else { n / d }
 }
 
 /// True if two 2D points are within `EPS` of each other (Euclidean

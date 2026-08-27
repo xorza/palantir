@@ -20,7 +20,8 @@ fn cubic_bbox_is_endpoints_for_monotone_curve() {
     let p1 = Vec2::new(33.0, 0.0);
     let p2 = Vec2::new(66.0, 0.0);
     let p3 = Vec2::new(100.0, 0.0);
-    let CurveBounds { lo, hi } = cubic_bezier_bbox(p0, p1, p2, p3);
+    let bbox = cubic_bezier_bbox(p0, p1, p2, p3);
+    let (lo, hi) = (bbox.min, bbox.max());
     assert!((lo - Vec2::new(0.0, 0.0)).length() < 1.0e-4);
     assert!((hi - Vec2::new(100.0, 0.0)).length() < 1.0e-4);
 }
@@ -34,7 +35,8 @@ fn cubic_bbox_tighter_than_control_hull_for_opposing_tangents() {
     let p1 = Vec2::new(33.0, 100.0);
     let p2 = Vec2::new(66.0, -100.0);
     let p3 = Vec2::new(100.0, 0.0);
-    let CurveBounds { lo, hi } = cubic_bezier_bbox(p0, p1, p2, p3);
+    let bbox = cubic_bezier_bbox(p0, p1, p2, p3);
+    let (lo, hi) = (bbox.min, bbox.max());
     // Hull would give y ∈ [-100, 100]; tight bbox is ±25·√(1/3)·3 ≈ ±25/√3·... .
     // Don't pin the exact analytic value — just assert "well inside the hull".
     assert!(lo.y > -50.0, "lo.y = {}", lo.y);
@@ -54,7 +56,8 @@ fn cubic_bbox_contains_sampled_curve() {
     let p1 = Vec2::new(-30.0, 80.0);
     let p2 = Vec2::new(120.0, -40.0);
     let p3 = Vec2::new(90.0, 50.0);
-    let CurveBounds { lo, hi } = cubic_bezier_bbox(p0, p1, p2, p3);
+    let bbox = cubic_bezier_bbox(p0, p1, p2, p3);
+    let (lo, hi) = (bbox.min, bbox.max());
     for i in 0..=100 {
         let t = i as f32 / 100.0;
         let u = 1.0 - t;

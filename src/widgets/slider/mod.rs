@@ -1,8 +1,11 @@
 use crate::input::sense::Sense;
 use crate::layout::types::align::{Align, VAlign};
 use crate::layout::types::sizing::Sizing;
+use crate::primitives::approx;
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
+use crate::primitives::limits::Limits;
+use crate::primitives::num;
 use crate::scene::node::Node;
 use crate::ui::Ui;
 use crate::widgets::response::Response;
@@ -113,7 +116,7 @@ impl<'a> Slider<'a> {
                 self.min,
                 self.step,
             );
-            let next = clamp_range(v, self.min, self.max);
+            let next = Limits::of(self.min, self.max).clamp(v);
             changed = next != *self.value;
             *self.value = next;
         }
@@ -157,7 +160,7 @@ impl_configure!(Slider<'_>);
 /// Degenerate (`min == max`) ranges map to 0.
 fn value_to_fraction(value: f32, min: f32, max: f32) -> f32 {
     let span = max - min;
-    if span.abs() < f32::EPSILON {
+    if approx::approx_zero(span) {
         return 0.0;
     }
     ((value - min) / span).clamp(0.0, 1.0)
@@ -171,10 +174,10 @@ fn fraction_to_value(fraction: f32, min: f32, max: f32) -> f32 {
 
 /// Map a cursor x (relative to the rail's left edge) to a fraction. The
 /// usable travel is `[knob/2, track_w - knob/2]` so the knob center
-/// stays inside the rail at both extremes.
+/// stays inside the rail at both extremes. A rail with no travel reads
+/// as the low end.
 fn pointer_to_fraction(local_x: f32, track_w: f32, knob: f32) -> f32 {
-    let travel = (track_w - knob).max(1.0);
-    ((local_x - knob * 0.5) / travel).clamp(0.0, 1.0)
+    num::band_fraction(local_x, track_w, knob).clamp(0.0, 1.0)
 }
 
 /// Snap to the nearest multiple of `step` measured from `min`. A `None`
@@ -184,11 +187,6 @@ fn snap_to_step(value: f32, min: f32, step: Option<f32>) -> f32 {
         Some(s) if s > 0.0 => min + ((value - min) / s).round() * s,
         _ => value,
     }
-}
-
-/// Clamp into `[min, max]` tolerating a reversed pair.
-fn clamp_range(value: f32, min: f32, max: f32) -> f32 {
-    value.clamp(min.min(max), min.max(max))
 }
 
 #[cfg(test)]

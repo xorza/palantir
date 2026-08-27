@@ -8,6 +8,7 @@ use winit::window::Window as WinitWindow;
 
 use crate::app::App;
 use crate::common::tracy::{self, FrameSet};
+use crate::display;
 use crate::host::core::HostCore;
 use crate::host::window_driver::{CpuFrame, TargetKey, WindowDriver};
 use crate::host::winit::gpu::{self, SurfaceManager, WindowSurface};
@@ -44,7 +45,7 @@ impl Window {
         surface: WindowSurface,
         mut driver: WindowDriver,
     ) -> Self {
-        let scale_factor = window.scale_factor() as f32;
+        let scale_factor = display::sanitize_scale_factor(window.scale_factor());
         // Seed the recorder's pacing level from the swapchain that was
         // actually opened, so `Ui::vsync` is truthful before any frame runs
         // and a control writing its own value back doesn't reconfigure an

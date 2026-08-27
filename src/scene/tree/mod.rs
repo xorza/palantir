@@ -604,7 +604,7 @@ impl Tree {
         self.records.extras()[id.idx()]
             .panel
             .map(|s| self.panel_table[s.idx()].transform)
-            .filter(|t| !t.is_noop())
+            .filter(|t| !t.is_identity())
     }
 
     /// This node's bounds extras row (position / grid cell / min_size /

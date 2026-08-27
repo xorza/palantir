@@ -43,7 +43,7 @@ impl ShapeStroke {
     };
 
     #[inline]
-    pub(crate) fn is_noop(self) -> bool {
+    pub(crate) const fn is_noop(self) -> bool {
         noop_f32(self.width) || self.color.is_noop()
     }
 
@@ -346,7 +346,7 @@ pub(crate) struct ShadowGeom {
 
 impl LoweredShadow {
     #[inline]
-    pub(crate) fn is_noop(self) -> bool {
+    pub(crate) const fn is_noop(self) -> bool {
         // Geometry screened for NaN, not magnitude — a zero-sigma
         // zero-offset shadow still paints a hard-edged rect, so only
         // the tint's *size* decides visibility. Mirrors

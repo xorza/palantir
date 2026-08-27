@@ -1,4 +1,4 @@
-use crate::primitives::approx::canon_bits;
+use crate::primitives::approx::FloatHash;
 use crate::primitives::approx::noop_f32;
 use crate::primitives::color::Color;
 use crate::primitives::nan::NanCheck;
@@ -29,8 +29,12 @@ impl Stroke {
     /// `Stroke` directly through `Stroke::ZERO`, so a "stroked →
     /// no-stroke" transition settles at `is_noop()` and the encoder
     /// filters it out without any `Option` collapse step.
+    /// `&self` where the crate's other `Copy` paint predicates take
+    /// `self`: `Background`'s `skip_serializing_if` names this, and
+    /// serde requires an `fn(&T) -> bool` there. `Corners::approx_zero`
+    /// takes `&self` for the same reason.
     #[inline]
-    pub fn is_noop(&self) -> bool {
+    pub const fn is_noop(&self) -> bool {
         noop_f32(self.width) || self.color.is_noop()
     }
 
@@ -41,11 +45,13 @@ impl Stroke {
     }
 }
 
+/// Visual throughout: this feeds content-cache keys, so every scalar the
+/// stroke carries is canonicalized the same way — see [`FloatHash`].
 impl std::hash::Hash for Stroke {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.color.hash(state);
-        state.write_u32(canon_bits(self.width));
+        self.color.hash_visual(state);
+        self.width.hash_visual(state);
     }
 }
 impl NanCheck for Stroke {

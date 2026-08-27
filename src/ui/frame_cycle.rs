@@ -16,7 +16,7 @@
 //!
 //! ## Resets and who re-asserts them
 //!
-//! Per-pass resets live in [`FrameCycle::begin_pass`], which documents
+//! Per-pass resets live in [`FrameCycle::pre_record`], which documents
 //! the shared rule; the once-per-frame sweep lives in `finalize_frame`.
 //! Which of the two a given piece of state belongs to is decided by one
 //! question — does the user closure re-assert it?
@@ -280,7 +280,7 @@ impl<'a> FrameCycle<'a> {
     /// cycle. Returns whether the cycle saw action input (which triggers
     /// a second pass in [`Self::run`]).
     fn record_pass<T: App>(&mut self, win: WindowToken, app: &mut T) -> bool {
-        self.begin_pass();
+        self.pre_record();
         // Synthetic viewport root for Layer::Main. Without this, the
         // first user-recorded node becomes the root and the layout
         // engine forces its rect to the surface — silently overriding
@@ -321,13 +321,13 @@ impl<'a> FrameCycle<'a> {
     /// widget state, animation rows.
     ///
     /// A fourth per-pass reset goes here, and nowhere else.
-    fn begin_pass(&mut self) {
+    fn pre_record(&mut self) {
         tracy::zone!("Ui::pre_record");
         // Clears both the trees and the retained payloads their shape
         // records index into.
         self.ui.forest.pre_record();
         // Record-scoped input ownership and wake watches.
-        self.ui.input.begin_record(&self.ui.cascade);
+        self.ui.input.pre_record(&self.ui.cascade);
         // Re-asserted by whoever still wants the cursor this pass.
         self.ui.window_requests.levels.cursor = CursorIcon::default();
     }
@@ -395,7 +395,7 @@ impl<'a> FrameCycle<'a> {
         // the frame didn't touch: text ticks the clock its caches age on,
         // and the animation sweep drops slots no call site reached for.
         // Each carries its own early-out for the nothing-to-do case.
-        self.engines.layout.text.end_full_record(removed);
+        self.engines.layout.text.end_frame(removed);
         self.ui.anim.sweep_removed(removed);
         // These two react to removals only, and both walk their whole map
         // to do it — so the one guard sits here rather than being spelled

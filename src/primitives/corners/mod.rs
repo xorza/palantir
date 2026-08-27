@@ -1,4 +1,3 @@
-use crate::primitives::approx::EPS;
 use crate::primitives::half_simd::F16x4;
 use crate::primitives::serde::LaneCodec;
 use crate::primitives::size::Size;
@@ -81,7 +80,7 @@ impl Corners {
     }
 
     /// True when every corner is within UI epsilon of zero. Routes
-    /// through `F16x4::any_lane_above` (crate-private, in
+    /// through `F16x4::all_lanes_noop` (crate-private, in
     /// `primitives::half_simd`) so the lane compare lives in one place —
     /// see that method for the SWAR rationale.
     /// `&self` where its neighbours take `self`: serde's
@@ -89,13 +88,10 @@ impl Corners {
     /// [`Background::corners`](crate::Background) uses this as one.
     #[inline]
     pub const fn approx_zero(&self) -> bool {
-        // "Every lane within EPS" is the negation of "some lane above
-        // it", which `F16x4` answers for all four at once. NaN lands
-        // above EPS and so reports non-zero — deliberate: this gates
-        // the sharp-corner fast path, and a NaN radius must not take
-        // it. The shape-level NaN gate is what drops such a shape.
-        const EPS_BITS: u16 = half::f16::from_f32_const(EPS).to_bits();
-        !self.0.any_lane_above(EPS_BITS)
+        // A NaN radius reports non-zero and so cannot take the
+        // sharp-corner fast path this gates. The shape-level NaN gate is
+        // what drops such a shape.
+        self.0.all_lanes_noop()
     }
 }
 

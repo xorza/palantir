@@ -25,6 +25,12 @@ impl TranslateScale {
     };
 
     /// True when this transform won't visibly move/scale descendants.
+    ///
+    /// **Not a paint predicate**, despite gating draws the way one does:
+    /// it asks "is this value ≈ this constant", the question
+    /// [`approx_zero`] asks, and it gates a *fast path*. A NaN lane must
+    /// therefore report `false` and route around the shortcut, where a
+    /// paint no-op reports `true` and drops the draw.
     /// Two-stage check:
     /// - Fast path: bitwise equality with `IDENTITY` via `to_bits`,
     ///   faster than three f32 `feq` instructions.
@@ -33,7 +39,7 @@ impl TranslateScale {
     ///   that animation/lerping produced bit-different from
     ///   `IDENTITY` but visually indistinguishable.
     #[inline]
-    pub const fn is_noop(&self) -> bool {
+    pub const fn is_identity(self) -> bool {
         if self.translation.x.to_bits() == Self::IDENTITY.translation.x.to_bits()
             && self.translation.y.to_bits() == Self::IDENTITY.translation.y.to_bits()
             && self.scale.to_bits() == Self::IDENTITY.scale.to_bits()
@@ -224,8 +230,8 @@ mod tests {
 
     #[test]
     fn identity_is_noop_via_fast_path() {
-        assert!(TranslateScale::IDENTITY.is_noop());
-        assert!(TranslateScale::new(Vec2::ZERO, 1.0).is_noop());
+        assert!(TranslateScale::IDENTITY.is_identity());
+        assert!(TranslateScale::new(Vec2::ZERO, 1.0).is_identity());
     }
 
     #[test]
@@ -234,19 +240,19 @@ mod tests {
         // fast path and must fall through to `approx_zero`.
         let t = TranslateScale::new(Vec2::new(-0.0, -0.0), 1.0);
         assert_ne!(t.translation.x.to_bits(), 0.0f32.to_bits());
-        assert!(t.is_noop());
+        assert!(t.is_identity());
     }
 
     #[test]
     fn sub_eps_drift_is_noop_via_fallback() {
         let t = TranslateScale::new(Vec2::splat(EPS * 0.5), 1.0 + EPS * 0.5);
-        assert!(t.is_noop());
+        assert!(t.is_identity());
     }
 
     #[test]
     fn visible_translation_or_scale_is_not_noop() {
-        assert!(!TranslateScale::from_translation(Vec2::new(1.0, 0.0)).is_noop());
-        assert!(!TranslateScale::from_scale(1.5).is_noop());
+        assert!(!TranslateScale::from_translation(Vec2::new(1.0, 0.0)).is_identity());
+        assert!(!TranslateScale::from_scale(1.5).is_identity());
     }
 
     #[test]

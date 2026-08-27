@@ -22,6 +22,7 @@ use crate::layout::engine::LayoutEngine;
 use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange};
 use crate::layout::pass::LayoutPass;
 use crate::layout::types::layout_mode::ScrollbarsDefId;
+use crate::primitives::approx;
 use crate::primitives::approx::FloatHash;
 use crate::primitives::interned_text::InternedText;
 use crate::primitives::num::F32Ext;
@@ -131,7 +132,7 @@ impl BarDomain {
     /// `offset` as a 0..1 position along the bar's travel.
     #[inline]
     pub(crate) fn fraction(self, offset: f32) -> f32 {
-        (offset / self.max_off.max(f32::EPSILON)).clamp(0.0, 1.0)
+        approx::ratio(offset, self.max_off).clamp(0.0, 1.0)
     }
 }
 
@@ -209,10 +210,7 @@ fn axis_rects(
     scaled_content: Size,
     axis: Axis,
 ) -> Option<BarRects> {
-    let panned = match axis {
-        Axis::X => def.pan.x,
-        Axis::Y => def.pan.y,
-    };
+    let panned = axis.main_b(def.pan);
     if !panned {
         return None;
     }

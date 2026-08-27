@@ -1,4 +1,4 @@
-use crate::primitives::num::{F32Ext, Vec2Ext};
+use crate::primitives::num::{F32Ext, Vec2Ext, band_fraction, unit_to_u8};
 use glam::Vec2;
 
 #[test]
@@ -102,4 +102,79 @@ fn quantize_px_snaps_to_whole_pixels_and_saturates() {
     assert_eq!(f32::INFINITY.quantize_px(), i32::MAX);
     assert_eq!(f32::NEG_INFINITY.quantize_px(), i32::MAX);
     assert_eq!(f32::NAN.quantize_px(), i32::MAX);
+}
+
+/// Hand-computed: `x * 255 + 0.5`, truncated. `0.5 → 127.5 + 0.5 = 128`,
+/// `1/255 → 1.0 + 0.5 = 1.5 → 1`, and the largest f32 below 1.0 gives
+/// `254.99998 + 0.5 = 255.49998 → 255`, so it saturates without ever
+/// reaching 256.
+#[test]
+fn unit_to_u8_rounds_half_up() {
+    let cases: &[(f32, u8)] = &[
+        (0.0, 0),
+        (-0.0, 0),
+        (1.0 / 255.0, 1),
+        (0.5, 128),
+        (0.99999994, 255),
+        (1.0, 255),
+    ];
+    for &(x, want) in cases {
+        assert_eq!(unit_to_u8(x), want, "unit_to_u8({x})");
+    }
+}
+
+/// The three cases the branch-free form leans on the saturating cast
+/// for. Rust guarantees NaN → 0 and out-of-range → the nearest bound.
+#[test]
+fn unit_to_u8_saturates_instead_of_wrapping() {
+    let cases: &[(f32, u8)] = &[
+        (f32::NAN, 0),
+        (-1.0e-3, 0),
+        (-1.0e30, 0),
+        (f32::NEG_INFINITY, 0),
+        (1.0e30, 255),
+        (f32::INFINITY, 255),
+    ];
+    for &(x, want) in cases {
+        assert_eq!(unit_to_u8(x), want, "unit_to_u8({x})");
+    }
+}
+
+/// Every byte survives a decode/encode round trip, which is what makes
+/// the quantizer safe to apply to an already-quantized value.
+#[test]
+fn unit_to_u8_round_trips_every_byte() {
+    for b in 0..=u8::MAX {
+        assert_eq!(unit_to_u8(b as f32 / 255.0), b, "byte {b}");
+    }
+}
+
+/// A 20 px band on a 120 px track leaves 100 px of travel, offset by
+/// 10 px at each end: 10 → 0.0, 60 → 0.5, 110 → 1.0. Outside the track
+/// the share runs past 0..1, which is the caller's to pin.
+#[test]
+fn band_fraction_offsets_by_half_the_band() {
+    let cases: &[(f32, f32)] = &[
+        (10.0, 0.0),
+        (35.0, 0.25),
+        (60.0, 0.5),
+        (110.0, 1.0),
+        (0.0, -0.1),
+        (120.0, 1.1),
+    ];
+    for &(pos, want) in cases {
+        let got = band_fraction(pos, 120.0, 20.0);
+        assert!(
+            (got - want).abs() < 1e-6,
+            "band_fraction({pos}) = {got}, want {want}"
+        );
+    }
+}
+
+/// A band at least as wide as its track leaves no travel, so there is no
+/// share to report.
+#[test]
+fn band_fraction_reports_zero_without_travel() {
+    assert_eq!(band_fraction(15.0, 20.0, 20.0), 0.0);
+    assert_eq!(band_fraction(15.0, 10.0, 20.0), 0.0);
 }

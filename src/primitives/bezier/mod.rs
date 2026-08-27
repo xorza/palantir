@@ -2,9 +2,10 @@
 //! (see `renderer::backend::curve_pipeline`); CPU flattening is no
 //! longer part of the pipeline. What remains: the quadratic→cubic
 //! promotion the curve-lowering path uses to feed a single shader code
-//! path, plus the curve-bbox helpers (`cubic_bezier_bbox` / `CurveBounds`
-//! / `solve_quadratic`) that size the arena payload.
+//! path, plus the curve-bbox helpers (`cubic_bezier_bbox` /
+//! `solve_quadratic`) that size the arena payload.
 
+use crate::primitives::rect::Rect;
 use glam::Vec2;
 
 /// The two inner control points of a cubic Bezier.
@@ -12,13 +13,6 @@ use glam::Vec2;
 pub(crate) struct CubicControls {
     pub(crate) c1: Vec2,
     pub(crate) c2: Vec2,
-}
-
-/// Axis-aligned bounds of a curve trace.
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct CurveBounds {
-    pub(crate) lo: Vec2,
-    pub(crate) hi: Vec2,
 }
 
 /// Promote a quadratic Bezier `(p0, c, p2)` to a cubic with the same
@@ -43,7 +37,7 @@ pub(crate) fn quadratic_to_cubic(p0: Vec2, c: Vec2, p2: Vec2) -> CubicControls {
 /// `B'(t)/3 = (p1 - p0) + 2t(p0 - 2p1 + p2) + t²(-p0 + 3p1 - 3p2 + p3)`,
 /// so per axis: `a = -p0 + 3p1 - 3p2 + p3`, `b = 2(p0 - 2p1 + p2)`,
 /// `c = p1 - p0`.
-pub(crate) fn cubic_bezier_bbox(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2) -> CurveBounds {
+pub(crate) fn cubic_bezier_bbox(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2) -> Rect {
     // Four fixed inputs, so the AABB NaN contract is cheapest as one
     // up-front screen — no per-point flag to carry, and `min`/`max`
     // below stay the plain laundering form. It has to be up front:
@@ -54,10 +48,7 @@ pub(crate) fn cubic_bezier_bbox(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2) -> Curve
     // would also loosen the box to the control hull — the exact
     // tightness this function exists for.
     if p0.is_nan() || p1.is_nan() || p2.is_nan() || p3.is_nan() {
-        return CurveBounds {
-            lo: Vec2::NAN,
-            hi: Vec2::NAN,
-        };
+        return Rect::NAN;
     }
     let mut lo = p0.min(p3);
     let mut hi = p0.max(p3);
@@ -83,15 +74,26 @@ pub(crate) fn cubic_bezier_bbox(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2) -> Curve
             }
         }
     }
-    CurveBounds { lo, hi }
+    Rect::from_min_max(lo, hi)
 }
 
 /// Real roots of `a·t² + b·t + c = 0`. Returns `[NaN, NaN]` when there
 /// are no real roots; the caller filters by `t ∈ (0, 1)` so NaNs drop
 /// out naturally (NaN comparisons are false).
 fn solve_quadratic(a: f32, b: f32, c: f32) -> [f32; 2] {
-    if a.abs() < 1.0e-12 {
-        if b.abs() < 1.0e-12 {
+    /// Below this a coefficient carries no root worth recovering.
+    ///
+    /// Not the crate's visual [`EPS`](crate::primitives::approx::EPS),
+    /// which answers a question about painted distance: these
+    /// coefficients are differences of control-point coordinates in a
+    /// derivative, so their scale is the curve's, not the screen's, and a
+    /// term this far below it is numerically absent. Dividing by it
+    /// manufactures a root out of rounding noise instead — which is what
+    /// the threshold exists to stop, and why it sits eight orders below
+    /// the visual one.
+    const NEGLIGIBLE_COEFF: f32 = 1.0e-12;
+    if a.abs() < NEGLIGIBLE_COEFF {
+        if b.abs() < NEGLIGIBLE_COEFF {
             return [f32::NAN, f32::NAN];
         }
         return [-c / b, f32::NAN];

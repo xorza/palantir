@@ -1,4 +1,3 @@
-use crate::primitives::approx::EPS;
 use crate::primitives::half_simd::*;
 use half::f16;
 
@@ -15,9 +14,8 @@ use half::f16;
 #[test]
 fn any_lane_above_matches_the_scalar_compare_for_every_pattern() {
     const F16_INFINITY: u16 = 0x7C00;
-    const EPS_BITS: u16 = f16::from_f32_const(EPS).to_bits();
 
-    for threshold in [F16_INFINITY, EPS_BITS, 0, 0x7FFF] {
+    for threshold in [F16_INFINITY, F16x4::EPS_BITS, 0, 0x7FFF] {
         for bits in 0..=u16::MAX {
             let scalar = (bits & 0x7FFF) > threshold;
             for lane in 0..4 {

@@ -75,6 +75,7 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy}
 use winit::window::WindowId;
 
 use crate::app::App;
+use crate::display;
 use crate::host::winit::config::WinitHostConfig;
 use crate::host::winit::error::WinitHostError;
 use crate::host::winit::handle::{HostHandle, MainTask, UserEvent};
@@ -403,7 +404,7 @@ where
             }
 
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
-                win.scale_factor = scale_factor as f32;
+                win.scale_factor = display::sanitize_scale_factor(scale_factor);
                 win.next = FramePresent::Immediate;
             }
             WindowEvent::Resized(new) => {

@@ -23,7 +23,7 @@ pub(super) struct TransformStack {
 
 impl TransformStack {
     /// Open a pass at the identity, keeping the stack's capacity.
-    pub(super) fn reset(&mut self) {
+    pub(super) fn clear(&mut self) {
         self.saved.clear();
         self.current = TranslateScale::IDENTITY;
     }

@@ -574,7 +574,7 @@ impl CosmicMeasure {
     /// files nothing, which is what keeps a re-read entry from filing a
     /// ticket per frame — so the real `keep_until` is re-read here and a
     /// still-live entry is simply re-filed.
-    pub(super) fn end_frame(&mut self, frame: u64) {
+    pub(super) fn advance_to(&mut self, frame: u64) {
         debug_assert!(frame >= self.frame, "the shared frame clock ran backwards");
         self.frame = frame;
         let cache = &mut self.cache;
@@ -982,7 +982,7 @@ pub(crate) mod test_support {
         /// tick; production never increments here.
         #[cfg(test)]
         pub(crate) fn tick_frame(&mut self) {
-            self.end_frame(self.frame + 1);
+            self.advance_to(self.frame + 1);
         }
 
         /// Drop every shaped buffer now, recycling each one, without

@@ -61,7 +61,7 @@ pub(super) struct HugBound {
 impl AxisScratch {
     /// Resize the per-track arrays. All arrays are zeroed; `resolved` is
     /// reset to all-false. Capacity is retained across frames.
-    pub(super) fn reset(&mut self, n: usize) {
+    pub(super) fn reset_for(&mut self, n: usize) {
         self.sizes.clear();
         self.sizes.resize(n, 0.0);
         self.resolved.clear();
