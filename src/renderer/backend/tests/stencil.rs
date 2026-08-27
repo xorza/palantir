@@ -691,6 +691,107 @@ fn stencil_unmasked_batch_drained_under_active_mask_clears_first() {
     );
 }
 
+/// Pin: the staging dedups against every chain seen this frame, not
+/// against the previous group. Groups 0 and 2 carry value-equal chains
+/// in different spans with a foreign chain between them, so the three
+/// groups stage two mask quads and group 2 reuses group 0's run. The
+/// walk still brackets group 2 — group 1's chain displaced the stamp —
+/// so what a neighbour-only dedup costs here is one uploaded quad.
+#[test]
+fn stencil_dedups_a_chain_seen_before_the_previous_group() {
+    let e = URect::new(0, 0, 100, 100);
+    let outer = rounded(100.0, 100.0, 8.0);
+    let inner = rounded(50.0, 50.0, 4.0);
+    let group = |chain, q| DrawGroup {
+        scissor: Some(e),
+        rounded_clips: chain,
+        quads: Span::new(q, 1),
+    };
+    let mut buf = buf_with(vec![
+        group(Span::new(0, 1), 0),
+        group(Span::new(1, 1), 1),
+        group(Span::new(2, 1), 2),
+    ]);
+    buf.rounded_clips = vec![outer, inner, outer];
+    let mut masks = Vec::new();
+    let mi = mask_ix(&buf, &mut masks);
+    assert_eq!(
+        mi.groups,
+        vec![Span::new(0, 1), Span::new(1, 1), Span::new(0, 1)]
+    );
+    assert_eq!(masks.len(), 2, "the repeated chain staged a second copy");
+
+    let steps = collect(&buf, None, &mi, true);
+    assert_eq!(
+        simplify(&buf, &steps),
+        vec![
+            DrawOp::MaskWrite(0),
+            DrawOp::Quads(0),
+            DrawOp::MaskClear(0),
+            DrawOp::MaskWrite(1),
+            DrawOp::Quads(1),
+            DrawOp::MaskClear(1),
+            DrawOp::MaskWrite(0),
+            DrawOp::Quads(2),
+            DrawOp::MaskClear(0),
+        ],
+    );
+}
+
+/// Pin: a group the walk skips costs the group after it nothing. Group
+/// 1's scissor misses the damage rect, so the walk emits no step for it
+/// and group 0's chain is still stamped when group 2 arrives. Group 2
+/// carries the same chain in a *different* source span, and draws under
+/// the live stamp — one `MaskWrite` for the whole walk.
+///
+/// This is what the frame-wide dedup buys. Staging group 2's chain
+/// separately would make the spans differ, and the walk reads the span
+/// as the chain — so it would clear a mask that was already correct and
+/// stamp an identical one back.
+#[test]
+fn stencil_keeps_a_chain_stamped_across_a_skipped_group() {
+    let e = URect::new(0, 0, 100, 100);
+    let outer = rounded(100.0, 100.0, 8.0);
+    let inner = rounded(50.0, 50.0, 4.0);
+    let mut buf = buf_with(vec![
+        DrawGroup {
+            scissor: Some(e),
+            rounded_clips: Span::new(0, 1),
+            quads: Span::new(0, 1),
+        },
+        // Entirely outside the damage rect below, so the walk skips it.
+        DrawGroup {
+            scissor: Some(URect::new(200, 200, 10, 10)),
+            rounded_clips: Span::new(1, 1),
+            quads: Span::new(1, 1),
+        },
+        DrawGroup {
+            scissor: Some(e),
+            rounded_clips: Span::new(2, 1),
+            quads: Span::new(2, 1),
+        },
+    ]);
+    buf.rounded_clips = vec![outer, inner, outer];
+    let mut masks = Vec::new();
+    let mi = mask_ix(&buf, &mut masks);
+    assert_eq!(
+        mi.groups,
+        vec![Span::new(0, 1), Span::new(1, 1), Span::new(0, 1)]
+    );
+
+    let steps = collect(&buf, Some(e), &mi, true);
+    assert_eq!(
+        simplify(&buf, &steps),
+        vec![
+            DrawOp::PreClear,
+            DrawOp::MaskWrite(0),
+            DrawOp::Quads(0),
+            DrawOp::Quads(2),
+            DrawOp::MaskClear(0),
+        ],
+    );
+}
+
 /// Run the real mask staging (CPU half) over `buf`, returning the
 /// per-group / per-batch mask spans; `masks` receives the deduped
 /// mask-quad instances.

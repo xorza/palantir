@@ -18,55 +18,83 @@ use crate::renderer::render_buffer::group_batch::GroupBatch;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::renderer::render_buffer::per_group_batch::PerGroupBatch;
 
+/// One clip chain staged into the mask-quad buffer: the source span it
+/// was read from, and the run it was written to.
+#[derive(Clone, Copy, Debug)]
+struct StagedChain {
+    chain: Span,
+    masks: Span,
+}
+
 /// Per-group and per-text-batch spans into the staged mask-quad buffer.
+///
+/// **Value-equal chains always share one span.** [`PassState::establish`]
+/// decides whether a group can keep the chain already stamped by
+/// comparing these spans, so a span is only a sound stand-in for the
+/// chain behind it while the staging is deduplicated across the whole
+/// frame rather than against a neighbour.
 #[derive(Debug, Default)]
 pub(super) struct MaskPlan {
     pub(super) groups: Vec<Span>,
     pub(super) batches: Vec<Span>,
+    /// Every distinct chain staged this frame. Retained so the sweep
+    /// costs no allocation.
+    staged: Vec<StagedChain>,
 }
 
 /// Build the schedule's mask spans and deduplicated mask-quad instances.
+///
+/// The scan over already-staged chains is linear in the number of
+/// *distinct* chains, not in the group count: a chain exists only where
+/// authoring nested a rounded clip, so the list is a handful of entries
+/// on any real frame and one on most. A neighbour-only comparison would
+/// be O(1), but it breaks the span-per-chain invariant above the moment
+/// anything sits between two groups that share a chain — including a
+/// group the walk goes on to skip entirely, which leaves the chain
+/// stamped and then denies the elision that would have kept it.
 pub(super) fn build_mask_plan(buffer: &RenderBuffer, plan: &mut MaskPlan, masks: &mut Vec<Quad>) {
     plan.groups.clear();
     plan.batches.clear();
+    plan.staged.clear();
     masks.clear();
-    let clips = &buffer.rounded_clips;
-    let mut previous_chain = Span::default();
-    let mut previous_masks = Span::default();
     for group in &buffer.groups {
         let chain = group.rounded_clips;
         let mask_span = if group.scissor.is_some() && chain.len != 0 {
-            if clips[chain.range()] == clips[previous_chain.range()] {
-                previous_masks
-            } else {
-                let start = masks.len() as u32;
-                for clip in &clips[chain.range()] {
-                    masks.push(Quad {
-                        rect: clip.mask_rect,
-                        fill: Color::default().into(),
-                        corners: clip.corners,
-                        stroke_color: ColorF16::TRANSPARENT,
-                        stroke_width: 0.0,
-                        ..Default::default()
+            match plan
+                .staged
+                .iter()
+                .find(|staged| buffer.chains_equal(staged.chain, chain))
+            {
+                Some(staged) => staged.masks,
+                None => {
+                    let start = masks.len() as u32;
+                    for clip in &buffer.rounded_clips[chain.range()] {
+                        masks.push(Quad {
+                            rect: clip.mask_rect,
+                            fill: Color::default().into(),
+                            corners: clip.corners,
+                            stroke_color: ColorF16::TRANSPARENT,
+                            stroke_width: 0.0,
+                            ..Default::default()
+                        });
+                    }
+                    let staged = Span::new(start, chain.len);
+                    plan.staged.push(StagedChain {
+                        chain,
+                        masks: staged,
                     });
+                    staged
                 }
-                Span::new(start, chain.len)
             }
         } else {
             Span::default()
         };
-        previous_chain = if mask_span.len != 0 {
-            chain
-        } else {
-            Span::default()
-        };
-        previous_masks = mask_span;
         plan.groups.push(mask_span);
     }
     for batch in &buffer.text_batches {
         let group = batch.last_group as usize;
         debug_assert!(
-            clips[batch.rounded_clips.range()] == clips[buffer.groups[group].rounded_clips.range()],
+            buffer.chains_equal(batch.rounded_clips, buffer.groups[group].rounded_clips),
             "text batch chain decorrelated from its last_group's chain"
         );
         plan.batches.push(plan.groups[group]);
@@ -401,6 +429,11 @@ impl PassState<'_> {
     /// clear + re-stamp when the same chain is already stamped and its
     /// stamp scissor covers `scissor` — a wider scissor exposes pixels
     /// the stamp never wrote, which would wrongly fail `Equal`.
+    ///
+    /// "The same chain" is read off the staged span, which stands in for
+    /// the chain only because [`MaskPlan`] gives value-equal chains one
+    /// span frame-wide. Two spans holding identical clips would elide
+    /// nothing and pay a clear plus a full re-stamp for it.
     fn establish(&mut self, chain: Span, scissor: URect) {
         let keep = chain.len != 0
             && self.active.is_some_and(|prev| {

@@ -6,6 +6,7 @@
 //! allocates nothing for its output.
 
 use crate::display::Display;
+use crate::primitives::span::Span;
 use crate::primitives::texture_id::TextureId;
 use crate::primitives::{color::Color, corners::Corners, rect::Rect};
 use crate::renderer::quad::Quad;
@@ -212,6 +213,20 @@ impl RenderBuffer {
     /// This tier's per-group batches. Named rather than indexed at the
     /// call site so every consumer that walks all of them goes through
     /// here and [`PaintTier::ALL`], keeping the replay order in one place.
+    /// Value equality of two rounded-mask chains (spans into
+    /// [`Self::rounded_clips`]).
+    ///
+    /// Spans differ across a pop/re-push of an identical clip — the
+    /// composer pushes a fresh chain per rounded push — but value-equal
+    /// chains stamp identical masks. Every decision that turns on "is
+    /// this the same clip" therefore has to ask by value: the composer's
+    /// clip-transition test, and the backend's mask staging, which keys
+    /// one staged run per distinct chain so the schedule can read a span
+    /// as the chain behind it.
+    pub(crate) fn chains_equal(&self, a: Span, b: Span) -> bool {
+        self.rounded_clips[a.range()] == self.rounded_clips[b.range()]
+    }
+
     pub(crate) fn batches(&self, tier: PaintTier) -> &[GroupBatch] {
         &self.batches[tier.idx()]
     }
