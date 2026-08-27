@@ -2,11 +2,16 @@
 
 use crate::input::keyboard::{Key, Modifiers, TextChunk};
 use crate::input::pointer::PointerButton;
+use crate::input::zoom;
 use glam::Vec2;
 
 /// Palantir-native input event. Independent of any windowing toolkit.
 /// All coordinates are in **logical pixels** (DIPs). Backends are responsible
 /// for any physical→logical conversion before dispatching.
+///
+/// Every scalar a variant carries is screened by [`Self::is_actionable`]
+/// before anything reads it, so a host may forward whatever its platform
+/// reported without filtering first.
 #[derive(Clone, Copy, Debug)]
 pub enum InputEvent {
     /// Pointer position in logical pixels, relative to the surface origin.
@@ -58,4 +63,92 @@ pub enum InputEvent {
     /// (not a delta). Consumers track the latest snapshot to disambiguate
     /// e.g. ctrl+'a' (shortcut) from 'a' (text).
     ModifiersChanged(Modifiers),
+}
+
+impl InputEvent {
+    /// Whether this event's payload is one the pipeline can act on.
+    ///
+    /// **The screen on host input**, applied once by
+    /// [`InputState::on_input`](crate::input::input_state::InputState) before
+    /// any arm reads the event. Every scalar a variant carries lands in
+    /// retained state — a pointer position becomes a hit-test coordinate, a
+    /// scroll delta a viewport offset, a zoom factor a running product — and a
+    /// non-finite one does not merely produce a wrong frame, it poisons that
+    /// state: NaN compares false against every rect it is later tested
+    /// against, and an offset holding one fails
+    /// [`TranslateScale::new`](crate::TranslateScale)'s finite-translation
+    /// contract several passes downstream, where nothing is left to name the
+    /// event that caused it.
+    ///
+    /// One screen rather than one per arm: the arms differ in what they do
+    /// with a value, not in whether they can hold a NaN. Zoom asks the
+    /// stricter of the two questions — a factor composes by multiplication,
+    /// so it must be strictly positive as well as finite.
+    pub(crate) fn is_actionable(&self) -> bool {
+        match self {
+            Self::PointerMoved(p) | Self::ScrollPixels(p) | Self::ScrollLines(p) => p.is_finite(),
+            Self::Zoom(factor) => zoom::is_valid(*factor),
+            Self::PointerLeft
+            | Self::PointerPressed(_)
+            | Self::PointerReleased(_)
+            | Self::KeyDown { .. }
+            | Self::Text(_)
+            | Self::ModifiersChanged(_) => true,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::input::input_event::InputEvent;
+    use crate::input::keyboard::{Key, Modifiers, TextChunk};
+    use crate::input::pointer::PointerButton;
+    use glam::Vec2;
+
+    /// Every variant carrying a scalar is screened, and every variant that
+    /// carries none passes. The payload-free arms are listed out rather than
+    /// sampled: the point of one gate is that adding a variant has to be
+    /// answered here, and a sampled test would let a new float-carrying one
+    /// through unnoticed.
+    #[test]
+    fn ingress_screens_every_scalar_payload_and_admits_the_rest() {
+        let bad = [f32::NAN, f32::INFINITY, f32::NEG_INFINITY];
+        for value in bad {
+            for axis in [Vec2::new(value, 0.0), Vec2::new(0.0, value)] {
+                for event in [
+                    InputEvent::PointerMoved(axis),
+                    InputEvent::ScrollPixels(axis),
+                    InputEvent::ScrollLines(axis),
+                ] {
+                    assert!(!event.is_actionable(), "{event:?}");
+                }
+            }
+            assert!(!InputEvent::Zoom(value).is_actionable(), "zoom {value}");
+        }
+        // Zoom is the stricter question: finite is not enough.
+        for factor in [0.0, -0.0, -1.0] {
+            assert!(!InputEvent::Zoom(factor).is_actionable(), "zoom {factor}");
+        }
+
+        let ok: &[InputEvent] = &[
+            InputEvent::PointerMoved(Vec2::new(-3.5, 12.0)),
+            InputEvent::ScrollPixels(Vec2::new(0.0, -40.0)),
+            InputEvent::ScrollLines(Vec2::ZERO),
+            InputEvent::Zoom(f32::MIN_POSITIVE),
+            InputEvent::Zoom(1.05),
+            InputEvent::PointerLeft,
+            InputEvent::PointerPressed(PointerButton::Left),
+            InputEvent::PointerReleased(PointerButton::Right),
+            InputEvent::KeyDown {
+                key: Key::Char('a'),
+                repeat: false,
+                physical: Key::Char('a'),
+            },
+            InputEvent::Text(TextChunk::new("a").unwrap()),
+            InputEvent::ModifiersChanged(Modifiers::default()),
+        ];
+        for event in ok {
+            assert!(event.is_actionable(), "{event:?}");
+        }
+    }
 }

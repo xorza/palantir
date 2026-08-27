@@ -204,6 +204,43 @@ fn non_finite_stop_offsets_are_rejected_at_both_boundaries() {
     }
 }
 
+/// Ascending offset order is a property of the type, so both doors have to
+/// establish it. `GradientStops` **is** the gradient's cache key —
+/// `Eq`/`Hash` run over the stored array — so a theme whose stops were
+/// written out of order would hash apart from the identical authored
+/// gradient while baking a byte-identical LUT row: two atlas rows, two
+/// bakes and two eviction slots for one gradient. Only the constructor
+/// sorted before this; the deserializer kept the wire order, and
+/// `bake_stops` asserts the invariant it broke.
+#[test]
+fn stop_order_is_established_by_construction_and_deserialization() {
+    let (a, b, c) = (
+        ColorU8::rgb(1, 2, 3),
+        ColorU8::rgb(4, 5, 6),
+        ColorU8::rgb(7, 8, 9),
+    );
+    let authored = GradientStops::new([Stop::new(1.0, c), Stop::new(0.0, a), Stop::new(0.5, b)]);
+    let parsed = toml::from_str::<StopsDocument>(
+        "[[stops]]\noffset = 1.0\ncolor = { r = 7, g = 8, b = 9, a = 255 }\n\
+         [[stops]]\noffset = 0.0\ncolor = { r = 1, g = 2, b = 3, a = 255 }\n\
+         [[stops]]\noffset = 0.5\ncolor = { r = 4, g = 5, b = 6, a = 255 }\n",
+    )
+    .expect("three valid stops")
+    .stops;
+
+    // `0.5 * 255 + 0.5` quantizes to 128 — the middle of the u8 range.
+    let offsets: Vec<u8> = parsed.iter().map(|stop| stop.offset_u8).collect();
+    assert_eq!(offsets, vec![0, 128, 255], "wire order must not survive");
+
+    let digest = |stops: &GradientStops| {
+        let mut state = DefaultHasher::new();
+        stops.hash(&mut state);
+        state.finish()
+    };
+    assert_eq!(parsed, authored, "one gradient, one identity");
+    assert_eq!(digest(&parsed), digest(&authored));
+}
+
 #[test]
 fn every_gradient_variant_round_trips_validated_stops() {
     #[derive(Debug, PartialEq, ::serde::Serialize, ::serde::Deserialize)]

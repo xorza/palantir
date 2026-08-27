@@ -211,17 +211,11 @@ different answer depending on which call site asks it.
       `src/widgets/splitter/mod.rs:233` and `:254`,
       `src/layout/scrollbars/mod.rs:130`,
       `src/renderer/gradient_atlas/bake.rs:100`,
-      `src/host/winit/input/mod.rs:14`. Three of them use it as a
+      `src/host/winit/input/mod.rs:13`. Three of them use it as a
       divide-by-zero guard (`.max(f32::EPSILON)`), which is a different
       question again and has no named helper at all.
 
-- [ ] `zoom::clamp` (`src/input/zoom.rs:26`) documents itself as bringing a
-      product "back into the invertible `f32` range", and its two comparisons
-      are both false for NaN — so a NaN product falls through to
-      `product as f32` and comes out NaN. `combine` and `from_wheel` state the
-      screen as a `debug_assert!`, so the release build carries none.
-
-- [ ] `src/host/winit/input/mod.rs:14` clamps the incoming scale factor with
+- [ ] `src/host/winit/input/mod.rs:13` clamps the incoming scale factor with
       `max(f32::EPSILON)` instead of the shared `display::scale_factor_is_valid`
       that both `OffscreenHost::frame_offscreen` (`src/host/offscreen.rs:203`)
       and `FrameCycle` (`src/ui/frame_cycle.rs:87`) assert against. The windowed
@@ -291,13 +285,6 @@ Each of these is a property the code depends on and documents at length, held
 in place by a comment and by every current caller happening to respect it. The
 compiler checks none of them, and the failure mode in each case is silent.
 
-- [ ] `GradientStops` (`src/primitives/brush/gradient/stops/mod.rs:75`) states
-      ascending offset order as "an invariant of the type, not a step the bake
-      does", and `bake_stops` (`src/renderer/gradient_atlas/bake.rs:16`)
-      `debug_assert!`s it. `GradientStops::new` sorts;
-      `GradientStops::deserialize` (`:168`) builds `Self(values)` from the
-      parsed array without sorting. Logged in `.notes/ISSUES.md`.
-
 - [ ] `RasterAtlas`'s free-slab-index rule is "a freed index has
       `alloc == None`", which is what stops `ClockSweep`
       (`src/renderer/backend/raster_atlas/clock_sweep.rs:51`) from picking an
@@ -319,22 +306,6 @@ compiler checks none of them, and the failure mode in each case is silent.
       cannot walk back. Its `while self.stops[self.upper].offset() < t` loop
       is bounded by an earlier `t >= stops[last].offset()` return — which is
       only a bound while the stops are sorted, the invariant above.
-
----
-
-## Untrusted host input screened in one place only
-
-- [ ] `InputState::on_input` (`src/input/input_state/mod.rs:383`) screens
-      `InputEvent::Zoom` against `zoom::is_valid` and drops an invalid one at
-      the door. No other variant is screened, and neither is the winit
-      translation that mints them (`src/host/winit/input/mod.rs`):
-      `ScrollPixels` / `ScrollLines` / `PointerMoved` pass whatever the OS
-      reported straight through. A non-finite scroll delta reaches
-      `ScrollState::offset` (`src/widgets/scroll/state.rs:167`), where
-      `f32::clamp` passes NaN through, and then `ScrollState::transform`
-      (`:188`), whose `TranslateScale::new` is a **release** `assert!`. The
-      crate's own rule is that untrusted data is never an assert. Logged in
-      `.notes/ISSUES.md`.
 
 ---
 
@@ -443,11 +414,6 @@ means finding every site by hand.
       that latch, which adds slots the clock could sweep — but the latch is
       keyed on the frame, not on the side's generation, so no further
       eviction runs until the next frame however much the atlas changed.
-
-- [ ] `bar_geometry` (`src/layout/scrollbars/mod.rs:150`) floors
-      `thumb_size` at `1.0` and then computes
-      `thumb_offset.min(viewport.floor() - thumb_size)` with no lower bound.
-      Logged in `.notes/ISSUES.md`.
 
 ---
 

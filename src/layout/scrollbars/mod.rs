@@ -156,15 +156,13 @@ pub(crate) fn bar_geometry(
     if viewport <= 0.0 || content <= viewport {
         return None;
     }
-    let raw = viewport / content * viewport;
-    let thumb_size = raw.max(min_thumb).min(viewport);
-    let travel = (viewport - thumb_size).max(0.0);
-    let thumb_offset = BarDomain::new(content, viewport).fraction(offset) * travel;
-    // Quantize here rather than at the paint site: the widget reads
-    // this to map a drag or a track click back onto an offset, so the
-    // bar the user grabs has to be the bar that was drawn. Rounding on
-    // one side only put drag scaling up to a pixel out and made a click
-    // in the rounding sliver page away from the thumb.
+    // Quantize the track first and derive both the thumb and its travel
+    // from that one integer length. Quantized here rather than at the
+    // paint site: the widget reads these back to map a drag or a track
+    // click onto an offset, so the bar the user grabs has to be the bar
+    // that was drawn. Rounding on one side only put drag scaling up to a
+    // pixel out and made a click in the rounding sliver page away from
+    // the thumb.
     //
     // Whole logical pixels because physical snapping rounds a rect's
     // min and max *independently* (`Rect::scaled_by`), which keeps
@@ -174,8 +172,21 @@ pub(crate) fn bar_geometry(
     // to integer physical ones at integer DPR, which pins the length; at
     // fractional DPR it only narrows the wobble, since the real cause is
     // in the snap.
-    let thumb_size = thumb_size.fast_round().min(viewport.floor()).max(1.0);
-    let thumb_offset = thumb_offset.fast_round().min(viewport.floor() - thumb_size);
+    //
+    // **One length, not two.** `travel` comes off the same `track` the
+    // size clamped into, which is what puts the offset in `0..=travel` by
+    // construction. Flooring the viewport separately for each cap let a
+    // sub-pixel track floor to zero, take the one-pixel minimum thumb,
+    // and place it at -1.
+    let track = viewport.floor().max(1.0);
+    let thumb_size = (viewport / content * viewport)
+        .max(min_thumb)
+        .fast_round()
+        .clamp(1.0, track);
+    let travel = track - thumb_size;
+    let thumb_offset = (BarDomain::new(content, viewport).fraction(offset) * travel)
+        .fast_round()
+        .clamp(0.0, travel);
     Some(BarGeometry {
         thumb_size,
         thumb_offset,

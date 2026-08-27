@@ -21,10 +21,12 @@ use glam::Vec2;
 /// zero; otherwise `Some { thumb_size, thumb_offset }`.
 ///
 /// The track spans the whole viewport extent, so one length drives
-/// both the `viewport / content` ratio and the travel:
-/// `thumb_size = clamp(viewport² / content, min_thumb, viewport)` and
-/// `thumb_offset = clamp(offset / (content - viewport), 0, 1) *
-/// (viewport - thumb_size)`.
+/// both the `viewport / content` ratio and the travel. Both results are
+/// quantized against that one integer track,
+/// `track = max(floor(viewport), 1)`:
+/// `thumb_size = clamp(round(max(viewport² / content, min_thumb)), 1, track)`
+/// and `thumb_offset = round(clamp(offset / (content - viewport), 0, 1) *
+/// (track - thumb_size))`.
 #[test]
 fn bar_geometry_thumb_size_and_offset_cases() {
     #[derive(Debug)]
@@ -89,6 +91,34 @@ fn bar_geometry_thumb_size_and_offset_cases() {
             Some(Want {
                 thumb_size: Some(10.0),
                 thumb_offset: None,
+            }),
+        ),
+        (
+            // A track under one logical pixel still overflows, so a bar
+            // is drawn: the floor gives it a 1 px thumb with nowhere to
+            // travel. The size cap and the offset cap used to floor the
+            // viewport separately and disagree about the track length
+            // here, placing that thumb at -1.
+            "sub_pixel_track_pins_the_thumb_at_zero",
+            0.5,
+            800.0,
+            0.0,
+            Some(Want {
+                thumb_size: Some(1.0),
+                thumb_offset: Some(0.0),
+            }),
+        ),
+        (
+            // Same track at the far end of its 799.5 px scrollable
+            // range: a full-travel fraction over zero travel is still
+            // zero, not a negative offset.
+            "sub_pixel_track_holds_at_zero_at_full_offset",
+            0.5,
+            800.0,
+            799.5,
+            Some(Want {
+                thumb_size: Some(1.0),
+                thumb_offset: Some(0.0),
             }),
         ),
         ("none_when_content_equals_viewport", 200.0, 200.0, 0.0, None),
