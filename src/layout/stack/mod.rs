@@ -1,3 +1,10 @@
+//! Single-axis stack layout — measure, arrange and intrinsic for a panel
+//! whose children run along one [`Axis`].
+//!
+//! Non-`Fill` children measure first. What is left of the main axis after
+//! them and the gaps is divided between the `Fill` children by weight, and a
+//! child whose floor exceeds its share freezes at the floor.
+
 use crate::layout::axis::Axis;
 use crate::layout::axis_placement::AxisPlacement;
 use crate::layout::engine::LayoutEngine;

@@ -67,10 +67,10 @@ impl LinearGradient {
     /// onto `dir`, then maps the dot product through `(t0, t1)` to
     /// the LUT row.
     ///
-    /// Slice 2 always emits `(t0, t1) = (0, 1)` and the raw
-    /// `(cos, sin)` axis; diagonal gradients project to a sub-1.0
-    /// range and rely on `Spread::Pad` to clamp. CSS-style
-    /// corner-to-corner scaling is a slice 2.5 polish task.
+    /// `(t0, t1)` is always `(0, 1)` over the raw `(cos, sin)` axis, so
+    /// a diagonal gradient projects to a sub-1.0 range and relies on
+    /// `Spread::Pad` to clamp. That is not CSS's corner-to-corner
+    /// scaling.
     pub(crate) fn axis(&self) -> FillAxis {
         let (sin, cos) = self.angle.sin_cos();
         FillAxis::from_lanes(cos, sin, 0.0, 1.0)

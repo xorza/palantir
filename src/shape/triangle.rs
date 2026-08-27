@@ -1,3 +1,6 @@
+//! The triangle builder. Lowers to
+//! `ShapeRecord::Quad(QuadShape::Triangle)`.
+
 use crate::primitives::approx::noop_f32;
 use crate::primitives::color::Color;
 use crate::primitives::rect::aabb::Aabb;

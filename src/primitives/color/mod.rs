@@ -213,15 +213,13 @@ impl Color {
     }
 }
 
-/// 4-byte **linear-u8** colour (`r, g, b, a` each 0..=255). Storage
-/// form for places where 8-bit linear precision is sufficient and cache
-/// footprint matters — currently `Stop.color` (gradient stops). Not
-/// used for fill / stroke / shape colour where animation lerps demand
-/// `f32` linear-space precision.
+/// A 4-byte **linear**-u8 colour, for places where 8-bit linear precision
+/// is enough and footprint matters (currently gradient stops).
 ///
-/// Default `From<Color>` / `From<ColorU8>` are straight linear quantize
-/// pairs (no sRGB encode). For the sRGB-encoded form (CSS-style hex
-/// input), use [`Self::hex`] / [`Self::hexa`] explicitly.
+/// The default `From<Color>` / `From<ColorU8>` pair is a straight linear
+/// quantize — **no sRGB encode**. For the sRGB-encoded byte form (what a
+/// CSS hex string means) use [`Color::to_srgb_u8`], or construct with
+/// [`Self::hex`] / [`Self::hexa`], which read their argument as sRGB.
 #[repr(C)]
 #[derive(
     Copy,
@@ -235,13 +233,6 @@ impl Color {
     serde::Serialize,
     serde::Deserialize,
 )]
-/// A 4-byte **linear**-u8 colour, for places where 8-bit linear precision
-/// is enough and footprint matters (currently gradient stops).
-///
-/// The default `From<Color>` / `From<ColorU8>` pair is a straight linear
-/// quantize — **no sRGB encode**. For the sRGB-encoded byte form (what a
-/// CSS hex string means) use [`Color::to_srgb_u8`], or construct with
-/// [`Self::hex`] / [`Self::hexa`], which read their argument as sRGB.
 pub struct ColorU8 {
     /// Red, linear, 0..255.
     pub r: u8,
@@ -390,13 +381,11 @@ impl From<ColorU8> for Color {
 }
 
 /// Linear-RGB colour packed as four f16 lanes in 8 B (align 2).
-/// Same lane scheme as `Corners` — pack/unpack go through
-/// `half::slice::HalfFloatSliceExt::{convert_from_f32_slice,
-/// convert_to_f32_slice}`, which map to one SIMD instruction on
-/// targets with hardware f16 support (`fcvtn`/`fcvtl` on
-/// aarch64-fp16, `vcvtps2ph`/`vcvtph2ps` on x86-f16c) and fall back
-/// to scalar otherwise. f16 carries ~3 decimal digits and the full
-/// f32 range — well below display quantization.
+/// Same lane scheme as `Corners` — pack and unpack go through
+/// `F16x4::from_lanes` and `F16x4::lanes`, one SIMD instruction on
+/// targets with hardware f16 support and a scalar walk otherwise. f16
+/// carries ~3 decimal digits and the full f32 range — well below
+/// display quantization.
 ///
 /// Use this for storage sites that want half the footprint of
 /// `Color` (16 B) without `ColorU8`'s cubic-Newton sRGB roundtrip.
@@ -432,8 +421,8 @@ impl ColorF16 {
         opaque_f16_bits(self.0.lane_bits(3))
     }
 
-    /// All four lanes unpacked to f32 at once via the batched f16→f32
-    /// slice path. Single instruction on F16C/fp16 targets.
+    /// All four lanes unpacked to f32 at once. Single instruction on
+    /// F16C/fp16 targets.
     #[inline]
     pub fn unpack(self) -> Color {
         let [r, g, b, a] = self.0.lanes();
@@ -450,8 +439,8 @@ impl ColorF16 {
 }
 
 impl From<Color> for ColorF16 {
-    /// Batched f32→f16 pack via the slice path — single instruction
-    /// on F16C/fp16 targets, scalar fallback elsewhere.
+    /// Four-lane f32→f16 pack — single instruction on F16C/fp16
+    /// targets, scalar fallback elsewhere.
     #[inline]
     fn from(c: Color) -> Self {
         Self(F16x4::from_lanes([c.r, c.g, c.b, c.a]))
@@ -546,9 +535,6 @@ const fn srgb_to_linear(c: f32) -> f32 {
     c * (c * (c * 0.305_306_01 + 0.682_171_1) + 0.012_522_878)
 }
 
-// Used by the gradient LUT bake; no other in-crate caller until slice 2
-// wires the atlas through the encoder/composer. `dead_code` would
-// otherwise trip `clippy -D warnings` on a clean step-1-only branch.
 /// Linear-RGB → Oklab. Matrix constants from Björn Ottosson's reference
 /// (https://bottosson.github.io/posts/oklab/). Used by the gradient LUT
 /// bake when `Interp::Oklab` is selected — interpolation in Oklab gives

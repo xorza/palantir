@@ -4,9 +4,10 @@
 //! and hit-index are populated, then streams `on_input` events in the
 //! inner loop **without** running a frame each iteration.
 //!
-//! What this measures: `Ui::on_input` cost — pointer hover recompute
-//! (`recompute_hover` + `recompute_scroll_target` linear walk over
-//! cascade entries), press/release hit-tests, scroll target lookup.
+//! What this measures: `Ui::on_input` cost — pointer target refresh
+//! (`InputState::refresh_pointer_targets` calling
+//! `Cascade::hit_test_targets`, a linear walk over cascade entries),
+//! press/release hit-tests, scroll target lookup.
 //! `Cascade::hit_test` is a reverse linear scan, so overlap density
 //! is the dominant cost driver — the inner ZStacks intentionally
 //! pile O(N) clickable rects on each pointer position.
@@ -100,8 +101,8 @@ fn build_ui(ui: &mut Ui) {
                 });
 
             // Scrollable region in the middle covering the viewport
-            // center so `recompute_scroll_target` succeeds — exercises
-            // the scroll-target update branch on pointer move.
+            // center so `hit_test_targets` finds a scroll target —
+            // exercises that branch on pointer move.
             Scroll::both()
                 .auto_id()
                 .size((Sizing::FILL, Sizing::FILL))

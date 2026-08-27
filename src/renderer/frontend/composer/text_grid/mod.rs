@@ -105,8 +105,8 @@ pub(crate) struct TextRectGrid {
     /// pushes to the same tile skip the record. Capacity is retained
     /// across frames.
     ///
-    /// Profiling motivation: `Composer::compose` was spending ~37% of
-    /// its self-time clearing all ~4500 tiles every frame (4K viewport
+    /// Profiling motivation: the compose pass was spending ~37% of its
+    /// self-time clearing all ~4500 tiles every frame (4K viewport
     /// / 64-px tiles), even though only ~100-300 actually held
     /// anything in the bench fixture. Tracking touches drops the
     /// per-frame clear walk to the tiles we genuinely touched.

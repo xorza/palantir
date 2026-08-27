@@ -1,3 +1,6 @@
+//! The text-run builder. Lowers to `ShapeRecord::Text`, with its source
+//! normalized into the active text arena.
+
 use crate::layout::types::align::Align;
 use crate::primitives::color::Color;
 use crate::primitives::interned_str::InternedStr;

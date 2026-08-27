@@ -134,8 +134,8 @@ pub(super) fn resolve_fit(base: Rect, image_size: glam::Vec2, fit: ImageFit) -> 
             }
         }
         ImageFit::None => {
-            // Paint at intrinsic px, centered. Image may exceed `base`
-            // — currently uncropped; future slice can add a scissor.
+            // Paint at intrinsic px, centered. An image larger than
+            // `base` overflows it, uncropped.
             Resolved {
                 rect: centered_in(base, iw, ih),
                 uv_min: FULL_UV_MIN,

@@ -1,3 +1,6 @@
+//! The triangle-mesh builder. Lowers to `ShapeRecord::Mesh`, with the
+//! vertices and indices copied into the record store.
+
 use crate::primitives::color::Color;
 use crate::primitives::mesh::Mesh;
 use crate::primitives::rect::Rect;

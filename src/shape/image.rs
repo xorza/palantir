@@ -1,3 +1,5 @@
+//! The textured-rectangle builder. Lowers to `ShapeRecord::Image`.
+
 use crate::primitives::color::Color;
 use crate::primitives::image::{ImageDownsample, ImageFilter, ImageFit};
 use crate::primitives::rect::Rect;

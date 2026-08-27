@@ -1,8 +1,9 @@
 //! Rendering pipeline, split into a CPU **frontend** (encode + compose,
 //! orchestrated by `Frontend`) and a GPU **backend** (`WgpuBackend`):
 //!
-//! - [`frontend`] owns the per-frame allocations (cmd vec, render buffer)
-//!   and turns `&Tree` into `&RenderBuffer`. Pure CPU; no device handles.
+//! - [`frontend`] owns the per-frame allocations (the composer's scratch and
+//!   the render buffer) and turns a `FrameScene` into `&RenderBuffer`. Pure
+//!   CPU; no device handles.
 //! - [`backend`] consumes `&RenderBuffer` and submits draws. The only
 //!   stage that touches a device/queue.
 //!

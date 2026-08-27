@@ -1,3 +1,7 @@
+//! The polyline builder and its per-vertex or per-segment color source.
+//! Lowers to `ShapeRecord::Polyline` — the one stroke with interior joins,
+//! which is what separates it from the single strokes in `curve`.
+
 use crate::primitives::approx::noop_f32;
 use crate::primitives::color::Color;
 use crate::scene::record_store::RecordStore;

@@ -1,3 +1,6 @@
+//! SVG to pixels: the resident parsed-document cache, and the raster call an
+//! atlas miss falls through to.
+
 use crate::icons::icon_atlas::IconAtlas;
 use crate::icons::icon_raster_key::IconRasterKey;
 use crate::icons::icon_registry::IconSetId;

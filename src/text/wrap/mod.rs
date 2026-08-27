@@ -1,3 +1,9 @@
+//! Wrap policy: [`TextWrap`], and the sizes each policy derives from an
+//! unbounded root measurement.
+//!
+//! Nothing here shapes or caches. Every layout consequence of a policy is a
+//! pure function of a measurement layout already holds.
+
 use crate::primitives::num::F32Ext;
 use crate::primitives::size::Size;
 use crate::text::root::TextRoot;

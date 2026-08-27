@@ -105,8 +105,9 @@ impl Widget {
     ///
     /// A convenience over the opener, not a second way to open:
     /// `record` is what every widget in the crate calls, and this is for
-    /// the handful (`Frame`, `Panel`, `Grid`, `Separator`) whose `show()`
-    /// is exactly "record, then hand the caller a response". Widgets
+    /// the handful (`Frame`, `Grid`, `Panel`, `ProgressBar`, `Separator`,
+    /// `Spinner`, `Text`) whose `show()` is exactly "record, then hand
+    /// the caller a response". Widgets
     /// returning a bare [`Response`] take `.response`; the ones with a
     /// body closure return the pair as-is.
     ///

@@ -1,3 +1,6 @@
+//! Conservative bounding boxes for stroked geometry — how far a cap and a
+//! join can push a path's extent past the path itself.
+
 use crate::primitives::rect::Rect;
 use crate::shape::style::{LineCap, LineJoin};
 

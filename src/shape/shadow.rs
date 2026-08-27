@@ -1,3 +1,6 @@
+//! The drop-shadow builder. Lowers to
+//! `ShapeRecord::Quad(QuadShape::Shadow)`.
+
 use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
 use crate::primitives::shadow::Shadow;

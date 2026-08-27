@@ -1,7 +1,10 @@
 //! Per-frame damage detection. Computed in [`Ui::frame`](crate::Ui::frame) after
 //! `compute_rollups`; rebuilds the prev-frame snapshot in the same
-//! pass via the `entry()` API — vacant slots get inserted, occupied
-//! slots get diffed and either updated or evicted.
+//! pass. `LayerWalk::classify` reads `DamageEngine.prev` to pick a
+//! tier, and the arm for that tier writes the same key back —
+//! inserting a snapshot, touching one in place, or removing it. The
+//! read repeats instead of a live `Entry` crossing the tier dispatch,
+//! which would pin the whole map for the arms that never write.
 //!
 //! A node is **dirty** if its `(authoring-hash, cascade-input)` differs
 //! from the entry keyed by the same `WidgetId` in `DamageEngine.prev`,
@@ -23,7 +26,7 @@
 //! evicts the entry in the same diff loop; the prev rects contribute
 //! (clear those pixels), the curr rect doesn't.
 //!
-//! The Vacant arm additionally skips *childless* nodes whose rows are
+//! Classification additionally skips *childless* nodes whose rows are
 //! entirely off-surface — a zoomed-out canvas must not populate the map
 //! with thousands of never-visible snapshots. That skip is repaid in
 //! the moved-subtree arm (tier 1.5): the frame a move puts such a
@@ -44,7 +47,7 @@
 //! [`NodeSnapshot::parent_key`], and a mismatch damages the moved
 //! subtree's painted extent.
 //!
-//! `DamageEngine.dirty` is the per-node dirty list (added / hash- or
+//! `DamageEngine.counters.dirty` is the per-node dirty list (added / hash- or
 //! cascade-changed / evicted) in pre-order paint order. It's
 //! gated behind `cfg(any(test, feature = "internals"))` — production
 //! builds skip the per-node `Vec::push` entirely; tests and benches

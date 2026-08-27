@@ -1,3 +1,6 @@
+//! The result of one turn of the eviction clock, named so the policy is
+//! testable against a hand-built slab with no device present.
+
 use crate::renderer::backend::raster_atlas::atlas_slot::AtlasSlot;
 use crate::renderer::backend::raster_atlas::content_type::ContentType;
 

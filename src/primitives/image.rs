@@ -18,7 +18,7 @@ use glam::UVec2;
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub enum ImageFit {
     /// Stretch the image to fill the rect exactly. Aspect ratio not
-    /// preserved. Default — matches the legacy "no fit" behaviour.
+    /// preserved. The default.
     #[default]
     Fill,
     /// Preserve aspect ratio; fit the image entirely inside the rect.
@@ -28,8 +28,7 @@ pub enum ImageFit {
     /// image's longer axis (centered).
     Cover,
     /// Paint at the image's intrinsic pixel size, centered in the rect.
-    /// Larger-than-rect images overflow the rect (currently uncropped —
-    /// future slice can add per-image scissor).
+    /// An image larger than the rect overflows it, uncropped.
     None,
     /// Repeat the image across the paint rect. The UV is taken raw from
     /// `offset`/`scale` (intrinsic image size ignored) and wrapped with

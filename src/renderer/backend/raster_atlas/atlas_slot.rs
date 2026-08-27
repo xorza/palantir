@@ -1,3 +1,6 @@
+//! One resident raster's placement, bearing and lifetime stamps — the hot
+//! read on the atlas hit path.
+
 use crate::renderer::backend::raster_atlas::content_type::ContentType;
 use etagere::AllocId;
 

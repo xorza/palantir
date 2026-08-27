@@ -1,3 +1,6 @@
+//! The baked-icon builder and the fit policy that picks its rasterization
+//! box. Lowers to `ShapeRecord::Icon`.
+
 use crate::icons::icon_set::IconHandle;
 use crate::primitives::color::Color;
 use crate::primitives::image::ImageFit;

@@ -57,11 +57,6 @@ impl<'a> Checkbox<'a> {
         }
         let checked = *self.value;
 
-        // Everything this widget takes off its theme slot, before
-        // `ToggleChrome::record_row`'s `&mut Ui` reborrow: the geometry it paints with, and
-        // the plan for the look. `record_row` is shared by three toggles
-        // reading three different slots, so which slot is `Checkbox`'s own
-        // business — and `style_setter!`'s `slot` is where it says so, once.
         let theme = ui.theme();
         let slot = self.slot(theme);
         let box_size = slot.box_size;

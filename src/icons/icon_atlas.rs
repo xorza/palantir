@@ -1,3 +1,7 @@
+//! The baked icon-set data: an icon's id, its per-icon definition, and the
+//! name-sorted table plus one SVG blob a set is read from. No SVG parser —
+//! the facts a definition carries are surveyed in `svg_facts`.
+
 use crate::icons::svg_facts::SvgFacts;
 use crate::primitives::span::Span;
 use glam::Vec2;
