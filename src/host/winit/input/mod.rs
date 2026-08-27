@@ -8,7 +8,6 @@ use crate::common::platform::{PLATFORM, Platform};
 use crate::input::input_event::InputEvent;
 use crate::input::keyboard::{Key, Modifiers, TextChunk};
 use crate::input::pointer::PointerButton;
-use crate::input::zoom;
 
 pub(super) fn translate(event: &WindowEvent, scale_factor: f32, mut emit: impl FnMut(InputEvent)) {
     let scale = scale_factor.max(f32::EPSILON);
@@ -32,11 +31,11 @@ pub(super) fn translate(event: &WindowEvent, scale_factor: f32, mut emit: impl F
                 ElementState::Released => InputEvent::PointerReleased(button),
             });
         }
+        // A pinch delta is a displacement, so the factor is `1 + delta`.
+        // Emitted unscreened like every other payload here: what a factor
+        // has to satisfy is `InputEvent::is_actionable`'s question.
         WindowEvent::PinchGesture { delta, .. } => {
-            let factor = 1.0 + *delta as f32;
-            if zoom::is_valid(factor) {
-                emit(InputEvent::Zoom(factor));
-            }
+            emit(InputEvent::Zoom(1.0 + *delta as f32));
         }
         WindowEvent::MouseWheel { delta, .. } => emit(match *delta {
             MouseScrollDelta::LineDelta(x, y) => InputEvent::ScrollLines(Vec2::new(-x, -y)),

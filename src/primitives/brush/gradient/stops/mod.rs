@@ -108,8 +108,24 @@ impl GradientStops {
             "gradient requires at least 2 stops, got {}",
             values.len(),
         );
-        // Insertion sort: `MAX_STOPS` is 8 and the input is nearly always
-        // already ordered, so this is a comparison pass and no swaps.
+        Self::sorted(values)
+    }
+
+    /// The one place a `GradientStops` is built, and so the one place its
+    /// ascending-offset invariant is established.
+    ///
+    /// Both doors end here — [`Self::new`] and the `Deserialize` impl
+    /// below — because they differ only in how they *reject* a bad stop
+    /// count, a panic against a deserialization error, and not at all in
+    /// what a good one has to become. Sorting at each of them instead left
+    /// the deserializer holding the wire order, so the invariant the type
+    /// doc states held for authored gradients alone.
+    ///
+    /// Insertion sort: `MAX_STOPS` is 8 and the input is nearly always
+    /// already ordered, so this is a comparison pass and no swaps. Stable,
+    /// because the compare is a strict `>` — equal offsets keep the order
+    /// they were written in.
+    fn sorted(mut values: ArrayVec<[Stop; MAX_STOPS]>) -> Self {
         for index in 1..values.len() {
             let mut current = index;
             while current > 0 && values[current - 1].offset_u8 > values[current].offset_u8 {
@@ -174,7 +190,7 @@ impl<'de> Deserialize<'de> for GradientStops {
                 values.len(),
             )));
         }
-        Ok(Self(values))
+        Ok(Self::sorted(values))
     }
 }
 

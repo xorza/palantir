@@ -380,22 +380,18 @@ impl InputState {
     /// capture, no hover/scroll target change) leaves
     /// `requests_repaint` false so the frame can be skipped entirely.
     pub(crate) fn on_input(&mut self, event: InputEvent, cascade: &Cascade) -> InputDelta {
-        if let InputEvent::Zoom(factor) = event
-            && !zoom::is_valid(factor)
-        {
+        if !event.is_actionable() {
             return InputDelta::default();
         }
-        // Any host-pushed event that survived the guard above
+        // Any host-pushed event that survived the screen above
         // disqualifies the next frame from the paint-anim-only
         // short-circuit — the recording closure might observe even a
         // pointer move (hover styling) or modifier change (shortcut
-        // hint). A rejected zoom returned before this on purpose: it
-        // mutates nothing, so there is nothing for the closure to
-        // observe. Cleared at the top of `frame` after the gate has read
-        // it.
-        // Any host-pushed event that survived the guard is at least
-        // `Inert`; the arms below raise it to `Repaint` by returning
-        // `repaint: true`.
+        // hint) — so it is at least `Inert`, and the arms below raise it
+        // to `Repaint` by returning `repaint: true`. A refused event
+        // returns before this on purpose: it mutates nothing, so there is
+        // nothing for the closure to observe. Cleared at the top of
+        // `frame` after the gate has read it.
         self.signal_since_last_frame.raise(InputSignal::Inert);
         let outcome = match event {
             InputEvent::PointerMoved(p) => {
