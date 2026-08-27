@@ -668,6 +668,17 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
     fn evict_one(&mut self, target: ContentType) -> bool {
         // Already walked dry on this frame — see [`Side::dry_frame`].
         if self.sides[target as usize].dry_frame == Some(self.current_frame) {
+            // A fourth write of `last_use` would break the invariant
+            // that doc rests on, and the only symptom would be an atlas
+            // that silently stops reclaiming. Debug pays one rotation to
+            // keep it a checked contract.
+            debug_assert!(
+                ClockSweep::over(&self.slots, self.hand, target, self.current_frame)
+                    .victim
+                    .is_none(),
+                "{target:?} latched dry on frame {} still has an evictable slot",
+                self.current_frame,
+            );
             return false;
         }
         let sweep = ClockSweep::over(&self.slots, self.hand, target, self.current_frame);

@@ -3,7 +3,6 @@
 
 use crate::display::Display;
 use crate::primitives::approx::EPS;
-use crate::primitives::span::Span;
 use crate::primitives::{num::F32Ext, rect::Rect, translate_scale::TranslateScale, urect::URect};
 use crate::renderer::render_buffer::curve::{
     CURVE_KIND_JOIN_BEVEL, CURVE_KIND_JOIN_MITER, CURVE_KIND_JOIN_ROUND, CurveInstance,
@@ -141,15 +140,6 @@ pub(super) fn urect_from_phys(min: Vec2, max: Vec2, viewport: UVec2) -> URect {
 pub(super) fn scissor_from_logical(r: Rect, scale: f32, snap: bool, viewport: UVec2) -> URect {
     let phys = r.scaled_by(scale, snap);
     urect_from_phys(phys.min, phys.max(), viewport)
-}
-
-/// Value equality of two rounded-mask chains (spans into
-/// `out.rounded_clips`). Spans differ across a pop/re-push of an
-/// identical clip — the composer pushes a fresh chain per rounded push —
-/// but value-equal chains stamp identical masks, so clip-transition
-/// decisions must not split on span identity alone.
-pub(super) fn chains_equal(out: &RenderBuffer, a: Span, b: Span) -> bool {
-    out.rounded_clips[a.range()] == out.rounded_clips[b.range()]
 }
 
 #[cold]

@@ -47,9 +47,9 @@ use glam::{UVec2, Vec2};
 
 use crate::renderer::frontend::composer::clip_stack::ClipFrame;
 use crate::renderer::frontend::composer::geometry::{
-    POLYLINE_COINCIDENT_EPS_SQ, chains_equal, cubic_is_flat, polyline_join_kind,
-    push_sub_instances, rounded_clip_depth_overflow, scissor_from_logical, snap_text_scale,
-    stroke_bbox_urect, sub_instance_count, urect_from_phys,
+    POLYLINE_COINCIDENT_EPS_SQ, cubic_is_flat, polyline_join_kind, push_sub_instances,
+    rounded_clip_depth_overflow, scissor_from_logical, snap_text_scale, stroke_bbox_urect,
+    sub_instance_count, urect_from_phys,
 };
 use crate::renderer::frontend::composer::{Composer, GroupCursors, OpenBatch, PolylineScratch};
 
@@ -1182,7 +1182,9 @@ impl ComposeSession<'_> {
     /// accumulated overlap state persists through redundant transitions.
     fn break_for_clip(&mut self, next: Option<ClipFrame>) {
         let next_chain = next.map_or(Span::default(), |frame| frame.chain);
-        let chain_changed = !chains_equal(self.out, next_chain, self.composer.clip.chain());
+        let chain_changed = !self
+            .out
+            .chains_equal(next_chain, self.composer.clip.chain());
         if chain_changed {
             // The stencil mask stack is tied to the active chain; batched
             // text under the wrong masks would either over- or
