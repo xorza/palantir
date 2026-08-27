@@ -1,3 +1,6 @@
+//! The identity a widget's cross-frame state hangs off, and the identity
+//! hasher a map of them skips hashing with.
+
 use crate::common::hash::Hasher;
 use std::collections::HashMap;
 use std::hash::BuildHasherDefault;

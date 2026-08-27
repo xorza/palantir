@@ -1,3 +1,6 @@
+//! Typed or IME-committed text, inline in the event rather than behind an
+//! allocation, sized for the runs a keystroke actually produces.
+
 /// Inline UTF-8 byte buffer carried by [`InputEvent::Text`]. Sized for
 /// the common case (a single grapheme cluster ≤ 15 bytes); longer IME
 /// commits split across multiple events at the translation boundary.

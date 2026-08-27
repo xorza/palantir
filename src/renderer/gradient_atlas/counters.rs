@@ -21,11 +21,10 @@
 //! exactly how an O(capacity) probe walk sits in the hot path
 //! unnoticed.
 //!
-//! They accumulate for the life of the atlas rather than resetting per
-//! frame: the atlas is shared across windows and `flush` is a
-//! per-submit boundary, so there is no single "pass" to scope them to.
-//! Readers take a delta, the same call
-//! [`CascadeCounters`](crate::scene::cascade::counters::CascadeCounters) makes.
+//! The accumulate default applies here for the second of its two
+//! reasons: the atlas is shared across windows and `flush` is a
+//! per-submit boundary, so there is no single "pass" to scope a reset
+//! to.
 //!
 //! [`BenchOnly`]: crate::common::counters::BenchOnly
 //! [`CpuGradientAtlas::register_stops`]:

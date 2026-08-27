@@ -1,3 +1,6 @@
+//! The stacking driver: every child measures against the same slot and
+//! arranges into it, so they overlap rather than flow.
+
 use crate::layout::axis::Axis;
 use crate::layout::axis_align_pair::AxisAlignPair;
 use crate::layout::axis_placement::AxisPlacement;

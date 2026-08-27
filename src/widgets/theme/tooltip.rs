@@ -1,3 +1,6 @@
+//! What a tooltip wears, and how long a hover has to last before it
+//! appears.
+
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;

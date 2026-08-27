@@ -320,7 +320,7 @@ impl PaintSink for ComposeSession<'_> {
         // active scissor (e.g. scrolled out of an ancestor clip)
         // is skipped; a surviving one closes the open text batch
         // so its text emits before this above-text geometry.
-        if !self.enter_higher_kind(PaintTier::Mesh, mesh_urect) {
+        if !self.admit_higher_kind(PaintTier::Mesh, mesh_urect) {
             return;
         }
         // Verts already live in RecordStore owner-local;
@@ -353,7 +353,7 @@ impl PaintSink for ComposeSession<'_> {
             phys: phys_rect,
             urect,
         } = self.scaled_rect(p.rect);
-        if !self.enter_higher_kind(PaintTier::Icon, urect) {
+        if !self.admit_higher_kind(PaintTier::Icon, urect) {
             return;
         }
         // The raster size is decided here, not upstream: this is the first
@@ -383,7 +383,7 @@ impl PaintSink for ComposeSession<'_> {
         // Clip-cull + batch-close: image sits above text in the
         // kind order (same as mesh), so a surviving draw closes
         // the open text batch first.
-        if !self.enter_higher_kind(PaintTier::Image, image_urect) {
+        if !self.admit_higher_kind(PaintTier::Image, image_urect) {
             return;
         }
         // A `GpuView` is drawn over the part of itself that can be seen rather
@@ -478,7 +478,7 @@ impl PaintSink for ComposeSession<'_> {
         // Clip-cull + batch-close: a curve sits above text in the
         // kind order (same as mesh/image), so a surviving draw
         // closes the open text batch first.
-        if !self.enter_higher_kind(PaintTier::Curve, bbox_urect) {
+        if !self.admit_higher_kind(PaintTier::Curve, bbox_urect) {
             return;
         }
         // Owner origin folds in here so the record stays owner-local
@@ -654,7 +654,7 @@ impl PaintSink for ComposeSession<'_> {
         // Only now that the polyline will actually emit
         // geometry — an empty or culled polyline must not
         // split the batch or the group.
-        if !self.enter_higher_kind(PaintTier::Curve, bbox_urect) {
+        if !self.admit_higher_kind(PaintTier::Curve, bbox_urect) {
             return;
         }
         let PolylineScratch {
@@ -1088,7 +1088,7 @@ impl ComposeSession<'_> {
     /// the batch), gated behind an early cull.
     ///
     /// [`HigherKindRects::conflicts`]: crate::renderer::frontend::composer::higher_kind::HigherKindRects::conflicts
-    fn enter_higher_kind(&mut self, tier: PaintTier, bounds: URect) -> bool {
+    fn admit_higher_kind(&mut self, tier: PaintTier, bounds: URect) -> bool {
         if self.composer.clip.culls(bounds) {
             return false;
         }

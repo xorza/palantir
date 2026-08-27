@@ -1,3 +1,6 @@
+//! Two panes divided by a draggable rule: the widget, the per-pane bodies
+//! it takes, and the split ratio it keeps between frames.
+
 use crate::input::sense::Sense;
 use crate::layout::axis::Axis;
 use crate::layout::types::sizing::Sizing;

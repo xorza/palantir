@@ -1,3 +1,12 @@
+//! Float comparison at UI tolerance, and the two canonicalizations that
+//! tolerance splits into.
+//!
+//! One epsilon ([`EPS`]) answers "can the eye resolve this", and every
+//! predicate here is that comparison under a name: is this zero, does this
+//! paint, do these coincide, what share is this. [`FloatHash`] carries the
+//! same question into a hasher, where equality-compatible and
+//! visual-identity canonicalization part ways.
+
 use glam::Vec2;
 use std::hash::Hasher;
 

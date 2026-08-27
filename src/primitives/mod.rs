@@ -1,3 +1,11 @@
+//! The value vocabulary every other layer is written in — geometry,
+//! colour, paint, text and identity — plus the shared lane macro the
+//! four-f16 packed types are built from.
+//!
+//! A leaf layer: nothing here reaches up into scene, layout or renderer,
+//! which is what lets all three depend on one definition of a rect, a
+//! colour or an id.
+
 /// The surface a four-lane [`F16x4`](crate::primitives::half_simd::F16x4)
 /// newtype shares with its siblings: lane access, a `Debug` that names
 /// the four lanes, scalar `From`, and the serde forwarders.

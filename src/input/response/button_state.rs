@@ -1,3 +1,6 @@
+//! One pointer button's slice of a widget's interaction snapshot: its
+//! phase, its edges, and the drag it may be driving.
+
 use crate::input::response::button_phase::ButtonPhase;
 use crate::input::response::drag::Drag;
 

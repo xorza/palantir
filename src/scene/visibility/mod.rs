@@ -1,3 +1,6 @@
+//! Whether a node paints, and whether it still takes space when it does
+//! not.
+
 /// WPF-style three-state visibility.
 ///
 /// - `Visible` — laid out, painted, hit-tested.

@@ -1,3 +1,6 @@
+//! The anchored floating body: the widget, the handle its body uses to
+//! close itself, what a frame reports, and the press-outside policy.
+
 use crate::input::pointer::PointerButton;
 use crate::input::sense::Sense;
 use crate::layout::types::overlay::OverlayPosition;

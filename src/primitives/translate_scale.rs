@@ -1,3 +1,6 @@
+//! The transform a node can carry: uniform scale plus translation, which
+//! is every transform the layout and hit-test paths can invert exactly.
+
 use crate::primitives::{approx::approx_zero, rect::Rect, size::Size};
 use glam::Vec2;
 

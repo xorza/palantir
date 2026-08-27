@@ -1,3 +1,7 @@
+//! The scrubbable number field — drag to change, click to type. Holds the
+//! widget, the integer-or-float target it writes through, the retained
+//! drag and edit state, and what a frame of either reports.
+
 use crate::input::sense::Sense;
 use crate::layout::types::align::Align;
 use crate::layout::types::sizing::Sizing;

@@ -1,3 +1,11 @@
+//! The encode pass: walk the cascaded scene and turn each node's shapes
+//! into paint calls, one layer at a time ([`layer_ctx`]).
+//!
+//! [`Encoder`] holds what the walk retains between frames, [`geometry`]
+//! owns the rect math every shape kind resolves through, and
+//! [`GradientResolver`] resolves each gradient once per frame rather than
+//! once per shape that names it.
+
 #[cfg(debug_assertions)]
 mod collision_overlay;
 mod geometry;
@@ -27,7 +35,7 @@ struct GradientResolver {
 }
 
 impl GradientResolver {
-    fn begin(&mut self, gradient_count: usize) {
+    fn reset_for(&mut self, gradient_count: usize) {
         self.resolved.clear();
         self.resolved.resize(gradient_count, None);
     }
@@ -107,7 +115,7 @@ impl Encoder {
         let viewport = scene.display.logical_rect();
         let now = scene.time;
         let gradients = scene.payloads.gradients.records.as_slice();
-        gradient_resolver.begin(gradients.len());
+        gradient_resolver.reset_for(gradients.len());
         // Matches the backend's padded physical scissor; both derive from
         // `renderer::render_plan::RenderPlan::AA_PADDING`.
         let damage_cull_margin = RenderPlan::cull_margin(scene.display.scale_factor);

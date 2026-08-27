@@ -1,3 +1,6 @@
+//! Chained, allocation-free authoring of a gradient — stops pushed inline
+//! into the value they end up in.
+
 use crate::primitives::brush::gradient::stops::{GradientStopsBuilder, Stop};
 use crate::primitives::brush::gradient::{Gradient, GradientGeometry, Interp, Spread};
 use crate::primitives::color::ColorU8;

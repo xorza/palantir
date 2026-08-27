@@ -1,3 +1,10 @@
+//! The theme bundle every widget styles from: one submodule per widget's
+//! own theme, over the shared [`palette`], [`text_style`] and
+//! [`widget_look`] vocabulary they are all built out of.
+//!
+//! [`Theme`] aggregates them. A widget opts in by reading its own slice,
+//! so a bundle grows a field without any existing widget changing.
+
 /// `Default` for a theme bundle whose default *is* the default palette.
 ///
 ///

@@ -1,3 +1,5 @@
+//! What a button wears in each of its four interaction states.
+
 use crate::animation::anim_spec::AnimSpec;
 use crate::input::response::response_state::ResponseState;
 use crate::primitives::background::Background;

@@ -1,3 +1,6 @@
+//! The drop-down selector: a trigger that opens a popup list, and the
+//! open/closed flag one trigger site keeps between frames.
+
 use crate::input::sense::Sense;
 use crate::layout::types::align::{Align, VAlign};
 use crate::layout::types::justify::Justify;

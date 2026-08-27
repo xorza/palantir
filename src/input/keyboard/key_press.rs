@@ -1,3 +1,6 @@
+//! One key-down as the input queue carries it: which key, which
+//! modifiers, and whether it repeated.
+
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::modifiers::Modifiers;
 

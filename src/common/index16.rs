@@ -1,3 +1,6 @@
+//! A two-byte arena index whose encoding leaves room for `None`, so an
+//! optional one still fits in two bytes.
+
 use std::num::NonZeroU16;
 
 /// Arena index whose nonzero encoding keeps `Option<Self>` at two bytes.

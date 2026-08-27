@@ -1,3 +1,6 @@
+//! How one axis of a node resolves: a fixed extent, a share of what is
+//! left, or whatever its content needs.
+
 use crate::primitives::{approx, num::Num, size::Size};
 
 /// How one axis of a node resolves during layout.

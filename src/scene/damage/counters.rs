@@ -16,8 +16,9 @@ use crate::scene::tree::node_id::NodeId;
 
 /// What the diff walk did this pass.
 ///
-/// Reset by [`Self::pre_record`] at the top of every `compute`, so the
-/// counts describe one pass rather than accumulating.
+/// Reset by [`Self::begin_pass`] at the top of every `compute`, so the
+/// counts describe one pass rather than accumulating — `dirty` is a log,
+/// and a log of every pass since the engine was built answers nothing.
 #[derive(Debug, Default)]
 pub(crate) struct DamageCounters {
     /// Nodes whose paint rows the diff re-read — the ones that actually
@@ -34,7 +35,7 @@ pub(crate) struct DamageCounters {
 impl DamageCounters {
     /// Clear both counters for a new pass, retaining `dirty`'s capacity.
     #[inline]
-    pub(crate) fn pre_record(&mut self) {
+    pub(crate) fn begin_pass(&mut self) {
         self.dirty.clear();
         self.subtree_skips.reset();
     }

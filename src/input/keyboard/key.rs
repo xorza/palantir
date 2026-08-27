@@ -1,3 +1,6 @@
+//! A key's identity — used both as what the layout produced and as the
+//! physical position it came from.
+
 /// A key identity. Used two ways on [`KeyPress`](crate::KeyPress): as the
 /// **logical** key ([`KeyPress::key`](crate::KeyPress::key)) — after the
 /// keyboard layout has been applied, so Shift+'a'

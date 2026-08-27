@@ -1,3 +1,5 @@
+//! What a spinner wears, and how fast it turns.
+
 use crate::primitives::color::Color;
 use crate::widgets::theme::palette::Palette;
 

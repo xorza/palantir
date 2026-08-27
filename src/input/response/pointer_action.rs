@@ -1,3 +1,6 @@
+//! One thing the pointer did to one widget this frame, for the caller that
+//! collates edges rather than polling a widget it can name.
+
 use crate::input::pointer::PointerButton;
 use crate::input::response::pointer_edge::PointerEdge;
 use crate::primitives::widget_id::WidgetId;

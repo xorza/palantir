@@ -1,3 +1,6 @@
+//! The theme half of authoring: fill a node field only where the app left
+//! it unset, so a builder's explicit value always wins.
+
 use crate::layout::types::limits;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;

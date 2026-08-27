@@ -1,3 +1,6 @@
+//! Where a child sits in a grid parent — its row, its column, and how far
+//! it spans.
+
 use crate::layout::axis::Axis;
 use crate::primitives::span::Span;
 

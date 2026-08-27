@@ -1,3 +1,6 @@
+//! The chrome a container paints behind its children: fill, stroke,
+//! corner radii and a shadow, as one value a theme hands over whole.
+
 use crate::primitives::brush::Brush;
 use crate::primitives::corners::Corners;
 use crate::primitives::shadow::Shadow;

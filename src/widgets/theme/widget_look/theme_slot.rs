@@ -1,3 +1,6 @@
+//! The bundle a widget wears whole: its per-state looks, and the rule that
+//! picks one of them from a response.
+
 use crate::animation::anim_spec::AnimSpec;
 use crate::input::response::response_state::ResponseState;
 use crate::primitives::spacing::Spacing;

@@ -17,8 +17,8 @@
 //! fired is what separates a resize drag from a scroll, not how many
 //! buffers happen to be resident afterwards.
 //!
-//! Counters accumulate for the life of the shaper, which outlives any
-//! one frame and is shared across windows, so readers take a delta.
+//! The accumulate default applies: the shaper outlives any one frame and
+//! is shared across windows, so there is no pass to scope a reset to.
 //!
 //! [`CosmicMeasure`]: crate::text::cosmic::CosmicMeasure
 //! [`TextShaper::measure_calls`]: crate::text::shaper::TextShaper

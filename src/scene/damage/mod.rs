@@ -297,7 +297,7 @@ impl DamageEngine {
         if force_full {
             self.invalidate_prev();
         }
-        self.counters.pre_record();
+        self.counters.begin_pass();
 
         // Pass 1: every damage source pushes its contributions into
         // `self.raw_rects` without applying the merge or budget
@@ -378,7 +378,7 @@ impl DamageEngine {
     /// to the structural diff — skip Pass 1 entirely. Only the
     /// caller-supplied predamaged anim rects matter.
     pub(crate) fn compute_paint_only(&mut self, input: DamageInput<'_>) -> Damage {
-        self.counters.pre_record();
+        self.counters.begin_pass();
         self.raw_rects.clear();
         extend_predamaged(
             &mut self.raw_rects,

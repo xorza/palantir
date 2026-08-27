@@ -1,3 +1,6 @@
+//! The pill-and-knob boolean toggle — the same contract as the checkbox,
+//! drawn as a switch.
+
 use crate::input::sense::Sense;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::approx::noop_f32;

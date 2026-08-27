@@ -247,8 +247,7 @@ counter_snapshot! {
     pub(crate) struct BlockArenaCounters;
 
     /// One reading of a [`BlockArenaCounters`]. Subtract two to get what
-    /// a span of frames did — the counters accumulate for the life of the
-    /// arena.
+    /// a span of frames did.
     pub(crate) struct BlockArenaCounts;
 
     /// Spans that took a recycled block off a free list.

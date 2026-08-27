@@ -1,3 +1,6 @@
+//! Which pointer interactions a widget takes part in — the declaration
+//! that decides whether hit-testing considers it at all.
+
 use bitflags::bitflags;
 
 bitflags! {

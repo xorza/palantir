@@ -1,3 +1,6 @@
+//! One row or column of a grid, and the interned definition a node carries
+//! a whole grid by.
+
 use crate::layout::types::limits::{valid_lower_bound, valid_upper_bound};
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::approx::FloatHash;

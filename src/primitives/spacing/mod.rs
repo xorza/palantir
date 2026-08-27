@@ -1,3 +1,6 @@
+//! Per-side padding and margin, four f16 lanes in eight bytes — the same
+//! packing `Corners` and `ColorF16` use, with edge names on the lanes.
+
 use crate::primitives::half_simd::F16x4;
 use crate::primitives::num::Num;
 use crate::primitives::serde::LaneCodec;

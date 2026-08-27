@@ -1,3 +1,7 @@
+//! The hover tooltip: the widget, the per-trigger hover clock it needs to
+//! honour a delay, and the app-global state that lets a second tooltip
+//! appear without re-serving the delay.
+
 use crate::input::sense::Sense;
 use crate::layout::types::overlay::OverlayPosition;
 use crate::primitives::background::Background;

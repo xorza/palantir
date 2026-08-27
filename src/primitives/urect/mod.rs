@@ -1,3 +1,6 @@
+//! The physical-pixel rectangle the backend works in: scissors, damage
+//! regions and atlas slots, where a fraction of a pixel has no meaning.
+
 use crate::primitives::rect::Rect;
 use glam::UVec2;
 

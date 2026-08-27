@@ -1,3 +1,6 @@
+//! The determinate progress bar: a rounded track with an accent fill
+//! sized to a 0..1 fraction.
+
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;

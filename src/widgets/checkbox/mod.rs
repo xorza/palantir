@@ -1,3 +1,6 @@
+//! The box-and-label boolean toggle, and the pair of responses a click
+//! on either half reports.
+
 use crate::input::sense::Sense;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::text_input::TextInput;

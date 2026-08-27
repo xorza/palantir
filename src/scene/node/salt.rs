@@ -1,3 +1,6 @@
+//! How a node's `WidgetId` is derived: an explicit id, a caller-supplied
+//! salt, or the call site itself.
+
 use crate::primitives::widget_id::WidgetId;
 
 /// Recipe for a [`Node`](crate::scene::node::Node)'s `WidgetId`. Mirrors egui's

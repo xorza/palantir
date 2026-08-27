@@ -1,3 +1,6 @@
+//! One button's drag lifecycle on a widget — whether it started, how far
+//! it has travelled, and where it began.
+
 use glam::Vec2;
 
 /// One button's drag lifecycle, carried on [`ButtonState::drag`](crate::ButtonState::drag) — the

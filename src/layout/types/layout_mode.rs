@@ -1,3 +1,6 @@
+//! Which driver lays a node's children out, and the per-mode settings that
+//! driver reads — grid tracks, scroll axes, wrap direction.
+
 use crate::common::index16::Index16;
 use crate::layout::axis::Axis;
 use crate::layout::types::align::Align;

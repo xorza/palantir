@@ -1,3 +1,6 @@
+//! What a scroll's bars wear, in both the modes they can lay out in —
+//! reserved beside the content, or floating over it.
+
 use crate::primitives::color::Color;
 use crate::widgets::theme::palette::Palette;
 

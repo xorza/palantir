@@ -1,3 +1,5 @@
+//! The conic gradient's axis: colour sweeps around a centre by angle.
+
 use crate::primitives::approx::FloatHash;
 use crate::primitives::brush::gradient::gradient_builder::GradientBuilder;
 use crate::primitives::brush::gradient::stops::Stop;

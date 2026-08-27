@@ -1,3 +1,7 @@
+//! A gradient's colour stops: the u8-quantized stop itself, the inline
+//! run a gradient carries them in, and the builder that sorts and
+//! validates one.
+
 use crate::primitives::color::ColorU8;
 use crate::primitives::num;
 use serde::de::Error as _;

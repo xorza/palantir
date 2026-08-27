@@ -1,3 +1,6 @@
+//! The centred dialog and its input-blocking backdrop, plus what a frame
+//! of it reports about dismissal.
+
 use crate::input::sense::Sense;
 use crate::layout::types::align::Align;
 use crate::layout::types::placement::Placement;

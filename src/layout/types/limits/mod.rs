@@ -1,3 +1,10 @@
+//! What layout treats as a usable bound: the screens every measured lower
+//! bound, upper bound and gap passes before the pass math trusts it.
+//!
+//! Named predicates rather than an assert per site, so "a bound layout can
+//! work with" has one definition and a debug build checks the pair in one
+//! call.
+
 use crate::primitives::size::Size;
 
 pub(crate) const MAX_PACKED_GAP: f32 = 65_504.0;

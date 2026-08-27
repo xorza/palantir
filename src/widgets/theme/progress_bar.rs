@@ -1,3 +1,6 @@
+//! What a progress bar wears: the rail it runs along, and the fill that
+//! measures the fraction.
+
 use crate::primitives::color::Color;
 use crate::widgets::theme::palette::Palette;
 

@@ -118,10 +118,10 @@ pub(crate) struct LayoutCounters {
 }
 
 impl LayoutCounters {
-    /// Clear every counter for a new run. Retains `cache_hits` capacity so
+    /// Clear every counter for a new pass. Retains `cache_hits` capacity so
     /// a test build doesn't reallocate each frame.
     #[inline]
-    pub(crate) fn begin_run(&mut self) {
+    pub(crate) fn begin_pass(&mut self) {
         self.intrinsic_computes.reset();
         self.cache_hits.clear();
         self.copied.reset();

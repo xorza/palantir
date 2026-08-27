@@ -1,3 +1,6 @@
+//! The slab indices no cache key names any more, waiting to be handed to
+//! the next insert.
+
 use crate::renderer::backend::raster_atlas::atlas_slot::AtlasSlot;
 use crate::renderer::backend::raster_atlas::side::Side;
 

@@ -1,3 +1,6 @@
+//! Where a child sits inside the slot its parent gives it, per axis, and
+//! the axis-agnostic form the layout math resolves both into.
+
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 

@@ -145,7 +145,10 @@ pub(crate) struct MeasureSnapshot {
 }
 
 impl MeasureSnapshot {
-    fn begin_capture(&mut self) {
+    /// Empty the captured columns, keeping the retained descriptor map —
+    /// the half a new capture refills. `test_support` carries the
+    /// whole-snapshot `clear` beside it, and the names say which is which.
+    fn clear_capture(&mut self) {
         self.nodes.clear();
         self.tracks.clear();
         self.text_shapes.clear();
@@ -223,7 +226,7 @@ pub(crate) struct MeasureCache {
 
 impl MeasureCache {
     pub(super) fn begin_frame(&mut self) {
-        self.current.begin_capture();
+        self.current.clear_capture();
     }
 
     #[inline]
@@ -448,7 +451,7 @@ pub(crate) mod test_support {
         /// set would let the next capture that happens to fold to the
         /// same value reuse a map that is no longer there.
         fn clear(&mut self) {
-            self.begin_capture();
+            self.clear_capture();
             self.snapshots.clear();
             self.snapshots_identity = 0;
         }

@@ -1,3 +1,6 @@
+//! The horizontal value slider, and what a frame of it reports about the
+//! value it writes through.
+
 use crate::input::sense::Sense;
 use crate::layout::types::align::{Align, VAlign};
 use crate::layout::types::sizing::Sizing;

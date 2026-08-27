@@ -1,3 +1,6 @@
+//! A raster's extents and bearing, narrowed to the widths an atlas slot
+//! can afford to carry.
+
 /// A raster's extents and bearing, narrowed to the widths the atlas
 /// stores them at. An atlas side tops out far below `u16::MAX`, so
 /// anything that does not fit here could never have been packed.

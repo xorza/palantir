@@ -1,3 +1,6 @@
+//! The font, size, weight, colour and leading a run of text is shaped and
+//! painted with — the vocabulary every other theme carries a copy of.
+
 use crate::primitives::color::Color;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::{FontFamily, FontWeight};

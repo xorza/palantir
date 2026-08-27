@@ -9,9 +9,10 @@ use crate::window::window_output::WindowOutput;
 /// distinction every host has to act on. `commands` are *edges*: one-shot
 /// lifecycle requests that mean nothing unless something services them, so
 /// a host that cannot has to say so rather than swallow them. `levels` are
-/// *settings*: the recorder retains them and reads them back through `Ui`,
-/// so a host with nothing to apply them to leaves the app's own view of
-/// them intact by doing nothing.
+/// *settings*: the recorder retains them, so a host with nothing to apply
+/// them to leaves the app's own view of them intact by doing nothing. Only
+/// `vsync` reads back through `Ui` — the field doc below says why `cursor`
+/// has nothing to read.
 ///
 /// That split is why `WindowDriver::drain_window_output` hands the two
 /// halves to different places, and why the offscreen host can reject one
@@ -24,9 +25,13 @@ pub(crate) struct WindowRequests {
     pub(crate) close_vetoed: bool,
     /// The cursor and presentation pacing this window is currently set to.
     ///
-    /// Both are levels rather than edges: `cursor` is re-asserted per
-    /// record pass and retained across a `PaintOnly` frame, and `vsync` is
-    /// seeded from the swapchain the host actually opened — so it answers
+    /// Both are levels rather than edges, but they are retained for
+    /// opposite reasons. `cursor` is re-asserted by whoever still wants it
+    /// each record pass, and retained only so a `PaintOnly` frame — which
+    /// runs no pass — does not flicker it back to the default; app code
+    /// writes it every frame and so has nothing to read back, which is why
+    /// `Ui` offers no reader for it. `vsync` is seeded from the swapchain
+    /// the host actually opened, so it answers
     /// [`Ui::set_vsync`](crate::Ui::set_vsync) truthfully from the first
     /// frame and a recorder never has to re-assert it. Reconfiguring a
     /// swapchain is expensive, so the *host* compares these against what

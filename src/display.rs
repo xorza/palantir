@@ -1,3 +1,11 @@
+//! The surface a frame paints onto: its physical size, the scale factor
+//! that converts logical to physical, and the refresh rate the wake
+//! scheduler paces against.
+//!
+//! The scale factor is screened at the door — see
+//! [`sanitize_scale_factor`] — so nothing downstream divides by a value
+//! the platform never promised.
+
 use crate::primitives::approx::EPS;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;

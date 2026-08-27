@@ -1,3 +1,6 @@
+//! The shape every instanced draw pipeline shares — built once at startup,
+//! then bound and replayed per batch.
+
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::stencil_variant::StencilVariant;
 

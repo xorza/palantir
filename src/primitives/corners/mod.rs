@@ -1,3 +1,6 @@
+//! Per-corner radii, four f16 lanes in eight bytes — the same packing
+//! `Spacing` and `ColorF16` use, with corner names on the lanes.
+
 use crate::primitives::half_simd::F16x4;
 use crate::primitives::serde::LaneCodec;
 use crate::primitives::size::Size;
