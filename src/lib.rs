@@ -250,11 +250,18 @@ pub use layout::types::sizing::{Sizes, Sizing};
 pub use layout::types::track::Track;
 pub use palantir_anim_derive::Animatable;
 pub use primitives::background::Background;
-pub use primitives::brush::gradient::conic::{ConicGradient, ConicGradientBuilder};
-pub use primitives::brush::gradient::linear::{LinearGradient, LinearGradientBuilder};
-pub use primitives::brush::gradient::radial::{RadialGradient, RadialGradientBuilder};
+pub use primitives::brush::gradient::conic_geometry::{
+    ConicGeometry, ConicGradient, ConicGradientBuilder,
+};
+pub use primitives::brush::gradient::gradient_builder::GradientBuilder;
+pub use primitives::brush::gradient::linear_geometry::{
+    LinearGeometry, LinearGradient, LinearGradientBuilder,
+};
+pub use primitives::brush::gradient::radial_geometry::{
+    RadialGeometry, RadialGradient, RadialGradientBuilder,
+};
 pub use primitives::brush::gradient::stops::{GradientStops, Stop};
-pub use primitives::brush::gradient::{Interp, Spread};
+pub use primitives::brush::gradient::{Gradient, GradientGeometry, Interp, Spread};
 pub use primitives::brush::{Brush, CurveBrush};
 pub use primitives::color::Color;
 pub use primitives::color::ColorU8;

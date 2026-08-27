@@ -1,9 +1,9 @@
 pub(crate) mod gradient;
 
 use crate::animation::animatable::Animatable;
-use crate::primitives::brush::gradient::conic::{ConicGradient, ConicGradientBuilder};
-use crate::primitives::brush::gradient::linear::{LinearGradient, LinearGradientBuilder};
-use crate::primitives::brush::gradient::radial::{RadialGradient, RadialGradientBuilder};
+use crate::primitives::brush::gradient::conic_geometry::{ConicGradient, ConicGradientBuilder};
+use crate::primitives::brush::gradient::linear_geometry::{LinearGradient, LinearGradientBuilder};
+use crate::primitives::brush::gradient::radial_geometry::{RadialGradient, RadialGradientBuilder};
 use crate::primitives::color::{Color, ColorU8};
 use crate::primitives::nan::NanCheck;
 
@@ -34,49 +34,50 @@ pub enum Brush {
 /// Paint source for one-dimensional stroked shapes. Solid colors and linear
 /// gradients have an unambiguous mapping along the curve parameter; radial and
 /// conic gradients do not.
+///
+/// A [`Brush`] behind a narrower door rather than a second enum beside it:
+/// the four `From` impls below are the only way to build one, so the
+/// radial and conic variants are unreachable by construction. It answers
+/// nothing itself — [`Self::as_brush`] hands the `Brush` back, and the
+/// no-op test, the NaN screen and the lowering stay single-sourced there.
 #[derive(Clone, Debug, PartialEq)]
-pub enum CurveBrush {
-    Solid(Color),
-    Linear(LinearGradient),
-}
+pub struct CurveBrush(Brush);
 
 impl CurveBrush {
-    pub(crate) const TRANSPARENT: Self = Self::Solid(Color::TRANSPARENT);
+    pub const TRANSPARENT: Self = Self(Brush::TRANSPARENT);
 
+    /// The paint source, for consumers that read, screen or lower it.
     #[inline]
-    pub(crate) fn is_noop(&self) -> bool {
-        match self {
-            CurveBrush::Solid(color) => color.is_noop(),
-            CurveBrush::Linear(gradient) => gradient.is_noop(),
-        }
+    pub const fn as_brush(&self) -> &Brush {
+        &self.0
     }
 }
 
 impl From<Color> for CurveBrush {
     #[inline]
     fn from(color: Color) -> Self {
-        CurveBrush::Solid(color)
+        Self(Brush::from(color))
     }
 }
 
 impl From<ColorU8> for CurveBrush {
     #[inline]
     fn from(color: ColorU8) -> Self {
-        CurveBrush::Solid(color.into())
+        Self(Brush::from(color))
     }
 }
 
 impl From<LinearGradient> for CurveBrush {
     #[inline]
     fn from(gradient: LinearGradient) -> Self {
-        CurveBrush::Linear(gradient)
+        Self(Brush::from(gradient))
     }
 }
 
 impl From<LinearGradientBuilder> for CurveBrush {
     #[inline]
     fn from(builder: LinearGradientBuilder) -> Self {
-        CurveBrush::Linear(builder.build())
+        Self(Brush::from(builder))
     }
 }
 
@@ -102,6 +103,16 @@ impl Brush {
         match self {
             Brush::Solid(c) => Some(*c),
             Brush::Linear(_) | Brush::Radial(_) | Brush::Conic(_) => None,
+        }
+    }
+
+    /// Extracts the linear gradient, the one kind a [`CurveBrush`] can
+    /// also hold. Returns `None` for every other variant.
+    #[inline]
+    pub const fn as_linear(&self) -> Option<&LinearGradient> {
+        match self {
+            Brush::Linear(g) => Some(g),
+            Brush::Solid(_) | Brush::Radial(_) | Brush::Conic(_) => None,
         }
     }
 }
@@ -269,16 +280,6 @@ impl NanCheck for Brush {
             Self::Linear(gradient) => gradient.has_nan(),
             Self::Radial(gradient) => gradient.has_nan(),
             Self::Conic(gradient) => gradient.has_nan(),
-        }
-    }
-}
-
-impl NanCheck for CurveBrush {
-    #[inline]
-    fn has_nan(&self) -> bool {
-        match self {
-            Self::Solid(color) => color.has_nan(),
-            Self::Linear(gradient) => gradient.has_nan(),
         }
     }
 }

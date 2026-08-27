@@ -1,7 +1,7 @@
 use crate::animation::animatable::Animatable;
-use crate::primitives::brush::gradient::conic::ConicGradient;
-use crate::primitives::brush::gradient::linear::LinearGradient;
-use crate::primitives::brush::gradient::radial::RadialGradient;
+use crate::primitives::brush::gradient::conic_geometry::ConicGradient;
+use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
+use crate::primitives::brush::gradient::radial_geometry::RadialGradient;
 use crate::primitives::brush::gradient::stops::{GradientStops, MAX_STOPS, Stop};
 use crate::primitives::brush::gradient::{Interp, Spread};
 use crate::primitives::brush::{Brush, CurveBrush};
@@ -101,7 +101,7 @@ fn authoring_values_convert_to_their_brush_variants() {
     );
     assert_eq!(
         CurveBrush::from(linear_builder.clone()),
-        CurveBrush::Linear(linear_builder.build()),
+        CurveBrush::from(linear_builder.build()),
     );
 }
 
@@ -252,7 +252,7 @@ fn linear_two_stop_authoring() {
     assert_eq!(overridden.spread, Spread::Repeat);
     assert_eq!(overridden.interp, Interp::Linear);
     assert_eq!(overridden.stops, g.stops);
-    assert_eq!(overridden.angle, g.angle);
+    assert_eq!(overridden.geometry, g.geometry);
 }
 
 #[test]
@@ -264,7 +264,7 @@ fn gradient_builders_preserve_geometry_stops_and_options() {
         .with_spread(Spread::Reflect)
         .with_interp(Interp::Linear)
         .build();
-    assert_eq!(linear.angle, PI / 2.0);
+    assert_eq!(linear.geometry.angle, PI / 2.0);
     assert_eq!(linear.stops.len(), 3);
     assert_eq!(linear.stops[0].offset_u8, 0);
     assert_eq!(linear.stops[1].offset_u8, 128);
@@ -278,16 +278,16 @@ fn gradient_builders_preserve_geometry_stops_and_options() {
         .stop(0.0, Color::BLACK)
         .stop(1.0, Color::WHITE)
         .build();
-    assert_eq!(radial.center, center);
-    assert_eq!(radial.radius, radius);
+    assert_eq!(radial.geometry.center, center);
+    assert_eq!(radial.geometry.radius, radius);
     assert_eq!(radial.interp, Interp::Oklab);
 
     let conic = ConicGradient::builder(center, FRAC_PI_4)
         .stop(0.0, Color::BLACK)
         .stop(1.0, Color::WHITE)
         .build();
-    assert_eq!(conic.center, center);
-    assert_eq!(conic.start_angle, FRAC_PI_4);
+    assert_eq!(conic.geometry.center, center);
+    assert_eq!(conic.geometry.start_angle, FRAC_PI_4);
     assert_eq!(conic.interp, Interp::Linear);
 }
 
@@ -365,8 +365,8 @@ fn gradient_brush_spring_normalization_is_direction_independent() {
 #[test]
 fn radial_default_centered() {
     let g = RadialGradient::two_stop_centered(Color::WHITE, Color::BLACK);
-    assert_eq!(g.center, Vec2::splat(0.5));
-    assert_eq!(g.radius, Vec2::splat(0.5));
+    assert_eq!(g.geometry.center, Vec2::splat(0.5));
+    assert_eq!(g.geometry.radius, Vec2::splat(0.5));
     assert_eq!(g.interp, Interp::Oklab);
     assert_eq!(g.spread, Spread::Pad);
     let a = g.axis();

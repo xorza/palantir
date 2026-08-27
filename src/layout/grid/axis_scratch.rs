@@ -6,9 +6,9 @@
 //! other: `measuring` and `arranging` both depend *down* on this one.
 
 use crate::layout::axis::Axis;
+use crate::layout::fill_item::FillItem;
 use crate::layout::grid::grid_track_store::GridTrackStore;
 use crate::layout::types::layout_mode::GridDefId;
-use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
 use crate::primitives::span::Span;
 use fixedbitset::FixedBitSet;
@@ -25,8 +25,8 @@ pub(super) struct AxisScratch {
     pub(super) sizes: Vec<f32>,
     pub(super) resolved: FixedBitSet,
     pub(super) offsets: Vec<f32>,
-    pub(super) flexible: Vec<usize>,
-    pub(super) hug_bounds: Vec<HugBound>,
+    flexible: Vec<FillItem<usize>>,
+    hug_bounds: Vec<HugBound>,
 }
 
 /// The per-track content range one axis solves against: `min[i]` is
@@ -149,10 +149,9 @@ impl AxisScratch {
     ///    - If `sum_hug_min >= remaining`: each Hug at min, grid overflows.
     ///    - Else: each Hug starts at min, slack distributed proportional to
     ///      `(max - min)`.
-    /// 3. **Fill:** original constraint-by-exclusion algorithm — Fill tracks
-    ///    distribute leftover proportional to weight; any Fill whose share
-    ///    falls outside its capped min-content floor and `Track.max` clamps
-    ///    and exits the pool; remaining Fills rebalance.
+    /// 3. **Fill:** [`FillItem::distribute`] — Fill tracks share the
+    ///    leftover proportional to weight, each clamped to its capped
+    ///    min-content floor and `Track.max`.
     /// 4. **Mark Fill resolved (commit):** by default Fill tracks stay
     ///    unresolved so cells in Fill cols see `INF` via `known_span_size`
     ///    during measure (preserves "Fill is finalized at arrange"). When
@@ -229,67 +228,23 @@ impl AxisScratch {
             }
         }
 
-        // Phase 3: Fill — constraint-by-exclusion. Fills get the leftover
-        // after Fixed + Hug, distributed by weight; any Fill whose share
-        // falls outside `[content_floor, Track.max]` clamps and exits the
-        // pool, then remaining Fills rebalance. Capping the min-content floor
-        // keeps the interval ordered when a rigid descendant exceeds the
-        // explicit track cap. This mirrors the `[floor, cap]` freeze in
-        // `stack::freeze_distribute` (kept in sync by hand; see its doc for
-        // why the two aren't physically merged).
-        let mut remaining = (total - consumed).max(0.0);
+        // Phase 3: Fill, over what Fixed and Hug left. Capping the
+        // min-content floor at `Track.max` keeps the interval ordered when
+        // a rigid descendant exceeds the explicit track cap.
         self.flexible.clear();
-        let mut flexible_weight = 0.0_f64;
         for (i, t) in tracks.iter().enumerate() {
             if let Some(weight) = t.size.fill_weight() {
-                self.flexible.push(i);
-                flexible_weight += f64::from(weight);
+                self.flexible.push(FillItem::new(
+                    i,
+                    weight,
+                    t.content_floor(hugs.min[i]),
+                    t.max,
+                ));
             }
         }
-
-        // Clamp-and-rebalance loop. Each iteration looks for one Fill whose
-        // proportional share violates `[lo, Track.max]`; if it exists,
-        // clamp it, remove it from the pool, and rerun. When every
-        // remaining Fill's share is in-range, commit them at that share and
-        // exit. Converges in ≤ N iterations (each clamp removes one).
-        while !self.flexible.is_empty() && flexible_weight > 0.0 {
-            let clamp_idx = self.flexible.iter().position(|&i| {
-                let t = &tracks[i];
-                let weight = t
-                    .size
-                    .fill_weight()
-                    .expect("`flexible` holds Fill tracks only");
-                let candidate = Sizing::weighted_share(remaining, weight, flexible_weight);
-                let lo = t.content_floor(hugs.min[i]);
-                candidate < lo || candidate > t.max
-            });
-            match clamp_idx {
-                Some(k) => {
-                    let i = self.flexible[k];
-                    let t = &tracks[i];
-                    let weight = t
-                        .size
-                        .fill_weight()
-                        .expect("`flexible` holds Fill tracks only");
-                    let candidate = Sizing::weighted_share(remaining, weight, flexible_weight);
-                    let lo = t.content_floor(hugs.min[i]);
-                    let clamped = candidate.clamp(lo, t.max);
-                    self.sizes[i] = clamped;
-                    remaining = (remaining - clamped).max(0.0);
-                    flexible_weight -= f64::from(weight);
-                    self.flexible.swap_remove(k);
-                }
-                None => {
-                    for &i in self.flexible.iter() {
-                        let weight = tracks[i]
-                            .size
-                            .fill_weight()
-                            .expect("`flexible` holds Fill tracks only");
-                        self.sizes[i] = Sizing::weighted_share(remaining, weight, flexible_weight);
-                    }
-                    break;
-                }
-            }
+        FillItem::distribute(&mut self.flexible, (total - consumed).max(0.0));
+        for item in &self.flexible {
+            self.sizes[item.key] = item.size;
         }
 
         // Phase 4: commit Fill tracks as resolved when the grid's own axis

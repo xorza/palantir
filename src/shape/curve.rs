@@ -73,7 +73,7 @@ shape_setters!(CurveShape {
 
 impl sealed::LowerShape for CurveShape {
     fn is_noop(&self) -> bool {
-        if noop_f32(self.stroke.width) || self.stroke.brush.is_noop() {
+        if noop_f32(self.stroke.width) || self.stroke.brush.as_brush().is_noop() {
             return true;
         }
         match &self.geometry {

@@ -7,10 +7,13 @@ use crate::primitives::{approx, num::Num, size::Size};
 ///
 /// The floor under Hug and Fill is the node's *intrinsic minimum* — the
 /// largest non-shrinkable thing on that axis (a fixed descendant, an
-/// explicit `min_size`, the longest unbreakable word). Fill siblings whose
-/// floor exceeds their weighted share freeze at the floor and the rest
-/// re-divide, CSS-flexbox style. A parent never grows to fit a child, so
-/// overflow only happens when rigid descendants genuinely do not fit.
+/// explicit `min_size`, the longest unbreakable word), and the ceiling is
+/// its `max_size`. Fill participants whose weighted share falls outside
+/// that interval take the bound they violated and the rest re-divide,
+/// CSS-Flexbox style. One solver answers that for every container, so
+/// `Fill` means the same thing in a `Panel` and in a `Grid`. A parent
+/// never grows to fit a child, so overflow only happens when rigid
+/// descendants genuinely do not fit.
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub struct Sizing(SizingValue);
 
@@ -114,15 +117,6 @@ impl Sizing {
     #[inline]
     pub const fn is_hug(self) -> bool {
         matches!(self.0, SizingValue::Hug)
-    }
-
-    /// One participant's cut of `space`, given its own [`Self::fill`]
-    /// weight and the total across every participant sharing it. Shared
-    /// by the stack's Fill distribution and the grid's Phase-3 track
-    /// solve, which divide the same way.
-    #[inline]
-    pub(crate) fn weighted_share(space: f32, weight: f32, total_weight: f64) -> f32 {
-        (f64::from(space) * f64::from(weight) / total_weight) as f32
     }
 
     #[inline]
