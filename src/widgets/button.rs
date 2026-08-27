@@ -105,7 +105,7 @@ mod tests {
     use crate::primitives::background::Background;
     use crate::primitives::spacing::Spacing;
     use crate::scene::layer::Layer;
-    use crate::scene::node::Configure;
+    use crate::scene::node::configure::Configure;
     use crate::widgets::button::Button;
     use crate::widgets::theme::button::ButtonTheme;
     use glam::UVec2;

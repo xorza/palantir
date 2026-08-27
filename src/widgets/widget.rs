@@ -10,7 +10,7 @@
 //! records, and [`Widget::response`] hands back a plain owned
 //! [`ResponseState`] that outlives it.
 
-use crate::input::response::ResponseState;
+use crate::input::response::response_state::ResponseState;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::Node;

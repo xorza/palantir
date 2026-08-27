@@ -74,7 +74,7 @@ use crate::primitives::rect::Rect;
 use crate::renderer::backend::schedule::test_support::Walk;
 use crate::renderer::image_registry::ImageHandle;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
-use crate::scene::node::Configure;
+use crate::scene::node::configure::Configure;
 use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::ui::frame_report::FramePaint;

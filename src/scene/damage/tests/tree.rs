@@ -7,7 +7,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::Color, rect::Rect};
 use crate::scene::damage::Damage;
 use crate::scene::damage::tests::support::{BLUE, DISPLAY, RED, frame};
-use crate::scene::node::Configure;
+use crate::scene::node::configure::Configure;
 use crate::shape::Shape;
 use crate::shape::style::LineCap;
 use crate::ui::harness::UiHarness;

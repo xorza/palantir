@@ -6,7 +6,7 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
-use crate::scene::node::Configure;
+use crate::scene::node::configure::Configure;
 use crate::ui::harness::UiHarness;
 use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;

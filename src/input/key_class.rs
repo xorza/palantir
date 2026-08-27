@@ -8,7 +8,9 @@
 
 use bitflags::bitflags;
 
-use crate::input::keyboard::{Key, KeyPress, KeyboardEvent};
+use crate::input::keyboard::key::Key;
+use crate::input::keyboard::key_press::KeyPress;
+use crate::input::keyboard::keyboard_event::KeyboardEvent;
 
 /// What kind of thing a key press *is*. Exactly one class per press.
 ///
@@ -189,7 +191,11 @@ impl KeyFilter {
 #[cfg(test)]
 mod tests {
     use crate::input::key_class::{KeyClass, KeyFilter};
-    use crate::input::keyboard::{Key, KeyPress, KeyboardEvent, Modifiers, TextChunk};
+    use crate::input::keyboard::key::Key;
+    use crate::input::keyboard::key_press::KeyPress;
+    use crate::input::keyboard::keyboard_event::KeyboardEvent;
+    use crate::input::keyboard::modifiers::Modifiers;
+    use crate::input::keyboard::text_chunk::TextChunk;
 
     fn press(key: Key, mods: Modifiers) -> KeyPress {
         KeyPress {

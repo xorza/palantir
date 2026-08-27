@@ -1,4 +1,4 @@
-use crate::input::response::ResponseState;
+use crate::input::response::response_state::ResponseState;
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::theme::widget_look::WidgetLook;
 

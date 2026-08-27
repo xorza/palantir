@@ -11,7 +11,7 @@ use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::brush::gradient::radial_geometry::RadialGradient;
 use crate::primitives::color::ColorU8;
 use crate::primitives::corners::Corners;
-use crate::scene::node::Configure;
+use crate::scene::node::configure::Configure;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
 use crate::widgets::button::Button;

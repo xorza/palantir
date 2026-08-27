@@ -4,7 +4,7 @@
 use crate::Ui;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::node::Configure;
+use crate::scene::node::configure::Configure;
 use crate::scene::tree::node_id::NodeId;
 use crate::ui::harness::UiHarness;
 use crate::widgets::drag_value::{DragValue, DragValueState};
@@ -16,7 +16,7 @@ fn editing_a_long_value_holds_the_field_width() {
     use crate::Ui;
     use crate::layout::types::sizing::Sizing;
     use crate::primitives::widget_id::WidgetId;
-    use crate::scene::node::Configure;
+    use crate::scene::node::configure::Configure;
     use crate::widgets::drag_value::DragValue;
     use crate::widgets::panel::Panel;
     use glam::UVec2;
@@ -74,7 +74,7 @@ fn editing_under_a_scaled_canvas_does_not_panic() {
     use crate::layout::types::sizing::Sizing;
     use crate::primitives::translate_scale::TranslateScale;
     use crate::primitives::widget_id::WidgetId;
-    use crate::scene::node::Configure;
+    use crate::scene::node::configure::Configure;
     use crate::widgets::drag_value::DragValue;
     use crate::widgets::panel::Panel;
     use glam::{UVec2, Vec2};
@@ -225,7 +225,7 @@ fn entering_edit_mode_keeps_the_chips_box() {
     use crate::Ui;
     use crate::layout::types::sizing::Sizing;
     use crate::primitives::widget_id::WidgetId;
-    use crate::scene::node::Configure;
+    use crate::scene::node::configure::Configure;
     use crate::widgets::drag_value::DragValue;
     use crate::widgets::panel::Panel;
     use glam::UVec2;

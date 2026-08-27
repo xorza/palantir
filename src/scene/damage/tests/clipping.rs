@@ -7,7 +7,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::Color, rect::Rect, size::Size};
 use crate::scene::damage::tests::support::{BLUE, DISPLAY, RED, TEST_SURFACE, frame};
 use crate::scene::layer::Layer;
-use crate::scene::node::Configure;
+use crate::scene::node::configure::Configure;
 use crate::scene::tree::node_id::NodeId;
 use crate::shape::Shape;
 use crate::ui::harness::UiHarness;

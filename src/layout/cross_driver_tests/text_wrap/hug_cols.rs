@@ -8,7 +8,7 @@ use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
 use crate::layout::{axis::Axis, intrinsic::LenReq};
 use crate::scene::layer::Layer;
-use crate::scene::node::Configure;
+use crate::scene::node::configure::Configure;
 use crate::scene::tree::node_id::NodeId;
 use crate::text::wrap::TextWrap;
 use crate::ui::harness::UiHarness;

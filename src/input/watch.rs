@@ -20,7 +20,7 @@
 //! is active (the mask check short-circuits the push), so idle frames
 //! pay nothing.
 
-use crate::input::keyboard::KeyPress;
+use crate::input::keyboard::key_press::KeyPress;
 use crate::input::shortcut::Shortcut;
 use bitflags::bitflags;
 

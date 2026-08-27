@@ -12,7 +12,7 @@ use crate::renderer::render_plan::{RenderKind, RenderPlan};
 
 use crate::Ui;
 use crate::scene::layer::Layer;
-use crate::scene::node::Configure;
+use crate::scene::node::configure::Configure;
 use crate::shape::Shape;
 use crate::ui::harness::UiHarness;
 use crate::widgets::panel::Panel;

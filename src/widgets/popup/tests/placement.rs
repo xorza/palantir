@@ -7,7 +7,7 @@ use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
-use crate::scene::node::Configure;
+use crate::scene::node::configure::Configure;
 use crate::ui::harness::UiHarness;
 use crate::widgets::panel::Panel;
 use crate::widgets::popup::Popup;

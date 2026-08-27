@@ -1,12 +1,13 @@
 //! The shared `HStack [box, label]` scaffolding behind the three
 //! toggle widgets, and the resolved chrome each hands it.
 
-use crate::input::response::ResponseState;
+use crate::input::response::response_state::ResponseState;
 use crate::layout::types::align::{Align, VAlign};
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
 use crate::primitives::text_input::TextInput;
-use crate::scene::node::{Configure, Node};
+use crate::scene::node::Node;
+use crate::scene::node::configure::Configure;
 use crate::ui::Ui;
 use crate::widgets::response::Response;
 use crate::widgets::text::Text;

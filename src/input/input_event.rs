@@ -1,6 +1,8 @@
 //! The crate's host-facing input vocabulary.
 
-use crate::input::keyboard::{Key, Modifiers, TextChunk};
+use crate::input::keyboard::key::Key;
+use crate::input::keyboard::modifiers::Modifiers;
+use crate::input::keyboard::text_chunk::TextChunk;
 use crate::input::pointer::PointerButton;
 use crate::input::zoom;
 use glam::Vec2;
@@ -49,7 +51,7 @@ pub enum InputEvent {
         key: Key,
         repeat: bool,
         /// Layout-independent physical key — see
-        /// [`KeyPress::physical`](crate::input::keyboard::KeyPress::physical).
+        /// [`KeyPress::physical`](crate::KeyPress::physical).
         physical: Key,
     },
     /// Committed text — a typed character or an IME composition that
@@ -101,7 +103,9 @@ impl InputEvent {
 #[cfg(test)]
 mod tests {
     use crate::input::input_event::InputEvent;
-    use crate::input::keyboard::{Key, Modifiers, TextChunk};
+    use crate::input::keyboard::key::Key;
+    use crate::input::keyboard::modifiers::Modifiers;
+    use crate::input::keyboard::text_chunk::TextChunk;
     use crate::input::pointer::PointerButton;
     use glam::Vec2;
 

@@ -1,7 +1,7 @@
 //! The non-frame affordances: the arena, the clipboard, a shared text
 //! cache, and the collision report.
 
-use crate::scene::node::Configure;
+use crate::scene::node::configure::Configure;
 use crate::ui::harness::tests::support::{SURFACE, button, target};
 use crate::ui::harness::*;
 use crate::widgets::button::Button;

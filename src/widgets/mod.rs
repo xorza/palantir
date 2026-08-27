@@ -122,7 +122,7 @@ macro_rules! style_setter {
     };
 }
 
-/// Implement [`Configure`](crate::scene::node::Configure) for widget
+/// Implement [`Configure`](crate::scene::node::configure::Configure) for widget
 /// builders that keep their [`Node`](crate::scene::node::Node) in a
 /// field called `node`.
 ///
@@ -141,10 +141,10 @@ macro_rules! style_setter {
 /// the macro's fixed `self.node` body can't express.
 macro_rules! impl_configure {
     (<$($param:ident $(: $bound:path)?),*> $ty:ty) => {
-        impl<$($param $(: $bound)?,)*> $crate::scene::node::Configure for $ty {
+        impl<$($param $(: $bound)?,)*> $crate::scene::node::configure::Configure for $ty {
             #[inline]
-            fn node_mut(&mut self) -> $crate::scene::node::ConfigureNode<'_> {
-                $crate::scene::node::Configure::node_mut(&mut self.node)
+            fn node_mut(&mut self) -> $crate::scene::node::configure::ConfigureNode<'_> {
+                $crate::scene::node::configure::Configure::node_mut(&mut self.node)
             }
         }
     };

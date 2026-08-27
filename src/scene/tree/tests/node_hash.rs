@@ -8,7 +8,7 @@ use crate::primitives::background::Background;
 use crate::primitives::color::{Color, ColorU8};
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
-use crate::scene::node::Configure;
+use crate::scene::node::configure::Configure;
 use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::tests::support::{SURFACE, record_cascade_static, record_hash};
 use crate::shape::Shape;

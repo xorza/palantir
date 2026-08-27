@@ -18,7 +18,7 @@ use crate::primitives::mesh::Mesh;
 use crate::primitives::rect::Rect;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::stroke::Stroke;
-use crate::scene::node::Configure;
+use crate::scene::node::configure::Configure;
 use crate::shape::Shape;
 use crate::shape::polyline::PolylineColors;
 use crate::shape::style::{LineCap, LineJoin};

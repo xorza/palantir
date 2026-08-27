@@ -7,7 +7,7 @@ use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::color::{Color, ColorU8};
 use crate::renderer::frontend::Frontend;
 use crate::renderer::render_plan::{RenderKind, RenderPlan};
-use crate::scene::node::Configure;
+use crate::scene::node::configure::Configure;
 use crate::ui::harness::UiHarness;
 use crate::widgets::frame::Frame;
 use criterion::{BenchmarkId, Criterion, Throughput};

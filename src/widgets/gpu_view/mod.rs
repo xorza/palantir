@@ -1,7 +1,8 @@
 use crate::layout::types::sizing::Sizing;
 use crate::renderer::gpu_paint::GpuPaint;
 use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
-use crate::scene::node::{Configure, Node};
+use crate::scene::node::Node;
+use crate::scene::node::configure::Configure;
 use crate::ui::Ui;
 use crate::widgets::response::Response;
 use std::cell::RefCell;

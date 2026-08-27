@@ -1,6 +1,6 @@
 //! A scroll accumulation bound to the widget it was routed to.
 
-use crate::input::response::ScrollDelta;
+use crate::input::response::scroll_delta::ScrollDelta;
 use crate::primitives::widget_id::WidgetId;
 
 /// Scroll accumulated this frame for one routed target. Held per

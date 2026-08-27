@@ -8,7 +8,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::renderer::frontend::Frontend;
 use crate::renderer::texture_limit::TextureLimit;
 use crate::scene::layer::Layer;
-use crate::scene::node::Configure;
+use crate::scene::node::configure::Configure;
 use crate::text::RENDERED_RUN_KEEP_FRAMES;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::wrap::TextWrap;

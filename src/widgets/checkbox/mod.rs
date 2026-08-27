@@ -1,7 +1,8 @@
 use crate::input::sense::Sense;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::text_input::TextInput;
-use crate::scene::node::{Configure, Node};
+use crate::scene::node::Node;
+use crate::scene::node::configure::Configure;
 use crate::shape::Shape;
 use crate::shape::polyline::PolylineColors;
 use crate::shape::style::{LineCap, LineJoin};

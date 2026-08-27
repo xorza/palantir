@@ -9,7 +9,7 @@ use crate::renderer::frontend::capture::PaintCall;
 use crate::renderer::frontend::encoder::tests::support::count_draw_rects;
 use crate::scene::damage::region::DamageRegion;
 use crate::scene::layer::Layer;
-use crate::scene::node::Configure;
+use crate::scene::node::configure::Configure;
 use crate::ui::harness::UiHarness;
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};

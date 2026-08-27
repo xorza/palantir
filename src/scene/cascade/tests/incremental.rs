@@ -14,7 +14,7 @@ use crate::scene::cascade::engine::{
 };
 
 use crate::scene::layer::Layer;
-use crate::scene::node::Configure;
+use crate::scene::node::configure::Configure;
 use crate::scene::seen_ids::Endpoint;
 use crate::scene::tree::node_id::NodeId;
 use crate::shape::Shape;

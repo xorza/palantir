@@ -1,7 +1,7 @@
 //! What a widget hands back: the lazy interaction handle, its owned
 //! snapshot, and the body-value pairing for widgets that take a closure.
 
-use crate::input::response::ResponseState;
+use crate::input::response::response_state::ResponseState;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::Ui;
 use std::cell::OnceCell;

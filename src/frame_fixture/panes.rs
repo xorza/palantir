@@ -12,7 +12,7 @@
 use crate::frame_fixture::FrameFixture;
 use crate::frame_fixture::tokens;
 use crate::layout::types::sizing::Sizing;
-use crate::scene::node::Configure;
+use crate::scene::node::configure::Configure;
 use crate::ui::Ui;
 use crate::widgets::panel::Panel;
 use crate::widgets::splitter::{SplitHalf, Splitter};

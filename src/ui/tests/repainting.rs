@@ -9,7 +9,7 @@ use crate::primitives::{color::Color, rect::Rect};
 use crate::renderer::render_plan::{RenderKind, RenderPlan};
 use crate::renderer::texture_limit::TextureLimit;
 use crate::scene::layer::Layer;
-use crate::scene::node::Configure;
+use crate::scene::node::configure::Configure;
 use crate::ui::harness::UiHarness;
 use crate::ui::tests::support::{SURFACE, add_blink_shape, ui_with_shared};
 use crate::widgets::{frame::Frame, panel::Panel, text::Text};
@@ -532,7 +532,7 @@ fn paint_only_skipped_when_widget_requested_repaint() {
 /// half of the test.
 #[test]
 fn input_policy_routes_paint_only_gate() {
-    use crate::input::keyboard::Key;
+    use crate::input::keyboard::key::Key;
     use crate::input::policy::{InputPolicy, InputSignal};
     use crate::ui::frame_report::FrameProcessing;
 

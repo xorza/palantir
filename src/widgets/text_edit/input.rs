@@ -2,8 +2,11 @@
 
 use crate::common::platform::{PLATFORM, Platform};
 use crate::input::key_class::KeyFilter;
-use crate::input::keyboard::{Key, KeyPress, KeyboardEvent, Modifiers};
-use crate::input::response::ResponseState;
+use crate::input::keyboard::key::Key;
+use crate::input::keyboard::key_press::KeyPress;
+use crate::input::keyboard::keyboard_event::KeyboardEvent;
+use crate::input::keyboard::modifiers::Modifiers;
+use crate::input::response::response_state::ResponseState;
 use crate::ui::Ui;
 use crate::widgets::text_edit::TextEditState;
 use crate::widgets::text_edit::action::EditAction;

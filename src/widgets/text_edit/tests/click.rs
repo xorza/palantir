@@ -31,7 +31,7 @@ fn keystrokes_ignored_when_not_focused() {
 
 #[test]
 fn unrouted_keyboard_input_is_not_delivered_after_focus_changes() {
-    use crate::input::keyboard::TextChunk;
+    use crate::input::keyboard::text_chunk::TextChunk;
 
     let mut h = UiHarness::with_text(SMALL);
     let mut buf = String::from("seed");

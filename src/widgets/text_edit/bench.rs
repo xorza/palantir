@@ -1,7 +1,7 @@
 use crate::bench::Run;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::node::Configure;
+use crate::scene::node::configure::Configure;
 use crate::ui::harness::UiHarness;
 use crate::widgets::text_edit::{TextEdit, TextEditState};
 use criterion::measurement::WallTime;

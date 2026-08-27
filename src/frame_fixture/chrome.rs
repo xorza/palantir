@@ -19,7 +19,7 @@ use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::stroke::Stroke;
-use crate::scene::node::Configure;
+use crate::scene::node::configure::Configure;
 use crate::ui::Ui;
 use crate::widgets::button::Button;
 use crate::widgets::frame::Frame;

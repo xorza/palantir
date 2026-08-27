@@ -21,7 +21,7 @@ use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::damage::Damage;
 use crate::scene::damage::region::DamageRegion;
-use crate::scene::node::Configure;
+use crate::scene::node::configure::Configure;
 use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::ui::harness::UiHarness;
