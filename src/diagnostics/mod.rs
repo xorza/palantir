@@ -1,7 +1,8 @@
-//! App-global diagnostic configuration and GPU measurement handles. This
-//! module contains only shared state and plain data; UI construction lives in
-//! `ui::frame_stats`, while backend collection lives in `renderer::backend`.
+//! App-global diagnostic configuration, the GPU measurement handles behind it,
+//! and the `frame_stats` overlay one of its flags turns on. Backend collection
+//! lives in `renderer::backend`.
 
+pub(crate) mod frame_stats;
 pub(crate) mod gpu_pass_stats;
 
 use std::cell::RefCell;

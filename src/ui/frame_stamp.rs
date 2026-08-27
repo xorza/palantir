@@ -1,4 +1,5 @@
-//! The per-frame monotonic time and active display.
+//! The per-frame monotonic time and active display, and the bundle a window
+//! driver hands them to `Ui::frame` in.
 
 use crate::display::Display;
 use std::time::Duration;
@@ -19,4 +20,18 @@ impl FrameStamp {
     pub(crate) fn new(display: Display, time: Duration) -> Self {
         Self { display, time }
     }
+}
+
+/// What a window driver hands `Ui::frame` on entry: the frame's stamp,
+/// plus whether last frame's damage snapshot still describes the surface
+/// — `false` forces a full repaint instead of a partial one.
+///
+/// A wrapper rather than two more fields on [`FrameStamp`], because only
+/// the stamp is retained: `FrameRuntime::prev_stamp` keeps one across
+/// frames, while the damage flag answers for the frame it arrives on and
+/// no other.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct FrameInput {
+    pub(crate) stamp: FrameStamp,
+    pub(crate) damage_baseline_valid: bool,
 }

@@ -1,3 +1,6 @@
+//! The opt-in frame-stats readout: the counters one frame publishes, and the
+//! `Layer::Debug` widget that draws them.
+
 use crate::layout::types::justify::Justify;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
@@ -10,6 +13,21 @@ use crate::ui::Ui;
 use crate::widgets::panel::Panel;
 use crate::widgets::text::Text;
 use crate::widgets::theme::text_style::TextStyle;
+
+/// One frame's diagnostic counters, as [`Ui::frame_stats`] snapshots them.
+///
+/// A snapshot rather than a borrow of the clock behind it: the readout
+/// records through `&mut Ui`, and no borrow taken off that `Ui` survives the
+/// widget calls that draw the label.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct FrameStats {
+    pub(crate) frame_id: u64,
+    pub(crate) render_frame_id: u64,
+    pub(crate) fps: f32,
+    pub(crate) settle_frames: u32,
+    /// Whole-pass GPU time of the last frame that read a timestamp back.
+    pub(crate) gpu_ms: Option<f32>,
+}
 
 /// The GPU-time segment of the readout, or nothing until timestamp readback
 /// yields a value — the first-frame readout must not reserve a misleading
@@ -31,17 +49,18 @@ impl std::fmt::Display for GpuSegment {
 }
 
 /// Record the opt-in FPS readout into the top-right of `Layer::Debug`.
-pub(super) fn record(ui: &mut Ui) {
-    let gpu = GpuSegment(ui.resources.diagnostics.gpu_pass_stats.last_pass_ms());
-    // Settling second record passes, over full-record frames. Read the
-    // *delta* across a gesture: a sustained drag that still double-records
-    // advances both halves in lockstep, one that doesn't advances only the
-    // right. Counted through the previous frame — this runs mid-pass, so
-    // the current frame's outcome isn't known yet.
-    let render_frame_id = ui.frame_runtime.render_frame_id;
-    let fps = ui.frame_runtime.fps_ema;
-    let settle_frames = ui.frame_runtime.settle_frames;
-    let frame_id = ui.frame_runtime.frame_id;
+pub(crate) fn record(ui: &mut Ui) {
+    let FrameStats {
+        frame_id,
+        render_frame_id,
+        fps,
+        settle_frames,
+        gpu_ms,
+    } = ui.frame_stats();
+    let gpu = GpuSegment(gpu_ms);
+    // `settle/frame` reads as a ratio across a gesture: a sustained drag that
+    // still double-records advances both halves in lockstep, one that stops
+    // advances only the right.
     let label = ui.fmt(format_args!(
         "f {render_frame_id} · {fps:>4.0} fps · settle {settle_frames}/{frame_id}{gpu}"
     ));

@@ -4,11 +4,11 @@ use glam::UVec2;
 
 use crate::display::Display;
 use crate::input::policy::{InputPolicy, InputSignal};
-use crate::ui::frame_plan::FrameClassifyInput;
-use crate::ui::frame_plan::FramePlan;
+use crate::ui::frame_runtime::FrameClassifyInput;
+use crate::ui::frame_runtime::FramePlan;
 use crate::ui::frame_runtime::FrameRuntime;
+use crate::ui::frame_runtime::wake::WakeReasons;
 use crate::ui::frame_stamp::FrameStamp;
-use crate::ui::wake_reasons::WakeReasons;
 
 #[derive(Clone, Copy, Debug)]
 struct Case {

@@ -36,7 +36,7 @@ use crate::renderer::render_plan::{RenderKind, RenderPlan};
 use crate::scene::damage::FULL_REPAINT_THRESHOLD;
 use crate::ui::Ui;
 use crate::ui::frame_engines::FrameEngines;
-use crate::ui::frame_input::FrameInput;
+use crate::ui::frame_stamp::FrameInput;
 use crate::ui::frame_stamp::FrameStamp;
 use crate::window::window_commands::WindowCommands;
 use crate::window::window_output::WindowOutput;
