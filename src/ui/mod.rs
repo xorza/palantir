@@ -11,17 +11,12 @@
 pub(crate) mod bench;
 mod frame_cycle;
 pub(crate) mod frame_engines;
-pub(crate) mod frame_input;
-pub(crate) mod frame_plan;
 pub(crate) mod frame_report;
 pub(crate) mod frame_runtime;
 pub(crate) mod frame_stamp;
-mod frame_stats;
 pub(crate) mod layer_scope;
 pub(crate) mod resources;
 pub(crate) mod state;
-pub(crate) mod wake;
-pub(crate) mod wake_reasons;
 
 use std::num::NonZeroU32;
 
@@ -32,6 +27,7 @@ use crate::animation::animatable::Animatable;
 use crate::app::App;
 use crate::common::clipboard::Clipboard;
 use crate::diagnostics::DebugOverlayConfig;
+use crate::diagnostics::frame_stats::FrameStats;
 use crate::display::Display;
 use crate::icons::icon_atlas::IconAtlas;
 use crate::icons::icon_set::IconSet;
@@ -77,13 +73,13 @@ use crate::scene::cascade::Cascade;
 use crate::shape::Lower;
 use crate::ui::frame_cycle::FrameCycle;
 use crate::ui::frame_engines::FrameEngines;
-use crate::ui::frame_input::FrameInput;
 use crate::ui::frame_report::FrameReport;
 use crate::ui::frame_runtime::FrameRuntime;
+use crate::ui::frame_runtime::wake::WakeReasons;
+use crate::ui::frame_stamp::FrameInput;
 use crate::ui::layer_scope::LayerScope;
 use crate::ui::resources::UiResources;
 use crate::ui::state::StateMap;
-use crate::ui::wake_reasons::WakeReasons;
 use crate::widgets::theme::Theme;
 use crate::widgets::widget::Widget;
 use crate::window::cursor_icon::CursorIcon;
@@ -731,6 +727,23 @@ impl Ui {
     #[inline]
     pub fn set_debug_overlay(&mut self, overlay: DebugOverlayConfig) {
         *self.resources.diagnostics.overlay.borrow_mut() = overlay;
+    }
+
+    /// This frame's diagnostic counters, for the [`frame_stats`] overlay.
+    ///
+    /// The overlay is an ordinary widget: it reaches `Layer::Debug` through
+    /// the same `&mut Ui` every other widget takes, and so has no path of its
+    /// own to the frame clock or the GPU handle these come off.
+    ///
+    /// [`frame_stats`]: crate::diagnostics::frame_stats
+    pub(crate) fn frame_stats(&self) -> FrameStats {
+        FrameStats {
+            frame_id: self.frame_runtime.frame_id,
+            render_frame_id: self.frame_runtime.render_frame_id,
+            fps: self.frame_runtime.fps_ema,
+            settle_frames: self.frame_runtime.settle_frames,
+            gpu_ms: self.resources.diagnostics.gpu_pass_stats.last_pass_ms(),
+        }
     }
 
     /// Whether a window addressed by `token` is currently live. Reflects

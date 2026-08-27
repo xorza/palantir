@@ -1,10 +1,13 @@
-//! Why a repaint wake was filed.
+//! The `FrameRuntime` repaint-wake queue's entry type, and the cause bitset
+//! each entry carries.
+
+use std::time::Duration;
 
 /// Bitset over wake causes. OR-merged when two requests coalesce
 /// onto the same deadline slot, so the frame-entry classifier can see
 /// every reason behind a fired wake — which is what picks
-/// [`FramePlan::PaintOnly`](crate::ui::frame_plan::FramePlan::PaintOnly)
-/// over [`FramePlan::FullRecord`](crate::ui::frame_plan::FramePlan::FullRecord)
+/// [`FramePlan::PaintOnly`](crate::ui::frame_runtime::FramePlan::PaintOnly)
+/// over [`FramePlan::FullRecord`](crate::ui::frame_runtime::FramePlan::FullRecord)
 /// in `FrameRuntime::take_frame_plan`. Bit set, not enum, because
 /// a single deadline can legitimately have both bits at once
 /// (paint-anim quantum aligning with a widget-scheduled wake).
@@ -34,4 +37,11 @@ impl WakeReasons {
     pub(super) fn is_anim_only(self) -> bool {
         self == Self::ANIM
     }
+}
+
+/// One entry on the `FrameRuntime` repaint-wake queue.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Wake {
+    pub(crate) deadline: Duration,
+    pub(crate) reasons: WakeReasons,
 }

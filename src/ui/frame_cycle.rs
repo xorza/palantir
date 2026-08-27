@@ -23,6 +23,7 @@
 
 use crate::app::App;
 use crate::common::tracy;
+use crate::diagnostics::frame_stats;
 use crate::display;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
@@ -32,12 +33,10 @@ use crate::scene::damage::{Damage, DamageInput};
 use crate::scene::node::Node;
 use crate::ui::Ui;
 use crate::ui::frame_engines::FrameEngines;
-use crate::ui::frame_input::FrameInput;
-use crate::ui::frame_plan::FrameClassifyInput;
-use crate::ui::frame_plan::FramePlan;
 use crate::ui::frame_report::{FrameProcessing, FrameReport};
-use crate::ui::frame_stats;
-use crate::ui::wake_reasons::WakeReasons;
+use crate::ui::frame_runtime::wake::WakeReasons;
+use crate::ui::frame_runtime::{FrameClassifyInput, FramePlan};
+use crate::ui::frame_stamp::FrameInput;
 use crate::window::cursor_icon::CursorIcon;
 use crate::window::window_token::WindowToken;
 
@@ -299,7 +298,7 @@ impl<'a> FrameCycle<'a> {
             app.record(win, self.ui);
         }
         let action_flag = self.ui.input.finish_record();
-        if self.ui.resources.diagnostics.overlay.borrow().frame_stats {
+        if self.ui.debug_overlay().frame_stats {
             frame_stats::record(self.ui);
         }
         self.ui.close_node();

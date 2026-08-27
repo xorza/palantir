@@ -1,16 +1,45 @@
-//! Retained clock and scheduling state for the `Ui` frame lifecycle.
+//! Retained clock and scheduling state for the `Ui` frame lifecycle, and the
+//! plan the frame's entry decision produces.
 //!
 //! The frame *output* (what a frame produced) lives in
 //! [`frame_report`](crate::ui::frame_report).
 
+pub(crate) mod wake;
+
 use crate::common::time::{ANIM_SUBSTEP_DT, MAX_ANIM_DT, coalesce_dt_for_refresh};
+use crate::display::Display;
+use crate::input::policy::{InputPolicy, InputSignal};
 use crate::primitives::approx::EPS;
-use crate::ui::frame_plan::{FrameClassifyInput, FramePlan};
 use crate::ui::frame_report::FrameProcessing;
+use crate::ui::frame_runtime::wake::{Wake, WakeReasons};
 use crate::ui::frame_stamp::FrameStamp;
-use crate::ui::wake::Wake;
-use crate::ui::wake_reasons::WakeReasons;
 use std::time::Duration;
+
+/// What `Ui::frame` should do this frame, decided at entry
+/// from fired wake reasons + input state + prior-frame validity.
+/// `PaintOnly` and `FullRecord` are mutually exclusive by construction
+/// — `paint_only ⇒ !force_full` is encoded in the variant shape
+/// instead of relying on two independent bools.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum FramePlan {
+    /// Skip pre_record / record / finalize / layout / cascade and
+    /// reuse the retained tree + cascade from the prior frame. Only
+    /// fired by the anim-only fast path.
+    PaintOnly,
+    /// Run record + (optional) double-layout + finalize. `force_full`
+    /// is true when the prior frame's damage snapshot must be
+    /// discarded (surface change, missed submit, first frame).
+    FullRecord { force_full: bool },
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(super) struct FrameClassifyInput {
+    pub(super) display: Display,
+    pub(super) damage_baseline_valid: bool,
+    pub(super) input_policy: InputPolicy,
+    pub(super) input_signal: InputSignal,
+    pub(super) close_requested: bool,
+}
 
 /// Retained clock and scheduling state owned by [`Ui`](crate::Ui).
 /// Grouping these fields keeps the frame lifecycle's reset and carry-over

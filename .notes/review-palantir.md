@@ -135,18 +135,6 @@ different answer depending on which call site asks it.
 
 ---
 
-## Types that outgrew their file
-
-- [ ] `Ui` (`src/ui/mod.rs`) is 1,655 lines and **91 methods** on one type,
-      spanning recording, input reads, focus, window open/close, vsync, cursor,
-      clipboard, image registration, icon loading, GPU views, debug overlay,
-      per-widget state, animation, text probing and theming. It is pinned at
-      5,256 bytes by `hot_struct_sizes_are_pinned`, and the pin's own comment
-      says every pass walks `&mut Ui` to reach five different engines. The file
-      carries no `//!`.
-
----
-
 ## Dead surface
 
 - [ ] `ClipMode::is_rounded` (`src/layout/types/clip_mode.rs:31`) has no caller
