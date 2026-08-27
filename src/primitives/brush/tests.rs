@@ -148,18 +148,16 @@ fn gradient_stop_count_is_enforced_by_construction_and_deserialization() {
             .collect::<Vec<_>>()
     };
     let serialized = |count: usize| {
-        if count == 0 {
-            return "stops = []\n".to_owned();
-        }
-        let mut document = String::new();
+        let mut document = String::from("(stops: [");
         for index in 0..count {
             let offset = index as f32 / count.max(1) as f32;
-            writeln!(
+            write!(
                 document,
-                "[[stops]]\noffset = {offset}\ncolor = {{ r = 255, g = 255, b = 255, a = 255 }}"
+                "(offset: {offset}, color: (r: 255, g: 255, b: 255, a: 255)),"
             )
             .unwrap();
         }
+        document.push_str("])");
         document
     };
 
@@ -167,7 +165,7 @@ fn gradient_stop_count_is_enforced_by_construction_and_deserialization() {
         let constructed =
             std::panic::catch_unwind(|| GradientStops::new(stops(count))).map(|value| value.len());
         let deserialized =
-            toml::from_str::<StopsDocument>(&serialized(count)).map(|value| value.stops.len());
+            ron::from_str::<StopsDocument>(&serialized(count)).map(|value| value.stops.len());
         let expected = (2..=MAX_STOPS).contains(&count);
         assert_eq!(constructed.is_ok(), expected, "constructor count {count}");
         assert_eq!(deserialized.is_ok(), expected, "deserializer count {count}",);
@@ -191,12 +189,14 @@ fn non_finite_stop_offsets_are_rejected_at_both_boundaries() {
         );
     }
 
-    for literal in ["nan", "inf", "-inf"] {
+    for literal in ["NaN", "inf", "-inf"] {
         let document = format!(
-            "[[stops]]\noffset = {literal}\ncolor = {{ r = 255, g = 255, b = 255, a = 255 }}\n\
-             [[stops]]\noffset = 1.0\ncolor = {{ r = 0, g = 0, b = 0, a = 255 }}\n"
+            "(stops: [\
+               (offset: {literal}, color: (r: 255, g: 255, b: 255, a: 255)),\
+               (offset: 1.0, color: (r: 0, g: 0, b: 0, a: 255)),\
+             ])"
         );
-        let error = toml::from_str::<StopsDocument>(&document).unwrap_err();
+        let error = ron::from_str::<StopsDocument>(&document).unwrap_err();
         assert!(
             error.to_string().contains("offset must be finite"),
             "{literal} produced unexpected error: {error}",
@@ -228,9 +228,8 @@ fn every_gradient_variant_round_trips_validated_stops() {
     ];
     for brush in brushes {
         let document = BrushDocument { brush };
-        let encoded = toml::to_string(&document).expect("serialize valid gradient");
-        let decoded =
-            toml::from_str::<BrushDocument>(&encoded).expect("deserialize valid gradient");
+        let encoded = ron::ser::to_string(&document).expect("serialize valid gradient");
+        let decoded = ron::from_str::<BrushDocument>(&encoded).expect("deserialize valid gradient");
         assert_eq!(decoded, document);
     }
 }

@@ -1,3 +1,6 @@
+use ron::Value;
+
+use super::pretty;
 use crate::widgets::theme::Theme;
 
 #[test]
@@ -57,27 +60,35 @@ fn scale_text_is_relative_and_total() {
 
 #[test]
 fn scale_text_reaches_every_font_size() {
-    fn walk(path: &str, before: &toml::Value, after: &toml::Value) {
+    fn walk(path: &str, before: &Value, after: &Value) {
         match (before, after) {
-            (toml::Value::Table(before), toml::Value::Table(after)) => {
+            (Value::Map(before), Value::Map(after)) => {
                 assert_eq!(
                     before.keys().collect::<Vec<_>>(),
                     after.keys().collect::<Vec<_>>(),
                     "key set changed at {path}"
                 );
-                for (key, value) in before {
-                    walk(&format!("{path}.{key}"), value, &after[key]);
+                for (key, value) in before.iter() {
+                    let name = match key {
+                        Value::String(name) => name.clone(),
+                        other => format!("{other:?}"),
+                    };
+                    walk(&format!("{path}.{name}"), value, &after[key]);
                 }
             }
-            (toml::Value::Array(before), toml::Value::Array(after)) => {
-                assert_eq!(before.len(), after.len(), "array len changed at {path}");
+            // A present `Option` is a node of its own, so it is stepped
+            // through rather than compared whole.
+            (Value::Option(Some(before)), Value::Option(Some(after))) => {
+                walk(path, before, after);
+            }
+            (Value::Seq(before), Value::Seq(after)) => {
+                assert_eq!(before.len(), after.len(), "seq len changed at {path}");
                 for (index, (before, after)) in before.iter().zip(after).enumerate() {
                     walk(&format!("{path}[{index}]"), before, after);
                 }
             }
-            (toml::Value::Float(before), toml::Value::Float(after))
-                if path.ends_with("font_size_px") =>
-            {
+            (Value::Number(before), Value::Number(after)) if path.ends_with("font_size_px") => {
+                let (before, after) = (before.into_f64(), after.into_f64());
                 assert!(
                     (after - before * 2.0).abs() < 1e-3,
                     "{path}: {after} is not double {before}"
@@ -87,72 +98,70 @@ fn scale_text_reaches_every_font_size() {
         }
     }
 
+    /// The theme as a generic tree. `Value` cannot name an enum variant, but
+    /// both sides are flattened the same way, so what is compared here still
+    /// differs exactly where the theme does.
+    fn tree(theme: &Theme) -> Value {
+        ron::from_str(&ron::ser::to_string(theme).expect("serialize")).expect("reparse")
+    }
+
     let mut theme = Theme::default();
-    let before = toml::Value::try_from(&theme).expect("serialize");
+    let before = tree(&theme);
     theme.scale_text(2.0);
-    let after = toml::Value::try_from(&theme).expect("serialize");
-    walk("theme", &before, &after);
+    walk("theme", &before, &tree(&theme));
 }
 
 #[test]
 fn theme_deserialization_rejects_invalid_text_metrics() {
     use crate::text::glyph_font::GlyphFont;
 
-    let valid = toml::to_string_pretty(&Theme::default()).expect("serialize default theme");
+    let valid = pretty(&Theme::default());
     let cases = [
-        ("zero font", "font_size_px = 16.0", "font_size_px = 0.0"),
-        (
-            "negative font",
-            "font_size_px = 16.0",
-            "font_size_px = -1.0",
-        ),
+        ("zero font", "font_size_px: 16.0", "font_size_px: 0.0"),
+        ("negative font", "font_size_px: 16.0", "font_size_px: -1.0"),
         (
             "sub-epsilon font",
-            "font_size_px = 16.0",
-            "font_size_px = 0.00005",
+            "font_size_px: 16.0",
+            "font_size_px: 0.00005",
         ),
-        (
-            "epsilon font",
-            "font_size_px = 16.0",
-            "font_size_px = 0.0001",
-        ),
-        ("NaN font", "font_size_px = 16.0", "font_size_px = nan"),
-        ("infinite font", "font_size_px = 16.0", "font_size_px = inf"),
+        ("epsilon font", "font_size_px: 16.0", "font_size_px: 0.0001"),
+        ("NaN font", "font_size_px: 16.0", "font_size_px: NaN"),
+        ("infinite font", "font_size_px: 16.0", "font_size_px: inf"),
         (
             "zero line height",
-            "line_height_mult = 1.2",
-            "line_height_mult = 0.0",
+            "line_height_mult: 1.2",
+            "line_height_mult: 0.0",
         ),
         (
             "negative line height",
-            "line_height_mult = 1.2",
-            "line_height_mult = -1.0",
+            "line_height_mult: 1.2",
+            "line_height_mult: -1.0",
         ),
         (
             "sub-epsilon line height",
-            "line_height_mult = 1.2",
-            "line_height_mult = 0.000001",
+            "line_height_mult: 1.2",
+            "line_height_mult: 0.000001",
         ),
         (
             "epsilon line height",
-            "line_height_mult = 1.2",
-            "line_height_mult = 0.00000625",
+            "line_height_mult: 1.2",
+            "line_height_mult: 0.00000625",
         ),
         (
             "NaN line height",
-            "line_height_mult = 1.2",
-            "line_height_mult = nan",
+            "line_height_mult: 1.2",
+            "line_height_mult: NaN",
         ),
         (
             "infinite line height",
-            "line_height_mult = 1.2",
-            "line_height_mult = inf",
+            "line_height_mult: 1.2",
+            "line_height_mult: inf",
         ),
     ];
 
     for (label, from, to) in cases {
         let invalid = valid.replacen(from, to, 1);
-        let error = toml::from_str::<Theme>(&invalid).expect_err(label);
+        let error = ron::from_str::<Theme>(&invalid).expect_err(label);
         assert!(
             error.to_string().contains(GlyphFont::METRICS_ERROR),
             "{label}: unexpected serde error: {error}",
@@ -174,10 +183,10 @@ fn scale_text_rejects_invalid_factors_without_partial_mutation() {
         ("sub-epsilon result", EPS / 32.0),
     ] {
         let mut theme = Theme::default();
-        let before = toml::to_string_pretty(&theme).expect("serialize before");
+        let before = pretty(&theme);
         let panic = catch_unwind(AssertUnwindSafe(|| theme.scale_text(factor)));
         assert!(panic.is_err(), "{label}: invalid factor was accepted");
-        let after = toml::to_string_pretty(&theme).expect("serialize after");
+        let after = pretty(&theme);
         assert_eq!(after, before, "{label}: theme was partially mutated");
     }
 }
@@ -202,8 +211,8 @@ fn scaled_theme_survives_a_serde_roundtrip() {
     let mut scaled = baseline;
     scaled.scale_text(2.0);
 
-    let serialized = toml::to_string_pretty(&scaled).expect("serialize scaled theme");
-    let mut parsed = toml::from_str::<Theme>(&serialized).expect("parse scaled theme");
+    let serialized = pretty(&scaled);
+    let mut parsed = ron::from_str::<Theme>(&serialized).expect("parse scaled theme");
     assert_eq!(parsed.text.font_size_px, body_font_size * 2.0);
     assert_eq!(parsed.tooltip.text.font_size_px, tooltip_font_size * 2.0);
     assert_eq!(

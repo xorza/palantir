@@ -27,20 +27,12 @@ fn a_nan_on_any_edge_is_screened_like_a_nan_corner() {
 
 use crate::primitives::spacing::*;
 
-fn ser(s: Spacing) -> String {
-    #[derive(Debug, serde::Serialize)]
-    struct W {
-        v: Spacing,
-    }
-    toml::to_string(&W { v: s }).expect("serialize")
+fn ser(v: Spacing) -> String {
+    ron::ser::to_string(&v).expect("serialize")
 }
 
-fn de(toml_str: &str) -> Spacing {
-    #[derive(Debug, serde::Deserialize)]
-    struct W {
-        v: Spacing,
-    }
-    toml::from_str::<W>(toml_str).expect("parse").v
+fn de(text: &str) -> Spacing {
+    ron::from_str(text).expect("parse")
 }
 
 #[test]
@@ -98,40 +90,36 @@ fn from_tuple_preserves_component_order() {
 #[test]
 fn serialize_picks_compact_form_per_symmetry() {
     let cases: &[(&str, Spacing, &str)] = &[
-        ("uniform_scalar", Spacing::all(4.0), "v = 4.0"),
-        (
-            "axis_pair_two_array",
-            Spacing::xy(4.0, 8.0),
-            "v = [4.0, 8.0]",
-        ),
+        ("uniform_scalar", Spacing::all(4.0), "4.0"),
+        ("axis_pair_two_array", Spacing::xy(4.0, 8.0), "[4.0,8.0]"),
         (
             "asymmetric_four_array",
             Spacing::new(1.0, 2.0, 3.0, 4.0),
-            "v = [1.0, 2.0, 3.0, 4.0]",
+            "[1.0,2.0,3.0,4.0]",
         ),
         (
             "diagonal_match_does_not_collapse",
             Spacing::new(1.0, 1.0, 2.0, 2.0),
-            "v = [1.0, 1.0, 2.0, 2.0]",
+            "[1.0,1.0,2.0,2.0]",
         ),
     ];
     for (label, s, want) in cases {
-        assert_eq!(ser(*s).trim(), *want, "case: {label}");
+        assert_eq!(ser(*s), *want, "case: {label}");
     }
 }
 
 #[test]
 fn deserialize_accepts_scalar_array_and_integer_forms() {
     let cases: &[(&str, &str, Spacing)] = &[
-        ("scalar", "v = 4.0", Spacing::all(4.0)),
-        ("integer_scalar", "v = 4", Spacing::all(4.0)),
-        ("two_element_array", "v = [4.0, 8.0]", Spacing::xy(4.0, 8.0)),
+        ("scalar", "4.0", Spacing::all(4.0)),
+        ("integer_scalar", "4", Spacing::all(4.0)),
+        ("two_element_array", "[4.0,8.0]", Spacing::xy(4.0, 8.0)),
         (
             "four_element_array",
-            "v = [1.0, 2.0, 3.0, 4.0]",
+            "[1.0,2.0,3.0,4.0]",
             Spacing::new(1.0, 2.0, 3.0, 4.0),
         ),
-        ("one_element_array_uniform", "v = [4.0]", Spacing::all(4.0)),
+        ("one_element_array_uniform", "[4.0]", Spacing::all(4.0)),
     ];
     for (label, input, want) in cases {
         assert_eq!(de(input), *want, "case: {label}");
@@ -140,14 +128,8 @@ fn deserialize_accepts_scalar_array_and_integer_forms() {
 
 #[test]
 fn deserialize_struct_form() {
-    let toml_str = r#"
-[v]
-left = 1.0
-top = 2.0
-right = 3.0
-bottom = 4.0
-"#;
-    assert_eq!(de(toml_str), Spacing::new(1.0, 2.0, 3.0, 4.0));
+    let text = "(left: 1.0, top: 2.0, right: 3.0, bottom: 4.0)";
+    assert_eq!(de(text), Spacing::new(1.0, 2.0, 3.0, 4.0));
 }
 
 #[test]

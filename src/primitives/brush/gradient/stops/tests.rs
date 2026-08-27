@@ -134,10 +134,12 @@ fn written_order_does_not_reach_identity() {
     struct Document {
         stops: GradientStops,
     }
-    let parsed = toml::from_str::<Document>(
-        "[[stops]]\noffset = 1.0\ncolor = { r = 7, g = 8, b = 9, a = 255 }\n\
-         [[stops]]\noffset = 0.0\ncolor = { r = 1, g = 2, b = 3, a = 255 }\n\
-         [[stops]]\noffset = 0.5\ncolor = { r = 4, g = 5, b = 6, a = 255 }\n",
+    let parsed = ron::from_str::<Document>(
+        "(stops: [\
+           (offset: 1.0, color: (r: 7, g: 8, b: 9, a: 255)),\
+           (offset: 0.0, color: (r: 1, g: 2, b: 3, a: 255)),\
+           (offset: 0.5, color: (r: 4, g: 5, b: 6, a: 255)),\
+         ])",
     )
     .expect("three valid stops")
     .stops;

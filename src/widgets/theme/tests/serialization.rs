@@ -7,12 +7,14 @@ use crate::widgets::theme::Theme;
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::theme::widget_look::WidgetLook;
 
+use super::pretty;
+
 #[test]
-fn default_theme_roundtrips_through_toml() {
+fn default_theme_roundtrips_through_ron() {
     let theme = Theme::default();
-    let serialized = toml::to_string_pretty(&theme).expect("serialize");
-    let parsed: Theme = toml::from_str(&serialized).expect("parse");
-    let reserialized = toml::to_string_pretty(&parsed).expect("re-serialize");
+    let serialized = pretty(&theme);
+    let parsed: Theme = ron::from_str(&serialized).expect("parse");
+    let reserialized = pretty(&parsed);
     assert_eq!(serialized, reserialized);
 }
 
@@ -31,8 +33,8 @@ fn widget_look_serde_roundtrip() {
         },
     ];
     for look in cases {
-        let serialized = toml::to_string_pretty(&look).expect("serialize");
-        let parsed: WidgetLook = toml::from_str(&serialized).expect("parse");
+        let serialized = pretty(&look);
+        let parsed: WidgetLook = ron::from_str(&serialized).expect("parse");
         assert_eq!(look, parsed);
     }
 }
