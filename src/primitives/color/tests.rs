@@ -49,16 +49,10 @@ fn rgb_is_const_constructible() {
     const _HEX: Color = Color::hex(0x3366CC);
 }
 
-/// Roundtrip a Color through TOML and parse the emitted hex back.
-/// Wraps in a tiny struct because TOML's top level must be a table.
-fn toml_roundtrip(c: Color) -> (String, Color) {
-    #[derive(Debug, serde::Serialize, serde::Deserialize)]
-    struct W {
-        c: Color,
-    }
-    let s = toml::to_string(&W { c }).expect("serialize");
-    let parsed: W = toml::from_str(&s).expect("parse");
-    (s, parsed.c)
+/// Roundtrip a Color through RON and parse the emitted hex back.
+fn ron_roundtrip(c: Color) -> (String, Color) {
+    let s = ron::ser::to_string(&c).expect("serialize");
+    (s.clone(), ron::from_str(&s).expect("parse"))
 }
 
 /// Pin: serializing a Color and re-serializing the parse converges
@@ -68,8 +62,8 @@ fn toml_roundtrip(c: Color) -> (String, Color) {
 fn hex_round_trip_stable_over_all_bytes() {
     for byte in 0u8..=255 {
         let c = Color::rgb_u8(byte, byte, byte);
-        let (s1, parsed) = toml_roundtrip(c);
-        let (s2, _) = toml_roundtrip(parsed);
+        let (s1, parsed) = ron_roundtrip(c);
+        let (s2, _) = ron_roundtrip(parsed);
         assert_eq!(s1, s2, "byte {byte} did not round-trip stably");
     }
 }
@@ -81,12 +75,12 @@ fn hex_round_trip_stable_over_all_bytes() {
 fn opaque_emits_six_digits_translucent_emits_eight() {
     // 0.2 → 0x33, 0.4 → 0x66, 0.8 → 0xcc once round-tripped through
     // the cubic / Newton inverse pair.
-    let (s, _) = toml_roundtrip(Color::rgb(0.2, 0.4, 0.8));
+    let (s, _) = ron_roundtrip(Color::rgb(0.2, 0.4, 0.8));
     assert!(
         s.contains(r##""#3366cc""##),
         "opaque must emit 6 digits: {s}"
     );
-    let (s, _) = toml_roundtrip(Color::rgba(0.2, 0.4, 0.8, 0.5));
+    let (s, _) = ron_roundtrip(Color::rgba(0.2, 0.4, 0.8, 0.5));
     assert!(
         s.contains(r##""#3366cc80""##),
         "translucent must emit 8 digits: {s}"
@@ -97,8 +91,8 @@ fn opaque_emits_six_digits_translucent_emits_eight() {
 #[test]
 fn extremes_round_trip() {
     for c in [Color::TRANSPARENT, Color::WHITE, Color::BLACK] {
-        let (s1, p) = toml_roundtrip(c);
-        let (s2, _) = toml_roundtrip(p);
+        let (s1, p) = ron_roundtrip(c);
+        let (s2, _) = ron_roundtrip(p);
         assert_eq!(s1, s2);
     }
 }

@@ -83,7 +83,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"], optional = tr
 [dev-dependencies]
 backtrace = "0.3"
 static_assertions = "1.1"
-toml = "1.1"
+ron = "0.12"
 
 [[test]]
 name = "visual"

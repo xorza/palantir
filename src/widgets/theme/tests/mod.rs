@@ -4,6 +4,9 @@ mod style_override;
 mod text_scale;
 mod tooltip;
 
+use ron::ser::PrettyConfig;
+use serde::Serialize;
+
 use crate::widgets::theme::Theme;
 use crate::widgets::theme::button::ButtonTheme;
 use crate::widgets::theme::context_menu::ContextMenuTheme;
@@ -46,3 +49,8 @@ assert_not_impl_any!(TooltipTheme: Copy);
 assert_not_impl_any!(AnimatedLook: Copy);
 assert_not_impl_any!(StatefulLook: Copy);
 assert_not_impl_any!(WidgetLook: Copy);
+
+/// A theme as RON text — what the tests below serialize, edit and compare.
+fn pretty<T: Serialize>(value: &T) -> String {
+    ron::ser::to_string_pretty(value, PrettyConfig::default()).expect("serialize")
+}

@@ -68,81 +68,50 @@ fn anim_spec_serde_validates_and_roundtrips() {
     ];
     for spec in cases {
         let h = Holder { spec };
-        let s = toml::to_string(&h).expect("serialize");
-        let back: Holder = toml::from_str(&s).expect("parse");
-        assert_eq!(back, h, "roundtrip mismatch for {spec:?}\nTOML:\n{s}");
+        let s = ron::ser::to_string(&h).expect("serialize");
+        let back: Holder = ron::from_str(&s).expect("parse");
+        assert_eq!(back, h, "roundtrip mismatch for {spec:?}\nRON:\n{s}");
     }
 
-    let canonical: Holder = toml::from_str(
-        r#"
-                [spec]
-                kind = "duration"
-                secs = 0.00005
-                ease = "linear"
-            "#,
-    )
-    .expect("sub-epsilon duration is a valid instant");
+    let canonical: Holder =
+        ron::from_str(r#"(spec: (kind: "duration", secs: 0.00005, ease: "linear"))"#)
+            .expect("sub-epsilon duration is a valid instant");
     assert!(canonical.spec.is_instant());
     assert!(
-        toml::to_string(&canonical)
+        ron::ser::to_string(&canonical)
             .expect("serialize canonical duration")
-            .contains("secs = 0.0"),
+            .contains("secs:0.0"),
     );
 
     let invalid = [
         (
             "negative duration",
-            r#"
-                    [spec]
-                    kind = "duration"
-                    secs = -1.0
-                    ease = "linear"
-                "#,
+            r#"(spec: (kind: "duration", secs: -1.0, ease: "linear"))"#,
             "animation duration must be finite and in 0.0..=60.0 seconds",
         ),
         (
             "non-finite duration",
-            r#"
-                    [spec]
-                    kind = "duration"
-                    secs = nan
-                    ease = "linear"
-                "#,
+            r#"(spec: (kind: "duration", secs: NaN, ease: "linear"))"#,
             "animation duration must be finite and in 0.0..=60.0 seconds",
         ),
         (
             "non-positive spring",
-            r#"
-                    [spec]
-                    kind = "spring"
-                    stiffness = 170.0
-                    damping = 0.0
-                "#,
+            r#"(spec: (kind: "spring", stiffness: 170.0, damping: 0.0))"#,
             "spring parameters must be positive, finite, convergent, and within the integration limit",
         ),
         (
             "slow spring",
-            r#"
-                    [spec]
-                    kind = "spring"
-                    stiffness = 1.0
-                    damping = 100.0
-                "#,
+            r#"(spec: (kind: "spring", stiffness: 1.0, damping: 100.0))"#,
             "spring parameters must be positive, finite, convergent, and within the integration limit",
         ),
         (
             "expensive spring",
-            r#"
-                    [spec]
-                    kind = "spring"
-                    stiffness = 3.4028235e38
-                    damping = 2.0
-                "#,
+            r#"(spec: (kind: "spring", stiffness: 3.4028235e38, damping: 2.0))"#,
             "spring parameters must be positive, finite, convergent, and within the integration limit",
         ),
     ];
     for (label, input, expected) in invalid {
-        let error = toml::from_str::<Holder>(input).expect_err(label);
+        let error = ron::from_str::<Holder>(input).expect_err(label);
         assert!(
             error.to_string().contains(expected),
             "{label}: unexpected serde error: {error}",

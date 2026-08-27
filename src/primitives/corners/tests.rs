@@ -1,21 +1,12 @@
 use crate::primitives::approx::EPS;
 use crate::primitives::corners::*;
 
-/// Wrap in a tiny struct so we can use TOML — top-level must be a table.
-fn ser(c: Corners) -> String {
-    #[derive(Debug, serde::Serialize)]
-    struct W {
-        v: Corners,
-    }
-    toml::to_string(&W { v: c }).expect("serialize")
+fn ser(v: Corners) -> String {
+    ron::ser::to_string(&v).expect("serialize")
 }
 
-fn de(toml_str: &str) -> Corners {
-    #[derive(Debug, serde::Deserialize)]
-    struct W {
-        v: Corners,
-    }
-    toml::from_str::<W>(toml_str).expect("parse").v
+fn de(text: &str) -> Corners {
+    ron::from_str(text).expect("parse")
 }
 
 #[test]
@@ -124,44 +115,44 @@ fn convenience_ctors() {
 #[test]
 fn serialize_picks_compact_form_per_symmetry() {
     let cases: &[(&str, Corners, &str)] = &[
-        ("uniform_scalar", Corners::all(4.0), "v = 4.0"),
+        ("uniform_scalar", Corners::all(4.0), "4.0"),
         (
             "matched_pairs_two_array",
             Corners::new(4.0, 4.0, 8.0, 8.0),
-            "v = [4.0, 8.0]",
+            "[4.0,8.0]",
         ),
         (
             "asymmetric_four_array",
             Corners::new(1.0, 2.0, 3.0, 4.0),
-            "v = [1.0, 2.0, 3.0, 4.0]",
+            "[1.0,2.0,3.0,4.0]",
         ),
         (
             "near_matched_does_not_collapse",
             Corners::new(1.0, 2.0, 1.0, 2.0),
-            "v = [1.0, 2.0, 1.0, 2.0]",
+            "[1.0,2.0,1.0,2.0]",
         ),
     ];
     for (label, c, want) in cases {
-        assert_eq!(ser(*c).trim(), *want, "case: {label}");
+        assert_eq!(ser(*c), *want, "case: {label}");
     }
 }
 
 #[test]
 fn deserialize_accepts_scalar_array_and_integer_forms() {
     let cases: &[(&str, &str, Corners)] = &[
-        ("scalar", "v = 4.0", Corners::all(4.0)),
-        ("integer_scalar", "v = 4", Corners::all(4.0)),
+        ("scalar", "4.0", Corners::all(4.0)),
+        ("integer_scalar", "4", Corners::all(4.0)),
         (
             "two_element_array",
-            "v = [4.0, 8.0]",
+            "[4.0,8.0]",
             Corners::new(4.0, 4.0, 8.0, 8.0),
         ),
         (
             "four_element_array",
-            "v = [1.0, 2.0, 3.0, 4.0]",
+            "[1.0,2.0,3.0,4.0]",
             Corners::new(1.0, 2.0, 3.0, 4.0),
         ),
-        ("one_element_array_uniform", "v = [4.0]", Corners::all(4.0)),
+        ("one_element_array_uniform", "[4.0]", Corners::all(4.0)),
     ];
     for (label, input, want) in cases {
         assert_eq!(de(input), *want, "case: {label}");
@@ -170,14 +161,8 @@ fn deserialize_accepts_scalar_array_and_integer_forms() {
 
 #[test]
 fn deserialize_struct_form() {
-    let toml_str = r#"
-[v]
-tl = 1.0
-tr = 2.0
-br = 3.0
-bl = 4.0
-"#;
-    assert_eq!(de(toml_str), Corners::new(1.0, 2.0, 3.0, 4.0));
+    let text = "(tl: 1.0, tr: 2.0, br: 3.0, bl: 4.0)";
+    assert_eq!(de(text), Corners::new(1.0, 2.0, 3.0, 4.0));
 }
 
 #[test]
