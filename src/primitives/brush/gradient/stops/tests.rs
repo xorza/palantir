@@ -104,6 +104,10 @@ fn offset_and_colour_stay_independent() {
 /// gradient's key, so two spellings of one ramp that bake the same
 /// LUT row have to hash and compare the same, or they take two atlas
 /// rows and two eviction slots apiece.
+///
+/// Both doors have to establish the order, so both are driven here: the
+/// constructor a caller authors through, and the deserializer a theme
+/// arrives through.
 #[test]
 fn written_order_does_not_reach_identity() {
     let a = ColorU8::rgb(1, 2, 3);
@@ -123,6 +127,22 @@ fn written_order_does_not_reach_identity() {
     // whichever order it was written in.
     let offsets: Vec<u8> = shuffled.iter().map(|s| s.offset_u8).collect();
     assert_eq!(offsets, vec![0, 128, 255]);
+
+    // The deserializer is the other door onto the same invariant, and it
+    // kept the wire order until it started routing through the sort too.
+    #[derive(Debug, serde::Deserialize)]
+    struct Document {
+        stops: GradientStops,
+    }
+    let parsed = toml::from_str::<Document>(
+        "[[stops]]\noffset = 1.0\ncolor = { r = 7, g = 8, b = 9, a = 255 }\n\
+         [[stops]]\noffset = 0.0\ncolor = { r = 1, g = 2, b = 3, a = 255 }\n\
+         [[stops]]\noffset = 0.5\ncolor = { r = 4, g = 5, b = 6, a = 255 }\n",
+    )
+    .expect("three valid stops")
+    .stops;
+    assert_eq!(parsed, ascending, "a parsed theme is the same gradient");
+    assert_eq!(digest(&parsed), digest(&ascending));
 
     // Equal offsets keep their written order, so a hard break still
     // reads in the direction it was authored.

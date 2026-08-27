@@ -9,9 +9,10 @@ use glam::Vec2;
 /// All coordinates are in **logical pixels** (DIPs). Backends are responsible
 /// for any physical→logical conversion before dispatching.
 ///
-/// Every scalar a variant carries is screened by [`Self::is_actionable`]
-/// before anything reads it, so a host may forward whatever its platform
-/// reported without filtering first.
+/// Every scalar a variant carries is screened at ingress — a non-finite
+/// coordinate or delta, and a zoom factor that is not strictly positive,
+/// are discarded before anything reads them — so a host may forward
+/// whatever its platform reported without filtering first.
 #[derive(Clone, Copy, Debug)]
 pub enum InputEvent {
     /// Pointer position in logical pixels, relative to the surface origin.
@@ -38,8 +39,7 @@ pub enum InputEvent {
     /// Multiple events in one frame multiply into their event-time
     /// pinch targets' zoom totals. Wheel-based zoom is *not*
     /// translated into `Zoom` — the active scroll widget decides at
-    /// record time whether wheel ticks count as pan or zoom. Non-positive
-    /// and non-finite factors are discarded at ingress.
+    /// record time whether wheel ticks count as pan or zoom.
     Zoom(f32),
     /// Logical key was pressed. `repeat` reflects OS-level key repeat
     /// (held keys re-emit). Modifier state isn't carried on the event;
@@ -84,7 +84,7 @@ impl InputEvent {
     /// with a value, not in whether they can hold a NaN. Zoom asks the
     /// stricter of the two questions — a factor composes by multiplication,
     /// so it must be strictly positive as well as finite.
-    pub(crate) fn is_actionable(&self) -> bool {
+    pub(crate) fn is_valid(&self) -> bool {
         match self {
             Self::PointerMoved(p) | Self::ScrollPixels(p) | Self::ScrollLines(p) => p.is_finite(),
             Self::Zoom(factor) => zoom::is_valid(*factor),
@@ -120,14 +120,14 @@ mod tests {
                     InputEvent::ScrollPixels(axis),
                     InputEvent::ScrollLines(axis),
                 ] {
-                    assert!(!event.is_actionable(), "{event:?}");
+                    assert!(!event.is_valid(), "{event:?}");
                 }
             }
-            assert!(!InputEvent::Zoom(value).is_actionable(), "zoom {value}");
+            assert!(!InputEvent::Zoom(value).is_valid(), "zoom {value}");
         }
         // Zoom is the stricter question: finite is not enough.
         for factor in [0.0, -0.0, -1.0] {
-            assert!(!InputEvent::Zoom(factor).is_actionable(), "zoom {factor}");
+            assert!(!InputEvent::Zoom(factor).is_valid(), "zoom {factor}");
         }
 
         let ok: &[InputEvent] = &[
@@ -148,7 +148,7 @@ mod tests {
             InputEvent::ModifiersChanged(Modifiers::default()),
         ];
         for event in ok {
-            assert!(event.is_actionable(), "{event:?}");
+            assert!(event.is_valid(), "{event:?}");
         }
     }
 }

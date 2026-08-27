@@ -33,7 +33,7 @@ pub(super) fn translate(event: &WindowEvent, scale_factor: f32, mut emit: impl F
         }
         // A pinch delta is a displacement, so the factor is `1 + delta`.
         // Emitted unscreened like every other payload here: what a factor
-        // has to satisfy is `InputEvent::is_actionable`'s question.
+        // has to satisfy is `InputEvent::is_valid`'s question.
         WindowEvent::PinchGesture { delta, .. } => {
             emit(InputEvent::Zoom(1.0 + *delta as f32));
         }
