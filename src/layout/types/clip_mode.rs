@@ -28,7 +28,4 @@ impl ClipMode {
     pub const fn is_clip(self) -> bool {
         !matches!(self, ClipMode::None)
     }
-    pub const fn is_rounded(self) -> bool {
-        matches!(self, ClipMode::Rounded)
-    }
 }
