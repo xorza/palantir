@@ -3,7 +3,7 @@
 use crate::bench::Run;
 use crate::primitives::background::Background;
 use crate::primitives::brush::Brush;
-use crate::primitives::brush::gradient::linear::LinearGradient;
+use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::color::{Color, ColorU8};
 use crate::renderer::frontend::Frontend;
 use crate::renderer::render_plan::{RenderKind, RenderPlan};

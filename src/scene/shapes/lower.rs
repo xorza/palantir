@@ -23,8 +23,8 @@ use crate::primitives::approx::FloatHash;
 use crate::primitives::arc::arc_bbox;
 use crate::primitives::background::Background;
 use crate::primitives::bezier::{CurveBounds, cubic_bezier_bbox, quadratic_to_cubic};
-use crate::primitives::brush::gradient::linear::LinearGradient;
-use crate::primitives::brush::{Brush, CurveBrush};
+use crate::primitives::brush::Brush;
+use crate::primitives::brush::gradient::{Gradient, GradientGeometry};
 use crate::primitives::color::{Color, ColorU8};
 use crate::primitives::corners::Corners;
 use crate::primitives::fill_kind::FillKind;
@@ -88,16 +88,24 @@ fn solid_brush(color: Color) -> LoweredBrush {
     }
 }
 
-fn linear_brush(store: &RecordStore, gradient: &LinearGradient) -> LoweredBrush {
+/// Lower one gradient kind. `tag` and `kind` are the two things the
+/// three kinds do not share — the discriminant byte that keeps their
+/// content hashes apart, and the marker the shader branches on.
+fn gradient_brush<G: GradientGeometry>(
+    store: &RecordStore,
+    tag: u8,
+    kind: FillKind,
+    gradient: &Gradient<G>,
+) -> LoweredBrush {
     stored_gradient(
         store,
         RecordedGradient {
             axis: gradient.axis(),
-            kind: FillKind::linear(gradient.spread),
+            kind,
             stops: gradient.stops,
             interp: gradient.interp,
         },
-        grad_hash(0, gradient),
+        grad_hash(tag, gradient),
     )
 }
 
@@ -118,34 +126,9 @@ pub(crate) fn brush(store: &RecordStore, b: &Brush) -> LoweredBrush {
     }
     match b {
         Brush::Solid(color) => solid_brush(*color),
-        Brush::Linear(gradient) => linear_brush(store, gradient),
-        Brush::Radial(gradient) => stored_gradient(
-            store,
-            RecordedGradient {
-                axis: gradient.axis(),
-                kind: FillKind::radial(gradient.spread),
-                stops: gradient.stops,
-                interp: gradient.interp,
-            },
-            grad_hash(1, gradient),
-        ),
-        Brush::Conic(gradient) => stored_gradient(
-            store,
-            RecordedGradient {
-                axis: gradient.axis(),
-                kind: FillKind::conic(gradient.spread),
-                stops: gradient.stops,
-                interp: gradient.interp,
-            },
-            grad_hash(2, gradient),
-        ),
-    }
-}
-
-fn curve_brush(store: &RecordStore, brush: &CurveBrush) -> LoweredBrush {
-    match brush {
-        CurveBrush::Solid(color) => solid_brush(*color),
-        CurveBrush::Linear(gradient) => linear_brush(store, gradient),
+        Brush::Linear(g) => gradient_brush(store, 0, FillKind::linear(g.spread), g),
+        Brush::Radial(g) => gradient_brush(store, 1, FillKind::radial(g.spread), g),
+        Brush::Conic(g) => gradient_brush(store, 2, FillKind::conic(g.spread), g),
     }
 }
 
@@ -386,14 +369,18 @@ pub(crate) fn cubic_bezier(
     ctrl: [Vec2; 4],
     stroke: CurveStroke,
 ) -> ShapeRecord {
-    let CurveStroke { width, brush, cap } = stroke;
+    let CurveStroke {
+        width,
+        brush: paint,
+        cap,
+    } = stroke;
     let [p0, p1, p2, p3] = ctrl;
     let CurveBounds { lo, hi } = cubic_bezier_bbox(p0, p1, p2, p3);
     curve_record(
         CurveBasis::Cubic { p0, p1, p2, p3 },
         Rect::from_min_max(lo, hi),
         width,
-        curve_brush(store, &brush),
+        brush(store, paint.as_brush()),
         cap,
     )
 }
@@ -435,7 +422,11 @@ pub(crate) fn arc(
     sweep: f32,
     stroke: CurveStroke,
 ) -> ShapeRecord {
-    let CurveStroke { width, brush, cap } = stroke;
+    let CurveStroke {
+        width,
+        brush: paint,
+        cap,
+    } = stroke;
     debug_assert!(
         sweep.abs() <= TAU + 1.0e-4,
         "Shape::arc sweep {sweep} exceeds a full circle (±2π)"
@@ -451,7 +442,7 @@ pub(crate) fn arc(
         },
         Rect::from_min_max(lo, hi),
         width,
-        curve_brush(store, &brush),
+        brush(store, paint.as_brush()),
         cap,
     )
 }
@@ -487,9 +478,9 @@ mod tests {
 
     use super::brush;
     use crate::primitives::brush::Brush;
-    use crate::primitives::brush::gradient::conic::ConicGradient;
-    use crate::primitives::brush::gradient::linear::LinearGradient;
-    use crate::primitives::brush::gradient::radial::RadialGradient;
+    use crate::primitives::brush::gradient::conic_geometry::ConicGradient;
+    use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
+    use crate::primitives::brush::gradient::radial_geometry::RadialGradient;
     use crate::primitives::brush::gradient::{Interp, Spread};
     use crate::primitives::color::ColorU8;
     use crate::scene::record_store::RecordStore;

@@ -27,37 +27,6 @@ mod measuring;
 use crate::layout::grid::arranging::arrange_inner;
 use crate::layout::grid::measuring::measure_inner;
 
-#[cfg(test)]
-pub(crate) mod test_support {
-    use crate::layout::grid::axis_scratch::{AxisScratch, HugRanges};
-    use crate::layout::types::track::Track;
-
-    /// Grid's Phase-3 Fill distributor over the same `(weight, floor,
-    /// cap)` triples `stack::test_support::distribute_fill` takes, with no
-    /// Fixed or Hug tracks and no gap so `total` is the whole leftover.
-    pub(crate) fn distribute_fill(items: &[(f32, f32, f32)], total: f32) -> Vec<f32> {
-        let tracks: Vec<Track> = items
-            .iter()
-            .map(|&(weight, _, cap)| Track::fill_weight(weight).max(cap))
-            .collect();
-        let floors: Vec<f32> = items.iter().map(|&(_, floor, _)| floor).collect();
-        let unused_max = vec![0.0; items.len()];
-        let mut axis = AxisScratch::default();
-        axis.reset(items.len());
-        axis.resolve_axis(
-            &tracks,
-            HugRanges {
-                min: &floors,
-                max: &unused_max,
-            },
-            total,
-            0.0,
-            false,
-        );
-        axis.sizes.clone()
-    }
-}
-
 #[derive(Debug)]
 pub(super) struct Grid;
 

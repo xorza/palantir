@@ -24,7 +24,7 @@ fn finish_hash(write: impl FnOnce(&mut DefaultHasher)) -> u64 {
 /// NaN before any of them is ever reached.
 #[test]
 fn every_paint_noop_predicate_treats_nan_as_invisible() {
-    use crate::primitives::brush::{Brush, CurveBrush};
+    use crate::primitives::brush::Brush;
     use crate::primitives::color::{Color, ColorF16};
     use crate::primitives::mesh::Mesh;
     use crate::primitives::shadow::Shadow;
@@ -72,10 +72,6 @@ fn every_paint_noop_predicate_treats_nan_as_invisible() {
             ShapeStroke::from(Stroke::solid(nan_color, 2.0)).is_noop(),
         ),
         ("Brush::is_noop", Brush::Solid(nan_color).is_noop()),
-        (
-            "CurveBrush::is_noop",
-            CurveBrush::Solid(nan_color).is_noop(),
-        ),
         (
             "Shadow::is_noop/color",
             Shadow {

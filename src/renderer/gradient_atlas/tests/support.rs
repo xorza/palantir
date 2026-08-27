@@ -2,7 +2,7 @@
 //! intended.
 
 use crate::common::hash::Hasher;
-use crate::primitives::brush::gradient::linear::LinearGradient;
+use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::color::ColorU8;
 use crate::renderer::gradient_atlas::*;
 use std::hash::Hasher as _;

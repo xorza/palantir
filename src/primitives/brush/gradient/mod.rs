@@ -1,75 +1,19 @@
-use crate::primitives::brush::gradient::stops::{MAX_STOPS, Stop};
+//! Gradients: one [`Gradient`] type parameterized by the geometry payload
+//! that distinguishes the linear, radial and conic kinds.
+//!
+//! Everything a gradient carries beside that payload — the stop list, the
+//! spread mode, the interpolation space, the builder, the cache-key hash
+//! and the NaN screen — is identical across the three kinds and is
+//! written once here.
+
+use crate::primitives::brush::gradient::stops::{GradientStops, Stop};
 use crate::primitives::half_simd::F16x4;
-use tinyvec::ArrayVec;
+use crate::primitives::nan::NanCheck;
 
-/// The stop and modifier setters every gradient *builder* shares.
-///
-/// All three kinds (linear, radial, conic) are authored through a
-/// `…Builder` that accumulates into a `common` field, so `stop` pushes
-/// into it and the two modifiers write through it. Non-`const`, unlike the
-/// finished-gradient twin below, because pushing a stop is a runtime write.
-///
-/// Paired with `gradient_common!`: the two spell `with_spread` /
-/// `with_interp` alike on purpose, so a caller needn't know which side of
-/// the build it is holding.
-macro_rules! gradient_builder_common {
-    ($t:ty) => {
-        impl $t {
-            /// Add a color stop at `offset`, clamped to the 0..=1 gradient range.
-            pub fn stop(mut self, offset: f32, color: impl Into<ColorU8>) -> Self {
-                self.common.push(Stop::new(offset, color));
-                self
-            }
-
-            pub fn with_spread(mut self, spread: Spread) -> Self {
-                self.common.spread = spread;
-                self
-            }
-
-            pub fn with_interp(mut self, interp: Interp) -> Self {
-                self.common.interp = interp;
-                self
-            }
-        }
-    };
-}
-
-/// The modifier setters and the no-op test every *finished* gradient shares.
-///
-/// The `const` counterpart to [`gradient_builder_common!`]'s modifiers:
-/// once a builder is resolved, `spread` and `interp` are flat fields rather
-/// than entries in an accumulator, so overriding either is a const move.
-/// `is_noop` rides along because it reads the resolved stop list, which
-/// only exists on this side.
-macro_rules! gradient_common {
-    ($t:ty) => {
-        impl $t {
-            /// Override how the gradient repeats outside the 0..1
-            /// parametric range. Builder-style.
-            pub const fn with_spread(mut self, spread: Spread) -> Self {
-                self.spread = spread;
-                self
-            }
-
-            /// Override the colour space interpolation runs in.
-            /// Builder-style.
-            pub const fn with_interp(mut self, interp: Interp) -> Self {
-                self.interp = interp;
-                self
-            }
-
-            /// Paints nothing visible when every stop is transparent.
-            #[inline]
-            pub fn is_noop(&self) -> bool {
-                self.stops.iter().all(|stop| stop.color.is_noop())
-            }
-        }
-    };
-}
-
-pub(crate) mod conic;
-pub(crate) mod linear;
-pub(crate) mod radial;
+pub(crate) mod conic_geometry;
+pub(crate) mod gradient_builder;
+pub(crate) mod linear_geometry;
+pub(crate) mod radial_geometry;
 pub(crate) mod stops;
 
 /// How the gradient repeats outside the 0..1 parametric range.
@@ -105,28 +49,108 @@ pub enum Interp {
     Linear,
 }
 
-#[derive(Clone, Debug)]
-struct GradientBuilderCore {
-    stops: ArrayVec<[Stop; MAX_STOPS]>,
-    spread: Spread,
-    interp: Interp,
+/// The per-kind half of a gradient: the geometry the shader projects a
+/// fragment onto, plus the two policies that follow from it.
+///
+/// One implementor per gradient kind, each in its own file beside the
+/// [`Gradient`] alias it names.
+pub trait GradientGeometry {
+    /// Interpolation space a freshly authored gradient of this kind
+    /// starts in, before [`Gradient::with_interp`] overrides it.
+    const DEFAULT_INTERP: Interp;
+
+    /// The four axis lanes the shader reads, before `FillAxis` packs
+    /// them to f16. The layout is per-kind.
+    fn axis_lanes(&self) -> [f32; 4];
+
+    /// Fold the geometry into a cache key.
+    ///
+    /// f32 fields go through `approx::canon_bits`, so `-0.0` / `+0.0` and
+    /// NaN bit patterns don't fragment command-buffer dedup.
+    fn hash_geometry<H: std::hash::Hasher>(&self, state: &mut H);
+
+    /// Whether the geometry holds a NaN.
+    fn has_nan(&self) -> bool;
 }
 
-impl GradientBuilderCore {
-    fn new(interp: Interp) -> Self {
+/// A gradient of any kind: `geometry` picks the kind, and the rest is
+/// the same for all three.
+///
+/// Stops live inline via [`GradientStops`] so a gradient value is
+/// heap-free — 48 B for the linear kind, 60 B for the radial one.
+///
+/// **Not `Copy`** — the 40 B [`GradientStops`] made implicit per-frame
+/// copies expensive through the recording chain; see `Brush`'s comment
+/// for the auto-`Copy` audit story. `.clone()` is cheap (one inline
+/// memcpy) — just explicit.
+#[derive(Clone, Debug, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
+pub struct Gradient<G> {
+    #[serde(flatten)]
+    pub geometry: G,
+    pub stops: GradientStops,
+    pub spread: Spread,
+    pub interp: Interp,
+}
+
+impl<G> Gradient<G> {
+    /// Override how the gradient repeats outside the 0..1
+    /// parametric range. Builder-style.
+    pub const fn with_spread(mut self, spread: Spread) -> Self {
+        self.spread = spread;
+        self
+    }
+
+    /// Override the colour space interpolation runs in.
+    /// Builder-style.
+    pub const fn with_interp(mut self, interp: Interp) -> Self {
+        self.interp = interp;
+        self
+    }
+
+    /// Paints nothing visible when every stop is transparent.
+    #[inline]
+    pub fn is_noop(&self) -> bool {
+        self.stops.iter().all(|stop| stop.color.is_noop())
+    }
+}
+
+impl<G: GradientGeometry> Gradient<G> {
+    /// The one general constructor the per-kind `new` shorthands land in.
+    /// Asserts two through eight stops.
+    fn from_stops(geometry: G, stops: impl IntoIterator<Item = Stop>) -> Self {
         Self {
-            stops: ArrayVec::new(),
+            geometry,
+            stops: GradientStops::new(stops),
             spread: Spread::default(),
-            interp,
+            interp: G::DEFAULT_INTERP,
         }
     }
 
-    fn push(&mut self, stop: Stop) {
-        assert!(
-            self.stops.len() < MAX_STOPS,
-            "gradient stop count exceeds MAX_STOPS = {MAX_STOPS}",
-        );
-        self.stops.push(stop);
+    /// Gradient axis for the shader, packed to the GPU wire form.
+    pub(crate) fn axis(&self) -> FillAxis {
+        let [a, b, c, d] = self.geometry.axis_lanes();
+        FillAxis::from_lanes(a, b, c, d)
+    }
+}
+
+/// Hand-written rather than derived: the geometry needs canonical f32
+/// bit encoding, and the stops hash through their own packed form. Used
+/// by command-buffer dedup; the atlas hashes `(stops, interp)` separately
+/// (kind-agnostic) in `gradient_atlas::GradientLutKey`.
+impl<G: GradientGeometry> std::hash::Hash for Gradient<G> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.geometry.hash_geometry(state);
+        state.write_u64(gradient_tag(self.spread, self.interp));
+        std::hash::Hash::hash(&self.stops, state);
+    }
+}
+
+/// Stop offsets and colours are integer-encoded (`Stop::offset_u8`,
+/// `ColorU8`), so a gradient's geometry is the only place a NaN can hide.
+impl<G: GradientGeometry> NanCheck for Gradient<G> {
+    #[inline]
+    fn has_nan(&self) -> bool {
+        self.geometry.has_nan()
     }
 }
 

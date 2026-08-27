@@ -1,5 +1,5 @@
 use crate::layout::types::align::Align;
-use crate::primitives::brush::gradient::linear::LinearGradient;
+use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::brush::{Brush, CurveBrush};
 use crate::primitives::color::{Color, ColorU8};
 use crate::primitives::mesh::Mesh;
@@ -220,7 +220,7 @@ fn curve_brush_conversions_preserve_supported_paints_and_noop_state() {
     for case in cases {
         let shape = Shape::line(Vec2::ZERO, Vec2::X, 1.0).brush(case.brush.clone());
         assert_eq!(
-            case.brush.is_noop(),
+            case.brush.as_brush().is_noop(),
             case.expected_noop,
             "case: {}",
             case.label,

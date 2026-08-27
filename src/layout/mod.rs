@@ -18,6 +18,7 @@ mod canvas;
 pub(crate) mod counters;
 mod driver;
 pub(crate) mod engine;
+mod fill_item;
 pub(crate) mod grid;
 pub(crate) mod intrinsic;
 pub(crate) mod justify_offsets;

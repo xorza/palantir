@@ -95,29 +95,21 @@ impl GradientStops {
     /// hard colour break authored as two stops at the same position still
     /// reads in the direction it was written.
     pub fn new(stops: impl IntoIterator<Item = Stop>) -> Self {
-        let mut values: ArrayVec<[Stop; MAX_STOPS]> = ArrayVec::new();
+        let mut builder = GradientStopsBuilder::default();
         for stop in stops {
-            assert!(
-                values.len() < MAX_STOPS,
-                "gradient stop count exceeds MAX_STOPS = {MAX_STOPS}",
-            );
-            values.push(stop);
+            builder.push(stop);
         }
-        assert!(
-            values.len() >= 2,
-            "gradient requires at least 2 stops, got {}",
-            values.len(),
-        );
-        Self::sorted(values)
+        builder.build()
     }
 
     /// The one place a `GradientStops` is built, and so the one place its
     /// ascending-offset invariant is established.
     ///
-    /// Both doors end here — [`Self::new`] and the `Deserialize` impl
-    /// below — because they differ only in how they *reject* a bad stop
-    /// count, a panic against a deserialization error, and not at all in
-    /// what a good one has to become. Sorting at each of them instead left
+    /// Both doors end here — [`GradientStopsBuilder::build`], which every
+    /// authored gradient goes through, and the `Deserialize` impl below —
+    /// because they differ only in how they *reject* a bad stop count, a
+    /// panic against a deserialization error, and not at all in what a
+    /// good one has to become. Sorting at each of them instead left
     /// the deserializer holding the wire order, so the invariant the type
     /// doc states held for authored gradients alone.
     ///
@@ -134,6 +126,37 @@ impl GradientStops {
             }
         }
         Self(values)
+    }
+}
+
+/// The accumulating half of [`GradientStops`], and the one place the
+/// `MAX_STOPS` capacity rule lives.
+///
+/// [`GradientStops::new`] fills one from an iterator; a
+/// [`GradientBuilder`](crate::primitives::brush::gradient::gradient_builder::GradientBuilder)
+/// holds one across its chained `stop` calls, so a ninth stop panics at
+/// the call that wrote it rather than at `build`.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct GradientStopsBuilder(ArrayVec<[Stop; MAX_STOPS]>);
+
+impl GradientStopsBuilder {
+    /// Append one stop, rejecting a ninth.
+    pub(crate) fn push(&mut self, stop: Stop) {
+        assert!(
+            self.0.len() < MAX_STOPS,
+            "gradient stop count exceeds MAX_STOPS = {MAX_STOPS}",
+        );
+        self.0.push(stop);
+    }
+
+    /// Finish, requiring at least two stops.
+    pub(crate) fn build(self) -> GradientStops {
+        assert!(
+            self.0.len() >= 2,
+            "gradient requires at least 2 stops, got {}",
+            self.0.len(),
+        );
+        GradientStops::sorted(self.0)
     }
 }
 

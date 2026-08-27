@@ -72,13 +72,12 @@ different answer depending on which call site asks it.
       `F16x4`'s domain, not that of a module documented as f32 comparisons.
 
 - [ ] `src/primitives/stroke.rs:47`, `src/primitives/shadow.rs:104`,
-      `src/primitives/brush/gradient/linear.rs:34` — the exact and visual
+      `src/primitives/brush/gradient/mod.rs:142` — the exact and visual
       canonicalization policies are mixed *within* a single hash: `Stroke::hash`
       folds `width` through `canon_bits` (visual) but `color` through
       `Color::hash`, which uses `eq_bits` (exact). So a colour differing by 1e-5
       fragments a "visual" cache key while a stroke width differing by the same
-      amount does not. `Shadow::hash` and the three gradient hashes have the same
-      split.
+      amount does not. `Shadow::hash` and `Gradient::hash` have the same split.
 
 - [ ] `src/layout/axis.rs:38` — `Axis::main_b` exists and answers "pick this
       axis's lane out of a `BVec2`", but `ScrollSpec::pans`
@@ -113,45 +112,6 @@ different answer depending on which call site asks it.
 - [ ] `src/primitives/bezier/mod.rs:93` and `:94` — `solve_quadratic` gates on
       two unnamed `1.0e-12` literals, in a crate where every other tolerance
       carries a name and a reason.
-
----
-
-## Structural duplication a payload parameter would collapse
-
-- [ ] The three gradient kinds are the same type written three times.
-      `src/primitives/brush/gradient/{linear,radial,conic}.rs` are 123, 123 and
-      124 lines that each declare a struct of `geometry + stops + spread +
-      interp`, a hand-written `Hash` folding geometry through `canon_bits` then
-      `gradient_tag` then stops, `builder()`, `new()`, a `two_stop*` shorthand,
-      `axis()`, a `…Builder` struct repeating the geometry fields beside a
-      `GradientBuilderCore`, `build()`, `From<Builder>`, and `NanCheck`. Only the
-      geometry payload and the default `Interp` differ. The two existing macros
-      (`gradient_common!`, `gradient_builder_common!`) cover the two modifier
-      setters and nothing else.
-
-- [ ] `GradientBuilderCore::push` (`src/primitives/brush/gradient/mod.rs:124`)
-      asserts against `MAX_STOPS`, and `GradientStops::new`
-      (`stops/mod.rs:100`) asserts against it again over the same values.
-
-- [ ] `CurveBrush` (`src/primitives/brush/mod.rs:38`) is a two-variant
-      restriction of `Brush` and re-spells its `From<Color>` /
-      `From<ColorU8>` / `From<LinearGradient>` / `From<LinearGradientBuilder>`
-      ladder, its `is_noop`, and its `NanCheck` — with `TRANSPARENT` at
-      `pub(crate)` on one and `pub` on the other.
-
-- [ ] Two solvers answer "distribute leftover by weight, clamped to
-      `[floor, cap]`, freezing violators". `stack::freeze_distribute`
-      (`src/layout/stack/mod.rs:53`) freezes every violator per pass;
-      `AxisScratch::resolve_axis` Phase 3
-      (`src/layout/grid/axis_scratch.rs:255`) freezes one per pass. They
-      converge differently for mixed min/max violations, which
-      `cross_driver_tests/fill_solvers.rs` pins — so `Sizing::fill` means one
-      thing inside a `Panel` and another inside a `Grid`, and the difference is
-      not documented anywhere a caller reads.
-
-- [ ] `src/layout/grid/axis_scratch.rs:256`–`:277` — the Phase-3 clamp loop
-      computes `weight`, `candidate` and `lo` inside the `position` closure and
-      then recomputes all three in the `Some(k)` arm, from the same `tracks[i]`.
 
 ---
 

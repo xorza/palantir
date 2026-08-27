@@ -109,7 +109,7 @@ fn windowed_rect_is_not_an_opaque_cover() {
 #[test]
 fn compose_linear_brush_emits_kind_one_with_atlas_row() {
     use crate::primitives::brush::gradient::Spread;
-    use crate::primitives::brush::gradient::linear::LinearGradient;
+    use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
     use crate::primitives::fill_kind::FillKind;
     use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
     let g =
@@ -150,7 +150,7 @@ fn compose_linear_brush_emits_kind_one_with_atlas_row() {
 /// frames and across multiple emitting widgets.
 #[test]
 fn compose_repeated_linear_brush_shares_atlas_row() {
-    use crate::primitives::brush::gradient::linear::LinearGradient;
+    use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
     use crate::primitives::fill_kind::FillKind;
     use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
     let g = LinearGradient::two_stop(0.5, ColorU8::hex(0x336699), ColorU8::hex(0xddaa44));

@@ -1,5 +1,5 @@
 use crate::layout::types::sizing::Sizing;
-use crate::primitives::brush::gradient::linear::LinearGradient;
+use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::color::Color;
 use crate::scene::node::Node;
 use crate::scene::tree::paint_anims::PaintAnim;

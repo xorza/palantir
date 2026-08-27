@@ -11,7 +11,6 @@
 mod arrange_axis;
 mod convergence;
 mod fill_propagation;
-mod fill_solvers;
 mod no_overlap;
 mod stretch_semantics;
 mod support;

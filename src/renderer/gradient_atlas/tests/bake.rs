@@ -2,7 +2,7 @@
 //! edge clamping.
 
 use crate::primitives::brush::gradient::Interp;
-use crate::primitives::brush::gradient::linear::LinearGradient;
+use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::brush::gradient::stops::{GradientStops, Stop};
 use crate::primitives::color::ColorU8;
 use crate::renderer::gradient_atlas::tests::support::fresh_row;

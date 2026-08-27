@@ -2,122 +2,37 @@
 //! whose children run along one [`Axis`].
 //!
 //! Non-`Fill` children measure first. What is left of the main axis after
-//! them and the gaps is divided between the `Fill` children by weight, and a
-//! child whose floor exceeds its share freezes at the floor.
+//! them and the gaps goes through [`FillItem::distribute`], the same
+//! `[floor, cap]`-clamped weighted split the grid resolves its Fill tracks
+//! with.
 
 use crate::layout::axis::Axis;
 use crate::layout::axis_placement::AxisPlacement;
 use crate::layout::driver::LayoutDriver;
 use crate::layout::engine::LayoutEngine;
+use crate::layout::fill_item::FillItem;
 use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange, LenReq};
 use crate::layout::justify_offsets::JustifyOffsets;
 use crate::layout::pass::LayoutPass;
-use crate::layout::types::sizing::Sizing;
 use crate::primitives::interned_text::InternedText;
 use crate::primitives::{rect::Rect, size::Size};
 use crate::scene::tree::Tree;
 use crate::scene::tree::node_id::NodeId;
 
-/// One Fill child as the freeze loop sees it. Pushed onto
-/// `LayoutScratch::stack_fill` during measure; popped at the end of
-/// the call. `frozen_alloc = Some(v)` means this child has been
-/// removed from the active pool and gets exactly `v` main-axis space.
-#[derive(Clone, Copy, Debug)]
-struct FillEntry {
-    node: NodeId,
-    weight: f32,
-    /// Minimum main-axis extent this entry will accept. The freeze
-    /// loop pins an entry at `floor` when its weighted share would be
-    /// lower. Source depends on phase: `measure` uses the child's
-    /// `intrinsic(MinContent)` (largest non-shrinkable descendant);
-    /// `arrange` uses the child's measured `desired.main` (post-WPF
-    /// Stretch this is the child's content size). Invariant:
-    /// arrange-floor ≥ measure-floor for the same child, since
-    /// `AxisCtx::resolve` floors `desired` by `intrinsic_min`.
-    floor: f32,
-    cap: f32,
-    frozen_alloc: Option<f32>,
-}
-
-/// Distribute `leftover` across the Fill entries by weight, with
-/// CSS-Flexbox-style freezing: any child whose weighted share falls
-/// outside its `[floor, cap]` takes the violated bound and exits the
-/// pool; the remaining children re-share. After the loop, every entry's
-/// `frozen_alloc` is `Some(_)` — either set during a freeze pass or
-/// filled in at the end with the final share. Shared by `measure` (floor
-/// = `intrinsic(MinContent)`, leftover from the parent's `inner.main`)
-/// and `arrange` (floor = `desired.main`, leftover from the parent's
-/// arranged slot). Same algorithm in both phases — the only difference
-/// is the floor source the caller pushes into each entry.
-///
-/// Grid's Phase-3 Fill loop (`AxisScratch::resolve_axis`) solves the identical
-/// `[lo, hi]`-clamped weighted distribution. The two are kept in sync by
-/// hand rather than physically merged: this one freezes every violator
-/// per pass while grid freezes one, and the two converge differently for
-/// mixed min/max violations — so a shared solver would silently change
-/// one driver's edge-case results. `cross_driver_tests/fill_solvers.rs`
-/// pins that difference, which makes merging them a decision about what
-/// `Sizing::fill` should mean rather than a refactor.
-fn freeze_distribute(entries: &mut [FillEntry], mut leftover: f32, mut active_weight: f64) {
-    loop {
-        if active_weight <= 0.0 {
-            break;
-        }
-        let mut new_freeze = false;
-        for e in entries.iter_mut() {
-            if e.frozen_alloc.is_some() {
-                continue;
-            }
-            let share = Sizing::weighted_share(leftover, e.weight, active_weight);
-            // Freeze any entry whose proportional share falls outside
-            // `[floor, cap]`: it takes the violated bound and the rest
-            // re-divide (CSS Flexbox-style). A `cap` below `floor`
-            // resolves to `cap` — the hard max wins.
-            if e.floor > share || share > e.cap {
-                let alloc = if e.floor > share {
-                    e.floor.min(e.cap)
-                } else {
-                    e.cap
-                };
-                e.frozen_alloc = Some(alloc);
-                leftover -= alloc;
-                active_weight -= f64::from(e.weight);
-                new_freeze = true;
-            }
-        }
-        if !new_freeze {
-            break;
-        }
-    }
-    for e in entries.iter_mut() {
-        if e.frozen_alloc.is_none() {
-            let share = if active_weight > 0.0 {
-                Sizing::weighted_share(leftover, e.weight, active_weight)
-            } else {
-                e.floor
-            };
-            // In-pool entries satisfy `floor <= share <= cap`; the
-            // `active_weight == 0` fallback (`share = floor`) still clamps
-            // so a `cap < floor` entry never exceeds its hard max.
-            e.frozen_alloc = Some(share.clamp(e.floor.min(e.cap), e.cap));
-        }
-    }
-}
-
-/// Flat depth-shared buffer for the Fill freeze loop. Layout is the
+/// Flat depth-shared buffer for the Fill distribution. Layout is the
 /// same as `WrapScratch.pool`: each invocation pushes its entries,
 /// uses the resulting slice, truncates on exit so nested stacks
 /// reuse the tail capacity. Allocation-free in steady state.
 #[derive(Debug, Default)]
 pub(crate) struct StackScratch {
-    pool: Vec<FillEntry>,
+    pool: Vec<FillItem<NodeId>>,
 }
 
 impl StackScratch {
     /// Entries this depth pushed, as a mutable slice. `start` is the
     /// pool length the caller captured on entry.
     #[inline]
-    fn from(&mut self, start: usize) -> &mut [FillEntry] {
+    fn from(&mut self, start: usize) -> &mut [FillItem<NodeId>] {
         &mut self.pool[start..]
     }
 }
@@ -125,7 +40,6 @@ impl StackScratch {
 #[derive(Debug)]
 struct StackPlan {
     sum_non_fill_main: f32,
-    total_weight: f64,
     count: usize,
     total_gap: f32,
     fill_start: usize,
@@ -143,65 +57,30 @@ fn build_stack_plan(
     let layouts = tree.records.layout();
     let fill_start = pass.stack_scratch_mut().pool.len();
     let mut sum_non_fill_main = 0.0f32;
-    let mut total_weight = 0.0f64;
     let mut count = 0usize;
     for c in tree.active_children(node) {
         count += 1;
         let child_layout = layouts[c.idx()];
         if let Some(weight) = axis.main_sizing(child_layout.size).fill_weight() {
-            total_weight += f64::from(weight);
+            // Floor source depends on the phase the caller is in:
+            // `measure` passes the child's `intrinsic(MinContent)` (its
+            // largest non-shrinkable descendant), `arrange` its measured
+            // `desired.main`. Arrange's is never the lower of the two,
+            // since `AxisCtx::resolve` floors `desired` by `intrinsic_min`.
             let floor = fill_floor(pass, c);
-            let entry = FillEntry {
-                node: c,
-                weight,
-                floor,
-                cap: axis.main(tree.bounds(c).max_size) + axis.spacing(child_layout.margin),
-                frozen_alloc: None,
-            };
-            pass.stack_scratch_mut().pool.push(entry);
+            let cap = axis.main(tree.bounds(c).max_size) + axis.spacing(child_layout.margin);
+            pass.stack_scratch_mut()
+                .pool
+                .push(FillItem::new(c, weight, floor, cap));
         } else {
             sum_non_fill_main += non_fill_main(pass, c);
         }
     }
     StackPlan {
         sum_non_fill_main,
-        total_weight,
         count,
         total_gap: gap * count.saturating_sub(1) as f32,
         fill_start,
-    }
-}
-
-#[cfg(test)]
-pub(crate) mod test_support {
-    use crate::layout::stack::{FillEntry, freeze_distribute};
-    use crate::scene::tree::node_id::NodeId;
-
-    /// Run the Fill freeze loop over `(weight, floor, cap)` triples and
-    /// hand back each entry's allocation.
-    ///
-    /// Exists so `cross_driver_tests::fill_solvers` can drive this and
-    /// `grid`'s twin from one table — the two solve the same
-    /// `[floor, cap]`-clamped weighted distribution and are kept apart
-    /// on purpose, so something has to hold them to that.
-    pub(crate) fn distribute_fill(items: &[(f32, f32, f32)], leftover: f32) -> Vec<f32> {
-        let mut entries: Vec<FillEntry> = items
-            .iter()
-            .enumerate()
-            .map(|(i, &(weight, floor, cap))| FillEntry {
-                node: NodeId(i as u32),
-                weight,
-                floor,
-                cap,
-                frozen_alloc: None,
-            })
-            .collect();
-        let total_weight: f64 = items.iter().map(|&(w, _, _)| f64::from(w)).sum();
-        freeze_distribute(&mut entries, leftover, total_weight);
-        entries
-            .iter()
-            .map(|e| e.frozen_alloc.expect("freeze_distribute fills every entry"))
-            .collect()
     }
 }
 
@@ -244,7 +123,6 @@ impl LayoutDriver for Stack {
         let mut max_cross = 0.0f32;
         let StackPlan {
             sum_non_fill_main,
-            total_weight,
             total_gap,
             fill_start,
             ..
@@ -267,21 +145,15 @@ impl LayoutDriver for Stack {
             },
         );
 
-        // Pass 2: measure Fill children with min-content-aware
-        // distribution (CSS Flexbox-style). On a finite-main stack, each
-        // Fill child gets a target = `leftover * weight / total_weight`,
-        // floored at `MinContent` and capped at `max_size`. If any
-        // child's floor exceeds its target, freeze that child at its
-        // floor and re-divide the remaining leftover among the
-        // non-frozen siblings — repeat until stable. This means a sibling
-        // with rigid descendants (Fixed widget, longest-unbreakable-word)
-        // doesn't get squeezed past its min-content; instead the other
-        // FILL siblings absorb the squeeze. Without this freeze loop,
-        // Fixed children overflow visibly when the parent is narrow even
-        // though shrinkable siblings still have room to give. Converges
-        // in ≤ N iterations (every iteration freezes at least one).
+        // Pass 2: measure Fill children against their share of what is
+        // left. The `MinContent` floor is what stops a sibling with rigid
+        // descendants (Fixed widget, longest-unbreakable-word) being
+        // squeezed past its content — the other Fill siblings absorb the
+        // squeeze instead. Without it, Fixed children overflow visibly
+        // when the parent is narrow even though shrinkable siblings still
+        // have room to give.
         //
-        // On a Hug stack (INF main) the freeze loop is a no-op — every
+        // On a Hug stack (INF main) there is nothing to divide — every
         // Fill child measures at INF main and reports its natural width.
         //
         // Soundness: the `axis.main(inner_avail)` we use as the budget here
@@ -295,11 +167,7 @@ impl LayoutDriver for Stack {
         // *between* its own measure and arrange would break this.
         if main_finite {
             let leftover = (main_avail - sum_non_fill_main - total_gap).max(0.0);
-            freeze_distribute(
-                pass.stack_scratch_mut().from(fill_start),
-                leftover,
-                total_weight,
-            );
+            FillItem::distribute(pass.stack_scratch_mut().from(fill_start), leftover);
         }
 
         // Snapshot the pool end because recursive measurement may append entries
@@ -309,13 +177,11 @@ impl LayoutDriver for Stack {
         for i in fill_start..fill_end {
             let entry = pass.stack_scratch_mut().pool[i];
             let fill_avail = if main_finite {
-                entry
-                    .frozen_alloc
-                    .expect("`freeze_distribute` allocates every Fill entry")
+                entry.size
             } else {
                 f32::INFINITY
             };
-            let desired = pass.measure(entry.node, axis.compose_size(fill_avail, cross_avail));
+            let desired = pass.measure(entry.key, axis.compose_size(fill_avail, cross_avail));
             fill_main += axis.main(desired);
             max_cross = max_cross.max(axis.cross(desired));
         }
@@ -345,7 +211,6 @@ impl LayoutDriver for Stack {
         // `AxisCtx::resolve` change pins Fill at content).
         let StackPlan {
             sum_non_fill_main,
-            total_weight,
             count,
             total_gap,
             fill_start,
@@ -357,16 +222,12 @@ impl LayoutDriver for Stack {
             |pass, c| axis.main(pass.desired(c)),
             |pass, c| axis.main(pass.desired(c)),
         );
-        // The freeze loop mirrors `measure`: a child whose share is outside
-        // `[floor, cap]` freezes at the bound, then the rest re-share.
+        // The distribution mirrors `measure`: a child whose share falls
+        // outside `[floor, cap]` takes the bound, then the rest re-share.
         let main_total = axis.main(inner.size);
         let cross = axis.cross(inner.size);
         let leftover_for_fill = (main_total - sum_non_fill_main - total_gap).max(0.0);
-        freeze_distribute(
-            pass.stack_scratch_mut().from(fill_start),
-            leftover_for_fill,
-            total_weight,
-        );
+        FillItem::distribute(pass.stack_scratch_mut().from(fill_start), leftover_for_fill);
         // The sum we report to `justify` is the post-redistribute total —
         // i.e., what the children will *actually* occupy after arrange.
         let sum_main_arranged = sum_non_fill_main
@@ -374,10 +235,7 @@ impl LayoutDriver for Stack {
                 .stack_scratch_mut()
                 .from(fill_start)
                 .iter()
-                .map(|e| {
-                    e.frozen_alloc
-                        .expect("`freeze_distribute` allocates every Fill entry")
-                })
+                .map(|entry| entry.size)
                 .sum::<f32>();
         let leftover_for_justify = (main_total - sum_main_arranged - total_gap).max(0.0);
 
@@ -409,11 +267,7 @@ impl LayoutDriver for Stack {
             first = false;
 
             let main_size = if axis.main_sizing(s.size).fill_weight().is_some() {
-                // unwrap: every Fill child pushed an entry above and the
-                // resolve pass filled in `frozen_alloc`.
-                let alloc = pass.stack_scratch_mut().pool[fill_cursor]
-                    .frozen_alloc
-                    .unwrap();
+                let alloc = pass.stack_scratch_mut().pool[fill_cursor].size;
                 fill_cursor += 1;
                 alloc
             } else {

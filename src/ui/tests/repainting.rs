@@ -330,7 +330,7 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
 #[test]
 fn paint_only_preserves_record_store_for_retained_shapes() {
     use crate::primitives::brush::Brush;
-    use crate::primitives::brush::gradient::linear::LinearGradient;
+    use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
     use crate::ui::frame_report::FrameProcessing;
 
     let half = Duration::from_millis(500);
@@ -408,7 +408,7 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
 
 #[test]
 fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
-    use crate::primitives::brush::gradient::linear::LinearGradient;
+    use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
     use crate::primitives::color::ColorU8;
 
     use crate::primitives::lut_row::LutRow;
