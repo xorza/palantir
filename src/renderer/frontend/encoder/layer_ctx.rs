@@ -504,7 +504,7 @@ impl LayerCtx<'_> {
             .tree
             .transform_of(id)
             .map(|t| t.anchored_at(rect.min))
-            .filter(|t| !t.is_noop());
+            .filter(|t| !t.is_identity());
 
         // Body (direct shapes + child subtrees) paints inside the node's
         // own transform — chrome (drawn above this point) is the only

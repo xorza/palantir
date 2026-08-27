@@ -77,7 +77,7 @@ pub(super) struct ShaperInner {
     ///
     /// What belongs to the field itself is the shape of the clock it
     /// hands readers. It advances on the record path
-    /// (`TextSystem::end_full_record`, plus the bare tick a `PaintOnly`
+    /// (`TextSystem::end_frame`, plus the bare tick a `PaintOnly`
     /// frame owes through [`TextShaper::tick_frame`](crate::text::shaper::TextShaper::tick_frame)) while the backend sweeps on
     /// the submit path, so it both jumps — two windows recording before
     /// one submit — and stalls — two submits inside one recorded frame.
@@ -297,7 +297,7 @@ impl TextShaper {
     ///
     /// **Every frame owes this, including one that records nothing.** A
     /// `FramePlan::PaintOnly` frame repaints the retained tree and never
-    /// reaches `TextSystem::end_full_record`, so `FrameCycle::run` calls
+    /// reaches `TextSystem::end_frame`, so `FrameCycle::run` calls
     /// this directly on that arm. Skipping it does more than delay
     /// eviction: the glyph atlas only considers a slot evictable while
     /// `last_use < current_frame`, so a stalled clock leaves a full atlas
@@ -309,7 +309,7 @@ impl TextShaper {
         inner.frame += 1;
         let frame = inner.frame;
         if let Some(cosmic) = inner.cosmic_mut() {
-            cosmic.end_frame(frame);
+            cosmic.advance_to(frame);
         }
     }
 

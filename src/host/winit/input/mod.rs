@@ -5,6 +5,7 @@ use winit::event::{ElementState, Ime, MouseButton, MouseScrollDelta, WindowEvent
 use winit::keyboard::{Key as WinitKey, KeyCode, ModifiersState, NamedKey, PhysicalKey};
 
 use crate::common::platform::{PLATFORM, Platform};
+use crate::display;
 use crate::input::input_event::InputEvent;
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::modifiers::Modifiers;
@@ -12,7 +13,12 @@ use crate::input::keyboard::text_chunk::TextChunk;
 use crate::input::pointer::PointerButton;
 
 pub(super) fn translate(event: &WindowEvent, scale_factor: f32, mut emit: impl FnMut(InputEvent)) {
-    let scale = scale_factor.max(f32::EPSILON);
+    debug_assert!(
+        display::scale_factor_is_valid(scale_factor),
+        "the host screens the scale factor through display::sanitize_scale_factor; \
+         got {scale_factor}",
+    );
+    let scale = scale_factor;
     match event {
         WindowEvent::CursorMoved { position, .. } => {
             emit(InputEvent::PointerMoved(Vec2::new(

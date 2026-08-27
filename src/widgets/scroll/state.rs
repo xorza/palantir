@@ -4,6 +4,7 @@
 
 use crate::layout::axis::Axis;
 use crate::layout::scrollbars::BarDomain;
+use crate::primitives::approx;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::translate_scale::TranslateScale;
@@ -142,7 +143,7 @@ impl ScrollState {
         } else {
             1.0
         };
-        if (dz_eff - 1.0).abs() > f32::EPSILON {
+        if !approx::approx_zero(dz_eff - 1.0) {
             self.offset = (self.offset + pivot) * dz_eff - pivot;
             self.zoom = new_zoom;
         }

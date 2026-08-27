@@ -16,7 +16,7 @@ fn finish_hash(write: impl FnOnce(&mut DefaultHasher)) -> u64 {
 ///
 /// Deliberately excluded are the predicates that ask a *different*
 /// question: `approx_zero`, `Size::approx_zero`, `Rect::approx_zero`,
-/// `Corners::approx_zero`, and `TranslateScale::is_noop` all mean "is
+/// `Corners::approx_zero`, and `TranslateScale::is_identity` all mean "is
 /// this value ≈ this constant", and they gate **fast paths**, not
 /// paint. Answering `true` there would route a NaN *into* the sharp /
 /// identity shortcut instead of away from it — the opposite of safe.

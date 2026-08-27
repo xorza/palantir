@@ -172,7 +172,7 @@ impl InputState {
     /// Focus is already committed by this point, and a path fixed for
     /// the whole pass is what keeps grants independent of where in the
     /// pass anything recorded.
-    pub(crate) fn begin_record(&mut self, cascade: &Cascade) {
+    pub(crate) fn pre_record(&mut self, cascade: &Cascade) {
         self.subs.clear();
         self.scopes.resolve(self.focused, cascade);
         self.snapshot_frame_quiescent();
@@ -268,7 +268,7 @@ impl InputState {
     }
 
     /// Close out the pass. Ownership resolution moved to
-    /// [`Self::begin_record`] when claims became scopes — a scope path
+    /// [`Self::pre_record`] when claims became scopes — a scope path
     /// derives from focus and the cascade, so there is nothing left to
     /// commit here.
     pub(crate) fn finish_record(&mut self) -> bool {

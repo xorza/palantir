@@ -212,11 +212,7 @@ impl ScrollSpec {
 
     #[inline]
     pub(crate) fn pans(self, axis: Axis) -> bool {
-        let pan = self.pan_mask();
-        match axis {
-            Axis::X => pan.x,
-            Axis::Y => pan.y,
-        }
+        axis.main_b(self.pan_mask())
     }
 
     /// Whether `axis` folds its measured content extent into the size the
@@ -234,12 +230,7 @@ impl ScrollSpec {
     /// ignoring both `max_size` and the space its parent actually has.
     #[inline]
     pub(crate) fn contributes(self, axis: Axis) -> bool {
-        let fit = self.fit_mask();
-        !self.pans(axis)
-            || match axis {
-                Axis::X => fit.x,
-                Axis::Y => fit.y,
-            }
+        !self.pans(axis) || axis.main_b(self.fit_mask())
     }
 
     pub(crate) fn with_fit(mut self, fit: BVec2) -> Self {

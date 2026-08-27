@@ -97,6 +97,7 @@ pub(crate) mod half_simd;
 pub(crate) mod image;
 pub(crate) mod interned_str;
 pub(crate) mod interned_text;
+pub(crate) mod limits;
 pub(crate) mod lut_row;
 pub(crate) mod mesh;
 pub(crate) mod nan;

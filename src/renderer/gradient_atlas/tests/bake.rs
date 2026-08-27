@@ -1,6 +1,7 @@
 //! What one row's texels come out as: interpolation space, stop order, and
 //! edge clamping.
 
+use crate::primitives::approx;
 use crate::primitives::brush::gradient::Interp;
 use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::brush::gradient::stops::{GradientStops, Stop};
@@ -145,7 +146,7 @@ fn cursor_scan_matches_restart_scan_across_eight_stops() {
         let lower_offset = stops[upper - 1].offset();
         let upper_offset = stops[upper].offset();
         let denominator = upper_offset - lower_offset;
-        if denominator.abs() <= f32::EPSILON {
+        if approx::approx_zero(denominator) {
             return linear[upper];
         }
         Color::lerp(

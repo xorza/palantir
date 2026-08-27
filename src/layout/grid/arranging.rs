@@ -27,8 +27,8 @@ pub(super) fn arrange_inner(
     let row_gap = def.row_gap;
     let col_gap = def.col_gap;
     let scratch = pass.grid_mut().depth_stack.at(depth);
-    scratch.col.reset(n_cols);
-    scratch.row.reset(n_rows);
+    scratch.col.reset_for(n_cols);
+    scratch.row.reset_for(n_rows);
 
     if n_rows == 0 || n_cols == 0 {
         for c in tree.children(node).map(|c| c.id) {

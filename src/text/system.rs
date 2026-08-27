@@ -129,7 +129,7 @@ impl TextSystem {
     /// the expensive ones. Every sibling sweep in `finalize_frame`
     /// (`StateMap::sweep_removed`, `AnimMap::sweep_removed`, the
     /// `gpu_views` retain) gates the same way.
-    pub(crate) fn end_full_record(&mut self, removed: &FxHashSet<WidgetId>) {
+    pub(crate) fn end_frame(&mut self, removed: &FxHashSet<WidgetId>) {
         // The frame's one clock tick, matching the paint-only arm in
         // `FrameCycle::run` — see `TextShaper::tick_frame` for what a
         // frozen clock does to atlas eviction.

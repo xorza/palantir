@@ -153,10 +153,12 @@ impl TextEncoder {
         );
     }
 
-    /// Frame teardown: take the shaper's `frame` clock into the atlas and
-    /// sweep both caches against it.
-    pub(crate) fn end_frame(&mut self, frame: u64) {
-        self.atlas.end_frame(frame);
+    /// Advance to the shaper's `frame` clock reading and sweep both
+    /// caches against it. Named for what it does, not for the frame
+    /// boundary its caller happens to sit on — see
+    /// [`RasterAtlas::advance_to`](crate::renderer::backend::raster_atlas::RasterAtlas::advance_to).
+    pub(crate) fn advance_to(&mut self, frame: u64) {
+        self.atlas.advance_to(frame);
         self.cache.sweep(self.atlas.current_frame);
         self.instances.clear();
         // A frame that fit everything closes the episode, so a later

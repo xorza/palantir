@@ -1,4 +1,4 @@
-use crate::primitives::approx::canon_bits;
+use crate::primitives::approx::FloatHash;
 use crate::primitives::color::Color;
 use crate::primitives::nan::{self, NanCheck};
 use glam::Vec2;
@@ -76,6 +76,8 @@ impl Shadow {
         self
     }
 
+    /// `&self` for the reason [`Stroke::is_noop`](crate::Stroke::is_noop)
+    /// gives: `Background` names this in a `skip_serializing_if`.
     #[inline]
     pub const fn is_noop(&self) -> bool {
         // Geometry is screened for NaN only, not magnitude: a zero-σ
@@ -99,14 +101,14 @@ impl Shadow {
     }
 }
 
+/// Visual throughout, for the reason [`Stroke`](crate::Stroke)'s is.
 impl std::hash::Hash for Shadow {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.color.hash(state);
-        state.write_u32(canon_bits(self.offset.x));
-        state.write_u32(canon_bits(self.offset.y));
-        state.write_u32(canon_bits(self.blur));
-        state.write_u32(canon_bits(self.spread));
+        self.color.hash_visual(state);
+        self.offset.hash_visual(state);
+        self.blur.hash_visual(state);
+        self.spread.hash_visual(state);
         state.write_u8(self.inset as u8);
     }
 }

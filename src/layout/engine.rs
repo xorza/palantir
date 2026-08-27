@@ -326,7 +326,7 @@ impl LayoutEngine {
         }
         let finish_span = PhaseSpan::start();
         if self.scratch.cache_rebuild {
-            self.cache.finish_frame();
+            self.cache.end_frame();
         }
         self.scratch.counters.add_capture(finish_span);
         debug_assert_eq!(

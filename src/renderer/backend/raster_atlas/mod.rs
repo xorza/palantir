@@ -544,9 +544,13 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
         self.store(key, slot)
     }
 
-    /// Frame teardown: take this atlas's `frame` clock and retire the
-    /// non-drawing entries whose deadline came due on it.
-    pub(crate) fn end_frame(&mut self, frame: u64) {
+    /// Advance this atlas's view of the shared clock to `frame` and
+    /// retire the non-drawing entries whose deadline came due on it.
+    ///
+    /// Not `end_frame`, which the crate's other caches spell without an
+    /// argument: this one owns no frame boundary. It ages to a reading
+    /// someone else advanced.
+    pub(crate) fn advance_to(&mut self, frame: u64) {
         debug_assert!(
             frame >= self.current_frame,
             "the atlas frame clock ran backwards",

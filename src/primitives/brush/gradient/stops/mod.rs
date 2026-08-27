@@ -1,4 +1,5 @@
 use crate::primitives::color::ColorU8;
+use crate::primitives::num;
 use serde::de::Error as _;
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -32,9 +33,8 @@ impl Stop {
     #[inline]
     pub fn new(offset: f32, color: impl Into<ColorU8>) -> Self {
         assert!(offset.is_finite(), "gradient stop offset must be finite");
-        let q = (offset.clamp(0.0, 1.0) * 255.0 + 0.5) as u8;
         Self {
-            offset_u8: q,
+            offset_u8: num::unit_to_u8(offset),
             color: color.into(),
         }
     }

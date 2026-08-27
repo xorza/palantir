@@ -1,4 +1,4 @@
-use crate::primitives::approx::canon_bits;
+use crate::primitives::approx::FloatHash;
 use crate::primitives::brush::gradient::gradient_builder::GradientBuilder;
 use crate::primitives::brush::gradient::stops::Stop;
 use crate::primitives::brush::gradient::{Gradient, GradientGeometry, Interp};
@@ -36,12 +36,8 @@ impl GradientGeometry for RadialGeometry {
     }
 
     fn hash_geometry<H: std::hash::Hasher>(&self, state: &mut H) {
-        state.write_u64(
-            ((canon_bits(self.center.x) as u64) << 32) | canon_bits(self.center.y) as u64,
-        );
-        state.write_u64(
-            ((canon_bits(self.radius.x) as u64) << 32) | canon_bits(self.radius.y) as u64,
-        );
+        self.center.hash_visual(state);
+        self.radius.hash_visual(state);
     }
 
     fn has_nan(&self) -> bool {

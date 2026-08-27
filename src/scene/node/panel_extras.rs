@@ -23,7 +23,7 @@ impl Hash for PanelExtras {
             | ((self.child_align.raw() as u64) << 32)
             | ((self.justify as u64) << 40);
         h.write_u64(packed);
-        if !self.transform.is_noop() {
+        if !self.transform.is_identity() {
             h.write_u8(1);
             self.transform.translation.hash_visual(h);
             (self.transform.scale - 1.0).hash_visual(h);
@@ -46,7 +46,7 @@ impl PanelExtras {
         self.gaps.resolved() == Self::DEFAULT.gaps.resolved()
             && self.justify == Self::DEFAULT.justify
             && self.child_align == Self::DEFAULT.child_align
-            && self.transform.is_noop()
+            && self.transform.is_identity()
     }
 }
 

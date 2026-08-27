@@ -2,7 +2,7 @@
 //! render exactly on the GPU (see `renderer::backend::curve_pipeline`);
 //! what lives here is the CPU-side bbox that sizes the lowered record.
 
-use crate::primitives::bezier::CurveBounds;
+use crate::primitives::rect::Rect;
 use glam::Vec2;
 use std::f32::consts::FRAC_PI_2;
 
@@ -18,7 +18,7 @@ use std::f32::consts::FRAC_PI_2;
 /// four crossings matter (a full ±2π sweep covers every axis). Not
 /// `const`: the endpoints need real trig, and `sin_cos` isn't
 /// const-stable.
-pub(crate) fn arc_bbox(center: Vec2, radius: f32, a0: f32, a1: f32) -> CurveBounds {
+pub(crate) fn arc_bbox(center: Vec2, radius: f32, a0: f32, a1: f32) -> Rect {
     let p_at = |a: f32| {
         let (s, c) = a.sin_cos();
         center + radius * Vec2::new(c, s)
@@ -30,10 +30,7 @@ pub(crate) fn arc_bbox(center: Vec2, radius: f32, a0: f32, a1: f32) -> CurveBoun
     // screen of the two endpoints covers every input, and `min`/`max`
     // below stay the plain laundering form.
     if e0.is_nan() || e1.is_nan() {
-        return CurveBounds {
-            lo: Vec2::NAN,
-            hi: Vec2::NAN,
-        };
+        return Rect::NAN;
     }
     let mut lo = e0.min(e1);
     let mut hi = e0.max(e1);
@@ -48,7 +45,7 @@ pub(crate) fn arc_bbox(center: Vec2, radius: f32, a0: f32, a1: f32) -> CurveBoun
             _ => lo.y = center.y - radius,
         }
     }
-    CurveBounds { lo, hi }
+    Rect::from_min_max(lo, hi)
 }
 
 #[cfg(test)]

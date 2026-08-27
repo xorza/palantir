@@ -1,5 +1,6 @@
 use crate::primitives::approx::FloatHash;
 use crate::primitives::nan::NanCheck;
+use crate::primitives::num;
 use crate::primitives::{approx, half_simd::F16x4};
 use ::serde::de::Error as _;
 use ::serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -49,10 +50,33 @@ pub struct Color {
 impl std::hash::Hash for Color {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.hash_eq(state);
+    }
+}
+
+/// A colour under both of the crate's float tolerances.
+///
+/// [`Hash`](std::hash::Hash) above is the equality-compatible half, since
+/// `Color` compares by exact float equality. The visual half is what a
+/// *content* cache keys on: the paint types that carry a colour
+/// canonicalize their own scalars visually, and a `Stroke` that did that
+/// to its width but not to its colour would let a difference the eye
+/// cannot resolve split a key on one field and not the other.
+impl FloatHash for Color {
+    #[inline]
+    fn hash_eq<H: std::hash::Hasher>(&self, state: &mut H) {
         self.r.hash_eq(state);
         self.g.hash_eq(state);
         self.b.hash_eq(state);
         self.a.hash_eq(state);
+    }
+
+    #[inline]
+    fn hash_visual<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.r.hash_visual(state);
+        self.g.hash_visual(state);
+        self.b.hash_visual(state);
+        self.a.hash_visual(state);
     }
 }
 
@@ -203,12 +227,12 @@ impl Color {
     /// theme colour into an sRGB image tile). Lossy roundtrip ≤ 1 LSB per
     /// channel.
     pub fn to_srgb_u8(self) -> ColorU8 {
-        let q = |x: f32| -> u8 { (linear_to_srgb(x).clamp(0.0, 1.0) * 255.0).round() as u8 };
+        let q = |x: f32| num::unit_to_u8(linear_to_srgb(x));
         ColorU8 {
             r: q(self.r),
             g: q(self.g),
             b: q(self.b),
-            a: (self.a.clamp(0.0, 1.0) * 255.0).round() as u8,
+            a: num::unit_to_u8(self.a),
         }
     }
 }
@@ -333,9 +357,9 @@ impl ColorU8 {
         let a = (rgba & 0xff) as u8;
         let c = Color::rgb_u8(r, g, b);
         Self {
-            r: (c.r * 255.0 + 0.5) as u8,
-            g: (c.g * 255.0 + 0.5) as u8,
-            b: (c.b * 255.0 + 0.5) as u8,
+            r: num::unit_to_u8(c.r),
+            g: num::unit_to_u8(c.g),
+            b: num::unit_to_u8(c.b),
             a,
         }
     }
@@ -354,12 +378,11 @@ impl From<Color> for ColorU8 {
     /// [`Color::to_srgb_u8`] for the sRGB-encoded path.
     #[inline]
     fn from(c: Color) -> Self {
-        let q = |x: f32| -> u8 { (x.clamp(0.0, 1.0) * 255.0).round() as u8 };
         ColorU8 {
-            r: q(c.r),
-            g: q(c.g),
-            b: q(c.b),
-            a: q(c.a),
+            r: num::unit_to_u8(c.r),
+            g: num::unit_to_u8(c.g),
+            b: num::unit_to_u8(c.b),
+            a: num::unit_to_u8(c.a),
         }
     }
 }
@@ -398,16 +421,15 @@ impl ColorF16 {
     pub const TRANSPARENT: Self = Self(F16x4::ZERO);
 
     /// True when alpha is below `EPS` — paints nothing visible. Reuses
-    /// the shared `noop_f16_bits` bit-trick (mask sign, compare against
-    /// `EPS` bits) so no f16→f32 conversion is needed.
+    /// [`F16x4::lane_is_noop`]'s bit-trick (mask sign, compare against
+    /// the `EPS` pattern) so no f16→f32 conversion is needed.
     #[inline]
     pub const fn is_noop(self) -> bool {
-        use crate::primitives::approx::noop_f16_bits;
         // A NaN in *any* lane, not just alpha: an opaque colour with a
         // NaN red channel reaches the shader and renders as
         // hardware-dependent garbage. Covering all four costs one
         // masked add, not three extra compares.
-        noop_f16_bits(self.0.lane_bits(3)) || self.0.has_nan()
+        self.0.lane_is_noop(3) || self.0.has_nan()
     }
 
     /// True when alpha is within `EPS` of 1.0 — paints with full
@@ -417,8 +439,7 @@ impl ColorF16 {
     /// candidates.
     #[inline]
     pub const fn is_opaque(self) -> bool {
-        use crate::primitives::approx::opaque_f16_bits;
-        opaque_f16_bits(self.0.lane_bits(3))
+        self.0.lane_is_opaque(3)
     }
 
     /// All four lanes unpacked to f32 at once. Single instruction on

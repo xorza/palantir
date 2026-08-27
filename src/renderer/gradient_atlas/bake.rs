@@ -1,6 +1,7 @@
 //! Gradient-stop interpolation into one linear-f16 LUT row.
 
 use crate::animation::animatable::Animatable;
+use crate::primitives::approx;
 use crate::primitives::brush::gradient::Interp;
 use crate::primitives::brush::gradient::stops::{GradientStops, MAX_STOPS};
 use crate::primitives::color::{Color, ColorF16, linear_to_oklab, oklab_to_linear};
@@ -114,7 +115,7 @@ impl<'a> Ramp<'a> {
         let lower_offset = self.stops[upper - 1].offset();
         let upper_offset = self.stops[upper].offset();
         let denominator = upper_offset - lower_offset;
-        if denominator.abs() <= f32::EPSILON {
+        if approx::approx_zero(denominator) {
             return self.linear[upper];
         }
         let amount = (t - lower_offset) / denominator;

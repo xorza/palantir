@@ -123,7 +123,7 @@ fn reuse_rows_outlive_unused_frames_and_go_with_their_widget() {
     // that drops cold ones.
     text.shape_run(slot_at(a, 0), "hi", params, TextWrap::SingleLine);
     text.shape_run(slot(b), "yo", params, TextWrap::SingleLine);
-    text.end_full_record(&FxHashSet::from_iter([a]));
+    text.end_frame(&FxHashSet::from_iter([a]));
     assert_eq!(text.entry_count(), 1);
     assert!(
         !text.has_entry(a, 0),
@@ -166,7 +166,7 @@ fn drive_visible(
 
 /// End a frame with nothing removed — the steady case.
 fn frame_end(text: &mut TextSystem) {
-    text.end_full_record(&FxHashSet::default());
+    text.end_frame(&FxHashSet::default());
 }
 
 /// Idle frames, for aging a buffer toward one of the retention windows.
@@ -253,7 +253,7 @@ fn scrolled_away_run_keeps_the_protected_window() {
 
     // Out of view: the widget stops being recorded, so its reuse row is
     // dropped. Nothing supersedes the key — it may well come back.
-    text.end_full_record(&FxHashSet::from_iter([wid]));
+    text.end_frame(&FxHashSet::from_iter([wid]));
     idle(&mut text, cosmic::PROBATION_KEEP_FRAMES + 2);
     assert!(
         text.shaper.has_cosmic_buffer(key),

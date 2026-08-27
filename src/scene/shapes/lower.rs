@@ -22,7 +22,7 @@ use crate::primitives::approx;
 use crate::primitives::approx::FloatHash;
 use crate::primitives::arc::arc_bbox;
 use crate::primitives::background::Background;
-use crate::primitives::bezier::{CurveBounds, cubic_bezier_bbox, quadratic_to_cubic};
+use crate::primitives::bezier::{cubic_bezier_bbox, quadratic_to_cubic};
 use crate::primitives::brush::Brush;
 use crate::primitives::brush::gradient::{Gradient, GradientGeometry};
 use crate::primitives::color::{Color, ColorU8};
@@ -375,10 +375,9 @@ pub(crate) fn cubic_bezier(
         cap,
     } = stroke;
     let [p0, p1, p2, p3] = ctrl;
-    let CurveBounds { lo, hi } = cubic_bezier_bbox(p0, p1, p2, p3);
     curve_record(
         CurveBasis::Cubic { p0, p1, p2, p3 },
-        Rect::from_min_max(lo, hi),
+        cubic_bezier_bbox(p0, p1, p2, p3),
         width,
         brush(store, paint.as_brush()),
         cap,
@@ -432,7 +431,6 @@ pub(crate) fn arc(
         "Shape::arc sweep {sweep} exceeds a full circle (±2π)"
     );
     let a1 = start_angle + sweep;
-    let CurveBounds { lo, hi } = arc_bbox(center, radius, start_angle, a1);
     curve_record(
         CurveBasis::Arc {
             center,
@@ -440,7 +438,7 @@ pub(crate) fn arc(
             a0: start_angle,
             a1,
         },
-        Rect::from_min_max(lo, hi),
+        arc_bbox(center, radius, start_angle, a1),
         width,
         brush(store, paint.as_brush()),
         cap,

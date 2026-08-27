@@ -7,6 +7,7 @@ use crate::input::sense::Sense;
 use crate::input::zoom;
 use crate::layout::types::layout_mode::ScrollSpec;
 use crate::layout::types::sizing::Sizing;
+use crate::primitives::approx;
 use crate::primitives::background::Background;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
@@ -285,7 +286,10 @@ impl<'a> Scroll<'a> {
         let line_px = text.line_height_for(text.font_size_px);
         let scroll = response.scroll;
         let pan_raw = scroll.pixels + scroll.lines * line_px;
-        let notches = scroll.lines + scroll.pixels / line_px.max(f32::EPSILON);
+        // A theme with no line metric behind it contributes no notches,
+        // rather than the enormous ones a floored divisor would report.
+        let notches_per_px = approx::ratio(1.0, line_px);
+        let notches = scroll.lines + scroll.pixels * notches_per_px;
         // Gate on `mods.ctrl` only — Ctrl is the zoom modifier on every
         // platform (macOS Cmd not honored), and `alt`-wheel shouldn't
         // zoom.
@@ -304,7 +308,8 @@ impl<'a> Scroll<'a> {
         let centre = response
             .layout_rect
             .map(|r| Vec2::new(r.size.w * 0.5, r.size.h * 0.5));
-        let pivot = ((zoom_delta - 1.0).abs() > f32::EPSILON)
+        let zoom_changed = !approx::approx_zero(zoom_delta - 1.0);
+        let pivot = zoom_changed
             .then(
                 || match self.zoom.as_ref().map_or(ZoomPivot::Pointer, |c| c.pivot) {
                     ZoomPivot::Pointer => response.pointer_local.or(centre),

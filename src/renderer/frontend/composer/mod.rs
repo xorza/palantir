@@ -183,7 +183,7 @@ impl Composer {
 
         self.reset_group_scratch(display.physical);
         self.clip.clear();
-        self.transform.reset();
+        self.transform.clear();
 
         ComposeSession {
             composer: self,

@@ -143,7 +143,7 @@ impl LayoutCounters {
     }
 
     /// Snapshot capture — [`MeasureCache::capture_tree`] plus
-    /// [`MeasureCache::finish_frame`]. The third layout phase, and the
+    /// [`MeasureCache::end_frame`]. The third layout phase, and the
     /// easiest to miss: both run outside the measure and arrange spans,
     /// so without this counter a frame's layout time reads short by
     /// however much the snapshot cost.
@@ -154,7 +154,7 @@ impl LayoutCounters {
     /// is the shape that makes that visible.
     ///
     /// [`MeasureCache::capture_tree`]: crate::layout::cache::MeasureCache
-    /// [`MeasureCache::finish_frame`]: crate::layout::cache::MeasureCache
+    /// [`MeasureCache::end_frame`]: crate::layout::cache::MeasureCache
     #[inline]
     pub(crate) fn add_capture(&mut self, #[allow(unused_variables)] span: PhaseSpan) {
         #[cfg(feature = "bench")]

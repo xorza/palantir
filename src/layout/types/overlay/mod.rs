@@ -112,12 +112,7 @@ fn choose_side(
 
 fn align_cross(align: AxisAlign, axis: Axis, anchor: Rect, extent: f32, bounds: Rect) -> f32 {
     let anchor_min = axis.cross_v(anchor.min);
-    let anchor_max = axis.cross_v(anchor.max());
-    let position = match align {
-        AxisAlign::Center => (anchor_min + anchor_max - extent) * 0.5,
-        AxisAlign::End => anchor_max - extent,
-        AxisAlign::Auto | AxisAlign::Start | AxisAlign::Stretch => anchor_min,
-    };
+    let position = anchor_min + align.offset_in(axis.cross(anchor.size), extent);
     let bounds_min = axis.cross_v(bounds.min);
     let bounds_max = axis.cross_v(bounds.max());
     position.clamp(bounds_min, (bounds_max - extent).max(bounds_min))

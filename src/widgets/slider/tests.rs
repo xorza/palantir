@@ -7,7 +7,7 @@ use crate::scene::node::configure::Configure;
 use crate::ui::harness::UiHarness;
 use crate::widgets::panel::Panel;
 use crate::widgets::slider::{
-    Slider, clamp_range, fraction_to_value, pointer_to_fraction, snap_to_step, value_to_fraction,
+    Slider, fraction_to_value, pointer_to_fraction, snap_to_step, value_to_fraction,
 };
 use glam::{UVec2, Vec2};
 
@@ -240,11 +240,10 @@ fn snap_to_step_rounds_to_grid() {
     assert!((snap_to_step(53.0, 0.0, Some(0.0)) - 53.0).abs() < 1e-6);
 }
 
+/// A rail with no travel left reports the low end rather than dividing
+/// by a floored span.
 #[test]
-fn clamp_range_tolerates_reversed_bounds() {
-    assert!((clamp_range(5.0, 0.0, 10.0) - 5.0).abs() < 1e-6);
-    assert!((clamp_range(-1.0, 0.0, 10.0) - 0.0).abs() < 1e-6);
-    assert!((clamp_range(11.0, 0.0, 10.0) - 10.0).abs() < 1e-6);
-    // Reversed pair clamps the same.
-    assert!((clamp_range(11.0, 10.0, 0.0) - 10.0).abs() < 1e-6);
+fn pointer_to_fraction_reports_zero_for_a_knob_wider_than_its_rail() {
+    assert_eq!(pointer_to_fraction(15.0, 20.0, 20.0), 0.0);
+    assert_eq!(pointer_to_fraction(15.0, 10.0, 20.0), 0.0);
 }

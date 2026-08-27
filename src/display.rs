@@ -8,6 +8,26 @@ pub(crate) const fn scale_factor_is_valid(scale_factor: f32) -> bool {
     scale_factor.is_finite() && scale_factor >= EPS
 }
 
+/// `scale_factor` when the platform reported a usable one, else `1.0`.
+///
+/// The windowed host's door. Winit hands over an `f64` it promises
+/// nothing about, and a bad one divides every pointer coordinate into
+/// nonsense several layers before the [`scale_factor_is_valid`] assert
+/// that would name it. The offscreen host rejects at its own door for
+/// the same reason, and this is the windowed side of that contract —
+/// one screen where the value enters, rather than a floor at each
+/// division downstream.
+#[inline]
+pub(crate) fn sanitize_scale_factor(scale_factor: f64) -> f32 {
+    let scale_factor = scale_factor as f32;
+    if scale_factor_is_valid(scale_factor) {
+        scale_factor
+    } else {
+        tracing::warn!(scale_factor, "display.scale_factor_rejected");
+        1.0
+    }
+}
+
 /// Display state for the current output: read by the renderer at
 /// submit time, by hosts computing the logical surface rect for
 /// layout, and by the repaint scheduler for frame pacing. Carries the

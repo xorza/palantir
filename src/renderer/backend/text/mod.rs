@@ -204,7 +204,7 @@ impl TextBackend {
     /// `WgpuBackend::submit`, nowhere near a record pass, and the crate
     /// spends `post_record` on the record half of a frame
     /// (`FrameCycle`, `Forest`, `Tree`). It belongs with the other
-    /// frame-boundary teardowns instead — `TextSystem::end_full_record`
+    /// frame-boundary teardowns instead — `TextSystem::end_frame`
     /// is its
     /// opposite number on the record side.
     ///
@@ -221,7 +221,7 @@ impl TextBackend {
             !self.ranges.is_empty() || self.encoder.instances.is_empty(),
             "instances were emitted without a batch range to draw them",
         );
-        self.encoder.end_frame(self.shaper.frame());
+        self.encoder.advance_to(self.shaper.frame());
         self.ranges.clear();
     }
 }
