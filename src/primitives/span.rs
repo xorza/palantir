@@ -1,3 +1,6 @@
+//! A `(start, len)` range into a flat arena, in eight bytes — how every
+//! table in the crate points at a run of another one.
+
 use std::ops::Range;
 
 /// `(start, len)` index range over a flat arena. Compact — 8 bytes —

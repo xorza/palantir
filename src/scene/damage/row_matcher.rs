@@ -136,7 +136,7 @@ impl RowMatcher {
         }
 
         let prev = &paints.slots[prev_start..prev_start + prev_len];
-        self.begin(prev, curr_paints);
+        self.reset_for(prev, curr_paints);
         self.claim_exact(prev, curr_paints);
         self.emit_moves_and_adds(out, prev, curr_paints);
         self.emit_removals(out, prev);
@@ -178,7 +178,7 @@ impl RowMatcher {
     /// `PaintKey` being hash-major is what lets
     /// [`Self::emit_moves_and_adds`] re-merge the very same buffers on
     /// hash alone without re-sorting.
-    fn begin(&mut self, prev: &[Paint], curr: &[Paint]) {
+    fn reset_for(&mut self, prev: &[Paint], curr: &[Paint]) {
         self.prev_matched.clear();
         self.prev_matched.resize(prev.len(), false);
         self.matched_pos.clear();

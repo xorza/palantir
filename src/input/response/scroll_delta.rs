@@ -1,3 +1,6 @@
+//! Wheel, touchpad and pinch deltas as they reach one widget, in the three
+//! units the platforms send them in.
+
 use glam::Vec2;
 
 /// Wheel / touchpad / pinch deltas routed to the widget this frame.

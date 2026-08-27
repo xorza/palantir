@@ -1,3 +1,7 @@
+//! The lowered form of one paint primitive — what a shape becomes once
+//! authoring is done with it, and the only shape vocabulary the encoder
+//! reads.
+
 use crate::icons::icon_set::IconHandle;
 use crate::layout::types::align::Align;
 use crate::primitives::color::ColorF16;

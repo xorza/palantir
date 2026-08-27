@@ -1,3 +1,7 @@
+//! The logical-pixel rectangle every pass measures, arranges, clips and
+//! damages in, plus the NaN-safe fold that derives one from a set of
+//! points.
+
 pub(crate) mod aabb;
 
 use crate::primitives::nan::{self, NanCheck};

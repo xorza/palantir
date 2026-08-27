@@ -1,3 +1,7 @@
+//! App-supplied triangle geometry: the vertex the GPU takes, the indexed
+//! mesh an app builds, and the index and bounds screens that keep a
+//! malformed one from reaching the renderer.
+
 use crate::common::hash::Hasher;
 use crate::primitives::approx::FloatHash;
 use crate::primitives::color::ColorU8;

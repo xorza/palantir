@@ -1,3 +1,6 @@
+//! A decorated rectangle: background, size and margin around a body, with
+//! none of the interaction the other containers carry.
+
 use crate::primitives::background::Background;
 use crate::scene::node::Node;
 use crate::ui::Ui;

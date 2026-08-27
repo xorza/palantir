@@ -1,3 +1,7 @@
+//! What the three two-state toggles wear. One theme serves all of them,
+//! because a checkbox, a radio and a switch differ in what they draw
+//! rather than in what they can be told.
+
 use crate::animation::anim_spec::AnimSpec;
 use crate::input::response::response_state::ResponseState;
 use crate::primitives::background::Background;

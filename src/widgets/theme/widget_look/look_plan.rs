@@ -1,3 +1,6 @@
+//! Everything a themed widget takes out of its theme, owned, so the
+//! borrow does not have to survive the `&mut Ui` its own body takes.
+
 use crate::ui::Ui;
 use crate::widgets::theme::widget_look::WidgetLook;
 use crate::widgets::theme::widget_look::animated_look::AnimatedLook;

@@ -1,3 +1,6 @@
+//! What a divider rule wears. Its default margin depends on where the
+//! rule is used, so a menu's separator names its own.
+
 use crate::primitives::color::Color;
 use crate::primitives::spacing::Spacing;
 use crate::widgets::theme::palette::Palette;

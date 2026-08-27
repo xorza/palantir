@@ -1,3 +1,6 @@
+//! What a drag value wears: the scrub chip, and the text field it becomes
+//! while it is being typed into.
+
 use crate::widgets::theme::button::ButtonTheme;
 use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::text_edit::TextEditTheme;

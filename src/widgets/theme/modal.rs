@@ -1,3 +1,6 @@
+//! What a modal wears: the dialog surface, and the backdrop that dims
+//! everything behind it.
+
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;

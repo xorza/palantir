@@ -1,3 +1,5 @@
+//! What a slider wears: the two-tone rail, and the knob that rides it.
+
 use crate::primitives::color::Color;
 use crate::widgets::theme::palette::Palette;
 

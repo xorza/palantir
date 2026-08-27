@@ -1,3 +1,6 @@
+//! What feeding one event changed, so a host can decide whether the frame
+//! it would run is worth running.
+
 /// Repaint hint returned by `Ui::on_input`: `true` when the event
 /// changed something the next frame must reflect.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

@@ -1,3 +1,6 @@
+//! Whether a node clips its descendants, and at what cost: no clip, a
+//! scissor, or a rounded mask that needs the stencil.
+
 /// How a node clips its descendants' paint.
 ///
 /// `None` = no clip. `Rect` = axis-aligned scissor (the cheap, GPU-native

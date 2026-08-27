@@ -1,3 +1,6 @@
+//! One option of a radio group, over the shared value the whole group
+//! writes through.
+
 use crate::input::sense::Sense;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::rect::Rect;

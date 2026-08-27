@@ -30,9 +30,6 @@
 //! instead, read off `EncodedCache::arena`. It belongs to the allocator
 //! rather than to this cache because the paint-snapshot arena asks the
 //! same question of the same mechanism.
-//!
-//! Counters accumulate for the life of the backend, so readers take a
-//! delta.
 
 use crate::common::counters::counter_snapshot;
 

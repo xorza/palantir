@@ -1,3 +1,6 @@
+//! One entry of the per-frame keyboard queue: a press, or text the IME
+//! committed.
+
 use crate::input::keyboard::key_press::KeyPress;
 use crate::input::keyboard::text_chunk::TextChunk;
 

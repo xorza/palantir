@@ -1,3 +1,6 @@
+//! The four-state look pack — normal, hovered, active, disabled — that
+//! every state-styled widget theme is built from.
+
 use crate::input::response::response_state::ResponseState;
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::theme::widget_look::WidgetLook;

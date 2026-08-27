@@ -1,3 +1,6 @@
+//! The edges a pointer produces — what became true this frame, as against
+//! the levels a response reports.
+
 /// What happened, as an *edge*: something that became true this frame.
 ///
 /// **Edges only, deliberately.** A drag's travel is a level — true for as long

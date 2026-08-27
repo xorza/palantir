@@ -1,3 +1,5 @@
+//! The thin divider rule, on either axis.
+
 use crate::layout::types::align::{Align, HAlign, VAlign};
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;

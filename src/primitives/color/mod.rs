@@ -1,3 +1,11 @@
+//! Colour in the three forms one value takes on its way to the GPU:
+//! straight-alpha linear f32 for authoring and blending, four f16 lanes
+//! for the lowered records, and four bytes for gradient stops and vertex
+//! colours.
+//!
+//! Every conversion between them is here, so the two quantize policies —
+//! linear and sRGB-encoded — cannot drift apart.
+
 use crate::primitives::approx::FloatHash;
 use crate::primitives::nan::NanCheck;
 use crate::primitives::num;
@@ -434,9 +442,12 @@ impl ColorF16 {
 
     /// True when alpha is within `EPS` of 1.0 — paints with full
     /// coverage. Mirror of `is_noop` at the opposite end of the
-    /// scale; same bit-trick, no f16→f32 conversion. Used by the
-    /// composer to flag solid-fill quads as occlusion-pruning
-    /// candidates.
+    /// scale; same bit-trick, no f16→f32 conversion.
+    ///
+    /// On this tier alone, though all three colour types carry `is_noop`:
+    /// occlusion pruning is what asks, it runs in the composer, and the
+    /// composer sees lowered colour. Authoring colour is never asked
+    /// whether it is opaque.
     #[inline]
     pub const fn is_opaque(self) -> bool {
         self.0.lane_is_opaque(3)

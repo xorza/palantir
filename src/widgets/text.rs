@@ -1,3 +1,6 @@
+//! The standalone text leaf: labels, paragraphs and headings, shaped and
+//! measured like any other content.
+
 use crate::layout::types::align::Align;
 use crate::primitives::text_input::TextInput;
 use crate::scene::node::Node;

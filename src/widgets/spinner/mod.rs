@@ -1,3 +1,6 @@
+//! The indeterminate activity spinner: a rounded arc that rotates on the
+//! paint clock, so an idle window animates it without recording.
+
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::color::Color;

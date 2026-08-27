@@ -40,6 +40,25 @@
 //! module documents locally is what it measures and why that is worth
 //! separating — not which gate it picked.
 //!
+//! ## Two lifetimes, and which one is the default
+//!
+//! **A probe accumulates for the life of its owner, and readers subtract
+//! two readings.** That is what survives a pass which may not run: a
+//! per-pass reset that does not fire leaves the previous pass's numbers
+//! standing as though they were this one's, which is the reading error
+//! the reset was for. It also survives a probe with no single pass to
+//! scope to — one shared across windows, or one whose boundary is a
+//! submit rather than a frame.
+//!
+//! The exception is a probe whose reading means nothing outside one
+//! pass: a `Vec` log of what a walk touched, or a phase timing. Those
+//! clear at the top of the pass they measure, through a method named
+//! **`begin_pass`** — the layout and damage probes are the two, and both
+//! carry a log. A probe that clears says so on its own type. One that
+//! accumulates says nothing, unless the rule bites hard enough there to be
+//! worth naming: the cascade pass may not run at all, and the two atlases
+//! have no single pass to scope a reset to.
+//!
 //! ## Declaring a set that a test reads deltas off
 //!
 //! A probe whose tallies accumulate wants a snapshot type beside it, so a

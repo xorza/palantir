@@ -1,3 +1,10 @@
+//! The scrolling viewport: the widget itself, the retained offset and zoom
+//! it drives ([`state`]), the bar geometry and drag handling
+//! ([`bars`]), and the zoom policy an app configures ([`zoom_config`]).
+//!
+//! Every frame resolves against the *previous* frame's arranged geometry,
+//! which is what [`ScrollGeometry`] names.
+
 pub(crate) mod bars;
 pub(crate) mod state;
 pub(crate) mod zoom_config;

@@ -1,3 +1,6 @@
+//! What a text field wears in each of its four states, plus the caret and
+//! selection colours that have no state of their own.
+
 use crate::animation::anim_spec::AnimSpec;
 use crate::input::response::response_state::ResponseState;
 use crate::primitives::approx::noop_f32;

@@ -1,3 +1,7 @@
+//! The per-frame footprint inventory: one list of the types whose
+//! `size`/`align` a change must not move silently, driving both a printing
+//! run and the test that pins them.
+
 use crate::animation::anim_row::AnimRow;
 use crate::common::content_hash::ContentHash;
 use crate::input::response::response_state::ResponseState;

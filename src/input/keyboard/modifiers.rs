@@ -1,3 +1,6 @@
+//! Which modifier keys are held, as a level the input state carries
+//! between events rather than an edge.
+
 /// Modifier-key state. Sent as a standalone [`InputEvent::ModifiersChanged`]
 /// whenever the held set changes; widgets read the latest snapshot from the
 /// input state.

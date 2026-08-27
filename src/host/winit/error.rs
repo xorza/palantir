@@ -1,3 +1,5 @@
+//! What a handle reports once the event loop it addressed has exited.
+
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 

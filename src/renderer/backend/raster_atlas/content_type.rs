@@ -1,3 +1,6 @@
+//! Which of an atlas's two sides a raster lives on: single-channel
+//! coverage, or full colour.
+
 /// Which of an atlas's two sides content lives on. `Mask` is one coverage
 /// byte per texel and takes the draw's colour; `Color` is straight sRGB RGBA
 /// and supplies its own.

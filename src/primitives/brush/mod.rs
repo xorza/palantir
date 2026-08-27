@@ -1,3 +1,6 @@
+//! What fills a shape: a solid colour, a gradient, or an image, plus the
+//! narrower set a stroked one-dimensional shape can take.
+
 pub(crate) mod gradient;
 
 use crate::animation::animatable::Animatable;

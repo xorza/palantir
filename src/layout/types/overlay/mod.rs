@@ -1,3 +1,7 @@
+//! Where a side layer lands next to the thing it belongs to: the side an
+//! overlay prefers, the fallback when that side has no room, and the
+//! measured position both resolve to.
+
 use crate::layout::axis::Axis;
 use crate::layout::types::align::AxisAlign;
 use crate::primitives::rect::Rect;

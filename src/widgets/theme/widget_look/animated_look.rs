@@ -1,3 +1,6 @@
+//! One frame's resolved look, after the tween between the state a widget
+//! is leaving and the one it is entering.
+
 use crate::primitives::background::Background;
 use crate::widgets::theme::text_style::TextStyle;
 use palantir_anim_derive::Animatable;

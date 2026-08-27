@@ -1,3 +1,6 @@
+//! The absolute-position driver: children sit where their own offsets put
+//! them, and the container reports the extent that covers them.
+
 use crate::layout::axis::Axis;
 use crate::layout::axis_placement::AxisPlacement;
 use crate::layout::driver::LayoutDriver;

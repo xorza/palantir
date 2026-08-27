@@ -1,3 +1,6 @@
+//! The push button: a labelled, themed leaf that reports what each pointer
+//! button did to it.
+
 use crate::input::sense::Sense;
 use crate::layout::types::align::Align;
 use crate::primitives::text_input::TextInput;

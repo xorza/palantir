@@ -1,3 +1,6 @@
+//! The escape hatch to raw `wgpu`: a widget whose rect an app paints
+//! itself, into a texture the encoder composites like any other image.
+
 use crate::layout::types::sizing::Sizing;
 use crate::renderer::gpu_paint::GpuPaint;
 use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;

@@ -1,3 +1,10 @@
+//! The app-global capabilities a recorder is built over — the shaper, the
+//! image and icon registries, the clipboard, the window directory and the
+//! diagnostics flags.
+//!
+//! Every field is clone-shared, so two recorders in two windows resolve
+//! the same font, the same texture and the same overlay toggle.
+
 use crate::common::clipboard::Clipboard;
 use crate::diagnostics::Diagnostics;
 use crate::icons::icon_registry::IconRegistry;

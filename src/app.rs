@@ -1,3 +1,6 @@
+//! The hook a host calls once per window per frame, and the closure
+//! shorthand for an app that needs only the record half.
+
 use crate::ui::Ui;
 use crate::window::window_token::WindowToken;
 

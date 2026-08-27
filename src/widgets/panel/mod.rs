@@ -1,3 +1,6 @@
+//! The container widget — every stack, wrap and canvas layout an app
+//! reaches for, over the one node the layout drivers dispatch on.
+
 use crate::primitives::background::Background;
 use crate::scene::node::Node;
 use crate::ui::Ui;

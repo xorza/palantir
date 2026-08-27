@@ -1,3 +1,6 @@
+//! The WPF-style grid: explicit row and column tracks, with each child
+//! placed into a cell it names.
+
 use crate::layout::types::limits::valid_gap;
 use crate::layout::types::track::Track;
 use crate::primitives::background::Background;

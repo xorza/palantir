@@ -1,3 +1,5 @@
+//! A shape's outline: one colour and one width.
+
 use crate::primitives::approx::FloatHash;
 use crate::primitives::approx::noop_f32;
 use crate::primitives::color::Color;

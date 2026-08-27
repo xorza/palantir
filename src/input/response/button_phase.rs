@@ -1,3 +1,5 @@
+//! Where one pointer button sits in its press lifecycle on one widget.
+
 /// One pointer button's press lifecycle on a widget. The phases are
 /// mutually exclusive per frame, walked in order:
 ///

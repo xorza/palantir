@@ -238,7 +238,7 @@ impl LayoutEngine {
         );
         // Once per run, not per layer: `resize_for` runs inside the layer
         // loop and would wipe an earlier layer's counts.
-        self.scratch.counters.begin_run();
+        self.scratch.counters.begin_pass();
         self.scratch.cache_rebuild =
             !Self::cache_snapshot_matches_forest(&self.cache.previous, forest, surface);
         if self.scratch.cache_rebuild {

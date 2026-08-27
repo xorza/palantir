@@ -42,7 +42,7 @@ fn gradient_resolution_runs_once_per_id_and_restarts_each_encode() {
     let mut resolver = GradientResolver::default();
     let brush = ShapeBrush::Gradient(GradientId(0));
 
-    resolver.begin(gradients.len());
+    resolver.reset_for(gradients.len());
     let first = resolver.source(&gradients, &atlas, brush);
     let registered = atlas.registrations();
     let repeated = resolver.source(&gradients, &atlas, brush);
@@ -56,7 +56,7 @@ fn gradient_resolution_runs_once_per_id_and_restarts_each_encode() {
         _ => panic!("gradient brush resolved to a solid source"),
     }
 
-    resolver.begin(gradients.len());
+    resolver.reset_for(gradients.len());
     assert!(resolver.resolved[0].is_none());
     let _ = resolver.source(&gradients, &atlas, brush);
     assert_eq!(atlas.registrations(), registered + 1);

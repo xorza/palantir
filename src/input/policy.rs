@@ -1,3 +1,6 @@
+//! What counts as input arriving, and what an unfocusable press does to
+//! focus — the two policies an app can move off their defaults.
+
 /// When the per-frame classification gate decides whether input requires
 /// re-recording, this enum picks the signal it consults.
 ///

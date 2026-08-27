@@ -1,3 +1,5 @@
+//! What a splitter's divider wears, and how wide it is to grab.
+
 use crate::primitives::color::Color;
 use crate::widgets::theme::palette::Palette;
 

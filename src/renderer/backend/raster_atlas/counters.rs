@@ -8,9 +8,6 @@
 //! benchmark. Reads are narrower still, gated with that benchmark alone:
 //! the atlas's own tests assert on individual cells rather than on a
 //! whole reading.
-//!
-//! Counters accumulate for the life of the atlas, so readers take a
-//! delta.
 
 use crate::common::counters::counter_snapshot;
 

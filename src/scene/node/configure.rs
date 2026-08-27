@@ -1,3 +1,7 @@
+//! The authoring surface every widget builder forwards to: one trait of
+//! layout, identity and paint setters, over an opaque view of the node
+//! behind it.
+
 use crate::input::key_class::KeyFilter;
 use crate::input::sense::Sense;
 use crate::layout::types::align::Align;

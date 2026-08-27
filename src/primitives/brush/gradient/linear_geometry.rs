@@ -1,3 +1,6 @@
+//! The linear gradient's axis: colour runs along a direction the angle
+//! names.
+
 use crate::primitives::approx::FloatHash;
 use crate::primitives::brush::gradient::gradient_builder::GradientBuilder;
 use crate::primitives::brush::gradient::stops::Stop;

@@ -35,6 +35,12 @@ use crate::primitives::approx::EPS;
 /// `Pod`/`Zeroable` with `repr(transparent)`, so a `repr(transparent)`
 /// wrapper of `F16x4` keeps the exact `[u16; 4]` GPU-wire layout. Lane
 /// *meaning* (order, units) is entirely the wrapper's business.
+///
+/// **A wrapper forwards what it has a caller for, and no more.** The three
+/// surfaces differ — only two forward `as_u64`, only `Corners` answers
+/// `approx_zero` or scales itself — and each gap is an absent caller
+/// rather than an oversight. Adding the missing side of one is a change
+/// to make when something asks.
 #[repr(transparent)]
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct F16x4([u16; 4]);

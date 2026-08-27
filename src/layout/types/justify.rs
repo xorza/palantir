@@ -1,3 +1,5 @@
+//! How a stack distributes the space its children did not use.
+
 /// Main-axis distribution of leftover space in a stack panel. Mirrors CSS
 /// `justify-content`. Has no effect when any child is `Sizing::fill` along
 /// the main axis — Fill consumes the leftover first.

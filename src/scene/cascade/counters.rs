@@ -1,18 +1,11 @@
 //! Observability for the cascade pass. Built on [`TestOnly`], whose module
 //! doc explains the gated-cell pattern and why the two gates exist.
 //!
-//! ## Why these accumulate instead of resetting per pass
-//!
-//! Both peer probes clear their counters at the top of the pass they
-//! measure. This one deliberately doesn't. `FrameCycle::post_record`'s
-//! fingerprint gate skips [`CascadeEngine::run`] outright on an
-//! unchanged frame, so a per-run reset would simply not fire on those
-//! frames and every skipped frame would report the *previous* run's
-//! numbers as though they were its own — the exact reading error the
-//! reset is supposed to prevent. Accumulating for the life of the engine
-//! and letting readers take a delta is the shape that survives a pass
-//! that may not run — the same call
-//! [`MeasureCache::snapshot_rebuilds`] makes.
+//! This pass is the sharpest case for the accumulate default:
+//! `FrameCycle::post_record`'s fingerprint gate skips
+//! [`CascadeEngine::run`] outright on an unchanged frame, so a per-pass
+//! reset would not fire at all on those frames and each of them would
+//! report the previous run's numbers as its own.
 //!
 //! [`CascadeEngine::run`]: crate::scene::cascade::engine::CascadeEngine
 //! [`MeasureCache::snapshot_rebuilds`]:

@@ -1,3 +1,6 @@
+//! Everything a widget asks about itself for one frame: where it arranged,
+//! and what the pointer and the keyboard did to it.
+
 use crate::input::pointer::PointerButton;
 use crate::input::response::button_phase::ButtonPhase;
 use crate::input::response::button_state::ButtonState;

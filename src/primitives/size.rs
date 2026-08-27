@@ -1,3 +1,6 @@
+//! A 2D extent in logical pixels — a magnitude rather than a position,
+//! which is why it is not a `Vec2`.
+
 use crate::primitives::nan::NanCheck;
 use crate::primitives::{
     approx::{self, FloatHash},

@@ -1,3 +1,6 @@
+//! One drop or inset shadow: the offset, blur and spread a chrome or a
+//! shape paints behind itself.
+
 use crate::primitives::approx::FloatHash;
 use crate::primitives::color::Color;
 use crate::primitives::nan::{self, NanCheck};

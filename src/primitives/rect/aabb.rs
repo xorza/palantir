@@ -1,3 +1,6 @@
+//! The point fold that derives a bounding rect, with the NaN contract that
+//! keeps a bad vertex from producing a plausible box.
+
 use crate::primitives::rect::Rect;
 use glam::Vec2;
 
