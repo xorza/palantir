@@ -1,11 +1,11 @@
 //! What closes a popup, and how long it takes to settle.
 
-use crate::input::keyboard::Key;
+use crate::input::keyboard::key::Key;
 use crate::input::pointer::PointerButton;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
-use crate::scene::node::Configure;
+use crate::scene::node::configure::Configure;
 use crate::ui::harness::UiHarness;
 use crate::widgets::panel::Panel;
 use crate::widgets::popup::tests::support::{

@@ -180,7 +180,8 @@ fn disabling_a_focused_editor_blurs_and_drops_input() {
 #[test]
 fn every_edit_action_chord_is_edit_class() {
     use crate::KeyClass;
-    use crate::input::keyboard::{KeyPress, Modifiers};
+    use crate::input::keyboard::key_press::KeyPress;
+    use crate::input::keyboard::modifiers::Modifiers;
     use crate::widgets::text_edit::action::EditAction;
 
     let actions = [

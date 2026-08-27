@@ -26,7 +26,7 @@ use crate::bench::Run;
 use crate::input::input_event::InputEvent;
 use crate::input::sense::Sense;
 use crate::layout::types::sizing::Sizing;
-use crate::scene::node::Configure;
+use crate::scene::node::configure::Configure;
 use crate::ui::Ui;
 use crate::ui::harness::UiHarness;
 use crate::widgets::button::Button;

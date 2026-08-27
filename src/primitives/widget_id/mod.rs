@@ -183,7 +183,7 @@ impl WidgetId {
     /// Repeated calls from the same source location (a loop or a closure
     /// helper) all produce the same id; id resolution silently disambiguates by
     /// mixing in a per-id occurrence counter. Override with
-    /// [`crate::scene::node::Configure::id_salt`] when call order isn't
+    /// [`Configure::id_salt`](crate::scene::node::configure::Configure::id_salt) when call order isn't
     /// stable across frames.
     #[track_caller]
     pub fn auto_stable() -> Self {

@@ -7,7 +7,7 @@ use crate::primitives::{color::Color, rect::Rect, translate_scale::TranslateScal
 use crate::scene::damage::Damage;
 use crate::scene::damage::tests::support::{BLUE, RED};
 use crate::scene::layer::Layer;
-use crate::scene::node::Configure;
+use crate::scene::node::configure::Configure;
 use crate::scene::tree::node_id::NodeId;
 use crate::shape::Shape;
 use crate::ui::harness::UiHarness;

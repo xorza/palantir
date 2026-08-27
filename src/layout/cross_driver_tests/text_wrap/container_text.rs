@@ -10,7 +10,7 @@ use crate::primitives::color::Color;
 use crate::primitives::size::Size;
 use crate::renderer::frontend::capture::PaintCall;
 use crate::scene::layer::Layer;
-use crate::scene::node::Configure;
+use crate::scene::node::configure::Configure;
 use crate::scene::tree::node_id::NodeId;
 use crate::scene::visibility::Visibility;
 use crate::shape::Shape;

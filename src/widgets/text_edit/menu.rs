@@ -1,7 +1,7 @@
 //! Default TextEdit context-menu policy.
 
 use crate::input::key_class::KeyFilter;
-use crate::input::keyboard::KeyboardEvent;
+use crate::input::keyboard::keyboard_event::KeyboardEvent;
 use crate::ui::Ui;
 use crate::widgets::context_menu::ContextMenu;
 use crate::widgets::context_menu::menu_item::MenuItem;

@@ -13,7 +13,7 @@ use crate::primitives::color::{Color, ColorU8};
 use crate::primitives::corners::Corners;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::stroke::Stroke;
-use crate::scene::node::Configure;
+use crate::scene::node::configure::Configure;
 use crate::scene::visibility::Visibility;
 use crate::ui::Ui;
 use crate::widgets::frame::Frame;

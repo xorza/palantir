@@ -1,5 +1,88 @@
 //! The wgpu backend: the one GPU renderer, its per-window attachments,
 //! and the pipeline sets it builds per swapchain format.
+//!
+//! # One frame
+//!
+//! [`WgpuBackend::submit`] draws a frame in two halves that cannot
+//! overlap, because the first holds `&mut self` and the second reads
+//! `self.pipelines` through a shared borrow: an upload phase recording
+//! every texture and dynamic-buffer write the passes will read, then the
+//! render passes themselves.
+//!
+//! Quads and text interleave per-group in paint order: each group's
+//! quads draw first, then its text renders on top, before the next group
+//! runs. So a child quad declared *after* a label correctly occludes
+//! that label. Without a shared shaper installed (mono fallback) text
+//! rendering is silently skipped and the frame still draws its quads.
+//!
+//! # Damage
+//!
+//! Two paths, branching on the frame plan's damage region:
+//!
+//! - [`Damage::Full`](crate::scene::damage::Damage::Full): a single
+//!   `LoadOp::Clear(clear)` pass paints every group at its native
+//!   scissor. First frame, post-resize, post-format-change, and
+//!   coverage-above-threshold all land here.
+//! - [`Damage::Partial(region)`](crate::scene::damage::Damage::Partial):
+//!   one render pass per rect in the region. Each pass `LoadOp::Load`s
+//!   the backbuffer (preserving last frame outside the rect) and the
+//!   schedule narrows every group's scissor to that pass's damage rect.
+//!   Logical-px in; the backend scales, pads for AA bleed, and clamps to
+//!   surface, and rects that clamp to zero area are filtered out. The
+//!   rects are pairwise disjoint, so one stencil clear per pass is
+//!   enough — no per-rect reset.
+//!
+//! Both shapes go through one `begin_render_pass`. The `dim_undamaged`
+//! debug mode adds a pre-pass on Partial frames: one full-viewport
+//! 40%-translucent black quad onto the backbuffer with `LoadOp::Load`,
+//! in a render pass of its own because the no-stencil pipeline is
+//! incompatible with the main pass's stencil attachment on rounded-clip
+//! frames. Undamaged pixels are dimmed once per frame; damaged pixels
+//! are dimmed and then immediately overwritten by the fresh repaint. So
+//! across many frames the static background fades toward black while
+//! moving content stays current — far less jarring than the prior
+//! `LoadOp::Clear` flash, and it pins which regions actually repaint.
+//!
+//! # The staging belt
+//!
+//! The main encoder opens before the first upload. Every dynamic-buffer
+//! upload routes through `staging_belt`, which schedules its
+//! `copy_buffer_to_buffer` commands onto that encoder rather than
+//! allocating its own `MTLBlitCommandEncoder` per `queue.write_buffer`.
+//! The render passes record onto the same encoder later, and wgpu
+//! serialises commands in record order, so the copies land before the
+//! passes that read from the destination buffers.
+//!
+//! Closing the belt with `finish_and_recall_on_submit` records a
+//! `map_buffer_on_submit` onto the encoder, so the just-used chunks
+//! re-map once the submission completes — no explicit `recall()`. It has
+//! to precede `encoder.finish()`, which needs the still-live encoder.
+//! Chunks come back when the map callback fires off a `device.poll`: a
+//! `PollType::Wait` caller sees them next frame, and a `PollType::Poll`
+//! caller may allocate one more chunk during the catch-up window, which
+//! wgpu's docs flag as harmless.
+//!
+//! # The clear
+//!
+//! The surface clear is the bottom-most paint layer of the frame, so its
+//! alpha is forced to 1: any sub-1 alpha would let the host's desktop
+//! show through the framebuffer's transparent regions. Palantir doesn't
+//! support transparent windows, and the occlusion prune assumes the
+//! clear is opaque.
+//!
+//! The composer may have folded a viewport-covering root background quad
+//! into the clear (`RenderBuffer::clear_override`). It then replaces the
+//! plan's clear for both the Full-pass `LoadOp::Clear` and the Partial
+//! pre-clear quad.
+//!
+//! # GPU timestamps
+//!
+//! When timing is on, the main-pass timestamps resolve as the last step
+//! before `encoder.finish()`: the main pass closed before the backbuffer
+//! copy, so the resolve rides in the same command buffer as everything
+//! else. After submission, `after_submit` kicks the `map_async` on this
+//! frame's staging slot and reads back any prior frame whose map
+//! completed — one `device.poll(Poll)` and one memcpy on the ready slot.
 
 pub(crate) mod backbuffer;
 pub(crate) mod backend_config;
@@ -322,27 +405,8 @@ impl WgpuBackend {
     /// texture must have `COPY_DST` usage (set in
     /// [`wgpu::SurfaceConfiguration::usage`]).
     ///
-    /// Without a shared shaper installed (mono fallback) text rendering
-    /// is silently skipped; the frame still draws quads.
-    ///
-    /// Quads and text interleave per-group in paint order: each group's
-    /// quads draw first, then its text renders on top, before the next
-    /// group runs. So a child quad declared *after* a label correctly
-    /// occludes that label.
-    ///
-    /// Two damage paths, branching on the `plan`'s damage region:
-    ///
-    /// - [`Damage::Full`]: a single `LoadOp::Clear(clear)` pass
-    ///   paints every group at its native scissor. First frame,
-    ///   post-resize, post-format-change, and coverage-above-threshold
-    ///   all land here.
-    /// - [`Damage::Partial(region)`][Damage::Partial]: one
-    ///   render pass per rect in the region. Each pass `LoadOp::Load`s
-    ///   the backbuffer (preserving last frame outside the rect) and
-    ///   the schedule narrows every group's scissor to that pass's
-    ///   damage rect. Logical-px in; the backend scales, pads for AA
-    ///   bleed, and clamps to surface; rects that clamp to zero area
-    ///   are filtered out.
+    /// The module docs carry the frame's shape: the two halves, the two
+    /// damage paths, the belt and the timestamp resolve.
     ///
     /// Skip frames never reach this method — `WindowDriver::render_to_texture`
     /// dispatches them to the copy / no-op paths.
@@ -353,9 +417,6 @@ impl WgpuBackend {
     /// escalation (promote / resync) was sealed in `present_mode` *before* the
     /// draw list was built, so `plan` and `buffer` always agree; the caller
     /// (`WindowDriver`) has also ensured the stencil + backbuffer.
-    ///
-    /// [`Damage::Full`]: crate::scene::damage::Damage::Full
-    /// [Damage::Partial]: crate::scene::damage::Damage::Partial
     pub(crate) fn submit(&mut self, submission: Submission<'_>) {
         tracy::zone!();
         let SubmissionTargets {
@@ -369,11 +430,6 @@ impl WgpuBackend {
             debug_overlay,
             ..
         } = submission;
-        // The composer may have folded a viewport-covering root
-        // background quad into the clear (see
-        // `RenderBuffer::clear_override`); it replaces the plan's clear
-        // for both the Full-pass `LoadOp::Clear` and the Partial
-        // pre-clear quad.
         let clear = buffer.clear_override.unwrap_or(plan.clear);
         let use_stencil = stencil_view.is_some();
         tracing::trace!(
@@ -394,39 +450,20 @@ impl WgpuBackend {
 
         let repaint_scissors = build_repaint_scissors(plan.kind, buffer);
         let is_partial = matches!(repaint_scissors, RepaintScissors::Partial(_));
-        // `dim_undamaged` debug mode: every Partial frame, before any
-        // damage passes, draw one full-viewport 40%-translucent black
-        // quad onto the backbuffer with `LoadOp::Load`. Each frame
-        // undamaged pixels are dimmed once; damaged pixels are dimmed
-        // then immediately overwritten by the fresh repaint, so they
-        // stay bright. Across many frames the static background fades
-        // toward black while moving content stays current — far less
-        // jarring than the prior `LoadOp::Clear` flash and visually
-        // pins which regions are actually repainting.
         let dim_undamaged = debug_overlay.dim_undamaged && is_partial;
 
         // The stencil texture (rounded-clip masking) is ensured by the
         // caller; `stencil_view` is `Some` exactly when `use_stencil`. The
         // mask quads upload further down, after the encoder is open.
 
-        // Open the main encoder up front: every dynamic-buffer upload
-        // below routes through `staging_belt`, which schedules its
-        // `copy_buffer_to_buffer` commands on this encoder rather
-        // than allocating its own MTLBlitCommandEncoder per
-        // `queue.write_buffer`. Render passes are recorded on this
-        // same encoder later in the function; wgpu serialises
-        // commands in record order so the copies land before the
-        // passes that read from the destination buffers.
+        // One encoder: the belt's copies must land before the passes that
+        // read them.
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("palantir.renderer.main"),
             });
 
-        // Belt-routed upload phase. Scoped so the borrows release
-        // before the render-pass phase needs `&mut encoder` cleanly;
-        // yields the damage-overlay instance count for the post-copy
-        // overlay pass.
         let overlay_count = self.upload_frame(
             &mut encoder,
             &submission,
@@ -438,23 +475,7 @@ impl WgpuBackend {
             },
         );
 
-        // Both repaint shapes go through one `begin_render_pass`:
-        // - Full: one schedule walk with no scissor,
-        //   `LoadOp::Clear(color)` covers the backbuffer.
-        // - Partial: an optional dim
-        //   pre-pass (`dim_undamaged`) that paints a 40% black quad
-        //   over the full backbuffer with `LoadOp::Load` in its own
-        //   render pass (no-stencil pipeline incompatible with the
-        //   main pass's stencil attachment on rounded-clip frames),
-        //   followed by one main pass with `LoadOp::Load` and one
-        //   schedule walk per damage rect inside it. Rects are
-        //   pairwise disjoint, so the per-pass stencil clear is
-        //   sufficient — no per-rect stencil reset needed.
-        // Force alpha to 1: the surface clear is the bottom-most
-        // paint layer of the frame, so any sub-1 alpha would let the
-        // host's desktop show through the framebuffer's transparent
-        // regions. Palantir doesn't support transparent windows
-        // (and the occlusion-prune assumes the clear is opaque).
+        // Alpha forced to 1 — the clear is the frame's bottom paint layer.
         let clear_color = wgpu::Color {
             r: clear.r as f64,
             g: clear.g as f64,
@@ -509,30 +530,13 @@ impl WgpuBackend {
             self.run_overlay_pass(fmt, surface_tex, &mut encoder, viewport, overlay_count);
         }
 
-        // Last step before encoder.finish(): resolve the main-pass
-        // timestamps if timing is on. The main pass closed before
-        // copy_backbuffer_into; the resolve can ride in the same
-        // command buffer as everything else.
         if let Some(t) = self.gpu_timings.as_mut() {
             t.resolve(&mut encoder);
         }
 
-        // Close the belt and tie its chunk remap to this frame's
-        // submission: `finish_and_recall_on_submit` records a
-        // `map_buffer_on_submit` onto the encoder, so the just-used
-        // chunks re-map automatically once the submission completes —
-        // no explicit `recall()`. Must precede `encoder.finish()`,
-        // which needs the still-live encoder. Chunks come back when the
-        // map callback fires off a `device.poll`: a `PollType::Wait`
-        // caller sees them next frame; a `PollType::Poll` caller may
-        // allocate one more chunk during the catch-up window, which
-        // wgpu's docs flag as harmless.
         self.staging_belt.finish_and_recall_on_submit(&encoder);
         self.queue.submit(std::iter::once(encoder.finish()));
 
-        // Kick the map_async on this frame's staging slot and read
-        // back any prior frame whose map has completed. Cheap (one
-        // device.poll(Poll), one memcpy on the ready slot).
         if let Some(t) = self.gpu_timings.as_mut() {
             t.after_submit(&self.device);
         }
@@ -543,11 +547,7 @@ impl WgpuBackend {
 
     /// The belt-routed upload phase of one [`Self::submit`]: every
     /// texture and dynamic-buffer write the frame's passes will read,
-    /// recorded onto `encoder` before any render pass opens.
-    ///
-    /// Split out of `submit` because it is the half that holds
-    /// `&mut self` — the pass phase below it reads `self.pipelines`
-    /// through a shared borrow, and the two cannot overlap. Returns the
+    /// recorded onto `encoder` before any render pass opens. Returns the
     /// damage-overlay instance count for the post-copy overlay pass.
     fn upload_frame(
         &mut self,

@@ -2,7 +2,7 @@ pub(crate) mod bars;
 pub(crate) mod state;
 pub(crate) mod zoom_config;
 
-use crate::input::response::ResponseState;
+use crate::input::response::response_state::ResponseState;
 use crate::input::sense::Sense;
 use crate::input::zoom;
 use crate::layout::types::layout_mode::ScrollSpec;
@@ -11,7 +11,8 @@ use crate::primitives::background::Background;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::node::{Configure, Node};
+use crate::scene::node::Node;
+use crate::scene::node::configure::Configure;
 use crate::ui::Ui;
 use crate::widgets::response::{InnerResponse, Response};
 use crate::widgets::scroll::bars::{BarMode, BarSpace, Bars, bar_space};

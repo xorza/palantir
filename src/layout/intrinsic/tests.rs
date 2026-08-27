@@ -6,7 +6,7 @@ use crate::layout::types::layout_mode::{GridDefId, LayoutMode, ScrollSpec};
 use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
 use crate::scene::layer::Layer;
-use crate::scene::node::Configure;
+use crate::scene::node::configure::Configure;
 use crate::text::wrap::TextWrap;
 use crate::ui::harness::UiHarness;
 use crate::widgets::{frame::Frame, grid::Grid, panel::Panel, scroll::Scroll, text::Text};

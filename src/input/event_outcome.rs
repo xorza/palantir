@@ -8,7 +8,7 @@
 pub(super) struct EventOutcome {
     /// The event could change what is on screen, so the next frame
     /// cannot stay on the paint-anim-only path. Surfaced to the host as
-    /// [`InputDelta::requests_repaint`](crate::input::response::InputDelta::requests_repaint).
+    /// [`InputDelta::requests_repaint`](crate::InputDelta::requests_repaint).
     pub(super) repaint: bool,
     /// The event wrote state that a widget recorded *earlier in the same
     /// pass* may already have read, so the pass has to run again.

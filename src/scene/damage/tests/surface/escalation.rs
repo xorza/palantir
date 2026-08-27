@@ -7,7 +7,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::renderer::render_plan::{RenderKind, RenderPlan};
 use crate::scene::cascade::CascadeInputHash;
 use crate::scene::damage::tests::support::{BLUE, DISPLAY, RED, one_frame};
-use crate::scene::node::Configure;
+use crate::scene::node::configure::Configure;
 use crate::ui::harness::UiHarness;
 use crate::widgets::{frame::Frame, panel::Panel};
 use crate::{display::Display, layout::types::sizing::Sizing};

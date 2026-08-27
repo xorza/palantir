@@ -7,7 +7,7 @@ use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::renderer::render_plan::{RenderKind, RenderPlan};
 use crate::scene::damage::tests::support::{BLUE, DISPLAY, RED, frame};
-use crate::scene::node::Configure;
+use crate::scene::node::configure::Configure;
 use crate::ui::harness::UiHarness;
 use crate::widgets::popup::Popup;
 use crate::widgets::{frame::Frame, panel::Panel};

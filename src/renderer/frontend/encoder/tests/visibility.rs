@@ -9,7 +9,7 @@ use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::Color, translate_scale::TranslateScale};
 use crate::renderer::frontend::encoder::tests::support::screen_rects_by_fill;
-use crate::scene::node::Configure;
+use crate::scene::node::configure::Configure;
 use crate::ui::harness::UiHarness;
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};

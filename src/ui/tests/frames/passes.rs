@@ -4,7 +4,7 @@
 use crate::Ui;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::node::Configure;
+use crate::scene::node::configure::Configure;
 use crate::ui::frame_runtime::FrameRuntime;
 use crate::ui::harness::UiHarness;
 use crate::ui::tests::support::{COLD, SURFACE};
@@ -76,7 +76,8 @@ fn cascade_visible_to_relayout_pass() {
 #[test]
 fn frame_pass_count_matches_action_trigger() {
     use crate::input::input_event::InputEvent;
-    use crate::input::keyboard::{Key, Modifiers};
+    use crate::input::keyboard::key::Key;
+    use crate::input::keyboard::modifiers::Modifiers;
     use crate::input::pointer::PointerButton;
     use crate::input::sense::Sense;
     use crate::layout::types::sizing::Sizing;

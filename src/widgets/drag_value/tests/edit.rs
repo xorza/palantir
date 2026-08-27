@@ -2,10 +2,10 @@
 
 use crate::Ui;
 use crate::input::input_event::InputEvent;
-use crate::input::keyboard::Key;
+use crate::input::keyboard::key::Key;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::node::Configure;
+use crate::scene::node::configure::Configure;
 use crate::ui::harness::UiHarness;
 use crate::widgets::drag_value::tests::support::deferred_frame;
 use crate::widgets::drag_value::{DragValue, DragValueState};

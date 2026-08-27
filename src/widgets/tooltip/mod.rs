@@ -5,7 +5,7 @@ use crate::primitives::text_input::TextInput;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::scene::node::Node;
-use crate::scene::node::ThemeDefaults;
+use crate::scene::node::theme_defaults::ThemeDefaults;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
 use crate::widgets::response::ResponseSnapshot;

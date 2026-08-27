@@ -37,11 +37,14 @@ use crate::icons::icon_atlas::IconAtlas;
 use crate::icons::icon_set::IconSet;
 use crate::input::input_event::InputEvent;
 use crate::input::input_state::InputState;
-use crate::input::keyboard::{KeyboardEvent, Modifiers};
+use crate::input::keyboard::keyboard_event::KeyboardEvent;
+use crate::input::keyboard::modifiers::Modifiers;
 use crate::input::pointer::PointerEvent;
 use crate::input::policy::FocusPolicy;
 use crate::input::policy::InputPolicy;
-use crate::input::response::{InputDelta, PointerAction, ResponseState};
+use crate::input::response::input_delta::InputDelta;
+use crate::input::response::pointer_action::PointerAction;
+use crate::input::response::response_state::ResponseState;
 use crate::input::shortcut::Shortcut;
 use crate::input::watch::{KeyboardWake, PointerWake};
 use crate::layout::Layout;
@@ -60,7 +63,8 @@ use crate::renderer::image_registry::ImageHandle;
 use crate::renderer::texture_limit::RegisterImageError;
 use crate::scene::forest::Forest;
 use crate::scene::layer::Layer;
-use crate::scene::node::{Configure, Node};
+use crate::scene::node::Node;
+use crate::scene::node::configure::Configure;
 use crate::scene::record_store::record_payloads::RecordPayloads;
 use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::paint_anims::PaintAnim;
@@ -382,7 +386,7 @@ impl Ui {
     /// [`crate::widgets::modal::Modal`].
     #[inline]
     pub fn escape_pressed(&mut self) -> bool {
-        use crate::input::keyboard::Key;
+        use crate::input::keyboard::key::Key;
         self.key_pressed(Shortcut::key(Key::Escape))
     }
 

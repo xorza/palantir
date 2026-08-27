@@ -4,7 +4,7 @@ use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::primitives::spacing::Spacing;
 use crate::scene::layer::Layer;
-use crate::scene::node::Configure;
+use crate::scene::node::configure::Configure;
 use crate::text::{FontFamily, FontWeight};
 use crate::ui::Ui;
 use crate::widgets::panel::Panel;

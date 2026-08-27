@@ -6,7 +6,7 @@ use crate::input::input_event::InputEvent;
 use crate::input::sense::Sense;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::node::Configure;
+use crate::scene::node::configure::Configure;
 use crate::ui::harness::UiHarness;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
@@ -127,7 +127,8 @@ fn pointer_left_with_nothing_active_does_not_request_repaint() {
 /// wakes only with a `KeyboardWake::MODIFIER` watcher.
 #[test]
 fn non_pointer_events_wake_on_focus_or_watch() {
-    use crate::input::keyboard::{Modifiers, TextChunk};
+    use crate::input::keyboard::modifiers::Modifiers;
+    use crate::input::keyboard::text_chunk::TextChunk;
     use crate::input::watch::KeyboardWake;
     use crate::primitives::widget_id::WidgetId;
     let mut h = UiHarness::new(UVec2::new(400, 400));
@@ -175,7 +176,7 @@ fn non_pointer_events_wake_on_focus_or_watch() {
 /// no watcher) skip the frame under `OnDelta`.
 #[test]
 fn keydown_wakes_only_when_focus_or_watch_exists() {
-    use crate::input::keyboard::Key;
+    use crate::input::keyboard::key::Key;
     use crate::input::shortcut::Shortcut;
     use crate::input::watch::PointerWake;
     use crate::primitives::widget_id::WidgetId;

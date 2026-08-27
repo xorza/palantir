@@ -4,7 +4,7 @@
 use crate::layout::types::{justify::Justify, sizing::Sizing};
 use crate::layout::wrapstack::tests::support::{cell, rect_of};
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::node::Configure;
+use crate::scene::node::configure::Configure;
 use crate::ui::harness::UiHarness;
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::UVec2;

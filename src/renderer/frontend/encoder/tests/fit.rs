@@ -4,7 +4,7 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::rect::Rect;
 use crate::renderer::frontend::capture::PaintCall;
 use crate::scene::damage::region::DamageRegion;
-use crate::scene::node::Configure;
+use crate::scene::node::configure::Configure;
 use crate::ui::harness::UiHarness;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};

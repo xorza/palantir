@@ -47,7 +47,7 @@ use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
 use crate::primitives::background::Background;
 use crate::primitives::translate_scale::TranslateScale;
-use crate::scene::node::Configure;
+use crate::scene::node::configure::Configure;
 use crate::ui::Ui;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;

@@ -10,7 +10,7 @@ use crate::renderer::frontend::capture::PaintCall;
 use crate::renderer::frontend::capture::PaintCapture;
 use crate::renderer::frontend::encoder::tests::support::{as_rect, count_draw_rects};
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
-use crate::scene::node::Configure;
+use crate::scene::node::configure::Configure;
 use crate::ui::harness::UiHarness;
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::UVec2;

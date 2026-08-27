@@ -7,7 +7,7 @@ use crate::animation::anim_spec::AnimSpec;
 use crate::animation::animatable::Animatable;
 use crate::animation::easing::Easing;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::node::Configure;
+use crate::scene::node::configure::Configure;
 use crate::ui::harness::UiHarness;
 use crate::widgets::frame::Frame;
 use glam::UVec2;

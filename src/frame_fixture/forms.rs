@@ -12,7 +12,7 @@ use crate::layout::types::track::Track;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
-use crate::scene::node::Configure;
+use crate::scene::node::configure::Configure;
 use crate::scene::visibility::Visibility;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;

@@ -7,7 +7,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::Color, rect::Rect};
 use crate::renderer::render_plan::{RenderKind, RenderPlan};
 use crate::scene::damage::Damage;
-use crate::scene::node::Configure;
+use crate::scene::node::configure::Configure;
 use crate::ui::harness::UiHarness;
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::UVec2;

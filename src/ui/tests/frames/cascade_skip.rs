@@ -6,7 +6,7 @@ use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
-use crate::scene::node::Configure;
+use crate::scene::node::configure::Configure;
 use crate::ui::harness::UiHarness;
 use crate::ui::tests::support::SURFACE;
 use crate::widgets::frame::Frame;

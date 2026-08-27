@@ -18,10 +18,12 @@
 //! - `Display` formats a platform-native label (`"Ctrl+C"` / `"⌘C"`).
 //!   Menu rows stream it into [`crate::Ui`]'s retained formatting storage.
 //!
-//! [`KeyboardEvent::Down`]: crate::input::keyboard::KeyboardEvent::Down
+//! [`KeyboardEvent::Down`]: crate::KeyboardEvent::Down
 
 use crate::common::platform::{PLATFORM, Platform};
-use crate::input::keyboard::{Key, KeyPress, Modifiers};
+use crate::input::keyboard::key::Key;
+use crate::input::keyboard::key_press::KeyPress;
+use crate::input::keyboard::modifiers::Modifiers;
 use std::fmt;
 
 /// Modifier set for declaring shortcuts. `ctrl` is the primary command

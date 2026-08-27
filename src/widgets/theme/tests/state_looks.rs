@@ -1,4 +1,6 @@
-use crate::input::response::{ButtonPhase, ButtonState, ResponseState};
+use crate::input::response::button_phase::ButtonPhase;
+use crate::input::response::button_state::ButtonState;
+use crate::input::response::response_state::ResponseState;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::text::{FontFamily, FontWeight};

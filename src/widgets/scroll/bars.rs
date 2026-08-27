@@ -2,7 +2,7 @@
 //! per-axis track/thumb pair, and how a frame's bar interaction folds
 //! back into the scroll offset.
 
-use crate::input::response::ResponseState;
+use crate::input::response::response_state::ResponseState;
 use crate::input::sense::Sense;
 use crate::layout::axis::Axis;
 use crate::layout::scrollbars::{self, BarDomain, ScrollbarsDef};
@@ -12,7 +12,8 @@ use crate::primitives::corners::Corners;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::node::{Configure, Node};
+use crate::scene::node::Node;
+use crate::scene::node::configure::Configure;
 use crate::ui::Ui;
 use crate::widgets::scroll::ScrollGeometry;
 use crate::widgets::scroll::state::{ScrollState, ThumbTravel, TrackPage};

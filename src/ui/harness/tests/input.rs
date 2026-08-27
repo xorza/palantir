@@ -1,9 +1,9 @@
 //! The gestures the harness synthesises, and the routing each depends on.
 
-use crate::input::keyboard::KeyboardEvent;
+use crate::input::keyboard::keyboard_event::KeyboardEvent;
 use crate::layout::types::sizing::Sizing;
 use crate::scene::layer::Layer;
-use crate::scene::node::Configure;
+use crate::scene::node::configure::Configure;
 use crate::ui::harness::tests::support::{INSIDE, OUTSIDE, SURFACE, button, target};
 use crate::ui::harness::*;
 use crate::widgets::panel::Panel;

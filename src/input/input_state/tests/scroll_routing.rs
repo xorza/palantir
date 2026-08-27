@@ -1,9 +1,9 @@
 use crate::Ui;
-use crate::input::response::ScrollDelta;
+use crate::input::response::scroll_delta::ScrollDelta;
 use crate::input::sense::Sense;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::node::Configure;
+use crate::scene::node::configure::Configure;
 use crate::ui::harness::UiHarness;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};

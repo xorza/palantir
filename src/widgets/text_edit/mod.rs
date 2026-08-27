@@ -14,7 +14,7 @@ mod unicode;
 mod view_state;
 
 use crate::input::key_class::KeyFilter;
-use crate::input::response::ResponseState;
+use crate::input::response::response_state::ResponseState;
 use crate::input::sense::Sense;
 use crate::layout::types::align::Align;
 use crate::layout::types::clip_mode::ClipMode;

@@ -1,0 +1,64 @@
+use crate::input::response::button_phase::ButtonPhase;
+use crate::input::response::drag::Drag;
+
+/// One pointer button's slice of a widget's interaction snapshot.
+/// [`ResponseState`](crate::ResponseState) carries one per
+/// [`PointerButton`](crate::PointerButton) — every button
+/// gets the same uniform surface (middle-click is as queryable as
+/// left).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct ButtonState {
+    /// Press lifecycle (see [`ButtonPhase`]).
+    pub phase: ButtonPhase,
+    /// Drag lifecycle (see [`Drag`]). At most one button's drag is
+    /// live per widget: when several buttons are simultaneously
+    /// latched, the first in [`PointerButton`](crate::PointerButton)'s
+    /// declaration order wins.
+    pub drag: Drag,
+}
+
+impl ButtonState {
+    /// The press is latched on the widget (`Down` or `Held`) —
+    /// rect-independent, no travel threshold.
+    #[inline]
+    pub fn held(self) -> bool {
+        matches!(self.phase, ButtonPhase::Down { .. } | ButtonPhase::Held)
+    }
+
+    /// One-frame edge: a press+release landed on the widget without
+    /// latching a drag. Fires on the release. For double/triple
+    /// dispatch read [`Self::click_count`] (`== 2` is the
+    /// double-click).
+    #[inline]
+    pub fn clicked(self) -> bool {
+        matches!(self.phase, ButtonPhase::Up { click: Some(_) })
+    }
+
+    /// This frame's press-run position: `0` off the press edge,
+    /// 1/2/3+ on it (`press_count() > 0` is the press-rising edge).
+    #[inline]
+    pub fn press_count(self) -> u8 {
+        match self.phase {
+            ButtonPhase::Down { press } => press,
+            _ => 0,
+        }
+    }
+
+    /// This frame's click-run position: `0` off the click edge,
+    /// 1/2/3+ on it (`2` = double-click, `3` = triple-click).
+    #[inline]
+    pub fn click_count(self) -> u8 {
+        match self.phase {
+            ButtonPhase::Up { click } => click.unwrap_or(0),
+            _ => 0,
+        }
+    }
+
+    /// One-frame edge: this click completed a double (its press was
+    /// the second in its run). Sugar for `click_count() == 2` — read
+    /// [`Self::click_count`] for triple and beyond.
+    #[inline]
+    pub fn double_clicked(self) -> bool {
+        self.click_count() == 2
+    }
+}

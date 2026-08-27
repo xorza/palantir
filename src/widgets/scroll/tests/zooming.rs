@@ -3,7 +3,7 @@
 use crate::Ui;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::node::Configure;
+use crate::scene::node::configure::Configure;
 use crate::ui::harness::UiHarness;
 use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
@@ -317,7 +317,7 @@ fn ctrl_touchpad_pixel_scroll_zooms_at_same_rate_as_wheel_lines() {
 
     // Press ctrl, then touchpad-scroll. `wheel_zoom_gate` requires
     // ctrl||cmd; with cfg.step = 1.03 the factor is 1.03^(-2) ≈ 0.9426.
-    use crate::input::keyboard::Modifiers;
+    use crate::input::keyboard::modifiers::Modifiers;
     h.move_onto(scroll_id);
     h.set_modifiers(Modifiers {
         ctrl: true,
@@ -362,7 +362,7 @@ fn wheel_zoom_step_is_font_independent() {
         };
         h.frame(build_zoom);
 
-        use crate::input::keyboard::Modifiers;
+        use crate::input::keyboard::modifiers::Modifiers;
         h.move_onto(WidgetId::from_hash("fz"));
         h.set_modifiers(Modifiers {
             ctrl: true,

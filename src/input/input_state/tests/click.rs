@@ -2,7 +2,7 @@ use crate::Ui;
 use crate::input::sense::Sense;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::node::Configure;
+use crate::scene::node::configure::Configure;
 use crate::ui::harness::UiHarness;
 use crate::widgets::{button::Button, panel::Panel};
 use glam::{UVec2, Vec2};
@@ -546,7 +546,9 @@ fn press_started_counts_multi_press_runs() {
 #[test]
 fn pointer_actions_report_the_edges_the_response_reports() {
     use crate::input::pointer::PointerButton;
-    use crate::input::response::{ButtonPhase, PointerAction, PointerEdge};
+    use crate::input::response::button_phase::ButtonPhase;
+    use crate::input::response::pointer_action::PointerAction;
+    use crate::input::response::pointer_edge::PointerEdge;
 
     let id = WidgetId::from_hash("collated");
     let mut h = UiHarness::new(UVec2::new(200, 80));

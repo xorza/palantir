@@ -5,13 +5,19 @@ use crate::input::capture::{Capture, DRAG_THRESHOLD, PressDrag, Release, Release
 use crate::input::event_outcome::EventOutcome;
 use crate::input::input_event::InputEvent;
 use crate::input::key_class::KeyClass;
-use crate::input::keyboard::{KeyPress, KeyboardEvent, Modifiers};
+use crate::input::keyboard::key_press::KeyPress;
+use crate::input::keyboard::keyboard_event::KeyboardEvent;
+use crate::input::keyboard::modifiers::Modifiers;
 use crate::input::pointer::{PointerButton, PointerEvent};
 use crate::input::policy::{FocusPolicy, InputPolicy, InputSignal};
-use crate::input::response::{
-    ButtonPhase, ButtonState, Drag, InputDelta, ResponseState, ScrollDelta,
-};
-use crate::input::response::{PointerAction, PointerEdge};
+use crate::input::response::button_phase::ButtonPhase;
+use crate::input::response::button_state::ButtonState;
+use crate::input::response::drag::Drag;
+use crate::input::response::input_delta::InputDelta;
+use crate::input::response::pointer_action::PointerAction;
+use crate::input::response::pointer_edge::PointerEdge;
+use crate::input::response::response_state::ResponseState;
+use crate::input::response::scroll_delta::ScrollDelta;
 use crate::input::scope::Scopes;
 use crate::input::sense::Sense;
 use crate::input::shortcut::Shortcut;

@@ -9,7 +9,7 @@ use crate::animation::tests::support::{
 };
 use crate::common::time::MAX_ANIM_DT;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::node::Configure;
+use crate::scene::node::configure::Configure;
 use crate::widgets::frame::Frame;
 use glam::Vec2;
 use std::time::Duration;

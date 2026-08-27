@@ -13,7 +13,7 @@ use crate::host::window_driver::{CpuFrame, TargetKey, WindowDriver};
 use crate::host::winit::gpu::{self, SurfaceManager, WindowSurface};
 use crate::host::winit::native;
 use crate::input::input_event::InputEvent;
-use crate::input::response::InputDelta;
+use crate::input::response::input_delta::InputDelta;
 use crate::window::cursor_icon::CursorIcon;
 use crate::window::vsync::Vsync;
 use crate::window::window_commands::WindowCommands;

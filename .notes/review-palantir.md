@@ -145,20 +145,6 @@ different answer depending on which call site asks it.
       says every pass walks `&mut Ui` to reach five different engines. The file
       carries no `//!`.
 
-- [ ] `src/input/response.rs` (443 lines) declares eight public types —
-      `InputDelta`, `Drag`, `ButtonPhase`, `ButtonState`, `ScrollDelta`,
-      `ResponseState`, `PointerAction`, `PointerEdge` — against the project's
-      one-major-struct-per-file rule. `src/scene/node/mod.rs` (781 lines)
-      similarly holds `NodeMode`, `Salt`, `Node`, `ConfigureNode` and the two
-      traits `Configure` and `ThemeDefaults`; `src/input/keyboard.rs` holds
-      `Key`, `Modifiers`, `TextChunk`, `KeyPress` and `KeyboardEvent`.
-
-- [ ] `WgpuBackend::submit` (`src/renderer/backend/mod.rs:357`) is roughly 190
-      lines, over half of them multi-paragraph block comments explaining the
-      pass structure, the belt, the clear-alpha rule and the timestamp resolve —
-      orientation material with no `//!` to live in, since the module doc
-      (`:1`) is two lines about what the module contains.
-
 ---
 
 ## Dead surface
