@@ -160,7 +160,7 @@ fn wheel_deltas_are_logical_and_point_in_scroll_direction() {
 
 /// A pinch delta is a *displacement*, so the factor is `1 + delta`. This
 /// layer converts and nothing more — a delta of -1 or worse produces a
-/// factor no zoom can use, and refusing it is `InputEvent::is_actionable`'s
+/// factor no zoom can use, and refusing it is `InputEvent::is_valid`'s
 /// question, asked once at the ingress every other payload here goes
 /// through.
 #[test]
@@ -168,15 +168,15 @@ fn pinch_translation_converts_and_leaves_the_screen_to_ingress() {
     let mut emitted = None;
     translate(&pinch(0.5), 1.0, |event| emitted = Some(event));
     assert!(matches!(emitted, Some(InputEvent::Zoom(1.5))));
-    assert!(emitted.is_some_and(|event| event.is_actionable()));
+    assert!(emitted.is_some_and(|event| event.is_valid()));
 
     for delta in [-1.0, -2.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
         let mut emitted = None;
         translate(&pinch(delta), 1.0, |event| emitted = Some(event));
         let event = emitted.expect("translation always emits");
         assert!(
-            !event.is_actionable(),
-            "pinch delta {delta:?} produced an actionable factor",
+            !event.is_valid(),
+            "pinch delta {delta:?} produced a usable factor",
         );
     }
 }

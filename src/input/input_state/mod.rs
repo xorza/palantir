@@ -380,7 +380,7 @@ impl InputState {
     /// capture, no hover/scroll target change) leaves
     /// `requests_repaint` false so the frame can be skipped entirely.
     pub(crate) fn on_input(&mut self, event: InputEvent, cascade: &Cascade) -> InputDelta {
-        if !event.is_actionable() {
+        if !event.is_valid() {
             return InputDelta::default();
         }
         // Any host-pushed event that survived the screen above

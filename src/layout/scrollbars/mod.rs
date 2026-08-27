@@ -145,8 +145,8 @@ pub(crate) struct BarGeometry {
 }
 
 /// A bar's track always spans its axis' whole viewport extent, so
-/// `viewport` is both the ratio the thumb expresses and the length it
-/// travels along.
+/// `viewport` is both the ratio the thumb expresses and, floored to whole
+/// logical pixels, the length it travels along.
 pub(crate) fn bar_geometry(
     viewport: f32,
     content: f32,
@@ -156,13 +156,11 @@ pub(crate) fn bar_geometry(
     if viewport <= 0.0 || content <= viewport {
         return None;
     }
-    // Quantize the track first and derive both the thumb and its travel
-    // from that one integer length. Quantized here rather than at the
-    // paint site: the widget reads these back to map a drag or a track
-    // click onto an offset, so the bar the user grabs has to be the bar
-    // that was drawn. Rounding on one side only put drag scaling up to a
-    // pixel out and made a click in the rounding sliver page away from
-    // the thumb.
+    // Quantized here rather than at the paint site: the widget reads
+    // these back to map a drag or a track click onto an offset, so the
+    // bar the user grabs has to be the bar that was drawn. Rounding on
+    // one side only put drag scaling up to a pixel out and made a click
+    // in the rounding sliver page away from the thumb.
     //
     // Whole logical pixels because physical snapping rounds a rect's
     // min and max *independently* (`Rect::scaled_by`), which keeps
@@ -174,19 +172,17 @@ pub(crate) fn bar_geometry(
     // in the snap.
     //
     // **One length, not two.** `travel` comes off the same `track` the
-    // size clamped into, which is what puts the offset in `0..=travel` by
-    // construction. Flooring the viewport separately for each cap let a
-    // sub-pixel track floor to zero, take the one-pixel minimum thumb,
-    // and place it at -1.
+    // thumb clamped into, so a 0..1 fraction of it lands in `0..=travel`
+    // and needs no clamp of its own. Flooring the viewport separately for
+    // each cap let a sub-pixel track floor to zero, take the one-pixel
+    // minimum thumb, and place it at -1.
     let track = viewport.floor().max(1.0);
     let thumb_size = (viewport / content * viewport)
         .max(min_thumb)
         .fast_round()
         .clamp(1.0, track);
     let travel = track - thumb_size;
-    let thumb_offset = (BarDomain::new(content, viewport).fraction(offset) * travel)
-        .fast_round()
-        .clamp(0.0, travel);
+    let thumb_offset = (BarDomain::new(content, viewport).fraction(offset) * travel).fast_round();
     Some(BarGeometry {
         thumb_size,
         thumb_offset,

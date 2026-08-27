@@ -5,11 +5,13 @@
 //! never come back. Every product goes through [`clamp`] to keep the
 //! running value invertible.
 //!
-//! Shared by the input state machine (accumulating `InputEvent::Zoom`
-//! into a frame's pinch delta), the winit host (rejecting garbage
-//! factors at ingress), and `widgets::scroll` (folding wheel notches and
-//! pinch into one factor). Free functions rather than a newtype: the
-//! value crosses the public API as a plain `f32` on `ScrollDelta::zoom`.
+//! Shared by [`InputEvent::is_valid`](crate::InputEvent) (screening a
+//! host factor at ingress), the input state machine (accumulating
+//! `InputEvent::Zoom` into a frame's pinch delta), `widgets::scroll`
+//! (folding wheel notches and pinch into one factor), and `ZoomConfig`
+//! (validating an authored range). Free functions rather than a newtype:
+//! the value crosses the public API as a plain `f32` on
+//! `ScrollDelta::zoom`.
 
 /// A valid factor is finite and strictly positive. Zero and negative
 /// factors have no meaning (a zoom can't invert or annihilate) and
