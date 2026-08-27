@@ -40,8 +40,12 @@ pub(crate) struct IconRef {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct IconHandle {
     pub(crate) icon: IconRef,
-    /// The artwork's viewBox extent in logical px.
-    pub(crate) view_box: Vec2,
+    /// The artwork's viewBox extent in logical px — the size the icon was
+    /// designed at, and what to size its node to.
+    ///
+    /// Sound to read on a handle whose set is gone, unlike drawing with
+    /// one: the number travelled with the handle and is baked.
+    pub view_box: Vec2,
 }
 
 /// A loaded icon set, and an **RAII owner** of everything the host caches
@@ -103,16 +107,6 @@ impl IconSet {
             },
             view_box: self.inner.atlas().def(icon).view_box,
         }
-    }
-
-    /// The icon's viewBox extent in logical px — the size the artwork was
-    /// designed at, and what to size its node to.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `icon` is not from this set.
-    pub fn nominal(&self, icon: IconId) -> Vec2 {
-        self.inner.atlas().def(icon).view_box
     }
 
     /// Look an icon up by its baked name. Binary search over the
