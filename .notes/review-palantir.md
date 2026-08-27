@@ -116,36 +116,6 @@ different answer depending on which call site asks it.
 
 ---
 
-## Invariants a type states but does not enforce
-
-Each of these is a property the code depends on and documents at length, held
-in place by a comment and by every current caller happening to respect it. The
-compiler checks none of them, and the failure mode in each case is silent.
-
-- [ ] `RasterAtlas`'s free-slab-index rule is "a freed index has
-      `alloc == None`", which is what stops `ClockSweep`
-      (`src/renderer/backend/raster_atlas/clock_sweep.rs:51`) from picking an
-      index already on the free list and pushing it a second time. Three
-      functions depend on it — `retire_slot`, `retire_unallocated`, and the
-      sweep — and none of them names it; `retire_slot`'s `slot.alloc.take()`
-      is load-bearing for a reason its own doc gives as generation-bumping.
-      A duplicate free index hands one slab slot to two live cache keys.
-
-- [ ] `src/renderer/frontend/composer/session.rs:237` — the `PaintSink`
-      impl's `pop_clip` body is `self.pop_clip()`. It terminates only because
-      an inherent `ComposeSession::pop_clip` exists at `:1167` and inherent
-      methods win method resolution. Rename or move that inherent method and
-      this compiles unchanged into unbounded recursion. `push_clip` at `:234`
-      leans on the same shadowing, saved only by taking an argument.
-
-- [ ] `Ramp::color_at` (`src/renderer/gradient_atlas/bake.rs:83`) documents
-      "**Callers must pass a non-decreasing `t`**" and reads a cursor that
-      cannot walk back. Its `while self.stops[self.upper].offset() < t` loop
-      is bounded by an earlier `t >= stops[last].offset()` return — which is
-      only a bound while the stops are sorted, the invariant above.
-
----
-
 ## Structural duplication a payload parameter would collapse
 
 - [ ] The three gradient kinds are the same type written three times.

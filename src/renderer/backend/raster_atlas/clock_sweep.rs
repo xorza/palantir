@@ -28,8 +28,11 @@ pub(super) struct ClockSweep {
 
 impl ClockSweep {
     /// Advance `hand` over `slots` until it meets an entry eligible for
-    /// eviction: allocated, of `target` content, and not drawn on
+    /// eviction: packed, of `target` content, and not drawn on
     /// `current_frame`. Gives up after one full rotation.
+    ///
+    /// [`AtlasSlot::is_packed`] is what keeps a slot already on the free
+    /// list out of the result — see its doc.
     pub(super) fn over(
         slots: &[AtlasSlot],
         hand: u32,
@@ -51,7 +54,7 @@ impl ClockSweep {
             let idx = at;
             at = if at + 1 == n { 0 } else { at + 1 };
             let slot = &slots[idx];
-            if slot.content == target && slot.alloc.is_some() && slot.last_use < current_frame {
+            if slot.content == target && slot.is_packed() && slot.last_use < current_frame {
                 return Self {
                     victim: Some(idx as u32),
                     hand: at as u32,
