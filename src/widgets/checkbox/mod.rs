@@ -8,7 +8,7 @@ use crate::shape::style::{LineCap, LineJoin};
 use crate::ui::Ui;
 use crate::widgets::response::Response;
 use crate::widgets::theme::toggle::ToggleTheme;
-use crate::widgets::theme::widget_look::look_plan::LookPlan;
+use crate::widgets::theme::widget_look::theme_slot::ThemeSlot;
 use crate::widgets::toggle_chrome::ToggleChrome;
 
 /// Two-response boolean toggle. Takes a `&mut bool` whose owner controls
@@ -49,7 +49,7 @@ impl<'a> Checkbox<'a> {
     style_setter!('a, ToggleTheme, checkbox);
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        let mut widget = ui.widget(self.node);
+        let widget = ui.widget(self.node);
         let response = widget.response(ui);
 
         if response.left.clicked() && !response.disabled {
@@ -63,18 +63,9 @@ impl<'a> Checkbox<'a> {
         let indicator = slot.indicator;
         let indicator_stroke = slot.indicator_stroke;
         let check = slot.check_polyline();
-        let row_gap = slot.row_gap;
-        let look = LookPlan {
-            target: slot.pick(&response, checked).to_animated(&theme.text),
-            padding: slot.padding,
-            margin: slot.margin,
-            anim: slot.anim,
-        }
-        .apply(ui, &mut widget);
-
         let chrome = ToggleChrome {
-            look,
-            row_gap,
+            plan: slot.plan(&response, checked, &theme.text),
+            row_gap: slot.row_gap,
             boxed: Node::leaf().size((Sizing::fixed(box_size), Sizing::fixed(box_size))),
             // Square box: the theme's own corner radius stands.
             pill: None,

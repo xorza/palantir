@@ -18,44 +18,6 @@ pub(crate) enum LayoutMode {
     Scrollbars(ScrollbarsDefId),
 }
 
-impl LayoutMode {
-    /// Whether this driver's `arrange` is a pure function of the slot it
-    /// is handed — reading nothing outside its own subtree and that rect.
-    ///
-    /// [`LayoutEngine::replay_arranged`] rests on exactly this: a measure
-    /// hit proves the subtree's authoring is unchanged, so given an
-    /// identical slot its rects can be copied forward instead of
-    /// re-derived. A driver that reads *outside* its subtree breaks the
-    /// implication — its inputs can move while its own hash and slot sit
-    /// still — and the damage is silent: stale rects, no panic, nothing
-    /// that fails to compile. It surfaces only as a visual bug, which is
-    /// how a scrollbar once survived the content that justified it.
-    ///
-    /// So this is exhaustive on purpose. A new variant must say which
-    /// side it is on, and a driver that answers `false` opts out of
-    /// replay for its whole subtree.
-    ///
-    /// [`LayoutEngine::replay_arranged`]: crate::layout::engine::LayoutEngine
-    pub(crate) const fn arrange_depends_only_on_slot(self) -> bool {
-        match self {
-            Self::Leaf
-            | Self::HStack
-            | Self::VStack
-            | Self::WrapHStack
-            | Self::WrapVStack
-            | Self::ZStack
-            | Self::Canvas
-            | Self::Grid(_)
-            | Self::Scroll(_) => true,
-            // Sizes its thumbs from the *sibling* viewport's measured
-            // `scroll_content`, so content that stops overflowing leaves
-            // this subtree's own hash and slot untouched while the bars
-            // it should retire stay exactly where they were.
-            Self::Scrollbars(_) => false,
-        }
-    }
-}
-
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct PackedLayoutMeta(u32);
@@ -290,39 +252,5 @@ impl ScrollSpec {
         self.0 |= u16::from(fit.x) * Self::FIT_X;
         self.0 |= u16::from(fit.y) * Self::FIT_Y;
         self
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::layout::types::layout_mode::{GridDefId, LayoutMode, ScrollSpec, ScrollbarsDefId};
-
-    /// `Scrollbars` is the sole driver that reads outside its own subtree,
-    /// and the only thing standing between that and silently stale rects
-    /// is this predicate. Pinning both sides keeps a future `true` from
-    /// being added by reflex — the failure mode is invisible at runtime.
-    #[test]
-    fn only_scrollbars_opts_out_of_arrange_replay() {
-        let slot_pure = [
-            LayoutMode::Leaf,
-            LayoutMode::HStack,
-            LayoutMode::VStack,
-            LayoutMode::WrapHStack,
-            LayoutMode::WrapVStack,
-            LayoutMode::ZStack,
-            LayoutMode::Canvas,
-            LayoutMode::Grid(GridDefId::from_index(0)),
-            LayoutMode::Scroll(ScrollSpec::BOTH),
-        ];
-        for mode in slot_pure {
-            assert!(
-                mode.arrange_depends_only_on_slot(),
-                "{mode:?} arranges from its own subtree, so it may replay",
-            );
-        }
-        assert!(
-            !LayoutMode::Scrollbars(ScrollbarsDefId::from_index(0)).arrange_depends_only_on_slot(),
-            "Scrollbars reads a sibling's scroll_content and must never replay",
-        );
     }
 }

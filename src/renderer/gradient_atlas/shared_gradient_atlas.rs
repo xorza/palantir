@@ -57,6 +57,7 @@ impl SharedGradientAtlas {
 
 #[cfg(test)]
 pub(crate) mod test_support {
+    use crate::common::counters::CounterSet;
     use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
 
     impl SharedGradientAtlas {

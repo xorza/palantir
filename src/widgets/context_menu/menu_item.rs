@@ -13,7 +13,7 @@ use crate::widgets::response::Response;
 use crate::widgets::text::Text;
 use crate::widgets::theme::context_menu::menu_item::MenuItemTheme;
 use crate::widgets::theme::text_style::TextStyle;
-use crate::widgets::theme::widget_look::look_plan::LookPlan;
+use crate::widgets::theme::widget_look::theme_slot::ThemeSlot;
 
 /// One row inside a [`ContextMenu`](crate::widgets::context_menu::ContextMenu). Label on the left, optional
 /// right-aligned shortcut hint, theme-driven hover chrome. Reports
@@ -100,13 +100,7 @@ impl<'a> MenuItem<'a> {
         let item = self.slot(theme);
         let shortcut_color = item.shortcut;
         let gap = item.gap;
-        let look = LookPlan {
-            target: item.pick(&response).to_animated(&theme.text),
-            padding: item.padding,
-            margin: item.margin,
-            anim: item.anim,
-        }
-        .apply(ui, &mut widget);
+        let look = item.plan(&response, (), &theme.text).apply(ui, &mut widget);
         // Already fallen back to `theme.text` by `WidgetLook::animate`.
         let text_style = look.text;
         // Shortcut hint reads muted — same style as the label but the

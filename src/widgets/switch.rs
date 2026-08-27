@@ -8,7 +8,7 @@ use crate::scene::node::{Configure, Node};
 use crate::ui::Ui;
 use crate::widgets::response::Response;
 use crate::widgets::theme::toggle::ToggleTheme;
-use crate::widgets::theme::widget_look::look_plan::LookPlan;
+use crate::widgets::theme::widget_look::theme_slot::ThemeSlot;
 use crate::widgets::toggle_chrome::ToggleChrome;
 use glam::Vec2;
 
@@ -47,7 +47,7 @@ impl<'a> Switch<'a> {
     style_setter!('a, ToggleTheme, switch);
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        let mut widget = ui.widget(self.node);
+        let widget = ui.widget(self.node);
         let response = widget.response(ui);
         let id = widget.id();
 
@@ -63,19 +63,10 @@ impl<'a> Switch<'a> {
         let aspect = slot.track_aspect;
         let knob_color = slot.indicator;
         let anim = slot.anim;
-        let row_gap = slot.row_gap;
-        let look = LookPlan {
-            target: slot.pick(&response, on).to_animated(&theme.text),
-            padding: slot.padding,
-            margin: slot.margin,
-            anim: slot.anim,
-        }
-        .apply(ui, &mut widget);
-
         let knob_id = id.with("knob");
         let chrome = ToggleChrome {
-            look,
-            row_gap,
+            plan: slot.plan(&response, on, &theme.text),
+            row_gap: slot.row_gap,
             // A `Canvas` so the knob can be absolutely positioned inside
             // the track. Width is stroke-independent, so it resolves
             // here even though the stroke isn't known until the body.

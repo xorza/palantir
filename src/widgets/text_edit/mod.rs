@@ -34,7 +34,7 @@ use crate::widgets::text_edit::text_geometry::{GeometryInput, TextGeometry};
 use crate::widgets::text_edit::text_layout::{LayoutInput, TextLayout};
 use crate::widgets::text_edit::view_state::{ViewState, ViewUpdateInput};
 use crate::widgets::theme::text_edit::TextEditTheme;
-use crate::widgets::theme::widget_look::look_plan::LookPlan;
+use crate::widgets::theme::widget_look::theme_slot::ThemeSlot;
 use crate::widgets::widget::Widget;
 use glam::Vec2;
 use std::borrow::Cow;
@@ -383,13 +383,7 @@ impl<'a> TextEdit<'a> {
         let caret_width = slot.caret_width;
         let selection_color = slot.selection;
         let placeholder_color = slot.placeholder;
-        let look = LookPlan {
-            target: slot.pick(&response).to_animated(&theme.text),
-            padding: slot.padding,
-            margin: slot.margin,
-            anim: slot.anim,
-        }
-        .apply(ui, &mut widget);
+        let look = slot.plan(&response, (), &theme.text).apply(ui, &mut widget);
         if !look.text.metrics_valid() {
             state.view.prev_focused = is_focused;
             let chrome = look.background;

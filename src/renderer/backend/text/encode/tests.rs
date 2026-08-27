@@ -1,4 +1,5 @@
 use super::*;
+use crate::common::counters::CounterSet;
 use crate::renderer::backend::raster_atlas::raster_quad::RasterQuad;
 use crate::renderer::backend::text::encode::cache::{
     ENCODED_CACHE_KEEP_FRAMES, EncodedCache, EncodedGlyph,

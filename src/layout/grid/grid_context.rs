@@ -7,7 +7,7 @@ use crate::layout::grid::grid_track_store::GridTrackStore;
 /// and `track_state` are separate fields so callers can disjoint-borrow them —
 /// `AxisScratch::resolve_axis` takes `&mut self` (from `depth_stack`) and `&[f32]`
 /// hug slices (from `track_state`) in the same expression via destructuring.
-/// `track_aggregator` is a bump-stack scratch for `grid::intrinsic`'s
+/// `track_aggregator` is a bump-stack scratch for `Grid::intrinsic`'s
 /// per-track aggregator: each call extends by `n_tracks`, recurses (which
 /// may extend further but always truncates back), then truncates to its
 /// own base. Capacity retained.

@@ -10,6 +10,7 @@ use crate::primitives::span::Span;
 use crate::primitives::{color::Color, corners::Corners, rect::Rect, size::Size};
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
+use crate::renderer::backend::instance_pipeline::InstancePipeline;
 use crate::renderer::backend::pipeline_recipe::PipelineRecipe;
 use crate::renderer::backend::schedule::{MaskPlan, build_mask_plan};
 use crate::renderer::backend::shader_template::{ShaderConstant, specialize};
@@ -67,89 +68,6 @@ pub(super) struct QuadPipeline {
 }
 
 impl QuadPipeline {
-    /// `gradient_bgl` is the group-0 layout owned by
-    /// [`GpuGradientAtlas`](crate::renderer::backend::gpu_gradient_atlas::GpuGradientAtlas);
-    /// the pipeline composes its layout against it and the matching bind
-    /// group arrives at each `bind*` call.
-    /// Build the format-independent quad resources. The format-dependent
-    /// pipelines are built separately by
-    /// [`FormatPipelines`](crate::renderer::backend::format_pipelines::FormatPipelines)
-    /// from [`Self::build_variants`] / [`Self::build_mask_stamp`] /
-    /// [`Self::build_mask_clear`].
-    pub(super) fn new(device: &wgpu::Device) -> Self {
-        let wgsl = specialize(
-            include_str!("quad.wgsl"),
-            &[
-                ShaderConstant::float("AA_RADIUS", AA_RADIUS),
-                ShaderConstant::uint("BRUSH_KIND_SOLID", FillKind::SOLID.0),
-                ShaderConstant::uint("BRUSH_KIND_LINEAR", FillKind::linear(Spread::Pad).0),
-                ShaderConstant::uint("BRUSH_KIND_RADIAL", FillKind::radial(Spread::Pad).0),
-                ShaderConstant::uint("BRUSH_KIND_CONIC", FillKind::conic(Spread::Pad).0),
-                ShaderConstant::uint("BRUSH_KIND_SHADOW_DROP", FillKind::SHADOW_DROP.0),
-                ShaderConstant::uint("BRUSH_KIND_SHADOW_INSET", FillKind::SHADOW_INSET.0),
-                ShaderConstant::uint("BRUSH_KIND_TRIANGLE", FillKind::TRIANGLE.0),
-                ShaderConstant::uint("FILL_FLAG_FAST", FillKind::FAST_BIT),
-                ShaderConstant::uint("FILL_FLAG_WINDOW", FillKind::WINDOW_BIT),
-                ShaderConstant::uint("SPREAD_PAD", Spread::Pad as u32),
-                ShaderConstant::uint("SPREAD_REPEAT", Spread::Repeat as u32),
-                ShaderConstant::uint("SPREAD_REFLECT", Spread::Reflect as u32),
-            ],
-        );
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("palantir.quad.shader"),
-            source: wgpu::ShaderSource::Wgsl(wgsl.into()),
-        });
-
-        let instance_buffer = DynamicBuffer::<Quad>::vertex(device, "palantir.quad.instances", 256);
-
-        let clear_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("palantir.quad.clear"),
-            size: std::mem::size_of::<Quad>() as u64,
-            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        Self {
-            instance_buffer,
-            mask_buffer: None,
-            mask_indices: MaskPlan::default(),
-            masks: Vec::new(),
-            clear_buffer,
-            last_clear: None,
-            shader,
-        }
-    }
-
-    /// Build the base + stencil-test color pipelines against `format` —
-    /// the only format-dependent quad objects; the gradient LUT atlas
-    /// (texture + bind group + sampler) and the instance / clear buffers
-    /// are reused. The distinct mask variants ([`Self::build_mask_stamp`]
-    /// / [`Self::build_mask_clear`]) stay separate — different fragment
-    /// entry, color writes off. Called by `FormatPipelines` for each
-    /// swapchain format.
-    pub(super) fn build_variants(
-        &self,
-        device: &wgpu::Device,
-        gradient_bgl: &wgpu::BindGroupLayout,
-        format: wgpu::TextureFormat,
-    ) -> StencilVariant {
-        // Gradient atlas at group 0 (viewport rides the shared immediate
-        // region, no bind-group slot needed).
-        StencilVariant::build(
-            device,
-            ColorVariantSpec {
-                label: "palantir.quad.pipeline",
-                stencil_label: "palantir.quad.pipeline.stencil_test",
-                layout_label: "palantir.quad.pl",
-                shader: &self.shader,
-                bind_group_layouts: &[Some(gradient_bgl)],
-                vertex_buffers: &[Some(quad_instance_layout())],
-                topology: wgpu::PrimitiveTopology::TriangleStrip,
-            },
-            format,
-        )
-    }
-
     /// Mask-stamp variant: stencil `Equal` + `IncrementClamp` at every
     /// pixel the SDF passes (`fs_mask` discards outside), color writes
     /// off, blend inert. Drawn once per chain level at
@@ -214,7 +132,7 @@ impl QuadPipeline {
     ) -> wgpu::RenderPipeline {
         let layout =
             PipelineRecipe::pipeline_layout(device, "palantir.quad.pl.mask", &[Some(gradient_bgl)]);
-        let instance = Some(quad_instance_layout());
+        let instance = Some(Self::instance_layout());
         PipelineRecipe {
             label,
             shader: &self.shader,
@@ -239,39 +157,6 @@ impl QuadPipeline {
             }),
         }
         .build(device)
-    }
-
-    pub(super) fn upload(&mut self, ctx: &mut GpuCtx<'_>, quads: &[Quad]) {
-        self.instance_buffer.upload_instances(ctx, quads);
-    }
-
-    /// Bind pipeline + gradient bind group + instance buffer once per
-    /// pass. `use_stencil` selects the stencil-test variant (the
-    /// rounded-clip pass) over the no-stencil base. Group 0 is the
-    /// shared gradient bind group; viewport rides immediates. Mirrors
-    /// the `bind(pass, use_stencil, gradient_bg)` shape of the mesh /
-    /// image / curve pipelines.
-    pub(super) fn bind<'a>(
-        &'a self,
-        pass: &mut wgpu::RenderPass<'a>,
-        pipelines: &'a StencilVariant,
-        use_stencil: bool,
-        gradient_bg: &'a wgpu::BindGroup,
-    ) {
-        pass.set_pipeline(pipelines.select(use_stencil));
-        pass.set_bind_group(0, gradient_bg, &[]);
-        pass.set_vertex_buffer(0, self.instance_buffer.buffer.slice(..));
-    }
-
-    /// Draw a contiguous slice of the uploaded instance buffer. Used to
-    /// segment quads by scissor region; caller is responsible for
-    /// calling [`Self::bind`] once and setting
-    /// `RenderPass::set_scissor_rect` before each call.
-    pub(super) fn draw_range(&self, pass: &mut wgpu::RenderPass<'_>, instances: Span) {
-        if instances.len == 0 {
-            return;
-        }
-        pass.draw(0..4, instances.into());
     }
 
     /// Upload the partial-repaint pre-clear quad: full-viewport rect
@@ -388,6 +273,141 @@ impl QuadPipeline {
     }
 }
 
+impl InstancePipeline for QuadPipeline {
+    /// The gradient atlas's group-0 layout, owned by
+    /// [`GpuGradientAtlas`](crate::renderer::backend::gpu_gradient_atlas::GpuGradientAtlas).
+    type Layouts<'a> = &'a wgpu::BindGroupLayout;
+    type Upload<'a> = &'a [Quad];
+    /// The shared gradient bind group, one allocation used by this
+    /// pipeline and the curve one.
+    type Bindings<'a> = &'a wgpu::BindGroup;
+    /// A contiguous slice of the uploaded instance buffer, so the caller
+    /// can segment quads by scissor region.
+    type Batch<'a> = Span;
+
+    /// `gradient_bgl` is the group-0 layout owned by
+    /// [`GpuGradientAtlas`](crate::renderer::backend::gpu_gradient_atlas::GpuGradientAtlas);
+    /// the pipeline composes its layout against it and the matching bind
+    /// group arrives at each `bind*` call.
+    /// Build the format-independent quad resources. The format-dependent
+    /// pipelines are built separately by
+    /// [`FormatPipelines`](crate::renderer::backend::format_pipelines::FormatPipelines)
+    /// from [`Self::build_variants`] / [`Self::build_mask_stamp`] /
+    /// [`Self::build_mask_clear`].
+    fn new(device: &wgpu::Device) -> Self {
+        let wgsl = specialize(
+            include_str!("quad.wgsl"),
+            &[
+                ShaderConstant::float("AA_RADIUS", AA_RADIUS),
+                ShaderConstant::uint("BRUSH_KIND_SOLID", FillKind::SOLID.0),
+                ShaderConstant::uint("BRUSH_KIND_LINEAR", FillKind::linear(Spread::Pad).0),
+                ShaderConstant::uint("BRUSH_KIND_RADIAL", FillKind::radial(Spread::Pad).0),
+                ShaderConstant::uint("BRUSH_KIND_CONIC", FillKind::conic(Spread::Pad).0),
+                ShaderConstant::uint("BRUSH_KIND_SHADOW_DROP", FillKind::SHADOW_DROP.0),
+                ShaderConstant::uint("BRUSH_KIND_SHADOW_INSET", FillKind::SHADOW_INSET.0),
+                ShaderConstant::uint("BRUSH_KIND_TRIANGLE", FillKind::TRIANGLE.0),
+                ShaderConstant::uint("FILL_FLAG_FAST", FillKind::FAST_BIT),
+                ShaderConstant::uint("FILL_FLAG_WINDOW", FillKind::WINDOW_BIT),
+                ShaderConstant::uint("SPREAD_PAD", Spread::Pad as u32),
+                ShaderConstant::uint("SPREAD_REPEAT", Spread::Repeat as u32),
+                ShaderConstant::uint("SPREAD_REFLECT", Spread::Reflect as u32),
+            ],
+        );
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("palantir.quad.shader"),
+            source: wgpu::ShaderSource::Wgsl(wgsl.into()),
+        });
+
+        let instance_buffer = DynamicBuffer::<Quad>::vertex(device, "palantir.quad.instances", 256);
+
+        let clear_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("palantir.quad.clear"),
+            size: std::mem::size_of::<Quad>() as u64,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        Self {
+            instance_buffer,
+            mask_buffer: None,
+            mask_indices: MaskPlan::default(),
+            masks: Vec::new(),
+            clear_buffer,
+            last_clear: None,
+            shader,
+        }
+    }
+
+    fn instance_layout() -> wgpu::VertexBufferLayout<'static> {
+        wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<Quad>() as u64,
+            step_mode: wgpu::VertexStepMode::Instance,
+            attributes: &QUAD_INSTANCE_ATTRS,
+        }
+    }
+
+    /// Build the base + stencil-test color pipelines against `format` —
+    /// the only format-dependent quad objects; the gradient LUT atlas
+    /// (texture + bind group + sampler) and the instance / clear buffers
+    /// are reused. The distinct mask variants ([`Self::build_mask_stamp`]
+    /// / [`Self::build_mask_clear`]) stay separate — different fragment
+    /// entry, color writes off. Called by `FormatPipelines` for each
+    /// swapchain format.
+    fn build_variants(
+        &self,
+        device: &wgpu::Device,
+        gradient_bgl: Self::Layouts<'_>,
+        format: wgpu::TextureFormat,
+    ) -> StencilVariant {
+        // Gradient atlas at group 0 (viewport rides the shared immediate
+        // region, no bind-group slot needed).
+        StencilVariant::build(
+            device,
+            ColorVariantSpec {
+                label: "palantir.quad.pipeline",
+                stencil_label: "palantir.quad.pipeline.stencil_test",
+                layout_label: "palantir.quad.pl",
+                shader: &self.shader,
+                bind_group_layouts: &[Some(gradient_bgl)],
+                vertex_buffers: &[Some(Self::instance_layout())],
+                topology: wgpu::PrimitiveTopology::TriangleStrip,
+            },
+            format,
+        )
+    }
+
+    fn upload(&mut self, ctx: &mut GpuCtx<'_>, quads: Self::Upload<'_>) {
+        self.instance_buffer.upload_instances(ctx, quads);
+    }
+
+    /// Bind pipeline + gradient bind group + instance buffer once per
+    /// pass. `use_stencil` selects the stencil-test variant (the
+    /// rounded-clip pass) over the no-stencil base. Group 0 is the
+    /// shared gradient bind group; viewport rides immediates.
+    fn bind<'a>(
+        &'a self,
+        pass: &mut wgpu::RenderPass<'a>,
+        variant: &'a StencilVariant,
+        use_stencil: bool,
+        gradient_bg: Self::Bindings<'a>,
+    ) {
+        pass.set_pipeline(variant.select(use_stencil));
+        pass.set_bind_group(0, gradient_bg, &[]);
+        pass.set_vertex_buffer(0, self.instance_buffer.buffer.slice(..));
+    }
+
+    /// Draw a contiguous slice of the uploaded instance buffer. Used to
+    /// segment quads by scissor region; caller is responsible for
+    /// calling [`Self::bind`] once and setting
+    /// `RenderPass::set_scissor_rect` before each call.
+    fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, instances: Self::Batch<'_>) {
+        if instances.len == 0 {
+            return;
+        }
+        pass.draw(0..4, instances.into());
+    }
+}
+
 const QUAD_INSTANCE_ATTRS: [wgpu::VertexAttribute; 9] = wgpu::vertex_attr_array![
     0 => Float32x2,   // pos
     1 => Float32x2,   // size
@@ -419,11 +439,3 @@ const _: () = {
     assert!(QUAD_INSTANCE_ATTRS[7].offset == offset_of!(Quad, fill_lut_row) as u64);
     assert!(QUAD_INSTANCE_ATTRS[8].offset == offset_of!(Quad, fill_axis) as u64);
 };
-
-fn quad_instance_layout() -> wgpu::VertexBufferLayout<'static> {
-    wgpu::VertexBufferLayout {
-        array_stride: std::mem::size_of::<Quad>() as u64,
-        step_mode: wgpu::VertexStepMode::Instance,
-        attributes: &QUAD_INSTANCE_ATTRS,
-    }
-}

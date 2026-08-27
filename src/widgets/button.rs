@@ -7,7 +7,7 @@ use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
 use crate::widgets::response::Response;
 use crate::widgets::theme::button::ButtonTheme;
-use crate::widgets::theme::widget_look::look_plan::LookPlan;
+use crate::widgets::theme::widget_look::theme_slot::ThemeSlot;
 
 #[derive(Debug)]
 pub struct Button<'a> {
@@ -71,13 +71,7 @@ impl<'a> Button<'a> {
         let id = widget.id();
         let theme = ui.theme();
         let slot = self.slot(theme);
-        let look = LookPlan {
-            target: slot.pick(&response).to_animated(&theme.text),
-            padding: slot.padding,
-            margin: slot.margin,
-            anim: slot.anim,
-        }
-        .apply(ui, &mut widget);
+        let look = slot.plan(&response, (), &theme.text).apply(ui, &mut widget);
         let label = self.label;
         let label_align = self.label_align;
         let label_wrap = self.label_wrap;

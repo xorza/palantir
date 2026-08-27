@@ -11,7 +11,7 @@ use crate::ui::Ui;
 use crate::widgets::response::Response;
 use crate::widgets::text_edit::TextEdit;
 use crate::widgets::theme::drag_value::DragValueTheme;
-use crate::widgets::theme::widget_look::look_plan::LookPlan;
+use crate::widgets::theme::widget_look::theme_slot::ThemeSlot;
 use std::ops::RangeInclusive;
 
 /// The numeric target a [`DragValue`] scrubs: either an `i64` or an `f64`,
@@ -364,13 +364,7 @@ impl<'a> DragValue<'a> {
         // restyle.
         let theme = ui.theme();
         let chip = &self.slot(theme).chip;
-        let look = LookPlan {
-            target: chip.pick(&response).to_animated(&theme.text),
-            padding: chip.padding,
-            margin: chip.margin,
-            anim: chip.anim,
-        }
-        .apply(ui, &mut widget);
+        let look = chip.plan(&response, (), &theme.text).apply(ui, &mut widget);
 
         widget.record(ui, Some(&look.background), |ui| {
             ui.add_shape(

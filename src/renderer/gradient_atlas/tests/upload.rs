@@ -1,6 +1,7 @@
 //! The dirty span a flush hands the GPU, and how often a steady frame
 //! rebakes.
 
+use crate::common::counters::CounterSet;
 use crate::renderer::gradient_atlas::tests::support::{
     assert_real_row, distinct_grad, register_for,
 };

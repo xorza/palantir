@@ -49,6 +49,7 @@
 //! Run with `cargo bench --features bench --bench criterion -- gradient_atlas`.
 
 use crate::bench::Run;
+use crate::common::counters::CounterSet;
 use crate::primitives::brush::gradient::Interp;
 use crate::primitives::brush::gradient::stops::{GradientStops, Stop};
 use crate::primitives::color::ColorU8;

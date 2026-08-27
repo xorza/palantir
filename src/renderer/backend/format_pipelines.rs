@@ -14,6 +14,7 @@
 use crate::renderer::backend::curve_pipeline::CurvePipeline;
 use crate::renderer::backend::icon::IconBackend;
 use crate::renderer::backend::image_pipeline::ImagePipeline;
+use crate::renderer::backend::instance_pipeline::InstancePipeline;
 use crate::renderer::backend::mesh_pipeline::MeshPipeline;
 use crate::renderer::backend::quad_pipeline::QuadPipeline;
 use crate::renderer::backend::stencil_variant::StencilVariant;
@@ -81,8 +82,8 @@ impl FormatPipelines {
             quad: quad.build_variants(device, gradient_bgl, format),
             quad_mask_stamp: quad.build_mask_stamp(device, gradient_bgl, format),
             quad_mask_clear: quad.build_mask_clear(device, gradient_bgl, format),
-            mesh: mesh.build_variants(device, format),
-            image: image.build_variants(device, format),
+            mesh: mesh.build_variants(device, (), format),
+            image: image.build_variants(device, (), format),
             icon: icon.build_variants(device, format),
             curve: curve.build_variants(device, gradient_bgl, format),
             text: text.build_variants(device, format),

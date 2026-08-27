@@ -1,6 +1,7 @@
 //! Block allocation, recycling and class isolation.
 
 use super::*;
+use crate::common::counters::CounterSet;
 
 /// The cheapest thing satisfying the trait: the link is the whole
 /// element, so a test can read a slot back and say what it holds.

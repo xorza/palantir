@@ -15,9 +15,34 @@ use crate::primitives::mesh::MeshVertex;
 use crate::primitives::span::Span;
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
+use crate::renderer::backend::instance_pipeline::InstancePipeline;
 use crate::renderer::backend::stencil_variant::ColorVariantSpec;
 use crate::renderer::backend::stencil_variant::StencilVariant;
 use crate::renderer::render_buffer::mesh::{MeshDraw, MeshInstance};
+
+/// One frame's mesh geometry and per-draw state, uploaded together.
+///
+/// The three streams have to agree — an instance indexes a draw's vertex
+/// and index spans — so they travel as one value rather than three
+/// adjacent slice parameters.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct MeshUpload<'a> {
+    pub(super) vertices: &'a [MeshVertex],
+    pub(super) indices: &'a [u32],
+    pub(super) instances: &'a [MeshInstance],
+}
+
+/// One batch of mesh draws: the frame's whole per-draw column, and the
+/// slice of it this batch owns.
+///
+/// `items` is the same [`Span`] that indexes the per-frame instance
+/// buffer, so a draw's geometry and its transform plus tint cannot come
+/// from different batches.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct MeshBatch<'a> {
+    pub(super) draws: &'a [MeshDraw],
+    pub(super) items: Span,
+}
 
 #[derive(Debug)]
 pub(super) struct MeshPipeline {
@@ -29,11 +54,17 @@ pub(super) struct MeshPipeline {
     shader: wgpu::ShaderModule,
 }
 
-impl MeshPipeline {
+impl InstancePipeline for MeshPipeline {
+    /// None past the device: mesh binds no groups at all.
+    type Layouts<'a> = ();
+    type Upload<'a> = MeshUpload<'a>;
+    type Bindings<'a> = ();
+    type Batch<'a> = MeshBatch<'a>;
+
     /// Format-independent mesh resources; the pipelines are built by
     /// [`FormatPipelines`](crate::renderer::backend::format_pipelines::FormatPipelines)
     /// from [`Self::build_variants`].
-    pub(super) fn new(device: &wgpu::Device) -> Self {
+    fn new(device: &wgpu::Device) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("palantir.mesh.shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("mesh.wgsl").into()),
@@ -53,13 +84,22 @@ impl MeshPipeline {
         }
     }
 
+    fn instance_layout() -> wgpu::VertexBufferLayout<'static> {
+        wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<MeshInstance>() as u64,
+            step_mode: wgpu::VertexStepMode::Instance,
+            attributes: &MESH_INSTANCE_ATTRS,
+        }
+    }
+
     /// Build the base + stencil-test color pipelines against `format` —
     /// the only format-dependent mesh objects; the vertex / index /
     /// instance buffers are reused. Called by `FormatPipelines` per
     /// format.
-    pub(super) fn build_variants(
+    fn build_variants(
         &self,
         device: &wgpu::Device,
+        _layouts: Self::Layouts<'_>,
         format: wgpu::TextureFormat,
     ) -> StencilVariant {
         // Mesh shader uses no bind groups — only the shared immediate
@@ -72,19 +112,21 @@ impl MeshPipeline {
                 layout_label: "palantir.mesh.pl",
                 shader: &self.shader,
                 bind_group_layouts: &[],
-                vertex_buffers: &[Some(mesh_vertex_layout()), Some(mesh_instance_layout())],
+                vertex_buffers: &[Some(mesh_vertex_layout()), Some(Self::instance_layout())],
                 topology: wgpu::PrimitiveTopology::TriangleList,
             },
             format,
         )
     }
 
-    pub(super) fn upload(
+    fn upload(
         &mut self,
         ctx: &mut GpuCtx<'_>,
-        vertices: &[MeshVertex],
-        indices: &[u32],
-        instances: &[MeshInstance],
+        MeshUpload {
+            vertices,
+            indices,
+            instances,
+        }: Self::Upload<'_>,
     ) {
         if !mesh_upload_required(vertices.len(), indices.len(), instances.len()) {
             return;
@@ -96,16 +138,17 @@ impl MeshPipeline {
     }
 
     /// Bind pipeline + vertex/instance/index buffers once per batch;
-    /// [`Self::draw_batch`] then issues the draws. Mesh binds no groups —
+    /// [`Self::draw`] then issues the draws. Mesh binds no groups —
     /// the viewport rides the shared immediate region, re-pushed by
     /// the backend's `rebind!` after every pipeline switch.
-    pub(super) fn bind<'a>(
+    fn bind<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
-        pipelines: &'a StencilVariant,
+        variant: &'a StencilVariant,
         use_stencil: bool,
+        _bindings: Self::Bindings<'a>,
     ) {
-        pass.set_pipeline(pipelines.select(use_stencil));
+        pass.set_pipeline(variant.select(use_stencil));
         pass.set_vertex_buffer(0, self.vertex_buffer.buffer.slice(..));
         pass.set_vertex_buffer(1, self.instance_buffer.buffer.slice(..));
         pass.set_index_buffer(
@@ -120,20 +163,18 @@ impl MeshPipeline {
     /// geometry and its transform + tint cannot come from different
     /// batches.
     ///
-    /// One `draw_indexed` per mesh, and unlike
-    /// [`ImagePipeline::draw_batch`](crate::renderer::backend::image_pipeline::ImagePipeline::draw_batch)
-    /// there is no run to coalesce: `shapes::lower` appends each authored
+    /// One `draw_indexed` per mesh, and unlike `ImagePipeline`'s arm of
+    /// the same method there is no run to coalesce: `shapes::lower` appends each authored
     /// mesh's vertices and indices to the record payloads rather than
     /// interning them, so every draw owns a private span and no two
     /// `MeshDraw`s are ever equal — not even two draws of the same
     /// `Mesh`. Interning payloads by their already-computed
     /// `content_hash` would change that, and is the prerequisite for any
     /// batching here.
-    pub(super) fn draw_batch(
-        &self,
-        pass: &mut wgpu::RenderPass<'_>,
-        draws: &[MeshDraw],
-        items: Span,
+    fn draw<'a>(
+        &'a self,
+        pass: &mut wgpu::RenderPass<'a>,
+        MeshBatch { draws, items }: Self::Batch<'_>,
     ) {
         for (offset, draw) in draws[items.range()].iter().enumerate() {
             if draw.indices.len == 0 {
@@ -202,14 +243,6 @@ const _: () = {
     assert!(MESH_INSTANCE_ATTRS[1].offset == offset_of!(MeshInstance, scale) as u64);
     assert!(MESH_INSTANCE_ATTRS[2].offset == offset_of!(MeshInstance, tint) as u64);
 };
-
-fn mesh_instance_layout() -> wgpu::VertexBufferLayout<'static> {
-    wgpu::VertexBufferLayout {
-        array_stride: std::mem::size_of::<MeshInstance>() as u64,
-        step_mode: wgpu::VertexStepMode::Instance,
-        attributes: &MESH_INSTANCE_ATTRS,
-    }
-}
 
 #[cfg(test)]
 mod tests {

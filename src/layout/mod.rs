@@ -5,6 +5,9 @@
 //! and the cross-frame measure cache. The finalized [`Layout`] is threaded
 //! out to the caller instead of held here, because the cascade, the encoder,
 //! hit testing and scroll refresh all read it.
+//!
+//! Each container kind is a [`LayoutDriver`](driver::LayoutDriver), and the
+//! three passes reach one through the single dispatch in that module.
 
 pub(crate) mod axis;
 pub(crate) mod axis_align_pair;
@@ -13,6 +16,7 @@ pub(crate) mod axis_placement;
 pub(crate) mod cache;
 mod canvas;
 pub(crate) mod counters;
+mod driver;
 pub(crate) mod engine;
 pub(crate) mod grid;
 pub(crate) mod intrinsic;

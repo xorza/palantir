@@ -10,12 +10,14 @@
 //! - [`look_plan::LookPlan`] — that target plus the bundle's box defaults,
 //!   owned, so the theme borrow can end before the `Ui` is reborrowed.
 //!
-//! No trait spans them: a widget holds its bundle, calls the bundle's own
-//! `pick`, and builds a `LookPlan` from fields every bundle spells alike.
+//! [`theme_slot::ThemeSlot`] spans the last two: a bundle names its pick and
+//! its [`theme_slot::SlotDefaults`] once, and every widget reaches a
+//! `LookPlan` through that one call.
 
 pub(crate) mod animated_look;
 pub(crate) mod look_plan;
 pub(crate) mod stateful_look;
+pub(crate) mod theme_slot;
 
 use crate::animation::anim_slot::AnimSlot;
 use crate::primitives::background::Background;

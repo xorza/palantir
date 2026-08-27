@@ -10,25 +10,25 @@ use crate::scene::node::{Configure, Node};
 use crate::ui::Ui;
 use crate::widgets::response::Response;
 use crate::widgets::text::Text;
-use crate::widgets::theme::widget_look::animated_look::AnimatedLook;
+use crate::widgets::theme::widget_look::look_plan::LookPlan;
 use crate::widgets::widget::Widget;
 
 /// What [`ToggleChrome::record_row`] needs from its caller beyond the
 /// entry, the label, and the indicator body.
 ///
-/// The theme arrives **resolved**. Each toggle reads its own slot
-/// (`theme.checkbox` / `theme.radio` / `theme.switch`) — they share a theme
-/// *type* but not a *slot*, and only the caller knows which is its own — so
-/// the caller is also where the
-/// [`LookPlan`](crate::widgets::theme::widget_look::look_plan::LookPlan) is
-/// built and applied, off the same slot the geometry scalars come from. What
-/// crosses into here is owned, which is what keeps the shared scaffolding out
-/// of the business of naming theme fields.
+/// The theme arrives **planned, not applied**. Each toggle reads its own
+/// slot (`theme.checkbox` / `theme.radio` / `theme.switch`) — they share a
+/// theme *type* but not a *slot*, and only the caller knows which is its own
+/// — so the caller builds the [`LookPlan`] off the same slot the geometry
+/// scalars come from. Applying it is the row's own step, and belongs with the
+/// rest of the scaffolding: a plan owns everything it carries, so the theme
+/// borrow ends at this struct literal and [`Self::record_row`] is free to
+/// reborrow the `Ui` mutably.
 #[derive(Debug)]
 pub(crate) struct ToggleChrome {
-    /// The picked, animated look for this response and on/off state.
-    pub(crate) look: AnimatedLook,
-    /// Gap between the box and the label, off the same slot as `look`.
+    /// The look this row animates toward, off the caller's slot.
+    pub(crate) plan: LookPlan,
+    /// Gap between the box and the label, off the same slot as `plan`.
     pub(crate) row_gap: f32,
     /// The box/track child recorded before the label, already sized and
     /// in its layout mode — a square leaf for `Checkbox`/`RadioButton`,
@@ -50,10 +50,10 @@ impl ToggleChrome {
     /// structural — the themed look resolution, the row gap /
     /// cross-centering, the box chrome, the label leaf — lives here.
     ///
-    /// The row `HStack` node (sense + salt already set) rides in
-    /// `widget`, its probed response in `probe`. `body` runs inside the box
-    /// child and is handed the box's resolved chrome: `Switch` measures its
-    /// knob inset against the *animating* stroke width, which is why the
+    /// The row `HStack` node (sense + salt already set) rides in `widget`,
+    /// its probed response in `response`. `body` runs inside the box child
+    /// and is handed the box's resolved chrome: `Switch` measures its knob
+    /// inset against the *animating* stroke width, which is why the
     /// background is passed in rather than re-derived from the theme.
     pub(crate) fn record_row<'ui, 'text>(
         self,
@@ -65,11 +65,12 @@ impl ToggleChrome {
     ) -> Response<'ui> {
         let id = widget.id();
         let Self {
-            mut look,
+            plan,
             row_gap,
             boxed,
             pill,
         } = self;
+        let mut look = plan.apply(ui, &mut widget);
         if let Some(radius) = pill {
             look.background.corners = Corners::all(radius);
         }

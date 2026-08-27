@@ -1,8 +1,7 @@
-use crate::animation::anim_spec::AnimSpec;
-use crate::primitives::spacing::Spacing;
 use crate::ui::Ui;
 use crate::widgets::theme::widget_look::WidgetLook;
 use crate::widgets::theme::widget_look::animated_look::AnimatedLook;
+use crate::widgets::theme::widget_look::theme_slot::SlotDefaults;
 use crate::widgets::widget::Widget;
 
 /// Everything a themed widget takes out of its theme slot, held as owned
@@ -11,24 +10,20 @@ use crate::widgets::widget::Widget;
 /// The two halves of resolving a look need different borrows of the `Ui`:
 /// picking the per-state [`WidgetLook`] and reading the spacing defaults read
 /// the theme, while animating toward the result reborrows the `Ui` mutably.
-/// This value is where they meet — the widget fills it from its slot while the
-/// theme borrow is live, then [`Self::apply`] consumes it after that borrow
-/// has ended.
+/// This value is where they meet — the bundle fills it while the theme borrow
+/// is live, then [`Self::apply`] consumes it after that borrow has ended.
 ///
-/// **Built by struct literal, at the widget.** Every themed bundle spells its
-/// box defaults the same way (`padding` / `margin` / `anim` fields, an
-/// inherent `pick`), so the four inputs need no trait to reach: the widget
-/// writes them out, which is both one fewer indirection than an accessor per
-/// field and the place a reader is already looking. Named fields rather than a
-/// constructor because `padding` and `margin` are the same type and adjacent —
-/// a positional one is a swap that compiles.
+/// **Built by [`ThemeSlot::plan`], never by hand.** The bundle names its own
+/// per-state looks and box defaults once, in its `ThemeSlot` impl, so a
+/// widget reaches a plan through one call rather than restating the quartet.
+///
+/// [`ThemeSlot::plan`]: crate::widgets::theme::widget_look::theme_slot::ThemeSlot::plan
 #[derive(Debug)]
 pub(crate) struct LookPlan {
     /// The flattened look to animate toward.
     pub(crate) target: AnimatedLook,
-    pub(crate) padding: Spacing,
-    pub(crate) margin: Spacing,
-    pub(crate) anim: Option<AnimSpec>,
+    /// What the bundle contributes to the node around that look.
+    pub(crate) defaults: SlotDefaults,
 }
 
 impl LookPlan {
@@ -59,9 +54,12 @@ impl LookPlan {
     pub(crate) fn apply(self, ui: &mut Ui, widget: &mut Widget) -> AnimatedLook {
         let Self {
             target,
-            padding,
-            margin,
-            anim,
+            defaults:
+                SlotDefaults {
+                    padding,
+                    margin,
+                    anim,
+                },
         } = self;
         let node = &mut widget.node;
         // `get_or_insert`, not `ThemeDefaults::default_padding` — same

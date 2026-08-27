@@ -10,6 +10,7 @@ use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::theme::widget_look::WidgetLook;
 use crate::widgets::theme::widget_look::stateful_look::StatefulLook;
+use crate::widgets::theme::widget_look::theme_slot::{SlotDefaults, ThemeSlot};
 
 /// Four-state button theme: a [`StatefulLook`] (`active` = pressed)
 /// plus the container knobs. The widget picks a look from the live
@@ -135,6 +136,22 @@ impl ButtonTheme {
     #[inline(always)]
     pub fn pick(&self, state: &ResponseState) -> &WidgetLook {
         self.looks.pick(state, state.pressed())
+    }
+}
+
+impl ThemeSlot for ButtonTheme {
+    type Pick = ();
+
+    fn look(&self, response: &ResponseState, _pick: ()) -> &WidgetLook {
+        self.pick(response)
+    }
+
+    fn defaults(&self) -> SlotDefaults {
+        SlotDefaults {
+            padding: self.padding,
+            margin: self.margin,
+            anim: self.anim,
+        }
     }
 }
 

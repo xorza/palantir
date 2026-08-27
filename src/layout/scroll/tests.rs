@@ -1,5 +1,5 @@
-//! Driver-level tests for [`crate::layout::scroll::measure`] and
-//! [`crate::layout::scroll::arrange`].
+//! Driver-level tests for [`Scroll`](crate::layout::scroll::Scroll)'s
+//! measure and arrange.
 
 use crate::Ui;
 use crate::layout::types::layout_mode::ScrollSpec;
@@ -414,7 +414,7 @@ fn hug_scroll_drives_the_hug_grid_column_it_sits_in() {
 /// slot the way an ordinary node does.
 ///
 /// One case per placing driver, because the clamp used to live inside
-/// `zstack::arrange`: a bare scroll node in a Grid or a stack's cross axis
+/// `ZStack::arrange`: a bare scroll node in a Grid or a stack's cross axis
 /// got no clamp at all, and `TextEdit` is exactly such a node. A stack's
 /// *main* axis is the one placement `AxisPlacement` does not own — its flex
 /// solver shrinks against the zero min-content a panned scroll reports — so
