@@ -231,11 +231,11 @@ impl PaintSink for ComposeSession<'_> {
             // stencil_test pipeline would discard every fragment.
             parent_chain
         };
-        self.push_clip(ClipFrame { scissor, chain });
+        self.enter_clip(ClipFrame { scissor, chain });
     }
 
     fn pop_clip(&mut self) {
-        self.pop_clip();
+        self.leave_clip();
     }
 
     fn push_transform(&mut self, t: TranslateScale) {
@@ -1158,13 +1158,20 @@ impl ComposeSession<'_> {
     /// The break runs **before** the stack moves, because [`Self::flush`]
     /// stamps the closing group with the stack top: the outgoing clip has
     /// to still be on top when it does.
-    fn push_clip(&mut self, frame: ClipFrame) {
+    ///
+    /// Named apart from the [`PaintSink`] pair that calls this one and
+    /// [`Self::leave_clip`]. Sharing a name would leave those trait bodies
+    /// terminating only on inherent methods winning resolution, and a
+    /// later rename here would turn `pop_clip` into unbounded recursion
+    /// that still compiles.
+    fn enter_clip(&mut self, frame: ClipFrame) {
         self.break_for_clip(Some(frame));
         self.composer.clip.push(frame);
     }
 
-    /// Restore the parent clip.
-    fn pop_clip(&mut self) {
+    /// Restore the parent clip. Named apart from the trait pair for the
+    /// reason [`Self::enter_clip`] gives.
+    fn leave_clip(&mut self) {
         let parent = self.composer.clip.parent();
         self.break_for_clip(parent);
         self.composer.clip.pop();

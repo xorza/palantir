@@ -10,21 +10,6 @@ fn key(id: u16) -> TestKey {
     id
 }
 
-fn slot(alloc: Option<AllocId>, last_use: u64) -> AtlasSlot {
-    AtlasSlot {
-        x: 0,
-        y: 0,
-        width: 0,
-        height: 0,
-        left: 0,
-        top: 0,
-        content: ContentType::Mask,
-        alloc,
-        generation: 0,
-        last_use,
-    }
-}
-
 #[test]
 fn packed_metadata_checks_every_wire_boundary() {
     let placement = |width, height, left, top| (width, height, left, top);
@@ -84,32 +69,38 @@ fn packed_metadata_checks_every_wire_boundary() {
 /// dies once `last_use + 120 + 1 <= 1024`, i.e. `last_use <= 903`.
 #[test]
 fn a_drained_ticket_retires_only_its_own_stale_empty() {
-    let slots = vec![
-        slot(None, 1),                          // 1 + 121 = 122 <= 1024 -> reclaimed
-        slot(None, 903),                        // 903 + 121 = 1024 <= 1024 -> reclaimed
-        slot(None, 904),                        // 904 + 121 = 1025 > 1024 -> re-filed
-        slot(None, 1024),                       // freshly touched -> re-filed
-        slot(Some(AllocId::deserialize(0)), 1), // allocated -> evict_one's job
+    let mut slots = vec![
+        AtlasSlot::for_test(None, 1),    // 1 + 121 = 122 <= 1024 -> reclaimed
+        AtlasSlot::for_test(None, 903),  // 903 + 121 = 1024 <= 1024 -> reclaimed
+        AtlasSlot::for_test(None, 904),  // 904 + 121 = 1025 > 1024 -> re-filed
+        AtlasSlot::for_test(None, 1024), // freshly touched -> re-filed
+        AtlasSlot::for_test(Some(AllocId::deserialize(0)), 1), // allocated -> evict_one's job
     ];
     let mut cache = FxHashMap::default();
     for i in 0..slots.len() as u32 {
         cache.insert(key(i as u16 + 1), i);
     }
-    let mut free = Vec::new();
-    let refile = |cache: &mut FxHashMap<TestKey, u32>, free: &mut Vec<u32>, k| {
-        retire_unallocated(cache, &slots, free, k, 1024)
-    };
+    let mut free = FreeSlots::default();
+    // No side: every entry this wheel reclaims is non-drawing, so
+    // `FreeSlots::release` never reaches for a packer to deallocate into.
+    let refile = |cache: &mut FxHashMap<TestKey, u32>,
+                  slots: &mut [AtlasSlot],
+                  free: &mut FreeSlots,
+                  k| { retire_unallocated(cache, slots, &mut [], free, k, 1024) };
 
-    assert_eq!(refile(&mut cache, &mut free, key(1)), None);
-    assert_eq!(refile(&mut cache, &mut free, key(2)), None);
+    assert_eq!(refile(&mut cache, &mut slots, &mut free, key(1)), None);
+    assert_eq!(refile(&mut cache, &mut slots, &mut free, key(2)), None);
     assert_eq!(
-        refile(&mut cache, &mut free, key(3)),
+        refile(&mut cache, &mut slots, &mut free, key(3)),
         Some(1025),
         "an entry still inside its window is re-filed for its own deadline",
     );
-    assert_eq!(refile(&mut cache, &mut free, key(4)), Some(1145));
     assert_eq!(
-        refile(&mut cache, &mut free, key(5)),
+        refile(&mut cache, &mut slots, &mut free, key(4)),
+        Some(1145)
+    );
+    assert_eq!(
+        refile(&mut cache, &mut slots, &mut free, key(5)),
         None,
         "an allocated entry is not this wheel's business",
     );
@@ -123,12 +114,12 @@ fn a_drained_ticket_retires_only_its_own_stale_empty() {
     assert!(cache.contains_key(&key(4)), "fresh empty survives");
     assert!(cache.contains_key(&key(5)), "allocated entry is untouched");
     // Reclaimed slab slots are handed back for reuse, in ticket order.
-    assert_eq!(free, vec![0, 1]);
+    assert_eq!(free.as_slice(), [0, 1]);
 
     // A second ticket for an already-reclaimed key is a no-op, not a
     // double free — that is what makes an early or duplicate fire safe.
-    assert_eq!(refile(&mut cache, &mut free, key(1)), None);
-    assert_eq!(free, vec![0, 1]);
+    assert_eq!(refile(&mut cache, &mut slots, &mut free, key(1)), None);
+    assert_eq!(free.as_slice(), [0, 1]);
 }
 
 /// Growth stops at the byte budget, not at whatever the adapter
@@ -191,15 +182,15 @@ fn growth_stops_at_the_byte_budget_not_the_device_limit() {
 #[test]
 fn the_clock_resumes_where_it_stopped_and_skips_ineligible_slots() {
     let slots = vec![
-        slot(Some(AllocId::deserialize(0)), 8),
-        slot(Some(AllocId::deserialize(1)), 2),
-        slot(None, 1), // never drew — nothing to deallocate
+        AtlasSlot::for_test(Some(AllocId::deserialize(0)), 8),
+        AtlasSlot::for_test(Some(AllocId::deserialize(1)), 2),
+        AtlasSlot::for_test(None, 1), // never drew — nothing to deallocate
         AtlasSlot {
             content: ContentType::Color,
-            ..slot(Some(AllocId::deserialize(3)), 0)
+            ..AtlasSlot::for_test(Some(AllocId::deserialize(3)), 0)
         },
-        slot(Some(AllocId::deserialize(4)), 10), // touched this frame
-        slot(Some(AllocId::deserialize(5)), 1),  // the true LRU
+        AtlasSlot::for_test(Some(AllocId::deserialize(4)), 10), // touched this frame
+        AtlasSlot::for_test(Some(AllocId::deserialize(5)), 1),  // the true LRU
     ];
 
     // From rest, the first eligible mask slot is 0 — not 5, which is
@@ -476,10 +467,10 @@ mod gpu {
         // a second time and hand one index to two future inserts. This
         // pass rejects every key already retired above and must find
         // nothing: the map is the only authority on which indices live.
-        let free_before = atlas.free.len();
+        let free_before = atlas.free.as_slice().len();
         atlas.forget(|k| k % 2 == 0 && *k != 100);
         assert_eq!(
-            atlas.free.len(),
+            atlas.free.as_slice().len(),
             free_before,
             "keys already retired must not be freed twice",
         );

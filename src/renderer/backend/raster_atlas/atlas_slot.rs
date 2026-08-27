@@ -35,3 +35,42 @@ pub(crate) struct AtlasSlot {
     /// frame, and a non-drawing entry's deadline is measured from here.
     pub(crate) last_use: u64,
 }
+
+impl AtlasSlot {
+    /// Whether the eviction clock may take this slot: it owns a packer
+    /// rectangle, so it is neither a non-drawing entry nor an index
+    /// already on the free list.
+    ///
+    /// The second half is the load-bearing one, and it holds because
+    /// [`FreeSlots::release`](super::free_slots::FreeSlots::release)
+    /// clears `alloc` on the way onto that list.
+    pub(super) fn is_packed(&self) -> bool {
+        self.alloc.is_some()
+    }
+}
+
+#[cfg(test)]
+pub(super) mod test_support {
+    use crate::renderer::backend::raster_atlas::atlas_slot::AtlasSlot;
+    use crate::renderer::backend::raster_atlas::content_type::ContentType;
+    use etagere::AllocId;
+
+    impl AtlasSlot {
+        /// A zero-placement mask entry, for the tests that care only
+        /// about `alloc` and the two stamps.
+        pub(crate) fn for_test(alloc: Option<AllocId>, last_use: u64) -> Self {
+            Self {
+                x: 0,
+                y: 0,
+                width: 0,
+                height: 0,
+                left: 0,
+                top: 0,
+                content: ContentType::Mask,
+                alloc,
+                generation: 0,
+                last_use,
+            }
+        }
+    }
+}

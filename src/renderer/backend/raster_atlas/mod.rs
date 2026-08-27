@@ -17,6 +17,7 @@ mod bound_sides;
 mod clock_sweep;
 pub(crate) mod content_type;
 pub(crate) mod counters;
+mod free_slots;
 pub(crate) mod packed_metadata;
 pub(crate) mod raster_quad;
 mod side;
@@ -31,6 +32,7 @@ use crate::renderer::backend::raster_atlas::bound_sides::BoundSides;
 use crate::renderer::backend::raster_atlas::clock_sweep::ClockSweep;
 use crate::renderer::backend::raster_atlas::content_type::ContentType;
 use crate::renderer::backend::raster_atlas::counters::AtlasCounters;
+use crate::renderer::backend::raster_atlas::free_slots::FreeSlots;
 use crate::renderer::backend::raster_atlas::packed_metadata::PackedMetadata;
 use crate::renderer::backend::raster_atlas::raster_quad::RasterQuad;
 use crate::renderer::backend::raster_atlas::side::Side;
@@ -155,9 +157,8 @@ pub(crate) struct RasterAtlas<K> {
     /// so the map is the single authority on which indices are live.
     slot_keys: Vec<K>,
     pub(crate) cache: FxHashMap<K, u32>,
-    /// Slab indices freed by eviction, expiry, or [`Self::forget`],
-    /// reused by the next `store`.
-    free: Vec<u32>,
+    /// Released by eviction, by expiry, and by [`Self::forget`].
+    free: FreeSlots,
     /// Rotating eviction cursor over [`Self::slots`] — see
     /// [`Self::evict_one`]. Persists across calls, which is the whole
     /// point: it is what turns the victim search from a scan of the
@@ -259,7 +260,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
             slots: Vec::new(),
             slot_keys: Vec::new(),
             cache: FxHashMap::default(),
-            free: Vec::new(),
+            free: FreeSlots::default(),
             hand: 0,
             current_frame: 0,
             unallocated_expiry: ExpiryWheel::with_horizon(UNALLOCATED_KEEP_FRAMES + 2),
@@ -369,7 +370,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
     /// Park `slot` in the slab (reusing a freed index when available)
     /// and map `key` to it.
     fn store(&mut self, key: K, mut slot: AtlasSlot) -> u32 {
-        let idx = match self.free.pop() {
+        let idx = match self.free.claim() {
             Some(i) => {
                 slot.generation = self.slots[i as usize].generation;
                 self.slots[i as usize] = slot;
@@ -552,13 +553,14 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
         );
         self.current_frame = frame;
         let cache = &mut self.cache;
-        let slots = &self.slots;
+        let slots = &mut self.slots;
+        let sides = &mut self.sides;
         let free = &mut self.free;
         // No stamp to check: this wheel's deadlines only ever move out,
         // so a ticket is never supplanted and every one that fires is
         // the live one.
         self.unallocated_expiry.retire(frame, |key, _| {
-            retire_unallocated(cache, slots, free, key, frame)
+            retire_unallocated(cache, slots, sides, free, key, frame)
         });
     }
 
@@ -681,7 +683,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
             Some(idx),
             "slot_keys disagreed with cache about slab index {idx}",
         );
-        retire_slot(&mut self.slots, &mut self.sides, &mut self.free, idx);
+        self.free.release(&mut self.slots, &mut self.sides, idx);
         true
     }
 
@@ -715,7 +717,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
             if keep(key) {
                 return true;
             }
-            retire_slot(slots, sides, free, idx);
+            free.release(slots, sides, idx);
             false
         });
     }
@@ -735,46 +737,23 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
     }
 }
 
-/// Hand slab index `idx`'s resources back: its rectangle to the side's
-/// packer, and the index itself to the free list.
-///
-/// Advancing the generation is what makes the index safe to hand on: an
-/// encoded run still holding it reads the slot as stale rather than
-/// drawing whatever took its place. A non-drawing entry owns no rectangle
-/// and no run ever records its index, so the bump is skipped there — the
-/// same case [`retire_unallocated`] handles.
-///
-/// A free function borrowing the three columns rather than `&mut self`,
-/// for the reason [`retire_unallocated`] is one too: both callers hold
-/// the key map borrowed across the call.
-fn retire_slot(slots: &mut [AtlasSlot], sides: &mut [Side], free: &mut Vec<u32>, idx: u32) {
-    let slot = &mut slots[idx as usize];
-    if let Some(id) = slot.alloc.take() {
-        slot.generation = slot
-            .generation
-            .checked_add(1)
-            .expect("glyph slot generation overflowed");
-        sides[slot.content as usize].packer.deallocate(id);
-    }
-    free.push(idx);
-}
-
 /// Settle one drained non-drawing ticket: `Some(due)` to re-file it,
 /// `None` once it has been reclaimed or is no longer this wheel's
 /// business.
 ///
 /// A reclaimed entry re-inserts through `insert_unallocated` on next
-/// use, with a fresh ticket. Unallocated slots carry no uv coords and
-/// encoded-run caches never record them, so returning one to `free` does
-/// not advance its generation.
+/// use, with a fresh ticket. It releases through
+/// [`FreeSlots::release`] like any other index, which skips the
+/// generation bump on its own because the slot owns no rectangle.
 ///
-/// A free function, and one that borrows the three fields rather than
+/// A free function, and one that borrows the four fields rather than
 /// `&mut self`, so the caller can hold `unallocated_expiry` borrowed
 /// across the call to re-file into it.
 fn retire_unallocated<K: Copy + Eq + Hash + Debug>(
     cache: &mut FxHashMap<K, u32>,
-    slots: &[AtlasSlot],
-    free: &mut Vec<u32>,
+    slots: &mut [AtlasSlot],
+    sides: &mut [Side],
+    free: &mut FreeSlots,
     key: K,
     frame: u64,
 ) -> Option<u64> {
@@ -786,7 +765,7 @@ fn retire_unallocated<K: Copy + Eq + Hash + Debug>(
     // their generation when it does. Defensive rather than reachable —
     // every path that allocates over a slab index removes the old key
     // from `cache` first, so the lookup above would have missed.
-    if slot.alloc.is_some() {
+    if slot.is_packed() {
         return None;
     }
     // `touch` refreshes `last_use` without filing anything, so the real
@@ -796,7 +775,7 @@ fn retire_unallocated<K: Copy + Eq + Hash + Debug>(
         return Some(dies_at);
     }
     cache.remove(&key);
-    free.push(idx);
+    free.release(slots, sides, idx);
     None
 }
 
