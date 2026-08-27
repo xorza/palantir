@@ -64,9 +64,10 @@ impl F16x4 {
     /// lets all four comparisons run as one masked add over the packed
     /// `u64`. Measured ~5× the scalar form.
     ///
-    /// Both f16 lane predicates in the crate are this one test:
-    /// [`Self::has_nan`] and `Corners::approx_zero` (which passes the
-    /// `EPS` pattern and negates).
+    /// Both four-lane magnitude predicates in the crate are this one
+    /// test: [`Self::has_nan`] and `Corners::approx_zero` (which passes
+    /// the `EPS` pattern and negates). The single-lane bit predicates
+    /// are `approx::noop_f16_bits` and `approx::opaque_f16_bits`.
     ///
     /// Packing by shift instead of a cast keeps this `const` and
     /// endian-independent; LLVM folds it back to a single 64-bit load.

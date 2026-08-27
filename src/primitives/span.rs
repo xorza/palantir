@@ -4,10 +4,10 @@ use std::ops::Range;
 /// because measure-cache snapshots and grid hug slots store many of
 /// these and we want to keep the per-entry footprint small.
 ///
-/// Convertible to/from `Range<u32>` via `From` — use that for
-/// constructing a `Span` from a `start..end` literal or for handing one
-/// to a u32-range-taking API. `range()` returns `Range<usize>` for
-/// slicing into `Vec<T>`.
+/// [`Span::new`] is the constructor. `From` converts both ways against
+/// `Range<u32>` and `Range<usize>`, for callers that already hold a
+/// `start..end`. `range()` returns `Range<usize>` for slicing into
+/// `Vec<T>`.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Span {

@@ -1,3 +1,5 @@
+//! Cap and join styling, shared by every stroked shape.
+
 /// Endpoint cap style for stroked shapes (Line / Polyline / béziers / Arc).
 ///
 /// - `Butt` ends exactly at the endpoint.

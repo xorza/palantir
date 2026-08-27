@@ -53,14 +53,8 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
         let mut widget = ui.widget(self.node);
         let response = widget.response(ui);
 
-        // Everything this widget takes off its theme slot, before
-        // `ToggleChrome::record_row`'s `&mut Ui` reborrow: the geometry it paints with, and
-        // the plan for the look. `record_row` is shared by three toggles
-        // reading three different slots, so which slot is `RadioButton`'s own
-        // business — and `style_setter!`'s `slot` is where it says so, once.
-        //
-        // Ahead of the latch below, which moves `self.value` and so leaves
-        // `self` unborrowable.
+        // Read ahead of the latch below, which moves `self.value` and so
+        // leaves `self` unborrowable.
         let theme = ui.theme();
         let slot = self.slot(theme);
         let pip_size = slot.box_size;

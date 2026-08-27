@@ -14,8 +14,9 @@ pub(crate) const fn scale_factor_is_valid(scale_factor: f32) -> bool {
 /// surface's physical pixel size, the DPR scale factor, the
 /// snap-to-physical-pixel-edge flag, and the monitor's refresh rate.
 ///
-/// The driving host rebuilds this each frame from the window's surface
-/// config, scale factor, and monitor, then hands it to `WindowDriver::frame`.
+/// The driving host mints this each frame through `WindowDriver::display`,
+/// from the window's surface config, scale factor and monitor refresh, then
+/// passes it to `WindowDriver::cpu_frame`.
 /// Changes that alter rasterized output are detected via [`Self::raster_eq`]
 /// (physical size, scale, pixel snapping — a DPI-monitor move keeps
 /// `logical_rect` constant yet must repaint); `refresh_millihertz` is

@@ -1,3 +1,7 @@
+//! The layout walk: [`LayoutEngine`], the scratch it carries between frames,
+//! and the snapshot check that decides whether last frame's measurements
+//! still describe this frame's forest.
+
 use crate::common::tracy;
 use crate::layout::axis::Axis;
 use crate::layout::axis_placement::AxisPlacement;

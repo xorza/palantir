@@ -1,3 +1,6 @@
+//! The table of loaded icon sets, and the generational ids that stop a
+//! released slot from aliasing the next set loaded into it.
+
 use crate::icons::icon_atlas::IconAtlas;
 use crate::icons::icon_set::IconSet;
 use std::cell::RefCell;

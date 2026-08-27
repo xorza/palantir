@@ -1,3 +1,7 @@
+//! Recorded shapes for one tree: the [`Shapes`] buffer and its parallel hash
+//! column, plus the lowering, hashing and paint-rect code over the
+//! [`ShapeRecord`](record::ShapeRecord) variants it holds.
+
 pub(crate) mod hash;
 pub(crate) mod lower;
 pub(crate) mod paint;

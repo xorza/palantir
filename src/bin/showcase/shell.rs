@@ -38,7 +38,7 @@ enum Flow {
     Fill,
 }
 
-/// How a page's body is built. Most pages are a plain function; the two
+/// How a page's body is built. Most pages are a plain function; the three
 /// that own cross-frame resources are dispatched explicitly rather than
 /// smuggled through a function pointer that can't carry them.
 #[derive(Clone, Copy, Debug)]

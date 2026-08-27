@@ -1,3 +1,7 @@
+//! The line, Bézier and arc builder. Every geometry lowers to one
+//! `ShapeRecord::Curve`, and the stroke properties travel beside the
+//! geometry so only the geometry varies between the entry points.
+
 use crate::primitives::approx::{noop_f32, vec2_approx_eq};
 use crate::primitives::brush::CurveBrush;
 use crate::scene::record_store::RecordStore;

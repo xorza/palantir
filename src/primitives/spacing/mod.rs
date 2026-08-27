@@ -27,7 +27,6 @@ impl Spacing {
 }
 
 impl Spacing {
-    /// No spacing on any edge.
     /// The same value on all four edges.
     #[inline]
     pub fn all(v: f32) -> Self {

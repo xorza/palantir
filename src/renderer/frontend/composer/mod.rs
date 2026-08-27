@@ -114,7 +114,7 @@ struct BatchState {
 /// where the open group's slice begins in the matching output buffer;
 /// [`ComposeSession::flush`] closes the slices and advances every cursor
 /// to the buffer's current length. Bundled so the flush-boundary contract
-/// is one value instead of five parallel fields. `texts` feeds only the
+/// is one value instead of a loose cursor field per output buffer. `texts` feeds only the
 /// did-anything-emit check — a text-only group must still push a
 /// `DrawGroup` so its batch's `last_group` index resolves; the run
 /// spans themselves live on [`TextBatch`](crate::renderer::render_buffer::text_batch::TextBatch).

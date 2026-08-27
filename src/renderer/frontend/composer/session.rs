@@ -125,7 +125,7 @@ struct ScaledRect {
 impl ComposeSession<'_> {
     /// Apply the walk transform to a payload's logical rect, scale it to
     /// physical px, and derive its integer bounds — the opening move of
-    /// `rect`, `shadow`, `image`, and `text`. Scaling happens once
+    /// `icon`, `image`, `text` and `pack_quad`. Scaling happens once
     /// because the cull bounds and the emitted instance share the
     /// result, so a culled draw costs the same as an emitted one.
     fn scaled_rect(&self, rect: Rect) -> ScaledRect {

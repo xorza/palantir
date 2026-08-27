@@ -1,3 +1,10 @@
+//! The frontend-to-backend contract: [`RenderBuffer`], the per-kind instance
+//! rows the composer fills, and the group and batch tables that say in what
+//! order the backend draws them.
+//!
+//! Every buffer here is retained and refilled, so a steady-state frame
+//! allocates nothing for its output.
+
 use crate::display::Display;
 use crate::primitives::texture_id::TextureId;
 use crate::primitives::{color::Color, corners::Corners, rect::Rect};

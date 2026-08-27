@@ -1,3 +1,6 @@
+//! The atlas cache key for one rasterized icon, and the size quantization
+//! that bounds how many distinct rasters a continuous zoom can create.
+
 use crate::icons::icon_set::IconRef;
 use crate::primitives::num::F32Ext;
 use glam::{U16Vec2, Vec2};

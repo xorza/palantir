@@ -1,3 +1,12 @@
+//! The recorder: [`Ui`], the single handle a widget or a host authors a
+//! frame through, and the retained state that frame reads and writes.
+//!
+//! Everything a frame needs that is not an engine lives here — the forest,
+//! the theme, per-widget state, input, animation, the display, and the frame
+//! clock. The engines that consume a recording (layout, cascade, damage) sit
+//! on a [`FrameEngines`](frame_engines::FrameEngines) the frame driver owns,
+//! so nothing reachable from `Ui` can reach them.
+
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
 mod frame_cycle;

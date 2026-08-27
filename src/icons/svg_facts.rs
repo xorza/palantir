@@ -1,3 +1,7 @@
+//! The survey parse of an icon's SVG, and the parse settings every parse in
+//! the crate shares. The only place outside the rasterizer that talks to
+//! `usvg`.
+
 use glam::Vec2;
 use resvg::usvg;
 

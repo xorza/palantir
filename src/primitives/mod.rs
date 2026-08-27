@@ -17,18 +17,17 @@ macro_rules! f16x4_lanes {
             /// The zero of every lane.
             pub const ZERO: Self = Self($crate::primitives::half_simd::F16x4::ZERO);
 
-            /// All four lanes unpacked at once. Routes through `half`'s
-            /// platform-specific batched f16→f32 path (single `fcvtl` on
-            /// aarch64-fp16, `vcvtph2ps` on x86-f16c, scalar fallback
-            /// elsewhere). Use at hot sites that read 3+ lanes, to
-            /// amortize the feature dispatch over all of them.
+            /// All four lanes unpacked at once — a single `vcvtph2ps`
+            /// on x86-f16c, a scalar walk elsewhere. Use at hot sites
+            /// that read 3+ lanes, to amortize the dispatch over all
+            /// of them.
             #[inline]
             pub fn as_array(self) -> [f32; 4] {
                 self.0.lanes()
             }
 
-            /// Inverse of [`Self::as_array`] — the batched runtime
-            /// f32→f16 pack. Use at hot sites that compute all four.
+            /// Inverse of [`Self::as_array`] — the four-lane f32→f16
+            /// pack. Use at hot sites that compute all four.
             #[inline]
             pub fn from_array(v: [f32; 4]) -> Self {
                 Self($crate::primitives::half_simd::F16x4::from_lanes(v))

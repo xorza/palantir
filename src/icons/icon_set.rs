@@ -1,3 +1,7 @@
+//! The handles a caller names an icon with, and the loaded set they resolve
+//! against. Split identity from size so the atlas key can hold one without
+//! the other.
+
 use crate::icons::icon_atlas::IconId;
 use crate::icons::icon_registry::{IconSetId, IconSetToken};
 use crate::shape::Shape;

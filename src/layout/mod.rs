@@ -1,3 +1,11 @@
+//! Layout: the measure and arrange passes over a recorded forest, and the
+//! per-layer rect tables they produce.
+//!
+//! [`LayoutEngine`](engine::LayoutEngine) owns the scratch, the text system
+//! and the cross-frame measure cache. The finalized [`Layout`] is threaded
+//! out to the caller instead of held here, because the cascade, the encoder,
+//! hit testing and scroll refresh all read it.
+
 pub(crate) mod axis;
 pub(crate) mod axis_align_pair;
 pub(crate) mod axis_ctx;

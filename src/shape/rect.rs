@@ -1,3 +1,5 @@
+//! The rectangle builder. Lowers to `ShapeRecord::Quad(QuadShape::Rect)`.
+
 use crate::primitives::brush::Brush;
 use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;

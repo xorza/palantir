@@ -11,10 +11,10 @@ use crate::widgets::theme::widget_look::WidgetLook;
 use crate::widgets::theme::widget_look::stateful_look::StatefulLook;
 use glam::Vec2;
 
-/// Visuals for two-state toggles ([`crate::Checkbox`],
-/// [`crate::RadioButton`], future toggle/segmented controls). Holds a
-/// full 4-state look pack per checked branch plus the geometry knobs
-/// the widget would otherwise hardcode.
+/// Visuals for two-state toggles — [`crate::Checkbox`],
+/// [`crate::RadioButton`] and [`crate::Switch`]. Holds a full 4-state
+/// look pack per checked branch plus the geometry knobs the widget
+/// would otherwise hardcode.
 ///
 /// The chrome painted on the small box/pip comes from
 /// `checked.pick(state)` or `unchecked.pick(state)`; the indicator

@@ -56,7 +56,9 @@
 //! | `showcase` | no | Builds the bundled `showcase` binary, a tour of every widget. |
 //! | `gpu-debug-markers` | no | Emits GPU debug groups around every draw step for RenderDoc / Xcode captures. Costs two recorded commands and a label copy per step even with no capture tool attached, so it is off unless you intend to capture. |
 //! | `profile-with-tracy` | no | Opens a Tracy zone over each frame pass, and marks a frame set per window. Needs the external Tracy viewer. |
-//! | `internals` | no | Test and benchmark reach-ins — adds the `internals` and `bench` modules. **Not a supported API**: it exists so the integration tests and benches under `tests/` and `benches/` can reach crate privates, and it breaks without notice. |
+//! | `internals` | no | Test reach-ins — adds the `internals` module. **Not a supported API**: it exists so the integration tests under `tests/` can reach crate privates, and it breaks without notice. |
+//! | `bench` | no | The source-level benchmark drivers, and the function-only facade the thin targets under `benches/` call. Implies `internals`, and adds the harness crates on top. Not a supported API either. |
+//! | `golden` | no | The [`golden`] module — golden-image regression testing for suites that draw through Palantir. Its own flag because it is the only part of the surface that costs an image codec. |
 //!
 //! # Colour
 //!
@@ -203,9 +205,6 @@ pub use animation::anim_spec::AnimSpec;
 pub use animation::animatable::Animatable;
 pub use animation::easing::Easing;
 pub use app::App;
-// Same-name re-export: the derive lives in the macro namespace,
-// the trait in the type namespace — `use palantir::Animatable;` pulls
-// both, and `#[derive(Animatable)]` works alongside `T: Animatable`.
 pub use diagnostics::DebugOverlayConfig;
 pub use display::Display;
 /// The benchmark workload as a recordable scene. Not part of the supported
