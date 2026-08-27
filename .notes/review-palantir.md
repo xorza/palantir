@@ -202,14 +202,24 @@ different answer depending on which call site asks it.
       a `frame: u64` in `raster_atlas`/`cosmic` and no argument in
       `input_state`/`icon`.
 
-- [ ] Nine sites test a UI-scale quantity against `f32::EPSILON` (~1.19e-7),
+- [ ] Eleven sites test a UI-scale quantity against `f32::EPSILON` (~1.19e-7),
       five orders of magnitude below the crate's own visual epsilon
       (`primitives::approx::EPS = 1e-4`, with `approx_zero` / `noop_f32` /
       `vec2_approx_eq` beside it): `src/widgets/scroll/state.rs:145`,
       `src/widgets/scroll/mod.rs:287` and `:306`,
       `src/widgets/scroll/bars.rs:136`, `src/widgets/slider/mod.rs:160`,
       `src/widgets/splitter/mod.rs:233` and `:254`,
-      `src/layout/scrollbars/mod.rs:130`, `src/host/winit/input/mod.rs:14`.
+      `src/layout/scrollbars/mod.rs:130`,
+      `src/renderer/gradient_atlas/bake.rs:100`,
+      `src/host/winit/input/mod.rs:14`. Three of them use it as a
+      divide-by-zero guard (`.max(f32::EPSILON)`), which is a different
+      question again and has no named helper at all.
+
+- [ ] `zoom::clamp` (`src/input/zoom.rs:26`) documents itself as bringing a
+      product "back into the invertible `f32` range", and its two comparisons
+      are both false for NaN — so a NaN product falls through to
+      `product as f32` and comes out NaN. `combine` and `from_wheel` state the
+      screen as a `debug_assert!`, so the release build carries none.
 
 - [ ] `src/host/winit/input/mod.rs:14` clamps the incoming scale factor with
       `max(f32::EPSILON)` instead of the shared `display::scale_factor_is_valid`
@@ -272,6 +282,59 @@ different answer depending on which call site asks it.
 - [ ] `src/primitives/bezier/mod.rs:93` and `:94` — `solve_quadratic` gates on
       two unnamed `1.0e-12` literals, in a crate where every other tolerance
       carries a name and a reason.
+
+---
+
+## Invariants a type states but does not enforce
+
+Each of these is a property the code depends on and documents at length, held
+in place by a comment and by every current caller happening to respect it. The
+compiler checks none of them, and the failure mode in each case is silent.
+
+- [ ] `GradientStops` (`src/primitives/brush/gradient/stops/mod.rs:75`) states
+      ascending offset order as "an invariant of the type, not a step the bake
+      does", and `bake_stops` (`src/renderer/gradient_atlas/bake.rs:16`)
+      `debug_assert!`s it. `GradientStops::new` sorts;
+      `GradientStops::deserialize` (`:168`) builds `Self(values)` from the
+      parsed array without sorting. Logged in `.notes/ISSUES.md`.
+
+- [ ] `RasterAtlas`'s free-slab-index rule is "a freed index has
+      `alloc == None`", which is what stops `ClockSweep`
+      (`src/renderer/backend/raster_atlas/clock_sweep.rs:51`) from picking an
+      index already on the free list and pushing it a second time. Three
+      functions depend on it — `retire_slot`, `retire_unallocated`, and the
+      sweep — and none of them names it; `retire_slot`'s `slot.alloc.take()`
+      is load-bearing for a reason its own doc gives as generation-bumping.
+      A duplicate free index hands one slab slot to two live cache keys.
+
+- [ ] `src/renderer/frontend/composer/session.rs:237` — the `PaintSink`
+      impl's `pop_clip` body is `self.pop_clip()`. It terminates only because
+      an inherent `ComposeSession::pop_clip` exists at `:1167` and inherent
+      methods win method resolution. Rename or move that inherent method and
+      this compiles unchanged into unbounded recursion. `push_clip` at `:234`
+      leans on the same shadowing, saved only by taking an argument.
+
+- [ ] `Ramp::color_at` (`src/renderer/gradient_atlas/bake.rs:83`) documents
+      "**Callers must pass a non-decreasing `t`**" and reads a cursor that
+      cannot walk back. Its `while self.stops[self.upper].offset() < t` loop
+      is bounded by an earlier `t >= stops[last].offset()` return — which is
+      only a bound while the stops are sorted, the invariant above.
+
+---
+
+## Untrusted host input screened in one place only
+
+- [ ] `InputState::on_input` (`src/input/input_state/mod.rs:383`) screens
+      `InputEvent::Zoom` against `zoom::is_valid` and drops an invalid one at
+      the door. No other variant is screened, and neither is the winit
+      translation that mints them (`src/host/winit/input/mod.rs`):
+      `ScrollPixels` / `ScrollLines` / `PointerMoved` pass whatever the OS
+      reported straight through. A non-finite scroll delta reaches
+      `ScrollState::offset` (`src/widgets/scroll/state.rs:167`), where
+      `f32::clamp` passes NaN through, and then `ScrollState::transform`
+      (`:188`), whose `TranslateScale::new` is a **release** `assert!`. The
+      crate's own rule is that untrusted data is never an assert. Logged in
+      `.notes/ISSUES.md`.
 
 ---
 
@@ -360,6 +423,31 @@ means finding every site by hand.
 - [ ] `src/layout/grid/axis_scratch.rs:256`–`:277` — the Phase-3 clamp loop
       computes `weight`, `candidate` and `lo` inside the `position` closure and
       then recomputes all three in the `Some(k)` arm, from the same `tracks[i]`.
+
+---
+
+## Policies that spend more than their doc claims
+
+- [ ] `build_mask_plan` (`src/renderer/backend/schedule/mod.rs:29`)
+      deduplicates a group's stencil mask chain against **the previous group
+      only**. A group with no scissor resets `previous_chain` to empty, so two
+      groups sharing one rounded-clip chain with any scissor-less group
+      between them each stage their own copy of the mask quads, and the
+      schedule then clears and re-stamps the chain between them. Nothing in
+      the module says the dedup is one-deep.
+
+- [ ] `RasterAtlas::evict_one`
+      (`src/renderer/backend/raster_atlas/mod.rs:664`) latches
+      `Side::dry_frame` for the rest of the frame the moment one clock
+      rotation finds no victim. `allocate` (`:593`) can grow the side after
+      that latch, which adds slots the clock could sweep — but the latch is
+      keyed on the frame, not on the side's generation, so no further
+      eviction runs until the next frame however much the atlas changed.
+
+- [ ] `bar_geometry` (`src/layout/scrollbars/mod.rs:150`) floors
+      `thumb_size` at `1.0` and then computes
+      `thumb_offset.min(viewport.floor() - thumb_size)` with no lower bound.
+      Logged in `.notes/ISSUES.md`.
 
 ---
 
