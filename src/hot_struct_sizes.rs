@@ -118,7 +118,7 @@ macro_rules! hot_structs {
 /// one feature-conditional footprint in reach, `LayoutCounters`'
 /// `bench`-only `PhaseTimings`, rides `LayoutEngine` into
 /// [`FrameEngines`](crate::ui::frame_engines) instead.
-const UI_SIZE: usize = 5256;
+const UI_SIZE: usize = 5992;
 
 /// Expected `size_of::<FrameEngines>()`. Two numbers because
 /// `LayoutCounters` carries a `PhaseTimings` only under `bench` — the

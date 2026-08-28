@@ -167,7 +167,7 @@ fn menu_separator_theme_drives_rule_geometry_and_color() {
     );
 
     let chrome =
-        h.ui.tree(Layer::Popup)
+        h.ui.tree(Layer::Menu)
             .chrome(sep.node)
             .expect("separator chrome");
     let ShapeBrush::Solid(fill) = chrome.fill else {
@@ -265,7 +265,7 @@ fn per_instance_style_overrides_global_menu_theme() {
 
     let body = menu_body(&h, trigger_id());
     let rows = menu_rows(&h, trigger_id());
-    let tree = h.ui.tree(Layer::Popup);
+    let tree = h.ui.tree(Layer::Menu);
     let layout = tree.records.layout();
     // The recorded padding is the styled 13 plus the panel's 1 px
     // stroke, which `Tree` folds in so content clears the stroke band.
@@ -334,7 +334,7 @@ fn explicit_zero_padding_and_minimum_override_menu_theme() {
 
     let derived = trigger_id().with("body");
     let index = popup_node(&h, derived).expect("context menu body node");
-    let tree = h.ui.tree(Layer::Popup);
+    let tree = h.ui.tree(Layer::Menu);
     assert_eq!(tree.records.layout()[index].padding, Spacing::ZERO);
     assert_eq!(tree.records.layout()[index].margin, Spacing::all(5.0));
     assert_eq!(tree.bounds(NodeId(index as u32)).min_size, Size::ZERO);
@@ -372,7 +372,7 @@ fn assert_close(actual: f32, expected: f32, what: &str) {
 fn menu_body(h: &UiHarness, for_id: WidgetId) -> NodeId {
     let body_id = for_id.with("body");
     let index =
-        h.ui.tree(Layer::Popup)
+        h.ui.tree(Layer::Menu)
             .records
             .widget_id()
             .iter()
@@ -392,10 +392,10 @@ struct MenuRow {
 /// so a row's own label / shortcut leaves are skipped.
 fn menu_rows(h: &UiHarness, for_id: WidgetId) -> Vec<MenuRow> {
     let body = menu_body(h, for_id).idx();
-    let tree = h.ui.tree(Layer::Popup);
+    let tree = h.ui.tree(Layer::Menu);
     let ends = tree.records.subtree_end();
     let body_end = ends[body].end() as usize;
-    let rects = &h.ui.layout(Layer::Popup).rect;
+    let rects = &h.ui.layout(Layer::Menu).rect;
     let mut rows = Vec::new();
     let mut i = body + 1;
     while i < body_end {
@@ -410,7 +410,7 @@ fn menu_rows(h: &UiHarness, for_id: WidgetId) -> Vec<MenuRow> {
 
 /// Record index of the popup-layer node carrying `id`, if any.
 fn popup_node(h: &UiHarness, id: WidgetId) -> Option<usize> {
-    h.ui.tree(Layer::Popup)
+    h.ui.tree(Layer::Menu)
         .records
         .widget_id()
         .iter()
