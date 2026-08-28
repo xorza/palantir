@@ -31,7 +31,7 @@ fn context_menu_cut_copy_paste_clear() {
     /// the moment the theme's row padding moved.
     fn click_menu_row(h: &mut UiHarness, buf: &mut String, row_idx: usize) {
         let body_id = editor_id().with("body");
-        let tree = h.ui.tree(Layer::Popup);
+        let tree = h.ui.tree(Layer::Menu);
         let body_idx = tree
             .records
             .widget_id()
@@ -40,7 +40,7 @@ fn context_menu_cut_copy_paste_clear() {
             .expect("context menu body recorded");
         let ends = tree.records.subtree_end();
         let body_end = ends[body_idx].end() as usize;
-        let rects = &h.ui.layout(Layer::Popup).rect;
+        let rects = &h.ui.layout(Layer::Menu).rect;
         let mut row = body_idx + 1;
         for _ in 0..row_idx {
             row = ends[row].end() as usize;

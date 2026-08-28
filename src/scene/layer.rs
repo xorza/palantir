@@ -29,14 +29,26 @@ pub enum Layer {
     /// Ordinary content. Everything lands here unless it asks otherwise.
     #[default]
     Main = 0,
-    /// Transient overlays anchored to a trigger — dropdowns, context menus.
+    /// Transient overlays anchored to a trigger — dropdowns, pickers, a
+    /// form standing beside what it is about.
     Popup = 1,
     /// Dialogs that take the whole window, above popups.
     Modal = 2,
-    /// Hover bubbles, above modals so they can annotate a dialog.
-    Tooltip = 3,
+    /// Context menus, above both — because a menu is raised *from* something,
+    /// and a popup and a dialog are both things it can be raised from.
+    ///
+    /// Its own rank rather than sharing the popup's, and that is what a layer
+    /// is *for*: an overlay must paint above the scope that raised it, and one
+    /// that shared a rank with its own parent could not — see
+    /// [`Forest::push_layer`](crate::scene::forest::Forest). A right-click in
+    /// a field of a popup is the ordinary case, and it used to be a panic in
+    /// debug and a menu drawn underneath its own parent in release.
+    Menu = 3,
+    /// Hover bubbles, above every one of those, so they can annotate a menu
+    /// item as readily as a dialog.
+    Tooltip = 4,
     /// Diagnostics overlays. Painted last, hit-tested first.
-    Debug = 4,
+    Debug = 5,
 }
 
 impl Layer {

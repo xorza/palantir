@@ -6,6 +6,7 @@ pub(crate) mod menu_separator;
 use crate::primitives::background::Background;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
+use crate::scene::layer::Layer;
 use crate::scene::node::configure::Configure;
 use crate::scene::node::configure::ConfigureNode;
 use crate::scene::node::theme_defaults::ThemeDefaults;
@@ -112,8 +113,10 @@ impl<'a> ContextMenu<'a> {
     /// [`closed`](PopupResponse::closed) — the same close predicate every
     /// other overlay-trigger widget branches on.
     ///
-    /// The body closure records [`MenuItem`](crate::widgets::context_menu::menu_item::MenuItem)s inside `Layer::Popup`; the
-    /// menu auto-closes on outside-click, Esc, or an item click.
+    /// The body closure records [`MenuItem`](crate::widgets::context_menu::menu_item::MenuItem)s inside
+    /// [`Layer::Menu`], which is what lets a menu be raised from inside a
+    /// popup or a dialog; the menu auto-closes on outside-click, Esc, or an
+    /// item click.
     pub fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, &PopupHandle)) -> PopupResponse {
         // Esc dismissal is owned by the `Dismiss` popup below — it folds into
         // `resp.closed()`, so no hand-rolled `escape_pressed` here.
@@ -143,6 +146,7 @@ impl<'a> ContextMenu<'a> {
         // no call site of its own worth keying on.
         let resp = self
             .popup
+            .on(Layer::Menu)
             .anchored_at(raw_anchor)
             .background(panel)
             .default_id(body_id)

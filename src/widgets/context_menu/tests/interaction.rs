@@ -4,7 +4,9 @@ use crate::input::keyboard::key::Key;
 use crate::input::keyboard::modifiers::Modifiers;
 use crate::input::shortcut::Shortcut;
 use crate::layout::types::sizing::Sizing;
+use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
+use crate::scene::layer::Layer;
 use crate::scene::node::configure::Configure;
 use crate::ui::harness::UiHarness;
 use crate::widgets::button::Button;
@@ -13,6 +15,7 @@ use crate::widgets::context_menu::ContextMenuState;
 use crate::widgets::context_menu::menu_item::MenuItem;
 use crate::widgets::context_menu::tests::support::{SURFACE, trigger_id};
 use crate::widgets::panel::Panel;
+use crate::widgets::popup::Popup;
 use crate::{Sense, Ui};
 use glam::Vec2;
 
@@ -196,4 +199,54 @@ fn build(ui: &mut Ui, clicked_copy: &mut bool, _unused: &mut bool) {
 
 fn menu_open(ui: &Ui) -> bool {
     ContextMenu::is_open(ui, trigger_id())
+}
+
+/// **A menu raised from inside a popup records above it rather than panicking.**
+///
+/// The composition every text field in an overlay is: a `TextEdit` in a popup,
+/// right-clicked. A menu that shared [`Layer::Popup`] with the popup that
+/// raised it asked the forest to push a layer onto itself — a debug assertion
+/// in debug, and in release a menu recorded *underneath* its own parent, drawn
+/// occluded and un-hittable.
+///
+/// Asserted on the tree the body lands in rather than on the absence of a
+/// panic: a menu that opened on the popup's own layer would still be open, and
+/// only the layer says which side of its parent it is on.
+#[test]
+fn a_menu_raised_inside_a_popup_lands_above_it() {
+    let mut h = UiHarness::new(SURFACE);
+    h.frame(nested);
+    ContextMenu::open(&mut h.ui, trigger_id(), Vec2::new(60.0, 60.0));
+    h.frame(nested);
+
+    assert!(menu_open(&h.ui), "the menu did not open inside the popup");
+    let body = trigger_id().with("body");
+    let held = |layer| h.ui.tree(layer).records.widget_id().contains(&body);
+    assert!(held(Layer::Menu), "the menu body is not on the menu layer");
+    assert!(
+        !held(Layer::Popup),
+        "the menu body is on the layer of the popup that raised it",
+    );
+}
+
+/// A popup holding the trigger a menu is attached to.
+fn nested(ui: &mut Ui) {
+    Panel::vstack()
+        .id(WidgetId::from_hash("root"))
+        .size((Sizing::FILL, Sizing::FILL))
+        .show(ui, |ui| {
+            Popup::below(Rect::new(10.0, 10.0, 100.0, 20.0))
+                .id(WidgetId::from_hash("host"))
+                .show(ui, |ui, _| {
+                    let trigger = Button::new()
+                        .id(trigger_id())
+                        .label("right click me")
+                        .size((Sizing::fixed(120.0), Sizing::fixed(40.0)))
+                        .show(ui)
+                        .snapshot();
+                    ContextMenu::attach(ui, &trigger).show(ui, |ui, popup| {
+                        MenuItem::new("Copy").show(ui, popup);
+                    });
+                });
+        });
 }

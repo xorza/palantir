@@ -108,6 +108,11 @@ impl PopupResponse {
 /// from the body's current measured size, then flipped or shifted to fit
 /// the surface.
 ///
+/// Which layer is a field rather than a constant, because this is the engine
+/// under every anchored overlay and not only the plain one: a context menu is
+/// a popup on [`Layer::Menu`], which is what lets one be raised from inside a
+/// popup — see [`Self::on`].
+///
 /// Outside clicks are handled per [`ClickOutside`]. Under the modal pair
 /// (`Block` / `Dismiss`, the default) a full-surface "click-eater" leaf
 /// is recorded in the `Popup` layer underneath the body, so clicks
@@ -128,6 +133,7 @@ impl PopupResponse {
 pub struct Popup {
     position: OverlayPosition,
     click_outside: ClickOutside,
+    layer: Layer,
     node: Node,
     chrome: Option<Background>,
 }
@@ -165,9 +171,21 @@ impl Popup {
         Self {
             position,
             click_outside: ClickOutside::Dismiss,
+            layer: Layer::Popup,
             node,
             chrome: None,
         }
+    }
+
+    /// Record into `layer` rather than [`Layer::Popup`].
+    ///
+    /// In-crate, because which layer an overlay belongs on is a fact about the
+    /// kind of overlay it is and not about where a caller wants it: the ranks
+    /// are what keeps a menu above the popup that raised it, and a caller free
+    /// to pick would be free to invert them.
+    pub(crate) fn on(mut self, layer: Layer) -> Self {
+        self.layer = layer;
+        self
     }
 
     pub fn click_outside(mut self, m: ClickOutside) -> Self {
@@ -191,12 +209,13 @@ impl Popup {
         let Self {
             position,
             click_outside,
+            layer,
             node,
             chrome,
         } = self;
         // Resolved before the layer switch below, so the body id — and the
         // eater derived from it — is parent-scoped to the trigger's site the
-        // way any other widget is, not to `Layer::Popup`'s empty root.
+        // way any other widget is, not to the side layer's empty root.
         let mut widget = ui.widget(node);
         let eater_id = widget.id().with("eater");
         // The two captures are one decision: an overlay either takes the
@@ -205,12 +224,12 @@ impl Popup {
         // nothing at the call site would explain.
         let modal = click_outside != ClickOutside::PassThrough;
         let scope = if modal {
-            OverlayScope::claim(widget.id(), Layer::Popup, position, &mut widget.node)
+            OverlayScope::claim(widget.id(), layer, position, &mut widget.node)
         } else {
-            OverlayScope::passive(widget.id(), Layer::Popup, position)
+            OverlayScope::passive(widget.id(), layer, position)
         };
         if modal {
-            ui.layer(Layer::Popup).show(|ui| {
+            ui.layer(layer).show(|ui| {
                 // Eater records first → paints under the body. Hit-test runs
                 // reverse-iter so the body's leaves still win inside its rect.
                 //
