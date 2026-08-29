@@ -55,7 +55,7 @@ fn window_requests_queue_and_survive_the_frame() {
     // `window_open` polls the host-refreshed live set (here set directly,
     // as the host would before each frame) — not the pending queues.
     assert!(!h.ui.window_open(open), "empty live set ⇒ nothing open");
-    h.ui.resources.windows.set_live(open, true);
+    h.ui.window_directory().add(open);
     assert!(h.ui.window_open(open));
     assert!(!h.ui.window_open(close), "only `open` is live");
 

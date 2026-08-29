@@ -17,6 +17,13 @@ pub struct WinitHostConfig {
     /// policy for that surface.
     pub present_mode: wgpu::PresentMode,
     /// Adapter power preference — selects the shared adapter at startup.
+    ///
+    /// `LowPower` by default, unlike the headless paths, which ask for
+    /// `HighPerformance`. The difference is deliberate: a window is a user
+    /// interface and on a hybrid laptop the integrated GPU draws it
+    /// without waking the discrete one, while a bench or a golden test is
+    /// worth little unless it runs on the adapter a user is looking at.
+    /// An application that draws something heavier should say so here.
     pub power_preference: wgpu::PowerPreference,
     /// Opt into GPU instrumentation (timestamp + pipeline-statistics
     /// queries). Off by default because the per-frame readback

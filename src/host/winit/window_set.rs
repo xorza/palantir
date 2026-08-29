@@ -58,20 +58,22 @@ impl WindowSet {
         Some(self.at(slot))
     }
 
-    /// Register `window`, which must not already be in the set under
-    /// either key — winit reusing a live `WindowId`, or `spawn_window`
-    /// letting a duplicate token through, would both give one window two
-    /// entries and route half its events to the wrong one.
+    /// Register `window`, whose winit [`WindowId`] must not already be in
+    /// the set — a reused live id would give one window two entries and
+    /// route half its events to the wrong one.
+    ///
+    /// The token half is not checked here. A driver registers its token
+    /// with the app-global directory when it is built, which is before any
+    /// window reaches this, so a duplicate has already panicked there.
     ///
     /// A release assert, not a debug one: what it checks is what the
     /// platform handed back rather than arithmetic of ours, and window
-    /// creation is cold enough to pay two scans of a handful of entries
-    /// for it.
+    /// creation is cold enough to pay a scan of a handful of entries for
+    /// it.
     pub(super) fn push(&mut self, window: Window) {
         assert!(
-            self.slot_of_id(window.window.id()).is_none()
-                && self.slot_of_token(window.driver.token).is_none(),
-            "a window is already registered under this id or token",
+            self.slot_of_id(window.window.id()).is_none(),
+            "a window is already registered under this id",
         );
         self.windows.push(window);
     }

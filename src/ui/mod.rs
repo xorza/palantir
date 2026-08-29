@@ -87,6 +87,7 @@ use crate::window::vsync::Vsync;
 use crate::window::window_commands::PendingWindow;
 use crate::window::window_commands::WindowCommands;
 use crate::window::window_config::WindowConfig;
+use crate::window::window_directory::WindowDirectory;
 use crate::window::window_frame_state::WindowFrameState;
 use crate::window::window_geometry::WindowGeometry;
 use crate::window::window_output::WindowOutput;
@@ -754,6 +755,18 @@ impl Ui {
     #[inline]
     pub fn window_open(&self, token: WindowToken) -> bool {
         self.resources.windows.contains(token)
+    }
+
+    /// The app-global live-window set this recorder answers
+    /// [`Self::window_open`] from.
+    ///
+    /// For `WindowDriver`'s `Drop`, which retires its own token: the
+    /// driver owns this `Ui` and the directory is the only thing it needs
+    /// off the shared resources, so it asks by name rather than reaching
+    /// through the field.
+    #[inline]
+    pub(crate) fn window_directory(&self) -> &WindowDirectory {
+        &self.resources.windows
     }
 
     /// Attach a paint primitive to the active node. Direct text contributes to

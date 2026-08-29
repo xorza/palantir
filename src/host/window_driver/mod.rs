@@ -293,7 +293,12 @@ impl WindowDriverBuilder<'_> {
         self
     }
 
+    /// Registering here rather than at [`WindowDriver::builder`] is what
+    /// ties the directory entry to a driver that exists: a builder dropped
+    /// without building would otherwise leave its token live for the rest
+    /// of the session.
     pub(super) fn build(self) -> WindowDriver {
+        self.shared.resources.windows.add(self.token);
         WindowDriver {
             token: self.token,
             engines: FrameEngines::new(&self.shared.resources),
@@ -308,6 +313,19 @@ impl WindowDriverBuilder<'_> {
             pixel_snap: self.pixel_snap,
             target: None,
         }
+    }
+}
+
+/// Retires this driver's token from the app-global
+/// [`WindowDirectory`](crate::window::window_directory::WindowDirectory).
+///
+/// Here rather than at whatever tore the window down, so the entry cannot
+/// outlive the driver: the two hosts close windows differently, and a
+/// close path that forgot the directory would leave `Ui::window_open`
+/// answering true for a window that no longer exists.
+impl Drop for WindowDriver {
+    fn drop(&mut self) {
+        self.ui.window_directory().remove(self.token);
     }
 }
 
