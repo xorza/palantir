@@ -521,7 +521,7 @@ impl<'a> TextEdit<'a> {
         state.edit.observe_text_hash(geometry.text_hash);
         let now = ui.now();
         let view = state.view.update(ViewUpdateInput {
-            response_rect: response.layout_rect,
+            viewport: layout.inner.map(|rect| rect.size),
             ctx,
             caret_pos,
             caret_width,

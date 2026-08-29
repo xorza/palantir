@@ -147,6 +147,15 @@ impl BarDomain {
 pub(crate) struct BarGeometry {
     pub(crate) thumb_size: f32,
     pub(crate) thumb_offset: f32,
+    /// How far the thumb can slide — the floored track less the thumb.
+    ///
+    /// Carried rather than left to the reader, because the reader has
+    /// only the *raw* viewport to subtract from and the thumb was placed
+    /// against the floored one. A fractional viewport put the drag
+    /// denominator up to a pixel away from the distance the thumb
+    /// actually moves, so grabbing the thumb scrubbed the content at
+    /// slightly the wrong rate.
+    pub(crate) travel: f32,
 }
 
 /// A bar's track always spans its axis' whole viewport extent, so
@@ -191,6 +200,7 @@ pub(crate) fn bar_geometry(
     Some(BarGeometry {
         thumb_size,
         thumb_offset,
+        travel,
     })
 }
 

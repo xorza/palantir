@@ -38,7 +38,7 @@ use crate::text::key::{TextShapeKey, WrapBound};
 use crate::text::request::TextShapeRequest;
 use crate::text::root::TextRoot;
 use crate::text::shaper::TextShaper;
-use crate::text::wrap::{TextWrap, WrapFloor};
+use crate::text::wrap::{TextWrap, WrapCommit, WrapFloor};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 /// Both entry points take the run's *unbounded* request and derive every
@@ -194,11 +194,12 @@ impl TextSystem {
         let (Some(width), Some(fit)) = (available_width_px, wrap_policy.line_fit()) else {
             return shaped(shapes_buffers, request.key, entry.root.size);
         };
-        if fit.resolves_to_unbounded(&entry.root, width) {
-            return shaped(shapes_buffers, request.key, entry.root.size);
-        }
-        let width = wrap_policy.target_width(width, &entry.root);
-        let bound = WrapBound::new(width, halign, fit);
+        // The same decision the probe path makes, from the same function
+        // — the root is already refreshed above, so the thunk is a read.
+        let bound = match wrap_policy.commit(width, halign, fit, || entry.root) {
+            WrapCommit::Unbounded { size } => return shaped(shapes_buffers, request.key, size),
+            WrapCommit::Bound(bound) => bound,
+        };
         let size = match entry.wrap.filter(|slot| slot.bound == bound) {
             Some(slot) => slot.size,
             None => {

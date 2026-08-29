@@ -112,6 +112,14 @@ fn collect_break_offsets(text: &str, out: &mut Vec<u32>) {
 /// break opportunity *after* a space, so a space always ends its segment
 /// and hangs rather than widening it; interior non-breaking whitespace
 /// (U+00A0 and friends) opens no opportunity and so counts in full.
+///
+/// **Reported on the whole-pixel grid, like every other width here.**
+/// `WrapWithOverflow` floors its committed width at this value, and
+/// `canonical_wrap_width` then snaps that to nearest. A raw 57.4 comes
+/// back as 57, and the shaper breaks the very segment the floor exists to
+/// keep whole — in the min-content case layout commits, where the
+/// policy's promise matters most. Rounding *up* is the only direction
+/// that keeps the segment fitting at the width finally asked for.
 pub(super) fn intrinsic_min_width(buffer: &Buffer, breaks: &mut Vec<u32>) -> f32 {
     let mut intrinsic_min = 0.0_f32;
     for run in buffer.layout_runs() {
@@ -136,7 +144,7 @@ pub(super) fn intrinsic_min_width(buffer: &Buffer, breaks: &mut Vec<u32>) -> f32
         }
         intrinsic_min = intrinsic_min.max(segment_w);
     }
-    intrinsic_min
+    intrinsic_min.ceil()
 }
 
 /// Right edge (widest `x + w` across glyphs — an RTL run's last glyph is

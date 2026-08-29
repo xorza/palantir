@@ -42,11 +42,11 @@ impl AxisPlacement {
         } else {
             desired
         };
-        let offset = match align {
-            AxisAlign::Center => ((slot - size) * 0.5).max(0.0),
-            AxisAlign::End => (slot - size).max(0.0),
-            _ => 0.0,
-        };
+        // Through `offset_in`, the one definition of what an alignment
+        // means as a number, floored at zero the way `Align::place_in`
+        // floors it — oversized content pins to the leading edge rather
+        // than backing out of the slot.
+        let offset = align.offset_in(slot, size).max(0.0);
         Self { size, offset }
     }
 

@@ -300,6 +300,14 @@ fn cosmic_intrinsic_min_tracks_the_widest_unbreakable_segment() {
         hello.size.w,
     );
 
+    // The floor is a *width*, on the whole-pixel grid the committed wrap
+    // width is snapped to — a fractional one rounds down to a pixel
+    // narrower than the segment it exists to keep whole.
+    for text in ["hello", "hello world hi", "supercalifragilistic"] {
+        let floor = c.measure(text, shape).wrap_floor();
+        assert_eq!(floor, floor.ceil(), "{text}: the floor must be integral");
+    }
+
     // Width-bounded shapes skip the segment scan and report a zero floor —
     // every consumer derives it from the unbounded root instead.
     let full = c.measure("hello world hi", shape);
@@ -452,4 +460,50 @@ fn a_probe_shapes_under_the_key_the_paint_committed() {
             ),
         }
     }
+}
+
+/// A probe answers in the alignment the *run* asked for, not the one its
+/// cache key carries.
+///
+/// `TextShapeKey::halign_q` is a cache discriminator, projected onto what
+/// shaping varies on — an unbounded key stores `HAlign::Auto` whatever
+/// the run said, because an unbounded shape bakes no per-line offsets.
+/// Reading the caret's alignment off it therefore put the caret on a
+/// glyphless line at the block's left edge for a right-aligned run.
+#[test]
+fn a_glyphless_line_takes_its_caret_from_the_run_not_the_key() {
+    // A middle line with no glyphs, inside a block wide enough for the
+    // alignment to move the caret measurably.
+    let text = "wide enough\n\ntail";
+    let empty_line_byte = "wide enough\n".len();
+    let shaper = TextShaper::new();
+    let run = |halign| TextRun {
+        text,
+        font: shape(16.0).leading(19.2).font,
+        wrap: TextWrap::SingleLine,
+        align: Align::h(halign),
+        max_width_px: None,
+    };
+
+    let left = shaper.layout(&run(HAlign::Left));
+    let block_w = left.size().w;
+    assert_eq!(
+        left.caret_at(empty_line_byte).x,
+        0.0,
+        "a left-aligned empty line starts at the block's left edge",
+    );
+    drop(left);
+    assert!(block_w > 0.0, "the block has width for alignment to use");
+
+    let right = shaper.layout(&run(HAlign::Right));
+    assert_eq!(
+        right.caret_at(empty_line_byte).x,
+        block_w,
+        "a right-aligned empty line puts the caret where the first typed \
+         glyph will land",
+    );
+    drop(right);
+
+    let centre = shaper.layout(&run(HAlign::Center));
+    assert_eq!(centre.caret_at(empty_line_byte).x, block_w * 0.5);
 }

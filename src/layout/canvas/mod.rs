@@ -84,15 +84,20 @@ impl LayoutDriver for Canvas {
             let child_layout = layouts[c.idx()];
             let bounds = tree.bounds(c);
             let pos = bounds.position;
+            // A bounded axis offers the room left *from the child's own
+            // position*, not the canvas's whole inner extent: a canvas
+            // places its children, so what it has left to give one is
+            // what lies past where it put it. The whole extent from an
+            // offset origin overflows by exactly that offset.
             let slot_w = if canvas_size.w().is_hug() {
                 d.w
             } else {
-                inner.size.w
+                (inner.size.w - pos.x).max(0.0)
             };
             let slot_h = if canvas_size.h().is_hug() {
                 d.h
             } else {
-                inner.size.h
+                (inner.size.h - pos.y).max(0.0)
             };
             let child_rect = Rect {
                 min: inner.min + pos,

@@ -3,12 +3,12 @@
 use crate::primitives::size::Size;
 use crate::text::cosmic::CosmicMeasure;
 use crate::text::glyphs::TextGlyphs;
-use crate::text::key::{TextShapeKey, WrapBound};
+use crate::text::key::TextShapeKey;
 use crate::text::probe::TextProbe;
 use crate::text::request::TextShapeRequest;
 use crate::text::root::TextRoot;
 use crate::text::run::TextRun;
-use crate::text::wrap::{LineFit, WrapFloor};
+use crate::text::wrap::{WrapCommit, WrapFloor};
 use std::cell::{RefCell, RefMut};
 use std::rc::Rc;
 
@@ -197,6 +197,8 @@ impl TextShaper {
     /// one that was drawn.
     pub(crate) fn layout<'a>(&'a self, run: &TextRun<'a>) -> TextProbe<'a> {
         let mut inner = self.inner.borrow_mut();
+        // The run's own, not the key's — see `TextProbe::halign`.
+        let halign = run.align.halign();
         let Some(unbounded) = run.unbounded_request() else {
             // One of the two crate edges a run with nothing to shape
             // reaches (the other is `TextGlyphs`) — no bytes, or a face
@@ -205,40 +207,25 @@ impl TextShaper {
             // probe below can give. The key still carries the metrics it
             // expresses them in, or the invalid sentinel where the face
             // named none.
-            return TextProbe::new(Size::ZERO, run.text, run.unbounded_key(), inner);
+            return TextProbe::new(Size::ZERO, run.text, run.unbounded_key(), halign, inner);
         };
         let (key, size) = match (run.wrap_width(), run.wrap.line_fit()) {
-            // Shape the root only for the policies whose binding decision
-            // reads it, derived from the two accessors that define them
-            // rather than restated as a third mapping: `WrapWithOverflow`
-            // raises a too-narrow width to the root's wrap floor (and is
-            // exactly the policy that asks for the floor scan), while a
-            // truncating fit asks the root whether the text already fits.
-            //
-            // A plain `Wrap` consults neither — `target_width` is the
-            // identity and `resolves_to_unbounded` is false — so it binds
-            // without paying for a root shape.
             (Some(width), Some(fit)) => {
-                let committed = if run.wrap.floor_scan() == WrapFloor::Scan || fit != LineFit::Wrap
+                let floor = run.wrap.floor_scan();
+                match run
+                    .wrap
+                    .commit(width, halign, fit, || inner.root(unbounded, floor))
                 {
-                    let root = inner.root(unbounded, run.wrap.floor_scan());
-                    if fit.resolves_to_unbounded(&root, width) {
-                        // A truncating fit whose text already fits keeps
-                        // the unbounded buffer; binding would mint a
-                        // second one layout never asks for.
-                        return TextProbe::new(root.size, run.text, unbounded.key, inner);
+                    WrapCommit::Unbounded { size } => (unbounded.key, size),
+                    WrapCommit::Bound(bound) => {
+                        let bound = unbounded.with_bound(bound);
+                        (bound.key, inner.resolve(bound))
                     }
-                    run.wrap.target_width(width, &root)
-                } else {
-                    width
-                };
-                let bound =
-                    unbounded.with_bound(WrapBound::new(committed, run.align.halign(), fit));
-                (bound.key, inner.resolve(bound))
+                }
             }
             _ => (unbounded.key, inner.root(unbounded, WrapFloor::Skip).size),
         };
-        TextProbe::new(size, run.text, key, inner)
+        TextProbe::new(size, run.text, key, halign, inner)
     }
 
     /// The run's unbounded shape. `TextSystem` calls this on a reuse-slot

@@ -136,19 +136,24 @@ fn canvas_negative_position_does_not_extend_bbox() {
     assert_eq!(child.min.y - r.min.y, -5.0);
 }
 
-/// A constrained Canvas (Fixed) passes its inner to children, so a Fill
-/// child takes the canvas's full inner. A Hug Canvas passes INF on Hug
-/// axes → Fill falls back to intrinsic (zero for an empty Frame). This
-/// preserves the recursive-sizing protection for Hug parents.
+/// A constrained Canvas (Fixed) gives a Fill child the room left past
+/// where it placed it — 100 inner less a position of 10 is 90, so the
+/// child ends exactly on the canvas's inner edge. A Hug Canvas passes INF
+/// on Hug axes → Fill falls back to intrinsic (zero for an empty Frame),
+/// which preserves the recursive-sizing protection for Hug parents.
 ///
-/// The old "Fill = 0 in Canvas" rule (Fill always intrinsic) was a
+/// The position has to come off the slot: a canvas positions its
+/// children, so offering one the *whole* inner extent from an offset
+/// origin overflows by exactly that offset.
+///
+/// The older "Fill = 0 in Canvas" rule (Fill always intrinsic) was a
 /// Canvas-specific quirk that broke constraint propagation for Hug Grid
 /// children. Authors who genuinely want "no Fill behavior" can use
 /// `Sizing::HUG`.
 #[test]
-fn canvas_fill_child_uses_inner_when_constrained_else_intrinsic() {
+fn canvas_fill_child_fills_the_room_past_its_position() {
     let cases: &[(&str, Option<f32>, f32)] = &[
-        ("fixed_canvas_passes_inner", Some(100.0), 100.0),
+        ("fixed_canvas_passes_the_room_left", Some(100.0), 90.0),
         ("hug_canvas_falls_back_to_intrinsic", None, 0.0),
     ];
     for (label, fixed_size, expected) in cases {
@@ -173,6 +178,13 @@ fn canvas_fill_child_uses_inner_when_constrained_else_intrinsic() {
         let f = kids[0];
         assert_eq!(f.size.w, *expected, "case: {label} w");
         assert_eq!(f.size.h, *expected, "case: {label} h");
+        if let Some(size) = *fixed_size {
+            assert_eq!(
+                f.size.w + 10.0,
+                size,
+                "case: {label} — the child ends on the canvas's inner edge",
+            );
+        }
     }
 }
 
