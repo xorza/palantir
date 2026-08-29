@@ -155,39 +155,48 @@ mod tests {
         );
     }
 
-    #[test]
-    fn shape_request_reuses_the_recorded_hash_and_rejects_stale_ones() {
-        let input = |text_hash| TextShapeInput {
+    const FACE: GlyphFont = GlyphFont {
+        size_px: 16.0,
+        line_height_px: 19.2,
+        family: FontFamily::Sans,
+        weight: FontWeight::Regular,
+    };
+
+    /// One recorded run, paired with whatever hash the caller claims for
+    /// its bytes.
+    fn input(text_hash: u64) -> TextShapeInput<'static> {
+        TextShapeInput {
             ordinal: 0,
             text: "hello",
             text_hash,
-            font: GlyphFont {
-                size_px: 16.0,
-                line_height_px: 19.2,
-                family: FontFamily::Sans,
-                weight: FontWeight::Regular,
-            },
+            font: FACE,
             wrap: TextWrap::SingleLine,
             halign: HAlign::Auto,
-        };
+        }
+    }
+
+    #[test]
+    fn shape_request_reuses_the_recorded_hash() {
         let request = input(hash::hash_str("hello")).shape_request();
         assert_eq!(request.text(), "hello");
         assert_eq!(
             request.key(),
-            TextShapeKey::unbounded(
-                hash::hash_str("hello"),
-                GlyphFont {
-                    size_px: 16.0,
-                    line_height_px: 19.2,
-                    family: FontFamily::Sans,
-                    weight: FontWeight::Regular,
-                },
-            ),
+            TextShapeKey::unbounded(hash::hash_str("hello"), FACE),
             "the retained hash must mint the same key re-hashing would",
         );
-        // A retained hash that no longer matches the resolved bytes is a
-        // logic error the debug assert pins.
-        let stale = std::panic::catch_unwind(|| input(1).shape_request());
-        assert!(stale.is_err(), "stale retained hash must panic");
+    }
+
+    /// A retained hash that no longer describes the bytes beside it would
+    /// let one run replay another's shaped buffer.
+    ///
+    /// Debug-only, and the crate's one pairing check that is:
+    /// `TextShapeRequest::for_key` re-hashes the run to compare, which is
+    /// `O(n)` in its bytes per run per frame. `ShapedTextRef::new` asks
+    /// the same question of two recorded hashes and holds in release.
+    #[cfg(debug_assertions)]
+    #[test]
+    #[should_panic(expected = "text paired with a key minted from different bytes")]
+    fn a_stale_retained_hash_is_rejected() {
+        let _ = input(1).shape_request();
     }
 }

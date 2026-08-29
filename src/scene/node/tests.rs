@@ -380,7 +380,6 @@ fn node_bounds_accept_ordered_ranges_and_equal_axis_boundaries() {
 }
 
 #[test]
-#[cfg(debug_assertions)]
 fn node_bounds_reject_inversions_on_each_axis_and_setter_order() {
     type Case = (&'static str, fn() -> Node);
 
@@ -429,7 +428,6 @@ fn node_bounds_reject_inversions_on_each_axis_and_setter_order() {
 }
 
 #[test]
-#[cfg(debug_assertions)]
 fn packed_gaps_accept_f16_boundaries_and_reject_invalid_values() {
     let valid = Node::hstack().gap(MAX_PACKED_GAP).line_gap(MAX_PACKED_GAP);
     assert_eq!(valid.gaps.gap(), MAX_PACKED_GAP);

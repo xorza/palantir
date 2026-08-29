@@ -71,20 +71,22 @@ pub enum PolylineColors<'a> {
 impl PolylineColors<'_> {
     /// Check the per-point / per-segment cardinality contract.
     ///
-    /// Debug-only: every polyline authored every frame reaches this, and a
-    /// release build must not pay for a caller contract on an immediate-mode
-    /// path. Named for what it compiles to so the call site reads honestly.
-    pub(crate) fn debug_assert_matches(&self, points_len: usize) {
+    /// One length compare, run per polyline per frame against a `memcpy`
+    /// of the points and a hash of every one of them — which is why it is
+    /// affordable in release, where the miscount it catches is not
+    /// recoverable: lowering stages a colour slice of the wrong length,
+    /// and the composer reads per-point colours off the end of it.
+    pub(crate) fn assert_matches(&self, points_len: usize) {
         match self {
             PolylineColors::Single(_) => {}
-            PolylineColors::PerPoint(colors) => debug_assert_eq!(
+            PolylineColors::PerPoint(colors) => assert_eq!(
                 colors.len(),
                 points_len,
                 "Shape::Polyline PerPoint colors len {} != points len {}",
                 colors.len(),
                 points_len,
             ),
-            PolylineColors::PerSegment(colors) => debug_assert_eq!(
+            PolylineColors::PerSegment(colors) => assert_eq!(
                 colors.len(),
                 points_len.saturating_sub(1),
                 "Shape::Polyline PerSegment colors len {} != points len - 1 ({})",

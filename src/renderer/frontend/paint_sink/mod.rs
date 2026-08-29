@@ -156,7 +156,7 @@ pub(crate) trait PaintGate {
     /// without an intermediate scratch buffer) and passes the resulting
     /// spans in the payload. The `color_mode`-dictated `colors_len` is a
     /// caller invariant checked upstream by
-    /// `PolylineColors::debug_assert_matches` in `lower::polyline`.
+    /// `PolylineColors::assert_matches` in `lower::polyline`.
     fn draw_polyline(&mut self, payload: DrawPolylinePayload);
 }
 

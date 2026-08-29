@@ -135,7 +135,7 @@ impl<Rows, Cols> Grid<Rows, Cols> {
 
 impl_configure!(<Rows, Cols> Grid<Rows, Cols>);
 
-#[cfg(all(test, debug_assertions))]
+#[cfg(test)]
 mod tests {
     use super::Grid;
     use crate::layout::types::limits::MAX_PACKED_GAP;

@@ -312,7 +312,7 @@ pub(crate) fn polyline(
         points.len() >= 2,
         "polyline with < 2 points reached lowering"
     );
-    colors.debug_assert_matches(points.len());
+    colors.assert_matches(points.len());
     // `bbox` was folded by `PolylineShape::new`, which is what let
     // `Shapes::add` screen this shape before anything below staged a
     // byte. Two passes over `points` rather than one interleaved pass,
@@ -496,29 +496,28 @@ mod tests {
         }
     }
 
-    /// Chrome is the paint path `Shapes::add` never sees, so `background`
-    /// is its NaN gate — and it sanitizes where the shape path drops,
-    /// because `chrome_table` keeps a row for `ClipMode::Rounded` even
-    /// when the paint is no-op. A dropped background would fix the fill
-    /// and leave the stencil mask reading the NaN.
-    ///
-    /// Every field is covered, because no no-op predicate owns the
-    /// question for any of them: "the radius is NaN" is not a reason the
-    /// background paints nothing, and `approx_zero` reports NaN as
-    /// non-zero by design so a NaN cannot take the sharp-corner fast
-    /// path. Each falls back to what its NaN already meant.
-    #[test]
-    fn background_lowering_sanitizes_every_nan_field() {
-        let store = RecordStore::default();
-        let sane = Corners::all(6.0);
-        let bg = |corners| Background {
+    /// A white fill with `corners`, the shape every chrome case here
+    /// varies one field of.
+    fn with_corners(corners: Corners) -> Background {
+        Background {
             corners,
             ..Background::fill(Color::WHITE)
-        };
-        let nan_corner = Corners::new(4.0, f32::NAN, 4.0, 4.0);
+        }
+    }
 
-        let tainted: [(&str, Background); 4] = [
-            ("corners", bg(nan_corner)),
+    /// The four ways a `Background` can carry a NaN, one per field.
+    ///
+    /// All four are covered because no no-op predicate owns the question
+    /// for any of them: "the radius is NaN" is not a reason the
+    /// background paints nothing, and `approx_zero` reports NaN as
+    /// non-zero by design so a NaN cannot take the sharp-corner fast
+    /// path.
+    fn nan_backgrounds() -> [(&'static str, Background); 4] {
+        [
+            (
+                "corners",
+                with_corners(Corners::new(4.0, f32::NAN, 4.0, 4.0)),
+            ),
             (
                 "fill",
                 Background::fill(Color::rgba(1.0, f32::NAN, 1.0, 1.0)),
@@ -541,16 +540,47 @@ mod tests {
                     ..Background::fill(Color::WHITE)
                 },
             ),
-        ];
-        for (label, authored) in tainted {
-            let row = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ]
+    }
+
+    /// A sane background reaches the row unchanged, and every field it
+    /// carries reaches the hash — which is what makes the sanitizing
+    /// below a change of behaviour rather than a no-op.
+    #[test]
+    fn background_lowering_keeps_an_authored_field() {
+        let store = RecordStore::default();
+        let sane = Corners::all(6.0);
+        let kept = background(&store, &with_corners(sane));
+        assert_eq!(kept.corners, sane);
+        assert_ne!(
+            kept.hash,
+            background(&store, &with_corners(Corners::ZERO)).hash,
+            "corners must still reach the chrome hash",
+        );
+    }
+
+    /// Chrome is the paint path `Shapes::add` never sees, so `background`
+    /// is its NaN gate — and it sanitizes where the shape path drops,
+    /// because `chrome_table` keeps a row for `ClipMode::Rounded` even
+    /// when the paint is no-op. A dropped background would fix the fill
+    /// and leave the stencil mask reading the NaN.
+    ///
+    /// **The claim is one both profiles keep: a NaN never reaches the
+    /// row.** A debug build says so by asserting, a release build by
+    /// falling each field back to what its NaN already meant, and the
+    /// `catch_unwind` accepts either — the same shape
+    /// `the_nan_gate_drops_every_shape_kind` pins the shape path with.
+    #[test]
+    fn a_nan_background_field_never_reaches_the_row() {
+        let store = RecordStore::default();
+        for (label, authored) in nan_backgrounds() {
+            let Ok(row) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 background(&store, &authored)
-            }));
-            if cfg!(debug_assertions) {
-                assert!(row.is_err(), "a NaN {label} must assert in debug");
+            })) else {
+                // The gate asserted, which is the loudest form of "did
+                // not reach the row".
                 continue;
-            }
-            let row = row.expect("release must not panic");
+            };
             assert!(
                 !row.corners.has_nan()
                     && !row.stroke.has_nan()
@@ -560,20 +590,14 @@ mod tests {
             );
         }
 
-        if !cfg!(debug_assertions) {
-            let row = background(&store, &bg(nan_corner));
+        // A radius falls back to *no rounding* specifically, not merely
+        // to something finite: that is what leaves a `ClipMode::Rounded`
+        // stencil readable rather than clipping to a shape nobody chose.
+        if let Ok(row) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            background(&store, &with_corners(Corners::new(4.0, f32::NAN, 4.0, 4.0)))
+        })) {
             assert!(row.corners.approx_zero(), "a radius collapses to none");
         }
-
-        // The sane path is untouched — and the hash follows the
-        // sanitized value, not the authored one.
-        let kept = background(&store, &bg(sane));
-        assert_eq!(kept.corners, sane);
-        assert_ne!(
-            kept.hash,
-            background(&store, &bg(Corners::ZERO)).hash,
-            "corners must still reach the chrome hash",
-        );
     }
 
     #[test]

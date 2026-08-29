@@ -49,6 +49,12 @@ fn mesh_index_arithmetic_accepts_boundaries_and_rejects_overflow() {
     );
 }
 
+/// An index past the last vertex is refused before either push, so a
+/// rejected triangle leaves no partial run behind.
+///
+/// Debug-only: this is per item of a caller's build loop, and a mesh of
+/// ten thousand triangles pays it ten thousand times.
+#[cfg(debug_assertions)]
 #[test]
 fn triangle_validates_each_index_before_mutating() {
     #[derive(Debug)]
