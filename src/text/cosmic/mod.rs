@@ -329,17 +329,18 @@ impl CosmicMeasure {
             key.max_width_px().is_none(),
             "a committed width has no unbounded root to answer with",
         );
-        if let Some(hit) = self.cache_hit(key) {
-            let root = hit.root();
-            // A resident entry shaped by a policy that didn't want the
-            // floor still owes it to one that does.
+        // One probe for the whole hit path, entry held across the
+        // backfill: a resident entry shaped by a policy that didn't want
+        // the floor still owes it to one that does, and reading the
+        // extent out first meant hashing the same key again to write it.
+        // This is the resize-drag path.
+        let breaks = &mut self.break_scratch;
+        if let Some(entry) = Self::hit_entry(&mut self.cache, &mut self.counters, self.frame, key) {
+            let root = entry.extent.root_mut();
             if floor == WrapFloor::Scan && root.intrinsic_min.is_none() {
-                return TextRoot {
-                    intrinsic_min: Some(self.scan_wrap_floor(key)),
-                    ..root
-                };
+                root.intrinsic_min = Some(intrinsic_min_width(&entry.buffer, breaks));
             }
-            return root;
+            return entry.extent.root();
         }
         self.shape_wrapped(request, floor).root()
     }
@@ -435,27 +436,6 @@ impl CosmicMeasure {
             .expect("restored text buffer did not land under its own TextShapeKey")
     }
 
-    /// Scan the wrap floor for a resident entry that was shaped without
-    /// one, memoizing it so the next asker pays nothing.
-    ///
-    /// Disjoint field borrows: the buffer comes out of `cache` while
-    /// `break_scratch` is borrowed alongside it, which only holds written
-    /// out here rather than behind a `&mut self` helper.
-    fn scan_wrap_floor(&mut self, key: TextShapeKey) -> f32 {
-        let breaks = &mut self.break_scratch;
-        let entry = self
-            .cache
-            .get_mut(&key)
-            .expect("a cache hit must still be resident");
-        let root = entry.extent.root_mut();
-        if let Some(floor) = root.intrinsic_min {
-            return floor;
-        }
-        let floor = intrinsic_min_width(&entry.buffer, breaks);
-        entry.extent.root_mut().intrinsic_min = Some(floor);
-        floor
-    }
-
     fn acquire_buffer(&mut self, metrics: Metrics, width: Option<f32>) -> Buffer {
         let mut buffer = match self.recycle_pool.pop() {
             Some(buffer) => buffer,
@@ -500,20 +480,30 @@ impl CosmicMeasure {
     }
 
     /// What the entry under `key` measured to, or `None` on a miss.
-    /// Layout hits and encoder ensures both land here, and both push the
-    /// entry's deadline out to the protected window — being asked for at
-    /// all is the evidence that separates reuse from scan traffic, so no
-    /// separate promotion step is needed.
     fn cache_hit(&mut self, key: TextShapeKey) -> Option<CachedExtent> {
-        let keep_until = self.frame + PROTECTED_KEEP_FRAMES;
-        let hit = self.cache.get_mut(&key).map(|entry| {
-            entry.keep_until = keep_until;
-            entry.extent
-        });
-        if hit.is_some() {
-            self.counters.hits.bump();
-        }
-        hit
+        Self::hit_entry(&mut self.cache, &mut self.counters, self.frame, key)
+            .map(|entry| entry.extent)
+    }
+
+    /// The resident entry under `key`, its deadline pushed out to the
+    /// protected window and the hit counted.
+    ///
+    /// Being asked for at all is the evidence that separates reuse from
+    /// scan traffic, so no separate promotion step is needed.
+    ///
+    /// Takes the three fields rather than `&mut self`, like
+    /// [`CacheEntry::probe`]: [`Self::root`] holds `break_scratch` across
+    /// the call, and only a field-level borrow leaves that field free.
+    fn hit_entry<'a>(
+        cache: &'a mut FxHashMap<TextShapeKey, CacheEntry>,
+        counters: &mut CacheCounters,
+        frame: u64,
+        key: TextShapeKey,
+    ) -> Option<&'a mut CacheEntry> {
+        let entry = cache.get_mut(&key)?;
+        entry.keep_until = frame + PROTECTED_KEEP_FRAMES;
+        counters.hits.bump();
+        Some(entry)
     }
 
     /// Demote `key` to the probation window: the reuse slot that owned
@@ -747,7 +737,12 @@ impl CosmicMeasure {
             .max_width_px()
             .expect("a truncating fit resolves against a committed width");
         let unbounded = request.unbounded_version();
-        self.ensure_buffer(unbounded);
+        // Residency *and* the measure, from one lookup. `ensure_buffer`
+        // answers the same question with a second lookup for a
+        // `ShapedRun` this drops, and the root it hands back below is
+        // exactly what the fit test wants — this is the resize-drag path,
+        // where the key was hashed three times over.
+        let root = self.root(unbounded, WrapFloor::Skip);
         let metrics = Metrics::new(key.font_size_px(), key.line_height_px());
         let family = key.family();
         let weight = key.weight();
@@ -766,12 +761,9 @@ impl CosmicMeasure {
         let probe_key = unbounded.key;
         // Same question `TextSystem::measure` asks before it ever gets
         // here, against the same root — so it is asked the same way. The
-        // probe's own measurement already answers it, which is why this
-        // reads the entry rather than re-walking its glyphs.
-        let fits_whole = fit.resolves_to_unbounded(
-            &CacheEntry::probe(&self.cache, probe_key).extent.root(),
-            width,
-        );
+        // shape above already measured it, which is why this re-walks
+        // neither the glyphs nor the cache.
+        let fits_whole = fit.resolves_to_unbounded(&root, width);
 
         // Shape unbounded on one line: the cut already fit it to `w`, and the
         // encoder owns single-line placement. Binding to `Some(w)` + align

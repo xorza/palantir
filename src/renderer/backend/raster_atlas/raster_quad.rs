@@ -79,7 +79,7 @@ impl RasterQuad {
     /// [`U_BITS`], which is how the shader reads them.
     pub(crate) fn shader_module(device: &wgpu::Device, label: &str) -> wgpu::ShaderModule {
         let wgsl = shader_template::specialize(
-            include_str!("shader.wgsl"),
+            shader_template::RASTER_ATLAS_WGSL,
             &[
                 ShaderConstant::uint("U_BITS", U_BITS),
                 ShaderConstant::uint("FLAG_DESATURATE", Self::DESATURATE >> U_BITS),

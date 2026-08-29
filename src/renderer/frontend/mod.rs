@@ -108,6 +108,12 @@ impl Frontend {
         live.clear();
         live.reserve_exact(scene.gpu_views.len());
         live.extend(scene.gpu_views.values().map(|view| view.texture_id));
+        // Sorted here so the backend's retention sweep can search it
+        // instead of scanning it once per retained target — the product of
+        // the two counts, every submit, where a graph view holds one
+        // target per node. A map's `values()` has no order of its own, so
+        // this also stops the roster from depending on hash order.
+        live.sort_unstable();
     }
 }
 

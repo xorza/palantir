@@ -17,7 +17,6 @@
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
 
-use crate::primitives::brush::gradient::Spread;
 use crate::primitives::fill_kind::FillKind;
 use crate::primitives::span::Span;
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
@@ -27,8 +26,8 @@ use crate::renderer::backend::shader_template::{self, ShaderConstant};
 use crate::renderer::backend::stencil_variant::ColorVariantSpec;
 use crate::renderer::backend::stencil_variant::StencilVariant;
 use crate::renderer::render_buffer::curve::{
-    CURVE_KIND_ARC, CURVE_KIND_CUBIC, CURVE_KIND_JOIN_BEVEL, CURVE_KIND_JOIN_MITER,
-    CURVE_KIND_JOIN_ROUND, CURVE_KIND_SEGMENT, CurveInstance, SEGMENTS_PER_INSTANCE,
+    CURVE_KIND_ARC, CURVE_KIND_JOIN_BEVEL, CURVE_KIND_JOIN_MITER, CURVE_KIND_JOIN_ROUND,
+    CURVE_KIND_SEGMENT, CurveInstance, SEGMENTS_PER_INSTANCE,
 };
 use crate::shape::stroke_bounds::{HALF_FRINGE, MITER_LIMIT};
 use crate::shape::style::LineCap;
@@ -86,22 +85,19 @@ impl InstancePipeline for CurvePipeline {
     /// from [`Self::build_variants`].
     fn new(device: &wgpu::Device) -> Self {
         let wgsl = shader_template::specialize(
-            include_str!("curve.wgsl"),
+            shader_template::CURVE_WGSL,
             &[
                 ShaderConstant::uint("SEGMENTS_PER_INSTANCE", SEGMENTS_PER_INSTANCE),
                 ShaderConstant::float("HALF_FRINGE", HALF_FRINGE),
                 ShaderConstant::float("MITER_LIMIT", MITER_LIMIT),
                 ShaderConstant::uint("CAP_BUTT", LineCap::Butt as u32),
-                ShaderConstant::uint("CAP_SQUARE", LineCap::Square as u32),
                 ShaderConstant::uint("CAP_ROUND", LineCap::Round as u32),
-                ShaderConstant::uint("KIND_CUBIC", CURVE_KIND_CUBIC),
                 ShaderConstant::uint("KIND_ARC", CURVE_KIND_ARC),
                 ShaderConstant::uint("KIND_SEGMENT", CURVE_KIND_SEGMENT),
                 ShaderConstant::uint("KIND_JOIN_ROUND", CURVE_KIND_JOIN_ROUND),
                 ShaderConstant::uint("KIND_JOIN_BEVEL", CURVE_KIND_JOIN_BEVEL),
                 ShaderConstant::uint("KIND_JOIN_MITER", CURVE_KIND_JOIN_MITER),
-                ShaderConstant::uint("BRUSH_KIND_SOLID", FillKind::SOLID.0),
-                ShaderConstant::uint("BRUSH_KIND_LINEAR", FillKind::linear(Spread::Pad).0),
+                ShaderConstant::uint("BRUSH_KIND_LINEAR", FillKind::TAG_LINEAR),
             ],
         );
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -194,8 +190,9 @@ impl InstancePipeline for CurvePipeline {
 // `p0/p1/p2/p3 : Float32x2`, `t_range : Float32x2`, `width : Float32`,
 // `color0/color1 : Unorm8x4` (linear-u8, t=0 / t=1 stroke colours),
 // `cap : Uint32` (per-end caps packed: bits 0..8 start, 8..16 end),
-// `fill_kind : Uint32` (0 = solid, 1 = linear),
-// `fill_lut_row : Uint32` (gradient atlas row when fill_kind != 0),
+// `fill_kind : Uint32` (a `FillKind` tag; the shader compares its low
+// byte against the substituted `BRUSH_KIND_LINEAR`),
+// `fill_lut_row : Uint32` (gradient atlas row, read for a gradient tag),
 // `kind : Uint32` (basis tag — geometry-lane interpretation).
 const CURVE_INSTANCE_ATTRS: [wgpu::VertexAttribute; 12] = wgpu::vertex_attr_array![
     0 => Float32x2,

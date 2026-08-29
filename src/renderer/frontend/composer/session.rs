@@ -590,7 +590,10 @@ impl PaintSink for ComposeSession<'_> {
         // trims a pixel the stroke would reach, and it
         // short-circuits before transforming the full point
         // list — the win for long dense point runs.
-        let bbox_urect = geometry::stroke_bbox_urect(
+        // Clamped where it is built: the early return below is what skips
+        // the kept-point walk, and `admit_higher_kind` wants this same
+        // clipped rect rather than a second answer to the same question.
+        let visible = self.composer.clip.clamped(geometry::stroke_bbox_urect(
             xform,
             p.bounds.cull_rect(),
             p.origin,
@@ -598,8 +601,8 @@ impl PaintSink for ComposeSession<'_> {
             cap,
             (p.points_len > 2).then_some(join),
             display,
-        );
-        if self.composer.clip.culls(bbox_urect) {
+        ));
+        if visible.is_paint_empty() {
             return;
         }
 
@@ -653,7 +656,7 @@ impl PaintSink for ComposeSession<'_> {
         // Only now that the polyline will actually emit
         // geometry — an empty or culled polyline must not
         // split the batch or the group.
-        if !self.admit_higher_kind(PaintTier::Curve, bbox_urect) {
+        if !self.admit_higher_kind(PaintTier::Curve, visible) {
             return;
         }
         let PolylineScratch {

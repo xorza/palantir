@@ -427,6 +427,7 @@ impl Tree {
             ),
             _ => {}
         }
+        #[cfg(debug_assertions)]
         self.check_grid_cell(parent_frame.map(|f| f.node), &cols.bounds);
 
         let mut ex = ExtrasIdx::default();
@@ -496,7 +497,13 @@ impl Tree {
     /// Range-check a child's `grid` cell against its parent's
     /// `GridDef` row/col counts. Only fires when the parent is a
     /// `Grid` node and the def has nonzero rows + cols.
-    #[inline(always)]
+    ///
+    /// Gated whole, not just its assert: everything it does — the load of
+    /// the parent's `LayoutCore`, the `LayoutMode` decode and its
+    /// `Index16` expect, the `grid_defs` index — exists to reach that
+    /// assert, and this runs on every node open, the hottest step of the
+    /// recording pass.
+    #[cfg(debug_assertions)]
     fn check_grid_cell(&self, parent: Option<NodeId>, bounds: &BoundsExtras) {
         if let Some(parent_id) = parent {
             let parent_layout = self.records.layout()[parent_id.0 as usize];

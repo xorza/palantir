@@ -69,7 +69,7 @@ impl InstancePipeline for MeshPipeline {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("palantir.mesh.shader"),
             source: wgpu::ShaderSource::Wgsl(
-                shader_template::specialize(include_str!("mesh.wgsl"), &[]).into(),
+                shader_template::specialize(shader_template::MESH_WGSL, &[]).into(),
             ),
         });
 
@@ -200,8 +200,11 @@ fn mesh_upload_required(vertices: usize, indices: usize, instances: usize) -> bo
     if instances == 0 {
         return false;
     }
-    assert!(vertices != 0, "mesh instances require vertices");
-    assert!(indices != 0, "mesh instances require indices");
+    // Debug: the composer produced these counts a pass ago and this runs
+    // on every frame's upload path, so it is the crate checking itself at
+    // frame rate rather than screening anything a caller passed.
+    debug_assert!(vertices != 0, "mesh instances require vertices");
+    debug_assert!(indices != 0, "mesh instances require indices");
     true
 }
 

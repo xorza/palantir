@@ -61,7 +61,7 @@ const BRUSH_KIND_SHADOW_INSET: u32 = /*{BRUSH_KIND_SHADOW_INSET}*/;
 // is the corner radius. Stroke uses the usual `stroke_color`/`stroke_width`.
 const BRUSH_KIND_TRIANGLE:     u32 = /*{BRUSH_KIND_TRIANGLE}*/;
 // Spread mode (bits 8..16 of fill_kind), only meaningful for gradients.
-const SPREAD_PAD:     u32 = /*{SPREAD_PAD}*/;
+// `Pad` is the fallback below rather than a constant of its own.
 const SPREAD_REPEAT:  u32 = /*{SPREAD_REPEAT}*/;
 const SPREAD_REFLECT: u32 = /*{SPREAD_REFLECT}*/;
 const TAU: f32 = 6.2831853;
@@ -170,15 +170,19 @@ fn sdf_triangle(p: vec2<f32>, a: vec2<f32>, b: vec2<f32>, c: vec2<f32>) -> f32 {
     return -sqrt(d.x) * sign(d.y);
 }
 
-// Apply the user-selected spread mode to a parametric `t`. `Pad` clamps
-// to 0..1 (sampler clamp-addressing would also do this, but doing it
-// here keeps the contract explicit). `Repeat` wraps. `Reflect` mirrors.
+// Apply the user-selected spread mode to a parametric `t`. The `Pad`
+// clamp is kept here rather than left to the sampler's clamp
+// addressing, so the contract holds whatever the sampler is set to.
 fn apply_spread(t: f32, mode: u32) -> f32 {
-    switch mode {
-        case 1u: { return fract(t); }                       // Repeat
-        case 2u: { return abs(fract(t * 0.5) - 0.5) * 2.0; } // Reflect
-        default: { return clamp(t, 0.0, 1.0); }              // Pad
+    if (mode == SPREAD_REPEAT) {
+        return fract(t);
     }
+    if (mode == SPREAD_REFLECT) {
+        return abs(fract(t * 0.5) - 0.5) * 2.0;
+    }
+    // Pad, and the safe answer for a mode this shader was not told
+    // about: clamping keeps `t` inside the LUT row either way.
+    return clamp(t, 0.0, 1.0);
 }
 
 // Resolve the fill colour at a given fragment. Solid path returns

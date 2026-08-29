@@ -21,5 +21,7 @@
 /// default of a draw payload) and is never handed out — ids start at `1`.
 /// `Pod` so it can live inline on the `bytemuck`-cast draw payload.
 #[repr(transparent)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(
+    Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, bytemuck::Pod, bytemuck::Zeroable,
+)]
 pub(crate) struct TextureId(pub(crate) u64);

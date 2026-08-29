@@ -8,6 +8,7 @@ use crate::primitives::color::Color;
 use crate::primitives::rect::Rect;
 use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
+use crate::scene::cascade::engine;
 use crate::scene::cascade::engine::{
     CascadeContext, CascadePrefixBits, build_cascade_prefix, cascade_fingerprint,
     finish_cascade_input,
@@ -403,7 +404,14 @@ fn assert_cascades_match_full(ui: &Ui, label: &str) {
 
     let mut engine = CascadeEngine::default();
     let mut full = Cascade::default();
-    engine.run_full(ui.forest(), ui.layout_tables(), ui.display(), &mut full);
+    let layout_hashes = engine::layout_hashes(ui.forest(), ui.layout_tables());
+    engine.run_full(
+        ui.forest(),
+        ui.layout_tables(),
+        ui.display(),
+        &mut full,
+        &layout_hashes,
+    );
 
     // Whole-row compares: `entries` / `hits` are AoS and `PartialEq`,
     // so this covers every field and keeps covering any field added

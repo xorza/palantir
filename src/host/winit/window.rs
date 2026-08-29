@@ -20,6 +20,28 @@ use crate::window::vsync::Vsync;
 use crate::window::window_commands::WindowCommands;
 use crate::window::window_frame_state::WindowFrameState;
 
+/// What only the windowing system can answer, held until an event that
+/// can change it.
+///
+/// Each field is a round trip on X11 — `outer_position` an
+/// `XTranslateCoordinates`, `is_maximized` a `get_property` — and
+/// `current_monitor` additionally clones a handle that owns a `String`,
+/// a heap allocation. Asking per frame paid all three for a reader that
+/// asks only when an app calls
+/// [`Ui::window_geometry`](crate::Ui::window_geometry), and for the
+/// refresh rate the driver paces by.
+///
+/// Named apart from the [`WindowFrameState`] it half fills: that is what
+/// the host *tells* the `Ui` each frame, this is what the host had to
+/// *ask* for. [`Window::invalidate_system_facts`] names the events that
+/// clear it.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct SystemFacts {
+    position: Option<IVec2>,
+    maximized: bool,
+    refresh_millihertz: Option<u32>,
+}
+
 /// Everything one native window owns: its handle, swapchain state, target-
 /// agnostic render driver, input/display facts, and event-loop schedule.
 #[derive(Debug)]
@@ -37,6 +59,8 @@ pub(super) struct Window {
     occluded_at: Option<Instant>,
     /// This window's Tracy frame set. Zero-sized without the profiler.
     frame_set: FrameSet,
+    /// See [`SystemFacts`]. `None` until the next frame asks.
+    system_facts: Option<SystemFacts>,
 }
 
 impl Window {
@@ -64,11 +88,44 @@ impl Window {
             cursor: CursorIcon::default(),
             occluded_at: None,
             frame_set: FrameSet::claim(),
+            system_facts: None,
         }
     }
 
     pub(super) fn on_input(&mut self, event: InputEvent) -> InputDelta {
         self.driver.ui.on_input(event)
+    }
+
+    /// This frame's [`SystemFacts`], asking the windowing system only
+    /// when an event has invalidated them.
+    fn system_facts(&mut self) -> SystemFacts {
+        if let Some(facts) = self.system_facts {
+            return facts;
+        }
+        let facts = SystemFacts {
+            position: self
+                .window
+                .outer_position()
+                .ok()
+                .map(|position| IVec2::new(position.x, position.y)),
+            maximized: self.window.is_maximized(),
+            refresh_millihertz: self
+                .window
+                .current_monitor()
+                .and_then(|monitor| monitor.refresh_rate_millihertz()),
+        };
+        self.system_facts = Some(facts);
+        facts
+    }
+
+    /// Drop the cached [`SystemFacts`].
+    ///
+    /// Called for every event that can move the window, resize it, or put
+    /// it on another monitor — the three things the cached answers depend
+    /// on. A superset is safe here and a missed event is not, so an event
+    /// that merely *might* have changed one clears all three.
+    pub(super) fn invalidate_system_facts(&mut self) {
+        self.system_facts = None;
     }
 
     pub(super) fn set_occluded(&mut self, occluded: bool) {
@@ -95,19 +152,15 @@ impl Window {
     ) {
         tracy::zone!("Window::frame");
 
-        let position = self
-            .window
-            .outer_position()
-            .ok()
-            .map(|position| IVec2::new(position.x, position.y));
+        let facts = self.system_facts();
         // Also where the previous frame's veto is asserted spent — see
         // `Ui::set_window_facts`. `finish` below sits outside the occlusion
         // branch, so every winit frame reaches the drain that clears it,
         // including a skipped one.
         self.driver.ui.set_window_facts(WindowFrameState {
             close_requested: self.close_requested,
-            position,
-            maximized: self.window.is_maximized(),
+            position: facts.position,
+            maximized: facts.maximized,
         });
 
         // An occluded window skips its frame, except the one carrying a
@@ -134,13 +187,9 @@ impl Window {
                 self.occluded_at = Some(Instant::now());
             }
             let physical = UVec2::new(self.config.width, self.config.height);
-            let display = self.driver.display(
-                physical,
-                self.scale_factor,
-                self.window
-                    .current_monitor()
-                    .and_then(|monitor| monitor.refresh_rate_millihertz()),
-            );
+            let display =
+                self.driver
+                    .display(physical, self.scale_factor, facts.refresh_millihertz);
 
             // A size, format, or present-mode change invalidates the driver's
             // retained target state *and* needs the swapchain reconfigured before

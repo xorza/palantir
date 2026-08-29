@@ -83,6 +83,18 @@ pub(crate) trait F32Ext {
     /// at ~3.5× the speed of the libm call.
     fn fast_round(self) -> f32;
 
+    /// The whole pixel that covers `self` — `ceil` as the `u32` every
+    /// caller of it wants, without the out-of-line `ceilf` baseline
+    /// x86-64 makes of `f32::ceil` (no SSE4.1 `roundss`) — the same
+    /// reason [`Self::fast_round`] exists, on the same per-quad scissor
+    /// path.
+    ///
+    /// Truncate, then bump when the truncation lost something. For a
+    /// non-negative coordinate below `2^24`, where a `u32` still
+    /// round-trips through `f32` exactly — every caller is a pixel
+    /// coordinate, and the debug assert is the guard.
+    fn ceil_px(self) -> u32;
+
     /// `self` has no fractional part — equivalent to `x == x.round()`
     /// minus the libm call. NaN reports `false` like the equality it
     /// replaces; magnitudes ≥ 2^63 (unreachable for pixel coordinates)
@@ -150,6 +162,16 @@ impl F32Ext for f32 {
         }
         // e ≥ BIAS + SHIFT: already integral, or inf/NaN — unchanged.
         f32::from_bits(bits)
+    }
+
+    #[inline]
+    fn ceil_px(self) -> u32 {
+        debug_assert!(
+            (0.0..(1u32 << 24) as f32).contains(&self),
+            "ceil_px is for a non-negative pixel coordinate, got {self}",
+        );
+        let truncated = self as u32;
+        truncated.saturating_add(u32::from((truncated as f32) < self))
     }
 
     #[inline]
