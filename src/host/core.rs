@@ -89,7 +89,6 @@ impl HostCore {
     /// resources. Defaults suit a swapchain window — see
     /// [`WindowDriver::builder`].
     pub(super) fn driver(&self, token: WindowToken) -> WindowDriverBuilder<'_> {
-        self.shared.resources.windows.set_live(token, true);
         WindowDriver::builder(token, &self.shared, self.pixel_snap)
     }
 
@@ -97,6 +96,10 @@ impl HostCore {
     /// scoped to it. Backend eviction is owner-scoped, so a closed window's
     /// targets have no submit left to be absent from and would otherwise be
     /// held until host shutdown.
+    ///
+    /// The window's directory entry is not this call's business — the
+    /// driver's own `Drop` retires that, so a host that closed a window
+    /// without reaching here still cannot leave a token live.
     #[cfg_attr(
         not(feature = "winit"),
         expect(
@@ -106,7 +109,6 @@ impl HostCore {
     )]
     pub(super) fn retire(&mut self, driver: &WindowDriver) {
         self.backend.retire_render_owner(driver.render_owner);
-        self.shared.resources.windows.set_live(driver.token, false);
     }
 
     pub(super) fn cpu_frame<T: App>(

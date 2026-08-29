@@ -17,10 +17,7 @@ same way.
 
 ## Device acquisition and the host lifecycle are written once per host
 
-- [ ] `src/host/winit/window_set.rs:22-24,71-75` vs `src/window/window_directory.rs:10-12,19-31`, `src/host/core.rs:66-69,84`, `src/host/winit/runtime.rs:212-215` — `WindowSet` (a `Vec<Window>` scanned by token) and `WindowDirectory` (`Rc<RefCell<Vec<WindowToken>>>` scanned by token) both hold the live tokens; `HostCore::driver` / `retire` keep the second in step by hand. A duplicate token is guarded three times at three strengths (warn-and-ignore, release-assert, release-assert); only the first can fire. `set_live(token, live: bool)` is one method whose `bool` selects insert vs remove, and both callers pass a literal. `HostCore::driver` marks the token live when the builder is created, not when `build()` runs, so a dropped builder leaves a phantom live token.
-- [ ] `src/host/winit/config.rs:33`, `src/host/test_gpu.rs:27-28,35`, `src/host/bench_gpu.rs:65` — the windowed default is `PowerPreference::LowPower`, while every headless caller asks for `HighPerformance` and `test_gpu.rs` describes `HighPerformance` as "the one a windowed host is normally configured with".
 - [ ] `src/host/winit/input/mod.rs:62,198-202`, `src/ui/harness/mod.rs:114-118`, `src/widgets/text_edit/input.rs:246` — `InputEvent::Text` is emitted only from `WindowEvent::Ime(Ime::Commit(..))`. Nothing calls `Window::set_ime_allowed`, and the harness says so ("dead in production today"). `KeyEvent::text` is never read; typed text reaches `TextEdit` solely through `KeyDown { key: Key::Char(c) }`. `emit_text_chunks`, the `Ime` arm and its tests exist for a path no production build hits.
-- [ ] `src/host/clock.rs:22-41`, `src/host/window_driver/mod.rs:92`, `src/host/offscreen.rs:74` — `Clock` is a trait with one production implementor; `FixedClock` is used only by tests. The default no-op `skip` / `deadline` bodies exist so the test clock need not implement them, and every driver pays `Box<dyn Clock>` for that.
 
 ## One fact is held by two owners
 

@@ -306,15 +306,6 @@ mod output_validity_tests {
     }
 
     #[test]
-    fn window_drivers_have_distinct_render_owners() {
-        let shared = HostShared::new(TextShaper::test_mono(), TextureLimit::default());
-        let first = WindowDriver::builder(WindowToken(1), &shared, true).build();
-        let second = WindowDriver::builder(WindowToken(2), &shared, true).build();
-
-        assert_ne!(first.render_owner, second.render_owner);
-    }
-
-    #[test]
     fn output_validity_tracks_pending_and_completion() {
         let shared = HostShared::new(TextShaper::test_mono(), TextureLimit::default());
         let mut frontend = Frontend::new(8192, shared.gradient_atlas.clone());
@@ -354,6 +345,54 @@ mod output_validity_tests {
         );
         driver.output_valid = true;
         assert!(driver.output_valid, "successful copy restores validity");
+    }
+}
+
+/// What a driver owns for as long as it exists: its place in the
+/// app-global window directory, and a render-owner id no sibling shares.
+mod lifecycle_tests {
+    use crate::host::shared::HostShared;
+    use crate::host::window_driver::WindowDriver;
+    use crate::renderer::texture_limit::TextureLimit;
+    use crate::text::shaper::TextShaper;
+    use crate::window::window_token::WindowToken;
+
+    /// The directory entry belongs to the driver, not to whoever built or
+    /// closed it: `build` mints it and `Drop` retires it.
+    ///
+    /// Both halves matter. A registration made when the builder is created
+    /// would leave a token live for the rest of the session whenever a
+    /// builder is dropped unbuilt, with `Ui::window_open` answering true
+    /// for a window that never opened. A retirement left to the host would
+    /// have to be remembered on two different close paths.
+    #[test]
+    fn a_driver_owns_its_directory_entry_from_build_to_drop() {
+        let shared = HostShared::new(TextShaper::test_mono(), TextureLimit::default());
+        let token = WindowToken(11);
+
+        let builder = WindowDriver::builder(token, &shared, true);
+        drop(builder);
+        assert!(
+            !shared.resources.windows.contains(token),
+            "a builder that never built owns no window",
+        );
+
+        let driver = WindowDriver::builder(token, &shared, true).build();
+        assert!(shared.resources.windows.contains(token));
+        drop(driver);
+        assert!(
+            !shared.resources.windows.contains(token),
+            "the entry cannot outlive the driver",
+        );
+    }
+
+    #[test]
+    fn window_drivers_have_distinct_render_owners() {
+        let shared = HostShared::new(TextShaper::test_mono(), TextureLimit::default());
+        let first = WindowDriver::builder(WindowToken(1), &shared, true).build();
+        let second = WindowDriver::builder(WindowToken(2), &shared, true).build();
+
+        assert_ne!(first.render_owner, second.render_owner);
     }
 }
 
