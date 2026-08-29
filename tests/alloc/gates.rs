@@ -1,8 +1,9 @@
 //! Coarse gates over the whole pipeline, the counterpart to the
 //! fine-grained fixtures next door.
 //!
-//! Those audit ~20 small scenes, GPU-less, so a failure can name the
-//! line that allocated. These three answer what a small scene cannot:
+//! Those audit ~20 small scenes, most of them GPU-less, so a failure can
+//! name the line that allocated. These three answer what a small scene
+//! cannot:
 //! whether the pipeline allocates at all at *full* scale, whether the
 //! wgpu floor beneath it has drifted, and what a frame costs when every
 //! glyph and icon on it misses its atlas.
@@ -22,15 +23,13 @@ use std::rc::Rc;
 
 use glam::UVec2;
 use palantir::internals::{
-    BENCH_DPR, BENCH_SCALE, BENCH_SURFACE, HeadlessTestGpuLease, RecordApp, TEXT_SCALE_STEP,
-    headless_test_gpu,
+    BENCH_DPR, BENCH_SCALE, BENCH_SURFACE, TEXT_SCALE_STEP, headless_test_gpu,
 };
 use palantir::{
-    Color, Configure, FrameFixture, Grid, IconAtlas, IconId, IconSet, OffscreenHost, Panel, Sizing,
-    Track, TranslateScale, Ui,
+    Configure, FrameFixture, Grid, IconAtlas, IconId, IconSet, Panel, Sizing, Track, TranslateScale,
 };
 
-use crate::harness::Audit;
+use crate::harness::{Audit, OffscreenTarget};
 
 /// Measured, the fixture stabilizes by frame 4 — at 1 it still leaks
 /// ~10 blocks — so this is margin. Too short is safe in the direction
@@ -50,9 +49,10 @@ const MEASURE_FRAMES: usize = 256;
 /// the tree that bench times, not a smaller stand-in whose quieter
 /// caches prove less.
 ///
-/// Coverage stops where `Ui::frame` does, at damage — the encode and
-/// compose passes need a device, so no fixture reaches them and the two
-/// gates below are where they are measured.
+/// Coverage stops where `Ui::frame` does, at damage. The encode and
+/// compose passes need a device: the two gates below run them over the
+/// whole tree, and `fixtures/renderer.rs` runs them one shape kind at a
+/// time.
 #[test]
 fn full_tree_cpu_frame_alloc_free() {
     let mut state = FrameFixture::default();
@@ -82,61 +82,6 @@ const RENDER_BLOCKS_PER_FRAME_MAX: u64 = 35;
 const RENDER_SURFACE: UVec2 = UVec2::new(1280, 800);
 const RENDER_NODE_SCALE: usize = 6;
 
-/// One offscreen host and the texture it draws into.
-///
-/// Written once because the two gates have to agree on it. A different
-/// format, usage or clear colour on one of them would leave them
-/// measuring different submission work, and the difference between their
-/// numbers is the whole point of the second one.
-#[derive(Debug)]
-struct OffscreenTarget {
-    host: OffscreenHost,
-    texture: wgpu::Texture,
-}
-
-impl OffscreenTarget {
-    /// The public offscreen path always copies from its backbuffer, so
-    /// what both gates pin excludes the direct-present path.
-    fn new(gpu: &HeadlessTestGpuLease, label: &str) -> Self {
-        let mut host = OffscreenHost::builder(gpu.device.clone(), gpu.queue.clone()).build();
-        host.ui().theme_mut().window_clear = Color::TRANSPARENT;
-        let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some(label),
-            size: wgpu::Extent3d {
-                width: RENDER_SURFACE.x,
-                height: RENDER_SURFACE.y,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                | wgpu::TextureUsages::COPY_DST
-                | wgpu::TextureUsages::COPY_SRC,
-            view_formats: &[],
-        });
-        Self { host, texture }
-    }
-
-    /// One frame at the bench dpr, drained before it returns.
-    ///
-    /// Draining here is what puts GPU execution inside the frame that
-    /// submitted it instead of the next one's window. The dpr is not a
-    /// parameter because the two gates share it deliberately — see
-    /// [`RENDER_SURFACE`].
-    fn frame(&mut self, gpu: &HeadlessTestGpuLease, record: impl FnMut(&mut Ui)) {
-        self.host
-            .frame_offscreen(&self.texture, BENCH_DPR, &mut RecordApp::new(record));
-        gpu.device
-            .poll(wgpu::PollType::Wait {
-                submission_index: None,
-                timeout: None,
-            })
-            .expect("device poll");
-    }
-}
-
 /// **Not** strict zero, and cannot be: every wgpu submission allocates a
 /// `CommandEncoder` Arc, a `CommandBuffer` Arc, the queue's in-flight
 /// `Vec` push, and per-pass scratch from `wgpu_hal`. So the gate catches
@@ -149,13 +94,14 @@ impl OffscreenTarget {
 #[test]
 fn offscreen_frame_stays_at_driver_floor() {
     let gpu = headless_test_gpu();
-    let mut target = OffscreenTarget::new(&gpu, "palantir.alloc_gate.render.target");
+    let mut target =
+        OffscreenTarget::new(&gpu, "palantir.alloc_gate.render.target", RENDER_SURFACE);
     let mut state = FrameFixture::default();
     let report = Audit::new()
         .warmup(WARMUP_FRAMES)
         .frames(MEASURE_FRAMES)
         .budget(RENDER_BLOCKS_PER_FRAME_MAX)
-        .run_frames(|| target.frame(&gpu, |ui| state.render(RENDER_NODE_SCALE, ui)));
+        .run_frames(|| target.frame(&gpu, BENCH_DPR, |ui| state.render(RENDER_NODE_SCALE, ui)));
 
     // A gate that reads zero has stopped measuring, and only the number
     // says so.
@@ -227,7 +173,11 @@ const RAMP_BLOCKS_PER_FRAME_MAX: u64 = 700;
 #[test]
 fn scale_ramp_rasterizes_at_a_flat_cost_per_frame() {
     let gpu = headless_test_gpu();
-    let mut target = OffscreenTarget::new(&gpu, "palantir.alloc_gate.scale_ramp.target");
+    let mut target = OffscreenTarget::new(
+        &gpu,
+        "palantir.alloc_gate.scale_ramp.target",
+        RENDER_SURFACE,
+    );
 
     let atlas = Rc::new(IconAtlas::from_svgs([("chip", RAMP_ICON_SVG)]));
     let chip = IconId(0);
@@ -241,7 +191,7 @@ fn scale_ramp_rasterizes_at_a_flat_cost_per_frame() {
         .budget(RAMP_BLOCKS_PER_FRAME_MAX)
         .run_frames(|| {
             zoom += TEXT_SCALE_STEP;
-            target.frame(&gpu, |ui| {
+            target.frame(&gpu, BENCH_DPR, |ui| {
                 // Parked across frames, so re-loading is a refcount bump
                 // and the set's rasters are never unloaded.
                 let icons = held.insert(ui.load_icons(Rc::clone(&atlas)));
