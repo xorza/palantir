@@ -57,35 +57,43 @@ impl Shapes {
     /// whose payload bytes land on the [`RecordStore`].
     ///
     /// Drops any shape whose authoring inputs would emit no visible
-    /// pixels, before lowering runs — the shape buffer's half of tier 2
-    /// (see [`paint_sink`](crate::renderer::frontend::paint_sink) for
-    /// the policy). Saves the per-shape lowering cost — payload
-    /// staging, mesh hashing, text shaping downstream — which the
-    /// emit-time gate cannot, having already paid it.
+    /// pixels, or that carries a NaN, **before lowering runs** — the
+    /// shape buffer's half of tier 2 (see
+    /// [`paint_sink`](crate::renderer::frontend::paint_sink) for the
+    /// policy). Saves the per-shape lowering cost — payload staging,
+    /// mesh hashing, text shaping downstream — which the emit-time gate
+    /// cannot, having already paid it.
     /// Returns the index of the pushed `ShapeRecord` in `self.records`,
-    /// or `None` if the shape was dropped as a no-op — the index is what
+    /// or `None` if the shape was dropped — the index is what
     /// `Forest::add_shape_animated` keys its paint-anim row by.
+    ///
+    /// **The one NaN gate on the shape path**, and it runs on the
+    /// *authored* shape rather than the lowered record. Lowering is what
+    /// stages mesh vertices, interns a gradient, and copies text into the
+    /// arena, so a record judged afterwards has already left those bytes
+    /// behind for the frame — and two of the authoring inputs
+    /// (a triangle's `radius`, a gradient's geometry) do not survive
+    /// lowering to be judged at all. [`Lower::has_nan`] is `O(1)` for
+    /// every kind, so the screen stays in release, where it makes NaN
+    /// mean what the rest of the pipeline already means by "no-op": drop
+    /// the draw.
+    ///
+    /// Chrome does not come through here; `lower::background` is its
+    /// gate, and it sanitizes rather than drops. Those two are the whole
+    /// list.
     pub(crate) fn add<S: Lower>(&mut self, shape: S, store: &RecordStore) -> Option<u32> {
         if shape.is_noop() {
             return None;
         }
-        let record = shape.lower(store);
-        // **The one NaN gate.** Lowered rather than authored, because by
-        // here every bulk input has been folded into a `bbox` under the
-        // AABB NaN contract — so this is `O(1)` for every shape and can
-        // stay in release, where it makes NaN mean what the rest of the
-        // pipeline already means by "no-op": drop the draw. Debug builds
-        // get the loud version.
-        if record.has_nan() {
-            debug_assert!(
-                !record.has_nan(),
-                "NaN in a paint-shape input — an arithmetic bug on the \
-                 calling side (0/0, ∞-∞, an unseeded layout value). It \
-                 would not crash: the draw silently vanishes, or worse, \
-                 poisons a damage bbox and leaves trails. {record:?}",
-            );
+        if shape.has_nan() {
+            nan_rejected(&shape);
             return None;
         }
+        let record = shape.lower(store);
+        debug_assert!(
+            !record.has_nan(),
+            "a screened shape lowered to a NaN record: {record:?}",
+        );
         Some(self.push(record))
     }
 
@@ -123,6 +131,23 @@ impl Shapes {
         };
         self.push(record);
     }
+}
+
+/// Report a shape [`Shapes::add`] dropped: loud in a debug build, silent
+/// in a release one.
+///
+/// Separate from the branch so the message — and the `Debug` render
+/// behind it — sits `#[cold]`, off the path every recorded shape takes.
+#[cold]
+#[inline(never)]
+fn nan_rejected(shape: &impl std::fmt::Debug) {
+    debug_assert!(
+        false,
+        "NaN in a paint-shape input — an arithmetic bug on the calling \
+         side (0/0, ∞-∞, an unseeded layout value). It would not crash: \
+         the draw silently vanishes, or worse, poisons a damage bbox and \
+         leaves trails. {shape:?}",
+    );
 }
 
 #[cfg(test)]

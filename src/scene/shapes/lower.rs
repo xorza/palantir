@@ -31,7 +31,7 @@ use crate::primitives::fill_kind::FillKind;
 use crate::primitives::mesh::Mesh;
 use crate::primitives::nan::NanCheck;
 use crate::primitives::rect::Rect;
-use crate::primitives::rect::aabb::Aabb;
+use crate::primitives::shadow::Shadow;
 use crate::primitives::span::Span;
 use crate::primitives::stroke::Stroke;
 use crate::scene::record_store::RecordStore;
@@ -115,15 +115,14 @@ fn gradient_brush<G: GradientGeometry>(
 /// alongside so the caller can stamp it into the `ShapeRecord` /
 /// `ChromeRow` and keep their `Hash` impls context-free.
 pub(crate) fn brush(store: &RecordStore, b: &Brush) -> LoweredBrush {
-    // A gradient's geometry (angle / centre / radii) is interned into
-    // the store behind a `GradientId`, so it is the one authoring input
-    // the record-level NaN gate cannot see. Screen it here, where it is
-    // still in hand, and collapse a broken one to "paints nothing" so
-    // the ordinary no-op machinery drops the shape.
-    if b.has_nan() {
-        debug_assert!(!b.has_nan(), "NaN in gradient geometry: {b:?}");
-        return solid_brush(Color::TRANSPARENT);
-    }
+    // No screen of its own: a gradient's geometry disappears into the
+    // store behind a `GradientId`, so the decision has to be made before
+    // the intern, and both callers make it — `Shapes::add` on the
+    // authored shape, `background` below on the whole `Background`.
+    debug_assert!(
+        !b.has_nan(),
+        "NaN gradient geometry reached lowering: {b:?}"
+    );
     match b {
         Brush::Solid(color) => solid_brush(*color),
         Brush::Linear(g) => gradient_brush(store, 0, FillKind::linear(g.spread), g),
@@ -139,34 +138,50 @@ pub(crate) fn brush(store: &RecordStore, b: &Brush) -> LoweredBrush {
 /// and [`Background`] is deliberately not `Copy`; the per-field reads
 /// below copy the small fields locally as needed.
 pub(crate) fn background(store: &RecordStore, bg: &Background) -> ChromeRow {
-    let LoweredBrush {
-        brush: fill,
-        hash: fill_grad_hash,
-    } = brush(store, &bg.fill);
-    let stroke = ShapeStroke::from(&bg.stroke);
-    // Chrome's NaN gate, and the reason it sanitizes rather than
-    // dropping the way `Shapes::add` does: a radius has *two* consumers
-    // here. `chrome_table` deliberately keeps a row for
+    // **Chrome's NaN gate**, and the second of the crate's two — the
+    // shape path's is `Shapes::add`. It runs here for the same reason
+    // that one runs before lowering: `fill` interns its gradient into the
+    // store, so a broken one has to be caught while it is still in hand.
+    //
+    // It sanitizes where the shape path drops, because a chrome row has
+    // *two* consumers. `chrome_table` deliberately keeps a row for
     // `ClipMode::Rounded` even when the paint is fully no-op, so the
     // encoder can read `corners` for the stencil mask — dropping the
     // chrome would fix the fill and leave the mask reading the NaN.
     //
-    // `ZERO` is what a non-finite radius means anyway ("no rounding"),
-    // and it degrades safely on both paths: a square background instead
-    // of a rounded one, and a clip that still clips instead of one that
-    // doesn't. Sanitizing before the hash below keeps `ChromeRow.hash`
+    // Each field falls back to what its NaN already meant: no rounding,
+    // no paint, no stroke, no shadow. Every one degrades safely — a
+    // square background instead of a rounded one, a clip that still
+    // clips. Sanitizing before the hash below keeps `ChromeRow.hash`
     // agreeing with what actually paints.
+    debug_assert!(
+        !bg.has_nan(),
+        "NaN in a Background — it degrades to no rounding and no paint: {bg:?}",
+    );
+    let fill_brush = if bg.fill.has_nan() {
+        &Brush::TRANSPARENT
+    } else {
+        &bg.fill
+    };
+    let LoweredBrush {
+        brush: fill,
+        hash: fill_grad_hash,
+    } = brush(store, fill_brush);
+    let stroke = ShapeStroke::from(if bg.stroke.has_nan() {
+        Stroke::ZERO
+    } else {
+        bg.stroke
+    });
     let corners = if bg.corners.has_nan() {
-        debug_assert!(
-            !bg.corners.has_nan(),
-            "NaN corner radius in a Background: {:?}",
-            bg.corners,
-        );
         Corners::ZERO
     } else {
         bg.corners
     };
-    let shadow: LoweredShadow = bg.shadow.into();
+    let shadow: LoweredShadow = if bg.shadow.has_nan() {
+        Shadow::NONE.into()
+    } else {
+        bg.shadow.into()
+    };
     // Canonical authoring hash: fold all inputs into one
     // `Hasher::pod` call. Hashing field-by-field via 5 separate
     // `Hasher::write*` calls (the prior shape) paid `hash_bytes`
@@ -280,6 +295,7 @@ pub(crate) fn polyline(
     width: f32,
     cap: LineCap,
     join: LineJoin,
+    bbox: Rect,
 ) -> ShapeRecord {
     let (mode, color_slice): (ColorMode, &[Color]) = match &colors {
         PolylineColors::Single(c) => (ColorMode::Single, std::slice::from_ref(c)),
@@ -297,35 +313,19 @@ pub(crate) fn polyline(
         "polyline with < 2 points reached lowering"
     );
     colors.debug_assert_matches(points.len());
+    // `bbox` was folded by `PolylineShape::new`, which is what let
+    // `Shapes::add` screen this shape before anything below staged a
+    // byte. Two passes over `points` rather than one interleaved pass,
+    // and it is the faster shape by ~3x past a handful of points: the
+    // fold vectorizes when nothing else shares the loop, and the copy
+    // below becomes one `memcpy` instead of per-point `push`es.
+    debug_assert!(
+        !bbox.has_nan(),
+        "NaN polyline point reached lowering — `Shapes::add` screens the bbox",
+    );
     let mut payloads = store.payloads.borrow_mut();
     let p_start = payloads.polyline_points.len() as u32;
     let c_start = payloads.polyline_colors.len() as u32;
-    // Bounds first, folded over the bare slice under the AABB NaN
-    // contract. Two passes over `points` rather than one interleaved
-    // pass, and it is the faster shape by ~3x past a handful of points:
-    // the fold vectorizes when nothing else shares the loop, and the
-    // copy below becomes one `memcpy` instead of per-point `push`es.
-    //
-    // It also means a NaN is known *before* anything is staged, so the
-    // bail leaves the arena untouched instead of handing bytes back.
-    // This is the one shape whose no-op gate can't screen a NaN before
-    // lowering — a mesh has a memoized `bbox` to consult at authoring
-    // time, a polyline's points are a bare borrowed slice — so the
-    // cheapest place to catch it is right here, ahead of the colour
-    // copy and the content hash.
-    let bbox = Aabb::of(points);
-    if bbox.has_nan() {
-        return ShapeRecord::Polyline {
-            width,
-            color_mode: mode,
-            cap,
-            join,
-            points: Span::new(p_start, 0),
-            colors: Span::new(c_start, 0),
-            bbox,
-            content_hash: 0,
-        };
-    }
     payloads.polyline_points.extend_from_slice(points);
     payloads
         .polyline_colors
@@ -472,6 +472,9 @@ mod tests {
     use crate::primitives::background::Background;
     use crate::primitives::color::Color;
     use crate::primitives::corners::Corners;
+    use crate::primitives::nan::NanCheck;
+    use crate::primitives::shadow::Shadow;
+    use crate::primitives::stroke::Stroke;
     use crate::scene::shapes::lower::background;
 
     use super::brush;
@@ -493,39 +496,73 @@ mod tests {
         }
     }
 
-    /// Chrome is the one paint path with no record-level NaN gate
-    /// behind it — a `Background` never passes through `Shapes::add`.
-    /// A NaN radius is the case its own predicates cannot catch:
-    /// "radius is NaN" is not a reason the background paints nothing,
-    /// so no no-op predicate owns the question, and `approx_zero`
-    /// reports NaN as non-zero by design so a NaN cannot take the
-    /// sharp-corner fast path.
-    ///
-    /// It has to be caught *here* rather than by dropping the chrome,
+    /// Chrome is the paint path `Shapes::add` never sees, so `background`
+    /// is its NaN gate — and it sanitizes where the shape path drops,
     /// because `chrome_table` keeps a row for `ClipMode::Rounded` even
-    /// when the paint is no-op — so a dropped background would still
-    /// leave the stencil mask reading the NaN.
+    /// when the paint is no-op. A dropped background would fix the fill
+    /// and leave the stencil mask reading the NaN.
+    ///
+    /// Every field is covered, because no no-op predicate owns the
+    /// question for any of them: "the radius is NaN" is not a reason the
+    /// background paints nothing, and `approx_zero` reports NaN as
+    /// non-zero by design so a NaN cannot take the sharp-corner fast
+    /// path. Each falls back to what its NaN already meant.
     #[test]
-    fn background_lowering_sanitizes_a_nan_corner_radius() {
+    fn background_lowering_sanitizes_every_nan_field() {
         let store = RecordStore::default();
         let sane = Corners::all(6.0);
         let bg = |corners| Background {
             corners,
             ..Background::fill(Color::WHITE)
         };
+        let nan_corner = Corners::new(4.0, f32::NAN, 4.0, 4.0);
 
-        let row = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            background(&store, &bg(Corners::new(4.0, f32::NAN, 4.0, 4.0)))
-        }));
-        if cfg!(debug_assertions) {
-            assert!(row.is_err(), "a NaN radius must assert in debug");
-        } else {
+        let tainted: [(&str, Background); 4] = [
+            ("corners", bg(nan_corner)),
+            (
+                "fill",
+                Background::fill(Color::rgba(1.0, f32::NAN, 1.0, 1.0)),
+            ),
+            (
+                "stroke",
+                Background {
+                    stroke: Stroke::solid(Color::WHITE, f32::NAN),
+                    ..Background::fill(Color::WHITE)
+                },
+            ),
+            (
+                "shadow",
+                Background {
+                    shadow: Shadow {
+                        color: Color::WHITE,
+                        blur: f32::NAN,
+                        ..Shadow::default()
+                    },
+                    ..Background::fill(Color::WHITE)
+                },
+            ),
+        ];
+        for (label, authored) in tainted {
+            let row = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                background(&store, &authored)
+            }));
+            if cfg!(debug_assertions) {
+                assert!(row.is_err(), "a NaN {label} must assert in debug");
+                continue;
+            }
             let row = row.expect("release must not panic");
             assert!(
-                !row.corners.has_nan(),
-                "a NaN radius must not survive lowering"
+                !row.corners.has_nan()
+                    && !row.stroke.has_nan()
+                    && !row.shadow.has_nan()
+                    && !row.fill.has_nan(),
+                "a NaN {label} must not survive lowering",
             );
-            assert!(row.corners.approx_zero(), "it collapses to no rounding");
+        }
+
+        if !cfg!(debug_assertions) {
+            let row = background(&store, &bg(nan_corner));
+            assert!(row.corners.approx_zero(), "a radius collapses to none");
         }
 
         // The sane path is untouched — and the hash follows the

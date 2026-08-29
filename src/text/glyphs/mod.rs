@@ -82,11 +82,16 @@ impl<'a> TextGlyphs<'a> {
     ///
     /// Rewrites rather than appends, so a caller laying out the same label every
     /// frame keeps one buffer.
+    ///
+    /// Empty text, or a `font` whose size or leading is not a positive
+    /// finite number, clears `out` and returns: there is no face to lay
+    /// anything out in, which is the same answer palantir's own widgets
+    /// give such a run.
     pub fn line(&mut self, text: &str, font: GlyphFont, scale: f32, out: &mut Vec<PlacedGlyph>) {
-        // One of the two crate edges an empty run reaches — see
-        // `TextShapeRequest`. Nothing to say shapes no buffer, and
-        // extraction restores one rather than shaping it, so a run with no
-        // request has no glyphs.
+        // One of the two crate edges a run with nothing to shape reaches
+        // — see `TextShapeRequest`. Nothing to say and no face to say it
+        // in both shape no buffer, and extraction restores one rather
+        // than shaping it, so a run with no request has no glyphs.
         let Some(request) = request(text, font) else {
             out.clear();
             return;
@@ -113,6 +118,9 @@ impl<'a> TextGlyphs<'a> {
     ///
     /// The shaper caches the shaped buffer, so asking this and then
     /// [`TextGlyphs::line`] for the same run shapes once.
+    ///
+    /// Empty text, or a `font` with no usable size, measures
+    /// [`Size::ZERO`] — the same nothing [`TextGlyphs::line`] lays out.
     pub fn measure(&mut self, text: &str, font: GlyphFont) -> Size {
         // The measuring half of the same edge [`Self::line`] answers: a run
         // with nothing to shape reaches to nothing.

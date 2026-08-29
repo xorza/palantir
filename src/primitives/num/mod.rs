@@ -1,5 +1,5 @@
-//! Scalar helpers the crate keeps one definition of: the libm-free
-//! rounding and pixel-snap idioms on [`F32Ext`] / [`Vec2Ext`], and two
+//! Scalar helpers the crate keeps one definition of: the [`F32Ext`] /
+//! [`Vec2Ext`] methods on the scalars themselves, and two free
 //! conversions whose exact form is a contract rather than a detail.
 
 use crate::primitives::approx;
@@ -23,26 +23,45 @@ pub(crate) const fn unit_to_u8(x: f32) -> u8 {
     (x * 255.0 + 0.5) as u8
 }
 
-/// Where `pos` sits along a track of `extent` that reserves `band` to a
-/// centred thing the pointer drags, as a 0..1 share.
+/// The `f32` operations the crate keeps one definition of, as methods on
+/// the scalar itself.
 ///
-/// A slider's knob and a splitter's rule are the same placement problem:
-/// a fixed-width object whose *centre* follows the pointer, so half the
-/// band comes off each end before the division and the usable travel is
-/// `extent - band`. A track with no travel left has no share to report
-/// and yields zero, through
-/// [`approx::ratio`](crate::primitives::approx::ratio). What that zero
-/// means is the caller's, and the two callers disagree.
-///
-/// The result is unclamped — a pointer outside the track reports outside
-/// `0..1`, and each caller pins it with the bounds it enforces.
-#[inline]
-pub(crate) fn band_fraction(pos: f32, extent: f32, band: f32) -> f32 {
-    approx::ratio(pos - band * 0.5, extent - band)
-}
-
-/// Libm-free `f32` helpers for the hot snap/quantize paths.
+/// Two families, and the reason each is here differs. The snap and
+/// quantize pair replaces a libm call the hot paths cannot afford, and
+/// says so at each; [`Self::unit_fraction_or`] is here because one wrong
+/// answer about a share reaches layout as a panic.
 pub(crate) trait F32Ext {
+    /// Where `self` sits along a track of `extent` that reserves `band`
+    /// to a centred thing the pointer drags, as a 0..1 share.
+    ///
+    /// A slider's knob and a splitter's rule are the same placement
+    /// problem: a fixed-width object whose *centre* follows the pointer,
+    /// so half the band comes off each end before the division and the
+    /// usable travel is `extent - band`. A track with no travel left has
+    /// no share to report and yields zero, through
+    /// [`approx::ratio`](crate::primitives::approx::ratio). What that
+    /// zero means is the caller's, and the two callers disagree.
+    ///
+    /// The result is unclamped — a pointer outside the track reports
+    /// outside `0..1`, and each caller pins it with the bounds it
+    /// enforces, which is what [`Self::unit_fraction_or`] is for.
+    fn band_fraction(self, extent: f32, band: f32) -> f32;
+
+    /// This value as a share of something — clamped into `0..=1`, or
+    /// `fallback` where it names no share at all.
+    ///
+    /// The clamp alone is not the rule. `f32::clamp` answers NaN for NaN,
+    /// and every consumer of a share turns it into a `Fill` weight, a
+    /// rail extent, or a seam position — each of which rejects one. An
+    /// infinity clamps to an *end*, which states a share the caller never
+    /// meant. Both non-finite cases are "no share", so both take the
+    /// fallback.
+    ///
+    /// `fallback` is the caller's, because "no share" resolves
+    /// differently: unknown progress is empty, an unknown split is
+    /// centred. The screen is shared, the neutral is not.
+    fn unit_fraction_or(self, fallback: f32) -> f32;
+
     /// Exact `f32::round` (round half away from zero) without the libm
     /// call: baseline x86-64 has no `roundss` (SSE4.1), so `.round()`
     /// compiles to an out-of-line `roundf` call in the per-quad snap
@@ -72,6 +91,24 @@ pub(crate) trait F32Ext {
 }
 
 impl F32Ext for f32 {
+    #[inline]
+    fn band_fraction(self, extent: f32, band: f32) -> f32 {
+        approx::ratio(self - band * 0.5, extent - band)
+    }
+
+    #[inline]
+    fn unit_fraction_or(self, fallback: f32) -> f32 {
+        debug_assert!(
+            (0.0..=1.0).contains(&fallback),
+            "a unit-fraction fallback must itself be a share, got {fallback}",
+        );
+        if self.is_finite() {
+            self.clamp(0.0, 1.0)
+        } else {
+            fallback
+        }
+    }
+
     #[inline]
     fn fast_round(self) -> f32 {
         const SHIFT: u32 = 23;

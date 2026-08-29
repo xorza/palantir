@@ -1,7 +1,9 @@
 //! How one axis of a node resolves: a fixed extent, a share of what is
 //! left, or whatever its content needs.
 
-use crate::primitives::{approx, num::Num, size::Size};
+use crate::primitives::approx;
+use crate::primitives::num::{F32Ext, Num};
+use crate::primitives::size::Size;
 
 /// How one axis of a node resolves during layout.
 ///
@@ -90,11 +92,17 @@ impl Sizing {
     /// resolved extent at record time, so the split rides on `Fill`
     /// weights and arrange resolves it against whatever width lands.
     ///
-    /// `fraction` clamps into `0..=1`, so an endpoint collapses one share
-    /// to a zero-extent `Fixed` rather than tripping [`Self::share`]'s
-    /// non-negative assert.
+    /// **Total over every `f32`**, which is what makes it the gate its
+    /// callers need rather than one more place a bad number passes
+    /// through. `fraction` goes through [`F32Ext::unit_fraction_or`], so
+    /// an endpoint collapses one share to a zero-extent `Fixed` rather
+    /// than tripping [`Self::share`]'s non-negative assert, and a
+    /// fraction that names no share — a `0 / 0` progress ratio, an
+    /// unseeded slider value — reads as empty instead of reaching that
+    /// assert with a NaN. A widget takes those numbers from application
+    /// code and cannot assert on them.
     pub fn split(fraction: f32) -> [Self; 2] {
-        let f = fraction.clamp(0.0, 1.0);
+        let f = fraction.unit_fraction_or(0.0);
         [Self::share(f), Self::share(1.0 - f)]
     }
 
@@ -319,6 +327,12 @@ mod tests {
             (1.0, 1.0, 0.0),
             (-0.3, 0.0, 1.0), // below range clamps to empty
             (1.7, 1.0, 0.0),  // above range clamps to full
+            // No share at all — a `0 / 0` progress ratio, an unseeded
+            // slider value — reads as empty rather than reaching
+            // `share`'s finite assert.
+            (f32::NAN, 0.0, 1.0),
+            (f32::INFINITY, 0.0, 1.0),
+            (f32::NEG_INFINITY, 0.0, 1.0),
         ];
         for (input, want_a, want_b) in cases {
             let got = Sizing::split(input);

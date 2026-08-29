@@ -2,6 +2,7 @@
 
 use crate::primitives::color::Color;
 use crate::primitives::image::{ImageDownsample, ImageFilter, ImageFit};
+use crate::primitives::nan::NanCheck;
 use crate::primitives::rect::Rect;
 use crate::renderer::image_registry::ImageHandle;
 use crate::scene::record_store::RecordStore;
@@ -38,6 +39,12 @@ shape_setters!(ImageShape {
 impl sealed::LowerShape for ImageShape {
     fn is_noop(&self) -> bool {
         self.rect_is_noop() || self.tint.is_noop()
+    }
+
+    /// The two filters and the downsample policy are bare tags; only
+    /// `ImageFit::Tile` carries scalars, which is why `fit` is asked.
+    fn has_nan(&self) -> bool {
+        self.local_rect.has_nan() || self.tint.has_nan() || self.fit.has_nan()
     }
 
     fn lower(self, _store: &RecordStore) -> ShapeRecord {

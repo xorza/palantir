@@ -41,6 +41,14 @@ pub(super) fn sanitize_single_line(s: &str) -> Cow<'_, str> {
 /// `text.len()`). Walks extended grapheme clusters via
 /// [`unicode_segmentation::GraphemeCursor`] so multi-codepoint clusters
 /// (combining marks, ZWJ-joined family emoji) advance as one unit.
+///
+/// **Both outcomes below are unreachable, and both are stated rather than
+/// defaulted.** The cursor is handed the whole string as its one chunk at
+/// offset zero, so it can never ask for more context, and the early return
+/// above means there is text left for a boundary to sit in. A silent
+/// `text.len()` for either would answer a caret question with the end of
+/// the buffer — a wrong caret, not a crash, which is the failure a text
+/// field cannot be debugged through.
 pub(super) fn next_grapheme_boundary(text: &str, offset: usize) -> usize {
     if offset >= text.len() {
         return text.len();
@@ -48,20 +56,27 @@ pub(super) fn next_grapheme_boundary(text: &str, offset: usize) -> usize {
     let mut cursor = unicode_segmentation::GraphemeCursor::new(offset, text.len(), true);
     cursor
         .next_boundary(text, 0)
-        .ok()
-        .flatten()
-        .unwrap_or(text.len())
+        .expect(CHUNK_IS_WHOLE)
+        .expect("an offset inside the text is always followed by a boundary")
 }
 
 /// Previous grapheme-cluster boundary strictly before `offset` (clamped
-/// to zero).
+/// to zero). Unreachable outcomes are stated for the reason
+/// [`next_grapheme_boundary`] gives.
 pub(super) fn prev_grapheme_boundary(text: &str, offset: usize) -> usize {
     if offset == 0 {
         return 0;
     }
     let mut cursor = unicode_segmentation::GraphemeCursor::new(offset, text.len(), true);
-    cursor.prev_boundary(text, 0).ok().flatten().unwrap_or(0)
+    cursor
+        .prev_boundary(text, 0)
+        .expect(CHUNK_IS_WHOLE)
+        .expect("a nonzero offset is always preceded by a boundary")
 }
+
+/// Why neither cursor walk can report incomplete context.
+const CHUNK_IS_WHOLE: &str =
+    "the cursor holds the whole string as one chunk, so it cannot need more context";
 
 /// Coarse char classification used by word-nav and double-click word
 /// selection. Underscore is bound to `Word` so identifiers in code-like

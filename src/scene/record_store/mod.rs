@@ -67,9 +67,16 @@ impl RecordStore {
         self.payloads.borrow_mut().text.intern_fmt(args)
     }
 
-    /// Normalize user-facing text into storage owned by this record pass.
-    /// Handles from another arena are copied once so every recorded span
-    /// resolves against `RecordPayloads::interned_text`.
+    /// Take a handle back as this pass's own, or panic if it belongs to
+    /// another. Backs [`crate::Ui::intern`]'s already-interned arm, the
+    /// one input that reaches a widget without being copied.
+    #[must_use]
+    pub(crate) fn reuse(&self, text: InternedStr) -> InternedStr {
+        self.payloads.borrow().text.reuse(text)
+    }
+
+    /// Lower a handle this pass minted into the span and content hash a
+    /// `ShapeRecord::Text` carries.
     pub(crate) fn record_text(&self, text: InternedStr) -> RecordedText {
         self.payloads.borrow().text.record(text)
     }

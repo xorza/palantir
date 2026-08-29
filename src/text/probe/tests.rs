@@ -1,5 +1,7 @@
 use crate::layout::types::align::Align;
+use crate::primitives::size::Size;
 use crate::text::glyph_font::GlyphFont;
+use crate::text::probe::{cursor_from_byte, cursor_to_byte};
 use crate::text::run::TextRun;
 use crate::text::wrap::TextWrap;
 use crate::text::{FontFamily, FontWeight};
@@ -125,4 +127,95 @@ fn a_wrapping_run_binds_its_width_and_a_single_line_run_does_not() {
         wrapped.h,
         single.h,
     );
+
+    // A width that names no width binds nothing: the run keeps its
+    // unbounded shape rather than committing to a wrap grid derived from
+    // a non-finite number. `max_width_px` is a public field filled from a
+    // caller's own arithmetic, so this is an input case.
+    let unbounded = ui.probe_text(run(TextWrap::Wrap, None)).size();
+    for width in [f32::INFINITY, f32::NAN] {
+        let got = ui.probe_text(run(TextWrap::Wrap, Some(width))).size();
+        assert_eq!(
+            got, unbounded,
+            "a {width} width must leave the run unbounded"
+        );
+    }
+}
+
+/// A face the shaper cannot be asked for measures nothing, the way empty
+/// text does — the same answer `TextShape::is_noop` gives a recorded run.
+/// `GlyphFont` is public and built by the caller, so an unusable size is
+/// an input case rather than a logic error, and a probe that shaped
+/// against it would quantize to a 1/64-px face.
+#[test]
+fn an_unusable_face_probes_to_nothing() {
+    let mut harness = UiHarness::arena();
+    let ui = harness.ui();
+    let run = |size_px, line_height_px| TextRun {
+        text: "hello",
+        font: GlyphFont {
+            size_px,
+            line_height_px,
+            family: FontFamily::Sans,
+            weight: FontWeight::Regular,
+        },
+        wrap: TextWrap::SingleLine,
+        align: Align::LEFT,
+        max_width_px: None,
+    };
+
+    assert_eq!(ui.probe_text(run(16.0, 20.0)).size().w, 5.0 * 8.0);
+    for (size_px, line_height_px, label) in [
+        (0.0, 20.0, "zero size"),
+        (f32::NAN, 20.0, "NaN size"),
+        (f32::INFINITY, 20.0, "infinite size"),
+        (16.0, 0.0, "zero leading"),
+        (16.0, f32::NAN, "NaN leading"),
+    ] {
+        let probe = ui.probe_text(run(size_px, line_height_px));
+        assert_eq!(probe.size(), Size::ZERO, "{label} must measure nothing");
+        assert_eq!(
+            probe.caret_at(3).x,
+            0.0,
+            "{label} must put every caret at the origin",
+        );
+    }
+}
+
+/// Byte offset → cosmic cursor, hand-computed over `"ab\ncd"`: the two
+/// lines start at bytes 0 and 3, so byte 4 is line 1, index 1.
+///
+/// The out-of-range case is the one this exists for. `caret_at` and
+/// `selection_rects` are documented as clamped and take offsets from a
+/// caller's own arithmetic, so the clamp has to bind before `line` and
+/// `index` are derived — clamping only the prefix counts lines against a
+/// shorter string and then measures `index` from the raw offset, which
+/// puts the cursor past the end of the line it landed on.
+#[test]
+fn a_byte_offset_maps_to_its_line_and_clamps_to_the_text() {
+    const TEXT: &str = "ab\ncd";
+    let cases: &[(usize, usize, usize)] = &[
+        (0, 0, 0),
+        (2, 0, 2),
+        (3, 1, 0),
+        (4, 1, 1),
+        (5, 1, 2),
+        // Past the end answers the end, not byte 99 of line 1.
+        (6, 1, 2),
+        (99, 1, 2),
+        (usize::MAX, 1, 2),
+    ];
+    for &(byte_offset, line, index) in cases {
+        let cursor = cursor_from_byte(TEXT, byte_offset);
+        assert_eq!(
+            (cursor.line, cursor.index),
+            (line, index),
+            "byte {byte_offset}"
+        );
+        assert_eq!(
+            cursor_to_byte(TEXT, cursor),
+            byte_offset.min(TEXT.len()),
+            "byte {byte_offset} must round-trip to its clamped self",
+        );
+    }
 }

@@ -4,6 +4,8 @@
 
 use crate::primitives::approx::noop_f32;
 use crate::primitives::color::Color;
+use crate::primitives::rect::Rect;
+use crate::primitives::rect::aabb::Aabb;
 use crate::scene::record_store::RecordStore;
 use crate::scene::shapes::lower;
 use crate::scene::shapes::record::ShapeRecord;
@@ -19,6 +21,30 @@ pub struct PolylineShape<'a> {
     pub(crate) width: f32,
     pub(crate) cap: LineCap,
     pub(crate) join: LineJoin,
+    /// The points' AABB, folded once here rather than during lowering.
+    ///
+    /// The one bulk input in the crate that is a borrowed slice with no
+    /// owner to memoize on — a `Mesh` caches its own. Folding at
+    /// construction is what lets [`sealed::LowerShape::has_nan`] answer
+    /// in `O(1)` like every other kind, and the record needs the same
+    /// bbox afterwards, so it is one fold either way. The cost is folding
+    /// a polyline that later turns out to paint nothing.
+    pub(crate) bbox: Rect,
+}
+
+impl<'a> PolylineShape<'a> {
+    pub(super) fn new(points: &'a [Vec2], colors: PolylineColors<'a>, width: f32) -> Self {
+        Self {
+            points,
+            colors,
+            width,
+            cap: LineCap::Butt,
+            join: LineJoin::Miter,
+            // Under the AABB NaN contract, so a NaN point lands in the
+            // bbox rather than being lost to `f32::min`'s NaN behaviour.
+            bbox: Aabb::of(points),
+        }
+    }
 }
 
 shape_setters!(PolylineShape<'_> {
@@ -81,6 +107,14 @@ impl sealed::LowerShape for PolylineShape<'_> {
         }
     }
 
+    /// The colours are the bulk input `bbox` does not cover, and they
+    /// are `Color`s rather than positions — a NaN channel reads as
+    /// invisible through `is_noop` above rather than poisoning geometry,
+    /// so the fold that would scan them buys nothing.
+    fn has_nan(&self) -> bool {
+        self.width.is_nan() || self.bbox.has_nan()
+    }
+
     fn lower(self, store: &RecordStore) -> ShapeRecord {
         let Self {
             points,
@@ -88,7 +122,8 @@ impl sealed::LowerShape for PolylineShape<'_> {
             width,
             cap,
             join,
+            bbox,
         } = self;
-        lower::polyline(store, points, colors, width, cap, join)
+        lower::polyline(store, points, colors, width, cap, join, bbox)
     }
 }

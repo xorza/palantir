@@ -121,17 +121,25 @@ pub trait Configure: Sized {
         self.node_mut().node.size = Some(s.into());
         self
     }
+    /// # Panics
+    ///
+    /// Panics if the bound is negative, non-finite, or above a maximum
+    /// already set on this node.
     fn min_size(mut self, s: impl Into<Size>) -> Self {
         let node = self.node_mut().node;
         let value = s.into();
-        limits::debug_assert_valid_bounds(value, node.max_size.unwrap_or(Size::INF));
+        limits::assert_valid_bounds(value, node.max_size.unwrap_or(Size::INF));
         node.min_size = Some(value);
         self
     }
+    /// # Panics
+    ///
+    /// Panics if the bound is negative, NaN, or below a minimum already
+    /// set on this node. Positive infinity is the unbounded maximum.
     fn max_size(mut self, s: impl Into<Size>) -> Self {
         let node = self.node_mut().node;
         let value = s.into();
-        limits::debug_assert_valid_bounds(node.min_size.unwrap_or(Size::ZERO), value);
+        limits::assert_valid_bounds(node.min_size.unwrap_or(Size::ZERO), value);
         node.max_size = Some(value);
         self
     }

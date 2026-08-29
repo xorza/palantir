@@ -71,16 +71,17 @@ shape_setters!(TextShape {
 });
 
 impl sealed::LowerShape for TextShape {
+    /// An unusable face shapes nothing, which is what the two public
+    /// text queries answer too — `TextShapeRequest::unbounded` is the one
+    /// screen, and `metrics_valid` is its predicate.
     fn is_noop(&self) -> bool {
-        self.text.is_empty()
-            || self.color.is_noop()
-            // `GlyphFont::metrics_valid` rejects NaN via `is_finite`;
-            // `local_origin` needs saying. Worth catching here rather
-            // than at the record gate: lowering interns the string into
-            // the text arena, so a shape dropped afterwards would have
-            // paid for that and left the bytes behind.
-            || self.local_origin.has_nan()
-            || !self.font.metrics_valid()
+        self.text.is_empty() || self.color.is_noop() || !self.font.metrics_valid()
+    }
+
+    /// `font` is not asked again: `metrics_valid` above rejects a
+    /// non-finite metric already, and it is the stricter question.
+    fn has_nan(&self) -> bool {
+        self.local_origin.has_nan() || self.color.has_nan()
     }
 
     fn lower(self, store: &RecordStore) -> ShapeRecord {

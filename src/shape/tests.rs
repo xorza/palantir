@@ -139,12 +139,12 @@ fn text_noop_rejects_invalid_metrics() {
         ("infinite line height", 16.0, f32::INFINITY, true),
     ];
 
-    // `local_origin` is the one Text scalar `GlyphFont::metrics_valid` does
-    // not cover, and it is checked here rather than at the record gate
-    // on purpose: lowering interns the string into the text arena, so a
-    // shape dropped afterwards would have paid for that and left the
-    // bytes behind.
-    for (label, local_origin, expected_noop) in [
+    // `local_origin` is the one Text scalar `GlyphFont::metrics_valid`
+    // does not cover, and it is the NaN screen's rather than the no-op
+    // screen's: an origin that is not a number is not a reason the run
+    // paints nothing. Both run before lowering, which is what keeps the
+    // interned bytes out of the arena either way.
+    for (label, local_origin, expected_nan) in [
         ("no origin", None, false),
         ("finite origin", Some(Vec2::new(1.0, 2.0)), false),
         ("NaN origin x", Some(Vec2::new(f32::NAN, 2.0)), true),
@@ -162,7 +162,11 @@ fn text_noop_rejects_invalid_metrics() {
             Some(origin) => shape.at(origin),
             None => shape,
         };
-        assert_eq!(shape.is_noop(), expected_noop, "{label}");
+        assert_eq!(shape.has_nan(), expected_nan, "{label}");
+        assert!(
+            !shape.is_noop(),
+            "{label}: a visible run does not stop painting over its origin",
+        );
     }
 
     for (label, font_size_px, line_height_px, expected_noop) in cases {

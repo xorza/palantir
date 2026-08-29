@@ -61,10 +61,12 @@ pub(crate) struct TextShapeKey {
 const MAX_W_NONE: u32 = u32::MAX;
 
 impl TextShapeKey {
-    /// Sentinel for a measurement with no shaped buffer: empty text in
-    /// production, plus every run under the test-only mono fallback. Real
-    /// keys always carry a nonzero text hash, so that field alone tags
-    /// validity.
+    /// Sentinel for a measurement with no shaped buffer: in production,
+    /// empty text and a face with no usable size — the two runs
+    /// [`TextShapeRequest`](crate::text::request::TextShapeRequest) mints
+    /// nothing for — plus every run under the test-only mono fallback.
+    /// Real keys always carry a nonzero text hash, so that field alone
+    /// tags validity.
     pub(crate) const INVALID: Self = Self {
         text_hash: 0,
         size_q: 0,
@@ -95,9 +97,14 @@ impl TextShapeKey {
         if raw == 0 { 1 } else { raw }
     }
 
-    /// Record time already rejected invalid metrics (`Shape::is_noop`,
-    /// theme validation), so reaching here with them is a logic error —
-    /// debug-asserted rather than re-validated on the shaping hot path.
+    /// The face is screened before this is reached — by
+    /// [`TextShapeRequest::unbounded`](crate::text::request::TextShapeRequest::unbounded)
+    /// on every shaping path and by `TextRun::unbounded_key` on the
+    /// bufferless one, both through
+    /// [`GlyphFont::metrics_are_valid`] — so an unusable one here is a
+    /// logic error, debug-asserted rather than re-validated on the
+    /// shaping hot path. Without that screen the quantization below is
+    /// silent: a NaN size lands on a 1/64-px face and shapes against it.
     pub(crate) fn unbounded(text_hash: u64, font: GlyphFont) -> Self {
         let GlyphFont {
             size_px: font_size_px,
@@ -254,8 +261,11 @@ const _: () = {
 ///
 /// Owns the width normalization — the raw width canonicalizes to the
 /// whole-px wrap grid here. Negative widths (over-constrained layouts)
-/// clamp to zero; non-finite widths are a logic error, and callers gate on
-/// `is_finite`.
+/// clamp to zero. A non-finite width names no grid to wrap to, and
+/// quantizes to the largest bound the key can hold rather than to
+/// anything a caller meant, so it is screened before this: layout binds
+/// a width it derived from an arranged rect, and a probe binds
+/// `TextRun::wrap_width`, which drops one.
 ///
 /// Separate from the key because `TextSystem`'s reuse rows retain one per
 /// bounded resolve, and eight bytes beside a root key they already hold

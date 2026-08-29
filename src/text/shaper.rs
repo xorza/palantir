@@ -198,14 +198,16 @@ impl TextShaper {
     pub(crate) fn layout<'a>(&'a self, run: &TextRun<'a>) -> TextProbe<'a> {
         let mut inner = self.inner.borrow_mut();
         let Some(unbounded) = run.unbounded_request() else {
-            // One of the two crate edges an empty run reaches (the other
-            // is `TextGlyphs`). Nothing was shaped, so the block is empty
-            // and sits at its own origin — which is every answer the
-            // probe below can give, and the key still carries the metrics
-            // it expresses them in.
+            // One of the two crate edges a run with nothing to shape
+            // reaches (the other is `TextGlyphs`) — no bytes, or a face
+            // with no usable size. Nothing was shaped, so the block is
+            // empty and sits at its own origin, which is every answer the
+            // probe below can give. The key still carries the metrics it
+            // expresses them in, or the invalid sentinel where the face
+            // named none.
             return TextProbe::new(Size::ZERO, run.text, run.unbounded_key(), inner);
         };
-        let (key, size) = match (run.max_width_px, run.wrap.line_fit()) {
+        let (key, size) = match (run.wrap_width(), run.wrap.line_fit()) {
             // Shape the root only for the policies whose binding decision
             // reads it, derived from the two accessors that define them
             // rather than restated as a third mapping: `WrapWithOverflow`
@@ -215,8 +217,7 @@ impl TextShaper {
             //
             // A plain `Wrap` consults neither — `target_width` is the
             // identity and `resolves_to_unbounded` is false — so it binds
-            // without paying for a root shape, and an invalid width still
-            // fails in `WrapBound::new` before anything is shaped.
+            // without paying for a root shape.
             (Some(width), Some(fit)) => {
                 let committed = if run.wrap.floor_scan() == WrapFloor::Scan || fit != LineFit::Wrap
                 {

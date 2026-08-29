@@ -3,6 +3,7 @@
 
 use crate::primitives::color::Color;
 use crate::primitives::mesh::Mesh;
+use crate::primitives::nan::NanCheck;
 use crate::primitives::rect::Rect;
 use crate::scene::record_store::RecordStore;
 use crate::scene::shapes::lower;
@@ -26,6 +27,14 @@ shape_setters!(MeshShape<'_> {
 impl sealed::LowerShape for MeshShape<'_> {
     fn is_noop(&self) -> bool {
         self.rect_is_noop() || self.tint.is_noop() || self.mesh.is_noop()
+    }
+
+    /// The vertices reach this as the memoized bbox, so the whole shape
+    /// is one load and three tests. The two placement fields are what
+    /// only this screen sees: lowering copies every vertex and index into
+    /// the store before a record exists to be judged on them.
+    fn has_nan(&self) -> bool {
+        self.local_rect.has_nan() || self.tint.has_nan() || self.mesh.bbox().has_nan()
     }
 
     fn lower(self, store: &RecordStore) -> ShapeRecord {

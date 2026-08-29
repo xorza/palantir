@@ -75,7 +75,7 @@ pub(crate) trait ThemeDefaults: Configure {
         let node = self.node_mut().node;
         if node.min_size.is_none() {
             let value = s.into();
-            limits::debug_assert_valid_bounds(value, node.max_size.unwrap_or(Size::INF));
+            limits::assert_valid_bounds(value, node.max_size.unwrap_or(Size::INF));
             node.min_size = Some(value);
         }
         self
@@ -86,7 +86,7 @@ pub(crate) trait ThemeDefaults: Configure {
         let node = self.node_mut().node;
         if node.max_size.is_none() {
             let value = s.into();
-            limits::debug_assert_valid_bounds(node.min_size.unwrap_or(Size::ZERO), value);
+            limits::assert_valid_bounds(node.min_size.unwrap_or(Size::ZERO), value);
             node.max_size = Some(value);
         }
         self

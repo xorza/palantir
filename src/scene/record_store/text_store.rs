@@ -66,19 +66,37 @@ impl TextStore {
         InternedStr::new(Span::new(start as u32, (end - start) as u32), self.epoch)
     }
 
-    /// Lower a handle minted by this pass. Zero-copy — the bytes are
-    /// already in place, so this is a bounds-checked slice and a hash.
+    /// **The one screen on a handle from outside this pass**, run by both
+    /// paths that accept one.
     ///
     /// A foreign epoch is caller error, not bad data: the bytes the span
-    /// addressed are gone, and resolving anyway would silently record
-    /// whatever text now occupies those offsets. Debug-only because this
-    /// runs per interned string per frame.
-    pub(super) fn record(&self, text: InternedStr) -> RecordedText {
-        debug_assert!(
+    /// addressed are gone, so resolving anyway records whatever text now
+    /// occupies those offsets — another widget's label under this
+    /// widget's identity, or a panic from `str` indexing mid-character
+    /// with a message that names neither. [`InternedStr`] and
+    /// [`crate::Ui::fmt`] both document a panic here, so it is one in
+    /// release too. The cost is a `u64` compare against a `memcpy` and a
+    /// hash, which is why the promise is affordable to keep.
+    fn assert_current(&self, text: InternedStr) {
+        assert!(
             text.epoch == self.epoch,
             "InternedStr outlived the record pass that minted it — intern text \
              once per frame, in the window recording it",
         );
+    }
+
+    /// Take a handle back as this pass's own — [`crate::Ui::intern`]'s
+    /// already-interned arm. Nothing is copied, so the epoch is the whole
+    /// of the work.
+    pub(super) fn reuse(&self, text: InternedStr) -> InternedStr {
+        self.assert_current(text);
+        text
+    }
+
+    /// Lower a handle minted by this pass. Zero-copy — the bytes are
+    /// already in place, so this is a bounds-checked slice and a hash.
+    pub(super) fn record(&self, text: InternedStr) -> RecordedText {
+        self.assert_current(text);
         RecordedText::new(text.span, hash_str(&self.bytes[text.span.range()]))
     }
 }

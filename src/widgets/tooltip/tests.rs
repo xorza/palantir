@@ -527,7 +527,8 @@ fn tooltip_inside_popup_records_without_panic() {
 /// A nested layer that ranks at or below the current scope is rejected:
 /// with no per-node z-index, `Layer::PAINT_ORDER` is the only ordering,
 /// so a `Popup` (1) raised inside a `Modal` (2) body would paint *under*
-/// the modal. `push_layer` must catch this rather than silently misrender.
+/// the modal. `push_layer` catches this in every build rather than
+/// letting a release one silently misrender.
 #[test]
 #[should_panic(expected = "must rank above")]
 fn layer_below_current_scope_panics() {

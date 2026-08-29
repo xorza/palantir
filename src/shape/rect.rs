@@ -2,6 +2,7 @@
 
 use crate::primitives::brush::Brush;
 use crate::primitives::corners::Corners;
+use crate::primitives::nan::NanCheck;
 use crate::primitives::rect::Rect;
 use crate::primitives::stroke::Stroke;
 use crate::scene::record_store::RecordStore;
@@ -51,6 +52,17 @@ shape_setters!(RectShape {
 impl sealed::LowerShape for RectShape {
     fn is_noop(&self) -> bool {
         self.rect_is_noop() || (self.fill.is_noop() && self.stroke.is_noop())
+    }
+
+    /// `fill` is screened here rather than where it interns: a gradient's
+    /// geometry disappears into the store behind a `GradientId`, so this
+    /// is the last point at which the record gate could still see it —
+    /// and rejecting after the intern would leave the row in the pool.
+    fn has_nan(&self) -> bool {
+        self.local_rect.has_nan()
+            || self.corners.has_nan()
+            || self.fill.has_nan()
+            || self.stroke.has_nan()
     }
 
     fn lower(self, store: &RecordStore) -> ShapeRecord {

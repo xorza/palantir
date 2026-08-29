@@ -76,18 +76,25 @@ impl Gaps {
         self.0[1] != Self::UNSET
     }
 
+    /// # Panics
+    ///
+    /// Panics unless `v` is finite, non-negative, and within the f16 range
+    /// this packs into.
     #[inline]
     pub(crate) fn set_gap(&mut self, v: f32) {
-        debug_assert!(
+        assert!(
             valid_packed_gap(v),
             "gap must be finite, non-negative, and no greater than the f16 maximum, got {v}",
         );
         self.0[0] = f16::from_f32(v).to_bits();
     }
 
+    /// # Panics
+    ///
+    /// Panics on the same range [`Self::set_gap`] does.
     #[inline]
     pub(crate) fn set_line_gap(&mut self, v: f32) {
-        debug_assert!(
+        assert!(
             valid_packed_gap(v),
             "line gap must be finite, non-negative, and no greater than the f16 maximum, got {v}",
         );

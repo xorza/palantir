@@ -9,6 +9,7 @@ use crate::scene::record_store::recorded_gradient::RecordedGradient;
 use crate::scene::record_store::recorded_gradients::RecordedGradients;
 use glam::Vec2;
 use std::cell::RefCell;
+use std::panic::AssertUnwindSafe;
 
 #[test]
 fn record_store_owns_inline_payloads_and_stores_are_isolated() {
@@ -87,4 +88,37 @@ fn gradient_interner_confirms_equality_across_hash_collisions_and_clears() {
     let after_clear_id = gradients.intern(7, after_clear);
     assert_eq!(after_clear_id.0, 0);
     assert_eq!(gradients.records.len(), 1);
+}
+
+/// A handle from an earlier pass is rejected by both paths that take
+/// one, in every build.
+///
+/// The arena is cleared per pass and the bytes a stale span addresses
+/// are gone, so resolving one records whatever text now sits at those
+/// offsets — another widget's label under this widget's identity. That
+/// is a wrong frame rather than a crash, which is why the panic
+/// `InternedStr` and `Ui::fmt` both document is a release one.
+///
+/// `reuse` is the path with teeth: it copies nothing, so the epoch is
+/// the only thing standing between a stale handle and a recorded span.
+#[test]
+fn a_stale_handle_is_rejected_by_both_paths_in_every_build() {
+    let store = RecordStore::default();
+    let stale = store.intern_str("last frame");
+    assert_eq!(store.record_text(stale).source.span, stale.span);
+    assert_eq!(store.reuse(stale).span, stale.span);
+
+    // A new pass retires it.
+    store.payloads.borrow_mut().text.clear();
+    let fresh = store.intern_str("this frame");
+    let recorded = std::panic::catch_unwind(AssertUnwindSafe(|| store.record_text(stale)));
+    assert!(
+        recorded.is_err(),
+        "record_text must reject a retired handle"
+    );
+    let reused = std::panic::catch_unwind(AssertUnwindSafe(|| store.reuse(stale)));
+    assert!(reused.is_err(), "reuse must reject a retired handle");
+    // The pass's own handle still resolves, so the epoch — not the
+    // clear — is what the rejection turns on.
+    assert_eq!(store.record_text(fresh).source.span, fresh.span);
 }

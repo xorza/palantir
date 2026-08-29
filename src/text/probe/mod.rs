@@ -76,25 +76,47 @@ impl<'a> TextProbe<'a> {
         self.key.text_hash
     }
 
-    /// Shaped run behind this layout; `None` on the gated mono metric
-    /// (no cosmic to ask) and for empty text (an unshaped request).
+    /// Shaped run behind this layout; `None` on the gated mono metric (no
+    /// cosmic to ask), for empty text (an unshaped request), and for a
+    /// face the shaper cannot be asked for.
+    ///
+    /// The last carries [`TextShapeKey::INVALID`], which the cache
+    /// refuses to be asked about — the sentinel names no entry — so it is
+    /// filtered here, which is where a probe first holds one.
     ///
     /// Every query below reports in *block-local* coordinates — the same
     /// space [`Self::size`] measures and the encoder places — so each one
     /// takes [`ShapedRun::left`] off the buffer's own x, or adds it back
     /// when going the other way.
     fn shaped(&self) -> Option<ShapedRun<'_>> {
+        if self.key.is_invalid() {
+            return None;
+        }
         self.inner.cosmic()?.shaped_run(self.key)
+    }
+
+    /// True where this run had nothing to shape — no bytes, or a face
+    /// with no usable size. Those are the two runs
+    /// [`TextShapeRequest`](crate::text::request::TextShapeRequest) mints
+    /// nothing for, and between them the whole of what production can
+    /// reach the unshaped answers below with.
+    ///
+    /// Named because both of those answers assert on it, and a rule
+    /// spelled at each is one that can be changed in only one.
+    fn shapes_nothing(&self) -> bool {
+        self.text.is_empty() || self.key.is_invalid()
     }
 
     /// Caret-x for a layout with no shaped buffer.
     ///
-    /// Production reaches this only for empty text, whose block is
-    /// zero-width — the only position in it is its own origin, and the
-    /// owner is what places that block against an alignment. The gated
-    /// mono metric also lands here, with real text, which is the arm
-    /// `mono` answers — reached by full path because the module it lives
-    /// in is gated away in a production build.
+    /// Production reaches this for the two runs that shape nothing —
+    /// empty text, and text whose face names no size the shaper can be
+    /// asked for (the invalid key). Either way the block is zero-width:
+    /// the only position in it is its own origin, and the owner is what
+    /// places that block against an alignment. The gated mono metric also
+    /// lands here, with real text, which is the arm `mono` answers —
+    /// reached by full path because the module it lives in is gated away
+    /// in a production build.
     ///
     /// Anything else is a wiring bug, not a case to answer with a
     /// plausible zero: [`TextShaper::layout`](crate::text::shaper::TextShaper)
@@ -117,8 +139,8 @@ impl<'a> TextProbe<'a> {
             );
         }
         assert!(
-            self.text.is_empty(),
-            "a non-empty run with no shaped buffer requires the mono metric \
+            self.shapes_nothing(),
+            "a shapeable run with no shaped buffer requires the mono metric \
              (caret at byte {byte_offset})",
         );
         0.0
@@ -133,8 +155,8 @@ impl<'a> TextProbe<'a> {
             return crate::text::mono::nearest_byte(self.text, target_x, self.key.font_size_px());
         }
         assert!(
-            self.text.is_empty(),
-            "a non-empty run with no shaped buffer requires the mono metric \
+            self.shapes_nothing(),
+            "a shapeable run with no shaped buffer requires the mono metric \
              (hit-test at x {target_x})",
         );
         0
@@ -152,6 +174,9 @@ impl<'a> TextProbe<'a> {
     /// glyph-start scan cannot: an RTL glyph carries the caret at its
     /// right edge, and an offset interior to a ligature or Indic cluster
     /// interpolates across the cluster instead of jumping to its far end.
+    ///
+    /// `byte_offset` is clamped to the run, the way
+    /// [`Self::byte_at`] clamps a point: past the end answers the end.
     pub fn caret_at(&self, byte_offset: usize) -> Caret {
         let line_height_px = self.key.line_height_px();
         let halign = self.key.halign();
@@ -227,6 +252,9 @@ impl<'a> TextProbe<'a> {
 
     /// Every rect covering `range`, one per visual line, in run-local
     /// coordinates.
+    ///
+    /// `range` is clamped to the run at both ends, as
+    /// [`Self::caret_at`] clamps its offset.
     ///
     /// A callback rather than a returned collection: the rects are
     /// consumed immediately (painted, or unioned) and a caller that wants
@@ -341,8 +369,17 @@ fn push_run_selection_rects(
 /// Map a UTF-8 byte offset into `text` to a cosmic-text `Cursor`:
 /// `line` = count of `\n` before the offset, `index` = bytes since
 /// the most recent `\n` (or start of text).
+///
+/// **Clamped to the text, once.** `byte_offset` arrives from a caller's
+/// own arithmetic — a caret index, the end of a selection range — so an
+/// offset past the end is an input case rather than a logic error. The
+/// clamp binds before `line` and `index` are derived, because clamping
+/// only the prefix would count the lines of a shorter string and then
+/// measure `index` from the raw offset, putting the cursor past the end
+/// of the line it landed on.
 fn cursor_from_byte(text: &str, byte_offset: usize) -> cosmic_text::Cursor {
-    let prefix = &text.as_bytes()[..byte_offset.min(text.len())];
+    let byte_offset = byte_offset.min(text.len());
+    let prefix = &text.as_bytes()[..byte_offset];
     let line = prefix.iter().filter(|&&b| b == b'\n').count();
     let line_start = prefix
         .iter()

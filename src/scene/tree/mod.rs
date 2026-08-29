@@ -431,11 +431,11 @@ impl Tree {
 
         let mut ex = ExtrasIdx::default();
         if !cols.bounds.is_default() {
-            ex.bounds = Some(Index16::new(self.bounds_table.len()));
+            ex.bounds = Some(Index16::new(self.bounds_table.len(), "bounds_table"));
             self.bounds_table.push(cols.bounds);
         }
         if !cols.panel.is_default() {
-            ex.panel = Some(Index16::new(self.panel_table.len()));
+            ex.panel = Some(Index16::new(self.panel_table.len(), "panel_table"));
             self.panel_table.push(cols.panel);
         }
         if let Some(ChromeInput { bg, store }) = chrome {
@@ -458,7 +458,7 @@ impl Tree {
                 !bg.is_noop() || matches!(cols.attrs.clip_mode(), ClipMode::Rounded);
             if needs_chrome_row {
                 let row = lower::background(store, bg);
-                ex.chrome = Some(Index16::new(self.chrome_table.len()));
+                ex.chrome = Some(Index16::new(self.chrome_table.len(), "chrome_table"));
                 self.chrome_table.push(row);
             }
         }

@@ -298,12 +298,12 @@ impl CosmicMeasure {
     /// itself.
     ///
     /// [`TextShapeKey::INVALID`] is not among the keys it answers for.
-    /// The sentinel means "this run has no shaped buffer at all", which
-    /// every caller knows before it gets here — the encoder drops those
-    /// runs — and nothing ever inserts one, since a
-    /// [`TextShapeRequest`] cannot hold the empty text the sentinel
-    /// stands for. Asking the cache about it is a category error rather
-    /// than a miss, so it is asserted instead of answered.
+    /// The sentinel means "this run has no shaped buffer at all", and
+    /// nothing ever inserts one — a [`TextShapeRequest`] cannot hold
+    /// either run the sentinel stands for. Asking the cache about it is a
+    /// category error rather than a miss, so it is asserted instead of
+    /// answered, and each caller that can hold one filters it first: the
+    /// encoder drops those runs, `TextProbe::shaped` answers `None`.
     pub(super) fn shaped_run(&self, key: TextShapeKey) -> Option<ShapedRun<'_>> {
         debug_assert!(
             !key.is_invalid(),
