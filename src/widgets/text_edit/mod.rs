@@ -342,7 +342,12 @@ impl<'a> TextEdit<'a> {
         // Nothing below can move a cascade or layout answer — both are frozen
         // for the pass — so the only field kept current is `focused`, updated
         // wherever the pass moves focus.
-        let mut probed = ui.response_for(id);
+        // Through `Widget::response`, so the node's own `disabled` is
+        // folded in and the interaction half is already gone with it.
+        // The look, the input, the menu snapshot and the caller all read
+        // this one value — a second copy taken before the fold would
+        // report a freshly disabled field as live.
+        let mut response = widget.response(ui);
         // Snapshotted before anything can move it: `run_input` reads it
         // for the select-all-on-focus edge and `ViewState::update` writes
         // this frame's value over it, so both focus edges below are
@@ -354,8 +359,6 @@ impl<'a> TextEdit<'a> {
         // (mirrors Button). State.disabled comes from the cascade
         // (one-frame stale); OR self-disabled in for lag-free
         // response to a freshly toggled `.disabled(true)`.
-        let mut response = probed;
-        response.disabled |= widget.node.flags.is_disabled();
         // A disabled editor must not keep keyboard focus — it would
         // paint disabled while still routing typing / paste / undo
         // into the host's buffer. Kick focus out (mirrors `DragValue`'s
@@ -364,7 +367,7 @@ impl<'a> TextEdit<'a> {
         if is_focused && response.disabled {
             ui.request_focus(None);
             is_focused = false;
-            probed.focused = false;
+            response.focused = false;
         }
         // A focused editor takes the classes it edits with, so an
         // app-level Ctrl+Z undoes *this buffer* rather than the document
@@ -404,7 +407,7 @@ impl<'a> TextEdit<'a> {
                 cancelled: false,
                 gained_focus: is_focused && !was_focused,
                 lost_focus: was_focused && !is_focused,
-                state: probed,
+                state: response,
             };
         }
         let font = look.text.font();
@@ -468,17 +471,24 @@ impl<'a> TextEdit<'a> {
         if blur_after {
             ui.request_focus(None);
             is_focused = false;
-            probed.focused = false;
+            response.focused = false;
         }
         let gained_focus = is_focused && !was_focused;
         let lost_focus = was_focused && !is_focused;
 
-        let snapshot = ResponseSnapshot { id, state: probed };
+        let snapshot = ResponseSnapshot {
+            id,
+            state: response,
+        };
         // One editing session for the whole menu pass, opened here rather
         // than per action: the state row is out on loan for this pass, so
         // it can be held mutably beside `&mut Ui`, and one session
         // reconciles the undo history against the buffer once.
-        let menu_edited = {
+        // A disabled editor offers no menu, and not recording it is what
+        // closes the one already open. Otherwise a menu raised while the
+        // field was live goes on executing Cut / Paste / Clear past the
+        // point the keyboard path stopped accepting keystrokes.
+        let menu_edited = !response.disabled && {
             let mut editor = Editor::new(self.text, &mut state.edit, ctx.multiline, self.max_chars);
             menu::show(ui, &snapshot, &mut editor, filter)
         };
@@ -552,7 +562,7 @@ impl<'a> TextEdit<'a> {
             cancelled: blur_after,
             gained_focus,
             lost_focus,
-            state: probed,
+            state: response,
         }
     }
 }
@@ -569,10 +579,11 @@ struct EditSignals {
     cancelled: bool,
     gained_focus: bool,
     lost_focus: bool,
-    /// The response the pass probed, with `focused` as the pass left it —
-    /// what `show` hands to [`Response::eager`] instead of re-probing.
-    /// Every other field is frozen for the pass, so this is the same answer
-    /// a second `response_for` would give.
+    /// The response the pass probed — disabled already folded in — with
+    /// `focused` as the pass left it. What `show` hands to
+    /// [`Response::eager`] instead of re-probing. Every other field is
+    /// frozen for the pass, so this is the same answer a second probe
+    /// would give.
     state: ResponseState,
 }
 

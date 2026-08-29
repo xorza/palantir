@@ -2,8 +2,14 @@ use crate::Ui;
 use crate::input::capture::{Press, PressDrag, Release, ReleaseKind};
 use crate::input::input_state::InputState;
 use crate::input::pointer::PointerButton;
+use crate::input::response::button_phase::ButtonPhase;
+use crate::input::response::button_state::ButtonState;
+use crate::input::response::drag::Drag;
+use crate::input::response::response_state::ResponseState;
+use crate::input::response::scroll_delta::ScrollDelta;
 use crate::input::target_scroll_delta::TargetScrollDelta;
 use crate::layout::types::sizing::Sizing;
+use crate::primitives::rect::Rect;
 use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::configure::Configure;
@@ -67,6 +73,64 @@ fn disabled_reflects_cascaded_ancestor_flag() {
     );
 }
 
+/// Folding a disabled bit in takes the interaction half with it, and
+/// every fold does — not only the last.
+///
+/// Three sources reach a widget's state at three different times, and
+/// only `Widget::response` can see the third (the node's own flag). A
+/// reset that ran between the second and the third left a widget
+/// disabled *this* frame reporting `disabled: true` beside `hovered` and
+/// `left.clicked()` — a pair the steady-state hit index can never
+/// produce, because a disabled entry carries `Sense::NONE` and leaves the
+/// index entirely.
+///
+/// Geometry stays: `pointer_local` is where the cursor is relative to the
+/// widget, which `Ui::peek_pointer_local` answers whatever the widget is
+/// allowed to do about it.
+#[test]
+fn folding_disabled_in_drops_the_interaction_half_at_every_fold() {
+    let busy = ResponseState {
+        rect: Some(Rect::new(1.0, 2.0, 3.0, 4.0)),
+        layout_rect: Some(Rect::new(5.0, 6.0, 7.0, 8.0)),
+        pointer_local: Some(Vec2::new(9.0, 10.0)),
+        hovered: true,
+        focused: true,
+        left: ButtonState::new(ButtonPhase::Up { click: Some(1) }, Drag::None),
+        scroll: ScrollDelta {
+            pixels: Vec2::new(11.0, 12.0),
+            ..ScrollDelta::default()
+        },
+        ..ResponseState::default()
+    };
+
+    // A `false` fold changes nothing at all.
+    let mut kept = busy;
+    kept.merge_disabled(false);
+    assert!(!kept.disabled);
+    assert!(kept.hovered && kept.left.clicked());
+
+    // The cascade's fold clears, and the node's later fold finds nothing
+    // left to clear — which is the point: the order of the three sources
+    // stops mattering.
+    let mut off = busy;
+    off.merge_disabled(true);
+    off.merge_disabled(false);
+    assert!(off.disabled, "a later `false` cannot re-enable it");
+    assert!(!off.hovered, "the hover goes with it");
+    assert!(!off.left.clicked(), "and the click");
+    assert_eq!(off.left, ButtonState::default());
+    assert_eq!(off.right, ButtonState::default());
+    assert_eq!(off.middle, ButtonState::default());
+    assert_eq!(off.scroll, ScrollDelta::default(), "and the wheel");
+
+    // Geometry is untouched, `focused` included — a disabled widget still
+    // has a rect, and still knows where the cursor is over it.
+    assert_eq!(off.rect, busy.rect);
+    assert_eq!(off.layout_rect, busy.layout_rect);
+    assert_eq!(off.pointer_local, busy.pointer_local);
+    assert!(off.focused);
+}
+
 #[test]
 fn disabled_false_when_chain_clean() {
     let mut h = UiHarness::new(UVec2::new(200, 200));
@@ -119,6 +183,7 @@ fn frame_quiescent_predicate() {
         s.captures[PointerButton::Left.idx()].press = Some(Press {
             target: id,
             origin: Vec2::ZERO,
+            travel: Vec2::ZERO,
             seq: 1,
             fresh: true,
             drag: PressDrag::None,

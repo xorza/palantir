@@ -1,7 +1,7 @@
 //! The live input state machine — what survives across input events
 //! independently of whether the tree was rebuilt.
 
-use crate::input::capture::{Capture, DRAG_THRESHOLD, PressDrag, Release, ReleaseKind};
+use crate::input::capture::{Capture, DRAG_THRESHOLD, PressDrag, ReleaseKind};
 use crate::input::event_outcome::EventOutcome;
 use crate::input::input_event::InputEvent;
 use crate::input::key_class::KeyClass;
@@ -178,6 +178,20 @@ impl InputState {
         self.snapshot_frame_quiescent();
     }
 
+    /// Move focus. **Deliberately does not re-route this pass** — see
+    /// [`Scopes`] for the two mid-pass changes and why only one of them
+    /// takes effect immediately.
+    pub(crate) fn set_focus(&mut self, id: Option<WidgetId>) {
+        self.focused = id;
+    }
+
+    /// Withdraw `owner`'s scope from the next resolution — see
+    /// [`Scopes::close`] for the span that covers, and [`Scopes`] for why
+    /// this one *does* take effect mid-pass.
+    pub(crate) fn close_scope(&mut self, owner: WidgetId) {
+        self.scopes.close(owner);
+    }
+
     pub(crate) fn watch_pointer(&mut self, flags: PointerWake) {
         self.subs.pointer_mask |= flags;
     }
@@ -259,12 +273,6 @@ impl InputState {
             matches!(event, KeyboardEvent::Down(press)
                 if shortcut.matches(*press) && self.scopes.grant(KeyClass::of(*press)) == scope)
         })
-    }
-
-    /// Withdraw `owner`'s scope from the next resolution — see
-    /// [`Scopes::close`] for the span that covers.
-    pub(crate) fn close_scope(&mut self, owner: WidgetId) {
-        self.scopes.close(owner);
     }
 
     /// Close out the pass. Ownership resolution moved to
@@ -413,12 +421,14 @@ impl InputState {
                 // with click-suppression semantics.
                 let mut latched = false;
                 for cap in &mut self.captures {
-                    if let Some(press) = &mut cap.press
-                        && press.drag == PressDrag::None
-                        && p.distance_squared(press.origin) >= DRAG_THRESHOLD * DRAG_THRESHOLD
-                    {
-                        press.drag = PressDrag::Started;
-                        latched = true;
+                    if let Some(press) = &mut cap.press {
+                        press.travel = p - press.origin;
+                        if press.drag == PressDrag::None
+                            && press.travel.length_squared() >= DRAG_THRESHOLD * DRAG_THRESHOLD
+                        {
+                            press.drag = PressDrag::Started;
+                            latched = true;
+                        }
                     }
                 }
                 self.refresh_pointer_targets(cascade);
@@ -505,17 +515,17 @@ impl InputState {
             InputEvent::PointerReleased(btn) => {
                 let pointer_pos = self.pointer_pos;
                 let cap = self.capture_mut(btn);
-                // A captureless release (the press missed every widget)
-                // has no press to take and touches nothing — an earlier
-                // same-batch gesture's release edge survives it.
-                let released = cap.press.take();
+                let was_captured = cap.press.is_some();
                 // A `Miss` only tears down a capture that exactly one
                 // widget reads, which is precisely what this module's
                 // settle rule excludes. A `Click` or `DragStopped` is the
                 // edge apps act on — dropping a graph node rewires things
                 // a prefix widget draws — so those keep their settle.
                 let mut settles = false;
-                if let Some(press) = released {
+                // A captureless release (the press missed every widget)
+                // has no press to end and touches nothing — an earlier
+                // same-batch gesture's release edge survives it.
+                cap.end_press(|press| {
                     // A latched drag ending is its own edge (the release
                     // just destroyed the drag, so widgets can't infer it);
                     // otherwise a release back on the widget is a click
@@ -532,11 +542,8 @@ impl InputState {
                         }
                     };
                     settles = !matches!(kind, ReleaseKind::Miss);
-                    cap.release = Some(Release {
-                        target: press.target,
-                        kind,
-                    });
-                }
+                    kind
+                });
                 let buttons_subbed =
                     self.push_pointer_event(PointerWake::BUTTONS, pointer_pos, |pos| {
                         PointerEvent::Up { pos, button: btn }
@@ -544,7 +551,7 @@ impl InputState {
                 EventOutcome {
                     // Capture was live ⇒ owning widget needs a record;
                     // otherwise only `BUTTONS` watchers wake.
-                    repaint: released.is_some() || buttons_subbed,
+                    repaint: was_captured || buttons_subbed,
                     settles: settles || buttons_subbed,
                 }
             }
@@ -624,6 +631,19 @@ impl InputState {
                     self.frame_keyboard_events.push(KeyboardEvent::Text(chunk));
                 }
                 EventOutcome::settle(observable)
+            }
+            InputEvent::SurfaceFocusLost => {
+                // Modifiers are a running snapshot of physical keys, and
+                // the platform stops reporting them while another surface
+                // is focused — so the last one is not a snapshot of
+                // anything any more.
+                let observable = self.modifiers != Modifiers::NONE
+                    || self.captures.iter().any(|c| c.press.is_some());
+                self.modifiers = Modifiers::NONE;
+                for cap in &mut self.captures {
+                    cap.abandon_press();
+                }
+                EventOutcome::repaint(observable)
             }
             InputEvent::ModifiersChanged(m) => {
                 self.modifiers = m;
@@ -706,11 +726,20 @@ impl InputState {
         // `modifiers` deliberately persists: modifier state is a running
         // snapshot, not per-frame. Held shift across multiple frames must
         // stay `true`.
+        // Eviction is a way a capture *ends*, so it ends through the
+        // same call a release does. Dropping the press on its own would
+        // leave the gesture over for this state machine and unfinished
+        // for everyone reading it: no `Drag::Stopped`, no
+        // `ButtonPhase::Up`, no `PointerEdge::DragStopped`, and the later
+        // real release finds nothing to report. A widget that commits on
+        // `drag.stopped()` — `Slider`, `DragValue` — silently loses the
+        // commit when its id changes or it skips one frame mid-drag.
         for cap in &mut self.captures {
-            if let Some(press) = &cap.press
-                && !cascade.by_id.contains_key(&press.target)
-            {
-                cap.press = None;
+            let vanished = cap
+                .press
+                .is_some_and(|press| !cascade.by_id.contains_key(&press.target));
+            if vanished {
+                cap.abandon_press();
             }
         }
         // Focus eviction: same model as the per-button capture eviction
@@ -875,14 +904,20 @@ impl InputState {
             // A threshold-crossed press overrides the stale stop edge
             // (same-frame stop-and-relatch reports the fresh gesture).
             // Rect-independent: the pointer can leave `id`'s rect
-            // mid-drag and the delta keeps tracking.
+            // mid-drag and the travel keeps tracking.
+            //
+            // Read off the press rather than the live pointer, so this
+            // and `pointer_actions` answer from one source. Asking the
+            // pointer meant a drag stopped being reported here the moment
+            // it left the surface, while the latch `pointer_actions`
+            // reads was still set — and leaving the window mid-drag is
+            // the gesture working, not ending.
             if !drag_owned
-                && let Some(pointer) = self.pointer_pos
                 && let Some(press) = &cap.press
                 && press.target == id
                 && press.drag != PressDrag::None
             {
-                let delta = transform.inverse_vector(pointer - press.origin);
+                let delta = transform.inverse_vector(press.travel);
                 drag = if press.drag == PressDrag::Started {
                     Drag::Started { delta }
                 } else {
@@ -890,7 +925,7 @@ impl InputState {
                 };
                 drag_owned = true;
             }
-            *state.button_mut(btn) = ButtonState { phase, drag };
+            *state.button_mut(btn) = ButtonState::new(phase, drag);
         }
 
         state.scroll = self.scroll_delta_for(id);

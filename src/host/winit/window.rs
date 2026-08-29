@@ -120,6 +120,19 @@ impl Window {
         if self.occluded_at.is_some() && !self.close_requested {
             self.next = FramePresent::Idle;
         } else {
+            // The close-request frame is the one that runs while
+            // occluded, and `set_occluded(false)` skips the whole hidden
+            // span on the premise that none did. Restarting the span here
+            // is what keeps that premise true: otherwise a vetoed close
+            // lets the un-occlude move the origin past the stamp this
+            // frame already recorded, and the next `Clock::now` comes
+            // back *earlier* than it. `advance_clock` saturates the `dt`
+            // but still assigns `time`, so repaint deadlines and
+            // `input.frame_time` would then be compared against a clock
+            // that went backwards.
+            if self.occluded_at.is_some() {
+                self.occluded_at = Some(Instant::now());
+            }
             let physical = UVec2::new(self.config.width, self.config.height);
             let display = self.driver.display(
                 physical,

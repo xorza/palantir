@@ -27,6 +27,29 @@ use crate::scene::layer::Layer;
 /// needs no sort and "innermost" is `rfind` rather than a containment
 /// fold. [`Self::resolve`] `debug_assert!`s the property rather than
 /// trusting the cascade walk to keep it.
+///
+/// # Two mid-pass changes, two timings
+///
+/// Routing resolves once, at [`Self::resolve`]. Two things can move
+/// under it before the pass ends, and they take effect at different
+/// times on purpose:
+///
+/// - **A withdrawal ([`Self::close`]) applies immediately.** An overlay
+///   that decided it is closing must stop owning input from that point
+///   on, or it swallows the click that lands where it used to be. The
+///   memo is dropped so reads after the withdrawal do not see the answer
+///   reads before it got.
+/// - **A focus move does not re-route this pass.** [`Self::path`] stays
+///   as `resolve` left it, so a widget that blurs itself on a keystroke
+///   does not thereby hand that same keystroke to the scope outside it —
+///   a `TextEdit` whose Escape blurs it would otherwise close the
+///   `Popup` around it with the one press. Focus takes effect at the
+///   next `resolve`, which is the same one-frame lag every other input
+///   answer carries.
+///
+/// The difference is which question is being asked: a withdrawal changes
+/// *who exists*, a focus move changes *who is preferred*, and this pass's
+/// events were already routed by the preference it had.
 #[derive(Debug, Default)]
 pub(super) struct Scopes {
     /// Scopes enclosing the focused widget within [`Self::active_layer`],

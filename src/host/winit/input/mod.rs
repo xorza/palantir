@@ -28,11 +28,18 @@ pub(super) fn translate(event: &WindowEvent, scale_factor: f32, mut emit: impl F
         }
         WindowEvent::CursorLeft { .. } => emit(InputEvent::PointerLeft),
         WindowEvent::MouseInput { state, button, .. } => {
+            // The vocabulary stops at three on purpose:
+            // [`PointerButton`] indexes a `ButtonState` on every
+            // widget's `ResponseState` and a capture slot on
+            // `InputState`, so a fourth is a per-widget-per-frame cost
+            // paid by every app for a button almost none of them bind.
+            // Named rather than swept into a wildcard, so adding one
+            // here is a decision rather than a discovery.
             let button = match button {
                 MouseButton::Left => PointerButton::Left,
                 MouseButton::Right => PointerButton::Right,
                 MouseButton::Middle => PointerButton::Middle,
-                _ => return,
+                MouseButton::Back | MouseButton::Forward | MouseButton::Other(_) => return,
             };
             emit(match state {
                 ElementState::Pressed => InputEvent::PointerPressed(button),
@@ -65,6 +72,9 @@ pub(super) fn translate(event: &WindowEvent, scale_factor: f32, mut emit: impl F
                 &modifiers.state(),
             )));
         }
+        // Only the loss is forwarded: regaining focus tells the state
+        // machine nothing it does not already learn from the next event.
+        WindowEvent::Focused(false) => emit(InputEvent::SurfaceFocusLost),
         _ => {}
     }
 }
@@ -116,6 +126,16 @@ macro_rules! shared_key {
     };
 }
 
+/// The [`Key`] a winit logical key denotes, or [`Key::Other`] where the
+/// vocabulary has no name for it.
+///
+/// A `Character` payload is a string because a dead-key sequence can
+/// resolve to several chars, and only the first is taken: [`Key`] names a
+/// *key*, and a multi-char resolution is text rather than a key. It
+/// arrives as text too — winit sends the composition through
+/// `Ime::Commit`, which is the path an editor inserts from — so nothing
+/// is lost by the truncation, and treating the run as a chord would bind
+/// shortcuts to whichever char happened to come first.
 fn logical_key(key: &WinitKey) -> Key {
     match key {
         WinitKey::Named(named) => shared_key!(NamedKey, named).unwrap_or(Key::Other),

@@ -111,7 +111,9 @@ impl<'a> Modal<'a> {
                 ui.widget(card).record(ui, Some(card_bg), body);
             });
         });
-        let dismissed = ui.response_for(root_id).left.clicked() || escape;
+        // The backdrop dismisses on the same rule `Popup`'s eater does —
+        // see `ResponseState::any_clicked`.
+        let dismissed = ui.response_for(root_id).any_clicked() || escape;
         scope.withdraw(ui, dismissed);
 
         ModalResponse { dismissed }

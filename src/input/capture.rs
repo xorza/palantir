@@ -43,8 +43,8 @@ pub(super) const DOUBLE_CLICK_RADIUS: f32 = 5.0;
 /// convention.
 #[derive(Default, Clone, Copy, Debug)]
 pub(super) struct Capture {
-    /// The in-flight press, created on the press event and destroyed
-    /// by release / cascade-eviction. `Some` == "this button's
+    /// The in-flight press, created by [`Self::begin_press`] and
+    /// destroyed by [`Self::end_press`]. `Some` == "this button's
     /// capture is latched".
     pub(super) press: Option<Press>,
     /// One-frame edge: how a capture ended this frame. Cleared by
@@ -82,9 +82,49 @@ impl Capture {
         self.press = Some(Press {
             target,
             origin: pos,
+            travel: Vec2::ZERO,
             seq,
             fresh: true,
             drag: PressDrag::None,
+        });
+    }
+
+    /// End the in-flight press and record how, as one step.
+    ///
+    /// **The only way a press leaves a capture.** Every end writes a
+    /// [`Release`], which is what both collations downstream read — a
+    /// widget's own `ButtonPhase` / [`Drag`](crate::Drag) and
+    /// `pointer_actions`'s [`PointerEdge`](crate::PointerEdge). A press
+    /// dropped without one ends the gesture for the state machine and
+    /// for nobody else: the drag simply stops being reported, and a
+    /// widget that commits on `drag.stopped()` never commits.
+    ///
+    /// `kind` is asked of the press because only the caller knows how it
+    /// ended, and only the press knows whether a drag was latched.
+    pub(super) fn end_press(&mut self, kind: impl FnOnce(&Press) -> ReleaseKind) {
+        let Some(press) = self.press.take() else {
+            return;
+        };
+        self.release = Some(Release {
+            target: press.target,
+            kind: kind(&press),
+        });
+    }
+
+    /// End the press because the gesture was cut off rather than
+    /// released: the widget left the tree, or the surface lost focus.
+    ///
+    /// A latched drag still owes the commit edge its widget is waiting
+    /// for. A press that never became one just dissolves, which is what
+    /// [`ReleaseKind::Miss`] means everywhere else — nothing landed on
+    /// the widget, so nothing is reported as having.
+    pub(super) fn abandon_press(&mut self) {
+        self.end_press(|press| {
+            if press.drag == PressDrag::None {
+                ReleaseKind::Miss
+            } else {
+                ReleaseKind::DragStopped
+            }
         });
     }
 }
@@ -95,9 +135,23 @@ impl Capture {
 pub(super) struct Press {
     /// Widget the press latched onto.
     pub(super) target: WidgetId,
-    /// Pointer position at the press. Subtracted from the current
-    /// pointer position for rect-independent drag deltas.
+    /// Pointer position at the press. The anchor [`Self::travel`] is
+    /// measured from.
     pub(super) origin: Vec2,
+    /// Surface-space travel since [`Self::origin`], refreshed on every
+    /// pointer move.
+    ///
+    /// Retained rather than recomputed from the live pointer, because
+    /// the two readers would otherwise disagree about whether a drag is
+    /// happening: a pointer that has left the surface is `None`, and a
+    /// drag that reads its delta from it stops being reported while the
+    /// latch — which `pointer_actions` reads — is still set. A drag
+    /// deliberately survives the pointer leaving the window, so the
+    /// travel has to survive with it.
+    ///
+    /// Surface space, not widget space: the reader applies its own
+    /// widget's transform.
+    pub(super) travel: Vec2,
     /// This press's position in its multi-press run (1 = single,
     /// 2 = double-press, 3+ = triple…), stamped from [`PressRun::seq`]
     /// at press time so the release can carry the click count without

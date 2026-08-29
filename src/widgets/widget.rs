@@ -72,7 +72,10 @@ impl Widget {
     /// the widget's [`Response::eager`] at the end.
     pub(crate) fn response(&self, ui: &Ui) -> ResponseState {
         let mut state = ui.response_for(self.id);
-        state.disabled |= self.node.flags.is_disabled();
+        // The third and last source of `disabled`, and the only one that
+        // needs the node — which is why the interaction half is dropped
+        // by the fold rather than by the caller before it.
+        state.merge_disabled(self.node.flags.is_disabled());
         state
     }
 

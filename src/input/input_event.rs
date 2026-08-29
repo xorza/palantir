@@ -65,6 +65,16 @@ pub enum InputEvent {
     /// (not a delta). Consumers track the latest snapshot to disambiguate
     /// e.g. ctrl+'a' (shortcut) from 'a' (text).
     ModifiersChanged(Modifiers),
+    /// The surface lost keyboard focus to another window.
+    ///
+    /// **Everything held is no longer held.** A platform stops reporting
+    /// to an unfocused surface, so a button released or a modifier
+    /// dropped while another window has focus is never seen: without this
+    /// the state machine keeps a press latched and a Ctrl held until the
+    /// next event happens to say otherwise, and the first click back into
+    /// the window completes a gesture the user abandoned minutes ago.
+    /// Hosts forward it on their own focus-lost notification.
+    SurfaceFocusLost,
 }
 
 impl InputEvent {
@@ -95,7 +105,8 @@ impl InputEvent {
             | Self::PointerReleased(_)
             | Self::KeyDown { .. }
             | Self::Text(_)
-            | Self::ModifiersChanged(_) => true,
+            | Self::ModifiersChanged(_)
+            | Self::SurfaceFocusLost => true,
         }
     }
 }

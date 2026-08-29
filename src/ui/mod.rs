@@ -1103,27 +1103,16 @@ impl Ui {
     /// reflect the previous frame's input, not events fed since. Reading
     /// earlier in the same record than the widget's own node is fine —
     /// e.g. baking a drag delta into a widget's position before recording it.
+    /// The widget's own `Node::disabled` is **not** folded in here — only
+    /// [`Widget::response`](crate::widgets::widget::Widget::response) can
+    /// see it. Both fold through
+    /// [`ResponseState::merge_disabled`], which is idempotent, so the
+    /// interaction half is gone by the time either of them returns.
     pub fn response_for(&self, id: WidgetId) -> ResponseState {
         let mut state = self.input.response_for(id, &self.cascade, &self.layout);
-        // Cascade lags one frame; OR this frame's ancestor-disabled so
+        // Cascade lags one frame; fold this frame's ancestor-disabled so
         // a freshly-disabled subtree paints disabled on its first frame.
-        state.disabled |= self.forest.current_scratch().ancestor_disabled();
-        // The interaction half was routed against the stale cascade, so
-        // without this a freshly-disabled widget reports hovered /
-        // clicked alongside disabled for one frame — a combination the
-        // steady-state hit index can never produce (disabled entries
-        // carry `Sense::NONE`), and one that lets a click land on
-        // just-disabled UI.
-        if state.disabled {
-            state = ResponseState {
-                rect: state.rect,
-                layout_rect: state.layout_rect,
-                transform: state.transform,
-                disabled: true,
-                focused: state.focused,
-                ..ResponseState::default()
-            };
-        }
+        state.merge_disabled(self.forest.current_scratch().ancestor_disabled());
         state
     }
 
@@ -1383,9 +1372,15 @@ impl Ui {
     }
 
     /// Programmatically set or clear focus. Bypasses [`FocusPolicy`].
+    ///
+    /// `focused` reads back immediately, but key-class routing does not
+    /// move until the next record pass: this pass's keystrokes were
+    /// already routed by the scope path resolved at its start. A widget
+    /// that blurs itself on Escape therefore does not also hand that
+    /// Escape to the overlay around it.
     #[inline]
     pub fn request_focus(&mut self, id: Option<WidgetId>) {
-        self.input.focused = id;
+        self.input.set_focus(id);
     }
 
     /// Current pointer position in logical pixels (surface space), or
