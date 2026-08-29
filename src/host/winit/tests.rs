@@ -1,6 +1,7 @@
 use crate::Ui;
 use crate::app::App;
 use crate::display::Display;
+use crate::host::error::GpuRequestError;
 use crate::host::winit::config::WinitHostConfig;
 use crate::host::winit::error::WinitHostError;
 use crate::host::winit::{WinitHost, finish_run};
@@ -93,11 +94,16 @@ fn run_result_preserves_normal_exit_and_prioritizes_host_failure() {
     ));
 
     let host_failure = finish_run(
-        Some(WinitHostError::NoGpuBackend),
+        Some(GpuRequestError::NoBackend.into()),
         Err(winit::error::EventLoopError::RecreationAttempt),
     )
     .unwrap_err();
-    assert!(matches!(host_failure, WinitHostError::NoGpuBackend));
+    assert!(matches!(
+        host_failure,
+        WinitHostError::Gpu {
+            source: GpuRequestError::NoBackend
+        }
+    ));
 }
 
 fn run_frame(

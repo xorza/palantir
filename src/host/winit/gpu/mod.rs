@@ -8,6 +8,7 @@ use glam::UVec2;
 use winit::window::{Window as WinitWindow, WindowId};
 
 use crate::host::device_requirements::DeviceRequirements;
+use crate::host::gpu_request::{GpuRequest, RequestedGpu};
 use crate::host::winit::config::WinitHostConfig;
 use crate::host::winit::error::WinitHostError;
 use crate::window::vsync::Vsync;
@@ -30,6 +31,19 @@ pub(super) struct SurfaceManager {
     /// App-global presentation policy requested through `WinitHostConfig`.
     /// Each surface negotiates it against its own capabilities.
     requested_present_mode: wgpu::PresentMode,
+}
+
+impl SurfaceManager {
+    /// A surface extent the device can actually back: at least one texel,
+    /// at most `max_texture_dimension_2d`.
+    ///
+    /// Takes the limit rather than `&self` because the winit event handler
+    /// has to read it before it borrows the window it is about to resize,
+    /// and that borrow is what had the clamp written a second time there.
+    pub(super) fn clamp_extent(max_texture_dim: NonZeroU32, size: UVec2) -> UVec2 {
+        let max = max_texture_dim.get();
+        UVec2::new(size.x.clamp(1, max), size.y.clamp(1, max))
+    }
 }
 
 /// A window's swapchain pieces, produced by [`SurfaceManager::make_surface`]. The
@@ -56,47 +70,10 @@ impl GpuInit {
         window: &Arc<WinitWindow>,
         cfg: &WinitHostConfig,
     ) -> Result<Self, WinitHostError> {
-        if wgpu::Instance::enabled_backend_features().is_empty() {
-            return Err(WinitHostError::NoGpuBackend);
-        }
-        // `WGPU_BACKEND` alongside the flags' own vars. Without the backends
-        // half, every backend wgpu was built with is enumerated and the pick is
-        // whatever the adapter sort lands on — on Windows that is Vulkan before
-        // Dx12, with a *stable* sort, so a tie between two same-device-type
-        // adapters is decided by enumeration order and nothing else. Reading the
-        // var is what makes `WGPU_BACKEND=dx12` a usable A/B when a session's
-        // frame times or artifacts look backend-specific.
-        let mut desc = wgpu::InstanceDescriptor::new_without_display_handle();
-        desc.backends = desc.backends.with_env();
-        desc.flags = desc.flags.with_env();
-        let instance = wgpu::Instance::new(desc);
+        let instance = GpuRequest::instance()?;
         let surface = instance
             .create_surface(window.clone())
             .map_err(|source| WinitHostError::CreateSurface { source })?;
-
-        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: cfg.power_preference,
-            compatible_surface: Some(&surface),
-            force_fallback_adapter: false,
-            apply_limit_buckets: false,
-        }))
-        .map_err(|source| WinitHostError::RequestAdapter { source })?;
-
-        // Which physical GPU and backend won the `power_preference` sort is
-        // the single most load-bearing fact about a session's frame times, and
-        // nothing else reports it: on a hybrid laptop the "wrong" pick renders
-        // on the iGPU while the display hangs off the dGPU, so every present
-        // becomes a cross-adapter copy. Log it once at startup.
-        let info = adapter.get_info();
-        tracing::info!(
-            name = %info.name,
-            backend = ?info.backend,
-            device_type = ?info.device_type,
-            driver = %info.driver,
-            driver_info = %info.driver_info,
-            requested = ?cfg.power_preference,
-            "selected gpu adapter"
-        );
 
         // Caller-driven opt-in via `WinitHostConfig::collect_gpu_stats`
         // — see field doc. When off, none of the timing-query features
@@ -109,23 +86,21 @@ impl GpuInit {
         // `+ TIMESTAMP_QUERY_INSIDE_PASSES` → per-batch attribution;
         // `+ PIPELINE_STATISTICS_QUERY` → vert/frag invocation counts.
         let timing_features = if cfg.collect_gpu_stats {
-            wgpu::Features::TIMESTAMP_QUERY
-                | wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES
-                | wgpu::Features::PIPELINE_STATISTICS_QUERY
+            DeviceRequirements::GPU_TIMING_FEATURES
         } else {
             wgpu::Features::empty()
         };
-        let requirements = DeviceRequirements::negotiate(&adapter, timing_features)
-            .map_err(|source| WinitHostError::Requirements { source })?;
-        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-            label: Some("palantir.device"),
-            required_features: requirements.features,
-            required_limits: requirements.limits,
-            experimental_features: wgpu::ExperimentalFeatures::default(),
-            memory_hints: wgpu::MemoryHints::Performance,
-            trace: wgpu::Trace::Off,
-        }))
-        .map_err(|source| WinitHostError::RequestDevice { source })?;
+        let RequestedGpu {
+            adapter,
+            device,
+            queue,
+        } = GpuRequest {
+            label: "palantir.device",
+            power_preference: cfg.power_preference,
+            optional: timing_features,
+            compatible_surface: Some(&surface),
+        }
+        .open(&instance)?;
 
         let max_texture_dim = DeviceRequirements::max_texture_dim(&device);
         let surfaces = SurfaceManager {
@@ -187,8 +162,7 @@ impl SurfaceManager {
         let caps = surface.get_capabilities(&self.adapter);
         let config = build_surface_config(
             &caps,
-            size,
-            self.max_texture_dim,
+            Self::clamp_extent(self.max_texture_dim, size),
             self.requested_present_mode,
         )?;
         if config.present_mode != self.requested_present_mode {
@@ -207,7 +181,6 @@ impl SurfaceManager {
 fn build_surface_config(
     caps: &wgpu::SurfaceCapabilities,
     size: UVec2,
-    max_texture_dim: NonZeroU32,
     requested_present_mode: wgpu::PresentMode,
 ) -> Result<wgpu::SurfaceConfiguration, WinitHostError> {
     if caps.formats.is_empty() || caps.present_modes.is_empty() || caps.alpha_modes.is_empty() {
@@ -233,13 +206,12 @@ fn build_surface_config(
         })
         .ok_or(WinitHostError::MissingSrgbSurface)?;
     let present_mode = negotiate_present_mode(requested_present_mode, &caps.present_modes);
-    let max_texture_dim = max_texture_dim.get();
     Ok(wgpu::SurfaceConfiguration {
         usage: REQUIRED_SURFACE_USAGES,
         format,
         color_space: wgpu::SurfaceColorSpace::Srgb,
-        width: size.x.clamp(1, max_texture_dim),
-        height: size.y.clamp(1, max_texture_dim),
+        width: size.x,
+        height: size.y,
         present_mode,
         alpha_mode: if caps.alpha_modes.contains(&wgpu::CompositeAlphaMode::Opaque) {
             wgpu::CompositeAlphaMode::Opaque
@@ -291,8 +263,11 @@ fn negotiate_present_mode(
     match requested {
         wgpu::PresentMode::AutoVsync | wgpu::PresentMode::AutoNoVsync => requested,
         explicit if supported.contains(&explicit) => explicit,
-        wgpu::PresentMode::Fifo | wgpu::PresentMode::FifoRelaxed => wgpu::PresentMode::AutoVsync,
-        wgpu::PresentMode::Immediate | wgpu::PresentMode::Mailbox => wgpu::PresentMode::AutoNoVsync,
+        // An explicit mode the surface will not take falls back to the
+        // automatic policy that paces the same way. [`vsync_of`] is that
+        // classification and [`present_mode`] its right inverse, so a
+        // present mode wgpu adds is placed in one match rather than three.
+        explicit => present_mode(vsync_of(explicit)),
     }
 }
 

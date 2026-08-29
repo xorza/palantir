@@ -48,10 +48,16 @@ impl Display for UnmetRequirements {
 
 impl Error for UnmetRequirements {}
 
-/// Failure while standing up a [`HeadlessGpu`](crate::HeadlessGpu).
+/// Failure while asking a driver for a device.
+///
+/// One enum for every host, because every host takes the same four steps
+/// and fails them in the same four ways. Two enums is what let the same
+/// missing backend be reported as "no wgpu backend is compiled in for this
+/// target" through one door and "Palantir was compiled without a GPU backend
+/// for this target" through the other.
 #[derive(Debug)]
 #[non_exhaustive]
-pub enum HeadlessGpuError {
+pub enum GpuRequestError {
     /// Palantir was compiled without a wgpu backend for the current target.
     NoBackend,
     /// No graphics adapter matched the requested power policy.
@@ -62,7 +68,7 @@ pub enum HeadlessGpuError {
     RequestDevice { source: wgpu::RequestDeviceError },
 }
 
-impl Display for HeadlessGpuError {
+impl Display for GpuRequestError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::NoBackend => f.write_str("no wgpu backend is compiled in for this target"),
@@ -79,7 +85,7 @@ impl Display for HeadlessGpuError {
     }
 }
 
-impl Error for HeadlessGpuError {
+impl Error for GpuRequestError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::NoBackend => None,

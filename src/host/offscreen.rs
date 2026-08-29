@@ -40,7 +40,6 @@
 use crate::FrameReport;
 use crate::app::App;
 use crate::common::clipboard::Clipboard;
-use crate::diagnostics::DebugOverlayConfig;
 use crate::diagnostics::gpu_pass_stats::GpuPassStats;
 use crate::display;
 use crate::host::clock::{Clock, RealtimeClock};
@@ -174,14 +173,6 @@ impl OffscreenHost {
     /// Mutable access to the window's `Ui` for building scenes.
     pub fn ui(&mut self) -> &mut Ui {
         &mut self.driver.ui
-    }
-
-    /// Set the app-global debug overlay for subsequent frames. The
-    /// headless analogue of a `WinitHost` window toggling it via
-    /// `Ui::set_debug_overlay` — it writes the same shared diagnostics state
-    /// every window's `Ui` reads.
-    pub fn set_debug_overlay(&mut self, overlay: DebugOverlayConfig) {
-        self.core.shared.resources.diagnostics.overlay.set(overlay);
     }
 
     /// Run one offscreen application frame against `target`, filling the

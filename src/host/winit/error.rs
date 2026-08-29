@@ -3,7 +3,7 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
-use crate::host::error::UnmetRequirements;
+use crate::host::error::GpuRequestError;
 use crate::window::window_token::WindowToken;
 
 /// The event loop has exited, so a [`HostHandle`](crate::HostHandle) can no
@@ -49,14 +49,9 @@ pub enum WinitHostError {
     },
     /// Wgpu could not create a presentation surface for a native window.
     CreateSurface { source: wgpu::CreateSurfaceError },
-    /// No graphics adapter matched the requested surface and power policy.
-    RequestAdapter { source: wgpu::RequestAdapterError },
-    /// The selected adapter could not create the logical device.
-    RequestDevice { source: wgpu::RequestDeviceError },
-    /// Palantir was compiled without a wgpu backend for the current target.
-    NoGpuBackend,
-    /// The selected adapter cannot run Palantir's pipelines.
-    Requirements { source: UnmetRequirements },
+    /// Asking the driver for a device failed — the same four ways it fails
+    /// for every host, so the same enum describes them.
+    Gpu { source: GpuRequestError },
     /// The selected adapter cannot present to this window's surface.
     IncompatibleSurface,
     /// The surface cannot satisfy Palantir's linear-to-sRGB output contract.
@@ -79,16 +74,7 @@ impl Display for WinitHostError {
             Self::CreateSurface { source } => {
                 write!(f, "failed to create window surface: {source}")
             }
-            Self::RequestAdapter { source } => {
-                write!(f, "failed to find a compatible graphics adapter: {source}")
-            }
-            Self::RequestDevice { source } => {
-                write!(f, "failed to create the graphics device: {source}")
-            }
-            Self::NoGpuBackend => {
-                f.write_str("Palantir was compiled without a GPU backend for this target")
-            }
-            Self::Requirements { source } => Display::fmt(source, f),
+            Self::Gpu { source } => Display::fmt(source, f),
             Self::IncompatibleSurface => {
                 f.write_str("graphics adapter cannot present to the window surface")
             }
@@ -107,17 +93,23 @@ impl Display for WinitHostError {
     }
 }
 
+impl From<GpuRequestError> for WinitHostError {
+    fn from(source: GpuRequestError) -> Self {
+        Self::Gpu { source }
+    }
+}
+
 impl Error for WinitHostError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::CreateEventLoop { source } | Self::RunEventLoop { source } => Some(source),
             Self::CreateWindow { source, .. } => Some(source),
             Self::CreateSurface { source } => Some(source),
-            Self::RequestAdapter { source } => Some(source),
-            Self::RequestDevice { source } => Some(source),
-            Self::Requirements { source } => Some(source),
-            Self::NoGpuBackend
-            | Self::IncompatibleSurface
+            // The inner's own source, skipping the inner itself. This
+            // variant adds no words of its own — its `Display` forwards —
+            // so chaining it would print the identical sentence twice.
+            Self::Gpu { source } => source.source(),
+            Self::IncompatibleSurface
             | Self::MissingSrgbSurface
             | Self::MissingSurfaceUsages { .. } => None,
         }
@@ -128,7 +120,7 @@ impl Error for WinitHostError {
 mod tests {
     use std::error::Error;
 
-    use crate::host::error::UnmetRequirements;
+    use crate::host::error::{GpuRequestError, UnmetRequirements};
     use crate::host::winit::error::{HostDisconnected, WinitHostError};
 
     #[test]
@@ -142,21 +134,27 @@ mod tests {
         );
         assert!(event_loop.source().is_some());
 
-        // Capability failures are the shared type's to describe, and the
-        // host forwards both the message and the cause rather than
-        // restating them.
-        let capability = WinitHostError::Requirements {
-            source: UnmetRequirements::Limit {
-                name: "max_immediate_size",
-                required: 16,
-                available: 8,
-            },
+        // A device request is the shared type's to describe. The host
+        // forwards its words and hands on *its* cause rather than itself,
+        // so a chain printer never meets the same sentence twice.
+        let unmet = UnmetRequirements::Limit {
+            name: "max_immediate_size",
+            required: 16,
+            available: 8,
         };
+        let capability = WinitHostError::from(GpuRequestError::Requirements {
+            source: unmet.clone(),
+        });
         assert_eq!(
             capability.to_string(),
-            "graphics device limit max_immediate_size is 8, but Palantir requires 16"
+            "the graphics adapter cannot run Palantir: \
+             graphics device limit max_immediate_size is 8, but Palantir requires 16",
         );
-        assert!(capability.source().is_some());
+        assert_eq!(
+            capability.source().map(ToString::to_string),
+            Some(unmet.to_string()),
+            "the chain skips the wrapper, which added no words of its own",
+        );
     }
 
     #[test]

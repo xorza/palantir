@@ -19,7 +19,7 @@ pub(crate) mod clock;
 mod core;
 pub(crate) mod device_requirements;
 pub(crate) mod error;
-pub(crate) mod headless_gpu;
+pub(crate) mod gpu_request;
 pub(crate) mod offscreen;
 pub(crate) mod shared;
 #[cfg(feature = "internals")]
