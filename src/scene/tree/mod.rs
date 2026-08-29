@@ -172,16 +172,11 @@ impl Tree {
     /// calls it at the tail of every frame (both record + paint-only
     /// paths) so the scheduling is centralised.
     pub(crate) fn post_record(&mut self) {
-        debug_assert_eq!(
-            self.paint_anims.shape_indices.len(),
-            self.paint_anims.entries.len(),
-            "paint animation columns differ in length",
-        );
         debug_assert!(
             self.paint_anims
-                .shape_indices
+                .entries
                 .last()
-                .is_none_or(|&idx| idx < self.shapes.records.len() as u32),
+                .is_none_or(|entry| entry.shape_idx < self.shapes.records.len() as u32),
             "paint animation shape index exceeds shapes.records",
         );
         let n = self.records.len();

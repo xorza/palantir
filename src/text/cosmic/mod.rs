@@ -27,13 +27,13 @@
 
 use crate::common::expiry_wheel::ExpiryWheel;
 use crate::layout::types::align::HAlign;
-use crate::text::RENDERED_RUN_KEEP_FRAMES;
 use crate::text::cosmic::counters::CacheCounters;
 use crate::text::key::TextShapeKey;
 use crate::text::request::TextShapeRequest;
 use crate::text::root::TextRoot;
 use crate::text::wrap::{LineFit, WrapFloor};
 use crate::text::{FontFamily, FontWeight};
+use crate::text::{RENDERED_RUN_KEEP_FRAMES, RENDERED_RUN_KEEP_SPREAD_MASK};
 use cosmic_text::{
     Align as CosmicAlign, Attrs, Buffer, CacheKeyFlags, Family, FontSystem, Metrics, Shaping,
     SwashCache, Weight, fontdb,
@@ -122,13 +122,24 @@ const ELLIPSIS_MEMO_SLOTS: usize = 4;
 pub(super) const PROBATION_KEEP_FRAMES: u64 = 4;
 
 /// Frames a *protected* entry — one that has been looked up at least once
-/// since insertion — survives untouched.
+/// since insertion — survives untouched. The floor of the window;
+/// [`PROTECTED_SPREAD_MASK`] is what an entry may add to it.
 ///
 /// The name cosmic's two-tier policy reads
 /// [`crate::text::RENDERED_RUN_KEEP_FRAMES`] under, beside
 /// [`PROBATION_KEEP_FRAMES`]. Why that number is a ceiling the encoded
 /// cache stays under rather than one it shares is stated there.
 pub(super) const PROTECTED_KEEP_FRAMES: u64 = RENDERED_RUN_KEEP_FRAMES;
+
+/// Extra frames a protected entry keeps, masked out of its own
+/// `text_hash` — so the window is `PROTECTED_KEEP_FRAMES ..= + this`
+/// rather than a single frame.
+///
+/// The name cosmic's policy reads
+/// [`crate::text::RENDERED_RUN_KEEP_SPREAD_MASK`] under, beside
+/// [`PROTECTED_KEEP_FRAMES`]. Why the window is a range at all is stated
+/// there.
+pub(super) const PROTECTED_SPREAD_MASK: u64 = RENDERED_RUN_KEEP_SPREAD_MASK;
 
 fn recycle_buffer(pool: &mut Vec<Buffer>, buffer: Buffer) {
     if pool.len() < RECYCLE_POOL_CAP {
@@ -278,7 +289,7 @@ impl CosmicMeasure {
             swash_cache: SwashCache::new(),
             cache: FxHashMap::default(),
             frame: 0,
-            expiry: ExpiryWheel::with_horizon(PROTECTED_KEEP_FRAMES + 2),
+            expiry: ExpiryWheel::with_horizon(PROTECTED_KEEP_FRAMES + PROTECTED_SPREAD_MASK + 2),
             recycle_pool: Vec::with_capacity(RECYCLE_POOL_CAP),
             ellipsis: ArrayVec::new(),
             truncate_scratch: String::new(),
@@ -501,7 +512,7 @@ impl CosmicMeasure {
         key: TextShapeKey,
     ) -> Option<&'a mut CacheEntry> {
         let entry = cache.get_mut(&key)?;
-        entry.keep_until = frame + PROTECTED_KEEP_FRAMES;
+        entry.keep_until = frame + PROTECTED_KEEP_FRAMES + key.keep_spread();
         counters.hits.bump();
         Some(entry)
     }

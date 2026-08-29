@@ -5,7 +5,7 @@ use crate::layout::types::align::HAlign;
 use crate::primitives::num::F32Ext;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::wrap::{self, LineFit};
-use crate::text::{FontFamily, FontWeight};
+use crate::text::{FontFamily, FontWeight, RENDERED_RUN_KEEP_SPREAD_MASK};
 
 /// Canonical shaping parameters and stable shaped-buffer identity. Layout
 /// derives it from `ShapeRecord::Text`; the encoder carries it through the
@@ -80,6 +80,20 @@ impl TextShapeKey {
 
     pub(crate) const fn is_invalid(self) -> bool {
         self.text_hash == 0
+    }
+
+    /// This key's share of the shaped-buffer cache's retention spread —
+    /// see [`RENDERED_RUN_KEEP_SPREAD_MASK`].
+    ///
+    /// Mixes width and size into the text hash rather than taking that
+    /// hash alone: a list of identically-labelled rows at different
+    /// widths is one text and many keys, and it is the keys that expire.
+    /// `max_w_q` counts 1/64ths of a width [`WrapBound::new`] already
+    /// snapped to whole pixels, so its low six bits are always zero and
+    /// it contributes nothing until they are shifted off.
+    pub(crate) const fn keep_spread(self) -> u64 {
+        (self.text_hash ^ (self.max_w_q as u64 >> 6) ^ self.size_q as u64)
+            & RENDERED_RUN_KEEP_SPREAD_MASK
     }
 
     /// The content hash a key carries, given the raw hash of its source:

@@ -95,9 +95,10 @@ pub(crate) mod wrap;
 /// frames repaints every affected pixel.
 pub(crate) const TEXT_SCALE_STEP: f32 = 0.005;
 
-/// Frames a *rendered* run's shaped buffer survives untouched — the
-/// protected tier of the shaped-buffer cache
-/// ([`cosmic::PROTECTED_KEEP_FRAMES`]), and the ceiling the backend's
+/// Frames a *rendered* run's shaped buffer survives untouched — the floor
+/// of the protected tier of the shaped-buffer cache
+/// ([`cosmic::PROTECTED_KEEP_FRAMES`], which each entry extends by its own
+/// share of [`RENDERED_RUN_KEEP_SPREAD_MASK`]), and the ceiling the backend's
 /// glyph-template window
 /// (`renderer::backend::text::encode::ENCODED_CACHE_KEEP_FRAMES`) must
 /// stay under.
@@ -131,6 +132,38 @@ pub(crate) const TEXT_SCALE_STEP: f32 = 0.005;
 /// on `text` and not the reverse, so this is the only spot both can
 /// name. Same reason as [`TEXT_SCALE_STEP`].
 pub(crate) const RENDERED_RUN_KEEP_FRAMES: u64 = 120;
+
+/// Extra frames a shaped buffer keeps past [`RENDERED_RUN_KEEP_FRAMES`],
+/// masked out of the run's own `TextShapeKey::text_hash`. The window is
+/// that floor plus a per-run share of this, not one frame every run
+/// shares.
+///
+/// **A shared deadline makes reclamation bursty.** A page switch shapes
+/// and promotes a few hundred runs on one frame, so every one of them
+/// falls due together 120 frames later. Past the shaped-buffer cache's
+/// recycle pool each of those drops frees cosmic's
+/// per-line, per-shape and per-layout allocations rather than pooling the
+/// buffer, so one frame pays for what a whole navigation created while
+/// the frames either side of it pay nothing. Sixteen deadlines instead of
+/// one makes that cost proportional to time, which is what the crate asks
+/// of anything on the frame path.
+///
+/// **Masked from the key rather than counted**, because the offset has to
+/// be stable per entry. A rotating counter would let a re-promotion move
+/// a deadline *inward*, and the expiry wheel's contract is that an inward
+/// move owes a fresh ticket. Derived from the key — see
+/// [`TextShapeKey::keep_spread`](key::TextShapeKey::keep_spread) — it
+/// cannot: the offset is the same every time, so a later frame is always
+/// a later deadline.
+///
+/// Sixteen costs a 256-bucket wheel rather than 128 — about 3 KB of
+/// bucket headers, since a ring is sized from the longest deadline its
+/// owner hands out.
+///
+/// Lives here rather than with the cache for the reason
+/// [`RENDERED_RUN_KEEP_FRAMES`] gives: the renderer's own suite has to
+/// name the window it waits out, and `cosmic` is private to this module.
+pub(crate) const RENDERED_RUN_KEEP_SPREAD_MASK: u64 = 15;
 
 /// Font family picker on [`crate::TextStyle`] and
 /// [`Shape::text`](crate::Shape::text). `Sans` resolves to bundled Inter (the default

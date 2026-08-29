@@ -1,7 +1,7 @@
 //! Per-window winit state and swapchain frame orchestration.
 
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use glam::{IVec2, UVec2};
 use winit::window::Window as WinitWindow;
@@ -61,7 +61,28 @@ pub(super) struct Window {
     frame_set: FrameSet,
     /// See [`SystemFacts`]. `None` until the next frame asks.
     system_facts: Option<SystemFacts>,
+    /// How long the next frame waits before retrying an acquire that
+    /// failed validation — `None` while acquires are healthy.
+    ///
+    /// Every other acquire failure is transient: a timeout, an outdated
+    /// swapchain, an occlusion. Repainting at once is the answer to
+    /// those and the loop settles within a frame or two. A validation
+    /// failure is the surface reporting that the call itself was wrong,
+    /// and the next tick makes the same call — so without a delay the
+    /// host builds a full CPU draw list per loop iteration for output
+    /// nothing can accept. The delay doubles to [`ACQUIRE_RETRY_MAX`],
+    /// which still picks a surface up within half a second of it
+    /// becoming valid again.
+    acquire_retry: Option<Duration>,
 }
+
+/// First delay after a `Validation` acquire — about one frame at 60 Hz,
+/// so a single spurious failure costs a dropped frame and nothing more.
+const ACQUIRE_RETRY_MIN: Duration = Duration::from_millis(16);
+
+/// Ceiling for [`Window::acquire_retry`]. A surface that stays invalid
+/// settles at two wake-ups a second.
+const ACQUIRE_RETRY_MAX: Duration = Duration::from_millis(500);
 
 impl Window {
     pub(super) fn new(
@@ -89,6 +110,7 @@ impl Window {
             occluded_at: None,
             frame_set: FrameSet::claim(),
             system_facts: None,
+            acquire_retry: None,
         }
     }
 
@@ -232,8 +254,11 @@ impl Window {
     ) -> FramePresent {
         let CpuFrame { report, mode } = cpu;
         let repaint = if report.plan.is_none() {
+            // Nothing tried to acquire, so nothing can still be failing.
+            self.acquire_retry = None;
             report.repaint_requested
         } else {
+            let retry = self.acquire_retry.take();
             use wgpu::CurrentSurfaceTexture::*;
             // Bound before the match so the zone closes on acquire
             // rather than spanning the arm that submits: on a vsync-
@@ -267,14 +292,28 @@ impl Window {
                     surfaces.configure(&self.surface, &self.config);
                     true
                 }
-                Timeout | Validation => {
-                    tracing::warn!("surface acquire: timeout / validation");
+                Timeout => {
+                    tracing::warn!("surface acquire: timeout");
+                    true
+                }
+                Validation => {
+                    tracing::warn!("surface acquire: validation");
+                    self.acquire_retry = Some(retry.map_or(ACQUIRE_RETRY_MIN, |delay| {
+                        (delay * 2).min(ACQUIRE_RETRY_MAX)
+                    }));
                     true
                 }
                 Occluded => false,
             }
         };
 
+        // Ahead of `repaint`, which every failing acquire asks for: the
+        // point of the delay is to pace exactly that request.
+        if let Some(delay) = self.acquire_retry
+            && let Some(at) = self.driver.clock.deadline(self.driver.clock.now() + delay)
+        {
+            return FramePresent::At(at);
+        }
         if repaint {
             FramePresent::Immediate
         } else if let Some(at) = report

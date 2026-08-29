@@ -341,14 +341,12 @@ impl Forest {
         if !frame.effectively_visible {
             return;
         }
-        tree.paint_anims.push_entry(
+        tree.paint_anims.push_entry(PaintAnimEntry {
+            anim,
             shape_idx,
-            PaintAnimEntry {
-                anim,
-                row,
-                node_idx: frame.node.0,
-            },
-        );
+            row,
+            node: frame.node,
+        });
     }
 
     /// Shared body of the plain `add_*` entry points: gate on an open

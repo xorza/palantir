@@ -278,29 +278,39 @@ impl IconRegistry {
         self.inner.borrow().epoch
     }
 
-    /// Every resident set with the id it answers to.
+    /// The set in table slot `slot` — `None` where the slot is free or
+    /// past the table's end.
     ///
-    /// Collected rather than borrowed, so the caller can rasterize from
-    /// each without holding the registry — which means it **allocates a
-    /// `Vec` per call**, and belongs on a cold path. Its one caller is
-    /// the icon backend's prewarm, gated behind a mark that only moves
-    /// when the scale changes or a set is loaded, so it runs on the order
-    /// of once a session rather than once a frame.
-    pub(crate) fn sets(&self) -> Vec<(IconSetId, Rc<IconAtlas>)> {
-        self.inner
-            .borrow()
-            .slots
-            .iter()
-            .enumerate()
-            .filter_map(|(slot, row)| {
-                let atlas = row.atlas.as_ref()?;
-                Some((
-                    IconSetId::new(slot as u16, row.generation),
-                    Rc::clone(atlas),
-                ))
-            })
-            .collect()
+    /// Indexed rather than iterated, because its one caller rasterizes
+    /// from each set through `&mut self` and so cannot hold a borrow of
+    /// the registry across the walk. Collecting the table into a `Vec`
+    /// was the other way to break that borrow; this is the one that
+    /// allocates nothing.
+    ///
+    /// A slot past the end answering `None` is what lets a caller walk
+    /// `0..slot_count()` without this promising the count holds still.
+    pub(crate) fn resident(&self, slot: usize) -> Option<ResidentIconSet> {
+        let inner = self.inner.borrow();
+        let row = inner.slots.get(slot)?;
+        Some(ResidentIconSet {
+            id: IconSetId::new(slot as u16, row.generation),
+            atlas: Rc::clone(row.atlas.as_ref()?),
+        })
     }
+
+    /// Slots the table holds — the exclusive bound for
+    /// [`Self::resident`].
+    pub(crate) fn slot_count(&self) -> usize {
+        self.inner.borrow().slots.len()
+    }
+}
+
+/// One loaded set as [`IconRegistry::resident`] hands it out: the id a
+/// raster key carries, and the atlas the bytes come from.
+#[derive(Clone, Debug)]
+pub(crate) struct ResidentIconSet {
+    pub(crate) id: IconSetId,
+    pub(crate) atlas: Rc<IconAtlas>,
 }
 
 #[cfg(test)]

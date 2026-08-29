@@ -78,6 +78,10 @@ fn gradient_interner_confirms_equality_across_hash_collisions_and_clears() {
     assert_ne!(gradients.intern(7, colliding), colliding_id);
     assert_eq!(gradients.records.len(), 4);
 
+    // The reset does not write the index: a slot last frame left under
+    // hash 7 has to read as absent on its serial alone. Reused, it would
+    // hand back id 3 and the equality confirm would index a `records`
+    // that no longer holds it.
     gradients.clear();
     let after_clear = RecordedGradient {
         axis: FillAxis::ZERO,
@@ -85,9 +89,56 @@ fn gradient_interner_confirms_equality_across_hash_collisions_and_clears() {
         stops,
         interp: Interp::Linear,
     };
-    let after_clear_id = gradients.intern(7, after_clear);
+    let after_clear_id = gradients.intern(7, after_clear.clone());
     assert_eq!(after_clear_id.0, 0);
     assert_eq!(gradients.records.len(), 1);
+
+    // ...including on the frame the serial wraps, which is the one
+    // frame a stale slot could carry the live serial.
+    gradients.wind_index_to_last_frame();
+    gradients.clear();
+    assert_eq!(gradients.intern(7, after_clear).0, 0);
+    assert_eq!(gradients.records.len(), 1);
+}
+
+/// The index widens with the frame's gradient count, and the widening
+/// costs dedup only until the next reset. Distinct low bits, so every
+/// key lands in a slot of its own and nothing here is testing collision
+/// behaviour by accident.
+#[test]
+fn gradient_interner_dedups_at_every_table_width() {
+    const COUNT: u64 = 200;
+
+    fn gradient(i: u64) -> RecordedGradient {
+        RecordedGradient {
+            axis: FillAxis::from_lanes(i as f32, 0.0, 0.0, 1.0),
+            kind: FillKind::linear(Spread::Pad),
+            stops: GradientStops::new([
+                Stop::new(0.0, ColorU8::BLACK),
+                Stop::new(1.0, ColorU8::WHITE),
+            ]),
+            interp: Interp::Oklab,
+        }
+    }
+
+    let mut gradients = RecordedGradients::default();
+    // Past 64 slots twice over, so the table widens mid-frame more than
+    // once and the repeats below span every width it took.
+    for i in 0..COUNT {
+        assert_eq!(gradients.intern(i, gradient(i)).0, i as u32);
+    }
+    assert_eq!(gradients.records.len() as u64, COUNT);
+
+    // The next frame indexes at the width the last one reached, so every
+    // repeat dedups and the record count does not move.
+    gradients.clear();
+    for i in 0..COUNT {
+        assert_eq!(gradients.intern(i, gradient(i)).0, i as u32);
+    }
+    for i in 0..COUNT {
+        assert_eq!(gradients.intern(i, gradient(i)).0, i as u32);
+    }
+    assert_eq!(gradients.records.len() as u64, COUNT);
 }
 
 /// A handle from an earlier pass is rejected by both paths that take

@@ -1,4 +1,5 @@
 use crate::bench::Run;
+use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::paint_anims::{PaintAnim, PaintAnimEntry, PaintAnims};
 use criterion::{Criterion, Throughput};
 use std::hint::black_box;
@@ -9,24 +10,22 @@ const NOW: Duration = Duration::from_millis(250);
 
 fn last_shape_registry() -> PaintAnims {
     let mut anims = PaintAnims::default();
-    anims.push_entry(
-        SHAPE_COUNT - 1,
-        PaintAnimEntry {
-            anim: PaintAnim::BlinkOpacity {
-                half_period: Duration::from_millis(500),
-                started_at: Duration::ZERO,
-                stop_after: Duration::MAX,
-            },
-            row: 0,
-            node_idx: 0,
+    anims.push_entry(PaintAnimEntry {
+        anim: PaintAnim::BlinkOpacity {
+            half_period: Duration::from_millis(500),
+            started_at: Duration::ZERO,
+            stop_after: Duration::MAX,
         },
-    );
+        shape_idx: SHAPE_COUNT - 1,
+        row: 0,
+        node: NodeId(0),
+    });
     anims
 }
 
 pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
     let anims = last_shape_registry();
-    assert_eq!(anims.shape_indices, [SHAPE_COUNT - 1]);
+    assert_eq!(anims.entries[0].shape_idx, SHAPE_COUNT - 1);
 
     let mut group = run.group(c);
     group.sample_size(30);

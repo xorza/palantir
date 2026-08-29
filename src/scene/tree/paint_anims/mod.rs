@@ -28,6 +28,7 @@
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
 
+use crate::scene::tree::node_id::NodeId;
 use std::f32::consts::TAU;
 use std::time::Duration;
 
@@ -235,6 +236,11 @@ fn duration_div_floor(a: Duration, b: Duration) -> u64 {
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct PaintAnimEntry {
     pub(crate) anim: PaintAnim,
+    /// Index into `Tree::shapes.records` of the animated shape. Strictly
+    /// increasing across [`PaintAnims::entries`], because registration
+    /// follows append-only shape recording — which is what lets both
+    /// readers below find a shape's row by search rather than by scan.
+    pub(crate) shape_idx: u32,
     /// Paint-arena row of the animated shape inside its owner's
     /// `node_spans` span — the chrome offset plus the shape's position
     /// in the owner's `TreeItems` stream, captured from
@@ -243,44 +249,39 @@ pub(crate) struct PaintAnimEntry {
     /// `paint_arena.rows[node_span.start + row]` with no per-frame
     /// `TreeItems` walk.
     pub(crate) row: u32,
-    /// Index into `Tree::records` of the node that owns this shape —
-    /// the open node at `add_shape_animated` time. Lets the damage
-    /// lookup index `node_spans[node_idx]` directly without needing a
-    /// per-frame `shape_idx → paint_idx` reverse map.
-    pub(crate) node_idx: u32,
+    /// The node that owns this shape — the open node at
+    /// `add_shape_animated` time. Lets the damage lookup index
+    /// `node_spans[node]` directly without needing a per-frame
+    /// `shape_idx → paint_idx` reverse map.
+    pub(crate) node: NodeId,
 }
 
 /// Per-tree sparse paint-animation registry, cleared per frame.
 #[derive(Debug, Default)]
 pub(crate) struct PaintAnims {
-    /// Live anim entries, in registration order. Iterated by
+    /// Live anim entries, in registration order — which is shape order,
+    /// so `shape_idx` increases down the column. Iterated by
     /// `Forest::min_paint_anim_wake` (next-wake fold) and
-    /// `DamageEngine::compute` (anim-damage union).
+    /// `DamageEngine::compute` (anim-damage union), searched by
+    /// [`Self::rotates`], and walked in step by [`PaintAnimCursor`].
     pub(crate) entries: Vec<PaintAnimEntry>,
-    /// Shape indices parallel to `entries`, strictly increasing because
-    /// registration follows append-only shape recording.
-    pub(crate) shape_indices: Vec<u32>,
 }
 
 impl PaintAnims {
-    /// Reset both columns for a fresh recording frame. Capacity
-    /// retained — same lifecycle as every other per-frame tree
-    /// column.
+    /// Reset for a fresh recording frame. Capacity retained — same
+    /// lifecycle as every other per-frame tree column.
     pub(crate) fn clear(&mut self) {
         self.entries.clear();
-        self.shape_indices.clear();
     }
 
-    /// Register `entry` against the just-pushed shape at `shape_idx`
-    /// (its index into `Tree::shapes.records`).
-    pub(crate) fn push_entry(&mut self, shape_idx: u32, entry: PaintAnimEntry) {
+    /// Register one animation against the shape it was recorded on.
+    pub(crate) fn push_entry(&mut self, entry: PaintAnimEntry) {
         debug_assert!(
-            self.shape_indices
+            self.entries
                 .last()
-                .is_none_or(|&last| last < shape_idx),
+                .is_none_or(|last| last.shape_idx < entry.shape_idx),
             "paint animation shape indices must be strictly increasing",
         );
-        self.shape_indices.push(shape_idx);
         self.entries.push(entry);
     }
 
@@ -288,34 +289,37 @@ impl PaintAnims {
     ///
     /// The cascade's question, and it asks it without a `now`: what a
     /// rotating shape is culled and damaged against is the square it
-    /// sweeps, which is the same at every angle. `shape_indices` is
-    /// strictly increasing and holds only the handful of shapes a frame
+    /// sweeps, which is the same at every angle. `entries` is ordered by
+    /// `shape_idx` and holds only the handful of shapes a frame
     /// animates, so the search is over a list that is usually empty.
     pub(crate) fn rotates(&self, shape_idx: u32) -> bool {
-        self.shape_indices
-            .binary_search(&shape_idx)
+        self.entries
+            .binary_search_by_key(&shape_idx, |entry| entry.shape_idx)
             .is_ok_and(|i| self.entries[i].anim.rotates())
     }
 
     pub(crate) fn cursor(&self) -> PaintAnimCursor<'_> {
         PaintAnimCursor {
-            shape_indices: &self.shape_indices,
             entries: &self.entries,
             next: 0,
-            next_shape: self
-                .shape_indices
-                .first()
-                .map_or(CURSOR_END, |&shape_idx| shape_idx as u64),
+            next_shape: next_shape(&self.entries, 0),
             #[cfg(debug_assertions)]
             last_sampled: None,
         }
     }
 }
 
+/// `entries[next]`'s shape index, or [`CURSOR_END`] past the last row.
+#[inline]
+fn next_shape(entries: &[PaintAnimEntry], next: usize) -> u64 {
+    entries
+        .get(next)
+        .map_or(CURSOR_END, |entry| entry.shape_idx as u64)
+}
+
 /// Monotonic encoder lookup over the sparse animation rows.
 #[derive(Debug)]
 pub(crate) struct PaintAnimCursor<'a> {
-    shape_indices: &'a [u32],
     entries: &'a [PaintAnimEntry],
     next: usize,
     next_shape: u64,
@@ -369,10 +373,7 @@ impl PaintAnimCursor<'_> {
     #[inline]
     fn advance(&mut self) {
         self.next += 1;
-        self.next_shape = self
-            .shape_indices
-            .get(self.next)
-            .map_or(CURSOR_END, |&shape_idx| shape_idx as u64);
+        self.next_shape = next_shape(self.entries, self.next);
     }
 }
 
