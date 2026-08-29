@@ -7,6 +7,7 @@ use crate::primitives::background::Background;
 use crate::scene::node::Node;
 use crate::ui::Ui;
 use crate::widgets::response::InnerResponse;
+use std::rc::Rc;
 
 /// WPF-style grid: explicit row + column track definitions, per-track
 /// `Pixel`/`Auto`/`Star` sizing with optional `[min, max]` clamps, and
@@ -123,13 +124,15 @@ impl<Rows, Cols> Grid<Rows, Cols> {
         let mut node = self.node;
         node.set_grid_def(id);
 
-        // Theme fallback for chrome / clip — see `Panel::show`.
+        // Theme fallback for chrome / clip — see `Panel::show`, including
+        // why the handle is what gets cloned.
+        let theme = Rc::clone(ui.theme());
         let chrome = node.resolve_container_chrome(
-            self.chrome,
-            ui.theme().panel_background.as_ref(),
-            ui.theme().panel_clip,
+            self.chrome.as_ref(),
+            theme.panel_background.as_ref(),
+            theme.panel_clip,
         );
-        ui.widget(node).show(ui, chrome.as_ref(), body)
+        ui.widget(node).show(ui, chrome, body)
     }
 }
 

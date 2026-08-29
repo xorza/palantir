@@ -103,11 +103,10 @@ impl AxisPlacement {
     }
 
     /// Cross-axis placement for a child of a main-axis stack (Stack /
-    /// WrapStack). Resolves the alignment cascade, picks the cross axis
-    /// from the resolved (h, v) pair, and runs [`Self::arrange`] against the
-    /// child's cross sizing + desired + the parent's cross extent. Single
-    /// source of truth so the cascade rule can't drift between Stack and
-    /// WrapStack.
+    /// WrapStack): resolve the alignment cascade on the cross axis, then
+    /// run [`Self::arrange`] against the child's cross sizing + desired +
+    /// the parent's cross extent. Single source of truth so the cascade
+    /// rule can't drift between Stack and WrapStack.
     pub(super) fn cross(
         main_axis: Axis,
         child: &LayoutCore,
@@ -116,15 +115,11 @@ impl AxisPlacement {
         desired: Size,
         inner_cross: f32,
     ) -> Self {
-        let AxisAlignPair { h, v } = AxisAlignPair::resolve(child, parent_child_align);
-        let cross_align = match main_axis {
-            Axis::X => v,
-            Axis::Y => h,
-        };
         let cross_axis = match main_axis {
             Axis::X => Axis::Y,
             Axis::Y => Axis::X,
         };
+        let cross_align = AxisAlignPair::resolve_axis(cross_axis, child, parent_child_align);
         Self::arrange(cross_axis, cross_align, child, bounds, desired, inner_cross)
     }
 }

@@ -14,6 +14,7 @@ use crate::widgets::frame::Frame;
 use crate::widgets::overlay_scope::OverlayScope;
 use glam::Vec2;
 use std::cell::Cell;
+use std::rc::Rc;
 
 /// What happens when the user presses outside the popup's body.
 ///
@@ -249,14 +250,15 @@ impl Popup {
         }
 
         {
+            let theme = Rc::clone(ui.theme());
             let chrome = widget.node.resolve_container_chrome(
-                chrome,
-                ui.theme().panel_background.as_ref(),
-                ui.theme().panel_clip,
+                chrome.as_ref(),
+                theme.panel_background.as_ref(),
+                theme.panel_clip,
             );
             let handle = PopupHandle::new();
             let escape = scope.record(ui, |ui| {
-                widget.record(ui, chrome.as_ref(), |ui| body(ui, &handle));
+                widget.record(ui, chrome, |ui| body(ui, &handle));
             });
             let dismiss_mode = click_outside == ClickOutside::Dismiss;
             // The eater senses all four pointer interactions, so a

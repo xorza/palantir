@@ -120,7 +120,7 @@ impl InstancePipeline for ImagePipeline {
         // Rust owns the flag bits; the shader declares them as markers so the
         // two cannot drift (`specialize` panics on an unsubstituted one).
         let wgsl = shader_template::specialize(
-            include_str!("image.wgsl"),
+            shader_template::IMAGE_WGSL,
             &[
                 ShaderConstant::uint("IMG_FLAG_TILED", IMG_FLAG_TILED),
                 ShaderConstant::uint("IMG_FLAG_MIN_NEAREST", IMG_FLAG_MIN_NEAREST),

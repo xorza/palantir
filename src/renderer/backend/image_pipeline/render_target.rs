@@ -59,8 +59,11 @@ impl GpuViewTargets {
     ) {
         tracy::zone!();
         let FrameViews { draws, live } = views;
+        // `live` arrives sorted — see `Frontend::build`.
         debug_assert!(
-            draws.iter().all(|draw| live.contains(&draw.id)),
+            draws
+                .iter()
+                .all(|draw| live.binary_search(&draw.id).is_ok()),
             "a painted GpuView target is missing from the frame's live roster",
         );
         for draw in draws {
@@ -98,7 +101,7 @@ impl GpuViewTargets {
             target.last_paint = Some(now);
         }
         self.entries.retain(|id, target| {
-            let keep = keep_target(target.owner, owner, live.contains(id));
+            let keep = keep_target(target.owner, owner, live.binary_search(id).is_ok());
             if !keep {
                 textures.bindings.remove(id);
             }

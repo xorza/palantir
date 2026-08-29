@@ -3,6 +3,7 @@
 //! Mirrors `layout::engine` — the module root holds the retained
 //! product, this file holds the machinery that fills it.
 
+use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher;
 use crate::common::tracy;
 use crate::display::Display;
@@ -20,7 +21,7 @@ use crate::scene::cascade::paint::PaintArena;
 use crate::scene::cascade::paint_rect::{PaintRectCtx, clip_screen, compute_paint_rect};
 use crate::scene::cascade::{Cascade, CascadeInputHash, LayerCascade};
 use crate::scene::forest::Forest;
-use crate::scene::layer::Layer;
+use crate::scene::layer::{Layer, PerLayer};
 use crate::scene::tree::Tree;
 use crate::scene::tree::node_id::NodeId;
 use std::hash::Hasher as _;
@@ -69,9 +70,11 @@ impl CascadeContext {
 #[derive(Debug)]
 struct Inherited<'a> {
     cascade: CascadeContext,
-    /// `None` while repairing: the retained `cascade_input`s stay valid,
-    /// so nothing folds a prefix and nothing reads one.
-    prefix: Option<&'a Hasher>,
+    /// Seeded but never folded while repairing: the retained
+    /// `cascade_input`s stay valid there, so nothing reads it. A fresh
+    /// [`Hasher`] is one `u64`, cheaper to carry than an `Option` saying
+    /// it is unread — which every node of a *rebuild* would then unwrap.
+    prefix: &'a Hasher,
 }
 
 #[derive(Debug)]
@@ -93,9 +96,9 @@ struct Frame {
     /// descendants only fold in their own `layout_rect`, avoiding a
     /// re-hash of the 32 B ancestor prefix per node.
     ///
-    /// `None` on an incremental frame: the retained `cascade_input`s
-    /// stay valid there, so no prefix is folded and none is read.
-    cascade_prefix: Option<Hasher>,
+    /// Empty and unread on an incremental frame — see
+    /// [`Inherited::prefix`].
+    cascade_prefix: Hasher,
 }
 
 #[derive(Debug, Default)]
@@ -119,8 +122,13 @@ impl CascadeEngine {
         cascade: &mut Cascade,
     ) {
         tracy::zone!();
-        if !self.can_update(forest, layout, display, cascade) {
-            self.run_full(forest, layout, display, cascade);
+        // One bulk hash of each layer's `rect` column per run. The gate
+        // compares it and a rebuild stamps it, and a run does both
+        // exactly when the compare fails — which is every frame geometry
+        // moved, the frames that already pay for a full walk.
+        let layout_hashes = layout_hashes(forest, layout);
+        if !self.can_update(forest, display, cascade, &layout_hashes) {
+            self.run_full(forest, layout, display, cascade, &layout_hashes);
             return;
         }
 
@@ -139,7 +147,7 @@ impl CascadeEngine {
             );
             if !incremental_complete {
                 self.counters.abandoned_incremental();
-                self.run_full(forest, layout, display, cascade);
+                self.run_full(forest, layout, display, cascade, &layout_hashes);
                 return;
             }
         }
@@ -150,9 +158,9 @@ impl CascadeEngine {
     fn can_update(
         &self,
         forest: &Forest,
-        layout: &Layout,
         display: Display,
         cascade: &Cascade,
+        layout_hashes: &PerLayer<ContentHash>,
     ) -> bool {
         if self.display_scale != Some(display.scale_factor) {
             return false;
@@ -172,7 +180,7 @@ impl CascadeEngine {
             {
                 return false;
             }
-            if lc.layout_hash != layout[layer].rect_hash() {
+            if lc.layout_hash != layout_hashes[layer] {
                 return false;
             }
             // No structural walk here: `cascade_static` folds each
@@ -191,6 +199,7 @@ impl CascadeEngine {
         layout: &Layout,
         display: Display,
         cascade: &mut Cascade,
+        layout_hashes: &PerLayer<ContentHash>,
     ) {
         self.counters.full_rebuild();
         let total = forest.total_nodes();
@@ -227,7 +236,7 @@ impl CascadeEngine {
             );
             cascade.layers[layer].static_hash = tree.fingerprint.cascade_static;
             cascade.layers[layer].paint_cardinality = tree.fingerprint.paint_cardinality;
-            cascade.layers[layer].layout_hash = layout[layer].rect_hash();
+            cascade.layers[layer].layout_hash = layout_hashes[layer];
         }
 
         // `SeenIds::pre_record` clears `curr` before a relayout pass can
@@ -235,6 +244,20 @@ impl CascadeEngine {
         cascade.by_id.clone_from(&forest.ids.curr);
         self.display_scale = Some(display.scale_factor);
     }
+}
+
+/// Each recorded layer's `rect` column hash — the cascade's
+/// geometry-validity gate, and the value a rebuild stamps.
+///
+/// Computed once per run and handed to both readers. Layers with no tree
+/// this frame keep the default: neither reader visits them, which is what
+/// `iter_paint_order` already decides.
+pub(super) fn layout_hashes(forest: &Forest, layout: &Layout) -> PerLayer<ContentHash> {
+    let mut hashes = PerLayer::default();
+    for (layer, _) in forest.trees.iter_paint_order() {
+        hashes[layer] = layout[layer].rect_hash();
+    }
+    hashes
 }
 
 /// Fingerprint of everything [`CascadeEngine::run`] reads, cheaply.
@@ -323,7 +346,12 @@ impl CascadeEngine {
         let widget_ids = tree.records.widget_id();
         let ends = tree.records.subtree_end();
         let subtree_hashes = tree.rollups.subtree.as_slice();
-        let root_prefix = (!INCREMENTAL).then(|| build_cascade_prefix(CascadeContext::ROOT));
+        debug_assert_eq!(
+            !INCREMENTAL,
+            sink.is_some(),
+            "the sink is the full rebuild's, and only its",
+        );
+        let root_prefix = frame_prefix::<INCREMENTAL>(CascadeContext::ROOT);
 
         let mut i: u32 = 0;
         while i < n {
@@ -337,11 +365,11 @@ impl CascadeEngine {
             } = match self.stack.last() {
                 Some(p) => Inherited {
                     cascade: p.cascade,
-                    prefix: p.cascade_prefix.as_ref(),
+                    prefix: &p.cascade_prefix,
                 },
                 None => Inherited {
                     cascade: CascadeContext::ROOT,
-                    prefix: root_prefix.as_ref(),
+                    prefix: &root_prefix,
                 },
             };
 
@@ -434,8 +462,6 @@ impl CascadeEngine {
             if INCREMENTAL {
                 lc.subtree_hashes[iu] = subtree_hashes[iu];
             } else {
-                let parent_prefix =
-                    parent_prefix.expect("a full rebuild always carries a cascade prefix");
                 lc.cascade_inputs[iu] = finish_cascade_input(parent_prefix, layout_rect, invisible);
                 lc.subtree_ends[iu] = subtree_end;
             }
@@ -445,10 +471,12 @@ impl CascadeEngine {
             // direct shapes were clipped to above and the encoder pushes
             // before the body.
             let desc_clip = shape_clip;
-            if !INCREMENTAL {
-                let sink = sink
-                    .as_mut()
-                    .expect("a full rebuild always passes its sink");
+            // The `Option` is the const generic's decision made once, at
+            // the call: a repair passes none. Reading it as one folds the
+            // branch away in both monomorphizations, where testing
+            // `INCREMENTAL` and then unwrapping asked the same question
+            // twice and left a panic path on every node of a rebuild.
+            if let Some(sink) = sink.as_mut() {
                 let layer = sink.layer;
                 let cascaded_off = disabled || invisible;
                 let sense = if cascaded_off {
@@ -510,7 +538,7 @@ impl CascadeEngine {
                     subtree_end,
                     node_idx: iu,
                     subtree_paint_rect: subtree_seed,
-                    cascade_prefix: (!INCREMENTAL).then(|| build_cascade_prefix(cascade)),
+                    cascade_prefix: frame_prefix::<INCREMENTAL>(cascade),
                 });
             }
             i += 1;
@@ -542,6 +570,19 @@ fn compute_node_paint(ctx: PaintRectCtx<'_>, owner_visible: bool, arena: &mut Pa
 pub(super) struct CascadePrefixBits {
     transform: [u32; 4],
     clip: [u32; 4],
+}
+
+/// The prefix a [`Frame`] carries, folded only where one is read.
+///
+/// An incremental repair reads no prefix — its `cascade_input`s are
+/// retained — so it takes the empty hasher rather than paying the fold.
+#[inline]
+fn frame_prefix<const INCREMENTAL: bool>(cascade: CascadeContext) -> Hasher {
+    if INCREMENTAL {
+        Hasher::new()
+    } else {
+        build_cascade_prefix(cascade)
+    }
 }
 
 #[inline]

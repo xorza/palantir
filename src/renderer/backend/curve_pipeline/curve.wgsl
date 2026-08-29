@@ -70,27 +70,34 @@ const HALF_FRINGE: f32 = /*{HALF_FRINGE}*/;
 // billboard extent).
 const MITER_LIMIT: f32 = /*{MITER_LIMIT}*/;
 
+// `Square` is not a constant of its own: it is what a cap that is
+// neither Butt nor Round means, so nothing here compares against it.
 const CAP_BUTT: u32 = /*{CAP_BUTT}*/;
-const CAP_SQUARE: u32 = /*{CAP_SQUARE}*/;
 const CAP_ROUND: u32 = /*{CAP_ROUND}*/;
 
-const KIND_CUBIC: u32 = /*{KIND_CUBIC}*/;
+// `Cubic` is likewise the basis `stroke_pos_tan` falls through to.
 const KIND_ARC: u32 = /*{KIND_ARC}*/;
 const KIND_SEGMENT: u32 = /*{KIND_SEGMENT}*/;
 const KIND_JOIN_ROUND: u32 = /*{KIND_JOIN_ROUND}*/;
 const KIND_JOIN_BEVEL: u32 = /*{KIND_JOIN_BEVEL}*/;
 const KIND_JOIN_MITER: u32 = /*{KIND_JOIN_MITER}*/;
 
-const BRUSH_KIND_SOLID:  u32 = /*{BRUSH_KIND_SOLID}*/;
+// Solid is the fill this falls through to, so only the gradient tag
+// is pinned.
 const BRUSH_KIND_LINEAR: u32 = /*{BRUSH_KIND_LINEAR}*/;
 
 // `VsOut.flags` bits — the per-instance predicates the fragment
 // actually branches on, packed once in `vs` so they ride one flat
-// lane. Bits 4..6 carry the join metric (kind - KIND_JOIN_ROUND).
+// lane. The two join looks are their own bits rather than a metric
+// derived from `kind - KIND_JOIN_ROUND`: the fragment then never
+// depends on the join kinds being numbered consecutively, which
+// nothing on either side pins.
 const FLAG_ROUND_CAP: u32 = 1u;
 const FLAG_LINEAR_FILL: u32 = 2u;
 const FLAG_CLIP: u32 = 4u;
 const FLAG_JOIN: u32 = 8u;
+const FLAG_JOIN_BEVEL: u32 = 16u;
+const FLAG_JOIN_MITER: u32 = 32u;
 
 // Epsilon for the "is this the curve's leading / trailing endpoint?"
 // test against `t_range`. Sub-instance boundaries are exactly
@@ -215,7 +222,9 @@ fn arc_pos_tan(center: vec2<f32>, radius: f32, a0: f32, a1: f32, t: f32) -> PosT
 }
 
 // Kind dispatch: evaluate the instance's parametric basis at `t`.
-// Join kinds never come through here (billboard path in `vs`).
+// Join kinds never come through here (billboard path in `vs`), and
+// `KIND_CUBIC` is the fall-through — the basis every instance that is
+// neither an arc nor a segment carries.
 fn stroke_pos_tan(in: VsIn, t: f32) -> PosTan {
     if (in.kind == KIND_ARC) {
         return arc_pos_tan(in.p0, in.p1.x, in.p2.x, in.p2.y, t);
@@ -244,7 +253,7 @@ fn vs(in: VsIn, @builtin(vertex_index) vid: u32) -> VsOut {
     out.jv0 = vec4<f32>(0.0);
     out.jv1 = vec4<f32>(0.0);
     out.color = in.color0;
-    var flags = u32((in.fill_kind & 0xFFu) == BRUSH_KIND_LINEAR) << 1u;
+    var flags = select(0u, FLAG_LINEAR_FILL, (in.fill_kind & 0xFFu) == BRUSH_KIND_LINEAR);
     var phys: vec2<f32>;
 
     if (in.kind >= KIND_JOIN_ROUND) {
@@ -258,15 +267,18 @@ fn vs(in: VsIn, @builtin(vertex_index) vid: u32) -> VsOut {
         let p = in.p0;
         var r_bb = half_w + 1.0;
         if (in.kind == KIND_JOIN_MITER) {
+            flags |= FLAG_JOIN_MITER;
             // p2 - p1 = d_a + d_b, whose length is 2·cos(half turn).
             let cos_half = 0.5 * length(in.p2 - in.p1);
             r_bb = half_w * min(1.0 / max(cos_half, 1.0e-4), MITER_LIMIT) + 1.0;
+        } else if (in.kind == KIND_JOIN_BEVEL) {
+            flags |= FLAG_JOIN_BEVEL;
         }
         let section_t = f32(section) * INV_N;
         phys = p + vec2<f32>(mix(-r_bb, r_bb, section_t), side * r_bb);
         out.jv0 = vec4<f32>(in.p1, in.p2);
         out.jv1 = vec4<f32>(p, p);
-        flags |= FLAG_CLIP | FLAG_JOIN | ((in.kind - KIND_JOIN_ROUND) << 4u);
+        flags |= FLAG_CLIP | FLAG_JOIN;
     } else {
         let local_t = f32(section) * INV_N;
         let t = mix(in.t_range.x, in.t_range.y, local_t);
@@ -353,16 +365,15 @@ fn fs(in: VsOut) -> @location(0) vec4<f32> {
         let d_a = -in.jv0.xy;
         let d_b = in.jv0.zw;
         let rel = in.phys - in.jv1.xy;
-        let metric = (in.flags >> 4u) & 3u;
         var r = length(rel);
-        if (metric == 2u) {
+        if ((in.flags & FLAG_JOIN_MITER) != 0u) {
             // Miter: the wedge filled out to where either centerline
             // distance reaches the stroke edge — the classic miter
             // diamond, seamless against both strips.
             r = max(abs(perp_dot(d_a, rel)), abs(perp_dot(d_b, rel)));
         }
         coverage = clamp(in.half_w - r, 0.0, plateau);
-        if (metric == 1u) {
+        if ((in.flags & FLAG_JOIN_BEVEL) != 0u) {
             // Bevel: cut the round base at the bevel face — the line
             // through the two strip core corners, at distance
             // `core·cos_half` from P along the convex bisector

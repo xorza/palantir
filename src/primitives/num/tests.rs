@@ -55,6 +55,35 @@ fn fast_round_matches_std_round() {
 }
 
 #[test]
+fn ceil_px_matches_std_ceil() {
+    // The whole pixel that covers a coordinate: integral values stay,
+    // anything with a fraction goes up. `0.0` is the floor of the
+    // domain and `2^24 - 1` its top, where a `u32` still round-trips
+    // through `f32` exactly.
+    let cases: &[(f32, u32)] = &[
+        (0.0, 0),
+        (0.000_000_1, 1),
+        (0.5, 1),
+        (1.0, 1),
+        (1.000_000_1, 2),
+        (7.999_999, 8),
+        (8.0, 8),
+        (16_777_215.0, 16_777_215),
+    ];
+    for &(x, want) in cases {
+        assert_eq!(x.ceil_px(), want, "x = {x}");
+        assert_eq!(want, x.ceil() as u32, "case out of sync with std: {x}");
+    }
+    // Dense sweep against `f32::ceil` over the pixel range a viewport
+    // and its AA fringe can reach, at a step that lands on and between
+    // whole pixels.
+    for i in 0..200_000u32 {
+        let x = i as f32 * 0.173;
+        assert_eq!(x.ceil_px(), x.ceil() as u32, "x = {x}");
+    }
+}
+
+#[test]
 fn is_integral_matches_round_equality() {
     let integral = [0.0, -0.0, 1.0, -7.0, 8388608.0, 1e18];
     let fractional = [0.1, -0.5, 1.5, 8388607.5, f32::NAN];

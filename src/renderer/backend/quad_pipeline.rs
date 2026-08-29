@@ -286,19 +286,25 @@ impl InstancePipeline for QuadPipeline {
     /// [`Self::build_mask_clear`].
     fn new(device: &wgpu::Device) -> Self {
         let wgsl = shader_template::specialize(
-            include_str!("quad.wgsl"),
+            shader_template::QUAD_WGSL,
             &[
                 ShaderConstant::float("AA_RADIUS", AA_RADIUS),
-                ShaderConstant::uint("BRUSH_KIND_SOLID", FillKind::SOLID.0),
-                ShaderConstant::uint("BRUSH_KIND_LINEAR", FillKind::linear(Spread::Pad).0),
-                ShaderConstant::uint("BRUSH_KIND_RADIAL", FillKind::radial(Spread::Pad).0),
-                ShaderConstant::uint("BRUSH_KIND_CONIC", FillKind::conic(Spread::Pad).0),
-                ShaderConstant::uint("BRUSH_KIND_SHADOW_DROP", FillKind::SHADOW_DROP.0),
-                ShaderConstant::uint("BRUSH_KIND_SHADOW_INSET", FillKind::SHADOW_INSET.0),
-                ShaderConstant::uint("BRUSH_KIND_TRIANGLE", FillKind::TRIANGLE.0),
+                // The family tags, not whole packed words: the shader
+                // compares them against `fill_kind & 0xFF`, and
+                // `FillKind::linear(Spread::Pad).0` only happened to
+                // equal the tag because `Pad` is zero.
+                ShaderConstant::uint("BRUSH_KIND_SOLID", FillKind::TAG_SOLID),
+                ShaderConstant::uint("BRUSH_KIND_LINEAR", FillKind::TAG_LINEAR),
+                ShaderConstant::uint("BRUSH_KIND_RADIAL", FillKind::TAG_RADIAL),
+                ShaderConstant::uint("BRUSH_KIND_CONIC", FillKind::TAG_CONIC),
+                ShaderConstant::uint("BRUSH_KIND_SHADOW_DROP", FillKind::TAG_SHADOW_DROP),
+                ShaderConstant::uint("BRUSH_KIND_SHADOW_INSET", FillKind::TAG_SHADOW_INSET),
+                ShaderConstant::uint("BRUSH_KIND_TRIANGLE", FillKind::TAG_TRIANGLE),
                 ShaderConstant::uint("FILL_FLAG_FAST", FillKind::FAST_BIT),
                 ShaderConstant::uint("FILL_FLAG_WINDOW", FillKind::WINDOW_BIT),
-                ShaderConstant::uint("SPREAD_PAD", Spread::Pad as u32),
+                // `Pad` is not pinned: it is `apply_spread`'s fallback,
+                // which is also the right answer for a mode the shader
+                // does not know, so nothing there compares against it.
                 ShaderConstant::uint("SPREAD_REPEAT", Spread::Repeat as u32),
                 ShaderConstant::uint("SPREAD_REFLECT", Spread::Reflect as u32),
             ],

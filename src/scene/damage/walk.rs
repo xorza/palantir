@@ -145,7 +145,7 @@ impl LayerWalk<'_> {
             // jump doesn't: `SubtreeUnchanged` never visits them, and
             // `SubtreeMoved` opened its own along the way.
             if advance == 1 {
-                self.open_parent(i);
+                self.open_parent(i, wid);
             }
             i += advance;
         }
@@ -191,12 +191,15 @@ impl LayerWalk<'_> {
 
     /// Open `i` as the enclosing parent for the nodes that follow it,
     /// if it has any.
-    fn open_parent(&mut self, i: usize) {
+    ///
+    /// `wid` is handed in rather than read here: both callers hold it
+    /// already, and the column read was the same one twice.
+    fn open_parent(&mut self, i: usize, wid: WidgetId) {
         let end = self.tree.subtree_end_of(i);
         if end > i + 1 {
             self.parents.push(ParentFrame {
                 end: end as u32,
-                key: self.tree.records.widget_id()[i].0,
+                key: wid.0,
             });
         }
     }
@@ -368,12 +371,12 @@ impl LayerWalk<'_> {
             // Same stack as the outer walk: at `j == i` nothing is
             // retired and this reads `i`'s own parent.
             let j_parent_key = self.parent_key_at(j);
-            self.open_parent(j);
+            let wid = self.tree.records.widget_id()[j];
+            self.open_parent(j, wid);
             let span = self.cascade.paint_arena.node_spans[j];
             if span.len == 0 {
                 continue;
             }
-            let wid = self.tree.records.widget_id()[j];
             // One probe: the refresh below is the only write, so it takes the
             // `&mut` up front rather than reading the snapshot and coming back
             // for the same bucket — this runs per moved node, which is every

@@ -61,10 +61,13 @@ impl LineFit {
     /// bounded cache entry it would mint.
     ///
     /// Two callers, one question. `TextSystem::measure` asks it to skip
-    /// the bounded resolve outright; `CosmicMeasure::shape_truncated`
-    /// asks it again for the paths that bypass `TextSystem` (the public
-    /// text probe, buffer restore), where it decides whether the cut
-    /// runs at all. They must agree, so they share this.
+    /// the bounded resolve outright, so a key that reaches
+    /// `CosmicMeasure::shape_truncated` has already answered `false`
+    /// there — and the restore path replays such a key, at a quantized
+    /// width that round-trips exactly. `shape_truncated` asks anyway,
+    /// because the cut it would otherwise run is not a no-op on a run
+    /// that fits: it reserves the ellipsis and drops a cluster the fit
+    /// test would have kept. They must agree, so they share this.
     ///
     /// A fitting single-line truncation shapes glyphs identical to the
     /// root — truncated shaping is halign-independent and single-line by

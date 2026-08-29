@@ -6,6 +6,7 @@ use crate::primitives::rect::Rect;
 use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::cascade::Cascade;
+use crate::scene::cascade::engine;
 use crate::scene::cascade::engine::CascadeEngine;
 use crate::scene::cascade::entry::{EntryRow, HitRow};
 use crate::ui::harness::UiHarness;
@@ -167,11 +168,13 @@ impl CascadeRunFixture {
         } else {
             &self.first
         };
+        let layout_hashes = engine::layout_hashes(source.ui.forest(), source.ui.layout_tables());
         self.engine.run_full(
             source.ui.forest(),
             source.ui.layout_tables(),
             self.display,
             &mut self.cascade,
+            &layout_hashes,
         );
         self.use_second = !self.use_second;
     }

@@ -5,6 +5,7 @@ use crate::primitives::background::Background;
 use crate::scene::node::Node;
 use crate::ui::Ui;
 use crate::widgets::response::InnerResponse;
+use std::rc::Rc;
 
 /// The container widget. Lays children out as `HStack` / `VStack` / `ZStack`
 /// (selected via constructor) and optionally paints chrome (via
@@ -34,13 +35,16 @@ impl Panel {
         // Theme fallback: if the caller left chrome / clip unset,
         // inherit from `theme.panel_*`. Caller intent (any non-None
         // value) wins.
+        // The theme handle is cloned, not the chrome: an `Rc` bump lets
+        // the borrow outlive the `&mut Ui` the record below takes.
+        let theme = Rc::clone(ui.theme());
         let mut node = self.node;
         let chrome = node.resolve_container_chrome(
-            self.chrome,
-            ui.theme().panel_background.as_ref(),
-            ui.theme().panel_clip,
+            self.chrome.as_ref(),
+            theme.panel_background.as_ref(),
+            theme.panel_clip,
         );
-        ui.widget(node).show(ui, chrome.as_ref(), body)
+        ui.widget(node).show(ui, chrome, body)
     }
 
     #[track_caller]

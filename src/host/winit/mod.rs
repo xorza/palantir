@@ -405,9 +405,15 @@ where
 
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                 win.scale_factor = display::sanitize_scale_factor(scale_factor);
+                win.invalidate_system_facts();
                 win.next = FramePresent::Immediate;
             }
+            // Nothing else to do with a move: the position is a fact the
+            // app asks for, and the monitor under the window is what the
+            // driver paces by. Both are cached — see `WindowFacts`.
+            WindowEvent::Moved(_) => win.invalidate_system_facts(),
             WindowEvent::Resized(new) => {
+                win.invalidate_system_facts();
                 let w = new.width.clamp(1, max_texture_dim);
                 let h = new.height.clamp(1, max_texture_dim);
                 // Stash the new size only — `Window::frame` notices the
@@ -430,6 +436,9 @@ where
             WindowEvent::Occluded(occluded) => {
                 win.set_occluded(occluded);
                 if !occluded {
+                    // A window can be moved or re-parented while it is
+                    // hidden, and no `Moved` arrives for one that is.
+                    win.invalidate_system_facts();
                     win.next = FramePresent::Immediate;
                 }
             }

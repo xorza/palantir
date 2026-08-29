@@ -1,6 +1,7 @@
 //! The physical-pixel rectangle the backend works in: scissors, damage
 //! regions and atlas slots, where a fraction of a pixel has no meaning.
 
+use crate::primitives::num::F32Ext;
 use crate::primitives::rect::Rect;
 use glam::UVec2;
 
@@ -86,7 +87,7 @@ impl URect {
         }
         Self::from_min_max(
             UVec2::new(min.x.max(0.0) as u32, min.y.max(0.0) as u32),
-            UVec2::new(max.x.max(0.0).ceil() as u32, max.y.max(0.0).ceil() as u32),
+            UVec2::new(max.x.max(0.0).ceil_px(), max.y.max(0.0).ceil_px()),
         )
     }
 

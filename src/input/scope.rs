@@ -66,10 +66,11 @@ pub(super) struct Scopes {
     /// three want the same instant's rows, so one fold is not just
     /// cheaper but the more honest shape.
     ///
-    /// **A snapshot, not a live view**, which is why [`Self::reader`]
-    /// keeps calling [`live_scopes`] itself: [`Self::close`] lands
-    /// mid-pass and has no cascade to refold this from, so reads after a
-    /// close would go on seeing the withdrawn scope here.
+    /// **Every read of the live set goes through here**, including the
+    /// ones after a [`Self::close`]: that lands mid-pass with no cascade
+    /// to refold from, so it drops the withdrawn row instead. A fold and
+    /// a removal, against a rescan of the whole scope column — through
+    /// two `Vec` scans per row — for every chord an app polls.
     ///
     /// Capacity is retained across passes, like [`Self::path`].
     live: Vec<ScopeRow>,
@@ -111,10 +112,10 @@ pub(super) struct Scopes {
 /// The scope [`Scopes::reader`] last answered for, and for whom.
 ///
 /// An app polls its whole chord table from one record position, so that
-/// scan repeats verbatim once per chord: it reads `parent`, the cascade,
-/// and the two withdrawal columns, none of which move between two polls
-/// at the same position. Holding one entry collapses a table of `n`
-/// chords to one scan — the rest are a `WidgetId` compare.
+/// scan repeats verbatim once per chord: it reads `parent`, the cascade
+/// and [`Scopes::live`], none of which move between two polls at the same
+/// position. Holding one entry collapses a table of `n` chords to one
+/// scan — the rest are a `WidgetId` compare.
 ///
 /// Keyed on `parent` alone, because the two things that *can* invalidate
 /// it both clear the memo outright: [`Scopes::resolve`] rebuilds the pass
@@ -180,6 +181,10 @@ impl Scopes {
     pub(super) fn close(&mut self, owner: WidgetId) {
         if !self.closing.contains(&owner) {
             self.closing.push(owner);
+            // The snapshot follows the withdrawal, so every later read
+            // scans `live` rather than re-filtering the cascade's whole
+            // scope column through both withdrawal columns again.
+            self.live.retain(|row| row.id != owner);
             // A withdrawal lands mid-pass, so reads after it must not see
             // the answer reads before it got.
             self.reader_memo = None;
@@ -242,7 +247,9 @@ impl Scopes {
         {
             return memo.scope;
         }
-        let scope = live_scopes(cascade, &self.closing, &self.closed)
+        let scope = self
+            .live
+            .iter()
             .rfind(|row| row.layer == active && cascade.is_within(parent, row.id))
             .map(|row| row.id)
             .or(self.outermost);

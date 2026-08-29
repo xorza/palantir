@@ -118,16 +118,20 @@ impl Node {
     /// needs (a borrow, an owned value, nothing), and none of them has a
     /// clip default, which is the only thing this adds over `.or()`.
     ///
+    /// Borrowed in and borrowed out, because [`Widget::record`] takes
+    /// `Option<&Background>` at the end of it: owning the answer meant
+    /// cloning the theme's 124 bytes for every container that named no
+    /// chrome of its own, which is most of them.
+    ///
     /// [`Widget::record`]: crate::widgets::widget::Widget::record
-    pub(crate) fn resolve_container_chrome(
+    pub(crate) fn resolve_container_chrome<'a>(
         &mut self,
-        explicit: Option<Background>,
-        theme_bg: Option<&Background>,
+        explicit: Option<&'a Background>,
+        theme_bg: Option<&'a Background>,
         theme_clip: ClipMode,
-    ) -> Option<Background> {
-        let chrome = explicit.or_else(|| theme_bg.cloned());
+    ) -> Option<&'a Background> {
         self.clip.get_or_insert(theme_clip);
-        chrome
+        explicit.or(theme_bg)
     }
 
     /// Paint/layout leaf for custom widget content.

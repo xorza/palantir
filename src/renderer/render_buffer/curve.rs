@@ -21,9 +21,11 @@ pub(crate) const CURVE_KIND_CUBIC: u32 = 0;
 pub(crate) const CURVE_KIND_ARC: u32 = 1;
 /// Straight polyline segment with bisector-clipped joint ends.
 pub(crate) const CURVE_KIND_SEGMENT: u32 = 2;
-/// Joint chrome billboards — the three `LineJoin` looks. Contiguous
-/// values: the shader derives the fragment metric as
-/// `kind - CURVE_KIND_JOIN_ROUND`.
+/// Joint chrome billboards — the three `LineJoin` looks. They sit above
+/// every basis kind, which is the one thing the shader reads off their
+/// numbering: `kind >= KIND_JOIN_ROUND` is how `vs` takes the billboard
+/// path. Which look to paint rides a flag bit the vertex stage sets by
+/// comparing against each kind, so their order among themselves is free.
 pub(crate) const CURVE_KIND_JOIN_ROUND: u32 = 3;
 pub(crate) const CURVE_KIND_JOIN_BEVEL: u32 = 4;
 pub(crate) const CURVE_KIND_JOIN_MITER: u32 = 5;
@@ -77,7 +79,7 @@ pub(crate) struct CurveInstance {
     pub(crate) t0: f32,
     pub(crate) t1: f32,
     pub(crate) width: f32,
-    /// Stroke colour at `t = 0`. Zeroed when `fill_kind != 0`; the
+    /// Stroke colour at `t = 0`. Zeroed for a gradient `fill_kind`; the
     /// shader samples the LUT row instead.
     pub(crate) color0: ColorU8,
     /// Stroke colour at `t = 1` — the shader lerps `color0 → color1`
@@ -85,7 +87,9 @@ pub(crate) struct CurveInstance {
     /// Equal to `color0` for single-colour strokes.
     pub(crate) color1: ColorU8,
     /// Cap kind per end, packed: bits 0..8 = start cap, 8..16 = end
-    /// cap (0 = Butt, 1 = Square, 2 = Round). Only the leading
+    /// cap, each a [`LineCap`](crate::shape::style::LineCap)
+    /// discriminant the curve pipeline substitutes into its shader.
+    /// Only the leading
     /// sub-instance (`t0 ≈ 0`) and trailing sub-instance (`t1 ≈ 1`)
     /// actually extend their geometry; interior sub-instances see
     /// this lane and skip cap extension. Polyline segments carry the
