@@ -6,8 +6,8 @@ use std::sync::OnceLock;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::host::error::HeadlessGpuError;
-use crate::host::headless_gpu::HeadlessGpu;
+use crate::host::error::GpuRequestError;
+use crate::host::gpu_request::RequestedGpu;
 
 const ADAPTER_RETRY_INTERVAL: Duration = Duration::from_millis(25);
 const ADAPTER_RETRY_TIMEOUT: Duration = Duration::from_secs(2);
@@ -24,14 +24,13 @@ impl ProcessGpu {
         let process_lock = lock_gpu_process();
         let started = Instant::now();
         let gpu = loop {
-            // The same preference the benches take, and the one a windowed
-            // host is normally configured with. A test is worth little if it
-            // draws on an adapter no user is looking at: where a machine
+            // The same preference the benches take. A test is worth little
+            // if it draws on an adapter no user is looking at: where a machine
             // offers more than one — a laptop with its integrated GPU exposed,
             // or anywhere a software rasterizer is installed alongside a real
             // driver — `LowPower` picks the other one, and every golden then
             // records what that other one drew.
-            match HeadlessGpu::new(
+            match RequestedGpu::headless(
                 wgpu::PowerPreference::HighPerformance,
                 wgpu::Features::empty(),
             ) {
@@ -40,7 +39,7 @@ impl ProcessGpu {
                 // binary may still be tearing its own down. No backend at all,
                 // an adapter that cannot meet the requirements, or a refused
                 // device will say exactly the same thing two seconds later.
-                Err(HeadlessGpuError::RequestAdapter { .. })
+                Err(GpuRequestError::RequestAdapter { .. })
                     if started.elapsed() < ADAPTER_RETRY_TIMEOUT =>
                 {
                     thread::sleep(ADAPTER_RETRY_INTERVAL);

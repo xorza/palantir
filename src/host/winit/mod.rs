@@ -69,6 +69,7 @@ mod window_set;
 use std::marker::PhantomData;
 use std::time::Instant;
 
+use glam::UVec2;
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
@@ -78,6 +79,7 @@ use crate::app::App;
 use crate::display;
 use crate::host::winit::config::WinitHostConfig;
 use crate::host::winit::error::WinitHostError;
+use crate::host::winit::gpu::SurfaceManager;
 use crate::host::winit::handle::{HostHandle, MainTask, UserEvent};
 use crate::host::winit::runtime::WinitRuntime;
 use crate::host::winit::window::FramePresent;
@@ -372,7 +374,7 @@ where
         let Some(runtime) = self.running() else {
             return;
         };
-        let max_texture_dim = runtime.surfaces.max_texture_dim.get();
+        let max_texture_dim = runtime.surfaces.max_texture_dim;
         // Resolved once for the whole event: the dispatch below names the
         // window by its slot, so a redraw does not look it up again.
         let Some(slot) = runtime.slot_of_id(id) else {
@@ -414,8 +416,10 @@ where
             WindowEvent::Moved(_) => win.invalidate_system_facts(),
             WindowEvent::Resized(new) => {
                 win.invalidate_system_facts();
-                let w = new.width.clamp(1, max_texture_dim);
-                let h = new.height.clamp(1, max_texture_dim);
+                let size = SurfaceManager::clamp_extent(
+                    max_texture_dim,
+                    UVec2::new(new.width, new.height),
+                );
                 // Stash the new size only — `Window::frame` notices the
                 // mismatch against its noted target key and reconfigures the
                 // surface once before acquiring the next swapchain texture.
@@ -427,9 +431,9 @@ where
                 // drains faster than we drain it. Letting `about_to_wait`
                 // coalesce into one `RedrawRequested` per loop tick gives the
                 // smoother feel in practice.
-                if w != win.config.width || h != win.config.height {
-                    win.config.width = w;
-                    win.config.height = h;
+                if size.x != win.config.width || size.y != win.config.height {
+                    win.config.width = size.x;
+                    win.config.height = size.y;
                     win.next = FramePresent::Immediate;
                 }
             }

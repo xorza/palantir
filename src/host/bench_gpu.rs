@@ -10,7 +10,8 @@
 //! contend; a bench wants the discrete GPU and must not block for
 //! minutes behind someone else's lock.
 
-use crate::host::headless_gpu::HeadlessGpu;
+use crate::host::device_requirements::DeviceRequirements;
+use crate::host::gpu_request::RequestedGpu;
 use crate::host::offscreen::{OffscreenHost, OffscreenHostBuilder};
 use glam::UVec2;
 use std::sync::OnceLock;
@@ -52,17 +53,13 @@ pub(crate) struct BenchGpu {
 
 fn build(timing: Timing) -> BenchGpu {
     let timing_features = match timing {
-        Timing::Instrumented => {
-            wgpu::Features::TIMESTAMP_QUERY
-                | wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES
-                | wgpu::Features::PIPELINE_STATISTICS_QUERY
-        }
+        Timing::Instrumented => DeviceRequirements::GPU_TIMING_FEATURES,
         Timing::Bare => wgpu::Features::empty(),
     };
     // Palantir's own needs — the immediates feature and its 16-byte budget —
-    // come from `HeadlessGpu`, so the bench device cannot drift from the one
+    // come from `RequestedGpu`, so the bench device cannot drift from the one
     // the production host builds.
-    let gpu = HeadlessGpu::new(wgpu::PowerPreference::HighPerformance, timing_features)
+    let gpu = RequestedGpu::headless(wgpu::PowerPreference::HighPerformance, timing_features)
         .expect("lease headless bench gpu");
     let timing_features = gpu.device.features() & timing_features;
     let info = gpu.adapter.get_info();

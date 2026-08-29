@@ -8,7 +8,8 @@ use wgpu::{
 
 use crate::host::winit::error::WinitHostError;
 use crate::host::winit::gpu::{
-    REQUIRED_SURFACE_USAGES, build_surface_config, negotiate_present_mode, present_mode, vsync_of,
+    REQUIRED_SURFACE_USAGES, SurfaceManager, build_surface_config, negotiate_present_mode,
+    present_mode, vsync_of,
 };
 use crate::window::vsync::Vsync;
 
@@ -158,13 +159,12 @@ fn compatible_caps() -> SurfaceCapabilities {
 #[test]
 fn surface_config_enforces_renderer_contract_and_clamps_dimensions() {
     let max_texture_dim = NonZeroU32::new(4096).unwrap();
-    let config = build_surface_config(
-        &compatible_caps(),
-        UVec2::new(0, u32::MAX),
-        max_texture_dim,
-        PresentMode::Mailbox,
-    )
-    .unwrap();
+    // The extent is clamped before a config is built from it, so a zero
+    // side becomes one texel and an over-large one the device's ceiling.
+    let size = SurfaceManager::clamp_extent(max_texture_dim, UVec2::new(0, u32::MAX));
+    assert_eq!(size, UVec2::new(1, 4096));
+
+    let config = build_surface_config(&compatible_caps(), size, PresentMode::Mailbox).unwrap();
 
     assert_eq!(config.usage, REQUIRED_SURFACE_USAGES);
     assert_eq!(config.format, TextureFormat::Bgra8UnormSrgb);
@@ -178,29 +178,17 @@ fn surface_config_enforces_renderer_contract_and_clamps_dimensions() {
 
 #[test]
 fn surface_config_rejects_each_missing_hard_capability() {
-    let max_texture_dim = NonZeroU32::new(4096).unwrap();
-
     let mut incompatible = compatible_caps();
     incompatible.formats.clear();
     assert!(matches!(
-        build_surface_config(
-            &incompatible,
-            UVec2::splat(100),
-            max_texture_dim,
-            PresentMode::Fifo,
-        ),
+        build_surface_config(&incompatible, UVec2::splat(100), PresentMode::Fifo,),
         Err(WinitHostError::IncompatibleSurface)
     ));
 
     let mut no_alpha_mode = compatible_caps();
     no_alpha_mode.alpha_modes.clear();
     assert!(matches!(
-        build_surface_config(
-            &no_alpha_mode,
-            UVec2::splat(100),
-            max_texture_dim,
-            PresentMode::Fifo,
-        ),
+        build_surface_config(&no_alpha_mode, UVec2::splat(100), PresentMode::Fifo,),
         Err(WinitHostError::IncompatibleSurface)
     ));
 
@@ -211,12 +199,7 @@ fn surface_config_rejects_each_missing_hard_capability() {
         color_spaces: SurfaceColorSpaces::SRGB,
     }];
     assert!(matches!(
-        build_surface_config(
-            &no_srgb,
-            UVec2::splat(100),
-            max_texture_dim,
-            PresentMode::Fifo,
-        ),
+        build_surface_config(&no_srgb, UVec2::splat(100), PresentMode::Fifo,),
         Err(WinitHostError::MissingSrgbSurface)
     ));
 
@@ -226,7 +209,6 @@ fn surface_config_rejects_each_missing_hard_capability() {
         build_surface_config(
             &no_copy,
             UVec2::splat(100),
-            max_texture_dim,
             PresentMode::Fifo,
         ),
         Err(WinitHostError::MissingSurfaceUsages {

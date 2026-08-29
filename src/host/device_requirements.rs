@@ -31,6 +31,18 @@ impl DeviceRequirements {
     /// uniform-struct rounding.
     pub const IMMEDIATE_SIZE: u32 = 16;
 
+    /// The three features `collect_gpu_stats` asks for, as the one set they
+    /// mean something as: instrument the GPU timeline.
+    ///
+    /// Each degrades on its own — [`Self::negotiate`] intersects them with
+    /// what the adapter advertises, and `WgpuBackend::new` tests each bit to
+    /// decide how much attribution it can offer. What is shared is the
+    /// *asking*, and every caller that asks spells the same three or the
+    /// backend reads a bit nobody requested.
+    pub const GPU_TIMING_FEATURES: wgpu::Features = wgpu::Features::TIMESTAMP_QUERY
+        .union(wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES)
+        .union(wgpu::Features::PIPELINE_STATISTICS_QUERY);
+
     /// What to request from `adapter`, given the `optional` features the
     /// caller would take if they happen to be available.
     ///
@@ -45,6 +57,32 @@ impl DeviceRequirements {
         Self::against(adapter.features(), adapter.limits(), optional)
     }
 
+    /// The two conditions Palantir cannot draw without: its non-negotiable
+    /// features, and immediate-region bytes for the text pipeline.
+    ///
+    /// Both entry points answer it — [`Self::against`] before folding the
+    /// rest of a request around it, [`Self::met_by`] on a device where the
+    /// request has already happened. Written twice, the immediate-size floor
+    /// was named by a string literal on one side and by
+    /// `check_limits_with_fail_fn` on the other, so the same failure reported
+    /// under two names depending on which door it came through.
+    fn check(available: wgpu::Features, limits: &wgpu::Limits) -> Result<(), UnmetRequirements> {
+        if !available.contains(Self::FEATURES) {
+            return Err(UnmetRequirements::Features {
+                required: Self::FEATURES,
+                available,
+            });
+        }
+        if limits.max_immediate_size < Self::IMMEDIATE_SIZE {
+            return Err(UnmetRequirements::Limit {
+                name: IMMEDIATE_SIZE_LIMIT,
+                required: u64::from(Self::IMMEDIATE_SIZE),
+                available: u64::from(limits.max_immediate_size),
+            });
+        }
+        Ok(())
+    }
+
     /// The negotiation itself, against a capability pair rather than an
     /// adapter — which is what makes it answerable without a GPU present.
     pub(crate) fn against(
@@ -52,12 +90,7 @@ impl DeviceRequirements {
         ceiling: wgpu::Limits,
         optional: wgpu::Features,
     ) -> Result<Self, UnmetRequirements> {
-        if !available.contains(Self::FEATURES) {
-            return Err(UnmetRequirements::Features {
-                required: Self::FEATURES,
-                available,
-            });
-        }
+        Self::check(available, &ceiling)?;
 
         let mut limits = wgpu::Limits::default().using_resolution(ceiling.clone());
         limits.max_immediate_size = limits.max_immediate_size.max(Self::IMMEDIATE_SIZE);
@@ -80,11 +113,6 @@ impl DeviceRequirements {
         })
     }
 
-    /// Whether a device already in hand can run Palantir.
-    ///
-    /// For hosts built on a caller-supplied device, where the request has
-    /// already happened and the only question left is whether it asked for
-    /// enough.
     /// The device's `max_texture_dimension_2d`, which every host has to
     /// read and hand on: it is the ceiling on a registered image, on a
     /// `GpuView` target, and on the glyph and gradient atlases.
@@ -101,25 +129,21 @@ impl DeviceRequirements {
             .expect("device texture dimension limit is zero")
     }
 
+    /// Whether a device already in hand can run Palantir.
+    ///
+    /// For hosts built on a caller-supplied device, where the request has
+    /// already happened and the only question left is whether it asked for
+    /// enough.
     pub fn met_by(device: &wgpu::Device) -> Result<(), UnmetRequirements> {
-        let available = device.features();
-        if !available.contains(Self::FEATURES) {
-            return Err(UnmetRequirements::Features {
-                required: Self::FEATURES,
-                available,
-            });
-        }
-        let immediate = device.limits().max_immediate_size;
-        if immediate < Self::IMMEDIATE_SIZE {
-            return Err(UnmetRequirements::Limit {
-                name: "max_immediate_size",
-                required: u64::from(Self::IMMEDIATE_SIZE),
-                available: u64::from(immediate),
-            });
-        }
-        Ok(())
+        Self::check(device.features(), &device.limits())
     }
 }
+
+/// wgpu's own name for the limit, as `check_limits_with_fail_fn` reports it.
+/// wgpu publishes no constant for it, so this one spelling is what keeps a
+/// message from [`DeviceRequirements::check`] reading the same as one from
+/// the whole-`Limits` sweep beside it.
+const IMMEDIATE_SIZE_LIMIT: &str = "max_immediate_size";
 
 #[cfg(test)]
 mod tests {
