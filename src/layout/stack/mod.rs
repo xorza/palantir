@@ -8,6 +8,7 @@
 
 use crate::layout::axis::Axis;
 use crate::layout::axis_placement::AxisPlacement;
+use crate::layout::depth_scratch::DepthScratch;
 use crate::layout::driver::LayoutDriver;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::fill_item::FillItem;
@@ -20,23 +21,9 @@ use crate::primitives::{rect::Rect, size::Size};
 use crate::scene::tree::Tree;
 use crate::scene::tree::node_id::NodeId;
 
-/// Flat depth-shared buffer for the Fill distribution. Layout is the
-/// same as `WrapScratch.pool`: each invocation pushes its entries,
-/// uses the resulting slice, truncates on exit so nested stacks
-/// reuse the tail capacity. Allocation-free in steady state.
-#[derive(Debug, Default)]
-pub(crate) struct StackScratch {
-    pool: Vec<FillItem<NodeId>>,
-}
-
-impl StackScratch {
-    /// Entries this depth pushed, as a mutable slice. `start` is the
-    /// pool length the caller captured on entry.
-    #[inline]
-    fn from(&mut self, start: usize) -> &mut [FillItem<NodeId>] {
-        &mut self.pool[start..]
-    }
-}
+/// The Fill distribution's depth-shared buffer: one entry per `Fill`
+/// child of the stack being laid out.
+pub(super) type StackScratch = DepthScratch<FillItem<NodeId>>;
 
 #[derive(Debug)]
 struct StackPlan {
@@ -56,7 +43,7 @@ fn build_stack_plan(
 ) -> StackPlan {
     let tree = pass.tree;
     let layouts = tree.records.layout();
-    let fill_start = pass.stack_scratch_mut().pool.len();
+    let fill_start = pass.stack_scratch_mut().mark();
     let mut sum_non_fill_main = 0.0f32;
     let mut count = 0usize;
     for c in tree.active_children(node) {
@@ -67,11 +54,10 @@ fn build_stack_plan(
             // `measure` passes the child's `intrinsic(MinContent)` (its
             // largest non-shrinkable descendant), `arrange` its measured
             // `desired.main`. Arrange's is never the lower of the two,
-            // since `AxisCtx::resolve` floors `desired` by `intrinsic_min`.
+            // since `AxisSlot::resolve` floors `desired` by `intrinsic_min`.
             let floor = fill_floor(pass, c);
             let cap = axis.main(tree.bounds(c).max_size) + axis.spacing(child_layout.margin);
             pass.stack_scratch_mut()
-                .pool
                 .push(FillItem::new(c, weight, floor, cap));
         } else {
             sum_non_fill_main += non_fill_main(pass, c);
@@ -162,21 +148,21 @@ impl LayoutDriver for Stack {
         // sees, otherwise wrap text in Fill children shapes against the wrong
         // width. It does, because the Stack's outer main size is a
         // deterministic function of (its own `Sizing` + parent-supplied
-        // `available`) via `AxisCtx::resolve`, and the parent passes the
+        // `available`) via `AxisSlot::resolve`, and the parent passes the
         // same `available` to `measure` that determines its arranged outer
         // size. Any future driver that clamps a child's slot
         // *between* its own measure and arrange would break this.
         if main_finite {
             let leftover = (main_avail - sum_non_fill_main - total_gap).max(0.0);
-            FillItem::distribute(pass.stack_scratch_mut().from(fill_start), leftover);
+            FillItem::distribute(pass.stack_scratch_mut().since(fill_start), leftover);
         }
 
         // Snapshot the pool end because recursive measurement may append entries
         // for nested stacks.
-        let fill_end = pass.stack_scratch_mut().pool.len();
+        let fill_end = pass.stack_scratch_mut().mark();
         let mut fill_main = 0.0f32;
         for i in fill_start..fill_end {
-            let entry = pass.stack_scratch_mut().pool[i];
+            let entry = pass.stack_scratch_mut().at(i);
             let fill_avail = if main_finite {
                 entry.size
             } else {
@@ -186,7 +172,7 @@ impl LayoutDriver for Stack {
             fill_main += axis.main(desired);
             max_cross = max_cross.max(axis.cross(desired));
         }
-        pass.stack_scratch_mut().pool.truncate(fill_start);
+        pass.stack_scratch_mut().truncate(fill_start);
 
         axis.compose_size(sum_non_fill_main + fill_main + total_gap, max_cross)
     }
@@ -209,7 +195,7 @@ impl LayoutDriver for Stack {
         // Shares the count / weight / gap accounting with `measure`; the
         // closure supplies the per-phase main source — here the cached
         // `desired.main` (Fill children's content size, since the
-        // `AxisCtx::resolve` change pins Fill at content).
+        // `AxisSlot::resolve` change pins Fill at content).
         let StackPlan {
             sum_non_fill_main,
             count,
@@ -228,13 +214,16 @@ impl LayoutDriver for Stack {
         let main_total = axis.main(inner.size);
         let cross = axis.cross(inner.size);
         let leftover_for_fill = (main_total - sum_non_fill_main - total_gap).max(0.0);
-        FillItem::distribute(pass.stack_scratch_mut().from(fill_start), leftover_for_fill);
+        FillItem::distribute(
+            pass.stack_scratch_mut().since(fill_start),
+            leftover_for_fill,
+        );
         // The sum we report to `justify` is the post-redistribute total —
         // i.e., what the children will *actually* occupy after arrange.
         let sum_main_arranged = sum_non_fill_main
             + pass
                 .stack_scratch_mut()
-                .from(fill_start)
+                .since(fill_start)
                 .iter()
                 .map(|entry| entry.size)
                 .sum::<f32>();
@@ -268,7 +257,7 @@ impl LayoutDriver for Stack {
             first = false;
 
             let main_size = if axis.main_sizing(s.size).fill_weight().is_some() {
-                let alloc = pass.stack_scratch_mut().pool[fill_cursor].size;
+                let alloc = pass.stack_scratch_mut().at(fill_cursor).size;
                 fill_cursor += 1;
                 alloc
             } else {
@@ -283,7 +272,7 @@ impl LayoutDriver for Stack {
             pass.arrange(c, child_rect);
             cursor += main_size;
         }
-        pass.stack_scratch_mut().pool.truncate(fill_start);
+        pass.stack_scratch_mut().truncate(fill_start);
     }
 
     /// Intrinsic size of a stack on `query_axis`. When the query

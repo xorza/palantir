@@ -73,7 +73,7 @@ pub(super) trait LayoutDriver {
     /// clamping, which [`LayoutPass::measure`] folds in.
     ///
     /// Called exactly once per measure. A `Fill` axis that grows past
-    /// `inner_avail` needs no re-measure; `AxisCtx::resolve_node` carries
+    /// `inner_avail` needs no re-measure; `AxisSlot::resolve_node` carries
     /// the reason.
     fn measure(
         pass: &mut LayoutPass<'_>,

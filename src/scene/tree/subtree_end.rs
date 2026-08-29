@@ -45,6 +45,20 @@ impl SubtreeEnd {
         self.0 & SUBTREE_END_MASK
     }
 
+    /// Whether the node at pre-order index `i` has any children: its
+    /// subtree ends at the node after it exactly when it has none.
+    ///
+    /// Named here, on the entry the answer comes off, because the two
+    /// walks that ask hold different things — the cascade already has
+    /// this entry loaded for its own skip cursor, the damage walk has a
+    /// `&Tree` — and both spelled the comparison themselves.
+    /// [`Tree::has_children`](crate::scene::tree::Tree::has_children) is
+    /// the second entry point onto this one body.
+    #[inline]
+    pub(crate) fn has_children(self, i: usize) -> bool {
+        self.end() as usize != i + 1
+    }
+
     /// `true` iff the subtree rooted here (inclusive) contains a
     /// `LayoutMode::Grid` node.
     #[inline]

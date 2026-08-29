@@ -103,7 +103,7 @@ impl Default for EncodedCache {
             // one past the ring, and every ticket fires a frame early
             // and re-files. Correct either way, since an early ticket is
             // just a re-file, but it doubles the drain for nothing.
-            expiry: ExpiryWheel::with_horizon(ENCODED_CACHE_KEEP_FRAMES + 2),
+            expiry: ExpiryWheel::with_keep(ENCODED_CACHE_KEEP_FRAMES),
             counters: EncodedCounters::default(),
         }
     }
@@ -150,7 +150,7 @@ impl EncodedCache {
             // A hit deliberately files no ticket — that is what keeps a
             // steadily-drawn run from filing one per frame — so the real
             // `last_use` is re-read here and a live row is re-filed.
-            let dies_at = slot.get().last_use + ENCODED_CACHE_KEEP_FRAMES + 1;
+            let dies_at = dies_at(slot.get().last_use);
             if dies_at > current_frame {
                 probe.refiles.bump();
                 return Some(dies_at);
@@ -220,7 +220,7 @@ impl EncodedCache {
                     span: arena.store(pending),
                     last_use: frame,
                 });
-                expiry.schedule(key, frame + ENCODED_CACHE_KEEP_FRAMES + 1);
+                expiry.schedule(key, dies_at(frame));
             }
         }
         pending.clear();
@@ -264,6 +264,14 @@ impl EncodedCache {
 /// would cut the population to `runs × 5` regardless of this number.
 /// This is the cheap lever, not a substitute for it.
 pub(super) const ENCODED_CACHE_KEEP_FRAMES: u64 = 30;
+
+/// The frame a row last used on `last_use` is first dead — what the wheel
+/// files under. One expression, read by the filing in
+/// [`EncodedCache::settle`] and by the re-file in [`EncodedCache::sweep`],
+/// so the two cannot name different frames.
+const fn dies_at(last_use: u64) -> u64 {
+    last_use + ENCODED_CACHE_KEEP_FRAMES + 1
+}
 
 /// A buffer must outlive the encoded entry that would come asking for
 /// it. Stated as an assertion rather than a comment because the two

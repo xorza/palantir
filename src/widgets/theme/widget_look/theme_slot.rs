@@ -44,16 +44,27 @@ pub(crate) trait ThemeSlot {
     }
 }
 
-/// What a [`ThemeSlot`] contributes to the node rather than to the paint:
+/// What a themed widget contributes to the node rather than to the paint:
 /// the spacing a widget takes when its builder set none, and the spec the
 /// state transitions run under.
 ///
-/// Declared once so [`LookPlan`] carries it whole. Named fields rather
-/// than a constructor because `padding` and `margin` are the same type and
-/// adjacent — a positional one is a swap that compiles.
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct SlotDefaults {
-    pub(crate) padding: Spacing,
-    pub(crate) margin: Spacing,
-    pub(crate) anim: Option<AnimSpec>,
+/// **Held by every themed bundle, not rebuilt from loose fields.** The
+/// four bundles that have one — button, text edit, menu item, toggle —
+/// carry this whole and `#[serde(flatten)]` it, so the triple is declared
+/// once, documented once, and reaches the record pass without a copy per
+/// field. Named fields rather than a constructor because `padding` and
+/// `margin` are the same type and adjacent — a positional one is a swap
+/// that compiles.
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+pub struct SlotDefaults {
+    /// Padding the widget takes when its builder set none. Applied at
+    /// `show()` time; explicit zero spacing overrides it.
+    pub padding: Spacing,
+    /// Margin the widget takes when its builder set none.
+    pub margin: Spacing,
+    /// Spec the state transitions run under. `None` by default —
+    /// animation is opt-in. Round-trips through serde, so a theme file
+    /// configures motion.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anim: Option<AnimSpec>,
 }

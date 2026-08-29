@@ -6,6 +6,7 @@
 //! widget does not own, and none of them needs `EditState`.
 
 use std::borrow::Cow;
+use unicode_segmentation::UnicodeSegmentation;
 
 /// Strip line-break chars from an inbound string so the single-line
 /// TextEdit's buffer never contains `\n` / `\r`. Hit by both the
@@ -78,126 +79,111 @@ pub(super) fn prev_grapheme_boundary(text: &str, offset: usize) -> usize {
 const CHUNK_IS_WHOLE: &str =
     "the cursor holds the whole string as one chunk, so it cannot need more context";
 
-/// Coarse char classification used by word-nav and double-click word
-/// selection. Underscore is bound to `Word` so identifiers in code-like
-/// text don't fragment. Codepoint-granular — fine for Latin / digit /
-/// mixed text; a Unicode word-break iterator would do better on CJK
-/// and friends but isn't wired yet.
+/// What one UAX #29 word-bound segment is, as far as caret motion and
+/// double-click selection care.
+///
+/// Classified per *segment* rather than per codepoint, which is what
+/// gives `3.14`, `don't` and `foo_bar` one word each and splits a CJK
+/// run at its real word boundaries — none of which a
+/// `char::is_alphanumeric` test can see.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum CharKind {
+enum SegmentKind {
     Whitespace,
     Word,
     Other,
 }
 
-fn char_kind(c: char) -> CharKind {
-    if c.is_whitespace() {
-        CharKind::Whitespace
-    } else if c.is_alphanumeric() || c == '_' {
-        CharKind::Word
-    } else {
-        CharKind::Other
+impl SegmentKind {
+    /// A word-bound segment is homogeneous, so its first character
+    /// settles whitespace. A word segment may still carry a `'` or a `.`
+    /// inside it, so the word test asks whether *any* character is one.
+    fn of(seg: &str) -> Self {
+        match seg.chars().next() {
+            Some(c) if c.is_whitespace() => Self::Whitespace,
+            Some(_) if seg.chars().any(|c| c.is_alphanumeric() || c == '_') => Self::Word,
+            _ => Self::Other,
+        }
     }
 }
 
-/// Forward word boundary: skip whitespace, then skip the run of
-/// same-`CharKind` chars. Returns `text.len()` if `from` is already at
-/// the end. The result is the byte index *just past* the end of the
-/// consumed word run — same convention as `Ctrl+Right` in most editors.
+/// Walk `segments` past any whitespace, then across the run of one kind,
+/// and answer `edge` of the last segment consumed. `None` when there was
+/// nothing but whitespace left.
+///
+/// One body for both directions: [`next_word_boundary`] feeds forward
+/// segments and takes each one's far end, [`prev_word_boundary`] feeds
+/// them in reverse and takes each one's start.
+///
+/// A punctuation run crosses as one. UAX #29 gives each mark a segment of
+/// its own, which is right for a word iterator and wrong for a caret:
+/// `Ctrl+Right` over `-->` should cross the arrow, not one dash of it.
+fn scan_run<'a>(
+    segments: impl Iterator<Item = (usize, &'a str)>,
+    edge: impl Fn(usize, &'a str) -> usize,
+) -> Option<usize> {
+    let mut segments =
+        segments.skip_while(|(_, seg)| SegmentKind::of(seg) == SegmentKind::Whitespace);
+    let (i, seg) = segments.next()?;
+    let mut pos = edge(i, seg);
+    if SegmentKind::of(seg) == SegmentKind::Other {
+        for (i, seg) in segments {
+            if SegmentKind::of(seg) != SegmentKind::Other {
+                break;
+            }
+            pos = edge(i, seg);
+        }
+    }
+    Some(pos)
+}
+
+/// Forward word boundary: skip whitespace, then cross one run. Returns
+/// `text.len()` if only whitespace remains. The result is the byte index
+/// *just past* the run — the `Ctrl+Right` convention.
 pub(super) fn next_word_boundary(text: &str, from: usize) -> usize {
-    let mut chars = text[from..].char_indices();
-    let mut pos;
-    let target_kind = loop {
-        let Some((i, c)) = chars.next() else {
-            return text.len();
-        };
-        if char_kind(c) != CharKind::Whitespace {
-            pos = from + i + c.len_utf8();
-            break char_kind(c);
-        }
-    };
-    for (i, c) in chars {
-        if char_kind(c) == target_kind {
-            pos = from + i + c.len_utf8();
-        } else {
-            break;
-        }
-    }
-    pos
+    scan_run(text[from..].split_word_bound_indices(), |i, seg| {
+        from + i + seg.len()
+    })
+    .unwrap_or(text.len())
 }
 
-/// Mirror of [`next_word_boundary`]. Walks backward from `from` over
-/// whitespace and then over the run of same-`CharKind` chars; returns
-/// the byte index of the first consumed char (start of that run).
+/// Mirror of [`next_word_boundary`]: the byte index the run starts at.
 pub(super) fn prev_word_boundary(text: &str, from: usize) -> usize {
-    let mut rev = text[..from].char_indices().rev();
-    let mut pos;
-    let target_kind = loop {
-        let Some((i, c)) = rev.next() else {
-            return 0;
-        };
-        if char_kind(c) != CharKind::Whitespace {
-            pos = i;
-            break char_kind(c);
-        }
-    };
-    for (i, c) in rev {
-        if char_kind(c) == target_kind {
-            pos = i;
-        } else {
-            break;
-        }
-    }
-    pos
+    scan_run(text[..from].split_word_bound_indices().rev(), |i, _| i).unwrap_or(0)
 }
 
-/// Word range surrounding `byte`. Returns the smallest `[start, end)`
-/// such that every char in it shares one `CharKind` and `byte` lies on
-/// or just past a boundary inside the run. Whitespace runs collapse to
-/// `byte..byte` so a double-click on a space doesn't select the gap.
-/// Used by double-click word selection.
+/// The run surrounding `byte`, for double-click word selection.
+///
+/// Whitespace collapses to `byte..byte`, so a double-click on a gap
+/// selects nothing. A caret sitting on a run's trailing edge selects the
+/// run behind it, which is what makes a double-click at the end of the
+/// last word still take that word.
 pub(super) fn word_range_at(text: &str, byte: usize) -> std::ops::Range<usize> {
-    if text.is_empty() {
-        return 0..0;
-    }
     let byte = byte.min(text.len());
-    // Pick the char that "anchors" this position: the one at `byte`
-    // (forward) if it's word/other, otherwise the char before `byte`
-    // (so a trailing-edge caret on the last char of a word still
-    // selects that word).
-    let forward_char = text[byte..].chars().next();
-    let backward_char = text[..byte].chars().next_back();
-    let anchor_kind = match (forward_char.map(char_kind), backward_char.map(char_kind)) {
-        (Some(CharKind::Whitespace) | None, Some(k)) if k != CharKind::Whitespace => k,
-        (Some(k), _) if k != CharKind::Whitespace => k,
-        _ => return byte..byte,
-    };
-    // Walk left while same kind. When the anchor is the *backward*
-    // char (forward char is whitespace / EOT), step `start` back over
-    // it first — that char ends at `byte`, so it starts at
-    // `byte - c.len_utf8()`. Otherwise the forward char is the anchor
-    // and `start` already points at its start.
-    let mut start = byte;
-    if !forward_char.is_some_and(|c| char_kind(c) == anchor_kind)
-        && let Some(c) = backward_char
-    {
-        start = byte - c.len_utf8();
-    }
-    for (i, c) in text[..start].char_indices().rev() {
-        if char_kind(c) == anchor_kind {
-            start = i;
-        } else {
+    let mut prev: Option<std::ops::Range<usize>> = None;
+    let mut segments = text.split_word_bound_indices().peekable();
+    while let Some((start, seg)) = segments.next() {
+        let kind = SegmentKind::of(seg);
+        let mut end = start + seg.len();
+        // Punctuation selects as one run — see `scan_run`.
+        if kind == SegmentKind::Other {
+            while segments
+                .peek()
+                .is_some_and(|(_, next)| SegmentKind::of(next) == SegmentKind::Other)
+            {
+                let (i, next) = segments.next().expect("peeked");
+                end = i + next.len();
+            }
+        }
+        if byte < end {
+            if kind != SegmentKind::Whitespace {
+                return start..end;
+            }
             break;
         }
+        prev = (kind != SegmentKind::Whitespace).then_some(start..end);
     }
-    // Walk right while same kind.
-    let mut end = byte;
-    for (i, c) in text[end..].char_indices() {
-        if char_kind(c) == anchor_kind {
-            end = byte + i + c.len_utf8();
-        } else {
-            break;
-        }
+    match prev {
+        Some(range) if range.end == byte => range,
+        _ => byte..byte,
     }
-    start..end
 }

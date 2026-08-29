@@ -83,6 +83,17 @@ pub(crate) struct PaintArena {
 }
 
 impl PaintArena {
+    /// The rows node `i` painted.
+    ///
+    /// The one place a node span is turned into its slice. On the arena
+    /// rather than on the damage walk that reads it most, because the
+    /// walk mutates its own fields while it holds the slice, and a helper
+    /// taking `&self` there would borrow the whole walk.
+    #[inline]
+    pub(crate) fn rows_of(&self, i: usize) -> &[Paint] {
+        &self.rows[self.node_spans[i].range()]
+    }
+
     /// Reset both columns for a new frame. `n_nodes` resizes `node_spans`;
     /// every retained slot is overwritten by
     /// [`compute_paint_rect`](super::paint_rect::compute_paint_rect).

@@ -7,7 +7,7 @@
 //! **Checked in release**, at one strictness for every bound the crate
 //! takes — a node's, a grid track's, a gap's. The pass math downstream
 //! does not survive a bad one quietly: an inverted or NaN pair reaches
-//! `f32::clamp` in `AxisCtx::resolve` and `AxisPlacement::arrange`, which
+//! `f32::clamp` in `AxisSlot::resolve` and `AxisPlacement::arrange`, which
 //! asserts the same ordering unconditionally and reports it in std's
 //! words, several passes from the setter that took the value. The cost is
 //! a handful of compares in a builder setter the caller reached for

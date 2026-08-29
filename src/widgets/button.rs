@@ -111,13 +111,17 @@ mod tests {
     use crate::scene::node::configure::Configure;
     use crate::widgets::button::Button;
     use crate::widgets::theme::button::ButtonTheme;
+    use crate::widgets::theme::widget_look::theme_slot::SlotDefaults;
     use glam::UVec2;
 
     #[test]
     fn explicit_zero_spacing_overrides_theme_spacing() {
         let mut theme = ButtonTheme {
-            padding: Spacing::all(8.0),
-            margin: Spacing::all(4.0),
+            defaults: SlotDefaults {
+                padding: Spacing::all(8.0),
+                margin: Spacing::all(4.0),
+                ..ButtonTheme::default().defaults
+            },
             ..ButtonTheme::default()
         };
         theme.looks.normal.background = Background::NONE;

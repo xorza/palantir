@@ -14,7 +14,7 @@
 //! and patches the swapped neighbour's index in O(1) using the
 //! parallel `owners` vec.
 
-use crate::common::typed_stores::{TypedStore, TypedStores};
+use crate::common::typed_stores::{Drained, TypedStore, TypedStores};
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::widget_id::WidgetIdMap;
 use rustc_hash::FxHashSet;
@@ -30,7 +30,9 @@ impl StateMap {
         T: 'static,
         F: FnOnce() -> T,
     {
-        self.typed_mut::<T>().get_or_insert_with(id, init)
+        self.stores
+            .get_or_default::<Store<T>>()
+            .get_or_insert_with(id, init)
     }
 
     pub(super) fn try_get<T: 'static>(&self, id: WidgetId) -> Option<&T> {
@@ -49,11 +51,7 @@ impl StateMap {
     /// `FrameCycle::finalize_frame`, which shares that one guard with the
     /// other removal-driven sweep.
     pub(super) fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>) {
-        self.stores.sweep_removed(removed);
-    }
-
-    fn typed_mut<T: 'static>(&mut self) -> &mut Store<T> {
-        self.stores.get_or_default::<Store<T>>()
+        self.stores.sweep_removed(removed, Drained::Keep);
     }
 }
 
@@ -89,7 +87,11 @@ impl<T> Store<T> {
         };
         &mut self.data[idx]
     }
+}
 
+impl<T: 'static> TypedStore for Store<T> {
+    /// `swap_remove` the row, then patch the swapped neighbour's index
+    /// in O(1) off the parallel `owners` vec.
     fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>) {
         for id in removed {
             let Some(idx) = self.map.remove(id) else {
@@ -104,12 +106,6 @@ impl<T> Store<T> {
                 self.map.insert(moved, idx as u32);
             }
         }
-    }
-}
-
-impl<T: 'static> TypedStore for Store<T> {
-    fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>) {
-        Store::<T>::sweep_removed(self, removed);
     }
 
     /// Only read by the drop-drained sweep, which state does not use —

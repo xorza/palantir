@@ -8,17 +8,13 @@
 //! `bench` and asserts steady-state frames allocate nothing, so it would
 //! end up measuring this probe instead of the frame.
 //!
-//! ## The one field still hand-gated
-//!
-//! [`PhaseTimings`] is `cfg(feature = "bench")` — narrower than
-//! either shared cell, because benches are its only reader and a test
-//! build must not pay the clock reads. It also can't ride a cell: the
-//! mutator's closure would have to call [`PhaseSpan::elapsed_ns`], which
-//! doesn't exist without the feature, and a closure body typechecks
-//! whether or not it runs. So it keeps the per-write `#[cfg]` the rest
-//! of this file no longer needs.
+//! [`PhaseTimings`] rides a [`BenchOnly`] cell like everything else
+//! here. What lets it is [`PhaseSpan::elapsed_ns`] answering zero
+//! without the `bench` feature rather than not existing: the clock read
+//! is what a build must not pay for, and that is gone either way, so the
+//! mutator needs no `#[cfg]` of its own.
 
-use crate::common::counters::TestOnly;
+use crate::common::counters::{BenchOnly, TestOnly, counter_snapshot};
 use crate::primitives::widget_id::WidgetId;
 
 /// CPU nanoseconds one `LayoutEngine::run` spent in each half of the
@@ -35,13 +31,13 @@ use crate::primitives::widget_id::WidgetId;
 /// `desired`) is charged to neither: it is one `arrange_size` call per
 /// root, independent of tree size.
 ///
-/// `bench`-gated rather than test-gated: the `caches` bench is the
-/// only consumer, and the four clock reads per root per frame are no
-/// longer negligible against the pass they measure — arrange replay took
-/// the cached layout pass to ~4 µs, so the instrumentation would be a low
-/// single-digit percentage of it, landing inside the frame but outside
-/// the spans it reports.
-#[cfg(feature = "bench")]
+/// The `caches` bench is the only consumer, and the four clock reads per
+/// root per frame are no longer negligible against the pass they measure
+/// — arrange replay took the cached layout pass to ~4 µs, so the
+/// instrumentation would be a low single-digit percentage of it, landing
+/// inside the frame but outside the spans it reports. So the reads
+/// themselves are `bench`-gated, in [`PhaseSpan`], and what a test build
+/// accumulates here is zeros.
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct PhaseTimings {
     pub(crate) measure_ns: u64,
@@ -70,26 +66,43 @@ impl PhaseSpan {
         }
     }
 
-    #[cfg(feature = "bench")]
+    /// Nanoseconds since the span opened, and zero without `bench` —
+    /// where there is no reading to subtract from.
+    ///
+    /// Answering rather than not existing is what lets
+    /// [`LayoutCounters`]'s timing mutators be plain cell edits: a
+    /// closure body typechecks whether or not it runs.
     #[inline]
     fn elapsed_ns(self) -> u64 {
-        self.at.elapsed().as_nanos() as u64
+        #[cfg(feature = "bench")]
+        {
+            self.at.elapsed().as_nanos() as u64
+        }
+        #[cfg(not(feature = "bench"))]
+        {
+            0
+        }
     }
 }
 
-/// Per-`run` tally of [`LayoutEngine::replay_arranged`] outcomes.
-///
-/// Assembled on read from the two counters below rather than stored:
-/// tests compare it as a literal, so it stays a plain-`u32` value type.
-///
-/// [`LayoutEngine::replay_arranged`]: crate::layout::engine::LayoutEngine
-#[cfg(test)]
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct ReplayCounts {
+counter_snapshot! {
+    cells TestOnly, reads cfg(test);
+
+    /// Which branch [`LayoutEngine::replay_arranged`] took. The translate
+    /// branch in particular is easy to write a fixture that silently
+    /// never reaches.
+    ///
+    /// [`LayoutEngine::replay_arranged`]: crate::layout::engine::LayoutEngine
+    pub(crate) struct ReplayCounters;
+
+    /// One reading of a [`ReplayCounters`]. Tests compare it as a
+    /// literal.
+    pub(crate) struct ReplayCounts;
+
     /// Slot unchanged — the subtree's rects were copied verbatim.
-    pub(crate) copied: u32,
+    copied: u32,
     /// Slot moved without resizing — rects were copied and shifted.
-    pub(crate) translated: u32,
+    translated: u32,
 }
 
 /// What the layout pass did this `run`, for tests and benches to assert
@@ -107,14 +120,9 @@ pub(crate) struct LayoutCounters {
     /// test that asserts only "warm rects equal cold rects" passes
     /// vacuously if the lookup never hit, so tests assert *where* it hit.
     cache_hits: TestOnly<Vec<WidgetId>>,
-    /// Which branch `replay_arranged` took. The translate branch in
-    /// particular is easy to write a fixture that silently never reaches.
-    copied: TestOnly<u32>,
-    translated: TestOnly<u32>,
-    /// Measure / arrange wall time this run. See the module doc for why
-    /// this one keeps its own gate.
-    #[cfg(feature = "bench")]
-    phase_timings: PhaseTimings,
+    replays: ReplayCounters,
+    /// Measure / arrange wall time this run.
+    phase_timings: BenchOnly<PhaseTimings>,
 }
 
 impl LayoutCounters {
@@ -124,22 +132,17 @@ impl LayoutCounters {
     pub(crate) fn begin_pass(&mut self) {
         self.intrinsic_computes.reset();
         self.cache_hits.clear();
-        self.copied.reset();
-        self.translated.reset();
-        #[cfg(feature = "bench")]
-        {
-            self.phase_timings = PhaseTimings::default();
-        }
+        self.replays.copied.reset();
+        self.replays.translated.reset();
+        self.phase_timings.reset();
     }
 
     /// Fold a closed measure span into this run's total. Accumulates
     /// rather than assigns — `run` opens one span per root per layer.
     #[inline]
-    pub(crate) fn add_measure(&mut self, #[allow(unused_variables)] span: PhaseSpan) {
-        #[cfg(feature = "bench")]
-        {
-            self.phase_timings.measure_ns += span.elapsed_ns();
-        }
+    pub(crate) fn add_measure(&mut self, span: PhaseSpan) {
+        self.phase_timings
+            .edit(|t| t.measure_ns += span.elapsed_ns());
     }
 
     /// Snapshot capture — [`MeasureCache::capture_tree`] plus
@@ -156,20 +159,16 @@ impl LayoutCounters {
     /// [`MeasureCache::capture_tree`]: crate::layout::cache::MeasureCache
     /// [`MeasureCache::end_frame`]: crate::layout::cache::MeasureCache
     #[inline]
-    pub(crate) fn add_capture(&mut self, #[allow(unused_variables)] span: PhaseSpan) {
-        #[cfg(feature = "bench")]
-        {
-            self.phase_timings.capture_ns += span.elapsed_ns();
-        }
+    pub(crate) fn add_capture(&mut self, span: PhaseSpan) {
+        self.phase_timings
+            .edit(|t| t.capture_ns += span.elapsed_ns());
     }
 
     /// Arrange counterpart of [`Self::add_measure`].
     #[inline]
-    pub(crate) fn add_arrange(&mut self, #[allow(unused_variables)] span: PhaseSpan) {
-        #[cfg(feature = "bench")]
-        {
-            self.phase_timings.arrange_ns += span.elapsed_ns();
-        }
+    pub(crate) fn add_arrange(&mut self, span: PhaseSpan) {
+        self.phase_timings
+            .edit(|t| t.arrange_ns += span.elapsed_ns());
     }
 
     #[inline]
@@ -184,21 +183,21 @@ impl LayoutCounters {
 
     #[inline]
     pub(crate) fn arrange_copied(&mut self) {
-        self.copied.bump();
+        self.replays.copied.bump();
     }
 
     #[inline]
     pub(crate) fn arrange_translated(&mut self) {
-        self.translated.bump();
+        self.replays.translated.bump();
     }
 }
 
 /// Bench-facing read. Separate from the test-only accessors below
-/// because its field carries the other gate.
+/// because its cell carries the wider gate.
 #[cfg(feature = "bench")]
 impl LayoutCounters {
     pub(crate) fn phase_timings(&self) -> PhaseTimings {
-        self.phase_timings
+        *self.phase_timings.get()
     }
 }
 
@@ -221,10 +220,10 @@ impl LayoutCounters {
     }
 
     pub(crate) fn arrange_replays(&self) -> ReplayCounts {
-        ReplayCounts {
-            copied: self.copied.count(),
-            translated: self.translated.count(),
-        }
+        // Full path rather than a `use`: `CounterSet` is itself gated, so
+        // an import of it at the top of the file would not compile in the
+        // builds this accessor is absent from.
+        crate::common::counters::CounterSet::counts(&self.replays)
     }
 }
 

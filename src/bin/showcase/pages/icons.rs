@@ -4,13 +4,13 @@
 //! size ladder runs again on every window scale change.
 //!
 //! The set is built at startup from the sources below rather than compiled in
-//! as a generated `const` — which is the point of `IconAtlas::from_svgs`: it
+//! as a generated `const` — which is the point of `IconTable::from_svgs`: it
 //! derives each icon's viewBox, tintability, and filter use from the artwork
 //! itself, so a demo page states only its SVGs.
 
 use crate::support;
 use crate::support::{demo_cell_at, section, tiles};
-use palantir::{Color, IconAtlas, IconId, IconSet, Ui};
+use palantir::{Color, IconId, IconSet, IconTable, Ui};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -83,7 +83,7 @@ fn icons(ui: &Ui) -> Icons {
         /// Built once rather than rebuilt per frame — parsing four SVGs to
         /// derive their viewBoxes is not free, and the `Rc` is what lets
         /// `load_icons` recognise the same allocation on the next frame.
-        static BUILT: Rc<IconAtlas> = Rc::new(IconAtlas::from_svgs([
+        static BUILT: Rc<IconTable> = Rc::new(IconTable::from_svgs([
             ("folder", FOLDER_SVG),
             ("new-file", NEW_FILE_SVG),
             ("save", SAVE_SVG),

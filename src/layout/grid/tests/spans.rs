@@ -93,7 +93,7 @@ fn spanned_text_measures_against_track_sizes_plus_internal_column_gaps() {
                 Grid::new()
                     .auto_id()
                     .cols(fixed_tracks(case))
-                    .rows([Track::hug()])
+                    .rows([Track::HUG])
                     .gap_xy(0.0, case.gap)
                     .size((Sizing::HUG, Sizing::HUG))
                     .show(ui, |ui| {
@@ -148,7 +148,7 @@ fn spanned_nested_wrap_measures_against_internal_gaps_on_both_axes() {
             let mut second_node = None;
             h.frame(|ui| {
                 let primary = fixed_tracks(case);
-                let secondary = [Track::hug()];
+                let secondary = [Track::HUG];
                 let (rows, cols): (&[Track], &[Track]) = if axis == Axis::X {
                     (&secondary, primary.as_ref())
                 } else {

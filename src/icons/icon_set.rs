@@ -2,8 +2,8 @@
 //! against. Split identity from size so the atlas key can hold one without
 //! the other.
 
-use crate::icons::icon_atlas::IconId;
 use crate::icons::icon_registry::{IconSetId, IconSetToken};
+use crate::icons::icon_table::IconId;
 use crate::shape::Shape;
 use crate::shape::icon::IconShape;
 use glam::Vec2;
@@ -80,7 +80,7 @@ impl std::fmt::Debug for IconSet {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("IconSet")
             .field("id", &self.inner.id())
-            .field("icons", &self.inner.atlas().icons().len())
+            .field("icons", &self.inner.table().icons().len())
             .field("owners", &Rc::strong_count(&self.inner))
             .finish()
     }
@@ -105,7 +105,7 @@ impl IconSet {
                 set: self.inner.id(),
                 icon,
             },
-            view_box: self.inner.atlas().def(icon).view_box,
+            view_box: self.inner.table().def(icon).view_box,
         }
     }
 
@@ -117,7 +117,7 @@ impl IconSet {
     /// such as an icon named in a config file.
     pub fn by_name(&self, name: &str) -> Option<IconId> {
         self.inner
-            .atlas()
+            .table()
             .icons()
             .binary_search_by_key(&name, |def| def.name)
             .ok()

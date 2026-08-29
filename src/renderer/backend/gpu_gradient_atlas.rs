@@ -84,20 +84,8 @@ impl GpuGradientAtlas {
 
         let texture = create_texture(device, cpu.rows());
         let view = texture.create_view(&Default::default());
-        // Linear filter inside a row (smooth gradient interpolation).
-        // Clamp addressing — spread modes (Pad/Repeat/Reflect) are
-        // applied shader-side on `t` before the sample, so the GPU
-        // sampler never sees t outside 0..1.
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("palantir.gradient_sampler"),
-            address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::ClampToEdge,
-            address_mode_w: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
-            ..Default::default()
-        });
+        // Linear inside a row, for smooth gradient interpolation.
+        let sampler = texture_binding::sampler(device, "palantir.gradient.sampler");
 
         let bg = texture_binding::bind_group(device, &bgl, &sampler, &view, "palantir.gradient.bg");
 

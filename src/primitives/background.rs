@@ -34,7 +34,7 @@ use palantir_anim_derive::Animatable;
 // `Clone` rather than `Copy` so the animation path can't reintroduce
 // auto-`Copy` through the trait bound. Duplication sites spell
 // `.clone()` so each copy stays a call-site decision.
-#[derive(Clone, Debug, PartialEq, Hash, serde::Serialize, serde::Deserialize, Animatable)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, Animatable)]
 pub struct Background {
     pub fill: Brush,
     /// `Stroke::ZERO` (the `Default`) omitted from serialized output —

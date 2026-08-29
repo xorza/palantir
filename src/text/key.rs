@@ -1,11 +1,25 @@
 //! Canonical shaped-run identity: shaping parameters quantized into a
 //! stable, purely integral cache key.
 
+use crate::common::hash;
 use crate::layout::types::align::HAlign;
 use crate::primitives::num::F32Ext;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::wrap::{self, LineFit};
 use crate::text::{FontFamily, FontWeight, RENDERED_RUN_KEEP_SPREAD_MASK};
+
+/// The face a shape is measured at, as [`TextShapeKey`] quantizes it:
+/// size, family and weight, and nothing about the text or the width.
+///
+/// Named rather than compared field by field wherever a face has to
+/// match — the equality is derived, so a fourth field cannot be added to
+/// the key's face and left out of one comparison.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct QuantizedFace {
+    size_q: u32,
+    family_q: u8,
+    weight_q: u8,
+}
 
 /// Canonical shaping parameters and stable shaped-buffer identity. Layout
 /// derives it from `ShapeRecord::Text`; the encoder carries it through the
@@ -119,6 +133,21 @@ impl TextShapeKey {
     /// logic error, debug-asserted rather than re-validated on the
     /// shaping hot path. Without that screen the quantization below is
     /// silent: a NaN size lands on a 1/64-px face and shapes against it.
+    /// The unbounded key for `text` at `font`, or [`Self::INVALID`]
+    /// where the face has no metrics to answer in.
+    ///
+    /// **The one minting path.**
+    /// [`TextShapeRequest::unbounded`](crate::text::request::TextShapeRequest::unbounded)
+    /// refuses empty text on top of this, because there is nothing to
+    /// shape; a run's own key keeps it, because the metrics a probe
+    /// answers in live on the key whether or not a buffer does.
+    pub(crate) fn for_text(text: &str, font: GlyphFont) -> Self {
+        if !font.metrics_valid() {
+            return Self::INVALID;
+        }
+        Self::unbounded(hash::hash_str(text), font)
+    }
+
     pub(crate) fn unbounded(text_hash: u64, font: GlyphFont) -> Self {
         let GlyphFont {
             size_px: font_size_px,
@@ -166,6 +195,21 @@ impl TextShapeKey {
             halign_q: HAlign::Auto as u8,
             fit_q: LineFit::Wrap as u8,
             ..self
+        }
+    }
+
+    /// The face this key shapes at, without its text or its width — the
+    /// three fields [`Self::unbounded`] folded a [`GlyphFont`] into.
+    ///
+    /// Quantized, so it compares the way the key does, and *narrow*: an
+    /// ellipsis is the same glyph at the same face however wide the box
+    /// is, which is what lets its memo survive the width churn it exists
+    /// for.
+    pub(super) fn face(self) -> QuantizedFace {
+        QuantizedFace {
+            size_q: self.size_q,
+            family_q: self.family_q,
+            weight_q: self.weight_q,
         }
     }
 

@@ -215,7 +215,7 @@ fn frame_quiescent_predicate() {
             target: id,
             origin: Vec2::ZERO,
             travel: Vec2::ZERO,
-            seq: 1,
+            count: 1,
             fresh: true,
             drag: PressDrag::None,
         })

@@ -8,6 +8,6 @@ use crate::primitives::lut_row::LutRow;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct ResolvedGradient {
     pub(crate) axis: FillAxis,
-    pub(crate) row: LutRow,
+    pub(crate) lut_row: LutRow,
     pub(crate) kind: FillKind,
 }

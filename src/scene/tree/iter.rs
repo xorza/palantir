@@ -17,10 +17,27 @@ use crate::scene::visibility::Visibility;
 
 #[derive(Debug)]
 pub(crate) struct ChildIter<'a> {
-    pub(crate) layouts: &'a [LayoutCore],
-    pub(crate) ends: &'a [SubtreeEnd],
-    pub(crate) next: u32,
-    pub(crate) end: u32,
+    layouts: &'a [LayoutCore],
+    ends: &'a [SubtreeEnd],
+    next: u32,
+    end: u32,
+}
+
+impl<'a> ChildIter<'a> {
+    /// `parent`'s direct children, in record order.
+    ///
+    /// Built here rather than by a struct literal at the caller — like
+    /// [`TreeItems::new`] — so the fields stay private and the columns a
+    /// walk reads are one decision rather than one per caller.
+    pub(crate) fn new(records: &'a Soa<NodeRecord>, parent: NodeId) -> Self {
+        let ends = records.subtree_end();
+        Self {
+            layouts: records.layout(),
+            next: parent.0 + 1,
+            end: ends[parent.idx()].end(),
+            ends,
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug)]

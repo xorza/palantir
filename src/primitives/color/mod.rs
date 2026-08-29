@@ -6,6 +6,7 @@
 //! Every conversion between them is here, so the two quantize policies —
 //! linear and sRGB-encoded — cannot drift apart.
 
+use crate::animation::animatable::Animatable;
 use crate::primitives::approx::FloatHash;
 use crate::primitives::nan::NanCheck;
 use crate::primitives::num;
@@ -66,10 +67,10 @@ impl std::hash::Hash for Color {
 ///
 /// [`Hash`](std::hash::Hash) above is the equality-compatible half, since
 /// `Color` compares by exact float equality. The visual half is what a
-/// *content* cache keys on: the paint types that carry a colour
-/// canonicalize their own scalars visually, and a `Stroke` that did that
-/// to its width but not to its colour would let a difference the eye
-/// cannot resolve split a key on one field and not the other.
+/// *content* cache keys on, and the two must never meet inside one key:
+/// a paint type canonicalizing its width visually and its colour exactly
+/// would let a difference the eye cannot resolve split that key on one
+/// field and not the other.
 impl FloatHash for Color {
     #[inline]
     fn hash_eq<H: std::hash::Hasher>(&self, state: &mut H) {
@@ -185,13 +186,8 @@ impl Color {
     /// `t` is not clamped, so overshooting past either end is available on
     /// purpose. Blending in a perceptual space instead is what
     /// [`Interp::Oklab`](crate::Interp) does for gradients.
-    pub const fn lerp(self, other: Self, t: f32) -> Self {
-        Self {
-            r: self.r + (other.r - self.r) * t,
-            g: self.g + (other.g - self.g) * t,
-            b: self.b + (other.b - self.b) * t,
-            a: self.a + (other.a - self.a) * t,
-        }
+    pub fn lerp(self, other: Self, t: f32) -> Self {
+        <Self as Animatable>::lerp(self, other, t)
     }
 
     /// 8-bit sRGB channels (Figma/CSS/Photoshop convention). Linearized
@@ -212,20 +208,16 @@ impl Color {
     /// Packed 24-bit `0xRRGGBB` sRGB literal, opaque. Matches CSS hex
     /// notation: `#3366CC` → `Color::hex(0x3366CC)`.
     pub const fn hex(rgb: u32) -> Self {
-        Self::rgb_u8(
-            ((rgb >> 16) & 0xff) as u8,
-            ((rgb >> 8) & 0xff) as u8,
-            (rgb & 0xff) as u8,
-        )
+        Self::hexa((rgb << 8) | 0xff)
     }
     /// Packed 32-bit `0xRRGGBBAA` sRGB+alpha literal. CSS-order (alpha last).
+    ///
+    /// `to_be_bytes` *is* the CSS packing — R in the most significant
+    /// byte — so the split is the standard library's rather than four
+    /// hand-written shifts, here and on [`ColorU8::hexa`].
     pub const fn hexa(rgba: u32) -> Self {
-        Self::rgba_u8(
-            ((rgba >> 24) & 0xff) as u8,
-            ((rgba >> 16) & 0xff) as u8,
-            ((rgba >> 8) & 0xff) as u8,
-            (rgba & 0xff) as u8,
-        )
+        let [r, g, b, a] = rgba.to_be_bytes();
+        Self::rgba_u8(r, g, b, a)
     }
 
     /// Quantize this linear-RGB colour to **sRGB-encoded** 8-bit packed
@@ -308,7 +300,11 @@ impl ColorU8 {
 
     /// Opaque colour from **linear** bytes. For sRGB-perceptual bytes use
     /// [`Self::hex`].
-    pub const fn rgb(r: u8, g: u8, b: u8) -> Self {
+    ///
+    /// `linear_`-prefixed like [`Color::linear_rgb`], and for the same
+    /// reason: the bare `rgb` on `Color` reads sRGB, so a bare one here
+    /// would be the same name for the opposite contract.
+    pub const fn linear_rgb(r: u8, g: u8, b: u8) -> Self {
         Self { r, g, b, a: 0xff }
     }
 
@@ -342,7 +338,7 @@ impl ColorU8 {
     /// [`Self::hex`] / [`Self::hexa`] when your bytes come from
     /// CSS-style sRGB hex codes; use this when you already have
     /// linear bytes (e.g. test fixtures, atlas-bake math).
-    pub const fn rgba(r: u8, g: u8, b: u8, a: u8) -> Self {
+    pub const fn linear_rgba(r: u8, g: u8, b: u8, a: u8) -> Self {
         Self { r, g, b, a }
     }
     /// CSS-style `0xRRGGBB` opaque hex — interpreted as **sRGB-
@@ -359,16 +355,32 @@ impl ColorU8 {
     /// linear like [`Self::hex`]; alpha is linear by convention
     /// (matches CSS), passed through as `a/255`.
     pub const fn hexa(rgba: u32) -> Self {
-        let r = ((rgba >> 24) & 0xff) as u8;
-        let g = ((rgba >> 16) & 0xff) as u8;
-        let b = ((rgba >> 8) & 0xff) as u8;
-        let a = (rgba & 0xff) as u8;
-        let c = Color::rgb_u8(r, g, b);
+        let [r, g, b, a] = rgba.to_be_bytes();
+        // Alpha is linear by convention, so it crosses as the byte it
+        // arrived as rather than through the quantize.
+        let rgb = Self::from_linear(Color::rgb_u8(r, g, b));
+        Self {
+            r: rgb.r,
+            g: rgb.g,
+            b: rgb.b,
+            a,
+        }
+    }
+
+    /// **Linear** quantize — straight `(channel * 255) as u8`, no sRGB
+    /// encoding. Used by every linear-storage consumer: vertex colours,
+    /// gradient stops baked into the linear LUT, and the hex
+    /// constructors above. Call [`Color::to_srgb_u8`] for the
+    /// sRGB-encoded path.
+    ///
+    /// The body [`From<Color>`](Self) runs, `const` so a `const fn`
+    /// constructor can reach it too.
+    pub(crate) const fn from_linear(c: Color) -> Self {
         Self {
             r: num::unit_to_u8(c.r),
             g: num::unit_to_u8(c.g),
             b: num::unit_to_u8(c.b),
-            a,
+            a: num::unit_to_u8(c.a),
         }
     }
 
@@ -380,18 +392,12 @@ impl ColorU8 {
 }
 
 impl From<Color> for ColorU8 {
-    /// **Linear** quantize — straight `(channel * 255) as u8`, no
-    /// sRGB encoding. Used by every linear-storage consumer (vertex
-    /// colours, gradient stops baked into the linear LUT, etc.). Call
-    /// [`Color::to_srgb_u8`] for the sRGB-encoded path.
+    /// The **linear** quantize — straight `(channel * 255) as u8`, no
+    /// sRGB encoding. Call [`Color::to_srgb_u8`] for the sRGB-encoded
+    /// path.
     #[inline]
     fn from(c: Color) -> Self {
-        ColorU8 {
-            r: num::unit_to_u8(c.r),
-            g: num::unit_to_u8(c.g),
-            b: num::unit_to_u8(c.b),
-            a: num::unit_to_u8(c.a),
-        }
+        Self::from_linear(c)
     }
 }
 

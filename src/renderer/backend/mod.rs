@@ -9,6 +9,15 @@
 //! every texture and dynamic-buffer write the passes will read, then the
 //! render passes themselves.
 //!
+//! Every instanced pipeline here spells the same six steps under the
+//! same names — `new`, `instance_layout`, `build_variants`, `upload`,
+//! `bind`, `draw` — so a reader who knows one knows the rest, and the
+//! render loop's arms differ only where the pipelines genuinely do. A
+//! new pipeline is expected to keep those names. The two raster tenants
+//! are the exception: text and icon share one
+//! [`RasterPass`](crate::renderer::backend::raster_pass::RasterPass)
+//! implementation rather than two copies of the shape.
+//!
 //! Quads and text interleave per-group in paint order: each group's
 //! quads draw first, then its text renders on top, before the next group
 //! runs. So a child quad declared *after* a label correctly occludes
@@ -98,12 +107,12 @@ mod gpu_gradient_atlas;
 mod gpu_timings;
 pub(crate) mod icon;
 pub(crate) mod image_pipeline;
-mod instance_pipeline;
 mod mesh_pipeline;
 mod overlay_pass;
 pub(crate) mod pipeline_recipe;
 mod quad_pipeline;
 pub(crate) mod raster_atlas;
+mod raster_pass;
 // `pub(crate)` only so `bench::driver` — the crate-root facade the
 // external criterion target calls through — can name `schedule::bench`.
 pub(crate) mod schedule;
@@ -131,7 +140,6 @@ use crate::renderer::backend::gpu_gradient_atlas::GpuGradientAtlas;
 use crate::renderer::backend::gpu_timings::GpuTimings;
 use crate::renderer::backend::icon::IconBackend;
 use crate::renderer::backend::image_pipeline::{ImageBatch, ImagePipeline};
-use crate::renderer::backend::instance_pipeline::InstancePipeline;
 use crate::renderer::backend::mesh_pipeline::{MeshBatch, MeshPipeline, MeshUpload};
 use crate::renderer::backend::overlay_pass::DebugOverlay;
 use crate::renderer::backend::quad_pipeline::QuadPipeline;
@@ -157,7 +165,7 @@ use wgpu::util::StagingBelt;
 /// - offset 0 (8 bytes): [`ViewportPush`] — viewport size, written
 ///   once per pass by `WgpuBackend`.
 /// - offset 8 (8 bytes): `text::Params` — atlas dimensions,
-///   written per text batch by `TextBackend::render_batch`.
+///   written per text batch by `RasterPass::render_batch`.
 ///
 /// Pipelines that don't read the tail (quad/mesh/image/curve) still
 /// declare `immediate_size = IMMEDIATES_BYTES` so the immediate-state
@@ -641,7 +649,7 @@ impl WgpuBackend {
         // every text-backend write lands as
         // `copy_buffer_to_buffer` on the main encoder. Viewport
         // and atlas-size params ride the shared immediate region,
-        // pushed per batch by `TextBackend::render_batch` — no
+        // pushed per batch by `RasterPass::render_batch` — no
         // per-frame sync from here.
         {
             tracy::zone!(
@@ -666,8 +674,8 @@ impl WgpuBackend {
         // per-glyph copy_buffer_to_texture) on the same encoder so
         // they share the main render submit. The staging side of
         // those copies also routes through the belt — see
-        // `TextBackend::flush` / `atlas::flush_pending_uploads`.
-        self.text.flush(&mut ctx);
+        // `RasterPass::flush` / `atlas::flush_pending_uploads`.
+        self.text.pass.flush(&mut ctx);
 
         // Icons: prewarm any filtered icon at this frame's scale (an SVG
         // filter is 10-20x an ordinary raster, so meeting one lazily is a
@@ -684,7 +692,7 @@ impl WgpuBackend {
                 self.icon.prepare_batch(&mut ctx, i, rows);
             }
         }
-        self.icon.flush(&mut ctx);
+        self.icon.pass.flush(&mut ctx);
 
         overlay_count
     }
@@ -705,7 +713,7 @@ impl WgpuBackend {
         let mut pass = begin_load_pass(encoder, "palantir.renderer.dim.pass", color_view);
         self.debug.draw_dim(
             &mut pass,
-            fmt.quad.select(false),
+            fmt.quad.color.select(false),
             &self.gradient.bg,
             &viewport,
         );
@@ -916,7 +924,7 @@ impl WgpuBackend {
                     // which lands the quad at garbage NDC and skips
                     // the damage-region clear.
                     self.quad
-                        .bind_clear(pass, &fmt.quad, use_stencil, &self.gradient.bg);
+                        .bind_clear(pass, &fmt.quad.color, use_stencil, &self.gradient.bg);
                     viewport.push_into(pass);
                     pass.draw(0..4, 0..1);
                     // Distinct vertex buffer (clear_buffer); next
@@ -936,7 +944,7 @@ impl WgpuBackend {
                     rebind!(
                         Bound::MaskStamp,
                         self.quad
-                            .bind_mask(pass, &fmt.quad_mask_stamp, &self.gradient.bg)
+                            .bind_mask(pass, &fmt.quad.mask_stamp, &self.gradient.bg)
                     );
                     self.quad.draw_mask(pass, mi);
                     debug_marker::pop(pass);
@@ -947,7 +955,7 @@ impl WgpuBackend {
                     rebind!(
                         Bound::MaskClear,
                         self.quad
-                            .bind_mask(pass, &fmt.quad_mask_clear, &self.gradient.bg)
+                            .bind_mask(pass, &fmt.quad.mask_clear, &self.gradient.bg)
                     );
                     self.quad.draw_mask(pass, mi);
                     debug_marker::pop(pass);
@@ -958,7 +966,7 @@ impl WgpuBackend {
                     rebind!(
                         Bound::QuadInstance,
                         self.quad
-                            .bind(pass, &fmt.quad, use_stencil, &self.gradient.bg)
+                            .bind(pass, &fmt.quad.color, use_stencil, &self.gradient.bg)
                     );
                     self.quad.draw(pass, range);
                     debug_marker::pop(pass);
@@ -972,6 +980,7 @@ impl WgpuBackend {
                     // re-push viewport via `viewport.push_into(pass)`
                     // after their bind.
                     self.text
+                        .pass
                         .render_batch(batch, pass, &fmt.text, use_stencil, &viewport);
                     bound = Bound::None;
                     debug_marker::pop(pass);
@@ -983,31 +992,26 @@ impl WgpuBackend {
                     let kind = batch_kind(tier);
                     mark(pass, kind);
                     debug_marker::push(pass, kind.label());
-                    let items = buffer.batches(tier)[batch].items;
+                    // Lazy: the icon tier draws off the batch index alone.
+                    let items = || buffer.batches(tier)[batch].items;
                     match tier {
                         PaintTier::Mesh => {
-                            rebind!(
-                                Bound::Mesh,
-                                self.mesh.bind(pass, &fmt.mesh, use_stencil, ())
-                            );
+                            rebind!(Bound::Mesh, self.mesh.bind(pass, &fmt.mesh, use_stencil));
                             self.mesh.draw(
                                 pass,
                                 MeshBatch {
                                     draws: buffer.meshes.draw(),
-                                    items,
+                                    items: items(),
                                 },
                             );
                         }
                         PaintTier::Image => {
-                            rebind!(
-                                Bound::Image,
-                                self.image.bind(pass, &fmt.image, use_stencil, ())
-                            );
+                            rebind!(Bound::Image, self.image.bind(pass, &fmt.image, use_stencil));
                             self.image.draw(
                                 pass,
                                 ImageBatch {
                                     ids: buffer.images.id(),
-                                    items,
+                                    items: items(),
                                 },
                             );
                         }
@@ -1015,8 +1019,13 @@ impl WgpuBackend {
                             // Like text, `render_batch` pushes both halves of
                             // the immediate region itself, so the next step
                             // must re-push the viewport after its own bind.
-                            self.icon
-                                .render_batch(batch, pass, &fmt.icon, use_stencil, &viewport);
+                            self.icon.pass.render_batch(
+                                batch,
+                                pass,
+                                &fmt.icon,
+                                use_stencil,
+                                &viewport,
+                            );
                             bound = Bound::None;
                         }
                         PaintTier::Curve => {
@@ -1025,7 +1034,7 @@ impl WgpuBackend {
                                 self.curve
                                     .bind(pass, &fmt.curve, use_stencil, &self.gradient.bg)
                             );
-                            self.curve.draw(pass, items);
+                            self.curve.draw(pass, items());
                         }
                     }
                     debug_marker::pop(pass);
@@ -1057,7 +1066,7 @@ impl WgpuBackend {
         );
         self.debug.draw_overlays(
             &mut pass,
-            fmt.quad.select(false),
+            fmt.quad.color.select(false),
             &self.gradient.bg,
             &viewport,
             count,

@@ -27,16 +27,7 @@ impl ImageTextures {
         Self {
             bindings: FxHashMap::default(),
             bgl: texture_binding::layout(device, "palantir.image.tex.bgl"),
-            sampler: device.create_sampler(&wgpu::SamplerDescriptor {
-                label: Some("palantir.image.sampler"),
-                address_mode_u: wgpu::AddressMode::ClampToEdge,
-                address_mode_v: wgpu::AddressMode::ClampToEdge,
-                address_mode_w: wgpu::AddressMode::ClampToEdge,
-                mag_filter: wgpu::FilterMode::Linear,
-                min_filter: wgpu::FilterMode::Linear,
-                mipmap_filter: wgpu::MipmapFilterMode::Nearest,
-                ..Default::default()
-            }),
+            sampler: texture_binding::sampler(device, "palantir.image.sampler"),
         }
     }
 

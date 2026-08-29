@@ -57,7 +57,7 @@ pub(super) struct DebugOverlay {
     /// on, so each Partial frame darkens prior pixels and the undamaged
     /// region fades to black across frames while the damage region —
     /// repainted at full brightness — stays bright.
-    dim_buffer: wgpu::Buffer,
+    dim_buffer: DynamicBuffer<Quad>,
     /// Multi-instance buffer holding damage-rect outline quads
     /// (transparent fill, red stroke per damaged rect). Drawn onto
     /// the swapchain texture *after* the backbuffer→surface copy, so
@@ -69,12 +69,7 @@ pub(super) struct DebugOverlay {
 
 impl DebugOverlay {
     pub(super) fn new(device: &wgpu::Device) -> Self {
-        let dim_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("palantir.quad.dim"),
-            size: std::mem::size_of::<Quad>() as u64,
-            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
+        let dim_buffer = DynamicBuffer::<Quad>::vertex(device, "palantir.quad.dim", 1);
         // `upload_damage_rects` grows it on demand when the damage region
         // carries more rects (8-quad start avoids tiny early regrows).
         let overlay_buffer = DynamicBuffer::<Quad>::vertex(device, "palantir.quad.overlay", 8);
@@ -86,13 +81,13 @@ impl DebugOverlay {
 
     /// Upload one full-viewport translucent-black quad ([`DIM_ALPHA`])
     /// to `dim_buffer`.
-    pub(super) fn upload_dim(&self, ctx: &mut GpuCtx<'_>, viewport: Vec2) {
+    pub(super) fn upload_dim(&mut self, ctx: &mut GpuCtx<'_>, viewport: Vec2) {
         let q = Quad {
             rect: Rect::new(0.0, 0.0, viewport.x, viewport.y),
             fill: Color::linear_rgba(0.0, 0.0, 0.0, DIM_ALPHA).into(),
             ..Default::default()
         };
-        ctx.write(&self.dim_buffer, 0, bytemuck::bytes_of(&q));
+        self.dim_buffer.upload_instances(ctx, &[q]);
     }
 
     /// Draw the single dim quad. The dim pass runs without a stencil
@@ -105,7 +100,14 @@ impl DebugOverlay {
         gradient_bg: &'a wgpu::BindGroup,
         viewport: &ViewportPush,
     ) {
-        draw_quads(pass, quad_base, gradient_bg, viewport, &self.dim_buffer, 1);
+        draw_quads(
+            pass,
+            quad_base,
+            gradient_bg,
+            viewport,
+            &self.dim_buffer.buffer,
+            1,
+        );
     }
 
     /// Build + upload this frame's damage-rect outline quads: `Partial`

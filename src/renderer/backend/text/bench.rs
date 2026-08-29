@@ -133,7 +133,7 @@ struct BenchRuns {
 impl BenchText {
     fn new(device: &wgpu::Device, format: wgpu::TextureFormat, shaper: TextShaper) -> Self {
         let backend = TextBackend::new(device, shaper);
-        let pipelines = backend.build_variants(device, format);
+        let pipelines = backend.pass.build_variants(device, format);
         Self { backend, pipelines }
     }
 
@@ -160,7 +160,7 @@ impl BenchText {
     }
 
     fn flush(&mut self, ctx: &mut GpuCtx<'_>) {
-        self.backend.flush(ctx);
+        self.backend.pass.flush(ctx);
     }
 
     fn draw<'a>(&'a self, batch_index: usize, pass: &mut wgpu::RenderPass<'a>) {
@@ -168,6 +168,7 @@ impl BenchText {
             size: glam::Vec2::ZERO,
         };
         self.backend
+            .pass
             .render_batch(batch_index, pass, &self.pipelines, false, &viewport);
     }
 
@@ -235,12 +236,12 @@ fn make_run(
 /// per-iteration `scale` argument to `prepare` changes between frames.
 fn build_runs(shaper: &TextShaper) -> BenchRuns {
     let store = RecordStore::default();
-    let color = ColorU8::rgba(220, 220, 220, 255);
+    let color = ColorU8::linear_rgba(220, 220, 220, 255);
     let mut runs = Vec::with_capacity((ROWS * 4) as usize);
     for row in 0..ROWS {
         let y = 16.0 + (row as f32) * 18.0;
         // Four short labels per row at typical graph-node sizes.
-        let label_color = ColorU8::rgba(245, 245, 245, 255);
+        let label_color = ColorU8::linear_rgba(245, 245, 245, 255);
         runs.push(make_run(
             &store,
             shaper,
@@ -373,7 +374,7 @@ fn run_batches(
 /// the map empty and defeat the workload).
 fn build_distinct_runs(shaper: &TextShaper) -> BenchRuns {
     let store = RecordStore::default();
-    let color = ColorU8::rgba(220, 220, 220, 255);
+    let color = ColorU8::linear_rgba(220, 220, 220, 255);
     let mut runs = Vec::with_capacity(DISTINCT_RUNS);
     for i in 0..DISTINCT_RUNS {
         let text = format!("field {i}: f32");
@@ -416,7 +417,7 @@ fn fresh_backend(g: &Gpu) -> (BenchText, BenchRuns) {
 /// whatever iteration count criterion chose, and report nothing at all
 /// under `--list`.
 fn report_atlas_pressure(label: &str, backend: &BenchText, frames: u32) {
-    let atlas = &backend.backend.encoder.atlas;
+    let atlas = &backend.backend.pass.atlas;
     let counts = atlas.counters.counts();
     let per_frame = counts.evict_scans as f64 / frames.max(1) as f64;
     eprintln!(

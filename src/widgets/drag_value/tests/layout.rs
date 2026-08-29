@@ -86,7 +86,7 @@ fn editing_under_a_scaled_canvas_does_not_panic() {
     // A scaled parent (0.5×) halves the chip's post-transform rect to ~60px
     // while `min_size` is 100 — the cap must read the pre-transform
     // (logical, 120) width and floor at `min_size`, else feeding the 60px
-    // post-transform width makes `AxisCtx::resolve`'s `clamp(100, 60)`
+    // post-transform width makes `AxisSlot::resolve`'s `clamp(100, 60)`
     // panic.
     let mut h = UiHarness::new(surface);
     let draw = |ui: &mut Ui, v: &mut f64| {

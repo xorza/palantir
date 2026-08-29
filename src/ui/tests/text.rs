@@ -51,7 +51,7 @@ fn text_reshape_skipped_when_unchanged() {
         Grid::new()
             .id(WidgetId::from_hash("g"))
             .size((Sizing::fixed(200.0), Sizing::HUG))
-            .cols([Track::hug(), Track::fill()])
+            .cols([Track::HUG, Track::FILL])
             .show(ui, |ui| {
                 Text::new("label")
                     .id(WidgetId::from_hash("hug-col-text"))
@@ -410,7 +410,7 @@ fn shared_cache_eviction_preserves_idle_windows_paint_only_text_source() {
     let scene = idle.ui.frame_scene();
     let interned_text = scene.payloads.interned_text();
     assert_eq!(
-        run.text.source.resolve(&interned_text),
+        interned_text.resolve(run.text.span),
         "idle interned window text",
         "PaintOnly must retain the source needed for backend reconstruction",
     );
@@ -491,7 +491,7 @@ fn widget_text_inputs_lower_exact_bytes() {
     let payloads = h.ui.forest.record_store.payloads.borrow();
     let interned_text = payloads.interned_text();
     assert_eq!(
-        interned_text.bytes,
+        interned_text.all(),
         "borrowedownedowned internedinternedformatted 7"
     );
     let records = &h.ui.forest.trees[Layer::Main].shapes.records;
@@ -505,7 +505,7 @@ fn widget_text_inputs_lower_exact_bytes() {
     ]) {
         match record {
             ShapeRecord::Text { text, .. } => {
-                assert_eq!(text.source.resolve(&interned_text), expected);
+                assert_eq!(interned_text.resolve(text.span), expected);
             }
             shape => panic!("expected text shape, got {shape:?}"),
         }
@@ -593,7 +593,7 @@ fn interning_per_pass_records_the_expected_bytes() {
         panic!("expected one text shape, got {records:?}");
     };
     assert_eq!(
-        text.source.resolve(&interned_text),
+        interned_text.resolve(text.span),
         "second pass",
         "the recorded bytes come from the pass that survived",
     );

@@ -3,15 +3,12 @@
 
 use crate::input::sense::Sense;
 use crate::layout::types::overlay::OverlayPosition;
-use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::rect::Rect;
 use crate::scene::layer::Layer;
 use crate::scene::node::Node;
-use crate::scene::node::configure::Configure;
 use crate::ui::Ui;
-use crate::widgets::frame::Frame;
-use crate::widgets::overlay_scope::OverlayScope;
+use crate::widgets::overlay_scope::{Backdrop, OverlayScope};
 use glam::Vec2;
 use std::cell::Cell;
 use std::rc::Rc;
@@ -127,7 +124,7 @@ impl PopupResponse {
 /// [`ClickOutside::PassThrough`] for an overlay that must not take
 /// either stream.
 ///
-/// Implements [`Configure`] — use `.id(...)`, `.id_salt(...)`,
+/// Implements [`Configure`](crate::Configure) — use `.id(...)`, `.id_salt(...)`,
 /// `.padding(...)`, `.size(...)`, etc. on the popup body.
 #[derive(Debug)]
 pub struct Popup {
@@ -236,65 +233,32 @@ impl Popup {
         // pointer *and* the keys from the layers below, or neither. Taking
         // one without the other leaves a host that is half-dead in a way
         // nothing at the call site would explain.
-        let modal = click_outside != ClickOutside::PassThrough;
-        let scope = if modal {
-            OverlayScope::claim(widget.id(), layer, position, &mut widget.node)
+        let backdrop = if click_outside == ClickOutside::PassThrough {
+            Backdrop::None
         } else {
-            OverlayScope::passive(widget.id(), layer, position)
+            Backdrop::Eater(eater_id)
         };
-        if modal {
-            ui.layer(layer).show(|ui| {
-                // Eater records first → paints under the body. Hit-test runs
-                // reverse-iter so the body's leaves still win inside its rect.
-                //
-                // Senses all four pointer interactions so the popup is truly
-                // modal-over-`Main`: pan-drag, scroll, and pinch over the
-                // surrounding area can't leak through to the host (e.g. a
-                // graph canvas underneath that pans on middle-drag and zooms
-                // on scroll/pinch). `Sense::CLICK` is the dismiss trigger;
-                // the other three never produce visible behavior on the
-                // eater itself — they're absorbed and discarded so the host
-                // doesn't see them.
-                Frame::new()
-                    .id(eater_id)
-                    .size((Sizing::FILL, Sizing::FILL))
-                    .sense(Sense::ABSORB_POINTER)
-                    .show(ui);
-            });
-        }
+        let scope = OverlayScope::claim(widget.id(), layer, position, backdrop, &mut widget.node);
 
-        {
-            let theme = Rc::clone(ui.theme());
-            let chrome = widget.node.resolve_container_chrome(
-                chrome.as_ref(),
-                theme.panel_background.as_ref(),
-                theme.panel_clip,
-            );
-            let handle = PopupHandle::new();
-            let escape = scope.record(ui, |ui| {
-                widget.record(ui, chrome, |ui| body(ui, &handle));
-            });
-            let dismiss_mode = click_outside == ClickOutside::Dismiss;
-            // The eater senses all four pointer interactions, so a
-            // secondary press outside is absorbed either way — see
-            // `ResponseState::any_clicked` for why absorbing it and
-            // ignoring it is the case that matters.
-            //
-            // Gated on the mode that reads it: the other two record no
-            // eater at all (`Block` has one but ignores it), so this would
-            // be a lookup for an id that isn't in the tree.
-            let eater_clicked = dismiss_mode && ui.response_for(eater_id).any_clicked();
-            let response = PopupResponse {
-                // A `Dismiss` popup closes on an eaten outside-press OR an Esc
-                // press — so overlay hosts (ComboBox / ContextMenu) read one
-                // `closed()` signal instead of each re-deriving Esc. (`Block`
-                // short-circuits, so it neither dismisses on nor watches Esc.)
-                dismissed: dismiss_mode && (eater_clicked || escape),
-                close_requested: handle.requested.get(),
-            };
-            scope.withdraw(ui, response.closed());
-            response
-        }
+        let theme = Rc::clone(ui.theme());
+        let chrome = widget
+            .node
+            .resolve_container_chrome(chrome.as_ref(), theme.container_chrome());
+        let handle = PopupHandle::new();
+        let edges = scope.record(ui, |ui| {
+            widget.record(ui, chrome, |ui| body(ui, &handle));
+        });
+        let dismiss_mode = click_outside == ClickOutside::Dismiss;
+        let response = PopupResponse {
+            // A `Dismiss` popup closes on an eaten outside-press OR an Esc
+            // press — so overlay hosts (ComboBox / ContextMenu) read one
+            // `closed()` signal instead of each re-deriving Esc. (`Block`
+            // records a backdrop and ignores both edges.)
+            dismissed: dismiss_mode && (edges.outside || edges.escape),
+            close_requested: handle.requested.get(),
+        };
+        scope.withdraw(ui, response.closed());
+        response
     }
 }
 

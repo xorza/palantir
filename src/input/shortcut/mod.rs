@@ -48,6 +48,18 @@ pub struct Mods {
 /// The named sets are the ones the crate's own constructors reach for;
 /// any other combination is a struct literal, which is all `Mods` is.
 impl Mods {
+    /// True if this chord declares any command modifier — the same
+    /// question [`Modifiers::any_command`](crate::Modifiers::any_command)
+    /// asks of what is *held*, on the side that declares it. Shift alone
+    /// does not count: `Shift+Z` is a capital Z, not a chord.
+    ///
+    /// No `mac_ctrl` here because a chord is declared once and matched on
+    /// every platform: `ctrl` *is* Cmd on macOS, and raw Control is a
+    /// thing a keyboard reports rather than a thing an app asks for.
+    pub const fn any_command(self) -> bool {
+        self.ctrl || self.alt
+    }
+
     /// No modifiers — a bare key.
     pub const NONE: Self = Self {
         ctrl: false,
@@ -143,9 +155,10 @@ impl Shortcut {
         if self.matches_key(kp.key, kp.mods) {
             return true;
         }
-        (self.mods.ctrl || self.mods.alt)
-            && matches!(kp.key, Key::Char(c) if !c.is_ascii())
-            && self.matches_key(kp.physical, kp.mods)
+        self.mods.any_command()
+            && kp
+                .layout_retry()
+                .is_some_and(|physical| self.matches_key(physical, kp.mods))
     }
 
     /// Logical-key match: exact modifiers + ignore-case `Char`, with **no**

@@ -455,7 +455,7 @@ fn stack_mixed_sizing_modes_have_exact_axis_symmetric_layout() {
         ];
         assert_eq!(actual, expected, "case: {}", case.label);
         assert!(
-            h.engines.layout.scratch.stack_fill.pool.is_empty(),
+            h.engines.layout.scratch.stack_fill.is_empty(),
             "case: {} must release its planning scratch",
             case.label,
         );
@@ -579,7 +579,7 @@ fn fill_cross_axis_stretches_regardless_of_align() {
 
 /// Cross-cutting min/max contract: a `Hug` panel clamps its
 /// content-driven size to `[min_size, max_size]` on each axis — the same
-/// `AxisCtx::resolve` clamp every widget/panel goes through, so this
+/// `AxisSlot::resolve` clamp every widget/panel goes through, so this
 /// pins the behavior for all of them. Small content floors at `min_size`;
 /// large content caps at `max_size`.
 #[test]

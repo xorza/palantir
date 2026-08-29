@@ -9,7 +9,7 @@ use resvg::usvg;
 /// does not state outright, read off one parse of an SVG source.
 ///
 /// This is the only place outside the rasterizer that talks to `usvg`, which
-/// is the point: [`IconAtlas`](crate::IconAtlas) is a data type and should not
+/// is the point: [`IconTable`](crate::IconTable) is a data type and should not
 /// have to know an SVG parser exists to build one.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct SvgFacts {

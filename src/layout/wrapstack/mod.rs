@@ -15,6 +15,7 @@
 
 use crate::layout::axis::Axis;
 use crate::layout::axis_placement::AxisPlacement;
+use crate::layout::depth_scratch::DepthScratch;
 use crate::layout::driver::LayoutDriver;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange, LenReq};
@@ -87,45 +88,9 @@ fn pack_child(
     }
 }
 
-/// Flat per-frame scratch for wrap arrange. One contiguous
-/// `Vec<NodeId>` pool serves all nesting depths: each `arrange`
-/// captures the pool length on entry as its depth's start, and
-/// `place_line` truncates back to that start after every flushed line
-/// — so the pool is empty-at-this-depth again before any recursion or
-/// the next line's pushes. Capacity retained across frames; steady
-/// state is alloc-free.
-///
-/// Why flat (not `Vec<Vec<NodeId>>`): a single allocation for the
-/// pool vs. one inner Vec per nesting depth. `place_line` accesses
-/// children by index — `NodeId` is `Copy`, so we read each child out
-/// before calling `layout.arrange`, sidestepping the borrow conflict
-/// that a slice would create against `&mut LayoutEngine`.
-#[derive(Debug, Default)]
-pub(crate) struct WrapScratch {
-    pool: Vec<NodeId>,
-}
-
-impl WrapScratch {
-    #[inline]
-    fn len(&self) -> usize {
-        self.pool.len()
-    }
-
-    #[inline]
-    fn push(&mut self, node: NodeId) {
-        self.pool.push(node);
-    }
-
-    #[inline]
-    fn at(&self, index: usize) -> NodeId {
-        self.pool[index]
-    }
-
-    #[inline]
-    fn truncate(&mut self, len: usize) {
-        self.pool.truncate(len);
-    }
-}
+/// The wrapping stack's line buffer: the children of the line being
+/// filled, in record order.
+pub(crate) type WrapScratch = DepthScratch<NodeId>;
 
 #[derive(Debug)]
 pub(super) struct WrapStack;
@@ -197,7 +162,7 @@ impl LayoutDriver for WrapStack {
         // `pass.desired(..)` at flush time, so the buffer is just node
         // IDs.
         let layouts = tree.records.layout();
-        let line_start = pass.wrap_scratch_mut().len() as u32;
+        let line_start = pass.wrap_scratch_mut().mark();
         let mut line = LinePack::default();
         let mut cross_cursor = axis.cross_v(inner.min);
         let mut first_line = true;
@@ -207,8 +172,7 @@ impl LayoutDriver for WrapStack {
                           line_cross: f32,
                           cross_cursor: &mut f32,
                           first_line: &mut bool| {
-            let line_end = pass.wrap_scratch_mut().len();
-            let line_start = line_start as usize;
+            let line_end = pass.wrap_scratch_mut().mark();
             if line_end == line_start {
                 return;
             }

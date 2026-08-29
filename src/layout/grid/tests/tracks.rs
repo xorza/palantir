@@ -22,8 +22,8 @@ fn grid_fixed_and_fill_columns_split_remainder() {
     let root = h.frame_value(|ui| {
         Grid::new()
             .auto_id()
-            .cols([Track::fixed(120.0), Track::fill()])
-            .rows([Track::fill()])
+            .cols([Track::fixed(120.0), Track::FILL])
+            .rows([Track::FILL])
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 Frame::new()
@@ -55,8 +55,8 @@ fn grid_hug_column_takes_max_span1_child_intrinsic() {
     let root = h.frame_value(|ui| {
         Grid::new()
             .auto_id()
-            .cols([Track::hug(), Track::fill()])
-            .rows([Track::hug(), Track::hug()])
+            .cols([Track::HUG, Track::FILL])
+            .rows([Track::HUG, Track::HUG])
             .size((Sizing::FILL, Sizing::fixed(100.0)))
             .show(ui, |ui| {
                 Button::new()
@@ -114,8 +114,8 @@ fn hug_column_stretches_fill_cells_to_widest_content() {
     let root = h.frame_value(|ui| {
         Grid::new()
             .auto_id()
-            .cols([Track::hug()])
-            .rows([Track::hug(), Track::hug()])
+            .cols([Track::HUG])
+            .rows([Track::HUG, Track::HUG])
             .size((Sizing::HUG, Sizing::HUG))
             .show(ui, |ui| {
                 Panel::hstack()
@@ -163,8 +163,8 @@ fn hug_column_max_caps_shrinkable_and_rigid_content() {
     let root = h.frame_value(|ui| {
         Grid::new()
             .auto_id()
-            .cols([Track::hug().max(150.0)])
-            .rows([Track::hug()])
+            .cols([Track::HUG.max(150.0)])
+            .rows([Track::HUG])
             .size((Sizing::HUG, Sizing::HUG))
             .show(ui, |ui| {
                 Button::new()
@@ -182,7 +182,7 @@ fn hug_column_max_caps_shrinkable_and_rigid_content() {
     assert_eq!(btn.size.w, 150.0, "hug column capped at its max");
 
     // The track caps at 150, but the Fixed(200) child remains exact.
-    let rigid = rigid_first_col_rects(Track::hug().max(150.0), 100);
+    let rigid = rigid_first_col_rects(Track::HUG.max(150.0), 100);
     assert_eq!(rigid[0].size.w, 200.0, "Fixed child remains exact");
     assert_eq!(
         rigid[1].min.x, 150.0,
@@ -202,29 +202,29 @@ fn grid_fill_weights_and_clamps() {
     let cases: &[Case] = &[
         (
             "weights_split_proportionally",
-            Track::fill_weight(1.0),
-            Track::fill_weight(3.0),
+            Track::fill(1.0),
+            Track::fill(3.0),
             100.0,
             300.0,
         ),
         (
             "min_clamp_steals_from_other_stars",
-            Track::fill_weight(1.0).min(200.0),
-            Track::fill_weight(3.0),
+            Track::fill(1.0).min(200.0),
+            Track::fill(3.0),
             200.0,
             200.0,
         ),
         (
             "max_clamp_donates_to_other_stars",
-            Track::fill_weight(3.0).max(150.0),
-            Track::fill_weight(1.0),
+            Track::fill(3.0).max(150.0),
+            Track::fill(1.0),
             150.0,
             250.0,
         ),
         (
             "maximum_finite_weights",
-            Track::fill_weight(f32::MAX),
-            Track::fill_weight(f32::MAX),
+            Track::fill(f32::MAX),
+            Track::fill(f32::MAX),
             200.0,
             200.0,
         ),
@@ -235,7 +235,7 @@ fn grid_fill_weights_and_clamps() {
             Grid::new()
                 .auto_id()
                 .cols([*c0, *c1])
-                .rows([Track::fill()])
+                .rows([Track::FILL])
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
                     Frame::new()
@@ -257,7 +257,7 @@ fn grid_fill_weights_and_clamps() {
 
     // The first track caps at 100px and donates the 300px remainder to col 1;
     // its Fixed(200) child overflows without changing track distribution.
-    let rigid = rigid_first_col_rects(Track::fill().max(100.0), 400);
+    let rigid = rigid_first_col_rects(Track::FILL.max(100.0), 400);
     assert_eq!(rigid[0].size.w, 200.0, "Fixed child remains exact");
     assert_eq!(rigid[1].min.x, 100.0, "col 0 track is capped at 100px");
     assert_eq!(rigid[1].size.w, 300.0, "col 1 receives 400 - 100");
@@ -275,8 +275,8 @@ fn grid_fill_col_floors_at_descendant_min_content() {
     let root = h.frame_value(|ui| {
         Grid::new()
             .auto_id()
-            .cols([Track::fill(), Track::fill()])
-            .rows([Track::fill()])
+            .cols([Track::FILL, Track::FILL])
+            .rows([Track::FILL])
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 Frame::new()
@@ -311,8 +311,8 @@ fn grid_fill_row_floors_at_descendant_min_content() {
     let root = h.frame_value(|ui| {
         Grid::new()
             .auto_id()
-            .cols([Track::fill()])
-            .rows([Track::fill(), Track::fill()])
+            .cols([Track::FILL])
+            .rows([Track::FILL, Track::FILL])
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 Frame::new()
@@ -354,8 +354,8 @@ fn grid_hug_rows_floor_at_their_measured_height_when_cramped() {
     let root = h.frame_value(|ui| {
         Grid::new()
             .auto_id()
-            .cols([Track::fill()])
-            .rows([Track::hug(), Track::hug()])
+            .cols([Track::FILL])
+            .rows([Track::HUG, Track::HUG])
             .size((Sizing::FILL, Sizing::fixed(100.0)))
             .show(ui, |ui| {
                 Frame::new()
@@ -385,7 +385,7 @@ fn grid_hug_rows_floor_at_their_measured_height_when_cramped() {
 /// cells see `INF` (WPF intrinsic trick that defers Fill until arrange).
 #[test]
 fn resolve_axis_marks_fixed_and_hug_resolved_but_leaves_fill_unresolved() {
-    let tracks = [Track::fixed(50.0), Track::hug(), Track::fill()];
+    let tracks = [Track::fixed(50.0), Track::HUG, Track::FILL];
     let mut a = AxisScratch::default();
     a.reset_for(tracks.len());
     let hugs = HugRanges {
@@ -426,7 +426,7 @@ fn grid_multi_row_hug_heights_resolve_independently() {
                     Grid::new()
                         .id(WidgetId::from_hash("multi-row"))
                         .cols([Track::fixed(50.0)])
-                        .rows([Track::hug(), Track::hug(), Track::hug()])
+                        .rows([Track::HUG, Track::HUG, Track::HUG])
                         .size((Sizing::HUG, Sizing::HUG))
                         .show(ui, |ui| {
                             kids.push(
@@ -476,8 +476,8 @@ fn rigid_first_col_rects(first: Track, surface_width: u32) -> Vec<Rect> {
     let root = h.frame_value(|ui| {
         Grid::new()
             .auto_id()
-            .cols([first, Track::fill()])
-            .rows([Track::fill()])
+            .cols([first, Track::FILL])
+            .rows([Track::FILL])
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 Frame::new()

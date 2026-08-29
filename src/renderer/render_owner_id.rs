@@ -1,13 +1,13 @@
 //! Stable identity of one window's submitted render stream.
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use crate::common::id_counter::IdCounter;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct RenderOwnerId(u64);
 
 impl RenderOwnerId {
     pub(crate) fn reserve() -> Self {
-        static NEXT_OWNER: AtomicU64 = AtomicU64::new(1);
-        Self(NEXT_OWNER.fetch_add(1, Ordering::Relaxed))
+        static NEXT: IdCounter = IdCounter::new();
+        Self(NEXT.reserve())
     }
 }

@@ -29,8 +29,8 @@ use crate::common::clipboard::Clipboard;
 use crate::diagnostics::DebugOverlayConfig;
 use crate::diagnostics::frame_stats::FrameStats;
 use crate::display::Display;
-use crate::icons::icon_atlas::IconAtlas;
 use crate::icons::icon_set::IconSet;
+use crate::icons::icon_table::IconTable;
 use crate::input::input_event::InputEvent;
 use crate::input::input_state::InputState;
 use crate::input::keyboard::keyboard_event::KeyboardEvent;
@@ -796,8 +796,8 @@ impl Ui {
     /// at — so a set the session never draws from costs nothing beyond its
     /// bytes.
     #[inline]
-    pub fn load_icons(&self, atlas: Rc<IconAtlas>) -> IconSet {
-        self.resources.icons.register(atlas)
+    pub fn load_icons(&self, table: Rc<IconTable>) -> IconSet {
+        self.resources.icons.register(table)
     }
 
     /// Upload an image and get back an owning [`ImageHandle`]. **Hold the

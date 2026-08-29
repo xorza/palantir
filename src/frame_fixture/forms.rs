@@ -74,10 +74,10 @@ pub(super) fn request_card(state: &mut FrameFixture, ui: &mut Ui) {
 /// [`properties_card`].
 pub(super) fn settings_card(state: &mut FrameFixture, ui: &mut Ui) {
     tokens::card(ui, "settings", "SETTINGS", Sizing::HUG, |ui| {
-        let rows = [Track::hug(); 6];
+        let rows = [Track::HUG; 6];
         Grid::new()
             .id_salt("settings-grid")
-            .cols([Track::hug().min(92.0), Track::fill()])
+            .cols([Track::HUG.min(92.0), Track::FILL])
             .rows(rows)
             .gap_xy(8.0, 12.0)
             .size((Sizing::FILL, Sizing::HUG))
@@ -172,7 +172,7 @@ pub(super) fn properties_card(state: &mut FrameFixture, ui: &mut Ui, rows: usize
     tokens::card(ui, "props", "PROPERTIES", Sizing::HUG, |ui| {
         Grid::new()
             .id_salt("props-grid")
-            .cols([Track::hug().min(92.0), Track::fill(), Track::fixed(60.0)])
+            .cols([Track::HUG.min(92.0), Track::FILL, Track::fixed(60.0)])
             .rows(state.grid_rows.as_slice())
             .gap_xy(2.0, 8.0)
             .size((Sizing::FILL, Sizing::HUG))

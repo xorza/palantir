@@ -6,6 +6,7 @@
 //! and how its body is built. Adding a page is one row here plus one
 //! module under `pages/`; nothing else in the shell knows page names.
 
+use palantir::SlotDefaults;
 use palantir::{
     Align, AnimSpec, App, Background, Button, ButtonTheme, Checkbox, Color, Configure, Corners,
     FontWeight, Frame, FrameFixture, Key, Palette, Panel, Scroll, Shortcut, Sizing, Spacing,
@@ -252,7 +253,7 @@ impl State {
         let mut theme = Theme::from_palette(&showcase_palette());
         // Library default is no button animation (`anim = None`). The
         // showcase exists to demo the animation primitive — opt in.
-        theme.button.anim = Some(AnimSpec::SPRING);
+        theme.button.defaults.anim = Some(AnimSpec::SPRING);
         ui.set_theme(theme);
         State {
             active: 0,
@@ -546,9 +547,11 @@ fn nav_style(selected: bool) -> ButtonTheme {
                 text: label(support::INK_FAINT),
             },
         },
-        padding: Spacing::xy(10.0, 5.0),
-        margin: Spacing::ZERO,
-        anim: Some(AnimSpec::FAST),
+        defaults: SlotDefaults {
+            padding: Spacing::xy(10.0, 5.0),
+            margin: Spacing::ZERO,
+            anim: Some(AnimSpec::FAST),
+        },
     }
 }
 

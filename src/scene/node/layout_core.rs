@@ -41,14 +41,25 @@ impl LayoutCore {
         rect.deflated_by(self.padding)
     }
 
+    /// Fold this column and the node's flags into one hash.
+    ///
+    /// A method rather than a `Hash` impl — unlike the sibling columns —
+    /// because the flags live in a column of their own, and folding them
+    /// into this one's tail word is what makes the pair three writes
+    /// instead of four on a per-node path.
     #[inline]
     pub(crate) fn hash_with_flags<H: std::hash::Hasher>(&self, flags: NodeFlags, h: &mut H) {
         h.write_u64(self.size.as_u64());
         h.write_u64(self.padding.as_u64());
         h.write_u64(self.margin.as_u64());
         let mode = self.meta.into();
-        let [flags_lo, flags_hi] = flags.bits().to_ne_bytes();
-        let tail = u32::from_ne_bytes([self.meta.metadata(), self.meta.tag(), flags_lo, flags_hi]);
+        // Shifted rather than byte-cast, like the sibling
+        // [`Gaps::resolved`](crate::scene::node::gaps::Gaps::resolved):
+        // the key never leaves the process, but a layout-dependent hash
+        // is a trap worth not setting.
+        let tail = u32::from(self.meta.metadata())
+            | (u32::from(self.meta.tag()) << 8)
+            | (u32::from(flags.bits()) << 16);
         h.write_u32(tail);
         if let LayoutMode::Scroll(spec) = mode {
             spec.hash(h);

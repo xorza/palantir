@@ -15,10 +15,48 @@ use crate::scene::record_store::recorded_gradients::GradientId;
 use crate::shape::rect::RectKind;
 use glam::{UVec2, Vec2};
 
-#[derive(Clone, Copy, Debug, Hash)]
+/// No `Hash` derive, deliberately: a `Gradient`'s [`GradientId`] is a
+/// per-frame index into the record store, so a derived hash would make
+/// the same paint a different value on every frame.
+/// [`Self::hash_parts`] is the one way to fold a fill into a key.
+#[derive(Clone, Copy, Debug)]
 pub(crate) enum ShapeBrush {
     Solid(ColorF16),
     Gradient(GradientId),
+}
+
+/// What a lowered fill contributes to a hash: a variant tag and the
+/// payload the variant's identity is in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct BrushHash {
+    pub(crate) tag: u8,
+    pub(crate) payload: u64,
+}
+
+impl ShapeBrush {
+    /// This fill's hash identity.
+    ///
+    /// A `Gradient`'s own [`GradientId`] is a frame-local index into the
+    /// record store, so it is never the payload: `fill_grad_hash`,
+    /// computed once at lowering by [`brush`](super::lower::brush), is
+    /// the stable stand-in the record carries beside it.
+    ///
+    /// One derivation, read by the shape-record hash and by the chrome
+    /// hash, so a fill cannot be one thing to the damage diff and
+    /// another to the measure cache.
+    #[inline]
+    pub(crate) fn hash_parts(self, fill_grad_hash: u64) -> BrushHash {
+        match self {
+            Self::Solid(color) => BrushHash {
+                tag: 0,
+                payload: color.as_u64(),
+            },
+            Self::Gradient(_) => BrushHash {
+                tag: 1,
+                payload: fill_grad_hash,
+            },
+        }
+    }
 }
 
 /// Lowered stroke: a straight-alpha colour and a logical-px width.
@@ -67,12 +105,21 @@ impl ShapeStroke {
 }
 
 impl From<&Stroke> for ShapeStroke {
+    /// Normalized on the way in, so a lowered stroke is canonical
+    /// wherever it lands afterwards.
+    ///
+    /// Here rather than at each consumer, because a record's raw bytes
+    /// are a hash key: `-0.0`, a sub-`EPS` hair, and a wide-but-invisible
+    /// ink all paint nothing, and every one of them reaching the hash as
+    /// its own bit pattern would split the damage and measure keys for a
+    /// difference nothing can see.
     #[inline]
     fn from(stroke: &Stroke) -> Self {
         Self {
             width: stroke.width,
             color: ColorF16::from(stroke.color),
         }
+        .normalized()
     }
 }
 
@@ -449,5 +496,64 @@ impl NanCheck for QuadShape {
                 ..
             } => bbox.has_nan() || radius.is_nan() || fill.has_nan() || stroke.has_nan(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::primitives::color::Color;
+    use crate::primitives::stroke::Stroke;
+    use crate::scene::shapes::paint::{ShapeBrush, ShapeStroke};
+
+    /// Every stroke that paints nothing lowers to one value, so the
+    /// record bytes a hash reads cannot split on an invisible
+    /// difference. A `-0.0` width, a hair below `EPS`, and a wide stroke
+    /// in transparent ink are three spellings of the same nothing.
+    #[test]
+    fn every_invisible_stroke_lowers_to_one_value() {
+        let cases = [
+            Stroke::solid(Color::WHITE, -0.0),
+            Stroke::solid(Color::WHITE, 0.0),
+            Stroke::solid(Color::WHITE, 1e-9),
+            Stroke::solid(Color::TRANSPARENT, 4.0),
+        ];
+        for stroke in cases {
+            assert_eq!(
+                ShapeStroke::from(&stroke),
+                ShapeStroke::NONE,
+                "{stroke:?} paints nothing",
+            );
+        }
+        // …and a stroke that does paint crosses verbatim.
+        let visible = Stroke::solid(Color::WHITE, 2.0);
+        assert_eq!(
+            ShapeStroke::from(&visible),
+            ShapeStroke {
+                width: 2.0,
+                color: Color::WHITE.into(),
+            },
+        );
+    }
+
+    /// A gradient's hash payload is the lowering-time content hash, not
+    /// its frame-local id: two records naming different ids under the
+    /// same stops hash alike, and the same id under different stops does
+    /// not.
+    #[test]
+    fn a_gradient_hashes_by_its_stops_and_not_its_frame_local_id() {
+        use crate::scene::record_store::recorded_gradients::GradientId;
+
+        let a = ShapeBrush::Gradient(GradientId(1)).hash_parts(0xabcd);
+        let b = ShapeBrush::Gradient(GradientId(7)).hash_parts(0xabcd);
+        let c = ShapeBrush::Gradient(GradientId(1)).hash_parts(0x1234);
+        assert_eq!(a, b, "the id is frame-local and excluded");
+        assert_ne!(a, c, "the stops decide");
+
+        let solid = ShapeBrush::Solid(Color::WHITE.into()).hash_parts(0xabcd);
+        assert_ne!(solid.tag, a.tag, "a solid and a gradient never collide");
+        assert_eq!(
+            solid.payload,
+            crate::primitives::color::ColorF16::from(Color::WHITE).as_u64(),
+        );
     }
 }

@@ -405,6 +405,10 @@ impl DamageEngine {
 /// rects — child markers (always zero) and fully clipped-away shapes
 /// produce no pixels, so they have nothing to clear or repaint. Lives
 /// beside `DamageEngine::raw_rects`, the buffer every caller is filling.
+///
+/// One rect at a time. A whole paint span goes in through
+/// `out.extend(rows.screens())`, whose iterator applies the same gate —
+/// those are the two spellings, and neither is written out by hand.
 #[inline]
 fn push_screen(out: &mut Vec<Rect>, screen: Rect) {
     if !screen.is_paint_empty() {

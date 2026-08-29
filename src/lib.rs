@@ -298,8 +298,8 @@ pub use glam::UVec2;
 // `Vec2` is in the public surface (Shape polyline points, `Configure::position`,
 // `Canvas` placement); re-export so widget authors don't need a direct `glam` dep.
 pub use glam::Vec2;
-pub use icons::icon_atlas::{IconAtlas, IconDef, IconId};
 pub use icons::icon_set::{IconHandle, IconSet};
+pub use icons::icon_table::{IconDef, IconId, IconTable};
 pub use primitives::span::Span;
 pub use primitives::stroke::Stroke;
 pub use primitives::translate_scale::TranslateScale;
@@ -326,11 +326,12 @@ pub use shape::triangle::TriangleShape;
 // Shaping and rasterization for a caller that draws its own text — see
 // [`TextShaper::glyphs`]. The atlas and the pipeline stay the caller's; what is
 // shared is the font stack.
+pub use renderer::backend::raster_atlas::content_type::ContentType;
 pub use text::glyph_font::GlyphFont;
 pub use text::glyphs::TextGlyphs;
 pub use text::probe::Caret;
 pub use text::probe::TextProbe;
-pub use text::render::{GlyphImage, GlyphImageKind, GlyphPlacement, GlyphRasterKey, PlacedGlyph};
+pub use text::render::{GlyphImage, GlyphPlacement, GlyphRasterKey, PlacedGlyph};
 pub use text::run::TextRun;
 pub use text::shaper::TextShaper;
 pub use text::wrap::TextWrap;
@@ -344,7 +345,7 @@ pub use widgets::combo_box::ComboBox;
 pub use widgets::context_menu::ContextMenu;
 pub use widgets::context_menu::menu_item::MenuItem;
 pub use widgets::context_menu::menu_separator::MenuSeparator;
-pub use widgets::drag_value::{DragNum, DragValue, DragValueResponse};
+pub use widgets::drag_value::{DragNum, DragValue};
 pub use widgets::frame::Frame;
 pub use widgets::gpu_view::GpuView;
 pub use widgets::grid::Grid;
@@ -358,7 +359,7 @@ pub use widgets::scroll::Scroll;
 pub use widgets::scroll::bars::BarMode;
 pub use widgets::scroll::zoom_config::{ZoomConfig, ZoomModifier, ZoomPivot};
 pub use widgets::separator::Separator;
-pub use widgets::slider::{Slider, SliderResponse};
+pub use widgets::slider::Slider;
 pub use widgets::spinner::Spinner;
 pub use widgets::splitter::{SplitHalf, Splitter};
 pub use widgets::switch::Switch;
@@ -385,7 +386,9 @@ pub use widgets::theme::tooltip::TooltipTheme;
 pub use widgets::theme::widget_look::WidgetLook;
 pub use widgets::theme::widget_look::animated_look::AnimatedLook;
 pub use widgets::theme::widget_look::stateful_look::StatefulLook;
+pub use widgets::theme::widget_look::theme_slot::SlotDefaults;
 pub use widgets::tooltip::Tooltip;
+pub use widgets::value_response::ValueResponse;
 pub use widgets::widget::Widget;
 pub use window::cursor_icon::CursorIcon;
 pub use window::vsync::Vsync;

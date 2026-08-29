@@ -5,6 +5,7 @@
 //! [`TextGlyphs`](crate::TextGlyphs) is the lease it drives them through.
 
 use crate::primitives::urect::URect;
+use crate::renderer::backend::raster_atlas::content_type::ContentType;
 use cosmic_text::{CacheKey, SubpixelBin};
 use glam::Vec2;
 
@@ -36,19 +37,11 @@ pub struct PlacedGlyph {
 /// One rasterized glyph bitmap.
 #[derive(Debug)]
 pub struct GlyphImage {
-    pub kind: GlyphImageKind,
+    pub kind: ContentType,
     pub placement: GlyphPlacement,
     /// Tightly packed rows, `width × height` pixels; 1 byte/px for
-    /// [`GlyphImageKind::Mask`], 4 (RGBA) for [`GlyphImageKind::Color`].
+    /// [`ContentType::Mask`], 4 (RGBA) for [`ContentType::Color`].
     pub data: Vec<u8>,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum GlyphImageKind {
-    /// Alpha-only coverage.
-    Mask,
-    /// Full-colour (emoji) RGBA.
-    Color,
 }
 
 /// Bitmap extents plus bearing of a rasterized glyph, relative to its

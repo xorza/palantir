@@ -5,7 +5,7 @@
 //! with the tint applied the way the icon's kind says — rather than a snapshot.
 
 use glam::{UVec2, Vec2};
-use palantir::{Color, Configure, IconAtlas, IconFit, Panel, Sizing, Ui};
+use palantir::{Color, Configure, IconFit, IconTable, Panel, Sizing, Ui};
 use std::rc::Rc;
 
 use crate::fixtures::close;
@@ -27,10 +27,10 @@ const RIGHT: [u8; 4] = [0x3c, 0x78, 0xe6, 255];
 
 /// The set, built once per thread. `from_svgs` derives each icon's viewBox
 /// and tintability by parsing it, so the fixtures state only their artwork.
-fn atlas() -> Rc<IconAtlas> {
+fn atlas() -> Rc<IconTable> {
     thread_local! {
-        static BUILT: Rc<IconAtlas> =
-            Rc::new(IconAtlas::from_svgs([("halves", HALVES_SVG), ("solid", SOLID_SVG)]));
+        static BUILT: Rc<IconTable> =
+            Rc::new(IconTable::from_svgs([("halves", HALVES_SVG), ("solid", SOLID_SVG)]));
     }
     BUILT.with(Rc::clone)
 }

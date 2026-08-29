@@ -7,7 +7,6 @@ use crate::input::sense::Sense;
 use crate::layout::types::align::Align;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::justify::Justify;
-use crate::layout::types::limits;
 use crate::layout::types::sizing::Sizes;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
@@ -126,10 +125,7 @@ pub trait Configure: Sized {
     /// Panics if the bound is negative, non-finite, or above a maximum
     /// already set on this node.
     fn min_size(mut self, s: impl Into<Size>) -> Self {
-        let node = self.node_mut().node;
-        let value = s.into();
-        limits::assert_valid_bounds(value, node.max_size.unwrap_or(Size::INF));
-        node.min_size = Some(value);
+        self.node_mut().node.set_min_size(s.into());
         self
     }
     /// # Panics
@@ -137,18 +133,15 @@ pub trait Configure: Sized {
     /// Panics if the bound is negative, NaN, or below a minimum already
     /// set on this node. Positive infinity is the unbounded maximum.
     fn max_size(mut self, s: impl Into<Size>) -> Self {
-        let node = self.node_mut().node;
-        let value = s.into();
-        limits::assert_valid_bounds(node.min_size.unwrap_or(Size::ZERO), value);
-        node.max_size = Some(value);
+        self.node_mut().node.set_max_size(s.into());
         self
     }
     fn padding(mut self, p: impl Into<Spacing>) -> Self {
-        self.node_mut().node.padding = Some(checked_spacing(p, "padding"));
+        self.node_mut().node.set_padding(p.into());
         self
     }
     fn margin(mut self, m: impl Into<Spacing>) -> Self {
-        self.node_mut().node.margin = Some(checked_spacing(m, "margin"));
+        self.node_mut().node.set_margin(m.into());
         self
     }
 
@@ -314,21 +307,4 @@ pub trait Configure: Sized {
     fn clip_rounded(self) -> Self {
         self.clip(ClipMode::Rounded)
     }
-}
-
-/// Screen one spacing on the way in, and say which knob it came from.
-///
-/// A NaN edge does not fail here — it poisons every extent derived from
-/// it and surfaces frames later as a widget that measured to nothing,
-/// with no way back to the call that set it. `Corners` is screened at
-/// shape lowering for the same reason; this is the equivalent gate for
-/// the two spacings, which reach layout instead of the record.
-///
-/// `debug_assert!` because it is per widget per frame, and because a NaN
-/// here is a caller's arithmetic rather than untrusted data — the theme's
-/// own spacing is checked where the theme is built.
-fn checked_spacing(value: impl Into<Spacing>, knob: &str) -> Spacing {
-    let value = value.into();
-    debug_assert!(!value.has_nan(), "NaN in {knob}: {value:?}");
-    value
 }

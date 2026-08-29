@@ -53,8 +53,6 @@ impl RecordPayloads {
     }
 
     pub(crate) fn interned_text(&self) -> InternedText<'_> {
-        InternedText {
-            bytes: self.text.bytes(),
-        }
+        InternedText::new(self.text.bytes())
     }
 }

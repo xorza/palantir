@@ -49,8 +49,8 @@ fn grid_8x8_alloc_free() {
     Audit::new().run(|ui| {
         Grid::new()
             .auto_id()
-            .cols([Track::fill(); 8])
-            .rows([Track::fill(); 8])
+            .cols([Track::FILL; 8])
+            .rows([Track::FILL; 8])
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 for r in 0..8u16 {

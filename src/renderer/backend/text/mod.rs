@@ -30,79 +30,65 @@ mod encode;
 mod encoded_counters;
 
 use crate::primitives::interned_text::InternedText;
-use crate::primitives::span::Span;
-use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
-use crate::renderer::backend::raster_atlas::raster_quad::RasterQuad;
-use crate::renderer::backend::stencil_variant::ColorVariantSpec;
-use crate::renderer::backend::stencil_variant::StencilVariant;
-use crate::renderer::backend::viewport::ViewportPush;
+use crate::renderer::backend::raster_atlas::RasterAtlasConfig;
+use crate::renderer::backend::raster_pass::{RasterPass, RasterPassConfig, RasterPassLabels};
+use crate::renderer::backend::text::encode::encoder::TextEncoder;
 use crate::renderer::render_buffer::text::TextDrawRow;
-use crate::text::render::RunPlacement;
+use crate::text::render::{GlyphRasterKey, RunPlacement};
 use crate::text::shaper::TextShaper;
 
-use crate::renderer::backend::text::encode::encoder::TextEncoder;
 #[derive(Debug)]
 pub(crate) struct TextBackend {
     shaper: TextShaper,
     encoder: TextEncoder,
-
-    /// Text shader module — format-independent; [`Self::build_variants`]
-    /// reads it to build each format's pipelines.
-    shader: wgpu::ShaderModule,
-
-    vbuf: DynamicBuffer<RasterQuad>,
-
-    /// Per-batch slice of the encoder's `instances`; empty span =
-    /// nothing to draw.
-    ranges: Vec<Span>,
+    pub(super) pass: RasterPass<GlyphRasterKey>,
 }
 
 impl TextBackend {
     /// Build the format-independent text resources (glyph atlas, shaper,
     /// caches, shader, vertex buffer). The render pipelines are built per
     /// format by [`FormatPipelines`](crate::renderer::backend::format_pipelines::FormatPipelines)
-    /// from [`Self::build_variants`].
+    /// from [`RasterPass::build_variants`].
     pub(crate) fn new(device: &wgpu::Device, shaper: TextShaper) -> Self {
-        let encoder = TextEncoder::new(device);
-
-        let shader = RasterQuad::shader_module(device, "palantir.text.shader");
-        let vbuf = DynamicBuffer::<RasterQuad>::vertex(device, "palantir text vbuf", 4096);
-
         Self {
             shaper,
-            encoder,
-            shader,
-            vbuf,
-            ranges: Vec::new(),
+            encoder: TextEncoder::default(),
+            pass: RasterPass::new(
+                device,
+                RasterPassConfig {
+                    labels: RasterPassLabels {
+                        shader: "palantir.text.shader",
+                        vbuf: "palantir.text.vbuf",
+                        pipeline: "palantir.text.pipeline",
+                        stencil_pipeline: "palantir.text.pipeline.stencil_test",
+                        layout: "palantir.text.pl",
+                    },
+                    atlas: RasterAtlasConfig {
+                        label: "palantir.text",
+                        // Bumped from glyphon's 256 to skip the 256->512->1024
+                        // grow chain on the first frame with non-trivial text.
+                        initial_mask_px: 1024,
+                        // Colour glyphs (emoji) are rare in UI text: 256^2 RGBA is
+                        // 256 KB and holds dozens at UI sizes, where matching the
+                        // mask side would pin 4 MB most sessions never touch.
+                        initial_color_px: 256,
+                        // 16 MiB is 2^24, and both `bytes_per_pixel` values are
+                        // powers of two, so the ceiling lands on an exact power-of-
+                        // two side either way: a 4096² mask or a 2048² colour
+                        // atlas. The measured `text_atlas/cache_churn` working set
+                        // is 3700 glyphs in a 2048² mask, so the mask ceiling is
+                        // roughly 4x the largest set any bench here produces.
+                        max_bytes: 16 << 20,
+                        // 4 MiB is a 2048² mask or a 1024² colour atlas, and the
+                        // mask growing 1 MB -> 4 MB is what the measurement in
+                        // `eager_growth_bytes` cost.
+                        eager_growth_bytes: 4 << 20,
+                    },
+                    initial_instances: 4096,
+                },
+            ),
         }
-    }
-
-    /// Build the base + stencil-test render pipelines against `format`,
-    /// reading the format-independent `shader`. The glyph atlas, its bind
-    /// group, and the sampler are not built here and so survive a format
-    /// change. Called by `FormatPipelines` per format; matches the
-    /// `build_variants` shape of the quad / mesh / image / curve pipelines.
-    pub(crate) fn build_variants(
-        &self,
-        device: &wgpu::Device,
-        format: wgpu::TextureFormat,
-    ) -> StencilVariant {
-        // Group 0 = atlas textures + sampler. Viewport + atlas sizes
-        // ride the shared immediate region.
-        StencilVariant::build(
-            device,
-            ColorVariantSpec {
-                label: "palantir.text.pipeline",
-                stencil_label: "palantir.text.pipeline.stencil_test",
-                layout_label: "palantir.text.pl",
-                shader: &self.shader,
-                bind_group_layouts: &[Some(self.encoder.atlas.bind_group_layout())],
-                vertex_buffers: &[Some(RasterQuad::instance_layout())],
-                topology: wgpu::PrimitiveTopology::TriangleStrip,
-            },
-            format,
-        )
     }
 
     /// Append-mode prepare. Encoded-cache hits bypass shaping; the
@@ -117,12 +103,7 @@ impl TextBackend {
         runs: &[TextDrawRow],
         interned_text: &InternedText<'_>,
     ) {
-        debug_assert_eq!(
-            batch_idx,
-            self.ranges.len(),
-            "text batches must be prepared once in contiguous order",
-        );
-        let start = self.encoder.instances.len() as u32;
+        self.pass.open_batch(batch_idx);
 
         // One walk: hits emit straight to `instances`; misses encode
         // through the lazily-opened lease. An all-hit frame never
@@ -135,11 +116,12 @@ impl TextBackend {
                 continue;
             }
             let run_key = encode::encode_key_for(r, scale);
-            if self.encoder.try_emit_cached(&run_key) {
+            if self.encoder.try_emit_cached(&mut self.pass, &run_key) {
                 continue;
             }
             let glyphs = glyphs.get_or_insert_with(|| self.shaper.glyphs());
             self.encoder.encode_run(
+                &mut self.pass,
                 ctx.device,
                 glyphs,
                 r.text.resolve_request(interned_text),
@@ -151,50 +133,13 @@ impl TextBackend {
                 run_key,
             );
         }
-        drop(glyphs);
-
-        let end = self.encoder.instances.len() as u32;
-
-        self.ranges.push(Span::new(start, end - start));
     }
 
-    /// Upload this frame's accumulated glyph instances in one belt
-    /// write, then drain queued glyph-atlas uploads (grow blits +
-    /// per-glyph texture copies) onto the renderer's encoder. Called
-    /// once per frame, after every `prepare_batch` and before any pass
-    /// draws — so atlas uploads share the same submit as the text
-    /// draws that read from them. Deferring instances to a single
-    /// write replaces N per-batch belt suballocations + copy commands
-    /// for disjoint tails of the same Vec, and a mid-frame grow's full
-    /// re-upload happens at most once; batch `ranges` index into the
-    /// shared buffer, so per-batch draws are unaffected.
     /// The shaper this backend encodes against, for lending to a `GpuView`
     /// through [`GpuInitCtx`](crate::GpuInitCtx) — the one the whole window is
     /// already drawing text with.
     pub(crate) fn shaper(&self) -> &TextShaper {
         &self.shaper
-    }
-
-    pub(crate) fn flush(&mut self, ctx: &mut GpuCtx<'_>) {
-        self.vbuf.upload_instances(ctx, &self.encoder.instances);
-        self.encoder.atlas.flush_pending_uploads(ctx);
-    }
-
-    pub(crate) fn render_batch<'a>(
-        &'a self,
-        batch_idx: usize,
-        pass: &mut wgpu::RenderPass<'a>,
-        pipelines: &'a StencilVariant,
-        use_stencil: bool,
-        viewport: &ViewportPush,
-    ) {
-        let &span = self
-            .ranges
-            .get(batch_idx)
-            .expect("render schedule referenced an unprepared text batch");
-        self.encoder
-            .atlas
-            .draw_span(pass, pipelines, use_stencil, viewport, &self.vbuf, span);
     }
 
     /// The shared cache clock these caches age against. The icon atlas
@@ -215,21 +160,14 @@ impl TextBackend {
     /// is its
     /// opposite number on the record side.
     ///
-    /// **Runs on an empty `ranges` too.** Returning early there would
-    /// freeze this side's clock on any frame whose damage happened to
-    /// miss every text run, while the shaper's kept advancing. Both
-    /// caches age against the shaper's clock
+    /// Both caches age against the shaper's clock
     /// ([`TextShaper::frame`](crate::text::shaper::TextShaper::frame)),
-    /// so sweeping a text-free frame is what keeps
-    /// `ENCODED_CACHE_KEEP_FRAMES` a bound on retention rather than a
-    /// bound on text-bearing frames.
+    /// so a text-free frame still sweeps — see
+    /// [`RasterPass::end_frame`].
     pub(crate) fn end_frame(&mut self) {
-        debug_assert!(
-            !self.ranges.is_empty() || self.encoder.instances.is_empty(),
-            "instances were emitted without a batch range to draw them",
-        );
-        self.encoder.advance_to(self.shaper.frame());
-        self.ranges.clear();
+        let frame = self.shaper.frame();
+        self.pass.end_frame(frame);
+        self.encoder.end_frame(frame);
     }
 }
 

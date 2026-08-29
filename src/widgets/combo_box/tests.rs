@@ -1,10 +1,12 @@
 use crate::Ui;
 use crate::layout::types::sizing::Sizing;
+use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::configure::Configure;
 use crate::ui::harness::UiHarness;
 use crate::widgets::combo_box::{ComboBox, ComboState};
 use crate::widgets::panel::Panel;
+use crate::widgets::theme::Theme;
 use glam::{UVec2, Vec2};
 
 const SURFACE: UVec2 = UVec2::new(400, 300);
@@ -205,4 +207,54 @@ fn trigger_geometry_follows_the_combo_box_theme() {
     );
     assert_ne!(size_a, size_b);
     assert_ne!(gap_a, gap_b);
+}
+
+/// The list is the context menu's panel, not merely its colour: it takes
+/// the menu theme's padding and row gap as well, so a combo and a
+/// right-click menu built from one theme read as one control. It applied
+/// only the background before, and rendered visibly tighter than the
+/// menu it claims to reuse.
+///
+/// Differential, against the same two options: the list's height grows by
+/// exactly the padding it gained on two edges plus the one gap between
+/// two rows.
+#[test]
+fn the_dropdown_takes_the_context_menu_theme_it_documents() {
+    let list_height = |padding: f32, gap: f32| {
+        let options = ["One", "Two"];
+        let id = WidgetId::from_hash("combo");
+        let mut theme = Theme::default();
+        theme.context_menu.padding = Spacing::all(padding);
+        theme.context_menu.gap = gap;
+
+        let mut h = UiHarness::new(SURFACE);
+        h.ui.set_theme(theme);
+        let mut selected = 0;
+        let build = |ui: &mut Ui, selected: &mut usize| {
+            Panel::canvas()
+                .id(WidgetId::from_hash("root"))
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    ComboBox::new(selected, &options)
+                        .id(id)
+                        .position(Vec2::new(40.0, 40.0))
+                        .size((Sizing::fixed(140.0), Sizing::fixed(30.0)))
+                        .show(ui);
+                });
+        };
+        h.frame(|ui| build(ui, &mut selected));
+        h.ui.state_mut::<ComboState>(id).open = true;
+        h.frame(|ui| build(ui, &mut selected));
+        h.ui.response_for(id.with("list"))
+            .rect
+            .expect("combo list arranged")
+            .size
+            .h
+    };
+
+    // Two edges of padding, and one gap between the two rows.
+    assert_eq!(
+        list_height(11.0, 7.0) - list_height(0.0, 0.0),
+        2.0 * 11.0 + 7.0,
+    );
 }

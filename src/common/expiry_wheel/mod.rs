@@ -96,7 +96,7 @@ struct Ticket<K> {
 /// Ring of pending expiry tickets keyed by due frame.
 ///
 /// Sized at construction from the longest deadline the owner can hand
-/// out; see [`Self::with_horizon`].
+/// out; see [`Self::with_keep`].
 #[derive(Debug)]
 pub(crate) struct ExpiryWheel<K> {
     /// Ring indexed by `due & mask`. Buckets keep their capacity across
@@ -134,24 +134,33 @@ pub(crate) struct ExpiryWheel<K> {
 }
 
 impl<K: Copy + Debug> ExpiryWheel<K> {
+    /// A wheel for an owner that keeps an entry `keep_frames` frames
+    /// past its last use — its *longest* window, where the owner has
+    /// more than one.
+    ///
+    /// The ring is sized two frames past that window, not one. The
+    /// horizon counts from the most recently **drained** frame, and the
+    /// two differ for an owner that schedules during a frame and sweeps
+    /// at its end, which is every owner here: such an owner files
+    /// against a `drained_through` still one frame behind. Getting it
+    /// wrong is not a correctness bug — a deadline past the ring is
+    /// clamped inward and fires early, and an early ticket costs one
+    /// re-file — but it silently turns a cache that should file one
+    /// ticket per row per window into one that re-files every row every
+    /// window. Which is why the arithmetic is here rather than at each
+    /// owner's constructor.
+    pub(crate) fn with_keep(keep_frames: u64) -> Self {
+        Self::with_horizon(keep_frames + 2)
+    }
+
     /// A wheel that can hold a ticket up to `horizon` frames past the
     /// most recently **drained** frame.
-    ///
-    /// Drained, not filed — the two differ for an owner that schedules
-    /// during a frame and sweeps at its end, which is every owner here.
-    /// Such an owner files against a `drained_through` still one frame
-    /// behind, so its horizon is its retention window plus two, not plus
-    /// one. Getting it wrong is not a correctness bug — a deadline past
-    /// the ring is clamped inward and fires early, and an early ticket
-    /// costs one re-file — but it silently turns a cache that should
-    /// file one ticket per row per window into one that re-files every
-    /// row every window.
     ///
     /// Rounded up to a power of two so the bucket index is a mask rather
     /// than a division — this runs per filed ticket. One spare slot
     /// beyond the horizon keeps the furthest ticket from aliasing the
     /// bucket being drained.
-    pub(crate) fn with_horizon(horizon: u64) -> Self {
+    fn with_horizon(horizon: u64) -> Self {
         let slots = (horizon + 1).next_power_of_two() as usize;
         Self {
             buckets: (0..slots).map(|_| Vec::new()).collect(),

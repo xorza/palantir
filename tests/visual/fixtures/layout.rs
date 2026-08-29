@@ -61,8 +61,8 @@ fn grid_mixed_tracks_matches_golden() {
     let img = h.render(UVec2::new(320, 200), 1.0, DARK_BG, |ui| {
         Grid::new()
             .id_salt("g")
-            .cols([Track::fixed(80.0), Track::fill(), Track::fixed(60.0)])
-            .rows([Track::fixed(40.0), Track::fill()])
+            .cols([Track::fixed(80.0), Track::FILL, Track::fixed(60.0)])
+            .rows([Track::fixed(40.0), Track::FILL])
             .gap(6.0)
             .padding(10.0)
             .size((Sizing::FILL, Sizing::FILL))
@@ -154,8 +154,8 @@ fn grid_two_hug_cols_label_not_clipped_matches_golden() {
             .show(ui, |ui| {
                 Grid::new()
                     .id_salt("two-hug")
-                    .cols([Track::hug(), Track::hug()])
-                    .rows([Track::hug()])
+                    .cols([Track::HUG, Track::HUG])
+                    .rows([Track::HUG])
                     .gap_xy(16.0, 0.0)
                     .show(ui, |ui| {
                         Text::new(

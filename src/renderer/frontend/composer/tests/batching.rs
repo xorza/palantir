@@ -669,7 +669,7 @@ fn quad_fast_path_flag_cases() {
     // (case, rect, corners, stroke, brush, dpr, expect_fast)
     let gradient = BrushSource::Gradient(ResolvedGradient {
         axis: FillAxis::ZERO,
-        row: LutRow::FALLBACK,
+        lut_row: LutRow::FALLBACK,
         kind: FillKind::linear(Spread::Pad),
     });
     let cases: &[(&str, Rect, Corners, Stroke, BrushSource, f32, bool)] = &[

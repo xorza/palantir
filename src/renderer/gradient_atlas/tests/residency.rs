@@ -62,8 +62,9 @@ fn register_same_gradient_twice_reuses_row() {
 #[test]
 fn near_identical_keys_never_share_a_row() {
     let mut atlas = CpuGradientAtlas::default();
-    let base = LinearGradient::two_stop(0.0, ColorU8::rgb(10, 20, 30), ColorU8::WHITE);
-    let one_byte_off = LinearGradient::two_stop(0.0, ColorU8::rgb(10, 20, 31), ColorU8::WHITE);
+    let base = LinearGradient::two_stop(0.0, ColorU8::linear_rgb(10, 20, 30), ColorU8::WHITE);
+    let one_byte_off =
+        LinearGradient::two_stop(0.0, ColorU8::linear_rgb(10, 20, 31), ColorU8::WHITE);
 
     let mut rows = HashSet::new();
     for g in [&base, &one_byte_off] {
@@ -121,8 +122,8 @@ fn register_many_distinct_gradients_all_unique_rows() {
 fn register_stops_dedups_across_variants() {
     let mut atlas = CpuGradientAtlas::default();
     let stops = GradientStops::new([
-        Stop::new(0.0, ColorU8::rgb(255, 64, 0)),
-        Stop::new(1.0, ColorU8::rgb(0, 128, 255)),
+        Stop::new(0.0, ColorU8::linear_rgb(255, 64, 0)),
+        Stop::new(1.0, ColorU8::linear_rgb(0, 128, 255)),
     ]);
     let r_linear = atlas.register_stops(&stops, Interp::Oklab);
     let r_radial = atlas.register_stops(&stops, Interp::Oklab);

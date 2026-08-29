@@ -183,30 +183,6 @@ impl From<ConicGradientBuilder> for Brush {
     }
 }
 
-impl std::hash::Hash for Brush {
-    #[inline]
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        match self {
-            Brush::Solid(c) => {
-                state.write_u8(0);
-                c.hash(state);
-            }
-            Brush::Linear(g) => {
-                state.write_u8(1);
-                g.hash(state);
-            }
-            Brush::Radial(g) => {
-                state.write_u8(2);
-                g.hash(state);
-            }
-            Brush::Conic(g) => {
-                state.write_u8(3);
-                g.hash(state);
-            }
-        }
-    }
-}
-
 impl Animatable for Brush {
     #[inline]
     fn lerp(a: Self, b: Self, t: f32) -> Self {

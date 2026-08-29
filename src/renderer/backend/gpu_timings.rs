@@ -455,9 +455,8 @@ fn publish_timestamps(
     // a begin/end-only frame (blank window in per-batch mode) must
     // not leave the previous frame's per-kind values published.
     if count >= 2 {
-        let first = u64::from_le_bytes(ts[..8].try_into().unwrap());
-        let last_off = (count - 1) * 8;
-        let last = u64::from_le_bytes(ts[last_off..last_off + 8].try_into().unwrap());
+        let first = tick(ts, 0);
+        let last = tick(ts, count - 1);
         let delta_ns = (last.saturating_sub(first) as f64 * period_ns as f64) as u64;
         sink.record_pass_ns(delta_ns);
         sink.clear_kinds();
@@ -467,10 +466,8 @@ fn publish_timestamps(
         let mut per_kind_ns = [0u64; <BatchKind as strum::EnumCount>::COUNT];
         let mut seen = [false; <BatchKind as strum::EnumCount>::COUNT];
         for i in 0..count - 1 {
-            let t0_off = i * 8;
-            let t1_off = (i + 1) * 8;
-            let t0 = u64::from_le_bytes(ts[t0_off..t0_off + 8].try_into().unwrap());
-            let t1 = u64::from_le_bytes(ts[t1_off..t1_off + 8].try_into().unwrap());
+            let t0 = tick(ts, i);
+            let t1 = tick(ts, i + 1);
             let kind = segment_kinds.get(i).copied().unwrap_or(BatchKind::Setup);
             let seg_ns = (t1.saturating_sub(t0) as f64 * period_ns as f64) as u64;
             seen[kind.idx()] = true;
@@ -484,14 +481,26 @@ fn publish_timestamps(
     }
 }
 
+/// The `index`th 64-bit word of a resolved query buffer.
+///
+/// The one decode. `pod_read_unaligned` rather than
+/// `bytemuck::cast_slice`, which the backend reaches for elsewhere: a
+/// mapped range's alignment is the driver's to promise, and a cast that
+/// panicked on a misaligned mapping would take the frame down over a
+/// debug counter. The read compiles to the same load either way.
+#[inline]
+fn tick(bytes: &[u8], index: usize) -> u64 {
+    let off = index * 8;
+    bytemuck::pod_read_unaligned(&bytes[off..off + 8])
+}
+
 /// Parse the resolved pipeline-statistics counters and publish them.
 /// Field order matches `pipeline_stats_flags` — the mapping lives
 /// here, next to the flag declaration that defines it.
 fn publish_stats(bytes: &[u8], sink: &GpuPassStats) {
     let mut values = [0u64; STATS_FIELD_COUNT];
     for (i, v) in values.iter_mut().enumerate() {
-        let off = i * 8;
-        *v = u64::from_le_bytes(bytes[off..off + 8].try_into().unwrap());
+        *v = tick(bytes, i);
     }
     sink.record_pipeline_stats(PipelineStats {
         vertex_shader_invocations: values[0],

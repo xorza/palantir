@@ -13,7 +13,7 @@ use crate::scene::node::Node;
 use crate::scene::node::configure::Configure;
 use crate::scene::node::theme_defaults::ThemeDefaults;
 use crate::ui::Ui;
-use crate::widgets::overlay_scope::OverlayScope;
+use crate::widgets::overlay_scope::{Backdrop, OverlayScope};
 use crate::widgets::theme::modal::ModalTheme;
 use glam::Vec2;
 
@@ -102,18 +102,17 @@ impl<'a> Modal<'a> {
             .child_align(Align::CENTER)
             .sense(Sense::ABSORB_POINTER);
         let placement = Placement::fixed(Vec2::ZERO, Some(surface.size));
-        let scope = OverlayScope::claim(root_id, Layer::Modal, placement, &mut root);
+        let scope =
+            OverlayScope::claim(root_id, Layer::Modal, placement, Backdrop::Root, &mut root);
         // The backdrop root displaces the card the salt arrived on —
-        // after `claim`, which writes the placement into it.
+        // after `claim`, which stamps the key filter onto it.
         root_w.node = root;
-        let escape = scope.record(ui, |ui| {
+        let edges = scope.record(ui, |ui| {
             root_w.record(ui, Some(&dim), |ui| {
                 ui.widget(card).record(ui, Some(card_bg), body);
             });
         });
-        // The backdrop dismisses on the same rule `Popup`'s eater does —
-        // see `ResponseState::any_clicked`.
-        let dismissed = ui.response_for(root_id).any_clicked() || escape;
+        let dismissed = edges.outside || edges.escape;
         scope.withdraw(ui, dismissed);
 
         ModalResponse { dismissed }

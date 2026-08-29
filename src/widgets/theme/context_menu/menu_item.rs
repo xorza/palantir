@@ -1,6 +1,5 @@
 //! What one menu row wears in each of its four interaction states.
 
-use crate::animation::anim_spec::AnimSpec;
 use crate::input::response::response_state::ResponseState;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
@@ -25,22 +24,17 @@ pub struct MenuItemTheme {
     /// Color for the right-aligned shortcut hint (e.g. "⌘C"). Pulled
     /// off the row label color so the hint reads muted.
     pub shortcut: Color,
-    /// Padding inside one row.
-    pub padding: Spacing,
-    /// Default margin around one row. `ZERO` by default: rows stack
-    /// flush inside the menu's own padding and
-    /// [`ContextMenuTheme::gap`](crate::ContextMenuTheme::gap) is what opens a gutter between them.
-    pub margin: Spacing,
     /// Minimum gutter between the label and its right-aligned shortcut
     /// hint. The row is `SpaceBetween`, so this is the floor the two
     /// texts are held apart by while the menu hugs its widest row —
     /// it is what stops "Copy ⌘C" from reading as one word.
     pub gap: f32,
-    /// Spec applied to fill/stroke/text transitions between row states.
-    /// Default `None` — animation is opt-in (matches `ButtonTheme`).
-    /// Round-trips through serde so theme files can configure motion.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub anim: Option<AnimSpec>,
+    /// Spacing and transition spec — see [`SlotDefaults`]. `margin` is
+    /// `ZERO` by default: rows stack flush inside the menu's own padding
+    /// and [`ContextMenuTheme::gap`](crate::ContextMenuTheme::gap) is
+    /// what opens a gutter between them.
+    #[serde(flatten)]
+    pub defaults: SlotDefaults,
 }
 
 impl MenuItemTheme {
@@ -52,10 +46,8 @@ impl MenuItemTheme {
         let Self {
             looks,
             shortcut: _,
-            padding: _,
-            margin: _,
             gap: _,
-            anim: _,
+            defaults: _,
         } = self;
         looks.for_each_text(f);
     }
@@ -96,10 +88,12 @@ impl MenuItemTheme {
             // Reads against the container's 4 px: an 8 px row inset puts the
             // label 12 px off the panel edge to 9 px off its top, the
             // slightly-wider-than-tall gutter a column of labels wants.
-            padding: Spacing::xy(8.0, 5.0),
-            margin: Spacing::ZERO,
             gap: 16.0,
-            anim: None,
+            defaults: SlotDefaults {
+                padding: Spacing::xy(8.0, 5.0),
+                margin: Spacing::ZERO,
+                anim: None,
+            },
         }
     }
 }
@@ -113,9 +107,9 @@ impl ThemeSlot for MenuItemTheme {
 
     fn defaults(&self) -> SlotDefaults {
         SlotDefaults {
-            padding: self.padding,
-            margin: self.margin,
-            anim: self.anim,
+            padding: self.defaults.padding,
+            margin: self.defaults.margin,
+            anim: self.defaults.anim,
         }
     }
 }

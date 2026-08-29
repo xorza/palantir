@@ -146,6 +146,13 @@ impl Tree {
         self.records.subtree_end()[i].end() as usize
     }
 
+    /// Whether node `i` has any children — see
+    /// [`SubtreeEnd::has_children`].
+    #[inline]
+    pub(crate) fn has_children(&self, i: usize) -> bool {
+        self.records.subtree_end()[i].has_children(i)
+    }
+
     /// The immediate parent of node `i`, or `None` when `i` is a root.
     #[inline]
     pub(crate) fn parent_of(&self, i: usize) -> Option<NodeId> {
@@ -585,13 +592,7 @@ impl Tree {
     /// only need non-collapsed children — that's the dominant access
     /// pattern.
     pub(crate) fn children(&self, parent: NodeId) -> ChildIter<'_> {
-        let ends = self.records.subtree_end();
-        ChildIter {
-            layouts: self.records.layout(),
-            next: parent.0 + 1,
-            end: ends[parent.0 as usize].end(),
-            ends,
-        }
+        ChildIter::new(&self.records, parent)
     }
 
     /// Iterate non-collapsed children of `parent`, yielding `NodeId`s
@@ -601,6 +602,14 @@ impl Tree {
         self.children(parent).filter_map(Child::active)
     }
 
+    /// This node's direct shapes interleaved with its immediate
+    /// children, in record order.
+    ///
+    /// Two walks inside this type reach for [`TreeItems::new`] instead:
+    /// `compute_rollups` and `close_node` both hold a `&mut` on one of
+    /// `Tree`'s fields while they walk, and `&self` here would take the
+    /// whole of it. Every caller that *can* take `&self` comes through
+    /// this.
     pub(crate) fn tree_items(&self, node: NodeId) -> TreeItems<'_> {
         TreeItems::new(&self.records, &self.shapes.records, node)
     }

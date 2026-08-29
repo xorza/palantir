@@ -15,7 +15,7 @@ use crate::primitives::mesh::MeshVertex;
 use crate::primitives::span::Span;
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
-use crate::renderer::backend::instance_pipeline::InstancePipeline;
+use crate::renderer::backend::pipeline_recipe::PipelineRecipe;
 use crate::renderer::backend::shader_template;
 use crate::renderer::backend::stencil_variant::ColorVariantSpec;
 use crate::renderer::backend::stencil_variant::StencilVariant;
@@ -55,17 +55,11 @@ pub(super) struct MeshPipeline {
     shader: wgpu::ShaderModule,
 }
 
-impl InstancePipeline for MeshPipeline {
-    /// None past the device: mesh binds no groups at all.
-    type Layouts<'a> = ();
-    type Upload<'a> = MeshUpload<'a>;
-    type Bindings<'a> = ();
-    type Batch<'a> = MeshBatch<'a>;
-
+impl MeshPipeline {
     /// Format-independent mesh resources; the pipelines are built by
     /// [`FormatPipelines`](crate::renderer::backend::format_pipelines::FormatPipelines)
     /// from [`Self::build_variants`].
-    fn new(device: &wgpu::Device) -> Self {
+    pub(super) fn new(device: &wgpu::Device) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("palantir.mesh.shader"),
             source: wgpu::ShaderSource::Wgsl(
@@ -87,7 +81,7 @@ impl InstancePipeline for MeshPipeline {
         }
     }
 
-    fn instance_layout() -> wgpu::VertexBufferLayout<'static> {
+    pub(super) fn instance_layout() -> wgpu::VertexBufferLayout<'static> {
         wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<MeshInstance>() as u64,
             step_mode: wgpu::VertexStepMode::Instance,
@@ -99,22 +93,21 @@ impl InstancePipeline for MeshPipeline {
     /// the only format-dependent mesh objects; the vertex / index /
     /// instance buffers are reused. Called by `FormatPipelines` per
     /// format.
-    fn build_variants(
+    pub(super) fn build_variants(
         &self,
         device: &wgpu::Device,
-        _layouts: Self::Layouts<'_>,
         format: wgpu::TextureFormat,
     ) -> StencilVariant {
         // Mesh shader uses no bind groups — only the shared immediate
         // region for viewport. Empty bind-group-layout list.
+        let layout = PipelineRecipe::pipeline_layout(device, "palantir.mesh.pl", &[]);
         StencilVariant::build(
             device,
             ColorVariantSpec {
                 label: "palantir.mesh.pipeline",
                 stencil_label: "palantir.mesh.pipeline.stencil_test",
-                layout_label: "palantir.mesh.pl",
                 shader: &self.shader,
-                bind_group_layouts: &[],
+                layout: &layout,
                 vertex_buffers: &[Some(mesh_vertex_layout()), Some(Self::instance_layout())],
                 topology: wgpu::PrimitiveTopology::TriangleList,
             },
@@ -122,14 +115,14 @@ impl InstancePipeline for MeshPipeline {
         )
     }
 
-    fn upload(
+    pub(super) fn upload(
         &mut self,
         ctx: &mut GpuCtx<'_>,
         MeshUpload {
             vertices,
             indices,
             instances,
-        }: Self::Upload<'_>,
+        }: MeshUpload<'_>,
     ) {
         if !mesh_upload_required(vertices.len(), indices.len(), instances.len()) {
             return;
@@ -144,12 +137,11 @@ impl InstancePipeline for MeshPipeline {
     /// [`Self::draw`] then issues the draws. Mesh binds no groups —
     /// the viewport rides the shared immediate region, re-pushed by
     /// the backend's `rebind!` after every pipeline switch.
-    fn bind<'a>(
+    pub(super) fn bind<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
         variant: &'a StencilVariant,
         use_stencil: bool,
-        _bindings: Self::Bindings<'a>,
     ) {
         pass.set_pipeline(variant.select(use_stencil));
         pass.set_vertex_buffer(0, self.vertex_buffer.buffer.slice(..));
@@ -174,10 +166,10 @@ impl InstancePipeline for MeshPipeline {
     /// `Mesh`. Interning payloads by their already-computed
     /// `content_hash` would change that, and is the prerequisite for any
     /// batching here.
-    fn draw<'a>(
+    pub(super) fn draw<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
-        MeshBatch { draws, items }: Self::Batch<'_>,
+        MeshBatch { draws, items }: MeshBatch<'_>,
     ) {
         for (offset, draw) in draws[items.range()].iter().enumerate() {
             if draw.indices.len == 0 {

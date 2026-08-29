@@ -41,12 +41,19 @@ pub(super) struct CacheEntry {
     /// Zero for every unbounded buffer, so only a wrapped, width-bounded
     /// run can carry a non-zero value.
     pub(super) left: f32,
-    /// Last frame on which this entry is kept; [`CosmicMeasure::end_frame`](crate::text::cosmic::CosmicMeasure::end_frame)
-    /// drops it once the clock passes this. Insertion sets it one
+    /// First frame on which this entry is dead;
+    /// [`CosmicMeasure::end_frame`](crate::text::cosmic::CosmicMeasure::end_frame)
+    /// drops it once the clock reaches this. Insertion sets it one
     /// probation window out and every lookup pushes it a protected window
     /// out, so the two-tier policy needs no separate "has been reused"
     /// flag — the deadline *is* the tier.
-    pub(super) keep_until: u64,
+    ///
+    /// The first dead frame rather than the last live one, because that
+    /// is what
+    /// [`ExpiryWheel::schedule`](crate::common::expiry_wheel::ExpiryWheel::schedule)
+    /// files under: the two vocabularies differ by one, and holding the
+    /// wheel's own spares every site here from converting.
+    pub(super) dies_at: u64,
     /// Serial of this entry's live expiry ticket. A ticket firing under
     /// any other one was supplanted by a later
     /// [`CosmicMeasure::supersede`](crate::text::cosmic::CosmicMeasure::supersede) and dies in the sweep instead of

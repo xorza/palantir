@@ -8,7 +8,6 @@
 //! a widget needs to place a caret, turn a click into an offset, or paint
 //! a selection.
 
-use crate::common::hash;
 use crate::layout::types::align::Align;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::key::TextShapeKey;
@@ -81,10 +80,7 @@ impl<'a> TextRun<'a> {
     /// other bufferless run carries, and the value a probe reports its
     /// zero line height from.
     pub(crate) fn unbounded_key(&self) -> TextShapeKey {
-        if !self.font.metrics_valid() {
-            return TextShapeKey::INVALID;
-        }
-        TextShapeKey::unbounded(hash::hash_str(self.text), self.font)
+        TextShapeKey::for_text(self.text, self.font)
     }
 
     /// The width this run binds to, or `None` where it binds to none.

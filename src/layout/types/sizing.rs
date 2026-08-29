@@ -4,6 +4,7 @@
 use crate::primitives::approx;
 use crate::primitives::num::{F32Ext, Num};
 use crate::primitives::size::Size;
+use glam::BVec2;
 
 /// How one axis of a node resolves during layout.
 ///
@@ -247,6 +248,15 @@ impl Sizes {
     #[inline]
     pub const fn h(self) -> Sizing {
         decode_sizing(self.h_packed)
+    }
+
+    /// Which axes hug their content, as a lane mask — what a driver
+    /// hands [`Size::select`](crate::primitives::size::Size::select) to
+    /// pick per axis between "measure unbounded" and "measure against the
+    /// room I have".
+    #[inline]
+    pub(crate) fn hug_mask(self) -> BVec2 {
+        BVec2::new(self.w().is_hug(), self.h().is_hug())
     }
 }
 

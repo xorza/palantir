@@ -86,22 +86,30 @@ impl TypedStores {
         })
     }
 
-    /// Sweep every store, keeping them all — for a table whose empty
-    /// stores cost nothing to hold.
-    pub(crate) fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>) {
-        for store in self.by_type.values_mut() {
-            store.sweep_removed(removed);
-        }
-    }
-
-    /// Sweep every store and drop the ones that drained, so
-    /// [`Self::is_empty`] goes back to being a real fast path once the
-    /// table goes idle. Without it a single ever-used type would leave
-    /// the container non-empty forever.
-    pub(crate) fn sweep_removed_dropping_drained(&mut self, removed: &FxHashSet<WidgetId>) {
+    /// Sweep every store against `removed`, keeping or dropping the ones
+    /// that drained as `drained` says.
+    ///
+    /// One walk, with the policy as an argument rather than a second
+    /// method: the two tables differ in exactly this and in nothing else
+    /// about the sweep, and two entry points named for their policies is
+    /// how the difference stops being visible at the call site.
+    pub(crate) fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>, drained: Drained) {
         self.by_type.retain(|_, store| {
             store.sweep_removed(removed);
-            !store.is_empty()
+            drained == Drained::Keep || !store.is_empty()
         });
     }
+}
+
+/// What a sweep does with a store that drained to empty.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Drained {
+    /// Keep it. An empty per-`T` store costs one hashmap slot and is
+    /// reused the next time a widget of that type appears, which is what
+    /// a table of a handful of long-lived types wants.
+    Keep,
+    /// Drop it, so [`TypedStores::is_empty`] goes back to being a real
+    /// fast path once the table goes idle. Without this a single
+    /// ever-used type would leave the container non-empty forever.
+    Drop,
 }

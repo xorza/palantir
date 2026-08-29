@@ -41,6 +41,13 @@ pub(super) struct Side {
     /// glyph writes. `None` whenever there's no pending grow blit
     /// for this side.
     pub(super) pending_grow: Option<PendingGrow>,
+    /// GPU debug name for this side's texture, built once here.
+    ///
+    /// A grow replaces the texture and reuses the name, which is what
+    /// keeps the atlas's label stem from having to travel down to
+    /// [`Self::grow`] — and keeps the two sites from formatting it two
+    /// ways.
+    label: String,
 }
 
 /// Old texture + its size (= square edge length, == old.width ==
@@ -67,14 +74,10 @@ impl Side {
         content: ContentType,
         size: u32,
         ceiling: u32,
-        label: &str,
+        stem: &str,
     ) -> Self {
-        let texture = make_texture(
-            device,
-            content.format(),
-            size,
-            &format!("{label} {} atlas", content.side_name()),
-        );
+        let label = format!("{stem} {} atlas", content.side_name());
+        let texture = make_texture(device, content.format(), size, &label);
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         Self {
             texture,
@@ -84,6 +87,7 @@ impl Side {
             dry_frame: None,
             packer: BucketedAtlasAllocator::new(size2(size as i32, size as i32)),
             pending_grow: None,
+            label,
         }
     }
 
@@ -125,13 +129,12 @@ impl Side {
     ///
     /// etagere preserves rects on `packer.grow`, so the cache stays valid
     /// — no re-rasterization, and no cached uv to invalidate.
-    pub(super) fn grow(&mut self, device: &wgpu::Device, content: ContentType, stem: &str) -> bool {
+    pub(super) fn grow(&mut self, device: &wgpu::Device, content: ContentType) -> bool {
         if self.size >= self.ceiling {
             return false;
         }
         let new_size = (self.size * ATLAS_GROWTH_FACTOR).min(self.ceiling);
-        let label = format!("{stem} {} atlas", content.side_name());
-        let new_texture = make_texture(device, content.format(), new_size, &label);
+        let new_texture = make_texture(device, content.format(), new_size, &self.label);
         let old_size = self.size;
         let old_texture = std::mem::replace(&mut self.texture, new_texture);
 

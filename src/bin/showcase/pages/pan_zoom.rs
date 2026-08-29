@@ -14,6 +14,7 @@
 use crate::support;
 use crate::support::note_style;
 use glam::Vec2;
+use palantir::SlotDefaults;
 use palantir::{
     AnimSpec, Background, Brush, Button, ButtonTheme, Checkbox, Color, Configure, Corners, Frame,
     Grid, InputEvent, LineCap, LineJoin, LinearGradient, Panel, PolylineColors, RadioButton,
@@ -152,8 +153,8 @@ fn property_grid(ui: &mut Ui) {
     const ROWS: usize = 12;
     Grid::new()
         .id_salt("props")
-        .cols([Track::hug().min(96.0), Track::fill(), Track::fixed(72.0)])
-        .rows([Track::hug(); ROWS])
+        .cols([Track::HUG.min(96.0), Track::FILL, Track::fixed(72.0)])
+        .rows([Track::HUG; ROWS])
         .gap(6.0)
         .padding(4.0)
         .size((Sizing::FILL, Sizing::HUG))
@@ -385,9 +386,11 @@ fn cell_theme(r: u32, c: u32) -> ButtonTheme {
                 text: Some(label),
             },
         },
-        padding: Spacing::xy(6.0, 4.0),
-        margin: Spacing::ZERO,
-        anim: Some(AnimSpec::FAST),
+        defaults: SlotDefaults {
+            padding: Spacing::xy(6.0, 4.0),
+            margin: Spacing::ZERO,
+            anim: Some(AnimSpec::FAST),
+        },
     }
 }
 

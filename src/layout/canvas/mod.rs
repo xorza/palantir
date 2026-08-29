@@ -83,18 +83,7 @@ impl LayoutDriver for Canvas {
             // the width it shaped against. A Hug axis has no extent of its
             // own to divide and gives the child its desired.
             let room = inner.size.room_past(pos);
-            let slot = Size::new(
-                if canvas_size.w().is_hug() {
-                    d.w
-                } else {
-                    room.w
-                },
-                if canvas_size.h().is_hug() {
-                    d.h
-                } else {
-                    room.h
-                },
-            );
+            let slot = d.select(canvas_size.hug_mask(), room);
             let child_rect = Rect {
                 min: inner.min + pos,
                 size: AxisPlacement::arrange_size(&child_layout, bounds, d, slot),

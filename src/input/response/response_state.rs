@@ -25,7 +25,7 @@ use glam::Vec2;
 /// changes, so unlike `hovered`/`left.held` it isn't one-frame stale —
 /// a widget that just called `ui.request_focus(id)` reads `true` on
 /// the same frame.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct ResponseState {
     /// Last frame's *visible* rect in surface space — after ancestor
     /// transforms and clipping, so it is what the pointer actually hit.
@@ -71,24 +71,6 @@ pub struct ResponseState {
     pub middle: ButtonState,
     /// Wheel / touchpad / pinch deltas routed to this widget.
     pub scroll: ScrollDelta,
-}
-
-impl Default for ResponseState {
-    fn default() -> Self {
-        Self {
-            rect: None,
-            layout_rect: None,
-            transform: TranslateScale::IDENTITY,
-            pointer_local: None,
-            hovered: false,
-            disabled: false,
-            focused: false,
-            left: ButtonState::default(),
-            right: ButtonState::default(),
-            middle: ButtonState::default(),
-            scroll: ScrollDelta::default(),
-        }
-    }
 }
 
 impl ResponseState {

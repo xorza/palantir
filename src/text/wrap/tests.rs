@@ -2,7 +2,7 @@ use crate::layout::cache::quantize_available;
 use crate::primitives::size::Size;
 use crate::text::root::TextRoot;
 use crate::text::wrap;
-use crate::text::wrap::{LineFit, TextWrap};
+use crate::text::wrap::{LineFit, TextWrap, canonical_wrap_width};
 
 /// Every policy, in declaration order — so a new one has to be added
 /// here to compile, rather than quietly escaping the sweeps below.
@@ -71,13 +71,17 @@ fn only_a_fitting_single_line_truncation_reuses_the_unbounded_root() {
         (LineFit::Wrap, true, 100.0, false),
         (LineFit::Clip, false, 100.0, false),
         (LineFit::Clip, true, 99.0, false),
-        // The comparison runs on the canonical (whole-px) wrap grid,
-        // so 99.6 rounds up to the root's 100 and fits; 99.4 does not.
+        // The comparison runs on the canonical (whole-px) wrap grid —
+        // quantized by the caller, the way `commit` does it — so 99.6
+        // rounds up to the root's 100 and fits; 99.4 does not.
         (LineFit::Clip, true, 99.6, true),
         (LineFit::Clip, true, 99.4, false),
     ] {
         assert_eq!(
-            fit.resolves_to_unbounded(&root(100.0, single_line, 0.0), target_width_px),
+            fit.resolves_to_unbounded(
+                &root(100.0, single_line, 0.0),
+                canonical_wrap_width(target_width_px),
+            ),
             expected,
             "{fit:?}, single_line={single_line}, width={target_width_px}",
         );

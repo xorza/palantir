@@ -1,7 +1,6 @@
 //! One drop or inset shadow: the offset, blur and spread a chrome or a
 //! shape paints behind itself.
 
-use crate::primitives::approx::FloatHash;
 use crate::primitives::color::Color;
 use crate::primitives::nan::{self, NanCheck};
 use glam::Vec2;
@@ -104,17 +103,6 @@ impl Shadow {
     }
 }
 
-/// Visual throughout, for the reason [`Stroke`](crate::Stroke)'s is.
-impl std::hash::Hash for Shadow {
-    #[inline]
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.color.hash_visual(state);
-        self.offset.hash_visual(state);
-        self.blur.hash_visual(state);
-        self.spread.hash_visual(state);
-        state.write_u8(self.inset as u8);
-    }
-}
 impl NanCheck for Shadow {
     #[inline]
     fn has_nan(&self) -> bool {

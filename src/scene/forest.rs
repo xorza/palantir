@@ -19,6 +19,7 @@ use crate::scene::tree::ChromeInput;
 use crate::scene::tree::Tree;
 use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::paint_anims::{PaintAnim, PaintAnimEntry};
+use crate::scene::tree::recording_scratch::OpenFrame;
 use crate::scene::tree::recording_scratch::RecordingScratch;
 use crate::shape::Lower;
 use std::time::Duration;
@@ -296,7 +297,7 @@ impl Forest {
     /// Asserts a node is currently open so widgets can't leak shapes
     /// outside an `open_node` / `close_node` scope.
     pub(crate) fn add_shape<S: Lower>(&mut self, shape: S) {
-        self.push_shape("add_shape", |tree, store| {
+        self.push_shape("add_shape", |tree, store, _| {
             tree.shapes.add(shape, store).is_some()
         });
     }
@@ -311,7 +312,7 @@ impl Forest {
     /// from a user-facing [`Shape`](crate::Shape), so it skips the lowering
     /// path and can never noop-collapse.
     pub(crate) fn add_gpu_view(&mut self, epoch: u64) {
-        self.push_shape("add_gpu_view", |tree, _| {
+        self.push_shape("add_gpu_view", |tree, _, _| {
             tree.shapes.add_gpu_view(epoch);
             true
         });
@@ -325,53 +326,52 @@ impl Forest {
     /// Effectively invisible shapes stay authored but omit their
     /// animation row until a visible record pass resumes them.
     pub(crate) fn add_shape_animated<S: Lower>(&mut self, shape: S, anim: PaintAnim) {
-        let layer = self.current_layer();
-        self.assert_node_open(layer, "add_shape_animated");
-        // Disjoint borrow: `trees` and `scratch` are separate fields.
-        let tree = &mut self.trees[layer];
-        let frame = self.scratch[layer]
-            .open_frames
-            .last_mut()
-            .expect("`assert_node_open` above found an open frame");
-        let Some(shape_idx) = tree.shapes.add(shape, &self.record_store) else {
-            return;
-        };
-        let row = frame.paint_rows;
-        frame.paint_rows += 1;
-        if !frame.effectively_visible {
-            return;
-        }
-        tree.paint_anims.push_entry(PaintAnimEntry {
-            anim,
-            shape_idx,
-            row,
-            node: frame.node,
+        self.push_shape("add_shape_animated", |tree, store, frame| {
+            let Some(shape_idx) = tree.shapes.add(shape, store) else {
+                return false;
+            };
+            // The row is charged either way — an invisible pass still
+            // authors the shape — so only the animation row is skipped.
+            if frame.effectively_visible {
+                tree.paint_anims.push_entry(PaintAnimEntry {
+                    anim,
+                    shape_idx,
+                    row: frame.paint_rows,
+                    node: frame.node,
+                });
+            }
+            true
         });
     }
 
-    /// Shared body of the plain `add_*` entry points: gate on an open
-    /// node, hand `push` the active tree, and charge the open frame one
-    /// paint row for whatever it actually stored.
+    /// Shared body of every `add_*` entry point: gate on an open node,
+    /// hand `push` the active tree, the record store and the open frame,
+    /// and charge that frame one paint row for whatever it actually
+    /// stored.
     ///
     /// `push` answers "did this store a paint row" — `false` when the
-    /// shape noop-collapsed, so the row counter only advances for shapes
-    /// that survived. A bare `bool` because no `add_*` entry point here
-    /// wants the record index. `add_shape_animated` does, and it needs
-    /// the open frame after the push besides, which would mean handing
-    /// the closure the frame too — so it calls `Shapes::add` directly.
+    /// shape noop-collapsed, so the row counter only advances for a
+    /// shape that survived. The frame comes in read-only and *before*
+    /// the bump, which is what the animated entry point needs: its
+    /// animation row is stamped with the row this shape is about to
+    /// take.
     #[inline]
-    fn push_shape(&mut self, what: &str, push: impl FnOnce(&mut Tree, &RecordStore) -> bool) {
+    fn push_shape(
+        &mut self,
+        what: &str,
+        push: impl FnOnce(&mut Tree, &RecordStore, &OpenFrame) -> bool,
+    ) {
         let layer = self.current_layer();
         self.assert_node_open(layer, what);
         // Disjoint borrow: record storage, `trees`, and `scratch` are
         // separate fields, so all three can be borrowed for the same call.
         let tree = &mut self.trees[layer];
-        if push(tree, &self.record_store) {
-            self.scratch[layer]
-                .open_frames
-                .last_mut()
-                .expect("`assert_node_open` above found an open frame")
-                .paint_rows += 1;
+        let frames = &mut self.scratch[layer].open_frames;
+        let frame = frames
+            .last_mut()
+            .expect("`assert_node_open` above found an open frame");
+        if push(tree, &self.record_store, frame) {
+            frame.paint_rows += 1;
         }
     }
 

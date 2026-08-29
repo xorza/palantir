@@ -82,8 +82,8 @@ fn compositions(ui: &mut Ui) {
         |ui| {
             Grid::new()
                 .id_salt("two-hug-inner")
-                .cols([Track::hug(), Track::hug()])
-                .rows([Track::hug()])
+                .cols([Track::HUG, Track::HUG])
+                .rows([Track::HUG])
                 .gap_xy(0.0, 16.0)
                 .show(ui, |ui| {
                     Text::new(PARAGRAPH)
@@ -106,8 +106,8 @@ fn compositions(ui: &mut Ui) {
             Grid::new()
                 .id_salt("property-grid-inner")
                 .size((Sizing::FILL, Sizing::HUG))
-                .cols([Track::hug(), Track::fill()])
-                .rows([Track::hug(), Track::hug(), Track::hug()])
+                .cols([Track::HUG, Track::FILL])
+                .rows([Track::HUG, Track::HUG, Track::HUG])
                 .gap_xy(6.0, 16.0)
                 .show(ui, |ui| {
                     let rows = [

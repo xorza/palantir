@@ -17,40 +17,41 @@ pub(crate) struct StencilVariant {
     test: wgpu::RenderPipeline,
 }
 
-/// What one color-pipeline family varies: labels, shader, bind-group
-/// layouts, vertex buffers, topology. Everything else (fragment entry
+/// What one color-pipeline family varies: labels, shader, pipeline
+/// layout, vertex buffers, topology. Everything else (fragment entry
 /// `"fs"`, `ColorWrites::ALL`, premultiplied blend) is fixed across the
-/// quad / mesh / image / curve families and filled in by
+/// quad / mesh / image / curve / raster families and filled in by
 /// [`StencilVariant::build`].
+///
+/// The layout arrives built rather than described, because a family with
+/// pipelines outside this pair — quad, with its two mask variants —
+/// shares one layout across all of them. A layout carries no
+/// depth-stencil state and no fragment entry, so every pipeline of one
+/// family wants the same object.
 #[derive(Debug)]
 pub(super) struct ColorVariantSpec<'a> {
     pub label: &'static str,
     pub stencil_label: &'static str,
-    pub layout_label: &'static str,
     pub shader: &'a wgpu::ShaderModule,
-    pub bind_group_layouts: &'a [Option<&'a wgpu::BindGroupLayout>],
+    pub layout: &'a wgpu::PipelineLayout,
     pub vertex_buffers: &'a [Option<wgpu::VertexBufferLayout<'a>>],
     pub topology: wgpu::PrimitiveTopology,
 }
 
 impl StencilVariant {
     /// Build the base + stencil-test twin for one swapchain format from
-    /// one spec. Shared by the four color families' `build_variants` so
-    /// they can't drift on blend / writes / fragment entry — and the
-    /// twins share one `PipelineLayout` (depth-stencil state isn't part
-    /// of the layout, so building two identical ones was pure waste).
+    /// one spec. Shared by every color family's `build_variants` so they
+    /// cannot drift on blend / writes / fragment entry.
     pub(super) fn build(
         device: &wgpu::Device,
         spec: ColorVariantSpec<'_>,
         color_format: wgpu::TextureFormat,
     ) -> Self {
-        let layout =
-            PipelineRecipe::pipeline_layout(device, spec.layout_label, spec.bind_group_layouts);
         let variant = |label: &'static str, depth_stencil: Option<wgpu::DepthStencilState>| {
             PipelineRecipe {
                 label,
                 shader: spec.shader,
-                layout: &layout,
+                layout: spec.layout,
                 vertex_buffers: spec.vertex_buffers,
                 topology: spec.topology,
                 color_format,

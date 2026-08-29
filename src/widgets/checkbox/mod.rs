@@ -1,7 +1,6 @@
 //! The box-and-label boolean toggle, and the pair of responses a click
 //! on either half reports.
 
-use crate::input::sense::Sense;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::text_input::TextInput;
 use crate::scene::node::Node;
@@ -38,10 +37,8 @@ pub struct Checkbox<'a> {
 impl<'a> Checkbox<'a> {
     #[track_caller]
     pub fn new(value: &'a mut bool) -> Self {
-        let mut node = Node::hstack();
-        node.flags.set_sense(Sense::CLICK);
         Self {
-            node,
+            node: ToggleChrome::row_node(),
             value,
             label: TextInput::default(),
             style: None,
@@ -56,10 +53,7 @@ impl<'a> Checkbox<'a> {
         let widget = ui.widget(self.node);
         let response = widget.response(ui);
 
-        if response.left.clicked() && !response.disabled {
-            *self.value = !*self.value;
-        }
-        let checked = *self.value;
+        let checked = ToggleChrome::toggled(&response, self.value);
 
         let theme = ui.theme();
         let slot = self.slot(theme);

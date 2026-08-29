@@ -35,17 +35,22 @@ impl Track {
         }
     }
 
+    /// The four constructors mirror [`Sizing`]'s name for name — `HUG`,
+    /// `FILL`, `fixed`, `fill` — because a track *is* a sizing plus two
+    /// clamps, and one vocabulary is what keeps `fill` from meaning a
+    /// constructor here and an accessor there.
+    pub const HUG: Self = Self::new(Sizing::HUG);
+
+    /// A track taking an equal share of the leftover; [`Self::fill`]
+    /// weights it.
+    pub const FILL: Self = Self::new(Sizing::FILL);
+
     pub const fn fixed(v: f32) -> Self {
         Self::new(Sizing::fixed(v))
     }
-    pub const fn hug() -> Self {
-        Self::new(Sizing::HUG)
-    }
-    pub const fn fill() -> Self {
-        Self::new(Sizing::FILL)
-    }
-    pub const fn fill_weight(w: f32) -> Self {
-        Self::new(Sizing::fill(w))
+
+    pub const fn fill(weight: f32) -> Self {
+        Self::new(Sizing::fill(weight))
     }
 
     /// Set the lower size clamp.

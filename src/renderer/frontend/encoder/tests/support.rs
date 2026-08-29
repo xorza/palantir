@@ -14,7 +14,7 @@ use crate::renderer::frontend::payload::draw_quad_payload::QuadGeom;
 pub(super) fn as_rect(call: &PaintCall) -> Option<&DrawQuadPayload> {
     match call {
         PaintCall::Quad(p)
-            if matches!(p.geom, QuadGeom::Rect { .. }) && !p.fill_kind.is_shadow() =>
+            if matches!(p.geom, QuadGeom::Rect { .. }) && !p.fill.kind.is_shadow() =>
         {
             Some(p)
         }
@@ -60,7 +60,7 @@ pub(super) fn screen_rects_by_fill(cmds: &PaintCapture) -> Vec<(ColorF16, Rect)>
                     Some(c) => screen.clamp_to(c),
                     None => screen,
                 };
-                out.push((p.fill, visible));
+                out.push((p.fill.color, visible));
             }
             PaintCall::Quad(_)
             | PaintCall::Text(_)

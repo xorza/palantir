@@ -471,7 +471,7 @@ fn oscillating_tree_size_reuses_both_snapshot_buffers() {
     // the retained map rather than refilling it. Counted because the
     // `debug_assert` inside the reuse branch is vacuous on a frame that
     // rebuilt instead.
-    let rebuilds_after_warmup = h.engines.layout.cache.snapshot_rebuilds;
+    let rebuilds_after_warmup = h.engines.layout.cache.snapshot_rebuilds.count();
     let mut node_capacities = [
         h.engines.layout.cache.previous.nodes.desired.capacity(),
         h.engines.layout.cache.current.nodes.desired.capacity(),
@@ -505,7 +505,8 @@ fn oscillating_tree_size_reuses_both_snapshot_buffers() {
         assert_eq!(descriptor_capacities, current_descriptor_capacities);
     }
     assert_eq!(
-        h.engines.layout.cache.snapshot_rebuilds, rebuilds_after_warmup,
+        h.engines.layout.cache.snapshot_rebuilds.count(),
+        rebuilds_after_warmup,
         "steady-state oscillation must reuse each buffer's descriptor map",
     );
 
@@ -525,7 +526,7 @@ fn oscillating_tree_size_reuses_both_snapshot_buffers() {
             });
     });
     assert!(
-        h.engines.layout.cache.snapshot_rebuilds > rebuilds_after_warmup,
+        h.engines.layout.cache.snapshot_rebuilds.count() > rebuilds_after_warmup,
         "an unseen descriptor sequence must rebuild the map",
     );
     assert!(

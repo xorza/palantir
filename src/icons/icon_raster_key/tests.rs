@@ -1,7 +1,7 @@
-use crate::icons::icon_atlas::IconId;
 use crate::icons::icon_raster_key::{IconRasterKey, MAX_RASTER_PX};
 use crate::icons::icon_registry::IconSetId;
 use crate::icons::icon_set::{IconHandle, IconRef};
+use crate::icons::icon_table::IconId;
 use glam::{U16Vec2, Vec2};
 
 fn icon() -> IconRef {

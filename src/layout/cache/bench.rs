@@ -315,8 +315,8 @@ fn build_broad_level(ui: &mut Ui, depth: usize, key: usize, changed: bool) {
 fn build_grid_intrinsics(ui: &mut Ui) {
     Grid::new()
         .id_salt("grid-intrinsic-root")
-        .cols([Track::hug(), Track::hug()])
-        .rows([Track::hug(); GRID_ROWS])
+        .cols([Track::HUG, Track::HUG])
+        .rows([Track::HUG; GRID_ROWS])
         .size((Sizing::FILL, Sizing::HUG))
         .show(ui, |ui| {
             for row in 0..GRID_ROWS {
@@ -475,7 +475,7 @@ fn bench_virtual_scroll(group: &mut BenchmarkGroup<'_, WallTime>) {
             let _ = h.frame(|ui| build_scroll_window(ui, first));
             first += stride;
         }
-        let before = h.engines.layout.cache.snapshot_rebuilds;
+        let before = h.engines.layout.cache.snapshot_rebuilds.count();
         const FRAMES: usize = 64;
         for _ in 0..FRAMES {
             let _ = h.frame(|ui| build_scroll_window(ui, first));
@@ -484,7 +484,7 @@ fn bench_virtual_scroll(group: &mut BenchmarkGroup<'_, WallTime>) {
         eprintln!(
             "[caches] virtual_scroll/{name}: {} snapshot rebuilds over {FRAMES} frames \
              ({SCROLL_ROWS} rows)",
-            h.engines.layout.cache.snapshot_rebuilds - before,
+            h.engines.layout.cache.snapshot_rebuilds.count() - before,
         );
 
         group.bench_function(format!("virtual_scroll/{name}"), |b| {

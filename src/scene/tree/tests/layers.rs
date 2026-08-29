@@ -218,7 +218,7 @@ fn mid_recording_popup_with_text_renders_through_encoder() {
         [outer_span.start as usize..(outer_span.start + outer_span.len) as usize]
         .iter()
         .filter_map(|s| match s {
-            ShapeRecord::Text { text, .. } => Some(text.source.resolve(&interned_text)),
+            ShapeRecord::Text { text, .. } => Some(interned_text.resolve(text.span)),
             _ => None,
         })
         .collect();
@@ -229,7 +229,7 @@ fn mid_recording_popup_with_text_renders_through_encoder() {
         [popup_root_span.start as usize..(popup_root_span.start + popup_root_span.len) as usize]
         .iter()
         .filter_map(|s| match s {
-            ShapeRecord::Text { text, .. } => Some(text.source.resolve(&interned_text)),
+            ShapeRecord::Text { text, .. } => Some(interned_text.resolve(text.span)),
             _ => None,
         })
         .collect();

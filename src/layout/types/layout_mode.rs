@@ -204,6 +204,13 @@ impl ScrollSpec {
         BVec2::new(self.0 & Self::FIT_X != 0, self.0 & Self::FIT_Y != 0)
     }
 
+    /// Which axes fold their measured content into the viewport's own
+    /// reported size, as a lane mask — see [`Self::contributes`].
+    #[inline]
+    pub(crate) fn contributes_mask(self) -> BVec2 {
+        BVec2::new(self.contributes(Axis::X), self.contributes(Axis::Y))
+    }
+
     /// The driver that lays this viewport's children out.
     #[inline]
     pub(crate) fn child_layout(self) -> ScrollChildLayout {

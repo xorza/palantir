@@ -13,7 +13,7 @@ use std::time::Duration;
 fn caret_painted(ui: &Ui, leaf: NodeId) -> bool {
     use crate::scene::shapes::paint::QuadShape;
     use crate::scene::shapes::record::ShapeRecord;
-    use crate::scene::tree::iter::{TreeItem, TreeItems};
+    use crate::scene::tree::iter::TreeItem;
     use crate::shape::rect::RectKind;
 
     let tree = ui.tree(Layer::Main);
@@ -21,7 +21,7 @@ fn caret_painted(ui: &Ui, leaf: NodeId) -> bool {
     let mut paint_anims = tree.paint_anims.cursor();
     // The caret is recorded on the block child that carries the field's
     // alignment, not on the field's own node — see [`block_of`].
-    TreeItems::new(&tree.records, &tree.shapes.records, block_of(ui, leaf))
+    tree.tree_items(block_of(ui, leaf))
         .filter_map(|item| match item {
             TreeItem::ShapeRecord(idx, s) => Some((idx, s)),
             TreeItem::Child(_) => None,

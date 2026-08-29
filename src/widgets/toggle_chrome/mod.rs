@@ -2,6 +2,7 @@
 //! toggle widgets, and the resolved chrome each hands it.
 
 use crate::input::response::response_state::ResponseState;
+use crate::input::sense::Sense;
 use crate::layout::types::align::{Align, VAlign};
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
@@ -44,6 +45,36 @@ pub(crate) struct ToggleChrome {
 }
 
 impl ToggleChrome {
+    /// The node every toggle row starts from: a horizontal stack that
+    /// senses a click, because the whole row — box *and* label — is one
+    /// hit target.
+    ///
+    /// `#[track_caller]` like any other widget constructor, so the id
+    /// still resolves to the call site that asked for the widget rather
+    /// than to this line.
+    #[track_caller]
+    pub(crate) fn row_node() -> Node {
+        let mut node = Node::hstack();
+        node.flags.set_sense(Sense::CLICK);
+        node
+    }
+
+    /// Flip `value` when the row was clicked while enabled, and answer
+    /// what it now holds.
+    ///
+    /// One body for [`Checkbox`](crate::Checkbox) and
+    /// [`Switch`](crate::Switch): both bind a `bool` a click inverts, and
+    /// a click on a disabled row is not an edit.
+    /// [`RadioButton`](crate::RadioButton) latches instead —
+    /// re-clicking the selected option is a no-op — so it resolves its
+    /// own.
+    pub(crate) fn toggled(response: &ResponseState, value: &mut bool) -> bool {
+        if response.left.clicked() && !response.disabled {
+            *value = !*value;
+        }
+        *value
+    }
+
     /// Shared `HStack [box, label]` scaffolding behind [`crate::Checkbox`],
     /// [`crate::RadioButton`], and [`crate::Switch`]. The three differ only
     /// in the toggle semantics (resolved by the caller before this runs),

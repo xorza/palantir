@@ -156,7 +156,7 @@ fn gradient_interner_dedups_at_every_table_width() {
 fn a_stale_handle_is_rejected_by_both_paths_in_every_build() {
     let store = RecordStore::default();
     let stale = store.intern_str("last frame");
-    assert_eq!(store.record_text(stale).source.span, stale.span);
+    assert_eq!(store.record_text(stale).span, stale.span);
     assert_eq!(store.reuse(stale).span, stale.span);
 
     // A new pass retires it.
@@ -171,5 +171,5 @@ fn a_stale_handle_is_rejected_by_both_paths_in_every_build() {
     assert!(reused.is_err(), "reuse must reject a retired handle");
     // The pass's own handle still resolves, so the epoch — not the
     // clear — is what the rejection turns on.
-    assert_eq!(store.record_text(fresh).source.span, fresh.span);
+    assert_eq!(store.record_text(fresh).span, fresh.span);
 }

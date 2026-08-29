@@ -13,6 +13,23 @@ fn word_boundary_helpers_step_word_then_skip_whitespace() {
         ("punctuation_is_own_class", "hello, world", 5, 6, 0),
         ("from_after_punct", "hello, world", 6, 12, 5),
         ("empty_string", "", 0, 0, 0),
+        // UAX #29 word boundaries, not a per-codepoint class test.
+        ("number_keeps_its_decimal_point", "3.14 x", 0, 4, 0),
+        ("apostrophe_stays_inside_the_word", "don't", 0, 5, 0),
+        ("underscore_joins_an_identifier", "foo_bar baz", 0, 7, 0),
+        // Each mark is its own segment upstream; a caret crosses the
+        // whole arrow.
+        ("punctuation_run_crosses_as_one", "-->", 0, 3, 0),
+        // Han has no dictionary in UAX #29's default, so one character is
+        // one word; the katakana run is one.
+        ("cjk_splits_at_real_boundaries", "日本語テキスト", 0, 3, 0),
+        (
+            "cjk_backward_stops_at_the_katakana_run",
+            "日本語テキスト",
+            21,
+            21,
+            9,
+        ),
     ];
     for (label, text, from, want_next, want_prev) in cases {
         assert_eq!(
@@ -44,6 +61,10 @@ fn word_range_at_picks_anchor_kind() {
         ("on_whitespace_returns_empty", "  ", 1, 1..1),
         ("empty_text", "", 0, 0..0),
         ("end_of_buffer", "hello world", 11, 6..11),
+        ("number_selects_whole", "3.14 x", 1, 0..4),
+        ("punctuation_run_selects_whole", "-->", 1, 0..3),
+        ("cjk_selects_one_word", "日本語テキスト", 0, 0..3),
+        ("cjk_selects_the_katakana_run", "日本語テキスト", 9, 9..21),
     ];
     for (label, text, byte, want) in cases {
         assert_eq!(word_range_at(text, *byte), want.clone(), "{label}",);

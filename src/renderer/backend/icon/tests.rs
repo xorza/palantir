@@ -9,10 +9,10 @@
 #[cfg(feature = "internals")]
 mod gpu {
     use crate::host::test_gpu::headless_test_gpu;
-    use crate::icons::icon_atlas::{IconAtlas, IconId};
     use crate::icons::icon_raster_key::IconRasterKey;
     use crate::icons::icon_registry::{IconRegistry, IconSetId};
     use crate::icons::icon_set::IconSet;
+    use crate::icons::icon_table::{IconId, IconTable};
     use crate::renderer::backend::icon::IconBackend;
     use glam::Vec2;
     use std::rc::Rc;
@@ -29,7 +29,7 @@ mod gpu {
     }
 
     fn load(icons: &IconRegistry) -> IconSet {
-        icons.register(Rc::new(IconAtlas::from_svgs([("solid", SOLID)])))
+        icons.register(Rc::new(IconTable::from_svgs([("solid", SOLID)])))
     }
 
     /// Draw `set`'s only icon at 16², which is what puts a parse in the
@@ -56,13 +56,13 @@ mod gpu {
         let set = load(&icons);
         draw(&mut backend, &gpu.device, &set);
         assert_eq!(backend.rasterizer.parsed_count(), 1);
-        assert_eq!(backend.atlas.cache.len(), 1);
+        assert_eq!(backend.pass.atlas.cache.len(), 1);
 
         // Held: submits come and go and the set stays loaded.
         tick(&mut backend, &mut frame);
         tick(&mut backend, &mut frame);
         assert_eq!(backend.rasterizer.parsed_count(), 1);
-        assert_eq!(backend.atlas.cache.len(), 1);
+        assert_eq!(backend.pass.atlas.cache.len(), 1);
 
         // Dropped: queued now, forgotten at the submit — the backend has no
         // other point at which it is allowed to touch the caches.
@@ -78,7 +78,7 @@ mod gpu {
             0,
             "the parsed SVG went with the set",
         );
-        assert_eq!(backend.atlas.cache.len(), 0, "and so did its raster");
+        assert_eq!(backend.pass.atlas.cache.len(), 0, "and so did its raster");
         assert!(
             (0..icons.slot_count()).all(|slot| icons.resident(slot).is_none()),
             "and the registry freed the slot",
@@ -108,11 +108,15 @@ mod gpu {
             IconSetId::new(0, 1),
             "the fixture only proves anything if the slot was reused",
         );
-        assert_eq!(backend.atlas.cache.len(), 0, "nothing carried over");
+        assert_eq!(backend.pass.atlas.cache.len(), 0, "nothing carried over");
 
         draw(&mut backend, &gpu.device, &second);
         assert_eq!(backend.rasterizer.parsed_count(), 1);
-        assert_eq!(backend.atlas.cache.len(), 1, "one raster, freshly made");
+        assert_eq!(
+            backend.pass.atlas.cache.len(),
+            1,
+            "one raster, freshly made"
+        );
     }
 
     /// A caller that builds a fresh atlas inside its frame closure loads a set
@@ -136,7 +140,10 @@ mod gpu {
             // One live set's worth, whatever the frame number: the previous
             // frame's parse and raster were reclaimed by this submit.
             assert_eq!(
-                (backend.rasterizer.parsed_count(), backend.atlas.cache.len()),
+                (
+                    backend.rasterizer.parsed_count(),
+                    backend.pass.atlas.cache.len()
+                ),
                 (1, 1),
                 "frame {frame} retained a dead set's caches",
             );
@@ -148,7 +155,10 @@ mod gpu {
         drop(held);
         tick(&mut backend, &mut frame);
         assert_eq!(
-            (backend.rasterizer.parsed_count(), backend.atlas.cache.len()),
+            (
+                backend.rasterizer.parsed_count(),
+                backend.pass.atlas.cache.len()
+            ),
             (0, 0),
             "and the last one goes when its set does",
         );

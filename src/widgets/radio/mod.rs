@@ -1,7 +1,6 @@
 //! One option of a radio group, over the shared value the whole group
 //! writes through.
 
-use crate::input::sense::Sense;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::rect::Rect;
 use crate::primitives::text_input::TextInput;
@@ -38,10 +37,8 @@ pub struct RadioButton<'a, T: PartialEq> {
 impl<'a, T: PartialEq> RadioButton<'a, T> {
     #[track_caller]
     pub fn new(current: &'a mut T, value: T) -> Self {
-        let mut node = Node::hstack();
-        node.flags.set_sense(Sense::CLICK);
         Self {
-            node,
+            node: ToggleChrome::row_node(),
             current,
             value,
             label: TextInput::default(),

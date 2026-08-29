@@ -275,20 +275,20 @@ impl PaintSink for ComposeSession<'_> {
         // fragments (SDF coverage exactly 1.0) — flag the instance so the
         // shader returns the premultiplied fill directly, skipping the SDF
         // + composite path. `SOLID` keeps shadows and triangles out.
-        let fast = p.fill_kind == FillKind::SOLID && packed.is_pixel_aligned();
+        let fast = p.fill.kind == FillKind::SOLID && packed.is_pixel_aligned();
         let fill_kind = if fast {
-            p.fill_kind.with_fast()
+            p.fill.kind.with_fast()
         } else {
-            p.fill_kind
+            p.fill.kind
         };
         self.out.quads.push(Quad {
             rect: packed.phys_rect,
-            fill: p.fill,
+            fill: p.fill.color,
             corners: packed.corners,
             stroke_color: p.stroke.color,
             stroke_width: packed.stroke_width,
             fill_kind,
-            fill_lut_row: p.fill_lut_row,
+            fill_lut_row: p.fill.lut_row,
             fill_axis: packed.fill_axis,
         });
         self.record_opaque_cover(&p, &packed, fast);
@@ -491,14 +491,14 @@ impl PaintSink for ComposeSession<'_> {
         let spin = p.bounds.spin();
         // Style lanes are basis-independent; each arm below fills in
         // the geometry and its own `kind`.
-        let color: ColorU8 = p.color.into();
+        let color: ColorU8 = p.fill.color.into();
         let proto = CurveInstance {
             width: width_phys,
             color0: color,
             color1: color,
             cap: cap_lanes(cap as u32, cap as u32),
-            fill_kind: p.fill_kind,
-            fill_lut_row: p.fill_lut_row,
+            fill_kind: p.fill.kind,
+            fill_lut_row: p.fill.lut_row,
             ..bytemuck::Zeroable::zeroed()
         };
         let (proto, n) = match p.basis {
@@ -842,7 +842,7 @@ impl ComposeSession<'_> {
                     // scale them so the shader's `local` coords line
                     // up. A gradient axis is already unit-space and
                     // passes through untouched.
-                    fill_axis: if p.fill_kind.is_shadow() {
+                    fill_axis: if p.fill.kind.is_shadow() {
                         p.fill_axis.scaled(scale_phys)
                     } else {
                         p.fill_axis
@@ -927,14 +927,14 @@ impl ComposeSession<'_> {
             // non-empty chain implies a frame, so testing both asked one
             // question twice.
             || self.composer.clip.top().is_some()
-            || p.fill_kind != FillKind::SOLID
-            || !p.fill.is_opaque()
+            || p.fill.kind != FillKind::SOLID
+            || !p.fill.color.is_opaque()
             || !packed.is_sharp()
         {
             return false;
         }
         self.discard_composed();
-        self.out.clear_override = Some(p.fill.unpack());
+        self.out.clear_override = Some(p.fill.color.unpack());
         true
     }
 
@@ -943,7 +943,7 @@ impl ComposeSession<'_> {
     /// record: a shadow's blur reaches past its rect, and a triangle
     /// covers only its interior, not the whole `rect`.
     fn record_opaque_cover(&mut self, p: &DrawQuadPayload, packed: &PackedQuad, fast: bool) {
-        if p.fill_kind != FillKind::SOLID || !p.fill.is_opaque() {
+        if p.fill.kind != FillKind::SOLID || !p.fill.color.is_opaque() {
             return;
         }
         let inscribed = packed.phys_rect.inscribed_for_corners(packed.corners);

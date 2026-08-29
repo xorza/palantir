@@ -201,20 +201,13 @@ pub(crate) fn background(store: &RecordStore, bg: &Background) -> ChromeRow {
         shadow: LoweredShadow, // 18 B align 2
         fill_tag: u8,
     }
-    let fill_payload: u64 = match fill {
-        ShapeBrush::Solid(c) => c.as_u64(),
-        ShapeBrush::Gradient(_) => fill_grad_hash,
-    };
-    let fill_tag: u8 = match fill {
-        ShapeBrush::Solid(_) => 0,
-        ShapeBrush::Gradient(_) => 1,
-    };
+    let brush = fill.hash_parts(fill_grad_hash);
     let packed = ChromeHashBytes {
-        fill_payload,
+        fill_payload: brush.payload,
         corners_u64: bytemuck::cast(corners),
         stroke,
         shadow,
-        fill_tag,
+        fill_tag: brush.tag,
         ..bytemuck::Zeroable::zeroed()
     };
     let mut h = Hasher::new();
@@ -541,6 +534,36 @@ mod tests {
                 },
             ),
         ]
+    }
+
+    /// The three gradient kinds hash apart even on identical stops and
+    /// geometry, because [`gradient_brush`] folds a discriminant byte in
+    /// before the geometry. Without it a linear and a radial over the
+    /// same two stops would share a content hash, and a brush swap
+    /// between them would raise no damage.
+    #[test]
+    fn the_three_gradient_kinds_hash_apart_on_identical_stops() {
+        let store = RecordStore::default();
+        let stops = [
+            crate::primitives::brush::gradient::stops::Stop::new(0.0, Color::BLACK),
+            crate::primitives::brush::gradient::stops::Stop::new(1.0, Color::WHITE),
+        ];
+        let centre = glam::Vec2::splat(0.5);
+        let hashes = [
+            brush(&store, &Brush::Linear(LinearGradient::new(0.0, stops))).hash,
+            brush(
+                &store,
+                &Brush::Radial(RadialGradient::new(centre, centre, stops)),
+            )
+            .hash,
+            brush(
+                &store,
+                &Brush::Conic(ConicGradient::new(centre, 0.0, stops)),
+            )
+            .hash,
+        ];
+        let distinct: HashSet<u64> = hashes.iter().copied().collect();
+        assert_eq!(distinct.len(), 3, "{hashes:?}");
     }
 
     /// A sane background reaches the row unchanged, and every field it

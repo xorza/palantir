@@ -16,6 +16,7 @@ pub(crate) mod draw_mesh_payload;
 pub(crate) mod draw_polyline_payload;
 pub(crate) mod draw_quad_payload;
 pub(crate) mod draw_text_payload;
+pub(crate) mod gpu_fill;
 pub(crate) mod push_clip_payload;
 pub(crate) mod resolved_gradient;
 pub(crate) mod stroke_bounds;

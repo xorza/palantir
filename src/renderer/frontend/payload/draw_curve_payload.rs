@@ -1,9 +1,7 @@
 //! One native GPU stroke — a cubic or an arc.
 
 use crate::primitives::approx::noop_f32;
-use crate::primitives::color::ColorF16;
-use crate::primitives::fill_kind::FillKind;
-use crate::primitives::lut_row::LutRow;
+use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
 use crate::scene::shapes::paint::CurveBasis;
 use crate::shape::style::LineCap;
@@ -26,19 +24,14 @@ pub(crate) struct DrawCurvePayload {
     /// its centre and shifting both angles.
     pub(crate) bounds: StrokeBounds,
     pub(crate) origin: glam::Vec2,
-    /// Solid stroke colour. Zeroed when `fill_kind` is a gradient —
-    /// the LUT row at `fill_lut_row` supplies the colour in that case.
-    pub(crate) color: ColorF16,
+    /// Only solid and linear are valid on a curve; the lowering
+    /// hard-asserts. A curve reads no gradient geometry lane, so
+    /// [`GpuFill`] is the whole of its brush.
+    pub(crate) fill: GpuFill,
     pub(crate) width: f32,
     /// Typed Pod wire form; composer widens it only at the GPU
     /// `CurveInstance.cap` boundary.
     pub(crate) cap: LineCap,
-    /// Brush kind tag (low byte: 0 = solid, 1 = linear). Only solid +
-    /// linear are valid on curves; the lowering hard-asserts.
-    pub(crate) fill_kind: FillKind,
-    /// Gradient atlas row when `fill_kind` is a gradient, else
-    /// [`LutRow::FALLBACK`].
-    pub(crate) fill_lut_row: LutRow,
 }
 
 impl DrawCurvePayload {
@@ -57,6 +50,6 @@ impl DrawCurvePayload {
         {
             return true;
         }
-        self.fill_kind == FillKind::SOLID && self.color.is_noop()
+        self.fill.is_noop()
     }
 }

@@ -43,10 +43,11 @@ impl<'a> TextShapeRequest<'a> {
     ///
     /// `None` for empty text or an unusable face — see the type docs.
     pub(crate) fn unbounded(text: &'a str, font: GlyphFont) -> Option<Self> {
-        (!text.is_empty() && font.metrics_valid()).then(|| Self {
-            text,
-            key: TextShapeKey::unbounded(hash::hash_str(text), font),
-        })
+        let key = TextShapeKey::for_text(text, font);
+        // Nothing to shape: no bytes, or a face the shaper cannot be
+        // asked for — which `for_text` has already answered with
+        // `INVALID`.
+        (!text.is_empty() && !key.is_invalid()).then_some(Self { text, key })
     }
 
     /// Pair `text` with a key already minted for it — off a hash layout

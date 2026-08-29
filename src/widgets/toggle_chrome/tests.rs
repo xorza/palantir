@@ -52,8 +52,8 @@ fn theme_spacing_reaches_every_toggle_row_and_explicit_wins() {
         (&mut theme.radio, (rb_padding, rb_margin)),
         (&mut theme.switch, (sw_padding, sw_margin)),
     ] {
-        slot.padding = padding;
-        slot.margin = margin;
+        slot.defaults.padding = padding;
+        slot.defaults.margin = margin;
     }
 
     let (mut a, mut b) = (false, false);

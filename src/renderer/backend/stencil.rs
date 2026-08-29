@@ -36,17 +36,24 @@ impl Stencil {
     /// component is needed (UI is 2D, no z-test).
     pub(super) const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Stencil8;
 
-    /// Depth/stencil state for the stencil-test color pipelines (quad /
-    /// mesh / image / text). Stencil ref is set per-draw by the schedule
-    /// (`SetStencilRef(0)` outside masks, the chain depth inside) and
-    /// compared with `Equal`; `write_mask = 0` keeps the stamped masks
-    /// intact across the color draws.
-    pub(super) fn test_state() -> wgpu::DepthStencilState {
+    /// Depth/stencil state for one rounded-clip pipeline.
+    ///
+    /// `compare`, `pass_op` and `write_mask` are the whole difference
+    /// between the three states below. `fail_op` and `depth_fail_op` are
+    /// `Keep` throughout — a fragment that fails the test writes nothing
+    /// — the two faces always match, and there is no depth component to
+    /// vary. Stating the rest once is what keeps a stamp and the test
+    /// that reads it agreeing on which bits are the chain.
+    fn state(
+        compare: wgpu::CompareFunction,
+        pass_op: wgpu::StencilOperation,
+        write_mask: u32,
+    ) -> wgpu::DepthStencilState {
         let face = wgpu::StencilFaceState {
-            compare: wgpu::CompareFunction::Equal,
+            compare,
             fail_op: wgpu::StencilOperation::Keep,
             depth_fail_op: wgpu::StencilOperation::Keep,
-            pass_op: wgpu::StencilOperation::Keep,
+            pass_op,
         };
         wgpu::DepthStencilState {
             format: Self::FORMAT,
@@ -56,10 +63,49 @@ impl Stencil {
                 front: face,
                 back: face,
                 read_mask: MAX_ROUNDED_CLIP_DEPTH,
-                write_mask: 0x00,
+                write_mask,
             },
             bias: wgpu::DepthBiasState::default(),
         }
+    }
+
+    /// The stencil-test color pipelines (quad / mesh / image / curve /
+    /// text). Stencil ref is set per-draw by the schedule
+    /// (`SetStencilRef(0)` outside masks, the chain depth inside) and
+    /// compared with `Equal`; `write_mask = 0` keeps the stamped masks
+    /// intact across the color draws.
+    pub(super) fn test_state() -> wgpu::DepthStencilState {
+        Self::state(
+            wgpu::CompareFunction::Equal,
+            wgpu::StencilOperation::Keep,
+            0x00,
+        )
+    }
+
+    /// The mask-stamp variant, drawn once per chain level at
+    /// `stencil_reference = level`: writes `level + 1` only where the
+    /// SDF passes AND the stencil already equals `level`. So the
+    /// outermost mask stamps ref 0 onto the cleared stencil and each
+    /// inner one deepens only inside its ancestors, which is what makes
+    /// nested masks intersect.
+    pub(super) fn stamp_state() -> wgpu::DepthStencilState {
+        Self::state(
+            wgpu::CompareFunction::Equal,
+            wgpu::StencilOperation::IncrementClamp,
+            MAX_ROUNDED_CLIP_DEPTH,
+        )
+    }
+
+    /// The mask-clear variant, drawn at `stencil_reference = 0` to reset
+    /// a stamped chain. One draw of the chain's *outermost* quad
+    /// suffices: inner stamps only ever incremented inside the outer's
+    /// SDF, so every nonzero stencil pixel lies under it.
+    pub(super) fn clear_state() -> wgpu::DepthStencilState {
+        Self::state(
+            wgpu::CompareFunction::Always,
+            wgpu::StencilOperation::Replace,
+            MAX_ROUNDED_CLIP_DEPTH,
+        )
     }
 
     /// The attachment's extent, which [`WgpuBackend::ensure_stencil`](crate::renderer::backend::WgpuBackend::ensure_stencil)

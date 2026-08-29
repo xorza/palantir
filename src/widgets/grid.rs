@@ -1,6 +1,7 @@
 //! The WPF-style grid: explicit row and column tracks, with each child
 //! placed into a cell it names.
 
+use crate::layout::types::layout_mode::LayoutMode;
 use crate::layout::types::limits::valid_gap;
 use crate::layout::types::track::Track;
 use crate::primitives::background::Background;
@@ -122,16 +123,12 @@ impl<Rows, Cols> Grid<Rows, Cols> {
             self.col_gap,
         );
         let mut node = self.node;
-        node.set_grid_def(id);
+        node.set_mode(LayoutMode::Grid(id));
 
         // Theme fallback for chrome / clip — see `Panel::show`, including
         // why the handle is what gets cloned.
         let theme = Rc::clone(ui.theme());
-        let chrome = node.resolve_container_chrome(
-            self.chrome.as_ref(),
-            theme.panel_background.as_ref(),
-            theme.panel_clip,
-        );
+        let chrome = node.resolve_container_chrome(self.chrome.as_ref(), theme.container_chrome());
         ui.widget(node).show(ui, chrome, body)
     }
 }

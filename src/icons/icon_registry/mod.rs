@@ -1,8 +1,8 @@
 //! The table of loaded icon sets, and the generational ids that stop a
 //! released slot from aliasing the next set loaded into it.
 
-use crate::icons::icon_atlas::IconAtlas;
 use crate::icons::icon_set::IconSet;
+use crate::icons::icon_table::IconTable;
 use std::cell::RefCell;
 use std::rc::{Rc, Weak};
 
@@ -46,17 +46,17 @@ impl IconSetId {
 /// to forget what it cached against it.
 pub(crate) struct IconSetToken {
     id: IconSetId,
-    atlas: Rc<IconAtlas>,
+    table: Rc<IconTable>,
     shared: Rc<RefCell<Inner>>,
 }
 
 /// Summarized for the reason [`IconSet`]'s own impl states: `shared` is the
-/// whole table, and `atlas` is every icon's bytes.
+/// whole registry, and `table` is every icon's bytes.
 impl std::fmt::Debug for IconSetToken {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("IconSetToken")
             .field("id", &self.id)
-            .field("icons", &self.atlas.icons().len())
+            .field("icons", &self.table.icons().len())
             .finish_non_exhaustive()
     }
 }
@@ -66,8 +66,8 @@ impl IconSetToken {
         self.id
     }
 
-    pub(crate) fn atlas(&self) -> &IconAtlas {
-        &self.atlas
+    pub(crate) fn table(&self) -> &IconTable {
+        &self.table
     }
 }
 
@@ -91,7 +91,7 @@ struct Slot {
     /// Held for the backend, which resolves a set from an id rather than
     /// from the caller's `IconSet` — it has no access to one. Dropped at
     /// the drain, which is what frees the SVG blob.
-    atlas: Option<Rc<IconAtlas>>,
+    table: Option<Rc<IconTable>>,
     /// The live [`IconSetToken`] over this slot, so re-registering the
     /// same allocation shares it instead of minting a second owner — two
     /// owners of one slot would free it on the first drop.
@@ -143,7 +143,7 @@ pub(crate) struct IconRegistry {
 }
 
 impl IconRegistry {
-    /// Load `atlas` and return the [`IconSet`] that keeps it resident.
+    /// Load `table` and return the [`IconSet`] that keeps it resident.
     ///
     /// Registering an allocation a live `IconSet` already covers hands back
     /// a clone of that same set rather than a second entry — identity is
@@ -162,11 +162,11 @@ impl IconRegistry {
     ///
     /// Panics past 65 536 sets resident **at once**, which would overflow a
     /// slot index.
-    pub(crate) fn register(&self, atlas: Rc<IconAtlas>) -> IconSet {
+    pub(crate) fn register(&self, table: Rc<IconTable>) -> IconSet {
         let mut inner = self.inner.borrow_mut();
         let resident = inner.slots.iter().find_map(|slot| {
-            let held = slot.atlas.as_ref()?;
-            if !Rc::ptr_eq(held, &atlas) {
+            let held = slot.table.as_ref()?;
+            if !Rc::ptr_eq(held, &table) {
                 return None;
             }
             // A slot whose token has already gone is released-but-not-yet
@@ -185,7 +185,7 @@ impl IconRegistry {
                     .expect("more than 65536 icon sets resident at once");
                 inner.slots.push(Slot {
                     generation: 0,
-                    atlas: None,
+                    table: None,
                     token: Weak::new(),
                 });
                 slot
@@ -194,11 +194,11 @@ impl IconRegistry {
         let id = IconSetId::new(slot, inner.slots[slot as usize].generation);
         let token = Rc::new(IconSetToken {
             id,
-            atlas: Rc::clone(&atlas),
+            table: Rc::clone(&table),
             shared: Rc::clone(&self.inner),
         });
         let row = &mut inner.slots[slot as usize];
-        row.atlas = Some(atlas);
+        row.table = Some(table);
         row.token = Rc::downgrade(&token);
         inner.epoch += 1;
         IconSet::from_token(token)
@@ -213,14 +213,14 @@ impl IconRegistry {
     /// `IconSet` it came from. Both are caller logic errors, and a silently
     /// skipped icon would hide them until someone noticed a hole in a
     /// toolbar.
-    pub(crate) fn get(&self, id: IconSetId) -> Rc<IconAtlas> {
+    pub(crate) fn get(&self, id: IconSetId) -> Rc<IconTable> {
         let inner = self.inner.borrow();
-        let atlas = inner
+        let table = inner
             .slots
             .get(id.slot as usize)
             .filter(|slot| slot.generation == id.generation)
-            .and_then(|slot| slot.atlas.as_ref());
-        Rc::clone(atlas.unwrap_or_else(|| {
+            .and_then(|slot| slot.table.as_ref());
+        Rc::clone(table.unwrap_or_else(|| {
             panic!(
                 "icon set {}.{} is not loaded — an IconHandle outlived every \
                  IconSet holding its set, or crossed between hosts",
@@ -258,7 +258,7 @@ impl IconRegistry {
             // One token per slot, and only its drop queues an id, so the
             // stamp cannot have moved since.
             debug_assert_eq!(slot.generation, id.generation, "double release");
-            slot.atlas = None;
+            slot.table = None;
             slot.generation = slot.generation.wrapping_add(1);
             free.push(id.slot);
         }
@@ -294,7 +294,7 @@ impl IconRegistry {
         let row = inner.slots.get(slot)?;
         Some(ResidentIconSet {
             id: IconSetId::new(slot as u16, row.generation),
-            atlas: Rc::clone(row.atlas.as_ref()?),
+            table: Rc::clone(row.table.as_ref()?),
         })
     }
 
@@ -306,11 +306,11 @@ impl IconRegistry {
 }
 
 /// One loaded set as [`IconRegistry::resident`] hands it out: the id a
-/// raster key carries, and the atlas the bytes come from.
+/// raster key carries, and the table the bytes come from.
 #[derive(Clone, Debug)]
 pub(crate) struct ResidentIconSet {
     pub(crate) id: IconSetId,
-    pub(crate) atlas: Rc<IconAtlas>,
+    pub(crate) table: Rc<IconTable>,
 }
 
 #[cfg(test)]
