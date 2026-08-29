@@ -3,6 +3,7 @@
 use crate::Ui;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
+use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::scene::node::configure::Configure;
@@ -41,11 +42,15 @@ fn prev_frame_captures_nodes_with_rows() {
 
     assert!(prev.contains_key(&WidgetId::from_hash("root")));
     assert!(!prev.contains_key(&WidgetId::from_hash("empty")));
+    // Tracked, and painting nothing: the child-marker rows are all
+    // paint-empty and fold through `Rect::union`'s identity, so "no paint
+    // extent" is `Rect::ZERO` here as it is everywhere else in the
+    // pipeline. `contains_key` above is what answers "is it tracked".
     assert_eq!(
         h.engines
             .damage
             .prev_paint_rect(WidgetId::from_hash("root")),
-        None,
+        Some(Rect::ZERO),
     );
     assert_eq!(
         h.engines

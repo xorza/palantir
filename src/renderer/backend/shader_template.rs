@@ -1,4 +1,10 @@
-//! Checked substitution for Rust-owned constants embedded in WGSL sources.
+//! Assembly of a pipeline's WGSL source: the shared prelude, then the
+//! shader body with its Rust-owned constants substituted in.
+
+/// Concatenated ahead of every shader body, so the vocabulary the five
+/// pipelines share has one definition. See the file itself for what may
+/// go in it.
+const PRELUDE: &str = include_str!("prelude.wgsl");
 
 #[derive(Debug)]
 pub(super) struct ShaderConstant {
@@ -23,8 +29,16 @@ impl ShaderConstant {
     }
 }
 
-pub(super) fn specialize(source: &str, constants: &[ShaderConstant]) -> String {
-    let mut specialized = source.to_owned();
+/// The complete source for one pipeline, ready to hand to
+/// `create_shader_module`.
+///
+/// **Every shader in this backend is built here**, including the ones
+/// with no constants to substitute — that is what puts [`PRELUDE`] in
+/// front of all of them, and what makes an unsubstituted marker a
+/// startup panic rather than a shader that compiles with a comment
+/// where a number belongs.
+pub(super) fn specialize(body: &str, constants: &[ShaderConstant]) -> String {
+    let mut specialized = format!("{PRELUDE}{body}");
     for constant in constants {
         let marker = format!("/*{{{}}}*/", constant.marker);
         assert_eq!(
@@ -43,19 +57,21 @@ pub(super) fn specialize(source: &str, constants: &[ShaderConstant]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{ShaderConstant, specialize};
+    use super::{PRELUDE, ShaderConstant, specialize};
 
     #[test]
     fn specialization_replaces_every_typed_marker() {
-        let source = "const A: u32 = /*{A}*/; const B: f32 = /*{B}*/;";
         let result = specialize(
-            source,
+            "const A: u32 = /*{A}*/; const B: f32 = /*{B}*/;",
             &[
                 ShaderConstant::uint("A", 7),
                 ShaderConstant::float("B", 0.5),
             ],
         );
-        assert_eq!(result, "const A: u32 = 7u; const B: f32 = 0.5;");
+        assert_eq!(
+            result,
+            format!("{PRELUDE}const A: u32 = 7u; const B: f32 = 0.5;"),
+        );
     }
 
     #[test]

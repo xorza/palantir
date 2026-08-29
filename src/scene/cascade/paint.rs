@@ -106,8 +106,8 @@ impl PaintArena {
         self.node_spans.resize(n_nodes, Span::default());
     }
 
-    /// Screen-space painted extent of `node`'s whole subtree, or `None`
-    /// when the subtree paints nothing.
+    /// Screen-space painted extent of `node`'s whole subtree,
+    /// [`Rect::ZERO`] when the subtree paints nothing.
     ///
     /// Folded from the per-row `Paint.screen` rects rather than read off
     /// `LayerCascade::subtree_paint_rects`, so a non-painting descendant
@@ -118,7 +118,7 @@ impl PaintArena {
     /// slot (an empty span still carries the cursor as its `start`), so a
     /// subtree's rows are one contiguous run — this node's `start`
     /// through the `start` of the first node past the subtree.
-    pub(crate) fn subtree_extent(&self, node: NodeId, subtree_end: &[SubtreeEnd]) -> Option<Rect> {
+    pub(crate) fn subtree_extent(&self, node: NodeId, subtree_end: &[SubtreeEnd]) -> Rect {
         let end = subtree_end[node.idx()].end() as usize;
         let start_row = self.node_spans[node.idx()].start as usize;
         let end_row = match self.node_spans.get(end) {
@@ -142,11 +142,12 @@ pub(crate) trait PaintRows {
     /// out here.
     fn screens(&self) -> impl Iterator<Item = Rect>;
 
-    /// Screen-space union of [`Self::screens`], or `None` when no row
-    /// produces pixels. The empty ones stay out: folding a child
-    /// marker's zero box in would drag the union to the origin, and a
-    /// clipped-away shape's would drag it to the clip edge.
-    fn union_screens(&self) -> Option<Rect>;
+    /// Screen-space union of [`Self::screens`], [`Rect::ZERO`] when no
+    /// row produces pixels. The empty ones drop out through
+    /// [`Rect::union`]'s identity: a child marker's zero box cannot drag
+    /// the union to the origin, nor a clipped-away shape's to the clip
+    /// edge.
+    fn union_screens(&self) -> Rect;
 
     /// Whether any row produces visible pixels on `surface`.
     fn any_on_surface(&self, surface: Rect) -> bool;
@@ -161,8 +162,8 @@ impl PaintRows for [Paint] {
     }
 
     #[inline]
-    fn union_screens(&self) -> Option<Rect> {
-        self.screens().reduce(|acc, screen| acc.union(screen))
+    fn union_screens(&self) -> Rect {
+        self.screens().fold(Rect::ZERO, Rect::union)
     }
 
     #[inline]

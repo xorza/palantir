@@ -149,16 +149,17 @@ use std::time::Instant;
 use wgpu::util::StagingBelt;
 
 /// Size of the per-pipeline immediate (push-constant) region every
-/// palantir shader's `var<immediate> imm: Immediates` reads. Locked
-/// at the maximum used by any pipeline so a `set_immediates` for one
-/// shader stays valid across pipeline switches:
+/// palantir shader reads, through the one `var<immediate> imm:
+/// Immediates` in `prelude.wgsl`. Locked at the maximum used by any
+/// pipeline so a `set_immediates` for one shader stays valid across
+/// pipeline switches:
 ///
 /// - offset 0 (8 bytes): [`ViewportPush`] — viewport size, written
 ///   once per pass by `WgpuBackend`.
 /// - offset 8 (8 bytes): `text::Params` — atlas dimensions,
 ///   written per text batch by `TextBackend::render_batch`.
 ///
-/// Pipelines that don't use the tail (quad/mesh/image/curve) still
+/// Pipelines that don't read the tail (quad/mesh/image/curve) still
 /// declare `immediate_size = IMMEDIATES_BYTES` so the immediate-state
 /// layout matches and bytes written by other pipelines stay valid
 /// after a pipeline switch.

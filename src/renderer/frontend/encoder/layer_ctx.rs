@@ -40,7 +40,7 @@ use crate::scene::record_store::recorded_gradient::RecordedGradient;
 use crate::scene::shapes::paint::{
     ImageSource, LoweredShadow, QuadShape, ShadowGeom, ShapeBrush, shadow_paint_rect_local,
 };
-use crate::scene::shapes::record::ShapeRecord;
+use crate::scene::shapes::record::{ShapeRecord, text_paint_bbox_local};
 use crate::scene::tree::Tree;
 use crate::scene::tree::iter::TreeItem;
 use crate::scene::tree::node_id::NodeId;
@@ -208,17 +208,18 @@ impl LayerCtx<'_> {
                 //   ignored (only `align.halign()` matters here, and
                 //   that's already baked into the shaped buffer's
                 //   per-line glyph offsets).
-                let rect = match local_origin {
-                    None => {
-                        let padded =
-                            owner_rect.deflated_by(self.tree.records.layout()[id.idx()].padding);
-                        align.place_in(padded, shaped.measured)
-                    }
-                    Some(origin) => Rect {
-                        min: owner_rect.min + *origin,
-                        size: shaped.measured,
-                    },
-                };
+                // Through the shared placement, then lifted — the
+                // cascade's paint rect for this same run is built from
+                // it, and the two have to name the same pixels or damage
+                // and paint disagree about where the glyphs are.
+                let local = text_paint_bbox_local(
+                    *local_origin,
+                    *align,
+                    self.tree.records.layout()[id.idx()].padding,
+                    owner_rect.size,
+                    shaped.measured,
+                );
+                let rect = geometry::resolve_local_rect(owner_rect, Some(local));
                 out.draw_text(DrawTextPayload {
                     rect,
                     color: *color,

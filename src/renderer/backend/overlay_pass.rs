@@ -15,7 +15,6 @@ use crate::primitives::{
     color::{Color, ColorF16},
     corners::Corners,
     rect::Rect,
-    size::Size,
     spacing::Spacing,
 };
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
@@ -88,17 +87,8 @@ impl DebugOverlay {
     /// to `dim_buffer`.
     pub(super) fn upload_dim(&self, ctx: &mut GpuCtx<'_>, viewport: Vec2) {
         let q = Quad {
-            rect: Rect {
-                min: Vec2::ZERO,
-                size: Size {
-                    w: viewport.x,
-                    h: viewport.y,
-                },
-            },
+            rect: Rect::new(0.0, 0.0, viewport.x, viewport.y),
             fill: Color::linear_rgba(0.0, 0.0, 0.0, DIM_ALPHA).into(),
-            corners: Corners::default(),
-            stroke_color: ColorF16::TRANSPARENT,
-            stroke_width: 0.0,
             ..Default::default()
         };
         ctx.write(&self.dim_buffer, 0, bytemuck::bytes_of(&q));
@@ -163,11 +153,8 @@ impl DebugOverlay {
             // would push the whole box off-screen, leaving only a
             // half-clipped edge line.
             RenderKind::Full => quads.push(outline(
-                Rect {
-                    min: Vec2::ZERO,
-                    size: Size::new(buffer.viewport_phys_f.x, buffer.viewport_phys_f.y),
-                }
-                .deflated_by(Spacing::all(gap_px)),
+                Rect::new(0.0, 0.0, buffer.viewport_phys_f.x, buffer.viewport_phys_f.y)
+                    .deflated_by(Spacing::all(gap_px)),
             )),
         }
         self.overlay_buffer.upload_instances(ctx, quads.as_slice());

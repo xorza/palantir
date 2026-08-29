@@ -32,8 +32,14 @@ fn lift_to_screen(local: Rect, origin: Vec2, t: TranslateScale, clip: Option<Rec
     clip_screen(r, clip)
 }
 
+/// A screen rect held inside an optional clip — the shape every rect in
+/// the cascade takes on its way out.
+///
+/// `None` is "no clip on this branch", not "clip to nothing", which is
+/// the whole reason this is worth a name: the `map_or` that says so reads
+/// backwards at a glance, and it was written out at four sites.
 #[inline]
-fn clip_screen(screen: Rect, clip: Option<Rect>) -> Rect {
+pub(super) fn clip_screen(screen: Rect, clip: Option<Rect>) -> Rect {
     clip.map_or(screen, |c| screen.clamp_to(c))
 }
 
@@ -72,10 +78,7 @@ fn inflate_text_damage(screen: Rect, measured: Size, clip: Option<Rect>) -> Rect
             h: screen.size.h + 2.0 * pad_h,
         },
     };
-    match clip {
-        Some(c) => inflated.clamp_to(c),
-        None => inflated,
-    }
+    clip_screen(inflated, clip)
 }
 
 /// Push one paint row and fold its screen rect into the running union
@@ -83,14 +86,13 @@ fn inflate_text_damage(screen: Rect, measured: Size, clip: Option<Rect>) -> Rect
 /// union to track exactly the set of pushed non-paint-empty rows;
 /// doing both here makes the two legs impossible to desync at a call
 /// site. A paint-empty screen (shape fully clipped away) still pushes
-/// its row — damage matches rows by identity and needs the slot — but
-/// stays out of the union, which would otherwise grow to include the
-/// degenerate box pinned at the clip edge.
+/// its row — damage matches rows by identity and needs the slot — and
+/// drops out of the union through [`Rect::union`]'s identity, which is
+/// what keeps the degenerate box pinned at the clip edge from growing
+/// it.
 #[inline]
-fn push_paint(arena: &mut PaintArena, union: &mut Option<Rect>, screen: Rect, hash: ContentHash) {
-    if !screen.is_paint_empty() {
-        *union = Some(union.map_or(screen, |a| a.union(screen)));
-    }
+fn push_paint(arena: &mut PaintArena, union: &mut Rect, screen: Rect, hash: ContentHash) {
+    *union = union.union(screen);
     arena.rows.push(Paint { screen, hash });
 }
 
@@ -177,10 +179,11 @@ pub(super) fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) 
     let layout_rect = layout.rect[node.idx()];
     let paints_start = arena.rows.len() as u32;
 
-    // `Option<Rect>` because zero-size sentinels bias `Rect::union`
-    // toward the origin and an owner-rect seed would inflate damage
-    // for chromeless shape hosts.
-    let mut union: Option<Rect> = None;
+    // Seeded at `Rect::ZERO`, which is what `Rect::union` documents the
+    // identity to be — a paint-empty operand drops out, so a node that
+    // paints nothing folds to zero and a fully-clipped shape cannot drag
+    // the extent to its degenerate box at the clip edge.
+    let mut union = Rect::ZERO;
 
     let owner_local = Rect {
         min: Vec2::ZERO,
@@ -208,7 +211,7 @@ pub(super) fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) 
         // the cull rollup so the encoder emits the PushClip/PopClip
         // pair even when the subtree paints nothing (empty scroll
         // host, etc.). No Paint row — the node contributes no pixels.
-        union = Some(visible_rect);
+        union = visible_rect;
     }
 
     let has_shapes = tree.records.shape_span()[node.idx()].len > 0;
@@ -320,5 +323,5 @@ pub(super) fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) 
 
     let paints_len = arena.rows.len() as u32 - paints_start;
     arena.node_spans[node.idx()] = Span::new(paints_start, paints_len);
-    union.unwrap_or(Rect::ZERO)
+    union
 }

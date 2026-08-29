@@ -3,7 +3,6 @@
 
 use crate::primitives::rect::Rect;
 use crate::primitives::translate_scale::TranslateScale;
-use glam::Vec2;
 
 /// The walk transform: the live product every draw is placed by, plus the
 /// ancestors a `PopTransform` restores it from.
@@ -40,10 +39,6 @@ impl TransformStack {
 
     pub(super) fn apply_rect(&self, rect: Rect) -> Rect {
         self.current.apply_rect(rect)
-    }
-
-    pub(super) fn apply_point(&self, point: Vec2) -> Vec2 {
-        self.current.apply_point(point)
     }
 
     pub(super) fn push(&mut self, t: TranslateScale) {

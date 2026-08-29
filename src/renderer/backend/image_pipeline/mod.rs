@@ -18,7 +18,7 @@ use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::image_pipeline::render_target::GpuViewTargets;
 use crate::renderer::backend::image_pipeline::textures::ImageTextures;
 use crate::renderer::backend::instance_pipeline::InstancePipeline;
-use crate::renderer::backend::shader_template::{ShaderConstant, specialize};
+use crate::renderer::backend::shader_template::{self, ShaderConstant};
 use crate::renderer::backend::stencil_variant::ColorVariantSpec;
 use crate::renderer::backend::stencil_variant::StencilVariant;
 use crate::renderer::image_registry::ImageRegistry;
@@ -119,7 +119,7 @@ impl InstancePipeline for ImagePipeline {
     fn new(device: &wgpu::Device) -> Self {
         // Rust owns the flag bits; the shader declares them as markers so the
         // two cannot drift (`specialize` panics on an unsubstituted one).
-        let wgsl = specialize(
+        let wgsl = shader_template::specialize(
             include_str!("image.wgsl"),
             &[
                 ShaderConstant::uint("IMG_FLAG_TILED", IMG_FLAG_TILED),

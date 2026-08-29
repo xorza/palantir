@@ -16,6 +16,7 @@ use crate::primitives::span::Span;
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::instance_pipeline::InstancePipeline;
+use crate::renderer::backend::shader_template;
 use crate::renderer::backend::stencil_variant::ColorVariantSpec;
 use crate::renderer::backend::stencil_variant::StencilVariant;
 use crate::renderer::render_buffer::mesh::{MeshDraw, MeshInstance};
@@ -67,7 +68,9 @@ impl InstancePipeline for MeshPipeline {
     fn new(device: &wgpu::Device) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("palantir.mesh.shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("mesh.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(
+                shader_template::specialize(include_str!("mesh.wgsl"), &[]).into(),
+            ),
         });
 
         let vertex_buffer =

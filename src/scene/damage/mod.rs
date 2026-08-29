@@ -447,10 +447,11 @@ impl DamageEngine {
     /// Union of the paint screens retained for `wid` last frame — the
     /// node's own paint extent, equal to what the live cascade's rows
     /// fold to through [`PaintRows::union_screens`]. `None` when `wid`
-    /// didn't paint last frame (no `prev` entry).
+    /// didn't paint last frame (no `prev` entry); [`Rect::ZERO`] when it
+    /// had rows that painted nothing.
     pub(crate) fn prev_paint_rect(&self, wid: WidgetId) -> Option<Rect> {
         let snap = self.prev.get(&wid)?;
-        self.paints.slots[snap.paint_span.range()].union_screens()
+        Some(self.paints.slots[snap.paint_span.range()].union_screens())
     }
 }
 

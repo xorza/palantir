@@ -7,12 +7,6 @@
 // alpha) and premultiply at write time to match the rest of the
 // premultiplied-blend pipeline.
 
-// Viewport via the shared immediate region (offset 0). See
-// `quad.wgsl` for the cross-pipeline layout rationale.
-struct Viewport { size: vec2<f32> };
-struct Immediates { viewport: Viewport };
-var<immediate> imm: Immediates;
-
 @group(0) @binding(0) var tex:     texture_2d<f32>;
 @group(0) @binding(1) var tex_smp: sampler;
 
@@ -45,11 +39,6 @@ const MAX_TAPS_PER_AXIS: i32 = 4;
 // minified image off the loop *and* off the premultiply round-trip's rounding.
 const MIN_TAPPED_FOOTPRINT_SQUARED: f32 = 4.0;
 
-// Rec. 709 luma, for picking the brightest tap under `FLAG_TAPS_PEAK`. The
-// whole tap wins rather than a per-channel `max`, so a coloured point source
-// keeps its hue instead of being pushed toward white.
-const LUMA: vec3<f32> = vec3<f32>(0.2126, 0.7152, 0.0722);
-
 struct VsIn {
     // Per-instance.
     @location(0) rect_min:  vec2<f32>,
@@ -69,21 +58,9 @@ struct VsOut {
 
 @vertex
 fn vs(@builtin(vertex_index) vi: u32, in: VsIn) -> VsOut {
-    // Four-corner triangle-strip: (0,0) (1,0) (0,1) (1,1).
-    var corners = array<vec2<f32>, 4>(
-        vec2<f32>(0.0, 0.0),
-        vec2<f32>(1.0, 0.0),
-        vec2<f32>(0.0, 1.0),
-        vec2<f32>(1.0, 1.0),
-    );
-    let c = corners[vi];
-    let phys = in.rect_min + c * in.rect_size;
-    let ndc = vec2<f32>(
-        phys.x / imm.viewport.size.x * 2.0 - 1.0,
-        1.0 - phys.y / imm.viewport.size.y * 2.0,
-    );
+    let c = CORNERS[vi];
     var out: VsOut;
-    out.clip = vec4<f32>(ndc, 0.0, 1.0);
+    out.clip = clip_from_px(in.rect_min + c * in.rect_size);
     out.uv   = in.uv_min + c * in.uv_size;
     out.tint = in.tint;
     out.flags = in.flags;
@@ -139,10 +116,12 @@ fn footprint_taps(
             // drag an opaque one's rgb toward black, and ranking by straight
             // luma lets a near-invisible bright texel outrank a solid one.
             // Premultiplying weights each tap by its own coverage for free.
-            let pm = vec4<f32>(s.rgb * s.a, s.a);
+            let pm = premultiply(s.rgb, s.a);
             sum += pm;
             // Branchless so both modes cost the same walk; the mode picks a
-            // result at the end rather than a path here.
+            // result at the end rather than a path here. The whole tap wins
+            // rather than a per-channel `max`, so a coloured point source
+            // keeps its hue instead of being pushed toward white.
             let luma = dot(pm.rgb, LUMA);
             let brighter = luma > best_luma;
             best = select(best, pm, brighter);
@@ -220,5 +199,5 @@ fn fs(in: VsOut) -> @location(0) vec4<f32> {
     // sRGB-format texture decodes to linear on read; tint is linear
     // straight-alpha. Multiply, then premultiply for the blend.
     let c = s * in.tint;
-    return vec4<f32>(c.rgb * c.a, c.a);
+    return premultiply(c.rgb, c.a);
 }

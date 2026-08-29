@@ -47,11 +47,7 @@ use crate::shape::style::LineCap;
 use glam::{UVec2, Vec2};
 
 use crate::renderer::frontend::composer::clip_stack::ClipFrame;
-use crate::renderer::frontend::composer::geometry::{
-    POLYLINE_COINCIDENT_EPS_SQ, cubic_is_flat, polyline_join_kind, push_sub_instances,
-    rounded_clip_depth_overflow, scissor_from_logical, snap_text_scale, stroke_bbox_urect,
-    sub_instance_count, urect_from_phys,
-};
+use crate::renderer::frontend::composer::geometry;
 use crate::renderer::frontend::composer::{Composer, GroupCursors, OpenBatch, PolylineScratch};
 
 /// One compose pass in flight: the [`Composer`]'s retained scratch bound
@@ -134,7 +130,7 @@ impl ComposeSession<'_> {
         let phys = world.scaled_by(self.display.scale_factor, self.display.pixel_snap);
         ScaledRect {
             phys,
-            urect: urect_from_phys(phys.min, phys.max(), self.display.physical),
+            urect: geometry::urect_from_phys(phys.min, phys.max(), self.display.physical),
         }
     }
 
@@ -183,7 +179,12 @@ impl PaintSink for ComposeSession<'_> {
         let viewport_phys = self.display.physical;
         let logical_radius = (!p.corners.approx_zero()).then_some(p.corners);
         let world = self.composer.transform.apply_rect(p.rect);
-        let me = scissor_from_logical(world, scale, snap, viewport_phys);
+        // Scaled once: the scissor is the integer cover of this rect and
+        // the rounded mask below is the rect itself, so deriving them
+        // from two calls meant scaling the same rectangle twice per clip
+        // push.
+        let phys = world.scaled_by(scale, snap);
+        let me = geometry::urect_from_phys(phys.min, phys.max(), viewport_phys);
         let parent = self.composer.clip.top();
         let scissor = match parent {
             Some(parent) => me.clamp_to(parent.scissor),
@@ -193,14 +194,14 @@ impl PaintSink for ComposeSession<'_> {
         let chain = if let Some(logical_radius) = logical_radius {
             // Combine current transform's uniform scale with DPR
             // so radii match the painted SDF's physical size.
-            let phys_scale = self.composer.transform.scale() * scale;
+            let scale_phys = geometry::phys_scale(self.composer.transform.current(), scale);
             // `mask_rect` stays unclamped — the SDF needs the
             // rect's true edges, otherwise corner curves
             // would shift inward when the clip partially
             // leaves the viewport.
             let rc = RoundedClip {
-                mask_rect: world.scaled_by(scale, snap),
-                corners: logical_radius.scaled_by(phys_scale),
+                mask_rect: phys,
+                corners: logical_radius.scaled_by(scale_phys),
             };
             // A rounded push nested in rounded ancestors
             // STACKS: child chain = ancestor chain + own
@@ -214,7 +215,7 @@ impl PaintSink for ComposeSession<'_> {
             } else {
                 let depth = parent_chain.len + 1;
                 if depth > MAX_ROUNDED_CLIP_DEPTH {
-                    rounded_clip_depth_overflow(depth);
+                    geometry::rounded_clip_depth_overflow(depth);
                 }
                 let chain_start = self.out.rounded_clips.len() as u32;
                 self.out
@@ -299,24 +300,16 @@ impl PaintSink for ComposeSession<'_> {
         // silently produce false negatives — and false
         // negatives in the overlap test reorder paint. The
         // same inflated rect feeds the clip cull below.
-        let world_bbox = self.composer.transform.apply_rect(Rect {
-            min: p.bbox.min + p.origin,
-            size: p.bbox.size,
-        });
         // Mesh skips snapping (matches polyline/curve), so it cannot use
-        // `scaled_rect` — but the *scaling* still goes through
-        // `Rect::scaled_by`, the same call `scaled_rect` makes, rather
-        // than open-coding `* scale`. That is what keeps the cull
-        // tracking the quad tier. Snap, transform and the AA fringe are
-        // per-tier policy; the integer bounds below are `urect_from_phys`
-        // like every other tier's.
-        let phys_bbox = world_bbox.scaled_by(scale, false);
-        let fringe = Vec2::splat(0.5);
-        let mesh_urect = urect_from_phys(
-            phys_bbox.min - fringe,
-            phys_bbox.max() + fringe,
-            viewport_phys,
-        );
+        // `scaled_rect`; the fold and the scale still go through the same
+        // `phys_bbox` the stroked pair uses, which is what keeps the cull
+        // tracking the other tiers. The integer bounds below are
+        // `urect_from_phys` like every other tier's.
+        let xform = self.composer.transform.current();
+        let phys = geometry::phys_bbox(xform, p.bbox, p.origin, scale);
+        let fringe = Vec2::splat(HALF_FRINGE);
+        let mesh_urect =
+            geometry::urect_from_phys(phys.min - fringe, phys.max() + fringe, viewport_phys);
         // Clip-cull + batch-close: a mesh fully outside the
         // active scissor (e.g. scrolled out of an ancestor clip)
         // is skipped; a surviving one closes the open text batch
@@ -332,8 +325,7 @@ impl PaintSink for ComposeSession<'_> {
         // transform/tint move plus this slice eliminates
         // both the per-vertex CPU multiply and the
         // per-frame vertex copy.
-        let xform = self.composer.transform.current();
-        let phys_scale = xform.scale * scale;
+        let scale_phys = geometry::phys_scale(xform, scale);
         let phys_translate = (xform.scale * p.origin + xform.translation) * scale;
         self.out.meshes.push(MeshDrawRow {
             draw: MeshDraw {
@@ -342,7 +334,7 @@ impl PaintSink for ComposeSession<'_> {
             },
             instance: MeshInstance {
                 translate: phys_translate,
-                scale: phys_scale,
+                scale: scale_phys,
                 tint: p.tint.into(),
                 ..bytemuck::Zeroable::zeroed()
             },
@@ -456,7 +448,8 @@ impl PaintSink for ComposeSession<'_> {
                 full: UVec2::new(px(whole.w), px(whole.h)),
                 offset: UVec2::new(at(offset.x), at(offset.y)),
                 display_scale: scale,
-                raster_scale: self.composer.transform.scale() * scale * downsample,
+                raster_scale: geometry::phys_scale(self.composer.transform.current(), scale)
+                    * downsample,
                 paint: paint.clone(),
             });
         }
@@ -465,9 +458,9 @@ impl PaintSink for ComposeSession<'_> {
     fn curve(&mut self, p: DrawCurvePayload) {
         let scale = self.display.scale_factor;
         let xform = self.composer.transform.current();
-        let width_phys = p.width * xform.scale * scale;
+        let width_phys = p.width * geometry::phys_scale(xform, scale);
         let cap = p.cap;
-        let bbox_urect = stroke_bbox_urect(
+        let bbox_urect = geometry::stroke_bbox_urect(
             xform,
             p.bounds.cull_rect(),
             p.origin,
@@ -486,7 +479,7 @@ impl PaintSink for ComposeSession<'_> {
         // (cross-frame stable). No pixel snapping — snapping geometry
         // would warp the traced shape; the AA fringe lives in the
         // shader.
-        let to_phys = |q: Vec2| xform.apply_point(q + p.origin) * scale;
+        let to_phys = geometry::phys_point_map(xform, p.origin, scale);
         // Both bases below rotate about the pivot exactly — a Bézier by
         // affine invariance, a circle by moving its centre and shifting
         // both angles.
@@ -507,9 +500,9 @@ impl PaintSink for ComposeSession<'_> {
             CurveBasis::Cubic { p0, p1, p2, p3 } => {
                 let mut ctrl = [p0, p1, p2, p3];
                 if let Some(spin) = spin {
-                    let rotor = Vec2::from_angle(spin.angle);
+                    let rotor = spin.rotor();
                     for q in &mut ctrl {
-                        *q = rotor.rotate(*q - spin.pivot) + spin.pivot;
+                        *q = rotor.apply(*q);
                     }
                 }
                 let [p0, p1, p2, p3] = ctrl.map(to_phys);
@@ -522,11 +515,11 @@ impl PaintSink for ComposeSession<'_> {
                 // single instance: every chord of a flat curve lies on
                 // the segment, so the 16 baked chords render it exactly
                 // at any length.
-                let n = if cubic_is_flat(p0, p1, p2, p3) {
+                let n = if geometry::cubic_is_flat(p0, p1, p2, p3) {
                     1
                 } else {
                     let l = (p1 - p0).length() + (p2 - p1).length() + (p3 - p2).length();
-                    sub_instance_count(l)
+                    geometry::sub_instance_count(l)
                 };
                 let proto = CurveInstance {
                     p0,
@@ -546,7 +539,7 @@ impl PaintSink for ComposeSession<'_> {
             } => {
                 let mut center = center;
                 if let Some(spin) = spin {
-                    center = Vec2::from_angle(spin.angle).rotate(center - spin.pivot) + spin.pivot;
+                    center = spin.rotor().apply(center);
                     a0 += spin.angle;
                     a1 += spin.angle;
                 }
@@ -554,13 +547,13 @@ impl PaintSink for ComposeSession<'_> {
                 // rotation/skew — see `TranslateScale`), so a circle
                 // maps to a circle: transform the centre, scale the
                 // radius. Angles pass through untouched.
-                let radius_phys = radius * xform.scale * scale;
+                let radius_phys = radius * geometry::phys_scale(xform, scale);
                 // Adaptive sub-instance count from the *exact* arc
                 // length `r·|sweep|` — no control-polygon overshoot.
                 // Same ~1.5 px chord target as the cubic path; at that
                 // density the chord sagitta is `≈ c²/(8r)` ≤ 0.3 px
                 // even at r = 1, buried under the AA fringe.
-                let n = sub_instance_count(radius_phys * (a1 - a0).abs());
+                let n = geometry::sub_instance_count(radius_phys * (a1 - a0).abs());
                 let proto = CurveInstance {
                     p0: to_phys(center),
                     p1: Vec2::new(radius_phys, 0.0),
@@ -572,7 +565,7 @@ impl PaintSink for ComposeSession<'_> {
                 (proto, n)
             }
         };
-        push_sub_instances(self.out, n, proto);
+        geometry::push_sub_instances(self.out, n, proto);
     }
 
     fn polyline(&mut self, p: DrawPolylinePayload) {
@@ -581,7 +574,8 @@ impl PaintSink for ComposeSession<'_> {
         let mode = p.color_mode;
         let cap = p.cap;
         let join = p.join;
-        let width_phys = p.width * self.composer.transform.scale() * scale;
+        let xform = self.composer.transform.current();
+        let width_phys = p.width * geometry::phys_scale(xform, scale);
 
         // Compute the inflated physical-px AABB once and
         // reuse it for cull and overlap tracking. Inflating
@@ -589,8 +583,8 @@ impl PaintSink for ComposeSession<'_> {
         // trims a pixel the stroke would reach, and it
         // short-circuits before transforming the full point
         // list — the win for long dense point runs.
-        let bbox_urect = stroke_bbox_urect(
-            self.composer.transform.current(),
+        let bbox_urect = geometry::stroke_bbox_urect(
+            xform,
             p.bounds.cull_rect(),
             p.origin,
             width_phys,
@@ -616,25 +610,21 @@ impl PaintSink for ComposeSession<'_> {
         // lines off-axis. Hairline regime (<1 phys px) is
         // the shader's trapezoid-plateau coverage.
         self.composer.polyline.points.clear();
+        let to_phys = geometry::phys_point_map(xform, p.origin, scale);
+        // The spin is lifted out of the run rather than tested per point:
+        // it rotates each owner-local point about the pivot before the
+        // ancestor transform places it, so the shape turns in place.
         if let Some(spin) = p.bounds.spin() {
-            // Spin: rotate each owner-local point about the pivot
-            // before placing it via the ancestor transform, so the
-            // shape rotates in place.
-            let pivot = spin.pivot;
-            let rotor = Vec2::from_angle(spin.angle);
+            let rotor = spin.rotor();
             self.composer
                 .polyline
                 .points
-                .extend(src_points.iter().map(|&q| {
-                    let local = rotor.rotate(q - pivot) + pivot;
-                    self.composer.transform.apply_point(local + p.origin) * scale
-                }));
+                .extend(src_points.iter().map(|&q| to_phys(rotor.apply(q))));
         } else {
-            self.composer.polyline.points.extend(
-                src_points
-                    .iter()
-                    .map(|&q| self.composer.transform.apply_point(q + p.origin) * scale),
-            );
+            self.composer
+                .polyline
+                .points
+                .extend(src_points.iter().map(|&q| to_phys(q)));
         }
 
         // Keep only points beyond the coincidence threshold
@@ -644,7 +634,8 @@ impl PaintSink for ComposeSession<'_> {
         self.composer.polyline.kept.clear();
         let mut prev: Option<Vec2> = None;
         for (i, &q) in self.composer.polyline.points.iter().enumerate() {
-            if prev.is_none_or(|p| (q - p).length_squared() > POLYLINE_COINCIDENT_EPS_SQ) {
+            if prev.is_none_or(|p| (q - p).length_squared() > geometry::POLYLINE_COINCIDENT_EPS_SQ)
+            {
                 self.composer.polyline.kept.push(i as u32);
                 prev = Some(q);
             }
@@ -746,7 +737,7 @@ impl PaintSink for ComposeSession<'_> {
                 width: width_phys,
                 color0: color,
                 color1: color,
-                kind: polyline_join_kind(d_a, d_b, join),
+                kind: geometry::polyline_join_kind(d_a, d_b, join),
                 ..bytemuck::Zeroable::zeroed()
             });
         }
@@ -818,7 +809,7 @@ impl PaintSink for ComposeSession<'_> {
             // across small zoom deltas so the atlas hits.
             // Quads/meshes keep continuous scale — only
             // text glyph crispness "steps."
-            scale: snap_text_scale(self.composer.transform.scale()),
+            scale: geometry::snap_text_scale(self.composer.transform.scale()),
         });
         self.composer.batch.open_grid.push(bounds);
     }
@@ -830,7 +821,8 @@ impl ComposeSession<'_> {
     /// radii and its brush/shadow axis, a triangle with its packed corner
     /// points. Everything past this point is shape-blind.
     fn pack_quad(&self, p: &DrawQuadPayload) -> PackedQuad {
-        let phys_scale = self.composer.transform.scale() * self.display.scale_factor;
+        let xform = self.composer.transform.current();
+        let scale_phys = geometry::phys_scale(xform, self.display.scale_factor);
         match p.geom {
             QuadGeom::Rect { rect, corners } => {
                 let ScaledRect {
@@ -840,17 +832,17 @@ impl ComposeSession<'_> {
                 PackedQuad {
                     phys_rect,
                     urect,
-                    corners: corners.scaled_by(phys_scale),
+                    corners: corners.scaled_by(scale_phys),
                     // Live shadow parameters are logical-px scalars;
                     // scale them so the shader's `local` coords line
                     // up. A gradient axis is already unit-space and
                     // passes through untouched.
                     fill_axis: if p.fill_kind.is_shadow() {
-                        p.fill_axis.scaled(phys_scale)
+                        p.fill_axis.scaled(scale_phys)
                     } else {
                         p.fill_axis
                     },
-                    stroke_width: p.stroke.width * phys_scale,
+                    stroke_width: p.stroke.width * scale_phys,
                 }
             }
             QuadGeom::Triangle {
@@ -864,9 +856,9 @@ impl ComposeSession<'_> {
                 // Fold owner origin + active transform, scale to physical
                 // px. No pixel-snap — the SDF handles sub-pixel placement;
                 // snapping the covering rect would only shift the AA band.
-                let xf = |q: Vec2| self.composer.transform.apply_point(q + origin) * scale;
+                let xf = geometry::phys_point_map(xform, origin, scale);
                 let (a, b, c) = (xf(a), xf(b), xf(c));
-                let radius_phys = (radius * phys_scale).max(0.0);
+                let radius_phys = (radius * scale_phys).max(0.0);
                 // Covering AABB: the rounded shape (the SDF offsets the
                 // triangle outward by `radius` to round its corners) plus
                 // the ½px AA fringe. The stroke sits on the *inner* edge
@@ -884,11 +876,15 @@ impl ComposeSession<'_> {
                 let bl = b - phys_rect.min;
                 let cl = c - phys_rect.min;
                 PackedQuad {
-                    urect: urect_from_phys(phys_rect.min, phys_rect.max(), self.display.physical),
+                    urect: geometry::urect_from_phys(
+                        phys_rect.min,
+                        phys_rect.max(),
+                        self.display.physical,
+                    ),
                     phys_rect,
                     corners: Corners::from_array([al.x, al.y, bl.x, bl.y]),
                     fill_axis: FillAxis::from_lanes(cl.x, cl.y, radius_phys, 0.0),
-                    stroke_width: (p.stroke.width * phys_scale).max(0.0),
+                    stroke_width: (p.stroke.width * scale_phys).max(0.0),
                 }
             }
         }

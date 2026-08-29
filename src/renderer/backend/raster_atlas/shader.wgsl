@@ -34,32 +34,9 @@ const U_MASK: u32 = (1u << U_BITS) - 1u;
 const FLAG_DESATURATE: u32 = /*{FLAG_DESATURATE}*/;  // colour icons only; see `fs`
 const FLAG_COLOR: u32 = /*{FLAG_COLOR}*/;            // sample colour, not mask
 
-// Rec. 709 luma. The colour atlas decodes sRGB to linear on sample, which is
-// the space these coefficients are defined in.
-const LUMA: vec3<f32> = vec3<f32>(0.2126, 0.7152, 0.0722);
-
-// Group(0) = text-specific atlas textures + sampler. Both viewport
-// and atlas-size params ride the shared immediate region:
-//   offset 0 (8 bytes): viewport size — set per pass by the backend.
-//   offset 8 (8 bytes): atlas sizes — set per text batch in
-//   `render_batch` when atlas dimensions change.
-// Non-text shaders only declare the prefix they read.
-//
-// **Flat members, no nested structs.** This is the only shader that
-// reads past the first 16 bytes, and HLSL constant-buffer rules start
-// a *struct* member on the next 16-byte register — so lowering a
-// `struct Immediates { viewport: Viewport, params: Params }` for Dx12
-// pushed `params` to offset 16, past the four root constants the
-// layout declares. It read back as zero, `uv_texel / 0` sent every
-// glyph's UV to infinity, and text vanished on Dx12 while every other
-// pipeline (all of which read only the offset-0 viewport) was fine.
-// Vectors pack tightly inside one register, so keep these flat.
-struct Immediates {
-    viewport_size: vec2<f32>,
-    atlas_px: vec2<u32>, // [color, mask]
-};
-var<immediate> imm: Immediates;
-
+// Group(0) = the atlas textures and their sampler. This is the only
+// shader that reads `imm.atlas_px`, which the text backend rewrites per
+// batch when either atlas is resized.
 @group(0) @binding(0) var mask_atlas: texture_2d<f32>;
 @group(0) @binding(1) var color_atlas: texture_2d<f32>;
 @group(0) @binding(2) var atlas_sampler: sampler;
@@ -83,9 +60,7 @@ fn vs(in: VertexIn) -> VertexOut {
         select(imm.atlas_px.y, imm.atlas_px.x, (flags & FLAG_COLOR) != 0u);
 
     var out: VertexOut;
-    let ndc = vec2<f32>(pos) * (vec2<f32>(2.0, -2.0) / imm.viewport_size)
-        + vec2<f32>(-1.0, 1.0);
-    out.position = vec4<f32>(ndc, 0.0, 1.0);
+    out.position = clip_from_px(vec2<f32>(pos));
 
     // Straight-alpha linear color, already normalized by the Unorm8x4
     // vertex fetch. Shader premuls at output; no sRGB decode — the
@@ -101,8 +76,7 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
     if ((in.flags & FLAG_COLOR) == 0u) {
         // Mask: vertex color modulated by R-channel coverage.
         let cov = textureSampleLevel(mask_atlas, atlas_sampler, in.uv, 0.0).x;
-        let a = in.color.a * cov;
-        return vec4<f32>(in.color.rgb * a, a);
+        return premultiply(in.color.rgb, in.color.a * cov);
     }
     // Colour emoji or colour icon: the sRGB texture decodes to linear
     // straight RGBA on sample. Premultiply at output; the run alpha modulates
@@ -114,5 +88,5 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
     // untouched, so the shape is unchanged and only the hue goes.
     let grey = vec3<f32>(dot(s.rgb, LUMA));
     let rgb = select(s.rgb, grey, (in.flags & FLAG_DESATURATE) != 0u);
-    return vec4<f32>(rgb * s.a, s.a) * in.color.a;
+    return premultiply(rgb, s.a) * in.color.a;
 }
