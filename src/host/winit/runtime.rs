@@ -65,13 +65,11 @@ impl<T: App + 'static> WinitRuntime<T> {
         let window = native::create_window(event_loop, token, &config.window)?;
         let GpuInit {
             surfaces,
-            device,
-            queue,
             first_surface,
-        } = GpuInit::new(&window, &config)?;
+        } = GpuInit::new(token, &window, &config)?;
         let core = HostCore::new(
-            device,
-            queue,
+            surfaces.device.clone(),
+            surfaces.queue.clone(),
             surfaces.max_texture_dim,
             TextShaper::new(),
             Clipboard::system_or_memory(),
@@ -209,7 +207,7 @@ impl<T: App + 'static> WinitRuntime<T> {
             return Ok(());
         }
         let window = native::create_window(event_loop, token, &config)?;
-        let surface = self.surfaces.make_surface(&window)?;
+        let surface = self.surfaces.make_surface(token, &window)?;
         let driver = self.core.driver(token).build();
         self.register_window(window, surface, driver);
         Ok(())

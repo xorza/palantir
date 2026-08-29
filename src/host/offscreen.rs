@@ -42,7 +42,7 @@ use crate::app::App;
 use crate::common::clipboard::Clipboard;
 use crate::diagnostics::gpu_pass_stats::GpuPassStats;
 use crate::display;
-use crate::host::clock::{Clock, RealtimeClock};
+use crate::host::clock::Clock;
 use crate::host::core::HostCore;
 use crate::host::device_requirements::DeviceRequirements;
 use crate::host::window_driver::{CpuFrame, PresentStrategy, TargetKey, WindowDriver};
@@ -70,8 +70,13 @@ pub struct OffscreenHostBuilder {
     /// never pays the font load.
     shaper: Option<TextShaper>,
     collect_gpu_stats: bool,
-    clock: Box<dyn Clock>,
-    pixel_snap: bool,
+    /// `None` leaves the driver's own default standing — see
+    /// [`WindowDriver::builder`](crate::host::window_driver::WindowDriver).
+    /// Held rather than applied, because the driver builder wants a
+    /// `HostShared` that does not exist until [`Self::build`]; restating the
+    /// defaults here instead is what let the two drift.
+    clock: Option<Box<dyn Clock>>,
+    pixel_snap: Option<bool>,
 }
 
 impl OffscreenHostBuilder {
@@ -99,13 +104,13 @@ impl OffscreenHostBuilder {
     /// screenshots and thumbnails reproducible by holding animations at a
     /// caller-controlled phase.
     pub fn clock(mut self, clock: impl Clock + 'static) -> Self {
-        self.clock = Box::new(clock);
+        self.clock = Some(Box::new(clock));
         self
     }
 
     /// Configure whether axis-aligned paint edges snap to physical pixels.
     pub fn pixel_snap(mut self, pixel_snap: bool) -> Self {
-        self.pixel_snap = pixel_snap;
+        self.pixel_snap = Some(pixel_snap);
         self
     }
 
@@ -136,15 +141,19 @@ impl OffscreenHostBuilder {
                 collect_gpu_stats: self.collect_gpu_stats,
             },
         );
-        let driver = core
+        let mut driver = core
             .driver(OffscreenHost::WINDOW)
             // The target's prior contents can't be relied on (a caller may
             // hand in a fresh texture each call), so every frame must fill the
             // whole thing.
-            .strategy(PresentStrategy::BackbufferCopy)
-            .clock(self.clock)
-            .pixel_snap(self.pixel_snap)
-            .build();
+            .strategy(PresentStrategy::BackbufferCopy);
+        if let Some(clock) = self.clock {
+            driver = driver.clock(clock);
+        }
+        if let Some(pixel_snap) = self.pixel_snap {
+            driver = driver.pixel_snap(pixel_snap);
+        }
+        let driver = driver.build();
         OffscreenHost { core, driver }
     }
 }
@@ -165,8 +174,8 @@ impl OffscreenHost {
             queue,
             shaper: None,
             collect_gpu_stats: false,
-            clock: Box::new(RealtimeClock::new()),
-            pixel_snap: true,
+            clock: None,
+            pixel_snap: None,
         }
     }
 

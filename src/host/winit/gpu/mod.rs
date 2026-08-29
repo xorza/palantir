@@ -12,6 +12,7 @@ use crate::host::gpu_request::{GpuRequest, RequestedGpu};
 use crate::host::winit::config::WinitHostConfig;
 use crate::host::winit::error::WinitHostError;
 use crate::window::vsync::Vsync;
+use crate::window::window_token::WindowToken;
 
 const REQUIRED_SURFACE_USAGES: wgpu::TextureUsages =
     wgpu::TextureUsages::RENDER_ATTACHMENT.union(wgpu::TextureUsages::COPY_DST);
@@ -22,8 +23,12 @@ const REQUIRED_SURFACE_USAGES: wgpu::TextureUsages =
 pub(super) struct SurfaceManager {
     instance: wgpu::Instance,
     adapter: wgpu::Adapter,
-    device: wgpu::Device,
-    queue: wgpu::Queue,
+    /// The host's device and queue, held here because `configure` and
+    /// `present` are this type's to run. `HostCore` clones them from here
+    /// rather than being handed a second pair alongside — one holder, and a
+    /// borrow for whoever else needs them.
+    pub(super) device: wgpu::Device,
+    pub(super) queue: wgpu::Queue,
     /// `max_texture_dimension_2d` granted at device creation — fixed for
     /// the device's lifetime, cached so the host's per-event resize clamp
     /// doesn't re-query `device.limits()`.
@@ -59,21 +64,20 @@ pub(super) struct WindowSurface {
 #[derive(Debug)]
 pub(super) struct GpuInit {
     pub(super) surfaces: SurfaceManager,
-    pub(super) device: wgpu::Device,
-    pub(super) queue: wgpu::Queue,
     pub(super) first_surface: WindowSurface,
 }
 
 impl GpuInit {
     /// Pick the shared adapter/device and create the first native surface.
     pub(super) fn new(
+        token: WindowToken,
         window: &Arc<WinitWindow>,
         cfg: &WinitHostConfig,
     ) -> Result<Self, WinitHostError> {
         let instance = GpuRequest::instance()?;
         let surface = instance
             .create_surface(window.clone())
-            .map_err(|source| WinitHostError::CreateSurface { source })?;
+            .map_err(|source| WinitHostError::CreateSurface { token, source })?;
 
         // Caller-driven opt-in via `WinitHostConfig::collect_gpu_stats`
         // — see field doc. When off, none of the timing-query features
@@ -106,8 +110,8 @@ impl GpuInit {
         let surfaces = SurfaceManager {
             instance,
             adapter,
-            device: device.clone(),
-            queue: queue.clone(),
+            device,
+            queue,
             max_texture_dim,
             requested_present_mode: cfg.present_mode,
         };
@@ -119,8 +123,6 @@ impl GpuInit {
         )?;
         Ok(Self {
             surfaces,
-            device,
-            queue,
             first_surface,
         })
     }
@@ -130,12 +132,13 @@ impl SurfaceManager {
     /// Create a surface for an additional window against the selected adapter.
     pub(super) fn make_surface(
         &self,
+        token: WindowToken,
         window: &Arc<WinitWindow>,
     ) -> Result<WindowSurface, WinitHostError> {
         let surface = self
             .instance
             .create_surface(window.clone())
-            .map_err(|source| WinitHostError::CreateSurface { source })?;
+            .map_err(|source| WinitHostError::CreateSurface { token, source })?;
         let size = window.inner_size();
         self.build_window_surface(surface, UVec2::new(size.width, size.height), window.id())
     }
