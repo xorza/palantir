@@ -56,6 +56,7 @@ fn builder_retains_defaults_and_granular_overrides() {
         wgpu::PowerPreference::LowPower
     );
     assert!(!defaults.config.collect_gpu_stats);
+    assert!(defaults.config.pixel_snap);
 
     let builder = WinitHost::<CountingApp>::builder(WindowToken(9))
         .config(WinitHostConfig {
@@ -63,12 +64,14 @@ fn builder_retains_defaults_and_granular_overrides() {
             present_mode: wgpu::PresentMode::Fifo,
             power_preference: wgpu::PowerPreference::None,
             collect_gpu_stats: false,
+            pixel_snap: true,
         })
         .window(WindowConfig::new("window"))
         .title("title")
         .present_mode(wgpu::PresentMode::Immediate)
         .power_preference(wgpu::PowerPreference::HighPerformance)
-        .collect_gpu_stats(true);
+        .collect_gpu_stats(true)
+        .pixel_snap(false);
 
     assert_eq!(builder.first_token, WindowToken(9));
     assert_eq!(builder.config.window.title, "title");
@@ -78,6 +81,10 @@ fn builder_retains_defaults_and_granular_overrides() {
         wgpu::PowerPreference::HighPerformance
     );
     assert!(builder.config.collect_gpu_stats);
+    assert!(
+        !builder.config.pixel_snap,
+        "a granular setter overrides what `config` supplied",
+    );
 }
 
 #[test]

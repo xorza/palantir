@@ -391,6 +391,7 @@ pub use window::cursor_icon::CursorIcon;
 pub use window::vsync::Vsync;
 pub use window::window_config::WindowConfig;
 pub use window::window_geometry::WindowGeometry;
+pub use window::window_placement::WindowPlacement;
 pub use window::window_token::WindowToken;
 
 #[cfg(test)]

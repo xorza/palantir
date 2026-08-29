@@ -15,5 +15,6 @@ pub(crate) mod window_directory;
 pub(crate) mod window_frame_state;
 pub(crate) mod window_geometry;
 pub(crate) mod window_output;
+pub(crate) mod window_placement;
 pub(crate) mod window_requests;
 pub(crate) mod window_token;

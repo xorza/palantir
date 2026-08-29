@@ -49,7 +49,7 @@ pub(super) fn create_window(
 ) -> Result<Arc<WinitWindow>, WinitHostError> {
     let mut attrs = WinitWindow::default_attributes()
         .with_title(cfg.title.clone())
-        .with_maximized(cfg.maximized);
+        .with_maximized(cfg.placement.maximized);
     if let Some(s) = cfg.inner_size {
         attrs = attrs.with_inner_size(LogicalSize::new(s.x, s.y));
     }
@@ -64,7 +64,7 @@ pub(super) fn create_window(
     // monitor — winit does no such clamping, so a window saved on a
     // since-disconnected display would otherwise reopen off-screen and
     // unreachable.
-    if let Some(p) = cfg.position
+    if let Some(p) = cfg.placement.position
         && position_on_monitor(event_loop, p)
     {
         attrs = attrs.with_position(PhysicalPosition::new(p.x, p.y));
