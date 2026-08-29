@@ -42,6 +42,14 @@ pub(super) struct SystemFacts {
     refresh_millihertz: Option<u32>,
 }
 
+/// First delay after a `Validation` acquire — about one frame at 60 Hz,
+/// so a single spurious failure costs a dropped frame and nothing more.
+const ACQUIRE_RETRY_MIN: Duration = Duration::from_millis(16);
+
+/// Ceiling for [`Window::acquire_retry`]. A surface that stays invalid
+/// settles at two wake-ups a second.
+const ACQUIRE_RETRY_MAX: Duration = Duration::from_millis(500);
+
 /// Everything one native window owns: its handle, swapchain state, target-
 /// agnostic render driver, input/display facts, and event-loop schedule.
 #[derive(Debug)]
@@ -75,14 +83,6 @@ pub(super) struct Window {
     /// becoming valid again.
     acquire_retry: Option<Duration>,
 }
-
-/// First delay after a `Validation` acquire — about one frame at 60 Hz,
-/// so a single spurious failure costs a dropped frame and nothing more.
-const ACQUIRE_RETRY_MIN: Duration = Duration::from_millis(16);
-
-/// Ceiling for [`Window::acquire_retry`]. A surface that stays invalid
-/// settles at two wake-ups a second.
-const ACQUIRE_RETRY_MAX: Duration = Duration::from_millis(500);
 
 impl Window {
     pub(super) fn new(

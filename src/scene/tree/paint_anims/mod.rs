@@ -238,8 +238,9 @@ pub(crate) struct PaintAnimEntry {
     pub(crate) anim: PaintAnim,
     /// Index into `Tree::shapes.records` of the animated shape. Strictly
     /// increasing across [`PaintAnims::entries`], because registration
-    /// follows append-only shape recording — which is what lets both
-    /// readers below find a shape's row by search rather than by scan.
+    /// follows append-only shape recording — which is what lets
+    /// [`PaintAnims::rotates`] binary-search it and [`PaintAnimCursor`]
+    /// walk it in one direction.
     pub(crate) shape_idx: u32,
     /// Paint-arena row of the animated shape inside its owner's
     /// `node_spans` span — the chrome offset plus the shape's position

@@ -134,9 +134,8 @@ pub(crate) const TEXT_SCALE_STEP: f32 = 0.005;
 pub(crate) const RENDERED_RUN_KEEP_FRAMES: u64 = 120;
 
 /// Extra frames a shaped buffer keeps past [`RENDERED_RUN_KEEP_FRAMES`],
-/// masked out of the run's own `TextShapeKey::text_hash`. The window is
-/// that floor plus a per-run share of this, not one frame every run
-/// shares.
+/// masked out of the run's own key. The window is that floor plus a
+/// per-run share of this, not one frame every run shares.
 ///
 /// **A shared deadline makes reclamation bursty.** A page switch shapes
 /// and promotes a few hundred runs on one frame, so every one of them

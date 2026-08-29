@@ -671,7 +671,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
     ///
     /// Under sustained pressure an early batch's misses can therefore
     /// take rectangles a later batch was about to hit. That batch's
-    /// `try_emit_cached` sees the generation move, drops its row and
+    /// `TextEncoder::try_emit_cached` sees the generation move, drops its row and
     /// re-rasterizes, and the insert can take another slot the same
     /// frame still owes. The cascade is one pass rather than a loop,
     /// because everything already drawn this frame *is* protected, and
