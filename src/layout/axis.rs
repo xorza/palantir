@@ -15,6 +15,13 @@ pub(crate) enum Axis {
 }
 
 impl Axis {
+    /// The axis this one is not.
+    pub(crate) fn other(self) -> Axis {
+        match self {
+            Axis::X => Axis::Y,
+            Axis::Y => Axis::X,
+        }
+    }
     pub(crate) fn main(self, s: Size) -> f32 {
         match self {
             Axis::X => s.w,
