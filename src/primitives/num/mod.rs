@@ -47,6 +47,16 @@ pub(crate) trait F32Ext {
     /// enforces, which is what [`Self::unit_fraction_or`] is for.
     fn band_fraction(self, extent: f32, band: f32) -> f32;
 
+    /// This gap laid *between* `count` items: `count - 1` of them, and
+    /// none at all for one item or none.
+    ///
+    /// One definition because every container that stacks children spells
+    /// it — the two stacks, the wrap stack's lines, a grid's tracks and
+    /// each span inside them — and each of them once for measure and
+    /// again for arrange. The saturating step is the whole content: an
+    /// empty container has no gaps, and `0 - 1` on a `usize` is not zero.
+    fn gaps_between(self, count: usize) -> f32;
+
     /// This value as a share of something — clamped into `0..=1`, or
     /// `fallback` where it names no share at all.
     ///
@@ -94,6 +104,11 @@ impl F32Ext for f32 {
     #[inline]
     fn band_fraction(self, extent: f32, band: f32) -> f32 {
         approx::ratio(self - band * 0.5, extent - band)
+    }
+
+    #[inline]
+    fn gaps_between(self, count: usize) -> f32 {
+        self * count.saturating_sub(1) as f32
     }
 
     #[inline]

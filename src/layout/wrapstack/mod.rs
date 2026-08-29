@@ -21,6 +21,7 @@ use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange, LenReq};
 use crate::layout::justify_offsets::JustifyOffsets;
 use crate::layout::pass::LayoutPass;
 use crate::primitives::interned_text::InternedText;
+use crate::primitives::num::F32Ext;
 use crate::primitives::{rect::Rect, size::Size};
 use crate::scene::tree::Tree;
 use crate::scene::tree::node_id::NodeId;
@@ -174,10 +175,7 @@ impl LayoutDriver for WrapStack {
         if line.occupied {
             complete_line(line.main, line.cross);
         }
-        // `n_lines - 1` line gaps between lines.
-        if line_count > 1 {
-            total_cross += line_gap * (line_count - 1) as f32;
-        }
+        total_cross += line_gap.gaps_between(line_count);
 
         axis.compose_size(max_line_main, total_cross)
     }
@@ -342,7 +340,7 @@ impl LayoutDriver for WrapStack {
         }
         // Within-line gaps exist only on the single-line (max) reading.
         if query.includes(LenReq::MaxContent) {
-            range.max += tree.panel(node).gaps.gap() * count.saturating_sub(1) as f32;
+            range.max += tree.panel(node).gaps.gap().gaps_between(count);
         }
         range
     }

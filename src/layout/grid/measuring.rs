@@ -2,11 +2,11 @@
 
 use crate::layout::axis::Axis;
 use crate::layout::grid::grid_context::GridContext;
-use crate::layout::grid::grid_track_store::HugKind;
 use crate::layout::intrinsic::LenReq;
 use crate::layout::pass::LayoutPass;
 use crate::layout::types::layout_mode::GridDefId;
 use crate::layout::types::track::Track;
+use crate::primitives::num::F32Ext;
 use crate::primitives::size::Size;
 use crate::scene::tree::node_id::NodeId;
 
@@ -82,10 +82,8 @@ pub(super) fn measure_inner(
                 cols.max[i] = cols.max[i].max(range.max);
             } else if t.size.fill_weight().is_some() {
                 let min = pass.intrinsic(c, Axis::X, LenReq::MinContent);
-                let cols_min = pass
-                    .grid_track_state_mut()
-                    .slice_mut(idx, Axis::X, HugKind::Min);
-                cols_min[i] = cols_min[i].max(min);
+                let cols = pass.grid_track_state_mut().ranges_mut(idx, Axis::X);
+                cols.min[i] = cols.min[i].max(min);
             }
         }
     }
@@ -157,24 +155,34 @@ pub(super) fn measure_inner(
 
         let d = pass.measure(c, avail);
 
-        // Row Hug accumulates from cell's measured height. Row min-content
-        // could come from a Y intrinsic query, but it'd be the single-line
-        // height — the wrapped height (in `desired.h`) is what actually
-        // matters. For Fill rows, the same `d.h` is the min-content
-        // floor used by `resolve_axis` Phase 3 to prevent collapse
-        // below a rigid descendant (matches Stack's freeze-loop floor).
+        // A row's content range, both ends, under the same rule the column
+        // phase uses: the min from the child's min-content intrinsic, the
+        // max from what it actually wants. The max is the *measured* `d.h`
+        // rather than a Y intrinsic, because the column solve above already
+        // committed the width and the wrapped height is what the cell will
+        // paint.
+        //
+        // The min is what a cramped total falls back on — `resolve_axis`
+        // floors Hug at it (Phase 2) and Fill at it (Phase 3, matching
+        // Stack's freeze-loop floor). It cannot be `d.h`: a scrollable
+        // child's desired height is not its minimum, and a row that
+        // refused to shrink below it would deny a viewport the slot its
+        // grid was capped to. Left unwritten it is 0.0, and a cramped Hug
+        // row collapses all the way to `Track.min` where the same content
+        // in a column stops at its min-content.
+        //
         // Skip multi-row spans: their height is distributed across rows,
         // not attributable to one row.
         if cell.row_span == 1 {
-            let tracks = pass.grid_track_state_mut();
             let row = cell.row as usize;
             let sizing = row_tracks[row].size;
-            if sizing.is_hug() {
-                let hug_max = tracks.slice_mut(idx, Axis::Y, HugKind::Max);
-                hug_max[row] = hug_max[row].max(d.h);
-            } else if sizing.fill_weight().is_some() {
-                let hug_min = tracks.slice_mut(idx, Axis::Y, HugKind::Min);
-                hug_min[row] = hug_min[row].max(d.h);
+            if sizing.is_hug() || sizing.fill_weight().is_some() {
+                let min = pass.intrinsic(c, Axis::Y, LenReq::MinContent);
+                let rows = pass.grid_track_state_mut().ranges_mut(idx, Axis::Y);
+                rows.min[row] = rows.min[row].max(min);
+                if sizing.is_hug() {
+                    rows.max[row] = rows.max[row].max(d.h);
+                }
             }
         }
     }
@@ -206,10 +214,8 @@ pub(super) fn measure_inner(
     // claims leftover at arrange; `resolve_sizing` separately floors this
     // raw answer at the Grid intrinsic, which includes Fill content.
     let s = pass.grid_mut().depth_stack.at(depth);
-    let total_w =
-        sum_non_fill(col_tracks, &s.col.sizes) + col_gap * n_cols.saturating_sub(1) as f32;
-    let total_h =
-        sum_non_fill(row_tracks, &s.row.sizes) + row_gap * n_rows.saturating_sub(1) as f32;
+    let total_w = sum_non_fill(col_tracks, &s.col.sizes) + col_gap.gaps_between(n_cols);
+    let total_h = sum_non_fill(row_tracks, &s.row.sizes) + row_gap.gaps_between(n_rows);
     Size::new(total_w, total_h)
 }
 

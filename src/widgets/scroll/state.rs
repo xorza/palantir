@@ -80,6 +80,18 @@ pub(super) struct TrackPage {
 }
 
 impl ScrollState {
+    /// How far the content reaches past the viewport at this zoom, per
+    /// axis, before any policy about content that fits.
+    ///
+    /// Both bands below start here and then differ on exactly one point:
+    /// whether an axis whose content fits is floored at zero. Spelled
+    /// apart, they can differ on the zoom factor and the viewport too.
+    #[inline]
+    fn raw_overflow(&self, bounds: ScrollBounds) -> Vec2 {
+        let content = bounds.content.scaled(self.zoom);
+        Vec2::new(content.w - bounds.viewport.w, content.h - bounds.viewport.h)
+    }
+
     /// The offset range the wheel and the settle clamp work in:
     /// the overflow, **floored at zero first**, then widened by
     /// `content_margin` on each side.
@@ -96,11 +108,7 @@ impl ScrollState {
     /// `lo <= 0 <= hi`, and content that fits stays at 0.
     fn natural_bounds(&self, bounds: ScrollBounds) -> OffsetBounds {
         let [cml, cmt, cmr, cmb] = bounds.content_margin.as_array();
-        let overflow = Vec2::new(
-            bounds.content.w * self.zoom - bounds.viewport.w,
-            bounds.content.h * self.zoom - bounds.viewport.h,
-        )
-        .max(Vec2::ZERO);
+        let overflow = self.raw_overflow(bounds).max(Vec2::ZERO);
         OffsetBounds {
             lo: Vec2::new(-cml, -cmt) * self.zoom,
             hi: overflow + Vec2::new(cmr, cmb) * self.zoom,
@@ -116,14 +124,12 @@ impl ScrollState {
     /// raw trailing end sits *below* the leading one and the band is the
     /// inverted interval between them. That inversion is exactly what
     /// `natural_bounds` must not inherit, which is why the two do their
-    /// own arithmetic instead of sharing a helper.
+    /// own flooring — the raw endpoints they start from are one
+    /// derivation, [`Self::raw_overflow`].
     fn zoom_rubber_band_bounds(&self, bounds: ScrollBounds) -> OffsetBounds {
         let [cml, cmt, cmr, cmb] = bounds.content_margin.as_array();
         let leading = Vec2::new(-cml, -cmt) * self.zoom;
-        let trailing = Vec2::new(
-            bounds.content.w * self.zoom - bounds.viewport.w + cmr * self.zoom,
-            bounds.content.h * self.zoom - bounds.viewport.h + cmb * self.zoom,
-        );
+        let trailing = self.raw_overflow(bounds) + Vec2::new(cmr, cmb) * self.zoom;
         OffsetBounds {
             lo: leading.min(trailing),
             hi: leading.max(trailing),

@@ -100,6 +100,17 @@ impl Size {
             h: self.h.max(other.h),
         }
     }
+
+    /// Both axes by one factor — a content extent at a scroll's zoom, a
+    /// margin at the same. Named because the per-axis spelling puts `w`
+    /// and `h` a keystroke apart, and a swap between them compiles.
+    #[inline]
+    pub const fn scaled(self, factor: f32) -> Self {
+        Self {
+            w: self.w * factor,
+            h: self.h * factor,
+        }
+    }
 }
 
 impl<T: Num> From<T> for Size {

@@ -52,10 +52,6 @@ impl LayoutDriver for ZStack {
         let layouts = tree.records.layout();
         for child in tree.children(node) {
             let c = child.id;
-            if child.visibility.is_collapsed() {
-                pass.zero_subtree(c, inner.min);
-                continue;
-            }
             let i = c.idx();
             let s = layouts[i];
             let bounds = tree.bounds(c);

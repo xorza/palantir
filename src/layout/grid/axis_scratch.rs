@@ -10,6 +10,7 @@ use crate::layout::fill_item::FillItem;
 use crate::layout::grid::grid_track_store::GridTrackStore;
 use crate::layout::types::layout_mode::GridDefId;
 use crate::layout::types::track::Track;
+use crate::primitives::num::F32Ext;
 use crate::primitives::span::Span;
 use fixedbitset::FixedBitSet;
 
@@ -75,17 +76,35 @@ impl AxisScratch {
     /// when the whole span is known. Infinity makes the child fall back to its
     /// intrinsic size on that axis (the WPF trick).
     pub(super) fn known_span_size(&self, span: Span, gap: f32) -> f32 {
-        // Cells are range-checked against the parent's track counts at record
-        // time (`Tree::check_grid_cell`), so `span.range()` is always in
-        // bounds here — index directly.
-        let mut sum = 0.0;
-        for i in span.range() {
-            if !self.resolved.contains(i) {
-                return f32::INFINITY;
-            }
-            sum += self.sizes[i];
+        if span.range().any(|i| !self.resolved.contains(i)) {
+            return f32::INFINITY;
         }
-        sum + gap * span.len.saturating_sub(1) as f32
+        self.span_size(span, gap)
+    }
+
+    /// Sum of the spanned tracks' sizes plus the gaps between them —
+    /// what arrange gives a cell, and the resolved half of
+    /// [`Self::known_span_size`].
+    ///
+    /// Cells are range-checked against the parent's track counts at
+    /// record time (`Tree::check_grid_cell`), so `span.range()` is always
+    /// in bounds here — index directly.
+    pub(super) fn span_size(&self, span: Span, gap: f32) -> f32 {
+        self.sizes[span.range()].iter().sum::<f32>() + gap.gaps_between(span.len as usize)
+    }
+
+    /// Cumulative offset of each track from the axis origin, gaps
+    /// included — where arrange places a cell that starts on it.
+    pub(super) fn compute_offsets(&mut self, gap: f32) {
+        debug_assert_eq!(self.sizes.len(), self.offsets.len());
+        let mut acc = 0.0f32;
+        for (i, &size) in self.sizes.iter().enumerate() {
+            self.offsets[i] = acc;
+            acc += size;
+            if i + 1 < self.sizes.len() {
+                acc += gap;
+            }
+        }
     }
 
     /// Either copy persisted resolved sizes from the last measure or
@@ -180,7 +199,7 @@ impl AxisScratch {
         // intrinsic-floor-driven slot to a Hug grid and the cell
         // rect/shape would disagree.
         self.resolved.clear();
-        let total_gap = gap * n.saturating_sub(1) as f32;
+        let total_gap = gap.gaps_between(n);
 
         // Phase 1: Fixed.
         let mut consumed = total_gap + self.resolve_fixed(tracks);

@@ -14,8 +14,7 @@ pub struct ScrollDelta {
     /// Pixel-precise scroll delta in logical pixels — the touchpad /
     /// precision-wheel source (winit `MouseScrollDelta::PixelDelta`).
     /// Already negated at ingest so `+y` means "advance the scroll
-    /// offset forward." Pair with [`Self::lines`] to form a combined
-    /// pan delta: `pixels + lines * line_px`.
+    /// offset forward." [`Self::pan`] folds it with [`Self::lines`].
     pub pixels: Vec2,
     /// Notched / line-discrete scroll delta in raw line units (NOT
     /// pixels) — the classic-wheel source (winit
@@ -27,6 +26,21 @@ pub struct ScrollDelta {
     /// always reports — no modifier gating, unlike wheel zoom which
     /// the caller derives manually from [`Self::lines`] + modifiers.
     pub zoom: f32,
+}
+
+impl ScrollDelta {
+    /// This frame's pan in logical pixels: the precision source plus the
+    /// notched one converted at `line_px`.
+    ///
+    /// **The one fold.** Each widget still chooses the line height it
+    /// converts at — a `Scroll` takes the theme's, a `TextEdit` its own
+    /// font's, so one notch advances each by its own lines — but what
+    /// they do with it is this, spelled once rather than at every wheel
+    /// reader.
+    #[inline]
+    pub fn pan(self, line_px: f32) -> Vec2 {
+        self.pixels + self.lines * line_px
+    }
 }
 
 /// Hand-rolled because `zoom`'s identity is `1.0`, not the `0.0` that

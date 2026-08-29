@@ -12,6 +12,7 @@ use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange, LenReq};
 use crate::layout::pass::LayoutPass;
 use crate::layout::types::layout_mode::GridDefId;
 use crate::primitives::interned_text::InternedText;
+use crate::primitives::num::F32Ext;
 use crate::primitives::{rect::Rect, size::Size};
 use crate::scene::tree::Tree;
 use crate::scene::tree::node_id::NodeId;
@@ -148,7 +149,7 @@ impl LayoutDriver for Grid {
             }
         }
 
-        let gaps = gap * n_tracks.saturating_sub(1) as f32;
+        let gaps = gap.gaps_between(n_tracks);
         let mut range = IntrinsicRange::ZERO;
         if wants_min {
             range.min = layout.grid_track_aggregator()[min_base..min_base + n_tracks]

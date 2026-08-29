@@ -278,7 +278,7 @@ impl LayoutDriver for Scrollbars {
     fn arrange(pass: &mut LayoutPass<'_>, node: NodeId, id: Self::Payload, inner: Rect) {
         let def = pass.tree.scrollbar_defs[usize::from(id)];
         let raw_content = pass.scroll_content(def.content);
-        let scaled_content = Size::new(raw_content.w * def.zoom, raw_content.h * def.zoom);
+        let scaled_content = raw_content.scaled(def.zoom);
         let vertical = axis_rects(&def, inner.size, scaled_content, Axis::Y);
         let horizontal = axis_rects(&def, inner.size, scaled_content, Axis::X);
 

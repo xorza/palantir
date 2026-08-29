@@ -18,6 +18,7 @@ use crate::scene::shapes::record::ShapeRecord;
 use crate::scene::tree::node_id::NodeId;
 use crate::shape::rect::RectKind;
 use crate::ui::harness::UiHarness;
+use crate::widgets::text_edit::TextEditState;
 use crate::widgets::text_edit::tests::*;
 use crate::widgets::theme::text_style::LINE_HEIGHT_MULT;
 
@@ -332,6 +333,16 @@ fn placeholder_uses_own_measured_size_for_alignment() {
         "placeholder must align right: x = {} (expected {})",
         o.x,
         PAD_L + dx,
+    );
+    // The offset stored for next frame's hit-test is the same placement:
+    // the block the engine arranged, not a second alignment of the empty
+    // buffer's own measure, which would have parked it a whole
+    // placeholder further right.
+    let stored = h.ui.state_mut::<TextEditState>(ed_id()).view.block_offset;
+    let placed = block_at(&h.ui, node) - glam::Vec2::new(PAD_L, PAD_T);
+    assert!(
+        (stored - placed).length() < 1e-3,
+        "stored {stored:?} is not where the block was placed, {placed:?}",
     );
 }
 

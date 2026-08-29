@@ -51,7 +51,7 @@ impl ScrollGeometry {
     /// this rather than the raw extent so dragging a thumb inside a
     /// zoomed viewport tracks the cursor 1:1 with what's on screen.
     fn scaled_content(&self, zoom: f32) -> Size {
-        Size::new(self.content.w * zoom, self.content.h * zoom)
+        self.content.scaled(zoom)
     }
 
     /// What the offset solver works in, projected rather than stored.
@@ -289,10 +289,9 @@ impl<'a> Scroll<'a> {
         // children for a dominant font — that's a future polish; for
         // now the active theme's text size is a good proxy and stays
         // consistent with what the user is reading.
-        let text = &ui.theme().text;
-        let line_px = text.line_height_for(text.font_size_px);
+        let line_px = ui.theme().text.font().line_height_px;
         let scroll = response.scroll;
-        let pan_raw = scroll.pixels + scroll.lines * line_px;
+        let pan_raw = scroll.pan(line_px);
         // A theme with no line metric behind it contributes no notches,
         // rather than the enormous ones a floored divisor would report.
         let notches_per_px = approx::ratio(1.0, line_px);

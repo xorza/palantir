@@ -30,7 +30,6 @@ use crate::common::index16::Index16;
 use crate::layout::scrollbars::ScrollbarsDef;
 use crate::layout::types::layout_mode::{GridDefId, LayoutMode, ScrollbarsDefId};
 use crate::layout::types::track::{GridDef, Track};
-use crate::primitives::approx::noop_f32;
 use crate::primitives::background::Background;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::span::Span;
@@ -440,17 +439,17 @@ impl Tree {
         }
         if let Some(ChromeInput { bg, store }) = chrome {
             // Chrome stroke paints fully inside the node's arranged
-            // rect (see `quad.wgsl` SDF stroke band). Inflate `padding`
-            // by `stroke.width` on every side so children sit inside
-            // the stroke without the user having to add it by hand.
+            // rect (see `quad.wgsl` SDF stroke band), so `padding` grows
+            // by the ring on every side and children sit inside the
+            // stroke without the user having to add it by hand.
             // Done here (not in the layout pass) so the layout columns
             // already carry the effective padding — zero hot-path cost
             // and the LayoutCore hash invalidates `MeasureCache`
             // automatically when the inflated value shifts.
-            if !noop_f32(bg.stroke.width) {
-                let s = bg.stroke.width;
+            let ring = bg.stroke.ring();
+            if ring != 0.0 {
                 let [l, t, r, b] = cols.layout.padding.as_array();
-                cols.layout.padding = Spacing::new(l + s, t + s, r + s, b + s);
+                cols.layout.padding = Spacing::new(l + ring, t + ring, r + ring, b + ring);
             }
             // Tree-storage noop gate for chrome — mirrors `Shapes::add`
             // for the shape buffer and `PaintSink::draw_*` for emits.

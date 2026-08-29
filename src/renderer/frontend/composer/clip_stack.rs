@@ -71,11 +71,25 @@ impl ClipStack {
         self.frames.clear();
     }
 
+    /// `bounds` held inside the clip in force — the pixels a draw with
+    /// that extent can actually reach.
+    ///
+    /// A draw that needs the clipped rect for its own reasons — text,
+    /// whose batch scissor is the union of its runs' clipped bounds —
+    /// takes it here and reads the cull off it, rather than asking
+    /// [`Self::culls`] a question it would answer by clamping again.
+    pub(super) fn clamped(&self, bounds: URect) -> URect {
+        match self.scissor() {
+            Some(scissor) => bounds.clamp_to(scissor),
+            None => bounds,
+        }
+    }
+
     /// `true` when `bounds` has no viewport area or falls entirely
     /// outside the clip in force — the caller should skip emission.
     /// Identical reject shape at every shape-draw site; centralising it
     /// keeps each handler from growing its own variant.
     pub(super) fn culls(&self, bounds: URect) -> bool {
-        bounds.is_paint_empty() || self.scissor().is_some_and(|s| !bounds.intersects(s))
+        self.clamped(bounds).is_paint_empty()
     }
 }

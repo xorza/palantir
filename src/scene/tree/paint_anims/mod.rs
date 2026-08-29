@@ -132,6 +132,14 @@ impl PaintAnim {
         }
     }
 
+    /// Whether this anim turns the shape's geometry, which decides
+    /// whether a bound has to cover the swept disc rather than the
+    /// recorded bbox.
+    #[inline]
+    pub(crate) fn rotates(self) -> bool {
+        matches!(self, PaintAnim::Spin { .. })
+    }
+
     /// Earliest `Duration` (absolute time, same epoch as
     /// frame-runtime time / `started_at`) at which `quantum` will next
     /// change, or `None` when the anim has settled and will never
@@ -274,6 +282,19 @@ impl PaintAnims {
         );
         self.shape_indices.push(shape_idx);
         self.entries.push(entry);
+    }
+
+    /// Whether the shape at `shape_idx` paints under a rotation.
+    ///
+    /// The cascade's question, and it asks it without a `now`: what a
+    /// rotating shape is culled and damaged against is the square it
+    /// sweeps, which is the same at every angle. `shape_indices` is
+    /// strictly increasing and holds only the handful of shapes a frame
+    /// animates, so the search is over a list that is usually empty.
+    pub(crate) fn rotates(&self, shape_idx: u32) -> bool {
+        self.shape_indices
+            .binary_search(&shape_idx)
+            .is_ok_and(|i| self.entries[i].anim.rotates())
     }
 
     pub(crate) fn cursor(&self) -> PaintAnimCursor<'_> {

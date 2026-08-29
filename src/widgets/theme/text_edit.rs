@@ -3,7 +3,6 @@
 
 use crate::animation::anim_spec::AnimSpec;
 use crate::input::response::response_state::ResponseState;
-use crate::primitives::approx::noop_f32;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
@@ -115,11 +114,7 @@ impl TextEditTheme {
         // Off `normal`, and safe to be: the width is one number across all four
         // states so that focus changes a field's colour without moving its
         // text — see [`TextEditTheme::from_palette`].
-        let width = self.looks.normal.background.stroke.width;
-        // On the width alone, like `TextEdit::show`'s own guard — a stroke the
-        // colour makes invisible is still a stroke the fold makes room for, so
-        // `Stroke::is_noop` is the wrong question here.
-        let ring = if noop_f32(width) { 0.0 } else { width };
+        let ring = self.looks.normal.background.stroke.ring();
         at - Vec2::new(text.w, text.h) * 0.5
             - Vec2::new(left + ring + self.caret_width * 0.5, top + ring)
     }

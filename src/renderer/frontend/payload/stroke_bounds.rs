@@ -2,7 +2,6 @@
 //! the polyline and curve payloads.
 
 use crate::primitives::rect::Rect;
-use crate::primitives::size::Size;
 use glam::Vec2;
 
 /// Where a stroked shape rotates, for the shapes that do.
@@ -75,18 +74,37 @@ impl Default for StrokeBounds {
 }
 
 impl StrokeBounds {
+    /// Pair a lowered centerline bbox with the spin it will be drawn
+    /// under — **the producing end of the spin pivot contract** (stated
+    /// in the payload module doc).
+    ///
+    /// A spun shape sweeps a disc about its owner box's centre, so what it
+    /// is culled against is that disc's bounding square, which is
+    /// rotation-invariant and keeps the composer's overlap tracking
+    /// correct at every angle. The pivot rides along explicitly instead of
+    /// being recovered from the square's centre, so neither end has to
+    /// know that the rect changed meaning.
+    #[inline]
+    pub(crate) fn new(owner_rect: Rect, bbox: Rect, rotation: f32) -> Self {
+        if rotation == 0.0 {
+            return Self::Still(bbox);
+        }
+        let pivot = owner_rect.spin_pivot();
+        Self::Spun {
+            spin: Spin {
+                pivot,
+                angle: rotation,
+            },
+            radius: bbox.spun_radius(pivot),
+        }
+    }
+
     /// Owner-local rect the composer culls and batches against.
     #[inline]
     pub(crate) fn cull_rect(self) -> Rect {
         match self {
             Self::Still(bbox) => bbox,
-            Self::Spun { spin, radius } => Rect {
-                min: spin.pivot - Vec2::splat(radius),
-                size: Size {
-                    w: 2.0 * radius,
-                    h: 2.0 * radius,
-                },
-            },
+            Self::Spun { spin, radius } => Rect::square_about(spin.pivot, radius),
         }
     }
 

@@ -408,6 +408,15 @@ impl LayerWalk<'_> {
         // Rolled-up curr extent from the cascade — already `Rect::ZERO`
         // for invisible subtrees, so a hide transition damages only the
         // prev pixels.
+        //
+        // Off the column where the prev half came off the retained rows,
+        // because that is what each side has: last frame's column is
+        // gone, and this frame's rows are the same fold the column
+        // already carries. The two differ on one node — a chromeless
+        // clip-only container contributes its own visible rect to the
+        // column and no row to the fold — and that difference is on the
+        // side that can afford it: the curr push may cover more than the
+        // subtree paints, the prev push may not cover less.
         let curr_extent = self.cascade.subtree_paint_rects[i];
         if !curr_extent.is_paint_empty() {
             self.raw_rects.push(curr_extent);
