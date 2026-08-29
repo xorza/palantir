@@ -204,7 +204,7 @@ impl Window {
             // frame already recorded, and the next `Clock::now` comes
             // back *earlier* than it. `advance_clock` saturates the `dt`
             // but still assigns `time`, so repaint deadlines and
-            // `input.frame_time` would then be compared against a clock
+            // multi-press timing would then be compared against a clock
             // that went backwards.
             if self.occluded_at.is_some() {
                 self.occluded_at = Some(Instant::now());

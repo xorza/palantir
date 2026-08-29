@@ -5,6 +5,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::layout_core::LayoutCore;
 use crate::scene::node::node_flags::NodeFlags;
 use crate::scene::tree::extras_idx::ExtrasIdx;
+use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::subtree_end::SubtreeEnd;
 use soa_rs::Soars;
 
@@ -29,6 +30,16 @@ pub(crate) struct NodeRecord {
     /// in pre-order, packed with the "subtree contains a Grid" flag.
     /// `i + 1 == end()` for a leaf. See [`SubtreeEnd`].
     pub subtree_end: SubtreeEnd,
+    /// Immediate parent, or [`NodeId::NONE`] for a root. The
+    /// complement of `subtree_end`: together they answer both
+    /// directions of the tree in one indexed load.
+    ///
+    /// Recorded rather than re-derived. `open_node` has the parent in
+    /// hand, where every later pass would have to rebuild an ancestor
+    /// stack keyed on `subtree_end` to get it back — which the damage
+    /// diff did, once per node of the outer walk and again per node of
+    /// every moved subtree.
+    pub parent: NodeId,
     /// Layout-pass column: geometry + visibility. Bundled because the
     /// hot measure/arrange path reads all six fields together.
     pub layout: LayoutCore,
@@ -40,7 +51,6 @@ pub(crate) struct NodeRecord {
     /// beside `records`, so "one row per node" is what `Soa` already
     /// guarantees instead of a `debug_assert` on two lengths — a
     /// missed push cannot happen when there is only one push. Rides
-    /// free: 6 B at align 2 lands in the tail padding `NodeRecord`
-    /// already had, so the record stays 56 B.
+    /// free: 6 B at align 2 fills the 8 B slot `attrs` opens.
     pub extras: ExtrasIdx,
 }

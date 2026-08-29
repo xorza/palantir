@@ -10,10 +10,10 @@ use glam::BVec2;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum LayoutMode {
     Leaf,
-    HStack,
-    VStack,
-    WrapHStack,
-    WrapVStack,
+    /// Children laid along `Axis` on one line.
+    Stack(Axis),
+    /// Children laid along `Axis`, wrapping onto further lines.
+    WrapStack(Axis),
     ZStack,
     Canvas,
     Grid(GridDefId),
@@ -83,15 +83,13 @@ impl From<LayoutMode> for PackedLayoutMeta {
     fn from(mode: LayoutMode) -> Self {
         let (tag, payload): (u8, u16) = match mode {
             LayoutMode::Leaf => (0, 0),
-            LayoutMode::HStack => (1, 0),
-            LayoutMode::VStack => (2, 0),
-            LayoutMode::WrapHStack => (3, 0),
-            LayoutMode::WrapVStack => (4, 0),
-            LayoutMode::ZStack => (5, 0),
-            LayoutMode::Canvas => (6, 0),
-            LayoutMode::Grid(id) => (7, u16::from(id.0)),
-            LayoutMode::Scroll(spec) => (8, spec.0),
-            LayoutMode::Scrollbars(id) => (9, u16::from(id.0)),
+            LayoutMode::Stack(axis) => (1, axis.bit()),
+            LayoutMode::WrapStack(axis) => (2, axis.bit()),
+            LayoutMode::ZStack => (3, 0),
+            LayoutMode::Canvas => (4, 0),
+            LayoutMode::Grid(id) => (5, u16::from(id.0)),
+            LayoutMode::Scroll(spec) => (6, spec.0),
+            LayoutMode::Scrollbars(id) => (7, u16::from(id.0)),
         };
         Self(u32::from(payload) | (u32::from(tag) << Self::TAG_SHIFT))
     }
@@ -104,17 +102,15 @@ impl From<PackedLayoutMeta> for LayoutMode {
         let payload = (packed.0 & PackedLayoutMeta::PAYLOAD_MASK) as u16;
         match tag {
             0 => Self::Leaf,
-            1 => Self::HStack,
-            2 => Self::VStack,
-            3 => Self::WrapHStack,
-            4 => Self::WrapVStack,
-            5 => Self::ZStack,
-            6 => Self::Canvas,
-            7 => Self::Grid(GridDefId(
+            1 => Self::Stack(Axis::from_bit(payload)),
+            2 => Self::WrapStack(Axis::from_bit(payload)),
+            3 => Self::ZStack,
+            4 => Self::Canvas,
+            5 => Self::Grid(GridDefId(
                 Index16::from_raw(payload).expect("packed grid mode has no definition id"),
             )),
-            8 => Self::Scroll(ScrollSpec(payload)),
-            9 => Self::Scrollbars(ScrollbarsDefId(
+            6 => Self::Scroll(ScrollSpec(payload)),
+            7 => Self::Scrollbars(ScrollbarsDefId(
                 Index16::from_raw(payload).expect("packed scrollbars mode has no definition id"),
             )),
             _ => unreachable!("packed layout mode tag {tag} is invalid"),
@@ -189,6 +185,14 @@ impl ScrollSpec {
     pub(crate) const HORIZONTAL: Self = Self(Self::PAN_X);
     pub(crate) const VERTICAL: Self = Self(Self::PAN_Y);
     pub(crate) const BOTH: Self = Self(Self::PAN_X | Self::PAN_Y);
+
+    /// The pan flags as stored, for a hash that must not see the fit
+    /// bits. The one place these two flags' bit positions are written
+    /// down, so a consumer folding them cannot invent a second layout.
+    #[inline]
+    pub(crate) fn pan_bits(self) -> u16 {
+        self.0 & (Self::PAN_X | Self::PAN_Y)
+    }
 
     #[inline]
     pub(crate) fn pan_mask(self) -> BVec2 {

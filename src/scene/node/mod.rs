@@ -11,6 +11,7 @@ pub(crate) mod panel_extras;
 pub(crate) mod salt;
 pub(crate) mod theme_defaults;
 
+use crate::layout::axis::Axis;
 use crate::layout::types::align::{Align, HAlign, VAlign};
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::grid_cell::GridCell;
@@ -143,25 +144,25 @@ impl Node {
     /// Horizontal stack container for custom widgets.
     #[track_caller]
     pub fn hstack() -> Self {
-        Self::new(NodeMode::Resolved(LayoutMode::HStack))
+        Self::new(NodeMode::Resolved(LayoutMode::Stack(Axis::X)))
     }
 
     /// Vertical stack container for custom widgets.
     #[track_caller]
     pub fn vstack() -> Self {
-        Self::new(NodeMode::Resolved(LayoutMode::VStack))
+        Self::new(NodeMode::Resolved(LayoutMode::Stack(Axis::Y)))
     }
 
     /// Wrapping horizontal stack container for custom widgets.
     #[track_caller]
     pub fn wrap_hstack() -> Self {
-        Self::new(NodeMode::Resolved(LayoutMode::WrapHStack))
+        Self::new(NodeMode::Resolved(LayoutMode::WrapStack(Axis::X)))
     }
 
     /// Wrapping vertical stack container for custom widgets.
     #[track_caller]
     pub fn wrap_vstack() -> Self {
-        Self::new(NodeMode::Resolved(LayoutMode::WrapVStack))
+        Self::new(NodeMode::Resolved(LayoutMode::WrapStack(Axis::Y)))
     }
 
     /// Layered stack container for custom widgets.

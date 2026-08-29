@@ -133,10 +133,13 @@ fn push_paint(arena: &mut PaintArena, union: &mut Rect, screen: Rect, hash: Cont
 /// `entries` regardless, and deriving it here would apply and intersect
 /// it a second time per node.
 ///
-/// What is *not* here is the counterpart: `layout_rect` and the node's
-/// `padding` are one indexed load each off lines this walk has already
-/// touched, and `padding` is read only by the text arm — so they are
-/// derived below instead of widening every node's bundle by 24 B.
+/// What is *not* here is the counterpart: `layout_rect`, the node's
+/// `padding`, and `has_shapes` are one indexed load each off lines this
+/// walk has already touched, and `padding` is read only by the text arm
+/// — so they are derived below instead of widening every node's bundle.
+/// [`Self::has_children`] is the one that *is* here: the walk decides a
+/// leaf's rollup on it, so it already holds it, where it holds nothing
+/// about shapes.
 #[derive(Debug)]
 pub(super) struct PaintRectCtx<'a> {
     pub(super) tree: &'a Tree,

@@ -2,43 +2,26 @@
 
 use crate::primitives::color::Color;
 use crate::scene::damage::Damage;
-use crate::scene::damage::region::CollapsedDamage;
 
 /// WindowDriver-facing render plan, present only when there's actual render
 /// work this frame — `FrameReport.plan = None` is the skip signal, so neither
 /// the encoder nor the backend ever sees a no-op plan. Pairs the surface clear
-/// colour (needed for both kinds: `Full` clears the colour attachment,
-/// `Partial` pre-fills each scissor with it) with the [`RenderKind`].
+/// colour (needed for both outcomes: `Full` clears the colour attachment,
+/// `Partial` pre-fills each scissor with it) with the frame's [`Damage`].
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct RenderPlan {
     /// Surface clear colour for this frame.
     pub(crate) clear: Color,
-    /// Whole surface, or just a damage region.
-    pub(crate) kind: RenderKind,
-}
-
-/// What a [`RenderPlan`] repaints.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) enum RenderKind {
-    /// Clear + repaint the whole surface.
-    Full,
-    /// Load the backbuffer, then paint inside the damage rects after a
-    /// `clear`-coloured pre-fill quad per scissor. The coverage rides
-    /// along for the present-path promote decision — see
-    /// `DIRECT_PROMOTE_COVERAGE`.
-    Partial { damage: CollapsedDamage },
-}
-
-impl RenderKind {
-    /// Whether the frame paints inside damage rects rather than over the
-    /// whole surface.
+    /// Whole surface, or just a damage region. `Full` clears and repaints
+    /// everything; `Partial` loads the backbuffer and paints inside the
+    /// rects after a `clear`-coloured pre-fill quad per scissor, with the
+    /// coverage riding along for the present-path promote decision (see
+    /// `DIRECT_PROMOTE_COVERAGE`).
     ///
-    /// The plan is the authority. `build_repaint_scissors` maps this
-    /// one-to-one onto a `RepaintScissors`, so asking the *scissors* gives
-    /// the same answer one derivation further from the fact.
-    pub(crate) fn is_partial(self) -> bool {
-        matches!(self, Self::Partial { .. })
-    }
+    /// The scene's own outcome, carried rather than restated: `Damage`'s
+    /// "nothing to paint" is already the absence of one, which is what
+    /// this plan's `Option` says too.
+    pub(crate) damage: Damage,
 }
 
 impl RenderPlan {
@@ -55,16 +38,13 @@ impl RenderPlan {
         (Self::AA_PADDING as f32 + 1.0) / scale
     }
 
-    /// Build a render plan from `DamageEngine`'s output plus the
-    /// surface clear colour. `Damage::Skip` ⇒ `None` (skip frame);
-    /// `Full` / `Partial` ⇒ `Some(plan)`.
-    pub(crate) fn from_damage(damage: Damage, clear: Color) -> Option<Self> {
-        let kind = match damage {
-            Damage::Skip => return None,
-            Damage::Full => RenderKind::Full,
-            Damage::Partial(damage) => RenderKind::Partial { damage },
-        };
-        Some(RenderPlan { clear, kind })
+    /// Stamp `DamageEngine`'s output with the surface clear colour. A
+    /// frame with no damage stays `None` all the way to the host.
+    pub(crate) fn from_damage(damage: Option<Damage>, clear: Color) -> Option<Self> {
+        Some(RenderPlan {
+            clear,
+            damage: damage?,
+        })
     }
 
     /// This plan escalated to a full repaint, keeping its clear colour — used
@@ -73,7 +53,7 @@ impl RenderPlan {
     pub(crate) fn to_full(self) -> RenderPlan {
         RenderPlan {
             clear: self.clear,
-            kind: RenderKind::Full,
+            damage: Damage::Full,
         }
     }
 }

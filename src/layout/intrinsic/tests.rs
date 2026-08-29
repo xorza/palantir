@@ -1,3 +1,4 @@
+use crate::layout::axis::Axis;
 use crate::layout::intrinsic::*;
 use crate::scene::tree::node_id::NodeId;
 
@@ -253,10 +254,10 @@ fn intrinsic_range_exactly_matches_separate_queries_for_every_driver() {
 
     let expected_modes = [
         LayoutMode::Leaf,
-        LayoutMode::HStack,
-        LayoutMode::VStack,
-        LayoutMode::WrapHStack,
-        LayoutMode::WrapVStack,
+        LayoutMode::Stack(Axis::X),
+        LayoutMode::Stack(Axis::Y),
+        LayoutMode::WrapStack(Axis::X),
+        LayoutMode::WrapStack(Axis::Y),
         LayoutMode::ZStack,
         LayoutMode::Canvas,
         LayoutMode::Grid(GridDefId::from_index(0)),

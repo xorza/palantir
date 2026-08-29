@@ -12,8 +12,8 @@ use crate::host::error::GpuRequestError;
 /// carry are Palantir's business rather than the caller's.
 /// [`Self::headless`] is the short way to a usable one: screenshots,
 /// thumbnails, server-side compositing, and tests that want a frame without a
-/// compositor in the loop. The windowed host opens its own through
-/// [`GpuRequest`] with the window's surface attached.
+/// compositor in the loop. The windowed host opens its own the same way,
+/// with the window's surface attached.
 ///
 /// An application that already owns a device should keep it and go through
 /// [`DeviceRequirements::negotiate`] instead — Palantir's needs fold into its

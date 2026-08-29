@@ -347,11 +347,6 @@ impl<'a> TextEdit<'a> {
         // this one value — a second copy taken before the fold would
         // report a freshly disabled field as live.
         let mut response = widget.response(ui);
-        // Snapshotted before anything can move it: `run_input` reads it
-        // for the select-all-on-focus edge and `ViewState::update` writes
-        // this frame's value over it, so both focus edges below are
-        // derived from the same one read.
-        let was_focused = state.view.prev_focused;
         // Pick the per-state look + animate its visual components.
         // Disabled wins over focus — a disabled editor that still
         // happens to hold focus paints with its disabled visuals
@@ -397,15 +392,15 @@ impl<'a> TextEdit<'a> {
         let placeholder_color = slot.placeholder;
         let look = slot.plan(&response, (), &theme.text).apply(ui, &mut widget);
         if !look.text.metrics_valid() {
-            state.view.prev_focused = is_focused;
+            let focus = state.view.roll_focus(is_focused);
             let chrome = look.background;
             widget.record(ui, Some(&chrome), |_| {});
             return EditSignals {
                 changed: false,
                 submitted: false,
                 cancelled: false,
-                gained_focus: is_focused && !was_focused,
-                lost_focus: was_focused && !is_focused,
+                gained_focus: focus.gained,
+                lost_focus: focus.lost,
                 state: response,
             };
         }
@@ -447,7 +442,7 @@ impl<'a> TextEdit<'a> {
         let caret_before = state.edit.caret;
         let sel_before = state.edit.selection;
         let InputResult {
-            blur: blur_after,
+            cancelled,
             submitted,
             edited,
         } = run_input(
@@ -463,13 +458,14 @@ impl<'a> TextEdit<'a> {
             },
             state,
         );
-        if blur_after {
+        if cancelled {
             ui.request_focus(None);
             is_focused = false;
             response.focused = false;
         }
-        let gained_focus = is_focused && !was_focused;
-        let lost_focus = was_focused && !is_focused;
+        // Rolled here, once this pass's focus is final: `run_input` above
+        // still needed the previous value.
+        let focus = state.view.roll_focus(is_focused);
 
         let snapshot = ResponseSnapshot {
             id,
@@ -512,21 +508,17 @@ impl<'a> TextEdit<'a> {
             },
             &mut state.selection_rects,
         );
-        let caret_pos = geometry.caret_pos;
         state.edit.observe_text_hash(geometry.text_hash);
         let now = ui.now();
-        let view = state.view.update(ViewUpdateInput {
-            layout,
-            caret_pos,
-            content_size: geometry.content_size,
+        let caret_anim = state.view.update(ViewUpdateInput {
+            geometry,
             wheel,
             caret_byte,
             focused: is_focused,
             caret_moved,
-            edited: changed,
-            gained_focus,
+            changed,
+            gained_focus: focus.gained,
             now,
-            block_offset: geometry.block_offset,
         });
         let text_color = look.text.color;
         let placeholder = self.placeholder;
@@ -540,21 +532,21 @@ impl<'a> TextEdit<'a> {
             selection_color,
             text_color,
             placeholder_color,
-            scroll: view.scroll,
+            scroll: state.view.scroll,
             caret: is_focused.then_some(CaretPaint {
-                pos: caret_pos,
+                pos: geometry.caret_pos,
                 width: caret_width,
                 color: caret_color,
-                anim: view.caret_anim,
+                anim: caret_anim,
             }),
         }
         .record(ui, widget);
         EditSignals {
             changed,
             submitted,
-            cancelled: blur_after,
-            gained_focus,
-            lost_focus,
+            cancelled,
+            gained_focus: focus.gained,
+            lost_focus: focus.lost,
             state: response,
         }
     }

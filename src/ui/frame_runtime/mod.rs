@@ -55,35 +55,36 @@ pub(crate) struct FrameRuntime {
     /// Without this, an unthrottled repaint loop can produce deltas
     /// below the f32 ULP at pixel-scale positions and stall a spring
     /// short of its settle threshold indefinitely.
-    pub(crate) dt: f32,
+    pub(super) dt: f32,
     /// Unspent wall-clock dt waiting to cross the fixed-step threshold.
     /// See [`Self::dt`].
-    pub(crate) dt_accum: f32,
+    pub(super) dt_accum: f32,
     /// Bumped once per [`crate::Ui::frame`], before either record pass,
     /// so a settling pass cannot double-advance animation. Counts every
     /// frame that reaches the screen, `PaintOnly` ones included —
     /// [`Self::frame_id`] is the peer that counts only the frames
     /// authoring code ran on.
-    pub(crate) render_frame_id: u64,
+    pub(super) render_frame_id: u64,
     /// WindowDriver-supplied monotonic timestamp for this frame.
-    pub(crate) time: Duration,
+    pub(super) time: Duration,
     /// Time + display from the previous frame, or `None` before the
     /// first frame. Drives surface-change classification and the
     /// paint-animation damage gate.
-    pub(crate) prev_stamp: Option<FrameStamp>,
+    pub(super) prev_stamp: Option<FrameStamp>,
     /// Fingerprint of the last frame's cascade inputs. A match permits
     /// reuse of the frozen cascade output; `None` before the first run.
-    pub(crate) prev_cascade_fp: Option<u64>,
+    /// Read and stamped only through [`Self::cascade_needs_run`].
+    prev_cascade_fp: Option<u64>,
     /// Whether the most recent `post_record` ran the cascade — pins the
     /// unchanged-frame skip gate.
     ///
     /// A [`TestOnly`] cell, like every other probe in the crate: the gate
-    /// lives in the cell, so [`Self::note_cascade_ran`] is an ordinary
-    /// method and its call site carries nothing.
+    /// lives in the cell, so [`Self::cascade_needs_run`] notes it while
+    /// deciding, and its call site carries nothing.
     cascade_ran: TestOnly<bool>,
     /// EMA of `1/raw_dt` across frames; zero before a second timestamp
     /// exists. Uses unclamped wall time so stalls remain visible.
-    pub(crate) fps_ema: f32,
+    pub(super) fps_ema: f32,
     /// Full-record frames so far — the frame identity authoring code
     /// sees, published as [`crate::Ui::frame_id`], since a `PaintOnly`
     /// frame runs none of it.
@@ -94,7 +95,7 @@ pub(crate) struct FrameRuntime {
     /// record frames therefore observe consecutive values, and both
     /// passes of one frame observe the same one — which is what makes it
     /// usable as an identity and not merely a tally.
-    pub(crate) frame_id: u64,
+    pub(super) frame_id: u64,
     /// How many of [`Self::frame_id`]'s frames needed a settling second
     /// record pass. Cumulative rather than an EMA because the question it
     /// answers is "did this gesture stop double-recording" — you read the
@@ -104,23 +105,33 @@ pub(crate) struct FrameRuntime {
     /// UI merely idles. Displayed by the opt-in frame-stats overlay.
     pub(crate) settle_frames: u32,
     /// Set when an unsettled animation or widget requests another frame.
-    pub(crate) repaint_requested: bool,
+    pub(super) repaint_requested: bool,
     /// Pending absolute wake deadlines, sorted ascending and coalesced.
     /// Entries retain merged [`WakeReasons`] so coincident real and
     /// paint-animation wakes still force a full record pass.
     pub(crate) repaint_wakes: Vec<Wake>,
     /// Whether the current frame requires one settling record pass. The
     /// lifecycle consumes at most one such request per frame.
-    pub(crate) relayout_requested: bool,
+    pub(super) relayout_requested: bool,
 }
 
 impl FrameRuntime {
-    /// Record whether `post_record` ran the cascade this frame. Same
-    /// principle as the probe structs: the gate lives here, so the call
-    /// site in `FrameCycle::post_record` carries none.
-    #[inline]
-    pub(crate) fn note_cascade_ran(&mut self, ran: bool) {
-        self.cascade_ran.edit(|noted| *noted = ran);
+    /// Whether the cascade must run for fingerprint `fp`, stamping it
+    /// when it must.
+    ///
+    /// Compare, note the probe, and stamp are one decision: a caller
+    /// that compared without stamping would re-run the cascade every
+    /// frame, and one that stamped without comparing would skip a frame
+    /// that changed. Same principle as the probe structs — the gate
+    /// lives here, so the call site in `FrameCycle::post_record` carries
+    /// none.
+    pub(super) fn cascade_needs_run(&mut self, fp: u64) -> bool {
+        let needed = self.prev_cascade_fp != Some(fp);
+        self.cascade_ran.edit(|noted| *noted = needed);
+        if needed {
+            self.prev_cascade_fp = Some(fp);
+        }
+        needed
     }
 
     /// Whether the last `post_record` ran the cascade — pins the

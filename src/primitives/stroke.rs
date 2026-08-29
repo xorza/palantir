@@ -70,7 +70,7 @@ impl Stroke {
 }
 
 /// Visual throughout: this feeds content-cache keys, so every scalar the
-/// stroke carries is canonicalized the same way — see [`FloatHash`].
+/// stroke carries is canonicalized the same way, through `FloatHash`.
 impl std::hash::Hash for Stroke {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {

@@ -118,7 +118,7 @@ macro_rules! hot_structs {
 /// one feature-conditional footprint in reach, `LayoutCounters`'
 /// `bench`-only `PhaseTimings`, rides `LayoutEngine` into
 /// [`FrameEngines`](crate::ui::frame_engines) instead.
-const UI_SIZE: usize = 5880;
+const UI_SIZE: usize = 5912;
 
 /// Expected `size_of::<FrameEngines>()`. Two numbers because
 /// `LayoutCounters` carries a `PhaseTimings` only under `bench` — the
@@ -130,9 +130,9 @@ const UI_SIZE: usize = 5880;
 /// smaller than either. Read these as a drift tripwire, not as the
 /// production footprint.
 #[cfg(feature = "bench")]
-const FRAME_ENGINES_SIZE: usize = 1504;
-#[cfg(not(feature = "bench"))]
 const FRAME_ENGINES_SIZE: usize = 1480;
+#[cfg(not(feature = "bench"))]
+const FRAME_ENGINES_SIZE: usize = 1456;
 
 hot_structs! {
     // One instance per window, not per frame — pinned because every
@@ -151,7 +151,7 @@ hot_structs! {
     // recorder growing.
     FrameEngines => "ui::FrameEngines": FRAME_ENGINES_SIZE / 8,
     // Per-node SoA columns (touched every node, every frame).
-    NodeRecord => "scene::NodeRecord": 56 / 8,
+    NodeRecord => "scene::NodeRecord": 64 / 8,
     LayoutCore => "scene::LayoutCore": 28 / 4,
     NodeFlags => "scene::NodeFlags": 2 / 2,
     ExtrasIdx => "scene::ExtrasIdx": 6 / 2,

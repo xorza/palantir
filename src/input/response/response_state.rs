@@ -16,9 +16,9 @@ use glam::Vec2;
 /// `disabled` is the **cascaded** disabled flag (the widget OR any
 /// ancestor), read from the previous frame's cascade — one-frame stale,
 /// like hover/press. The widget's own `Node::disabled` is folded on top
-/// by [`Widget::response`](crate::widgets::widget::Widget::response),
-/// through [`Self::merge_disabled`], so a widget disabled *this* frame
-/// reads and paints as disabled without waiting for the cascade.
+/// by `Widget::response`, through the same fold `Ui::response_for` runs,
+/// so a widget disabled *this* frame reads and paints as disabled
+/// without waiting for the cascade.
 ///
 /// `focused` is `true` when this widget currently holds keyboard focus
 /// (`Ui::focused_id() == Some(id)`). Updated synchronously with focus
@@ -55,7 +55,7 @@ pub struct ResponseState {
     /// Disabled — this widget *or* any ancestor. The cascaded half is
     /// one frame stale; the widget's own flag is folded in on top by the
     /// time it reads this. `true` implies the whole interaction half is
-    /// at its default — see [`Self::merge_disabled`].
+    /// at its default.
     pub disabled: bool,
     /// This widget holds keyboard focus. Unlike the other flags this is
     /// current, not one frame stale.

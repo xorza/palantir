@@ -218,7 +218,7 @@ pub(super) fn for_each_step(
     // per caller and no devirtualised call.
     emit: &mut dyn FnMut(RenderStep),
 ) {
-    let full_viewport = URect::new(0, 0, buffer.viewport_phys.x, buffer.viewport_phys.y);
+    let full_viewport = URect::new(0, 0, buffer.display.physical.x, buffer.display.physical.y);
     let mut state = PassState {
         emit,
         use_stencil,

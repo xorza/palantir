@@ -22,8 +22,9 @@ use crate::widgets::text_edit::unicode::word_range_at;
 /// `show()` folds into [`crate::widgets::text_edit::TextEditResponse`].
 #[derive(Debug)]
 pub(super) struct InputResult {
-    /// Escape asked to blur before view recording.
-    pub(super) blur: bool,
+    /// Escape cancelled the edit, which also blurs before view
+    /// recording.
+    pub(super) cancelled: bool,
     /// Enter accepted a single-line value this frame.
     pub(super) submitted: bool,
     /// The buffer was mutated this frame (typing, delete, paste, cut,
@@ -80,7 +81,7 @@ pub(super) fn run_input(
         select_all_on_focus,
         filter,
     } = policy;
-    let mut blur = false;
+    let mut cancelled = false;
     let mut submitted = false;
     let clipboard = ui.clipboard();
 
@@ -91,7 +92,7 @@ pub(super) fn run_input(
         // painter — the input pass has no business in it.
         selection_rects: _,
     } = state;
-    let was_focused = view.prev_focused;
+    let was_focused = view.was_focused();
     // Repair persisted byte offsets before any range/slice operation.
     // Application code may have replaced `*text` with a same-length or
     // longer string whose UTF-8 boundaries differ from the prior frame.
@@ -187,7 +188,7 @@ pub(super) fn run_input(
     if !is_focused {
         ed.state.normalize(ed.text);
         return InputResult {
-            blur,
+            cancelled,
             submitted,
             edited: ed.edited,
         };
@@ -223,7 +224,7 @@ pub(super) fn run_input(
                     return;
                 }
                 match apply_key(&mut ed, kp) {
-                    KeyOutcome::Blur => blur = true,
+                    KeyOutcome::Blur => cancelled = true,
                     KeyOutcome::Vertical { up, extend } => {
                         resolve_vertical(&mut ed, ui, ctx, up, extend);
                     }
@@ -238,7 +239,7 @@ pub(super) fn run_input(
 
     ed.state.normalize(ed.text);
     InputResult {
-        blur,
+        cancelled,
         submitted,
         edited: ed.edited,
     }

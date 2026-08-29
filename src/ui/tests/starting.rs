@@ -5,7 +5,7 @@ use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::Color, rect::Rect};
 use crate::renderer::frontend::Frontend;
-use crate::renderer::render_plan::{RenderKind, RenderPlan};
+use crate::renderer::render_plan::RenderPlan;
 use crate::scene::damage::Damage;
 use crate::scene::layer::Layer;
 use crate::scene::node::configure::Configure;
@@ -29,7 +29,7 @@ fn empty_ui_drives_a_frame_safely() {
         h.ui.frame_scene(),
         RenderPlan {
             clear: h.ui.theme.window_clear,
-            kind: RenderKind::Full,
+            damage: Damage::Full,
         },
     );
     let buffer = &frontend.buffer;
@@ -42,7 +42,7 @@ fn empty_ui_drives_a_frame_safely() {
     assert!(h.engines.damage.prev.is_empty());
     assert!(h.engines.damage.counters.dirty().is_empty());
     assert!(h.damage_region().rects.is_empty());
-    assert_eq!(Damage::new(h.collapsed_damage()), Damage::Skip,);
+    assert_eq!(Damage::new(h.collapsed_damage()), None,);
 }
 
 /// Pin: an empty frame followed by a populated frame works (the
@@ -172,7 +172,7 @@ fn cold_start_first_frame_damage_is_full() {
         matches!(
             report.plan,
             Some(RenderPlan {
-                kind: RenderKind::Full,
+                damage: Damage::Full,
                 ..
             })
         ),

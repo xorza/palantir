@@ -5,7 +5,7 @@
 //! one body and paid for it three ways: six mutable fields hand-aliased
 //! into locals to keep the borrow checker happy, a `usize::MAX` sentinel
 //! smuggling one arm's work past the `Entry` borrow that arm couldn't
-//! release, and three separate copies of the parent-stack push/pop.
+//! release, and three separate copies of an ancestor-stack push/pop.
 //!
 //! All three came from the same root cause — the tier decision and the
 //! tier's *work* were fused into one `match` on a live `Entry`.
@@ -47,17 +47,6 @@ fn emit_inverted_overlaps_into(out: &mut Vec<Rect>, matched: &[u32], extents: &[
             push_screen(out, extents[j1].clamp_to(extents[j2]));
         }
     }
-}
-
-/// One open ancestor on the diff walk's parent stack.
-#[derive(Clone, Copy, Debug)]
-pub(super) struct ParentFrame {
-    /// Pre-order index one past the ancestor's subtree — popped once the
-    /// walk reaches it.
-    end: u32,
-    /// The ancestor's `WidgetId` bits — the `parent_key` of every node
-    /// directly under it.
-    key: u64,
 }
 
 /// What the diff decided about one node, before it did anything about
@@ -109,7 +98,6 @@ pub(super) struct LayerWalk<'a> {
     /// Per-row screen extents for the order-inversion check. Only filled
     /// on the rare frame a node's row order actually inverted.
     pub(super) order_extents: &'a mut Vec<Rect>,
-    pub(super) parents: &'a mut Vec<ParentFrame>,
     pub(super) probe: &'a mut DamageCounters,
     pub(super) surface: Rect,
     /// On a force-full frame the caller discards the region, so the arms
@@ -124,11 +112,10 @@ pub(super) struct LayerWalk<'a> {
 
 impl LayerWalk<'_> {
     pub(super) fn run(&mut self) {
-        self.parents.clear();
         let n = self.tree.records.len();
         let mut i = 0;
         while i < n {
-            let parent_key = self.parent_key_at(i);
+            let parent_key = self.parent_key(i);
             // Loaded once and handed down: it is what every tier below
             // keys on, and the column read was repeated in each of them.
             let wid = self.tree.records.widget_id()[i];
@@ -141,12 +128,6 @@ impl LayerWalk<'_> {
                 Tier::PaintsChanged(prev) => self.on_paints_changed(i, wid, prev, parent_key),
                 Tier::Evicted(prev) => self.on_evicted(i, wid, prev),
             };
-            // Descending into children opens a parent frame. A subtree
-            // jump doesn't: `SubtreeUnchanged` never visits them, and
-            // `SubtreeMoved` opened its own along the way.
-            if advance == 1 {
-                self.open_parent(i, wid);
-            }
             i += advance;
         }
     }
@@ -168,39 +149,21 @@ impl LayerWalk<'_> {
         }
     }
 
-    // ---- the one parent stack ---------------------------------------
+    // ---- paint-order position ---------------------------------------
 
-    /// The `parent_key` node `i` sits under, retiring any ancestor whose
-    /// subtree the walk has passed.
+    /// The `parent_key` node `i` sits under: its parent's `WidgetId`
+    /// bits, or the layer discriminant when it is a root — so a subtree
+    /// migrating between layers can't read as unchanged.
     ///
-    /// Roots key on the layer discriminant, so a subtree migrating
-    /// between layers can't read as unchanged. Both the per-node walk
-    /// and the moved-subtree jump go through here, sharing **one** stack:
-    /// the jump's frames all end within the jumped subtree, so the next
-    /// outer `parent_key_at` retires them on its own. Two stacks — the
-    /// jump riding the tail of the outer one — would need a `jump_base`
-    /// truncation to do the same job.
-    fn parent_key_at(&mut self, i: usize) -> u64 {
-        while self.parents.last().is_some_and(|f| i as u32 >= f.end) {
-            self.parents.pop();
-        }
-        self.parents
-            .last()
-            .map_or(self.layer as u64, |frame| frame.key)
-    }
-
-    /// Open `i` as the enclosing parent for the nodes that follow it,
-    /// if it has any.
-    ///
-    /// `wid` is handed in rather than read here: both callers hold it
-    /// already, and the column read was the same one twice.
-    fn open_parent(&mut self, i: usize, wid: WidgetId) {
-        let end = self.tree.subtree_end_of(i);
-        if end > i + 1 {
-            self.parents.push(ParentFrame {
-                end: end as u32,
-                key: wid.0,
-            });
+    /// Two indexed loads off columns the tree records at `open_node`.
+    /// The ancestor stack this replaced had to be maintained at every
+    /// node of the outer walk *and* every node of a moved subtree, to
+    /// serve a value the moved-subtree leg reads only on the rare
+    /// insert.
+    fn parent_key(&self, i: usize) -> u64 {
+        match self.tree.parent_of(i) {
+            Some(parent) => self.tree.records.widget_id()[parent.idx()].0,
+            None => self.layer as u64,
         }
     }
 
@@ -368,11 +331,7 @@ impl LayerWalk<'_> {
         // one test read the same way.
         let mut prev_extent = Rect::ZERO;
         for j in i..end {
-            // Same stack as the outer walk: at `j == i` nothing is
-            // retired and this reads `i`'s own parent.
-            let j_parent_key = self.parent_key_at(j);
             let wid = self.tree.records.widget_id()[j];
-            self.open_parent(j, wid);
             let span = self.cascade.paint_arena.node_spans[j];
             if span.len == 0 {
                 continue;
@@ -396,7 +355,7 @@ impl LayerWalk<'_> {
                         continue;
                     }
                     let paint_span = self.paints.store(curr);
-                    let snapshot = self.snapshot(j, j_parent_key, paint_span);
+                    let snapshot = self.snapshot(j, self.parent_key(j), paint_span);
                     self.prev.insert(wid, snapshot);
                 }
             }

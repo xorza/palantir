@@ -8,7 +8,8 @@ use crate::primitives::rect::Rect;
 use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::renderer::frontend::Frontend;
-use crate::renderer::render_plan::{RenderKind, RenderPlan};
+use crate::renderer::render_plan::RenderPlan;
+use crate::scene::damage::Damage;
 
 use crate::Ui;
 use crate::scene::layer::Layer;
@@ -247,7 +248,7 @@ fn cascade_screen_rect_matches_composed_quad_under_transform() {
         h.ui.frame_scene(),
         RenderPlan {
             clear: h.ui.theme().window_clear,
-            kind: RenderKind::Full,
+            damage: Damage::Full,
         },
     );
     let buffer = &frontend.buffer;

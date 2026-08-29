@@ -195,7 +195,6 @@ impl Composer {
             composer: self,
             payloads,
             out,
-            display,
         }
     }
 

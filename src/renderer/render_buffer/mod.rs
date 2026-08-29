@@ -10,7 +10,6 @@ use crate::primitives::span::Span;
 use crate::primitives::texture_id::TextureId;
 use crate::primitives::{color::Color, corners::Corners, rect::Rect};
 use crate::renderer::quad::Quad;
-use glam::{UVec2, Vec2};
 use soa_rs::Soa;
 use std::time::Duration;
 
@@ -135,15 +134,17 @@ pub(crate) struct RenderBuffer {
     /// plan's — pixel-identical output, minus the hidden underlay and the
     /// full-surface fragment load of the biggest quad in the frame.
     pub(crate) clear_override: Option<Color>,
-    /// Physical-px viewport, ceil'd. Backends use this as the default scissor
-    /// when a group has no clip.
-    pub(crate) viewport_phys: UVec2,
-    /// Same viewport in float — needed by the wgpu vertex shader uniform.
-    pub(crate) viewport_phys_f: Vec2,
-    /// Logical→physical conversion factor, propagated from `Display`.
-    /// Glyph rasterization needs it: shaped buffers are sized in logical px,
-    /// so the text backend scales by this when emitting glyph quads.
-    pub(crate) scale: f32,
+    /// The display this buffer was composed for — the frame input every
+    /// consumer of the buffer needs a piece of. `physical` is the
+    /// backend's default scissor when a group has no clip, and
+    /// `scale_factor` is what the text backend multiplies logical-px
+    /// shaped buffers by when emitting glyph quads.
+    ///
+    /// Held whole rather than unpacked into the two or three scalars
+    /// each reader wants: the compose session paints against the same
+    /// `Display`, and a copy per reader is how the two came to name
+    /// different viewports.
+    pub(crate) display: Display,
     /// This frame's monotonic time (window-start `elapsed`), stamped by
     /// `Frontend::build` from the frame scene clock (not derivable from `Display`).
     /// The backend diffs it against each `GpuView`'s last paint to derive
@@ -167,9 +168,7 @@ impl RenderBuffer {
             curves: Vec::new(),
             rounded_clips: Vec::new(),
             clear_override: None,
-            viewport_phys: UVec2::ZERO,
-            viewport_phys_f: Vec2::ZERO,
-            scale: 1.0,
+            display: Display::default(),
             time: Duration::ZERO,
         }
     }
@@ -182,9 +181,7 @@ impl RenderBuffer {
     pub(crate) fn start_frame(&mut self, display: Display, time: Duration) {
         self.discard_scene();
         self.clear_override = None;
-        self.viewport_phys = display.physical;
-        self.viewport_phys_f = display.physical.as_vec2();
-        self.scale = display.scale_factor;
+        self.display = display;
         // Stamped here rather than after compose: not derivable from
         // `display`, and a field that held a placeholder for the whole
         // pass is one anything composing against it would read wrong.

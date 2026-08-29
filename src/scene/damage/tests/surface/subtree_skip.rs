@@ -5,7 +5,8 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
-use crate::renderer::render_plan::{RenderKind, RenderPlan};
+use crate::renderer::render_plan::RenderPlan;
+use crate::scene::damage::Damage;
 use crate::scene::damage::tests::support::{BLUE, DISPLAY, RED, frame};
 use crate::scene::node::configure::Configure;
 use crate::ui::harness::UiHarness;
@@ -162,7 +163,7 @@ fn popup_eater_does_not_force_full_repaint() {
             .show(ui);
     });
     let Some(RenderPlan {
-        kind: RenderKind::Partial { damage },
+        damage: Damage::Partial(damage),
         ..
     }) = out.plan
     else {
@@ -214,7 +215,7 @@ fn click_on_empty_bg_does_not_force_full() {
         !matches!(
             click_plan,
             Some(RenderPlan {
-                kind: RenderKind::Full,
+                damage: Damage::Full,
                 ..
             })
         ),

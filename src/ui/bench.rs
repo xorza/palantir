@@ -72,7 +72,8 @@ use crate::host::offscreen::OffscreenHost;
 use crate::primitives::color::Color;
 use crate::renderer::backend::texture_region::counters::WriteStats;
 use crate::renderer::frontend::Frontend;
-use crate::renderer::render_plan::{RenderKind, RenderPlan};
+use crate::renderer::render_plan::RenderPlan;
+use crate::scene::damage::Damage;
 use crate::ui::Ui;
 use crate::ui::frame_report::FramePaint;
 use crate::ui::harness::UiHarness;
@@ -199,7 +200,7 @@ impl CpuHarness {
         let report = self.harness.at(self.start.elapsed()).frame(record);
         let plan = report.plan.unwrap_or(RenderPlan {
             clear: WINDOW_CLEAR,
-            kind: RenderKind::Full,
+            damage: Damage::Full,
         });
         // The deviceless CPU harness's `Frontend` carries the baseline
         // texture-dim cap from `for_test*` (the GpuView size ladder needs it).

@@ -103,11 +103,11 @@ fn corner_pair_scene(
 }
 
 /// Two identical frames of a tiny static scene. After frame 1 seeds
-/// `DamageEngine.prev`, frame 2's diff is empty and the renderer takes the
-/// `Damage::Skip` path — no clear, no draw, the swapchain still
-/// holds frame 1's pixels. Magenta is the *clear* color that never
-/// ran, so a clean Skip means **zero magenta pixels** in the readback.
-/// Any magenta ⇒ Skip didn't fire and we re-cleared.
+/// `DamageEngine.prev`, frame 2's diff is empty and the renderer gets no
+/// plan at all — no clear, no draw, the swapchain still holds frame 1's
+/// pixels. Magenta is the *clear* color that never ran, so a clean skip
+/// means **zero magenta pixels** in the readback. Any magenta ⇒ the skip
+/// didn't fire and we re-cleared.
 #[test]
 fn static_scene_repeats_clean() {
     let mut h = Harness::new();

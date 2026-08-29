@@ -70,10 +70,6 @@ pub(crate) struct IconBackend {
     /// What [`Self::prewarm`] has already covered, or `None` before it has
     /// run at all.
     warmed: Option<PrewarmMark>,
-    /// This atlas's own frame clock. Icons have no shared clock to age
-    /// against the way text ages against the shaper's, so eviction counts
-    /// submits.
-    frame: u64,
 }
 
 impl IconBackend {
@@ -113,7 +109,6 @@ impl IconBackend {
             vbuf: DynamicBuffer::<RasterQuad>::vertex(device, "palantir icon vbuf", 256),
             ranges: Vec::new(),
             warmed: None,
-            frame: 0,
         }
     }
 
@@ -274,8 +269,12 @@ impl IconBackend {
     /// Frame teardown, run for every submit — including one that prepared no
     /// icon batch, so a frame whose damage missed every icon still ages the
     /// atlas and still unloads what a dropped set left behind.
-    pub(crate) fn end_frame(&mut self) {
-        self.frame += 1;
+    ///
+    /// `frame` is the shared text clock
+    /// ([`TextBackend::frame`](crate::renderer::backend::text::TextBackend::frame)),
+    /// so both tenants of a [`RasterAtlas`] age on one clock and a keep
+    /// count means the same span in either.
+    pub(crate) fn end_frame(&mut self, frame: u64) {
         {
             // Destructured so the drain's closure can hold the two caches
             // mutably while the registry is borrowed — disjoint fields
@@ -298,7 +297,7 @@ impl IconBackend {
                 atlas.forget(|key| !sets.contains(&key.icon.set));
             });
         }
-        self.atlas.advance_to(self.frame);
+        self.atlas.advance_to(frame);
         self.instances.clear();
         self.ranges.clear();
     }

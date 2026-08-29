@@ -94,7 +94,7 @@ impl Sizing {
     ///
     /// **Total over every `f32`**, which is what makes it the gate its
     /// callers need rather than one more place a bad number passes
-    /// through. `fraction` goes through [`F32Ext::unit_fraction_or`], so
+    /// through. `fraction` goes through `F32Ext::unit_fraction_or`, so
     /// an endpoint collapses one share to a zero-extent `Fixed` rather
     /// than tripping [`Self::share`]'s non-negative assert, and a
     /// fraction that names no share — a `0 / 0` progress ratio, an

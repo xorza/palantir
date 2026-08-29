@@ -31,7 +31,7 @@ impl TranslateScale {
     ///
     /// **Not a paint predicate**, despite gating draws the way one does:
     /// it asks "is this value ≈ this constant", the question
-    /// [`approx_zero`] asks, and it gates a *fast path*. A NaN lane must
+    /// `approx_zero` asks, and it gates a *fast path*. A NaN lane must
     /// therefore report `false` and route around the shortcut, where a
     /// paint no-op reports `true` and drops the draw.
     /// Two-stage check:

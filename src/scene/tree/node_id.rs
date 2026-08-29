@@ -9,6 +9,11 @@
 pub(crate) struct NodeId(pub(crate) u32);
 
 impl NodeId {
+    /// Stands for "no node" in the `parent` column, where a root has
+    /// none. Out of arena range by construction: `SubtreeEnd` caps the
+    /// arena at 31 bits.
+    pub(super) const NONE: Self = Self(u32::MAX);
+
     #[inline]
     pub(crate) fn idx(self) -> usize {
         self.0 as usize

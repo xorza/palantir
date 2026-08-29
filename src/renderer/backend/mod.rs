@@ -437,7 +437,7 @@ impl WgpuBackend {
             quads = buffer.quads.len(),
             texts = buffer.texts.len(),
             groups = buffer.groups.len(),
-            viewport = ?buffer.viewport_phys,
+            viewport = ?buffer.display.physical,
             requested_plan = ?plan,
             rounded_clip = use_stencil,
             "wgpu_backend.submit"
@@ -449,8 +449,11 @@ impl WgpuBackend {
         let format = surface_tex.format();
         self.ensure_format(format);
 
-        let repaint_scissors = build_repaint_scissors(plan.kind, buffer);
-        let is_partial = plan.kind.is_partial();
+        let viewport = ViewportPush {
+            size: buffer.display.physical.as_vec2(),
+        };
+        let repaint_scissors = build_repaint_scissors(plan.damage, buffer);
+        let is_partial = plan.damage.is_partial();
         let dim_undamaged = debug_overlay.dim_undamaged && is_partial;
 
         // The stencil texture (rounded-clip masking) is ensured by the
@@ -501,9 +504,6 @@ impl WgpuBackend {
         }
         if dim_undamaged {
             tracing::trace!("wgpu_backend.submit.pass.dim");
-            let viewport = ViewportPush {
-                size: buffer.viewport_phys_f,
-            };
             self.run_dim_pass(fmt, color_view, &mut encoder, viewport);
         }
         self.run_main_pass(
@@ -523,9 +523,6 @@ impl WgpuBackend {
         }
 
         if overlay_count > 0 {
-            let viewport = ViewportPush {
-                size: buffer.viewport_phys_f,
-            };
             self.run_overlay_pass(fmt, surface_tex, &mut encoder, viewport, overlay_count);
         }
 
@@ -540,8 +537,9 @@ impl WgpuBackend {
             t.after_submit(&self.device, &self.pass_stats);
         }
 
+        let frame = self.text.frame();
         self.text.end_frame();
-        self.icon.end_frame();
+        self.icon.end_frame(frame);
     }
 
     /// The belt-routed upload phase of one [`Self::submit`]: every
@@ -571,7 +569,7 @@ impl WgpuBackend {
         // plan repaints, and a copy alongside is a second route to one
         // fact.
         let use_stencil = targets.stencil.is_some();
-        let is_partial = plan.kind.is_partial();
+        let is_partial = plan.damage.is_partial();
         let mut ctx = GpuCtx::new(&self.device, &self.queue, &mut self.staging_belt, encoder);
 
         // Texture-only uploads (the belt is buffer-only). Run
@@ -585,7 +583,8 @@ impl WgpuBackend {
         self.image.drain_registry(&mut ctx, &self.images);
 
         if dim_undamaged {
-            self.debug.upload_dim(&mut ctx, buffer.viewport_phys_f);
+            self.debug
+                .upload_dim(&mut ctx, buffer.display.physical.as_vec2());
         }
         // Damage-rect overlay quads (debug). Uploaded alongside
         // everything else; the overlay pass itself runs last, after
@@ -634,7 +633,7 @@ impl WgpuBackend {
 
         if is_partial {
             self.quad
-                .upload_clear(&mut ctx, buffer.viewport_phys_f, clear);
+                .upload_clear(&mut ctx, buffer.display.physical.as_vec2(), clear);
         }
 
         // Text prepare: per-batch glyph encoding. Routes its
@@ -652,8 +651,13 @@ impl WgpuBackend {
             let interned_text = payloads.interned_text();
             for (i, b) in buffer.text_batches.iter().enumerate() {
                 let runs = &buffer.texts[b.texts.range()];
-                self.text
-                    .prepare_batch(&mut ctx, buffer.scale, i, runs, &interned_text);
+                self.text.prepare_batch(
+                    &mut ctx,
+                    buffer.display.scale_factor,
+                    i,
+                    runs,
+                    &interned_text,
+                );
             }
         }
 
@@ -674,7 +678,7 @@ impl WgpuBackend {
                 "icon.prepare_batches",
                 value = buffer.batches(PaintTier::Icon).len() as u64
             );
-            self.icon.prewarm(&mut ctx, buffer.scale);
+            self.icon.prewarm(&mut ctx, buffer.display.scale_factor);
             for (i, b) in buffer.batches(PaintTier::Icon).iter().enumerate() {
                 let rows = &buffer.icons[b.items.range()];
                 self.icon.prepare_batch(&mut ctx, i, rows);
@@ -861,7 +865,7 @@ impl WgpuBackend {
         }
         let mut bound = Bound::None;
         let viewport = ViewportPush {
-            size: buffer.viewport_phys_f,
+            size: buffer.display.physical.as_vec2(),
         };
 
         // Helper: thread a `BatchKind` marker through to `GpuTimings`

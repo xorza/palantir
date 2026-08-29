@@ -110,11 +110,11 @@ use std::time::Duration;
 /// widget in this crate is built on, and it cannot quietly become
 /// insufficient without a widget in here noticing first. An open field is not
 /// a shortcut but a second, unnamed API: it exposes its type's whole surface
-/// transitively, and the reach it invites is silent. Three call sites read
-/// `frame_runtime.time`, `display.physical` and the debug-overlay flags off
-/// their fields while [`Self::now`], [`Self::display`] and
-/// [`Self::debug_overlay`] already answered them — nobody decided to bypass
-/// the API; the field was in scope and shorter.
+/// transitively, and the reach it invites is silent. The rule binds inside
+/// this module too, where the fields *are* reachable: a field in scope is
+/// shorter than the [`Self::now`] / [`Self::display`] /
+/// [`Self::debug_overlay`] that answers the same question, so the bypass
+/// happens without anyone deciding on it.
 ///
 /// The in-crate suites reach past this through the test-gated `internals`
 /// mod at the end of this file, which does not exist in a shipped build. The
@@ -262,7 +262,7 @@ impl Ui {
     /// still drive paints independently via `FrameReport::repaint_after`.
     #[inline]
     pub fn on_input(&mut self, event: InputEvent) -> InputDelta {
-        self.input.on_input(event, &self.cascade)
+        self.input.on_input(event, &self.cascade, self.now())
     }
 
     // The input surface has three verbs, and every method below is one
@@ -1115,9 +1115,8 @@ impl Ui {
     /// earlier in the same record than the widget's own node is fine —
     /// e.g. baking a drag delta into a widget's position before recording it.
     /// The widget's own `Node::disabled` is **not** folded in here — only
-    /// [`Widget::response`](crate::widgets::widget::Widget::response) can
-    /// see it. Both fold through
-    /// [`ResponseState::merge_disabled`], which is idempotent, so the
+    /// `Widget::response` can see it. Both fold through
+    /// `ResponseState::merge_disabled`, which is idempotent, so the
     /// interaction half is gone by the time either of them returns.
     pub fn response_for(&self, id: WidgetId) -> ResponseState {
         let mut state = self.input.response_for(id, &self.cascade, &self.layout);
