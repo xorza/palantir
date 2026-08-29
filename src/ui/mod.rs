@@ -717,7 +717,7 @@ impl Ui {
     /// ```
     #[inline]
     pub fn debug_overlay(&self) -> DebugOverlayConfig {
-        *self.resources.diagnostics.overlay.borrow()
+        self.resources.diagnostics.overlay.get()
     }
 
     /// Replace this app's debug-overlay flags. The overlay is app-global:
@@ -726,7 +726,7 @@ impl Ui {
     /// handled the key.
     #[inline]
     pub fn set_debug_overlay(&mut self, overlay: DebugOverlayConfig) {
-        *self.resources.diagnostics.overlay.borrow_mut() = overlay;
+        self.resources.diagnostics.overlay.set(overlay);
     }
 
     /// This frame's diagnostic counters, for the [`frame_stats`] overlay.

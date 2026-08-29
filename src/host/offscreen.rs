@@ -126,9 +126,11 @@ impl OffscreenHostBuilder {
         if let Err(unmet) = DeviceRequirements::met_by(&self.device) {
             panic!("offscreen host device cannot run Palantir: {unmet}");
         }
+        let max_texture_dim = DeviceRequirements::max_texture_dim(&self.device);
         let core = HostCore::new(
             self.device,
             self.queue,
+            max_texture_dim,
             self.shaper.unwrap_or_default(),
             Clipboard::default(),
             BackendConfig {
@@ -179,7 +181,7 @@ impl OffscreenHost {
     /// `Ui::set_debug_overlay` — it writes the same shared diagnostics state
     /// every window's `Ui` reads.
     pub fn set_debug_overlay(&mut self, overlay: DebugOverlayConfig) {
-        *self.core.shared.resources.diagnostics.overlay.borrow_mut() = overlay;
+        self.core.shared.resources.diagnostics.overlay.set(overlay);
     }
 
     /// Run one offscreen application frame against `target`, filling the

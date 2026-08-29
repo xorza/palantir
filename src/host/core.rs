@@ -17,7 +17,6 @@
 use crate::Display;
 use crate::app::App;
 use crate::common::clipboard::Clipboard;
-use crate::host::device_requirements::DeviceRequirements;
 use crate::host::shared::HostShared;
 use crate::host::window_driver::{CpuFrame, PresentMode, WindowDriver, WindowDriverBuilder};
 use crate::renderer::backend::WgpuBackend;
@@ -26,6 +25,7 @@ use crate::renderer::frontend::Frontend;
 use crate::renderer::texture_limit::TextureLimit;
 use crate::text::shaper::TextShaper;
 use crate::window::window_token::WindowToken;
+use std::num::NonZeroU32;
 
 #[derive(Debug)]
 pub(super) struct HostCore {
@@ -38,14 +38,18 @@ pub(super) struct HostCore {
 }
 
 impl HostCore {
+    /// `max_texture_dim` is handed in rather than read off `device`: a
+    /// windowed host clamps its surface sizes by the same limit, and the
+    /// surface clamp, the [`TextureLimit`] and the frontend's clamp have
+    /// to be one number rather than two readings of the device's limits.
     pub(super) fn new(
         device: wgpu::Device,
         queue: wgpu::Queue,
+        max_texture_dim: NonZeroU32,
         shaper: TextShaper,
         clipboard: Clipboard,
         config: BackendConfig,
     ) -> Self {
-        let max_texture_dim = DeviceRequirements::max_texture_dim(&device);
         let shared = HostShared::with_clipboard(
             shaper,
             clipboard,

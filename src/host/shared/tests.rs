@@ -11,14 +11,25 @@ fn diagnostics_are_shared_across_capability_bundles() {
     let shared = HostShared::new(TextShaper::test_mono(), TextureLimit::default());
     let ui = shared.resources.clone();
     assert_eq!(
-        *shared.resources.diagnostics.overlay.borrow(),
+        shared.resources.diagnostics.overlay.get(),
         DebugOverlayConfig::default()
     );
 
-    ui.diagnostics.overlay.borrow_mut().damage_rect = true;
+    ui.diagnostics.overlay.set(DebugOverlayConfig {
+        damage_rect: true,
+        ..DebugOverlayConfig::default()
+    });
 
-    assert!(shared.resources.diagnostics.overlay.borrow().damage_rect);
-    assert!(ui.diagnostics.overlay.borrow().damage_rect);
+    assert!(shared.resources.diagnostics.overlay.get().damage_rect);
+    assert!(ui.diagnostics.overlay.get().damage_rect);
+    assert!(
+        ui.diagnostics.overlay.take_change(),
+        "the write raises the host's repaint signal",
+    );
+    assert!(
+        !shared.resources.diagnostics.overlay.take_change(),
+        "and the ask lowers it, for the one host that shares the flags",
+    );
 }
 
 #[test]
