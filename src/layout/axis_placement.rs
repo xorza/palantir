@@ -115,10 +115,7 @@ impl AxisPlacement {
         desired: Size,
         inner_cross: f32,
     ) -> Self {
-        let cross_axis = match main_axis {
-            Axis::X => Axis::Y,
-            Axis::Y => Axis::X,
-        };
+        let cross_axis = main_axis.other();
         let cross_align = AxisAlignPair::resolve_axis(cross_axis, child, parent_child_align);
         Self::arrange(cross_axis, cross_align, child, bounds, desired, inner_cross)
     }

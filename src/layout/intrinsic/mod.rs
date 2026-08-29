@@ -19,6 +19,8 @@ use crate::layout::engine::LayoutEngine;
 use crate::layout::text_shape_input::TextShapeInput;
 use crate::layout::types::layout_mode::LayoutMode;
 use crate::primitives::interned_text::InternedText;
+use crate::primitives::size::Size;
+use crate::scene::node::bounds_extras::BoundsExtras;
 use crate::scene::node::layout_core::LayoutCore;
 use crate::scene::tree::Tree;
 use crate::scene::tree::node_id::NodeId;
@@ -73,6 +75,38 @@ impl IntrinsicRange {
         ]
         .into_iter()
         .filter(move |(req, _)| query.includes(*req))
+    }
+}
+
+/// What one intrinsic walk answered, per axis.
+///
+/// A driver answers the axis it was asked about and nothing else — "how
+/// tall given you pack across" is a different recursion from "how wide",
+/// so the other axis costs a second walk. A leaf answers both at once:
+/// its content is a shaped run's min-content and max-content, and those
+/// are `Size`s, so the axis a query names only picks a lane of a value
+/// the walk already holds.
+///
+/// [`LayoutPass::measure`](crate::layout::pass::LayoutPass) asks every
+/// node for min-content on both axes. Carrying the free lane back is
+/// what lets the engine record it, so the second of those two queries
+/// reads the frame's slot array instead of shaping the leaf's runs
+/// again.
+#[derive(Copy, Clone, Debug)]
+pub(crate) struct IntrinsicWalk {
+    /// The axis the query named.
+    pub(crate) answered: IntrinsicRange,
+    /// The other axis, when the walk covered it for free.
+    pub(crate) sibling: Option<IntrinsicRange>,
+}
+
+impl IntrinsicWalk {
+    #[inline]
+    const fn one_axis(answered: IntrinsicRange) -> Self {
+        Self {
+            answered,
+            sibling: None,
+        }
     }
 }
 
@@ -220,7 +254,8 @@ const _: () = {
 };
 
 /// Outer intrinsic on `axis`: content + padding + margin, respecting the
-/// node's `Sizing` override and `min_size` / `max_size` clamps.
+/// node's `Sizing` override and `min_size` / `max_size` clamps. The other
+/// axis rides along whenever the walk covered it — see [`IntrinsicWalk`].
 ///
 /// Pure function of the subtree at `node`. Engine caches the result; this
 /// function is the cache miss path.
@@ -231,45 +266,56 @@ pub(crate) fn compute(
     axis: Axis,
     query: IntrinsicQuery,
     interned_text: &InternedText<'_>,
-) -> IntrinsicRange {
+) -> IntrinsicWalk {
     let layout = tree.records.layout()[node.idx()];
     if layout.meta.visibility().is_collapsed() {
-        return IntrinsicRange::ZERO;
+        return IntrinsicWalk::one_axis(IntrinsicRange::ZERO);
     }
-    let bounds = tree.bounds(node);
-
-    let sizing = axis.main_sizing(layout.size);
-    let margin = axis.spacing(layout.margin);
-    let min_clamp = axis.main(bounds.min_size);
-    let max_clamp = axis.main(bounds.max_size);
 
     // Hug + Fill both report content-driven intrinsic: Fill in intrinsic
-    // context returns its content's
-    // intrinsic, ignoring weight — `AxisCtx::resolve` with `available =
-    // INFINITY` enforces exactly that (Fill falls back to
-    // `content_plus_padding`). Skip the content query and padding read
-    // for Fixed: `AxisCtx::resolve` short-circuits Fixed and never
-    // reads `content_plus_padding`.
-    let mut content = if sizing.fixed_value().is_some() {
-        IntrinsicRange::ZERO
+    // context returns its content's intrinsic, ignoring weight —
+    // `AxisCtx::resolve` with `available = INFINITY` enforces exactly that
+    // (Fill falls back to `content_plus_padding`). Skip the content query
+    // for Fixed: `AxisCtx::resolve` short-circuits Fixed and never reads
+    // `content_plus_padding`.
+    let content = if axis.main_sizing(layout.size).fixed_value().is_some() {
+        IntrinsicWalk::one_axis(IntrinsicRange::ZERO)
     } else {
-        let mut content = content_intrinsic(engine, tree, node, axis, query, interned_text, layout);
-        let pad = axis.spacing(layout.padding);
-        for (_, value) in content.requested(query) {
-            *value += pad;
-        }
-        content
+        content_intrinsic(engine, tree, node, axis, query, interned_text, layout)
     };
 
+    let bounds = tree.bounds(node);
+    IntrinsicWalk {
+        answered: outer(layout, bounds, axis, query, content.answered),
+        sibling: content
+            .sibling
+            .map(|raw| outer(layout, bounds, axis.other(), query, raw)),
+    }
+}
+
+/// Wrap a raw content range in the node's own box on `axis`: padding, the
+/// `Sizing` override, margin, and the `min_size` / `max_size` clamps.
+///
+/// Padding is added unconditionally. A Fixed axis arrives with a zero
+/// content range, and `AxisCtx::resolve` returns the declared value
+/// without reading either — so the add cannot reach the result.
+fn outer(
+    layout: LayoutCore,
+    bounds: &BoundsExtras,
+    axis: Axis,
+    query: IntrinsicQuery,
+    mut content: IntrinsicRange,
+) -> IntrinsicRange {
+    let pad = axis.spacing(layout.padding);
     for (_, value) in content.requested(query) {
         *value = AxisCtx {
-            sizing,
-            content_plus_padding: *value,
+            sizing: axis.main_sizing(layout.size),
+            content_plus_padding: *value + pad,
             available: f32::INFINITY,
             intrinsic_min: 0.0,
-            margin,
-            min: min_clamp,
-            max: max_clamp,
+            margin: axis.spacing(layout.margin),
+            min: axis.main(bounds.min_size),
+            max: axis.main(bounds.max_size),
         }
         .resolve();
     }
@@ -284,7 +330,7 @@ fn content_intrinsic(
     query: IntrinsicQuery,
     interned_text: &InternedText<'_>,
     layout: LayoutCore,
-) -> IntrinsicRange {
+) -> IntrinsicWalk {
     IntrinsicOp {
         engine,
         tree,
@@ -311,9 +357,9 @@ struct IntrinsicOp<'op, 'text> {
 }
 
 impl DriverOp for IntrinsicOp<'_, '_> {
-    type Output = IntrinsicRange;
+    type Output = IntrinsicWalk;
 
-    fn run<D: LayoutDriver>(self, payload: D::Payload) -> IntrinsicRange {
+    fn run<D: LayoutDriver>(self, payload: D::Payload) -> IntrinsicWalk {
         let Self {
             engine,
             tree,
@@ -322,10 +368,18 @@ impl DriverOp for IntrinsicOp<'_, '_> {
             query,
             interned_text,
         } = self;
-        D::intrinsic(engine, tree, node, payload, axis, query, interned_text)
+        IntrinsicWalk::one_axis(D::intrinsic(
+            engine,
+            tree,
+            node,
+            payload,
+            axis,
+            query,
+            interned_text,
+        ))
     }
 
-    fn leaf(self) -> IntrinsicRange {
+    fn leaf(self) -> IntrinsicWalk {
         let Self {
             engine,
             tree,
@@ -343,6 +397,10 @@ impl DriverOp for IntrinsicOp<'_, '_> {
 /// don't drive size. Lives here rather than in a `leaf` module because
 /// there isn't one — leaves have no driver, the leaf path is just "ask
 /// the recorded shapes."
+///
+/// A run's content demands are `Size`s, so the accumulators are too and
+/// both axes fall out of the same pass. `axis` picks the answered lane
+/// at the end; see [`IntrinsicWalk`] for what the other one buys.
 fn leaf(
     engine: &mut LayoutEngine,
     tree: &Tree,
@@ -350,9 +408,10 @@ fn leaf(
     axis: Axis,
     query: IntrinsicQuery,
     interned_text: &InternedText<'_>,
-) -> IntrinsicRange {
+) -> IntrinsicWalk {
     let wid = tree.records.widget_id()[node.idx()];
-    let mut range = IntrinsicRange::ZERO;
+    let mut min_content = Size::ZERO;
+    let mut max_content = Size::ZERO;
     for ts in TextShapeInput::on_leaf(tree, interned_text, node) {
         let unbounded = engine.text.root(
             TextRunSlot {
@@ -362,15 +421,23 @@ fn leaf(
             ts.shape_request(),
             ts.wrap,
         );
-        for (req, slot) in range.requested(query) {
-            let run = match req {
-                LenReq::MinContent => ts.wrap.min_content(&unbounded),
-                LenReq::MaxContent => ts.wrap.max_content(&unbounded),
-            };
-            *slot = slot.max(axis.main(run));
+        if query.includes(LenReq::MinContent) {
+            min_content = min_content.max(ts.wrap.min_content(&unbounded));
+        }
+        if query.includes(LenReq::MaxContent) {
+            max_content = max_content.max(ts.wrap.max_content(&unbounded));
         }
     }
-    range
+    IntrinsicWalk {
+        answered: IntrinsicRange {
+            min: axis.main(min_content),
+            max: axis.main(max_content),
+        },
+        sibling: Some(IntrinsicRange {
+            min: axis.cross(min_content),
+            max: axis.cross(max_content),
+        }),
+    }
 }
 
 #[cfg(test)]

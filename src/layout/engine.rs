@@ -139,6 +139,11 @@ impl LayoutEngine {
     /// still missing after the first two reach the walk, so a range query
     /// whose min is already cached costs a max-only recursion.
     ///
+    /// A walk that also covered the other axis (see
+    /// [`IntrinsicWalk`](crate::layout::intrinsic::IntrinsicWalk))
+    /// gets recorded there too, which is what keeps `measure`'s pair of
+    /// min-content queries down to one pass over a leaf's text runs.
+    ///
     /// Consumed by `Grid::measure` (Phase 1 column resolution) and
     /// `Stack::measure` (Fill min-content floor) via the thin
     /// [`Self::intrinsic`] / [`Self::intrinsic_range`] wrappers.
@@ -185,12 +190,29 @@ impl LayoutEngine {
         };
         self.scratch.counters.intrinsic_computed();
         let computed = intrinsic::compute(self, tree, node, axis, walk, interned_text);
+        if let Some(sibling) = computed.sibling {
+            self.record_intrinsic(idx, axis.other(), walk, sibling);
+        }
+        self.record_intrinsic(idx, axis, walk, computed.answered);
         for (req, slot) in range.requested(walk) {
-            let value = computed.get(req);
-            self.scratch.intrinsics[idx][req.slot(axis)] = value;
-            *slot = value;
+            *slot = computed.answered.get(req);
         }
         range
+    }
+
+    /// Store the halves `query` names of `found` in this frame's slot
+    /// array, for node `idx` on `axis`.
+    #[inline]
+    fn record_intrinsic(
+        &mut self,
+        idx: usize,
+        axis: Axis,
+        query: IntrinsicQuery,
+        mut found: IntrinsicRange,
+    ) {
+        for (req, value) in found.requested(query) {
+            self.scratch.intrinsics[idx][req.slot(axis)] = *value;
+        }
     }
 
     /// One half of [`Self::intrinsic_query`].

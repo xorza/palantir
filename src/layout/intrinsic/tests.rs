@@ -9,6 +9,7 @@ use crate::scene::layer::Layer;
 use crate::scene::node::configure::Configure;
 use crate::text::wrap::TextWrap;
 use crate::ui::harness::UiHarness;
+use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::{frame::Frame, grid::Grid, panel::Panel, scroll::Scroll, text::Text};
 use glam::UVec2;
 
@@ -315,4 +316,101 @@ fn intrinsic_range_exactly_matches_separate_queries_for_every_driver() {
             );
         }
     }
+}
+
+/// One walk over a text leaf answers both axes, and the engine records
+/// the axis the query did not name. A run's min-content and max-content
+/// are `Size`s, so the named axis only picks a lane of what the walk
+/// already holds; without the record, `LayoutPass::measure`'s pair of
+/// min-content queries shapes the same runs twice.
+///
+/// Both lanes are pinned to hand-computed values, because a lane swap
+/// would otherwise make the free lane agree with a cold query that swaps
+/// it the same way. Under the mono metric at 16 px with a 1.0 line-height
+/// multiplier a glyph is 8 px wide and a line is 16 px tall, so with
+/// `WrapWithOverflow` the leaf demands its longest word, `lorem`, on X
+/// and one line on Y:
+///
+/// - X: `5 * 8 + 2 * 3` padding `+ 2 * 1` margin = 48
+/// - Y: `16 + 2 * 5` padding `+ 2 * 2` margin = 30
+#[test]
+fn a_leaf_intrinsic_walk_records_the_axis_it_was_not_asked_about() {
+    const EXPECT_X: f32 = 48.0;
+    const EXPECT_Y: f32 = 30.0;
+
+    let mut h = UiHarness::new(UVec2::new(400, 300));
+    let mut root = NodeId(0);
+    h.frame(|ui| {
+        root = Panel::hstack()
+            .auto_id()
+            .size((Sizing::FILL, Sizing::HUG))
+            .show(ui, |ui| {
+                Text::new("lorem ipsum dolor sit amet")
+                    .id_salt("msg")
+                    .style(
+                        &TextStyle::default()
+                            .with_font_size(16.0)
+                            .with_line_height_mult(1.0),
+                    )
+                    .text_wrap(TextWrap::WrapWithOverflow)
+                    .size((Sizing::HUG, Sizing::HUG))
+                    .padding((3.0, 5.0))
+                    .margin((1.0, 2.0))
+                    .show(ui);
+            })
+            .response
+            .node();
+    });
+
+    let leaf =
+        h.ui.tree(Layer::Main)
+            .children(root)
+            .map(|c| c.id)
+            .next()
+            .expect("hstack has child");
+    let payloads = h.ui.payloads();
+    let interned_text = payloads.interned_text();
+
+    h.engines
+        .layout
+        .scratch
+        .intrinsics
+        .fill([f32::NAN; SLOT_COUNT]);
+    h.engines.layout.scratch.counters.reset_intrinsic_computes();
+    let x = h.engines.layout.intrinsic(
+        h.ui.tree(Layer::Main),
+        leaf,
+        Axis::X,
+        LenReq::MinContent,
+        &interned_text,
+    );
+    assert_eq!(
+        x, EXPECT_X,
+        "min-content X is the longest word plus the box"
+    );
+
+    let recorded =
+        h.engines.layout.scratch.intrinsics[leaf.idx()][LenReq::MinContent.slot(Axis::Y)];
+    assert_eq!(
+        recorded, EXPECT_Y,
+        "the X walk must record Y's outer min-content, padding and margin folded in",
+    );
+    assert!(
+        h.engines.layout.scratch.intrinsics[leaf.idx()][LenReq::MaxContent.slot(Axis::Y)].is_nan(),
+        "a min-content query may record only the half it asked for",
+    );
+
+    let y = h.engines.layout.intrinsic(
+        h.ui.tree(Layer::Main),
+        leaf,
+        Axis::Y,
+        LenReq::MinContent,
+        &interned_text,
+    );
+    assert_eq!(y, EXPECT_Y, "the recorded lane is Y's own min-content");
+    assert_eq!(
+        h.engines.layout.scratch.counters.intrinsic_computes(),
+        1,
+        "the second axis must read the recorded lane, not shape the runs again",
+    );
 }

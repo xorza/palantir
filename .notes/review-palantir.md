@@ -9,10 +9,6 @@ gated `internals` / `test_support` modules were not reviewed.
 Groups are sorted by severity and benefit. Items inside a group are sorted the
 same way.
 
-## Full-tree or per-item work is repeated on the interactive path
-
-- [ ] `src/layout/pass.rs:290-301`, `src/layout/intrinsic/mod.rs:346-374`, `src/layout/engine.rs:121-124` — `LayoutPass::measure` issues `intrinsic(node, X, MinContent)` and `intrinsic(node, Y, MinContent)` independently. For a text leaf each reaches `intrinsic::leaf`, which calls `engine.text.root(..)` per run and then reads `axis.main(..)` off a `Size` that carries both axes. Every text leaf does two `TextSystem::root` lookups for one `TextRoot`, plus its `measure`; `cached_intrinsic` excludes leaves from cross-frame reuse, so this repeats on every changed frame.
-
 ## Frame cost is not uniform, or a hot path allocates
 
 - [ ] `src/renderer/backend/raster_atlas/clock_sweep.rs:57`, `src/renderer/backend/raster_atlas/mod.rs:668-703`, `src/renderer/backend/text/mod.rs:130-153`, `src/renderer/backend/text/encode/encoder.rs:104-108`, `src/renderer/backend/icon/mod.rs:274-298` — a slot is evictable when `last_use < current_frame`, and `current_frame` advances only in `advance_to` at the end of a submit, so at the start of a frame's `prepare_batch` walk every slot drawn last frame is as eligible as a cold one. Under pressure a miss in batch 1 can take a slot batch 3's cached template references; `try_emit_cached` sees the generation mismatch, drops the row, re-extracts and re-rasterizes the run, and that insert evicts another live slot — a cascade inside one frame whose length is the number of new glyphs. The `evict_one` doc claims "anything drawn this frame is skipped outright"; the guarantee is "anything drawn so far this frame". The icon atlas has the same predicate.
