@@ -65,7 +65,7 @@ use crate::scene::damage::counters::DamageCounters;
 use crate::scene::damage::node_snapshot::NodeSnapshot;
 use crate::scene::damage::region::{CollapsedDamage, DEFAULT_PASS_BUDGET_PX, DamageRegion};
 use crate::scene::damage::row_matcher::RowMatcher;
-use crate::scene::damage::walk::{LayerWalk, ParentFrame};
+use crate::scene::damage::walk::LayerWalk;
 use crate::scene::forest::Forest;
 use rustc_hash::FxHashSet;
 use std::time::Duration;
@@ -129,10 +129,6 @@ pub(crate) struct DamageEngine {
     /// Only filled on the rare frame a node's row order actually inverted;
     /// capacity persists so that frame allocates nothing.
     order_extents: Vec<Rect>,
-    /// Retained scratch for the diff walk's parent tracking: one frame
-    /// per open ancestor, `(subtree_end, WidgetId bits)`. Feeds each
-    /// snapshot's [`NodeSnapshot::parent_key`].
-    parent_stack: Vec<ParentFrame>,
 
     /// Test/bench observability for this pass — see [`DamageCounters`].
     pub(crate) counters: DamageCounters,
@@ -148,7 +144,6 @@ impl Default for DamageEngine {
             matcher: RowMatcher::default(),
             raw_rects: Vec::new(),
             order_extents: Vec::new(),
-            parent_stack: Vec::new(),
         }
     }
 }
@@ -195,39 +190,55 @@ pub(crate) struct DamageInput<'a> {
 pub(crate) const FULL_REPAINT_THRESHOLD: f32 = 0.7;
 
 /// What the GPU should do with this frame:
-/// - `Skip` — nothing changed; the backbuffer is correct as-is.
 /// - `Full` — clear + paint everything.
 /// - `Partial(region)` — load + scissor; one render pass per rect.
+///
+/// "Nothing changed; the backbuffer is correct as-is" is `None`, not a
+/// third variant — see [`Damage::new`].
 ///
 /// Knows nothing about clear colour — that's a presentation concern
 /// stamped in by [`crate::renderer::render_plan::RenderPlan`] when the
 /// damage outcome is lifted into a host-facing report.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum Damage {
-    Skip,
     Full,
     /// **Invariant:** the wrapped region is non-empty. [`Damage::new`]
-    /// is the only constructor and returns [`Damage::Skip`] when the
-    /// region is empty, so consumers can iterate
-    /// `damage.region.iter_rects()` without checking `is_empty` first.
+    /// is the only constructor and returns `None` when the region is
+    /// empty, so consumers can iterate `damage.region.iter_rects()`
+    /// without checking `is_empty` first.
     Partial(CollapsedDamage),
 }
 
 impl Damage {
-    /// Classify a collapsed damage set into the frame's paint decision.
-    /// Pure dispatch on the coverage
-    /// [`DamageRegion::collapse_from`] measured — no surface needed here;
-    /// the degenerate-surface check lives at that site.
+    /// Classify a collapsed damage set into the frame's paint decision,
+    /// or `None` when the frame paints nothing. Pure dispatch on the
+    /// coverage [`DamageRegion::collapse_from`] measured — no surface
+    /// needed here; the degenerate-surface check lives at that site.
+    ///
+    /// "Nothing to paint" is the absence of a `Damage` rather than a
+    /// variant of one, so the renderer's plan cannot carry a no-op:
+    /// [`RenderPlan`](crate::renderer::render_plan::RenderPlan) holds
+    /// this type as-is instead of restating the split in a second enum.
     ///
     /// [`DamageRegion::collapse_from`]: crate::scene::damage::region::DamageRegion::collapse_from
-    pub(crate) fn new(damage: CollapsedDamage) -> Damage {
+    pub(crate) fn new(damage: CollapsedDamage) -> Option<Damage> {
         if damage.region.rects.is_empty() {
-            return Damage::Skip;
+            return None;
         }
         if damage.coverage > FULL_REPAINT_THRESHOLD {
-            return Damage::Full;
+            return Some(Damage::Full);
         }
-        Damage::Partial(damage)
+        Some(Damage::Partial(damage))
+    }
+
+    /// Whether the frame paints inside damage rects rather than over the
+    /// whole surface.
+    ///
+    /// Asked of the damage rather than of the `RepaintScissors`
+    /// `build_repaint_scissors` maps it one-to-one onto: the scissors
+    /// give the same answer one derivation further from the fact.
+    pub(crate) fn is_partial(self) -> bool {
+        matches!(self, Self::Partial { .. })
     }
 }
 
@@ -236,7 +247,7 @@ impl DamageEngine {
     /// [`Self::compute`] at entry when the caller passes
     /// `force_full = true` (surface changed, previous frame wasn't
     /// acked, or first frame) — the diff then repopulates the map
-    /// from scratch but still returns `Damage::Full`.
+    /// from scratch but still returns `Some(Damage::Full)`.
     fn invalidate_prev(&mut self) {
         self.prev.clear();
         self.paints.clear();
@@ -245,7 +256,7 @@ impl DamageEngine {
     /// Diff against the just-finished frame and return a
     /// [`Damage`] ready for the renderer:
     ///
-    /// - [`Damage::Skip`] — empty region, nothing changed.
+    /// - `None` — empty region, nothing changed.
     /// - [`Damage::Partial`] — coverage below
     ///   [`FULL_REPAINT_THRESHOLD`].
     /// - [`Damage::Full`] — coverage above the threshold, or the
@@ -276,7 +287,7 @@ impl DamageEngine {
         input: DamageInput<'_>,
         removed: &FxHashSet<WidgetId>,
         force_full: bool,
-    ) -> Damage {
+    ) -> Option<Damage> {
         tracy::zone!();
         let DamageInput {
             forest,
@@ -314,7 +325,6 @@ impl DamageEngine {
                 matcher: &mut self.matcher,
                 raw_rects: &mut self.raw_rects,
                 order_extents: &mut self.order_extents,
-                parents: &mut self.parent_stack,
                 probe: &mut self.counters,
                 surface,
                 force_full,
@@ -332,7 +342,7 @@ impl DamageEngine {
         // cleared at entry, so no stale entries survive), and the anim
         // iterator is lazy — dropping it without consuming is free.
         if force_full {
-            return Damage::Full;
+            return Some(Damage::Full);
         }
 
         // Predamaged anim rects. The structural diff above is
@@ -365,7 +375,7 @@ impl DamageEngine {
     /// Pass 2: collapse the accumulated `raw_rects` into a budgeted
     /// region and lift it to a [`Damage`]. Shared tail of both compute
     /// paths.
-    fn finish_region(&self, surface: Rect) -> Damage {
+    fn finish_region(&self, surface: Rect) -> Option<Damage> {
         Damage::new(DamageRegion::collapse_from(
             &self.raw_rects,
             self.budget_px,
@@ -377,7 +387,7 @@ impl DamageEngine {
     /// every node would match its prev snapshot and contribute nothing
     /// to the structural diff — skip Pass 1 entirely. Only the
     /// caller-supplied predamaged anim rects matter.
-    pub(crate) fn compute_paint_only(&mut self, input: DamageInput<'_>) -> Damage {
+    pub(crate) fn compute_paint_only(&mut self, input: DamageInput<'_>) -> Option<Damage> {
         self.counters.begin_pass();
         self.raw_rects.clear();
         extend_predamaged(
@@ -467,9 +477,9 @@ pub(crate) mod test_support {
         /// expected value assembled from rect literals has no way to know
         /// — so a case that means "these rects" compares these, and one
         /// that means "this outcome" matches on the variant.
-        pub(crate) fn expect_partial(self) -> DamageRegion {
-            match self {
-                Damage::Partial(damage) => damage.region,
+        pub(crate) fn expect_partial(damage: Option<Self>) -> DamageRegion {
+            match damage {
+                Some(Damage::Partial(damage)) => damage.region,
                 other => panic!("expected partial damage, got {other:?}"),
             }
         }

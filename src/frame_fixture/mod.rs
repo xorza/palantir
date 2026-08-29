@@ -18,7 +18,7 @@
 //!
 //! **Nothing animated belongs in here.** `Spinner` — and any `PaintAnim` —
 //! wakes the host every frame by design, so `frame/cached_*` could never
-//! settle to `Damage::Skip` and `frame/partial_*` would grow past the single
+//! settle to no damage and `frame/partial_*` would grow past the single
 //! footer-counter rect both arms exist to measure. That, and the three other
 //! standing exclusions, are recorded with their reasons in `EXCLUDED`.
 //!
@@ -163,7 +163,7 @@ impl FrameFixture {
                         // Page scroll, not a bare VStack: the card column is taller
                         // than a normal window, and an overflowing column paints
                         // over the status bar — which occludes the footer counter
-                        // and collapses the `frame/partial_*` arms to `Damage::Skip`.
+                        // and collapses the `frame/partial_*` arms to no damage.
                         // Clipping the overflow here keeps the counter visible at
                         // every viewport size. Every child must therefore be Hug or
                         // Fixed: a scroll passes ∞ on its main axis, so a `Fill`

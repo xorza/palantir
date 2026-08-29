@@ -129,9 +129,9 @@ fn run_and_ack(h: &mut UiHarness, mut record: impl FnMut(&mut Ui)) {
 
 fn damage_kind(h: &UiHarness) -> &'static str {
     match Damage::new(h.collapsed_damage()) {
-        Damage::Skip => "skip",
-        Damage::Full => "full",
-        Damage::Partial(_) => "partial",
+        None => "skip",
+        Some(Damage::Full) => "full",
+        Some(Damage::Partial(_)) => "partial",
     }
 }
 

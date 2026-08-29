@@ -1,5 +1,6 @@
 //! Building a `RenderBuffer` by hand, and reading the emitted steps back.
 
+use crate::display::Display;
 use crate::primitives::color::{Color, ColorF16, ColorU8};
 use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
@@ -16,7 +17,7 @@ use crate::renderer::render_buffer::text::TextDrawRow;
 use crate::renderer::render_buffer::text_batch::TextBatch;
 use crate::text::key::TextShapeKey;
 use crate::text::shaped_ref::ShapedTextRef;
-use glam::{UVec2, Vec2};
+use glam::UVec2;
 
 /// "Simplified" view of the render schedule — strips bookkeeping
 /// (`SetScissor`, `SetStencilRef`) that the tests don't care to pin
@@ -168,8 +169,6 @@ pub(super) fn buf_with_batches(
     buffer.texts = vec![dummy_text(); 4];
     buffer.groups = groups;
     buffer.text_batches = text_batches;
-    buffer.viewport_phys = UVec2::new(100, 100);
-    buffer.viewport_phys_f = Vec2::new(100.0, 100.0);
-    buffer.scale = 1.0;
+    buffer.display = Display::from_physical(UVec2::new(100, 100), 1.0);
     buffer
 }

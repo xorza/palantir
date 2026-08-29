@@ -167,7 +167,7 @@ impl CascadeEngine {
             if lc.entries_base != entries_base
                 || lc.static_hash != tree.fingerprint.cascade_static
                 || lc.paint_cardinality != tree.fingerprint.paint_cardinality
-                || lc.subtree_hashes.len() != n
+                || lc.arena_hashes.len() != n
             {
                 return false;
             }
@@ -218,7 +218,7 @@ impl CascadeEngine {
             );
             debug_assert!(full_complete);
             cascade.layers[layer]
-                .subtree_hashes
+                .arena_hashes
                 .copy_from_slice(&tree.rollups.subtree);
             debug_assert_eq!(
                 cascade.entries.len() as u32 - entries_base,
@@ -368,7 +368,7 @@ impl CascadeEngine {
             // cursor, leaf compare) need the clean pre-order end.
             let subtree_end = ends[iu].end();
             let has_children = subtree_end != i + 1;
-            if INCREMENTAL && lc.subtree_hashes[iu] == subtree_hashes[iu] {
+            if INCREMENTAL && lc.arena_hashes[iu] == subtree_hashes[iu] {
                 if let Some(parent_frame) = self.stack.last_mut() {
                     parent_frame.subtree_paint_rect = parent_frame
                         .subtree_paint_rect
@@ -441,7 +441,7 @@ impl CascadeEngine {
             // damage tracking is unaffected.
             let subtree_seed = if invisible { Rect::ZERO } else { paint_rect };
             if INCREMENTAL {
-                lc.subtree_hashes[iu] = subtree_hashes[iu];
+                lc.arena_hashes[iu] = subtree_hashes[iu];
             } else {
                 lc.cascade_inputs[iu] = finish_cascade_input(parent_prefix, layout_rect, invisible);
                 lc.subtree_ends[iu] = subtree_end;

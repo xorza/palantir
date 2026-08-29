@@ -9,12 +9,35 @@ use glam::{BVec2, Vec2};
 /// Which axis a layout distributes children along (or which axis a query
 /// targets). `X` = horizontal, `Y` = vertical.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
+#[repr(u8)]
 pub(crate) enum Axis {
     X,
     Y,
 }
 
+const _: () = assert!(
+    Axis::X as u8 == 0 && Axis::Y as u8 == 1,
+    "Axis::bit and Axis::from_bit pair on these discriminants",
+);
+
 impl Axis {
+    /// The bit a packed field spends on the axis. Its inverse is
+    /// [`Self::from_bit`]; the encoding is written down here alone, so a
+    /// packed field cannot spell it a second way.
+    #[inline]
+    pub(super) fn bit(self) -> u16 {
+        self as u16
+    }
+
+    #[inline]
+    pub(super) fn from_bit(bit: u16) -> Axis {
+        match bit {
+            0 => Axis::X,
+            1 => Axis::Y,
+            _ => unreachable!("packed axis bit {bit} is invalid"),
+        }
+    }
+
     /// The axis this one is not.
     pub(crate) fn other(self) -> Axis {
         match self {

@@ -445,8 +445,8 @@ fn assert_cascades_match_full(ui: &Ui, label: &str) {
             "{label}: {layer:?} subtree paint rects"
         );
         assert_eq!(
-            actual.subtree_hashes, expected.subtree_hashes,
-            "{label}: {layer:?} subtree hashes"
+            actual.arena_hashes, expected.arena_hashes,
+            "{label}: {layer:?} arena hashes"
         );
         assert_eq!(
             actual.static_hash, expected.static_hash,

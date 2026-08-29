@@ -6,7 +6,8 @@ use crate::primitives::brush::Brush;
 use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::color::{Color, ColorU8};
 use crate::renderer::frontend::Frontend;
-use crate::renderer::render_plan::{RenderKind, RenderPlan};
+use crate::renderer::render_plan::RenderPlan;
+use crate::scene::damage::Damage;
 use crate::scene::node::configure::Configure;
 use crate::ui::harness::UiHarness;
 use crate::widgets::frame::Frame;
@@ -79,7 +80,7 @@ impl GradientBench {
         });
         let plan = report.plan.unwrap_or(RenderPlan {
             clear: Color::BLACK,
-            kind: RenderKind::Full,
+            damage: Damage::Full,
         });
         self.frontend.build(self.harness.ui.frame_scene(), plan);
         self.frontend.buffer.quads.len()

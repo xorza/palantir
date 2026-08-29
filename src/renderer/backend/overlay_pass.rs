@@ -22,7 +22,8 @@ use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::viewport::ViewportPush;
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::RenderBuffer;
-use crate::renderer::render_plan::{RenderKind, RenderPlan};
+use crate::renderer::render_plan::RenderPlan;
+use crate::scene::damage::Damage;
 use crate::scene::damage::region::DAMAGE_RECT_CAP;
 use glam::Vec2;
 use tinyvec::ArrayVec;
@@ -124,9 +125,9 @@ impl DebugOverlay {
         plan: RenderPlan,
         buffer: &RenderBuffer,
     ) -> u32 {
-        let gap_px = (DAMAGE_OVERLAY_GAP * buffer.scale).max(1.0);
+        let gap_px = (DAMAGE_OVERLAY_GAP * buffer.display.scale_factor).max(1.0);
         let stroke_color = ColorF16::from(DAMAGE_OVERLAY_COLOR);
-        let stroke_width = DAMAGE_OVERLAY_STROKE_WIDTH * buffer.scale;
+        let stroke_width = DAMAGE_OVERLAY_STROKE_WIDTH * buffer.display.scale_factor;
         let outline = |rect: Rect| Quad {
             rect,
             fill: ColorF16::TRANSPARENT,
@@ -136,8 +137,8 @@ impl DebugOverlay {
             ..Default::default()
         };
         let mut quads: ArrayVec<[Quad; DAMAGE_RECT_CAP]> = Default::default();
-        match plan.kind {
-            RenderKind::Partial { damage } => {
+        match plan.damage {
+            Damage::Partial(damage) => {
                 // Outset, not inset: damage rects can be thinner than
                 // `2 * gap_px` (a 1px text caret), and insetting would
                 // collapse them to zero area — no outline drawn. An
@@ -146,15 +147,23 @@ impl DebugOverlay {
                 // and the surface clips, so spilling a few px past the
                 // damage edge is fine.
                 for r in damage.region.iter_rects() {
-                    quads.push(outline(r.scaled_by(buffer.scale, true).inflated(gap_px)));
+                    quads.push(outline(
+                        r.scaled_by(buffer.display.scale_factor, true)
+                            .inflated(gap_px),
+                    ));
                 }
             }
             // The full-viewport outline insets instead: outsetting it
             // would push the whole box off-screen, leaving only a
             // half-clipped edge line.
-            RenderKind::Full => quads.push(outline(
-                Rect::new(0.0, 0.0, buffer.viewport_phys_f.x, buffer.viewport_phys_f.y)
-                    .deflated_by(Spacing::all(gap_px)),
+            Damage::Full => quads.push(outline(
+                Rect::new(
+                    0.0,
+                    0.0,
+                    buffer.display.physical.as_vec2().x,
+                    buffer.display.physical.as_vec2().y,
+                )
+                .deflated_by(Spacing::all(gap_px)),
             )),
         }
         self.overlay_buffer.upload_instances(ctx, quads.as_slice());

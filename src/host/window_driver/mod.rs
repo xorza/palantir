@@ -32,8 +32,8 @@ use crate::renderer::backend::submission::SubmissionTargets;
 use crate::renderer::frontend::Frontend;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_owner_id::RenderOwnerId;
-use crate::renderer::render_plan::{RenderKind, RenderPlan};
-use crate::scene::damage::FULL_REPAINT_THRESHOLD;
+use crate::renderer::render_plan::RenderPlan;
+use crate::scene::damage::{Damage, FULL_REPAINT_THRESHOLD};
 use crate::ui::Ui;
 use crate::ui::frame_engines::FrameEngines;
 use crate::ui::frame_stamp::FrameInput;
@@ -226,10 +226,10 @@ fn present_mode(
         PresentStrategy::DirectAdaptive => match plan {
             // Swapchain skips never acquire a target because the host owns them.
             None => PresentMode::SkipNoop,
-            Some(p) => match p.kind {
+            Some(p) => match p.damage {
                 // Already a whole-surface repaint — straight into the target.
-                RenderKind::Full => PresentMode::Direct(p),
-                RenderKind::Partial { damage } => {
+                Damage::Full => PresentMode::Direct(p),
+                Damage::Partial(damage) => {
                     // The coverage the damage engine measured when it
                     // collapsed this frame's rects against the surface; see
                     // `DIRECT_PROMOTE_COVERAGE`.
@@ -582,7 +582,7 @@ impl WindowDriver {
                     // here couldn't fix it: the draw list was already
                     // Partial-culled in `cpu_frame`.
                     debug_assert!(
-                        !recreated || matches!(plan.kind, RenderKind::Full),
+                        !recreated || matches!(plan.damage, Damage::Full),
                         "backbuffer (re)created under a Partial plan whose draw \
                          list was culled for Partial"
                     );

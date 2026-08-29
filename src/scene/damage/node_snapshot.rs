@@ -52,10 +52,21 @@ pub(crate) struct NodeSnapshot {
     /// subtree-skip fast path: if both match the current frame, every
     /// descendant is bit-identical and the per-node diff can jump to
     /// `subtree_end[i]`.
+    ///
+    /// Keyed by `WidgetId` rather than read from the cascade's
+    /// node-indexed
+    /// [`arena_hashes`](crate::scene::cascade::LayerCascade), which holds
+    /// the same value: a widget outlives the index it occupied, and the
+    /// frames where its index moves are the frames a full rebuild
+    /// overwrites that column before this walk runs.
     pub(super) subtree_hash: ContentHash,
     /// Fingerprint of last frame's cascade inputs at this node (parent
     /// transform/clip/disabled/invisible + own arranged rect). See
     /// [`CascadeInputHash`].
+    ///
+    /// The cascade's `cascade_inputs[i]` is this frame's value, so the
+    /// pair is one fact and its history rather than two owners: this
+    /// walk compares them and then overwrites this one.
     pub(super) cascade_input: CascadeInputHash,
     /// Paint-order position: the immediate parent's `WidgetId` bits,
     /// or the layer discriminant for a root. A widget reparented (or

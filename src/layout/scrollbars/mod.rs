@@ -21,7 +21,7 @@ use crate::layout::driver::LayoutDriver;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange};
 use crate::layout::pass::LayoutPass;
-use crate::layout::types::layout_mode::ScrollbarsDefId;
+use crate::layout::types::layout_mode::{ScrollSpec, ScrollbarsDefId};
 use crate::primitives::approx;
 use crate::primitives::approx::FloatHash;
 use crate::primitives::interned_text::InternedText;
@@ -31,7 +31,7 @@ use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::scene::tree::Tree;
 use crate::scene::tree::node_id::NodeId;
-use glam::{BVec2, Vec2};
+use glam::Vec2;
 use std::hash::Hash;
 
 /// The strip a scroll's content actually occupies: its own extent less
@@ -61,10 +61,13 @@ pub(crate) struct ScrollbarsDef {
     pub(crate) content: NodeId,
     pub(crate) offset: Vec2,
     pub(crate) zoom: f32,
-    pub(crate) pan: BVec2,
+    /// The owning `Scroll`'s spec, not a decoded copy of its pan mask:
+    /// one fact, and one place its bit layout is written down.
+    pub(crate) spec: ScrollSpec,
     /// Cross-axis gutter strips deducted from the viewport, and the user
     /// padding inside it. Both are content-independent — `bar_space`
-    /// reserves on `pan && Reserved` alone, never on overflow — so they
+    /// reserves on the pan mask and `Reserved` alone, never on
+    /// overflow — so they
     /// are known while recording even when nothing else is.
     pub(crate) reserve_y: f32,
     pub(crate) reserve_x: f32,
@@ -83,7 +86,7 @@ impl ScrollbarsDef {
     pub(crate) fn hash_visual<H: std::hash::Hasher>(&self, h: &mut H) {
         self.offset.hash_visual(h);
         self.zoom.hash_visual(h);
-        h.write_u8(u8::from(self.pan.x) | (u8::from(self.pan.y) << 1));
+        h.write_u16(self.spec.pan_bits());
         self.reserve_y.hash_visual(h);
         self.reserve_x.hash_visual(h);
         self.padding.hash(h);
@@ -220,7 +223,7 @@ fn axis_rects(
     scaled_content: Size,
     axis: Axis,
 ) -> Option<BarRects> {
-    let panned = axis.main_b(def.pan);
+    let panned = axis.main_b(def.spec.pan_mask());
     if !panned {
         return None;
     }

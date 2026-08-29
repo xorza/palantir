@@ -8,7 +8,8 @@ use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::renderer::frontend::Frontend;
 use crate::renderer::gpu_paint::gpu_frame_ctx::GpuFrameCtx;
-use crate::renderer::render_plan::{RenderKind, RenderPlan};
+use crate::renderer::render_plan::RenderPlan;
+use crate::scene::damage::Damage;
 use crate::scene::damage::region::DamageRegion;
 use crate::scene::layer::Layer;
 use crate::scene::node::configure::Configure;
@@ -90,12 +91,12 @@ fn the_live_roster_lists_a_view_the_damage_plan_culls() {
     });
 
     let mut frontend = Frontend::for_test();
-    let plan = |kind| RenderPlan {
+    let plan = |damage| RenderPlan {
         clear: h.ui.theme().window_clear,
-        kind,
+        damage,
     };
 
-    frontend.build(h.ui.frame_scene(), plan(RenderKind::Full));
+    frontend.build(h.ui.frame_scene(), plan(Damage::Full));
     assert_eq!(
         frontend.buffer.frame_targets.len(),
         1,
@@ -110,10 +111,7 @@ fn the_live_roster_lists_a_view_the_damage_plan_culls() {
 
     // Damage confined to the opposite corner from the bottom-right view.
     let elsewhere = DamageRegion::from(Rect::new(0.0, 0.0, 20.0, 20.0)).unmeasured();
-    frontend.build(
-        h.ui.frame_scene(),
-        plan(RenderKind::Partial { damage: elsewhere }),
-    );
+    frontend.build(h.ui.frame_scene(), plan(Damage::Partial(elsewhere)));
     assert!(
         frontend.buffer.frame_targets.is_empty(),
         "the view is outside the damage region, so nothing repaints it",

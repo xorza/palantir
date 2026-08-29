@@ -68,17 +68,23 @@ pub struct ContextMenu<'a> {
     /// swap in at `show`. Its anchor is a placeholder until `show`
     /// re-places it (see [`Popup::anchored_at`]); a closed menu returns
     /// before recording, so the placeholder never places anything.
+    ///
+    /// It owns the chrome too, so `.background(..)` and the theme
+    /// fallback land in one place rather than in a field here that
+    /// `show` has to remember to copy across.
     popup: Popup,
-    chrome: Option<Background>,
     style: Option<&'a ContextMenuTheme>,
 }
 
 impl<'a> ContextMenu<'a> {
+    /// The menu's identity is the trigger's, settled here rather than at
+    /// `show`: the popup's `#[track_caller]` id would resolve to *this*
+    /// line for every menu in the program, so nothing may be left
+    /// depending on it.
     pub fn for_id(for_id: WidgetId) -> Self {
         Self {
             for_id,
-            popup: Popup::anchored_to(Vec2::ZERO),
-            chrome: None,
+            popup: Popup::anchored_to(Vec2::ZERO).default_id(for_id.with("body")),
             style: None,
         }
     }
@@ -131,13 +137,8 @@ impl<'a> ContextMenu<'a> {
             return PopupResponse::default();
         };
 
-        let body_id = self.for_id.with("body");
-
-        // `Popup::background` owns its chrome, so the panel is copied even
-        // though the rest of the bundle is only read — once per open frame.
         let ui_theme = ui.theme().clone();
         let ctx = self.slot(&ui_theme);
-        let panel = self.chrome.unwrap_or_else(|| ctx.panel.clone());
 
         // The menu is the popup, configured: the caller's `Configure`
         // calls already landed on it, the menu theme fills in whatever
@@ -148,8 +149,7 @@ impl<'a> ContextMenu<'a> {
             .popup
             .on(Layer::Menu)
             .anchored_at(raw_anchor)
-            .background(panel)
-            .default_id(body_id)
+            .default_background(&ctx.panel)
             .default_padding(ctx.padding)
             .default_min_size(Size::new(ctx.min_width, 0.0))
             .default_gap(ctx.gap)
@@ -183,12 +183,17 @@ impl<'a> ContextMenu<'a> {
     }
 }
 
-impl_background!(
-    ContextMenu<'_>,
-    "`None` is the default; theme fallback in [`Self::show`] fills it in from \
-     the resolved theme's `panel` when unset. Pass [`Background::NONE`] to \
-     suppress the themed menu chrome.",
-);
+impl ContextMenu<'_> {
+    /// Paint `bg` as the menu panel's background.
+    ///
+    /// Unset is the default; the theme fallback in [`Self::show`] fills
+    /// it in from the resolved theme's `panel`. Pass
+    /// [`Background::NONE`] to suppress the themed menu chrome.
+    pub fn background(mut self, bg: Background) -> Self {
+        self.popup = self.popup.background(bg);
+        self
+    }
+}
 
 /// Forwards to the popup this menu wraps, so `.size(...)` /
 /// `.padding(...)` / `.id(...)` configure the node that actually

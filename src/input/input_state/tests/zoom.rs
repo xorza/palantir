@@ -4,6 +4,7 @@ use crate::input::policy::InputSignal;
 use crate::input::zoom;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::cascade::Cascade;
+use std::time::Duration;
 
 fn pinch_state() -> InputState {
     InputState {
@@ -22,7 +23,7 @@ fn native_zoom_ingress_rejects_every_invalid_factor_class() {
     let cascade = Cascade::default();
 
     for factor in [0.0, -0.0, -1.0, f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
-        let delta = state.on_input(InputEvent::Zoom(factor), &cascade);
+        let delta = state.on_input(InputEvent::Zoom(factor), &cascade, Duration::ZERO);
         assert!(!delta.requests_repaint, "invalid factor {factor:?}");
         assert_eq!(
             state.scroll_delta_for(pinch_id()).zoom,
@@ -42,8 +43,8 @@ fn native_zoom_ingress_rejects_every_invalid_factor_class() {
 fn pinch_gesture_accumulates_zoom_delta() {
     let mut state = pinch_state();
     let cascade = Cascade::default();
-    state.on_input(InputEvent::Zoom(1.1), &cascade);
-    state.on_input(InputEvent::Zoom(1.05), &cascade);
+    state.on_input(InputEvent::Zoom(1.1), &cascade, Duration::ZERO);
+    state.on_input(InputEvent::Zoom(1.05), &cascade, Duration::ZERO);
     assert!((state.scroll_delta_for(pinch_id()).zoom - 1.155).abs() < 1e-5);
 }
 
@@ -53,7 +54,7 @@ fn long_valid_pinch_and_wheel_sequences_remain_positive_and_finite() {
     for factor in [1.1, 0.9] {
         let mut state = pinch_state();
         for _ in 0..10_000 {
-            state.on_input(InputEvent::Zoom(factor), &cascade);
+            state.on_input(InputEvent::Zoom(factor), &cascade, Duration::ZERO);
             assert!(zoom::is_valid(state.scroll_delta_for(pinch_id()).zoom));
         }
         let expected = if factor > 1.0 {
@@ -85,7 +86,7 @@ fn long_valid_pinch_and_wheel_sequences_remain_positive_and_finite() {
 fn post_record_resets_zoom_delta_to_identity() {
     let mut state = pinch_state();
     let cascade = Cascade::default();
-    state.on_input(InputEvent::Zoom(1.2), &cascade);
+    state.on_input(InputEvent::Zoom(1.2), &cascade, Duration::ZERO);
     assert!((state.scroll_delta_for(pinch_id()).zoom - 1.2).abs() < 1e-5);
     state.end_frame(&cascade);
     assert_eq!(state.scroll_delta_for(pinch_id()).zoom, 1.0);

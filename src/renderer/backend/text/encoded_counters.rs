@@ -17,7 +17,7 @@
 //! Retention needs the same treatment, and needs it *before* a policy is
 //! chosen rather than after. The open question is whether a stable run is
 //! looked up often enough for "has it been asked for again" to work as a
-//! promotion signal at all: under `RenderKind::Partial` the encoder walk is
+//! promotion signal at all: under `Damage::Partial` the encoder walk is
 //! culled to the damage region, so a run that is on screen and unchanged is
 //! not consulted on frames that do not damage it. [`EncodedCounters::hits`]
 //! against [`EncodedCounters::encodes`] is what answers that, and

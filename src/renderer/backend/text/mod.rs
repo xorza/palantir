@@ -197,6 +197,13 @@ impl TextBackend {
             .draw_span(pass, pipelines, use_stencil, viewport, &self.vbuf, span);
     }
 
+    /// The shared cache clock these caches age against. The icon atlas
+    /// ages on it too, so a keep count means the same span in either
+    /// tenant of a `RasterAtlas`.
+    pub(super) fn frame(&self) -> u64 {
+        self.shaper.frame()
+    }
+
     /// Frame teardown, run for every submit — including one that
     /// prepared no text batch at all.
     ///

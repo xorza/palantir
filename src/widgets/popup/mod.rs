@@ -111,7 +111,7 @@ impl PopupResponse {
 /// Which layer is a field rather than a constant, because this is the engine
 /// under every anchored overlay and not only the plain one: a context menu is
 /// a popup on [`Layer::Menu`], which is what lets one be raised from inside a
-/// popup — see [`Self::on`].
+/// popup.
 ///
 /// Outside clicks are handled per [`ClickOutside`]. Under the modal pair
 /// (`Block` / `Dismiss`, the default) a full-surface "click-eater" leaf
@@ -190,6 +190,20 @@ impl Popup {
 
     pub fn click_outside(mut self, m: ClickOutside) -> Self {
         self.click_outside = m;
+        self
+    }
+
+    /// Chrome to fall back on when the caller set none — the `Popup`
+    /// peer of [`ThemeDefaults::default_padding`](crate::scene::node::theme_defaults::ThemeDefaults::default_padding),
+    /// since chrome is a field here rather than on the node.
+    ///
+    /// Takes a borrow so a wrapper's themed panel is cloned only where
+    /// it is used — the caller holds the whole theme bundle and reads
+    /// the rest of it.
+    pub(crate) fn default_background(mut self, bg: &Background) -> Self {
+        if self.chrome.is_none() {
+            self.chrome = Some(bg.clone());
+        }
         self
     }
 

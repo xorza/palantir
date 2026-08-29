@@ -1,6 +1,5 @@
 //! One frame being composed, and the sink the paint calls arrive through.
 
-use crate::display::Display;
 use crate::icons::icon_raster_key::IconRasterKey;
 use crate::primitives::approx::{EPS, noop_f32};
 use crate::primitives::brush::gradient::FillAxis;
@@ -66,7 +65,6 @@ pub(crate) struct ComposeSession<'a> {
     pub(super) composer: &'a mut Composer,
     pub(super) payloads: &'a RecordPayloads,
     pub(super) out: &'a mut RenderBuffer,
-    pub(super) display: Display,
 }
 
 /// A quad-tier draw reduced to physical space — everything
@@ -127,10 +125,10 @@ impl ComposeSession<'_> {
     /// result, so a culled draw costs the same as an emitted one.
     fn scaled_rect(&self, rect: Rect) -> ScaledRect {
         let world = self.composer.transform.apply_rect(rect);
-        let phys = world.scaled_by(self.display.scale_factor, self.display.pixel_snap);
+        let phys = world.scaled_by(self.out.display.scale_factor, self.out.display.pixel_snap);
         ScaledRect {
             phys,
-            urect: geometry::urect_from_phys(phys.min, phys.max(), self.display.physical),
+            urect: geometry::urect_from_phys(phys.min, phys.max(), self.out.display.physical),
         }
     }
 
@@ -148,7 +146,7 @@ impl ComposeSession<'_> {
     /// but is not exact in general, and answering `Some` where it drifted would
     /// take the other branch to the same numbers.
     fn seen(&self, whole: Rect) -> Option<Rect> {
-        let surface = self.display.physical;
+        let surface = self.out.display.physical;
         let mut clipped = whole.clamp_to(Rect::new(0.0, 0.0, surface.x as f32, surface.y as f32));
         if let Some(scissor) = self.composer.clip.scissor() {
             clipped = clipped.clamp_to(scissor.into());
@@ -174,9 +172,9 @@ impl Drop for ComposeSession<'_> {
 
 impl PaintSink for ComposeSession<'_> {
     fn clip(&mut self, p: PushClipPayload) {
-        let scale = self.display.scale_factor;
-        let snap = self.display.pixel_snap;
-        let viewport_phys = self.display.physical;
+        let scale = self.out.display.scale_factor;
+        let snap = self.out.display.pixel_snap;
+        let viewport_phys = self.out.display.physical;
         let logical_radius = (!p.corners.approx_zero()).then_some(p.corners);
         let world = self.composer.transform.apply_rect(p.rect);
         // Scaled once: the scissor is the integer cover of this rect and
@@ -297,8 +295,8 @@ impl PaintSink for ComposeSession<'_> {
     }
 
     fn mesh(&mut self, p: DrawMeshPayload) {
-        let scale = self.display.scale_factor;
-        let viewport_phys = self.display.physical;
+        let scale = self.out.display.scale_factor;
+        let viewport_phys = self.out.display.physical;
         // `draw_mesh` already gated empty/degenerate meshes
         // (`draw_mesh` applies its no-op gate), so `v_len >= 1` here.
         // Inflate by 0.5 phys-px to match polyline's AA-fringe
@@ -424,7 +422,7 @@ impl PaintSink for ComposeSession<'_> {
         // then thrown away: a status line long enough to widen the window's
         // root is enough to do it, which is how this was found.
         if let Some(paint) = paint {
-            let scale = self.display.scale_factor;
+            let scale = self.out.display.scale_factor;
             let cap = i64::from(self.composer.max_texture_dim.get());
             let whole = phys_rect.size;
             // The cap is measured against the *whole* view, so how much a view
@@ -463,7 +461,7 @@ impl PaintSink for ComposeSession<'_> {
     }
 
     fn curve(&mut self, p: DrawCurvePayload) {
-        let scale = self.display.scale_factor;
+        let scale = self.out.display.scale_factor;
         let xform = self.composer.transform.current();
         let width_phys = p.width * geometry::phys_scale(xform, scale);
         let cap = p.cap;
@@ -474,7 +472,7 @@ impl PaintSink for ComposeSession<'_> {
             width_phys,
             cap,
             None,
-            self.display,
+            self.out.display,
         );
         // Clip-cull + batch-close: a curve sits above text in the
         // kind order (same as mesh/image), so a surviving draw
@@ -576,8 +574,8 @@ impl PaintSink for ComposeSession<'_> {
     }
 
     fn polyline(&mut self, p: DrawPolylinePayload) {
-        let scale = self.display.scale_factor;
-        let display = self.display;
+        let scale = self.out.display.scale_factor;
+        let display = self.out.display;
         let mode = p.color_mode;
         let cap = p.cap;
         let join = p.join;
@@ -829,7 +827,7 @@ impl ComposeSession<'_> {
     /// points. Everything past this point is shape-blind.
     fn pack_quad(&self, p: &DrawQuadPayload) -> PackedQuad {
         let xform = self.composer.transform.current();
-        let scale_phys = geometry::phys_scale(xform, self.display.scale_factor);
+        let scale_phys = geometry::phys_scale(xform, self.out.display.scale_factor);
         match p.geom {
             QuadGeom::Rect { rect, corners } => {
                 let ScaledRect {
@@ -859,7 +857,7 @@ impl ComposeSession<'_> {
                 c,
                 radius,
             } => {
-                let scale = self.display.scale_factor;
+                let scale = self.out.display.scale_factor;
                 // Fold owner origin + active transform, scale to physical
                 // px. No pixel-snap — the SDF handles sub-pixel placement;
                 // snapping the covering rect would only shift the AA band.
@@ -886,7 +884,7 @@ impl ComposeSession<'_> {
                     urect: geometry::urect_from_phys(
                         phys_rect.min,
                         phys_rect.max(),
-                        self.display.physical,
+                        self.out.display.physical,
                     ),
                     phys_rect,
                     corners: Corners::from_array([al.x, al.y, bl.x, bl.y]),
@@ -922,8 +920,8 @@ impl ComposeSession<'_> {
     fn fold_into_clear(&mut self, p: &DrawQuadPayload, packed: &PackedQuad) -> bool {
         let covers_viewport = packed.phys_rect.min.x <= EPS
             && packed.phys_rect.min.y <= EPS
-            && packed.phys_rect.max().x >= self.out.viewport_phys_f.x - EPS
-            && packed.phys_rect.max().y >= self.out.viewport_phys_f.y - EPS;
+            && packed.phys_rect.max().x >= self.out.display.physical.as_vec2().x - EPS
+            && packed.phys_rect.max().y >= self.out.display.physical.as_vec2().y - EPS;
         if !covers_viewport
             // Any frame at all, not just one with a rounded chain: a
             // non-empty chain implies a frame, so testing both asked one
@@ -1219,6 +1217,6 @@ impl ComposeSession<'_> {
     /// are still ahead in the stream).
     fn discard_composed(&mut self) {
         self.out.discard_scene();
-        self.composer.reset_group_scratch(self.out.viewport_phys);
+        self.composer.reset_group_scratch(self.out.display.physical);
     }
 }

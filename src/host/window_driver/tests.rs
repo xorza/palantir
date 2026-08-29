@@ -7,7 +7,8 @@ mod present_mode_tests {
     use crate::host::window_driver::{PresentMode, present_mode};
     use crate::primitives::color::Color;
     use crate::primitives::rect::Rect;
-    use crate::renderer::render_plan::{RenderKind, RenderPlan};
+    use crate::renderer::render_plan::RenderPlan;
+    use crate::scene::damage::Damage;
     use crate::scene::damage::region::{DEFAULT_PASS_BUDGET_PX, DamageRegion};
 
     /// 100×100 logical surface (10_000 px²) the partial fixtures collapse
@@ -17,7 +18,7 @@ mod present_mode_tests {
     fn full() -> Option<RenderPlan> {
         Some(RenderPlan {
             clear: Color::BLACK,
-            kind: RenderKind::Full,
+            damage: Damage::Full,
         })
     }
     /// One `Rect` of `w·h` px², built through `collapse_from` against
@@ -31,12 +32,12 @@ mod present_mode_tests {
         );
         Some(RenderPlan {
             clear: Color::BLACK,
-            kind: RenderKind::Partial { damage },
+            damage: Damage::Partial(damage),
         })
     }
     const DIRECT_FULL: PresentMode = Direct(RenderPlan {
         clear: Color::BLACK,
-        kind: RenderKind::Full,
+        damage: Damage::Full,
     });
 
     #[test]
@@ -119,8 +120,9 @@ mod output_validity_tests {
     use crate::host::window_driver::{PresentMode, PresentStrategy, TargetKey, WindowDriver};
     use crate::primitives::color::Color;
     use crate::renderer::frontend::Frontend;
-    use crate::renderer::render_plan::{RenderKind, RenderPlan};
+    use crate::renderer::render_plan::RenderPlan;
     use crate::renderer::texture_limit::TextureLimit;
+    use crate::scene::damage::Damage;
     use crate::text::shaper::TextShaper;
     use crate::ui::frame_report::{FrameProcessing, FrameReport};
     use crate::window::cursor_icon::CursorIcon;
@@ -317,7 +319,7 @@ mod output_validity_tests {
             &mut frontend,
             report(Some(RenderPlan {
                 clear: Color::BLACK,
-                kind: RenderKind::Full,
+                damage: Damage::Full,
             })),
         );
         assert!(matches!(paint.mode, PresentMode::Direct(_)));

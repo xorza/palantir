@@ -6,8 +6,9 @@ use crate::host::shared::HostShared;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::Color, rect::Rect};
-use crate::renderer::render_plan::{RenderKind, RenderPlan};
+use crate::renderer::render_plan::RenderPlan;
 use crate::renderer::texture_limit::TextureLimit;
+use crate::scene::damage::Damage;
 use crate::scene::layer::Layer;
 use crate::scene::node::configure::Configure;
 use crate::ui::harness::UiHarness;
@@ -52,7 +53,7 @@ fn frame_stats_overlay_records_partial_damage() {
         matches!(
             report.plan,
             Some(RenderPlan {
-                kind: RenderKind::Partial { .. },
+                damage: Damage::Partial(..),
                 ..
             })
         ),
@@ -275,7 +276,7 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
     // blink phase actually flipped). Pin both invariants.
     match r1.plan {
         Some(RenderPlan {
-            kind: RenderKind::Partial { damage },
+            damage: Damage::Partial(damage),
             ..
         }) => {
             let rects: Vec<_> = damage.region.iter_rects().collect();
@@ -425,7 +426,7 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
     fn rows(ui: &Ui, atlas: &SharedGradientAtlas) -> Vec<LutRow> {
         let plan = RenderPlan {
             clear: ui.theme.window_clear,
-            kind: RenderKind::Full,
+            damage: Damage::Full,
         };
         encoder::test_support::encode(ui.frame_scene(), atlas, plan)
             .calls

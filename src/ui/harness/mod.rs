@@ -62,14 +62,14 @@
 //!
 //! ## Clocks — there are two, and they diverge
 //!
-//! 6. **The frame clock only moves at a frame boundary.** `Ui::frame`
-//!    copies its stamp into `input.frame_time`, so events fed between
+//! 6. **The frame clock only moves at a frame boundary.** `Ui::on_input`
+//!    stamps events with `FrameRuntime::time`, so events fed between
 //!    frames carry the value the *last* frame published. Moving time is
 //!    [`advance`](UiHarness::advance) or [`at`](UiHarness::at) → `frame`
 //!    → *then* the input; either one with no frame between changes
 //!    nothing.
 //! 7. **A frozen clock makes every click simultaneous.**
-//!    `DOUBLE_CLICK_WINDOW` is 500 ms against `input.frame_time`, so
+//!    `DOUBLE_CLICK_WINDOW` is 500 ms against `FrameRuntime::time`, so
 //!    without an `advance` a second `click_at` within
 //!    `DOUBLE_CLICK_RADIUS` (5 px) *always* reports `double_clicked`.
 //!    Two deliberately separate clicks need
@@ -806,7 +806,8 @@ mod unit {
     use crate::renderer::frontend::capture::PaintCapture;
     use crate::renderer::frontend::encoder;
     use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
-    use crate::renderer::render_plan::{RenderKind, RenderPlan};
+    use crate::renderer::render_plan::RenderPlan;
+    use crate::scene::damage::Damage;
     use crate::scene::damage::region::DamageRegion;
     use crate::scene::layer::Layer;
     use crate::scene::node::configure::Configure;
@@ -879,19 +880,17 @@ mod unit {
         }
 
         pub(crate) fn encode_paint(&self) -> PaintCapture {
-            self.encode(RenderKind::Full)
+            self.encode(Damage::Full)
         }
 
         pub(crate) fn encode_paint_for(&self, region: DamageRegion) -> PaintCapture {
-            self.encode(RenderKind::Partial {
-                damage: region.unmeasured(),
-            })
+            self.encode(Damage::Partial(region.unmeasured()))
         }
 
-        fn encode(&self, kind: RenderKind) -> PaintCapture {
+        fn encode(&self, damage: Damage) -> PaintCapture {
             let plan = RenderPlan {
                 clear: self.ui.theme.window_clear,
-                kind,
+                damage,
             };
             encoder::test_support::encode(
                 self.ui.frame_scene(),

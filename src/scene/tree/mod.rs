@@ -146,6 +146,13 @@ impl Tree {
         self.records.subtree_end()[i].end() as usize
     }
 
+    /// The immediate parent of node `i`, or `None` when `i` is a root.
+    #[inline]
+    pub(crate) fn parent_of(&self, i: usize) -> Option<NodeId> {
+        let parent = self.records.parent()[i];
+        (parent != NodeId::NONE).then_some(parent)
+    }
+
     /// `true` iff the subtree rooted at `i` (inclusive) contains any
     /// `LayoutMode::Grid` node. Populated incrementally by `close_node`.
     #[inline]
@@ -467,6 +474,7 @@ impl Tree {
             widget_id: cols.widget_id,
             shape_span: Span::new(self.shapes.records.len() as u32, 0),
             subtree_end: init_end,
+            parent: parent_frame.map_or(NodeId::NONE, |f| f.node),
             layout: cols.layout,
             attrs: cols.attrs,
             extras: ex,

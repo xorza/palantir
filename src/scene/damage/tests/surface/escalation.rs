@@ -4,8 +4,9 @@ use crate::Ui;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::primitives::widget_id::WidgetId;
-use crate::renderer::render_plan::{RenderKind, RenderPlan};
+use crate::renderer::render_plan::RenderPlan;
 use crate::scene::cascade::CascadeInputHash;
+use crate::scene::damage::Damage;
 use crate::scene::damage::tests::support::{BLUE, DISPLAY, RED, one_frame};
 use crate::scene::node::configure::Configure;
 use crate::ui::harness::UiHarness;
@@ -71,7 +72,7 @@ fn display_change_forces_full_repaint() {
             matches!(
                 f1,
                 Some(RenderPlan {
-                    kind: RenderKind::Full,
+                    damage: Damage::Full,
                     ..
                 })
             ),
@@ -89,7 +90,7 @@ fn display_change_forces_full_repaint() {
             matches!(
                 mutated_plan,
                 Some(RenderPlan {
-                    kind: RenderKind::Full,
+                    damage: Damage::Full,
                     ..
                 })
             ),
@@ -187,7 +188,7 @@ fn small_damage_with_surface_change_forces_full_repaint() {
         matches!(
             resize_plan,
             Some(RenderPlan {
-                kind: RenderKind::Full,
+                damage: Damage::Full,
                 ..
             })
         ),
@@ -221,7 +222,7 @@ fn stable_surface_does_not_short_circuit() {
     // proves the surface-change short-circuit didn't fire.
     let changed = h.frame(|ui| build(ui, RED)).plan;
     let Some(RenderPlan {
-        kind: RenderKind::Partial { damage },
+        damage: Damage::Partial(damage),
         ..
     }) = changed
     else {
@@ -247,7 +248,7 @@ fn invalid_prior_output_forces_full_damage() {
         matches!(
             next,
             Some(RenderPlan {
-                kind: RenderKind::Full,
+                damage: Damage::Full,
                 ..
             })
         ),
@@ -262,7 +263,7 @@ fn valid_skip_preserves_incremental_damage_baseline() {
     assert!(matches!(
         first,
         Some(RenderPlan {
-            kind: RenderKind::Full,
+            damage: Damage::Full,
             ..
         })
     ));
@@ -274,7 +275,7 @@ fn valid_skip_preserves_incremental_damage_baseline() {
         matches!(
             next,
             Some(RenderPlan {
-                kind: RenderKind::Partial { .. },
+                damage: Damage::Partial(..),
                 ..
             })
         ),

@@ -27,6 +27,7 @@
 //! metric; wall time is the decision metric.
 
 use crate::bench::Run;
+use crate::display::Display;
 use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
@@ -93,9 +94,7 @@ impl Workload {
     fn fixture(self, groups: usize) -> RenderBuffer {
         assert!(groups > 0);
         let mut buffer = RenderBuffer::new();
-        buffer.viewport_phys = UVec2::splat(VIEWPORT);
-        buffer.viewport_phys_f = Vec2::splat(VIEWPORT as f32);
-        buffer.scale = 1.0;
+        buffer.display = Display::from_physical(UVec2::splat(VIEWPORT), 1.0);
         buffer.quads = vec![Quad::default(); groups];
         if self.use_stencil() {
             buffer.rounded_clips = vec![RoundedClip {

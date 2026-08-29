@@ -128,10 +128,8 @@ pub(super) trait DriverOp: Sized {
     fn dispatch(self, mode: LayoutMode) -> Self::Output {
         match mode {
             LayoutMode::Leaf => self.leaf(),
-            LayoutMode::HStack => self.run::<Stack>(Axis::X),
-            LayoutMode::VStack => self.run::<Stack>(Axis::Y),
-            LayoutMode::WrapHStack => self.run::<WrapStack>(Axis::X),
-            LayoutMode::WrapVStack => self.run::<WrapStack>(Axis::Y),
+            LayoutMode::Stack(axis) => self.run::<Stack>(axis),
+            LayoutMode::WrapStack(axis) => self.run::<WrapStack>(axis),
             LayoutMode::ZStack => self.run::<ZStack>(()),
             LayoutMode::Canvas => self.run::<Canvas>(()),
             LayoutMode::Grid(id) => self.run::<Grid>(id),
@@ -162,6 +160,7 @@ impl DriverOp for ReplayOp {
 
 #[cfg(test)]
 mod tests {
+    use crate::layout::axis::Axis;
     use crate::layout::driver::{DriverOp, ReplayOp};
     use crate::layout::types::layout_mode::{GridDefId, LayoutMode, ScrollSpec, ScrollbarsDefId};
 
@@ -173,10 +172,10 @@ mod tests {
     fn only_scrollbars_opts_out_of_arrange_replay() {
         let slot_pure = [
             LayoutMode::Leaf,
-            LayoutMode::HStack,
-            LayoutMode::VStack,
-            LayoutMode::WrapHStack,
-            LayoutMode::WrapVStack,
+            LayoutMode::Stack(Axis::X),
+            LayoutMode::Stack(Axis::Y),
+            LayoutMode::WrapStack(Axis::X),
+            LayoutMode::WrapStack(Axis::Y),
             LayoutMode::ZStack,
             LayoutMode::Canvas,
             LayoutMode::Grid(GridDefId::from_index(0)),

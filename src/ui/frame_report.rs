@@ -7,7 +7,8 @@
 //! [`Ui`]: crate::ui::Ui
 //! [`Ui::frame`]: crate::ui::Ui::frame
 
-use crate::renderer::render_plan::{RenderKind, RenderPlan};
+use crate::renderer::render_plan::RenderPlan;
+use crate::scene::damage::Damage;
 use std::time::Duration;
 
 /// How `Ui::frame` resolved this frame: which passes actually ran.
@@ -72,11 +73,11 @@ impl FrameReport {
         match self.plan {
             None => FramePaint::Skip,
             Some(RenderPlan {
-                kind: RenderKind::Full,
+                damage: Damage::Full,
                 ..
             }) => FramePaint::Full,
             Some(RenderPlan {
-                kind: RenderKind::Partial { .. },
+                damage: Damage::Partial(..),
                 ..
             }) => FramePaint::Partial,
         }
@@ -87,7 +88,8 @@ impl FrameReport {
 mod tests {
     use crate::primitives::color::Color;
     use crate::primitives::rect::Rect;
-    use crate::renderer::render_plan::{RenderKind, RenderPlan};
+    use crate::renderer::render_plan::RenderPlan;
+    use crate::scene::damage::Damage;
     use crate::scene::damage::region::DamageRegion;
     use crate::ui::frame_report::{FramePaint, FrameProcessing, FrameReport};
 
@@ -98,16 +100,16 @@ mod tests {
             (
                 Some(RenderPlan {
                     clear: Color::BLACK,
-                    kind: RenderKind::Full,
+                    damage: Damage::Full,
                 }),
                 FramePaint::Full,
             ),
             (
                 Some(RenderPlan {
                     clear: Color::BLACK,
-                    kind: RenderKind::Partial {
-                        damage: DamageRegion::from(Rect::new(1.0, 2.0, 3.0, 4.0)).unmeasured(),
-                    },
+                    damage: Damage::Partial(
+                        DamageRegion::from(Rect::new(1.0, 2.0, 3.0, 4.0)).unmeasured(),
+                    ),
                 }),
                 FramePaint::Partial,
             ),

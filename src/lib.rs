@@ -58,7 +58,7 @@
 //! | `profile-with-tracy` | no | Opens a Tracy zone over each frame pass, and marks a frame set per window. Needs the external Tracy viewer. |
 //! | `internals` | no | Test reach-ins — adds the `internals` module. **Not a supported API**: it exists so the integration tests under `tests/` can reach crate privates, and it breaks without notice. |
 //! | `bench` | no | The source-level benchmark drivers, and the function-only facade the thin targets under `benches/` call. Implies `internals`, and adds the harness crates on top. Not a supported API either. |
-//! | `golden` | no | The [`golden`] module — golden-image regression testing for suites that draw through Palantir. Its own flag because it is the only part of the surface that costs an image codec. |
+//! | `golden` | no | Adds the `golden` module — golden-image regression testing for suites that draw through Palantir. Its own flag because it is the only part of the surface that costs an image codec. |
 //!
 //! # Colour
 //!

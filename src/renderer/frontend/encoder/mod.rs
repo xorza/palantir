@@ -17,7 +17,8 @@ use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
 use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
-use crate::renderer::render_plan::{RenderKind, RenderPlan};
+use crate::renderer::render_plan::RenderPlan;
+use crate::scene::damage::Damage;
 use crate::scene::record_store::recorded_gradient::RecordedGradient;
 use crate::scene::shapes::paint::ShapeBrush;
 
@@ -79,9 +80,9 @@ impl Encoder {
     /// the scene layout, cascade rows off the scene cascade, keyed by layer.
     ///
     /// `plan` is the paint plan for this frame:
-    /// - `RenderKind::Full` paints everything (first frame, surface change,
+    /// - `Damage::Full` paints everything (first frame, surface change,
     ///   full-repaint fallback).
-    /// - `RenderKind::Partial { damage }` runs damage-aware subtree
+    /// - `Damage::Partial(damage)` runs damage-aware subtree
     ///   culling: a node whose `paint_rect` doesn't intersect any rect in
     ///   `region` short-circuits the whole subtree's recursion *and* its
     ///   Push/Pop emission. Caller's responsibility to skip the call
@@ -107,9 +108,9 @@ impl Encoder {
             gradient_atlas,
         } = self;
 
-        let damage_filter = match &plan.kind {
-            RenderKind::Partial { damage } => Some(&damage.region),
-            RenderKind::Full => None,
+        let damage_filter = match &plan.damage {
+            Damage::Partial(damage) => Some(&damage.region),
+            Damage::Full => None,
         };
 
         let viewport = scene.display.logical_rect();

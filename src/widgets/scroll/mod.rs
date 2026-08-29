@@ -450,7 +450,8 @@ impl<'a> Scroll<'a> {
         // below.
         let mut widget = ui.widget(self.node);
         let id = widget.id();
-        let pan = self.node.scroll_spec().pan_mask();
+        let spec = self.node.scroll_spec();
+        let pan = spec.pan_mask();
         if self.zoom.is_some() {
             debug_assert!(
                 pan.x && pan.y,
@@ -484,7 +485,7 @@ impl<'a> Scroll<'a> {
         let inner_value = widget.record(ui, None, |ui| {
             let inner_value = ui.widget(inner).record(ui, inner_chrome.as_ref(), body);
             if let Some(bars) = &bars {
-                bars.record(ui, scroll_id, state, geom, pan);
+                bars.record(ui, scroll_id, state, geom, spec);
             }
             inner_value
         });

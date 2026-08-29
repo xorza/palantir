@@ -731,7 +731,7 @@ fn reparent_at_same_rect_damages_moved_subtree() {
     let mut h = UiHarness::new(DISPLAY.physical);
     frame(&mut h, |ui| build(ui, false));
     let damage = frame(&mut h, |ui| build(ui, true));
-    let region = damage.expect_partial();
+    let region = Damage::expect_partial(damage);
     assert!(
         region.any_intersects(LEAF_PROBE),
         "moved leaf's extent must be damaged; region = {region:?}",
@@ -739,7 +739,7 @@ fn reparent_at_same_rect_damages_moved_subtree() {
     // Follow-up frame with no further move settles back to Skip — the
     // refreshed snapshot carries the new parent_key.
     let settled = frame(&mut h, |ui| build(ui, true));
-    assert_eq!(settled, Damage::Skip, "reparent damage must not repeat");
+    assert_eq!(settled, None, "reparent damage must not repeat");
 }
 
 /// Pin: the same move under a hidden ancestor damages nothing.
@@ -756,7 +756,7 @@ fn reparenting_a_hidden_subtree_damages_nothing() {
     frame(&mut h, |ui| build(ui, false));
     assert_eq!(
         frame(&mut h, |ui| build(ui, true)),
-        Damage::Skip,
+        None,
         "a subtree that paints nothing costs nothing to move",
     );
 }
@@ -796,7 +796,7 @@ fn front_insert_damages_only_the_new_shape() {
     let mut h = UiHarness::new(DISPLAY.physical);
     frame(&mut h, |ui| build(ui, false));
     let damage = frame(&mut h, |ui| build(ui, true));
-    let region = damage.expect_partial();
+    let region = Damage::expect_partial(damage);
     assert!(
         region.any_intersects(NEW_PROBE),
         "inserted shape must be damaged; region = {region:?}",

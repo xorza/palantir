@@ -5,7 +5,6 @@ use crate::display::Display;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::Color, rect::Rect};
-use crate::renderer::render_plan::{RenderKind, RenderPlan};
 use crate::scene::damage::Damage;
 use crate::scene::node::configure::Configure;
 use crate::ui::harness::UiHarness;
@@ -24,19 +23,8 @@ pub(super) const DISPLAY: Display = Display {
 /// doesn't fire, and return the damage decision for the just-completed
 /// frame. Test sites that care about the damage shape bind the return;
 /// the rest ignore it.
-pub(super) fn frame(h: &mut UiHarness, f: impl FnMut(&mut Ui)) -> Damage {
-    let report = h.frame(f);
-    match report.plan {
-        None => Damage::Skip,
-        Some(RenderPlan {
-            kind: RenderKind::Full,
-            ..
-        }) => Damage::Full,
-        Some(RenderPlan {
-            kind: RenderKind::Partial { damage },
-            ..
-        }) => Damage::Partial(damage),
-    }
+pub(super) fn frame(h: &mut UiHarness, f: impl FnMut(&mut Ui)) -> Option<Damage> {
+    h.frame(f).plan.map(|plan| plan.damage)
 }
 
 /// The standard "root with one 50×50 frame" tree used by most damage

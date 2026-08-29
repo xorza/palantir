@@ -129,11 +129,6 @@ pub(crate) struct InputState {
     /// [`Self::pointer_events`], which layer-gates it against
     /// [`Self::silenced`].
     pub(crate) frame_pointer_events: Vec<PointerEvent>,
-    /// Frame-runtime clock as of the last `Ui::frame`, refreshed
-    /// once per frame so input handlers running *between* frames stamp
-    /// events on the same deterministic clock the rest of the crate uses
-    /// (vs wall-clock `Instant`). Drives double-click timing.
-    pub(crate) frame_time: Duration,
 }
 
 impl Default for InputState {
@@ -159,7 +154,6 @@ impl Default for InputState {
             signal_since_last_frame: InputSignal::None,
             subs: Watches::default(),
             frame_pointer_events: Vec::new(),
-            frame_time: Duration::ZERO,
         }
     }
 }
@@ -393,7 +387,17 @@ impl InputState {
     /// a `PointerMoved` over a non-hover-reactive surface (no active
     /// capture, no hover/scroll target change) leaves
     /// `requests_repaint` false so the frame can be skipped entirely.
-    pub(crate) fn on_input(&mut self, event: InputEvent, cascade: &Cascade) -> InputDelta {
+    ///
+    /// `now` is the frame-runtime clock, handed in by the caller that
+    /// owns it: events arrive *between* frames, so multi-press timing
+    /// must read the deterministic frame clock rather than a wall-clock
+    /// `Instant`, and a copy kept here would be a second owner of it.
+    pub(crate) fn on_input(
+        &mut self,
+        event: InputEvent,
+        cascade: &Cascade,
+        now: Duration,
+    ) -> InputDelta {
         if !event.is_valid() {
             return InputDelta::default();
         }
@@ -474,9 +478,6 @@ impl InputState {
                     self.push_pointer_event(PointerWake::BUTTONS, pointer_pos, |pos| {
                         PointerEvent::Down { pos, button: btn }
                     });
-                // Frame clock for multi-press timing — read before the
-                // `capture_mut` borrow.
-                let now = self.frame_time;
                 let cap = self.capture_mut(btn);
                 match hit.zip(pointer_pos) {
                     Some((target, pos)) => cap.begin_press(target, pos, now),

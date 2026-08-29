@@ -6,6 +6,7 @@ use crate::input::response::response_state::ResponseState;
 use crate::input::sense::Sense;
 use crate::layout::axis::Axis;
 use crate::layout::scrollbars::{self, BarDomain, ScrollbarsDef};
+use crate::layout::types::layout_mode::ScrollSpec;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::approx;
 use crate::primitives::background::Background;
@@ -264,7 +265,7 @@ impl Bars {
         scroll_id: WidgetId,
         state: ScrollState,
         geom: ScrollGeometry,
-        pan: BVec2,
+        spec: ScrollSpec,
     ) {
         // The viewport was opened on the line above, so this pass's id
         // map already holds its node — the handle the driver needs to
@@ -274,7 +275,7 @@ impl Bars {
             content,
             offset: state.offset,
             zoom: state.zoom,
-            pan,
+            spec,
             reserve_y: geom.space.reserve_y,
             reserve_x: geom.space.reserve_x,
             padding: geom.padding,

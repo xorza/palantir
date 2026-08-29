@@ -96,15 +96,12 @@ impl<'a> FrameCycle<'a> {
 
         let first_frame = self.ui.frame_runtime.is_first_frame();
         self.ui.frame_runtime.advance_clock(stamp.time);
-        // Refresh the input clock so input handlers running before the
-        // next frame timestamp double-clicks on this deterministic time.
-        self.ui.input.frame_time = self.ui.frame_runtime.time;
         let plan = self.ui.frame_runtime.take_frame_plan(FrameClassifyInput {
             display: stamp.display,
             damage_baseline_valid,
             input_policy: self.ui.input_policy(),
             input_signal: self.ui.input.signal_since_last_frame,
-            close_requested: self.ui.window_frame.close_requested,
+            close_requested: self.ui.close_requested(),
         });
 
         // `repaint_requested` is not cleared here: `take_frame_plan`
@@ -184,7 +181,7 @@ impl<'a> FrameCycle<'a> {
             cascade: &self.ui.cascade,
             surface,
             prev_time,
-            now: self.ui.frame_runtime.time,
+            now: self.ui.now(),
         };
         let damage = match plan {
             FramePlan::PaintOnly => self.engines.damage.compute_paint_only(input),
@@ -201,7 +198,7 @@ impl<'a> FrameCycle<'a> {
         // load-bearing (seeds `prev` for frame 2's incremental diff)
         // so we keep the call; the assert just pins the invariant.
         debug_assert!(
-            !first_frame || matches!(damage, Damage::Full),
+            !first_frame || matches!(damage, Some(Damage::Full)),
             "first frame must produce Damage::Full; got {damage:?}",
         );
 
@@ -211,11 +208,7 @@ impl<'a> FrameCycle<'a> {
         // gives the next quantum boundary — without this, PaintOnly
         // drains the queued ANIM wake without replacing it and the
         // caret freezes until input forces a FullRecord.
-        if let Some(min_wake) = self
-            .ui
-            .forest
-            .min_paint_anim_wake(self.ui.frame_runtime.time)
-        {
+        if let Some(min_wake) = self.ui.forest.min_paint_anim_wake(self.ui.now()) {
             self.ui.frame_runtime.schedule_wake(
                 min_wake,
                 WakeReasons::ANIM,
@@ -373,12 +366,9 @@ impl<'a> FrameCycle<'a> {
         // with identical structure when `subtree_hash` matches, so its
         // NodeId-indexed rows still line up).
         let fp = cascade::engine::cascade_fingerprint(&self.ui.forest, self.ui.display);
-        let skip = self.ui.frame_runtime.prev_cascade_fp == Some(fp);
-        self.ui.frame_runtime.note_cascade_ran(!skip);
-        if skip {
+        if !self.ui.frame_runtime.cascade_needs_run(fp) {
             return;
         }
-        self.ui.frame_runtime.prev_cascade_fp = Some(fp);
         self.engines.cascade.run(
             &self.ui.forest,
             &self.ui.layout,

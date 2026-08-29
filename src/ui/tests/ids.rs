@@ -5,7 +5,8 @@ use crate::primitives::rect::Rect;
 use crate::primitives::span::Span;
 use crate::primitives::widget_id::WidgetId;
 use crate::renderer::frontend::Frontend;
-use crate::renderer::render_plan::{RenderKind, RenderPlan};
+use crate::renderer::render_plan::RenderPlan;
+use crate::scene::damage::Damage;
 use crate::scene::layer::Layer;
 use crate::scene::node::configure::Configure;
 use crate::scene::tree::node_id::NodeId;
@@ -37,7 +38,7 @@ fn collision_outlines(ui: &Ui) -> Vec<Rect> {
         ui.frame_scene(),
         RenderPlan {
             clear: ui.theme.window_clear,
-            kind: RenderKind::Full,
+            damage: Damage::Full,
         },
     );
     frontend

@@ -48,7 +48,7 @@ fn partial_when_oversized_rect_lies_mostly_off_surface() {
     );
     let damage = Damage::new(collapsed);
     assert!(
-        matches!(damage, Damage::Partial(_)),
+        matches!(damage, Some(Damage::Partial(_))),
         "off-surface inflation must not trip FULL_REPAINT_THRESHOLD; got {damage:?}",
     );
 }
@@ -67,7 +67,7 @@ fn full_when_visible_portion_covers_surface_even_if_rect_overflows() {
     let damage = Damage::new(collapsed);
     assert_eq!(
         damage,
-        Damage::Full,
+        Some(Damage::Full),
         "rect that covers entire surface (plus overflow) must still trip Full",
     );
 }
@@ -82,7 +82,7 @@ fn fully_off_surface_rect_is_dropped_from_region() {
     let collapsed = DamageRegion::collapse_from(&[off_screen], f32::INFINITY, surface);
     assert!(
         collapsed.region.rects.is_empty(),
-        "wholly-off-surface rect must produce an empty region (no Damage::Skip vs Partial drift)",
+        "wholly-off-surface rect must produce an empty region (no skip-vs-Partial drift)",
     );
 }
 
@@ -164,7 +164,7 @@ fn off_surface_first_seen_node_skips_prev_insert() {
 /// removing it while visible clears its pixels (the eviction tail
 /// finds the snapshot). The last two legs regress without the tier-1.5
 /// insert: the second move smears (old pixels stay) and the removal
-/// computes `Damage::Skip` outright.
+/// computes no damage outright.
 #[test]
 fn offscreen_node_scrolling_into_view_is_covered_and_stays_sound() {
     let mut h = UiHarness::new(DISPLAY.physical);
@@ -201,7 +201,7 @@ fn offscreen_node_scrolling_into_view_is_covered_and_stays_sound() {
     // curr-extent push covers its pixels and the insert leg snapshots
     // it now that it's visible.
     let damage = frame(&mut h, |ui| build(-100.0, Some(RED), ui));
-    let region = damage.expect_partial();
+    let region = Damage::expect_partial(damage);
     let covers_c = region
         .iter_rects()
         .any(|r| r.min.x <= 100.5 && r.max().x >= 200.0 - 0.5 && r.max().y >= 40.0 - 0.5);
@@ -213,13 +213,13 @@ fn offscreen_node_scrolling_into_view_is_covered_and_stays_sound() {
 
     // Still frame: nothing changed — tier 1 skips at the root.
     let damage = frame(&mut h, |ui| build(-100.0, Some(RED), ui));
-    assert_eq!(damage, Damage::Skip, "still frame after the move");
+    assert_eq!(damage, None, "still frame after the move");
 
     // Second move: "c" shifts to (0..100). Its just-inserted snapshot
     // joins the prev-extent fold, so its old pixels at (100..200)
     // repaint alongside the new position.
     let damage = frame(&mut h, |ui| build(-200.0, Some(RED), ui));
-    let region = damage.expect_partial();
+    let region = Damage::expect_partial(damage);
     for (label, probe) in [
         ("old", Rect::new(150.0, 0.0, 10.0, 40.0)),
         ("new", Rect::new(50.0, 0.0, 10.0, 40.0)),
@@ -234,7 +234,7 @@ fn offscreen_node_scrolling_into_view_is_covered_and_stays_sound() {
     // Content change on "c" (now snapshotted, at 0..100): the walk
     // descends and the changed-paints arm damages its rect.
     let damage = frame(&mut h, |ui| build(-200.0, Some(BLUE), ui));
-    let region = damage.expect_partial();
+    let region = Damage::expect_partial(damage);
     let rects: Vec<Rect> = region.iter_rects().collect();
     assert_eq!(
         rects,
@@ -246,11 +246,11 @@ fn offscreen_node_scrolling_into_view_is_covered_and_stays_sound() {
     // snapshot and clears its pixels.
     let damage = frame(&mut h, |ui| build(-200.0, None, ui));
     let covers_removed = match damage {
-        Damage::Full => true,
-        Damage::Partial(damage) => damage
+        Some(Damage::Full) => true,
+        Some(Damage::Partial(damage)) => damage
             .region
             .any_intersects(Rect::new(50.0, 0.0, 10.0, 40.0)),
-        Damage::Skip => false,
+        None => false,
     };
     assert!(
         covers_removed,

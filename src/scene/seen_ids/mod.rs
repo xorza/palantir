@@ -93,6 +93,12 @@ pub(crate) struct SeenIds {
     /// Last *painted* frame's `curr`. Only the keys matter for the
     /// rollover diff — values are stale across frames. Same type as
     /// `curr` so `std::mem::swap` is alloc-free.
+    ///
+    /// [`Cascade::by_id`](crate::scene::cascade::Cascade) holds the same
+    /// entries with live values and still cannot serve this diff: it is
+    /// refreshed at every cascade *run*, so a two-pass frame overwrites
+    /// it before rollover and the diff would compare pass A against
+    /// pass B rather than frame against frame.
     prev: WidgetIdMap<Endpoint>,
     /// Diff output: widgets present in `prev` but not in `curr`.
     /// Repopulated by [`Self::rollover`]; consumers iterate via a

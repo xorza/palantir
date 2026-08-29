@@ -1,4 +1,5 @@
 use crate::input::sense::Sense;
+use crate::layout::axis::Axis;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::layout_mode::PackedLayoutMeta;
 use crate::layout::types::limits::MAX_PACKED_GAP;
@@ -250,10 +251,10 @@ fn unconfigured_and_explicit_default_values_remain_distinct() {
 fn constructors_install_layout_modes() {
     let cases = [
         (Node::leaf(), LayoutMode::Leaf),
-        (Node::hstack(), LayoutMode::HStack),
-        (Node::vstack(), LayoutMode::VStack),
-        (Node::wrap_hstack(), LayoutMode::WrapHStack),
-        (Node::wrap_vstack(), LayoutMode::WrapVStack),
+        (Node::hstack(), LayoutMode::Stack(Axis::X)),
+        (Node::vstack(), LayoutMode::Stack(Axis::Y)),
+        (Node::wrap_hstack(), LayoutMode::WrapStack(Axis::X)),
+        (Node::wrap_vstack(), LayoutMode::WrapStack(Axis::Y)),
         (Node::zstack(), LayoutMode::ZStack),
         (Node::canvas(), LayoutMode::Canvas),
     ];
@@ -292,7 +293,7 @@ fn layout_core_round_trips_mode_align_visibility() {
             Visibility::Visible,
         ),
         (
-            LayoutMode::HStack,
+            LayoutMode::Stack(Axis::X),
             Align::new(HAlign::Left, VAlign::Center),
             Visibility::Hidden,
         ),
@@ -317,12 +318,12 @@ fn layout_core_round_trips_mode_align_visibility() {
             Visibility::Hidden,
         ),
         (
-            LayoutMode::WrapHStack,
+            LayoutMode::WrapStack(Axis::X),
             Align::new(HAlign::Auto, VAlign::Auto),
             Visibility::Visible,
         ),
         (
-            LayoutMode::WrapVStack,
+            LayoutMode::WrapStack(Axis::Y),
             Align::new(HAlign::Auto, VAlign::Auto),
             Visibility::Visible,
         ),
@@ -337,7 +338,7 @@ fn layout_core_round_trips_mode_align_visibility() {
             Visibility::Visible,
         ),
         (
-            LayoutMode::VStack,
+            LayoutMode::Stack(Axis::Y),
             Align::new(HAlign::Auto, VAlign::Auto),
             Visibility::Visible,
         ),

@@ -80,7 +80,7 @@ impl CascadeInputHash {
 ///
 /// ## Columnar split
 ///
-/// The per-node data is deliberately divided four ways, driven by
+/// The per-node data is deliberately divided five ways, driven by
 /// who reads what together:
 ///
 /// - [`Self::cascade_inputs`] is the only datum on the per-node hot
@@ -92,8 +92,6 @@ impl CascadeInputHash {
 ///   paint" — the encoder's cull, and damage's two moved-subtree
 ///   pushes. One column rather than a fold each caller runs over the
 ///   rows, so the answer cannot depend on who asked.
-/// - [`Self::subtree_hashes`] retains the previous walk's paint
-///   invalidation state.
 /// - [`Self::subtree_ends`] is read only by [`Cascade::is_within`]
 ///   ancestry lookups — sparse random access, never a walk, so it
 ///   must not fatten the walked columns.
@@ -102,6 +100,9 @@ impl CascadeInputHash {
 ///   per-shape legs (vacant insert, hash mismatch, paint-anim lookup),
 ///   so it sits behind a `node_spans[i]` indirection that damage's
 ///   subtree-skip fast path skips entirely.
+/// - [`Self::arena_hashes`] stamps the retained `paint_arena` rows with
+///   the authoring rollup they were built from — provenance, not a
+///   walked column.
 #[derive(Debug, Default)]
 pub(crate) struct LayerCascade {
     /// Paint-excluding authoring hash from the last full rebuild.
@@ -145,10 +146,6 @@ pub(crate) struct LayerCascade {
     /// own visible rect is in here and in no row, which only ever makes
     /// the answer cover more than the subtree's rows do.
     pub(crate) subtree_paint_rects: Vec<Rect>,
-    /// Previous authoring hashes used to skip unchanged subtrees.
-    /// Dirty ancestors recompute their own paint rows, so no separate
-    /// per-node paint hash or own extent is retained.
-    subtree_hashes: Vec<ContentHash>,
     /// Per-node pre-order subtree end (`Tree`'s `subtree_end`, grid
     /// flag stripped), snapshotted so ancestry queries
     /// ([`Cascade::is_within`]) can run against the frozen cascade
@@ -158,6 +155,24 @@ pub(crate) struct LayerCascade {
     subtree_ends: Vec<u32>,
     /// Unified paint arena (rows + per-node spans).
     pub(super) paint_arena: PaintArena,
+    /// Per-node `Tree.rollups.subtree` the retained [`Self::paint_arena`]
+    /// rows were built from — the per-node half of the validity gate
+    /// whose whole-layer half is [`Self::static_hash`],
+    /// [`Self::paint_cardinality`] and [`Self::layout_hash`]. An
+    /// incremental repair descends exactly where this disagrees with the
+    /// live rollup and re-stamps what it repaired. Dirty ancestors
+    /// recompute their own paint rows, so no separate per-node paint hash
+    /// or own extent is retained.
+    ///
+    /// **Not the damage engine's snapshot of the same rollup.** The two
+    /// hold equal values and cannot be merged: this one is node-indexed,
+    /// and [`NodeSnapshot::subtree_hash`](crate::scene::damage::node_snapshot::NodeSnapshot)
+    /// is keyed by [`WidgetId`] because a widget outlives the index it
+    /// occupied. The frames where a widget's index moves are exactly the
+    /// frames a full rebuild overwrites this whole column, so neither
+    /// reader can answer from the other's copy without a per-node hash
+    /// probe on the repair path.
+    arena_hashes: Vec<ContentHash>,
     /// Offset of this layer's first `EntryRow` in
     /// [`Cascade::entries`] — fixed for the layer's run, set at
     /// `reset_for` time. A full rebuild pushes one entry per node;
@@ -181,9 +196,9 @@ impl LayerCascade {
         self.cascade_inputs
             .resize(n_nodes, CascadeInputHash::default());
         self.subtree_paint_rects.resize(n_nodes, Rect::ZERO);
-        self.subtree_hashes.resize(n_nodes, ContentHash::default());
         self.subtree_ends.resize(n_nodes, 0);
         self.paint_arena.reset_for(n_nodes);
+        self.arena_hashes.resize(n_nodes, ContentHash::default());
         self.entries_base = entries_base;
     }
 }

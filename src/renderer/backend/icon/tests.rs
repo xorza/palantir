@@ -21,6 +21,13 @@ mod gpu {
     /// path — parse, rasterize, pack — runs.
     const SOLID: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><rect width="8" height="8" fill="#000"/></svg>"##;
 
+    /// One frame boundary the way `WgpuBackend::submit` drives it, on a
+    /// clock this test owns in place of the shaper's.
+    fn tick(backend: &mut IconBackend, frame: &mut u64) {
+        *frame += 1;
+        backend.end_frame(*frame);
+    }
+
     fn load(icons: &IconRegistry) -> IconSet {
         icons.register(Rc::new(IconAtlas::from_svgs([("solid", SOLID)])))
     }
@@ -44,6 +51,7 @@ mod gpu {
         let gpu = headless_test_gpu();
         let icons = IconRegistry::default();
         let mut backend = IconBackend::new(&gpu.device, icons.clone());
+        let mut frame = 0u64;
 
         let set = load(&icons);
         draw(&mut backend, &gpu.device, &set);
@@ -51,8 +59,8 @@ mod gpu {
         assert_eq!(backend.atlas.cache.len(), 1);
 
         // Held: submits come and go and the set stays loaded.
-        backend.end_frame();
-        backend.end_frame();
+        tick(&mut backend, &mut frame);
+        tick(&mut backend, &mut frame);
         assert_eq!(backend.rasterizer.parsed_count(), 1);
         assert_eq!(backend.atlas.cache.len(), 1);
 
@@ -64,7 +72,7 @@ mod gpu {
             1,
             "the drop itself must not reach into the backend",
         );
-        backend.end_frame();
+        tick(&mut backend, &mut frame);
         assert_eq!(
             backend.rasterizer.parsed_count(),
             0,
@@ -86,12 +94,13 @@ mod gpu {
         let gpu = headless_test_gpu();
         let icons = IconRegistry::default();
         let mut backend = IconBackend::new(&gpu.device, icons.clone());
+        let mut frame = 0u64;
 
         let first = load(&icons);
         assert_eq!(first.handle(IconId(0)).icon.set, IconSetId::new(0, 0));
         draw(&mut backend, &gpu.device, &first);
         drop(first);
-        backend.end_frame();
+        tick(&mut backend, &mut frame);
 
         let second = load(&icons);
         assert_eq!(
@@ -115,14 +124,15 @@ mod gpu {
         let gpu = headless_test_gpu();
         let icons = IconRegistry::default();
         let mut backend = IconBackend::new(&gpu.device, icons.clone());
+        let mut frame = 0u64;
 
         let mut held: Option<IconSet> = None;
-        for frame in 0..32u32 {
+        for _ in 0..32 {
             let next = load(&icons);
             draw(&mut backend, &gpu.device, &next);
             // Assigning is what drops the previous frame's set.
             held = Some(next);
-            backend.end_frame();
+            tick(&mut backend, &mut frame);
             // One live set's worth, whatever the frame number: the previous
             // frame's parse and raster were reclaimed by this submit.
             assert_eq!(
@@ -136,7 +146,7 @@ mod gpu {
             assert_eq!(live, 1, "frame {frame} left a set resident");
         }
         drop(held);
-        backend.end_frame();
+        tick(&mut backend, &mut frame);
         assert_eq!(
             (backend.rasterizer.parsed_count(), backend.atlas.cache.len()),
             (0, 0),

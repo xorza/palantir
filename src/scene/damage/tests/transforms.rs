@@ -291,7 +291,7 @@ fn pan_with_invariant_clipped_paint_rect_stays_partial() {
         let collapsed = h.collapsed_damage();
         let damage = Damage::new(collapsed);
         assert!(
-            matches!(damage, Damage::Partial(_)),
+            matches!(damage, Some(Damage::Partial(_))),
             "pan with clip-saturated direct-paint node must stay Partial \
              (the new diff branch pushes one paint_rect per shifted node; \
              that must not blow past FULL_REPAINT_THRESHOLD on a single tick). \
@@ -430,7 +430,7 @@ fn moved_subtree_damages_extents_and_refreshes_snapshots() {
     );
     assert_eq!(
         Damage::new(h.collapsed_damage()),
-        Damage::Skip,
+        None,
         "still frame after motion",
     );
 }

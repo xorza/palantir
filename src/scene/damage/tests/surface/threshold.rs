@@ -23,7 +23,10 @@ fn damage_filter_returns_partial_when_small() {
         .iter_rects()
         .next()
         .expect("single-leaf change → some damage");
-    assert_eq!(Damage::new(h.collapsed_damage()).expect_partial(), r.into());
+    assert_eq!(
+        Damage::expect_partial(Damage::new(h.collapsed_damage())),
+        r.into()
+    );
 }
 
 /// Heuristic: total coverage = `sum(rect.area()) / surface_area`;
@@ -111,9 +114,9 @@ fn damage_filter_threshold_cases() {
         let collapsed = DamageRegion::collapse_from(rects, DEFAULT_PASS_BUDGET_PX, *surface);
         match (Damage::new(collapsed), want) {
             (damage, Some(want)) => {
-                assert_eq!(damage.expect_partial(), *want, "case: {label}")
+                assert_eq!(Damage::expect_partial(damage), *want, "case: {label}")
             }
-            (Damage::Full, None) => {}
+            (Some(Damage::Full), None) => {}
             (other, None) => panic!("case: {label}: expected Full, got {other:?}"),
         }
     }
@@ -132,6 +135,6 @@ fn no_damage_means_skip() {
             d.budget_px,
             TEST_SURFACE
         )),
-        Damage::Skip,
+        None,
     );
 }
