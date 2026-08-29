@@ -165,17 +165,17 @@ use wgpu::util::StagingBelt;
 /// after a pipeline switch.
 const IMMEDIATES_BYTES: u32 = 16;
 
-/// The four things [`WgpuBackend::submit`] settles about a frame before
-/// it opens the encoder. Everything else the upload phase needs is on
-/// the [`Submission`] itself, which is handed over whole rather than
-/// restated field by field here.
+/// The two things [`WgpuBackend::submit`] settles about a frame before it
+/// opens the encoder. Each combines more than one field, so deriving it
+/// again downstream would be a second derivation rather than a second
+/// read; anything the upload phase can read straight off the
+/// [`Submission`] stays there, and it is handed over whole.
 #[derive(Clone, Copy, Debug)]
 struct UploadPlan {
     /// Effective clear colour after `RenderBuffer::clear_override`.
     clear: Color,
+    /// The debug flag, and only on a frame it can apply to.
     dim_undamaged: bool,
-    use_stencil: bool,
-    is_partial: bool,
 }
 
 /// Wgpu renderer owning its device/queue handles, pipelines, and text backend.
@@ -450,7 +450,7 @@ impl WgpuBackend {
         self.ensure_format(format);
 
         let repaint_scissors = build_repaint_scissors(plan.kind, buffer);
-        let is_partial = matches!(repaint_scissors, RepaintScissors::Partial(_));
+        let is_partial = plan.kind.is_partial();
         let dim_undamaged = debug_overlay.dim_undamaged && is_partial;
 
         // The stencil texture (rounded-clip masking) is ensured by the
@@ -471,8 +471,6 @@ impl WgpuBackend {
             UploadPlan {
                 clear,
                 dim_undamaged,
-                use_stencil,
-                is_partial,
             },
         );
 
@@ -558,18 +556,22 @@ impl WgpuBackend {
     ) -> u32 {
         let Submission {
             owner,
+            targets,
             payloads,
             buffer,
             plan,
             debug_overlay,
-            ..
         } = *sub;
         let UploadPlan {
             clear,
             dim_undamaged,
-            use_stencil,
-            is_partial,
         } = uploads;
+        // Both read off the submission rather than carried beside it: it
+        // already says whether there is a stencil attachment and what the
+        // plan repaints, and a copy alongside is a second route to one
+        // fact.
+        let use_stencil = targets.stencil.is_some();
+        let is_partial = plan.kind.is_partial();
         let mut ctx = GpuCtx::new(&self.device, &self.queue, &mut self.staging_belt, encoder);
 
         // Texture-only uploads (the belt is buffer-only). Run

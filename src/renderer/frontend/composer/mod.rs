@@ -136,6 +136,12 @@ struct OpenBatch {
     /// Cursor into `out.texts` where this batch's run span begins.
     /// Combined with `out.texts.len()` at close-time to compute the
     /// finalized [`Span`](crate::primitives::span::Span).
+    ///
+    /// Recorded rather than derived from the previous batch's span end,
+    /// which it always equals. Deriving it would make the two agree by
+    /// construction; recording it lets `close_batch` assert they do, and
+    /// so catch a run pushed to `out.texts` outside any batch — which
+    /// derivation would silently absorb into the next batch's span.
     texts_start: u32,
     /// Index (into `out.groups`) of the last group whose text
     /// contributed to this batch. Refreshed on every text push (the

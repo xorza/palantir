@@ -1066,12 +1066,16 @@ impl ComposeSession<'_> {
     /// reuse the same `OpenBatch` and only refresh `last_group` to
     /// the in-flight group's eventual index.
     fn open_batch(&mut self) -> &mut OpenBatch {
+        // Read before the borrow of `composer.batch`, which is what keeps
+        // a fresh batch's own group index reachable here.
+        let last_group = self.out.groups.len() as u32;
+        let texts_start = self.out.texts.len() as u32;
         let b = self.composer.batch.open.get_or_insert(OpenBatch {
-            texts_start: self.out.texts.len() as u32,
-            last_group: 0,
+            texts_start,
+            last_group,
             strict: false,
         });
-        b.last_group = self.out.groups.len() as u32;
+        b.last_group = last_group;
         b
     }
 
