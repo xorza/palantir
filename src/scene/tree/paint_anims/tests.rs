@@ -1,3 +1,4 @@
+use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::paint_anims::*;
 
 const HP: Duration = Duration::from_millis(500);
@@ -15,14 +16,15 @@ fn blink() -> PaintAnim {
     }
 }
 
-fn spinning(speed: f32) -> PaintAnimEntry {
+fn spinning(shape_idx: u32, speed: f32) -> PaintAnimEntry {
     PaintAnimEntry {
         anim: PaintAnim::Spin {
             speed,
             started_at: START,
         },
+        shape_idx,
         row: 0,
-        node_idx: 0,
+        node: NodeId(0),
     }
 }
 
@@ -30,17 +32,13 @@ fn spinning(speed: f32) -> PaintAnimEntry {
 fn sparse_cursor_samples_boundaries_and_advances_across_skipped_animations() {
     const LAST_SHAPE: u32 = 1_000_000;
     let mut anims = PaintAnims::default();
-    anims.push_entry(0, spinning(1.0));
-    anims.push_entry(5, spinning(2.0));
-    anims.push_entry(10, spinning(3.0));
-    anims.push_entry(LAST_SHAPE, spinning(4.0));
+    anims.push_entry(spinning(0, 1.0));
+    anims.push_entry(spinning(5, 2.0));
+    anims.push_entry(spinning(10, 3.0));
+    anims.push_entry(spinning(LAST_SHAPE, 4.0));
 
-    assert_eq!(anims.shape_indices, [0, 5, 10, LAST_SHAPE]);
-    assert_eq!(anims.entries.len(), 4);
-    assert_eq!(
-        std::mem::size_of_val(anims.shape_indices.as_slice()),
-        4 * std::mem::size_of::<u32>(),
-    );
+    let registered: Vec<u32> = anims.entries.iter().map(|entry| entry.shape_idx).collect();
+    assert_eq!(registered, [0, 5, 10, LAST_SHAPE]);
 
     let now = START + Duration::from_secs(1);
     let mut cursor = anims.cursor();
@@ -70,12 +68,9 @@ fn sparse_cursor_samples_boundaries_and_advances_across_skipped_animations() {
         "the overshot registration must still be there for its own shape",
     );
 
-    let shape_capacity = anims.shape_indices.capacity();
     let entry_capacity = anims.entries.capacity();
     anims.clear();
-    assert!(anims.shape_indices.is_empty());
     assert!(anims.entries.is_empty());
-    assert_eq!(anims.shape_indices.capacity(), shape_capacity);
     assert_eq!(anims.entries.capacity(), entry_capacity);
 }
 
@@ -87,7 +82,7 @@ fn sparse_cursor_samples_boundaries_and_advances_across_skipped_animations() {
 #[should_panic(expected = "must be monotonic")]
 fn sampling_backwards_is_a_caller_bug() {
     let mut anims = PaintAnims::default();
-    anims.push_entry(2, spinning(1.0));
+    anims.push_entry(spinning(2, 1.0));
     let now = START + Duration::from_secs(1);
     let mut cursor = anims.cursor();
     cursor.sample(4, now);

@@ -30,7 +30,9 @@ fn b() -> Rc<IconAtlas> {
 
 /// Ids of the sets currently resident, in slot order.
 fn resident(reg: &IconRegistry) -> Vec<IconSetId> {
-    reg.sets().into_iter().map(|(id, _)| id).collect()
+    (0..reg.slot_count())
+        .filter_map(|slot| Some(reg.resident(slot)?.id))
+        .collect()
 }
 
 /// Drain with no backend to notify, answering which ids were freed.

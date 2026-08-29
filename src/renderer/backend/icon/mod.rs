@@ -160,13 +160,16 @@ impl IconBackend {
             return;
         }
         self.warmed = Some(mark);
-        for (set, atlas) in self.icons.sets() {
-            for (i, def) in atlas.icons().iter().enumerate() {
+        for slot in 0..self.icons.slot_count() {
+            let Some(set) = self.icons.resident(slot) else {
+                continue;
+            };
+            for (i, def) in set.atlas.icons().iter().enumerate() {
                 if !def.filtered {
                     continue;
                 }
                 let icon = IconRef {
-                    set,
+                    set: set.id,
                     icon: IconId(i as u16),
                 };
                 self.slot(

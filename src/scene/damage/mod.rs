@@ -421,7 +421,7 @@ fn extend_predamaged(
             if e.anim.next_wake(prev).is_none_or(|wake| wake > now) {
                 continue;
             }
-            let node_span = node_spans[e.node_idx as usize];
+            let node_span = node_spans[e.node.idx()];
             // `e.row` was captured from the recording counter
             // (`OpenFrame::paint_rows`), and `compute_paint_rect` emits
             // one row per chrome/shape/child in the same record order,

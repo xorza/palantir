@@ -657,9 +657,29 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
     ///
     /// The trade is that the victim is approximately, not exactly, the
     /// oldest. That is the standard bargain for an atlas: entries are
-    /// rasterizations, regenerable from the font at any time, and the
-    /// working set is protected regardless because anything drawn this
-    /// frame is skipped outright.
+    /// rasterizations, regenerable at any time.
+    ///
+    /// # What the clock protects
+    ///
+    /// What has been drawn *so far this frame*, not what the frame is
+    /// going to draw. [`Self::current_frame`] moves in
+    /// [`Self::advance_to`] at the end of a submit, and both
+    /// [`Self::touch`] and [`Self::insert`] stamp that reading — so
+    /// during a frame's prepare walk a slot the next batch still needs
+    /// carries the previous frame's stamp and is exactly as eligible as
+    /// a cold one.
+    ///
+    /// Under sustained pressure an early batch's misses can therefore
+    /// take rectangles a later batch was about to hit. That batch's
+    /// `try_emit_cached` sees the generation move, drops its row and
+    /// re-rasterizes, and the insert can take another slot the same
+    /// frame still owes. The cascade is one pass rather than a loop,
+    /// because everything already drawn this frame *is* protected, and
+    /// it costs re-rasterization rather than a wrong pixel.
+    ///
+    /// Closing it means touching every glyph a frame will draw before
+    /// rasterizing any of them — a whole-frame pre-pass, which the
+    /// per-batch `prepare_batch` contract has no place to put.
     ///
     /// **An intrusive MRU list is the wrong tool here**, though the
     /// gradient atlas has one. Its `touch` is move-to-head, ~six link

@@ -276,7 +276,10 @@ fn scrolled_away_run_keeps_the_protected_window() {
 
     // What that saved, stated as a contrast: past the protected window
     // the buffer is genuinely gone and has to be rebuilt.
-    idle(&mut text, cosmic::PROTECTED_KEEP_FRAMES + 1);
+    idle(
+        &mut text,
+        cosmic::PROTECTED_KEEP_FRAMES + cosmic::PROTECTED_SPREAD_MASK + 1,
+    );
     assert!(
         !text.shaper.has_cosmic_buffer(key),
         "premise: the window lapsed"

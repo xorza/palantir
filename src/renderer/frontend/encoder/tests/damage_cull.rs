@@ -199,7 +199,14 @@ fn viewport_and_damage_culls_advance_the_sparse_paint_anim_cursor() {
                 });
         });
 
-        assert_eq!(h.ui.tree(Layer::Main).paint_anims.shape_indices, [0, 1],);
+        let animated: Vec<u32> =
+            h.ui.tree(Layer::Main)
+                .paint_anims
+                .entries
+                .iter()
+                .map(|entry| entry.shape_idx)
+                .collect();
+        assert_eq!(animated, [0, 1]);
         let cmds = match cull {
             Cull::Viewport => h.encode_paint(),
             Cull::Damage => {

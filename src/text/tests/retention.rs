@@ -197,14 +197,17 @@ fn a_lookup_promotes_an_entry_to_the_protected_window() {
     assert!(c.shaped_run(keys[2]).is_none(), "probationary key dropped");
     assert!(c.shaped_run(keys[3]).is_none(), "probationary key dropped");
 
-    // And they last out the protected window, then go.
+    // And they last out the protected window, then go. That window is a
+    // range `PROTECTED_SPREAD_MASK` frames wide and each key sits at its
+    // own point in it, so what is pinned here is the floor and the
+    // ceiling rather than one shared edge.
     idle_frames(
         &mut c,
         cosmic::PROTECTED_KEEP_FRAMES - cosmic::PROBATION_KEEP_FRAMES - 1,
     );
-    assert_eq!(c.cache_len(), 2, "still inside the protected window");
-    idle_frames(&mut c, 1);
-    assert_eq!(c.cache_len(), 0, "one frame past it, dropped");
+    assert_eq!(c.cache_len(), 2, "inside the window every key is promised");
+    idle_frames(&mut c, cosmic::PROTECTED_SPREAD_MASK + 1);
+    assert_eq!(c.cache_len(), 0, "past the widest of them, both dropped");
 }
 
 /// The regression the age policy exists to prevent: a live label minting
@@ -397,6 +400,63 @@ fn a_supplanted_ticket_does_not_evict_an_entry_promoted_since() {
     assert_eq!(c.cache_len(), 1, "the promotion outranks the stale ticket");
 
     // And it is still on a real deadline, not immortal.
-    idle_frames(&mut c, cosmic::PROTECTED_KEEP_FRAMES);
+    idle_frames(
+        &mut c,
+        cosmic::PROTECTED_KEEP_FRAMES + cosmic::PROTECTED_SPREAD_MASK,
+    );
     assert_eq!(c.cache_len(), 0, "left alone, it still ages out");
+}
+
+/// Retention is spread across the frames past the window's floor, so a
+/// burst promoted on one frame does not come due on one frame.
+///
+/// A page switch promotes a few hundred runs together. Without the
+/// spread every one of them drops on the same later frame, and past the
+/// recycle pool each drop frees cosmic's line, shape and layout
+/// allocations — one frame paying for what a whole navigation created.
+/// `fill_distinct_widths` is that burst in miniature, and it is also the
+/// case an offset taken from the text hash alone would miss: one body at
+/// many widths is one text and many keys.
+#[test]
+fn a_promoted_burst_expires_across_frames_rather_than_on_one() {
+    const RUNS: u32 = 64;
+
+    let mut c = CosmicMeasure::with_bundled_fonts();
+    let keys = fill_distinct_widths(&mut c, RUNS);
+    for &key in &keys {
+        c.ensure_buffer(TextShapeRequest::for_key(BODY, key).unwrap());
+    }
+    assert_eq!(c.cache_len() as u32, RUNS);
+
+    // The floor is the part every entry is promised.
+    idle_frames(&mut c, cosmic::PROTECTED_KEEP_FRAMES);
+    assert_eq!(
+        c.cache_len() as u32,
+        RUNS,
+        "no entry may die before the window's floor",
+    );
+
+    // Past it they go a frame's share at a time. Frame `floor + 1 + k`
+    // takes exactly the keys whose offset is `k`.
+    let mut live = c.cache_len();
+    let mut dropped = Vec::new();
+    for _ in 0..=cosmic::PROTECTED_SPREAD_MASK {
+        idle_frames(&mut c, 1);
+        dropped.push(live - c.cache_len());
+        live = c.cache_len();
+    }
+    assert_eq!(live, 0, "the whole burst is gone by the ceiling");
+
+    let expected: Vec<usize> = (0..=cosmic::PROTECTED_SPREAD_MASK)
+        .map(|offset| {
+            keys.iter()
+                .filter(|key| key.keep_spread() == offset)
+                .count()
+        })
+        .collect();
+    assert_eq!(dropped, expected, "each key drops on its own offset");
+    assert!(
+        dropped.iter().filter(|&&n| n > 0).count() > 1,
+        "premise: {RUNS} runs must not all share one offset — got {dropped:?}",
+    );
 }

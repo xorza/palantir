@@ -71,7 +71,10 @@ mod gpu {
             "the parsed SVG went with the set",
         );
         assert_eq!(backend.atlas.cache.len(), 0, "and so did its raster");
-        assert!(icons.sets().is_empty(), "and the registry freed the slot");
+        assert!(
+            (0..icons.slot_count()).all(|slot| icons.resident(slot).is_none()),
+            "and the registry freed the slot",
+        );
     }
 
     /// A set loaded into the slot a released one held must not inherit its
@@ -127,7 +130,10 @@ mod gpu {
                 (1, 1),
                 "frame {frame} retained a dead set's caches",
             );
-            assert_eq!(icons.sets().len(), 1, "frame {frame} left a set resident");
+            let live = (0..icons.slot_count())
+                .filter(|&slot| icons.resident(slot).is_some())
+                .count();
+            assert_eq!(live, 1, "frame {frame} left a set resident");
         }
         drop(held);
         backend.end_frame();
