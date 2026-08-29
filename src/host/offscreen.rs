@@ -43,11 +43,10 @@ use crate::common::clipboard::Clipboard;
 use crate::diagnostics::gpu_pass_stats::GpuPassStats;
 use crate::display;
 use crate::host::clock::Clock;
-use crate::host::core::HostCore;
+use crate::host::core::{HostCore, HostCoreConfig};
 use crate::host::device_requirements::DeviceRequirements;
 use crate::host::window_driver::{CpuFrame, PresentStrategy, TargetKey, WindowDriver};
 use crate::primitives::approx::EPS;
-use crate::renderer::backend::backend_config::BackendConfig;
 use crate::text::shaper::TextShaper;
 use crate::ui::Ui;
 use crate::window::window_token::WindowToken;
@@ -76,7 +75,7 @@ pub struct OffscreenHostBuilder {
     /// `HostShared` that does not exist until [`Self::build`]; restating the
     /// defaults here instead is what let the two drift.
     clock: Option<Box<dyn Clock>>,
-    pixel_snap: Option<bool>,
+    pixel_snap: bool,
 }
 
 impl OffscreenHostBuilder {
@@ -110,7 +109,7 @@ impl OffscreenHostBuilder {
 
     /// Configure whether axis-aligned paint edges snap to physical pixels.
     pub fn pixel_snap(mut self, pixel_snap: bool) -> Self {
-        self.pixel_snap = Some(pixel_snap);
+        self.pixel_snap = pixel_snap;
         self
     }
 
@@ -137,8 +136,9 @@ impl OffscreenHostBuilder {
             max_texture_dim,
             self.shaper.unwrap_or_default(),
             Clipboard::default(),
-            BackendConfig {
+            HostCoreConfig {
                 collect_gpu_stats: self.collect_gpu_stats,
+                pixel_snap: self.pixel_snap,
             },
         );
         let mut driver = core
@@ -149,9 +149,6 @@ impl OffscreenHostBuilder {
             .strategy(PresentStrategy::BackbufferCopy);
         if let Some(clock) = self.clock {
             driver = driver.clock(clock);
-        }
-        if let Some(pixel_snap) = self.pixel_snap {
-            driver = driver.pixel_snap(pixel_snap);
         }
         let driver = driver.build();
         OffscreenHost { core, driver }
@@ -175,7 +172,7 @@ impl OffscreenHost {
             shaper: None,
             collect_gpu_stats: false,
             clock: None,
-            pixel_snap: None,
+            pixel_snap: true,
         }
     }
 

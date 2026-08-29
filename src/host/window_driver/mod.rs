@@ -293,11 +293,6 @@ impl WindowDriverBuilder<'_> {
         self
     }
 
-    pub(super) fn pixel_snap(mut self, pixel_snap: bool) -> Self {
-        self.pixel_snap = pixel_snap;
-        self
-    }
-
     pub(super) fn build(self) -> WindowDriver {
         WindowDriver {
             token: self.token,
@@ -319,27 +314,36 @@ impl WindowDriverBuilder<'_> {
 impl WindowDriver {
     /// Start building a driver for `token` from the shared [`HostShared`].
     /// Its `Ui` receives recorder capabilities plus a fresh per-window record
-    /// store. Defaults suit a swapchain window: direct adaptive presentation,
-    /// realtime clock, and physical-pixel snapping.
-    pub(super) fn builder(token: WindowToken, shared: &HostShared) -> WindowDriverBuilder<'_> {
+    /// store. Defaults suit a swapchain window: direct adaptive presentation
+    /// and a realtime clock.
+    ///
+    /// `pixel_snap` is a parameter rather than a default with a setter,
+    /// because it is the host's and every driver a host mints carries the
+    /// same one. A default here would be dead the moment `HostCore::driver`
+    /// overwrote it, and a setter would let one window be built without it.
+    pub(super) fn builder(
+        token: WindowToken,
+        shared: &HostShared,
+        pixel_snap: bool,
+    ) -> WindowDriverBuilder<'_> {
         WindowDriverBuilder {
             token,
             shared,
             strategy: PresentStrategy::DirectAdaptive,
             clock: Box::new(RealtimeClock::new()),
-            pixel_snap: true,
+            pixel_snap,
         }
     }
 
     /// This driver's [`Display`] for a frame of the given surface.
     ///
-    /// **The one place `pixel_snap` reaches a frame.** It is the driver's,
-    /// fixed by the builder — but `Display`'s own default is `true`, so a
-    /// host that assembled one itself would snap regardless of what it
-    /// asked for, and nothing would say so. Minting it here leaves
-    /// nothing to remember: a caller supplies what it knows (the surface,
-    /// and the monitor's refresh where it has one) and the driver
-    /// supplies what it owns.
+    /// **The one place `pixel_snap` reaches a frame.** The host seals it
+    /// once on its `HostCore` and every driver carries it — but `Display`'s
+    /// own default is `true`, so a host that assembled one itself would
+    /// snap regardless of what it asked for, and nothing would say so.
+    /// Minting it here leaves nothing to remember: a caller supplies what
+    /// it knows (the surface, and the monitor's refresh where it has one)
+    /// and the driver supplies what it owns.
     pub(super) fn display(
         &self,
         physical: UVec2,

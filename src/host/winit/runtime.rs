@@ -17,7 +17,7 @@ use winit::window::{Window as WinitWindow, WindowId};
 use crate::app::App;
 use crate::common::clipboard::Clipboard;
 use crate::common::tracy;
-use crate::host::core::HostCore;
+use crate::host::core::{HostCore, HostCoreConfig};
 use crate::host::window_driver::WindowDriver;
 use crate::host::winit::error::WinitHostError;
 use crate::host::winit::gpu::{GpuInit, SurfaceManager, WindowSurface};
@@ -25,7 +25,6 @@ use crate::host::winit::handle::HostHandle;
 use crate::host::winit::window::{FramePresent, Window};
 use crate::host::winit::window_set::{WindowSet, WindowSlot};
 use crate::host::winit::{Bootstrap, native};
-use crate::renderer::backend::backend_config::BackendConfig;
 use crate::text::shaper::TextShaper;
 use crate::window::window_commands::WindowCommands;
 use crate::window::window_config::WindowConfig;
@@ -73,8 +72,9 @@ impl<T: App + 'static> WinitRuntime<T> {
             surfaces.max_texture_dim,
             TextShaper::new(),
             Clipboard::system_or_memory(),
-            BackendConfig {
+            HostCoreConfig {
                 collect_gpu_stats: config.collect_gpu_stats,
+                pixel_snap: config.pixel_snap,
             },
         );
         let mut driver = core.driver(token).build();

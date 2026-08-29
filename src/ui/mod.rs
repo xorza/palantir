@@ -681,12 +681,11 @@ impl Ui {
     /// This window's live geometry for persist-and-restore across launches.
     /// A computed view, not stored state: the logical inner size comes from
     /// [`Self::display`] (the single source of truth for surface size), and
-    /// the physical outer position + maximized flag from the host-refreshed
-    /// window-manager facts. Feed it back through
-    /// [`WindowConfig::position`](crate::WindowConfig) / `inner_size` /
-    /// `maximized` on the next launch to reopen where the user left off.
-    /// `outer_position` is `None` on platforms that don't report it
-    /// (Wayland). All-zero / `None` in headless contexts.
+    /// the placement from the host-refreshed window-manager facts. Feed it
+    /// back through [`WindowConfig::placement`](crate::WindowConfig) and
+    /// `inner_size` on the next launch to reopen where the user left off.
+    /// The placement's position is `None` on platforms that don't report
+    /// one (Wayland). All-zero / `None` in headless contexts.
     pub fn window_geometry(&self) -> WindowGeometry {
         let logical = self.display.logical_size();
         WindowGeometry {
@@ -694,8 +693,7 @@ impl Ui {
                 (logical.w.round() as u32).max(1),
                 (logical.h.round() as u32).max(1),
             ),
-            outer_position: self.window_frame.position,
-            maximized: self.window_frame.maximized,
+            placement: self.window_frame.placement,
         }
     }
 

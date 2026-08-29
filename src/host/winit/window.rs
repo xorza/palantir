@@ -19,6 +19,7 @@ use crate::window::cursor_icon::CursorIcon;
 use crate::window::vsync::Vsync;
 use crate::window::window_commands::WindowCommands;
 use crate::window::window_frame_state::WindowFrameState;
+use crate::window::window_placement::WindowPlacement;
 
 /// What only the windowing system can answer, held until an event that
 /// can change it.
@@ -37,8 +38,7 @@ use crate::window::window_frame_state::WindowFrameState;
 /// clear it.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct SystemFacts {
-    position: Option<IVec2>,
-    maximized: bool,
+    placement: WindowPlacement,
     refresh_millihertz: Option<u32>,
 }
 
@@ -125,12 +125,14 @@ impl Window {
             return facts;
         }
         let facts = SystemFacts {
-            position: self
-                .window
-                .outer_position()
-                .ok()
-                .map(|position| IVec2::new(position.x, position.y)),
-            maximized: self.window.is_maximized(),
+            placement: WindowPlacement {
+                position: self
+                    .window
+                    .outer_position()
+                    .ok()
+                    .map(|position| IVec2::new(position.x, position.y)),
+                maximized: self.window.is_maximized(),
+            },
             refresh_millihertz: self
                 .window
                 .current_monitor()
@@ -181,8 +183,7 @@ impl Window {
         // including a skipped one.
         self.driver.ui.set_window_facts(WindowFrameState {
             close_requested: self.close_requested,
-            position: facts.position,
-            maximized: facts.maximized,
+            placement: facts.placement,
         });
 
         // An occluded window skips its frame, except the one carrying a
@@ -419,7 +420,7 @@ mod tests {
     fn frame_drain_collects_commands_and_applies_close_veto() {
         let shared = HostShared::new(TextShaper::test_mono(), TextureLimit::default());
         let token = WindowToken(17);
-        let mut driver = WindowDriver::builder(token, &shared).build();
+        let mut driver = WindowDriver::builder(token, &shared, true).build();
         let opened = WindowToken(18);
         let mut commands = WindowCommands::default();
 
@@ -483,7 +484,7 @@ mod tests {
     #[test]
     fn vsync_is_a_level_the_drain_copies_and_the_recorder_keeps() {
         let shared = HostShared::new(TextShaper::test_mono(), TextureLimit::default());
-        let mut driver = WindowDriver::builder(WindowToken(3), &shared).build();
+        let mut driver = WindowDriver::builder(WindowToken(3), &shared, true).build();
         let mut commands = WindowCommands::default();
 
         assert_eq!(driver.ui.vsync(), Vsync::On, "vsync is on unless asked off");

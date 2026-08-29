@@ -213,6 +213,12 @@ where
         self
     }
 
+    /// Whether axis-aligned paint edges snap to physical pixels.
+    pub fn pixel_snap(mut self, pixel_snap: bool) -> Self {
+        self.config.pixel_snap = pixel_snap;
+        self
+    }
+
     /// Create the event loop and runtime host. `create_app` remains deferred
     /// until winit provides the first active event-loop callback and its `Ui`.
     ///

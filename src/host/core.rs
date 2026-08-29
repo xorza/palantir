@@ -27,6 +27,17 @@ use crate::text::shaper::TextShaper;
 use crate::window::window_token::WindowToken;
 use std::num::NonZeroU32;
 
+/// The app-global choices a host seals when it builds its core.
+///
+/// `pixel_snap` lives here rather than on each driver because it is the
+/// host's, not the window's: every driver a core mints inherits it, so a
+/// host with several windows cannot set it on one and forget the next.
+#[derive(Clone, Copy, Debug, Default)]
+pub(super) struct HostCoreConfig {
+    pub(super) collect_gpu_stats: bool,
+    pub(super) pixel_snap: bool,
+}
+
 #[derive(Debug)]
 pub(super) struct HostCore {
     pub(super) shared: HostShared,
@@ -35,6 +46,8 @@ pub(super) struct HostCore {
     /// The one shared GPU renderer every window draws through (pipelines,
     /// atlases, image textures).
     pub(super) backend: WgpuBackend,
+    /// Seeded into every driver this core mints — see [`HostCoreConfig`].
+    pixel_snap: bool,
 }
 
 impl HostCore {
@@ -48,19 +61,27 @@ impl HostCore {
         max_texture_dim: NonZeroU32,
         shaper: TextShaper,
         clipboard: Clipboard,
-        config: BackendConfig,
+        config: HostCoreConfig,
     ) -> Self {
         let shared = HostShared::with_clipboard(
             shaper,
             clipboard,
             TextureLimit::from_device(max_texture_dim),
         );
-        let backend = WgpuBackend::new(device, queue, shared.backend_resources(), config);
+        let backend = WgpuBackend::new(
+            device,
+            queue,
+            shared.backend_resources(),
+            BackendConfig {
+                collect_gpu_stats: config.collect_gpu_stats,
+            },
+        );
         let frontend = Frontend::new(max_texture_dim.get(), shared.gradient_atlas.clone());
         Self {
             shared,
             frontend,
             backend,
+            pixel_snap: config.pixel_snap,
         }
     }
 
@@ -69,7 +90,7 @@ impl HostCore {
     /// [`WindowDriver::builder`].
     pub(super) fn driver(&self, token: WindowToken) -> WindowDriverBuilder<'_> {
         self.shared.resources.windows.set_live(token, true);
-        WindowDriver::builder(token, &self.shared)
+        WindowDriver::builder(token, &self.shared, self.pixel_snap)
     }
 
     /// Retire a closed window's render stream, freeing the `GpuView` targets

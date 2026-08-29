@@ -1,6 +1,7 @@
 //! The backend-agnostic options a window opens with.
 
 use crate::primitives::image::Image;
+use crate::window::window_placement::WindowPlacement;
 use glam::{IVec2, UVec2};
 
 /// Per-window options — what [`Ui::open_window`](crate::Ui::open_window)
@@ -19,17 +20,14 @@ pub struct WindowConfig {
     pub inner_size: Option<UVec2>,
     /// Minimum inner size in logical pixels. `None` = no floor.
     pub min_inner_size: Option<UVec2>,
-    /// Initial outer position in **physical** pixels (top-left of the
-    /// window frame). `None` lets the platform place it. Physical, not
-    /// logical, because a saved position is only unambiguous across
-    /// mixed-DPI monitors in device pixels. The host drops it at creation
-    /// if it no longer lands on any connected monitor, so a window saved
-    /// on a since-disconnected display doesn't reopen off-screen.
-    pub position: Option<IVec2>,
-    /// Start maximized. Restored alongside `inner_size` — winit applies
-    /// the maximized state and holds `inner_size` as the size to return to
-    /// when the user un-maximizes.
-    pub maximized: bool,
+    /// Where to open the window — what
+    /// [`WindowGeometry::placement`](crate::WindowGeometry) hands back, so
+    /// a saved session restores by assignment rather than field by field.
+    ///
+    /// The host drops a position at creation if it no longer lands on any
+    /// connected monitor, so a window saved on a since-disconnected
+    /// display doesn't reopen off-screen.
+    pub placement: WindowPlacement,
     /// Title-bar / taskbar icon. `None` = platform default. Honored on
     /// Windows and Linux (X11/Wayland); **macOS ignores per-window icons**
     /// (its Dock icon comes from the `.app` bundle's `.icns`, set at
@@ -76,17 +74,25 @@ impl WindowConfig {
         self
     }
 
-    /// Initial outer position in physical pixels (top-left of the frame).
-    /// Dropped at creation if it no longer lands on any connected monitor.
+    /// Initial outer position in physical pixels (top-left of the frame) —
+    /// half of [`Self::placement`], for a caller that has only this half.
     pub fn position(mut self, position: IVec2) -> Self {
-        self.position = Some(position);
+        self.placement.position = Some(position);
+        self
+    }
+
+    /// Position and maximized state together — the restore door, for a
+    /// [`WindowGeometry::placement`](crate::WindowGeometry) read back from
+    /// wherever the app persisted it.
+    pub fn placement(mut self, placement: WindowPlacement) -> Self {
+        self.placement = placement;
         self
     }
 
     /// Start the window maximized (holding [`Self::inner_size`] as the
     /// un-maximize size).
     pub fn maximized(mut self, maximized: bool) -> Self {
-        self.maximized = maximized;
+        self.placement.maximized = maximized;
         self
     }
 
@@ -108,6 +114,7 @@ impl WindowConfig {
 #[cfg(test)]
 mod tests {
     use crate::window::window_config::WindowConfig;
+    use crate::window::window_placement::WindowPlacement;
     use glam::{IVec2, UVec2};
 
     #[test]
@@ -122,8 +129,13 @@ mod tests {
         assert_eq!(config.title, "inspector");
         assert_eq!(config.inner_size, Some(UVec2::new(800, 600)));
         assert_eq!(config.min_inner_size, Some(UVec2::new(320, 240)));
-        assert_eq!(config.position, Some(IVec2::new(-40, 80)));
-        assert!(config.maximized);
+        assert_eq!(
+            config.placement,
+            WindowPlacement {
+                position: Some(IVec2::new(-40, 80)),
+                maximized: true,
+            },
+        );
         assert!(config.icon.is_none());
         // Identity is distinct from the title: a shell matches the `.desktop`
         // entry on the id, so the two must not be conflated.

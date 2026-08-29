@@ -129,7 +129,7 @@ mod output_validity_tests {
     use crate::window::window_token::WindowToken;
 
     fn driver(token: WindowToken, shared: &HostShared) -> WindowDriver {
-        WindowDriver::builder(token, shared).build()
+        WindowDriver::builder(token, shared, true).build()
     }
 
     /// A host with no window lifecycle drains a quiet frame exactly as a
@@ -200,7 +200,7 @@ mod output_validity_tests {
     #[test]
     fn note_target_tracks_size_format_and_present_mode_and_invalidates_on_change() {
         let shared = HostShared::new(TextShaper::test_mono(), TextureLimit::default());
-        let mut driver = WindowDriver::builder(WindowToken(1), &shared).build();
+        let mut driver = WindowDriver::builder(WindowToken(1), &shared, true).build();
         let first = TargetKey {
             physical: UVec2::new(64, 48),
             format: wgpu::TextureFormat::Rgba8Unorm,
@@ -308,8 +308,8 @@ mod output_validity_tests {
     #[test]
     fn window_drivers_have_distinct_render_owners() {
         let shared = HostShared::new(TextShaper::test_mono(), TextureLimit::default());
-        let first = WindowDriver::builder(WindowToken(1), &shared).build();
-        let second = WindowDriver::builder(WindowToken(2), &shared).build();
+        let first = WindowDriver::builder(WindowToken(1), &shared, true).build();
+        let second = WindowDriver::builder(WindowToken(2), &shared, true).build();
 
         assert_ne!(first.render_owner, second.render_owner);
     }
@@ -318,7 +318,7 @@ mod output_validity_tests {
     fn output_validity_tracks_pending_and_completion() {
         let shared = HostShared::new(TextShaper::test_mono(), TextureLimit::default());
         let mut frontend = Frontend::new(8192, shared.gradient_atlas.clone());
-        let mut driver = WindowDriver::builder(WindowToken(1), &shared).build();
+        let mut driver = WindowDriver::builder(WindowToken(1), &shared, true).build();
         assert!(!driver.output_valid, "first frame has no presented output");
 
         driver.output_valid = true;
@@ -452,9 +452,8 @@ mod record_store_tests {
         let shared = HostShared::new(TextShaper::test_mono(), TextureLimit::default());
         let mut frontend = Frontend::new(8192, shared.gradient_atlas.clone());
         let token = WindowToken(17);
-        let mut window = WindowDriver::builder(token, &shared)
+        let mut window = WindowDriver::builder(token, &shared, false)
             .clock(Box::new(FixedClock::new(Duration::ZERO)))
-            .pixel_snap(false)
             .build();
         assert_eq!(window.strategy, PresentStrategy::DirectAdaptive);
         assert!(!window.pixel_snap);
@@ -481,10 +480,10 @@ mod record_store_tests {
     fn interleaved_window_paint_only_preserves_record_payloads() {
         let shared = HostShared::new(TextShaper::test_mono(), TextureLimit::default());
         let mut frontend = Frontend::new(8192, shared.gradient_atlas.clone());
-        let mut window_a = WindowDriver::builder(WindowToken(1), &shared)
+        let mut window_a = WindowDriver::builder(WindowToken(1), &shared, true)
             .clock(Box::new(FixedClock::new(Duration::ZERO)))
             .build();
-        let mut window_b = WindowDriver::builder(WindowToken(2), &shared)
+        let mut window_b = WindowDriver::builder(WindowToken(2), &shared, true)
             .clock(Box::new(FixedClock::new(Duration::ZERO)))
             .build();
         let display = Display::from_physical(UVec2::new(112, 112), 1.0);

@@ -2,6 +2,7 @@
 
 use crate::ui::harness::UiHarness;
 use crate::ui::tests::support::SURFACE;
+use crate::window::window_placement::WindowPlacement;
 use glam::IVec2;
 
 /// `open_window` / `close_window` enqueue onto the retained scratch the
@@ -58,12 +59,23 @@ fn window_requests_queue_and_survive_the_frame() {
     assert!(h.ui.window_open(open));
     assert!(!h.ui.window_open(close), "only `open` is live");
 
-    h.ui.window_frame.position = Some(IVec2::new(-120, 48));
-    h.ui.window_frame.maximized = true;
+    // The placement travels whole, so what the app persists is what a
+    // `WindowConfig` takes back — no field-by-field translation between
+    // the host's facts, the geometry and the config.
+    let placed = WindowPlacement {
+        position: Some(IVec2::new(-120, 48)),
+        maximized: true,
+    };
+    h.ui.window_frame.placement = placed;
     let geometry = h.ui.window_geometry();
     assert_eq!(geometry.inner_size, SURFACE);
-    assert_eq!(geometry.outer_position, Some(IVec2::new(-120, 48)));
-    assert!(geometry.maximized);
+    assert_eq!(geometry.placement, placed);
+    assert_eq!(
+        WindowConfig::new("restored")
+            .placement(geometry.placement)
+            .placement,
+        placed,
+    );
 }
 
 /// The OS-close veto protocol between the host and app code:

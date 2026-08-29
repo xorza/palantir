@@ -23,6 +23,12 @@ pub struct WinitHostConfig {
     /// round-trip is non-trivial. Gates device-feature requests at
     /// startup; every window's `WindowDriver` inherits the result.
     pub collect_gpu_stats: bool,
+    /// Whether axis-aligned paint edges snap to physical pixels. On by
+    /// default, which is what a window wants: an unsnapped edge lands
+    /// between texels and antialiases into a soft line. Turn it off for
+    /// a view that animates position continuously, where the snap reads
+    /// as a stutter.
+    pub pixel_snap: bool,
 }
 
 impl Default for WinitHostConfig {
@@ -32,6 +38,7 @@ impl Default for WinitHostConfig {
             present_mode: wgpu::PresentMode::AutoVsync,
             power_preference: wgpu::PowerPreference::LowPower,
             collect_gpu_stats: false,
+            pixel_snap: true,
         }
     }
 }
