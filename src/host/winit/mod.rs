@@ -364,7 +364,7 @@ where
             self.fail(event_loop, error);
             return;
         }
-        runtime.sync_diagnostics();
+        runtime.repaint_on_overlay_change();
         runtime.schedule(event_loop, now);
     }
 

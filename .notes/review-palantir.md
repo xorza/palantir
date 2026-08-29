@@ -12,10 +12,6 @@ same way.
 ## Full-tree or per-item work is repeated on the interactive path
 
 - [ ] `src/layout/pass.rs:290-301`, `src/layout/intrinsic/mod.rs:346-374`, `src/layout/engine.rs:121-124` — `LayoutPass::measure` issues `intrinsic(node, X, MinContent)` and `intrinsic(node, Y, MinContent)` independently. For a text leaf each reaches `intrinsic::leaf`, which calls `engine.text.root(..)` per run and then reads `axis.main(..)` off a `Size` that carries both axes. Every text leaf does two `TextSystem::root` lookups for one `TextRoot`, plus its `measure`; `cached_intrinsic` excludes leaves from cross-frame reuse, so this repeats on every changed frame.
-- [ ] `src/host/winit/gpu/mod.rs:130`, `src/host/core.rs:48` — `DeviceRequirements::max_texture_dim(&device)` is computed once for `SurfaceManager.max_texture_dim` and again inside `HostCore::new` for `TextureLimit` and `Frontend`, from the same device in the same startup sequence.
-- [ ] `src/host/winit/runtime.rs:43,95,176-182`, `src/ui/mod.rs:728` — `sync_diagnostics` runs every `about_to_wait`, borrows the `RefCell`, and diffs against a mirrored `observed_overlay` to learn that some `Ui::set_debug_overlay` call happened; the writer side is the only mutator.
-- [ ] `src/widgets/splitter/mod.rs:152-156` vs `src/widgets/tooltip/mod.rs:164-172,227-229`, `src/widgets/combo_box/mod.rs:156-161,191-193`, `src/widgets/context_menu/mod.rs:120-129` — `Splitter` calls `ui.state_mut::<SplitterState>(id)` unconditionally every frame, materialising a row for every splitter on its first frame and hashing on every later one, while `Tooltip`, `ComboBox`, and `ContextMenu` probe with `try_state` and write only on a real change, each with a comment saying why.
-- [ ] `src/widgets/drag_value/mod.rs:447-449,460` — `show_editing` keeps only `resp.submitted` from the `TextEdit`'s response and returns a fresh `Response::lazy(id, ui)` for the same id — a second `response_for` probe on the edit frame if the caller reads it.
 
 ## Frame cost is not uniform, or a hot path allocates
 

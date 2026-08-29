@@ -17,7 +17,6 @@ use winit::window::{Window as WinitWindow, WindowId};
 use crate::app::App;
 use crate::common::clipboard::Clipboard;
 use crate::common::tracy;
-use crate::diagnostics::DebugOverlayConfig;
 use crate::host::core::HostCore;
 use crate::host::window_driver::WindowDriver;
 use crate::host::winit::error::WinitHostError;
@@ -40,7 +39,6 @@ pub(super) struct WinitRuntime<T> {
     /// Shared resources, CPU frontend, and GPU backend — every window's `Ui`
     /// clones the first, and every window's frames run through the other two.
     pub(super) core: HostCore,
-    observed_overlay: DebugOverlayConfig,
     /// Live windows, addressed by either key through [`WindowSet`].
     windows: WindowSet,
     pending_commands: WindowCommands,
@@ -74,6 +72,7 @@ impl<T: App + 'static> WinitRuntime<T> {
         let core = HostCore::new(
             device,
             queue,
+            surfaces.max_texture_dim,
             TextShaper::new(),
             Clipboard::system_or_memory(),
             BackendConfig {
@@ -92,14 +91,12 @@ impl<T: App + 'static> WinitRuntime<T> {
             task(&mut app);
         }
 
-        let observed_overlay = *core.shared.resources.diagnostics.overlay.borrow();
         let mut windows = WindowSet::default();
         windows.push(Window::new(window, first_surface, driver));
         Ok(Self {
             app,
             surfaces,
             core,
-            observed_overlay,
             windows,
             pending_commands: WindowCommands::default(),
         })
@@ -173,10 +170,8 @@ impl<T: App + 'static> WinitRuntime<T> {
 
     /// Repaint everything when the app-global debug overlay changed, so a
     /// toggle in one window shows up in the others.
-    pub(super) fn sync_diagnostics(&mut self) {
-        let overlay = *self.core.shared.resources.diagnostics.overlay.borrow();
-        if overlay != self.observed_overlay {
-            self.observed_overlay = overlay;
+    pub(super) fn repaint_on_overlay_change(&mut self) {
+        if self.core.shared.resources.diagnostics.overlay.take_change() {
             self.repaint_all();
         }
     }

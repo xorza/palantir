@@ -149,10 +149,12 @@ impl<'a> Splitter<'a> {
         }
         *self.ratio = ratio;
 
-        {
-            let grid_state = ui.state_mut::<SplitterState>(id);
-            grid_state.sync_ratio_next_record =
-                resizing || (sync_pending && synced_ratio.is_none());
+        // Written only on a change, against the `sync_pending` read above
+        // — an absent row reads as `false` there, which is this field's
+        // default. A splitter that never resizes mints no row at all.
+        let sync_next = resizing || (sync_pending && synced_ratio.is_none());
+        if sync_next != sync_pending {
+            ui.state_mut::<SplitterState>(id).sync_ratio_next_record = sync_next;
         }
 
         let bar_fill = if divider.left.drag.dragging() {
