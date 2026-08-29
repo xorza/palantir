@@ -12,6 +12,7 @@ use crate::primitives::interned_text::InternedText;
 use crate::primitives::{rect::Rect, size::Size};
 use crate::scene::tree::Tree;
 use crate::scene::tree::node_id::NodeId;
+use glam::Vec2;
 
 #[derive(Debug)]
 pub(super) struct ZStack;
@@ -38,7 +39,7 @@ impl LayoutDriver for ZStack {
         (): Self::Payload,
         inner_avail: Size,
     ) -> Size {
-        pass.measure_per_axis_hug(node, inner_avail, |_, _, d| d)
+        pass.measure_per_axis_hug(node, inner_avail, |_, _| Vec2::ZERO)
     }
 
     /// Each child gets a slot inside `inner`, sized per its own `Sizing` and

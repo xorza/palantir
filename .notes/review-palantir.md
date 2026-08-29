@@ -9,12 +9,6 @@ gated `internals` / `test_support` modules were not reviewed.
 Groups are sorted by severity and benefit. Items inside a group are sorted the
 same way.
 
-## The same geometry is derived at both ends of a contract, and the two derivations disagree
-
-- [ ] `src/layout/canvas/mod.rs` — `measure` offers every positioned child the container's whole `inner_avail`, so a child at `pos.x = 100` measures against more room than `arrange` gives it: a wrapping child reports a height for a width it will not get. `measure_per_axis_hug` hands one availability to every child and is shared with `ZStack`, so a per-child offer means reshaping it.
-- [ ] `src/scene/cascade/engine.rs:408-412,421-427`, `src/renderer/frontend/encoder/layer_ctx.rs:458-459,503-507` — the clip mask (`layout_rect.deflated_by(padding)`) and the body transform (`transform_of` → `anchored_at` → compose) are derived per node by the cascade and re-derived per node by the encoder from the same inputs, with comments on each side saying it "mirrors" the other. The cascade holds both on its `Frame` but retains neither in a column.
-- [ ] `src/scene/cascade/mod.rs:126-135`, `src/scene/cascade/paint.rs:113-129`, `src/scene/damage/walk.rs:377,401` — `LayerCascade::subtree_paint_rects[i]` (rolled up during cascade; `ZERO` for invisible subtrees; includes a clip-only container's own rect) and `PaintArena::subtree_extent` (a fold of `Paint.screen` rows; real rects for ancestor-invisible nodes; excludes clip-only containers) answer the same question differently. `on_subtree_moved` mixes them in one arm: `prev_extent` from rows, `curr_extent` from the column.
-
 ## Shader constants are substituted from Rust but the shader hard-codes the literal
 
 - [ ] `src/renderer/backend/quad.wgsl:75-77,201-207`, `src/renderer/backend/quad_pipeline.rs:311-313` — `apply_spread` switches on `case 1u` / `case 2u` while `SPREAD_PAD` / `SPREAD_REPEAT` / `SPREAD_REFLECT` are substituted from `Spread::… as u32` and then never read. Each name occurs once in the file, at its declaration. The Rust side believes it pins the mapping; the shader ignores the pins.

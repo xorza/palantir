@@ -2,8 +2,9 @@ use crate::layout::types::{align::Align, align::HAlign, align::VAlign, sizing::S
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::scene::node::configure::Configure;
+use crate::text::wrap::TextWrap;
 use crate::ui::harness::UiHarness;
-use crate::widgets::{frame::Frame, panel::Panel};
+use crate::widgets::{frame::Frame, panel::Panel, text::Text};
 use glam::UVec2;
 
 #[test]
@@ -186,6 +187,49 @@ fn canvas_fill_child_fills_the_room_past_its_position() {
             );
         }
     }
+}
+
+/// Pin: a bounded canvas measures a child against the room it will
+/// arrange the child into, which is what lies past the child's own
+/// position.
+///
+/// Asserted against the canvas that *is* that room rather than against a
+/// hand-computed line count: a wrapping child at x = 100 in a 200-wide
+/// canvas has to come out the same size as the same child at x = 0 in a
+/// 100-wide one. The third case is the control — at x = 0 in the 200-wide
+/// canvas the text fits on one line, so the fixture does wrap and the
+/// first two are not agreeing on a no-op.
+#[test]
+fn canvas_measures_a_child_against_the_room_past_its_position() {
+    let sized = |canvas_w: f32, at_x: f32| {
+        let mut h = UiHarness::new(UVec2::new(400, 400));
+        let panel = h.under_outer(|ui| {
+            Panel::canvas()
+                .auto_id()
+                .size((Sizing::fixed(canvas_w), Sizing::fixed(200.0)))
+                .show(ui, |ui| {
+                    Text::new("aaaa bbbb cccc")
+                        .id(WidgetId::from_hash("wrapping"))
+                        .text_wrap(TextWrap::WrapWithOverflow)
+                        .position((at_x, 0.0))
+                        .show(ui);
+                })
+                .response
+                .node()
+        });
+        h.main_child_rects(panel)[0].size
+    };
+    let offset_in_wide = sized(200.0, 100.0);
+    assert_eq!(
+        offset_in_wide,
+        sized(100.0, 0.0),
+        "the room past x = 100 in a 200-wide canvas is a 100-wide canvas",
+    );
+    assert_ne!(
+        offset_in_wide,
+        sized(200.0, 0.0),
+        "the same text unwrapped is a different size, or this proves nothing",
+    );
 }
 
 #[test]

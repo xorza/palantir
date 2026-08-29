@@ -2,6 +2,7 @@
 
 use crate::layout::types::layout_mode::{LayoutMode, PackedLayoutMeta};
 use crate::layout::types::sizing::Sizes;
+use crate::primitives::rect::Rect;
 use crate::primitives::spacing::Spacing;
 use crate::scene::node::Node;
 use crate::scene::node::node_flags::NodeFlags;
@@ -24,6 +25,20 @@ impl LayoutCore {
             margin: node.margin.unwrap_or(Spacing::ZERO),
             meta: PackedLayoutMeta::new(mode, node.align, node.visibility),
         }
+    }
+
+    /// The box this node's own content lives in: `rect` less this node's
+    /// padding, in whatever space `rect` is given in.
+    ///
+    /// **Four passes ask it and must agree.** Arrange places children in
+    /// it, the container-text pass wraps a run to its width, the cascade
+    /// clips direct shapes and descendant damage to it, and the encoder
+    /// pushes it as the clip mask. `Tree::open_node` has already folded a
+    /// chrome stroke's ring into `padding`, so all four sit inside the
+    /// painted ring without any of them knowing about the stroke.
+    #[inline]
+    pub(crate) fn inner_rect(&self, rect: Rect) -> Rect {
+        rect.deflated_by(self.padding)
     }
 
     #[inline]

@@ -332,10 +332,7 @@ impl LayerWalk<'_> {
         // extent. Descendants keep their skip — their snapshots are
         // intact and this push already covers them.
         if prev.parent_key != parent_key {
-            let extent = self
-                .cascade
-                .paint_arena
-                .subtree_extent(node, self.tree.records.subtree_end());
+            let extent = self.cascade.subtree_paint_rects[i];
             if !extent.is_paint_empty() {
                 self.raw_rects.push(extent);
             }
@@ -409,14 +406,9 @@ impl LayerWalk<'_> {
         // for invisible subtrees, so a hide transition damages only the
         // prev pixels.
         //
-        // Off the column where the prev half came off the retained rows,
-        // because that is what each side has: last frame's column is
-        // gone, and this frame's rows are the same fold the column
-        // already carries. The two differ on one node — a chromeless
-        // clip-only container contributes its own visible rect to the
-        // column and no row to the fold — and that difference is on the
-        // side that can afford it: the curr push may cover more than the
-        // subtree paints, the prev push may not cover less.
+        // Off the column, like every other "what does this subtree paint"
+        // this frame. The prev half above cannot be: last frame's column
+        // is gone, and the retained rows are all that is left of it.
         let curr_extent = self.cascade.subtree_paint_rects[i];
         if !curr_extent.is_paint_empty() {
             self.raw_rects.push(curr_extent);
@@ -456,7 +448,6 @@ impl LayerWalk<'_> {
     fn build_row_extents(&mut self, node: NodeId) {
         let arena = &self.cascade.paint_arena;
         let node_span = arena.node_spans[node.idx()];
-        let subtree_end = self.tree.records.subtree_end();
         self.order_extents.clear();
         let mut row = node_span.start as usize;
         if self.tree.chrome(node).is_some() {
@@ -470,7 +461,7 @@ impl LayerWalk<'_> {
             // the output vector's length double as the read cursor.
             let extent = match item {
                 TreeItem::ShapeRecord(..) => arena.rows[row].screen,
-                TreeItem::Child(child) => arena.subtree_extent(child.id, subtree_end),
+                TreeItem::Child(child) => self.cascade.subtree_paint_rects[child.id.idx()],
             };
             row += 1;
             self.order_extents.push(extent);

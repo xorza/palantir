@@ -682,49 +682,52 @@ fn shape_added_in_middle_damages_only_new() {
     );
 }
 
-/// Pin: reparenting a widget at an identical rect with identical
-/// content must damage its painted extent. Both parents are chromeless
-/// full-surface ZStacks, so the leaf's arranged rect, authoring hash,
-/// and cascade input are all bit-identical across the move — only its
-/// compositing position changed (`NodeSnapshot::parent_key`). The
-/// pre-fix tier-1 skip treated the leaf as unchanged and the frame
-/// classified Skip, leaving stale overlap pixels wherever the leaf's
-/// z-order against outside content flipped.
+/// The fixture both reparent tests drive: one leaf of identical content
+/// at an identical rect, under `A` or under `B`, which are chromeless
+/// full-surface ZStacks. The leaf's arranged rect, authoring hash and
+/// cascade input are bit-identical across the move — only its
+/// compositing position changes (`NodeSnapshot::parent_key`). `hidden`
+/// hides both parents, so the same move happens with nothing painting.
+fn reparent_fixture(ui: &mut Ui, under_b: bool, hidden: bool) {
+    let leaf = |ui: &mut Ui| {
+        Frame::new()
+            .id(WidgetId::from_hash("L"))
+            .size(30.0)
+            .background(Background {
+                fill: BLUE.into(),
+                ..Default::default()
+            })
+            .show(ui);
+    };
+    let parent = |ui: &mut Ui, id: &'static str, holds_leaf: bool| {
+        let mut panel = Panel::zstack()
+            .id(WidgetId::from_hash(id))
+            .size((Sizing::FILL, Sizing::FILL));
+        if hidden {
+            panel = panel.hidden();
+        }
+        panel.show(ui, |ui| {
+            if holds_leaf {
+                leaf(ui);
+            }
+        });
+    };
+    Panel::zstack()
+        .id(WidgetId::from_hash("root"))
+        .show(ui, |ui| {
+            parent(ui, "A", !under_b);
+            parent(ui, "B", under_b);
+        });
+}
+
+/// Pin: reparenting a widget at an identical rect with identical content
+/// must damage its painted extent. The pre-fix tier-1 skip treated the
+/// leaf as unchanged and the frame classified Skip, leaving stale overlap
+/// pixels wherever the leaf's z-order against outside content flipped.
 #[test]
 fn reparent_at_same_rect_damages_moved_subtree() {
     const LEAF_PROBE: Rect = Rect::new(10.0, 10.0, 2.0, 2.0);
-    let build = |ui: &mut Ui, under_b: bool| {
-        let leaf = |ui: &mut Ui| {
-            Frame::new()
-                .id(WidgetId::from_hash("L"))
-                .size(30.0)
-                .background(Background {
-                    fill: BLUE.into(),
-                    ..Default::default()
-                })
-                .show(ui);
-        };
-        Panel::zstack()
-            .id(WidgetId::from_hash("root"))
-            .show(ui, |ui| {
-                Panel::zstack()
-                    .id(WidgetId::from_hash("A"))
-                    .size((Sizing::FILL, Sizing::FILL))
-                    .show(ui, |ui| {
-                        if !under_b {
-                            leaf(ui);
-                        }
-                    });
-                Panel::zstack()
-                    .id(WidgetId::from_hash("B"))
-                    .size((Sizing::FILL, Sizing::FILL))
-                    .show(ui, |ui| {
-                        if under_b {
-                            leaf(ui);
-                        }
-                    });
-            });
-    };
+    let build = |ui: &mut Ui, under_b: bool| reparent_fixture(ui, under_b, false);
     let mut h = UiHarness::new(DISPLAY.physical);
     frame(&mut h, |ui| build(ui, false));
     let damage = frame(&mut h, |ui| build(ui, true));
@@ -737,6 +740,25 @@ fn reparent_at_same_rect_damages_moved_subtree() {
     // refreshed snapshot carries the new parent_key.
     let settled = frame(&mut h, |ui| build(ui, true));
     assert_eq!(settled, Damage::Skip, "reparent damage must not repeat");
+}
+
+/// Pin: the same move under a hidden ancestor damages nothing.
+///
+/// The leaf's own visibility is `Visible`, so it still owns paint rows
+/// with real screen rects — an extent folded from those rows would
+/// repaint pixels no pass paints. The cascade's rolled-up column seeds an
+/// invisible subtree at `Rect::ZERO`, and reading the move's extent off
+/// that column is what makes a hidden reparent free.
+#[test]
+fn reparenting_a_hidden_subtree_damages_nothing() {
+    let build = |ui: &mut Ui, under_b: bool| reparent_fixture(ui, under_b, true);
+    let mut h = UiHarness::new(DISPLAY.physical);
+    frame(&mut h, |ui| build(ui, false));
+    assert_eq!(
+        frame(&mut h, |ui| build(ui, true)),
+        Damage::Skip,
+        "a subtree that paints nothing costs nothing to move",
+    );
 }
 
 /// Pin: inserting one shape at the FRONT of a node's record stream

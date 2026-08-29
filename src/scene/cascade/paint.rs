@@ -10,8 +10,6 @@ use crate::common::block_arena::BlockSlot;
 use crate::common::content_hash::ContentHash;
 use crate::primitives::rect::Rect;
 use crate::primitives::span::Span;
-use crate::scene::tree::node_id::NodeId;
-use crate::scene::tree::subtree_end::SubtreeEnd;
 
 /// One row of a node's paint span — chrome (row 0 when the node has
 /// chrome), one direct shape, or a child marker, in record order.
@@ -104,28 +102,6 @@ impl PaintArena {
         self.rows.clear();
         self.rows.reserve(n_nodes);
         self.node_spans.resize(n_nodes, Span::default());
-    }
-
-    /// Screen-space painted extent of `node`'s whole subtree,
-    /// [`Rect::ZERO`] when the subtree paints nothing.
-    ///
-    /// Folded from the per-row `Paint.screen` rects rather than read off
-    /// `LayerCascade::subtree_paint_rects`, so a non-painting descendant
-    /// can't bias the answer.
-    ///
-    /// One linear fold, no per-node span hops: the cascade visits nodes
-    /// in pre-order with a monotone row cursor and stamps every node's
-    /// slot (an empty span still carries the cursor as its `start`), so a
-    /// subtree's rows are one contiguous run — this node's `start`
-    /// through the `start` of the first node past the subtree.
-    pub(crate) fn subtree_extent(&self, node: NodeId, subtree_end: &[SubtreeEnd]) -> Rect {
-        let end = subtree_end[node.idx()].end() as usize;
-        let start_row = self.node_spans[node.idx()].start as usize;
-        let end_row = match self.node_spans.get(end) {
-            Some(next) => next.start as usize,
-            None => self.rows.len(),
-        };
-        self.rows[start_row..end_row].union_screens()
     }
 }
 
