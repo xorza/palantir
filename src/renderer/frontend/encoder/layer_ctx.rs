@@ -289,16 +289,13 @@ impl LayerCtx<'_> {
                 // crosses verbatim — record and payload share the type, so
                 // both bases' cull, spin, and sub-instance sizing stay one
                 // code path from here through the composer.
-                let fill = self.brush_source(*fill).to_gpu_fields();
                 out.draw_curve(DrawCurvePayload {
                     basis: *basis,
                     bounds: StrokeBounds::new(owner_rect, *bbox, paint_mod.rotation),
                     origin: owner_rect.min,
-                    color: fill.color,
+                    fill: self.brush_source(*fill).gpu_fill(),
                     width: *width,
                     cap: *cap,
-                    fill_kind: fill.kind,
-                    fill_lut_row: fill.lut_row,
                 });
             }
             ShapeRecord::Icon {

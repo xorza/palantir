@@ -1,27 +1,15 @@
 //! SVG to pixels: the resident parsed-document cache, and the raster call an
 //! atlas miss falls through to.
 
-use crate::icons::icon_atlas::IconAtlas;
 use crate::icons::icon_raster_key::IconRasterKey;
 use crate::icons::icon_registry::IconSetId;
 use crate::icons::icon_set::IconRef;
+use crate::icons::icon_table::IconTable;
 use crate::icons::svg_facts;
+use crate::renderer::backend::raster_atlas::content_type::ContentType;
 use resvg::tiny_skia;
 use resvg::usvg;
 use rustc_hash::FxHashMap;
-
-/// Which of the atlas's two sides a rasterized icon belongs on, and so what
-/// `out` holds after [`IconRasterizer::rasterize`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum IconRasterKind {
-    /// One coverage byte per pixel. The draw multiplies it by the shape's
-    /// full tint, so one baked icon serves every theme colour.
-    Mask,
-    /// Straight (non-premultiplied) sRGB RGBA, four bytes per pixel — what
-    /// the colour atlas side stores and what the glyph shader premultiplies
-    /// in linear at output.
-    Color,
-}
 
 /// Resident parsed documents. Past this, a parse that would be the
 /// `MAX_PARSED_TREES + 1`th retires the one longest unused.
@@ -108,10 +96,10 @@ impl IconRasterizer {
     /// the failure is not retried.
     pub(crate) fn rasterize(
         &mut self,
-        atlas: &IconAtlas,
+        table: &IconTable,
         key: IconRasterKey,
         out: &mut Vec<u8>,
-    ) -> Option<IconRasterKind> {
+    ) -> Option<ContentType> {
         // Destructured so the parsed tree (borrowed from `trees`) and the
         // scratch buffer are held at once — disjoint fields that method calls
         // on `&mut self` could not express.
@@ -128,9 +116,9 @@ impl IconRasterizer {
             rgba,
             options,
         } = self;
-        let def = atlas.def(key.icon.icon);
+        let def = table.def(key.icon.icon);
         let entry = trees.entry(key.icon).or_insert_with(|| ParsedIcon {
-            tree: usvg::Tree::from_data(atlas.svg_bytes(key.icon.icon), options).ok(),
+            tree: usvg::Tree::from_data(table.svg_bytes(key.icon.icon), options).ok(),
             last_use: *uses,
         });
         entry.last_use = *uses;
@@ -155,16 +143,21 @@ impl IconRasterizer {
         resvg::render(tree, transform, &mut pixmap);
 
         out.clear();
+        // Both arms read the render through the same typed view. Alpha is
+        // not premultiplied by itself, so the mask takes its byte
+        // straight off the premultiplied texel.
+        let rendered = pixmap.as_ref();
+        let pixels = rendered.pixels();
         if def.tintable {
             // Coverage only. The colour the artwork was drawn in is discarded
             // — a tintable icon is defined as one whose paint is a single
             // colour, and the draw supplies that colour.
-            out.reserve_exact(bytes / 4);
-            out.extend(rgba.as_chunks::<4>().0.iter().map(|texel| texel[3]));
-            Some(IconRasterKind::Mask)
+            out.reserve_exact(pixels.len());
+            out.extend(pixels.iter().map(|texel| texel.alpha()));
+            Some(ContentType::Mask)
         } else {
             out.reserve_exact(bytes);
-            for texel in pixmap.as_ref().pixels() {
+            for texel in pixels {
                 let straight = texel.demultiply();
                 out.extend_from_slice(&[
                     straight.red(),
@@ -173,7 +166,7 @@ impl IconRasterizer {
                     straight.alpha(),
                 ]);
             }
-            Some(IconRasterKind::Color)
+            Some(ContentType::Color)
         }
     }
 

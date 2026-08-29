@@ -18,7 +18,7 @@
 
 use crate::layout::LayerLayout;
 use crate::layout::axis::Axis;
-use crate::layout::axis_ctx::AxisCtx;
+use crate::layout::axis_slot::AxisSlot;
 use crate::layout::cache::quantize_available;
 use crate::layout::counters::PhaseSpan;
 use crate::layout::driver::{DriverOp, LayoutDriver, ReplayOp};
@@ -82,6 +82,28 @@ impl<'a> LayoutPass<'a> {
     /// with wrapping cells, etc.): intrinsic queries the unbounded shape,
     /// while INF-measure runs the child's full layout under the committed
     /// cross.
+    /// Min-content intrinsic on one axis — the smallest this node can
+    /// shrink to without breaking a rigid descendant (Fixed widget,
+    /// explicit `min_size`, longest unbreakable word).
+    ///
+    /// Fed into `resolve_desired` as the lower bound under flex
+    /// semantics: Hug/Fill clamp down to `available` but never below
+    /// this. Cached per (node, axis, slot), so repeat queries during
+    /// the same `run` are O(1).
+    ///
+    /// **Zero on a Fixed axis.** `Sizing::fixed` ignores `intrinsic_min`
+    /// in both `AxisSlot::resolve` (the Fixed branch returns `v`
+    /// verbatim) and the `dispatch_avail.max(intrinsic_min)` floor
+    /// (Fixed reads neither side). Skipping the query there is what
+    /// keeps a Fixed leaf from triggering a subtree intrinsic walk every
+    /// frame.
+    fn intrinsic_min(&mut self, node: NodeId, layout: LayoutCore, axis: Axis) -> f32 {
+        if axis.main_sizing(layout.size).fixed_value().is_some() {
+            return 0.0;
+        }
+        self.intrinsic(node, axis, LenReq::MinContent)
+    }
+
     pub(crate) fn measure_per_axis_hug(
         &mut self,
         node: NodeId,
@@ -89,21 +111,16 @@ impl<'a> LayoutPass<'a> {
         mut offset: impl FnMut(&Tree, NodeId) -> Vec2,
     ) -> Size {
         let tree = self.tree;
-        let size = tree.records.layout()[node.idx()].size;
-        let (hug_w, hug_h) = (size.w().is_hug(), size.h().is_hug());
+        let hug = tree.records.layout()[node.idx()].size.hug_mask();
         let mut max = Size::ZERO;
         for c in tree.active_children(node) {
             let at = offset(tree, c);
-            let room = inner_avail.room_past(at);
-            let avail = Size::new(
-                if hug_w { f32::INFINITY } else { room.w },
-                if hug_h { f32::INFINITY } else { room.h },
-            );
-            let d = self.measure(c, avail);
-            max = max.max(Size::new(
-                if hug_w { at.x + d.w } else { d.w },
-                if hug_h { at.y + d.h } else { d.h },
-            ));
+            // A hug axis measures unbounded and then grows to cover where
+            // the child was put; a bounded one offers the room past that
+            // position and reports the child's extent alone.
+            let d = self.measure(c, Size::INF.select(hug, inner_avail.room_past(at)));
+            let past = Size::new(at.x + d.w, at.y + d.h);
+            max = max.max(past.select(hug, d));
         }
         max
     }
@@ -277,38 +294,16 @@ impl LayoutPass<'_> {
         let bounds = tree.bounds(node);
         let (min_size, max_size) = (bounds.min_size, bounds.max_size);
 
-        // Min-content intrinsic — the smallest this node can shrink
-        // to without breaking a rigid descendant (Fixed widget,
-        // explicit `min_size`, longest unbreakable word). Fed into
-        // `resolve_desired` as the lower bound under flex semantics:
-        // Hug/Fill clamp down to `available` but never below
-        // `intrinsic_min`. Cached per (node, axis, slot) so repeat
-        // queries during the same `run` are O(1).
-        //
-        // Per-axis gate: `Sizing::fixed` ignores `intrinsic_min` in
-        // both `AxisCtx::resolve` (Fixed branch returns `v` verbatim)
-        // and the `dispatch_avail.max(intrinsic_min)` floor below
-        // (Fixed reads neither side). Skip the query on Fixed axes so
-        // a Fixed leaf doesn't trigger a subtree intrinsic walk every
-        // frame.
         let intrinsic_min = Size::new(
-            if layout.size.w().fixed_value().is_some() {
-                0.0
-            } else {
-                self.intrinsic(node, Axis::X, LenReq::MinContent)
-            },
-            if layout.size.h().fixed_value().is_some() {
-                0.0
-            } else {
-                self.intrinsic(node, Axis::Y, LenReq::MinContent)
-            },
+            self.intrinsic_min(node, layout, Axis::X),
+            self.intrinsic_min(node, layout, Axis::Y),
         );
 
         // Derive `inner_avail`, dispatch to the driver, fold its raw
-        // content into a margin-inclusive `desired`. `AxisCtx::resolve_node`
+        // content into a margin-inclusive `desired`. `AxisSlot::resolve_node`
         // contains the rationale for each step (intrinsic_min floor,
         // outer clamp to `[min, max]`, single-dispatch monotonicity).
-        let desired = AxisCtx::resolve_node(
+        let desired = AxisSlot::resolve_node(
             layout,
             available,
             intrinsic_min,
@@ -325,9 +320,9 @@ impl LayoutPass<'_> {
     /// Dispatch one driver measure for `node` against the
     /// already-derived `inner_avail`; returns the driver's raw content
     /// size. Called exactly once per `measure` (single dispatch — see
-    /// `AxisCtx::resolve_node` for why no re-measure is needed when a Fill
+    /// `AxisSlot::resolve_node` for why no re-measure is needed when a Fill
     /// axis grows past `available`); the caller folds content into a
-    /// margin-inclusive `desired` via `AxisCtx::resolve`.
+    /// margin-inclusive `desired` via `AxisSlot::resolve`.
     ///
     /// The contract every driver answers to is
     /// [`LayoutDriver`](crate::layout::driver::LayoutDriver); the match

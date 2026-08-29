@@ -6,7 +6,6 @@ use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::stroke::Stroke;
-use crate::primitives::text_source::TextSource;
 use crate::primitives::texture_id::TextureId;
 use crate::scene::record_store::recorded_gradients::GradientId;
 use crate::scene::shapes::hash::compute_record_hash;
@@ -424,9 +423,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
 
     // --- Text ---------------------------------------------------
     let recorded = |hash| RecordedText {
-        source: TextSource {
-            span: Span::new(0, 1),
-        },
+        span: Span::new(0, 1),
         hash,
     };
     // The face is one argument now, so a case that varies a metric says

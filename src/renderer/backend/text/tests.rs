@@ -100,7 +100,7 @@ fn run_one_frame(
         let payloads = store.payloads.borrow();
         let interned_text = payloads.interned_text();
         backend.prepare_batch(&mut ctx, scale, 0, runs, &interned_text);
-        backend.flush(&mut ctx);
+        backend.pass.flush(&mut ctx);
     }
     belt.finish_and_recall_on_submit(&encoder);
     queue.submit([encoder.finish()]);
@@ -135,7 +135,7 @@ fn cached_run_keeps_its_atlas_slots_live() {
         Vec2::new(20.0, 20.0),
         PHYSICAL,
         1.0,
-        ColorU8::rgba(240, 240, 240, 255),
+        ColorU8::linear_rgba(240, 240, 240, 255),
     )];
     shaper.drop_cosmic_buffers();
     assert!(
@@ -160,7 +160,7 @@ fn cached_run_keeps_its_atlas_slots_live() {
     let arena_after_warmup = backend.encoder.cache.arena.slots.len();
     backend.tick_frame();
     assert!(
-        !backend.encoder.atlas.cache.is_empty(),
+        !backend.pass.atlas.cache.is_empty(),
         "warmup should have rasterized at least one glyph",
     );
 
@@ -178,13 +178,13 @@ fn cached_run_keeps_its_atlas_slots_live() {
     );
     drop(shaper_borrow);
 
-    let cf = backend.encoder.atlas.current_frame;
+    let cf = backend.pass.atlas.current_frame;
     let stale: Vec<u64> = backend
-        .encoder
+        .pass
         .atlas
         .cache
         .values()
-        .map(|&i| backend.encoder.atlas.slots[i as usize].last_use)
+        .map(|&i| backend.pass.atlas.slots[i as usize].last_use)
         .filter(|&lu| lu != cf)
         .collect();
     assert!(
@@ -197,7 +197,7 @@ fn cached_run_keeps_its_atlas_slots_live() {
         for glyph in &backend.encoder.cache.arena.slots[entry.span.range()] {
             let idx = glyph.atlas_slot;
             assert_eq!(
-                backend.encoder.atlas.slots[idx as usize].last_use, cf,
+                backend.pass.atlas.slots[idx as usize].last_use, cf,
                 "recorded slab index {idx} not refreshed on hit",
             );
         }
@@ -226,7 +226,7 @@ fn slot_generation_invalidates_only_referencing_run() {
             Vec2::new(20.0, 20.0),
             PHYSICAL,
             1.0,
-            ColorU8::rgba(240, 240, 240, 255),
+            ColorU8::linear_rgba(240, 240, 240, 255),
         ),
         make_inner_run(
             &store,
@@ -237,7 +237,7 @@ fn slot_generation_invalidates_only_referencing_run() {
             Vec2::new(20.0, 60.0),
             PHYSICAL,
             1.0,
-            ColorU8::rgba(240, 240, 240, 255),
+            ColorU8::linear_rgba(240, 240, 240, 255),
         ),
     ];
 
@@ -281,7 +281,7 @@ fn slot_generation_invalidates_only_referencing_run() {
         .expect("test runs must use disjoint atlas slots");
     let arena_before = backend.encoder.cache.arena.slots.len();
 
-    let slot = &mut backend.encoder.atlas.slots[invalidated_slot as usize];
+    let slot = &mut backend.pass.atlas.slots[invalidated_slot as usize];
     slot.generation = slot
         .generation
         .checked_add(1)
@@ -297,7 +297,7 @@ fn slot_generation_invalidates_only_referencing_run() {
     );
 
     assert_eq!(
-        backend.encoder.instances.len(),
+        backend.pass.instances.len(),
         6,
         "the rolled-back hit must not leak its partially emitted glyphs",
     );
@@ -341,8 +341,8 @@ fn deferred_upload_keeps_batches_distinct() {
     let store = RecordStore::default();
     let mut backend = TextBackend::new(&gpu.lease.device, shaper.clone());
 
-    let color_a = ColorU8::rgba(240, 240, 240, 255);
-    let color_b = ColorU8::rgba(200, 100, 50, 255);
+    let color_a = ColorU8::linear_rgba(240, 240, 240, 255);
+    let color_b = ColorU8::linear_rgba(200, 100, 50, 255);
     let run_a = make_inner_run(
         &store,
         &shaper,
@@ -389,23 +389,23 @@ fn deferred_upload_keeps_batches_distinct() {
             std::slice::from_ref(&run_b),
             &interned_text,
         );
-        backend.flush(&mut ctx);
+        backend.pass.flush(&mut ctx);
     }
     belt.finish_and_recall_on_submit(&encoder);
     gpu.queue.submit([encoder.finish()]);
 
     // Same text → same glyph count n per batch; ranges partition
     // the vec as [0..n] + [n..2n].
-    let n = backend.encoder.instances.len() / 2;
+    let n = backend.pass.instances.len() / 2;
     assert_eq!(n, 4, "'File' shapes to one glyph per character");
-    assert_eq!(backend.ranges[0], Span::new(0, n as u32));
-    assert_eq!(backend.ranges[1], Span::new(n as u32, n as u32));
+    assert_eq!(backend.pass.batch_span(0), Span::new(0, n as u32));
+    assert_eq!(backend.pass.batch_span(1), Span::new(n as u32, n as u32));
 
     let a: u32 = bytemuck::cast(color_a);
     let b: u32 = bytemuck::cast(color_b);
-    for (ga, gb) in backend.encoder.instances[..n]
+    for (ga, gb) in backend.pass.instances[..n]
         .iter()
-        .zip(&backend.encoder.instances[n..2 * n])
+        .zip(&backend.pass.instances[n..2 * n])
     {
         assert_eq!(ga.color, a);
         assert_eq!(gb.color, b);
@@ -439,7 +439,7 @@ fn partially_culled_run_is_not_cached() {
         Vec2::ZERO,
         PHYSICAL,
         1.0,
-        ColorU8::rgba(240, 240, 240, 255),
+        ColorU8::linear_rgba(240, 240, 240, 255),
     );
     // Clip to the first line: the pre-cull keeps lines with
     // line_top <= bounds_bot, so h = 10 keeps line 0 (top 0) and
@@ -457,7 +457,7 @@ fn partially_culled_run_is_not_cached() {
         std::slice::from_ref(&run),
     );
     assert_eq!(
-        backend.encoder.instances.len(),
+        backend.pass.instances.len(),
         3,
         "only line 0's 3 glyphs survive the cull"
     );
@@ -477,7 +477,7 @@ fn partially_culled_run_is_not_cached() {
         1.0,
         std::slice::from_ref(&run),
     );
-    assert_eq!(backend.encoder.instances.len(), 3);
+    assert_eq!(backend.pass.instances.len(), 3);
     assert!(backend.encoder.cache.map.is_empty());
     backend.tick_frame();
 
@@ -493,7 +493,7 @@ fn partially_culled_run_is_not_cached() {
         1.0,
         std::slice::from_ref(&run),
     );
-    assert_eq!(backend.encoder.instances.len(), 9);
+    assert_eq!(backend.pass.instances.len(), 9);
     assert_eq!(backend.encoder.cache.map.len(), 1);
     let cached = backend.encoder.cache.map.values().next().unwrap().span;
     assert_eq!(
@@ -516,7 +516,7 @@ fn partially_culled_run_is_not_cached() {
         1.0,
         std::slice::from_ref(&run),
     );
-    assert_eq!(backend.encoder.instances.len(), 9);
+    assert_eq!(backend.pass.instances.len(), 9);
     assert_eq!(backend.encoder.cache.map.len(), 1);
     assert_eq!(
         backend.encoder.cache.arena.slots.len(),
@@ -553,7 +553,7 @@ fn both_caches_age_on_one_clock_including_text_free_frames() {
         Vec2::new(20.0, 20.0),
         PHYSICAL,
         1.0,
-        ColorU8::rgba(240, 240, 240, 255),
+        ColorU8::linear_rgba(240, 240, 240, 255),
     )];
     run_one_frame(
         &gpu.lease.device,
@@ -578,7 +578,7 @@ fn both_caches_age_on_one_clock_including_text_free_frames() {
             "a text-free frame must still advance the shared clock",
         );
         assert_eq!(
-            backend.encoder.atlas.current_frame,
+            backend.pass.atlas.current_frame,
             shaper.frame(),
             "the atlas must track the shaper's clock, not its own count",
         );
@@ -625,14 +625,14 @@ fn swept_empty_glyph_reinserts() {
         Vec2::new(2.0, 2.0),
         PHYSICAL,
         1.0,
-        ColorU8::rgba(240, 240, 240, 255),
+        ColorU8::linear_rgba(240, 240, 240, 255),
     )];
     let empties = |b: &TextBackend| {
-        b.encoder
+        b.pass
             .atlas
             .cache
             .values()
-            .filter(|&&i| b.encoder.atlas.slots[i as usize].alloc.is_none())
+            .filter(|&&i| b.pass.atlas.slots[i as usize].alloc.is_none())
             .count()
     };
 
@@ -645,7 +645,7 @@ fn swept_empty_glyph_reinserts() {
         &runs,
     );
     assert!(
-        backend.encoder.instances.is_empty(),
+        backend.pass.instances.is_empty(),
         "whitespace prepares a text batch without drawable glyphs",
     );
     assert_eq!(
@@ -653,10 +653,10 @@ fn swept_empty_glyph_reinserts() {
         1,
         "the space rasterizes to one zero-area entry"
     );
-    let first_frame = backend.encoder.atlas.current_frame;
+    let first_frame = backend.pass.atlas.current_frame;
     backend.tick_frame();
     assert_eq!(
-        backend.encoder.atlas.current_frame,
+        backend.pass.atlas.current_frame,
         first_frame + 1,
         "a prepared zero-instance batch must still advance cache aging",
     );
@@ -672,7 +672,7 @@ fn swept_empty_glyph_reinserts() {
         .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
     let payloads = store.payloads.borrow();
     let interned_text = payloads.interned_text();
-    while backend.encoder.atlas.current_frame < 1024 {
+    while backend.pass.atlas.current_frame < 1024 {
         let mut ctx = GpuCtx::new(&gpu.lease.device, &gpu.queue, &mut belt, &mut encoder);
         backend.prepare_batch(&mut ctx, 1.0, 0, &[], &interned_text);
         backend.tick_frame();

@@ -32,7 +32,7 @@ impl Default for TextStore {
     fn default() -> Self {
         Self {
             bytes: String::new(),
-            epoch: TextEpoch::next(),
+            epoch: TextEpoch::reserve(),
         }
     }
 }
@@ -50,7 +50,7 @@ impl TextStore {
     /// into the same allocation frame after frame.
     pub(super) fn clear(&mut self) {
         self.bytes.clear();
-        self.epoch = TextEpoch::next();
+        self.epoch = TextEpoch::reserve();
     }
 
     pub(super) fn intern_str(&mut self, text: &str) -> InternedStr {

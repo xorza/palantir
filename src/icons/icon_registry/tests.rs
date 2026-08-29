@@ -2,7 +2,7 @@
 //! [`IconSet`] drives.
 
 use super::*;
-use crate::icons::icon_atlas::{IconDef, IconId};
+use crate::icons::icon_table::{IconDef, IconId};
 use crate::primitives::span::Span;
 use glam::Vec2;
 
@@ -21,11 +21,11 @@ const B_ICONS: &[IconDef] = &[IconDef {
     filtered: true,
 }];
 
-fn a() -> Rc<IconAtlas> {
-    Rc::new(IconAtlas::baked(A_ICONS, b"a"))
+fn a() -> Rc<IconTable> {
+    Rc::new(IconTable::baked(A_ICONS, b"a"))
 }
-fn b() -> Rc<IconAtlas> {
-    Rc::new(IconAtlas::baked(B_ICONS, b"b"))
+fn b() -> Rc<IconTable> {
+    Rc::new(IconTable::baked(B_ICONS, b"b"))
 }
 
 /// Ids of the sets currently resident, in slot order.

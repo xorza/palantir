@@ -31,3 +31,21 @@ pub struct KeyPress {
     /// [`crate::Shortcut::matches`]).
     pub physical: Key,
 }
+
+impl KeyPress {
+    /// The layout-independent key to retry a chord against, when the
+    /// logical one is not Latin.
+    ///
+    /// A non-Latin layout still puts `Z` where a US keyboard does, so a
+    /// chord declared on `Z` has to be matched against
+    /// [`Self::physical`] — but only there. Dvorak and AZERTY already
+    /// produce ASCII letters, in their own intended positions, and
+    /// retrying would fire the wrong chord.
+    ///
+    /// One rule, read by [`Shortcut::matches`](crate::Shortcut::matches)
+    /// and by `KeyClass`'s edit chords, so the two cannot disagree about
+    /// what `Ctrl+Z` is.
+    pub(crate) fn layout_retry(self) -> Option<Key> {
+        matches!(self.key, Key::Char(c) if !c.is_ascii()).then_some(self.physical)
+    }
+}

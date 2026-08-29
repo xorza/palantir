@@ -27,7 +27,11 @@ pub(super) fn distinct_grad(seed: f32) -> LinearGradient {
     let r = v as u8;
     let g = (v >> 8) as u8;
     let b = (v >> 16) as u8;
-    LinearGradient::two_stop(0.0, ColorU8::rgb(r, g, b), ColorU8::rgb(0, 0xff, 0))
+    LinearGradient::two_stop(
+        0.0,
+        ColorU8::linear_rgb(r, g, b),
+        ColorU8::linear_rgb(0, 0xff, 0),
+    )
 }
 
 pub(super) fn register_for(atlas: &mut CpuGradientAtlas, g: LinearGradient) -> LutRow {

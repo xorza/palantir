@@ -1,6 +1,5 @@
 //! What a button wears in each of its four interaction states.
 
-use crate::animation::anim_spec::AnimSpec;
 use crate::input::response::response_state::ResponseState;
 use crate::primitives::background::Background;
 use crate::primitives::brush::Brush;
@@ -27,18 +26,9 @@ pub struct ButtonTheme {
     /// (`[button.normal]`, not `[button.looks.normal]`).
     #[serde(flatten)]
     pub looks: StatefulLook,
-    /// Default padding inside the button (around the label).
-    /// Applied at `show()` time when the builder hasn't set padding.
-    pub padding: Spacing,
-    /// Default margin around the button.
-    pub margin: Spacing,
-    /// Spec applied to fill/stroke/text transitions between states.
-    /// Default `None` — animation is opt-in. Themes that want motion
-    /// set this to `Some(AnimSpec::FAST)`, `Some(AnimSpec::SPRING)`,
-    /// or any custom spec. Round-trips through serde so theme files
-    /// can configure motion.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub anim: Option<AnimSpec>,
+    /// Spacing and transition spec — see [`SlotDefaults`].
+    #[serde(flatten)]
+    pub defaults: SlotDefaults,
 }
 
 impl ButtonTheme {
@@ -75,9 +65,11 @@ impl ButtonTheme {
                     text: Some(TextStyle::default().with_color(p.text_disabled)),
                 },
             },
-            padding: Spacing::xy(12.0, 6.0),
-            margin: Spacing::ZERO,
-            anim: None,
+            defaults: SlotDefaults {
+                padding: Spacing::xy(12.0, 6.0),
+                margin: Spacing::ZERO,
+                anim: None,
+            },
         }
     }
 
@@ -85,12 +77,7 @@ impl ButtonTheme {
     /// Destructured so a new field fails to compile here — see
     /// [`Theme::for_each_text`](crate::Theme).
     pub(super) fn for_each_text<F: FnMut(&mut TextStyle)>(&mut self, f: &mut F) {
-        let Self {
-            looks,
-            padding: _,
-            margin: _,
-            anim: _,
-        } = self;
+        let Self { looks, defaults: _ } = self;
         looks.for_each_text(f);
     }
 
@@ -123,9 +110,11 @@ impl ButtonTheme {
                 active: flat(p.elem_active.into()),
                 disabled: flat(Brush::TRANSPARENT),
             },
-            padding: Spacing::xy(8.0, 4.0),
-            margin: Spacing::ZERO,
-            anim: None,
+            defaults: SlotDefaults {
+                padding: Spacing::xy(8.0, 4.0),
+                margin: Spacing::ZERO,
+                anim: None,
+            },
         }
     }
 
@@ -149,11 +138,7 @@ impl ThemeSlot for ButtonTheme {
     }
 
     fn defaults(&self) -> SlotDefaults {
-        SlotDefaults {
-            padding: self.padding,
-            margin: self.margin,
-            anim: self.anim,
-        }
+        self.defaults
     }
 }
 

@@ -12,6 +12,7 @@ pub(crate) mod zoom_config;
 use crate::input::response::response_state::ResponseState;
 use crate::input::sense::Sense;
 use crate::input::zoom;
+use crate::layout::types::layout_mode::LayoutMode;
 use crate::layout::types::layout_mode::ScrollSpec;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::approx;
@@ -430,7 +431,7 @@ impl<'a> Scroll<'a> {
         let user = self.node.size.unwrap_or_default();
         let fit = BVec2::new(pan.x && user.w().is_hug(), pan.y && user.h().is_hug());
         let mut inner = inner.id(scroll_id);
-        inner.set_scroll_spec(self.node.scroll_spec().with_fit(fit));
+        inner.set_mode(LayoutMode::Scroll(self.node.scroll_spec().with_fit(fit)));
         inner.margin = Some(Spacing::new(0.0, 0.0, space.reserve_y, space.reserve_x));
         // `with_axes` set `ClipMode::Rect` by default; caller configuration
         // can replace it with rounded clipping or no clipping.

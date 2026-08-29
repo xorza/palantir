@@ -7,7 +7,7 @@ use crate::primitives::span::Span;
 use glam::Vec2;
 use std::borrow::Cow;
 
-/// Index of one icon within its [`IconAtlas`]. A generated set emits a named
+/// Index of one icon within its [`IconTable`]. A generated set emits a named
 /// constant per icon, so a call site says `icons::SAVE` rather than a number;
 /// a runtime-built one resolves through [`IconSet::by_name`](crate::IconSet::by_name).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -56,13 +56,13 @@ pub struct IconDef {
 /// The table is sorted by [`IconDef::name`], which is what lets
 /// [`IconSet::by_name`](crate::IconSet::by_name) binary-search it.
 #[derive(Debug)]
-pub struct IconAtlas {
+pub struct IconTable {
     icons: Cow<'static, [IconDef]>,
     /// Every icon's SVG, concatenated. Sliced by [`IconDef::svg`].
     svg: Cow<'static, [u8]>,
 }
 
-impl IconAtlas {
+impl IconTable {
     /// A set from data compiled into the binary — what a generated
     /// `icons.rs` calls. Borrows both halves, so it allocates nothing and
     /// parses nothing.
@@ -89,7 +89,7 @@ impl IconAtlas {
     /// **That parse is paid twice for any icon the session goes on to draw**:
     /// the tree read here is dropped once its three facts are off it, and
     /// `IconRasterizer` parses the same bytes again to get pixels. Keeping this
-    /// one instead would mean an [`IconAtlas`] that holds `usvg::Tree`s — a
+    /// one instead would mean an [`IconTable`] that holds `usvg::Tree`s — a
     /// parser type in a data type, and one retained tree per icon in the set
     /// rather than per icon actually drawn. At ~180 µs a parse, once, on the
     /// path that already tells you to prefer [`Self::baked`], the memory and
@@ -161,7 +161,7 @@ impl IconAtlas {
 
 #[cfg(test)]
 mod tests {
-    use crate::icons::icon_atlas::{IconAtlas, IconId};
+    use crate::icons::icon_table::{IconId, IconTable};
     use glam::Vec2;
 
     const ONE_COLOUR: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 12"><rect width="24" height="12" fill="#4080c0"/><circle cx="6" cy="6" r="3" fill="#4080c0"/></svg>"##;
@@ -172,34 +172,34 @@ mod tests {
     /// is `SvgFacts`' own test.
     #[test]
     fn runtime_build_sorts_by_name() {
-        let atlas = IconAtlas::from_svgs([("two", TWO_COLOURS), ("one", ONE_COLOUR)]);
-        let names: Vec<&str> = atlas.icons().iter().map(|d| d.name).collect();
+        let table = IconTable::from_svgs([("two", TWO_COLOURS), ("one", ONE_COLOUR)]);
+        let names: Vec<&str> = table.icons().iter().map(|d| d.name).collect();
         assert_eq!(
             names,
             ["one", "two"],
             "sorted, whatever order they arrived in"
         );
-        assert_eq!(atlas.icons()[0].view_box, Vec2::new(24.0, 12.0));
-        assert!(atlas.icons()[0].tintable, "facts ride through to the def");
+        assert_eq!(table.icons()[0].view_box, Vec2::new(24.0, 12.0));
+        assert!(table.icons()[0].tintable, "facts ride through to the def");
     }
 
     /// Each icon's span must slice its own source back out of the shared blob
     /// — an off-by-one here would rasterize the neighbouring icon.
     #[test]
     fn spans_slice_each_icon_out_of_the_shared_blob() {
-        let atlas = IconAtlas::from_svgs([("b", TWO_COLOURS), ("a", ONE_COLOUR)]);
-        assert_eq!(atlas.svg_bytes(IconId(0)), ONE_COLOUR.as_bytes());
-        assert_eq!(atlas.svg_bytes(IconId(1)), TWO_COLOURS.as_bytes());
+        let table = IconTable::from_svgs([("b", TWO_COLOURS), ("a", ONE_COLOUR)]);
+        assert_eq!(table.svg_bytes(IconId(0)), ONE_COLOUR.as_bytes());
+        assert_eq!(table.svg_bytes(IconId(1)), TWO_COLOURS.as_bytes());
     }
 
     /// One broken source must not take the set with it.
     #[test]
     fn unparseable_sources_are_skipped() {
-        let atlas = IconAtlas::from_svgs([("good", ONE_COLOUR), ("bad", "<svg")]);
-        assert_eq!(atlas.icons().len(), 1);
-        assert_eq!(atlas.icons()[0].name, "good");
+        let table = IconTable::from_svgs([("good", ONE_COLOUR), ("bad", "<svg")]);
+        assert_eq!(table.icons().len(), 1);
+        assert_eq!(table.icons()[0].name, "good");
         assert_eq!(
-            atlas.svg_bytes(IconId(0)),
+            table.svg_bytes(IconId(0)),
             ONE_COLOUR.as_bytes(),
             "the blob holds only what parsed",
         );

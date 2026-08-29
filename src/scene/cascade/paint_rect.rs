@@ -12,7 +12,7 @@ use crate::scene::cascade::paint::{Paint, PaintArena};
 use crate::scene::shapes::paint::{QuadShape, shadow_paint_rect_local};
 use crate::scene::shapes::record::{ShapeRecord, text_paint_bbox_local};
 use crate::scene::tree::Tree;
-use crate::scene::tree::iter::{TreeItem, TreeItems};
+use crate::scene::tree::iter::TreeItem;
 use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::paint_anims::PaintAnims;
 use crate::shape::stroke_bounds::{HALF_FRINGE, stroked_bbox};
@@ -245,7 +245,7 @@ pub(super) fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) 
         let mut text_runs = TextRuns::new(layout.text_spans[node.idx()]);
         let shape_hashes = tree.shapes.hashes.as_slice();
         let widget_ids = tree.records.widget_id();
-        for item in TreeItems::new(&tree.records, &tree.shapes.records, node) {
+        for item in tree.tree_items(node) {
             let (idx, s) = match item {
                 TreeItem::ShapeRecord(idx, s) => (idx, s),
                 TreeItem::Child(c) => {

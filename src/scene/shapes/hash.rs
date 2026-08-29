@@ -17,7 +17,7 @@ use crate::primitives::approx;
 use crate::primitives::approx::FloatHash;
 use crate::primitives::image::ImageFit;
 use crate::primitives::rect::Rect;
-use crate::scene::shapes::paint::{CurveBasis, ImageSource, QuadShape, ShapeBrush};
+use crate::scene::shapes::paint::{BrushHash, CurveBasis, ImageSource, QuadShape, ShapeBrush};
 use crate::scene::shapes::record::ShapeRecord;
 use std::hash::{Hash, Hasher as _};
 use std::mem;
@@ -257,16 +257,12 @@ fn hash_optional_rect(rect: Option<Rect>, h: &mut Hasher) {
     }
 }
 
-/// Fold a lowered fill into the shape hash: discriminant, then the
-/// inline colour for `Solid` or the pre-computed gradient content
-/// hash for `Gradient` (the `GradientId` itself is frame-local and
-/// excluded).
+/// Fold a lowered fill into the shape hash. The two values come off
+/// [`ShapeBrush::hash_parts`], which the chrome hash reads too.
 fn hash_brush(fill: &ShapeBrush, fill_grad_hash: u64, h: &mut Hasher) {
-    mem::discriminant(fill).hash(h);
-    match fill {
-        ShapeBrush::Solid(c) => c.hash(h),
-        ShapeBrush::Gradient(_) => h.write_u64(fill_grad_hash),
-    }
+    let BrushHash { tag, payload } = fill.hash_parts(fill_grad_hash);
+    h.write_u8(tag);
+    h.write_u64(payload);
 }
 
 /// Fold an [`ImageFit`] into the shape hash: the discriminant plus, for

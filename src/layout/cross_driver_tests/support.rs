@@ -36,8 +36,8 @@ pub(super) fn two_hug_cols_with_wrap(ui: &mut Ui, paragraph: &'static str) -> No
     let mut text_node = None;
     Grid::new()
         .auto_id()
-        .cols([Track::hug(), Track::hug()])
-        .rows([Track::hug()])
+        .cols([Track::HUG, Track::HUG])
+        .rows([Track::HUG])
         .show(ui, |ui| {
             text_node = Some(
                 Text::new(paragraph)

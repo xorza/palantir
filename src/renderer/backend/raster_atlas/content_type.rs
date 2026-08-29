@@ -1,17 +1,26 @@
-//! Which of an atlas's two sides a raster lives on: single-channel
-//! coverage, or full colour.
+//! What a rasterizer produced, and so which of an atlas's two sides it
+//! lives on: single-channel coverage, or full colour.
 
-/// Which of an atlas's two sides content lives on. `Mask` is one coverage
-/// byte per texel and takes the draw's colour; `Color` is straight sRGB RGBA
-/// and supplies its own.
+/// What a raster's bytes hold, and so which of an atlas's two sides it
+/// lives on.
+///
+/// One answer for every rasterizer in the crate. A glyph is a swash
+/// bitmap and an icon a rendered SVG, but each is one of these two things
+/// and each says so in the same word — see
+/// [`GlyphImage::kind`](crate::GlyphImage).
 ///
 /// The discriminants are load-bearing: `RasterAtlas` indexes its
 /// `[Side; 2]` with `content as usize`, and a `PendingCopy` stores the
 /// side it targets as a `u8`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u8)]
-pub(crate) enum ContentType {
+pub enum ContentType {
+    /// One coverage byte per pixel. The draw multiplies it by the shape's
+    /// full tint, so one baked raster serves every theme colour.
     Mask = 0,
+    /// Straight (non-premultiplied) sRGB RGBA, four bytes per pixel — what
+    /// the colour atlas side stores and what the raster shader
+    /// premultiplies in linear at output.
     Color = 1,
 }
 

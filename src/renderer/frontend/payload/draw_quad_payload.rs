@@ -8,7 +8,7 @@ use crate::primitives::fill_kind::FillKind;
 use crate::primitives::lut_row::LutRow;
 use crate::primitives::rect::Rect;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
-use crate::renderer::frontend::payload::brush_source::GpuFillFields;
+use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::scene::shapes::paint::ShapeStroke;
 
 /// The geometry half of a [`DrawQuadPayload`] — everything the composer
@@ -76,14 +76,15 @@ impl QuadGeom {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct DrawQuadPayload {
     pub(crate) geom: QuadGeom,
-    /// Linear-RGB fill (straight alpha). Zeroed for gradients; the
-    /// atlas row at `fill_lut_row` supplies the colour in that case.
-    pub(crate) fill: ColorF16,
+    pub(crate) fill: GpuFill,
     /// Normalized by [`ShapeStroke::normalized`] on the way in, so
     /// [`ShapeStroke::NONE`] here means "no stroke" exactly.
     pub(crate) stroke: ShapeStroke,
-    pub(crate) fill_kind: FillKind,
-    pub(crate) fill_lut_row: LutRow,
+    /// The reused four-lane geometry slot: gradient axis for a gradient
+    /// fill, `(offset, σ, spread)` for a shadow, unread for a triangle
+    /// (the composer overwrites it from the transformed points). Not part
+    /// of [`GpuFill`] because only this tier has one, and because a
+    /// shadow's lanes are not an axis at all.
     pub(crate) fill_axis: FillAxis,
 }
 
@@ -126,23 +127,15 @@ impl DrawQuadPayload {
         window: bool,
     ) -> Self {
         // Stroke stays solid-only — gradient strokes are a non-goal.
-        let GpuFillFields {
-            color: fill_color,
-            kind: fill_kind,
-            lut_row: fill_lut_row,
-            axis: fill_axis,
-        } = fill.to_gpu_fields();
+        let mut lanes = fill.gpu_fill();
+        if window {
+            lanes.kind = lanes.kind.with_window();
+        }
         Self {
             geom: QuadGeom::Rect { rect, corners },
-            fill: fill_color,
+            fill: lanes,
             stroke: stroke.normalized(),
-            fill_kind: if window {
-                fill_kind.with_window()
-            } else {
-                fill_kind
-            },
-            fill_lut_row,
-            fill_axis,
+            fill_axis: fill.fill_axis(),
         }
     }
 
@@ -162,11 +155,13 @@ impl DrawQuadPayload {
     ) -> Self {
         Self {
             geom: QuadGeom::Rect { rect, corners },
-            fill: color,
+            fill: GpuFill {
+                color,
+                kind: fill_kind,
+                lut_row: LutRow::FALLBACK,
+            },
             // A shadow has no stroke; its whole edge is the blur.
             stroke: ShapeStroke::NONE,
-            fill_kind,
-            fill_lut_row: LutRow::FALLBACK,
             fill_axis,
         }
     }
@@ -191,12 +186,14 @@ impl DrawQuadPayload {
                 c,
                 radius,
             },
-            fill,
+            fill: GpuFill {
+                color: fill,
+                kind: FillKind::TRIANGLE,
+                // The composer overwrites both reused lanes from the
+                // transformed points, so neither is read from here.
+                lut_row: LutRow::FALLBACK,
+            },
             stroke: stroke.normalized(),
-            fill_kind: FillKind::TRIANGLE,
-            // The composer overwrites both reused lanes from the
-            // transformed points, so neither is read from here.
-            fill_lut_row: LutRow::FALLBACK,
             fill_axis: FillAxis::ZERO,
         }
     }
@@ -226,7 +223,7 @@ impl DrawQuadPayload {
     /// produces nothing visible, so correctness is intact either way.
     #[inline]
     fn fill_is_noop(&self) -> bool {
-        !self.fill_kind.is_gradient() && self.fill.is_noop()
+        self.fill.is_noop()
     }
 }
 
@@ -301,7 +298,7 @@ mod tests {
                 matches!(tp.geom, QuadGeom::Triangle { .. }),
                 "case {label}: triangle must carry triangle geometry",
             );
-            assert_eq!(tp.fill_kind, FillKind::TRIANGLE, "case {label}");
+            assert_eq!(tp.fill.kind, FillKind::TRIANGLE, "case {label}");
 
             assert_eq!(tp.stroke.color, rp.stroke.color, "case {label}");
             assert_eq!(

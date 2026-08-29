@@ -304,12 +304,6 @@ impl Cascade {
             .map(|row| row.widget_id)
     }
 
-    /// Topmost entry under `pos` whose `Sense` passes `filter` (hoverable for
-    /// hover, clickable for press/release).
-    pub(crate) fn hit_test(&self, pos: Vec2, filter: impl Fn(Sense) -> bool) -> Option<WidgetId> {
-        self.hit_first(pos, |row| filter(row.sense))
-    }
-
     /// One reverse walk that finds the topmost hover, scroll and pinch
     /// target at once. Used on `PointerMoved` and at `post_record` to
     /// recompute all three in a single pass.
@@ -356,6 +350,28 @@ impl Cascade {
             }
         }
         targets
+    }
+}
+
+// Reached only from the harness's aim assertions and the hit-index test:
+// production routes through the two fused walks above, each of which
+// answers its whole question in one pass.
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod test_support {
+    use crate::input::sense::Sense;
+    use crate::primitives::widget_id::WidgetId;
+    use crate::scene::cascade::Cascade;
+    use glam::Vec2;
+
+    impl Cascade {
+        /// Topmost entry under `pos` whose `Sense` passes `filter`.
+        pub(crate) fn hit_test(
+            &self,
+            pos: Vec2,
+            filter: impl Fn(Sense) -> bool,
+        ) -> Option<WidgetId> {
+            self.hit_first(pos, |row| filter(row.sense))
+        }
     }
 }
 

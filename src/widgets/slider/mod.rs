@@ -13,26 +13,8 @@ use crate::scene::node::Node;
 use crate::ui::Ui;
 use crate::widgets::response::Response;
 use crate::widgets::theme::slider::SliderTheme;
+use crate::widgets::value_response::ValueResponse;
 use std::ops::RangeInclusive;
-
-/// What [`Slider::show`] reports about the value it writes through.
-#[derive(Debug)]
-pub struct SliderResponse<'a> {
-    /// The widget's pointer/click/hover [`Response`].
-    pub response: Response<'a>,
-    /// The drag moved the bound value this frame. A **level** while the
-    /// pointer is dragging it somewhere new, and false on a drag that
-    /// is pinned at an end of the range.
-    pub changed: bool,
-    /// The drag released this frame, so the bound value holds its final
-    /// result — one gesture, one undoable edit.
-    ///
-    /// The release frame **re-writes** that value, so a caller that ignores
-    /// `changed`, re-seeds the bound `f32` from its own canonical copy every
-    /// frame, and adopts it only here still observes what the gesture landed
-    /// on. Released while disabled, the gesture is dropped instead.
-    pub committed: bool,
-}
 
 /// Horizontal value slider over a `f32` range. Takes a `&mut f32`;
 /// dragging (or clicking) the rail moves the value. The knob position is
@@ -80,14 +62,14 @@ impl<'a> Slider<'a> {
     /// Record the slider and report what the drag did to the bound
     /// value.
     ///
-    /// A [`SliderResponse`] rather than a bare [`Response`] because the
+    /// A [`ValueResponse`] rather than a bare [`Response`] because the
     /// widget writes through `&mut f32`: the caller has no other way to
     /// tell whether the value moved this frame. `left.drag.dragging()`
     /// does not answer it — a drag pinned at `min`/`max` keeps reporting
-    /// while the value stays put. Same level/edge split as
-    /// [`DragValueResponse`](crate::DragValueResponse), so the two
-    /// value-editing widgets read alike.
-    pub fn show(self, ui: &mut Ui) -> SliderResponse<'_> {
+    /// while the value stays put. The same type
+    /// [`DragValue`](crate::DragValue) returns, so the two value-editing
+    /// widgets read alike.
+    pub fn show(self, ui: &mut Ui) -> ValueResponse<'_> {
         let mut widget = ui.widget(self.node);
         let response = widget.response(ui);
         let id = widget.id();
@@ -103,7 +85,7 @@ impl<'a> Slider<'a> {
         // the cursor x against the last frame's logical width.
         //
         // `Drag::Stopped` is neither pressed nor dragging, so the release
-        // frame has to be named for `SliderResponse::committed` to mean what
+        // frame has to be named for `ValueResponse::committed` to mean what
         // it documents. Replaying the value there needs no retained `last`
         // the way `DragValue` does: it is a function of the pointer, not of
         // accumulated travel.
@@ -149,7 +131,7 @@ impl<'a> Slider<'a> {
             ui.chrome_leaf(id.with("knob"), (knob, knob), Some(&knob_bg));
             ui.chrome_leaf(id.with("rail"), (remainder, rail), Some(&rail_bg));
         });
-        SliderResponse {
+        ValueResponse {
             response: Response::eager(id, ui, response),
             changed,
             committed,

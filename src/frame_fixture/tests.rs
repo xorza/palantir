@@ -56,6 +56,11 @@ const EXCLUDED: &[(&str, &str)] = &[
         "gpu_view",
         "needs a `wgpu::Device` the deviceless CPU/alloc harnesses don't have",
     ),
+    (
+        "value_response",
+        "a return type, not a widget — `slider` and `drag_value` cover what \
+             produces it",
+    ),
 ];
 
 /// Every fixture source file of this module, so the checks below read what

@@ -13,8 +13,8 @@ fn hash_value(value: impl Hash) -> u64 {
 
 #[test]
 fn bounds_accept_valid_ranges_in_either_order() {
-    const MIN_THEN_MAX: Track = Track::fill().min(10.0).max(20.0);
-    const MAX_THEN_MIN: Track = Track::fill().max(20.0).min(10.0);
+    const MIN_THEN_MAX: Track = Track::FILL.min(10.0).max(20.0);
+    const MAX_THEN_MIN: Track = Track::FILL.max(20.0).min(10.0);
     const PINNED: Track = Track::fixed(5.0).min(5.0).max(5.0);
 
     assert_eq!(MIN_THEN_MAX, MAX_THEN_MIN);
@@ -34,19 +34,19 @@ fn bounds_reject_invalid_values_and_inverted_setter_orders() {
     type Case = (&'static str, fn() -> Track);
 
     let cases: &[Case] = &[
-        ("negative minimum", || Track::hug().min(-1.0)),
-        ("NaN minimum", || Track::hug().min(f32::NAN)),
-        ("infinite minimum", || Track::hug().min(f32::INFINITY)),
-        ("negative maximum", || Track::hug().max(-1.0)),
+        ("negative minimum", || Track::HUG.min(-1.0)),
+        ("NaN minimum", || Track::HUG.min(f32::NAN)),
+        ("infinite minimum", || Track::HUG.min(f32::INFINITY)),
+        ("negative maximum", || Track::HUG.max(-1.0)),
         ("negative infinite maximum", || {
-            Track::hug().max(f32::NEG_INFINITY)
+            Track::HUG.max(f32::NEG_INFINITY)
         }),
-        ("NaN maximum", || Track::hug().max(f32::NAN)),
+        ("NaN maximum", || Track::HUG.max(f32::NAN)),
         ("minimum above existing maximum", || {
-            Track::hug().max(10.0).min(11.0)
+            Track::HUG.max(10.0).min(11.0)
         }),
         ("maximum below existing minimum", || {
-            Track::hug().min(11.0).max(10.0)
+            Track::HUG.min(11.0).max(10.0)
         }),
     ];
 
@@ -57,7 +57,7 @@ fn bounds_reject_invalid_values_and_inverted_setter_orders() {
         );
     }
 
-    assert_eq!(Track::hug().max(f32::INFINITY).max, f32::INFINITY);
+    assert_eq!(Track::HUG.max(f32::INFINITY).max, f32::INFINITY);
 }
 
 fn grid_content_hash(def: GridDef, tracks: &[Track]) -> u64 {
@@ -70,10 +70,10 @@ fn grid_content_hash(def: GridDef, tracks: &[Track]) -> u64 {
 fn grid_content_hash_uses_tracks_not_arena_offsets_and_collapses_visual_noise() {
     let tracks = [
         Track::fixed(99.0),
-        Track::hug(),
-        Track::fill(),
-        Track::hug(),
-        Track::fill(),
+        Track::HUG,
+        Track::FILL,
+        Track::HUG,
+        Track::FILL,
     ];
     let make = |start, row_gap| GridDef {
         rows: Span::new(start, 1),
@@ -109,15 +109,15 @@ fn grid_content_hash_covers_empty_small_and_large_definitions() {
 
     let empty = hash_definition(&[], &[]);
     assert_eq!(empty, hash_definition(&[], &[]));
-    assert_ne!(empty, hash_definition(&[], &[Track::fill()]));
+    assert_ne!(empty, hash_definition(&[], &[Track::FILL]));
 
     let small_rows = [Track::fixed(10.0)];
-    let small_cols = [Track::hug(), Track::fill()];
+    let small_cols = [Track::HUG, Track::FILL];
     let small = hash_definition(&small_rows, &small_cols);
     assert_eq!(small, hash_definition(&small_rows, &small_cols));
     assert_ne!(small, hash_definition(&small_cols, &small_rows));
 
-    let large = [Track::fill(); 64];
+    let large = [Track::FILL; 64];
     let mut changed_large = large;
     changed_large[63] = Track::fixed(1.0);
     assert_eq!(hash_definition(&large, &[]), hash_definition(&large, &[]));

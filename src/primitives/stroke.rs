@@ -1,6 +1,5 @@
 //! A shape's outline: one colour and one width.
 
-use crate::primitives::approx::FloatHash;
 use crate::primitives::approx::noop_f32;
 use crate::primitives::color::Color;
 use crate::primitives::nan::NanCheck;
@@ -69,15 +68,6 @@ impl Stroke {
     }
 }
 
-/// Visual throughout: this feeds content-cache keys, so every scalar the
-/// stroke carries is canonicalized the same way, through `FloatHash`.
-impl std::hash::Hash for Stroke {
-    #[inline]
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.color.hash_visual(state);
-        self.width.hash_visual(state);
-    }
-}
 impl NanCheck for Stroke {
     #[inline]
     fn has_nan(&self) -> bool {

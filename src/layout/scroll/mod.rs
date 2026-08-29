@@ -35,11 +35,9 @@ impl LayoutDriver for Scroll {
         spec: Self::Payload,
         inner_avail: Size,
     ) -> Size {
-        let pan = spec.pan_mask();
-        let child_avail = Size::new(
-            if pan.x { f32::INFINITY } else { inner_avail.w },
-            if pan.y { f32::INFINITY } else { inner_avail.h },
-        );
+        // A panned axis measures unbounded: what it scrolls over is not
+        // limited by what it shows.
+        let child_avail = Size::INF.select(spec.pan_mask(), inner_avail);
         let raw = match spec.child_layout() {
             ScrollChildLayout::Layered => ZStack::measure(pass, node, (), child_avail),
             ScrollChildLayout::Flow(main) => Stack::measure(pass, node, main, child_avail),
@@ -47,18 +45,7 @@ impl LayoutDriver for Scroll {
 
         pass.set_scroll_content(node, raw);
 
-        Size::new(
-            if spec.contributes(Axis::X) {
-                raw.w
-            } else {
-                0.0
-            },
-            if spec.contributes(Axis::Y) {
-                raw.h
-            } else {
-                0.0
-            },
-        )
+        raw.select(spec.contributes_mask(), Size::ZERO)
     }
 
     fn arrange(pass: &mut LayoutPass<'_>, node: NodeId, spec: Self::Payload, inner: Rect) {

@@ -39,11 +39,7 @@ impl Panel {
         // the borrow outlive the `&mut Ui` the record below takes.
         let theme = Rc::clone(ui.theme());
         let mut node = self.node;
-        let chrome = node.resolve_container_chrome(
-            self.chrome.as_ref(),
-            theme.panel_background.as_ref(),
-            theme.panel_clip,
-        );
+        let chrome = node.resolve_container_chrome(self.chrome.as_ref(), theme.container_chrome());
         ui.widget(node).show(ui, chrome, body)
     }
 

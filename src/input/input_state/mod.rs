@@ -19,7 +19,6 @@ use crate::input::response::pointer_edge::PointerEdge;
 use crate::input::response::response_state::ResponseState;
 use crate::input::response::scroll_delta::ScrollDelta;
 use crate::input::scope::Scopes;
-use crate::input::sense::Sense;
 use crate::input::shortcut::Shortcut;
 use crate::input::target_scroll_delta::TargetScrollDelta;
 use crate::input::watch::{KeyboardWake, PointerWake, Watches};
@@ -41,7 +40,7 @@ fn pointer_in_widget_space(pointer: Vec2, layout_origin: Vec2, transform: Transl
 /// Live input state machine: the things that survive across input events
 /// independently of whether the tree was rebuilt. Per-frame rebuilt data
 /// (last-frame rects, cascade scratch) lives in [`crate::scene::cascade::Cascade`].
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub(crate) struct InputState {
     /// Pointer position in logical pixels, `None` when off-surface.
     pub(crate) pointer_pos: Option<Vec2>,
@@ -73,6 +72,9 @@ pub(crate) struct InputState {
     /// half out for every widget instead of re-deriving it per call.
     /// `focused` is excluded on purpose (see `snapshot_frame_quiescent`),
     /// so the fast path still reads it live.
+    ///
+    /// `false` before the first pass fills it — the safe direction,
+    /// since it forces the full path.
     frame_quiescent: bool,
     /// Unified keyboard event stream this frame:
     /// [`KeyboardEvent::Down`] from `KeyDown` events and
@@ -129,33 +131,6 @@ pub(crate) struct InputState {
     /// [`Self::pointer_events`], which layer-gates it against
     /// [`Self::silenced`].
     pub(crate) frame_pointer_events: Vec<PointerEvent>,
-}
-
-impl Default for InputState {
-    fn default() -> Self {
-        Self {
-            pointer_pos: None,
-            hovered: None,
-            scroll_target: None,
-            pinch_target: None,
-            frame_target_deltas: Vec::new(),
-            captures: [Capture::default(); PointerButton::COUNT],
-            // Recomputed each record pass before any `response_for`
-            // call; `false` is the safe pre-frame default (forces the
-            // full path).
-            frame_quiescent: false,
-            frame_keyboard_events: Vec::new(),
-            modifiers: Modifiers::NONE,
-            focused: None,
-            scopes: Scopes::default(),
-            focus_policy: FocusPolicy::default(),
-            input_policy: InputPolicy::default(),
-            frame_had_action: false,
-            signal_since_last_frame: InputSignal::None,
-            subs: Watches::default(),
-            frame_pointer_events: Vec::new(),
-        }
-    }
 }
 
 impl InputState {
@@ -319,19 +294,19 @@ impl InputState {
             let press = cap.press.as_ref();
             let pressed = press
                 .filter(|press| press.fresh)
-                .map(|press| of(press.target, PointerEdge::Pressed { count: press.seq }));
+                .map(|press| of(press.target, PointerEdge::Pressed { count: press.count }));
             let dragging = press
                 .filter(|press| press.drag == PressDrag::Started)
                 .map(|press| of(press.target, PointerEdge::DragStarted));
             // A release destroys the press, so this is the other frame: never
             // both, which is why one array covers either.
             let ended = cap.release.as_ref().and_then(|release| {
-                let edge = match release.kind {
-                    ReleaseKind::Click { count } => PointerEdge::Clicked { count },
-                    ReleaseKind::DragStopped => PointerEdge::DragStopped,
-                    // A release that landed off its widget ended nothing anyone
-                    // asked about — the capture simply dissolves.
-                    ReleaseKind::Miss => return None,
+                // A release that landed off its widget ended nothing anyone
+                // asked about — the capture simply dissolves.
+                let edge = match release.kind.click() {
+                    Some(count) => PointerEdge::Clicked { count },
+                    None if release.kind.ended_drag() => PointerEdge::DragStopped,
+                    None => return None,
                 };
                 Some(of(release.target, edge))
             });
@@ -368,6 +343,54 @@ impl InputState {
             self.frame_pointer_events.push(make(pos));
         }
         true
+    }
+
+    /// Push a pointer event that belongs to no one watch class, waking
+    /// every watcher that holds any.
+    ///
+    /// `Leave` is the only one. It is not a move, a button, a scroll or a
+    /// pinch, and every watcher may want to clean up after it — clear a
+    /// crosshair, dismiss a hover preview. It also carries no position,
+    /// there being no pointer any more, which is why it cannot go through
+    /// [`Self::push_pointer_event`]: that one's contract is "no position,
+    /// no event".
+    fn push_unclassed(&mut self, event: PointerEvent) -> bool {
+        if self.subs.pointer_mask.is_empty() {
+            return false;
+        }
+        self.frame_pointer_events.push(event);
+        true
+    }
+
+    /// Whether any button holds a live capture.
+    ///
+    /// The gate on "does this pointer event still concern a widget" —
+    /// a move and a leave both ask it, because a captured widget is
+    /// tracking the pointer whether or not it is under one.
+    fn any_press(&self) -> bool {
+        self.captures.iter().any(|c| c.press.is_some())
+    }
+
+    /// Accumulate one scroll delta on the current scroll target and wake
+    /// the watchers, answering whether anything observed it.
+    ///
+    /// One body for the two units a host delivers: pixels off a trackpad,
+    /// lines off a wheel notch. They reach the widget in separate lanes —
+    /// see [`ScrollDelta`](crate::input::scroll_delta::ScrollDelta) — so
+    /// the caller fills the lane it has and leaves the other at zero.
+    fn on_scroll(&mut self, pixels: Vec2, lines: Vec2) -> EventOutcome {
+        let target = self.scroll_target;
+        if let Some(target) = target {
+            let delta = self.target_scroll_delta_mut(target);
+            delta.pixels += pixels;
+            delta.lines += lines;
+        }
+        let subbed = self.push_positioned(PointerWake::SCROLL, |pos| PointerEvent::Scroll {
+            pos,
+            pixels,
+            lines,
+        });
+        EventOutcome::repaint(target.is_some() || subbed)
     }
 
     /// Push for the events that route *by pointer position* — scroll and
@@ -442,7 +465,7 @@ impl InputState {
                     repaint: self.hovered != prev_hover
                         || self.scroll_target != prev_scroll
                         || self.pinch_target != prev_pinch
-                        || self.captures.iter().any(|c| c.press.is_some())
+                        || self.any_press()
                         || move_subbed,
                     // Only the threshold crossing settles: the latch is
                     // what a widget reads, and it flips exactly once.
@@ -453,16 +476,10 @@ impl InputState {
                 let observable = self.hovered.is_some()
                     || self.scroll_target.is_some()
                     || self.pinch_target.is_some()
-                    || self.captures.iter().any(|c| c.press.is_some());
+                    || self.any_press();
                 self.pointer_pos = None;
                 self.refresh_pointer_targets(cascade);
-                // `Leave` is rare; emit whenever any pointer-class
-                // watch is active so watchers can clean up
-                // (clear crosshair, dismiss hover preview).
-                let pointer_subbed = !self.subs.pointer_mask.is_empty();
-                if pointer_subbed {
-                    self.frame_pointer_events.push(PointerEvent::Leave);
-                }
+                let pointer_subbed = self.push_unclassed(PointerEvent::Leave);
                 EventOutcome::repaint(observable || pointer_subbed)
             }
             InputEvent::PointerPressed(btn) => {
@@ -535,9 +552,14 @@ impl InputState {
                     let kind = if press.drag != PressDrag::None {
                         ReleaseKind::DragStopped
                     } else {
-                        let hit = pointer_pos.and_then(|p| cascade.hit_test(p, Sense::clicks));
+                        // The same walk the press opened the capture
+                        // with, so "did the release land back on it" is
+                        // the question the press already answered rather
+                        // than a second entry point free to answer it
+                        // differently.
+                        let hit = pointer_pos.and_then(|p| cascade.hit_test_press(p).click);
                         if hit == Some(press.target) {
-                            ReleaseKind::Click { count: press.seq }
+                            ReleaseKind::Click { count: press.count }
                         } else {
                             ReleaseKind::Miss
                         }
@@ -556,32 +578,8 @@ impl InputState {
                     settles: settles || buttons_subbed,
                 }
             }
-            InputEvent::ScrollPixels(d) => {
-                let target = self.scroll_target;
-                if let Some(target) = target {
-                    self.target_scroll_delta_mut(target).pixels += d;
-                }
-                let subbed =
-                    self.push_positioned(PointerWake::SCROLL, |pos| PointerEvent::Scroll {
-                        pos,
-                        pixels: d,
-                        lines: Vec2::ZERO,
-                    });
-                EventOutcome::repaint(target.is_some() || subbed)
-            }
-            InputEvent::ScrollLines(d) => {
-                let target = self.scroll_target;
-                if let Some(target) = target {
-                    self.target_scroll_delta_mut(target).lines += d;
-                }
-                let subbed =
-                    self.push_positioned(PointerWake::SCROLL, |pos| PointerEvent::Scroll {
-                        pos,
-                        pixels: Vec2::ZERO,
-                        lines: d,
-                    });
-                EventOutcome::repaint(target.is_some() || subbed)
-            }
+            InputEvent::ScrollPixels(d) => self.on_scroll(d, Vec2::ZERO),
+            InputEvent::ScrollLines(d) => self.on_scroll(Vec2::ZERO, d),
             InputEvent::Zoom(f) => {
                 let target = self.pinch_target;
                 if let Some(target) = target {
@@ -895,27 +893,20 @@ impl InputState {
             let phase = match &cap.press {
                 Some(press) if press.target == id => {
                     if press.fresh {
-                        ButtonPhase::Down { press: press.seq }
+                        ButtonPhase::Down { count: press.count }
                     } else {
                         ButtonPhase::Held
                     }
                 }
                 _ => match &cap.release {
                     Some(release) if release.target == id => ButtonPhase::Up {
-                        click: match release.kind {
-                            ReleaseKind::Click { count } => Some(count),
-                            ReleaseKind::DragStopped | ReleaseKind::Miss => None,
-                        },
+                        click: release.kind.click(),
                     },
                     _ => ButtonPhase::Idle,
                 },
             };
             let mut drag = match &cap.release {
-                Some(release)
-                    if release.target == id && release.kind == ReleaseKind::DragStopped =>
-                {
-                    Drag::Stopped
-                }
+                Some(release) if release.target == id && release.kind.ended_drag() => Drag::Stopped,
                 _ => Drag::None,
             };
             // A threshold-crossed press overrides the stale stop edge

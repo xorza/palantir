@@ -1,7 +1,7 @@
 //! Baked SVG icon sets, and the rasterizer that turns one into pixels.
 //!
 //! An icon is a text glyph that came from an SVG. The set is
-//! [`IconAtlas`](crate::icons::icon_atlas::IconAtlas) — SVG sources plus a
+//! [`IconTable`](crate::icons::icon_table::IconTable) — SVG sources plus a
 //! name table, either compiled in as a generated `const` or built at runtime
 //! from the sources themselves. Nothing is rasterized ahead of time: the
 //! renderer rasterizes each
@@ -17,9 +17,9 @@
 //! kept alive by the [`IconSet`](crate::IconSet) the app holds, and unloaded
 //! when the last clone of that goes.
 
-pub(crate) mod icon_atlas;
 pub(crate) mod icon_raster_key;
 pub(crate) mod icon_rasterizer;
 pub(crate) mod icon_registry;
 pub(crate) mod icon_set;
+pub(crate) mod icon_table;
 pub(crate) mod svg_facts;

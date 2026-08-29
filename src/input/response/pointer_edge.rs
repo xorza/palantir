@@ -3,6 +3,15 @@
 
 /// What happened, as an *edge*: something that became true this frame.
 ///
+/// **A second walk, not a projection of [`ButtonPhase`].** A widget's
+/// own phase is one value per frame, so a batch that presses, releases
+/// and presses again collapses to the live press there; here the release
+/// still reports its completed click. The two agree on what a click and
+/// a drag-stop *are* — both read one `ReleaseKind::click` — and differ
+/// only in how many edges one frame may carry.
+///
+/// [`ButtonPhase`]: crate::ButtonPhase
+///
 /// **Edges only, deliberately.** A drag's travel is a level — true for as long
 /// as the gesture lasts, and wanted as a number rather than as news — and a
 /// level is what polling is good at. So this says *that* a drag started and on

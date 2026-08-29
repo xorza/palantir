@@ -6,7 +6,7 @@ use crate::primitives::{
     approx::{self, FloatHash},
     num::Num,
 };
-use glam::Vec2;
+use glam::{BVec2, Vec2};
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Default, bytemuck::Pod, bytemuck::Zeroable)]
@@ -115,6 +115,21 @@ impl Size {
         Self {
             w: (self.w - offset.x).max(0.0),
             h: (self.h - offset.y).max(0.0),
+        }
+    }
+
+    /// Per-lane select: this size's lane where `mask` is set, `other`'s
+    /// where it is not.
+    ///
+    /// The shape four layout drivers spelled as a pair of `if`s over `.w`
+    /// and `.h` — a Hug axis measuring against `INFINITY`, a panned axis
+    /// contributing nothing, a canvas axis taking the room past a child.
+    /// One body, so the two lanes cannot drift apart.
+    #[inline]
+    pub(crate) fn select(self, mask: BVec2, other: Self) -> Self {
+        Self {
+            w: if mask.x { self.w } else { other.w },
+            h: if mask.y { self.h } else { other.h },
         }
     }
 

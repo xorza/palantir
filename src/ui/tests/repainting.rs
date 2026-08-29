@@ -370,7 +370,7 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
     assert_eq!(r0.processing, FrameProcessing::SingleLayout);
     {
         let payloads = h.ui.forest.record_store.payloads.borrow();
-        assert_eq!(payloads.interned_text().bytes, "retained 7");
+        assert_eq!(payloads.interned_text().all(), "retained 7");
     }
 
     // Frame 1 at the blink boundary: only the anim wake fires →
@@ -396,7 +396,7 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
     {
         let payloads = h.ui.forest.record_store.payloads.borrow();
         assert_eq!(
-            payloads.interned_text().bytes,
+            payloads.interned_text().all(),
             "retained 7",
             "PaintOnly must preserve bytes referenced by retained text",
         );
@@ -432,8 +432,8 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
             .calls
             .iter()
             .filter_map(|command| match command {
-                PaintCall::Quad(payload) if payload.fill_lut_row != LutRow::FALLBACK => {
-                    Some(payload.fill_lut_row)
+                PaintCall::Quad(payload) if payload.fill.lut_row != LutRow::FALLBACK => {
+                    Some(payload.fill.lut_row)
                 }
                 _ => None,
             })
@@ -443,7 +443,11 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
     fn window_a(ui: &mut Ui, half: Duration) {
         Panel::hstack().size(20.0).show(ui, |ui| {
             ui.add_shape(Shape::rect(Rect::new(0.0, 0.0, 8.0, 8.0)).fill(
-                LinearGradient::two_stop(0.0, ColorU8::rgb(255, 0, 0), ColorU8::rgb(0, 0, 255)),
+                LinearGradient::two_stop(
+                    0.0,
+                    ColorU8::linear_rgb(255, 0, 0),
+                    ColorU8::linear_rgb(0, 0, 255),
+                ),
             ));
             add_blink_shape(ui, half);
         });
@@ -465,7 +469,7 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
                 ui.add_shape(Shape::rect(Rect::new(0.0, 0.0, 8.0, 8.0)).fill(
                     LinearGradient::two_stop(
                         0.0,
-                        ColorU8::rgb(
+                        ColorU8::linear_rgb(
                             index as u8,
                             (index >> u8::BITS) as u8,
                             (index >> (u8::BITS * 2)) as u8,

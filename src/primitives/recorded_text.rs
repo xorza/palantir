@@ -1,15 +1,14 @@
 //! Text as a shape record stores it: where the bytes are, and their hash.
 
 use crate::primitives::span::Span;
-use crate::primitives::text_source::TextSource;
 use std::hash::{Hash, Hasher};
 
 /// Text stored on a [`ShapeRecord`](crate::scene::shapes::record::ShapeRecord).
 /// Its span always addresses the active record store because lowering rebases
 /// handles from any other arena before constructing this value.
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub(crate) struct RecordedText {
-    pub(crate) source: TextSource,
+    pub(crate) span: Span,
     /// `hash_str` of the recorded bytes, computed once at record time.
     /// Downstream consumers (scene identity, [`crate::text::key::TextShapeKey`])
     /// reuse it instead of rescanning the text.
@@ -18,10 +17,7 @@ pub(crate) struct RecordedText {
 
 impl RecordedText {
     pub(crate) fn new(span: Span, hash: u64) -> Self {
-        Self {
-            source: TextSource { span },
-            hash,
-        }
+        Self { span, hash }
     }
 }
 

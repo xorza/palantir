@@ -48,7 +48,7 @@ fn arena_interns_without_ever_recording() {
     let store = &harness.ui.forest.record_store;
     let recorded = store.record_text(interned);
     let payloads = store.payloads.borrow();
-    assert_eq!(recorded.source.resolve(&payloads.interned_text()), "label");
+    assert_eq!(payloads.interned_text().resolve(recorded.span), "label");
 }
 
 #[test]

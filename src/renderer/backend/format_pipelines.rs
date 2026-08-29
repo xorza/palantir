@@ -14,9 +14,8 @@
 use crate::renderer::backend::curve_pipeline::CurvePipeline;
 use crate::renderer::backend::icon::IconBackend;
 use crate::renderer::backend::image_pipeline::ImagePipeline;
-use crate::renderer::backend::instance_pipeline::InstancePipeline;
 use crate::renderer::backend::mesh_pipeline::MeshPipeline;
-use crate::renderer::backend::quad_pipeline::QuadPipeline;
+use crate::renderer::backend::quad_pipeline::{QuadPipeline, QuadVariants};
 use crate::renderer::backend::stencil_variant::StencilVariant;
 use crate::renderer::backend::text::TextBackend;
 
@@ -25,14 +24,7 @@ use crate::renderer::backend::text::TextBackend;
 /// outputs each bind the right set while sharing every other resource.
 #[derive(Debug)]
 pub(super) struct FormatPipelines {
-    pub(super) quad: StencilVariant,
-    /// Quad-only stencil mask-stamp variant (deepens the rounded SDF
-    /// into the stencil buffer, one chain level per draw;
-    /// mesh/image/curve read the mask, never write).
-    pub(super) quad_mask_stamp: wgpu::RenderPipeline,
-    /// Quad-only stencil mask-clear variant (resets a stamped chain by
-    /// replaying its outermost quad at ref 0).
-    pub(super) quad_mask_clear: wgpu::RenderPipeline,
+    pub(super) quad: QuadVariants,
     pub(super) mesh: StencilVariant,
     pub(super) image: StencilVariant,
     /// Icon base + stencil-test pipelines. Same shader and layout as `text`
@@ -80,13 +72,11 @@ impl FormatPipelines {
         } = sources;
         Self {
             quad: quad.build_variants(device, gradient_bgl, format),
-            quad_mask_stamp: quad.build_mask_stamp(device, gradient_bgl, format),
-            quad_mask_clear: quad.build_mask_clear(device, gradient_bgl, format),
-            mesh: mesh.build_variants(device, (), format),
-            image: image.build_variants(device, (), format),
-            icon: icon.build_variants(device, format),
+            mesh: mesh.build_variants(device, format),
+            image: image.build_variants(device, format),
+            icon: icon.pass.build_variants(device, format),
             curve: curve.build_variants(device, gradient_bgl, format),
-            text: text.build_variants(device, format),
+            text: text.pass.build_variants(device, format),
         }
     }
 }

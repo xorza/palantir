@@ -7,6 +7,7 @@
 pub(crate) mod bench;
 
 use crate::common::content_hash::ContentHash;
+use crate::common::counters::BenchOnly;
 use crate::layout::ShapedText;
 use crate::layout::grid::grid_track_store::GridTrackStore;
 use crate::layout::intrinsic::SLOT_COUNT;
@@ -220,8 +221,7 @@ pub(crate) struct MeasureCache {
     /// pass that may not run takes, for the reason
     /// [`CascadeCounters`](crate::scene::cascade::counters::CascadeCounters)
     /// states.
-    #[cfg(any(test, feature = "internals"))]
-    pub(crate) snapshot_rebuilds: u32,
+    pub(crate) snapshot_rebuilds: BenchOnly<u32>,
 }
 
 impl MeasureCache {
@@ -422,22 +422,9 @@ impl MeasureCache {
 
     pub(super) fn end_frame(&mut self) {
         if self.current.refresh_snapshots() {
-            self.note_snapshot_rebuild();
+            self.snapshot_rebuilds.bump();
         }
         std::mem::swap(&mut self.previous, &mut self.current);
-    }
-
-    /// Bump the rebuild counter. Gated in here so `end_frame` carries
-    /// no `#[cfg]` of its own — the same placement
-    /// [`BenchOnly`](crate::common::counters::BenchOnly) exists to make
-    /// unnecessary for the counters that can use it, and that a plain
-    /// `u32` field still needs.
-    #[inline]
-    fn note_snapshot_rebuild(&mut self) {
-        #[cfg(any(test, feature = "internals"))]
-        {
-            self.snapshot_rebuilds = self.snapshot_rebuilds.saturating_add(1);
-        }
     }
 }
 

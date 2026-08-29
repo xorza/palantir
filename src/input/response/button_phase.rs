@@ -14,7 +14,7 @@
 ///
 /// Multi-press runs ride the phases: presses chain when they land on
 /// the same widget within the configured double-click time window and
-/// pointer radius; any break resets the run. `Down.press` is the press's
+/// pointer radius; any break resets the run. `Down.count` is the press's
 /// position in its run (1 = single,
 /// 2 = double-press, 3+ = triple…), and a completing click carries the
 /// same number in `Up.click` — so `Up { click: Some(2) }` *is* the
@@ -25,6 +25,12 @@
 /// press+release collapses to `Up` (the completed click outranks the
 /// lost press edge); a release+re-press collapses to `Down` (the live
 /// capture outranks the stale release).
+///
+/// [`PointerEdge`](crate::PointerEdge) reports the same edges to a
+/// frame-wide observer, and is a second walk rather than a projection of
+/// this one for exactly the collapse above: a batch that presses,
+/// releases and presses again reports two edges there, where one phase
+/// can only be the live press.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub enum ButtonPhase {
     /// The button is not down on this widget, and no edge fired this
@@ -39,7 +45,9 @@ pub enum ButtonPhase {
     Down {
         /// Position of this press in its multi-press run: 1 for a single
         /// press, 2 for the second press of a double, 3+ for triple and up.
-        press: u8,
+        /// The same number [`Self::Up`]'s completing click carries, and
+        /// the one [`PointerEdge`](crate::PointerEdge) reports.
+        count: u8,
     },
     /// The press is latched on the widget (level, frames after the
     /// press edge).

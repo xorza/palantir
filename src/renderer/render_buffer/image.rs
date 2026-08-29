@@ -25,7 +25,7 @@ pub(crate) struct RenderTargetDraw {
     /// What the whole view measures, on screen and off.
     ///
     /// Apart from `used` because layout is *allowed* to overflow — see the
-    /// contains-content rule in [`AxisCtx::resolve`](crate::layout) — so a
+    /// contains-content rule in [`AxisSlot::resolve`](crate::layout) — so a
     /// view's rect can reach past the surface or past a scroll's viewport. The
     /// target follows what can be seen; this says what that is a part of, so a
     /// caller can still place its content against the whole.

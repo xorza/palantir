@@ -1,7 +1,6 @@
 //! What a text field wears in each of its four states, plus the caret and
 //! selection colours that have no state of their own.
 
-use crate::animation::anim_spec::AnimSpec;
 use crate::input::response::response_state::ResponseState;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
@@ -44,16 +43,9 @@ pub struct TextEditTheme {
     /// Selection highlight fill, painted as a wash behind the selected
     /// glyphs (see `TextEdit::show`).
     pub selection: Color,
-    /// Default padding inside the editor (around the buffer text).
-    /// Applied at `show()` time when the builder hasn't set padding.
-    pub padding: Spacing,
-    /// Default margin around the editor.
-    pub margin: Spacing,
-    /// Spec applied to fill/stroke/text transitions between states.
-    /// Default `None` — animation is opt-in (matches `ButtonTheme`).
-    /// Round-trips through serde so theme files configure motion.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub anim: Option<AnimSpec>,
+    /// Spacing and transition spec — see [`SlotDefaults`].
+    #[serde(flatten)]
+    pub defaults: SlotDefaults,
 }
 
 impl TextEditTheme {
@@ -68,9 +60,7 @@ impl TextEditTheme {
             caret: _,
             caret_width: _,
             selection: _,
-            padding: _,
-            margin: _,
-            anim: _,
+            defaults: _,
         } = self;
         looks.for_each_text(f);
     }
@@ -106,7 +96,7 @@ impl TextEditTheme {
     /// trailing edge alone and the run is centred in what is left, so the
     /// glyphs sit half a caret to the leading side of the box's own middle.
     pub fn corner_centring(&self, text: Size, at: Vec2) -> Vec2 {
-        let [left, top, ..] = self.padding.as_array();
+        let [left, top, ..] = self.defaults.padding.as_array();
         // `Tree::open_node` folds the chrome's stroke into the padding, so the
         // inner rect a run is laid in sits inside the ring as well — and
         // `TextEdit::show` mirrors that fold rather than reading the node back.
@@ -162,9 +152,11 @@ impl TextEditTheme {
             caret: p.text,
             caret_width: 1.5,
             selection,
-            padding: Spacing::xy(5.0, 3.0),
-            margin: Spacing::ZERO,
-            anim: None,
+            defaults: SlotDefaults {
+                padding: Spacing::xy(5.0, 3.0),
+                margin: Spacing::ZERO,
+                anim: None,
+            },
         }
     }
 }
@@ -177,11 +169,7 @@ impl ThemeSlot for TextEditTheme {
     }
 
     fn defaults(&self) -> SlotDefaults {
-        SlotDefaults {
-            padding: self.padding,
-            margin: self.margin,
-            anim: self.anim,
-        }
+        self.defaults
     }
 }
 

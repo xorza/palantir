@@ -160,8 +160,8 @@ fn grid_per_node_hash_independent_of_arena_slot() {
     use crate::layout::types::track::Track;
     use crate::widgets::grid::Grid;
 
-    let cols = [Track::fill(), Track::fill()];
-    let rows = [Track::fill()];
+    let cols = [Track::FILL, Track::FILL];
+    let rows = [Track::FILL];
 
     let mut ui1 = UiHarness::new(SURFACE);
     let mut g1 = None;

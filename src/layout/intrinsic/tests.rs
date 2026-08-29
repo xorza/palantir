@@ -228,8 +228,8 @@ fn intrinsic_range_exactly_matches_separate_queries_for_every_driver() {
             });
             Grid::new()
                 .id_salt("range-grid")
-                .cols([Track::hug(), Track::fill()])
-                .rows([Track::hug()])
+                .cols([Track::HUG, Track::FILL])
+                .rows([Track::HUG])
                 .gap(4.0)
                 .show(ui, |ui| {
                     Text::new("grid label")

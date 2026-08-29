@@ -39,8 +39,8 @@ fn linear_midpoint_black_to_white_is_half() {
 /// hues rather than dipping through dark brown).
 #[test]
 fn oklab_red_to_green_midpoint_avoids_muddy_brown() {
-    let red = ColorU8::rgb(255, 0, 0);
-    let green = ColorU8::rgb(0, 255, 0);
+    let red = ColorU8::linear_rgb(255, 0, 0);
+    let green = ColorU8::linear_rgb(0, 255, 0);
     let g = LinearGradient::two_stop(0.0, red, green).with_interp(Interp::Oklab);
     let mut out = fresh_row();
     bake_stops(&g.stops, g.interp, &mut out);
@@ -64,8 +64,8 @@ fn oklab_red_to_green_midpoint_avoids_muddy_brown() {
 /// stride and the edge-clamp guard.
 #[test]
 fn endpoints_match_stops_exactly() {
-    let c0 = ColorU8::rgb(11, 22, 33);
-    let c1 = ColorU8::rgb(244, 233, 222);
+    let c0 = ColorU8::linear_rgb(11, 22, 33);
+    let c1 = ColorU8::linear_rgb(244, 233, 222);
     for interp in [Interp::Linear, Interp::Oklab] {
         let g = LinearGradient::two_stop(0.0, c0, c1).with_interp(interp);
         let mut out = fresh_row();
@@ -101,9 +101,9 @@ fn endpoints_match_stops_exactly() {
 #[test]
 fn three_stop_quarter_brackets_first_pair() {
     let g = LinearGradient::builder(0.0)
-        .stop(0.0, ColorU8::rgb(0, 0, 0))
-        .stop(0.5, ColorU8::rgb(255, 0, 0))
-        .stop(1.0, ColorU8::rgb(0, 0, 255))
+        .stop(0.0, ColorU8::linear_rgb(0, 0, 0))
+        .stop(0.5, ColorU8::linear_rgb(255, 0, 0))
+        .stop(1.0, ColorU8::linear_rgb(0, 0, 255))
         .with_interp(Interp::Linear)
         .build();
     let mut out = fresh_row();
@@ -159,14 +159,14 @@ fn cursor_scan_matches_restart_scan_across_eight_stops() {
     let g = LinearGradient::new(
         0.0,
         [
-            Stop::new(0.0, ColorU8::rgb(0, 0, 0)),
-            Stop::new(0.002, ColorU8::rgb(255, 0, 0)), // narrower than one texel
-            Stop::new(0.25, ColorU8::rgb(0, 255, 0)),
-            Stop::new(0.5, ColorU8::rgb(0, 0, 255)),
-            Stop::new(0.5, ColorU8::rgb(255, 255, 0)), // hard stop
-            Stop::new(0.75, ColorU8::rgb(0, 255, 255)),
-            Stop::new(0.9, ColorU8::rgb(255, 0, 255)),
-            Stop::new(1.0, ColorU8::rgb(255, 255, 255)),
+            Stop::new(0.0, ColorU8::linear_rgb(0, 0, 0)),
+            Stop::new(0.002, ColorU8::linear_rgb(255, 0, 0)), // narrower than one texel
+            Stop::new(0.25, ColorU8::linear_rgb(0, 255, 0)),
+            Stop::new(0.5, ColorU8::linear_rgb(0, 0, 255)),
+            Stop::new(0.5, ColorU8::linear_rgb(255, 255, 0)), // hard stop
+            Stop::new(0.75, ColorU8::linear_rgb(0, 255, 255)),
+            Stop::new(0.9, ColorU8::linear_rgb(255, 0, 255)),
+            Stop::new(1.0, ColorU8::linear_rgb(255, 255, 255)),
         ],
     )
     .with_interp(Interp::Linear);
@@ -187,7 +187,11 @@ fn lut_row_layout() {
     assert_eq!(LUT_ROW_TEXELS, 256);
     assert_eq!(size_of::<LutRowTexels>(), 2048);
     assert_eq!(size_of::<ColorF16>(), 8);
-    let g = LinearGradient::two_stop(0.0, ColorU8::rgb(1, 2, 3), ColorU8::rgb(4, 5, 6));
+    let g = LinearGradient::two_stop(
+        0.0,
+        ColorU8::linear_rgb(1, 2, 3),
+        ColorU8::linear_rgb(4, 5, 6),
+    );
     let mut out = fresh_row();
     bake_stops(&g.stops, g.interp, &mut out);
     let tol = 1.0 / 255.0;
@@ -210,8 +214,8 @@ fn lut_row_layout() {
 #[test]
 fn unsorted_stops_get_sorted_at_bake() {
     let stops = [
-        Stop::new(1.0, ColorU8::rgb(255, 0, 0)), // out of order
-        Stop::new(0.0, ColorU8::rgb(0, 0, 255)),
+        Stop::new(1.0, ColorU8::linear_rgb(255, 0, 0)), // out of order
+        Stop::new(0.0, ColorU8::linear_rgb(0, 0, 255)),
     ];
     let g = LinearGradient::new(0.0, stops);
     let mut out = fresh_row();
@@ -231,8 +235,8 @@ fn unsorted_stops_get_sorted_at_bake() {
 #[test]
 fn partial_range_clamps_at_edges() {
     let stops = [
-        Stop::new(0.25, ColorU8::rgb(0, 255, 0)),
-        Stop::new(0.75, ColorU8::rgb(0, 0, 255)),
+        Stop::new(0.25, ColorU8::linear_rgb(0, 255, 0)),
+        Stop::new(0.75, ColorU8::linear_rgb(0, 0, 255)),
     ];
     let g = LinearGradient::new(0.0, stops);
     let mut out = fresh_row();

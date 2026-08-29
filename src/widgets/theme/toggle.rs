@@ -54,17 +54,9 @@ pub struct ToggleTheme {
     /// switch (rather than a checkbox) at roughly 7:4. `1.0` on the
     /// checkbox and radio bundles, whose box is square.
     pub track_aspect: f32,
-    /// Default padding inside the row, around the box + label pair.
-    /// Applied at `show()` time when the builder hasn't set padding —
-    /// same contract as [`crate::ButtonTheme`].
-    pub padding: Spacing,
-    /// Default margin around the row.
-    pub margin: Spacing,
-    /// Spec applied to fill/stroke transitions between states and
-    /// across checked toggles. Default `None` — animation is opt-in
-    /// (matches `ButtonTheme`). Round-trips through serde.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub anim: Option<AnimSpec>,
+    /// Spacing and transition spec — see [`SlotDefaults`].
+    #[serde(flatten)]
+    pub defaults: SlotDefaults,
 }
 
 impl ToggleTheme {
@@ -81,9 +73,7 @@ impl ToggleTheme {
             indicator_inset: _,
             row_gap: _,
             track_aspect: _,
-            padding: _,
-            margin: _,
-            anim: _,
+            defaults: _,
         } = self;
         unchecked.for_each_text(f);
         checked.for_each_text(f);
@@ -125,7 +115,7 @@ impl ToggleTheme {
     pub fn switch(p: &Palette) -> Self {
         let mut t = Self::built(10.0, 20.0, 3.0, p.text, p);
         t.track_aspect = 1.75;
-        t.anim = Some(AnimSpec::SPRING);
+        t.defaults.anim = Some(AnimSpec::SPRING);
         t
     }
 
@@ -192,9 +182,11 @@ impl ToggleTheme {
             ],
             row_gap: 8.0,
             track_aspect: 1.0,
-            padding: Spacing::ZERO,
-            margin: Spacing::ZERO,
-            anim: None,
+            defaults: SlotDefaults {
+                padding: Spacing::ZERO,
+                margin: Spacing::ZERO,
+                anim: None,
+            },
         }
     }
 }
@@ -207,10 +199,6 @@ impl ThemeSlot for ToggleTheme {
     }
 
     fn defaults(&self) -> SlotDefaults {
-        SlotDefaults {
-            padding: self.padding,
-            margin: self.margin,
-            anim: self.anim,
-        }
+        self.defaults
     }
 }

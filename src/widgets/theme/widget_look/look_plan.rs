@@ -65,15 +65,13 @@ impl LookPlan {
                 },
         } = self;
         let node = &mut widget.node;
-        // `get_or_insert`, not `ThemeDefaults::default_padding` — same
-        // "fill in only where the caller stayed silent" rule, and the trait's
-        // body is this same guarded write. Routing through it would move a
+        // The `&mut Node` writers rather than `ThemeDefaults` — same
+        // guarded write and the same NaN screen, without moving a
         // 120-byte `Node` through two consuming builders that carry no
-        // `#[inline]`, three copies deep, once per themed widget per frame —
-        // on the path the note above says the default inliner already leaves
-        // outlined.
-        node.padding.get_or_insert(padding);
-        node.margin.get_or_insert(margin);
+        // `#[inline]`, three copies deep, once per themed widget per
+        // frame.
+        node.fill_padding(padding);
+        node.fill_margin(margin);
         ui.animate(widget.id(), WidgetLook::SLOT_LOOK, target, anim)
     }
 }

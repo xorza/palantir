@@ -2,6 +2,7 @@
 
 pub(crate) mod bounds_extras;
 pub(crate) mod configure;
+pub(crate) mod container_chrome;
 pub(crate) mod gaps;
 pub(crate) mod layout_core;
 pub(crate) mod node_columns;
@@ -16,7 +17,8 @@ use crate::layout::types::align::{Align, HAlign, VAlign};
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::grid_cell::GridCell;
 use crate::layout::types::justify::Justify;
-use crate::layout::types::layout_mode::{GridDefId, LayoutMode, ScrollSpec, ScrollbarsDefId};
+use crate::layout::types::layout_mode::{LayoutMode, ScrollSpec, ScrollbarsDefId};
+use crate::layout::types::limits;
 use crate::layout::types::sizing::Sizes;
 use crate::primitives::background::Background;
 use crate::primitives::size::Size;
@@ -25,6 +27,7 @@ use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::bounds_extras::BoundsExtras;
 use crate::scene::node::configure::{Configure, ConfigureNode};
+use crate::scene::node::container_chrome::ContainerChrome;
 use crate::scene::node::gaps::Gaps;
 use crate::scene::node::layout_core::LayoutCore;
 use crate::scene::node::node_columns::NodeColumns;
@@ -119,20 +122,14 @@ impl Node {
     /// needs (a borrow, an owned value, nothing), and none of them has a
     /// clip default, which is the only thing this adds over `.or()`.
     ///
-    /// Borrowed in and borrowed out, because [`Widget::record`] takes
-    /// `Option<&Background>` at the end of it: owning the answer meant
-    /// cloning the theme's 124 bytes for every container that named no
-    /// chrome of its own, which is most of them.
-    ///
     /// [`Widget::record`]: crate::widgets::widget::Widget::record
     pub(crate) fn resolve_container_chrome<'a>(
         &mut self,
         explicit: Option<&'a Background>,
-        theme_bg: Option<&'a Background>,
-        theme_clip: ClipMode,
+        theme: ContainerChrome<'a>,
     ) -> Option<&'a Background> {
-        self.clip.get_or_insert(theme_clip);
-        explicit.or(theme_bg)
+        self.clip.get_or_insert(theme.clip);
+        explicit.or(theme.background)
     }
 
     /// Paint/layout leaf for custom widget content.
@@ -195,18 +192,122 @@ impl Node {
         Self::new(NodeMode::Resolved(LayoutMode::Scroll(spec)))
     }
 
-    pub(crate) fn set_grid_def(&mut self, id: GridDefId) {
-        let NodeMode::PendingGrid = self.mode else {
-            panic!("grid definition installed on {:?} node", self.mode);
-        };
-        self.mode = NodeMode::Resolved(LayoutMode::Grid(id));
+    /// Set the lower size bound, checking it against the upper one.
+    ///
+    /// The four `set_*` writers below own every check an authored field
+    /// owes, and everything that writes one goes through them: the
+    /// consuming [`Configure`](crate::Configure) setter, the
+    /// [`ThemeDefaults`](crate::scene::node::theme_defaults::ThemeDefaults)
+    /// fallback beside it, and the widgets that hold a `&mut Node` and
+    /// cannot move it through a builder. A field written past them is a
+    /// field whose bound or NaN screen did not run.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the bound is negative, non-finite, or above a maximum
+    /// already set on this node.
+    #[inline]
+    pub(crate) fn set_min_size(&mut self, value: Size) {
+        limits::assert_valid_bounds(value, self.max_size.unwrap_or(Size::INF));
+        self.min_size = Some(value);
     }
 
-    pub(crate) fn set_scroll_spec(&mut self, spec: ScrollSpec) {
-        let NodeMode::Resolved(LayoutMode::Scroll(current)) = &mut self.mode else {
-            panic!("scroll specification installed on {:?} node", self.mode);
-        };
-        *current = spec;
+    /// Set the upper size bound, checking it against the lower one.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the bound is negative, NaN, or below a minimum already
+    /// set on this node. Positive infinity is the unbounded maximum.
+    #[inline]
+    pub(crate) fn set_max_size(&mut self, value: Size) {
+        limits::assert_valid_bounds(self.min_size.unwrap_or(Size::ZERO), value);
+        self.max_size = Some(value);
+    }
+
+    /// Set the padding, screening NaN.
+    ///
+    /// A NaN edge does not fail on its own — it poisons every extent
+    /// derived from it and surfaces frames later as a widget that
+    /// measured to nothing, with no way back to the call that set it.
+    /// `Corners` is screened at shape lowering for the same reason; this
+    /// is the equivalent gate for the two spacings, which reach layout
+    /// instead of the record.
+    #[inline]
+    pub(crate) fn set_padding(&mut self, value: Spacing) {
+        debug_assert!(!value.has_nan(), "NaN in padding: {value:?}");
+        self.padding = Some(value);
+    }
+
+    #[inline]
+    pub(crate) fn set_margin(&mut self, value: Spacing) {
+        debug_assert!(!value.has_nan(), "NaN in margin: {value:?}");
+        self.margin = Some(value);
+    }
+
+    /// Fill a field in only where the caller stayed silent — the theme
+    /// half of authoring, in the same one place as the plain writes.
+    ///
+    /// A guard plus the writer above, rather than a raw `get_or_insert`:
+    /// the guard is what makes an explicit value win, and the writer is
+    /// what makes a themed value face the same checks an authored one
+    /// does.
+    ///
+    /// `fill_`, not `default_`: the consuming
+    /// [`ThemeDefaults`](crate::scene::node::theme_defaults::ThemeDefaults)
+    /// wrapper owns that name, and a `Node` held by value would resolve
+    /// the trait's by-value method ahead of these and silently drop the
+    /// node it returns.
+    #[inline]
+    pub(crate) fn fill_min_size(&mut self, value: Size) {
+        if self.min_size.is_none() {
+            self.set_min_size(value);
+        }
+    }
+
+    #[inline]
+    pub(crate) fn fill_max_size(&mut self, value: Size) {
+        if self.max_size.is_none() {
+            self.set_max_size(value);
+        }
+    }
+
+    #[inline]
+    pub(crate) fn fill_padding(&mut self, value: Spacing) {
+        if self.padding.is_none() {
+            self.set_padding(value);
+        }
+    }
+
+    #[inline]
+    pub(crate) fn fill_margin(&mut self, value: Spacing) {
+        if self.margin.is_none() {
+            self.set_margin(value);
+        }
+    }
+
+    #[inline]
+    pub(crate) fn fill_gap(&mut self, gap: f32) {
+        if !self.gaps.gap_is_set() {
+            self.gaps.set_gap(gap);
+        }
+    }
+
+    /// Install this node's layout mode, once the payload a builder chain
+    /// could not carry exists.
+    ///
+    /// The one way a mode is bound after construction — see
+    /// [`NodeMode::accepts`] for what a mode may be replaced with.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `mode` is not a refinement of the one the node has.
+    pub(crate) fn set_mode(&mut self, mode: LayoutMode) {
+        assert!(
+            self.mode.accepts(mode),
+            "{mode:?} installed on a {:?} node",
+            self.mode,
+        );
+        self.mode = NodeMode::Resolved(mode);
     }
 
     pub(crate) fn scroll_spec(&self) -> ScrollSpec {

@@ -367,7 +367,7 @@ impl CascadeEngine {
             // `.end()` strips the packed grid flag — downstream uses (walk
             // cursor, leaf compare) need the clean pre-order end.
             let subtree_end = ends[iu].end();
-            let has_children = subtree_end != i + 1;
+            let has_children = ends[iu].has_children(iu);
             if INCREMENTAL && lc.arena_hashes[iu] == subtree_hashes[iu] {
                 if let Some(parent_frame) = self.stack.last_mut() {
                     parent_frame.subtree_paint_rect = parent_frame

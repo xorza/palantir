@@ -111,7 +111,7 @@ fn typed_builders_set_the_fields_they_name() {
     assert_eq!(rect_shape.corners.as_array(), [6.0; 4]);
 
     let mesh = Mesh::new();
-    let tint = ColorU8::rgb(10, 20, 30);
+    let tint = ColorU8::linear_rgb(10, 20, 30);
     let mesh_shape = Shape::mesh(&mesh).at(rect).tint(tint);
     assert!(std::ptr::eq(mesh_shape.mesh, &mesh));
     assert_eq!(mesh_shape.local_rect, Some(rect));

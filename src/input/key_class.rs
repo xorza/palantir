@@ -52,17 +52,21 @@ const EDIT_CHORDS: [char; 5] = ['z', 'x', 'c', 'v', 'a'];
 
 /// Whether `press` is one of [`EDIT_CHORDS`].
 ///
-/// Logical key first, physical only as the **non-Latin fallback** —
-/// exactly [`crate::Shortcut::matches`]'s rule, so the two agree on what
-/// `Ctrl+Z` is. Keying off `physical` alone looks equivalent and is not:
-/// a backend that leaves it unidentified would turn every edit chord
-/// into an accelerator and hand a focused editor's undo to the app.
+/// Logical key first, physical only as the non-Latin fallback — the one
+/// [`KeyPress::layout_retry`] states, which is also what
+/// [`crate::Shortcut::matches`] retries against. Keying off `physical`
+/// alone looks equivalent and is not: a backend that leaves it
+/// unidentified would turn every edit chord into an accelerator and hand
+/// a focused editor's undo to the app.
+///
+/// No modifier gate of its own: the arm above this one in
+/// [`KeyClass::of`] already claimed every press without a command
+/// modifier, so a press that reaches here holds one.
 ///
 /// Case-insensitive, like `Shortcut`'s own `Char` comparison — a logical
 /// key arrives post-shift, so `Ctrl+Shift+Z` is `Char('Z')`.
 fn is_edit_chord(press: KeyPress) -> bool {
-    edit_char(press.key)
-        || (matches!(press.key, Key::Char(c) if !c.is_ascii()) && edit_char(press.physical))
+    edit_char(press.key) || press.layout_retry().is_some_and(edit_char)
 }
 
 fn edit_char(key: Key) -> bool {

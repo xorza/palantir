@@ -1,7 +1,6 @@
 //! The pill-and-knob boolean toggle — the same contract as the checkbox,
 //! drawn as a switch.
 
-use crate::input::sense::Sense;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::approx::noop_f32;
 use crate::primitives::background::Background;
@@ -36,10 +35,8 @@ pub struct Switch<'a> {
 impl<'a> Switch<'a> {
     #[track_caller]
     pub fn new(value: &'a mut bool) -> Self {
-        let mut node = Node::hstack();
-        node.flags.set_sense(Sense::CLICK);
         Self {
-            node,
+            node: ToggleChrome::row_node(),
             value,
             label: TextInput::default(),
             style: None,
@@ -55,10 +52,7 @@ impl<'a> Switch<'a> {
         let response = widget.response(ui);
         let id = widget.id();
 
-        if response.left.clicked() && !response.disabled {
-            *self.value = !*self.value;
-        }
-        let on = *self.value;
+        let on = ToggleChrome::toggled(&response, self.value);
 
         let theme = ui.theme();
         let slot = self.slot(theme);
@@ -66,7 +60,7 @@ impl<'a> Switch<'a> {
         let inset = slot.indicator_inset;
         let aspect = slot.track_aspect;
         let knob_color = slot.indicator;
-        let anim = slot.anim;
+        let anim = slot.defaults.anim;
         let knob_id = id.with("knob");
         let chrome = ToggleChrome {
             plan: slot.plan(&response, on, &theme.text),

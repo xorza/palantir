@@ -2,11 +2,10 @@
 //! back through.
 
 use crate::display::Display;
-use crate::icons::icon_atlas::IconId;
 use crate::icons::icon_registry::IconSetId;
 use crate::icons::icon_set::IconRef;
+use crate::icons::icon_table::IconId;
 use crate::primitives::span::Span;
-use crate::primitives::text_source::TextSource;
 use crate::primitives::texture_id::TextureId;
 use crate::primitives::{
     color::Color, color::ColorU8, corners::Corners, rect::Rect, stroke::Stroke,
@@ -21,6 +20,7 @@ use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
+use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
 use crate::renderer::gpu_paint::GpuPaint;
@@ -72,9 +72,7 @@ pub(super) fn text(buf: &mut PaintCapture, r: Rect) {
         color: Color::WHITE.into(),
         text: ShapedTextRef {
             key: TextShapeKey::INVALID,
-            source: TextSource {
-                span: Span::default(),
-            },
+            span: Span::default(),
         },
     });
 }
@@ -221,7 +219,10 @@ pub(super) fn curve(b: &mut PaintCapture, bbox: Rect) {
             p2: Vec2::new(bbox.min.x + bbox.size.w * 0.7, bbox.max().y),
             p3: bbox.max(),
         },
-        color: Color::WHITE.into(),
+        fill: GpuFill {
+            color: Color::WHITE.into(),
+            ..Default::default()
+        },
         width: 2.0,
         ..Default::default()
     });

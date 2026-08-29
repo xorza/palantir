@@ -13,9 +13,12 @@ use std::fmt::Write as _;
 use std::hash::{Hash, Hasher};
 use tinyvec::ArrayVec;
 
-fn h(b: Brush) -> u64 {
+/// `LinearGradient::Hash` is what `shapes::lower` folds into a record's
+/// gradient content hash, so hashing the gradient is the production
+/// derivation.
+fn h(g: &LinearGradient) -> u64 {
     let mut s = DefaultHasher::new();
-    b.hash(&mut s);
+    g.hash(&mut s);
     s.finish()
 }
 
@@ -31,58 +34,48 @@ fn linear_gradient_hash_tracks_canonical_content() {
     let nan_a = f32::from_bits(0x7fc0_0001);
     let nan_b = f32::from_bits(0x7fc0_0002);
     assert!(nan_a.is_nan() && nan_b.is_nan());
-    let cases: &[(&str, Brush, Brush)] = &[
+    let cases: &[(&str, LinearGradient, LinearGradient)] = &[
         (
             "angle_neg_zero_eq_pos_zero",
-            Brush::Linear(LinearGradient::two_stop(0.0, Color::BLACK, Color::WHITE)),
-            Brush::Linear(LinearGradient::two_stop(-0.0, Color::BLACK, Color::WHITE)),
+            LinearGradient::two_stop(0.0, Color::BLACK, Color::WHITE),
+            LinearGradient::two_stop(-0.0, Color::BLACK, Color::WHITE),
         ),
         (
             "angle_nan_bit_patterns_collapse",
-            Brush::Linear(LinearGradient::two_stop(nan_a, Color::BLACK, Color::WHITE)),
-            Brush::Linear(LinearGradient::two_stop(nan_b, Color::BLACK, Color::WHITE)),
+            LinearGradient::two_stop(nan_a, Color::BLACK, Color::WHITE),
+            LinearGradient::two_stop(nan_b, Color::BLACK, Color::WHITE),
         ),
         (
             "stop_offset_neg_zero_eq_pos_zero",
-            Brush::Linear(LinearGradient::new(
+            LinearGradient::new(
                 0.0,
                 [Stop::new(0.0, Color::BLACK), Stop::new(1.0, Color::WHITE)],
-            )),
-            Brush::Linear(LinearGradient::new(
+            ),
+            LinearGradient::new(
                 0.0,
                 [Stop::new(-0.0, Color::BLACK), Stop::new(1.0, Color::WHITE)],
-            )),
+            ),
         ),
     ];
     for (label, x, y) in cases {
-        assert_eq!(h(x.clone()), h(y.clone()), "case: {label}");
+        assert_eq!(h(x), h(y), "case: {label}");
     }
 
-    let two_stops = Brush::Linear(LinearGradient::two_stop(
-        0.0,
-        ColorU8::BLACK,
-        ColorU8::WHITE,
-    ));
-    let three_stops = Brush::Linear(
-        LinearGradient::builder(0.0)
-            .stop(0.0, ColorU8::BLACK)
-            .stop(0.5, ColorU8::rgb(127, 127, 127))
-            .stop(1.0, ColorU8::WHITE)
-            .build(),
-    );
-    let recolored = Brush::Linear(LinearGradient::two_stop(
-        0.0,
-        ColorU8::BLACK,
-        ColorU8::rgb(255, 0, 0),
-    ));
-    assert_ne!(h(two_stops.clone()), h(three_stops));
-    assert_ne!(h(two_stops), h(recolored));
+    let two_stops = LinearGradient::two_stop(0.0, ColorU8::BLACK, ColorU8::WHITE);
+    let three_stops = LinearGradient::builder(0.0)
+        .stop(0.0, ColorU8::BLACK)
+        .stop(0.5, ColorU8::linear_rgb(127, 127, 127))
+        .stop(1.0, ColorU8::WHITE)
+        .build();
+    let recolored = LinearGradient::two_stop(0.0, ColorU8::BLACK, ColorU8::linear_rgb(255, 0, 0));
+    assert_ne!(h(&two_stops), h(&three_stops));
+    assert_ne!(h(&two_stops), h(&recolored));
 }
 
 #[test]
 fn authoring_values_convert_to_their_brush_variants() {
     let color = Color::WHITE;
-    let color_u8 = ColorU8::rgb(10, 20, 30);
+    let color_u8 = ColorU8::linear_rgb(10, 20, 30);
     let linear = LinearGradient::two_stop(0.25, Color::BLACK, Color::WHITE);
     let radial = RadialGradient::two_stop_centered(Color::BLACK, Color::WHITE);
     let conic = ConicGradient::two_stop_centered(Color::BLACK, Color::WHITE);
@@ -292,7 +285,11 @@ fn gradient_builders_preserve_geometry_stops_and_options() {
 
 #[test]
 fn linear_all_transparent_is_noop() {
-    let g = LinearGradient::two_stop(0.0, ColorU8::TRANSPARENT, ColorU8::rgba(255, 255, 255, 0));
+    let g = LinearGradient::two_stop(
+        0.0,
+        ColorU8::TRANSPARENT,
+        ColorU8::linear_rgba(255, 255, 255, 0),
+    );
     assert!(g.is_noop());
     assert!(Brush::Linear(g).is_noop());
 }
@@ -415,24 +412,6 @@ fn brush_radial_conic_as_solid_is_none() {
 }
 
 #[test]
-fn brush_variant_tag_distinguishes_hash() {
-    let stops = [
-        Stop::new(0.0, Color::rgb(1.0, 0.0, 0.0)),
-        Stop::new(1.0, Color::rgb(0.0, 0.0, 1.0)),
-    ];
-    let l = Brush::Linear(LinearGradient::new(0.0, stops));
-    let r = Brush::Radial(RadialGradient::new(
-        Vec2::splat(0.5),
-        Vec2::splat(0.5),
-        stops,
-    ));
-    let c = Brush::Conic(ConicGradient::new(Vec2::splat(0.5), 0.0, stops));
-    assert_ne!(h(l.clone()), h(r.clone()));
-    assert_ne!(h(r), h(c.clone()));
-    assert_ne!(h(l), h(c));
-}
-
-#[test]
 #[should_panic(expected = "exceeds MAX_STOPS")]
 fn radial_too_many_stops_panics() {
     let many: Vec<Stop> = (0..=MAX_STOPS)
@@ -442,8 +421,8 @@ fn radial_too_many_stops_panics() {
 }
 
 #[test]
-fn linear_brush_hash_stable_across_construction() {
+fn linear_gradient_hash_stable_across_construction() {
     let g0 = LinearGradient::two_stop(0.5, Color::hex(0x336699), Color::hex(0xddaa44));
     let g1 = LinearGradient::two_stop(0.5, Color::hex(0x336699), Color::hex(0xddaa44));
-    assert_eq!(h(Brush::Linear(g0)), h(Brush::Linear(g1)));
+    assert_eq!(h(&g0), h(&g1));
 }

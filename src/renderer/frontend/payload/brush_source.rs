@@ -4,6 +4,7 @@ use crate::primitives::brush::gradient::FillAxis;
 use crate::primitives::color::ColorF16;
 use crate::primitives::fill_kind::FillKind;
 use crate::primitives::lut_row::LutRow;
+use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
 
 /// Lowered brush input. `Solid` carries an 8-byte `ColorF16`;
@@ -16,35 +17,34 @@ pub(crate) enum BrushSource {
 }
 
 impl BrushSource {
-    /// Lower to the GPU fill fields shared by every draw-rect/curve
-    /// payload: a `Solid` carries its colour with the `SOLID` kind and
-    /// the magenta fallback row; a `Gradient` zeroes the colour (the
-    /// atlas row supplies it) and forwards kind/row/axis.
+    /// Lower to the colour lanes every draw payload carries: a `Solid`
+    /// takes its colour with the `SOLID` kind and the magenta fallback
+    /// row; a `Gradient` zeroes the colour, since the atlas row supplies
+    /// it, and forwards kind and row.
     #[inline]
-    pub(crate) fn to_gpu_fields(self) -> GpuFillFields {
+    pub(crate) fn gpu_fill(self) -> GpuFill {
         match self {
-            Self::Solid(c) => GpuFillFields {
-                color: c,
+            Self::Solid(color) => GpuFill {
+                color,
                 kind: FillKind::SOLID,
                 lut_row: LutRow::FALLBACK,
-                axis: FillAxis::ZERO,
             },
-            Self::Gradient(g) => GpuFillFields {
+            Self::Gradient(g) => GpuFill {
                 color: ColorF16::TRANSPARENT,
                 kind: g.kind,
-                lut_row: g.row,
-                axis: g.axis,
+                lut_row: g.lut_row,
             },
         }
     }
-}
 
-/// GPU fill fields a [`BrushSource`] lowers to. Curve payloads carry no
-/// `axis`, so they read only the first three.
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct GpuFillFields {
-    pub(crate) color: ColorF16,
-    pub(crate) kind: FillKind,
-    pub(crate) lut_row: LutRow,
-    pub(crate) axis: FillAxis,
+    /// The gradient geometry a quad reads. Zero for a solid, which the
+    /// shader ignores — but zeroed rather than arbitrary, so a Pod-byte
+    /// cache key over a solid quad is deterministic.
+    #[inline]
+    pub(crate) fn fill_axis(self) -> FillAxis {
+        match self {
+            Self::Solid(_) => FillAxis::ZERO,
+            Self::Gradient(g) => g.axis,
+        }
+    }
 }

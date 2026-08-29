@@ -65,7 +65,7 @@ impl ButtonState {
     #[inline]
     pub fn press_count(self) -> u8 {
         match self.phase {
-            ButtonPhase::Down { press } => press,
+            ButtonPhase::Down { count } => count,
             _ => 0,
         }
     }

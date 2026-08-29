@@ -26,7 +26,7 @@ use palantir::internals::{
     BENCH_DPR, BENCH_SCALE, BENCH_SURFACE, TEXT_SCALE_STEP, headless_test_gpu,
 };
 use palantir::{
-    Configure, FrameFixture, Grid, IconAtlas, IconId, IconSet, Panel, Sizing, Track, TranslateScale,
+    Configure, FrameFixture, Grid, IconId, IconSet, IconTable, Panel, Sizing, Track, TranslateScale,
 };
 
 use crate::harness::{Audit, OffscreenTarget};
@@ -179,7 +179,7 @@ fn scale_ramp_rasterizes_at_a_flat_cost_per_frame() {
         RENDER_SURFACE,
     );
 
-    let atlas = Rc::new(IconAtlas::from_svgs([("chip", RAMP_ICON_SVG)]));
+    let atlas = Rc::new(IconTable::from_svgs([("chip", RAMP_ICON_SVG)]));
     let chip = IconId(0);
     let mut held: Option<IconSet> = None;
     let mut state = FrameFixture::default();
@@ -202,8 +202,8 @@ fn scale_ramp_rasterizes_at_a_flat_cost_per_frame() {
                     .show(ui, |ui| {
                         Grid::new()
                             .id_salt("icons")
-                            .cols([Track::hug(); RAMP_ICONS as usize])
-                            .rows([Track::hug()])
+                            .cols([Track::HUG; RAMP_ICONS as usize])
+                            .rows([Track::HUG])
                             .show(ui, |ui| {
                                 for c in 0..RAMP_ICONS {
                                     Panel::zstack().id_salt(c).grid_cell((0, c)).show(ui, |ui| {

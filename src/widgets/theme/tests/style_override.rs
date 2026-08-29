@@ -12,6 +12,7 @@ use crate::widgets::text::Text;
 use crate::widgets::theme::Theme;
 use crate::widgets::theme::button::ButtonTheme;
 use crate::widgets::theme::text_style::TextStyle;
+use crate::widgets::theme::widget_look::theme_slot::SlotDefaults;
 use glam::UVec2;
 
 const SURFACE: UVec2 = UVec2::new(400, 200);
@@ -27,13 +28,19 @@ const SURFACE: UVec2 = UVec2::new(400, 200);
 fn style_takes_an_option_and_none_falls_back_to_the_slot() {
     let theme = Theme {
         button: ButtonTheme {
-            padding: Spacing::all(4.0),
+            defaults: SlotDefaults {
+                padding: Spacing::all(4.0),
+                ..ButtonTheme::default().defaults
+            },
             ..ButtonTheme::default()
         },
         ..Theme::default()
     };
     let wide = ButtonTheme {
-        padding: Spacing::all(20.0),
+        defaults: SlotDefaults {
+            padding: Spacing::all(20.0),
+            ..ButtonTheme::default().defaults
+        },
         ..ButtonTheme::default()
     };
 

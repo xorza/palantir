@@ -75,10 +75,16 @@ impl LineFit {
     /// halign offsets into wrapped buffers. `size.w` is ceil'd and the
     /// canonical width is integral, so this comparison matches the
     /// truncating path's cut decision exactly.
-    pub(super) fn resolves_to_unbounded(self, unbounded: &TextRoot, target_width_px: f32) -> bool {
+    ///
+    /// `width_px` arrives **canonical**: `commit` quantizes once and
+    /// hands the same number here and to `WrapBound::new`, and
+    /// `shape_truncated`'s comes back off a key that was minted from one.
+    /// Quantizing again here is how the fit test and the key it decides
+    /// about could come to be asking about different widths.
+    pub(super) fn resolves_to_unbounded(self, unbounded: &TextRoot, width_px: f32) -> bool {
         matches!(self, LineFit::Clip | LineFit::Ellipsis)
             && unbounded.single_line
-            && unbounded.size.w <= canonical_wrap_width(target_width_px)
+            && unbounded.size.w <= width_px
     }
 }
 
@@ -206,14 +212,20 @@ impl TextWrap {
         fit: LineFit,
         root: impl FnOnce() -> TextRoot,
     ) -> WrapCommit {
+        // Canonicalized once, at the top: the fit test compares against
+        // it and `WrapBound::new` keys on it, and a width quantized twice
+        // is a width the two halves could disagree about.
+        let available = canonical_wrap_width(available_width_px);
         let committed = if self.floor_scan() == WrapFloor::Scan || fit != LineFit::Wrap {
             let root = root();
-            if fit.resolves_to_unbounded(&root, available_width_px) {
+            if fit.resolves_to_unbounded(&root, available) {
                 return WrapCommit::Unbounded { size: root.size };
             }
-            self.target_width(available_width_px, &root)
+            // Not canonical again: the wrap floor is a measured extent,
+            // so `WrapBound::new` still quantizes what comes back.
+            self.target_width(available, &root)
         } else {
-            available_width_px
+            available
         };
         WrapCommit::Bound(WrapBound::new(committed, halign, fit))
     }

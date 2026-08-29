@@ -13,7 +13,7 @@
 //! per-driver-file convention as the rest of layout.
 
 use crate::layout::axis::Axis;
-use crate::layout::axis_ctx::AxisCtx;
+use crate::layout::axis_slot::AxisSlot;
 use crate::layout::driver::{DriverOp, LayoutDriver};
 use crate::layout::engine::LayoutEngine;
 use crate::layout::text_shape_input::TextShapeInput;
@@ -274,9 +274,9 @@ pub(crate) fn compute(
 
     // Hug + Fill both report content-driven intrinsic: Fill in intrinsic
     // context returns its content's intrinsic, ignoring weight —
-    // `AxisCtx::resolve` with `available = INFINITY` enforces exactly that
+    // `AxisSlot::resolve` with `available = INFINITY` enforces exactly that
     // (Fill falls back to `content_plus_padding`). Skip the content query
-    // for Fixed: `AxisCtx::resolve` short-circuits Fixed and never reads
+    // for Fixed: `AxisSlot::resolve` short-circuits Fixed and never reads
     // `content_plus_padding`.
     let content = if axis.main_sizing(layout.size).fixed_value().is_some() {
         IntrinsicWalk::one_axis(IntrinsicRange::ZERO)
@@ -297,7 +297,7 @@ pub(crate) fn compute(
 /// `Sizing` override, margin, and the `min_size` / `max_size` clamps.
 ///
 /// Padding is added unconditionally. A Fixed axis arrives with a zero
-/// content range, and `AxisCtx::resolve` returns the declared value
+/// content range, and `AxisSlot::resolve` returns the declared value
 /// without reading either — so the add cannot reach the result.
 fn outer(
     layout: LayoutCore,
@@ -307,17 +307,16 @@ fn outer(
     mut content: IntrinsicRange,
 ) -> IntrinsicRange {
     let pad = axis.spacing(layout.padding);
+    let slot = AxisSlot {
+        sizing: axis.main_sizing(layout.size),
+        available: f32::INFINITY,
+        intrinsic_min: 0.0,
+        margin: axis.spacing(layout.margin),
+        min: axis.main(bounds.min_size),
+        max: axis.main(bounds.max_size),
+    };
     for (_, value) in content.requested(query) {
-        *value = AxisCtx {
-            sizing: axis.main_sizing(layout.size),
-            content_plus_padding: *value + pad,
-            available: f32::INFINITY,
-            intrinsic_min: 0.0,
-            margin: axis.spacing(layout.margin),
-            min: axis.main(bounds.min_size),
-            max: axis.main(bounds.max_size),
-        }
-        .resolve();
+        *value = slot.resolve(*value + pad);
     }
     content
 }

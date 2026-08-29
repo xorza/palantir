@@ -77,8 +77,8 @@ fn cache_hit_preserves_grid_cell_rects() {
                     Grid::new()
                         .id(WidgetId::from_hash("g"))
                         .size((Sizing::FILL, Sizing::HUG))
-                        .cols([Track::hug(), Track::fill()])
-                        .rows([Track::hug()])
+                        .cols([Track::HUG, Track::FILL])
+                        .rows([Track::HUG])
                         .gap_xy(6.0, 16.0)
                         .show(ui, |ui| {
                             capture.push(
@@ -109,8 +109,8 @@ fn cache_hit_preserves_grid_cell_rects() {
                     Grid::new()
                         .id(WidgetId::from_hash("outer"))
                         .size((Sizing::FILL, Sizing::HUG))
-                        .cols([Track::hug(), Track::fill()])
-                        .rows([Track::hug()])
+                        .cols([Track::HUG, Track::FILL])
+                        .rows([Track::HUG])
                         .show(ui, |ui| {
                             capture.push(
                                 Text::new("outer-L")
@@ -127,8 +127,8 @@ fn cache_hit_preserves_grid_cell_rects() {
                                     Grid::new()
                                         .id(WidgetId::from_hash("inner"))
                                         .size((Sizing::FILL, Sizing::HUG))
-                                        .cols([Track::hug(), Track::hug(), Track::fill()])
-                                        .rows([Track::hug()])
+                                        .cols([Track::HUG, Track::HUG, Track::FILL])
+                                        .rows([Track::HUG])
                                         .show(ui, |ui| {
                                             for (col, label) in [(0, "a"), (1, "bb"), (2, "end")] {
                                                 capture.push(
@@ -159,8 +159,8 @@ fn cache_hit_preserves_grid_cell_rects() {
                     Grid::new()
                         .id(WidgetId::from_hash("g1"))
                         .size((Sizing::FILL, Sizing::HUG))
-                        .cols([Track::hug(), Track::fill()])
-                        .rows([Track::hug()])
+                        .cols([Track::HUG, Track::FILL])
+                        .rows([Track::HUG])
                         .show(ui, |ui| {
                             capture.push(
                                 Text::new("L1:")
@@ -182,8 +182,8 @@ fn cache_hit_preserves_grid_cell_rects() {
                     Grid::new()
                         .id(WidgetId::from_hash("g2"))
                         .size((Sizing::FILL, Sizing::HUG))
-                        .cols([Track::hug(), Track::hug(), Track::fill()])
-                        .rows([Track::hug()])
+                        .cols([Track::HUG, Track::HUG, Track::FILL])
+                        .rows([Track::HUG])
                         .show(ui, |ui| {
                             capture.push(
                                 Text::new("Description:")
@@ -404,8 +404,8 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
                         Grid::new()
                             .id(WidgetId::from_hash("grid"))
                             .size((Sizing::FILL, Sizing::HUG))
-                            .cols([Track::hug(), Track::fill()])
-                            .rows([Track::hug(), Track::hug()])
+                            .cols([Track::HUG, Track::FILL])
+                            .rows([Track::HUG, Track::HUG])
                             .gap_xy(6.0, 8.0)
                             .show(ui, |ui| {
                                 Text::new("Title:")
@@ -476,8 +476,8 @@ fn cache_rects_match_cold_oracle_across_width_changes() {
                         Grid::new()
                             .id(WidgetId::from_hash("g"))
                             .size((Sizing::FILL, Sizing::HUG))
-                            .cols([Track::hug(), Track::fill()])
-                            .rows([Track::hug()])
+                            .cols([Track::HUG, Track::FILL])
+                            .rows([Track::HUG])
                             .show(ui, |ui| {
                                 capture.push(
                                     Text::new("Title:")

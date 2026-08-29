@@ -5,7 +5,6 @@ use crate::primitives::color::{Color, ColorF16, ColorU8};
 use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
 use crate::primitives::span::Span;
-use crate::primitives::text_source::TextSource;
 use crate::primitives::urect::URect;
 use crate::renderer::backend::schedule::{MaskPlan, RenderStep, for_each_step};
 use crate::renderer::quad::Quad;
@@ -109,9 +108,7 @@ fn dummy_text() -> TextDrawRow {
         bounds: URect::ZERO,
         text: ShapedTextRef {
             key: TextShapeKey::INVALID,
-            source: TextSource {
-                span: Span::default(),
-            },
+            span: Span::default(),
         },
         color: ColorU8::WHITE,
         scale: 1.0,

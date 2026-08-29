@@ -66,7 +66,7 @@ fn zero_extent_grid_keeps_fixed_track_when_arrange_reuses_the_resolution() {
     fn build(ui: &mut Ui) {
         Grid::new()
             .id(WidgetId::from_hash("zero-grid"))
-            .cols([Track::fixed(30.0), Track::fill()])
+            .cols([Track::fixed(30.0), Track::FILL])
             .rows([Track::fixed(20.0)])
             .size((Sizing::fixed(0.0), Sizing::fixed(0.0)))
             .show(ui, |ui| {

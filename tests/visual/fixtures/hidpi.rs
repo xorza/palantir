@@ -27,8 +27,8 @@ fn dashboard_matches_golden() {
     let img = h.render(UVec2::new(800, 600), 2.0, DARK_BG, |ui| {
         Grid::new()
             .id_salt("shell")
-            .cols([Track::fixed(110.0), Track::fill()])
-            .rows([Track::fixed(40.0), Track::fill(), Track::fixed(24.0)])
+            .cols([Track::fixed(110.0), Track::FILL])
+            .rows([Track::fixed(40.0), Track::FILL, Track::fixed(24.0)])
             .gap(8.0)
             .padding(12.0)
             .size((Sizing::FILL, Sizing::FILL))
@@ -99,8 +99,8 @@ fn dashboard_matches_golden() {
                 Grid::new()
                     .id_salt("cards")
                     .grid_cell((1, 1))
-                    .cols([Track::fill(), Track::fill()])
-                    .rows([Track::fill(), Track::fill()])
+                    .cols([Track::FILL, Track::FILL])
+                    .rows([Track::FILL, Track::FILL])
                     .gap(8.0)
                     .show(ui, |ui| {
                         let palette = [

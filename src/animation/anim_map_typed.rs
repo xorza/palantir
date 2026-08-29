@@ -251,7 +251,9 @@ impl<T: Animatable> AnimMapTyped<T> {
             }
         }
     }
+}
 
+impl<T: Animatable> TypedStore for AnimMapTyped<T> {
     /// Drop rows for any removed widget *and* any slot whose caller
     /// stopped poking it this frame; clear the `touched` flag on the
     /// rows that survive. Single retain pass — both predicates fold
@@ -265,12 +267,6 @@ impl<T: Animatable> AnimMapTyped<T> {
             row.touched = false;
             kept
         });
-    }
-}
-
-impl<T: Animatable> TypedStore for AnimMapTyped<T> {
-    fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>) {
-        AnimMapTyped::<T>::sweep_removed(self, removed);
     }
     fn is_empty(&self) -> bool {
         self.rows.is_empty()

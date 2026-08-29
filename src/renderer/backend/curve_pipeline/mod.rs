@@ -21,7 +21,7 @@ use crate::primitives::fill_kind::FillKind;
 use crate::primitives::span::Span;
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
-use crate::renderer::backend::instance_pipeline::InstancePipeline;
+use crate::renderer::backend::pipeline_recipe::PipelineRecipe;
 use crate::renderer::backend::shader_template::{self, ShaderConstant};
 use crate::renderer::backend::stencil_variant::ColorVariantSpec;
 use crate::renderer::backend::stencil_variant::StencilVariant;
@@ -68,22 +68,11 @@ pub(super) struct CurvePipeline {
     shader: wgpu::ShaderModule,
 }
 
-impl InstancePipeline for CurvePipeline {
-    /// The gradient atlas's group-0 layout, owned by
-    /// [`GpuGradientAtlas`](crate::renderer::backend::gpu_gradient_atlas::GpuGradientAtlas).
-    type Layouts<'a> = &'a wgpu::BindGroupLayout;
-    type Upload<'a> = &'a [CurveInstance];
-    /// The shared gradient bind group, one allocation used by this
-    /// pipeline and the quad one.
-    type Bindings<'a> = &'a wgpu::BindGroup;
-    /// The whole curve group batch, which lands as one indexed
-    /// instanced draw.
-    type Batch<'a> = Span;
-
+impl CurvePipeline {
     /// Format-independent curve resources; the pipelines are built by
     /// [`FormatPipelines`](crate::renderer::backend::format_pipelines::FormatPipelines)
     /// from [`Self::build_variants`].
-    fn new(device: &wgpu::Device) -> Self {
+    pub(super) fn new(device: &wgpu::Device) -> Self {
         let wgsl = shader_template::specialize(
             shader_template::CURVE_WGSL,
             &[
@@ -120,7 +109,7 @@ impl InstancePipeline for CurvePipeline {
         }
     }
 
-    fn instance_layout() -> wgpu::VertexBufferLayout<'static> {
+    pub(super) fn instance_layout() -> wgpu::VertexBufferLayout<'static> {
         wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<CurveInstance>() as u64,
             step_mode: wgpu::VertexStepMode::Instance,
@@ -132,22 +121,23 @@ impl InstancePipeline for CurvePipeline {
     /// Caller passes the shared `gradient_bgl` (owned by
     /// `GpuGradientAtlas`) so the layout matches; the instance buffer
     /// is format-independent. Called by `FormatPipelines` per format.
-    fn build_variants(
+    pub(super) fn build_variants(
         &self,
         device: &wgpu::Device,
-        gradient_bgl: Self::Layouts<'_>,
+        gradient_bgl: &wgpu::BindGroupLayout,
         format: wgpu::TextureFormat,
     ) -> StencilVariant {
         // Gradient at group 0 — viewport rides the shared immediate
         // region, no bind-group slot needed for it.
+        let layout =
+            PipelineRecipe::pipeline_layout(device, "palantir.curve.pl", &[Some(gradient_bgl)]);
         StencilVariant::build(
             device,
             ColorVariantSpec {
                 label: "palantir.curve.pipeline",
                 stencil_label: "palantir.curve.pipeline.stencil_test",
-                layout_label: "palantir.curve.pl",
                 shader: &self.shader,
-                bind_group_layouts: &[Some(gradient_bgl)],
+                layout: &layout,
                 vertex_buffers: &[Some(Self::instance_layout())],
                 topology: wgpu::PrimitiveTopology::TriangleList,
             },
@@ -155,7 +145,7 @@ impl InstancePipeline for CurvePipeline {
         )
     }
 
-    fn upload(&mut self, ctx: &mut GpuCtx<'_>, instances: Self::Upload<'_>) {
+    pub(super) fn upload(&mut self, ctx: &mut GpuCtx<'_>, instances: &[CurveInstance]) {
         self.instance_buffer.upload_instances(ctx, instances);
     }
 
@@ -163,12 +153,12 @@ impl InstancePipeline for CurvePipeline {
     /// curve group batch. Viewport rides the shared immediate region;
     /// `gradient_bg` is the group-0 handle owned by `GpuGradientAtlas`
     /// (one allocation, used by both the quad and curve pipelines).
-    fn bind<'a>(
+    pub(super) fn bind<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
         variant: &'a StencilVariant,
         use_stencil: bool,
-        gradient_bg: Self::Bindings<'a>,
+        gradient_bg: &'a wgpu::BindGroup,
     ) {
         pass.set_pipeline(variant.select(use_stencil));
         pass.set_bind_group(0, gradient_bg, &[]);
@@ -179,7 +169,7 @@ impl InstancePipeline for CurvePipeline {
     /// Issue one indexed instanced draw covering every instance in the
     /// span. This is the "one draw call per scissor group" terminus —
     /// the entire curve group batch lands as a single GPU draw call.
-    fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, instances: Self::Batch<'_>) {
+    pub(super) fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, instances: Span) {
         if instances.len == 0 {
             return;
         }

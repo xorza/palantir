@@ -45,15 +45,14 @@ use tinyvec::ArrayVec;
 
 use crate::primitives::num::F32Ext;
 use crate::primitives::size::Size;
+use crate::renderer::backend::raster_atlas::content_type::ContentType;
 use crate::text::cosmic::cache_entry::{CacheEntry, CachedExtent};
 use crate::text::cosmic::cluster_glyph::{ClusterGlyph, fitting_prefix};
 use crate::text::cosmic::ellipsis_memo::EllipsisMemo;
 use crate::text::cosmic::geometry::{
     ShapedGeometry, first_line_right, intrinsic_min_width, shaped_geometry,
 };
-use crate::text::render::{
-    GlyphImage, GlyphImageKind, GlyphPlacement, GlyphRasterKey, PlacedGlyph, RunPlacement,
-};
+use crate::text::render::{GlyphImage, GlyphPlacement, GlyphRasterKey, PlacedGlyph, RunPlacement};
 use cosmic_text::SwashContent;
 use std::collections::hash_map::Entry;
 
@@ -117,7 +116,7 @@ const ELLIPSIS_MEMO_SLOTS: usize = 4;
 /// them, an order of magnitude past what this window achieves, and the
 /// exact growth it was added to stop. Holding it *weakly* keeps the drag
 /// bounded but leaves buffers dying under live encoded entries, so the
-/// whole restore path (`ShapedTextRef`, `TextSource`,
+/// whole restore path (`ShapedTextRef`, `InternedText`,
 /// [`CosmicMeasure::ensure_buffer`]) has to stay — and deleting that was
 /// the other half of the idea. The two wins are mutually exclusive.
 pub(super) const PROBATION_KEEP_FRAMES: u64 = 4;
@@ -146,6 +145,22 @@ fn recycle_buffer(pool: &mut Vec<Buffer>, buffer: Buffer) {
     if pool.len() < RECYCLE_POOL_CAP {
         pool.push(buffer);
     }
+}
+
+/// The cosmic face one key shapes at, in the two values cosmic asks
+/// for.
+///
+/// The inverse of [`TextShapeKey::unbounded`]'s fold: the key packed a
+/// `GlyphFont` in, and every shaping path unpacks it here rather than
+/// through four accessors of its own, so no two of them can shape one
+/// key against different faces.
+fn metrics_of(key: TextShapeKey) -> Metrics {
+    Metrics::new(key.font_size_px(), key.line_height_px())
+}
+
+/// The other half of [`metrics_of`].
+fn attrs_of(key: TextShapeKey) -> Attrs<'static> {
+    attrs_for(key.family(), key.weight())
 }
 
 fn attrs_for(family: FontFamily, weight: FontWeight) -> Attrs<'static> {
@@ -290,7 +305,7 @@ impl CosmicMeasure {
             swash_cache: SwashCache::new(),
             cache: FxHashMap::default(),
             frame: 0,
-            expiry: ExpiryWheel::with_horizon(PROTECTED_KEEP_FRAMES + PROTECTED_SPREAD_MASK + 2),
+            expiry: ExpiryWheel::with_keep(PROTECTED_KEEP_FRAMES + PROTECTED_SPREAD_MASK),
             recycle_pool: Vec::with_capacity(RECYCLE_POOL_CAP),
             ellipsis: ArrayVec::new(),
             truncate_scratch: String::new(),
@@ -384,8 +399,7 @@ impl CosmicMeasure {
     /// first and lift the result into their own kind.
     fn shape_wrapped(&mut self, request: TextShapeRequest<'_>, floor: WrapFloor) -> ShapedGeometry {
         let key = request.key;
-        let metrics = Metrics::new(key.font_size_px(), key.line_height_px());
-        let mut buffer = self.acquire_buffer(metrics, key.max_width_px());
+        let mut buffer = self.acquire_buffer(metrics_of(key), key.max_width_px());
         // Per-line alignment travels through cosmic's `set_text`
         // `alignment` slot — that's the canonical entry point and
         // applies the align to every parsed buffer line in one
@@ -396,12 +410,7 @@ impl CosmicMeasure {
         // line width); without one we pass `None` so single-line
         // editors keep their widget-side `dx` placement.
         let alignment = key.max_width_px().and_then(|_| cosmic_align(key.halign()));
-        buffer.set_text(
-            request.text,
-            &attrs_for(key.family(), key.weight()),
-            Shaping::Advanced,
-            alignment,
-        );
+        buffer.set_text(request.text, &attrs_of(key), Shaping::Advanced, alignment);
         buffer.shape_until_scroll(&mut self.font_system, false);
 
         let geometry = shaped_geometry(&buffer, floor, &mut self.break_scratch);
@@ -469,17 +478,15 @@ impl CosmicMeasure {
         // how many attempts the cut took. The memoized ellipsis probe
         // shapes without inserting and is deliberately not counted.
         self.counters.shapes.bump();
-        let keep_until = self.frame + PROBATION_KEEP_FRAMES;
-        // First frame on which the entry is dead, matching the sweep's
-        // own `keep_until < frame` test.
-        let ticket_seq = self.expiry.schedule(key, keep_until + 1);
+        let dies_at = self.probation_dies_at();
+        let ticket_seq = self.expiry.schedule(key, dies_at);
         let displaced = self.cache.insert(
             key,
             CacheEntry {
                 buffer,
                 extent,
                 left,
-                keep_until,
+                dies_at,
                 ticket_seq,
             },
         );
@@ -513,9 +520,16 @@ impl CosmicMeasure {
         key: TextShapeKey,
     ) -> Option<&'a mut CacheEntry> {
         let entry = cache.get_mut(&key)?;
-        entry.keep_until = frame + PROTECTED_KEEP_FRAMES + key.keep_spread();
+        entry.dies_at = frame + PROTECTED_KEEP_FRAMES + key.keep_spread() + 1;
         counters.hits.bump();
         Some(entry)
+    }
+
+    /// The frame an entry filed into the probation window is first dead.
+    /// Read by [`Self::insert`] and by [`Self::supersede`], the two sites
+    /// that file one.
+    fn probation_dies_at(&self) -> u64 {
+        self.frame + PROBATION_KEEP_FRAMES + 1
     }
 
     /// Demote `key` to the probation window: the reuse slot that owned
@@ -534,7 +548,7 @@ impl CosmicMeasure {
         if key.is_invalid() {
             return;
         }
-        let keep_until = self.frame + PROBATION_KEEP_FRAMES;
+        let dies_at = self.probation_dies_at();
         let Some(entry) = self.cache.get_mut(&key) else {
             return;
         };
@@ -542,12 +556,12 @@ impl CosmicMeasure {
         // Never *extends* a life: an entry already closer to expiry —
         // one that was inserted and never looked up — keeps its own
         // deadline.
-        if entry.keep_until > keep_until {
-            entry.keep_until = keep_until;
+        if entry.dies_at > dies_at {
+            entry.dies_at = dies_at;
             // The new ticket is earlier than the outstanding one, so it
             // is the one that decides this entry's fate: stamping it
             // here retires the supplanted ticket when it fires.
-            entry.ticket_seq = self.expiry.schedule(key, keep_until + 1);
+            entry.ticket_seq = self.expiry.schedule(key, dies_at);
         }
     }
 
@@ -574,7 +588,7 @@ impl CosmicMeasure {
     /// A ticket is a hint, never authority to drop. Deadlines move after
     /// it is filed — [`Self::cache_hit`] pushes one out and deliberately
     /// files nothing, which is what keeps a re-read entry from filing a
-    /// ticket per frame — so the real `keep_until` is re-read here and a
+    /// ticket per frame — so the real `dies_at` is re-read here and a
     /// still-live entry is simply re-filed.
     pub(super) fn advance_to(&mut self, frame: u64) {
         debug_assert!(frame >= self.frame, "the shared frame clock ran backwards");
@@ -597,10 +611,10 @@ impl CosmicMeasure {
             if seq != slot.get().ticket_seq {
                 return None;
             }
-            if slot.get().keep_until >= frame {
+            if slot.get().dies_at > frame {
                 // Re-filed under the same serial, so the entry's stamp
                 // still names it and nothing has to be written back.
-                return Some(slot.get().keep_until + 1);
+                return Some(slot.get().dies_at);
             }
             probe.expiries.bump();
             recycle_buffer(recycle_pool, slot.remove().buffer);
@@ -681,8 +695,8 @@ impl CosmicMeasure {
             .swash_cache
             .get_image_uncached(&mut self.font_system, key.0)?;
         let kind = match image.content {
-            SwashContent::Color => GlyphImageKind::Color,
-            SwashContent::Mask | SwashContent::SubpixelMask => GlyphImageKind::Mask,
+            SwashContent::Color => ContentType::Color,
+            SwashContent::Mask | SwashContent::SubpixelMask => ContentType::Mask,
         };
         Some(GlyphImage {
             kind,
@@ -755,16 +769,13 @@ impl CosmicMeasure {
         // exactly what the fit test wants — this is the resize-drag path,
         // where the key was hashed three times over.
         let root = self.root(unbounded, WrapFloor::Skip);
-        let metrics = Metrics::new(key.font_size_px(), key.line_height_px());
-        let family = key.family();
-        let weight = key.weight();
-        let attrs = attrs_for(family, weight);
+        let attrs = attrs_of(key);
         // Reserve the ellipsis width only when we'll append one; a plain
         // clip cuts flush to the full available width. Resolved before
         // borrowing the probe, since shaping "…" needs `&mut self`.
         let mut append_ellipsis = false;
         let avail = if matches!(fit, LineFit::Ellipsis) {
-            let ellipsis_w = self.ellipsis_advance(key.size_q, metrics, family, weight);
+            let ellipsis_w = self.ellipsis_advance(key);
             append_ellipsis = ellipsis_w <= width;
             (width - ellipsis_w).max(0.0)
         } else {
@@ -781,7 +792,7 @@ impl CosmicMeasure {
         // encoder owns single-line placement. Binding to `Some(w)` + align
         // would measure the aligned glyph position, inflating a fits-anyway
         // label toward the box width.
-        let mut buffer = self.acquire_buffer(metrics, None);
+        let mut buffer = self.acquire_buffer(metrics_of(key), None);
         let size = if fits_whole {
             // Re-shaping the identical text reproduces the probe, so this
             // branch cannot overrun `width`.
@@ -855,23 +866,13 @@ impl CosmicMeasure {
     /// the width churning so every frame is a truncation miss and the
     /// reservation is asked for again. See [`CosmicMeasure::ellipsis`]
     /// for what the slot count buys there.
-    fn ellipsis_advance(
-        &mut self,
-        size_q: u32,
-        metrics: Metrics,
-        family: FontFamily,
-        weight: FontWeight,
-    ) -> f32 {
-        let want = EllipsisMemo::wanted(size_q, family, weight);
-        if let Some(advance) = self
-            .ellipsis
-            .iter()
-            .find_map(|memo| memo.advance_for(&want))
-        {
+    fn ellipsis_advance(&mut self, key: TextShapeKey) -> f32 {
+        let face = key.face();
+        if let Some(advance) = self.ellipsis.iter().find_map(|memo| memo.advance_for(face)) {
             return advance;
         }
-        let mut buffer = self.acquire_buffer(metrics, None);
-        buffer.set_text("…", &attrs_for(family, weight), Shaping::Advanced, None);
+        let mut buffer = self.acquire_buffer(metrics_of(key), None);
+        buffer.set_text("…", &attrs_of(key), Shaping::Advanced, None);
         buffer.shape_until_scroll(&mut self.font_system, false);
         let advance = first_line_right(&buffer);
         recycle_buffer(&mut self.recycle_pool, buffer);
@@ -880,7 +881,8 @@ impl CosmicMeasure {
         if self.ellipsis.len() == ELLIPSIS_MEMO_SLOTS {
             self.ellipsis.pop();
         }
-        self.ellipsis.insert(0, want.measured(advance));
+        self.ellipsis
+            .insert(0, EllipsisMemo::wanted(face).measured(advance));
         advance
     }
 }

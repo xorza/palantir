@@ -21,7 +21,7 @@ mod spring;
 
 use crate::animation::anim_map_typed::AnimMapTyped;
 use crate::animation::animatable::Animatable;
-use crate::common::typed_stores::TypedStores;
+use crate::common::typed_stores::{Drained, TypedStores};
 use crate::primitives::widget_id::WidgetId;
 use rustc_hash::FxHashSet;
 
@@ -65,12 +65,12 @@ impl AnimMap {
     /// whose id lingers across motion-toggle states.
     ///
     /// A typed map that drains to empty is dropped entirely — see
-    /// [`TypedStores::sweep_removed_dropping_drained`]. Keeping it would
-    /// leave the container non-empty forever, permanently disabling the
-    /// [`Self::is_empty`] fast path in `Ui::animate` once *any* widget
-    /// has ever animated, even after the app goes idle.
+    /// [`Drained::Drop`]. Keeping it would leave the container non-empty
+    /// forever, permanently disabling the [`Self::is_empty`] fast path in
+    /// `Ui::animate` once *any* widget has ever animated, even after the
+    /// app goes idle.
     pub(crate) fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>) {
-        self.stores.sweep_removed_dropping_drained(removed);
+        self.stores.sweep_removed(removed, Drained::Drop);
     }
 }
 

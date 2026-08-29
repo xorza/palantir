@@ -15,11 +15,17 @@ use std::rc::Rc;
 /// single texture cache. `UiResources` creates one and shares it with the
 /// registry and every window's `Ui`. Never hands out `TextureId(0)` (the
 /// render path's "no texture" value).
+///
+/// An owned, shared cell rather than the process-wide
+/// [`IdCounter`](crate::common::id_counter::IdCounter) the other two
+/// monotonic ids read: the scope that must not collide is one
+/// `UiResources` and its one backend cache, and a handle to it is what
+/// says so. Single-threaded with it, so a `Cell` and not an atomic.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct TextureIdSource(Rc<Cell<u64>>);
 
 impl TextureIdSource {
-    /// Mint the next process-unique id.
+    /// Mint the next id from this source.
     pub(crate) fn reserve(&self) -> TextureId {
         let id = self.0.get() + 1;
         self.0.set(id);

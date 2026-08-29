@@ -293,7 +293,7 @@ fn roomy_menu_theme(ui: &Ui) -> ContextMenuTheme {
     let mut t = ui.theme().context_menu.clone();
     t.padding = Spacing::all(10.0);
     t.gap = 4.0;
-    t.item.padding = Spacing::xy(12.0, 8.0);
+    t.item.defaults.padding = Spacing::xy(12.0, 8.0);
     t.item.gap = 32.0;
     t.separator.thickness = 2.0;
     t.separator.margin = Spacing::xy(0.0, 8.0);

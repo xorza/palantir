@@ -51,7 +51,7 @@ fn gradient_resolution_runs_once_per_id_and_restarts_each_encode() {
         (BrushSource::Gradient(first), BrushSource::Gradient(repeated)) => {
             assert_eq!(first.axis, repeated.axis);
             assert_eq!(first.kind, repeated.kind);
-            assert_eq!(first.row, repeated.row);
+            assert_eq!(first.lut_row, repeated.lut_row);
         }
         _ => panic!("gradient brush resolved to a solid source"),
     }
@@ -185,7 +185,7 @@ fn manually_pushed_shapes_emit_expected_cmds() {
     let rect_kinds: Vec<_> = cmds
         .calls
         .iter()
-        .filter_map(|command| as_rect(command).map(|p| p.fill_kind))
+        .filter_map(|command| as_rect(command).map(|p| p.fill.kind))
         .collect();
     assert!(
         rect_kinds.contains(&FillKind::SOLID),
@@ -272,17 +272,20 @@ fn shadows_lower_to_shifted_drop_and_source_bounded_inset() {
     let inset = shadow_payloads[1];
     let (drop_rect, inset_rect) = (quad_rect(drop), quad_rect(inset));
 
-    assert_eq!(drop.fill_kind, FillKind::SHADOW_DROP);
+    assert_eq!(drop.fill.kind, FillKind::SHADOW_DROP);
     assert_eq!(drop_rect.size, Size::new(78.0, 88.0));
     assert_eq!(drop_rect.min - inset_rect.min, Vec2::new(-22.0, -20.0));
     assert_eq!(drop.fill_axis.lanes(), [0.0, 0.0, 8.0, -1.0]);
-    assert_eq!(drop.fill, ColorF16::from(Color::rgba(0.0, 0.0, 0.0, 0.5)));
+    assert_eq!(
+        drop.fill.color,
+        ColorF16::from(Color::rgba(0.0, 0.0, 0.0, 0.5))
+    );
     // A shadow's whole edge is its blur — the merged payload must carry
     // no stroke, or the shared quad path would paint one.
     assert_eq!(drop.stroke.color, ColorF16::TRANSPARENT);
     assert_eq!(drop.stroke.width, 0.0);
 
-    assert_eq!(inset.fill_kind, FillKind::SHADOW_INSET);
+    assert_eq!(inset.fill.kind, FillKind::SHADOW_INSET);
     assert_eq!(inset_rect.size, Size::new(30.0, 40.0));
     assert_eq!(inset.fill_axis.lanes(), [2.0, 4.0, 8.0, -2.0]);
 }
@@ -316,7 +319,7 @@ fn text_shape_carries_source_without_reconstructing_buffer() {
         .expect("Text widget must emit a DrawText command");
     let scene = h.ui.frame_scene();
     let interned_text = scene.payloads.interned_text();
-    assert_eq!(payload.text.source.resolve(&interned_text), "hi");
+    assert_eq!(interned_text.resolve(payload.text.span), "hi");
     assert!(
         !h.ui.shaper().has_cosmic_buffer(key),
         "frontend encoding must not reconstruct an evicted text buffer",
@@ -349,7 +352,7 @@ fn text_shape_carries_source_without_reconstructing_buffer() {
         .expect("replayed text must still emit");
     let scene = h.ui.frame_scene();
     let interned_text = scene.payloads.interned_text();
-    assert_eq!(payload.text.source.resolve(&interned_text), "hi");
+    assert_eq!(interned_text.resolve(payload.text.span), "hi");
     assert!(
         !h.ui.shaper().has_cosmic_buffer(replayed_key),
         "frontend replay must leave reconstruction to an encoded-cache miss",
@@ -422,7 +425,7 @@ fn encoder_text_alignment_respects_leaf_padding() {
 /// The shadow half of the same split.
 fn as_shadow(call: &PaintCall) -> Option<&DrawQuadPayload> {
     match call {
-        PaintCall::Quad(p) if p.fill_kind.is_shadow() => Some(p),
+        PaintCall::Quad(p) if p.fill.kind.is_shadow() => Some(p),
         _ => None,
     }
 }

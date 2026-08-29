@@ -7,6 +7,7 @@ use crate::layout::types::justify::Justify;
 use crate::layout::types::sizing::Sizing;
 use crate::scene::node::Node;
 use crate::scene::node::configure::Configure;
+use crate::scene::node::theme_defaults::ThemeDefaults;
 use crate::shape::Shape;
 use crate::shape::polyline::PolylineColors;
 use crate::shape::style::{LineCap, LineJoin};
@@ -167,14 +168,21 @@ impl<'a, S> ComboBox<'a, S> {
         // separate `escape_pressed` here.
 
         if open && let Some(rect) = trigger_rect {
-            let panel = ui_theme.context_menu.panel.clone();
+            let ctx = &ui_theme.context_menu;
             let options = self.options;
             let label = self.label;
             let selected = self.selected;
+            // The same menu theme `ContextMenu` fills its popup in from,
+            // so the two read as one control with two triggers. The one
+            // deliberate difference is the minimum: a dropdown is at
+            // least as wide as the trigger it drops from, which is an
+            // explicit set and so outranks `ContextMenuTheme::min_width`.
             let popup = Popup::below(rect)
-                .background(panel)
                 .id(id.with("list"))
-                .min_size((rect.size.w, 0.0));
+                .min_size((rect.size.w, 0.0))
+                .default_background(&ctx.panel)
+                .default_padding(ctx.padding)
+                .default_gap(ctx.gap);
             let resp = popup.show(ui, |ui, popup| {
                 for (i, opt) in options.iter().enumerate() {
                     let lbl = ui.intern(label(opt));

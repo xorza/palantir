@@ -58,7 +58,7 @@ impl GradientResolver {
         let gradient = &gradients[idx];
         let resolved = ResolvedGradient {
             axis: gradient.axis,
-            row: atlas.register_stops(&gradient.stops, gradient.interp),
+            lut_row: atlas.register_stops(&gradient.stops, gradient.interp),
             kind: gradient.kind,
         };
         self.resolved[idx] = Some(resolved);

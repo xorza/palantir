@@ -45,8 +45,8 @@ fn hash_spreads_across_buckets_for_structured_palettes() {
     let same_blue: Vec<GradientStops> = (0..N)
         .map(|i| {
             ramp(
-                ColorU8::rgb(i as u8, (i * 3) as u8, 0x2e),
-                ColorU8::rgb(0x4c, (i * 5) as u8, 0x2e),
+                ColorU8::linear_rgb(i as u8, (i * 3) as u8, 0x2e),
+                ColorU8::linear_rgb(0x4c, (i * 5) as u8, 0x2e),
             )
         })
         .collect();
@@ -54,12 +54,20 @@ fn hash_spreads_across_buckets_for_structured_palettes() {
     let mono: Vec<GradientStops> = (0..N)
         .map(|i| {
             let v = (i as u8).wrapping_mul(2);
-            ramp(ColorU8::rgb(v, v, v), ColorU8::rgb(v / 2, v / 2, v / 2))
+            ramp(
+                ColorU8::linear_rgb(v, v, v),
+                ColorU8::linear_rgb(v / 2, v / 2, v / 2),
+            )
         })
         .collect();
     // Only the red channel moves — the degenerate end of the range.
     let red_only: Vec<GradientStops> = (0..N)
-        .map(|i| ramp(ColorU8::rgb(i as u8, 0, 0), ColorU8::rgb(0x40, 0, 0)))
+        .map(|i| {
+            ramp(
+                ColorU8::linear_rgb(i as u8, 0, 0),
+                ColorU8::linear_rgb(0x40, 0, 0),
+            )
+        })
         .collect();
 
     for (label, keys) in [
@@ -83,11 +91,11 @@ fn hash_spreads_across_buckets_for_structured_palettes() {
 /// an offset.
 #[test]
 fn offset_and_colour_stay_independent() {
-    let base = ramp(ColorU8::rgb(1, 2, 3), ColorU8::rgb(4, 5, 6));
-    let colour_swapped = ramp(ColorU8::rgb(4, 5, 6), ColorU8::rgb(1, 2, 3));
+    let base = ramp(ColorU8::linear_rgb(1, 2, 3), ColorU8::linear_rgb(4, 5, 6));
+    let colour_swapped = ramp(ColorU8::linear_rgb(4, 5, 6), ColorU8::linear_rgb(1, 2, 3));
     let offset_moved = GradientStops::new([
-        Stop::new(0.0, ColorU8::rgb(1, 2, 3)),
-        Stop::new(0.5, ColorU8::rgb(4, 5, 6)),
+        Stop::new(0.0, ColorU8::linear_rgb(1, 2, 3)),
+        Stop::new(0.5, ColorU8::linear_rgb(4, 5, 6)),
     ]);
 
     let digest = |s: &GradientStops| {
@@ -110,9 +118,9 @@ fn offset_and_colour_stay_independent() {
 /// arrives through.
 #[test]
 fn written_order_does_not_reach_identity() {
-    let a = ColorU8::rgb(1, 2, 3);
-    let b = ColorU8::rgb(4, 5, 6);
-    let c = ColorU8::rgb(7, 8, 9);
+    let a = ColorU8::linear_rgb(1, 2, 3);
+    let b = ColorU8::linear_rgb(4, 5, 6);
+    let c = ColorU8::linear_rgb(7, 8, 9);
     let ascending = GradientStops::new([Stop::new(0.0, a), Stop::new(0.5, b), Stop::new(1.0, c)]);
     let shuffled = GradientStops::new([Stop::new(1.0, c), Stop::new(0.0, a), Stop::new(0.5, b)]);
 

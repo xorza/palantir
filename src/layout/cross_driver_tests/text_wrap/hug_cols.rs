@@ -53,8 +53,8 @@ fn two_hug_cols_nonwrapping_label_floors_at_full_width() {
                                         grid_node = Some(
                                             Grid::new()
                                                 .id(WidgetId::from_hash("grid"))
-                                                .cols([Track::hug(), Track::hug()])
-                                                .rows([Track::hug()])
+                                                .cols([Track::HUG, Track::HUG])
+                                                .rows([Track::HUG])
                                                 .show(ui, |ui| {
                                                     Text::new(
                                                         "the quick brown fox jumps over the lazy dog",
@@ -185,8 +185,8 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
         let mut label_node = None;
         Grid::new()
             .id(WidgetId::from_hash("grid"))
-            .cols([Track::hug(), Track::hug()])
-            .rows([Track::hug()])
+            .cols([Track::HUG, Track::HUG])
+            .rows([Track::HUG])
             .size((Sizing::FILL, Sizing::HUG))
             .show(ui, |ui| {
                 paragraph_node = Some(
@@ -254,8 +254,8 @@ fn two_hug_cols_default_label_hugs_full_width() {
     fn build(ui: &mut Ui) -> NodeId {
         Grid::new()
           .id(WidgetId::from_hash("grid"))
-          .cols([Track::hug(), Track::hug()])
-          .rows([Track::hug()])
+          .cols([Track::HUG, Track::HUG])
+          .rows([Track::HUG])
           .size((Sizing::FILL, Sizing::HUG))
           .show(ui, |ui| {
               Text::new("the quick brown fox jumps over the lazy dog. pack my box with five dozen liquor jugs")

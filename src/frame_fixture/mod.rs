@@ -139,7 +139,7 @@ impl FrameFixture {
         let prop_rows = 4 + scale;
         let tag_count = 3 * scale;
         let badge_count = scale;
-        self.grid_rows.resize(prop_rows, Track::hug());
+        self.grid_rows.resize(prop_rows, Track::HUG);
 
         Panel::vstack()
             .gap(10.0)

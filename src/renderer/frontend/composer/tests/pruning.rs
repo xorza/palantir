@@ -654,7 +654,7 @@ fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
                     Corners::default(),
                     BrushSource::Gradient(ResolvedGradient {
                         axis: FillAxis::ZERO,
-                        row: LutRow::FALLBACK,
+                        lut_row: LutRow::FALLBACK,
                         kind: FillKind::linear(Spread::Pad),
                     }),
                     Stroke::ZERO.into(),

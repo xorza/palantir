@@ -9,6 +9,7 @@ use crate::renderer::frontend::composer::tests::support::{
 };
 use crate::renderer::frontend::paint_sink::{PaintGate, PaintSink};
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
+use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::stroke_bounds::Spin;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
@@ -313,7 +314,10 @@ fn compose_emits_one_curve_batch_per_scissor_group() {
                         p2: Vec2::new(offset + 90.0, 50.0),
                         p3: Vec2::new(offset + 100.0, 0.0),
                     },
-                    color: Color::WHITE.into(),
+                    fill: GpuFill {
+                        color: Color::WHITE.into(),
+                        ..Default::default()
+                    },
                     width: 2.0,
                     ..Default::default()
                 });
@@ -356,7 +360,10 @@ fn compose_splits_curve_batches_across_scissor_groups() {
                     p2: Vec2::new(90.0, 50.0),
                     p3: Vec2::new(100.0, 0.0),
                 },
-                color: Color::WHITE.into(),
+                fill: GpuFill {
+                    color: Color::WHITE.into(),
+                    ..Default::default()
+                },
                 width: 2.0,
                 ..Default::default()
             });
@@ -370,7 +377,10 @@ fn compose_splits_curve_batches_across_scissor_groups() {
                     p2: Vec2::new(45.0, 25.0),
                     p3: Vec2::new(50.0, 0.0),
                 },
-                color: Color::WHITE.into(),
+                fill: GpuFill {
+                    color: Color::WHITE.into(),
+                    ..Default::default()
+                },
                 width: 2.0,
                 ..Default::default()
             });
@@ -408,10 +418,12 @@ fn compose_threads_curve_fill_kind_and_lut_row_into_instances() {
                     p2: Vec2::new(90.0, 50.0),
                     p3: Vec2::new(100.0, 0.0),
                 },
-                color: Color::TRANSPARENT.into(),
+                fill: GpuFill {
+                    color: Color::TRANSPARENT.into(),
+                    kind: FillKind::linear(Spread::Pad),
+                    lut_row: LutRow(7),
+                },
                 width: 4.0,
-                fill_kind: FillKind::linear(Spread::Pad),
-                fill_lut_row: LutRow(7),
                 ..Default::default()
             });
         },
@@ -450,7 +462,10 @@ fn compose_arc_scales_geometry_and_subdivides_by_exact_length() {
                     a0: 0.0,
                     a1: sweep,
                 },
-                color: Color::WHITE.into(),
+                fill: GpuFill {
+                    color: Color::WHITE.into(),
+                    ..Default::default()
+                },
                 width: 2.0,
                 ..Default::default()
             });
@@ -504,7 +519,10 @@ fn compose_arc_spin_rotates_center_about_bbox_pivot_and_offsets_angles() {
                     a0: 0.0,
                     a1: PI,
                 },
-                color: Color::WHITE.into(),
+                fill: GpuFill {
+                    color: Color::WHITE.into(),
+                    ..Default::default()
+                },
                 width: 2.0,
                 ..Default::default()
             });
@@ -541,7 +559,10 @@ fn compose_flat_cubic_emits_single_instance_curved_emits_many() {
                 p2: Vec2::new(1600.0 / 3.0, 5.0),
                 p3: Vec2::new(800.0, 5.0),
             },
-            color: Color::WHITE.into(),
+            fill: GpuFill {
+                color: Color::WHITE.into(),
+                ..Default::default()
+            },
             width: 2.0,
             ..Default::default()
         });
@@ -556,7 +577,10 @@ fn compose_flat_cubic_emits_single_instance_curved_emits_many() {
                 p2: Vec2::new(533.0, 400.0),
                 p3: Vec2::new(800.0, 5.0),
             },
-            color: Color::WHITE.into(),
+            fill: GpuFill {
+                color: Color::WHITE.into(),
+                ..Default::default()
+            },
             width: 2.0,
             ..Default::default()
         });
@@ -599,7 +623,10 @@ fn compose_curve_spin_rotates_control_points_about_bbox_pivot() {
                     p2: Vec2::new(60.0, 30.0),
                     p3: Vec2::new(50.0, 30.0),
                 },
-                color: Color::WHITE.into(),
+                fill: GpuFill {
+                    color: Color::WHITE.into(),
+                    ..Default::default()
+                },
                 width: 2.0,
                 ..Default::default()
             });
@@ -646,7 +673,10 @@ fn compose_arc_and_curve_share_one_batch_per_group() {
                     a0: 0.0,
                     a1: 1.0,
                 },
-                color: Color::WHITE.into(),
+                fill: GpuFill {
+                    color: Color::WHITE.into(),
+                    ..Default::default()
+                },
                 width: 2.0,
                 ..Default::default()
             });
@@ -659,7 +689,10 @@ fn compose_arc_and_curve_share_one_batch_per_group() {
                     p2: Vec2::new(190.0, 50.0),
                     p3: Vec2::new(200.0, 0.0),
                 },
-                color: Color::WHITE.into(),
+                fill: GpuFill {
+                    color: Color::WHITE.into(),
+                    ..Default::default()
+                },
                 width: 2.0,
                 ..Default::default()
             });

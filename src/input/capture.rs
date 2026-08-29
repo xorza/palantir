@@ -60,16 +60,16 @@ impl Capture {
     /// run when it lands on the same target within
     /// [`DOUBLE_CLICK_WINDOW`] of the previous press and
     /// [`DOUBLE_CLICK_RADIUS`] of its position; any break restarts the
-    /// run at 1. `seq` saturates so a caffeinated 255-click run can't
+    /// run at 1. `count` saturates so a caffeinated 255-click run cannot
     /// wrap back to "single".
     pub(super) fn begin_press(&mut self, target: WidgetId, pos: Vec2, now: Duration) {
-        let seq = match &self.run {
+        let count = match &self.run {
             Some(run)
                 if run.target == target
                     && now.saturating_sub(run.at) <= DOUBLE_CLICK_WINDOW
                     && pos.distance(run.pos) <= DOUBLE_CLICK_RADIUS =>
             {
-                run.seq.saturating_add(1)
+                run.count.saturating_add(1)
             }
             _ => 1,
         };
@@ -77,13 +77,13 @@ impl Capture {
             at: now,
             target,
             pos,
-            seq,
+            count,
         });
         self.press = Some(Press {
             target,
             origin: pos,
             travel: Vec2::ZERO,
-            seq,
+            count,
             fresh: true,
             drag: PressDrag::None,
         });
@@ -153,10 +153,10 @@ pub(super) struct Press {
     /// widget's transform.
     pub(super) travel: Vec2,
     /// This press's position in its multi-press run (1 = single,
-    /// 2 = double-press, 3+ = triple…), stamped from [`PressRun::seq`]
+    /// 2 = double-press, 3+ = triple…), stamped from [`PressRun::count`]
     /// at press time so the release can carry the click count without
     /// depending on the run tracker's later state.
-    pub(super) seq: u8,
+    pub(super) count: u8,
     /// One-frame edge: the press landed this frame (drives
     /// `ButtonPhase::Down`). Lowered by `drain_per_frame_queues`.
     pub(super) fresh: bool,
@@ -192,7 +192,7 @@ pub(super) struct Release {
 pub(super) enum ReleaseKind {
     /// The release landed back on the captured widget with no drag
     /// latched — a click. `count` is the press run's number
-    /// (2 = double-click, 3 = triple…), stamped from [`Press::seq`].
+    /// (2 = double-click, 3 = triple…), stamped from [`Press::count`].
     Click { count: u8 },
     /// A latched drag ended — the commit edge for drag gestures.
     DragStopped,
@@ -201,8 +201,32 @@ pub(super) enum ReleaseKind {
     Miss,
 }
 
+impl ReleaseKind {
+    /// The click this release completed, and its place in the press run.
+    /// `None` when a drag ate the click or the release landed off the
+    /// widget.
+    ///
+    /// Both collations read it: a widget's own
+    /// [`ButtonPhase::Up`](crate::ButtonPhase) and the frame-wide
+    /// [`PointerEdge::Clicked`](crate::PointerEdge). They walk the
+    /// captures differently — see `ButtonPhase` for why — but they must
+    /// not disagree about what a click was.
+    pub(super) fn click(self) -> Option<u8> {
+        match self {
+            Self::Click { count } => Some(count),
+            Self::DragStopped | Self::Miss => None,
+        }
+    }
+
+    /// Whether this release ended a latched drag — the commit edge, read
+    /// by both collations for the reason [`Self::click`] gives.
+    pub(super) fn ended_drag(self) -> bool {
+        self == Self::DragStopped
+    }
+}
+
 /// Multi-press run state: where/when/on-what the last press landed and
-/// its position in the run. The next press chains (`seq + 1`) when it
+/// its position in the run. The next press chains (`count + 1`) when it
 /// lands on the same `target` within [`DOUBLE_CLICK_WINDOW`] of `at`
 /// and [`DOUBLE_CLICK_RADIUS`] of `pos`; any break restarts at 1.
 #[derive(Clone, Copy, Debug)]
@@ -210,5 +234,5 @@ pub(super) struct PressRun {
     pub(super) at: Duration,
     pub(super) target: WidgetId,
     pub(super) pos: Vec2,
-    pub(super) seq: u8,
+    pub(super) count: u8,
 }

@@ -1,6 +1,7 @@
 use crate::input::sense::Sense;
 use crate::layout::axis::Axis;
 use crate::layout::types::clip_mode::ClipMode;
+use crate::layout::types::layout_mode::GridDefId;
 use crate::layout::types::layout_mode::PackedLayoutMeta;
 use crate::layout::types::limits::MAX_PACKED_GAP;
 use crate::primitives::widget_id::WidgetId;
@@ -267,8 +268,30 @@ fn constructors_install_layout_modes() {
     assert_eq!(grid.mode, NodeMode::PendingGrid);
     assert!(std::panic::catch_unwind(|| LayoutCore::from_node(&grid)).is_err());
     let grid_id = GridDefId::from_index(42);
-    grid.set_grid_def(grid_id);
+    grid.set_mode(LayoutMode::Grid(grid_id));
     assert_eq!(grid.mode, NodeMode::Resolved(LayoutMode::Grid(grid_id)));
+
+    // `set_mode` refines a node; it never re-kinds one. A pending grid
+    // takes only its own definition, and a resolved mode only a fresh
+    // payload of its own kind — which is what lets one method serve both
+    // the grid's deferred id and the scroll's deferred fit bits.
+    let mut refined = Node::scroll(ScrollSpec::VERTICAL);
+    refined.set_mode(LayoutMode::Scroll(ScrollSpec::BOTH));
+    assert_eq!(refined.scroll_spec(), ScrollSpec::BOTH);
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            Node::grid().set_mode(LayoutMode::ZStack)
+        }))
+        .is_err(),
+        "a pending grid takes only a grid definition",
+    );
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            Node::vstack().set_mode(LayoutMode::Grid(grid_id))
+        }))
+        .is_err(),
+        "a resolved mode is not re-kinded",
+    );
 
     let last_grid = GridDefId::from_index(65_534);
     assert_eq!(usize::from(last_grid), 65_534);
@@ -582,4 +605,38 @@ fn auto_id_redirects_to_call_site() {
     let a = id_of(helper().auto_id());
     let b = id_of(helper().auto_id());
     assert_distinct("auto_id() at call site", a, b);
+}
+
+/// A themed fallback faces the same NaN screen an authored value does.
+/// A NaN edge that slips through reaches layout and surfaces frames
+/// later as a widget that measured to nothing, with nothing pointing
+/// back at the theme that set it.
+#[test]
+#[should_panic(expected = "NaN in padding")]
+fn a_themed_padding_is_nan_screened_like_an_authored_one() {
+    let _ = Panel::vstack().default_padding(Spacing::all(f32::NAN));
+}
+
+/// The theme fills in only where the caller stayed silent, and an
+/// authored bound still faces its own check.
+#[test]
+fn an_authored_value_wins_over_the_theme_default() {
+    let mut node = Node::vstack();
+    node.set_padding(Spacing::all(3.0));
+    node.fill_padding(Spacing::all(9.0));
+    assert_eq!(node.padding, Some(Spacing::all(3.0)), "explicit wins");
+
+    let mut untouched = Node::vstack();
+    untouched.fill_padding(Spacing::all(9.0));
+    assert_eq!(untouched.padding, Some(Spacing::all(9.0)), "theme fills in");
+}
+
+/// A themed lower bound is checked against an authored upper one, the
+/// way an authored lower bound is.
+#[test]
+#[should_panic]
+fn a_themed_min_size_is_bound_checked_against_an_authored_max() {
+    let mut node = Node::vstack();
+    node.set_max_size(Size::new(10.0, 10.0));
+    node.fill_min_size(Size::new(40.0, 40.0));
 }

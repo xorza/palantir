@@ -22,7 +22,7 @@ fn grid_hug_grid_collapses_empty_fill_tracks() {
                 grid_node = Some(
                     Grid::new()
                         .id(WidgetId::from_hash("hug-grid"))
-                        .cols([Track::fixed(80.0), Track::fill()])
+                        .cols([Track::fixed(80.0), Track::FILL])
                         .rows([Track::fixed(40.0)])
                         .size((Sizing::HUG, Sizing::HUG))
                         .show(ui, |ui| {
@@ -54,7 +54,7 @@ fn hug_grid_fill_track_contributes_nested_rigid_floor() {
     let root = h.frame_value(|ui| {
         Grid::new()
             .auto_id()
-            .cols([Track::fill()])
+            .cols([Track::FILL])
             .rows([Track::fixed(20.0)])
             .size((Sizing::HUG, Sizing::HUG))
             .show(ui, |ui| {
@@ -97,8 +97,8 @@ fn stack_fill_sibling_yields_to_grid_fill_track_rigid_floor() {
             .show(ui, |ui| {
                 Grid::new()
                     .id(WidgetId::from_hash("grid"))
-                    .cols([Track::fill()])
-                    .rows([Track::fill()])
+                    .cols([Track::FILL])
+                    .rows([Track::FILL])
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui, |ui| {
                         Panel::hstack()

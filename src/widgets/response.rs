@@ -152,9 +152,9 @@ pub(crate) mod test_support {
 
 #[cfg(test)]
 mod tests {
-    use crate::widgets::drag_value::DragValueResponse;
     use crate::widgets::response::InnerResponse;
     use crate::widgets::text_edit::TextEditResponse;
+    use crate::widgets::value_response::ValueResponse;
     use static_assertions::assert_not_impl_any;
     use std::ops::Deref;
 
@@ -163,6 +163,6 @@ mod tests {
     // keeps the body result and the response distinguishable at the call
     // site.
     assert_not_impl_any!(InnerResponse<'static, ()>: Deref);
-    assert_not_impl_any!(DragValueResponse<'static>: Deref);
+    assert_not_impl_any!(ValueResponse<'static>: Deref);
     assert_not_impl_any!(TextEditResponse<'static>: Deref);
 }

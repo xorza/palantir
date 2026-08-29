@@ -21,6 +21,7 @@ use crate::widgets::context_menu::tests::support::{SURFACE, trigger_id};
 use crate::widgets::theme::context_menu::ContextMenuTheme;
 use crate::widgets::theme::context_menu::menu_item::MenuItemTheme;
 use crate::widgets::theme::separator::SeparatorTheme;
+use crate::widgets::theme::widget_look::theme_slot::SlotDefaults;
 use glam::Vec2;
 
 /// Both menu gutters are theme knobs, not literals baked into the
@@ -234,10 +235,13 @@ fn per_instance_style_overrides_global_menu_theme() {
         padding: Spacing::all(13.0),
         min_width: 220.0,
         item: MenuItemTheme {
-            padding: Spacing::all(9.0),
-            // Asymmetric, and distinct from the padding, so a
-            // padding/margin mix-up can't read as a pass.
-            margin: Spacing::xy(2.0, 6.0),
+            defaults: SlotDefaults {
+                padding: Spacing::all(9.0),
+                // Asymmetric, and distinct from the padding, so a
+                // padding/margin mix-up can't read as a pass.
+                margin: Spacing::xy(2.0, 6.0),
+                ..MenuItemTheme::default().defaults
+            },
             ..MenuItemTheme::default()
         },
         separator: SeparatorTheme {
@@ -307,7 +311,7 @@ fn per_instance_style_overrides_global_menu_theme() {
     let global = &h.ui.theme().context_menu;
     assert_eq!(global.padding, default.padding);
     assert_eq!(global.min_width, default.min_width);
-    assert_eq!(global.item.padding, default.item.padding);
+    assert_eq!(global.item.defaults.padding, default.item.defaults.padding);
     assert_eq!(global.separator.thickness, default.separator.thickness);
 }
 

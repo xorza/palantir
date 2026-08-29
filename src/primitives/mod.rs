@@ -120,7 +120,6 @@ pub(crate) mod span;
 pub(crate) mod stroke;
 pub(crate) mod text_epoch;
 pub(crate) mod text_input;
-pub(crate) mod text_source;
 pub(crate) mod texture_id;
 pub(crate) mod translate_scale;
 pub(crate) mod urect;

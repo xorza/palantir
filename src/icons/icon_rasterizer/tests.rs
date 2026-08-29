@@ -1,9 +1,10 @@
-use crate::icons::icon_atlas::{IconAtlas, IconDef, IconId};
 use crate::icons::icon_raster_key::IconRasterKey;
-use crate::icons::icon_rasterizer::{IconRasterKind, IconRasterizer, MAX_PARSED_TREES};
+use crate::icons::icon_rasterizer::{IconRasterizer, MAX_PARSED_TREES};
 use crate::icons::icon_registry::IconSetId;
 use crate::icons::icon_set::IconRef;
+use crate::icons::icon_table::{IconDef, IconId, IconTable};
 use crate::primitives::span::Span;
+use crate::renderer::backend::raster_atlas::content_type::ContentType;
 use glam::{U16Vec2, Vec2};
 
 /// A solid black square filling its whole 8x8 viewBox: every pixel is
@@ -19,8 +20,8 @@ const BROKEN: &str = "<svg";
 /// The three fixtures as a set. `leak_from_svgs` derives each one's
 /// viewBox and tintability by parsing it, which is also what makes the
 /// ids below the *name-sorted* order rather than the listed one.
-fn fixtures() -> IconAtlas {
-    IconAtlas::from_svgs([("half", HALF), ("solid", SOLID)])
+fn fixtures() -> IconTable {
+    IconTable::from_svgs([("half", HALF), ("solid", SOLID)])
 }
 
 // Name-sorted, not listed-order.
@@ -44,7 +45,7 @@ fn key(icon: IconId, w: u16, h: u16) -> IconRasterKey {
 fn parse_cache_caps_at_the_ceiling_and_drops_the_coldest() {
     // `from_svgs` sorts by name and keys ids in that order, so the
     // zero-padded names make `IconId(i)` the `i`th icon.
-    let atlas = IconAtlas::from_svgs((0..=MAX_PARSED_TREES).map(|i| {
+    let table = IconTable::from_svgs((0..=MAX_PARSED_TREES).map(|i| {
         let name: &'static str = Box::leak(format!("i{i:03}").into_boxed_str());
         (name, SOLID)
     }));
@@ -52,17 +53,17 @@ fn parse_cache_caps_at_the_ceiling_and_drops_the_coldest() {
     let mut r = IconRasterizer::default();
     let mut out = Vec::new();
     for i in 0..MAX_PARSED_TREES {
-        r.rasterize(&atlas, key(IconId(i as u16), 4, 4), &mut out);
+        r.rasterize(&table, key(IconId(i as u16), 4, 4), &mut out);
     }
     assert_eq!(r.parsed_count(), MAX_PARSED_TREES, "filled to the ceiling");
 
     // Re-drawing icon 0 makes icon 1 the coldest; re-drawing a resident
     // icon must not evict anything, since nothing new lands.
-    r.rasterize(&atlas, key(IconId(0), 4, 4), &mut out);
+    r.rasterize(&table, key(IconId(0), 4, 4), &mut out);
     assert_eq!(r.parsed_count(), MAX_PARSED_TREES, "a hit evicts nothing");
 
     // The next *distinct* icon costs exactly one resident: icon 1.
-    r.rasterize(&atlas, key(IconId(MAX_PARSED_TREES as u16), 4, 4), &mut out);
+    r.rasterize(&table, key(IconId(MAX_PARSED_TREES as u16), 4, 4), &mut out);
     assert_eq!(r.parsed_count(), MAX_PARSED_TREES);
     assert!(
         r.trees.contains_key(&icon(0)),
@@ -80,11 +81,11 @@ fn parse_cache_caps_at_the_ceiling_and_drops_the_coldest() {
 
 #[test]
 fn tintable_icon_rasterizes_to_full_coverage_at_the_exact_size() {
-    let (mut r, atlas) = (IconRasterizer::default(), fixtures());
+    let (mut r, table) = (IconRasterizer::default(), fixtures());
     let mut out = Vec::new();
     assert_eq!(
-        r.rasterize(&atlas, key(SOLID_ID, 5, 5), &mut out),
-        Some(IconRasterKind::Mask),
+        r.rasterize(&table, key(SOLID_ID, 5, 5), &mut out),
+        Some(ContentType::Mask),
     );
     // One coverage byte per pixel of the box asked for — not of the
     // 8x8 viewBox, which is the whole point of rasterizing on demand.
@@ -96,18 +97,18 @@ fn tintable_icon_rasterizes_to_full_coverage_at_the_exact_size() {
 
     // A second, larger size reuses the parse and produces that many px.
     out.clear();
-    r.rasterize(&atlas, key(SOLID_ID, 40, 40), &mut out);
+    r.rasterize(&table, key(SOLID_ID, 40, 40), &mut out);
     assert_eq!(out.len(), 1600);
     assert_eq!(r.parsed_count(), 1, "one parse serves every size");
 }
 
 #[test]
 fn colour_icon_rasterizes_to_straight_srgb_rgba() {
-    let (mut r, atlas) = (IconRasterizer::default(), fixtures());
+    let (mut r, table) = (IconRasterizer::default(), fixtures());
     let mut out = Vec::new();
     assert_eq!(
-        r.rasterize(&atlas, key(HALF_ID, 8, 2), &mut out),
-        Some(IconRasterKind::Color),
+        r.rasterize(&table, key(HALF_ID, 8, 2), &mut out),
+        Some(ContentType::Color),
     );
     assert_eq!(out.len(), 8 * 2 * 4);
     // Left half: opaque red. Right half: blue at 50% — and stored
@@ -138,12 +139,12 @@ fn unparseable_icon_fails_once_and_is_not_retried() {
         tintable: true,
         filtered: false,
     }];
-    let atlas = IconAtlas::baked(&BROKEN_ICONS, BROKEN.as_bytes());
+    let table = IconTable::baked(&BROKEN_ICONS, BROKEN.as_bytes());
 
     let mut r = IconRasterizer::default();
     let mut out = Vec::new();
-    assert_eq!(r.rasterize(&atlas, key(IconId(0), 8, 8), &mut out), None);
-    assert_eq!(r.rasterize(&atlas, key(IconId(0), 9, 9), &mut out), None);
+    assert_eq!(r.rasterize(&table, key(IconId(0), 8, 8), &mut out), None);
+    assert_eq!(r.rasterize(&table, key(IconId(0), 9, 9), &mut out), None);
     assert_eq!(
         r.parsed_count(),
         1,
@@ -156,13 +157,13 @@ fn unparseable_icon_fails_once_and_is_not_retried() {
 /// session drew, held for as long as the set was loaded.
 #[test]
 fn forgetting_a_set_drops_its_parses_and_leaves_its_neighbours() {
-    let (mut r, atlas) = (IconRasterizer::default(), fixtures());
+    let (mut r, table) = (IconRasterizer::default(), fixtures());
     let mut out = Vec::new();
     for set in [0u16, 1] {
         for icon in [HALF_ID, SOLID_ID] {
             let mut k = key(icon, 8, 8);
             k.icon.set = IconSetId::new(set, 0);
-            r.rasterize(&atlas, k, &mut out);
+            r.rasterize(&table, k, &mut out);
         }
     }
     assert_eq!(r.parsed_count(), 4, "two icons in each of two sets");
@@ -187,12 +188,12 @@ fn forgetting_a_set_drops_its_parses_and_leaves_its_neighbours() {
 /// whole raw table, so a per-set call paid that once per set.
 #[test]
 fn forgetting_a_batch_drops_exactly_its_members() {
-    let (mut r, atlas) = (IconRasterizer::default(), fixtures());
+    let (mut r, table) = (IconRasterizer::default(), fixtures());
     let mut out = Vec::new();
     for set in [0u16, 1, 2] {
         let mut k = key(SOLID_ID, 8, 8);
         k.icon.set = IconSetId::new(set, 0);
-        r.rasterize(&atlas, k, &mut out);
+        r.rasterize(&table, k, &mut out);
     }
     assert_eq!(r.parsed_count(), 3);
 
@@ -210,9 +211,9 @@ fn forgetting_a_batch_drops_exactly_its_members() {
 /// rasterizer's contract is "fill exactly this many pixels".
 #[test]
 fn non_square_box_stretches_rather_than_letterboxing() {
-    let (mut r, atlas) = (IconRasterizer::default(), fixtures());
+    let (mut r, table) = (IconRasterizer::default(), fixtures());
     let mut out = Vec::new();
-    r.rasterize(&atlas, key(SOLID_ID, 16, 4), &mut out);
+    r.rasterize(&table, key(SOLID_ID, 16, 4), &mut out);
     assert_eq!(out.len(), 64);
     assert!(out.iter().all(|&c| c == 255), "no transparent margin");
 }

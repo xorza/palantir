@@ -72,7 +72,7 @@ mod tests {
         assert!(TextInput::Owned(String::new()).is_empty());
         assert!(!TextInput::Owned("x".to_owned()).is_empty());
 
-        let epoch = TextEpoch::next();
+        let epoch = TextEpoch::reserve();
         assert!(TextInput::Interned(InternedStr::new(Span::new(0, 0), epoch)).is_empty());
         assert!(!TextInput::Interned(InternedStr::new(Span::new(0, 1), epoch)).is_empty());
 
@@ -84,7 +84,7 @@ mod tests {
 
         // Every epoch is distinct, which is what separates one pass's
         // handles from the next's and one window's from another's.
-        assert_ne!(TextEpoch::next(), TextEpoch::next());
+        assert_ne!(TextEpoch::reserve(), TextEpoch::reserve());
 
         let cow = Cow::Borrowed("cow");
         let TextInput::Borrowed(text) = TextInput::from(&cow) else {

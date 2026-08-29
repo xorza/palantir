@@ -9,6 +9,7 @@ use crate::renderer::frontend::paint_sink::PaintGate;
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
 use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
+use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::scene::record_store::record_payloads::RecordPayloads;
@@ -51,7 +52,10 @@ impl ComposeBench {
                     p2: Vec2::new(80.0, 64.0),
                     p3: Vec2::new(112.0, 64.0),
                 },
-                color: Color::WHITE.into(),
+                fill: GpuFill {
+                    color: Color::WHITE.into(),
+                    ..Default::default()
+                },
                 width: 2.0,
                 ..Default::default()
             });

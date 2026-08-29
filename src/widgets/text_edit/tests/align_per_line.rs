@@ -405,7 +405,7 @@ fn placeholder_per_line_aligns_under_wrap() {
     let tree = h.ui.tree(Layer::Main);
     let shape_align = tree.shapes_of(node).find_map(|s| match s {
         ShapeRecord::Text { align, text, .. } => {
-            Some((*align, text.source.resolve(&interned_text).to_owned()))
+            Some((*align, interned_text.resolve(text.span).to_owned()))
         }
         _ => None,
     });

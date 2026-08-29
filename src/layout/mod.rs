@@ -11,11 +11,12 @@
 
 pub(crate) mod axis;
 pub(crate) mod axis_align_pair;
-pub(crate) mod axis_ctx;
 pub(crate) mod axis_placement;
+pub(crate) mod axis_slot;
 pub(crate) mod cache;
 mod canvas;
 pub(crate) mod counters;
+pub(crate) mod depth_scratch;
 mod driver;
 pub(crate) mod engine;
 mod fill_item;

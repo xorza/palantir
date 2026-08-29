@@ -12,6 +12,7 @@ use crate::scene::node::Node;
 use crate::scene::node::theme_defaults::ThemeDefaults;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
+use crate::widgets::overlay_scope::{Backdrop, OverlayScope};
 use crate::widgets::response::ResponseSnapshot;
 use crate::widgets::text::Text;
 use crate::widgets::theme::tooltip::TooltipTheme;
@@ -209,12 +210,22 @@ impl<'r, 'a> Tooltip<'r, 'a> {
             // derives from the trigger, because that is the only thing a
             // tooltip *has* — but a caller-set id wins like any other
             // explicit value.
-            let node = self
+            let mut node = self
                 .node
                 .default_id(bubble_id)
                 .default_padding(theme.padding)
                 .default_max_size(theme.max_size);
-            ui.layer(Layer::Tooltip).placement(position).show(|ui| {
+            // `Backdrop::None`: a tooltip annotates rather than
+            // interrupts, and it is recorded every frame it is up — a
+            // scope would cut off every layer below it for as long.
+            let scope = OverlayScope::claim(
+                bubble_id,
+                Layer::Tooltip,
+                position,
+                Backdrop::None,
+                &mut node,
+            );
+            scope.record(ui, |ui| {
                 ui.widget(node).record(ui, Some(chrome), |ui| {
                     Text::new(text)
                         .style(&theme.text)

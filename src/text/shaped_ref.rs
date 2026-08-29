@@ -5,7 +5,7 @@ use crate::primitives::interned_text::InternedText;
 
 use crate::primitives::recorded_text::RecordedText;
 
-use crate::primitives::text_source::TextSource;
+use crate::primitives::span::Span;
 use crate::text::key::TextShapeKey;
 use crate::text::request::TextShapeRequest;
 
@@ -20,7 +20,7 @@ use crate::text::request::TextShapeRequest;
 #[derive(Clone, Copy, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct ShapedTextRef {
     pub(crate) key: TextShapeKey,
-    pub(crate) source: TextSource,
+    pub(crate) span: Span,
 }
 
 impl ShapedTextRef {
@@ -37,7 +37,7 @@ impl ShapedTextRef {
         );
         Self {
             key,
-            source: text.source,
+            span: text.span,
         }
     }
 
@@ -56,7 +56,7 @@ impl ShapedTextRef {
         self,
         interned_text: &'a InternedText<'_>,
     ) -> TextShapeRequest<'a> {
-        TextShapeRequest::for_key(self.source.resolve(interned_text), self.key)
+        TextShapeRequest::for_key(interned_text.resolve(self.span), self.key)
             .expect("a run with a shaped buffer has bytes — filter INVALID keys first")
     }
 }

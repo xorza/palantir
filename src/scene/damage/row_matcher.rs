@@ -123,19 +123,16 @@ impl RowMatcher {
         prev_span: Span,
         curr_paints: &[Paint],
     ) -> ChangedLeg {
-        let prev_start = prev_span.start as usize;
         let prev_len = prev_span.len as usize;
-        let prev_slice = &paints.slots[prev_start..prev_start + prev_len];
+        let prev = &paints.slots[prev_span.range()];
 
-        if prev_len == curr_paints.len() && prev_slice.iter().zip(curr_paints).all(|(p, c)| p == c)
-        {
+        if prev_len == curr_paints.len() && prev.iter().zip(curr_paints).all(|(p, c)| p == c) {
             return ChangedLeg {
                 span: prev_span,
                 order_inverted: false,
             };
         }
 
-        let prev = &paints.slots[prev_start..prev_start + prev_len];
         self.reset_for(prev, curr_paints);
         self.claim_exact(prev, curr_paints);
         self.emit_moves_and_adds(out, prev, curr_paints);

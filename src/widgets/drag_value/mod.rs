@@ -18,6 +18,7 @@ use crate::widgets::response::Response;
 use crate::widgets::text_edit::TextEdit;
 use crate::widgets::theme::drag_value::DragValueTheme;
 use crate::widgets::theme::widget_look::theme_slot::ThemeSlot;
+use crate::widgets::value_response::ValueResponse;
 use std::ops::RangeInclusive;
 
 /// The numeric target a [`DragValue`] scrubs: either an `i64` or an `f64`,
@@ -48,24 +49,10 @@ impl DragNum<'_> {
     /// whether the stored value actually changed — exact for the integer,
     /// bit-exact for the float.
     fn commit_drag(&mut self, raw: f64, decimals: usize, min: f64, max: f64) -> bool {
-        let Limits { lo, hi } = Limits::of(min, max);
+        let limits = Limits::of(min, max);
         match self {
-            DragNum::I64(v) => {
-                let next = (raw.round() as i64).clamp(lo as i64, hi as i64);
-                let changed = **v != next;
-                **v = next;
-                changed
-            }
-            DragNum::F64(v) => {
-                // `+ 0.0` normalizes -0.0 to +0.0 (IEEE: -0.0 + 0.0 = +0.0):
-                // rounding a small negative raw yields -0.0, and clamp's `<`
-                // lets it slip through a +0.0 lower bound — the sign would
-                // leak into the display ("-0.00") and serialized values.
-                let next = round_to_decimals(raw, decimals).clamp(lo, hi) + 0.0;
-                let changed = (**v).to_bits() != next.to_bits();
-                **v = next;
-                changed
-            }
+            DragNum::I64(v) => store_i64(v, raw.round() as i64, limits),
+            DragNum::F64(v) => store_f64(v, round_to_decimals(raw, decimals), limits),
         }
     }
 
@@ -85,31 +72,50 @@ impl DragNum<'_> {
     /// Returns whether the stored value changed. Keyboard entry keeps full
     /// precision — only drags snap to `decimals`.
     fn parse_from(&mut self, text: &str, min: f64, max: f64) -> bool {
-        let Limits { lo, hi } = Limits::of(min, max);
+        let limits = Limits::of(min, max);
         match self {
-            DragNum::I64(v) => {
-                let Ok(n) = text.parse::<i64>() else {
-                    return false;
-                };
-                let next = n.clamp(lo as i64, hi as i64);
-                let changed = **v != next;
-                **v = next;
-                changed
-            }
-            DragNum::F64(v) => {
-                let Ok(n) = text.parse::<f64>() else {
-                    return false;
-                };
-                if !n.is_finite() {
-                    return false;
-                }
-                let next = n.clamp(lo, hi) + 0.0;
-                let changed = (**v).to_bits() != next.to_bits();
-                **v = next;
-                changed
-            }
+            DragNum::I64(v) => match text.parse::<i64>() {
+                // Parsed as an `i64` and stored as one: widening through
+                // `f64` on the way would lose the low bits of anything
+                // past 2^53, which a drag never reaches but typed text
+                // can.
+                Ok(n) => store_i64(v, n, limits),
+                Err(_) => false,
+            },
+            DragNum::F64(v) => match text.parse::<f64>() {
+                Ok(n) if n.is_finite() => store_f64(v, n, limits),
+                _ => false,
+            },
         }
     }
+}
+
+/// Store `next` clamped into `limits`, answering whether the stored
+/// value moved.
+///
+/// The integer half of the one write every path through [`DragNum`] ends
+/// in — a scrub commit and a typed edit alike. The bounds arrive as `f64`
+/// and cast: an infinite bound becomes `i64::MIN`/`MAX`, so an unbounded
+/// clamp is a no-op.
+fn store_i64(slot: &mut i64, next: i64, limits: Limits<f64>) -> bool {
+    let next = next.clamp(limits.lo as i64, limits.hi as i64);
+    let changed = *slot != next;
+    *slot = next;
+    changed
+}
+
+/// The float half of that write.
+///
+/// `+ 0.0` normalizes `-0.0` to `+0.0` (IEEE: `-0.0 + 0.0 = +0.0`):
+/// rounding a small negative value yields `-0.0`, and `clamp`'s `<` lets
+/// it slip through a `+0.0` lower bound — the sign would leak into the
+/// display ("-0.00") and into serialized values. The comparison is
+/// bit-exact, so what the caller is told changed is what the slot holds.
+fn store_f64(slot: &mut f64, next: f64, limits: Limits<f64>) -> bool {
+    let next = next.clamp(limits.lo, limits.hi) + 0.0;
+    let changed = slot.to_bits() != next.to_bits();
+    *slot = next;
+    changed
 }
 
 impl<'a> From<&'a mut i64> for DragNum<'a> {
@@ -143,26 +149,6 @@ enum DragValueState {
     },
 }
 
-/// What [`DragValue::show`] returns: the widget's [`Response`] plus the
-/// edit signals computed inside `show()`, mirroring
-/// [`crate::widgets::text_edit::TextEditResponse`].
-#[derive(Debug)]
-pub struct DragValueResponse<'a> {
-    /// The widget's pointer/click/hover [`Response`].
-    pub response: Response<'a>,
-    /// The bound value was written with a value differing from what the
-    /// caller passed in this frame. Under the commit-deferring pattern
-    /// (re-seed from canonical every frame) this is a **level** — true on
-    /// every frame an uncommitted draft exists — not a per-input edge.
-    /// Live-preview callers apply the value on this.
-    pub changed: bool,
-    /// A gesture finished this frame and the bound value holds its final
-    /// result: the scrub drag released, or edit mode ended (Enter / focus
-    /// lost). Callers that treat one gesture as one undoable edit act on
-    /// this instead of `changed`.
-    pub committed: bool,
-}
-
 /// A numeric field you scrub by dragging horizontally (Blender / egui
 /// style): each pixel of horizontal left-button travel changes the value
 /// by `speed`, optionally clamped to a range. Binds either an `i64` or an
@@ -180,7 +166,7 @@ pub struct DragValueResponse<'a> {
 /// content-hugging parent.
 ///
 /// The value is written live — every scrub step and edit-mode reparse lands
-/// in the bound target — and [`DragValueResponse`] reports both grains:
+/// in the bound target — and [`ValueResponse`] reports both grains:
 /// `changed` per differing write, `committed` once per finished gesture
 /// (drag release, Enter, blur). An undo-aware caller can ignore `changed`,
 /// re-seed the bound value from its canonical source every frame, and apply
@@ -265,7 +251,7 @@ impl<'a> DragValue<'a> {
         "Covers both modes at once — the scrub chip and the inline editor.",
     );
 
-    pub fn show(mut self, ui: &mut Ui) -> DragValueResponse<'_> {
+    pub fn show(mut self, ui: &mut Ui) -> ValueResponse<'_> {
         let mut widget = ui.widget(self.node);
         let mut response = widget.response(ui);
         let id = widget.id();
@@ -380,7 +366,7 @@ impl<'a> DragValue<'a> {
                     .align(Align::CENTER),
             );
         });
-        DragValueResponse {
+        ValueResponse {
             response: Response::eager(id, ui, response),
             changed,
             committed,
@@ -397,7 +383,7 @@ impl<'a> DragValue<'a> {
         ui: &mut Ui,
         id: WidgetId,
         prev_rect: Option<Rect>,
-    ) -> DragValueResponse<'_> {
+    ) -> ValueResponse<'_> {
         // The editor has to wear the chip's box or the field resizes the moment
         // it is clicked. `DragValueTheme::from_chip` mirrors the chip's padding
         // onto `drag_value.editor` for exactly that; an *unstyled* `TextEdit`
@@ -456,7 +442,7 @@ impl<'a> DragValue<'a> {
         if submitted {
             ui.request_focus(None);
         }
-        DragValueResponse {
+        ValueResponse {
             response: Response::lazy(id, ui),
             changed,
             committed: submitted,

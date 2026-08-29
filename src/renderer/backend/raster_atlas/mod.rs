@@ -40,6 +40,7 @@ use crate::renderer::backend::stencil_variant::StencilVariant;
 use crate::renderer::backend::viewport::ViewportPush;
 use etagere::size2;
 use rustc_hash::FxHashMap;
+use std::collections::hash_map::Entry;
 use std::fmt::Debug;
 use std::hash::Hash;
 use wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
@@ -91,8 +92,6 @@ pub(crate) struct RasterAtlasConfig {
 /// allocation this crate does not do.
 #[derive(Debug)]
 struct AtlasLabels {
-    /// The configured stem, kept so a grow can re-derive a texture name.
-    stem: &'static str,
     grow_blit: String,
     batch_upload: String,
     staging: String,
@@ -242,7 +241,6 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
             ),
         ];
         let labels = AtlasLabels {
-            stem: config.label,
             grow_blit: format!("{} atlas grow blit", config.label),
             batch_upload: format!("{} atlas batch upload", config.label),
             staging: format!("{} atlas staging", config.label),
@@ -263,7 +261,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
             free: FreeSlots::default(),
             hand: 0,
             current_frame: 0,
-            unallocated_expiry: ExpiryWheel::with_horizon(UNALLOCATED_KEEP_FRAMES + 2),
+            unallocated_expiry: ExpiryWheel::with_keep(UNALLOCATED_KEEP_FRAMES),
             bound,
             counters: AtlasCounters::default(),
             pending_staging: Vec::new(),
@@ -334,7 +332,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
     /// `queue.write_texture` calls. Grows if full; returns `None`
     /// only at GPU-max and still doesn't fit. On success returns the
     /// new slot's slab index.
-    pub(crate) fn insert(
+    pub(super) fn insert(
         &mut self,
         device: &wgpu::Device,
         key: K,
@@ -521,7 +519,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
 
     /// Cache a non-drawing glyph (no atlas slot or upload). Subsequent
     /// lookups still hit the cache and skip swash.
-    pub(crate) fn insert_unallocated(
+    pub(super) fn insert_unallocated(
         &mut self,
         key: K,
         content: ContentType,
@@ -529,7 +527,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
     ) -> u32 {
         debug_assert!(metadata.is_empty());
         self.unallocated_expiry
-            .schedule(key, self.current_frame + UNALLOCATED_KEEP_FRAMES + 1);
+            .schedule(key, unallocated_dies_at(self.current_frame));
         let slot = AtlasSlot {
             x: 0,
             y: 0,
@@ -761,8 +759,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
 
     /// Double the side of `content`, reporting whether it moved.
     fn grow(&mut self, device: &wgpu::Device, content: ContentType) -> bool {
-        let stem = self.labels.stem;
-        if !self.sides[content as usize].grow(device, content, stem) {
+        if !self.sides[content as usize].grow(device, content) {
             return false;
         }
         self.counters.grows.bump();
@@ -795,8 +792,12 @@ fn retire_unallocated<K: Copy + Eq + Hash + Debug>(
     frame: u64,
 ) -> Option<u64> {
     // Gone: reclaimed by an earlier ticket, or its key removed by
-    // eviction.
-    let &idx = cache.get(&key)?;
+    // eviction. One probe covers the read and the removal below, the way
+    // the other two wheel owners settle their entries.
+    let Entry::Occupied(entry) = cache.entry(key) else {
+        return None;
+    };
+    let idx = *entry.get();
     let slot = &slots[idx as usize];
     // Allocated entries are the clock's to reclaim, and it advances
     // their generation when it does. Defensive rather than reachable —
@@ -807,13 +808,21 @@ fn retire_unallocated<K: Copy + Eq + Hash + Debug>(
     }
     // `touch` refreshes `last_use` without filing anything, so the real
     // deadline is re-read here.
-    let dies_at = slot.last_use + UNALLOCATED_KEEP_FRAMES + 1;
+    let dies_at = unallocated_dies_at(slot.last_use);
     if dies_at > frame {
         return Some(dies_at);
     }
-    cache.remove(&key);
+    entry.remove();
     free.release(slots, sides, idx);
     None
+}
+
+/// The frame a non-drawing entry last used on `last_use` is first dead —
+/// what the wheel files under. One expression, read by the filing in
+/// [`RasterAtlas::insert_unallocated`] and by the re-file in
+/// [`retire_unallocated`], so the two cannot name different frames.
+const fn unallocated_dies_at(last_use: u64) -> u64 {
+    last_use + UNALLOCATED_KEEP_FRAMES + 1
 }
 
 #[cfg(test)]

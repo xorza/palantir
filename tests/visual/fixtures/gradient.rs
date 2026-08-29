@@ -24,7 +24,7 @@ const CLEAR: Color = Color::BLACK;
 /// the sRGB framebuffer encode, so sampling the wrong LUT row can't
 /// pass as rounding.
 fn swatch_color(i: u32) -> ColorU8 {
-    ColorU8::rgb(
+    ColorU8::linear_rgb(
         (40 + (i % COLS) * 10) as u8,
         (40 + (i / COLS) * 12) as u8,
         200,

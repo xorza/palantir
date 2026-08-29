@@ -44,6 +44,7 @@ pub(crate) mod widget_look;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
+use crate::scene::node::container_chrome::ContainerChrome;
 use crate::text::glyph_font::GlyphFont;
 use crate::widgets::theme::button::ButtonTheme;
 use crate::widgets::theme::combo_box::ComboBoxTheme;
@@ -162,6 +163,17 @@ fn text_scale_is_valid(scale: f32) -> bool {
 }
 
 impl Theme {
+    /// The chrome a container falls back to when the caller named
+    /// none — [`Self::panel_background`] and [`Self::panel_clip`] as
+    /// one value, so no container writes down which two fields the
+    /// fallback is.
+    pub(crate) fn container_chrome(&self) -> ContainerChrome<'_> {
+        ContainerChrome {
+            background: self.panel_background.as_ref(),
+            clip: self.panel_clip,
+        }
+    }
+
     /// Multiply every `TextStyle` in the theme by `factor`.
     ///
     /// **Relative, and it composes**: `scale_text(1.25)` then

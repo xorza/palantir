@@ -366,7 +366,7 @@ fn toggling_scroll_sizing_busts_measure_cache() {
 /// left `Hug` — that is what makes a scroll size to its content. Measure
 /// honoured that bit from the start; the intrinsic query did not, and
 /// answered zero for every panned axis. Nothing downstream of `measure`
-/// noticed, because `AxisCtx::resolve` takes `max(content,
+/// noticed, because `AxisSlot::resolve` takes `max(content,
 /// intrinsic_min)` and content won. A Hug grid column is where it
 /// showed: column widths come from the Phase-1 *intrinsic* walk, so the
 /// column resolved to zero and the cell it was meant to size overflowed
@@ -379,8 +379,8 @@ fn hug_scroll_drives_the_hug_grid_column_it_sits_in() {
     let root = h.frame_value(|ui| {
         Grid::new()
             .auto_id()
-            .cols([Track::hug()])
-            .rows([Track::hug()])
+            .cols([Track::HUG])
+            .rows([Track::HUG])
             .size((Sizing::HUG, Sizing::HUG))
             .show(ui, |ui| {
                 Scroll::horizontal()
@@ -487,8 +487,8 @@ fn a_scroll_viewport_takes_its_slot_under_every_driver_that_places_one() {
                         .id(parent)
                         .size(sized)
                         .max_size(cap)
-                        .cols([Track::hug()])
-                        .rows([Track::hug()])
+                        .cols([Track::HUG])
+                        .rows([Track::HUG])
                         .show(ui, record_scroll);
                 }
             }

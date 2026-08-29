@@ -27,7 +27,7 @@
 use crate::harness::{Audit, OffscreenTarget, SURFACE};
 use palantir::internals::headless_test_gpu;
 use palantir::{
-    Color, Configure, Frame, Grid, IconAtlas, IconId, IconSet, Mesh, Panel, PolylineColors, Shape,
+    Color, Configure, Frame, Grid, IconId, IconSet, IconTable, Mesh, Panel, PolylineColors, Shape,
     Sizing, Track, TranslateScale, Ui,
 };
 use std::rc::Rc;
@@ -103,8 +103,8 @@ fn many_rects_compose_alloc_free() {
     frontend_audit("palantir.alloc.many_rects", |ui| {
         Grid::new()
             .auto_id()
-            .cols([Track::fill(); 16])
-            .rows([Track::fill(); 16])
+            .cols([Track::FILL; 16])
+            .rows([Track::FILL; 16])
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 for r in 0..16u16 {
@@ -193,7 +193,7 @@ fn mesh_static_alloc_free() {
 #[test]
 fn many_icons_compose_alloc_free() {
     const SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect width="16" height="16" rx="3" fill="#fff"/></svg>"##;
-    let atlas = Rc::new(IconAtlas::from_svgs([("chip", SVG)]));
+    let atlas = Rc::new(IconTable::from_svgs([("chip", SVG)]));
     let chip = IconId(0);
     let mut held: Option<IconSet> = None;
 
@@ -203,8 +203,8 @@ fn many_icons_compose_alloc_free() {
         let icons = held.insert(ui.load_icons(Rc::clone(&atlas)));
         Grid::new()
             .auto_id()
-            .cols([Track::fill(); 20])
-            .rows([Track::fill(); 10])
+            .cols([Track::FILL; 20])
+            .rows([Track::FILL; 10])
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 for r in 0..10u16 {

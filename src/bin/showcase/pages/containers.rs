@@ -122,8 +122,8 @@ pub(crate) fn build(ui: &mut Ui) {
                     |ui| {
                         Grid::new()
                             .id_salt("shell-grid")
-                            .cols([Track::fixed(80.0), Track::fill(), Track::hug()])
-                            .rows([Track::fixed(32.0), Track::fill()])
+                            .cols([Track::fixed(80.0), Track::FILL, Track::HUG])
+                            .rows([Track::fixed(32.0), Track::FILL])
                             .gap(8.0)
                             .size((Sizing::FILL, Sizing::FILL))
                             .show(ui, |ui| {
@@ -152,11 +152,8 @@ pub(crate) fn build(ui: &mut Ui) {
                     |ui| {
                         Grid::new()
                             .id_salt("clamped")
-                            .cols([
-                                Track::fill_weight(1.0).min(110.0).max(160.0),
-                                Track::fill_weight(2.0),
-                            ])
-                            .rows([Track::fill()])
+                            .cols([Track::fill(1.0).min(110.0).max(160.0), Track::fill(2.0)])
+                            .rows([Track::FILL])
                             .gap(8.0)
                             .size((Sizing::FILL, Sizing::FILL))
                             .show(ui, |ui| {

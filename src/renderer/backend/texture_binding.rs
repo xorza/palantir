@@ -44,6 +44,32 @@ pub(super) fn sampler_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
     }
 }
 
+/// The sampler that fills a [`sampler_entry`] slot — the value twin of
+/// that entry builder, the way [`bind_group`] is [`layout`]'s.
+///
+/// Linear within a mip and nearest between them, clamped on all three
+/// axes. Clamping is safe for both users because neither hands the
+/// sampler a coordinate outside `0..1`: the gradient shader applies
+/// [`Spread`](crate::primitives::brush::gradient::Spread) to `t` before
+/// the sample, and the image shader `fract`s its uv under
+/// `FLAG_TILED`. One descriptor, so a filter or address change cannot
+/// reach one of them and not the other.
+///
+/// The raster atlases build their own, and should: they sample at
+/// exactly one texel per pixel and want `Nearest` throughout.
+pub(super) fn sampler(device: &wgpu::Device, label: &'static str) -> wgpu::Sampler {
+    device.create_sampler(&wgpu::SamplerDescriptor {
+        label: Some(label),
+        address_mode_u: wgpu::AddressMode::ClampToEdge,
+        address_mode_v: wgpu::AddressMode::ClampToEdge,
+        address_mode_w: wgpu::AddressMode::ClampToEdge,
+        mag_filter: wgpu::FilterMode::Linear,
+        min_filter: wgpu::FilterMode::Linear,
+        mipmap_filter: wgpu::MipmapFilterMode::Nearest,
+        ..Default::default()
+    })
+}
+
 /// Build a group-0 bind-group layout pairing a filterable 2D float
 /// texture at binding 0 with a filtering sampler at binding 1, both
 /// fragment-visible. The shape shared by the gradient LUT atlas

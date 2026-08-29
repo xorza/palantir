@@ -3,6 +3,7 @@
 
 use crate::input::sense::Sense;
 use crate::layout::axis::Axis;
+use crate::layout::types::layout_mode::LayoutMode;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
 use crate::primitives::approx;
@@ -179,10 +180,10 @@ impl<'a> Splitter<'a> {
             Track::fixed(rule_thickness),
             Track::new(Sizing::share(1.0 - layout_ratio)),
         ];
-        let cross_tracks = [Track::fill()];
+        let cross_tracks = [Track::FILL];
         let [rows, cols] = axis.rows_cols(&main_tracks[..], &cross_tracks[..]);
         let grid_def_id = ui.push_grid_def(rows, cols, 0.0, 0.0);
-        widget.node.set_grid_def(grid_def_id);
+        widget.node.set_mode(LayoutMode::Grid(grid_def_id));
         widget.record(ui, None, |ui| {
             pane(ui, first_id, axis, 0, |ui| body(ui, SplitHalf::First));
 

@@ -134,11 +134,6 @@ impl LayerWalk<'_> {
 
     // ---- the columns this layer walks -------------------------------
 
-    fn rows(&self, i: usize) -> &[Paint] {
-        let span = self.cascade.paint_arena.node_spans[i];
-        &self.cascade.paint_arena.rows[span.range()]
-    }
-
     fn snapshot(&self, i: usize, parent_key: u64, paint_span: Span) -> NodeSnapshot {
         NodeSnapshot {
             paint_span,
@@ -176,8 +171,14 @@ impl LayerWalk<'_> {
     /// classification just pulled in.
     fn classify(&self, i: usize, wid: WidgetId, parent_key: u64) -> Tier {
         let Some(prev) = self.prev.get(&wid).copied() else {
-            let childless = self.tree.subtree_end_of(i) == i + 1;
-            return if childless && !self.rows(i).any_on_surface(self.surface) {
+            let childless = !self.tree.has_children(i);
+            return if childless
+                && !self
+                    .cascade
+                    .paint_arena
+                    .rows_of(i)
+                    .any_on_surface(self.surface)
+            {
                 Tier::Untracked
             } else {
                 Tier::Added
@@ -196,7 +197,7 @@ impl LayerWalk<'_> {
             _ if same_parent && same_cascade && prev.hash == self.tree.rollups.node[i] => {
                 Tier::DescendantChanged
             }
-            _ if self.rows(i).is_empty() => Tier::Evicted(prev),
+            _ if self.cascade.paint_arena.rows_of(i).is_empty() => Tier::Evicted(prev),
             _ => Tier::PaintsChanged(prev),
         }
     }
@@ -204,14 +205,10 @@ impl LayerWalk<'_> {
     // ---- one method per tier ----------------------------------------
 
     fn on_added(&mut self, i: usize, wid: WidgetId, parent_key: u64) -> usize {
-        let span = self.cascade.paint_arena.node_spans[i];
-        let paint_span = self
-            .paints
-            .store(&self.cascade.paint_arena.rows[span.range()]);
+        let rows = self.cascade.paint_arena.rows_of(i);
+        let paint_span = self.paints.store(rows);
         if !self.force_full {
-            for screen in self.cascade.paint_arena.rows[span.range()].screens() {
-                self.raw_rects.push(screen);
-            }
+            self.raw_rects.extend(rows.screens());
         }
         let snapshot = self.snapshot(i, parent_key, paint_span);
         self.prev.insert(wid, snapshot);
@@ -242,9 +239,8 @@ impl LayerWalk<'_> {
     fn on_evicted(&mut self, i: usize, wid: WidgetId, prev: NodeSnapshot) -> usize {
         // Rows → rowless: push everything the node *was* painting, then
         // drop it.
-        for screen in self.paints.slots[prev.paint_span.range()].screens() {
-            self.raw_rects.push(screen);
-        }
+        self.raw_rects
+            .extend(self.paints.slots[prev.paint_span.range()].screens());
         self.prev.remove(&wid);
         self.paints.release(prev.paint_span);
         self.probe.mark_dirty(NodeId(i as u32));
@@ -259,8 +255,7 @@ impl LayerWalk<'_> {
         parent_key: u64,
     ) -> usize {
         let node = NodeId(i as u32);
-        let span = self.cascade.paint_arena.node_spans[i];
-        let curr = &self.cascade.paint_arena.rows[span.range()];
+        let curr = self.cascade.paint_arena.rows_of(i);
         let leg = self
             .matcher
             .diff_changed_leg(self.paints, self.raw_rects, prev.paint_span, curr);
@@ -288,9 +283,9 @@ impl LayerWalk<'_> {
         // already covered by the subtree/eviction diff. Repainting the
         // union there would spuriously re-damage every direct shape,
         // e.g. all canvas connections when an unrelated node is deleted.
-        let union = self.rows(i).union_screens();
-        if prev.cascade_input != self.cascade.cascade_inputs[i] && !union.is_paint_empty() {
-            self.raw_rects.push(union);
+        let union = self.cascade.paint_arena.rows_of(i).union_screens();
+        if prev.cascade_input != self.cascade.cascade_inputs[i] {
+            push_screen(self.raw_rects, union);
         }
 
         // Reparent / layer move at otherwise-identical content: the
@@ -299,9 +294,7 @@ impl LayerWalk<'_> {
         // intact and this push already covers them.
         if prev.parent_key != parent_key {
             let extent = self.cascade.subtree_paint_rects[i];
-            if !extent.is_paint_empty() {
-                self.raw_rects.push(extent);
-            }
+            push_screen(self.raw_rects, extent);
         }
 
         let snapshot = self.snapshot(i, parent_key, leg.span);
@@ -332,8 +325,8 @@ impl LayerWalk<'_> {
         let mut prev_extent = Rect::ZERO;
         for j in i..end {
             let wid = self.tree.records.widget_id()[j];
-            let span = self.cascade.paint_arena.node_spans[j];
-            if span.len == 0 {
+            let curr = self.cascade.paint_arena.rows_of(j);
+            if curr.is_empty() {
                 continue;
             }
             // One probe: the refresh below is the only write, so it takes the
@@ -346,11 +339,9 @@ impl LayerWalk<'_> {
                     let paint_span = snap.paint_span;
                     prev_extent =
                         prev_extent.union(self.paints.slots[paint_span.range()].union_screens());
-                    let curr = &self.cascade.paint_arena.rows[span.range()];
                     self.paints.slots[paint_span.range()].copy_from_slice(curr);
                 }
                 None => {
-                    let curr = &self.cascade.paint_arena.rows[span.range()];
                     if !curr.any_on_surface(self.surface) {
                         continue;
                     }
@@ -361,9 +352,7 @@ impl LayerWalk<'_> {
             }
             self.probe.mark_dirty(NodeId(j as u32));
         }
-        if !prev_extent.is_paint_empty() {
-            self.raw_rects.push(prev_extent);
-        }
+        push_screen(self.raw_rects, prev_extent);
         // Rolled-up curr extent from the cascade — already `Rect::ZERO`
         // for invisible subtrees, so a hide transition damages only the
         // prev pixels.
@@ -372,9 +361,7 @@ impl LayerWalk<'_> {
         // this frame. The prev half above cannot be: last frame's column
         // is gone, and the retained rows are all that is left of it.
         let curr_extent = self.cascade.subtree_paint_rects[i];
-        if !curr_extent.is_paint_empty() {
-            self.raw_rects.push(curr_extent);
-        }
+        push_screen(self.raw_rects, curr_extent);
         end - i
     }
 
