@@ -453,12 +453,8 @@ impl LayerCtx<'_> {
         }
 
         if clip {
-            // Clip deflates by `padding`. `Tree::open_node` folds the
-            // chrome's stroke width into padding so the mask automatically
-            // sits inside the painted stroke ring — children clipped here
-            // can't overpaint the stroke.
-            let padding = self.tree.records.layout()[id.idx()].padding;
-            let mask_rect = rect.deflated_by(padding);
+            let layout = self.tree.records.layout()[id.idx()];
+            let mask_rect = layout.inner_rect(rect);
             match mode {
                 ClipMode::Rect => out.clip(PushClipPayload::rect(mask_rect)),
                 ClipMode::Rounded => {
@@ -471,7 +467,7 @@ impl LayerCtx<'_> {
                         "ClipMode::Rounded without chrome row — open_node invariant violated",
                     );
                     let [ptl, ptr_, pbr, pbl] = painted.as_array();
-                    let [pl, pt, pr, pb] = padding.as_array();
+                    let [pl, pt, pr, pb] = layout.padding.as_array();
                     let mask_radius = Corners::new(
                         (ptl - pt.max(pl)).max(0.0),
                         (ptr_ - pt.max(pr)).max(0.0),
@@ -492,21 +488,11 @@ impl LayerCtx<'_> {
         // return when no rect intersects this node's screen rect); leaves
         // emit unconditionally once we're past that gate.
 
-        // Skip Push/PopTransform when the transform is identity —
-        // composing identity is a no-op, so emitting the pair just
-        // wastes two sink calls and a transform-stack push/pop in the
-        // composer.
-        //
-        // Anchor the raw transform at the node's own `layout_rect.min`
-        // so its scale pivots about the panel's origin (see
-        // `TranslateScale::anchored_at`). Cascade and `compute_paint_rect`
-        // apply the same anchoring; pushing the un-anchored form here
-        // would visibly shift the body relative to its damage rect.
-        let transform = self
-            .tree
-            .transform_of(id)
-            .map(|t| t.anchored_at(rect.min))
-            .filter(|t| !t.is_identity());
+        // `None` for an identity transform, which is why nothing below
+        // emits the Push/PopTransform pair for one: composing identity is
+        // a no-op, so the pair would waste two sink calls and a
+        // transform-stack push/pop in the composer.
+        let transform = self.tree.anchored_transform(id, rect);
 
         // Body (direct shapes + child subtrees) paints inside the node's
         // own transform — chrome (drawn above this point) is the only

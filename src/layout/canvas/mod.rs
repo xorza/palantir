@@ -21,14 +21,13 @@ impl LayoutDriver for Canvas {
 
     const ARRANGE_DEPENDS_ONLY_ON_SLOT: bool = true;
 
-    /// Canvas: children placed at their declared `Layout.position` (parent-inner
-    /// coords, defaulting to `(0, 0)`). Per-axis available width: pass `inner`
-    /// when Canvas itself is constrained (Fill / Fixed) so children that need
-    /// a finite slot to commit cell widths (e.g. Grid's Phase-1 column
-    /// resolution, wrap text reshaping) get a meaningful
-    /// constraint. Pass `INFINITY` only on Hug axes, where `inner` would
-    /// trigger recursive sizing of Fill children. Same per-axis pattern Stack
-    /// uses on its cross axis.
+    /// Canvas: children placed at their declared `Layout.position`
+    /// (parent-inner coords, defaulting to `(0, 0)`), each measured
+    /// against the room left past where it sits — see
+    /// [`LayoutPass::measure_per_axis_hug`], which owns both the offer and
+    /// the fold. A constrained axis (Fill / Fixed) is what gives a child
+    /// that needs a finite slot one to commit against (Grid's Phase-1
+    /// column resolution, wrap text reshaping).
     ///
     /// **Content size per axis depends on the canvas's own sizing on that
     /// axis.** A `Hug` axis reports `max(child_pos + child_desired)` so the
@@ -52,19 +51,16 @@ impl LayoutDriver for Canvas {
         (): Self::Payload,
         inner_avail: Size,
     ) -> Size {
-        let canvas_size = pass.tree.records.layout()[node.idx()].size;
-        let pos_inflates_x = canvas_size.w().is_hug();
-        let pos_inflates_y = canvas_size.h().is_hug();
         // Active children only: a collapsed child at (100,100) must not
         // inflate the canvas's content size. `desired` is already ZERO for
         // collapsed children (reset at the top of `run`); arrange zeros
         // their subtrees regardless.
-        pass.measure_per_axis_hug(node, inner_avail, |tree, c, d| {
-            let pos = tree.bounds(c).position;
-            let off_x = if pos_inflates_x { pos.x } else { 0.0 };
-            let off_y = if pos_inflates_y { pos.y } else { 0.0 };
-            Size::new(off_x + d.w, off_y + d.h)
-        })
+        //
+        // The position is the whole of what a canvas adds: it decides both
+        // the room a bounded axis has left for the child and the extent a
+        // Hug axis has to grow to cover it, and `measure_per_axis_hug`
+        // derives each from it — the same two answers `arrange` gives.
+        pass.measure_per_axis_hug(node, inner_avail, |tree, c| tree.bounds(c).position)
     }
 
     /// Each child gets a slot at `inner.min + bounds.position`, sized per its
@@ -80,29 +76,28 @@ impl LayoutDriver for Canvas {
             let child_layout = layouts[c.idx()];
             let bounds = tree.bounds(c);
             let pos = bounds.position;
-            // A bounded axis offers the room left *from the child's own
-            // position*, not the canvas's whole inner extent: a canvas
-            // places its children, so what it has left to give one is
-            // what lies past where it put it. The whole extent from an
-            // offset origin overflows by exactly that offset.
-            let slot_w = if canvas_size.w().is_hug() {
-                d.w
-            } else {
-                (inner.size.w - pos.x).max(0.0)
-            };
-            let slot_h = if canvas_size.h().is_hug() {
-                d.h
-            } else {
-                (inner.size.h - pos.y).max(0.0)
-            };
+            // A bounded axis gets the room left past the child's own
+            // position — a canvas places its children, so what it has left
+            // to give one is what lies past where it put it. `measure`
+            // offered exactly this, so a child that wraps is arranged at
+            // the width it shaped against. A Hug axis has no extent of its
+            // own to divide and gives the child its desired.
+            let room = inner.size.room_past(pos);
+            let slot = Size::new(
+                if canvas_size.w().is_hug() {
+                    d.w
+                } else {
+                    room.w
+                },
+                if canvas_size.h().is_hug() {
+                    d.h
+                } else {
+                    room.h
+                },
+            );
             let child_rect = Rect {
                 min: inner.min + pos,
-                size: AxisPlacement::arrange_size(
-                    &child_layout,
-                    bounds,
-                    d,
-                    Size::new(slot_w, slot_h),
-                ),
+                size: AxisPlacement::arrange_size(&child_layout, bounds, d, slot),
             };
             pass.arrange(c, child_rect);
         }

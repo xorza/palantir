@@ -373,34 +373,27 @@ impl CascadeEngine {
             let visible_rect = clip_screen(screen_rect, parent.clip);
             // The transform descendants inherit *and* direct shapes paint
             // under (the `Panel::transform` contract): `parent ∘
-            // self_anchored`. Computed once here — `transform_of` is a
-            // sparse-column probe and `compose` is 3×mul+3×add, so the
-            // `None` arm (most nodes have no transform) skips the compose
-            // entirely, the steady-state path. `compute_paint_rect` reuses
-            // this as its `shape_transform` rather than recomposing.
-            //
-            // Scale pivots about the node's own `layout_rect.min`, not the
-            // cascade's (0, 0); `anchored_at` cancels the
-            // `panel.min * (1 - scale)` drift a raw compose against
-            // absolute-coord layout rects would introduce (identity-
-            // preserving — no-op at `scale == 1`). See
-            // `TranslateScale::anchored_at`.
-            let node_transform = tree.transform_of(id);
-            let desc_transform = match node_transform {
-                Some(t) => parent.transform.compose(t.anchored_at(layout_rect.min)),
+            // self_anchored`. Computed once here — the probe is sparse and
+            // `compose` is 3×mul+3×add, so the `None` arm (most nodes have
+            // no transform) skips the compose entirely, the steady-state
+            // path. `compute_paint_rect` reuses this as its
+            // `shape_transform` rather than recomposing.
+            let desc_transform = match tree.anchored_transform(id, layout_rect) {
+                Some(t) => parent.transform.compose(t),
                 None => parent.transform,
             };
             let clips = attrs.clip_mode().is_clip();
-            // Encoder's clip mask is `rect.deflated_by(padding)`, pushed
-            // **before** the body. Direct shapes and descendants both
-            // paint inside it. Mirror that here so per-shape damage rects
-            // and inherited child clips reflect what actually paints —
-            // otherwise a TextEdit's tall text shape (extent = full
-            // shaped buffer) reports damage well past the editor's rect
-            // on every scroll tick.
+            // The encoder pushes the same inner box as the clip mask,
+            // **before** the body, so direct shapes and descendants both
+            // paint inside it. Clipping to it here is what makes per-shape
+            // damage rects and inherited child clips reflect what actually
+            // paints — otherwise a TextEdit's tall text shape (extent =
+            // full shaped buffer) reports damage well past the editor's
+            // rect on every scroll tick.
             let shape_clip = if clips {
-                let mask_local = layout_rect.deflated_by(layout_core.padding);
-                let mask_screen = parent.transform.apply_rect(mask_local);
+                let mask_screen = parent
+                    .transform
+                    .apply_rect(layout_core.inner_rect(layout_rect));
                 Some(clip_screen(mask_screen, parent.clip))
             } else {
                 parent.clip

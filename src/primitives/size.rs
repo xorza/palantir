@@ -6,6 +6,7 @@ use crate::primitives::{
     approx::{self, FloatHash},
     num::Num,
 };
+use glam::Vec2;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Default, bytemuck::Pod, bytemuck::Zeroable)]
@@ -98,6 +99,22 @@ impl Size {
         Self {
             w: self.w.max(other.w),
             h: self.h.max(other.h),
+        }
+    }
+
+    /// What is left of this extent past `offset`, per axis, floored at
+    /// zero — the room a container that places a child at `offset` has
+    /// left to give it.
+    ///
+    /// [`Rect::deflated_by`](crate::primitives::rect::Rect::deflated_by)'s
+    /// leading half, for the callers that hold an extent rather than a
+    /// rect. The whole extent from an offset origin overflows by exactly
+    /// that offset, which is the bug this exists to make hard to write.
+    #[inline]
+    pub(crate) fn room_past(self, offset: Vec2) -> Self {
+        Self {
+            w: (self.w - offset.x).max(0.0),
+            h: (self.h - offset.y).max(0.0),
         }
     }
 

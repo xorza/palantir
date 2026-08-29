@@ -60,48 +60,52 @@ pub(crate) struct LayoutPass<'a> {
 }
 
 impl<'a> LayoutPass<'a> {
-    /// Measure children of a per-axis-hug panel (ZStack / Canvas). Per
-    /// active child, calls `layout.measure` against the per-axis-hug
-    /// `child_avail`, then folds the child's contribution (size + offset
-    /// from `contrib`) into a per-axis max. Drivers differ only in
-    /// whether they add a positional offset.
+    /// Measure the children of a per-axis-hug panel (ZStack / Canvas) and
+    /// return the extent that covers them.
+    ///
+    /// `offset` is where the panel places a child inside its own inner
+    /// rect — always zero for a ZStack, the declared position for a
+    /// Canvas. Both halves of the answer come from it, per axis:
+    ///
+    /// - A **bounded** axis offers the room left *past* the offset, which
+    ///   is what `arrange` will hand the child. Offering the whole extent
+    ///   from an offset origin makes a wrapping child report a height for
+    ///   a width it will not get.
+    /// - A **Hug** axis offers `INFINITY` and folds the offset back into
+    ///   the extent reported, because a panel that hugs has no extent to
+    ///   divide yet and has to cover where it put things.
+    ///
+    /// `INF` here is *height-given-width* via measure, not an
+    /// intrinsic-replaceable sentinel — replacing it with
+    /// `intrinsic(MaxContent)` looks equivalent for leaves but is wrong for
+    /// nested containers whose main-axis size depends on cross-axis (Grid
+    /// with wrapping cells, etc.): intrinsic queries the unbounded shape,
+    /// while INF-measure runs the child's full layout under the committed
+    /// cross.
     pub(crate) fn measure_per_axis_hug(
         &mut self,
         node: NodeId,
         inner_avail: Size,
-        mut contrib: impl FnMut(&Tree, NodeId, Size) -> Size,
+        mut offset: impl FnMut(&Tree, NodeId) -> Vec2,
     ) -> Size {
         let tree = self.tree;
-        let node_layout = tree.records.layout()[node.idx()];
-        // Per-axis-hug availability: a `Hug` axis passes `INF` so the child
-        // reports its natural size; a bounded axis passes the committed inner
-        // extent. `INF` here is *height-given-width* via measure, not an
-        // intrinsic-replaceable sentinel — replacing it with
-        // `intrinsic(MaxContent)` looks equivalent for leaves but is wrong for
-        // nested containers whose main-axis size depends on cross-axis (Grid
-        // with wrapping cells, etc.): intrinsic queries the unbounded shape,
-        // while INF-measure runs the child's full layout under the committed cross.
-        let child_avail = Size::new(
-            if node_layout.size.w().is_hug() {
-                f32::INFINITY
-            } else {
-                inner_avail.w
-            },
-            if node_layout.size.h().is_hug() {
-                f32::INFINITY
-            } else {
-                inner_avail.h
-            },
-        );
-        let mut max_w = 0.0f32;
-        let mut max_h = 0.0f32;
+        let size = tree.records.layout()[node.idx()].size;
+        let (hug_w, hug_h) = (size.w().is_hug(), size.h().is_hug());
+        let mut max = Size::ZERO;
         for c in tree.active_children(node) {
-            let d = self.measure(c, child_avail);
-            let cont = contrib(tree, c, d);
-            max_w = max_w.max(cont.w);
-            max_h = max_h.max(cont.h);
+            let at = offset(tree, c);
+            let room = inner_avail.room_past(at);
+            let avail = Size::new(
+                if hug_w { f32::INFINITY } else { room.w },
+                if hug_h { f32::INFINITY } else { room.h },
+            );
+            let d = self.measure(c, avail);
+            max = max.max(Size::new(
+                if hug_w { at.x + d.w } else { d.w },
+                if hug_h { at.y + d.h } else { d.h },
+            ));
         }
-        Size::new(max_w, max_h)
+        max
     }
 
     pub(super) fn new(
@@ -363,7 +367,7 @@ impl LayoutPass<'_> {
             return;
         }
         self.out.rect[node.idx()] = rendered;
-        let inner = rendered.deflated_by(layout.padding);
+        let inner = layout.inner_rect(rendered);
 
         ArrangeOp {
             pass: self,

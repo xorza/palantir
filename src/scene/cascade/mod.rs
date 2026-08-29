@@ -88,7 +88,10 @@ impl CascadeInputHash {
 ///   node it walks, and damage compares the full u64 on its skip /
 ///   descend arms. At 8 B/node the encoder's per-frame walk and
 ///   damage's scan stay cache-dense.
-/// - [`Self::subtree_paint_rects`] is read only by the encoder cull.
+/// - [`Self::subtree_paint_rects`] answers "what does this subtree
+///   paint" — the encoder's cull, and damage's two moved-subtree
+///   pushes. One column rather than a fold each caller runs over the
+///   rows, so the answer cannot depend on who asked.
 /// - [`Self::subtree_hashes`] retains the previous walk's paint
 ///   invalidation state.
 /// - [`Self::subtree_ends`] is read only by [`Cascade::is_within`]
@@ -125,13 +128,22 @@ pub(crate) struct LayerCascade {
     /// Per-node subtree paint rect — the node's own paint extent rolled
     /// up with every descendant's `subtree_paint_rects[i]`. Computed
     /// inline in [`CascadeEngine::run_tree`](engine::CascadeEngine::run_tree)
-    /// via a stack-frame accumulator. Read by the encoder for the
-    /// viewport + damage subtree culls where "may I skip the whole
-    /// subtree?" must consider overhanging descendants — Canvas-positioned
-    /// children outside the parent's `Fixed` bound, shapes with
-    /// negative-margin overhang, etc. Invisible subtrees seed with
-    /// `Rect::ZERO` so a long-lived hidden subtree doesn't keep the cull
-    /// from firing at ancestors.
+    /// via a stack-frame accumulator.
+    ///
+    /// Read by the encoder for the viewport + damage subtree culls where
+    /// "may I skip the whole subtree?" must consider overhanging
+    /// descendants — Canvas-positioned children outside the parent's
+    /// `Fixed` bound, shapes with negative-margin overhang, etc. Damage
+    /// reads the same column wherever it asks the same question: the
+    /// extent a moved subtree paints, and a child marker's extent in the
+    /// order-inversion check.
+    ///
+    /// Invisible subtrees seed with `Rect::ZERO` so a long-lived hidden
+    /// subtree doesn't keep the cull from firing at ancestors — and so a
+    /// hidden subtree that moves damages nothing, where a fold over its
+    /// rows would repaint pixels no pass paints. A clip-only container's
+    /// own visible rect is in here and in no row, which only ever makes
+    /// the answer cover more than the subtree's rows do.
     pub(crate) subtree_paint_rects: Vec<Rect>,
     /// Previous authoring hashes used to skip unchanged subtrees.
     /// Dirty ancestors recompute their own paint rows, so no separate

@@ -31,6 +31,7 @@ use crate::layout::scrollbars::ScrollbarsDef;
 use crate::layout::types::layout_mode::{GridDefId, LayoutMode, ScrollbarsDefId};
 use crate::layout::types::track::{GridDef, Track};
 use crate::primitives::background::Background;
+use crate::primitives::rect::Rect;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::span::Span;
 use crate::primitives::translate_scale::TranslateScale;
@@ -594,16 +595,34 @@ impl Tree {
         TreeItems::new(&self.records, &self.shapes.records, node)
     }
 
-    /// Read this node's transform. Returns `None` for non-panel nodes
-    /// (no panel row) and for panels with an identity transform. `Panel`
-    /// / `Grid` are the only widgets that expose `.transform()` in the
-    /// API, so transforms always live alongside panel knobs.
+    /// Read this node's raw transform. `None` for non-panel nodes (no
+    /// panel row) and for panels with an identity transform. `Panel` /
+    /// `Grid` are the only widgets that expose `.transform()` in the API,
+    /// so transforms always live alongside panel knobs.
+    ///
+    /// Private: the raw form is not the one either pass may use, so
+    /// [`Self::anchored_transform`] is the whole surface.
     #[inline]
-    pub(crate) fn transform_of(&self, id: NodeId) -> Option<TranslateScale> {
+    fn transform_of(&self, id: NodeId) -> Option<TranslateScale> {
         self.records.extras()[id.idx()]
             .panel
             .map(|s| self.panel_table[s.idx()].transform)
             .filter(|t| !t.is_identity())
+    }
+
+    /// This node's transform, anchored so its scale pivots about the
+    /// panel's own origin instead of the layer's `(0, 0)` — the form both
+    /// readers need, and the only one either may use.
+    ///
+    /// `rect` is the node's arranged rect, in whatever space the caller
+    /// works in. The cascade composes the result into the transform
+    /// descendants inherit and paint under. The encoder pushes it around
+    /// the body. If either anchors for itself, a scaled panel's body
+    /// drifts from the damage rect computed for it by the
+    /// `min * (1 - scale)` that [`TranslateScale::anchored_at`] cancels.
+    #[inline]
+    pub(crate) fn anchored_transform(&self, id: NodeId, rect: Rect) -> Option<TranslateScale> {
+        self.transform_of(id).map(|t| t.anchored_at(rect.min))
     }
 
     /// This node's bounds extras row (position / grid cell / min_size /
