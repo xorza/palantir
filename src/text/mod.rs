@@ -203,5 +203,18 @@ pub enum FontWeight {
     Bold = 1,
 }
 
+/// Gated on the feature alone rather than on `any(test, ..)` like its
+/// siblings: the one consumer is the allocation suite's scale ramp, which
+/// needs a device and so exists only under the feature. Wider is dead
+/// code in a plain `cargo test` build, and `-D dead_code` says so.
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    /// The raster-scale quantum, so the allocation suite's scale ramp can
+    /// step exactly one rung a frame. A ramp that spelled the number
+    /// itself would stop minting fresh raster keys the moment this moved,
+    /// and a gate that stops missing stops measuring.
+    pub const TEXT_SCALE_STEP: f32 = crate::text::TEXT_SCALE_STEP;
+}
+
 #[cfg(test)]
 mod tests;

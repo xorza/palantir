@@ -1,8 +1,18 @@
-//! Fixtures that target the renderer frontend (encode + compose).
-//! Every existing widget fixture already drives `Frontend::build`, but
-//! at a tiny shape count — these scale up shape counts and exercise
-//! the non-rectangle shape variants (`Polyline`, `Mesh`) so a
-//! per-frame `Vec::new()` in those paths can't slip in unnoticed.
+//! Fixtures that push shape *count* and shape *variety* through the
+//! record path, where the other widget fixtures push structure.
+//!
+//! What they pin is everything a shape costs between `add_shape` and
+//! damage: the record store's per-frame copies (a polyline's points, a
+//! mesh's vertex and index bytes), the tree's shape arena, the cascade's
+//! paint rows, and the icon registry's re-load. A per-frame `Vec::new()`
+//! in any of those shows up here rather than in a structural fixture,
+//! which carries one or two shapes per node.
+//!
+//! **Not encode or compose.** `Audit::run` drives a `UiHarness`, and
+//! `Ui::frame` stops at damage — the frontend needs a device. The two
+//! gates next door are where those passes are measured, and
+//! `gates::scale_ramp_rasterizes_at_a_flat_cost_per_frame` is the one
+//! that measures them with full damage on every frame.
 
 use crate::harness::Audit;
 use palantir::{

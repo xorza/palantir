@@ -153,6 +153,8 @@ pub mod internals {
     /// only under the feature — never in a plain `cargo test` build.
     #[cfg(feature = "internals")]
     pub use crate::host::test_gpu::{HeadlessTestGpuLease, headless_test_gpu};
+    #[cfg(feature = "internals")]
+    pub use crate::text::internals::TEXT_SCALE_STEP;
     pub use crate::ui::harness::UiHarness;
 }
 
