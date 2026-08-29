@@ -140,8 +140,17 @@ fn drag_delta_clears_on_release() {
     );
 }
 
+/// Leaving the surface mid-drag is the gesture working, not ending: the
+/// capture stays latched, so the drag keeps reporting the travel it had
+/// and no stop edge fires. A commit-on-release gesture must not commit on
+/// a window-exit — that would split one scrub into two undo entries.
+///
+/// The travel is read off the press rather than the live pointer, which
+/// is what lets it survive a pointer that is `None`. Denying the drag
+/// here would also put this reader at odds with `pointer_actions`, which
+/// reads the latch and would go on reporting the same drag.
 #[test]
-fn drag_delta_none_when_pointer_left_surface() {
+fn a_drag_survives_the_pointer_leaving_the_surface() {
     let s = UVec2::new(200, 200);
     let mut h = UiHarness::new(s);
     h.frame(build_clickable);
@@ -149,12 +158,10 @@ fn drag_delta_none_when_pointer_left_surface() {
     h.drag_to(Vec2::new(90.0, 40.0));
     h.pointer_left();
 
-    // Off-surface, the drag is unobservable — but it has NOT stopped:
-    // the capture stays latched, so no stop edge may fire here. A
-    // commit-on-release gesture must not commit on a mid-drag
-    // window-exit (it would split one scrub into two undo entries).
+    // 90 - 40 = 50 px of travel, held across the leave.
     let r = h.response_in(id(), build_clickable);
-    assert_eq!(r.left.drag.delta(), None);
+    assert_eq!(r.left.drag.delta(), Some(Vec2::new(50.0, 0.0)));
+    assert!(r.left.drag.dragging(), "the capture is still latched");
     assert!(
         !r.left.drag.stopped(),
         "pointer-left is not a release; the stop edge must wait for it",
@@ -635,5 +642,84 @@ fn canvas_rearranges_with_dragged_child_position() {
     assert!(
         (a.pos.x - 130.0).abs() < 0.5,
         "pos = anchor(40) + delta(90)"
+    );
+}
+
+/// A capture evicted because its widget left the tree still ends through
+/// a release edge, so the gesture finishes for everyone reading it.
+///
+/// Dropping the press on its own ends it for the state machine alone: no
+/// `Drag::Stopped`, no `ButtonPhase::Up`, no `PointerEdge::DragStopped`,
+/// and the later real release finds nothing left to report. `Slider` and
+/// `DragValue` commit on `drag.stopped()`, so a widget that skips one
+/// frame mid-drag silently loses the commit.
+#[test]
+fn a_capture_evicted_mid_drag_still_ends_with_its_stop_edge() {
+    let mut h = UiHarness::new(UVec2::new(200, 200));
+    h.frame(build_clickable);
+    h.press_at(Vec2::new(40.0, 40.0));
+    h.drag_to(Vec2::new(90.0, 40.0));
+    assert!(
+        h.response_in(id(), build_clickable).left.drag.dragging(),
+        "the drag is live before the widget goes away",
+    );
+
+    // The widget skips a frame. `end_frame` evicts the capture.
+    h.frame(|_| {});
+
+    // It comes back, and reads the edge its gesture owed it.
+    let r = h.response_in(id(), build_clickable);
+    assert!(r.left.drag.stopped(), "eviction owes the stop edge");
+    assert!(!r.left.drag.dragging(), "and the drag itself is over");
+    assert_eq!(
+        r.left.click_count(),
+        0,
+        "a widget that vanished was not clicked",
+    );
+}
+
+/// A sub-threshold press evicted the same way dissolves without claiming
+/// a click — nothing landed on a widget that is not there.
+#[test]
+fn a_capture_evicted_before_the_drag_threshold_reports_no_click() {
+    let mut h = UiHarness::new(UVec2::new(200, 200));
+    h.frame(build_clickable);
+    h.press_at(Vec2::new(40.0, 40.0));
+    h.frame(|_| {});
+
+    let r = h.response_in(id(), build_clickable);
+    assert_eq!(r.left.click_count(), 0, "no click without a release on it");
+    assert!(!r.left.drag.stopped(), "and no drag to stop");
+    assert!(!r.left.held(), "the capture is gone");
+}
+
+/// Losing surface focus ends every gesture and forgets the modifiers.
+///
+/// The platform stops reporting to an unfocused surface, so the release
+/// and the modifier drop that happen over there are never seen. Without
+/// this the press stays latched and the first click back into the window
+/// completes a gesture the user abandoned.
+#[test]
+fn surface_focus_loss_ends_every_capture_and_clears_modifiers() {
+    use crate::input::input_event::InputEvent;
+    use crate::input::keyboard::modifiers::Modifiers;
+
+    let mut h = UiHarness::new(UVec2::new(200, 200));
+    h.frame(build_clickable);
+    h.on_input(InputEvent::ModifiersChanged(Modifiers {
+        ctrl: true,
+        ..Modifiers::NONE
+    }));
+    h.press_at(Vec2::new(40.0, 40.0));
+    h.drag_to(Vec2::new(90.0, 40.0));
+
+    h.on_input(InputEvent::SurfaceFocusLost);
+    let r = h.response_in(id(), build_clickable);
+    assert!(r.left.drag.stopped(), "the drag gets its commit edge");
+    assert!(!r.left.held(), "and the press is no longer latched");
+    assert_eq!(
+        h.ui.input().modifiers,
+        Modifiers::default(),
+        "a modifier held into another window is not held here",
     );
 }

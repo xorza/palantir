@@ -1,7 +1,6 @@
 //! The anchored floating body: the widget, the handle its body uses to
 //! close itself, what a frame reports, and the press-outside policy.
 
-use crate::input::pointer::PointerButton;
 use crate::input::sense::Sense;
 use crate::layout::types::overlay::OverlayPosition;
 use crate::layout::types::sizing::Sizing;
@@ -260,19 +259,15 @@ impl Popup {
                 widget.record(ui, chrome.as_ref(), |ui| body(ui, &handle));
             });
             let dismiss_mode = click_outside == ClickOutside::Dismiss;
-            // Every button dismisses, not just the primary. The eater
-            // senses all four pointer interactions, so a secondary press
-            // outside is absorbed either way; reading only `left` meant it
-            // was absorbed *and* ignored, leaving an open context menu with
-            // no way to close it by the button that opened it.
+            // The eater senses all four pointer interactions, so a
+            // secondary press outside is absorbed either way — see
+            // `ResponseState::any_clicked` for why absorbing it and
+            // ignoring it is the case that matters.
             //
             // Gated on the mode that reads it: the other two record no
             // eater at all (`Block` has one but ignores it), so this would
             // be a lookup for an id that isn't in the tree.
-            let eater_clicked = dismiss_mode && {
-                let outside = ui.response_for(eater_id);
-                PointerButton::all().any(|b| outside.button(b).clicked())
-            };
+            let eater_clicked = dismiss_mode && ui.response_for(eater_id).any_clicked();
             let response = PopupResponse {
                 // A `Dismiss` popup closes on an eaten outside-press OR an Esc
                 // press — so overlay hosts (ComboBox / ContextMenu) read one

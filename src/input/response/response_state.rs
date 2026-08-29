@@ -13,11 +13,12 @@ use glam::Vec2;
 /// `rect` is the widget's last-frame visible surface-space rect (`None`
 /// on first frame), after ancestor transforms and clipping.
 ///
-/// `disabled` is the **cascaded** disabled flag (the widget OR any ancestor),
-/// read from the previous frame's cascade — one-frame stale, like
-/// hover/press. Widgets that need lag-free self-disabled visuals also
-/// merge their own `Node::disabled` (`state.disabled |= node.disabled`)
-/// before reading the field.
+/// `disabled` is the **cascaded** disabled flag (the widget OR any
+/// ancestor), read from the previous frame's cascade — one-frame stale,
+/// like hover/press. The widget's own `Node::disabled` is folded on top
+/// by [`Widget::response`](crate::widgets::widget::Widget::response),
+/// through [`Self::merge_disabled`], so a widget disabled *this* frame
+/// reads and paints as disabled without waiting for the cascade.
 ///
 /// `focused` is `true` when this widget currently holds keyboard focus
 /// (`Ui::focused_id() == Some(id)`). Updated synchronously with focus
@@ -51,9 +52,10 @@ pub struct ResponseState {
     /// Pointer is over this widget's visible rect. Read from the previous
     /// frame's cascade, so it lags input by one frame.
     pub hovered: bool,
-    /// Cascaded disabled flag — this widget *or* any ancestor. One frame
-    /// stale; merge your own `Node::disabled` on top for lag-free
-    /// self-disabled visuals.
+    /// Disabled — this widget *or* any ancestor. The cascaded half is
+    /// one frame stale; the widget's own flag is folded in on top by the
+    /// time it reads this. `true` implies the whole interaction half is
+    /// at its default — see [`Self::merge_disabled`].
     pub disabled: bool,
     /// This widget holds keyboard focus. Unlike the other flags this is
     /// current, not one frame stale.
@@ -90,6 +92,64 @@ impl Default for ResponseState {
 }
 
 impl ResponseState {
+    /// Fold one source of "disabled" in, and drop the interaction half
+    /// once any of them says so.
+    ///
+    /// **Three sources reach a widget's state, at three different
+    /// times**: the cascade's effective flag (ancestor-or-self, one frame
+    /// stale), this frame's ancestor scratch, and the widget's own
+    /// `Node::disabled` — which only `Widget::response` can see. Folding
+    /// them by hand let a widget disabled *this* frame report `disabled`
+    /// beside `hovered` and `left.clicked()`, because the reset ran
+    /// between the second source and the third.
+    ///
+    /// Idempotent, so it holds after *every* fold rather than only the
+    /// last: the interaction half is already gone when a later source
+    /// arrives, and a later `false` cannot re-enable anything.
+    ///
+    /// A disabled widget can never be under the pointer in steady state —
+    /// the cascade gives disabled entries `Sense::NONE`, so they leave
+    /// the hit index — and this makes the transition frame agree with
+    /// the frames on either side of it.
+    #[inline]
+    pub(crate) fn merge_disabled(&mut self, disabled: bool) {
+        self.disabled |= disabled;
+        if self.disabled {
+            self.clear_interaction();
+        }
+    }
+
+    /// Everything the pointer and the wheel contributed this frame, back
+    /// to its default.
+    ///
+    /// Named rather than spelled as a struct literal listing what to
+    /// *keep*: the literal quietly dropped `pointer_local` too, which
+    /// [`Ui::peek_pointer_local`](crate::Ui::peek_pointer_local) went on
+    /// answering — so the same question had two answers depending on
+    /// which one a caller asked. `pointer_local` is geometry ("where is
+    /// the cursor relative to me"), not something the widget was allowed
+    /// to do, so it stays with `rect` and `transform`.
+    #[inline]
+    fn clear_interaction(&mut self) {
+        self.hovered = false;
+        self.left = ButtonState::default();
+        self.right = ButtonState::default();
+        self.middle = ButtonState::default();
+        self.scroll = ScrollDelta::default();
+    }
+
+    /// One-frame edge: a press+release landed on the widget on **any**
+    /// button, without latching a drag.
+    ///
+    /// The dismissal question every overlay backdrop asks. Reading only
+    /// `left` leaves a menu opened by a secondary button un-closable by
+    /// that same button, and spelling it `left || right || middle` at
+    /// each site leaves the next button silently unhandled.
+    #[inline]
+    pub fn any_clicked(&self) -> bool {
+        PointerButton::all().any(|button| self.button(button).clicked())
+    }
+
     /// Report the widget as focused for the rest of this frame, after it
     /// called [`Ui::request_focus`](crate::Ui::request_focus) on itself.
     ///

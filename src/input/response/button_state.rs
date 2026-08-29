@@ -21,6 +21,29 @@ pub struct ButtonState {
 }
 
 impl ButtonState {
+    /// Pair a phase with the drag it is driving.
+    ///
+    /// **The one constructor**, and the one place the pairing rule is
+    /// written: a live drag implies a live press, and a stopped one
+    /// implies the click-less release that ended it. The struct's fields
+    /// stay public because this is a snapshot a widget reads, never one
+    /// it hands back — but every value the router produces is built here,
+    /// so a combination the router cannot mean is caught where it would
+    /// be introduced.
+    #[inline]
+    pub(crate) fn new(phase: ButtonPhase, drag: Drag) -> Self {
+        debug_assert!(
+            match drag {
+                Drag::None => true,
+                Drag::Started { .. } | Drag::Active { .. } =>
+                    matches!(phase, ButtonPhase::Down { .. } | ButtonPhase::Held),
+                Drag::Stopped => phase == ButtonPhase::Up { click: None },
+            },
+            "{phase:?} cannot be driving {drag:?}",
+        );
+        Self { phase, drag }
+    }
+
     /// The press is latched on the widget (`Down` or `Held`) —
     /// rect-independent, no travel threshold.
     #[inline]
