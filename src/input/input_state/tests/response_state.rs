@@ -12,6 +12,7 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::rect::Rect;
 use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
+use crate::scene::cascade::Cascade;
 use crate::scene::node::configure::Configure;
 use crate::ui::harness::UiHarness;
 use crate::widgets::button::Button;
@@ -149,9 +150,42 @@ fn disabled_false_when_chain_clean() {
     assert!(!h.ui.response_for(WidgetId::from_hash("child")).disabled);
 }
 
+/// A pointer that left takes every routed target with it:
+/// `refresh_pointer_targets` is the only writer of the three, and it
+/// clears them all when `pointer_pos` is `None`.
+///
+/// This is what lets `snapshot_frame_quiescent` read one pointer test
+/// where four would otherwise be needed — see there. The setting half of
+/// the same method, where a hit test fills the three in, is covered by
+/// the routing tests that drive a real tree.
+#[test]
+fn a_departed_pointer_clears_every_routed_target() {
+    let id = WidgetId::from_hash("w");
+    let mut s = InputState {
+        pointer_pos: None,
+        hovered: Some(id),
+        scroll_target: Some(id),
+        pinch_target: Some(id),
+        ..Default::default()
+    };
+
+    s.refresh_pointer_targets(&Cascade::default());
+    assert_eq!(
+        (s.hovered, s.scroll_target, s.pinch_target),
+        (None, None, None),
+        "a pointer that left takes every routed target with it",
+    );
+}
+
 /// The once-per-frame quiescence predicate that gates `response_for`'s
 /// fast path: every pointer/capture-derived signal flips it false, but
 /// `focused` deliberately does not (it can be set mid-record).
+///
+/// `hovered` / `scroll_target` / `pinch_target` are not among the signals
+/// tested, and cannot be: `refresh_pointer_targets` clears all three
+/// whenever the pointer leaves, so a routed target without a pointer is
+/// a state nothing can reach. The invariant is asserted below, and
+/// `a_departed_pointer_clears_every_routed_target` pins its source.
 #[test]
 fn frame_quiescent_predicate() {
     // Fresh state, one mutation, snapshot — returns the sealed flag.
@@ -173,9 +207,6 @@ fn frame_quiescent_predicate() {
         assert!(!quiescent(mutate), "{label} must break quiescence");
     };
     broken("pointer_pos", &|s| s.pointer_pos = Some(Vec2::ZERO));
-    broken("hovered", &|s| s.hovered = Some(id));
-    broken("scroll_target", &|s| s.scroll_target = Some(id));
-    broken("pinch_target", &|s| s.pinch_target = Some(id));
     broken("frame_target_deltas", &|s| {
         s.frame_target_deltas.push(TargetScrollDelta::new(id))
     });

@@ -226,15 +226,17 @@ pub(crate) struct WgpuBackend {
     /// with one shared backend the published sample reflects the most recently
     /// submitted window.
     gpu_timings: Option<GpuTimings>,
-    /// The same shared handle `gpu_timings` publishes into. Held separately
-    /// because [`Self::run_main_pass`] publishes its host-side record time on
-    /// *every* submitted frame, including the ones where `gpu_timings` is
-    /// `None` — the host didn't opt into instrumentation, or the adapter has
-    /// no `TIMESTAMP_QUERY`. Unconditional rather than behind
-    /// [`BackendConfig`]: the measurement is two `Instant::now()` calls and
-    /// one `RefCell` write *per frame*, and making it opt-in would mean the
-    /// only way to read it is to also enable the in-pass timestamp writes
-    /// that perturb the very number it reports.
+    /// The one handle this backend publishes through — its host-side
+    /// record time on every submitted frame, and, when `gpu_timings` is
+    /// resolving, that sample too. `GpuTimings` is handed this at
+    /// `after_submit` rather than keeping a clone, so the two cannot come
+    /// to name different sinks.
+    ///
+    /// The record time is unconditional rather than behind
+    /// [`BackendConfig`]: the measurement is two `Instant::now()` calls
+    /// and one `RefCell` write *per frame*, and making it opt-in would
+    /// mean the only way to read it is to also enable the in-pass
+    /// timestamp writes that perturb the very number it reports.
     pass_stats: GpuPassStats,
 }
 
@@ -284,7 +286,6 @@ impl WgpuBackend {
         let staging_belt = StagingBelt::new(device.clone(), 1 << 20);
         let features = device.features();
         let timestamp_period = queue.get_timestamp_period();
-        let pass_stats = resources.gpu_pass_stats.clone();
         let gpu_timings = (config.collect_gpu_stats
             && features.contains(wgpu::Features::TIMESTAMP_QUERY)
             && timestamp_period > 0.0)
@@ -294,7 +295,6 @@ impl WgpuBackend {
                     timestamp_period,
                     features.contains(wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES),
                     features.contains(wgpu::Features::PIPELINE_STATISTICS_QUERY),
-                    resources.gpu_pass_stats,
                 )
             });
         Self {
@@ -312,7 +312,7 @@ impl WgpuBackend {
             pipelines,
             images: resources.images,
             gpu_timings,
-            pass_stats,
+            pass_stats: resources.gpu_pass_stats,
         }
     }
 
@@ -537,7 +537,7 @@ impl WgpuBackend {
         self.queue.submit(std::iter::once(encoder.finish()));
 
         if let Some(t) = self.gpu_timings.as_mut() {
-            t.after_submit(&self.device);
+            t.after_submit(&self.device, &self.pass_stats);
         }
 
         self.text.end_frame();
