@@ -4,16 +4,15 @@
 
 use crate::common::tracy;
 use crate::primitives::brush::gradient::Spread;
-use crate::primitives::color::ColorF16;
 use crate::primitives::fill_kind::FillKind;
 use crate::primitives::span::Span;
-use crate::primitives::{color::Color, corners::Corners, rect::Rect, size::Size};
+use crate::primitives::{color::Color, rect::Rect};
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::instance_pipeline::InstancePipeline;
 use crate::renderer::backend::pipeline_recipe::PipelineRecipe;
 use crate::renderer::backend::schedule::{MaskPlan, build_mask_plan};
-use crate::renderer::backend::shader_template::{ShaderConstant, specialize};
+use crate::renderer::backend::shader_template::{self, ShaderConstant};
 use crate::renderer::backend::stencil::Stencil;
 use crate::renderer::backend::stencil_variant::ColorVariantSpec;
 use crate::renderer::backend::stencil_variant::StencilVariant;
@@ -174,17 +173,8 @@ impl QuadPipeline {
             return;
         }
         let q = Quad {
-            rect: Rect {
-                min: glam::Vec2::ZERO,
-                size: Size {
-                    w: viewport.x,
-                    h: viewport.y,
-                },
-            },
+            rect: Rect::new(0.0, 0.0, viewport.x, viewport.y),
             fill: Color { a: 1.0, ..color }.into(),
-            corners: Corners::default(),
-            stroke_color: ColorF16::TRANSPARENT,
-            stroke_width: 0.0,
             // Solid, sharp, stroke-less, integer-origin (`viewport` is
             // the ceil'd physical size): qualifies for the fragment
             // fast path.
@@ -295,7 +285,7 @@ impl InstancePipeline for QuadPipeline {
     /// from [`Self::build_variants`] / [`Self::build_mask_stamp`] /
     /// [`Self::build_mask_clear`].
     fn new(device: &wgpu::Device) -> Self {
-        let wgsl = specialize(
+        let wgsl = shader_template::specialize(
             include_str!("quad.wgsl"),
             &[
                 ShaderConstant::float("AA_RADIUS", AA_RADIUS),

@@ -23,7 +23,7 @@ use crate::primitives::span::Span;
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::instance_pipeline::InstancePipeline;
-use crate::renderer::backend::shader_template::{ShaderConstant, specialize};
+use crate::renderer::backend::shader_template::{self, ShaderConstant};
 use crate::renderer::backend::stencil_variant::ColorVariantSpec;
 use crate::renderer::backend::stencil_variant::StencilVariant;
 use crate::renderer::render_buffer::curve::{
@@ -85,7 +85,7 @@ impl InstancePipeline for CurvePipeline {
     /// [`FormatPipelines`](crate::renderer::backend::format_pipelines::FormatPipelines)
     /// from [`Self::build_variants`].
     fn new(device: &wgpu::Device) -> Self {
-        let wgsl = specialize(
+        let wgsl = shader_template::specialize(
             include_str!("curve.wgsl"),
             &[
                 ShaderConstant::uint("SEGMENTS_PER_INSTANCE", SEGMENTS_PER_INSTANCE),

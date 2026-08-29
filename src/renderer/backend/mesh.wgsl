@@ -1,10 +1,3 @@
-// Viewport via the shared immediate region (offset 0). See `quad.wgsl`
-// for the layout rationale — same `Immediates` shape across every
-// pipeline keeps the immediate state valid across pipeline switches.
-struct Viewport { size: vec2<f32> };
-struct Immediates { viewport: Viewport };
-var<immediate> imm: Immediates;
-
 struct VsIn {
     @location(0) pos: vec2<f32>,
     // Linear-u8 lanes — `Unorm8x4` auto-normalizes `u8/255` to
@@ -31,13 +24,8 @@ struct VsOut {
 
 @vertex
 fn vs(in: VsIn) -> VsOut {
-    let phys = in.pos * in.scale + in.translate;
-    let ndc = vec2<f32>(
-        phys.x / imm.viewport.size.x * 2.0 - 1.0,
-        1.0 - phys.y / imm.viewport.size.y * 2.0,
-    );
     var out: VsOut;
-    out.clip = vec4<f32>(ndc, 0.0, 1.0);
+    out.clip = clip_from_px(in.pos * in.scale + in.translate);
     out.color = in.color * in.tint;
     return out;
 }
@@ -48,5 +36,5 @@ fn fs(in: VsOut) -> @location(0) vec4<f32> {
     // straight). Premultiply at output so the blend pipeline's
     // `PREMULTIPLIED_ALPHA_BLENDING` sees `rgb * a`. Without this,
     // translucent meshes paint too bright (see review A1).
-    return vec4<f32>(in.color.rgb * in.color.a, in.color.a);
+    return premultiply(in.color.rgb, in.color.a);
 }

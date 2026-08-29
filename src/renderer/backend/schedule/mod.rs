@@ -11,7 +11,6 @@ pub(crate) mod bench;
 
 use crate::primitives::span::Span;
 use crate::primitives::urect::URect;
-use crate::primitives::{color::Color, color::ColorF16};
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::group_batch::GroupBatch;
@@ -71,10 +70,7 @@ pub(super) fn build_mask_plan(buffer: &RenderBuffer, plan: &mut MaskPlan, masks:
                     for clip in &buffer.rounded_clips[chain.range()] {
                         masks.push(Quad {
                             rect: clip.mask_rect,
-                            fill: Color::default().into(),
                             corners: clip.corners,
-                            stroke_color: ColorF16::TRANSPARENT,
-                            stroke_width: 0.0,
                             ..Default::default()
                         });
                     }

@@ -1,7 +1,7 @@
 //! Viewport: CPU damage-rect → physical scissor math, plus the
 //! [`ViewportPush`] carrier every shader's shared `Immediates`
-//! region reads as `imm.viewport` (offset 0). The whole quad / curve
-//! / mesh / image / text family shares the same immediate layout
+//! region reads as `imm.viewport_size` (offset 0). The whole quad /
+//! curve / mesh / image / text family shares the same immediate layout
 //! ([`crate::renderer::backend::IMMEDIATES_BYTES`]), so a single `set_immediates(0, ..)`
 //! per pass covers all of them — no bind group, no uniform buffer.
 
@@ -95,7 +95,7 @@ pub(super) fn build_repaint_scissors(
 
 /// Viewport size as it appears in the shared immediate. 8 bytes;
 /// occupies offset 0 of every pipeline's immediate region (see
-/// `Immediates` in each shader).
+/// `Immediates` in `prelude.wgsl`, the shaders' one declaration of it).
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct ViewportPush {
@@ -105,7 +105,7 @@ pub(crate) struct ViewportPush {
 impl ViewportPush {
     pub(super) const BYTES: usize = size_of::<Self>();
     /// Offset inside the per-pipeline immediate region. Locked at 0
-    /// because every shader puts `viewport` first.
+    /// because the shared prelude puts `viewport_size` first.
     pub(super) const OFFSET: u32 = 0;
 
     pub(super) fn encode(&self) -> [u8; Self::BYTES] {

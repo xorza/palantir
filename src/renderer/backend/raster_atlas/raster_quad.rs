@@ -8,7 +8,7 @@
 //! their pixels came from.
 
 use crate::renderer::backend::raster_atlas::ContentType;
-use crate::renderer::backend::shader_template::{ShaderConstant, specialize};
+use crate::renderer::backend::shader_template::{self, ShaderConstant};
 use crate::renderer::backend::viewport::ViewportPush;
 
 /// One per-instance vertex record. 20 bytes, `Pod`.
@@ -78,7 +78,7 @@ impl RasterQuad {
     /// on an unsubstituted one). The flags arrive already shifted down by
     /// [`U_BITS`], which is how the shader reads them.
     pub(crate) fn shader_module(device: &wgpu::Device, label: &str) -> wgpu::ShaderModule {
-        let wgsl = specialize(
+        let wgsl = shader_template::specialize(
             include_str!("shader.wgsl"),
             &[
                 ShaderConstant::uint("U_BITS", U_BITS),

@@ -322,9 +322,8 @@ impl LayerWalk<'_> {
         // already covered by the subtree/eviction diff. Repainting the
         // union there would spuriously re-damage every direct shape,
         // e.g. all canvas connections when an unrelated node is deleted.
-        if prev.cascade_input != self.cascade.cascade_inputs[i]
-            && let Some(union) = self.rows(i).union_screens()
-        {
+        let union = self.rows(i).union_screens();
+        if prev.cascade_input != self.cascade.cascade_inputs[i] && !union.is_paint_empty() {
             self.raw_rects.push(union);
         }
 
@@ -332,13 +331,14 @@ impl LayerWalk<'_> {
         // whole subtree moved together, so damage its current painted
         // extent. Descendants keep their skip — their snapshots are
         // intact and this push already covers them.
-        if prev.parent_key != parent_key
-            && let Some(union) = self
+        if prev.parent_key != parent_key {
+            let extent = self
                 .cascade
                 .paint_arena
-                .subtree_extent(node, self.tree.records.subtree_end())
-        {
-            self.raw_rects.push(union);
+                .subtree_extent(node, self.tree.records.subtree_end());
+            if !extent.is_paint_empty() {
+                self.raw_rects.push(extent);
+            }
         }
 
         let snapshot = self.snapshot(i, parent_key, leg.span);
@@ -362,7 +362,11 @@ impl LayerWalk<'_> {
     /// and for the removed-widget eviction tail.
     fn on_subtree_moved(&mut self, i: usize) -> usize {
         let end = self.tree.subtree_end_of(i);
-        let mut prev_extent: Option<Rect> = None;
+        // Seeded, like the curr extent read below it: both fold through
+        // `Rect::union`'s identity, so a subtree that painted nothing
+        // comes out `Rect::ZERO` on either side and the two arms of this
+        // one test read the same way.
+        let mut prev_extent = Rect::ZERO;
         for j in i..end {
             // Same stack as the outer walk: at `j == i` nothing is
             // retired and this reads `i`'s own parent.
@@ -381,9 +385,8 @@ impl LayerWalk<'_> {
                 Some(snap) => {
                     snap.cascade_input = self.cascade.cascade_inputs[j];
                     let paint_span = snap.paint_span;
-                    if let Some(union) = self.paints.slots[paint_span.range()].union_screens() {
-                        prev_extent = Some(prev_extent.map_or(union, |a| a.union(union)));
-                    }
+                    prev_extent =
+                        prev_extent.union(self.paints.slots[paint_span.range()].union_screens());
                     let curr = &self.cascade.paint_arena.rows[span.range()];
                     self.paints.slots[paint_span.range()].copy_from_slice(curr);
                 }
@@ -399,8 +402,8 @@ impl LayerWalk<'_> {
             }
             self.probe.mark_dirty(NodeId(j as u32));
         }
-        if let Some(union) = prev_extent {
-            self.raw_rects.push(union);
+        if !prev_extent.is_paint_empty() {
+            self.raw_rects.push(prev_extent);
         }
         // Rolled-up curr extent from the cascade — already `Rect::ZERO`
         // for invisible subtrees, so a hide transition damages only the
@@ -458,9 +461,7 @@ impl LayerWalk<'_> {
             // the output vector's length double as the read cursor.
             let extent = match item {
                 TreeItem::ShapeRecord(..) => arena.rows[row].screen,
-                TreeItem::Child(child) => arena
-                    .subtree_extent(child.id, subtree_end)
-                    .unwrap_or(Rect::ZERO),
+                TreeItem::Child(child) => arena.subtree_extent(child.id, subtree_end),
             };
             row += 1;
             self.order_extents.push(extent);

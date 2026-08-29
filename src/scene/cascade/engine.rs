@@ -18,7 +18,7 @@ use crate::primitives::translate_scale::TranslateScale;
 use crate::scene::cascade::counters::CascadeCounters;
 use crate::scene::cascade::entry::{EntryRow, HitRow, ScopeRow};
 use crate::scene::cascade::paint::PaintArena;
-use crate::scene::cascade::paint_rect::{PaintRectCtx, compute_paint_rect};
+use crate::scene::cascade::paint_rect::{PaintRectCtx, clip_screen, compute_paint_rect};
 use crate::scene::cascade::{Cascade, CascadeInputHash, LayerCascade};
 use crate::scene::forest::Forest;
 use crate::scene::layer::Layer;
@@ -390,7 +390,7 @@ impl CascadeEngine {
             }
 
             let screen_rect = parent.transform.apply_rect(layout_rect);
-            let visible_rect = parent.clip.map_or(screen_rect, |c| screen_rect.clamp_to(c));
+            let visible_rect = clip_screen(screen_rect, parent.clip);
             // The transform descendants inherit *and* direct shapes paint
             // under (the `Panel::transform` contract): `parent ∘
             // self_anchored`. Computed once here — `transform_of` is a
@@ -421,7 +421,7 @@ impl CascadeEngine {
             let shape_clip = if clips {
                 let mask_local = layout_rect.deflated_by(layout_core.padding);
                 let mask_screen = parent.transform.apply_rect(mask_local);
-                Some(parent.clip.map_or(mask_screen, |c| mask_screen.clamp_to(c)))
+                Some(clip_screen(mask_screen, parent.clip))
             } else {
                 parent.clip
             };

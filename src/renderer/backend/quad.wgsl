@@ -1,14 +1,3 @@
-// Viewport lives in the shared immediate region (set by the backend
-// once per pass via `set_immediates(0, ..)`). Same struct shape lands
-// at offset 0 of every palantir shader, so the immediate state stays
-// valid across pipeline switches.
-struct Viewport {
-    size: vec2<f32>,
-};
-struct Immediates {
-    viewport: Viewport,
-};
-var<immediate> imm: Immediates;
 // Gradient LUT atlas: rows of baked 256-texel gradients, sampled at
 // fragment time for `Brush::Linear`. Format is `Rgba16Float` storing
 // straight-alpha linear-RGB, so the sampler returns linear directly on
@@ -97,13 +86,6 @@ struct VertexOut {
     @location(9) @interpolate(flat) inv_size:     vec2<f32>,
 };
 
-const CORNERS = array<vec2<f32>, 4>(
-    vec2<f32>(0.0, 0.0),
-    vec2<f32>(1.0, 0.0),
-    vec2<f32>(0.0, 1.0),
-    vec2<f32>(1.0, 1.0),
-);
-
 @vertex
 fn vs(
     @builtin(vertex_index) vi: u32,
@@ -133,17 +115,10 @@ fn vs(
     let s_lo = unpack2x16float(stroke_color_packed.x);
     let s_hi = unpack2x16float(stroke_color_packed.y);
     let stroke_color = vec4<f32>(s_lo.x, s_lo.y, s_hi.x, s_hi.y);
-    let c = CORNERS[vi];
-    let local = c * size;
-    let pixel = pos + local;
-    let inv_vp_2 = 2.0 / imm.viewport.size;
-    let clip = vec2<f32>(
-        pixel.x * inv_vp_2.x - 1.0,
-        1.0 - pixel.y * inv_vp_2.y,
-    );
+    let local = CORNERS[vi] * size;
 
     var out: VertexOut;
-    out.clip         = vec4<f32>(clip, 0.0, 1.0);
+    out.clip         = clip_from_px(pos + local);
     out.local        = local;
     out.size         = size;
     out.fill         = fill;
@@ -305,10 +280,9 @@ fn composite(d: f32, fill: vec4<f32>, stroke_color: vec4<f32>, stroke_width: f32
         let inner_aa = clamp(AA_RADIUS - (d + stroke_width), 0.0, 1.0);
         let stroke_a = (outer_aa - inner_aa) * stroke_color.a;
         let fill_a   = inner_aa * fill.a;
-        return vec4<f32>(stroke_color.rgb * stroke_a + fill.rgb * fill_a, stroke_a + fill_a);
+        return premultiply(stroke_color.rgb, stroke_a) + premultiply(fill.rgb, fill_a);
     }
-    let a = fill.a * outer_aa;
-    return vec4<f32>(fill.rgb * a, a);
+    return premultiply(fill.rgb, fill.a * outer_aa);
 }
 
 // Inverted-fill counterpart of `composite` for `FILL_FLAG_WINDOW`: the
@@ -326,9 +300,9 @@ fn composite_window(d: f32, fill: vec4<f32>, stroke_color: vec4<f32>, stroke_wid
     if (stroke_width > 0.0) {
         let inner_aa = clamp(AA_RADIUS - (d + stroke_width), 0.0, 1.0);
         let stroke_a = (outer_aa - inner_aa) * stroke_color.a;
-        return vec4<f32>(stroke_color.rgb * stroke_a + fill.rgb * fill_a, stroke_a + fill_a);
+        return premultiply(stroke_color.rgb, stroke_a) + premultiply(fill.rgb, fill_a);
     }
-    return vec4<f32>(fill.rgb * fill_a, fill_a);
+    return premultiply(fill.rgb, fill_a);
 }
 
 @fragment
@@ -336,8 +310,7 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
     // Uniform per instance (`fill_kind` is flat), so whole wavefronts
     // inside one quad take a single side of this branch.
     if ((in.fill_kind & FILL_FLAG_FAST) != 0u) {
-        let a = in.fill.a;
-        return vec4<f32>(in.fill.rgb * a, a);
+        return premultiply(in.fill.rgb, in.fill.a);
     }
     let kind = in.fill_kind & 0xFFu;
     if (kind == BRUSH_KIND_SHADOW_DROP) {

@@ -51,11 +51,6 @@
 // — same as mesh.wgsl / quad.wgsl. The pipeline uses
 // PREMULTIPLIED_ALPHA_BLENDING.
 
-// Viewport via the shared immediate region (offset 0). See
-// `quad.wgsl` for the cross-pipeline layout rationale.
-struct Viewport { size: vec2<f32> };
-struct Immediates { viewport: Viewport };
-var<immediate> imm: Immediates;
 // Gradient LUT atlas, shared with the quad pipeline. Sampled per
 // fragment when `fill_kind != 0`. Same `Rgba16Float` (linear) format
 // + linear filter / clamp-to-edge sampler as quad.wgsl — the curve's
@@ -337,13 +332,7 @@ fn vs(in: VsIn, @builtin(vertex_index) vid: u32) -> VsOut {
 
     out.flags = flags;
     out.phys = phys;
-    let inv_size_2 = 2.0 / imm.viewport.size;
-    out.clip = vec4<f32>(
-        phys.x * inv_size_2.x - 1.0,
-        1.0 - phys.y * inv_size_2.y,
-        0.0,
-        1.0,
-    );
+    out.clip = clip_from_px(phys);
     return out;
 }
 
@@ -423,5 +412,5 @@ fn fs(in: VsOut) -> @location(0) vec4<f32> {
         rgba = textureSample(gradient_tex, gradient_sampler, vec2<f32>(in.curve_t, lut_v));
     }
     let a = rgba.a * coverage;
-    return vec4<f32>(rgba.rgb * a, a);
+    return premultiply(rgba.rgb, a);
 }

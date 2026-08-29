@@ -14,6 +14,39 @@ pub(crate) struct Spin {
     pub(crate) angle: f32,
 }
 
+impl Spin {
+    /// This spin's rotation, prepared once.
+    ///
+    /// The `sin`/`cos` pair lives in the returned rotor rather than in
+    /// each call, because every caller turns *many* points — a cubic's
+    /// control polygon, a polyline's whole vertex run — and paying for
+    /// the pair per point is what hoisting it by hand at three sites was
+    /// avoiding.
+    #[inline]
+    pub(crate) fn rotor(self) -> SpinRotor {
+        SpinRotor {
+            rotor: Vec2::from_angle(self.angle),
+            pivot: self.pivot,
+        }
+    }
+}
+
+/// A [`Spin`]'s rotation with its trigonometry already done — what turns
+/// owner-local points about the pivot before the ancestor transform
+/// places them.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct SpinRotor {
+    rotor: Vec2,
+    pivot: Vec2,
+}
+
+impl SpinRotor {
+    #[inline]
+    pub(crate) fn apply(self, q: Vec2) -> Vec2 {
+        self.rotor.rotate(q - self.pivot) + self.pivot
+    }
+}
+
 /// A stroked shape's owner-local cull bound, and its spin if it has one.
 ///
 /// One value rather than a `bbox: Rect` beside a `rotation: f32`,

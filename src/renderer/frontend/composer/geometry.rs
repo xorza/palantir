@@ -137,9 +137,51 @@ pub(super) fn urect_from_phys(min: Vec2, max: Vec2, viewport: UVec2) -> URect {
     URect::covering(Rect::from_min_max(min, max)).clamp_to(URect::new(0, 0, viewport.x, viewport.y))
 }
 
-pub(super) fn scissor_from_logical(r: Rect, scale: f32, snap: bool, viewport: UVec2) -> URect {
-    let phys = r.scaled_by(scale, snap);
-    urect_from_phys(phys.min, phys.max(), viewport)
+/// Physical pixels per owner-local unit under `xform`.
+///
+/// Named because six draw paths need it and reached for it two ways —
+/// through the stack's `scale()` and through a `current()` already in
+/// hand — which is one spelling too many for a number every one of them
+/// multiplies a stroke width or a radius by.
+#[inline]
+pub(super) fn phys_scale(xform: TranslateScale, display_scale: f32) -> f32 {
+    xform.scale * display_scale
+}
+
+/// The map from owner-local logical px to physical px: fold in the
+/// owner's origin, place by the active transform, scale by the display
+/// factor.
+///
+/// A closure rather than a per-point call, because every caller applies
+/// it to a run of points and the transform read belongs outside that
+/// loop.
+#[inline]
+pub(super) fn phys_point_map(
+    xform: TranslateScale,
+    origin: Vec2,
+    display_scale: f32,
+) -> impl Fn(Vec2) -> Vec2 {
+    move |q| xform.apply_point(q + origin) * display_scale
+}
+
+/// [`phys_point_map`]'s rect: an owner-local bbox in physical px.
+///
+/// Unsnapped — the tiers that fold a bbox this way (mesh, and the stroked
+/// pair through [`stroke_bbox_urect`]) all place sub-pixel geometry and
+/// let their shaders resolve the fringe.
+#[inline]
+pub(super) fn phys_bbox(
+    xform: TranslateScale,
+    bbox: Rect,
+    origin: Vec2,
+    display_scale: f32,
+) -> Rect {
+    xform
+        .apply_rect(Rect {
+            min: bbox.min + origin,
+            size: bbox.size,
+        })
+        .scaled_by(display_scale, false)
 }
 
 #[cold]
@@ -162,11 +204,7 @@ pub(super) fn stroke_bbox_urect(
     join: Option<LineJoin>,
     display: Display,
 ) -> URect {
-    let world_bbox = xform.apply_rect(Rect {
-        min: bbox.min + origin,
-        size: bbox.size,
-    });
-    let centerline_phys = world_bbox.scaled_by(display.scale_factor, false);
+    let centerline_phys = phys_bbox(xform, bbox, origin, display.scale_factor);
     let painted = stroked_bbox(centerline_phys, width_phys, HALF_FRINGE, cap, join);
     urect_from_phys(painted.min, painted.max(), display.physical)
 }
