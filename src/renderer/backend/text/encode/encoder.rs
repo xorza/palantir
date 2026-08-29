@@ -37,17 +37,52 @@ pub(crate) struct TextEncoder {
     /// Drawable glyph instances accumulated across this frame's
     /// batches.
     pub(crate) instances: Vec<RasterQuad>,
-    /// Whether a run this frame hit a full atlas, and whether that has
-    /// been reported since the last frame that didn't.
-    ///
-    /// Starvation is not corruption — the glyph is skipped, the run is
-    /// refused as a template, and it re-encodes next frame — but it is
-    /// silent, self-inflicted slowness with a visible hole in the text,
-    /// and nothing else in the pipeline would say so. Edge-triggered
-    /// because it recurs per glyph per run per frame; logging each one
-    /// would bury the signal in its own noise.
-    pub(crate) starved_this_frame: bool,
-    pub(crate) starved_reported: bool,
+    /// Where the atlas-starvation report stands — see [`Starvation`].
+    starvation: Starvation,
+}
+
+/// The life of one atlas-starvation episode.
+///
+/// Starvation is not corruption — the glyph is skipped, the run is refused
+/// as a template, and it re-encodes next frame — but it is silent,
+/// self-inflicted slowness with a visible hole in the text, and nothing
+/// else in the pipeline would say so. It is edge-triggered because it
+/// recurs per glyph per run per frame, and logging each one would bury the
+/// signal in its own noise.
+///
+/// Three states, named. Two bools carried these three plus a fourth
+/// combination that exists only between two lines of
+/// [`TextEncoder::note_atlas_starved`], which is a state a reader has to
+/// rule out rather than one the type refuses.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum Starvation {
+    /// No episode open: the last frame fit everything it drew.
+    #[default]
+    Clear,
+    /// Reported, and this frame has starved too.
+    Open,
+    /// Reported, and this frame fit everything. One more such frame
+    /// closes the episode, so a later recurrence is reported again
+    /// rather than swallowed forever.
+    Settling,
+}
+
+impl Starvation {
+    /// Record a starved run, answering whether it is the first of its
+    /// episode and so the one worth a log line.
+    fn note(&mut self) -> bool {
+        let first = *self == Self::Clear;
+        *self = Self::Open;
+        first
+    }
+
+    /// Close a frame.
+    fn end_frame(&mut self) {
+        *self = match self {
+            Self::Open => Self::Settling,
+            Self::Clear | Self::Settling => Self::Clear,
+        };
+    }
 }
 
 impl TextEncoder {
@@ -80,8 +115,7 @@ impl TextEncoder {
             cache: EncodedCache::default(),
             placed: Vec::new(),
             instances: Vec::new(),
-            starved_this_frame: false,
-            starved_reported: false,
+            starvation: Starvation::default(),
         }
     }
 
@@ -138,11 +172,9 @@ impl TextEncoder {
     /// that quietly re-encodes everything.
     #[cold]
     fn note_atlas_starved(&mut self) {
-        self.starved_this_frame = true;
-        if self.starved_reported {
+        if !self.starvation.note() {
             return;
         }
-        self.starved_reported = true;
         let atlas_px = self.atlas.atlas_px();
         tracing::warn!(
             mask_px = atlas_px[1],
@@ -161,12 +193,7 @@ impl TextEncoder {
         self.atlas.advance_to(frame);
         self.cache.sweep(self.atlas.current_frame);
         self.instances.clear();
-        // A frame that fit everything closes the episode, so a later
-        // recurrence is reported again rather than swallowed forever.
-        if !self.starved_this_frame {
-            self.starved_reported = false;
-        }
-        self.starved_this_frame = false;
+        self.starvation.end_frame();
     }
 
     /// Encode one run that missed the encoded cache: extract its glyph
@@ -317,5 +344,40 @@ fn rasterize_and_insert(
     match atlas.insert(device, key, content, metadata, &image.data) {
         Some(idx) => Rasterized::Slot(idx),
         None => Rasterized::AtlasFull,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::renderer::backend::text::encode::encoder::Starvation;
+
+    /// The episode's whole life: reported once on the first starved run,
+    /// held open while starvation continues, and closed by the second
+    /// clean frame so a later recurrence is reported again.
+    ///
+    /// The settling frame is the part worth pinning. Closing on the first
+    /// clean frame instead would re-report a run that starved again the
+    /// very next frame, which is the per-frame noise the edge trigger
+    /// exists to avoid.
+    #[test]
+    fn a_starvation_episode_reports_once_and_closes_one_clean_frame_later() {
+        let mut s = Starvation::default();
+        assert!(s.note(), "the first starved run of an episode is reported");
+        assert!(!s.note(), "later runs on the same frame are not");
+
+        s.end_frame();
+        assert_eq!(s, Starvation::Settling);
+        assert!(
+            !s.note(),
+            "starving again while settling is the same episode",
+        );
+
+        // Two clean frames from an open episode: the first settles, the
+        // second closes.
+        s.end_frame();
+        assert_eq!(s, Starvation::Settling);
+        s.end_frame();
+        assert_eq!(s, Starvation::Clear);
+        assert!(s.note(), "a fresh episode is reported again");
     }
 }

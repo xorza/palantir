@@ -29,6 +29,18 @@ pub(crate) enum RenderKind {
     Partial { damage: CollapsedDamage },
 }
 
+impl RenderKind {
+    /// Whether the frame paints inside damage rects rather than over the
+    /// whole surface.
+    ///
+    /// The plan is the authority. `build_repaint_scissors` maps this
+    /// one-to-one onto a `RepaintScissors`, so asking the *scissors* gives
+    /// the same answer one derivation further from the fact.
+    pub(crate) fn is_partial(self) -> bool {
+        matches!(self, Self::Partial { .. })
+    }
+}
+
 impl RenderPlan {
     /// Physical-pixel padding around every partial-repaint scissor for
     /// antialiasing fringes and glyph overhang. The backend inflates
