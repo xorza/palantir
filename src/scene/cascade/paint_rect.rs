@@ -9,7 +9,7 @@ use crate::primitives::size::Size;
 use crate::primitives::span::Span;
 use crate::primitives::translate_scale::TranslateScale;
 use crate::scene::cascade::paint::{Paint, PaintArena};
-use crate::scene::shapes::paint::shadow_paint_rect_local;
+use crate::scene::shapes::paint::{QuadShape, shadow_paint_rect_local};
 use crate::scene::shapes::record::{ShapeRecord, text_paint_bbox_local};
 use crate::scene::tree::Tree;
 use crate::scene::tree::iter::{TreeItem, TreeItems};
@@ -287,6 +287,15 @@ pub(super) fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) 
                     );
                     clip_screen(screen, shape_clip)
                 }
+                // A triangle's stored bbox carries its corner radius but
+                // not the AA fringe, which is physical and cannot be
+                // folded into an owner-local rect — the same reason the
+                // two stroked kinds above add it out here.
+                ShapeRecord::Quad(QuadShape::Triangle { bbox, .. }) => clip_screen(
+                    lift_to_screen(*bbox, layout_rect.min, shape_transform, None)
+                        .inflated(HALF_FRINGE / display_scale),
+                    shape_clip,
+                ),
                 // Listed rather than `_`: this arm is what keeps
                 // `bbox_local`'s `Text` panic unreachable, so a new
                 // variant has to be routed here deliberately instead of

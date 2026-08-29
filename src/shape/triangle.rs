@@ -10,7 +10,6 @@ use crate::scene::record_store::RecordStore;
 use crate::scene::shapes::paint::{QuadShape, ShapeStroke};
 use crate::scene::shapes::record::ShapeRecord;
 use crate::shape::sealed;
-use crate::shape::stroke_bounds::HALF_FRINGE;
 use glam::Vec2;
 
 /// Filled and/or stroked triangle with optional uniform corner rounding.
@@ -63,9 +62,16 @@ impl sealed::LowerShape for TriangleShape {
     }
 
     /// `bbox` is the owner-local AABB of `a`/`b`/`c` inflated by
-    /// `radius + AA fringe` — the SDF offsets the shape outward by
-    /// `radius`, and the stroke is inner-edge and adds no outward reach —
-    /// so damage and clip-cull cover the rounded, antialiased extent.
+    /// `radius`: the SDF offsets the shape outward by that much to round
+    /// its corners, and the stroke is inner-edge and adds no outward
+    /// reach.
+    ///
+    /// The AA fringe is **not** folded in here. It is half a *physical*
+    /// pixel, and this rect is owner-local logical px — baking it in
+    /// under-covers below scale 1 and over-covers above. Every stroked
+    /// kind adds it in `cascade::paint_rect`, after lifting to screen
+    /// space where the display scale is in hand.
+    ///
     /// Nothing is staged, so nothing goes through `lower::`.
     fn lower(self, _store: &RecordStore) -> ShapeRecord {
         let Self {
@@ -80,8 +86,7 @@ impl sealed::LowerShape for TriangleShape {
         // out of the bounds, which would leave the record's own bbox
         // reading finite for a shape that carries a NaN — and that bbox
         // is what damage and clip-cull are computed from.
-        let pad = radius.max(0.0) + HALF_FRINGE;
-        let bbox = Aabb::of(&[a, b, c]).inflated(pad);
+        let bbox = Aabb::of(&[a, b, c]).inflated(radius.max(0.0));
         ShapeRecord::Quad(QuadShape::Triangle {
             a,
             b,

@@ -7,6 +7,7 @@ use crate::input::keyboard::key_press::KeyPress;
 use crate::input::keyboard::keyboard_event::KeyboardEvent;
 use crate::input::keyboard::modifiers::Modifiers;
 use crate::input::response::response_state::ResponseState;
+use crate::text::probe::{Caret, TextProbe};
 use crate::ui::Ui;
 use crate::widgets::text_edit::TextEditState;
 use crate::widgets::text_edit::action::EditAction;
@@ -226,6 +227,9 @@ pub(super) fn run_input(
                     KeyOutcome::Vertical { up, extend } => {
                         resolve_vertical(&mut ed, ui, ctx, up, extend);
                     }
+                    KeyOutcome::LineEdge { end, extend } => {
+                        resolve_line_edge(&mut ed, ui, ctx, end, extend);
+                    }
                     KeyOutcome::None => {}
                 }
             }
@@ -257,6 +261,11 @@ pub(super) fn apply_key(editor: &mut Editor<'_>, keypress: KeyPress) -> KeyOutco
             return KeyOutcome::Vertical { up: false, extend };
         }
         Key::Enter if editor.multiline => editor.replace_selection("\n", EditKind::Other),
+        // A multi-line editor's Home / End belong to the *visual* line,
+        // like the arrows above — jumping to the buffer's ends is what a
+        // single-line field means by them, and there the two agree.
+        Key::Home if editor.multiline => return KeyOutcome::LineEdge { end: false, extend },
+        Key::End if editor.multiline => return KeyOutcome::LineEdge { end: true, extend },
         Key::Home => editor.move_caret(0, extend),
         Key::End => editor.move_caret(editor.text.len(), extend),
         Key::Escape if !editor.collapse_selection() => return KeyOutcome::Blur,
@@ -266,25 +275,62 @@ pub(super) fn apply_key(editor: &mut Editor<'_>, keypress: KeyPress) -> KeyOutco
     KeyOutcome::None
 }
 
-fn resolve_vertical(editor: &mut Editor<'_>, ui: &mut Ui, ctx: &ShapeCtx, up: bool, extend: bool) {
-    // Both queries sit in one `probe_text` closure: the caret position
-    // and the adjacent-line hit resolve under a single shaper borrow and
-    // one cache dispatch, which is exactly what the scoped probe is for.
-    let target = {
+/// Move the caret to the offset `target` picks from a point relative to
+/// where it sits now.
+///
+/// Both queries sit under one `probe_text`: the caret position and the
+/// hit resolve under a single shaper borrow and one cache dispatch, which
+/// is exactly what the scoped probe is for. Every caret motion that needs
+/// the shaped buffer — the ones a byte scan cannot answer — goes through
+/// here, so none of them re-states that discipline.
+fn move_caret_by_probe(
+    editor: &mut Editor<'_>,
+    ui: &mut Ui,
+    ctx: &ShapeCtx,
+    extend: bool,
+    target: impl FnOnce(&TextProbe<'_>, Caret) -> usize,
+) {
+    let byte = {
         let probe = ui.probe_text(ctx.run(editor.text));
         let pos = probe.caret_at(editor.state.caret);
-        if up && pos.y_top <= 0.5 {
-            0
-        } else {
-            let probe_y = if up {
-                pos.y_top - 1.0
-            } else {
-                pos.y_top + pos.line_height + 1.0
-            };
-            probe.byte_at(pos.x, probe_y)
-        }
+        target(&probe, pos)
     };
-    editor.move_caret(target, extend);
+    editor.move_caret(byte, extend);
+}
+
+fn resolve_vertical(editor: &mut Editor<'_>, ui: &mut Ui, ctx: &ShapeCtx, up: bool, extend: bool) {
+    move_caret_by_probe(editor, ui, ctx, extend, |probe, pos| {
+        if up && pos.y_top <= 0.5 {
+            return 0;
+        }
+        let probe_y = if up {
+            pos.y_top - 1.0
+        } else {
+            pos.y_top + pos.line_height + 1.0
+        };
+        probe.byte_at(pos.x, probe_y)
+    });
+}
+
+/// Home / End on the visual line the caret sits on.
+///
+/// A soft-wrapped line has no `\n` to scan for, so its edges are a probe
+/// question the way [`resolve_vertical`]'s target is: hit-test past each
+/// end of the caret's own row, which `byte_at` clamps back to that row's
+/// first or last offset.
+fn resolve_line_edge(
+    editor: &mut Editor<'_>,
+    ui: &mut Ui,
+    ctx: &ShapeCtx,
+    end: bool,
+    extend: bool,
+) {
+    move_caret_by_probe(editor, ui, ctx, extend, |probe, pos| {
+        // Mid-row, so the hit cannot fall to a neighbouring line.
+        let y = pos.y_top + pos.line_height * 0.5;
+        let x = if end { probe.size().w + 1.0 } else { -1.0 };
+        probe.byte_at(x, y)
+    });
 }
 
 fn is_word_nav(modifiers: Modifiers) -> bool {
@@ -298,5 +344,14 @@ fn is_word_nav(modifiers: Modifiers) -> bool {
 pub(super) enum KeyOutcome {
     None,
     Blur,
-    Vertical { up: bool, extend: bool },
+    Vertical {
+        up: bool,
+        extend: bool,
+    },
+    /// Home / End in a multi-line editor: the visual line's edge, which
+    /// only the shaped buffer knows.
+    LineEdge {
+        end: bool,
+        extend: bool,
+    },
 }

@@ -31,7 +31,11 @@ pub(super) struct TextLayout {
     pub(super) ctx: ShapeCtx,
     pub(super) text_align: Align,
     pub(super) caret_room: f32,
-    pub(super) inner_size: Size,
+    /// The box the text is measured and scrolled inside — the field's
+    /// rect less its padding. `None` before the field has been arranged,
+    /// which is the same question `response_rect` answered and the reason
+    /// nothing downstream re-derives it.
+    pub(super) inner: Option<Rect>,
     /// Where the shaped block sat when it was last painted. The click
     /// that arrives this frame was aimed at *that* layout, so the
     /// hit-test in `input` offsets by this rather than by the offset
@@ -40,18 +44,27 @@ pub(super) struct TextLayout {
 }
 
 impl TextLayout {
+    /// [`Self::inner`]'s extent, collapsing the unarranged frame to
+    /// nothing — what the sizing math wants, where the scroll view wants
+    /// the absence itself.
+    pub(super) fn inner_size(&self) -> Size {
+        self.inner.map_or(Size::ZERO, |rect| rect.size)
+    }
+
     /// Resolve the box the text sits in and the parameters it will be
     /// shaped with, from the field's rect, padding, and font.
     pub(super) fn resolve(input: LayoutInput) -> Self {
         let caret_room = input.caret_width.max(0.0);
-        // Raw inner width; `WrapBound::new` owns the canonical rounding.
-        let wrap_target = if input.multiline {
-            input
-                .response_rect
-                .map(|rect| rect.size.w - input.padding.horiz())
-        } else {
-            None
-        };
+        // One deflation, so the width the text wraps at and the box it
+        // is measured against cannot disagree. Spelled apart, the wrap
+        // target keeps a raw subtraction where the measured box clamps,
+        // and an over-constrained field commits a negative wrap width —
+        // the case `canonical_wrap_width`'s own clamp catches one layer
+        // further down.
+        let inner = input
+            .response_rect
+            .map(|rect| rect.deflated_by(input.padding));
+        let wrap_target = inner.filter(|_| input.multiline).map(|rect| rect.size.w);
         let text_align = input.text_align.unwrap_or(if input.multiline {
             Align::TOP_LEFT
         } else {
@@ -64,17 +77,11 @@ impl TextLayout {
             input.multiline,
             text_align.halign(),
         );
-        let inner_size = input.response_rect.map_or(Size::ZERO, |rect| {
-            Size::new(
-                (rect.size.w - input.padding.horiz()).max(0.0),
-                (rect.size.h - input.padding.vert()).max(0.0),
-            )
-        });
         TextLayout {
             ctx,
             text_align,
             caret_room,
-            inner_size,
+            inner,
             prev_block_offset: input.previous_block_offset,
         }
     }

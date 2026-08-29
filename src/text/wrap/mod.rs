@@ -4,8 +4,10 @@
 //! Nothing here shapes or caches. Every layout consequence of a policy is a
 //! pure function of a measurement layout already holds.
 
+use crate::layout::types::align::HAlign;
 use crate::primitives::num::F32Ext;
 use crate::primitives::size::Size;
+use crate::text::key::WrapBound;
 use crate::text::root::TextRoot;
 
 /// Canonical width used by width-bounded cache identity
@@ -179,6 +181,40 @@ impl TextWrap {
         }
     }
 
+    /// What a run bound to `available_width_px` actually shapes at.
+    ///
+    /// **The one implementation of the binding sequence.** Both shaping
+    /// entry points — the public probe through `TextShaper::layout` and
+    /// layout's own `TextSystem::measure` — have to run the same three
+    /// steps in the same order, or a caret answers against a buffer
+    /// wrapped at a width the paint never used. Written twice, they were
+    /// kept in step by hand, and had already drifted.
+    ///
+    /// `root` is called only for the policies whose decision reads it:
+    /// `WrapWithOverflow` raises a too-narrow width to the wrap floor
+    /// (and is exactly the policy that asks for the floor scan), and a
+    /// truncating fit asks whether the text already fits. A plain `Wrap`
+    /// consults neither, so it binds without paying for a root shape —
+    /// which is why this takes a thunk rather than a `&TextRoot`.
+    pub(super) fn commit(
+        self,
+        available_width_px: f32,
+        halign: HAlign,
+        fit: LineFit,
+        root: impl FnOnce() -> TextRoot,
+    ) -> WrapCommit {
+        let committed = if self.floor_scan() == WrapFloor::Scan || fit != LineFit::Wrap {
+            let root = root();
+            if fit.resolves_to_unbounded(&root, available_width_px) {
+                return WrapCommit::Unbounded { size: root.size };
+            }
+            self.target_width(available_width_px, &root)
+        } else {
+            available_width_px
+        };
+        WrapCommit::Bound(WrapBound::new(committed, halign, fit))
+    }
+
     /// Layout content contribution of a width-`resolved` extent.
     pub(crate) fn content_size(self, resolved: Size) -> Size {
         match self {
@@ -190,6 +226,17 @@ impl TextWrap {
             | TextWrap::WrapWithOverflow => resolved,
         }
     }
+}
+
+/// What [`TextWrap::commit`] decided a width-bounded run shapes at.
+#[derive(Clone, Copy, Debug)]
+pub(super) enum WrapCommit {
+    /// The root's own unbounded shape stands — a truncating fit whose
+    /// text already fits. Binding would mint a second buffer nobody asks
+    /// for, so the size travels out with the decision.
+    Unbounded { size: Size },
+    /// Resolve at this bound.
+    Bound(WrapBound),
 }
 
 #[cfg(test)]

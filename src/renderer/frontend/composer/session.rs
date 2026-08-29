@@ -42,6 +42,7 @@ use crate::renderer::render_buffer::{MAX_ROUNDED_CLIP_DEPTH, RenderBuffer, Round
 use crate::scene::record_store::record_payloads::RecordPayloads;
 use crate::scene::shapes::paint::CurveBasis;
 use crate::scene::shapes::record::ColorMode;
+use crate::shape::stroke_bounds::HALF_FRINGE;
 use crate::shape::style::LineCap;
 use glam::{UVec2, Vec2};
 
@@ -872,7 +873,7 @@ impl ComposeSession<'_> {
                 // (like a rounded rect), so it adds no outward reach.
                 let lo = a.min(b).min(c);
                 let hi = a.max(b).max(c);
-                let phys_rect = Rect::from_min_max(lo, hi).inflated(radius_phys + 0.5);
+                let phys_rect = Rect::from_min_max(lo, hi).inflated(radius_phys + HALF_FRINGE);
                 // Pack the three points in rect-local coords (0..size,
                 // matching the shader's `in.local`) + the corner radius
                 // into the reused `corners` / `fill_axis` lanes;

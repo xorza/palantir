@@ -101,13 +101,14 @@ impl TextGeometry {
         } else {
             layout.text_align
         };
+        let inner = layout.inner_size();
         let align_size = Size::new(
             if layout.ctx.multiline {
-                layout.inner_size.w
+                inner.w
             } else {
-                (layout.inner_size.w - layout.caret_room).max(0.0)
+                (inner.w - layout.caret_room).max(0.0)
             },
-            layout.inner_size.h,
+            inner.h,
         );
         let containing = Rect {
             min: Vec2::ZERO,

@@ -124,6 +124,8 @@ struct ResolvedBar {
     content_main: f32,
     thumb_offset: f32,
     thumb_size: f32,
+    /// The thumb's own travel, from the geometry that placed it.
+    travel: f32,
 }
 
 impl ResolvedBar {
@@ -132,10 +134,16 @@ impl ResolvedBar {
         BarDomain::new(self.content_main, self.track_main)
     }
 
+    /// Offset moved per logical pixel of thumb travel.
+    ///
+    /// The denominator comes off the geometry that placed the thumb, not
+    /// off this bar's raw track: the two disagree by the track's floor,
+    /// and a drag scaled by the wrong one moves the content at a rate the
+    /// thumb does not follow.
     fn travel(&self) -> ThumbTravel {
         let domain = self.domain();
         ThumbTravel {
-            factor: approx::ratio(domain.max_off(), self.track_main - self.thumb_size),
+            factor: approx::ratio(domain.max_off(), self.travel),
             domain,
         }
     }
@@ -203,6 +211,7 @@ impl Bars {
             content_main,
             thumb_offset: g.thumb_offset,
             thumb_size: g.thumb_size,
+            travel: g.travel,
         })
     }
 

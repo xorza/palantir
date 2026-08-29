@@ -46,6 +46,15 @@ pub struct TextProbe<'a> {
     /// no buffer was shaped (empty text, the gated mono metric), because
     /// the metrics every answer is expressed in live on it.
     key: TextShapeKey,
+    /// The run's authored horizontal alignment.
+    ///
+    /// Not read off `key`, although the key carries one: `halign_q` is a
+    /// *cache discriminator*, projected onto what shaping actually varies
+    /// on — an unbounded key stores `Auto` for every alignment, because
+    /// an unbounded shape has no per-line offsets to vary. Asked where a
+    /// glyphless line's caret sits, it would answer `Auto` for a
+    /// right-aligned run and put the caret at the block's left edge.
+    halign: HAlign,
     inner: RefMut<'a, ShaperInner>,
 }
 
@@ -54,12 +63,14 @@ impl<'a> TextProbe<'a> {
         size: Size,
         text: &'a str,
         key: TextShapeKey,
+        halign: HAlign,
         inner: RefMut<'a, ShaperInner>,
     ) -> Self {
         Self {
             size,
             text,
             key,
+            halign,
             inner,
         }
     }
@@ -179,7 +190,7 @@ impl<'a> TextProbe<'a> {
     /// [`Self::byte_at`] clamps a point: past the end answers the end.
     pub fn caret_at(&self, byte_offset: usize) -> Caret {
         let line_height_px = self.key.line_height_px();
-        let halign = self.key.halign();
+        let halign = self.halign;
         let target = cursor_from_byte(self.text, byte_offset);
         let Some(ShapedRun { buffer, left }) = self.shaped() else {
             // No shaped buffer means empty text (block-local x is 0, and

@@ -1,7 +1,6 @@
 //! The editor's viewport: where the text block is scrolled to, and when
 //! the caret blinks.
 
-use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::scene::tree::paint_anims::PaintAnim;
@@ -51,15 +50,11 @@ impl ViewState {
     /// from is by definition off-screen. This is the ordinary editor
     /// bargain: the wheel roams freely, typing snaps back.
     fn update_scroll(&mut self, input: ViewUpdateInput) {
-        let Some(rect) = input.response_rect else {
+        let Some(viewport) = input.viewport else {
             self.scroll = ScrollState::default();
             return;
         };
         let ctx = input.ctx;
-        let viewport = Size::new(
-            (rect.size.w - ctx.padding.horiz()).max(0.0),
-            (rect.size.h - ctx.padding.vert()).max(0.0),
-        );
         let follow_caret =
             input.caret_byte != self.last_followed_caret || input.edited || input.gained_focus;
         self.last_followed_caret = input.caret_byte;
@@ -88,7 +83,14 @@ impl ViewState {
         if follow_caret {
             let offset = &mut self.scroll.offset;
             if ctx.multiline {
-                let trailing = (viewport.h - input.caret_width).max(0.0);
+                // The whole viewport: a caret's vertical extent is its
+                // line height, which `caret_bottom` already carries. The
+                // X branch below reserves `caret_width` because the caret
+                // stands past the last glyph there — that same
+                // *horizontal* thickness is slack on the wrong axis here,
+                // and `bounds.content` reserves none vertically for
+                // `clamp_to_natural` to honour it with.
+                let trailing = viewport.h;
                 let caret_bottom = input.caret_pos.y_top + input.caret_pos.line_height;
                 if input.caret_pos.y_top < offset.y {
                     offset.y = input.caret_pos.y_top;
@@ -133,7 +135,13 @@ impl ViewState {
 
 #[derive(Clone, Copy, Debug)]
 pub(super) struct ViewUpdateInput {
-    pub(super) response_rect: Option<Rect>,
+    /// The box the text scrolls inside — the field's rect less its
+    /// padding, as [`TextLayout`](super::text_layout::TextLayout) already
+    /// resolved it. `None` before the field has been arranged.
+    ///
+    /// Carried rather than re-derived from the rect and the padding: one
+    /// deflation, one answer.
+    pub(super) viewport: Option<Size>,
     pub(super) ctx: ShapeCtx,
     pub(super) caret_pos: Caret,
     pub(super) caret_width: f32,
