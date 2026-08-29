@@ -4,8 +4,9 @@
 //! [`Audit`] is the single way in: it carries how long to warm the scene
 //! up, how many frames to measure, and what each of those frames may
 //! spend. [`Audit::run`] raises a `UiHarness` and drives the scene
-//! through it; a gate that renders frames its own way — through an
-//! `OffscreenHost`, say — drives [`Audit::run_frames`] instead.
+//! through it; anything that renders frames its own way drives
+//! [`Audit::run_frames`] instead, which is what the gates and the
+//! renderer fixtures do through [`OffscreenTarget`].
 //!
 //! Both terminals are `#[track_caller]`, so the call site names itself
 //! and cargo prints the failing test's own name above whatever it
@@ -18,8 +19,10 @@
 //! needed.
 
 mod format;
+mod offscreen;
 
 pub(crate) use format::user_frames;
+pub(crate) use offscreen::OffscreenTarget;
 
 use std::panic::Location;
 
@@ -29,10 +32,15 @@ use palantir::internals::UiHarness;
 
 use crate::allocator::{AuditResult, with_audit};
 
-/// Logical display an audit runs at unless [`Audit::surface`] says
-/// otherwise — `UiHarness`'s own defaults (scale 1.0, pixel-snapped, no
-/// refresh rate) at 800×600.
-const SURFACE: UVec2 = UVec2::new(800, 600);
+/// Logical display every fixture renders at: `UiHarness`'s own defaults
+/// (scale 1.0, pixel-snapped, no refresh rate) at 800×600.
+///
+/// Reached two ways. A `UiHarness` fixture takes it through
+/// [`Audit::run`] unless [`Audit::surface`] says otherwise; a fixture
+/// that needs a device hands it to [`OffscreenTarget::new`] itself. One
+/// number either way, so a fixture moved between the two keeps its
+/// scene the size it was written for.
+pub(crate) const SURFACE: UVec2 = UVec2::new(800, 600);
 
 /// Mono-fallback harness for the alloc audits: private arena, fresh
 /// caches, no font loading — exactly what these GPU-less tests want.
