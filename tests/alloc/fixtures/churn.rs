@@ -8,9 +8,13 @@
 //! never reaches their insert, supersede, or expiry paths, so an
 //! allocation introduced there would sail past the whole audit.
 //!
-//! These drive the four shapes that do reach them: a width drag, text
-//! whose content changes, rows entering and leaving the tree, and a
-//! scale ramp.
+//! These drive the three shapes that reach them from the record side: a
+//! width drag, text whose content changes, and rows entering and leaving
+//! the tree. The fourth — a scale ramp — belongs to
+//! `gates::scale_ramp_rasterizes_at_a_flat_cost_per_frame` instead,
+//! because a zoom moves the *raster* scale and leaves the shaped buffer
+//! alone: what it churns is the glyph atlas and the encoded-run cache,
+//! and neither of those exists without a device.
 //!
 //! Budgets here are not all zero, and that is the measurement talking
 //! rather than a concession. Every allocation these fixtures see traces

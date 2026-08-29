@@ -2,23 +2,33 @@
 //! fine-grained fixtures next door.
 //!
 //! Those audit ~20 small scenes, GPU-less, so a failure can name the
-//! line that allocated. These two answer what a small scene cannot:
-//! whether the pipeline allocates at all at *full* scale, and whether
-//! the wgpu floor beneath it has drifted.
+//! line that allocated. These three answer what a small scene cannot:
+//! whether the pipeline allocates at all at *full* scale, whether the
+//! wgpu floor beneath it has drifted, and what a frame costs when every
+//! glyph and icon on it misses its atlas.
 //!
 //! | gate | covers | budget |
 //! |---|---|---|
 //! | [`full_tree_cpu_frame_alloc_free`] | record → measure → arrange → cascade → damage over the frame bench's own tree, through real cosmic shaping. `Ui::frame` stops before the frontend, so no paint | strict zero |
-//! | [`offscreen_frame_stays_at_driver_floor`] | a whole frame through `OffscreenHost::frame_offscreen` — encode, compose, and the wgpu submission | the driver floor |
+//! | [`offscreen_frame_stays_at_driver_floor`] | a whole frame through `OffscreenHost::frame_offscreen` — encode, compose, and the wgpu submission, over a still tree | the driver floor |
+//! | [`scale_ramp_rasterizes_at_a_flat_cost_per_frame`] | the same frame under a continuous zoom: full damage, glyph and icon rasterization, both atlases' insert paths | the measured miss cost |
 //!
-//! Both audit each measured frame on its own rather than summing a
+//! All three audit each measured frame on its own rather than summing a
 //! window, so an intermittent grow-on-Nth-frame allocation (`Vec`
 //! doubling, a `HashMap` rehash) fails on the frame that did it and
 //! arrives with that frame's backtraces attached.
 
+use std::rc::Rc;
+
 use glam::UVec2;
-use palantir::internals::{BENCH_DPR, BENCH_SCALE, BENCH_SURFACE, RecordApp, headless_test_gpu};
-use palantir::{Color, FrameFixture, OffscreenHost};
+use palantir::internals::{
+    BENCH_DPR, BENCH_SCALE, BENCH_SURFACE, HeadlessTestGpuLease, RecordApp, TEXT_SCALE_STEP,
+    headless_test_gpu,
+};
+use palantir::{
+    Color, Configure, FrameFixture, Grid, IconAtlas, IconId, IconSet, OffscreenHost, Panel, Sizing,
+    Track, TranslateScale, Ui,
+};
 
 use crate::harness::Audit;
 
@@ -40,9 +50,9 @@ const MEASURE_FRAMES: usize = 256;
 /// the tree that bench times, not a smaller stand-in whose quieter
 /// caches prove less.
 ///
-/// Coverage stops where `Ui::frame` does, at damage. The encode and
-/// compose passes need a `Frontend`; the gate below runs them as part of
-/// a whole frame, and `fixtures/renderer.rs` audits them directly.
+/// Coverage stops where `Ui::frame` does, at damage — the encode and
+/// compose passes need a device, so no fixture reaches them and the two
+/// gates below are where they are measured.
 #[test]
 fn full_tree_cpu_frame_alloc_free() {
     let mut state = FrameFixture::default();
@@ -61,12 +71,71 @@ fn full_tree_cpu_frame_alloc_free() {
 /// palantir-side per-frame allocs on this path.
 const RENDER_BLOCKS_PER_FRAME_MAX: u64 = 35;
 
-/// This gate's own surface and tree, deliberately smaller than the one
-/// above: what it pins is the driver's per-frame floor, which scales
-/// with submissions rather than with node count. A bigger tree would
-/// only make the same number slower to reach.
+/// Surface and tree for both GPU gates, deliberately smaller than the
+/// CPU one above: what the first of them pins is the driver's per-frame
+/// floor, which scales with submissions rather than with node count. A
+/// bigger tree would only make the same number slower to reach.
+///
+/// Shared so the ramp's number reads against the still-tree floor: the
+/// ramp draws this tree plus a row of icons, and what it costs over the
+/// floor is the miss path.
 const RENDER_SURFACE: UVec2 = UVec2::new(1280, 800);
 const RENDER_NODE_SCALE: usize = 6;
+
+/// One offscreen host and the texture it draws into.
+///
+/// Written once because the two gates have to agree on it. A different
+/// format, usage or clear colour on one of them would leave them
+/// measuring different submission work, and the difference between their
+/// numbers is the whole point of the second one.
+#[derive(Debug)]
+struct OffscreenTarget {
+    host: OffscreenHost,
+    texture: wgpu::Texture,
+}
+
+impl OffscreenTarget {
+    /// The public offscreen path always copies from its backbuffer, so
+    /// what both gates pin excludes the direct-present path.
+    fn new(gpu: &HeadlessTestGpuLease, label: &str) -> Self {
+        let mut host = OffscreenHost::builder(gpu.device.clone(), gpu.queue.clone()).build();
+        host.ui().theme_mut().window_clear = Color::TRANSPARENT;
+        let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some(label),
+            size: wgpu::Extent3d {
+                width: RENDER_SURFACE.x,
+                height: RENDER_SURFACE.y,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::COPY_DST
+                | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        });
+        Self { host, texture }
+    }
+
+    /// One frame at the bench dpr, drained before it returns.
+    ///
+    /// Draining here is what puts GPU execution inside the frame that
+    /// submitted it instead of the next one's window. The dpr is not a
+    /// parameter because the two gates share it deliberately — see
+    /// [`RENDER_SURFACE`].
+    fn frame(&mut self, gpu: &HeadlessTestGpuLease, record: impl FnMut(&mut Ui)) {
+        self.host
+            .frame_offscreen(&self.texture, BENCH_DPR, &mut RecordApp::new(record));
+        gpu.device
+            .poll(wgpu::PollType::Wait {
+                submission_index: None,
+                timeout: None,
+            })
+            .expect("device poll");
+    }
+}
 
 /// **Not** strict zero, and cannot be: every wgpu submission allocates a
 /// `CommandEncoder` Arc, a `CommandBuffer` Arc, the queue's in-flight
@@ -80,48 +149,13 @@ const RENDER_NODE_SCALE: usize = 6;
 #[test]
 fn offscreen_frame_stays_at_driver_floor() {
     let gpu = headless_test_gpu();
-    // The public offscreen path always copies from its backbuffer, so
-    // the floor pinned here excludes the direct-present path.
-    let mut host = OffscreenHost::builder(gpu.device.clone(), gpu.queue.clone()).build();
-    host.ui().theme_mut().window_clear = Color::TRANSPARENT;
-
-    let target = gpu.device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("palantir.alloc_gate.render.target"),
-        size: wgpu::Extent3d {
-            width: RENDER_SURFACE.x,
-            height: RENDER_SURFACE.y,
-            depth_or_array_layers: 1,
-        },
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format: wgpu::TextureFormat::Rgba8UnormSrgb,
-        usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-            | wgpu::TextureUsages::COPY_DST
-            | wgpu::TextureUsages::COPY_SRC,
-        view_formats: &[],
-    });
-
+    let mut target = OffscreenTarget::new(&gpu, "palantir.alloc_gate.render.target");
     let mut state = FrameFixture::default();
     let report = Audit::new()
         .warmup(WARMUP_FRAMES)
         .frames(MEASURE_FRAMES)
         .budget(RENDER_BLOCKS_PER_FRAME_MAX)
-        .run_frames(|| {
-            host.frame_offscreen(
-                &target,
-                BENCH_DPR,
-                &mut RecordApp::new(|ui| state.render(RENDER_NODE_SCALE, ui)),
-            );
-            // Draining here is what puts GPU execution inside the frame
-            // that submitted it instead of the next one's window.
-            gpu.device
-                .poll(wgpu::PollType::Wait {
-                    submission_index: None,
-                    timeout: None,
-                })
-                .expect("device poll");
-        });
+        .run_frames(|| target.frame(&gpu, |ui| state.render(RENDER_NODE_SCALE, ui)));
 
     // A gate that reads zero has stopped measuring, and only the number
     // says so.
@@ -129,5 +163,116 @@ fn offscreen_frame_stays_at_driver_floor() {
         report.worst > 0,
         "counted no allocation at all across {MEASURE_FRAMES} frames — the wgpu \
          submission path allocates, so this gate is no longer watching it",
+    );
+}
+
+/// One `16×16` box, so what the rasterizer spends is the SVG pipeline
+/// rather than the drawing in it.
+const RAMP_ICON_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect width="16" height="16" rx="3" fill="#fff"/></svg>"##;
+
+/// Icons the ramp draws. Enough that a per-raster regression reads as a
+/// multiple rather than as noise, few enough that the glyph side still
+/// dominates the frame the way a real UI does.
+const RAMP_ICONS: u16 = 5;
+
+/// Frames the ramp measures, one raster rung each.
+///
+/// Short on purpose. The zoom carries content off the surface as it
+/// climbs, so the glyph count per frame falls with it: measured over 384
+/// frames the worst frame is the same one but the mean drops from 478 to
+/// 334, which is 320 frames of measuring less and less. The costly frames
+/// are the early ones, and this window is the ones that hold the whole
+/// tree.
+const RAMP_FRAMES: usize = 64;
+
+/// Per-frame ceiling for the ramp, against a measured worst frame of
+/// 553 and a mean of 478.
+///
+/// **Not zero, and it cannot be.** Every frame here misses every glyph
+/// and every icon it draws: swash hands back an owning
+/// `GlyphImage { data: Vec<u8> }` per glyph, the SVG rasterizer builds a
+/// tree per icon, and both atlases take an insert. That floor belongs to
+/// the dependencies rather than to palantir, and the headroom above it is
+/// for the platform fallback faces, which differ per machine and so
+/// change how many glyphs a run resolves to.
+///
+/// What it pins is the *per-miss* cost. A regression that allocated once
+/// more per glyph would lift this by the glyph count, and the audit
+/// checks every frame on its own, so it fails on the frame that did it
+/// with that frame's backtraces attached. Fixing the swash allocation
+/// would move the number the other way, and the number is meant to follow
+/// it down.
+///
+/// **What it does not reach is atlas pressure.** Eviction needs the mask
+/// side full, and a zoom that climbs far enough to fill it has already
+/// carried most of the tree off the surface — so this ramp exercises
+/// growth and the miss path, not the re-rasterize cascade
+/// `RasterAtlas::evict_one` describes.
+const RAMP_BLOCKS_PER_FRAME_MAX: u64 = 700;
+
+/// A continuous zoom: the raster scale steps one [`TEXT_SCALE_STEP`] rung
+/// a frame, so every glyph and every icon on screen resolves to a key
+/// neither atlas holds.
+///
+/// The gap this closes. Every other audit in the suite paints at a fixed
+/// scale, so its glyphs and icons are rasterized during warmup and hit
+/// for the rest of the run — leaving `rasterize_and_insert`, the SVG
+/// rasterizer, both atlases' insert paths and the encoded-run cache's
+/// miss path outside every measured window. A moving scale also damages
+/// the whole surface every frame, so this is the one audit that encodes
+/// and composes a full tree rather than an empty damage region.
+///
+/// The warmup ramps too. Stopping the zoom to warm up would hand the
+/// window a full set of hits and measure the steady state twice.
+#[test]
+fn scale_ramp_rasterizes_at_a_flat_cost_per_frame() {
+    let gpu = headless_test_gpu();
+    let mut target = OffscreenTarget::new(&gpu, "palantir.alloc_gate.scale_ramp.target");
+
+    let atlas = Rc::new(IconAtlas::from_svgs([("chip", RAMP_ICON_SVG)]));
+    let chip = IconId(0);
+    let mut held: Option<IconSet> = None;
+    let mut state = FrameFixture::default();
+    let mut zoom = 1.0f32;
+
+    let report = Audit::new()
+        .warmup(WARMUP_FRAMES)
+        .frames(RAMP_FRAMES)
+        .budget(RAMP_BLOCKS_PER_FRAME_MAX)
+        .run_frames(|| {
+            zoom += TEXT_SCALE_STEP;
+            target.frame(&gpu, |ui| {
+                // Parked across frames, so re-loading is a refcount bump
+                // and the set's rasters are never unloaded.
+                let icons = held.insert(ui.load_icons(Rc::clone(&atlas)));
+                Panel::vstack()
+                    .auto_id()
+                    .size((Sizing::FILL, Sizing::FILL))
+                    .transform(TranslateScale::from_scale(zoom))
+                    .show(ui, |ui| {
+                        Grid::new()
+                            .id_salt("icons")
+                            .cols([Track::hug(); RAMP_ICONS as usize])
+                            .rows([Track::hug()])
+                            .show(ui, |ui| {
+                                for c in 0..RAMP_ICONS {
+                                    Panel::zstack().id_salt(c).grid_cell((0, c)).show(ui, |ui| {
+                                        ui.add_shape(icons.shape(chip));
+                                    });
+                                }
+                            });
+                        state.render(RENDER_NODE_SCALE, ui);
+                    });
+            });
+        });
+
+    // A ramp that stopped missing would read as the still-tree gate above
+    // and pin nothing this one exists for.
+    assert!(
+        report.worst > RENDER_BLOCKS_PER_FRAME_MAX,
+        "counted {} blocks on the worst frame, no more than the still-tree floor \
+         of {RENDER_BLOCKS_PER_FRAME_MAX} — the ramp is no longer missing, so this \
+         gate is not watching the rasterization path",
+        report.worst,
     );
 }
