@@ -131,10 +131,6 @@ pub(super) struct GpuTimings {
     /// Cached `queue.get_timestamp_period()` (ticks → ns).
     period_ns: f32,
     inner: Inner,
-    /// Shared sink for resolved samples. Backend owns the canonical
-    /// `GpuPassStats` and clones a handle in here; consumers (Ui debug
-    /// overlay, benches) hold their own clones of the same handle.
-    sink: GpuPassStats,
 }
 
 impl GpuTimings {
@@ -143,7 +139,6 @@ impl GpuTimings {
         period_ns: f32,
         inside_passes: bool,
         pipeline_stats: bool,
-        sink: GpuPassStats,
     ) -> Self {
         // Timestamp query set sized for the more permissive mode.
         // Basic mode only uses indices 0 and 1, but the over-allocation
@@ -212,7 +207,6 @@ impl GpuTimings {
                 current_kind: Cell::new(None),
                 segment_kinds: RefCell::new(Vec::with_capacity(MAX_TIMESTAMPS as usize)),
             },
-            sink,
         }
     }
 
@@ -355,7 +349,7 @@ impl GpuTimings {
     /// written slot, polls the device so prior `map_async` callbacks
     /// fire, and publishes any slot whose readback has landed into
     /// [`GpuPassStats`].
-    pub(super) fn after_submit(&mut self, device: &wgpu::Device) {
+    pub(super) fn after_submit(&mut self, device: &wgpu::Device, sink: &GpuPassStats) {
         if let Some(slot_idx) = self.pending_slot.take() {
             let map_state = self.slots[slot_idx].map_state.clone();
             map_state.store(0, Release);
@@ -388,7 +382,7 @@ impl GpuTimings {
             if mappings_failed(state) {
                 discard_slot(slot, state);
             } else {
-                consume_slot(slot, self.period_ns, &self.sink);
+                consume_slot(slot, self.period_ns, sink);
             }
             slot.map_state.store(0, Release);
             slot.in_flight = false;

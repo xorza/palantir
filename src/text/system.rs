@@ -114,10 +114,11 @@ impl TextSystem {
     /// the clock tick below directly — `FrameCycle::run` takes it through
     /// [`TextShaper::tick_frame`](crate::TextShaper).
     ///
-    /// This is also where the shared text frame clock ticks — the one
-    /// the renderer's glyph atlas and encoded-run cache age against too,
-    /// so every text cache in the crate advances exactly here, once per
-    /// window per recorded frame.
+    /// This is where a *recorded* frame ticks the shared text frame clock
+    /// — the one the renderer's glyph atlas and encoded-run cache age
+    /// against too, so every text cache in the crate advances on one
+    /// reading, once per window per frame. The paint-only arm named above
+    /// is the other half of that "once".
     ///
     /// The empty-`removed` guard is not a micro-optimization.
     /// `HashMap::retain` walks the raw table, so it costs *capacity* —

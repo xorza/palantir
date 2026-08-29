@@ -771,11 +771,27 @@ impl InputState {
     /// `focused` is deliberately *not* part of this: [`crate::Ui::request_focus`]
     /// can set it mid-record, after the snapshot is taken, so
     /// `response_for` always reads it live — even on the fast path.
+    ///
+    /// **The pointer test carries the routed targets with it.**
+    /// [`Self::refresh_pointer_targets`] is the only writer of `hovered`
+    /// / `scroll_target` / `pinch_target`, and it clears all three
+    /// whenever `pointer_pos` is `None` — so asking each of them again
+    /// asks a question the first test already answered.
+    ///
+    /// It also means the fast path opens only while the pointer is off
+    /// the surface. A pointer resting on inert surface still routes
+    /// nothing, but it holds a position, so every widget takes the long
+    /// probe that frame.
     fn snapshot_frame_quiescent(&mut self) {
+        debug_assert!(
+            self.pointer_pos.is_some()
+                || (self.hovered.is_none()
+                    && self.scroll_target.is_none()
+                    && self.pinch_target.is_none()),
+            "a routed target outlived the pointer, so `pointer_pos.is_none()` \
+             no longer answers for it",
+        );
         self.frame_quiescent = self.pointer_pos.is_none()
-            && self.hovered.is_none()
-            && self.scroll_target.is_none()
-            && self.pinch_target.is_none()
             && self.frame_target_deltas.is_empty()
             && self
                 .captures
