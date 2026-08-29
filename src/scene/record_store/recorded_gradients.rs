@@ -22,7 +22,7 @@ pub(crate) struct RecordedGradients {
 
 impl RecordedGradients {
     pub(crate) fn intern(&mut self, content_hash: u64, gradient: RecordedGradient) -> GradientId {
-        self.index.reserve(self.records.len() + 1);
+        self.index.widen_for(self.records.len() + 1);
         if let Some(id) = self.index.get(content_hash)
             && self.records[id.0 as usize] == gradient
         {
@@ -116,13 +116,13 @@ impl GradientIndex {
     fn at(&self, content_hash: u64) -> usize {
         debug_assert!(
             !self.slots.is_empty(),
-            "the gradient index is read only after `reserve` sized it",
+            "the gradient index is read only after `widen_for` sized it",
         );
         content_hash as usize & (self.slots.len() - 1)
     }
 
     /// Widen to index `records` records at [`SLOTS_PER_RECORD`], unless
-    /// it already does.
+    /// the table already does.
     ///
     /// The widened table starts empty. Nothing here can carry the old
     /// hints across, because a record does not keep the hash it was
@@ -131,7 +131,7 @@ impl GradientIndex {
     /// a collision costs and which this index already treats as the
     /// acceptable outcome. The next frame indexes at the new width from
     /// its first gradient.
-    fn reserve(&mut self, records: usize) {
+    fn widen_for(&mut self, records: usize) {
         let want = (records * SLOTS_PER_RECORD)
             .max(MIN_SLOTS)
             .next_power_of_two();

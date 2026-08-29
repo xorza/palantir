@@ -32,8 +32,9 @@ use crate::text::key::TextShapeKey;
 use crate::text::request::TextShapeRequest;
 use crate::text::root::TextRoot;
 use crate::text::wrap::{LineFit, WrapFloor};
-use crate::text::{FontFamily, FontWeight};
-use crate::text::{RENDERED_RUN_KEEP_FRAMES, RENDERED_RUN_KEEP_SPREAD_MASK};
+use crate::text::{
+    FontFamily, FontWeight, RENDERED_RUN_KEEP_FRAMES, RENDERED_RUN_KEEP_SPREAD_MASK,
+};
 use cosmic_text::{
     Align as CosmicAlign, Attrs, Buffer, CacheKeyFlags, Family, FontSystem, Metrics, Shaping,
     SwashCache, Weight, fontdb,
@@ -131,9 +132,9 @@ pub(super) const PROBATION_KEEP_FRAMES: u64 = 4;
 /// cache stays under rather than one it shares is stated there.
 pub(super) const PROTECTED_KEEP_FRAMES: u64 = RENDERED_RUN_KEEP_FRAMES;
 
-/// Extra frames a protected entry keeps, masked out of its own
-/// `text_hash` — so the window is `PROTECTED_KEEP_FRAMES ..= + this`
-/// rather than a single frame.
+/// Extra frames a protected entry keeps, masked out of its own key — so
+/// the window is `PROTECTED_KEEP_FRAMES ..= + this` rather than a single
+/// frame.
 ///
 /// The name cosmic's policy reads
 /// [`crate::text::RENDERED_RUN_KEEP_SPREAD_MASK`] under, beside

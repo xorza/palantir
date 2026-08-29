@@ -101,10 +101,10 @@ fn gradient_interner_confirms_equality_across_hash_collisions_and_clears() {
     assert_eq!(gradients.records.len(), 1);
 }
 
-/// The index widens with the frame's gradient count, and the widening
-/// costs dedup only until the next reset. Distinct low bits, so every
-/// key lands in a slot of its own and nothing here is testing collision
-/// behaviour by accident.
+/// Dedup holds at every width the index takes, including the ones it
+/// passes through while widening mid-frame. Keys are distinct small
+/// integers, so each lands in a slot of its own and nothing here
+/// exercises collision behaviour by accident.
 #[test]
 fn gradient_interner_dedups_at_every_table_width() {
     const COUNT: u64 = 200;
