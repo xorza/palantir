@@ -176,6 +176,20 @@ pub(super) enum PresentMode {
     ViaBackbuffer(RenderPlan),
 }
 
+impl PresentMode {
+    /// Whether a frame in this mode *renders* through the retained
+    /// backbuffer.
+    ///
+    /// The mirror is the whole difference between the two painting modes —
+    /// which one the submission carries, and what `backbuffer_fresh` then
+    /// records — so both read it from here rather than each spelling out
+    /// its own `Submission`. `SkipCopy` reads the backbuffer and renders
+    /// nothing, so it is not one of them.
+    fn renders_via_backbuffer(self) -> bool {
+        matches!(self, Self::ViaBackbuffer(_))
+    }
+}
+
 /// Coverage fraction above which [`PresentStrategy::DirectAdaptive`] promotes a
 /// `Partial` to a direct full repaint instead of painting just the damage region
 /// into the backbuffer and copying out. Read against the region's sealed
@@ -269,6 +283,11 @@ impl WindowDriverBuilder<'_> {
         self
     }
 
+    /// Takes the box rather than `impl Clock`, unlike the public setter
+    /// that feeds it: every caller has already boxed one, and a second
+    /// `impl Clock` here would box that box — an extra indirection on a
+    /// value `cpu_frame` reads once a frame, for no gain but a matching
+    /// signature.
     pub(super) fn clock(mut self, clock: Box<dyn Clock>) -> Self {
         self.clock = clock;
         self
@@ -346,9 +365,24 @@ impl WindowDriver {
             return false;
         }
         self.target = Some(key);
+        self.invalidate_target_contents();
+        true
+    }
+
+    /// Declare that whatever the target held is gone: the retained pixels
+    /// and the damage baseline both described contents that no longer
+    /// exist.
+    ///
+    /// **Every `surface.configure` owes this call.** [`Self::note_target`]
+    /// makes it when the key moves, and the winit host makes it on the
+    /// arms that reconfigure a lost or suboptimal swapchain — where the
+    /// images are new even though the key did not move. Those arms were
+    /// correct only because `finish_cpu_frame` had already cleared
+    /// `output_valid` on any frame that painted, which is a coupling
+    /// nothing stated and nothing would have caught breaking.
+    pub(super) fn invalidate_target_contents(&mut self) {
         self.output_valid = false;
         self.backbuffer_fresh = false;
-        true
     }
 
     /// The shared CPU half: app lifecycle → record / measure / arrange /
@@ -512,15 +546,35 @@ impl WindowDriver {
                 backend.copy_backbuffer_to_surface(bb, target);
                 self.output_valid = true;
             }
-            // Full repaint straight into the target — no backbuffer at all, so
-            // it goes stale: the next partial must resync it first.
-            PresentMode::Direct(plan) => {
+            // A direct repaint goes straight into the target and leaves the
+            // mirror stale, so the next partial resyncs it first; one through
+            // the backbuffer leaves it holding what the target holds.
+            PresentMode::Direct(plan) | PresentMode::ViaBackbuffer(plan) => {
+                let backbuffer = if mode.renders_via_backbuffer() {
+                    let recreated =
+                        backend.ensure_backbuffer(&mut self.backbuffer, size, target.format());
+                    // A Partial reaches here un-escalated only when
+                    // `backbuffer_fresh` — last frame rendered into the
+                    // backbuffer at this size/format — so a recreate under
+                    // Partial means the freshness invariant broke. Escalating
+                    // here couldn't fix it: the draw list was already
+                    // Partial-culled in `cpu_frame`.
+                    debug_assert!(
+                        !recreated || matches!(plan.kind, RenderKind::Full),
+                        "backbuffer (re)created under a Partial plan whose draw \
+                         list was culled for Partial"
+                    );
+                    self.backbuffer.as_ref()
+                } else {
+                    None
+                };
+                self.backbuffer_fresh = backbuffer.is_some();
                 let payloads = self.ui.payloads();
                 backend.submit(Submission {
                     owner: self.render_owner,
                     targets: SubmissionTargets {
                         surface: target,
-                        backbuffer: None,
+                        backbuffer,
                         stencil: stencil_view,
                     },
                     payloads: &payloads,
@@ -528,38 +582,6 @@ impl WindowDriver {
                     plan,
                     debug_overlay,
                 });
-                self.backbuffer_fresh = false;
-                self.output_valid = true;
-            }
-            // Render into the backbuffer and copy it out; the backbuffer now
-            // mirrors the target.
-            PresentMode::ViaBackbuffer(plan) => {
-                let recreated =
-                    backend.ensure_backbuffer(&mut self.backbuffer, size, target.format());
-                // A Partial reaches here un-escalated only when
-                // `backbuffer_fresh` — last frame rendered into the backbuffer
-                // at this size/format — so a recreate under Partial means the
-                // freshness invariant broke. Escalating here couldn't fix it:
-                // the draw list was already Partial-culled in `cpu_frame`.
-                debug_assert!(
-                    !recreated || matches!(plan.kind, RenderKind::Full),
-                    "backbuffer (re)created under a Partial plan whose draw \
-                     list was culled for Partial"
-                );
-                let payloads = self.ui.payloads();
-                backend.submit(Submission {
-                    owner: self.render_owner,
-                    targets: SubmissionTargets {
-                        surface: target,
-                        backbuffer: self.backbuffer.as_ref(),
-                        stencil: stencil_view,
-                    },
-                    payloads: &payloads,
-                    buffer,
-                    plan,
-                    debug_overlay,
-                });
-                self.backbuffer_fresh = true;
                 self.output_valid = true;
             }
         }

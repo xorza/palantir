@@ -48,7 +48,10 @@ pub enum WinitHostError {
         source: winit::error::OsError,
     },
     /// Wgpu could not create a presentation surface for a native window.
-    CreateSurface { source: wgpu::CreateSurfaceError },
+    CreateSurface {
+        token: WindowToken,
+        source: wgpu::CreateSurfaceError,
+    },
     /// Asking the driver for a device failed — the same four ways it fails
     /// for every host, so the same enum describes them.
     Gpu { source: GpuRequestError },
@@ -71,8 +74,8 @@ impl Display for WinitHostError {
             Self::CreateWindow { token, source } => {
                 write!(f, "failed to create window {token:?}: {source}")
             }
-            Self::CreateSurface { source } => {
-                write!(f, "failed to create window surface: {source}")
+            Self::CreateSurface { token, source } => {
+                write!(f, "failed to create surface for window {token:?}: {source}")
             }
             Self::Gpu { source } => Display::fmt(source, f),
             Self::IncompatibleSurface => {
@@ -104,7 +107,7 @@ impl Error for WinitHostError {
         match self {
             Self::CreateEventLoop { source } | Self::RunEventLoop { source } => Some(source),
             Self::CreateWindow { source, .. } => Some(source),
-            Self::CreateSurface { source } => Some(source),
+            Self::CreateSurface { source, .. } => Some(source),
             // The inner's own source, skipping the inner itself. This
             // variant adds no words of its own — its `Display` forwards —
             // so chaining it would print the identical sentence twice.

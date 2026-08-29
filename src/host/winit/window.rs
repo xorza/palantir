@@ -246,6 +246,19 @@ impl Window {
         self.frame_set.mark();
     }
 
+    /// Rebuild the swapchain and tell the driver that what it retained
+    /// went with it.
+    ///
+    /// One step, because the images are new: the damage baseline and the
+    /// last-frame pixels both describe contents that no longer exist. Two
+    /// acquire arms reach here, and an arm that reconfigured without the
+    /// second half was correct only by accident — see
+    /// [`WindowDriver::invalidate_target_contents`].
+    fn reconfigure(&mut self, surfaces: &SurfaceManager) {
+        surfaces.configure(&self.surface, &self.config);
+        self.driver.invalidate_target_contents();
+    }
+
     fn present(
         &mut self,
         surfaces: &SurfaceManager,
@@ -284,12 +297,12 @@ impl Window {
                 Suboptimal(frame) => {
                     tracing::warn!("surface acquire: suboptimal");
                     drop(frame);
-                    surfaces.configure(&self.surface, &self.config);
+                    self.reconfigure(surfaces);
                     true
                 }
                 Outdated | Lost => {
                     tracing::warn!("surface acquire: outdated / lost");
-                    surfaces.configure(&self.surface, &self.config);
+                    self.reconfigure(surfaces);
                     true
                 }
                 Timeout => {
@@ -347,11 +360,13 @@ impl Window {
     /// choice standing rather than flatten it to `AutoNoVsync`.
     ///
     /// The reconfigure itself is left to the next frame's [`TargetKey`] check
-    /// rather than done here: that check is the one gate on the retained
-    /// target state, and recreating the swapchain invalidates it (the images
-    /// are new, so the damage baseline and last-frame pixels describe
-    /// nothing). Doing it here would reconfigure behind the gate's back and
-    /// leave the next partial repaint loading contents that no longer exist.
+    /// rather than done here. Recreating a swapchain invalidates the retained
+    /// target state — the images are new, so the damage baseline and the
+    /// last-frame pixels describe nothing — and doing it here would apply the
+    /// new mode while `target` still named the old configuration, so the next
+    /// key check would see no change and skip the reconfigure this asked for.
+    /// (`WindowDriver::invalidate_target_contents` is what any configure owes
+    /// the retained state, wherever it happens.)
     ///
     /// Hence the forced repaint: an idle window schedules no next frame, so
     /// without it the change would sit in `config` until something else
