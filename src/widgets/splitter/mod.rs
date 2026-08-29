@@ -7,7 +7,7 @@ use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
 use crate::primitives::approx;
 use crate::primitives::background::Background;
-use crate::primitives::num;
+use crate::primitives::num::F32Ext;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::Node;
 use crate::scene::node::configure::Configure;
@@ -239,14 +239,12 @@ fn arranged_pane_ratio(
     (!approx::noop_f32(span)).then(|| sanitize_ratio(first_extent / span))
 }
 
-/// A caller-supplied ratio, made safe to use as a `Fill` weight:
-/// non-finite pins to center, everything else clamps to `0..1`.
+/// A caller-supplied ratio, made safe to use as a `Fill` weight. The
+/// same screen `Sizing::split` applies, under this widget's own neutral:
+/// a splitter with no ratio to honour opens centred, where a progress
+/// bar with none reads empty.
 fn sanitize_ratio(r: f32) -> f32 {
-    if r.is_finite() {
-        r.clamp(0.0, 1.0)
-    } else {
-        0.5
-    }
+    r.unit_fraction_or(0.5)
 }
 
 /// Map a container-local pointer coordinate on the split axis to the
@@ -263,7 +261,8 @@ fn pointer_to_ratio(pos: f32, extent: f32, reserved: f32, min_pane: f32) -> f32 
     // `floor <= 0.5` by construction, so the clamp can't invert even
     // when `2 * min_pane > span` — it collapses to the centre instead.
     let floor = (min_pane / span).min(0.5);
-    num::band_fraction(pos, extent, reserved).clamp(floor, 1.0 - floor)
+    pos.band_fraction(extent, reserved)
+        .clamp(floor, 1.0 - floor)
 }
 
 #[cfg(test)]

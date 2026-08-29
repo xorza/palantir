@@ -75,10 +75,18 @@ fn text_shape_key_validity_is_tagged_by_text_hash() {
     assert!(zero_hash.is_invalid());
 }
 
+/// A face the shaper cannot be asked for measures to nothing, and the
+/// run never reaches a dispatch.
+///
+/// `TextShapeRequest::unbounded` is the one screen, so this is the same
+/// answer empty text gets: an invalid key and a zero extent. It has to
+/// be an answer rather than a panic because `GlyphFont` is public and a
+/// caller fills it — `Ui::probe_text` and `TextGlyphs` take one straight
+/// from application arithmetic.
 #[test]
-fn invalid_metrics_panic_before_any_shaping_dispatch() {
+fn invalid_metrics_measure_to_nothing_without_a_shaping_dispatch() {
     use crate::primitives::approx::EPS;
-    use std::panic::{AssertUnwindSafe, catch_unwind};
+    use crate::primitives::size::Size;
 
     let cases = [
         ("zero font", 0.0, 16.0),
@@ -100,9 +108,11 @@ fn invalid_metrics_panic_before_any_shaping_dispatch() {
         let params = shape(font_size_px).leading(line_height_px);
         for shaper in [&mono, &cosmic] {
             let calls = shaper.measure_calls();
+            let shaped = shaper.measure("hi", params);
+            assert_eq!(shaped.measured, Size::ZERO, "{label}: must measure nothing");
             assert!(
-                catch_unwind(AssertUnwindSafe(|| shaper.measure("hi", params))).is_err(),
-                "{label}: invalid metrics must panic at request construction",
+                shaped.key.is_invalid(),
+                "{label}: an unshaped run carries no buffer key",
             );
             assert_eq!(
                 shaper.measure_calls(),
@@ -136,7 +146,7 @@ fn identity_cache_rejects_invalid_metrics_before_dispatch() {
     .is_err();
     assert!(
         panicked,
-        "invalid metrics must panic at request construction"
+        "the layout-side fixture must refuse to build a request for an unusable face",
     );
     assert!(
         !text.has_entry(widget_id, 0),
@@ -150,9 +160,7 @@ fn identity_cache_rejects_invalid_metrics_before_dispatch() {
 }
 
 #[test]
-fn bounded_width_canonicalizes_and_rejects_non_finite_values() {
-    use std::panic::{AssertUnwindSafe, catch_unwind};
-
+fn bounded_width_canonicalizes_and_leaves_non_finite_values_unbound() {
     let base = shape(16.0).leading(19.2);
     let shaper = TextShaper::new();
     let unbounded = shaper.measure("hi", base);
@@ -169,18 +177,18 @@ fn bounded_width_canonicalizes_and_rejects_non_finite_values() {
     // Negative widths (over-constrained layouts) clamp to the zero-width key.
     let negative = shaper.measure("hi", base.width(-1.0));
     assert_eq!(negative.key, zero.key);
+    // A width that names no width binds nothing, so the run keeps the
+    // unbounded shape it would have had with no width at all. Answered
+    // rather than rejected because `TextRun::max_width_px` is a public
+    // field a caller derives from an arranged rect.
     for (label, width) in [
         ("NaN", f32::NAN),
         ("positive infinity", f32::INFINITY),
         ("negative infinity", f32::NEG_INFINITY),
     ] {
-        let params = base.width(width);
-        let calls = shaper.measure_calls();
-        assert!(
-            catch_unwind(AssertUnwindSafe(|| shaper.measure("hi", params))).is_err(),
-            "{label}: non-finite width must panic at request construction",
-        );
-        assert_eq!(shaper.measure_calls(), calls, "{label}");
+        let bound = shaper.measure("hi", base.width(width));
+        assert_eq!(bound.key, unbounded.key, "{label}: must stay unbounded");
+        assert_eq!(bound.measured, unbounded.measured, "{label}");
     }
 }
 

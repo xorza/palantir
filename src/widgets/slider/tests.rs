@@ -124,9 +124,17 @@ fn explicit_size_overrides_fill_default() {
     assert_eq!((d.size.w, d.size.h), (400.0, 18.0), "untouched default");
 }
 
+/// Each endpoint collapses one rail to a zero-extent `Fixed`, and an
+/// unseeded value lays out as the low end rather than reaching
+/// `Sizing::share`'s finite assert — the value is app state the widget
+/// borrows and cannot assert on.
 #[test]
 fn endpoint_rails_collapse_without_invalid_fill_weights() {
-    for (value, expected) in [(0.0, [0.0, 18.0, 102.0]), (1.0, [102.0, 18.0, 0.0])] {
+    for (value, expected) in [
+        (0.0, [0.0, 18.0, 102.0]),
+        (1.0, [102.0, 18.0, 0.0]),
+        (f32::NAN, [0.0, 18.0, 102.0]),
+    ] {
         let mut h = UiHarness::new(UVec2::new(120, 30));
         let mut value = value;
         let root = h.frame_value(|ui| {
@@ -161,6 +169,19 @@ fn value_to_fraction_maps_and_clamps() {
         assert!(
             (got - want).abs() < 1e-6,
             "v2f({v},{min},{max})={got} want {want}"
+        );
+    }
+    // A NaN anywhere in the triple has no fraction to report. This
+    // answers one rather than guarding, because `Sizing::split` is the
+    // gate that makes the answer safe to lay out with.
+    for (v, min, max) in [
+        (f32::NAN, 0.0, 100.0),
+        (50.0, f32::NAN, 100.0),
+        (50.0, 0.0, f32::NAN),
+    ] {
+        assert!(
+            value_to_fraction(v, min, max).is_nan(),
+            "v2f({v},{min},{max}) must report no fraction",
         );
     }
 }

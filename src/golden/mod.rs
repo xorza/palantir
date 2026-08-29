@@ -51,6 +51,21 @@ impl Tolerance {
         let (w, h) = actual.dimensions();
         let mut diff_image = RgbaImage::new(w, h);
 
+        // A pair covering no pixels differs nowhere, and the scan below
+        // cannot be asked about one: `par_chunks_exact` rejects a
+        // zero-length chunk, so a zero-width image panics inside rayon
+        // rather than reporting anything. A zero-*height* one reaches the
+        // end and divides by no pixels. One early answer covers both.
+        if w == 0 || h == 0 {
+            return DiffReport {
+                max_channel_delta: 0,
+                differing_pixels: 0,
+                differing_ratio: 0.0,
+                diff_image,
+                tolerance: self,
+            };
+        }
+
         let row_bytes = w as usize * 4;
         let per_channel = self.per_channel;
         let totals = actual
@@ -61,10 +76,13 @@ impl Tolerance {
             .map(|((a_row, e_row), d_row)| RowStats::scan_row(a_row, e_row, d_row, per_channel))
             .reduce(RowStats::default, RowStats::merge);
 
+        // `u64` because the product overflows `u32` past 65 536², and the
+        // divisor is nonzero by the guard above.
+        let pixels = u64::from(w) * u64::from(h);
         DiffReport {
             max_channel_delta: totals.max_delta,
             differing_pixels: totals.differing,
-            differing_ratio: totals.differing as f32 / (w * h) as f32,
+            differing_ratio: totals.differing as f32 / pixels as f32,
             diff_image,
             tolerance: self,
         }

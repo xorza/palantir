@@ -41,9 +41,21 @@ fn explicit_size_overrides_fill_default() {
     assert_eq!((d.size.w, d.size.h), (400.0, 6.0), "untouched default");
 }
 
+/// Both endpoints collapse one segment to a zero-extent `Fixed` rather
+/// than a zero-weight `Fill`, and a fraction that names no share reads as
+/// empty instead of reaching `Sizing::share`'s finite assert —
+/// `ProgressBar::new(done / total)` with `total == 0` is the case app
+/// code writes without thinking.
 #[test]
 fn endpoint_segments_collapse_without_invalid_fill_weights() {
-    for (fraction, expected) in [(0.0, [0.0, 100.0]), (1.0, [100.0, 0.0])] {
+    for (fraction, expected) in [
+        (0.0, [0.0, 100.0]),
+        (1.0, [100.0, 0.0]),
+        (f32::NAN, [0.0, 100.0]), // what `done / total` yields at total 0
+        (f32::INFINITY, [0.0, 100.0]),
+        (-1.0, [0.0, 100.0]),
+        (2.0, [100.0, 0.0]),
+    ] {
         let mut h = UiHarness::new(UVec2::new(100, 20));
         let root = h.frame_value(|ui| {
             ProgressBar::new(fraction)

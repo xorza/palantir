@@ -7,20 +7,22 @@ use crate::text::key::{TextShapeKey, WrapBound};
 
 /// Source text paired with its canonical shaping parameters.
 ///
-/// **The crate's one empty-text boundary.** A run with no bytes shapes
-/// nothing and mints no buffer, so there is no request to make of the
-/// shaper: both constructors answer `None` for it, and the fields are
-/// private so nothing can assemble one around them. Every layer past this
-/// type therefore holds text it can shape, which is why none of them —
-/// the reuse slots, the dispatch, either measurer — carries a guard of
-/// its own.
+/// **The crate's one nothing-to-shape boundary.** A run with no bytes,
+/// or one whose face names no size the shaper can be asked for, shapes
+/// nothing and mints no buffer, so there is no request to make: both
+/// constructors answer `None` for it, and the fields are private so
+/// nothing can assemble one around them. Every layer past this type
+/// therefore holds a run it can shape, which is why none of them — the
+/// reuse slots, the dispatch, either measurer, the shape key's own
+/// metric assert — carries a guard of its own.
 ///
-/// Only two things still meet an empty run, and both are crate edges with
-/// an answer of their own rather than a layer to hop through:
+/// Only two things still meet a run with nothing to shape, and both are
+/// crate edges with an answer of their own rather than a layer to hop
+/// through:
 /// [`TextShaper::layout`](crate::text::shaper::TextShaper::layout) mints
 /// an empty probe, and [`TextGlyphs`](crate::TextGlyphs) reports no
 /// glyphs. Recorded runs never reach either — `TextShape::is_noop` drops
-/// an empty one before it becomes a `ShapeRecord`.
+/// both cases before they become a `ShapeRecord`.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct TextShapeRequest<'a> {
     pub(super) text: &'a str,
@@ -28,16 +30,20 @@ pub(crate) struct TextShapeRequest<'a> {
 }
 
 impl<'a> TextShapeRequest<'a> {
-    /// Metrics were validated at record time; invalid values here are a
-    /// logic error, debug-asserted by [`TextShapeKey::unbounded`].
+    /// **Where a face is screened.** `font` reaches here straight off a
+    /// public [`TextRun`](crate::TextRun) or
+    /// [`TextGlyphs`](crate::TextGlyphs) call as often as it does off a
+    /// recorded shape, so the screen belongs at the boundary both cross
+    /// rather than at record time only — an unusable size would otherwise
+    /// quantize to a 1/64-px face and shape against it.
     ///
     /// Hashes `text` itself. A caller holding the hash already — layout
     /// retains one per recorded run — mints the key and pairs it through
     /// [`Self::for_key`] rather than paying for it twice.
     ///
-    /// `None` for empty text — see the type docs.
+    /// `None` for empty text or an unusable face — see the type docs.
     pub(crate) fn unbounded(text: &'a str, font: GlyphFont) -> Option<Self> {
-        (!text.is_empty()).then(|| Self {
+        (!text.is_empty() && font.metrics_valid()).then(|| Self {
             text,
             key: TextShapeKey::unbounded(hash::hash_str(text), font),
         })
@@ -54,7 +60,8 @@ impl<'a> TextShapeRequest<'a> {
     /// (`ShapedTextRef::new` checks the same pairing against a *recorded*
     /// hash, which costs no re-read; this is the one that reads.)
     ///
-    /// `None` for empty text — see the type docs.
+    /// `None` for empty text — see the type docs. The face is already
+    /// screened: it is what minted the key.
     pub(crate) fn for_key(text: &'a str, key: TextShapeKey) -> Option<Self> {
         debug_assert_eq!(
             key.text_hash,
@@ -135,12 +142,13 @@ pub(crate) mod test_support {
     }
 
     impl TestShape {
-        /// Fixtures always name text to shape, so the empty-run boundary
-        /// is a wiring bug here rather than a case a test drives — the
-        /// two crate edges that answer one do it in their own tests.
+        /// Fixtures always name text and a usable face, so the
+        /// nothing-to-shape boundary is a wiring bug here rather than a
+        /// case a test drives — the two crate edges that answer one do
+        /// it in their own tests.
         pub(crate) fn unbounded_request<'a>(self, text: &'a str) -> TextShapeRequest<'a> {
             TextShapeRequest::unbounded(text, self.font)
-                .expect("a shaping fixture needs text to shape")
+                .expect("a shaping fixture needs text and a usable face")
         }
     }
 

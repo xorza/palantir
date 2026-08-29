@@ -71,8 +71,12 @@ impl<Rows, Cols> Grid<Rows, Cols> {
     }
 
     /// Uniform gap on both axes. See `gap_xy` for asymmetric gaps.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `g` is negative or non-finite.
     pub fn gap(mut self, g: f32) -> Self {
-        debug_assert!(
+        assert!(
             valid_gap(g),
             "Grid gap must be finite and non-negative, got {g}",
         );
@@ -82,8 +86,12 @@ impl<Rows, Cols> Grid<Rows, Cols> {
     }
 
     /// Asymmetric gaps: `row_gap` between rows, `col_gap` between columns.
+    ///
+    /// # Panics
+    ///
+    /// Panics if either gap is negative or non-finite.
     pub fn gap_xy(mut self, row_gap: f32, col_gap: f32) -> Self {
-        debug_assert!(
+        assert!(
             valid_gap(row_gap) && valid_gap(col_gap),
             "Grid gaps must be finite and non-negative, got row={row_gap}, col={col_gap}",
         );

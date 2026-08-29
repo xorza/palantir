@@ -2,8 +2,16 @@
 //! bound, upper bound and gap passes before the pass math trusts it.
 //!
 //! Named predicates rather than an assert per site, so "a bound layout can
-//! work with" has one definition and a debug build checks the pair in one
-//! call.
+//! work with" has one definition and one call checks a whole pair.
+//!
+//! **Checked in release**, at one strictness for every bound the crate
+//! takes — a node's, a grid track's, a gap's. The pass math downstream
+//! does not survive a bad one quietly: an inverted or NaN pair reaches
+//! `f32::clamp` in `AxisCtx::resolve` and `AxisPlacement::arrange`, which
+//! asserts the same ordering unconditionally and reports it in std's
+//! words, several passes from the setter that took the value. The cost is
+//! a handful of compares in a builder setter the caller reached for
+//! deliberately.
 
 use crate::primitives::size::Size;
 
@@ -29,10 +37,14 @@ pub(crate) const fn valid_packed_gap(value: f32) -> bool {
     valid_gap(value) && value <= MAX_PACKED_GAP
 }
 
+/// # Panics
+///
+/// Panics unless both minimums are finite and non-negative, both maximums
+/// are non-negative, and each minimum is at most its maximum. Positive
+/// infinity is the unbounded maximum.
 #[inline]
-pub(crate) fn debug_assert_valid_bounds(min_size: Size, max_size: Size) {
-    // Builder setters run per widget per frame, so validation compiles out in release.
-    debug_assert!(
+pub(crate) fn assert_valid_bounds(min_size: Size, max_size: Size) {
+    assert!(
         valid_lower_bound(min_size.w)
             && valid_lower_bound(min_size.h)
             && valid_upper_bound(max_size.w)

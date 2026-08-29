@@ -1,4 +1,4 @@
-use crate::primitives::num::{F32Ext, Vec2Ext, band_fraction, unit_to_u8};
+use crate::primitives::num::{F32Ext, Vec2Ext, unit_to_u8};
 use glam::Vec2;
 
 #[test]
@@ -163,7 +163,7 @@ fn band_fraction_offsets_by_half_the_band() {
         (120.0, 1.1),
     ];
     for &(pos, want) in cases {
-        let got = band_fraction(pos, 120.0, 20.0);
+        let got = pos.band_fraction(120.0, 20.0);
         assert!(
             (got - want).abs() < 1e-6,
             "band_fraction({pos}) = {got}, want {want}"
@@ -175,6 +175,38 @@ fn band_fraction_offsets_by_half_the_band() {
 /// share to report.
 #[test]
 fn band_fraction_reports_zero_without_travel() {
-    assert_eq!(band_fraction(15.0, 20.0, 20.0), 0.0);
-    assert_eq!(band_fraction(15.0, 10.0, 20.0), 0.0);
+    assert_eq!(15.0_f32.band_fraction(20.0, 20.0), 0.0);
+    assert_eq!(15.0_f32.band_fraction(10.0, 20.0), 0.0);
+}
+
+/// The screen every caller-supplied share passes: in-range values are
+/// untouched, out-of-range ones clamp to the end they overshot, and a
+/// value that names no share at all takes the caller's neutral rather
+/// than an end.
+///
+/// The infinities matter as much as NaN — `f32::clamp` maps them to an
+/// end, which states a share the caller never meant.
+#[test]
+fn unit_fraction_or_clamps_in_range_and_falls_back_outside_the_finite() {
+    let cases: &[(f32, f32, f32)] = &[
+        (0.0, 0.5, 0.0),
+        (0.25, 0.5, 0.25),
+        (1.0, 0.5, 1.0),
+        (-0.3, 0.5, 0.0),
+        (1.7, 0.5, 1.0),
+        (f32::NAN, 0.5, 0.5),
+        (f32::INFINITY, 0.5, 0.5),
+        (f32::NEG_INFINITY, 0.5, 0.5),
+        // The neutral is the caller's: the same non-finite input reads
+        // as empty for a progress bar and as centred for a splitter.
+        (f32::NAN, 0.0, 0.0),
+        (f32::INFINITY, 1.0, 1.0),
+    ];
+    for &(value, fallback, want) in cases {
+        assert_eq!(
+            value.unit_fraction_or(fallback),
+            want,
+            "unit_fraction_or({value}, {fallback})",
+        );
+    }
 }

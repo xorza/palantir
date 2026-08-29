@@ -2,6 +2,7 @@
 //! `ShapeRecord::Quad(QuadShape::Shadow)`.
 
 use crate::primitives::corners::Corners;
+use crate::primitives::nan::NanCheck;
 use crate::primitives::rect::Rect;
 use crate::primitives::shadow::Shadow;
 use crate::scene::record_store::RecordStore;
@@ -26,6 +27,10 @@ shape_setters!(ShadowShape {
 impl sealed::LowerShape for ShadowShape {
     fn is_noop(&self) -> bool {
         self.rect_is_noop() || self.shadow.is_noop()
+    }
+
+    fn has_nan(&self) -> bool {
+        self.local_rect.has_nan() || self.corners.has_nan() || self.shadow.has_nan()
     }
 
     /// Pure repacking — the f16 lane squeeze happens in

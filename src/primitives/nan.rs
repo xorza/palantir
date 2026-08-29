@@ -9,17 +9,25 @@
 //! that would look wrong. The frame comes out *missing*, not broken:
 //! nothing to see, nothing to bisect.
 //!
-//! [`NanCheck`] is what stops it, at the one gate that decides it:
-//! `Shapes::add` tests the lowered record and refuses to record a shape
-//! that carries a NaN, loudly in debug and quietly in release.
+//! [`NanCheck`] is what stops it, at the two gates that decide it — one
+//! per path a paint input can arrive on, each placed where the inputs are
+//! still in hand and nothing has been staged yet:
 //!
-//! Every impl is `O(1)`, which is what lets the gate run in release as
+//! - **Shapes.** `Shapes::add` asks the *authored* shape, before
+//!   lowering, and refuses to record one that carries a NaN. Loud in
+//!   debug, quiet in release.
+//! - **Chrome.** `lower::background` asks the `Background`, and
+//!   sanitizes each field to what its NaN already meant rather than
+//!   dropping the row — a rounded-clip node keeps a chrome row even when
+//!   its paint is fully no-op, so dropping would leave the stencil mask
+//!   reading the NaN.
+//!
+//! Every impl is `O(1)`, which is what lets both gates run in release as
 //! well as debug — so a NaN is *dropped* in a shipped build, not just
-//! reported in a dev one. Bulk inputs (polyline points, mesh vertices,
-//! curve control points) get there by having been folded into a `bbox`
-//! under the AABB NaN contract (see
-//! [`Aabb`](crate::primitives::rect::aabb::Aabb)) — one `Rect` test
-//! stands in for scanning the data behind it.
+//! reported in a dev one. Bulk inputs (polyline points, mesh vertices)
+//! get there by having been folded into a `bbox` under the AABB NaN
+//! contract (see [`Aabb`](crate::primitives::rect::aabb::Aabb)) — one
+//! `Rect` test stands in for scanning the data behind it.
 //!
 //! Scalar lanes bottom out in `f32::is_nan` directly; the trait starts
 //! at the composite types, which is where a caller has something worth

@@ -390,7 +390,15 @@ impl Forest {
         // also clobber the single per-layer `pending_placement` slot.
         // Strictly increasing ⇒ each layer appears at most once on the
         // stack, so that slot stays single-occupancy without a guard.
-        debug_assert!(
+        //
+        // Asserted in release: nothing downstream reads the rank again,
+        // so a lower-or-equal nest produces no error of its own — the
+        // scope paints under the parent it was raised from and overwrites
+        // the placement that parent is waiting on, and the frame comes out
+        // subtly wrong. That is public-API misuse on a cold path, which is
+        // the one case this crate spends a release assert on. `Ui::layer`
+        // runs once per side scope, not per node.
+        assert!(
             layer > active,
             "Ui::layer({layer:?}) must rank above the current scope ({active:?}) \
              in Layer::PAINT_ORDER — a nested layer painting under its parent is a bug",

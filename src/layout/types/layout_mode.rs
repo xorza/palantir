@@ -133,7 +133,7 @@ pub(crate) struct GridDefId(Index16);
 
 impl GridDefId {
     pub(crate) fn from_index(index: usize) -> Self {
-        Self(Index16::new(index))
+        Self(Index16::new(index, "grid_defs"))
     }
 }
 
@@ -152,7 +152,7 @@ pub(crate) struct ScrollbarsDefId(Index16);
 
 impl ScrollbarsDefId {
     pub(crate) fn from_index(index: usize) -> Self {
-        Self(Index16::new(index))
+        Self(Index16::new(index, "scrollbar_defs"))
     }
 }
 

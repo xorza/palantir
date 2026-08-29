@@ -5,6 +5,33 @@ use image::{Rgba, RgbaImage};
 
 use crate::golden::Tolerance;
 
+/// A pair covering no pixels differs nowhere, so the verdict is a pass
+/// and the ratio is a real number.
+///
+/// Both degenerate shapes fail differently without the early answer: a
+/// zero *width* panics inside `par_chunks_exact`, which rejects a
+/// zero-length chunk, and a zero *height* divides by no pixels and
+/// reports NaN — which `passes` reads as a failure through a comparison
+/// that is false for NaN, printing "0 differing pixels (NaN of the
+/// image)".
+#[test]
+fn a_zero_pixel_pair_reports_a_real_ratio() {
+    let empty = RgbaImage::new(0, 0);
+    let report = Tolerance::default().diff(&empty, &empty);
+    assert_eq!(report.differing_pixels, 0);
+    assert_eq!(report.differing_ratio, 0.0);
+    assert!(report.passes());
+
+    // A zero-width strip with real height, and the transpose: both
+    // multiply to no pixels the same way.
+    for (w, h) in [(0, 8), (8, 0)] {
+        let strip = RgbaImage::new(w, h);
+        let report = Tolerance::default().diff(&strip, &strip);
+        assert_eq!(report.differing_ratio, 0.0, "{w}x{h}");
+        assert!(report.passes(), "{w}x{h}");
+    }
+}
+
 #[test]
 fn identical_images_pass() {
     let img = RgbaImage::from_pixel(8, 8, Rgba([10, 20, 30, 255]));

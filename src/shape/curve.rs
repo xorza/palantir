@@ -4,6 +4,7 @@
 
 use crate::primitives::approx::{noop_f32, vec2_approx_eq};
 use crate::primitives::brush::CurveBrush;
+use crate::primitives::nan::NanCheck;
 use crate::scene::record_store::RecordStore;
 use crate::scene::shapes::lower;
 use crate::scene::shapes::record::ShapeRecord;
@@ -86,6 +87,29 @@ impl sealed::LowerShape for CurveShape {
             }
             CurveGeometry::Arc { radius, sweep, .. } => noop_f32(*radius) || noop_f32(sweep.abs()),
         }
+    }
+
+    /// The geometry is a fixed handful of scalars, so they are read
+    /// directly rather than through a fold — the bbox lowering derives
+    /// from them would carry the NaN too, but only after the brush had
+    /// interned its gradient into the store.
+    fn has_nan(&self) -> bool {
+        let geometry = match &self.geometry {
+            CurveGeometry::Line { a, b } => a.has_nan() || b.has_nan(),
+            CurveGeometry::CubicBezier { p0, p1, p2, p3 } => {
+                p0.has_nan() || p1.has_nan() || p2.has_nan() || p3.has_nan()
+            }
+            CurveGeometry::QuadraticBezier { p0, p1, p2 } => {
+                p0.has_nan() || p1.has_nan() || p2.has_nan()
+            }
+            CurveGeometry::Arc {
+                center,
+                radius,
+                start_angle,
+                sweep,
+            } => center.has_nan() || radius.is_nan() || start_angle.is_nan() || sweep.is_nan(),
+        };
+        geometry || self.stroke.width.is_nan() || self.stroke.brush.as_brush().has_nan()
     }
 
     fn lower(self, store: &RecordStore) -> ShapeRecord {

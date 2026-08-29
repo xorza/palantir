@@ -48,10 +48,15 @@ fn clamp(product: f64) -> f32 {
 }
 
 /// Compose two factors.
+///
+/// Both operands go through [`is_valid`] rather than a hand-spelled
+/// variant of it, so one quantity keeps one definition of valid. A zero
+/// `rhs` annihilates the running product exactly as an invalid `lhs`
+/// would, which is why the shared question is the strict one.
 #[inline]
 pub(crate) fn combine(lhs: f32, rhs: f32) -> f32 {
-    debug_assert!(is_valid(lhs));
-    debug_assert!(!rhs.is_nan() && rhs >= 0.0);
+    debug_assert!(is_valid(lhs), "zoom factor {lhs} is not a valid factor");
+    debug_assert!(is_valid(rhs), "zoom factor {rhs} is not a valid factor");
     clamp(f64::from(lhs) * f64::from(rhs))
 }
 

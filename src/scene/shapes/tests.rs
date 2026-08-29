@@ -170,6 +170,8 @@ fn image_dimensions_above_u16_survive_lowering() {
 /// rely on.
 #[test]
 fn the_nan_gate_drops_every_shape_kind() {
+    use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
+    use crate::primitives::color::ColorU8;
     use crate::primitives::mesh::Mesh;
     use crate::primitives::shadow::Shadow;
     use crate::primitives::stroke::Stroke;
@@ -211,16 +213,18 @@ fn the_nan_gate_drops_every_shape_kind() {
             "case {label}: nothing may reach the record buffer",
         );
         // A rejected shape must leave no trace in the payload arena
-        // either. Polyline is the case with teeth: it is the one shape
-        // that reaches lowering with its NaN intact, so its bail has to
-        // come before it stages anything.
+        // either, which is what places the screen before lowering rather
+        // than on the record it produces: a mesh copies its vertices, a
+        // gradient fill interns a row, and a text run copies its bytes,
+        // all before a record exists to be judged.
         {
             let payloads = store.payloads.borrow();
             assert!(
                 payloads.polyline_points.is_empty()
                     && payloads.polyline_colors.is_empty()
                     && payloads.meshes.vertices.is_empty()
-                    && payloads.meshes.indices.is_empty(),
+                    && payloads.meshes.indices.is_empty()
+                    && payloads.gradients.records.is_empty(),
                 "case {label}: a rejected shape left bytes in the arena",
             );
         }
@@ -264,9 +268,9 @@ fn the_nan_gate_drops_every_shape_kind() {
         tri(nan_pt, 0.0),
         tri(Vec2::new(0.0, 4.0), 0.0),
     );
-    // Regression: `radius` reaches lowering only through
-    // `radius.max(0.0)`, which launders NaN to `0.0`, so it used to slip
-    // past every gate — the bbox it would have shown up in was finite.
+    // `radius` reaches lowering only through `radius.max(0.0)`, which
+    // launders NaN to `0.0`, so the bbox it would have shown up in comes
+    // out finite and only the authored screen can catch it.
     gate(
         "triangle_radius",
         tri(Vec2::new(0.0, 4.0), N),
@@ -288,6 +292,23 @@ fn the_nan_gate_drops_every_shape_kind() {
         Shape::polyline(&pts_ok, PolylineColors::Single(white), 2.0),
     );
     gate("mesh_vertex", Shape::mesh(&mesh_nan), Shape::mesh(&mesh_ok));
+    gate(
+        "mesh_local_rect",
+        Shape::mesh(&mesh_ok).at(Rect::new(0.0, N, 8.0, 8.0)),
+        Shape::mesh(&mesh_ok).at(ok_rect),
+    );
+    // A gradient's geometry is the one authoring input that does not
+    // survive lowering: it interns behind a `GradientId`, so a record
+    // gate could not see it and a shape rejected afterwards would leave
+    // the pool row behind. The arena check above is what pins that.
+    let gradient = |angle| {
+        Shape::rect(ok_rect).fill(LinearGradient::two_stop(
+            angle,
+            ColorU8::hex(0x1a1a2e),
+            ColorU8::hex(0x4c5cdb),
+        ))
+    };
+    gate("rect_gradient_geometry", gradient(N), gradient(0.25));
     let shadow = |blur| {
         Shape::shadow(Shadow {
             color: white,

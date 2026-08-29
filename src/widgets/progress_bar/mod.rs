@@ -12,6 +12,10 @@ use crate::widgets::theme::progress_bar::ProgressBarTheme;
 /// Determinate progress bar: a rounded `track` with an accent fill
 /// spanning `fraction` (clamped to `0..=1`) of its width.
 ///
+/// A `fraction` that names no share — the `0 / 0` of a job with nothing
+/// to do — reads as empty. `Sizing::split` owns that screen, so app code
+/// may divide without guarding the divisor first.
+///
 /// The fill / remainder split is two weighted leaves, so the fill tracks the
 /// resolved track width without the widget knowing it at record time.
 /// Visuals come from [`crate::ProgressBarTheme`] (theme slot

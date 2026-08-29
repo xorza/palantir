@@ -897,14 +897,20 @@ impl Ui {
 
     /// Normalize borrowed, owned, or already-interned text into an
     /// [`InternedStr`]. Borrowed and owned inputs are copied into the
-    /// record-pass text arena; an [`InternedStr`] passes through unchanged.
+    /// record-pass text arena; an [`InternedStr`] this pass minted passes
+    /// through unchanged, and one from an earlier pass or another window
+    /// panics here rather than resolving against bytes that are gone.
     /// Format-less twin of [`Self::fmt`] with the same retention rules.
     #[must_use]
     pub fn intern<'a>(&mut self, text: impl Into<TextInput<'a>>) -> InternedStr {
         match text.into() {
             TextInput::Borrowed(text) => self.forest.record_store.intern_str(text),
             TextInput::Owned(text) => self.forest.record_store.intern_str(&text),
-            TextInput::Interned(text) => text,
+            // The one arm that copies nothing, and so the one whose
+            // handle has not just been minted here — screened rather
+            // than passed through, because a stale one resolves to
+            // whatever text now sits at those offsets.
+            TextInput::Interned(text) => self.forest.record_store.reuse(text),
         }
     }
 
@@ -927,8 +933,15 @@ impl Ui {
     ///
     /// Recordable from the `Main` baseline or nested inside a
     /// higher-ranked side layer's body (a tooltip raised from a popup or
-    /// modal). A nested layer must sit strictly above the current scope
-    /// in `Layer::PAINT_ORDER`, else it would paint under its parent.
+    /// modal).
+    ///
+    /// # Panics
+    ///
+    /// Panics unless a nested layer sits strictly above the current scope
+    /// in `Layer::PAINT_ORDER`. A lower-or-equal nest records fine and
+    /// then paints under the parent it was raised from, un-hittable, so
+    /// it is rejected where it is asked for rather than left to show up
+    /// as a scope that quietly stopped working.
     #[inline]
     pub fn layer(&mut self, layer: Layer) -> LayerScope<'_> {
         LayerScope::new(self, layer)

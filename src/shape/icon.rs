@@ -4,6 +4,7 @@
 use crate::icons::icon_set::IconHandle;
 use crate::primitives::color::Color;
 use crate::primitives::image::ImageFit;
+use crate::primitives::nan::NanCheck;
 use crate::primitives::rect::Rect;
 use crate::scene::record_store::RecordStore;
 use crate::scene::shapes::record::ShapeRecord;
@@ -90,6 +91,13 @@ impl IconShape {
 impl sealed::LowerShape for IconShape {
     fn is_noop(&self) -> bool {
         self.rect_is_noop() || self.tint.is_noop()
+    }
+
+    /// `fit` is a bare tag, `desaturate` a flag, and the artwork's own
+    /// box comes from baked data, so the rect and the tint are the whole
+    /// surface a caller can put a NaN into.
+    fn has_nan(&self) -> bool {
+        self.local_rect.has_nan() || self.tint.has_nan()
     }
 
     fn lower(self, _store: &RecordStore) -> ShapeRecord {

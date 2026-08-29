@@ -3,6 +3,7 @@
 
 use crate::primitives::brush::Brush;
 use crate::primitives::corners::Corners;
+use crate::primitives::nan::NanCheck;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::stroke::Stroke;
 use palantir_anim_derive::Animatable;
@@ -114,6 +115,19 @@ impl Background {
     pub const fn with_shadow(mut self, shadow: Shadow) -> Self {
         self.shadow = shadow;
         self
+    }
+}
+
+/// Every field can carry one: the fill through a gradient's geometry,
+/// the other three through their own scalars. `lower::background` is
+/// what screens it — the chrome path has no record-level gate behind it,
+/// because a `Background` never passes through `Shapes::add`.
+impl NanCheck for Background {
+    fn has_nan(&self) -> bool {
+        self.fill.has_nan()
+            || self.stroke.has_nan()
+            || self.corners.has_nan()
+            || self.shadow.has_nan()
     }
 }
 

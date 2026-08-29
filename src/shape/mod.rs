@@ -94,7 +94,6 @@ use crate::shape::mesh::MeshShape;
 use crate::shape::polyline::{PolylineColors, PolylineShape};
 use crate::shape::rect::{RectKind, RectShape};
 use crate::shape::shadow::ShadowShape;
-use crate::shape::style::{LineCap, LineJoin};
 use crate::shape::text::TextShape;
 use crate::shape::triangle::TriangleShape;
 use crate::text::glyph_font::GlyphFont;
@@ -139,12 +138,32 @@ mod sealed {
     // publicly *reachable* signature. Nothing outside the crate can name
     // the trait to call or implement it, so neither exposure can occur.
     // Each `impl` repeats the second allow, which fires per impl site.
+    /// `Debug` is a supertrait so the NaN gate can name the shape it
+    /// dropped. Every authoring kind derives it already.
     #[allow(unreachable_pub, private_interfaces)]
-    pub trait LowerShape {
+    pub trait LowerShape: std::fmt::Debug {
         /// True if this shape paints nothing visible. Checked before
         /// [`Self::lower`] so a no-op never pays for payload staging,
         /// mesh hashing, or text interning.
         fn is_noop(&self) -> bool;
+
+        /// True if any authored input carries a NaN — the crate's NaN
+        /// screen, run by `Shapes::add` beside [`Self::is_noop`] and for
+        /// the same reason: both answers are known before lowering, and
+        /// lowering is what stages mesh vertices, interns a gradient, and
+        /// copies text into the arena. A shape rejected after that leaves
+        /// the bytes behind for the frame.
+        ///
+        /// **`O(1)` for every kind.** Bulk inputs are not scanned here;
+        /// they are read off the AABB they were already folded into —
+        /// memoized on a `Mesh`, computed once at construction for a
+        /// polyline — under the contract that a NaN vertex yields a NaN
+        /// bbox. See [`Aabb`](crate::primitives::rect::aabb::Aabb).
+        ///
+        /// Separate from `is_noop` rather than folded into it: "paints
+        /// nothing" and "carries a NaN" are different facts about a
+        /// shape, and only one of them is worth a debug assert.
+        fn has_nan(&self) -> bool;
 
         /// Convert to the stored form, appending any bulk payload
         /// (polyline points, mesh vertices, gradients, text bytes) to
@@ -222,13 +241,7 @@ impl Shape {
         colors: PolylineColors<'a>,
         width: f32,
     ) -> PolylineShape<'a> {
-        PolylineShape {
-            points,
-            colors,
-            width,
-            cap: LineCap::Butt,
-            join: LineJoin::Miter,
-        }
+        PolylineShape::new(points, colors, width)
     }
 
     /// A stroked cubic Bézier through control points `p0..=p3` (`Butt`

@@ -8,7 +8,7 @@ use crate::primitives::approx;
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
 use crate::primitives::limits::Limits;
-use crate::primitives::num;
+use crate::primitives::num::F32Ext;
 use crate::scene::node::Node;
 use crate::ui::Ui;
 use crate::widgets::response::Response;
@@ -178,9 +178,9 @@ fn fraction_to_value(fraction: f32, min: f32, max: f32) -> f32 {
 /// Map a cursor x (relative to the rail's left edge) to a fraction. The
 /// usable travel is `[knob/2, track_w - knob/2]` so the knob center
 /// stays inside the rail at both extremes. A rail with no travel reads
-/// as the low end.
+/// as the low end, and so does a cursor that names no position.
 fn pointer_to_fraction(local_x: f32, track_w: f32, knob: f32) -> f32 {
-    num::band_fraction(local_x, track_w, knob).clamp(0.0, 1.0)
+    local_x.band_fraction(track_w, knob).unit_fraction_or(0.0)
 }
 
 /// Snap to the nearest multiple of `step` measured from `min`. A `None`

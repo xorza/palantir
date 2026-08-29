@@ -284,20 +284,20 @@ pub(crate) fn text_paint_bbox_local(
     }
 }
 
-/// **The single NaN gate's predicate.** `Shapes::add` runs this on the
-/// lowered record — one place, one `O(1)` test per shape, in release as
-/// well as debug.
+/// **The backstop behind the NaN gate**, not the gate itself:
+/// `Shapes::add` screens the authored shape, and debug-asserts this on
+/// the record that screening let through.
 ///
-/// Lowered is the right tier for it. Every bulk input (polyline points,
-/// mesh vertices, curve control points) has by then been folded into a
-/// `bbox` under the AABB NaN contract, so a NaN in any of them shows up
-/// as a NaN bbox — which means one `Rect` test replaces an `O(n)` scan
-/// of the data that produced it, and the check is cheap enough to keep
-/// in release rather than compiling out with the assert.
+/// It is a second reading of the same inputs one tier down, which is what
+/// makes it worth having as an assertion and worth nothing as a check —
+/// by here a gradient's geometry has gone into the store behind a
+/// `GradientId` and a triangle's `radius` has been laundered through
+/// `radius.max(0.0)`, so a record that reports clean is not proof that
+/// the shape was.
 ///
-/// The one input that does *not* survive lowering is a gradient's
-/// geometry, which is interned into the record store behind a
-/// `GradientId`. `lower::brush` screens it there instead.
+/// Every bulk input (polyline points, mesh vertices, curve control
+/// points) reaches it as a `bbox` folded under the AABB NaN contract, so
+/// one `Rect` test stands in for an `O(n)` scan of the data behind it.
 impl NanCheck for ShapeRecord {
     fn has_nan(&self) -> bool {
         match self {

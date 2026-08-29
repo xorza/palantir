@@ -260,9 +260,16 @@ impl LayerWalk<'_> {
     }
 
     fn on_descendant_changed(&mut self, i: usize, wid: WidgetId) -> usize {
-        if let Some(snap) = self.prev.get_mut(&wid) {
-            snap.subtree_hash = self.tree.rollups.subtree[i];
-        }
+        // `classify` reaches this tier only after reading this node's
+        // snapshot, so the bucket is there. Stated rather than skipped
+        // past: a missing one would mean the walk lost a node between the
+        // two lookups, and quietly declining to refresh the subtree hash
+        // leaves the node reporting a stale one every frame after.
+        let snap = self
+            .prev
+            .get_mut(&wid)
+            .expect("DescendantChanged is classified from this node's own snapshot");
+        snap.subtree_hash = self.tree.rollups.subtree[i];
         1
     }
 

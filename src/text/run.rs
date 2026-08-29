@@ -49,15 +49,18 @@ pub struct TextRun<'a> {
     ///
     /// Ignored for the [`TextWrap`] policies that always keep their
     /// unbounded shape, so passing a width to a `SingleLine` run is not
-    /// a mistake, just inert.
+    /// a mistake, just inert. A non-finite width is inert the same way —
+    /// it names no width to wrap at, so the run keeps its unbounded
+    /// shape rather than binding to one.
     pub max_width_px: Option<f32>,
 }
 
 impl<'a> TextRun<'a> {
     /// Lower to the shaper's *unbounded* request — the run's root, before
-    /// any width is bound to it. `None` for a run with no bytes, which
-    /// shapes nothing; [`TextShaper::layout`](crate::TextShaper) answers
-    /// that case with an empty probe.
+    /// any width is bound to it. `None` for a run with nothing to shape —
+    /// no bytes, or a face with no usable size;
+    /// [`TextShaper::layout`](crate::TextShaper) answers that case with an
+    /// empty probe.
     ///
     /// Binding is deliberately not done here. Which width layout actually
     /// commits depends on the root itself: a truncating fit whose text
@@ -72,7 +75,27 @@ impl<'a> TextRun<'a> {
     /// The key this run's unbounded shape is cached under, whether or not
     /// there is anything to shape — the metrics a probe answers in live on
     /// it, so an empty run still needs one.
+    ///
+    /// A face the shaper cannot be asked for has no metrics to answer in,
+    /// so it takes [`TextShapeKey::INVALID`] — the same sentinel every
+    /// other bufferless run carries, and the value a probe reports its
+    /// zero line height from.
     pub(crate) fn unbounded_key(&self) -> TextShapeKey {
+        if !self.font.metrics_valid() {
+            return TextShapeKey::INVALID;
+        }
         TextShapeKey::unbounded(hash::hash_str(self.text), self.font)
+    }
+
+    /// The width this run binds to, or `None` where it binds to none.
+    ///
+    /// [`Self::max_width_px`] is a public field a caller fills from its
+    /// own arithmetic, so "no width" arrives spelled two ways: the absent
+    /// one it declares, and a value that names no width at all. Both mean
+    /// the run keeps its unbounded shape, and answering that here is what
+    /// keeps a non-finite width out of `WrapBound`'s quantization — where
+    /// it would commit the run to a wrap grid nothing can wrap to.
+    pub(crate) fn wrap_width(&self) -> Option<f32> {
+        self.max_width_px.filter(|width| width.is_finite())
     }
 }

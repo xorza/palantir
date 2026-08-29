@@ -3,6 +3,7 @@
 
 use crate::primitives::approx::noop_f32;
 use crate::primitives::color::Color;
+use crate::primitives::nan::NanCheck;
 use crate::primitives::rect::aabb::Aabb;
 use crate::primitives::stroke::Stroke;
 use crate::scene::record_store::RecordStore;
@@ -45,13 +46,20 @@ fn triangle_paint_empty(a: Vec2, b: Vec2, c: Vec2) -> bool {
 impl sealed::LowerShape for TriangleShape {
     fn is_noop(&self) -> bool {
         (self.fill.is_noop() && self.stroke.is_noop())
-            // A NaN corner falls out of this for free — the area
-            // arithmetic propagates it and `noop_f32` reads NaN as
-            // invisible. `radius` gets no such cover, and lowering
-            // launders it (`radius.max(0.0)` is `0.0` for NaN), so it
-            // has to be named.
-            || self.radius.is_nan()
             || triangle_paint_empty(self.a, self.b, self.c)
+    }
+
+    /// `radius` has to be named. Lowering launders it —
+    /// `radius.max(0.0)` is `0.0` for NaN — so the record carries no
+    /// trace of it, and a NaN corner would reach the SDF as a
+    /// sharp-cornered triangle whose bbox was inflated by nothing.
+    fn has_nan(&self) -> bool {
+        self.a.has_nan()
+            || self.b.has_nan()
+            || self.c.has_nan()
+            || self.radius.is_nan()
+            || self.fill.has_nan()
+            || self.stroke.has_nan()
     }
 
     /// `bbox` is the owner-local AABB of `a`/`b`/`c` inflated by
@@ -69,8 +77,9 @@ impl sealed::LowerShape for TriangleShape {
             stroke,
         } = self;
         // Through `Aabb`, not raw `min`/`max`: those launder a NaN corner
-        // out of the bounds, which would leave the record-level gate
-        // testing a finite bbox for a shape that has one.
+        // out of the bounds, which would leave the record's own bbox
+        // reading finite for a shape that carries a NaN — and that bbox
+        // is what damage and clip-cull are computed from.
         let pad = radius.max(0.0) + HALF_FRINGE;
         let bbox = Aabb::of(&[a, b, c]).inflated(pad);
         ShapeRecord::Quad(QuadShape::Triangle {
