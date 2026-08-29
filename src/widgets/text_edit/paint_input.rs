@@ -1,6 +1,5 @@
 //! Everything the painter needs to record one editor's frame.
 
-use crate::layout::types::align::Align;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
@@ -13,7 +12,6 @@ use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
 use crate::widgets::scroll::state::ScrollState;
 use crate::widgets::text_edit::caret_paint::CaretPaint;
-use crate::widgets::text_edit::shape_ctx::ShapeCtx;
 use crate::widgets::text_edit::text_geometry::TextGeometry;
 use crate::widgets::text_edit::text_layout::TextLayout;
 use crate::widgets::widget::Widget;
@@ -51,16 +49,18 @@ impl PaintInput<'_> {
             // panned axis contributes no max-content — so this floor is what the
             // field's height *is*, and a floor a thousandth under what the shaper
             // measured is a field a thousandth shorter than the chip it replaces.
-            min_size.h = min_size.h.max(self.block_height(ctx) + ctx.padding.vert());
+            min_size.h = min_size
+                .h
+                .max(self.block_size(layout).h + ctx.padding.vert());
             if node.size.unwrap_or_default().w().is_hug() {
                 let reserved =
-                    self.geometry.display_size.w + ctx.padding.horiz() + 2.0 * layout.caret_room;
+                    self.geometry.display_size.w + layout.caret_reserve() + ctx.padding.horiz();
                 let min_size = node.min_size.get_or_insert(Size::ZERO);
                 min_size.w = min_size.w.max(reserved);
             }
         }
 
-        let block = Widget::new(self.block_id, self.block_node(ctx, layout));
+        let block = Widget::new(self.block_id, self.block_node(layout));
         widget.record(ui, Some(&self.chrome), |ui| {
             block.record(ui, None, |ui| {
                 for rect in self.selection_rects {
@@ -107,14 +107,12 @@ impl PaintInput<'_> {
         });
     }
 
-    /// How tall the block is: what the shaper measured, floored at one line so an
-    /// empty field still has a caret's worth of height to stand up in.
-    ///
-    /// The shaper's answer rather than the theme's leading, because the two differ
-    /// in the last thousandth of a pixel — the shaped one is quantized to 1/64 px —
-    /// and the field's box has to agree with the run inside it.
-    fn block_height(&self, ctx: ShapeCtx) -> f32 {
-        self.geometry.display_size.h.max(ctx.font.line_height_px)
+    /// The box the block occupies, for the one display measure this pass
+    /// has. The floors and the caret's room are
+    /// [`TextLayout::block_size`]'s, so the node the engine places and the
+    /// minimums the field reports cannot disagree about its extent.
+    fn block_size(&self, layout: TextLayout) -> Size {
+        layout.block_size(self.geometry.display_size)
     }
 
     /// The node the run, the wash and the caret are recorded against.
@@ -142,28 +140,11 @@ impl PaintInput<'_> {
     /// coordinates, so the three shapes stay in one frame of reference and a
     /// scrolled field is the same picture slid sideways — through the same
     /// [`ScrollState::transform`] a `Scroll` viewport carries its children with.
-    fn block_node(&self, ctx: ShapeCtx, layout: TextLayout) -> Node {
-        let room = if ctx.multiline {
-            0.0
-        } else {
-            layout.caret_room
-        };
+    fn block_node(&self, layout: TextLayout) -> Node {
+        let size = self.block_size(layout);
         let mut block = Node::leaf();
-        block.size = Some(
-            (
-                Sizing::fixed(self.geometry.display_size.w + room),
-                Sizing::fixed(self.block_height(ctx)),
-            )
-                .into(),
-        );
-        // Only the axes the field aligns on: a multi-line field aligns its block
-        // vertically and lets the shaper align each line inside it, which is what
-        // `resolve_geometry` says the same way.
-        block.align = if ctx.multiline {
-            Align::v(layout.text_align.valign())
-        } else {
-            layout.text_align
-        };
+        block.size = Some((Sizing::fixed(size.w), Sizing::fixed(size.h)).into());
+        block.align = layout.block_align();
         block.transform = self.scroll.transform();
         block
     }

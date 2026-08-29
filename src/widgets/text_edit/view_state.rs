@@ -6,7 +6,7 @@ use crate::primitives::spacing::Spacing;
 use crate::scene::tree::paint_anims::PaintAnim;
 use crate::text::probe::Caret;
 use crate::widgets::scroll::state::{ScrollBounds, ScrollState};
-use crate::widgets::text_edit::shape_ctx::ShapeCtx;
+use crate::widgets::text_edit::text_layout::TextLayout;
 use glam::Vec2;
 use std::time::Duration;
 
@@ -50,11 +50,11 @@ impl ViewState {
     /// from is by definition off-screen. This is the ordinary editor
     /// bargain: the wheel roams freely, typing snaps back.
     fn update_scroll(&mut self, input: ViewUpdateInput) {
-        let Some(viewport) = input.viewport else {
+        let Some(viewport) = input.layout.inner.map(|rect| rect.size) else {
             self.scroll = ScrollState::default();
             return;
         };
-        let ctx = input.ctx;
+        let ctx = input.layout.ctx;
         let follow_caret =
             input.caret_byte != self.last_followed_caret || input.edited || input.gained_focus;
         self.last_followed_caret = input.caret_byte;
@@ -65,7 +65,7 @@ impl ViewState {
             content: if ctx.multiline {
                 Size::new(0.0, input.content_size.h)
             } else {
-                Size::new(input.content_size.w + 2.0 * input.caret_width, 0.0)
+                Size::new(input.content_size.w + input.layout.caret_reserve(), 0.0)
             },
             viewport,
             content_margin: Spacing::ZERO,
@@ -85,8 +85,8 @@ impl ViewState {
             if ctx.multiline {
                 // The whole viewport: a caret's vertical extent is its
                 // line height, which `caret_bottom` already carries. The
-                // X branch below reserves `caret_width` because the caret
-                // stands past the last glyph there — that same
+                // X branch below reserves the caret's room because the
+                // caret stands past the last glyph there — that same
                 // *horizontal* thickness is slack on the wrong axis here,
                 // and `bounds.content` reserves none vertically for
                 // `clamp_to_natural` to honour it with.
@@ -98,8 +98,8 @@ impl ViewState {
                     offset.y = caret_bottom - trailing;
                 }
             } else {
-                let trailing = (viewport.w - input.caret_width).max(0.0);
-                let caret_right = input.caret_pos.x + input.caret_width;
+                let trailing = (viewport.w - input.layout.caret_room).max(0.0);
+                let caret_right = input.caret_pos.x + input.layout.caret_room;
                 if input.caret_pos.x < offset.x {
                     offset.x = input.caret_pos.x;
                 } else if caret_right > offset.x + trailing {
@@ -135,18 +135,18 @@ impl ViewState {
 
 #[derive(Clone, Copy, Debug)]
 pub(super) struct ViewUpdateInput {
-    /// The box the text scrolls inside — the field's rect less its
-    /// padding, as [`TextLayout`](super::text_layout::TextLayout) already
-    /// resolved it. `None` before the field has been arranged.
+    /// The field's resolved layout: the box the text scrolls inside (its
+    /// rect less its padding, `None` before the field has been arranged),
+    /// the shaping parameters, and the caret's room.
     ///
-    /// Carried rather than re-derived from the rect and the padding: one
-    /// deflation, one answer.
-    pub(super) viewport: Option<Size>,
-    pub(super) ctx: ShapeCtx,
+    /// Carried whole rather than unpacked into fields here, so the view
+    /// reserves the caret's room through the same
+    /// [`TextLayout::caret_reserve`] the field's own minimums use, and
+    /// deflates the viewport exactly once.
+    pub(super) layout: TextLayout,
     pub(super) caret_pos: Caret,
-    pub(super) caret_width: f32,
-    /// Both axes: the width drives single-line scroll and the hug
-    /// reservation, the height bounds the multi-line wheel.
+    /// Both axes: the width is the single-line scroll's content extent,
+    /// the height bounds the multi-line wheel.
     pub(super) content_size: Size,
     /// This frame's wheel delta in logical px, already resolved from
     /// pixel + line sources. Sign matches the offset, so it adds.

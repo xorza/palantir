@@ -76,10 +76,6 @@ impl LayoutDriver for Canvas {
         let canvas_size = layouts[node.idx()].size;
         for child in tree.children(node) {
             let c = child.id;
-            if child.visibility.is_collapsed() {
-                pass.zero_subtree(c, inner.min);
-                continue;
-            }
             let d = pass.desired(c);
             let child_layout = layouts[c.idx()];
             let bounds = tree.bounds(c);

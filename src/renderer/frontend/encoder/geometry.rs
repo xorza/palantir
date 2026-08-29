@@ -4,8 +4,6 @@
 
 use crate::primitives::image::ImageFit;
 use crate::primitives::{rect::Rect, size::Size};
-use crate::renderer::frontend::payload::stroke_bounds::Spin;
-use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
 use crate::shape::icon::IconFit;
 
 /// Resolve a shape's owner-relative `local_rect` against the owner's
@@ -20,33 +18,6 @@ pub(super) fn resolve_local_rect(owner_rect: Rect, local_rect: Option<Rect>) -> 
             min: owner_rect.min + lr.min,
             size: lr.size,
         },
-    }
-}
-
-/// Payload bbox for a possibly-spinning stroke shape — **the producing
-/// end of the spin pivot contract** (stated in the payload module doc).
-///
-/// Pair a lowered centerline bbox with the spin it will be drawn under.
-///
-/// A spun shape sweeps a disc about the owner-box centre, so what it is
-/// culled against is that disc's bounding square — half-extent = max
-/// distance from the centre to the bbox's corners — which is
-/// rotation-invariant and keeps the composer's overlap tracking correct
-/// at every angle. The pivot rides along explicitly instead of being
-/// recovered from the square's centre, so neither end has to know that
-/// the rect changed meaning.
-pub(super) fn stroke_bounds(owner_rect: Rect, bbox: Rect, rotation: f32) -> StrokeBounds {
-    if rotation == 0.0 {
-        return StrokeBounds::Still(bbox);
-    }
-    let pivot = glam::Vec2::new(owner_rect.size.w, owner_rect.size.h) * 0.5;
-    let d = (bbox.min - pivot).abs().max((bbox.max() - pivot).abs());
-    StrokeBounds::Spun {
-        spin: Spin {
-            pivot,
-            angle: rotation,
-        },
-        radius: d.length(),
     }
 }
 

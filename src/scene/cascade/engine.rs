@@ -8,7 +8,6 @@ use crate::common::tracy;
 use crate::display::Display;
 use crate::input::key_class::KeyFilter;
 use crate::input::sense::Sense;
-use crate::layout::types::placement::Placement;
 use crate::layout::{LayerLayout, Layout};
 use crate::primitives::approx;
 use crate::primitives::approx::FloatHash;
@@ -273,26 +272,7 @@ pub(crate) fn cascade_fingerprint(forest: &Forest, display: Display) -> u64 {
             h.write_u64(tree.records.widget_id()[slot.first_node.idx()].0);
             h.write_u64(tree.rollups.subtree[slot.first_node.idx()].0);
             // Placement lives outside node hashes but changes arranged rects.
-            match slot.placement {
-                Placement::Fixed { anchor, size } => {
-                    h.write_u8(0);
-                    anchor.hash_visual(&mut h);
-                    match size {
-                        Some(size) => {
-                            h.write_u8(1);
-                            size.hash_visual(&mut h);
-                        }
-                        None => h.write_u8(0),
-                    }
-                }
-                Placement::Overlay(position) => {
-                    h.write_u8(1);
-                    position.anchor.hash_visual(&mut h);
-                    h.write_u8(position.side as u8);
-                    h.write_u8(position.align as u8);
-                    position.gap.hash_visual(&mut h);
-                }
-            }
+            slot.placement.hash_visual(&mut h);
         }
     }
     h.finish()
@@ -574,15 +554,7 @@ pub(super) struct CascadePrefixBits {
 #[inline]
 pub(super) fn build_cascade_prefix(parent: CascadeContext) -> Hasher {
     let (clip, clip_present) = match parent.clip {
-        Some(rect) => (
-            [
-                approx::canon_bits(rect.min.x),
-                approx::canon_bits(rect.min.y),
-                approx::canon_bits(rect.size.w),
-                approx::canon_bits(rect.size.h),
-            ],
-            true,
-        ),
+        Some(rect) => (rect.canon_lanes(), true),
         None => ([0; 4], false),
     };
     let flags =

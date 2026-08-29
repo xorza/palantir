@@ -29,7 +29,6 @@ use crate::input::sense::Sense;
 use crate::layout::types::align::Align;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::layout_mode::ScrollSpec;
-use crate::primitives::approx::noop_f32;
 use crate::primitives::rect::Rect;
 use crate::primitives::spacing::Spacing;
 use crate::scene::node::Node;
@@ -419,11 +418,7 @@ impl<'a> TextEdit<'a> {
         // the top row of glyphs sits above the clip and gets scissored
         // away. The node's own padding stays at the pre-inflate
         // value so Tree's fold reproduces the same effective padding.
-        let stroke_w = if noop_f32(look.background.stroke.width) {
-            0.0
-        } else {
-            look.background.stroke.width
-        };
+        let stroke_w = look.background.stroke.ring();
         let padding = Spacing::from_array(
             widget
                 .node
@@ -503,7 +498,7 @@ impl<'a> TextEdit<'a> {
         let wheel = if response.disabled {
             Vec2::ZERO
         } else {
-            response.scroll.pixels + response.scroll.lines * ctx.font.line_height_px
+            response.scroll.pan(ctx.font.line_height_px)
         };
 
         let geometry = TextGeometry::resolve(
@@ -521,10 +516,8 @@ impl<'a> TextEdit<'a> {
         state.edit.observe_text_hash(geometry.text_hash);
         let now = ui.now();
         let view = state.view.update(ViewUpdateInput {
-            viewport: layout.inner.map(|rect| rect.size),
-            ctx,
+            layout,
             caret_pos,
-            caret_width,
             content_size: geometry.content_size,
             wheel,
             caret_byte,

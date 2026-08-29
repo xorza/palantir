@@ -28,6 +28,7 @@ use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePaylo
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
+use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
 use crate::renderer::gpu_paint::gpu_view_entry::GpuViewEntry;
 use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
 use crate::renderer::render_buffer::image::{
@@ -240,7 +241,7 @@ impl LayerCtx<'_> {
                 // are forwarded verbatim. Owner-local convention — the
                 // composer folds `origin` into the per-point transform.
                 out.draw_polyline(DrawPolylinePayload {
-                    bounds: geometry::stroke_bounds(owner_rect, *bbox, paint_mod.rotation),
+                    bounds: StrokeBounds::new(owner_rect, *bbox, paint_mod.rotation),
                     origin: owner_rect.min,
                     width: *width,
                     points_start: points.start,
@@ -291,7 +292,7 @@ impl LayerCtx<'_> {
                 let fill = self.brush_source(*fill).to_gpu_fields();
                 out.draw_curve(DrawCurvePayload {
                     basis: *basis,
-                    bounds: geometry::stroke_bounds(owner_rect, *bbox, paint_mod.rotation),
+                    bounds: StrokeBounds::new(owner_rect, *bbox, paint_mod.rotation),
                     origin: owner_rect.min,
                     color: fill.color,
                     width: *width,

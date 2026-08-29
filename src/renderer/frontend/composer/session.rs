@@ -261,10 +261,17 @@ impl PaintSink for ComposeSession<'_> {
         // Clip-cull: skip emitting the quad when it sits entirely outside
         // the active scissor. The GPU would scissor it away anyway; this
         // saves the `quads.push` + per-quad math.
-        if self.composer.clip.culls(packed.urect) {
+        //
+        // The clipped rect is also what the overlap test wants, and is
+        // what text has always tested with: the pixels this draw can
+        // reach are what a later draw has to be ordered against, so a
+        // quad whose ancestor clip cut it does not force a flush over
+        // ground it never paints.
+        let visible = self.composer.clip.clamped(packed.urect);
+        if visible.is_paint_empty() {
             return;
         }
-        self.quad_forces_flush(packed.urect);
+        self.quad_forces_flush(visible);
         // Fragment fast path: a solid, sharp, stroke-less quad whose
         // physical rect is pixel-aligned rasterizes only interior
         // fragments (SDF coverage exactly 1.0) — flag the instance so the
@@ -755,10 +762,7 @@ impl PaintSink for ComposeSession<'_> {
         // ancestor `clip = true` panels actually clip glyphs;
         // an empty intersection means the run can't reach
         // pixels — skip the push entirely (cull).
-        let bounds = match self.composer.clip.scissor() {
-            Some(scissor) => unclipped.clamp_to(scissor),
-            None => unclipped,
-        };
+        let bounds = self.composer.clip.clamped(unclipped);
         if bounds.is_paint_empty() {
             return;
         }
@@ -1086,7 +1090,11 @@ impl ComposeSession<'_> {
     ///
     /// [`HigherKindRects::conflicts`]: crate::renderer::frontend::composer::higher_kind::HigherKindRects::conflicts
     fn admit_higher_kind(&mut self, tier: PaintTier, bounds: URect) -> bool {
-        if self.composer.clip.culls(bounds) {
+        // Clipped first, so what this tier registers as occupied is what
+        // it paints — the same rect the quad tier and the text tier test
+        // and record.
+        let bounds = self.composer.clip.clamped(bounds);
+        if bounds.is_paint_empty() {
             return false;
         }
         self.close_batch();

@@ -15,6 +15,7 @@ use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange, LenReq};
 use crate::layout::justify_offsets::JustifyOffsets;
 use crate::layout::pass::LayoutPass;
 use crate::primitives::interned_text::InternedText;
+use crate::primitives::num::F32Ext;
 use crate::primitives::{rect::Rect, size::Size};
 use crate::scene::tree::Tree;
 use crate::scene::tree::node_id::NodeId;
@@ -79,7 +80,7 @@ fn build_stack_plan(
     StackPlan {
         sum_non_fill_main,
         count,
-        total_gap: gap * count.saturating_sub(1) as f32,
+        total_gap: gap.gaps_between(count),
         fill_start,
     }
 }
@@ -309,7 +310,7 @@ impl LayoutDriver for Stack {
             }
             count += 1;
         }
-        let gaps = tree.panel(node).gaps.gap() * count.saturating_sub(1) as f32;
+        let gaps = tree.panel(node).gaps.gap().gaps_between(count);
         for (_, slot) in range.requested(query) {
             *slot += gaps;
         }

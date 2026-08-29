@@ -1,6 +1,5 @@
 //! The editor's text layout plus everything only the shape probe answers.
 
-use crate::layout::types::align::Align;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::text::probe::Caret;
@@ -96,35 +95,22 @@ impl TextGeometry {
         } else {
             measured
         };
-        let widget_align = if layout.ctx.multiline {
-            Align::v(layout.text_align.valign())
-        } else {
-            layout.text_align
-        };
-        let inner = layout.inner_size();
-        let align_size = Size::new(
-            if layout.ctx.multiline {
-                inner.w
-            } else {
-                (inner.w - layout.caret_room).max(0.0)
+        // Through the same align and the same block box the block node
+        // hands the layout engine, so the offset stored for next frame's
+        // hit-test is where the block was actually placed. Aligning the
+        // *content* here instead puts an empty field with a placeholder
+        // and a centred alignment a whole placeholder away from its
+        // block.
+        let block = layout.block_align().place_in(
+            Rect {
+                min: Vec2::ZERO,
+                size: layout.inner_size(),
             },
-            inner.h,
+            layout.block_size(placeholder_measured),
         );
-        let containing = Rect {
-            min: Vec2::ZERO,
-            size: align_size,
-        };
-        let aligned = |size: Size| {
-            widget_align
-                .place_in(
-                    containing,
-                    Size::new(size.w, size.h.max(layout.ctx.font.line_height_px)),
-                )
-                .min
-        };
         TextGeometry {
             layout,
-            block_offset: aligned(measured),
+            block_offset: block.min,
             content_size: measured,
             display_size: placeholder_measured,
             caret_pos,

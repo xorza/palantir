@@ -40,6 +40,28 @@ impl Stroke {
         noop_f32(self.width) || self.color.is_noop()
     }
 
+    /// The ring this stroke paints *inside* the rect it bounds — its
+    /// width, or nothing when the width is a no-op.
+    ///
+    /// **The one definition of the fold** `Tree::open_node` applies to a
+    /// chrome's padding, so children sit inside the stroke without the
+    /// caller adding it by hand. The widgets that need the same inner
+    /// rect before the tree has it — `TextEdit` for its glyph and caret
+    /// coordinates, `TextEditTheme::corner_centring` for a `DragValue`'s
+    /// in-place edit — read the ring here rather than each writing the
+    /// gate out.
+    ///
+    /// On the width alone, and not [`Self::is_noop`]: a stroke the colour
+    /// makes invisible is still a stroke the fold makes room for.
+    #[inline]
+    pub(crate) const fn ring(&self) -> f32 {
+        if noop_f32(self.width) {
+            0.0
+        } else {
+            self.width
+        }
+    }
+
     /// Construct a stroke with `color` and `width`.
     #[inline]
     pub const fn solid(color: Color, width: f32) -> Self {

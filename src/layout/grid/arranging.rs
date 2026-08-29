@@ -6,7 +6,6 @@ use crate::layout::axis_placement::AxisPlacement;
 use crate::layout::grid::grid_context::GridContext;
 use crate::layout::pass::LayoutPass;
 use crate::layout::types::layout_mode::GridDefId;
-use crate::primitives::span::Span;
 use crate::primitives::{rect::Rect, size::Size};
 use crate::scene::tree::node_id::NodeId;
 use glam::Vec2;
@@ -62,18 +61,14 @@ pub(super) fn arrange_inner(
             .resolve_or_reuse(col_tracks, track_state, idx, Axis::X, inner.size.w, col_gap);
         s.row
             .resolve_or_reuse(row_tracks, track_state, idx, Axis::Y, inner.size.h, row_gap);
-        track_offsets(&s.col.sizes, col_gap, &mut s.col.offsets);
-        track_offsets(&s.row.sizes, row_gap, &mut s.row.offsets);
+        s.col.compute_offsets(col_gap);
+        s.row.compute_offsets(row_gap);
     }
 
     let parent_child_align = tree.panel(node).child_align;
     let layouts = tree.records.layout();
     for child in tree.children(node) {
         let c = child.id;
-        if child.visibility.is_collapsed() {
-            pass.zero_subtree(c, inner.min);
-            continue;
-        }
         let s_node = layouts[c.idx()];
         let bounds = tree.bounds(c);
         let cell = bounds.grid;
@@ -88,8 +83,8 @@ pub(super) fn arrange_inner(
                         s.row.offsets[cell.row as usize],
                     ),
                 size: Size::new(
-                    span_size(&s.col.sizes, cell.track_span(Axis::X), col_gap),
-                    span_size(&s.row.sizes, cell.track_span(Axis::Y), row_gap),
+                    s.col.span_size(cell.track_span(Axis::X), col_gap),
+                    s.row.span_size(cell.track_span(Axis::Y), row_gap),
                 ),
             }
         };
@@ -101,28 +96,4 @@ pub(super) fn arrange_inner(
             AxisPlacement::arrange_rect(align, &s_node, bounds, d, slot),
         );
     }
-}
-
-fn track_offsets(sizes: &[f32], gap: f32, out: &mut [f32]) {
-    debug_assert_eq!(sizes.len(), out.len());
-    let mut acc = 0.0f32;
-    for (i, &s) in sizes.iter().enumerate() {
-        out[i] = acc;
-        acc += s;
-        if i + 1 < sizes.len() {
-            acc += gap;
-        }
-    }
-}
-
-fn span_size(sizes: &[f32], span: Span, gap: f32) -> f32 {
-    // In-bounds by the same record-time cell range check as
-    // `known_span_size`.
-    let r = span.range();
-    let n = r.len();
-    let mut total: f32 = sizes[r].iter().sum();
-    if n > 1 {
-        total += gap * (n - 1) as f32;
-    }
-    total
 }

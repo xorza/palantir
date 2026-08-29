@@ -319,7 +319,11 @@ impl LayoutEngine {
                     continue;
                 }
                 let node = NodeId(index as u32);
-                let available_w = (pass.rect(node).size.w - layout.padding.horiz()).max(0.0);
+                // Through the same deflation `arrange` places children by,
+                // so the width a container's own run wraps at is the inner
+                // rect its children were given and not a second reading of
+                // the same two numbers.
+                let available_w = pass.rect(node).deflated_by(layout.padding).size.w;
                 let runs = TextShapeInput::on_container(tree, interned_text, node);
                 pass.shape_text_runs(node, available_w, runs);
             }

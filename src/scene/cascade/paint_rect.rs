@@ -14,6 +14,7 @@ use crate::scene::shapes::record::{ShapeRecord, text_paint_bbox_local};
 use crate::scene::tree::Tree;
 use crate::scene::tree::iter::{TreeItem, TreeItems};
 use crate::scene::tree::node_id::NodeId;
+use crate::scene::tree::paint_anims::PaintAnims;
 use crate::shape::stroke_bounds::{HALF_FRINGE, stroked_bbox};
 use crate::text::TEXT_SCALE_STEP;
 use glam::Vec2;
@@ -79,6 +80,28 @@ fn inflate_text_damage(screen: Rect, measured: Size, clip: Option<Rect>) -> Rect
         },
     };
     clip_screen(inflated, clip)
+}
+
+/// The owner-local bound a stroked shape is damaged against: its recorded
+/// centerline bbox, or the square that bbox sweeps when the shape carries
+/// a rotating paint anim.
+///
+/// The composer culls and batches the spun shape against exactly that
+/// square (`StrokeBounds::new`), and the row this feeds is what
+/// `extend_predamaged` repaints every frame the spin wakes. Left as the
+/// recorded bbox, a spun stroke whose bbox is not a pivot-centred disc
+/// paints outside the region damage cleared for it.
+///
+/// The angle is not needed and not read: the square is the cover at every
+/// angle, so the cascade answers without sampling the animation the
+/// encoder samples one pass later.
+#[inline]
+fn spun_if_animated(bbox: Rect, owner_rect: Rect, anims: &PaintAnims, shape_idx: u32) -> Rect {
+    if anims.rotates(shape_idx) {
+        bbox.spun_cover(owner_rect.spin_pivot())
+    } else {
+        bbox
+    }
 }
 
 /// Push one paint row and fold its screen rect into the running union
@@ -267,7 +290,8 @@ pub(super) fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) 
                 } => {
                     // The AA fringe is physical, so inflate only after the
                     // centerline and stroke width reach screen space.
-                    let centerline = lift_to_screen(*bbox, layout_rect.min, shape_transform, None);
+                    let local = spun_if_animated(*bbox, layout_rect, &tree.paint_anims, idx);
+                    let centerline = lift_to_screen(local, layout_rect.min, shape_transform, None);
                     let screen = stroked_bbox(
                         centerline,
                         *width * shape_transform.scale,
@@ -280,7 +304,8 @@ pub(super) fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) 
                 ShapeRecord::Curve {
                     width, cap, bbox, ..
                 } => {
-                    let centerline = lift_to_screen(*bbox, layout_rect.min, shape_transform, None);
+                    let local = spun_if_animated(*bbox, layout_rect, &tree.paint_anims, idx);
+                    let centerline = lift_to_screen(local, layout_rect.min, shape_transform, None);
                     let screen = stroked_bbox(
                         centerline,
                         *width * shape_transform.scale,

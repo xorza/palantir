@@ -4,6 +4,7 @@
 
 pub(crate) mod aabb;
 
+use crate::primitives::approx::canon_bits;
 use crate::primitives::nan::{self, NanCheck};
 use crate::primitives::{
     approx::FloatHash, corners::Corners, num::F32Ext, size::Size, spacing::Spacing,
@@ -99,6 +100,23 @@ impl Rect {
         }
     }
 
+    /// The four visually-canonical lanes [`FloatHash::hash_visual`]
+    /// writes, as data instead.
+    ///
+    /// For a caller that packs them into a POD blob and hashes that in
+    /// one write — the cascade's per-frame prefix — so it canonicalizes a
+    /// rect the way everything else does without writing `canon_bits` out
+    /// four times.
+    #[inline]
+    pub(crate) fn canon_lanes(self) -> [u32; 4] {
+        [
+            canon_bits(self.min.x),
+            canon_bits(self.min.y),
+            canon_bits(self.size.w),
+            canon_bits(self.size.h),
+        ]
+    }
+
     /// Bottom-right corner — exclusive, per the half-open convention.
     #[inline]
     pub const fn max(self) -> Vec2 {
@@ -175,6 +193,49 @@ impl Rect {
             min: Vec2::new(self.min.x - amount, self.min.y - amount),
             size: Size::new(self.size.w + 2.0 * amount, self.size.h + 2.0 * amount),
         }
+    }
+
+    /// The axis-aligned square of half-extent `half` about `center`.
+    #[inline]
+    pub(crate) fn square_about(center: Vec2, half: f32) -> Self {
+        Self {
+            min: Vec2::new(center.x - half, center.y - half),
+            size: Size::new(2.0 * half, 2.0 * half),
+        }
+    }
+
+    /// Owner-local point a shape inside this rect spins about: the rect's
+    /// centre in the owner-local space the shape's geometry is recorded
+    /// in, so the rect's own `min` is no part of it.
+    ///
+    /// Both ends of the spin contract derive the pivot here — the encoder
+    /// to put it in the payload the composer turns points by, the cascade
+    /// to cover the disc the shape sweeps.
+    #[inline]
+    pub(crate) fn spin_pivot(self) -> Vec2 {
+        Vec2::new(self.size.w * 0.5, self.size.h * 0.5)
+    }
+
+    /// Distance from `pivot` to this rect's farthest corner — the radius
+    /// of the disc it sweeps when it turns about that point.
+    #[inline]
+    pub(crate) fn spun_radius(self, pivot: Vec2) -> f32 {
+        (self.min - pivot)
+            .abs()
+            .max((self.max() - pivot).abs())
+            .length()
+    }
+
+    /// The axis-aligned square this rect covers at *every* rotation about
+    /// `pivot`.
+    ///
+    /// Angle-free by construction, which is the point: the composer culls
+    /// a spun shape against this square and the cascade damages the same
+    /// one, without the two passes having to sample the animation at the
+    /// same instant.
+    #[inline]
+    pub(crate) fn spun_cover(self, pivot: Vec2) -> Self {
+        Self::square_about(pivot, self.spun_radius(pivot))
     }
 
     /// Largest axis-aligned rect that fits inside `self` when `self`

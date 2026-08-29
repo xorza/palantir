@@ -344,6 +344,84 @@ fn button_unhover_damage_covers_only_the_button() {
     );
 }
 
+/// A spinning stroke is damaged against the square it sweeps, not the
+/// bbox it was recorded with — the same square the composer culls it
+/// against (`StrokeBounds::new`), so the region `extend_predamaged`
+/// repaints every frame covers every angle the spin reaches.
+///
+/// Fixture is the encoder's spun-polyline test: an 80x40 owner, a line
+/// from (10,10) to (70,30), pivot at the owner centre (40,20), so the
+/// far endpoint sits
+/// r = sqrt(30^2 + 10^2) = 31.623 from it. Rotated a quarter turn that
+/// endpoint lands at pivot + (-10,30), which is outside both the owner
+/// box and the recorded bbox. The stroke pad is a 0.5 half-width plus
+/// the 0.5 physical fringe at scale 1, and a two-point line has no join
+/// and a butt cap, so it adds exactly 1 on each side.
+///
+/// The time is left at zero, where the sampled rotation is zero and the
+/// encoder emits the still bbox: the cascade covers the sweep from the
+/// registration alone, which is what lets it answer without sampling.
+#[test]
+fn a_spun_stroke_is_damaged_against_the_square_it_sweeps() {
+    use crate::scene::tree::paint_anims::PaintAnim;
+    use crate::shape::polyline::PolylineColors;
+    use std::time::Duration;
+
+    let owner_id = WidgetId::from_hash("spin_owner");
+    let mut h = UiHarness::cold(DISPLAY.physical);
+    frame(&mut h, |ui| {
+        Panel::hstack()
+            .id(WidgetId::from_hash("root"))
+            .show(ui, |ui| {
+                Panel::zstack()
+                    .id(owner_id)
+                    .size((Sizing::fixed(80.0), Sizing::fixed(40.0)))
+                    .show(ui, |ui| {
+                        ui.add_shape_animated(
+                            Shape::polyline(
+                                &[Vec2::new(10.0, 10.0), Vec2::new(70.0, 30.0)],
+                                PolylineColors::Single(RED),
+                                1.0,
+                            ),
+                            PaintAnim::Spin {
+                                speed: 1.0,
+                                started_at: Duration::ZERO,
+                            },
+                        );
+                    });
+            });
+    });
+
+    let owner =
+        h.ui.response_for(owner_id)
+            .rect
+            .expect("the owner arranged");
+    let node_idx = h.ui.cascade().by_id[&owner_id].node.idx();
+    let span = h.ui.cascade().layers[Layer::Main].paint_arena.node_spans[node_idx];
+    // No background on the owner, so its one row is the polyline.
+    assert_eq!(span.len, 1, "the owner paints the one animated shape");
+    let row = h.ui.cascade().layers[Layer::Main].paint_arena.rows[span.start as usize].screen;
+
+    let pivot = owner.min + Vec2::new(40.0, 20.0);
+    let want = Rect::square_about(pivot, (30.0_f32 * 30.0 + 10.0 * 10.0).sqrt()).inflated(1.0);
+    let eps = 1e-3;
+    assert!(
+        (row.min - want.min).length() < eps && (row.size.w - want.size.w).abs() < eps,
+        "damaged {row:?}, swept {want:?}",
+    );
+    // The recorded bbox stops at the owner box, so the quarter-turn
+    // endpoint is the pixel the old bound left undamaged.
+    let quarter_turn = pivot + Vec2::new(-10.0, 30.0);
+    assert!(
+        row.contains(quarter_turn),
+        "damaged {row:?} misses the sweep"
+    );
+    assert!(
+        !owner.contains(quarter_turn),
+        "the fixture's sweep must leave the owner box, or it proves nothing"
+    );
+}
+
 /// `NodeSnapshot.paint_span` covers one entry per Paint row on the
 /// node — chrome at row 0 when present, then each direct shape — with
 /// matching rect and canonical hash. Mirrors `Cascade::paint_arenas`.

@@ -57,7 +57,7 @@ fn grid_hug_column_takes_max_span1_child_intrinsic() {
             .auto_id()
             .cols([Track::hug(), Track::fill()])
             .rows([Track::hug(), Track::hug()])
-            .size((Sizing::FILL, Sizing::FILL))
+            .size((Sizing::FILL, Sizing::fixed(100.0)))
             .show(ui, |ui| {
                 Button::new()
                     .id(WidgetId::from_hash("short"))
@@ -305,8 +305,8 @@ fn grid_fill_row_floors_at_descendant_min_content() {
     // Symmetric Y-axis case: two equal-weight Fill rows, surface 100
     // tall. Cell (0,0) holds a Fixed-height 60 frame; cell (1,0) is
     // open. Without floor: rows split 50/50 and the rigid frame
-    // overflows. With floor (Phase 2 records `d.h` into hug_min for
-    // Fill rows): row 0 clamps to 60, row 1 takes 40.
+    // overflows. With the floor (Phase 2 records the child's Y
+    // min-content into hug_min): row 0 clamps to 60, row 1 takes 40.
     let mut h = UiHarness::new(UVec2::new(100, 100));
     let root = h.frame_value(|ui| {
         Grid::new()
@@ -334,6 +334,51 @@ fn grid_fill_row_floors_at_descendant_min_content() {
         "rigid row floors at descendant min-content"
     );
     assert_eq!(kids[1].size.h, 40.0, "flex row takes the remainder");
+}
+
+#[test]
+fn grid_hug_rows_floor_at_their_measured_height_when_cramped() {
+    // Two Hug rows, each holding a Fixed-height 60 frame, in a grid
+    // whose own height is fixed at 100 — the one way to cramp rows, since
+    // a Fill grid floors its height at its content and never gets here.
+    // A Fixed frame's Y min-content is its 60, so each row's range is
+    // `[60, 60]` and `hug_min_sum` is 120 against 100 remaining: the solve
+    // takes the cramped arm, every row keeps its 60, and the grid
+    // overflows by 20.
+    //
+    // With the min left unwritten the range read `[0, 60]` and the solve
+    // took the slack arm instead — 0 + 100 * 60/120 = 50 per row — so
+    // row 1 began at y = 50 and both rigid frames overflowed cells that
+    // had no reason to shrink.
+    let mut h = UiHarness::new(UVec2::new(100, 100));
+    let root = h.frame_value(|ui| {
+        Grid::new()
+            .auto_id()
+            .cols([Track::fill()])
+            .rows([Track::hug(), Track::hug()])
+            .size((Sizing::FILL, Sizing::fixed(100.0)))
+            .show(ui, |ui| {
+                Frame::new()
+                    .id(WidgetId::from_hash("top"))
+                    .size((Sizing::FILL, Sizing::fixed(60.0)))
+                    .grid_cell((0, 0))
+                    .show(ui);
+                Frame::new()
+                    .id(WidgetId::from_hash("bottom"))
+                    .size((Sizing::FILL, Sizing::fixed(60.0)))
+                    .grid_cell((1, 0))
+                    .show(ui);
+            })
+            .response
+            .node()
+    });
+    let kids = h.main_child_rects(root);
+    assert_eq!(kids[0].size.h, 60.0, "row 0 keeps its measured height");
+    assert_eq!(
+        kids[1].min.y, 60.0,
+        "row 1 starts past row 0's full height, so the grid overflows"
+    );
+    assert_eq!(kids[1].size.h, 60.0, "row 1 keeps its measured height");
 }
 
 /// Pins implicit contract: `Fixed`/`Hug` resolved, `Fill` unresolved so

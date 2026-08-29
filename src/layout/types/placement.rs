@@ -1,6 +1,7 @@
 //! How a layer root is measured and where it lands afterwards.
 
 use crate::layout::types::overlay::OverlayPosition;
+use crate::primitives::approx::FloatHash;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use glam::Vec2;
@@ -13,6 +14,34 @@ pub(crate) enum Placement {
 }
 
 impl Placement {
+    /// Feed this placement to a hasher under visual canonicalization.
+    ///
+    /// Placement lives outside the node hashes but changes arranged
+    /// rects, so the cascade fingerprint folds it in — here rather than
+    /// there, because what the variants carry is this type's own
+    /// business. Inherent rather than an [`FloatHash`] impl, on the same
+    /// terms as [`OverlayPosition::hash_visual`]: the trait's other half
+    /// is the `Hash`/`PartialEq` agreement, which this type does not have.
+    pub(crate) fn hash_visual<H: std::hash::Hasher>(&self, state: &mut H) {
+        match self {
+            Self::Fixed { anchor, size } => {
+                state.write_u8(0);
+                anchor.hash_visual(state);
+                match size {
+                    Some(size) => {
+                        state.write_u8(1);
+                        size.hash_visual(state);
+                    }
+                    None => state.write_u8(0),
+                }
+            }
+            Self::Overlay(position) => {
+                state.write_u8(1);
+                position.hash_visual(state);
+            }
+        }
+    }
+
     pub(crate) const fn fixed(anchor: Vec2, size: Option<Size>) -> Self {
         Self::Fixed { anchor, size }
     }

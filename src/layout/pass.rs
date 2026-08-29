@@ -341,6 +341,15 @@ impl LayoutPass<'_> {
     /// Top-down arrange dispatcher. `slot` is the rect the parent reserved
     /// (margin-inclusive). Stores `rect` for each visited node in the
     /// active layer's `Layout`.
+    ///
+    /// **A collapsed subtree is zeroed here**, at the slot its parent
+    /// placed it in, so a driver that places every child alike hands
+    /// collapsed ones the same slot as the rest and says nothing about
+    /// them. Only a driver whose *own* bookkeeping a collapsed child must
+    /// not advance — the two stacks' main-axis cursor — tests for it, and
+    /// what those pass is a different anchor rather than the same one
+    /// twice. The position of a zero-size rect is not observable beyond
+    /// being stable, so the two anchors are equally good answers.
     pub(super) fn arrange(&mut self, node: NodeId, slot: Rect) {
         let tree = self.tree;
         let layout = tree.records.layout()[node.idx()];
