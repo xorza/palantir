@@ -65,18 +65,6 @@ impl CascadeContext {
     };
 }
 
-/// What a node reads off the frame above it — the cascaded values plus the
-/// hash prefix they were already folded into.
-#[derive(Debug)]
-struct Inherited<'a> {
-    cascade: CascadeContext,
-    /// Seeded but never folded while repairing: the retained
-    /// `cascade_input`s stay valid there, so nothing reads it. A fresh
-    /// [`Hasher`] is one `u64`, cheaper to carry than an `Option` saying
-    /// it is unread — which every node of a *rebuild* would then unwrap.
-    prefix: &'a Hasher,
-}
-
 #[derive(Debug)]
 struct Frame {
     cascade: CascadeContext,
@@ -96,8 +84,11 @@ struct Frame {
     /// descendants only fold in their own `layout_rect`, avoiding a
     /// re-hash of the 32 B ancestor prefix per node.
     ///
-    /// Empty and unread on an incremental frame — see
-    /// [`Inherited::prefix`].
+    /// Empty and unread on an incremental frame: the retained
+    /// `cascade_input`s stay valid while repairing, so nothing folds it.
+    /// A fresh [`Hasher`] is one `u64`, cheaper to carry than an `Option`
+    /// saying it is unread — which every node of a *rebuild* would then
+    /// have to unwrap.
     cascade_prefix: Hasher,
 }
 
@@ -359,19 +350,9 @@ impl CascadeEngine {
             while let Some(popped) = self.stack.pop_if(|top| i >= top.subtree_end) {
                 finalize_frame(&mut self.stack, &mut lc.subtree_paint_rects, popped);
             }
-            let Inherited {
-                cascade: parent,
-                prefix: parent_prefix,
-            } = match self.stack.last() {
-                Some(p) => Inherited {
-                    cascade: p.cascade,
-                    prefix: &p.cascade_prefix,
-                },
-                None => Inherited {
-                    cascade: CascadeContext::ROOT,
-                    prefix: &root_prefix,
-                },
-            };
+            let top = self.stack.last();
+            let parent = top.map_or(CascadeContext::ROOT, |frame| frame.cascade);
+            let parent_prefix = top.map_or(&root_prefix, |frame| &frame.cascade_prefix);
 
             let iu = i as usize;
             let id = NodeId(i);

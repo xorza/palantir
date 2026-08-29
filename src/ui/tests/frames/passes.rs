@@ -2,10 +2,10 @@
 //! only once.
 
 use crate::Ui;
+use crate::common::time::MAX_ANIM_DT;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::configure::Configure;
-use crate::ui::frame_runtime::FrameRuntime;
 use crate::ui::harness::UiHarness;
 use crate::ui::tests::support::{COLD, SURFACE};
 use crate::widgets::response::ResponseSnapshot;
@@ -249,12 +249,10 @@ fn frame_value_records_both_relayout_passes_and_returns_the_first() {
 
 /// `Ui::frame` plumbs `now`, `dt`, and the repaint-requested flag
 /// end-to-end: per-call `now` lands in the frame runtime, the derived `dt`
-/// clamps to `MAX_DT`, `repaint_requested` resets at the top of every
+/// clamps to `MAX_ANIM_DT`, `repaint_requested` resets at the top of every
 /// call, and a flag set during recording surfaces on `FrameOutput`.
 #[test]
 fn frame_plumbs_now_dt_and_repaint_request() {
-    const MAX_DT: f32 = FrameRuntime::MAX_DT;
-
     let mut h = UiHarness::new(UVec2::new(100, 100));
     h.frame(|ui| {
         Panel::vstack()
@@ -304,7 +302,7 @@ fn frame_plumbs_now_dt_and_repaint_request() {
         h.ui.frame_runtime.dt,
     );
 
-    // Frame C: oversized gap (5s) clamps dt to MAX_DT; `time` still
+    // Frame C: oversized gap (5s) clamps dt to MAX_ANIM_DT; `time` still
     // tracks true clock so animation math doesn't teleport.
     let _ = h.at(Duration::from_millis(5_032)).frame(|ui| {
         Panel::vstack()
@@ -313,8 +311,8 @@ fn frame_plumbs_now_dt_and_repaint_request() {
     });
     assert_eq!(h.ui.frame_runtime.time, Duration::from_millis(5_032));
     assert!(
-        (h.ui.frame_runtime.dt - MAX_DT).abs() < 1e-6,
-        "FrameRuntime::dt should clamp at MAX_DT; got {}",
+        (h.ui.frame_runtime.dt - MAX_ANIM_DT).abs() < 1e-6,
+        "FrameRuntime::dt should clamp at MAX_ANIM_DT; got {}",
         h.ui.frame_runtime.dt,
     );
 

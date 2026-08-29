@@ -11,7 +11,7 @@ use crate::scene::node::configure::Configure;
 use crate::scene::node::configure::ConfigureNode;
 use crate::scene::node::theme_defaults::ThemeDefaults;
 use crate::ui::Ui;
-use crate::widgets::popup::{ClickOutside, Popup, PopupHandle, PopupResponse};
+use crate::widgets::popup::{Popup, PopupHandle, PopupResponse};
 use crate::widgets::response::ResponseSnapshot;
 use crate::widgets::theme::context_menu::ContextMenuTheme;
 
@@ -77,7 +77,7 @@ impl<'a> ContextMenu<'a> {
     pub fn for_id(for_id: WidgetId) -> Self {
         Self {
             for_id,
-            popup: Popup::anchored_to(Vec2::ZERO).click_outside(ClickOutside::Dismiss),
+            popup: Popup::anchored_to(Vec2::ZERO),
             chrome: None,
             style: None,
         }

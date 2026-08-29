@@ -12,7 +12,7 @@ use crate::shape::polyline::PolylineColors;
 use crate::shape::style::{LineCap, LineJoin};
 use crate::ui::Ui;
 use crate::widgets::context_menu::menu_item::MenuItem;
-use crate::widgets::popup::{ClickOutside, Popup};
+use crate::widgets::popup::Popup;
 use crate::widgets::response::Response;
 use crate::widgets::text::Text;
 use crate::widgets::theme::button::ButtonTheme;
@@ -172,7 +172,6 @@ impl<'a, S> ComboBox<'a, S> {
             let label = self.label;
             let selected = self.selected;
             let popup = Popup::below(rect)
-                .click_outside(ClickOutside::Dismiss)
                 .background(panel)
                 .id(id.with("list"))
                 .min_size((rect.size.w, 0.0));
