@@ -81,6 +81,14 @@ impl TranslateScale {
     /// handing in raw numbers are a debug contract here — and these run per
     /// transformed node per frame, where a release build must pay only the
     /// arithmetic.
+    /// [`Self::new`]'s screen, one tier down and one strictness weaker,
+    /// and the two differ by *rate* rather than by how much the invariant
+    /// is worth. `new` is the door a caller builds a transform at, once.
+    /// This is where the type's own arithmetic lands — `compose` runs in
+    /// the cascade walk per transformed node per frame, and again in the
+    /// composer per shape — so the check the door can afford is one this
+    /// cannot. Overflow is how a derived one breaks: two finite scales
+    /// multiply to `inf`.
     const fn from_parts(translation: Vec2, scale: f32) -> Self {
         debug_assert!(
             translation.x.is_finite() && translation.y.is_finite(),
@@ -258,6 +266,7 @@ mod tests {
         assert!(!TranslateScale::from_scale(1.5).is_identity());
     }
 
+    /// The door a caller builds a transform at, screened in every build.
     #[test]
     fn construction_rejects_non_finite_translation_and_non_positive_or_non_finite_scale() {
         let invalid_translations = [
@@ -281,7 +290,17 @@ mod tests {
                 "scale {scale:?} must be rejected"
             );
         }
+    }
 
+    /// The type's own arithmetic held to the same contract as its door.
+    ///
+    /// Debug-only, and by *rate* rather than by worth: `from_parts` is
+    /// where `compose` lands, which the cascade runs per transformed node
+    /// per frame and the composer again per shape. Overflow is how a
+    /// derived transform breaks — two finite scales multiply to `inf`.
+    #[cfg(debug_assertions)]
+    #[test]
+    fn derived_transforms_reject_the_overflow_their_arithmetic_produces() {
         assert!(
             std::panic::catch_unwind(|| {
                 TranslateScale::from_scale_about(Vec2::splat(f32::MAX), f32::MAX)

@@ -57,8 +57,12 @@ impl<'a> TextShapeRequest<'a> {
     /// cached shaped buffer sound, and every caller that built the pair by
     /// hand would carry its own version of this assertion — one that can
     /// drift, or be forgotten by the next caller to write the literal.
-    /// (`ShapedTextRef::new` checks the same pairing against a *recorded*
-    /// hash, which costs no re-read; this is the one that reads.)
+    ///
+    /// Also **the crate's one pairing check that stays debug-only**,
+    /// because it is the one that *reads*: re-hashing the run costs
+    /// `O(n)` in its bytes, per run per frame, where
+    /// `ShapedTextRef::new` compares two recorded hashes and holds in
+    /// release.
     ///
     /// `None` for empty text — see the type docs. The face is already
     /// screened: it is what minted the key.

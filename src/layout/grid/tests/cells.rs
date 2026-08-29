@@ -37,6 +37,10 @@ fn grid_cell_alignment_override_pins_child_to_corner() {
     assert_eq!(r.min.y, 80.0);
 }
 
+/// Debug-only: `enter`/`exit` are the layout engine's own pairing, run
+/// per grid node per frame, so this is the crate checking itself rather
+/// than screening anything a caller passed.
+#[cfg(debug_assertions)]
 #[test]
 #[should_panic(expected = "GridDepthStack::exit underflow")]
 fn grid_depth_stack_rejects_exit_without_enter() {

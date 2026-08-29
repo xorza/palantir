@@ -15,15 +15,43 @@ use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};
 use std::cell::Cell;
 
-/// Two `.id(WidgetId::from_hash("dup"))` calls in one frame would silently corrupt
-/// every per-id store. Instead of panicking, `SeenIds::record`
-/// disambiguates the second one (same path as auto-id collisions),
-/// `Forest` pairs both colliding nodes via `Forest.collisions`, and
-/// the encoder emits a magenta stroked rect at each colliding node's
-/// arranged rect after the regular paint walk.
-#[test]
-fn duplicate_explicit_widget_id_disambiguates_and_flags() {
-    let mut h = UiHarness::new(UVec2::new(100, 100));
+/// The magenta outlines the encoder emitted for this frame's explicit-id
+/// collisions, in physical pixels.
+///
+/// Development-build only, which is why every caller is gated:
+/// `encoder::collision_overlay` is `cfg(debug_assertions)`, because a
+/// shipped app wants neither magenta over its UI nor the branch that
+/// tests for it. `Forest.collisions` carries the pairing in every
+/// profile, and `Forest::report_explicit_collision`'s `tracing::error!`
+/// carries the diagnosis there.
+///
+/// Selected by stroke width: the overlay is the only 3 px stroke the
+/// encoder emits.
+#[cfg(debug_assertions)]
+fn collision_outlines(ui: &Ui) -> Vec<Rect> {
+    // Share Ui's record store so any mesh/polyline bytes pushed at
+    // record time are visible at compose / upload — the WindowDriver
+    // wiring for real apps.
+    let mut frontend = Frontend::for_test();
+    frontend.build(
+        ui.frame_scene(),
+        RenderPlan {
+            clear: ui.theme.window_clear,
+            kind: RenderKind::Full,
+        },
+    );
+    frontend
+        .buffer
+        .quads
+        .iter()
+        .filter(|q| q.stroke_width > 2.5 && q.stroke_width < 3.5)
+        .map(|q| q.rect)
+        .collect()
+}
+
+/// Two buttons in one frame, both claiming `"dup"`. The second is
+/// disambiguated rather than allowed to corrupt every per-id store.
+fn record_duplicate_ids(h: &mut UiHarness) -> (WidgetId, NodeId) {
     let button_node = Cell::new(NodeId(0));
     let duplicate_id = WidgetId::from_hash("dup");
     h.frame(|ui| {
@@ -33,6 +61,30 @@ fn duplicate_explicit_widget_id_disambiguates_and_flags() {
             button_node.set(a_node);
         });
     });
+    (duplicate_id, button_node.get())
+}
+
+/// One `"dup"` in `Main` and one in `Popup`. Ids are per-layer, so the
+/// pair still collides.
+fn record_cross_layer_duplicate_ids(h: &mut UiHarness) {
+    h.frame(|ui| {
+        Panel::vstack().auto_id().show(ui, |ui| {
+            Button::new().id(WidgetId::from_hash("dup")).show(ui);
+        });
+        ui.layer(Layer::Popup).show(|ui| {
+            Button::new().id(WidgetId::from_hash("dup")).show(ui);
+        });
+    });
+}
+
+/// Two `.id(WidgetId::from_hash("dup"))` calls in one frame would silently
+/// corrupt every per-id store. Instead of panicking, `SeenIds::record`
+/// disambiguates the second one (same path as auto-id collisions) and
+/// `Forest` pairs both colliding nodes via `Forest.collisions`.
+#[test]
+fn duplicate_explicit_widget_id_disambiguates_and_flags() {
+    let mut h = UiHarness::new(UVec2::new(100, 100));
+    let (duplicate_id, _) = record_duplicate_ids(&mut h);
     // One collision pair should be recorded, survives until the next
     // `pre_record` so the encoder can read it.
     assert_eq!(
@@ -49,62 +101,36 @@ fn duplicate_explicit_widget_id_disambiguates_and_flags() {
         [duplicate_id, duplicate_id.with(1)],
         "hit rows must retain both resolved IDs rather than the duplicated raw ID",
     );
-    let button_rect = h.ui.layout[Layer::Main].rect[button_node.get().idx()];
-    // Drive the encoder and check the emitted quads. The two overlay
-    // quads should be stroked, magenta-ish, and rect-equal to the two
-    // colliding buttons' arranged rects.
-    // Share Ui's record store so any mesh/polyline bytes pushed at
-    // record time are visible at compose / upload — the WindowDriver wiring
-    // for real apps.
-    let mut frontend = Frontend::for_test();
-    frontend.build(
-        h.ui.frame_scene(),
-        RenderPlan {
-            clear: h.ui.theme.window_clear,
-            kind: RenderKind::Full,
-        },
-    );
-    let buffer = &frontend.buffer;
-    let overlay_quads: Vec<_> = buffer
-        .quads
-        .iter()
-        .filter(|q| q.stroke_width > 2.5 && q.stroke_width < 3.5)
-        .collect();
-    assert_eq!(
-        overlay_quads.len(),
-        2,
-        "expected 2 magenta collision overlay quads in the render buffer",
-    );
-    // Pin rect math: the first button's arranged rect maps to one
-    // of the overlay quads (physical-px == logical at scale=1).
-    let matched = overlay_quads.iter().any(|q| {
-        (q.rect.min.x - button_rect.min.x).abs() < 1.0
-            && (q.rect.min.y - button_rect.min.y).abs() < 1.0
-            && (q.rect.size.w - button_rect.size.w).abs() < 1.0
-            && (q.rect.size.h - button_rect.size.h).abs() < 1.0
+}
+
+/// The overlay a developer sees: one magenta rect per colliding node,
+/// at that node's arranged rect (physical px == logical at scale 1).
+#[cfg(debug_assertions)]
+#[test]
+fn duplicate_explicit_widget_ids_are_outlined() {
+    let mut h = UiHarness::new(UVec2::new(100, 100));
+    let (_, button_node) = record_duplicate_ids(&mut h);
+    let button_rect = h.ui.layout[Layer::Main].rect[button_node.idx()];
+    let outlines = collision_outlines(&h.ui);
+    assert_eq!(outlines.len(), 2, "expected 2 magenta collision outlines");
+    let matched = outlines.iter().any(|rect| {
+        (rect.min.x - button_rect.min.x).abs() < 1.0
+            && (rect.min.y - button_rect.min.y).abs() < 1.0
+            && (rect.size.w - button_rect.size.w).abs() < 1.0
+            && (rect.size.h - button_rect.size.h).abs() < 1.0
     });
     assert!(
         matched,
-        "no overlay quad matched first button's arranged rect {button_rect:?}; overlays: {overlay_quads:?}",
+        "no outline matched first button's arranged rect {button_rect:?}; outlines: {outlines:?}",
     );
 }
 
-/// Cross-layer collision: `.id(WidgetId::from_hash("dup"))` in Main and another with
-/// the same key inside a `Ui::layer(Popup, ...)` body. `SeenIds.curr`
-/// is shared across layers, so the second occurrence is detected as a
-/// collision. Each `CollisionRecord` endpoint carries its own `Layer`,
-/// so the encoder paints each overlay at the correct per-layer rect.
+/// An explicit id is per-layer, so `Main` and `Popup` each keep their own
+/// resolved id — and the pair records which layer each endpoint sat in.
 #[test]
 fn cross_layer_explicit_widget_id_collision_resolves_per_layer() {
-    let mut h = UiHarness::new(UVec2::new(200, 200));
-    h.frame(|ui| {
-        Panel::vstack().auto_id().show(ui, |ui| {
-            Button::new().id(WidgetId::from_hash("dup")).show(ui);
-        });
-        ui.layer(Layer::Popup).show(|ui| {
-            Button::new().id(WidgetId::from_hash("dup")).show(ui);
-        });
-    });
+    let mut h = UiHarness::new(SURFACE);
+    record_cross_layer_duplicate_ids(&mut h);
     assert_eq!(
         h.ui.forest.collisions.len(),
         1,
@@ -123,35 +149,33 @@ fn cross_layer_explicit_widget_id_collision_resolves_per_layer() {
         "second occurrence should be in Popup, got {:?}",
         pair.second.layer,
     );
-    // Each endpoint's rect must come from its own layer's `LayerLayout`.
+}
+
+/// Each endpoint's outline comes from its own layer's `LayerLayout`, so a
+/// cross-layer pair outlines two rects in two different coordinate
+/// sources rather than one twice.
+#[cfg(debug_assertions)]
+#[test]
+fn cross_layer_duplicate_widget_ids_are_outlined_per_layer() {
+    let mut h = UiHarness::new(SURFACE);
+    record_cross_layer_duplicate_ids(&mut h);
+    let pair = h.ui.forest.collisions[0];
     let main_rect = h.ui.layout[Layer::Main].rect[pair.first.node.idx()];
     let popup_rect = h.ui.layout[Layer::Popup].rect[pair.second.node.idx()];
-    // Share Ui's record store so any mesh/polyline bytes pushed at
-    // record time are visible at compose / upload — the WindowDriver wiring
-    // for real apps.
-    let mut frontend = Frontend::for_test();
-    frontend.build(
-        h.ui.frame_scene(),
-        RenderPlan {
-            clear: h.ui.theme.window_clear,
-            kind: RenderKind::Full,
-        },
+    let outlines = collision_outlines(&h.ui);
+    assert_eq!(outlines.len(), 2, "expected 2 magenta collision outlines");
+    assert!(
+        outlines
+            .iter()
+            .any(|rect| (rect.min - main_rect.min).length() < 1.0),
+        "no outline at Main rect {main_rect:?}",
     );
-    let buffer = &frontend.buffer;
-    let overlay_quads: Vec<_> = buffer
-        .quads
-        .iter()
-        .filter(|q| q.stroke_width > 2.5 && q.stroke_width < 3.5)
-        .collect();
-    assert_eq!(overlay_quads.len(), 2, "expected 2 overlay quads");
-    let has_main = overlay_quads
-        .iter()
-        .any(|q| (q.rect.min - main_rect.min).length() < 1.0);
-    let has_popup = overlay_quads
-        .iter()
-        .any(|q| (q.rect.min - popup_rect.min).length() < 1.0);
-    assert!(has_main, "no overlay quad at Main rect {main_rect:?}");
-    assert!(has_popup, "no overlay quad at Popup rect {popup_rect:?}");
+    assert!(
+        outlines
+            .iter()
+            .any(|rect| (rect.min - popup_rect.min).length() < 1.0),
+        "no outline at Popup rect {popup_rect:?}",
+    );
 }
 
 #[test]

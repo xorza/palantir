@@ -82,7 +82,13 @@ impl<'a> FrameCycle<'a> {
         // contents by index (gradients, polyline points/colors, mesh
         // verts/indices, interned text spans). Clearing here would
         // leave dangling indices the encoder then dereferences.
-        debug_assert!(
+        // Once per frame, and the same screen both hosts run at their own
+        // door. Held at their strictness rather than below it: a host is
+        // not the only way in — the `internals` harness stamps a display
+        // directly — and every pointer coordinate is divided by this
+        // several passes later, where nothing names the frame that
+        // carried it.
+        assert!(
             display::scale_factor_is_valid(stamp.display.scale_factor),
             "Display::scale_factor must be finite and ≥ EPSILON; got {}",
             stamp.display.scale_factor,

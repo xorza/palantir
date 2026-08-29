@@ -156,8 +156,9 @@ impl Mesh {
     /// # Panics
     ///
     /// Panics in a debug build if any index does not refer to an
-    /// existing vertex. Debug-only because this runs per triangle, and
-    /// a mesh is rebuilt per frame.
+    /// existing vertex. Debug-only because this is per item of a
+    /// caller's build loop — a mesh of ten thousand triangles pays it
+    /// ten thousand times, and a mesh is rebuilt per frame.
     #[inline]
     pub fn triangle(&mut self, a: u32, b: u32, c: u32) {
         debug_assert!(

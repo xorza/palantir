@@ -34,6 +34,21 @@ pub(crate) struct AtlasSlot {
     /// own clock. The clock hand skips anything stamped with the current
     /// frame, and a non-drawing entry's deadline is measured from here.
     pub(crate) last_use: u64,
+    /// This index is on the free list, waiting to be handed to the next
+    /// insert.
+    ///
+    /// `alloc` cannot answer it: a non-drawing entry carries `None` while
+    /// still live, so the two are indistinguishable there. Kept as a
+    /// field rather than asked of the list, which answers the same
+    /// question in `O(n)` over every waiting index — see
+    /// [`FreeSlots::release`](super::free_slots::FreeSlots::release).
+    ///
+    /// Carried in every profile although only a debug build reads it: it
+    /// rides in padding the slot already had, so the hot copy is
+    /// unchanged, and one byte costs less than the four `#[cfg]`s a
+    /// debug-only field would put across this struct's three
+    /// construction sites.
+    pub(crate) free: bool,
 }
 
 impl AtlasSlot {
@@ -70,6 +85,7 @@ pub(super) mod test_support {
                 alloc,
                 generation: 0,
                 last_use,
+                free: false,
             }
         }
     }

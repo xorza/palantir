@@ -1,4 +1,5 @@
 use super::*;
+use crate::primitives::recorded_text::RecordedText;
 
 #[test]
 fn cache_key_discriminates_every_shaping_axis() {
@@ -307,15 +308,9 @@ fn quantized_key_shaping_is_insertion_order_independent() {
     );
 }
 
-/// `ShapedTextRef` is the render-handoff pairing of a shaped-buffer key
-/// with its record-store source bytes: `new` pins the pairing against the
-/// recorded content hash, `resolve_request` restores the exact request.
-#[test]
-fn shaped_text_ref_resolves_the_recorded_pair_and_rejects_mismatches() {
-    let store = RecordStore::default();
-    let recorded = store.record_text(store.intern_str("hi"));
-    assert_eq!(recorded.hash, hash_str("hi"));
-    let key = TextShapeKey::unbounded(
+/// The key a recorded run shapes under, at the face these cases share.
+fn key_for(recorded: &RecordedText) -> TextShapeKey {
+    TextShapeKey::unbounded(
         recorded.hash,
         GlyphFont {
             size_px: 16.0,
@@ -323,23 +318,38 @@ fn shaped_text_ref_resolves_the_recorded_pair_and_rejects_mismatches() {
             family: FontFamily::Sans,
             weight: FontWeight::Regular,
         },
-    );
+    )
+}
+
+/// `ShapedTextRef` is the render-handoff pairing of a shaped-buffer key
+/// with its record-store source bytes, and `resolve_request` restores the
+/// exact request the backend replays.
+#[test]
+fn shaped_text_ref_resolves_the_recorded_pair() {
+    let store = RecordStore::default();
+    let recorded = store.record_text(store.intern_str("hi"));
+    assert_eq!(recorded.hash, hash_str("hi"));
+    let key = key_for(&recorded);
     let text_ref = ShapedTextRef::new(key, &recorded);
+
+    let payloads = store.payloads.borrow();
+    let interned = payloads.interned_text();
+    let request = text_ref.resolve_request(&interned);
+    assert_eq!(request.text, "hi");
+    assert_eq!(request.key, key);
+}
+
+/// Pairing a key with a different run's source bytes would replay one
+/// run's shaped buffer for another's text.
+///
+/// Debug-only: the encoder mints one of these per text run per frame, so
+/// the compare runs at the frame's rate rather than a caller's.
+#[cfg(debug_assertions)]
+#[test]
+#[should_panic(expected = "shaped-text key paired with a different run's source bytes")]
+fn a_mismatched_key_and_source_are_rejected() {
+    let store = RecordStore::default();
+    let key = key_for(&store.record_text(store.intern_str("hi")));
     let other = store.record_text(store.intern_str("bye"));
-
-    {
-        let payloads = store.payloads.borrow();
-        let interned = payloads.interned_text();
-        let request = text_ref.resolve_request(&interned);
-        assert_eq!(request.text, "hi");
-        assert_eq!(request.key, key);
-    }
-
-    // Pairing a key with a different run's source bytes is the logic
-    // error the constructor's O(1) hash comparison pins.
-    let mismatch = std::panic::catch_unwind(|| ShapedTextRef::new(key, &other));
-    assert!(
-        mismatch.is_err(),
-        "mismatched key/source pairing must panic"
-    );
+    let _ = ShapedTextRef::new(key, &other);
 }

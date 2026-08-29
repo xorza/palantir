@@ -406,7 +406,7 @@ impl Ui {
         // never happened. Nothing said so; this makes the misuse loud
         // instead. `App::update` already runs before recording, so code
         // reaching for this from there wants no retry at all.
-        debug_assert!(
+        assert!(
             self.forest.is_recording(),
             "Ui::request_relayout outside a record pass: it re-runs *this* \
              frame's record, so there is nothing for it to retry — drop the \

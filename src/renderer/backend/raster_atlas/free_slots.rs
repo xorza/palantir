@@ -28,12 +28,21 @@ impl FreeSlots {
     /// rectangle and no run ever records its index, so the bump is skipped
     /// there — which is also why an expiring non-drawing entry releases
     /// through this same call rather than a push of its own.
+    /// A double release is caught off [`AtlasSlot::free`] rather than a
+    /// scan of this list, which answers the same question in `O(n)` over
+    /// every waiting index. Debug-only all the same — this runs per
+    /// evicted glyph — but the flag is what keeps the debug build's own
+    /// cost flat, and it rides in padding the slot already had.
+    ///
+    /// Nothing clears the flag: `store` overwrites the whole slot when it
+    /// claims the index back, so reuse resets it by construction.
     pub(super) fn release(&mut self, slots: &mut [AtlasSlot], sides: &mut [Side], idx: u32) {
+        let slot = &mut slots[idx as usize];
         debug_assert!(
-            !self.0.contains(&idx),
+            !slot.free,
             "slab index {idx} released twice; two keys would share one slot",
         );
-        let slot = &mut slots[idx as usize];
+        slot.free = true;
         if let Some(id) = slot.alloc.take() {
             slot.generation = slot
                 .generation
@@ -93,6 +102,9 @@ mod tests {
     /// index put it on the list twice, and the next two `store` calls
     /// would hand one slab slot to two live keys — no panic, no wrong
     /// pixel until both draw.
+    ///
+    /// Debug-only: `release` runs per evicted glyph.
+    #[cfg(debug_assertions)]
     #[test]
     #[should_panic(expected = "released twice")]
     fn releasing_one_index_twice_panics() {

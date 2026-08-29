@@ -363,6 +363,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
             alloc: Some(alloc.id),
             generation: 0,
             last_use: self.current_frame,
+            free: false,
         };
         Some(self.store(key, slot))
     }
@@ -540,6 +541,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
             alloc: None,
             generation: 0,
             last_use: self.current_frame,
+            free: false,
         };
         self.store(key, slot)
     }
