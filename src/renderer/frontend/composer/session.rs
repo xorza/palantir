@@ -925,8 +925,10 @@ impl ComposeSession<'_> {
             && packed.phys_rect.max().x >= self.out.viewport_phys_f.x - EPS
             && packed.phys_rect.max().y >= self.out.viewport_phys_f.y - EPS;
         if !covers_viewport
-            || self.composer.clip.scissor().is_some()
-            || self.composer.clip.chain().len != 0
+            // Any frame at all, not just one with a rounded chain: a
+            // non-empty chain implies a frame, so testing both asked one
+            // question twice.
+            || self.composer.clip.top().is_some()
             || p.fill_kind != FillKind::SOLID
             || !p.fill.is_opaque()
             || !packed.is_sharp()

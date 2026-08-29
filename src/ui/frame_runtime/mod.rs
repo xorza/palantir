@@ -6,6 +6,7 @@
 
 pub(crate) mod wake;
 
+use crate::common::counters::TestOnly;
 use crate::common::time::{ANIM_SUBSTEP_DT, MAX_ANIM_DT, coalesce_dt_for_refresh};
 use crate::display::Display;
 use crate::input::policy::{InputPolicy, InputSignal};
@@ -73,10 +74,13 @@ pub(crate) struct FrameRuntime {
     /// Fingerprint of the last frame's cascade inputs. A match permits
     /// reuse of the frozen cascade output; `None` before the first run.
     pub(crate) prev_cascade_fp: Option<u64>,
-    /// Whether the most recent `post_record` ran the cascade, used to pin
-    /// the unchanged-frame skip gate.
-    #[cfg(test)]
-    dbg_cascade_ran: bool,
+    /// Whether the most recent `post_record` ran the cascade — pins the
+    /// unchanged-frame skip gate.
+    ///
+    /// A [`TestOnly`] cell, like every other probe in the crate: the gate
+    /// lives in the cell, so [`Self::note_cascade_ran`] is an ordinary
+    /// method and its call site carries nothing.
+    cascade_ran: TestOnly<bool>,
     /// EMA of `1/raw_dt` across frames; zero before a second timestamp
     /// exists. Uses unclamped wall time so stalls remain visible.
     pub(crate) fps_ema: f32,
@@ -115,21 +119,16 @@ impl FrameRuntime {
     /// principle as the probe structs: the gate lives here, so the call
     /// site in `FrameCycle::post_record` carries none.
     #[inline]
-    pub(crate) fn note_cascade_ran(&mut self, #[allow(unused_variables)] ran: bool) {
-        #[cfg(test)]
-        {
-            self.dbg_cascade_ran = ran;
-        }
+    pub(crate) fn note_cascade_ran(&mut self, ran: bool) {
+        self.cascade_ran.edit(|noted| *noted = ran);
     }
 
     /// Whether the last `post_record` ran the cascade — pins the
     /// unchanged-frame skip gate.
     #[cfg(test)]
     pub(crate) fn cascade_ran(&self) -> bool {
-        self.dbg_cascade_ran
+        *self.cascade_ran.get()
     }
-
-    pub(super) const MAX_DT: f32 = MAX_ANIM_DT;
 
     /// Fold this frame's outcome into [`Self::frame_id`] and the settle
     /// tally. Called once per [`crate::Ui::frame`], after the pass count is
@@ -148,7 +147,7 @@ impl FrameRuntime {
 
     pub(super) fn advance_clock(&mut self, now: Duration) {
         let true_dt = now.saturating_sub(self.time).as_secs_f32();
-        let raw_dt = true_dt.min(Self::MAX_DT);
+        let raw_dt = true_dt.min(MAX_ANIM_DT);
         if self.render_frame_id > 0 && true_dt > EPS {
             let instant_fps = 1.0 / true_dt;
             self.fps_ema = if self.fps_ema == 0.0 {

@@ -476,6 +476,9 @@ impl LayerCtx<'_> {
                     );
                     out.clip(PushClipPayload::rounded(mask_rect, mask_radius));
                 }
+                // Unreachable under the gate above. Spelled out so a new
+                // `ClipMode` is a compile error here rather than a variant
+                // that silently clips nothing.
                 ClipMode::None => {}
             }
         }
