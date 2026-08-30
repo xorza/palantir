@@ -6,7 +6,6 @@ use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::configure::Configure;
-use crate::scene::node::salt::Salt;
 
 /// The *theme* half of [`Configure`]: fill a field in only where the
 /// caller stayed silent.
@@ -36,10 +35,7 @@ pub(crate) trait ThemeDefaults: Configure {
     /// `#[track_caller]` auto id doesn't count, since every widget has
     /// one and counting it would make the fallback unreachable.
     fn default_id(mut self, id: WidgetId) -> Self {
-        let node = self.node_mut().node;
-        if !node.salt.is_explicit() {
-            node.salt = Salt::Verbatim(id);
-        }
+        self.node_mut().node.fill_id(id);
         self
     }
 

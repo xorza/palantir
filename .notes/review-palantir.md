@@ -9,10 +9,6 @@ gated `internals` / `test_support` modules were not reviewed.
 Groups are sorted by severity and benefit. Items inside a group are sorted the
 same way.
 
-## A sentinel or a flag encodes what the type already knows, or a builder is order-dependent
-
-- [ ] `src/scene/node/mod.rs:55`, `src/scene/node/salt.rs:40-42,61,73-75` — `Node` spells "unset" two ways: `Option<T>` for the themable fields, and `Salt::Auto` vs `Salt::Hash` / `Verbatim` for identity. `Salt::Auto` and `Salt::Hash` resolve identically; the variant split carries only the `is_explicit` bool.
-
 ## The demo surfaces re-roll the shared workload and scaffolds by hand
 
 - [ ] `src/frame_fixture/specimen.rs:207-223`, `src/shape/mod.rs:324`, `src/primitives/mesh/mod.rs:71,76`, `src/bin/showcase/pages/shapes.rs:168-193` — `gradient_mesh` launders a leaked `Box<Mesh>` through `OnceLock<usize>` and `unsafe { &*(ptr as *const Mesh) }` to get a `&'static Mesh`. The justification comment ("`Shape::mesh` borrows a `&'static Mesh`") is false: `Shape::mesh` is `pub fn mesh(mesh: &Mesh) -> MeshShape<'_>`. The `usize` cast exists only because `Mesh` is `!Sync`. The showcase solves the identical problem with a plain `ui.with_state::<Mesh, _>` row.

@@ -272,6 +272,18 @@ impl Node {
         }
     }
 
+    /// Identity's half of the same rule. Its "caller stayed silent" test
+    /// is [`Salt::is_explicit`] rather than an `Option`, because every
+    /// node carries a `#[track_caller]` auto id from the moment it is
+    /// built — silence is an id the caller did not choose, not the
+    /// absence of one.
+    #[inline]
+    pub(crate) fn fill_id(&mut self, id: WidgetId) {
+        if !self.salt.is_explicit() {
+            self.salt = Salt::Verbatim(id);
+        }
+    }
+
     #[inline]
     pub(crate) fn fill_padding(&mut self, value: Spacing) {
         if self.padding.is_none() {
