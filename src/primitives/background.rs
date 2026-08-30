@@ -24,16 +24,11 @@ use palantir_anim_derive::Animatable;
 /// — there is no `Option<Stroke>` here. The animation pipeline lerps
 /// `Stroke` directly through `Stroke::ZERO`; paint-time `is_noop`
 /// filtering catches both authored and animation-decayed no-ops.
-// `Background` is intentionally **not `Copy`**. At 124 B (pinned by
-// `hot_struct_sizes_are_pinned`) an implicit copy is a `vmovups`
-// ladder, and the recording chain — `Widget::record` →
-// `Forest::open_node` → `Tree::open_node` → `shapes::lower::background`
-// — runs once per chromed widget per frame, so by-value threading
-// showed up at ~35 % of the node opener's self-time in the `frame`
-// bench. The chain takes `&Background`; `Animatable`'s supertrait is
-// `Clone` rather than `Copy` so the animation path can't reintroduce
-// auto-`Copy` through the trait bound. Duplication sites spell
-// `.clone()` so each copy stays a call-site decision.
+// `Background` is intentionally **not `Copy`**: the recording chain
+// (`Widget::record` → `Forest::open_node` → `Tree::open_node` →
+// `shapes::lower::background`) takes it by reference. It is the largest
+// of the three types `animation::animatable::Animatable` states the
+// whole argument and the measurement for.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, Animatable)]
 pub struct Background {
     pub fill: Brush,

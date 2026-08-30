@@ -7,8 +7,9 @@
 //! Stack's gap); `line_gap` is between-line spacing.
 //!
 //! `Sizing::fill` on the main axis is treated as `Hug` here — wrap
-//! semantics conflict with "consume row leftover" and need explicit
-//! per-line distribution that's outside this MVP. Cross-axis Fill works
+//! semantics conflict with "consume row leftover", which would need an
+//! explicit per-line distribution this driver does not define.
+//! Cross-axis Fill works
 //! identically to Stack: each line's cross size = max child cross, and
 //! shared arrange-axis resolution makes Fill children grow to that
 //! height without shrinking below their measured content.

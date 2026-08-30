@@ -33,7 +33,7 @@
 // identical coverage on both sides.
 //
 // Lockstep contract: `SEGMENTS_PER_INSTANCE` here matches the const of
-// the same name in `renderer/render_buffer.rs` — the composer derives
+// the same name in `renderer/render_buffer/curve.rs` — the composer derives
 // the adaptive sub-instance count assuming the shader subdivides each
 // instance into exactly this many chords. Bump together.
 //

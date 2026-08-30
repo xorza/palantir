@@ -68,7 +68,7 @@ fn text_emits_for_quadless_group() {
 
 /// Pin: two groups sharing one text batch emit `Text` ONCE, after the
 /// last group's quads. Without coalescing the schedule would emit two
-/// text steps (and the backend two glyphon prepares/renders).
+/// text steps, and the backend two raster passes.
 #[test]
 fn text_batch_spanning_two_groups_emits_once_at_last_group() {
     let buf = buf_with_batches(

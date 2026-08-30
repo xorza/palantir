@@ -173,8 +173,8 @@ impl LayerCtx<'_> {
                     // Corner points are owner-local; the composer folds `origin` +
                     // the active transform and derives the covering AABB. Solid
                     // fill only — the reused quad lanes have no room for a gradient.
-                    // Stroke noop-normalization happens inside `draw_triangle`
-                    // (`PaintSink`'s provided half is the single canonical gate).
+                    // Stroke noop-normalization happens inside
+                    // `DrawQuadPayload::triangle`, the single canonical gate.
                     out.draw_quad(DrawQuadPayload::triangle(
                         owner_rect.min,
                         [*a, *b, *c],
@@ -432,9 +432,10 @@ impl LayerCtx<'_> {
         // ring while children stay clipped to the inset interior.
         //
         // `Tree::open_node` drops chrome to `None` only when every paintable
-        // part is no-op. Both `draw_rect` and `draw_shadow` gate on their own
-        // `is_noop` internally, so a shadow-only or fill-only background here
-        // emits exactly one command.
+        // part is no-op. Both `DrawQuadPayload::rect` and
+        // `DrawQuadPayload::shadow` gate on their own `is_noop` internally,
+        // so a shadow-only or fill-only background here emits exactly one
+        // command.
         let mode = self.tree.records.attrs()[id.idx()].clip_mode();
         let clip = mode.is_clip();
         // Borrowed, not copied: `LayerCtx::tree` is a shared reference, so this

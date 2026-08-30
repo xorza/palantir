@@ -29,8 +29,8 @@ use palantir::{
 pub(crate) const WINDOW: Color = Color::hex(0x131417);
 /// Nav rail fill.
 pub(crate) const SIDEBAR: Color = Color::hex(0x1a1b1f);
-/// Page canvas. Deliberately darker than the theme's `elem` button fill
-/// (`#343434`) so widgets read as raised against it.
+/// Page canvas. Deliberately darker than [`ELEM`], the button fill this
+/// showcase installs, so widgets read as raised against it.
 pub(crate) const CARD: Color = Color::hex(0x212329);
 /// Recessed demo surface — one step below [`CARD`].
 pub(crate) const WELL: Color = Color::hex(0x16171b);

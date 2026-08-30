@@ -80,9 +80,9 @@ pub(super) fn body_style() -> TextStyle {
     TextStyle::default().with_font_size(13.0)
 }
 
-/// Titled card: section caption over `body`, on [`card_bg`]. `h` lets a
-/// card either hug its content or claim the column's leftover height
-/// (the activity list is the only `FILL` one).
+/// Titled card: section caption over `body`, on [`card_bg`]. `h` is the
+/// card's own height — `HUG` for the ones that fit their content, a
+/// `Fixed` for the two that must not grow with theirs.
 pub(super) fn card(
     ui: &mut Ui,
     id: &'static str,

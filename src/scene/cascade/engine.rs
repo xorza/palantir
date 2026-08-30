@@ -166,7 +166,7 @@ impl CascadeEngine {
             let lc = &cascade.layers[layer];
             if lc.entries_base != entries_base
                 || lc.static_hash != tree.fingerprint.cascade_static
-                || lc.paint_cardinality != tree.fingerprint.paint_cardinality
+                || lc.paint_counts != tree.fingerprint.paint_counts
                 || lc.arena_hashes.len() != n
             {
                 return false;
@@ -226,7 +226,7 @@ impl CascadeEngine {
                 "run_tree must emit one entry per recorded node",
             );
             cascade.layers[layer].static_hash = tree.fingerprint.cascade_static;
-            cascade.layers[layer].paint_cardinality = tree.fingerprint.paint_cardinality;
+            cascade.layers[layer].paint_counts = tree.fingerprint.paint_counts;
             cascade.layers[layer].layout_hash = layout_hashes[layer];
         }
 

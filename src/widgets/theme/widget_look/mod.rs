@@ -24,9 +24,10 @@ use crate::primitives::background::Background;
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::theme::widget_look::animated_look::AnimatedLook;
 
-/// Paint settings for one widget state — the same shape that Button
-/// (`normal`/`hovered`/`pressed`/`disabled`) and TextEdit
-/// (`normal`/`focused`/`disabled`) both reach for.
+/// Paint settings for one widget state — the same shape every
+/// state-styled widget reaches for, four to a
+/// [`StatefulLook`](stateful_look::StatefulLook). The engaged state is
+/// `active` on all of them: pressed for Button, focused for TextEdit.
 ///
 /// `text` is the one optional axis: `None` inherits
 /// [`crate::Theme::text`], so an app changing `theme.text.color` moves

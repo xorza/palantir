@@ -1,5 +1,5 @@
-//! Observability for the damage diff. Built on [`BenchOnly`], whose module
-//! doc explains the gated-cell pattern and why the two gates exist.
+//! Observability for the damage diff. `common::counters` explains the
+//! gated-cell pattern and why the two gates exist.
 //!
 //! The two cells take different gates, because they answer to different
 //! callers. `subtree_skips` is the `damage` bench's headline metric, so

@@ -138,9 +138,8 @@ impl TextRectGrid {
         // how `cols × rows` map onto positions inside the vecs.
         //
         // Profiling motivation: the resize-arm bench cycles through
-        // 4 different viewports per frame; an unconditional clear +
-        // resize sweep over every tile dominated `Composer::compose`
-        // (~7% of the bench's CPU cycles in the Vec<TinyVec> era).
+        // 4 different viewports per frame, so an unconditional clear +
+        // resize sweep over every tile is paid four times a frame.
         if want > self.lens.len() {
             self.lens.resize(want, 0);
             self.slots.resize(want, [0; TILE_CAP]);

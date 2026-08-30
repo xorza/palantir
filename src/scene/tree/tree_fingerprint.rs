@@ -16,9 +16,13 @@ pub(crate) struct TreeFingerprint {
     /// engine pairs it with retained structure and layout-rect
     /// comparisons to identify paint-only changes.
     pub(crate) cascade_static: ContentHash,
-    /// How many paint rows this tree's nodes will emit between them, as
-    /// three counts folded together: stored shapes, chrome rows, and
-    /// nodes.
+    /// Three counts folded together — stored shapes, chrome rows, and
+    /// nodes — so that any move in how many paint rows this tree's
+    /// nodes emit between them shows as a different hash.
+    ///
+    /// A [`ContentHash`] rather than the counts or their sum, because
+    /// the one question asked of it is "same or not": an ordering on it
+    /// would mean nothing.
     ///
     /// The cascade's incremental walk can only repair a node's paint
     /// rows *in place*, so it bails the moment a node's row count moves
@@ -37,5 +41,5 @@ pub(crate) struct TreeFingerprint {
     /// chrome bumps the count without emitting a row). Neither changes
     /// the answer the length check reaches — a miss just arrives at it
     /// later, an over-fire pays one wasted rebuild to get there.
-    pub(crate) paint_cardinality: u64,
+    pub(crate) paint_counts: ContentHash,
 }

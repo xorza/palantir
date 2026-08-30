@@ -277,11 +277,11 @@ impl TextShaper {
     /// `TextSystem` test — ages text the same way a presenting window
     /// does.
     ///
-    /// `tick_frame`, not `end_frame`, because this is the one production
-    /// method that *advances* the clock. Everything downstream — the
-    /// shaped-buffer cache, the glyph atlas, the encoded-run cache —
-    /// receives it as an `end_frame(frame)` argument instead, and the
-    /// two names are what say which side of that line a method is on.
+    /// `tick_frame`, and not a name any downstream cache wears, because
+    /// this is the one production method that *advances* the clock.
+    /// Everything downstream — the shaped-buffer cache, the glyph atlas,
+    /// the encoded-run cache — receives the new frame as an argument
+    /// instead, and never reads the clock for itself.
     ///
     /// **Every frame owes this, including one that records nothing.** A
     /// `FramePlan::PaintOnly` frame repaints the retained tree and never

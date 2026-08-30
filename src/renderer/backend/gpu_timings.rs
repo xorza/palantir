@@ -417,8 +417,7 @@ fn discard_slot(slot: &Slot, state: u8) {
 }
 
 /// Read the mapped buffers on `slot`, publish into `sink`, then unmap.
-/// Caller is responsible for clearing `in_flight` / `ready` after this
-/// returns.
+/// Caller is responsible for clearing `in_flight` after this returns.
 fn consume_slot(slot: &mut Slot, period_ns: f32, sink: &GpuPassStats) {
     let ts_range = slot
         .timestamps_buffer

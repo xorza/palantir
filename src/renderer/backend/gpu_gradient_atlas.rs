@@ -20,9 +20,9 @@ use glam::UVec2;
 /// silently drift from the texel type the bake writes.
 const ROW_PITCH: u32 = (LUT_ROW_TEXELS * size_of::<ColorF16>()) as u32;
 // `write_texture`'s `bytes_per_row` must be a multiple of
-// `COPY_BYTES_PER_ROW_ALIGNMENT` (256). Guard the row pitch independently
-// of the shader assert above so relaxing one can't silently break the
-// upload alignment.
+// `COPY_BYTES_PER_ROW_ALIGNMENT` (256). Guarded on the row pitch rather
+// than on `LUT_ROW_TEXELS`, so changing the texel type has to come back
+// through here.
 const _: () = assert!(
     ROW_PITCH.is_multiple_of(256),
     "gradient atlas row pitch must be a multiple of COPY_BYTES_PER_ROW_ALIGNMENT (256)"

@@ -1,10 +1,10 @@
 //! The per-paint-row arena: one [`Paint`] per pixel-producing
 //! contribution, plus the per-node index into it.
 //!
-//! Split out from the cascade product because these rows are read on a
-//! different schedule from the rest of it — only damage's per-shape legs
-//! touch them, behind a `node_spans[i]` indirection its subtree-skip
-//! fast path never follows.
+//! Apart from the rest of the cascade product because these rows are
+//! read on a different schedule — only damage's per-shape legs touch
+//! them, behind a `node_spans[i]` indirection its subtree-skip fast path
+//! never follows.
 
 use crate::common::block_arena::BlockSlot;
 use crate::common::content_hash::ContentHash;

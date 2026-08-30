@@ -105,7 +105,7 @@ pub(crate) struct LayoutScratch {
     pub(super) available_q: Vec<AvailableKey>,
     /// Whether this frame is rebuilding the measure snapshot rather than
     /// reusing the previous one. Decided once at the top of
-    /// [`LayoutEngine::run`](crate::layout::engine::LayoutEngine::run)(crate::layout::engine::LayoutEngine::run) and
+    /// [`LayoutEngine::run`](crate::layout::engine::LayoutEngine::run) and
     /// read by the capture and cache-restore paths — per-frame state, so
     /// it lives here with the rest of the frame's scratch rather than on
     /// the persistent engine.

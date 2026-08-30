@@ -35,6 +35,6 @@ fn fs(in: VsOut) -> @location(0) vec4<f32> {
     // `in.color` is straight-alpha linear (vertex.color * tint, both
     // straight). Premultiply at output so the blend pipeline's
     // `PREMULTIPLIED_ALPHA_BLENDING` sees `rgb * a`. Without this,
-    // translucent meshes paint too bright (see review A1).
+    // translucent meshes paint too bright.
     return premultiply(in.color.rgb, in.color.a);
 }

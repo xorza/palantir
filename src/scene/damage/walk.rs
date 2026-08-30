@@ -1,17 +1,13 @@
 //! The per-layer structural diff: [`LayerWalk`] and the [`Tier`] it
 //! sorts each node into.
 //!
-//! Split out of `DamageEngine::compute`, which held the whole thing in
-//! one body and paid for it three ways: six mutable fields hand-aliased
-//! into locals to keep the borrow checker happy, a `usize::MAX` sentinel
-//! smuggling one arm's work past the `Entry` borrow that arm couldn't
-//! release, and three separate copies of an ancestor-stack push/pop.
-//!
-//! All three came from the same root cause — the tier decision and the
-//! tier's *work* were fused into one `match` on a live `Entry`.
-//! [`NodeSnapshot`] is `Copy`, so [`LayerWalk::classify`] reads a copy
-//! and hands back a plain [`Tier`]; by the time any arm runs, nothing is
-//! borrowed and each arm is an ordinary `&mut self` method.
+//! The decision and the work stay apart. [`NodeSnapshot`] is `Copy`, so
+//! [`LayerWalk::classify`] reads a copy and hands back a plain [`Tier`];
+//! by the time any arm runs, nothing is borrowed and each arm is an
+//! ordinary `&mut self` method. Deciding on a live map `Entry` instead
+//! costs an arm its `&mut self`, and every way around that — aliased
+//! locals, an index sentinel carrying work past the borrow — is worse
+//! than the copy.
 
 use crate::common::block_arena::BlockArena;
 use crate::primitives::rect::Rect;
@@ -112,8 +108,6 @@ impl LayerWalk<'_> {
         }
     }
 
-    // ---- the columns this layer walks -------------------------------
-
     fn snapshot(&self, i: usize, parent_key: u64, paint_span: Span) -> NodeSnapshot {
         NodeSnapshot {
             paint_span,
@@ -123,8 +117,6 @@ impl LayerWalk<'_> {
             parent_key,
         }
     }
-
-    // ---- paint-order position ---------------------------------------
 
     /// The `parent_key` node `i` sits under: its parent's `WidgetId`
     /// bits, or the layer discriminant when it is a root — so a subtree
@@ -141,8 +133,6 @@ impl LayerWalk<'_> {
             None => self.layer as u64,
         }
     }
-
-    // ---- classification ---------------------------------------------
 
     /// The map read here *is* the classification; the arms that write probe
     /// the same bucket again. Deliberate — see the module doc for what
@@ -186,8 +176,6 @@ impl LayerWalk<'_> {
             _ => Tier::PaintsChanged(prev),
         }
     }
-
-    // ---- one method per tier ----------------------------------------
 
     fn on_added(&mut self, i: usize, wid: WidgetId, parent_key: u64) -> usize {
         let rows = self.cascade.paint_arena.rows_of(i);
@@ -349,8 +337,6 @@ impl LayerWalk<'_> {
         damage::push_screen(self.raw_rects, curr_extent);
         end - i
     }
-
-    // ---- paint-order inversion --------------------------------------
 
     /// Damage the extent overlap of every exact-matched row pair whose
     /// relative paint order inverted since last frame.

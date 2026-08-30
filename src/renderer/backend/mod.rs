@@ -188,15 +188,15 @@ struct UploadPlan {
     dim_undamaged: bool,
 }
 
-/// Wgpu renderer owning its device/queue handles, pipelines, and text backend.
-/// The winit adapter retains cloned handles solely for surface configuration
-/// and presentation.
-/// The text side holds a
-/// shared handle to the same `CosmicMeasure` the Ui side measures
-/// against (passed in at [`Self::new`]) so layout-time measurement
-/// and rasterization hit one buffer cache. No layout, no encode, no
-/// compose — those happen elsewhere and arrive here as a
-/// `RenderBuffer`.
+/// Wgpu renderer owning its device/queue handles, pipelines, and text
+/// backend. The winit adapter retains cloned handles solely for surface
+/// configuration and presentation.
+///
+/// The text side holds the same
+/// [`TextShaper`](crate::text::shaper::TextShaper) the `Ui` side
+/// measures against (passed in at [`Self::new`]), so layout-time
+/// measurement and rasterization hit one buffer cache. No layout, no encode, no compose
+/// — those happen elsewhere and arrive here as a `RenderBuffer`.
 #[derive(Debug)]
 pub(crate) struct WgpuBackend {
     device: wgpu::Device,
@@ -367,10 +367,7 @@ impl WgpuBackend {
         }
     }
 
-    /// Render one frame to the persistent backbuffer, then copy the
-    /// backbuffer onto the swapchain texture. The caller's surface
-    /// texture must have `COPY_DST` usage (set in
-    /// [`wgpu::SurfaceConfiguration::usage`]).
+    /// Render one frame into the submission's target and present it.
     ///
     /// The module docs carry the frame's shape: the two halves, the two
     /// damage paths, the belt and the timestamp resolve.
@@ -378,12 +375,16 @@ impl WgpuBackend {
     /// Skip frames never reach this method — `WindowDriver::render_to_texture`
     /// dispatches them to the copy / no-op paths.
     ///
-    /// `via_backbuffer` `Some` renders into that backbuffer and copies the
-    /// result out (backbuffer-copy path); `None` renders straight into
-    /// `surface_tex` (direct present). `plan` is the *effective* plan — every
-    /// escalation (promote / resync) was sealed in `present_mode` *before* the
-    /// draw list was built, so `plan` and `buffer` always agree; the caller
-    /// (`WindowDriver`) has also ensured the stencil + backbuffer.
+    /// [`SubmissionTargets::backbuffer`] picks the path. `Some` renders
+    /// into that backbuffer and copies the result onto
+    /// [`surface`](SubmissionTargets::surface), whose texture must carry
+    /// `COPY_DST` usage (set in [`wgpu::SurfaceConfiguration::usage`]);
+    /// `None` renders straight into the surface (direct present).
+    /// [`Submission::plan`] is the *effective* plan — every escalation
+    /// (promote / resync) was sealed in `present_mode` *before* the draw
+    /// list was built, so the plan and the buffer always agree. The
+    /// caller (`WindowDriver`) has also ensured the stencil and the
+    /// backbuffer.
     pub(crate) fn submit(&mut self, submission: Submission<'_>) {
         tracy::zone!();
         let SubmissionTargets {
@@ -1081,10 +1082,6 @@ impl WgpuBackend {
     }
 }
 
-/// Open a color-only `LoadOp::Load` render pass — the shape shared by
-/// the dim pre-pass and the damage-overlay pass (no stencil, no
-/// timestamps; only the label and target view differ). Both passes run
-/// the debug overlay's quad draws standalone, outside the main pass.
 /// The timing bucket and debug label a [`PaintTier`] replay lands in.
 ///
 /// Here rather than on either type: `BatchKind` lives in `diagnostics`,
@@ -1102,6 +1099,10 @@ fn batch_kind(tier: PaintTier) -> BatchKind {
     }
 }
 
+/// Open a color-only `LoadOp::Load` render pass — the shape shared by
+/// the dim pre-pass and the damage-overlay pass (no stencil, no
+/// timestamps; only the label and target view differ). Both passes run
+/// the debug overlay's quad draws standalone, outside the main pass.
 fn begin_load_pass<'e>(
     encoder: &'e mut wgpu::CommandEncoder,
     label: &'static str,

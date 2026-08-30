@@ -203,7 +203,7 @@ fn compose_scales_radius_and_stroke_under_transform() {
 }
 
 /// Pin: text-run scale snaps to the additive 0.5% ladder so continuous
-/// zoom produces stable glyphon cache keys across adjacent frames.
+/// zoom produces stable glyph cache keys across adjacent frames.
 /// Quads (next test) intentionally do not snap — only text quantizes.
 #[test]
 fn compose_snaps_text_scale_to_discrete_steps() {
@@ -246,7 +246,8 @@ fn compose_keeps_quad_scale_continuous_under_zoom() {
 #[test]
 fn compose_propagates_transform_scale_to_text_runs() {
     // A `TranslateScale(_, 2.0)` ancestor must surface on the emitted
-    // TextDrawRow.scale so glyphon paints proportionally larger glyphs.
+    // TextDrawRow.scale so the raster pass paints proportionally larger
+    // glyphs.
     // Without this the rect stretches but the glyph rasters stay at
     // the originally-shaped size — visible as text "not zooming" inside
     // a zoomed Scroll viewport.

@@ -165,11 +165,10 @@ impl F16x4 {
     /// weld the halves back into one register chain. Bit-identical
     /// output, and `bench::scaled` holds the margin at **1.3x**.
     ///
-    /// It was 2.3x when written, against a runtime-dispatched build where
-    /// the composed form also paid the feature check twice. A static-F16C
-    /// build (this workspace sets `+f16c`) deletes that half of the win
-    /// and leaves only the array round-trip — still worth fusing on a
-    /// per-quad path, but no longer the margin the original note claimed.
+    /// The margin is the array round-trip alone, because this workspace
+    /// sets `+f16c` and the feature check is static. A
+    /// runtime-dispatched build pays that check twice in the composed
+    /// form and measures closer to 2.3x.
     #[inline]
     pub(crate) fn scaled(self, k: f32) -> Self {
         Self(f16x4_scaled(self.0, k))

@@ -30,14 +30,7 @@ impl<'a> Button<'a> {
             node,
             style: None,
             label: TextInput::default(),
-            // Buttons center their labels by convention. Override with
-            // `.text_align(...)` for left/right-aligned labels.
             label_align: Align::CENTER,
-            // Single-line by default — a button hugs its label, so truncation
-            // only bites when the caller commits a narrower width than the
-            // label's natural line (Fixed/Fill button); then the label is cut
-            // to fit instead of spilling outside the chrome. Override the mode
-            // via `.text_wrap(...)`.
             label_wrap: TextWrap::Truncate,
         }
     }
@@ -83,9 +76,6 @@ impl<'a> Button<'a> {
             if !label.is_empty() {
                 let label = ui.intern(label);
                 ui.add_shape(
-                    // `Truncate` by default so an over-wide label is cut to
-                    // one line instead of spilling outside the chrome; see the
-                    // `.text_wrap(TextWrap::Ellipsis)` / `.text_wrap(TextWrap::WrapWithOverflow)` / `.text_wrap(TextWrap::SingleLine)` builders.
                     Shape::text(label, look.text.font())
                         .color(look.text.color)
                         .wrap(label_wrap)

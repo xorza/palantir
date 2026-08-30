@@ -23,7 +23,7 @@ use crate::widgets::theme::text_style::TextStyle;
 /// `Truncate` hard-cuts to the committed width (no marker), `Ellipsis`
 /// marks the cut with `…`, `Wrap` / `WrapWithOverflow` reflow onto multiple
 /// lines. Widgets that should clip a too-long label (e.g. `Button`,
-/// `DragValue`) set `SingleLine` explicitly.
+/// `DragValue`) set `Truncate` explicitly.
 ///
 /// Style is all-or-nothing: the optional `style` field replaces every
 /// text axis (font size, color, leading) at once. Defaults to the

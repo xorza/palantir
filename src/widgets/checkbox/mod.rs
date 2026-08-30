@@ -24,9 +24,10 @@ use crate::widgets::toggle_chrome::ToggleChrome;
 /// stable across sibling insertions (no reliance on `SeenIds`'
 /// occurrence-counter disambiguation).
 ///
-/// Visuals come from `theme.checkbox` ([`crate::ToggleTheme`]) —
-/// chrome via `unchecked.pick(response)` / `checked.pick(response)`, check
-/// glyph color from `indicator`, geometry from `box_size` etc.
+/// Visuals come from `theme.checkbox` ([`crate::ToggleTheme`]) — chrome
+/// through the slot's `plan`, which picks the `unchecked` or `checked`
+/// four-state pack, check glyph color from `indicator`, geometry from
+/// `box_size` etc.
 #[derive(Debug)]
 pub struct Checkbox<'a> {
     node: Node,

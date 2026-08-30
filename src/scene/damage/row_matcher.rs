@@ -51,9 +51,9 @@ pub(super) struct RowMatcher {
     /// two of them swapping paint order still flips their overlap.
     matched_pos: Vec<u32>,
     /// `(key, row)` for the rows each side still has unclaimed, sorted.
-    /// Sorting and merging replaced a restart-from-zero first-fit scan,
-    /// bounding the all-rows-shifted case (one shape inserted at the
-    /// front of a big node) at O(n log n) rather than O(n²).
+    /// Sorted and merged rather than first-fit scanned, which bounds the
+    /// all-rows-shifted case (one shape inserted at the front of a big
+    /// node) at O(n log n) instead of O(n²).
     prev_keyed: Vec<(PaintKey, u32)>,
     curr_keyed: Vec<(PaintKey, u32)>,
 }
@@ -209,7 +209,7 @@ impl RowMatcher {
     /// Phase 2 — exact `(screen, hash)` pairs anywhere in the span, not
     /// just at matching indices. Emits no damage: same shape, same place.
     ///
-    /// Requires the sorted keyed lists [`Self::begin`] leaves.
+    /// Requires the sorted keyed lists [`Self::reset_for`] leaves.
     fn claim_exact(&mut self, prev: &[Paint], curr: &[Paint]) {
         let (mut pi, mut ci) = (0, 0);
         while pi < self.prev_keyed.len() && ci < self.curr_keyed.len() {
@@ -238,7 +238,8 @@ impl RowMatcher {
     /// goes out.
     ///
     /// **Requires `curr_keyed` sorted hash-major** — the property
-    /// [`Self::begin`] establishes through [`PaintKey`]'s field order.
+    /// [`Self::reset_for`] establishes through [`PaintKey`]'s field
+    /// order.
     /// Iterating it yields non-decreasing hashes, which is the whole
     /// reason a single never-reset forward cursor over `prev_keyed` can
     /// serve every curr row. Reset that cursor, or order either list any

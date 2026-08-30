@@ -391,10 +391,6 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
         let bpp = content.bytes_per_pixel();
         let unpadded = size.x * bpp;
         let bytes_per_row = unpadded.next_multiple_of(COPY_BYTES_PER_ROW_ALIGNMENT);
-        // Every queued region is `bytes_per_row × height` with
-        // `bytes_per_row` a multiple of 256, so the append offset is
-        // 256-aligned by construction — the buffer-offset and row-pitch
-        // alignment requirements hold for every PendingCopy.
         let region_start = self.pending_staging_used;
         debug_assert!(region_start.is_multiple_of(COPY_BYTES_PER_ROW_ALIGNMENT as usize));
         let region_bytes = bytes_per_row as usize * size.y as usize;

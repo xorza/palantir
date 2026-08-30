@@ -17,15 +17,11 @@ use crate::primitives::nan::NanCheck;
 /// [`GradientStops`](crate::GradientStops) array inline, which
 /// is what sizes the whole enum; gradient morph animations snap across
 /// variants and across distinct gradients of the same variant.
-// `Brush` is intentionally **not `Copy`** — the gradient variants carry
-// 40 B of inline stops, putting the enum at 60 B (pinned by
-// `hot_struct_sizes_are_pinned`). The recording chain threads `Brush`
-// (usually inside `Background`) through three or four functions per
-// chromed widget, where auto-`Copy` hides a `vmovups` per hop per
-// frame in the node opener. Hot paths pass `&Brush` / `&Background`;
-// explicit `.clone()` at the remaining duplication sites keeps the cost
-// auditable. See `Animatable`'s `Clone` (not `Copy`) supertrait for the
-// matching animation-side relaxation.
+// `Brush` is intentionally **not `Copy`**: the gradient variants carry
+// 40 B of inline stops, and the recording chain threads it (usually
+// inside a `Background`) through three or four functions per chromed
+// widget. `animation::animatable::Animatable` states the argument once
+// for all three types it applies to.
 #[derive(Clone, Debug, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
 pub enum Brush {
     Solid(Color),

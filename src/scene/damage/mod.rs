@@ -49,11 +49,11 @@
 //! [`NodeSnapshot::parent_key`], and a mismatch damages the moved
 //! subtree's painted extent.
 //!
-//! `DamageEngine.counters.dirty` is the per-node dirty list (added / hash- or
-//! cascade-changed / evicted) in pre-order paint order. It's
-//! gated behind `cfg(any(test, feature = "internals"))` — production
-//! builds skip the per-node `Vec::push` entirely; tests and benches
-//! assert on it through this gate.
+//! `DamageEngine.counters.dirty` is the per-node dirty list (added /
+//! hash- or cascade-changed / evicted) in pre-order paint order. It is a
+//! [`TestOnly`](crate::common::counters::TestOnly) cell — `cfg(test)`,
+//! so production and bench builds skip the per-node `Vec::push`
+//! entirely.
 
 use crate::common::block_arena::BlockArena;
 use crate::common::tracy;
@@ -263,11 +263,12 @@ impl DamageEngine {
     ///   caller-supplied `force_full` (first frame / surface change /
     ///   last frame unacked), which returns early below.
     ///
-    /// `self.prev` is rolled forward in the same pass via the
-    /// `entry()` API: vacant slot with a painting node inserts; an
-    /// occupied slot whose snapshot is unchanged is a no-op; an
-    /// occupied slot whose node still paints but changed updates;
-    /// an occupied slot whose node stopped painting is evicted.
+    /// `self.prev` is rolled forward in the same pass: a missing entry
+    /// with a painting node inserts; an unchanged snapshot is a no-op;
+    /// a node that still paints but changed updates; a node that stopped
+    /// painting is removed. `get` / `insert` / `remove` rather than
+    /// `entry`, because the classification reads before it knows whether
+    /// it will write at all, and the no-op arm is the common one.
     /// Last-frame entries listed in `removed` (precomputed by
     /// [`crate::scene::seen_ids::SeenIds`] so damage and `text` reuse
     /// the diff) are dropped afterwards.

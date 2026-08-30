@@ -67,9 +67,10 @@ impl TextEditTheme {
 
     /// Pick the visual state: `active` = focused. Disabled wins over
     /// focused, focused over hovered; otherwise normal.
-    /// `state.disabled` is the cascaded ancestor-or-self flag —
-    /// caller can merge `state.disabled |= node.disabled` for
-    /// lag-free response to its own self-toggle (mirrors Button).
+    /// `state.disabled` already carries the node's own flag —
+    /// [`Widget::response`](crate::Widget) merges it, so a field
+    /// disabled this frame paints disabled without waiting for the
+    /// cascade.
     #[inline(always)]
     pub fn pick(&self, state: &ResponseState) -> &WidgetLook {
         self.looks.pick(state, state.focused)

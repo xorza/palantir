@@ -286,11 +286,10 @@ impl PaintSink for ComposeSession<'_> {
         // the active scissor. The GPU would scissor it away anyway; this
         // saves the `quads.push` + per-quad math.
         //
-        // The clipped rect is also what the overlap test wants, and is
-        // what text has always tested with: the pixels this draw can
-        // reach are what a later draw has to be ordered against, so a
-        // quad whose ancestor clip cut it does not force a flush over
-        // ground it never paints.
+        // The clipped rect is also what the overlap test wants, and what
+        // text tests with: the pixels this draw can reach are what a
+        // later draw has to be ordered against, so a quad whose ancestor
+        // clip cut it does not force a flush over ground it never paints.
         let visible = self.composer.clip.clamped(packed.rect.urect);
         if visible.is_paint_empty() {
             return;

@@ -13,10 +13,9 @@ use bytemuck::{Pod, Zeroable};
 pub(crate) const AA_RADIUS: f32 = 0.5;
 
 /// Per-instance quad data (60 B). Field types are the matching
-/// `repr(C)` primitives, byte-identical to `[f32; N]`s — see the
-/// `vertex_attr_array` in `QuadPipeline::new` (in the backend) for the
-/// explicit attribute offsets, which is the only thing constraining
-/// the field order. No tail padding: vertex buffer strides only need
+/// `repr(C)` primitives, byte-identical to `[f32; N]`s — see
+/// `QUAD_INSTANCE_ATTRS` (in the backend) for the explicit attribute
+/// offsets, which is the only thing constraining the field order. No tail padding: vertex buffer strides only need
 /// 4-byte alignment, unlike std140 uniforms.
 ///
 /// **Solid fill:** `fill_kind = 0`, `fill: Color` carries the colour,

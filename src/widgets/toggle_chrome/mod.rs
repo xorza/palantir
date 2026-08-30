@@ -34,8 +34,9 @@ pub(crate) struct ToggleChrome {
     pub(crate) gap: f32,
     /// The box/track child recorded before the label, already sized and
     /// in its layout mode — a square leaf for `Checkbox`/`RadioButton`,
-    /// a wide `Canvas` for `Switch`'s track. `toggle_row` only stamps
-    /// the id (`<row>.with("box")`) and the resolved chrome onto it.
+    /// a wide `Canvas` for `Switch`'s track. [`Self::record_row`] only
+    /// stamps the id (`<row>.with("box")`) and the resolved chrome onto
+    /// it.
     pub(crate) boxed: Node,
     /// Corner radius forced onto the box chrome, overriding whatever
     /// radius the theme stored. The radio pip and the switch track must
