@@ -71,7 +71,9 @@ impl OverlayFlags {
     }
 
     /// Whether the flags changed since this was last asked, clearing the
-    /// signal.
+    /// signal. Gated with the windowed runtime, its only caller: it
+    /// repaints every window when a toggle in one moves the shared flags.
+    #[cfg(any(test, feature = "winit"))]
     #[inline]
     pub(crate) fn take_change(&self) -> bool {
         self.changed.replace(false)
