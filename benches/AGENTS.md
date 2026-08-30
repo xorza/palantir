@@ -14,12 +14,16 @@ risk.
 `--arms` picks a half of the pipeline, and a bare positional is
 criterion's own regex over benchmark ids.
 
+`--features bench` is not optional: the target declares
+`required-features = ["bench"]`, and cargo refuses to build it without
+one.
+
 ```sh
-cargo bench -p palantir --bench criterion -- --list-drivers
-cargo bench -p palantir --bench criterion -- -d damage
-cargo bench -p palantir --bench criterion -- --arms cpu
-cargo bench -p palantir --bench criterion -- 'cascade/hit_test$'
-cargo bench -p palantir --bench criterion -- -d frame --arms cpu --note 'after belt rework'
+cargo bench -p palantir --features bench --bench criterion -- --list-drivers
+cargo bench -p palantir --features bench --bench criterion -- -d damage
+cargo bench -p palantir --features bench --bench criterion -- --arms cpu
+cargo bench -p palantir --features bench --bench criterion -- 'cascade/hit_test$'
+cargo bench -p palantir --features bench --bench criterion -- -d frame --arms cpu --note 'after belt rework'
 ```
 
 `--help` lists the rest — `--profile-time`, `--sample-size`,
@@ -31,9 +35,9 @@ compare two builds without the machine's own drift confounding it —
 back-to-back runs on a busy machine move several percent on their own:
 
 ```sh
-cargo bench -p palantir --bench criterion -- -d cascade --save-baseline before
+cargo bench -p palantir --features bench --bench criterion -- -d cascade --save-baseline before
 # ... make the change ...
-cargo bench -p palantir --bench criterion -- -d cascade --baseline before
+cargo bench -p palantir --features bench --bench criterion -- -d cascade --baseline before
 ```
 
 `--baseline` fails if a selected benchmark has no sample under that
