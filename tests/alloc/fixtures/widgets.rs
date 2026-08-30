@@ -8,8 +8,9 @@
 
 use crate::harness::Audit;
 use palantir::{
-    Background, Button, Color, Configure, ContextMenu, Frame, Grid, MenuItem, Panel, Scroll,
-    Shortcut, Sizing, Splitter, Text, TextEdit, Track, Ui, Vec2, WidgetId,
+    Background, Button, Checkbox, Color, Configure, ContextMenu, Frame, Grid, MenuItem, Modal,
+    Panel, Popup, ProgressBar, RadioButton, Scroll, Separator, Shortcut, Sizing, Slider, Spinner,
+    Splitter, Switch, Text, TextEdit, Tooltip, Track, Ui, Vec2, WidgetId,
 };
 
 #[test]
@@ -200,6 +201,66 @@ fn scroll_fits_alloc_free() {
                     .id_salt("short")
                     .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
                     .show(ui);
+            });
+    });
+}
+
+/// The value and toggle widgets, plus a tooltip bubble — the ones the
+/// frame fixture's tree does not carry, so nothing else audits them.
+///
+/// Warmed and measured in whole revolutions of the 128-bucket
+/// shaped-buffer expiry ring, rather than on the probe: a bucket's first
+/// drain grows the wheel's scratch, and the probe's two quiet frames land
+/// long before the widest bucket of the first revolution comes due. Two
+/// revolutions each way, so that growth is warmed away and a
+/// once-a-revolution cost still lands inside the window.
+#[test]
+fn value_and_toggle_widgets_alloc_free() {
+    let mut on = true;
+    let mut choice = 1u8;
+    let mut amount = 0.5f64;
+    Audit::new().text().warmup(256).frames(256).run(|ui| {
+        Panel::vstack()
+            .auto_id()
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                Spinner::new().id_salt("spin").show(ui);
+                Separator::horizontal().id_salt("sep").show(ui);
+                ProgressBar::new(0.42).id_salt("bar").show(ui);
+                Slider::new(&mut amount, 0.0..=1.0)
+                    .id_salt("slide")
+                    .show(ui);
+                Switch::new(&mut on).id_salt("switch").show(ui);
+                Checkbox::new(&mut on).id_salt("check").show(ui);
+                RadioButton::new(&mut choice, 1u8).id_salt("radio").show(ui);
+                let r = Button::new()
+                    .id_salt("tip-host")
+                    .label("hover")
+                    .show(ui)
+                    .snapshot();
+                Tooltip::on(&r).text("a tooltip body").show(ui);
+            });
+    });
+}
+
+/// The two side-layer overlays. Held open every frame, so what this reads
+/// is the steady state of a layer switch, not the frame one opens on.
+/// Warmed and measured like the fixture above, and for the same ring.
+#[test]
+fn overlays_alloc_free() {
+    Audit::new().text().warmup(256).frames(256).run(|ui| {
+        Panel::vstack()
+            .auto_id()
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                Popup::anchored_to(Vec2::new(40.0, 40.0))
+                    .id_salt("pop")
+                    .show(ui, |ui, _handle| {
+                        Text::new("popup body").id_salt("pop-text").show(ui);
+                    });
+                Modal::new().id_salt("modal").show(ui, |ui| {
+                    Text::new("modal body").id_salt("modal-text").show(ui);
+                });
             });
     });
 }
