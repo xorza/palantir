@@ -96,8 +96,8 @@ pub(super) fn build_repaint_scissors(damage: Damage, buffer: &RenderBuffer) -> R
 /// `Immediates` in `prelude.wgsl`, the shaders' one declaration of it).
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-pub(crate) struct ViewportPush {
-    pub(crate) size: Vec2,
+pub(super) struct ViewportPush {
+    pub(super) size: Vec2,
 }
 
 impl ViewportPush {

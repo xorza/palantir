@@ -70,7 +70,7 @@ impl Widget {
     /// `&mut Ui`, and a `Response` holds `&Ui` for its lazy cache.
     /// Owned state is what lets the probe outlive all of it and become
     /// the widget's [`Response::eager`] at the end.
-    pub(crate) fn response(&self, ui: &Ui) -> ResponseState {
+    pub fn response(&self, ui: &Ui) -> ResponseState {
         let mut state = ui.response_for(self.id);
         // The third and last source of `disabled`, and the only one that
         // needs the node — which is why the interaction half is dropped

@@ -1,7 +1,7 @@
 //! One `TypeId`-keyed container of type-erased per-widget stores.
 
-use crate::primitives::widget_id::WidgetId;
-use rustc_hash::{FxHashMap, FxHashSet};
+use crate::primitives::widget_id::WidgetIdSet;
+use rustc_hash::FxHashMap;
 use std::any::{Any, TypeId};
 
 /// Spelled once rather than at each of the three downcast sites: the
@@ -17,7 +17,7 @@ const DOWNCAST_ERROR: &str = "TypeId keys the entry, so the stored type is S";
 /// `: Any` is what lets the downcast sites upcast a `&(mut) dyn
 /// TypedStore` straight to `&(mut) dyn Any` — no `as_any` boilerplate.
 pub(crate) trait TypedStore: Any {
-    fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>);
+    fn sweep_removed(&mut self, removed: &WidgetIdSet);
     fn is_empty(&self) -> bool;
 }
 
@@ -93,7 +93,7 @@ impl TypedStores {
     /// method: the two tables differ in exactly this and in nothing else
     /// about the sweep, and two entry points named for their policies is
     /// how the difference stops being visible at the call site.
-    pub(crate) fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>, drained: Drained) {
+    pub(crate) fn sweep_removed(&mut self, removed: &WidgetIdSet, drained: Drained) {
         self.by_type.retain(|_, store| {
             store.sweep_removed(removed);
             drained == Drained::Keep || !store.is_empty()

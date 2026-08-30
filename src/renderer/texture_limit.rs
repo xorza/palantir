@@ -58,7 +58,7 @@ impl TextureLimit {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RegisterImageError {
     /// Rejected intrinsic pixel dimensions.
-    pub size: glam::UVec2,
+    pub size: UVec2,
     /// Maximum accepted width or height for the selected device.
     pub max_dimension: u32,
 }

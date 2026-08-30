@@ -16,7 +16,7 @@
 //! render passes can resume using the encoder afterward.
 
 #[derive(Debug)]
-pub(crate) struct GpuCtx<'a> {
+pub(super) struct GpuCtx<'a> {
     pub(super) device: &'a wgpu::Device,
     pub(super) queue: &'a wgpu::Queue,
     belt: &'a mut wgpu::util::StagingBelt,
@@ -24,7 +24,7 @@ pub(crate) struct GpuCtx<'a> {
 }
 
 impl<'a> GpuCtx<'a> {
-    pub(crate) fn new(
+    pub(super) fn new(
         device: &'a wgpu::Device,
         queue: &'a wgpu::Queue,
         belt: &'a mut wgpu::util::StagingBelt,

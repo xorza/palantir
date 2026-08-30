@@ -94,11 +94,7 @@ fn duplicate_explicit_widget_id_disambiguates_and_flags() {
         "expected exactly one explicit collision recorded",
     );
     assert_eq!(
-        h.ui.cascade
-            .hits
-            .iter()
-            .map(|r| r.widget_id)
-            .collect::<Vec<_>>(),
+        h.ui.cascade.hit_ids().collect::<Vec<_>>(),
         [duplicate_id, duplicate_id.with(1)],
         "hit rows must retain both resolved IDs rather than the duplicated raw ID",
     );

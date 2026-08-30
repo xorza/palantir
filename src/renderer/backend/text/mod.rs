@@ -96,7 +96,7 @@ impl TextBackend {
     /// first miss opens the exclusive glyph lease, and each miss
     /// extracts and rasterizes its glyphs in place. Rebinds the atlas
     /// bind group if it grew.
-    pub(crate) fn prepare_batch(
+    pub(super) fn prepare_batch(
         &mut self,
         ctx: &mut GpuCtx<'_>,
         scale: f32,

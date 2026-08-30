@@ -7,8 +7,8 @@ use crate::animation::animatable::Animatable;
 use crate::animation::duration::within_duration_snap_eps;
 use crate::animation::spring::{step as spring_step, within_settle_eps};
 use crate::common::typed_stores::TypedStore;
-use crate::primitives::widget_id::WidgetId;
-use rustc_hash::{FxHashMap, FxHashSet};
+use crate::primitives::widget_id::{WidgetId, WidgetIdSet};
+use rustc_hash::FxHashMap;
 use std::collections::hash_map::Entry;
 
 /// Per-`T` animation table. Lives inside [`AnimMap`](crate::animation::AnimMap) behind a boxed
@@ -265,7 +265,7 @@ impl<T: Animatable> TypedStore for AnimMapTyped<T> {
     /// stopped poking it this frame; clear the `touched` flag on the
     /// rows that survive. Single retain pass — both predicates fold
     /// into one walk.
-    fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>) {
+    fn sweep_removed(&mut self, removed: &WidgetIdSet) {
         self.rows.retain(|(id, _), row| {
             if removed.contains(id) {
                 return false;

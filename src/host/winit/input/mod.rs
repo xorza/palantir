@@ -17,12 +17,11 @@ pub(super) fn translate(event: &WindowEvent, scale_factor: f32, mut emit: impl F
         "the host screens the scale factor through display::sanitize_scale_factor; \
          got {scale_factor}",
     );
-    let scale = scale_factor;
     match event {
         WindowEvent::CursorMoved { position, .. } => {
             emit(InputEvent::PointerMoved(Vec2::new(
-                position.x as f32 / scale,
-                position.y as f32 / scale,
+                position.x as f32 / scale_factor,
+                position.y as f32 / scale_factor,
             )));
         }
         WindowEvent::CursorLeft { .. } => emit(InputEvent::PointerLeft),
@@ -54,8 +53,8 @@ pub(super) fn translate(event: &WindowEvent, scale_factor: f32, mut emit: impl F
         WindowEvent::MouseWheel { delta, .. } => emit(match *delta {
             MouseScrollDelta::LineDelta(x, y) => InputEvent::ScrollLines(Vec2::new(-x, -y)),
             MouseScrollDelta::PixelDelta(position) => InputEvent::ScrollPixels(Vec2::new(
-                -position.x as f32 / scale,
-                -position.y as f32 / scale,
+                -position.x as f32 / scale_factor,
+                -position.y as f32 / scale_factor,
             )),
         }),
         WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {

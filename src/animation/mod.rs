@@ -24,8 +24,7 @@ use crate::animation::anim_slot::AnimSlot;
 use crate::animation::anim_spec::AnimSpec;
 use crate::animation::animatable::Animatable;
 use crate::common::typed_stores::{Drained, TypedStores};
-use crate::primitives::widget_id::WidgetId;
-use rustc_hash::FxHashSet;
+use crate::primitives::widget_id::{WidgetId, WidgetIdSet};
 
 /// Central animation table on [`crate::Ui`]. Typed maps allocated on demand
 /// keyed by `TypeId`. Adding a new [`Animatable`] type costs no
@@ -115,7 +114,7 @@ impl AnimMap {
     /// forever, permanently disabling the [`Self::is_empty`] fast path in
     /// `Ui::animate` once *any* widget has ever animated, even after the
     /// app goes idle.
-    pub(crate) fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>) {
+    pub(crate) fn sweep_removed(&mut self, removed: &WidgetIdSet) {
         self.stores.sweep_removed(removed, Drained::Drop);
     }
 }

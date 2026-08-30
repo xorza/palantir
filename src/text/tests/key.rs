@@ -132,7 +132,7 @@ fn identity_cache_rejects_invalid_metrics_before_dispatch() {
 
     let mut text = TextSystem::cosmic();
     let widget_id = WidgetId::from_hash("invalid metrics");
-    let calls = text.shaper.measure_calls();
+    let calls = text.shaper().measure_calls();
 
     let panicked = catch_unwind(AssertUnwindSafe(|| {
         text.shape_run(
@@ -155,7 +155,7 @@ fn identity_cache_rejects_invalid_metrics_before_dispatch() {
         "invalid metrics entered the reuse cache",
     );
     assert_eq!(
-        text.shaper.measure_calls(),
+        text.shaper().measure_calls(),
         calls,
         "invalid metrics reached a shaping dispatch",
     );
@@ -246,7 +246,7 @@ fn bounded_identity_cache_keys_width_and_halign() {
     let wid = WidgetId::from_hash("w");
     let params = shape(16.0);
     text.shape_run(slot(wid), "hi", params, TextWrap::SingleLine);
-    let baseline = text.shaper.measure_calls();
+    let baseline = text.shaper().measure_calls();
 
     let wrap_at = |text: &mut TextSystem, width, halign| {
         text.shape_run(
@@ -255,7 +255,7 @@ fn bounded_identity_cache_keys_width_and_halign() {
             params.width(width).halign(halign),
             TextWrap::Wrap,
         );
-        text.shaper.measure_calls()
+        text.shaper().measure_calls()
     };
 
     let after_left = wrap_at(&mut text, 200.0, HAlign::Left);

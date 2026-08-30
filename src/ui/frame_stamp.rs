@@ -32,6 +32,15 @@ impl FrameStamp {
 /// no other.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct FrameInput {
-    pub(crate) stamp: FrameStamp,
-    pub(crate) damage_baseline_valid: bool,
+    pub(super) stamp: FrameStamp,
+    pub(super) damage_baseline_valid: bool,
+}
+
+impl FrameInput {
+    pub(crate) fn new(stamp: FrameStamp, damage_baseline_valid: bool) -> Self {
+        Self {
+            stamp,
+            damage_baseline_valid,
+        }
+    }
 }

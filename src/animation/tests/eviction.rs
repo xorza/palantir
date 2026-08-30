@@ -62,7 +62,7 @@ fn removed_widget_evicts_all_slots_across_typed_maps() {
     assert_eq!(v(&mut map), 1);
     assert_eq!(c(&mut map), 1);
 
-    map.sweep_removed(&FxHashSet::from_iter([id]));
+    map.sweep_removed(&WidgetIdSet::from_iter([id]));
     assert_eq!(
         f(&mut map),
         1,
@@ -81,7 +81,7 @@ fn removed_widget_evicts_all_slots_across_typed_maps() {
 fn post_record_evicts_untouched_slots() {
     let mut map = AnimMap::default();
     let id = wid("a");
-    let empty = FxHashSet::default();
+    let empty = WidgetIdSet::default();
 
     // Touch two slots, then run `post_record` to commit a "frame":
     // both rows survive, both `touched` flags clear.

@@ -2,7 +2,7 @@
 //! hasher a map of them skips hashing with.
 
 use crate::common::hash::Hasher;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::hash::BuildHasherDefault;
 use std::hash::Hash;
 use std::hash::Hasher as _;
@@ -54,6 +54,11 @@ impl std::hash::Hasher for IdHasher {
 }
 
 pub(crate) type WidgetIdMap<V> = HashMap<WidgetId, V, BuildHasherDefault<IdHasher>>;
+
+/// The set half of [`WidgetIdMap`], on the same identity hasher. Every
+/// per-frame id set is probed once per retained entry, so re-hashing an
+/// id that is already a hash is paid per entry per frame.
+pub(crate) type WidgetIdSet = HashSet<WidgetId, BuildHasherDefault<IdHasher>>;
 
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default, bytemuck::Pod, bytemuck::Zeroable)]

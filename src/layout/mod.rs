@@ -10,9 +10,9 @@
 //! three passes reach one through the single dispatch in that module.
 
 pub(crate) mod axis;
-pub(crate) mod axis_align_pair;
-pub(crate) mod axis_placement;
-pub(crate) mod axis_slot;
+mod axis_align_pair;
+mod axis_placement;
+mod axis_slot;
 pub(crate) mod cache;
 mod canvas;
 pub(crate) mod counters;
@@ -22,7 +22,7 @@ pub(crate) mod engine;
 mod fill_item;
 pub(crate) mod grid;
 pub(crate) mod intrinsic;
-pub(crate) mod justify_offsets;
+mod justify_offsets;
 pub(crate) mod layout_scratch;
 pub(crate) mod pass;
 pub(crate) mod scroll;

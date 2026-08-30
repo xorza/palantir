@@ -121,10 +121,10 @@ fn run_frame(
 ) -> FrameProcessing {
     let report = ui.frame(
         engines,
-        FrameInput {
-            stamp: FrameStamp::new(Display::from_physical(SURFACE, 1.0), now),
-            damage_baseline_valid: true,
-        },
+        FrameInput::new(
+            FrameStamp::new(Display::from_physical(SURFACE, 1.0), now),
+            true,
+        ),
         WindowToken(7),
         app,
     );

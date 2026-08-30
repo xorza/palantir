@@ -102,7 +102,7 @@ pub(crate) mod curve_pipeline;
 mod debug_marker;
 mod dynamic_buffer;
 mod format_pipelines;
-pub(crate) mod gpu_ctx;
+mod gpu_ctx;
 mod gpu_gradient_atlas;
 mod gpu_timings;
 pub(crate) mod icon;
@@ -110,7 +110,7 @@ pub(crate) mod image_pipeline;
 mod image_textures;
 mod mesh_pipeline;
 mod overlay_pass;
-pub(crate) mod pipeline_recipe;
+mod pipeline_recipe;
 mod quad_pipeline;
 pub(crate) mod raster_atlas;
 mod raster_pass;
@@ -119,12 +119,12 @@ mod raster_pass;
 pub(crate) mod schedule;
 mod shader_template;
 pub(crate) mod stencil;
-pub(crate) mod stencil_variant;
+mod stencil_variant;
 pub(crate) mod submission;
 pub(crate) mod text;
-pub(crate) mod texture_binding;
+mod texture_binding;
 pub(crate) mod texture_region;
-pub(crate) mod viewport;
+mod viewport;
 
 use crate::common::tracy;
 use crate::diagnostics::gpu_pass_stats::{BatchKind, GpuPassStats};
@@ -146,6 +146,7 @@ use crate::renderer::backend::mesh_pipeline::{MeshBatch, MeshPipeline, MeshUploa
 use crate::renderer::backend::overlay_pass::DebugOverlay;
 use crate::renderer::backend::quad_pipeline::QuadPipeline;
 use crate::renderer::backend::schedule::{RenderStep, for_each_step};
+use crate::renderer::backend::stencil::Stencil;
 use crate::renderer::backend::submission::{Submission, SubmissionTargets};
 use crate::renderer::backend::text::TextBackend;
 use crate::renderer::backend::viewport::{RepaintScissors, ViewportPush, build_repaint_scissors};
@@ -388,7 +389,7 @@ impl WgpuBackend {
         let SubmissionTargets {
             surface: surface_tex,
             backbuffer: via_backbuffer,
-            stencil: stencil_view,
+            stencil,
         } = submission.targets;
         let Submission {
             buffer,
@@ -397,6 +398,7 @@ impl WgpuBackend {
             ..
         } = submission;
         let clear = buffer.clear_override.unwrap_or(plan.clear);
+        let stencil_view = stencil.map(Stencil::view);
         let use_stencil = stencil_view.is_some();
         tracing::trace!(
             quads = buffer.quads.len(),

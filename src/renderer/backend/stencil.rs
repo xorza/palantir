@@ -27,7 +27,7 @@ pub(crate) struct Stencil {
     /// texture alive either way, so this is a handle, not a second
     /// record of a size the texture already knows.
     tex: wgpu::Texture,
-    pub(crate) view: wgpu::TextureView,
+    view: wgpu::TextureView,
 }
 
 impl Stencil {
@@ -127,6 +127,14 @@ impl Stencil {
             *slot = None;
         }
         slot.get_or_insert_with(|| Self::new(device, size))
+    }
+
+    /// The attachment view, for the pass that stamps and tests against
+    /// it. Behind an accessor like
+    /// [`Backbuffer::view`](super::backbuffer::Backbuffer::view), so a
+    /// caller holding a `&Stencil` cannot reach the texture beside it.
+    pub(super) fn view(&self) -> &wgpu::TextureView {
+        &self.view
     }
 
     /// Private, so [`Self::ensure`] is the only way to one.

@@ -109,7 +109,7 @@ impl IconBackend {
     ///
     /// Re-runs when the scale changes (every raster is invalid) or when a set
     /// is loaded (it has never been warmed).
-    pub(crate) fn prewarm(&mut self, ctx: &mut GpuCtx<'_>, scale: f32) {
+    pub(super) fn prewarm(&mut self, ctx: &mut GpuCtx<'_>, scale: f32) {
         let mark = PrewarmMark {
             scale_bits: scale.to_bits(),
             epoch: self.icons.epoch(),
@@ -140,7 +140,7 @@ impl IconBackend {
 
     /// Encode one batch of icon rows into instances, rasterizing any that the
     /// atlas does not already hold.
-    pub(crate) fn prepare_batch(
+    pub(super) fn prepare_batch(
         &mut self,
         ctx: &mut GpuCtx<'_>,
         batch_idx: usize,

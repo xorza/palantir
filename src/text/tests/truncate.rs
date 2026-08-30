@@ -17,7 +17,7 @@ fn fitting_truncate_returns_the_unbounded_root_without_reshaping() {
         let run_slot = slot_at(wid, ordinal);
         let fit = wrap.line_fit().unwrap();
         let natural = text.shape_run(run_slot, "ok", fitting.unbounded(), wrap);
-        let calls = text.shaper.measure_calls();
+        let calls = text.shaper().measure_calls();
 
         let fitted = text.shape_run(run_slot, "ok", fitting, wrap);
         assert_eq!(
@@ -27,13 +27,13 @@ fn fitting_truncate_returns_the_unbounded_root_without_reshaping() {
         assert_eq!(fitted.size, natural.size);
         assert_eq!(fitted.intrinsic_min, natural.intrinsic_min);
         assert_eq!(
-            text.shaper.measure_calls(),
+            text.shaper().measure_calls(),
             calls,
             "a fitting {wrap:?} must not dispatch a second shape",
         );
         let bounded_key = fitting.request("ok", fit).key;
         assert!(
-            !text.shaper.has_cosmic_buffer(bounded_key),
+            !text.shaper().has_cosmic_buffer(bounded_key),
             "a fitting {wrap:?} must not mint a bounded cache entry",
         );
 
