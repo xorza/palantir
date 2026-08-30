@@ -13,12 +13,11 @@ use crate::primitives::brush::gradient::FillAxis;
 use crate::primitives::fill_kind::FillKind;
 use crate::primitives::image::{ImageDownsample, ImageFilter, ImageFit};
 use crate::primitives::nan::NanCheck;
-use crate::primitives::widget_id::WidgetIdMap;
 use crate::primitives::{corners::Corners, rect::Rect};
 use crate::renderer::frontend::encoder::GradientResolver;
 use crate::renderer::frontend::encoder::geometry;
 use crate::renderer::frontend::encoder::geometry::Resolved;
-use crate::renderer::frontend::paint_sink::{PaintGate, PaintSink};
+use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
@@ -29,7 +28,7 @@ use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
-use crate::renderer::gpu_paint::gpu_view_entry::GpuViewEntry;
+use crate::renderer::gpu_paint::gpu_views::GpuViews;
 use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
 use crate::renderer::render_buffer::image::{
     IMG_FLAG_MAG_NEAREST, IMG_FLAG_MIN_NEAREST, IMG_FLAG_TAPS_MEAN, IMG_FLAG_TAPS_PEAK,
@@ -38,10 +37,8 @@ use crate::renderer::render_buffer::image::{
 use crate::scene::cascade::CascadeInputHash;
 use crate::scene::damage::region::DamageRegion;
 use crate::scene::record_store::recorded_gradient::RecordedGradient;
-use crate::scene::shapes::paint::{
-    ImageSource, LoweredShadow, QuadShape, ShadowGeom, ShapeBrush, shadow_paint_rect_local,
-};
-use crate::scene::shapes::record::{ShapeRecord, text_paint_bbox_local};
+use crate::scene::shapes::paint::{ImageSource, LoweredShadow, QuadShape, ShadowGeom, ShapeBrush};
+use crate::scene::shapes::record::{self, ShapeRecord};
 use crate::scene::tree::Tree;
 use crate::scene::tree::iter::TreeItem;
 use crate::scene::tree::node_id::NodeId;
@@ -67,7 +64,7 @@ pub(super) struct LayerCtx<'a> {
     /// `ImageSource::GpuView` carries only its epoch; the arm looks the
     /// view's stable `TextureId` + paint callback up here by the owner
     /// node's id.
-    pub(super) gpu_views: &'a WidgetIdMap<GpuViewEntry>,
+    pub(super) gpu_views: &'a GpuViews,
     pub(super) damage_filter: Option<&'a DamageRegion>,
     /// Logical-px inflation applied to each node's `subtree_paint_rect`
     /// before the damage-cull intersection test, so the cull covers the
@@ -94,7 +91,7 @@ impl LayerCtx<'_> {
         shape_idx: u32,
         shape: &ShapeRecord,
         runs: &mut TextRuns,
-        out: &mut dyn PaintSink,
+        out: &mut impl PaintSink,
     ) {
         // **The lowered-shape invariant**, asserted at the one point every
         // lowered shape passes through. `Shapes::add` is the single gate
@@ -213,7 +210,7 @@ impl LayerCtx<'_> {
                 // cascade's paint rect for this same run is built from
                 // it, and the two have to name the same pixels or damage
                 // and paint disagree about where the glyphs are.
-                let local = text_paint_bbox_local(
+                let local = record::text_paint_bbox_local(
                     *local_origin,
                     *align,
                     self.tree.records.layout()[id.idx()].padding,
@@ -338,7 +335,7 @@ impl LayerCtx<'_> {
                     ImageSource::Texture { id, size } => (*id, *size, None),
                     ImageSource::GpuView { epoch: _ } => {
                         let wid = self.tree.records.widget_id()[id.idx()];
-                        let view = &self.gpu_views[&wid];
+                        let view = self.gpu_views.view(wid);
                         (view.texture_id, glam::UVec2::ZERO, Some(&view.paint))
                     }
                 };
@@ -377,7 +374,7 @@ impl LayerCtx<'_> {
     /// chrome, the clip push/pop pair, and the interleave of a node's own
     /// shapes with its children all happen here. Called once per root by
     /// [`Encoder::encode`](crate::renderer::frontend::encoder::Encoder::encode).
-    pub(super) fn encode_node(&mut self, id: NodeId, out: &mut dyn PaintSink) {
+    pub(super) fn encode_node(&mut self, id: NodeId, out: &mut impl PaintSink) {
         if self.cascade_inputs[id.idx()].invisible() {
             return;
         }
@@ -532,10 +529,10 @@ impl LayerCtx<'_> {
 /// Shared shadow emit. Chrome branch (`Background::shadow`,
 /// `local_rect = None`) and shape-buffer branch (`QuadShape::Shadow`,
 /// owner-relative `local_rect`) both route here so the
-/// `shadow_paint_rect_local` translation + fill-axis packing
+/// `LoweredShadow::paint_rect_local` translation + fill-axis packing
 /// can't drift between the two views.
 fn emit_shadow(
-    out: &mut dyn PaintSink,
+    out: &mut impl PaintSink,
     owner_rect: Rect,
     local_rect: Option<Rect>,
     corners: Corners,
@@ -544,25 +541,20 @@ fn emit_shadow(
     if shadow.is_noop() {
         return;
     }
-    // Unpack all four f16 geom lanes in one batched SIMD call.
-    let ShadowGeom {
-        offset,
-        blur,
-        spread,
-    } = shadow.geom();
-    let inset = shadow.inset();
-    let paint_local =
-        shadow_paint_rect_local(local_rect, owner_rect.size, offset, blur, spread, inset);
+    let paint_local = shadow.paint_rect_local(local_rect, owner_rect.size);
     let paint_rect = Rect {
         min: owner_rect.min + paint_local.min,
         size: paint_local.size,
     };
-    let (kind, fill_axis) = if inset {
-        (
-            FillKind::SHADOW_INSET,
-            FillAxis::from_lanes(offset.x, offset.y, blur, spread),
-        )
+    let (kind, fill_axis) = if shadow.inset() {
+        // The inset axis *is* the stored geometry, so it travels as the
+        // packed word — unpacking it to f32 and repacking would be an
+        // f16 round trip of identical bytes.
+        (FillKind::SHADOW_INSET, FillAxis::from(shadow.geom_f16))
     } else {
+        // A drop shadow zeroes the offset lanes: the halo is already
+        // folded into `paint_rect`, so the shader must not shift again.
+        let ShadowGeom { blur, spread, .. } = shadow.geom();
         (
             FillKind::SHADOW_DROP,
             FillAxis::from_lanes(0.0, 0.0, blur, spread),

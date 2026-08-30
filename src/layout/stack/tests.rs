@@ -328,7 +328,7 @@ fn hug_hstack_pass2_does_not_double_count_non_fill_children() {
         });
         [panel.inner, panel.response.node()]
     });
-    let desired = &h.engines.layout.cache.previous.nodes.desired;
+    let desired = h.engines.layout.cache.captured_desired();
     let button_w = desired[button_node.idx()].w;
     let root_w = desired[root.idx()].w;
     // Hug HStack tracks the button's content width — no inflation from

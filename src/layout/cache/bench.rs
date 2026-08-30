@@ -563,7 +563,7 @@ mod tests {
             "viewport + {DEEP_DEPTH} nested panels + leaf",
         );
         assert_eq!(
-            deep.engines.layout.cache.previous.nodes.desired.len(),
+            deep.engines.layout.cache.captured_desired().len(),
             deep_nodes,
             "deep trees retain one row per node",
         );
@@ -580,7 +580,7 @@ mod tests {
         );
         let broad_nodes = 1 + panel_count + leaf_count;
         assert_eq!(
-            broad.engines.layout.cache.previous.nodes.desired.len(),
+            broad.engines.layout.cache.captured_desired().len(),
             broad_nodes,
             "balanced trees retain one row per node",
         );

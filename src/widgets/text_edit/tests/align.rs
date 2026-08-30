@@ -350,7 +350,7 @@ fn placeholder_uses_own_measured_size_for_alignment() {
 fn click_compensates_for_right_align() {
     // Right-aligned "abcd": dx = 238. Glyph 'b' spans editor x =
     // 5+238+8..5+238+16 = 251..259. Clicking at 254 (mid-glyph) must
-    // land on byte 1, proving `run_input` subtracts the same
+    // land on byte 1, proving the input pass subtracts the same
     // `align_offset.x` from the local pointer coords.
     let mut h = ui_at_no_cosmic(NARROW);
     let mut buf = String::from("abcd");

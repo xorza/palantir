@@ -36,10 +36,10 @@ impl sealed::LowerShape for ShadowShape {
     /// Pure repacking — the f16 lane squeeze happens in
     /// `LoweredShadow`'s `From<Shadow>`, and the paint extent is derived
     /// downstream by
-    /// [`shadow_paint_rect_local`](crate::scene::shapes::paint::shadow_paint_rect_local)
+    /// [`LoweredShadow::paint_rect_local`](crate::scene::shapes::paint::LoweredShadow::paint_rect_local)
     /// so damage and the encoder can't disagree about the halo. Nothing
     /// is staged, so nothing goes through `lower::`.
-    fn lower(self, _store: &RecordStore) -> ShapeRecord {
+    fn lower(self, _store: &mut RecordStore) -> ShapeRecord {
         let Self {
             local_rect,
             corners,

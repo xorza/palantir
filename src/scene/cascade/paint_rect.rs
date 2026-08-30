@@ -9,13 +9,13 @@ use crate::primitives::size::Size;
 use crate::primitives::span::Span;
 use crate::primitives::translate_scale::TranslateScale;
 use crate::scene::cascade::paint::{Paint, PaintArena};
-use crate::scene::shapes::paint::{QuadShape, shadow_paint_rect_local};
-use crate::scene::shapes::record::{ShapeRecord, text_paint_bbox_local};
+use crate::scene::shapes::paint::QuadShape;
+use crate::scene::shapes::record::{self, ShapeRecord};
 use crate::scene::tree::Tree;
 use crate::scene::tree::iter::TreeItem;
 use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::paint_anims::PaintAnims;
-use crate::shape::stroke_bounds::{HALF_FRINGE, stroked_bbox};
+use crate::shape::stroke_bounds::{self, HALF_FRINGE};
 use crate::text::TEXT_SCALE_STEP;
 use glam::Vec2;
 
@@ -220,15 +220,8 @@ pub(super) fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) 
         let screen = if bg.shadow.is_noop() {
             visible_rect
         } else {
-            let g = bg.shadow.geom();
-            let chrome_local = owner_local.union(shadow_paint_rect_local(
-                None,
-                layout_rect.size,
-                g.offset,
-                g.blur,
-                g.spread,
-                bg.shadow.inset(),
-            ));
+            let chrome_local =
+                owner_local.union(bg.shadow.paint_rect_local(None, layout_rect.size));
             lift_to_screen(chrome_local, layout_rect.min, parent_transform, parent_clip)
         };
         push_paint(arena, &mut union, screen, bg.hash);
@@ -273,7 +266,7 @@ pub(super) fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) 
                     // the only reader, so a node with no text shape never
                     // touches the column.
                     let padding = tree.records.layout()[node.idx()].padding;
-                    let local = text_paint_bbox_local(
+                    let local = record::text_paint_bbox_local(
                         *local_origin,
                         *align,
                         padding,
@@ -295,7 +288,7 @@ pub(super) fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) 
                     // centerline and stroke width reach screen space.
                     let local = spun_if_animated(*bbox, layout_rect, &tree.paint_anims, idx);
                     let centerline = lift_to_screen(local, layout_rect.min, shape_transform, None);
-                    let screen = stroked_bbox(
+                    let screen = stroke_bounds::bbox(
                         centerline,
                         *width * shape_transform.scale,
                         HALF_FRINGE / display_scale,
@@ -309,7 +302,7 @@ pub(super) fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) 
                 } => {
                     let local = spun_if_animated(*bbox, layout_rect, &tree.paint_anims, idx);
                     let centerline = lift_to_screen(local, layout_rect.min, shape_transform, None);
-                    let screen = stroked_bbox(
+                    let screen = stroke_bounds::bbox(
                         centerline,
                         *width * shape_transform.scale,
                         HALF_FRINGE / display_scale,

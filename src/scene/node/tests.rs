@@ -243,7 +243,7 @@ fn unconfigured_and_explicit_default_values_remain_distinct() {
     assert_eq!(explicit.clip, Some(ClipMode::None));
 
     // Explicitly-set defaults record identically to unset fields.
-    let columns = explicit.into_columns(WidgetId::from_hash("explicit-defaults"));
+    let columns = explicit.columns(WidgetId::from_hash("explicit-defaults"));
     assert_eq!(columns.attrs, NodeFlags::default());
     assert_eq!(columns.bounds, BoundsExtras::DEFAULT);
 }

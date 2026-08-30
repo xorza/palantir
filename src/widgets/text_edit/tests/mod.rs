@@ -1,9 +1,8 @@
-use crate::common::hash;
 use crate::widgets::text_edit::TextEditState;
 use crate::widgets::text_edit::action::EditAction;
 use crate::widgets::text_edit::edit_state::EditState;
 use crate::widgets::text_edit::editor::Editor;
-use crate::widgets::text_edit::input::{KeyOutcome, apply_key as apply_editor_key};
+use crate::widgets::text_edit::input_pass::{KeyOutcome, apply_key as apply_editor_key};
 use crate::widgets::text_edit::unicode::{
     next_grapheme_boundary, next_word_boundary, prev_grapheme_boundary, prev_word_boundary,
     word_range_at,
@@ -28,8 +27,7 @@ fn apply_key_with_clipboard(
         }
         None => apply_editor_key(&mut ed, kp) == KeyOutcome::Blur,
     };
-    let text_hash = hash::hash_str(ed.text);
-    ed.state.observe_text_hash(text_hash);
+    ed.observe_text();
     blur
 }
 use crate::Spacing;

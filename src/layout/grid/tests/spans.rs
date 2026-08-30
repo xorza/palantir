@@ -117,7 +117,7 @@ fn spanned_text_measures_against_track_sizes_plus_internal_column_gaps() {
         });
 
         let text = text_node.unwrap();
-        let desired = h.engines.layout.cache.previous.nodes.desired[text.idx()];
+        let desired = h.engines.layout.cache.captured_desired()[text.idx()];
         assert_eq!(
             desired,
             Size::new(case.text.len() as f32 * 8.0, 16.0),
@@ -197,7 +197,7 @@ fn spanned_nested_wrap_measures_against_internal_gaps_on_both_axes() {
             let panel = panel_node.unwrap();
             let expected_desired = axis.compose_size(case.child_main * 2.0, 20.0);
             assert_eq!(
-                h.engines.layout.cache.previous.nodes.desired[panel.idx()],
+                h.engines.layout.cache.captured_desired()[panel.idx()],
                 expected_desired,
                 "{axis:?} {} measured panel",
                 case.label,

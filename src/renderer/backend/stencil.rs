@@ -22,9 +22,9 @@ use crate::renderer::render_buffer::MAX_ROUNDED_CLIP_DEPTH;
 /// `WindowDriver`.
 #[derive(Debug)]
 pub(crate) struct Stencil {
-    /// Held for its extent, which [`WgpuBackend::ensure_stencil`](crate::renderer::backend::WgpuBackend::ensure_stencil) compares
-    /// against the target's before reusing the attachment. The view keeps
-    /// the texture alive either way, so this is a handle, not a second
+    /// Held for its extent, which [`Self::ensure`] compares against the
+    /// target's before reusing the attachment. The view keeps the
+    /// texture alive either way, so this is a handle, not a second
     /// record of a size the texture already knows.
     tex: wgpu::Texture,
     pub(crate) view: wgpu::TextureView,
@@ -108,17 +108,29 @@ impl Stencil {
         )
     }
 
-    /// The attachment's extent, which [`WgpuBackend::ensure_stencil`](crate::renderer::backend::WgpuBackend::ensure_stencil)
-    /// compares against the target's before reusing it.
+    /// The window's stencil attachment at `size`, building it if the
+    /// slot is empty or holds a differently-sized one. Lazily created on
+    /// the first rounded-clip frame and recreated when the render
+    /// target's size changes — a mismatched-size attachment fails wgpu
+    /// validation.
     ///
-    /// [`WgpuBackend::ensure_stencil`](crate::renderer::backend::WgpuBackend::ensure_stencil):
-    ///     crate::renderer::backend::WgpuBackend::ensure_stencil
-    pub(super) fn size(&self) -> wgpu::Extent3d {
-        self.tex.size()
+    /// Hands the attachment back rather than only filling the slot, on
+    /// the terms
+    /// [`Backbuffer::ensure`](crate::renderer::backend::backbuffer::Backbuffer::ensure)
+    /// states.
+    pub(crate) fn ensure<'s>(
+        slot: &'s mut Option<Self>,
+        device: &wgpu::Device,
+        size: wgpu::Extent3d,
+    ) -> &'s Self {
+        if slot.as_ref().is_some_and(|held| held.tex.size() != size) {
+            *slot = None;
+        }
+        slot.get_or_insert_with(|| Self::new(device, size))
     }
 
-    /// Private, so [`WgpuBackend::ensure_stencil`](crate::renderer::backend::WgpuBackend::ensure_stencil) is the only way to one.
-    pub(super) fn new(device: &wgpu::Device, size: wgpu::Extent3d) -> Self {
+    /// Private, so [`Self::ensure`] is the only way to one.
+    fn new(device: &wgpu::Device, size: wgpu::Extent3d) -> Self {
         let tex = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("palantir.renderer.stencil"),
             size,

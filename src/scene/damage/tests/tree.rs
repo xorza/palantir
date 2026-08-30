@@ -124,7 +124,7 @@ fn reordering_nodes_does_not_damage_unchanged_leaves() {
     frame(&mut h, |ui| canvas(ui, [b, a]));
 
     assert!(
-        h.damage_region().rects.is_empty(),
+        h.damage_region().is_empty(),
         "reordering nodes must not damage unchanged leaves; region = {:?}",
         h.damage_region().iter_rects().collect::<Vec<_>>(),
     );
@@ -246,7 +246,7 @@ fn offscreen_text_nodes_reorder_cast_no_edge_shadow() {
     frame(&mut h, |ui| canvas(ui, [b, a]));
 
     assert!(
-        h.damage_region().rects.is_empty(),
+        h.damage_region().is_empty(),
         "off-screen text must not fabricate edge-of-window damage on \
          reorder; region = {:?}",
         h.damage_region().iter_rects().collect::<Vec<_>>(),

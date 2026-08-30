@@ -27,8 +27,8 @@ use crate::scene::cascade::entry::{
     EntryRow, HitRow, HitTargets, PressTargets, ScopeRow, WidgetLocation,
 };
 use crate::scene::cascade::paint::PaintArena;
+use crate::scene::endpoint::Endpoint;
 use crate::scene::layer::PerLayer;
-use crate::scene::seen_ids::Endpoint;
 use glam::Vec2;
 
 /// Per-node fingerprint of cascade inputs flowing in from ancestors

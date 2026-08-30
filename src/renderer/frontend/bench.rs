@@ -109,8 +109,7 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
                 .ui
                 .forest()
                 .record_store
-                .payloads
-                .borrow()
+                .payloads()
                 .gradients
                 .records
                 .len(),

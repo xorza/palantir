@@ -291,7 +291,7 @@ impl<'a> FrameCycle<'a> {
         // Hard-coded `WidgetId::VIEWPORT` — a frame-stable parent id,
         // so top-level salts/auto ids resolve to `VIEWPORT.with(salt)`
         // like any other parent-scoped id (see `Ui::widget`).
-        self.ui.open_node(WidgetId::VIEWPORT, viewport, None);
+        self.ui.open_node(WidgetId::VIEWPORT, &viewport, None);
         {
             tracy::zone!("Ui::record_user");
             app.record(win, self.ui);
@@ -342,10 +342,10 @@ impl<'a> FrameCycle<'a> {
     fn post_record(&mut self) {
         tracy::zone!("Ui::post_record");
         self.ui.forest.post_record();
-        // The field, not `Ui::payloads` — that takes `&self`, and the
-        // `layout_engine.run` below writes `&mut self.ui.layout` while this
-        // borrow is live. Reaching the one field keeps the two disjoint.
-        let payloads = self.ui.forest.record_store.payloads.borrow();
+        // Reached through `forest`, not through `Ui::payloads` — that
+        // borrows all of `self.ui`, and `layout.run` below writes
+        // `&mut self.ui.layout` while this borrow is live.
+        let payloads = self.ui.forest.record_store.payloads();
         let interned_text = payloads.interned_text();
         self.engines.layout.run(
             &self.ui.forest,
@@ -353,10 +353,6 @@ impl<'a> FrameCycle<'a> {
             self.ui.display.logical_rect(),
             &mut self.ui.layout,
         );
-        // `interned_text` borrows `payloads`, so releasing the arena is
-        // one drop now that it is a plain `&str` rather than a second
-        // borrow guard of its own.
-        drop(payloads);
         // O5 stage 0: skip the cascade when nothing feeding it changed.
         // The cascade is a pure function of subtree authoring + arranged
         // rects, and the arranged rects are determined by (subtree_hash,
@@ -398,9 +394,7 @@ impl<'a> FrameCycle<'a> {
         // differently inside each.
         if !removed.is_empty() {
             self.ui.state.sweep_removed(removed);
-            // The backend frees an orphaned texture the next frame it is
-            // no longer in `frame_targets`.
-            self.ui.gpu_views.retain(|wid, _| !removed.contains(wid));
+            self.ui.gpu_views.sweep_removed(removed);
         }
 
         self.ui.input.end_frame(&self.ui.cascade);

@@ -263,8 +263,8 @@ impl QuadShape {
     /// Owner-local paint bbox — cascade's basis for the screen-space
     /// paint bound. A rectangle covers its `local_rect` (or the whole
     /// owner); a drop shadow reaches past its source by the halo
-    /// [`shadow_paint_rect_local`] computes; a triangle carries the
-    /// inflated hull lowering already derived.
+    /// [`LoweredShadow::paint_rect_local`] computes; a triangle carries
+    /// the inflated hull lowering already derived.
     #[inline]
     pub(crate) fn bbox_local(&self, owner_size: Size) -> Rect {
         match self {
@@ -274,57 +274,10 @@ impl QuadShape {
             }),
             QuadShape::Shadow {
                 local_rect, shadow, ..
-            } => {
-                let ShadowGeom {
-                    offset,
-                    blur,
-                    spread,
-                } = shadow.geom();
-                shadow_paint_rect_local(
-                    *local_rect,
-                    owner_size,
-                    offset,
-                    blur,
-                    spread,
-                    shadow.inset(),
-                )
-            }
+            } => shadow.paint_rect_local(*local_rect, owner_size),
             QuadShape::Triangle { bbox, .. } => *bbox,
         }
     }
-}
-
-/// Owner-local paint bbox of a [`QuadShape::Shadow`] — a drop shadow is
-/// the offset source inflated by `3σ + max(spread, 0)`; an inset shadow
-/// stays inside the source. `local_rect = None` ⇒ source covers the full
-/// owner; `Some(r)` ⇒ source is `r` at owner-relative coords. **Sole formula
-/// source** for the shadow paint extent: the encoder (per-quad paint rect) and
-/// [`QuadShape::bbox_local`] (cascade's per-node ink union) both call
-/// this so the two views can't drift.
-pub(crate) fn shadow_paint_rect_local(
-    local_rect: Option<Rect>,
-    owner_size: Size,
-    offset: Vec2,
-    blur: f32,
-    spread: f32,
-    inset: bool,
-) -> Rect {
-    let source = match local_rect {
-        None => Rect {
-            min: Vec2::ZERO,
-            size: owner_size,
-        },
-        Some(r) => r,
-    };
-    if inset {
-        return source;
-    }
-    let halo = 3.0 * blur.max(0.0) + spread.max(0.0);
-    Rect {
-        min: source.min + offset,
-        size: source.size,
-    }
-    .inflated(halo)
 }
 
 /// Where a textured rect samples from — the half that actually differs
@@ -416,6 +369,36 @@ impl LoweredShadow {
     #[inline]
     pub(crate) fn inset(self) -> bool {
         self.inset_flag != 0
+    }
+
+    /// Owner-local paint bbox of this shadow — a drop shadow is the
+    /// offset source inflated by `3σ + max(spread, 0)`; an inset shadow
+    /// stays inside the source. `local_rect = None` ⇒ source covers the
+    /// full owner; `Some(r)` ⇒ source is `r` at owner-relative coords.
+    ///
+    /// **Sole formula source** for the shadow paint extent: the encoder
+    /// (per-quad paint rect), the cascade (per-node ink union), and
+    /// [`QuadShape::bbox_local`] all call this, so the three views
+    /// cannot drift.
+    pub(crate) fn paint_rect_local(self, local_rect: Option<Rect>, owner_size: Size) -> Rect {
+        let source = local_rect.unwrap_or(Rect {
+            min: Vec2::ZERO,
+            size: owner_size,
+        });
+        if self.inset() {
+            return source;
+        }
+        let ShadowGeom {
+            offset,
+            blur,
+            spread,
+        } = self.geom();
+        let halo = 3.0 * blur.max(0.0) + spread.max(0.0);
+        Rect {
+            min: source.min + offset,
+            size: source.size,
+        }
+        .inflated(halo)
     }
 }
 

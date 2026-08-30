@@ -67,13 +67,13 @@ fn polyline_color_cardinality_is_enforced_at_lowering() {
 
             for &colors_len in color_lengths {
                 let mut shapes = Shapes::default();
-                let store = RecordStore::default();
+                let mut store = RecordStore::default();
                 let shape = Shape::polyline(
                     &points[..points_len],
                     source.colors(&colors[..colors_len]),
                     1.0,
                 );
-                let result = catch_unwind(AssertUnwindSafe(|| shapes.add(shape, &store)));
+                let result = catch_unwind(AssertUnwindSafe(|| shapes.add(shape, &mut store)));
                 // What the no-op gate drops never reaches lowering, and so is
                 // never checked: fewer than two points, or a per-vertex colour
                 // slice with nothing visible in it — which an *empty* slice is,
@@ -95,7 +95,7 @@ fn polyline_color_cardinality_is_enforced_at_lowering() {
                 if !accepted {
                     assert!(shapes.records.is_empty());
                     assert!(shapes.hashes.is_empty());
-                    let payloads = store.payloads.borrow();
+                    let payloads = store.payloads();
                     assert!(payloads.polyline_points.is_empty());
                     assert!(payloads.polyline_colors.is_empty());
                     continue;
@@ -105,7 +105,7 @@ fn polyline_color_cardinality_is_enforced_at_lowering() {
                 assert_eq!(result.unwrap(), stored.then_some(0));
                 assert_eq!(shapes.records.len(), usize::from(stored));
                 assert_eq!(shapes.hashes.len(), usize::from(stored));
-                let payloads = store.payloads.borrow();
+                let payloads = store.payloads();
                 assert_eq!(
                     payloads.polyline_points.len(),
                     points_len * usize::from(stored)
@@ -138,9 +138,9 @@ fn image_dimensions_above_u16_survive_lowering() {
     let registry = ImageRegistry::new(TextureIdSource::default());
     let handle = registry.register(Image::from_rgba8(WIDTH, 1, vec![0; WIDTH as usize * 4]));
     let mut shapes = Shapes::default();
-    let store = RecordStore::default();
+    let mut store = RecordStore::default();
 
-    assert_eq!(shapes.add(Shape::image(handle), &store), Some(0));
+    assert_eq!(shapes.add(Shape::image(handle), &mut store), Some(0));
     let ShapeRecord::Image {
         source: ImageSource::Texture { size, .. },
         ..
@@ -201,8 +201,8 @@ fn the_nan_gate_drops_every_shape_kind() {
     #[track_caller]
     fn gate<T: Lower, C: Lower>(label: &str, tainted: T, clean: C) {
         let mut shapes = Shapes::default();
-        let store = RecordStore::default();
-        let got = catch_unwind(AssertUnwindSafe(|| shapes.add(tainted, &store)));
+        let mut store = RecordStore::default();
+        let got = catch_unwind(AssertUnwindSafe(|| shapes.add(tainted, &mut store)));
         assert_eq!(
             got.unwrap_or(None),
             None,
@@ -218,7 +218,7 @@ fn the_nan_gate_drops_every_shape_kind() {
         // gradient fill interns a row, and a text run copies its bytes,
         // all before a record exists to be judged.
         {
-            let payloads = store.payloads.borrow();
+            let payloads = store.payloads();
             assert!(
                 payloads.polyline_points.is_empty()
                     && payloads.polyline_colors.is_empty()
@@ -230,9 +230,9 @@ fn the_nan_gate_drops_every_shape_kind() {
         }
 
         let mut shapes = Shapes::default();
-        let store = RecordStore::default();
+        let mut store = RecordStore::default();
         assert_eq!(
-            shapes.add(clean, &store),
+            shapes.add(clean, &mut store),
             Some(0),
             "case {label}: the clean twin must record — otherwise the \
              tainted arm proves nothing",

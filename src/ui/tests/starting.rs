@@ -41,7 +41,7 @@ fn empty_ui_drives_a_frame_safely() {
     assert_eq!(h.ui.forest.trees[Layer::Main].records.len(), 1);
     assert!(h.engines.damage.prev.is_empty());
     assert!(h.engines.damage.counters.dirty().is_empty());
-    assert!(h.damage_region().rects.is_empty());
+    assert!(h.damage_region().is_empty());
     assert_eq!(Damage::new(h.collapsed_damage()), None,);
 }
 

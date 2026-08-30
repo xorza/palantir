@@ -8,8 +8,8 @@ use crate::input::sense::Sense;
 use crate::primitives::rect::Rect;
 use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
+use crate::scene::endpoint::Endpoint;
 use crate::scene::layer::Layer;
-use crate::scene::seen_ids::Endpoint;
 
 /// One per-node cascade row, in `Vec<EntryRow>` on
 /// [`Cascade::entries`](super::Cascade::entries).

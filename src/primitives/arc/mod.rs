@@ -18,7 +18,7 @@ use std::f32::consts::FRAC_PI_2;
 /// four crossings matter (a full ±2π sweep covers every axis). Not
 /// `const`: the endpoints need real trig, and `sin_cos` isn't
 /// const-stable.
-pub(crate) fn arc_bbox(center: Vec2, radius: f32, a0: f32, a1: f32) -> Rect {
+pub(crate) fn bbox(center: Vec2, radius: f32, a0: f32, a1: f32) -> Rect {
     let p_at = |a: f32| {
         let (s, c) = a.sin_cos();
         center + radius * Vec2::new(c, s)

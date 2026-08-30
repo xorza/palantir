@@ -115,10 +115,11 @@ pub(super) struct GpuTimings {
     timestamp_query_set: wgpu::QuerySet,
     /// Whether `TIMESTAMP_QUERY_INSIDE_PASSES` is available. False
     /// → only pass begin / end timestamps (via descriptor), no
-    /// midpoint writes. Drives whether the caller invokes
-    /// [`Self::pass_begin`] / [`Self::mark`] / [`Self::pass_end`]
-    /// (yes) or relies on the descriptor's begin/end (no).
-    pub(super) inside_passes: bool,
+    /// midpoint writes. Read by [`Self::pass_begin`], [`Self::mark`]
+    /// and [`Self::pass_end`], which each no-op when it is false, so
+    /// the caller invokes all three unconditionally — the same shape
+    /// [`Self::begin_pipeline_stats`] takes for its own feature.
+    inside_passes: bool,
     /// `Some` when `PIPELINE_STATISTICS_QUERY` is available.
     stats_query_set: Option<wgpu::QuerySet>,
     /// GPU-visible resolve target for the timestamp query set.
@@ -226,10 +227,13 @@ impl GpuTimings {
     }
 
     /// Reset per-frame state, then write the pass-begin timestamp.
-    /// Per-batch mode only. Called immediately after
-    /// `begin_render_pass`.
+    /// No-op outside per-batch mode, where the descriptor's own
+    /// begin/end writes already cover the pass. Called immediately
+    /// after `begin_render_pass`.
     pub(super) fn pass_begin(&self, pass: &mut wgpu::RenderPass<'_>) {
-        debug_assert!(self.inside_passes);
+        if !self.inside_passes {
+            return;
+        }
         self.inner.next_index.set(0);
         self.inner.current_kind.set(None);
         self.inner.segment_kinds.borrow_mut().clear();
@@ -267,11 +271,13 @@ impl GpuTimings {
         self.inner.next_index.set(idx + 1);
     }
 
-    /// Write the pass-end timestamp, closing the final segment.
-    /// Per-batch mode only. Called immediately before the pass is
-    /// dropped.
+    /// Write the pass-end timestamp, closing the final segment. No-op
+    /// outside per-batch mode, like [`Self::pass_begin`]. Called
+    /// immediately before the pass is dropped.
     pub(super) fn pass_end(&self, pass: &mut wgpu::RenderPass<'_>) {
-        debug_assert!(self.inside_passes);
+        if !self.inside_passes {
+            return;
+        }
         let idx = self.inner.next_index.get();
         pass.write_timestamp(&self.timestamp_query_set, idx);
         let final_kind = self.inner.current_kind.get().unwrap_or(BatchKind::Setup);

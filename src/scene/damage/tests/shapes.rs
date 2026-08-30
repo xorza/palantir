@@ -56,7 +56,7 @@ fn unchanged_authoring_produces_no_damage() {
     frame(&mut h, build);
 
     assert!(h.engines.damage.counters.dirty().is_empty());
-    assert!(h.damage_region().rects.is_empty());
+    assert!(h.damage_region().is_empty());
     assert_eq!(Damage::new(h.collapsed_damage()), None,);
 }
 
@@ -202,7 +202,7 @@ fn added_widget_contributes_curr_rect_to_damage() {
         .map(|n| h.ui.tree(Layer::Main).records.widget_id()[n.idx()])
         .collect();
     assert!(dirty_ids.contains(&WidgetId::from_hash("new")));
-    assert!(!h.damage_region().rects.is_empty());
+    assert!(!h.damage_region().is_empty());
 }
 
 /// Pin (motivating workload): hovering a button causes exactly one

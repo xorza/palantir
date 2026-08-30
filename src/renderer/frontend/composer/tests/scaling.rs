@@ -4,9 +4,9 @@ use crate::primitives::{
     color::Color, corners::Corners, size::Size, stroke::Stroke, translate_scale::TranslateScale,
     urect::URect,
 };
-use crate::renderer::frontend::composer::geometry::stroke_bbox_urect;
+use crate::renderer::frontend::composer::geometry::StrokeBbox;
 use crate::renderer::frontend::composer::tests::support::{clip, draw, params, rect, run, text};
-use crate::renderer::frontend::paint_sink::{PaintGate, PaintSink};
+use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
@@ -65,15 +65,16 @@ fn stroke_bbox_urect_applies_transform_dpi_and_style_once() {
     let xform = TranslateScale::new(Vec2::new(3.0, 5.0), 1.5);
 
     for case in cases {
-        let actual = stroke_bbox_urect(
+        let actual = StrokeBbox {
             xform,
-            rect(10.0, 20.0, 20.0, 10.0),
-            Vec2::new(2.0, 4.0),
-            4.0 * 1.5 * case.scale,
-            case.cap,
-            case.join,
-            params(case.scale, UVec2::new(200, 200)),
-        );
+            bbox: rect(10.0, 20.0, 20.0, 10.0),
+            origin: Vec2::new(2.0, 4.0),
+            width_phys: 4.0 * 1.5 * case.scale,
+            cap: case.cap,
+            join: case.join,
+            display: params(case.scale, UVec2::new(200, 200)),
+        }
+        .urect();
         assert_eq!(actual, case.expected, "{case:?}");
     }
 }

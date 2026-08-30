@@ -35,7 +35,7 @@ impl Fold {
     }
 
     fn len(&self) -> usize {
-        self.region.rects.len()
+        self.region.iter_rects().count()
     }
 }
 

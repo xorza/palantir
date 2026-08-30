@@ -5,9 +5,7 @@
 use crate::common::tracy;
 use crate::layout::axis::Axis;
 use crate::layout::axis_placement::AxisPlacement;
-use crate::layout::cache::{
-    CaptureTreeInput, MeasureCache, MeasureSnapshot, RootSnapshotKey, quantize_available,
-};
+use crate::layout::cache::{CaptureTreeInput, MeasureCache};
 use crate::layout::counters::PhaseSpan;
 use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange, LenReq};
 use crate::layout::layout_scratch::LayoutScratch;
@@ -17,30 +15,12 @@ use crate::layout::types::layout_mode::LayoutMode;
 use crate::layout::{Layout, intrinsic};
 use crate::primitives::interned_text::InternedText;
 use crate::primitives::rect::Rect;
-use crate::primitives::size::Size;
 use crate::scene::forest::Forest;
 use crate::scene::layer::Layer;
 use crate::scene::tree::Tree;
 use crate::scene::tree::node_id::NodeId;
-use crate::scene::tree::root_slot::RootSlot;
 use crate::text::shaper::TextShaper;
 use crate::text::system::TextSystem;
-
-/// Size offered to one layer root.
-///
-/// `Layer::Main` fills the surface; every overlay layer derives its own from
-/// its [`Placement`](crate::layout::types::placement::Placement). Shared by
-/// [`LayoutEngine::run`], which measures against
-/// it, and [`LayoutEngine::cache_snapshot_matches_forest`], which quantizes it
-/// into the snapshot's root key — those two **must** agree, or the key
-/// describes an offer measure never saw and every root misses.
-fn root_available(layer: Layer, slot: &RootSlot, surface: Rect) -> Size {
-    if layer == Layer::Main {
-        surface.size
-    } else {
-        slot.placement.available(surface)
-    }
-}
 
 /// Persistent layout engine. Field groups by lifetime:
 ///
@@ -68,36 +48,6 @@ impl LayoutEngine {
             text: TextSystem::new(shaper),
             cache: MeasureCache::default(),
         }
-    }
-
-    fn cache_snapshot_matches_forest(
-        snapshot: &MeasureSnapshot,
-        forest: &Forest,
-        surface: Rect,
-    ) -> bool {
-        if snapshot.nodes.desired.len() != forest.total_nodes()
-            || snapshot.roots.len() != forest.total_roots()
-        {
-            return false;
-        }
-        let mut root_index = 0;
-        for layer in Layer::PAINT_ORDER {
-            let tree = &forest.trees[layer];
-            for slot in &tree.roots {
-                let root = slot.first_node;
-                let available = root_available(layer, slot, surface);
-                let current = RootSnapshotKey {
-                    wid: tree.records.widget_id()[root.idx()],
-                    subtree_hash: tree.rollups.subtree[root.idx()],
-                    available_q: quantize_available(available),
-                };
-                if snapshot.roots[root_index] != current {
-                    return false;
-                }
-                root_index += 1;
-            }
-        }
-        true
     }
 
     /// Grid's per-track intrinsic aggregator — a bump stack `Grid::intrinsic`
@@ -261,8 +211,7 @@ impl LayoutEngine {
         // Once per run, not per layer: `resize_for` runs inside the layer
         // loop and would wipe an earlier layer's counts.
         self.scratch.counters.begin_pass();
-        self.scratch.cache_rebuild =
-            !Self::cache_snapshot_matches_forest(&self.cache.previous, forest, surface);
+        self.scratch.cache_rebuild = !self.cache.matches_forest(forest, surface);
         if self.scratch.cache_rebuild {
             self.cache.begin_frame();
         }
@@ -278,7 +227,7 @@ impl LayoutEngine {
                 let mut pass = LayoutPass::new(&mut *self, tree, interned_text, &mut *layer_out);
                 for slot in &tree.roots {
                     let root = slot.first_node;
-                    let available = root_available(layer, slot, surface);
+                    let available = slot.available(layer, surface);
                     // Two of the five passes, and the only ones a Tracy
                     // capture couldn't tell apart — `PhaseSpan` already
                     // splits them for the debug overlay, so the zones go

@@ -10,8 +10,8 @@ use palantir_anim_derive::Animatable;
 /// `Shape::Shadow` (paints via the shape buffer, multi-shadow stacks
 /// allowed by record order) and as `Background::shadow` (paints via
 /// the encoder's chrome branch, before the rect fill, single-shadow
-/// only). Both routes share the `shadow_paint_rect_local` overhang
-/// formula and the `draw_shadow` cmd path.
+/// only). Both routes share the `LoweredShadow::paint_rect_local`
+/// overhang formula and the one `emit_shadow` path.
 ///
 /// `Shadow::NONE` (also `Default`) is the "no shadow" sentinel —
 /// matches the `Stroke::ZERO` convention so consumers can store a

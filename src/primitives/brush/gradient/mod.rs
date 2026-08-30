@@ -170,6 +170,16 @@ impl<G: GradientGeometry> NanCheck for Gradient<G> {
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct FillAxis(F16x4);
 
+impl From<F16x4> for FillAxis {
+    /// Adopt an already-packed word. The inset-shadow axis is exactly
+    /// `LoweredShadow::geom_f16`, so it travels packed rather than
+    /// through an f16 → f32 → f16 round trip of identical bytes.
+    #[inline]
+    fn from(lanes: F16x4) -> Self {
+        Self(lanes)
+    }
+}
+
 impl FillAxis {
     /// All-zero axis used for solid quads. The shader ignores it when
     /// `FillKind == SOLID`, so the value doesn't matter — keep it

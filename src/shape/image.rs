@@ -47,7 +47,7 @@ impl sealed::LowerShape for ImageShape {
         self.local_rect.has_nan() || self.tint.has_nan() || self.fit.has_nan()
     }
 
-    fn lower(self, _store: &RecordStore) -> ShapeRecord {
+    fn lower(self, _store: &mut RecordStore) -> ShapeRecord {
         let Self {
             handle,
             local_rect,

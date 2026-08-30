@@ -80,9 +80,9 @@ fn redo_stack_changes_only_on_real_edit() {
 
     let mut editor = Editor::new(&mut s, &mut state, false, Some(1));
     apply_editor_key(&mut editor, press(Key::Char('x')));
-    assert!(!editor.edited);
-    assert_eq!(editor.text, "a");
-    assert_eq!(editor.state.redo.len(), 1);
+    assert!(!editor.edited());
+    assert_eq!(editor.text(), "a");
+    assert_eq!(editor.redo_len(), 1);
 
     apply_key(&mut s, &mut state, ctrl_shift_press(Key::Char('z')));
     assert_eq!(s, "", "redo survives a rejected capped insertion");

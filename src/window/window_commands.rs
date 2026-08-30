@@ -21,6 +21,27 @@ pub(crate) struct WindowCommands {
 }
 
 impl WindowCommands {
+    /// Enqueue an open for `token`, or re-configure the one already
+    /// enqueued for it.
+    ///
+    /// Deduplicated by token because a token addresses one window: two
+    /// opens in a frame are the same window described twice, and the
+    /// later description is the one the app meant. Without this the host
+    /// would open two windows the app can only address one of.
+    pub(crate) fn open(&mut self, token: WindowToken, config: WindowConfig) {
+        match self.opens.iter_mut().find(|p| p.token == token) {
+            Some(pending) => pending.config = config,
+            None => self.opens.push(PendingWindow { token, config }),
+        }
+    }
+
+    /// Enqueue a close for `token`. Not deduplicated: closing a window
+    /// twice is what a host already ignores, and the second close of a
+    /// re-opened token is a different window.
+    pub(crate) fn close(&mut self, token: WindowToken) {
+        self.closes.push(token);
+    }
+
     /// Move every command out of `source` onto the end of `self`, leaving
     /// `source` empty with its buffers — and their capacity — intact.
     pub(crate) fn append(&mut self, source: &mut Self) {

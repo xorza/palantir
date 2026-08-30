@@ -107,6 +107,7 @@ mod gpu_gradient_atlas;
 mod gpu_timings;
 pub(crate) mod icon;
 pub(crate) mod image_pipeline;
+mod image_textures;
 mod mesh_pipeline;
 mod overlay_pass;
 pub(crate) mod pipeline_recipe;
@@ -140,11 +141,11 @@ use crate::renderer::backend::gpu_gradient_atlas::GpuGradientAtlas;
 use crate::renderer::backend::gpu_timings::GpuTimings;
 use crate::renderer::backend::icon::IconBackend;
 use crate::renderer::backend::image_pipeline::{ImageBatch, ImagePipeline};
+use crate::renderer::backend::image_textures::ImageTextures;
 use crate::renderer::backend::mesh_pipeline::{MeshBatch, MeshPipeline, MeshUpload};
 use crate::renderer::backend::overlay_pass::DebugOverlay;
 use crate::renderer::backend::quad_pipeline::QuadPipeline;
 use crate::renderer::backend::schedule::{RenderStep, for_each_step};
-use crate::renderer::backend::stencil::Stencil;
 use crate::renderer::backend::submission::{Submission, SubmissionTargets};
 use crate::renderer::backend::text::TextBackend;
 use crate::renderer::backend::viewport::{RepaintScissors, ViewportPush, build_repaint_scissors};
@@ -214,6 +215,12 @@ pub(crate) struct WgpuBackend {
     quad: QuadPipeline,
     mesh: MeshPipeline,
     image: ImagePipeline,
+    /// Every GPU texture a draw may sample — registered images and the
+    /// framework's `GpuView` targets — plus the group-0 layout and
+    /// sampler they share. Owned beside the pipeline rather than inside
+    /// it, so `paint_gpu_views` and `retire_owner` are reached without a
+    /// forwarder and `draw` is handed the store it binds from.
+    image_textures: ImageTextures,
     icon: IconBackend,
     curve: CurvePipeline,
     text: TextBackend,
@@ -280,6 +287,7 @@ impl WgpuBackend {
         let quad = QuadPipeline::new(&device);
         let mesh = MeshPipeline::new(&device);
         let image = ImagePipeline::new(&device);
+        let image_textures = ImageTextures::new(&device);
         let curve = CurvePipeline::new(&device);
         let text = TextBackend::new(&device, resources.text);
         let icon = IconBackend::new(&device, resources.icons);
@@ -313,6 +321,7 @@ impl WgpuBackend {
             quad,
             mesh,
             image,
+            image_textures,
             icon,
             curve,
             text,
@@ -344,6 +353,7 @@ impl WgpuBackend {
                 format,
                 PipelineSources {
                     gradient_bgl: &self.gradient.bgl,
+                    image_bgl: self.image_textures.layout(),
                     quad: &self.quad,
                     mesh: &self.mesh,
                     image: &self.image,
@@ -354,59 +364,6 @@ impl WgpuBackend {
             );
             self.pipelines.insert(format, built);
         }
-    }
-
-    /// Lazily (re)create the backbuffer to match the surface texture's
-    /// size. Returns `true` if the backbuffer was just (re)created — the
-    /// caller asserts its plan is already Full (a recreate implies a
-    /// size / format / freshness change upstream, all of which force Full
-    /// before the draw list builds; the new texture's contents are
-    /// undefined until the first pass writes to it). The
-    /// `format` is the per-window surface format; the matching pipeline
-    /// set is fetched per submit from the `pipelines` map, so no
-    /// global-format assert is needed.
-    pub(crate) fn ensure_backbuffer(
-        &self,
-        bb: &mut Option<Backbuffer>,
-        size: wgpu::Extent3d,
-        format: wgpu::TextureFormat,
-    ) -> bool {
-        let needs_new = match &*bb {
-            None => true,
-            Some(b) => !b.describes(size, format),
-        };
-        if !needs_new {
-            return false;
-        }
-        *bb = Some(Backbuffer::new(&self.device, size, format));
-        true
-    }
-
-    /// Allocate (or resize) the stencil attachment to match `size`. Lazily
-    /// created on the first rounded-clip frame; recreated when the render
-    /// target's size changes (a mismatched-size attachment fails wgpu
-    /// validation). The [`Stencil`] is owned per-window by the caller.
-    /// The window's stencil attachment at `size`, building it if the
-    /// slot is empty or holds a differently-sized one.
-    ///
-    /// Returns the attachment rather than only filling the slot: the
-    /// caller needs it immediately, and handing back `()` left it
-    /// re-reading its own `Option` behind an `expect` whose only job was
-    /// to undo this call's out-parameter. `Stencil` keeps private fields
-    /// and this is its only constructor, so the borrow out is the whole
-    /// interface.
-    pub(crate) fn ensure_stencil<'s>(
-        &self,
-        stencil: &'s mut Option<Stencil>,
-        size: wgpu::Extent3d,
-    ) -> &'s Stencil {
-        // Drop a stale one first, then a plain get-or-insert: the two
-        // steps are what let this hand back a `&Stencil` without an
-        // `expect` re-reading the slot it just filled.
-        if stencil.as_ref().is_some_and(|held| held.size() != size) {
-            *stencil = None;
-        }
-        stencil.get_or_insert_with(|| Stencil::new(&self.device, size))
     }
 
     /// Render one frame to the persistent backbuffer, then copy the
@@ -527,7 +484,7 @@ impl WgpuBackend {
         );
 
         if let Some(bb) = via_backbuffer {
-            self.copy_backbuffer_into(bb, &mut encoder, surface_tex);
+            bb.copy_onto(&mut encoder, surface_tex);
         }
 
         if overlay_count > 0 {
@@ -588,7 +545,7 @@ impl WgpuBackend {
         // - image registry: first-frame images need a bind group
         //   ready when the schedule's draw call lands.
         self.gradient.upload(&ctx);
-        self.image.drain_registry(&mut ctx, &self.images);
+        self.image_textures.drain_registry(&mut ctx, &self.images);
 
         if dim_undamaged {
             self.debug
@@ -630,7 +587,7 @@ impl WgpuBackend {
         // (eviction is owner-scoped — the shared backend serves every
         // window).
         // `submit` itself carries no render-target logic.
-        self.image.paint_gpu_views(
+        self.image_textures.paint_gpu_views(
             &mut ctx,
             buffer.frame_views(),
             owner,
@@ -806,9 +763,7 @@ impl WgpuBackend {
                 multiview_mask: None,
             });
             if let Some(t) = &self.gpu_timings {
-                if t.inside_passes {
-                    t.pass_begin(&mut pass);
-                }
+                t.pass_begin(&mut pass);
                 t.begin_pipeline_stats(&mut pass);
             }
             match repaint_scissors {
@@ -830,9 +785,7 @@ impl WgpuBackend {
             }
             if let Some(t) = &self.gpu_timings {
                 t.end_pipeline_stats(&mut pass);
-                if t.inside_passes {
-                    t.pass_end(&mut pass);
-                }
+                t.pass_end(&mut pass);
             }
         }
         self.pass_stats
@@ -1013,6 +966,7 @@ impl WgpuBackend {
                                     ids: buffer.images.id(),
                                     items: items(),
                                 },
+                                &self.image_textures,
                             );
                         }
                         PaintTier::Icon => {
@@ -1073,6 +1027,14 @@ impl WgpuBackend {
         );
     }
 
+    /// The device every window's per-window attachment is built against
+    /// — the one thing a host needs off the shared backend to size its
+    /// own [`Backbuffer`] and
+    /// [`Stencil`](crate::renderer::backend::stencil::Stencil).
+    pub(crate) fn device(&self) -> &wgpu::Device {
+        &self.device
+    }
+
     /// Skip path: the host's damage compute returned `None`, but the
     /// swapchain target still needs valid pixels (visual tests capture
     /// it unconditionally; the showcase short-circuits earlier, but
@@ -1096,7 +1058,7 @@ impl WgpuBackend {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("palantir.renderer.skip"),
             });
-        self.copy_backbuffer_into(backbuffer, &mut encoder, surface_tex);
+        backbuffer.copy_onto(&mut encoder, surface_tex);
         self.queue.submit(std::iter::once(encoder.finish()));
     }
 
@@ -1112,31 +1074,7 @@ impl WgpuBackend {
     // the only conceivable one — an embedding host needs this entry point too.
     #[cfg_attr(not(feature = "winit"), allow(dead_code))]
     pub(crate) fn retire_render_owner(&mut self, owner: RenderOwnerId) {
-        self.image.retire_render_owner(owner);
-    }
-
-    fn copy_backbuffer_into(
-        &self,
-        backbuffer: &Backbuffer,
-        encoder: &mut wgpu::CommandEncoder,
-        surface_tex: &wgpu::Texture,
-    ) {
-        let bb = backbuffer.texture();
-        encoder.copy_texture_to_texture(
-            wgpu::TexelCopyTextureInfo {
-                texture: bb,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            wgpu::TexelCopyTextureInfo {
-                texture: surface_tex,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            bb.size(),
-        );
+        self.image_textures.retire_owner(owner);
     }
 }
 
@@ -1200,9 +1138,9 @@ pub(crate) mod internals {
         }
 
         /// Images resident in the GPU texture cache — see
-        /// [`ImagePipeline::gpu_cached_count`].
+        /// [`ImageTextures::gpu_cached_count`].
         pub(crate) fn gpu_image_cache_len(&self) -> usize {
-            self.image.gpu_cached_count()
+            self.image_textures.gpu_cached_count()
         }
     }
 }

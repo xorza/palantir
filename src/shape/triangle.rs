@@ -73,7 +73,7 @@ impl sealed::LowerShape for TriangleShape {
     /// space where the display scale is in hand.
     ///
     /// Nothing is staged, so nothing goes through `lower::`.
-    fn lower(self, _store: &RecordStore) -> ShapeRecord {
+    fn lower(self, _store: &mut RecordStore) -> ShapeRecord {
         let Self {
             a,
             b,

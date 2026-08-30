@@ -84,7 +84,7 @@ impl sealed::LowerShape for TextShape {
         self.local_origin.has_nan() || self.color.has_nan()
     }
 
-    fn lower(self, store: &RecordStore) -> ShapeRecord {
+    fn lower(self, store: &mut RecordStore) -> ShapeRecord {
         let Self {
             local_origin,
             text,

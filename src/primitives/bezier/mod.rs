@@ -2,7 +2,7 @@
 //! (see `renderer::backend::curve_pipeline`); CPU flattening is no
 //! longer part of the pipeline. What remains: the quadratic→cubic
 //! promotion the curve-lowering path uses to feed a single shader code
-//! path, plus the curve-bbox helpers (`cubic_bezier_bbox` /
+//! path, plus the curve-bbox helpers (`cubic_bbox` /
 //! `solve_quadratic`) that size the arena payload.
 
 use crate::primitives::rect::Rect;
@@ -37,7 +37,7 @@ pub(crate) fn quadratic_to_cubic(p0: Vec2, c: Vec2, p2: Vec2) -> CubicControls {
 /// `B'(t)/3 = (p1 - p0) + 2t(p0 - 2p1 + p2) + t²(-p0 + 3p1 - 3p2 + p3)`,
 /// so per axis: `a = -p0 + 3p1 - 3p2 + p3`, `b = 2(p0 - 2p1 + p2)`,
 /// `c = p1 - p0`.
-pub(crate) fn cubic_bezier_bbox(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2) -> Rect {
+pub(crate) fn cubic_bbox(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2) -> Rect {
     // Four fixed inputs, so the AABB NaN contract is cheapest as one
     // up-front screen — no per-point flag to carry, and `min`/`max`
     // below stay the plain laundering form. It has to be up front:

@@ -45,6 +45,10 @@ pub(super) struct FormatPipelines {
 pub(super) struct PipelineSources<'a> {
     /// The shared group-0 layout (quad/curve).
     pub(super) gradient_bgl: &'a wgpu::BindGroupLayout,
+    /// The per-texture group-0 layout every image bind group is built
+    /// against, owned by
+    /// [`ImageTextures`](crate::renderer::backend::image_textures::ImageTextures).
+    pub(super) image_bgl: &'a wgpu::BindGroupLayout,
     pub(super) quad: &'a QuadPipeline,
     pub(super) mesh: &'a MeshPipeline,
     pub(super) image: &'a ImagePipeline,
@@ -63,6 +67,7 @@ impl FormatPipelines {
     ) -> Self {
         let PipelineSources {
             gradient_bgl,
+            image_bgl,
             quad,
             mesh,
             image,
@@ -73,7 +78,7 @@ impl FormatPipelines {
         Self {
             quad: quad.build_variants(device, gradient_bgl, format),
             mesh: mesh.build_variants(device, format),
-            image: image.build_variants(device, format),
+            image: image.build_variants(device, image_bgl, format),
             icon: icon.pass.build_variants(device, format),
             curve: curve.build_variants(device, gradient_bgl, format),
             text: text.pass.build_variants(device, format),

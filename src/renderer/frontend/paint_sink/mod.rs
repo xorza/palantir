@@ -6,22 +6,22 @@
 //! command stream. Tests and benches add a capturing sink
 //! (`capture`) that holds the same calls as owned values.
 //!
-//! The interface is two traits, one job each. [`PaintSink`] is what a
-//! sink *implements*: one raw method per payload kind, and nothing
-//! else. [`PaintGate`] is what the encoder *calls*: one `draw_*` no-op
-//! gate per kind, which tests `is_noop` and forwards to the raw method
-//! or does nothing. `PaintGate` is a blanket impl over every
-//! `PaintSink`, so the gate is single-copy by construction — a sink
-//! cannot override it, and there is no second copy for it to drift
-//! against.
+//! One trait, two halves. A sink *implements* the raw half: one method
+//! per payload kind, and nothing else. The encoder *calls* the provided
+//! half: one `draw_*` no-op gate per kind, which tests `is_noop` and
+//! forwards to the raw method or does nothing. The gates are provided
+//! methods, so there is one copy of each and no sink writes a second.
 //!
 //! Building the payloads is *not* here. A rect's brush lowering, a
 //! shadow's fill lanes, a triangle's geometry — those are constructors
 //! on the payload types (`DrawQuadPayload::rect`,
 //! `PushClipPayload::rect`, …), because none of them touch a sink.
-//! `PaintSink` has one job: receive a paint op. That is also what keeps
-//! it object-safe, so the encoder paints through `&mut dyn PaintSink`
-//! and compiles once rather than once per sink.
+//! `PaintSink` has one job: receive a paint op.
+//!
+//! The encoder is generic over the sink rather than painting through
+//! `&mut dyn PaintSink`: production has one sink, so every draw of
+//! every shape was an indirect call to a statically known target, and
+//! the gates could not inline through it.
 //!
 //! ## Noop policy
 //!
@@ -55,7 +55,7 @@
 //! `PaintCapture::replay` is the one place that does, and only because
 //! its input already passed.
 //!
-//! Exception: [`PaintGate::draw_polyline`] gates on nothing, and
+//! Exception: [`PaintSink::draw_polyline`] gates on nothing, and
 //! *asserts* instead. Its colours live in spans (`PerSegment` can mix
 //! one solid stop with N transparent), so an O(n) read on every emit
 //! would dominate the per-call cost — those are caught by
@@ -79,91 +79,6 @@ use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
 
-/// Sink for one frame's lowered paint operations, in authoring order.
-/// Exactly the calls a sink implements — the no-op gates the encoder
-/// paints through are [`PaintGate`], blanket-implemented on top of this.
-pub(crate) trait PaintSink {
-    /// Push a clip region. `payload.corners` is zero for a rect clip.
-    fn clip(&mut self, payload: PushClipPayload);
-
-    fn pop_clip(&mut self);
-
-    fn push_transform(&mut self, transform: TranslateScale);
-
-    fn pop_transform(&mut self);
-
-    /// One quad-tier draw — rect, windowed rect, shadow, or triangle.
-    fn quad(&mut self, payload: DrawQuadPayload);
-
-    fn text(&mut self, payload: DrawTextPayload);
-
-    fn mesh(&mut self, payload: DrawMeshPayload);
-
-    fn polyline(&mut self, payload: DrawPolylinePayload);
-
-    /// `paint` is `Some` exactly when this image composites a `GpuView`,
-    /// carrying the app callback the off-screen target is painted with.
-    fn image(&mut self, payload: DrawImagePayload, paint: Option<&GpuPaintRef>);
-
-    fn icon(&mut self, payload: DrawIconPayload);
-
-    fn curve(&mut self, payload: DrawCurvePayload);
-}
-
-/// The no-op gate over a [`PaintSink`] — what the encoder paints
-/// through. One `draw_*` per payload kind, each testing `is_noop` and
-/// forwarding or dropping the call; see the module docs for why the gate
-/// lives here and payload construction doesn't.
-///
-/// A separate trait rather than provided methods on `PaintSink` so the
-/// gate has exactly one implementation: the blanket impl below covers
-/// every sink including `dyn PaintSink`, and no sink can substitute its
-/// own. `?Sized` is what makes the encoder's `&mut dyn PaintSink` a
-/// receiver.
-pub(crate) trait PaintGate {
-    /// The one no-op gate for the quad tier — rect, windowed rect,
-    /// shadow, and triangle all funnel through it, so the four cannot
-    /// drift apart on what counts as invisible.
-    fn draw_quad(&mut self, payload: DrawQuadPayload);
-
-    fn draw_text(&mut self, payload: DrawTextPayload);
-
-    /// Paint a mesh against already-staged vertices + indices in
-    /// `RecordStore.meshes`. The recorder pushes verts (translated into
-    /// the owner's logical-px world coords) and indices directly, so the
-    /// encoder applies the owner-rect offset inline without an
-    /// intermediate scratch buffer.
-    fn draw_mesh(&mut self, payload: DrawMeshPayload);
-
-    /// Paint a textured rect. `paint` is `Some` exactly when this
-    /// composites a `GpuView`, and carries the callback its off-screen
-    /// target is painted with — so the composite and the target it needs
-    /// cannot come apart. That one argument is also what the no-op gate
-    /// reads, so the fact travels on one channel rather than being
-    /// mirrored onto the payload.
-    fn draw_image(&mut self, payload: DrawImagePayload, paint: Option<&GpuPaintRef>);
-
-    /// Paint a baked icon. Nothing is rasterized here — the sink records
-    /// which icon at which logical rect, and the backend resolves that to
-    /// pixels once the physical size is known.
-    fn draw_icon(&mut self, payload: DrawIconPayload);
-
-    fn draw_curve(&mut self, payload: DrawCurvePayload);
-
-    /// Paint a polyline against already-staged points and colors. The
-    /// recorder pushes onto `polyline_points` / `polyline_colors`
-    /// directly (so the encoder can apply the owner-rect offset inline
-    /// without an intermediate scratch buffer) and passes the resulting
-    /// spans in the payload. The `color_mode`-dictated `colors_len` is a
-    /// caller invariant checked upstream by
-    /// `PolylineColors::assert_matches` in `lower::polyline`.
-    fn draw_polyline(&mut self, payload: DrawPolylinePayload);
-}
-
-/// One gate per payload kind whose whole body is "drop it if it paints
-/// nothing". Written once here rather than seven times: what differs
-/// between them is the payload type and the sink method, which is all
-/// the table below says.
 macro_rules! noop_gates {
     ($( $gate:ident($payload:ty) => $method:ident, )*) => {
         $(
@@ -178,7 +93,58 @@ macro_rules! noop_gates {
     };
 }
 
-impl<S: PaintSink + ?Sized> PaintGate for S {
+/// Sink for one frame's lowered paint operations, in authoring order.
+///
+/// The required methods are exactly the calls a sink implements. The
+/// provided `draw_*` methods below are the no-op gates the encoder
+/// paints through, and no sink overrides them.
+pub(crate) trait PaintSink {
+    /// Push a clip region. `payload.corners` is zero for a rect clip.
+    fn clip(&mut self, payload: PushClipPayload);
+
+    fn pop_clip(&mut self);
+
+    fn push_transform(&mut self, transform: TranslateScale);
+
+    fn pop_transform(&mut self);
+
+    /// One quad-tier draw — rect, windowed rect, shadow, or triangle.
+    /// All four funnel through the one gate below, so they cannot drift
+    /// apart on what counts as invisible.
+    fn quad(&mut self, payload: DrawQuadPayload);
+
+    fn text(&mut self, payload: DrawTextPayload);
+
+    /// Paint a mesh against already-staged vertices + indices in
+    /// `RecordPayloads.meshes`. The recorder pushes verts (translated
+    /// into the owner's logical-px world coords) and indices directly,
+    /// so the encoder applies the owner-rect offset inline without an
+    /// intermediate scratch buffer.
+    fn mesh(&mut self, payload: DrawMeshPayload);
+
+    /// Paint a polyline against already-staged points and colors, on the
+    /// same terms as [`Self::mesh`]. The `color_mode`-dictated
+    /// `colors_len` is a caller invariant checked upstream by
+    /// `PolylineColors::assert_matches` in `lower::polyline`.
+    fn polyline(&mut self, payload: DrawPolylinePayload);
+
+    /// Paint a textured rect. `paint` is `Some` exactly when this
+    /// composites a `GpuView`, and carries the callback its off-screen
+    /// target is painted with — so the composite and the target it needs
+    /// cannot come apart.
+    fn image(&mut self, payload: DrawImagePayload, paint: Option<&GpuPaintRef>);
+
+    /// Paint a baked icon. Nothing is rasterized here — the sink records
+    /// which icon at which logical rect, and the backend resolves that to
+    /// pixels once the physical size is known.
+    fn icon(&mut self, payload: DrawIconPayload);
+
+    fn curve(&mut self, payload: DrawCurvePayload);
+
+    // One gate per payload kind whose whole body is "drop it if it
+    // paints nothing". Written once rather than five times: what differs
+    // between them is the payload type and the sink method, which is all
+    // the table says.
     noop_gates! {
         draw_quad(DrawQuadPayload) => quad,
         draw_text(DrawTextPayload) => text,
@@ -187,10 +153,11 @@ impl<S: PaintSink + ?Sized> PaintGate for S {
         draw_curve(DrawCurvePayload) => curve,
     }
 
-    /// `paint.is_some()` is what the gate reads — an image with a null
+    /// `paint.is_some()` is what this gate reads — an image with a null
     /// handle paints nothing, a `GpuView` with one paints this frame's
-    /// off-screen target. The extra argument is why this one is not in
-    /// the table above.
+    /// off-screen target. So the fact travels on the one argument rather
+    /// than being mirrored onto the payload, which is also why this gate
+    /// is not in the table above.
     #[inline]
     fn draw_image(&mut self, payload: DrawImagePayload, paint: Option<&GpuPaintRef>) {
         if payload.is_noop(paint.is_some()) {

@@ -9,7 +9,7 @@ use crate::renderer::frontend::composer::tests::support::{
     clip, clip_rounded, composer, curve, draw, image, mesh, params, polyline_cmd, rect,
     render_buffer, run, text,
 };
-use crate::renderer::frontend::paint_sink::{PaintGate, PaintSink};
+use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;

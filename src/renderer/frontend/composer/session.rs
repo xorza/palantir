@@ -47,6 +47,7 @@ use glam::{UVec2, Vec2};
 
 use crate::renderer::frontend::composer::clip_stack::ClipFrame;
 use crate::renderer::frontend::composer::geometry;
+use crate::renderer::frontend::composer::geometry::StrokeBbox;
 use crate::renderer::frontend::composer::{Composer, GroupCursors, OpenBatch, PolylineScratch};
 
 /// One compose pass in flight: the [`Composer`]'s retained scratch bound
@@ -118,6 +119,25 @@ struct ScaledRect {
 }
 
 impl ComposeSession<'_> {
+    /// Tile `t ∈ [0, 1]` into `n` contiguous ranges (the last ending at
+    /// exactly `1.0`, so the shader's trailing-cap test fires) and push
+    /// one instance per range; `proto` supplies every other lane.
+    fn push_sub_instances(&mut self, n: u32, proto: CurveInstance) {
+        let inv_n = 1.0 / n as f32;
+        for i in 0..n {
+            let t1 = if i + 1 == n {
+                1.0
+            } else {
+                (i + 1) as f32 * inv_n
+            };
+            self.out.curves.push(CurveInstance {
+                t0: i as f32 * inv_n,
+                t1,
+                ..proto
+            });
+        }
+    }
+
     /// Apply the walk transform to a payload's logical rect, scale it to
     /// physical px, and derive its integer bounds — the opening move of
     /// `icon`, `image`, `text` and `pack_quad`. Scaling happens once
@@ -465,15 +485,16 @@ impl PaintSink for ComposeSession<'_> {
         let xform = self.composer.transform.current();
         let width_phys = p.width * geometry::phys_scale(xform, scale);
         let cap = p.cap;
-        let bbox_urect = geometry::stroke_bbox_urect(
+        let bbox_urect = StrokeBbox {
             xform,
-            p.bounds.cull_rect(),
-            p.origin,
+            bbox: p.bounds.cull_rect(),
+            origin: p.origin,
             width_phys,
             cap,
-            None,
-            self.out.display,
-        );
+            join: None,
+            display: self.out.display,
+        }
+        .urect();
         // Clip-cull + batch-close: a curve sits above text in the
         // kind order (same as mesh/image), so a surviving draw
         // closes the open text batch first.
@@ -570,7 +591,7 @@ impl PaintSink for ComposeSession<'_> {
                 (proto, n)
             }
         };
-        geometry::push_sub_instances(self.out, n, proto);
+        self.push_sub_instances(n, proto);
     }
 
     fn polyline(&mut self, p: DrawPolylinePayload) {
@@ -591,15 +612,18 @@ impl PaintSink for ComposeSession<'_> {
         // Clamped where it is built: the early return below is what skips
         // the kept-point walk, and `admit_higher_kind` wants this same
         // clipped rect rather than a second answer to the same question.
-        let visible = self.composer.clip.clamped(geometry::stroke_bbox_urect(
-            xform,
-            p.bounds.cull_rect(),
-            p.origin,
-            width_phys,
-            cap,
-            (p.points_len > 2).then_some(join),
-            display,
-        ));
+        let visible = self.composer.clip.clamped(
+            StrokeBbox {
+                xform,
+                bbox: p.bounds.cull_rect(),
+                origin: p.origin,
+                width_phys,
+                cap,
+                join: (p.points_len > 2).then_some(join),
+                display,
+            }
+            .urect(),
+        );
         if visible.is_paint_empty() {
             return;
         }

@@ -1,3 +1,5 @@
+use crate::scene::endpoint::Endpoint;
+use crate::scene::layer::Layer;
 use crate::scene::seen_ids::*;
 use crate::scene::tree::node_id::NodeId;
 

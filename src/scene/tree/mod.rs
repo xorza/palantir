@@ -129,10 +129,10 @@ pub(crate) struct Tree {
 /// lower, and the store its gradient and text payloads land in. One
 /// parameter rather than two because a node either has chrome and both,
 /// or has neither.
-#[derive(Clone, Copy, Debug)]
+#[derive(Debug)]
 pub(crate) struct ChromeInput<'a> {
     pub(crate) bg: &'a Background,
-    pub(crate) store: &'a RecordStore,
+    pub(crate) store: &'a mut RecordStore,
 }
 
 impl Tree {
@@ -395,7 +395,7 @@ impl Tree {
         &mut self,
         scratch: &mut RecordingScratch,
         widget_id: WidgetId,
-        node: Node,
+        node: &Node,
         chrome: Option<ChromeInput<'_>>,
     ) -> NodeId {
         // Overflow guard lives in `SubtreeEnd::new_open` (the 31-bit
@@ -411,18 +411,18 @@ impl Tree {
                 placement: pending,
             });
         }
-        let mut cols = node.into_columns(widget_id);
+        let mut cols = node.columns(widget_id);
         // A rounded clip with no radius to round is a plain scissor.
         // Applied to the recorded flags rather than to the node, because
         // this is the only hop that sees both the node's request and the
         // chrome supplying the radius.
         if cols.attrs.clip_mode() == ClipMode::Rounded
-            && chrome.is_none_or(|c| c.bg.corners.approx_zero())
+            && chrome.as_ref().is_none_or(|c| c.bg.corners.approx_zero())
         {
             cols.attrs.set_clip(ClipMode::Rect);
         }
         // Decoded once — the def-handle asserts and the self-Grid stamp
-        // below all want it, and `meta` is immutable past `into_columns`
+        // below all want it, and `meta` is immutable past `columns`
         // (only `padding` is rewritten, by the stroke inflation).
         let mode = LayoutMode::from(cols.layout.meta);
         match mode {

@@ -71,9 +71,10 @@ pub(crate) const DEFAULT_PASS_BUDGET_PX: f32 = 20_000.0;
 /// type's equality to exclude a field it carried.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(crate) struct DamageRegion {
-    /// Mutate only through [`Self::add`] — it owns the merge policy
-    /// and the `len ≤ DAMAGE_RECT_CAP` invariant.
-    pub(crate) rects: ArrayVec<[Rect; DAMAGE_RECT_CAP]>,
+    /// Private, so [`Self::add`] is the only way in — it owns the merge
+    /// policy and the `len ≤ DAMAGE_RECT_CAP` invariant, neither of
+    /// which a caller pushing straight onto the buffer would keep.
+    rects: ArrayVec<[Rect; DAMAGE_RECT_CAP]>,
 }
 
 /// One frame's damage after the merge: the bounded rect set, and how much
@@ -134,6 +135,13 @@ impl DamageRegion {
 
     pub(crate) fn iter_rects(&self) -> impl Iterator<Item = Rect> + '_ {
         self.rects.iter().copied()
+    }
+
+    /// No rect survived the merge, so the frame damaged nothing —
+    /// [`Damage::new`](crate::scene::damage::Damage::new)'s
+    /// "nothing to paint" test.
+    pub(crate) fn is_empty(&self) -> bool {
+        self.rects.is_empty()
     }
 
     /// True if `r` intersects any rect in the region. Used by the

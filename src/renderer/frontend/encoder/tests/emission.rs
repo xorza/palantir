@@ -213,12 +213,7 @@ fn manually_pushed_shapes_emit_expected_cmds() {
         "lines no longer lower to polylines"
     );
     assert_eq!(
-        h.ui.forest()
-            .record_store
-            .payloads
-            .borrow()
-            .polyline_points
-            .len(),
+        h.ui.forest().record_store.payloads().polyline_points.len(),
         0,
         "the point payloads stay untouched by lines"
     );
@@ -324,7 +319,6 @@ fn text_shape_carries_source_without_reconstructing_buffer() {
         !h.ui.shaper().has_cosmic_buffer(key),
         "frontend encoding must not reconstruct an evicted text buffer",
     );
-    drop(scene);
 
     h.ui.shaper().drop_cosmic_buffers();
     let measure_calls = h.ui.shaper().measure_calls();

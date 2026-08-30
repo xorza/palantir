@@ -488,7 +488,7 @@ fn widget_text_inputs_lower_exact_bytes() {
             .show(ui);
     });
 
-    let payloads = h.ui.forest.record_store.payloads.borrow();
+    let payloads = h.ui.forest.record_store.payloads();
     let interned_text = payloads.interned_text();
     assert_eq!(
         interned_text.all(),
@@ -586,7 +586,7 @@ fn interning_per_pass_records_the_expected_bytes() {
     });
     assert_eq!(passes, 2, "cold first frame must record exactly twice");
 
-    let payloads = h.ui.forest.record_store.payloads.borrow();
+    let payloads = h.ui.forest.record_store.payloads();
     let interned_text = payloads.interned_text();
     let records = &h.ui.forest.trees[Layer::Main].shapes.records;
     let [ShapeRecord::Text { text, .. }] = records.as_slice() else {

@@ -18,7 +18,7 @@ use crate::primitives::translate_scale::TranslateScale;
 use crate::scene::cascade::counters::CascadeCounters;
 use crate::scene::cascade::entry::{EntryRow, HitRow, ScopeRow};
 use crate::scene::cascade::paint::PaintArena;
-use crate::scene::cascade::paint_rect::{PaintRectCtx, clip_screen, compute_paint_rect};
+use crate::scene::cascade::paint_rect::{self, PaintRectCtx};
 use crate::scene::cascade::{Cascade, CascadeInputHash, LayerCascade};
 use crate::scene::forest::Forest;
 use crate::scene::layer::{Layer, PerLayer};
@@ -379,7 +379,7 @@ impl CascadeEngine {
             }
 
             let screen_rect = parent.transform.apply_rect(layout_rect);
-            let visible_rect = clip_screen(screen_rect, parent.clip);
+            let visible_rect = paint_rect::clip_screen(screen_rect, parent.clip);
             // The transform descendants inherit *and* direct shapes paint
             // under (the `Panel::transform` contract): `parent ∘
             // self_anchored`. Computed once here — the probe is sparse and
@@ -403,7 +403,7 @@ impl CascadeEngine {
                 let mask_screen = parent
                     .transform
                     .apply_rect(layout_core.inner_rect(layout_rect));
-                Some(clip_screen(mask_screen, parent.clip))
+                Some(paint_rect::clip_screen(mask_screen, parent.clip))
             } else {
                 parent.clip
             };
@@ -539,7 +539,7 @@ fn compute_node_paint(ctx: PaintRectCtx<'_>, owner_visible: bool, arena: &mut Pa
         arena.node_spans[ctx.node.idx()] = Span::new(arena.rows.len() as u32, 0);
         return Rect::ZERO;
     }
-    compute_paint_rect(ctx, arena)
+    paint_rect::compute_paint_rect(ctx, arena)
 }
 
 /// Ancestor-derived portion of the `cascade_input` hash — folded once

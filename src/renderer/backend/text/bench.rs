@@ -53,7 +53,7 @@ use crate::primitives::urect::URect;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::stencil_variant::StencilVariant;
 use crate::renderer::backend::text::TextBackend;
-use crate::renderer::backend::text::encode::test_support::{ChurnBench, SweepBench};
+use crate::renderer::backend::text::encode::cache::test_support::{ChurnBench, SweepBench};
 use crate::renderer::backend::viewport::ViewportPush;
 use crate::renderer::render_buffer::text::TextDrawRow;
 use crate::scene::record_store::RecordStore;
@@ -195,7 +195,7 @@ fn gpu() -> &'static Gpu {
 // Fixture builder: it mirrors the shape of the call under test rather than grouping.
 #[allow(clippy::too_many_arguments)]
 fn make_run(
-    store: &RecordStore,
+    store: &mut RecordStore,
     shaper: &TextShaper,
     text: &str,
     font_size_px: f32,
@@ -205,7 +205,8 @@ fn make_run(
     scale: f32,
     color: ColorU8,
 ) -> TextDrawRow {
-    let recorded = store.record_text(store.intern_str(text));
+    let interned = store.intern(text);
+    let recorded = store.record_text(interned);
     // Warm through the run rather than a hand-built request, so the key
     // stamped into the row below is by construction the one the shaped
     // buffer landed under. No width and a non-binding policy, so this is
@@ -235,7 +236,7 @@ fn make_run(
 /// the same `TextDrawRow` slice is reusable across iterations; only the
 /// per-iteration `scale` argument to `prepare` changes between frames.
 fn build_runs(shaper: &TextShaper) -> BenchRuns {
-    let store = RecordStore::default();
+    let mut store = RecordStore::default();
     let color = ColorU8::linear_rgba(220, 220, 220, 255);
     let mut runs = Vec::with_capacity((ROWS * 4) as usize);
     for row in 0..ROWS {
@@ -243,7 +244,7 @@ fn build_runs(shaper: &TextShaper) -> BenchRuns {
         // Four short labels per row at typical graph-node sizes.
         let label_color = ColorU8::linear_rgba(245, 245, 245, 255);
         runs.push(make_run(
-            &store,
+            &mut store,
             shaper,
             "node",
             13.0,
@@ -254,7 +255,7 @@ fn build_runs(shaper: &TextShaper) -> BenchRuns {
             label_color,
         ));
         runs.push(make_run(
-            &store,
+            &mut store,
             shaper,
             "input: f32",
             11.0,
@@ -265,7 +266,7 @@ fn build_runs(shaper: &TextShaper) -> BenchRuns {
             color,
         ));
         runs.push(make_run(
-            &store,
+            &mut store,
             shaper,
             "output: Vec3",
             11.0,
@@ -276,7 +277,7 @@ fn build_runs(shaper: &TextShaper) -> BenchRuns {
             color,
         ));
         runs.push(make_run(
-            &store,
+            &mut store,
             shaper,
             "123.45",
             11.0,
@@ -326,7 +327,7 @@ fn run_batches(
         });
     {
         let mut ctx = GpuCtx::new(&g.device, &g.queue, belt, &mut encoder);
-        let payloads = store.payloads.borrow();
+        let payloads = store.payloads();
         let interned_text = payloads.interned_text();
         for (batch_index, batch) in batches.iter().enumerate() {
             backend.prepare_batch(
@@ -373,7 +374,7 @@ fn run_batches(
 /// y-culled (a culled run is deliberately not cached, which would leave
 /// the map empty and defeat the workload).
 fn build_distinct_runs(shaper: &TextShaper) -> BenchRuns {
-    let store = RecordStore::default();
+    let mut store = RecordStore::default();
     let color = ColorU8::linear_rgba(220, 220, 220, 255);
     let mut runs = Vec::with_capacity(DISTINCT_RUNS);
     for i in 0..DISTINCT_RUNS {
@@ -381,7 +382,7 @@ fn build_distinct_runs(shaper: &TextShaper) -> BenchRuns {
         let row = i as u32 % ROWS;
         let column = i as u32 / ROWS;
         runs.push(make_run(
-            &store,
+            &mut store,
             shaper,
             &text,
             11.0,
@@ -491,7 +492,7 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
                         });
                 {
                     let mut ctx = GpuCtx::new(&g.device, &g.queue, &mut belt, &mut encoder);
-                    let payloads = scene.store.payloads.borrow();
+                    let payloads = scene.store.payloads();
                     let interned_text = payloads.interned_text();
                     backend.prepare(&mut ctx, BASE_SCALE, &scene.runs, &interned_text);
                 }
@@ -690,7 +691,7 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
                         });
                 {
                     let mut ctx = GpuCtx::new(&g.device, &g.queue, &mut belt, &mut encoder);
-                    let payloads = scene.store.payloads.borrow();
+                    let payloads = scene.store.payloads();
                     let interned_text = payloads.interned_text();
                     backend.prepare(&mut ctx, BASE_SCALE, &scene.runs, &interned_text);
                 }
@@ -734,7 +735,7 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
                         });
                 {
                     let mut ctx = GpuCtx::new(&g.device, &g.queue, &mut belt, &mut encoder);
-                    let payloads = scene.store.payloads.borrow();
+                    let payloads = scene.store.payloads();
                     let interned_text = payloads.interned_text();
                     backend.prepare(&mut ctx, scale, &scene.runs, &interned_text);
                 }

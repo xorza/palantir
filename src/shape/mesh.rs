@@ -37,7 +37,7 @@ impl sealed::LowerShape for MeshShape<'_> {
         self.local_rect.has_nan() || self.tint.has_nan() || self.mesh.bbox().has_nan()
     }
 
-    fn lower(self, store: &RecordStore) -> ShapeRecord {
+    fn lower(self, store: &mut RecordStore) -> ShapeRecord {
         let Self {
             mesh,
             local_rect,

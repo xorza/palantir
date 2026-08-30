@@ -117,7 +117,7 @@ impl sealed::LowerShape for PolylineShape<'_> {
         self.width.is_nan() || self.bbox.has_nan()
     }
 
-    fn lower(self, store: &RecordStore) -> ShapeRecord {
+    fn lower(self, store: &mut RecordStore) -> ShapeRecord {
         let Self {
             points,
             colors,

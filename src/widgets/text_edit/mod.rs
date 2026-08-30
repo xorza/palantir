@@ -14,8 +14,7 @@ pub(crate) mod bench;
 mod caret_paint;
 mod edit_state;
 mod editor;
-mod input;
-mod menu;
+mod input_pass;
 mod paint_input;
 mod shape_ctx;
 mod text_geometry;
@@ -37,7 +36,7 @@ use crate::widgets::response::{Response, ResponseSnapshot};
 use crate::widgets::text_edit::caret_paint::CaretPaint;
 use crate::widgets::text_edit::edit_state::EditState;
 use crate::widgets::text_edit::editor::Editor;
-use crate::widgets::text_edit::input::{AcceptPolicy, InputResult, run_input};
+use crate::widgets::text_edit::input_pass::{AcceptPolicy, InputPass, InputResult};
 use crate::widgets::text_edit::paint_input::PaintInput;
 use crate::widgets::text_edit::text_geometry::{GeometryInput, TextGeometry};
 use crate::widgets::text_edit::text_layout::{LayoutInput, TextLayout};
@@ -370,7 +369,7 @@ impl<'a> TextEdit<'a> {
         // — Ctrl+S still saves mid-edit, which is exactly what an
         // exclusive capture would break.
         //
-        // The same value gates the drain in `run_input`, so what this
+        // The same value gates the drain in the input pass, so what this
         // field tells other readers it takes and what it acts on are one
         // fact rather than two that can disagree.
         let mut filter = KeyFilter::TEXT_FIELD;
@@ -433,7 +432,7 @@ impl<'a> TextEdit<'a> {
             previous_block_offset,
         });
         let ctx = layout.ctx;
-        // Pre-input caret snapshot, taken before `run_input`'s clamp so
+        // Pre-input caret snapshot, taken before the input pass's clamp so
         // an external buffer shrink that displaces the caret still reads
         // as motion (blink reset). Compared once, after the menu pass:
         // the keyboard drain and the menu drain are mutually exclusive
@@ -445,26 +444,26 @@ impl<'a> TextEdit<'a> {
             cancelled,
             submitted,
             edited,
-        } = run_input(
-            ui,
-            &response,
+        } = InputPass {
+            resp_state: &response,
             is_focused,
-            self.text,
-            &layout,
-            AcceptPolicy {
+            text: self.text,
+            layout: &layout,
+            policy: AcceptPolicy {
                 max_chars: self.max_chars,
                 select_all_on_focus: self.select_all_on_focus,
                 filter,
             },
             state,
-        );
+        }
+        .run(ui);
         if cancelled {
             ui.request_focus(None);
             is_focused = false;
             response.focused = false;
         }
-        // Rolled here, once this pass's focus is final: `run_input` above
-        // still needed the previous value.
+        // Rolled here, once this pass's focus is final: the input pass
+        // above still needed the previous value.
         let focus = state.view.roll_focus(is_focused);
 
         let snapshot = ResponseSnapshot {
@@ -481,7 +480,7 @@ impl<'a> TextEdit<'a> {
         // point the keyboard path stopped accepting keystrokes.
         let menu_edited = !response.disabled && {
             let mut editor = Editor::new(self.text, &mut state.edit, ctx.multiline, self.max_chars);
-            menu::show(ui, &snapshot, &mut editor, filter)
+            editor.show_menu(ui, &snapshot, filter)
         };
         let changed = edited || menu_edited;
         let caret_moved = caret_before != state.edit.caret || sel_before != state.edit.selection;

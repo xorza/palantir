@@ -81,7 +81,7 @@ impl Shapes {
     /// Chrome does not come through here; `lower::background` is its
     /// gate, and it sanitizes rather than drops. Those two are the whole
     /// list.
-    pub(crate) fn add<S: Lower>(&mut self, shape: S, store: &RecordStore) -> Option<u32> {
+    pub(crate) fn add<S: Lower>(&mut self, shape: S, store: &mut RecordStore) -> Option<u32> {
         if shape.is_noop() {
             return None;
         }

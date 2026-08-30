@@ -1,18 +1,12 @@
 //! Turning a row of laid-out text into the glyph instances a pass draws.
 //!
-//! Both halves of the hit/miss split [the module doc](super) states live
-//! here, and the atlas traffic each owes is what separates them. A hit
-//! copies the cached templates with an origin shift, but must first
-//! re-check every glyph's recorded slot generation: eviction hands a slot
-//! rectangle to another glyph, and a template holding the old uv would
-//! draw that glyph instead. A miss takes the shaper's glyph lease,
-//! touches or rasterizes each glyph, and hands the finished row to
-//! [`EncodedCache::settle`].
+//! The miss half of the hit/miss split [the module doc](super) states:
+//! take the shaper's glyph lease, touch or rasterize each glyph, and
+//! stage the finished row on the [`EncodedCache`]. The hit half is the
+//! cache's own [`EncodedCache::emit_cached`], because what it must
+//! re-check before it emits is the cache's recorded slot generations.
 //!
-//! Growth needs no such check — `etagere::grow` preserves rectangles, so
-//! a cached uv survives it.
-//!
-//! Filing a raster in the atlas is not here: that is
+//! Filing a raster in the atlas is not here either: that is
 //! [`RasterPass::insert_raster`], which the icon side calls with an SVG
 //! where this one calls with a glyph.
 
@@ -32,9 +26,9 @@ use crate::renderer::backend::text::encode::cache::{EncodedCache, EncodedGlyph};
 /// rasterizer.
 #[derive(Debug, Default)]
 pub(crate) struct TextEncoder {
-    pub(crate) cache: EncodedCache,
+    cache: EncodedCache,
     /// Retained per-miss extraction scratch.
-    pub(crate) placed: Vec<PlacedGlyph>,
+    placed: Vec<PlacedGlyph>,
 }
 
 impl TextEncoder {
@@ -46,48 +40,7 @@ impl TextEncoder {
         pass: &mut RasterPass<GlyphRasterKey>,
         run_key: &EncodedRunKey,
     ) -> bool {
-        let current_frame = pass.atlas.current_frame;
-        let Some(entry) = self.cache.map.get_mut(&run_key.key) else {
-            return false;
-        };
-        let glyphs = &self.cache.arena.slots[entry.span.range()];
-        let out_start = pass.instances.len();
-        pass.instances.reserve(glyphs.len());
-        let mut stale = false;
-        // One pass emits the instance and refreshes the backing slot's
-        // LRU stamp together, so `evict_one` can't reclaim a slot we're
-        // still drawing this frame.
-        for glyph in glyphs {
-            let slot = &mut pass.atlas.slots[glyph.atlas_slot as usize];
-            if slot.generation != glyph.generation {
-                pass.instances.truncate(out_start);
-                stale = true;
-                break;
-            }
-            let g = glyph.instance;
-            pass.instances.push(RasterQuad {
-                pos: [g.pos[0] + run_key.origin_x, g.pos[1] + run_key.origin_y],
-                dim: g.dim,
-                uv_and_kind: g.uv_and_kind,
-                color: g.color,
-            });
-            slot.last_use = current_frame;
-        }
-        if stale {
-            // An eviction reused one of this run's slots, so the whole
-            // template is dead. Drop the row now (the map borrow ends
-            // here) rather than re-probing and re-walking it every
-            // frame until the next sweep: `encode_run` only replaces it
-            // if this run also survives the y-cull, so a culled run
-            // would otherwise pay the failed lookup indefinitely.
-            if let Some(dead) = self.cache.map.remove(&run_key.key) {
-                self.cache.arena.release(dead.span);
-            }
-            return false;
-        }
-        entry.last_use = current_frame;
-        self.cache.counters.hits.bump();
-        true
+        self.cache.emit_cached(pass, run_key)
     }
 
     /// Sweep the encoded-run cache against the shaper's `frame` clock
@@ -113,14 +66,15 @@ impl TextEncoder {
         run_key: EncodedRunKey,
     ) {
         let current_frame = pass.atlas.current_frame;
-        self.cache.counters.encodes.bump();
+        let Self { cache, placed } = self;
+        cache.start_row();
         // The straight-linear cast of the run's colour — already baked
         // into the cache identity, reused as the emit colour.
         let color = run_key.key.area_color;
 
         // `culled` records whether the extraction dropped any line — see
         // `EncodedCache::settle` for why that bars caching.
-        let culled = glyphs.extract_glyphs(request, placement, &mut self.placed);
+        let culled = glyphs.extract_glyphs(request, placement, placed);
         // …and `starved` the same for a glyph the atlas had no room for.
         let mut starved = false;
 
@@ -128,12 +82,7 @@ impl TextEncoder {
         // Slots used earlier this frame cannot be eviction candidates,
         // so an atlas eviction during the walk cannot invalidate a
         // template already appended here.
-        debug_assert!(
-            self.cache.pending.is_empty(),
-            "settle clears the pending row, so every encode starts empty",
-        );
-
-        for g in self.placed.iter() {
+        for g in placed.iter() {
             let idx = match pass.atlas.touch(&g.raster_key) {
                 Some(i) => i,
                 None => {
@@ -177,7 +126,7 @@ impl TextEncoder {
                 uv_and_kind,
                 color,
             });
-            self.cache.pending.push(EncodedGlyph {
+            cache.stage(EncodedGlyph {
                 instance: RasterQuad {
                     pos: [abs_x - run_key.origin_x, abs_y - run_key.origin_y],
                     dim,
@@ -195,6 +144,21 @@ impl TextEncoder {
         // replayed under narrower bounds) is safe — the batch scissor is
         // the real clip.
         let complete = !culled && !starved;
-        self.cache.settle(run_key.key, current_frame, complete);
+        cache.settle(run_key.key, current_frame, complete);
+    }
+}
+
+/// Reach-in for the GPU text tests, which assert on what a hit and an
+/// invalidation leave in the encoded cache. `cfg(test)` alone, because
+/// every reader `EncodedCache` offers them is gated the same way.
+#[cfg(test)]
+pub(crate) mod test_support {
+    use crate::renderer::backend::text::encode::cache::EncodedCache;
+    use crate::renderer::backend::text::encode::encoder::TextEncoder;
+
+    impl TextEncoder {
+        pub(crate) fn cache(&self) -> &EncodedCache {
+            &self.cache
+        }
     }
 }

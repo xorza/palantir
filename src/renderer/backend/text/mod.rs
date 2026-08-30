@@ -33,6 +33,7 @@ use crate::primitives::interned_text::InternedText;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::raster_atlas::RasterAtlasConfig;
 use crate::renderer::backend::raster_pass::{RasterPass, RasterPassConfig, RasterPassLabels};
+use crate::renderer::backend::text::encode::EncodedRunKey;
 use crate::renderer::backend::text::encode::encoder::TextEncoder;
 use crate::renderer::render_buffer::text::TextDrawRow;
 use crate::text::render::{GlyphRasterKey, RunPlacement};
@@ -115,7 +116,7 @@ impl TextBackend {
                 // buffer, so nothing production-emitted reaches this.
                 continue;
             }
-            let run_key = encode::encode_key_for(r, scale);
+            let run_key = EncodedRunKey::for_row(r, scale);
             if self.encoder.try_emit_cached(&mut self.pass, &run_key) {
                 continue;
             }

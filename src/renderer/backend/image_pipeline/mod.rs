@@ -1,34 +1,31 @@
 //! GPU side of user images. Mirrors [`crate::renderer::backend::mesh_pipeline::MeshPipeline`]
 //! but draws textured quads — per-instance rect + tint, plus a
-//! per-image bind group selected at draw time. The CPU texture bytes
-//! are staged in [`crate::renderer::image_registry::ImageRegistry`] only until upload; this module
-//! drains the pending list each frame, uploads to GPU (dropping the
-//! bytes), and caches the resulting bind group by registration id until
-//! the owning handle drops.
+//! per-image bind group selected at draw time.
+//!
+//! The bind groups themselves belong to
+//! [`ImageTextures`](crate::renderer::backend::image_textures::ImageTextures),
+//! which the backend owns beside this pipeline and hands to
+//! [`ImagePipeline::draw`] — the same split the text pass makes between
+//! its encoder and the atlas it fills. That store also holds the
+//! `GpuView` render targets, so a composite of one binds exactly like an
+//! image.
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
-mod render_target;
-mod textures;
 
 use crate::primitives::span::Span;
 use crate::primitives::texture_id::TextureId;
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
-use crate::renderer::backend::image_pipeline::render_target::GpuViewTargets;
-use crate::renderer::backend::image_pipeline::textures::ImageTextures;
+use crate::renderer::backend::image_textures::ImageTextures;
 use crate::renderer::backend::pipeline_recipe::PipelineRecipe;
 use crate::renderer::backend::shader_template::{self, ShaderConstant};
 use crate::renderer::backend::stencil_variant::ColorVariantSpec;
 use crate::renderer::backend::stencil_variant::StencilVariant;
-use crate::renderer::image_registry::ImageRegistry;
 use crate::renderer::render_buffer::image::{
-    FrameViews, IMG_FLAG_MAG_NEAREST, IMG_FLAG_MIN_NEAREST, IMG_FLAG_TAPS_MEAN, IMG_FLAG_TAPS_PEAK,
+    IMG_FLAG_MAG_NEAREST, IMG_FLAG_MIN_NEAREST, IMG_FLAG_TAPS_MEAN, IMG_FLAG_TAPS_PEAK,
     IMG_FLAG_TILED, ImageInstance,
 };
-use crate::renderer::render_owner_id::RenderOwnerId;
-use crate::text::shaper::TextShaper;
-use std::time::Duration;
 
 /// One batch of image draws: the frame's whole per-draw texture column,
 /// and the slice of it this batch owns.
@@ -48,60 +45,11 @@ pub(super) struct ImagePipeline {
     /// Image shader module — format-independent; [`Self::build_variants`]
     /// reads it to build each format's pipelines.
     shader: wgpu::ShaderModule,
-    /// `id → bind group` for every live registration's GPU texture,
-    /// together with the group 0 layout and sampler each one is built
-    /// against. An entry is inserted when the registry drains a pending
-    /// upload, and removed when the owning
-    /// [`ImageHandle`](crate::ImageHandle) (and all its clones) drops —
-    /// the registry reports those ids via `drain_dropped`. A `draw` for
-    /// an absent id is skipped. Keyed by [`TextureId`] (the registration
-    /// id behind a handle).
-    ///
-    /// Holds bind groups for **both** registered images and `GpuView`
-    /// render targets (the id authority is shared, so no collision) —
-    /// `draw` is identical for both. Render-target entries are registered /
-    /// freed by [`Self::paint_gpu_views`].
-    textures: ImageTextures,
-    /// Framework-owned off-screen `GpuView` targets, keyed by [`TextureId`].
-    /// [`Self::paint_gpu_views`] (re)allocates + paints them and frees the
-    /// submitting window's culled ones. Its bind groups live in the shared
-    /// texture-binding store above, so composites sample targets like images.
-    gpu_view_targets: GpuViewTargets,
 }
 
 impl ImagePipeline {
-    /// Reconcile the GPU texture cache with the registry — see
-    /// [`ImageTextures::drain_registry`].
-    pub(super) fn drain_registry(&mut self, ctx: &mut GpuCtx<'_>, images: &ImageRegistry) {
-        self.textures.drain_registry(ctx, images);
-    }
-
-    /// Paint this frame's [`GpuView`](crate::widgets::gpu_view::GpuView)
-    /// targets and evict the submitter's dropped ones — see
-    /// [`GpuViewTargets::paint`].
-    pub(super) fn paint_gpu_views(
-        &mut self,
-        ctx: &mut GpuCtx<'_>,
-        views: FrameViews<'_>,
-        owner: RenderOwnerId,
-        now: Duration,
-        text: &TextShaper,
-    ) {
-        self.gpu_view_targets
-            .paint(ctx, views, owner, now, &mut self.textures, text);
-    }
-
-    /// Free every `GpuView` target owned by a retired render stream — see
-    /// [`GpuViewTargets::retire_owner`]. Gated with its entry point,
-    /// `WgpuBackend::retire_render_owner`, which carries the reason.
-    #[cfg_attr(not(feature = "winit"), allow(dead_code))]
-    pub(super) fn retire_render_owner(&mut self, owner: RenderOwnerId) {
-        self.gpu_view_targets
-            .retire_owner(owner, &mut self.textures);
-    }
-    /// Format-independent image resources: the shader here, and the
-    /// layout / sampler / texture cache inside [`ImageTextures`]. The
-    /// pipelines are built by
+    /// Format-independent image resources: the shader and the instance
+    /// buffer. The pipelines are built by
     /// [`FormatPipelines`](crate::renderer::backend::format_pipelines::FormatPipelines)
     /// from [`Self::build_variants`].
     pub(super) fn new(device: &wgpu::Device) -> Self {
@@ -128,8 +76,6 @@ impl ImagePipeline {
         Self {
             instance_buffer,
             shader,
-            textures: ImageTextures::new(device),
-            gpu_view_targets: GpuViewTargets::default(),
         }
     }
 
@@ -143,20 +89,18 @@ impl ImagePipeline {
 
     /// Build the base + stencil-test color pipelines against `format` —
     /// the only format-dependent image objects; the per-image textures,
-    /// bind groups, sampler, and layout are all format-independent.
+    /// bind groups, sampler, and `image_bgl` are all format-independent.
     /// Called by `FormatPipelines` per format.
     pub(super) fn build_variants(
         &self,
         device: &wgpu::Device,
+        image_bgl: &wgpu::BindGroupLayout,
         format: wgpu::TextureFormat,
     ) -> StencilVariant {
         // Per-image tex+sampler at group 0 — viewport rides the
         // shared immediate region.
-        let layout = PipelineRecipe::pipeline_layout(
-            device,
-            "palantir.image.pl",
-            &[Some(&self.textures.bgl)],
-        );
+        let layout =
+            PipelineRecipe::pipeline_layout(device, "palantir.image.pl", &[Some(image_bgl)]);
         StencilVariant::build(
             device,
             ColorVariantSpec {
@@ -207,12 +151,13 @@ impl ImagePipeline {
     /// shares one id, so the miss check runs once per run and skips the
     /// whole run, which is exactly the per-draw behaviour it replaces.
     pub(super) fn draw<'a>(
-        &'a self,
+        &self,
         pass: &mut wgpu::RenderPass<'a>,
         ImageBatch { ids, items }: ImageBatch<'_>,
+        textures: &'a ImageTextures,
     ) {
         for run in image_runs(&ids[items.range()], items.start) {
-            let Some(bind_group) = self.textures.bindings.get(&run.id) else {
+            let Some(bind_group) = textures.bind_group(run.id) else {
                 continue;
             };
             pass.set_bind_group(0, bind_group, &[]);
@@ -280,24 +225,6 @@ const _: () = {
     assert!(IMAGE_INSTANCE_ATTRS[4].offset == offset_of!(ImageInstance, tint) as u64);
     assert!(IMAGE_INSTANCE_ATTRS[5].offset == offset_of!(ImageInstance, flags) as u64);
 };
-
-#[cfg(any(test, feature = "internals"))]
-pub(crate) mod internals {
-    //! Reach-in for the surface-format-change tests: GPU texture-cache
-    //! occupancy, used to assert the cache survives a pipeline rebuild.
-
-    use crate::renderer::backend::image_pipeline::*;
-
-    impl ImagePipeline {
-        /// Count of images currently resident in the GPU texture cache.
-        /// Lets the surface-format-change tests assert the cache survives
-        /// a pipeline rebuild (surgical rebuild keeps it; a full rebuild
-        /// would drop it to zero).
-        pub(crate) fn gpu_cached_count(&self) -> usize {
-            self.textures.bindings.len()
-        }
-    }
-}
 
 #[cfg(test)]
 mod tests {

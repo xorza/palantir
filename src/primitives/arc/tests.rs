@@ -1,4 +1,4 @@
-use crate::primitives::arc::arc_bbox;
+use crate::primitives::arc;
 use glam::Vec2;
 use std::f32::consts::{FRAC_PI_2, PI, TAU};
 
@@ -6,7 +6,7 @@ const C: Vec2 = Vec2::new(10.0, 20.0);
 const R: f32 = 5.0;
 
 fn assert_bounds(a0: f32, a1: f32, lo: Vec2, hi: Vec2) {
-    let b = arc_bbox(C, R, a0, a1);
+    let b = arc::bbox(C, R, a0, a1);
     assert!(
         (b.min - lo).length() < 1e-4 && (b.max() - hi).length() < 1e-4,
         "arc [{a0}, {a1}]: got lo {:?} hi {:?}, want lo {lo:?} hi {hi:?}",
@@ -53,8 +53,8 @@ fn quarter_half_and_full_sweeps() {
 #[test]
 fn negative_sweep_and_offset_window() {
     // [π/2, -π/2] (negative direction) == [-π/2, π/2]: crosses +x.
-    let fwd = arc_bbox(C, R, -FRAC_PI_2, FRAC_PI_2);
-    let rev = arc_bbox(C, R, FRAC_PI_2, -FRAC_PI_2);
+    let fwd = arc::bbox(C, R, -FRAC_PI_2, FRAC_PI_2);
+    let rev = arc::bbox(C, R, FRAC_PI_2, -FRAC_PI_2);
     assert!((fwd.min - rev.min).length() < 1e-6);
     assert!((fwd.max() - rev.max()).length() < 1e-6);
     assert_bounds(

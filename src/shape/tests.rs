@@ -122,7 +122,7 @@ fn typed_builders_set_the_fields_they_name() {
 fn text_noop_rejects_invalid_metrics() {
     use crate::primitives::approx::EPS;
 
-    let store = RecordStore::default();
+    let mut store = RecordStore::default();
     let cases = [
         ("valid", 16.0, 19.2, false),
         ("zero font", 0.0, 19.2, true),
@@ -151,7 +151,7 @@ fn text_noop_rejects_invalid_metrics() {
         ("NaN origin y", Some(Vec2::new(1.0, f32::NAN)), true),
     ] {
         let shape = Shape::text(
-            store.intern_str("visible"),
+            store.intern("visible"),
             GlyphFont {
                 line_height_px: 19.2,
                 ..GlyphFont::new(16.0)
@@ -171,7 +171,7 @@ fn text_noop_rejects_invalid_metrics() {
 
     for (label, font_size_px, line_height_px, expected_noop) in cases {
         let shape = Shape::text(
-            store.intern_str("visible"),
+            store.intern("visible"),
             GlyphFont {
                 line_height_px,
                 ..GlyphFont::new(font_size_px)
