@@ -9,8 +9,8 @@
 use crate::support;
 use crate::support::{note_style, row, section};
 use palantir::{
-    Button, Checkbox, ComboBox, Configure, Modal, Panel, Sizing, Text, Ui, WidgetId, WindowToken,
-    fmt,
+    Button, Checkbox, ComboBox, Configure, Modal, ModalResponse, Panel, Sizing, Text, Ui, WidgetId,
+    WindowToken, fmt,
 };
 
 #[derive(Clone, Copy, Default, Debug)]
@@ -30,19 +30,39 @@ struct ExitState {
     show_dialog: bool,
 }
 
-fn state_id() -> WidgetId {
-    WidgetId::from_hash("showcase::dialogs::state")
-}
-
 fn exit_state_id() -> WidgetId {
     WidgetId::from_hash("showcase::dialogs::exit-state")
+}
+
+/// The scaffold both dialogs on this page share: a titled card over a
+/// button row. What the buttons are and what they do differs per dialog,
+/// so those stay with the caller — `key` scopes the whole tree.
+fn dialog(
+    ui: &mut Ui,
+    key: &'static str,
+    title: &'static str,
+    buttons: impl FnOnce(&mut Ui),
+) -> ModalResponse {
+    Modal::new().id_salt((key, "modal")).show(ui, |ui| {
+        Panel::vstack()
+            .id_salt((key, "body"))
+            .gap(16.0)
+            .show(ui, |ui| {
+                Text::new(title).id_salt((key, "title")).show(ui);
+                Panel::hstack()
+                    .id_salt((key, "row"))
+                    .gap(8.0)
+                    .show(ui, buttons);
+            });
+    })
 }
 
 pub(crate) fn build(ui: &mut Ui) {
     // Both rows are read and written from several nested closures below, so
     // each is lent to the whole page body once. Probing the map at each use
     // was sixteen lookups a frame to move four bytes around.
-    ui.with_state::<State, _>(state_id(), |ui, state| {
+    let state_id = WidgetId::from_hash("showcase::dialogs::state");
+    ui.with_state::<State, _>(state_id, |ui, state| {
         ui.with_state::<ExitState, _>(exit_state_id(), |ui, exit| page(ui, state, exit))
     });
 }
@@ -98,32 +118,18 @@ fn page(ui: &mut Ui, state: &mut State, exit: &mut ExitState) {
     );
 
     if state.modal_open {
-        let resp = Modal::new().id_salt("confirm-modal").show(ui, |ui| {
-            Panel::vstack().id_salt("mbody").gap(16.0).show(ui, |ui| {
-                Text::new("Delete all the things?")
-                    .id_salt("mtitle")
-                    .show(ui);
-                Panel::hstack().id_salt("mrow").gap(8.0).show(ui, |ui| {
-                    if Button::new()
-                        .id_salt("cancel")
-                        .label("Cancel")
-                        .show(ui)
-                        .left
-                        .clicked()
-                    {
-                        state.modal_open = false;
-                    }
-                    if Button::new()
-                        .id_salt("ok")
-                        .label("Delete")
-                        .show(ui)
-                        .left
-                        .clicked()
-                    {
-                        state.modal_open = false;
-                    }
-                });
-            });
+        let resp = dialog(ui, "confirm", "Delete all the things?", |ui| {
+            for (key, label) in [("cancel", "Cancel"), ("ok", "Delete")] {
+                if Button::new()
+                    .id_salt(key)
+                    .label(label)
+                    .show(ui)
+                    .left
+                    .clicked()
+                {
+                    state.modal_open = false;
+                }
+            }
         });
         if resp.dismissed {
             state.modal_open = false;
@@ -147,51 +153,43 @@ fn exit_dialog(ui: &mut Ui, win: WindowToken, exit: &mut ExitState) {
         return;
     }
 
-    let resp = Modal::new().id_salt(("exit", "modal")).show(ui, |ui| {
-        Panel::vstack()
-            .id_salt(("exit", "body"))
-            .gap(16.0)
-            .show(ui, |ui| {
-                Text::new("You have unsaved changes. Close anyway?")
-                    .id_salt(("exit", "q"))
-                    .show(ui);
-                Panel::hstack()
-                    .id_salt(("exit", "row"))
-                    .gap(8.0)
-                    .show(ui, |ui| {
-                        if Button::new()
-                            .id_salt(("exit", "save"))
-                            .label("Save & Close")
-                            .show(ui)
-                            .left
-                            .clicked()
-                        {
-                            exit.pretend_dirty = false;
-                            exit.show_dialog = false;
-                            ui.close_window(win);
-                        }
-                        if Button::new()
-                            .id_salt(("exit", "discard"))
-                            .label("Discard")
-                            .show(ui)
-                            .left
-                            .clicked()
-                        {
-                            exit.show_dialog = false;
-                            ui.close_window(win);
-                        }
-                        if Button::new()
-                            .id_salt(("exit", "cancel"))
-                            .label("Cancel")
-                            .show(ui)
-                            .left
-                            .clicked()
-                        {
-                            exit.show_dialog = false;
-                        }
-                    });
-            });
-    });
+    let resp = dialog(
+        ui,
+        "exit",
+        "You have unsaved changes. Close anyway?",
+        |ui| {
+            if Button::new()
+                .id_salt("save")
+                .label("Save & Close")
+                .show(ui)
+                .left
+                .clicked()
+            {
+                exit.pretend_dirty = false;
+                exit.show_dialog = false;
+                ui.close_window(win);
+            }
+            if Button::new()
+                .id_salt("discard")
+                .label("Discard")
+                .show(ui)
+                .left
+                .clicked()
+            {
+                exit.show_dialog = false;
+                ui.close_window(win);
+            }
+            if Button::new()
+                .id_salt("cancel")
+                .label("Cancel")
+                .show(ui)
+                .left
+                .clicked()
+            {
+                exit.show_dialog = false;
+            }
+        },
+    );
     if resp.dismissed {
         exit.show_dialog = false;
     }

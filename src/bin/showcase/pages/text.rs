@@ -21,17 +21,9 @@ pub(crate) fn build(ui: &mut Ui) {
         .gap(24.0)
         .size((Sizing::FILL, Sizing::HUG))
         .show(ui, |ui| {
-            column(ui, "col-l", wrapping);
-            column(ui, "col-r", compositions);
+            support::column(ui, "col-l", wrapping);
+            support::column(ui, "col-r", compositions);
         });
-}
-
-fn column(ui: &mut Ui, id: &'static str, body: impl FnOnce(&mut Ui)) {
-    Panel::vstack()
-        .id_salt(id)
-        .gap(support::PAGE_GAP)
-        .size((Sizing::FILL, Sizing::HUG))
-        .show(ui, body);
 }
 
 fn wrapping(ui: &mut Ui) {

@@ -18,9 +18,11 @@
 //! [`demo_cell`]s so every tile in the app is the same size.
 
 use palantir::demo_swatches;
+use std::hash::Hash;
+
 use palantir::{
-    Background, Color, Configure, Corners, FontWeight, Panel, Sizing, Stroke, Text, TextStyle,
-    TextWrap, Ui,
+    Background, Color, Configure, Corners, FontWeight, Frame, Panel, Sizing, Stroke, Text,
+    TextStyle, TextWrap, Ui,
 };
 
 /// Window clear — the darkest tier, visible around the card.
@@ -201,6 +203,28 @@ pub(crate) fn row(ui: &mut Ui, body: impl FnOnce(&mut Ui)) {
         .size((Sizing::FILL, Sizing::HUG))
         .gap(ROW_GAP)
         .show(ui, body);
+}
+
+/// One column of a side-by-side page — a `Fill`-wide `HUG` stack at the
+/// page rhythm. Two of these inside a `row` is the two-column layout
+/// several pages want; `section` fills one of them.
+pub(crate) fn column(ui: &mut Ui, id: &'static str, body: impl FnOnce(&mut Ui)) {
+    Panel::vstack()
+        .id_salt(id)
+        .gap(PAGE_GAP)
+        .size((Sizing::FILL, Sizing::HUG))
+        .show(ui, body);
+}
+
+/// A plain colour swatch: a sized `Frame` over [`swatch_bg`]. The leaf
+/// most demo cells are built from, so the pages state only its size and
+/// colour.
+pub(crate) fn swatch<H: Hash>(ui: &mut Ui, id: H, size: (Sizing, Sizing), c: Color) {
+    Frame::new()
+        .id_salt(id)
+        .size(size)
+        .background(swatch_bg(c))
+        .show(ui);
 }
 
 /// Flowing line of demo tiles. Wraps rather than shrinking, so a tile is

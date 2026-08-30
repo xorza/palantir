@@ -70,23 +70,31 @@ fn card_fill(ui: &mut Ui) {
     ui.add_shape(Shape::rect(CARD).fill(CARD_INK).corners(card_corners()));
 }
 
+/// The three shadows this page compares, each written once. The shape
+/// route and the chrome route have to paint the *same* shadow or the
+/// comparison the page makes says nothing, so neither route spells the
+/// parameters itself.
+fn soft_shadow() -> Shadow {
+    Shadow::drop(Color::rgba(0.0, 0.0, 0.0, 0.20), Vec2::new(0.0, 4.0), 8.0)
+}
+
+fn elevated_shadow() -> Shadow {
+    Shadow::drop(Color::rgba(0.0, 0.0, 0.0, 0.28), Vec2::new(0.0, 12.0), 20.0)
+}
+
+fn inset_shadow() -> Shadow {
+    Shadow::drop(Color::rgba(0.0, 0.0, 0.0, 0.45), Vec2::new(0.0, 3.0), 8.0).inset()
+}
+
 /// Standard soft drop shadow — Material Design "elevation 2".
 fn soft(ui: &mut Ui) {
-    ui.add_shape(shadow_shape(Shadow::drop(
-        Color::rgba(0.0, 0.0, 0.0, 0.20),
-        Vec2::new(0.0, 4.0),
-        8.0,
-    )));
+    ui.add_shape(shadow_shape(soft_shadow()));
     card_fill(ui);
 }
 
 /// Heavier drop, larger blur — "elevation 8" look.
 fn elevated(ui: &mut Ui) {
-    ui.add_shape(shadow_shape(Shadow::drop(
-        Color::rgba(0.0, 0.0, 0.0, 0.28),
-        Vec2::new(0.0, 12.0),
-        20.0,
-    )));
+    ui.add_shape(shadow_shape(elevated_shadow()));
     card_fill(ui);
 }
 
@@ -122,9 +130,7 @@ fn glow(ui: &mut Ui) {
 /// Inset shadow — interior darkening, pressed-button feel.
 fn inset(ui: &mut Ui) {
     card_fill(ui);
-    ui.add_shape(shadow_shape(
-        Shadow::drop(Color::rgba(0.0, 0.0, 0.0, 0.45), Vec2::new(0.0, 3.0), 8.0).inset(),
-    ));
+    ui.add_shape(shadow_shape(inset_shadow()));
 }
 
 /// Multi-shadow stack — CSS `box-shadow: a, b, c`. Pushed in record
@@ -156,25 +162,15 @@ fn chrome_card(ui: &mut Ui, bg: Background) {
 }
 
 fn chrome_soft() -> Background {
-    Background::rounded(CARD_INK, card_corners()).with_shadow(Shadow::drop(
-        Color::rgba(0.0, 0.0, 0.0, 0.20),
-        Vec2::new(0.0, 4.0),
-        8.0,
-    ))
+    Background::rounded(CARD_INK, card_corners()).with_shadow(soft_shadow())
 }
 
 fn chrome_elevated() -> Background {
-    Background::rounded(CARD_INK, card_corners()).with_shadow(Shadow::drop(
-        Color::rgba(0.0, 0.0, 0.0, 0.28),
-        Vec2::new(0.0, 12.0),
-        20.0,
-    ))
+    Background::rounded(CARD_INK, card_corners()).with_shadow(elevated_shadow())
 }
 
 fn chrome_inset() -> Background {
-    Background::rounded(CARD_INK, card_corners()).with_shadow(
-        Shadow::drop(Color::rgba(0.0, 0.0, 0.0, 0.45), Vec2::new(0.0, 3.0), 8.0).inset(),
-    )
+    Background::rounded(CARD_INK, card_corners()).with_shadow(inset_shadow())
 }
 
 /// Semi-transparent chrome fill: the shadow paints UNDER the fill, so

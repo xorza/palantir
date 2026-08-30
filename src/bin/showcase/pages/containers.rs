@@ -193,11 +193,7 @@ const TAGS: &[&str] = &[
 ];
 
 fn sw(ui: &mut Ui, id: &'static str, w: f32, h: f32, c: Color) {
-    Frame::new()
-        .id_salt(id)
-        .size((Sizing::fixed(w), Sizing::fixed(h)))
-        .background(swatch_bg(c))
-        .show(ui);
+    support::swatch(ui, id, (Sizing::fixed(w), Sizing::fixed(h)), c);
 }
 
 fn positioned(ui: &mut Ui, id: &'static str, x: f32, y: f32, c: Color) {
@@ -230,11 +226,8 @@ fn chip<H: Hash>(ui: &mut Ui, key: H, label: &'static str) {
 }
 
 fn badge<H: Hash>(ui: &mut Ui, key: H, w: f32) {
-    Frame::new()
-        .id_salt(("badge", &key))
-        .size((Sizing::fixed(w), Sizing::fixed(24.0)))
-        .background(swatch_bg(support::A))
-        .show(ui);
+    let size = (Sizing::fixed(w), Sizing::fixed(24.0));
+    support::swatch(ui, ("badge", &key), size, support::A);
 }
 
 #[track_caller]
