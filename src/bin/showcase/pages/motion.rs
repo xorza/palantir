@@ -8,10 +8,9 @@
 //! no caller-side pointer tracking, no per-frame delta accumulation.
 
 use crate::support;
-use glam::Vec2;
 use palantir::{
     AnimSpec, Background, Button, Color, Configure, Corners, Easing, Frame, Panel, Sense, Sizing,
-    Stroke, Text, Ui, WidgetId,
+    Stroke, Text, Ui, Vec2, WidgetId,
 };
 
 #[derive(Default, Debug)]

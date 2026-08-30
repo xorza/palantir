@@ -41,6 +41,10 @@ impl Tolerance {
     /// Per-row parallel via rayon; rows are independent, so the reduction
     /// is a trivial `(max, sum)`.
     pub fn diff(self, actual: &RgbaImage, expected: &RgbaImage) -> DiffReport {
+        // For the suites that pair two images themselves —
+        // `assert_matches` screens the same mismatch first, with a
+        // message that can name the golden, so this one never fires
+        // from there.
         assert_eq!(
             actual.dimensions(),
             expected.dimensions(),

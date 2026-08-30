@@ -7,6 +7,7 @@ use crate::common::content_hash::ContentHash;
 use crate::input::response::response_state::ResponseState;
 use crate::input::target_scroll_delta::TargetScrollDelta;
 use crate::layout::ShapedText;
+use crate::layout::cache::MeasureSnapshot;
 use crate::primitives::background::Background;
 use crate::primitives::brush::Brush;
 use crate::primitives::mesh::MeshVertex;
@@ -14,6 +15,7 @@ use crate::primitives::recorded_text::RecordedText;
 use crate::primitives::span::Span;
 use crate::renderer::backend::raster_atlas::raster_quad::RasterQuad;
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
+use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
 use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
@@ -23,7 +25,10 @@ use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::curve::CurveInstance;
+use crate::renderer::render_buffer::icon::IconDrawRow;
+use crate::renderer::render_buffer::image::ImageDrawRow;
 use crate::renderer::render_buffer::image::ImageInstance;
+use crate::renderer::render_buffer::mesh::MeshDrawRow;
 use crate::renderer::render_buffer::mesh::MeshInstance;
 use crate::renderer::render_buffer::text::TextDrawRow;
 use crate::scene::cascade::CascadeInputHash;
@@ -49,15 +54,27 @@ use crate::ui::frame_engines::FrameEngines;
 use crate::widgets::button::Button;
 use crate::widgets::checkbox::Checkbox;
 use crate::widgets::combo_box::ComboBox;
+use crate::widgets::context_menu::ContextMenu;
+use crate::widgets::context_menu::menu_item::MenuItem;
 use crate::widgets::drag_value::DragValue;
+use crate::widgets::frame::Frame;
+use crate::widgets::gpu_view::GpuView;
+use crate::widgets::grid::Grid;
+use crate::widgets::modal::Modal;
+use crate::widgets::panel::Panel;
+use crate::widgets::popup::Popup;
 use crate::widgets::progress_bar::ProgressBar;
 use crate::widgets::radio::RadioButton;
+use crate::widgets::scroll::Scroll;
+use crate::widgets::separator::Separator;
 use crate::widgets::slider::Slider;
+use crate::widgets::spinner::Spinner;
 use crate::widgets::splitter::Splitter;
 use crate::widgets::switch::Switch;
 use crate::widgets::text::Text;
 use crate::widgets::text_edit::TextEdit;
 use crate::widgets::theme::widget_look::animated_look::AnimatedLook;
+use crate::widgets::tooltip::Tooltip;
 use crate::widgets::widget::Widget;
 
 /// Single source of truth for the per-frame hot-struct inventory.
@@ -178,9 +195,23 @@ hot_structs! {
     Slider<'static> => "widgets::Slider": 184 / 8,
     ProgressBar<'static> => "widgets::ProgressBar": 136 / 8,
     Splitter<'static> => "widgets::Splitter": 144 / 8,
+    Panel => "widgets::Panel": 248 / 8,
+    Frame => "widgets::Frame": 248 / 8,
+    Grid => "widgets::Grid": 248 / 8,
+    Scroll<'static> => "widgets::Scroll": 288 / 8,
+    Separator<'static> => "widgets::Separator": 160 / 8,
+    Spinner<'static> => "widgets::Spinner": 168 / 8,
+    Popup => "widgets::Popup": 272 / 8,
+    Modal<'static> => "widgets::Modal": 272 / 8,
+    Tooltip<'static, 'static> => "widgets::Tooltip": 304 / 8,
+    GpuView => "widgets::GpuView": 144 / 8,
+    ContextMenu<'static> => "widgets::ContextMenu": 288 / 8,
+    MenuItem<'static> => "widgets::MenuItem": 168 / 8,
     // Layout / text outputs.
     ShapedText => "layout::ShapedText": 32 / 8,
     TextShapeKey => "text::TextShapeKey": 24 / 8,
+    // The measure cache's per-descriptor row, retained across frames.
+    MeasureSnapshot => "layout::MeasureSnapshot": 312 / 8,
     // Cross-frame animation rows.
     AnimRow<AnimatedLook> => "animation::AnimRow<AnimatedLook>": 472 / 8,
     // Cross-frame hash keys.
@@ -205,6 +236,7 @@ hot_structs! {
     DrawMeshPayload => "payload::DrawMeshPayload": 48 / 4,
     DrawImagePayload => "payload::DrawImagePayload": 56 / 8,
     DrawCurvePayload => "payload::DrawCurvePayload": 88 / 4,
+    DrawIconPayload => "payload::DrawIconPayload": 32 / 4,
     // GPU instance / vertex types.
     Quad => "renderer::Quad": 60 / 4,
     CurveInstance => "renderer::CurveInstance": 68 / 4,
@@ -215,4 +247,7 @@ hot_structs! {
     PlacedGlyph => "text::PlacedGlyph": 32 / 4,
     ShapedTextRef => "text::ShapedTextRef": 32 / 8,
     TextDrawRow => "renderer::TextDrawRow": 64 / 8,
+    IconDrawRow => "renderer::IconDrawRow": 24 / 4,
+    ImageDrawRow => "renderer::ImageDrawRow": 48 / 8,
+    MeshDrawRow => "renderer::MeshDrawRow": 32 / 4,
 }

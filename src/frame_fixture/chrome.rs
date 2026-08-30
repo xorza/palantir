@@ -4,6 +4,7 @@
 
 use std::time::Duration;
 
+use crate::fmt;
 use crate::frame_fixture::FrameFixture;
 use crate::frame_fixture::tokens;
 use crate::layout::types::align::Align;
@@ -69,7 +70,7 @@ pub(super) fn app_bar(ui: &mut Ui) {
                 .size((Sizing::FILL, Sizing::fixed(1.0)))
                 .show(ui);
             for i in 0..5 {
-                let label = ui.fmt(format_args!("Action {i}"));
+                let label = fmt!(ui, "Action {i}");
                 let btn = Button::new()
                     .id_salt(("hdr", i))
                     .label(label)
@@ -114,13 +115,13 @@ pub(super) fn sidebar(ui: &mut Ui, items: usize) {
                         // buttons — and the scroll viewport measures two
                         // different node shapes instead of one.
                         if i % 8 == 0 {
-                            let head = ui.fmt(format_args!("GROUP {}", i / 8));
+                            let head = fmt!(ui, "GROUP {}", i / 8);
                             Text::new(head)
                                 .id_salt(("side-group", i))
                                 .style(&tokens::caption_style())
                                 .show(ui);
                         } else {
-                            let label = ui.fmt(format_args!("Sidebar item {i}"));
+                            let label = fmt!(ui, "Sidebar item {i}");
                             Button::new()
                                 .id_salt(("side", i))
                                 .label(label)
@@ -139,7 +140,7 @@ pub(super) fn sidebar(ui: &mut Ui, items: usize) {
                     for i in 0..3 {
                         Button::new()
                             .id_salt(("sb-foot", i))
-                            .label(ui.fmt(format_args!("F{i}")))
+                            .label(fmt!(ui, "F{i}"))
                             .show(ui);
                     }
                 });
@@ -175,7 +176,7 @@ pub(super) fn status_bar(state: &mut FrameFixture, ui: &mut Ui) {
                     // `state.tick` each iter. Fixed width pins layout so the
                     // changing digits can't shift siblings — damage collapses
                     // to this single Text node's arranged rect.
-                    Text::new(ui.fmt(format_args!("Frame {:08}", state.tick)))
+                    Text::new(fmt!(ui, "Frame {:08}", state.tick))
                         .id_salt("footer-status")
                         .style(&TextStyle::default().with_font_size(12.0))
                         .size((Sizing::fixed(120.0), Sizing::HUG))

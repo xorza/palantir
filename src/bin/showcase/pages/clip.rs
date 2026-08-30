@@ -10,9 +10,9 @@
 
 use crate::support;
 use crate::support::{captioned_cell, demo_cell, section, tiles};
-use glam::Vec2;
 use palantir::{
     Align, Background, Color, Configure, Corners, Frame, Panel, Sizing, Stroke, TranslateScale, Ui,
+    Vec2,
 };
 
 const CARD: f32 = 200.0;

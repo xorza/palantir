@@ -9,9 +9,9 @@
 //! Every tile is on the bright surface: black-on-dark shadows don't read.
 
 use crate::support::{demo_cell_light, section, tiles};
-use glam::Vec2;
 use palantir::{
     Background, Color, Configure, Corners, Panel, Rect, Shadow, ShadowShape, Shape, Sizing, Ui,
+    Vec2,
 };
 
 const CARD: Rect = Rect::new(22.0, 28.0, 124.0, 86.0);

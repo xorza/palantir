@@ -1,5 +1,7 @@
-//! A viewer for the benchmark workload — the tree `cargo bench --bench
-//! frame` records, drawn live at a window-sized scale.
+//! A viewer for the benchmark workload — the tree
+//! `cargo bench -p palantir --bench criterion -- -d frame` records, drawn
+//! live at a window-sized scale. `frame` is the one opt-in driver, so it
+//! runs only when `--driver` names it; a bare run selects none of it.
 //!
 //! Deliberately the one page that builds none of its own content and
 //! borrows none of [`crate::support`]'s tokens. The fixture's node

@@ -16,10 +16,9 @@
 
 use crate::support;
 use crate::support::{captioned_cell, demo_cell, section, swatch_bg, tiles};
-use glam::Vec2;
 use palantir::{
     Align, Background, Button, Color, Configure, Corners, Frame, Panel, PolylineColors, Rect,
-    Shape, Sizing, Stroke, Text, TextStyle, Ui,
+    Shape, Sizing, Stroke, Text, TextStyle, Ui, Vec2,
 };
 
 pub(crate) fn build(ui: &mut Ui) {

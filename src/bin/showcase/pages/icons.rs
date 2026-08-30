@@ -84,28 +84,25 @@ struct Icons {
 /// with one, and it is scoped to the `Ui` that minted the handles rather
 /// than to the thread.
 fn icons(ui: &mut Ui) -> Icons {
-    let set = ui.with_state::<Option<IconSet>, _>(
-        WidgetId::from_hash("showcase::icons::set"),
-        |ui, held| {
-            held.get_or_insert_with(|| {
-                ui.load_icons(Rc::new(IconTable::from_svgs([
-                    ("folder", FOLDER_SVG),
-                    ("new-file", NEW_FILE_SVG),
-                    ("save", SAVE_SVG),
-                    ("wide", WIDE_SVG),
-                ])))
-            })
-            .clone()
-        },
-    );
-    let id = |name| set.by_name(name).expect("bundled icon");
-    Icons {
-        folder: id("folder"),
-        new_file: id("new-file"),
-        save: id("save"),
-        wide: id("wide"),
-        set,
-    }
+    ui.with_state::<Option<Icons>, _>(WidgetId::from_hash("showcase::icons::set"), |ui, held| {
+        held.get_or_insert_with(|| {
+            let set = ui.load_icons(Rc::new(IconTable::from_svgs([
+                ("folder", FOLDER_SVG),
+                ("new-file", NEW_FILE_SVG),
+                ("save", SAVE_SVG),
+                ("wide", WIDE_SVG),
+            ])));
+            let id = |name| set.by_name(name).expect("bundled icon");
+            Icons {
+                folder: id("folder"),
+                new_file: id("new-file"),
+                save: id("save"),
+                wide: id("wide"),
+                set,
+            }
+        })
+        .clone()
+    })
 }
 
 pub(crate) fn build(ui: &mut Ui) {

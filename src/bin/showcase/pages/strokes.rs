@@ -6,8 +6,7 @@
 
 use crate::support;
 use crate::support::{demo_cell, section, tiles};
-use glam::Vec2;
-use palantir::{Color, LineCap, LineJoin, LinearGradient, PolylineColors, Shape, Stop, Ui};
+use palantir::{Color, LineCap, LineJoin, LinearGradient, PolylineColors, Shape, Stop, Ui, Vec2};
 
 pub(crate) fn build(ui: &mut Ui) {
     section(

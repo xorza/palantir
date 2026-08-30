@@ -145,19 +145,16 @@ pub mod golden;
 /// Test reach-ins the supported surface deliberately excludes, gathered here
 /// rather than scattered through it so the published API stays exactly the
 /// list below. Each item is re-exported from the gated module that owns it —
-/// which lives beside the code whose privates it exposes — and this is the
-/// only door out of the crate for integration tests. Benchmark entry points
-/// have their own gated facade in the `bench` module, behind that feature.
+/// which lives beside the code whose privates it exposes. Benchmark entry
+/// points have their own gated facade in the `bench` module, behind that
+/// feature.
+///
+/// The two bundled demo surfaces — [`FrameFixture`] and [`demo_swatches`] —
+/// are gated at the crate root instead, because `showcase` builds them
+/// without `internals` and so cannot see this module at all.
 #[cfg(any(test, feature = "internals"))]
 pub mod internals {
     pub use crate::app::internals::RecordApp;
-    /// The frame fixture's canonical geometry, so the allocation gates
-    /// in `tests/alloc` clear against the same tree the frame bench
-    /// times rather than a smaller stand-in of their own. Feature-gated
-    /// like the GPU lease below — the fixture is not compiled at all in a
-    /// plain `cargo test` build.
-    #[cfg(feature = "internals")]
-    pub use crate::frame_fixture::{BENCH_DPR, BENCH_SCALE, BENCH_SURFACE};
     /// Needs a real GPU device, so unlike its neighbours this one exists
     /// only under the feature — never in a plain `cargo test` build.
     #[cfg(feature = "internals")]
@@ -218,11 +215,13 @@ pub use animation::easing::Easing;
 pub use app::App;
 pub use diagnostics::DebugOverlayConfig;
 pub use display::Display;
-/// The benchmark workload as a recordable scene. Not part of the supported
-/// surface — it exists so the bench target, the allocation gates and the
-/// showcase page can record the same tree.
+/// The benchmark workload as a recordable scene, with the surface, scale
+/// and dpr it is timed at. Not part of the supported surface — it exists
+/// so the bench target, the allocation gates and the showcase page record
+/// the same tree at the same geometry, rather than each keeping a smaller
+/// stand-in of its own.
 #[cfg(any(feature = "internals", feature = "showcase"))]
-pub use frame_fixture::FrameFixture;
+pub use frame_fixture::{BENCH_DPR, BENCH_SCALE, BENCH_SURFACE, FrameFixture};
 pub use host::clock::{Clock, FixedClock, RealtimeClock};
 /// What to ask an adapter for so the device it returns can run Palantir.
 pub use host::device_requirements::DeviceRequirements;

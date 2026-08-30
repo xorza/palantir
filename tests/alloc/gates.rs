@@ -22,11 +22,10 @@
 use std::rc::Rc;
 
 use glam::UVec2;
-use palantir::internals::{
-    BENCH_DPR, BENCH_SCALE, BENCH_SURFACE, TEXT_SCALE_STEP, headless_test_gpu,
-};
+use palantir::internals::{TEXT_SCALE_STEP, headless_test_gpu};
 use palantir::{
-    Configure, FrameFixture, Grid, IconId, IconSet, IconTable, Panel, Sizing, Track, TranslateScale,
+    BENCH_DPR, BENCH_SCALE, BENCH_SURFACE, Configure, FrameFixture, Grid, IconId, IconSet,
+    IconTable, Panel, Sizing, Track, TranslateScale,
 };
 
 use crate::harness::{Audit, OffscreenTarget};
