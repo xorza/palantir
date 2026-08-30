@@ -12,7 +12,7 @@ use std::f32::consts::{FRAC_PI_2, FRAC_PI_4};
 
 use crate::fixtures::DARK_BG;
 use crate::goldens::assert_matches_golden;
-use crate::harness::Harness;
+use crate::harness::{FIXTURE_PALETTE, Harness};
 use palantir::golden::Tolerance;
 
 #[test]
@@ -967,7 +967,7 @@ fn progress_bar_half_matches_golden() {
 #[test]
 fn toggle_switch_states_matches_golden() {
     let mut h = Harness::new();
-    let mut style = ToggleTheme::switch(&palantir::Palette::DEFAULT);
+    let mut style = ToggleTheme::switch(&FIXTURE_PALETTE);
     style.defaults.anim = None; // sit at the rest position, no first-frame transient
     let img = h.render(UVec2::new(220, 110), 1.0, DARK_BG, |ui| {
         let mut on = true;

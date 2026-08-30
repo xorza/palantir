@@ -1,8 +1,12 @@
 //! Visual regression suite: drives `Ui` headlessly through wgpu, reads
 //! the rendered texture into an `RgbaImage`, and compares against
-//! committed golden PNGs in `tests/visual/golden/`. Missing goldens
-//! are auto-created on first run; failures dump artifacts under
-//! `tests/visual/output/<name>/`.
+//! stored golden PNGs in `tests/visual/golden/`. Failures dump artifacts
+//! under `tests/visual/output/<name>/`.
+//!
+//! Both directories are gitignored, so the baseline is local rather than
+//! something a diff reviews. A fresh checkout has no goldens: the first run
+//! writes every one and fails it, so someone looks before they become the
+//! reference.
 //!
 //! Layout: `harness` raises the UI, `palantir::golden` does the comparing,
 //! and `fixtures/` holds the actual UI scenes grouped by topic. Add new

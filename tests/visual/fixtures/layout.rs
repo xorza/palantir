@@ -9,7 +9,7 @@ use palantir::{
 
 use crate::fixtures::DARK_BG;
 use crate::goldens::assert_matches_golden;
-use crate::harness::Harness;
+use crate::harness::{FIXTURE_PALETTE, Harness};
 use palantir::golden::Tolerance;
 
 /// Three rows of `Fill(1)` / `Fill(2)` / `Fill(1)` — should split the
@@ -164,14 +164,22 @@ fn grid_two_hug_cols_label_not_clipped_matches_golden() {
                              Pack my box with five dozen liquor jugs.",
                         )
                         .id_salt("paragraph")
-                        .style(&TextStyle::default().with_font_size(14.0))
+                        .style(
+                            &TextStyle::default()
+                                .with_font_size(14.0)
+                                .with_color(FIXTURE_PALETTE.text),
+                        )
                         .text_wrap(TextWrap::WrapWithOverflow)
                         .grid_cell((0, 0))
                         .show(ui);
                         // Bare label — exercises the default wrap mode.
                         Text::new("right column")
                             .id_salt("label")
-                            .style(&TextStyle::default().with_font_size(14.0))
+                            .style(
+                                &TextStyle::default()
+                                    .with_font_size(14.0)
+                                    .with_color(FIXTURE_PALETTE.text),
+                            )
                             .grid_cell((0, 1))
                             .show(ui);
                     });

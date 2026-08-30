@@ -1,4 +1,4 @@
-//! Golden-image regression testing: render, compare against a committed PNG,
+//! Golden-image regression testing: render, compare against a stored PNG,
 //! and say precisely how they differ when they don't match.
 //!
 //! Kept here rather than in a test directory because more than one crate wants
@@ -120,9 +120,9 @@ const UPDATE: &str = "UPDATE_GOLDEN";
 
 /// A directory of golden images and the tolerance they are held to.
 ///
-/// Goldens live at `<root>/golden/<name>.png` and are meant to be committed.
-/// A failure writes what it actually got, what it expected, and a map of where
-/// they differ to `<root>/output/<name>/`, which is meant to be ignored.
+/// Goldens live at `<root>/golden/<name>.png`. A failure writes what it
+/// actually got, what it expected, and a map of where they differ to
+/// `<root>/output/<name>/`.
 #[derive(Debug, Clone)]
 pub struct Goldens {
     root: PathBuf,

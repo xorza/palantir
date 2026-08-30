@@ -7,7 +7,30 @@ use std::time::Duration;
 use glam::UVec2;
 use image::RgbaImage;
 use palantir::internals::{HeadlessTestGpuLease, RecordApp, headless_test_gpu};
-use palantir::{Color, DebugOverlayConfig, FixedClock, OffscreenHost, TextShaper, Ui};
+use palantir::{
+    Color, DebugOverlayConfig, FixedClock, OffscreenHost, Palette, TextShaper, Theme, Ui,
+};
+
+/// The palette every fixture renders under, pinned so that
+/// `Palette::DEFAULT` is free to move. Which colours the crate ships is a
+/// design choice rather than something this suite tests, and without the
+/// pin ten goldens sit on that choice.
+///
+/// Hue-coded rather than grayscale, so a recipe that reaches for the wrong
+/// rung shows in the diff image as a hue instead of as nine levels of
+/// gray. Inks are light and descend in luminance, surfaces are dark and
+/// ascend, and the accent pair is the only saturated mid-tone.
+pub(crate) const FIXTURE_PALETTE: Palette = Palette {
+    text: Color::hex(0xf2f2f2),
+    text_muted: Color::hex(0x9ad2a0),
+    text_disabled: Color::hex(0xd9a05e),
+    terminal_bg: Color::hex(0x14141a),
+    elem: Color::hex(0x2e1f38),
+    elem_hover: Color::hex(0x1e4048),
+    elem_active: Color::hex(0x3d4f1e),
+    border_focused: Color::hex(0x2f6fd0),
+    accent: Color::hex(0xd23f7a),
+};
 
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 const COPY_ALIGN: u32 = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
@@ -40,11 +63,12 @@ impl Harness {
         // spinner's paint-time spin, caret blink, springs) samples a fixed
         // phase every run instead of a wall-clock-jittered one — the spinner
         // renders at exactly angle 0, its documented "phase 0" state.
-        let host = OffscreenHost::builder(gpu.device.clone(), gpu.queue.clone())
+        let mut host = OffscreenHost::builder(gpu.device.clone(), gpu.queue.clone())
             .shaper(shaper)
             .pixel_snap(pixel_snap)
             .clock(FixedClock::new(Duration::ZERO))
             .build();
+        host.ui().set_theme(Theme::from_palette(&FIXTURE_PALETTE));
 
         Self { host, gpu }
     }
