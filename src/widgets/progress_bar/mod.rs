@@ -4,6 +4,7 @@
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
+use crate::primitives::num::F32Ext;
 use crate::scene::node::Node;
 use crate::ui::Ui;
 use crate::widgets::response::Response;
@@ -42,12 +43,12 @@ impl<'a> ProgressBar<'a> {
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
         let theme = self.slot(ui.theme());
         let [fill, spacer] = Sizing::split(self.fraction);
-        let height = theme.height.max(0.0);
-        let radius = Corners::all(height * 0.5);
+        let thickness = theme.thickness.themed_length(0.0);
+        let radius = Corners::all(thickness * 0.5);
 
         let mut node = self.node;
         node.size
-            .get_or_insert((Sizing::FILL, Sizing::fixed(height)).into());
+            .get_or_insert((Sizing::FILL, Sizing::fixed(thickness)).into());
         let track = Background::rounded(theme.track, radius);
         let fill_bg = Background::rounded(theme.fill, radius);
 

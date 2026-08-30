@@ -416,9 +416,7 @@ impl WgpuBackend {
         let format = surface_tex.format();
         self.ensure_format(format);
 
-        let viewport = ViewportPush {
-            size: buffer.display.physical.as_vec2(),
-        };
+        let viewport = ViewportPush::for_buffer(buffer);
         let repaint_scissors = build_repaint_scissors(plan.damage, buffer);
         let is_partial = plan.damage.is_partial();
         let dim_undamaged = debug_overlay.dim_undamaged && is_partial;
@@ -454,15 +452,18 @@ impl WgpuBackend {
         // Shared field borrow (the entry was built by `ensure_format`
         // above) — coexists with the `&self` pass methods.
         let fmt = &self.pipelines[&format];
-        // Render target: the backbuffer's own view (copied out below) or, on
-        // the direct-present path, a fresh view of the surface itself.
-        let surface_view;
+        // One view of the surface at most, and only where a pass reads
+        // it: the direct-present path paints into it, and the overlay
+        // pass lands on it after the backbuffer copy. Building it
+        // unconditionally would add a view per frame to the backbuffer
+        // path, which is the path a normal run takes.
+        let surface_view = (via_backbuffer.is_none() || overlay_count > 0)
+            .then(|| surface_tex.create_view(&wgpu::TextureViewDescriptor::default()));
         let color_view: &wgpu::TextureView = match via_backbuffer {
             Some(bb) => bb.view(),
-            None => {
-                surface_view = surface_tex.create_view(&wgpu::TextureViewDescriptor::default());
-                &surface_view
-            }
+            None => surface_view
+                .as_ref()
+                .expect("direct present builds the surface view"),
         };
         if let RepaintScissors::Partial(rects) = &repaint_scissors {
             tracing::trace!(rects = rects.len(), "wgpu_backend.submit.pass.partial");
@@ -490,7 +491,10 @@ impl WgpuBackend {
         }
 
         if overlay_count > 0 {
-            self.run_overlay_pass(fmt, surface_tex, &mut encoder, viewport, overlay_count);
+            let view = surface_view
+                .as_ref()
+                .expect("a non-empty overlay builds the surface view");
+            self.run_overlay_pass(fmt, view, &mut encoder, viewport, overlay_count);
         }
 
         if let Some(t) = self.gpu_timings.as_mut() {
@@ -827,9 +831,7 @@ impl WgpuBackend {
             MaskClear,
         }
         let mut bound = Bound::None;
-        let viewport = ViewportPush {
-            size: buffer.display.physical.as_vec2(),
-        };
+        let viewport = ViewportPush::for_buffer(buffer);
 
         // Helper: thread a `BatchKind` marker through to `GpuTimings`
         // when per-batch timestamps are enabled. Coalesced inside
@@ -1009,16 +1011,15 @@ impl WgpuBackend {
     fn run_overlay_pass(
         &self,
         fmt: &FormatPipelines,
-        surface_tex: &wgpu::Texture,
+        surface_view: &wgpu::TextureView,
         encoder: &mut wgpu::CommandEncoder,
         viewport: ViewportPush,
         count: u32,
     ) {
-        let surface_view = surface_tex.create_view(&wgpu::TextureViewDescriptor::default());
         let mut pass = begin_load_pass(
             encoder,
             "palantir.renderer.overlay.damage_rect",
-            &surface_view,
+            surface_view,
         );
         self.debug.draw_overlays(
             &mut pass,

@@ -150,14 +150,14 @@ fn push_mesh(cmds: &mut PaintCapture, bbox: Rect) {
 
 fn push_image(cmds: &mut PaintCapture, rect: Rect) {
     cmds.draw_image(ImageDraw {
-        payload: DrawImagePayload::image(
+        payload: DrawImagePayload {
             rect,
-            Vec2::ZERO,
-            Vec2::ONE,
-            Color::WHITE.into(),
-            TextureId(1),
-            0,
-        ),
+            uv_min: Vec2::ZERO,
+            uv_size: Vec2::ONE,
+            tint: Color::WHITE.into(),
+            handle: TextureId(1),
+            flags: 0,
+        },
         paint: None,
     });
 }

@@ -155,6 +155,7 @@ macro_rules! impl_configure {
 
 pub(crate) mod button;
 pub(crate) mod checkbox;
+pub(crate) mod close_handle;
 pub(crate) mod combo_box;
 pub(crate) mod context_menu;
 pub(crate) mod drag_num;
@@ -163,6 +164,7 @@ pub(crate) mod frame;
 pub(crate) mod gpu_view;
 pub(crate) mod grid;
 pub(crate) mod modal;
+pub(crate) mod overlay_response;
 mod overlay_scope;
 pub(crate) mod panel;
 pub(crate) mod popup;
@@ -170,6 +172,7 @@ pub(crate) mod progress_bar;
 pub(crate) mod radio;
 pub(crate) mod response;
 pub(crate) mod scroll;
+pub(crate) mod select_response;
 pub(crate) mod separator;
 pub(crate) mod slider;
 pub(crate) mod spinner;

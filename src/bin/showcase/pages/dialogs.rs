@@ -9,8 +9,8 @@
 use crate::support;
 use crate::support::{note_style, row, section};
 use palantir::{
-    Button, Checkbox, ComboBox, Configure, Modal, ModalResponse, Panel, Sizing, Text, Ui, WidgetId,
-    WindowToken, fmt,
+    Button, Checkbox, CloseHandle, ComboBox, Configure, Modal, OverlayResponse, Panel, Sizing,
+    Text, Ui, WidgetId, WindowToken, fmt,
 };
 
 #[derive(Clone, Copy, Default, Debug)]
@@ -41,9 +41,9 @@ fn dialog(
     ui: &mut Ui,
     key: &'static str,
     title: &'static str,
-    buttons: impl FnOnce(&mut Ui),
-) -> ModalResponse {
-    Modal::new().id_salt((key, "modal")).show(ui, |ui| {
+    buttons: impl FnOnce(&mut Ui, &CloseHandle),
+) -> OverlayResponse<()> {
+    Modal::new().id_salt((key, "modal")).show(ui, |ui, close| {
         Panel::vstack()
             .id_salt((key, "body"))
             .gap(16.0)
@@ -52,7 +52,7 @@ fn dialog(
                 Panel::hstack()
                     .id_salt((key, "row"))
                     .gap(8.0)
-                    .show(ui, buttons);
+                    .show(ui, |ui| buttons(ui, close));
             });
     })
 }
@@ -118,7 +118,7 @@ fn page(ui: &mut Ui, state: &mut State, exit: &mut ExitState) {
     );
 
     if state.modal_open {
-        let resp = dialog(ui, "confirm", "Delete all the things?", |ui| {
+        let resp = dialog(ui, "confirm", "Delete all the things?", |ui, close| {
             for (key, label) in [("cancel", "Cancel"), ("ok", "Delete")] {
                 if Button::new()
                     .id_salt(key)
@@ -127,11 +127,11 @@ fn page(ui: &mut Ui, state: &mut State, exit: &mut ExitState) {
                     .left
                     .clicked()
                 {
-                    state.modal_open = false;
+                    close.close();
                 }
             }
         });
-        if resp.dismissed {
+        if resp.closed() {
             state.modal_open = false;
         }
     }
@@ -157,7 +157,7 @@ fn exit_dialog(ui: &mut Ui, win: WindowToken, exit: &mut ExitState) {
         ui,
         "exit",
         "You have unsaved changes. Close anyway?",
-        |ui| {
+        |ui, close| {
             if Button::new()
                 .id_salt("save")
                 .label("Save & Close")
@@ -166,7 +166,7 @@ fn exit_dialog(ui: &mut Ui, win: WindowToken, exit: &mut ExitState) {
                 .clicked()
             {
                 exit.pretend_dirty = false;
-                exit.show_dialog = false;
+                close.close();
                 ui.close_window(win);
             }
             if Button::new()
@@ -176,7 +176,7 @@ fn exit_dialog(ui: &mut Ui, win: WindowToken, exit: &mut ExitState) {
                 .left
                 .clicked()
             {
-                exit.show_dialog = false;
+                close.close();
                 ui.close_window(win);
             }
             if Button::new()
@@ -186,11 +186,11 @@ fn exit_dialog(ui: &mut Ui, win: WindowToken, exit: &mut ExitState) {
                 .left
                 .clicked()
             {
-                exit.show_dialog = false;
+                close.close();
             }
         },
     );
-    if resp.dismissed {
+    if resp.closed() {
         exit.show_dialog = false;
     }
 }

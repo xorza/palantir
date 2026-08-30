@@ -4,6 +4,7 @@
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::color::Color;
+use crate::primitives::num::F32Ext;
 use crate::scene::node::Node;
 use crate::scene::tree::paint_anims::PaintAnim;
 use crate::shape::Shape;
@@ -80,7 +81,7 @@ impl<'a> Spinner<'a> {
 
     pub fn show(mut self, ui: &mut Ui) -> Response<'_> {
         let theme = self.slot(ui.theme());
-        let diameter = self.diameter.unwrap_or(theme.diameter).max(1.0);
+        let diameter = self.diameter.unwrap_or(theme.diameter).themed_length(1.0);
         let width = self
             .thickness
             .unwrap_or((diameter * theme.thickness_ratio).max(theme.min_thickness));

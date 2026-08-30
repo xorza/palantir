@@ -120,14 +120,14 @@ fn gpu_view_gate_drops_zero_extent_and_pairs_payload_with_paint() {
     for (label, rect, handle, has_paint, expect_call) in cases {
         let mut sink = PaintCapture::default();
         sink.draw_image(ImageDraw {
-            payload: DrawImagePayload::image(
+            payload: DrawImagePayload {
                 rect,
-                Vec2::ZERO,
-                Vec2::ONE,
-                ColorF16::from(Color::WHITE),
+                uv_min: Vec2::ZERO,
+                uv_size: Vec2::ONE,
+                tint: ColorF16::from(Color::WHITE),
                 handle,
-                0,
-            ),
+                flags: 0,
+            },
             paint: has_paint.then_some(&paint),
         });
         if !expect_call {

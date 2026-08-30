@@ -756,7 +756,7 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
                                 ..GlyphFont::new(FONT)
                             },
                         )
-                        .at(ORIGIN)
+                        .at_origin(ORIGIN)
                         .color(Color::WHITE)
                         .wrap(TextWrap::Truncate)
                         .family(FontFamily::Sans)

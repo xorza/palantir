@@ -1,5 +1,4 @@
-//! The anchored floating body: the widget, the handle its body uses to
-//! close itself, what a frame reports, and the press-outside policy.
+//! The anchored floating body: the widget and the press-outside policy.
 
 use crate::input::sense::Sense;
 use crate::layout::types::overlay::OverlayPosition;
@@ -8,9 +7,10 @@ use crate::primitives::rect::Rect;
 use crate::scene::layer::Layer;
 use crate::scene::node::Node;
 use crate::ui::Ui;
+use crate::widgets::close_handle::CloseHandle;
+use crate::widgets::overlay_response::OverlayResponse;
 use crate::widgets::overlay_scope::{Backdrop, OverlayScope};
 use glam::Vec2;
-use std::cell::Cell;
 use std::rc::Rc;
 
 /// What happens when the user presses outside the popup's body.
@@ -26,7 +26,7 @@ use std::rc::Rc;
 /// - [`Self::Block`] — eater consumes the click; no signal (and Esc is
 ///   ignored). Use for confirm dialogs, stop-the-world prompts.
 /// - [`Self::Dismiss`] — an eaten outside-click **or** an Esc press sets
-///   `PopupResponse.dismissed` so the host can flip its open flag. Use for
+///   `OverlayResponse::dismissed` so the host can flip its open flag. Use for
 ///   dropdowns, context menus, autocomplete.
 /// - [`Self::PassThrough`] — neither capture: no eater, no key-scope
 ///   claim. Presses and keys outside the body reach `Main` untouched and
@@ -45,58 +45,6 @@ pub enum ClickOutside {
     Block,
     Dismiss,
     PassThrough,
-}
-
-/// The dismissal request handed to the body closure, so content widgets
-/// can close the popup they are inside.
-///
-/// Lives on the stack for the duration of one [`Popup::show`] call —
-/// no ambient `Ui` state, no nested-popup signal-leak.
-///
-/// Carries only the close request. Reading input needs no handle: a body
-/// records *inside* the popup's layer and its scope, so plain
-/// [`Ui::key_pressed`] / [`Ui::keyboard_events`] already answer as the
-/// popup. Owner-scoped forwarders on this handle would only re-arrange
-/// what the scope already provides.
-#[derive(Debug)]
-pub struct PopupHandle {
-    requested: Cell<bool>,
-}
-
-impl PopupHandle {
-    fn new() -> Self {
-        Self {
-            requested: Cell::new(false),
-        }
-    }
-
-    /// Ask the enclosing popup to dismiss.
-    pub fn close(&self) {
-        self.requested.set(true);
-    }
-}
-
-/// Result of [`Popup::show`]. `dismissed` is set when a
-/// [`ClickOutside::Dismiss`] popup is dismissed this frame — an eaten
-/// outside-press or an Esc press. `close_requested` is set when a
-/// content widget inside the body called [`PopupHandle::close`].
-/// Hosts read either to flip their open flag in the same frame.
-#[derive(Copy, Clone, Debug, Default)]
-pub struct PopupResponse {
-    pub dismissed: bool,
-    pub close_requested: bool,
-}
-
-impl PopupResponse {
-    /// `true` when the popup asked to close this frame — either an
-    /// outside click dismissed it ([`Self::dismissed`]) or a content
-    /// widget called [`PopupHandle::close`] ([`Self::close_requested`]).
-    /// The single close-signal predicate shared by overlay-trigger
-    /// widgets (`ComboBox`, `ContextMenu`) so the dismiss contract lives
-    /// in one place.
-    pub fn closed(&self) -> bool {
-        self.dismissed || self.close_requested
-    }
 }
 
 /// A side-layer container placed relative to a screen-space anchor.
@@ -185,6 +133,17 @@ impl Popup {
         self
     }
 
+    /// Hold the body this far off its anchor, in logical px.
+    ///
+    /// A dropdown meets the trigger it drops out of, so the
+    /// constructors start flush; an overlay that reads as a separate
+    /// object — the way [`crate::Tooltip`] does, off
+    /// [`TooltipTheme::gap`](crate::TooltipTheme) — sets its own.
+    pub fn gap(mut self, px: f32) -> Self {
+        self.position.gap = px;
+        self
+    }
+
     pub fn click_outside(mut self, m: ClickOutside) -> Self {
         self.click_outside = m;
         self
@@ -216,7 +175,11 @@ impl Popup {
         self
     }
 
-    pub fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, &PopupHandle)) -> PopupResponse {
+    pub fn show<R>(
+        self,
+        ui: &mut Ui,
+        body: impl FnOnce(&mut Ui, &CloseHandle) -> R,
+    ) -> OverlayResponse<R> {
         let Self {
             position,
             click_outside,
@@ -244,18 +207,20 @@ impl Popup {
         let chrome = widget
             .node
             .resolve_container_chrome(chrome.as_ref(), theme.container_chrome());
-        let handle = PopupHandle::new();
+        let handle = CloseHandle::default();
+        let mut inner = None;
         let edges = scope.record(ui, |ui| {
-            widget.record(ui, chrome, |ui| body(ui, &handle));
+            widget.record(ui, chrome, |ui| inner = Some(body(ui, &handle)));
         });
         let dismiss_mode = click_outside == ClickOutside::Dismiss;
-        let response = PopupResponse {
+        let response = OverlayResponse {
             // A `Dismiss` popup closes on an eaten outside-press OR an Esc
             // press — so overlay hosts (ComboBox / ContextMenu) read one
             // `closed()` signal instead of each re-deriving Esc. (`Block`
             // records a backdrop and ignores both edges.)
             dismissed: dismiss_mode && (edges.outside || edges.escape),
-            close_requested: handle.requested.get(),
+            close_requested: handle.requested(),
+            inner: inner.expect("the body records unconditionally"),
         };
         scope.withdraw(ui, response.closed());
         response

@@ -22,11 +22,15 @@ use crate::widgets::scroll::state::{ScrollState, ThumbTravel, TrackPage};
 use crate::widgets::theme::scrollbar::ScrollbarTheme;
 use glam::BVec2;
 
-/// the bar's `width` plus a `gap` strip so the bar doesn't touch the
+/// the bar's `thickness` plus a `gap` strip so the bar doesn't touch the
 /// visible content. Returns 0 when the axis isn't panned.
 #[inline]
 fn bar_reservation(panned: bool, theme: &ScrollbarTheme) -> f32 {
-    if panned { theme.width + theme.gap } else { 0.0 }
+    if panned {
+        theme.thickness + theme.gap
+    } else {
+        0.0
+    }
 }
 
 /// Cross-axis space the bars take out of the widget's box: the gutter
@@ -91,7 +95,7 @@ impl BarAxis {
     /// click-to-page surface remains — the gutter is reserved either
     /// way, matching OS scrollbar conventions.
     fn record(&self, ui: &mut Ui, theme: &ScrollbarTheme) {
-        let radius = Corners::all(theme.radius);
+        let radius = Corners::all(theme.thickness * 0.5);
         let track = Node::leaf().id(self.track_id).sense(Sense::CLICK);
         if !theme.track.is_noop() {
             let chrome = Background::rounded(theme.track, radius);
@@ -103,7 +107,7 @@ impl BarAxis {
         let fill = if self.thumb.left.drag.delta().is_some() || self.thumb.pressed() {
             theme.thumb_active
         } else if self.thumb.hovered {
-            theme.thumb_hover
+            theme.thumb_hovered
         } else {
             theme.thumb
         };
@@ -279,7 +283,7 @@ impl Bars {
             reserve_y: geom.space.reserve_y,
             reserve_x: geom.space.reserve_x,
             padding: geom.padding,
-            bar_width: self.theme.width,
+            bar_thickness: self.theme.thickness,
             min_thumb: self.theme.min_thumb_px,
         });
         let overlay = Node::scrollbars(def_id)
@@ -296,7 +300,7 @@ impl Bars {
 /// How the scrollbars relate to the content area on the pan axes.
 ///
 /// - [`Self::Reserved`] (default): the gutter always takes a strip of
-///   the cross axis (`theme.scrollbar.width + gap`), and the bar is
+///   the cross axis (`theme.scrollbar.thickness + gap`), and the bar is
 ///   drawn inside that gutter only when content overflows. The
 ///   reserved width is constant whether or not anything currently
 ///   overflows — so a Hug ancestor of the scroll doesn't shift when

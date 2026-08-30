@@ -119,9 +119,9 @@ impl TextEditTheme {
         // lands. Picking 1.5 px gives focused its emphasis without
         // the layout shift.
         let stroke_w = 1.5;
-        let normal_bg = Background::rounded(p.elem_hover, radius)
+        let normal_bg = Background::rounded(p.elem_mid, radius)
             .with_stroke(Stroke::solid(p.border_soft(), stroke_w));
-        let focused_bg = Background::rounded(p.elem_hover, radius)
+        let focused_bg = Background::rounded(p.elem_mid, radius)
             .with_stroke(Stroke::solid(p.border_focused, stroke_w));
         let disabled_bg = Background::rounded(p.elem, radius)
             .with_stroke(Stroke::solid(p.border_soft(), stroke_w));

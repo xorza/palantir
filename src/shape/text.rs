@@ -57,7 +57,11 @@ impl TextShape {
     /// `owner.min + origin` and the encoder stops placing it, so
     /// `align`'s placement axes go unread. Used by TextEdit, which
     /// shifts the run by scroll offsets the encoder cannot compute.
-    pub fn at(mut self, origin: Vec2) -> Self {
+    ///
+    /// Not `at`, which every rect-shaped kind spells for a whole
+    /// [`Rect`](crate::Rect): a run has a pen position rather than a box,
+    /// and one word cannot mean both.
+    pub fn at_origin(mut self, origin: Vec2) -> Self {
         self.local_origin = Some(origin);
         self
     }

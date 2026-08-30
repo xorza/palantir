@@ -203,7 +203,7 @@ pub(crate) fn background(store: &mut RecordStore, bg: &Background) -> ChromeRow 
     let brush = fill.hash_parts(fill_grad_hash);
     let packed = ChromeHashBytes {
         fill_payload: brush.payload,
-        corners_u64: bytemuck::cast(corners),
+        corners_u64: corners.as_u64(),
         stroke,
         shadow,
         fill_tag: brush.tag,

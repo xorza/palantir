@@ -77,7 +77,7 @@ pub(super) fn app_bar(ui: &mut Ui) {
                     .show(ui)
                     .snapshot();
                 Tooltip::on(&btn)
-                    .text("Header action")
+                    .label("Header action")
                     .delay(Duration::ZERO)
                     .show(ui);
             }

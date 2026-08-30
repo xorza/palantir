@@ -18,6 +18,16 @@ pub struct MeshShape<'a> {
     pub(crate) tint: Color,
 }
 
+impl<'a> MeshShape<'a> {
+    pub(super) fn new(mesh: &'a Mesh) -> Self {
+        Self {
+            mesh,
+            local_rect: None,
+            tint: Color::WHITE,
+        }
+    }
+}
+
 local_rect_shape!(MeshShape<'_>, at);
 
 shape_setters!(MeshShape<'_> {

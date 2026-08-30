@@ -74,10 +74,7 @@ pub(crate) struct ComposeSession<'a> {
 /// for a rect, packed corner points + third point/radius for a triangle.
 #[derive(Debug)]
 struct PackedQuad {
-    phys_rect: Rect,
-    /// Viewport-clamped integer bounds — what culling and the group's
-    /// overlap tracking test against.
-    urect: URect,
+    rect: ScaledRect,
     corners: Corners,
     fill_axis: FillAxis,
     stroke_width: f32,
@@ -97,17 +94,19 @@ impl PackedQuad {
     /// pixel snapping yields exact integers when active; unsnapped
     /// fractional rects keep the full SDF for edge AA).
     fn is_pixel_aligned(&self) -> bool {
-        let max = self.phys_rect.max();
+        let phys = self.rect.phys;
+        let max = phys.max();
         self.is_sharp()
-            && self.phys_rect.min.x.is_integral()
-            && self.phys_rect.min.y.is_integral()
+            && phys.min.x.is_integral()
+            && phys.min.y.is_integral()
             && max.x.is_integral()
             && max.y.is_integral()
     }
 }
 
 /// A draw's rect in the two forms every rect-shaped handler needs, from
-/// [`ComposeSession::scaled_rect`].
+/// [`ComposeSession::scaled_rect`]. [`PackedQuad`] carries one rather
+/// than a second pair of fields meaning the same two things.
 #[derive(Debug)]
 struct ScaledRect {
     /// Physical px — what the emitted instance carries.
@@ -115,6 +114,17 @@ struct ScaledRect {
     /// Viewport-clamped integer bounds — what culling and the group's
     /// overlap tracking test against.
     urect: URect,
+}
+
+impl ScaledRect {
+    /// The bounds of a rect that is already physical — a covering AABB
+    /// the composer computed rather than transformed.
+    fn from_phys(phys: Rect, viewport: UVec2) -> Self {
+        Self {
+            phys,
+            urect: geometry::urect_from_phys(phys.min, phys.max(), viewport),
+        }
+    }
 }
 
 impl ComposeSession<'_> {
@@ -145,10 +155,7 @@ impl ComposeSession<'_> {
     fn scaled_rect(&self, rect: Rect) -> ScaledRect {
         let world = self.composer.transform.apply_rect(rect);
         let phys = world.scaled_by(self.out.display.scale_factor, self.out.display.pixel_snap);
-        ScaledRect {
-            phys,
-            urect: geometry::urect_from_phys(phys.min, phys.max(), self.out.display.physical),
-        }
+        ScaledRect::from_phys(phys, self.out.display.physical)
     }
 
     /// The part of `whole` that can be seen — inside the surface and inside the
@@ -190,7 +197,7 @@ impl Drop for ComposeSession<'_> {
 }
 
 impl PaintSink for ComposeSession<'_> {
-    fn clip(&mut self, p: PushClipPayload) {
+    fn push_clip(&mut self, p: PushClipPayload) {
         let scale = self.out.display.scale_factor;
         let snap = self.out.display.pixel_snap;
         let viewport_phys = self.out.display.physical;
@@ -284,7 +291,7 @@ impl PaintSink for ComposeSession<'_> {
         // reach are what a later draw has to be ordered against, so a
         // quad whose ancestor clip cut it does not force a flush over
         // ground it never paints.
-        let visible = self.composer.clip.clamped(packed.urect);
+        let visible = self.composer.clip.clamped(packed.rect.urect);
         if visible.is_paint_empty() {
             return;
         }
@@ -301,7 +308,7 @@ impl PaintSink for ComposeSession<'_> {
             p.fill.kind
         };
         self.out.quads.push(Quad {
-            rect: packed.phys_rect,
+            rect: packed.rect.phys,
             fill: p.fill.color,
             corners: packed.corners,
             stroke_color: p.stroke.color,
@@ -854,13 +861,8 @@ impl ComposeSession<'_> {
         let scale_phys = geometry::phys_scale(xform, self.out.display.scale_factor);
         match p.geom {
             QuadGeom::Rect { rect, corners } => {
-                let ScaledRect {
-                    phys: phys_rect,
-                    urect,
-                } = self.scaled_rect(rect);
                 PackedQuad {
-                    phys_rect,
-                    urect,
+                    rect: self.scaled_rect(rect),
                     corners: corners.scaled_by(scale_phys),
                     // Live shadow parameters are logical-px scalars;
                     // scale them so the shader's `local` coords line
@@ -905,12 +907,7 @@ impl ComposeSession<'_> {
                 let bl = b - phys_rect.min;
                 let cl = c - phys_rect.min;
                 PackedQuad {
-                    urect: geometry::urect_from_phys(
-                        phys_rect.min,
-                        phys_rect.max(),
-                        self.out.display.physical,
-                    ),
-                    phys_rect,
+                    rect: ScaledRect::from_phys(phys_rect, self.out.display.physical),
                     corners: Corners::from_array([al.x, al.y, bl.x, bl.y]),
                     fill_axis: FillAxis::from_lanes(cl.x, cl.y, radius_phys, 0.0),
                     stroke_width: (p.stroke.width * scale_phys).max(0.0),
@@ -942,10 +939,11 @@ impl ComposeSession<'_> {
     ///
     /// Returns `true` when the quad was folded and must not be emitted.
     fn fold_into_clear(&mut self, p: &DrawQuadPayload, packed: &PackedQuad) -> bool {
-        let covers_viewport = packed.phys_rect.min.x <= EPS
-            && packed.phys_rect.min.y <= EPS
-            && packed.phys_rect.max().x >= self.out.display.physical.as_vec2().x - EPS
-            && packed.phys_rect.max().y >= self.out.display.physical.as_vec2().y - EPS;
+        let phys = packed.rect.phys;
+        let covers_viewport = phys.min.x <= EPS
+            && phys.min.y <= EPS
+            && phys.max().x >= self.out.display.physical.as_vec2().x - EPS
+            && phys.max().y >= self.out.display.physical.as_vec2().y - EPS;
         if !covers_viewport
             // Any frame at all, not just one with a rounded chain: a
             // non-empty chain implies a frame, so testing both asked one
@@ -970,7 +968,7 @@ impl ComposeSession<'_> {
         if p.fill.kind != FillKind::SOLID || !p.fill.color.is_opaque() {
             return;
         }
-        let inscribed = packed.phys_rect.inscribed_for_corners(packed.corners);
+        let inscribed = packed.rect.phys.inscribed_for_corners(packed.corners);
         let stroke_inset = if noop_f32(packed.stroke_width) || p.stroke.color.is_opaque() {
             0.0
         } else {

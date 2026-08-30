@@ -62,6 +62,19 @@ const EXCLUDED: &[(&str, &str)] = &[
              produces it",
     ),
     (
+        "select_response",
+        "a return type, not a widget — `combo_box` covers what produces it",
+    ),
+    (
+        "overlay_response",
+        "a return type, not a widget — `popup` covers what produces it",
+    ),
+    (
+        "close_handle",
+        "the close request an overlay hands its body, not a widget — `popup` \
+             covers what hands it out",
+    ),
+    (
         "drag_num",
         "a value binding, not a widget — `slider` and `drag_value` cover \
              both of its variants",

@@ -189,7 +189,7 @@ fn form(ui: &mut Ui, s: &mut State, outlined: &ButtonTheme, danger: &ButtonTheme
                     .show(ui)
                     .snapshot();
                 Tooltip::on(&del)
-                    .text("Deletes the profile. No undo — hence the danger theme.")
+                    .label("Deletes the profile. No undo — hence the danger theme.")
                     .show(ui);
             });
 

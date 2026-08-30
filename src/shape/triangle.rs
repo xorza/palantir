@@ -23,6 +23,19 @@ pub struct TriangleShape {
     pub(crate) stroke: Stroke,
 }
 
+impl TriangleShape {
+    pub(super) fn new(a: Vec2, b: Vec2, c: Vec2) -> Self {
+        Self {
+            a,
+            b,
+            c,
+            radius: 0.0,
+            fill: Color::TRANSPARENT,
+            stroke: Stroke::ZERO,
+        }
+    }
+}
+
 shape_setters!(TriangleShape {
     fill: Color => fill,
     stroke: Stroke => stroke,

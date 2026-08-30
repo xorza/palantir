@@ -2,6 +2,7 @@
 //! writes through.
 
 use crate::layout::types::sizing::Sizing;
+use crate::primitives::num::F32Ext;
 use crate::primitives::rect::Rect;
 use crate::primitives::text_input::TextInput;
 use crate::scene::node::Node;
@@ -58,9 +59,9 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
         // leaves `self` unborrowable.
         let theme = ui.theme();
         let slot = self.slot(theme);
-        let pip_size = slot.box_size;
+        let pip_size = slot.box_size.themed_length(1.0);
         let indicator = slot.indicator;
-        let dot_inset = slot.indicator_inset;
+        let dot_inset = slot.indicator_inset.themed_length(0.0);
 
         let mut selected = *self.current == self.value;
         // Radios latch — re-clicking the selected option is a no-op,
@@ -75,7 +76,7 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
 
         let chrome = ToggleChrome {
             plan: slot.plan(&response, selected, &theme.text),
-            row_gap: slot.row_gap,
+            gap: slot.gap,
             boxed: Node::leaf().size((Sizing::fixed(pip_size), Sizing::fixed(pip_size))),
             // Forces the pip chrome to a circle regardless of any
             // re-themed `radio.checked.normal.background.radius` — a

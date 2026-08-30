@@ -159,7 +159,7 @@ fn text_noop_rejects_invalid_metrics() {
         )
         .color(Color::WHITE);
         let shape = match local_origin {
-            Some(origin) => shape.at(origin),
+            Some(origin) => shape.at_origin(origin),
             None => shape,
         };
         assert_eq!(shape.has_nan(), expected_nan, "{label}");

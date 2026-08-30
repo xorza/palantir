@@ -200,7 +200,7 @@ fn widget_specific_node_setters_reach_the_inner_node() {
     assert_eq!(node_of(&mut panel).transform, transform);
     assert_eq!(node_of(&mut grid).transform, transform);
 
-    let mut item = MenuItem::new("Open").enabled(true);
+    let mut item = MenuItem::new("Open").disabled(false);
     assert!(!node_of(&mut item).flags.is_disabled());
 
     let mut scroll = Scroll::both().with_zoom();

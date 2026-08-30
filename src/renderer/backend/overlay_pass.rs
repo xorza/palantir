@@ -15,7 +15,6 @@ use crate::primitives::{
     color::{Color, ColorF16},
     corners::Corners,
     rect::Rect,
-    spacing::Spacing,
 };
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
@@ -165,7 +164,7 @@ impl DebugOverlay {
                     buffer.display.physical.as_vec2().x,
                     buffer.display.physical.as_vec2().y,
                 )
-                .deflated_by(Spacing::all(gap_px)),
+                .deflated(gap_px),
             )),
         }
         self.overlay_buffer.upload_instances(ctx, quads.as_slice());

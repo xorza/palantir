@@ -67,7 +67,7 @@ fn clip_emits_balanced_push_pop() {
     let push_idx = cmds
         .calls
         .iter()
-        .position(|command| matches!(command, PaintCall::Clip(_)))
+        .position(|command| matches!(command, PaintCall::PushClip(_)))
         .unwrap();
     let pop_idx = cmds
         .calls
@@ -122,7 +122,7 @@ fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
         .calls
         .iter()
         .filter_map(|command| match command {
-            PaintCall::Clip(payload) if !payload.corners.approx_zero() => Some(payload),
+            PaintCall::PushClip(payload) if !payload.corners.approx_zero() => Some(payload),
             _ => None,
         })
         .collect();
@@ -162,7 +162,7 @@ fn clip_rounded_falls_back_to_scissor_without_background() {
         .calls
         .iter()
         .filter_map(|command| match command {
-            PaintCall::Clip(payload) => Some(*payload),
+            PaintCall::PushClip(payload) => Some(*payload),
             _ => None,
         })
         .collect();
@@ -207,7 +207,7 @@ fn count_clip_pairs(cmds: &PaintCapture) -> ClipPairs {
     let pushes = cmds
         .calls
         .iter()
-        .filter(|command| matches!(command, PaintCall::Clip(_)))
+        .filter(|command| matches!(command, PaintCall::PushClip(_)))
         .count();
     let pops = cmds
         .calls

@@ -26,8 +26,8 @@ pub(crate) const FIXTURE_PALETTE: Palette = Palette {
     text_disabled: Color::hex(0xd9a05e),
     terminal_bg: Color::hex(0x14141a),
     elem: Color::hex(0x2e1f38),
-    elem_hover: Color::hex(0x1e4048),
-    elem_active: Color::hex(0x3d4f1e),
+    elem_mid: Color::hex(0x1e4048),
+    elem_strong: Color::hex(0x3d4f1e),
     border_focused: Color::hex(0x2f6fd0),
     accent: Color::hex(0xd23f7a),
 };

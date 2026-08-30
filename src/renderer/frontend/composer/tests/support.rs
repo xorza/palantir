@@ -50,11 +50,11 @@ pub(super) fn rect(x: f32, y: f32, w: f32, h: f32) -> Rect {
 }
 
 pub(super) fn clip(buf: &mut PaintCapture, r: Rect) {
-    buf.clip(PushClipPayload::rect(r));
+    buf.push_clip(PushClipPayload::rect(r));
 }
 
 pub(super) fn clip_rounded(buf: &mut PaintCapture, r: Rect, corners: Corners) {
-    buf.clip(PushClipPayload::rounded(r, corners));
+    buf.push_clip(PushClipPayload { rect: r, corners });
 }
 
 pub(super) fn draw(buf: &mut PaintCapture, r: Rect) {
@@ -124,7 +124,14 @@ pub(super) fn gpu_paint() -> GpuPaintRef {
 /// arranged rect, untinted, full UV, default sampling. Pair it with
 /// `Some(&paint)` — that's what makes the sink flag it as a view.
 pub(super) fn gpu_view_payload(rect: Rect, handle: TextureId) -> DrawImagePayload {
-    DrawImagePayload::image(rect, Vec2::ZERO, Vec2::ONE, Color::WHITE.into(), handle, 0)
+    DrawImagePayload {
+        rect,
+        uv_min: Vec2::ZERO,
+        uv_size: Vec2::ONE,
+        tint: Color::WHITE.into(),
+        handle,
+        flags: 0,
+    }
 }
 
 /// The payload the encoder builds for an icon: a fit-resolved logical rect,
@@ -231,14 +238,14 @@ pub(super) fn curve(b: &mut PaintCapture, bbox: Rect) {
 pub(super) fn image(b: &mut PaintCapture, r: Rect) {
     use crate::renderer::frontend::payload::draw_image_payload::{DrawImagePayload, ImageDraw};
     b.draw_image(ImageDraw {
-        payload: DrawImagePayload::image(
-            r,
-            Vec2::ZERO,
-            Vec2::ONE,
-            Color::WHITE.into(),
-            TextureId(1),
-            0,
-        ),
+        payload: DrawImagePayload {
+            rect: r,
+            uv_min: Vec2::ZERO,
+            uv_size: Vec2::ONE,
+            tint: Color::WHITE.into(),
+            handle: TextureId(1),
+            flags: 0,
+        },
         paint: None,
     });
 }

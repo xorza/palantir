@@ -227,7 +227,7 @@ fn build_multi_text_leaf(ui: &mut Ui) -> NodeId {
                         ..GlyphFont::new(14.0)
                     },
                 )
-                .at(glam::Vec2::new(0.0, 0.0))
+                .at_origin(glam::Vec2::new(0.0, 0.0))
                 .color(Color::WHITE)
                 .wrap(TextWrap::Truncate)
                 .align(Align::default())
@@ -249,7 +249,7 @@ fn build_multi_text_leaf(ui: &mut Ui) -> NodeId {
                         ..GlyphFont::new(14.0)
                     },
                 )
-                .at(glam::Vec2::new(0.0, 22.0))
+                .at_origin(glam::Vec2::new(0.0, 22.0))
                 .color(Color::WHITE)
                 .wrap(TextWrap::Truncate)
                 .align(Align::default())

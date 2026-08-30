@@ -56,7 +56,7 @@ fn global_state_id() -> WidgetId {
 /// # use palantir::{Button, Tooltip, Ui};
 /// # fn demo(ui: &mut Ui) {
 /// let r = Button::new().label("Save").show(ui).snapshot();
-/// Tooltip::on(&r).text("Persist changes (Ctrl+S)").show(ui);
+/// Tooltip::on(&r).label("Persist changes (Ctrl+S)").show(ui);
 /// # }
 /// ```
 ///
@@ -70,33 +70,30 @@ fn global_state_id() -> WidgetId {
 /// no call site of its own worth keying on — but an explicit `.id(...)`
 /// / `.id_salt(...)` wins.
 #[derive(Debug)]
-pub struct Tooltip<'r, 'a> {
-    snapshot: &'r ResponseSnapshot,
-    text: TextInput<'a>,
+pub struct Tooltip<'a> {
+    snapshot: &'a ResponseSnapshot,
+    label: TextInput<'a>,
     delay: Option<Duration>,
     show_when_disabled: bool,
     node: Node,
     chrome: Option<Background>,
-    /// Keyed to `'r` (the snapshot's lifetime), not `'a`: [`Self::text`]
-    /// rebinds `'a` to whatever the new text borrows from, and the theme
-    /// has to survive that swap.
-    style: Option<&'r TooltipTheme>,
+    style: Option<&'a TooltipTheme>,
 }
 
-impl<'r> Tooltip<'r, 'static> {
+impl<'a> Tooltip<'a> {
     /// Attach a tooltip to the given trigger response snapshot. The
     /// snapshot carries the trigger's `WidgetId` and last-frame rect
     /// — both drive timer keying and anchor computation. Pass via
     /// `trigger.snapshot()` to detach from the trigger's `&Ui`
     /// borrow before recording the tooltip body.
     #[track_caller]
-    pub fn on(snapshot: &'r ResponseSnapshot) -> Self {
+    pub fn on(snapshot: &'a ResponseSnapshot) -> Self {
         let mut node = Node::vstack();
         // Bubble must never claim hover — would shadow its own trigger.
         node.flags.set_sense(Sense::empty());
         Self {
             snapshot,
-            text: TextInput::default(),
+            label: TextInput::default(),
             delay: None,
             show_when_disabled: false,
             node,
@@ -104,27 +101,18 @@ impl<'r> Tooltip<'r, 'static> {
             style: None,
         }
     }
-}
 
-impl<'r, 'a> Tooltip<'r, 'a> {
     style_setter!(
-        'r,
+        'a,
         TooltipTheme,
         tooltip,
         "Per-field [`Self::background`] / [`Self::delay`] still win over it.",
     );
 
-    pub fn text<'text>(self, text: impl Into<TextInput<'text>>) -> Tooltip<'r, 'text> {
-        Tooltip {
-            snapshot: self.snapshot,
-            text: text.into(),
-            delay: self.delay,
-            show_when_disabled: self.show_when_disabled,
-            node: self.node,
-            chrome: self.chrome,
-            style: self.style,
-        }
-    }
+    label_setter!(
+        'a,
+        "The bubble's whole content — a tooltip draws nothing else.",
+    );
 
     /// Override the per-tooltip delay. Falls back to
     /// [`crate::widgets::theme::tooltip::TooltipTheme::delay`] when unset.
@@ -158,7 +146,12 @@ impl<'r, 'a> Tooltip<'r, 'a> {
         let trigger_hovered = self.snapshot.state.hovered;
         let trigger_disabled = self.snapshot.state.disabled;
         let trigger_rect = self.snapshot.state.rect;
-        let active_trigger = trigger_hovered && (!trigger_disabled || self.show_when_disabled);
+        // An empty label is inactive rather than an empty bubble, and
+        // inactive early enough that the hover timer never arms and no
+        // wake is queued for a tooltip that could never appear.
+        let active_trigger = trigger_hovered
+            && !self.label.is_empty()
+            && (!trigger_disabled || self.show_when_disabled);
 
         let now = ui.now();
 
@@ -204,7 +197,7 @@ impl<'r, 'a> Tooltip<'r, 'a> {
             ui.state_mut::<TooltipGlobal>(global_state_id())
                 .last_visible_at = Some(now);
             let position = OverlayPosition::below(trigger_rect, gap);
-            let text = self.text;
+            let label = self.label;
             let chrome = self.chrome.as_ref().unwrap_or(&theme.panel);
             // Theme fills in whatever the caller left alone. Identity
             // derives from the trigger, because that is the only thing a
@@ -227,7 +220,7 @@ impl<'r, 'a> Tooltip<'r, 'a> {
             );
             scope.record(ui, |ui| {
                 ui.widget(node).record(ui, Some(chrome), |ui| {
-                    Text::new(text)
+                    Text::new(label)
                         .style(&theme.text)
                         .text_wrap(TextWrap::Wrap)
                         .show(ui);
@@ -242,12 +235,12 @@ impl<'r, 'a> Tooltip<'r, 'a> {
 }
 
 impl_background!(
-    Tooltip<'_, '_>,
+    Tooltip<'_>,
     "`None` is the default; theme fallback in [`Self::show`] fills it in from \
      `ui.theme().tooltip.panel` when unset. Pass [`Background::NONE`] to \
      suppress the themed bubble chrome.",
 );
-impl_configure!(Tooltip<'_, '_>);
+impl_configure!(Tooltip<'_>);
 
 #[cfg(test)]
 mod tests;

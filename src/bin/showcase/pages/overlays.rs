@@ -118,7 +118,7 @@ fn tooltip_section(ui: &mut Ui) {
                     .show(ui)
                     .snapshot();
                 Tooltip::on(&r)
-                    .text("Default 0.5 s delay before this appears.")
+                    .label("Default 0.5 s delay before this appears.")
                     .show(ui);
 
                 let r = Button::new()
@@ -127,7 +127,7 @@ fn tooltip_section(ui: &mut Ui) {
                     .show(ui)
                     .snapshot();
                 Tooltip::on(&r)
-                    .text("No delay — fires the frame the pointer arrives.")
+                    .label("No delay — fires the frame the pointer arrives.")
                     .delay(Duration::ZERO)
                     .show(ui);
 
@@ -137,7 +137,7 @@ fn tooltip_section(ui: &mut Ui) {
                     .show(ui)
                     .snapshot();
                 Tooltip::on(&r)
-                    .text("Held for 1.5 s before showing.")
+                    .label("Held for 1.5 s before showing.")
                     .delay(Duration::from_millis(1_500))
                     .show(ui);
 
@@ -147,7 +147,7 @@ fn tooltip_section(ui: &mut Ui) {
                     .show(ui)
                     .snapshot();
                 Tooltip::on(&r)
-                    .text(
+                    .label(
                         "Tooltips wrap to the configured max width — the default is \
                          280 logical pixels. Long bodies stack into multiple lines \
                          automatically; the bubble's height hugs the shaped text.",
@@ -160,7 +160,7 @@ fn tooltip_section(ui: &mut Ui) {
                     .show(ui)
                     .snapshot();
                 Tooltip::on(&r)
-                    .text("Override max width to force tighter wrap on a single tooltip.")
+                    .label("Override max width to force tighter wrap on a single tooltip.")
                     .max_size((140.0, f32::INFINITY))
                     .show(ui);
 
@@ -171,7 +171,7 @@ fn tooltip_section(ui: &mut Ui) {
                     .show(ui)
                     .snapshot();
                 Tooltip::on(&r)
-                    .text("This text is suppressed by the default skip-on-disabled rule.")
+                    .label("This text is suppressed by the default skip-on-disabled rule.")
                     .show(ui);
 
                 let r = Button::new()
@@ -181,7 +181,7 @@ fn tooltip_section(ui: &mut Ui) {
                     .show(ui)
                     .snapshot();
                 Tooltip::on(&r)
-                    .text("Opt in via .show_when_disabled(true) for 'why is this disabled' hints.")
+                    .label("Opt in via .show_when_disabled(true) for 'why is this disabled' hints.")
                     .show_when_disabled(true)
                     .show(ui);
             });
@@ -201,7 +201,7 @@ fn tooltip_section(ui: &mut Ui) {
                         .show(ui)
                         .snapshot();
                     Tooltip::on(&r)
-                        .text(match i {
+                        .label(match i {
                             0 => "Hover, then move to the next item within ~1 s.",
                             1 => "See how the next bubble appears instantly?",
                             2 => "The warmup window keeps scanning a row snappy.",
@@ -333,7 +333,7 @@ fn attach_menu(ui: &mut Ui, trigger: &ResponseSnapshot, state_id: WidgetId, flav
         }
         MenuItem::separator().style(rule).show(ui);
         MenuItem::new("Disabled")
-            .enabled(false)
+            .disabled(true)
             .style(item)
             .show(ui, popup);
         MenuItem::separator().style(rule).show(ui);

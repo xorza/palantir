@@ -41,7 +41,7 @@ pub(super) fn screen_rects_by_fill(cmds: &PaintCapture) -> Vec<(ColorF16, Rect)>
                 t = t.compose(*child);
             }
             PaintCall::PopTransform => t = t_stack.pop().expect("balanced PushTransform/Pop"),
-            PaintCall::Clip(p) => {
+            PaintCall::PushClip(p) => {
                 let screen = t.apply_rect(p.rect);
                 let intersected = match clip {
                     Some(c) => screen.clamp_to(c),

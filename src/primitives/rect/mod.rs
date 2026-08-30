@@ -181,17 +181,33 @@ impl Rect {
             && other_max.y <= self_max.y
     }
 
-    /// Outset by `amount` on each side, growing both edges. Symmetric
-    /// counterpart to `deflated_by` for the common "uniform expansion"
-    /// case (centred stroke painted-extent, AABB-around-circle, etc.).
-    /// Negative input mirrors `deflated_by(Spacing::all(-amount))`
-    /// without clamping — callers needing the size clamp should use
-    /// `deflated_by` instead.
+    /// Outset by `amount` on each side, growing both edges — the
+    /// "uniform expansion" case (centred stroke painted-extent,
+    /// AABB-around-circle). Counterpart to [`Self::deflated`], which is
+    /// the same step inward and clamps where this one does not.
     #[inline]
     pub const fn inflated(self, amount: f32) -> Self {
         Self {
             min: Vec2::new(self.min.x - amount, self.min.y - amount),
             size: Size::new(self.size.w + 2.0 * amount, self.size.h + 2.0 * amount),
+        }
+    }
+
+    /// Inset by `amount` on each side, clamping the resulting size at
+    /// zero. The counterpart to [`Self::inflated`], and the uniform case
+    /// of [`Self::deflated_by`].
+    ///
+    /// Clamped where [`Self::inflated`] is not, because the two ends are
+    /// not symmetric: growing a rect cannot collapse it, and an inset
+    /// deeper than the extent has no rect to name.
+    #[inline]
+    pub fn deflated(self, amount: f32) -> Self {
+        Self {
+            min: Vec2::new(self.min.x + amount, self.min.y + amount),
+            size: Size::new(
+                (self.size.w - 2.0 * amount).max(0.0),
+                (self.size.h - 2.0 * amount).max(0.0),
+            ),
         }
     }
 
@@ -270,6 +286,19 @@ impl Rect {
                 (self.size.w - left - right).max(0.0),
                 (self.size.h - top - bottom).max(0.0),
             ),
+        }
+    }
+
+    /// Outset by `s` on each side, growing both edges. The per-side
+    /// counterpart to [`Self::inflated`], and what undoes a
+    /// [`Self::deflated_by`] inset side for side, as long as that inset
+    /// did not clamp.
+    #[inline]
+    pub fn inflated_by(self, s: Spacing) -> Self {
+        let [l, t, r, b] = s.as_array();
+        Self {
+            min: Vec2::new(self.min.x - l, self.min.y - t),
+            size: Size::new(self.size.w + (l + r), self.size.h + (t + b)),
         }
     }
 

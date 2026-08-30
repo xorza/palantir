@@ -8,8 +8,8 @@ use crate::primitives::text_input::TextInput;
 use crate::scene::node::Node;
 use crate::scene::node::configure::Configure;
 use crate::ui::Ui;
+use crate::widgets::close_handle::CloseHandle;
 use crate::widgets::context_menu::menu_separator::MenuSeparator;
-use crate::widgets::popup::PopupHandle;
 use crate::widgets::response::Response;
 use crate::widgets::text::Text;
 use crate::widgets::theme::context_menu::menu_item::MenuItemTheme;
@@ -19,7 +19,7 @@ use crate::widgets::theme::widget_look::theme_slot::ThemeSlot;
 /// One row inside a [`ContextMenu`](crate::widgets::context_menu::ContextMenu). Label on the left, optional
 /// right-aligned shortcut hint, theme-driven hover chrome. Reports
 /// `Response` so callers branch on `clicked()`; the row also calls
-/// [`PopupHandle::close`] on click so the parent `ContextMenu`
+/// [`CloseHandle::close`] on click so the parent `ContextMenu`
 /// auto-closes without the caller threading response.
 ///
 /// If [`Self::shortcut`] is set, the row also intercepts that
@@ -72,10 +72,6 @@ impl<'a> MenuItem<'a> {
         self
     }
 
-    pub fn enabled(self, e: bool) -> Self {
-        self.disabled(!e)
-    }
-
     /// Thin horizontal divider between groups — no label, no input.
     /// Chain `.show(ui)` and ignore the response. See
     /// [`MenuSeparator`].
@@ -83,7 +79,7 @@ impl<'a> MenuItem<'a> {
         MenuSeparator::new()
     }
 
-    pub fn show<'ui>(self, ui: &'ui mut Ui, popup: &PopupHandle) -> Response<'ui> {
+    pub fn show<'ui>(self, ui: &'ui mut Ui, popup: &CloseHandle) -> Response<'ui> {
         // Single `response_for` probe via the shared entry helper: the
         // row's body records only decorative `Text` leaves, so the response
         // is identical before and after the node records.

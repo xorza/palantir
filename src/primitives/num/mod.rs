@@ -62,7 +62,7 @@ pub(crate) trait F32Ext {
     ///
     /// The clamp alone is not the rule. `f32::clamp` answers NaN for NaN,
     /// and every consumer of a share turns it into a `Fill` weight, a
-    /// rail extent, or a seam position — each of which rejects one. An
+    /// track extent, or a seam position — each of which rejects one. An
     /// infinity clamps to an *end*, which states a share the caller never
     /// meant. Both non-finite cases are "no share", so both take the
     /// fallback.
@@ -110,6 +110,20 @@ pub(crate) trait F32Ext {
     /// measured at another width. Non-finite (an unbounded axis) saturates
     /// rather than wrapping through the `as` cast.
     fn quantize_px(self) -> i32;
+
+    /// A length read out of a theme, floored at `min`.
+    ///
+    /// One definition because every widget that sizes a node or a corner
+    /// radius from its bundle owes the same guard: the scalar arrived
+    /// from a hand-edited theme file or an app's own bundle, so a
+    /// negative or NaN one is bad data rather than a logic error and
+    /// cannot assert. Both cases land on `min`, since `f32::max` answers
+    /// the other operand for NaN.
+    ///
+    /// `min` is the widget's, not the type's. A rule the theme sets to
+    /// zero is a rule the app wanted invisible, while a grab bar or a
+    /// spinner that thin cannot be grabbed or seen at all.
+    fn themed_length(self, min: f32) -> f32;
 }
 
 impl F32Ext for f32 {
@@ -186,6 +200,15 @@ impl F32Ext for f32 {
         } else {
             i32::MAX
         }
+    }
+
+    #[inline]
+    fn themed_length(self, min: f32) -> f32 {
+        debug_assert!(
+            min >= 0.0,
+            "a themed length's floor is itself a length, got {min}",
+        );
+        self.max(min)
     }
 }
 

@@ -230,8 +230,8 @@ fn both_axes_bars_dont_overlap_at_corner() {
             });
     });
     let theme = theme();
-    let inner = 200.0 - theme.width - theme.gap;
-    let outer_far = 200.0 - theme.width;
+    let inner = 200.0 - theme.thickness - theme.gap;
+    let outer_far = 200.0 - theme.thickness;
     let overlays = thumb_rects(&ui.ui, "scroll");
     assert_eq!(overlays.len(), 2, "expected V + H thumbs");
     let v = overlays

@@ -31,7 +31,7 @@ pub(crate) struct ToggleChrome {
     /// The look this row animates toward, off the caller's slot.
     pub(crate) plan: LookPlan,
     /// Gap between the box and the label, off the same slot as `plan`.
-    pub(crate) row_gap: f32,
+    pub(crate) gap: f32,
     /// The box/track child recorded before the label, already sized and
     /// in its layout mode — a square leaf for `Checkbox`/`RadioButton`,
     /// a wide `Canvas` for `Switch`'s track. `toggle_row` only stamps
@@ -98,7 +98,7 @@ impl ToggleChrome {
         let id = widget.id();
         let Self {
             plan,
-            row_gap,
+            gap,
             boxed,
             pill,
         } = self;
@@ -107,7 +107,7 @@ impl ToggleChrome {
             look.background.corners = Corners::all(radius);
         }
 
-        widget.node.gaps.set_gap(row_gap);
+        widget.node.gaps.set_gap(gap);
         widget.node.child_align = Align::v(VAlign::Center);
 
         widget.record(ui, None, |ui| {

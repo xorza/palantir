@@ -109,7 +109,7 @@ macro_rules! paint_calls {
 }
 
 paint_calls! {
-    Clip(PushClipPayload) => clip,
+    PushClip(PushClipPayload) => push_clip,
     PushTransform(TranslateScale) => push_transform,
     Quad(DrawQuadPayload) => quad,
     Text(DrawTextPayload) => text,

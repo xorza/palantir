@@ -32,28 +32,6 @@ pub(crate) struct DrawImagePayload {
     pub(crate) flags: u32,
 }
 
-impl DrawImagePayload {
-    /// An image draw.
-    #[inline]
-    pub(crate) fn image(
-        rect: Rect,
-        uv_min: glam::Vec2,
-        uv_size: glam::Vec2,
-        tint: ColorF16,
-        handle: TextureId,
-        flags: u32,
-    ) -> Self {
-        Self {
-            rect,
-            uv_min,
-            uv_size,
-            tint,
-            handle,
-            flags,
-        }
-    }
-}
-
 /// One image draw as [`PaintSink::image`] takes it: the payload plus, for
 /// a `GpuView` composite, the callback its off-screen target is painted
 /// with.

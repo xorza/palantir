@@ -288,7 +288,7 @@ fn add_direct_text(
     .family(FontFamily::Sans)
     .weight(FontWeight::Regular);
     ui.add_shape(match local_origin {
-        Some(origin) => shape.at(origin),
+        Some(origin) => shape.at_origin(origin),
         None => shape,
     });
 }
