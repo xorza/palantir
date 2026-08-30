@@ -76,18 +76,11 @@ impl<'a> FrameCycle<'a> {
             stamp,
             damage_baseline_valid,
         } = input;
-        // Record payloads are cleared inside `record_pass` (the only path
-        // that repopulates it). PaintOnly frames must NOT clear: the
-        // live `tree.shapes` from last frame still references record payloads
-        // contents by index (gradients, polyline points/colors, mesh
-        // verts/indices, interned text spans). Clearing here would
-        // leave dangling indices the encoder then dereferences.
-        // Once per frame, and the same screen both hosts run at their own
-        // door. Held at their strictness rather than below it: a host is
-        // not the only way in — the `internals` harness stamps a display
-        // directly — and every pointer coordinate is divided by this
-        // several passes later, where nothing names the frame that
-        // carried it.
+        // Screened here as well as at each host's own door, and at their
+        // strictness rather than below it: a host is not the only way in
+        // — the `internals` harness stamps a display directly — and every
+        // pointer coordinate is divided by this several passes later,
+        // where nothing names the frame that carried it.
         assert!(
             display::scale_factor_is_valid(stamp.display.scale_factor),
             "Display::scale_factor must be finite and ≥ EPSILON; got {}",
@@ -113,6 +106,13 @@ impl<'a> FrameCycle<'a> {
         let processing = match plan {
             FramePlan::PaintOnly => {
                 tracy::zone!("Ui::frame.paint_only");
+                // Nothing here clears the record payloads: last frame's
+                // live `tree.shapes` still indexes into them (gradients,
+                // polyline points/colours, mesh verts/indices, interned
+                // text spans), and only `record_pass` — which this arm
+                // skips — repopulates them. Clearing would leave dangling
+                // indices the encoder then dereferences.
+                //
                 // PaintOnly skips `record_pass` → skips `post_record`
                 // → skips the input cleanup. Under `OnDelta`, an
                 // unrouted event can still land here with the sticky
@@ -123,11 +123,11 @@ impl<'a> FrameCycle<'a> {
                 // would tick it, but this arm never gets there.
                 //
                 // Through the shaper `UiResources` owns, not down two
-                // levels into the layout engine's `TextSystem`: the
-                // clock is the shaper's, and the method there was a
-                // passthrough that made a shared handle look like layout
-                // state. A frozen clock stops the glyph atlas evicting at
-                // all — see `TextShaper::tick_frame`.
+                // levels into the layout engine's `TextSystem`: the clock
+                // belongs to the shaper, and reaching it through layout
+                // would make a shared handle look like layout state. A
+                // frozen clock stops the glyph atlas evicting at all —
+                // see `TextShaper::tick_frame`.
                 self.ui.resources.text.tick_frame();
                 FrameProcessing::PaintOnly
             }
@@ -284,8 +284,8 @@ impl<'a> FrameCycle<'a> {
         // first user-recorded node becomes the root and the layout
         // engine forces its rect to the surface — silently overriding
         // declared `Sizing` / `Sense` on the top-level widget. ZStack +
-        // Fill matches the historical "root paints full surface"
-        // behavior while letting user roots respect their own sizing.
+        // Fill still paints the full surface, while letting user roots
+        // respect their own sizing.
         let mut viewport = Node::zstack();
         viewport.size = Some(Sizing::FILL.into());
         // Hard-coded `WidgetId::VIEWPORT` — a frame-stable parent id,
@@ -322,10 +322,7 @@ impl<'a> FrameCycle<'a> {
     /// A fourth per-pass reset goes here, and nowhere else.
     fn pre_record(&mut self) {
         tracy::zone!("Ui::pre_record");
-        // Clears both the trees and the retained payloads their shape
-        // records index into.
         self.ui.forest.pre_record();
-        // Record-scoped input ownership and wake watches.
         self.ui.input.pre_record(&self.ui.cascade);
         // Re-asserted by whoever still wants the cursor this pass.
         self.ui.window_requests.levels.cursor = CursorIcon::default();

@@ -107,12 +107,12 @@ impl CascadeInputHash {
 pub(crate) struct LayerCascade {
     /// Paint-excluding authoring hash from the last full rebuild.
     static_hash: ContentHash,
-    /// `Tree::fingerprint.paint_cardinality` as of the last full rebuild.
+    /// `Tree::fingerprint.paint_counts` as of the last full rebuild.
     /// The incremental walk can only repair paint rows in place, so a
     /// changed row count sends it home empty-handed after it has already
     /// walked part of the tree; comparing this first turns that wasted
     /// half-walk into an immediate full rebuild.
-    paint_cardinality: u64,
+    paint_counts: ContentHash,
     /// `LayerLayout::rect_hash` as of the last full rebuild — the arranged
     /// geometry these retained rows were built against.
     /// [`CascadeEngine::can_update`](engine::CascadeEngine::can_update)
@@ -158,7 +158,7 @@ pub(crate) struct LayerCascade {
     /// Per-node `Tree.rollups.subtree` the retained [`Self::paint_arena`]
     /// rows were built from — the per-node half of the validity gate
     /// whose whole-layer half is [`Self::static_hash`],
-    /// [`Self::paint_cardinality`] and [`Self::layout_hash`]. An
+    /// [`Self::paint_counts`] and [`Self::layout_hash`]. An
     /// incremental repair descends exactly where this disagrees with the
     /// live rollup and re-stamps what it repaired. Dirty ancestors
     /// recompute their own paint rows, so no separate per-node paint hash

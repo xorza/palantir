@@ -4,13 +4,14 @@
 use crate::primitives::color::Color;
 use crate::widgets::theme::palette::Palette;
 
-/// Visuals for [`crate::Scroll`] reservation-layout scrollbars. When
-/// content overflows on a panned axis, the widget reserves `thickness`
-/// of padding on that axis's far edge; the bar paints in the reserved
-/// strip — beside the visible content, never on top of it. Track +
-/// thumb are pill-capped filled rects. The thumb fill picks between
-/// `thumb` / `thumb_hovered` / `thumb_active` based on the bar leaf's
-/// hover + drag state (see `scroll::push_bar_nodes`).
+/// Visuals for [`crate::Scroll`] reservation-layout scrollbars. Under
+/// [`BarMode::Reserved`](crate::BarMode) the widget takes `thickness`
+/// of padding off each panned axis's far edge whether or not anything
+/// currently overflows, and the bar paints in that reserved strip —
+/// beside the visible content, never on top of it. Track + thumb are
+/// pill-capped filled rects, and the thumb fill picks between `thumb` /
+/// `thumb_hovered` / `thumb_active` on the bar leaf's hover + drag
+/// state.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ScrollbarTheme {
     /// Cross-axis thickness of the bar in logical px. The pill radius

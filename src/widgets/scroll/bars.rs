@@ -22,8 +22,9 @@ use crate::widgets::scroll::state::{ScrollState, ThumbTravel, TrackPage};
 use crate::widgets::theme::scrollbar::ScrollbarTheme;
 use glam::BVec2;
 
-/// the bar's `thickness` plus a `gap` strip so the bar doesn't touch the
-/// visible content. Returns 0 when the axis isn't panned.
+/// Cross-axis space one bar reserves on a panned axis: the bar's
+/// `thickness` plus a `gap` strip so the bar doesn't touch the visible
+/// content. Returns 0 when the axis isn't panned.
 #[inline]
 fn bar_reservation(panned: bool, theme: &ScrollbarTheme) -> f32 {
     if panned {

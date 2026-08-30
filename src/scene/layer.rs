@@ -40,9 +40,8 @@ pub enum Layer {
     /// Its own rank rather than sharing the popup's, and that is what a layer
     /// is *for*: an overlay must paint above the scope that raised it, and one
     /// that shared a rank with its own parent could not — see
-    /// `Forest::push_layer`. A right-click in
-    /// a field of a popup is the ordinary case, and it used to be a panic in
-    /// debug and a menu drawn underneath its own parent in release.
+    /// `Forest::push_layer`. A right-click in a field of a popup is the
+    /// ordinary case, and a shared rank leaves it with nowhere to go.
     Menu = 3,
     /// Hover bubbles, above every one of those, so they can annotate a menu
     /// item as readily as a dialog.

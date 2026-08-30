@@ -129,8 +129,9 @@ pub struct Theme {
     pub splitter: SplitterTheme,
     /// Ambient text style — size, colour, family, leading — that every
     /// [`Text`](crate::Text) falls back to when its builder didn't
-    /// override the axis. Not a per-widget theme: `Button` and `TextEdit`
-    /// carry their own state-dependent colours.
+    /// override the axis, and that a widget look inherits whole wherever
+    /// its `text` slot is `None`. A state-styled widget overrides it by
+    /// filling that slot, which is all or nothing.
     pub text: TextStyle,
     /// Window/swapchain clear color. Hosts pass to `WgpuBackend::submit`.
     pub window_clear: Color,

@@ -1,13 +1,13 @@
 //! The layout driver contract, and the one dispatch over [`LayoutMode`]
 //! that reaches it.
 //!
-//! Seven modules answer the same three questions about a subtree, and
-//! before this they answered them as free functions whose only agreement
-//! was a doc comment: the payload sat third in one match and fourth in
-//! the next, one driver took the pass and another did not, and adding a
-//! driver meant finding three files by hand. [`LayoutDriver`] is that
-//! agreement as a type, and [`DriverOp::dispatch`] is the single match —
-//! a new driver is one arm plus one impl, and the compiler asks for both.
+//! Seven modules answer the same three questions about a subtree.
+//! [`LayoutDriver`] is that agreement as a type rather than as a doc
+//! comment over seven free functions, and [`DriverOp::dispatch`] is the
+//! single match over it — so a new driver is one arm plus one impl, and
+//! the compiler asks for both. Spread across free functions instead, an
+//! argument can sit third in one match and fourth in the next, and
+//! nothing says which files a new driver has to reach.
 
 use crate::layout::axis::Axis;
 use crate::layout::canvas::Canvas;

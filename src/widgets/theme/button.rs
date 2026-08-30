@@ -120,10 +120,10 @@ impl ButtonTheme {
 
     /// Pick the visual state for `state`: `active` = pressed.
     /// Disabled wins over hover/press; pressed wins over hover;
-    /// otherwise normal.
-    /// `state.disabled` is the cascaded ancestor-or-self flag — if
-    /// the caller wants lag-free response to its own self-toggle,
-    /// merge `state.disabled |= node.disabled` before calling.
+    /// otherwise normal. `state.disabled` already carries the node's own
+    /// flag — [`Widget::response`](crate::Widget) merges it, so a button
+    /// disabled this frame paints disabled without waiting for the
+    /// cascade.
     #[inline(always)]
     pub fn pick(&self, state: &ResponseState) -> &WidgetLook {
         self.looks.pick(state, state.pressed())

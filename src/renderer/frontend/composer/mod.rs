@@ -46,10 +46,10 @@ use std::time::Duration;
 /// [`Frontend`](crate::renderer::frontend::Frontend) orchestrates
 /// encode + compose.
 ///
-/// Render order *within* a group is fixed by the backend:
-/// **quads → text → meshes → images → curves**
-/// (`schedule::emit_group_body`; polylines ride the curve tier as
-/// segment + join-chrome instances). That
+/// Render order *within* a group is fixed by the backend: **quads →
+/// text → every [`PaintTier`](crate::renderer::render_buffer::paint_tier::PaintTier)
+/// in `PaintTier::ALL` order** (`schedule::emit_group_body`; polylines
+/// ride the curve tier as segment + join-chrome instances). That
 /// reorder is safe iff no overlapping pair of draws swaps its record
 /// order — two rules, both enforced by forcing a
 /// [`ComposeSession::flush`]:

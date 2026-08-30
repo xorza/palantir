@@ -207,9 +207,6 @@ impl RenderBuffer {
         &mut self.batches[tier.idx()]
     }
 
-    /// This tier's per-group batches. Named rather than indexed at the
-    /// call site so every consumer that walks all of them goes through
-    /// here and [`PaintTier::ALL`], keeping the replay order in one place.
     /// Value equality of two rounded-mask chains (spans into
     /// [`Self::rounded_clips`]).
     ///
@@ -224,6 +221,9 @@ impl RenderBuffer {
         self.rounded_clips[a.range()] == self.rounded_clips[b.range()]
     }
 
+    /// This tier's per-group batches. Named rather than indexed at the
+    /// call site so every consumer that walks all of them goes through
+    /// here and [`PaintTier::ALL`], keeping the replay order in one place.
     pub(crate) fn batches(&self, tier: PaintTier) -> &[GroupBatch] {
         &self.batches[tier.idx()]
     }

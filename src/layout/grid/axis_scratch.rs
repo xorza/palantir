@@ -139,8 +139,9 @@ impl AxisScratch {
     /// before the per-cell loop so `known_span_size` reads Fixed rows as
     /// resolved while Hug and Fill rows are still unknown. Returns the total
     /// extent the Fixed tracks consumed, which is what `resolve_axis` needs
-    /// and the standalone caller ignores. Callers reset `a` first — both do,
-    /// via [`Self::reset`] or [`Self::resolve_axis`]'s own `fill`/`clear`.
+    /// and the standalone caller ignores. Callers reset first — both do,
+    /// via [`Self::reset_for`] or [`Self::resolve_axis`]'s own
+    /// `fill`/`clear`.
     pub(super) fn resolve_fixed(&mut self, tracks: &[Track]) -> f32 {
         let mut consumed = 0.0;
         for (i, t) in tracks.iter().enumerate() {
@@ -153,7 +154,7 @@ impl AxisScratch {
         consumed
     }
 
-    /// Resolve track sizes on one axis into `a.sizes` for a grid with
+    /// Resolve track sizes on one axis into [`Self::sizes`] for a grid with
     /// `total` available main-axis length and `gap` between adjacent tracks.
     /// `commit_fill` marks Fill tracks resolved when measure knows its
     /// available extent is the final arrange extent.

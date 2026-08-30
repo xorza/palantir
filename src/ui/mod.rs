@@ -122,11 +122,11 @@ pub struct Ui {
     /// Refcounted, deliberately: a widget that styles *from the theme*
     /// has to hold the bundle across the `&mut Ui` its own `show` takes,
     /// and a plain `&ui.theme` borrow cannot survive that reborrow. The
-    /// pre-`Rc` shape forced every such site to clone a whole bundle to
-    /// launder the borrow — 640 B for a `ButtonTheme`, 692 B for a
-    /// `TextEditTheme`, per widget per frame. [`Self::theme`] hands out
-    /// the handle that makes it a refcount bump instead;
-    /// [`Self::set_theme`] is the write side.
+    /// `Rc` so that laundering the borrow is a refcount bump:
+    /// [`Self::theme`] hands out the handle, [`Self::set_theme`] is the
+    /// write side. Owning the bundle directly instead makes every such
+    /// site clone one — 640 B for a `ButtonTheme`, 692 B for a
+    /// `TextEditTheme`, per widget per frame.
     theme: Rc<Theme>,
     /// Cross-frame widget state: per-type dense stores keyed by
     /// `WidgetId` (see [`StateMap`]).
@@ -392,12 +392,11 @@ impl Ui {
     /// recording — and reach for this only when neither fits.
     pub fn request_relayout(&mut self) {
         // Record-pass only. `FrameCycle::run` clears the flag before
-        // handing the `Ui` to the app, so a call from outside a record
-        // — an input handler, or `App::update` — set a bit that the very
-        // next line dropped, and the retry the caller asked for simply
-        // never happened. Nothing said so; this makes the misuse loud
-        // instead. `App::update` already runs before recording, so code
-        // reaching for this from there wants no retry at all.
+        // handing the `Ui` to the app, so a call from outside a record —
+        // an input handler, or `App::update` — sets a bit the very next
+        // line drops, and the retry never happens. The assert is what
+        // makes that loud. `App::update` already runs before recording,
+        // so code reaching for this from there wants no retry at all.
         assert!(
             self.forest.is_recording(),
             "Ui::request_relayout outside a record pass: it re-runs *this* \

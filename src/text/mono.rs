@@ -53,10 +53,9 @@ pub(super) struct MonoLayout {
 
 /// Lay `request` out under the mono metric: every glyph is
 /// `font_size_px * 0.5` wide and the line uses `line_height_px`; wrapping
-/// is approximated by simple character-count division. At the historical
-/// 16 px font size this is the 8 px/char × 16 px line layout the engine
-/// was hard-coded to before text shaping landed, which is what existing
-/// layout tests pin.
+/// is approximated by simple character-count division. At a 16 px font
+/// size that is an 8 px/char × 16 px line, which is what the layout
+/// tests pin.
 ///
 /// Mints no shaped buffer, so `TextSystem` reports
 /// [`TextShapeKey::INVALID`](crate::text::key::TextShapeKey::INVALID) for

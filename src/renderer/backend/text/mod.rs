@@ -19,8 +19,7 @@
 //!   *after* any grow blit — encoder ordering is load-bearing
 //!   (`queue.write_texture` runs before all encoder commands in a
 //!   submit, so it could be clobbered by the blit).
-//! - **20-byte instances** (vs glyphon's 24). content_type packed
-//!   into uv high bit.
+//! - **20-byte instances.** content_type packed into the uv high bit.
 //! - **No `Viewport` object.** Atlas sizes ride the shared immediate
 //!   region as two `u32`s, pushed per batch — no uniform buffer.
 
@@ -67,8 +66,8 @@ impl TextBackend {
                     },
                     atlas: RasterAtlasConfig {
                         label: "palantir.text",
-                        // Bumped from glyphon's 256 to skip the 256->512->1024
-                        // grow chain on the first frame with non-trivial text.
+                        // Large enough to skip the 256->512->1024 grow
+                        // chain on the first frame with non-trivial text.
                         initial_mask_px: 1024,
                         // Colour glyphs (emoji) are rare in UI text: 256^2 RGBA is
                         // 256 KB and holds dozens at UI sizes, where matching the
@@ -157,8 +156,7 @@ impl TextBackend {
     /// `WgpuBackend::submit`, nowhere near a record pass, and the crate
     /// spends `post_record` on the record half of a frame
     /// (`FrameCycle`, `Forest`, `Tree`). It belongs with the other
-    /// frame-boundary teardowns instead — `TextSystem::end_frame`
-    /// is its
+    /// frame-boundary teardowns instead — `TextSystem::end_frame` is its
     /// opposite number on the record side.
     ///
     /// Both caches age against the shaper's clock
@@ -184,8 +182,7 @@ pub(crate) mod test_support {
         /// One frame boundary the way a window drives it: advance the
         /// shared text clock — owned by the record pass in production,
         /// where `TextSystem`'s frame teardown ticks it before the
-        /// submit —
-        /// then sweep this side against it.
+        /// submit — then sweep this side against it.
         ///
         /// Harnesses that drive a `TextBackend` with no `Ui` behind it
         /// have no other way to age these caches, since

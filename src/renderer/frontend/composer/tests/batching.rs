@@ -215,8 +215,8 @@ fn compose_keeps_quads_then_text_in_one_group() {
 
 /// Pin: two adjacent rows where each row sits in its own scissor
 /// (a clipped panel per row) coalesce their text into ONE batch even
-/// though they're in different groups. Saves a glyphon prepare +
-/// render per extra row — the bulk of the savings from text batching.
+/// though they're in different groups. Saves a raster pass per extra
+/// row — the bulk of the savings from text batching.
 #[test]
 fn compose_coalesces_text_across_distinct_scissor_groups() {
     let buf = run(

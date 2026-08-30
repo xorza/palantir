@@ -12,17 +12,12 @@ const STABILITY_SAFETY: f64 = 0.8;
 const MIN_DECAY_RATE: f64 = 1.0;
 const MAX_SUBSTEPS_PER_FRAME: f32 = 256.0;
 
-// Spring settle tolerances. Bumped from 1e-3 / 1e-2 → 1e-2 / 1e-1 to
-// give the integrator a more forgiving floor in pixel-scale animations
-// where the f32 ULP near `cur ≈ 400` is already ~2.4e-5; sub-pixel
-// drift below 0.01 px is visually indistinguishable and lets the
-// spring settle a frame or two earlier on tight tolerances. The
-// fixed-step accumulator on `Ui` is the primary fix for the
-// NoVsync precision stall; this just trims residual settle time.
-//
-// These are intentionally *loose* — a spring's job is to converge, and
-// the eye can't see the last 0.01 of travel. The duration path's own
-// far tighter floor lives with it, in `animation::duration`.
+// Spring settle tolerances, deliberately *loose*: a spring's job is to
+// converge, and the eye cannot see the last 0.01 px of travel. A
+// tighter floor buys nothing at pixel scale — the f32 ULP near
+// `cur ≈ 400` is already ~2.4e-5 — and costs the integrator a frame or
+// two of settle. The duration path's own far tighter floor lives with
+// it, in `animation::duration`.
 const POS_EPS: f32 = 0.01;
 const VEL_EPS: f32 = 0.1;
 const POS_EPS_SQ: f32 = POS_EPS * POS_EPS;

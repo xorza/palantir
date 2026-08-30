@@ -88,11 +88,11 @@ impl PhaseSpan {
 counter_snapshot! {
     cells TestOnly, reads cfg(test);
 
-    /// Which branch [`LayoutEngine::replay_arranged`] took. The translate
+    /// Which branch [`LayoutPass::replay_arranged`] took. The translate
     /// branch in particular is easy to write a fixture that silently
     /// never reaches.
     ///
-    /// [`LayoutEngine::replay_arranged`]: crate::layout::engine::LayoutEngine
+    /// [`LayoutPass::replay_arranged`]: crate::layout::pass::LayoutPass
     pub(crate) struct ReplayCounters;
 
     /// One reading of a [`ReplayCounters`]. Tests compare it as a
@@ -108,7 +108,7 @@ counter_snapshot! {
 /// What the layout pass did this `run`, for tests and benches to assert
 /// against.
 ///
-/// Reset by [`Self::begin_run`] once at the top of every run — not in
+/// Reset by [`Self::begin_pass`] once at the top of every run — not in
 /// `LayoutScratch::resize_for`, which runs per layer and would wipe an
 /// earlier layer's counts.
 #[derive(Debug, Default)]

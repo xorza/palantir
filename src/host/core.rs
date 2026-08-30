@@ -104,7 +104,9 @@ impl HostCore {
         not(feature = "winit"),
         expect(
             dead_code,
-            reason = "multi-window lifecycle plumbing: every caller is under                       src/host/winit/, so a build without that feature has                       nothing to call it"
+            reason = "multi-window lifecycle plumbing: every caller is \
+                      under src/host/winit/, so a build without that \
+                      feature has nothing to call it"
         )
     )]
     pub(super) fn retire(&mut self, driver: &WindowDriver) {

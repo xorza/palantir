@@ -107,11 +107,10 @@ impl TextSystem {
     /// Keeping rows for live widgets bounds them by the widget's peak
     /// text-ordinal count, which is a handful per widget, and `removed`
     /// still sweeps whole widgets as they leave the tree.
-    /// Named for the `FramePlan::FullRecord` frame it closes, because
-    /// this type has two teardowns and the frame kind is what picks
-    /// between them: only a frame that recorded has a `removed` set to
-    /// sweep against. A `PaintOnly` frame never reaches here, and owes
-    /// the clock tick below directly — `FrameCycle::run` takes it through
+    /// Named for the `FramePlan::FullRecord` frame it closes: only a
+    /// frame that recorded has a `removed` set to sweep against. A
+    /// `PaintOnly` frame never reaches here, and owes the clock tick
+    /// below directly — `FrameCycle::run` takes it through
     /// [`TextShaper::tick_frame`](crate::TextShaper).
     ///
     /// This is where a *recorded* frame ticks the shared text frame clock

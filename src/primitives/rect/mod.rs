@@ -349,9 +349,9 @@ impl Rect {
     /// Saturating intersection: clamps `self` to fit inside `bounds`, giving a
     /// possibly zero-sized rect rather than nothing at all.
     ///
-    /// The counterpart of the crate-internal `URect::clamp_to`, and what this
-    /// method was called `intersect` for before there was a strict one to tell
-    /// it apart from.
+    /// The counterpart of the crate-internal `URect::clamp_to`. Named for
+    /// the clamp rather than for an intersection, because
+    /// [`Self::intersect`] is the strict one that answers `None`.
     #[inline]
     pub const fn clamp_to(self, bounds: Self) -> Self {
         let (a, b) = (self.max(), bounds.max());

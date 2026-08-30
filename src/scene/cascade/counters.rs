@@ -8,8 +8,6 @@
 //! report the previous run's numbers as its own.
 //!
 //! [`CascadeEngine::run`]: crate::scene::cascade::engine::CascadeEngine
-//! [`MeasureCache::snapshot_rebuilds`]:
-//!     crate::layout::cache::MeasureCache
 
 use crate::common::counters::TestOnly;
 

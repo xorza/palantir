@@ -11,9 +11,11 @@ pub(super) struct RenderTarget {
     pub(super) view: wgpu::TextureView,
     pub(super) size: UVec2,
     pub(super) owner: RenderOwnerId,
-    /// `GpuPaint::init` has run against this texture. Survives every frame
-    /// the view is merely undamaged, because the texture does — see
-    /// [`ImageTextures::paint_gpu_views`](super::ImageTextures::paint_gpu_views).
+    /// [`GpuPaint::init`](crate::GpuPaint::init) has run for this view.
+    /// Per entry rather than per texture: a resize replaces the texture
+    /// and leaves this set, which is the once-per-view contract `init`
+    /// documents — the colour target is framework-owned, so the paint
+    /// has nothing bound to the old one.
     pub(super) initialized: bool,
     pub(super) last_paint: Option<Duration>,
 }

@@ -8,13 +8,12 @@
 //!
 //! Freezing follows CSS Flexbox §9.7 *resolve flexible lengths*: each pass
 //! clamps every unfrozen item, sums the adjustments, and freezes only the
-//! violators whose own adjustment has the same sign as that total. The two
-//! shortcuts around it are both wrong, and the crate shipped one of each
-//! for a while. Freezing *every* violator pins an item at its floor before
-//! a later item's cap frees the room that would have cleared it. Freezing
-//! *one* violator per pass makes the answer depend on the order the items
-//! were pushed. The sign test does neither and still converges in at most
-//! one pass per item.
+//! violators whose own adjustment has the same sign as that total. Both
+//! shortcuts around it are wrong. Freezing *every* violator pins an item
+//! at its floor before a later item's cap frees the room that would have
+//! cleared it. Freezing *one* violator per pass makes the answer depend
+//! on the order the items were pushed. The sign test does neither and
+//! still converges in at most one pass per item.
 
 /// One participant in a Fill distribution.
 ///

@@ -1,6 +1,8 @@
-//! GPU side of quads — wgpu pipeline + viewport uniform + instance
-//! buffer. Consumes `&[Quad]` (defined frontend-side) and binds the
-//! shader at `quad.wgsl` next to this file.
+//! GPU side of quads — wgpu pipeline + instance buffer. Consumes
+//! `&[Quad]` (defined frontend-side) and binds the shader at
+//! `quad.wgsl` next to this file. The viewport rides the shared
+//! immediate region rather than a uniform buffer — see
+//! [`ViewportPush`](crate::renderer::backend::viewport::ViewportPush).
 
 use crate::common::tracy;
 use crate::primitives::brush::gradient::Spread;
@@ -192,7 +194,7 @@ impl QuadPipeline {
         mask_pipeline: &'a wgpu::RenderPipeline,
         gradient_bg: &'a wgpu::BindGroup,
     ) {
-        let buf = self.mask_buffer.as_ref().expect("upload_masks first");
+        let buf = self.mask_buffer.as_ref().expect("stage_masks first");
         Self::bind_buffer(pass, mask_pipeline, gradient_bg, &buf.buffer);
     }
 
@@ -351,15 +353,15 @@ impl QuadPipeline {
 }
 
 const QUAD_INSTANCE_ATTRS: [wgpu::VertexAttribute; 9] = wgpu::vertex_attr_array![
-    0 => Float32x2,   // pos
-    1 => Float32x2,   // size
-    2 => Uint32x2,    // fill (packed 4x f16: r|g|b|a)
-    3 => Uint32x2,    // radius (packed 4x f16: tl|tr|br|bl)
-    4 => Uint32x2,    // stroke.color (packed 4x f16)
-    5 => Float32,     // stroke.width
-    6 => Uint32,      // fill_kind (low byte: kind, bits 8..16: spread)
-    7 => Uint32,      // fill_lut_row
-    8 => Uint32x2,    // fill_axis (packed 4x f16: lane0|lane1|lane2|lane3)
+    0 => Float32x2,
+    1 => Float32x2,
+    2 => Uint32x2,
+    3 => Uint32x2,
+    4 => Uint32x2,
+    5 => Float32,
+    6 => Uint32,
+    7 => Uint32,
+    8 => Uint32x2,
 ];
 
 // Compile-time guard: each attribute's byte offset must match the `Quad`

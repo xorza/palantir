@@ -109,15 +109,14 @@ impl Widget {
     ///
     /// A convenience over the opener, not a second way to open:
     /// `record` is what every widget in the crate calls, and this is for
-    /// the handful (`Frame`, `Grid`, `Panel`, `ProgressBar`, `Separator`,
-    /// `Spinner`, `Text`) whose `show()` is exactly "record, then hand
-    /// the caller a response". Widgets
-    /// returning a bare [`Response`] take `.response`; the ones with a
-    /// body closure return the pair as-is.
+    /// the decorative ones whose `show()` is exactly "record, then hand
+    /// the caller a response". Widgets returning a bare [`Response`]
+    /// take `.response`; the ones with a body closure return the pair
+    /// as-is.
     ///
     /// The response is **lazy**, so a caller that never reads it never
     /// pays for the `response_for` probe — which is why opening through
-    /// `record` directly, as the other ~50 sites do, costs nothing extra
+    /// `record` directly, as most sites do, costs nothing extra
     /// over this and keeps `&Ui` unborrowed afterwards.
     ///
     /// **The eager path is the other one, and it has no packager.** Every

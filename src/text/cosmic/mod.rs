@@ -3,7 +3,7 @@
 //! font size, wrap width, line height, family, weight, halign, fit) —
 //! so steady-state measurement is `HashMap` lookup only: no reshape,
 //! no allocation. The cache is bounded by **age, not capacity** —
-//! [`CosmicMeasure::end_frame`] drops entries untouched for
+//! [`CosmicMeasure::advance_to`] drops entries untouched for
 //! [`PROBATION_KEEP_FRAMES`] / [`PROTECTED_KEEP_FRAMES`], see there for
 //! why the two windows exist. Missing buffers are reconstructible from
 //! the retained text source at the backend boundary, so a continuous
@@ -76,7 +76,7 @@ const RECYCLE_POOL_CAP: usize = 128;
 const ELLIPSIS_MEMO_SLOTS: usize = 4;
 
 /// Frames a *probationary* entry survives before
-/// [`CosmicMeasure::end_frame`] drops it: one inserted and never looked
+/// [`CosmicMeasure::advance_to`] drops it: one inserted and never looked
 /// up, or one [superseded](CosmicMeasure::supersede) after its reuse
 /// slot moved to a different key.
 ///
@@ -183,9 +183,9 @@ fn attrs_for(family: FontFamily, weight: FontWeight) -> Attrs<'static> {
 
 /// Map an Palantir [`HAlign`] to cosmic-text's per-line align.
 /// `Auto`/`Stretch` map to `None` — cosmic falls back to its
-/// left-or-rtl-aware default, identical bit-for-bit to the legacy
-/// "no per-line align" path. `Left`/`Center`/`Right` translate
-/// directly. Cosmic's `Justified` and `End` aren't surfaced.
+/// left-or-rtl-aware default, which is what "no per-line align" means.
+/// `Left`/`Center`/`Right` translate directly. Cosmic's `Justified` and
+/// `End` aren't surfaced.
 fn cosmic_align(halign: HAlign) -> Option<CosmicAlign> {
     match halign {
         HAlign::Left => Some(CosmicAlign::Left),
@@ -220,7 +220,7 @@ pub(super) struct CosmicMeasure {
     swash_cache: SwashCache,
     cache: FxHashMap<TextShapeKey, CacheEntry>,
     /// Latest value of the shaper's shared frame clock, mirrored here by
-    /// [`Self::end_frame`]. Stamped onto every entry this touches, and
+    /// [`Self::advance_to`]. Stamped onto every entry this touches, and
     /// the reference point both retention windows measure back from.
     ///
     /// Mirrored rather than counted: the renderer's encoded-run cache
@@ -228,17 +228,16 @@ pub(super) struct CosmicMeasure {
     /// can keep them in step — see
     /// [`ShaperInner::frame`](crate::text::shaper::ShaperInner).
     frame: u64,
-    /// Which keys come due on which frame, so [`Self::end_frame`] costs
+    /// Which keys come due on which frame, so [`Self::advance_to`] costs
     /// what expires rather than what is resident.
     ///
-    /// The earlier design kept the earliest `keep_until` in the cache and
-    /// skipped the sweep while nothing could have expired. That is O(1)
-    /// only while nothing churns: a single key that changes every frame —
-    /// a clock, an FPS counter, a scrubbing value — re-pins that minimum
-    /// one probation window out on every insert, the gate stops firing,
-    /// and every frame walks the whole map to reclaim one entry. The
-    /// churn it was measured against is precisely the churn that defeats
-    /// it.
+    /// A wheel rather than a single earliest-`keep_until` gate, which is
+    /// O(1) only while nothing churns: one key that changes every frame
+    /// — a clock, an FPS counter, a scrubbing value — re-pins that
+    /// minimum a probation window out on every insert, the gate stops
+    /// firing, and every frame walks the whole map to reclaim one entry.
+    /// The churn that would motivate such a gate is precisely the churn
+    /// that defeats it.
     expiry: ExpiryWheel<TextShapeKey>,
     /// LIFO pool fed by LRU eviction. `Buffer::set_text` reclaims its
     /// line, shaping, and layout allocations when the buffer is reset.
@@ -466,8 +465,6 @@ impl CosmicMeasure {
         buffer
     }
 
-    // ---- shaped-buffer cache retention ----
-
     /// Store a freshly shaped buffer. Entries start probationary; only a
     /// later lookup promotes them (see [`PROBATION_KEEP_FRAMES`]).
     fn insert(&mut self, key: TextShapeKey, buffer: Buffer, extent: CachedExtent, left: f32) {
@@ -623,8 +620,6 @@ impl CosmicMeasure {
         });
     }
 
-    // ---- render-side glyph resolution ----
-
     /// Resolve `request` to palantir-native glyph placements for the
     /// renderer. Restores the shaped buffer if evicted (truncated runs
     /// restore their unbounded probe internally), walks its layout runs,
@@ -711,8 +706,6 @@ impl CosmicMeasure {
             data: image.data,
         })
     }
-
-    // ---- cluster-precise truncation ----
 
     /// Shape `text` as a single line truncated to fit `w`. Truncation is
     /// cluster-precise: the cached unbounded shape gives per-glyph advances,

@@ -133,8 +133,8 @@ impl WidgetId {
     ///
     /// The zero displacement itself is the one non-injective step: `1`
     /// ends up with two preimages, the empty hash and whatever the mix
-    /// sends there. A 1-in-2^64 collision, unchanged from before this
-    /// finalizer existed. `1` and not `u64::MAX`, because
+    /// sends there — a 1-in-2^64 collision, which the finalizer neither
+    /// adds to nor removes. `1` and not `u64::MAX`, because
     /// [`Self::VIEWPORT`] holds that one.
     ///
     /// This is *not* a fix for the hazard [`IdHasher`]'s doc describes.

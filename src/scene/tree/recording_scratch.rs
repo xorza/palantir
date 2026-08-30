@@ -29,10 +29,8 @@ pub(crate) struct OpenFrame {
 }
 
 /// Per-layer recording-only state: the ancestor stack and pending root
-/// placement. Lives off `Tree` so every downstream pass holding
-/// `&Tree` is type-prevented from reaching transient state — `Tree`
-/// itself is the finalized output. Cleared by `Forest::pre_record`;
-/// drained at every top-level `close_node`.
+/// placement — see the module doc for why it lives here rather than on
+/// `Tree`. Drained at every top-level `close_node`.
 #[derive(Debug, Default)]
 pub(crate) struct RecordingScratch {
     /// Ancestor stack for the currently-open scope. Empty outside the

@@ -4,7 +4,7 @@
 /// When the per-frame classification gate decides whether input requires
 /// re-recording, this enum picks the signal it consults.
 ///
-/// `Always` matches the legacy behavior: any input event whatsoever —
+/// `Always` is the blunt one: any input event whatsoever —
 /// including a pointer move over inert surface — forces a full
 /// record→measure→arrange→cascade→encode pass. `OnDelta` consults the
 /// finer-grained [`InputDelta::requests_repaint`](crate::InputDelta)

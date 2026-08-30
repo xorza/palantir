@@ -55,7 +55,7 @@ pub struct Node {
     pub(crate) salt: Salt,
     pub(crate) mode: NodeMode,
 
-    /// The five themable fields are `None` until explicitly set, so
+    /// The themable fields are `None` until explicitly set, so
     /// widgets can layer theme defaults under user intent with a plain
     /// `get_or_insert` / `unwrap_or` — there is no separate provenance
     /// tracking. [`Self::columns`] resolves `None` to the layout

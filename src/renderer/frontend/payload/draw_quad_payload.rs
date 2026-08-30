@@ -247,8 +247,8 @@ mod tests {
     ///
     /// The NaN row is the interesting one. It normalizes away like any
     /// other non-painting width, which is deliberate: catching a NaN
-    /// *loudly* is `Shape::debug_assert_no_nan`'s job at the authoring
-    /// boundary, so by the time a value reaches here the useful
+    /// *loudly* is the `has_nan` screen's job at `Shapes::add`, the
+    /// authoring boundary, so by the time a value reaches here the useful
     /// behaviour is to fail safe — and to do it identically for every
     /// shape, rather than per-path (a rect forwarding NaN to the GPU
     /// while a triangle scrubs it).

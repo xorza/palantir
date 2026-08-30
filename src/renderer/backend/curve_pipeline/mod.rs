@@ -177,13 +177,6 @@ impl CurvePipeline {
     }
 }
 
-// `p0/p1/p2/p3 : Float32x2`, `t_range : Float32x2`, `width : Float32`,
-// `color0/color1 : Unorm8x4` (linear-u8, t=0 / t=1 stroke colours),
-// `cap : Uint32` (per-end caps packed: bits 0..8 start, 8..16 end),
-// `fill_kind : Uint32` (a `FillKind` tag; the shader compares its low
-// byte against the substituted `BRUSH_KIND_LINEAR`),
-// `fill_lut_row : Uint32` (gradient atlas row, read for a gradient tag),
-// `kind : Uint32` (basis tag — geometry-lane interpretation).
 const CURVE_INSTANCE_ATTRS: [wgpu::VertexAttribute; 12] = wgpu::vertex_attr_array![
     0 => Float32x2,
     1 => Float32x2,

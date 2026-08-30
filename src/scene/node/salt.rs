@@ -66,7 +66,7 @@ impl Salt {
     }
 
     /// `true` for [`Salt::Hash`] / [`Salt::Verbatim`] — caller-supplied
-    /// ids. `SeenIds::record` uses this to flag explicit collisions
+    /// ids. `SeenIds::resolve` uses this to flag explicit collisions
     /// (caller bugs) with the magenta debug overlay while leaving
     /// auto collisions silent.
     #[inline]

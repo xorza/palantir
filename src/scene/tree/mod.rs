@@ -67,16 +67,9 @@ use std::hash::{Hash, Hasher as _};
 /// **`records`** is `Soa<NodeRecord>` indexed by `NodeId.0`, in pre-order
 /// paint order (parent before children, siblings in declaration order).
 /// Reverse iteration gives topmost-first (used by hit-testing). `soa-rs`
-/// lays each `NodeRecord` field out as its own contiguous slice, so each
-/// pass touches only the bytes it needs:
-///
-/// - `layout`      — read by measure / arrange / alignment math
-/// - `attrs`       — packed paint/input flags (2 B); cascade / encoder
-/// - `widget_id`   — hit-test, state map, damage diff
-/// - `subtree_end` — pre-order skip + grid flag (every walk)
-/// - `shape_span`  — span into the flat shape buffer covering this node's
-///   subtree (parent + descendants); the gap between children's
-///   sub-ranges holds the parent's direct shapes in record order.
+/// lays each [`NodeRecord`] field out as its own contiguous slice, so
+/// each pass touches only the bytes it needs. Which pass reads which
+/// column is documented on the field itself.
 #[derive(Debug, Default)]
 pub(crate) struct Tree {
     pub(crate) records: Soa<NodeRecord>,
@@ -213,8 +206,8 @@ impl Tree {
         // insert site so `compute_rollups`' loop carries no sizing call.
         self.container_text.clear();
         self.container_text.grow(n);
-        self.fingerprint.paint_cardinality =
-            paint_cardinality(self.shapes.records.len(), self.chrome_table.len(), n);
+        self.fingerprint.paint_counts =
+            paint_counts(self.shapes.records.len(), self.chrome_table.len(), n);
         self.compute_rollups();
     }
 
@@ -242,8 +235,8 @@ impl Tree {
         let scrollbar_defs = &self.scrollbar_defs;
         let SubtreeRollups { node, subtree } = &mut self.rollups;
         let container_text = &mut self.container_text;
-        // `paint_cardinality` is stamped by `post_record` before this
-        // pass — a whole-tree count, not a per-node fold.
+        // `paint_counts` is stamped by `post_record` before this pass —
+        // a whole-tree fold, not a per-node one.
         let cascade_static = &mut self.fingerprint.cascade_static;
         let node_out = node.as_mut_slice();
         let subtree_out = subtree.as_mut_slice();
@@ -694,12 +687,12 @@ impl Tree {
 
 /// Fold the three counts that move whenever some node's paint-row count
 /// does. Free fn so the `Tree` field reads and the arithmetic sit apart.
-fn paint_cardinality(shapes: usize, chrome_rows: usize, nodes: usize) -> u64 {
+fn paint_counts(shapes: usize, chrome_rows: usize, nodes: usize) -> ContentHash {
     let mut h = Hasher::new();
     h.write_usize(shapes);
     h.write_usize(chrome_rows);
     h.write_usize(nodes);
-    h.finish()
+    ContentHash(h.finish())
 }
 
 pub(crate) mod extras_idx;

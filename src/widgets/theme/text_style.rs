@@ -34,15 +34,17 @@ pub struct TextStyle {
     #[animate(snap)]
     pub font_size_px: f32,
     /// Default fill color for [`crate::Text`] runs that didn't call
-    /// `.color(...)`. Button / TextEdit have their own state-dependent
-    /// colors on their respective themes and don't read this.
+    /// `.color(...)`, and the ink a widget look inherits: `Button` and
+    /// `TextEdit` carry a state-dependent `TextStyle` per state, and
+    /// every state that leaves it `None` — which is every active one by
+    /// default — resolves to this.
     pub color: Color,
     /// Line-height-to-font-size ratio. Drives the shaper's leading and
     /// the caret rect height (locked together via
     /// `ShapeRecord::Text.line_height_px`). Default matches cosmic-text's
-    /// natural leading (1.2). Per-
-    /// widget override on TextEdit lives on the builder
-    /// (`TextEdit::line_height_mult`).
+    /// natural leading (1.2). A widget overrides it by carrying a whole
+    /// [`TextStyle`] in its look's `text` slot, since a look either
+    /// replaces every text axis or inherits every one.
     #[animate(snap)]
     pub line_height_mult: f32,
     /// Font family used for shaping. Default
