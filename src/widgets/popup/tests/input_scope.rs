@@ -218,7 +218,7 @@ fn text_edit_inside_a_popup_receives_typing() {
     h.request_focus(Some(field));
     h.frame(|ui| scene(ui, &mut buf));
 
-    h.ime_commit("x");
+    h.type_text("x");
     h.frame(|ui| scene(ui, &mut buf));
 
     assert_eq!(

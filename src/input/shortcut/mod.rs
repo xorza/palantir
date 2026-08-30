@@ -1,14 +1,13 @@
 //! Keyboard shortcuts. One value drives both display ("Ctrl+C") and
-//! matching against incoming [`KeyboardEvent::Down`] events, so call
-//! sites stop hardcoding the modifier vocabulary.
+//! matching against incoming [`KeyPress`] events, so call sites stop
+//! hardcoding the modifier vocabulary.
 //!
 //! ## Conventions
 //!
 //! - The primary command modifier (`Mods::ctrl`) maps to the
 //!   platform's convention: **Cmd on macOS, Ctrl on Win/Linux** — one
 //!   binding fires on ⌘S on a Mac and Ctrl+S elsewhere. Raw Ctrl on
-//!   macOS is the rare case; match a `KeyboardEvent::Down` directly
-//!   for it.
+//!   macOS is the rare case; match a `KeyPress` directly for it.
 //! - [`Mods`] is the *shortcut* vocabulary, distinct from [`Modifiers`]
 //!   (the event-state vocabulary, which keeps `ctrl` and `cmd` as
 //!   separate physical keys).
@@ -18,7 +17,7 @@
 //! - `Display` formats a platform-native label (`"Ctrl+C"` / `"⌘C"`).
 //!   Menu rows stream it into [`crate::Ui`]'s retained formatting storage.
 //!
-//! [`KeyboardEvent::Down`]: crate::KeyboardEvent::Down
+//! [`KeyPress`]: crate::KeyPress
 
 use crate::common::platform::{PLATFORM, Platform};
 use crate::input::keyboard::key::Key;

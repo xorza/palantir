@@ -1,6 +1,6 @@
 use glam::Vec2;
 use winit::dpi::PhysicalPosition;
-use winit::event::{DeviceId, Ime, MouseScrollDelta, TouchPhase, WindowEvent};
+use winit::event::{DeviceId, MouseScrollDelta, TouchPhase, WindowEvent};
 use winit::keyboard::{
     Key as WinitKey, KeyCode, ModifiersState, NamedKey, NativeKeyCode, PhysicalKey,
 };
@@ -115,22 +115,6 @@ fn modifier_normalization_translates_each_bit() {
 
     let modifiers = normalize_modifiers(&(ModifiersState::SHIFT | primary));
     assert!(modifiers.shift && modifiers.ctrl && !modifiers.alt);
-}
-
-#[test]
-fn ime_commits_roundtrip_through_inline_chunks() {
-    for text in ["é", "0123456789abcdef", "日本語入力テスト文字列"] {
-        let mut got = String::new();
-        translate(
-            &WindowEvent::Ime(Ime::Commit(text.into())),
-            1.0,
-            |event| match event {
-                InputEvent::Text(chunk) => got.push_str(chunk.as_str()),
-                other => panic!("unexpected {other:?}"),
-            },
-        );
-        assert_eq!(got, text);
-    }
 }
 
 #[test]

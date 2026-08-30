@@ -3,9 +3,7 @@ use crate::KeyFilter;
 use crate::input::input_event::InputEvent;
 use crate::input::input_state::InputState;
 use crate::input::keyboard::key::Key;
-use crate::input::keyboard::keyboard_event::KeyboardEvent;
 use crate::input::keyboard::modifiers::Modifiers;
-use crate::input::keyboard::text_chunk::TextChunk;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::cascade::Cascade;
@@ -35,11 +33,6 @@ fn keyboard_events_do_not_perturb_scroll_state() {
             repeat: false,
             physical: Key::Other,
         },
-        &cascade,
-        Duration::ZERO,
-    );
-    state.on_input(
-        InputEvent::Text(TextChunk::new("a").unwrap()),
         &cascade,
         Duration::ZERO,
     );
@@ -91,14 +84,7 @@ fn keydown_pushes_onto_frame_keys_with_current_modifiers() {
         Duration::ZERO,
     );
 
-    let presses: Vec<_> = state
-        .frame_keyboard_events
-        .iter()
-        .filter_map(|e| match e {
-            KeyboardEvent::Down(kp) => Some(*kp),
-            _ => None,
-        })
-        .collect();
+    let presses = &state.frame_keyboard_events;
     assert_eq!(presses.len(), 2);
     assert_eq!(presses[0].key, Key::Char('a'));
     assert!(presses[0].mods.ctrl);
@@ -106,32 +92,6 @@ fn keydown_pushes_onto_frame_keys_with_current_modifiers() {
     assert_eq!(presses[1].key, Key::Char('b'));
     assert!(!presses[1].mods.ctrl);
     assert!(presses[1].repeat);
-}
-
-#[test]
-fn text_events_arrive_in_order_in_keyboard_buffer() {
-    let mut state = InputState::default();
-    let cascade = Cascade::default();
-    state.focused = Some(WidgetId::from_hash("editor"));
-    state.on_input(
-        InputEvent::Text(TextChunk::new("hé").unwrap()),
-        &cascade,
-        Duration::ZERO,
-    );
-    state.on_input(
-        InputEvent::Text(TextChunk::new("llo").unwrap()),
-        &cascade,
-        Duration::ZERO,
-    );
-    let texts: Vec<_> = state
-        .frame_keyboard_events
-        .iter()
-        .filter_map(|e| match e {
-            KeyboardEvent::Text(c) => Some(c.as_str().to_string()),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(texts, vec!["hé".to_string(), "llo".to_string()]);
 }
 
 /// An app that declares **no scope at all** reads every chord.
@@ -564,7 +524,7 @@ fn invisible_or_disabled_focusable_refuses_focus() {
 }
 
 #[test]
-fn post_record_clears_keys_and_text_but_preserves_modifiers() {
+fn post_record_clears_keys_but_preserves_modifiers() {
     let mut state = InputState::default();
     let cascade = Cascade::default();
     state.focused = Some(WidgetId::from_hash("editor"));
@@ -582,11 +542,6 @@ fn post_record_clears_keys_and_text_but_preserves_modifiers() {
             repeat: false,
             physical: Key::Other,
         },
-        &cascade,
-        Duration::ZERO,
-    );
-    state.on_input(
-        InputEvent::Text(TextChunk::new("x").unwrap()),
         &cascade,
         Duration::ZERO,
     );

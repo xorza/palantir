@@ -9,10 +9,6 @@ gated `internals` / `test_support` modules were not reviewed.
 Groups are sorted by severity and benefit. Items inside a group are sorted the
 same way.
 
-## Device acquisition and the host lifecycle are written once per host
-
-- [ ] `src/host/winit/input/mod.rs:62,198-202`, `src/ui/harness/mod.rs:114-118`, `src/widgets/text_edit/input.rs:246` — `InputEvent::Text` is emitted only from `WindowEvent::Ime(Ime::Commit(..))`. Nothing calls `Window::set_ime_allowed`, and the harness says so ("dead in production today"). `KeyEvent::text` is never read; typed text reaches `TextEdit` solely through `KeyDown { key: Key::Char(c) }`. `emit_text_chunks`, the `Ime` arm and its tests exist for a path no production build hits.
-
 ## A sentinel or a flag encodes what the type already knows, or a builder is order-dependent
 
 - [ ] `src/scene/node/mod.rs:55`, `src/scene/node/salt.rs:40-42,61,73-75` — `Node` spells "unset" two ways: `Option<T>` for the themable fields, and `Salt::Auto` vs `Salt::Hash` / `Verbatim` for identity. `Salt::Auto` and `Salt::Hash` resolve identically; the variant split carries only the `is_explicit` bool.

@@ -4,7 +4,6 @@ use crate::common::platform::{PLATFORM, Platform};
 use crate::input::key_class::KeyFilter;
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::key_press::KeyPress;
-use crate::input::keyboard::keyboard_event::KeyboardEvent;
 use crate::input::keyboard::modifiers::Modifiers;
 use crate::input::response::response_state::ResponseState;
 use crate::text::probe::{Caret, TextProbe};
@@ -169,46 +168,34 @@ impl InputPass<'_> {
             };
         }
 
-        // Drain the unified keyboard event stream in arrival order:
-        // Text chunks splice into the buffer (sanitized for single-line);
-        // Down events route through shared edit actions (clipboard / undo)
-        // then `apply_key` (edit / nav). Vertical-nav probes happen inline
-        // because they need a text probe, which is what `Ui`'s walk keeps
-        // the borrow free for.
-        ui.each_keyboard_event(|ui, event| {
-            let Some(event) = filter.accepts(event) else {
+        // Drain this frame's presses in arrival order: shared edit actions
+        // first (clipboard / undo), then `apply_key` (edit / nav).
+        // Vertical-nav probes happen inline because they need a text probe,
+        // which is what `Ui`'s walk keeps the borrow free for.
+        ui.each_keyboard_event(|ui, press| {
+            let Some(kp) = filter.accepts(press) else {
                 return;
             };
-            match event {
-                KeyboardEvent::Text(chunk) => {
-                    let to_insert = ed.sanitized(chunk.as_str());
-                    if !to_insert.is_empty() {
-                        ed.replace_selection(&to_insert, EditKind::Typing);
-                    }
+            // Single-line Enter is a *submit* signal, not an edit: the buffer
+            // is left untouched (multi-line handles `\n` in `apply_key`), but
+            // the caller learns the user accepted the value.
+            if !ed.multiline() && kp.key == Key::Enter && !kp.mods.any_command() {
+                submitted = true;
+                return;
+            }
+            if let Some(action) = EditAction::from_keypress(kp) {
+                action.execute(&mut ed, &clipboard);
+                return;
+            }
+            match apply_key(&mut ed, kp) {
+                KeyOutcome::Blur => cancelled = true,
+                KeyOutcome::Vertical { up, extend } => {
+                    resolve_vertical(&mut ed, ui, ctx, up, extend);
                 }
-                KeyboardEvent::Down(kp) => {
-                    // Single-line Enter is a *submit* signal, not an edit: the buffer
-                    // is left untouched (multi-line handles `\n` in `apply_key`), but
-                    // the caller learns the user accepted the value.
-                    if !ed.multiline() && kp.key == Key::Enter && !kp.mods.any_command() {
-                        submitted = true;
-                        return;
-                    }
-                    if let Some(action) = EditAction::from_keypress(kp) {
-                        action.execute(&mut ed, &clipboard);
-                        return;
-                    }
-                    match apply_key(&mut ed, kp) {
-                        KeyOutcome::Blur => cancelled = true,
-                        KeyOutcome::Vertical { up, extend } => {
-                            resolve_vertical(&mut ed, ui, ctx, up, extend);
-                        }
-                        KeyOutcome::LineEdge { end, extend } => {
-                            resolve_line_edge(&mut ed, ui, ctx, end, extend);
-                        }
-                        KeyOutcome::None => {}
-                    }
+                KeyOutcome::LineEdge { end, extend } => {
+                    resolve_line_edge(&mut ed, ui, ctx, end, extend);
                 }
+                KeyOutcome::None => {}
             }
         });
 

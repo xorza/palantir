@@ -33,7 +33,7 @@ use crate::icons::icon_set::IconSet;
 use crate::icons::icon_table::IconTable;
 use crate::input::input_event::InputEvent;
 use crate::input::input_state::InputState;
-use crate::input::keyboard::keyboard_event::KeyboardEvent;
+use crate::input::keyboard::key_press::KeyPress;
 use crate::input::keyboard::modifiers::Modifiers;
 use crate::input::pointer::PointerEvent;
 use crate::input::policy::FocusPolicy;
@@ -319,10 +319,7 @@ impl Ui {
         self.input.pointer_events(self.forest.current_layer())
     }
 
-    /// Unified keyboard event stream this frame —
-    /// [`KeyboardEvent::Down`] from `KeyDown` events and
-    /// [`KeyboardEvent::Text`] from typed/IME-committed text, in
-    /// arrival order.
+    /// This frame's presses, in arrival order.
     ///
     /// Layer-gated exactly like [`Self::pointer_events`]: a
     /// An overlay's scope empties the stream for every layer strictly
@@ -331,7 +328,7 @@ impl Ui {
     /// into. The claim owner reads its scoped stream through
     /// its own layer.
     #[inline]
-    pub fn keyboard_events(&self) -> &[KeyboardEvent] {
+    pub fn keyboard_events(&self) -> &[KeyPress] {
         self.input.keyboard_events(self.forest.current_layer())
     }
 
@@ -349,7 +346,7 @@ impl Ui {
     /// The queue does not change during a record pass, so the length is
     /// read once and the walk is exactly the frame's events, in arrival
     /// order.
-    pub(crate) fn each_keyboard_event(&mut self, mut visit: impl FnMut(&mut Self, KeyboardEvent)) {
+    pub(crate) fn each_keyboard_event(&mut self, mut visit: impl FnMut(&mut Self, KeyPress)) {
         let n = self.keyboard_events().len();
         for i in 0..n {
             let event = self.keyboard_events()[i];
@@ -357,7 +354,7 @@ impl Ui {
         }
     }
 
-    /// `true` if any [`KeyboardEvent::Down`] this frame matches
+    /// `true` if any press this frame matches
     /// `sc`. Iterates [`Self::keyboard_events`]; for repeat or
     /// stateful logic, iterate directly instead.
     ///

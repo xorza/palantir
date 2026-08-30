@@ -56,27 +56,20 @@ impl PointerWake {
 
 bitflags! {
     /// Keyboard wake-gate categories. Orthogonal to focus routing —
-    /// a focused widget always wakes on `KeyDown` / `Text` regardless
-    /// of these flags; watching here is for **off-focus** consumers
+    /// a focused widget always wakes on `KeyDown` regardless of these
+    /// flags; watching here is for **off-focus** consumers
     /// (hotkey recorder, debug overlay, accel-underline UIs).
     /// Specific `(Key, Modifiers)` chords use the finer
     /// [`Watches::keys`] path instead.
     #[repr(transparent)]
     #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
     pub struct KeyboardWake: u8 {
-        /// Wakes on
-        /// [`KeyboardEvent::Text`](crate::input::keyboard::KeyboardEvent::Text)
-        /// regardless of focus. Command palette filtering before
-        /// focus, post-IME-commit consumers.
-        const TEXT = 1 << 0;
-        /// Wakes on any
-        /// [`KeyboardEvent::Down`](crate::input::keyboard::KeyboardEvent::Down)
-        /// regardless of focus. Hotkey recorder, cheat codes, debug
-        /// key overlay.
-        const KEY = 1 << 1;
+        /// Wakes on any [`KeyPress`](crate::KeyPress) regardless of
+        /// focus. Hotkey recorder, cheat codes, debug key overlay.
+        const KEY = 1 << 0;
         /// Wakes on `ModifiersChanged`. Accel-underline UIs that
         /// reveal on Alt-press, modifier-state debug overlays.
-        const MODIFIER = 1 << 2;
+        const MODIFIER = 1 << 1;
     }
 }
 

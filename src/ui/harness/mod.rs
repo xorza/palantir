@@ -111,14 +111,11 @@
 //!     set through [`set_modifiers`](UiHarness::set_modifiers) is still
 //!     held by the *next* key until it is set back.
 //!     `Modifiers.ctrl` is platform-normalized — Cmd on macOS.
-//! 14. **Typed text arrives as `KeyDown { key: Key::Char(c) }`.** The
-//!     winit host emits `InputEvent::Text` only from `Ime::Commit` and
-//!     never calls `set_ime_allowed`, so that path is dead in production
-//!     today. `TextEdit` consumes **both**, so emitting both
-//!     double-inserts — hence [`type_text`](UiHarness::type_text) vs.
-//!     [`ime_commit`](UiHarness::ime_commit).
+//! 14. **Typed text arrives as `KeyDown { key: Key::Char(c) }`**, which
+//!     is the only path a field inserts from —
+//!     [`type_text`](UiHarness::type_text) emits one per char.
 //! 15. **Keyboard events are discarded at ingress when nothing is
-//!     focused.** `InputState::on_input` gates `KeyDown` and `Text` on
+//!     focused.** `InputState::on_input` gates `KeyDown` on
 //!     `focused.is_some() || subs.matches_press(kp) || keyboard_mask`,
 //!     and drops what is not observable rather than queueing it. A
 //!     keyboard test must establish focus first — by clicking, or via
@@ -160,7 +157,6 @@ use crate::input::capture::{DOUBLE_CLICK_WINDOW, DRAG_THRESHOLD};
 use crate::input::input_event::InputEvent;
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::modifiers::Modifiers;
-use crate::input::keyboard::text_chunk::TextChunk;
 use crate::input::pointer::PointerButton;
 use crate::input::response::input_delta::InputDelta;
 use crate::input::response::response_state::ResponseState;
@@ -384,12 +380,11 @@ impl UiHarness {
     }
 
     /// The raw input door, for events with no typed helper above — a
-    /// `KeyDown` with a specific `physical`, an `InputEvent::Text` you
-    /// built yourself. Everything the typed helpers cover should go
-    /// through them: they are what enforce the press-origin, modifier,
-    /// and threshold rules, and a helper that emits exactly one event
-    /// hands back that event's [`InputDelta`] so nothing is given up by
-    /// using it.
+    /// `KeyDown` with a specific `physical`, say. Everything the typed
+    /// helpers cover should go through them: they are what enforce the
+    /// press-origin, modifier, and threshold rules, and a helper that
+    /// emits exactly one event hands back that event's [`InputDelta`] so
+    /// nothing is given up by using it.
     pub fn on_input(&mut self, event: InputEvent) -> InputDelta {
         self.ui.on_input(event)
     }
@@ -588,19 +583,10 @@ impl UiHarness {
     }
 
     /// One `KeyDown { key: Key::Char(c) }` per char — the path a real
-    /// window produces. The winit host emits `InputEvent::Text` only from
-    /// an IME commit; see [`Self::ime_commit`], and do not use both for
-    /// the same text (`TextEdit` consumes each, so it would double-insert).
+    /// window produces, and the only one a field inserts from.
     pub fn type_text(&mut self, s: &str) {
         for c in s.chars() {
             self.key(Key::Char(c));
-        }
-    }
-
-    /// The IME path: `InputEvent::Text`, split exactly as a commit is.
-    pub fn ime_commit(&mut self, s: &str) {
-        for chunk in TextChunk::split(s) {
-            self.ui.on_input(InputEvent::Text(chunk));
         }
     }
 

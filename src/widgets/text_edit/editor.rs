@@ -1,7 +1,6 @@
 //! One frame's semantic editing session over the host-owned buffer.
 
 use crate::input::key_class::KeyFilter;
-use crate::input::keyboard::keyboard_event::KeyboardEvent;
 use crate::ui::Ui;
 use crate::widgets::context_menu::ContextMenu;
 use crate::widgets::context_menu::menu_item::MenuItem;
@@ -69,8 +68,8 @@ impl<'a> Editor<'a> {
         let clipboard = ui.clipboard();
         let mut clicked_action = None;
         ContextMenu::attach(ui, snapshot).show(ui, |ui, popup| {
-            ui.each_keyboard_event(|_, event| {
-                let Some(KeyboardEvent::Down(keypress)) = filter.accepts(event) else {
+            ui.each_keyboard_event(|_, press| {
+                let Some(keypress) = filter.accepts(press) else {
                     return;
                 };
                 if let Some(action) = EditAction::from_keypress(keypress) {

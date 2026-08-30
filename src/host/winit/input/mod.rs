@@ -1,7 +1,7 @@
 //! Translation from winit events into Palantir's native input vocabulary.
 
 use glam::Vec2;
-use winit::event::{ElementState, Ime, MouseButton, MouseScrollDelta, WindowEvent};
+use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::keyboard::{Key as WinitKey, KeyCode, ModifiersState, NamedKey, PhysicalKey};
 
 use crate::common::platform::{PLATFORM, Platform};
@@ -9,7 +9,6 @@ use crate::display;
 use crate::input::input_event::InputEvent;
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::modifiers::Modifiers;
-use crate::input::keyboard::text_chunk::TextChunk;
 use crate::input::pointer::PointerButton;
 
 pub(super) fn translate(event: &WindowEvent, scale_factor: f32, mut emit: impl FnMut(InputEvent)) {
@@ -66,7 +65,6 @@ pub(super) fn translate(event: &WindowEvent, scale_factor: f32, mut emit: impl F
                 physical: physical_key(&event.physical_key),
             });
         }
-        WindowEvent::Ime(Ime::Commit(text)) => emit_text_chunks(text, &mut emit),
         WindowEvent::ModifiersChanged(modifiers) => {
             emit(InputEvent::ModifiersChanged(normalize_modifiers(
                 &modifiers.state(),
@@ -131,11 +129,10 @@ macro_rules! shared_key {
 ///
 /// A `Character` payload is a string because a dead-key sequence can
 /// resolve to several chars, and only the first is taken: [`Key`] names a
-/// *key*, and a multi-char resolution is text rather than a key. It
-/// arrives as text too — winit sends the composition through
-/// `Ime::Commit`, which is the path an editor inserts from — so nothing
-/// is lost by the truncation, and treating the run as a chord would bind
-/// shortcuts to whichever char happened to come first.
+/// *key*, and a multi-char resolution is text rather than a key. The rest
+/// is dropped, because treating the run as a chord would bind shortcuts
+/// to whichever char happened to come first. A host that wants the whole
+/// resolution wants IME, which this one does not enable.
 fn logical_key(key: &WinitKey) -> Key {
     match key {
         WinitKey::Named(named) => shared_key!(NamedKey, named).unwrap_or(Key::Other),
@@ -212,12 +209,6 @@ fn normalize_modifiers(modifiers: &ModifiersState) -> Modifiers {
         },
         alt: modifiers.alt_key(),
         mac_ctrl: mac && modifiers.control_key(),
-    }
-}
-
-fn emit_text_chunks(text: &str, emit: &mut impl FnMut(InputEvent)) {
-    for chunk in TextChunk::split(text) {
-        emit(InputEvent::Text(chunk));
     }
 }
 

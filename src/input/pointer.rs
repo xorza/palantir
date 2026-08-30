@@ -53,9 +53,9 @@ impl PointerButton {
 /// routed through capture into
 /// [`ButtonState::clicked`](crate::ButtonState::clicked).
 ///
-/// Sibling of [`KeyboardEvent`](crate::KeyboardEvent) —
-/// both live in their own module so the raw-event taxonomy is in one
-/// place; [`PointerWake`](crate::PointerWake) and
+/// Sibling of [`KeyPress`](crate::KeyPress) — both live in their own
+/// module so the raw-event taxonomy is in one place;
+/// [`PointerWake`](crate::PointerWake) and
 /// [`KeyboardWake`](crate::KeyboardWake) provide the wake-gate flags.
 /// The two streams are read through the same layer gate as well: an
 /// overlay scrim empties
