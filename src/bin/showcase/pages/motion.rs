@@ -138,17 +138,19 @@ struct CardState {
     /// Position at the moment `drag_started` fired; reused every
     /// subsequent frame as `pos = anchor + drag_delta`.
     anchor: Vec2,
-    inited: bool,
     /// `true` between latch and release. Drives the "record last" pick.
     dragging: bool,
 }
 
 fn card(ui: &mut Ui, key: &str, initial: Vec2, accent: Color) {
     let id = WidgetId::from_hash(key);
+    // Seeded on the first frame only — keyed on the row not existing yet,
+    // the way every other page seeds one, rather than on a flag the row's
+    // own presence already answers.
+    let fresh = ui.try_state::<CardState>(id).is_none();
     let st: &mut CardState = ui.state_mut(id);
-    if !st.inited {
+    if fresh {
         st.pos = initial;
-        st.inited = true;
     }
     let pos = st.pos;
 

@@ -18,6 +18,7 @@ use crate::primitives::mesh::Mesh;
 use crate::primitives::rect::Rect;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::stroke::Stroke;
+use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::configure::Configure;
 use crate::shape::Shape;
 use crate::shape::polyline::PolylineColors;
@@ -180,7 +181,7 @@ fn add_solids(ui: &mut Ui) {
         .fill(tokens::WARN)
         .radius(2.0_f32),
     );
-    ui.add_shape(Shape::mesh(gradient_mesh()));
+    gradient_mesh(ui);
 }
 
 /// A `Shape::shadow` under the rect that casts it — the shape-level peer
@@ -204,20 +205,21 @@ fn add_shadow(ui: &mut Ui) {
     );
 }
 
-/// The mesh payload is built once and leaked: `Shape::mesh` borrows a
-/// `&'static Mesh`, and rebuilding it per frame would allocate — which the
-/// `record-only` alloc step forbids.
-fn gradient_mesh() -> &'static Mesh {
-    use std::sync::OnceLock;
-    static MESH_PTR: OnceLock<usize> = OnceLock::new();
-    unsafe {
-        &*(*MESH_PTR.get_or_init(|| {
-            let mut m = Mesh::new();
+/// The gradient triangle, built once into a state row and lent to
+/// `add_shape` from there. Rebuilding it per frame would allocate, which
+/// the `record-only` alloc step forbids; the row is what makes the build
+/// a warmup cost instead.
+fn gradient_mesh(ui: &mut Ui) {
+    let id = WidgetId::from_hash("frame_fixture::specimen::gradient-mesh");
+    let fresh = ui.try_state::<Mesh>(id).is_none();
+    ui.with_state::<Mesh, _>(id, |ui, m| {
+        if fresh {
+            *m = Mesh::with_capacity(3, 3);
             let a = m.vertex(glam::Vec2::new(96.0, 82.0), ColorU8::hex(0xff5e44));
             let b = m.vertex(glam::Vec2::new(128.0, 22.0), ColorU8::hex(0xfacc15));
             let c = m.vertex(glam::Vec2::new(160.0, 82.0), ColorU8::hex(0x46c46c));
             m.triangle(a, b, c);
-            Box::into_raw(Box::new(m)) as usize
-        }) as *const Mesh)
-    }
+        }
+        ui.add_shape(Shape::mesh(m));
+    });
 }

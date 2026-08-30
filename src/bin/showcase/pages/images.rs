@@ -6,8 +6,9 @@
 use crate::support;
 use crate::support::{demo_cell, demo_cell_at, section, tiles};
 use glam::Vec2;
-use palantir::{Color, Image, ImageDownsample, ImageFilter, ImageFit, ImageHandle, Shape, Ui};
-use std::cell::RefCell;
+use palantir::{
+    Color, Image, ImageDownsample, ImageFilter, ImageFit, ImageHandle, Shape, Ui, WidgetId,
+};
 
 /// Synthesize a 64×64 sRGB checkerboard.
 fn checker() -> Image {
@@ -106,10 +107,10 @@ fn starfield() -> Image {
     Image::from_rgba8(N, N, pixels)
 }
 
-/// The four demo images, registered once and held for the life of the
-/// process — the GPU textures live as long as these handles do. A real
-/// app would store handles in its own state, dropping them to free VRAM.
-#[derive(Debug)]
+/// The four demo images, registered once and parked in a state row — the
+/// GPU textures live as long as these handles do. This is what a real app
+/// does with them, and dropping the row is how it frees the VRAM.
+#[derive(Clone, Debug)]
 struct Sources {
     checker: ImageHandle,
     gradient: ImageHandle,
@@ -117,34 +118,28 @@ struct Sources {
     starfield: ImageHandle,
 }
 
-thread_local! {
-    static IMAGES: RefCell<Option<Sources>> = const { RefCell::new(None) };
-}
-
 /// Clone out this frame's handles, registering on first call.
-fn sources(ui: &Ui) -> Sources {
-    IMAGES.with_borrow_mut(|slot| {
-        let s = slot.get_or_insert_with(|| Sources {
-            checker: ui
-                .register_image(checker())
-                .expect("showcase checker fits every supported GPU"),
-            gradient: ui
-                .register_image(gradient())
-                .expect("showcase gradient fits every supported GPU"),
-            sprite: ui
-                .register_image(sprite())
-                .expect("showcase sprite fits every supported GPU"),
-            starfield: ui
-                .register_image(starfield())
-                .expect("showcase starfield fits every supported GPU"),
-        });
-        Sources {
-            checker: s.checker.clone(),
-            gradient: s.gradient.clone(),
-            sprite: s.sprite.clone(),
-            starfield: s.starfield.clone(),
-        }
-    })
+fn sources(ui: &mut Ui) -> Sources {
+    ui.with_state::<Option<Sources>, _>(
+        WidgetId::from_hash("showcase::images::sources"),
+        |ui, slot| {
+            slot.get_or_insert_with(|| Sources {
+                checker: ui
+                    .register_image(checker())
+                    .expect("showcase checker fits every supported GPU"),
+                gradient: ui
+                    .register_image(gradient())
+                    .expect("showcase gradient fits every supported GPU"),
+                sprite: ui
+                    .register_image(sprite())
+                    .expect("showcase sprite fits every supported GPU"),
+                starfield: ui
+                    .register_image(starfield())
+                    .expect("showcase starfield fits every supported GPU"),
+            })
+            .clone()
+        },
+    )
 }
 
 pub(crate) fn build(ui: &mut Ui) {

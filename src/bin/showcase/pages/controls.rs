@@ -70,11 +70,7 @@ pub(crate) fn build(ui: &mut Ui) {
                         form(ui, s, &outlined, &danger);
                     },
                 );
-                Panel::vstack()
-                    .id_salt("col-r")
-                    .size((Sizing::FILL, Sizing::HUG))
-                    .gap(support::PAGE_GAP)
-                    .show(ui, |ui| side(ui, s, &outlined, &danger));
+                support::column(ui, "col-r", |ui| side(ui, s, &outlined, &danger));
             });
     });
 }

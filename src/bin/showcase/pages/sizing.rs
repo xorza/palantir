@@ -8,7 +8,6 @@ use crate::support::{section, swatch_bg, well_bg};
 use palantir::{
     Align, Color, Configure, Frame, HAlign, Justify, Panel, Sizing, Ui, VAlign, Visibility,
 };
-use std::hash::Hash;
 
 pub(crate) fn build(ui: &mut Ui) {
     Panel::hstack()
@@ -16,25 +15,17 @@ pub(crate) fn build(ui: &mut Ui) {
         .gap(24.0)
         .size((Sizing::FILL, Sizing::HUG))
         .show(ui, |ui| {
-            column(ui, "col-l", |ui| {
+            support::column(ui, "col-l", |ui| {
                 sizing(ui);
                 justify(ui);
                 visibility(ui);
             });
-            column(ui, "col-r", |ui| {
+            support::column(ui, "col-r", |ui| {
                 alignment(ui);
                 spacing(ui);
                 gap(ui);
             });
         });
-}
-
-fn column(ui: &mut Ui, id: &'static str, body: impl FnOnce(&mut Ui)) {
-    Panel::vstack()
-        .id_salt(id)
-        .gap(support::PAGE_GAP)
-        .size((Sizing::FILL, Sizing::HUG))
-        .show(ui, body);
 }
 
 fn sizing(ui: &mut Ui) {
@@ -44,7 +35,7 @@ fn sizing(ui: &mut Ui) {
         |ui| {
             support::row(ui, |ui| {
                 for (i, w) in [50.0, 100.0, 200.0].into_iter().enumerate() {
-                    chip(
+                    support::swatch(
                         ui,
                         ("fx", i),
                         (Sizing::fixed(w), Sizing::fixed(32.0)),
@@ -66,7 +57,7 @@ fn sizing(ui: &mut Ui) {
             });
             support::row(ui, |ui| {
                 for (i, weight) in [1.0, 2.0, 1.0].into_iter().enumerate() {
-                    chip(
+                    support::swatch(
                         ui,
                         ("fill", i),
                         (Sizing::fill(weight), Sizing::fixed(32.0)),
@@ -98,7 +89,7 @@ fn justify(ui: &mut Ui) {
                     .background(well_bg())
                     .show(ui, |ui| {
                         for i in 0..3 {
-                            chip(
+                            support::swatch(
                                 ui,
                                 (id, i),
                                 (Sizing::fixed(36.0), Sizing::fixed(22.0)),
@@ -196,7 +187,7 @@ fn spacing(ui: &mut Ui) {
                 .background(well_bg())
                 .show(ui, |ui| {
                     for i in 0..3 {
-                        chip(
+                        support::swatch(
                             ui,
                             ("p", i),
                             (Sizing::fixed(40.0), Sizing::FILL),
@@ -231,7 +222,7 @@ fn spacing(ui: &mut Ui) {
                 .padding(8.0)
                 .background(well_bg())
                 .show(ui, |ui| {
-                    chip(
+                    support::swatch(
                         ui,
                         ("neg", "a"),
                         (Sizing::fixed(80.0), Sizing::fixed(40.0)),
@@ -259,7 +250,7 @@ fn gap(ui: &mut Ui) {
                 .background(well_bg())
                 .show(ui, |ui| {
                     for i in 0..5 {
-                        chip(
+                        support::swatch(
                             ui,
                             ("gap-tile", g as u32, i),
                             (Sizing::fixed(32.0), Sizing::fixed(24.0)),
@@ -269,14 +260,6 @@ fn gap(ui: &mut Ui) {
                 });
         }
     });
-}
-
-fn chip<H: Hash>(ui: &mut Ui, id: H, size: (Sizing, Sizing), c: Color) {
-    Frame::new()
-        .id_salt(id)
-        .size(size)
-        .background(swatch_bg(c))
-        .show(ui);
 }
 
 fn aligned_chip(ui: &mut Ui, id: &'static str, c: Color, align: Align) {

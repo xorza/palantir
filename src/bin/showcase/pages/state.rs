@@ -8,8 +8,9 @@
 //! tree from the same `&mut AppState`, so the two counters are one
 //! value rather than copies that have to be kept in sync.
 
+use crate::shell;
 use crate::support;
-use palantir::{Button, Configure, Panel, Sizing, Text, Ui, WindowConfig, WindowToken, fmt};
+use palantir::{Button, Configure, Panel, Sizing, Text, Ui, fmt};
 
 /// State threaded through the entire showcase frame. Lives on the
 /// shell's `State` and is handed to [`build`] by the page dispatcher.
@@ -18,7 +19,7 @@ pub(crate) struct AppState {
     pub(crate) counter: i32,
 }
 
-pub(crate) fn build(ui: &mut Ui, app: &mut AppState, inspector: WindowToken) {
+pub(crate) fn build(ui: &mut Ui, app: &mut AppState) {
     support::section(ui, "counter — the value every reader shares", |ui| {
         counter(ui, app);
     });
@@ -53,7 +54,7 @@ pub(crate) fn build(ui: &mut Ui, app: &mut AppState, inspector: WindowToken) {
                  source of truth, so there is no stale bool to track. F8 toggles \
                  it too.",
             );
-            let open = ui.window_open(inspector);
+            let open = ui.window_open(shell::INSPECTOR_WINDOW);
             let label = if open {
                 "close inspector window"
             } else {
@@ -66,11 +67,7 @@ pub(crate) fn build(ui: &mut Ui, app: &mut AppState, inspector: WindowToken) {
                 .left
                 .clicked()
             {
-                if open {
-                    ui.close_window(inspector);
-                } else {
-                    ui.open_window(inspector, WindowConfig::new("inspector"));
-                }
+                shell::toggle_inspector(ui);
             }
         },
     );

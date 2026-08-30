@@ -25,6 +25,19 @@ pub(crate) const MAIN_WINDOW: WindowToken = WindowToken(0);
 /// from the `state` page in its own OS window.
 pub(crate) const INSPECTOR_WINDOW: WindowToken = WindowToken(1);
 
+/// Open the inspector, or close it if it is already up.
+///
+/// The live window set is the source of truth for which of the two this
+/// is, so both the F8 shortcut and the `state` page's button ask it here
+/// rather than each tracking a bool of its own.
+pub(crate) fn toggle_inspector(ui: &mut Ui) {
+    if ui.window_open(INSPECTOR_WINDOW) {
+        ui.close_window(INSPECTOR_WINDOW);
+    } else {
+        ui.open_window(INSPECTOR_WINDOW, WindowConfig::new("inspector"));
+    }
+}
+
 const SIDEBAR_W: f32 = 196.0;
 
 /// How the shell hosts a page's body.
@@ -366,7 +379,7 @@ impl State {
     fn body(&mut self, ui: &mut Ui) {
         match PAGES[self.active].body {
             Body::Simple(build) => build(ui),
-            Body::State => pages::state::build(ui, &mut self.app, INSPECTOR_WINDOW),
+            Body::State => pages::state::build(ui, &mut self.app),
             Body::GpuView => pages::gpu_view::build(ui, &self.cube),
             Body::Fixture => pages::frame_bench::build(ui, &mut self.fixture),
         }
@@ -564,11 +577,7 @@ fn handle_shortcuts(ui: &mut Ui) {
         ui.close_window(MAIN_WINDOW);
     }
     if ui.key_pressed(Shortcut::key(Key::F8)) {
-        if ui.window_open(INSPECTOR_WINDOW) {
-            ui.close_window(INSPECTOR_WINDOW);
-        } else {
-            ui.open_window(INSPECTOR_WINDOW, WindowConfig::new("inspector"));
-        }
+        toggle_inspector(ui);
     }
     // One read and one write for all three: `^= pressed` is "toggle if the
     // key fired", and every `key_pressed` was evaluated on this path anyway.

@@ -10,8 +10,7 @@
 
 use crate::support;
 use crate::support::{demo_cell_at, section, tiles};
-use palantir::{Color, IconId, IconSet, IconTable, Ui};
-use std::cell::RefCell;
+use palantir::{Color, IconId, IconSet, IconTable, Ui, WidgetId};
 use std::rc::Rc;
 
 /// A diskette: several flat fills over a vertical gradient, inside a clip
@@ -78,29 +77,27 @@ struct Icons {
     wide: IconId,
 }
 
-fn icons(ui: &Ui) -> Icons {
-    thread_local! {
-        /// Built once rather than rebuilt per frame — parsing four SVGs to
-        /// derive their viewBoxes is not free, and the `Rc` is what lets
-        /// `load_icons` recognise the same allocation on the next frame.
-        static BUILT: Rc<IconTable> = Rc::new(IconTable::from_svgs([
-            ("folder", FOLDER_SVG),
-            ("new-file", NEW_FILE_SVG),
-            ("save", SAVE_SVG),
-            ("wide", WIDE_SVG),
-        ]));
-        /// The *loaded* set, parked across frames. An `IconSet` owns the
-        /// host's parsed SVGs and atlas rasters for its icons, so a page
-        /// that let its own drop at the end of every frame would unload
-        /// and re-rasterize the whole set on every frame. Holding it here
-        /// is the same thing an app does by parking one in its state.
-        static LOADED: RefCell<Option<IconSet>> = const { RefCell::new(None) };
-    }
-    let set = LOADED.with(|held| {
-        held.borrow_mut()
-            .get_or_insert_with(|| BUILT.with(|atlas| ui.load_icons(Rc::clone(atlas))))
+/// The loaded set, parked in a state row across frames. An `IconSet` owns
+/// the host's parsed SVGs and atlas rasters for its icons, so a page that
+/// let its own drop at the end of every frame would unload and
+/// re-rasterize the whole set every frame. The row is what an app does
+/// with one, and it is scoped to the `Ui` that minted the handles rather
+/// than to the thread.
+fn icons(ui: &mut Ui) -> Icons {
+    let set = ui.with_state::<Option<IconSet>, _>(
+        WidgetId::from_hash("showcase::icons::set"),
+        |ui, held| {
+            held.get_or_insert_with(|| {
+                ui.load_icons(Rc::new(IconTable::from_svgs([
+                    ("folder", FOLDER_SVG),
+                    ("new-file", NEW_FILE_SVG),
+                    ("save", SAVE_SVG),
+                    ("wide", WIDE_SVG),
+                ])))
+            })
             .clone()
-    });
+        },
+    );
     let id = |name| set.by_name(name).expect("bundled icon");
     Icons {
         folder: id("folder"),
