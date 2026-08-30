@@ -61,6 +61,11 @@ const EXCLUDED: &[(&str, &str)] = &[
         "a return type, not a widget — `slider` and `drag_value` cover what \
              produces it",
     ),
+    (
+        "drag_num",
+        "a value binding, not a widget — `slider` and `drag_value` cover \
+             both of its variants",
+    ),
 ];
 
 /// Every fixture source file of this module, so the checks below read what

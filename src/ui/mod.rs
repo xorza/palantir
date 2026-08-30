@@ -1000,14 +1000,8 @@ impl Ui {
     /// references a definition the tree owns, and neither should have to
     /// name the tree to do it.
     #[inline]
-    pub(crate) fn push_grid_def(
-        &mut self,
-        rows: &[Track],
-        cols: &[Track],
-        row_gap: f32,
-        col_gap: f32,
-    ) -> GridDefId {
-        self.forest.push_grid_def(rows, cols, row_gap, col_gap)
+    pub(crate) fn push_grid_def(&mut self, rows: &[Track], cols: &[Track]) -> GridDefId {
+        self.forest.push_grid_def(rows, cols)
     }
 
     /// [`Self::push_grid_def`] for a scroll's bar overlay.

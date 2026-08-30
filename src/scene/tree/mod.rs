@@ -354,13 +354,7 @@ impl Tree {
         id
     }
 
-    pub(crate) fn push_grid_def(
-        &mut self,
-        rows: &[Track],
-        cols: &[Track],
-        row_gap: f32,
-        col_gap: f32,
-    ) -> GridDefId {
+    pub(crate) fn push_grid_def(&mut self, rows: &[Track], cols: &[Track]) -> GridDefId {
         let id = GridDefId::from_index(self.grid_defs.len());
         self.grid_tracks.reserve(rows.len() + cols.len());
         let row_start = self.grid_tracks.len();
@@ -370,8 +364,6 @@ impl Tree {
         self.grid_defs.push(GridDef {
             rows: Span::from(row_start..col_start),
             cols: Span::from(col_start..self.grid_tracks.len()),
-            row_gap,
-            col_gap,
         });
         id
     }

@@ -7,8 +7,8 @@
 use crate::support;
 use crate::support::{demo_cell, demo_cell_at, on_swatch_style, section, swatch_bg, tiles};
 use palantir::{
-    Align, Background, Color, Configure, Corners, Frame, Grid, Justify, Panel, Sizing, Stroke,
-    Text, TextStyle, Track, Ui,
+    Align, Background, Color, Configure, Corners, Frame, Grid, GridCell, Justify, Panel, Sizing,
+    Stroke, Text, TextStyle, Track, Ui,
 };
 use std::hash::Hash;
 
@@ -124,6 +124,7 @@ pub(crate) fn build(ui: &mut Ui) {
                             .id_salt("shell-grid")
                             .cols([Track::fixed(80.0), Track::FILL, Track::HUG])
                             .rows([Track::fixed(32.0), Track::FILL])
+                            .line_gap(8.0)
                             .gap(8.0)
                             .size((Sizing::FILL, Sizing::FILL))
                             .show(ui, |ui| {
@@ -154,6 +155,7 @@ pub(crate) fn build(ui: &mut Ui) {
                             .id_salt("clamped")
                             .cols([Track::fill(1.0).min(110.0).max(160.0), Track::fill(2.0)])
                             .rows([Track::FILL])
+                            .line_gap(8.0)
                             .gap(8.0)
                             .size((Sizing::FILL, Sizing::FILL))
                             .show(ui, |ui| {
@@ -247,11 +249,11 @@ fn grid_tile(
     let mut tile = Panel::zstack()
         .auto_id()
         .padding(5.0)
-        .grid_cell(cell)
+        .grid_cell(match span {
+            Some((rows, cols)) => GridCell::at(cell.0, cell.1).span(rows, cols),
+            None => cell.into(),
+        })
         .background(swatch_bg(color));
-    if let Some(s) = span {
-        tile = tile.grid_span(s);
-    }
     if let Some(sz) = size {
         tile = tile.size(sz);
     }

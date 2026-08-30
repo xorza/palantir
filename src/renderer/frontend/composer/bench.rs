@@ -7,7 +7,7 @@ use crate::renderer::frontend::capture::PaintCapture;
 use crate::renderer::frontend::composer::Composer;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
-use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
+use crate::renderer::frontend::payload::draw_image_payload::{DrawImagePayload, ImageDraw};
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
 use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
@@ -149,8 +149,8 @@ fn push_mesh(cmds: &mut PaintCapture, bbox: Rect) {
 }
 
 fn push_image(cmds: &mut PaintCapture, rect: Rect) {
-    cmds.draw_image(
-        DrawImagePayload::image(
+    cmds.draw_image(ImageDraw {
+        payload: DrawImagePayload::image(
             rect,
             Vec2::ZERO,
             Vec2::ONE,
@@ -158,8 +158,8 @@ fn push_image(cmds: &mut PaintCapture, rect: Rect) {
             TextureId(1),
             0,
         ),
-        None,
-    );
+        paint: None,
+    });
 }
 
 pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {

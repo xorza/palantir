@@ -6,6 +6,7 @@ use crate::input::key_class::KeyFilter;
 use crate::input::sense::Sense;
 use crate::layout::types::align::Align;
 use crate::layout::types::clip_mode::ClipMode;
+use crate::layout::types::grid_cell::GridCell;
 use crate::layout::types::justify::Justify;
 use crate::layout::types::sizing::Sizes;
 use crate::primitives::size::Size;
@@ -179,36 +180,31 @@ pub trait Configure: Sized {
         self.node_mut().node.position = p.into();
         self
     }
-    /// Cell `(row, col)` inside a `Grid` parent. Default `(0, 0)`. Ignored
+    /// Placement inside a `Grid` parent: a bare `(row, col)` for a
+    /// single-track cell, or a [`GridCell`] for one that spans — see
+    /// [`GridCell::at`] and [`GridCell::span`]. Default `(0, 0)`.
+    ///
+    /// One setter for one field, so the placement cannot arrive half
+    /// written and no chain order can drop a span. Cell and span are
+    /// validated against the parent's grid def at record time — an
+    /// out-of-range placement panics (`Tree::check_grid_cell`). Ignored
     /// outside a Grid parent.
-    fn grid_cell(mut self, (row, col): (u16, u16)) -> Self {
-        let node = self.node_mut().node;
-        node.grid.row = row;
-        node.grid.col = col;
-        self
-    }
-    /// Span `(row_span, col_span)` inside a `Grid` parent. Default `(1, 1)`.
-    /// Cell + span are validated against the parent's grid def at record
-    /// time — an out-of-range placement panics (`Tree::check_grid_cell`).
-    /// Ignored outside a Grid parent.
-    fn grid_span(mut self, (rs, cs): (u16, u16)) -> Self {
-        let node = self.node_mut().node;
-        node.grid.row_span = rs.max(1);
-        node.grid.col_span = cs.max(1);
+    fn grid_cell(mut self, cell: impl Into<GridCell>) -> Self {
+        self.node_mut().node.grid = cell.into();
         self
     }
     /// Logical-px space between siblings within a line. Read by
-    /// HStack/VStack and the within-line direction of WrapHStack/
-    /// WrapVStack. Grid has its own `gap_xy` and ignores this field.
+    /// HStack/VStack, the within-line direction of WrapHStack/
+    /// WrapVStack, and a Grid's columns.
     fn gap(mut self, g: f32) -> Self {
         self.node_mut().node.gaps.set_gap(g);
         self
     }
 
-    /// Logical-px space between *lines* for WrapHStack/WrapVStack —
-    /// the cross-axis spacing between wrap rows/columns. Inert in
-    /// every other layout mode. Pair with `.gap(...)` for the within-
-    /// line spacing.
+    /// Logical-px space between *lines*: the cross-axis spacing between
+    /// a WrapHStack/WrapVStack's wrap rows, and between a Grid's rows.
+    /// Inert in every other layout mode. Pair with `.gap(...)` for the
+    /// within-line spacing.
     fn line_gap(mut self, g: f32) -> Self {
         self.node_mut().node.gaps.set_line_gap(g);
         self

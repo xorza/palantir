@@ -3,6 +3,7 @@
 
 use crate::layout::axis::Axis;
 
+use crate::layout::types::grid_cell::GridCell;
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
@@ -15,6 +16,9 @@ use crate::widgets::{frame::Frame, grid::Grid};
 use crate::widgets::{panel::Panel, text::Text};
 use glam::UVec2;
 
+/// A grid reads its spacing from the node column `line_gap` and `gap`
+/// write, so the rows and the columns each measure against the value
+/// their own setter named.
 #[test]
 fn grid_span_covers_multiple_tracks_with_gap() {
     // 3 fixed primary tracks of 100 with gap 10 → spanning all = 320.
@@ -42,14 +46,14 @@ fn grid_span_covers_multiple_tracks_with_gap() {
             let span = if *swap { (3, 1) } else { (1, 3) };
             Grid::new()
                 .auto_id()
+                .line_gap(10.0)
+                .gap(10.0)
                 .rows(rows)
                 .cols(cols)
-                .gap(10.0)
                 .show(ui, |ui| {
                     Frame::new()
                         .id(WidgetId::from_hash("header"))
-                        .grid_cell((0, 0))
-                        .grid_span(span)
+                        .grid_cell(GridCell::at(0, 0).span(span.0, span.1))
                         .show(ui);
                     Frame::new()
                         .id(WidgetId::from_hash("body"))
@@ -94,7 +98,8 @@ fn spanned_text_measures_against_track_sizes_plus_internal_column_gaps() {
                     .auto_id()
                     .cols(fixed_tracks(case))
                     .rows([Track::HUG])
-                    .gap_xy(0.0, case.gap)
+                    .line_gap(0.0)
+                    .gap(case.gap)
                     .size((Sizing::HUG, Sizing::HUG))
                     .show(ui, |ui| {
                         text_node = Some(
@@ -106,7 +111,7 @@ fn spanned_text_measures_against_track_sizes_plus_internal_column_gaps() {
                                         .with_line_height_mult(1.0),
                                 )
                                 .text_wrap(TextWrap::WrapWithOverflow)
-                                .grid_span((1, case.span))
+                                .grid_cell(GridCell::at(0, 0).span(1, case.span))
                                 .show(ui)
                                 .node(),
                         );
@@ -158,10 +163,8 @@ fn spanned_nested_wrap_measures_against_internal_gaps_on_both_axes() {
                     .auto_id()
                     .rows(rows)
                     .cols(cols)
-                    .gap_xy(
-                        if axis == Axis::Y { case.gap } else { 0.0 },
-                        if axis == Axis::X { case.gap } else { 0.0 },
-                    )
+                    .line_gap(if axis == Axis::Y { case.gap } else { 0.0 })
+                    .gap(if axis == Axis::X { case.gap } else { 0.0 })
                     .size((Sizing::HUG, Sizing::HUG))
                     .show(ui, |ui| {
                         let panel = match axis {
@@ -171,9 +174,9 @@ fn spanned_nested_wrap_measures_against_internal_gaps_on_both_axes() {
                         panel_node = Some(
                             panel
                                 .auto_id()
-                                .grid_span(match axis {
-                                    Axis::X => (1, case.span),
-                                    Axis::Y => (case.span, 1),
+                                .grid_cell(match axis {
+                                    Axis::X => GridCell::at(0, 0).span(1, case.span),
+                                    Axis::Y => GridCell::at(0, 0).span(case.span, 1),
                                 })
                                 .show(ui, |ui| {
                                     Frame::new()
@@ -241,12 +244,12 @@ fn grid_cell_with_2d_span_covers_track_union_with_gaps() {
             .auto_id()
             .cols([Track::fixed(50.0), Track::fixed(50.0), Track::fixed(50.0)])
             .rows([Track::fixed(50.0), Track::fixed(50.0), Track::fixed(50.0)])
+            .line_gap(10.0)
             .gap(10.0)
             .show(ui, |ui| {
                 Frame::new()
                     .id(WidgetId::from_hash("big"))
-                    .grid_cell((0, 0))
-                    .grid_span((2, 2))
+                    .grid_cell(GridCell::at(0, 0).span(2, 2))
                     .show(ui);
                 Frame::new()
                     .id(WidgetId::from_hash("corner"))

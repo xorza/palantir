@@ -11,6 +11,7 @@ use crate::renderer::frontend::composer::tests::support::{
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
+use crate::renderer::frontend::payload::draw_image_payload::ImageDraw;
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
@@ -831,10 +832,10 @@ fn images_between_labels_split_text_the_same_way() {
         |buf, _| {
             for i in 0..BUTTONS {
                 let x = i as f32 * 100.0;
-                buf.draw_image(
-                    gpu_view_payload(rect(x, 0.0, 16.0, 16.0), TextureId(1)),
-                    None,
-                );
+                buf.draw_image(ImageDraw {
+                    payload: gpu_view_payload(rect(x, 0.0, 16.0, 16.0), TextureId(1)),
+                    paint: None,
+                });
                 text(buf, rect(x + 20.0, 0.0, 60.0, 16.0));
             }
         },

@@ -3,8 +3,8 @@
 
 use glam::UVec2;
 use palantir::{
-    Background, Button, Color, Configure, Corners, Frame, Grid, Panel, Shadow, Sizing, Stroke,
-    Text, TextStyle, Track,
+    Background, Button, Color, Configure, Corners, Frame, Grid, GridCell, Panel, Shadow, Sizing,
+    Stroke, Text, TextStyle, Track,
 };
 
 use crate::fixtures::DARK_BG;
@@ -29,6 +29,7 @@ fn dashboard_matches_golden() {
             .id_salt("shell")
             .cols([Track::fixed(110.0), Track::FILL])
             .rows([Track::fixed(40.0), Track::FILL, Track::fixed(24.0)])
+            .line_gap(8.0)
             .gap(8.0)
             .padding(12.0)
             .size((Sizing::FILL, Sizing::FILL))
@@ -36,8 +37,7 @@ fn dashboard_matches_golden() {
                 // Header: title + action buttons, spans both columns.
                 Panel::hstack()
                     .id_salt("header")
-                    .grid_cell((0, 0))
-                    .grid_span((1, 2))
+                    .grid_cell(GridCell::at(0, 0).span(1, 2))
                     .size((Sizing::FILL, Sizing::FILL))
                     .max_size((f32::INFINITY, 40.0))
                     .padding((10.0, 14.0, 10.0, 14.0))
@@ -101,6 +101,7 @@ fn dashboard_matches_golden() {
                     .grid_cell((1, 1))
                     .cols([Track::FILL, Track::FILL])
                     .rows([Track::FILL, Track::FILL])
+                    .line_gap(8.0)
                     .gap(8.0)
                     .show(ui, |ui| {
                         let palette = [
@@ -147,8 +148,7 @@ fn dashboard_matches_golden() {
                 // Footer status bar.
                 Panel::hstack()
                     .id_salt("footer")
-                    .grid_cell((2, 0))
-                    .grid_span((1, 2))
+                    .grid_cell(GridCell::at(2, 0).span(1, 2))
                     .max_size((f32::INFINITY, 24.0))
                     .padding((4.0, 10.0, 4.0, 10.0))
                     .background(Background {

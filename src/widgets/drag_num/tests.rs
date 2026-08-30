@@ -1,7 +1,7 @@
 //! Rounding, clamping, and the string round-trip both numeric variants
 //! take.
 
-use crate::widgets::drag_value::{DragNum, round_to_decimals};
+use crate::widgets::drag_num::{DragNum, round_to_decimals};
 
 #[test]
 fn round_to_decimals_snaps_and_formats_short() {

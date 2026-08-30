@@ -66,7 +66,7 @@ fn grid_columns_with_wrapping_text_do_not_overlap() {
     ];
     let long_text = "The quick brown fox jumps over the lazy dog. Pack my box \
                      with five dozen liquor jugs. How vexingly quick daft zebras jump!";
-    for (label_id, grid_main, cols, gap_xy) in cases {
+    for (label_id, grid_main, cols, gaps) in cases {
         let mut h = UiHarness::new(UVec2::new(800, 600));
         let mut left = None;
         let mut right = None;
@@ -81,7 +81,8 @@ fn grid_columns_with_wrapping_text_do_not_overlap() {
                     }
                     g.cols(*cols)
                         .rows([Track::HUG])
-                        .gap_xy(gap_xy.0, gap_xy.1)
+                        .line_gap(gaps.0)
+                        .gap(gaps.1)
                         .show(ui, |ui| {
                             left = Some(
                                 Text::new(long_text)
@@ -135,7 +136,8 @@ fn text_layouts_two_sections_back_to_back_no_overlap() {
                         .id(WidgetId::from_hash("two-hug-inner"))
                         .cols([Track::HUG, Track::HUG])
                         .rows([Track::HUG])
-                        .gap_xy(0.0, 16.0)
+                        .line_gap(0.0)
+                        .gap(16.0)
                         .show(ui, |ui| {
                             hug_left = Some(
                                 Text::new(PARAGRAPH)
@@ -163,7 +165,8 @@ fn text_layouts_two_sections_back_to_back_no_overlap() {
                         .size((Sizing::FILL, Sizing::HUG))
                         .cols([Track::HUG, Track::FILL])
                         .rows([Track::HUG, Track::HUG, Track::HUG])
-                        .gap_xy(6.0, 16.0)
+                        .line_gap(6.0)
+                        .gap(16.0)
                         .show(ui, |ui| {
                             prop_label = Some(
                                 Text::new("Title:")
@@ -223,7 +226,8 @@ fn property_grid_emits_distinct_drawtext_x_positions() {
                     .size((Sizing::FILL, Sizing::HUG))
                     .cols([Track::HUG, Track::FILL])
                     .rows([Track::HUG, Track::HUG, Track::HUG])
-                    .gap_xy(6.0, 16.0)
+                    .line_gap(6.0)
+                    .gap(16.0)
                     .show(ui, |ui| {
                         Text::new("Title:")
                             .auto_id()
@@ -288,7 +292,7 @@ fn text_layouts_full_showcase_drawtext_dump() {
                                 Grid::new().id(WidgetId::from_hash("two-hug-inner"))
                                     .cols([Track::HUG, Track::HUG])
                                     .rows([Track::HUG])
-                                    .gap_xy(0.0, 16.0)
+                                    .line_gap(0.0).gap(16.0)
                                     .show(ui, |ui| {
                                         Text::new(PARAGRAPH).auto_id()
                                             .style(&TextStyle::default().with_font_size(14.0))
@@ -306,7 +310,7 @@ fn text_layouts_full_showcase_drawtext_dump() {
                                     .size((Sizing::FILL, Sizing::HUG))
                                     .cols([Track::HUG, Track::FILL])
                                     .rows([Track::HUG, Track::HUG, Track::HUG])
-                                    .gap_xy(6.0, 16.0)
+                                    .line_gap(6.0).gap(16.0)
                                     .show(ui, |ui| {
                                         Text::new("Title:").auto_id()
                                             .style(&TextStyle::default().with_font_size(14.0))

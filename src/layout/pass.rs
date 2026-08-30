@@ -252,6 +252,11 @@ impl LayoutPass<'_> {
         let layout = tree.records.layout()[node.idx()];
         let available_q = quantize_available(available);
         self.engine.scratch.available_q[node.idx()] = available_q;
+        // `is_collapsed`, not `!is_visible`: a `Hidden` node keeps its
+        // slot, so its extent still has to be measured — a text leaf
+        // shapes its run to find one, even though nothing paints it.
+        // That is the opposite of the container-text pass in
+        // `LayoutEngine::run`, whose runs are paint-only.
         if layout.meta.visibility().is_collapsed() {
             self.engine.scratch.desired[node.idx()] = Size::ZERO;
             return Size::ZERO;

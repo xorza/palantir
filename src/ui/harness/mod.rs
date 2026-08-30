@@ -703,8 +703,16 @@ impl UiHarness {
             .collect()
     }
 
+    /// # Panics
+    ///
+    /// Panics when no clipboard backend answers. The harness runs on the
+    /// in-memory backend, which always does.
     pub fn clipboard_text(&self) -> String {
-        self.ui.resources.clipboard.get()
+        self.ui
+            .resources
+            .clipboard
+            .get()
+            .expect("the harness clipboard is the in-memory backend")
     }
 
     pub fn set_clipboard_text(&mut self, text: &str) {

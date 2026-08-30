@@ -14,7 +14,6 @@
 //! be arranged but a consequence of asking the same shaper.
 
 use crate::primitives::size::Size;
-use crate::primitives::urect::URect;
 use crate::text::cosmic::CosmicMeasure;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::render::{GlyphImage, GlyphRasterKey, PlacedGlyph, RunPlacement};
@@ -148,14 +147,14 @@ fn request(text: &str, font: GlyphFont) -> Option<TextShapeRequest<'_>> {
 
 /// The run placed at its own origin, culled against nothing.
 ///
-/// A caller drawing into its own target clips with its own scissor, and the
-/// y-cull here is a whole-line test against a rectangle this has no business
-/// guessing at — so the bounds are the widest a `URect` states.
+/// A caller drawing into its own target clips with its own scissor, and
+/// the y-cull is a whole-line test against a rectangle this has no
+/// business guessing at.
 fn placement(scale: f32) -> RunPlacement {
     RunPlacement {
         origin: Vec2::ZERO,
         scale,
-        bounds: URect::new(0, 0, u32::MAX, u32::MAX),
+        bounds: None,
     }
 }
 

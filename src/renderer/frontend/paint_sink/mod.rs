@@ -71,13 +71,12 @@
 use crate::primitives::translate_scale::TranslateScale;
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
-use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
+use crate::renderer::frontend::payload::draw_image_payload::ImageDraw;
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
-use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
 
 macro_rules! noop_gates {
     ($( $gate:ident($payload:ty) => $method:ident, )*) => {
@@ -128,11 +127,9 @@ pub(crate) trait PaintSink {
     /// `PolylineColors::assert_matches` in `lower::polyline`.
     fn polyline(&mut self, payload: DrawPolylinePayload);
 
-    /// Paint a textured rect. `paint` is `Some` exactly when this
-    /// composites a `GpuView`, and carries the callback its off-screen
-    /// target is painted with — so the composite and the target it needs
-    /// cannot come apart.
-    fn image(&mut self, payload: DrawImagePayload, paint: Option<&GpuPaintRef>);
+    /// Paint a textured rect, with the `GpuView` callback beside it when
+    /// this composites one — see [`ImageDraw`].
+    fn image(&mut self, draw: ImageDraw<'_>);
 
     /// Paint a baked icon. Nothing is rasterized here — the sink records
     /// which icon at which logical rect, and the backend resolves that to
@@ -142,7 +139,7 @@ pub(crate) trait PaintSink {
     fn curve(&mut self, payload: DrawCurvePayload);
 
     // One gate per payload kind whose whole body is "drop it if it
-    // paints nothing". Written once rather than five times: what differs
+    // paints nothing". Written once rather than six times: what differs
     // between them is the payload type and the sink method, which is all
     // the table says.
     noop_gates! {
@@ -151,19 +148,7 @@ pub(crate) trait PaintSink {
         draw_mesh(DrawMeshPayload) => mesh,
         draw_icon(DrawIconPayload) => icon,
         draw_curve(DrawCurvePayload) => curve,
-    }
-
-    /// `paint.is_some()` is what this gate reads — an image with a null
-    /// handle paints nothing, a `GpuView` with one paints this frame's
-    /// off-screen target. So the fact travels on the one argument rather
-    /// than being mirrored onto the payload, which is also why this gate
-    /// is not in the table above.
-    #[inline]
-    fn draw_image(&mut self, payload: DrawImagePayload, paint: Option<&GpuPaintRef>) {
-        if payload.is_noop(paint.is_some()) {
-            return;
-        }
-        self.image(payload, paint);
+        draw_image(ImageDraw<'_>) => image,
     }
 
     #[inline]

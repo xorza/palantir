@@ -25,7 +25,7 @@ struct Signals {
 /// from `canonical` every record pass and is adopted only on
 /// `committed`. Signals OR-accumulate across the frame's passes,
 /// because a one-frame edge only shows in the first.
-fn deferred_frame(h: &mut UiHarness, id: WidgetId, canonical: &mut f32) -> Signals {
+fn deferred_frame(h: &mut UiHarness, id: WidgetId, canonical: &mut f64) -> Signals {
     let mut s = Signals {
         changed: false,
         committed: false,
@@ -61,7 +61,7 @@ fn deferred_frame(h: &mut UiHarness, id: WidgetId, canonical: &mut f32) -> Signa
 fn release_rewrites_the_value_once_for_a_deferred_caller() {
     let id = WidgetId::from_hash("slider-deferred-commit");
     let mut h = UiHarness::new(UVec2::new(118, 18));
-    let mut canonical = 0.0_f32;
+    let mut canonical = 0.0_f64;
 
     // Settle a layout frame so the cascade exists for pointer routing.
     deferred_frame(&mut h, id, &mut canonical);
@@ -93,7 +93,7 @@ fn release_rewrites_the_value_once_for_a_deferred_caller() {
 #[test]
 fn explicit_size_overrides_fill_default() {
     let mut h = UiHarness::new(UVec2::new(400, 300));
-    let mut v = 0.5_f32;
+    let mut v = 0.5_f64;
     let (mut sized, mut hug, mut default) = (None, None, None);
     h.frame(|ui| {
         let col = Panel::vstack().auto_id().size((Sizing::FILL, Sizing::FILL));
@@ -133,7 +133,7 @@ fn endpoint_rails_collapse_without_invalid_fill_weights() {
     for (value, expected) in [
         (0.0, [0.0, 18.0, 102.0]),
         (1.0, [102.0, 18.0, 0.0]),
-        (f32::NAN, [0.0, 18.0, 102.0]),
+        (f64::NAN, [0.0, 18.0, 102.0]),
     ] {
         let mut h = UiHarness::new(UVec2::new(120, 30));
         let mut value = value;
@@ -171,17 +171,18 @@ fn value_to_fraction_maps_and_clamps() {
             "v2f({v},{min},{max})={got} want {want}"
         );
     }
-    // A NaN anywhere in the triple has no fraction to report. This
-    // answers one rather than guarding, because `Sizing::split` is the
-    // gate that makes the answer safe to lay out with.
+    // A NaN anywhere in the triple names no share, and the low end is
+    // what this widget reads that as — the same answer
+    // `pointer_to_fraction` gives a rail with no travel.
     for (v, min, max) in [
-        (f32::NAN, 0.0, 100.0),
-        (50.0, f32::NAN, 100.0),
-        (50.0, 0.0, f32::NAN),
+        (f64::NAN, 0.0, 100.0),
+        (50.0, f64::NAN, 100.0),
+        (50.0, 0.0, f64::NAN),
     ] {
-        assert!(
-            value_to_fraction(v, min, max).is_nan(),
-            "v2f({v},{min},{max}) must report no fraction",
+        assert_eq!(
+            value_to_fraction(v, min, max),
+            0.0,
+            "v2f({v},{min},{max}) must read as the low end",
         );
     }
 }
@@ -189,7 +190,7 @@ fn value_to_fraction_maps_and_clamps() {
 #[test]
 fn fraction_to_value_inverts_value_to_fraction() {
     // Round-trip over an offset range.
-    for &v in &[10.0_f32, 12.5, 15.0, 17.5, 20.0] {
+    for &v in &[10.0_f64, 12.5, 15.0, 17.5, 20.0] {
         let f = value_to_fraction(v, 10.0, 20.0);
         let back = fraction_to_value(f, 10.0, 20.0);
         assert!((back - v).abs() < 1e-5, "roundtrip {v} -> {f} -> {back}");
@@ -217,8 +218,8 @@ fn pointer_mapping_is_scale_invariant() {
     for scale in [0.5, 1.0, 2.0] {
         for (local_x, expected) in [(9.0, 0.0), (34.5, 0.25), (111.0, 1.0)] {
             let mut h = UiHarness::new(UVec2::new(300, 100));
-            let mut value = 0.5;
-            let build = |ui: &mut Ui, value: &mut f32| {
+            let mut value = 0.5_f64;
+            let build = |ui: &mut Ui, value: &mut f64| {
                 Panel::zstack()
                     .id(WidgetId::from_hash("scaled-slider-parent"))
                     .transform(TranslateScale::from_scale(scale))
@@ -256,9 +257,24 @@ fn snap_to_step_rounds_to_grid() {
     assert!((snap_to_step(13.0, 0.0, Some(5.0)) - 15.0).abs() < 1e-6);
     // Off-anchor grid: steps of 0.5 from min=1.0.
     assert!((snap_to_step(2.2, 1.0, Some(0.5)) - 2.0).abs() < 1e-6);
-    // None / non-positive passes through.
+    // A slider with no step passes the value through.
     assert!((snap_to_step(53.0, 0.0, None) - 53.0).abs() < 1e-6);
-    assert!((snap_to_step(53.0, 0.0, Some(0.0)) - 53.0).abs() < 1e-6);
+}
+
+/// `None` is the only "off": the builder refuses a step that would be a
+/// second spelling of it.
+#[test]
+fn step_rejects_a_value_that_cannot_snap() {
+    for bad in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+        assert!(
+            std::panic::catch_unwind(move || {
+                let mut v = 0.5_f64;
+                Slider::new(&mut v, 0.0..=1.0).step(bad);
+            })
+            .is_err(),
+            "step({bad}) must panic",
+        );
+    }
 }
 
 /// A rail with no travel left reports the low end rather than dividing
@@ -267,4 +283,35 @@ fn snap_to_step_rounds_to_grid() {
 fn pointer_to_fraction_reports_zero_for_a_knob_wider_than_its_rail() {
     assert_eq!(pointer_to_fraction(15.0, 20.0, 20.0), 0.0);
     assert_eq!(pointer_to_fraction(15.0, 10.0, 20.0), 0.0);
+}
+
+/// The binding is `DragNum`, so the rail drives an integer as readily
+/// as a float, and every landing is whole.
+///
+/// Same geometry as the deferred-commit test: 118 wide, knob 18, so the
+/// 100 px travel starts at x = 9. On a `0..=10` range x = 89 is 0.8 of
+/// it — value 8 exactly — and x = 34 is 0.25, whose 2.5 rounds away from
+/// zero.
+#[test]
+fn an_integer_target_lands_on_whole_values() {
+    let id = WidgetId::from_hash("slider-int");
+    let mut h = UiHarness::new(UVec2::new(118, 18));
+    let mut value = 0_i64;
+    let frame = |h: &mut UiHarness, value: &mut i64| {
+        h.frame(|ui| {
+            Slider::new(&mut *value, 0.0..=10.0)
+                .size((Sizing::fixed(118.0), Sizing::fixed(18.0)))
+                .id(id)
+                .show(ui);
+        });
+    };
+    frame(&mut h, &mut value);
+
+    h.press_at(Vec2::new(89.0, 9.0));
+    frame(&mut h, &mut value);
+    assert_eq!(value, 8);
+
+    h.drag_to(Vec2::new(34.0, 9.0));
+    frame(&mut h, &mut value);
+    assert_eq!(value, 3);
 }

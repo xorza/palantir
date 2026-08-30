@@ -1,8 +1,9 @@
-//! One textured-quad draw.
+//! One textured-quad draw, and the pair a sink takes it as.
 
 use crate::primitives::color::ColorF16;
 use crate::primitives::rect::Rect;
 use crate::primitives::texture_id::TextureId;
+use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
 
 /// Image draw payload. `rect` is the logical-px paint rect (encoder
 /// already folded in `local_rect`, `fit`, and the image's intrinsic
@@ -51,19 +52,35 @@ impl DrawImagePayload {
             flags,
         }
     }
+}
 
-    /// Paints nothing when: zero-extent rect, fully transparent tint,
-    /// or null handle (paints no pixels, no texture to sample).
-    ///
-    /// `is_gpu_view` rather than a field, because it is the same fact as
-    /// the `paint` callback the sink already carries beside the payload —
-    /// a `GpuView` is never null-skipped, since its texture is
-    /// framework-painted this frame rather than a registered image that
-    /// could have been dropped. Held on the payload it would ride in
-    /// every `PartialEq` and every captured call for one read, two lines
-    /// after the write.
+/// One image draw as [`PaintSink::image`] takes it: the payload plus, for
+/// a `GpuView` composite, the callback its off-screen target is painted
+/// with.
+///
+/// One value rather than two arguments, so the composite and the target
+/// it needs cannot come apart and the no-op question reads the same
+/// `is_noop(&self)` every sibling payload answers. Borrowed rather than
+/// owned so the draw stays `Copy` — the `Rc` clone is the capture sink's
+/// to pay, once, when it keeps a call past the frame.
+///
+/// [`PaintSink::image`]: crate::renderer::frontend::paint_sink::PaintSink::image
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct ImageDraw<'a> {
+    pub(crate) payload: DrawImagePayload,
+    pub(crate) paint: Option<&'a GpuPaintRef>,
+}
+
+impl ImageDraw<'_> {
+    /// Paints nothing when: zero-extent rect, fully transparent tint, or
+    /// a null handle with no callback behind it — a registered image
+    /// that was dropped. A `GpuView` is never null-skipped, since its
+    /// texture is framework-painted this frame.
     #[inline]
-    pub(crate) fn is_noop(&self, is_gpu_view: bool) -> bool {
-        self.rect.is_paint_empty() || self.tint.is_noop() || (self.handle.0 == 0 && !is_gpu_view)
+    pub(crate) fn is_noop(&self) -> bool {
+        let Self { payload, paint } = self;
+        payload.rect.is_paint_empty()
+            || payload.tint.is_noop()
+            || (payload.handle.0 == 0 && paint.is_none())
     }
 }

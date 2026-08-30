@@ -1,5 +1,6 @@
 //! Public node authoring data and the builder configuration surface.
 
+pub(crate) mod authored_gaps;
 pub(crate) mod bounds_extras;
 pub(crate) mod configure;
 pub(crate) mod container_chrome;
@@ -25,10 +26,10 @@ use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
+use crate::scene::node::authored_gaps::AuthoredGaps;
 use crate::scene::node::bounds_extras::BoundsExtras;
 use crate::scene::node::configure::{Configure, ConfigureNode};
 use crate::scene::node::container_chrome::ContainerChrome;
-use crate::scene::node::gaps::Gaps;
 use crate::scene::node::layout_core::LayoutCore;
 use crate::scene::node::node_columns::NodeColumns;
 use crate::scene::node::node_flags::NodeFlags;
@@ -71,11 +72,11 @@ pub struct Node {
     pub(crate) clip: Option<ClipMode>,
 
     /// Within-line gap + between-line gap packed as two f16 lanes.
-    /// `gaps.gap()` (HStack/VStack/WrapHStack/WrapVStack) is the
-    /// sibling spacing; `gaps.line_gap()` (WrapHStack/WrapVStack only)
-    /// is the row/column spacing. Both ignored by Leaf/ZStack/Canvas/
-    /// Grid (Grid uses its own row_gap/col_gap).
-    pub(crate) gaps: Gaps,
+    /// `gaps.gap()` is the sibling spacing (HStack/VStack/WrapHStack/
+    /// WrapVStack, and a Grid's columns); `gaps.line_gap()` is the
+    /// between-line spacing (WrapHStack/WrapVStack, and a Grid's rows).
+    /// Both ignored by Leaf/ZStack/Canvas.
+    pub(crate) gaps: AuthoredGaps,
 
     /// Main-axis distribution of leftover space (HStack/VStack only).
     pub(crate) justify: Justify,
@@ -287,9 +288,28 @@ impl Node {
 
     #[inline]
     pub(crate) fn fill_gap(&mut self, gap: f32) {
-        if !self.gaps.gap_is_set() {
+        if self.gaps.gap().is_none() {
             self.gaps.set_gap(gap);
         }
+    }
+
+    /// Fill each axis the caller left `Auto`, leaving the other alone.
+    ///
+    /// Per-axis rather than whole-value like the writers above, because
+    /// `Auto` is what `Align` spells "unset" with and it spells it once
+    /// per axis. A widget defaulting one axis must not silently take
+    /// the other with it.
+    #[inline]
+    pub(crate) fn fill_align(&mut self, value: Align) {
+        let h = match self.align.halign() {
+            HAlign::Auto => value.halign(),
+            set => set,
+        };
+        let v = match self.align.valign() {
+            VAlign::Auto => value.valign(),
+            set => set,
+        };
+        self.align = Align::new(h, v);
     }
 
     /// Install this node's layout mode, once the payload a builder chain
@@ -328,7 +348,7 @@ impl Node {
             padding: None,
             margin: None,
             clip: None,
-            gaps: Gaps::UNSET_PAIR,
+            gaps: AuthoredGaps::UNSET_PAIR,
             justify: Justify::Start,
             align: Align::new(HAlign::Auto, VAlign::Auto),
             child_align: Align::new(HAlign::Auto, VAlign::Auto),
@@ -370,7 +390,7 @@ impl Node {
                 max_size: self.max_size.unwrap_or(Size::INF),
             },
             panel: PanelExtras {
-                gaps: self.gaps,
+                gaps: self.gaps.resolve(),
                 justify: self.justify,
                 child_align: self.child_align,
                 transform: self.transform,

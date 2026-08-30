@@ -28,13 +28,8 @@ pub(crate) const fn valid_upper_bound(value: f32) -> bool {
 }
 
 #[inline]
-pub(crate) const fn valid_gap(value: f32) -> bool {
-    valid_lower_bound(value)
-}
-
-#[inline]
 pub(crate) const fn valid_packed_gap(value: f32) -> bool {
-    valid_gap(value) && value <= MAX_PACKED_GAP
+    valid_lower_bound(value) && value <= MAX_PACKED_GAP
 }
 
 /// # Panics

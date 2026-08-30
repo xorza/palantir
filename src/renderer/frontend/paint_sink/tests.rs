@@ -3,7 +3,7 @@ use crate::primitives::rect::Rect;
 use crate::primitives::texture_id::TextureId;
 use crate::renderer::frontend::capture::{PaintCall, PaintCapture};
 use crate::renderer::frontend::paint_sink::PaintSink;
-use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
+use crate::renderer::frontend::payload::draw_image_payload::{DrawImagePayload, ImageDraw};
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
 use crate::renderer::gpu_paint::GpuPaint;
 use crate::renderer::gpu_paint::gpu_frame_ctx::GpuFrameCtx;
@@ -119,8 +119,8 @@ fn gpu_view_gate_drops_zero_extent_and_pairs_payload_with_paint() {
 
     for (label, rect, handle, has_paint, expect_call) in cases {
         let mut sink = PaintCapture::default();
-        sink.draw_image(
-            DrawImagePayload::image(
+        sink.draw_image(ImageDraw {
+            payload: DrawImagePayload::image(
                 rect,
                 Vec2::ZERO,
                 Vec2::ONE,
@@ -128,8 +128,8 @@ fn gpu_view_gate_drops_zero_extent_and_pairs_payload_with_paint() {
                 handle,
                 0,
             ),
-            has_paint.then_some(&paint),
-        );
+            paint: has_paint.then_some(&paint),
+        });
         if !expect_call {
             assert!(sink.calls.is_empty(), "case {label}: {:?}", sink.calls);
             continue;

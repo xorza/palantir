@@ -6,6 +6,7 @@ use crate::layout::grid::axis_scratch::AxisScratch;
 use crate::layout::grid::axis_scratch::HugRanges;
 
 use crate::layout::intrinsic::LenReq;
+use crate::layout::types::grid_cell::GridCell;
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::rect::Rect;
 use crate::primitives::span::Span;
@@ -71,8 +72,7 @@ fn grid_hug_column_takes_max_span1_child_intrinsic() {
                     .show(ui);
                 Frame::new()
                     .id(WidgetId::from_hash("body"))
-                    .grid_cell((0, 1))
-                    .grid_span((2, 1))
+                    .grid_cell(GridCell::at(0, 1).span(2, 1))
                     .show(ui);
             })
             .response

@@ -182,7 +182,11 @@ impl<'a> Splitter<'a> {
         ];
         let cross_tracks = [Track::FILL];
         let [rows, cols] = axis.rows_cols(&main_tracks[..], &cross_tracks[..]);
-        let grid_def_id = ui.push_grid_def(rows, cols, 0.0, 0.0);
+        let grid_def_id = ui.push_grid_def(rows, cols);
+        // The middle track *is* the seam, so the grid owes no spacing of
+        // its own — a caller's `gap` would push the panes off the rule.
+        widget.node.gaps.set_gap(0.0);
+        widget.node.gaps.set_line_gap(0.0);
         widget.node.set_mode(LayoutMode::Grid(grid_def_id));
         widget.record(ui, None, |ui| {
             pane(ui, first_id, axis, 0, |ui| body(ui, SplitHalf::First));

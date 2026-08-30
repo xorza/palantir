@@ -118,7 +118,7 @@ macro_rules! hot_structs {
 /// one feature-conditional footprint in reach, `LayoutCounters`'
 /// `bench`-only `PhaseTimings`, rides `LayoutEngine` into
 /// [`FrameEngines`](crate::ui::frame_engines) instead.
-const UI_SIZE: usize = 5904;
+const UI_SIZE: usize = 6000;
 
 /// Expected `size_of::<FrameEngines>()`. Two numbers because
 /// `LayoutCounters` carries a `PhaseTimings` only under `bench` — the
@@ -178,7 +178,7 @@ hot_structs! {
     RadioButton<'static, u8> => "widgets::RadioButton<u8>": 168 / 8,
     TextEdit<'static> => "widgets::TextEdit": 184 / 8,
     Text<'static> => "widgets::Text": 160 / 8,
-    Slider<'static> => "widgets::Slider": 152 / 8,
+    Slider<'static> => "widgets::Slider": 184 / 8,
     ProgressBar<'static> => "widgets::ProgressBar": 136 / 8,
     Splitter<'static> => "widgets::Splitter": 144 / 8,
     // Layout / text outputs.

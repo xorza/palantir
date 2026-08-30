@@ -7,6 +7,7 @@
 use crate::frame_fixture::FrameFixture;
 use crate::frame_fixture::tokens;
 use crate::layout::types::align::Align;
+use crate::layout::types::grid_cell::GridCell;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
 use crate::primitives::background::Background;
@@ -79,7 +80,8 @@ pub(super) fn settings_card(state: &mut FrameFixture, ui: &mut Ui) {
             .id_salt("settings-grid")
             .cols([Track::HUG.min(92.0), Track::FILL])
             .rows(rows)
-            .gap_xy(8.0, 12.0)
+            .line_gap(8.0)
+            .gap(12.0)
             .size((Sizing::FILL, Sizing::HUG))
             .show(ui, |ui| {
                 Text::new("Appearance")
@@ -107,7 +109,7 @@ pub(super) fn settings_card(state: &mut FrameFixture, ui: &mut Ui) {
                     });
 
                 // Full-width rule, drawn with a spanning cell so the grid
-                // carries `grid_span` coverage in its simplest honest form.
+                // carries span coverage in its simplest honest form.
                 Frame::new()
                     .id_salt("s-rule")
                     .size((Sizing::FILL, Sizing::fixed(1.0)))
@@ -115,8 +117,7 @@ pub(super) fn settings_card(state: &mut FrameFixture, ui: &mut Ui) {
                         fill: tokens::BORDER.into(),
                         ..Default::default()
                     })
-                    .grid_cell((1, 0))
-                    .grid_span((1, 2))
+                    .grid_cell(GridCell::at(1, 0).span(1, 2))
                     .show(ui);
 
                 Text::new("Zoom")
@@ -174,7 +175,8 @@ pub(super) fn properties_card(state: &mut FrameFixture, ui: &mut Ui, rows: usize
             .id_salt("props-grid")
             .cols([Track::HUG.min(92.0), Track::FILL, Track::fixed(60.0)])
             .rows(state.grid_rows.as_slice())
-            .gap_xy(2.0, 8.0)
+            .line_gap(2.0)
+            .gap(8.0)
             .size((Sizing::FILL, Sizing::HUG))
             .show(ui, |ui| {
                 const LABELS: [&str; 8] = [
@@ -197,7 +199,7 @@ pub(super) fn properties_card(state: &mut FrameFixture, ui: &mut Ui, rows: usize
                     let r = row as u16;
                     // Zebra band: a full-width cell under the row's three
                     // cells. Grid children may share a cell, so this both
-                    // reads as a table and covers `grid_span`.
+                    // reads as a table and covers a multi-column span.
                     if row % 2 == 0 {
                         Frame::new()
                             .id_salt(("pband", row))
@@ -207,8 +209,7 @@ pub(super) fn properties_card(state: &mut FrameFixture, ui: &mut Ui, rows: usize
                                 corners: Corners::all(4.0),
                                 ..Default::default()
                             })
-                            .grid_cell((r, 0))
-                            .grid_span((1, 3))
+                            .grid_cell(GridCell::at(r, 0).span(1, 3))
                             .show(ui);
                     }
                     Text::new(LABELS[row % LABELS.len()])

@@ -2,7 +2,7 @@
 //! opened from.
 
 use crate::Ui;
-use crate::layout::types::placement::Placement;
+use crate::layout::types::placement::{Placement, PlacementOrigin};
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::color::Color;
 use crate::primitives::rect::Rect;
@@ -55,9 +55,9 @@ fn ui_layer_records_popup_into_separate_tree() {
     assert!(
         matches!(
             popup_tree.roots[0].placement,
-            Placement::Fixed {
-                anchor,
-                size: None
+            Placement {
+                origin: PlacementOrigin::Anchor(anchor),
+                max_size: None
             } if anchor == popup_anchor
         ),
         "popup root keeps its fixed layer placement",

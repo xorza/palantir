@@ -22,13 +22,20 @@ use glam::Vec2;
 pub(crate) struct ScrollState {
     pub(crate) offset: Vec2,
     pub(super) zoom: f32,
-    /// Where the live thumb drag started, so cumulative drag deltas
-    /// compose against a stable snapshot rather than the moving offset.
-    ///
-    /// Held **in the bar's own domain** (`[0, max_off]`), not the
-    /// offset's, and only for the driven axis — that is all a thumb can
-    /// express or move.
-    drag_anchor: Option<(Axis, f32)>,
+    /// The live thumb drag's origin, or `None` between drags.
+    drag_anchor: Option<DragAnchor>,
+}
+
+/// Where a live thumb drag started, so cumulative drag deltas compose
+/// against a stable snapshot rather than the moving offset. Named for
+/// the same reason [`ThumbTravel`] and [`TrackPage`] are.
+#[derive(Clone, Copy, Debug)]
+struct DragAnchor {
+    /// The one axis this drag drives — that is all a thumb can move.
+    axis: Axis,
+    /// The origin, in the bar's own domain (`[0, max_off]`) rather than
+    /// the offset's — that is all a thumb can express.
+    start: f32,
 }
 
 impl Default for ScrollState {
@@ -210,14 +217,14 @@ impl ScrollState {
             // `-offset / factor` px of the gesture climbing back to 0
             // with the thumb not moving at all.
             let start = axis.main_v(self.offset);
-            self.drag_anchor = Some((axis, travel.map_or(start, |t| t.domain.clamp(start))));
+            self.drag_anchor = Some(DragAnchor {
+                axis,
+                start: travel.map_or(start, |t| t.domain.clamp(start)),
+            });
         }
-        let Some((anchor_axis, anchor)) = self.drag_anchor else {
+        let Some(anchor) = self.drag_anchor.filter(|a| a.axis == axis) else {
             return;
         };
-        if anchor_axis != axis {
-            return;
-        }
         let Some(delta) = drag_delta else {
             self.drag_anchor = None;
             return;
@@ -232,7 +239,7 @@ impl ScrollState {
             self.drag_anchor = None;
             return;
         };
-        let target = anchor + axis.main_v(delta) * travel.factor;
+        let target = anchor.start + axis.main_v(delta) * travel.factor;
         let clamped = travel.domain.clamp(target);
         match axis {
             Axis::X => self.offset.x = clamped,

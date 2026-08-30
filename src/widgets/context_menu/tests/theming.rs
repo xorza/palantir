@@ -74,13 +74,9 @@ fn theme_gaps_drive_row_pitch_and_shortcut_gutter() {
 }
 
 /// An explicit `.gap(0.0)` is not the same as never setting one — the
-/// theme fills in only the untouched case.
-///
-/// This is what `Gaps`'s unset state buys. `Configure::gap` writes into
-/// a packed f16 pair, and while its zero was indistinguishable from
-/// "untouched" the theme fallback had nothing to key on, so `ContextMenu`
-/// carried its own `Option<f32>` shadowing the setter. Rows sit flush at
-/// `0.0` and a theme gap apart when unset.
+/// theme fills in only the untouched case, which is what
+/// `AuthoredGaps`'s unset lane buys. Rows sit flush at `0.0`, and a
+/// theme gap apart when the caller sets nothing.
 #[test]
 fn an_explicit_zero_gap_beats_the_theme_default() {
     fn rows(h: &mut UiHarness, gap: Option<f32>) -> Vec<MenuRow> {

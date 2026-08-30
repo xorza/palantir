@@ -16,7 +16,7 @@ use bytemuck::{Pod, Zeroable};
 /// the atlas-row identifier from being silently swapped with another
 /// `u32` field on `Quad`.
 #[repr(transparent)]
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash, Pod, Zeroable)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Pod, Zeroable)]
 pub(crate) struct LutRow(pub(crate) u32);
 
 impl LutRow {
@@ -25,4 +25,13 @@ impl LutRow {
     /// in that path; a stray `FALLBACK` reaching the sampler paints
     /// magenta.
     pub(crate) const FALLBACK: LutRow = LutRow(0);
+}
+
+/// Written out rather than derived, so row 0 is spelled once: the
+/// default *is* the fallback, which is what makes an unset row paint
+/// magenta instead of somebody's gradient.
+impl Default for LutRow {
+    fn default() -> Self {
+        Self::FALLBACK
+    }
 }

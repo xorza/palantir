@@ -30,7 +30,7 @@ struct State {
     metered: bool,
     appearance: Appearance,
     reduce_motion: bool,
-    volume: f32,
+    volume: f64,
     fps: i64,
     syncing: bool,
 }

@@ -33,11 +33,12 @@ use crate::scene::tree::node_id::NodeId;
 /// is the single place that ordering is written down.
 #[derive(Clone, Copy, Debug)]
 enum Tier {
-    /// New, childless, and painting nothing on-surface. Deliberately
-    /// left out of the map: a zoomed-out canvas must not fill it with
-    /// thousands of never-visible snapshots. The omission is repaid by
-    /// [`Tier::SubtreeMoved`]'s insert leg the frame a move brings the
-    /// rows on-surface.
+    /// New and out of the map, for one of two reasons: it has no paint
+    /// rows at all, which is the row invariant; or it is childless and
+    /// every row it has is off-surface, which keeps a zoomed-out canvas
+    /// from filling the map with thousands of never-visible snapshots.
+    /// The second omission is repaid by [`Tier::SubtreeMoved`]'s insert
+    /// leg the frame a move brings the rows on-surface.
     Untracked,
     /// No snapshot — everything this node paints is new.
     Added,
@@ -150,14 +151,19 @@ impl LayerWalk<'_> {
     /// classification just pulled in.
     fn classify(&self, i: usize, wid: WidgetId, parent_key: u64) -> Tier {
         let Some(prev) = self.prev.get(&wid).copied() else {
-            let childless = !self.tree.has_children(i);
-            return if childless
-                && !self
-                    .cascade
-                    .paint_arena
-                    .rows_of(i)
-                    .any_on_surface(self.surface)
-            {
+            let rows = self.cascade.paint_arena.rows_of(i);
+            // The row invariant, first: a node with no rows never enters
+            // the map. A container the cascade wrote an empty span for —
+            // its own `Visibility` is not `Visible`, whatever its
+            // children are — is the case that is not also childless.
+            if rows.is_empty() {
+                return Tier::Untracked;
+            }
+            // The off-surface skip, second, and only for a childless
+            // node: a container's rows are child markers carrying zero
+            // rects, so "nothing on-surface" says nothing about what the
+            // subtree paints.
+            return if !self.tree.has_children(i) && !rows.any_on_surface(self.surface) {
                 Tier::Untracked
             } else {
                 Tier::Added

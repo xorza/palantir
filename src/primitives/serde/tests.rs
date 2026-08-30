@@ -59,10 +59,12 @@ fn sequence_lengths_preserve_supported_forms_and_reject_others() {
     }
 }
 
-/// The three map outcomes, all decided by the shared visitor: an
-/// absent lane defaults, a repeated one is a duplicate, and a name
-/// outside `FIELDS` is rejected rather than ignored — the last is
-/// what stops a typo in a theme file from silently reading as zero.
+/// The four map outcomes, all decided by the shared visitor: an absent
+/// lane reads as the codec's `0.0` neutral, a repeated one is a
+/// duplicate, a name outside `FIELDS` is rejected rather than ignored,
+/// and a table naming nothing is rejected the way an empty array is.
+/// The unknown-name arm is what stops a typo in a theme file from
+/// silently reading as zero.
 #[test]
 fn map_defaults_missing_lanes_and_rejects_duplicate_or_unknown_fields() {
     let missing = MapDeserializer::<_, Error>::new([("a", 1.0), ("c", 3.0)].into_iter());
@@ -80,5 +82,13 @@ fn map_defaults_missing_lanes_and_rejects_duplicate_or_unknown_fields() {
     assert_eq!(
         error.to_string(),
         "unknown field `typo`, expected one of `a`, `b`, `c`, `d`",
+    );
+
+    let empty = MapDeserializer::<_, Error>::new(std::iter::empty::<(&str, f32)>());
+    let error = deserialize_lanes::<TestLanes, _>(empty).unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        "invalid length 0, expected a number, a 1-, 2-, or 4-node array, \
+         or a {a, b, c, d} table",
     );
 }

@@ -17,8 +17,11 @@ pub(crate) struct RunPlacement {
     pub(crate) origin: Vec2,
     /// Full raster scale (frame DPI × per-run transform scale).
     pub(crate) scale: f32,
-    /// Whole-line y-cull bounds; the GPU scissor is the real pixel clip.
-    pub(crate) bounds: URect,
+    /// Whole-line y-cull bounds, or `None` for a run with nothing to
+    /// cull against — a caller drawing into its own target, which clips
+    /// with its own scissor. The GPU scissor is the real pixel clip
+    /// either way.
+    pub(crate) bounds: Option<URect>,
 }
 
 /// One glyph resolved to physical-px placement plus its opaque raster

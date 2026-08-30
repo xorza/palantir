@@ -125,7 +125,8 @@ fn large_inline_track_definition_has_exact_extent_and_last_cell_position() {
                 .id(WidgetId::from_hash("large-grid"))
                 .rows([Track::fixed(10.0)])
                 .cols(cols)
-                .gap_xy(0.0, 2.0)
+                .line_gap(0.0)
+                .gap(2.0)
                 .show(ui, |ui| {
                     Frame::new()
                         .id(WidgetId::from_hash("last-cell"))

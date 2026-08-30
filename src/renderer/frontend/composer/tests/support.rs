@@ -229,9 +229,9 @@ pub(super) fn curve(b: &mut PaintCapture, bbox: Rect) {
 }
 
 pub(super) fn image(b: &mut PaintCapture, r: Rect) {
-    use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
-    b.draw_image(
-        DrawImagePayload::image(
+    use crate::renderer::frontend::payload::draw_image_payload::{DrawImagePayload, ImageDraw};
+    b.draw_image(ImageDraw {
+        payload: DrawImagePayload::image(
             r,
             Vec2::ZERO,
             Vec2::ONE,
@@ -239,6 +239,6 @@ pub(super) fn image(b: &mut PaintCapture, r: Rect) {
             TextureId(1),
             0,
         ),
-        None,
-    );
+        paint: None,
+    });
 }

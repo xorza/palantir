@@ -3,8 +3,10 @@
 
 use crate::Ui;
 use crate::input::pointer::PointerButton;
+use crate::input::sense::Sense;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
+use crate::scene::layer::Layer;
 use crate::scene::node::configure::Configure;
 use crate::ui::harness::UiHarness;
 use crate::widgets::drag_value::DragValue;
@@ -189,4 +191,61 @@ fn non_left_drags_do_not_scrub() {
     let s = deferred_frame(&mut h, id, &mut canonical, false, false);
     assert!(!s.committed, "right release must not commit");
     assert_eq!(canonical, 10.0);
+}
+
+/// The sense the widget needs is folded over the caller's at `show`,
+/// so no chain order can leave the chip unable to scrub.
+///
+/// `editable` decides only whether the click that opens the inline
+/// editor joins the drag. Turning it back off drops that click again,
+/// and a caller's own `Sense::SCROLL` survives either setting.
+#[test]
+fn the_widgets_own_sense_survives_every_builder_order() {
+    let mut h = UiHarness::new(UVec2::new(300, 100));
+    let mut nodes = Vec::new();
+    let mut value = 0.0_f64;
+    h.frame(|ui| {
+        nodes.push(
+            DragValue::new(&mut value)
+                .auto_id()
+                .show(ui)
+                .response
+                .node(),
+        );
+        nodes.push(
+            DragValue::new(&mut value)
+                .editable(true)
+                .auto_id()
+                .show(ui)
+                .response
+                .node(),
+        );
+        nodes.push(
+            DragValue::new(&mut value)
+                .editable(true)
+                .editable(false)
+                .auto_id()
+                .show(ui)
+                .response
+                .node(),
+        );
+        nodes.push(
+            DragValue::new(&mut value)
+                .sense(Sense::SCROLL)
+                .auto_id()
+                .show(ui)
+                .response
+                .node(),
+        );
+    });
+    let want = [
+        ("plain", Sense::DRAG),
+        ("editable", Sense::CLICK | Sense::DRAG),
+        ("toggled back off", Sense::DRAG),
+        ("caller's own scroll", Sense::SCROLL | Sense::DRAG),
+    ];
+    let attrs = h.ui.tree(Layer::Main).records.attrs();
+    for (node, (case, sense)) in nodes.into_iter().zip(want) {
+        assert_eq!(attrs[node.idx()].sense(), sense, "case: {case}");
+    }
 }

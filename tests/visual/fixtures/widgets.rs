@@ -1049,7 +1049,7 @@ fn spinner_matches_golden() {
 fn slider_thirty_percent_matches_golden() {
     let mut h = Harness::new();
     let img = h.render(UVec2::new(240, 60), 1.0, DARK_BG, |ui| {
-        let mut v = 0.3_f32;
+        let mut v = 0.3_f64;
         Panel::vstack()
             .auto_id()
             .padding(20.0)
