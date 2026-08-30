@@ -84,7 +84,8 @@ fn compositions(ui: &mut Ui) {
                 .id_salt("two-hug-inner")
                 .cols([Track::HUG, Track::HUG])
                 .rows([Track::HUG])
-                .gap_xy(0.0, 16.0)
+                .line_gap(0.0)
+                .gap(16.0)
                 .show(ui, |ui| {
                     Text::new(PARAGRAPH)
                         .style(&body_style())
@@ -108,7 +109,8 @@ fn compositions(ui: &mut Ui) {
                 .size((Sizing::FILL, Sizing::HUG))
                 .cols([Track::HUG, Track::FILL])
                 .rows([Track::HUG, Track::HUG, Track::HUG])
-                .gap_xy(6.0, 16.0)
+                .line_gap(6.0)
+                .gap(16.0)
                 .show(ui, |ui| {
                     let rows = [
                         (

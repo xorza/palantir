@@ -176,6 +176,12 @@ impl ::serde::Serialize for Size {
     }
 }
 
+/// An omitted axis reads as **unbounded**, not zero: this type spells a
+/// `max_size` bound as often as an extent, and infinity is what "no
+/// bound on this axis" means. `Serialize` above is the same rule read
+/// backwards — a non-finite lane is written as absent. The shared
+/// four-lane codec in `primitives::serde` takes the opposite neutral
+/// for the opposite reason, which is why `Size` writes its own.
 impl<'de> ::serde::Deserialize<'de> for Size {
     fn deserialize<D: ::serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, ::serde::Deserialize)]

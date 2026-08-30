@@ -66,6 +66,6 @@ fn clipboard_is_shared_within_one_host_and_isolated_between_hosts() {
 
     first_window.clipboard.set("shared").unwrap();
 
-    assert_eq!(second_window.clipboard.get(), "shared");
-    assert_eq!(second.clipboard.get(), "");
+    assert_eq!(second_window.clipboard.get().unwrap(), "shared");
+    assert_eq!(second.clipboard.get().unwrap(), "");
 }

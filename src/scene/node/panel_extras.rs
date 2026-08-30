@@ -18,7 +18,7 @@ pub(crate) struct PanelExtras {
 impl Hash for PanelExtras {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
-        let gaps_u32 = self.gaps.resolved();
+        let gaps_u32 = self.gaps.as_u32();
         let packed = (gaps_u32 as u64)
             | ((self.child_align.raw() as u64) << 32)
             | ((self.justify as u64) << 40);
@@ -43,7 +43,7 @@ impl PanelExtras {
 
     #[inline]
     pub(crate) fn is_default(&self) -> bool {
-        self.gaps.resolved() == Self::DEFAULT.gaps.resolved()
+        self.gaps == Self::DEFAULT.gaps
             && self.justify == Self::DEFAULT.justify
             && self.child_align == Self::DEFAULT.child_align
             && self.transform.is_identity()

@@ -100,8 +100,8 @@ pub struct FrameFixture {
     /// damage `Skip` / `Partial` invariants the arms assert; they widen
     /// widget coverage only. Seeded to mid-range values so the visual
     /// harness shows them in a representative, non-empty state.
-    volume: f32,
-    mix: f32,
+    volume: f64,
+    mix: f64,
     zoom: f64,
     quality: usize,
     dark_mode: bool,

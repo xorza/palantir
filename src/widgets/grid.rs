@@ -2,7 +2,6 @@
 //! placed into a cell it names.
 
 use crate::layout::types::layout_mode::LayoutMode;
-use crate::layout::types::limits::valid_gap;
 use crate::layout::types::track::Track;
 use crate::primitives::background::Background;
 use crate::scene::node::Node;
@@ -30,8 +29,6 @@ pub struct Grid<Rows = [Track; 0], Cols = [Track; 0]> {
     node: Node,
     rows: Rows,
     cols: Cols,
-    row_gap: f32,
-    col_gap: f32,
     chrome: Option<Background>,
 }
 
@@ -42,8 +39,6 @@ impl Grid {
             node: Node::grid(),
             rows: [],
             cols: [],
-            row_gap: 0.0,
-            col_gap: 0.0,
             chrome: None,
         }
     }
@@ -55,8 +50,6 @@ impl<Rows, Cols> Grid<Rows, Cols> {
             node: self.node,
             rows,
             cols: self.cols,
-            row_gap: self.row_gap,
-            col_gap: self.col_gap,
             chrome: self.chrome,
         }
     }
@@ -66,40 +59,8 @@ impl<Rows, Cols> Grid<Rows, Cols> {
             node: self.node,
             rows: self.rows,
             cols,
-            row_gap: self.row_gap,
-            col_gap: self.col_gap,
             chrome: self.chrome,
         }
-    }
-
-    /// Uniform gap on both axes. See `gap_xy` for asymmetric gaps.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `g` is negative or non-finite.
-    pub fn gap(mut self, g: f32) -> Self {
-        assert!(
-            valid_gap(g),
-            "Grid gap must be finite and non-negative, got {g}",
-        );
-        self.row_gap = g;
-        self.col_gap = g;
-        self
-    }
-
-    /// Asymmetric gaps: `row_gap` between rows, `col_gap` between columns.
-    ///
-    /// # Panics
-    ///
-    /// Panics if either gap is negative or non-finite.
-    pub fn gap_xy(mut self, row_gap: f32, col_gap: f32) -> Self {
-        assert!(
-            valid_gap(row_gap) && valid_gap(col_gap),
-            "Grid gaps must be finite and non-negative, got row={row_gap}, col={col_gap}",
-        );
-        self.row_gap = row_gap;
-        self.col_gap = col_gap;
-        self
     }
 
     /// Paint chrome (fill / stroke / corner radius / shadow). `None` is
@@ -116,12 +77,7 @@ impl<Rows, Cols> Grid<Rows, Cols> {
         Rows: AsRef<[Track]>,
         Cols: AsRef<[Track]>,
     {
-        let id = ui.push_grid_def(
-            self.rows.as_ref(),
-            self.cols.as_ref(),
-            self.row_gap,
-            self.col_gap,
-        );
+        let id = ui.push_grid_def(self.rows.as_ref(), self.cols.as_ref());
         let mut node = self.node;
         node.set_mode(LayoutMode::Grid(id));
 
@@ -139,31 +95,28 @@ impl_configure!(<Rows, Cols> Grid<Rows, Cols>);
 mod tests {
     use super::Grid;
     use crate::layout::types::limits::MAX_PACKED_GAP;
+    use crate::scene::node::configure::Configure;
 
+    /// A grid's spacing is the node column every other container uses,
+    /// so it is set through the same two setters and faces the same
+    /// packed-gap range.
     #[test]
     fn gaps_validate_and_store_values() {
-        let uniform = Grid::new().gap(0.0);
-        assert_eq!(uniform.row_gap, 0.0);
-        assert_eq!(uniform.col_gap, 0.0);
+        let configured = Grid::new().line_gap(3.0).gap(5.0);
+        assert_eq!(configured.node.gaps.line_gap(), Some(3.0));
+        assert_eq!(configured.node.gaps.gap(), Some(5.0));
 
-        let asymmetric = Grid::new().gap_xy(3.0, 5.0);
-        assert_eq!(asymmetric.row_gap, 3.0);
-        assert_eq!(asymmetric.col_gap, 5.0);
+        let edge = Grid::new().line_gap(MAX_PACKED_GAP).gap(0.0);
+        assert_eq!(edge.node.gaps.line_gap(), Some(MAX_PACKED_GAP));
+        assert_eq!(edge.node.gaps.gap(), Some(0.0));
 
-        let above_f16 = Grid::new().gap(MAX_PACKED_GAP + 1.0);
-        assert_eq!(above_f16.row_gap, MAX_PACKED_GAP + 1.0);
-        assert_eq!(above_f16.col_gap, MAX_PACKED_GAP + 1.0);
-
-        let invalid: [fn(Grid) -> Grid; 9] = [
+        let invalid: [fn(Grid) -> Grid; 6] = [
+            |grid| grid.line_gap(-1.0),
             |grid| grid.gap(-1.0),
             |grid| grid.gap(f32::NAN),
-            |grid| grid.gap(f32::INFINITY),
+            |grid| grid.line_gap(f32::INFINITY),
             |grid| grid.gap(f32::NEG_INFINITY),
-            |grid| grid.gap_xy(-1.0, 0.0),
-            |grid| grid.gap_xy(0.0, -1.0),
-            |grid| grid.gap_xy(0.0, f32::NAN),
-            |grid| grid.gap_xy(f32::INFINITY, 0.0),
-            |grid| grid.gap_xy(0.0, f32::NEG_INFINITY),
+            |grid| grid.line_gap(MAX_PACKED_GAP + 1.0),
         ];
 
         for (index, case) in invalid.into_iter().enumerate() {

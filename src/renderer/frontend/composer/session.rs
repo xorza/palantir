@@ -17,14 +17,13 @@ use crate::primitives::{
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
-use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
+use crate::renderer::frontend::payload::draw_image_payload::ImageDraw;
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::frontend::payload::draw_quad_payload::QuadGeom;
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
-use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
 use crate::renderer::quad::{AA_RADIUS, Quad};
 use crate::renderer::render_buffer::curve::{
     CURVE_KIND_ARC, CURVE_KIND_CUBIC, CURVE_KIND_SEGMENT, CurveInstance, cap_lanes,
@@ -393,7 +392,8 @@ impl PaintSink for ComposeSession<'_> {
         });
     }
 
-    fn image(&mut self, p: DrawImagePayload, paint: Option<&GpuPaintRef>) {
+    fn image(&mut self, draw: ImageDraw<'_>) {
+        let ImageDraw { payload: p, paint } = draw;
         let ScaledRect {
             phys: phys_rect,
             urect: image_urect,

@@ -101,15 +101,9 @@ impl Forest {
     /// through the active layer here is what makes that hold by
     /// construction rather than by every caller remembering.
     #[inline]
-    pub(crate) fn push_grid_def(
-        &mut self,
-        rows: &[Track],
-        cols: &[Track],
-        row_gap: f32,
-        col_gap: f32,
-    ) -> GridDefId {
+    pub(crate) fn push_grid_def(&mut self, rows: &[Track], cols: &[Track]) -> GridDefId {
         let layer = self.current_layer();
-        self.trees[layer].push_grid_def(rows, cols, row_gap, col_gap)
+        self.trees[layer].push_grid_def(rows, cols)
     }
 
     /// Intern a bar overlay's definition into the current layer's tree.

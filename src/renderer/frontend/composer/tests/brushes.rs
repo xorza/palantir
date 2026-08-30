@@ -16,7 +16,7 @@ use crate::renderer::frontend::composer::tests::support::{
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
-use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
+use crate::renderer::frontend::payload::draw_image_payload::{DrawImagePayload, ImageDraw};
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
@@ -192,8 +192,8 @@ fn compose_repeated_linear_brush_shares_atlas_row() {
 fn compose_emits_image_batch_for_drawimage() {
     let buf = run(
         |b, _arena| {
-            b.draw_image(
-                DrawImagePayload::image(
+            b.draw_image(ImageDraw {
+                payload: DrawImagePayload::image(
                     rect(10.0, 20.0, 30.0, 40.0),
                     glam::Vec2::ZERO,
                     glam::Vec2::ONE,
@@ -201,8 +201,8 @@ fn compose_emits_image_batch_for_drawimage() {
                     TextureId(0xc0ffee),
                     0,
                 ),
-                None,
-            );
+                paint: None,
+            });
         },
         &params(2.0, UVec2::new(400, 400)),
     );
@@ -247,10 +247,10 @@ fn compose_gpu_view_carries_nested_transform_and_dpr_to_raster_target() {
             |b, _arena| {
                 b.push_transform(TranslateScale::from_scale(2.0));
                 b.push_transform(TranslateScale::from_scale(1.5));
-                b.draw_image(
-                    gpu_view_payload(rect(0.0, 0.0, 20.0, 10.0), TextureId(0xc0ffee)),
-                    Some(&gpu_paint()),
-                );
+                b.draw_image(ImageDraw {
+                    payload: gpu_view_payload(rect(0.0, 0.0, 20.0, 10.0), TextureId(0xc0ffee)),
+                    paint: Some(&gpu_paint()),
+                });
                 b.pop_transform();
                 b.pop_transform();
             },
@@ -287,10 +287,10 @@ fn compose_gpu_view_sized_to_what_the_surface_can_show() {
     // Twice as wide as the 100px surface, and a third taller.
     let buf = run(
         |b, _arena| {
-            b.draw_image(
-                gpu_view_payload(rect(0.0, 0.0, 200.0, 120.0), TextureId(0xc0ffee)),
-                Some(&gpu_paint()),
-            );
+            b.draw_image(ImageDraw {
+                payload: gpu_view_payload(rect(0.0, 0.0, 200.0, 120.0), TextureId(0xc0ffee)),
+                paint: Some(&gpu_paint()),
+            });
         },
         &params(1.0, UVec2::new(100, 90)),
     );
@@ -330,10 +330,10 @@ fn compose_gpu_view_sized_to_what_a_clip_leaves() {
     let buf = run(
         |b, _arena| {
             b.clip(PushClipPayload::rect(rect(30.0, 20.0, 40.0, 25.0)));
-            b.draw_image(
-                gpu_view_payload(rect(10.0, 10.0, 100.0, 60.0), TextureId(0xc0ffee)),
-                Some(&gpu_paint()),
-            );
+            b.draw_image(ImageDraw {
+                payload: gpu_view_payload(rect(10.0, 10.0, 100.0, 60.0), TextureId(0xc0ffee)),
+                paint: Some(&gpu_paint()),
+            });
             b.pop_clip();
         },
         &params(1.0, UVec2::new(200, 200)),
@@ -358,10 +358,10 @@ fn compose_gpu_view_sized_to_what_a_clip_leaves() {
 fn compose_gpu_view_whole_when_nothing_clips_it() {
     let buf = run(
         |b, _arena| {
-            b.draw_image(
-                gpu_view_payload(rect(10.0, 20.0, 80.0, 40.0), TextureId(0xc0ffee)),
-                Some(&gpu_paint()),
-            );
+            b.draw_image(ImageDraw {
+                payload: gpu_view_payload(rect(10.0, 20.0, 80.0, 40.0), TextureId(0xc0ffee)),
+                paint: Some(&gpu_paint()),
+            });
         },
         &params(1.0, UVec2::new(200, 200)),
     );
@@ -395,16 +395,16 @@ fn compose_gpu_view_caps_wide_and_tall_targets_uniformly() {
     for case in cases {
         let buf = run_with_texture_cap(
             |b, _arena| {
-                b.draw_image(
-                    gpu_view_payload(
+                b.draw_image(ImageDraw {
+                    payload: gpu_view_payload(
                         Rect {
                             min: Vec2::ZERO,
                             size: case.logical_size,
                         },
                         TextureId(0xc0ffee),
                     ),
-                    Some(&gpu_paint()),
-                );
+                    paint: Some(&gpu_paint()),
+                });
             },
             &params(1.0, UVec2::new(400, 400)),
             100,
@@ -441,10 +441,10 @@ fn compose_gpu_view_caps_wide_and_tall_targets_uniformly() {
     let buf = run_with_texture_cap(
         |b, _arena| {
             b.clip(PushClipPayload::rect(rect(45.0, 45.0, 155.0, 155.0)));
-            b.draw_image(
-                gpu_view_payload(rect(0.0, 0.0, 200.0, 200.0), TextureId(0xc0ffee)),
-                Some(&gpu_paint()),
-            );
+            b.draw_image(ImageDraw {
+                payload: gpu_view_payload(rect(0.0, 0.0, 200.0, 200.0), TextureId(0xc0ffee)),
+                paint: Some(&gpu_paint()),
+            });
             b.pop_clip();
         },
         &params(1.0, UVec2::new(400, 400)),
@@ -466,8 +466,8 @@ fn compose_gpu_view_caps_wide_and_tall_targets_uniformly() {
 fn compose_image_forwards_uv_crop_for_cover_fit() {
     let buf = run(
         |b, _arena| {
-            b.draw_image(
-                DrawImagePayload::image(
+            b.draw_image(ImageDraw {
+                payload: DrawImagePayload::image(
                     rect(0.0, 0.0, 100.0, 100.0),
                     glam::Vec2::new(0.25, 0.0),
                     glam::Vec2::new(0.5, 1.0),
@@ -475,8 +475,8 @@ fn compose_image_forwards_uv_crop_for_cover_fit() {
                     TextureId(1),
                     0,
                 ),
-                None,
-            );
+                paint: None,
+            });
         },
         &params(1.0, UVec2::new(400, 400)),
     );
@@ -494,8 +494,8 @@ fn compose_forwards_flags_and_repeat_uv() {
     let buf = run(
         |b, _arena| {
             // Plain draw: flags stay 0.
-            b.draw_image(
-                DrawImagePayload::image(
+            b.draw_image(ImageDraw {
+                payload: DrawImagePayload::image(
                     rect(0.0, 0.0, 50.0, 50.0),
                     glam::Vec2::ZERO,
                     glam::Vec2::ONE,
@@ -503,11 +503,11 @@ fn compose_forwards_flags_and_repeat_uv() {
                     TextureId(1),
                     0,
                 ),
-                None,
-            );
+                paint: None,
+            });
             // Tiled draw: UV size > 1 (3×2 repeats) + tiled bit.
-            b.draw_image(
-                DrawImagePayload::image(
+            b.draw_image(ImageDraw {
+                payload: DrawImagePayload::image(
                     rect(0.0, 0.0, 50.0, 50.0),
                     glam::Vec2::ZERO,
                     glam::Vec2::new(3.0, 2.0),
@@ -515,11 +515,11 @@ fn compose_forwards_flags_and_repeat_uv() {
                     TextureId(2),
                     IMG_FLAG_TILED,
                 ),
-                None,
-            );
+                paint: None,
+            });
             // The two nearest-filter bits ride through together.
-            b.draw_image(
-                DrawImagePayload::image(
+            b.draw_image(ImageDraw {
+                payload: DrawImagePayload::image(
                     rect(0.0, 0.0, 50.0, 50.0),
                     glam::Vec2::ZERO,
                     glam::Vec2::ONE,
@@ -527,8 +527,8 @@ fn compose_forwards_flags_and_repeat_uv() {
                     TextureId(3),
                     IMG_FLAG_MIN_NEAREST | IMG_FLAG_MAG_NEAREST,
                 ),
-                None,
-            );
+                paint: None,
+            });
         },
         &params(1.0, UVec2::new(400, 400)),
     );

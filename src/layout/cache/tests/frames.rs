@@ -79,7 +79,8 @@ fn cache_hit_preserves_grid_cell_rects() {
                         .size((Sizing::FILL, Sizing::HUG))
                         .cols([Track::HUG, Track::FILL])
                         .rows([Track::HUG])
-                        .gap_xy(6.0, 16.0)
+                        .line_gap(6.0)
+                        .gap(16.0)
                         .show(ui, |ui| {
                             capture.push(
                                 Text::new("Title:")
@@ -406,7 +407,8 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
                             .size((Sizing::FILL, Sizing::HUG))
                             .cols([Track::HUG, Track::FILL])
                             .rows([Track::HUG, Track::HUG])
-                            .gap_xy(6.0, 8.0)
+                            .line_gap(6.0)
+                            .gap(8.0)
                             .show(ui, |ui| {
                                 Text::new("Title:")
                                     .auto_id()

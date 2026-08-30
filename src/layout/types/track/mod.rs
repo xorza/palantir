@@ -111,8 +111,6 @@ impl std::hash::Hash for Track {
 pub(crate) struct GridDef {
     pub(crate) rows: Span,
     pub(crate) cols: Span,
-    pub(crate) row_gap: f32,
-    pub(crate) col_gap: f32,
 }
 
 impl GridDef {
@@ -125,8 +123,6 @@ impl GridDef {
         for t in &tracks[self.cols.range()] {
             t.hash_visual(h);
         }
-        self.row_gap.hash_visual(h);
-        self.col_gap.hash_visual(h);
     }
 }
 

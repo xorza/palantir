@@ -117,7 +117,11 @@ impl EditAction {
                     let _ = clipboard.set(selected);
                 }
             }
-            Self::Paste => editor.paste(&clipboard.get()),
+            Self::Paste => {
+                if let Ok(text) = clipboard.get() {
+                    editor.paste(&text);
+                }
+            }
             Self::Clear => editor.clear(),
         }
     }

@@ -99,9 +99,10 @@ impl LayoutDriver for Grid {
         if def.cols.len == 0 || def.rows.len == 0 {
             return IntrinsicRange::ZERO;
         }
+        let gaps = tree.panel(node).gaps;
         let (track_span, gap) = match axis {
-            Axis::X => (def.cols, def.col_gap),
-            Axis::Y => (def.rows, def.row_gap),
+            Axis::X => (def.cols, gaps.gap()),
+            Axis::Y => (def.rows, gaps.line_gap()),
         };
         let tracks = &tree.grid_tracks[track_span.range()];
         let n_tracks = tracks.len();

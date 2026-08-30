@@ -3,8 +3,8 @@
 
 use glam::UVec2;
 use palantir::{
-    Align, Background, Button, Color, Configure, Corners, Frame, Grid, Panel, Shadow, Sizing,
-    Stroke, Text, TextStyle, TextWrap, Track,
+    Align, Background, Button, Color, Configure, Corners, Frame, Grid, GridCell, Panel, Shadow,
+    Sizing, Stroke, Text, TextStyle, TextWrap, Track,
 };
 
 use crate::fixtures::DARK_BG;
@@ -63,14 +63,14 @@ fn grid_mixed_tracks_matches_golden() {
             .id_salt("g")
             .cols([Track::fixed(80.0), Track::FILL, Track::fixed(60.0)])
             .rows([Track::fixed(40.0), Track::FILL])
+            .line_gap(6.0)
             .gap(6.0)
             .padding(10.0)
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 Frame::new()
                     .id_salt("header")
-                    .grid_cell((0, 0))
-                    .grid_span((1, 3))
+                    .grid_cell(GridCell::at(0, 0).span(1, 3))
                     .background(Background {
                         fill: Color::rgb(0.25, 0.30, 0.45).into(),
                         corners: Corners::all(4.0),
@@ -156,7 +156,8 @@ fn grid_two_hug_cols_label_not_clipped_matches_golden() {
                     .id_salt("two-hug")
                     .cols([Track::HUG, Track::HUG])
                     .rows([Track::HUG])
-                    .gap_xy(16.0, 0.0)
+                    .line_gap(16.0)
+                    .gap(0.0)
                     .show(ui, |ui| {
                         Text::new(
                             "The quick brown fox jumps over the lazy dog. \

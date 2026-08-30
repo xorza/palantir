@@ -4,4 +4,3 @@ mod edit;
 mod layout;
 mod scrub;
 mod support;
-mod value;

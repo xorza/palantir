@@ -23,7 +23,7 @@ use crate::primitives::translate_scale::TranslateScale;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
-use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
+use crate::renderer::frontend::payload::draw_image_payload::{DrawImagePayload, ImageDraw};
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
@@ -79,7 +79,10 @@ macro_rules! paint_calls {
                 match self {
                     $( Self::$variant(payload) => sink.$method(*payload), )*
                     $( Self::$unit => sink.$unit_method(), )*
-                    Self::Image { payload, paint } => sink.image(*payload, paint.as_ref()),
+                    Self::Image { payload, paint } => sink.image(ImageDraw {
+                        payload: *payload,
+                        paint: paint.as_ref(),
+                    }),
                 }
             }
         }
@@ -95,10 +98,10 @@ macro_rules! paint_calls {
                     self.calls.push(PaintCall::$unit);
                 }
             )*
-            fn image(&mut self, payload: DrawImagePayload, paint: Option<&GpuPaintRef>) {
+            fn image(&mut self, draw: ImageDraw<'_>) {
                 self.calls.push(PaintCall::Image {
-                    payload,
-                    paint: paint.cloned(),
+                    payload: draw.payload,
+                    paint: draw.paint.cloned(),
                 });
             }
         }

@@ -27,6 +27,26 @@ impl std::hash::Hash for GridCell {
 }
 
 impl GridCell {
+    /// The cell at `(row, col)`, one track wide and one tall.
+    pub const fn at(row: u16, col: u16) -> Self {
+        Self {
+            row,
+            col,
+            row_span: 1,
+            col_span: 1,
+        }
+    }
+
+    /// This cell widened to cover `row_span` rows and `col_span`
+    /// columns. Both floor at one — a zero-track span names no cell.
+    pub const fn span(self, row_span: u16, col_span: u16) -> Self {
+        Self {
+            row_span: if row_span > 1 { row_span } else { 1 },
+            col_span: if col_span > 1 { col_span } else { 1 },
+            ..self
+        }
+    }
+
     /// Track-index span on `axis`: `(col, col_span)` for X,
     /// `(row, row_span)` for Y. Bundles the start/length pair the grid
     /// track math slices with, so the two can't be passed swapped.
@@ -51,13 +71,16 @@ impl GridCell {
     }
 }
 
+/// A bare `(row, col)` names the common cell — one track each way — so
+/// the placement most children want stays a pair at the call site.
+impl From<(u16, u16)> for GridCell {
+    fn from((row, col): (u16, u16)) -> Self {
+        Self::at(row, col)
+    }
+}
+
 impl Default for GridCell {
     fn default() -> Self {
-        Self {
-            row: 0,
-            col: 0,
-            row_span: 1,
-            col_span: 1,
-        }
+        Self::at(0, 0)
     }
 }

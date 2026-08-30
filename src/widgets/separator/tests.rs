@@ -1,5 +1,6 @@
 use crate::ui::harness::UiHarness;
 
+use crate::layout::types::align::{Align, HAlign, VAlign};
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::spacing::Spacing;
 use crate::scene::layer::Layer;
@@ -102,4 +103,56 @@ fn explicit_size_overrides_stretch_default() {
     assert_eq!((h.size.w, h.size.h), (0.0, 0.0), "explicit hug");
     let d = rects[default.unwrap().idx()];
     assert_eq!((d.size.w, d.size.h), (400.0, 1.0), "untouched default");
+}
+
+/// The `Hug + Stretch` default is per-axis, so it fills in only the axis
+/// the caller left `Auto`.
+///
+/// In a 400x300 `ZStack` both axes are cross axes. Untouched, the rule
+/// stretches to the full 400 at the theme thickness of 1. A caller's
+/// `HAlign::Center` keeps the width at `Hug`'s 0, centered at
+/// `(400 - 0) / 2`. A caller's `VAlign::Bottom` leaves the horizontal
+/// axis `Auto`, so the stretch still fills it in, and pins the rule's
+/// top at `300 - 1`.
+#[test]
+fn a_callers_alignment_survives_the_stretch_default_axis_by_axis() {
+    let mut h = UiHarness::new(UVec2::new(400, 300));
+    let (mut default, mut centered, mut bottom) = (None, None, None);
+    h.frame(|ui| {
+        let layers = Panel::zstack().auto_id().size((Sizing::FILL, Sizing::FILL));
+        layers.show(ui, |ui| {
+            default = Some(Separator::horizontal().show(ui).node());
+            centered = Some(
+                Separator::horizontal()
+                    .align(Align::h(HAlign::Center))
+                    .show(ui)
+                    .node(),
+            );
+            bottom = Some(
+                Separator::horizontal()
+                    .align(Align::v(VAlign::Bottom))
+                    .show(ui)
+                    .node(),
+            );
+        });
+    });
+    let rects = &h.ui.layout(Layer::Main).rect;
+    let d = rects[default.unwrap().idx()];
+    assert_eq!(
+        (d.min.x, d.size.w),
+        (0.0, 400.0),
+        "untouched rule stretches"
+    );
+    let c = rects[centered.unwrap().idx()];
+    assert_eq!(
+        (c.min.x, c.size.w),
+        (200.0, 0.0),
+        "an explicit horizontal alignment beats the stretch default",
+    );
+    let b = rects[bottom.unwrap().idx()];
+    assert_eq!(
+        (b.min.y, b.size.w),
+        (299.0, 400.0),
+        "a vertical alignment leaves the horizontal stretch in place",
+    );
 }

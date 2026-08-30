@@ -176,12 +176,12 @@ fn clipboard_shortcuts_apply_keypresses() {
     // Copy: clipboard ← "ell", buffer unchanged.
     apply_key_with_clipboard(&mut text, &mut state, primary('c'), &clipboard);
     assert_eq!(text, "hello");
-    assert_eq!(clipboard.get(), "ell");
+    assert_eq!(clipboard.get().unwrap(), "ell");
 
     // Cut: clipboard keeps "ell", buffer drops it, caret collapses.
     apply_key_with_clipboard(&mut text, &mut state, primary('x'), &clipboard);
     assert_eq!(text, "ho");
-    assert_eq!(clipboard.get(), "ell");
+    assert_eq!(clipboard.get().unwrap(), "ell");
     assert_eq!(state.caret, 1);
     assert_eq!(state.selection, None);
 
@@ -201,7 +201,11 @@ fn clipboard_shortcuts_apply_keypresses() {
         ..EditState::default()
     };
     apply_key_with_clipboard(&mut text2, &mut state2, non_primary('c'), &clipboard);
-    assert_eq!(clipboard.get(), "CLIP", "non-primary must not copy");
+    assert_eq!(
+        clipboard.get().unwrap(),
+        "CLIP",
+        "non-primary must not copy"
+    );
     apply_key_with_clipboard(&mut text2, &mut state2, non_primary('v'), &clipboard);
     assert_eq!(text2, "hello", "non-primary must not paste");
 
@@ -216,6 +220,19 @@ fn clipboard_shortcuts_apply_keypresses() {
         &mut rejected_text,
         &mut rejected_state,
         primary('x'),
+        &rejecting,
+    );
+    assert_eq!(rejected_text, "hello");
+    assert_eq!(rejected_state.caret, 4);
+    assert_eq!(rejected_state.selection, Some(1));
+    assert!(rejected_state.undo.is_empty());
+
+    // A clipboard that cannot answer is not an empty one: the paste is
+    // dropped whole, and the selection it was asked to replace stays.
+    apply_key_with_clipboard(
+        &mut rejected_text,
+        &mut rejected_state,
+        primary('v'),
         &rejecting,
     );
     assert_eq!(rejected_text, "hello");

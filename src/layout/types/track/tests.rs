@@ -68,28 +68,23 @@ fn grid_content_hash(def: GridDef, tracks: &[Track]) -> u64 {
 
 #[test]
 fn grid_content_hash_uses_tracks_not_arena_offsets_and_collapses_visual_noise() {
-    let tracks = [
-        Track::fixed(99.0),
-        Track::HUG,
-        Track::FILL,
-        Track::HUG,
-        Track::FILL,
-    ];
-    let make = |start, row_gap| GridDef {
-        rows: Span::new(start, 1),
-        cols: Span::new(start + 1, 1),
-        row_gap,
-        col_gap: -row_gap,
+    let hash_at = |start: u32, noise: f32| {
+        let tracks = [
+            Track::fixed(99.0),
+            Track::HUG.min(noise),
+            Track::FILL,
+            Track::HUG.min(noise),
+            Track::FILL,
+        ];
+        let def = GridDef {
+            rows: Span::new(start, 1),
+            cols: Span::new(start + 1, 1),
+        };
+        grid_content_hash(def, &tracks)
     };
 
-    assert_eq!(
-        grid_content_hash(make(1, 0.0), &tracks),
-        grid_content_hash(make(3, EPS * 0.5), &tracks),
-    );
-    assert_ne!(
-        grid_content_hash(make(1, 0.0), &tracks),
-        grid_content_hash(make(3, EPS * 2.0), &tracks),
-    );
+    assert_eq!(hash_at(1, 0.0), hash_at(3, EPS * 0.5));
+    assert_ne!(hash_at(1, 0.0), hash_at(3, EPS * 2.0));
 }
 
 #[test]
@@ -101,8 +96,6 @@ fn grid_content_hash_covers_empty_small_and_large_definitions() {
         let def = GridDef {
             rows: Span::new(0, rows.len() as u32),
             cols: Span::new(rows.len() as u32, cols.len() as u32),
-            row_gap: 2.0,
-            col_gap: 3.0,
         };
         grid_content_hash(def, &tracks)
     }

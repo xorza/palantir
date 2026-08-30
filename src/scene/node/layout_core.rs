@@ -54,7 +54,7 @@ impl LayoutCore {
         h.write_u64(self.margin.as_u64());
         let mode = self.meta.into();
         // Shifted rather than byte-cast, like the sibling
-        // [`Gaps::resolved`](crate::scene::node::gaps::Gaps::resolved):
+        // [`Gaps::as_u32`](crate::scene::node::gaps::Gaps::as_u32):
         // the key never leaves the process, but a layout-dependent hash
         // is a trap worth not setting.
         let tail = u32::from(self.meta.metadata())

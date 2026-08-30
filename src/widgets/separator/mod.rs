@@ -18,7 +18,9 @@ use crate::widgets::theme::separator::SeparatorTheme;
 /// Sized `Hug + Stretch` on its long axis so it fills the parent's cross
 /// extent without leaking an infinite size up to a `Hug` ancestor. An
 /// explicit [`Configure::size`] replaces that default entirely — the
-/// given size describes the rule's box and `thickness` is ignored.
+/// given size describes the rule's box and `thickness` is ignored — and
+/// an explicit [`Configure::align`] replaces it on the axis it names,
+/// leaving the other axis to the default.
 /// Visuals come from [`crate::SeparatorTheme`] (theme slot `separator`).
 #[derive(Debug)]
 pub struct Separator<'a> {
@@ -86,12 +88,18 @@ impl<'a> Separator<'a> {
             (Sizing::fixed(t), Sizing::HUG)
         };
         if self.node.size.is_none() {
+            // The stretch belongs to the `Hug` default, not to the rule:
+            // it is what spans the parent, and applying it over an
+            // explicit size would override the extent the caller gave.
             // `Node` is `Copy`, so the chain reads back into the field.
-            self.node = self.node.size(default_size).align(if self.horizontal {
-                Align::h(HAlign::Stretch)
-            } else {
-                Align::v(VAlign::Stretch)
-            });
+            self.node = self
+                .node
+                .size(default_size)
+                .default_align(if self.horizontal {
+                    Align::h(HAlign::Stretch)
+                } else {
+                    Align::v(VAlign::Stretch)
+                });
         }
         let chrome = Background::fill(self.color.unwrap_or(theme.color));
         // Theme margin fills in only where the caller stayed silent —

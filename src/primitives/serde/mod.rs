@@ -17,6 +17,13 @@ use ::serde::{Deserializer, Serializer};
 
 /// Per-type policy for the shared lane serde. Implementors are the
 /// `[u16; 4]`-backed primitives whose four lanes carry domain meaning.
+///
+/// **A lane the table form omits reads as `0.0`** — the identity every
+/// type on this codec shares, so `{tl: 4}` is a radius on one corner
+/// and nothing on the others. A type whose neutral is something else
+/// does not belong here: `Size` reads an omitted axis as *unbounded*,
+/// and writes its own serde for that one reason. The table must still
+/// name a lane, matching the array form's rejection of an empty node.
 pub(super) trait LaneCodec: Sized {
     /// Struct-form field names, in lane order. Must be length 4.
     const FIELDS: &'static [&'static str];
@@ -112,6 +119,9 @@ impl<'de, T: LaneCodec> Visitor<'de> for LaneVisitor<T> {
                 }
                 None => return Err(de::Error::unknown_field(&k, T::FIELDS)),
             }
+        }
+        if lanes.iter().all(Option::is_none) {
+            return Err(de::Error::invalid_length(0, &self));
         }
         Ok(T::from_lane_array(lanes.map(|o| o.unwrap_or(0.0))))
     }

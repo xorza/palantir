@@ -1,6 +1,7 @@
 //! The theme half of authoring: fill a node field only where the app left
 //! it unset, so a builder's explicit value always wins.
 
+use crate::layout::types::align::Align;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
@@ -51,6 +52,13 @@ pub(crate) trait ThemeDefaults: Configure {
     /// Margin to fall back on when the caller set none.
     fn default_margin(mut self, m: impl Into<Spacing>) -> Self {
         self.node_mut().node.fill_margin(m.into());
+        self
+    }
+
+    /// Alignment to fall back on, one axis at a time — an axis the
+    /// caller aligned keeps what they gave it.
+    fn default_align(mut self, a: Align) -> Self {
+        self.node_mut().node.fill_align(a);
         self
     }
 

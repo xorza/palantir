@@ -23,8 +23,9 @@ pub(super) fn arrange_inner(
     let col_tracks = &tree.grid_tracks[def.cols.range()];
     let n_rows = row_tracks.len();
     let n_cols = col_tracks.len();
-    let row_gap = def.row_gap;
-    let col_gap = def.col_gap;
+    let gaps = tree.panel(node).gaps;
+    let row_gap = gaps.line_gap();
+    let col_gap = gaps.gap();
     let scratch = pass.grid_mut().depth_stack.at(depth);
     scratch.col.reset_for(n_cols);
     scratch.row.reset_for(n_rows);

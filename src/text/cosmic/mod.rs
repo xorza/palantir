@@ -545,9 +545,10 @@ impl CosmicMeasure {
     /// Silent on a key that isn't resident: the buffer may already have
     /// aged out, and superseding what is gone is a no-op, not an error.
     pub(super) fn supersede(&mut self, key: TextShapeKey) {
-        if key.is_invalid() {
-            return;
-        }
+        debug_assert!(
+            !key.is_invalid(),
+            "the invalid sentinel names no cache entry — filter it before the demotion",
+        );
         let dies_at = self.probation_dies_at();
         let Some(entry) = self.cache.get_mut(&key) else {
             return;
@@ -652,17 +653,18 @@ impl CosmicMeasure {
         // Folding it into the origin rather than into each `physical.x`
         // keeps the subpixel binning consistent with the shift.
         let origin_x = origin.x - left * scale;
-        let bounds_top = bounds.min.y as f32;
-        let bounds_bot = bounds.max().y as f32;
+        let cull = bounds.map(|b| (b.min.y as f32, b.max().y as f32));
         let mut culled = false;
         for run in buffer.layout_runs() {
-            if (run.line_top + run.line_height) * scale + origin.y < bounds_top {
-                culled = true;
-                continue;
-            }
-            if run.line_top * scale + origin.y > bounds_bot {
-                culled = true;
-                break;
+            if let Some((bounds_top, bounds_bot)) = cull {
+                if (run.line_top + run.line_height) * scale + origin.y < bounds_top {
+                    culled = true;
+                    continue;
+                }
+                if run.line_top * scale + origin.y > bounds_bot {
+                    culled = true;
+                    break;
+                }
             }
             let line_y_px = (run.line_y * scale).fast_round() as i32;
             for glyph in run.glyphs.iter() {

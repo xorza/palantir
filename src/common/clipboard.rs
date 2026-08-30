@@ -149,8 +149,15 @@ impl Clipboard {
         Self::new(primary, Box::<MemoryBackend>::default())
     }
 
-    pub(crate) fn get(&self) -> String {
-        self.state.borrow_mut().get().unwrap_or_default()
+    /// The clipboard's text, or [`ClipboardUnavailable`] when no backend
+    /// could answer.
+    ///
+    /// A `Result` on the same terms [`Self::set`] is one: an empty
+    /// clipboard and an unreachable one are different answers, and a
+    /// paste that cannot tell them apart deletes the selection it was
+    /// asked to replace.
+    pub(crate) fn get(&self) -> Result<String, ClipboardUnavailable> {
+        self.state.borrow_mut().get()
     }
 
     pub(crate) fn set(&self, text: &str) -> Result<(), ClipboardUnavailable> {
@@ -224,8 +231,8 @@ mod tests {
 
         first.set("clipboard-test-roundtrip-✓").unwrap();
 
-        assert_eq!(first.get(), "clipboard-test-roundtrip-✓");
-        assert_eq!(second.get(), "");
+        assert_eq!(first.get().unwrap(), "clipboard-test-roundtrip-✓");
+        assert_eq!(second.get().unwrap(), "");
     }
 
     #[test]
@@ -235,7 +242,7 @@ mod tests {
 
         first.set("shared").unwrap();
 
-        assert_eq!(second.get(), "shared");
+        assert_eq!(second.get().unwrap(), "shared");
     }
 
     #[test]
@@ -254,7 +261,7 @@ mod tests {
 
         clipboard.set("fresh").unwrap();
 
-        assert_eq!(clipboard.get(), "fresh");
+        assert_eq!(clipboard.get().unwrap(), "fresh");
         assert_eq!(primary_state.borrow().reads, 0);
 
         primary_state.borrow_mut().reject_writes = false;
@@ -262,7 +269,7 @@ mod tests {
         assert_eq!(primary_state.borrow().text, "replacement");
 
         primary_state.borrow_mut().text = String::from("external");
-        assert_eq!(clipboard.get(), "external");
+        assert_eq!(clipboard.get().unwrap(), "external");
         assert_eq!(primary_state.borrow().reads, 1);
     }
 }

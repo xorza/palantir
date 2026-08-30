@@ -8,15 +8,15 @@ use glam::Vec2;
 
 /// A side layer being configured, terminated by [`Self::show`].
 ///
-/// Placement has two mutually exclusive forms and the last one set
-/// wins: [`Self::at`] / [`Self::max_size`] anchor the body at a point,
-/// while the crate-internal overlay form resolves the origin from the
-/// body's measured size instead — that is what lets a popup flip above
-/// its anchor when it would not fit below, and it is why `Popup`,
-/// `ContextMenu`, and `Tooltip` place themselves rather than taking a
-/// point from the caller. Setting neither anchors at the surface origin
-/// with the whole surface available, which is what every full-surface
-/// layer wants.
+/// [`Self::at`] fixes the body's top-left, while the crate-internal
+/// overlay form resolves the origin from the body's measured size
+/// instead — that is what lets a popup flip above its anchor when it
+/// would not fit below, and it is why `Popup`, `ContextMenu`, and
+/// `Tooltip` place themselves rather than taking a point from the
+/// caller. [`Self::max_size`] caps either one, so no setter here
+/// depends on the order the others ran in. Setting neither anchors at
+/// the surface origin with the whole surface available, which is what
+/// every full-surface layer wants.
 #[derive(Debug)]
 #[must_use = "a layer records nothing until `show`"]
 pub struct LayerScope<'a> {

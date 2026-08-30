@@ -40,7 +40,7 @@ use crate::widgets::text_edit::input_pass::{AcceptPolicy, InputPass, InputResult
 use crate::widgets::text_edit::paint_input::PaintInput;
 use crate::widgets::text_edit::text_geometry::{GeometryInput, TextGeometry};
 use crate::widgets::text_edit::text_layout::{LayoutInput, TextLayout};
-use crate::widgets::text_edit::view_state::{ViewState, ViewUpdateInput};
+use crate::widgets::text_edit::view_state::{FocusEdges, ViewState, ViewUpdateInput};
 use crate::widgets::theme::text_edit::TextEditTheme;
 use crate::widgets::theme::widget_look::theme_slot::ThemeSlot;
 use crate::widgets::widget::Widget;
@@ -390,18 +390,15 @@ impl<'a> TextEdit<'a> {
         let selection_color = slot.selection;
         let placeholder_color = slot.placeholder;
         let look = slot.plan(&response, (), &theme.text).apply(ui, &mut widget);
+        // A face the shaper cannot be asked for shapes nothing — the
+        // answer `TextShape::is_noop` gives every widget that records
+        // text. This one needs an explicit arm because it derives caret
+        // and selection geometry from the face too, and there is none:
+        // the box paints, the layout below does not run.
         if !look.text.metrics_valid() {
             let focus = state.view.roll_focus(is_focused);
-            let chrome = look.background;
-            widget.record(ui, Some(&chrome), |_| {});
-            return EditSignals {
-                changed: false,
-                submitted: false,
-                cancelled: false,
-                gained_focus: focus.gained,
-                lost_focus: focus.lost,
-                state: response,
-            };
+            widget.record(ui, Some(&look.background), |_| {});
+            return EditSignals::focus_only(focus, response);
         }
         let font = look.text.font();
         // `Tree::open_node` folds chrome stroke width into the stored
@@ -569,6 +566,21 @@ struct EditSignals {
     /// frozen for the pass, so this is the same answer a second probe
     /// would give.
     state: ResponseState,
+}
+
+impl EditSignals {
+    /// A pass that left the buffer alone, so the focus roll is all it
+    /// has to report.
+    fn focus_only(focus: FocusEdges, state: ResponseState) -> Self {
+        Self {
+            changed: false,
+            submitted: false,
+            cancelled: false,
+            gained_focus: focus.gained,
+            lost_focus: focus.lost,
+            state,
+        }
+    }
 }
 
 /// What [`TextEdit::show`] returns: the widget's [`Response`] plus the

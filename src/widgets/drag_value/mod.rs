@@ -5,7 +5,6 @@
 use crate::input::sense::Sense;
 use crate::layout::types::align::Align;
 use crate::layout::types::sizing::Sizing;
-use crate::primitives::limits::Limits;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
@@ -14,121 +13,13 @@ use crate::scene::node::configure::Configure;
 use crate::shape::Shape;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
+use crate::widgets::drag_num::DragNum;
 use crate::widgets::response::Response;
 use crate::widgets::text_edit::TextEdit;
 use crate::widgets::theme::drag_value::DragValueTheme;
 use crate::widgets::theme::widget_look::theme_slot::ThemeSlot;
 use crate::widgets::value_response::ValueResponse;
 use std::ops::RangeInclusive;
-
-/// The numeric target a [`DragValue`] scrubs: either an `i64` or an `f64`,
-/// borrowed mutably for the widget's lifetime. Build one implicitly through
-/// `From` — `DragValue::new(&mut my_i64)` and `DragValue::new(&mut my_f64)`
-/// both work. Scrub math runs in `f64`; the integer case rounds back to the
-/// nearest whole step on write.
-#[derive(Debug)]
-pub enum DragNum<'a> {
-    I64(&'a mut i64),
-    F64(&'a mut f64),
-}
-
-impl DragNum<'_> {
-    /// The bound value widened to `f64` — captured as the drag anchor.
-    fn get(&self) -> f64 {
-        match self {
-            DragNum::I64(v) => **v as f64,
-            DragNum::F64(v) => **v,
-        }
-    }
-
-    /// Commit a scrubbed `raw` value: the float target snaps to `decimals`
-    /// (so a drag never stores a long tail — `1.98457…` at 3 → `1.985`), the
-    /// integer target rounds to the nearest whole step; both clamp into
-    /// `[min, max]` (a reversed pair is tolerated). Infinite bounds cast to
-    /// `i64::MIN`/`MAX`, so an unbounded integer clamp is a no-op. Returns
-    /// whether the stored value actually changed — exact for the integer,
-    /// bit-exact for the float.
-    fn commit_drag(&mut self, raw: f64, decimals: usize, min: f64, max: f64) -> bool {
-        let limits = Limits::of(min, max);
-        match self {
-            DragNum::I64(v) => store_i64(v, raw.round() as i64, limits),
-            DragNum::F64(v) => store_f64(v, round_to_decimals(raw, decimals), limits),
-        }
-    }
-
-    /// Exact, full-precision text for the edit buffer — `{:?}` on the float
-    /// keeps a trailing `.0` so a whole value still reads as a float.
-    fn edit_string(&self) -> String {
-        match self {
-            DragNum::I64(v) => v.to_string(),
-            DragNum::F64(v) => format!("{:?}", **v),
-        }
-    }
-
-    /// Parse `text` and write it clamped into `[min, max]`, leaving the
-    /// value untouched when the text doesn't parse (partial input like
-    /// `"3."`) or parses non-finite — a committed NaN survives clamp and
-    /// poisons every subsequent scrub, so `"nan"`/`"inf"` are rejected.
-    /// Returns whether the stored value changed. Keyboard entry keeps full
-    /// precision — only drags snap to `decimals`.
-    fn parse_from(&mut self, text: &str, min: f64, max: f64) -> bool {
-        let limits = Limits::of(min, max);
-        match self {
-            DragNum::I64(v) => match text.parse::<i64>() {
-                // Parsed as an `i64` and stored as one: widening through
-                // `f64` on the way would lose the low bits of anything
-                // past 2^53, which a drag never reaches but typed text
-                // can.
-                Ok(n) => store_i64(v, n, limits),
-                Err(_) => false,
-            },
-            DragNum::F64(v) => match text.parse::<f64>() {
-                Ok(n) if n.is_finite() => store_f64(v, n, limits),
-                _ => false,
-            },
-        }
-    }
-}
-
-/// Store `next` clamped into `limits`, answering whether the stored
-/// value moved.
-///
-/// The integer half of the one write every path through [`DragNum`] ends
-/// in — a scrub commit and a typed edit alike. The bounds arrive as `f64`
-/// and cast: an infinite bound becomes `i64::MIN`/`MAX`, so an unbounded
-/// clamp is a no-op.
-fn store_i64(slot: &mut i64, next: i64, limits: Limits<f64>) -> bool {
-    let next = next.clamp(limits.lo as i64, limits.hi as i64);
-    let changed = *slot != next;
-    *slot = next;
-    changed
-}
-
-/// The float half of that write.
-///
-/// `+ 0.0` normalizes `-0.0` to `+0.0` (IEEE: `-0.0 + 0.0 = +0.0`):
-/// rounding a small negative value yields `-0.0`, and `clamp`'s `<` lets
-/// it slip through a `+0.0` lower bound — the sign would leak into the
-/// display ("-0.00") and into serialized values. The comparison is
-/// bit-exact, so what the caller is told changed is what the slot holds.
-fn store_f64(slot: &mut f64, next: f64, limits: Limits<f64>) -> bool {
-    let next = next.clamp(limits.lo, limits.hi) + 0.0;
-    let changed = slot.to_bits() != next.to_bits();
-    *slot = next;
-    changed
-}
-
-impl<'a> From<&'a mut i64> for DragNum<'a> {
-    fn from(v: &'a mut i64) -> Self {
-        DragNum::I64(v)
-    }
-}
-
-impl<'a> From<&'a mut f64> for DragNum<'a> {
-    fn from(v: &'a mut f64) -> Self {
-        DragNum::F64(v)
-    }
-}
 
 /// One mutually exclusive interaction per [`DragValue`] id. A scrub keeps
 /// its sampled base and speed so cumulative pointer travel remains stable;
@@ -190,10 +81,8 @@ pub struct DragValue<'a> {
 impl<'a> DragValue<'a> {
     #[track_caller]
     pub fn new(value: impl Into<DragNum<'a>>) -> Self {
-        let mut node = Node::leaf();
-        node.flags.set_sense(Sense::DRAG);
         Self {
-            node,
+            node: Node::leaf(),
             value: value.into(),
             speed: 1.0,
             min: f64::NEG_INFINITY,
@@ -238,10 +127,23 @@ impl<'a> DragValue<'a> {
     /// an inline `TextEdit`; Enter / click-away commits. Default off.
     pub fn editable(mut self, on: bool) -> Self {
         self.editable = on;
-        if on {
-            return self.sense(Sense::CLICK | Sense::DRAG);
-        }
         self
+    }
+
+    /// What the widget cannot work without: the scrub drag always, and
+    /// the click that opens the inline editor once [`Self::editable`] is
+    /// on.
+    ///
+    /// Read at [`Self::show`] and folded over whatever the caller sensed,
+    /// rather than written into the node by the setter. A setter would
+    /// make `editable` depend on the order it was chained in — it would
+    /// drop a `sense` set before it, keep the click after an
+    /// `editable(false)`, and lose to a `sense` set after it.
+    fn required_sense(&self) -> Sense {
+        match self.editable {
+            true => Sense::CLICK | Sense::DRAG,
+            false => Sense::DRAG,
+        }
     }
 
     style_setter!(
@@ -252,6 +154,8 @@ impl<'a> DragValue<'a> {
     );
 
     pub fn show(mut self, ui: &mut Ui) -> ValueResponse<'_> {
+        let sense = self.node.flags.sense() | self.required_sense();
+        self.node.flags.set_sense(sense);
         let mut widget = ui.widget(self.node);
         let mut response = widget.response(ui);
         let id = widget.id();
@@ -451,17 +355,6 @@ impl<'a> DragValue<'a> {
 }
 
 impl_configure!(DragValue<'_>);
-
-/// Round `v` to `decimals` fractional digits. Shifts by `10^decimals`,
-/// rounds, and divides back — the divide-by-a-power-of-ten (rather than a
-/// multiply by `10^-decimals`) lands on the nearest f64 to a short decimal,
-/// so the result formats without a long tail (1.98457… at 3 → 1.985).
-fn round_to_decimals(v: f64, decimals: usize) -> f64 {
-    // `10^decimals` overflows to `inf` past ~308 digits (and `f64` carries no
-    // more than ~15 anyway); clamp so the shift stays finite and the fn total.
-    let p = 10f64.powi(decimals.min(15) as i32);
-    (v * p).round() / p
-}
 
 #[cfg(test)]
 mod tests;

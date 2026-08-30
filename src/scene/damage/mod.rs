@@ -26,9 +26,11 @@
 //! evicts the entry in the same diff loop; the prev rects contribute
 //! (clear those pixels), the curr rect doesn't.
 //!
-//! Classification additionally skips *childless* nodes whose rows are
-//! entirely off-surface — a zoomed-out canvas must not populate the map
-//! with thousands of never-visible snapshots. That skip is repaid in
+//! Classification enforces that invariant on the way in — a rowless
+//! node is never inserted, a hidden container included — and skips
+//! *childless* nodes whose rows are entirely off-surface, so a
+//! zoomed-out canvas does not populate the map with thousands of
+//! never-visible snapshots. That second skip is repaid in
 //! the moved-subtree arm (tier 1.5): the frame a move puts such a
 //! node's rows on-surface, its snapshot is inserted there, restoring
 //! the induction the prev-extent fold and the removed-widget eviction

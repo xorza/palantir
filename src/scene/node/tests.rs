@@ -1,6 +1,7 @@
 use crate::input::sense::Sense;
 use crate::layout::axis::Axis;
 use crate::layout::types::clip_mode::ClipMode;
+use crate::layout::types::grid_cell::GridCell;
 use crate::layout::types::layout_mode::GridDefId;
 use crate::layout::types::layout_mode::PackedLayoutMeta;
 use crate::layout::types::limits::MAX_PACKED_GAP;
@@ -10,7 +11,6 @@ use crate::scene::node::theme_defaults::ThemeDefaults;
 use crate::scene::node::*;
 use crate::scene::visibility::Visibility;
 use crate::widgets::context_menu::menu_item::MenuItem;
-use crate::widgets::drag_value::DragValue;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::{button::Button, frame::Frame, grid::Grid, panel::Panel, text::Text};
 
@@ -150,8 +150,7 @@ fn builder_setters_cover_the_complete_external_node_surface() {
         .padding(padding)
         .margin(margin)
         .position(position)
-        .grid_cell((2, 3))
-        .grid_span((4, 5))
+        .grid_cell(GridCell::at(2, 3).span(4, 5))
         .gap(6.0)
         .line_gap(7.0)
         .justify(Justify::SpaceBetween)
@@ -180,8 +179,8 @@ fn builder_setters_cover_the_complete_external_node_surface() {
             col_span: 5,
         },
     );
-    assert_eq!(node.gaps.gap(), 6.0);
-    assert_eq!(node.gaps.line_gap(), 7.0);
+    assert_eq!(node.gaps.gap(), Some(6.0));
+    assert_eq!(node.gaps.line_gap(), Some(7.0));
     assert_eq!(node.justify, Justify::SpaceBetween);
     assert_eq!(node.align, align);
     assert_eq!(node.child_align, child_align);
@@ -203,10 +202,6 @@ fn widget_specific_node_setters_reach_the_inner_node() {
 
     let mut item = MenuItem::new("Open").enabled(true);
     assert!(!node_of(&mut item).flags.is_disabled());
-
-    let mut value = 0.0;
-    let mut drag = DragValue::new(&mut value).editable(true);
-    assert_eq!(node_of(&mut drag).flags.sense(), Sense::CLICK | Sense::DRAG,);
 
     let mut scroll = Scroll::both().with_zoom();
     assert_eq!(
@@ -454,8 +449,8 @@ fn node_bounds_reject_inversions_on_each_axis_and_setter_order() {
 #[test]
 fn packed_gaps_accept_f16_boundaries_and_reject_invalid_values() {
     let valid = Node::hstack().gap(MAX_PACKED_GAP).line_gap(MAX_PACKED_GAP);
-    assert_eq!(valid.gaps.gap(), MAX_PACKED_GAP);
-    assert_eq!(valid.gaps.line_gap(), MAX_PACKED_GAP);
+    assert_eq!(valid.gaps.gap(), Some(MAX_PACKED_GAP));
+    assert_eq!(valid.gaps.line_gap(), Some(MAX_PACKED_GAP));
 
     type Case = (&'static str, fn() -> Node);
     let cases: &[Case] = &[

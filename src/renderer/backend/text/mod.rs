@@ -111,11 +111,11 @@ impl TextBackend {
         // cracks the RefCell or hits cosmic.
         let mut glyphs = None;
         for r in runs {
-            if r.text.key.is_invalid() {
-                // Backstop: the encoder already drops runs with no shaped
-                // buffer, so nothing production-emitted reaches this.
-                continue;
-            }
+            debug_assert!(
+                !r.text.key.is_invalid(),
+                "a run with no shaped buffer is dropped at the encoder and must \
+                 not reach a batch",
+            );
             let run_key = EncodedRunKey::for_row(r, scale);
             if self.encoder.try_emit_cached(&mut self.pass, &run_key) {
                 continue;
@@ -129,7 +129,7 @@ impl TextBackend {
                 RunPlacement {
                     origin: r.origin,
                     scale: scale * r.scale,
-                    bounds: r.bounds,
+                    bounds: Some(r.bounds),
                 },
                 run_key,
             );

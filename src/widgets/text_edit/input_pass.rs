@@ -245,8 +245,14 @@ pub(super) fn apply_key(editor: &mut Editor<'_>, keypress: KeyPress) -> KeyOutco
         Key::End if editor.multiline() => return KeyOutcome::LineEdge { end: true, extend },
         Key::Home => editor.move_caret(0, extend),
         Key::End => editor.move_caret(editor.text().len(), extend),
-        Key::Escape if !editor.collapse_selection() => return KeyOutcome::Blur,
-        Key::Escape => {}
+        // Escape peels one layer: a selection first, the focus only
+        // when there was none.
+        Key::Escape => {
+            let had_selection = editor.collapse_selection();
+            if !had_selection {
+                return KeyOutcome::Blur;
+            }
+        }
         _ => {}
     }
     KeyOutcome::None

@@ -806,3 +806,49 @@ fn front_insert_damages_only_the_new_shape() {
         "shifted-but-identical rows must not re-damage; region = {region:?}",
     );
 }
+
+/// A hidden container keeps its slot in layout, and the cascade writes
+/// it an empty paint span whatever its children are — so it must stay
+/// out of the snapshot map, which holds only nodes with rows.
+///
+/// The visible sibling beside it is the control: it takes an entry, so
+/// the frame is one the map was filled from and the container's absence
+/// is the classification, not an empty pass.
+#[test]
+fn a_hidden_container_takes_no_snapshot() {
+    let hidden = WidgetId::from_hash("hidden-box");
+    let shown = WidgetId::from_hash("shown-box");
+    let mut h = UiHarness::cold(DISPLAY.physical);
+    frame(&mut h, |ui| {
+        Panel::hstack()
+            .id(WidgetId::from_hash("root"))
+            .show(ui, |ui| {
+                Panel::hstack().id(hidden).hidden().show(ui, |ui| {
+                    Frame::new()
+                        .id(WidgetId::from_hash("hidden-child"))
+                        .size(20.0)
+                        .background(Background {
+                            fill: BLUE.into(),
+                            ..Default::default()
+                        })
+                        .show(ui);
+                });
+                Frame::new()
+                    .id(shown)
+                    .size(20.0)
+                    .background(Background {
+                        fill: RED.into(),
+                        ..Default::default()
+                    })
+                    .show(ui);
+            });
+    });
+    assert!(
+        h.engines.damage.prev.contains_key(&shown),
+        "a painting sibling is in the map, so the frame filled it",
+    );
+    assert!(
+        !h.engines.damage.prev.contains_key(&hidden),
+        "a rowless container must not take a snapshot",
+    );
+}
