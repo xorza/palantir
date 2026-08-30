@@ -6,10 +6,9 @@
 
 use crate::support;
 use crate::support::{demo_cell, section, tiles};
-use glam::Vec2;
 use palantir::{
     Background, Brush, ColorU8, Configure, ConicGradient, Corners, Frame, Interp, LinearGradient,
-    RadialGradient, Sizing, Spread, Stop, Ui,
+    RadialGradient, Sizing, Spread, Stop, Ui, Vec2,
 };
 use std::f32::consts::{FRAC_PI_2, FRAC_PI_4};
 

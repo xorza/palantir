@@ -2,6 +2,7 @@
 //! axes and both `WrapStack` orientations, and they are what `scale`
 //! actually grows — the bulky tail of the card column.
 
+use crate::fmt;
 use crate::frame_fixture::tokens;
 use crate::layout::types::align::Align;
 use crate::layout::types::sizing::Sizing;
@@ -52,7 +53,7 @@ pub(super) fn filmstrip(ui: &mut Ui, cells: usize) {
                                     ..Default::default()
                                 })
                                 .show(ui);
-                            Text::new(ui.fmt(format_args!("shot_{i:03}")))
+                            Text::new(fmt!(ui, "shot_{i:03}"))
                                 .id_salt(("film-cap", i))
                                 .style(&tokens::caption_style())
                                 .show(ui);
@@ -102,7 +103,7 @@ pub(super) fn activity_card(ui: &mut Ui, messages: usize) {
                                         .child_align(Align::CENTER)
                                         .size((Sizing::FILL, Sizing::HUG))
                                         .show(ui, |ui| {
-                                            let name = ui.fmt(format_args!("user_{i}"));
+                                            let name = fmt!(ui, "user_{i}");
                                             Text::new(name)
                                                 .id_salt(("from", i))
                                                 .style(
@@ -111,7 +112,7 @@ pub(super) fn activity_card(ui: &mut Ui, messages: usize) {
                                                         .bold(),
                                                 )
                                                 .show(ui);
-                                            let at = ui.fmt(format_args!("{:02}:{:02}", i % 24, i));
+                                            let at = fmt!(ui, "{:02}:{:02}", i % 24, i);
                                             Text::new(at)
                                                 .id_salt(("at", i))
                                                 .style(&tokens::caption_style())
@@ -149,7 +150,7 @@ pub(super) fn tags_card(ui: &mut Ui, tags: usize, badges: usize) {
                     .size((Sizing::FILL, Sizing::HUG))
                     .show(ui, |ui| {
                         for i in 0..tags {
-                            let label = ui.fmt(format_args!("#tag{i}"));
+                            let label = fmt!(ui, "#tag{i}");
                             Button::new().id_salt(("tag", i)).label(label).show(ui);
                         }
                     });
@@ -166,7 +167,7 @@ pub(super) fn tags_card(ui: &mut Ui, tags: usize, badges: usize) {
                     .background(tokens::well_bg())
                     .show(ui, |ui| {
                         for i in 0..badges {
-                            Text::new(ui.fmt(format_args!("badge {i}")))
+                            Text::new(fmt!(ui, "badge {i}"))
                                 .id_salt(("badge", i))
                                 .style(&tokens::caption_style())
                                 .size((Sizing::fixed(64.0), Sizing::HUG))

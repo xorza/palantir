@@ -240,8 +240,8 @@ const PAGES: &[Page] = &[
     Page {
         group: "RUNTIME",
         label: "frame bench",
-        blurb: "The workload `cargo bench --bench criterion -- '^frame/'` records, drawn live. Nothing \
-                here animates — the benches need damage to settle.",
+        blurb: "The workload `cargo bench -p palantir --bench criterion -- -d frame` records, \
+                drawn live. Nothing here animates — the benches need damage to settle.",
         flow: Flow::Fill,
         body: Body::Fixture,
     },
@@ -516,13 +516,13 @@ fn showcase_palette() -> Palette {
     Palette {
         text: support::INK,
         text_muted: support::INK_DIM,
-        text_disabled: Color::hex(0x5f6673),
+        text_disabled: support::INK_DISABLED,
         terminal_bg: support::WINDOW,
-        elem: Color::hex(0x2b2e36),
-        elem_hover: Color::hex(0x353942),
-        elem_active: Color::hex(0x434854),
-        border_focused: Color::hex(0x2b6f8f),
-        accent: Color::hex(0x7fd6f5),
+        elem: support::ELEM,
+        elem_hover: support::ELEM_HOVER,
+        elem_active: support::ELEM_ACTIVE,
+        border_focused: support::BORDER_FOCUSED,
+        accent: support::ACCENT,
     }
 }
 
@@ -603,9 +603,8 @@ fn handle_shortcuts(ui: &mut Ui) {
 #[cfg(all(test, feature = "internals"))]
 mod tests {
     use super::{MAIN_WINDOW, PAGES, State};
-    use glam::UVec2;
-    use palantir::App;
     use palantir::internals::UiHarness;
+    use palantir::{App, UVec2};
 
     #[test]
     fn every_page_records_two_clean_frames() {

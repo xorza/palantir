@@ -88,12 +88,19 @@ pub(super) struct Cli {
     /// Profile for this many seconds per benchmark instead of sampling.
     #[arg(long, value_name = "SECONDS")]
     profile_time: Option<f64>,
+    /// Samples criterion collects per benchmark. Fewer is faster and
+    /// noisier; criterion's own default is 100.
     #[arg(long, value_name = "N")]
     sample_size: Option<usize>,
+    /// Seconds criterion spends collecting those samples.
     #[arg(long, value_name = "SECONDS")]
     measurement_time: Option<f64>,
+    /// Seconds criterion runs before it starts measuring, so caches and
+    /// the clock settle first.
     #[arg(long, value_name = "SECONDS")]
     warm_up_time: Option<f64>,
+    /// Store this run's samples under a name, for a later `--baseline`
+    /// to compare against.
     #[arg(long, value_name = "NAME")]
     save_baseline: Option<String>,
     /// Compare against a named baseline rather than the previous run.
@@ -136,10 +143,6 @@ fn parse_size(raw: &str) -> Result<glam::UVec2, String> {
 }
 
 impl Cli {
-    pub(super) fn parse_args() -> Self {
-        Cli::parse()
-    }
-
     pub(super) fn fixture(&self) -> Fixture<'_> {
         Fixture {
             size: self.size,

@@ -52,6 +52,7 @@
 mod cli;
 mod driver;
 
+use clap::Parser as _;
 use cli::Cli;
 use criterion::measurement::WallTime;
 use criterion::{BenchmarkGroup, Criterion};
@@ -196,7 +197,7 @@ pub fn run() {
         return;
     }
 
-    let cli = Cli::parse_args();
+    let cli = Cli::parse();
 
     if cli.list_drivers {
         for driver in DRIVERS {

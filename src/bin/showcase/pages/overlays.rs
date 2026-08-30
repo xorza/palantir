@@ -12,7 +12,7 @@ use crate::support::{note_style, raised_bg, row, section};
 use palantir::{
     Align, Button, Configure, ContextMenu, ContextMenuTheme, Frame, Justify, Key, MenuItem, Mods,
     Panel, Popup, Rect, ResponseSnapshot, Sense, Shortcut, Sizing, Spacing, Text, Tooltip, Ui,
-    WidgetId, fmt,
+    Vec2, WidgetId, fmt,
 };
 
 pub(crate) fn build(ui: &mut Ui) {
@@ -68,7 +68,7 @@ fn popup_menu(ui: &mut Ui, menu: &mut MenuState) {
         return;
     };
 
-    let anchor = glam::Vec2::new(trigger.min.x, trigger.min.y + trigger.size.h + 4.0);
+    let anchor = Vec2::new(trigger.min.x, trigger.min.y + trigger.size.h + 4.0);
     let mut chosen: Option<&'static str> = None;
     let resp = Popup::anchored_to(anchor)
         .id_salt("popup-menu")

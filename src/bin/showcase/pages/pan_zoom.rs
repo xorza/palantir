@@ -13,13 +13,12 @@
 
 use crate::support;
 use crate::support::note_style;
-use glam::Vec2;
 use palantir::SlotDefaults;
 use palantir::{
     AnimSpec, Background, Brush, Button, ButtonTheme, Checkbox, Color, Configure, Corners, Frame,
     Grid, InputEvent, LineCap, LineJoin, LinearGradient, Panel, PolylineColors, RadioButton,
     Scroll, Shape, Sizing, Spacing, StatefulLook, Stroke, Text, TextStyle, TextWrap, Track, Ui,
-    WidgetId, WidgetLook, fmt,
+    Vec2, WidgetId, WidgetLook, fmt,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
@@ -236,6 +235,10 @@ fn cell_grid(
     cols: u32,
     clicked: &mut Option<(u32, u32)>,
 ) {
+    // One theme for the whole grid, repointed per cell: only the fill
+    // varies, and a `ButtonTheme` is four `WidgetLook`s deep — building
+    // one per cell was the largest piece of per-cell work on the page.
+    let mut style = cell_theme();
     Panel::vstack()
         .id_salt((salt, "v"))
         .gap(4.0)
@@ -246,7 +249,8 @@ fn cell_grid(
                     .gap(4.0)
                     .show(ui, |ui| {
                         for c in 0..cols {
-                            if cell(ui, salt, r, c) {
+                            recolor_cell(&mut style, cell_color(r, c));
+                            if cell(ui, salt, r, c, &style) {
                                 *clicked = Some((r, c));
                             }
                         }
@@ -255,8 +259,7 @@ fn cell_grid(
         });
 }
 
-fn cell(ui: &mut Ui, salt: &'static str, r: u32, c: u32) -> bool {
-    let style = cell_theme(r, c);
+fn cell(ui: &mut Ui, salt: &'static str, r: u32, c: u32, style: &ButtonTheme) -> bool {
     // Formatted into the record arena rather than a `String`: this runs for
     // every cell of every grid every frame, and the page is the pan/zoom
     // benchmark workload.
@@ -266,7 +269,7 @@ fn cell(ui: &mut Ui, salt: &'static str, r: u32, c: u32) -> bool {
         .label(label)
         .size((Sizing::fixed(56.0), Sizing::fixed(40.0)))
         .padding((6.0, 4.0))
-        .style(&style)
+        .style(style)
         .show(ui)
         .left
         .clicked()
@@ -354,37 +357,24 @@ fn canvas_polylines(ui: &mut Ui) {
         });
 }
 
-/// Per-cell ButtonTheme: normal = the cell's base color, hovered =
-/// brightened, pressed = brightest with a focus stroke. Anim drives a
-/// smooth fill transition on hover/press. Constructed per frame — cheap
-/// (a few struct copies) and keeps each cell visually distinct.
-fn cell_theme(r: u32, c: u32) -> ButtonTheme {
-    let base = cell_color(r, c);
-    let bg = |fill: Color| Background::rounded(fill, Corners::all(3.0));
-    let pressed_bg = Background::rounded(brighten(base, 0.3), Corners::all(3.0))
-        .with_stroke(Stroke::solid(Color::WHITE, 1.0));
+/// Everything a cell's `ButtonTheme` shares: the label ink, the padding,
+/// and the anim that drives a smooth fill transition on hover and press.
+/// The four backgrounds are left to [`recolor_cell`], which is all that
+/// differs between cells.
+fn cell_theme() -> ButtonTheme {
     let label = TextStyle::default()
         .with_font_size(11.0)
         .with_color(Color::hex(0x14161a));
-
+    let look = || WidgetLook {
+        background: Background::NONE,
+        text: Some(label.clone()),
+    };
     ButtonTheme {
         looks: StatefulLook {
-            normal: WidgetLook {
-                background: bg(base),
-                text: Some(label.clone()),
-            },
-            hovered: WidgetLook {
-                background: bg(brighten(base, 0.15)),
-                text: Some(label.clone()),
-            },
-            active: WidgetLook {
-                background: pressed_bg,
-                text: Some(label.clone()),
-            },
-            disabled: WidgetLook {
-                background: bg(base),
-                text: Some(label),
-            },
+            normal: look(),
+            hovered: look(),
+            active: look(),
+            disabled: look(),
         },
         defaults: SlotDefaults {
             padding: Spacing::xy(6.0, 4.0),
@@ -392,6 +382,17 @@ fn cell_theme(r: u32, c: u32) -> ButtonTheme {
             anim: Some(AnimSpec::FAST),
         },
     }
+}
+
+/// Point `theme`'s four states at one cell's colour: normal is the base,
+/// hovered is brightened, pressed is brightest with a focus stroke.
+fn recolor_cell(theme: &mut ButtonTheme, base: Color) {
+    let bg = |fill: Color| Background::rounded(fill, Corners::all(3.0));
+    theme.looks.normal.background = bg(base);
+    theme.looks.hovered.background = bg(brighten(base, 0.15));
+    theme.looks.active.background =
+        bg(brighten(base, 0.3)).with_stroke(Stroke::solid(Color::WHITE, 1.0));
+    theme.looks.disabled.background = bg(base);
 }
 
 fn brighten(c: Color, t: f32) -> Color {
