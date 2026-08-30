@@ -286,14 +286,6 @@ impl LayoutEngine {
             let mut pass = LayoutPass::new(&mut *self, tree, interned_text, &mut *layer_out);
             for index in tree.container_text.ones() {
                 let layout = layouts[index];
-                // `!is_visible`, not `is_collapsed`: a container's own
-                // run sizes nothing — it wraps to a width arrange
-                // already fixed — so a `Hidden` owner has nothing to
-                // shape for. A hidden *leaf* still shapes, because
-                // there the run is what gives the slot its extent.
-                if !layout.meta.visibility().is_visible() {
-                    continue;
-                }
                 let node = NodeId(index as u32);
                 // The same inner box `arrange` places children in, so a
                 // container's own run wraps at the width its children

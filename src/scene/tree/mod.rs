@@ -118,10 +118,15 @@ pub(crate) struct Tree {
     pub(crate) rollups: SubtreeRollups,
     /// Whole-tree fingerprints, stamped alongside the per-node columns.
     pub(crate) fingerprint: TreeFingerprint,
-    /// Non-leaf owners of direct text shapes. Layout iterates the set
-    /// after arrange to shape paint-only text against its final padded
-    /// width — a worklist, not a hash, which is why it sits here rather
-    /// than with the rollup columns.
+    /// Non-leaf owners of direct text shapes, restricted to the ones
+    /// that paint. Layout iterates the set after arrange to shape
+    /// paint-only text against its final padded width — a worklist, not
+    /// a hash, which is why it sits here rather than with the rollup
+    /// columns.
+    ///
+    /// The visibility cascade is folded in at build time, so a consumer
+    /// reads the set and shapes, with no ancestor walk and no test of
+    /// its own.
     pub(crate) container_text: FixedBitSet,
 }
 
@@ -319,10 +324,22 @@ impl Tree {
                     }
                 }
             }
-            // One decode for all three consumers below.
-            let mode = LayoutMode::from(layouts[i].meta);
+            // One load and one decode for the four consumers below.
+            let meta = layouts[i].meta;
+            let mode = LayoutMode::from(meta);
             if has_direct_text && mode != LayoutMode::Leaf {
                 container_text.insert(i);
+            }
+            // A container run is paint-only, so a node that paints
+            // nothing — and every node under it — has no run to shape.
+            // A hidden *leaf* is the opposite case and still shapes,
+            // because there the run is what gives the slot its extent,
+            // which is why `LayoutPass::measure` tests `is_collapsed`
+            // where this tests `!is_visible`. Reverse pre-order is what
+            // makes one range clear enough: the descendants' bits are
+            // already in place when their ancestor reaches this line.
+            if !meta.visibility().is_visible() {
+                container_text.remove_range(i..subtree_ends[i].end() as usize);
             }
             match mode {
                 LayoutMode::Grid(id) => grid_defs[usize::from(id)].hash_visual(grid_tracks, &mut h),

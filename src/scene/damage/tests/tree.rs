@@ -744,11 +744,11 @@ fn reparent_at_same_rect_damages_moved_subtree() {
 
 /// Pin: the same move under a hidden ancestor damages nothing.
 ///
-/// The leaf's own visibility is `Visible`, so it still owns paint rows
-/// with real screen rects — an extent folded from those rows would
-/// repaint pixels no pass paints. The cascade's rolled-up column seeds an
-/// invisible subtree at `Rect::ZERO`, and reading the move's extent off
-/// that column is what makes a hidden reparent free.
+/// The leaf's own visibility is `Visible`, so a walk reading that alone
+/// would hand the move real screen rects and repaint pixels no pass
+/// paints. The cascade reads the inherited answer instead: the subtree
+/// owns no paint rows and its rolled-up column is seeded at
+/// `Rect::ZERO`, which is what makes a hidden reparent free.
 #[test]
 fn reparenting_a_hidden_subtree_damages_nothing() {
     let build = |ui: &mut Ui, under_b: bool| reparent_fixture(ui, under_b, true);
@@ -808,15 +808,18 @@ fn front_insert_damages_only_the_new_shape() {
 }
 
 /// A hidden container keeps its slot in layout, and the cascade writes
-/// it an empty paint span whatever its children are — so it must stay
-/// out of the snapshot map, which holds only nodes with rows.
+/// an empty paint span for it and for every node under it — so none of
+/// them may enter the snapshot map, which holds only nodes with rows.
 ///
-/// The visible sibling beside it is the control: it takes an entry, so
-/// the frame is one the map was filled from and the container's absence
-/// is the classification, not an empty pass.
+/// The child carries chrome of its own and its own `Visible`, so it is
+/// the case that separates the cascaded reading from the node's own.
+/// The visible sibling beside the container is the control: it takes an
+/// entry, so the frame is one the map was filled from and the two
+/// absences are the classification, not an empty pass.
 #[test]
 fn a_hidden_container_takes_no_snapshot() {
     let hidden = WidgetId::from_hash("hidden-box");
+    let hidden_child = WidgetId::from_hash("hidden-child");
     let shown = WidgetId::from_hash("shown-box");
     let mut h = UiHarness::cold(DISPLAY.physical);
     frame(&mut h, |ui| {
@@ -825,7 +828,7 @@ fn a_hidden_container_takes_no_snapshot() {
             .show(ui, |ui| {
                 Panel::hstack().id(hidden).hidden().show(ui, |ui| {
                     Frame::new()
-                        .id(WidgetId::from_hash("hidden-child"))
+                        .id(hidden_child)
                         .size(20.0)
                         .background(Background {
                             fill: BLUE.into(),
@@ -850,5 +853,9 @@ fn a_hidden_container_takes_no_snapshot() {
     assert!(
         !h.engines.damage.prev.contains_key(&hidden),
         "a rowless container must not take a snapshot",
+    );
+    assert!(
+        !h.engines.damage.prev.contains_key(&hidden_child),
+        "a `Visible` child under it is rowless for the same reason",
     );
 }

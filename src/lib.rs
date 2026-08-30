@@ -6,6 +6,15 @@
 // doctest when that feature is on. Without it the crate docs open at the
 // orientation section below instead.
 #![cfg_attr(feature = "winit", doc = include_str!("../README.md"))]
+// `WinitHost`, `WinitHostConfig` and `HostHandle` are the windowed host's own
+// types, and the docs on the backend-agnostic items around them — `Ui`'s
+// window commands, `WindowConfig`, `WindowToken` — say what that host does
+// with each. Those sentences are worth as much to a reader building without
+// the feature, so they stay whole and their links go unresolved in that build
+// rather than every one of them carrying a second, link-free copy of itself.
+// The price is that a link broken for any other reason also passes there —
+// the default build is the one that still denies them.
+#![cfg_attr(not(feature = "winit"), allow(rustdoc::broken_intra_doc_links))]
 //!
 //! # Where to start
 //!
