@@ -17,6 +17,8 @@ use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::span::Span;
 use crate::primitives::widget_id::{WidgetId, WidgetIdMap};
+use crate::scene::forest::Forest;
+use crate::scene::layer::Layer;
 use crate::scene::tree::Tree;
 use glam::IVec2;
 
@@ -68,6 +70,9 @@ pub(super) struct CaptureTreeInput<'a> {
     pub(super) text_shapes: &'a [ShapedText],
 }
 
+/// `pub(crate)` for one caller outside `layout`:
+/// `text::wrap::tests::wrap_target_matches_cache_grid`, which pins the
+/// wrap width against this very grid.
 #[inline]
 pub(crate) fn quantize_available(s: Size) -> AvailableKey {
     debug_assert!(s.w >= 0.0 && s.h >= 0.0, "negative available: {s:?}");
@@ -88,12 +93,12 @@ fn union_spans(a: Span, b: Span) -> Span {
 
 #[derive(Debug, Default)]
 pub(crate) struct NodeArenas {
-    pub(crate) desired: Vec<Size>,
+    desired: Vec<Size>,
     /// Arranged rect per node, captured after `arrange` wrote it. The
     /// only column produced by the *second* half of the layout pass;
     /// `LayoutEngine::arrange` replays it instead of re-running the
     /// drivers when a subtree's slot is unchanged or merely translated.
-    pub(super) rect: Vec<Rect>,
+    rect: Vec<Rect>,
     scroll_content: Vec<Size>,
     text_spans: Vec<Span>,
     intrinsics: Vec<[f32; SLOT_COUNT]>,
@@ -125,7 +130,7 @@ impl NodeArenas {
 
 #[derive(Debug, Default)]
 pub(crate) struct MeasureSnapshot {
-    pub(crate) nodes: NodeArenas,
+    nodes: NodeArenas,
     tracks: Vec<f32>,
     text_shapes: Vec<ShapedText>,
     snapshots: WidgetIdMap<u32>,
@@ -207,7 +212,7 @@ impl MeasureSnapshot {
 
 #[derive(Debug, Default)]
 pub(crate) struct MeasureCache {
-    pub(crate) previous: MeasureSnapshot,
+    previous: MeasureSnapshot,
     current: MeasureSnapshot,
     hug_offsets: Vec<u32>,
     text_bounds: Vec<Span>,
@@ -227,6 +232,44 @@ pub(crate) struct MeasureCache {
 impl MeasureCache {
     pub(super) fn begin_frame(&mut self) {
         self.current.clear_capture();
+    }
+
+    /// Whether last frame's capture still describes `forest` at
+    /// `surface` — same node and root counts, and every root still
+    /// under the same widget id, subtree hash and quantized available.
+    /// A `false` here is what makes the next `run` a rebuild.
+    pub(super) fn matches_forest(&self, forest: &Forest, surface: Rect) -> bool {
+        let snapshot = &self.previous;
+        if snapshot.nodes.desired.len() != forest.total_nodes()
+            || snapshot.roots.len() != forest.total_roots()
+        {
+            return false;
+        }
+        let mut root_index = 0;
+        for layer in Layer::PAINT_ORDER {
+            let tree = &forest.trees[layer];
+            for slot in &tree.roots {
+                let root = slot.first_node;
+                let current = RootSnapshotKey {
+                    wid: tree.records.widget_id()[root.idx()],
+                    subtree_hash: tree.rollups.subtree[root.idx()],
+                    available_q: quantize_available(slot.available(layer, surface)),
+                };
+                if snapshot.roots[root_index] != current {
+                    return false;
+                }
+                root_index += 1;
+            }
+        }
+        true
+    }
+
+    /// Last frame's arranged rects for a subtree of `len` nodes whose
+    /// capture starts at `base` — the third snapshot read, beside
+    /// [`Self::try_lookup`] and [`Self::lookup_root_intrinsic`], rather
+    /// than an index into the arena from outside.
+    pub(super) fn arranged_rects(&self, base: usize, len: usize) -> &[Rect] {
+        &self.previous.nodes.rect[base..base + len]
     }
 
     #[inline]
@@ -452,6 +495,15 @@ pub(crate) mod test_support {
         pub(crate) fn clear(&mut self) {
             self.previous.clear();
             self.current.clear();
+        }
+
+        /// Last frame's measured `desired` column, which the layout
+        /// tests read to prove what a capture retained. `cfg(test)`
+        /// alone — every reader is a test, including the ones inside
+        /// `bench.rs`.
+        #[cfg(test)]
+        pub(crate) fn captured_desired(&self) -> &[Size] {
+            &self.previous.nodes.desired
         }
     }
 }

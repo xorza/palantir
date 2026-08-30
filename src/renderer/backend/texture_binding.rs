@@ -84,10 +84,9 @@ pub(super) fn layout(device: &wgpu::Device, label: &'static str) -> wgpu::BindGr
 /// Build a bind group pairing a texture view at binding 0 with a sampler
 /// at binding 1 against a [`layout`]-shaped layout — the
 /// value twin of that layout builder. One construction site for the
-/// CPU-image upload (`ImagePipeline::upload`), the `GpuView` off-screen
-/// target (`image_pipeline::render_target::make_target`), and the
-/// gradient LUT atlas (`GpuGradientAtlas::new`), so their bindings
-/// can't drift.
+/// CPU-image upload (`image_textures::upload`), the `GpuView` off-screen
+/// target (`AllocatedTarget::new`), and the gradient LUT atlas
+/// (`GpuGradientAtlas::new`), so their bindings can't drift.
 pub(super) fn bind_group(
     device: &wgpu::Device,
     bgl: &wgpu::BindGroupLayout,

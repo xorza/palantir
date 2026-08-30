@@ -14,7 +14,7 @@ pub(crate) const MITER_LIMIT: f32 = 4.0;
 
 /// Conservative paint bound for a centerline AABB. `width` and `fringe` use
 /// the same coordinate space as `centerline`.
-pub(crate) fn stroked_bbox(
+pub(crate) fn bbox(
     centerline: Rect,
     width: f32,
     fringe: f32,

@@ -1,4 +1,5 @@
 use super::*;
+use crate::common::hash;
 use crate::primitives::recorded_text::RecordedText;
 
 #[test]
@@ -51,7 +52,7 @@ fn cache_key_discriminates_every_shaping_axis() {
     assert_eq!(base.weight_q, FontWeight::Regular as u8);
     assert_eq!(
         base.text_hash,
-        hash_str("hi"),
+        hash::hash_str("hi"),
         "direct shaping and authoring use the same canonical text hash",
     );
     assert_eq!(
@@ -326,13 +327,14 @@ fn key_for(recorded: &RecordedText) -> TextShapeKey {
 /// exact request the backend replays.
 #[test]
 fn shaped_text_ref_resolves_the_recorded_pair() {
-    let store = RecordStore::default();
-    let recorded = store.record_text(store.intern_str("hi"));
-    assert_eq!(recorded.hash, hash_str("hi"));
+    let mut store = RecordStore::default();
+    let interned = store.intern("hi");
+    let recorded = store.record_text(interned);
+    assert_eq!(recorded.hash, hash::hash_str("hi"));
     let key = key_for(&recorded);
     let text_ref = ShapedTextRef::new(key, &recorded);
 
-    let payloads = store.payloads.borrow();
+    let payloads = store.payloads();
     let interned = payloads.interned_text();
     let request = text_ref.resolve_request(&interned);
     assert_eq!(request.text, "hi");
@@ -348,8 +350,10 @@ fn shaped_text_ref_resolves_the_recorded_pair() {
 #[test]
 #[should_panic(expected = "shaped-text key paired with a different run's source bytes")]
 fn a_mismatched_key_and_source_are_rejected() {
-    let store = RecordStore::default();
-    let key = key_for(&store.record_text(store.intern_str("hi")));
-    let other = store.record_text(store.intern_str("bye"));
+    let mut store = RecordStore::default();
+    let interned = store.intern("hi");
+    let key = key_for(&store.record_text(interned));
+    let other_interned = store.intern("bye");
+    let other = store.record_text(other_interned);
     let _ = ShapedTextRef::new(key, &other);
 }

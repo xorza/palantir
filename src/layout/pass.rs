@@ -414,7 +414,7 @@ impl LayoutPass<'_> {
         let start = node.idx();
         let end = self.tree.subtree_end_of(start);
         let base = base as usize;
-        let src = &self.engine.cache.previous.nodes.rect[base..base + (end - start)];
+        let src = self.engine.cache.arranged_rects(base, end - start);
         if src[0].size != rendered.size {
             return false;
         }

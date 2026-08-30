@@ -101,7 +101,7 @@ impl Encoder {
         &mut self,
         scene: &FrameScene<'_>,
         plan: RenderPlan,
-        out: &mut dyn PaintSink,
+        out: &mut impl PaintSink,
     ) {
         let Self {
             gradients: gradient_resolver,

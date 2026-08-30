@@ -4,12 +4,11 @@
 use crate::display::Display;
 use crate::primitives::approx::EPS;
 use crate::primitives::{num::F32Ext, rect::Rect, translate_scale::TranslateScale, urect::URect};
+use crate::renderer::render_buffer::MAX_ROUNDED_CLIP_DEPTH;
 use crate::renderer::render_buffer::curve::{
-    CURVE_KIND_JOIN_BEVEL, CURVE_KIND_JOIN_MITER, CURVE_KIND_JOIN_ROUND, CurveInstance,
-    SEGMENTS_PER_INSTANCE,
+    CURVE_KIND_JOIN_BEVEL, CURVE_KIND_JOIN_MITER, CURVE_KIND_JOIN_ROUND, SEGMENTS_PER_INSTANCE,
 };
-use crate::renderer::render_buffer::{MAX_ROUNDED_CLIP_DEPTH, RenderBuffer};
-use crate::shape::stroke_bounds::{HALF_FRINGE, MITER_LIMIT, stroked_bbox};
+use crate::shape::stroke_bounds::{self, HALF_FRINGE, MITER_LIMIT};
 use crate::shape::style::{LineCap, LineJoin};
 use crate::text::TEXT_SCALE_STEP;
 use glam::{UVec2, Vec2};
@@ -38,25 +37,6 @@ pub(super) fn sub_instance_count(len_px: f32) -> u32 {
     total_segments
         .div_ceil(SEGMENTS_PER_INSTANCE)
         .clamp(1, MAX_SUB_INSTANCES)
-}
-
-/// Tile `t ∈ [0, 1]` into `n` contiguous ranges (the last ending at
-/// exactly `1.0`, so the shader's trailing-cap test fires) and push
-/// one instance per range; `proto` supplies every other lane.
-pub(super) fn push_sub_instances(out: &mut RenderBuffer, n: u32, proto: CurveInstance) {
-    let inv_n = 1.0 / n as f32;
-    for i in 0..n {
-        let t1 = if i + 1 == n {
-            1.0
-        } else {
-            (i + 1) as f32 * inv_n
-        };
-        out.curves.push(CurveInstance {
-            t0: i as f32 * inv_n,
-            t1,
-            ..proto
-        });
-    }
 }
 
 /// Squared distance below which two consecutive transformed polyline
@@ -167,7 +147,7 @@ pub(super) fn phys_point_map(
 /// [`phys_point_map`]'s rect: an owner-local bbox in physical px.
 ///
 /// Unsnapped — the tiers that fold a bbox this way (mesh, and the stroked
-/// pair through [`stroke_bbox_urect`]) all place sub-pixel geometry and
+/// pair through [`StrokeBbox::urect`]) all place sub-pixel geometry and
 /// let their shaders resolve the fringe.
 #[inline]
 pub(super) fn phys_bbox(
@@ -190,21 +170,40 @@ pub(super) fn rounded_clip_depth_overflow(depth: u32) -> ! {
     panic!("rounded clip chain depth {depth} exceeds stencil capacity {MAX_ROUNDED_CLIP_DEPTH}");
 }
 
-/// Physical-px painted bounds for a stroked shape's owner-local
-/// centerline `bbox`. Folds `origin` + the active transform into physical space,
-/// applies the shared stroke/cap/join/AA bound once, then clamps to the
-/// viewport. Shared by the curve and polyline paths so their cull and
-/// overlap bounds cannot drift.
-pub(super) fn stroke_bbox_urect(
-    xform: TranslateScale,
-    bbox: Rect,
-    origin: Vec2,
-    width_phys: f32,
-    cap: LineCap,
-    join: Option<LineJoin>,
-    display: Display,
-) -> URect {
-    let centerline_phys = phys_bbox(xform, bbox, origin, display.scale_factor);
-    let painted = stroked_bbox(centerline_phys, width_phys, HALF_FRINGE, cap, join);
-    urect_from_phys(painted.min, painted.max(), display.physical)
+/// One stroked shape's owner-local centerline and the style laid over
+/// it. Named fields rather than positional arguments: the curve and the
+/// polyline path differ in two of these and agree on the rest, which
+/// nothing at a call site could say.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct StrokeBbox {
+    pub(super) xform: TranslateScale,
+    /// Owner-local centerline bounds, before `origin` and `xform`.
+    pub(super) bbox: Rect,
+    pub(super) origin: Vec2,
+    pub(super) width_phys: f32,
+    pub(super) cap: LineCap,
+    /// `None` for a single-segment stroke, which has no joint.
+    pub(super) join: Option<LineJoin>,
+    pub(super) display: Display,
+}
+
+impl StrokeBbox {
+    /// Physical-px painted bounds. Folds `origin` + the active transform
+    /// into physical space, applies the shared stroke/cap/join/AA bound
+    /// once, then clamps to the viewport. Shared by the curve and
+    /// polyline paths so their cull and overlap bounds cannot drift.
+    pub(super) fn urect(self) -> URect {
+        let Self {
+            xform,
+            bbox,
+            origin,
+            width_phys,
+            cap,
+            join,
+            display,
+        } = self;
+        let centerline_phys = phys_bbox(xform, bbox, origin, display.scale_factor);
+        let painted = stroke_bounds::bbox(centerline_phys, width_phys, HALF_FRINGE, cap, join);
+        urect_from_phys(painted.min, painted.max(), display.physical)
+    }
 }

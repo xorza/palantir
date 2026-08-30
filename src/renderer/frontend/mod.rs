@@ -25,16 +25,14 @@ pub(crate) mod encoder;
 pub(crate) mod paint_sink;
 pub(crate) mod payload;
 
-use std::cell::Ref;
 use std::time::Duration;
 
 use crate::common::tracy;
 use crate::display::Display;
 use crate::layout::Layout;
-use crate::primitives::widget_id::WidgetIdMap;
 use crate::renderer::frontend::composer::Composer;
 use crate::renderer::frontend::encoder::Encoder;
-use crate::renderer::gpu_paint::gpu_view_entry::GpuViewEntry;
+use crate::renderer::gpu_paint::gpu_views::GpuViews;
 use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_plan::RenderPlan;
@@ -48,9 +46,8 @@ pub(crate) struct FrameScene<'a> {
     pub(crate) forest: &'a Forest,
     pub(crate) layout: &'a Layout,
     pub(crate) cascade: &'a Cascade,
-    /// Keeps the record-store read lease alive through encode and compose.
-    pub(crate) payloads: Ref<'a, RecordPayloads>,
-    pub(crate) gpu_views: &'a WidgetIdMap<GpuViewEntry>,
+    pub(crate) payloads: &'a RecordPayloads,
+    pub(crate) gpu_views: &'a GpuViews,
     pub(crate) display: Display,
     /// Drives backend `GpuView` frame deltas and is not derivable from `Display`.
     pub(crate) time: Duration,
@@ -92,28 +89,16 @@ impl Frontend {
         tracy::zone!();
         let mut sink =
             self.composer
-                .begin(scene.display, scene.time, &scene.payloads, &mut self.buffer);
+                .begin(scene.display, scene.time, scene.payloads, &mut self.buffer);
         self.encoder.encode(&scene, plan, &mut sink);
         // Dropping the session closes the trailing batch and group;
         // explicit because it also releases the `buffer` borrow.
         drop(sink);
-        // The retention roster, filled from the live view map rather than
-        // from what composed: `buffer.frame_targets` holds only the views
-        // this frame *paints*, and an unchanged view is culled out of it by
-        // the damage diff. Keyed on that alone, the backend could not tell
-        // "unchanged" from "gone" and would free a live view's target.
         // Written after the session drops, since the composer's clear fold
         // discards scene columns mid-compose and this is not one.
-        let live = &mut self.buffer.live_targets;
-        live.clear();
-        live.reserve_exact(scene.gpu_views.len());
-        live.extend(scene.gpu_views.values().map(|view| view.texture_id));
-        // Sorted here so the backend's retention sweep can search it
-        // instead of scanning it once per retained target — the product of
-        // the two counts, every submit, where a graph view holds one
-        // target per node. A map's `values()` has no order of its own, so
-        // this also stops the roster from depending on hash order.
-        live.sort_unstable();
+        scene
+            .gpu_views
+            .collect_live_targets(&mut self.buffer.live_targets);
     }
 }
 

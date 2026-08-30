@@ -112,22 +112,7 @@ impl sealed::LowerShape for CurveShape {
         geometry || self.stroke.width.is_nan() || self.stroke.brush.as_brush().has_nan()
     }
 
-    fn lower(self, store: &RecordStore) -> ShapeRecord {
-        let Self { geometry, stroke } = self;
-        match geometry {
-            CurveGeometry::Line { a, b } => lower::line(store, a, b, stroke),
-            CurveGeometry::CubicBezier { p0, p1, p2, p3 } => {
-                lower::cubic_bezier(store, [p0, p1, p2, p3], stroke)
-            }
-            CurveGeometry::QuadraticBezier { p0, p1, p2 } => {
-                lower::quadratic_bezier(store, [p0, p1, p2], stroke)
-            }
-            CurveGeometry::Arc {
-                center,
-                radius,
-                start_angle,
-                sweep,
-            } => lower::arc(store, center, radius, start_angle, sweep, stroke),
-        }
+    fn lower(self, store: &mut RecordStore) -> ShapeRecord {
+        lower::curve(store, self.geometry, self.stroke)
     }
 }

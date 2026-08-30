@@ -8,26 +8,29 @@
 //! through the existing image pipeline — so clipping, rounded corners, z-order,
 //! and partial-damage recompositing come for free.
 //!
-//! The `Ui` keeps one small per-`WidgetId` map of live views (`Ui::gpu_views`,
-//! values are [`GpuViewEntry`](crate::renderer::gpu_paint::gpu_view_entry::GpuViewEntry)): the app hands its renderer to the widget every
-//! frame, so [`Ui::gpu_view`](crate::Ui::gpu_view) upserts the entry — minting the stable backend
-//! [`TextureId`](crate::primitives::texture_id::TextureId) once from `UiResources`' shared authority, so it cannot
-//! collide with registered images or other
-//! windows, and refreshing the [`GpuPaintRef`](crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef). The shape records only the
-//! redraw `epoch`; the encoder looks the view up by the node's `WidgetId`,
-//! forwards the callback alongside the image payload, and the composer lists it in
-//! `RenderBuffer::frame_targets` for the backend. `Frontend::build` separately
-//! lists the whole map in `RenderBuffer::live_targets` — what the frame
+//! The `Ui` keeps one [`GpuViews`](crate::renderer::gpu_paint::gpu_views::GpuViews)
+//! store of live views: the app hands its renderer to the widget every
+//! frame, so [`Ui::gpu_view`](crate::Ui::gpu_view) records it there —
+//! minting the stable backend
+//! [`TextureId`](crate::primitives::texture_id::TextureId) once from
+//! `UiResources`' shared authority, so it cannot collide with registered
+//! images or other windows, and refreshing the
+//! [`GpuPaintRef`](crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef).
+//! The shape records only the redraw `epoch`; the encoder looks the view
+//! up by the node's `WidgetId`, forwards the callback alongside the image
+//! payload, and the composer lists it in `RenderBuffer::frame_targets` for
+//! the backend. `Frontend::build` separately fills
+//! `RenderBuffer::live_targets` from the whole store — what the frame
 //! *recorded*, as against what it *painted* — and that is what the backend
 //! keys target retention on, so an unchanged view culled out of a frame keeps
-//! its texture. The map is swept by the same `removed` set as every other
+//! its texture. The store is swept by the same `removed` set as every other
 //! per-widget cache; the backend then frees the orphaned texture (see
-//! `ImagePipeline::paint_gpu_views`).
+//! `ImageTextures::paint_gpu_views`).
 
 pub(crate) mod gpu_frame_ctx;
 pub(crate) mod gpu_init_ctx;
 pub(crate) mod gpu_paint_ref;
-pub(crate) mod gpu_view_entry;
+pub(crate) mod gpu_views;
 
 use crate::renderer::gpu_paint::gpu_frame_ctx::GpuFrameCtx;
 use crate::renderer::gpu_paint::gpu_init_ctx::GpuInitCtx;

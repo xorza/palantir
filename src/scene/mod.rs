@@ -6,6 +6,7 @@
 
 pub(crate) mod cascade;
 pub(crate) mod damage;
+pub(crate) mod endpoint;
 pub(crate) mod forest;
 pub(crate) mod layer;
 pub(crate) mod node;

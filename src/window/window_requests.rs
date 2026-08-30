@@ -2,6 +2,7 @@
 
 use crate::window::window_commands::WindowCommands;
 use crate::window::window_output::WindowOutput;
+use crate::window::window_token::WindowToken;
 
 /// Deferred recorder output consumed by the window host after a frame.
 ///
@@ -37,4 +38,36 @@ pub(crate) struct WindowRequests {
     /// swapchain is expensive, so the *host* compares these against what
     /// is in force and acts only on a real flip.
     pub(crate) levels: WindowOutput,
+}
+
+impl WindowRequests {
+    /// Move this frame's commands onto `out` and return the levels the
+    /// host applies afterwards. Settles the pending close first: a
+    /// `close_requested` that app code did not veto becomes `token`'s own
+    /// close command, so every host applies the veto the same way.
+    ///
+    /// The levels are copied, not taken: the recorder keeps them and
+    /// reads `vsync` back through [`Ui::vsync`](crate::Ui::vsync), so the
+    /// host is the one that diffs them against the swapchain it has open.
+    ///
+    /// Uses [`WindowCommands::append`] rather than `mem::take` so the
+    /// recorder keeps its buffers' capacity across frames.
+    ///
+    /// **The veto's one-frame life is enforced here**, for every host —
+    /// the offscreen one drains through this too — which is why no caller
+    /// has to clear it on the way in, and why `Ui::set_window_facts` can
+    /// assert instead.
+    pub(crate) fn drain(
+        &mut self,
+        token: WindowToken,
+        close_requested: bool,
+        out: &mut WindowCommands,
+    ) -> WindowOutput {
+        if close_requested && !self.close_vetoed {
+            self.commands.close(token);
+        }
+        out.append(&mut self.commands);
+        self.close_vetoed = false;
+        self.levels
+    }
 }

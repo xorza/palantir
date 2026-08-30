@@ -19,35 +19,14 @@ use crate::primitives::span::Span;
 use crate::primitives::widget_id::{WidgetId, WidgetIdMap};
 use crate::scene::cascade::LayerCascade;
 use crate::scene::cascade::paint::{Paint, PaintRows};
+use crate::scene::damage;
 use crate::scene::damage::counters::DamageCounters;
 use crate::scene::damage::node_snapshot::NodeSnapshot;
-use crate::scene::damage::push_screen;
 use crate::scene::damage::row_matcher::{ROW_UNMATCHED, RowMatcher};
 use crate::scene::layer::Layer;
 use crate::scene::tree::Tree;
 use crate::scene::tree::iter::TreeItem;
 use crate::scene::tree::node_id::NodeId;
-
-/// Damage the overlap of every pair of rows whose relative paint order
-/// flipped, given the pairing [`RowMatcher::diff_changed_leg`] left and
-/// the per-row extents [`LayerWalk::build_row_extents`] resolved.
-///
-/// A free function over its two inputs so the pair enumeration can be
-/// measured and tested without a tree or a cascade behind it.
-fn emit_inverted_overlaps_into(out: &mut Vec<Rect>, matched: &[u32], extents: &[Rect]) {
-    for j2 in 1..matched.len() {
-        let p2 = matched[j2];
-        if p2 == ROW_UNMATCHED {
-            continue;
-        }
-        for (j1, &p1) in matched.iter().enumerate().take(j2) {
-            if p1 == ROW_UNMATCHED || p1 < p2 {
-                continue;
-            }
-            push_screen(out, extents[j1].clamp_to(extents[j2]));
-        }
-    }
-}
 
 /// What the diff decided about one node, before it did anything about
 /// it. Ordered cheapest-and-most-common first; [`LayerWalk::classify`]
@@ -285,7 +264,7 @@ impl LayerWalk<'_> {
         // e.g. all canvas connections when an unrelated node is deleted.
         let union = self.cascade.paint_arena.rows_of(i).union_screens();
         if prev.cascade_input != self.cascade.cascade_inputs[i] {
-            push_screen(self.raw_rects, union);
+            damage::push_screen(self.raw_rects, union);
         }
 
         // Reparent / layer move at otherwise-identical content: the
@@ -294,7 +273,7 @@ impl LayerWalk<'_> {
         // intact and this push already covers them.
         if prev.parent_key != parent_key {
             let extent = self.cascade.subtree_paint_rects[i];
-            push_screen(self.raw_rects, extent);
+            damage::push_screen(self.raw_rects, extent);
         }
 
         let snapshot = self.snapshot(i, parent_key, leg.span);
@@ -352,7 +331,7 @@ impl LayerWalk<'_> {
             }
             self.probe.mark_dirty(NodeId(j as u32));
         }
-        push_screen(self.raw_rects, prev_extent);
+        damage::push_screen(self.raw_rects, prev_extent);
         // Rolled-up curr extent from the cascade — already `Rect::ZERO`
         // for invisible subtrees, so a hide transition damages only the
         // prev pixels.
@@ -361,7 +340,7 @@ impl LayerWalk<'_> {
         // this frame. The prev half above cannot be: last frame's column
         // is gone, and the retained rows are all that is left of it.
         let curr_extent = self.cascade.subtree_paint_rects[i];
-        push_screen(self.raw_rects, curr_extent);
+        damage::push_screen(self.raw_rects, curr_extent);
         end - i
     }
 
@@ -374,16 +353,26 @@ impl LayerWalk<'_> {
     /// [`RowMatcher::has_order_inversion`](crate::scene::damage::row_matcher::RowMatcher::has_order_inversion) on the rare frame an order actually
     /// flipped. Rows that merely shifted because a sibling was added or
     /// removed keep their relative order and contribute nothing.
-    /// [`push_screen`] drops degenerate results — a zero-size extent
-    /// pinned strictly inside a sibling does pass `intersects`, and a
-    /// sub-EPS overlap sliver paints nothing; neither earns a merge slot.
+    /// [`damage::push_screen`] drops degenerate results — a zero-size
+    /// extent pinned strictly inside a sibling does pass `intersects`,
+    /// and a sub-EPS overlap sliver paints nothing. Neither earns a
+    /// merge slot.
     fn emit_inverted_overlaps(&mut self, node: NodeId) {
         self.build_row_extents(node);
-        emit_inverted_overlaps_into(
-            self.raw_rects,
-            self.matcher.matched_positions(),
-            self.order_extents,
-        );
+        let matched = self.matcher.matched_positions();
+        let extents = &self.order_extents;
+        for j2 in 1..matched.len() {
+            let p2 = matched[j2];
+            if p2 == ROW_UNMATCHED {
+                continue;
+            }
+            for (j1, &p1) in matched.iter().enumerate().take(j2) {
+                if p1 == ROW_UNMATCHED || p1 < p2 {
+                    continue;
+                }
+                damage::push_screen(self.raw_rects, extents[j1].clamp_to(extents[j2]));
+            }
+        }
     }
 
     /// Screen-space extent per row of `node`'s paint span, in row order:

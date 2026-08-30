@@ -10,11 +10,12 @@ use crate::layout::types::placement::Placement;
 use crate::layout::types::track::Track;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
+use crate::scene::endpoint::Endpoint;
 use crate::scene::layer::{Layer, PerLayer};
 use crate::scene::node::Node;
 use crate::scene::node::salt::Salt;
 use crate::scene::record_store::RecordStore;
-use crate::scene::seen_ids::{CollisionRecord, Endpoint, SeenIds};
+use crate::scene::seen_ids::{CollisionRecord, SeenIds};
 use crate::scene::tree::ChromeInput;
 use crate::scene::tree::Tree;
 use crate::scene::tree::node_id::NodeId;
@@ -216,16 +217,14 @@ impl Forest {
     pub(crate) fn open_node(
         &mut self,
         widget_id: WidgetId,
-        node: Node,
+        node: &Node,
         chrome: Option<&Background>,
     ) {
         let layer = self.current_layer();
-        let chrome = chrome.map(|bg| ChromeInput {
-            bg,
-            store: &self.record_store,
-        });
         // Disjoint borrow: record storage, `trees`, and `scratch` are separate
         // fields, so all three can be borrowed for the same call.
+        let store = &mut self.record_store;
+        let chrome = chrome.map(|bg| ChromeInput { bg, store });
         let tree = &mut self.trees[layer];
         let scratch = &mut self.scratch[layer];
         let node_id = tree.open_node(scratch, widget_id, node, chrome);
@@ -359,7 +358,7 @@ impl Forest {
     fn push_shape(
         &mut self,
         what: &str,
-        push: impl FnOnce(&mut Tree, &RecordStore, &OpenFrame) -> bool,
+        push: impl FnOnce(&mut Tree, &mut RecordStore, &OpenFrame) -> bool,
     ) {
         let layer = self.current_layer();
         self.assert_node_open(layer, what);
@@ -370,7 +369,7 @@ impl Forest {
         let frame = frames
             .last_mut()
             .expect("`assert_node_open` above found an open frame");
-        if push(tree, &self.record_store, frame) {
+        if push(tree, &mut self.record_store, frame) {
             frame.paint_rows += 1;
         }
     }

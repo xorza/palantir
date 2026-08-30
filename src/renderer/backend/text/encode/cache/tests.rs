@@ -1,9 +1,8 @@
 use super::*;
 use crate::common::counters::CounterSet;
-use crate::renderer::backend::raster_atlas::raster_quad::RasterQuad;
-use crate::renderer::backend::text::encode::cache::{
-    ENCODED_CACHE_KEEP_FRAMES, EncodedCache, EncodedGlyph,
-};
+use crate::primitives::span::Span;
+use crate::renderer::backend::text::encode::EncodedKey;
+use crate::text::key::TextShapeKey;
 
 fn key(scale_q: u32) -> EncodedKey {
     EncodedKey {
@@ -41,7 +40,9 @@ fn same(a: &EncodedGlyph, b: &EncodedGlyph) -> bool {
 /// Push `glyphs` onto the arena and point `k` at them, as a
 /// re-encode of that run would.
 fn insert(cache: &mut EncodedCache, k: EncodedKey, tags: impl Iterator<Item = u32>, at: u64) {
-    cache.pending.extend(tags.map(glyph));
+    for tag in tags {
+        cache.stage(glyph(tag));
+    }
     cache.settle(k, at, true);
 }
 
@@ -224,7 +225,9 @@ fn only_complete_encodes_become_templates() {
         // A prior run's template — must survive either outcome.
         insert(&mut cache, key(1), 100..103, 7);
         let arena_before = cache.arena.slots.len();
-        cache.pending.extend((200..202).map(glyph));
+        for tag in 200..202 {
+            cache.stage(glyph(tag));
+        }
 
         cache.settle(key(2), 9, complete);
         assert!(cache.pending.is_empty(), "settle consumes the pending row");

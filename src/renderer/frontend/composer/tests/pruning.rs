@@ -8,7 +8,7 @@ use crate::renderer::frontend::capture::PaintCapture;
 use crate::renderer::frontend::composer::tests::support::{
     clip, composer, draw, params, rect, render_buffer, run, text,
 };
-use crate::renderer::frontend::paint_sink::{PaintGate, PaintSink};
+use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;

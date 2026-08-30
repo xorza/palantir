@@ -8,29 +8,24 @@ use crate::scene::record_store::record_payloads::RecordPayloads;
 use crate::scene::record_store::recorded_gradient::RecordedGradient;
 use crate::scene::record_store::recorded_gradients::RecordedGradients;
 use glam::Vec2;
-use std::cell::RefCell;
 use std::panic::AssertUnwindSafe;
 
 #[test]
 fn record_store_owns_inline_payloads_and_stores_are_isolated() {
     assert_eq!(
         std::mem::size_of::<RecordStore>(),
-        std::mem::size_of::<RefCell<RecordPayloads>>(),
+        std::mem::size_of::<RecordPayloads>(),
     );
 
-    let first = RecordStore::default();
+    let mut first = RecordStore::default();
     let second = RecordStore::default();
-    first
-        .payloads
-        .borrow_mut()
-        .polyline_points
-        .push(Vec2::new(3.0, 5.0));
+    first.stage_polyline(&[Vec2::new(3.0, 5.0)], &[]);
 
     assert_eq!(
-        first.payloads.borrow().polyline_points.as_slice(),
+        first.payloads().polyline_points.as_slice(),
         &[Vec2::new(3.0, 5.0)],
     );
-    assert!(second.payloads.borrow().polyline_points.is_empty());
+    assert!(second.payloads().polyline_points.is_empty());
 }
 
 /// Two properties, in priority order. **A hit is confirmed by
@@ -154,13 +149,13 @@ fn gradient_interner_dedups_at_every_table_width() {
 /// the only thing standing between a stale handle and a recorded span.
 #[test]
 fn a_stale_handle_is_rejected_by_both_paths_in_every_build() {
-    let store = RecordStore::default();
+    let mut store = RecordStore::default();
     let stale = store.intern_str("last frame");
     assert_eq!(store.record_text(stale).span, stale.span);
     assert_eq!(store.reuse(stale).span, stale.span);
 
     // A new pass retires it.
-    store.payloads.borrow_mut().text.clear();
+    store.clear();
     let fresh = store.intern_str("this frame");
     let recorded = std::panic::catch_unwind(AssertUnwindSafe(|| store.record_text(stale)));
     assert!(

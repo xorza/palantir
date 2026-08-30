@@ -47,7 +47,7 @@ fn test_gpu() -> TestGpu {
 // Fixture builder: it mirrors the shape of the call under test rather than grouping.
 #[allow(clippy::too_many_arguments)]
 fn make_inner_run(
-    store: &RecordStore,
+    store: &mut RecordStore,
     shaper: &TextShaper,
     text: &str,
     font_size_px: f32,
@@ -57,7 +57,8 @@ fn make_inner_run(
     scale: f32,
     color: ColorU8,
 ) -> TextDrawRow {
-    let recorded = store.record_text(store.intern_str(text));
+    let interned = store.intern(text);
+    let recorded = store.record_text(interned);
     // Warm through the run so the key stamped into the row is the
     // one the shaped buffer landed under. No width and a non-binding
     // policy: the unbounded root and nothing else.
@@ -88,7 +89,7 @@ fn run_one_frame(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     backend: &mut TextBackend,
-    store: &RecordStore,
+    store: &mut RecordStore,
     scale: f32,
     runs: &[TextDrawRow],
 ) {
@@ -97,7 +98,7 @@ fn run_one_frame(
         device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
     {
         let mut ctx = GpuCtx::new(device, queue, &mut belt, &mut encoder);
-        let payloads = store.payloads.borrow();
+        let payloads = store.payloads();
         let interned_text = payloads.interned_text();
         backend.prepare_batch(&mut ctx, scale, 0, runs, &interned_text);
         backend.pass.flush(&mut ctx);
@@ -123,11 +124,11 @@ fn run_one_frame(
 fn cached_run_keeps_its_atlas_slots_live() {
     let gpu = test_gpu();
     let shaper = TextShaper::new();
-    let store = RecordStore::default();
+    let mut store = RecordStore::default();
     let mut backend = TextBackend::new(&gpu.lease.device, shaper.clone());
 
     let runs = [make_inner_run(
-        &store,
+        &mut store,
         &shaper,
         "File",
         14.0,
@@ -149,7 +150,7 @@ fn cached_run_keeps_its_atlas_slots_live() {
         &gpu.lease.device,
         &gpu.queue,
         &mut backend,
-        &store,
+        &mut store,
         2.0,
         &runs,
     );
@@ -157,7 +158,7 @@ fn cached_run_keeps_its_atlas_slots_live() {
         shaper.has_cosmic_buffer(runs[0].text.key),
         "an encoded-cache miss must restore its shaped buffer",
     );
-    let arena_after_warmup = backend.encoder.cache.arena.slots.len();
+    let arena_after_warmup = backend.encoder.cache().arena_len();
     backend.tick_frame();
     assert!(
         !backend.pass.atlas.cache.is_empty(),
@@ -172,7 +173,7 @@ fn cached_run_keeps_its_atlas_slots_live() {
         &gpu.lease.device,
         &gpu.queue,
         &mut backend,
-        &store,
+        &mut store,
         2.0,
         &runs,
     );
@@ -193,8 +194,8 @@ fn cached_run_keeps_its_atlas_slots_live() {
     );
     // The refresh must have gone through the entry's *recorded*
     // slab indices — the exact path the hot loop writes.
-    for entry in backend.encoder.cache.map.values() {
-        for glyph in &backend.encoder.cache.arena.slots[entry.span.range()] {
+    for (_, span) in backend.encoder.cache().resident_rows() {
+        for glyph in backend.encoder.cache().templates(span) {
             let idx = glyph.atlas_slot;
             assert_eq!(
                 backend.pass.atlas.slots[idx as usize].last_use, cf,
@@ -203,7 +204,7 @@ fn cached_run_keeps_its_atlas_slots_live() {
         }
     }
     assert_eq!(
-        backend.encoder.cache.arena.slots.len(),
+        backend.encoder.cache().arena_len(),
         arena_after_warmup,
         "a pure cache-hit frame must not append a replacement span",
     );
@@ -213,12 +214,12 @@ fn cached_run_keeps_its_atlas_slots_live() {
 fn slot_generation_invalidates_only_referencing_run() {
     let gpu = test_gpu();
     let shaper = TextShaper::new();
-    let store = RecordStore::default();
+    let mut store = RecordStore::default();
     let mut backend = TextBackend::new(&gpu.lease.device, shaper.clone());
 
     let runs = [
         make_inner_run(
-            &store,
+            &mut store,
             &shaper,
             "AB",
             14.0,
@@ -229,7 +230,7 @@ fn slot_generation_invalidates_only_referencing_run() {
             ColorU8::linear_rgba(240, 240, 240, 255),
         ),
         make_inner_run(
-            &store,
+            &mut store,
             &shaper,
             "ZZZZ",
             14.0,
@@ -245,20 +246,14 @@ fn slot_generation_invalidates_only_referencing_run() {
         &gpu.lease.device,
         &gpu.queue,
         &mut backend,
-        &store,
+        &mut store,
         2.0,
         &runs,
     );
-    assert_eq!(backend.encoder.cache.map.len(), 2);
+    assert_eq!(backend.encoder.cache().rows(), 2);
     backend.tick_frame();
 
-    let entries: Vec<_> = backend
-        .encoder
-        .cache
-        .map
-        .iter()
-        .map(|(&key, entry)| (key, entry.span))
-        .collect();
+    let entries: Vec<_> = backend.encoder.cache().resident_rows().collect();
     // Invalidate the two-glyph "AB" run through its *second* glyph:
     // the cache-hit replay then validates and emits "A" before the
     // mismatch, pinning the partial-output rollback rather than a
@@ -268,18 +263,20 @@ fn slot_generation_invalidates_only_referencing_run() {
         .copied()
         .find(|(_, span)| span.len == 2)
         .expect("the two-glyph run must have a cached span");
-    let invalidated_slot =
-        backend.encoder.cache.arena.slots[invalidated_span.range()][1].atlas_slot;
+    let invalidated_slot = backend.encoder.cache().templates(invalidated_span)[1].atlas_slot;
     let (stable_key, stable_span) = entries
         .iter()
         .copied()
         .find(|(_, span)| {
-            backend.encoder.cache.arena.slots[span.range()]
+            backend
+                .encoder
+                .cache()
+                .templates(*span)
                 .iter()
                 .all(|glyph| glyph.atlas_slot != invalidated_slot)
         })
         .expect("test runs must use disjoint atlas slots");
-    let arena_before = backend.encoder.cache.arena.slots.len();
+    let arena_before = backend.encoder.cache().arena_len();
 
     let slot = &mut backend.pass.atlas.slots[invalidated_slot as usize];
     slot.generation = slot
@@ -291,7 +288,7 @@ fn slot_generation_invalidates_only_referencing_run() {
         &gpu.lease.device,
         &gpu.queue,
         &mut backend,
-        &store,
+        &mut store,
         2.0,
         &runs,
     );
@@ -302,7 +299,8 @@ fn slot_generation_invalidates_only_referencing_run() {
         "the rolled-back hit must not leak its partially emitted glyphs",
     );
     assert_eq!(
-        backend.encoder.cache.map[&stable_key].span, stable_span,
+        backend.encoder.cache().span_of(&stable_key),
+        Some(stable_span),
         "a disjoint run must retain its encoded span",
     );
     // The rebuild is proven by the generation below, not by where
@@ -310,18 +308,22 @@ fn slot_generation_invalidates_only_referencing_run() {
     // the re-encode is the same length, so it reclaims that very
     // block. Asserting *that* is the stronger statement — an
     // invalidation must not cost arena growth.
-    let replacement = backend.encoder.cache.map[&invalidated_key].span;
+    let replacement = backend
+        .encoder
+        .cache()
+        .span_of(&invalidated_key)
+        .expect("the invalidated run must be re-encoded");
     assert_eq!(
         replacement, invalidated_span,
         "the rebuilt run must reclaim the block its stale template freed",
     );
     assert_eq!(
-        backend.encoder.cache.arena.slots.len(),
+        backend.encoder.cache().arena_len(),
         arena_before,
         "a slot invalidation must not grow the arena",
     );
     assert_eq!(
-        backend.encoder.cache.arena.slots[replacement.range()][1].generation,
+        backend.encoder.cache().templates(replacement)[1].generation,
         expected_generation,
         "the replacement must record the slot's new generation",
     );
@@ -338,13 +340,13 @@ fn slot_generation_invalidates_only_referencing_run() {
 fn deferred_upload_keeps_batches_distinct() {
     let gpu = test_gpu();
     let shaper = TextShaper::new();
-    let store = RecordStore::default();
+    let mut store = RecordStore::default();
     let mut backend = TextBackend::new(&gpu.lease.device, shaper.clone());
 
     let color_a = ColorU8::linear_rgba(240, 240, 240, 255);
     let color_b = ColorU8::linear_rgba(200, 100, 50, 255);
     let run_a = make_inner_run(
-        &store,
+        &mut store,
         &shaper,
         "File",
         14.0,
@@ -355,7 +357,7 @@ fn deferred_upload_keeps_batches_distinct() {
         color_a,
     );
     let run_b = make_inner_run(
-        &store,
+        &mut store,
         &shaper,
         "File",
         14.0,
@@ -373,7 +375,7 @@ fn deferred_upload_keeps_batches_distinct() {
         .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
     {
         let mut ctx = GpuCtx::new(&gpu.lease.device, &gpu.queue, &mut belt, &mut encoder);
-        let payloads = store.payloads.borrow();
+        let payloads = store.payloads();
         let interned_text = payloads.interned_text();
         backend.prepare_batch(
             &mut ctx,
@@ -425,13 +427,13 @@ fn deferred_upload_keeps_batches_distinct() {
 fn partially_culled_run_is_not_cached() {
     let gpu = test_gpu();
     let shaper = TextShaper::new();
-    let store = RecordStore::default();
+    let mut store = RecordStore::default();
     let mut backend = TextBackend::new(&gpu.lease.device, shaper.clone());
 
     // Three 3-glyph lines at line_height 16 px, origin (0, 0):
     // line tops sit at 0 / 16 / 32.
     let mut run = make_inner_run(
-        &store,
+        &mut store,
         &shaper,
         "abc\ndef\nxyz",
         14.0,
@@ -452,7 +454,7 @@ fn partially_culled_run_is_not_cached() {
         &gpu.lease.device,
         &gpu.queue,
         &mut backend,
-        &store,
+        &mut store,
         1.0,
         std::slice::from_ref(&run),
     );
@@ -461,8 +463,9 @@ fn partially_culled_run_is_not_cached() {
         3,
         "only line 0's 3 glyphs survive the cull"
     );
-    assert!(
-        backend.encoder.cache.map.is_empty(),
+    assert_eq!(
+        backend.encoder.cache().rows(),
+        0,
         "a culled encode must not become a cache template",
     );
     backend.tick_frame();
@@ -473,12 +476,12 @@ fn partially_culled_run_is_not_cached() {
         &gpu.lease.device,
         &gpu.queue,
         &mut backend,
-        &store,
+        &mut store,
         1.0,
         std::slice::from_ref(&run),
     );
     assert_eq!(backend.pass.instances.len(), 3);
-    assert!(backend.encoder.cache.map.is_empty());
+    assert_eq!(backend.encoder.cache().rows(), 0);
     backend.tick_frame();
 
     // Frame 3, unclipped: 3 lines * 3 glyphs = 9 instances, and
@@ -489,13 +492,18 @@ fn partially_culled_run_is_not_cached() {
         &gpu.lease.device,
         &gpu.queue,
         &mut backend,
-        &store,
+        &mut store,
         1.0,
         std::slice::from_ref(&run),
     );
     assert_eq!(backend.pass.instances.len(), 9);
-    assert_eq!(backend.encoder.cache.map.len(), 1);
-    let cached = backend.encoder.cache.map.values().next().unwrap().span;
+    assert_eq!(backend.encoder.cache().rows(), 1);
+    let (_, cached) = backend
+        .encoder
+        .cache()
+        .resident_rows()
+        .next()
+        .expect("the run is cached");
     assert_eq!(
         cached.len, 9,
         "the whole run is cached, not a culled prefix"
@@ -503,7 +511,7 @@ fn partially_culled_run_is_not_cached() {
     // Blocks round up to `BLOCK_GRANULE`, so nine glyphs occupy a
     // twelve-slot block. The row's own length is the invariant here;
     // the arena length is the allocator's business.
-    assert_eq!(backend.encoder.cache.arena.slots.len(), 12);
+    assert_eq!(backend.encoder.cache().arena_len(), 12);
     backend.tick_frame();
 
     // Frame 4 replays the cached template: same 9 instances with
@@ -512,14 +520,14 @@ fn partially_culled_run_is_not_cached() {
         &gpu.lease.device,
         &gpu.queue,
         &mut backend,
-        &store,
+        &mut store,
         1.0,
         std::slice::from_ref(&run),
     );
     assert_eq!(backend.pass.instances.len(), 9);
-    assert_eq!(backend.encoder.cache.map.len(), 1);
+    assert_eq!(backend.encoder.cache().rows(), 1);
     assert_eq!(
-        backend.encoder.cache.arena.slots.len(),
+        backend.encoder.cache().arena_len(),
         12,
         "a hit must not re-encode"
     );
@@ -541,11 +549,11 @@ fn partially_culled_run_is_not_cached() {
 fn both_caches_age_on_one_clock_including_text_free_frames() {
     let gpu = test_gpu();
     let shaper = TextShaper::new();
-    let store = RecordStore::default();
+    let mut store = RecordStore::default();
     let mut backend = TextBackend::new(&gpu.lease.device, shaper.clone());
 
     let runs = [make_inner_run(
-        &store,
+        &mut store,
         &shaper,
         "aged",
         14.0,
@@ -559,11 +567,11 @@ fn both_caches_age_on_one_clock_including_text_free_frames() {
         &gpu.lease.device,
         &gpu.queue,
         &mut backend,
-        &store,
+        &mut store,
         1.0,
         &runs,
     );
-    assert_eq!(backend.encoder.cache.map.len(), 1, "the run is cached");
+    assert_eq!(backend.encoder.cache().rows(), 1, "the run is cached");
     backend.tick_frame();
 
     // Text-free frames: `prepare_batch` is never called, so `ranges`
@@ -588,15 +596,16 @@ fn both_caches_age_on_one_clock_including_text_free_frames() {
     // used at frame 0, so it dies one frame past its window, without
     // a single text-bearing frame in between.
     assert_eq!(
-        backend.encoder.cache.map.len(),
+        backend.encoder.cache().rows(),
         1,
         "premise: still inside the keep window",
     );
     while shaper.frame() <= RENDERED_RUN_KEEP_FRAMES + RENDERED_RUN_KEEP_SPREAD_MASK {
         backend.tick_frame();
     }
-    assert!(
-        backend.encoder.cache.map.is_empty(),
+    assert_eq!(
+        backend.encoder.cache().rows(),
+        0,
         "text-free frames must age the encoded cache out",
     );
     assert!(
@@ -613,11 +622,11 @@ fn both_caches_age_on_one_clock_including_text_free_frames() {
 fn swept_empty_glyph_reinserts() {
     let gpu = test_gpu();
     let shaper = TextShaper::new();
-    let store = RecordStore::default();
+    let mut store = RecordStore::default();
     let mut backend = TextBackend::new(&gpu.lease.device, shaper.clone());
 
     let runs = [make_inner_run(
-        &store,
+        &mut store,
         &shaper,
         " ",
         14.0,
@@ -640,7 +649,7 @@ fn swept_empty_glyph_reinserts() {
         &gpu.lease.device,
         &gpu.queue,
         &mut backend,
-        &store,
+        &mut store,
         1.0,
         &runs,
     );
@@ -670,7 +679,7 @@ fn swept_empty_glyph_reinserts() {
         .lease
         .device
         .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-    let payloads = store.payloads.borrow();
+    let payloads = store.payloads();
     let interned_text = payloads.interned_text();
     while backend.pass.atlas.current_frame < 1024 {
         let mut ctx = GpuCtx::new(&gpu.lease.device, &gpu.queue, &mut belt, &mut encoder);
@@ -690,7 +699,7 @@ fn swept_empty_glyph_reinserts() {
         &gpu.lease.device,
         &gpu.queue,
         &mut backend,
-        &store,
+        &mut store,
         1.0,
         &runs,
     );

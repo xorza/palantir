@@ -57,7 +57,7 @@ pub struct Node {
     /// The five themable fields are `None` until explicitly set, so
     /// widgets can layer theme defaults under user intent with a plain
     /// `get_or_insert` / `unwrap_or` — there is no separate provenance
-    /// tracking. [`Self::into_columns`] resolves `None` to the layout
+    /// tracking. [`Self::columns`] resolves `None` to the layout
     /// defaults (`Sizes::default()`, `Size::ZERO`/`Size::INF` bounds,
     /// `Spacing::ZERO`).
     pub(crate) size: Option<Sizes>,
@@ -67,7 +67,7 @@ pub struct Node {
     pub(crate) margin: Option<Spacing>,
     /// Clip mode, `None` until set. Kept out of [`NodeFlags`] during
     /// authoring for the same theme-fallback reason; folded into the
-    /// recorded flags by [`Self::into_columns`].
+    /// recorded flags by [`Self::columns`].
     pub(crate) clip: Option<ClipMode>,
 
     /// Within-line gap + between-line gap packed as two f16 lanes.
@@ -350,17 +350,18 @@ impl Node {
     /// by the caller (resolved from `self.salt` upstream in
     /// `Forest::open_node`) so `Node` itself never carries a resolved id.
     ///
-    /// Consumes `self` to say exactly that the node is spent: the caller
-    /// has no reason to read it again, and handing it over lets the
-    /// chain feed it forward rather than keep a live copy alongside the
-    /// columns.
+    /// Takes `&self` rather than the 120-byte `Node` by value, so the
+    /// four-hop opener chain above it moves no bytes at any hop and does
+    /// not lean on `#[inline]` to elide them. Named without a `to_` /
+    /// `into_` prefix for that reason: both would read as a by-value
+    /// receiver on a `Copy` type, which is what this avoids.
     #[inline(always)]
-    pub(super) fn into_columns(self, widget_id: WidgetId) -> NodeColumns {
+    pub(super) fn columns(&self, widget_id: WidgetId) -> NodeColumns {
         let mut attrs = self.flags;
         attrs.set_clip(self.clip.unwrap_or(ClipMode::None));
         NodeColumns {
             widget_id,
-            layout: LayoutCore::from_node(&self),
+            layout: LayoutCore::from_node(self),
             attrs,
             bounds: BoundsExtras {
                 position: self.position,

@@ -222,7 +222,7 @@ impl Damage {
     ///
     /// [`DamageRegion::collapse_from`]: crate::scene::damage::region::DamageRegion::collapse_from
     pub(crate) fn new(damage: CollapsedDamage) -> Option<Damage> {
-        if damage.region.rects.is_empty() {
+        if damage.region.is_empty() {
             return None;
         }
         if damage.coverage > FULL_REPAINT_THRESHOLD {

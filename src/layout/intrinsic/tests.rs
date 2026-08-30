@@ -128,7 +128,6 @@ fn intrinsic_query_short_circuits_on_cache_hit() {
         1,
         "only the missing max-content side should compute",
     );
-    drop(payloads);
 }
 
 /// Recursive intrinsic queries must populate descendant slots too,
@@ -173,7 +172,6 @@ fn parent_intrinsic_query_populates_descendant_cache() {
         LenReq::MaxContent,
         &interned_text,
     );
-    drop(payloads);
 
     assert!(
         !h.engines.layout.scratch.intrinsics[root.idx()][slot].is_nan(),

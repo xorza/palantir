@@ -1,6 +1,6 @@
 //! The record pass's text arena.
 
-use crate::common::hash::hash_str;
+use crate::common::hash;
 use crate::primitives::interned_str::InternedStr;
 use crate::primitives::recorded_text::RecordedText;
 use crate::primitives::span::Span;
@@ -97,6 +97,6 @@ impl TextStore {
     /// already in place, so this is a bounds-checked slice and a hash.
     pub(super) fn record(&self, text: InternedStr) -> RecordedText {
         self.assert_current(text);
-        RecordedText::new(text.span, hash_str(&self.bytes[text.span.range()]))
+        RecordedText::new(text.span, hash::hash_str(&self.bytes[text.span.range()]))
     }
 }

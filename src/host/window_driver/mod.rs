@@ -549,7 +549,7 @@ impl WindowDriver {
             PresentMode::Direct(_) | PresentMode::ViaBackbuffer(_)
                 if !buffer.rounded_clips.is_empty() =>
             {
-                Some(&backend.ensure_stencil(&mut self.stencil, size).view)
+                Some(&Stencil::ensure(&mut self.stencil, backend.device(), size).view)
             }
             _ => None,
         };
@@ -573,8 +573,12 @@ impl WindowDriver {
             // the backbuffer leaves it holding what the target holds.
             PresentMode::Direct(plan) | PresentMode::ViaBackbuffer(plan) => {
                 let backbuffer = if mode.renders_via_backbuffer() {
-                    let recreated =
-                        backend.ensure_backbuffer(&mut self.backbuffer, size, target.format());
+                    let ensured = Backbuffer::ensure(
+                        &mut self.backbuffer,
+                        backend.device(),
+                        size,
+                        target.format(),
+                    );
                     // A Partial reaches here un-escalated only when
                     // `backbuffer_fresh` — last frame rendered into the
                     // backbuffer at this size/format — so a recreate under
@@ -582,11 +586,11 @@ impl WindowDriver {
                     // here couldn't fix it: the draw list was already
                     // Partial-culled in `cpu_frame`.
                     debug_assert!(
-                        !recreated || matches!(plan.damage, Damage::Full),
+                        !ensured.recreated || matches!(plan.damage, Damage::Full),
                         "backbuffer (re)created under a Partial plan whose draw \
                          list was culled for Partial"
                     );
-                    self.backbuffer.as_ref()
+                    Some(ensured.backbuffer)
                 } else {
                     None
                 };
@@ -599,7 +603,7 @@ impl WindowDriver {
                         backbuffer,
                         stencil: stencil_view,
                     },
-                    payloads: &payloads,
+                    payloads,
                     buffer,
                     plan,
                     debug_overlay,

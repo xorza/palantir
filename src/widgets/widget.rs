@@ -88,16 +88,17 @@ impl Widget {
     /// chrome-less path and `Some(bg)` when the widget paints a
     /// background — container widgets resolve an explicit-or-theme
     /// `Option<Background>` and pass `chrome.as_ref()`. Both it and the
-    /// node travel by reference from here down `Ui::open_node` → `Forest::open_node` →
-    /// `Tree::open_node` → `Node::into_columns`, so neither the
-    /// `Background` nor the `Node` is re-copied per hop.
+    /// node travel by reference from here down `Ui::open_node` →
+    /// `Forest::open_node` → `Tree::open_node` → `Node::columns`,
+    /// so neither the `Background` nor the 120-byte `Node` is re-copied
+    /// per hop — structurally, not by inlining.
     pub fn record<R>(
         self,
         ui: &mut Ui,
         chrome: Option<&Background>,
         body: impl FnOnce(&mut Ui) -> R,
     ) -> R {
-        ui.open_node(self.id, self.node, chrome);
+        ui.open_node(self.id, &self.node, chrome);
         let r = body(ui);
         ui.close_node();
         r

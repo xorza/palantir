@@ -172,7 +172,7 @@ use crate::renderer::texture_limit::TextureLimit;
 // support, and under a non-test `internals` build that method is absent.
 #[cfg(any(test, feature = "bench"))]
 use crate::scene::damage::region::{CollapsedDamage, DamageRegion};
-use crate::scene::seen_ids::Endpoint;
+use crate::scene::endpoint::Endpoint;
 use crate::text::shaper::TextShaper;
 use crate::ui::Ui;
 use crate::ui::frame_engines::FrameEngines;
@@ -876,7 +876,7 @@ mod unit {
             self.ui
                 .anim
                 .try_typed_mut::<T>()
-                .map_or(0, |rows| rows.rows.len())
+                .map_or(0, |rows| rows.len())
         }
 
         pub(crate) fn encode_paint(&self) -> PaintCapture {

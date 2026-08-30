@@ -2,8 +2,9 @@
 
 use crate::primitives::color::Color;
 use crate::primitives::rect::Rect;
+use crate::primitives::shadow::Shadow;
 use crate::primitives::size::Size;
-use crate::scene::shapes::paint::shadow_paint_rect_local;
+use crate::scene::shapes::paint::LoweredShadow;
 use crate::scene::shapes::record::*;
 use glam::Vec2;
 
@@ -39,30 +40,28 @@ fn shadow_paint_bbox_tracks_shifted_drop_and_source_bounded_inset() {
         },
     ];
 
+    let lowered = |offset: Vec2, blur: f32, spread: f32, inset: bool| {
+        LoweredShadow::from(Shadow {
+            color: Color::BLACK,
+            offset,
+            blur,
+            spread,
+            inset,
+        })
+    };
+
     for case in cases {
         assert_eq!(
-            shadow_paint_rect_local(
-                Some(source),
-                Size::ZERO,
-                case.offset,
-                case.blur,
-                case.spread,
-                false,
-            ),
+            lowered(case.offset, case.blur, case.spread, false)
+                .paint_rect_local(Some(source), Size::ZERO),
             case.expected,
             "{case:?}",
         );
     }
 
     assert_eq!(
-        shadow_paint_rect_local(
-            Some(source),
-            Size::ZERO,
-            Vec2::new(100.0, -100.0),
-            20.0,
-            8.0,
-            true,
-        ),
+        lowered(Vec2::new(100.0, -100.0), 20.0, 8.0, true)
+            .paint_rect_local(Some(source), Size::ZERO),
         source,
         "inset paint remains clipped to its source rect",
     );

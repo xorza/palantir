@@ -20,19 +20,18 @@ use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher;
 use crate::primitives::approx;
 use crate::primitives::approx::FloatHash;
-use crate::primitives::arc::arc_bbox;
+use crate::primitives::arc;
 use crate::primitives::background::Background;
-use crate::primitives::bezier::{cubic_bezier_bbox, quadratic_to_cubic};
+use crate::primitives::bezier;
 use crate::primitives::brush::Brush;
 use crate::primitives::brush::gradient::{Gradient, GradientGeometry};
-use crate::primitives::color::{Color, ColorU8};
+use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
 use crate::primitives::fill_kind::FillKind;
 use crate::primitives::mesh::Mesh;
 use crate::primitives::nan::NanCheck;
 use crate::primitives::rect::Rect;
 use crate::primitives::shadow::Shadow;
-use crate::primitives::span::Span;
 use crate::primitives::stroke::Stroke;
 use crate::scene::record_store::RecordStore;
 use crate::scene::record_store::recorded_gradient::RecordedGradient;
@@ -40,7 +39,7 @@ use crate::scene::shapes::paint::{
     ChromeRow, CurveBasis, LoweredShadow, QuadShape, ShapeBrush, ShapeStroke,
 };
 use crate::scene::shapes::record::{ColorMode, ShapeRecord};
-use crate::shape::curve::CurveStroke;
+use crate::shape::curve::{CurveGeometry, CurveStroke};
 use crate::shape::polyline::PolylineColors;
 use crate::shape::rect::RectKind;
 use crate::shape::style::{LineCap, LineJoin};
@@ -73,8 +72,8 @@ fn grad_hash<G: std::hash::Hash>(tag: u8, g: &G) -> u64 {
     h.finish()
 }
 
-fn stored_gradient(store: &RecordStore, gradient: RecordedGradient, hash: u64) -> LoweredBrush {
-    let id = store.payloads.borrow_mut().gradients.intern(hash, gradient);
+fn stored_gradient(store: &mut RecordStore, gradient: RecordedGradient, hash: u64) -> LoweredBrush {
+    let id = store.intern_gradient(hash, gradient);
     LoweredBrush {
         brush: ShapeBrush::Gradient(id),
         hash,
@@ -92,7 +91,7 @@ fn solid_brush(color: Color) -> LoweredBrush {
 /// three kinds do not share — the discriminant byte that keeps their
 /// content hashes apart, and the marker the shader branches on.
 fn gradient_brush<G: GradientGeometry>(
-    store: &RecordStore,
+    store: &mut RecordStore,
     tag: u8,
     kind: FillKind,
     gradient: &Gradient<G>,
@@ -114,7 +113,7 @@ fn gradient_brush<G: GradientGeometry>(
 /// `ShapeBrush::Gradient`. The pre-computed content hash is returned
 /// alongside so the caller can stamp it into the `ShapeRecord` /
 /// `ChromeRow` and keep their `Hash` impls context-free.
-pub(crate) fn brush(store: &RecordStore, b: &Brush) -> LoweredBrush {
+pub(crate) fn brush(store: &mut RecordStore, b: &Brush) -> LoweredBrush {
     // No screen of its own: a gradient's geometry disappears into the
     // store behind a `GradientId`, so the decision has to be made before
     // the intern, and both callers make it — `Shapes::add` on the
@@ -137,7 +136,7 @@ pub(crate) fn brush(store: &RecordStore, b: &Brush) -> LoweredBrush {
 /// reference — the recording chain threads it through four functions
 /// and [`Background`] is deliberately not `Copy`; the per-field reads
 /// below copy the small fields locally as needed.
-pub(crate) fn background(store: &RecordStore, bg: &Background) -> ChromeRow {
+pub(crate) fn background(store: &mut RecordStore, bg: &Background) -> ChromeRow {
     // **Chrome's NaN gate**, and the second of the crate's two — the
     // shape path's is `Shapes::add`. It runs here for the same reason
     // that one runs before lowering: `fill` interns its gradient into the
@@ -227,7 +226,7 @@ pub(crate) fn background(store: &RecordStore, bg: &Background) -> ChromeRow {
 /// the fill: it interns through [`brush`], the same pool [`background`]
 /// draws from, so chrome and rectangle fills share one gradient set.
 pub(crate) fn rect(
-    store: &RecordStore,
+    store: &mut RecordStore,
     kind: RectKind,
     local_rect: Option<Rect>,
     corners: Corners,
@@ -250,25 +249,21 @@ pub(crate) fn rect(
 ///
 /// Here rather than in `MeshShape::lower` because staging is the whole
 /// of what it does — the builder held a `&Mesh` and the record holds two
-/// spans into the store, and reaching for `store.payloads` from the
-/// authoring side is the coupling this module exists to keep on one side
-/// of the line.
+/// spans into the store, and reaching for the store from the authoring
+/// side is the coupling this module exists to keep on one side of the
+/// line.
 pub(crate) fn mesh(
-    store: &RecordStore,
+    store: &mut RecordStore,
     mesh: &Mesh,
     local_rect: Option<Rect>,
     tint: Color,
 ) -> ShapeRecord {
-    let mut payloads = store.payloads.borrow_mut();
-    let v_start = payloads.meshes.vertices.len() as u32;
-    payloads.meshes.vertices.extend_from_slice(&mesh.vertices);
-    let i_start = payloads.meshes.indices.len() as u32;
-    payloads.meshes.indices.extend_from_slice(&mesh.indices);
+    let staged = store.stage_mesh(mesh);
     ShapeRecord::Mesh {
         local_rect,
         tint: tint.into(),
-        vertices: Span::new(v_start, mesh.vertices.len() as u32),
-        indices: Span::new(i_start, mesh.indices.len() as u32),
+        vertices: staged.vertices,
+        indices: staged.indices,
         bbox: mesh.bbox(),
         content_hash: mesh.content_hash(),
     }
@@ -282,7 +277,7 @@ pub(crate) fn mesh(
 /// `ShapeRecord::Curve` directly, picking its [`CurveBasis`]. Both
 /// render on the GPU curve pipeline.
 pub(crate) fn polyline(
-    store: &RecordStore,
+    store: &mut RecordStore,
     points: &[Vec2],
     colors: PolylineColors<'_>,
     width: f32,
@@ -316,14 +311,8 @@ pub(crate) fn polyline(
         !bbox.has_nan(),
         "NaN polyline point reached lowering — `Shapes::add` screens the bbox",
     );
-    let mut payloads = store.payloads.borrow_mut();
-    let p_start = payloads.polyline_points.len() as u32;
-    let c_start = payloads.polyline_colors.len() as u32;
-    payloads.polyline_points.extend_from_slice(points);
-    payloads
-        .polyline_colors
-        .extend(color_slice.iter().map(|&c| ColorU8::from(c)));
-    let lowered_colors = &payloads.polyline_colors[c_start as usize..];
+    let staged = store.stage_polyline(points, color_slice);
+    let lowered_colors = &store.payloads().polyline_colors[staged.colors.range()];
 
     // Hash contract for polyline records: no variant tag needed —
     // polylines are the only shape lowering into this record, and
@@ -345,21 +334,35 @@ pub(crate) fn polyline(
         color_mode: mode,
         cap,
         join,
-        points: Span::new(p_start, points.len() as u32),
-        colors: Span::new(c_start, color_slice.len() as u32),
+        points: staged.points,
+        colors: staged.colors,
         bbox,
         content_hash,
     }
 }
 
-/// Lower a cubic bezier into a `ShapeRecord::Curve`. Tessellation
-/// happens GPU-side at draw time — no CPU flattening, no per-curve
-/// vertex/index allocation. The composer derives sub-instance count
-/// from the post-transform control-polygon length. A linear gradient samples
-/// along the curve parameter `t`; its `angle` is ignored.
-pub(crate) fn cubic_bezier(
-    store: &RecordStore,
-    ctrl: [Vec2; 4],
+/// Lower any [`CurveGeometry`] onto its [`CurveBasis`] plus a tight
+/// bbox. One entry point rather than four, so the geometry's fields are
+/// read where they live instead of being destructured into a positional
+/// call and rebuilt on the other side.
+///
+/// Tessellation happens GPU-side at draw time — no CPU flattening, no
+/// per-curve vertex/index allocation. The composer derives sub-instance
+/// count from the post-transform control-polygon length. A linear
+/// gradient samples along the curve parameter `t`; its `angle` is
+/// ignored.
+///
+/// Lines and quadratics reach the shader as cubics. A line's inner
+/// control points sit on the segment's thirds, so `B(t) = a + (b - a)·t`
+/// exactly and `t` runs linearly from `a` to `b`; the composer's
+/// flatness fast-path keeps that collinear cubic a single GPU instance.
+/// A quadratic's promotion is exact, not an approximation. An arc keeps
+/// its own basis: the shader evaluates the exact circle, so
+/// centre/radius/angles are stored verbatim and a linear gradient is
+/// sampled along the sweep.
+pub(crate) fn curve(
+    store: &mut RecordStore,
+    geometry: CurveGeometry,
     stroke: CurveStroke,
 ) -> ShapeRecord {
     let CurveStroke {
@@ -367,75 +370,58 @@ pub(crate) fn cubic_bezier(
         brush: paint,
         cap,
     } = stroke;
-    let [p0, p1, p2, p3] = ctrl;
-    curve_record(
-        CurveBasis::Cubic { p0, p1, p2, p3 },
-        cubic_bezier_bbox(p0, p1, p2, p3),
-        width,
-        brush(store, paint.as_brush()),
-        cap,
-    )
-}
-
-/// Lower a quadratic bezier by promoting it to a cubic and going
-/// through [`cubic_bezier`]'s path. Exact reparameterization:
-/// `q1' = q0 + 2/3·(c - q0)`, `q2' = q2 + 2/3·(c - q2)`.
-pub(crate) fn quadratic_bezier(
-    store: &RecordStore,
-    ctrl: [Vec2; 3],
-    stroke: CurveStroke,
-) -> ShapeRecord {
-    let [p0, c, p2] = ctrl;
-    let cubic = quadratic_to_cubic(p0, c, p2);
-    cubic_bezier(store, [p0, cubic.c1, cubic.c2, p2], stroke)
-}
-
-/// Lower a straight line as a degenerate cubic on the native GPU
-/// stroke path. Inner control points sit on the segment's thirds,
-/// so `B(t) = a + (b - a)·t` exactly — `t` (and thus a gradient
-/// brush) runs linearly from `a` to `b`. The composer's flatness
-/// fast-path keeps the collinear cubic a single GPU instance.
-pub(crate) fn line(store: &RecordStore, a: Vec2, b: Vec2, stroke: CurveStroke) -> ShapeRecord {
-    let third = (b - a) / 3.0;
-    cubic_bezier(store, [a, a + third, b - third, b], stroke)
-}
-
-/// Lower a circular arc onto [`CurveBasis::Arc`]. Same native-GPU
-/// stroke path as the béziers — no CPU flattening; the shader
-/// evaluates the exact circle, so the basis stores center/radius/
-/// angles verbatim. A linear gradient is sampled along the sweep.
-/// `|sweep| ≤ 2π` is debug-asserted: a longer sweep would repaint
-/// pixels and double-blend a translucent stroke.
-pub(crate) fn arc(
-    store: &RecordStore,
-    center: Vec2,
-    radius: f32,
-    start_angle: f32,
-    sweep: f32,
-    stroke: CurveStroke,
-) -> ShapeRecord {
-    let CurveStroke {
-        width,
-        brush: paint,
-        cap,
-    } = stroke;
-    debug_assert!(
-        sweep.abs() <= TAU + 1.0e-4,
-        "Shape::arc sweep {sweep} exceeds a full circle (±2π)"
-    );
-    let a1 = start_angle + sweep;
-    curve_record(
-        CurveBasis::Arc {
+    let bounded = match geometry {
+        CurveGeometry::Line { a, b } => {
+            let third = (b - a) / 3.0;
+            cubic(a, a + third, b - third, b)
+        }
+        CurveGeometry::CubicBezier { p0, p1, p2, p3 } => cubic(p0, p1, p2, p3),
+        CurveGeometry::QuadraticBezier { p0, p1, p2 } => {
+            let promoted = bezier::quadratic_to_cubic(p0, p1, p2);
+            cubic(p0, promoted.c1, promoted.c2, p2)
+        }
+        CurveGeometry::Arc {
             center,
             radius,
-            a0: start_angle,
-            a1,
-        },
-        arc_bbox(center, radius, start_angle, a1),
-        width,
-        brush(store, paint.as_brush()),
-        cap,
-    )
+            start_angle,
+            sweep,
+        } => {
+            // `|sweep| ≤ 2π`: a longer sweep would repaint pixels and
+            // double-blend a translucent stroke.
+            debug_assert!(
+                sweep.abs() <= TAU + 1.0e-4,
+                "Shape::arc sweep {sweep} exceeds a full circle (±2π)"
+            );
+            let a1 = start_angle + sweep;
+            BoundedBasis {
+                basis: CurveBasis::Arc {
+                    center,
+                    radius,
+                    a0: start_angle,
+                    a1,
+                },
+                bbox: arc::bbox(center, radius, start_angle, a1),
+            }
+        }
+    };
+    curve_record(bounded, width, brush(store, paint.as_brush()), cap)
+}
+
+/// One curve's shader basis and the tight bbox of its trace — what
+/// every geometry resolves to before the shared stroke fields join it.
+#[derive(Clone, Copy, Debug)]
+struct BoundedBasis {
+    basis: CurveBasis,
+    bbox: Rect,
+}
+
+/// The three geometries that reach the shader as cubics differ only in
+/// how they arrive at these four control points.
+fn cubic(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2) -> BoundedBasis {
+    BoundedBasis {
+        basis: CurveBasis::Cubic { p0, p1, p2, p3 },
+        bbox: bezier::cubic_bbox(p0, p1, p2, p3),
+    }
 }
 
 /// The one `ShapeRecord::Curve` constructor — both bases land here, so
@@ -444,12 +430,12 @@ pub(crate) fn arc(
 /// cap + brush directly; every input lives inline on the record, so no
 /// lowering-time content hash is captured here.
 fn curve_record(
-    basis: CurveBasis,
-    bbox: Rect,
+    bounded: BoundedBasis,
     width: f32,
     fill: LoweredBrush,
     cap: LineCap,
 ) -> ShapeRecord {
+    let BoundedBasis { basis, bbox } = bounded;
     ShapeRecord::Curve {
         basis,
         width,
@@ -482,7 +468,7 @@ mod tests {
     use crate::scene::shapes::paint::ShapeBrush;
     use std::collections::HashSet;
 
-    fn gradient_id(store: &RecordStore, value: &Brush) -> GradientId {
+    fn gradient_id(store: &mut RecordStore, value: &Brush) -> GradientId {
         match brush(store, value).brush {
             ShapeBrush::Gradient(id) => id,
             ShapeBrush::Solid(_) => panic!("test gradient lowered to a solid brush"),
@@ -543,21 +529,21 @@ mod tests {
     /// between them would raise no damage.
     #[test]
     fn the_three_gradient_kinds_hash_apart_on_identical_stops() {
-        let store = RecordStore::default();
+        let mut store = RecordStore::default();
         let stops = [
             crate::primitives::brush::gradient::stops::Stop::new(0.0, Color::BLACK),
             crate::primitives::brush::gradient::stops::Stop::new(1.0, Color::WHITE),
         ];
         let centre = glam::Vec2::splat(0.5);
         let hashes = [
-            brush(&store, &Brush::Linear(LinearGradient::new(0.0, stops))).hash,
+            brush(&mut store, &Brush::Linear(LinearGradient::new(0.0, stops))).hash,
             brush(
-                &store,
+                &mut store,
                 &Brush::Radial(RadialGradient::new(centre, centre, stops)),
             )
             .hash,
             brush(
-                &store,
+                &mut store,
                 &Brush::Conic(ConicGradient::new(centre, 0.0, stops)),
             )
             .hash,
@@ -571,13 +557,13 @@ mod tests {
     /// below a change of behaviour rather than a no-op.
     #[test]
     fn background_lowering_keeps_an_authored_field() {
-        let store = RecordStore::default();
+        let mut store = RecordStore::default();
         let sane = Corners::all(6.0);
-        let kept = background(&store, &with_corners(sane));
+        let kept = background(&mut store, &with_corners(sane));
         assert_eq!(kept.corners, sane);
         assert_ne!(
             kept.hash,
-            background(&store, &with_corners(Corners::ZERO)).hash,
+            background(&mut store, &with_corners(Corners::ZERO)).hash,
             "corners must still reach the chrome hash",
         );
     }
@@ -595,10 +581,10 @@ mod tests {
     /// `the_nan_gate_drops_every_shape_kind` pins the shape path with.
     #[test]
     fn a_nan_background_field_never_reaches_the_row() {
-        let store = RecordStore::default();
+        let mut store = RecordStore::default();
         for (label, authored) in nan_backgrounds() {
             let Ok(row) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                background(&store, &authored)
+                background(&mut store, &authored)
             })) else {
                 // The gate asserted, which is the loudest form of "did
                 // not reach the row".
@@ -617,7 +603,10 @@ mod tests {
         // to something finite: that is what leaves a `ClipMode::Rounded`
         // stencil readable rather than clipping to a shape nobody chose.
         if let Ok(row) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            background(&store, &with_corners(Corners::new(4.0, f32::NAN, 4.0, 4.0)))
+            background(
+                &mut store,
+                &with_corners(Corners::new(4.0, f32::NAN, 4.0, 4.0)),
+            )
         })) {
             assert!(row.corners.approx_zero(), "a radius collapses to none");
         }
@@ -625,14 +614,14 @@ mod tests {
 
     #[test]
     fn gradient_interning_identity_covers_geometry_kind_spread_and_interpolation() {
-        let store = RecordStore::default();
+        let mut store = RecordStore::default();
         let colors = [ColorU8::hex(0x1a1a2e), ColorU8::hex(0x4c5cdb)];
         let base = LinearGradient::two_stop(0.25, colors[0], colors[1]);
-        let first = gradient_id(&store, &Brush::Linear(base.clone()));
-        assert_eq!(gradient_id(&store, &Brush::Linear(base.clone())), first);
+        let first = gradient_id(&mut store, &Brush::Linear(base.clone()));
+        assert_eq!(gradient_id(&mut store, &Brush::Linear(base.clone())), first);
 
         let changed_geometry = gradient_id(
-            &store,
+            &mut store,
             &Brush::Linear(LinearGradient::two_stop(0.75, colors[0], colors[1])),
         );
         assert_ne!(changed_geometry, first);
@@ -641,7 +630,7 @@ mod tests {
         for spread in [Spread::Pad, Spread::Repeat, Spread::Reflect] {
             for interp in [Interp::Oklab, Interp::Linear] {
                 let id = gradient_id(
-                    &store,
+                    &mut store,
                     &Brush::Linear(base.clone().with_spread(spread).with_interp(interp)),
                 );
                 assert!(
@@ -653,16 +642,16 @@ mod tests {
         assert_eq!(mode_ids.len(), 6);
 
         let radial = gradient_id(
-            &store,
+            &mut store,
             &Brush::Radial(RadialGradient::two_stop_centered(colors[0], colors[1])),
         );
         let conic = gradient_id(
-            &store,
+            &mut store,
             &Brush::Conic(ConicGradient::two_stop_centered(colors[0], colors[1])),
         );
         assert!(!mode_ids.contains(&radial));
         assert!(!mode_ids.contains(&conic));
         assert_ne!(radial, conic);
-        assert_eq!(store.payloads.borrow().gradients.records.len(), 9);
+        assert_eq!(store.payloads().gradients.records.len(), 9);
     }
 }

@@ -7,7 +7,8 @@ use std::rc::Rc;
 /// The app's `GpuPaint` callback, flowing [`Ui::gpu_views`](crate::ui::Ui) →
 /// command-buffer side-list → `RenderBuffer.frame_targets` → backend (the shape
 /// itself carries only an epoch). A thin wrapper so the structs that carry it
-/// ([`GpuViewEntry`](crate::renderer::gpu_paint::gpu_view_entry::GpuViewEntry), `RenderTargetDraw`) keep their `derive(Debug)` despite
+/// ([`GpuViewEntry`](crate::renderer::gpu_paint::gpu_views::GpuViewEntry),
+/// `RenderTargetDraw`) keep their `derive(Debug)` despite
 /// `dyn GpuPaint` not being `Debug`. Clone is an `Rc` refcount bump.
 #[derive(Clone)]
 pub(crate) struct GpuPaintRef(pub(crate) Rc<RefCell<dyn GpuPaint>>);

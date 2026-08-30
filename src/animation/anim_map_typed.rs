@@ -16,7 +16,7 @@ use std::collections::hash_map::Entry;
 /// `Ui::animate::<T>` call.
 #[derive(Debug)]
 pub(crate) struct AnimMapTyped<T: Animatable> {
-    pub(crate) rows: FxHashMap<(WidgetId, AnimSlot), AnimRow<T>>,
+    pub(super) rows: FxHashMap<(WidgetId, AnimSlot), AnimRow<T>>,
 }
 
 impl<T: Animatable> Default for AnimMapTyped<T> {
@@ -50,6 +50,13 @@ pub(crate) struct TickResult<T: Animatable> {
 }
 
 impl<T: Animatable> AnimMapTyped<T> {
+    /// Forget `id`'s `slot`, so a later animated call starts fresh from
+    /// whatever target it is given. The key shape is this table's own,
+    /// which is why no caller spells it.
+    pub(super) fn drop_row(&mut self, id: WidgetId, slot: AnimSlot) {
+        self.rows.remove(&(id, slot));
+    }
+
     /// Insert-or-advance. First touch snaps `current = target` and
     /// returns settled — there's no animation on appearance, by
     /// design. Subsequent calls detect retarget vs steady-state and
@@ -270,5 +277,21 @@ impl<T: Animatable> TypedStore for AnimMapTyped<T> {
     }
     fn is_empty(&self) -> bool {
         self.rows.is_empty()
+    }
+}
+
+/// Reach-in for `UiHarness::anim_row_count`: the resident row count the
+/// eviction tests assert the sweep drives to zero. `cfg(test)` alone,
+/// because that harness rung is `cfg(test)` too — the benches compile
+/// under `internals` without it.
+#[cfg(test)]
+pub(crate) mod test_support {
+    use crate::animation::anim_map_typed::AnimMapTyped;
+    use crate::animation::animatable::Animatable;
+
+    impl<T: Animatable> AnimMapTyped<T> {
+        pub(crate) fn len(&self) -> usize {
+            self.rows.len()
+        }
     }
 }

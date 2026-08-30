@@ -1,7 +1,7 @@
 use crate::widgets::text_edit::tests::*;
 
 /// Double-click selects the word under the caret; triple-click
-/// selects the whole buffer. Pins `run_input`'s dispatch on the
+/// selects the whole buffer. Pins the input pass's dispatch on the
 /// input layer's `press_count` run (chained within
 /// `DOUBLE_CLICK_WINDOW`/`DOUBLE_CLICK_RADIUS`, classified with the
 /// event-time frame clock — hence the idle frame before the "pause"

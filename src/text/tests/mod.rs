@@ -6,7 +6,6 @@
 //! [`retention`] the shaped-buffer cache's windows, [`reuse`] the
 //! per-window rows and the supersede signal they carry.
 
-use crate::common::hash::hash_str;
 use crate::layout::types::align::{Align, HAlign};
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;

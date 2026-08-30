@@ -369,7 +369,7 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
     let r0 = h.frame(|ui| body(ui, half));
     assert_eq!(r0.processing, FrameProcessing::SingleLayout);
     {
-        let payloads = h.ui.forest.record_store.payloads.borrow();
+        let payloads = h.ui.forest.record_store.payloads();
         assert_eq!(payloads.interned_text().all(), "retained 7");
     }
 
@@ -382,19 +382,13 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
     // Direct pin: the gradient interned during frame 0's record must
     // still be live for the encoder on a PaintOnly frame.
     assert_eq!(
-        h.ui.forest
-            .record_store
-            .payloads
-            .borrow()
-            .gradients
-            .records
-            .len(),
+        h.ui.forest.record_store.payloads().gradients.records.len(),
         1,
         "PaintOnly must preserve gradient payloads so retained \
          ShapeBrush::Gradient indices remain valid",
     );
     {
-        let payloads = h.ui.forest.record_store.payloads.borrow();
+        let payloads = h.ui.forest.record_store.payloads();
         assert_eq!(
             payloads.interned_text().all(),
             "retained 7",

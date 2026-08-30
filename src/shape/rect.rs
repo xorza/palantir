@@ -65,7 +65,7 @@ impl sealed::LowerShape for RectShape {
             || self.stroke.has_nan()
     }
 
-    fn lower(self, store: &RecordStore) -> ShapeRecord {
+    fn lower(self, store: &mut RecordStore) -> ShapeRecord {
         let Self {
             kind,
             local_rect,

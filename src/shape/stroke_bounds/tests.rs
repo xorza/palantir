@@ -1,5 +1,5 @@
 use crate::primitives::rect::Rect;
-use crate::shape::stroke_bounds::stroked_bbox;
+use crate::shape::stroke_bounds;
 use crate::shape::style::{LineCap, LineJoin};
 
 #[test]
@@ -36,7 +36,7 @@ fn stroke_bounds_account_for_cap_and_join_reach_once() {
     let centerline = Rect::new(10.0, 20.0, 30.0, 40.0);
 
     for case in cases {
-        let actual = stroked_bbox(centerline, 4.0, 0.5, case.cap, case.join);
+        let actual = stroke_bounds::bbox(centerline, 4.0, 0.5, case.cap, case.join);
         assert_eq!(
             actual,
             Rect::new(

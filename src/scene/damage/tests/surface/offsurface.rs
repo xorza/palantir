@@ -81,7 +81,7 @@ fn fully_off_surface_rect_is_dropped_from_region() {
     let off_screen = Rect::new(500.0, 500.0, 50.0, 50.0);
     let collapsed = DamageRegion::collapse_from(&[off_screen], f32::INFINITY, surface);
     assert!(
-        collapsed.region.rects.is_empty(),
+        collapsed.region.is_empty(),
         "wholly-off-surface rect must produce an empty region (no skip-vs-Partial drift)",
     );
 }
@@ -143,7 +143,7 @@ fn off_surface_first_seen_node_skips_prev_insert() {
          node that contributes nothing visible",
     );
     assert!(
-        h.damage_region().rects.is_empty(),
+        h.damage_region().is_empty(),
         "no visible widgets means no damage rects on the second-frame \
          diff (first frame is Full and walks differently)",
     );

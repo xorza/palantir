@@ -12,7 +12,7 @@ use crate::primitives::{
 };
 use crate::renderer::frontend::capture::PaintCapture;
 use crate::renderer::frontend::composer::Composer;
-use crate::renderer::frontend::paint_sink::{PaintGate, PaintSink};
+use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
 use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;

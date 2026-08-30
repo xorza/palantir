@@ -176,7 +176,7 @@ mod sealed {
         /// `is_noop` validates counts as read. Naming them all turns the
         /// omission into a build error, which is the enforcement the
         /// record side already gets for free from its struct literal.
-        fn lower(self, store: &RecordStore) -> ShapeRecord;
+        fn lower(self, store: &mut RecordStore) -> ShapeRecord;
     }
 }
 

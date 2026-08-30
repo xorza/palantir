@@ -5,7 +5,7 @@ use crate::common::block_arena::BlockArena;
 use crate::primitives::rect::Rect;
 use crate::primitives::span::Span;
 use crate::scene::cascade::paint::Paint;
-use crate::scene::damage::push_screen;
+use crate::scene::damage;
 use std::cmp::Ordering;
 
 /// `matched_pos` sentinel for a curr row with no exact match in the
@@ -269,12 +269,12 @@ impl RowMatcher {
             }
             match self.prev_keyed.get(pi) {
                 Some(&(pk, prow)) if pk.hash == ck.hash => {
-                    push_screen(out, prev[prow as usize].screen);
-                    push_screen(out, curr[crow as usize].screen);
+                    damage::push_screen(out, prev[prow as usize].screen);
+                    damage::push_screen(out, curr[crow as usize].screen);
                     self.prev_matched[prow as usize] = true;
                     pi += 1;
                 }
-                _ => push_screen(out, curr[crow as usize].screen),
+                _ => damage::push_screen(out, curr[crow as usize].screen),
             }
         }
     }
@@ -283,7 +283,7 @@ impl RowMatcher {
     fn emit_removals(&self, out: &mut Vec<Rect>, prev: &[Paint]) {
         for (row, p) in prev.iter().enumerate() {
             if !self.prev_matched[row] {
-                push_screen(out, p.screen);
+                damage::push_screen(out, p.screen);
             }
         }
     }

@@ -19,7 +19,9 @@ mod duration;
 pub(crate) mod easing;
 mod spring;
 
-use crate::animation::anim_map_typed::AnimMapTyped;
+use crate::animation::anim_map_typed::{AnimMapTyped, TickResult};
+use crate::animation::anim_slot::AnimSlot;
+use crate::animation::anim_spec::AnimSpec;
 use crate::animation::animatable::Animatable;
 use crate::common::typed_stores::{Drained, TypedStores};
 use crate::primitives::widget_id::WidgetId;
@@ -35,6 +37,50 @@ pub(crate) struct AnimMap {
 }
 
 impl AnimMap {
+    /// Resolve one call site's animated value for this frame: snap to
+    /// `target` when no motion is asked for, otherwise advance the row by
+    /// `dt`.
+    ///
+    /// Three paths, cheapest first. Nothing has ever animated and this
+    /// call wants no motion — return `target` before `slot.into()`, the
+    /// filter closure and the `TypeId`-keyed probe, which are otherwise
+    /// per-widget per-frame on a widget that never animates (the dominant
+    /// case in a static UI). Motion is asked for but degenerate — a
+    /// `None` spec or a `Duration` of ≈0 — drop any stale row so a later
+    /// real spec starts fresh from `target`, without allocating a typed
+    /// map that may not exist. Otherwise tick.
+    ///
+    /// The caller owes the repaint: an unsettled result means the frame
+    /// after this one has different pixels.
+    pub(crate) fn animate<T: Animatable>(
+        &mut self,
+        id: WidgetId,
+        slot: impl Into<AnimSlot>,
+        target: T,
+        spec: Option<AnimSpec>,
+        dt: f32,
+        frame: u64,
+    ) -> TickResult<T> {
+        if self.is_empty() && spec.is_none_or(|s| s.is_instant()) {
+            return TickResult {
+                current: target,
+                settled: true,
+            };
+        }
+        let slot = slot.into();
+        let Some(spec) = spec.filter(|s| !s.is_instant()) else {
+            if let Some(typed) = self.try_typed_mut::<T>() {
+                typed.drop_row(id, slot);
+            }
+            return TickResult {
+                current: target,
+                settled: true,
+            };
+        };
+        self.typed_mut::<T>()
+            .tick(id, slot, target, spec, dt, frame)
+    }
+
     /// Get-or-create the typed map for `T`. Allocates on first call
     /// per `T`; subsequent calls hit the hashmap and downcast.
     pub(crate) fn typed_mut<T: Animatable>(&mut self) -> &mut AnimMapTyped<T> {

@@ -51,10 +51,9 @@ use crate::layout::types::track::Track;
 use crate::primitives::background::Background;
 use crate::primitives::image::Image;
 use crate::primitives::size::Size;
-use crate::primitives::widget_id::WidgetIdMap;
 use crate::renderer::frontend::FrameScene;
 use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
-use crate::renderer::gpu_paint::gpu_view_entry::GpuViewEntry;
+use crate::renderer::gpu_paint::gpu_views::GpuViews;
 use crate::renderer::image_registry::ImageHandle;
 use crate::renderer::texture_limit::RegisterImageError;
 use crate::scene::forest::Forest;
@@ -84,7 +83,6 @@ use crate::widgets::theme::Theme;
 use crate::widgets::widget::Widget;
 use crate::window::cursor_icon::CursorIcon;
 use crate::window::vsync::Vsync;
-use crate::window::window_commands::PendingWindow;
 use crate::window::window_commands::WindowCommands;
 use crate::window::window_config::WindowConfig;
 use crate::window::window_directory::WindowDirectory;
@@ -94,8 +92,6 @@ use crate::window::window_output::WindowOutput;
 use crate::window::window_requests::WindowRequests;
 use crate::window::window_token::WindowToken;
 use glam::UVec2;
-use std::cell::Ref;
-use std::collections::hash_map::Entry;
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -135,12 +131,11 @@ pub struct Ui {
     /// Cross-frame widget state: per-type dense stores keyed by
     /// `WidgetId` (see [`StateMap`]).
     state: StateMap,
-    /// Live `GpuView`s, keyed by `WidgetId` — the only `GpuView` bookkeeping on
-    /// the `Ui`. [`Self::gpu_view`] upserts an entry (minting the stable backend
-    /// `TextureId` once, refreshing the paint callback); the shape records only
-    /// the redraw epoch and the encoder looks the view up here by the node's
-    /// `WidgetId`. Swept by the same `removed` set as [`StateMap`].
-    gpu_views: WidgetIdMap<GpuViewEntry>,
+    /// Live `GpuView`s — the only `GpuView` bookkeeping on the `Ui`. The
+    /// shape records only the redraw epoch, and the encoder looks the view
+    /// up here by the node's `WidgetId`. Swept by the same `removed` set
+    /// as [`StateMap`].
+    gpu_views: GpuViews,
     /// App-global capabilities available to the recorder.
     resources: UiResources,
     layout: Layout,
@@ -538,20 +533,7 @@ impl Ui {
     /// a window appeared — an app that opens windows needs
     /// [`WinitHost`](crate::WinitHost).
     pub fn open_window(&mut self, token: WindowToken, config: WindowConfig) {
-        if let Some(p) = self
-            .window_requests
-            .commands
-            .opens
-            .iter_mut()
-            .find(|p| p.token == token)
-        {
-            p.config = config;
-            return;
-        }
-        self.window_requests
-            .commands
-            .opens
-            .push(PendingWindow { token, config });
+        self.window_requests.commands.open(token, config);
     }
 
     /// Request that the window addressed by `token` close. Deferred like
@@ -566,7 +548,7 @@ impl Ui {
     /// [`OffscreenHost`](crate::OffscreenHost) to release its streams.
     #[inline]
     pub fn close_window(&mut self, token: WindowToken) {
-        self.window_requests.commands.closes.push(token);
+        self.window_requests.commands.close(token);
     }
 
     /// `true` for the single frame where the OS asked to close this window
@@ -641,42 +623,27 @@ impl Ui {
     }
 
     /// Drain this frame's window scratch into `commands` and return the
-    /// levels the host applies afterwards. Settles the pending close first: a
-    /// close request app code did not veto becomes `token`'s own close
-    /// command, so every host applies the veto the same way.
-    ///
-    /// The vsync setting is copied, not taken: it is a level this recorder
-    /// keeps and reads back through [`Self::vsync`], so the host is the one
-    /// that diffs it against the swapchain it has open.
-    ///
-    /// Uses `Vec::append` rather than `mem::take` so the recorder keeps its
-    /// buffers' capacity across frames.
-    ///
-    /// **The veto's one-frame life is enforced here**, for every host — the
-    /// offscreen one drains through this too — which is why no caller has to
-    /// clear it on the way in, and why [`Self::set_window_facts`] can assert
-    /// instead.
+    /// levels the host applies afterwards — see
+    /// [`WindowRequests::drain`], which owns the close settlement and the
+    /// veto's one-frame life. This clears the frame-scoped window state
+    /// beside it.
     pub(crate) fn drain_window_output(
         &mut self,
         token: WindowToken,
         commands: &mut WindowCommands,
     ) -> WindowOutput {
-        let requests = &mut self.window_requests;
-        if self.window_frame.close_requested && !requests.close_vetoed {
-            requests.commands.closes.push(token);
-        }
-        commands.append(&mut requests.commands);
-        requests.close_vetoed = false;
+        let close_requested = self.window_frame.close_requested;
+        let levels = self.window_requests.drain(token, close_requested, commands);
         self.window_frame = WindowFrameState::default();
-        requests.levels
+        levels
     }
 
     /// This frame's record payloads, for the GPU submit that dereferences the
-    /// indices the draw list carries. Borrowed for the length of a submit and
-    /// no longer: the arena is refilled by the next record pass.
+    /// indices the draw list carries. Valid until the next record pass
+    /// refills the arena.
     #[inline]
-    pub(crate) fn payloads(&self) -> Ref<'_, RecordPayloads> {
-        self.forest.record_store.payloads.borrow()
+    pub(crate) fn payloads(&self) -> &RecordPayloads {
+        self.forest.record_store.payloads()
     }
 
     /// This window's live geometry for persist-and-restore across launches.
@@ -845,44 +812,23 @@ impl Ui {
         self.resources.clipboard.clone()
     }
 
-    /// Record a `GpuView` for widget `id`: upsert it into [`Self::gpu_views`]
-    /// — minting the stable backend `TextureId` once (on first sight) and
-    /// refreshing the app `paint` callback each frame — then append a
+    /// Record a `GpuView` for widget `id`: refresh its row in
+    /// [`Self::gpu_views`], then append a
     /// [`ShapeRecord::Image`](crate::scene::shapes::record::ShapeRecord::Image)
     /// sourced from an
     /// [`ImageSource::GpuView`](crate::scene::shapes::paint::ImageSource::GpuView)
-    /// carrying the view's `epoch` to the active node
-    /// (the encoder recovers id + paint from the map by `id`).
+    /// carrying the row's `epoch` to the active node — the encoder
+    /// recovers id and paint from the store by `id`.
     ///
-    /// `repaint` is the widget's per-frame dirty flag. When set, the epoch
-    /// bumps to the current render frame id, so the shape hash changes and the view
-    /// repaints; when clear, the epoch is held stable, so the damage diff
-    /// treats the view as unchanged and the encoder culls it (skipping its GPU
-    /// paint and reusing last frame's pixels). First sight always paints (the
-    /// texture doesn't exist yet). The entry rides the map's `removed` sweep
-    /// when the widget disappears.
+    /// The mint / epoch / sweep policy is
+    /// [`GpuViews`](crate::renderer::gpu_paint::gpu_views::GpuViews)'
+    /// business, `repaint` included.
     pub(crate) fn gpu_view(&mut self, id: WidgetId, paint: GpuPaintRef, repaint: bool) {
-        let epoch = self.frame_runtime.render_frame_id;
-        let entry = match self.gpu_views.entry(id) {
-            Entry::Occupied(e) => {
-                let entry = e.into_mut();
-                entry.paint = paint;
-                // Bump only on a repaint request; held stable otherwise so a
-                // static view stays undamaged (culled, its paint skipped).
-                if repaint {
-                    entry.epoch = epoch;
-                }
-                entry
-            }
-            // First sight always paints — the texture doesn't exist yet.
-            // The shared id source is disjoint from `self.gpu_views`.
-            Entry::Vacant(e) => e.insert(GpuViewEntry {
-                texture_id: self.resources.texture_ids.reserve(),
-                paint,
-                epoch,
-            }),
-        };
-        self.forest.add_gpu_view(entry.epoch);
+        let frame = self.frame_runtime.render_frame_id;
+        let epoch = self
+            .gpu_views
+            .record(id, paint, repaint, frame, &self.resources.texture_ids);
+        self.forest.add_gpu_view(epoch);
     }
 
     /// Format `args` directly into the record-pass text storage and return
@@ -914,15 +860,7 @@ impl Ui {
     /// Format-less twin of [`Self::fmt`] with the same retention rules.
     #[must_use]
     pub fn intern<'a>(&mut self, text: impl Into<TextInput<'a>>) -> InternedStr {
-        match text.into() {
-            TextInput::Borrowed(text) => self.forest.record_store.intern_str(text),
-            TextInput::Owned(text) => self.forest.record_store.intern_str(&text),
-            // The one arm that copies nothing, and so the one whose
-            // handle has not just been minted here — screened rather
-            // than passed through, because a stale one resolves to
-            // whatever text now sits at those offsets.
-            TextInput::Interned(text) => self.forest.record_store.reuse(text),
-        }
+        self.forest.record_store.intern(text.into())
     }
 
     /// Append `shape` to the active node and register `anim` against
@@ -1046,7 +984,7 @@ impl Ui {
     /// `Layer::Main` viewport, which has no `Widget` to record through.
     /// Widget code calls `Widget::record`, never this.
     #[inline]
-    pub(crate) fn open_node(&mut self, id: WidgetId, node: Node, chrome: Option<&Background>) {
+    pub(crate) fn open_node(&mut self, id: WidgetId, node: &Node, chrome: Option<&Background>) {
         self.forest.open_node(id, node, chrome);
     }
 
@@ -1217,26 +1155,7 @@ impl Ui {
         target: V,
         spec: Option<AnimSpec>,
     ) -> V {
-        // Hottest path: no spec, no typed map for `V` ever allocated.
-        // Skip the `slot.into()`, filter closure, and TypeId-keyed
-        // HashMap probe — they're per-widget per-frame on a widget
-        // that never animates (the dominant case in static UIs).
-        if self.anim.is_empty() && spec.is_none_or(|s| s.is_instant()) {
-            return target;
-        }
-        let slot = slot.into();
-        // Merge `None` and instant-degenerate specs (`Duration { secs ≈ 0 }`)
-        // into one snap path. `tick` then handles only real motion.
-        let Some(spec) = spec.filter(|s| !s.is_instant()) else {
-            // Drop stale row so a future `Some(_)` starts fresh from
-            // `target`. `try_typed_mut` avoids allocating a typed map
-            // just to remove from one that may not exist.
-            if let Some(typed) = self.anim.try_typed_mut::<V>() {
-                typed.rows.remove(&(id, slot));
-            }
-            return target;
-        };
-        let r = self.anim.typed_mut::<V>().tick(
+        let r = self.anim.animate(
             id,
             slot,
             target,
@@ -1541,12 +1460,12 @@ pub(crate) mod internals {
     use crate::primitives::rect::Rect;
     #[cfg(test)]
     use crate::scene::cascade::Cascade;
+    #[cfg(test)]
+    use crate::scene::endpoint::Endpoint;
     #[cfg(any(test, feature = "bench"))]
     use crate::scene::forest::Forest;
     #[cfg(test)]
     use crate::scene::layer::Layer;
-    #[cfg(test)]
-    use crate::scene::seen_ids::Endpoint;
     #[cfg(test)]
     use crate::scene::tree::Tree;
     #[cfg(test)]

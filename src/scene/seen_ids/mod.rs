@@ -33,21 +33,9 @@
 //!    would leak and resume stale if the widget later reappeared.
 
 use crate::primitives::widget_id::{WidgetId, WidgetIdMap};
-use crate::scene::layer::Layer;
-use crate::scene::tree::node_id::NodeId;
+use crate::scene::endpoint::Endpoint;
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::hash_map::Entry;
-
-/// One collision endpoint — a node together with its originating
-/// layer. Both halves of a `CollisionRecord` are `Endpoint`s so the
-/// encoder can resolve each side's arranged rect without a tree
-/// scan, even when the two endpoints straddle a `push_layer`
-/// boundary.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct Endpoint {
-    pub(crate) layer: Layer,
-    pub(crate) node: NodeId,
-}
 
 /// Both nodes of one explicit-id collision, in recording order. What
 /// [`SeenIds::record_endpoint`] hands back when the endpoint it just

@@ -1,4 +1,4 @@
-//! One node's five SoA columns, as `Node::into_columns` hands them over.
+//! One node's five SoA columns, as `Node::columns` hands them over.
 
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::bounds_extras::BoundsExtras;

@@ -1,26 +1,33 @@
 //! One frame's semantic editing session over the host-owned buffer.
 
+use crate::input::key_class::KeyFilter;
+use crate::input::keyboard::keyboard_event::KeyboardEvent;
+use crate::ui::Ui;
+use crate::widgets::context_menu::ContextMenu;
+use crate::widgets::context_menu::menu_item::MenuItem;
+use crate::widgets::response::ResponseSnapshot;
+use crate::widgets::text_edit::action::{ActionAvailability, EditAction};
 use crate::widgets::text_edit::edit_state::{
     EditDelta, EditKind, EditParts, EditState, SelectionState,
 };
 use crate::widgets::text_edit::unicode::{
     next_grapheme_boundary, next_word_boundary, prev_grapheme_boundary, prev_word_boundary,
-    sanitize_single_line,
+    sanitize_single_line, word_range_at,
 };
 use std::borrow::Cow;
 
 /// One frame's semantic editing session.
 #[derive(Debug)]
 pub(super) struct Editor<'a> {
-    pub(super) text: &'a mut String,
-    pub(super) state: &'a mut EditState,
-    pub(super) multiline: bool,
+    text: &'a mut String,
+    state: &'a mut EditState,
+    multiline: bool,
     max_chars: Option<usize>,
     history_checked: bool,
     /// The buffer was mutated this session (typing, delete, paste,
     /// cut, undo/redo). Set by the mutation choke points, so it's
     /// content-accurate — a same-length overwrite still reports.
-    pub(super) edited: bool,
+    edited: bool,
 }
 
 impl<'a> Editor<'a> {
@@ -38,6 +45,141 @@ impl<'a> Editor<'a> {
             history_checked: false,
             edited: false,
         }
+    }
+
+    /// Run the default context menu against this session, returning
+    /// whether it edited the buffer. Caret motion is *not* reported:
+    /// `TextEdit::pass` brackets this call and the keyboard pass in one
+    /// before/after comparison, so there is nothing here for a second
+    /// one to add.
+    ///
+    /// One session for the whole menu, not one per action, so the undo
+    /// history is reconciled against the buffer once — exactly as it is
+    /// once for the key pass.
+    ///
+    /// `filter` is the field's own — the menu drains the same layer-wide
+    /// stream the input pass does, so it owes the same
+    /// [`KeyFilter::accepts`] gate against double dispatch.
+    pub(super) fn show_menu(
+        &mut self,
+        ui: &mut Ui,
+        snapshot: &ResponseSnapshot,
+        filter: KeyFilter,
+    ) -> bool {
+        let clipboard = ui.clipboard();
+        let mut clicked_action = None;
+        ContextMenu::attach(ui, snapshot).show(ui, |ui, popup| {
+            ui.each_keyboard_event(|_, event| {
+                let Some(KeyboardEvent::Down(keypress)) = filter.accepts(event) else {
+                    return;
+                };
+                if let Some(action) = EditAction::from_keypress(keypress) {
+                    action.execute(self, &clipboard);
+                    if EditAction::MENU.iter().any(|item| item.action == action) {
+                        popup.close();
+                    }
+                }
+            });
+
+            let has_selection = self.has_selection();
+            let has_text = self.has_text();
+            for item in EditAction::MENU {
+                if item.separator_before {
+                    MenuItem::separator().show(ui);
+                }
+                let enabled = match item.availability {
+                    ActionAvailability::Always => true,
+                    ActionAvailability::Selection => has_selection,
+                    ActionAvailability::Text => has_text,
+                };
+                let mut row = MenuItem::new(item.label).enabled(enabled);
+                if let Some(shortcut) = item.action.shortcut() {
+                    row = row.shortcut_hint(shortcut);
+                }
+                if row.show(ui, popup).left.clicked() {
+                    clicked_action = Some(item.action);
+                }
+            }
+        });
+        if let Some(action) = clicked_action {
+            action.execute(self, &clipboard);
+        }
+        self.edited
+    }
+
+    pub(super) fn text(&self) -> &str {
+        self.text
+    }
+
+    /// This field takes newlines, so a vertical caret move and an
+    /// `Enter` insertion both mean something.
+    pub(super) fn multiline(&self) -> bool {
+        self.multiline
+    }
+
+    pub(super) fn edited(&self) -> bool {
+        self.edited
+    }
+
+    pub(super) fn caret(&self) -> usize {
+        self.state.caret
+    }
+
+    pub(super) fn has_selection(&self) -> bool {
+        self.state.sel_range().is_some()
+    }
+
+    pub(super) fn has_text(&self) -> bool {
+        !self.text.is_empty()
+    }
+
+    /// Clamp the caret and selection back onto grapheme boundaries of
+    /// the current buffer, which app code may have replaced under us.
+    pub(super) fn normalize(&mut self) {
+        self.state.normalize(self.text);
+    }
+
+    /// Place the caret for a pointer press, given how many presses the
+    /// multi-press run holds: one places a caret and arms the drag, two
+    /// take the word under it, three or more take everything.
+    ///
+    /// A multi-click leaves the drag disarmed, so a pointer still held
+    /// cannot grow the word or line it chose — the range stays locked
+    /// until the next press.
+    pub(super) fn press(&mut self, at: usize, clicks: u8) {
+        self.state.drag_anchor = None;
+        match clicks {
+            2 => {
+                let word = word_range_at(self.text, at);
+                if word.is_empty() {
+                    self.arm_drag(at);
+                } else {
+                    self.select_range(word.start, word.end);
+                }
+            }
+            3.. => self.select_all(),
+            _ => self.arm_drag(at),
+        }
+    }
+
+    /// Grow the pointer selection to `at` from the anchor an armed
+    /// press left behind. Does nothing after a multi-click, which arms
+    /// none.
+    pub(super) fn drag_to(&mut self, at: usize) {
+        if self.state.drag_anchor.is_some() {
+            self.move_caret(at, true);
+        }
+    }
+
+    /// The pointer gesture ended, so the next press starts a fresh
+    /// selection instead of growing this one.
+    pub(super) fn end_drag(&mut self) {
+        self.state.drag_anchor = None;
+    }
+
+    fn arm_drag(&mut self, at: usize) {
+        self.state.drag_anchor = Some(at);
+        self.select_range(at, at);
     }
 
     fn selection_state(&self) -> SelectionState {
@@ -234,8 +376,17 @@ impl<'a> Editor<'a> {
 
     /// Select the whole buffer (collapses to no-selection when empty).
     pub(super) fn select_all(&mut self) {
-        self.state.selection = (!self.text.is_empty()).then_some(0);
-        self.state.caret = self.text.len();
+        self.select_range(0, self.text.len());
+    }
+
+    /// Select `start..end` with the caret at `end`, or place a bare
+    /// caret when the range is empty — the "never `Some(caret)`"
+    /// invariant [`Self::move_caret`] keeps, stated once for every
+    /// caller that knows both ends up front. Ends the current
+    /// edit-coalesce group, like any other caret motion.
+    pub(super) fn select_range(&mut self, start: usize, end: usize) {
+        self.state.selection = (start != end).then_some(start);
+        self.state.caret = end;
         self.state.last_edit_kind = None;
     }
 
@@ -246,16 +397,15 @@ impl<'a> Editor<'a> {
     /// group — caret-only motion breaks Typing / Delete runs into
     /// separate undo entries.
     pub(super) fn move_caret(&mut self, new_caret: usize, extend: bool) {
-        if extend {
-            self.state.selection.get_or_insert(self.state.caret);
-        } else {
-            self.state.selection = None;
-        }
-        self.state.caret = new_caret;
-        if self.state.selection == Some(self.state.caret) {
-            self.state.selection = None;
-        }
-        self.state.last_edit_kind = None;
+        let anchor = match self.state.selection {
+            Some(anchor) if extend => anchor,
+            // An extending move with nothing selected latches the anchor
+            // where the caret stands; a collapsing one anchors on the
+            // destination, which [`Self::select_range`] reads as empty.
+            _ if extend => self.state.caret,
+            _ => new_caret,
+        };
+        self.select_range(anchor, new_caret);
     }
 
     /// No-op on an empty stack.
@@ -342,5 +492,27 @@ impl<'a> Editor<'a> {
         self.state.selection = None;
         self.state.last_edit_kind = None;
         true
+    }
+}
+
+/// Reach-in for the `text_edit` unit tests: the undo/redo depth and the
+/// hash latch, neither of which any production caller reads off a live
+/// session.
+#[cfg(test)]
+pub(crate) mod test_support {
+    use crate::common::hash;
+    use crate::widgets::text_edit::editor::Editor;
+
+    impl Editor<'_> {
+        pub(crate) fn redo_len(&self) -> usize {
+            self.state.redo.len()
+        }
+
+        /// Latch the buffer's hash, as `TextEdit::show` does once the
+        /// frame's edits have settled.
+        pub(crate) fn observe_text(&mut self) {
+            let text_hash = hash::hash_str(self.text);
+            self.state.observe_text_hash(text_hash);
+        }
     }
 }
