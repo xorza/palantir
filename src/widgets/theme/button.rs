@@ -33,8 +33,8 @@ pub struct ButtonTheme {
 
 impl ButtonTheme {
     /// The standard button recipe over `p`: clickable-surface family
-    /// `elem` / `elem_hover` / `elem_active` (resting at the
-    /// `elem_hover` tier). Disabled keeps the `elem` fill but swaps
+    /// `elem` / `elem_mid` / `elem_strong`, resting one rung up at
+    /// `elem_mid`. Disabled keeps the `elem` fill but swaps
     /// text to `text_disabled`. `text: None` on active states means
     /// "inherit `Theme::text`" — bumping `theme.text.color` recolors
     /// active button labels. The historical 4 px radius is retained.
@@ -44,16 +44,16 @@ impl ButtonTheme {
                 .with_stroke(Stroke::solid(p.border_soft(), 1.0))
         };
         // Pressed = hovered fill + focused stroke (the palette has no further fill tier).
-        let pressed_bg = Background::rounded(p.elem_active, Corners::all(4.0))
+        let pressed_bg = Background::rounded(p.elem_strong, Corners::all(4.0))
             .with_stroke(Stroke::solid(p.border_focused, 1.0));
         Self {
             looks: StatefulLook {
                 normal: WidgetLook {
-                    background: bg(p.elem_hover),
+                    background: bg(p.elem_mid),
                     text: None,
                 },
                 hovered: WidgetLook {
-                    background: bg(p.elem_active),
+                    background: bg(p.elem_strong),
                     text: None,
                 },
                 active: WidgetLook {
@@ -106,8 +106,8 @@ impl ButtonTheme {
         Self {
             looks: StatefulLook {
                 normal: flat(Brush::TRANSPARENT),
-                hovered: flat(p.elem_hover.into()),
-                active: flat(p.elem_active.into()),
+                hovered: flat(p.elem_mid.into()),
+                active: flat(p.elem_strong.into()),
                 disabled: flat(Brush::TRANSPARENT),
             },
             defaults: SlotDefaults {

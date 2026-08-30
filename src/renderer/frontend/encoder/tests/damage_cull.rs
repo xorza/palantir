@@ -66,7 +66,7 @@ fn damage_filter_culls_subtree_outside_damage() {
         (
             "clipped",
             Wrap::Clipped,
-            |call| matches!(call, PaintCall::Clip(_)),
+            |call| matches!(call, PaintCall::PushClip(_)),
             |call| matches!(call, PaintCall::PopClip),
         ),
         (

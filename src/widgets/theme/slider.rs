@@ -1,34 +1,35 @@
-//! What a slider wears: the two-tone rail, and the knob that rides it.
+//! What a slider wears: the two-tone track, and the knob that rides it.
 
 use crate::primitives::color::Color;
 use crate::widgets::theme::palette::Palette;
 
-/// Visuals for [`crate::Slider`]: a thin two-tone rail (filled `fill`
-/// left of the knob, `rail` right of it) with a round `knob`. The rail
-/// is `rail_thickness` tall and pill-capped; the knob is `knob_size`
-/// across.
+/// Visuals for [`crate::Slider`]: a thin two-tone track (filled `fill`
+/// left of the knob, `track` right of it) with a round `knob`. The
+/// track is `track_thickness` tall and pill-capped; the knob is
+/// `knob_size` across.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct SliderTheme {
-    /// Unfilled rail color (right of the knob).
-    pub rail: Color,
-    /// Filled rail color (left of the knob).
+    /// Unfilled track color (right of the knob).
+    pub track: Color,
+    /// Filled track color (left of the knob).
     pub fill: Color,
     /// Knob (handle) color.
     pub knob: Color,
     /// Knob diameter in logical px — also the widget's height.
     pub knob_size: f32,
-    /// Rail thickness in logical px. Pill radius is `rail_thickness / 2`.
-    pub rail_thickness: f32,
+    /// Track thickness in logical px. Pill radius is
+    /// `track_thickness / 2`.
+    pub track_thickness: f32,
 }
 
 impl SliderTheme {
     pub fn from_palette(p: &Palette) -> Self {
         Self {
-            rail: p.elem_hover,
+            track: p.elem_mid,
             fill: p.accent,
             knob: p.text,
             knob_size: 18.0,
-            rail_thickness: 4.0,
+            track_thickness: 4.0,
         }
     }
 }

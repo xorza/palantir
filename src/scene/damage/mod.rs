@@ -325,7 +325,7 @@ impl DamageEngine {
                 matcher: &mut self.matcher,
                 raw_rects: &mut self.raw_rects,
                 order_extents: &mut self.order_extents,
-                probe: &mut self.counters,
+                counters: &mut self.counters,
                 surface,
                 force_full,
                 layer,
@@ -388,6 +388,7 @@ impl DamageEngine {
     /// to the structural diff — skip Pass 1 entirely. Only the
     /// caller-supplied predamaged anim rects matter.
     pub(crate) fn compute_paint_only(&mut self, input: DamageInput<'_>) -> Option<Damage> {
+        tracy::zone!();
         self.counters.begin_pass();
         self.raw_rects.clear();
         extend_predamaged(

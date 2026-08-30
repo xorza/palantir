@@ -72,7 +72,7 @@ pub(crate) struct ScrollbarsDef {
     pub(crate) reserve_y: f32,
     pub(crate) reserve_x: f32,
     pub(crate) padding: Spacing,
-    pub(crate) bar_width: f32,
+    pub(crate) bar_thickness: f32,
     pub(crate) min_thumb: f32,
 }
 
@@ -90,7 +90,7 @@ impl ScrollbarsDef {
         self.reserve_y.hash_visual(h);
         self.reserve_x.hash_visual(h);
         self.padding.hash(h);
-        self.bar_width.hash_visual(h);
+        self.bar_thickness.hash_visual(h);
         self.min_thumb.hash_visual(h);
     }
 }
@@ -237,10 +237,15 @@ fn axis_rects(
     )?;
     // The bar sits in the far-edge strip of the *outer* extent, not the
     // viewport's: that strip is exactly what `reserve_*` set aside.
-    let cross_pos = axis.cross(outer) - def.bar_width;
+    let cross_pos = axis.cross(outer) - def.bar_thickness;
     Some(BarRects {
-        track: axis.compose_rect(0.0, cross_pos, main, def.bar_width),
-        thumb: axis.compose_rect(geom.thumb_offset, cross_pos, geom.thumb_size, def.bar_width),
+        track: axis.compose_rect(0.0, cross_pos, main, def.bar_thickness),
+        thumb: axis.compose_rect(
+            geom.thumb_offset,
+            cross_pos,
+            geom.thumb_size,
+            def.bar_thickness,
+        ),
     })
 }
 

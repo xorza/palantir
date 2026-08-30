@@ -22,6 +22,20 @@ pub struct ImageShape {
     pub(crate) tint: Color,
 }
 
+impl ImageShape {
+    pub(super) fn new(handle: ImageHandle) -> Self {
+        Self {
+            handle,
+            local_rect: None,
+            fit: ImageFit::default(),
+            min_filter: ImageFilter::default(),
+            mag_filter: ImageFilter::default(),
+            downsample: ImageDownsample::default(),
+            tint: Color::WHITE,
+        }
+    }
+}
+
 local_rect_shape!(ImageShape, at);
 
 shape_setters!(ImageShape {

@@ -1043,7 +1043,7 @@ fn spinner_matches_golden() {
     assert_matches_golden("spinner", &img, Tolerance::default());
 }
 
-/// Slider at 30%: the two-tone rail (accent left, grey right) splits at
+/// Slider at 30%: the two-tone track (accent left, grey right) splits at
 /// the round knob via the `Fill`-weight trick — no record-time width.
 #[test]
 fn slider_thirty_percent_matches_golden() {
@@ -1123,7 +1123,7 @@ fn modal_dialog_matches_golden() {
                 shadow: Shadow::NONE,
             })
             .show(ui, |_| {});
-        Modal::new().id_salt("m").show(ui, |ui| {
+        Modal::new().id_salt("m").show(ui, |ui, _| {
             Text::new("Confirm?").id_salt("mt").show(ui);
         });
     });

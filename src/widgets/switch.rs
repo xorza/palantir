@@ -5,6 +5,7 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::approx::noop_f32;
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
+use crate::primitives::num::F32Ext;
 use crate::primitives::text_input::TextInput;
 use crate::scene::node::Node;
 use crate::scene::node::configure::Configure;
@@ -56,15 +57,15 @@ impl<'a> Switch<'a> {
 
         let theme = ui.theme();
         let slot = self.slot(theme);
-        let track_h = slot.box_size;
-        let inset = slot.indicator_inset;
+        let track_h = slot.box_size.themed_length(1.0);
+        let inset = slot.indicator_inset.themed_length(0.0);
         let aspect = slot.track_aspect;
         let knob_color = slot.indicator;
         let anim = slot.defaults.anim;
         let knob_id = id.with("knob");
         let chrome = ToggleChrome {
             plan: slot.plan(&response, on, &theme.text),
-            row_gap: slot.row_gap,
+            gap: slot.gap,
             // A `Canvas` so the knob can be absolutely positioned inside
             // the track. Width is stroke-independent, so it resolves
             // here even though the stroke isn't known until the body.

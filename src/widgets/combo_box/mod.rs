@@ -15,6 +15,7 @@ use crate::ui::Ui;
 use crate::widgets::context_menu::menu_item::MenuItem;
 use crate::widgets::popup::Popup;
 use crate::widgets::response::Response;
+use crate::widgets::select_response::SelectResponse;
 use crate::widgets::text::Text;
 use crate::widgets::theme::button::ButtonTheme;
 use crate::widgets::theme::widget_look::theme_slot::ThemeSlot;
@@ -99,7 +100,7 @@ impl<'a, S> ComboBox<'a, S> {
          [`crate::Theme::combo_box`].",
     );
 
-    pub fn show(self, ui: &mut Ui) -> Response<'_> {
+    pub fn show(self, ui: &mut Ui) -> SelectResponse<'_> {
         let mut widget = ui.widget(self.node);
         let response = widget.response(ui);
         let id = widget.id();
@@ -116,7 +117,7 @@ impl<'a, S> ComboBox<'a, S> {
         let node = &mut widget.node;
         node.justify = Justify::SpaceBetween;
         node.child_align = Align::v(VAlign::Center);
-        node.gaps.set_gap(geom.row_gap);
+        node.gaps.set_gap(geom.gap);
 
         let arrow_color = look.text.color;
         let text_style = look.text;
@@ -161,6 +162,7 @@ impl<'a, S> ComboBox<'a, S> {
             .try_state::<ComboState>(id)
             .is_some_and(|state| state.open);
         let mut open = was_open;
+        let mut changed = false;
         if !response.disabled && response.left.clicked() {
             open = !open;
         }
@@ -184,13 +186,17 @@ impl<'a, S> ComboBox<'a, S> {
                 .default_padding(ctx.padding)
                 .default_gap(ctx.gap);
             let resp = popup.show(ui, |ui, popup| {
+                let mut picked = false;
                 for (i, opt) in options.iter().enumerate() {
                     let lbl = ui.intern(label(opt));
-                    if MenuItem::new(lbl).show(ui, popup).left.clicked() {
+                    if MenuItem::new(lbl).show(ui, popup).left.clicked() && *selected != i {
                         *selected = i;
+                        picked = true;
                     }
                 }
+                picked
             });
+            changed = resp.inner;
             if resp.closed() {
                 open = false;
             }
@@ -199,7 +205,10 @@ impl<'a, S> ComboBox<'a, S> {
             ui.state_mut::<ComboState>(id).open = open;
         }
 
-        Response::eager(id, ui, response)
+        SelectResponse {
+            response: Response::eager(id, ui, response),
+            changed,
+        }
     }
 }
 

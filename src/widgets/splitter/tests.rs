@@ -365,13 +365,13 @@ fn divider_requests_the_resize_cursor() {
         "column split resizes vertically"
     );
 
-    for (thickness, rule_thickness) in [(3.0, 9.0), (6.0, 0.0)] {
+    for (grab_thickness, rule_thickness) in [(3.0, 9.0), (6.0, 0.0)] {
         let mut h = UiHarness::new(SURFACE);
         let mut ratio = 0.5;
         let frame = |h: &mut UiHarness, ratio: &mut f32| {
             h.frame(|ui| {
                 let style = SplitterTheme {
-                    thickness,
+                    grab_thickness,
                     rule_thickness,
                     ..SplitterTheme::default()
                 };
@@ -390,7 +390,7 @@ fn divider_requests_the_resize_cursor() {
             h.ui.response_for(split_id().with("divider"))
                 .rect
                 .expect("divider arranged");
-        assert_eq!(divider_rect.size.w, thickness);
+        assert_eq!(divider_rect.size.w, grab_thickness);
         assert_eq!(
             divider_rect.center().x,
             first_rect.max().x + rule_thickness * 0.5,

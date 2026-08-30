@@ -203,7 +203,7 @@ hot_structs! {
     Spinner<'static> => "widgets::Spinner": 168 / 8,
     Popup => "widgets::Popup": 272 / 8,
     Modal<'static> => "widgets::Modal": 272 / 8,
-    Tooltip<'static, 'static> => "widgets::Tooltip": 304 / 8,
+    Tooltip<'static> => "widgets::Tooltip": 304 / 8,
     GpuView => "widgets::GpuView": 144 / 8,
     ContextMenu<'static> => "widgets::ContextMenu": 288 / 8,
     MenuItem<'static> => "widgets::MenuItem": 168 / 8,

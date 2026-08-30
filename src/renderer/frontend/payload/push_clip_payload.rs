@@ -21,8 +21,4 @@ impl PushClipPayload {
             corners: Corners::ZERO,
         }
     }
-
-    pub(crate) fn rounded(rect: Rect, corners: Corners) -> Self {
-        Self { rect, corners }
-    }
 }

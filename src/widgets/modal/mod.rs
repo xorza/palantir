@@ -1,5 +1,4 @@
-//! The centred dialog and its input-blocking backdrop, plus what a frame
-//! of it reports about dismissal.
+//! The centred dialog and its input-blocking backdrop.
 
 use crate::input::sense::Sense;
 use crate::layout::types::align::Align;
@@ -13,32 +12,29 @@ use crate::scene::node::Node;
 use crate::scene::node::configure::Configure;
 use crate::scene::node::theme_defaults::ThemeDefaults;
 use crate::ui::Ui;
+use crate::widgets::close_handle::CloseHandle;
+use crate::widgets::overlay_response::OverlayResponse;
 use crate::widgets::overlay_scope::{Backdrop, OverlayScope};
 use crate::widgets::theme::modal::ModalTheme;
 use glam::Vec2;
 
 /// A centered dialog over a dimming, input-blocking backdrop, recorded
 /// into [`Layer::Modal`] so it draws above everything and hit-tests
-/// first. The card hugs its content (floored at a min width) and centers
+/// first. The panel hugs its content (floored at a min width) and centers
 /// on the surface.
 ///
-/// Dismissal: clicking the backdrop (anywhere outside the card) or
-/// pressing Esc sets [`ModalResponse::dismissed`] — the host flips its
-/// own open flag. Clicks on the card itself are absorbed, so interacting
-/// with dialog content never closes it.
+/// Dismissal: clicking the backdrop (anywhere outside the panel) or
+/// pressing Esc sets [`OverlayResponse::dismissed`] — the host flips its
+/// own open flag. A dialog's own "OK" button closes it from the inside
+/// through the [`CloseHandle`] the body is handed. Clicks on the panel
+/// itself are absorbed, so interacting with dialog content never closes
+/// it.
 #[derive(Debug)]
 pub struct Modal<'a> {
     node: Node,
     chrome: Option<Background>,
     backdrop: Option<Color>,
     style: Option<&'a ModalTheme>,
-}
-
-/// Outcome of [`Modal::show`].
-#[derive(Clone, Copy, Debug, Default)]
-pub struct ModalResponse {
-    /// The backdrop was clicked, or Esc was pressed, this frame.
-    pub dismissed: bool,
 }
 
 impl<'a> Modal<'a> {
@@ -68,35 +64,39 @@ impl<'a> Modal<'a> {
         self
     }
 
-    pub fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui)) -> ModalResponse {
+    pub fn show<R>(
+        self,
+        ui: &mut Ui,
+        body: impl FnOnce(&mut Ui, &CloseHandle) -> R,
+    ) -> OverlayResponse<R> {
         let surface = ui.display().logical_rect();
         // The caller's salt names the *backdrop root*, but the node it
-        // arrived on is the card — the root is framework-built below,
+        // arrived on is the panel — the root is framework-built below,
         // out of the id itself, so identity resolves on its own and the
         // root is staged onto it once it exists.
         let mut root_w = ui.widget(self.node);
         let root_id = root_w.id();
 
-        // Handle: `mt.card` is still borrowed at `scope.record`, which owns
-        // `ui` mutably.
+        // Handle: `mt.panel` is still borrowed at `scope.record`, which
+        // owns `ui` mutably.
         let ui_theme = ui.theme().clone();
         let mt = self.slot(&ui_theme);
         let dim = Background::fill(self.backdrop.unwrap_or(mt.backdrop));
-        let card_bg = self.chrome.as_ref().unwrap_or(&mt.card);
+        let panel_bg = self.chrome.as_ref().unwrap_or(&mt.panel);
         let theme_padding = mt.padding;
         let theme_min_width = mt.min_width;
 
-        // The card's own id is always derived — the caller's went to the
+        // The panel's own id is always derived — the caller's went to the
         // root — so this is `id`, not `default_id`.
-        let card = self
+        let panel = self
             .node
-            .id(root_id.with("card"))
+            .id(root_id.with("panel"))
             .default_padding(theme_padding)
             .default_min_size(Size::new(theme_min_width, 0.0));
 
-        // Root fills the surface, dims it, eats stray pointer events,
-        // and centers the card. The card re-senses `Sense::ABSORB_POINTER` so clicks
-        // on it never fall through to this dismiss-backdrop.
+        // Root fills the surface, dims it, eats stray pointer events, and
+        // centers the panel. The panel re-senses `Sense::ABSORB_POINTER`
+        // so clicks on it never fall through to this dismiss-backdrop.
         let mut root = Node::zstack()
             .size((Sizing::FILL, Sizing::FILL))
             .child_align(Align::CENTER)
@@ -104,24 +104,31 @@ impl<'a> Modal<'a> {
         let placement = Placement::fixed(Vec2::ZERO, Some(surface.size));
         let scope =
             OverlayScope::claim(root_id, Layer::Modal, placement, Backdrop::Root, &mut root);
-        // The backdrop root displaces the card the salt arrived on —
+        // The backdrop root displaces the panel the salt arrived on —
         // after `claim`, which stamps the key filter onto it.
         root_w.node = root;
+        let handle = CloseHandle::default();
+        let mut inner = None;
         let edges = scope.record(ui, |ui| {
             root_w.record(ui, Some(&dim), |ui| {
-                ui.widget(card).record(ui, Some(card_bg), body);
+                ui.widget(panel)
+                    .record(ui, Some(panel_bg), |ui| inner = Some(body(ui, &handle)));
             });
         });
-        let dismissed = edges.outside || edges.escape;
-        scope.withdraw(ui, dismissed);
+        let response = OverlayResponse {
+            dismissed: edges.outside || edges.escape,
+            close_requested: handle.requested(),
+            inner: inner.expect("the body records unconditionally"),
+        };
+        scope.withdraw(ui, response.closed());
 
-        ModalResponse { dismissed }
+        response
     }
 }
 
 impl_background!(
     Modal<'_>,
-    "The card chrome. Pass [`Background::NONE`] to suppress the themed card \
+    "The panel chrome. Pass [`Background::NONE`] to suppress the themed panel \
      chrome for this modal.",
 );
 impl_configure!(Modal<'_>);

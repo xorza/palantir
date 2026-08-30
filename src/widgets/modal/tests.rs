@@ -22,17 +22,17 @@ fn explicit_zero_padding_and_minimum_override_card_theme() {
             .background(Background::NONE)
             .padding(Spacing::ZERO)
             .min_size(Size::ZERO)
-            .show(ui, |_| {});
+            .show(ui, |_, _| {});
     });
 
-    let card_id = root_id.with("card");
+    let panel_id = root_id.with("panel");
     let tree = h.ui.tree(Layer::Modal);
     let index = tree
         .records
         .widget_id()
         .iter()
-        .position(|id| *id == card_id)
-        .expect("modal card node");
+        .position(|id| *id == panel_id)
+        .expect("modal panel node");
     let node = NodeId(index as u32);
     assert_eq!(tree.records.layout()[index].padding, Spacing::ZERO);
     assert_eq!(tree.bounds(node).min_size, Size::ZERO);
@@ -60,7 +60,7 @@ fn modal_hears_escape_even_while_a_popup_below_holds_keyboard_claim() {
             }
             *dismissed |= Modal::new()
                 .id(WidgetId::from_hash("modal-escape"))
-                .show(ui, |_| {})
+                .show(ui, |_, _| {})
                 .dismissed;
         };
 
@@ -127,7 +127,7 @@ fn a_dismissed_modal_stops_owning_input_on_the_very_next_frame() {
         if *open {
             *open = !Modal::new()
                 .id(WidgetId::from_hash("closing-modal"))
-                .show(ui, |_| {})
+                .show(ui, |_, _| {})
                 .dismissed;
         }
     };
@@ -176,7 +176,7 @@ fn escape_closes_only_the_topmost_overlay() {
             .dismissed;
         *modal |= Modal::new()
             .id(WidgetId::from_hash("over-popup"))
-            .show(ui, |_| {})
+            .show(ui, |_, _| {})
             .dismissed;
     };
 

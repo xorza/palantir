@@ -106,6 +106,15 @@ impl ViewportPush {
     /// because the shared prelude puts `viewport_size` first.
     pub(super) const OFFSET: u32 = 0;
 
+    /// The viewport every pass of one frame pushes. One definition of
+    /// the recipe, so the main pass and the two overlay passes cannot
+    /// disagree about which size the shaders divide by.
+    pub(super) fn for_buffer(buffer: &RenderBuffer) -> Self {
+        Self {
+            size: buffer.display.physical.as_vec2(),
+        }
+    }
+
     pub(super) fn encode(&self) -> [u8; Self::BYTES] {
         bytemuck::cast(*self)
     }

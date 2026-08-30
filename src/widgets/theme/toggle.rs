@@ -48,7 +48,7 @@ pub struct ToggleTheme {
     /// Dot side = `box_size - 2 * indicator_inset`.
     pub indicator_inset: f32,
     /// Gap between the box/pip and the label.
-    pub row_gap: f32,
+    pub gap: f32,
     /// Track width as a multiple of its height — [`crate::Switch`]
     /// only, where `box_size` is the track height. A switch reads as a
     /// switch (rather than a checkbox) at roughly 7:4. `1.0` on the
@@ -71,7 +71,7 @@ impl ToggleTheme {
             indicator_stroke: _,
             check_pts: _,
             indicator_inset: _,
-            row_gap: _,
+            gap: _,
             track_aspect: _,
             defaults: _,
         } = self;
@@ -98,13 +98,29 @@ impl ToggleTheme {
     /// Defaults sized for [`crate::Checkbox`] — 16 px box with a 3 px
     /// corner radius and a `terminal_bg` check.
     pub fn checkbox(p: &Palette) -> Self {
-        Self::built(3.0, 16.0, 4.0, p.terminal_bg, p)
+        Self::built(
+            ToggleGeometry {
+                corner: 3.0,
+                box_size: 16.0,
+                indicator_inset: 4.0,
+            },
+            p.terminal_bg,
+            p,
+        )
     }
 
     /// Defaults sized for [`crate::RadioButton`] — 16 px pip with pill
     /// radius (`box_size * 0.5`) and a `terminal_bg` dot.
     pub fn radio(p: &Palette) -> Self {
-        Self::built(8.0, 16.0, 4.0, p.terminal_bg, p)
+        Self::built(
+            ToggleGeometry {
+                corner: 8.0,
+                box_size: 16.0,
+                indicator_inset: 4.0,
+            },
+            p.terminal_bg,
+            p,
+        )
     }
 
     /// Defaults sized for [`crate::Switch`] — a 20 px-tall pill
@@ -113,19 +129,26 @@ impl ToggleTheme {
     /// checkbox/radio, the switch defaults to an animated knob slide +
     /// track cross-fade — the motion is the point of the control.
     pub fn switch(p: &Palette) -> Self {
-        let mut t = Self::built(10.0, 20.0, 3.0, p.text, p);
+        let mut t = Self::built(
+            ToggleGeometry {
+                corner: 10.0,
+                box_size: 20.0,
+                indicator_inset: 3.0,
+            },
+            p.text,
+            p,
+        );
         t.track_aspect = 1.75;
         t.defaults.anim = Some(AnimSpec::SPRING);
         t
     }
 
-    fn built(
-        corner: f32,
-        box_size: f32,
-        indicator_inset: f32,
-        indicator: Color,
-        p: &Palette,
-    ) -> Self {
+    fn built(geometry: ToggleGeometry, indicator: Color, p: &Palette) -> Self {
+        let ToggleGeometry {
+            corner,
+            box_size,
+            indicator_inset,
+        } = geometry;
         let radius = Corners::all(corner);
         let edge = p.border_strong();
         let bg =
@@ -133,15 +156,15 @@ impl ToggleTheme {
         let disabled_text = Some(TextStyle::default().with_color(p.text_disabled));
         let unchecked = StatefulLook {
             normal: WidgetLook {
-                background: bg(p.elem_hover, Stroke::solid(edge, 1.0)),
+                background: bg(p.elem_mid, Stroke::solid(edge, 1.0)),
                 text: None,
             },
             hovered: WidgetLook {
-                background: bg(p.elem_active, Stroke::solid(edge, 1.0)),
+                background: bg(p.elem_strong, Stroke::solid(edge, 1.0)),
                 text: None,
             },
             active: WidgetLook {
-                background: bg(p.elem_active, Stroke::solid(p.border_focused, 1.0)),
+                background: bg(p.elem_strong, Stroke::solid(p.border_focused, 1.0)),
                 text: None,
             },
             disabled: WidgetLook {
@@ -180,7 +203,7 @@ impl ToggleTheme {
                 Vec2::new(7.0 / 16.0, 12.0 / 16.0),
                 Vec2::new(12.5 / 16.0, 4.5 / 16.0),
             ],
-            row_gap: 8.0,
+            gap: 8.0,
             track_aspect: 1.0,
             defaults: SlotDefaults {
                 padding: Spacing::ZERO,
@@ -189,6 +212,18 @@ impl ToggleTheme {
             },
         }
     }
+}
+
+/// The three same-typed lengths [`ToggleTheme::built`] would otherwise
+/// take positionally, where any two of them swap and still compile —
+/// the reason [`SlotDefaults`] is a struct too.
+#[derive(Debug)]
+struct ToggleGeometry {
+    /// Corner radius of the box/pip chrome in logical px. `box_size / 2`
+    /// makes the pill the radio and the switch need.
+    corner: f32,
+    box_size: f32,
+    indicator_inset: f32,
 }
 
 impl ThemeSlot for ToggleTheme {

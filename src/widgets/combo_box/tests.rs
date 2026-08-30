@@ -152,20 +152,20 @@ fn dropdown_aligns_to_the_full_trigger_rect_when_flipped_above() {
 
 /// The trigger's shape comes from `Theme::combo_box`, not from
 /// constants: the chevron node is sized from `arrow_size`, and the
-/// gutter between label and arrow from `row_gap`.
+/// gutter between label and arrow from `gap`.
 ///
 /// Hug-sized so `Justify::SpaceBetween` has no free space to
-/// distribute — the rendered gap is then exactly `row_gap`, which a
+/// distribute — the rendered gap is then exactly `gap`, which a
 /// fixed-width trigger would hide behind the justification slack.
 #[test]
 fn trigger_geometry_follows_the_combo_box_theme() {
     let options = ["One"];
     let id = WidgetId::from_hash("geom-combo");
 
-    let measure = |arrow: Vec2, row_gap: f32| -> (Vec2, f32) {
+    let measure = |arrow: Vec2, gap: f32| -> (Vec2, f32) {
         let mut h = UiHarness::new(SURFACE);
         h.ui.theme_mut().combo_box.arrow_size = arrow;
-        h.ui.theme_mut().combo_box.row_gap = row_gap;
+        h.ui.theme_mut().combo_box.gap = gap;
         let mut selected = 0;
         h.frame(|ui| {
             Panel::hstack()
@@ -193,18 +193,12 @@ fn trigger_geometry_follows_the_combo_box_theme() {
 
     let (size_a, gap_a) = measure(Vec2::new(10.0, 6.0), 12.0);
     assert_eq!(size_a, Vec2::new(10.0, 6.0), "arrow node takes arrow_size");
-    assert!(
-        (gap_a - 12.0).abs() < 1e-4,
-        "gutter is row_gap, got {gap_a}",
-    );
+    assert!((gap_a - 12.0).abs() < 1e-4, "gutter is gap, got {gap_a}",);
 
     // Both knobs move the layout — neither is baked in.
     let (size_b, gap_b) = measure(Vec2::new(20.0, 14.0), 30.0);
     assert_eq!(size_b, Vec2::new(20.0, 14.0));
-    assert!(
-        (gap_b - 30.0).abs() < 1e-4,
-        "gutter is row_gap, got {gap_b}"
-    );
+    assert!((gap_b - 30.0).abs() < 1e-4, "gutter is gap, got {gap_b}");
     assert_ne!(size_a, size_b);
     assert_ne!(gap_a, gap_b);
 }

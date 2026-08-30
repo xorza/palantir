@@ -7,9 +7,9 @@ use crate::widgets::panel::Panel;
 use crate::widgets::progress_bar::ProgressBar;
 use glam::UVec2;
 
-/// Explicit `.size(...)` wins over the widget's `Fill × theme.height`
+/// Explicit `.size(...)` wins over the widget's `Fill × theme.thickness`
 /// default, and an untouched bar still gets that default (400-wide FILL
-/// column → 400 × theme height 6).
+/// column → 400 × theme thickness 6).
 #[test]
 fn explicit_size_overrides_fill_default() {
     let mut h = UiHarness::new(UVec2::new(400, 300));

@@ -341,7 +341,7 @@ impl WrapBound {
     pub(super) fn new(max_width_px: f32, halign: HAlign, fit: LineFit) -> Self {
         debug_assert!(max_width_px.is_finite(), "text wrap width must be finite");
         Self {
-            max_w_q: quantize_width(wrap::canonical_wrap_width(max_width_px)).min(MAX_W_NONE - 1),
+            max_w_q: quantize(wrap::canonical_wrap_width(max_width_px)).min(MAX_W_NONE - 1),
             halign_q: match fit {
                 // Projected onto what shaping actually varies on, not
                 // stored raw: `cosmic_align` maps `Auto` and `Stretch`
@@ -360,12 +360,17 @@ impl WrapBound {
     }
 }
 
-fn quantize_width(value: f32) -> u32 {
+/// A length onto the 1/64-px grid every key field is stored on, the
+/// inverse of [`dequantize`]. Any length — a width, a size, a leading —
+/// since what varies between them is the floor, not the grid.
+fn quantize(value: f32) -> u32 {
     (value.max(0.0) * 64.0).fast_round() as u32
 }
 
+/// [`quantize`] floored at one 1/64th: a font size or a line height of
+/// zero would shape nothing, so the key never carries one.
 fn quantize_metric(value: f32) -> u32 {
-    quantize_width(value).max(1)
+    quantize(value).max(1)
 }
 
 fn dequantize(value: u32) -> f32 {

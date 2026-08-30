@@ -66,7 +66,7 @@ fn cold_mount_places_the_thumb_in_one_record_pass() {
          content: expected {expected}, got {}",
         thumbs[0].size.h,
     );
-    assert_eq!(thumbs[0].size.w, theme.width);
+    assert_eq!(thumbs[0].size.w, theme.thickness);
 }
 
 /// Cold-mount overflow must paint with the gutter reservation
@@ -93,13 +93,13 @@ fn cold_mount_overflow_paints_with_gutter_on_first_frame() {
             });
     };
     h.frame(scene);
-    let expected = Size::new(200.0 - theme.width - theme.gap, 200.0);
+    let expected = Size::new(200.0 - theme.thickness - theme.gap, 200.0);
     assert_eq!(
         scroll_viewport(&h.ui, scroll_id),
         expected,
         "cold-mount overflowing scroll: gutter reservation must be \
          active on the first painted frame; viewport should already \
-         be deflated by `theme.width + theme.gap` on the cross axis",
+         be deflated by `theme.thickness + theme.gap` on the cross axis",
     );
     assert!(
         scroll_content(&h.ui, scroll_id).h > scroll_viewport(&h.ui, scroll_id).h,
@@ -152,7 +152,7 @@ fn cold_mount_bar_geometry_matches_frame_two() {
         f1, f2,
         "bar shapes on cold-mount frame must match steady-state \
          frame 2 (regression: pass-B used pass-A's stale viewport \
-         → bars shrank by theme.width + theme.gap on next frame)",
+         → bars shrank by theme.thickness + theme.gap on next frame)",
     );
 }
 

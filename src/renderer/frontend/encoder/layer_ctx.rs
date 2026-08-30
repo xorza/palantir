@@ -361,7 +361,14 @@ impl LayerCtx<'_> {
                     ImageDownsample::Peak => flags |= IMG_FLAG_TAPS_PEAK,
                 }
                 out.draw_image(ImageDraw {
-                    payload: DrawImagePayload::image(rect, uv_min, uv_size, *tint, handle, flags),
+                    payload: DrawImagePayload {
+                        rect,
+                        uv_min,
+                        uv_size,
+                        tint: *tint,
+                        handle,
+                        flags,
+                    },
                     paint,
                 });
             }
@@ -450,7 +457,7 @@ impl LayerCtx<'_> {
             let layout = self.tree.records.layout()[id.idx()];
             let mask_rect = layout.inner_rect(rect);
             match mode {
-                ClipMode::Rect => out.clip(PushClipPayload::rect(mask_rect)),
+                ClipMode::Rect => out.push_clip(PushClipPayload::rect(mask_rect)),
                 ClipMode::Rounded => {
                     // Per-corner reduction by the larger of the two
                     // adjacent edge insets so the mask curve stays inside
@@ -468,7 +475,10 @@ impl LayerCtx<'_> {
                         (pbr - pb.max(pr)).max(0.0),
                         (pbl - pb.max(pl)).max(0.0),
                     );
-                    out.clip(PushClipPayload::rounded(mask_rect, mask_radius));
+                    out.push_clip(PushClipPayload {
+                        rect: mask_rect,
+                        corners: mask_radius,
+                    });
                 }
                 // Unreachable under the gate above. Spelled out so a new
                 // `ClipMode` is a compile error here rather than a variant

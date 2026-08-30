@@ -66,6 +66,18 @@ pub struct IconShape {
     pub(crate) desaturate: bool,
 }
 
+impl IconShape {
+    pub(super) fn new(handle: IconHandle) -> Self {
+        Self {
+            handle,
+            local_rect: None,
+            fit: IconFit::default(),
+            tint: Color::WHITE,
+            desaturate: false,
+        }
+    }
+}
+
 local_rect_shape!(IconShape, at);
 
 shape_setters!(IconShape {
@@ -73,20 +85,14 @@ shape_setters!(IconShape {
     /// Multiply the icon by `tint` — whole for a tintable icon, alpha only
     /// for a colour one. See the type docs.
     tint: Color => tint,
-});
-
-impl IconShape {
     /// Draw a **colour** icon in greyscale — its own luminance, hue gone.
     ///
     /// The disabled look for artwork whose colours a tint cannot replace.
     /// Pairs with a faded `tint` alpha, which is the other half of the same
     /// state. No effect on a tintable icon: there the draw already picks the
     /// colour, so a grey one is a grey `tint`.
-    pub fn desaturate(mut self, desaturate: bool) -> Self {
-        self.desaturate = desaturate;
-        self
-    }
-}
+    desaturate: bool => desaturate,
+});
 
 impl sealed::LowerShape for IconShape {
     fn is_noop(&self) -> bool {

@@ -103,11 +103,11 @@ impl<'a> Splitter<'a> {
         let id = widget.id();
 
         let theme = self.slot(ui.theme());
-        let thickness = theme.thickness.max(1.0);
-        let rule_thickness = theme.rule_thickness.max(0.0);
+        let grab_thickness = theme.grab_thickness.themed_length(1.0);
+        let rule_thickness = theme.rule_thickness.themed_length(0.0);
         let rule_color = theme.rule;
-        let hover_color = theme.hover;
-        let drag_color = theme.drag;
+        let hovered_color = theme.hovered;
+        let active_color = theme.active;
 
         // The divider's interaction response drives both the ratio write
         // and its own paint. Last frame's response — the recording below
@@ -159,9 +159,9 @@ impl<'a> Splitter<'a> {
         }
 
         let bar_fill = if divider.left.drag.dragging() {
-            Some(drag_color)
+            Some(active_color)
         } else if divider.hovered && !response.disabled {
-            Some(hover_color)
+            Some(hovered_color)
         } else {
             None
         };
@@ -201,7 +201,7 @@ impl<'a> Splitter<'a> {
 
             // The grab bar overhangs the seam on the split axis only, so
             // its inset is main-axis with nothing across.
-            let inset = (rule_thickness - thickness) * 0.5;
+            let inset = (rule_thickness - grab_thickness) * 0.5;
             let mut bar = Node::leaf()
                 .id(divider_id)
                 .sense(Sense::DRAG)

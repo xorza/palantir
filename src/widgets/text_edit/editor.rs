@@ -1,6 +1,7 @@
 //! One frame's semantic editing session over the host-owned buffer.
 
 use crate::input::key_class::KeyFilter;
+use crate::scene::node::configure::Configure;
 use crate::ui::Ui;
 use crate::widgets::context_menu::ContextMenu;
 use crate::widgets::context_menu::menu_item::MenuItem;
@@ -91,7 +92,7 @@ impl<'a> Editor<'a> {
                     ActionAvailability::Selection => has_selection,
                     ActionAvailability::Text => has_text,
                 };
-                let mut row = MenuItem::new(item.label).enabled(enabled);
+                let mut row = MenuItem::new(item.label).disabled(!enabled);
                 if let Some(shortcut) = item.action.shortcut() {
                     row = row.shortcut_hint(shortcut);
                 }

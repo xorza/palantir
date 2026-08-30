@@ -15,7 +15,7 @@ pub struct ComboBoxTheme {
     /// Gutter between the selected label and the chevron. The trigger
     /// justifies its two children apart, so this is the *minimum* gap,
     /// not the rendered one.
-    pub row_gap: f32,
+    pub gap: f32,
     /// Chevron bounding box in logical px. Drawn as a polyline rather
     /// than a glyph, so it stays font-independent.
     pub arrow_size: Vec2,
@@ -26,7 +26,7 @@ pub struct ComboBoxTheme {
 impl ComboBoxTheme {
     pub fn from_palette(_p: &Palette) -> Self {
         Self {
-            row_gap: 12.0,
+            gap: 12.0,
             arrow_size: Vec2::new(10.0, 6.0),
             arrow_stroke: 1.5,
         }

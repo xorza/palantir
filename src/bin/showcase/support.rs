@@ -49,9 +49,9 @@ pub(crate) const HAIRLINE: Color = Color::hex(0x272a31);
 /// one ladder — which only holds while the ladder lives in one file.
 pub(crate) const ELEM: Color = Color::hex(0x2b2e36);
 /// Widget chrome under the pointer.
-pub(crate) const ELEM_HOVER: Color = Color::hex(0x353942);
+pub(crate) const ELEM_MID: Color = Color::hex(0x353942);
 /// Widget chrome while pressed.
-pub(crate) const ELEM_ACTIVE: Color = Color::hex(0x434854);
+pub(crate) const ELEM_STRONG: Color = Color::hex(0x434854);
 /// Focus ring on a widget border: a dimmer teal than [`ACCENT`], so the
 /// ring reads as an edge rather than a fill.
 pub(crate) const BORDER_FOCUSED: Color = Color::hex(0x2b6f8f);

@@ -99,7 +99,7 @@ macro_rules! noop_gates {
 /// paints through, and no sink overrides them.
 pub(crate) trait PaintSink {
     /// Push a clip region. `payload.corners` is zero for a rect clip.
-    fn clip(&mut self, payload: PushClipPayload);
+    fn push_clip(&mut self, payload: PushClipPayload);
 
     fn pop_clip(&mut self);
 

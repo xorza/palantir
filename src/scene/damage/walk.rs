@@ -78,7 +78,7 @@ pub(super) struct LayerWalk<'a> {
     /// Per-row screen extents for the order-inversion check. Only filled
     /// on the rare frame a node's row order actually inverted.
     pub(super) order_extents: &'a mut Vec<Rect>,
-    pub(super) probe: &'a mut DamageCounters,
+    pub(super) counters: &'a mut DamageCounters,
     pub(super) surface: Rect,
     /// On a force-full frame the caller discards the region, so the arms
     /// skip their rect pushes — a resize storm does no rect work, and
@@ -197,13 +197,13 @@ impl LayerWalk<'_> {
         }
         let snapshot = self.snapshot(i, parent_key, paint_span);
         self.prev.insert(wid, snapshot);
-        self.probe.mark_dirty(NodeId(i as u32));
+        self.counters.mark_dirty(NodeId(i as u32));
         1
     }
 
     fn on_subtree_unchanged(&mut self, i: usize) -> usize {
         let span = self.tree.subtree_end_of(i) - i;
-        self.probe.subtree_skipped(span);
+        self.counters.subtree_skipped(span);
         span
     }
 
@@ -228,7 +228,7 @@ impl LayerWalk<'_> {
             .extend(self.paints.slots[prev.paint_span.range()].screens());
         self.prev.remove(&wid);
         self.paints.release(prev.paint_span);
-        self.probe.mark_dirty(NodeId(i as u32));
+        self.counters.mark_dirty(NodeId(i as u32));
         1
     }
 
@@ -284,7 +284,7 @@ impl LayerWalk<'_> {
 
         let snapshot = self.snapshot(i, parent_key, leg.span);
         self.prev.insert(wid, snapshot);
-        self.probe.mark_dirty(NodeId(i as u32));
+        self.counters.mark_dirty(NodeId(i as u32));
         1
     }
 
@@ -335,7 +335,7 @@ impl LayerWalk<'_> {
                     self.prev.insert(wid, snapshot);
                 }
             }
-            self.probe.mark_dirty(NodeId(j as u32));
+            self.counters.mark_dirty(NodeId(j as u32));
         }
         damage::push_screen(self.raw_rects, prev_extent);
         // Rolled-up curr extent from the cascade — already `Rect::ZERO`

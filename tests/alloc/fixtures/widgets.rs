@@ -238,7 +238,7 @@ fn value_and_toggle_widgets_alloc_free() {
                     .label("hover")
                     .show(ui)
                     .snapshot();
-                Tooltip::on(&r).text("a tooltip body").show(ui);
+                Tooltip::on(&r).label("a tooltip body").show(ui);
             });
     });
 }
@@ -258,7 +258,7 @@ fn overlays_alloc_free() {
                     .show(ui, |ui, _handle| {
                         Text::new("popup body").id_salt("pop-text").show(ui);
                     });
-                Modal::new().id_salt("modal").show(ui, |ui| {
+                Modal::new().id_salt("modal").show(ui, |ui, _| {
                     Text::new("modal body").id_salt("modal-text").show(ui);
                 });
             });

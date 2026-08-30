@@ -96,6 +96,26 @@ fn from_vec2_and_size_map_to_pairs() {
         [3.0, 3.0, 7.0, 7.0],
         "Size → (w,w,h,h)",
     );
+    // The 2-tuple pairs by edge, like every other 2-value form here.
+    assert_eq!(
+        Corners::from((3.0, 7.0)).as_array(),
+        [3.0, 3.0, 7.0, 7.0],
+        "(top, bottom) → (t,t,b,b)",
+    );
+    assert_eq!(
+        Corners::from((1, 2, 3, 4)).as_array(),
+        [1.0, 2.0, 3.0, 4.0],
+        "(tl, tr, br, bl) → lane order",
+    );
+}
+
+/// The packed form the chrome hash writes: four f16 lanes, little-endian
+/// `tl | tr | br | bl`. 1.0 is `0x3c00` and 2.0 is `0x4000` in f16, so
+/// `(1, 2, 1, 2)` packs to `0x4000_3c00_4000_3c00`.
+#[test]
+fn as_u64_packs_the_four_lanes() {
+    assert_eq!(Corners::from((1, 2, 1, 2)).as_u64(), 0x4000_3c00_4000_3c00);
+    assert_eq!(Corners::ZERO.as_u64(), 0);
 }
 
 #[test]

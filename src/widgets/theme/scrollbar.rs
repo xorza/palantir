@@ -5,18 +5,19 @@ use crate::primitives::color::Color;
 use crate::widgets::theme::palette::Palette;
 
 /// Visuals for [`crate::Scroll`] reservation-layout scrollbars. When
-/// content overflows on a panned axis, the widget reserves `width`
+/// content overflows on a panned axis, the widget reserves `thickness`
 /// of padding on that axis's far edge; the bar paints in the reserved
 /// strip — beside the visible content, never on top of it. Track +
-/// thumb are filled rounded rects. The thumb fill picks between
-/// `thumb` / `thumb_hover` / `thumb_active` based on the bar leaf's
+/// thumb are pill-capped filled rects. The thumb fill picks between
+/// `thumb` / `thumb_hovered` / `thumb_active` based on the bar leaf's
 /// hover + drag state (see `scroll::push_bar_nodes`).
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ScrollbarTheme {
-    /// Cross-axis thickness of the bar in logical px.
-    pub width: f32,
+    /// Cross-axis thickness of the bar in logical px. The pill radius
+    /// of track and thumb is `thickness / 2`.
+    pub thickness: f32,
     /// Empty padding strip between content and the bar. Reserved
-    /// alongside `width` (total reservation = `width + gap`) but
+    /// alongside `thickness` (total reservation = `thickness + gap`) but
     /// painted as nothing — pure breathing room so the bar doesn't
     /// touch the visible content.
     pub gap: f32,
@@ -29,11 +30,9 @@ pub struct ScrollbarTheme {
     /// Idle thumb fill.
     pub thumb: Color,
     /// Thumb fill while the pointer is over the bar.
-    pub thumb_hover: Color,
+    pub thumb_hovered: Color,
     /// Thumb fill while the thumb is drag-captured (or pressed).
     pub thumb_active: Color,
-    /// Corner radius applied to track and thumb. `width / 2` = pill.
-    pub radius: f32,
 }
 
 impl ScrollbarTheme {
@@ -44,14 +43,13 @@ impl ScrollbarTheme {
     pub fn from_palette(p: &Palette) -> Self {
         let thumb = |alpha: f32| p.text_muted.with_alpha(alpha);
         Self {
-            width: 8.0,
+            thickness: 8.0,
             gap: 4.0,
             min_thumb_px: 24.0,
             track: Color::TRANSPARENT,
             thumb: thumb(0.45),
-            thumb_hover: thumb(0.65),
+            thumb_hovered: thumb(0.65),
             thumb_active: thumb(0.85),
-            radius: 4.0,
         }
     }
 }

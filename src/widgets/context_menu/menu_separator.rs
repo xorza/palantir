@@ -1,5 +1,7 @@
 //! The rule a context menu draws between groups of rows.
 
+use crate::layout::axis::Axis;
+use crate::scene::node::Node;
 use crate::ui::Ui;
 use crate::widgets::response::Response;
 use crate::widgets::separator::Separator;
@@ -22,6 +24,7 @@ use crate::widgets::theme::separator::SeparatorTheme;
 /// ```
 #[derive(Debug)]
 pub struct MenuSeparator<'a> {
+    node: Node,
     style: Option<&'a SeparatorTheme>,
 }
 
@@ -29,18 +32,25 @@ impl<'a> MenuSeparator<'a> {
     /// An unstyled rule. The public way to one is
     /// [`MenuItem::separator`](crate::widgets::context_menu::menu_item::MenuItem::separator),
     /// which is where the rule reads as part of the menu vocabulary.
-    pub(super) const fn new() -> Self {
-        Self { style: None }
+    #[track_caller]
+    pub(super) fn new() -> Self {
+        Self {
+            node: Node::leaf(),
+            style: None,
+        }
     }
 
     style_setter!('a, SeparatorTheme, context_menu.separator);
 
-    #[track_caller]
     pub fn show<'ui>(self, ui: &'ui mut Ui) -> Response<'ui> {
         // Handle, not a borrow: `Separator::style` holds the reference
         // across `show`'s `&mut Ui`, and this one may point into the
         // `Ui`'s own theme.
         let ui_theme = ui.theme().clone();
-        Separator::horizontal().style(self.slot(&ui_theme)).show(ui)
+        Separator::over(self.node, Axis::X)
+            .style(self.slot(&ui_theme))
+            .show(ui)
     }
 }
+
+impl_configure!(MenuSeparator<'_>);

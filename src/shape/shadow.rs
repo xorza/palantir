@@ -18,6 +18,16 @@ pub struct ShadowShape {
     pub(crate) shadow: Shadow,
 }
 
+impl ShadowShape {
+    pub(super) fn new(shadow: Shadow) -> Self {
+        Self {
+            local_rect: None,
+            corners: Corners::ZERO,
+            shadow,
+        }
+    }
+}
+
 local_rect_shape!(ShadowShape, at);
 
 shape_setters!(ShadowShape {

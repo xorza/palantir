@@ -456,7 +456,7 @@ fn only_a_scope_gates_the_stream_and_only_while_recorded() {
     };
     let with_modal = |ui: &mut Ui| {
         empty_watch_buttons(ui);
-        Modal::new().show(ui, |_| {});
+        Modal::new().show(ui, |_, _| {});
     };
     let plain_layer = |ui: &mut Ui| {
         empty_watch_buttons(ui);

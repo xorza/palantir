@@ -14,9 +14,9 @@ use crate::widgets::scroll::tests::support::{scroll_content, scroll_viewport};
 use glam::UVec2;
 
 /// Reservation: when content overflows on the V axis, the inner
-/// shrinks by exactly `theme.width + theme.gap` on the right.
+/// shrinks by exactly `theme.thickness + theme.gap` on the right.
 #[test]
-fn vertical_overflow_reserves_bar_width_on_inner() {
+fn vertical_overflow_reserves_bar_thickness_on_inner() {
     let surface = UVec2::new(400, 600);
     let mut h = UiHarness::new(surface);
     let build = |ui: &mut Ui| {
@@ -39,7 +39,7 @@ fn vertical_overflow_reserves_bar_width_on_inner() {
     assert_eq!(
         scroll_viewport(&h.ui, WidgetId::from_hash("scroll")),
         Size::new(188.0, 200.0),
-        "V overflow reserves theme.width + theme.gap = 12px on the right; H axis untouched"
+        "V overflow reserves theme.thickness + theme.gap = 12px on the right; H axis untouched"
     );
 }
 
@@ -73,7 +73,7 @@ fn user_padding_is_preserved_when_bar_reserves() {
 }
 
 /// Pin bar positioning: V bar's overlay rect sits flush with
-/// `outer.w - theme.width` (the reserved padding strip), NOT
+/// `outer.w - theme.thickness` (the reserved padding strip), NOT
 /// inside any user-set padding.
 #[test]
 fn vertical_bar_overlay_rect_lands_in_right_padding_strip() {
@@ -95,16 +95,19 @@ fn vertical_bar_overlay_rect_lands_in_right_padding_strip() {
     });
     let _ = node;
     let theme = theme();
-    let expected_x = 200.0 - theme.width;
+    let expected_x = 200.0 - theme.thickness;
     let overlays = thumb_rects(&ui.ui, "scroll");
     assert!(!overlays.is_empty(), "expected at least one thumb");
     for r in &overlays {
         assert_eq!(
             r.min.x, expected_x,
-            "V bar must sit at outer.w - theme.width (= reserved strip), \
+            "V bar must sit at outer.w - theme.thickness (= reserved strip), \
              not inside user padding"
         );
-        assert_eq!(r.size.w, theme.width, "V bar width = theme.width");
+        assert_eq!(
+            r.size.w, theme.thickness,
+            "V bar thickness = theme.thickness"
+        );
     }
 }
 

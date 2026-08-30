@@ -1,4 +1,5 @@
 use crate::primitives::rect::Rect;
+use crate::primitives::spacing::Spacing;
 use glam::Vec2;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -154,4 +155,30 @@ fn union_cases() {
         assert_eq!(a.union(*b), *want, "case: {label}");
         assert_eq!(b.union(*a), *want, "case: {label} (swapped)");
     }
+}
+
+/// The four inset/outset spellings against hand-computed rects, and the
+/// one asymmetry between them: an outset cannot collapse a rect, so it
+/// does not clamp, while an inset deeper than the extent lands on zero.
+#[test]
+fn inflate_and_deflate_are_inverses_until_the_clamp() {
+    let r = Rect::new(10.0, 20.0, 100.0, 40.0);
+
+    // Uniform: 2 px off every side takes 4 px off each extent.
+    assert_eq!(r.inflated(2.0), Rect::new(8.0, 18.0, 104.0, 44.0));
+    assert_eq!(r.deflated(2.0), Rect::new(12.0, 22.0, 96.0, 36.0));
+    assert_eq!(r.inflated(2.0).deflated(2.0), r);
+
+    // Per side: left 1, top 2, right 3, bottom 4.
+    let s = Spacing::new(1.0, 2.0, 3.0, 4.0);
+    assert_eq!(r.inflated_by(s), Rect::new(9.0, 18.0, 104.0, 46.0));
+    assert_eq!(r.deflated_by(s), Rect::new(11.0, 22.0, 96.0, 34.0));
+    assert_eq!(r.deflated_by(s).inflated_by(s), r);
+
+    // 25 px off each side of a 40 px-tall rect wants -10; the inset
+    // clamps to an empty extent, and the outset that would undo it
+    // cannot get the height back.
+    let flattened = r.deflated(25.0);
+    assert_eq!(flattened, Rect::new(35.0, 45.0, 50.0, 0.0));
+    assert_eq!(flattened.inflated(25.0), Rect::new(10.0, 20.0, 100.0, 50.0));
 }

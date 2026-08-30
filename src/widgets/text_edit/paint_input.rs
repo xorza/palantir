@@ -75,7 +75,7 @@ impl PaintInput<'_> {
                 if !display.is_empty() {
                     ui.add_shape(
                         Shape::text(display, ctx.font)
-                            .at(Vec2::ZERO)
+                            .at_origin(Vec2::ZERO)
                             .color(color)
                             .wrap(if ctx.multiline {
                                 TextWrap::Wrap

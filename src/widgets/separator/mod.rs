@@ -1,9 +1,11 @@
 //! The thin divider rule, on either axis.
 
+use crate::layout::axis::Axis;
 use crate::layout::types::align::{Align, HAlign, VAlign};
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
+use crate::primitives::num::F32Ext;
 use crate::scene::node::Node;
 use crate::scene::node::configure::Configure;
 use crate::scene::node::theme_defaults::ThemeDefaults;
@@ -25,7 +27,7 @@ use crate::widgets::theme::separator::SeparatorTheme;
 #[derive(Debug)]
 pub struct Separator<'a> {
     node: Node,
-    horizontal: bool,
+    axis: Axis,
     thickness: Option<f32>,
     color: Option<Color>,
     style: Option<&'a SeparatorTheme>,
@@ -35,20 +37,28 @@ impl<'a> Separator<'a> {
     /// A horizontal rule (stretches across the parent's width).
     #[track_caller]
     pub fn horizontal() -> Self {
-        Self::axis(true)
+        Self::along(Axis::X)
     }
 
     /// A vertical rule (stretches down the parent's height).
     #[track_caller]
     pub fn vertical() -> Self {
-        Self::axis(false)
+        Self::along(Axis::Y)
     }
 
     #[track_caller]
-    fn axis(horizontal: bool) -> Self {
+    fn along(axis: Axis) -> Self {
+        Self::over(Node::leaf(), axis)
+    }
+
+    /// A rule on `axis` over a node the caller already built, so
+    /// [`crate::MenuSeparator`] forwards the `Configure` calls that
+    /// landed on it — identity included, which is why this takes the
+    /// node rather than building one at *this* call site.
+    pub(crate) fn over(node: Node, axis: Axis) -> Self {
         Self {
-            node: Node::leaf(),
-            horizontal,
+            node,
+            axis,
             thickness: None,
             color: None,
             style: None,
@@ -80,26 +90,18 @@ impl<'a> Separator<'a> {
 
     pub fn show(mut self, ui: &mut Ui) -> Response<'_> {
         let theme = self.slot(ui.theme());
-        let t = self.thickness.unwrap_or(theme.thickness).max(0.0);
+        let t = self.thickness.unwrap_or(theme.thickness).themed_length(0.0);
         let margin = theme.margin;
-        let default_size = if self.horizontal {
-            (Sizing::HUG, Sizing::fixed(t))
-        } else {
-            (Sizing::fixed(t), Sizing::HUG)
-        };
         if self.node.size.is_none() {
             // The stretch belongs to the `Hug` default, not to the rule:
             // it is what spans the parent, and applying it over an
             // explicit size would override the extent the caller gave.
             // `Node` is `Copy`, so the chain reads back into the field.
-            self.node = self
-                .node
-                .size(default_size)
-                .default_align(if self.horizontal {
-                    Align::h(HAlign::Stretch)
-                } else {
-                    Align::v(VAlign::Stretch)
-                });
+            let (default_size, stretch) = match self.axis {
+                Axis::X => ((Sizing::HUG, Sizing::fixed(t)), Align::h(HAlign::Stretch)),
+                Axis::Y => ((Sizing::fixed(t), Sizing::HUG), Align::v(VAlign::Stretch)),
+            };
+            self.node = self.node.size(default_size).default_align(stretch);
         }
         let chrome = Background::fill(self.color.unwrap_or(theme.color));
         // Theme margin fills in only where the caller stayed silent —

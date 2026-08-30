@@ -124,7 +124,7 @@ fn explicit_size_overrides_fill_default() {
     assert_eq!((d.size.w, d.size.h), (400.0, 18.0), "untouched default");
 }
 
-/// Each endpoint collapses one rail to a zero-extent `Fixed`, and an
+/// Each endpoint collapses one track segment to a zero-extent `Fixed`, and an
 /// unseeded value lays out as the low end rather than reaching
 /// `Sizing::share`'s finite assert — the value is app state the widget
 /// borrows and cannot assert on.
@@ -173,7 +173,7 @@ fn value_to_fraction_maps_and_clamps() {
     }
     // A NaN anywhere in the triple names no share, and the low end is
     // what this widget reads that as — the same answer
-    // `pointer_to_fraction` gives a rail with no travel.
+    // `pointer_to_fraction` gives a track with no travel.
     for (v, min, max) in [
         (f64::NAN, 0.0, 100.0),
         (50.0, f64::NAN, 100.0),
@@ -277,7 +277,7 @@ fn step_rejects_a_value_that_cannot_snap() {
     }
 }
 
-/// A rail with no travel left reports the low end rather than dividing
+/// A track with no travel left reports the low end rather than dividing
 /// by a floored span.
 #[test]
 fn pointer_to_fraction_reports_zero_for_a_knob_wider_than_its_rail() {
@@ -285,7 +285,7 @@ fn pointer_to_fraction_reports_zero_for_a_knob_wider_than_its_rail() {
     assert_eq!(pointer_to_fraction(15.0, 10.0, 20.0), 0.0);
 }
 
-/// The binding is `DragNum`, so the rail drives an integer as readily
+/// The binding is `DragNum`, so the track drives an integer as readily
 /// as a float, and every landing is whole.
 ///
 /// Same geometry as the deferred-commit test: 118 wide, knob 18, so the

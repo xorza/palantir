@@ -2,6 +2,7 @@
 //! `Spacing` and `ColorF16` use, with corner names on the lanes.
 
 use crate::primitives::half_simd::F16x4;
+use crate::primitives::num::Num;
 use crate::primitives::serde::LaneCodec;
 use crate::primitives::size::Size;
 use glam::Vec2;
@@ -95,6 +96,29 @@ impl Corners {
         // sharp-corner fast path this gates. The shape-level NaN gate is
         // what drops such a shape.
         self.0.all_lanes_noop()
+    }
+
+    /// Packed 8-byte form, the peer of `Spacing::as_u64`. The chrome
+    /// hash folds the four radii into one hasher write with it.
+    #[inline]
+    pub(crate) fn as_u64(self) -> u64 {
+        self.0.as_u64()
+    }
+}
+
+/// `(top, bottom)` — both corners on each edge, the same pairing
+/// [`From<Vec2>`] and the wire format's 2-node shorthand use.
+impl<T: Num, B: Num> From<(T, B)> for Corners {
+    fn from((t, b): (T, B)) -> Self {
+        let (t, b) = (t.as_f32(), b.as_f32());
+        Self::new(t, t, b, b)
+    }
+}
+
+/// `(tl, tr, br, bl)` — matches lane order.
+impl<TL: Num, TR: Num, BR: Num, BL: Num> From<(TL, TR, BR, BL)> for Corners {
+    fn from((tl, tr, br, bl): (TL, TR, BR, BL)) -> Self {
+        Self::new(tl.as_f32(), tr.as_f32(), br.as_f32(), bl.as_f32())
     }
 }
 

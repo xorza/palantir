@@ -78,17 +78,13 @@ pub(crate) mod text;
 pub(crate) mod triangle;
 
 use crate::icons::icon_set::IconHandle;
-use crate::primitives::color::Color;
-use crate::primitives::corners::Corners;
-use crate::primitives::image::{ImageDownsample, ImageFilter, ImageFit};
 use crate::primitives::interned_str::InternedStr;
 use crate::primitives::mesh::Mesh;
 use crate::primitives::rect::Rect;
 use crate::primitives::shadow::Shadow;
-use crate::primitives::stroke::Stroke;
 use crate::renderer::image_registry::ImageHandle;
 use crate::shape::curve::{CurveGeometry, CurveShape};
-use crate::shape::icon::{IconFit, IconShape};
+use crate::shape::icon::IconShape;
 use crate::shape::image::ImageShape;
 use crate::shape::mesh::MeshShape;
 use crate::shape::polyline::{PolylineColors, PolylineShape};
@@ -218,14 +214,7 @@ impl Shape {
     /// A triangle with corners `a`/`b`/`c` (owner-local). Starts sharp
     /// (radius 0), transparent-filled, strokeless.
     pub fn triangle(a: Vec2, b: Vec2, c: Vec2) -> TriangleShape {
-        TriangleShape {
-            a,
-            b,
-            c,
-            radius: 0.0,
-            fill: Color::TRANSPARENT,
-            stroke: Stroke::ZERO,
-        }
+        TriangleShape::new(a, b, c)
     }
 
     /// A `width`-thick straight line from `a` to `b` (`Butt` cap).
@@ -297,25 +286,13 @@ impl Shape {
 
     /// A `shadow` of the owner's full rect.
     pub fn shadow(shadow: Shadow) -> ShadowShape {
-        ShadowShape {
-            local_rect: None,
-            corners: Corners::ZERO,
-            shadow,
-        }
+        ShadowShape::new(shadow)
     }
 
     /// A textured rect from `handle` painting the owner's full rect at the
     /// default fit/filters, untinted.
     pub fn image(handle: ImageHandle) -> ImageShape {
-        ImageShape {
-            handle,
-            local_rect: None,
-            fit: ImageFit::default(),
-            min_filter: ImageFilter::default(),
-            mag_filter: ImageFilter::default(),
-            downsample: ImageDownsample::default(),
-            tint: Color::WHITE,
-        }
+        ImageShape::new(handle)
     }
 
     /// A baked SVG icon painting the owner's full rect, aspect preserved and
@@ -324,22 +301,12 @@ impl Shape {
     ///
     /// `handle` comes from [`IconSet::handle`](crate::IconSet::handle).
     pub fn icon(handle: IconHandle) -> IconShape {
-        IconShape {
-            handle,
-            local_rect: None,
-            fit: IconFit::default(),
-            tint: Color::WHITE,
-            desaturate: false,
-        }
+        IconShape::new(handle)
     }
 
     /// A colored triangle `mesh` painting the owner's full rect, untinted.
     pub fn mesh(mesh: &Mesh) -> MeshShape<'_> {
-        MeshShape {
-            mesh,
-            local_rect: None,
-            tint: Color::WHITE,
-        }
+        MeshShape::new(mesh)
     }
 }
 

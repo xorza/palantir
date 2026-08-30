@@ -11,7 +11,9 @@ use crate::scene::node::configure::Configure;
 use crate::scene::node::configure::ConfigureNode;
 use crate::scene::node::theme_defaults::ThemeDefaults;
 use crate::ui::Ui;
-use crate::widgets::popup::{Popup, PopupHandle, PopupResponse};
+use crate::widgets::close_handle::CloseHandle;
+use crate::widgets::overlay_response::OverlayResponse;
+use crate::widgets::popup::Popup;
 use crate::widgets::response::ResponseSnapshot;
 use crate::widgets::theme::context_menu::ContextMenuTheme;
 
@@ -114,16 +116,21 @@ impl<'a> ContextMenu<'a> {
 
     /// Record the menu and return the popup's own per-frame outcome.
     ///
-    /// [`PopupResponse`] directly rather than a menu-specific wrapper: a
-    /// context menu *is* a popup here, so it reports
-    /// [`closed`](PopupResponse::closed) — the same close predicate every
-    /// other overlay-trigger widget branches on.
+    /// [`OverlayResponse`] directly rather than a menu-specific wrapper:
+    /// a context menu *is* a popup here, so it reports
+    /// [`closed`](OverlayResponse::closed) — the same close predicate
+    /// every other overlay-trigger widget branches on. Its `inner` is an
+    /// `Option` because a closed menu never runs the body.
     ///
     /// The body closure records [`MenuItem`](crate::widgets::context_menu::menu_item::MenuItem)s inside
     /// [`Layer::Menu`], which is what lets a menu be raised from inside a
     /// popup or a dialog; the menu auto-closes on outside-click, Esc, or an
     /// item click.
-    pub fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, &PopupHandle)) -> PopupResponse {
+    pub fn show<R>(
+        self,
+        ui: &mut Ui,
+        body: impl FnOnce(&mut Ui, &CloseHandle) -> R,
+    ) -> OverlayResponse<Option<R>> {
         // Esc dismissal is owned by the `Dismiss` popup below — it folds into
         // `resp.closed()`, so no hand-rolled `escape_pressed` here.
         //
@@ -134,7 +141,7 @@ impl<'a> ContextMenu<'a> {
             .try_state::<ContextMenuState>(self.for_id)
             .and_then(|st| st.anchor)
         else {
-            return PopupResponse::default();
+            return OverlayResponse::default();
         };
 
         let ui_theme = ui.theme().clone();
@@ -153,7 +160,7 @@ impl<'a> ContextMenu<'a> {
             .default_padding(ctx.padding)
             .default_min_size(Size::new(ctx.min_width, 0.0))
             .default_gap(ctx.gap)
-            .show(ui, body);
+            .show(ui, |ui, handle| Some(body(ui, handle)));
         if resp.closed() {
             ContextMenu::close(ui, self.for_id);
         }

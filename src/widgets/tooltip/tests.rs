@@ -69,7 +69,7 @@ fn content_growth_and_shrink_reposition_without_input_or_settling() {
         h.frame(|ui| {
             passes += 1;
             Tooltip::on(&snapshot)
-                .text(text)
+                .label(text)
                 .delay(Duration::ZERO)
                 .show(ui);
         });
@@ -151,7 +151,7 @@ fn configure_reaches_the_bubble_and_explicit_id_beats_the_derived_one() {
     let mut h = UiHarness::new(SURFACE);
     h.frame(|ui| {
         Tooltip::on(&snapshot)
-            .text("tip")
+            .label("tip")
             .background(Background::NONE)
             .padding(Spacing::ZERO)
             .margin(Spacing::all(7.0))
@@ -172,7 +172,7 @@ fn configure_reaches_the_bubble_and_explicit_id_beats_the_derived_one() {
     let mut h = UiHarness::new(SURFACE);
     h.frame(|ui| {
         Tooltip::on(&snapshot)
-            .text("tip")
+            .label("tip")
             .id(explicit)
             .delay(Duration::ZERO)
             .show(ui);
@@ -202,7 +202,7 @@ fn visible_tooltip_at(trigger_x: f32, text: &'static str) -> UiHarness {
     h.frame(|ui| {
         passes += 1;
         Tooltip::on(&snapshot)
-            .text(text)
+            .label(text)
             .delay(Duration::ZERO)
             .show(ui);
     });
@@ -212,12 +212,38 @@ fn visible_tooltip_at(trigger_x: f32, text: &'static str) -> UiHarness {
     h.frame(|ui| {
         passes += 1;
         Tooltip::on(&snapshot)
-            .text(text)
+            .label(text)
             .delay(Duration::ZERO)
             .show(ui);
     });
     assert_eq!(passes, 1, "a measured tooltip stays single-pass");
     h
+}
+
+/// An empty label is nothing to say, so the hover never becomes active:
+/// no state row turns visible and the layer stays as empty as it is with
+/// no tooltip at all. Same fixture as the visible cases above, which is
+/// what makes the empty layer mean something.
+#[test]
+fn empty_label_records_no_bubble() {
+    let empty = visible_tooltip_at(20.0, "");
+    let baseline = empty.ui.tree(Layer::Tooltip).records.len();
+    assert!(
+        !empty
+            .ui
+            .try_state::<TooltipState>(WidgetId::from_hash("edge-trigger"))
+            .copied()
+            .unwrap_or_default()
+            .visible,
+        "an empty tooltip must never become visible",
+    );
+
+    let shown = visible_tooltip_at(20.0, "tip");
+    assert!(
+        shown.ui.tree(Layer::Tooltip).records.len() > baseline,
+        "the same fixture with text records more than the empty one \
+         ({baseline} records)",
+    );
 }
 
 #[test]
@@ -235,7 +261,7 @@ fn tooltip_delay_keeps_subsecond_precision_after_long_uptime() {
     let record_at = |h: &mut UiHarness, time: Duration| {
         h.at(time).frame(|ui| {
             Tooltip::on(&snapshot)
-                .text("tip")
+                .label("tip")
                 .delay(Duration::from_millis(250))
                 .show(ui);
         });
@@ -265,7 +291,7 @@ fn tooltip_state_is_swept_with_trigger_while_global_state_persists() {
     let record = |ui: &mut Ui| {
         Panel::vstack().id(root_id).show(ui, |ui| {
             let trigger = Button::new().id(trigger_id).label("hi").show(ui).snapshot();
-            Tooltip::on(&trigger).text("tip").show(ui);
+            Tooltip::on(&trigger).label("tip").show(ui);
         });
     };
 
@@ -326,7 +352,7 @@ fn delay_gates_visibility() {
                         .snapshot();
                     *captured = Some(r.id);
                     Tooltip::on(&r)
-                        .text("tip")
+                        .label("tip")
                         .delay(Duration::from_millis(300))
                         .show(ui);
                 });
@@ -413,7 +439,7 @@ fn hover_clears_after_tooltip_visible() {
                         .snapshot();
                     *captured = Some(r.id);
                     Tooltip::on(&r)
-                        .text("tip")
+                        .label("tip")
                         .delay(Duration::from_millis(300))
                         .show(ui);
                 });
@@ -484,7 +510,7 @@ fn tooltip_inside_popup_records_without_panic() {
                                 .snapshot();
                             *captured = Some(r.id);
                             Tooltip::on(&r)
-                                .text("tip")
+                                .label("tip")
                                 .delay(Duration::from_millis(300))
                                 .show(ui);
                         });

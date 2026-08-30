@@ -193,14 +193,14 @@ fn compose_emits_image_batch_for_drawimage() {
     let buf = run(
         |b, _arena| {
             b.draw_image(ImageDraw {
-                payload: DrawImagePayload::image(
-                    rect(10.0, 20.0, 30.0, 40.0),
-                    glam::Vec2::ZERO,
-                    glam::Vec2::ONE,
-                    Color::WHITE.into(),
-                    TextureId(0xc0ffee),
-                    0,
-                ),
+                payload: DrawImagePayload {
+                    rect: rect(10.0, 20.0, 30.0, 40.0),
+                    uv_min: glam::Vec2::ZERO,
+                    uv_size: glam::Vec2::ONE,
+                    tint: Color::WHITE.into(),
+                    handle: TextureId(0xc0ffee),
+                    flags: 0,
+                },
                 paint: None,
             });
         },
@@ -329,7 +329,7 @@ fn compose_gpu_view_sized_to_what_the_surface_can_show() {
 fn compose_gpu_view_sized_to_what_a_clip_leaves() {
     let buf = run(
         |b, _arena| {
-            b.clip(PushClipPayload::rect(rect(30.0, 20.0, 40.0, 25.0)));
+            b.push_clip(PushClipPayload::rect(rect(30.0, 20.0, 40.0, 25.0)));
             b.draw_image(ImageDraw {
                 payload: gpu_view_payload(rect(10.0, 10.0, 100.0, 60.0), TextureId(0xc0ffee)),
                 paint: Some(&gpu_paint()),
@@ -440,7 +440,7 @@ fn compose_gpu_view_caps_wide_and_tall_targets_uniformly() {
     // passing on exact arithmetic.
     let buf = run_with_texture_cap(
         |b, _arena| {
-            b.clip(PushClipPayload::rect(rect(45.0, 45.0, 155.0, 155.0)));
+            b.push_clip(PushClipPayload::rect(rect(45.0, 45.0, 155.0, 155.0)));
             b.draw_image(ImageDraw {
                 payload: gpu_view_payload(rect(0.0, 0.0, 200.0, 200.0), TextureId(0xc0ffee)),
                 paint: Some(&gpu_paint()),
@@ -467,14 +467,14 @@ fn compose_image_forwards_uv_crop_for_cover_fit() {
     let buf = run(
         |b, _arena| {
             b.draw_image(ImageDraw {
-                payload: DrawImagePayload::image(
-                    rect(0.0, 0.0, 100.0, 100.0),
-                    glam::Vec2::new(0.25, 0.0),
-                    glam::Vec2::new(0.5, 1.0),
-                    Color::WHITE.into(),
-                    TextureId(1),
-                    0,
-                ),
+                payload: DrawImagePayload {
+                    rect: rect(0.0, 0.0, 100.0, 100.0),
+                    uv_min: glam::Vec2::new(0.25, 0.0),
+                    uv_size: glam::Vec2::new(0.5, 1.0),
+                    tint: Color::WHITE.into(),
+                    handle: TextureId(1),
+                    flags: 0,
+                },
                 paint: None,
             });
         },
@@ -495,38 +495,38 @@ fn compose_forwards_flags_and_repeat_uv() {
         |b, _arena| {
             // Plain draw: flags stay 0.
             b.draw_image(ImageDraw {
-                payload: DrawImagePayload::image(
-                    rect(0.0, 0.0, 50.0, 50.0),
-                    glam::Vec2::ZERO,
-                    glam::Vec2::ONE,
-                    Color::WHITE.into(),
-                    TextureId(1),
-                    0,
-                ),
+                payload: DrawImagePayload {
+                    rect: rect(0.0, 0.0, 50.0, 50.0),
+                    uv_min: glam::Vec2::ZERO,
+                    uv_size: glam::Vec2::ONE,
+                    tint: Color::WHITE.into(),
+                    handle: TextureId(1),
+                    flags: 0,
+                },
                 paint: None,
             });
             // Tiled draw: UV size > 1 (3×2 repeats) + tiled bit.
             b.draw_image(ImageDraw {
-                payload: DrawImagePayload::image(
-                    rect(0.0, 0.0, 50.0, 50.0),
-                    glam::Vec2::ZERO,
-                    glam::Vec2::new(3.0, 2.0),
-                    Color::WHITE.into(),
-                    TextureId(2),
-                    IMG_FLAG_TILED,
-                ),
+                payload: DrawImagePayload {
+                    rect: rect(0.0, 0.0, 50.0, 50.0),
+                    uv_min: glam::Vec2::ZERO,
+                    uv_size: glam::Vec2::new(3.0, 2.0),
+                    tint: Color::WHITE.into(),
+                    handle: TextureId(2),
+                    flags: IMG_FLAG_TILED,
+                },
                 paint: None,
             });
             // The two nearest-filter bits ride through together.
             b.draw_image(ImageDraw {
-                payload: DrawImagePayload::image(
-                    rect(0.0, 0.0, 50.0, 50.0),
-                    glam::Vec2::ZERO,
-                    glam::Vec2::ONE,
-                    Color::WHITE.into(),
-                    TextureId(3),
-                    IMG_FLAG_MIN_NEAREST | IMG_FLAG_MAG_NEAREST,
-                ),
+                payload: DrawImagePayload {
+                    rect: rect(0.0, 0.0, 50.0, 50.0),
+                    uv_min: glam::Vec2::ZERO,
+                    uv_size: glam::Vec2::ONE,
+                    tint: Color::WHITE.into(),
+                    handle: TextureId(3),
+                    flags: IMG_FLAG_MIN_NEAREST | IMG_FLAG_MAG_NEAREST,
+                },
                 paint: None,
             });
         },

@@ -9,6 +9,12 @@ use crate::primitives::color::Color;
 /// Semantic color roster for theme assembly. Fields are the roles the
 /// widget recipes key on; derived tints (the border ladder) live as
 /// methods so a palette swap moves them automatically.
+///
+/// The three `elem` rungs name a tier and never a widget state, because
+/// no one mapping holds: a standard button rests on `elem_mid` and
+/// hovers to `elem_strong`, while a menu row rests transparent and
+/// hovers to `elem_mid`. A name saying "hover" would be one rung out of
+/// step for whichever widget disagreed.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Palette {
     /// Primary foreground / label ink.
@@ -22,9 +28,9 @@ pub struct Palette {
     /// Resting surface tier (disabled fills, menu panels).
     pub elem: Color,
     /// One step brighter — resting chrome for interactive surfaces.
-    pub elem_hover: Color,
-    /// Two steps brighter — hover/press emphasis tier.
-    pub elem_active: Color,
+    pub elem_mid: Color,
+    /// Two steps brighter — the emphasis tier hover and press reach for.
+    pub elem_strong: Color,
     /// Focus-ring / pressed-stroke color.
     pub border_focused: Color,
     /// The accent (checked toggles, progress fill, selection wash).
@@ -40,14 +46,14 @@ impl Palette {
         text_disabled: Color::hex(0x878a8d),
         terminal_bg: Color::hex(0x1a1a1a),
         elem: Color::hex(0x343434),
-        elem_hover: Color::hex(0x3e3e3e),
-        elem_active: Color::hex(0x4b4b4b),
+        elem_mid: Color::hex(0x3e3e3e),
+        elem_strong: Color::hex(0x4b4b4b),
         border_focused: Color::hex(0x105577),
         accent: Color::hex(0x9adbfb),
     };
 
     // The border ladder — TEXT_MUTED tints, not grays: raw surface
-    // grays sit too close to `elem`/`elem_hover` to read as edges at
+    // grays sit too close to `elem`/`elem_mid` to read as edges at
     // 1 px.
     pub fn border_soft(&self) -> Color {
         self.text_muted.with_alpha(0.18)

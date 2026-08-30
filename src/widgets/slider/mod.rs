@@ -19,7 +19,7 @@ use std::ops::RangeInclusive;
 /// Horizontal value slider over a numeric range. Takes the same
 /// [`DragNum`] binding [`DragValue`](crate::DragValue) does — `&mut i64`
 /// or `&mut f64` — so one number can be scrubbed or slid without
-/// changing its type. Dragging (or clicking) the rail moves the value.
+/// changing its type. Dragging (or clicking) the track moves the value.
 /// The knob position is derived from it with the same two-`Fill`-leaf
 /// trick [`crate::ProgressBar`] uses — `Fill(fraction)` left of the knob,
 /// `Fill(1 − fraction)` right — so it tracks the resolved width without
@@ -41,7 +41,7 @@ pub struct Slider<'a> {
 impl<'a> Slider<'a> {
     /// The range is a constructor argument rather than the builder
     /// [`DragValue::range`](crate::DragValue::range): a slider maps a
-    /// rail position onto its bounds, so it has no meaning without them,
+    /// track position onto its bounds, so it has no meaning without them,
     /// where an unbounded scrub is the drag value's default.
     #[track_caller]
     pub fn new(value: impl Into<DragNum<'a>>, range: RangeInclusive<f64>) -> Self {
@@ -102,13 +102,13 @@ impl<'a> Slider<'a> {
         let id = widget.id();
 
         let theme = self.slot(ui.theme());
-        let knob = theme.knob_size;
-        let rail_h = theme.rail_thickness;
+        let knob = theme.knob_size.themed_length(1.0);
+        let track_h = theme.track_thickness.themed_length(0.0);
         let fill_color = theme.fill;
-        let rail_color = theme.rail;
+        let track_color = theme.track;
         let knob_color = theme.knob;
 
-        // Pointer drives the value: pressing or dragging the rail maps
+        // Pointer drives the value: pressing or dragging the track maps
         // the cursor x against the last frame's logical width.
         //
         // `Drag::Stopped` is neither pressed nor dragging, so the release
@@ -135,9 +135,9 @@ impl<'a> Slider<'a> {
         let committed = !response.disabled && stopped;
         let fraction = value_to_fraction(self.value.get(), self.min, self.max);
 
-        let pill = Corners::all(rail_h * 0.5);
+        let pill = Corners::all(track_h * 0.5);
         let fill_bg = Background::rounded(fill_color, pill);
-        let rail_bg = Background::rounded(rail_color, pill);
+        let track_bg = Background::rounded(track_color, pill);
         let knob_bg = Background::rounded(knob_color, Corners::all(knob * 0.5));
 
         let node = &mut widget.node;
@@ -145,16 +145,16 @@ impl<'a> Slider<'a> {
             .get_or_insert((Sizing::FILL, Sizing::fixed(knob)).into());
         node.child_align = Align::v(VAlign::Center);
 
-        // The knob sits between two rails whose weights partition the
-        // track, so its position tracks the resolved width without this
-        // widget knowing that width at record time.
+        // The knob sits between two track segments whose weights
+        // partition the span, so its position follows the resolved width
+        // without this widget knowing that width at record time.
         let [filled, remainder] = Sizing::split(fraction);
         widget.record(ui, None, |ui| {
-            let rail = Sizing::fixed(rail_h);
-            ui.chrome_leaf(id.with("fill"), (filled, rail), Some(&fill_bg));
+            let track = Sizing::fixed(track_h);
+            ui.chrome_leaf(id.with("fill"), (filled, track), Some(&fill_bg));
             let knob = Sizing::fixed(knob);
             ui.chrome_leaf(id.with("knob"), (knob, knob), Some(&knob_bg));
-            ui.chrome_leaf(id.with("rail"), (remainder, rail), Some(&rail_bg));
+            ui.chrome_leaf(id.with("track"), (remainder, track), Some(&track_bg));
         });
         ValueResponse {
             response: Response::eager(id, ui, response),
@@ -185,9 +185,9 @@ fn fraction_to_value(fraction: f32, min: f64, max: f64) -> f64 {
     min + f64::from(fraction.clamp(0.0, 1.0)) * (max - min)
 }
 
-/// Map a cursor x (relative to the rail's left edge) to a fraction. The
+/// Map a cursor x (relative to the track's left edge) to a fraction. The
 /// usable travel is `[knob/2, track_w - knob/2]` so the knob center
-/// stays inside the rail at both extremes. A rail with no travel reads
+/// stays inside the track at both extremes. A track with no travel reads
 /// as the low end, and so does a cursor that names no position.
 fn pointer_to_fraction(local_x: f32, track_w: f32, knob: f32) -> f32 {
     local_x.band_fraction(track_w, knob).unit_fraction_or(0.0)
