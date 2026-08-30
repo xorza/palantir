@@ -513,7 +513,7 @@ fn bench_gpu(c: &mut Criterion, run: Run<'_>, surface: &Surface) {
 
 /// Results finalizer — runs last in [`bench()`], and only when the run
 /// records. Reads criterion's reported estimate out of
-/// `target/criterion/<slug>/new/estimates.json` for every arm the two
+/// `target/criterion/<group>/<arm>/new/estimates.json` for every arm the two
 /// benches just ran and prepends the `[lower point upper]` triple — the
 /// same slope/mean criterion's stdout prints — to a per-machine `.txt`.
 /// Newest run lives at the top of the file (`head` gives the latest).
@@ -650,10 +650,19 @@ fn criterion_root() -> PathBuf {
 /// into the named block and pick the three numbers in declaration order.
 /// Avoids pulling serde_json just for this.
 fn read_criterion_estimate(name: &str) -> Option<Estimate> {
-    let slug = name.replace('/', "_");
-    let path = criterion_root().join(&slug).join("new/estimates.json");
-    let s = std::fs::read_to_string(&path).ok()?;
+    let s = std::fs::read_to_string(estimates_path(&criterion_root(), name)).ok()?;
     estimate_from_block(&s, "\"slope\":").or_else(|| estimate_from_block(&s, "\"mean\":"))
+}
+
+/// Where criterion filed `name`'s estimate: one directory per
+/// `/`-separated component, which is how it lays a group out —
+/// `criterion/<group>/<arm>/new/`. Flattening the separator into the
+/// directory name instead names a path that never exists, and every row
+/// files as "not found".
+fn estimates_path(root: &Path, name: &str) -> PathBuf {
+    name.split('/')
+        .fold(root.to_path_buf(), |dir, part| dir.join(part))
+        .join("new/estimates.json")
 }
 
 /// Read `{lower_bound, point_estimate, upper_bound}` out of the `key` block
@@ -787,7 +796,7 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
 mod tests {
     use crate::bench::Fixture;
     use crate::frame_fixture::{BENCH_DPR, BENCH_SURFACE};
-    use crate::ui::bench::{RESIZE_POOL, Surface, prepend_block};
+    use crate::ui::bench::{RESIZE_POOL, Surface, estimates_path, prepend_block};
 
     /// The results directory is gitignored, so the common case on a
     /// fresh checkout is that it does not exist — a writer that only
@@ -855,5 +864,24 @@ mod tests {
         });
         assert_eq!(odd.pool[0].x, 1759);
         assert_eq!(odd.scale, BENCH_DPR, "unset scale keeps the default");
+    }
+
+    /// Criterion nests a group: `criterion/frame/cached_gpu/new/`. The
+    /// arm id carries the `/`, so the separator has to become a
+    /// directory boundary and not part of one name.
+    #[test]
+    fn estimates_path_nests_the_group_and_arm() {
+        let root = std::path::Path::new("/t/criterion");
+        assert_eq!(
+            estimates_path(root, "frame/cached_gpu"),
+            root.join("frame")
+                .join("cached_gpu")
+                .join("new/estimates.json"),
+        );
+        assert_eq!(
+            estimates_path(root, "solo"),
+            root.join("solo").join("new/estimates.json"),
+            "an id with no group is one directory deep",
+        );
     }
 }
