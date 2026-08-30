@@ -46,7 +46,7 @@ impl GpuPaint for RedClear {
 /// A full-surface `GpuView` whose renderer clears to red must land red on
 /// screen. Pure red is gamma-invariant (sRGB encode/decode fixes 0 and 1),
 /// so the texture→composite→backbuffer chain round-trips it exactly —
-/// no committed golden needed, the value is hand-known.
+/// no golden needed, the value is hand-known.
 #[test]
 fn gpu_view_clear_red_reaches_screen() {
     let mut h = Harness::new();

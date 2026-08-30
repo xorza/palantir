@@ -1,5 +1,5 @@
 //! Visual fixtures — actual UI scenes rendered headlessly and
-//! compared against committed golden PNGs. Grouped by topic; add new
+//! compared against stored golden PNGs. Grouped by topic; add new
 //! fixtures by extending an existing module or creating a new one and
 //! declaring it below.
 
@@ -19,10 +19,14 @@ mod widgets;
 
 use palantir::Color;
 
-/// Default scene background — a dark surrogate so fixtures look
-/// roughly like a real shell at a glance. Not tied to any specific
-/// demo; override per-fixture if a brighter contrast is needed.
-pub(crate) const DARK_BG: Color = Color::rgb(0.08, 0.08, 0.10);
+use crate::harness::FIXTURE_PALETTE;
+
+/// The scene background most fixtures render on — the suite palette's own
+/// window colour, so the ground matches the theme the widgets wear. It
+/// arrives as `Harness::render`'s `clear` argument rather than from
+/// `Theme::window_clear`, since a fixture wanting harder contrast passes
+/// `Color::BLACK` instead.
+pub(crate) const DARK_BG: Color = FIXTURE_PALETTE.terminal_bg;
 
 /// Pixel comparison shared by the exact-value fixtures: an sRGB round-trip
 /// through the f16 tint and the render target moves a channel by at most one
