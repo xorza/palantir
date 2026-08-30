@@ -18,6 +18,7 @@ use crate::renderer::backend::raster_atlas::raster_quad::RasterQuad;
 use crate::renderer::backend::raster_pass::{RasterImage, RasterPass, Rasterized};
 use crate::renderer::backend::text::encode::EncodedRunKey;
 use crate::renderer::backend::text::encode::cache::{EncodedCache, EncodedGlyph};
+use glam::{IVec2, UVec2};
 
 /// The glyph-shaped half of the text pass: the encoded-run cache and the
 /// per-miss extraction scratch. The atlas it fills and the instance
@@ -94,10 +95,8 @@ impl TextEncoder {
                     };
                     let raster = RasterImage {
                         content: image.kind,
-                        width: image.placement.width,
-                        height: image.placement.height,
-                        left: image.placement.left,
-                        top: image.placement.top,
+                        size: UVec2::new(image.placement.width, image.placement.height),
+                        bearing: IVec2::new(image.placement.left, image.placement.top),
                         data: &image.data,
                     };
                     match pass.insert_raster(device, g.raster_key, raster) {
@@ -110,15 +109,15 @@ impl TextEncoder {
                 }
             };
             let slot = pass.atlas.slots[idx as usize];
-
-            if slot.alloc.is_none() {
+            let Some(placement) = slot.placement else {
                 continue;
-            }
+            };
 
-            let abs_x = g.x + slot.left as i32;
-            let abs_y = g.y - slot.top as i32;
-            let dim = RasterQuad::dim(slot.width, slot.height);
-            let uv_and_kind = RasterQuad::pack_uv(slot.x, slot.y, slot.content);
+            let abs_x = g.x + i32::from(placement.bearing.x);
+            let abs_y = g.y - i32::from(placement.bearing.y);
+            let dim = RasterQuad::dim(placement.size.x, placement.size.y);
+            let uv_and_kind =
+                RasterQuad::pack_uv(placement.origin.x, placement.origin.y, placement.content);
 
             pass.instances.push(RasterQuad {
                 pos: [abs_x, abs_y],

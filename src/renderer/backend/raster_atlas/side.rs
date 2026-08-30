@@ -3,6 +3,7 @@
 
 use crate::renderer::backend::raster_atlas::content_type::ContentType;
 use etagere::{BucketedAtlasAllocator, size2};
+use glam::U16Vec2;
 
 const ATLAS_GROWTH_FACTOR: u32 = 2;
 
@@ -105,22 +106,22 @@ impl Side {
         max_texture_dimension_2d.min(by_bytes)
     }
 
-    /// Whether a `width × height` rect can be placed inside this side as
-    /// it stands. Exact rather than conservative, and that is what makes
+    /// Whether a rect of `size` can be placed inside this side as it
+    /// stands. Exact rather than conservative, and that is what makes
     /// it usable as a gate: the packer is configured with one column and
     /// unit alignment, so its own reject is `w > edge || h > edge` and
     /// this agrees with it texel for texel. A stricter test would refuse
     /// entries the packer would have taken.
-    pub(super) const fn fits_now(&self, width: u16, height: u16) -> bool {
-        fits_edge(width, height, self.size)
+    pub(super) const fn fits_now(&self, size: U16Vec2) -> bool {
+        fits_edge(size, self.size)
     }
 
-    /// Whether a `width × height` rect could *ever* be placed here — the
+    /// Whether a rect of `size` could *ever* be placed here — the
     /// one question [`RasterAtlas::allocate`](super::RasterAtlas) has to
     /// answer before it is allowed to evict anything, since freeing
     /// rectangles cannot widen a texture.
-    pub(super) const fn fits_ceiling(&self, width: u16, height: u16) -> bool {
-        fits_edge(width, height, self.ceiling)
+    pub(super) const fn fits_ceiling(&self, size: U16Vec2) -> bool {
+        fits_edge(size, self.ceiling)
     }
 
     /// Double this side's texture, stashing the old one for the grow
@@ -157,10 +158,10 @@ impl Side {
     }
 }
 
-/// Whether a `width × height` rect can be placed inside a square side of
+/// Whether a rect of `size` can be placed inside a square side of
 /// `edge` texels.
-const fn fits_edge(width: u16, height: u16, edge: u32) -> bool {
-    width as u32 <= edge && height as u32 <= edge
+const fn fits_edge(size: U16Vec2, edge: u32) -> bool {
+    size.x as u32 <= edge && size.y as u32 <= edge
 }
 
 fn make_texture(

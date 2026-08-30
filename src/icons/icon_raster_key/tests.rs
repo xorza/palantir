@@ -12,7 +12,7 @@ fn icon() -> IconRef {
 }
 
 fn size(w: f32, h: f32) -> U16Vec2 {
-    IconRasterKey::for_box(icon(), Vec2::new(w, h)).size
+    IconRasterKey::for_box(icon(), Vec2::new(w, h)).size()
 }
 
 /// The sizes three doc comments quote as design justification, pinned

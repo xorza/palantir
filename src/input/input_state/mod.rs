@@ -104,7 +104,7 @@ pub(crate) struct InputState {
     /// earlier-recorded widget could already have read — see
     /// [`EventOutcome::settles`], which is where each arm decides.
     /// Folded from the arms once per `on_input`; taken by
-    /// [`Self::finish_record`] so `Ui::frame` can re-record the pass.
+    /// [`Self::take_action_flag`] so `Ui::frame` can re-record the pass.
     frame_had_action: bool,
     /// Strongest input seen since the last frame, thresholded by
     /// [`InputPolicy`] in
@@ -238,14 +238,6 @@ impl InputState {
         self.frame_keyboard_events.iter().any(|press| {
             shortcut.matches(*press) && self.scopes.grant(KeyClass::of(*press)) == scope
         })
-    }
-
-    /// Close out the pass. Ownership resolution moved to
-    /// [`Self::pre_record`] when claims became scopes — a scope path
-    /// derives from focus and the cascade, so there is nothing left to
-    /// commit here.
-    pub(crate) fn finish_record(&mut self) -> bool {
-        self.take_action_flag()
     }
 
     fn target_scroll_delta(&self, target: WidgetId) -> Option<&ScrollDelta> {
@@ -646,9 +638,13 @@ impl InputState {
     }
 
     /// Read and reset [`Self::frame_had_action`]. Called by
-    /// [`crate::Ui::frame`] to decide whether to run a discarded
-    /// pre-pass for state-mutation settling.
-    fn take_action_flag(&mut self) -> bool {
+    /// [`crate::Ui::frame`] at the end of the record pass, to decide
+    /// whether to run a discarded pre-pass for state-mutation settling.
+    ///
+    /// The whole of closing out the pass: ownership resolution moved to
+    /// [`Self::pre_record`] when claims became scopes, because a scope
+    /// path derives from focus and the cascade.
+    pub(crate) fn take_action_flag(&mut self) -> bool {
         std::mem::take(&mut self.frame_had_action)
     }
 

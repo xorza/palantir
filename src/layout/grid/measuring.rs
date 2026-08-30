@@ -29,7 +29,7 @@ pub(super) fn measure_inner(
     let scratch = pass.grid_mut().depth_stack.at(depth);
     scratch.col.reset_for(n_cols);
     scratch.row.reset_for(n_rows);
-    pass.grid_track_state_mut().reset_hugs(idx);
+    pass.grid_track_state_mut().debug_assert_unmeasured(idx);
 
     if n_rows == 0 || n_cols == 0 {
         // Recurse with `Size::ZERO` so leaves still take the Leaf measure arm

@@ -23,6 +23,7 @@ use crate::renderer::backend::raster_pass::{
     RasterImage, RasterPass, RasterPassConfig, RasterPassLabels, Rasterized,
 };
 use crate::renderer::render_buffer::icon::IconDrawRow;
+use glam::IVec2;
 
 /// The state one [`IconBackend::prewarm`] pass covered. Both halves matter: a
 /// scale change invalidates every raster, and a set loaded afterwards has
@@ -150,14 +151,13 @@ impl IconBackend {
             let Some(idx) = self.slot(ctx.device, row.key) else {
                 continue;
             };
-            let slot = self.pass.atlas.slots[idx as usize];
-            if slot.width == 0 || slot.height == 0 {
-                continue;
-            }
+            let slot = self.pass.atlas.slots[idx as usize]
+                .placement
+                .expect("an icon raster is at least 1x1, so its slot owns a rectangle");
             self.pass.instances.push(RasterQuad {
                 pos: [row.origin.x, row.origin.y],
-                dim: RasterQuad::dim(slot.width, slot.height),
-                uv_and_kind: RasterQuad::pack_uv(slot.x, slot.y, slot.content)
+                dim: RasterQuad::dim(slot.size.x, slot.size.y),
+                uv_and_kind: RasterQuad::pack_uv(slot.origin.x, slot.origin.y, slot.content)
                     | if row.desaturate {
                         RasterQuad::DESATURATE
                     } else {
@@ -180,12 +180,10 @@ impl IconBackend {
         let content = self.rasterizer.rasterize(&table, key, &mut self.staging)?;
         let raster = RasterImage {
             content,
-            width: u32::from(key.size.x),
-            height: u32::from(key.size.y),
-            // No bearing: unlike a glyph, an icon's raster *is* its box, so
-            // the composer's origin needs no adjustment.
-            left: 0,
-            top: 0,
+            size: key.size().as_uvec2(),
+            // Unlike a glyph, an icon's raster *is* its box, so the
+            // composer's origin needs no adjustment.
+            bearing: IVec2::ZERO,
             data: &self.staging,
         };
         match self.pass.insert_raster(device, key, raster) {

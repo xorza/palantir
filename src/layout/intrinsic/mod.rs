@@ -281,7 +281,15 @@ pub(crate) fn compute(
     let content = if axis.main_sizing(layout.size).fixed_value().is_some() {
         IntrinsicWalk::one_axis(IntrinsicRange::ZERO)
     } else {
-        content_intrinsic(engine, tree, node, axis, query, interned_text, layout)
+        IntrinsicOp {
+            engine,
+            tree,
+            node,
+            axis,
+            query,
+            interned_text,
+        }
+        .dispatch(LayoutMode::from(layout.meta))
     };
 
     let bounds = tree.bounds(node);
@@ -319,26 +327,6 @@ fn outer(
         *value = slot.resolve(*value + pad);
     }
     content
-}
-
-fn content_intrinsic(
-    engine: &mut LayoutEngine,
-    tree: &Tree,
-    node: NodeId,
-    axis: Axis,
-    query: IntrinsicQuery,
-    interned_text: &InternedText<'_>,
-    layout: LayoutCore,
-) -> IntrinsicWalk {
-    IntrinsicOp {
-        engine,
-        tree,
-        node,
-        axis,
-        query,
-        interned_text,
-    }
-    .dispatch(LayoutMode::from(layout.meta))
 }
 
 /// The only [`DriverOp`] of the three that carries no `LayoutPass`. That is the

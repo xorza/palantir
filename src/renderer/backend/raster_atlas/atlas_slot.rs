@@ -3,6 +3,29 @@
 
 use crate::renderer::backend::raster_atlas::content_type::ContentType;
 use etagere::AllocId;
+use glam::{I16Vec2, U16Vec2};
+
+/// Where a packed raster sits on its side, what bearing it draws with, and
+/// the packer rectangle it owns.
+///
+/// One value rather than seven fields on [`AtlasSlot`], because they mean
+/// something together or not at all: a non-drawing entry owns no
+/// rectangle, so it has no side to name, no extent and no bearing. Every
+/// reader already gated on the allocation before touching any of them, and
+/// this is that gate spelled once.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct SlotPlacement {
+    /// Top-left texel of the rectangle on its side.
+    pub(crate) origin: U16Vec2,
+    pub(crate) size: U16Vec2,
+    /// Offset from the pen position to the raster's top-left, in the
+    /// rasterizer's sense: `x` right, `y` **up**.
+    pub(crate) bearing: I16Vec2,
+    /// Which side holds the rectangle — also the sampling mode the quad
+    /// draws with.
+    pub(crate) content: ContentType,
+    pub(crate) alloc: AllocId,
+}
 
 /// One entry of [`RasterAtlas`](super::RasterAtlas)'s dense slab: where a
 /// raster sits on its side, what bearing it draws with, and the two stamps
@@ -14,18 +37,16 @@ use etagere::AllocId;
 /// here.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct AtlasSlot {
-    pub(crate) x: u16,
-    pub(crate) y: u16,
-    pub(crate) width: u16,
-    pub(crate) height: u16,
-    pub(crate) left: i16,
-    pub(crate) top: i16,
-    pub(crate) content: ContentType,
-    /// The packer rectangle this raster owns, or `None` for a
-    /// non-drawing entry — a whitespace glyph, or one the rasterizer
-    /// produced no pixels for. The clock can only reclaim the first kind;
-    /// the second expires on a deadline instead.
-    pub(crate) alloc: Option<AllocId>,
+    /// Where this raster draws from, or `None` for a non-drawing entry —
+    /// a whitespace glyph, or one the rasterizer produced no pixels for.
+    ///
+    /// Also what the eviction clock picks by: it may only reclaim an
+    /// entry that owns a rectangle, so `Some` means neither a non-drawing
+    /// entry nor an index already on the free list. The second half holds
+    /// because [`FreeSlots::release`](super::free_slots::FreeSlots::release)
+    /// clears this on the way onto that list. A non-drawing entry expires
+    /// on a deadline instead.
+    pub(crate) placement: Option<SlotPlacement>,
     /// Advanced whenever the slab index is handed to another raster, so
     /// an encoded run still holding the index reads it as stale rather
     /// than drawing whatever took its place.
@@ -37,9 +58,9 @@ pub(crate) struct AtlasSlot {
     /// This index is on the free list, waiting to be handed to the next
     /// insert.
     ///
-    /// `alloc` cannot answer it: a non-drawing entry carries `None` while
-    /// still live, so the two are indistinguishable there. Kept as a
-    /// field rather than asked of the list, which answers the same
+    /// `placement` cannot answer it: a non-drawing entry carries `None`
+    /// while still live, so the two are indistinguishable there. Kept as
+    /// a field rather than asked of the list, which answers the same
     /// question in `O(n)` over every waiting index — see
     /// [`FreeSlots::release`](super::free_slots::FreeSlots::release).
     ///
@@ -51,38 +72,33 @@ pub(crate) struct AtlasSlot {
     pub(crate) free: bool,
 }
 
-impl AtlasSlot {
-    /// Whether the eviction clock may take this slot: it owns a packer
-    /// rectangle, so it is neither a non-drawing entry nor an index
-    /// already on the free list.
-    ///
-    /// The second half is the load-bearing one, and it holds because
-    /// [`FreeSlots::release`](super::free_slots::FreeSlots::release)
-    /// clears `alloc` on the way onto that list.
-    pub(super) fn is_packed(&self) -> bool {
-        self.alloc.is_some()
-    }
-}
-
 #[cfg(test)]
 pub(super) mod test_support {
-    use crate::renderer::backend::raster_atlas::atlas_slot::AtlasSlot;
+    use crate::renderer::backend::raster_atlas::atlas_slot::{AtlasSlot, SlotPlacement};
     use crate::renderer::backend::raster_atlas::content_type::ContentType;
     use etagere::AllocId;
+    use glam::{I16Vec2, U16Vec2};
+
+    impl SlotPlacement {
+        /// A zero placement on the mask side, for the tests that care
+        /// only about the allocation it carries.
+        pub(crate) fn for_test(alloc: AllocId) -> Self {
+            Self {
+                origin: U16Vec2::ZERO,
+                size: U16Vec2::ZERO,
+                bearing: I16Vec2::ZERO,
+                content: ContentType::Mask,
+                alloc,
+            }
+        }
+    }
 
     impl AtlasSlot {
         /// A zero-placement mask entry, for the tests that care only
-        /// about `alloc` and the two stamps.
+        /// about the allocation and the two stamps.
         pub(crate) fn for_test(alloc: Option<AllocId>, last_use: u64) -> Self {
             Self {
-                x: 0,
-                y: 0,
-                width: 0,
-                height: 0,
-                left: 0,
-                top: 0,
-                content: ContentType::Mask,
-                alloc,
+                placement: alloc.map(SlotPlacement::for_test),
                 generation: 0,
                 last_use,
                 free: false,

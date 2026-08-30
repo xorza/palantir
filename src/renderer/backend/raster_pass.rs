@@ -23,6 +23,7 @@ use crate::renderer::backend::raster_atlas::raster_quad::RasterQuad;
 use crate::renderer::backend::raster_atlas::{RasterAtlas, RasterAtlasConfig};
 use crate::renderer::backend::stencil_variant::{ColorVariantSpec, StencilVariant};
 use crate::renderer::backend::viewport::ViewportPush;
+use glam::{IVec2, UVec2};
 use std::fmt::Debug;
 use std::hash::Hash;
 
@@ -55,12 +56,10 @@ pub(super) struct RasterPassConfig {
 #[derive(Debug)]
 pub(super) struct RasterImage<'a> {
     pub(super) content: ContentType,
-    pub(super) width: u32,
-    pub(super) height: u32,
-    /// Bearing, in the rasterizer's own terms. Zero for an icon, whose
-    /// raster *is* its box.
-    pub(super) left: i32,
-    pub(super) top: i32,
+    pub(super) size: UVec2,
+    /// Bearing, in the rasterizer's own terms: `x` right, `y` **up**.
+    /// Zero for an icon, whose raster *is* its box.
+    pub(super) bearing: IVec2,
     pub(super) data: &'a [u8],
 }
 
@@ -165,23 +164,20 @@ impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
         key: K,
         image: RasterImage<'_>,
     ) -> Rasterized {
-        let metadata = match PackedMetadata::new(image.width, image.height, image.left, image.top) {
-            Some(metadata) => metadata,
-            None => {
-                tracing::warn!(
-                    ?key,
-                    width = image.width,
-                    height = image.height,
-                    left = image.left,
-                    top = image.top,
-                    label = self.labels.pipeline,
-                    "skipping raster outside packed atlas metadata range",
-                );
-                PackedMetadata::EMPTY
-            }
+        let Some(metadata) = PackedMetadata::new(image.size, image.bearing) else {
+            tracing::warn!(
+                ?key,
+                width = image.size.x,
+                height = image.size.y,
+                left = image.bearing.x,
+                top = image.bearing.y,
+                label = self.labels.pipeline,
+                "skipping raster outside packed atlas metadata range",
+            );
+            return Rasterized::Slot(self.atlas.insert_unallocated(key));
         };
         if metadata.is_empty() {
-            return Rasterized::Slot(self.atlas.insert_unallocated(key, image.content, metadata));
+            return Rasterized::Slot(self.atlas.insert_unallocated(key));
         }
         match self
             .atlas

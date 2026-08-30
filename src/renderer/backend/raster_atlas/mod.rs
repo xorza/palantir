@@ -27,7 +27,7 @@ use crate::primitives::span::Span;
 use crate::renderer::backend::debug_marker;
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
-use crate::renderer::backend::raster_atlas::atlas_slot::AtlasSlot;
+use crate::renderer::backend::raster_atlas::atlas_slot::{AtlasSlot, SlotPlacement};
 use crate::renderer::backend::raster_atlas::bound_sides::BoundSides;
 use crate::renderer::backend::raster_atlas::clock_sweep::ClockSweep;
 use crate::renderer::backend::raster_atlas::content_type::ContentType;
@@ -39,6 +39,7 @@ use crate::renderer::backend::raster_atlas::side::Side;
 use crate::renderer::backend::stencil_variant::StencilVariant;
 use crate::renderer::backend::viewport::ViewportPush;
 use etagere::size2;
+use glam::{U16Vec2, UVec2};
 use rustc_hash::FxHashMap;
 use std::collections::hash_map::Entry;
 use std::fmt::Debug;
@@ -211,10 +212,8 @@ pub(crate) struct RasterAtlas<K> {
 #[derive(Clone, Copy, Debug)]
 struct PendingCopy {
     side: u8,
-    origin_x: u32,
-    origin_y: u32,
-    width: u32,
-    height: u32,
+    origin: UVec2,
+    size: UVec2,
     bytes_per_row: u32,
     staging_offset: u64,
 }
@@ -340,25 +339,18 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
         metadata: PackedMetadata,
         pixels: &[u8],
     ) -> Option<u32> {
-        let alloc = self.allocate(device, content, metadata.width, metadata.height)?;
-        self.enqueue_upload(
-            content,
-            alloc.rectangle.min.x as u32,
-            alloc.rectangle.min.y as u32,
-            metadata.width as u32,
-            metadata.height as u32,
-            pixels,
-        );
+        let alloc = self.allocate(device, content, metadata.size)?;
+        let origin = UVec2::new(alloc.rectangle.min.x as u32, alloc.rectangle.min.y as u32);
+        self.enqueue_upload(content, origin, metadata.size.as_uvec2(), pixels);
 
         let slot = AtlasSlot {
-            x: alloc.rectangle.min.x as u16,
-            y: alloc.rectangle.min.y as u16,
-            width: metadata.width,
-            height: metadata.height,
-            left: metadata.left,
-            top: metadata.top,
-            content,
-            alloc: Some(alloc.id),
+            placement: Some(SlotPlacement {
+                origin: origin.as_u16vec2(),
+                size: metadata.size,
+                bearing: metadata.bearing,
+                content,
+                alloc: alloc.id,
+            }),
             generation: 0,
             last_use: self.current_frame,
             free: false,
@@ -395,17 +387,9 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
     /// staging-buffer offset is 256-aligned by construction (rows
     /// pad to 256), satisfying both the row-pitch and buffer-offset
     /// alignment requirements.
-    fn enqueue_upload(
-        &mut self,
-        content: ContentType,
-        origin_x: u32,
-        origin_y: u32,
-        width: u32,
-        height: u32,
-        pixels: &[u8],
-    ) {
+    fn enqueue_upload(&mut self, content: ContentType, origin: UVec2, size: UVec2, pixels: &[u8]) {
         let bpp = content.bytes_per_pixel();
-        let unpadded = width * bpp;
+        let unpadded = size.x * bpp;
         let bytes_per_row = unpadded.next_multiple_of(COPY_BYTES_PER_ROW_ALIGNMENT);
         // Every queued region is `bytes_per_row × height` with
         // `bytes_per_row` a multiple of 256, so the append offset is
@@ -413,22 +397,20 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
         // alignment requirements hold for every PendingCopy.
         let region_start = self.pending_staging_used;
         debug_assert!(region_start.is_multiple_of(COPY_BYTES_PER_ROW_ALIGNMENT as usize));
-        let region_bytes = bytes_per_row as usize * height as usize;
+        let region_bytes = bytes_per_row as usize * size.y as usize;
         self.pending_staging_used += region_bytes;
         if self.pending_staging.len() < self.pending_staging_used {
             self.pending_staging.resize(self.pending_staging_used, 0);
         }
-        for row in 0..height as usize {
+        for row in 0..size.y as usize {
             let src = &pixels[row * unpadded as usize..(row + 1) * unpadded as usize];
             let dst_off = region_start + row * bytes_per_row as usize;
             self.pending_staging[dst_off..dst_off + unpadded as usize].copy_from_slice(src);
         }
         self.pending_copies.push(PendingCopy {
             side: content as u8,
-            origin_x,
-            origin_y,
-            width,
-            height,
+            origin,
+            size,
             bytes_per_row,
             staging_offset: region_start as u64,
         });
@@ -491,22 +473,22 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
                     layout: wgpu::TexelCopyBufferLayout {
                         offset: c.staging_offset,
                         bytes_per_row: Some(c.bytes_per_row),
-                        rows_per_image: Some(c.height),
+                        rows_per_image: Some(c.size.y),
                     },
                 },
                 wgpu::TexelCopyTextureInfo {
                     texture: &side.texture,
                     mip_level: 0,
                     origin: wgpu::Origin3d {
-                        x: c.origin_x,
-                        y: c.origin_y,
+                        x: c.origin.x,
+                        y: c.origin.y,
                         z: 0,
                     },
                     aspect: wgpu::TextureAspect::All,
                 },
                 wgpu::Extent3d {
-                    width: c.width,
-                    height: c.height,
+                    width: c.size.x,
+                    height: c.size.y,
                     depth_or_array_layers: 1,
                 },
             );
@@ -517,26 +499,14 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
         self.pending_copies.clear();
     }
 
-    /// Cache a non-drawing glyph (no atlas slot or upload). Subsequent
-    /// lookups still hit the cache and skip swash.
-    pub(super) fn insert_unallocated(
-        &mut self,
-        key: K,
-        content: ContentType,
-        metadata: PackedMetadata,
-    ) -> u32 {
-        debug_assert!(metadata.is_empty());
+    /// Cache a non-drawing glyph: it takes a slab index like any other
+    /// entry, but no packer rectangle and no upload. Subsequent lookups
+    /// still hit the cache and skip swash.
+    pub(super) fn insert_unallocated(&mut self, key: K) -> u32 {
         self.unallocated_expiry
             .schedule(key, unallocated_dies_at(self.current_frame));
         let slot = AtlasSlot {
-            x: 0,
-            y: 0,
-            width: 0,
-            height: 0,
-            left: metadata.left,
-            top: metadata.top,
-            content,
-            alloc: None,
+            placement: None,
             generation: 0,
             last_use: self.current_frame,
             free: false,
@@ -588,14 +558,13 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
         &mut self,
         device: &wgpu::Device,
         content: ContentType,
-        width: u16,
-        height: u16,
+        size: U16Vec2,
     ) -> Option<etagere::Allocation> {
-        if !self.sides[content as usize].fits_ceiling(width, height) {
+        if !self.sides[content as usize].fits_ceiling(size) {
             self.counters.oversized.bump();
             return None;
         }
-        let need = size2(width as i32, height as i32);
+        let need = size2(size.x as i32, size.y as i32);
         loop {
             if let Some(a) = self.sides[content as usize].packer.allocate(need) {
                 return Some(a);
@@ -607,7 +576,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
             // Too wide for the current edge it is the *only* thing that
             // can work, budget or not — and the check above already
             // proved a large enough edge is reachable.
-            let must_grow = !self.sides[content as usize].fits_now(width, height);
+            let must_grow = !self.sides[content as usize].fits_now(size);
             let grew = (must_grow || self.eager_growth(content)) && self.grow(device, content);
             // Past the budget — or already at the device maximum, where
             // the grow above returned false — the atlas holds its size
@@ -803,7 +772,7 @@ fn retire_unallocated<K: Copy + Eq + Hash + Debug>(
     // their generation when it does. Defensive rather than reachable —
     // every path that allocates over a slab index removes the old key
     // from `cache` first, so the lookup above would have missed.
-    if slot.is_packed() {
+    if slot.placement.is_some() {
         return None;
     }
     // `touch` refreshes `last_use` without filing anything, so the real

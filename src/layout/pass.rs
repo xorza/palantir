@@ -332,7 +332,7 @@ impl LayoutPass<'_> {
     /// The contract every driver answers to is
     /// [`LayoutDriver`](crate::layout::driver::LayoutDriver); the match
     /// that picks one is `DriverOp::dispatch`, shared with
-    /// [`Self::arrange`] and `intrinsic::content_intrinsic`.
+    /// [`Self::arrange`] and `intrinsic::compute`.
     fn measure_dispatch(&mut self, node: NodeId, layout: LayoutCore, inner_avail: Size) -> Size {
         MeasureOp {
             pass: self,

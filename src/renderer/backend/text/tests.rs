@@ -641,7 +641,7 @@ fn swept_empty_glyph_reinserts() {
             .atlas
             .cache
             .values()
-            .filter(|&&i| b.pass.atlas.slots[i as usize].alloc.is_none())
+            .filter(|&&i| b.pass.atlas.slots[i as usize].placement.is_none())
             .count()
     };
 

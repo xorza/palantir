@@ -314,7 +314,7 @@ fn icon_resolves_to_a_whole_pixel_raster_at_the_display_scale() {
     );
     assert_eq!(out.icons.len(), 1, "one row per icon");
     let row = out.icons[0];
-    assert_eq!(row.key.size, U16Vec2::new(36, 36));
+    assert_eq!(row.key.size(), U16Vec2::new(36, 36));
     assert_eq!(row.key.icon, icon_ref(3), "identity survives compose");
     // Origin 10*1.5 = 15, 20*1.5 = 30, and the raster fills the box exactly,
     // so centring shifts nothing.
@@ -332,7 +332,7 @@ fn icon_resolves_to_a_whole_pixel_raster_at_the_display_scale() {
         |buf, _| icon(buf, rect(10.0, 10.0, 50.0, 50.0), icon_ref(0)),
         &params(1.5, UVec2::new(200, 200)),
     );
-    assert_eq!(out.icons[0].key.size, U16Vec2::new(76, 76));
+    assert_eq!(out.icons[0].key.size(), U16Vec2::new(76, 76));
     assert_eq!(out.icons[0].origin, IVec2::new(15, 15));
 }
 

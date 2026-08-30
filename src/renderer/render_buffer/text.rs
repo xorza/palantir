@@ -15,15 +15,7 @@ use glam::Vec2;
 /// `TextRun` — that name belongs to [`crate::TextRun`], the *authoring*
 /// input a caller hands to `Ui`. The two sat at opposite ends of the
 /// pipeline under one name.
-///
-/// **Layout**: fields ordered so the struct is `Pod` with no internal
-/// padding. `ShapedTextRef` (32 B, align 8) leads so its alignment
-/// requirement is satisfied without filler. Color stores **straight-alpha
-/// linear** bytes: the native text backend consumes linear and premultiplies
-/// at output (no sRGB roundtrip — matches the crate's colour contract), which
-/// keeps the per-frame hot path Pod-shaped.
-#[repr(C)]
-#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Clone, Copy, Debug)]
 pub(crate) struct TextDrawRow {
     pub(crate) text: ShapedTextRef,
     /// Top-left of the run's bounding box, physical px.
@@ -36,6 +28,9 @@ pub(crate) struct TextDrawRow {
     /// batch's bounds), which the composer's strict-bounds batching rule
     /// keeps no wider than any ancestor-clipped run's bounds.
     pub(crate) bounds: URect,
+    /// **Straight-alpha linear** bytes: the native text backend consumes
+    /// linear and premultiplies at output, so nothing here makes an sRGB
+    /// round trip.
     pub(crate) color: ColorU8,
     /// Per-run scale factor on top of the global DPI scale, sourced from
     /// the cumulative ancestor `TranslateScale.scale` at compose time

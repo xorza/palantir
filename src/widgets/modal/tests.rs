@@ -104,7 +104,7 @@ fn modal_hears_escape_even_while_a_popup_below_holds_keyboard_claim() {
 /// **This does not pin `Ui::close_scope`**, and the difference is
 /// worth recording: dismissal is action input, action input forces a
 /// second record pass, and that pass re-records without the modal —
-/// so the claim is already gone by `finish_record` whether or not
+/// so the claim is already gone by `take_action_flag` whether or not
 /// anything released it. Verified by disabling `Modal`'s release and
 /// watching this still pass. The release is kept because it is
 /// correct on a single-pass dismissal and because `Popup` has always

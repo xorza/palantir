@@ -54,7 +54,8 @@ impl ClockSweep {
             let idx = at;
             at = if at + 1 == n { 0 } else { at + 1 };
             let slot = &slots[idx];
-            if slot.content == target && slot.is_packed() && slot.last_use < current_frame {
+            if slot.placement.is_some_and(|p| p.content == target) && slot.last_use < current_frame
+            {
                 return Self {
                     victim: Some(idx as u32),
                     hand: at as u32,

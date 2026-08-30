@@ -74,24 +74,14 @@ fn shadow_paint_bbox_tracks_shifted_drop_and_source_bounded_inset() {
 /// the subscription-glyph triangle.
 #[test]
 fn mesh_paint_bbox_is_vertex_hull_not_owner_rect() {
-    let owner = Size::new(13.0, 13.0);
-    // Hull reaches left/up past the owner origin and right/down past its
-    // size — i.e. paints outside the owner box on every side.
+    // Hull reaches left/up past the owner origin and right/down past a
+    // 13x13 owner box — it paints outside on every side.
     let hull = Rect {
         min: Vec2::new(-5.0, -4.0),
         size: Size::new(25.0, 24.0),
     };
-    let mesh = |local_rect| ShapeRecord::Mesh {
-        local_rect,
-        tint: ColorF16::from(Color::WHITE),
-        vertices: Span::new(0, 3),
-        indices: Span::new(0, 3),
-        bbox: hull,
-        content_hash: 0,
-    };
-
     assert_eq!(
-        mesh(None).bbox_local(owner),
+        mesh_paint_bbox_local(hull, None),
         hull,
         "the paint bbox is the vertex hull, not the owner rect"
     );
@@ -103,7 +93,7 @@ fn mesh_paint_bbox_is_vertex_hull_not_owner_rect() {
         size: Size::new(99.0, 99.0),
     };
     assert_eq!(
-        mesh(Some(offset)).bbox_local(owner),
+        mesh_paint_bbox_local(hull, Some(offset)),
         Rect {
             min: hull.min + offset.min,
             size: hull.size,

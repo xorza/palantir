@@ -86,7 +86,7 @@ pub(super) enum EditKind {
 
 /// Cap on retained undo entries; [`EditState::record_edit`] drops the
 /// oldest past this.
-pub(super) const UNDO_LIMIT: usize = 128;
+const UNDO_LIMIT: usize = 128;
 
 impl EditDelta {
     /// Take ownership of `parts` — the two `String`s the history keeps.
@@ -226,7 +226,7 @@ impl EditState {
         Some(a.min(self.caret)..a.max(self.caret))
     }
 
-    pub(super) fn repair_offset(text: &str, offset: usize) -> usize {
+    fn repair_offset(text: &str, offset: usize) -> usize {
         let mut offset = offset.min(text.len());
         while !text.is_char_boundary(offset) {
             offset -= 1;

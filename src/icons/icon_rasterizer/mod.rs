@@ -124,8 +124,8 @@ impl IconRasterizer {
         entry.last_use = *uses;
         let tree = entry.tree.as_ref()?;
 
-        let w = u32::from(key.size.x);
-        let h = u32::from(key.size.y);
+        let w = u32::from(key.size().x);
+        let h = u32::from(key.size().y);
         let bytes = (w as usize).checked_mul(h as usize)?.checked_mul(4)?;
         // `clear` then `resize` rather than `resize` alone: resvg composites
         // over what it is handed, so the buffer has to start transparent, and
