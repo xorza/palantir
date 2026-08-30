@@ -31,8 +31,6 @@ fn keystrokes_ignored_when_not_focused() {
 
 #[test]
 fn unrouted_keyboard_input_is_not_delivered_after_focus_changes() {
-    use crate::input::keyboard::text_chunk::TextChunk;
-
     let mut h = UiHarness::with_text(SMALL);
     let mut buf = String::from("seed");
     let id = WidgetId::from_hash("editor");
@@ -40,10 +38,7 @@ fn unrouted_keyboard_input_is_not_delivered_after_focus_changes() {
     h.frame(editor_only(&mut buf));
     assert!(h.focused_id().is_none());
     assert!(!h.key(Key::Escape).requests_repaint,);
-    assert!(
-        !h.on_input(InputEvent::Text(TextChunk::new("stale").unwrap()))
-            .requests_repaint,
-    );
+    assert!(!h.key(Key::Char('s')).requests_repaint);
 
     h.click_at(Vec2::new(50.0, 20.0));
     assert_eq!(h.focused_id(), Some(id));
@@ -94,14 +89,14 @@ fn caret_clamps_after_external_buffer_shrink() {
 }
 
 #[test]
-fn text_event_inserts_at_caret_when_focused() {
+fn typed_text_inserts_at_caret_when_focused() {
     let mut h = UiHarness::with_text(SMALL);
     let mut buf = String::new();
 
     h.frame(editor_only(&mut buf));
     h.click_at(Vec2::new(50.0, 20.0));
 
-    h.ime_commit("héllo");
+    h.type_text("héllo");
     h.frame(editor_only(&mut buf));
     assert_eq!(buf, "héllo");
 }

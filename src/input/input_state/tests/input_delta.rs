@@ -122,13 +122,12 @@ fn pointer_left_with_nothing_active_does_not_request_repaint() {
     assert!(!delta.requests_repaint);
 }
 
-/// `Text` wakes only when a focused widget would consume it OR a
-/// `KeyboardWake::TEXT` watcher asked for it. `ModifiersChanged`
-/// wakes only with a `KeyboardWake::MODIFIER` watcher.
+/// `ModifiersChanged` wakes only with a `KeyboardWake::MODIFIER`
+/// watcher. Focus does not reach it — a modifier alone edits nothing,
+/// so a focused field has no reason to redraw for one.
 #[test]
-fn non_pointer_events_wake_on_focus_or_watch() {
+fn modifiers_wake_only_for_a_watcher() {
     use crate::input::keyboard::modifiers::Modifiers;
-    use crate::input::keyboard::text_chunk::TextChunk;
     use crate::input::watch::KeyboardWake;
     use crate::primitives::widget_id::WidgetId;
     let mut h = UiHarness::new(UVec2::new(400, 400));
@@ -136,35 +135,26 @@ fn non_pointer_events_wake_on_focus_or_watch() {
 
     // No focus, no watch → no wake.
     assert!(
-        !h.on_input(InputEvent::Text(TextChunk::new("a").unwrap()))
-            .requests_repaint,
-    );
-    assert!(
-        !h.ui.input_mut().take_action_flag(),
-        "unrouted text must not schedule a settling pass",
-    );
-    assert!(
         !h.on_input(InputEvent::ModifiersChanged(Modifiers::NONE))
             .requests_repaint,
     );
 
-    // Focus held → Text wakes.
+    // Focus alone still does not.
     h.ui.input_mut().focused = Some(WidgetId::from_hash("editor"));
     assert!(
-        h.on_input(InputEvent::Text(TextChunk::new("b").unwrap()))
-            .requests_repaint,
+        !h.on_input(InputEvent::ModifiersChanged(Modifiers {
+            shift: true,
+            ..Modifiers::NONE
+        }))
+        .requests_repaint,
     );
     h.ui.input_mut().focused = None;
 
-    // KeyboardWake watchers → Text + ModifiersChanged wake.
+    // The watcher does.
     h.frame(|ui| {
         build_hover_target(ui);
-        ui.watch_keyboard(KeyboardWake::TEXT | KeyboardWake::MODIFIER);
+        ui.watch_keyboard(KeyboardWake::MODIFIER);
     });
-    assert!(
-        h.on_input(InputEvent::Text(TextChunk::new("c").unwrap()))
-            .requests_repaint,
-    );
     assert!(
         h.on_input(InputEvent::ModifiersChanged(Modifiers::NONE))
             .requests_repaint,

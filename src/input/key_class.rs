@@ -10,7 +10,6 @@ use bitflags::bitflags;
 
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::key_press::KeyPress;
-use crate::input::keyboard::keyboard_event::KeyboardEvent;
 
 /// What kind of thing a key press *is*. Exactly one class per press.
 ///
@@ -161,7 +160,7 @@ impl KeyFilter {
         })
     }
 
-    /// `event` back when this filter takes its class, `None` otherwise.
+    /// `press` back when this filter takes its class, `None` otherwise.
     ///
     /// **The gate a reader applies to the stream it drains**, not only to
     /// the scope it declares. The stream is the whole layer's, so a field
@@ -174,12 +173,8 @@ impl KeyFilter {
     /// One place rather than one per drain: a field's key pass and its
     /// context menu read the same stream through the same filter.
     #[inline]
-    pub fn accepts(self, event: KeyboardEvent) -> Option<KeyboardEvent> {
-        let class = match event {
-            KeyboardEvent::Down(keypress) => KeyClass::of(keypress),
-            KeyboardEvent::Text(_) => KeyClass::Text,
-        };
-        self.takes(class).then_some(event)
+    pub fn accepts(self, press: KeyPress) -> Option<KeyPress> {
+        self.takes(KeyClass::of(press)).then_some(press)
     }
 
     /// A scope declaring nothing is not a scope: [`Self::empty`] is how
@@ -197,9 +192,7 @@ mod tests {
     use crate::input::key_class::{KeyClass, KeyFilter};
     use crate::input::keyboard::key::Key;
     use crate::input::keyboard::key_press::KeyPress;
-    use crate::input::keyboard::keyboard_event::KeyboardEvent;
     use crate::input::keyboard::modifiers::Modifiers;
-    use crate::input::keyboard::text_chunk::TextChunk;
 
     fn press(key: Key, mods: Modifiers) -> KeyPress {
         KeyPress {
@@ -210,16 +203,16 @@ mod tests {
         }
     }
 
-    /// `accepts` is `takes` over a whole event: it classifies a press the
-    /// way [`KeyClass::of`] does and reads a text commit as
-    /// [`KeyClass::Text`], so one gate covers both arms of the stream.
+    /// `accepts` is `takes` over a press: it classifies the press the way
+    /// [`KeyClass::of`] does, so one gate serves every reader of the
+    /// stream.
     #[test]
-    fn accepts_gates_both_arms_of_the_stream_on_the_declared_classes() {
+    fn accepts_gates_the_stream_on_the_declared_classes() {
         let field = KeyFilter::TEXT_FIELD;
-        let commit = KeyboardEvent::Text(TextChunk::new("a").expect("a one-char chunk fits"));
-        let escape = KeyboardEvent::Down(press(Key::Escape, Modifiers::default()));
+        let typed = press(Key::Char('a'), Modifiers::default());
+        let escape = press(Key::Escape, Modifiers::default());
 
-        assert_eq!(field.accepts(commit), Some(commit), "a field takes text");
+        assert_eq!(field.accepts(typed), Some(typed), "a field takes text");
         assert_eq!(field.accepts(escape), Some(escape), "and Escape, to cancel");
 
         // Dropping one class drops exactly that class — the shape
@@ -227,7 +220,7 @@ mod tests {
         // key pass and its context menu apply the same filter.
         let yields_escape = field.difference(KeyFilter::ESCAPE);
         assert_eq!(yields_escape.accepts(escape), None);
-        assert_eq!(yields_escape.accepts(commit), Some(commit));
+        assert_eq!(yields_escape.accepts(typed), Some(typed));
 
         // `ACCEL` is out of `TEXT_FIELD`, so an application chord walks
         // past a focused field while the bare key it shares still types.
@@ -239,8 +232,8 @@ mod tests {
             },
         );
         assert_eq!(KeyClass::of(save), KeyClass::Accel);
-        assert_eq!(field.accepts(KeyboardEvent::Down(save)), None);
-        let typed = KeyboardEvent::Down(press(Key::Char('S'), Modifiers::default()));
-        assert_eq!(field.accepts(typed), Some(typed));
+        assert_eq!(field.accepts(save), None);
+        let shifted = press(Key::Char('S'), Modifiers::default());
+        assert_eq!(field.accepts(shifted), Some(shifted));
     }
 }

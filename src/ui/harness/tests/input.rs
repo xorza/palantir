@@ -1,6 +1,5 @@
 //! The gestures the harness synthesises, and the routing each depends on.
 
-use crate::input::keyboard::keyboard_event::KeyboardEvent;
 use crate::layout::types::sizing::Sizing;
 use crate::scene::layer::Layer;
 use crate::scene::node::configure::Configure;
@@ -127,10 +126,9 @@ fn modifiers_are_sticky_until_set_back() {
 }
 
 #[test]
-fn typed_text_and_ime_commits_take_different_paths() {
+fn typed_text_arrives_as_one_press_per_char() {
     // Rule 14. `type_text` emits the `KeyDown { Key::Char }` a real
-    // window produces; `ime_commit` emits `Text`, chunked as a commit is.
-    // `TextEdit` consumes both, which is why they are separate calls.
+    // window produces, which is the only path a field inserts from.
     let mut harness = UiHarness::new(SURFACE);
     // Keyboard events are dropped at *ingress* when nothing holds focus
     // and no subscriber matches — not queued and ignored, discarded. So
@@ -138,50 +136,16 @@ fn typed_text_and_ime_commits_take_different_paths() {
     harness.ui().request_focus(Some(target()));
 
     harness.type_text("hi");
-    // 20 bytes — longer than one chunk, so it splits at a char boundary.
-    harness.ime_commit("abcdefghijklmnopqrst");
 
-    let events: Vec<_> = harness
+    let keys: Vec<_> = harness
         .ui
         .input
         .keyboard_events(Layer::Main)
         .iter()
-        .map(|event| match event {
-            KeyboardEvent::Down(press) => format!("down {:?}", press.key),
-            KeyboardEvent::Text(chunk) => format!("text {:?}", chunk.as_str()),
-        })
+        .map(|press| format!("{:?}", press.key))
         .collect();
 
-    assert_eq!(
-        events,
-        vec![
-            "down Char('h')".to_string(),
-            "down Char('i')".to_string(),
-            "text \"abcdefghijklmno\"".to_string(),
-            "text \"pqrst\"".to_string(),
-        ],
-        "type_text emits KeyDown per char; ime_commit emits chunked Text",
-    );
-}
-
-#[test]
-fn text_chunk_split_never_cuts_a_codepoint() {
-    // 'é' is two bytes, so a 15-byte cap lands mid-codepoint on a naive
-    // split at exactly the boundary this string was chosen to hit.
-    let s = "ééééééééé";
-    let chunks: Vec<_> = TextChunk::split(s).collect();
-    let rejoined: String = chunks.iter().map(|c| c.as_str()).collect();
-
-    assert_eq!(rejoined, s, "chunks rejoin to the original");
-    assert!(
-        chunks
-            .iter()
-            .all(|c| c.as_str().len() <= TextChunk::INLINE_CAP),
-        "every chunk fits the inline capacity",
-    );
-    assert_eq!(chunks.len(), 2, "18 bytes over a 15-byte cap is two chunks");
-    assert_eq!(chunks[0].as_str(), "ééééééé", "cut at 14, not 15");
-    assert_eq!(TextChunk::split("").count(), 0, "empty yields nothing");
+    assert_eq!(keys, vec!["Char('h')".to_string(), "Char('i')".to_string()]);
 }
 
 #[test]

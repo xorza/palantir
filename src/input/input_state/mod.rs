@@ -6,7 +6,6 @@ use crate::input::event_outcome::EventOutcome;
 use crate::input::input_event::InputEvent;
 use crate::input::key_class::KeyClass;
 use crate::input::keyboard::key_press::KeyPress;
-use crate::input::keyboard::keyboard_event::KeyboardEvent;
 use crate::input::keyboard::modifiers::Modifiers;
 use crate::input::pointer::{PointerButton, PointerEvent};
 use crate::input::policy::{FocusPolicy, InputPolicy, InputSignal};
@@ -76,13 +75,11 @@ pub(crate) struct InputState {
     /// `false` before the first pass fills it — the safe direction,
     /// since it forces the full path.
     frame_quiescent: bool,
-    /// Unified keyboard event stream this frame:
-    /// [`KeyboardEvent::Down`] from `KeyDown` events and
-    /// [`KeyboardEvent::Text`] from `Text` events, in arrival order.
+    /// This frame's presses, in arrival order.
     /// Capacity-retained; cleared in [`Self::drain_per_frame_queues`].
     /// Focused/global readers see this only without popup capture; the
     /// active popup reads it through its scoped capture id.
-    frame_keyboard_events: Vec<KeyboardEvent>,
+    frame_keyboard_events: Vec<KeyPress>,
     /// Latest modifier-key snapshot. Persists across `end_frame` —
     /// modifier *state* is not a per-frame thing the way keystrokes
     /// are. Updated only on `ModifiersChanged` events.
@@ -181,7 +178,7 @@ impl InputState {
     /// borrowed slice of the frame buffer — partitioning it by class
     /// would break the arrival order that drain depends on. The only
     /// wholesale drainer is the scope holder itself.
-    pub(crate) fn keyboard_events(&self, reader: Layer) -> &[KeyboardEvent] {
+    pub(crate) fn keyboard_events(&self, reader: Layer) -> &[KeyPress] {
         if self.silenced(reader) {
             return &[];
         }
@@ -238,9 +235,8 @@ impl InputState {
         // `None` on both sides is the no-scopes-anywhere case: an app that
         // declares none reads every chord, exactly as before scopes existed.
         let scope = self.scopes.reader(parent, cascade);
-        self.frame_keyboard_events.iter().any(|event| {
-            matches!(event, KeyboardEvent::Down(press)
-                if shortcut.matches(*press) && self.scopes.grant(KeyClass::of(*press)) == scope)
+        self.frame_keyboard_events.iter().any(|press| {
+            shortcut.matches(*press) && self.scopes.grant(KeyClass::of(*press)) == scope
         })
     }
 
@@ -615,19 +611,7 @@ impl InputState {
                     || self.subs.matches_press(kp)
                     || self.subs.keyboard_mask.contains(KeyboardWake::KEY);
                 if observable {
-                    self.frame_keyboard_events.push(KeyboardEvent::Down(kp));
-                }
-                EventOutcome::settle(observable)
-            }
-            InputEvent::Text(chunk) => {
-                // Text is rare (only fires on IME commit / dead-key
-                // resolution on most platforms). Wake when a focused
-                // widget would consume it OR a TEXT watcher wants
-                // it.
-                let observable =
-                    self.focused.is_some() || self.subs.keyboard_mask.contains(KeyboardWake::TEXT);
-                if observable {
-                    self.frame_keyboard_events.push(KeyboardEvent::Text(chunk));
+                    self.frame_keyboard_events.push(kp);
                 }
                 EventOutcome::settle(observable)
             }

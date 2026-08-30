@@ -4,7 +4,7 @@
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::modifiers::Modifiers;
 
-/// Payload of [`KeyboardEvent::Down`](crate::KeyboardEvent::Down) — key, modifier snapshot at
+/// One entry of the per-frame keyboard queue — key, modifier snapshot at
 /// push time, repeat flag. Modifiers and key events arrive
 /// interleaved over the wire, so snapshotting at drain time would
 /// mis-attribute mods on rapid chord input — `mods` is captured

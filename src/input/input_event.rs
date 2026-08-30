@@ -2,7 +2,6 @@
 
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::modifiers::Modifiers;
-use crate::input::keyboard::text_chunk::TextChunk;
 use crate::input::pointer::PointerButton;
 use crate::input::zoom;
 use glam::Vec2;
@@ -54,13 +53,6 @@ pub enum InputEvent {
         /// [`KeyPress::physical`](crate::KeyPress::physical).
         physical: Key,
     },
-    /// Committed text — a typed character or an IME composition that
-    /// just finalized. Distinct from `KeyDown` because IME / dead-key
-    /// composition produces text without a physical keypress, and
-    /// because keys like `Enter` produce a logical key but no text we
-    /// want to insert. Editors should consume `Text` for character
-    /// input and `KeyDown` for navigation/control keys.
-    Text(TextChunk),
     /// Modifier-key set changed. The carried snapshot is the new state
     /// (not a delta). Consumers track the latest snapshot to disambiguate
     /// e.g. ctrl+'a' (shortcut) from 'a' (text).
@@ -104,7 +96,6 @@ impl InputEvent {
             | Self::PointerPressed(_)
             | Self::PointerReleased(_)
             | Self::KeyDown { .. }
-            | Self::Text(_)
             | Self::ModifiersChanged(_)
             | Self::SurfaceFocusLost => true,
         }
@@ -116,7 +107,6 @@ mod tests {
     use crate::input::input_event::InputEvent;
     use crate::input::keyboard::key::Key;
     use crate::input::keyboard::modifiers::Modifiers;
-    use crate::input::keyboard::text_chunk::TextChunk;
     use crate::input::pointer::PointerButton;
     use glam::Vec2;
 
@@ -159,7 +149,6 @@ mod tests {
                 repeat: false,
                 physical: Key::Char('a'),
             },
-            InputEvent::Text(TextChunk::new("a").unwrap()),
             InputEvent::ModifiersChanged(Modifiers::default()),
         ];
         for event in ok {
