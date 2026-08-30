@@ -9,12 +9,6 @@ gated `internals` / `test_support` modules were not reviewed.
 Groups are sorted by severity and benefit. Items inside a group are sorted the
 same way.
 
-## Frame cost is not uniform, or a hot path allocates
-
-- [ ] `src/renderer/backend/text/encode/encoder.rs:289`, `src/text/glyphs/mod.rs:130`, `src/text/cosmic/mod.rs:677-694` vs `src/renderer/backend/icon/mod.rs:61,227` — `rasterize_and_insert` receives a `GlyphImage { data: Vec<u8> }` (swash's `get_image_uncached` allocates per call and `rasterize_glyph` moves it out), so every glyph miss heap-allocates and frees once, on the path the atlas docs describe as re-rasterizing thousands of glyphs a frame. The icon tenant writes into the backend's retained `staging: Vec<u8>` out-param.
-- [ ] `src/layout/cache/mod.rs:174-189,275-421`, `src/layout/counters.rs:159-166` — on a `cache_rebuild` frame `capture_tree` copies every column of every node, runs the reverse text-bounds walk, and pushes one descriptor per non-leaf; `end_frame` then rebuilds the whole `WidgetIdMap` in `refresh_snapshots` whenever the descriptor identity changed. A frame that adds or removes one widget pays a full map rebuild the neighbouring frames do not.
-- [ ] `src/text/cosmic/geometry.rs:100-108`, `src/text/wrap/mod.rs:122-125` — `collect_break_offsets` reruns `unicode_linebreak::linebreaks` over each layout run's text to find UAX #14 boundaries that cosmic already computed while shaping but does not expose. The cost is documented as 8x-25x the rest of the measurement; the scan plus `binary_search` per glyph is a second pass over data the shaper had.
-
 ## Device acquisition and the host lifecycle are written once per host
 
 - [ ] `src/host/winit/input/mod.rs:62,198-202`, `src/ui/harness/mod.rs:114-118`, `src/widgets/text_edit/input.rs:246` — `InputEvent::Text` is emitted only from `WindowEvent::Ime(Ime::Commit(..))`. Nothing calls `Window::set_ime_allowed`, and the harness says so ("dead in production today"). `KeyEvent::text` is never read; typed text reaches `TextEdit` solely through `KeyDown { key: Key::Char(c) }`. `emit_text_chunks`, the `Ime` arm and its tests exist for a path no production build hits.
