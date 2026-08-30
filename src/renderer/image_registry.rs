@@ -26,6 +26,7 @@
 use crate::primitives::image::Image;
 use crate::primitives::texture_id::TextureId;
 use crate::renderer::texture_id_source::TextureIdSource;
+use glam::UVec2;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -55,7 +56,7 @@ pub struct ImageHandle {
 #[derive(Debug)]
 struct ImageToken {
     id: TextureId,
-    size: glam::UVec2,
+    size: UVec2,
     shared: Rc<RefCell<Inner>>,
 }
 
@@ -77,7 +78,7 @@ impl ImageHandle {
     /// Intrinsic pixel dimensions, baked in at registration so
     /// downstream code never consults the registry to read them.
     #[inline]
-    pub fn size(&self) -> glam::UVec2 {
+    pub fn size(&self) -> UVec2 {
         self.inner.size
     }
 }
@@ -184,6 +185,7 @@ mod tests {
     use crate::primitives::texture_id::TextureId;
     use crate::renderer::image_registry::ImageRegistry;
     use crate::renderer::texture_id_source::TextureIdSource;
+    use glam::UVec2;
 
     fn reg() -> ImageRegistry {
         ImageRegistry::new(TextureIdSource::default())
@@ -201,7 +203,7 @@ mod tests {
         // Distinct registrations get distinct ids, both nonzero.
         assert_ne!(a.id(), b.id());
         assert_ne!(a.id().0, 0);
-        assert_eq!(a.size(), glam::UVec2::new(2, 3));
+        assert_eq!(a.size(), UVec2::new(2, 3));
         // Both uploads are pending; draining hands the bytes over once.
         let mut uploaded = 0;
         reg.drain_pending(|_, _| uploaded += 1);
@@ -214,7 +216,7 @@ mod tests {
     fn dimensions_above_u16_are_preserved() {
         const WIDTH: u32 = u16::MAX as u32 + 1;
         let handle = reg().register(img(WIDTH, 1));
-        assert_eq!(handle.size(), glam::UVec2::new(WIDTH, 1));
+        assert_eq!(handle.size(), UVec2::new(WIDTH, 1));
     }
 
     /// A 0×0 image is a logic error caught at construction — before it

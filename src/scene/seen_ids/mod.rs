@@ -32,9 +32,8 @@
 //!    final `curr`, and without the fold their state/anim/text rows
 //!    would leak and resume stale if the widget later reappeared.
 
-use crate::primitives::widget_id::{WidgetId, WidgetIdMap};
+use crate::primitives::widget_id::{WidgetId, WidgetIdMap, WidgetIdSet};
 use crate::scene::endpoint::Endpoint;
-use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::hash_map::Entry;
 
 /// Both nodes of one explicit-id collision, in recording order. What
@@ -68,7 +67,7 @@ pub(crate) struct SeenIds {
     /// [`Self::pre_record`]. Independent of the `(layer, node)` of the
     /// actual record, so `Ui::widget` resolves the right id before any
     /// node exists.
-    counters: FxHashMap<WidgetId, u32>,
+    counters: WidgetIdMap<u32>,
     /// `final_id → Endpoint` of every widget actually opened this
     /// frame. Populated by [`Self::record_endpoint`] from
     /// `Forest::open_node`. Read for explicit-collision endpoint
@@ -94,7 +93,7 @@ pub(crate) struct SeenIds {
     /// hold `&seen.removed` across other shared `&forest` reads — an
     /// accessor returning `&[..]` would tie the returned slice to the
     /// `&mut self` and block those reads.
-    pub(crate) removed: FxHashSet<WidgetId>,
+    pub(crate) removed: WidgetIdSet,
     /// Explicit collisions queued by [`Self::resolve`] awaiting
     /// endpoint resolution at [`Self::record_endpoint`]. Each entry
     /// names the first occurrence's raw id (whose endpoint is already
@@ -114,7 +113,7 @@ pub(crate) struct SeenIds {
     /// this empty on the frames that matter — a settling second pass over
     /// a thousand steady widgets adds nothing here instead of a thousand
     /// entries.
-    discarded: FxHashSet<WidgetId>,
+    discarded: WidgetIdSet,
 }
 
 impl SeenIds {
@@ -241,7 +240,7 @@ impl SeenIds {
     /// for callers that want to fan the diff straight into per-widget
     /// caches (text shaper, measure cache, state map, animation,
     /// damage); the field stays populated until the next `rollover`.
-    pub(crate) fn rollover(&mut self) -> &FxHashSet<WidgetId> {
+    pub(crate) fn rollover(&mut self) -> &WidgetIdSet {
         self.removed.clear();
         for wid in self.prev.keys() {
             if !self.curr.contains_key(wid) {

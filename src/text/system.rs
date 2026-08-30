@@ -33,13 +33,13 @@
 use crate::layout::ShapedText;
 use crate::layout::types::align::HAlign;
 use crate::primitives::size::Size;
-use crate::primitives::widget_id::WidgetId;
+use crate::primitives::widget_id::{WidgetId, WidgetIdSet};
 use crate::text::key::{TextShapeKey, WrapBound};
 use crate::text::request::TextShapeRequest;
 use crate::text::root::TextRoot;
 use crate::text::shaper::TextShaper;
 use crate::text::wrap::{TextWrap, WrapCommit, WrapFloor};
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashMap;
 
 /// Both entry points take the run's *unbounded* request and derive every
 /// bounded key they need from it, so handing them a pre-bounded one would
@@ -58,7 +58,7 @@ const UNBOUND_REQUEST: &str = "TextSystem entry points take an unbounded request
 /// every row not touched during a frame is dropped at its end.
 #[derive(Debug)]
 pub(crate) struct TextSystem {
-    pub(super) shaper: TextShaper,
+    shaper: TextShaper,
     entries: FxHashMap<TextRunSlot, TextReuseEntry>,
     /// Held once rather than asked per run: whether this window's shaper
     /// mints shaped buffers at all. False only under the gated mono metric.
@@ -130,7 +130,7 @@ impl TextSystem {
     /// the expensive ones. Every sibling sweep in `finalize_frame`
     /// (`StateMap::sweep_removed`, `AnimMap::sweep_removed`, the
     /// `gpu_views` retain) gates the same way.
-    pub(crate) fn end_frame(&mut self, removed: &FxHashSet<WidgetId>) {
+    pub(crate) fn end_frame(&mut self, removed: &WidgetIdSet) {
         // The frame's one clock tick, matching the paint-only arm in
         // `FrameCycle::run` — see `TextShaper::tick_frame` for what a
         // frozen clock does to atlas eviction.
@@ -376,6 +376,13 @@ pub(crate) mod test_support {
         /// Live reuse rows, for the sweep tests.
         pub(crate) fn entry_count(&self) -> usize {
             self.entries.len()
+        }
+
+        /// The shared shaper, for the reuse tests that read its counters
+        /// and drive it directly. Production never reaches it from
+        /// outside this file.
+        pub(crate) fn shaper(&self) -> &TextShaper {
+            &self.shaper
         }
     }
 }

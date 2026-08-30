@@ -12,7 +12,7 @@ use crate::renderer::backend::stencil::Stencil;
 /// [`FormatPipelines`](crate::renderer::backend::format_pipelines::FormatPipelines)
 /// set is complete the moment it exists.
 #[derive(Debug)]
-pub(crate) struct StencilVariant {
+pub(super) struct StencilVariant {
     base: wgpu::RenderPipeline,
     test: wgpu::RenderPipeline,
 }
@@ -30,12 +30,12 @@ pub(crate) struct StencilVariant {
 /// family wants the same object.
 #[derive(Debug)]
 pub(super) struct ColorVariantSpec<'a> {
-    pub label: &'static str,
-    pub stencil_label: &'static str,
-    pub shader: &'a wgpu::ShaderModule,
-    pub layout: &'a wgpu::PipelineLayout,
-    pub vertex_buffers: &'a [Option<wgpu::VertexBufferLayout<'a>>],
-    pub topology: wgpu::PrimitiveTopology,
+    pub(super) label: &'static str,
+    pub(super) stencil_label: &'static str,
+    pub(super) shader: &'a wgpu::ShaderModule,
+    pub(super) layout: &'a wgpu::PipelineLayout,
+    pub(super) vertex_buffers: &'a [Option<wgpu::VertexBufferLayout<'a>>],
+    pub(super) topology: wgpu::PrimitiveTopology,
 }
 
 impl StencilVariant {

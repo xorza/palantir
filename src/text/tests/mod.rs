@@ -9,7 +9,7 @@
 use crate::layout::types::align::{Align, HAlign};
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
-use crate::primitives::widget_id::WidgetId;
+use crate::primitives::widget_id::{WidgetId, WidgetIdSet};
 use crate::scene::record_store::RecordStore;
 use crate::text::cosmic::cluster_glyph::ClusterGlyph;
 use crate::text::cosmic::{self, CosmicMeasure};
@@ -27,7 +27,6 @@ use crate::text::system::{TextRunSlot, TextSystem};
 use crate::text::wrap::{LineFit, TextWrap, WrapFloor};
 use crate::text::{FontFamily, FontWeight};
 use crate::widgets::theme::text_style::LINE_HEIGHT_MULT;
-use rustc_hash::FxHashSet;
 
 mod geometry;
 mod key;

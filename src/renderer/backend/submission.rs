@@ -3,6 +3,7 @@
 
 use crate::diagnostics::DebugOverlayConfig;
 use crate::renderer::backend::backbuffer::Backbuffer;
+use crate::renderer::backend::stencil::Stencil;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_owner_id::RenderOwnerId;
 use crate::renderer::render_plan::RenderPlan;
@@ -17,7 +18,7 @@ use crate::scene::record_store::record_payloads::RecordPayloads;
 pub(crate) struct SubmissionTargets<'a> {
     pub(crate) surface: &'a wgpu::Texture,
     pub(crate) backbuffer: Option<&'a Backbuffer>,
-    pub(crate) stencil: Option<&'a wgpu::TextureView>,
+    pub(crate) stencil: Option<&'a Stencil>,
 }
 
 #[derive(Debug)]

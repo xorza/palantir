@@ -741,10 +741,10 @@ impl UiHarness {
         let mut app = RecordApp::new(record);
         self.ui.frame(
             &mut self.engines,
-            FrameInput {
-                stamp: FrameStamp::new(self.display, self.time),
+            FrameInput::new(
+                FrameStamp::new(self.display, self.time),
                 damage_baseline_valid,
-            },
+            ),
             WindowToken(0),
             &mut app,
         )

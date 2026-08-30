@@ -58,8 +58,7 @@
 use crate::common::block_arena::BlockArena;
 use crate::common::tracy;
 use crate::primitives::rect::Rect;
-use crate::primitives::widget_id::WidgetId;
-use crate::primitives::widget_id::WidgetIdMap;
+use crate::primitives::widget_id::{WidgetIdMap, WidgetIdSet};
 use crate::scene::cascade::Cascade;
 use crate::scene::cascade::paint::Paint;
 use crate::scene::cascade::paint::PaintRows;
@@ -69,7 +68,6 @@ use crate::scene::damage::region::{CollapsedDamage, DEFAULT_PASS_BUDGET_PX, Dama
 use crate::scene::damage::row_matcher::RowMatcher;
 use crate::scene::damage::walk::LayerWalk;
 use crate::scene::forest::Forest;
-use rustc_hash::FxHashSet;
 use std::time::Duration;
 
 #[cfg(feature = "bench")]
@@ -287,7 +285,7 @@ impl DamageEngine {
     pub(crate) fn compute(
         &mut self,
         input: DamageInput<'_>,
-        removed: &FxHashSet<WidgetId>,
+        removed: &WidgetIdSet,
         force_full: bool,
     ) -> Option<Damage> {
         tracy::zone!();
@@ -454,27 +452,30 @@ fn extend_predamaged(
     }
 }
 
-/// In-tree-test-only reach-in. Lives in a plain `#[cfg(test)]` impl
-/// (not the feature-gated `internals` mod) because only the
-/// crate's own unit tests call it — so it needs no `allow(dead_code)`
-/// for the feature-only build.
-#[cfg(test)]
-impl DamageEngine {
-    /// Union of the paint screens retained for `wid` last frame — the
-    /// node's own paint extent, equal to what the live cascade's rows
-    /// fold to through [`PaintRows::union_screens`]. `None` when `wid`
-    /// didn't paint last frame (no `prev` entry); [`Rect::ZERO`] when it
-    /// had rows that painted nothing.
-    pub(crate) fn prev_paint_rect(&self, wid: WidgetId) -> Option<Rect> {
-        let snap = self.prev.get(&wid)?;
-        Some(self.paints.slots[snap.paint_span.range()].union_screens())
-    }
-}
-
+/// In-tree-test-only reach-in. `#[cfg(test)]` rather than the
+/// feature-gated `internals` mod, because only the crate's own unit
+/// tests call it — so it needs no `allow(dead_code)` for the
+/// feature-only build.
 #[cfg(test)]
 pub(crate) mod test_support {
+    use crate::primitives::rect::Rect;
+    use crate::primitives::widget_id::WidgetId;
+    use crate::scene::cascade::paint::PaintRows as _;
     use crate::scene::damage::Damage;
+    use crate::scene::damage::DamageEngine;
     use crate::scene::damage::region::DamageRegion;
+
+    impl DamageEngine {
+        /// Union of the paint screens retained for `wid` last frame — the
+        /// node's own paint extent, equal to what the live cascade's rows
+        /// fold to through [`PaintRows::union_screens`]. `None` when `wid`
+        /// didn't paint last frame (no `prev` entry); [`Rect::ZERO`] when it
+        /// had rows that painted nothing.
+        pub(crate) fn prev_paint_rect(&self, wid: WidgetId) -> Option<Rect> {
+            let snap = self.prev.get(&wid)?;
+            Some(self.paints.slots[snap.paint_span.range()].union_screens())
+        }
+    }
 
     impl Damage {
         /// The rects of a partial frame; panics on any other outcome.

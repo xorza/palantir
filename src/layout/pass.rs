@@ -104,7 +104,7 @@ impl<'a> LayoutPass<'a> {
         self.intrinsic(node, axis, LenReq::MinContent)
     }
 
-    pub(crate) fn measure_per_axis_hug(
+    pub(super) fn measure_per_axis_hug(
         &mut self,
         node: NodeId,
         inner_avail: Size,

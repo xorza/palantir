@@ -127,7 +127,7 @@ pub(crate) struct InputState {
     /// in [`Self::drain_per_frame_queues`]. Read through
     /// [`Self::pointer_events`], which layer-gates it against
     /// [`Self::silenced`].
-    pub(crate) frame_pointer_events: Vec<PointerEvent>,
+    frame_pointer_events: Vec<PointerEvent>,
 }
 
 impl InputState {

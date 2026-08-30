@@ -18,8 +18,6 @@ pub(crate) mod layer_scope;
 pub(crate) mod resources;
 pub(crate) mod state;
 
-use std::num::NonZeroU32;
-
 use crate::animation::AnimMap;
 use crate::animation::anim_slot::AnimSlot;
 use crate::animation::anim_spec::AnimSpec;
@@ -33,6 +31,7 @@ use crate::icons::icon_set::IconSet;
 use crate::icons::icon_table::IconTable;
 use crate::input::input_event::InputEvent;
 use crate::input::input_state::InputState;
+use crate::input::keyboard::key::Key;
 use crate::input::keyboard::key_press::KeyPress;
 use crate::input::keyboard::modifiers::Modifiers;
 use crate::input::pointer::PointerEvent;
@@ -50,12 +49,16 @@ use crate::layout::types::sizing::Sizes;
 use crate::layout::types::track::Track;
 use crate::primitives::background::Background;
 use crate::primitives::image::Image;
+use crate::primitives::interned_str::InternedStr;
 use crate::primitives::size::Size;
+use crate::primitives::text_input::TextInput;
+use crate::primitives::widget_id::WidgetId;
 use crate::renderer::frontend::FrameScene;
 use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
 use crate::renderer::gpu_paint::gpu_views::GpuViews;
 use crate::renderer::image_registry::ImageHandle;
 use crate::renderer::texture_limit::RegisterImageError;
+use crate::scene::cascade::Cascade;
 use crate::scene::forest::Forest;
 use crate::scene::layer::Layer;
 use crate::scene::node::Node;
@@ -63,13 +66,9 @@ use crate::scene::node::configure::Configure;
 use crate::scene::record_store::record_payloads::RecordPayloads;
 use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::paint_anims::PaintAnim;
+use crate::shape::Lower;
 use crate::text::probe::TextProbe;
 use crate::text::run::TextRun;
-use crate::{InternedStr, TextInput};
-
-use crate::primitives::widget_id::WidgetId;
-use crate::scene::cascade::Cascade;
-use crate::shape::Lower;
 use crate::ui::frame_cycle::FrameCycle;
 use crate::ui::frame_engines::FrameEngines;
 use crate::ui::frame_report::FrameReport;
@@ -91,7 +90,8 @@ use crate::window::window_geometry::WindowGeometry;
 use crate::window::window_output::WindowOutput;
 use crate::window::window_requests::WindowRequests;
 use crate::window::window_token::WindowToken;
-use glam::UVec2;
+use glam::{UVec2, Vec2};
+use std::num::NonZeroU32;
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -375,7 +375,6 @@ impl Ui {
     /// [`crate::widgets::modal::Modal`].
     #[inline]
     pub fn escape_pressed(&mut self) -> bool {
-        use crate::input::keyboard::key::Key;
         self.key_pressed(Shortcut::key(Key::Escape))
     }
 
@@ -1322,7 +1321,7 @@ impl Ui {
     /// routes through the hit index and is therefore occlusion- and
     /// overlay-aware.
     #[inline]
-    pub fn pointer_pos(&mut self) -> Option<glam::Vec2> {
+    pub fn pointer_pos(&mut self) -> Option<Vec2> {
         self.watch_pointer(PointerWake::MOVE);
         self.input.pointer_pos
     }
@@ -1335,7 +1334,7 @@ impl Ui {
     /// pointer-local paint reactive while the cursor moves within one
     /// hover target. [`Self::peek_pointer_local`] is the unwatched read.
     #[inline]
-    pub fn pointer_local(&mut self, id: WidgetId) -> Option<glam::Vec2> {
+    pub fn pointer_local(&mut self, id: WidgetId) -> Option<Vec2> {
         self.watch_pointer(PointerWake::MOVE);
         self.input
             .pointer_local_for(id, &self.cascade, &self.layout)
@@ -1364,14 +1363,14 @@ impl Ui {
     /// continuously: the pointer will move, no frame will run, and the
     /// stale result stays on screen.
     #[inline]
-    pub fn peek_pointer_pos(&self) -> Option<glam::Vec2> {
+    pub fn peek_pointer_pos(&self) -> Option<Vec2> {
         self.input.pointer_pos
     }
 
     /// [`Self::pointer_local`] without the [`PointerWake::MOVE`] watch.
     /// Same caveat as [`Self::peek_pointer_pos`].
     #[inline]
-    pub fn peek_pointer_local(&self, id: WidgetId) -> Option<glam::Vec2> {
+    pub fn peek_pointer_local(&self, id: WidgetId) -> Option<Vec2> {
         self.input
             .pointer_local_for(id, &self.cascade, &self.layout)
     }

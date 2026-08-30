@@ -15,9 +15,7 @@
 //! parallel `owners` vec.
 
 use crate::common::typed_stores::{Drained, TypedStore, TypedStores};
-use crate::primitives::widget_id::WidgetId;
-use crate::primitives::widget_id::WidgetIdMap;
-use rustc_hash::FxHashSet;
+use crate::primitives::widget_id::{WidgetId, WidgetIdMap, WidgetIdSet};
 
 #[derive(Debug, Default)]
 pub(crate) struct StateMap {
@@ -25,7 +23,7 @@ pub(crate) struct StateMap {
 }
 
 impl StateMap {
-    pub(crate) fn get_or_insert_with<T, F>(&mut self, id: WidgetId, init: F) -> &mut T
+    pub(super) fn get_or_insert_with<T, F>(&mut self, id: WidgetId, init: F) -> &mut T
     where
         T: 'static,
         F: FnOnce() -> T,
@@ -50,7 +48,7 @@ impl StateMap {
     /// Caller guards on `removed` being non-empty — see
     /// `FrameCycle::finalize_frame`, which shares that one guard with the
     /// other removal-driven sweep.
-    pub(super) fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>) {
+    pub(super) fn sweep_removed(&mut self, removed: &WidgetIdSet) {
         self.stores.sweep_removed(removed, Drained::Keep);
     }
 }
@@ -92,7 +90,7 @@ impl<T> Store<T> {
 impl<T: 'static> TypedStore for Store<T> {
     /// `swap_remove` the row, then patch the swapped neighbour's index
     /// in O(1) off the parallel `owners` vec.
-    fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>) {
+    fn sweep_removed(&mut self, removed: &WidgetIdSet) {
         for id in removed {
             let Some(idx) = self.map.remove(id) else {
                 continue;
@@ -173,7 +171,7 @@ mod tests {
     fn sweep_removed_drops_rows() {
         let mut map = StateMap::default();
         *map.get_or_insert_with(wid(1), || 0u32) = 99;
-        map.sweep_removed(&FxHashSet::from_iter([wid(1)]));
+        map.sweep_removed(&WidgetIdSet::from_iter([wid(1)]));
         assert_eq!(*map.get_or_insert_with(wid(1), || 0u32), 0);
     }
 
@@ -185,7 +183,7 @@ mod tests {
         *map.get_or_insert_with(wid(3), || 0u32) = 3;
         // Drop the middle one; `wid(3)` was at idx 2, must end at idx 1
         // and still read back as 3.
-        map.sweep_removed(&FxHashSet::from_iter([wid(2)]));
+        map.sweep_removed(&WidgetIdSet::from_iter([wid(2)]));
         assert_eq!(*map.get_or_insert_with(wid(1), || 0u32), 1);
         assert_eq!(*map.get_or_insert_with(wid(3), || 0u32), 3);
     }

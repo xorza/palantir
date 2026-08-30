@@ -425,10 +425,10 @@ impl WindowDriver {
         tracy::zone!();
         let report = self.ui.frame(
             &mut self.engines,
-            FrameInput {
-                stamp: FrameStamp::new(display, self.clock.now()),
-                damage_baseline_valid: self.output_valid,
-            },
+            FrameInput::new(
+                FrameStamp::new(display, self.clock.now()),
+                self.output_valid,
+            ),
             self.token,
             app,
         );
@@ -545,11 +545,11 @@ impl WindowDriver {
         // Rounded-clip stencil, shared by both paint paths and sized to the
         // target. Gated to them: on a skip frame the frontend didn't build,
         // so `buffer.rounded_clips` is stale and no pass reads the stencil.
-        let stencil_view = match mode {
+        let stencil = match mode {
             PresentMode::Direct(_) | PresentMode::ViaBackbuffer(_)
                 if !buffer.rounded_clips.is_empty() =>
             {
-                Some(&Stencil::ensure(&mut self.stencil, backend.device(), size).view)
+                Some(Stencil::ensure(&mut self.stencil, backend.device(), size))
             }
             _ => None,
         };
@@ -601,7 +601,7 @@ impl WindowDriver {
                     targets: SubmissionTargets {
                         surface: target,
                         backbuffer,
-                        stencil: stencil_view,
+                        stencil,
                     },
                     payloads,
                     buffer,

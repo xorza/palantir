@@ -218,7 +218,7 @@ pub(crate) struct Cascade {
     /// Interactive rows only, in the same paint order as
     /// [`Self::entries`]. Hit tests reverse-scan this table and read
     /// nothing else — see [`HitRow`].
-    pub(crate) hits: Vec<HitRow>,
+    hits: Vec<HitRow>,
     /// Declared input scopes in record order — see [`ScopeRow`].
     pub(crate) scopes: Vec<ScopeRow>,
     /// `WidgetId → Endpoint` lookup for hit-test consumers
@@ -357,6 +357,17 @@ pub(crate) mod test_support {
     use glam::Vec2;
 
     impl Cascade {
+        /// Every interactive row's widget, in paint order — the raw
+        /// contents of the hit table, for the tests that assert on which
+        /// widgets reached it rather than on what a point hits.
+        ///
+        /// Narrower than the module around it: every caller is an in-crate
+        /// unit test, so an `internals` build has none.
+        #[cfg(test)]
+        pub(crate) fn hit_ids(&self) -> impl Iterator<Item = WidgetId> + '_ {
+            self.hits.iter().map(|row| row.widget_id)
+        }
+
         /// Topmost entry under `pos` whose `Sense` passes `filter`.
         pub(crate) fn hit_test(
             &self,

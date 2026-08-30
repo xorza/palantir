@@ -1,7 +1,7 @@
 use crate::bench::Run;
 use crate::layout::ShapedText;
 use crate::layout::types::align::HAlign;
-use crate::primitives::widget_id::WidgetId;
+use crate::primitives::widget_id::{WidgetId, WidgetIdSet};
 use crate::text::cosmic;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::key::WrapBound;
@@ -13,7 +13,6 @@ use crate::text::wrap::{LineFit, TextWrap, WrapFloor};
 use crate::text::{FontFamily, FontWeight};
 use criterion::measurement::WallTime;
 use criterion::{BenchmarkGroup, Criterion};
-use rustc_hash::FxHashSet;
 use std::hint::black_box;
 
 const TEXT: &str = "A long property label used to exercise character-precise truncation across many previously unseen widths.";
@@ -152,7 +151,7 @@ fn bench_reuse_layer(c: &mut Criterion, run: Run<'_>) {
                     None,
                 ));
             }
-            text_system.end_frame(&FxHashSet::default());
+            text_system.end_frame(&WidgetIdSet::default());
         });
     });
 
@@ -189,7 +188,7 @@ fn bench_reuse_layer(c: &mut Criterion, run: Run<'_>) {
                     Some(WRAP_W),
                 ));
             }
-            text_system.end_frame(&FxHashSet::default());
+            text_system.end_frame(&WidgetIdSet::default());
         });
     });
 
@@ -254,7 +253,7 @@ fn bench_shared_content(group: &mut BenchmarkGroup<'_, WallTime>) {
                     Some(WRAP_W),
                 ));
             }
-            text_system.end_frame(&FxHashSet::default());
+            text_system.end_frame(&WidgetIdSet::default());
         });
     });
 
@@ -280,7 +279,7 @@ fn bench_shared_content(group: &mut BenchmarkGroup<'_, WallTime>) {
                     Some(widths[i % 2]),
                 ));
             }
-            text_system.end_frame(&FxHashSet::default());
+            text_system.end_frame(&WidgetIdSet::default());
         });
     });
 }
@@ -368,7 +367,7 @@ fn drag_frame(
     shaper.render_ensure(
         TextShapeRequest::for_key(TEXT, measured.key).expect("the bench fixture has text"),
     );
-    text.end_frame(&FxHashSet::default());
+    text.end_frame(&WidgetIdSet::default());
     measured
 }
 
@@ -403,7 +402,7 @@ fn bench_ellipsis_churn(c: &mut Criterion, run: Run<'_>) {
             let width = 40.0 + (step % DRAG_WIDTHS) as f32 * 0.25;
             step = step.wrapping_add(1);
             let measured = measure_truncated_width(&mut text, slot, TEXT, width);
-            text.end_frame(&FxHashSet::default());
+            text.end_frame(&WidgetIdSet::default());
             black_box(measured.measured)
         });
     });
@@ -436,7 +435,7 @@ fn bench_ellipsis_churn(c: &mut Criterion, run: Run<'_>) {
                 HEADING_PX,
                 FontWeight::Bold,
             );
-            text.end_frame(&FxHashSet::default());
+            text.end_frame(&WidgetIdSet::default());
             black_box((body.measured, head.measured))
         });
     });

@@ -171,9 +171,8 @@ fn disabled_ancestor_propagates_disabled_flag_to_descendants() {
     // A cascaded-off node is never pushed to `hits`, so it cannot be
     // hit-tested — the behaviour the flattened flag exists to produce.
     assert!(
-        !cascade
-            .hits
-            .iter()
-            .any(|r| r.rect.contains(glam::Vec2::splat(20.0))),
+        cascade
+            .hit_test(glam::Vec2::splat(20.0), |_| true)
+            .is_none(),
     );
 }

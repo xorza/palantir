@@ -184,7 +184,7 @@ impl CascadeEngine {
         true
     }
 
-    pub(crate) fn run_full(
+    pub(super) fn run_full(
         &mut self,
         forest: &Forest,
         layout: &Layout,

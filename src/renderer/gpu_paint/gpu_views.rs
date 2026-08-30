@@ -1,10 +1,9 @@
 //! The `Ui`'s live-`GpuView` bookkeeping, and the per-view row it keeps.
 
 use crate::primitives::texture_id::TextureId;
-use crate::primitives::widget_id::{WidgetId, WidgetIdMap};
+use crate::primitives::widget_id::{WidgetId, WidgetIdMap, WidgetIdSet};
 use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
 use crate::renderer::texture_id_source::TextureIdSource;
-use rustc_hash::FxHashSet;
 use std::collections::hash_map::Entry;
 
 /// One live `GpuView`, keyed by `WidgetId`: the view's stable backend
@@ -79,7 +78,7 @@ impl GpuViews {
     /// Drop the rows of widgets the frame stopped recording. The backend
     /// frees each orphaned texture the next frame it is absent from the
     /// retention roster.
-    pub(crate) fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>) {
+    pub(crate) fn sweep_removed(&mut self, removed: &WidgetIdSet) {
         self.entries.retain(|id, _| !removed.contains(id));
     }
 

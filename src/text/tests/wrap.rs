@@ -427,7 +427,7 @@ fn a_probe_shapes_under_the_key_the_paint_committed() {
             )
             .key;
 
-        let probed = system.shaper.layout(&TextRun {
+        let probed = system.shaper().layout(&TextRun {
             text,
             font: params.font,
             wrap,

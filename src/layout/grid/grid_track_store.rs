@@ -69,7 +69,7 @@ pub(crate) struct GridTrackStore {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct GridTrackSlot {
+struct GridTrackSlot {
     rows: Span,
     cols: Span,
 }
@@ -113,7 +113,7 @@ impl GridTrackStore {
         }
     }
 
-    pub(super) fn alloc(&mut self, n: usize) -> Span {
+    fn alloc(&mut self, n: usize) -> Span {
         let start = self.max_pool.len() as u32;
         self.max_pool.resize(start as usize + n, 0.0);
         self.min_pool.resize(start as usize + n, 0.0);

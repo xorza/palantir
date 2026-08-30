@@ -53,7 +53,7 @@ use wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
 /// default — a session full of text and no emoji wants the opposite split from
 /// one full of colour icons.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct RasterAtlasConfig {
+pub(super) struct RasterAtlasConfig {
     /// Label stem, e.g. `"palantir.text"`. Every texture, marker, and buffer
     /// this atlas creates is named from it.
     pub(crate) label: &'static str,
@@ -131,7 +131,7 @@ struct AtlasLabels {
 const UNALLOCATED_KEEP_FRAMES: u64 = 120;
 
 #[derive(Debug)]
-pub(crate) struct RasterAtlas<K> {
+pub(super) struct RasterAtlas<K> {
     sides: [Side; 2],
     labels: AtlasLabels,
     eager_growth_bytes: u64,
@@ -140,7 +140,7 @@ pub(crate) struct RasterAtlas<K> {
     /// refresh is an indexed store instead of a map probe per glyph —
     /// safe because every recorded index carries the slot generation
     /// that eviction advances before making the index reusable.
-    pub(crate) slots: Vec<AtlasSlot>,
+    pub(super) slots: Vec<AtlasSlot>,
     /// Key held by each slab entry, parallel to [`Self::slots`]. The
     /// reverse of [`Self::cache`], and the only reason eviction can pick
     /// a victim by slab position at all — it has to drop the outgoing
@@ -156,7 +156,7 @@ pub(crate) struct RasterAtlas<K> {
     /// freed index keeps its old key here until something overwrites it,
     /// so the map is the single authority on which indices are live.
     slot_keys: Vec<K>,
-    pub(crate) cache: FxHashMap<K, u32>,
+    pub(super) cache: FxHashMap<K, u32>,
     /// Released by eviction, by expiry, and by [`Self::forget`].
     free: FreeSlots,
     /// Rotating eviction cursor over [`Self::slots`] — see
@@ -176,7 +176,7 @@ pub(crate) struct RasterAtlas<K> {
     /// that drew no text ages buffers only; a `PaintOnly` frame ages the
     /// atlas only). Reading one clock is what makes the shared constant
     /// mean what it says.
-    pub(crate) current_frame: u64,
+    pub(super) current_frame: u64,
     /// Deadlines for non-drawing entries, which the clock cannot
     /// reclaim. Same file-once/re-file-on-fire protocol as the two
     /// caches above this one — see [`ExpiryWheel`] — so `touch` stays a
@@ -195,7 +195,7 @@ pub(crate) struct RasterAtlas<K> {
     bound: BoundSides,
     /// Evictions, growths, refusals, and slots *examined* choosing a
     /// victim — see [`AtlasCounters`].
-    pub(crate) counters: AtlasCounters,
+    pub(super) counters: AtlasCounters,
 
     /// Glyph pixel data queued by `insert`, packed with per-row padding
     /// so each glyph's copy can satisfy
@@ -219,7 +219,7 @@ struct PendingCopy {
 }
 
 impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
-    pub(crate) fn new(device: &wgpu::Device, config: RasterAtlasConfig) -> Self {
+    pub(super) fn new(device: &wgpu::Device, config: RasterAtlasConfig) -> Self {
         let max = device.limits().max_texture_dimension_2d;
 
         // Order matches `ContentType as usize`: [Mask, Color].
@@ -307,18 +307,18 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
     /// The layout the bind group was built against, for pipeline
     /// creation. Format-independent, so it survives a swapchain
     /// reformat.
-    pub(crate) fn bind_group_layout(&self) -> &wgpu::BindGroupLayout {
+    pub(super) fn bind_group_layout(&self) -> &wgpu::BindGroupLayout {
         self.bound.layout()
     }
 
     /// `[color, mask]` side extents, as the shader reads them.
-    pub(crate) fn atlas_px(&self) -> [u32; 2] {
+    pub(super) fn atlas_px(&self) -> [u32; 2] {
         self.bound.atlas_px()
     }
 
     /// Cache-hit fast path: bump the slot's LRU stamp and return its
     /// slab index (read the slot itself via `self.slots[idx]`).
-    pub(crate) fn touch(&mut self, key: &K) -> Option<u32> {
+    pub(super) fn touch(&mut self, key: &K) -> Option<u32> {
         let &idx = self.cache.get(key)?;
         self.slots[idx as usize].last_use = self.current_frame;
         Some(idx)
@@ -421,7 +421,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
     /// `copy_buffer_to_buffer` into our retained staging buffer), plus
     /// N `copy_buffer_to_texture` commands recorded on `ctx.encoder`.
     /// The renderer owns the submit; this method adds no extra one.
-    pub(crate) fn flush_pending_uploads(&mut self, ctx: &mut GpuCtx<'_>) {
+    pub(super) fn flush_pending_uploads(&mut self, ctx: &mut GpuCtx<'_>) {
         // Grow blits first: old→new copy must complete before any new
         // glyph writes hit the new texture. wgpu serialises commands
         // within an encoder, so recording in this order is enough.
@@ -520,7 +520,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
     /// Not `end_frame`, which the crate's other caches spell without an
     /// argument: this one owns no frame boundary. It ages to a reading
     /// someone else advanced.
-    pub(crate) fn advance_to(&mut self, frame: u64) {
+    pub(super) fn advance_to(&mut self, frame: u64) {
         debug_assert!(
             frame >= self.current_frame,
             "the atlas frame clock ran backwards",
@@ -709,7 +709,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
     ///
     /// Everything else lets the clock reclaim on its own schedule; an
     /// entry that is merely cold is not the same as one that is dead.
-    pub(crate) fn forget(&mut self, keep: impl Fn(&K) -> bool) {
+    pub(super) fn forget(&mut self, keep: impl Fn(&K) -> bool) {
         let Self {
             cache,
             slots,

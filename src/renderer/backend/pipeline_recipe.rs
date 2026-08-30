@@ -15,16 +15,16 @@ use crate::renderer::backend::IMMEDIATES_BYTES;
 /// outlives the recipe.
 #[derive(Debug)]
 pub(super) struct PipelineRecipe<'a> {
-    pub label: &'static str,
-    pub shader: &'a wgpu::ShaderModule,
-    pub layout: &'a wgpu::PipelineLayout,
-    pub vertex_buffers: &'a [Option<wgpu::VertexBufferLayout<'a>>],
-    pub topology: wgpu::PrimitiveTopology,
-    pub color_format: wgpu::TextureFormat,
-    pub fragment_entry: &'static str,
-    pub color_writes: wgpu::ColorWrites,
-    pub blend: Option<wgpu::BlendState>,
-    pub depth_stencil: Option<wgpu::DepthStencilState>,
+    pub(super) label: &'static str,
+    pub(super) shader: &'a wgpu::ShaderModule,
+    pub(super) layout: &'a wgpu::PipelineLayout,
+    pub(super) vertex_buffers: &'a [Option<wgpu::VertexBufferLayout<'a>>],
+    pub(super) topology: wgpu::PrimitiveTopology,
+    pub(super) color_format: wgpu::TextureFormat,
+    pub(super) fragment_entry: &'static str,
+    pub(super) color_writes: wgpu::ColorWrites,
+    pub(super) blend: Option<wgpu::BlendState>,
+    pub(super) depth_stencil: Option<wgpu::DepthStencilState>,
 }
 
 impl PipelineRecipe<'_> {

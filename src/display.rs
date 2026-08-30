@@ -9,7 +9,7 @@
 use crate::primitives::approx::EPS;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
-use glam::UVec2;
+use glam::{UVec2, Vec2};
 
 #[inline]
 pub(crate) const fn scale_factor_is_valid(scale_factor: f32) -> bool {
@@ -121,7 +121,7 @@ impl Display {
     /// filtering.
     pub fn logical_rect(&self) -> Rect {
         Rect {
-            min: glam::Vec2::ZERO,
+            min: Vec2::ZERO,
             size: self.logical_size(),
         }
     }

@@ -146,6 +146,14 @@ impl Tree {
     /// `usize` rather than the stored `u32`: every caller indexes or spans
     /// with the result, so the cast belongs here once instead of at each
     /// of them. The one that stores it again narrows explicitly.
+    ///
+    /// **A flat-index accessor, not a [`NodeId`] one** — as are
+    /// [`Self::has_children`], [`Self::parent_of`] and
+    /// [`Self::subtree_has_grid`]. Their callers walk the pre-order
+    /// array by interval (`[start, end)`) rather than looking one node
+    /// up, so a `NodeId` parameter would only make each of them convert
+    /// back. The `NodeId` family is [`Self::children`], [`Self::bounds`],
+    /// [`Self::panel`], [`Self::chrome`] and [`Self::transform_of`].
     #[inline]
     pub(crate) fn subtree_end_of(&self, i: usize) -> usize {
         self.records.subtree_end()[i].end() as usize
@@ -551,7 +559,7 @@ impl Tree {
         }
     }
 
-    pub(crate) fn close_node(&mut self, scratch: &mut RecordingScratch) {
+    pub(super) fn close_node(&mut self, scratch: &mut RecordingScratch) {
         let popped = scratch
             .open_frames
             .pop()
