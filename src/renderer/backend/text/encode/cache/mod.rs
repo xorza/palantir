@@ -365,9 +365,10 @@ const _: () = assert!(
     "the shaped-buffer window must cover the encoded-run window",
 );
 
-// Gated with its two readers exactly — the `text_atlas` benchmark and
-// the retention tests below — rather than on `internals`, which the two
-// integration suites enable without ever building a churn fixture.
+// Gated with the churn fixture's two readers exactly — the `text_atlas`
+// benchmark and the retention tests below — rather than on `internals`,
+// which the two integration suites enable without ever building a churn
+// fixture.
 #[cfg(any(test, feature = "bench"))]
 pub(crate) mod test_support {
     use super::*;
@@ -375,7 +376,7 @@ pub(crate) mod test_support {
     use crate::common::block_arena::BlockArenaCounts;
     #[cfg(test)]
     use crate::common::counters::CounterSet;
-    #[cfg(test)]
+    #[cfg(all(test, feature = "internals"))]
     use crate::primitives::span::Span;
     #[cfg(test)]
     use crate::renderer::backend::text::encoded_counters::EncodedCounts;
@@ -385,7 +386,10 @@ pub(crate) mod test_support {
     /// which is the resident population and the templates under it.
     /// A key is opaque here — [`EncodedKey`]'s fields stay private to
     /// `encode`, so it serves only to name a row across frames.
-    #[cfg(test)]
+    ///
+    /// Gated on `internals` too, because the GPU text tests that ask
+    /// these carry that gate and nothing else in the crate asks.
+    #[cfg(all(test, feature = "internals"))]
     impl EncodedCache {
         pub(crate) fn rows(&self) -> usize {
             self.map.len()

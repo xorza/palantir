@@ -24,7 +24,9 @@ pub(crate) const fn scale_factor_is_valid(scale_factor: f32) -> bool {
 /// that would name it. The offscreen host rejects at its own door for
 /// the same reason, and this is the windowed side of that contract —
 /// one screen where the value enters, rather than a floor at each
-/// division downstream.
+/// division downstream. Gated with that host: an offscreen-only build
+/// has no `f64` arriving from a platform to screen.
+#[cfg(feature = "winit")]
 #[inline]
 pub(crate) fn sanitize_scale_factor(scale_factor: f64) -> f32 {
     let scale_factor = scale_factor as f32;

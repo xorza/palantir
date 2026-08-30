@@ -149,9 +149,9 @@ impl TextEncoder {
 }
 
 /// Reach-in for the GPU text tests, which assert on what a hit and an
-/// invalidation leave in the encoded cache. `cfg(test)` alone, because
-/// every reader `EncodedCache` offers them is gated the same way.
-#[cfg(test)]
+/// invalidation leave in the encoded cache. Carries their `internals`
+/// gate, because every reader `EncodedCache` offers them carries it too.
+#[cfg(all(test, feature = "internals"))]
 pub(crate) mod test_support {
     use crate::renderer::backend::text::encode::cache::EncodedCache;
     use crate::renderer::backend::text::encode::encoder::TextEncoder;
