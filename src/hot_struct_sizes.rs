@@ -79,9 +79,9 @@ use crate::widgets::widget::Widget;
 /// encoder↔composer wire payloads, the GPU instance types, and the
 /// one whole-`Ui` entry ([`UI_SIZE`]).
 ///
-/// The expected size is a `tt`, not a literal, so a type whose
-/// footprint is feature-conditional can name a `cfg`'d const in the
-/// same column as everything else's number.
+/// The expected size is a `tt`, not a literal, so a type whose number
+/// needs an explanation of its own can name a const in the same column
+/// as everything else's number.
 macro_rules! hot_structs {
     ($($ty:ty => $name:literal : $size:tt / $align:literal),+ $(,)?) => {
         #[test]
@@ -114,25 +114,22 @@ macro_rules! hot_structs {
     };
 }
 
-/// Expected `size_of::<Ui>()`. One number for every feature set: the
-/// one feature-conditional footprint in reach, `LayoutCounters`'
-/// `bench`-only `PhaseTimings`, rides `LayoutEngine` into
-/// [`FrameEngines`](crate::ui::frame_engines) instead.
+/// Expected `size_of::<Ui>()`, as `cfg(test)` sees it. `FrameRuntime`
+/// carries a probe cell, so a release `Ui` can be smaller — see
+/// [`FRAME_ENGINES_SIZE`], where the same gate is worth ~90 B.
 const UI_SIZE: usize = 6000;
 
-/// Expected `size_of::<FrameEngines>()`. Two numbers because
-/// `LayoutCounters` carries a `PhaseTimings` only under `bench` — the
-/// sole feature-conditional footprint in the table below.
+/// Expected `size_of::<FrameEngines>()`, as **`cfg(test)`** sees it —
+/// which is the only way this module compiles.
 ///
-/// Both are the **`cfg(test)`** size, since that is what this module
-/// compiles as: `LayoutCounters`' `TestOnly` fields are live here and
-/// zero-sized in a release build, so a shipped `FrameEngines` is ~90 B
-/// smaller than either. Read these as a drift tripwire, not as the
-/// production footprint.
-#[cfg(feature = "bench")]
+/// `LayoutCounters`' `TestOnly` and `BenchOnly` cells are both live
+/// under that gate, and `BenchOnly` reads `any(test, feature =
+/// "bench")`, so the `bench` feature adds no field a test build did not
+/// already carry and one number covers every feature set. Both kinds of
+/// cell are zero-sized in a release build, which leaves a shipped
+/// `FrameEngines` ~90 B smaller. Read this as a drift tripwire, not as
+/// the production footprint.
 const FRAME_ENGINES_SIZE: usize = 1480;
-#[cfg(not(feature = "bench"))]
-const FRAME_ENGINES_SIZE: usize = 1456;
 
 hot_structs! {
     // One instance per window, not per frame — pinned because every

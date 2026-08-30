@@ -89,6 +89,39 @@ fn container_text_visibility_distinguishes_hidden_from_collapsed() {
         visible_layout.text_shapes[span.start as usize].measured,
         Size::new(73.0, 80.0),
     );
+
+    // The same two states one level up: a `Visible` owner under them
+    // shapes nothing either, because the worklist carries the cascade.
+    for (ancestor, owner_size) in [
+        (Visibility::Hidden, Size::new(100.0, 100.0)),
+        (Visibility::Collapsed, Size::ZERO),
+    ] {
+        let owner = h.frame_value(|ui| {
+            Panel::vstack()
+                .id_salt("container-text-ancestor")
+                .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
+                .visibility(ancestor)
+                .show(ui, |ui| {
+                    build_container_text_with_visibility(ui, Visibility::Visible)
+                })
+                .inner
+        });
+        let layout = h.ui.layout(Layer::Main);
+        assert_eq!(
+            layout.rect[owner.idx()].size,
+            owner_size,
+            "{ancestor:?} ancestor decides whether the owner keeps a slot",
+        );
+        assert_eq!(
+            layout.text_spans[owner.idx()].len,
+            0,
+            "{ancestor:?} ancestor leaves the owner's span empty",
+        );
+        assert!(
+            layout.text_shapes.is_empty(),
+            "a {ancestor:?} ancestor leaves the paint-only run unshaped",
+        );
+    }
 }
 
 #[test]

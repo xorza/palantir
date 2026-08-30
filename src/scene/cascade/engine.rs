@@ -360,8 +360,7 @@ impl CascadeEngine {
             let layout_core = layout_col[iu];
 
             let disabled = parent.disabled || attrs.is_disabled();
-            let owner_visible = layout_core.meta.visibility().is_visible();
-            let invisible = parent.invisible || !owner_visible;
+            let invisible = parent.invisible || !layout_core.meta.visibility().is_visible();
 
             let layout_rect = layout.rect[iu];
             // `.end()` strips the packed grid flag — downstream uses (walk
@@ -422,7 +421,7 @@ impl CascadeEngine {
             };
             let paint_rect = if INCREMENTAL {
                 let old_span = lc.paint_arena.node_spans[iu];
-                let paint_rect = compute_node_paint(ctx, owner_visible, &mut self.paint_scratch);
+                let paint_rect = compute_node_paint(ctx, invisible, &mut self.paint_scratch);
                 let new_span = self.paint_scratch.node_spans[iu];
                 if old_span.len != new_span.len {
                     return false;
@@ -431,7 +430,7 @@ impl CascadeEngine {
                     .copy_from_slice(&self.paint_scratch.rows[new_span.range()]);
                 paint_rect
             } else {
-                compute_node_paint(ctx, owner_visible, &mut lc.paint_arena)
+                compute_node_paint(ctx, invisible, &mut lc.paint_arena)
             };
             // Invisible nodes never paint, so seeding their subtree
             // rollup with `Rect::ZERO` keeps a long-lived hidden subtree
@@ -533,9 +532,24 @@ impl CascadeEngine {
     }
 }
 
+/// The node's paint rows and extent, or an empty span when nothing in
+/// this node can reach the surface.
+///
+/// The flag is the cascaded reading, not the node's own: a subtree under
+/// a non-`Visible` ancestor paints nothing, so computing its extents
+/// buys rows no pass ever reads — the encoder stops at the ancestor, and
+/// `subtree_paint_rect` seeds such a subtree at zero either way. Damage
+/// reads the emptied span as a rows→rowless transition and clears the
+/// pixels the subtree held, which is the same answer it reached before
+/// through every descendant's `cascade_input` flipping at once.
+///
+/// `Tree::container_text` drops a subtree on the same reading, so the
+/// two walks agree on which nodes own shaped runs — the pairing
+/// [`TextRuns`](crate::layout::text_runs::TextRuns) makes between a text
+/// record and its `ShapedText` depends on that.
 #[inline]
-fn compute_node_paint(ctx: PaintRectCtx<'_>, owner_visible: bool, arena: &mut PaintArena) -> Rect {
-    if !owner_visible {
+fn compute_node_paint(ctx: PaintRectCtx<'_>, invisible: bool, arena: &mut PaintArena) -> Rect {
+    if invisible {
         arena.node_spans[ctx.node.idx()] = Span::new(arena.rows.len() as u32, 0);
         return Rect::ZERO;
     }
