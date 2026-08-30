@@ -42,20 +42,16 @@ pub(super) fn emit(forest: &Forest, layout: &Layout, out: &mut dyn PaintSink) {
         for ep in [record.first, record.second] {
             let rects = &layout[ep.layer].rect;
             // Both endpoints carry the `NodeId` `Tree::open_node`
-            // assigned, so arrange produced a rect for each — the
-            // index can't actually exceed `rects`.
-            // Assert the invariant in dev; keep the skip as a release
-            // safety net so a logic slip degrades to a missing overlay
-            // (cosmetic) rather than a panic in the paint path.
+            // assigned, so arrange produced a rect for each — the index
+            // cannot exceed `rects`. The assert is the whole guard: this
+            // module is `#[cfg(debug_assertions)]`, so there is no build
+            // that compiles it with the assert compiled out.
             debug_assert!(
                 ep.node.idx() < rects.len(),
                 "collision endpoint {:?} out of bounds for layer rects len {}",
                 ep.node,
                 rects.len(),
             );
-            if ep.node.idx() >= rects.len() {
-                continue;
-            }
             out.draw_quad(DrawQuadPayload::rect(
                 rects[ep.node.idx()],
                 Corners::ZERO,

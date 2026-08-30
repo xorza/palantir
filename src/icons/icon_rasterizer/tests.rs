@@ -29,13 +29,13 @@ const HALF_ID: IconId = IconId(0);
 const SOLID_ID: IconId = IconId(1);
 
 fn key(icon: IconId, w: u16, h: u16) -> IconRasterKey {
-    IconRasterKey {
-        icon: IconRef {
+    IconRasterKey::for_test(
+        IconRef {
             set: IconSetId::new(0, 0),
             icon,
         },
-        size: U16Vec2::new(w, h),
-    }
+        U16Vec2::new(w, h),
+    )
 }
 
 /// The parse cache is capped, and what leaves is what has gone longest

@@ -296,7 +296,7 @@ impl<'a> FrameCycle<'a> {
             tracy::zone!("Ui::record_user");
             app.record(win, self.ui);
         }
-        let action_flag = self.ui.input.finish_record();
+        let action_flag = self.ui.input.take_action_flag();
         if self.ui.debug_overlay().frame_stats {
             frame_stats::record(self.ui);
         }

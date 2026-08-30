@@ -194,51 +194,19 @@ pub(crate) enum ShapeRecord {
     },
 }
 
-impl ShapeRecord {
-    /// Owner-local bbox used as the basis for cascade's screen-space paint
-    /// bound. `Polyline` / `Curve` return their tight centerline
-    /// bbox because stroke width and the physical-pixel AA fringe are applied
-    /// after the bbox reaches screen space. `Quad` defers to
-    /// [`QuadShape::bbox_local`], which is where the shadow halo is
-    /// accounted for; the remaining shapes return their paint bbox
-    /// directly. Does **not** handle `Text` — its bbox
-    /// depends on the shaped extent from the layout pass and is computed by
-    /// [`text_paint_bbox_local`], which cascade calls directly.
-    #[inline]
-    pub(crate) fn bbox_local(&self, owner_size: Size) -> Rect {
-        match self {
-            ShapeRecord::Quad(shape) => shape.bbox_local(owner_size),
-            ShapeRecord::Polyline { bbox, .. } | ShapeRecord::Curve { bbox, .. } => *bbox,
-            // A mesh's vertex hull can exceed the owner rect (rotated /
-            // overflowing meshes), so it must report that hull — like
-            // `Polyline` / `Curve` — or partial damage clips the overflow.
-            // `local_rect` only *offsets* the mesh (its size is the vertex
-            // hull, not `local_rect.size`), so translate the bbox by its min.
-            ShapeRecord::Mesh {
-                bbox, local_rect, ..
-            } => {
-                let origin = local_rect.map_or(Vec2::ZERO, |r| r.min);
-                Rect {
-                    min: bbox.min + origin,
-                    size: bbox.size,
-                }
-            }
-            ShapeRecord::Image { local_rect, .. } | ShapeRecord::Icon { local_rect, .. } => {
-                local_rect.unwrap_or(Rect {
-                    min: Vec2::ZERO,
-                    size: owner_size,
-                })
-            }
-            // Cascade dispatches Text to `text_paint_bbox_local` before
-            // reaching this method — a direct call here would silently
-            // lose the shaped extent. Unreachable by construction rather
-            // than by convention: the cascade arm that calls this lists
-            // its variants explicitly, so a new one is a compile error
-            // there instead of a panic here.
-            ShapeRecord::Text { .. } => {
-                unreachable!("Text shapes resolve via text_paint_bbox_local in cascade")
-            }
-        }
+/// Owner-local paint bbox of a [`ShapeRecord::Mesh`].
+///
+/// A mesh's vertex hull can exceed the owner rect — a rotated or
+/// overflowing mesh — so the hull is what it must report. The owner rect
+/// instead makes partial damage too small: the overflow paints with cut
+/// vertices and leaves pixels behind when it changes. `local_rect` only
+/// *offsets* the mesh, because its size is the vertex hull rather than
+/// `local_rect.size`.
+pub(crate) fn mesh_paint_bbox_local(bbox: Rect, local_rect: Option<Rect>) -> Rect {
+    let origin = local_rect.map_or(Vec2::ZERO, |r| r.min);
+    Rect {
+        min: bbox.min + origin,
+        size: bbox.size,
     }
 }
 

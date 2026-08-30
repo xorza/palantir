@@ -48,10 +48,14 @@ impl SharedGradientAtlas {
         self.cpu.borrow_mut().register_stops(stops, interp)
     }
 
+    /// Hand this frame's dirty rows to `upload`, if there are any. Clean
+    /// frames never call it.
     #[inline]
-    pub(crate) fn flush_with<R>(&self, upload: impl FnOnce(FlushedRows<'_>) -> R) -> Option<R> {
+    pub(crate) fn flush_with(&self, upload: impl FnOnce(FlushedRows<'_>)) {
         let mut atlas = self.cpu.borrow_mut();
-        atlas.flush().map(upload)
+        if let Some(rows) = atlas.flush() {
+            upload(rows);
+        }
     }
 }
 

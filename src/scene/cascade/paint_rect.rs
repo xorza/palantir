@@ -320,19 +320,33 @@ pub(super) fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) 
                         .inflated(HALF_FRINGE / display_scale),
                     shape_clip,
                 ),
-                // Listed rather than `_`: this arm is what keeps
-                // `bbox_local`'s `Text` panic unreachable, so a new
-                // variant has to be routed here deliberately instead of
-                // falling into it.
-                ShapeRecord::Quad(_)
-                | ShapeRecord::Mesh { .. }
-                | ShapeRecord::Image { .. }
-                | ShapeRecord::Icon { .. } => lift_to_screen(
-                    s.bbox_local(layout_rect.size),
+                // The three kinds that resolve their whole paint bound in
+                // owner-local space, so one lift finishes each: no stroke
+                // width and no physical fringe to add out here, and no
+                // shaped extent to fold in. A quad's shadow halo is
+                // already inside `QuadShape::bbox_local`.
+                ShapeRecord::Quad(shape) => lift_to_screen(
+                    shape.bbox_local(layout_rect.size),
                     layout_rect.min,
                     shape_transform,
                     shape_clip,
                 ),
+                ShapeRecord::Mesh {
+                    bbox, local_rect, ..
+                } => lift_to_screen(
+                    record::mesh_paint_bbox_local(*bbox, *local_rect),
+                    layout_rect.min,
+                    shape_transform,
+                    shape_clip,
+                ),
+                ShapeRecord::Image { local_rect, .. } | ShapeRecord::Icon { local_rect, .. } => {
+                    lift_to_screen(
+                        local_rect.unwrap_or(owner_local),
+                        layout_rect.min,
+                        shape_transform,
+                        shape_clip,
+                    )
+                }
             };
             push_paint(arena, &mut union, screen, shape_hashes[idx as usize]);
         }

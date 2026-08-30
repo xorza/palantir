@@ -1,5 +1,6 @@
 use super::*;
 use etagere::AllocId;
+use glam::{I16Vec2, IVec2, U16Vec2, UVec2};
 
 /// The atlas is generic over its key, so its own tests use the cheapest one
 /// that satisfies the bounds rather than either tenant's — nothing here
@@ -12,39 +13,34 @@ fn key(id: u16) -> TestKey {
 
 #[test]
 fn packed_metadata_checks_every_wire_boundary() {
-    let placement = |width, height, left, top| (width, height, left, top);
-    let packed = |(width, height, left, top)| PackedMetadata::new(width, height, left, top);
+    let packed = |width, height, left, top| {
+        PackedMetadata::new(UVec2::new(width, height), IVec2::new(left, top))
+    };
     assert_eq!(
-        packed(placement(0, 0, 0, 0)).unwrap(),
+        packed(0, 0, 0, 0).unwrap(),
         PackedMetadata {
-            width: 0,
-            height: 0,
-            left: 0,
-            top: 0,
+            size: U16Vec2::new(0, 0),
+            bearing: I16Vec2::new(0, 0),
         }
     );
     assert_eq!(
-        packed(placement(
+        packed(
             u16::MAX as u32,
             u16::MAX as u32,
             i16::MIN as i32,
             i16::MAX as i32,
-        ))
+        )
         .unwrap(),
         PackedMetadata {
-            width: u16::MAX,
-            height: u16::MAX,
-            left: i16::MIN,
-            top: i16::MAX,
+            size: U16Vec2::new(u16::MAX, u16::MAX),
+            bearing: I16Vec2::new(i16::MIN, i16::MAX),
         }
     );
     assert_eq!(
-        packed(placement(1, 1, i16::MAX as i32, i16::MIN as i32)).unwrap(),
+        packed(1, 1, i16::MAX as i32, i16::MIN as i32).unwrap(),
         PackedMetadata {
-            width: 1,
-            height: 1,
-            left: i16::MAX,
-            top: i16::MIN,
+            size: U16Vec2::new(1, 1),
+            bearing: I16Vec2::new(i16::MAX, i16::MIN),
         }
     );
 
@@ -57,10 +53,7 @@ fn packed_metadata_checks_every_wire_boundary() {
         (1, 1, 0, i16::MAX as i32 + 1, "top above i16"),
     ];
     for (width, height, left, top, case) in invalid {
-        assert!(
-            packed(placement(width, height, left, top)).is_none(),
-            "{case}"
-        );
+        assert!(packed(width, height, left, top).is_none(), "{case}");
     }
 }
 
@@ -186,8 +179,11 @@ fn the_clock_resumes_where_it_stopped_and_skips_ineligible_slots() {
         AtlasSlot::for_test(Some(AllocId::deserialize(1)), 2),
         AtlasSlot::for_test(None, 1), // never drew — nothing to deallocate
         AtlasSlot {
-            content: ContentType::Color,
-            ..AtlasSlot::for_test(Some(AllocId::deserialize(3)), 0)
+            placement: Some(SlotPlacement {
+                content: ContentType::Color,
+                ..SlotPlacement::for_test(AllocId::deserialize(3))
+            }),
+            ..AtlasSlot::for_test(None, 0)
         },
         AtlasSlot::for_test(Some(AllocId::deserialize(4)), 10), // touched this frame
         AtlasSlot::for_test(Some(AllocId::deserialize(5)), 1),  // the true LRU
@@ -292,7 +288,7 @@ mod gpu {
     /// frame.
     fn fill(atlas: &mut RasterAtlas<TestKey>, device: &wgpu::Device, count: u16) {
         let pixels = [0u8; 16 * 16];
-        let metadata = PackedMetadata::new(16, 16, 0, 0).unwrap();
+        let metadata = PackedMetadata::new(UVec2::new(16, 16), IVec2::new(0, 0)).unwrap();
         for i in 0..count {
             assert!(
                 atlas
@@ -320,7 +316,7 @@ mod gpu {
         // the test would pass for the wrong reason.
         atlas.advance_to(1);
 
-        let metadata = PackedMetadata::new(300, 300, 0, 0).unwrap();
+        let metadata = PackedMetadata::new(UVec2::new(300, 300), IVec2::new(0, 0)).unwrap();
         assert_eq!(
             atlas.insert(&gpu.device, key(999), ContentType::Mask, metadata, &[]),
             None,
@@ -347,7 +343,7 @@ mod gpu {
         let gpu = headless_test_gpu();
         let mut atlas = small_atlas(&gpu.device);
         let pixels = [0u8; 16 * 16];
-        let metadata = PackedMetadata::new(16, 16, 0, 0).unwrap();
+        let metadata = PackedMetadata::new(UVec2::new(16, 16), IVec2::new(0, 0)).unwrap();
 
         // Saturate the side. Uniform 16² tiles shelf-pack a 256² side
         // with no waste — 16 shelves of 16 — so the capacity is exact
@@ -434,7 +430,7 @@ mod gpu {
         let gpu = headless_test_gpu();
         let mut atlas = small_atlas(&gpu.device);
         let pixels = [0u8; 16 * 16];
-        let metadata = PackedMetadata::new(16, 16, 0, 0).unwrap();
+        let metadata = PackedMetadata::new(UVec2::new(16, 16), IVec2::new(0, 0)).unwrap();
         for i in 0..8 {
             atlas
                 .insert(&gpu.device, key(i), ContentType::Mask, metadata, &pixels)
@@ -442,7 +438,7 @@ mod gpu {
         }
         // A non-drawing entry too: it owns no rectangle, so only its
         // expiry ticket would ever have retired it.
-        atlas.insert_unallocated(key(100), ContentType::Mask, PackedMetadata::EMPTY);
+        atlas.insert_unallocated(key(100));
         assert_eq!(atlas.cache.len(), 9);
 
         // Keep the even keys and the empty; drop the odd ones.
@@ -517,7 +513,7 @@ mod gpu {
         );
 
         let pixels = vec![0u8; 200 * 200];
-        let metadata = PackedMetadata::new(200, 200, 0, 0).unwrap();
+        let metadata = PackedMetadata::new(UVec2::new(200, 200), IVec2::new(0, 0)).unwrap();
         assert!(
             atlas
                 .insert(&gpu.device, key(999), ContentType::Mask, metadata, &pixels)

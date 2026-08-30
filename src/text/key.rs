@@ -30,8 +30,7 @@ pub(crate) struct QuantizedFace {
 /// can also reuse the size/width components if it wants to (e.g. group runs
 /// by size for atlas bin reuse). [`TextShapeKey::INVALID`] tags a measurement
 /// with no shaped buffer — the encoder drops those runs before paint.
-#[repr(C)]
-#[derive(Clone, Copy, Hash, Eq, PartialEq, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Clone, Copy, Hash, Eq, PartialEq, Debug)]
 pub(crate) struct TextShapeKey {
     /// 64-bit hash of the source string. `0` for the invalid sentinel.
     pub(crate) text_hash: u64,

@@ -75,19 +75,28 @@ pub(crate) struct GridTrackSlot {
 }
 
 impl GridTrackStore {
-    /// Zero this grid's hug arrays so a re-measure of the grid (e.g.,
-    /// `LayoutEngine::measure`'s grow-driven second pass) starts with a
-    /// clean accumulator. Both Phase 1 col-intrinsic queries and Phase 2
-    /// cell-height records merge via `slot[i] = slot[i].max(...)`; without
-    /// this reset, a re-measure under a wider `available` would keep the
-    /// previous narrower-pass row heights, leaving cells over-allocated
-    /// and inflating the grid's `desired.h`. Measure-only — arrange must
-    /// preserve these. Pinned by
-    /// `cross_driver_tests::parent_contains_child::two_hug_cols_section_height_matches_post_grow_text`.
-    pub(super) fn reset_hugs(&mut self, idx: GridDefId) {
-        for (axis, kind) in HUG_ORDER {
-            self.slice_mut(idx, axis, kind).fill(0.0);
-        }
+    /// Check that measure has not already run for this grid on this
+    /// layer, which is what lets it accumulate into the zeros
+    /// [`Self::reset_for`] laid down rather than clearing first.
+    ///
+    /// Both Phase 1 col-intrinsic queries and Phase 2 cell-height records
+    /// merge with `slot[i] = slot[i].max(...)`, so a second measure under
+    /// a wider `available` would keep the narrower pass's row heights,
+    /// leave cells over-allocated, and inflate the grid's `desired.h`.
+    /// [`LayoutDriver::measure`](crate::layout::driver::LayoutDriver::measure)
+    /// runs once per node per measure, which is the contract this reads.
+    ///
+    /// `total_used` is the witness: [`Self::record_resolution`] writes it
+    /// from measure alone, and [`Self::reset_for`] clears it per layer. A
+    /// grid with an empty dimension returns before recording, and carries
+    /// no tracks to accumulate into either.
+    pub(super) fn debug_assert_unmeasured(&self, idx: GridDefId) {
+        debug_assert!(
+            self.totals_pool[usize::from(idx)]
+                .iter()
+                .all(Option::is_none),
+            "grid {idx:?} measured twice on one layer; its hug accumulators would carry over",
+        );
     }
 
     pub(crate) fn reset_for(&mut self, tree: &Tree) {

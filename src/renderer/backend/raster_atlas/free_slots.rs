@@ -9,8 +9,8 @@ use crate::renderer::backend::raster_atlas::side::Side;
 ///
 /// **The list is private and [`Self::release`] is the only way onto it**,
 /// which is what carries the rule the eviction clock rests on: an index on
-/// this list has `alloc == None`. `ClockSweep` picks victims by
-/// [`AtlasSlot::is_packed`], so a free index it could see again would be
+/// this list has no [`AtlasSlot::placement`]. `ClockSweep` picks victims by
+/// that same field, so a free index it could see again would be
 /// released a second time — and one slab slot would then answer to two
 /// live keys, silently, from the next two `store` calls onward. Clearing
 /// the allocation and pushing the index are one step here, so the two
@@ -43,12 +43,14 @@ impl FreeSlots {
             "slab index {idx} released twice; two keys would share one slot",
         );
         slot.free = true;
-        if let Some(id) = slot.alloc.take() {
+        if let Some(placement) = slot.placement.take() {
             slot.generation = slot
                 .generation
                 .checked_add(1)
                 .expect("glyph slot generation overflowed");
-            sides[slot.content as usize].packer.deallocate(id);
+            sides[placement.content as usize]
+                .packer
+                .deallocate(placement.alloc);
         }
         self.0.push(idx);
     }

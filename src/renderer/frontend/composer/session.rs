@@ -382,7 +382,7 @@ impl PaintSink for ComposeSession<'_> {
         // (§ `IconRasterKey`), and centring spreads the difference instead of
         // piling it on one edge; the `Nearest` atlas sampler is why the origin
         // itself must land on integers.
-        let size = key.size.as_vec2();
+        let size = key.size().as_vec2();
         let centred = phys_rect.min + (Vec2::new(phys_rect.size.w, phys_rect.size.h) - size) * 0.5;
         self.out.icons.push(IconDrawRow {
             key,

@@ -8,19 +8,17 @@
 //! draining, diagnostics sync, present scheduling) is the same bookkeeping any
 //! windowed host would do.
 
-use std::sync::Arc;
 use std::time::Instant;
 
 use winit::event_loop::{ActiveEventLoop, ControlFlow};
-use winit::window::{Window as WinitWindow, WindowId};
+use winit::window::WindowId;
 
 use crate::app::App;
 use crate::common::clipboard::Clipboard;
 use crate::common::tracy;
 use crate::host::core::{HostCore, HostCoreConfig};
-use crate::host::window_driver::WindowDriver;
 use crate::host::winit::error::WinitHostError;
-use crate::host::winit::gpu::{GpuInit, SurfaceManager, WindowSurface};
+use crate::host::winit::gpu::{GpuInit, SurfaceManager};
 use crate::host::winit::handle::HostHandle;
 use crate::host::winit::window::{FramePresent, Window};
 use crate::host::winit::window_set::{WindowSet, WindowSlot};
@@ -209,7 +207,7 @@ impl<T: App + 'static> WinitRuntime<T> {
         let window = native::create_window(event_loop, token, &config)?;
         let surface = self.surfaces.make_surface(token, &window)?;
         let driver = self.core.driver(token).build();
-        self.register_window(window, surface, driver);
+        self.windows.push(Window::new(window, surface, driver));
         Ok(())
     }
 
@@ -219,14 +217,5 @@ impl<T: App + 'static> WinitRuntime<T> {
         if let Some(win) = self.windows.take(token) {
             self.core.retire(&win.driver);
         }
-    }
-
-    fn register_window(
-        &mut self,
-        window: Arc<WinitWindow>,
-        surface: WindowSurface,
-        driver: WindowDriver,
-    ) {
-        self.windows.push(Window::new(window, surface, driver));
     }
 }

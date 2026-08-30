@@ -16,8 +16,7 @@ use crate::text::request::TextShapeRequest;
 /// payload, composer, and text backend so the key cannot drift from its
 /// bytes between layers; [`Self::resolve_request`] is the single place the
 /// pair turns back into a shaping request.
-#[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct ShapedTextRef {
     pub(crate) key: TextShapeKey,
     pub(crate) span: Span,

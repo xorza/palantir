@@ -35,10 +35,21 @@ const MAX_RASTER_PX: u32 = 512;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct IconRasterKey {
     pub(crate) icon: IconRef,
-    pub(crate) size: U16Vec2,
+    /// Private, and [`Self::for_box`] is the only way to set it, because
+    /// both axes are guaranteed at least 1 — see [`snap_px`] and the
+    /// clamp beside it. The icon backend rests on that: an icon always
+    /// packs a rectangle, so a slot of its own that owns none is a broken
+    /// contract rather than a raster to skip.
+    size: U16Vec2,
 }
 
 impl IconRasterKey {
+    /// The physical pixel box this raster is cached at. Never zero on
+    /// either axis.
+    pub(crate) fn size(self) -> U16Vec2 {
+        self.size
+    }
+
     /// The key for drawing `icon` into a physical-pixel box of `box_px`.
     ///
     /// Snaps through the two-part ladder above, preserving the box's aspect
@@ -78,6 +89,21 @@ const fn snap_px(px: u32) -> u32 {
             MAX_RASTER_PX
         } else {
             stepped
+        }
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod test_support {
+    use crate::icons::icon_raster_key::IconRasterKey;
+    use crate::icons::icon_set::IconRef;
+    use glam::U16Vec2;
+
+    impl IconRasterKey {
+        /// A key at an exact pixel box, for the rasterizer tests that
+        /// drive sizes the ladder would not land on.
+        pub(crate) fn for_test(icon: IconRef, size: U16Vec2) -> Self {
+            Self { icon, size }
         }
     }
 }
