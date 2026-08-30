@@ -297,13 +297,6 @@ impl Cascade {
             .filter(move |row| row.rect.contains(pos))
     }
 
-    /// Topmost row under `pos` passing `gate`.
-    fn hit_first(&self, pos: Vec2, gate: impl Fn(&HitRow) -> bool) -> Option<WidgetId> {
-        self.hits_under(pos)
-            .find(|row| gate(row))
-            .map(|row| row.widget_id)
-    }
-
     /// One reverse walk that finds the topmost hover, scroll and pinch
     /// target at once. Used on `PointerMoved` and at `post_record` to
     /// recompute all three in a single pass.
@@ -370,7 +363,9 @@ pub(crate) mod test_support {
             pos: Vec2,
             filter: impl Fn(Sense) -> bool,
         ) -> Option<WidgetId> {
-            self.hit_first(pos, |row| filter(row.sense))
+            self.hits_under(pos)
+                .find(|row| filter(row.sense))
+                .map(|row| row.widget_id)
         }
     }
 }
