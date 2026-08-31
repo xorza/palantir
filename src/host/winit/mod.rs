@@ -47,7 +47,7 @@
 //!     .title("title")
 //!     .build(|ui, _handle| {
 //!         let mut theme = Theme::default();
-//!         theme.button.anim = Some(AnimSpec::SPRING);
+//!         theme.button.defaults.anim = Some(AnimSpec::SPRING);
 //!         ui.set_theme(theme);
 //!         MyApp
 //!     })?
