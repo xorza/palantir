@@ -1,6 +1,6 @@
 //! Recorded shapes for one tree: the [`Shapes`] buffer and its parallel hash
 //! column, plus the lowering, hashing and paint-rect code over the
-//! [`ShapeRecord`](record::ShapeRecord) variants it holds.
+//! [`ShapeRecord`] variants it holds.
 
 pub(crate) mod hash;
 pub(crate) mod lower;
@@ -73,7 +73,7 @@ impl Shapes {
     /// arena, so a record judged afterwards has already left those bytes
     /// behind for the frame — and two of the authoring inputs
     /// (a triangle's `radius`, a gradient's geometry) do not survive
-    /// lowering to be judged at all. [`Lower::has_nan`] is `O(1)` for
+    /// lowering to be judged at all. [`Lower`]'s `has_nan` is `O(1)` for
     /// every kind, so the screen stays in release, where it makes NaN
     /// mean what the rest of the pipeline already means by "no-op": drop
     /// the draw.

@@ -8,8 +8,7 @@
 //! - Leaf intrinsics (no driver module owns leaves).
 //!
 //! Per-driver intrinsic logic lives alongside that driver's
-//! `measure`/`arrange`, in its
-//! [`LayoutDriver`](crate::layout::driver::LayoutDriver) impl — same
+//! `measure`/`arrange`, in its [`LayoutDriver`] impl — same
 //! per-driver-file convention as the rest of layout.
 
 use crate::layout::axis::Axis;

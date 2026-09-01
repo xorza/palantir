@@ -90,9 +90,8 @@ impl WidgetId {
     }
 
     /// Avalanche a raw [`Hasher`] output into the final id, and keep it
-    /// out of the all-zero value that would collide with
-    /// [`Self::default`] (the "unset" sentinel used by
-    /// [`crate::scene::node::Node::new`]).
+    /// out of the all-zero value, so that a zeroed or
+    /// [`Default`]-constructed id can never equal a derived one.
     ///
     /// **Every constructor funnels through here**, which is the point:
     /// the clustering below is a property of `FxHasher`'s output, not of

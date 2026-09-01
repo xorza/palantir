@@ -31,8 +31,7 @@
 //! (surface/device startup), [`native`] (winit type conversion + window
 //! creation), [`runtime`] ([`WinitRuntime`]), and [`window`] (per-window
 //! swapchain frames). The backend-agnostic window vocabulary
-//! ([`WindowToken`], [`WindowConfig`](crate::window::window_config::WindowConfig)) lives in
-//! [`crate::window`].
+//! ([`WindowToken`], [`WindowConfig`]) lives in [`crate::window`].
 //!
 //! Usage:
 //!

@@ -1033,8 +1033,7 @@ impl WgpuBackend {
 
     /// The device every window's per-window attachment is built against
     /// — the one thing a host needs off the shared backend to size its
-    /// own [`Backbuffer`] and
-    /// [`Stencil`](crate::renderer::backend::stencil::Stencil).
+    /// own [`Backbuffer`] and [`Stencil`].
     pub(crate) fn device(&self) -> &wgpu::Device {
         &self.device
     }

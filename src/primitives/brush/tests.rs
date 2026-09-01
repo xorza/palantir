@@ -258,9 +258,9 @@ fn gradient_builders_preserve_geometry_stops_and_options() {
         .build();
     assert_eq!(linear.geometry.angle, PI / 2.0);
     assert_eq!(linear.stops.len(), 3);
-    assert_eq!(linear.stops[0].offset_u8, 0);
-    assert_eq!(linear.stops[1].offset_u8, 128);
-    assert_eq!(linear.stops[2].offset_u8, 255);
+    assert_eq!(linear.stops[0].offset(), 0.0);
+    assert_eq!(linear.stops[1].offset(), 128.0 / 255.0);
+    assert_eq!(linear.stops[2].offset(), 1.0);
     assert_eq!(linear.spread, Spread::Reflect);
     assert_eq!(linear.interp, Interp::Linear);
 

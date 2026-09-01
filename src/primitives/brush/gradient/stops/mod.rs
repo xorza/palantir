@@ -13,22 +13,23 @@ use tinyvec::ArrayVec;
 /// (2-3 stops dominate, multi-stop bars rarely exceed 5).
 pub(crate) const MAX_STOPS: usize = 8;
 
-/// One colour stop in a gradient. `offset_u8` is the 0..1 parametric
-/// position quantized to 8 bits (256 levels — finer than the LUT it
-/// bakes into). `color` is 8-bit linear RGB. Total 5 B / stop, align 1, so
-/// `GradientStops` is 40 B inline vs. 64 B with f32 offsets.
-/// Stops are storage-only (never animated; snap on morph), feed a u8
-/// LUT, and out-of-range positions clamp at construction — 8-bit
-/// precision is sufficient and saves ~24 B per gradient.
+/// One colour stop in a gradient. The position is the 0..1 parametric
+/// offset quantized to 8 bits (256 levels — finer than the LUT it bakes
+/// into), and the colour is 8-bit linear RGB. Total 5 B / stop, align 1,
+/// so `GradientStops` is 40 B inline vs. 64 B with f32 offsets. Stops
+/// are storage-only (never animated; snap on morph), feed a u8 LUT, and
+/// out-of-range positions clamp at construction — 8-bit precision is
+/// sufficient and saves ~24 B per gradient.
 ///
-/// Serde uses the **float** `offset` (0..1) as the wire form, not the
-/// internal `offset_u8` byte — theme authors write `offset = 0.5`,
-/// matching how every other spatial value in the crate is authored;
-/// the u8 quantization stays an implementation detail.
+/// The quantization stays an implementation detail: the fields are
+/// private, [`Self::new`] clamps and quantizes, [`Self::offset`] decodes
+/// back to f32, and serde uses the **float** `offset` (0..1) as the wire
+/// form. Theme authors write `offset = 0.5`, matching how every other
+/// spatial value in the crate is authored.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub struct Stop {
-    pub offset_u8: u8,
-    pub color: ColorU8,
+    offset_u8: u8,
+    color: ColorU8,
 }
 
 impl Stop {
@@ -48,6 +49,12 @@ impl Stop {
     #[inline]
     pub const fn offset(self) -> f32 {
         self.offset_u8 as f32 / 255.0
+    }
+
+    /// The stop colour, 8-bit linear RGB.
+    #[inline]
+    pub const fn color(self) -> ColorU8 {
+        self.color
     }
 }
 
@@ -104,6 +111,13 @@ impl GradientStops {
             builder.push(stop);
         }
         builder.build()
+    }
+
+    /// True when the stops hold [`Self::sorted`]'s ascending order — for
+    /// a consumer that relies on it to `debug_assert` it rather than
+    /// re-spell the comparison over a quantization it should not read.
+    pub(crate) fn is_ascending(&self) -> bool {
+        self.windows(2).all(|w| w[0].offset_u8 <= w[1].offset_u8)
     }
 
     /// The one place a `GradientStops` is built, and so the one place its

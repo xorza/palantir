@@ -109,16 +109,6 @@ impl Default for EncodedCache {
             map: FxHashMap::default(),
             arena: BlockArena::default(),
             pending: Vec::new(),
-            // `+ 2`, not `+ 1`: a ticket's deadline has to fit the ring
-            // measured from the last *drained* frame, and `settle` files
-            // during the frame, before `sweep` advances it. So the
-            // furthest deadline is `KEEP + 1` past a `drained_through`
-            // that is still one frame behind. At `KEEP = 120` the
-            // power-of-two rounding hid this; at 30 it does not —
-            // `KEEP + 1` rounds to exactly 32 slots, the deadline lands
-            // one past the ring, and every ticket fires a frame early
-            // and re-files. Correct either way, since an early ticket is
-            // just a re-file, but it doubles the drain for nothing.
             expiry: ExpiryWheel::with_keep(ENCODED_CACHE_KEEP_FRAMES),
             counters: EncodedCounters::default(),
         }

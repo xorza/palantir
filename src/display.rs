@@ -3,8 +3,8 @@
 //! scheduler paces against.
 //!
 //! The scale factor is screened at the door — see
-//! [`sanitize_scale_factor`] — so nothing downstream divides by a value
-//! the platform never promised.
+//! [`sanitize_scale_factor`](crate::display::sanitize_scale_factor) — so
+//! nothing downstream divides by a value the platform never promised.
 
 use crate::primitives::approx::EPS;
 use crate::primitives::rect::Rect;

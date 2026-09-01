@@ -47,12 +47,11 @@ use std::time::Duration;
 /// encode + compose.
 ///
 /// Render order *within* a group is fixed by the backend: **quads →
-/// text → every [`PaintTier`](crate::renderer::render_buffer::paint_tier::PaintTier)
-/// in `PaintTier::ALL` order** (`schedule::emit_group_body`; polylines
-/// ride the curve tier as segment + join-chrome instances). That
-/// reorder is safe iff no overlapping pair of draws swaps its record
-/// order — two rules, both enforced by forcing a
-/// [`ComposeSession::flush`]:
+/// text → every [`PaintTier`] in `PaintTier::ALL` order**
+/// (`schedule::emit_group_body`; polylines ride the curve tier as
+/// segment + join-chrome instances). That reorder is safe iff no
+/// overlapping pair of draws swaps its record order — two rules, both
+/// enforced by forcing a [`ComposeSession::flush`]:
 /// a *lower*-kind draw must not follow an overlapping higher-kind draw
 /// in the same group (it would replay under it), and a *higher*-kind
 /// draw must not follow an overlapping higher-kind draw of a

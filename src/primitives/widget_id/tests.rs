@@ -123,7 +123,7 @@ fn finalize_is_a_bijection_that_avoids_zero() {
     let mut images = std::collections::HashSet::with_capacity(raws.len());
     for &raw in &raws {
         let id = WidgetId::finalize(raw);
-        assert_ne!(id.0, 0, "finalize must never produce the unset sentinel");
+        assert_ne!(id.0, 0, "finalize must never produce the zero value");
         if raw != 0 {
             // Round-trip proves this input was not folded onto
             // another. `raw == 0` is the one value the zero-guard
@@ -142,8 +142,8 @@ fn finalize_is_a_bijection_that_avoids_zero() {
         raws.len(),
         "finalize folded two distinct ids together",
     );
-    // Zero is displaced to 1 rather than left as the unset sentinel,
-    // and `1` specifically because `u64::MAX` is taken by
+    // Zero is displaced to 1 rather than passed through, and `1`
+    // specifically because `u64::MAX` is taken by
     // [`WidgetId::VIEWPORT`].
     //
     // This displacement is the *only* place injectivity is given up:

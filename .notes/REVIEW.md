@@ -4,18 +4,6 @@ Delete an item once it is addressed. Delete a heading once its items are gone.
 Paths are relative to `palantir/src`. Line numbers are from the reviewed
 revision and drift as files change.
 
-## Docs that describe code that moved or changed
-
-- [ ] `host/bench_gpu.rs:9` — the module doc says `test_gpu` asks for `LowPower`. `host/test_gpu.rs:31-34` asks for `HighPerformance` and explains why `LowPower` picks the wrong adapter.
-- [ ] `renderer/backend/quad_pipeline.rs:204-212` — two doc comments run together on `new`. The first paragraph (about `gradient_bgl` arriving at each `bind*` call) describes `build_variants`, and no blank line separates `draw_mask` from it.
-- [ ] `layout/pass.rs:63-107` — the doc block for `measure_per_axis_hug` is attached to `intrinsic_min` (line 100); the two docs run together and `LayoutPass::new` sits between the doc and the method it names.
-- [ ] `layout/types/align.rs:204-226` — the doc for `or_stretch_if_auto` ("`Auto → Stretch`…") is attached to `offset_in` (line 217); `or_stretch_if_auto` (line 226) has none.
-- [ ] `primitives/widget_id/mod.rs:93-96` — the doc says `Self::default` is the "unset" sentinel `Node::new` uses; `Node::new` uses `Salt::Auto(auto_stable())`.
-- [ ] `scene/record_store/text_store.rs:14-17` — the doc says `RecordStore` "already owns the arena behind a `RefCell`"; there is no `RefCell` on `RecordStore`.
-- [ ] `renderer/frontend/payload/draw_quad_payload.rs:213-227` — `fill_is_noop` is a private one-line wrapper over `self.fill.is_noop()`, and its doc links `BrushSource::to_gpu_fields`, which does not exist (the method is `gpu_fill`).
-- [ ] `renderer/backend/text/encode/cache/mod.rs:110-121` — the "`+ 2`, not `+ 1`" paragraph explains `ExpiryWheel::with_keep`'s ring sizing at a call site that contains no `+ 2`; `common/expiry_wheel/mod.rs:138-152` already carries the same explanation on `with_keep`.
-- [ ] `primitives/brush/gradient/stops/mod.rs:27-31` — the doc says the u8 quantization "stays an implementation detail" while `Stop::offset_u8` and `Stop::color` are `pub` fields beside the `Stop::new` constructor.
-
 ## Per-frame work that a cheaper shape avoids
 
 - [ ] `input/input_state/mod.rs` — `key_pressed` calls `watch_key`, a `Vec::contains`, on every poll. An app that polls n chords per frame pays O(n²) per frame.

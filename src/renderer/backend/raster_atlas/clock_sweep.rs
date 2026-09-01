@@ -31,7 +31,7 @@ impl ClockSweep {
     /// eviction: packed, of `target` content, and not drawn on
     /// `current_frame`. Gives up after one full rotation.
     ///
-    /// [`AtlasSlot::is_packed`] is what keeps a slot already on the free
+    /// [`AtlasSlot::placement`] is what keeps a slot already on the free
     /// list out of the result — see its doc.
     pub(super) fn over(
         slots: &[AtlasSlot],

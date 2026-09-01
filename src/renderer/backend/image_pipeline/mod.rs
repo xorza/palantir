@@ -2,9 +2,8 @@
 //! but draws textured quads — per-instance rect + tint, plus a
 //! per-image bind group selected at draw time.
 //!
-//! The bind groups themselves belong to
-//! [`ImageTextures`](crate::renderer::backend::image_textures::ImageTextures),
-//! which the backend owns beside this pipeline and hands to
+//! The bind groups themselves belong to [`ImageTextures`], which the
+//! backend owns beside this pipeline and hands to
 //! [`ImagePipeline::draw`] — the same split the text pass makes between
 //! its encoder and the atlas it fills. That store also holds the
 //! `GpuView` render targets, so a composite of one binds exactly like an

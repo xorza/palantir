@@ -201,10 +201,6 @@ pub(crate) enum AxisAlign {
 }
 
 impl AxisAlign {
-    /// `Auto → Stretch`, otherwise unchanged. Grid's per-cell default
-    /// is stretch (WPF semantics): a non-Fixed child with no explicit
-    /// alignment fills its cell on each axis. Other drivers leave `Auto`
-    /// alone (arrange-axis resolution consults the child's `Sizing`).
     /// The offset that places `extent` inside a `slot` of that size,
     /// before any overflow policy.
     ///
@@ -222,6 +218,10 @@ impl AxisAlign {
         }
     }
 
+    /// `Auto → Stretch`, otherwise unchanged. Grid's per-cell default
+    /// is stretch (WPF semantics): a non-Fixed child with no explicit
+    /// alignment fills its cell on each axis. Other drivers leave `Auto`
+    /// alone (arrange-axis resolution consults the child's `Sizing`).
     #[inline]
     pub(crate) const fn or_stretch_if_auto(self) -> AxisAlign {
         match self {
