@@ -57,18 +57,14 @@ impl WidgetLook {
     /// toward: `Background` (fill + stroke) animates, `TextStyle`
     /// carries its animated colour and snapped font/leading.
     ///
-    /// `fallback_text` is read only when `self.text` is `None`, so a
-    /// look that overrides text never copies [`Theme::text`](crate::Theme).
-    /// It stays a reference — and this stays separate from the
-    /// `Ui::animate` call that consumes the result — because the caller
-    /// borrows it straight out of `ui.theme`, and that borrow has to end
-    /// before `ui` is reborrowed mutably. Folding the two together would
-    /// force an unconditional clone.
+    /// Separate from the `Ui::animate` call that consumes the result
+    /// because the caller reads `fallback_text` out of `ui.theme`, and
+    /// that borrow has to end before `ui` is reborrowed mutably.
     #[inline(always)]
-    pub fn to_animated(&self, fallback_text: &TextStyle) -> AnimatedLook {
+    pub fn to_animated(&self, fallback_text: TextStyle) -> AnimatedLook {
         AnimatedLook {
             background: self.background.clone(),
-            text: self.text.clone().unwrap_or_else(|| fallback_text.clone()),
+            text: self.text.unwrap_or(fallback_text),
         }
     }
 

@@ -106,14 +106,13 @@ impl<'a, S> ComboBox<'a, S> {
         let id = widget.id();
 
         // Trigger chrome from the button theme (same flow as `Button`).
-        let theme = ui.theme();
-        let slot = self.slot(theme);
-        let look = slot.plan(&response, (), &theme.text).apply(ui, &mut widget);
+        // One handle covers both reads: the geometry is read again inside
+        // the `record` closure below, which owns `ui` mutably.
+        let theme = ui.theme().clone();
+        let slot = self.slot(&theme);
+        let look = slot.plan(&response, (), theme.text).apply(ui, &mut widget);
 
-        // Handle: the geometry is read again inside the `record` closure
-        // below, which owns `ui` mutably.
-        let ui_theme = ui.theme().clone();
-        let geom = &ui_theme.combo_box;
+        let geom = &theme.combo_box;
         let node = &mut widget.node;
         node.justify = Justify::SpaceBetween;
         node.child_align = Align::v(VAlign::Center);
@@ -170,7 +169,7 @@ impl<'a, S> ComboBox<'a, S> {
         // separate `escape_pressed` here.
 
         if open && let Some(rect) = trigger_rect {
-            let ctx = &ui_theme.context_menu;
+            let ctx = &theme.context_menu;
             let options = self.options;
             let label = self.label;
             let selected = self.selected;

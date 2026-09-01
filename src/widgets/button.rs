@@ -67,7 +67,7 @@ impl<'a> Button<'a> {
         let id = widget.id();
         let theme = ui.theme();
         let slot = self.slot(theme);
-        let look = slot.plan(&response, (), &theme.text).apply(ui, &mut widget);
+        let look = slot.plan(&response, (), theme.text).apply(ui, &mut widget);
         let label = self.label;
         let label_align = self.label_align;
         let label_wrap = self.label_wrap;

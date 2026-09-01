@@ -36,7 +36,7 @@ use crate::widgets::theme::text_style::TextStyle;
 /// # fn demo(ui: &mut Ui) {
 /// let style = TextStyle {
 ///     color: Color::hex(0xd94f4f),
-///     ..ui.theme().text.clone()
+///     ..ui.theme().text
 /// };
 /// Text::new("hi").style(&style).show(ui);
 /// # }
@@ -76,7 +76,7 @@ impl<'a> Text<'a> {
         text,
         "All-or-nothing — every axis the bundle covers (font size, color, \
          leading) is replaced. To tweak one axis, build the bundle from the \
-         theme: `TextStyle { color: red, ..ui.theme().text.clone() }`.",
+         theme: `TextStyle { color: red, ..ui.theme().text }`.",
     );
 
     /// Shape this run bold, overriding just the weight of the resolved

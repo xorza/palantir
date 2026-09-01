@@ -367,7 +367,7 @@ fn cell_theme() -> ButtonTheme {
         .with_color(Color::hex(0x14161a));
     let look = || WidgetLook {
         background: Background::NONE,
-        text: Some(label.clone()),
+        text: Some(label),
     };
     ButtonTheme {
         looks: StatefulLook {

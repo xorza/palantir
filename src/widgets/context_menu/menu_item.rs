@@ -97,14 +97,14 @@ impl<'a> MenuItem<'a> {
         let item = self.slot(theme);
         let shortcut_color = item.shortcut;
         let gap = item.gap;
-        let look = item.plan(&response, (), &theme.text).apply(ui, &mut widget);
+        let look = item.plan(&response, (), theme.text).apply(ui, &mut widget);
         // Already fallen back to `theme.text` by `WidgetLook::animate`.
         let text_style = look.text;
         // Shortcut hint reads muted — same style as the label but the
         // theme's `shortcut` color.
         let shortcut_style = TextStyle {
             color: shortcut_color,
-            ..text_style.clone()
+            ..text_style
         };
 
         let node = &mut widget.node;

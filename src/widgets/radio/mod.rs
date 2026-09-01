@@ -75,7 +75,7 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
         }
 
         let chrome = ToggleChrome {
-            plan: slot.plan(&response, selected, &theme.text),
+            plan: slot.plan(&response, selected, theme.text),
             gap: slot.gap,
             boxed: Node::leaf().size((Sizing::fixed(pip_size), Sizing::fixed(pip_size))),
             // Forces the pip chrome to a circle regardless of any

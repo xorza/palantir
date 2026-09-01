@@ -138,6 +138,12 @@ impl CascadeEngine {
             );
             if !incremental_complete {
                 self.counters.abandoned_incremental();
+                // Restarts at layer zero, over the layers this loop
+                // already repaired: `run_full` rebuilds one flat `entries`
+                // table whose per-layer bases it assigns as it walks, so
+                // there is no entry point part-way through. The repeat
+                // costs one extra paint repair, on a frame already
+                // committed to a full rebuild.
                 self.run_full(forest, layout, display, cascade, &layout_hashes);
                 return;
             }

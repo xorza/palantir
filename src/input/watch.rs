@@ -91,13 +91,13 @@ pub(super) struct Watches {
 }
 
 impl Watches {
-    /// Idempotent push — duplicate shortcuts from multiple
-    /// watchers collapse to one entry. Linear `contains` is fine
-    /// at the expected count.
+    /// Pushed unconditionally, duplicates and all. A `contains` here
+    /// runs per poll — every `InputState::key_pressed` is one — so an app
+    /// reading n chords a frame paid O(n²) to shorten a list whose only
+    /// reader, [`Self::matches_press`], short-circuits and runs per
+    /// arriving key press.
     pub(super) fn watch_key(&mut self, sc: Shortcut) {
-        if !self.keys.contains(&sc) {
-            self.keys.push(sc);
-        }
+        self.keys.push(sc);
     }
 
     /// Test whether a key press would wake any specific-chord watcher.

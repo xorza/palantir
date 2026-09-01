@@ -64,7 +64,7 @@ impl<'a> Switch<'a> {
         let anim = slot.defaults.anim;
         let knob_id = id.with("knob");
         let chrome = ToggleChrome {
-            plan: slot.plan(&response, on, &theme.text),
+            plan: slot.plan(&response, on, theme.text),
             gap: slot.gap,
             // A `Canvas` so the knob can be absolutely positioned inside
             // the track. Width is stroke-independent, so it resolves

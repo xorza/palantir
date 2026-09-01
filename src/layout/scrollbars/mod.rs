@@ -263,8 +263,15 @@ impl LayoutDriver for Scrollbars {
     const ARRANGE_DEPENDS_ONLY_ON_SLOT: bool = false;
 
     /// Bars never inflate their scroll: the overlay reports `ZERO` so a
-    /// `Hug` ancestor sizes to content alone. Children are still measured so
-    /// their `desired` rows exist for the arrange below.
+    /// `Hug` ancestor sizes to content alone.
+    ///
+    /// The four leaves are still measured, although `arrange` below
+    /// places every one of them by rect and reads none of the answers.
+    /// Filling their `desired` rows is the point: `capture_tree` stores
+    /// the layer's whole column and a measure hit restores a whole
+    /// subtree's slice of it, so a row this driver left unwritten would
+    /// carry whatever the retained scratch held at that index last
+    /// frame, and the cache would store and replay that.
     fn measure(
         pass: &mut LayoutPass<'_>,
         node: NodeId,

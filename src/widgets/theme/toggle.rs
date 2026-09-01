@@ -169,7 +169,7 @@ impl ToggleTheme {
             },
             disabled: WidgetLook {
                 background: bg(p.elem, Stroke::solid(p.border_soft(), 1.0)),
-                text: disabled_text.clone(),
+                text: disabled_text,
             },
         };
         let acc = p.accent;

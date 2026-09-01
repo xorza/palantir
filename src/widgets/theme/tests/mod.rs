@@ -27,7 +27,7 @@ use crate::widgets::theme::tooltip::TooltipTheme;
 use crate::widgets::theme::widget_look::WidgetLook;
 use crate::widgets::theme::widget_look::animated_look::AnimatedLook;
 use crate::widgets::theme::widget_look::stateful_look::StatefulLook;
-use static_assertions::assert_not_impl_any;
+use static_assertions::{assert_impl_all, assert_not_impl_any};
 
 assert_not_impl_any!(Theme: Copy);
 assert_not_impl_any!(ButtonTheme: Copy);
@@ -43,12 +43,15 @@ assert_not_impl_any!(SliderTheme: Copy);
 assert_not_impl_any!(SpinnerTheme: Copy);
 assert_not_impl_any!(SplitterTheme: Copy);
 assert_not_impl_any!(TextEditTheme: Copy);
-assert_not_impl_any!(TextStyle: Copy);
 assert_not_impl_any!(ToggleTheme: Copy);
 assert_not_impl_any!(TooltipTheme: Copy);
 assert_not_impl_any!(AnimatedLook: Copy);
 assert_not_impl_any!(StatefulLook: Copy);
 assert_not_impl_any!(WidgetLook: Copy);
+
+// The one theme type that *is* `Copy`: five scalar fields, and it rides
+// per-row and per-widget paths where the aggregates above never go.
+assert_impl_all!(TextStyle: Copy);
 
 /// A theme as RON text — what the tests below serialize, edit and compare.
 fn pretty<T: Serialize>(value: &T) -> String {

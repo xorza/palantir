@@ -69,7 +69,7 @@ pub(crate) fn record(ui: &mut Ui) {
         weight: FontWeight::Regular,
         color: Color::rgb(1.0, 0.2, 0.2),
         font_size_px: 12.0,
-        ..ui.theme().text.clone()
+        ..ui.theme().text
     };
     let chrome = Background::fill(Color::linear_rgba(0.0, 0.0, 0.0, 0.75));
     ui.layer(Layer::Debug).show(|ui| {

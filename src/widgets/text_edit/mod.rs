@@ -389,7 +389,7 @@ impl<'a> TextEdit<'a> {
         let caret_width = slot.caret_width;
         let selection_color = slot.selection;
         let placeholder_color = slot.placeholder;
-        let look = slot.plan(&response, (), &theme.text).apply(ui, &mut widget);
+        let look = slot.plan(&response, (), theme.text).apply(ui, &mut widget);
         // A face the shaper cannot be asked for shapes nothing — the
         // answer `TextShape::is_noop` gives every widget that records
         // text. This one needs an explicit arm because it derives caret
