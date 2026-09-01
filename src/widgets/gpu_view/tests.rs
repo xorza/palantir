@@ -24,7 +24,7 @@ impl GpuPaint for NoopPaint {
     fn paint(&mut self, _ctx: &mut GpuFrameCtx<'_>) {}
 }
 
-fn scene() -> Rc<RefCell<dyn GpuPaint>> {
+fn scene() -> Rc<RefCell<NoopPaint>> {
     Rc::new(RefCell::new(NoopPaint))
 }
 
@@ -37,7 +37,7 @@ fn records_one_gpu_view_shape_at_committed_size() {
         Panel::hstack()
             .auto_id()
             .show(ui, |ui| {
-                GpuView::new(scene())
+                GpuView::new(&scene())
                     .size((Sizing::fixed(150.0), Sizing::fixed(90.0)))
                     .show(ui)
                     .node()
@@ -65,7 +65,7 @@ fn records_one_gpu_view_shape_at_committed_size() {
 #[test]
 fn default_fills_parent() {
     let mut h = UiHarness::new(UVec2::new(160, 100));
-    let node = h.frame_value(|ui| GpuView::new(scene()).show(ui).node());
+    let node = h.frame_value(|ui| GpuView::new(&scene()).show(ui).node());
     let r = h.ui.arranged_rect(Layer::Main, node);
     assert_eq!((r.size.w, r.size.h), (160.0, 100.0));
 }
@@ -83,7 +83,7 @@ fn default_fills_parent() {
 fn the_live_roster_lists_a_view_the_damage_plan_culls() {
     let mut h = UiHarness::new(UVec2::new(200, 200));
     h.frame(|ui| {
-        GpuView::new(scene())
+        GpuView::new(&scene())
             .id(WidgetId::from_hash("gpu_view_retained"))
             .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
             .align(Align::new(HAlign::Right, VAlign::Bottom))
@@ -131,7 +131,7 @@ fn senses_click_when_opted_in() {
     let mut h = UiHarness::new(surface);
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
-            GpuView::new(scene())
+            GpuView::new(&scene())
                 .id(id)
                 .sense(Sense::CLICK)
                 .size((Sizing::fixed(100.0), Sizing::fixed(50.0)))
@@ -142,7 +142,7 @@ fn senses_click_when_opted_in() {
     let mut clicked = false;
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
-            clicked |= GpuView::new(scene())
+            clicked |= GpuView::new(&scene())
                 .id(id)
                 .sense(Sense::CLICK)
                 .size((Sizing::fixed(100.0), Sizing::fixed(50.0)))

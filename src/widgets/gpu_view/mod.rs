@@ -12,8 +12,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 /// A widget that renders raw `wgpu` content into its rect. App code
-/// implements [`GpuPaint`] on its own renderer, wraps it in
-/// `Rc<RefCell<…>>`, and hands a clone to [`GpuView::new`] each frame.
+/// implements [`GpuPaint`] on its own renderer, keeps it in
+/// `Rc<RefCell<…>>`, and lends that handle to [`GpuView::new`] each frame.
 /// The framework owns an off-screen texture sized to the widget's composed
 /// physical rect (uniformly downsampled at the device texture cap), runs the
 /// callback into it during submit, and composites the result through the image
@@ -35,9 +35,8 @@ use std::rc::Rc;
 /// # struct App { scene: Rc<RefCell<MyScene>>, camera: [f32; 3] }
 /// # impl App {
 /// # fn demo(&mut self, ui: &mut Ui) {
-/// let scene = self.scene.clone();          // Rc<RefCell<MyScene>>
-/// scene.borrow_mut().camera = self.camera;
-/// GpuView::new(scene)
+/// self.scene.borrow_mut().camera = self.camera;
+/// GpuView::new(&self.scene)
 ///     .size((Sizing::fill(1.0), Sizing::fill(1.0)))  // Configure::size
 ///     .show(ui);
 /// # }
@@ -64,8 +63,14 @@ impl GpuView {
     /// [`GpuPaint::init`] once (when the device is first available) and
     /// [`GpuPaint::paint`] each painted frame, into an off-screen target
     /// sized to this widget's effective raster resolution.
+    ///
+    /// Borrowed and generic over the renderer's own type, so the caller
+    /// keeps the handle it holds across frames and never writes
+    /// `dyn GpuPaint`: the refcount bump and the type erasure both happen
+    /// here, on the one line that can spell the target type.
     #[track_caller]
-    pub fn new(paint: Rc<RefCell<dyn GpuPaint>>) -> Self {
+    pub fn new<T: GpuPaint + 'static>(paint: &Rc<RefCell<T>>) -> Self {
+        let paint: Rc<RefCell<T>> = Rc::clone(paint);
         Self {
             node: Node::leaf().size((Sizing::fill(1.0), Sizing::fill(1.0))),
             paint: GpuPaintRef(paint),

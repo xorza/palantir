@@ -51,11 +51,11 @@ impl GpuPaint for RedClear {
 fn gpu_view_clear_red_reaches_screen() {
     let mut h = Harness::new();
     let size = UVec2::new(64, 64);
-    let paint: Rc<RefCell<dyn GpuPaint>> = Rc::new(RefCell::new(RedClear));
+    let paint = Rc::new(RefCell::new(RedClear));
     let p = Rc::clone(&paint);
     let img = h.render(size, 1.0, DARK_BG, |ui| {
         // Default sizing fills the surface; the whole frame is the view.
-        GpuView::new(Rc::clone(&p)).show(ui);
+        GpuView::new(&p).show(ui);
     });
 
     let expected = Rgba([255u8, 0, 0, 255]);
@@ -221,7 +221,7 @@ impl GpuPaint for DepthTriangle {
 fn gpu_view_pipeline_depth_and_capacity_crop() {
     let mut h = Harness::new();
     let size = UVec2::new(64, 64);
-    let paint: Rc<RefCell<dyn GpuPaint>> = Rc::new(RefCell::new(DepthTriangle {
+    let paint = Rc::new(RefCell::new(DepthTriangle {
         pipeline: None,
         depth: None,
         depth_size: glam::UVec2::ZERO,
@@ -232,7 +232,7 @@ fn gpu_view_pipeline_depth_and_capacity_crop() {
     }));
     let p = Rc::clone(&paint);
     let img = h.render(size, 1.0, DARK_BG, |ui| {
-        GpuView::new(Rc::clone(&p)).show(ui);
+        GpuView::new(&p).show(ui);
     });
     let green = Rgba([0u8, 255, 0, 255]);
     // (63,63) is the discriminating pixel: with the correct `used/capacity`
@@ -262,16 +262,14 @@ fn gpu_view_callback_receives_composed_raster_scale() {
         last_display_scale: 0.0,
         last_raster_scale: 0.0,
     }));
-    // Turbofished: the unsizing to `dyn GpuPaint` has to land on the
-    // binding, and inference would otherwise push it onto the argument.
-    let p: Rc<RefCell<dyn GpuPaint>> = Rc::<RefCell<DepthTriangle>>::clone(&paint);
+    let p = Rc::clone(&paint);
     let img = h.render(size, 2.0, DARK_BG, |ui| {
         Panel::zstack()
             .auto_id()
             .size((Sizing::fixed(32.0), Sizing::fixed(32.0)))
             .transform(TranslateScale::from_scale(1.5))
             .show(ui, |ui| {
-                GpuView::new(Rc::clone(&p)).show(ui);
+                GpuView::new(&p).show(ui);
             });
     });
 
