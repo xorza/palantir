@@ -18,10 +18,9 @@
 //! adapter owns swapchain acquisition, presentation, occlusion, and wake
 //! scheduling.
 
-use glam::UVec2;
-
 use crate::app::App;
 use crate::common::tracy;
+use crate::display::Display;
 use crate::host::clock::{Clock, RealtimeClock};
 use crate::host::shared::HostShared;
 use crate::renderer::backend::WgpuBackend;
@@ -36,12 +35,13 @@ use crate::renderer::render_plan::RenderPlan;
 use crate::scene::damage::{Damage, FULL_REPAINT_THRESHOLD};
 use crate::ui::Ui;
 use crate::ui::frame_engines::FrameEngines;
+use crate::ui::frame_report::FrameReport;
 use crate::ui::frame_stamp::FrameInput;
 use crate::ui::frame_stamp::FrameStamp;
 use crate::window::window_commands::WindowCommands;
 use crate::window::window_output::WindowOutput;
 use crate::window::window_token::WindowToken;
-use crate::{Display, FrameReport};
+use glam::UVec2;
 
 /// Per-window state driving the host's shared [`Frontend`] and [`WgpuBackend`].
 /// Built by [`WindowDriverBuilder`] from the shared [`HostShared`]; owns no GPU

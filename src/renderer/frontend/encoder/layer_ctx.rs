@@ -10,10 +10,11 @@ use crate::layout::text_runs::TextRuns;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::primitives::approx::noop_f32;
 use crate::primitives::brush::gradient::FillAxis;
+use crate::primitives::corners::Corners;
 use crate::primitives::fill_kind::FillKind;
 use crate::primitives::image::{ImageDownsample, ImageFilter, ImageFit};
 use crate::primitives::nan::NanCheck;
-use crate::primitives::{corners::Corners, rect::Rect};
+use crate::primitives::rect::Rect;
 use crate::renderer::frontend::encoder::GradientResolver;
 use crate::renderer::frontend::encoder::geometry;
 use crate::renderer::frontend::encoder::geometry::Resolved;
@@ -45,6 +46,7 @@ use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::paint_anims::PaintAnimCursor;
 use crate::shape::rect::RectKind;
 use crate::text::shaped_ref::ShapedTextRef;
+use glam::UVec2;
 use std::time::Duration;
 
 /// Per-layer encode context: the fixed inputs one layer's walk reads,
@@ -336,7 +338,7 @@ impl LayerCtx<'_> {
                     ImageSource::GpuView { epoch: _ } => {
                         let wid = self.tree.records.widget_id()[id.idx()];
                         let view = self.gpu_views.view(wid);
-                        (view.texture_id, glam::UVec2::ZERO, Some(&view.paint))
+                        (view.texture_id, UVec2::ZERO, Some(&view.paint))
                     }
                 };
                 let Resolved {

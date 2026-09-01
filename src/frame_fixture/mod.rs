@@ -51,6 +51,7 @@ use crate::scene::node::configure::Configure;
 use crate::ui::Ui;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
+use glam::{UVec2, Vec2};
 
 /// Content multiplier the bench arms record at. The showcase page uses a
 /// far smaller one — this is sized for the bench's tall offscreen target,
@@ -70,7 +71,7 @@ pub const BENCH_DPR: f32 = 2.0;
 /// tree, while paint and the GPU arms see only the visible part. Raise
 /// it with `--size` to measure the whole fixture painting at once.
 #[cfg(any(test, feature = "internals"))]
-pub const BENCH_SURFACE: glam::UVec2 = glam::UVec2::new(2560, 1440); // 1280x720 @ 2x
+pub const BENCH_SURFACE: UVec2 = UVec2::new(2560, 1440); // 1280x720 @ 2x
 
 /// Persistent state for widgets that mutate user data (TextEdit needs
 /// a `&mut String`, Checkbox a `&mut bool`, RadioButton a `&mut T`).
@@ -93,7 +94,7 @@ pub struct FrameFixture {
     /// full subtree but layout/measure cache hits trivially. Tests
     /// whether a cascade delta-cache (cached output translated by
     /// `parent_transform`) would meaningfully reduce cascade cost.
-    pub(crate) scroll_offset: glam::Vec2,
+    pub(crate) scroll_offset: Vec2,
     /// Backing values for the settings grid (Slider / DragValue /
     /// ComboBox / Switch). Held constant across bench iterations —
     /// only `tick` mutates — so they never perturb the steady-state
@@ -118,7 +119,7 @@ impl Default for FrameFixture {
             enabled: true,
             role: 1,
             tick: 0,
-            scroll_offset: glam::Vec2::ZERO,
+            scroll_offset: Vec2::ZERO,
             volume: 0.65,
             mix: 0.35,
             zoom: 42.0_f64,

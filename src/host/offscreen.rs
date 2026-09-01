@@ -37,7 +37,6 @@
 //! factor, a window request it has no lifecycle for — so `frame_offscreen`
 //! panics rather than returning a `Result` no caller could act on.
 
-use crate::FrameReport;
 use crate::app::App;
 use crate::common::clipboard::Clipboard;
 use crate::diagnostics::gpu_pass_stats::GpuPassStats;
@@ -49,6 +48,7 @@ use crate::host::window_driver::{CpuFrame, PresentStrategy, TargetKey, WindowDri
 use crate::primitives::approx::EPS;
 use crate::text::shaper::TextShaper;
 use crate::ui::Ui;
+use crate::ui::frame_report::FrameReport;
 use crate::window::window_token::WindowToken;
 
 /// One shared renderer driving one render stream into a texture instead of a

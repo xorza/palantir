@@ -4,6 +4,7 @@ use crate::primitives::approx::noop_f32;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
 use crate::scene::shapes::record::ColorMode;
 use crate::shape::style::{LineCap, LineJoin};
+use glam::Vec2;
 
 /// Stroked polyline payload. `width` is logical px. Points + colors
 /// live in the window's [`RecordStore`] (`polyline_points` /
@@ -24,7 +25,7 @@ pub(crate) struct DrawPolylinePayload {
     ///
     /// [`PaintAnim::Spin`]: crate::scene::tree::paint_anims::PaintAnim::Spin
     pub(crate) bounds: StrokeBounds,
-    pub(crate) origin: glam::Vec2,
+    pub(crate) origin: Vec2,
     pub(crate) width: f32,
     pub(crate) points_start: u32,
     pub(crate) points_len: u32,

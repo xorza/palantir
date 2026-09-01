@@ -2,9 +2,7 @@
 //! the text backend.
 
 use crate::primitives::interned_text::InternedText;
-
 use crate::primitives::recorded_text::RecordedText;
-
 use crate::primitives::span::Span;
 use crate::text::key::TextShapeKey;
 use crate::text::request::TextShapeRequest;
