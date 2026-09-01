@@ -51,7 +51,7 @@ use crate::scene::node::configure::Configure;
 use crate::ui::Ui;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
-use glam::{UVec2, Vec2};
+use glam::Vec2;
 
 /// Content multiplier the bench arms record at. The showcase page uses a
 /// far smaller one — this is sized for the bench's tall offscreen target,
@@ -71,7 +71,7 @@ pub const BENCH_DPR: f32 = 2.0;
 /// tree, while paint and the GPU arms see only the visible part. Raise
 /// it with `--size` to measure the whole fixture painting at once.
 #[cfg(any(test, feature = "internals"))]
-pub const BENCH_SURFACE: UVec2 = UVec2::new(2560, 1440); // 1280x720 @ 2x
+pub const BENCH_SURFACE: glam::UVec2 = glam::UVec2::new(2560, 1440); // 1280x720 @ 2x
 
 /// Persistent state for widgets that mutate user data (TextEdit needs
 /// a `&mut String`, Checkbox a `&mut bool`, RadioButton a `&mut T`).
