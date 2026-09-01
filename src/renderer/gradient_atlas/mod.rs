@@ -46,10 +46,9 @@ use crate::renderer::gradient_atlas::counters::GradientAtlasCounters;
 use crate::renderer::gradient_atlas::mru_list::MruList;
 use rustc_hash::FxHashMap;
 
+pub(crate) mod bake;
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
-
-pub(crate) mod bake;
 mod counters;
 mod mru_list;
 pub(crate) mod shared_gradient_atlas;

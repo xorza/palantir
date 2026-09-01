@@ -302,8 +302,7 @@ impl std::hash::Hash for Sizes {
 
 impl<T: Num> From<T> for Sizes {
     fn from(v: T) -> Self {
-        let s = Sizing::fixed(v.as_f32());
-        Self::new(s, s)
+        Sizing::from(v).into()
     }
 }
 
@@ -315,7 +314,7 @@ impl<W: Into<Sizing>, H: Into<Sizing>> From<(W, H)> for Sizes {
 
 impl From<Size> for Sizes {
     fn from(s: Size) -> Self {
-        Self::new(Sizing::fixed(s.w), Sizing::fixed(s.h))
+        (s.w, s.h).into()
     }
 }
 

@@ -34,15 +34,11 @@ impl StateMap {
     }
 
     pub(super) fn try_get<T: 'static>(&self, id: WidgetId) -> Option<&T> {
-        let store = self.stores.get::<Store<T>>()?;
-        let idx = *store.map.get(&id)? as usize;
-        Some(&store.data[idx])
+        self.stores.get::<Store<T>>()?.try_get(id)
     }
 
     pub(super) fn try_get_mut<T: 'static>(&mut self, id: WidgetId) -> Option<&mut T> {
-        let store = self.stores.get_mut::<Store<T>>()?;
-        let idx = *store.map.get(&id)? as usize;
-        Some(&mut store.data[idx])
+        self.stores.get_mut::<Store<T>>()?.try_get_mut(id)
     }
 
     /// Caller guards on `removed` being non-empty — see
@@ -71,9 +67,24 @@ impl<T> Default for Store<T> {
 }
 
 impl<T> Store<T> {
+    /// The row `id` occupies, if it has one. The map column is `u32` to
+    /// stay narrow; every reader indexes with a `usize`.
+    fn index_of(&self, id: WidgetId) -> Option<usize> {
+        self.map.get(&id).map(|&idx| idx as usize)
+    }
+
+    fn try_get(&self, id: WidgetId) -> Option<&T> {
+        Some(&self.data[self.index_of(id)?])
+    }
+
+    fn try_get_mut(&mut self, id: WidgetId) -> Option<&mut T> {
+        let idx = self.index_of(id)?;
+        Some(&mut self.data[idx])
+    }
+
     fn get_or_insert_with<F: FnOnce() -> T>(&mut self, id: WidgetId, init: F) -> &mut T {
-        let idx = match self.map.get(&id) {
-            Some(&idx) => idx as usize,
+        let idx = match self.index_of(id) {
+            Some(idx) => idx,
             None => {
                 let idx = self.data.len();
                 debug_assert!(idx < u32::MAX as usize, "StateMap store overflow");

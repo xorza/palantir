@@ -23,6 +23,17 @@
 //! dropped per-emit downstream, which is why `Ui::add_shape` and the
 //! encoder branches stay gate-free pass-throughs.
 
+pub(crate) mod extras_idx;
+pub(crate) mod iter;
+pub(crate) mod node_id;
+pub(crate) mod node_record;
+pub(crate) mod paint_anims;
+pub(crate) mod recording_scratch;
+pub(crate) mod root_slot;
+pub(crate) mod subtree_end;
+pub(crate) mod subtree_rollups;
+pub(crate) mod tree_fingerprint;
+
 use crate::ClipMode;
 use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher;
@@ -694,17 +705,6 @@ fn paint_counts(shapes: usize, chrome_rows: usize, nodes: usize) -> ContentHash 
     h.write_usize(nodes);
     ContentHash(h.finish())
 }
-
-pub(crate) mod extras_idx;
-pub(crate) mod iter;
-pub(crate) mod node_id;
-pub(crate) mod node_record;
-pub(crate) mod paint_anims;
-pub(crate) mod recording_scratch;
-pub(crate) mod root_slot;
-pub(crate) mod subtree_end;
-pub(crate) mod subtree_rollups;
-pub(crate) mod tree_fingerprint;
 
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {
