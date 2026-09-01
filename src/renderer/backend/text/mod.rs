@@ -142,13 +142,6 @@ impl TextBackend {
         &self.shaper
     }
 
-    /// The shared cache clock these caches age against. The icon atlas
-    /// ages on it too, so a keep count means the same span in either
-    /// tenant of a `RasterAtlas`.
-    pub(super) fn frame(&self) -> u64 {
-        self.shaper.frame()
-    }
-
     /// Frame teardown, run for every submit — including one that
     /// prepared no text batch at all.
     ///
@@ -163,10 +156,15 @@ impl TextBackend {
     /// ([`TextShaper::frame`](crate::text::shaper::TextShaper::frame)),
     /// so a text-free frame still sweeps — see
     /// [`RasterPass::end_frame`].
-    pub(crate) fn end_frame(&mut self) {
+    ///
+    /// Returns that clock, for the icon atlas to age on as well: a keep
+    /// count then means the same span in either tenant of a
+    /// `RasterAtlas`.
+    pub(crate) fn end_frame(&mut self) -> u64 {
         let frame = self.shaper.frame();
         self.pass.end_frame(frame);
         self.encoder.end_frame(frame);
+        frame
     }
 }
 

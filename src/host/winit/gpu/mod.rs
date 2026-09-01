@@ -131,7 +131,7 @@ fn create_surface(
     window: &Arc<WinitWindow>,
 ) -> Result<wgpu::Surface<'static>, WinitHostError> {
     instance
-        .create_surface(window.clone())
+        .create_surface(Arc::clone(window))
         .map_err(|source| WinitHostError::CreateSurface { token, source })
 }
 

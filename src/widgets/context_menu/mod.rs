@@ -18,6 +18,7 @@ use crate::widgets::response::ResponseSnapshot;
 use crate::widgets::theme::context_menu::ContextMenuTheme;
 
 use glam::Vec2;
+use std::rc::Rc;
 
 /// Cross-frame response for one context-menu site, keyed off the trigger
 /// widget's id in [`StateMap`](crate::ui::state::StateMap). `anchor = Some`
@@ -144,7 +145,7 @@ impl<'a> ContextMenu<'a> {
             return OverlayResponse::default();
         };
 
-        let ui_theme = ui.theme().clone();
+        let ui_theme = Rc::clone(ui.theme());
         let ctx = self.slot(&ui_theme);
 
         // The menu is the popup, configured: the caller's `Configure`

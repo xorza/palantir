@@ -106,11 +106,7 @@ impl ThemeSlot for MenuItemTheme {
     }
 
     fn defaults(&self) -> SlotDefaults {
-        SlotDefaults {
-            padding: self.defaults.padding,
-            margin: self.defaults.margin,
-            anim: self.defaults.anim,
-        }
+        self.defaults
     }
 }
 

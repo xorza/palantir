@@ -357,7 +357,7 @@ impl GpuTimings {
     /// [`GpuPassStats`].
     pub(super) fn after_submit(&mut self, device: &wgpu::Device, sink: &GpuPassStats) {
         if let Some(slot_idx) = self.pending_slot.take() {
-            let map_state = self.slots[slot_idx].map_state.clone();
+            let map_state = Arc::clone(&self.slots[slot_idx].map_state);
             map_state.store(0, Release);
             self.slots[slot_idx].timestamps_buffer.slice(..).map_async(
                 wgpu::MapMode::Read,
@@ -367,7 +367,7 @@ impl GpuTimings {
                 },
             );
             if let Some(stats_buf) = &self.slots[slot_idx].stats_buffer {
-                let map_state = self.slots[slot_idx].map_state.clone();
+                let map_state = Arc::clone(&self.slots[slot_idx].map_state);
                 stats_buf
                     .slice(..)
                     .map_async(wgpu::MapMode::Read, move |res| {

@@ -6,6 +6,7 @@ use crate::ui::Ui;
 use crate::widgets::response::Response;
 use crate::widgets::separator::Separator;
 use crate::widgets::theme::separator::SeparatorTheme;
+use std::rc::Rc;
 
 /// The rule [`MenuItem::separator`](crate::widgets::context_menu::menu_item::MenuItem::separator)
 /// records between menu groups: a
@@ -46,7 +47,7 @@ impl<'a> MenuSeparator<'a> {
         // Handle, not a borrow: `Separator::style` holds the reference
         // across `show`'s `&mut Ui`, and this one may point into the
         // `Ui`'s own theme.
-        let ui_theme = ui.theme().clone();
+        let ui_theme = Rc::clone(ui.theme());
         Separator::over(self.node, Axis::X)
             .style(self.slot(&ui_theme))
             .show(ui)

@@ -20,6 +20,7 @@ use crate::widgets::theme::drag_value::DragValueTheme;
 use crate::widgets::theme::widget_look::theme_slot::ThemeSlot;
 use crate::widgets::value_response::ValueResponse;
 use std::ops::RangeInclusive;
+use std::rc::Rc;
 
 /// One mutually exclusive interaction per [`DragValue`] id. A scrub keeps
 /// its sampled base and speed so cumulative pointer travel remains stable;
@@ -298,7 +299,7 @@ impl<'a> DragValue<'a> {
         // Held as a handle, because the borrow has to outlive the `&mut Ui`
         // the field is shown with — a refcount bump rather than the ~700-byte
         // `TextEditTheme` copy a plain borrow would have forced.
-        let ui_theme = ui.theme().clone();
+        let ui_theme = Rc::clone(ui.theme());
         let editor = match self.style {
             Some(s) => &s.editor,
             None => &ui_theme.drag_value.editor,

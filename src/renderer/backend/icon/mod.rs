@@ -196,8 +196,8 @@ impl IconBackend {
     /// boundary to the pass. Runs for every submit, including one that
     /// prepared no icon batch.
     ///
-    /// `frame` is the shared text clock
-    /// ([`TextBackend::frame`](crate::renderer::backend::text::TextBackend::frame)),
+    /// `frame` is the shared text clock, returned by
+    /// [`TextBackend::end_frame`](crate::renderer::backend::text::TextBackend::end_frame),
     /// so both tenants of a `RasterAtlas` age on one clock and a keep
     /// count means the same span in either.
     pub(crate) fn end_frame(&mut self, frame: u64) {

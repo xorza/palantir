@@ -16,6 +16,7 @@ use crate::widgets::overlay_scope::{Backdrop, OverlayScope};
 use crate::widgets::response::ResponseSnapshot;
 use crate::widgets::text::Text;
 use crate::widgets::theme::tooltip::TooltipTheme;
+use std::rc::Rc;
 use std::time::Duration;
 
 /// Per-trigger tooltip state. `hover_started_at` is Ui-time at first
@@ -134,7 +135,7 @@ impl<'a> Tooltip<'a> {
     pub fn show(self, ui: &mut Ui) {
         // Handle, not a borrow: the bundle may point into the `Ui`'s own
         // theme, and the record below reborrows `ui` mutably.
-        let ui_theme = ui.theme().clone();
+        let ui_theme = Rc::clone(ui.theme());
         let theme = self.slot(&ui_theme);
         let delay = self.delay.unwrap_or(theme.delay);
         let warmup = theme.warmup;

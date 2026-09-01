@@ -17,6 +17,7 @@ use crate::widgets::overlay_response::OverlayResponse;
 use crate::widgets::overlay_scope::{Backdrop, OverlayScope};
 use crate::widgets::theme::modal::ModalTheme;
 use glam::Vec2;
+use std::rc::Rc;
 
 /// A centered dialog over a dimming, input-blocking backdrop, recorded
 /// into [`Layer::Modal`] so it draws above everything and hit-tests
@@ -79,7 +80,7 @@ impl<'a> Modal<'a> {
 
         // Handle: `mt.panel` is still borrowed at `scope.record`, which
         // owns `ui` mutably.
-        let ui_theme = ui.theme().clone();
+        let ui_theme = Rc::clone(ui.theme());
         let mt = self.slot(&ui_theme);
         let dim = Background::fill(self.backdrop.unwrap_or(mt.backdrop));
         let panel_bg = self.chrome.as_ref().unwrap_or(&mt.panel);

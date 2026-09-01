@@ -66,7 +66,7 @@ fn sibling_thread_allocs_do_not_pollute_audit() {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
     let go = Arc::new(AtomicBool::new(false));
-    let g2 = go.clone();
+    let g2 = Arc::clone(&go);
     let t = std::thread::spawn(move || {
         while !g2.load(Ordering::Acquire) {
             std::hint::spin_loop();
