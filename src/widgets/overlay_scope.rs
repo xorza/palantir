@@ -46,9 +46,16 @@ impl Backdrop {
     }
 }
 
-/// What an overlay's own turn told it.
-#[derive(Clone, Copy, Debug)]
-pub(super) struct OverlayEdges {
+/// What one overlay turn produced: whatever the body returned, and the
+/// two dismissal edges the turn observed.
+///
+/// `inner` rides along the way [`Widget::record`](crate::Widget::record)
+/// returns its body's value — without it every host would have to smuggle
+/// the result out of the closure through an `Option` it then unwraps.
+#[derive(Debug)]
+#[must_use]
+pub(super) struct OverlayTurn<R> {
+    pub(super) inner: R,
     /// Escape landed inside the scope.
     pub(super) escape: bool,
     /// A press landed on the backdrop rather than on the body.
@@ -128,7 +135,7 @@ impl OverlayScope {
     /// `Sense::CLICK` is the dismiss trigger; the other three never
     /// produce visible behaviour on the eater itself, and are absorbed
     /// and discarded.
-    pub(super) fn record(&self, ui: &mut Ui, body: impl FnOnce(&mut Ui)) -> OverlayEdges {
+    pub(super) fn record<R>(&self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> OverlayTurn<R> {
         if let Backdrop::Eater(id) = self.backdrop {
             ui.layer(self.layer).show(|ui| {
                 Frame::new()
@@ -139,11 +146,12 @@ impl OverlayScope {
             });
         }
         let owns_input = self.backdrop.owns_input();
-        let escape = ui.layer(self.layer).placement(self.placement).show(|ui| {
-            body(ui);
-            owns_input && ui.escape_pressed()
+        let (inner, escape) = ui.layer(self.layer).placement(self.placement).show(|ui| {
+            let inner = body(ui);
+            (inner, owns_input && ui.escape_pressed())
         });
-        OverlayEdges {
+        OverlayTurn {
+            inner,
             escape,
             outside: self.backdrop_clicked(ui),
         }

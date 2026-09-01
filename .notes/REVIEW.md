@@ -4,13 +4,6 @@ Delete an item once it is addressed. Delete a heading once its items are gone.
 Paths are relative to `palantir/src`. Line numbers are from the reviewed
 revision and drift as files change.
 
-## The same computation spelled twice
-
-- [ ] `widgets/overlay_scope.rs:131` — `OverlayScope::record` takes a body returning `()`, so `widgets/popup/mod.rs:211-223` and `widgets/modal/mod.rs:111-121` both smuggle the body result out through `let mut inner = None; … inner.expect("the body records unconditionally")`. A body returning `R` removes both `Option`s and both `expect`s.
-- [ ] `renderer/backend/debug_marker.rs` — four functions with two `cfg` bodies each (eight items) for a feature gate whose real content is two lines.
-- [ ] `renderer/gradient_atlas/mod.rs:240-253` — `CpuGradientAtlas::new` sizes `slots`, `baked`, and `mru` itself although `resize_rows` (line 377) is documented as "the one place any of them is resized".
-- [ ] `host/winit/gpu/mod.rs:72-144` — `GpuInit::new` and `SurfaceManager::make_surface` both do create-surface, `inner_size`, and `build_window_surface`. The probe-surface reuse explains the first, but the second half of `new` is `make_surface` without the `self`.
-
 ## One convention, two spellings
 
 - [ ] Theme handle clone: `ui.theme().clone()` in `widgets/modal/mod.rs:82`, `context_menu/menu_separator.rs:49`, `context_menu/mod.rs:147`, `tooltip/mod.rs:137`, `drag_value/mod.rs:301`, `combo_box/mod.rs:115`; `Rc::clone(ui.theme())` in `widgets/grid.rs:86`, `popup/mod.rs:206`, `panel/mod.rs:40`.
@@ -36,4 +29,3 @@ revision and drift as files change.
 
 - [ ] `scene/cascade/engine.rs:170` — `can_update` checks `lc.arena_hashes.len() != n` beside per-row hash compares that already fail on a length mismatch.
 - [ ] `renderer/backend/gpu_timings.rs:67-73` — `pipeline_stats_flags()` is a function that returns a constant bitflag union; a `const` says the same and the doc on `STATS_FIELD_COUNT` already points at it as a declaration.
-- [ ] `widgets/overlay_scope.rs:51` — `OverlayEdges` is not `#[must_use]`. `Tooltip::show` discards it on purpose (`Backdrop::None`), but a popup that dropped it would compile silently too.
