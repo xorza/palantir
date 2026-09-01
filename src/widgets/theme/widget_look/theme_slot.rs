@@ -36,7 +36,7 @@ pub(crate) trait ThemeSlot {
     // the theme/widget codegen-unit boundary, and the default inliner leaves
     // the resolver and these accessors outlined in release builds.
     #[inline(always)]
-    fn plan(&self, response: &ResponseState, pick: Self::Pick, text: &TextStyle) -> LookPlan {
+    fn plan(&self, response: &ResponseState, pick: Self::Pick, text: TextStyle) -> LookPlan {
         LookPlan {
             target: self.look(response, pick).to_animated(text),
             defaults: self.defaults(),

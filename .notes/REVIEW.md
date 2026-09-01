@@ -4,15 +4,6 @@ Delete an item once it is addressed. Delete a heading once its items are gone.
 Paths are relative to `palantir/src`. Line numbers are from the reviewed
 revision and drift as files change.
 
-## Per-frame work that a cheaper shape avoids
-
-- [ ] `input/input_state/mod.rs` — `key_pressed` calls `watch_key`, a `Vec::contains`, on every poll. An app that polls n chords per frame pays O(n²) per frame.
-- [ ] `widgets/theme/text_style.rs:26-60` — `TextStyle` is `Clone` only, though every field (`f32`, `Color`, `f32`, `FontFamily`, `FontWeight`) is `Copy`. Its `.clone()` sits on per-frame paths: `widgets/context_menu/menu_item.rs:105-108` (one per row), `widgets/theme/widget_look/mod.rs:68-73` (`to_animated`, one per themed widget), `diagnostics/frame_stats.rs` (`record`, every overlay frame), and the documented idiom `..ui.theme().text.clone()`.
-- [ ] `scene/damage/walk.rs:259-262` — `union_screens()` walks the paint rows of every `PaintsChanged` node, but the result is used only when `cascade_input` differs.
-- [ ] `layout/scrollbars/mod.rs:268` — `Scrollbars::measure` measures its four leaves against `inner_avail`, although arrange places all four by rect and never reads the measured sizes.
-- [ ] `widgets/combo_box/mod.rs:109-116` — the trigger borrows `ui.theme()` for its slot, then clones the theme handle a second time for the `combo_box` geometry. One handle taken first covers both reads.
-- [ ] `scene/cascade/engine.rs` — an incremental `run` that abandons falls back to `run_full`, which re-walks the layers the incremental pass already repaired. Rare, but the frame that hits it pays twice.
-
 ## The same computation spelled twice
 
 - [ ] `renderer/backend/viewport.rs:58-70` — `logical_rect_to_phys_scissor` hand-rolls scale, AA pad, and viewport clamp with four `as u32` casts. `Rect::inflated` + `URect::covering` + `URect::clamp_to` (the composer's `urect_from_phys` in `frontend/composer/geometry.rs:116`) express the same thing.
@@ -54,4 +45,3 @@ revision and drift as files change.
 - [ ] `scene/cascade/engine.rs:170` — `can_update` checks `lc.arena_hashes.len() != n` beside per-row hash compares that already fail on a length mismatch.
 - [ ] `renderer/backend/gpu_timings.rs:67-73` — `pipeline_stats_flags()` is a function that returns a constant bitflag union; a `const` says the same and the doc on `STATS_FIELD_COUNT` already points at it as a declaration.
 - [ ] `widgets/overlay_scope.rs:51` — `OverlayEdges` is not `#[must_use]`. `Tooltip::show` discards it on purpose (`Backdrop::None`), but a popup that dropped it would compile silently too.
-- [ ] `widgets/theme/widget_look/mod.rs:70-71` — `to_animated` clones `fallback_text` whole on every plan whose look leaves `text` as `None`, which is every active state of every default bundle. With `TextStyle: Copy` (above) this is a copy; until then it is the crate's most frequent `String`-free clone.

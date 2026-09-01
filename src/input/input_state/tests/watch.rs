@@ -371,6 +371,17 @@ fn key_chord_watcher_wakes_only_exact_chord() {
     h.set_modifiers(Modifiers::NONE);
     let delta = h.key(Key::Escape);
     assert!(delta.requests_repaint);
+
+    // The watch list keeps duplicates, so a chord declared twice in one
+    // frame must still wake once and match nothing extra.
+    h.frame(|ui| {
+        empty_watch_escape(ui);
+        ui.watch_key(Shortcut::key(Key::Escape));
+    });
+    let delta = h.key(Key::Enter);
+    assert!(!delta.requests_repaint);
+    let delta = h.key(Key::Escape);
+    assert!(delta.requests_repaint);
 }
 
 #[test]

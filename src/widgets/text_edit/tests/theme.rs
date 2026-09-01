@@ -230,7 +230,7 @@ fn invalid_runtime_metrics_record_no_text_or_shaping_state() {
             st.edit.selection = Some(1);
         }
 
-        h.ui.theme_mut().text_edit.looks.normal.text = Some(style.clone());
+        h.ui.theme_mut().text_edit.looks.normal.text = Some(style);
         let mut text_node = None;
         let mut editor_node = None;
         let calls = h.ui.shaper().measure_calls();

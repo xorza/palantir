@@ -256,8 +256,8 @@ impl LayerWalk<'_> {
         // already covered by the subtree/eviction diff. Repainting the
         // union there would spuriously re-damage every direct shape,
         // e.g. all canvas connections when an unrelated node is deleted.
-        let union = self.cascade.paint_arena.rows_of(i).union_screens();
         if prev.cascade_input != self.cascade.cascade_inputs[i] {
+            let union = self.cascade.paint_arena.rows_of(i).union_screens();
             damage::push_screen(self.raw_rects, union);
         }
 

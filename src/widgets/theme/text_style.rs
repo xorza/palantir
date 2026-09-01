@@ -24,7 +24,13 @@ pub(crate) const LINE_HEIGHT_MULT: f32 = 1.2;
 /// size invalidates the text-shape cache every frame and animating
 /// leading doesn't read meaningfully.
 #[derive(
-    Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, palantir_anim_derive::Animatable,
+    Clone,
+    Copy,
+    Debug,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    palantir_anim_derive::Animatable,
 )]
 #[serde(try_from = "UncheckedTextStyle")]
 pub struct TextStyle {
@@ -109,8 +115,8 @@ impl TextStyle {
     }
 
     /// Chainable single-axis tweak. Lets callers write
-    /// `theme.text.clone().with_font_size(14.0)` instead of `TextStyle {
-    /// font_size_px: 14.0, ..theme.text.clone() }`. All widget style setters
+    /// `theme.text.with_font_size(14.0)` instead of `TextStyle {
+    /// font_size_px: 14.0, ..theme.text }`. All widget style setters
     /// borrow a whole `TextStyle` (all-or-nothing), so the common case of
     /// "theme defaults, but smaller" goes through one of these.
     #[inline]

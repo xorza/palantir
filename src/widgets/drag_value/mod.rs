@@ -260,7 +260,7 @@ impl<'a> DragValue<'a> {
         // restyle.
         let theme = ui.theme();
         let chip = &self.slot(theme).chip;
-        let look = chip.plan(&response, (), &theme.text).apply(ui, &mut widget);
+        let look = chip.plan(&response, (), theme.text).apply(ui, &mut widget);
 
         widget.record(ui, Some(&look.background), |ui| {
             ui.add_shape(

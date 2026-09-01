@@ -64,7 +64,7 @@ impl<'a> Checkbox<'a> {
         let indicator_stroke = slot.indicator_stroke.themed_length(0.0);
         let check = slot.check_polyline();
         let chrome = ToggleChrome {
-            plan: slot.plan(&response, checked, &theme.text),
+            plan: slot.plan(&response, checked, theme.text),
             gap: slot.gap,
             boxed: Node::leaf().size((Sizing::fixed(box_size), Sizing::fixed(box_size))),
             // Square box: the theme's own corner radius stands.
