@@ -3,6 +3,7 @@
 
 use crate::layout::types::limits::{valid_lower_bound, valid_upper_bound};
 use crate::layout::types::sizing::Sizing;
+use crate::primitives::approx;
 use crate::primitives::approx::FloatHash;
 use crate::primitives::span::Span;
 
@@ -83,11 +84,13 @@ impl Track {
         self
     }
 
+    /// One `u64` for the two clamps rather than a `write_u32` each — the
+    /// pairing [`FloatHash`] already gives [`glam::Vec2`], on a value the
+    /// grid hashes per track per frame.
     #[inline]
-    pub(crate) fn hash_visual<H: std::hash::Hasher>(&self, h: &mut H) {
-        self.size.hash_visual(h);
-        self.min.hash_visual(h);
-        self.max.hash_visual(h);
+    fn hash_bits<H: std::hash::Hasher, F: Fn(f32) -> u32 + Copy>(&self, h: &mut H, bits: F) {
+        self.size.hash_bits(h, bits);
+        h.write_u64(((bits(self.min) as u64) << 32) | bits(self.max) as u64);
     }
 }
 
@@ -97,12 +100,22 @@ impl From<Sizing> for Track {
     }
 }
 
+impl FloatHash for Track {
+    #[inline]
+    fn hash_eq<H: std::hash::Hasher>(&self, h: &mut H) {
+        self.hash_bits(h, approx::eq_bits);
+    }
+
+    #[inline]
+    fn hash_visual<H: std::hash::Hasher>(&self, h: &mut H) {
+        self.hash_bits(h, approx::canon_bits);
+    }
+}
+
 impl std::hash::Hash for Track {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
-        self.size.hash(h);
-        self.min.hash_eq(h);
-        self.max.hash_eq(h);
+        self.hash_eq(h);
     }
 }
 

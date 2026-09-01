@@ -195,20 +195,16 @@ impl LayoutDriver for Stack {
         // Shares the count / weight / gap accounting with `measure`; the
         // closure supplies the per-phase main source — here the cached
         // `desired.main` (Fill children's content size, since the
-        // `AxisSlot::resolve` change pins Fill at content).
+        // `AxisSlot::resolve` change pins Fill at content). Both
+        // parameters read that one source here, while `measure` gives
+        // them different ones.
+        let main_desired = |pass: &mut LayoutPass<'_>, c: NodeId| axis.main(pass.desired(c));
         let StackPlan {
             sum_non_fill_main,
             count,
             total_gap,
             fill_start,
-        } = build_stack_plan(
-            pass,
-            node,
-            axis,
-            gap,
-            |pass, c| axis.main(pass.desired(c)),
-            |pass, c| axis.main(pass.desired(c)),
-        );
+        } = build_stack_plan(pass, node, axis, gap, main_desired, main_desired);
         // The distribution mirrors `measure`: a child whose share falls
         // outside `[floor, cap]` takes the bound, then the rest re-share.
         let main_total = axis.main(inner.size);
