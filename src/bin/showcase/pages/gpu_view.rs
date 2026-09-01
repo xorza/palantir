@@ -313,12 +313,9 @@ pub(crate) fn build(ui: &mut Ui, cube: &Rc<RefCell<Cube>>) {
          Drag inside the view to orbit it.",
     );
 
-    // Turbofished: the unsizing to `dyn GpuPaint` has to land on the
-    // binding, and inference would otherwise push it onto the argument.
-    let paint: Rc<RefCell<dyn GpuPaint>> = Rc::<RefCell<Cube>>::clone(cube);
     // GpuView doesn't sense by default — opt into drag so the returned
     // `Response` reports the orbit delta.
-    let resp = GpuView::new(paint)
+    let resp = GpuView::new(cube)
         .sense(Sense::DRAG)
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui);
