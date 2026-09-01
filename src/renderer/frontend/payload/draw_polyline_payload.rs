@@ -6,7 +6,7 @@ use crate::scene::shapes::record::ColorMode;
 use crate::shape::style::{LineCap, LineJoin};
 
 /// Stroked polyline payload. `width` is logical px. Points + colors
-/// live in the window's [`RecordPayloads`] (`polyline_points` /
+/// live in the window's [`RecordStore`] (`polyline_points` /
 /// `polyline_colors`) — the payload only carries the spans.
 /// `colors_len` is 1 (broadcast), `points_len` (per-point), or
 /// `points_len - 1` (per-segment), selected by `color_mode`.
@@ -16,7 +16,7 @@ use crate::shape::style::{LineCap, LineJoin};
 /// `bbox` is their owner-local centerline AABB; the composer applies
 /// stroke/cap/join/AA inflation once in physical space.
 ///
-/// [`RecordPayloads`]: crate::scene::record_store::record_payloads::RecordPayloads
+/// [`RecordStore`]: crate::scene::record_store::RecordStore
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub(crate) struct DrawPolylinePayload {
     /// Cull bound plus the spin, if any — set from a

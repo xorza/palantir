@@ -63,7 +63,7 @@ use crate::scene::forest::Forest;
 use crate::scene::layer::Layer;
 use crate::scene::node::Node;
 use crate::scene::node::configure::Configure;
-use crate::scene::record_store::record_payloads::RecordPayloads;
+use crate::scene::record_store::RecordStore;
 use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::paint_anims::PaintAnim;
 use crate::shape::Lower;
@@ -175,7 +175,6 @@ impl Ui {
             forest: &self.forest,
             layout: &self.layout,
             cascade: &self.cascade,
-            payloads: self.payloads(),
             gpu_views: &self.gpu_views,
             display: self.display,
             time: self.frame_runtime.time,
@@ -637,8 +636,8 @@ impl Ui {
     /// indices the draw list carries. Valid until the next record pass
     /// refills the arena.
     #[inline]
-    pub(crate) fn payloads(&self) -> &RecordPayloads {
-        self.forest.record_store.payloads()
+    pub(crate) fn record_store(&self) -> &RecordStore {
+        &self.forest.record_store
     }
 
     /// This window's live geometry for persist-and-restore across launches.

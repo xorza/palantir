@@ -312,7 +312,7 @@ pub(crate) fn polyline(
         "NaN polyline point reached lowering — `Shapes::add` screens the bbox",
     );
     let staged = store.stage_polyline(points, color_slice);
-    let lowered_colors = &store.payloads().polyline_colors[staged.colors.range()];
+    let lowered_colors = &store.polyline_colors[staged.colors.range()];
 
     // Hash contract for polyline records: no variant tag needed —
     // polylines are the only shape lowering into this record, and
@@ -652,6 +652,6 @@ mod tests {
         assert!(!mode_ids.contains(&radial));
         assert!(!mode_ids.contains(&conic));
         assert_ne!(radial, conic);
-        assert_eq!(store.payloads().gradients.records.len(), 9);
+        assert_eq!(store.gradients.records.len(), 9);
     }
 }

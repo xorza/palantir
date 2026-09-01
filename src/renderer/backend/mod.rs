@@ -527,7 +527,7 @@ impl WgpuBackend {
         let Submission {
             owner,
             targets,
-            payloads,
+            store,
             buffer,
             plan,
             debug_overlay,
@@ -578,8 +578,8 @@ impl WgpuBackend {
         self.mesh.upload(
             &mut ctx,
             MeshUpload {
-                vertices: &payloads.meshes.vertices,
-                indices: &payloads.meshes.indices,
+                vertices: &store.meshes.vertices,
+                indices: &store.meshes.indices,
                 instances: buffer.meshes.instance(),
             },
         );
@@ -620,7 +620,7 @@ impl WgpuBackend {
                 "text.prepare_batches",
                 value = buffer.text_batches.len() as u64
             );
-            let interned_text = payloads.interned_text();
+            let interned_text = store.interned_text();
             for (i, b) in buffer.text_batches.iter().enumerate() {
                 let runs = &buffer.texts[b.texts.range()];
                 self.text.prepare_batch(

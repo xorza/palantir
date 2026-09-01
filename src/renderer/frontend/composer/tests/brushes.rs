@@ -21,7 +21,7 @@ use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
-use crate::scene::record_store::record_payloads::RecordPayloads;
+use crate::scene::record_store::RecordStore;
 use glam::{UVec2, Vec2};
 use std::time::Duration;
 
@@ -46,7 +46,7 @@ fn compose_solid_brush_emits_kind_zero_quad() {
         .begin(
             params(1.0, UVec2::new(200, 200)),
             Duration::ZERO,
-            &RecordPayloads::default(),
+            &RecordStore::default(),
             &mut out,
         )
         .replay_from(&buffer);
@@ -135,7 +135,7 @@ fn compose_linear_brush_emits_kind_one_with_atlas_row() {
         .begin(
             params(1.0, UVec2::new(100, 100)),
             Duration::ZERO,
-            &RecordPayloads::default(),
+            &RecordStore::default(),
             &mut out,
         )
         .replay_from(&buffer);
@@ -175,7 +175,7 @@ fn compose_repeated_linear_brush_shares_atlas_row() {
         .begin(
             params(1.0, UVec2::new(100, 100)),
             Duration::ZERO,
-            &RecordPayloads::default(),
+            &RecordStore::default(),
             &mut out,
         )
         .replay_from(&buffer);

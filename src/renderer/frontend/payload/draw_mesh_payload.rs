@@ -4,12 +4,12 @@ use crate::primitives::color::ColorF16;
 use crate::primitives::rect::Rect;
 
 /// Mesh draw payload. Vertex/index data lives in the window's
-/// [`RecordPayloads`] (`meshes`); the payload only carries the spans
+/// [`RecordStore`] (`meshes`); the payload only carries the spans
 /// (owner-local). The composer folds `origin` (owner-rect top-left)
 /// into the per-instance translate so the vertex stream stays
 /// content-stable across frames.
 ///
-/// [`RecordPayloads`]: crate::scene::record_store::record_payloads::RecordPayloads
+/// [`RecordStore`]: crate::scene::record_store::RecordStore
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct DrawMeshPayload {
     /// Owner-local AABB of `vertices`. The composer transforms the

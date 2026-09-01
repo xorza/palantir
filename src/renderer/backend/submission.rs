@@ -7,7 +7,7 @@ use crate::renderer::backend::stencil::Stencil;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_owner_id::RenderOwnerId;
 use crate::renderer::render_plan::RenderPlan;
-use crate::scene::record_store::record_payloads::RecordPayloads;
+use crate::scene::record_store::RecordStore;
 
 /// `Copy` because all three are borrows: [`WgpuBackend::submit`] pulls
 /// them out up front and still hands the whole [`Submission`] to its
@@ -25,7 +25,7 @@ pub(crate) struct SubmissionTargets<'a> {
 pub(crate) struct Submission<'a> {
     pub(crate) owner: RenderOwnerId,
     pub(crate) targets: SubmissionTargets<'a>,
-    pub(crate) payloads: &'a RecordPayloads,
+    pub(crate) store: &'a RecordStore,
     pub(crate) buffer: &'a RenderBuffer,
     pub(crate) plan: RenderPlan,
     pub(crate) debug_overlay: DebugOverlayConfig,

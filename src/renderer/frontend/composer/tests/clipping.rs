@@ -10,7 +10,7 @@ use crate::renderer::frontend::composer::tests::support::{
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
-use crate::scene::record_store::record_payloads::RecordPayloads;
+use crate::scene::record_store::RecordStore;
 use glam::{UVec2, Vec2};
 use std::time::Duration;
 
@@ -43,11 +43,11 @@ fn compose_with_no_clip_emits_one_unscissored_group() {
 #[test]
 fn dropping_a_session_emits_the_trailing_group_and_batch() {
     let display = params(1.0, UVec2::new(200, 200));
-    let payloads = RecordPayloads::default();
+    let store = RecordStore::default();
     let mut composer = composer();
     let mut out = render_buffer();
     {
-        let mut session = composer.begin(display, Duration::ZERO, &payloads, &mut out);
+        let mut session = composer.begin(display, Duration::ZERO, &store, &mut out);
         let mut recorded = PaintCapture::default();
         draw(&mut recorded, rect(0.0, 0.0, 10.0, 10.0));
         text(&mut recorded, rect(0.0, 20.0, 10.0, 10.0));

@@ -399,8 +399,8 @@ fn placeholder_per_line_aligns_under_wrap() {
     h.frame(&mut record);
     let node = node.unwrap();
     // (a) `Shape::Text.align` reflects the user's text_align.
-    let payloads = h.ui.payloads();
-    let interned_text = payloads.interned_text();
+    let store = h.ui.record_store();
+    let interned_text = store.interned_text();
     let node = block_of(&h.ui, node);
     let tree = h.ui.tree(Layer::Main);
     let shape_align = tree.shapes_of(node).find_map(|s| match s {

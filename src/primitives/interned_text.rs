@@ -3,7 +3,7 @@
 use crate::primitives::span::Span;
 
 /// Borrow of the complete record-pass text arena. Recorded text spans
-/// resolve against this value; the caller's `Ref<RecordPayloads>` is what
+/// resolve against this value; the caller's `Ref<RecordStore>` is what
 /// keeps the arena immutable for as long as this lives.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct InternedText<'a> {

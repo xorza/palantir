@@ -115,7 +115,7 @@ pub(crate) trait PaintSink {
     fn text(&mut self, payload: DrawTextPayload);
 
     /// Paint a mesh against already-staged vertices + indices in
-    /// `RecordPayloads.meshes`. The recorder pushes verts (translated
+    /// `RecordStore.meshes`. The recorder pushes verts (translated
     /// into the owner's logical-px world coords) and indices directly,
     /// so the encoder applies the owner-rect offset inline without an
     /// intermediate scratch buffer.

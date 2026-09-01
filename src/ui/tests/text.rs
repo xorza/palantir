@@ -408,7 +408,7 @@ fn shared_cache_eviction_preserves_idle_windows_paint_only_text_source() {
         .copied()
         .expect("PaintOnly must emit the retained text run");
     let scene = idle.ui.frame_scene();
-    let interned_text = scene.payloads.interned_text();
+    let interned_text = scene.forest.record_store.interned_text();
     assert_eq!(
         interned_text.resolve(run.text.span),
         "idle interned window text",
@@ -488,8 +488,8 @@ fn widget_text_inputs_lower_exact_bytes() {
             .show(ui);
     });
 
-    let payloads = h.ui.forest.record_store.payloads();
-    let interned_text = payloads.interned_text();
+    let store = &h.ui.forest.record_store;
+    let interned_text = store.interned_text();
     assert_eq!(
         interned_text.all(),
         "borrowedownedowned internedinternedformatted 7"
@@ -586,8 +586,8 @@ fn interning_per_pass_records_the_expected_bytes() {
     });
     assert_eq!(passes, 2, "cold first frame must record exactly twice");
 
-    let payloads = h.ui.forest.record_store.payloads();
-    let interned_text = payloads.interned_text();
+    let store = &h.ui.forest.record_store;
+    let interned_text = store.interned_text();
     let records = &h.ui.forest.trees[Layer::Main].shapes.records;
     let [ShapeRecord::Text { text, .. }] = records.as_slice() else {
         panic!("expected one text shape, got {records:?}");

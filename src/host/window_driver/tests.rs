@@ -449,13 +449,13 @@ mod record_store_tests {
     }
 
     fn snapshot(driver: &WindowDriver) -> RecordPayloadSnapshot {
-        let payloads = driver.ui.payloads();
+        let store = driver.ui.record_store();
         RecordPayloadSnapshot {
-            mesh_vertices: payloads.meshes.vertices.clone(),
-            mesh_indices: payloads.meshes.indices.clone(),
-            polyline_points: payloads.polyline_points.clone(),
-            polyline_colors: payloads.polyline_colors.clone(),
-            text: payloads.interned_text().all().to_owned(),
+            mesh_vertices: store.meshes.vertices.clone(),
+            mesh_indices: store.meshes.indices.clone(),
+            polyline_points: store.polyline_points.clone(),
+            polyline_colors: store.polyline_colors.clone(),
+            text: store.interned_text().all().to_owned(),
         }
     }
 

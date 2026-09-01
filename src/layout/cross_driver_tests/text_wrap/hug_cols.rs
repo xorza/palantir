@@ -149,8 +149,8 @@ fn nonwrapping_text_minconent_equals_full_width() {
             .show(ui)
             .node()
     });
-    let payloads = h.ui.payloads();
-    let interned_text = payloads.interned_text();
+    let store = h.ui.record_store();
+    let interned_text = store.interned_text();
     let max_w = h.engines.layout.intrinsic(
         h.ui.tree(Layer::Main),
         label_node,
@@ -214,8 +214,8 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
     // Probe label's natural unbroken width at an unconstrained surface.
     let mut probe = UiHarness::with_text(UVec2::new(2000, 400));
     let probe_label = probe.frame_value(|ui| build(ui).1);
-    let payloads = probe.ui.payloads();
-    let interned_text = payloads.interned_text();
+    let store = probe.ui.record_store();
+    let interned_text = store.interned_text();
     let label_full = probe.engines.layout.intrinsic(
         probe.ui.tree(Layer::Main),
         probe_label,
@@ -278,8 +278,8 @@ fn two_hug_cols_default_label_hugs_full_width() {
     // Label's natural unbroken width, probed unconstrained.
     let mut probe = UiHarness::with_text(UVec2::new(2000, 400));
     let probe_label = probe.frame_value(build);
-    let payloads = probe.ui.payloads();
-    let interned_text = payloads.interned_text();
+    let store = probe.ui.record_store();
+    let interned_text = store.interned_text();
     let label_full = probe.engines.layout.intrinsic(
         probe.ui.tree(Layer::Main),
         probe_label,

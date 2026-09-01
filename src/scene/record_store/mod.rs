@@ -1,6 +1,6 @@
 //! Per-window store for retained record payloads. Owned by [`Forest`], which
 //! pairs it with the trees whose shapes reference it. Later CPU and GPU phases
-//! borrow that window's payloads through explicit frame inputs.
+//! borrow that window's store through explicit frame inputs.
 //! Cleared at record-pass start and retained across `PaintOnly` frames.
 //!
 //! One retained payload store rather than a three-step copy (user `Mesh` →
@@ -15,32 +15,49 @@
 //!
 //! [`Forest`]: crate::scene::forest::Forest
 
-pub(crate) mod record_payloads;
 pub(crate) mod recorded_gradient;
 pub(crate) mod recorded_gradients;
 pub(crate) mod text_store;
 
 use crate::primitives::color::{Color, ColorU8};
 use crate::primitives::interned_str::InternedStr;
+use crate::primitives::interned_text::InternedText;
 use crate::primitives::mesh::Mesh;
 use crate::primitives::recorded_text::RecordedText;
 use crate::primitives::span::Span;
 use crate::primitives::text_input::TextInput;
-use crate::scene::record_store::record_payloads::RecordPayloads;
 use crate::scene::record_store::recorded_gradient::RecordedGradient;
-use crate::scene::record_store::recorded_gradients::GradientId;
+use crate::scene::record_store::recorded_gradients::{GradientId, RecordedGradients};
+use crate::scene::record_store::text_store::TextStore;
 use glam::Vec2;
 
-/// Owner of one window's retained record payloads, and the only way to
-/// append to them. `Forest` owns one; frontend and backend phases read
-/// the same payloads through [`Self::payloads`].
+/// The payload columns themselves, and the only API that appends to them.
 ///
 /// Every writer holds `&mut Forest`, so the write API is `&mut self` and
 /// the exclusion is the borrow checker's — a shared cell here would ask
 /// per lowered shape, at run time, what is already known at compile time.
 #[derive(Default, Debug)]
 pub(crate) struct RecordStore {
-    payloads: RecordPayloads,
+    /// User-supplied mesh geometry (`Shape::Mesh`), written at record
+    /// time only — compose reads it, never appends.
+    pub(crate) meshes: Mesh,
+    /// Point storage for `ShapeRecord::Polyline`. Indexed by the
+    /// record's `points` `Span`.
+    pub(crate) polyline_points: Vec<Vec2>,
+    /// Color storage for `ShapeRecord::Polyline`. Length per
+    /// record is 1, `points.len()`, or `points.len() - 1` per
+    /// `ColorMode`. Stored as `ColorU8` (4 B/elem, same precision
+    /// the `CurveInstance` color lanes carry) — quantization happens
+    /// once at lowering, not per-emitted-instance.
+    pub(crate) polyline_colors: Vec<ColorU8>,
+    /// Interned record-scoped gradient payloads. `ShapeBrush::Gradient(id)`
+    /// (set by `shapes::lower::brush`) indexes into its records. Cross-tree —
+    /// storing it here means chrome lowering on one tree and
+    /// shape lowering on another share one pool, and the encoder only
+    /// needs this store (not the originating tree) to resolve a
+    /// gradient id.
+    pub(crate) gradients: RecordedGradients,
+    text: TextStore,
 }
 
 /// Where [`RecordStore::stage_mesh`] put one mesh's geometry.
@@ -58,16 +75,28 @@ pub(super) struct PolylineSpans {
 }
 
 impl RecordStore {
-    /// This pass's payloads, as every later phase reads them.
-    pub(crate) fn payloads(&self) -> &RecordPayloads {
-        &self.payloads
-    }
-
-    /// Drop all record-pass storage.
-    /// PaintOnly skips this so the retained tree and payload storage remain
+    /// Drop every payload the last record pass appended, keeping the
+    /// capacity a steady scene re-fills each frame.
+    ///
+    /// PaintOnly skips this so the retained tree and this storage remain
     /// valid together.
     pub(crate) fn clear(&mut self) {
-        self.payloads.clear();
+        let Self {
+            meshes,
+            polyline_points,
+            polyline_colors,
+            gradients,
+            text,
+        } = self;
+        meshes.clear();
+        polyline_points.clear();
+        polyline_colors.clear();
+        gradients.clear();
+        text.clear();
+    }
+
+    pub(crate) fn interned_text(&self) -> InternedText<'_> {
+        InternedText::new(self.text.bytes())
     }
 
     /// Normalize borrowed, owned, or already-interned text into an
@@ -92,7 +121,7 @@ impl RecordStore {
     /// [`InternedStr`].
     #[must_use]
     fn intern_str(&mut self, s: &str) -> InternedStr {
-        self.payloads.text.intern_str(s)
+        self.text.intern_str(s)
     }
 
     /// Format `args` directly into the record-pass text storage and return
@@ -100,7 +129,7 @@ impl RecordStore {
     /// Backs [`crate::Ui::fmt`].
     #[must_use]
     pub(crate) fn intern_fmt(&mut self, args: std::fmt::Arguments<'_>) -> InternedStr {
-        self.payloads.text.intern_fmt(args)
+        self.text.intern_fmt(args)
     }
 
     /// Take a handle back as this pass's own, or panic if it belongs to
@@ -108,25 +137,25 @@ impl RecordStore {
     /// that reaches a widget without being copied.
     #[must_use]
     fn reuse(&self, text: InternedStr) -> InternedStr {
-        self.payloads.text.reuse(text)
+        self.text.reuse(text)
     }
 
     /// Lower a handle this pass minted into the span and content hash a
     /// `ShapeRecord::Text` carries.
     pub(crate) fn record_text(&self, text: InternedStr) -> RecordedText {
-        self.payloads.text.record(text)
+        self.text.record(text)
     }
 
     /// Intern one gradient payload under its content `hash`, returning
     /// the id a `ShapeBrush::Gradient` carries.
     pub(super) fn intern_gradient(&mut self, hash: u64, gradient: RecordedGradient) -> GradientId {
-        self.payloads.gradients.intern(hash, gradient)
+        self.gradients.intern(hash, gradient)
     }
 
     /// Copy one mesh's vertices and indices in, returning the spans a
     /// `ShapeRecord::Mesh` carries.
     pub(super) fn stage_mesh(&mut self, mesh: &Mesh) -> MeshSpans {
-        let meshes = &mut self.payloads.meshes;
+        let meshes = &mut self.meshes;
         let vertices = Span::new(meshes.vertices.len() as u32, mesh.vertices.len() as u32);
         meshes.vertices.extend_from_slice(&mesh.vertices);
         let indices = Span::new(meshes.indices.len() as u32, mesh.indices.len() as u32);
@@ -138,12 +167,10 @@ impl RecordStore {
     /// once here rather than per emitted instance. Returns the spans a
     /// `ShapeRecord::Polyline` carries.
     pub(super) fn stage_polyline(&mut self, points: &[Vec2], colors: &[Color]) -> PolylineSpans {
-        let payloads = &mut self.payloads;
-        let staged_points = Span::new(payloads.polyline_points.len() as u32, points.len() as u32);
-        payloads.polyline_points.extend_from_slice(points);
-        let staged_colors = Span::new(payloads.polyline_colors.len() as u32, colors.len() as u32);
-        payloads
-            .polyline_colors
+        let staged_points = Span::new(self.polyline_points.len() as u32, points.len() as u32);
+        self.polyline_points.extend_from_slice(points);
+        let staged_colors = Span::new(self.polyline_colors.len() as u32, colors.len() as u32);
+        self.polyline_colors
             .extend(colors.iter().map(|&c| ColorU8::from(c)));
         PolylineSpans {
             points: staged_points,

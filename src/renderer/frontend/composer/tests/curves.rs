@@ -13,7 +13,7 @@ use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::stroke_bounds::Spin;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
-use crate::scene::record_store::record_payloads::RecordPayloads;
+use crate::scene::record_store::RecordStore;
 use crate::scene::shapes::record::ColorMode;
 use crate::shape::style::{LineCap, LineJoin};
 use glam::{UVec2, Vec2};
@@ -27,11 +27,11 @@ use std::time::Duration;
 #[test]
 fn compose_polyline_between_texts_splits_text_batch() {
     let buf = run(
-        |b, payloads| {
+        |b, store| {
             text(b, rect(0.0, 0.0, 100.0, 20.0));
             polyline_cmd(
                 b,
-                payloads,
+                store,
                 &[Vec2::new(0.0, 25.0), Vec2::new(100.0, 25.0)],
                 &[Color::WHITE],
                 ColorMode::Single,
@@ -75,10 +75,10 @@ fn compose_polyline_emits_segments_and_join_chrome() {
         Vec2::new(160.0, 40.0),
     ];
     let mut commands = PaintCapture::default();
-    let mut payloads = RecordPayloads::default();
+    let mut store = RecordStore::default();
     polyline_cmd(
         &mut commands,
-        &mut payloads,
+        &mut store,
         &pts,
         &[Color::WHITE],
         ColorMode::Single,
@@ -92,7 +92,7 @@ fn compose_polyline_emits_segments_and_join_chrome() {
         .begin(
             params(1.0, UVec2::new(200, 200)),
             Duration::ZERO,
-            &payloads,
+            &store,
             &mut buf,
         )
         .replay_from(&commands);
@@ -156,10 +156,10 @@ fn compose_polyline_miter_downgrades_to_bevel_when_sharp() {
     use crate::renderer::render_buffer::curve::{CURVE_KIND_JOIN_BEVEL, CURVE_KIND_JOIN_MITER};
     let emit = |pts: [Vec2; 3]| {
         run(
-            |b, payloads| {
+            |b, store| {
                 polyline_cmd(
                     b,
-                    payloads,
+                    store,
                     &pts,
                     &[Color::WHITE],
                     ColorMode::Single,
@@ -227,10 +227,10 @@ fn compose_polyline_color_modes_and_coincident_skip() {
         Vec2::new(110.0, 10.0),
     ];
     let buf = run(
-        |b, payloads| {
+        |b, store| {
             polyline_cmd(
                 b,
-                payloads,
+                store,
                 &pts,
                 &[red, green, green, blue],
                 ColorMode::PerPoint,
@@ -260,10 +260,10 @@ fn compose_polyline_color_modes_and_coincident_skip() {
     // drops the degenerate segment's color (index 1), so the kept
     // segments paint colors 0 and 2 and the chrome their midpoint.
     let buf = run(
-        |b, payloads| {
+        |b, store| {
             polyline_cmd(
                 b,
-                payloads,
+                store,
                 &pts,
                 &[red, green, blue],
                 ColorMode::PerSegment,
@@ -763,10 +763,10 @@ fn two_point_polyline_does_not_reserve_miter_join_reach() {
 
     for case in cases {
         let buf = run(
-            |b, payloads| {
+            |b, store| {
                 polyline_cmd(
                     b,
-                    payloads,
+                    store,
                     case.points,
                     &[Color::WHITE],
                     ColorMode::Single,

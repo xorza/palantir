@@ -27,7 +27,7 @@ use crate::renderer::gpu_paint::GpuPaint;
 use crate::renderer::gpu_paint::gpu_frame_ctx::GpuFrameCtx;
 use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
 use crate::renderer::render_buffer::RenderBuffer;
-use crate::scene::record_store::record_payloads::RecordPayloads;
+use crate::scene::record_store::RecordStore;
 use crate::scene::shapes::record::ColorMode;
 use crate::shape::style::{LineCap, LineJoin};
 use crate::text::key::TextShapeKey;
@@ -87,24 +87,24 @@ pub(super) fn params(scale: f32, physical: UVec2) -> Display {
 }
 
 pub(super) fn run(
-    build: impl FnOnce(&mut PaintCapture, &mut RecordPayloads),
+    build: impl FnOnce(&mut PaintCapture, &mut RecordStore),
     display: &Display,
 ) -> RenderBuffer {
     run_with_texture_cap(build, display, 16_384)
 }
 
 pub(super) fn run_with_texture_cap(
-    build: impl FnOnce(&mut PaintCapture, &mut RecordPayloads),
+    build: impl FnOnce(&mut PaintCapture, &mut RecordStore),
     display: &Display,
     max_texture_dim: u32,
 ) -> RenderBuffer {
     let mut recorded = PaintCapture::default();
-    let mut payloads = RecordPayloads::default();
-    build(&mut recorded, &mut payloads);
+    let mut store = RecordStore::default();
+    build(&mut recorded, &mut store);
     let mut composer = Composer::new(max_texture_dim);
     let mut out = render_buffer();
     composer
-        .begin(*display, Duration::ZERO, &payloads, &mut out)
+        .begin(*display, Duration::ZERO, &store, &mut out)
         .replay_from(&recorded);
     out
 }
@@ -180,7 +180,7 @@ pub(super) fn push_distinct_rounded_clips(buffer: &mut PaintCapture, depth: u32)
 #[allow(clippy::too_many_arguments)]
 pub(super) fn polyline_cmd(
     b: &mut PaintCapture,
-    payloads: &mut RecordPayloads,
+    store: &mut RecordStore,
     points: &[Vec2],
     colors: &[Color],
     mode: ColorMode,
@@ -188,10 +188,10 @@ pub(super) fn polyline_cmd(
     cap: LineCap,
     join: LineJoin,
 ) {
-    let p_start = payloads.polyline_points.len() as u32;
-    payloads.polyline_points.extend_from_slice(points);
-    let c_start = payloads.polyline_colors.len() as u32;
-    payloads
+    let p_start = store.polyline_points.len() as u32;
+    store.polyline_points.extend_from_slice(points);
+    let c_start = store.polyline_colors.len() as u32;
+    store
         .polyline_colors
         .extend(colors.iter().map(|&c| ColorU8::from(c)));
     let mut lo = points[0];

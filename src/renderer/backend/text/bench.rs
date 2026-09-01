@@ -327,8 +327,7 @@ fn run_batches(
         });
     {
         let mut ctx = GpuCtx::new(&g.device, &g.queue, belt, &mut encoder);
-        let payloads = store.payloads();
-        let interned_text = payloads.interned_text();
+        let interned_text = store.interned_text();
         for (batch_index, batch) in batches.iter().enumerate() {
             backend.prepare_batch(
                 &mut ctx,
@@ -492,8 +491,8 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
                         });
                 {
                     let mut ctx = GpuCtx::new(&g.device, &g.queue, &mut belt, &mut encoder);
-                    let payloads = scene.store.payloads();
-                    let interned_text = payloads.interned_text();
+                    let store = &scene.store;
+                    let interned_text = store.interned_text();
                     backend.prepare(&mut ctx, BASE_SCALE, &scene.runs, &interned_text);
                 }
                 belt.finish();
@@ -691,8 +690,8 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
                         });
                 {
                     let mut ctx = GpuCtx::new(&g.device, &g.queue, &mut belt, &mut encoder);
-                    let payloads = scene.store.payloads();
-                    let interned_text = payloads.interned_text();
+                    let store = &scene.store;
+                    let interned_text = store.interned_text();
                     backend.prepare(&mut ctx, BASE_SCALE, &scene.runs, &interned_text);
                 }
                 belt.finish();
@@ -735,8 +734,8 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
                         });
                 {
                     let mut ctx = GpuCtx::new(&g.device, &g.queue, &mut belt, &mut encoder);
-                    let payloads = scene.store.payloads();
-                    let interned_text = payloads.interned_text();
+                    let store = &scene.store;
+                    let interned_text = store.interned_text();
                     backend.prepare(&mut ctx, scale, &scene.runs, &interned_text);
                 }
                 belt.finish();

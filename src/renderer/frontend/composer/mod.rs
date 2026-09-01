@@ -9,7 +9,7 @@ use crate::renderer::frontend::composer::clip_stack::ClipStack;
 use crate::renderer::frontend::composer::transform_stack::TransformStack;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
-use crate::scene::record_store::record_payloads::RecordPayloads;
+use crate::scene::record_store::RecordStore;
 use glam::{UVec2, Vec2};
 use std::num::NonZeroU32;
 
@@ -181,7 +181,7 @@ impl Composer {
         &'a mut self,
         display: Display,
         time: Duration,
-        payloads: &'a RecordPayloads,
+        store: &'a RecordStore,
         out: &'a mut RenderBuffer,
     ) -> ComposeSession<'a> {
         out.start_frame(display, time);
@@ -192,7 +192,7 @@ impl Composer {
 
         ComposeSession {
             composer: self,
-            payloads,
+            store,
             out,
         }
     }

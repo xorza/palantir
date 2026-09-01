@@ -12,7 +12,7 @@ use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
-use crate::scene::record_store::record_payloads::RecordPayloads;
+use crate::scene::record_store::RecordStore;
 use glam::UVec2;
 use std::time::Duration;
 
@@ -551,12 +551,7 @@ fn prune_steady_state_across_repeated_compose_calls() {
         draw(&mut buffer, rect(0.0, 0.0, 100.0, 100.0));
         let mut out = render_buffer();
         composer
-            .begin(
-                display,
-                Duration::ZERO,
-                &RecordPayloads::default(),
-                &mut out,
-            )
+            .begin(display, Duration::ZERO, &RecordStore::default(), &mut out)
             .replay_from(&buffer);
         assert_eq!(out.quads.len(), 1, "prune runs cleanly each frame");
     }
@@ -787,20 +782,20 @@ fn clear_fold_resets_across_frames() {
     let display = params(1.0, UVec2::new(200, 200));
     let mut composer = composer();
     let mut out = render_buffer();
-    let payloads = RecordPayloads::default();
+    let store = RecordStore::default();
 
     let mut covered = PaintCapture::default();
     draw(&mut covered, rect(0.0, 0.0, 200.0, 200.0));
     draw(&mut covered, rect(10.0, 10.0, 20.0, 20.0));
 
     composer
-        .begin(display, Duration::ZERO, &payloads, &mut out)
+        .begin(display, Duration::ZERO, &store, &mut out)
         .replay_from(&covered);
     assert!(out.clear_override.is_some(), "frame 1 folds");
     assert_eq!(out.quads.len(), 1);
 
     composer
-        .begin(display, Duration::ZERO, &payloads, &mut out)
+        .begin(display, Duration::ZERO, &store, &mut out)
         .replay_from(&covered);
     assert!(out.clear_override.is_some(), "steady state re-folds");
     assert_eq!(out.quads.len(), 1);
@@ -808,7 +803,7 @@ fn clear_fold_resets_across_frames() {
     let mut uncovered = PaintCapture::default();
     draw(&mut uncovered, rect(10.0, 10.0, 20.0, 20.0));
     composer
-        .begin(display, Duration::ZERO, &payloads, &mut out)
+        .begin(display, Duration::ZERO, &store, &mut out)
         .replay_from(&uncovered);
     assert_eq!(out.clear_override, None, "no cover, no override");
     assert_eq!(out.quads.len(), 1);

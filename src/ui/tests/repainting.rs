@@ -316,7 +316,7 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
     assert_eq!(h.ui.frame_id(), recorded + 1);
 }
 
-/// Regression: `Ui::frame` used to clear `record_store` unconditionally
+/// Regression: `Ui::frame` used to clear the record store unconditionally
 /// at entry, including on `PaintOnly` frames. But on PaintOnly the
 /// record pass is skipped, so `tree.shapes` retains last frame's
 /// `ShapeRecord`s — which reference record payloads by index
@@ -339,7 +339,7 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
     fn body(ui: &mut Ui, half: Duration) {
         Panel::hstack().auto_id().show(ui, |ui| {
             // Gradient-filled chrome: `lower::background` interns a
-            // `RecordedGradient` into `RecordPayloads::gradients` each record
+            // `RecordedGradient` into `RecordStore::gradients` each record
             // pass, and the resulting `ChromeRow` stores the index.
             Frame::new()
                 .id(WidgetId::from_hash("grad_bg"))
@@ -369,8 +369,8 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
     let r0 = h.frame(|ui| body(ui, half));
     assert_eq!(r0.processing, FrameProcessing::SingleLayout);
     {
-        let payloads = h.ui.forest.record_store.payloads();
-        assert_eq!(payloads.interned_text().all(), "retained 7");
+        let store = &h.ui.forest.record_store;
+        assert_eq!(store.interned_text().all(), "retained 7");
     }
 
     // Frame 1 at the blink boundary: only the anim wake fires →
@@ -382,15 +382,15 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
     // Direct pin: the gradient interned during frame 0's record must
     // still be live for the encoder on a PaintOnly frame.
     assert_eq!(
-        h.ui.forest.record_store.payloads().gradients.records.len(),
+        h.ui.forest.record_store.gradients.records.len(),
         1,
         "PaintOnly must preserve gradient payloads so retained \
          ShapeBrush::Gradient indices remain valid",
     );
     {
-        let payloads = h.ui.forest.record_store.payloads();
+        let store = &h.ui.forest.record_store;
         assert_eq!(
-            payloads.interned_text().all(),
+            store.interned_text().all(),
             "retained 7",
             "PaintOnly must preserve bytes referenced by retained text",
         );

@@ -25,6 +25,13 @@ use std::mem;
 /// Hash a fully-lowered `ShapeRecord` into a stable `ContentHash`.
 /// Sole public entry; the production call site is `Shapes::add`,
 /// which pushes the result onto the parallel `Shapes::hashes` arena.
+///
+/// `Polyline` and `Mesh` hand over a `content_hash` their lowering
+/// computed instead of hashing their own payload. Both carry spans, and
+/// the bytes those spans address live in the `RecordStore` this function
+/// never sees, so the summary has to travel on the record. Neither field
+/// widens `ShapeRecord`: another variant sets its 88 bytes, and those
+/// two fill 48 and 72 with the hash already counted.
 pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
     let mut h = Hasher::new();
     mem::discriminant(record).hash(&mut h);

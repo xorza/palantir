@@ -98,12 +98,9 @@ impl BarAxis {
     fn record(&self, ui: &mut Ui, theme: &ScrollbarTheme) {
         let radius = Corners::all(theme.thickness * 0.5);
         let track = Node::leaf().id(self.track_id).sense(Sense::CLICK);
-        if !theme.track.is_noop() {
-            let chrome = Background::rounded(theme.track, radius);
-            ui.widget(track).record(ui, Some(&chrome), |_| {});
-        } else {
-            ui.widget(track).record(ui, None, |_| {});
-        }
+        let track_chrome =
+            (!theme.track.is_noop()).then(|| Background::rounded(theme.track, radius));
+        ui.widget(track).record(ui, track_chrome.as_ref(), |_| {});
 
         let fill = if self.thumb.left.drag.delta().is_some() || self.thumb.pressed() {
             theme.thumb_active
