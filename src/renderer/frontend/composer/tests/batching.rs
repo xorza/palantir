@@ -18,7 +18,7 @@ use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
 use crate::renderer::frontend::payload::stroke_bounds::Spin;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
-use crate::scene::record_store::record_payloads::RecordPayloads;
+use crate::scene::record_store::RecordStore;
 use crate::scene::shapes::record::ColorMode;
 use crate::shape::style::{LineCap, LineJoin};
 use glam::{UVec2, Vec2};
@@ -354,12 +354,12 @@ fn compose_spins_polyline_about_bbox_center() {
     // point of the segment, so a correct spin keeps the AABB centred.
     let aabb = |rotation: f32| -> (Vec2, Vec2) {
         let mut buffer = PaintCapture::default();
-        let mut payloads = RecordPayloads::default();
-        let p_start = payloads.polyline_points.len() as u32;
-        payloads.polyline_points.push(Vec2::new(15.0, 50.0));
-        payloads.polyline_points.push(Vec2::new(85.0, 50.0));
-        let c_start = payloads.polyline_colors.len() as u32;
-        payloads.polyline_colors.push(Color::WHITE.into());
+        let mut store = RecordStore::default();
+        let p_start = store.polyline_points.len() as u32;
+        store.polyline_points.push(Vec2::new(15.0, 50.0));
+        store.polyline_points.push(Vec2::new(85.0, 50.0));
+        let c_start = store.polyline_colors.len() as u32;
+        store.polyline_colors.push(Color::WHITE.into());
         buffer.draw_polyline(DrawPolylinePayload {
             // Pivot is the 100x100 box centre, which `stroke_bounds`
             // derives from the owner rect on the production path.
@@ -390,7 +390,7 @@ fn compose_spins_polyline_about_bbox_center() {
             .begin(
                 params(1.0, UVec2::new(200, 200)),
                 Duration::ZERO,
-                &payloads,
+                &store,
                 &mut out,
             )
             .replay_from(&buffer);
@@ -590,7 +590,7 @@ fn compose_disjoint_mixed_kinds_share_one_group() {
 #[test]
 fn quad_flushes_text_in_already_closed_batch_same_group() {
     let buf = run(
-        |b, payloads| {
+        |b, store| {
             // First node label.
             text(b, rect(0.0, 0.0, 100.0, 20.0));
             // A polyline far from everything closes the text batch
@@ -599,7 +599,7 @@ fn quad_flushes_text_in_already_closed_batch_same_group() {
             // flush).
             polyline_cmd(
                 b,
-                payloads,
+                store,
                 &[Vec2::new(0.0, 400.0), Vec2::new(50.0, 400.0)],
                 &[Color::WHITE],
                 ColorMode::Single,
@@ -614,7 +614,7 @@ fn quad_flushes_text_in_already_closed_batch_same_group() {
             text(b, rect(0.0, 100.0, 100.0, 20.0));
             polyline_cmd(
                 b,
-                payloads,
+                store,
                 &[Vec2::new(0.0, 500.0), Vec2::new(50.0, 500.0)],
                 &[Color::WHITE],
                 ColorMode::Single,

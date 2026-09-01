@@ -48,7 +48,7 @@ pub(crate) enum ShapeRecord {
     /// from the payload down.
     Quad(QuadShape),
     /// Stroked polyline. `points`/`colors` index into the
-    /// `RecordPayloads`' `polyline_points` / `polyline_colors`. `colors`
+    /// `RecordStore`'s `polyline_points` / `polyline_colors`. `colors`
     /// length depends on `color_mode`: 1 for `Single`,
     /// `points.len()` for `PerPoint`, `points.len() - 1` for
     /// `PerSegment`. `content_hash` summarizes points+colors+mode
@@ -111,7 +111,7 @@ pub(crate) enum ShapeRecord {
         align: Align,
     },
     /// User-supplied colored triangle mesh. Vertex/index data lives on
-    /// the `RecordPayloads`' `meshes` pool; these spans index into its
+    /// the `RecordStore`'s `meshes` pool; these spans index into its
     /// vertex/index vecs. `content_hash` summarizes
     /// vertex+index bytes for cache identity — two frames with
     /// identical mesh content share a hash even though their span

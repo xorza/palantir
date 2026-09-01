@@ -95,9 +95,8 @@ fn polyline_color_cardinality_is_enforced_at_lowering() {
                 if !accepted {
                     assert!(shapes.records.is_empty());
                     assert!(shapes.hashes.is_empty());
-                    let payloads = store.payloads();
-                    assert!(payloads.polyline_points.is_empty());
-                    assert!(payloads.polyline_colors.is_empty());
+                    assert!(store.polyline_points.is_empty());
+                    assert!(store.polyline_colors.is_empty());
                     continue;
                 }
 
@@ -105,13 +104,12 @@ fn polyline_color_cardinality_is_enforced_at_lowering() {
                 assert_eq!(result.unwrap(), stored.then_some(0));
                 assert_eq!(shapes.records.len(), usize::from(stored));
                 assert_eq!(shapes.hashes.len(), usize::from(stored));
-                let payloads = store.payloads();
                 assert_eq!(
-                    payloads.polyline_points.len(),
+                    store.polyline_points.len(),
                     points_len * usize::from(stored)
                 );
                 assert_eq!(
-                    payloads.polyline_colors.len(),
+                    store.polyline_colors.len(),
                     source.stored_colors_len(points_len) as usize * usize::from(stored),
                 );
 
@@ -218,13 +216,12 @@ fn the_nan_gate_drops_every_shape_kind() {
         // gradient fill interns a row, and a text run copies its bytes,
         // all before a record exists to be judged.
         {
-            let payloads = store.payloads();
             assert!(
-                payloads.polyline_points.is_empty()
-                    && payloads.polyline_colors.is_empty()
-                    && payloads.meshes.vertices.is_empty()
-                    && payloads.meshes.indices.is_empty()
-                    && payloads.gradients.records.is_empty(),
+                store.polyline_points.is_empty()
+                    && store.polyline_colors.is_empty()
+                    && store.meshes.vertices.is_empty()
+                    && store.meshes.indices.is_empty()
+                    && store.gradients.records.is_empty(),
                 "case {label}: a rejected shape left bytes in the arena",
             );
         }

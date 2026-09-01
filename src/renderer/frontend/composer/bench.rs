@@ -12,7 +12,7 @@ use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
 use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
 use crate::renderer::render_buffer::RenderBuffer;
-use crate::scene::record_store::record_payloads::RecordPayloads;
+use crate::scene::record_store::RecordStore;
 use crate::scene::shapes::paint::CurveBasis;
 use criterion::{BenchmarkId, Criterion, Throughput};
 use glam::{UVec2, Vec2};
@@ -22,7 +22,7 @@ use std::time::Duration;
 #[derive(Debug)]
 struct ComposeBench {
     cmds: PaintCapture,
-    payloads: RecordPayloads,
+    store: RecordStore,
     composer: Composer,
     out: RenderBuffer,
     display: Display,
@@ -32,7 +32,7 @@ impl ComposeBench {
     fn new(cmds: PaintCapture) -> Self {
         Self {
             cmds,
-            payloads: RecordPayloads::default(),
+            store: RecordStore::default(),
             composer: Composer::new(8192),
             out: RenderBuffer::new(),
             display: Display::from_physical(UVec2::splat(128), 1.0),
@@ -65,7 +65,7 @@ impl ComposeBench {
 
     fn compose(&mut self) -> usize {
         self.composer
-            .begin(self.display, Duration::ZERO, &self.payloads, &mut self.out)
+            .begin(self.display, Duration::ZERO, &self.store, &mut self.out)
             .replay_from(&self.cmds);
         self.out.meshes.len() + self.out.images.len() + self.out.curves.len()
     }

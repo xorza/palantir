@@ -4,28 +4,19 @@ use crate::primitives::brush::gradient::{Interp, Spread};
 use crate::primitives::color::ColorU8;
 use crate::primitives::fill_kind::FillKind;
 use crate::scene::record_store::RecordStore;
-use crate::scene::record_store::record_payloads::RecordPayloads;
 use crate::scene::record_store::recorded_gradient::RecordedGradient;
 use crate::scene::record_store::recorded_gradients::RecordedGradients;
 use glam::Vec2;
 use std::panic::AssertUnwindSafe;
 
 #[test]
-fn record_store_owns_inline_payloads_and_stores_are_isolated() {
-    assert_eq!(
-        std::mem::size_of::<RecordStore>(),
-        std::mem::size_of::<RecordPayloads>(),
-    );
-
+fn stores_are_isolated() {
     let mut first = RecordStore::default();
     let second = RecordStore::default();
     first.stage_polyline(&[Vec2::new(3.0, 5.0)], &[]);
 
-    assert_eq!(
-        first.payloads().polyline_points.as_slice(),
-        &[Vec2::new(3.0, 5.0)],
-    );
-    assert!(second.payloads().polyline_points.is_empty());
+    assert_eq!(first.polyline_points.as_slice(), &[Vec2::new(3.0, 5.0)]);
+    assert!(second.polyline_points.is_empty());
 }
 
 /// Two properties, in priority order. **A hit is confirmed by

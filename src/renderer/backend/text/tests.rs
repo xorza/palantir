@@ -98,8 +98,7 @@ fn run_one_frame(
         device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
     {
         let mut ctx = GpuCtx::new(device, queue, &mut belt, &mut encoder);
-        let payloads = store.payloads();
-        let interned_text = payloads.interned_text();
+        let interned_text = store.interned_text();
         backend.prepare_batch(&mut ctx, scale, 0, runs, &interned_text);
         backend.pass.flush(&mut ctx);
     }
@@ -375,8 +374,7 @@ fn deferred_upload_keeps_batches_distinct() {
         .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
     {
         let mut ctx = GpuCtx::new(&gpu.lease.device, &gpu.queue, &mut belt, &mut encoder);
-        let payloads = store.payloads();
-        let interned_text = payloads.interned_text();
+        let interned_text = store.interned_text();
         backend.prepare_batch(
             &mut ctx,
             1.0,
@@ -679,8 +677,7 @@ fn swept_empty_glyph_reinserts() {
         .lease
         .device
         .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-    let payloads = store.payloads();
-    let interned_text = payloads.interned_text();
+    let interned_text = store.interned_text();
     while backend.pass.atlas.current_frame < 1024 {
         let mut ctx = GpuCtx::new(&gpu.lease.device, &gpu.queue, &mut belt, &mut encoder);
         backend.prepare_batch(&mut ctx, 1.0, 0, &[], &interned_text);

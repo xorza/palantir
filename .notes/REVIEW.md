@@ -6,10 +6,6 @@ revision and drift as files change.
 
 ## The same computation spelled twice
 
-- [ ] `scene/record_store/mod.rs:42` — `RecordStore` is a pure pass-through newtype over `RecordPayloads`; every method delegates. Two types for one thing.
-- [ ] `scene/shapes/record/mod.rs:68,130` — `ShapeRecord::Polyline.content_hash` and `ShapeRecord::Mesh.content_hash` are written by `shapes/lower.rs` and read only by `compute_record_hash` in `shapes/hash.rs:102,143`. The parallel `Shapes::hashes` column already carries the folded result, so each record stores 8 bytes that nothing reads after the hash is taken. Check whether the record hash is taken once at `Shapes::add`; if so the field can go.
-- [ ] `renderer/backend/quad.wgsl:330,361` — both shadow arms write `vec4<f32>(in.fill.rgb * a, a)` by hand; the prelude's `premultiply` exists so that no fragment entry spells it.
-- [ ] `widgets/scroll/bars.rs:100-106` — `BarAxis::record` has two arms that both call `ui.widget(track).record(..)`, differing only in `Some(&chrome)` vs `None`. An `Option<Background>` and one call says the same.
 - [ ] `widgets/overlay_scope.rs:131` — `OverlayScope::record` takes a body returning `()`, so `widgets/popup/mod.rs:211-223` and `widgets/modal/mod.rs:111-121` both smuggle the body result out through `let mut inner = None; … inner.expect("the body records unconditionally")`. A body returning `R` removes both `Option`s and both `expect`s.
 - [ ] `renderer/backend/debug_marker.rs` — four functions with two `cfg` bodies each (eight items) for a feature gate whose real content is two lines.
 - [ ] `renderer/gradient_atlas/mod.rs:240-253` — `CpuGradientAtlas::new` sizes `slots`, `baked`, and `mru` itself although `resize_rows` (line 377) is documented as "the one place any of them is resized".

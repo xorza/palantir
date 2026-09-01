@@ -37,7 +37,7 @@ use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::renderer::render_buffer::text::TextDrawRow;
 use crate::renderer::render_buffer::text_batch::TextBatch;
 use crate::renderer::render_buffer::{MAX_ROUNDED_CLIP_DEPTH, RenderBuffer, RoundedClip};
-use crate::scene::record_store::record_payloads::RecordPayloads;
+use crate::scene::record_store::RecordStore;
 use crate::scene::shapes::paint::CurveBasis;
 use crate::scene::shapes::record::ColorMode;
 use crate::shape::stroke_bounds::HALF_FRINGE;
@@ -63,7 +63,7 @@ use crate::renderer::frontend::composer::{Composer, GroupCursors, OpenBatch, Pol
 #[derive(Debug)]
 pub(crate) struct ComposeSession<'a> {
     pub(super) composer: &'a mut Composer,
-    pub(super) payloads: &'a RecordPayloads,
+    pub(super) store: &'a RecordStore,
     pub(super) out: &'a mut RenderBuffer,
 }
 
@@ -638,8 +638,8 @@ impl PaintSink for ComposeSession<'_> {
         let pts_end = pts_start + p.points_len as usize;
         let cs_start = p.colors_start as usize;
         let cs_end = cs_start + p.colors_len as usize;
-        let src_points = &self.payloads.polyline_points[pts_start..pts_end];
-        let src_colors = &self.payloads.polyline_colors[cs_start..cs_end];
+        let src_points = &self.store.polyline_points[pts_start..pts_end];
+        let src_colors = &self.store.polyline_colors[cs_start..cs_end];
 
         // Transform points into physical-px. Owner-local
         // origin is folded in here so points stay owner-

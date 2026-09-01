@@ -38,7 +38,6 @@ use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_plan::RenderPlan;
 use crate::scene::cascade::Cascade;
 use crate::scene::forest::Forest;
-use crate::scene::record_store::record_payloads::RecordPayloads;
 
 /// Frozen inputs consumed by the CPU renderer for one frame.
 #[derive(Debug)]
@@ -46,7 +45,6 @@ pub(crate) struct FrameScene<'a> {
     pub(crate) forest: &'a Forest,
     pub(crate) layout: &'a Layout,
     pub(crate) cascade: &'a Cascade,
-    pub(crate) payloads: &'a RecordPayloads,
     pub(crate) gpu_views: &'a GpuViews,
     pub(crate) display: Display,
     /// Drives backend `GpuView` frame deltas and is not derivable from `Display`.
@@ -87,9 +85,12 @@ impl Frontend {
     /// nothing is serialized only to be read back a line later.
     pub(crate) fn build(&mut self, scene: FrameScene<'_>, plan: RenderPlan) {
         tracy::zone!();
-        let mut sink =
-            self.composer
-                .begin(scene.display, scene.time, scene.payloads, &mut self.buffer);
+        let mut sink = self.composer.begin(
+            scene.display,
+            scene.time,
+            &scene.forest.record_store,
+            &mut self.buffer,
+        );
         self.encoder.encode(&scene, plan, &mut sink);
         // Dropping the session closes the trailing batch and group;
         // explicit because it also releases the `buffer` borrow.

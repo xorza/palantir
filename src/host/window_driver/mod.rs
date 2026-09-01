@@ -595,7 +595,7 @@ impl WindowDriver {
                     None
                 };
                 self.backbuffer_fresh = backbuffer.is_some();
-                let payloads = self.ui.payloads();
+                let store = self.ui.record_store();
                 backend.submit(Submission {
                     owner: self.render_owner,
                     targets: SubmissionTargets {
@@ -603,7 +603,7 @@ impl WindowDriver {
                         backbuffer,
                         stencil,
                     },
-                    payloads,
+                    store,
                     buffer,
                     plan,
                     debug_overlay,

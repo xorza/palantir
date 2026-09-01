@@ -115,7 +115,7 @@ fn checkmark_polyline_is_themed_and_scales_with_box_size() {
             })
             .expect("a checked Checkbox records its tick as a polyline");
         // Points live in the shared record store, addressed by the span.
-        let store = h.ui.payloads();
+        let store = h.ui.record_store();
         store.polyline_points[span.range()].to_vec()
     }
 

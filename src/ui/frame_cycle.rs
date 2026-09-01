@@ -339,11 +339,11 @@ impl<'a> FrameCycle<'a> {
     fn post_record(&mut self) {
         tracy::zone!("Ui::post_record");
         self.ui.forest.post_record();
-        // Reached through `forest`, not through `Ui::payloads` — that
+        // Reached through `forest`, not through `Ui::record_store` — that
         // borrows all of `self.ui`, and `layout.run` below writes
         // `&mut self.ui.layout` while this borrow is live.
-        let payloads = self.ui.forest.record_store.payloads();
-        let interned_text = payloads.interned_text();
+        let store = &self.ui.forest.record_store;
+        let interned_text = store.interned_text();
         self.engines.layout.run(
             &self.ui.forest,
             &interned_text,

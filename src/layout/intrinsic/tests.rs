@@ -87,8 +87,8 @@ fn intrinsic_query_short_circuits_on_cache_hit() {
     const SENTINEL: f32 = 1234.5;
     h.engines.layout.scratch.intrinsics[child.idx()][slot] = SENTINEL;
 
-    let payloads = h.ui.payloads();
-    let interned_text = payloads.interned_text();
+    let store = h.ui.record_store();
+    let interned_text = store.interned_text();
     let v = h.engines.layout.intrinsic(
         h.ui.tree(Layer::Main),
         child,
@@ -163,8 +163,8 @@ fn parent_intrinsic_query_populates_descendant_cache() {
         entry[slot] = f32::NAN;
     }
 
-    let payloads = h.ui.payloads();
-    let interned_text = payloads.interned_text();
+    let store = h.ui.record_store();
+    let interned_text = store.interned_text();
     let _ = h.engines.layout.intrinsic(
         h.ui.tree(Layer::Main),
         root,
@@ -272,8 +272,8 @@ fn intrinsic_range_exactly_matches_separate_queries_for_every_driver() {
         );
     }
 
-    let payloads = h.ui.payloads();
-    let interned_text = payloads.interned_text();
+    let store = h.ui.record_store();
+    let interned_text = store.interned_text();
     for idx in 0..tree.records.len() {
         let node = NodeId(idx as u32);
         let mode = LayoutMode::from(tree.records.layout()[idx].meta);
@@ -367,8 +367,8 @@ fn a_leaf_intrinsic_walk_records_the_axis_it_was_not_asked_about() {
             .map(|c| c.id)
             .next()
             .expect("hstack has child");
-    let payloads = h.ui.payloads();
-    let interned_text = payloads.interned_text();
+    let store = h.ui.record_store();
+    let interned_text = store.interned_text();
 
     h.engines
         .layout

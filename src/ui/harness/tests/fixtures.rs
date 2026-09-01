@@ -47,8 +47,7 @@ fn arena_interns_without_ever_recording() {
     // property this harness exists to make reachable without a frame.
     let store = &harness.ui.forest.record_store;
     let recorded = store.record_text(interned);
-    let payloads = store.payloads();
-    assert_eq!(payloads.interned_text().resolve(recorded.span), "label");
+    assert_eq!(store.interned_text().resolve(recorded.span), "label");
 }
 
 #[test]

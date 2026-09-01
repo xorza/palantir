@@ -115,7 +115,7 @@ impl Encoder {
 
         let viewport = scene.display.logical_rect();
         let now = scene.time;
-        let gradients = scene.payloads.gradients.records.as_slice();
+        let gradients = scene.forest.record_store.gradients.records.as_slice();
         gradient_resolver.reset_for(gradients.len());
         // Matches the backend's padded physical scissor; both derive from
         // `renderer::render_plan::RenderPlan::AA_PADDING`.

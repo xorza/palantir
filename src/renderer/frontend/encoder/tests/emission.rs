@@ -213,7 +213,7 @@ fn manually_pushed_shapes_emit_expected_cmds() {
         "lines no longer lower to polylines"
     );
     assert_eq!(
-        h.ui.forest().record_store.payloads().polyline_points.len(),
+        h.ui.forest().record_store.polyline_points.len(),
         0,
         "the point payloads stay untouched by lines"
     );
@@ -313,7 +313,7 @@ fn text_shape_carries_source_without_reconstructing_buffer() {
         })
         .expect("Text widget must emit a DrawText command");
     let scene = h.ui.frame_scene();
-    let interned_text = scene.payloads.interned_text();
+    let interned_text = scene.forest.record_store.interned_text();
     assert_eq!(interned_text.resolve(payload.text.span), "hi");
     assert!(
         !h.ui.shaper().has_cosmic_buffer(key),
@@ -345,7 +345,7 @@ fn text_shape_carries_source_without_reconstructing_buffer() {
         })
         .expect("replayed text must still emit");
     let scene = h.ui.frame_scene();
-    let interned_text = scene.payloads.interned_text();
+    let interned_text = scene.forest.record_store.interned_text();
     assert_eq!(interned_text.resolve(payload.text.span), "hi");
     assert!(
         !h.ui.shaper().has_cosmic_buffer(replayed_key),

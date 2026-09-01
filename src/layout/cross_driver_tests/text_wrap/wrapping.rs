@@ -139,8 +139,8 @@ fn wrapping_text_in_grid_auto_column_wraps_under_constrained_width() {
 fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
     let mut h = UiHarness::with_text(UVec2::new(200, 400));
     let node = h.frame_value(|ui| two_hug_cols_with_wrap(ui, PARAGRAPH));
-    let payloads = h.ui.payloads();
-    let interned_text = payloads.interned_text();
+    let store = h.ui.record_store();
+    let interned_text = store.interned_text();
     let max_w = h.engines.layout.intrinsic(
         h.ui.tree(Layer::Main),
         node,

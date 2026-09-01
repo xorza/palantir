@@ -334,8 +334,7 @@ fn shaped_text_ref_resolves_the_recorded_pair() {
     let key = key_for(&recorded);
     let text_ref = ShapedTextRef::new(key, &recorded);
 
-    let payloads = store.payloads();
-    let interned = payloads.interned_text();
+    let interned = store.interned_text();
     let request = text_ref.resolve_request(&interned);
     assert_eq!(request.text, "hi");
     assert_eq!(request.key, key);

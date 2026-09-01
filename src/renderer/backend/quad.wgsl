@@ -327,7 +327,7 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
         let d = sdf_rounded_box_centered(p, shadow_half, in.radius);
         let cov = blurred_rect_coverage(d, sigma);
         let a = in.fill.a * cov;
-        return vec4<f32>(in.fill.rgb * a, a);
+        return premultiply(in.fill.rgb, a);
     }
     if (kind == BRUSH_KIND_SHADOW_INSET) {
         // Inset shadow: source rect S equals the paint bbox. The
@@ -358,7 +358,7 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
         let cov_hole = blurred_rect_coverage(d_hole, sigma);
         let cov = clamp(1.0 - cov_hole, 0.0, 1.0);
         let a = in.fill.a * cov;
-        return vec4<f32>(in.fill.rgb * a, a);
+        return premultiply(in.fill.rgb, a);
     }
 
     if (kind == BRUSH_KIND_TRIANGLE) {
