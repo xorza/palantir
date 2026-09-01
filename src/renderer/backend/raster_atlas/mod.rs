@@ -56,9 +56,9 @@ use wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
 pub(super) struct RasterAtlasConfig {
     /// Label stem, e.g. `"palantir.text"`. Every texture, marker, and buffer
     /// this atlas creates is named from it.
-    pub(crate) label: &'static str,
-    pub(crate) initial_mask_px: u32,
-    pub(crate) initial_color_px: u32,
+    pub(super) label: &'static str,
+    pub(super) initial_mask_px: u32,
+    pub(super) initial_color_px: u32,
     /// Hard ceiling on one side's backing texture, whatever the device allows.
     ///
     /// Per instance rather than shared, because the two tenants store
@@ -72,7 +72,7 @@ pub(super) struct RasterAtlasConfig {
     /// failure mode when this binds is mild: refusing to grow yields
     /// `Rasterized::AtlasFull`, whose only cost is that the entry re-encodes
     /// each frame instead of being cached.
-    pub(crate) max_bytes: u64,
+    pub(super) max_bytes: u64,
     /// Byte budget below which [`RasterAtlas::allocate`] grows a side rather
     /// than evicting from it.
     ///
@@ -84,7 +84,7 @@ pub(super) struct RasterAtlasConfig {
     /// one in a loop. Sizing to the working set first turns that into one
     /// texture allocation plus a preserved-rect blit: one growth, zero
     /// evictions, and 61 µs a frame rather than 609 µs.
-    pub(crate) eager_growth_bytes: u64,
+    pub(super) eager_growth_bytes: u64,
 }
 
 /// GPU debug labels, built once at construction. Held as owned strings rather

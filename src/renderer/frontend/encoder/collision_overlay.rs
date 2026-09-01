@@ -37,7 +37,7 @@ const STROKE: Stroke = Stroke::solid(Color::rgb(1.0, 0.0, 1.0), 3.0);
 /// shipped app wants neither it over its UI nor the branch. The
 /// `tracing::error!` in `Forest::report_explicit_collision` is what
 /// survives into release, and it carries the diagnosis anyway.
-pub(super) fn emit(forest: &Forest, layout: &Layout, out: &mut dyn PaintSink) {
+pub(super) fn emit(forest: &Forest, layout: &Layout, out: &mut impl PaintSink) {
     for record in &forest.collisions {
         for ep in [record.first, record.second] {
             let rects = &layout[ep.layer].rect;

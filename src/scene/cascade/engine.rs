@@ -173,10 +173,18 @@ impl CascadeEngine {
             if lc.entries_base != entries_base
                 || lc.static_hash != tree.fingerprint.cascade_static
                 || lc.paint_counts != tree.fingerprint.paint_counts
-                || lc.arena_hashes.len() != n
             {
                 return false;
             }
+            // Not asked again: the bases are a prefix sum over the
+            // current per-layer counts, so every base matching against a
+            // matching total pins each layer's count to the one
+            // `reset_for` sized this column to.
+            debug_assert_eq!(
+                lc.arena_hashes.len(),
+                n,
+                "retained arena column outlived its layer",
+            );
             if lc.layout_hash != layout_hashes[layer] {
                 return false;
             }
