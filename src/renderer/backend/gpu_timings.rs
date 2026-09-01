@@ -46,7 +46,7 @@ const MAX_TIMESTAMPS: u32 = 32;
 const TIMESTAMP_BUFFER_BYTES: u64 = MAX_TIMESTAMPS as u64 * BYTES_PER_U64;
 
 /// Number of pipeline-statistics fields we request. Matches the bits
-/// set in [`pipeline_stats_flags`]; resolve writes them back in the
+/// set in [`PIPELINE_STATS_FLAGS`]; resolve writes them back in the
 /// flag-declaration order (VS_INV, CLIPPER_INV, CLIPPER_OUT, FS_INV,
 /// CS_INV).
 const STATS_FIELD_COUNT: usize = 5;
@@ -64,13 +64,12 @@ const STATS_FAILED: u8 = 1 << 3;
 
 /// All pipeline-statistics fields we care about. Compute is included
 /// for layout completeness (always 0 — we have no compute passes).
-fn pipeline_stats_flags() -> wgpu::PipelineStatisticsTypes {
+const PIPELINE_STATS_FLAGS: wgpu::PipelineStatisticsTypes =
     wgpu::PipelineStatisticsTypes::VERTEX_SHADER_INVOCATIONS
-        | wgpu::PipelineStatisticsTypes::CLIPPER_INVOCATIONS
-        | wgpu::PipelineStatisticsTypes::CLIPPER_PRIMITIVES_OUT
-        | wgpu::PipelineStatisticsTypes::FRAGMENT_SHADER_INVOCATIONS
-        | wgpu::PipelineStatisticsTypes::COMPUTE_SHADER_INVOCATIONS
-}
+        .union(wgpu::PipelineStatisticsTypes::CLIPPER_INVOCATIONS)
+        .union(wgpu::PipelineStatisticsTypes::CLIPPER_PRIMITIVES_OUT)
+        .union(wgpu::PipelineStatisticsTypes::FRAGMENT_SHADER_INVOCATIONS)
+        .union(wgpu::PipelineStatisticsTypes::COMPUTE_SHADER_INVOCATIONS);
 
 #[derive(Debug)]
 struct Slot {
@@ -159,7 +158,7 @@ impl GpuTimings {
         let (stats_query_set, stats_resolve) = if pipeline_stats {
             let qs = device.create_query_set(&wgpu::QuerySetDescriptor {
                 label: Some("palantir.gpu_timings.stats"),
-                ty: wgpu::QueryType::PipelineStatistics(pipeline_stats_flags()),
+                ty: wgpu::QueryType::PipelineStatistics(PIPELINE_STATS_FLAGS),
                 count: 1,
             });
             let buf = device.create_buffer(&wgpu::BufferDescriptor {
@@ -500,7 +499,7 @@ fn tick(bytes: &[u8], index: usize) -> u64 {
 }
 
 /// Parse the resolved pipeline-statistics counters and publish them.
-/// Field order matches `pipeline_stats_flags` — the mapping lives
+/// Field order matches [`PIPELINE_STATS_FLAGS`] — the mapping lives
 /// here, next to the flag declaration that defines it.
 fn publish_stats(bytes: &[u8], sink: &GpuPassStats) {
     let mut values = [0u64; STATS_FIELD_COUNT];
