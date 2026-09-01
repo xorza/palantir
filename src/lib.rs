@@ -215,13 +215,17 @@ pub use animation::easing::Easing;
 pub use app::App;
 pub use diagnostics::DebugOverlayConfig;
 pub use display::Display;
-/// The benchmark workload as a recordable scene, with the surface, scale
-/// and dpr it is timed at. Not part of the supported surface — it exists
-/// so the bench target, the allocation gates and the showcase page record
-/// the same tree at the same geometry, rather than each keeping a smaller
+/// The benchmark workload as a recordable scene. Not part of the supported
+/// surface — it exists so the bench target, the allocation gates and the
+/// showcase page record the same tree, rather than each keeping a smaller
 /// stand-in of its own.
 #[cfg(any(feature = "internals", feature = "showcase"))]
-pub use frame_fixture::{BENCH_DPR, BENCH_SCALE, BENCH_SURFACE, FrameFixture};
+pub use frame_fixture::FrameFixture;
+/// The surface, scale and dpr the benchmark workload is timed at. The
+/// bench target and the allocation gates share them so their numbers stay
+/// comparable.
+#[cfg(feature = "internals")]
+pub use frame_fixture::{BENCH_DPR, BENCH_SCALE, BENCH_SURFACE};
 pub use host::clock::{Clock, FixedClock, RealtimeClock};
 /// What to ask an adapter for so the device it returns can run Palantir.
 pub use host::device_requirements::DeviceRequirements;
