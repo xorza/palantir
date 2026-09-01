@@ -208,19 +208,16 @@ impl Popup {
             .node
             .resolve_container_chrome(chrome.as_ref(), theme.container_chrome());
         let handle = CloseHandle::default();
-        let mut inner = None;
-        let edges = scope.record(ui, |ui| {
-            widget.record(ui, chrome, |ui| inner = Some(body(ui, &handle)));
-        });
+        let turn = scope.record(ui, |ui| widget.record(ui, chrome, |ui| body(ui, &handle)));
         let dismiss_mode = click_outside == ClickOutside::Dismiss;
         let response = OverlayResponse {
             // A `Dismiss` popup closes on an eaten outside-press OR an Esc
             // press — so overlay hosts (ComboBox / ContextMenu) read one
             // `closed()` signal instead of each re-deriving Esc. (`Block`
             // records a backdrop and ignores both edges.)
-            dismissed: dismiss_mode && (edges.outside || edges.escape),
+            dismissed: dismiss_mode && (turn.outside || turn.escape),
             close_requested: handle.requested(),
-            inner: inner.expect("the body records unconditionally"),
+            inner: turn.inner,
         };
         scope.withdraw(ui, response.closed());
         response

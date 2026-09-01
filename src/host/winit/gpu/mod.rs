@@ -75,9 +75,7 @@ impl GpuInit {
         cfg: &WinitHostConfig,
     ) -> Result<Self, WinitHostError> {
         let instance = GpuRequest::instance()?;
-        let surface = instance
-            .create_surface(window.clone())
-            .map_err(|source| WinitHostError::CreateSurface { token, source })?;
+        let surface = create_surface(&instance, token, window)?;
 
         // Caller-driven opt-in via `WinitHostConfig::collect_gpu_stats`
         // — see field doc. When off, none of the timing-query features
@@ -115,17 +113,26 @@ impl GpuInit {
             max_texture_dim,
             requested_present_mode: cfg.present_mode,
         };
-        let size = window.inner_size();
-        let first_surface = surfaces.build_window_surface(
-            surface,
-            UVec2::new(size.width, size.height),
-            window.id(),
-        )?;
+        let first_surface = surfaces.window_surface(surface, window)?;
         Ok(Self {
             surfaces,
             first_surface,
         })
     }
+}
+
+/// Create a native surface for `window`, naming the window in the error.
+///
+/// A free function because [`GpuInit::new`] needs one *before* it has a
+/// [`SurfaceManager`] — the adapter is picked against this very surface.
+fn create_surface(
+    instance: &wgpu::Instance,
+    token: WindowToken,
+    window: &Arc<WinitWindow>,
+) -> Result<wgpu::Surface<'static>, WinitHostError> {
+    instance
+        .create_surface(window.clone())
+        .map_err(|source| WinitHostError::CreateSurface { token, source })
 }
 
 impl SurfaceManager {
@@ -135,10 +142,21 @@ impl SurfaceManager {
         token: WindowToken,
         window: &Arc<WinitWindow>,
     ) -> Result<WindowSurface, WinitHostError> {
-        let surface = self
-            .instance
-            .create_surface(window.clone())
-            .map_err(|source| WinitHostError::CreateSurface { token, source })?;
+        let surface = create_surface(&self.instance, token, window)?;
+        self.window_surface(surface, window)
+    }
+
+    /// Configure `surface` against the window it was created for.
+    ///
+    /// Apart from [`Self::make_surface`], which creates the surface and
+    /// calls this, because startup cannot take those two steps together:
+    /// [`GpuInit::new`] needs the surface to pick the adapter, and only
+    /// the adapter gives it a `SurfaceManager` to configure with.
+    fn window_surface(
+        &self,
+        surface: wgpu::Surface<'static>,
+        window: &Arc<WinitWindow>,
+    ) -> Result<WindowSurface, WinitHostError> {
         let size = window.inner_size();
         self.build_window_surface(surface, UVec2::new(size.width, size.height), window.id())
     }

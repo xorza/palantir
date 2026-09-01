@@ -238,22 +238,27 @@ impl CpuGradientAtlas {
     /// [`INITIAL_ATLAS_ROWS`]; a cap below that would make the initial
     /// allocation itself illegal, so it is raised to fit.
     pub(crate) fn new(max_rows: u32) -> Self {
+        // Row 0 alone. It is the permanent fallback and never an MRU
+        // member, so seeding it here is what lets `resize_rows` — the one
+        // place the columns are sized — reach `INITIAL_ATLAS_ROWS` from
+        // row 1, exactly as every later growth does.
         let mut atlas = Self {
             index: FxHashMap::default(),
-            slots: vec![RowSlot::default(); INITIAL_ATLAS_ROWS as usize],
-            baked: vec![[ColorF16::TRANSPARENT; LUT_ROW_TEXELS]; INITIAL_ATLAS_ROWS as usize],
-            mru: MruList::seeded(INITIAL_ATLAS_ROWS),
+            slots: vec![RowSlot::default()],
+            baked: vec![[ColorF16::TRANSPARENT; LUT_ROW_TEXELS]],
+            mru: MruList::seeded(1),
             max_rows: max_rows.max(INITIAL_ATLAS_ROWS),
             epoch: 1,
             dirty: None,
             counters: GradientAtlasCounters::default(),
         };
+        atlas.resize_rows(INITIAL_ATLAS_ROWS);
         atlas.init_row_zero_magenta();
         atlas
     }
 
     /// Rows currently allocated, including the reserved row 0. The
-    /// per-row columns are resized together in [`Self::grow`], so
+    /// per-row columns are resized together in [`Self::resize_rows`], so
     /// `baked` speaks for all of them.
     pub(crate) fn capacity(&self) -> u32 {
         self.baked.len() as u32

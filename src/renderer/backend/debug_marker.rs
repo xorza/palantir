@@ -16,42 +16,35 @@
 //! chosen — so this gates them rather than deleting them. Turn the
 //! feature on whenever you intend to capture; `showcase` enables it.
 
-#[cfg(feature = "gpu-debug-markers")]
+/// One `cfg!` rather than a `#[cfg]` pair per call: the gate reads as a
+/// constant the branch folds away, so a marker-free build emits neither
+/// the wgpu call nor a second body to keep in step with the first.
+const ENABLED: bool = cfg!(feature = "gpu-debug-markers");
+
 #[inline]
 pub(super) fn push(pass: &mut wgpu::RenderPass<'_>, label: &str) {
-    pass.push_debug_group(label);
+    if ENABLED {
+        pass.push_debug_group(label);
+    }
 }
 
-#[cfg(not(feature = "gpu-debug-markers"))]
-#[inline]
-pub(super) fn push(_pass: &mut wgpu::RenderPass<'_>, _label: &str) {}
-
-#[cfg(feature = "gpu-debug-markers")]
 #[inline]
 pub(super) fn pop(pass: &mut wgpu::RenderPass<'_>) {
-    pass.pop_debug_group();
+    if ENABLED {
+        pass.pop_debug_group();
+    }
 }
 
-#[cfg(not(feature = "gpu-debug-markers"))]
-#[inline]
-pub(super) fn pop(_pass: &mut wgpu::RenderPass<'_>) {}
-
-#[cfg(feature = "gpu-debug-markers")]
 #[inline]
 pub(super) fn push_encoder(encoder: &mut wgpu::CommandEncoder, label: &str) {
-    encoder.push_debug_group(label);
+    if ENABLED {
+        encoder.push_debug_group(label);
+    }
 }
 
-#[cfg(not(feature = "gpu-debug-markers"))]
-#[inline]
-pub(super) fn push_encoder(_encoder: &mut wgpu::CommandEncoder, _label: &str) {}
-
-#[cfg(feature = "gpu-debug-markers")]
 #[inline]
 pub(super) fn pop_encoder(encoder: &mut wgpu::CommandEncoder) {
-    encoder.pop_debug_group();
+    if ENABLED {
+        encoder.pop_debug_group();
+    }
 }
-
-#[cfg(not(feature = "gpu-debug-markers"))]
-#[inline]
-pub(super) fn pop_encoder(_encoder: &mut wgpu::CommandEncoder) {}

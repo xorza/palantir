@@ -218,7 +218,7 @@ impl<'a> Tooltip<'a> {
                 Backdrop::None,
                 &mut node,
             );
-            scope.record(ui, |ui| {
+            let _ = scope.record(ui, |ui| {
                 ui.widget(node).record(ui, Some(chrome), |ui| {
                     Text::new(label)
                         .style(&theme.text)

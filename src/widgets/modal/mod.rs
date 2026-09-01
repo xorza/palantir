@@ -108,17 +108,16 @@ impl<'a> Modal<'a> {
         // after `claim`, which stamps the key filter onto it.
         root_w.node = root;
         let handle = CloseHandle::default();
-        let mut inner = None;
-        let edges = scope.record(ui, |ui| {
+        let turn = scope.record(ui, |ui| {
             root_w.record(ui, Some(&dim), |ui| {
                 ui.widget(panel)
-                    .record(ui, Some(panel_bg), |ui| inner = Some(body(ui, &handle)));
-            });
+                    .record(ui, Some(panel_bg), |ui| body(ui, &handle))
+            })
         });
         let response = OverlayResponse {
-            dismissed: edges.outside || edges.escape,
+            dismissed: turn.outside || turn.escape,
             close_requested: handle.requested(),
-            inner: inner.expect("the body records unconditionally"),
+            inner: turn.inner,
         };
         scope.withdraw(ui, response.closed());
 
