@@ -2,6 +2,7 @@
 
 use crate::primitives::color::ColorF16;
 use crate::primitives::rect::Rect;
+use glam::Vec2;
 
 /// Mesh draw payload. Vertex/index data lives in the window's
 /// [`RecordStore`] (`meshes`); the payload only carries the spans
@@ -17,7 +18,7 @@ pub(crate) struct DrawMeshPayload {
     /// after adding `origin`, scales to physical px, and uses the
     /// result for the overlap test + scissor cull.
     pub(crate) bbox: Rect,
-    pub(crate) origin: glam::Vec2,
+    pub(crate) origin: Vec2,
     pub(crate) tint: ColorF16,
     pub(crate) v_start: u32,
     pub(crate) v_len: u32,

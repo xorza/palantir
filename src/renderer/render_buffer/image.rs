@@ -4,7 +4,7 @@ use crate::primitives::color::ColorU8;
 use crate::primitives::rect::Rect;
 use crate::primitives::texture_id::TextureId;
 use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
-use glam::UVec2;
+use glam::{UVec2, Vec2};
 use soa_rs::Soars;
 
 /// One `GpuView` off-screen target to paint this frame (see
@@ -100,11 +100,11 @@ pub(crate) struct ImageInstance {
     /// Physical-px paint rect.
     pub(crate) rect: Rect,
     /// UV crop top-left (0..1 texture coords).
-    pub(crate) uv_min: glam::Vec2,
+    pub(crate) uv_min: Vec2,
     /// UV crop extent (typically `(1, 1)`; smaller for `Cover` crop,
     /// `> 1` for `Tile` repeats). A `GpuView` ships `(1, 1)` so its entire
     /// target maps across the composite paint rect.
-    pub(crate) uv_size: glam::Vec2,
+    pub(crate) uv_size: Vec2,
     /// Linear-RGBA tint, premultiplied in the shader.
     pub(crate) tint: ColorU8,
     /// `IMG_FLAG_*` bits (tile wrap, min/mag nearest sampling, minification

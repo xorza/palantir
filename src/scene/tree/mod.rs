@@ -34,11 +34,11 @@ pub(crate) mod subtree_end;
 pub(crate) mod subtree_rollups;
 pub(crate) mod tree_fingerprint;
 
-use crate::ClipMode;
 use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher;
 use crate::common::index16::Index16;
 use crate::layout::scrollbars::ScrollbarsDef;
+use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::layout_mode::{GridDefId, LayoutMode, ScrollbarsDefId};
 use crate::layout::types::track::{GridDef, Track};
 use crate::primitives::background::Background;

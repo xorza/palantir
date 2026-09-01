@@ -10,6 +10,7 @@ use crate::primitives::rect::Rect;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::scene::shapes::paint::ShapeStroke;
+use glam::Vec2;
 
 /// The geometry half of a [`DrawQuadPayload`] — everything the composer
 /// needs to derive the instance's physical rect and its two reused
@@ -30,10 +31,10 @@ pub(crate) enum QuadGeom {
     /// covering AABB (the points inflated by `radius + AA fringe`) and
     /// packs the physical points into the `corners` / `fill_axis` lanes.
     Triangle {
-        origin: glam::Vec2,
-        a: glam::Vec2,
-        b: glam::Vec2,
-        c: glam::Vec2,
+        origin: Vec2,
+        a: Vec2,
+        b: Vec2,
+        c: Vec2,
         radius: f32,
     },
 }
@@ -171,8 +172,8 @@ impl DrawQuadPayload {
     /// stroke normalization — only the geometry and the SDF the
     /// `FillKind` selects differ.
     pub(crate) fn triangle(
-        origin: glam::Vec2,
-        points: [glam::Vec2; 3],
+        origin: Vec2,
+        points: [Vec2; 3],
         fill: ColorF16,
         radius: f32,
         stroke: ShapeStroke,

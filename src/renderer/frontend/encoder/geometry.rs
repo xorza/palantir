@@ -3,8 +3,10 @@
 //! and how an icon or image is fitted into the box it paints.
 
 use crate::primitives::image::ImageFit;
-use crate::primitives::{rect::Rect, size::Size};
+use crate::primitives::rect::Rect;
+use crate::primitives::size::Size;
 use crate::shape::icon::IconFit;
+use glam::Vec2;
 
 /// Resolve a shape's owner-relative `local_rect` against the owner's
 /// arranged rect. `None` means "paint the owner's full rect"; `Some(lr)`
@@ -27,7 +29,7 @@ pub(super) fn resolve_local_rect(owner_rect: Rect, local_rect: Option<Rect>) -> 
 /// crop, so every mode is a rect and nothing else. A degenerate viewBox falls
 /// through to the base rect — the same fail-safe the image path takes for a
 /// missing intrinsic size.
-pub(super) fn resolve_icon_fit(base: Rect, view_box: glam::Vec2, fit: IconFit) -> Rect {
+pub(super) fn resolve_icon_fit(base: Rect, view_box: Vec2, fit: IconFit) -> Rect {
     // Through the image resolver, not a second copy of it: the three
     // variants an icon can express mean exactly what they mean for an
     // image, and an icon needs only the rect half of the answer (it
@@ -40,7 +42,7 @@ pub(super) fn resolve_icon_fit(base: Rect, view_box: glam::Vec2, fit: IconFit) -
 /// about where the leftover space goes.
 fn centered_in(base: Rect, w: f32, h: f32) -> Rect {
     Rect {
-        min: base.min + glam::Vec2::new((base.size.w - w) * 0.5, (base.size.h - h) * 0.5),
+        min: base.min + Vec2::new((base.size.w - w) * 0.5, (base.size.h - h) * 0.5),
         size: Size { w, h },
     }
 }
@@ -50,19 +52,19 @@ fn centered_in(base: Rect, w: f32, h: f32) -> Rect {
 #[derive(Debug)]
 pub(super) struct Resolved {
     pub(super) rect: Rect,
-    pub(super) uv_min: glam::Vec2,
-    pub(super) uv_size: glam::Vec2,
+    pub(super) uv_min: Vec2,
+    pub(super) uv_size: Vec2,
 }
 
-const FULL_UV_MIN: glam::Vec2 = glam::Vec2::ZERO;
-const FULL_UV_SIZE: glam::Vec2 = glam::Vec2::ONE;
+const FULL_UV_MIN: Vec2 = Vec2::ZERO;
+const FULL_UV_SIZE: Vec2 = Vec2::ONE;
 
 /// Map `(base, image_size, fit)` → `(paint_rect, uv_crop)`. `base` is
 /// the encoder-resolved paint rect (owner rect or local override).
 /// `image_size = UVec2::ZERO` (missing registry entry at lowering time)
 /// falls through to the base rect with full UV — the backend's
 /// lookup-miss branch then skips the actual draw.
-pub(super) fn resolve_fit(base: Rect, image_size: glam::Vec2, fit: ImageFit) -> Resolved {
+pub(super) fn resolve_fit(base: Rect, image_size: Vec2, fit: ImageFit) -> Resolved {
     let iw = image_size.x;
     let ih = image_size.y;
     let bw = base.size.w;
@@ -100,8 +102,8 @@ pub(super) fn resolve_fit(base: Rect, image_size: glam::Vec2, fit: ImageFit) -> 
             let uv_h = bh / h_phys; // <= 1
             Resolved {
                 rect: base,
-                uv_min: glam::Vec2::new((1.0 - uv_w) * 0.5, (1.0 - uv_h) * 0.5),
-                uv_size: glam::Vec2::new(uv_w, uv_h),
+                uv_min: Vec2::new((1.0 - uv_w) * 0.5, (1.0 - uv_h) * 0.5),
+                uv_size: Vec2::new(uv_w, uv_h),
             }
         }
         ImageFit::None => {

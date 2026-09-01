@@ -7,7 +7,7 @@
 //! What differs between the passes is only which atlas they bind and where
 //! their pixels came from.
 
-use crate::renderer::backend::raster_atlas::ContentType;
+use crate::renderer::backend::raster_atlas::content_type::ContentType;
 use crate::renderer::backend::shader_template::{self, ShaderConstant};
 use crate::renderer::backend::viewport::ViewportPush;
 
@@ -148,7 +148,7 @@ const _: () = {
 
 #[cfg(test)]
 mod tests {
-    use crate::renderer::backend::raster_atlas::ContentType;
+    use crate::renderer::backend::raster_atlas::content_type::ContentType;
     use crate::renderer::backend::raster_atlas::raster_quad::{RasterQuad, U_MAX};
     use std::mem::{align_of, offset_of, size_of};
 

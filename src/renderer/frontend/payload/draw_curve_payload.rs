@@ -5,6 +5,7 @@ use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
 use crate::scene::shapes::paint::CurveBasis;
 use crate::shape::style::LineCap;
+use glam::Vec2;
 
 /// Native GPU stroke payload — a cubic or an arc, per [`CurveBasis`].
 /// The composer adds `origin` and the active push-transform stack
@@ -23,7 +24,7 @@ pub(crate) struct DrawCurvePayload {
     /// pivot exactly — a Bézier by affine invariance, a circle by moving
     /// its centre and shifting both angles.
     pub(crate) bounds: StrokeBounds,
-    pub(crate) origin: glam::Vec2,
+    pub(crate) origin: Vec2,
     /// Only solid and linear are valid on a curve; the lowering
     /// hard-asserts. A curve reads no gradient geometry lane, so
     /// [`GpuFill`] is the whole of its brush.

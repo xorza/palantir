@@ -14,9 +14,9 @@
 //! [`OffscreenHost`](crate::OffscreenHost) — so the map lives with the host
 //! and the drivers are passed back in per frame.
 
-use crate::Display;
 use crate::app::App;
 use crate::common::clipboard::Clipboard;
+use crate::display::Display;
 use crate::host::shared::HostShared;
 use crate::host::window_driver::{CpuFrame, PresentMode, WindowDriver, WindowDriverBuilder};
 use crate::renderer::backend::WgpuBackend;
