@@ -11,8 +11,8 @@ use std::fmt::Write as _;
 /// every pass, stamped with a fresh [`TextEpoch`] so a handle minted
 /// against an earlier one cannot be resolved by mistake.
 ///
-/// One `String` and no interior cell: [`RecordStore`] already owns the
-/// arena behind a `RefCell`, so a second one here bought nothing but a
+/// One `String` and no interior cell: every writer reaches this arena
+/// through `&mut` [`RecordStore`], so a cell here bought nothing but a
 /// shared-outer / mutable-inner borrow pair on every intern.
 ///
 /// [`RecordStore`]: crate::scene::record_store::RecordStore

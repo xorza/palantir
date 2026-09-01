@@ -252,8 +252,8 @@ impl RowMatcher {
     /// when another shape with the same hash moved within the node.
     ///
     /// Child markers can't push anything visible here: their screens are
-    /// zero, so [`push_screen`] drops them. An added or removed child's
-    /// pixels are damaged by its own node's tier instead.
+    /// zero, so [`damage::push_screen`] drops them. An added or removed
+    /// child's pixels are damaged by its own node's tier instead.
     fn emit_moves_and_adds(&mut self, out: &mut Vec<Rect>, prev: &[Paint], curr: &[Paint]) {
         let mut pi = 0;
         for &(ck, crow) in &self.curr_keyed {

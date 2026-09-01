@@ -60,28 +60,6 @@ pub(crate) struct LayoutPass<'a> {
 }
 
 impl<'a> LayoutPass<'a> {
-    /// Measure the children of a per-axis-hug panel (ZStack / Canvas) and
-    /// return the extent that covers them.
-    ///
-    /// `offset` is where the panel places a child inside its own inner
-    /// rect — always zero for a ZStack, the declared position for a
-    /// Canvas. Both halves of the answer come from it, per axis:
-    ///
-    /// - A **bounded** axis offers the room left *past* the offset, which
-    ///   is what `arrange` will hand the child. Offering the whole extent
-    ///   from an offset origin makes a wrapping child report a height for
-    ///   a width it will not get.
-    /// - A **Hug** axis offers `INFINITY` and folds the offset back into
-    ///   the extent reported, because a panel that hugs has no extent to
-    ///   divide yet and has to cover where it put things.
-    ///
-    /// `INF` here is *height-given-width* via measure, not an
-    /// intrinsic-replaceable sentinel — replacing it with
-    /// `intrinsic(MaxContent)` looks equivalent for leaves but is wrong for
-    /// nested containers whose main-axis size depends on cross-axis (Grid
-    /// with wrapping cells, etc.): intrinsic queries the unbounded shape,
-    /// while INF-measure runs the child's full layout under the committed
-    /// cross.
     /// Min-content intrinsic on one axis — the smallest this node can
     /// shrink to without breaking a rigid descendant (Fixed widget,
     /// explicit `min_size`, longest unbreakable word).
@@ -104,6 +82,28 @@ impl<'a> LayoutPass<'a> {
         self.intrinsic(node, axis, LenReq::MinContent)
     }
 
+    /// Measure the children of a per-axis-hug panel (ZStack / Canvas) and
+    /// return the extent that covers them.
+    ///
+    /// `offset` is where the panel places a child inside its own inner
+    /// rect — always zero for a ZStack, the declared position for a
+    /// Canvas. Both halves of the answer come from it, per axis:
+    ///
+    /// - A **bounded** axis offers the room left *past* the offset, which
+    ///   is what `arrange` will hand the child. Offering the whole extent
+    ///   from an offset origin makes a wrapping child report a height for
+    ///   a width it will not get.
+    /// - A **Hug** axis offers `INFINITY` and folds the offset back into
+    ///   the extent reported, because a panel that hugs has no extent to
+    ///   divide yet and has to cover where it put things.
+    ///
+    /// `INF` here is *height-given-width* via measure, not an
+    /// intrinsic-replaceable sentinel — replacing it with
+    /// `intrinsic(MaxContent)` looks equivalent for leaves but is wrong for
+    /// nested containers whose main-axis size depends on cross-axis (Grid
+    /// with wrapping cells, etc.): intrinsic queries the unbounded shape,
+    /// while INF-measure runs the child's full layout under the committed
+    /// cross.
     pub(super) fn measure_per_axis_hug(
         &mut self,
         node: NodeId,
@@ -329,9 +329,8 @@ impl LayoutPass<'_> {
     /// axis grows past `available`); the caller folds content into a
     /// margin-inclusive `desired` via `AxisSlot::resolve`.
     ///
-    /// The contract every driver answers to is
-    /// [`LayoutDriver`](crate::layout::driver::LayoutDriver); the match
-    /// that picks one is `DriverOp::dispatch`, shared with
+    /// The contract every driver answers to is [`LayoutDriver`]; the
+    /// match that picks one is `DriverOp::dispatch`, shared with
     /// [`Self::arrange`] and `intrinsic::compute`.
     fn measure_dispatch(&mut self, node: NodeId, layout: LayoutCore, inner_avail: Size) -> Size {
         MeasureOp {

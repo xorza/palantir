@@ -110,7 +110,7 @@ impl<G> Gradient<G> {
     /// Paints nothing visible when every stop is transparent.
     #[inline]
     pub fn is_noop(&self) -> bool {
-        self.stops.iter().all(|stop| stop.color.is_noop())
+        self.stops.iter().all(|stop| stop.color().is_noop())
     }
 }
 

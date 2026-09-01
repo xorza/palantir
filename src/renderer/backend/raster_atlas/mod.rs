@@ -166,7 +166,7 @@ pub(super) struct RasterAtlas<K> {
     /// one stopped.
     hand: u32,
     /// Latest value of this atlas's frame clock, mirrored here by
-    /// [`Self::end_frame`] — the shaper's for the text instance, the
+    /// [`Self::advance_to`] — the shaper's for the text instance, the
     /// icon backend's submit count for the other.
     ///
     /// Incrementing per submit on the text side while the shaped-buffer

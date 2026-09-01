@@ -31,7 +31,7 @@ impl std::hash::Hash for Size {
 }
 
 /// Both axes in one `write_u64` rather than two component calls: one hasher
-/// round per size, matching [`Vec2`](glam::Vec2)'s packing.
+/// round per size, matching [`Vec2`]'s packing.
 impl FloatHash for Size {
     #[inline]
     fn hash_eq<H: std::hash::Hasher>(&self, state: &mut H) {

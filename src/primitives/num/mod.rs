@@ -38,9 +38,9 @@ pub(crate) trait F32Ext {
     /// problem: a fixed-width object whose *centre* follows the pointer,
     /// so half the band comes off each end before the division and the
     /// usable travel is `extent - band`. A track with no travel left has
-    /// no share to report and yields zero, through
-    /// [`approx::ratio`](crate::primitives::approx::ratio). What that
-    /// zero means is the caller's, and the two callers disagree.
+    /// no share to report and yields zero, through [`approx::ratio`].
+    /// What that zero means is the caller's, and the two callers
+    /// disagree.
     ///
     /// The result is unclamped — a pointer outside the track reports
     /// outside `0..1`, and each caller pins it with the bounds it

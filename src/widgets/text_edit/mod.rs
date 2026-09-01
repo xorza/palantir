@@ -2,7 +2,7 @@
 //!
 //! The widget and its response live here. Around them: the buffer and
 //! selection ([`editor`], [`edit_state`]), what a key or a gesture turns
-//! into ([`action`], [`input`], [`menu`]), where the text sits and how a
+//! into ([`action`], [`input_pass`]), where the text sits and how a
 //! caret maps onto it ([`text_layout`], [`text_geometry`], [`shape_ctx`],
 //! [`caret_paint`], [`paint_input`]), the scroll and focus a field retains
 //! ([`view_state`]), and the grapheme and word walks the caret moves by

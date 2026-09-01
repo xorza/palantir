@@ -5,10 +5,10 @@
 //! saves an adapter request per driver that asks for the same one.
 //!
 //! Separate from [`crate::host::test_gpu`], which serves the test
-//! suites, because the two want opposite things. That one takes
-//! `LowPower` and an interprocess lock so parallel test binaries don't
-//! contend; a bench wants the discrete GPU and must not block for
-//! minutes behind someone else's lock.
+//! suites, because the two want opposite things. That one takes an
+//! interprocess lock so parallel test binaries don't contend for the
+//! adapter; a bench must not block for minutes behind someone else's
+//! lock.
 
 use crate::host::device_requirements::DeviceRequirements;
 use crate::host::gpu_request::RequestedGpu;

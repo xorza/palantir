@@ -135,12 +135,12 @@ fn comet_brush_fades_tail_to_head() {
     let head = g.stops[1];
     assert_eq!(tail.offset(), 0.0);
     assert_eq!(head.offset(), 1.0);
-    assert_eq!(tail.color.a, 0);
-    assert_eq!(head.color, ColorU8::from(base));
+    assert_eq!(tail.color().a, 0);
+    assert_eq!(head.color(), ColorU8::from(base));
     // RGB is untouched — only alpha varies along the trail.
-    assert_eq!(tail.color.r, head.color.r);
-    assert_eq!(tail.color.g, head.color.g);
-    assert_eq!(tail.color.b, head.color.b);
+    assert_eq!(tail.color().r, head.color().r);
+    assert_eq!(tail.color().g, head.color().g);
+    assert_eq!(tail.color().b, head.color().b);
 }
 
 #[test]

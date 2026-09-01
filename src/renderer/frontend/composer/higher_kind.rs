@@ -1,5 +1,5 @@
 //! Per-group overlap tracking for the replay tiers above text — every
-//! [`PaintTier`](crate::renderer::render_buffer::paint_tier::PaintTier).
+//! [`PaintTier`].
 //!
 //! **Why a union pre-reject plus a linear scan, and not the tiled index
 //! [`text_grid`] uses.** That module's own doc measures this exact shape

@@ -202,10 +202,7 @@ impl QuadPipeline {
     pub(super) fn draw_mask(&self, pass: &mut wgpu::RenderPass<'_>, mask_idx: u32) {
         pass.draw(0..4, mask_idx..mask_idx + 1);
     }
-    /// `gradient_bgl` is the group-0 layout owned by
-    /// [`GpuGradientAtlas`](crate::renderer::backend::gpu_gradient_atlas::GpuGradientAtlas);
-    /// the pipeline composes its layout against it and the matching bind
-    /// group arrives at each `bind*` call.
+
     /// Build the format-independent quad resources. The format-dependent
     /// pipelines are built separately by
     /// [`FormatPipelines`](crate::renderer::backend::format_pipelines::FormatPipelines)
@@ -267,6 +264,11 @@ impl QuadPipeline {
     /// format-dependent quad objects; the gradient LUT atlas (texture +
     /// bind group + sampler) and the instance / clear buffers are
     /// reused. Called by `FormatPipelines` for each swapchain format.
+    ///
+    /// `gradient_bgl` is the group-0 layout owned by
+    /// [`GpuGradientAtlas`](crate::renderer::backend::gpu_gradient_atlas::GpuGradientAtlas);
+    /// the pipeline composes its layout against it and the matching bind
+    /// group arrives at each `bind*` call.
     pub(super) fn build_variants(
         &self,
         device: &wgpu::Device,

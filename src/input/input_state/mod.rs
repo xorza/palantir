@@ -364,8 +364,8 @@ impl InputState {
     ///
     /// One body for the two units a host delivers: pixels off a trackpad,
     /// lines off a wheel notch. They reach the widget in separate lanes —
-    /// see [`ScrollDelta`](crate::input::scroll_delta::ScrollDelta) — so
-    /// the caller fills the lane it has and leaves the other at zero.
+    /// see [`ScrollDelta`] — so the caller fills the lane it has and
+    /// leaves the other at zero.
     fn on_scroll(&mut self, pixels: Vec2, lines: Vec2) -> EventOutcome {
         let target = self.scroll_target;
         if let Some(target) = target {

@@ -12,7 +12,7 @@ use crate::primitives::translate_scale::TranslateScale;
 /// holding the two apart made a pop a two-place operation and put the
 /// live value on the per-frame session while its own history stayed on
 /// the retained scratch. The `Vec` is the only allocation, and it is kept
-/// across frames for its capacity; [`Self::reset`] opens each pass.
+/// across frames for its capacity; [`Self::clear`] opens each pass.
 #[derive(Debug, Default)]
 pub(super) struct TransformStack {
     /// Ancestor products, innermost last — what each pop restores.

@@ -14,14 +14,11 @@ pub(crate) fn bake_stops(stops: &GradientStops, interp: Interp, out: &mut LutRow
     // order as a type invariant, precisely so the value that keys this
     // row and the row it bakes cannot disagree.
     let count = stops.len();
-    debug_assert!(
-        stops.windows(2).all(|w| w[0].offset_u8 <= w[1].offset_u8),
-        "GradientStops must arrive sorted",
-    );
+    debug_assert!(stops.is_ascending(), "GradientStops must arrive sorted");
 
     let mut linear_stops = [Color::TRANSPARENT; MAX_STOPS];
     for index in 0..count {
-        linear_stops[index] = stops[index].color.into();
+        linear_stops[index] = stops[index].color().into();
     }
     let mut oklab_stops = [[0.0; 3]; MAX_STOPS];
     // Only the Oklab ramp reads these, and an empty slice is what says so:

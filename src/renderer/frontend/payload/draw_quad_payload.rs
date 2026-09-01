@@ -205,25 +205,17 @@ impl DrawQuadPayload {
     /// zero-σ drop shadow still paints a hard-edged shifted rect, and
     /// the `Shape::Shadow::is_noop` authoring boundary is what catches
     /// the "no visible effect" cases.
+    ///
+    /// A gradient fill is never a no-op here. [`BrushSource::gpu_fill`]
+    /// zeroes its colour lane — the atlas row supplies the colour — so
+    /// judging it by that lane would read every gradient as transparent
+    /// and drop the draw. Nor does it need to be: `Brush::is_noop`
+    /// filters the all-transparent-stops case *before* lowering, and one
+    /// slipping past that gate would paint a useless transparent quad
+    /// whose alpha blend produces nothing visible.
     #[inline]
     pub(crate) fn is_noop(&self) -> bool {
-        self.geom.is_paint_empty() || (self.fill_is_noop() && self.stroke.is_noop())
-    }
-
-    /// A gradient's colour lane is zeroed by
-    /// [`BrushSource::to_gpu_fields`] (the atlas row supplies the
-    /// colour), so only a non-gradient fill can be judged by its
-    /// colour — testing it blind would read every gradient as
-    /// transparent and drop the draw.
-    ///
-    /// A gradient is therefore never a no-op here. It doesn't need to
-    /// be: the all-transparent-stops case is filtered by
-    /// `Brush::is_noop` *before* lowering, and one slipping past that
-    /// gate would paint a useless transparent quad whose alpha blend
-    /// produces nothing visible, so correctness is intact either way.
-    #[inline]
-    fn fill_is_noop(&self) -> bool {
-        self.fill.is_noop()
+        self.geom.is_paint_empty() || (self.fill.is_noop() && self.stroke.is_noop())
     }
 }
 

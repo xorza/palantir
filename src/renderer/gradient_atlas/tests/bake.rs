@@ -132,7 +132,7 @@ fn cursor_scan_matches_restart_scan_across_eight_stops() {
     /// walk forward. Same arithmetic in the same order, so agreement is
     /// exact rather than approximate.
     fn restart_scan(stops: &GradientStops, t: f32) -> Color {
-        let linear: Vec<Color> = stops.iter().map(|stop| stop.color.into()).collect();
+        let linear: Vec<Color> = stops.iter().map(|stop| stop.color().into()).collect();
         if t <= stops[0].offset() {
             return linear[0];
         }

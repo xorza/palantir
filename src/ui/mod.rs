@@ -4,8 +4,8 @@
 //! Everything a frame needs that is not an engine lives here — the forest,
 //! the theme, per-widget state, input, animation, the display, and the frame
 //! clock. The engines that consume a recording (layout, cascade, damage) sit
-//! on a [`FrameEngines`](frame_engines::FrameEngines) the frame driver owns,
-//! so nothing reachable from `Ui` can reach them.
+//! on a [`FrameEngines`] the frame driver owns, so nothing reachable
+//! from `Ui` can reach them.
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
@@ -815,9 +815,8 @@ impl Ui {
     /// carrying the row's `epoch` to the active node — the encoder
     /// recovers id and paint from the store by `id`.
     ///
-    /// The mint / epoch / sweep policy is
-    /// [`GpuViews`](crate::renderer::gpu_paint::gpu_views::GpuViews)'
-    /// business, `repaint` included.
+    /// The mint / epoch / sweep policy is [`GpuViews`]' business,
+    /// `repaint` included.
     pub(crate) fn gpu_view(&mut self, id: WidgetId, paint: GpuPaintRef, repaint: bool) {
         let frame = self.frame_runtime.render_frame_id;
         let epoch = self
