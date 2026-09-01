@@ -6,12 +6,17 @@
 
 use crate::display::Display;
 use crate::renderer::frontend::composer::clip_stack::ClipStack;
+use crate::renderer::frontend::composer::higher_kind::HigherKindRects;
+use crate::renderer::frontend::composer::occlusion::OcclusionPruner;
+use crate::renderer::frontend::composer::session::ComposeSession;
+use crate::renderer::frontend::composer::text_grid::TextRectGrid;
 use crate::renderer::frontend::composer::transform_stack::TransformStack;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::scene::record_store::RecordStore;
 use glam::{UVec2, Vec2};
 use std::num::NonZeroU32;
+use std::time::Duration;
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
@@ -24,12 +29,6 @@ pub(crate) mod session;
 // external criterion target calls through — can name `text_grid::bench`.
 pub(crate) mod text_grid;
 mod transform_stack;
-
-use crate::renderer::frontend::composer::higher_kind::HigherKindRects;
-use crate::renderer::frontend::composer::occlusion::OcclusionPruner;
-use crate::renderer::frontend::composer::session::ComposeSession;
-use crate::renderer::frontend::composer::text_grid::TextRectGrid;
-use std::time::Duration;
 
 /// The retained half of the CPU compose engine: every buffer and stack a
 /// pass is built in, kept across frames so steady-state rendering is

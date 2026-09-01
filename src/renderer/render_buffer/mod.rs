@@ -6,10 +6,21 @@
 //! allocates nothing for its output.
 
 use crate::display::Display;
+use crate::primitives::color::Color;
+use crate::primitives::corners::Corners;
+use crate::primitives::rect::Rect;
 use crate::primitives::span::Span;
 use crate::primitives::texture_id::TextureId;
-use crate::primitives::{color::Color, corners::Corners, rect::Rect};
 use crate::renderer::quad::Quad;
+use crate::renderer::render_buffer::curve::CurveInstance;
+use crate::renderer::render_buffer::draw_group::DrawGroup;
+use crate::renderer::render_buffer::group_batch::GroupBatch;
+use crate::renderer::render_buffer::icon::IconDrawRow;
+use crate::renderer::render_buffer::image::{FrameViews, ImageDrawRow, RenderTargetDraw};
+use crate::renderer::render_buffer::mesh::MeshDrawRow;
+use crate::renderer::render_buffer::paint_tier::PaintTier;
+use crate::renderer::render_buffer::text::TextDrawRow;
+use crate::renderer::render_buffer::text_batch::TextBatch;
 use soa_rs::Soa;
 use std::time::Duration;
 
@@ -23,19 +34,6 @@ pub(crate) mod paint_tier;
 pub(crate) mod per_group_batch;
 pub(crate) mod text;
 pub(crate) mod text_batch;
-
-use crate::renderer::render_buffer::draw_group::DrawGroup;
-
-use crate::renderer::render_buffer::group_batch::GroupBatch;
-
-use crate::renderer::render_buffer::paint_tier::PaintTier;
-
-use crate::renderer::render_buffer::curve::CurveInstance;
-use crate::renderer::render_buffer::icon::IconDrawRow;
-use crate::renderer::render_buffer::image::{FrameViews, ImageDrawRow, RenderTargetDraw};
-use crate::renderer::render_buffer::mesh::MeshDrawRow;
-use crate::renderer::render_buffer::text::TextDrawRow;
-use crate::renderer::render_buffer::text_batch::TextBatch;
 
 /// Deepest rounded-mask chain representable by the renderer's
 /// eight-bit stencil counter.

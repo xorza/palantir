@@ -6,14 +6,12 @@ use crate::primitives::brush::gradient::FillAxis;
 use crate::primitives::color::ColorU8;
 use crate::primitives::corners::Corners;
 use crate::primitives::fill_kind::FillKind;
+use crate::primitives::num::{F32Ext, Vec2Ext};
+use crate::primitives::rect::Rect;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::span::Span;
-use crate::primitives::{
-    num::{F32Ext, Vec2Ext},
-    rect::Rect,
-    translate_scale::TranslateScale,
-    urect::URect,
-};
+use crate::primitives::translate_scale::TranslateScale;
+use crate::primitives::urect::URect;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
