@@ -6,10 +6,6 @@ revision and drift as files change.
 
 ## One convention, two spellings
 
-- [ ] Theme handle clone: `ui.theme().clone()` in `widgets/modal/mod.rs:82`, `context_menu/menu_separator.rs:49`, `context_menu/mod.rs:147`, `tooltip/mod.rs:137`, `drag_value/mod.rs:301`, `combo_box/mod.rs:115`; `Rc::clone(ui.theme())` in `widgets/grid.rs:86`, `popup/mod.rs:206`, `panel/mod.rs:40`.
-- [ ] `widgets/theme/context_menu/menu_item.rs:108-114` — `ThemeSlot::defaults` rebuilds `SlotDefaults` field by field; `ButtonTheme`, `TextEditTheme`, and `ToggleTheme` return `self.defaults`.
-- [ ] `renderer/backend/mod.rs:420-444,543-544` — `submit` carries `dim_undamaged` into `upload_frame` through `UploadPlan`, while `upload_frame` re-derives `is_partial` from the submission. One fact travels, the other is recomputed.
-- [ ] `renderer/backend/text/mod.rs:148-170` — `TextBackend::frame()` and `TextBackend::end_frame()` both read `shaper.frame()`; `WgpuBackend::submit` (`backend/mod.rs:512-514`) calls `frame()` only to hand the value to `icon.end_frame`. Returning the frame from `end_frame` removes the accessor.
 - [ ] `ui/state.rs:36-48` — `try_get` and `try_get_mut` repeat the map→index lookup on `StateMap`, while `get_or_insert_with` lives on `Store`. One of the two owns the lookup.
 - [ ] `layout/types/sizing.rs:145,292,305` — `From<T: Num>` on both `Sizes` and `Sizing`, plus `From<Size> for Sizes` and `From<(W, H)>`: four conversions into `Sizes` where a call site needs one.
 - [ ] `scene/tree/mod.rs:698-707` — submodule declarations at the bottom of the file; every other `mod.rs` in the crate declares them at the top.

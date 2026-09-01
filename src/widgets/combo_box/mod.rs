@@ -19,6 +19,7 @@ use crate::widgets::select_response::SelectResponse;
 use crate::widgets::text::Text;
 use crate::widgets::theme::button::ButtonTheme;
 use crate::widgets::theme::widget_look::theme_slot::ThemeSlot;
+use std::rc::Rc;
 
 /// Open/closed flag for one combo site, keyed off the trigger id.
 #[derive(Default, Clone, Copy, Debug)]
@@ -108,7 +109,7 @@ impl<'a, S> ComboBox<'a, S> {
         // Trigger chrome from the button theme (same flow as `Button`).
         // One handle covers both reads: the geometry is read again inside
         // the `record` closure below, which owns `ui` mutably.
-        let theme = ui.theme().clone();
+        let theme = Rc::clone(ui.theme());
         let slot = self.slot(&theme);
         let look = slot.plan(&response, (), theme.text).apply(ui, &mut widget);
 

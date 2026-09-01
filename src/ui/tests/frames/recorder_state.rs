@@ -100,7 +100,7 @@ fn theme_reads_share_and_writes_copy_on_write() {
     let clear = Color::rgb(0.25, 0.5, 0.75);
     h.ui.theme_mut().window_clear = clear;
 
-    let handle = h.ui.theme().clone();
+    let handle = Rc::clone(h.ui.theme());
     assert!(
         Rc::ptr_eq(&handle, h.ui.theme()),
         "a theme read must hand back the same allocation, not a copy",

@@ -128,7 +128,6 @@ mod viewport;
 
 use crate::common::tracy;
 use crate::diagnostics::gpu_pass_stats::{BatchKind, GpuPassStats};
-use crate::primitives::color::Color;
 use crate::primitives::urect::URect;
 use crate::renderer::backend::backbuffer::Backbuffer;
 use crate::renderer::backend::backend_config::BackendConfig;
@@ -174,19 +173,6 @@ use wgpu::util::StagingBelt;
 /// layout matches and bytes written by other pipelines stay valid
 /// after a pipeline switch.
 const IMMEDIATES_BYTES: u32 = 16;
-
-/// The two things [`WgpuBackend::submit`] settles about a frame before it
-/// opens the encoder. Each combines more than one field, so deriving it
-/// again downstream would be a second derivation rather than a second
-/// read; anything the upload phase can read straight off the
-/// [`Submission`] stays there, and it is handed over whole.
-#[derive(Clone, Copy, Debug)]
-struct UploadPlan {
-    /// Effective clear colour after `RenderBuffer::clear_override`.
-    clear: Color,
-    /// The debug flag, and only on a frame it can apply to.
-    dim_undamaged: bool,
-}
 
 /// Wgpu renderer owning its device/queue handles, pipelines, and text
 /// backend. The winit adapter retains cloned handles solely for surface
@@ -392,13 +378,8 @@ impl WgpuBackend {
             backbuffer: via_backbuffer,
             stencil,
         } = submission.targets;
-        let Submission {
-            buffer,
-            plan,
-            debug_overlay,
-            ..
-        } = submission;
-        let clear = buffer.clear_override.unwrap_or(plan.clear);
+        let Submission { buffer, plan, .. } = submission;
+        let clear = submission.clear();
         let stencil_view = stencil.map(Stencil::view);
         let use_stencil = stencil_view.is_some();
         tracing::trace!(
@@ -419,8 +400,7 @@ impl WgpuBackend {
 
         let viewport = ViewportPush::for_buffer(buffer);
         let repaint_scissors = build_repaint_scissors(plan.damage, buffer);
-        let is_partial = plan.damage.is_partial();
-        let dim_undamaged = debug_overlay.dim_undamaged && is_partial;
+        let dim_undamaged = submission.dim_undamaged();
 
         // The stencil texture (rounded-clip masking) is ensured by the
         // caller; `stencil_view` is `Some` exactly when `use_stencil`. The
@@ -434,14 +414,7 @@ impl WgpuBackend {
                 label: Some("palantir.renderer.main"),
             });
 
-        let overlay_count = self.upload_frame(
-            &mut encoder,
-            &submission,
-            UploadPlan {
-                clear,
-                dim_undamaged,
-            },
-        );
+        let overlay_count = self.upload_frame(&mut encoder, &submission);
 
         // Alpha forced to 1 — the clear is the frame's bottom paint layer.
         let clear_color = wgpu::Color {
@@ -509,8 +482,7 @@ impl WgpuBackend {
             t.after_submit(&self.device, &self.pass_stats);
         }
 
-        let frame = self.text.frame();
-        self.text.end_frame();
+        let frame = self.text.end_frame();
         self.icon.end_frame(frame);
     }
 
@@ -518,12 +490,7 @@ impl WgpuBackend {
     /// texture and dynamic-buffer write the frame's passes will read,
     /// recorded onto `encoder` before any render pass opens. Returns the
     /// damage-overlay instance count for the post-copy overlay pass.
-    fn upload_frame(
-        &mut self,
-        encoder: &mut wgpu::CommandEncoder,
-        sub: &Submission<'_>,
-        uploads: UploadPlan,
-    ) -> u32 {
+    fn upload_frame(&mut self, encoder: &mut wgpu::CommandEncoder, sub: &Submission<'_>) -> u32 {
         let Submission {
             owner,
             targets,
@@ -532,14 +499,12 @@ impl WgpuBackend {
             plan,
             debug_overlay,
         } = *sub;
-        let UploadPlan {
-            clear,
-            dim_undamaged,
-        } = uploads;
-        // Both read off the submission rather than carried beside it: it
-        // already says whether there is a stencil attachment and what the
-        // plan repaints, and a copy alongside is a second route to one
-        // fact.
+        // All four read off the submission rather than carried beside
+        // it: it already says what the plan repaints, whether there is a
+        // stencil attachment, and which debug flags are on, and a copy
+        // alongside is a second route to one fact.
+        let clear = sub.clear();
+        let dim_undamaged = sub.dim_undamaged();
         let use_stencil = targets.stencil.is_some();
         let is_partial = plan.damage.is_partial();
         let mut ctx = GpuCtx::new(&self.device, &self.queue, &mut self.staging_belt, encoder);

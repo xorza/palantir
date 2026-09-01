@@ -254,7 +254,7 @@ mod tests {
         }));
         let clipboard = Clipboard::new(
             Some(Box::new(StaleBackend {
-                state: primary_state.clone(),
+                state: Rc::clone(&primary_state),
             })),
             Box::<MemoryBackend>::default(),
         );
