@@ -6,12 +6,8 @@ revision and drift as files change.
 
 ## The same computation spelled twice
 
-- [ ] `renderer/backend/viewport.rs:58-70` — `logical_rect_to_phys_scissor` hand-rolls scale, AA pad, and viewport clamp with four `as u32` casts. `Rect::inflated` + `URect::covering` + `URect::clamp_to` (the composer's `urect_from_phys` in `frontend/composer/geometry.rs:116`) express the same thing.
-- [ ] `layout/types/sizing.rs:135-160` and `layout/types/track/mod.rs:87-110` — `hash_visual` and the `Hash` impl share one body that differs only in `canon_bits` vs `eq_bits`. One body over a bits function removes the second copy in each file.
-- [ ] `layout/types/layout_mode.rs:128-160` — `GridDefId` and `ScrollbarsDefId` are identical newtypes over `Index16` with identical `from_index` and `From<_> for usize` impls.
 - [ ] `scene/record_store/mod.rs:42` — `RecordStore` is a pure pass-through newtype over `RecordPayloads`; every method delegates. Two types for one thing.
 - [ ] `scene/shapes/record/mod.rs:68,130` — `ShapeRecord::Polyline.content_hash` and `ShapeRecord::Mesh.content_hash` are written by `shapes/lower.rs` and read only by `compute_record_hash` in `shapes/hash.rs:102,143`. The parallel `Shapes::hashes` column already carries the folded result, so each record stores 8 bytes that nothing reads after the hash is taken. Check whether the record hash is taken once at `Shapes::add`; if so the field can go.
-- [ ] `layout/stack/mod.rs:116,204` — `Stack::arrange` passes the identical closure `|pass, c| axis.main(pass.desired(c))` twice to `build_stack_plan`.
 - [ ] `renderer/backend/quad.wgsl:330,361` — both shadow arms write `vec4<f32>(in.fill.rgb * a, a)` by hand; the prelude's `premultiply` exists so that no fragment entry spells it.
 - [ ] `widgets/scroll/bars.rs:100-106` — `BarAxis::record` has two arms that both call `ui.widget(track).record(..)`, differing only in `Some(&chrome)` vs `None`. An `Option<Background>` and one call says the same.
 - [ ] `widgets/overlay_scope.rs:131` — `OverlayScope::record` takes a body returning `()`, so `widgets/popup/mod.rs:211-223` and `widgets/modal/mod.rs:111-121` both smuggle the body result out through `let mut inner = None; … inner.expect("the body records unconditionally")`. A body returning `R` removes both `Option`s and both `expect`s.

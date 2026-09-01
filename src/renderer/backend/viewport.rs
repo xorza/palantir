@@ -55,18 +55,15 @@ impl PartialScissors {
 /// by [`RenderPlan::AA_PADDING`] on every side and clamped to the viewport.
 /// Returns `None` if the result clamps to zero area — callers degrade
 /// that case to "loaded but not drawn" inside the pass.
+///
+/// `scaled_by` snaps the edges, so [`URect::covering`] has nothing to
+/// round here — it is this crate's spelling of "the pixels a float rect
+/// occupies", not a widening.
 fn logical_rect_to_phys_scissor(r: Rect, buffer: &RenderBuffer) -> Option<URect> {
     let phys = r.scaled_by(buffer.display.scale_factor, true);
-    let pad = RenderPlan::AA_PADDING as f32;
-    let mins_x = (phys.min.x - pad).max(0.0) as u32;
-    let mins_y = (phys.min.y - pad).max(0.0) as u32;
-    let maxs_x = ((phys.min.x + phys.size.w + pad).max(0.0) as u32).min(buffer.display.physical.x);
-    let maxs_y = ((phys.min.y + phys.size.h + pad).max(0.0) as u32).min(buffer.display.physical.y);
-    if maxs_x > mins_x && maxs_y > mins_y {
-        Some(URect::new(mins_x, mins_y, maxs_x - mins_x, maxs_y - mins_y))
-    } else {
-        None
-    }
+    let padded = phys.inflated(RenderPlan::AA_PADDING as f32);
+    let physical = buffer.display.physical;
+    URect::covering(padded).intersect(URect::new(0, 0, physical.x, physical.y))
 }
 
 /// Build the physical-px repaint shape for this frame. `Full` stays

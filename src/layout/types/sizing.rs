@@ -2,6 +2,7 @@
 //! left, or whatever its content needs.
 
 use crate::primitives::approx;
+use crate::primitives::approx::FloatHash;
 use crate::primitives::num::{F32Ext, Num};
 use crate::primitives::size::Size;
 use glam::BVec2;
@@ -131,14 +132,32 @@ impl Sizing {
         matches!(self.0, SizingValue::Hug)
     }
 
+    /// Feed the whole value through `bits` in one `u64` write: tag in the
+    /// low byte, canonicalized payload above it.
+    ///
+    /// Tagged-union with niche-uninit padding in the inactive variant, so
+    /// a raw `bytes_of` would hash junk. One write rather than two small
+    /// ones costs one hasher round instead of two.
     #[inline]
-    pub(crate) fn hash_visual<H: std::hash::Hasher>(&self, h: &mut H) {
+    pub(crate) fn hash_bits<H: std::hash::Hasher, F: Fn(f32) -> u32>(&self, h: &mut H, bits: F) {
         let (tag, value) = match self.0 {
             SizingValue::Fixed(value) => (0u8, value),
             SizingValue::Hug => (1, 0.0),
             SizingValue::Fill(value) => (2, value),
         };
-        h.write_u64((tag as u64) | ((approx::canon_bits(value) as u64) << 8));
+        h.write_u64((tag as u64) | ((bits(value) as u64) << 8));
+    }
+}
+
+impl FloatHash for Sizing {
+    #[inline]
+    fn hash_eq<H: std::hash::Hasher>(&self, h: &mut H) {
+        self.hash_bits(h, approx::eq_bits);
+    }
+
+    #[inline]
+    fn hash_visual<H: std::hash::Hasher>(&self, h: &mut H) {
+        self.hash_bits(h, approx::canon_bits);
     }
 }
 
@@ -148,18 +167,10 @@ impl<T: Num> From<T> for Sizing {
     }
 }
 
-/// Tagged-union with niche-uninit padding in the inactive variant — raw
-/// `bytes_of` would hash junk. Encode `tag:u8 + value:f32` into one
-/// `u64` write (tag low, value bits high 32) instead of two small calls.
 impl std::hash::Hash for Sizing {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
-        let (tag, v) = match self.0 {
-            SizingValue::Fixed(v) => (0u8, v),
-            SizingValue::Hug => (1, 0.0),
-            SizingValue::Fill(w) => (2, w),
-        };
-        h.write_u64((tag as u64) | ((approx::eq_bits(v) as u64) << 8));
+        self.hash_eq(h);
     }
 }
 
