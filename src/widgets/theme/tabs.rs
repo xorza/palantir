@@ -38,15 +38,20 @@ pub struct TabsTheme {
     /// inset by the same amount, so the cap adds no height and every
     /// label sits on the same line.
     pub accent_thickness: f32,
-    /// The band behind the chips.
+    /// The band behind the chips. [`Background::NONE`] by default: a
+    /// strip reads from its own chips, and an application that wants a
+    /// band under them is saying its chrome continues there — which is
+    /// a fact about that application's surfaces, not about tabs.
     pub strip: Background,
     /// Inset between the band's edges and the chips.
     pub strip_padding: Spacing,
     /// Gutter between two chips.
     pub gap: f32,
-    /// Hairline under the band.
+    /// Hairline under the band, drawn only when
+    /// [`Self::hline_thickness`] is set.
     pub hline: Color,
-    /// Hairline breadth in logical px. `0.0` records no rule at all.
+    /// Hairline breadth in logical px. `0.0` — the default — records no
+    /// rule at all, so the chips meet the content below them directly.
     pub hline_thickness: f32,
     /// Chip corner radius. Applied to the top corners only — a chip
     /// meets the content below it square.
@@ -56,6 +61,14 @@ pub struct TabsTheme {
     /// is the box default the strip node takes, this one is the chip's
     /// own inner inset.
     pub chip_padding: Spacing,
+    /// Trailing inset a chip takes in place of [`Self::chip_padding`]'s
+    /// right one whenever something sits after the label — a badge, a
+    /// close button, or both.
+    ///
+    /// Their own boxes already carry the breathing room the right inset
+    /// exists to give a bare label, so charging both leaves a chip
+    /// looking like it reserves a slot it does not have.
+    pub trailing_inset: f32,
     /// Chip width floor, so a one-glyph label still reads as a tab.
     pub min_width: f32,
     /// Chip width ceiling. What lets a long title ellipsise instead of
@@ -95,6 +108,7 @@ impl TabsTheme {
             hline_thickness: _,
             corner: _,
             chip_padding: _,
+            trailing_inset: _,
             min_width: _,
             max_width: _,
             close_size: _,
@@ -152,13 +166,14 @@ impl TabsTheme {
             accent: p.accent,
             accent_idle: p.elem_strong,
             accent_thickness: 2.0,
-            strip: Background::fill(p.elem),
+            strip: Background::NONE,
             strip_padding: Spacing::new(6.0, 4.0, 6.0, 0.0),
             gap: 3.0,
             hline: p.border_soft(),
-            hline_thickness: 1.0,
+            hline_thickness: 0.0,
             corner,
             chip_padding: Spacing::new(10.0, 4.0, 10.0, 4.0),
+            trailing_inset: 4.0,
             min_width: 48.0,
             max_width: 200.0,
             close: StatefulLook {

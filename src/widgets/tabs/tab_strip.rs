@@ -331,9 +331,16 @@ impl ChipCtx<'_> {
             ..look.background
         };
         // The selected chip lifts its inner top inset by the cap, so the
-        // cap adds no height and every label sits on the same line.
+        // cap adds no height and every label sits on the same line. A
+        // chip carrying a badge or a close button trades its right inset
+        // for that glyph's own box — see `TabsTheme::trailing_inset`.
         let [pad_l, pad_t, pad_r, pad_b] = t.chip_padding.as_array();
-        let padding = Spacing::new(pad_l, (pad_t - cap).max(0.0), pad_r, pad_b);
+        let trailing = if item.badge.reserved() || item.closable {
+            t.trailing_inset
+        } else {
+            pad_r
+        };
+        let padding = Spacing::new(pad_l, (pad_t - cap).max(0.0), trailing, pad_b);
 
         let text = look.text;
         let TabItem {
