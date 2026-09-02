@@ -82,6 +82,19 @@ available_q)`; subtree hits blit last frame's measure result and skip
   recursion.
 - **In-house text backend** on top of `cosmic-text` so the GPU upload
   path routes through palantir's staging belt.
+- **SVG artwork** — an icon set is baked into the binary or built at runtime
+  from source bytes; each icon parses the first time it is drawn and
+  rasterizes at its exact physical size into the icon atlas, so it stays
+  crisp at any scale factor and costs nothing until it is used. Gradients
+  and filters are supported; a single-paint icon rasterizes to a coverage
+  mask and takes a shape's tint whole, while a colour icon keeps its own
+  palette and takes the tint's alpha.
+- **Tabs and docking** — `TabStrip` is the chip row on its own, with a
+  selection cap, close buttons, status badges, overflow and WAI-ARIA
+  keyboard travel. `TabbedView` binds it to a `&mut usize` page index the
+  way `ComboBox` binds a selection. `DockView` walks a split tree of tabbed
+  panes with drag docking, and *emits* ops rather than mutating the tree —
+  so an application routes them through its own queue, undo and validation.
 - **`GpuView` — raw `wgpu` inside a widget.** Implement `GpuPaint` on your
   own renderer (a 3D scene, a custom shader) and hand it to
   `GpuView::new(paint)`; the framework owns an off-screen target sized to the
@@ -104,7 +117,6 @@ Pre-1.0 — these are known gaps, not design rejections:
 - **Virtualized list / table** — `Scroll` records all children; no
   row-virtualized list or data table for large datasets.
 - **Rich text** — one family / size / colour per `Text`; no inline spans.
-- **SVG** — no SVG rendering (`Mesh` is the raw vector escape hatch).
 - **RTL / bidirectional text** — right-to-left and mixed-direction scripts
   aren't supported yet.
 
