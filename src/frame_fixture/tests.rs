@@ -75,6 +75,18 @@ const EXCLUDED: &[(&str, &str)] = &[
              covers what hands it out",
     ),
     (
+        "tabs",
+        "shows one page at a time — putting any of the fixture's cards behind a \
+             strip would stop the workload recording them, and a page of its own \
+             retargets every series the frozen structure keeps comparable",
+    ),
+    (
+        "dock",
+        "a whole-window pane tree that takes the space it is handed, so it cannot \
+             sit inside the designed screen — `tests/alloc/dock.rs` measures a \
+             steady-state dock frame against a surface of its own",
+    ),
+    (
         "drag_num",
         "a value binding, not a widget — `slider` and `drag_value` cover \
              both of its variants",

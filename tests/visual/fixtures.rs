@@ -14,6 +14,7 @@ mod layout;
 mod occlusion;
 mod scroll;
 mod shadow;
+mod tabs;
 mod text;
 mod widgets;
 

@@ -383,7 +383,11 @@ Seven phases. Each one compiles, tests, and shows something in the showcase
 before the next starts. Phases 1 to 5 land in Palantir and leave Darkroom
 untouched; phase 6 is the swap.
 
-### 1. TabsTheme and TabStrip
+**All seven are done.** Where the shipped code departs from what is written
+above it, section 11 says so — read that before trusting section 4's API
+listing, which is the plan's spelling rather than the crate's.
+
+### 1. TabsTheme and TabStrip — done
 
 The chip row alone: two look packs, the accent cap, close button, badge slot,
 deterministic chip ids from a caller-supplied key, and horizontal scroll for
@@ -392,20 +396,22 @@ overflow. No content area, no tree.
 - `widgets/theme/tabs.rs`
 - `widgets/tabs/{mod,tab_strip,tab_item,tests}.rs`
 
-Verify: the chain scoped to `-p palantir`, plus the visual suite.
+Verify: the chain scoped to `-p palantir`, plus the visual suite
+(`tests/visual/fixtures/tabs.rs`, golden `tab_strip`).
 
-### 2. TabbedView
+### 2. TabbedView — done
 
 Strip over content, bound to `&mut usize`, with the content area recorded under
 a stable id so a body can read its arranged size on the pass it first records.
 A showcase page follows here, not later.
 
-- `widgets/tabs/mod.rs`
+- `widgets/tabs/tabbed_view.rs` (`mod.rs` declares and holds no type — see
+  section 11)
 - `bin/showcase/pages/tabs.rs`
 
-Verify: the chain, plus a golden image.
+Verify: the chain, plus the golden `tabbed_view`.
 
-### 3. DockState and its ops
+### 3. DockState and its ops — done
 
 The tree, generic over `T`: flat pre-order storage, the six ops, `normalize`,
 `validate`, the seed, and the pinned tab. Darkroom's 686-line suite ports with
@@ -417,30 +423,32 @@ its assertions intact.
 
 Verify: the chain. No rendering yet.
 
-### 4. DockView and DockTabs
+### 4. DockView and DockTabs — done
 
 The recursive walk: splits onto `Splitter` with the ratio drag surfacing as
 `SetRatio`, leaves as a `TabStrip` over a group-keyed content area. `scan`
 covers activation, close, and pane focus. Drag docking is not in this phase.
 
-- `widgets/dock/mod.rs`
+- `widgets/dock/dock_view.rs` (`mod.rs` declares and holds no type)
 - `widgets/dock/dock_tabs.rs`
 
-Verify: the chain, plus harness tests on pane rects.
+Verify: the chain, plus harness tests on pane rects — a split dock tiles its
+panes and strips, a chip click switches the pane on the same frame, a close
+click removes without activating.
 
-### 5. Drag docking
+### 5. Drag docking — done
 
 `classify_drop` and its rect tests, the drag gesture in `Ui` widget state
 rather than application state, and the preview and ghost chip on
 `Layer::Tooltip`. `DockTheme` arrives with them.
 
 - `widgets/theme/dock.rs`
-- `widgets/dock/{drop_zone,drag}.rs`
+- `widgets/dock/{pane_geometry,tab_drag}.rs` — named for the type each holds
 - `bin/showcase/pages/dock.rs`
 
-Verify: the chain, plus the visual suite.
+Verify: the chain, plus the visual suite (golden `dock_split_panes`).
 
-### 6. Darkroom migrates
+### 6. Darkroom migrates — done
 
 Delete `gui/dock` and `core/document/dock`. `Document` holds a
 `DockState<TabRef>`; the session implements `DockTabs`; `Requests::push_view`
@@ -449,19 +457,21 @@ splitter tweak it already makes.
 
 - `gui/dock/` — removed
 - `core/document/dock/` — removed
-- `gui/app/session/dock_tabs.rs` — new
+- `gui/window/dock_panes.rs` — new; the record pass composes the borrows, so
+  the implementor lives beside `MainWindow` rather than under the session
 - `gui/theme/palantir_bridge.rs`
 
 Verify: the chain, `-p darkroom -p palantir`.
 
-### 7. What Darkroom never had
+### 7. What Darkroom never had — done
 
 Keyboard travel along the strip on the WAI-ARIA tab pattern, an overflow menu
 listing the chips that scrolled out, `AllowedSplits`, and an allocation gate
 proving a steady-state dock frame allocates nothing.
 
-- `widgets/tabs/overflow.rs`
-- `tests/alloc/dock.rs`
+- `TabOverflow` stays in `widgets/tabs/tab_strip.rs` — a config the widget
+  takes is a satellite of it, not a module
+- `tests/alloc/fixtures/dock.rs` — the suite's fixtures live in that directory
 
 Verify: the chain, plus `tests/alloc`.
 
@@ -489,6 +499,83 @@ Verify: the chain, plus `tests/alloc`.
   and chip buffers across frames. A Palantir builder is rebuilt each frame, so
   they move to `Ui::state_mut`, the way `Splitter` and `Scroll` already keep
   theirs.
+
+## 11. What shipped, against this plan
+
+Seven phases, all landed. What follows is every place the crate disagrees
+with what is written above, and why — so section 4's API listing is read as
+the plan's spelling rather than as the signature.
+
+### The API moved
+
+- **`TabItem::badge` is a `TabBadge`, not a `bool`.** Three states: no dot,
+  the dot's box drawn empty, the dot inked. A `bool` cannot say "reserve the
+  box, ink nothing", so a save would have resized Darkroom's graph chip and
+  shifted every chip to its right. `DockTabs::badge` returns the same enum.
+  Both crates pin the property.
+- **`DockTabs::look` is gone.** A per-tab `&WidgetLook` puts a lifetime on
+  `TabItem`, and so on the item buffer the strip keeps across frames. The
+  per-strip `.style(&TabsTheme)` override covers what a caller in sight
+  wants; a per-*tab* one can come back when a caller needs it.
+- **`DockTabs::tab_menu` takes a `DockTabMenu` bundle** — the tab, its group,
+  the op sink, and the menu's close handle. Without the sink an item could
+  not emit the split it names, and without the group it could not address
+  one.
+- **`max_depth` and `allowed_splits` sit on `DockState`, not on `DockView`.**
+  The model is what enforces them: `apply` refuses a deeper split,
+  `validate` rejects a tree holding one, and `scan` resolves a drop on
+  release — a phase where no builder exists. A second copy on the widget
+  could only disagree with this one. `min_pane` and `overflow` stay on the
+  builder, where the plan put them.
+- **`TabStripResponse` reports pointer and keyboard activation apart** —
+  `clicked` and `keyed`. The dock's scan already holds the click a phase
+  earlier, so the record pushes `keyed` alone rather than queueing the same
+  op twice. The cost is named where it is paid: a keyboard move lands one
+  frame after the press, because the strip resolves an arrow against an
+  input scope that only exists while it records.
+- **`TabsTheme::padding` is `chip_padding`.** The bundle `#[serde(flatten)]`s
+  `SlotDefaults`, which carries a `padding` of its own, and the two collide
+  on the wire.
+- **`TabGroupId` is a counter, not a UUID.** Palantir has no `uuid`
+  dependency and will not grow one for this. Two states built by the same
+  calls still carry the same ids and compare equal, which is the property
+  the undo no-op diff rests on.
+- **Two fields the plan's theme table did not name**: `TabsTheme` carries
+  `hline_thickness` beside `hline` (a hairline with no breadth is one
+  hard-coded number), and `DockTheme` carries `ghost_padding` and
+  `ghost_offset` (a `WidgetLook` says nothing about the box around the
+  label or where it sits relative to the pointer).
+
+### The file layout moved
+
+`mod.rs` in both `widgets/tabs/` and `widgets/dock/` declares and holds no
+type, so every type sits in a file named after it — the crate's own rule.
+`drop_zone.rs` is `pane_geometry.rs` and `drag.rs` is `tab_drag.rs` for the
+same reason. `TabOverflow` stays with `TabStrip`: a config a widget takes is
+a satellite of it. The Darkroom implementor is `gui/window/dock_panes.rs`,
+where the borrows it needs are already composed.
+
+### The frame fixture does not record either widget
+
+`FrameFixture`'s module doc freezes its node structure — adding to it
+retargets every recorded bench series at once — so both are listed in that
+suite's `EXCLUDED` with their reasons. A steady-state dock frame is measured
+instead by `tests/alloc/fixtures/dock.rs`, over a surface of its own. It
+reads a strict zero, in both the one-call and the two-call surface.
+
+### What is left
+
+Nothing from this plan. Three things it named as future work stay future:
+
+- **Binary splits.** Section 7 names the cost and it is unchanged: in a row
+  of three panes the second divider lives inside one half of the first, so
+  dragging the first moves the second on screen. The fix is an n-ary
+  container, which needs a new n-way widget beside `Splitter`.
+- **The drop preview paints from last frame's rects.** Exact while panes
+  hold still, which is every frame of a drag except the first after a layout
+  change. The general fix is the layout barrier in `record-time-geometry.md`.
+- **Floating windows** as a second surface kind, which section 2 marked
+  worth taking from egui_dock and no phase claimed.
 
 ## Sources
 

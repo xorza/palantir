@@ -25,6 +25,7 @@ macro_rules! palette_default {
 pub(crate) mod button;
 pub(crate) mod combo_box;
 pub(crate) mod context_menu;
+pub(crate) mod dock;
 pub(crate) mod drag_value;
 pub(crate) mod modal;
 pub(crate) mod palette;
@@ -35,6 +36,7 @@ mod serde;
 pub(crate) mod slider;
 pub(crate) mod spinner;
 pub(crate) mod splitter;
+pub(crate) mod tabs;
 pub(crate) mod text_edit;
 pub(crate) mod text_style;
 pub(crate) mod toggle;
@@ -49,6 +51,7 @@ use crate::text::glyph_font::GlyphFont;
 use crate::widgets::theme::button::ButtonTheme;
 use crate::widgets::theme::combo_box::ComboBoxTheme;
 use crate::widgets::theme::context_menu::ContextMenuTheme;
+use crate::widgets::theme::dock::DockTheme;
 use crate::widgets::theme::drag_value::DragValueTheme;
 use crate::widgets::theme::modal::ModalTheme;
 use crate::widgets::theme::palette::Palette;
@@ -58,6 +61,7 @@ use crate::widgets::theme::separator::SeparatorTheme;
 use crate::widgets::theme::slider::SliderTheme;
 use crate::widgets::theme::spinner::SpinnerTheme;
 use crate::widgets::theme::splitter::SplitterTheme;
+use crate::widgets::theme::tabs::TabsTheme;
 use crate::widgets::theme::text_edit::TextEditTheme;
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::theme::toggle::ToggleTheme;
@@ -128,6 +132,16 @@ pub struct Theme {
     pub slider: SliderTheme,
     pub spinner: SpinnerTheme,
     pub splitter: SplitterTheme,
+    /// What every [`crate::TabStrip`] wears — on its own, inside a
+    /// [`crate::TabbedView`], and on every [`crate::DockView`] pane.
+    /// Restyling it moves all three together, which is the point: a
+    /// docked pane's strip and a dialog's page strip are the same
+    /// control.
+    pub tabs: TabsTheme,
+    /// What [`crate::DockView`] paints that a strip does not — the drop
+    /// preview and the chip trailing the pointer. Its dividers read
+    /// [`Self::splitter`] and its panes read [`Self::tabs`].
+    pub dock: DockTheme,
     /// Ambient text style — size, colour, family, leading — that every
     /// [`Text`](crate::Text) falls back to when its builder didn't
     /// override the axis, and that a widget look inherits whole wherever
@@ -232,6 +246,8 @@ impl Theme {
             drag_value,
             context_menu,
             tooltip,
+            tabs,
+            dock,
             // Chrome, geometry, and scalars — no `TextStyle` reachable.
             scrollbar: _,
             combo_box: _,
@@ -255,6 +271,8 @@ impl Theme {
         drag_value.for_each_text(f);
         context_menu.for_each_text(f);
         tooltip.for_each_text(f);
+        tabs.for_each_text(f);
+        dock.for_each_text(f);
     }
 
     /// Assemble a full theme from a [`Palette`] — every widget recipe
@@ -280,6 +298,8 @@ impl Theme {
             slider: SliderTheme::from_palette(p),
             spinner: SpinnerTheme::from_palette(p),
             splitter: SplitterTheme::from_palette(p),
+            tabs: TabsTheme::from_palette(p),
+            dock: DockTheme::from_palette(p),
             text: TextStyle::default().with_color(p.text),
             window_clear: p.terminal_bg,
             panel_background: None,

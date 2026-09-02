@@ -95,6 +95,22 @@ const PAGES: &[Page] = &[
     },
     Page {
         group: "WIDGETS",
+        label: "tabs",
+        blurb: "A page view bound to an index, the chip row on its own, and a strip with \
+                more tabs than room. Arrow keys travel; Ctrl+Tab cycles.",
+        flow: Flow::Scroll,
+        body: Body::Simple(pages::tabs::build),
+    },
+    Page {
+        group: "WIDGETS",
+        label: "dock",
+        blurb: "Drag a chip onto a pane edge to split it, into a strip to join, and \
+                right-click one for the split menu.",
+        flow: Flow::Fill,
+        body: Body::Simple(pages::dock::build),
+    },
+    Page {
+        group: "WIDGETS",
         label: "dialogs",
         blurb: "Modal flows — a dropdown, a confirm dialog, and OS close-request \
                 interception.",
