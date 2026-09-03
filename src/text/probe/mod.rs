@@ -14,7 +14,7 @@
 use crate::layout::types::align::HAlign;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
-use crate::text::cosmic::ShapedRun;
+use crate::text::cosmic::shaped_buffer_cache::ShapedRun;
 use crate::text::key::TextShapeKey;
 use crate::text::shaper::ShaperInner;
 use std::cell::RefMut;

@@ -16,7 +16,7 @@
 //! only record of which buffer to [demote](TextShaper::supersede) when
 //! the committed width moves. Supersession has no other source — it is
 //! what makes the shaped-buffer cache's probation window reachable at
-//! all (see `cosmic::PROBATION_KEEP_FRAMES`), so a resize drag stays
+//! all (see `shaped_buffer_cache::PROBATION_KEEP_FRAMES`), so a resize drag stays
 //! bounded because these rows exist. Deleting the layer would take the
 //! drag bound with it, whatever a throughput benchmark says.
 //!

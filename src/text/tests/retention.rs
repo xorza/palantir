@@ -146,7 +146,7 @@ fn probationary_entries_age_out_on_schedule_regardless_of_cache_size() {
     // Inserted during frame 0, so the first four sweeps see a cutoff of
     // 0 (saturated) and keep them; the fifth is the first whose cutoff, 1,
     // is past their stamp.
-    idle_frames(&mut c, cosmic::PROBATION_KEEP_FRAMES);
+    idle_frames(&mut c, shaped_buffer_cache::PROBATION_KEEP_FRAMES);
     assert_eq!(
         c.cache_len(),
         10,
@@ -163,7 +163,7 @@ fn probationary_entries_age_out_on_schedule_regardless_of_cache_size() {
     let mut big = CosmicMeasure::default();
     fill_distinct_widths(&mut big, 1000);
     assert_eq!(big.cache_len(), 1000);
-    idle_frames(&mut big, cosmic::PROBATION_KEEP_FRAMES);
+    idle_frames(&mut big, shaped_buffer_cache::PROBATION_KEEP_FRAMES);
     assert_eq!(
         big.cache_len(),
         1000,
@@ -190,7 +190,7 @@ fn a_lookup_promotes_an_entry_to_the_protected_window() {
 
     // One frame past probation: the two untouched keys are gone, the two
     // promoted ones are still here — they have 120 frames, not 4.
-    idle_frames(&mut c, cosmic::PROBATION_KEEP_FRAMES + 1);
+    idle_frames(&mut c, shaped_buffer_cache::PROBATION_KEEP_FRAMES + 1);
     assert_eq!(c.cache_len(), 2);
     assert!(c.shaped_run(keys[0]).is_some(), "promoted key survives");
     assert!(c.shaped_run(keys[1]).is_some(), "promoted key survives");
@@ -203,10 +203,10 @@ fn a_lookup_promotes_an_entry_to_the_protected_window() {
     // ceiling rather than one shared edge.
     idle_frames(
         &mut c,
-        cosmic::PROTECTED_KEEP_FRAMES - cosmic::PROBATION_KEEP_FRAMES - 1,
+        RENDERED_RUN_KEEP_FRAMES - shaped_buffer_cache::PROBATION_KEEP_FRAMES - 1,
     );
     assert_eq!(c.cache_len(), 2, "inside the window every key is promised");
-    idle_frames(&mut c, cosmic::PROTECTED_SPREAD_MASK + 1);
+    idle_frames(&mut c, RENDERED_RUN_KEEP_SPREAD_MASK + 1);
     assert_eq!(c.cache_len(), 0, "past the widest of them, both dropped");
 }
 
@@ -258,7 +258,7 @@ fn steady_key_churn_costs_a_bounded_cache_and_spares_the_working_set() {
     // Steady state: the 20 protected keys, plus the counter values from
     // the last PROBATION_KEEP_FRAMES frames — the sweep advances the frame
     // first, so exactly that many stamps sit at or above the cutoff.
-    let steady = 20 + cosmic::PROBATION_KEEP_FRAMES as usize;
+    let steady = 20 + shaped_buffer_cache::PROBATION_KEEP_FRAMES as usize;
     assert_eq!(
         lens[10..],
         vec![steady; 50][..],
@@ -327,7 +327,7 @@ fn demote_and_promote_churn_keeps_the_ticket_count_flat() {
     // on its own next firing. So what is outstanding is one live ticket
     // per resident entry plus the demotes still in flight, and never a
     // multiple of how long the drag has run.
-    let ceiling = RUNS * WIDTHS + RUNS * (cosmic::PROBATION_KEEP_FRAMES as usize + 2);
+    let ceiling = RUNS * WIDTHS + RUNS * (shaped_buffer_cache::PROBATION_KEEP_FRAMES as usize + 2);
     let (worst_frame, worst) = *pending_at.iter().max_by_key(|&&(_, n)| n).unwrap();
     assert!(
         worst <= ceiling,
@@ -361,12 +361,12 @@ fn a_demote_still_evicts_on_time_with_an_older_ticket_outstanding() {
     // Promote it, then let its insert-time ticket fire and re-file far
     // out — now the outstanding ticket sits at the protected deadline.
     c.ensure_buffer(TextShapeRequest::for_key(BODY, keys[0]).unwrap());
-    idle_frames(&mut c, cosmic::PROBATION_KEEP_FRAMES + 1);
+    idle_frames(&mut c, shaped_buffer_cache::PROBATION_KEEP_FRAMES + 1);
     assert_eq!(c.cache_len(), 1, "promoted, so it outlives probation");
 
     // The reuse slot moves off this width.
     c.supersede(keys[0]);
-    idle_frames(&mut c, cosmic::PROBATION_KEEP_FRAMES);
+    idle_frames(&mut c, shaped_buffer_cache::PROBATION_KEEP_FRAMES);
     assert_eq!(c.cache_len(), 1, "still inside the probation window");
     idle_frames(&mut c, 1);
     assert_eq!(
@@ -386,23 +386,23 @@ fn a_supplanted_ticket_does_not_evict_an_entry_promoted_since() {
     let keys = fill_distinct_widths(&mut c, 1);
 
     c.ensure_buffer(TextShapeRequest::for_key(BODY, keys[0]).unwrap());
-    idle_frames(&mut c, cosmic::PROBATION_KEEP_FRAMES + 1);
+    idle_frames(&mut c, shaped_buffer_cache::PROBATION_KEEP_FRAMES + 1);
 
     // Demote, then come back to it one frame before it would lapse —
     // exactly what a width rotation does.
     c.supersede(keys[0]);
-    idle_frames(&mut c, cosmic::PROBATION_KEEP_FRAMES);
+    idle_frames(&mut c, shaped_buffer_cache::PROBATION_KEEP_FRAMES);
     c.ensure_buffer(TextShapeRequest::for_key(BODY, keys[0]).unwrap());
 
     // Walk past both the probation deadline the demote set and the
     // frame the supplanted ticket was filed for.
-    idle_frames(&mut c, cosmic::PROBATION_KEEP_FRAMES + 2);
+    idle_frames(&mut c, shaped_buffer_cache::PROBATION_KEEP_FRAMES + 2);
     assert_eq!(c.cache_len(), 1, "the promotion outranks the stale ticket");
 
     // And it is still on a real deadline, not immortal.
     idle_frames(
         &mut c,
-        cosmic::PROTECTED_KEEP_FRAMES + cosmic::PROTECTED_SPREAD_MASK,
+        RENDERED_RUN_KEEP_FRAMES + RENDERED_RUN_KEEP_SPREAD_MASK,
     );
     assert_eq!(c.cache_len(), 0, "left alone, it still ages out");
 }
@@ -429,7 +429,7 @@ fn a_promoted_burst_expires_across_frames_rather_than_on_one() {
     assert_eq!(c.cache_len() as u32, RUNS);
 
     // The floor is the part every entry is promised.
-    idle_frames(&mut c, cosmic::PROTECTED_KEEP_FRAMES);
+    idle_frames(&mut c, RENDERED_RUN_KEEP_FRAMES);
     assert_eq!(
         c.cache_len() as u32,
         RUNS,
@@ -440,14 +440,14 @@ fn a_promoted_burst_expires_across_frames_rather_than_on_one() {
     // takes exactly the keys whose offset is `k`.
     let mut live = c.cache_len();
     let mut dropped = Vec::new();
-    for _ in 0..=cosmic::PROTECTED_SPREAD_MASK {
+    for _ in 0..=RENDERED_RUN_KEEP_SPREAD_MASK {
         idle_frames(&mut c, 1);
         dropped.push(live - c.cache_len());
         live = c.cache_len();
     }
     assert_eq!(live, 0, "the whole burst is gone by the ceiling");
 
-    let expected: Vec<usize> = (0..=cosmic::PROTECTED_SPREAD_MASK)
+    let expected: Vec<usize> = (0..=RENDERED_RUN_KEEP_SPREAD_MASK)
         .map(|offset| {
             keys.iter()
                 .filter(|key| key.keep_spread() == offset)

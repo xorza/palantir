@@ -48,14 +48,16 @@
 //! it can fail with.
 //!
 //! A backend gets a directory, because one type with five separable jobs
-//! is neither shape. [`cosmic`] is `CosmicMeasure` plus wrapped shaping,
-//! retention and truncation in `mod.rs`, with `cache_entry` (one resident
-//! shaped buffer), `cluster_glyph` (the cluster-precise cut's glyph view
-//! and prefix scan), `ellipsis_memo` (the reshaped "…" advance),
-//! `geometry` (reading measurements back off a shaped buffer), and
-//! `counters` beside it. Its children reach the measurer's private fields
-//! directly — privacy descends — so the split costs no widening, and each
-//! file is one answerable question.
+//! is neither shape. [`cosmic`] is `CosmicMeasure` — the font database,
+//! wrapped shaping and truncation — in `mod.rs`, with
+//! `shaped_buffer_cache` (what is resident, for how long, and the frame
+//! clock that answers both), `cache_entry` (one resident shaped buffer),
+//! `cluster_glyph` (the cluster-precise cut's glyph view and prefix
+//! scan), `ellipsis_memo` (the reshaped "…" advance), `geometry`
+//! (reading measurements back off a shaped buffer), and `counters`
+//! beside it. Its children reach the measurer's private fields directly
+//! — privacy descends — so the split costs no widening, and each file is
+//! one answerable question.
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
@@ -113,10 +115,9 @@ pub(crate) mod wrap;
 pub(crate) const TEXT_SCALE_STEP: f32 = 0.005;
 
 /// Frames a *rendered* run's shaped buffer survives untouched — the floor
-/// of the protected tier of the shaped-buffer cache
-/// ([`cosmic::PROTECTED_KEEP_FRAMES`], which each entry extends by its own
-/// share of [`RENDERED_RUN_KEEP_SPREAD_MASK`]), and the ceiling the backend's
-/// glyph-template window
+/// of the protected tier of the shaped-buffer cache, which each entry
+/// extends by its own share of [`RENDERED_RUN_KEEP_SPREAD_MASK`], and
+/// the ceiling the backend's glyph-template window
 /// (`renderer::backend::text::encode::ENCODED_CACHE_KEEP_FRAMES`) must
 /// stay under.
 ///
@@ -132,7 +133,7 @@ pub(crate) const TEXT_SCALE_STEP: f32 = 0.005;
 /// tripwire.
 ///
 /// **Comparable numbers are only half of an ordering.** Both windows
-/// count frames off **one** clock — [`ShaperInner::frame`](shaper::ShaperInner)
+/// count frames off **one** clock — the shaped-buffer cache's own
 /// — which is what makes comparing them mean anything. Counting off
 /// per-cache events instead (this side on the record path, the encoder's
 /// on the submit path, which also runs for `PaintOnly` frames) puts the

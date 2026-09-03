@@ -2,7 +2,7 @@ use crate::bench::Run;
 use crate::layout::ShapedText;
 use crate::layout::types::align::HAlign;
 use crate::primitives::widget_id::{WidgetId, WidgetIdSet};
-use crate::text::cosmic;
+use crate::text::cosmic::shaped_buffer_cache;
 use crate::text::font_family::FontFamily;
 use crate::text::font_style::FontStyle;
 use crate::text::font_weight::FontWeight;
@@ -20,14 +20,14 @@ use std::hint::black_box;
 const TEXT: &str = "A long property label used to exercise character-precise truncation across many previously unseen widths.";
 
 /// Distinct committed widths a drag frame cycles through before
-/// repeating. Comfortably past [`cosmic::PROTECTED_KEEP_FRAMES`] so a
+/// repeating. Comfortably past [`crate::text::RENDERED_RUN_KEEP_FRAMES`] so a
 /// recycled width is a genuine miss rather than an accidental hit —
 /// otherwise the arm would quietly drift into measuring the cache.
 const DRAG_WIDTHS: u32 = 512;
 
 /// Drag frames run before the measured section, to decide residency
 /// deterministically rather than leaving it to however many iterations
-/// criterion picked. Past [`cosmic::PROTECTED_KEEP_FRAMES`], so a
+/// criterion picked. Past [`crate::text::RENDERED_RUN_KEEP_FRAMES`], so a
 /// promoted buffer would still be inside its window and unretired
 /// widths would pile up visibly; under [`DRAG_WIDTHS`], so no width
 /// repeats.
@@ -37,8 +37,8 @@ const DRAG_PRIME_FRAMES: u32 = 256;
 /// unbounded root, and whatever is still inside the probation window,
 /// with room to spare. Derived rather than hardcoded so it tracks the
 /// window it is really about — the failure it guards against retains
-/// [`cosmic::PROTECTED_KEEP_FRAMES`] of them instead.
-const DRAG_RESIDENCY_LIMIT: usize = cosmic::PROBATION_KEEP_FRAMES as usize * 2 + 4;
+/// [`crate::text::RENDERED_RUN_KEEP_FRAMES`] of them instead.
+const DRAG_RESIDENCY_LIMIT: usize = shaped_buffer_cache::PROBATION_KEEP_FRAMES as usize * 2 + 4;
 
 /// Distinct labels per frame in the reuse-layer A/B benches — a
 /// realistic mid-size UI's worth of text runs, enough that both maps
