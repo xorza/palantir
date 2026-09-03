@@ -1,27 +1,19 @@
 //! One entry in the shaped-buffer cache, and the two-tier retention
 //! state it carries.
 //!
-//! The four operations that move an entry between the windows — insert
-//! files a probationary ticket, a lookup promotes, a supersede demotes,
-//! the end-of-frame sweep settles whatever came due — are methods on
-//! [`CosmicMeasure`](crate::text::cosmic::CosmicMeasure), together and
-//! beside every other reader of the cache, because they are one
-//! protocol: the
-//! [`ExpiryWheel`](crate::common::expiry_wheel::ExpiryWheel) contract in
-//! [`crate::common::expiry_wheel`] is only upheld by all four agreeing,
-//! and reading any one of them alone is how the ticket-leak regression
-//! got written.
+//! The operations that move an entry between the windows all live on
+//! [`ShapedBufferCache`](crate::text::cosmic::shaped_buffer_cache::ShapedBufferCache),
+//! which is where its module doc says why they belong together.
 
 use crate::common::expiry_wheel::TicketSeq;
 use crate::primitives::size::Size;
-use crate::text::key::TextShapeKey;
 use crate::text::root::TextRoot;
 use cosmic_text::Buffer;
-use rustc_hash::FxHashMap;
 
 #[derive(Debug)]
 pub(super) struct CacheEntry {
-    /// Shaped buffer. Looked up by [`TextShapeKey`] at render time so the
+    /// Shaped buffer. Looked up by [`TextShapeKey`](crate::text::key::TextShapeKey)
+    /// at render time so the
     /// text backend can build a `TextArea` without reshaping.
     pub(super) buffer: Buffer,
     /// What this buffer measured to, in whichever of the two kinds its
@@ -56,34 +48,11 @@ pub(super) struct CacheEntry {
     pub(super) dies_at: u64,
     /// Serial of this entry's live expiry ticket. A ticket firing under
     /// any other one was supplanted by a later
-    /// [`CosmicMeasure::supersede`](crate::text::cosmic::CosmicMeasure::supersede) and dies in the sweep instead of
+    /// [`ShapedBufferCache::supersede`](crate::text::cosmic::shaped_buffer_cache::ShapedBufferCache::supersede)
+    /// and dies in the sweep instead of
     /// re-filing itself — without which a run that is demoted and
     /// promoted each frame accumulates one permanent ticket per cycle.
     pub(super) ticket_seq: TicketSeq,
-}
-
-impl CacheEntry {
-    /// The cached unbounded shape a truncating fit cuts from.
-    ///
-    /// [`CosmicMeasure::shape_truncated`](crate::text::cosmic::CosmicMeasure::shape_truncated) calls
-    /// [`CosmicMeasure::ensure_buffer`](crate::text::cosmic::CosmicMeasure::ensure_buffer) on this key before reaching for it,
-    /// and re-reads it once per back-off round because the shaping in
-    /// between needs `&mut self`, so the borrow cannot be held across the
-    /// loop.
-    ///
-    /// Hands back the whole entry rather than its buffer: the caller wants
-    /// the measured [`TextRoot`] as well as the glyphs, and both come out of
-    /// the one lookup.
-    ///
-    /// Takes the map rather than `&self` on purpose: the caller holds
-    /// `&mut self.logical_order` at the same time, and only a borrow of the
-    /// one field stays disjoint from it.
-    #[inline]
-    pub(super) fn probe(cache: &FxHashMap<TextShapeKey, Self>, key: TextShapeKey) -> &Self {
-        cache
-            .get(&key)
-            .expect("truncation requires the cached unbounded shape")
-    }
 }
 
 /// What one cached buffer measured to.

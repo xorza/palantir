@@ -1,18 +1,13 @@
 //! Real text shaping via [`cosmic_text`]. Caches one shaped `Buffer`
 //! per [`TextShapeKey`] — every input that affects shaping (text hash,
 //! font size, wrap width, line height, family, weight, halign, fit) —
-//! so steady-state measurement is `HashMap` lookup only: no reshape,
-//! no allocation. The cache is bounded by **age, not capacity** —
-//! [`CosmicMeasure::tick_frame`] drops entries untouched for
-//! [`PROBATION_KEEP_FRAMES`] / [`PROTECTED_KEEP_FRAMES`], see there for
-//! why the two windows exist. Missing buffers are reconstructible from
-//! the retained text source at the backend boundary, so a continuous
-//! resize drag — every width unique, a fresh entry per run per frame —
-//! stays bounded without explicit cache ownership. Evicted buffers feed a
-//! bounded recycle pool so later misses retain Cosmic Text's internal
-//! line, shaping, and layout allocations. The sweep itself is driven by
-//! a deadline wheel, so it costs what expires rather than what is
-//! resident — see [`CosmicMeasure::expiry`].
+//! so steady-state measurement is a `HashMap` lookup only: no reshape,
+//! no allocation. What is resident and for how long belongs to
+//! [`shaped_buffer_cache`], which this file shapes into and reads back
+//! out of. Missing buffers are reconstructible from the retained text
+//! source at the backend boundary, so a continuous resize drag — every
+//! width unique, a fresh entry per run per frame — stays bounded
+//! without explicit cache ownership.
 //!
 //! The render side never sees cosmic types: `TextShaper::glyphs`
 //! lends a `RefMut<CosmicMeasure>` whose
@@ -25,9 +20,7 @@
 //! cost of resolving them — verifying with the cached buffer's source string
 //! on every hit — outweighs the cost of accepting the negligible risk.
 
-use crate::common::expiry_wheel::ExpiryWheel;
 use crate::layout::types::align::HAlign;
-use crate::text::cosmic::counters::CacheCounters;
 use crate::text::error::FontLoadError;
 use crate::text::font_family::FontFamily;
 use crate::text::font_scope::FontScope;
@@ -38,110 +31,35 @@ use crate::text::key::TextShapeKey;
 use crate::text::request::TextShapeRequest;
 use crate::text::root::TextRoot;
 use crate::text::wrap::{LineFit, WrapFloor};
-use crate::text::{RENDERED_RUN_KEEP_FRAMES, RENDERED_RUN_KEEP_SPREAD_MASK};
 use cosmic_text::{
     Align as CosmicAlign, Attrs, Buffer, CacheKeyFlags, Family, FontSystem, Metrics, Shaping,
     Style, SwashCache, Weight, fontdb,
 };
-use rustc_hash::FxHashMap;
 use std::sync::Arc;
 use tinyvec::ArrayVec;
 
 use crate::primitives::num::F32Ext;
 use crate::primitives::size::Size;
 use crate::renderer::backend::raster_atlas::content_type::ContentType;
-use crate::text::cosmic::cache_entry::{CacheEntry, CachedExtent};
+use crate::text::cosmic::cache_entry::CachedExtent;
 use crate::text::cosmic::cluster_glyph::{ClusterGlyph, fitting_prefix};
 use crate::text::cosmic::ellipsis_memo::EllipsisMemo;
 use crate::text::cosmic::geometry::{
     ShapedGeometry, first_line_right, intrinsic_min_width, shaped_geometry,
 };
+use crate::text::cosmic::shaped_buffer_cache::{ShapedBufferCache, ShapedRun};
 use crate::text::render::{GlyphImage, GlyphPlacement, GlyphRasterKey, PlacedGlyph, RunPlacement};
 use cosmic_text::SwashContent;
-use std::collections::hash_map::Entry;
 
 pub(super) mod cache_entry;
 pub(super) mod cluster_glyph;
 pub(super) mod counters;
 pub(super) mod ellipsis_memo;
 pub(super) mod geometry;
-
-const RECYCLE_POOL_CAP: usize = 128;
+pub(super) mod shaped_buffer_cache;
 
 /// Faces [`CosmicMeasure::ellipsis`] remembers the "…" advance for.
 const ELLIPSIS_MEMO_SLOTS: usize = 4;
-
-/// Frames a *probationary* entry survives before
-/// [`CosmicMeasure::tick_frame`] drops it: one inserted and never looked
-/// up, or one [superseded](CosmicMeasure::supersede) after its reuse
-/// slot moved to a different key.
-///
-/// Short on purpose. This population is scan traffic: a resize or zoom
-/// drag quantizes to a new whole-pixel wrap width nearly every frame, so
-/// each run mints a key that will never be asked for again. Holding those
-/// for the protected window lets one drag accumulate
-/// `runs × PROTECTED_KEEP_FRAMES` dead buffers.
-///
-/// **Supersession is what makes this window reach that population.**
-/// Insertion alone does not: layout shapes a run and the encoder renders
-/// it on the *same* frame, and that render is a lookup, so every drawn
-/// buffer would otherwise be promoted the moment it was created and the
-/// probation tier would be inert. Steady state cannot repair that by
-/// re-touching it either — the measure cache and the encoded-run cache
-/// both short-circuit before reaching here, so a resident buffer is
-/// never looked up again on a later frame. `TextSystem` holds the only
-/// signal that distinguishes "this run wants a different shape now"
-/// (drag, typing, animation — dead) from "this run left the tree"
-/// (scrolled away — may well return), and it reports the first through
-/// [`CosmicMeasure::supersede`].
-///
-/// A demotion, not an eviction: four frames of grace means a label
-/// oscillating between two keys, or a drag reversing back through a
-/// width it just used, still hits.
-///
-/// # Why not reference-counted retention
-///
-/// Letting an entry die when no upper cache still holds it reads like
-/// the obvious replacement for this whole scheme — no windows, no
-/// demotion signal. It does not work, for a measured reason.
-/// `EncodedKey` embeds [`TextShapeKey`], so a width drag mints a fresh
-/// encoded entry every frame and those live
-/// `ENCODED_CACHE_KEEP_FRAMES` — a shorter window than this one, but
-/// still one with no probation tier under it. An encoded entry holding
-/// its buffer *strongly* therefore pins `runs × (that window + 1)` of
-/// them, an order of magnitude past what this window achieves, and the
-/// exact growth it was added to stop. Holding it *weakly* keeps the drag
-/// bounded but leaves buffers dying under live encoded entries, so the
-/// whole restore path (`ShapedTextRef`, `InternedText`,
-/// [`CosmicMeasure::ensure_buffer`]) has to stay — and deleting that was
-/// the other half of the idea. The two wins are mutually exclusive.
-pub(super) const PROBATION_KEEP_FRAMES: u64 = 4;
-
-/// Frames a *protected* entry — one that has been looked up at least once
-/// since insertion — survives untouched. The floor of the window;
-/// [`PROTECTED_SPREAD_MASK`] is what an entry may add to it.
-///
-/// The name cosmic's two-tier policy reads
-/// [`crate::text::RENDERED_RUN_KEEP_FRAMES`] under, beside
-/// [`PROBATION_KEEP_FRAMES`]. Why that number is a ceiling the encoded
-/// cache stays under rather than one it shares is stated there.
-pub(super) const PROTECTED_KEEP_FRAMES: u64 = RENDERED_RUN_KEEP_FRAMES;
-
-/// Extra frames a protected entry keeps, masked out of its own key — so
-/// the window is `PROTECTED_KEEP_FRAMES ..= + this` rather than a single
-/// frame.
-///
-/// The name cosmic's policy reads
-/// [`crate::text::RENDERED_RUN_KEEP_SPREAD_MASK`] under, beside
-/// [`PROTECTED_KEEP_FRAMES`]. Why the window is a range at all is stated
-/// there.
-pub(super) const PROTECTED_SPREAD_MASK: u64 = RENDERED_RUN_KEEP_SPREAD_MASK;
-
-fn recycle_buffer(pool: &mut Vec<Buffer>, buffer: Buffer) {
-    if pool.len() < RECYCLE_POOL_CAP {
-        pool.push(buffer);
-    }
-}
 
 /// The cosmic face one key shapes at, in the two values cosmic asks
 /// for.
@@ -269,15 +187,6 @@ fn cosmic_align(halign: HAlign) -> Option<CosmicAlign> {
     }
 }
 
-/// A resident shaped buffer paired with the x its glyph block starts at,
-/// so every reader normalizes the same way off one lookup.
-#[derive(Clone, Copy, Debug)]
-pub(super) struct ShapedRun<'a> {
-    pub(super) buffer: &'a Buffer,
-    /// See [`CacheEntry::left`].
-    pub(super) left: f32,
-}
-
 /// Real-shaping text measurer. Owns a [`FontSystem`] populated per
 /// [`FontScope`] and a cache of shaped `Buffer`s keyed on the inputs that
 /// affect shaping. Per-call face selection comes from [`FontFamily`],
@@ -301,40 +210,10 @@ pub(super) struct CosmicMeasure {
     /// Swash rasterization context for [`Self::rasterize_glyph`]. Used
     /// uncached — the renderer's glyph atlas is the real bitmap cache.
     swash_cache: SwashCache,
-    cache: FxHashMap<TextShapeKey, CacheEntry>,
-    /// **The** frame clock every text cache in the crate ages against,
-    /// advanced by [`Self::tick_frame`]. Stamped onto every entry this
-    /// touches, and the reference point both retention windows measure
-    /// back from.
-    ///
-    /// One counter rather than one per cache. The renderer's
-    /// encoded-run cache and its glyph atlas receive this reading
-    /// through [`TextShaper::frame`](crate::text::shaper::TextShaper)
-    /// instead of counting for themselves, which is what lets
-    /// [`RENDERED_RUN_KEEP_FRAMES`] state an ordering against them at
-    /// all — comparing two windows means something only while both
-    /// count the same thing.
-    ///
-    /// It advances on the record path while the backend sweeps on the
-    /// submit path, so it both jumps — two windows record before one
-    /// submit — and stalls — two submits inside one recorded frame.
-    /// That is fine for an age comparison. It is never a cadence gate
-    /// written as `frame % INTERVAL == 0`.
-    frame: u64,
-    /// Which keys come due on which frame, so [`Self::tick_frame`] costs
-    /// what expires rather than what is resident.
-    ///
-    /// A wheel rather than a single earliest-`keep_until` gate, which is
-    /// O(1) only while nothing churns: one key that changes every frame
-    /// — a clock, an FPS counter, a scrubbing value — re-pins that
-    /// minimum a probation window out on every insert, the gate stops
-    /// firing, and every frame walks the whole map to reclaim one entry.
-    /// The churn that would motivate such a gate is precisely the churn
-    /// that defeats it.
-    expiry: ExpiryWheel<TextShapeKey>,
-    /// LIFO pool fed by LRU eviction. `Buffer::set_text` reclaims its
-    /// line, shaping, and layout allocations when the buffer is reset.
-    recycle_pool: Vec<Buffer>,
+    /// Which buffers are resident and how long each one stays — the
+    /// owner of the shared frame clock too, since the clock is what
+    /// its retention is measured in.
+    cache: ShapedBufferCache,
     /// Trailing advance of "…" for the last few faces asked about.
     ///
     /// A fixed set of slots, not a map: a frame draws its ellipsized
@@ -373,9 +252,6 @@ pub(super) struct CosmicMeasure {
     /// logical order — visual order is what the shaped run gives us, and
     /// truncation needs the logical prefix.
     logical_order: Vec<u32>,
-    /// Shape / hit / supersede / expire tallies. Zero-sized outside
-    /// tests.
-    pub(super) counters: CacheCounters,
 }
 
 impl CosmicMeasure {
@@ -394,15 +270,11 @@ impl CosmicMeasure {
             font_system,
             resolved: Vec::new(),
             swash_cache: SwashCache::new(),
-            cache: FxHashMap::default(),
-            frame: 0,
-            expiry: ExpiryWheel::with_keep(PROTECTED_KEEP_FRAMES + PROTECTED_SPREAD_MASK),
-            recycle_pool: Vec::with_capacity(RECYCLE_POOL_CAP),
+            cache: ShapedBufferCache::default(),
             ellipsis: ArrayVec::new(),
             truncate_scratch: String::new(),
             break_scratch: Vec::new(),
             logical_order: Vec::new(),
-            counters: CacheCounters::default(),
         }
     }
 
@@ -542,21 +414,11 @@ impl CosmicMeasure {
         names.into_iter().map(FontFamily::named).collect()
     }
 
-    /// Drop every shaped buffer now, recycling each one, without waiting
-    /// out a retention window.
-    ///
-    /// [`Self::load_font`] owes this: the buffers were laid out against a
-    /// database that has since changed. Tests that exercise the *restore*
-    /// path use it to set up a guaranteed-cold cache in one call, instead
-    /// of encoding this cache's retention policy into tests that aren't
-    /// about it.
+    /// Drop every shaped buffer now — see
+    /// [`ShapedBufferCache::drop_all`], which [`Self::load_font`] owes
+    /// after the database moves under them.
     pub(super) fn drop_all_buffers(&mut self) {
-        let cache = &mut self.cache;
-        let recycle_pool = &mut self.recycle_pool;
-        for (_, entry) in cache.drain() {
-            recycle_buffer(recycle_pool, entry.buffer);
-        }
-        self.expiry.clear();
+        self.cache.drop_all();
     }
 
     /// The attributes `key` shapes under, resolved family and all.
@@ -566,31 +428,10 @@ impl CosmicMeasure {
         attrs_named(name, key.weight(), key.style())
     }
 
-    /// Look up the shaped run for `key`, or `None` when no buffer is
-    /// resident under it — never measured on this `CosmicMeasure`, or
-    /// aged out since.
-    ///
-    /// Unlike [`Self::ensure_buffer`] this is a lookup, so absence is an
-    /// answer rather than a wiring bug: the probe path takes it for a run
-    /// that was never shaped, and a residency check is the question
-    /// itself.
-    ///
-    /// [`TextShapeKey::INVALID`] is not among the keys it answers for.
-    /// The sentinel means "this run has no shaped buffer at all", and
-    /// nothing ever inserts one — a [`TextShapeRequest`] cannot hold
-    /// either run the sentinel stands for. Asking the cache about it is a
-    /// category error rather than a miss, so it is asserted instead of
-    /// answered, and each caller that can hold one filters it first: the
-    /// encoder drops those runs, `TextProbe::shaped` answers `None`.
+    /// Whether a buffer is resident under `key`, and what it laid out
+    /// to — see [`ShapedBufferCache::shaped_run`].
     pub(super) fn shaped_run(&self, key: TextShapeKey) -> Option<ShapedRun<'_>> {
-        debug_assert!(
-            !key.is_invalid(),
-            "the invalid sentinel names no cache entry — filter it before the lookup",
-        );
-        self.cache.get(&key).map(|e| ShapedRun {
-            buffer: &e.buffer,
-            left: e.left,
-        })
+        self.cache.shaped_run(key)
     }
 
     /// The run's **unbounded** shape: the root every wrap policy reasons
@@ -607,13 +448,13 @@ impl CosmicMeasure {
             key.max_width_px().is_none(),
             "a committed width has no unbounded root to answer with",
         );
-        // One probe for the whole hit path, entry held across the
+        // One lookup for the whole hit path, entry held across the
         // backfill: a resident entry shaped by a policy that didn't want
         // the floor still owes it to one that does, and reading the
         // extent out first meant hashing the same key again to write it.
         // This is the resize-drag path.
         let breaks = &mut self.break_scratch;
-        if let Some(entry) = Self::hit_entry(&mut self.cache, &mut self.counters, self.frame, key) {
+        if let Some(entry) = self.cache.hit(key) {
             let root = entry.extent.root_mut();
             if floor == WrapFloor::Scan && root.intrinsic_min.is_none() {
                 root.intrinsic_min = Some(intrinsic_min_width(&entry.buffer, breaks));
@@ -635,8 +476,8 @@ impl CosmicMeasure {
             key.max_width_px().is_some(),
             "an unbounded request commits no width to resolve against",
         );
-        if let Some(hit) = self.cache_hit(key) {
-            return hit.size();
+        if let Some(entry) = self.cache.hit(key) {
+            return entry.extent.size();
         }
         match key.fit() {
             LineFit::Clip | LineFit::Ellipsis => self.shape_truncated(request),
@@ -672,7 +513,7 @@ impl CosmicMeasure {
             None => CachedExtent::Root(geometry.root()),
             Some(_) => CachedExtent::Bounded(geometry.size),
         };
-        self.insert(key, buffer, extent, geometry.left);
+        self.cache.insert(key, buffer, extent, geometry.left);
         geometry
     }
 
@@ -710,7 +551,7 @@ impl CosmicMeasure {
     }
 
     fn acquire_buffer(&mut self, metrics: Metrics, width: Option<f32>) -> Buffer {
-        let mut buffer = match self.recycle_pool.pop() {
+        let mut buffer = match self.cache.take_recycled() {
             Some(buffer) => buffer,
             None => Buffer::new(&mut self.font_system, metrics),
         };
@@ -718,167 +559,22 @@ impl CosmicMeasure {
         buffer
     }
 
-    /// Store a freshly shaped buffer. Entries start probationary; only a
-    /// later lookup promotes them (see [`PROBATION_KEEP_FRAMES`]).
-    fn insert(&mut self, key: TextShapeKey, buffer: Buffer, extent: CachedExtent, left: f32) {
-        // Counted here rather than per `shape_until_scroll` so one
-        // cached run is one tally: `measure_truncated`'s back-off can
-        // reshape a prefix several times to land inside the committed
-        // width, and a workload test cares that the run was shaped, not
-        // how many attempts the cut took. The memoized ellipsis probe
-        // shapes without inserting and is deliberately not counted.
-        self.counters.shapes.bump();
-        let dies_at = self.probation_dies_at();
-        let ticket_seq = self.expiry.schedule(key, dies_at);
-        let displaced = self.cache.insert(
-            key,
-            CacheEntry {
-                buffer,
-                extent,
-                left,
-                dies_at,
-                ticket_seq,
-            },
-        );
-        // Unreachable today — every caller checks `cache_hit` first, so a
-        // key is inserted once — but the pool must not silently leak a
-        // buffer the moment a second insert path appears.
-        if let Some(old) = displaced {
-            recycle_buffer(&mut self.recycle_pool, old.buffer);
-        }
-    }
-
-    /// What the entry under `key` measured to, or `None` on a miss.
-    fn cache_hit(&mut self, key: TextShapeKey) -> Option<CachedExtent> {
-        Self::hit_entry(&mut self.cache, &mut self.counters, self.frame, key)
-            .map(|entry| entry.extent)
-    }
-
-    /// The resident entry under `key`, its deadline pushed out to the
-    /// protected window and the hit counted.
-    ///
-    /// Being asked for at all is the evidence that separates reuse from
-    /// scan traffic, so no separate promotion step is needed.
-    ///
-    /// Takes the three fields rather than `&mut self`, like
-    /// [`CacheEntry::probe`]: [`Self::root`] holds `break_scratch` across
-    /// the call, and only a field-level borrow leaves that field free.
-    fn hit_entry<'a>(
-        cache: &'a mut FxHashMap<TextShapeKey, CacheEntry>,
-        counters: &mut CacheCounters,
-        frame: u64,
-        key: TextShapeKey,
-    ) -> Option<&'a mut CacheEntry> {
-        let entry = cache.get_mut(&key)?;
-        entry.dies_at = frame + PROTECTED_KEEP_FRAMES + key.keep_spread() + 1;
-        counters.hits.bump();
-        Some(entry)
-    }
-
-    /// The frame an entry filed into the probation window is first dead.
-    /// Read by [`Self::insert`] and by [`Self::supersede`], the two sites
-    /// that file one.
-    fn probation_dies_at(&self) -> u64 {
-        self.frame + PROBATION_KEEP_FRAMES + 1
-    }
-
-    /// Demote `key` to the probation window: the reuse slot that owned
-    /// it now answers a different key, so nothing can ask for it through
-    /// that slot again. See [`PROBATION_KEEP_FRAMES`] for why this is
-    /// the signal the two-tier policy runs on.
-    ///
-    /// Only ever shortens a deadline — a supersede must not extend the
-    /// life of an entry already closer to expiry — and files a second
-    /// ticket for the earlier frame, since the outstanding one sits at
-    /// the deadline this just retracted.
-    ///
-    /// Silent on a key that isn't resident: the buffer may already have
-    /// aged out, and superseding what is gone is a no-op, not an error.
+    /// Demote `key` to the probation window — see
+    /// [`ShapedBufferCache::supersede`], which `TextSystem` is the only
+    /// caller of.
     pub(super) fn supersede(&mut self, key: TextShapeKey) {
-        debug_assert!(
-            !key.is_invalid(),
-            "the invalid sentinel names no cache entry — filter it before the demotion",
-        );
-        let dies_at = self.probation_dies_at();
-        let Some(entry) = self.cache.get_mut(&key) else {
-            return;
-        };
-        self.counters.supersedes.bump();
-        // Never *extends* a life: an entry already closer to expiry —
-        // one that was inserted and never looked up — keeps its own
-        // deadline.
-        if entry.dies_at > dies_at {
-            entry.dies_at = dies_at;
-            // The new ticket is earlier than the outstanding one, so it
-            // is the one that decides this entry's fate: stamping it
-            // here retires the supplanted ticket when it fires.
-            entry.ticket_seq = self.expiry.schedule(key, dies_at);
-        }
+        self.cache.supersede(key);
     }
 
-    /// The current reading of the shared frame clock — see
-    /// [`Self::frame`]. Every downstream cache stamps and expires
-    /// against this rather than counting frames of its own.
+    /// The current reading of the shared frame clock, and the one call
+    /// that advances it — both the cache's, since its own retention is
+    /// what the clock measures.
     pub(super) fn frame(&self) -> u64 {
-        self.frame
+        self.cache.frame()
     }
 
-    /// Advance the shared frame clock one frame and drop every buffer
-    /// whose deadline has passed.
-    ///
-    /// **The one place the clock moves.** Everything downstream — the
-    /// glyph atlas, the encoded-run cache — receives the new reading as
-    /// an argument and never advances it, which is what keeps every text
-    /// cache in the crate on one reading.
-    ///
-    /// Age, not capacity. A count budget cannot express what this cache
-    /// needs: set below the live working set it thrashes — UI redraw is a
-    /// cyclic access pattern, LRU's worst case, so the overflow misses
-    /// every frame forever — and set above it, a resize drag fills it with
-    /// widths that can never be hit again. Ageing bounds both without a
-    /// number to guess: an app keeps exactly what it keeps touching, and
-    /// scan traffic falls out on its own.
-    ///
-    /// Cost tracks what expires, not what is resident: [`Self::expiry`]
-    /// hands back only the keys whose ticket came due, so a frame holding
-    /// a scrolled document's whole working set pays the same as an empty
-    /// one unless something actually lapsed.
-    ///
-    /// A ticket is a hint, never authority to drop. Deadlines move after
-    /// it is filed — [`Self::cache_hit`] pushes one out and deliberately
-    /// files nothing, which is what keeps a re-read entry from filing a
-    /// ticket per frame — so the real `dies_at` is re-read here and a
-    /// still-live entry is simply re-filed.
     pub(super) fn tick_frame(&mut self) {
-        self.frame += 1;
-        let frame = self.frame;
-        let cache = &mut self.cache;
-        let recycle_pool = &mut self.recycle_pool;
-        let probe = &mut self.counters;
-        self.expiry.retire(frame, |key, seq| {
-            // Retired already — a demote leaves two tickets outstanding
-            // and both can come due in one drain, so whichever settled
-            // first may have evicted the entry this one is holding.
-            let Entry::Occupied(slot) = cache.entry(key) else {
-                return None;
-            };
-            // Supplanted by a later `supersede`: the entry's live ticket
-            // is still outstanding and will settle it, so this one is
-            // surplus and dies here. Re-filing it instead is what let the
-            // per-entry ticket count — and with it the per-frame drain —
-            // grow for as long as the entry stayed resident.
-            if seq != slot.get().ticket_seq {
-                return None;
-            }
-            if slot.get().dies_at > frame {
-                // Re-filed under the same serial, so the entry's stamp
-                // still names it and nothing has to be written back.
-                return Some(slot.get().dies_at);
-            }
-            probe.expiries.bump();
-            recycle_buffer(recycle_pool, slot.remove().buffer);
-            None
-        });
+        self.cache.tick_frame();
     }
 
     /// Resolve `request` to palantir-native glyph placements for the
@@ -1065,11 +761,7 @@ impl CosmicMeasure {
             // bottoms out at the empty prefix.
             let mut max_end = usize::MAX;
             loop {
-                let cut = match CacheEntry::probe(&self.cache, probe_key)
-                    .buffer
-                    .layout_runs()
-                    .next()
-                {
+                let cut = match self.cache.probe(probe_key).buffer.layout_runs().next() {
                     Some(run) => fitting_prefix(
                         run.glyphs.len(),
                         |i| ClusterGlyph {
@@ -1108,7 +800,8 @@ impl CosmicMeasure {
 
         // The prefix reshapes on an unbounded buffer with no per-line
         // align, so its block already starts at 0.
-        self.insert(key, buffer, CachedExtent::Bounded(size), 0.0);
+        self.cache
+            .insert(key, buffer, CachedExtent::Bounded(size), 0.0);
         size
     }
 
@@ -1132,8 +825,8 @@ impl CosmicMeasure {
         buffer.set_text("…", &attrs, Shaping::Advanced, None);
         buffer.shape_until_scroll(&mut self.font_system, false);
         let advance = first_line_right(&buffer);
-        recycle_buffer(&mut self.recycle_pool, buffer);
-        self.counters.ellipsis_misses.bump();
+        self.cache.recycle(buffer);
+        self.cache.counters.ellipsis_misses.bump();
         // `insert` panics at capacity, so retire the oldest first.
         if self.ellipsis.len() == ELLIPSIS_MEMO_SLOTS {
             self.ellipsis.pop();
@@ -1144,18 +837,12 @@ impl CosmicMeasure {
     }
 }
 
-impl Default for CosmicMeasure {
-    fn default() -> Self {
-        Self::new(FontScope::Bundled)
-    }
-}
-
 // Manual: cosmic's `SwashCache` isn't `Debug`.
 impl std::fmt::Debug for CosmicMeasure {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("CosmicMeasure")
             .field("cache", &self.cache.len())
-            .field("frame", &self.frame)
+            .field("frame", &self.cache.frame())
             .finish_non_exhaustive()
     }
 }
@@ -1167,18 +854,23 @@ impl std::fmt::Debug for CosmicMeasure {
 pub(crate) mod test_support {
     use super::*;
     #[cfg(test)]
+    use crate::text::cosmic::counters::CacheCounts;
+    #[cfg(test)]
+    use crate::text::cosmic::shaped_buffer_cache::test_support::RecyclePoolStats;
+    #[cfg(test)]
     use crate::text::glyph_font::GlyphFont;
     #[cfg(test)]
     use crate::text::request::test_support::TestShape;
     #[cfg(test)]
     use crate::text::root::test_support::TestMeasure;
 
-    #[derive(Debug, PartialEq, Eq)]
-    #[cfg(test)]
-    pub(crate) struct RecyclePoolStats {
-        pub(crate) len: usize,
-        pub(crate) capacity: usize,
-        pub(crate) limit: usize,
+    /// A measurer over the bundled faces, which is what every fixture
+    /// here wants and what no production caller asks for — a shipping
+    /// build names its [`FontScope`] through `TextShaper`.
+    impl Default for CosmicMeasure {
+        fn default() -> Self {
+            Self::new(FontScope::Bundled)
+        }
     }
 
     impl CosmicMeasure {
@@ -1230,14 +922,12 @@ pub(crate) mod test_support {
             self.cache.len()
         }
 
-        /// Outstanding expiry tickets. The number that says whether
-        /// [`CosmicMeasure::supersede`] is holding up its end of the
-        /// wheel's protocol: a demote files a ticket that supplants the
-        /// outstanding one, and if the supplanted ticket re-files itself
-        /// this grows by one per demote for as long as the entry lives.
+        /// Outstanding expiry tickets — see
+        /// [`ShapedBufferCache::pending_tickets`] for what the number
+        /// says.
         #[cfg(test)]
         pub(crate) fn pending_tickets(&self) -> usize {
-            self.expiry.pending()
+            self.cache.pending_tickets()
         }
 
         /// A measurer over an empty database, so a case can watch a
@@ -1256,11 +946,13 @@ pub(crate) mod test_support {
 
         #[cfg(test)]
         pub(crate) fn recycle_pool_stats(&self) -> RecyclePoolStats {
-            RecyclePoolStats {
-                len: self.recycle_pool.len(),
-                capacity: self.recycle_pool.capacity(),
-                limit: RECYCLE_POOL_CAP,
-            }
+            self.cache.recycle_pool_stats()
+        }
+
+        /// Snapshot of the cache's tallies, for `TextShaper::cache_counts`.
+        #[cfg(test)]
+        pub(crate) fn cache_counts(&self) -> CacheCounts {
+            self.cache.counts()
         }
 
         /// The face cosmic-text actually shaped `text` with, as its

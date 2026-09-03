@@ -1,5 +1,4 @@
 use super::*;
-use crate::common::counters::CounterSet;
 
 #[test]
 fn fitting_truncate_returns_the_unbounded_root_without_reshaping() {
@@ -236,7 +235,7 @@ fn fitting_prefix_cuts_on_logical_cluster_boundaries() {
             "backing off a cluster retires all of its glyphs",
         ),
     ] {
-        let cut = cosmic::cluster_glyph::fitting_prefix(
+        let cut = cluster_glyph::fitting_prefix(
             run.len(),
             |i| ClusterGlyph {
                 start: run[i].0,
@@ -492,7 +491,7 @@ fn the_ellipsis_memo_survives_interleaved_faces() {
     for face in faces {
         truncate(&mut c, TEXT, face.width(120.0), LineFit::Ellipsis);
     }
-    let warm = c.counters.counts();
+    let warm = c.cache_counts();
     assert_eq!(
         warm.ellipsis_misses, 2,
         "premise: first touch of each face reshapes the marker once",
@@ -511,7 +510,7 @@ fn the_ellipsis_memo_survives_interleaved_faces() {
             );
         }
     }
-    let churn = c.counters.counts() - warm;
+    let churn = c.cache_counts() - warm;
     assert!(
         churn.shapes >= 16,
         "premise: each round reshaped, so the memo was actually consulted          ({} shapes)",
@@ -530,12 +529,12 @@ fn the_ellipsis_memo_survives_interleaved_faces() {
     for face in &many {
         truncate(&mut c, TEXT, face.width(100.0), LineFit::Ellipsis);
     }
-    let before = c.counters.counts();
+    let before = c.cache_counts();
     for face in &many {
         truncate(&mut c, TEXT, face.width(99.0), LineFit::Ellipsis);
     }
     assert!(
-        (c.counters.counts() - before).ellipsis_misses > 0,
+        (c.cache_counts() - before).ellipsis_misses > 0,
         "eight faces cannot all fit four slots — the memo must be bounded",
     );
 }

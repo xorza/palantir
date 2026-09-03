@@ -26,40 +26,47 @@ matches, so the production stack no longer carries it. Two consequences remain.
 - [ ] `text/mono.rs` re-implements the `LineFit` arithmetic and a wrap-floor
   scan. That is a second spelling of policy the cosmic path owns.
 
-## 2. Two raster atlases where one would do
+## 2. Two raster atlases, and what sharing them would really cost
 
 Both tenants own a `RasterPass`: a shader module (the same WGSL, specialized
 identically, compiled twice), a pipeline pair, a bind group, a vertex buffer,
-a `Starvation` tracker and an atlas. `raster_pass.rs` gives three reasons for
-the split. Two no longer hold and one is weaker than stated.
+a `Starvation` tracker and an atlas.
 
-- [ ] Eviction already runs per **side** (`RasterAtlas::evict_one(target:
-  ContentType)` only takes slots with `content == target`), so a colour icon can
-  never evict a mask glyph. The one real contention is tintable (mask) icons
-  against glyphs, which the 4 MiB eager-growth budget and 16 MiB ceiling make
-  rare. Merge the two into one `RasterPass<RasterKey>` with
-  `enum RasterKey { Glyph(GlyphRasterKey), Icon(IconRasterKey) }` (32 bytes).
-  Initial sides: mask 1024², colour 512². `forget` becomes
-  `!matches!(key, RasterKey::Icon(k) if sets.contains(&k.set))`. Delete
-  `TextBackend.pass` / `IconBackend.pass`, one `flush`, one `end_frame`, and the
-  `frame` hand-off from text to icon in `WgpuBackend::submit`.
-- [ ] Both atlases already age on the shaper clock (`IconBackend::end_frame(frame)`
-  takes the value `TextBackend::end_frame` returns). Two comments say otherwise:
-  `UNALLOCATED_KEEP_FRAMES` ("the icon atlas counts its own submits",
-  `raster_atlas/mod.rs:117-121`) and `RasterAtlas::current_frame` ("the icon
-  backend's submit count", `:169-171`). Stale either way; gone after the merge.
-- [ ] The merge does not by itself merge the **draws**: `text_batches` (strict-
-  bounds scissor coalescing in the composer) and `PaintTier::Icon` group batches
-  stay separate `RenderStep`s. An icon has the same "no per-instance clip"
-  property a glyph has, so the strict-bounds rule applies unchanged and icons
-  could join the text batch path in a second step. Until then the shared pass
-  at least lets consecutive text/icon steps keep one `Bound` state instead of
-  resetting to `Bound::None` after each.
+**Investigated, and the verdict is narrower than "merge them".** Sharing a
+texture means sharing the space it holds, so an atlas cannot offer both one
+texture and per-tenant budgets — the current split chose isolation, and that
+is defensible. Eviction runs per **side** today
+(`RasterAtlas::evict_one(target: ContentType)` takes only slots with
+`content == target`), so a colour icon already cannot evict a mask glyph and
+merging would not change that. What merging *would* newly allow is a glyph
+miss evicting a tintable icon, and the two are not interchangeable: an SVG
+re-raster is 13-72 µs against roughly a microsecond for a glyph, so a
+text-heavy zoom would thrash icon rasters at an order of magnitude more cost
+than it thrashes glyphs. The headline win — one draw call where a group mixes
+icons and text — does **not** follow from the merge either, and needs the
+composer change the third item below describes.
+
+So the items worth doing are the ones that share what is genuinely identical,
+without sharing the space.
+
+- [ ] `RasterQuad::shader_module` compiles one WGSL twice, once per pass, from
+  the same three substituted constants. Build it once and hand both passes a
+  reference. The bind group *layouts* are structurally identical too, so one
+  layout would let one pipeline pair serve both — check that wgpu treats them
+  as compatible before relying on it.
 - [ ] `IconBackend::prepare_batch` and `TextEncoder::encode_run` both assemble a
   `RasterQuad` by hand from a `SlotPlacement` (`RasterQuad::dim`, `pack_uv`,
   `pos ± bearing`). One `SlotPlacement::quad(pos, color) -> RasterQuad` (icon
-  bearing is zero) removes the duplicate and is where a merged pass would build
-  every quad.
+  bearing is zero) removes the duplicate.
+- [ ] Icons could join the text batch path: an icon has the same "no
+  per-instance clip" property a glyph has, so the composer's strict-bounds
+  scissor rule applies to it unchanged. That is what actually collapses the
+  draw calls, and it needs no shared atlas — only a shared batch table.
+- [ ] Two comments claim the icon atlas keeps its own clock:
+  `UNALLOCATED_KEEP_FRAMES` ("the icon atlas counts its own submits") and
+  `RasterAtlas::current_frame` ("the icon backend's submit count"). Both are
+  wrong — `IconBackend::end_frame(frame)` takes the value
+  `TextBackend::end_frame` returns, which is the shaper's clock.
 
 ## 3. Two rasterizers with two output shapes, one of them allocating per glyph
 
@@ -67,11 +74,20 @@ the split. Two no longer hold and one is weaker than stated.
   which calls swash `Render::render` and allocates a fresh `Image { data: Vec<u8> }`
   per glyph. A zoom gesture re-rasterizes every visible glyph per scale rung, so
   this is per-glyph allocation on a frequent path. swash offers
-  `Render::render_into(&mut Image)`, which reuses the image's buffer. Cosmic's
-  `swash_image` is ~40 lines; replicate it over a retained
-  `swash::scale::ScaleContext` plus one retained `Image`. That also drops
-  `SwashCache` (an unused map, and the reason `CosmicMeasure` has a manual
-  `Debug`).
+  `Render::render_into(&mut Image)`, which resizes the image's buffer in place
+  and so reuses its capacity. Cosmic's `swash_image` is ~40 lines; replicate it
+  over a retained `swash::scale::ScaleContext` plus one retained `Image`,
+  clearing that image per glyph. That also drops `SwashCache` (an unused map,
+  and the reason `CosmicMeasure` has a manual `Debug`).
+
+  **Blocked on a dependency decision.** cosmic-text re-exports only
+  `swash::scale::image::{Content, Image}` and `swash::zeno::{...}`, not
+  `Render` / `Source` / `StrikeWith` / `ScaleContext`, so this needs `swash`
+  as a direct entry in `Cargo.toml`. It compiles nothing new — swash is already
+  in the graph under cosmic-text, at the version cosmic-text pins — but it is a
+  manifest entry all the same. The second item below only pays off together
+  with this one: filling an out-param while still calling
+  `get_image_uncached` adds a copy and keeps the allocation.
 - [ ] Give both rasterizers one shape. `IconRasterizer::rasterize(table, key,
   out: &mut Vec<u8>) -> Option<ContentType>` fills a retained buffer;
   `rasterize_glyph(key) -> Option<GlyphImage>` returns an owned one. Make the
@@ -84,31 +100,7 @@ the split. Two no longer hold and one is weaker than stated.
   `UVec2`/`IVec2` and then narrowed by `PackedMetadata`. Spell the public type as
   `size: UVec2, bearing: IVec2` and one conversion goes.
 
-## 4. Retention state is scattered over `CosmicMeasure`
-
-`cache`, `expiry`, `recycle_pool`, `frame`, `counters`, and the four protocol
-operations (`insert`, `hit_entry`, `supersede`, `tick_frame`) plus `shaped_run`,
-`cache_hit`, `drop_all_buffers` are one thing spread across a twelve-field
-struct. That is why `hit_entry` and `CacheEntry::probe` are associated fns that
-take fields, and why `tick_frame` and `drop_all_buffers` destructure by hand.
-
-- [ ] Extract a `ShapedBufferCache` (or make `cache_entry.rs` the owner file of a
-  `ShapedCache`) holding those five fields with those methods. `CosmicMeasure`
-  keeps `font_system`, `resolved`, the swash context, the ellipsis memo and the
-  three scratch buffers, and calls `self.cache.hit(key)` while it holds
-  `self.break_scratch`. `cache_entry.rs`'s module doc argues the four ops belong
-  together "because they are one protocol"; put them on one type.
-- [ ] `PROTECTED_KEEP_FRAMES` and `PROTECTED_SPREAD_MASK` (`cosmic/mod.rs:128,138`)
-  are pure aliases of `text::RENDERED_RUN_KEEP_FRAMES` /
-  `RENDERED_RUN_KEEP_SPREAD_MASK`, each with a paragraph explaining the alias.
-  Delete them and use the `text::` names.
-- [ ] `CosmicMeasure::insert` recycles a displaced buffer for a case its own
-  comment calls unreachable. A logic error should crash:
-  `debug_assert!(displaced.is_none())`.
-- [ ] `CosmicMeasure: Default` has no production caller (every use is a test).
-  Move it under `test_support` or delete it in favour of `new(FontScope::Bundled)`.
-
-## 5. The frame clock advances once per window, not once per frame
+## 4. The frame clock advances once per window, not once per frame
 
 - [ ] The clock is app-global but the tick is per window: two windows advance it
   twice per host frame, halving every retention window (shaped buffers, encoded
@@ -116,7 +108,7 @@ take fields, and why `tick_frame` and `drop_all_buffers` destructure by hand.
   for an age comparison". Either tick once per host frame or state the halving
   as a known limit beside the constants it affects.
 
-## 6. `TextSystem::measure` demotes on one arm only
+## 5. `TextSystem::measure` demotes on one arm only
 
 - [ ] The `WrapCommit::Unbounded` arm returns without touching `entry.wrap`. A
   truncating run whose width grows until the text fits keeps its last bounded
@@ -128,7 +120,7 @@ take fields, and why `tick_frame` and `drop_all_buffers` destructure by hand.
   low priority; note it or sweep rows whose ordinal is past the widget's count
   this frame.
 
-## 7. Truncation reads the probe through a closure and re-probes per retry
+## 6. Truncation reads the probe through a closure and re-probes per retry
 
 - [ ] `fitting_prefix` takes `glyph: impl Fn(usize) -> ClusterGlyph`, and
   `shape_truncated` calls `CacheEntry::probe(&self.cache, probe_key)` once per
@@ -138,7 +130,7 @@ take fields, and why `tick_frame` and `drop_all_buffers` destructure by hand.
   goes, and a retry costs no hash. The copy is 24 bytes per glyph of one line.
   Measure on `text_shape/resize_drag_frame`.
 
-## 8. Staging pads every glyph row to 256 bytes
+## 7. Staging pads every glyph row to 256 bytes
 
 - [ ] `RasterAtlas::enqueue_upload` pads each row to `COPY_BYTES_PER_ROW_ALIGNMENT`.
   A 12 px mask glyph stages 256 bytes per 12-byte row, about 20× its pixels, and
@@ -149,7 +141,7 @@ take fields, and why `tick_frame` and `drop_all_buffers` destructure by hand.
   path for grow frames where ordering against the blit matters. Measure on
   `text_atlas/cache_churn`.
 
-## 9. Visibility and placement
+## 8. Visibility and placement
 
 - [ ] `TextShapeKey`'s five quantized fields (`size_q`, `max_w_q`, `lh_q`,
   `family_q`, `face_q`) are `pub(crate)` but nothing outside `key.rs` reads them;
@@ -178,7 +170,7 @@ take fields, and why `tick_frame` and `drop_all_buffers` destructure by hand.
 - [ ] `cosmic/mod.rs` has two `use` groups separated by the `mod` declarations.
   One group.
 
-## 10. Comments restate other comments, history, and the code
+## 9. Comments restate other comments, history, and the code
 
 - [ ] The retention ordering is told in full five times: `RENDERED_RUN_KEEP_FRAMES`
   (`text/mod.rs`, 40 lines), `PROTECTED_KEEP_FRAMES`, `ENCODED_CACHE_KEEP_FRAMES`,

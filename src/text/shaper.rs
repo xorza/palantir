@@ -398,7 +398,6 @@ impl TextShaper {
 pub(crate) mod internals {
     use super::*;
     #[cfg(test)]
-    use crate::common::counters::CounterSet;
     #[cfg(test)]
     use crate::layout::ShapedText;
     #[cfg(test)]
@@ -487,7 +486,7 @@ pub(crate) mod internals {
 
         /// Snapshot of the shaped-buffer cache's tallies.
         pub(crate) fn cache_counts(&self) -> CacheCounts {
-            self.shared.inner.borrow().cosmic.counters.counts()
+            self.shared.inner.borrow().cosmic.cache_counts()
         }
 
         /// Total cache-miss `measure` dispatches.
