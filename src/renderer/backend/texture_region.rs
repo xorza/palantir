@@ -39,8 +39,21 @@ pub(super) struct TextureRegion<'a> {
     pub(super) size: UVec2,
     /// Source stride. Carried rather than derived from `size.x`: the two
     /// uploaders have different texel widths (`Rgba8` against
-    /// `ColorF16`), and the gradient atlas's pitch is 256-aligned for
-    /// wgpu besides.
+    /// `ColorF16`).
+    ///
+    /// A pitch that is already a multiple of
+    /// `COPY_BYTES_PER_ROW_ALIGNMENT` reaches the texture in one copy.
+    /// Any other pitch is legal and costs a row-by-row re-pack inside
+    /// wgpu, which is what an image of arbitrary width pays here — the
+    /// gradient atlas's pitch is aligned by construction, so only the
+    /// image side meets it.
+    ///
+    /// **Padding on this side to buy that copy back is a
+    /// pessimisation.** It is the same row-by-row fill, plus a buffer of
+    /// our own, and wgpu then copies the padded whole a second time into
+    /// staging it allocates either way. An image uploads once, at
+    /// registration (`ImageTextures::drain_registry`), so the re-pack is
+    /// paid per image and never per frame.
     pub(super) bytes_per_row: u32,
 }
 
