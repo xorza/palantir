@@ -187,18 +187,20 @@ file says `family: "Inter"`.
 
 **Resolution.** A family with no face resolves to `SANS` and warns once
 (`CosmicMeasure::resolve_family`), never to cosmic's platform fallback.
-The memo is a `Vec<Option<FamilyResolution>>` indexed by the family's own
-index — dense, so a shape costs one bounds check and no hash, and the
-resolved `&'static str` means the name table's lock is never taken on the
-shaping path.
+The memo is a `Vec<FamilyResolution>` — one `{ Unasked, Present, Missing }`
+byte per family index — filled on demand. Dense indices, so a lookup is
+one bounds check and no hash.
 
-`Ui::font_available` reads the **same** memo entry, which is why the entry
-carries an `available` flag beside the name rather than the name alone:
-`SANS` shapes under its own name whether or not a face answers to it,
-since it is what everything else falls back to, so the name cannot answer
-availability for the one family it matters most for. Sharing the entry
-also keeps a query an immediate-mode app makes inside a record pass off a
-per-frame walk of every face.
+`Ui::font_available` reads the **same** entry, which keeps the answer and
+the face actually shaped from ever disagreeing, and keeps a query an
+immediate-mode app makes inside a record pass off a per-frame walk of
+every face. It has to be availability rather than the resolved name that
+is stored: `SANS` shapes under its own name whether or not a face answers
+to it, since it is what everything else falls back to, so the name cannot
+answer availability for the one family it matters most for. The name goes
+the other way — derived from the flag through `shaping_name`, because a
+name cached beside the flag it follows from is a name that can disagree
+with it.
 
 ### 2. Registration on `Ui`
 

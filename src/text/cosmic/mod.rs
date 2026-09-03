@@ -207,7 +207,8 @@ fn family_present(db: &fontdb::Database, name: &str) -> bool {
 /// already drawn after a load.
 pub(crate) fn warm_matches(font_system: &mut FontSystem, families: &[FontFamily]) {
     for &family in families {
-        let name = resolve_against(font_system.db(), family).name;
+        let present = family_present(font_system.db(), family.name());
+        let name = shaping_name(family, present);
         for weight in [FontWeight::REGULAR, FontWeight::BOLD] {
             for style in [FontStyle::Normal, FontStyle::Italic] {
                 font_system.get_font_matches(&attrs_named(name, weight, style));
@@ -216,22 +217,22 @@ pub(crate) fn warm_matches(font_system: &mut FontSystem, families: &[FontFamily]
     }
 }
 
-/// What one family resolved to.
+/// Whether a face answers to the family at one index of
+/// [`CosmicMeasure::resolved`].
 ///
-/// Two answers off one walk of the database, because they are not the
-/// same question: [`FontFamily::SANS`] shapes under its own name whether
-/// or not a face answers to it, since it *is* what everything else falls
-/// back to.
-#[derive(Clone, Copy, Debug)]
-struct FamilyResolution {
-    /// The name to shape under.
-    name: &'static str,
-    /// Whether a face answers to the family that was asked for.
-    available: bool,
+/// Three states, named, rather than an `Option<bool>`: the third is
+/// "nothing has asked yet", which is what lets the table fill lazily.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum FamilyResolution {
+    #[default]
+    Unasked,
+    Present,
+    Missing,
 }
 
-/// The family a request for `family` actually shapes in: itself when a
-/// face answers to it, and [`FontFamily::SANS`] when none does.
+/// The family a request for `family` actually shapes in, given whether a
+/// face answers to it: itself when one does, and [`FontFamily::SANS`]
+/// when none does.
 ///
 /// **Never cosmic's platform fallback**, which is what an unresolved
 /// `Family::Name` reaches on its own: a missing family would then look
@@ -239,16 +240,15 @@ struct FamilyResolution {
 /// would read differently on two machines. Falling back to the bundled
 /// default is a look the app can predict, and
 /// [`CosmicMeasure::font_available`] is how it asks in advance.
-fn resolve_against(db: &fontdb::Database, family: FontFamily) -> FamilyResolution {
-    let name = family.name();
-    let available = family_present(db, name);
-    FamilyResolution {
-        name: if available {
-            name
-        } else {
-            FontFamily::SANS.name()
-        },
-        available,
+///
+/// Takes the answer rather than the database, because the two callers
+/// hold it from different places — one memoized, one from a walk it is
+/// doing anyway — and the *rule* is what has to be stated once.
+fn shaping_name(family: FontFamily, present: bool) -> &'static str {
+    if present {
+        family.name()
+    } else {
+        FontFamily::SANS.name()
     }
 }
 
@@ -282,17 +282,22 @@ pub(super) struct ShapedRun<'a> {
 /// [`FontScope`] and a cache of shaped `Buffer`s keyed on the inputs that
 /// affect shaping. Per-call face selection comes from [`FontFamily`],
 /// [`FontWeight`] and [`FontStyle`] on each measurement, resolved through
-/// [`Self::resolve_family`].
+/// [`Self::font_available`] and [`shaping_name`].
 pub(super) struct CosmicMeasure {
     font_system: FontSystem,
-    /// One [`FamilyResolution`] per [`FontFamily`] index, grown on demand
-    /// — see [`resolve_against`] for the rule and [`Self::resolve_family`]
-    /// for why it is memoized.
+    /// Whether a face answers to each [`FontFamily`] index, filled on
+    /// demand — see [`Self::font_available`] for why it is memoized.
+    ///
+    /// One byte an entry, and the shaping name is derived from it through
+    /// [`shaping_name`] rather than stored beside it: the two are the same
+    /// fact, and a name cached next to the flag it follows from is a name
+    /// that can disagree with it.
     ///
     /// A `Vec` indexed by the family's own index, not a map: the indices
-    /// are dense and start at zero, so a shape pays one bounds check
-    /// rather than a hash.
-    resolved: Vec<Option<FamilyResolution>>,
+    /// are dense and start at zero, so a lookup is one bounds check rather
+    /// than a hash, and interning every family a machine has costs a few
+    /// hundred bytes.
+    resolved: Vec<FamilyResolution>,
     /// Swash rasterization context for [`Self::rasterize_glyph`]. Used
     /// uncached — the renderer's glyph atlas is the real bitmap cache.
     swash_cache: SwashCache,
@@ -458,7 +463,7 @@ impl CosmicMeasure {
             .resolved
             .iter()
             .enumerate()
-            .filter(|(_, name)| name.is_some())
+            .filter(|(_, answer)| **answer != FamilyResolution::Unasked)
             .map(|(index, _)| FontFamily::from_raw(index as u16))
             .collect();
         if !warm.contains(&loaded) {
@@ -475,13 +480,37 @@ impl CosmicMeasure {
     /// knows will be used rather than one that quietly resolves to
     /// [`FontFamily::SANS`].
     ///
-    /// Answered off the same memo the shaping path fills, not a second
-    /// scan: an immediate-mode app asks this inside a record pass, and a
-    /// walk of every face per frame is a walk of every face per frame.
-    /// Sharing the memo is also what stops the answer and the resolution
-    /// from ever disagreeing.
+    /// Memoized, and the memo the shaping path reads too: an
+    /// immediate-mode app asks this inside a record pass, and the answer
+    /// costs a walk of every face in the database. Sharing it is also
+    /// what stops the answer and the face actually shaped from ever
+    /// disagreeing.
     pub(super) fn font_available(&mut self, family: FontFamily) -> bool {
-        self.resolve_family(family).available
+        let index = usize::from(family.raw());
+        match self.resolved.get(index).copied().unwrap_or_default() {
+            FamilyResolution::Present => return true,
+            FamilyResolution::Missing => return false,
+            FamilyResolution::Unasked => {}
+        }
+        let present = family_present(self.font_system.db(), family.name());
+        if !present {
+            // Worded for both callers: this one asks the question without
+            // going on to shape anything.
+            tracing::warn!(
+                family = family.name(),
+                "no face answers to this font family; it resolves to {}",
+                FontFamily::SANS.name(),
+            );
+        }
+        if self.resolved.len() <= index {
+            self.resolved.resize(index + 1, FamilyResolution::Unasked);
+        }
+        self.resolved[index] = if present {
+            FamilyResolution::Present
+        } else {
+            FamilyResolution::Missing
+        };
+        present
     }
 
     /// Every family the database knows, system fonts included, interned
@@ -522,37 +551,9 @@ impl CosmicMeasure {
 
     /// The attributes `key` shapes under, resolved family and all.
     fn attrs_of(&mut self, key: TextShapeKey) -> Attrs<'static> {
-        let name = self.resolve_family(key.family()).name;
+        let family = key.family();
+        let name = shaping_name(family, self.font_available(family));
         attrs_named(name, key.weight(), key.style())
-    }
-
-    /// What `family` resolved to, memoized.
-    ///
-    /// The rule is [`resolve_against`]'s; what belongs here is that asking
-    /// it walks every face, and neither a shape nor a per-frame
-    /// availability check may pay that. The memo is cleared by
-    /// [`Self::load_font`], which is the only thing that can change an
-    /// answer.
-    fn resolve_family(&mut self, family: FontFamily) -> FamilyResolution {
-        let index = usize::from(family.raw());
-        if let Some(Some(resolution)) = self.resolved.get(index) {
-            return *resolution;
-        }
-        let resolution = resolve_against(self.font_system.db(), family);
-        if !resolution.available {
-            // Worded for both callers: `font_available` asks the same
-            // question without going on to shape anything.
-            tracing::warn!(
-                family = family.name(),
-                "no face answers to this font family; it resolves to {}",
-                resolution.name,
-            );
-        }
-        if self.resolved.len() <= index {
-            self.resolved.resize(index + 1, None);
-        }
-        self.resolved[index] = Some(resolution);
-        resolution
     }
 
     /// Look up the shaped run for `key`, or `None` when no buffer is

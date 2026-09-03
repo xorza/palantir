@@ -221,7 +221,7 @@ impl TextShapeKey {
 
     /// The family this key shapes in. Any index the table has handed out
     /// is valid, and `CosmicMeasure` is what decides whether a face
-    /// answers to it — see `resolve_family`.
+    /// answers to it — see `font_available`.
     pub(super) fn family(self) -> FontFamily {
         FontFamily::from_raw(self.family_q)
     }

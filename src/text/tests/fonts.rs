@@ -163,7 +163,7 @@ fn italic_reaches_the_italic_file_at_every_weight() {
 ///
 /// `u16::MAX` is past anything the name table has interned, which is the
 /// point: the key is a carrier, and the resolution that decides what an
-/// index *means* happens later, at `resolve_family`.
+/// index *means* happens later, at `font_available`.
 #[test]
 fn the_key_carries_any_family_index() {
     for raw in [0, 1, 2, u16::MAX] {
