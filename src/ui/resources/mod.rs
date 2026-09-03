@@ -52,9 +52,9 @@ impl UiResources {
 #[cfg(any(test, feature = "internals"))]
 impl UiResources {
     /// Recorder capabilities that share nothing with any other
-    /// recorder: a mono-fallback shaper (no font loading, deterministic
-    /// metrics, wrong for width-follows-label), a memory clipboard, and
-    /// no texture cap. The cosmic-shaping peer goes through
+    /// recorder: a mono-fallback shaper (deterministic metrics, wrong for
+    /// width-follows-label), a memory clipboard, and no texture cap. The
+    /// real-measurement peer goes through
     /// [`crate::host::shared::HostShared`], which is also what pairs two
     /// recorders onto one text cache.
     pub(crate) fn isolated_mono() -> Self {

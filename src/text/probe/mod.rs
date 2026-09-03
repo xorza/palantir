@@ -87,23 +87,30 @@ impl<'a> TextProbe<'a> {
         self.key.text_hash
     }
 
-    /// Shaped run behind this layout; `None` on the gated mono metric (no
-    /// cosmic to ask), for empty text (an unshaped request), and for a
-    /// face the shaper cannot be asked for.
+    /// Shaped run behind this layout; `None` on the gated mono metric,
+    /// for empty text (an unshaped request), and for a face the shaper
+    /// cannot be asked for.
     ///
     /// The last carries [`TextShapeKey::INVALID`], which the cache
     /// refuses to be asked about — the sentinel names no entry — so it is
     /// filtered here, which is where a probe first holds one.
+    ///
+    /// **Mono is refused rather than missed.** A probe's key is a real
+    /// one whichever metric measured it — only `TextSystem` stamps the
+    /// sentinel — so a mono run whose key some other caller had shaped
+    /// through [`TextGlyphs`](crate::TextGlyphs) would find that buffer
+    /// and answer cosmic geometry against a mono extent. Every answer a
+    /// probe gives has to come from the metric that measured it.
     ///
     /// Every query below reports in *block-local* coordinates — the same
     /// space [`Self::size`] measures and the encoder places — so each one
     /// takes [`ShapedRun::left`] off the buffer's own x, or adds it back
     /// when going the other way.
     fn shaped(&self) -> Option<ShapedRun<'_>> {
-        if self.key.is_invalid() {
+        if self.key.is_invalid() || self.inner.is_mono() {
             return None;
         }
-        self.inner.cosmic()?.shaped_run(self.key)
+        self.inner.cosmic().shaped_run(self.key)
     }
 
     /// True where this run had nothing to shape — no bytes, or a face
@@ -135,14 +142,15 @@ impl<'a> TextProbe<'a> {
     /// holds the shaper's borrow for its whole life, so no sweep can
     /// evict that buffer out from under it.
     ///
-    /// **The gate asks which metric is installed, not whether the text is
-    /// empty.** Those are different questions, and gating on emptiness put
-    /// the mono arm in front of the assertion below — so under the very
-    /// builds that compile the assertion, a cosmic run that had somehow
-    /// lost its buffer took a mono estimate instead of tripping it.
+    /// **The gate asks which metric measured the run, not whether the
+    /// text is empty.** Those are different questions, and gating on
+    /// emptiness put the mono arm in front of the assertion below — so
+    /// under the very builds that compile the assertion, a cosmic run
+    /// that had somehow lost its buffer took a mono estimate instead of
+    /// tripping it.
     fn unshaped_caret_x(&self, byte_offset: usize) -> f32 {
         #[cfg(any(test, feature = "internals"))]
-        if self.inner.cosmic().is_none() {
+        if self.inner.is_mono() {
             return crate::text::mono::single_line_caret_x(
                 self.text,
                 byte_offset,
@@ -162,7 +170,7 @@ impl<'a> TextProbe<'a> {
     /// exactly one position, so production always answers 0.
     fn unshaped_byte_at(&self, target_x: f32) -> usize {
         #[cfg(any(test, feature = "internals"))]
-        if self.inner.cosmic().is_none() {
+        if self.inner.is_mono() {
             return crate::text::mono::nearest_byte(self.text, target_x, self.key.font_size_px());
         }
         assert!(

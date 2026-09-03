@@ -211,6 +211,13 @@ impl LayoutEngine {
         // Once per run, not per layer: `resize_for` runs inside the layer
         // loop and would wipe an earlier layer's counts.
         self.scratch.counters.begin_pass();
+        // Before the snapshot check, which cannot see what this answers:
+        // the two caches a font load invalidates are the reuse rows and
+        // the snapshot, and `TextSystem::sync_fonts` drops the first and
+        // reports the frame the second has to go on.
+        if self.text.sync_fonts() {
+            self.cache.forget_all();
+        }
         self.scratch.cache_rebuild = !self.cache.matches_forest(forest, surface);
         if self.scratch.cache_rebuild {
             self.cache.begin_frame();

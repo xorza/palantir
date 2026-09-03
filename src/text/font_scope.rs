@@ -87,4 +87,12 @@ pub(crate) mod test_support {
     /// registers those bytes rather than a second `include_bytes!` of the
     /// same 875 KB file.
     pub(crate) const INTER: &[u8] = super::BUNDLED[0];
+
+    /// The bundled JetBrains Mono, beside [`INTER`] for the same reason.
+    ///
+    /// What a case needs two of these for: a family that resolves to the
+    /// fallback and *then* to itself needs one face already registered to
+    /// shape the fallback against, and a second one still missing. One
+    /// file alone can only be absent or present.
+    pub(crate) const MONO: &[u8] = super::BUNDLED[2];
 }

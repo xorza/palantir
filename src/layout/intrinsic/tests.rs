@@ -157,7 +157,7 @@ fn parent_intrinsic_query_populates_descendant_cache() {
     // answer the root query from last frame's cached intrinsic — this
     // test pins the *recursive compute* path that populates descendant
     // scratch slots, which the cross-frame lookup would otherwise skip.
-    h.engines.layout.cache.clear();
+    h.engines.layout.cache.forget_all();
     let slot = LenReq::MaxContent.slot(Axis::X);
     for entry in h.engines.layout.scratch.intrinsics.iter_mut() {
         entry[slot] = f32::NAN;
@@ -248,7 +248,7 @@ fn intrinsic_range_exactly_matches_separate_queries_for_every_driver() {
                 });
         });
     });
-    h.engines.layout.cache.clear();
+    h.engines.layout.cache.forget_all();
 
     let expected_modes = [
         LayoutMode::Leaf,

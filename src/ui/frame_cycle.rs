@@ -118,17 +118,6 @@ impl<'a> FrameCycle<'a> {
                 // unrouted event can still land here with the sticky
                 // arrival flag set even though no queue accepted it.
                 self.ui.input.drain_per_frame_queues();
-                // The one piece of frame teardown a paint-only frame
-                // still owes: the shared text clock. `finalize_frame`
-                // would tick it, but this arm never gets there.
-                //
-                // Through the shaper `UiResources` owns, not down two
-                // levels into the layout engine's `TextSystem`: the clock
-                // belongs to the shaper, and reaching it through layout
-                // would make a shared handle look like layout state. A
-                // frozen clock stops the glyph atlas evicting at all —
-                // see `TextShaper::tick_frame`.
-                self.ui.resources.text.tick_frame();
                 FrameProcessing::PaintOnly
             }
             FramePlan::FullRecord { .. } => {
@@ -167,6 +156,12 @@ impl<'a> FrameCycle<'a> {
                 }
             }
         };
+
+        // Past the arm, because every frame owes this and neither plan
+        // may pay it twice — see `TextShaper::tick_frame`. Through the
+        // shaper `UiResources` owns rather than the layout engine's
+        // `TextSystem`, which a paint-only frame never runs.
+        self.ui.resources.text.tick_frame();
 
         self.ui.frame_runtime.note_processing(processing);
 

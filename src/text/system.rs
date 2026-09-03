@@ -54,8 +54,9 @@ const UNBOUND_REQUEST: &str = "TextSystem entry points take an unbounded request
 
 /// Per-window text coordinator. Reuse slots belong to the window while
 /// shaped content buffers and the font system remain shared through
-/// [`TextShaper`]. Reuse rows live exactly as long as they are used:
-/// every row not touched during a frame is dropped at its end.
+/// [`TextShaper`]. A row lives as long as the widget that owns it: a
+/// frame that touches nothing keeps every row, and [`Self::end_frame`]
+/// says why that is the point rather than an oversight.
 #[derive(Debug)]
 pub(crate) struct TextSystem {
     shaper: TextShaper,
@@ -63,6 +64,8 @@ pub(crate) struct TextSystem {
     /// Held once rather than asked per run: whether this window's shaper
     /// mints shaped buffers at all. False only under the gated mono metric.
     shapes_buffers: bool,
+    /// The shaper's font epoch as of the last [`Self::sync_fonts`].
+    font_epoch: u32,
 }
 
 /// Per-window reuse-slot address of one text run: the widget plus its
@@ -80,9 +83,40 @@ impl TextSystem {
     pub(crate) fn new(shaper: TextShaper) -> Self {
         Self {
             shapes_buffers: shaper.shapes_buffers(),
+            font_epoch: shaper.font_epoch(),
             shaper,
             entries: FxHashMap::default(),
         }
+    }
+
+    /// Drop every reuse row when the font database has moved under it,
+    /// reporting whether it did — the caller owes the layout measure
+    /// cache the same treatment, for the same reason.
+    ///
+    /// **A font load changes what a row answers without changing its
+    /// key** — see [`TextShaper::font_epoch`] for why no key can carry
+    /// that. So every freshness check in this file passes on a root
+    /// measured in the wrong face, while the shaped buffers behind it
+    /// are already gone: the render path reshapes in the new face and
+    /// paints it inside a box sized for the old one.
+    ///
+    /// Pulled once per layout run rather than pushed by `load_font`,
+    /// which is what lets `Ui::load_font` stay a `&self` call an app can
+    /// make mid-record. The renderer's encoded-run cache reads the same
+    /// epoch the same way, at the top of a batch
+    /// (`TextEncoder::sync_fonts`).
+    ///
+    /// Rows are dropped rather than [superseded](TextShaper::supersede):
+    /// the buffers they name no longer exist, so there is nothing left
+    /// to demote.
+    pub(crate) fn sync_fonts(&mut self) -> bool {
+        let epoch = self.shaper.font_epoch();
+        if self.font_epoch == epoch {
+            return false;
+        }
+        self.font_epoch = epoch;
+        self.entries.clear();
+        true
     }
 
     /// Drop every row belonging to a widget that vanished.
@@ -107,17 +141,12 @@ impl TextSystem {
     /// Keeping rows for live widgets bounds them by the widget's peak
     /// text-ordinal count, which is a handful per widget, and `removed`
     /// still sweeps whole widgets as they leave the tree.
-    /// Named for the `FramePlan::FullRecord` frame it closes: only a
-    /// frame that recorded has a `removed` set to sweep against. A
-    /// `PaintOnly` frame never reaches here, and owes the clock tick
-    /// below directly — `FrameCycle::run` takes it through
-    /// [`TextShaper::tick_frame`](crate::TextShaper).
     ///
-    /// This is where a *recorded* frame ticks the shared text frame clock
-    /// — the one the renderer's glyph atlas and encoded-run cache age
-    /// against too, so every text cache in the crate advances on one
-    /// reading, once per window per frame. The paint-only arm named above
-    /// is the other half of that "once".
+    /// Named for the `FramePlan::FullRecord` frame it closes: only a
+    /// frame that recorded has a `removed` set to sweep against. It does
+    /// **not** advance the shared text clock, which every frame owes
+    /// whether or not it recorded — `FrameCycle::run` ticks it once, past
+    /// the arm that chose the plan.
     ///
     /// The empty-`removed` guard is not a micro-optimization.
     /// `HashMap::retain` walks the raw table, so it costs *capacity* —
@@ -130,10 +159,6 @@ impl TextSystem {
     /// (`StateMap::sweep_removed`, `AnimMap::sweep_removed`, the
     /// `gpu_views` retain) gates the same way.
     pub(crate) fn end_frame(&mut self, removed: &WidgetIdSet) {
-        // The frame's one clock tick, matching the paint-only arm in
-        // `FrameCycle::run` — see `TextShaper::tick_frame` for what a
-        // frozen clock does to atlas eviction.
-        self.shaper.tick_frame();
         if removed.is_empty() {
             return;
         }
@@ -187,6 +212,7 @@ impl TextSystem {
             shaper,
             entries,
             shapes_buffers,
+            font_epoch: _,
         } = self;
         let shapes_buffers = *shapes_buffers;
         let entry = Self::refresh(entries, shaper, slot, request, wrap_policy.floor_scan());

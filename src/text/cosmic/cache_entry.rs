@@ -42,7 +42,7 @@ pub(super) struct CacheEntry {
     /// run can carry a non-zero value.
     pub(super) left: f32,
     /// First frame on which this entry is dead;
-    /// [`CosmicMeasure::advance_to`](crate::text::cosmic::CosmicMeasure::advance_to)
+    /// [`CosmicMeasure::tick_frame`](crate::text::cosmic::CosmicMeasure::tick_frame)
     /// drops it once the clock reaches this. Insertion sets it one
     /// probation window out and every lookup pushes it a protected window
     /// out, so the two-tier policy needs no separate "has been reused"

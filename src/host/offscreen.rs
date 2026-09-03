@@ -82,11 +82,11 @@ impl OffscreenHostBuilder {
     /// Replace the default bundled-fonts [`TextShaper`], so several hosts
     /// can share one shaped-buffer cache.
     ///
-    /// Real shaping either way: `TextShaper`'s only production constructors
-    /// load the bundled fonts, and the font-free mono metric is reachable
-    /// solely through `test_mono`, which the `internals` feature gates out
-    /// of production builds. A released binary therefore cannot drive an
-    /// offscreen host on placeholder metrics through this builder.
+    /// Real shaping either way: every `TextShaper` carries a font
+    /// database, and the placeholder *metric* is reachable solely through
+    /// `test_mono`, which the `internals` feature gates out of production
+    /// builds. A released binary therefore cannot drive an offscreen host
+    /// on placeholder measurements through this builder.
     pub fn shaper(mut self, shaper: TextShaper) -> Self {
         self.shaper = Some(shaper);
         self
