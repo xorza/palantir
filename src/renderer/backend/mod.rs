@@ -16,7 +16,10 @@
 //! new pipeline is expected to keep those names. The two raster tenants
 //! are the exception: text and icon share one
 //! [`RasterPass`](crate::renderer::backend::raster_pass::RasterPass)
-//! implementation rather than two copies of the shape.
+//! implementation and one
+//! [`RasterProgram`](crate::renderer::backend::raster_program::RasterProgram)
+//! — so one `build_variants` and one pipeline pair serve both, and what
+//! stays per tenant is the atlas and the instance buffer.
 //!
 //! Quads and text interleave per-group in paint order: each group's
 //! quads draw first, then its text renders on top, before the next group
@@ -114,6 +117,7 @@ mod pipeline_recipe;
 mod quad_pipeline;
 pub(crate) mod raster_atlas;
 mod raster_pass;
+mod raster_program;
 // `pub(crate)` only so `bench::driver` — the crate-root facade the
 // external criterion target calls through — can name `schedule::bench`.
 pub(crate) mod schedule;
@@ -144,6 +148,7 @@ use crate::renderer::backend::image_textures::ImageTextures;
 use crate::renderer::backend::mesh_pipeline::{MeshBatch, MeshPipeline, MeshUpload};
 use crate::renderer::backend::overlay_pass::DebugOverlay;
 use crate::renderer::backend::quad_pipeline::QuadPipeline;
+use crate::renderer::backend::raster_program::RasterProgram;
 use crate::renderer::backend::schedule::{RenderStep, for_each_step};
 use crate::renderer::backend::stencil::Stencil;
 use crate::renderer::backend::submission::{Submission, SubmissionTargets};
@@ -208,6 +213,10 @@ pub(crate) struct WgpuBackend {
     /// it, so `paint_gpu_views` and `retire_owner` are reached without a
     /// forwarder and `draw` is handed the store it binds from.
     image_textures: ImageTextures,
+    /// The one shader, group-0 layout and sampler both raster tenants
+    /// draw through, and so the one pipeline pair per format they
+    /// share — see [`RasterProgram`].
+    raster: RasterProgram,
     icon: IconBackend,
     curve: CurvePipeline,
     text: TextBackend,
@@ -276,8 +285,9 @@ impl WgpuBackend {
         let image = ImagePipeline::new(&device);
         let image_textures = ImageTextures::new(&device);
         let curve = CurvePipeline::new(&device);
-        let text = TextBackend::new(&device, resources.text);
-        let icon = IconBackend::new(&device, resources.icons);
+        let raster = RasterProgram::new(&device);
+        let text = TextBackend::new(&device, &raster, resources.text);
+        let icon = IconBackend::new(&device, &raster, resources.icons);
         let debug = DebugOverlay::new(&device);
         // Per-format pipeline sets build lazily on the first submit that
         // targets each format (`ensure_format`); none at construction.
@@ -309,6 +319,7 @@ impl WgpuBackend {
             mesh,
             image,
             image_textures,
+            raster,
             icon,
             curve,
             text,
@@ -344,9 +355,8 @@ impl WgpuBackend {
                     quad: &self.quad,
                     mesh: &self.mesh,
                     image: &self.image,
-                    icon: &self.icon,
                     curve: &self.curve,
-                    text: &self.text,
+                    raster: &self.raster,
                 },
             );
             self.pipelines.insert(format, built);
@@ -904,7 +914,7 @@ impl WgpuBackend {
                     // after their bind.
                     self.text
                         .pass
-                        .render_batch(batch, pass, &fmt.text, use_stencil, &viewport);
+                        .render_batch(batch, pass, &fmt.raster, use_stencil, &viewport);
                     bound = Bound::None;
                     debug_marker::pop(pass);
                 }
@@ -946,7 +956,7 @@ impl WgpuBackend {
                             self.icon.pass.render_batch(
                                 batch,
                                 pass,
-                                &fmt.icon,
+                                &fmt.raster,
                                 use_stencil,
                                 &viewport,
                             );

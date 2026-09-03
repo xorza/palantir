@@ -20,8 +20,9 @@ use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::raster_atlas::RasterAtlasConfig;
 use crate::renderer::backend::raster_atlas::raster_quad::RasterQuad;
 use crate::renderer::backend::raster_pass::{
-    RasterImage, RasterPass, RasterPassConfig, RasterPassLabels, Rasterized,
+    RasterImage, RasterPass, RasterPassConfig, Rasterized,
 };
+use crate::renderer::backend::raster_program::RasterProgram;
 use crate::renderer::render_buffer::icon::IconDrawRow;
 use glam::IVec2;
 
@@ -55,18 +56,13 @@ pub(crate) struct IconBackend {
 }
 
 impl IconBackend {
-    pub(crate) fn new(device: &wgpu::Device, icons: IconRegistry) -> Self {
+    pub(super) fn new(device: &wgpu::Device, program: &RasterProgram, icons: IconRegistry) -> Self {
         Self {
             pass: RasterPass::new(
                 device,
+                program,
                 RasterPassConfig {
-                    labels: RasterPassLabels {
-                        shader: "palantir.icon.shader",
-                        vbuf: "palantir.icon.vbuf",
-                        pipeline: "palantir.icon.pipeline",
-                        stencil_pipeline: "palantir.icon.pipeline.stencil_test",
-                        layout: "palantir.icon.pl",
-                    },
+                    vbuf: "palantir.icon.vbuf",
                     atlas: RasterAtlasConfig {
                         label: "palantir.icon",
                         // The reverse split from text: a colour icon set is the
@@ -154,17 +150,13 @@ impl IconBackend {
             let slot = self.pass.atlas.slots[idx as usize]
                 .placement
                 .expect("an icon raster is at least 1x1, so its slot owns a rectangle");
-            self.pass.instances.push(RasterQuad {
-                pos: [row.origin.x, row.origin.y],
-                dim: RasterQuad::dim(slot.size.x, slot.size.y),
-                uv_and_kind: RasterQuad::pack_uv(slot.origin.x, slot.origin.y, slot.content)
-                    | if row.desaturate {
-                        RasterQuad::DESATURATE
-                    } else {
-                        0
-                    },
-                color: bytemuck::cast(row.color),
-            });
+            // An icon's raster *is* its box, so its bearing is zero and
+            // the pen is the quad's top-left.
+            let mut quad = slot.quad(row.origin, bytemuck::cast(row.color));
+            if row.desaturate {
+                quad.uv_and_kind |= RasterQuad::DESATURATE;
+            }
+            self.pass.instances.push(quad);
         }
     }
 

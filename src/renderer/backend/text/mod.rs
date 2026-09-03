@@ -31,7 +31,8 @@ mod encoded_counters;
 use crate::primitives::interned_text::InternedText;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::raster_atlas::RasterAtlasConfig;
-use crate::renderer::backend::raster_pass::{RasterPass, RasterPassConfig, RasterPassLabels};
+use crate::renderer::backend::raster_pass::{RasterPass, RasterPassConfig};
+use crate::renderer::backend::raster_program::RasterProgram;
 use crate::renderer::backend::text::encode::EncodedRunKey;
 use crate::renderer::backend::text::encode::encoder::TextEncoder;
 use crate::renderer::render_buffer::text::TextDrawRow;
@@ -50,20 +51,15 @@ impl TextBackend {
     /// caches, shader, vertex buffer). The render pipelines are built per
     /// format by [`FormatPipelines`](crate::renderer::backend::format_pipelines::FormatPipelines)
     /// from [`RasterPass::build_variants`].
-    pub(crate) fn new(device: &wgpu::Device, shaper: TextShaper) -> Self {
+    pub(super) fn new(device: &wgpu::Device, program: &RasterProgram, shaper: TextShaper) -> Self {
         Self {
             shaper,
             encoder: TextEncoder::default(),
             pass: RasterPass::new(
                 device,
+                program,
                 RasterPassConfig {
-                    labels: RasterPassLabels {
-                        shader: "palantir.text.shader",
-                        vbuf: "palantir.text.vbuf",
-                        pipeline: "palantir.text.pipeline",
-                        stencil_pipeline: "palantir.text.pipeline.stencil_test",
-                        layout: "palantir.text.pl",
-                    },
+                    vbuf: "palantir.text.vbuf",
                     atlas: RasterAtlasConfig {
                         label: "palantir.text",
                         // Large enough to skip the 256->512->1024 grow

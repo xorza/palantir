@@ -51,6 +51,7 @@ use crate::primitives::color::ColorU8;
 use crate::primitives::interned_text::InternedText;
 use crate::primitives::urect::URect;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
+use crate::renderer::backend::raster_program::RasterProgram;
 use crate::renderer::backend::stencil_variant::StencilVariant;
 use crate::renderer::backend::text::TextBackend;
 use crate::renderer::backend::text::encode::cache::test_support::{ChurnBench, SweepBench};
@@ -132,8 +133,9 @@ struct BenchRuns {
 
 impl BenchText {
     fn new(device: &wgpu::Device, format: wgpu::TextureFormat, shaper: TextShaper) -> Self {
-        let backend = TextBackend::new(device, shaper);
-        let pipelines = backend.pass.build_variants(device, format);
+        let raster = RasterProgram::new(device);
+        let backend = TextBackend::new(device, &raster, shaper);
+        let pipelines = raster.build_variants(device, format);
         Self { backend, pipelines }
     }
 

@@ -5,8 +5,12 @@
 //! `CacheKey`; the icon backend keys another on
 //! [`IconRasterKey`](crate::icons::icon_raster_key::IconRasterKey). They share
 //! every policy below — bucketed packing, clock-sweep eviction, grow-with-blit,
-//! and batched staging uploads — and share nothing else: separate textures,
-//! separate bind groups, separate eviction budgets.
+//! and batched staging uploads — plus the layout and sampler their bind
+//! groups are built against, which belong to the shared
+//! [`RasterProgram`]. What stays separate is the **space**: its own
+//! textures, its own bind group, its own eviction budget, so a
+//! colour-icon-heavy frame cannot take rectangles from the glyphs of the
+//! label beside it.
 //!
 //! The packing and growth of one side live on [`Side`]; victim selection
 //! lives on [`ClockSweep`]. What stays here is the slab, the key index,
@@ -36,6 +40,7 @@ use crate::renderer::backend::raster_atlas::free_slots::FreeSlots;
 use crate::renderer::backend::raster_atlas::packed_metadata::PackedMetadata;
 use crate::renderer::backend::raster_atlas::raster_quad::RasterQuad;
 use crate::renderer::backend::raster_atlas::side::Side;
+use crate::renderer::backend::raster_program::RasterProgram;
 use crate::renderer::backend::stencil_variant::StencilVariant;
 use crate::renderer::backend::viewport::ViewportPush;
 use etagere::size2;
@@ -114,14 +119,13 @@ struct AtlasLabels {
 /// trigger. A wheel has neither problem, and retires each entry on its
 /// own last use instead of rounding every entry to a shared tick.
 ///
-/// **Denominated in the instance's own clock**, which is not the same
-/// clock for both: the text atlas mirrors the shaper's, which advances
-/// once per recorded frame per window, while the icon atlas counts its
-/// own submits. Both land near 2 s of a 60 Hz session, which is what the
+/// **Denominated in the shared text clock**, which both instances age
+/// on — the icon backend is handed the reading `TextBackend::end_frame`
+/// returns. It lands near 2 s of a 60 Hz session, which is what the
 /// number has to be — far outside any flicker a visibility toggle or a
 /// hover paint produces, and short enough that the deadline ring stays
 /// 128 buckets rather than the 1024 an 8 s window cost. Getting it wrong
-/// costs one swash call that yields no pixels.
+/// costs one rasterizer call that yields no pixels.
 ///
 /// Its own constant rather than [`crate::text::RENDERED_RUN_KEEP_FRAMES`],
 /// which it happens to equal. That one answers how long a *shaped buffer*
@@ -165,17 +169,17 @@ pub(super) struct RasterAtlas<K> {
     /// whole slab per eviction into a walk that resumes where the last
     /// one stopped.
     hand: u32,
-    /// Latest value of this atlas's frame clock, mirrored here by
-    /// [`Self::advance_to`] — the shaper's for the text instance, the
-    /// icon backend's submit count for the other.
+    /// Latest reading of the shared text clock, mirrored here by
+    /// [`Self::advance_to`]. Both instances take it — the icon backend is
+    /// handed what `TextBackend::end_frame` returns — so a keep count
+    /// means the same span in either.
     ///
-    /// Incrementing per submit on the text side while the shaped-buffer
-    /// cache increments per recorded frame would denominate the two
-    /// retention windows `RENDERED_RUN_KEEP_FRAMES` derives in different
-    /// units, and they would drift in both directions (a recorded frame
-    /// that drew no text ages buffers only; a `PaintOnly` frame ages the
-    /// atlas only). Reading one clock is what makes the shared constant
-    /// mean what it says.
+    /// Counting submits here instead, while the shaped-buffer cache
+    /// counts recorded frames, would denominate the two retention windows
+    /// `RENDERED_RUN_KEEP_FRAMES` orders in different units, and they
+    /// would drift in both directions: a recorded frame that drew no text
+    /// ages buffers only, and a `PaintOnly` frame the atlas only. Reading
+    /// one clock is what makes the shared constant mean what it says.
     pub(super) current_frame: u64,
     /// Deadlines for non-drawing entries, which the clock cannot
     /// reclaim. Same file-once/re-file-on-fire protocol as the two
@@ -219,7 +223,11 @@ struct PendingCopy {
 }
 
 impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
-    pub(super) fn new(device: &wgpu::Device, config: RasterAtlasConfig) -> Self {
+    pub(super) fn new(
+        device: &wgpu::Device,
+        program: &RasterProgram,
+        config: RasterAtlasConfig,
+    ) -> Self {
         let max = device.limits().max_texture_dimension_2d;
 
         // Order matches `ContentType as usize`: [Mask, Color].
@@ -245,10 +253,10 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
             staging: format!("{} atlas staging", config.label),
         };
 
-        // Built here rather than by each tenant: the binding is a function
-        // of `sides`, so the atlas is the only thing that can keep it in
-        // step across a grow.
-        let bound = BoundSides::new(device, &sides, config.label);
+        // Built here rather than by each tenant: the bind group is a
+        // function of `sides`, so the atlas is the only thing that can keep
+        // it in step across a grow.
+        let bound = BoundSides::new(device, program, &sides, config.label);
 
         Self {
             sides,
@@ -302,13 +310,6 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
         );
         pass.set_vertex_buffer(0, vbuf.buffer.slice(..));
         pass.draw(0..4, span.start..span.start + span.len);
-    }
-
-    /// The layout the bind group was built against, for pipeline
-    /// creation. Format-independent, so it survives a swapchain
-    /// reformat.
-    pub(super) fn bind_group_layout(&self) -> &wgpu::BindGroupLayout {
-        self.bound.layout()
     }
 
     /// `[color, mask]` side extents, as the shader reads them.

@@ -26,47 +26,27 @@ matches, so the production stack no longer carries it. Two consequences remain.
 - [ ] `text/mono.rs` re-implements the `LineFit` arithmetic and a wrap-floor
   scan. That is a second spelling of policy the cosmic path owns.
 
-## 2. Two raster atlases, and what sharing them would really cost
+## 2. Icons and text still draw as two batches
 
-Both tenants own a `RasterPass`: a shader module (the same WGSL, specialized
-identically, compiled twice), a pipeline pair, a bind group, a vertex buffer,
-a `Starvation` tracker and an atlas.
+The two raster tenants now share a [`RasterProgram`] — one shader, one group-0
+layout, one sampler, and so one pipeline pair per format. What they still do
+not share is the **space**: separate textures, separate bind groups, separate
+eviction budgets, deliberately. Merging the atlases was investigated and
+rejected: sharing a texture means sharing the space it holds, and a glyph miss
+evicting a tintable icon is not a fair trade, since an SVG re-raster costs
+13-72 µs against roughly a microsecond for a glyph.
 
-**Investigated, and the verdict is narrower than "merge them".** Sharing a
-texture means sharing the space it holds, so an atlas cannot offer both one
-texture and per-tenant budgets — the current split chose isolation, and that
-is defensible. Eviction runs per **side** today
-(`RasterAtlas::evict_one(target: ContentType)` takes only slots with
-`content == target`), so a colour icon already cannot evict a mask glyph and
-merging would not change that. What merging *would* newly allow is a glyph
-miss evicting a tintable icon, and the two are not interchangeable: an SVG
-re-raster is 13-72 µs against roughly a microsecond for a glyph, so a
-text-heavy zoom would thrash icon rasters at an order of magnitude more cost
-than it thrashes glyphs. The headline win — one draw call where a group mixes
-icons and text — does **not** follow from the merge either, and needs the
-composer change the third item below describes.
-
-So the items worth doing are the ones that share what is genuinely identical,
-without sharing the space.
-
-- [ ] `RasterQuad::shader_module` compiles one WGSL twice, once per pass, from
-  the same three substituted constants. Build it once and hand both passes a
-  reference. The bind group *layouts* are structurally identical too, so one
-  layout would let one pipeline pair serve both — check that wgpu treats them
-  as compatible before relying on it.
-- [ ] `IconBackend::prepare_batch` and `TextEncoder::encode_run` both assemble a
-  `RasterQuad` by hand from a `SlotPlacement` (`RasterQuad::dim`, `pack_uv`,
-  `pos ± bearing`). One `SlotPlacement::quad(pos, color) -> RasterQuad` (icon
-  bearing is zero) removes the duplicate.
 - [ ] Icons could join the text batch path: an icon has the same "no
   per-instance clip" property a glyph has, so the composer's strict-bounds
   scissor rule applies to it unchanged. That is what actually collapses the
-  draw calls, and it needs no shared atlas — only a shared batch table.
-- [ ] Two comments claim the icon atlas keeps its own clock:
-  `UNALLOCATED_KEEP_FRAMES` ("the icon atlas counts its own submits") and
-  `RasterAtlas::current_frame` ("the icon backend's submit count"). Both are
-  wrong — `IconBackend::end_frame(frame)` takes the value
-  `TextBackend::end_frame` returns, which is the shaper's clock.
+  draw calls where a group mixes icons and text, and now that the pipeline is
+  shared it needs no shared atlas — only a shared batch table.
+- [ ] Until then, consecutive text and icon steps rebind the same pipeline.
+  Both arms of the render loop reset `bound = Bound::None` because
+  `RasterAtlas::draw_span` sets its own state, so a text step followed by an
+  icon step issues a redundant `set_pipeline`. The bind group genuinely
+  differs (different atlas); only the pipeline is shared. Worth a
+  `Bound::Raster` variant if batch counts ever climb — dozens a frame today.
 
 ## 3. Two rasterizers with two output shapes, one of them allocating per glyph
 

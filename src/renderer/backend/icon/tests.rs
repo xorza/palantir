@@ -14,8 +14,15 @@ mod gpu {
     use crate::icons::icon_set::IconSet;
     use crate::icons::icon_table::{IconId, IconTable};
     use crate::renderer::backend::icon::IconBackend;
+    use crate::renderer::backend::raster_program::RasterProgram;
     use glam::Vec2;
     use std::rc::Rc;
+
+    /// A backend over a program of its own — see the text suite's peer
+    /// for why a case does not name one.
+    fn icon_backend(device: &wgpu::Device, icons: &IconRegistry) -> IconBackend {
+        IconBackend::new(device, &RasterProgram::new(device), icons.clone())
+    }
 
     /// One tintable icon, so the raster lands on the mask side and the whole
     /// path — parse, rasterize, pack — runs.
@@ -50,7 +57,7 @@ mod gpu {
     fn dropping_a_set_unloads_its_parses_and_its_rasters_at_the_next_submit() {
         let gpu = headless_test_gpu();
         let icons = IconRegistry::default();
-        let mut backend = IconBackend::new(&gpu.device, icons.clone());
+        let mut backend = icon_backend(&gpu.device, &icons);
         let mut frame = 0u64;
 
         let set = load(&icons);
@@ -93,7 +100,7 @@ mod gpu {
     fn a_set_reusing_a_freed_slot_rasterizes_from_scratch() {
         let gpu = headless_test_gpu();
         let icons = IconRegistry::default();
-        let mut backend = IconBackend::new(&gpu.device, icons.clone());
+        let mut backend = icon_backend(&gpu.device, &icons);
         let mut frame = 0u64;
 
         let first = load(&icons);
@@ -127,7 +134,7 @@ mod gpu {
     fn loading_a_fresh_set_every_frame_holds_the_backend_caches_flat() {
         let gpu = headless_test_gpu();
         let icons = IconRegistry::default();
-        let mut backend = IconBackend::new(&gpu.device, icons.clone());
+        let mut backend = icon_backend(&gpu.device, &icons);
         let mut frame = 0u64;
 
         let mut held: Option<IconSet> = None;

@@ -4,16 +4,16 @@
 
 use crate::renderer::backend::raster_atlas::content_type::ContentType;
 use crate::renderer::backend::raster_atlas::side::Side;
-use crate::renderer::backend::texture_binding;
+use crate::renderer::backend::raster_program::RasterProgram;
 
 /// The group-0 binding over an atlas's `[mask, color]` sides.
 ///
-/// Two tiers, and the split is the point. [`Self::layout`] and the sampler
-/// are properties of the *shape* of a group-0 binding, so they outlive any
-/// one pair of textures — pipelines are created against that layout and
-/// would have to be rebuilt if it were replaced. The bind group and the
-/// extents describe the textures that exist right now, and a grow replaces
-/// both.
+/// Two tiers, and the split is the point. The layout and the sampler are
+/// properties of the *shape* of a group-0 binding, so they outlive any
+/// one pair of textures — and outlive any one *atlas*, which is why they
+/// belong to the shared [`RasterProgram`] rather than here. The bind group
+/// and the extents describe the textures that exist right now, and a grow
+/// replaces both.
 ///
 /// Every field is private and there is no field-wise setter: the only way
 /// to move this forward is [`Self::rebind`], which rebuilds the bind group
@@ -22,6 +22,8 @@ use crate::renderer::backend::texture_binding;
 /// two separately is how they drift apart.
 #[derive(Debug)]
 pub(super) struct BoundSides {
+    /// Clones of the shared [`RasterProgram`]'s, so a rebind needs
+    /// nothing but the device and the sides.
     layout: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
     bind_group: wgpu::BindGroup,
@@ -36,11 +38,16 @@ pub(super) struct BoundSides {
 }
 
 impl BoundSides {
-    /// Bind `sides` for sampling, building the layout and sampler the
-    /// binding will keep for the rest of its life.
-    pub(super) fn new(device: &wgpu::Device, sides: &[Side; 2], stem: &str) -> Self {
-        let layout = Self::create_layout(device, &format!("{stem} atlas layout"));
-        let sampler = Self::create_sampler(device, &format!("{stem} sampler"));
+    /// Bind `sides` for sampling against the shared program's layout
+    /// and sampler.
+    pub(super) fn new(
+        device: &wgpu::Device,
+        program: &RasterProgram,
+        sides: &[Side; 2],
+        stem: &str,
+    ) -> Self {
+        let layout = program.layout().clone();
+        let sampler = program.sampler().clone();
         let label = format!("{stem} atlas bg");
         let bind_group = Self::create_bind_group(device, &layout, sides, &sampler, &label);
         Self {
@@ -58,18 +65,11 @@ impl BoundSides {
     /// Both halves in one statement, so no caller can observe extents that
     /// describe a texture the bind group no longer points at. The layout
     /// and sampler are deliberately untouched — every pipeline built
-    /// against [`Self::layout`] stays valid across any number of grows.
+    /// against that layout stays valid across any number of grows.
     pub(super) fn rebind(&mut self, device: &wgpu::Device, sides: &[Side; 2]) {
         self.bind_group =
             Self::create_bind_group(device, &self.layout, sides, &self.sampler, &self.label);
         self.atlas_px = Self::extents(sides);
-    }
-
-    /// The layout every bind group this ever builds is built against —
-    /// created once and never replaced, which is what lets a pipeline hold
-    /// it across any number of [`Self::rebind`]s.
-    pub(super) fn layout(&self) -> &wgpu::BindGroupLayout {
-        &self.layout
     }
 
     pub(super) fn bind_group(&self) -> &wgpu::BindGroup {
@@ -88,33 +88,6 @@ impl BoundSides {
             sides[ContentType::Color as usize].size,
             sides[ContentType::Mask as usize].size,
         ]
-    }
-
-    /// Group 0: mask at 0, colour at 1, one shared sampler at 2 — the
-    /// same entry shapes every other group uses, two textures deep
-    /// instead of one.
-    fn create_layout(device: &wgpu::Device, label: &str) -> wgpu::BindGroupLayout {
-        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some(label),
-            entries: &[
-                texture_binding::texture_entry(0),
-                texture_binding::texture_entry(1),
-                texture_binding::sampler_entry(2),
-            ],
-        })
-    }
-
-    /// Nearest on both axes: a quad is drawn at its slot's own pixel
-    /// dimensions, so every texel maps 1:1 and filtering could only blur
-    /// what the rasterizer already got exactly right.
-    fn create_sampler(device: &wgpu::Device, label: &str) -> wgpu::Sampler {
-        device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some(label),
-            min_filter: wgpu::FilterMode::Nearest,
-            mag_filter: wgpu::FilterMode::Nearest,
-            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
-            ..Default::default()
-        })
     }
 
     /// The group-0 bind group itself, over the two side views and the
