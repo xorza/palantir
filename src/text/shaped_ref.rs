@@ -46,14 +46,15 @@ impl ShapedTextRef {
     /// cached shaped buffer sound, and the reason this is a pairing call
     /// rather than a struct literal.
     ///
-    /// A run that reaches here has bytes: an empty one shapes no buffer,
-    /// so it carries [`TextShapeKey::INVALID`] and the backend drops it
-    /// before asking. The `expect` is that contract, not a case to answer.
+    /// A run that reaches here has bytes: `TextShape::is_noop` drops an
+    /// empty one before it becomes a record, so no `ShapedTextRef` is
+    /// ever minted for one. The `expect` is that contract, not a case to
+    /// answer.
     pub(crate) fn resolve_request<'a>(
         self,
         interned_text: &'a InternedText<'_>,
     ) -> TextShapeRequest<'a> {
         TextShapeRequest::for_key(interned_text.resolve(self.span), self.key)
-            .expect("a run with a shaped buffer has bytes — filter INVALID keys first")
+            .expect("a recorded text run has bytes — `TextShape::is_noop` drops the empty one")
     }
 }

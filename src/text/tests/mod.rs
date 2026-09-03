@@ -115,7 +115,7 @@ struct Truncated {
 
 fn truncate(cosmic: &mut CosmicMeasure, text: &str, shape: TestShape, fit: LineFit) -> Truncated {
     let unbounded = cosmic.measure(text, shape.unbounded());
-    let fitted = cosmic.measure_with_fit(text, shape, fit, unbounded.key);
+    let fitted = cosmic.measure_with_fit(text, shape, fit, unbounded.buffer_key());
     Truncated { fitted, unbounded }
 }
 

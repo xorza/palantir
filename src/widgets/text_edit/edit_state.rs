@@ -5,6 +5,7 @@
 use crate::common::hash;
 use crate::text::key::TextShapeKey;
 use std::collections::VecDeque;
+use std::num::NonZeroU64;
 
 /// Semantic state for the host-owned text buffer.
 ///
@@ -32,7 +33,7 @@ pub(super) struct EditState {
     /// a single undo unit. `None` after any caret-only motion so the
     /// next edit always opens a fresh group.
     pub(super) last_edit_kind: Option<EditKind>,
-    pub(super) expected_hash: Option<u64>,
+    pub(super) expected_hash: Option<NonZeroU64>,
     pub(super) local_edit_pending: bool,
     pub(super) char_count: Option<usize>,
 }
@@ -174,7 +175,7 @@ impl EditState {
     /// stack refers to something gone. Both entry points below reach the
     /// rule here — written out at each of them, the two bodies drifted on
     /// which hash they compared.
-    fn adopt_text_hash(&mut self, text_hash: u64) {
+    fn adopt_text_hash(&mut self, text_hash: NonZeroU64) {
         if !self.local_edit_pending
             && self
                 .expected_hash
@@ -191,7 +192,18 @@ impl EditState {
     /// Paint-path entry: the shape probe already hashed this buffer, so
     /// its hash is the one to adopt. Also closes the local-edit window —
     /// whatever we changed this frame has now been seen.
-    pub(super) fn observe_text_hash(&mut self, text_hash: u64) {
+    ///
+    /// **`None` observes nothing, and so changes nothing.** A probe whose
+    /// face named no usable size never hashed the buffer, so this frame
+    /// learned neither the identity to adopt nor that our own edit has
+    /// been seen. Adopting an absence would drop a standing expectation
+    /// and miss a host replacement that landed while the face was
+    /// unusable; closing the window would then blame the *next* frame for
+    /// an edit we made ourselves.
+    pub(super) fn observe_text_hash(&mut self, text_hash: Option<NonZeroU64>) {
+        let Some(text_hash) = text_hash else {
+            return;
+        };
         self.adopt_text_hash(text_hash);
         self.local_edit_pending = false;
     }
@@ -212,12 +224,11 @@ impl EditState {
     /// The identity of `text`, minted the way the shape probe mints the
     /// hash [`Self::observe_text_hash`] is fed.
     ///
-    /// Through [`TextShapeKey::content_hash`] and not a bare `hash_str`: that rule
-    /// maps a raw zero to one, because zero is what tags a bufferless
-    /// run — so for exactly the content that hashes to zero, a raw hash
-    /// here would compare unequal against the probe's for the *same*
-    /// buffer and silently wipe the undo stack.
-    pub(super) fn text_hash(text: &str) -> u64 {
+    /// Through [`TextShapeKey::content_hash`] and not a bare `hash_str`:
+    /// that rule maps a raw zero to one, so for exactly the content that
+    /// hashes to zero a raw hash here would compare unequal against the
+    /// probe's for the *same* buffer and silently wipe the undo stack.
+    pub(super) fn text_hash(text: &str) -> NonZeroU64 {
         TextShapeKey::content_hash(hash::hash_str(text))
     }
 
@@ -258,7 +269,7 @@ mod tests {
     use crate::common::hash;
     use crate::text::glyph_font::GlyphFont;
     use crate::text::key::TextShapeKey;
-    use crate::widgets::text_edit::edit_state::EditState;
+    use crate::widgets::text_edit::edit_state::{EditKind, EditState};
 
     /// The two entry points into the history rule must mint one buffer's
     /// identity identically, because they write and read the same
@@ -267,9 +278,9 @@ mod tests {
     /// buffer" and wipes the undo stack under the user.
     ///
     /// The zero case is why this is a test rather than a comment.
-    /// `content_hash` maps a raw zero to one — zero tags a bufferless run
-    /// — so a bare `hash_str` on the input side would differ for exactly
-    /// the content that hashes to zero, and for nothing else.
+    /// `content_hash` maps a raw zero to one, so a bare `hash_str` on the
+    /// input side would differ for exactly the content that hashes to
+    /// zero, and for nothing else.
     #[test]
     fn both_entry_points_mint_one_buffers_identity_alike() {
         for text in ["", "a", "hello world", "\u{1f600} multi\nline"] {
@@ -279,15 +290,46 @@ mod tests {
                 probe.text_hash,
                 "input path disagrees with the probe for {text:?}",
             );
-            assert_ne!(
-                EditState::text_hash(text),
-                0,
-                "{text:?} minted the invalid tag"
-            );
         }
         // The mapped case, driven directly: a raw zero is the one input
         // where the two spellings part company.
-        assert_eq!(TextShapeKey::content_hash(0), 1);
-        assert_ne!(TextShapeKey::content_hash(0), 0);
+        assert_eq!(TextShapeKey::content_hash(0).get(), 1);
+    }
+
+    /// A frame whose probe hashed nothing must leave the history rule
+    /// exactly as it found it, and the expectation it kept must still
+    /// catch a replacement on the next frame that does hash — see
+    /// [`EditState::observe_text_hash`] for why both halves matter.
+    #[test]
+    fn a_frame_that_hashed_nothing_observes_nothing() {
+        let mut state = EditState::default();
+        state.reconcile_before_edit("host value");
+        let expected = state.expected_hash;
+        assert_eq!(
+            expected,
+            Some(EditState::text_hash("host value")),
+            "premise: the input path leaves an expectation to protect",
+        );
+        state.local_edit_pending = true;
+
+        state.observe_text_hash(None);
+        assert_eq!(
+            state.expected_hash, expected,
+            "an unhashed frame must not overwrite the standing expectation",
+        );
+        assert!(
+            state.local_edit_pending,
+            "an unhashed frame has not seen our edit, so the window stays open",
+        );
+
+        // And the expectation it kept is the one that catches the
+        // replacement on the next frame that *does* hash.
+        state.local_edit_pending = false;
+        state.last_edit_kind = Some(EditKind::Typing);
+        state.observe_text_hash(Some(EditState::text_hash("replaced by the host")));
+        assert!(
+            state.last_edit_kind.is_none(),
+            "the kept expectation must still catch a host replacement",
+        );
     }
 }

@@ -230,7 +230,7 @@ fn the_key_carries_any_family_index() {
             family: FontFamily::from_raw(raw),
             ..GlyphFont::new(16.0)
         };
-        let key = TextShapeKey::for_text("hi", face);
+        let key = TextShapeKey::for_text("hi", face).expect("a fixture face is usable");
         assert_eq!(key.family().raw(), raw);
         // The neighbours in the packed word must survive it.
         assert_eq!(key.weight(), FontWeight::REGULAR);
@@ -250,7 +250,7 @@ fn the_packed_face_word_keeps_every_axis_apart() {
         style: FontStyle::Italic,
         ..GlyphFont::new(16.0)
     };
-    let unbounded = TextShapeKey::for_text("hi", face);
+    let unbounded = TextShapeKey::for_text("hi", face).expect("a fixture face is usable");
     let bound = unbounded.with_bound(WrapBound::new(120.0, HAlign::Right, LineFit::Wrap));
 
     for (label, key) in [("unbounded", unbounded), ("bound", bound)] {

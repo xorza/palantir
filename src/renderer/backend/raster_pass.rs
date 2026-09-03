@@ -21,8 +21,6 @@ use crate::renderer::backend::raster_atlas::packed_metadata::PackedMetadata;
 use crate::renderer::backend::raster_atlas::raster_quad::RasterQuad;
 use crate::renderer::backend::raster_atlas::{RasterAtlas, RasterAtlasConfig};
 use crate::renderer::backend::raster_program::RasterProgram;
-use crate::renderer::backend::stencil_variant::StencilVariant;
-use crate::renderer::backend::viewport::ViewportPush;
 use std::fmt::Debug;
 use std::hash::Hash;
 
@@ -232,17 +230,9 @@ impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
         self.atlas.flush_pending_uploads(ctx);
     }
 
-    pub(super) fn render_batch<'a>(
-        &'a self,
-        batch_idx: usize,
-        pass: &mut wgpu::RenderPass<'a>,
-        pipelines: &'a StencilVariant,
-        use_stencil: bool,
-        viewport: &ViewportPush,
-    ) {
+    pub(super) fn render_batch<'a>(&'a self, batch_idx: usize, pass: &mut wgpu::RenderPass<'a>) {
         let span = self.batch_span(batch_idx);
-        self.atlas
-            .draw_span(pass, pipelines, use_stencil, viewport, &self.vbuf, span);
+        self.atlas.draw_span(pass, &self.vbuf, span);
     }
 
     /// Age the atlas against `frame` and drop this frame's quads and batch

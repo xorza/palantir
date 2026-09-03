@@ -217,14 +217,31 @@ fn an_empty_run_is_answered_at_the_boundary_and_shapes_nothing() {
         "an empty run has no request to make of the shaper",
     );
 
+    // A usable face still names a key — the metrics a probe answers in
+    // live on it, and emptiness is not a property of the face. What no
+    // bytes mint is the *buffer*, which is what the run's absent key
+    // reports and what makes the encoder drop it.
+    assert!(
+        TextRun {
+            text: "",
+            font: params.font,
+            wrap: TextWrap::Wrap,
+            align: Align::h(HAlign::Auto),
+            max_width_px: None,
+        }
+        .unbounded_key()
+        .is_some(),
+        "a usable face names a key whether or not there are bytes to shape",
+    );
+
     // Both metrics answer the same way through the probe edge: zero
-    // extent, the INVALID sentinel so the renderer drops the run, and no
+    // extent, no buffer key so the renderer drops the run, and no
     // dispatch — a run with nothing to shape is not a shape.
     for shaper in [TextShaper::new(), TextShaper::test_mono()] {
         let calls = shaper.measure_calls();
         let measured = shaper.measure("", params);
         assert_eq!(measured.measured, Size::ZERO);
-        assert!(measured.key.is_invalid(), "empty text mints no buffer");
+        assert!(measured.key.is_none(), "empty text mints no buffer");
         assert_eq!(shaper.measure_calls(), calls, "no dispatch for no bytes");
         assert_eq!(shaper.cosmic_cache_len(), 0, "and no cached buffer");
 
@@ -464,9 +481,12 @@ fn a_probe_shapes_under_the_key_the_paint_committed() {
             ))
             .key();
         match wrap {
-            TextWrap::Wrap => assert_eq!(raw, painted, "Wrap commits the width it was offered"),
+            TextWrap::Wrap => {
+                assert_eq!(Some(raw), painted, "Wrap commits the width it was offered")
+            }
             _ => assert_ne!(
-                raw, painted,
+                Some(raw),
+                painted,
                 "{wrap:?}: a raw bind must differ, or this case proves nothing",
             ),
         }

@@ -165,13 +165,16 @@ impl BenchText {
         self.backend.pass.flush(ctx);
     }
 
+    /// `render_batch` binds neither the pipeline nor the viewport — the
+    /// render loop owns both so consecutive raster steps skip them (see
+    /// `Bound::Raster`), which leaves a standalone pass to bind its own.
     fn draw<'a>(&'a self, batch_index: usize, pass: &mut wgpu::RenderPass<'a>) {
-        let viewport = ViewportPush {
+        pass.set_pipeline(self.pipelines.select(false));
+        ViewportPush {
             size: glam::Vec2::ZERO,
-        };
-        self.backend
-            .pass
-            .render_batch(batch_index, pass, &self.pipelines, false, &viewport);
+        }
+        .push_into(pass);
+        self.backend.pass.render_batch(batch_index, pass);
     }
 
     /// Frame teardown for the harness, matching `TextSystem`'s
@@ -223,7 +226,9 @@ fn make_run(
         align: Align::default(),
         max_width_px: None,
     };
-    let key = run.unbounded_key();
+    let key = run
+        .unbounded_key()
+        .expect("the bench fixture names a usable face");
     shaper.layout(&run);
     TextDrawRow {
         text: ShapedTextRef::new(key, &recorded),

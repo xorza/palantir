@@ -194,10 +194,10 @@ impl LayerCtx<'_> {
                 ..
             } => {
                 let shaped = shaped.expect("a text record always draws its run from the cursor");
-                if shaped.key.is_invalid() {
-                    tracing::trace!(?shape, "encoder: dropping text with invalid key");
+                let Some(key) = shaped.key else {
+                    tracing::trace!(?shape, "encoder: dropping text that shaped no buffer");
                     return;
-                }
+                };
                 // Two paths share the same `DrawText` payload:
                 // - `local_rect: None` → encoder owns positioning. Place
                 //   the shaped bbox inside the owner's padded inner rect
@@ -223,7 +223,7 @@ impl LayerCtx<'_> {
                 out.draw_text(DrawTextPayload {
                     rect,
                     color: *color,
-                    text: ShapedTextRef::new(shaped.key, text),
+                    text: ShapedTextRef::new(key, text),
                 });
             }
             ShapeRecord::Polyline {

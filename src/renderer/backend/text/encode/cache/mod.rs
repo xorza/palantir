@@ -453,7 +453,7 @@ pub(crate) mod test_support {
                     });
                 }
                 let key = EncodedKey {
-                    text: TextShapeKey::INVALID,
+                    text: TextShapeKey::fixture(),
                     // The churn axis: one fresh rung per frame.
                     scale_q: self.frame as u32,
                     // Run identity, stable across the gesture.
@@ -535,7 +535,7 @@ pub(crate) mod test_support {
                 // fixture missing either would measure a sweep with
                 // nothing to do.
                 let key = EncodedKey {
-                    text: TextShapeKey::INVALID,
+                    text: TextShapeKey::fixture(),
                     scale_q: row,
                     area_color: 0,
                     bins: 0,

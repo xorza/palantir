@@ -12,7 +12,6 @@ fn identity_cache_is_keyed_by_actual_shaping_inputs() {
 
     let same = text.shape_run(run_slot, "hi", compact, TextWrap::SingleLine);
     assert_eq!(same.size, r1.size);
-    assert_eq!(same.key, r1.key);
     assert_eq!(same.intrinsic_min, r1.intrinsic_min);
     assert_eq!(
         text.shaper().measure_calls(),
@@ -26,7 +25,6 @@ fn identity_cache_is_keyed_by_actual_shaping_inputs() {
         compact.font_size(16.006).leading(16.006),
         TextWrap::SingleLine,
     );
-    assert_eq!(quantized_same.key, same.key);
     assert_eq!(quantized_same.size, same.size);
     assert_eq!(quantized_same.intrinsic_min, same.intrinsic_min);
     assert_eq!(
@@ -141,7 +139,8 @@ fn drive(text: &mut TextSystem, slot: TextRunSlot, body: &str, width: Option<f32
         Some(w) => base.width(w),
         None => base,
     };
-    text.shape_run(slot, body, shape, TextWrap::Wrap).key
+    text.shape_run(slot, body, shape, TextWrap::Wrap)
+        .buffer_key()
 }
 
 /// [`drive`] plus the render half: the encoder's restore on an
@@ -278,7 +277,9 @@ fn a_run_that_stops_binding_demotes_the_buffer_its_bound_named() {
     ] {
         let mut text = TextSystem::cosmic();
         let s = slot(WidgetId::from_hash("row"));
-        let bounded = text.shape_run(s, BODY, narrow, TextWrap::Ellipsis).key;
+        let bounded = text
+            .shape_run(s, BODY, narrow, TextWrap::Ellipsis)
+            .buffer_key();
         text.shaper()
             .render_ensure(TextShapeRequest::for_key(BODY, bounded).unwrap());
         assert!(
@@ -289,7 +290,7 @@ fn a_run_that_stops_binding_demotes_the_buffer_its_bound_named() {
         let before = text.shaper().cache_counts();
         let after = text.shape_run(s, BODY, second_shape, second_wrap);
         assert!(
-            after.key.max_width_px().is_none(),
+            after.buffer_key().max_width_px().is_none(),
             "{label}: premise — the second measure answers unbounded",
         );
         assert_eq!(

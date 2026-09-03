@@ -49,7 +49,7 @@ fn container_text_is_paint_only_and_wraps_to_final_inner_width() {
             _ => None,
         })
         .collect();
-    assert_eq!(draw_keys, [shaped.key]);
+    assert_eq!(draw_keys, [shaped.buffer_key()]);
     let leaf = h.frame_value(|ui| Text::new("leaf-only").show(ui).node());
     let layout = h.ui.layout(Layer::Main);
     assert_eq!(layout.text_shapes.len(), 1);
@@ -136,10 +136,10 @@ fn container_and_child_text_keep_independent_order_across_cache_hit() {
     assert_eq!(first_parent_span.len, 2);
     assert_eq!(first_child_span.len, 1);
     let first_parent_keys = [
-        first_layout.text_shapes[first_parent_span.start as usize].key,
-        first_layout.text_shapes[(first_parent_span.start + 1) as usize].key,
+        first_layout.text_shapes[first_parent_span.start as usize].buffer_key(),
+        first_layout.text_shapes[(first_parent_span.start + 1) as usize].buffer_key(),
     ];
-    let first_child_key = first_layout.text_shapes[first_child_span.start as usize].key;
+    let first_child_key = first_layout.text_shapes[first_child_span.start as usize].buffer_key();
     assert_ne!(first_parent_keys[0], first_child_key);
     assert_ne!(first_parent_keys[1], first_child_key);
     let first_draw_keys: Vec<_> = h
@@ -167,10 +167,10 @@ fn container_and_child_text_keep_independent_order_across_cache_hit() {
     assert_eq!(second_parent_span.len, 2);
     assert_eq!(second_child_span.len, 1);
     let second_parent_keys = [
-        second_layout.text_shapes[second_parent_span.start as usize].key,
-        second_layout.text_shapes[(second_parent_span.start + 1) as usize].key,
+        second_layout.text_shapes[second_parent_span.start as usize].buffer_key(),
+        second_layout.text_shapes[(second_parent_span.start + 1) as usize].buffer_key(),
     ];
-    let second_child_key = second_layout.text_shapes[second_child_span.start as usize].key;
+    let second_child_key = second_layout.text_shapes[second_child_span.start as usize].buffer_key();
     assert_eq!(second_parent_keys, first_parent_keys);
     assert_eq!(second_child_key, first_child_key);
     let second_draw_keys: Vec<_> = h

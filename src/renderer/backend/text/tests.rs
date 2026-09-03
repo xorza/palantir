@@ -86,7 +86,9 @@ fn make_inner_run(
         align: Align::default(),
         max_width_px: None,
     };
-    let key = run.unbounded_key();
+    let key = run
+        .unbounded_key()
+        .expect("the fixture face names a usable size");
     shaper.layout(&run);
     TextDrawRow {
         text: ShapedTextRef::new(key, &recorded),

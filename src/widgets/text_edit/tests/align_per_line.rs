@@ -193,7 +193,7 @@ fn cache_key_distinguishes_halign() {
                 halign: HAlign::Left,
             },
         )
-        .key;
+        .buffer_key();
     let r = c
         .measure(
             "hi",
@@ -209,7 +209,7 @@ fn cache_key_distinguishes_halign() {
                 halign: HAlign::Right,
             },
         )
-        .key;
+        .buffer_key();
     assert_ne!(l, r, "halign must enter the cache key");
     assert_ne!(
         l.line_align(),
@@ -241,7 +241,7 @@ fn unbounded_halign_collapses_to_auto_in_key() {
                 halign: HAlign::Left,
             },
         )
-        .key;
+        .buffer_key();
     let right = c
         .measure(
             "hi",
@@ -257,7 +257,7 @@ fn unbounded_halign_collapses_to_auto_in_key() {
                 halign: HAlign::Right,
             },
         )
-        .key;
+        .buffer_key();
     assert_eq!(left, right, "halign must not split the unbounded cache");
     assert_eq!(
         left.line_align(),
@@ -297,7 +297,6 @@ fn rendered_buffer_uses_per_line_align_even_when_content_fits() {
     // one we inspect.
     h.frame(&mut record);
     h.frame(&mut record);
-    // Read the layout's `ShapedText.key` for the rendered text.
     // `text_spans[node]` indexes one entry per `ShapeRecord::Text`
     // on the node; a multi-line field emits a single text shape, and
     // records it on the block child that carries its alignment.
@@ -305,20 +304,20 @@ fn rendered_buffer_uses_per_line_align_even_when_content_fits() {
     let main = h.ui.layout(Layer::Main);
     let span = main.text_spans[node.idx()];
     assert_eq!(span.len, 1, "one Shape::Text expected on the block");
-    let shaped = main.text_shapes[span.start as usize];
+    let key = main.text_shapes[span.start as usize].buffer_key();
     // Pinned on the decoded value, so a shifted packing or a
     // reordered variant trips here instead of silently falling
     // through.
     assert_eq!(
-        shaped.key.line_align(),
+        key.line_align(),
         LineAlign::Right,
         "rendered buffer must carry the user's halign in its cache key (got {:?})",
-        shaped.key.line_align(),
+        key.line_align(),
     );
     // Also check the wrap-target axis is set — without a committed
     // width cosmic applies no per-line align at all.
     assert!(
-        shaped.key.max_width_px().is_some(),
+        key.max_width_px().is_some(),
         "rendered buffer must have a finite wrap target so cosmic per-line align fires",
     );
 }
@@ -426,14 +425,14 @@ fn placeholder_per_line_aligns_under_wrap() {
     let main = h.ui.layout(Layer::Main);
     let span = main.text_spans[node.idx()];
     assert_eq!(span.len, 1, "one Shape::Text expected on the block");
-    let shaped = main.text_shapes[span.start as usize];
+    let key = main.text_shapes[span.start as usize].buffer_key();
     assert_eq!(
-        shaped.key.line_align(),
+        key.line_align(),
         LineAlign::Right,
         "placeholder buffer must carry the user's halign in its cache key",
     );
     assert!(
-        shaped.key.max_width_px().is_some(),
+        key.max_width_px().is_some(),
         "placeholder buffer must have a finite wrap target so cosmic per-line align fires",
     );
 }

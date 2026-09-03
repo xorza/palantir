@@ -582,16 +582,10 @@ impl CosmicMeasure {
     /// the final lookup doubles as the check that the restore landed
     /// under its own key.
     ///
-    /// A run with no shaped buffer never gets this far: the encoder drops
-    /// [`TextShapeKey::INVALID`] runs before paint and the backend keeps
-    /// its own backstop, so arriving with one is a wiring bug rather than
-    /// a case to answer. Handing back an `Option` for it only moved the
-    /// panic to the caller.
+    /// A run with no shaped buffer never gets this far: a
+    /// [`TextShapeRequest`] cannot hold one, and the encoder drops the
+    /// runs that name no key before paint.
     pub(super) fn ensure_buffer(&mut self, request: TextShapeRequest<'_>) -> ShapedRun<'_> {
-        debug_assert!(
-            !request.key.is_invalid(),
-            "restoring a buffer for a run the encoder should have dropped",
-        );
         // Residency is the whole point here, so the measurement is dropped
         // either way — but the two paths shape differently, and the key is
         // what says which one this run went through. Both open with the
@@ -972,7 +966,7 @@ pub(crate) mod test_support {
             match key.max_width_px() {
                 Some(_) => TestMeasure {
                     size: self.resolve(request),
-                    key,
+                    key: Some(key),
                     intrinsic_min: None,
                 },
                 None => TestMeasure::new(self.root(request, WrapFloor::Scan), key),
@@ -1041,7 +1035,7 @@ pub(crate) mod test_support {
         /// different faces can share an advance.
         #[cfg(test)]
         fn shaped_face(&mut self, text: &str, face: GlyphFont) -> Option<fontdb::ID> {
-            let key = TextShapeKey::for_text(text, face);
+            let key = TextShapeKey::for_text(text, face).expect("a fixture face is usable");
             let attrs = self.attrs_of(key);
             let mut buf = Buffer::new(&mut self.font_system, Metrics::new(16.0, 19.2));
             buf.set_text(text, &attrs, Shaping::Advanced, None);

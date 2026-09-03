@@ -187,19 +187,7 @@ impl ShapedBufferCache {
     /// probe path takes it for a run that was never shaped, and a
     /// residency check is the question itself. It does **not** promote,
     /// which is what separates it from [`Self::hit`].
-    ///
-    /// [`TextShapeKey::INVALID`] is not among the keys it answers for.
-    /// The sentinel means "this run has no shaped buffer at all", and
-    /// nothing ever inserts one — a `TextShapeRequest` cannot hold
-    /// either run the sentinel stands for. Asking about it is a category
-    /// error rather than a miss, so it is asserted instead of answered,
-    /// and each caller that can hold one filters it first: the encoder
-    /// drops those runs, `TextProbe::shaped` answers `None`.
     pub(super) fn shaped_run(&self, key: TextShapeKey) -> Option<ShapedRun<'_>> {
-        debug_assert!(
-            !key.is_invalid(),
-            "the invalid sentinel names no cache entry — filter it before the lookup",
-        );
         self.entries.get(&key).map(|e| ShapedRun {
             buffer: &e.buffer,
             left: e.left,
@@ -289,10 +277,6 @@ impl ShapedBufferCache {
     /// Silent on a key that isn't resident: the buffer may already have
     /// aged out, and superseding what is gone is a no-op, not an error.
     pub(super) fn supersede(&mut self, key: TextShapeKey) {
-        debug_assert!(
-            !key.is_invalid(),
-            "the invalid sentinel names no cache entry — filter it before the demotion",
-        );
         let dies_at = self.probation_dies_at();
         let Some(entry) = self.entries.get_mut(&key) else {
             return;

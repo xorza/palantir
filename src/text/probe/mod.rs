@@ -18,6 +18,7 @@ use crate::text::cosmic::shaped_buffer_cache::ShapedRun;
 use crate::text::key::TextShapeKey;
 use crate::text::shaper::ShaperInner;
 use std::cell::RefMut;
+use std::num::NonZeroU64;
 use std::ops::Range;
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -45,7 +46,11 @@ pub struct TextProbe<'a> {
     /// Key of the buffer this probe answers against. Carried even where
     /// no buffer was shaped (empty text, the gated mono metric), because
     /// the metrics every answer is expressed in live on it.
-    key: TextShapeKey,
+    ///
+    /// `None` only for a face the shaper cannot be asked for. That face
+    /// names no metrics either, so the answers below fall back to a
+    /// zero-height band — see [`Self::line_height_px`].
+    key: Option<TextShapeKey>,
     /// The run's authored horizontal alignment.
     ///
     /// Not read off `key`, although the key carries one: `halign_q` is a
@@ -62,7 +67,7 @@ impl<'a> TextProbe<'a> {
     pub(super) fn new(
         size: Size,
         text: &'a str,
-        key: TextShapeKey,
+        key: Option<TextShapeKey>,
         halign: HAlign,
         inner: RefMut<'a, ShaperInner>,
     ) -> Self {
@@ -83,21 +88,30 @@ impl<'a> TextProbe<'a> {
     /// 64-bit hash of the run's text, as the shaping cache keys it —
     /// for a caller comparing "is this the same string as last frame?"
     /// without retaining a copy of it.
-    pub fn text_hash(&self) -> u64 {
-        self.key.text_hash
+    ///
+    /// `None` where the run's face names no size the shaper can be asked
+    /// for. Nothing was hashed there, and answering a plausible zero
+    /// would read as one buffer's identity to a caller comparing two.
+    pub fn text_hash(&self) -> Option<NonZeroU64> {
+        Some(self.key?.text_hash)
+    }
+
+    /// The band every unshaped answer below reports on: the leading this
+    /// run was asked for, quantized, or zero where its face named none.
+    fn line_height_px(&self) -> f32 {
+        self.key.map_or(0.0, TextShapeKey::line_height_px)
     }
 
     /// Shaped run behind this layout; `None` on the gated mono metric,
     /// for empty text (an unshaped request), and for a face the shaper
     /// cannot be asked for.
     ///
-    /// The last carries [`TextShapeKey::INVALID`], which the cache
-    /// refuses to be asked about — the sentinel names no entry — so it is
-    /// filtered here, which is where a probe first holds one.
+    /// The last names no key at all, so it never reaches the cache — the
+    /// `?` below is where that case stops.
     ///
     /// **Mono is refused rather than missed.** A probe's key is a real
-    /// one whichever metric measured it — only `TextSystem` stamps the
-    /// sentinel — so a mono run whose key some other caller had shaped
+    /// one whichever metric measured it — only `TextSystem` withholds
+    /// one — so a mono run whose key some other caller had shaped
     /// through [`TextGlyphs`](crate::TextGlyphs) would find that buffer
     /// and answer cosmic geometry against a mono extent. Every answer a
     /// probe gives has to come from the metric that measured it.
@@ -107,10 +121,10 @@ impl<'a> TextProbe<'a> {
     /// takes [`ShapedRun::left`] off the buffer's own x, or adds it back
     /// when going the other way.
     fn shaped(&self) -> Option<ShapedRun<'_>> {
-        if self.key.is_invalid() || self.inner.is_mono() {
+        if self.inner.is_mono() {
             return None;
         }
-        self.inner.cosmic().shaped_run(self.key)
+        self.inner.cosmic().shaped_run(self.key?)
     }
 
     /// True where this run had nothing to shape — no bytes, or a face
@@ -122,14 +136,14 @@ impl<'a> TextProbe<'a> {
     /// Named because both of those answers assert on it, and a rule
     /// spelled at each is one that can be changed in only one.
     fn shapes_nothing(&self) -> bool {
-        self.text.is_empty() || self.key.is_invalid()
+        self.text.is_empty() || self.key.is_none()
     }
 
     /// Caret-x for a layout with no shaped buffer.
     ///
     /// Production reaches this for the two runs that shape nothing —
     /// empty text, and text whose face names no size the shaper can be
-    /// asked for (the invalid key). Either way the block is zero-width:
+    /// asked for (no key at all). Either way the block is zero-width:
     /// the only position in it is its own origin, and the owner is what
     /// places that block against an alignment. The gated mono metric also
     /// lands here, with real text, which is the arm `mono` answers —
@@ -150,11 +164,11 @@ impl<'a> TextProbe<'a> {
     /// tripping it.
     fn unshaped_caret_x(&self, byte_offset: usize) -> f32 {
         #[cfg(any(test, feature = "internals"))]
-        if self.inner.is_mono() {
+        if let Some(key) = self.key.filter(|_| self.inner.is_mono()) {
             return crate::text::mono::single_line_caret_x(
                 self.text,
                 byte_offset,
-                self.key.font_size_px(),
+                key.font_size_px(),
             );
         }
         assert!(
@@ -170,8 +184,8 @@ impl<'a> TextProbe<'a> {
     /// exactly one position, so production always answers 0.
     fn unshaped_byte_at(&self, target_x: f32) -> usize {
         #[cfg(any(test, feature = "internals"))]
-        if self.inner.is_mono() {
-            return crate::text::mono::nearest_byte(self.text, target_x, self.key.font_size_px());
+        if let Some(key) = self.key.filter(|_| self.inner.is_mono()) {
+            return crate::text::mono::nearest_byte(self.text, target_x, key.font_size_px());
         }
         assert!(
             self.shapes_nothing(),
@@ -197,7 +211,7 @@ impl<'a> TextProbe<'a> {
     /// `byte_offset` is clamped to the run, the way
     /// [`Self::byte_at`] clamps a point: past the end answers the end.
     pub fn caret_at(&self, byte_offset: usize) -> Caret {
-        let line_height_px = self.key.line_height_px();
+        let line_height_px = self.line_height_px();
         let halign = self.halign;
         let target = cursor_from_byte(self.text, byte_offset);
         let Some(ShapedRun { buffer, left }) = self.shaped() else {
@@ -289,7 +303,7 @@ impl<'a> TextProbe<'a> {
             // empty text collapses it to nothing.
             let x0 = self.unshaped_caret_x(range.start);
             let x1 = self.unshaped_caret_x(range.end);
-            out(Rect::new(x0, 0.0, x1 - x0, self.key.line_height_px()));
+            out(Rect::new(x0, 0.0, x1 - x0, self.line_height_px()));
             return;
         };
         let start = cursor_from_byte(self.text, range.start);
@@ -434,16 +448,13 @@ pub(crate) mod test_support {
             self.shaped().map(|shaped| shaped.buffer)
         }
 
-        /// The key a caller can replay this run through, or
-        /// [`TextShapeKey::INVALID`] where no buffer backs it — empty
-        /// text, or the gated mono metric. Derived from whether a buffer
-        /// is actually resident rather than from a second reading of the
-        /// two conditions that produce one.
-        pub(crate) fn shaped_key(&self) -> TextShapeKey {
-            match self.shaped() {
-                Some(_) => self.key,
-                None => TextShapeKey::INVALID,
-            }
+        /// The key a caller can replay this run through, or `None` where
+        /// no buffer backs it — empty text, an unusable face, or the
+        /// gated mono metric. Derived from whether a buffer is actually
+        /// resident rather than from a second reading of the three
+        /// conditions that produce one.
+        pub(crate) fn shaped_key(&self) -> Option<TextShapeKey> {
+            self.shaped().and(self.key)
         }
     }
 

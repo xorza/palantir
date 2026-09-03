@@ -4,9 +4,11 @@ use crate::primitives::span::Span;
 use crate::renderer::backend::text::encode::EncodedKey;
 use crate::text::key::TextShapeKey;
 
+/// The scale rung is this fixture's only axis, so one run identity
+/// stands for the text across every row.
 fn key(scale_q: u32) -> EncodedKey {
     EncodedKey {
-        text: TextShapeKey::INVALID,
+        text: TextShapeKey::fixture(),
         scale_q,
         area_color: 0,
         bins: 0,

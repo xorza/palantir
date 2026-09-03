@@ -6,6 +6,7 @@ use crate::text::probe::Caret;
 use crate::ui::Ui;
 use crate::widgets::text_edit::text_layout::TextLayout;
 use glam::Vec2;
+use std::num::NonZeroU64;
 use std::ops::Range;
 
 /// What one probe of the content run yields. A named struct because the
@@ -15,7 +16,7 @@ use std::ops::Range;
 struct Probed {
     measured: Size,
     caret_pos: Caret,
-    text_hash: u64,
+    text_hash: Option<NonZeroU64>,
 }
 
 #[derive(Debug)]
@@ -56,7 +57,9 @@ pub(super) struct TextGeometry {
     /// and the hug reservation the width.
     pub(super) display_size: Size,
     pub(super) caret_pos: Caret,
-    pub(super) text_hash: u64,
+    /// Identity of the bytes the probe hashed, or `None` where its face
+    /// named no size to shape at — see `EditState::observe_text_hash`.
+    pub(super) text_hash: Option<NonZeroU64>,
 }
 
 impl TextGeometry {

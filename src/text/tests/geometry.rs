@@ -149,7 +149,10 @@ fn selection_rects_empty_range_emits_nothing_and_touches_no_buffer() {
     let pre = Rect::new(1.0, 2.0, 3.0, 4.0);
     out.push(pre); // pre-populate
     m.probe_layout("hello", ui_shape(16.0), |layout| {
-        assert_eq!(layout.text_hash(), hash::hash_str("hello"));
+        assert_eq!(
+            layout.text_hash(),
+            Some(TextShapeKey::content_hash(hash::hash_str("hello"))),
+        );
         layout.selection_rects(5..5, &mut |rect| out.push(rect));
     });
     assert_eq!(

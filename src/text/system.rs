@@ -315,8 +315,7 @@ impl TextSystem {
 /// Pair an extent with the buffer key the renderer resolves it through.
 /// The key is *derived* from the request rather than stored, so it cannot
 /// drift from the row it came out of; the gated mono metric shapes no
-/// buffer, so its runs carry the invalid sentinel and the encoder drops
-/// them.
+/// buffer, so its runs carry `None` and the encoder drops them.
 ///
 /// Takes `shapes_buffers` rather than `&self` because every caller is
 /// mid-way through a split borrow of [`TextSystem`] and holds the flag by
@@ -325,11 +324,7 @@ impl TextSystem {
 fn shaped(shapes_buffers: bool, key: TextShapeKey, measured: Size) -> ShapedText {
     ShapedText {
         measured,
-        key: if shapes_buffers {
-            key
-        } else {
-            TextShapeKey::INVALID
-        },
+        key: shapes_buffers.then_some(key),
     }
 }
 

@@ -40,8 +40,6 @@ use crate::renderer::backend::raster_atlas::packed_metadata::PackedMetadata;
 use crate::renderer::backend::raster_atlas::raster_quad::RasterQuad;
 use crate::renderer::backend::raster_atlas::side::Side;
 use crate::renderer::backend::raster_program::RasterProgram;
-use crate::renderer::backend::stencil_variant::StencilVariant;
-use crate::renderer::backend::viewport::ViewportPush;
 use etagere::size2;
 use glam::{U16Vec2, UVec2};
 use rustc_hash::FxHashMap;
@@ -318,18 +316,13 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
     pub(super) fn draw_span<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
-        pipelines: &'a StencilVariant,
-        use_stencil: bool,
-        viewport: &ViewportPush,
         vbuf: &'a DynamicBuffer<RasterQuad>,
         span: Span,
     ) {
         if span.len == 0 {
             return;
         }
-        pass.set_pipeline(pipelines.select(use_stencil));
         pass.set_bind_group(0, self.bound.bind_group(), &[]);
-        viewport.push_into(pass);
         pass.set_immediates(
             RasterQuad::PARAMS_OFFSET,
             bytemuck::bytes_of(&self.bound.atlas_px()),

@@ -8,22 +8,6 @@ When you address an item, delete it from this file. Delete a heading when its
 items are gone. Test structure was ignored. Rewrite tests to fit the better
 production shape.
 
-## 1. Mono leaves a sentinel behind
-
-The mono metric stays: it backs `UiHarness::new` and so the whole in-crate UI
-suite, where a hand-computable width is worth more than a measured one. It is
-now a flag on `ShaperInner` rather than a variant every production method
-matches, so the production stack no longer carries it. One consequence remains.
-
-- [ ] `TextShapeKey::INVALID` means three things: empty text, an unusable face,
-  and "a mono run". Only the third still needs the sentinel — the first two are
-  screened before a key is minted (`TextShape::is_noop`,
-  `TextShapeRequest::unbounded`), so `TextSystem::shapes_buffers`, the free fn
-  `shaped(shapes_buffers, key, size)`, and the sentinel asserts in
-  `shaped_run` / `supersede` / the encoder are all production weight carried for
-  a test metric. Worth revisiting if a cheaper way to make the renderer drop a
-  mono run appears.
-
 ## 2. Icons and text still draw as two batches
 
 The two raster tenants now share a [`RasterProgram`] — one shader, one group-0
@@ -46,12 +30,6 @@ evicting a tintable icon is not a fair trade, since an SVG re-raster costs
   recorded *after* an icon it overlaps would paint under it. That needs an
   intra-batch overlap test, which is `HigherKindRects` scoped to the batch
   rather than the group.
-- [ ] Until then, consecutive text and icon steps rebind the same pipeline.
-  Both arms of the render loop reset `bound = Bound::None` because
-  `RasterAtlas::draw_span` sets its own state, so a text step followed by an
-  icon step issues a redundant `set_pipeline`. The bind group genuinely
-  differs (different atlas); only the pipeline is shared. Worth a
-  `Bound::Raster` variant if batch counts ever climb — dozens a frame today.
 
 ## 6. Truncation reads the probe through a closure and re-probes per retry
 

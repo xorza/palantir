@@ -38,17 +38,21 @@ fn fitting_truncate_returns_the_unbounded_root_without_reshaping() {
 
         // Over-wide text still resolves through the truncating path.
         let truncated = text.shape_run(run_slot, "wider than twenty", fitting.width(20.0), wrap);
-        assert_ne!(truncated.key, truncated.key.unbounded_version());
-        assert_eq!(truncated.key.fit(), fit);
+        assert_ne!(
+            truncated.buffer_key(),
+            truncated.buffer_key().unbounded_version()
+        );
+        assert_eq!(truncated.buffer_key().fit(), fit);
         assert_eq!(truncated.size.w, capped_w, "{wrap:?} caps inside 20 px");
     }
 
     // A multi-line source collapses to its first line under Clip/Ellipsis,
     // so the unbounded root cannot stand in even when its widest line fits.
     let multiline = text.shape_run(slot_at(wid, 2), "a\nb", fitting, TextWrap::Ellipsis);
-    let bounded_key = fitting.request("a\nb", LineFit::Ellipsis).key;
+    let bounded_key = fitting.request("a\nb", LineFit::Ellipsis).key();
     assert_eq!(
-        multiline.key, bounded_key,
+        multiline.buffer_key(),
+        bounded_key,
         "multi-line text must resolve through the truncating path",
     );
     // One line at the 16 px leading `fitting` carries — the collapse is
@@ -97,9 +101,10 @@ fn a_truncating_fit_cuts_an_overflowing_label_to_one_fitting_line() {
             "{fit:?} is a bounded resolve, which has no wrapping floor to \
              report — the floor belongs to the unbounded root",
         );
-        assert_eq!(cut.key.fit(), fit);
+        assert_eq!(cut.buffer_key().fit(), fit);
         assert_eq!(
-            cut.key.text_hash, full.key.text_hash,
+            cut.buffer_key().text_hash,
+            full.buffer_key().text_hash,
             "{fit:?}: bounded keys reuse the source text hash",
         );
 
@@ -110,17 +115,22 @@ fn a_truncating_fit_cuts_an_overflowing_label_to_one_fitting_line() {
             zero.size.w, 0.0,
             "{fit:?} at zero width must collapse to zero",
         );
-        keys.push(cut.key);
+        keys.push(cut.buffer_key());
     }
 
     // Clip, ellipsis, and wrap bake three different strings at the same
     // width, so all three must key distinct cache slots.
     let wrapped = c.measure(long, params);
-    assert_eq!(wrapped.key.fit(), LineFit::Wrap);
+    assert_eq!(wrapped.buffer_key().fit(), LineFit::Wrap);
     assert_ne!(keys[0], keys[1], "clip and ellipsis must key distinctly");
-    assert_ne!(keys[0], wrapped.key, "clip and wrap must key distinctly");
     assert_ne!(
-        keys[1], wrapped.key,
+        keys[0],
+        wrapped.buffer_key(),
+        "clip and wrap must key distinctly"
+    );
+    assert_ne!(
+        keys[1],
+        wrapped.buffer_key(),
         "ellipsis and wrap must key distinctly"
     );
 }
@@ -593,7 +603,7 @@ fn a_truncating_fit_paints_one_line_even_across_a_newline() {
         // source offset from past the newline, and none sits below the
         // first line's band.
         let newline = text.find('\n').unwrap();
-        for g in glyph_positions(&c, r.key) {
+        for g in glyph_positions(&c, r.buffer_key()) {
             assert!(
                 g.start < newline,
                 "{fit:?} kept a glyph from the second paragraph (byte {})",

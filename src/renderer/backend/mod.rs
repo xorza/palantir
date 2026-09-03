@@ -170,8 +170,9 @@ use wgpu::util::StagingBelt;
 ///
 /// - offset 0 (8 bytes): [`ViewportPush`] — viewport size, written
 ///   once per pass by `WgpuBackend`.
-/// - offset 8 (8 bytes): `text::Params` — atlas dimensions,
-///   written per text batch by `RasterPass::render_batch`.
+/// - offset 8 (8 bytes): `text::Params` — atlas dimensions, written per
+///   raster batch by `RasterPass::render_batch`, because the two raster
+///   tenants hold differently sized atlases.
 ///
 /// Pipelines that don't read the tail (quad/mesh/image/curve) still
 /// declare `immediate_size = IMMEDIATES_BYTES` so the immediate-state
@@ -586,8 +587,8 @@ impl WgpuBackend {
         // Text prepare: per-batch glyph encoding. Routes its
         // vertex/atlas-staging writes through the same ctx so
         // every text-backend write lands as
-        // `copy_buffer_to_buffer` on the main encoder. Viewport
-        // and atlas-size params ride the shared immediate region,
+        // `copy_buffer_to_buffer` on the main encoder. The
+        // atlas-size params ride the shared immediate region,
         // pushed per batch by `RasterPass::render_batch` — no
         // per-frame sync from here.
         {
@@ -793,9 +794,8 @@ impl WgpuBackend {
         // can skip redundant `set_pipeline` / `set_vertex_buffer` calls
         // across consecutive same-kind steps. wgpu records every
         // `set_pipeline` as a real command — drivers don't dedupe.
-        // `PreClear` and the text backend's render set their own state,
-        // so we reset to `None` after them and re-bind on the next
-        // non-text step.
+        // `PreClear` sets its own state, so we reset to `None` after it
+        // and re-bind on the next step.
         #[derive(Debug, PartialEq, Eq)]
         enum Bound {
             None,
@@ -805,8 +805,23 @@ impl WgpuBackend {
             Curve,
             MaskStamp,
             MaskClear,
+            /// Text and icons both draw through it: one shader and one
+            /// group-0 layout, so one pipeline pair. Only the bind
+            /// group, the atlas extents and the vertex buffer differ,
+            /// and `RasterPass::render_batch` sets those per step.
+            ///
+            /// One state for two tenants holds only while they name one
+            /// pipeline, which is why both arms bind `raster_pipeline`
+            /// rather than a literal each repeats. Giving either its own
+            /// pair and leaving this variant would draw one tenant's
+            /// atlas through the other's shader wherever the two steps
+            /// meet — the visual suite's
+            /// `an_icon_between_two_text_runs_lands_in_its_own_pixel_box`
+            /// is what fails.
+            Raster,
         }
         let mut bound = Bound::None;
+        let raster_pipeline = fmt.raster.select(use_stencil);
         let viewport = ViewportPush::for_buffer(buffer);
 
         // Helper: thread a `BatchKind` marker through to `GpuTimings`
@@ -829,8 +844,8 @@ impl WgpuBackend {
         //
         // `rebind!` bundles the "bind ⇒ re-push viewport ⇒ record bound"
         // triple so no draw arm can bind a pipeline and forget the
-        // viewport push. Arms that set their own state and reset `bound`
-        // to `None` (PreClear, Text) stay open-coded.
+        // viewport push. `PreClear` stays open-coded: it draws off a
+        // vertex buffer of its own and resets `bound` to `None`.
         macro_rules! rebind {
             ($target:expr, $bind:expr) => {
                 if bound != $target {
@@ -907,15 +922,8 @@ impl WgpuBackend {
                 RenderStep::Text { batch } => {
                     mark(pass, BatchKind::Text);
                     debug_marker::push(pass, "text");
-                    // `render_batch` pushes both halves of the
-                    // immediate region (viewport at offset 0, params
-                    // at offset 8) itself. Subsequent non-text steps
-                    // re-push viewport via `viewport.push_into(pass)`
-                    // after their bind.
-                    self.text
-                        .pass
-                        .render_batch(batch, pass, &fmt.raster, use_stencil, &viewport);
-                    bound = Bound::None;
+                    rebind!(Bound::Raster, pass.set_pipeline(raster_pipeline));
+                    self.text.pass.render_batch(batch, pass);
                     debug_marker::pop(pass);
                 }
                 RenderStep::TierBatch { tier, batch } => {
@@ -950,17 +958,11 @@ impl WgpuBackend {
                             );
                         }
                         PaintTier::Icon => {
-                            // Like text, `render_batch` pushes both halves of
-                            // the immediate region itself, so the next step
-                            // must re-push the viewport after its own bind.
-                            self.icon.pass.render_batch(
-                                batch,
-                                pass,
-                                &fmt.raster,
-                                use_stencil,
-                                &viewport,
-                            );
-                            bound = Bound::None;
+                            // The pipeline text draws through, so a text
+                            // step followed by an icon one rebinds
+                            // nothing — see [`Bound::Raster`].
+                            rebind!(Bound::Raster, pass.set_pipeline(raster_pipeline));
+                            self.icon.pass.render_batch(batch, pass);
                         }
                         PaintTier::Curve => {
                             rebind!(

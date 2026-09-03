@@ -75,11 +75,10 @@ impl<'a> TextRun<'a> {
     /// there is anything to shape — the metrics a probe answers in live on
     /// it, so an empty run still needs one.
     ///
-    /// A face the shaper cannot be asked for has no metrics to answer in,
-    /// so it takes [`TextShapeKey::INVALID`] — the same sentinel every
-    /// other bufferless run carries, and the value a probe reports its
-    /// zero line height from.
-    pub(crate) fn unbounded_key(&self) -> TextShapeKey {
+    /// `None` for a face the shaper cannot be asked for: it names no
+    /// metrics to answer in, which is what a probe reports its zero line
+    /// height from.
+    pub(crate) fn unbounded_key(&self) -> Option<TextShapeKey> {
         TextShapeKey::for_text(self.text, self.font)
     }
 
