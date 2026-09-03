@@ -38,33 +38,20 @@ evicting a tintable icon is not a fair trade, since an SVG re-raster costs
   per-instance clip" property a glyph has, so the composer's strict-bounds
   scissor rule applies to it unchanged. That is what actually collapses the
   draw calls where a group mixes icons and text, and now that the pipeline is
-  shared it needs no shared atlas — only a shared batch table.
+  shared it needs no shared atlas — only a shared batch table. The win is
+  larger than the draw call: `admit_higher_kind` closes the open text batch
+  for every icon, so a toolbar of labelled buttons splits its text into one
+  batch per icon today. What the merge has to carry is the order the split
+  currently buys for free — one batch draws text then icons, so a run
+  recorded *after* an icon it overlaps would paint under it. That needs an
+  intra-batch overlap test, which is `HigherKindRects` scoped to the batch
+  rather than the group.
 - [ ] Until then, consecutive text and icon steps rebind the same pipeline.
   Both arms of the render loop reset `bound = Bound::None` because
   `RasterAtlas::draw_span` sets its own state, so a text step followed by an
   icon step issues a redundant `set_pipeline`. The bind group genuinely
   differs (different atlas); only the pipeline is shared. Worth a
   `Bound::Raster` variant if batch counts ever climb — dozens a frame today.
-
-## 4. The frame clock advances once per window, not once per frame
-
-- [ ] The clock is app-global but the tick is per window: two windows advance it
-  twice per host frame, halving every retention window (shaped buffers, encoded
-  rows, atlas slots) for both. `CosmicMeasure::frame`'s doc calls the jump "fine
-  for an age comparison". Either tick once per host frame or state the halving
-  as a known limit beside the constants it affects.
-
-## 5. `TextSystem::measure` demotes on one arm only
-
-- [ ] The `WrapCommit::Unbounded` arm returns without touching `entry.wrap`. A
-  truncating run whose width grows until the text fits keeps its last bounded
-  buffer referenced by the row and never superseded, so that buffer ages on the
-  120-frame protected window instead of the 4-frame probation. `take()` the slot
-  and supersede it on that arm as the `Bound` arm does.
-- [ ] Rows for a live widget never shrink: a widget whose text-ordinal count drops
-  from 100 to 3 keeps 97 stale rows until the widget leaves the tree. Bounded, so
-  low priority; note it or sweep rows whose ordinal is past the widget's count
-  this frame.
 
 ## 6. Truncation reads the probe through a closure and re-probes per retry
 

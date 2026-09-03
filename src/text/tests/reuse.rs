@@ -251,6 +251,115 @@ fn resize_drag_retains_only_the_probation_window() {
     );
 }
 
+/// A run that stops answering through its bounded slot demotes the
+/// buffer that slot named.
+///
+/// Three ways to stop, one demotion. The width moving is the one the
+/// probation window was built for, and it worked; the other two returned
+/// past the slot and left its buffer on the protected window with
+/// nothing able to ask for it again. A truncating run whose box grows
+/// until the text fits takes `WrapCommit::Unbounded`, and a policy that
+/// stopped binding never reaches the commit at all.
+#[test]
+fn a_run_that_stops_binding_demotes_the_buffer_its_bound_named() {
+    const BODY: &str = "a rather long label that will not fit";
+    let narrow = ui_shape(14.0).width(40.0);
+    for (label, second_shape, second_wrap) in [
+        (
+            "the box grew past the text",
+            ui_shape(14.0).width(400.0),
+            TextWrap::Ellipsis,
+        ),
+        (
+            "the policy stopped binding",
+            ui_shape(14.0),
+            TextWrap::SingleLine,
+        ),
+    ] {
+        let mut text = TextSystem::cosmic();
+        let s = slot(WidgetId::from_hash("row"));
+        let bounded = text.shape_run(s, BODY, narrow, TextWrap::Ellipsis).key;
+        text.shaper()
+            .render_ensure(TextShapeRequest::for_key(BODY, bounded).unwrap());
+        assert!(
+            bounded.max_width_px().is_some(),
+            "{label}: premise — the narrow box binds a width",
+        );
+
+        let before = text.shaper().cache_counts();
+        let after = text.shape_run(s, BODY, second_shape, second_wrap);
+        assert!(
+            after.key.max_width_px().is_none(),
+            "{label}: premise — the second measure answers unbounded",
+        );
+        assert_eq!(
+            (text.shaper().cache_counts() - before).supersedes,
+            1,
+            "{label}: the bounded buffer is demoted exactly once",
+        );
+
+        // Demoted, which is to say on the short window: the buffer goes
+        // within a few frames instead of holding a protected slot for
+        // 120 with no reuse row left that can name it.
+        idle(&mut text, shaped_buffer_cache::PROBATION_KEEP_FRAMES + 2);
+        assert!(
+            !text.shaper().has_cosmic_buffer(bounded),
+            "{label}: a demoted buffer must not outlive the probation window",
+        );
+    }
+}
+
+/// A widget that records fewer runs than last time loses the rows above
+/// its new count, on the pass that measured it.
+///
+/// The rows are bounded by the widget's *peak* ordinal count without
+/// this, so a list that once showed a hundred entries and now shows
+/// three keeps ninety-seven rows for as long as it stays in the tree.
+///
+/// The buffers those rows named are left alone — see
+/// [`scrolled_away_run_keeps_the_protected_window`] for why a slot that
+/// stops being recorded is not the same signal as one that moved.
+#[test]
+fn a_shrinking_widget_loses_the_rows_above_its_run_count() {
+    let mut text = TextSystem::cosmic();
+    let w = WidgetId::from_hash("list");
+    let keys: Vec<TextShapeKey> = (0..4)
+        .map(|i| {
+            let body = format!("row {i}");
+            drive_visible(&mut text, slot_at(w, i), &body, Some(200.0))
+        })
+        .collect();
+    assert_eq!(text.entry_count(), 4);
+
+    let before = text.shaper().cache_counts();
+    text.trim_rows(w, 4);
+    assert_eq!(
+        text.entry_count(),
+        4,
+        "a count that did not shrink retires nothing",
+    );
+
+    text.trim_rows(w, 1);
+    assert_eq!(text.entry_count(), 1, "the three rows above the count go");
+    assert!(text.has_entry(w, 0), "the run still recorded keeps its row");
+    assert!(!text.has_entry(w, 3));
+    assert_eq!(
+        (text.shaper().cache_counts() - before).supersedes,
+        0,
+        "a slot that stopped being recorded is not a slot that moved",
+    );
+
+    // The counterweight, stated on the buffers: a list that grows back
+    // inside the window finds them resident.
+    idle(&mut text, shaped_buffer_cache::PROBATION_KEEP_FRAMES + 2);
+    for key in &keys {
+        assert!(
+            text.shaper().has_cosmic_buffer(*key),
+            "a trimmed row must not shorten what its buffer was promised",
+        );
+    }
+}
+
 /// The counterweight: a run that leaves the tree is *not* superseded.
 /// Scrolling a row out of view and back within the window must reuse its
 /// buffer, which is exactly what the long window is for — so the fix

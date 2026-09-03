@@ -35,6 +35,7 @@ use crate::primitives::interned_text::InternedText;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::span::Span;
+use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::layout_core::LayoutCore;
 use crate::scene::tree::Tree;
 use crate::scene::tree::node_id::NodeId;
@@ -448,10 +449,11 @@ impl LayoutPass<'_> {
         available_w: f32,
         runs: impl Iterator<Item = TextShapeInput<'t>>,
     ) -> Size {
+        let wid = self.tree.records.widget_id()[node.idx()];
         let span_start = self.out.text_shapes.len() as u32;
         let mut s = Size::ZERO;
         for ts in runs {
-            let m = self.shape_text(node, &ts, available_w);
+            let m = self.shape_text(wid, &ts, available_w);
             s = s.max(m);
         }
         let span_len = self.out.text_shapes.len() as u32 - span_start;
@@ -459,11 +461,17 @@ impl LayoutPass<'_> {
             start: span_start,
             len: span_len,
         };
+        // The count this node just recorded is the only point that knows
+        // it, so the reuse rows above it are dropped here. A node that
+        // filled every ordinal has none above it, and is also the one
+        // `count` cannot express.
+        if let Ok(count) = u16::try_from(span_len) {
+            self.engine.text.trim_rows(wid, count);
+        }
         s
     }
 
-    fn shape_text(&mut self, node: NodeId, ts: &TextShapeInput<'_>, available_w: f32) -> Size {
-        let wid = self.tree.records.widget_id()[node.idx()];
+    fn shape_text(&mut self, wid: WidgetId, ts: &TextShapeInput<'_>, available_w: f32) -> Size {
         let slot = TextRunSlot {
             widget_id: wid,
             ordinal: ts.ordinal,
