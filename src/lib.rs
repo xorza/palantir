@@ -286,10 +286,12 @@ pub use primitives::brush::gradient::{Gradient, GradientGeometry, Interp, Spread
 pub use primitives::brush::{Brush, CurveBrush};
 pub use primitives::color::Color;
 pub use primitives::color::ColorU8;
+pub use primitives::content_type::ContentType;
 pub use primitives::corners::Corners;
 pub use primitives::image::{Image, ImageDownsample, ImageFilter, ImageFit};
 pub use primitives::interned_str::InternedStr;
 pub use primitives::mesh::{Mesh, MeshVertex};
+pub use primitives::raster_image::RasterImage;
 pub use primitives::rect::Rect;
 pub use primitives::shadow::Shadow;
 pub use primitives::size::Size;
@@ -336,7 +338,6 @@ pub use shape::triangle::TriangleShape;
 // Shaping and rasterization for a caller that draws its own text — see
 // [`TextShaper::glyphs`]. The atlas and the pipeline stay the caller's; what is
 // shared is the font stack.
-pub use renderer::backend::raster_atlas::content_type::ContentType;
 pub use text::error::FontLoadError;
 pub use text::font_family::FontFamily;
 pub use text::font_scope::FontScope;
@@ -347,7 +348,7 @@ pub use text::glyph_font::GlyphFont;
 pub use text::glyphs::TextGlyphs;
 pub use text::probe::Caret;
 pub use text::probe::TextProbe;
-pub use text::render::{GlyphImage, GlyphPlacement, GlyphRasterKey, PlacedGlyph};
+pub use text::render::{GlyphRasterKey, PlacedGlyph};
 pub use text::run::TextRun;
 pub use text::shaper::TextShaper;
 pub use text::wrap::TextWrap;

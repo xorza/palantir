@@ -1,6 +1,6 @@
 //! The value vocabulary every other layer is written in — geometry,
-//! colour, paint, text and identity — plus the shared lane macro the
-//! four-f16 packed types are built from.
+//! colour, paint, text, raster output and identity — plus the shared lane
+//! macro the four-f16 packed types are built from.
 //!
 //! A leaf layer: nothing here reaches up into scene, layout or renderer,
 //! which is what lets all three depend on one definition of a rect, a
@@ -100,6 +100,7 @@ pub(crate) mod bezier;
 pub(crate) mod brush;
 pub(crate) mod chevron;
 pub(crate) mod color;
+pub(crate) mod content_type;
 pub(crate) mod corners;
 pub(crate) mod fill_kind;
 pub(crate) mod half_simd;
@@ -111,6 +112,7 @@ pub(crate) mod lut_row;
 pub(crate) mod mesh;
 pub(crate) mod nan;
 pub(crate) mod num;
+pub(crate) mod raster_image;
 pub(crate) mod recorded_text;
 pub(crate) mod rect;
 pub(crate) mod serde;

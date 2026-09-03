@@ -5,61 +5,70 @@ fn mono_measure_cases() {
     // Mono lays every ASCII byte out `font_size * 0.5` wide on a
     // `line_height` band, so each expected size below is arithmetic.
     //
-    // `single_line` is asserted alongside, and the height column is what
-    // makes it checkable rather than restated: a case measuring one band
-    // tall must report `true`, two bands `false`. That flag is what gates
-    // `TextSystem::measure`'s fitting-truncate skip, so a shape that lost
-    // it would silently start reshaping every fitting label.
+    // The height column is what pins the wrap arithmetic: a case
+    // measuring one band tall stayed on one line, two bands wrapped once.
     // No empty case: a run with no bytes never reaches a metric — see
     // `an_empty_run_is_answered_at_the_boundary_and_shapes_nothing`.
     let base = shape(16.0);
     let tall = base.leading(24.0);
-    for (label, text, params, expected, single_line) in [
-        (
-            "unbroken_legacy_short",
-            "Hi",
-            base,
-            Size::new(16.0, 16.0),
-            true,
-        ),
+    for (label, text, params, expected) in [
+        ("unbroken_legacy_short", "Hi", base, Size::new(16.0, 16.0)),
         (
             "unbroken_legacy_long",
             "hello!!",
             base,
             Size::new(56.0, 16.0),
-            true,
         ),
         (
             "wraps_below_unbroken",
             "12345678",
             base.width(32.0),
             Size::new(32.0, 32.0),
-            false,
         ),
+        // Wide enough to hold the run: the extent is the glyphs, not the
+        // box the caller offered.
         (
-            "line_height_param_short",
+            "fits_inside_bound",
             "Hi",
-            tall,
-            Size::new(16.0, 24.0),
-            true,
+            base.width(32.0),
+            Size::new(16.0, 16.0),
         ),
+        ("line_height_param_short", "Hi", tall, Size::new(16.0, 24.0)),
         (
             "line_height_param_wrapped",
             "12345678",
             tall.width(32.0),
             Size::new(32.0, 48.0),
-            false,
         ),
     ] {
-        let r = mono_shape(text, params, LineFit::Wrap);
-        assert_eq!(r.size, expected, "case: {label}");
-        assert_eq!(r.single_line, single_line, "case: {label}");
         assert_eq!(
-            r.single_line,
-            r.size.h <= params.font.line_height_px,
-            "case: {label}: single_line must agree with the measured height",
+            mono_extent(text, params, LineFit::Wrap),
+            expected,
+            "case: {label}"
         );
     }
+}
+
+/// The mono root reports the two facts only an unbounded shape has, and
+/// reports them the way the cosmic root does: one visual line, and a wrap
+/// floor measured over the same UAX #14 segments.
+///
+/// `single_line` gates `TextSystem::measure`'s fitting-truncate skip, so
+/// a root that lost it would silently start reshaping every fitting
+/// label.
+#[test]
+fn the_mono_root_reports_one_line_and_a_segment_floor() {
+    let params = shape(16.0);
+    let root = mono_root("hello world", params);
+    assert!(root.single_line, "an unbounded mono run is one line");
+    assert_eq!(root.size, Size::new(88.0, 16.0), "11 bytes × 8 px");
+    // "hello " and "world" are the two unbreakable segments; the space
+    // hangs off the first, so both measure five 8 px cells.
+    assert_eq!(root.wrap_floor(), 40.0);
+
+    // One unbroken word is its own floor, and a trailing space still
+    // hangs rather than widening it.
+    assert_eq!(mono_root("abcdefg ", params).wrap_floor(), 56.0);
 }
 
 #[test]

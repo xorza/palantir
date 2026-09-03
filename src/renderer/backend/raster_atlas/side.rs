@@ -1,7 +1,7 @@
 //! One per-content-type atlas texture: its allocator, its growth by
 //! doubling, and the old texture preserved across a grow.
 
-use crate::renderer::backend::raster_atlas::content_type::ContentType;
+use crate::primitives::content_type::ContentType;
 use etagere::{BucketedAtlasAllocator, size2};
 use glam::U16Vec2;
 

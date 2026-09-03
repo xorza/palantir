@@ -386,7 +386,6 @@ pub(crate) mod test_support {
                 size: shaped.measured,
                 key: shaped.key,
                 intrinsic_min: root.intrinsic_min,
-                single_line: root.single_line,
             }
         }
 

@@ -1,8 +1,10 @@
-//! Wrap policy: [`TextWrap`], and the sizes each policy derives from an
-//! unbounded root measurement.
+//! Wrap policy: [`TextWrap`], the sizes each policy derives from an
+//! unbounded root measurement, and the break rule those sizes are
+//! measured against.
 //!
 //! Nothing here shapes or caches. Every layout consequence of a policy is a
-//! pure function of a measurement layout already holds.
+//! pure function of a measurement layout already holds, or of the text
+//! itself.
 
 use crate::layout::types::align::HAlign;
 use crate::primitives::num::F32Ext;
@@ -22,6 +24,28 @@ use crate::text::root::TextRoot;
 #[inline]
 pub(super) fn canonical_wrap_width(width: f32) -> f32 {
     width.max(0.0).quantize_px() as f32
+}
+
+/// Byte offsets in `text` that open a new unbreakable segment: the
+/// UAX #14 break opportunities, minus the terminal one at `text.len()`,
+/// which ends the text rather than opening a segment.
+///
+/// **The one statement of where a line may break.** Both metrics measure
+/// the wrap floor behind [`TextRoot::intrinsic_min`] over segments
+/// delimited by these — the cosmic side by walking glyphs, the mono
+/// metric by counting bytes — so neither can claim a segment the shaper
+/// would happily break. It is also the source cosmic-text splits its own
+/// shape words on (`cosmic-text/src/shape.rs`).
+///
+/// Whitespace is not trimmed here: UAX #14 places the opportunity
+/// *after* a space, so a space ends its segment and hangs. What each
+/// measurer drops off the end of a segment belongs to how it measures
+/// ink, not to where the breaks are.
+pub(super) fn break_offsets(text: &str) -> impl Iterator<Item = u32> + '_ {
+    unicode_linebreak::linebreaks(text)
+        .map(|(offset, _)| offset)
+        .filter(|&offset| offset < text.len())
+        .map(|offset| offset as u32)
 }
 
 /// Whether a shape pays for the segment scan behind

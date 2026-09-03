@@ -7,7 +7,7 @@
 
 use crate::primitives::size::Size;
 use crate::text::root::TextRoot;
-use crate::text::wrap::WrapFloor;
+use crate::text::wrap::{self, WrapFloor};
 use cosmic_text::Buffer;
 
 /// Measured facts of a shaped `buffer`: what it laid out to, and the
@@ -90,23 +90,6 @@ pub(super) fn shaped_geometry(
     }
 }
 
-/// Byte offsets in `text` that start a new unbreakable segment, i.e. the
-/// UAX #14 opportunities minus the terminal one at `text.len()`, which
-/// ends the text rather than opening a segment.
-///
-/// Same source cosmic-text splits its shape words on
-/// (`cosmic-text/src/shape.rs`), so the wrap floor this feeds cannot
-/// claim a segment the shaper would happily break.
-fn collect_break_offsets(text: &str, out: &mut Vec<u32>) {
-    out.clear();
-    out.extend(
-        unicode_linebreak::linebreaks(text)
-            .map(|(offset, _)| offset)
-            .filter(|&offset| offset < text.len())
-            .map(|offset| offset as u32),
-    );
-}
-
 /// Width of the widest segment no line break can split — the min-content
 /// width. Trailing whitespace is excluded because UAX #14 places its
 /// break opportunity *after* a space, so a space always ends its segment
@@ -123,7 +106,8 @@ fn collect_break_offsets(text: &str, out: &mut Vec<u32>) {
 pub(super) fn intrinsic_min_width(buffer: &Buffer, breaks: &mut Vec<u32>) -> f32 {
     let mut intrinsic_min = 0.0_f32;
     for run in buffer.layout_runs() {
-        collect_break_offsets(run.text, breaks);
+        breaks.clear();
+        breaks.extend(wrap::break_offsets(run.text));
         let mut segment_w = 0.0_f32;
         let mut trailing_ws_w = 0.0_f32;
         for g in run.glyphs {

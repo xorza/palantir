@@ -64,10 +64,10 @@ pub(crate) mod test_support {
     ///
     /// **Flattened rather than holding a [`TextRoot`], because it is not
     /// always one.** `TextSystem::shape_run` fills `size` from the
-    /// *width-bounded* resolve while `intrinsic_min` and `single_line`
-    /// come from the unbounded root, which is exactly the pair a bounded
-    /// shape cannot answer for itself. Storing a `root: TextRoot` would
-    /// give that hybrid a name promising it came from one shape.
+    /// *width-bounded* resolve while `intrinsic_min` comes from the
+    /// unbounded root, which is exactly the fact a bounded shape cannot
+    /// answer for itself. Storing a `root: TextRoot` would give that
+    /// hybrid a name promising it came from one shape.
     #[derive(Clone, Copy, Debug)]
     pub(crate) struct TestMeasure {
         pub(crate) size: Size,
@@ -75,7 +75,6 @@ pub(crate) mod test_support {
         /// `None` when the run was shaped by a policy that skips the
         /// wrap-floor scan — see [`TextRoot::intrinsic_min`].
         pub(crate) intrinsic_min: Option<f32>,
-        pub(crate) single_line: bool,
     }
 
     impl TestMeasure {
@@ -92,7 +91,6 @@ pub(crate) mod test_support {
                 size: root.size,
                 key,
                 intrinsic_min: root.intrinsic_min,
-                single_line: root.single_line,
             }
         }
     }

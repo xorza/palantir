@@ -19,12 +19,9 @@ use crate::icons::icon_table::IconId;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::raster_atlas::RasterAtlasConfig;
 use crate::renderer::backend::raster_atlas::raster_quad::RasterQuad;
-use crate::renderer::backend::raster_pass::{
-    RasterImage, RasterPass, RasterPassConfig, Rasterized,
-};
+use crate::renderer::backend::raster_pass::{RasterPass, RasterPassConfig, Rasterized};
 use crate::renderer::backend::raster_program::RasterProgram;
 use crate::renderer::render_buffer::icon::IconDrawRow;
-use glam::IVec2;
 
 /// The state one [`IconBackend::prewarm`] pass covered. Both halves matter: a
 /// scale change invalidates every raster, and a set loaded afterwards has
@@ -47,9 +44,6 @@ pub(crate) struct IconBackend {
     /// The sets the `Ui` side has loaded. Shared, so an icon loaded on frame
     /// N is rasterizable on frame N.
     icons: IconRegistry,
-    /// Raster output, refilled per miss and handed straight to the atlas.
-    /// Retained so a steady state that re-rasterizes allocates nothing.
-    staging: Vec<u8>,
     /// What [`Self::prewarm`] has already covered, or `None` before it has
     /// run at all.
     warmed: Option<PrewarmMark>,
@@ -89,7 +83,6 @@ impl IconBackend {
             ),
             rasterizer: IconRasterizer::default(),
             icons,
-            staging: Vec::new(),
             warmed: None,
         }
     }
@@ -169,15 +162,7 @@ impl IconBackend {
             return Some(idx);
         }
         let table = self.icons.get(key.icon.set);
-        let content = self.rasterizer.rasterize(&table, key, &mut self.staging)?;
-        let raster = RasterImage {
-            content,
-            size: key.size().as_uvec2(),
-            // Unlike a glyph, an icon's raster *is* its box, so the
-            // composer's origin needs no adjustment.
-            bearing: IVec2::ZERO,
-            data: &self.staging,
-        };
+        let raster = self.rasterizer.rasterize(&table, key)?;
         match self.pass.insert_raster(device, key, raster) {
             Rasterized::Slot(idx) => Some(idx),
             Rasterized::AtlasFull => None,

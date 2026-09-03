@@ -13,10 +13,11 @@
 //! drawing text in the same faces as the UI around it is not a coincidence to
 //! be arranged but a consequence of asking the same shaper.
 
+use crate::primitives::raster_image::RasterImage;
 use crate::primitives::size::Size;
 use crate::text::cosmic::CosmicMeasure;
 use crate::text::glyph_font::GlyphFont;
-use crate::text::render::{GlyphImage, GlyphRasterKey, PlacedGlyph, RunPlacement};
+use crate::text::render::{GlyphRasterKey, PlacedGlyph, RunPlacement};
 use crate::text::request::TextShapeRequest;
 use crate::text::wrap::WrapFloor;
 use glam::Vec2;
@@ -134,7 +135,12 @@ impl<'a> TextGlyphs<'a> {
     /// Uncached on palantir's side. The caller's atlas is the cache — this is
     /// the same call palantir's own text backend makes on an atlas miss, and
     /// caching it twice would be paying for a copy nobody reads.
-    pub fn rasterize(&mut self, glyph: GlyphRasterKey) -> Option<GlyphImage> {
+    ///
+    /// The pixels are borrowed from the lease's own scratch and the next
+    /// call overwrites them, so copy them into an atlas before asking for
+    /// the next glyph. That is what keeps a re-rasterized screenful free
+    /// of per-glyph allocation.
+    pub fn rasterize(&mut self, glyph: GlyphRasterKey) -> Option<RasterImage<'_>> {
         self.cosmic.rasterize_glyph(glyph)
     }
 }
