@@ -13,8 +13,7 @@
 /// [`RasterImage::content`](crate::RasterImage).
 ///
 /// The discriminants are load-bearing: `RasterAtlas` indexes its
-/// `[Side; 2]` with `content as usize`, and a `PendingCopy` stores the
-/// side it targets as a `u8`.
+/// `[Side; 2]` with `content as usize`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u8)]
 pub enum ContentType {

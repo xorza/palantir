@@ -48,6 +48,7 @@ use rustc_hash::FxHashMap;
 use std::collections::hash_map::Entry;
 use std::fmt::Debug;
 use std::hash::Hash;
+use std::ops::Range;
 use wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
 
 /// How one [`RasterAtlas`] differs from the other: what it calls itself in GPU
@@ -200,25 +201,52 @@ pub(super) struct RasterAtlas<K> {
     /// victim — see [`AtlasCounters`].
     pub(super) counters: AtlasCounters,
 
-    /// Glyph pixel data queued by `insert`, packed with per-row padding
-    /// so each glyph's copy can satisfy
-    /// `wgpu::COPY_BYTES_PER_ROW_ALIGNMENT = 256`. Drained by
-    /// [`Self::flush_pending_uploads`] into one staging buffer + one
-    /// encoder with N `copy_buffer_to_texture` commands.
-    pending_staging: Vec<u8>,
-    pending_staging_used: usize,
+    /// Raster pixels queued by `insert`, one raster after another with
+    /// their rows exactly as the rasterizer packed them.
+    ///
+    /// **No row padding here.** `copy_buffer_to_texture` wants each row
+    /// at `wgpu::COPY_BYTES_PER_ROW_ALIGNMENT = 256`, which for a 12 px
+    /// mask glyph is twenty times its pixels. Padding at this end meant
+    /// retaining a buffer sized for that and staging every pad byte
+    /// twice, so the padding happens once, into the belt's own mapped
+    /// staging — see [`Self::flush_pending_uploads`].
+    pending_pixels: Vec<u8>,
     pending_copies: Vec<PendingCopy>,
     /// Retained staging buffer; grown on demand, reused across frames.
     staging_buf: Option<wgpu::Buffer>,
 }
 
+/// One raster waiting to reach its atlas side.
 #[derive(Clone, Copy, Debug)]
 struct PendingCopy {
-    side: u8,
+    content: ContentType,
     origin: UVec2,
     size: UVec2,
-    bytes_per_row: u32,
-    staging_offset: u64,
+    /// Where this raster's rows start in
+    /// [`RasterAtlas::pending_pixels`]. Its length follows from `size`
+    /// and `content`, so it is derived rather than stored.
+    pixels_start: usize,
+}
+
+impl PendingCopy {
+    /// Pitch of one unpadded row — what the rasterizer wrote.
+    fn bytes_per_row(self) -> u32 {
+        self.size.x * self.content.bytes_per_pixel()
+    }
+
+    /// Pitch `copy_buffer_to_texture` reads this raster's rows at. Every
+    /// raster's region is a whole number of these, so each one's buffer
+    /// offset is 256-aligned too — the second alignment that copy wants.
+    fn padded_bytes_per_row(self) -> u32 {
+        self.bytes_per_row()
+            .next_multiple_of(COPY_BYTES_PER_ROW_ALIGNMENT)
+    }
+
+    /// This raster's bytes in [`RasterAtlas::pending_pixels`].
+    fn pixels(self) -> Range<usize> {
+        let len = self.bytes_per_row() as usize * self.size.y as usize;
+        self.pixels_start..self.pixels_start + len
+    }
 }
 
 impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
@@ -270,8 +298,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
             unallocated_expiry: ExpiryWheel::with_keep(UNALLOCATED_KEEP_FRAMES),
             bound,
             counters: AtlasCounters::default(),
-            pending_staging: Vec::new(),
-            pending_staging_used: 0,
+            pending_pixels: Vec::new(),
             pending_copies: Vec::new(),
             staging_buf: None,
         }
@@ -381,42 +408,45 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
         idx
     }
 
-    /// Append one glyph's pixel data to the pending-upload staging
-    /// vec, padding each row out to `COPY_BYTES_PER_ROW_ALIGNMENT` so
-    /// `copy_buffer_to_texture` can consume it. The per-glyph
-    /// staging-buffer offset is 256-aligned by construction (rows
-    /// pad to 256), satisfying both the row-pitch and buffer-offset
-    /// alignment requirements.
+    /// Queue one raster's pixels for the frame's drain.
+    ///
+    /// `pixels` is already exactly `size.x * size.y` texels with no row
+    /// slack, so the whole raster is one append.
     fn enqueue_upload(&mut self, content: ContentType, origin: UVec2, size: UVec2, pixels: &[u8]) {
-        let bpp = content.bytes_per_pixel();
-        let unpadded = size.x * bpp;
-        let bytes_per_row = unpadded.next_multiple_of(COPY_BYTES_PER_ROW_ALIGNMENT);
-        let region_start = self.pending_staging_used;
-        debug_assert!(region_start.is_multiple_of(COPY_BYTES_PER_ROW_ALIGNMENT as usize));
-        let region_bytes = bytes_per_row as usize * size.y as usize;
-        self.pending_staging_used += region_bytes;
-        if self.pending_staging.len() < self.pending_staging_used {
-            self.pending_staging.resize(self.pending_staging_used, 0);
-        }
-        for row in 0..size.y as usize {
-            let src = &pixels[row * unpadded as usize..(row + 1) * unpadded as usize];
-            let dst_off = region_start + row * bytes_per_row as usize;
-            self.pending_staging[dst_off..dst_off + unpadded as usize].copy_from_slice(src);
-        }
-        self.pending_copies.push(PendingCopy {
-            side: content as u8,
+        let copy = PendingCopy {
+            content,
             origin,
             size,
-            bytes_per_row,
-            staging_offset: region_start as u64,
-        });
+            pixels_start: self.pending_pixels.len(),
+        };
+        debug_assert_eq!(
+            pixels.len(),
+            copy.pixels().len(),
+            "a raster's bytes must be its rows with no slack",
+        );
+        self.pending_pixels.extend_from_slice(pixels);
+        self.pending_copies.push(copy);
     }
 
-    /// Drain queued uploads through `ctx`: the per-glyph bytes are
-    /// staged through the renderer's shared staging belt (one
-    /// `copy_buffer_to_buffer` into our retained staging buffer), plus
-    /// N `copy_buffer_to_texture` commands recorded on `ctx.encoder`.
-    /// The renderer owns the submit; this method adds no extra one.
+    /// Drain this frame's queued rasters onto the GPU, after any pending
+    /// grow blit. Called once per frame, before any pass draws — so the
+    /// pixels land in the same submit as the draws that read them. The
+    /// renderer owns the submit; this method adds no extra one.
+    ///
+    /// **The row padding is applied here, into the belt's own mapped
+    /// staging.** `copy_buffer_to_texture` wants each row at
+    /// `COPY_BYTES_PER_ROW_ALIGNMENT`, which for a 12 px mask glyph is
+    /// twenty times its pixels — so building the padded image on this
+    /// side first and then handing it to the belt staged those bytes
+    /// twice and kept a retained buffer sized for the padded peak.
+    /// Composing straight into the mapped view pays for them once, and
+    /// what this type retains is the pixels alone.
+    ///
+    /// **Not `queue.write_texture`, which needs no padding at all.**
+    /// Queue writes run before every command buffer in the submit, so
+    /// they would land under the grow blit recorded just above — and
+    /// measured on the allocation suite's scale ramp, wgpu allocates per
+    /// call: 400 blocks a frame became 863.
     pub(super) fn flush_pending_uploads(&mut self, ctx: &mut GpuCtx<'_>) {
         // Grow blits first: old→new copy must complete before any new
         // glyph writes hit the new texture. wgpu serialises commands
@@ -446,34 +476,38 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
         if self.pending_copies.is_empty() {
             return;
         }
-        let bytes = self.pending_staging_used as u64;
-        let current_cap = self.staging_buf.as_ref().map_or(0, wgpu::Buffer::size);
-        if bytes > current_cap {
-            let new_cap = bytes.next_power_of_two().max(current_cap * 2).max(4096);
-            self.staging_buf = Some(ctx.device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some(&self.labels.staging),
-                size: new_cap,
-                usage: wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            }));
-        }
+        let bytes = self.reserve_staging(ctx.device);
         let buf = self.staging_buf.as_ref().unwrap();
-        ctx.write(buf, 0, &self.pending_staging[..self.pending_staging_used]);
+        // Every queued raster covers at least one row, and a padded row
+        // is 256 bytes, so the view is never the empty one `write_view`
+        // declines — and an early return here would strand the queue.
+        let mut view = ctx
+            .write_view(buf, 0, bytes)
+            .expect("a queued raster stages at least one padded row");
 
+        // One walk, so the staging offset a row is written at and the
+        // offset its copy reads from are the same number rather than two
+        // running totals that have to agree. The pad bytes are left as
+        // the belt's chunk last held them: no copy reads past a row's
+        // pixels, so writing them would be work for nothing. Recording a
+        // copy before its own rows are staged costs nothing either — the
+        // command reads the buffer at submit, not here.
         debug_marker::push_encoder(ctx.encoder, &self.labels.batch_upload);
+        let mut at = 0usize;
         for c in &self.pending_copies {
-            let side = &self.sides[c.side as usize];
+            let row_bytes = c.bytes_per_row() as usize;
+            let padded = c.padded_bytes_per_row();
             ctx.encoder.copy_buffer_to_texture(
                 wgpu::TexelCopyBufferInfo {
                     buffer: buf,
                     layout: wgpu::TexelCopyBufferLayout {
-                        offset: c.staging_offset,
-                        bytes_per_row: Some(c.bytes_per_row),
+                        offset: at as u64,
+                        bytes_per_row: Some(padded),
                         rows_per_image: Some(c.size.y),
                     },
                 },
                 wgpu::TexelCopyTextureInfo {
-                    texture: &side.texture,
+                    texture: &self.sides[c.content as usize].texture,
                     mip_level: 0,
                     origin: wgpu::Origin3d {
                         x: c.origin.x,
@@ -488,11 +522,36 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
                     depth_or_array_layers: 1,
                 },
             );
+            for row in self.pending_pixels[c.pixels()].chunks_exact(row_bytes) {
+                view.slice(at..at + row_bytes).copy_from_slice(row);
+                at += padded as usize;
+            }
         }
         debug_marker::pop_encoder(ctx.encoder);
 
-        self.pending_staging_used = 0;
+        self.pending_pixels.clear();
         self.pending_copies.clear();
+    }
+
+    /// Grow the retained staging buffer to hold this frame's padded
+    /// rows, and answer how many bytes that is.
+    fn reserve_staging(&mut self, device: &wgpu::Device) -> u64 {
+        let bytes: u64 = self
+            .pending_copies
+            .iter()
+            .map(|c| u64::from(c.padded_bytes_per_row()) * u64::from(c.size.y))
+            .sum();
+        let current_cap = self.staging_buf.as_ref().map_or(0, wgpu::Buffer::size);
+        if bytes > current_cap {
+            let new_cap = bytes.next_power_of_two().max(current_cap * 2).max(4096);
+            self.staging_buf = Some(device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some(&self.labels.staging),
+                size: new_cap,
+                usage: wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            }));
+        }
+        bytes
     }
 
     /// Cache a non-drawing glyph: it takes a slab index like any other

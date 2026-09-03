@@ -43,10 +43,29 @@ impl<'a> GpuCtx<'a> {
     /// `BufferSize::new` rejects zero). `offset` and `bytes.len()`
     /// must both be multiples of `COPY_BUFFER_ALIGNMENT` (4).
     pub(super) fn write(&mut self, dst: &wgpu::Buffer, offset: u64, bytes: &[u8]) {
-        let Some(size) = wgpu::BufferSize::new(bytes.len() as u64) else {
+        let Some(mut view) = self.write_view(dst, offset, bytes.len() as u64) else {
             return;
         };
-        let mut view = self.belt.write_buffer(self.encoder, dst, offset, size);
         view.copy_from_slice(bytes);
+    }
+
+    /// [`Self::write`] without the source slice: the mapped staging
+    /// bytes themselves, for a caller that composes them in place.
+    ///
+    /// What that buys is one memcpy instead of two. A caller holding the
+    /// finished bytes already should use [`Self::write`] — this is for
+    /// one that would otherwise build a full-size copy just to hand it
+    /// over, which is the whole upload's worth of bytes staged twice.
+    /// Unwritten bytes of the view keep whatever the belt's chunk last
+    /// held, so a caller that leaves gaps owes it that they are never
+    /// read.
+    pub(super) fn write_view(
+        &mut self,
+        dst: &wgpu::Buffer,
+        offset: u64,
+        bytes: u64,
+    ) -> Option<wgpu::BufferViewMut> {
+        let size = wgpu::BufferSize::new(bytes)?;
+        Some(self.belt.write_buffer(self.encoder, dst, offset, size))
     }
 }
