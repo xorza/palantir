@@ -120,12 +120,15 @@ fn frame_end(text: &mut TextSystem, shaper: &TextShaper) {
 /// text hash — is inside the loop on both sides, as layout rebuilds it
 /// each frame either way.
 ///
-/// The frame boundary belongs in the measured section because the reuse
-/// layer's cost is not only its per-run lookup:
-/// `TextSystem::end_frame`
-/// retains every row it holds, once a frame, and the layer-less arms
-/// have no rows to retain. Leaving it out hands the layer a discount on
-/// the very comparison meant to justify it.
+/// The frame boundary belongs in the measured section, **split the way
+/// the two designs would really pay it**. `TextSystem::end_frame`
+/// retains every row it holds once a frame, and the layer-less arms
+/// have no rows to retain — so that half is the layer's alone, and
+/// leaving it out would hand the layer a discount on the very
+/// comparison meant to justify it. The clock tick is the other half
+/// and belongs to both: a design with no reuse rows still has a
+/// shaped-buffer cache to age, so charging it to one side only would
+/// bill the layer for a wheel drain it did not cause.
 fn bench_reuse_layer(c: &mut Criterion, run: Run<'_>) {
     let mut group = run.subgroup(c, "reuse_layer");
     bench_shared_content(&mut group);
@@ -179,6 +182,7 @@ fn bench_reuse_layer(c: &mut Criterion, run: Run<'_>) {
             for text in &labels {
                 black_box(shaper.root(request_for(text), WrapFloor::Skip));
             }
+            shaper.tick_frame();
         });
     });
 
@@ -225,6 +229,7 @@ fn bench_reuse_layer(c: &mut Criterion, run: Run<'_>) {
                     LineFit::Wrap,
                 ))));
             }
+            shaper.tick_frame();
         });
     });
     group.finish();

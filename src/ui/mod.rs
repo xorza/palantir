@@ -794,9 +794,17 @@ impl Ui {
     /// [`Self::load_icons`] and [`Self::register_image`] — nothing has to
     /// be held to keep it alive.
     ///
-    /// A load invalidates every shaped buffer and every encoded glyph
-    /// template, so the frame after one re-shapes the text on screen.
-    /// Loads are cold events; that is the whole cost.
+    /// A load invalidates every shaped buffer, every reuse row, the
+    /// layout measure snapshot and every encoded glyph template — and
+    /// **this frame** re-shapes the text on screen, not the next one.
+    ///
+    /// So it schedules nothing, and needs no `&mut self` to do it. An app
+    /// holds a `Ui` only inside [`App::update`](crate::App::update) and
+    /// [`App::record`](crate::App::record), both of which run on a
+    /// recorded frame *before* that frame measures and before it submits
+    /// — and measuring and submitting are the two steps that re-read the
+    /// font database. Loads are cold events; one remeasured frame is the
+    /// whole cost.
     ///
     /// ```ignore
     /// let mono = ui.load_font(include_bytes!("../assets/Iosevka.ttf"))?;

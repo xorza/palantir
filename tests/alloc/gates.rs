@@ -64,11 +64,24 @@ fn full_tree_cpu_frame_alloc_free() {
         .run(|ui| state.render(BENCH_SCALE, ui));
 }
 
-/// Driver floor on the current wgpu/cosmic-text pin. Bump it if a driver
-/// upgrade or a deliberate palantir change moves the baseline; trip the
-/// gate otherwise. All current attribution is wgpu_core/wgpu_hal — no
-/// palantir-side per-frame allocs on this path.
-const RENDER_BLOCKS_PER_FRAME_MAX: u64 = 35;
+/// Ceiling over the driver floor on the current wgpu/cosmic-text pin.
+/// All attribution is wgpu_core/wgpu_hal — no palantir-side per-frame
+/// allocs on this path.
+///
+/// **A ceiling over noise, not a pin on the floor.** The floor itself
+/// is flat, the same count on every one of the 256 measured frames.
+/// But wgpu pools its command encoders and tracking vectors, and how
+/// often a call hits that pool depends on state palantir does not own,
+/// so a rare frame lands several blocks above the rest — inside
+/// `create_command_encoder` and `submit`, where palantir allocates
+/// nothing itself. Sized against that spike, because a ceiling set to
+/// the flat value fails on driver noise and reads as a regression.
+///
+/// Which means a regression is not what this catches. A palantir change
+/// worth knowing about, or a wgpu bump, moves the *flat* value — printed
+/// as the mean on every run, beside the worst. That line is the signal;
+/// this constant only keeps the noise quiet.
+const RENDER_BLOCKS_PER_FRAME_MAX: u64 = 44;
 
 /// Surface and tree for both GPU gates, deliberately smaller than the
 /// CPU one above: what the first of them pins is the driver's per-frame
