@@ -1034,8 +1034,7 @@ impl ComposeSession<'_> {
     /// Finalize the open text batch (if any): push a [`TextBatch`]
     /// entry covering `batch_texts_start..out.texts.len()`. No-op when no
     /// batch is active. Called at batch-split events — rounded-clip
-    /// change, a higher-kind draw over the batch's text, an overlapping
-    /// quad, or a strict-bounds mismatch. The
+    /// change, a higher-kind append, or a strict-bounds mismatch. The
     /// finalized output remains pending for the group-scoped closed
     /// check, so a later quad still flushes for already-closed text that
     /// shares this group. The grid fill is deferred to [`Self::closed_hit`].
@@ -1099,7 +1098,7 @@ impl ComposeSession<'_> {
         b
     }
 
-    /// Cull a higher-kind (mesh / image / icon / curve) draw against the active
+    /// Cull a higher-kind (mesh / image / curve) draw against the active
     /// clip, then close the open text batch if this draw covers text
     /// already in it. That order is the rule, not an accident: a culled
     /// draw paints nothing, so it must neither split the batch nor
