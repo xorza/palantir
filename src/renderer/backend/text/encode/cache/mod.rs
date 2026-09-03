@@ -235,6 +235,21 @@ impl EncodedCache {
         });
     }
 
+    /// Drop every encoded row, returning each block to its size class.
+    ///
+    /// What a font load owes: a row holds glyph templates pointing at
+    /// atlas slots rasterized from whatever face was resolved when it was
+    /// encoded, and registering a font can change that answer. The atlas
+    /// itself needs no such sweep — its keys carry cosmic's `font_id`,
+    /// and fontdb never reuses one.
+    pub(super) fn clear(&mut self) {
+        let arena = &mut self.arena;
+        for (_, entry) in self.map.drain() {
+            arena.release(entry.span);
+        }
+        self.expiry.clear();
+    }
+
     /// Settle the glyphs [`Self::stage`] accumulated: publish them as
     /// `key`'s template when the encode was `complete`, else drop
     /// them.

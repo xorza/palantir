@@ -22,9 +22,9 @@ fn ensure_buffer_exactly_restores_wrap_and_truncation() {
     let wrap_params = shape(15.003)
         .leading(18.003)
         .width(96.003)
-        .weight(FontWeight::Bold)
+        .weight(FontWeight::BOLD)
         .halign(HAlign::Center);
-    let mut wrap = CosmicMeasure::with_bundled_fonts();
+    let mut wrap = CosmicMeasure::default();
     let original = wrap.measure(text, wrap_params);
     let original_glyphs = glyph_positions(&wrap, original.key);
     wrap.drop_all_buffers();
@@ -36,7 +36,7 @@ fn ensure_buffer_exactly_restores_wrap_and_truncation() {
     assert_eq!(glyph_positions(&wrap, restored.key), original_glyphs);
 
     for fit in [LineFit::Clip, LineFit::Ellipsis] {
-        let mut truncated = CosmicMeasure::with_bundled_fonts();
+        let mut truncated = CosmicMeasure::default();
         let params = wrap_params.width(84.003);
         let cut = truncate(&mut truncated, text, params, fit);
         let (original, unbounded) = (cut.fitted, cut.unbounded);
@@ -73,9 +73,9 @@ fn recycled_buffer_matches_fresh_shape_at_new_width() {
     let base = shape(15.0)
         .leading(18.0)
         .width(180.0)
-        .weight(FontWeight::Bold)
+        .weight(FontWeight::BOLD)
         .halign(HAlign::Right);
-    let mut recycled = CosmicMeasure::with_bundled_fonts();
+    let mut recycled = CosmicMeasure::default();
     recycled.measure(text, base);
     recycled.drop_all_buffers();
     assert_eq!(recycled.recycle_pool_stats().len, 1);
@@ -88,7 +88,7 @@ fn recycled_buffer_matches_fresh_shape_at_new_width() {
         "the new miss must consume the evicted buffer",
     );
 
-    let mut fresh = CosmicMeasure::with_bundled_fonts();
+    let mut fresh = CosmicMeasure::default();
     let expected = fresh.measure(text, narrow);
     assert_eq!(actual.size, expected.size);
     assert_eq!(actual.intrinsic_min, expected.intrinsic_min);
@@ -100,7 +100,7 @@ fn recycled_buffer_matches_fresh_shape_at_new_width() {
 
 #[test]
 fn recycle_pool_retention_is_bounded() {
-    let mut c = CosmicMeasure::with_bundled_fonts();
+    let mut c = CosmicMeasure::default();
     let pool = c.recycle_pool_stats();
     assert!(pool.capacity >= pool.limit);
 
@@ -139,7 +139,7 @@ fn idle_frames(c: &mut CosmicMeasure, n: u64) {
 /// *other* insertions can shorten that.
 #[test]
 fn probationary_entries_age_out_on_schedule_regardless_of_cache_size() {
-    let mut c = CosmicMeasure::with_bundled_fonts();
+    let mut c = CosmicMeasure::default();
     let keys = fill_distinct_widths(&mut c, 10);
     assert_eq!(c.cache_len(), 10, "ten distinct widths, ten buffers");
 
@@ -160,7 +160,7 @@ fn probationary_entries_age_out_on_schedule_regardless_of_cache_size() {
 
     // Capacity plays no part: a hundred times as many entries age out on
     // exactly the same schedule.
-    let mut big = CosmicMeasure::with_bundled_fonts();
+    let mut big = CosmicMeasure::default();
     fill_distinct_widths(&mut big, 1000);
     assert_eq!(big.cache_len(), 1000);
     idle_frames(&mut big, cosmic::PROBATION_KEEP_FRAMES);
@@ -178,7 +178,7 @@ fn probationary_entries_age_out_on_schedule_regardless_of_cache_size() {
 /// young, entries something actually came back for do not.
 #[test]
 fn a_lookup_promotes_an_entry_to_the_protected_window() {
-    let mut c = CosmicMeasure::with_bundled_fonts();
+    let mut c = CosmicMeasure::default();
     let keys = fill_distinct_widths(&mut c, 4);
 
     // An encoder ensure is a lookup like any other.
@@ -217,7 +217,7 @@ fn a_lookup_promotes_an_entry_to_the_protected_window() {
 /// frame — 5.4% of `frame/partial_cpu`.
 #[test]
 fn steady_key_churn_costs_a_bounded_cache_and_spares_the_working_set() {
-    let mut c = CosmicMeasure::with_bundled_fonts();
+    let mut c = CosmicMeasure::default();
 
     // A working set looked up every frame: promoted on the first re-read,
     // and never a candidate afterwards.
@@ -291,7 +291,7 @@ fn demote_and_promote_churn_keeps_the_ticket_count_flat() {
     // steady state rather than one catching the ramp.
     const SETTLED_BY: usize = 100;
 
-    let mut c = CosmicMeasure::with_bundled_fonts();
+    let mut c = CosmicMeasure::default();
     let keys = fill_distinct_widths(&mut c, (RUNS * WIDTHS) as u32);
     // One spelling of the arithmetic, so the key a case supersedes and
     // the shape it measures cannot drift apart.
@@ -355,7 +355,7 @@ fn demote_and_promote_churn_keeps_the_ticket_count_flat() {
 /// gone, in exchange for the flat ticket count above.
 #[test]
 fn a_demote_still_evicts_on_time_with_an_older_ticket_outstanding() {
-    let mut c = CosmicMeasure::with_bundled_fonts();
+    let mut c = CosmicMeasure::default();
     let keys = fill_distinct_widths(&mut c, 1);
 
     // Promote it, then let its insert-time ticket fire and re-file far
@@ -382,7 +382,7 @@ fn a_demote_still_evicts_on_time_with_an_older_ticket_outstanding() {
 /// every reversal in a drag reshape from scratch.
 #[test]
 fn a_supplanted_ticket_does_not_evict_an_entry_promoted_since() {
-    let mut c = CosmicMeasure::with_bundled_fonts();
+    let mut c = CosmicMeasure::default();
     let keys = fill_distinct_widths(&mut c, 1);
 
     c.ensure_buffer(TextShapeRequest::for_key(BODY, keys[0]).unwrap());
@@ -421,7 +421,7 @@ fn a_supplanted_ticket_does_not_evict_an_entry_promoted_since() {
 fn a_promoted_burst_expires_across_frames_rather_than_on_one() {
     const RUNS: u32 = 64;
 
-    let mut c = CosmicMeasure::with_bundled_fonts();
+    let mut c = CosmicMeasure::default();
     let keys = fill_distinct_widths(&mut c, RUNS);
     for &key in &keys {
         c.ensure_buffer(TextShapeRequest::for_key(BODY, key).unwrap());

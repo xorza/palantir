@@ -428,7 +428,7 @@ fn brand(ui: &mut Ui) {
                 .style(
                     &TextStyle::default()
                         .with_font_size(17.0)
-                        .with_weight(FontWeight::Bold)
+                        .with_weight(FontWeight::BOLD)
                         .with_color(support::INK),
                 )
                 .show(ui);
@@ -456,7 +456,7 @@ fn group_heading(ui: &mut Ui, name: &'static str, first: bool) {
         .style(
             &TextStyle::default()
                 .with_font_size(10.0)
-                .with_weight(FontWeight::Bold)
+                .with_weight(FontWeight::BOLD)
                 .with_color(support::INK_FAINT),
         )
         .margin((10.0, 0.0, 0.0, 4.0))

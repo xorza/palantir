@@ -21,12 +21,14 @@ use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::text::TextBackend;
 use crate::renderer::render_buffer::text::TextDrawRow;
 use crate::scene::record_store::RecordStore;
+use crate::text::font_family::FontFamily;
+use crate::text::font_style::FontStyle;
+use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::run::TextRun;
 use crate::text::shaped_ref::ShapedTextRef;
 use crate::text::shaper::TextShaper;
 use crate::text::wrap::TextWrap;
-use crate::text::{FontFamily, FontWeight};
 use crate::text::{RENDERED_RUN_KEEP_FRAMES, RENDERED_RUN_KEEP_SPREAD_MASK};
 use glam::{UVec2, Vec2};
 
@@ -67,8 +69,9 @@ fn make_inner_run(
         font: GlyphFont {
             size_px: font_size_px,
             line_height_px,
-            family: FontFamily::Sans,
-            weight: FontWeight::Regular,
+            family: FontFamily::SANS,
+            weight: FontWeight::REGULAR,
+            style: FontStyle::Normal,
         },
         wrap: TextWrap::SingleLine,
         align: Align::default(),

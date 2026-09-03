@@ -30,9 +30,26 @@ pub(crate) struct TextEncoder {
     cache: EncodedCache,
     /// Retained per-miss extraction scratch.
     placed: Vec<PlacedGlyph>,
+    /// The shaper's font epoch as of the last batch — see
+    /// [`Self::sync_fonts`].
+    font_epoch: u32,
 }
 
 impl TextEncoder {
+    /// Drop every encoded row when the shaper's font database has moved
+    /// under it.
+    ///
+    /// Checked before a batch emits rather than swept after one: a
+    /// registered font changes which physical face a family resolves to,
+    /// and a frame that painted from stale templates has already painted
+    /// the wrong glyphs. One `u32` compare per batch buys that.
+    pub(crate) fn sync_fonts(&mut self, font_epoch: u32) {
+        if self.font_epoch != font_epoch {
+            self.font_epoch = font_epoch;
+            self.cache.clear();
+        }
+    }
+
     /// Cache-hit fast path. Returns `true` if `run_key` resolved to a
     /// live entry and the run's glyphs were emitted; `false` falls
     /// through to [`Self::encode_run`].
@@ -67,7 +84,11 @@ impl TextEncoder {
         run_key: EncodedRunKey,
     ) {
         let current_frame = pass.atlas.current_frame;
-        let Self { cache, placed } = self;
+        let Self {
+            cache,
+            placed,
+            font_epoch: _,
+        } = self;
         cache.start_row();
         // The straight-linear cast of the run's colour — already baked
         // into the cache identity, reused as the emit colour.

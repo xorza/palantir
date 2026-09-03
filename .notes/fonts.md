@@ -4,7 +4,7 @@ Research notes and a proposal for app-provided fonts and OS fonts in
 palantir. The README lists "Italic + app-facing font loading" as a known
 gap. Nothing here is committed.
 
-## What exists today
+## What existed before this
 
 Two variable fonts are compiled in with `include_bytes!`
 (`src/text/cosmic/mod.rs:70`): Inter (875 KB) and JetBrains Mono (303 KB).
@@ -172,201 +172,130 @@ clears the match cache. An unknown `Family::Name` resolves through
 - Weight is numeric 100–900. Italic is a separate axis. Both are matched,
   with synthesis when the face is missing.
 
-## Proposal
+## What shipped
 
-### 1. `FontFamily` becomes an interned family name
+Implemented. The sections below are what the code does, and where it
+differs from the proposal this note opened with.
 
-`FontFamily(u16)`: `Copy`, an index into a process-wide, append-only name
-table (`static RwLock<Vec<&'static str>>`; `TextEpoch::reserve` already
-keeps a static counter). Seeded with `FontFamily::SANS = 0` → `"Inter"` and
-`FontFamily::MONO = 1` → `"JetBrains Mono"`. `FontFamily::named("Segoe
-UI")` interns (cold path, one lock). `name(self) -> &'static str` feeds
-`Family::Name` in `attrs_for`. Serde writes the name and reads by
-interning, so a theme file says `family: "Inter"`.
+### 1. `FontFamily` is an interned family name
 
-`TextStyle` stays `Copy`. `GlyphFont` stays 12 bytes — a `u16` fits the
-padding after the two bytes. `ShapeRecord` stays 88.
+`FontFamily(u16)` in `src/text/font_family.rs`: `Copy`, an index into a
+process-wide append-only `RwLock<Vec<&'static str>>` seeded with
+`SANS = 0` → `"Inter"` and `MONO = 1` → `"JetBrains Mono"`. `named`
+interns and leaks; `name` reads back. Serde carries the name, so a theme
+file says `family: "Inter"`.
 
-Why not a name hash: a hash cannot become a name again for serialization,
-and 8 bytes would grow every text record and key. Why not a registry on the
-shaper: `TextStyle` deserializes with no shaper in reach.
+**Resolution.** A family with no face resolves to `SANS` and warns once
+(`CosmicMeasure::resolve_family`), never to cosmic's platform fallback.
+The memo is a `Vec<Option<FamilyResolution>>` indexed by the family's own
+index — dense, so a shape costs one bounds check and no hash, and the
+resolved `&'static str` means the name table's lock is never taken on the
+shaping path.
 
-**Resolution rule.** A family with no face in the database resolves to
-`SANS` and warns once (`tracing::warn!`). Never cosmic's platform fallback
-— the look must not depend on what the machine has installed.
-`Ui::font_available(family) -> bool` lets an app pick deterministically,
-the way Godot's `font_names` and Zed's default stack do.
+`Ui::font_available` reads the **same** memo entry, which is why the entry
+carries an `available` flag beside the name rather than the name alone:
+`SANS` shapes under its own name whether or not a face answers to it,
+since it is what everything else falls back to, so the name cannot answer
+availability for the one family it matters most for. Sharing the entry
+also keeps a query an immediate-mode app makes inside a record pass off a
+per-frame walk of every face.
 
-### 2. Registration on `Ui`, like icons and images
+### 2. Registration on `Ui`
 
-```rust
-#[derive(Debug)]
-pub enum FontSource {
-    Bytes(Cow<'static, [u8]>),
-    File(PathBuf),
-}
+`Ui::load_font(impl Into<FontSource>) -> Result<FontFamily, FontLoadError>`,
+`Ui::font_available`, `Ui::font_families`. `FontSource::{Bytes(Cow<'static,
+[u8]>), File(PathBuf)}` with `From` impls for a slice, an `include_bytes!`
+array, a `Vec`, a `Cow`, a `PathBuf`, a `&Path` and a `&str` path.
 
-impl Ui {
-    pub fn load_font(&self, source: impl Into<FontSource>) -> Result<FontFamily, FontLoadError>;
-    pub fn font_available(&self, family: FontFamily) -> bool;
-    /// Every family the database knows, system fonts included.
-    pub fn font_families(&self) -> impl Iterator<Item = FontFamily> + '_;
-}
-```
+Two corrections to the proposal:
 
-One method. The `From` impls carry the call site:
-
-```rust
-impl From<&'static [u8]> for FontSource            // a slice
-impl<const N: usize> From<&'static [u8; N]> for FontSource  // include_bytes!
-impl From<Vec<u8>> for FontSource                  // a runtime read
-impl From<Cow<'static, [u8]>> for FontSource
-impl From<PathBuf> for FontSource
-impl From<&Path> for FontSource
-impl From<&str> for FontSource                     // a path, never a family name
-```
-
-```rust
-ui.load_font(include_bytes!("../assets/Inter.ttf"))?;
-ui.load_font(std::fs::read(chosen)?)?;
-ui.load_font("/usr/share/fonts/TTF/Iosevka.ttc")?;
-```
-
-The array impl accepts `include_bytes!` directly. iced asks for `&include_bytes!(..)[..]`.
-
-The two variants split by mechanism, not by ownership. Bytes become
-`Source::Binary(Arc::new(bytes))`. A path goes to `Database::load_font_file`,
-which maps the file and keeps `Source::SharedFile`, so the bytes never pass
-through a `Vec`.
-
-`Cow<'static, [u8]>` holds the bytes, never `Arc<[u8]>`. fontdb stores
-`Arc<dyn AsRef<[u8]> + Send + Sync>` (`fontdb-0.23.0/src/lib.rs:866`). `[u8]`
-is unsized, and an unsized type has no coercion to a trait object, so
-`Arc<[u8]>` would need a newtype and a second `Arc` around the first. fontdb
-owns the bytes for the process lifetime, so the caller gains nothing from a
-share. `Image::from_rgba8` takes a plain `Vec<u8>` for the same reason.
-
-`File` owns a `PathBuf`. A borrow does the work, because fontdb copies the path
-itself. But `FontSource<'a>` then forces a named lifetime on every `load_font`
-signature, because anonymous lifetimes in `impl Trait` are unstable
-(`E0658`). One `PathBuf` per font load is a cold allocation. The clean
-signature is worth more.
-
-**A mapped file must stay in place.** `load_font_file` holds the mapping open
-for the process lifetime.
-
-`FontLoadError::{Io, NoFaces}` — the bytes are untrusted, so this is a
-`Result`. The return is the family of the first face. A collection loads
-every face, and each of its families becomes reachable through
-`FontFamily::named`. There is no unload: fonts are process-lifetime, and
-the atlas keys on `font_id`. `FontFamily` is `Copy` and always valid, so no
-RAII owner is needed — this is the one place it differs from `IconSet`.
-
-The registry lives on `CosmicMeasure`, which owns the `FontSystem` and the
-shaped caches. `Ui` reaches it through `UiResources.text` → `TextShaper`.
-Standalone recorders get `TextShaper::load_font`.
+- **fontdb keeps `Source::File`, not `SharedFile`.** `load_font_file`
+  memory-maps the file to parse its face table and then stores the path,
+  re-mapping on the rare later read of the face data. So the file arm goes
+  through `load_font_source(Source::File(path))`, which does the same thing
+  and *returns the ids* — `load_font_file` returns none, and recovering
+  them by position in the database would depend on slotmap iteration order.
+  The path is opened once first, only so an unreadable file reports
+  `Io` rather than "no faces".
+- **`font_families` returns a `Vec`, not an iterator.** The database sits
+  behind the shaper's `RefCell`, so a lending iterator would hold that
+  borrow across the caller's whole walk.
 
 **Invalidation.** `load_font` goes through `db_mut()` (cosmic clears its
-match cache) and bumps a `font_epoch` on the shaper. `CosmicMeasure` drops
-every shaped buffer. The renderer's encoded-run cache compares the epoch
-on its next prepare and clears. Atlas entries stay valid. One frame of
-re-shaping after a load is the whole cost, and loads are cold events.
+match cache), drops every shaped buffer and ellipsis memo, clears the
+resolution memo, and bumps a `font_epoch`. The encoded-run cache compares
+that epoch **before** it emits a batch and clears when it moved — after
+would mean the frame had already painted from stale templates. The epoch
+lives in a `Cell` beside the shaper's `RefCell`, not inside it: an all-hit
+frame is contracted never to crack that borrow, and the text backend's GPU
+suite holds an exclusive borrow across a prepare to prove it.
 
-### 3. System fonts as an explicit policy, off the main thread
+### 3. System fonts as a policy, off the main thread
 
-```rust
-pub enum FontSources { Bundled, System }
-```
+`FontScope { Bundled, System }` on `WinitHostConfig.fonts` (default
+`System`) and `TextShaper::with_fonts`. `TextShaper::new()` is now
+`Bundled` — deterministic metrics and 6 µs, which is what every test,
+bench and standalone recorder wanted.
 
-`HostConfig.fonts: FontSources`, default `System` for the winit host.
-`TextShaper::with_sources(FontSources)` for standalone recorders and
-tests, default `Bundled` — deterministic metrics, 6 µs.
+Named `FontScope` rather than the proposal's `FontSources`, which sat one
+letter from `FontSource` and meant something else entirely.
 
-`System` spawns the `fontdb::Database` scan on a thread at the top of
-`WinitRuntime::new`, before `create_window` and `GpuInit`, and joins it
-when `HostCore` is built. `Database` is `Send`. On a hot cache the GPU
-init is the longer of the two, so the scan costs no wall time. On a cold
-cache the window appears when the scan finishes, which is what happens
-today.
+**`FontSystem` is `Send`**, so `FontScan` builds the whole thing on a
+thread rather than only the `fontdb::Database` — which keeps cosmic's own
+locale detection instead of reimplementing it, and moves the monospace
+scan and the match warm-up off the main thread too. `WinitRuntime::new`
+spawns it before `create_window` and joins it at `HostCore::new`.
 
-**Warm-up.** After construction, call `get_font_matches` for every
-registered family at the weights and styles the theme uses. Cost 2 moves
-from the first frame to startup. Cost 3 (first script fallback, 56 ms
-here) stays a known spike. A later phase can pre-warm by locale.
+**Warm-up is bounded to the families in use** — the bundled pair at
+startup, and whatever the app has already drawn after a load. Warming
+every *interned* family would be O(faces) times several hundred once
+`font_families` has interned the machine's whole list.
+
+Two RTL cases (`geometry`, `truncate`) now ask for `FontScope::System`
+explicitly. They shape Arabic and Hebrew, which no bundled face covers, so
+they always depended on the machine's fonts — silently, until the default
+changed.
 
 ### 4. Weight and style axes
 
-`FontWeight(u16)` with `THIN … BLACK` consts (`REGULAR = 400`, `BOLD =
-700`), serialized as the number. New `FontStyle { Normal, Italic }` on
-`GlyphFont`, `TextStyle`, and `Shape::text`. Compile in the two italic
-files already in `assets/fonts` (+1.2 MB). cosmic instantiates `wght` on
-the variable faces. For a face with no italic, `CacheKeyFlags::FAKE_ITALIC`
-exists — verify cosmic applies it on a style mismatch, otherwise set it in
-`attrs_for`.
+`FontWeight(u16)` on the CSS 1–1000 scale with the nine named steps,
+range-checked in `new` and in serde. `FontStyle { Normal, Italic }`. All
+four bundled files are compiled in, upright and italic.
 
-`TextShapeKey` stays 24 bytes: `family_q: u16` plus one `u16` that packs
-weight (10 bits), style (1), `halign` (2), `fit` (2).
+Both axes reach every authoring surface the family and weight already
+did: `TextStyle::{with_style, italic}`, `Shape::text(..).style(..)`, and
+`Text::italic()` beside `Text::bold()` as the one-axis hatch over the
+resolved bundle.
 
-### 5. Fallback list — later
+**Fake italic is cosmic's own**: `override_fake_italic` sets
+`CacheKeyFlags::FAKE_ITALIC` when the matched face is upright and the
+request was not, and the flag is part of the glyph cache key. `attrs_for`
+sets nothing.
 
-`FontConfig { fallback: Vec<String>, forbidden: Vec<String> }` becomes a
-custom `Fallback` impl: app names first, then the platform list (Zed's
-merge rule). The trait wants `&'static str`, so the names leak once at
+**The key needed the packing immediately.** A `u16` family beside four
+separate bytes is 25 bytes and pads to 32, so phases 1 and 3 landed
+together: `TextShapeKey` carries `family_q: u16` plus a `FaceBits(u16)`
+holding weight (10 bits), style (1), halign (3) and fit (2). The bound
+half is the contiguous top five bits, which is what `WrapBound` rewrites.
+`TextShapeKey` stays 24 bytes and `ShapeRecord` 88.
+
+`AnimRow<AnimatedLook>` moved 472 → 488: a numeric weight plus a style no
+longer fit the two bytes a pair of two-variant enums used, so each of the
+row's `TextStyle`s carries four more.
+
+### 5. Fallback list — still later
+
+`FontConfig { fallback: Vec<String>, forbidden: Vec<String> }` as a custom
+`Fallback` impl: app names first, then the platform list (Zed's merge
+rule). The trait wants `&'static str`, so the names leak once at
 construction.
 
-### 6. OS index instead of a scan — later, needs a dependency
+### 6. OS index instead of a scan — still later, needs a dependency
 
 `fontique` answers "which file holds family X" through the OS index
 without parsing 774 files. The path then goes into fontdb as
 `Source::File`. For an app that names one or two OS fonts this replaces
-the scan entirely. It is a new crate, so it waits for a go-ahead and is not
-in the plan below.
-
-## Plan
-
-### Phase 1 — interned families and registration
-
-1. `src/text/font_family.rs`: `FontFamily(u16)`, the name table, `SANS` /
-   `MONO`, `named`, `name`, serde by name. The enum leaves `text/mod.rs`.
-2. `TextShapeKey.family_q: u16`; the tag asserts in `key.rs`; the pins in
-   `hot_struct_sizes.rs` stay at 24 / 88.
-3. `attrs_for` resolves through the availability check. Unavailable →
-   `SANS` and one warning per family (a `FixedBitSet` on `CosmicMeasure`).
-4. `FontSource` with its `From` impls; `FontLoadError` in
-   `src/text/error.rs`; `CosmicMeasure::load_font`, `TextShaper::load_font`,
-   `Ui::load_font`, `Ui::font_available`.
-5. `font_epoch` on the shaper, the shaped-buffer drop in `CosmicMeasure`,
-   the encoded-run clear in `renderer/backend/text`.
-6. Tests, extending `text/tests/wrap.rs` on its existing fixture:
-   - `resolved_family` on a loaded third font. The Inter Italic bytes are
-     the fixture, so no new asset.
-   - unknown family → `"Inter"`, and `font_available == false`.
-   - key round-trip for `family_q` at 0, 1, 2 and `u16::MAX`.
-   - serde: `"Inter"` ↔ `SANS`, an unknown name interns and round-trips.
-   - late load: shape, load, shape again — the second run resolves to the
-     new face.
-   - the `ShapeRecord::Text` hash table in `scene/shapes/hash.rs` gains the
-     family axis.
-7. Darkroom: `FontFamily::Mono` → `FontFamily::MONO`. Mechanical.
-8. README: drop "no arbitrary font registration yet".
-
-### Phase 2 — system fonts as policy
-
-1. `FontSources` on `HostConfig`; `TextShaper::with_sources`.
-2. The scan thread in `WinitRuntime::new`; join before `HostCore::new`.
-3. Warm-up of match keys for every registered family.
-4. `Ui::font_families()` for a preferences picker.
-5. Tests build `Bundled`. Measure the suite-time drop.
-
-### Phase 3 — weight and italic
-
-1. `FontWeight(u16)`, `FontStyle`, the bundled italics,
-   `TextStyle::italic()`, the packed key bits.
-2. Tests: widths at 300 < 400 < 700 on Inter; italic resolves to a face
-   whose `post_script_name` contains `Italic`; darkroom `FontWeight::Bold`
-   → `BOLD`.
-
-### Phase 4 — fallback config, fontique proposal
+the scan entirely. It is a new crate, so it waits for a go-ahead.
 
 ## Open questions
 
@@ -375,7 +304,9 @@ in the plan below.
 - `load_font` from a record pass of any window goes through the shared
   shaper's `RefCell`. Fine today; note it if a window ever shapes on
   another thread.
-- On wasm `load_system_fonts` is compiled out, so `Bundled` is the only
-  policy there. `System` should be a no-op, not a panic.
+- On wasm `load_system_fonts` is compiled out and `std::thread::spawn` is
+  not available, so neither `FontScope::System` nor `FontScan` can work
+  there. The crate has no wasm target today; when it gets one, `System`
+  should degrade to `Bundled` rather than panic.
 - Whether darkroom wants a font preference at all, and so whether
-  `font_families()` ships in phase 2 or waits.
+  `font_families()` earns its keep.

@@ -730,8 +730,9 @@ fn chrome_only_owner_has_nonzero_paint_span() {
 fn text_content_change_damages_shaped_extent_not_just_origin() {
     use crate::scene::node::Node;
     use crate::shape::Shape;
+    use crate::text::font_family::FontFamily;
+    use crate::text::font_weight::FontWeight;
     use crate::text::wrap::TextWrap;
-    use crate::text::{FontFamily, FontWeight};
 
     let mut h = UiHarness::new(DISPLAY.physical);
     // Mono fallback geometry: glyph width = font_size_px * 0.5, line
@@ -759,8 +760,8 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
                         .at_origin(ORIGIN)
                         .color(Color::WHITE)
                         .wrap(TextWrap::Truncate)
-                        .family(FontFamily::Sans)
-                        .weight(FontWeight::Regular),
+                        .family(FontFamily::SANS)
+                        .weight(FontWeight::REGULAR),
                     );
                 });
             });

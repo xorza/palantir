@@ -8,7 +8,7 @@ fn cache_key_discriminates_every_shaping_axis() {
     // glyph positions has to change the key. Miss one and a buffer shaped
     // for other parameters gets replayed — measured rect against the wrong
     // rasterized glyphs.
-    let mut c = CosmicMeasure::with_bundled_fonts();
+    let mut c = CosmicMeasure::default();
     let base = c.measure("hi", shape(16.0)).key;
 
     for (label, variant, field, base_field) in [
@@ -26,15 +26,21 @@ fn cache_key_discriminates_every_shaping_axis() {
         ),
         (
             "family",
-            shape(16.0).family(FontFamily::Mono),
-            (|k: TextShapeKey| k.family_q as u32) as fn(TextShapeKey) -> u32,
-            base.family_q as u32,
+            shape(16.0).family(FontFamily::MONO),
+            (|k: TextShapeKey| u32::from(k.family_q)) as fn(TextShapeKey) -> u32,
+            u32::from(base.family_q),
         ),
         (
             "weight",
-            shape(16.0).weight(FontWeight::Bold),
-            (|k: TextShapeKey| k.weight_q as u32) as fn(TextShapeKey) -> u32,
-            base.weight_q as u32,
+            shape(16.0).weight(FontWeight::BOLD),
+            (|k: TextShapeKey| u32::from(k.weight().value())) as fn(TextShapeKey) -> u32,
+            u32::from(base.weight().value()),
+        ),
+        (
+            "style",
+            shape(16.0).style(FontStyle::Italic),
+            (|k: TextShapeKey| k.style() as u32) as fn(TextShapeKey) -> u32,
+            base.style() as u32,
         ),
     ] {
         let key = c.measure("hi", variant).key;
@@ -46,10 +52,11 @@ fn cache_key_discriminates_every_shaping_axis() {
         );
     }
 
-    // The enum discriminants themselves are what land in the key, so a
-    // variant reorder can't silently remap cached buffers.
-    assert_eq!(base.family_q, FontFamily::Sans as u8);
-    assert_eq!(base.weight_q, FontWeight::Regular as u8);
+    // The axis values themselves are what land in the key, packed and
+    // read back, so a shifted field can't silently remap cached buffers.
+    assert_eq!(base.family_q, FontFamily::SANS.raw());
+    assert_eq!(base.weight(), FontWeight::REGULAR);
+    assert_eq!(base.style(), FontStyle::Normal);
     assert_eq!(
         base.text_hash,
         hash::hash_str("hi"),
@@ -71,7 +78,7 @@ fn text_shape_key_validity_is_tagged_by_text_hash() {
     };
     assert!(!real.is_invalid());
     let zero_hash = TextShapeKey {
-        fit_q: LineFit::Ellipsis as u8,
+        size_q: 42,
         ..TextShapeKey::INVALID
     };
     assert!(zero_hash.is_invalid());
@@ -198,7 +205,7 @@ fn bounded_width_canonicalizes_and_leaves_non_finite_values_unbound() {
 fn above_epsilon_metrics_survive_cache_key_canonicalization() {
     use crate::primitives::approx::EPS;
 
-    let mut cosmic = CosmicMeasure::with_bundled_fonts();
+    let mut cosmic = CosmicMeasure::default();
     let result = cosmic.measure("x", shape(EPS * 2.0));
     assert!(!result.key.is_invalid());
     assert_eq!(result.key.size_q, 1);
@@ -212,7 +219,7 @@ fn cache_key_collapses_halign_when_unbounded() {
     // within, so the key folds it down to Auto without one — single-line
     // callers don't pay an N-way cache split. With a target it must
     // discriminate, or two alignments share one shaped buffer.
-    let mut c = CosmicMeasure::with_bundled_fonts();
+    let mut c = CosmicMeasure::default();
     let key = |c: &mut CosmicMeasure, halign, max_width_px: Option<f32>| {
         let base = shape(16.0).halign(halign);
         c.measure(
@@ -289,10 +296,10 @@ fn quantized_key_shaping_is_insertion_order_independent() {
         .halign(HAlign::Right);
     let second = first.font_size(16.006).leading(19.206).width(101.006);
 
-    let mut first_then_second = CosmicMeasure::with_bundled_fonts();
+    let mut first_then_second = CosmicMeasure::default();
     let a = first_then_second.measure(text, first);
     let a_hit = first_then_second.measure(text, second);
-    let mut second_then_first = CosmicMeasure::with_bundled_fonts();
+    let mut second_then_first = CosmicMeasure::default();
     let b = second_then_first.measure(text, second);
     let b_hit = second_then_first.measure(text, first);
 
@@ -316,8 +323,9 @@ fn key_for(recorded: &RecordedText) -> TextShapeKey {
         GlyphFont {
             size_px: 16.0,
             line_height_px: 19.2,
-            family: FontFamily::Sans,
-            weight: FontWeight::Regular,
+            family: FontFamily::SANS,
+            weight: FontWeight::REGULAR,
+            style: FontStyle::Normal,
         },
     )
 }

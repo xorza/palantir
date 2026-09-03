@@ -13,6 +13,10 @@ use crate::primitives::widget_id::{WidgetId, WidgetIdSet};
 use crate::scene::record_store::RecordStore;
 use crate::text::cosmic::cluster_glyph::ClusterGlyph;
 use crate::text::cosmic::{self, CosmicMeasure};
+use crate::text::font_family::FontFamily;
+use crate::text::font_scope::FontScope;
+use crate::text::font_style::FontStyle;
+use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::key::{TextShapeKey, WrapBound};
 use crate::text::mono;
@@ -25,9 +29,9 @@ use crate::text::shaped_ref::ShapedTextRef;
 use crate::text::shaper::TextShaper;
 use crate::text::system::{TextRunSlot, TextSystem};
 use crate::text::wrap::{LineFit, TextWrap, WrapFloor};
-use crate::text::{FontFamily, FontWeight};
 use crate::widgets::theme::text_style::LINE_HEIGHT_MULT;
 
+mod fonts;
 mod geometry;
 mod key;
 mod retention;
@@ -47,8 +51,9 @@ fn shape(font_size_px: f32) -> TestShape {
         font: GlyphFont {
             size_px: font_size_px,
             line_height_px: font_size_px,
-            family: FontFamily::Sans,
-            weight: FontWeight::Regular,
+            family: FontFamily::SANS,
+            weight: FontWeight::REGULAR,
+            style: FontStyle::Normal,
         },
         max_width_px: None,
         halign: HAlign::Auto,

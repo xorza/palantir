@@ -40,7 +40,7 @@ fn fitting_truncate_returns_the_unbounded_root_without_reshaping() {
         // Over-wide text still resolves through the truncating path.
         let truncated = text.shape_run(run_slot, "wider than twenty", fitting.width(20.0), wrap);
         assert_ne!(truncated.key, truncated.key.unbounded_version());
-        assert_eq!(truncated.key.fit_q, fit as u8);
+        assert_eq!(truncated.key.fit(), fit);
         assert_eq!(truncated.size.w, capped_w, "{wrap:?} caps inside 20 px");
     }
 
@@ -67,7 +67,7 @@ fn fitting_truncate_returns_the_unbounded_root_without_reshaping() {
 /// Pins "labels never overflow their box", which Button relies on.
 #[test]
 fn a_truncating_fit_cuts_an_overflowing_label_to_one_fitting_line() {
-    let mut c = CosmicMeasure::with_bundled_fonts();
+    let mut c = CosmicMeasure::default();
     let long = "Screenshot 2026-05-28 at 01.21.25.png";
     let params = shape(16.0).width(120.0);
     let w = params.max_width_px.unwrap();
@@ -98,7 +98,7 @@ fn a_truncating_fit_cuts_an_overflowing_label_to_one_fitting_line() {
             "{fit:?} is a bounded resolve, which has no wrapping floor to \
              report — the floor belongs to the unbounded root",
         );
-        assert_eq!(cut.key.fit_q, fit as u8);
+        assert_eq!(cut.key.fit(), fit);
         assert_eq!(
             cut.key.text_hash, full.key.text_hash,
             "{fit:?}: bounded keys reuse the source text hash",
@@ -117,7 +117,7 @@ fn a_truncating_fit_cuts_an_overflowing_label_to_one_fitting_line() {
     // Clip, ellipsis, and wrap bake three different strings at the same
     // width, so all three must key distinct cache slots.
     let wrapped = c.measure(long, params);
-    assert_eq!(wrapped.key.fit_q, LineFit::Wrap as u8);
+    assert_eq!(wrapped.key.fit(), LineFit::Wrap);
     assert_ne!(keys[0], keys[1], "clip and ellipsis must key distinctly");
     assert_ne!(keys[0], wrapped.key, "clip and wrap must key distinctly");
     assert_ne!(
@@ -274,14 +274,14 @@ fn ellipsis_never_measures_wider_than_its_budget() {
     // prior contents cannot change a result. Sharing it also exercises
     // that, and spares 15 system-font scans.
     let base = shape(16.0);
-    let mut c = CosmicMeasure::with_bundled_fonts();
+    let mut c = CosmicMeasure::default();
     for text in [
         "flag \u{1f1fa}\u{1f1f8} emoji \u{1f600} run",
         "\u{1f469}\u{200d}\u{1f469}\u{200d}\u{1f467} family emoji",
         "\u{627}\u{644}\u{633}\u{644}\u{627}\u{645} \u{639}\u{644}\u{64a}\u{643}\u{645}",
         "\u{645}\u{631}\u{62d}\u{628}\u{627} \u{628}\u{627}\u{644}\u{639}\u{627}\u{644}\u{645}",
     ] {
-        for family in [FontFamily::Sans, FontFamily::Mono] {
+        for family in [FontFamily::SANS, FontFamily::MONO] {
             for fit in [LineFit::Clip, LineFit::Ellipsis] {
                 for width_px in 0..=160 {
                     let width = width_px as f32;
@@ -305,7 +305,10 @@ fn ellipsis_keeps_the_logical_prefix_in_both_reading_directions() {
     // *visual* order. In an RTL run the logically-first glyph sits at the
     // right edge and trailing edges descend, so a cut driven by `x + w`
     // stops at the first glyph and drops the whole run.
-    let mut c = CosmicMeasure::with_bundled_fonts();
+    // Hebrew, which no bundled face covers: without the machine's fonts
+    // every glyph is the same tofu box and the prefix/suffix widths this
+    // case separates would be identical.
+    let mut c = CosmicMeasure::new(FontScope::System);
     let unbounded = shape(16.0);
     let elide = |c: &mut CosmicMeasure, text: &str, width: f32| {
         measure_truncated(c, text, unbounded.width(width), LineFit::Ellipsis)
@@ -360,7 +363,7 @@ fn ellipsis_keeps_the_logical_prefix_in_both_reading_directions() {
 /// encoder applies again.
 #[test]
 fn a_fitting_label_measures_its_natural_width_whatever_the_cap_or_align() {
-    let mut c = CosmicMeasure::with_bundled_fonts();
+    let mut c = CosmicMeasure::default();
     for (label, text, cap, halign) in [
         ("short label", "ok", 200.0, HAlign::Auto),
         ("centered in a wide cap", "File", 400.0, HAlign::Center),
@@ -413,18 +416,18 @@ fn truncation_from_cached_unbounded_is_order_independent() {
     let target = shape(14.0).width(80.0).halign(HAlign::Left);
 
     // Fresh measurer: only the target measurement.
-    let mut fresh = CosmicMeasure::with_bundled_fonts();
+    let mut fresh = CosmicMeasure::default();
     let r_fresh = truncate(&mut fresh, long, target, LineFit::Ellipsis);
 
     // Reused measurer: populate unrelated unbounded, truncated, and ellipsis
     // cache entries first, then measure the identical target.
-    let mut reused = CosmicMeasure::with_bundled_fonts();
+    let mut reused = CosmicMeasure::default();
     measure_truncated(
         &mut reused,
         "a considerably longer string that grows the probe buffer capacity",
         shape(20.0)
             .width(220.0)
-            .family(FontFamily::Mono)
+            .family(FontFamily::MONO)
             .halign(HAlign::Left),
         LineFit::Ellipsis,
     );
@@ -477,12 +480,12 @@ fn truncation_from_cached_unbounded_is_order_independent() {
 #[test]
 fn the_ellipsis_memo_survives_interleaved_faces() {
     const TEXT: &str = "a label far too long for the column it sits in";
-    let mut c = CosmicMeasure::with_bundled_fonts();
+    let mut c = CosmicMeasure::default();
     // Two faces a real frame would interleave: body text and a heavier,
     // larger heading.
     let faces = [
         shape(14.0).leading(18.0),
-        shape(20.0).leading(24.0).weight(FontWeight::Bold),
+        shape(20.0).leading(24.0).weight(FontWeight::BOLD),
     ];
 
     // Warm both, so what follows measures reuse rather than first touch.
@@ -539,7 +542,7 @@ fn the_ellipsis_memo_survives_interleaved_faces() {
 
 #[test]
 fn ellipsis_stays_within_budget_under_size_churn() {
-    let mut c = CosmicMeasure::with_bundled_fonts();
+    let mut c = CosmicMeasure::default();
     let long = "the quick brown fox jumps over the lazy dog";
     let width = 60.0;
     for i in 0..261 {
@@ -569,7 +572,7 @@ fn ellipsis_stays_within_budget_under_size_churn() {
 /// sizes a row from it.
 #[test]
 fn a_truncating_fit_paints_one_line_even_across_a_newline() {
-    let mut c = CosmicMeasure::with_bundled_fonts();
+    let mut c = CosmicMeasure::default();
     let text = "first paragraph here\nsecond paragraph";
     let params = shape(16.0).width(90.0);
 

@@ -1,10 +1,12 @@
 use crate::layout::types::align::Align;
 use crate::primitives::size::Size;
+use crate::text::font_family::FontFamily;
+use crate::text::font_style::FontStyle;
+use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::probe::{cursor_from_byte, cursor_to_byte};
 use crate::text::run::TextRun;
 use crate::text::wrap::TextWrap;
-use crate::text::{FontFamily, FontWeight};
 use crate::ui::harness::UiHarness;
 
 /// The whole public probe surface, against the mono shaper's exact
@@ -28,8 +30,9 @@ fn probing_a_run_maps_bytes_and_positions_both_ways() {
             font: GlyphFont {
                 size_px: 16.0,
                 line_height_px: 20.0,
-                family: FontFamily::Sans,
-                weight: FontWeight::Regular,
+                family: FontFamily::SANS,
+                weight: FontWeight::REGULAR,
+                style: FontStyle::Normal,
             },
             wrap: TextWrap::SingleLine,
             align: Align::LEFT,
@@ -102,8 +105,9 @@ fn a_wrapping_run_binds_its_width_and_a_single_line_run_does_not() {
         font: GlyphFont {
             size_px: 16.0,
             line_height_px: 20.0,
-            family: FontFamily::Sans,
-            weight: FontWeight::Regular,
+            family: FontFamily::SANS,
+            weight: FontWeight::REGULAR,
+            style: FontStyle::Normal,
         },
         wrap,
         align: Align::LEFT,
@@ -156,8 +160,9 @@ fn an_unusable_face_probes_to_nothing() {
         font: GlyphFont {
             size_px,
             line_height_px,
-            family: FontFamily::Sans,
-            weight: FontWeight::Regular,
+            family: FontFamily::SANS,
+            weight: FontWeight::REGULAR,
+            style: FontStyle::Normal,
         },
         wrap: TextWrap::SingleLine,
         align: Align::LEFT,

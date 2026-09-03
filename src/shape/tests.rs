@@ -9,9 +9,11 @@ use crate::scene::record_store::RecordStore;
 use crate::shape::Shape;
 use crate::shape::rect::RectKind;
 use crate::shape::sealed::LowerShape as _;
+use crate::text::font_family::FontFamily;
+use crate::text::font_style::FontStyle;
+use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::wrap::TextWrap;
-use crate::text::{FontFamily, FontWeight};
 use glam::Vec2;
 
 #[test]
@@ -180,9 +182,15 @@ fn text_noop_rejects_invalid_metrics() {
         .color(Color::WHITE)
         .wrap(TextWrap::SingleLine)
         .align(Align::TOP_LEFT)
-        .family(FontFamily::Sans)
-        .weight(FontWeight::Regular);
+        .family(FontFamily::SANS)
+        .weight(FontWeight::REGULAR)
+        .style(FontStyle::Italic);
         assert_eq!(shape.is_noop(), expected_noop, "{label}");
+        assert_eq!(
+            shape.font.style,
+            FontStyle::Italic,
+            "{label}: every face axis the builder sets must reach the shape",
+        );
     }
 }
 

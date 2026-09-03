@@ -82,6 +82,14 @@ available_q)`; subtree hits blit last frame's measure result and skip
   recursion.
 - **In-house text backend** on top of `cosmic-text` so the GPU upload
   path routes through palantir's staging belt.
+- **Fonts an app brings or the OS has** — `ui.load_font(bytes_or_path)`
+  registers a face and hands back a `FontFamily`, and
+  `FontFamily::named("Segoe UI")` reaches an installed one. Weight is the
+  numeric CSS axis (1–1000, instantiated on a variable face), italic is a
+  separate axis, and a family no face answers to resolves to the bundled
+  default rather than to whatever the machine has. Whether the machine's
+  fonts are scanned at all is `WinitHostConfig::fonts`, and the scan runs
+  on its own thread beside GPU init.
 - **SVG artwork** — an icon set is baked into the binary or built at runtime
   from source bytes; each icon parses the first time it is drawn and
   rasterizes at its exact physical size into the icon atlas, so it stays
@@ -108,10 +116,6 @@ available_q)`; subtree hits blit last frame's measure result and skip
 Pre-1.0 — these are known gaps, not design rejections:
 
 - **Accessibility** — no AccessKit / screen-reader support yet.
-- **Italic + app-facing font loading** — text shapes in Regular or **Bold**
-  (weight is wired through to shaping and rasterization), but there's no
-  italic / oblique axis, and only the two bundled families (Inter, JetBrains
-  Mono) exist — no arbitrary font registration yet.
 - **Tab-key focus traversal** — focus exists (click-to-focus, programmatic
   `request_focus`), but `Tab` / `Shift+Tab` cycling does not.
 - **Virtualized list / table** — `Scroll` records all children; no

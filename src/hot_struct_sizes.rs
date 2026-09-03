@@ -212,8 +212,11 @@ hot_structs! {
     TextShapeKey => "text::TextShapeKey": 24 / 8,
     // The measure cache's per-descriptor row, retained across frames.
     MeasureSnapshot => "layout::MeasureSnapshot": 312 / 8,
-    // Cross-frame animation rows.
-    AnimRow<AnimatedLook> => "animation::AnimRow<AnimatedLook>": 472 / 8,
+    // Cross-frame animation rows. 488 rather than 472 since `TextStyle`
+    // gained the italic axis: a numeric weight and a style no longer fit
+    // the two bytes a pair of two-variant enums used, so each of the
+    // row's looks carries four more.
+    AnimRow<AnimatedLook> => "animation::AnimRow<AnimatedLook>": 488 / 8,
     // Cross-frame hash keys.
     ContentHash => "common::ContentHash": 8 / 8,
     CascadeInputHash => "cascade::CascadeInputHash": 8 / 8,

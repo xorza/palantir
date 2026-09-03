@@ -8,7 +8,8 @@ use crate::primitives::color::Color;
 use crate::primitives::spacing::Spacing;
 use crate::scene::layer::Layer;
 use crate::scene::node::configure::Configure;
-use crate::text::{FontFamily, FontWeight};
+use crate::text::font_family::FontFamily;
+use crate::text::font_weight::FontWeight;
 use crate::ui::Ui;
 use crate::widgets::panel::Panel;
 use crate::widgets::text::Text;
@@ -65,8 +66,8 @@ pub(crate) fn record(ui: &mut Ui) {
         "f {render_frame_id} · {fps:>4.0} fps · settle {settle_frames}/{frame_id}{gpu}"
     ));
     let style = TextStyle {
-        family: FontFamily::Mono,
-        weight: FontWeight::Regular,
+        family: FontFamily::MONO,
+        weight: FontWeight::REGULAR,
         color: Color::rgb(1.0, 0.2, 0.2),
         font_size_px: 12.0,
         ..ui.theme().text

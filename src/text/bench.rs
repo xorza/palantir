@@ -3,6 +3,9 @@ use crate::layout::ShapedText;
 use crate::layout::types::align::HAlign;
 use crate::primitives::widget_id::{WidgetId, WidgetIdSet};
 use crate::text::cosmic;
+use crate::text::font_family::FontFamily;
+use crate::text::font_style::FontStyle;
+use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::key::WrapBound;
 use crate::text::request::TextShapeRequest;
@@ -10,7 +13,6 @@ use crate::text::request::test_support::TestShape;
 use crate::text::shaper::TextShaper;
 use crate::text::system::{TextRunSlot, TextSystem};
 use crate::text::wrap::{LineFit, TextWrap, WrapFloor};
-use crate::text::{FontFamily, FontWeight};
 use criterion::measurement::WallTime;
 use criterion::{BenchmarkGroup, Criterion};
 use std::hint::black_box;
@@ -57,8 +59,9 @@ const UI_FACE: TestShape = TestShape {
     font: GlyphFont {
         size_px: 14.0,
         line_height_px: 14.0 * LEADING_RATIO,
-        family: FontFamily::Sans,
-        weight: FontWeight::Regular,
+        family: FontFamily::SANS,
+        weight: FontWeight::REGULAR,
+        style: FontStyle::Normal,
     },
     #[cfg(test)]
     max_width_px: None,
@@ -426,14 +429,14 @@ fn bench_ellipsis_churn(c: &mut Criterion, run: Run<'_>) {
             // Body then heading, the way a row records: with one memo
             // slot each of these evicts the other's face.
             let body =
-                measure_truncated_face(&mut text, slots[0], TEXT, width, 14.0, FontWeight::Regular);
+                measure_truncated_face(&mut text, slots[0], TEXT, width, 14.0, FontWeight::REGULAR);
             let head = measure_truncated_face(
                 &mut text,
                 slots[1],
                 TEXT,
                 width,
                 HEADING_PX,
-                FontWeight::Bold,
+                FontWeight::BOLD,
             );
             text.end_frame(&WidgetIdSet::default());
             black_box((body.measured, head.measured))

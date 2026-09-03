@@ -14,9 +14,10 @@ use crate::scene::node::configure::Configure;
 use crate::scene::tree::node_id::NodeId;
 use crate::scene::visibility::Visibility;
 use crate::shape::Shape;
+use crate::text::font_family::FontFamily;
+use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::wrap::TextWrap;
-use crate::text::{FontFamily, FontWeight};
 use crate::ui::harness::UiHarness;
 use crate::widgets::text::Text;
 use crate::widgets::{frame::Frame, panel::Panel};
@@ -285,8 +286,8 @@ fn add_direct_text(
     .color(Color::WHITE)
     .wrap(wrap)
     .align(Align::default())
-    .family(FontFamily::Sans)
-    .weight(FontWeight::Regular);
+    .family(FontFamily::SANS)
+    .weight(FontWeight::REGULAR);
     ui.add_shape(match local_origin {
         Some(origin) => shape.at_origin(origin),
         None => shape,

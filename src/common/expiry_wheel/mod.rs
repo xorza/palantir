@@ -265,6 +265,19 @@ impl<K: Copy + Debug> ExpiryWheel<K> {
         }
         self.scratch = due;
     }
+
+    /// Drop every outstanding ticket, keeping bucket capacity. For an
+    /// owner that just cleared its whole map — every ticket would be
+    /// stale, and re-filing from an empty map yields nothing.
+    ///
+    /// Registering a font is what empties a cache wholesale in
+    /// production: both text caches are keyed on a resolution the new
+    /// face can change.
+    pub(crate) fn clear(&mut self) {
+        for bucket in &mut self.buckets {
+            bucket.clear();
+        }
+    }
 }
 
 #[cfg(test)]
@@ -272,19 +285,6 @@ pub(crate) mod test_support {
     use super::*;
 
     impl<K: Copy + Debug> ExpiryWheel<K> {
-        /// Drop every outstanding ticket, keeping bucket capacity. For
-        /// an owner that just cleared its whole map — every ticket would
-        /// be stale, and re-filing from an empty map yields nothing.
-        ///
-        /// Gated with its only caller,
-        /// `CosmicMeasure::drop_all_buffers`: production has no path
-        /// that empties a cache wholesale.
-        pub(crate) fn clear(&mut self) {
-            for bucket in &mut self.buckets {
-                bucket.clear();
-            }
-        }
-
         /// Outstanding tickets across the whole ring.
         ///
         ///

@@ -67,6 +67,9 @@ use crate::scene::record_store::RecordStore;
 use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::paint_anims::PaintAnim;
 use crate::shape::Lower;
+use crate::text::error::FontLoadError;
+use crate::text::font_family::FontFamily;
+use crate::text::font_source::FontSource;
 use crate::text::probe::TextProbe;
 use crate::text::run::TextRun;
 use crate::ui::frame_cycle::FrameCycle;
@@ -777,6 +780,63 @@ impl Ui {
     pub fn register_image(&self, image: Image) -> Result<ImageHandle, RegisterImageError> {
         self.resources.texture_limit.accepts(image.size)?;
         Ok(self.resources.images.register(image))
+    }
+
+    /// Register a font and get back the [`FontFamily`] its first face
+    /// belongs to.
+    ///
+    /// Additive and permanent: there is no unload, because the glyph
+    /// atlas keys on the database's face id and fontdb never reuses one.
+    /// A collection registers every face it holds, and each of their
+    /// families becomes reachable through
+    /// [`FontFamily::named`](crate::FontFamily::named). The returned
+    /// family is `Copy` and always valid, so — unlike
+    /// [`Self::load_icons`] and [`Self::register_image`] — nothing has to
+    /// be held to keep it alive.
+    ///
+    /// A load invalidates every shaped buffer and every encoded glyph
+    /// template, so the frame after one re-shapes the text on screen.
+    /// Loads are cold events; that is the whole cost.
+    ///
+    /// ```ignore
+    /// let mono = ui.load_font(include_bytes!("../assets/Iosevka.ttf"))?;
+    /// let sans = ui.load_font("/usr/share/fonts/TTF/Charter.ttf")?;
+    /// ```
+    ///
+    /// A `&str` is a **path**, never a family name — naming an installed
+    /// family is [`FontFamily::named`](crate::FontFamily::named), which
+    /// needs no load at all when the host asked for
+    /// [`FontScope::System`](crate::FontScope::System).
+    ///
+    /// # Errors
+    ///
+    /// [`FontLoadError::Io`](crate::FontLoadError::Io) when the file
+    /// cannot be read, and
+    /// [`FontLoadError::NoFaces`](crate::FontLoadError::NoFaces) when the
+    /// bytes hold no face fontdb can parse.
+    #[inline]
+    pub fn load_font(&self, source: impl Into<FontSource>) -> Result<FontFamily, FontLoadError> {
+        self.resources.text.load_font(source)
+    }
+
+    /// Whether a face answers to `family`.
+    ///
+    /// A family with no face resolves to
+    /// [`FontFamily::SANS`](crate::FontFamily::SANS) at shaping time and
+    /// warns once — never to whatever the machine happens to have
+    /// installed. Ask here to choose deterministically instead.
+    #[inline]
+    pub fn font_available(&self, family: FontFamily) -> bool {
+        self.resources.text.font_available(family)
+    }
+
+    /// Every family the shaper's database knows, system fonts included —
+    /// what a preferences picker lists.
+    ///
+    /// Cold: it walks every face and interns every name it has not seen.
+    #[inline]
+    pub fn font_families(&self) -> Vec<FontFamily> {
+        self.resources.text.font_families()
     }
 
     /// The largest width or height [`Self::register_image`] accepts — the
