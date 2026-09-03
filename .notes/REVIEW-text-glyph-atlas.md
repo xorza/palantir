@@ -76,29 +76,3 @@ re-run it on a quiet machine before deciding.
   reshaped prefix overruns, so the per-retry hash is almost never paid,
   and the copy is spent to save it. Measure the pair back to back, on a
   machine doing nothing else.
-
-## 9. Comments restate other comments, history, and the code
-
-- [ ] The retention ordering is told in full five times: `RENDERED_RUN_KEEP_FRAMES`
-  (`text/mod.rs`, 40 lines), `PROTECTED_KEEP_FRAMES`, `ENCODED_CACHE_KEEP_FRAMES`,
-  `UNALLOCATED_KEEP_FRAMES`, and the module docs of `cache_entry.rs` and
-  `expiry_wheel`. State it once on `RENDERED_RUN_KEEP_FRAMES`; the others link.
-- [ ] `text/mod.rs`'s module doc explains the crate's module-naming philosophy
-  ("Owner modules" / "Vocabulary modules"). That is a crate convention and
-  belongs in `CLAUDE.md` or `docs/`, not in one module's doc.
-- [ ] Docs that narrate the history of a change rather than the reason for the
-  code: `FaceBits` ("Four separate bytes is what the key used to hold"), `Starvation`
-  ("Two bools carried these three plus a fourth combination"),
-  `TextSystem::end_frame` ("Under the `hot` sweep a run therefore lost…"),
-  `CosmicMeasure::ellipsis` ("One slot was not enough"), `EncodedCache::expiry`
-  ("the previous `map.retain` walked…"). Keep the measurement and the rule; drop
-  the narrative.
-- [ ] `TextShapeKey` doc: "Three quantized fields rather than one collapsed `u64`
-  so the renderer can also reuse the size/width components if it wants to (e.g.
-  group runs by size for atlas bin reuse)". Nothing does. The actual reason is
-  that the restore path (`ensure_buffer`) rebuilds `Metrics` and `Attrs` from
-  the key alone, so the key must be lossless. Say that.
-- [ ] `encoded_counters.rs` module doc: "These were added to size a probation tier
-  … which the measurement then argued against building for now". Either the
-  counters answer a live question or they go; a doc that says they exist for an
-  abandoned experiment is a delete note.

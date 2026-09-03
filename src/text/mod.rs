@@ -23,41 +23,36 @@
 //!
 //! # Module layout
 //!
-//! Two shapes, and a module is one or the other.
+//! **Owner modules**, one type each with its private helpers: [`shaper`]
+//! the app-global coordinator, [`system`] the per-window reuse slots,
+//! [`request`] what a shaping call is asked, [`root`] what an unbounded
+//! shape answers, [`key`] the quantized cache identity, [`shaped_ref`]
+//! the render handoff, [`run`] how a caller describes a run to probe,
+//! [`probe`] the public geometry surface over the lease it holds,
+//! [`glyphs`] the render-side lease itself — held by the wgpu backend and
+//! by a `GpuView` drawing its own text, which want the same answers off
+//! the same borrow. [`font_scope`] names which faces a database starts
+//! with, and [`font_scan`] is one of those built on another thread.
 //!
-//! **Owner modules** are named for the one type they own, and hold that
-//! type's private helpers and nothing else: [`shaper`] the app-global
-//! coordinator, [`system`] the per-window reuse slots, [`request`] what a
-//! shaping call is asked, [`root`] what an unbounded shape answers,
-//! [`key`] the quantized cache identity, [`shaped_ref`] the render
-//! handoff, [`run`] how a caller describes a run to probe, [`probe`] the
-//! public geometry surface over the lease it holds, [`glyphs`] the
-//! render-side lease itself — held by the wgpu backend and by a
-//! `GpuView` drawing its own text, which want the same answers off the
-//! same borrow. [`font_scope`] names which faces a database starts with,
-//! and [`font_scan`] is one of those built on another thread.
-//!
-//! **Vocabulary modules** hold the small value types one layer speaks in,
-//! where naming a module per type would scatter a set that is only ever
-//! read together: this file (the two retention constants the renderer has
-//! to agree with), [`wrap`] the wrap policies, [`render`] the cosmic-free
-//! render terms. The three face axes get a file each —
+//! **Vocabulary modules**, the small value types one layer speaks in and
+//! would only scatter with a file apiece: this file (the constants the
+//! renderer has to agree with), [`wrap`] the wrap policies, [`render`]
+//! the cosmic-free render terms. The three face axes get a file each —
 //! [`font_family`], [`font_weight`], [`font_style`] — because each owns a
 //! name table, a range check or a tag that is nobody else's business.
 //! [`font_source`] is what a registration hands over and [`error`] what
 //! it can fail with.
 //!
-//! A backend gets a directory, because one type with five separable jobs
-//! is neither shape. [`cosmic`] is `CosmicMeasure` — the font database,
-//! wrapped shaping and truncation — in `mod.rs`, with
-//! `shaped_buffer_cache` (what is resident, for how long, and the frame
-//! clock that answers both), `cache_entry` (one resident shaped buffer),
-//! `cluster_glyph` (the cluster-precise cut's glyph view and prefix
-//! scan), `ellipsis_memo` (the reshaped "…" advance), `geometry`
-//! (reading measurements back off a shaped buffer), and `counters`
-//! beside it. Its children reach the measurer's private fields directly
-//! — privacy descends — so the split costs no widening, and each file is
-//! one answerable question.
+//! **A directory**, for one type with separable jobs: [`cosmic`] is
+//! `CosmicMeasure` — the font database, wrapped shaping and truncation —
+//! in `mod.rs`, with `shaped_buffer_cache` (what is resident, for how
+//! long, and the frame clock that answers both), `cache_entry` (one
+//! resident shaped buffer), `cluster_glyph` (the cluster-precise cut's
+//! glyph view and prefix scan), `ellipsis_memo` (the reshaped "…"
+//! advance), `geometry` (reading measurements back off a shaped buffer),
+//! and `counters` beside it. Its children reach the measurer's private
+//! fields directly — privacy descends — so the split costs no widening,
+//! and each file is one answerable question.
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
@@ -121,16 +116,17 @@ pub(crate) const TEXT_SCALE_STEP: f32 = 0.005;
 /// (`renderer::backend::text::encode::ENCODED_CACHE_KEEP_FRAMES`) must
 /// stay under.
 ///
-/// The two windows are not independent, but the relation between them
-/// is an **ordering, not an equality**. The encoded cache is what
-/// generates the render-side buffer lookups, so a buffer whose window
-/// expired first would be silently restored from source on a miss the
-/// encoder had already counted as cheap — still *correct*, just quietly
-/// paying to reshape. Everything that matters is preserved by keeping
-/// the buffer window the longer one; the encoded side is free to sit
-/// below it, and does, because its window doubles as its population
-/// multiplier. The `const _` assertion beside that constant is the
-/// tripwire.
+/// **The relation between the two windows is an ordering, not an
+/// equality.** The encoded cache is what generates the render-side
+/// buffer lookups, so a buffer whose window expired first would be
+/// silently restored from source on a miss the encoder had already
+/// counted as cheap — still *correct*, just quietly paying to reshape.
+/// Keeping the buffer window the longer one preserves everything that
+/// matters, and the `const _` assertion beside the encoded constant is
+/// the tripwire. Sharing one value instead would conflate "cannot
+/// cross" with "must match", and the encoded side has its own reason to
+/// sit well below: its window doubles as its population multiplier,
+/// which that constant carries.
 ///
 /// **Comparable numbers are only half of an ordering.** Both windows
 /// count frames off **one** clock — the shaped-buffer cache's own
@@ -146,11 +142,6 @@ pub(crate) const TEXT_SCALE_STEP: f32 = 0.005;
 /// ordering above is unaffected — every reader shrinks together — so
 /// read the number as "frames of paint", not as wall time. The clock's
 /// own field documents the limit and what closing it would take.
-///
-/// The ordering is deliberately **not** an equality. Sharing one value
-/// would conflate "cannot cross" with "must match" and cost the encoded
-/// cache four times the resident rows it needs — the shaped side has a
-/// probation tier to shed gesture churn, and the encoded side has none.
 ///
 /// Lives here rather than with either cache because `renderer` depends
 /// on `text` and not the reverse, so this is the only spot both can

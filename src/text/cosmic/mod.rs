@@ -276,12 +276,12 @@ pub(super) struct CosmicMeasure {
     /// through a recycled buffer. Nothing to bound, evict, or clear —
     /// the round-robin victim is simply overwritten.
     ///
-    /// One slot was not enough. It held only the *last* face, so any
+    /// Four of them, because one holds only the *last* face and any
     /// record order that interleaves two — header and detail rows, a
-    /// tree sized per depth, regular beside bold in one row — missed on
-    /// every single truncation. Measured on
+    /// tree sized per depth, regular beside bold in one row — then
+    /// misses on every truncation. Measured on
     /// `text_shape/ellipsis_width_churn`: the `two_faces` arm runs
-    /// 3.85 µs on one slot against 2.77 µs on four, a 28% cut, while
+    /// 2.77 µs on four slots against 3.85 µs on one, a 28% cut, while
     /// `one_face` is unchanged inside noise — so the extra slots cost
     /// nothing in the easy case. Four covers the interleavings a frame
     /// actually produces, and a lookup is four compares against a

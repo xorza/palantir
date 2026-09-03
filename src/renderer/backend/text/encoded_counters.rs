@@ -2,27 +2,20 @@
 //! [`TestOnly`](crate::common::counters::TestOnly), whose module doc
 //! explains the gated-cell pattern and why the two gates exist.
 //!
-//! These were added to size a probation tier for gesture churn, which
-//! the measurement then argued *against* building for now — so every
-//! reader is a test in `encode/tests.rs`.
-//!
 //! ## What this exists to separate
 //!
 //! From outside, a frame that replayed every run from a cached template
 //! and one that re-encoded them all look identical: both emit the same
 //! instances. The difference is the entire point of the cache — a miss
 //! walks cosmic's layout runs and touches the atlas per glyph, a hit is
-//! a memcpy with an origin shift.
+//! a memcpy with an origin shift. [`EncodedCounters::encodes`] is what
+//! separates them.
 //!
-//! Retention needs the same treatment, and needs it *before* a policy is
-//! chosen rather than after. The open question is whether a stable run is
-//! looked up often enough for "has it been asked for again" to work as a
-//! promotion signal at all: under `Damage::Partial` the encoder walk is
-//! culled to the damage region, so a run that is on screen and unchanged is
-//! not consulted on frames that do not damage it. [`EncodedCounters::hits`]
-//! against [`EncodedCounters::encodes`] is what answers that, and
-//! [`EncodedCounters::refiles`] says what the sweep pays per frame to keep
-//! the population alive.
+//! Retention is the other half. A gesture mints a key a frame, so the
+//! population is bounded by the window rather than by what is on screen,
+//! and [`EncodedCounters::expiries`] against the rows still resident is
+//! what shows that bound holding. [`EncodedCounters::refiles`] is what
+//! the sweep pays per frame to keep the live rows alive.
 //!
 //! What the *arena* under the cache did — blocks allocated against
 //! blocks recycled — is
@@ -47,14 +40,12 @@ counter_snapshot! {
 
     /// Runs pushed through the full miss path — glyph extraction through
     /// the shaper lease, then an atlas touch or rasterization per glyph.
-    /// The cost every other counter here exists to explain.
+    /// Zero on a frame that replayed every run from its template.
     encodes: u32,
-    /// Runs emitted from a resident template, origin-shifted.
-    hits: u32,
     /// Rows dropped by the sweep because their window lapsed.
     expiries: u32,
     /// Tickets whose row was still live, so the sweep re-filed rather
-    /// than dropped. The per-frame drain cost, and the number a
-    /// probation tier is meant to cut.
+    /// than dropped — what the per-frame drain costs above the rows it
+    /// actually retires.
     refiles: u32,
 }
