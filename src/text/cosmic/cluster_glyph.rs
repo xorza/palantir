@@ -16,15 +16,14 @@ pub(crate) struct ClusterGlyph {
     pub(crate) advance: f32,
 }
 
-/// Longest logical byte prefix of `count` shaped glyphs whose advances sum
-/// within `avail` and stay below `max_end`. `order` is retained scratch,
-/// refilled with the glyph indices sorted into logical order; `glyph` reads
-/// one glyph by its original (visual-order) index.
+/// Longest logical byte prefix of `glyphs` whose advances sum within
+/// `avail` and stay below `max_end`. Sorts `glyphs` into logical order in
+/// place, so a caller feeding the same snapshot back finds it already
+/// sorted.
 ///
-/// Reading through `glyph` rather than taking `&[LayoutGlyph]` buys two
-/// things: the caller keeps its borrow of the cache disjoint from its
-/// borrow of `order`, and the cut can be unit-tested against hand-built
-/// advances instead of whatever the installed fonts happen to measure.
+/// Taking a snapshot rather than cosmic's own `&[LayoutGlyph]` is what
+/// lets the cut be unit-tested against hand-built advances instead of
+/// whatever the installed fonts happen to measure.
 ///
 /// The result is always strictly below `max_end`, so passing the previous
 /// answer retires at least one more cluster — that is what makes
@@ -42,28 +41,18 @@ pub(crate) struct ClusterGlyph {
 /// cluster once every glyph covering it is paid for. Committing mid-cluster
 /// would claim bytes whose advance the budget never covered, and the prefix
 /// would reshape wider than `avail`.
-pub(crate) fn fitting_prefix(
-    count: usize,
-    glyph: impl Fn(usize) -> ClusterGlyph,
-    order: &mut Vec<u32>,
-    avail: f32,
-    max_end: usize,
-) -> usize {
-    order.clear();
-    order.extend(0..count as u32);
+pub(crate) fn fitting_prefix(glyphs: &mut [ClusterGlyph], avail: f32, max_end: usize) -> usize {
     // Visual order *is* logical order for an LTR run, which is nearly
-    // every run this shapes. Checking costs one key call per glyph;
-    // sorting costs `n log n` of them, since `sort_unstable_by_key`
-    // re-invokes the key rather than caching it. The cut itself only
-    // ever reads a short prefix, so on a long single-line run — a file
-    // path, a log line — the skipped sort was the dominant term.
-    if !order.is_sorted_by_key(|&i| glyph(i as usize).start) {
-        order.sort_unstable_by_key(|&i| glyph(i as usize).start);
+    // every run this shapes, and a back-off round re-reads a slice the
+    // previous one already sorted. The cut itself only ever reads a short
+    // prefix, so on a long single-line run — a file path, a log line —
+    // the skipped sort was the dominant term.
+    if !glyphs.is_sorted_by_key(|g| g.start) {
+        glyphs.sort_unstable_by_key(|g| g.start);
     }
     let mut cut = 0usize;
     let mut used = 0.0_f32;
-    for (pos, &i) in order.iter().enumerate() {
-        let g = glyph(i as usize);
+    for (pos, g) in glyphs.iter().enumerate() {
         // Ends are non-decreasing in logical order, so once one reaches the
         // bound no later glyph can be committed either.
         if g.end >= max_end {
@@ -73,9 +62,7 @@ pub(crate) fn fitting_prefix(
         if used > avail {
             break;
         }
-        let cluster_paid = order
-            .get(pos + 1)
-            .is_none_or(|&next| glyph(next as usize).start >= g.end);
+        let cluster_paid = glyphs.get(pos + 1).is_none_or(|next| next.start >= g.end);
         if cluster_paid {
             cut = g.end;
         }

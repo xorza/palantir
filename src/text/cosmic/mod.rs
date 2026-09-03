@@ -303,10 +303,12 @@ pub(super) struct CosmicMeasure {
     /// Retained scratch for `collect_break_offsets`, so the unbounded
     /// shape's segment scan allocates nothing per miss.
     break_scratch: Vec<u32>,
-    /// Retained scratch holding the truncation probe's glyph indices in
-    /// logical order — visual order is what the shaped run gives us, and
-    /// truncation needs the logical prefix.
-    logical_order: Vec<u32>,
+    /// Retained snapshot of the truncation probe's first layout run, in
+    /// the run's own visual order — [`fitting_prefix`] is what sorts it
+    /// logically, in place. Copied out of the cache once per miss so the
+    /// back-off rounds need no cache borrow: the shaping between them
+    /// takes the measurer mutably, which a live borrow would forbid.
+    cut_glyphs: Vec<ClusterGlyph>,
 }
 
 impl CosmicMeasure {
@@ -330,7 +332,7 @@ impl CosmicMeasure {
             ellipsis: ArrayVec::new(),
             truncate_scratch: String::new(),
             break_scratch: Vec::new(),
-            logical_order: Vec::new(),
+            cut_glyphs: Vec::new(),
         }
     }
 
@@ -832,22 +834,19 @@ impl CosmicMeasure {
             // shaped result, and while it overruns, retire one more cluster.
             // `max_end` makes every retry strictly shorter, so the sequence
             // bottoms out at the empty prefix.
+            self.cut_glyphs.clear();
+            if let Some(run) = self.cache.probe(probe_key).buffer.layout_runs().next() {
+                self.cut_glyphs.reserve_exact(run.glyphs.len());
+                self.cut_glyphs
+                    .extend(run.glyphs.iter().map(|g| ClusterGlyph {
+                        start: g.start,
+                        end: g.end,
+                        advance: g.w,
+                    }));
+            }
             let mut max_end = usize::MAX;
             loop {
-                let cut = match self.cache.probe(probe_key).buffer.layout_runs().next() {
-                    Some(run) => fitting_prefix(
-                        run.glyphs.len(),
-                        |i| ClusterGlyph {
-                            start: run.glyphs[i].start,
-                            end: run.glyphs[i].end,
-                            advance: run.glyphs[i].w,
-                        },
-                        &mut self.logical_order,
-                        avail,
-                        max_end,
-                    ),
-                    None => 0,
-                };
+                let cut = fitting_prefix(&mut self.cut_glyphs, avail, max_end);
                 self.truncate_scratch.clear();
                 self.truncate_scratch
                     .push_str(request.text[..cut].trim_end());

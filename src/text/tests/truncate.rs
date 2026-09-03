@@ -168,7 +168,6 @@ fn fitting_prefix_cuts_on_logical_cluster_boundaries() {
     ];
 
     const ANY: usize = usize::MAX;
-    let mut order = Vec::new();
     for (run, avail, max_end, expected, why) in [
         (LTR, 0.0, ANY, 0, "no budget keeps nothing"),
         (LTR, 9.9, ANY, 0, "a glyph is all-or-nothing"),
@@ -245,17 +244,15 @@ fn fitting_prefix_cuts_on_logical_cluster_boundaries() {
             "backing off a cluster retires all of its glyphs",
         ),
     ] {
-        let cut = cluster_glyph::fitting_prefix(
-            run.len(),
-            |i| ClusterGlyph {
-                start: run[i].0,
-                end: run[i].1,
-                advance: run[i].2,
-            },
-            &mut order,
-            avail,
-            max_end,
-        );
+        let mut glyphs: Vec<ClusterGlyph> = run
+            .iter()
+            .map(|&(start, end, advance)| ClusterGlyph {
+                start,
+                end,
+                advance,
+            })
+            .collect();
+        let cut = cluster_glyph::fitting_prefix(&mut glyphs, avail, max_end);
         assert_eq!(cut, expected, "avail={avail} max_end={max_end}: {why}");
         // Every bounded cut falls strictly below its bound, so feeding the
         // previous answer back always makes progress — that is what makes

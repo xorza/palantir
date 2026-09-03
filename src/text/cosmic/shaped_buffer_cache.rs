@@ -209,9 +209,9 @@ impl ShapedBufferCache {
     /// The cached unbounded shape a truncating fit cuts from.
     ///
     /// `CosmicMeasure::shape_truncated` restores this key before reaching
-    /// for it, and re-reads it once per back-off round because the
-    /// shaping in between needs the measurer mutably, so the borrow
-    /// cannot be held across the loop.
+    /// for it, and reads it once per miss: the shaping between back-off
+    /// rounds needs the measurer mutably, so it snapshots the glyphs it
+    /// cuts from rather than holding this borrow across the loop.
     ///
     /// Hands back the whole entry rather than its buffer: the caller
     /// wants the measured extent as well as the glyphs, and both come out
