@@ -12,12 +12,11 @@
 //! it exists.
 
 use crate::renderer::backend::curve_pipeline::CurvePipeline;
-use crate::renderer::backend::icon::IconBackend;
 use crate::renderer::backend::image_pipeline::ImagePipeline;
 use crate::renderer::backend::mesh_pipeline::MeshPipeline;
 use crate::renderer::backend::quad_pipeline::{QuadPipeline, QuadVariants};
+use crate::renderer::backend::raster_program::RasterProgram;
 use crate::renderer::backend::stencil_variant::StencilVariant;
-use crate::renderer::backend::text::TextBackend;
 
 /// All render pipelines built against one swapchain color format. Keyed
 /// by [`wgpu::TextureFormat`] in the backend so windows on different-format
@@ -27,14 +26,12 @@ pub(super) struct FormatPipelines {
     pub(super) quad: QuadVariants,
     pub(super) mesh: StencilVariant,
     pub(super) image: StencilVariant,
-    /// Icon base + stencil-test pipelines. Same shader and layout as `text`
-    /// — the two differ only in which atlas they bind — but a separate
-    /// pipeline object, because each carries its own bind-group layout.
-    pub(super) icon: StencilVariant,
     pub(super) curve: StencilVariant,
-    /// Text base + stencil-test pipelines; selected by `use_stencil` like
-    /// the other four. Built from `TextBackend::build_variants`.
-    pub(super) text: StencilVariant,
+    /// Base + stencil-test pipelines for **both** raster tenants: a glyph
+    /// quad and an icon quad are one draw against one shader and one
+    /// group-0 layout, so they are one pipeline pair binding whichever
+    /// atlas the step names. See [`RasterProgram`].
+    pub(super) raster: StencilVariant,
 }
 
 /// The format-independent resource structs [`FormatPipelines::new`] reads shaders
@@ -52,9 +49,8 @@ pub(super) struct PipelineSources<'a> {
     pub(super) quad: &'a QuadPipeline,
     pub(super) mesh: &'a MeshPipeline,
     pub(super) image: &'a ImagePipeline,
-    pub(super) icon: &'a IconBackend,
     pub(super) curve: &'a CurvePipeline,
-    pub(super) text: &'a TextBackend,
+    pub(super) raster: &'a RasterProgram,
 }
 
 impl FormatPipelines {
@@ -71,17 +67,15 @@ impl FormatPipelines {
             quad,
             mesh,
             image,
-            icon,
             curve,
-            text,
+            raster,
         } = sources;
         Self {
             quad: quad.build_variants(device, gradient_bgl, format),
             mesh: mesh.build_variants(device, format),
             image: image.build_variants(device, image_bgl, format),
-            icon: icon.pass.build_variants(device, format),
             curve: curve.build_variants(device, gradient_bgl, format),
-            text: text.pass.build_variants(device, format),
+            raster: raster.build_variants(device, format),
         }
     }
 }

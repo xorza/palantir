@@ -18,6 +18,7 @@ use crate::primitives::color::ColorU8;
 use crate::primitives::span::Span;
 use crate::primitives::urect::URect;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
+use crate::renderer::backend::raster_program::RasterProgram;
 use crate::renderer::backend::text::TextBackend;
 use crate::renderer::render_buffer::text::TextDrawRow;
 use crate::scene::record_store::RecordStore;
@@ -44,6 +45,14 @@ fn test_gpu() -> TestGpu {
     let lease = headless_test_gpu();
     let queue = lease.queue.clone();
     TestGpu { queue, lease }
+}
+
+/// A backend over a program of its own. Which program object a case
+/// built against is not something any of them asserts on — what one
+/// serving both tenants buys is the backend's business, not a
+/// fixture's.
+fn text_backend(device: &wgpu::Device, shaper: &TextShaper) -> TextBackend {
+    TextBackend::new(device, &RasterProgram::new(device), shaper.clone())
 }
 
 // Fixture builder: it mirrors the shape of the call under test rather than grouping.
@@ -127,7 +136,7 @@ fn cached_run_keeps_its_atlas_slots_live() {
     let gpu = test_gpu();
     let shaper = TextShaper::new();
     let mut store = RecordStore::default();
-    let mut backend = TextBackend::new(&gpu.lease.device, shaper.clone());
+    let mut backend = text_backend(&gpu.lease.device, &shaper);
 
     let runs = [make_inner_run(
         &mut store,
@@ -217,7 +226,7 @@ fn slot_generation_invalidates_only_referencing_run() {
     let gpu = test_gpu();
     let shaper = TextShaper::new();
     let mut store = RecordStore::default();
-    let mut backend = TextBackend::new(&gpu.lease.device, shaper.clone());
+    let mut backend = text_backend(&gpu.lease.device, &shaper);
 
     let runs = [
         make_inner_run(
@@ -343,7 +352,7 @@ fn deferred_upload_keeps_batches_distinct() {
     let gpu = test_gpu();
     let shaper = TextShaper::new();
     let mut store = RecordStore::default();
-    let mut backend = TextBackend::new(&gpu.lease.device, shaper.clone());
+    let mut backend = text_backend(&gpu.lease.device, &shaper);
 
     let color_a = ColorU8::linear_rgba(240, 240, 240, 255);
     let color_b = ColorU8::linear_rgba(200, 100, 50, 255);
@@ -429,7 +438,7 @@ fn partially_culled_run_is_not_cached() {
     let gpu = test_gpu();
     let shaper = TextShaper::new();
     let mut store = RecordStore::default();
-    let mut backend = TextBackend::new(&gpu.lease.device, shaper.clone());
+    let mut backend = text_backend(&gpu.lease.device, &shaper);
 
     // Three 3-glyph lines at line_height 16 px, origin (0, 0):
     // line tops sit at 0 / 16 / 32.
@@ -551,7 +560,7 @@ fn both_caches_age_on_one_clock_including_text_free_frames() {
     let gpu = test_gpu();
     let shaper = TextShaper::new();
     let mut store = RecordStore::default();
-    let mut backend = TextBackend::new(&gpu.lease.device, shaper.clone());
+    let mut backend = text_backend(&gpu.lease.device, &shaper);
 
     let runs = [make_inner_run(
         &mut store,
@@ -624,7 +633,7 @@ fn swept_empty_glyph_reinserts() {
     let gpu = test_gpu();
     let shaper = TextShaper::new();
     let mut store = RecordStore::default();
-    let mut backend = TextBackend::new(&gpu.lease.device, shaper.clone());
+    let mut backend = text_backend(&gpu.lease.device, &shaper);
 
     let runs = [make_inner_run(
         &mut store,

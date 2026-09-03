@@ -2,8 +2,9 @@
 //! read on the atlas hit path.
 
 use crate::renderer::backend::raster_atlas::content_type::ContentType;
+use crate::renderer::backend::raster_atlas::raster_quad::RasterQuad;
 use etagere::AllocId;
-use glam::{I16Vec2, U16Vec2};
+use glam::{I16Vec2, IVec2, U16Vec2};
 
 /// Where a packed raster sits on its side, what bearing it draws with, and
 /// the packer rectangle it owns.
@@ -25,6 +26,27 @@ pub(crate) struct SlotPlacement {
     /// draws with.
     pub(crate) content: ContentType,
     pub(crate) alloc: AllocId,
+}
+
+impl SlotPlacement {
+    /// The instance that draws this raster with its top-left at `pen`
+    /// plus the bearing, tinted `color`.
+    ///
+    /// Both tenants build a quad from a slot, and every term but the pen
+    /// and the tint is the slot's: the extents, the atlas origin, the
+    /// side to sample.
+    pub(crate) fn quad(self, pen: IVec2, color: u32) -> RasterQuad {
+        RasterQuad {
+            // `y` up in the rasterizer's sense, `y` down on screen.
+            pos: [
+                pen.x + i32::from(self.bearing.x),
+                pen.y - i32::from(self.bearing.y),
+            ],
+            dim: RasterQuad::dim(self.size.x, self.size.y),
+            uv_and_kind: RasterQuad::pack_uv(self.origin.x, self.origin.y, self.content),
+            color,
+        }
+    }
 }
 
 /// One entry of [`RasterAtlas`](super::RasterAtlas)'s dense slab: where a

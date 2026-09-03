@@ -16,35 +16,26 @@
 use crate::primitives::span::Span;
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
-use crate::renderer::backend::pipeline_recipe::PipelineRecipe;
 use crate::renderer::backend::raster_atlas::content_type::ContentType;
 use crate::renderer::backend::raster_atlas::packed_metadata::PackedMetadata;
 use crate::renderer::backend::raster_atlas::raster_quad::RasterQuad;
 use crate::renderer::backend::raster_atlas::{RasterAtlas, RasterAtlasConfig};
-use crate::renderer::backend::stencil_variant::{ColorVariantSpec, StencilVariant};
+use crate::renderer::backend::raster_program::RasterProgram;
+use crate::renderer::backend::stencil_variant::StencilVariant;
 use crate::renderer::backend::viewport::ViewportPush;
 use glam::{IVec2, UVec2};
 use std::fmt::Debug;
 use std::hash::Hash;
 
-/// The GPU debug names one pass gives its objects.
-///
-/// Written out per tenant rather than derived from a stem: these are the
-/// strings a frame capture shows, and a reader who greps
-/// `palantir.text.pipeline` has to find it.
-#[derive(Clone, Copy, Debug)]
-pub(super) struct RasterPassLabels {
-    pub(super) shader: &'static str,
-    pub(super) vbuf: &'static str,
-    pub(super) pipeline: &'static str,
-    pub(super) stencil_pipeline: &'static str,
-    pub(super) layout: &'static str,
-}
-
 /// Everything one tenant's pass settles at construction.
+///
+/// The pipeline and the shader are named by the [`RasterProgram`] that
+/// owns them, since a frame capture wants one name per object. What is
+/// per tenant is the instance buffer and the atlas.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct RasterPassConfig {
-    pub(super) labels: RasterPassLabels,
+    /// GPU debug name for this tenant's instance buffer.
+    pub(super) vbuf: &'static str,
     pub(super) atlas: RasterAtlasConfig,
     /// Quads the vertex buffer holds before its first growth. A screen of
     /// text runs to thousands of them and a screen of icons to hundreds,
@@ -129,24 +120,25 @@ pub(super) struct RasterPass<K> {
     /// entry — or the instance count, for the last batch — is where they
     /// end, so a batch costs one push when it opens and needs no close.
     starts: Vec<u32>,
-    /// Format-independent, so it survives a swapchain reformat;
-    /// [`Self::build_variants`] reads it per format.
-    shader: wgpu::ShaderModule,
     vbuf: DynamicBuffer<RasterQuad>,
-    labels: RasterPassLabels,
+    /// Label stem, for the diagnostics that have to name a tenant.
+    stem: &'static str,
     /// Where the atlas-starvation report stands — see [`Starvation`].
     starvation: Starvation,
 }
 
 impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
-    pub(super) fn new(device: &wgpu::Device, config: RasterPassConfig) -> Self {
+    pub(super) fn new(
+        device: &wgpu::Device,
+        program: &RasterProgram,
+        config: RasterPassConfig,
+    ) -> Self {
         Self {
-            atlas: RasterAtlas::new(device, config.atlas),
+            atlas: RasterAtlas::new(device, program, config.atlas),
             instances: Vec::new(),
             starts: Vec::new(),
-            shader: RasterQuad::shader_module(device, config.labels.shader),
-            vbuf: DynamicBuffer::vertex(device, config.labels.vbuf, config.initial_instances),
-            labels: config.labels,
+            vbuf: DynamicBuffer::vertex(device, config.vbuf, config.initial_instances),
+            stem: config.atlas.label,
             starvation: Starvation::default(),
         }
     }
@@ -171,7 +163,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
                 height = image.size.y,
                 left = image.bearing.x,
                 top = image.bearing.y,
-                label = self.labels.pipeline,
+                label = self.stem,
                 "skipping raster outside packed atlas metadata range",
             );
             return Rasterized::Slot(self.atlas.insert_unallocated(key));
@@ -201,7 +193,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
         }
         let atlas_px = self.atlas.atlas_px();
         tracing::warn!(
-            label = self.labels.pipeline,
+            label = self.stem,
             mask_px = atlas_px[1],
             color_px = atlas_px[0],
             live_rasters = self.atlas.cache.len(),
@@ -210,42 +202,13 @@ impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
         );
     }
 
-    /// Build the base and stencil-test pipelines against `format`. The
-    /// atlas, its bind group, and its sampler are not built here, so they
-    /// survive a format change.
-    pub(super) fn build_variants(
-        &self,
-        device: &wgpu::Device,
-        format: wgpu::TextureFormat,
-    ) -> StencilVariant {
-        // Group 0 = atlas textures + sampler. Viewport and atlas sizes ride
-        // the shared immediate region, so there is no uniform buffer.
-        let layout = PipelineRecipe::pipeline_layout(
-            device,
-            self.labels.layout,
-            &[Some(self.atlas.bind_group_layout())],
-        );
-        StencilVariant::build(
-            device,
-            ColorVariantSpec {
-                label: self.labels.pipeline,
-                stencil_label: self.labels.stencil_pipeline,
-                shader: &self.shader,
-                layout: &layout,
-                vertex_buffers: &[Some(RasterQuad::instance_layout())],
-                topology: wgpu::PrimitiveTopology::TriangleStrip,
-            },
-            format,
-        )
-    }
-
     /// Note where batch `batch_idx`'s quads begin, before any is pushed.
     pub(super) fn open_batch(&mut self, batch_idx: usize) {
         debug_assert_eq!(
             batch_idx,
             self.starts.len(),
             "{} batches must be prepared once in contiguous order",
-            self.labels.pipeline,
+            self.stem,
         );
         self.starts.push(self.instances.len() as u32);
     }
@@ -256,7 +219,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
         let Some(&start) = self.starts.get(batch_idx) else {
             panic!(
                 "render schedule referenced an unprepared {} batch",
-                self.labels.pipeline,
+                self.stem,
             );
         };
         let end = self
@@ -304,7 +267,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
         debug_assert!(
             !self.starts.is_empty() || self.instances.is_empty(),
             "{} quads were emitted with no batch to draw them",
-            self.labels.pipeline,
+            self.stem,
         );
         self.atlas.advance_to(frame);
         self.instances.clear();

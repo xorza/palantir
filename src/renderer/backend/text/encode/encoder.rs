@@ -134,24 +134,17 @@ impl TextEncoder {
                 continue;
             };
 
-            let abs_x = g.x + i32::from(placement.bearing.x);
-            let abs_y = g.y - i32::from(placement.bearing.y);
-            let dim = RasterQuad::dim(placement.size.x, placement.size.y);
-            let uv_and_kind =
-                RasterQuad::pack_uv(placement.origin.x, placement.origin.y, placement.content);
-
-            pass.instances.push(RasterQuad {
-                pos: [abs_x, abs_y],
-                dim,
-                uv_and_kind,
-                color,
-            });
+            let quad = placement.quad(IVec2::new(g.x, g.y), color);
+            pass.instances.push(quad);
             cache.stage(EncodedGlyph {
+                // The template is the same quad shifted to the run's
+                // own origin, so a hit replays it by adding that back.
                 instance: RasterQuad {
-                    pos: [abs_x - run_key.origin_x, abs_y - run_key.origin_y],
-                    dim,
-                    uv_and_kind,
-                    color,
+                    pos: [
+                        quad.pos[0] - run_key.origin_x,
+                        quad.pos[1] - run_key.origin_y,
+                    ],
+                    ..quad
                 },
                 atlas_slot: idx,
                 generation: slot.generation,

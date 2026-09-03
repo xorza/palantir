@@ -262,6 +262,7 @@ mod gpu {
     use super::*;
     use crate::host::test_gpu::headless_test_gpu;
     use crate::renderer::backend::raster_atlas::RasterAtlasConfig;
+    use crate::renderer::backend::raster_program::RasterProgram;
 
     /// A mask side that starts at 128² and tops out at 256², so one
     /// insert can walk the whole ladder — fits, grows, or is refused —
@@ -273,6 +274,7 @@ mod gpu {
     fn small_atlas(device: &wgpu::Device) -> RasterAtlas<TestKey> {
         RasterAtlas::new(
             device,
+            &RasterProgram::new(device),
             RasterAtlasConfig {
                 label: "palantir.test",
                 initial_mask_px: 128,
