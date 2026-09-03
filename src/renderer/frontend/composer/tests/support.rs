@@ -71,7 +71,7 @@ pub(super) fn text(buf: &mut PaintCapture, r: Rect) {
         rect: r,
         color: Color::WHITE.into(),
         text: ShapedTextRef {
-            key: TextShapeKey::INVALID,
+            key: TextShapeKey::fixture(),
             span: Span::default(),
         },
     });

@@ -500,7 +500,7 @@ impl<'a> Editor<'a> {
 /// session.
 #[cfg(test)]
 pub(crate) mod test_support {
-    use crate::common::hash;
+    use crate::widgets::text_edit::edit_state::EditState;
     use crate::widgets::text_edit::editor::Editor;
 
     impl Editor<'_> {
@@ -511,8 +511,8 @@ pub(crate) mod test_support {
         /// Latch the buffer's hash, as `TextEdit::show` does once the
         /// frame's edits have settled.
         pub(crate) fn observe_text(&mut self) {
-            let text_hash = hash::hash_str(self.text);
-            self.state.observe_text_hash(text_hash);
+            let text_hash = EditState::text_hash(self.text);
+            self.state.observe_text_hash(Some(text_hash));
         }
     }
 }

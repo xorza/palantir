@@ -26,41 +26,47 @@ fn ensure_buffer_exactly_restores_wrap_and_truncation() {
         .halign(HAlign::Center);
     let mut wrap = CosmicMeasure::default();
     let original = wrap.measure(text, wrap_params);
-    let original_glyphs = glyph_positions(&wrap, original.key);
+    let original_glyphs = glyph_positions(&wrap, original.buffer_key());
     wrap.drop_all_buffers();
-    assert!(wrap.shaped_run(original.key).is_none());
-    wrap.ensure_buffer(TextShapeRequest::for_key(text, original.key).unwrap());
+    assert!(wrap.shaped_run(original.buffer_key()).is_none());
+    wrap.ensure_buffer(TextShapeRequest::for_key(text, original.buffer_key()).unwrap());
     let restored = wrap.measure(text, wrap_params);
     assert_eq!(restored.size, original.size);
     assert_eq!(restored.intrinsic_min, original.intrinsic_min);
-    assert_eq!(glyph_positions(&wrap, restored.key), original_glyphs);
+    assert_eq!(
+        glyph_positions(&wrap, restored.buffer_key()),
+        original_glyphs
+    );
 
     for fit in [LineFit::Clip, LineFit::Ellipsis] {
         let mut truncated = CosmicMeasure::default();
         let params = wrap_params.width(84.003);
         let cut = truncate(&mut truncated, text, params, fit);
         let (original, unbounded) = (cut.fitted, cut.unbounded);
-        let original_glyphs = glyph_positions(&truncated, original.key);
+        let original_glyphs = glyph_positions(&truncated, original.buffer_key());
         truncated.drop_all_buffers();
-        assert!(truncated.shaped_run(original.key).is_none(), "fit: {fit:?}");
         assert!(
-            truncated.shaped_run(unbounded.key).is_none(),
+            truncated.shaped_run(original.buffer_key()).is_none(),
+            "fit: {fit:?}"
+        );
+        assert!(
+            truncated.shaped_run(unbounded.buffer_key()).is_none(),
             "fit: {fit:?}",
         );
 
-        truncated.ensure_buffer(TextShapeRequest::for_key(text, original.key).unwrap());
+        truncated.ensure_buffer(TextShapeRequest::for_key(text, original.buffer_key()).unwrap());
         assert!(
-            truncated.shaped_run(unbounded.key).is_some(),
+            truncated.shaped_run(unbounded.buffer_key()).is_some(),
             "truncation restoration must rebuild its unbounded probe for {fit:?}",
         );
-        let restored = truncated.measure_with_fit(text, params, fit, unbounded.key);
+        let restored = truncated.measure_with_fit(text, params, fit, unbounded.buffer_key());
         assert_eq!(restored.size, original.size, "fit: {fit:?}");
         assert_eq!(
             restored.intrinsic_min, original.intrinsic_min,
             "fit: {fit:?}",
         );
         assert_eq!(
-            glyph_positions(&truncated, restored.key),
+            glyph_positions(&truncated, restored.buffer_key()),
             original_glyphs,
             "fit: {fit:?}",
         );
@@ -93,8 +99,8 @@ fn recycled_buffer_matches_fresh_shape_at_new_width() {
     assert_eq!(actual.size, expected.size);
     assert_eq!(actual.intrinsic_min, expected.intrinsic_min);
     assert_eq!(
-        glyph_positions(&recycled, actual.key),
-        glyph_positions(&fresh, expected.key),
+        glyph_positions(&recycled, actual.buffer_key()),
+        glyph_positions(&fresh, expected.buffer_key()),
     );
 }
 
@@ -124,7 +130,7 @@ fn recycle_pool_retention_is_bounded() {
 /// per width, all inserted in the current frame.
 fn fill_distinct_widths(c: &mut CosmicMeasure, n: u32) -> Vec<TextShapeKey> {
     (0..n)
-        .map(|i| c.measure(BODY, distinct_width_shape(i)).key)
+        .map(|i| c.measure(BODY, distinct_width_shape(i)).buffer_key())
         .collect()
 }
 
@@ -186,7 +192,7 @@ fn a_lookup_promotes_an_entry_to_the_protected_window() {
     // A layout-side measure of the same key is too — asked for by index
     // rather than by re-deriving index 1's width.
     let reshaped = c.measure(BODY, distinct_width_shape(1));
-    assert_eq!(reshaped.key, keys[1], "same parameters, same key");
+    assert_eq!(reshaped.buffer_key(), keys[1], "same parameters, same key");
 
     // One frame past probation: the two untouched keys are gone, the two
     // promoted ones are still here — they have 120 frames, not 4.

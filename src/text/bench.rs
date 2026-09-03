@@ -388,7 +388,8 @@ fn drag_frame(
     let width = 40.0 + (step % DRAG_WIDTHS) as f32 * 0.25;
     let measured = measure_truncated_width(text, slot, TEXT, width);
     shaper.render_ensure(
-        TextShapeRequest::for_key(TEXT, measured.key).expect("the bench fixture has text"),
+        TextShapeRequest::for_key(TEXT, measured.key.expect("the bench shapes through cosmic"))
+            .expect("the bench fixture has text"),
     );
     frame_end(text, shaper);
     measured

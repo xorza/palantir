@@ -5,7 +5,7 @@
 //! with the tint applied the way the icon's kind says — rather than a snapshot.
 
 use glam::{UVec2, Vec2};
-use palantir::{Color, Configure, IconFit, IconTable, Panel, Sizing, Ui};
+use palantir::{Color, Configure, IconFit, IconTable, Panel, Sizing, Text, TextStyle, Ui};
 use std::rc::Rc;
 
 use crate::fixtures::close;
@@ -33,6 +33,42 @@ fn atlas() -> Rc<IconTable> {
             Rc::new(IconTable::from_svgs([("halves", HALVES_SVG), ("solid", SOLID_SVG)]));
     }
     BUILT.with(Rc::clone)
+}
+
+/// Assert a 20x20 solid pane at `at` is `tint` across its own pixels and
+/// nothing beyond them.
+///
+/// Five interior samples and one pixel outside each side, at offsets from
+/// the pane's own origin — which is what lets a case move the pane and
+/// keep the derivation. The interior proves the tint reached the
+/// framebuffer; the exterior proves the raster is the size of the box
+/// rather than rounded up into its neighbour.
+///
+/// `Color::rgb` takes sRGB components and the sRGB render target encodes
+/// them back on write, so the expected bytes are the authored ones — the
+/// same round trip the clear-colour smoke test pins.
+fn assert_solid_pane(img: &image::RgbaImage, at: Vec2, tint: [f32; 3]) {
+    let (ox, oy) = (at.x as u32, at.y as u32);
+    let expected = tint.map(|c| (c * 255.0f32).round() as u8);
+    for (dx, dy) in [(2, 2), (10, 10), (18, 18), (1, 18), (18, 1)] {
+        let (x, y) = (ox + dx, oy + dy);
+        let p = img.get_pixel(x, y).0;
+        for c in 0..3 {
+            assert!(
+                p[c].abs_diff(expected[c]) <= 4,
+                "({x},{y}) = {p:?} should be the tint {expected:?}",
+            );
+        }
+        assert_eq!(p[3], 255, "({x},{y}) must be opaque");
+    }
+    for (dx, dy) in [(-2, 10), (10, -2), (22, 10), (10, 22)] {
+        let (x, y) = (ox.wrapping_add_signed(dx), oy.wrapping_add_signed(dy));
+        assert!(
+            close(img.get_pixel(x, y).0, [0, 0, 0, 255]),
+            "({x},{y}) = {:?} must still be the clear colour",
+            img.get_pixel(x, y).0,
+        );
+    }
 }
 
 /// One icon in an exactly placed pane, so the pixels it owns are known from
@@ -69,11 +105,6 @@ fn pane_desaturated(
 
 /// A tintable icon reaches the framebuffer as coverage times the shape's tint,
 /// filling exactly the pixels its pane covers and none beyond.
-///
-/// At scale 1.0 a 20x20 pane at (6, 6) is physical pixels 6..26 on both axes.
-/// Interior pixels must be the tint exactly; the pixel just outside must still
-/// be the clear colour, which is what proves the raster is the size of the box
-/// rather than rounded up into its neighbour.
 #[test]
 fn tintable_icon_fills_its_exact_pixel_box_with_the_tint() {
     let mut h = Harness::new();
@@ -94,35 +125,7 @@ fn tintable_icon_fills_its_exact_pixel_box_with_the_tint() {
             });
     });
 
-    // `Color::rgb` takes sRGB components, and the sRGB render target encodes
-    // them back on write, so the framebuffer holds the authored values — the
-    // same round trip the clear-colour smoke test pins.
-    let expected = [
-        (0.2 * 255.0f32).round() as u8,
-        (0.8 * 255.0f32).round() as u8,
-        (0.4 * 255.0f32).round() as u8,
-        255,
-    ];
-    for (x, y) in [(8, 8), (16, 16), (24, 24), (7, 24), (24, 7)] {
-        let p = img.get_pixel(x, y).0;
-        for c in 0..3 {
-            assert!(
-                p[c].abs_diff(expected[c]) <= 4,
-                "({x},{y}) = {p:?} should be the tint {expected:?}",
-            );
-        }
-        assert_eq!(p[3], 255, "({x},{y}) must be opaque");
-    }
-
-    // One pixel outside the pane on each side: still the clear colour, so the
-    // raster did not spill past the box it was sized for.
-    for (x, y) in [(4, 16), (16, 4), (28, 16), (16, 28)] {
-        assert!(
-            close(img.get_pixel(x, y).0, [0, 0, 0, 255]),
-            "({x},{y}) = {:?} must still be the clear colour",
-            img.get_pixel(x, y).0,
-        );
-    }
+    assert_solid_pane(&img, Vec2::new(6.0, 6.0), [0.2, 0.8, 0.4]);
 }
 
 /// A colour icon keeps the artwork's own colours — the tint's RGB is ignored,
@@ -250,4 +253,73 @@ fn desaturate_greys_a_colour_icon_by_its_luminance() {
     // A flat channel average would put both at 117; the artwork's own colours
     // would leave them at LEFT / RIGHT. Neither is what luminance gives.
     assert!(left != LEFT && right != RIGHT, "grey is not the artwork");
+}
+
+/// Text and icons share one pipeline, so a step of either kind that
+/// follows the other rebinds nothing — see `Bound::Raster`. Both orders
+/// have to land the same pixels as either kind drawn alone.
+///
+/// The icon is what the assertions read, because its coverage is
+/// hand-derivable: a solid 8x8 viewBox filled to its pane is the tint on
+/// every pixel of the box and the clear colour one pixel out. Text
+/// bracketing it above and below is what forces the two transitions —
+/// `admit_higher_kind` closes the open text batch for an icon, so the
+/// pass runs text, icon, text.
+///
+/// A regression here is not subtle: a raster step that inherited the
+/// wrong pipeline draws the atlas through the wrong shader, and a step
+/// that lost the viewport immediate lands its quad at garbage NDC and
+/// leaves the box empty.
+#[test]
+fn an_icon_between_two_text_runs_lands_in_its_own_pixel_box() {
+    let mut h = Harness::new();
+    let tint = Color::rgb(0.2, 0.8, 0.4);
+    let label = |ui: &mut Ui, salt: &'static str, at: Vec2| {
+        Panel::zstack()
+            .id_salt(salt)
+            .position(at)
+            .size((Sizing::fixed(40.0), Sizing::fixed(14.0)))
+            .show(ui, |ui| {
+                Text::new("Ag")
+                    .id_salt(salt)
+                    .style(
+                        &TextStyle::default()
+                            .with_font_size(12.0)
+                            .with_color(Color::WHITE),
+                    )
+                    .show(ui);
+            });
+    };
+    let img = h.render(UVec2::new(48, 72), 1.0, Color::BLACK, |ui| {
+        Panel::canvas()
+            .id_salt("raster_order")
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                label(ui, "before", Vec2::new(6.0, 0.0));
+                pane(
+                    ui,
+                    "solid",
+                    Vec2::new(6.0, 26.0),
+                    Vec2::splat(20.0),
+                    "solid",
+                    tint,
+                );
+                label(ui, "after", Vec2::new(6.0, 54.0));
+            });
+    });
+
+    // Exactly what the icon has to land at when it is drawn alone, which
+    // is what makes the two orders comparable.
+    assert_solid_pane(&img, Vec2::new(6.0, 26.0), [0.2, 0.8, 0.4]);
+
+    // Both runs actually drew, or the icon proved nothing about a
+    // transition that never happened. Counting lit pixels per band
+    // rather than naming one: glyph coverage moves with the face.
+    let lit_in = |rows: std::ops::Range<u32>| {
+        rows.flat_map(|y| (0..48).map(move |x| (x, y)))
+            .filter(|&(x, y)| img.get_pixel(x, y).0[0] > 32)
+            .count()
+    };
+    assert!(lit_in(0..14) > 0, "the run before the icon must have drawn");
+    assert!(lit_in(54..68) > 0, "the run after the icon must have drawn");
 }

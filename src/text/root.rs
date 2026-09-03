@@ -71,13 +71,22 @@ pub(crate) mod test_support {
     #[derive(Clone, Copy, Debug)]
     pub(crate) struct TestMeasure {
         pub(crate) size: Size,
-        pub(crate) key: TextShapeKey,
+        /// `None` where the run shaped no buffer — an unusable face, or
+        /// the mono metric, which is what most fixtures measure through.
+        pub(crate) key: Option<TextShapeKey>,
         /// `None` when the run was shaped by a policy that skips the
         /// wrap-floor scan — see [`TextRoot::intrinsic_min`].
         pub(crate) intrinsic_min: Option<f32>,
     }
 
     impl TestMeasure {
+        /// The key of the buffer this run shaped under. Panics where
+        /// none was shaped, which every fixture reaching here rules out
+        /// by measuring through cosmic.
+        pub(crate) fn buffer_key(&self) -> TextShapeKey {
+            self.key.expect("this fixture shapes a buffer")
+        }
+
         /// The scanned wrap floor, for tests that assert on it. Panics
         /// with [`WRAP_FLOOR_ERROR`] exactly as [`TextRoot::wrap_floor`]
         /// does — same field, same contract, so a drift in one cannot
@@ -89,7 +98,7 @@ pub(crate) mod test_support {
         pub(crate) fn new(root: TextRoot, key: TextShapeKey) -> Self {
             Self {
                 size: root.size,
-                key,
+                key: Some(key),
                 intrinsic_min: root.intrinsic_min,
             }
         }

@@ -55,8 +55,7 @@ pub(super) fn nearest_byte(text: &str, target_x: f32, font_size_px: f32) -> usiz
 /// The run's unbounded shape under the mono metric — the twin of
 /// [`CosmicMeasure::root`](crate::text::cosmic::CosmicMeasure).
 ///
-/// Mints no shaped buffer, so `TextSystem` reports
-/// [`TextShapeKey::INVALID`](crate::text::key::TextShapeKey::INVALID) for
+/// Mints no shaped buffer, so `TextSystem` reports no buffer key for
 /// every run measured this way and the renderer drops them cleanly.
 ///
 /// Reached only through the shaper's dispatch, so the text is non-empty

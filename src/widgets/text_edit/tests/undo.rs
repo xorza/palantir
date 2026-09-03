@@ -1,4 +1,3 @@
-use crate::common::hash;
 use crate::widgets::text_edit::edit_state::EditKind;
 use crate::widgets::text_edit::tests::*;
 
@@ -132,7 +131,7 @@ fn external_replacement_discards_unrelated_history() {
     assert_eq!(state.undo.len(), 1);
 
     text = String::from("host value");
-    state.observe_text_hash(hash::hash_str(&text));
+    state.observe_text_hash(Some(EditState::text_hash(&text)));
     assert!(state.undo.is_empty(), "render observation drops stale undo");
     assert!(state.redo.is_empty(), "render observation drops stale redo");
     apply_key(&mut text, &mut state, ctrl_press(Key::Char('z')));

@@ -107,7 +107,7 @@ fn dummy_text() -> TextDrawRow {
         origin: glam::Vec2::ZERO,
         bounds: URect::ZERO,
         text: ShapedTextRef {
-            key: TextShapeKey::INVALID,
+            key: TextShapeKey::fixture(),
             span: Span::default(),
         },
         color: ColorU8::WHITE,

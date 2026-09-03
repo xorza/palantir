@@ -10,6 +10,7 @@ use crate::text::font_style::FontStyle;
 use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::wrap::{self, LineFit};
+use std::num::NonZeroU64;
 
 /// The face a shape is measured at, as [`TextShapeKey`] quantizes it:
 /// size, family, weight and style, and nothing about the text or the
@@ -36,13 +37,23 @@ pub(crate) struct QuantizedFace {
 /// rather than folded into the text's hash, because the restore path
 /// rebuilds cosmic's `Metrics` and `Attrs` from the key alone: a run
 /// whose buffer aged out reshapes from what the key says, and by then
-/// nothing else survives to say it. [`TextShapeKey::INVALID`] tags a
-/// measurement with no shaped buffer — the encoder drops those runs
-/// before paint.
+/// nothing else survives to say it.
+///
+/// **A run that names no key says so in an `Option`.** Every producer of
+/// one hands back `Option<Self>`, and [`Self::content_hash`] keeps the
+/// hash off zero so that option costs no width — see the field.
 #[derive(Clone, Copy, Hash, Eq, PartialEq, Debug)]
 pub(crate) struct TextShapeKey {
-    /// 64-bit hash of the source string. `0` for the invalid sentinel.
-    pub(crate) text_hash: u64,
+    /// 64-bit hash of the source string, mapped off zero by
+    /// [`Self::content_hash`].
+    ///
+    /// Non-zero as a *type*, so the zero bit pattern is free for
+    /// `Option<TextShapeKey>`'s niche: a run with no shapeable face is
+    /// spelled `None` and still costs the 24 bytes a key does. That is
+    /// what lets absence be a case the compiler makes every holder
+    /// answer, rather than a value each of them has to remember to
+    /// screen for.
+    pub(crate) text_hash: NonZeroU64,
     /// `font_size_px * 64`, rounded. Quantizing to 1/64 px is below any
     /// visible difference and keeps the key purely integral.
     size_q: u32,
@@ -72,28 +83,6 @@ pub(crate) struct TextShapeKey {
 const MAX_W_NONE: u32 = u32::MAX;
 
 impl TextShapeKey {
-    /// Sentinel for a measurement with no shaped buffer: in production,
-    /// empty text and a face with no usable size — the two runs
-    /// [`TextShapeRequest`](crate::text::request::TextShapeRequest) mints
-    /// nothing for — plus every run under the test-only mono fallback.
-    /// Real keys always carry a nonzero text hash, so that field alone
-    /// tags validity.
-    pub(crate) const INVALID: Self = Self {
-        text_hash: 0,
-        size_q: 0,
-        max_w_q: 0,
-        lh_q: 0,
-        family_q: 0,
-        // The stock face rather than a zeroed one: the four accessors
-        // decode without a validity check, and a zero weight is a value
-        // [`FontWeight`] refuses to name.
-        face_q: FaceBits::STOCK,
-    };
-
-    pub(crate) const fn is_invalid(self) -> bool {
-        self.text_hash == 0
-    }
-
     /// This key's share of the shaped-buffer cache's retention spread —
     /// see [`RENDERED_RUN_KEEP_SPREAD_MASK`].
     ///
@@ -104,13 +93,17 @@ impl TextShapeKey {
     /// snapped to whole pixels, so its low six bits are always zero and
     /// it contributes nothing until they are shifted off.
     pub(crate) const fn keep_spread(self) -> u64 {
-        (self.text_hash ^ (self.max_w_q as u64 >> 6) ^ self.size_q as u64)
+        (self.text_hash.get() ^ (self.max_w_q as u64 >> 6) ^ self.size_q as u64)
             & RENDERED_RUN_KEEP_SPREAD_MASK
     }
 
-    /// The content hash a key carries, given the raw hash of its source:
-    /// never zero, because zero is what [`Self::INVALID`] tags a
-    /// bufferless run with.
+    /// The content hash a key carries, given the raw hash of its source.
+    ///
+    /// Raw zero maps to one so the field can be a [`NonZeroU64`], which
+    /// is what makes `Option<TextShapeKey>` as wide as a key. The two
+    /// strings whose raw hashes are zero and one therefore share an
+    /// identity, which costs them one shaped buffer between them and
+    /// nothing a reader can see.
     ///
     /// Stated once because four sites derive it — this key's constructor,
     /// both of `ShapedTextRef`'s pairing checks, and `TextEdit`'s
@@ -118,34 +111,38 @@ impl TextShapeKey {
     /// against one that came off a key. A rule spelled at each of them is
     /// one that can be changed in only some, leaving the checks agreeing
     /// with a hash nothing mints any more.
-    pub(crate) const fn content_hash(raw: u64) -> u64 {
-        // `Ord::max` is not const yet, and the zero case is the whole rule.
-        if raw == 0 { 1 } else { raw }
+    pub(crate) const fn content_hash(raw: u64) -> NonZeroU64 {
+        // `unwrap_or` is not const on `Option<NonZeroU64>`, and the zero
+        // case is the whole rule.
+        match NonZeroU64::new(raw) {
+            Some(hash) => hash,
+            None => NonZeroU64::MIN,
+        }
     }
 
-    /// The face is screened before this is reached — by
-    /// [`TextShapeRequest::unbounded`](crate::text::request::TextShapeRequest::unbounded)
-    /// on every shaping path and by `TextRun::unbounded_key` on the
-    /// bufferless one, both through
-    /// [`GlyphFont::metrics_are_valid`] — so an unusable one here is a
-    /// logic error, debug-asserted rather than re-validated on the
-    /// shaping hot path. Without that screen the quantization below is
-    /// silent: a NaN size lands on a 1/64-px face and shapes against it.
-    /// The unbounded key for `text` at `font`, or [`Self::INVALID`]
-    /// where the face has no metrics to answer in.
+    /// The unbounded key for `text` at `font`, or `None` where the face
+    /// has no metrics to answer in.
     ///
-    /// **The one minting path.**
+    /// **The one screening path.**
     /// [`TextShapeRequest::unbounded`](crate::text::request::TextShapeRequest::unbounded)
     /// refuses empty text on top of this, because there is nothing to
     /// shape; a run's own key keeps it, because the metrics a probe
     /// answers in live on the key whether or not a buffer does.
-    pub(crate) fn for_text(text: &str, font: GlyphFont) -> Self {
-        if !font.metrics_valid() {
-            return Self::INVALID;
-        }
-        Self::unbounded(hash::hash_str(text), font)
+    pub(crate) fn for_text(text: &str, font: GlyphFont) -> Option<Self> {
+        font.metrics_valid()
+            .then(|| Self::unbounded(hash::hash_str(text), font))
     }
 
+    /// The key `text_hash` shapes under at `font`, before any width is
+    /// bound to it.
+    ///
+    /// The face is screened before this is reached — by
+    /// [`Self::for_text`] on the probe path and by `TextShape::is_noop`
+    /// on the recorded one, both through
+    /// [`GlyphFont::metrics_are_valid`] — so an unusable one here is a
+    /// logic error, debug-asserted rather than re-validated on the
+    /// shaping hot path. Without that screen the quantization below is
+    /// silent: a NaN size lands on a 1/64-px face and shapes against it.
     pub(crate) fn unbounded(text_hash: u64, font: GlyphFont) -> Self {
         let GlyphFont {
             size_px: font_size_px,
@@ -273,15 +270,6 @@ const FIT_MASK: u16 = 0b11 << FIT_SHIFT;
 const BOUND_MASK: u16 = ALIGN_MASK | FIT_MASK;
 
 impl FaceBits {
-    /// What [`TextShapeKey::INVALID`] carries: the default face, so a
-    /// sentinel decodes to values every axis calls its own.
-    const STOCK: Self = Self::new(
-        FontWeight::REGULAR,
-        FontStyle::Normal,
-        LineAlign::Auto,
-        LineFit::Wrap,
-    );
-
     /// No range check on the weight: [`FontWeight`] holds nothing outside
     /// `1..=1000`, and the `const _` block below pins that inside
     /// [`WEIGHT_MASK`].
@@ -411,9 +399,9 @@ const _: () = {
 /// Separate from the key because `TextSystem`'s reuse rows retain one per
 /// bounded resolve, and eight bytes beside a root key they already hold
 /// beats a second 24-byte key. Computing it *here* rather than by
-/// quantizing through a throwaway key is what keeps the sentinel meaning
-/// one thing: [`TextShapeKey::INVALID`] names a run with no shaped buffer,
-/// never a scratch value to hang a width off.
+/// quantizing through a throwaway key is what keeps every minted
+/// [`TextShapeKey`] a run the shaper can be asked for, never a scratch
+/// value to hang a width off.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct WrapBound {
     max_w_q: u32,
@@ -453,4 +441,24 @@ fn quantize_metric(value: f32) -> u32 {
 
 fn dequantize(value: u32) -> f32 {
     value as f32 / 64.0
+}
+
+// Gated as wide as its consumers: the encoded cache's churn fixture is
+// built by the `text_atlas` benchmark as well as by tests.
+#[cfg(any(test, feature = "bench"))]
+pub(crate) mod test_support {
+    use crate::text::glyph_font::GlyphFont;
+    use crate::text::key::TextShapeKey;
+
+    impl TextShapeKey {
+        /// A key standing for a run nothing resolves.
+        ///
+        /// Fixtures about batching, geometry, or the *other* components
+        /// of a cache key built over this one need a run identity and
+        /// nothing else. One shared spelling, so none of them implies
+        /// its own face matters.
+        pub(crate) fn fixture() -> Self {
+            Self::unbounded(1, GlyphFont::new(16.0))
+        }
+    }
 }

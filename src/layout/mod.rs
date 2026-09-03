@@ -134,7 +134,11 @@ impl IndexMut<Layer> for Layout {
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ShapedText {
     pub(crate) measured: Size,
-    pub(crate) key: TextShapeKey,
+    /// The buffer the renderer replays, or `None` where the run shaped
+    /// none — which in production is nothing, and under the gated mono
+    /// metric is every run. As wide as a bare key: see
+    /// [`TextShapeKey::text_hash`].
+    pub(crate) key: Option<TextShapeKey>,
 }
 
 impl LayerLayout {
@@ -184,5 +188,21 @@ impl LayerLayout {
         h.write_usize(self.rect.len());
         h.pod_slice(&self.rect);
         ContentHash(h.finish())
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod test_support {
+    use crate::layout::ShapedText;
+    use crate::text::key::TextShapeKey;
+
+    impl ShapedText {
+        /// The key of the buffer this run shaped under. Panics where
+        /// none was shaped, which every case reaching here rules out by
+        /// driving a cosmic harness; one *about* an absent key reads
+        /// [`ShapedText::key`] instead.
+        pub(crate) fn buffer_key(&self) -> TextShapeKey {
+            self.key.expect("this fixture shapes a buffer")
+        }
     }
 }

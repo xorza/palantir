@@ -81,8 +81,8 @@ pub(super) struct ShaperInner {
     /// arithmetic and mint no buffer. The database underneath is a real
     /// one, so a mono shaper still loads fonts and still resolves
     /// families; what it does not do is shape, which is why
-    /// `TextSystem` stamps its runs [`TextShapeKey::INVALID`] and the
-    /// renderer drops them.
+    /// `TextSystem` leaves its runs with no buffer key and the renderer
+    /// drops them.
     #[cfg(any(test, feature = "internals"))]
     mono: bool,
     /// Total [`Self::tally_dispatch`] calls: `TextSystem` reuse misses
@@ -274,8 +274,8 @@ impl TextShaper {
             // with no usable size. Nothing was shaped, so the block is
             // empty and sits at its own origin, which is every answer the
             // probe below can give. The key still carries the metrics it
-            // expresses them in, or the invalid sentinel where the face
-            // named none.
+            // expresses them in, or no key at all where the face named
+            // none.
             return TextProbe::new(Size::ZERO, run.text, run.unbounded_key(), halign, inner);
         };
         let (key, size) = match (run.wrap_width(), run.wrap.line_fit()) {
@@ -294,7 +294,7 @@ impl TextShaper {
             }
             _ => (unbounded.key, inner.root(unbounded, WrapFloor::Skip).size),
         };
-        TextProbe::new(size, run.text, key, halign, inner)
+        TextProbe::new(size, run.text, Some(key), halign, inner)
     }
 
     /// The run's unbounded shape. `TextSystem` calls this on a reuse-slot
@@ -326,8 +326,8 @@ impl TextShaper {
     }
 
     /// Whether this shaper produces shaped buffers the renderer can replay.
-    /// False only under the `internals`-gated mono metric, whose runs carry
-    /// [`TextShapeKey::INVALID`] so the encoder drops them.
+    /// False only under the `internals`-gated mono metric, whose runs name
+    /// no buffer key so the encoder drops them.
     pub(crate) fn shapes_buffers(&self) -> bool {
         !self.shared.inner.borrow().is_mono()
     }
@@ -372,8 +372,8 @@ impl TextShaper {
     /// Available under the mono metric too, and answers there in real
     /// glyphs: the lease is the *database*'s, and only measurement is
     /// mono. A mono run never reaches it through palantir's own text
-    /// backend — its key is the invalid sentinel, which the encoder
-    /// drops — so the two cannot disagree about one run.
+    /// backend — it names no buffer key, which the encoder drops — so
+    /// the two cannot disagree about one run.
     ///
     /// **The one lease, taken by both sides.** Palantir's own text backend
     /// holds it for a batch of encoded-cache misses; a caller drawing its own

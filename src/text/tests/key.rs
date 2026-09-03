@@ -9,7 +9,7 @@ fn cache_key_discriminates_every_shaping_axis() {
     // for other parameters gets replayed — measured rect against the wrong
     // rasterized glyphs.
     let mut c = CosmicMeasure::default();
-    let base = c.measure("hi", shape(16.0)).key;
+    let base = c.measure("hi", shape(16.0)).buffer_key();
 
     for (label, variant, field, base_field) in [
         (
@@ -43,7 +43,7 @@ fn cache_key_discriminates_every_shaping_axis() {
             base.style() as u32,
         ),
     ] {
-        let key = c.measure("hi", variant).key;
+        let key = c.measure("hi", variant).buffer_key();
         assert_ne!(base, key, "{label} must enter the cache key");
         assert_ne!(
             field(key),
@@ -59,33 +59,52 @@ fn cache_key_discriminates_every_shaping_axis() {
     assert_eq!(base.style(), FontStyle::Normal);
     assert_eq!(
         base.text_hash,
-        hash::hash_str("hi"),
+        TextShapeKey::content_hash(hash::hash_str("hi")),
         "direct shaping and authoring use the same canonical text hash",
     );
     assert_eq!(
-        c.measure("hi", shape(16.0)).key,
+        c.measure("hi", shape(16.0)).buffer_key(),
         base,
         "the same request must be deterministic",
     );
 }
 
-/// Validity is the text hash and nothing else, and no minted key can
-/// hold the hash that means "invalid".
+/// A run with no key costs no more than one with a key, and no minted
+/// key can hold the bit pattern that buys it.
 ///
-/// Asserted as the two halves that make it true rather than by writing a
-/// zero hash beside a set field: `content_hash` is what keeps a real run
-/// off zero, so that state is one no minting path can reach.
+/// The absent case is a `None` the type refuses to confuse with a real
+/// key, so what is left to pin is the mapping that feeds the niche and
+/// the width the niche saves. Both halves are load-bearing: without the
+/// mapping, the string whose raw hash is zero could not be keyed at all;
+/// without the width, `ShapedText` grows by eight bytes per recorded
+/// run.
 #[test]
-fn text_shape_key_validity_is_tagged_by_text_hash() {
-    assert!(TextShapeKey::INVALID.is_invalid());
+fn an_absent_key_is_free_and_no_minted_key_claims_its_niche() {
     assert_eq!(
-        TextShapeKey::content_hash(0),
-        1,
-        "a run whose text hashes to zero must not read as the sentinel",
+        size_of::<Option<TextShapeKey>>(),
+        size_of::<TextShapeKey>(),
+        "the non-zero text hash is what makes an absent key cost nothing",
     );
+    assert_eq!(
+        TextShapeKey::content_hash(0).get(),
+        1,
+        "a run whose text hashes to zero must not claim the niche",
+    );
+    for raw in [1, 2, u64::MAX] {
+        assert_eq!(
+            TextShapeKey::content_hash(raw).get(),
+            raw,
+            "every other hash is carried through unchanged",
+        );
+    }
     for face in [shape(16.0).font, shape(64.0).leading(90.0).font] {
-        assert!(!TextShapeKey::unbounded(0, face).is_invalid());
-        assert!(!TextShapeKey::unbounded(u64::MAX, face).is_invalid());
+        for raw in [0, 1, u64::MAX] {
+            assert_eq!(
+                TextShapeKey::unbounded(raw, face).text_hash,
+                TextShapeKey::content_hash(raw),
+                "a minted key carries the mapped hash, not the raw one",
+            );
+        }
     }
 }
 
@@ -93,7 +112,7 @@ fn text_shape_key_validity_is_tagged_by_text_hash() {
 /// run never reaches a dispatch.
 ///
 /// `TextShapeRequest::unbounded` is the one screen, so this is the same
-/// answer empty text gets: an invalid key and a zero extent. It has to
+/// answer empty text gets: no buffer key and a zero extent. It has to
 /// be an answer rather than a panic because `GlyphFont` is public and a
 /// caller fills it — `Ui::probe_text` and `TextGlyphs` take one straight
 /// from application arithmetic.
@@ -125,7 +144,7 @@ fn invalid_metrics_measure_to_nothing_without_a_shaping_dispatch() {
             let shaped = shaper.measure("hi", params);
             assert_eq!(shaped.measured, Size::ZERO, "{label}: must measure nothing");
             assert!(
-                shaped.key.is_invalid(),
+                shaped.key.is_none(),
                 "{label}: an unshaped run carries no buffer key",
             );
             assert_eq!(
@@ -177,20 +196,21 @@ fn identity_cache_rejects_invalid_metrics_before_dispatch() {
 fn bounded_width_canonicalizes_and_leaves_non_finite_values_unbound() {
     let base = shape(16.0).leading(19.2);
     let shaper = TextShaper::new();
-    let unbounded = shaper.measure("hi", base);
+    let natural = shaper.measure("hi", base);
+    let unbounded = natural.buffer_key();
     assert!(
-        unbounded.key.max_width_px().is_none(),
+        unbounded.max_width_px().is_none(),
         "None is the unbounded form",
     );
-    let zero = shaper.measure("hi", base.width(0.0));
+    let zero = shaper.measure("hi", base.width(0.0)).buffer_key();
     assert_eq!(
-        zero.key.max_width_px(),
+        zero.max_width_px(),
         Some(0.0),
         "zero is a valid bounded width",
     );
     // Negative widths (over-constrained layouts) clamp to the zero-width key.
-    let negative = shaper.measure("hi", base.width(-1.0));
-    assert_eq!(negative.key, zero.key);
+    let negative = shaper.measure("hi", base.width(-1.0)).buffer_key();
+    assert_eq!(negative, zero);
     // A width that names no width binds nothing, so the run keeps the
     // unbounded shape it would have had with no width at all. Answered
     // rather than rejected because `TextRun::max_width_px` is a public
@@ -201,8 +221,12 @@ fn bounded_width_canonicalizes_and_leaves_non_finite_values_unbound() {
         ("negative infinity", f32::NEG_INFINITY),
     ] {
         let bound = shaper.measure("hi", base.width(width));
-        assert_eq!(bound.key, unbounded.key, "{label}: must stay unbounded");
-        assert_eq!(bound.measured, unbounded.measured, "{label}");
+        assert_eq!(
+            bound.buffer_key(),
+            unbounded,
+            "{label}: must stay unbounded"
+        );
+        assert_eq!(bound.measured, natural.measured, "{label}");
     }
 }
 
@@ -211,13 +235,12 @@ fn above_epsilon_metrics_survive_cache_key_canonicalization() {
     use crate::primitives::approx::EPS;
 
     let mut cosmic = CosmicMeasure::default();
-    let result = cosmic.measure("x", shape(EPS * 2.0));
-    assert!(!result.key.is_invalid());
+    let key = cosmic.measure("x", shape(EPS * 2.0)).buffer_key();
     // Both floored onto the key's 1/64-px grid rather than to zero, which
     // would name a face that shapes nothing.
-    assert_eq!(result.key.font_size_px(), 1.0 / 64.0);
-    assert_eq!(result.key.line_height_px(), 1.0 / 64.0);
-    assert!(cosmic.shaped_run(result.key).is_some());
+    assert_eq!(key.font_size_px(), 1.0 / 64.0);
+    assert_eq!(key.line_height_px(), 1.0 / 64.0);
+    assert!(cosmic.shaped_run(key).is_some());
 }
 
 #[test]
@@ -318,8 +341,8 @@ fn quantized_key_shaping_is_insertion_order_independent() {
     assert_eq!(a.size, b_hit.size);
     assert_eq!(a.intrinsic_min, b.intrinsic_min);
     assert_eq!(
-        glyph_positions(&first_then_second, a.key),
-        glyph_positions(&second_then_first, b.key),
+        glyph_positions(&first_then_second, a.buffer_key()),
+        glyph_positions(&second_then_first, b.buffer_key()),
     );
 }
 

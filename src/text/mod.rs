@@ -10,7 +10,7 @@
 //! - [`mono`] — deterministic placeholder metric behind
 //!   the test/internals-only `TextShaper::test_mono`. Every glyph is
 //!   `font_size_px * 0.5` wide; it mints no shaped buffer, so `TextSystem`
-//!   reports [`key::TextShapeKey::INVALID`] for those runs and the renderer
+//!   reports no [`key::TextShapeKey`] for those runs and the renderer
 //!   drops them. It replaces the *measurement*, not the font system —
 //!   a mono shaper holds the same database as any other — so a layout
 //!   case states the width it expects as arithmetic instead of as
