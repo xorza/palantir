@@ -358,7 +358,7 @@ fn bench_cache_pair(
     {
         let mut h = make_ui();
         report_phases(&format!("{name}/forced_miss"), || {
-            h.engines.layout.cache.clear();
+            h.engines.layout.cache.forget_all();
             let _ = h.frame(build);
             h.engines.layout.scratch.counters.phase_timings()
         });
@@ -367,7 +367,7 @@ fn bench_cache_pair(
         let mut h = make_ui();
         let _ = h.frame(build);
         b.iter(|| {
-            h.engines.layout.cache.clear();
+            h.engines.layout.cache.forget_all();
             black_box(h.frame(build));
         });
     });

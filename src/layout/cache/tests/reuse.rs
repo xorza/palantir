@@ -430,7 +430,7 @@ fn widget_reappearance_matches_cold_snapshot() {
     run_frame(&mut h, with_widget);
     let warm = snap_for(&h, blip).unwrap().desired.to_vec();
 
-    h.engines.layout.cache.clear();
+    h.engines.layout.cache.forget_all();
     run_frame(&mut h, with_widget);
     let cold = snap_for(&h, blip).unwrap().desired.to_vec();
 

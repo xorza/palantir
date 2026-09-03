@@ -5,6 +5,8 @@
 //! hit.
 
 use crate::primitives::widget_id::WidgetId;
+use crate::text::font_scope::test_support::INTER;
+use crate::text::shaper::TextShaper;
 use crate::text::wrap::TextWrap;
 
 use crate::TextStyle;
@@ -519,7 +521,7 @@ fn cache_rects_match_cold_oracle_across_width_changes() {
             .map(|&n| h.ui.arranged_rect(Layer::Main, n))
             .collect();
 
-        h.engines.layout.cache.clear();
+        h.engines.layout.cache.forget_all();
         let mut cold_nodes = Vec::new();
         h.frame(|ui| {
             record(ui, &mut cold_nodes);
@@ -534,6 +536,51 @@ fn cache_rects_match_cold_oracle_across_width_changes() {
             "step {i}: warm-cache rects diverged from cold remeasure at width={w}",
         );
     }
+}
+
+/// Registering a font invalidates the measure-cache snapshot, which no
+/// check inside the cache can reach on its own.
+///
+/// Every freshness test here asks whether the *inputs* moved — the
+/// subtree hash, the quantized available width — and a load moves
+/// neither while changing what every run in the tree measures to. A
+/// family that fell back to the bundled default keeps the same
+/// `TextShapeKey` once its own face arrives, so without the epoch check
+/// in `LayoutEngine::run` the snapshot replays widths measured against
+/// the old database for as long as the tree is unchanged, while the
+/// renderer paints the new face inside them.
+///
+/// Pinned on the shaper's dispatch count, which is what a *replayed*
+/// snapshot leaves flat: the cache short-circuits whole subtrees, so an
+/// unchanged run reaches neither `TextSystem` nor the shaper.
+#[test]
+fn registering_a_font_forces_the_next_frame_to_remeasure() {
+    // A shaper of this case's own: a load moves the font epoch and drops
+    // every shaped buffer, which the shared one must not suffer.
+    let mut h = UiHarness::over_shaper(TextShaper::new(), UVec2::new(400, 300));
+    let record = |ui: &mut Ui| {
+        Text::new("a label that sizes to its own text")
+            .auto_id()
+            .show(ui);
+    };
+    let dispatches = |h: &UiHarness| h.engines.layout.text.shaper().measure_calls();
+
+    h.frame(record);
+    h.frame(record);
+    let warm = dispatches(&h);
+    h.frame(record);
+    assert_eq!(
+        dispatches(&h),
+        warm,
+        "premise: an unchanged tree replays the snapshot and shapes nothing",
+    );
+
+    h.ui.load_font(INTER).expect("the bundled Inter loads");
+    h.frame(record);
+    assert!(
+        dispatches(&h) > warm,
+        "a font load must throw the snapshot away and remeasure",
+    );
 }
 
 /// O1 regression: a measure-cache hit restores the subtree root's
@@ -684,7 +731,7 @@ fn moved_subtree_replays_translated_rects() {
 
     // Ground truth: clearing the cache forces a full remeasure of the same
     // frame, which must land on the identical geometry.
-    h.engines.layout.cache.clear();
+    h.engines.layout.cache.forget_all();
     let mut cold_nodes = Vec::new();
     h.frame(|ui| record(ui, 30.0, &mut cold_nodes));
     assert_eq!(

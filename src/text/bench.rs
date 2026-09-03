@@ -100,6 +100,17 @@ fn measure_truncated_face(
     text_system.measure(slot, request, TextWrap::Ellipsis, HAlign::Left, Some(width))
 }
 
+/// One frame boundary as `FrameCycle::run` drives it: the reuse-row
+/// sweep, then the clock tick.
+///
+/// The tick is the caller's in production too, and a fixture that leaves
+/// it out measures a cache nothing can ever expire from — no probation,
+/// no protection, no sweep cost at all.
+fn frame_end(text: &mut TextSystem, shaper: &TextShaper) {
+    text.end_frame(&WidgetIdSet::default());
+    shaper.tick_frame();
+}
+
 /// A/B for the `TextSystem` reuse-slot layer: steady-state
 /// `TextSystem::measure` hits vs the raw shaper dispatches the
 /// layer-less design would issue per frame — one unbounded probe for
@@ -134,7 +145,8 @@ fn bench_reuse_layer(c: &mut Criterion, run: Run<'_>) {
     const WRAP_W: f32 = 150.0;
 
     group.bench_function("single_line_hit_x64", |b| {
-        let mut text_system = TextSystem::new(TextShaper::new());
+        let shaper = TextShaper::new();
+        let mut text_system = TextSystem::new(shaper.clone());
         for (slot, text) in slots.iter().zip(&labels) {
             text_system.measure(
                 *slot,
@@ -154,7 +166,7 @@ fn bench_reuse_layer(c: &mut Criterion, run: Run<'_>) {
                     None,
                 ));
             }
-            text_system.end_frame(&WidgetIdSet::default());
+            frame_end(&mut text_system, &shaper);
         });
     });
 
@@ -171,7 +183,8 @@ fn bench_reuse_layer(c: &mut Criterion, run: Run<'_>) {
     });
 
     group.bench_function("wrap_hit_x64", |b| {
-        let mut text_system = TextSystem::new(TextShaper::new());
+        let shaper = TextShaper::new();
+        let mut text_system = TextSystem::new(shaper.clone());
         for (slot, text) in slots.iter().zip(&labels) {
             text_system.measure(
                 *slot,
@@ -191,7 +204,7 @@ fn bench_reuse_layer(c: &mut Criterion, run: Run<'_>) {
                     Some(WRAP_W),
                 ));
             }
-            text_system.end_frame(&WidgetIdSet::default());
+            frame_end(&mut text_system, &shaper);
         });
     });
 
@@ -242,7 +255,8 @@ fn bench_shared_content(group: &mut BenchmarkGroup<'_, WallTime>) {
     }
 
     group.bench_function("shared_content_x64", |b| {
-        let mut text_system = TextSystem::new(TextShaper::new());
+        let shaper = TextShaper::new();
+        let mut text_system = TextSystem::new(shaper.clone());
         for slot in &slots {
             text_system.measure(*slot, request(), TextWrap::Wrap, HAlign::Left, Some(WRAP_W));
         }
@@ -256,12 +270,13 @@ fn bench_shared_content(group: &mut BenchmarkGroup<'_, WallTime>) {
                     Some(WRAP_W),
                 ));
             }
-            text_system.end_frame(&WidgetIdSet::default());
+            frame_end(&mut text_system, &shaper);
         });
     });
 
     group.bench_function("contended_width_x64", |b| {
-        let mut text_system = TextSystem::new(TextShaper::new());
+        let shaper = TextShaper::new();
+        let mut text_system = TextSystem::new(shaper.clone());
         let widths = [WRAP_W, WRAP_W - 40.0];
         for (i, slot) in slots.iter().enumerate() {
             text_system.measure(
@@ -282,7 +297,7 @@ fn bench_shared_content(group: &mut BenchmarkGroup<'_, WallTime>) {
                     Some(widths[i % 2]),
                 ));
             }
-            text_system.end_frame(&WidgetIdSet::default());
+            frame_end(&mut text_system, &shaper);
         });
     });
 }
@@ -370,7 +385,7 @@ fn drag_frame(
     shaper.render_ensure(
         TextShapeRequest::for_key(TEXT, measured.key).expect("the bench fixture has text"),
     );
-    text.end_frame(&WidgetIdSet::default());
+    frame_end(text, shaper);
     measured
 }
 
@@ -405,7 +420,7 @@ fn bench_ellipsis_churn(c: &mut Criterion, run: Run<'_>) {
             let width = 40.0 + (step % DRAG_WIDTHS) as f32 * 0.25;
             step = step.wrapping_add(1);
             let measured = measure_truncated_width(&mut text, slot, TEXT, width);
-            text.end_frame(&WidgetIdSet::default());
+            frame_end(&mut text, &shaper);
             black_box(measured.measured)
         });
     });
@@ -438,7 +453,7 @@ fn bench_ellipsis_churn(c: &mut Criterion, run: Run<'_>) {
                 HEADING_PX,
                 FontWeight::BOLD,
             );
-            text.end_frame(&WidgetIdSet::default());
+            frame_end(&mut text, &shaper);
             black_box((body.measured, head.measured))
         });
     });

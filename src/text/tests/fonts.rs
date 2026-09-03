@@ -3,12 +3,12 @@
 
 use super::*;
 use crate::text::error::FontLoadError;
-use crate::text::font_scope::test_support::INTER;
+use crate::text::font_scope::test_support::{INTER, MONO};
 use crate::text::font_style::FontStyle;
 
 // A face file the bundled scope has *not* already registered is what a
 // load case would rather have, and there is none — so the cases below
-// introduce the bundled Inter to an empty database instead.
+// start from an empty database and introduce a bundled face to it.
 
 /// A family no face answers to shapes in the bundled default, never in
 /// whatever the machine happens to have installed.
@@ -98,6 +98,65 @@ fn a_load_bumps_the_epoch_the_renderer_watches() {
         shaper.font_epoch(),
         before + 1,
         "a failed load changes no face, so it must not invalidate anything",
+    );
+}
+
+/// A load changes what a run measures to **without changing its key**,
+/// so the layout-side rows have to be told out of band.
+///
+/// A reuse row is addressed by `(WidgetId, ordinal)` and validated
+/// against a [`TextShapeKey`], which carries the family *index* — never
+/// the face that index resolves to. So a run that fell back to the
+/// bundled default keeps a byte-identical key once a face answering to
+/// its family arrives, every freshness check in `TextSystem` passes, and
+/// the row goes on reporting the width it measured before the load. The
+/// shaped buffers are already gone by then, so the renderer reshapes in
+/// the new face and paints it inside the old box.
+#[test]
+fn a_load_retires_the_reuse_rows_measured_before_it() {
+    // A database holding Inter alone, so the monospace family below is a
+    // real fallback before the load and itself after it. `i` is where the
+    // two disagree most: Inter gives it a narrow proportional advance,
+    // JetBrains Mono the same fixed advance as every other glyph.
+    let shaper = TextShaper::over(CosmicMeasure::with_no_fonts());
+    shaper.load_font(INTER).expect("the bundled Inter loads");
+    let mut text = TextSystem::new(shaper.clone());
+    let run = slot(WidgetId::from_hash("label"));
+    let face = shape(16.0).family(FontFamily::MONO);
+
+    let fallback = text.shape_run(run, "iiiiiiii", face, TextWrap::SingleLine);
+    assert!(text.has_entry(run.widget_id, run.ordinal));
+    assert!(
+        !text.sync_fonts(),
+        "no load since construction: nothing to retire",
+    );
+
+    shaper
+        .load_font(MONO)
+        .expect("the bundled JetBrains Mono loads");
+    assert!(text.sync_fonts(), "the load has to be reported once");
+    assert_eq!(
+        text.entry_count(),
+        0,
+        "a row measured against the old database answers for nothing now",
+    );
+    assert!(
+        !text.sync_fonts(),
+        "and reported once only — the next frame has nothing to retire",
+    );
+
+    let resolved = text.shape_run(run, "iiiiiiii", face, TextWrap::SingleLine);
+    assert!(
+        resolved.size.w > fallback.size.w,
+        "the same run must remeasure in the registered face: eight fixed \
+         advances are wider than eight proportional `i`s, got {} then {}",
+        fallback.size.w,
+        resolved.size.w,
+    );
+    assert_eq!(
+        resolved.key, fallback.key,
+        "the key is what cannot tell the two apart — were it able to, \
+         this mechanism would be unnecessary rather than merely untested",
     );
 }
 

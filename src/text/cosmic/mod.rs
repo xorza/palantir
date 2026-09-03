@@ -3,7 +3,7 @@
 //! font size, wrap width, line height, family, weight, halign, fit) —
 //! so steady-state measurement is `HashMap` lookup only: no reshape,
 //! no allocation. The cache is bounded by **age, not capacity** —
-//! [`CosmicMeasure::advance_to`] drops entries untouched for
+//! [`CosmicMeasure::tick_frame`] drops entries untouched for
 //! [`PROBATION_KEEP_FRAMES`] / [`PROTECTED_KEEP_FRAMES`], see there for
 //! why the two windows exist. Missing buffers are reconstructible from
 //! the retained text source at the backend boundary, so a continuous
@@ -72,7 +72,7 @@ const RECYCLE_POOL_CAP: usize = 128;
 const ELLIPSIS_MEMO_SLOTS: usize = 4;
 
 /// Frames a *probationary* entry survives before
-/// [`CosmicMeasure::advance_to`] drops it: one inserted and never looked
+/// [`CosmicMeasure::tick_frame`] drops it: one inserted and never looked
 /// up, or one [superseded](CosmicMeasure::supersede) after its reuse
 /// slot moved to a different key.
 ///
@@ -302,16 +302,26 @@ pub(super) struct CosmicMeasure {
     /// uncached — the renderer's glyph atlas is the real bitmap cache.
     swash_cache: SwashCache,
     cache: FxHashMap<TextShapeKey, CacheEntry>,
-    /// Latest value of the shaper's shared frame clock, mirrored here by
-    /// [`Self::advance_to`]. Stamped onto every entry this touches, and
-    /// the reference point both retention windows measure back from.
+    /// **The** frame clock every text cache in the crate ages against,
+    /// advanced by [`Self::tick_frame`]. Stamped onto every entry this
+    /// touches, and the reference point both retention windows measure
+    /// back from.
     ///
-    /// Mirrored rather than counted: the renderer's encoded-run cache
-    /// and glyph atlas age against the same clock, and only one owner
-    /// can keep them in step — see
-    /// [`ShaperInner::frame`](crate::text::shaper::ShaperInner).
+    /// One counter rather than one per cache. The renderer's
+    /// encoded-run cache and its glyph atlas receive this reading
+    /// through [`TextShaper::frame`](crate::text::shaper::TextShaper)
+    /// instead of counting for themselves, which is what lets
+    /// [`RENDERED_RUN_KEEP_FRAMES`] state an ordering against them at
+    /// all — comparing two windows means something only while both
+    /// count the same thing.
+    ///
+    /// It advances on the record path while the backend sweeps on the
+    /// submit path, so it both jumps — two windows record before one
+    /// submit — and stalls — two submits inside one recorded frame.
+    /// That is fine for an age comparison. It is never a cadence gate
+    /// written as `frame % INTERVAL == 0`.
     frame: u64,
-    /// Which keys come due on which frame, so [`Self::advance_to`] costs
+    /// Which keys come due on which frame, so [`Self::tick_frame`] costs
     /// what expires rather than what is resident.
     ///
     /// A wheel rather than a single earliest-`keep_until` gate, which is
@@ -806,12 +816,20 @@ impl CosmicMeasure {
         }
     }
 
-    /// Take the shaper's `frame` clock and drop every buffer whose
-    /// deadline has passed.
+    /// The current reading of the shared frame clock — see
+    /// [`Self::frame`]. Every downstream cache stamps and expires
+    /// against this rather than counting frames of its own.
+    pub(super) fn frame(&self) -> u64 {
+        self.frame
+    }
+
+    /// Advance the shared frame clock one frame and drop every buffer
+    /// whose deadline has passed.
     ///
-    /// `frame` is only ever read, never derived from a local counter, so
-    /// a clock that jumps several frames at once is handled by the same
-    /// comparison as one that advances by one.
+    /// **The one place the clock moves.** Everything downstream — the
+    /// glyph atlas, the encoded-run cache — receives the new reading as
+    /// an argument and never advances it, which is what keeps every text
+    /// cache in the crate on one reading.
     ///
     /// Age, not capacity. A count budget cannot express what this cache
     /// needs: set below the live working set it thrashes — UI redraw is a
@@ -831,9 +849,9 @@ impl CosmicMeasure {
     /// files nothing, which is what keeps a re-read entry from filing a
     /// ticket per frame — so the real `dies_at` is re-read here and a
     /// still-live entry is simply re-filed.
-    pub(super) fn advance_to(&mut self, frame: u64) {
-        debug_assert!(frame >= self.frame, "the shared frame clock ran backwards");
-        self.frame = frame;
+    pub(super) fn tick_frame(&mut self) {
+        self.frame += 1;
+        let frame = self.frame;
         let cache = &mut self.cache;
         let recycle_pool = &mut self.recycle_pool;
         let probe = &mut self.counters;
@@ -1220,16 +1238,6 @@ pub(crate) mod test_support {
         #[cfg(test)]
         pub(crate) fn pending_tickets(&self) -> usize {
             self.expiry.pending()
-        }
-
-        /// Advance the shared clock by one frame and sweep — what
-        /// `TextShaper::tick_frame` does for a measurer reached through
-        /// a `TextShaper`. The retention tests drive `CosmicMeasure`
-        /// directly, with no shaper to hold the clock, so they own the
-        /// tick; production never increments here.
-        #[cfg(test)]
-        pub(crate) fn tick_frame(&mut self) {
-            self.advance_to(self.frame + 1);
         }
 
         /// A measurer over an empty database, so a case can watch a

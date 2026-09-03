@@ -151,9 +151,22 @@ pub(crate) struct MeasureSnapshot {
 }
 
 impl MeasureSnapshot {
+    /// Empty everything, retained descriptor map included — see
+    /// [`MeasureCache::forget_all`] for when a snapshot is thrown away
+    /// whole.
+    ///
+    /// `snapshots_identity` goes with the map. Leaving it set would let
+    /// the next capture that happens to fold to the same value reuse a
+    /// map that is no longer there.
+    fn forget_all(&mut self) {
+        self.clear_capture();
+        self.snapshots.clear();
+        self.snapshots_identity = 0;
+    }
+
     /// Empty the captured columns, keeping the retained descriptor map —
-    /// the half a new capture refills. `test_support` carries the
-    /// whole-snapshot `clear` beside it, and the names say which is which.
+    /// the half a new capture refills. [`Self::forget_all`] is the
+    /// whole-snapshot peer, and the names say which is which.
     fn clear_capture(&mut self) {
         self.nodes.clear();
         self.tracks.clear();
@@ -469,39 +482,28 @@ impl MeasureCache {
         }
         std::mem::swap(&mut self.previous, &mut self.current);
     }
+
+    /// Force a cold start: both buffers forget everything, so the next
+    /// frame measures from scratch.
+    ///
+    /// **What every other invalidation here cannot express.** The
+    /// snapshot checks all ask whether the *inputs* moved — the subtree
+    /// hash, the available width — and the one event that changes what a
+    /// run measures to while moving neither is a font load. See
+    /// `TextSystem::sync_fonts`, which is what detects it.
+    pub(super) fn forget_all(&mut self) {
+        self.previous.forget_all();
+        self.current.forget_all();
+    }
 }
 
-#[cfg(any(test, feature = "bench"))]
+#[cfg(test)]
 pub(crate) mod test_support {
     use super::*;
 
-    impl MeasureSnapshot {
-        /// Drop the retained descriptor map along with the captured
-        /// columns. `snapshots_identity` has to go with it — leaving it
-        /// set would let the next capture that happens to fold to the
-        /// same value reuse a map that is no longer there.
-        fn clear(&mut self) {
-            self.clear_capture();
-            self.snapshots.clear();
-            self.snapshots_identity = 0;
-        }
-    }
-
     impl MeasureCache {
-        /// Force a cold start: both buffers forget everything, so the
-        /// next frame measures from scratch. Used by the cache's own
-        /// tests, `layout::intrinsic`'s, and the `caches` bench to
-        /// separate a cold pass from a warm one mid-run.
-        pub(crate) fn clear(&mut self) {
-            self.previous.clear();
-            self.current.clear();
-        }
-
         /// Last frame's measured `desired` column, which the layout
-        /// tests read to prove what a capture retained. `cfg(test)`
-        /// alone — every reader is a test, including the ones inside
-        /// `bench.rs`.
-        #[cfg(test)]
+        /// tests read to prove what a capture retained.
         pub(crate) fn captured_desired(&self) -> &[Size] {
             &self.previous.nodes.desired
         }

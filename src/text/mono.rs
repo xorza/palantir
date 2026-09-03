@@ -1,6 +1,7 @@
-//! Deterministic placeholder shaping for the mono fallback: every glyph is
-//! `font_size_px * 0.5` wide, so the engine can run in tests and headless
-//! tools without a font system. [`root`] and [`resolve`] are the metric
+//! Deterministic placeholder shaping for the mono fallback: every glyph
+//! is `font_size_px * 0.5` wide, so a layout case can state the width it
+//! expects as arithmetic rather than as whatever the bundled face
+//! advances to. [`root`] and [`resolve`] are the metric
 //! behind [`TextShaper::test_mono`](crate::text::shaper::TextShaper) — the
 //! same two-kind split the cosmic measurer offers — and
 //! [`single_line_caret_x`] / [`nearest_byte`] are the geometry

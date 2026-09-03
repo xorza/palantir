@@ -226,8 +226,7 @@ impl UiHarness {
         thread_local! {
             static SHARED: TextShaper = TextShaper::new();
         }
-        let shared = HostShared::new(SHARED.with(Clone::clone), TextureLimit::default());
-        Self::from_resources(shared.resources.clone(), surface)
+        Self::over_shaper(SHARED.with(Clone::clone), surface)
     }
 
     /// A harness that is never framed — its [`Self::ui`] is a
@@ -732,6 +731,16 @@ impl UiHarness {
         harness.sync_display();
         harness.mark_warm();
         harness
+    }
+
+    /// [`Self::with_text`] over a shaper of the caller's own, for a case
+    /// that *changes* the font database. Registering a face is
+    /// process-visible state — it moves the epoch every text cache
+    /// watches, and drops every shaped buffer — so a case that loads one
+    /// must not do it to the shaper its neighbours are sharing.
+    pub(crate) fn over_shaper(shaper: TextShaper, surface: UVec2) -> Self {
+        let shared = HostShared::new(shaper, TextureLimit::default());
+        Self::from_resources(shared.resources.clone(), surface)
     }
 
     /// The one place a frame is actually entered. `Ui::frame` is

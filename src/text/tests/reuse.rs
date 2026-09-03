@@ -123,7 +123,7 @@ fn reuse_rows_outlive_unused_frames_and_go_with_their_widget() {
     // that drops cold ones.
     text.shape_run(slot_at(a, 0), "hi", params, TextWrap::SingleLine);
     text.shape_run(slot(b), "yo", params, TextWrap::SingleLine);
-    text.end_frame(&WidgetIdSet::from_iter([a]));
+    frame_end_removing(&mut text, &WidgetIdSet::from_iter([a]));
     assert_eq!(text.entry_count(), 1);
     assert!(
         !text.has_entry(a, 0),
@@ -164,9 +164,21 @@ fn drive_visible(
     key
 }
 
+/// One frame boundary the way `FrameCycle::run` drives it: sweep the
+/// rows of whatever left the tree, then advance the shared clock.
+///
+/// The tick is the caller's because in production it is too — it sits
+/// past the arm that chose the frame plan, so that a paint-only frame
+/// pays it as well. A fixture that called `TextSystem::end_frame` alone
+/// would age nothing at all.
+fn frame_end_removing(text: &mut TextSystem, removed: &WidgetIdSet) {
+    text.end_frame(removed);
+    text.shaper().tick_frame();
+}
+
 /// End a frame with nothing removed — the steady case.
 fn frame_end(text: &mut TextSystem) {
-    text.end_frame(&WidgetIdSet::default());
+    frame_end_removing(text, &WidgetIdSet::default());
 }
 
 /// Idle frames, for aging a buffer toward one of the retention windows.
@@ -253,7 +265,7 @@ fn scrolled_away_run_keeps_the_protected_window() {
 
     // Out of view: the widget stops being recorded, so its reuse row is
     // dropped. Nothing supersedes the key — it may well come back.
-    text.end_frame(&WidgetIdSet::from_iter([wid]));
+    frame_end_removing(&mut text, &WidgetIdSet::from_iter([wid]));
     idle(&mut text, cosmic::PROBATION_KEEP_FRAMES + 2);
     assert!(
         text.shaper().has_cosmic_buffer(key),
