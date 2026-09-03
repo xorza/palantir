@@ -53,6 +53,12 @@ impl TextEncoder {
     /// Cache-hit fast path. Returns `true` if `run_key` resolved to a
     /// live entry and the run's glyphs were emitted; `false` falls
     /// through to [`Self::encode_run`].
+    ///
+    /// **A forward that stays one.** The hit/miss split has to live at
+    /// the caller, because only the caller can open the glyph lease a
+    /// miss needs and an all-hit frame must not open. Folding the two
+    /// would put the shaper inside this type, and publishing the cache
+    /// would widen it for one method.
     pub(crate) fn try_emit_cached(
         &mut self,
         pass: &mut RasterPass<GlyphRasterKey>,

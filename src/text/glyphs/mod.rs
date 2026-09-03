@@ -92,11 +92,20 @@ impl<'a> TextGlyphs<'a> {
         // — see `TextShapeRequest`. Nothing to say and no face to say it
         // in both shape no buffer, and extraction restores one rather
         // than shaping it, so a run with no request has no glyphs.
-        let Some(request) = request(text, font) else {
+        let Some(request) = TextShapeRequest::unbounded(text, font) else {
             out.clear();
             return;
         };
-        self.extract_glyphs(request, placement(scale), out);
+        // Placed at its own origin and culled against nothing: a caller
+        // drawing into its own target positions the run itself, and the
+        // y-cull is a whole-line test against a rectangle this has no
+        // business guessing at.
+        let placement = RunPlacement {
+            origin: Vec2::ZERO,
+            scale,
+            bounds: None,
+        };
+        self.extract_glyphs(request, placement, out);
     }
 
     /// How far `text` reaches when laid out in `font`, in the logical pixels
@@ -124,7 +133,7 @@ impl<'a> TextGlyphs<'a> {
     pub fn measure(&mut self, text: &str, font: GlyphFont) -> Size {
         // The measuring half of the same edge [`Self::line`] answers: a run
         // with nothing to shape reaches to nothing.
-        request(text, font).map_or(Size::ZERO, |request| {
+        TextShapeRequest::unbounded(text, font).map_or(Size::ZERO, |request| {
             self.cosmic.root(request, WrapFloor::Skip).size
         })
     }
@@ -142,25 +151,6 @@ impl<'a> TextGlyphs<'a> {
     /// of per-glyph allocation.
     pub fn rasterize(&mut self, glyph: GlyphRasterKey) -> Option<RasterImage<'_>> {
         self.cosmic.rasterize_glyph(glyph)
-    }
-}
-
-/// One unwrapped line's shape request, or `None` where there is nothing
-/// to shape.
-fn request(text: &str, font: GlyphFont) -> Option<TextShapeRequest<'_>> {
-    TextShapeRequest::unbounded(text, font)
-}
-
-/// The run placed at its own origin, culled against nothing.
-///
-/// A caller drawing into its own target clips with its own scissor, and
-/// the y-cull is a whole-line test against a rectangle this has no
-/// business guessing at.
-fn placement(scale: f32) -> RunPlacement {
-    RunPlacement {
-        origin: Vec2::ZERO,
-        scale,
-        bounds: None,
     }
 }
 

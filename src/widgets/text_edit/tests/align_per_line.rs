@@ -12,6 +12,7 @@ use crate::text::font_family::FontFamily;
 use crate::text::font_style::FontStyle;
 use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
+use crate::text::key::LineAlign;
 use crate::text::request::test_support::TestShape;
 use crate::text::shaper::TextShaper;
 use crate::widgets::text_edit::tests::*;
@@ -210,7 +211,11 @@ fn cache_key_distinguishes_halign() {
         )
         .key;
     assert_ne!(l, r, "halign must enter the cache key");
-    assert_ne!(l.halign(), r.halign(), "halign is the discriminating field");
+    assert_ne!(
+        l.line_align(),
+        r.line_align(),
+        "the align is the discriminating field",
+    );
 }
 
 #[test]
@@ -255,8 +260,8 @@ fn unbounded_halign_collapses_to_auto_in_key() {
         .key;
     assert_eq!(left, right, "halign must not split the unbounded cache");
     assert_eq!(
-        left.halign(),
-        HAlign::Auto,
+        left.line_align(),
+        LineAlign::Auto,
         "unbounded entries always carry the Auto discriminant",
     );
 }
@@ -305,17 +310,15 @@ fn rendered_buffer_uses_per_line_align_even_when_content_fits() {
     // reordered variant trips here instead of silently falling
     // through.
     assert_eq!(
-        shaped.key.halign(),
-        HAlign::Right,
+        shaped.key.line_align(),
+        LineAlign::Right,
         "rendered buffer must carry the user's halign in its cache key (got {:?})",
-        shaped.key.halign(),
+        shaped.key.line_align(),
     );
-    // Also check the wrap-target axis is set — if it's
-    // `u32::MAX` the buffer was shaped without `max_width_px`
-    // and cosmic wouldn't have applied per-line align.
-    assert_ne!(
-        shaped.key.max_w_q,
-        u32::MAX,
+    // Also check the wrap-target axis is set — without a committed
+    // width cosmic applies no per-line align at all.
+    assert!(
+        shaped.key.max_width_px().is_some(),
         "rendered buffer must have a finite wrap target so cosmic per-line align fires",
     );
 }
@@ -425,13 +428,12 @@ fn placeholder_per_line_aligns_under_wrap() {
     assert_eq!(span.len, 1, "one Shape::Text expected on the block");
     let shaped = main.text_shapes[span.start as usize];
     assert_eq!(
-        shaped.key.halign(),
-        HAlign::Right,
+        shaped.key.line_align(),
+        LineAlign::Right,
         "placeholder buffer must carry the user's halign in its cache key",
     );
-    assert_ne!(
-        shaped.key.max_w_q,
-        u32::MAX,
+    assert!(
+        shaped.key.max_width_px().is_some(),
         "placeholder buffer must have a finite wrap target so cosmic per-line align fires",
     );
 }

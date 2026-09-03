@@ -1,5 +1,6 @@
 //! [`FontScope`] — which faces a shaper's font database starts with.
 
+use crate::text::cosmic;
 use crate::text::font_family::FontFamily;
 use cosmic_text::{FontSystem, fontdb};
 use std::sync::Arc;
@@ -76,7 +77,7 @@ impl FontScope {
         };
         // The bundled pair, which is what a stock theme names and what
         // every family with no face of its own resolves to.
-        crate::text::cosmic::warm_matches(&mut font_system, &[FontFamily::SANS, FontFamily::MONO]);
+        cosmic::warm_matches(&mut font_system, &[FontFamily::SANS, FontFamily::MONO]);
         font_system
     }
 }

@@ -77,27 +77,6 @@ re-run it on a quiet machine before deciding.
   and the copy is spent to save it. Measure the pair back to back, on a
   machine doing nothing else.
 
-## 8. Visibility and placement
-
-- [ ] `TextShapeKey`'s five quantized fields (`size_q`, `max_w_q`, `lh_q`,
-  `family_q`, `face_q`) are `pub(crate)` but nothing outside `key.rs` reads them;
-  every reader goes through the accessors. Only `text_hash` is read elsewhere.
-  Make the five private.
-- [ ] `font_scope.rs` calls `crate::text::cosmic::warm_matches(...)` by full
-  inline path. `use crate::text::cosmic;` then `cosmic::warm_matches(...)`.
-- [ ] `glyphs/mod.rs`: the free fns `request` and `placement` are one-liners whose
-  doc comments are longer than their bodies. Inline at the two call sites.
-- [ ] `EllipsisMemo::wanted(face).measured(advance)` is a two-step builder for a
-  two-field struct. Write `EllipsisMemo { face, advance }`.
-- [ ] `HAlign::Stretch` never reaches a key: `WrapBound::new` projects it to `Auto`
-  and unbounded keys store `Auto`. `FaceBits::halign`'s `Stretch` decode arm,
-  the `Stretch` half of the `const _` assertion, and `cosmic_align`'s `Stretch`
-  arm are unreachable. Encode the four reachable values in two bits.
-- [ ] `TextEncoder::try_emit_cached` forwards to `EncodedCache::emit_cached` in
-  one line. Call the cache directly or fold the two.
-- [ ] `RasterQuad::shader_module` compiles one WGSL twice, once per pass. Share
-  the module (moot after item 3).
-
 ## 9. Comments restate other comments, history, and the code
 
 - [ ] The retention ordering is told in full five times: `RENDERED_RUN_KEEP_FRAMES`

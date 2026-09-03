@@ -1,6 +1,6 @@
 //! Real text shaping via [`cosmic_text`]. Caches one shaped `Buffer`
 //! per [`TextShapeKey`] — every input that affects shaping (text hash,
-//! font size, wrap width, line height, family, weight, halign, fit) —
+//! font size, wrap width, line height, family, weight, line align, fit) —
 //! so steady-state measurement is a `HashMap` lookup only: no reshape,
 //! no allocation. What is resident and for how long belongs to
 //! [`shaped_buffer_cache`], which this file shapes into and reads back
@@ -20,7 +20,6 @@
 //! cost of resolving them — verifying with the cached buffer's source string
 //! on every hit — outweighs the cost of accepting the negligible risk.
 
-use crate::layout::types::align::HAlign;
 use crate::primitives::content_type::ContentType;
 use crate::primitives::num::F32Ext;
 use crate::primitives::raster_image::RasterImage;
@@ -38,7 +37,7 @@ use crate::text::font_scope::FontScope;
 use crate::text::font_source::FontSource;
 use crate::text::font_style::FontStyle;
 use crate::text::font_weight::FontWeight;
-use crate::text::key::TextShapeKey;
+use crate::text::key::{LineAlign, TextShapeKey};
 use crate::text::render::{GlyphRasterKey, PlacedGlyph, RunPlacement};
 use crate::text::request::TextShapeRequest;
 use crate::text::root::TextRoot;
@@ -173,20 +172,16 @@ fn shaping_name(family: FontFamily, present: bool) -> &'static str {
     }
 }
 
-/// Map an Palantir [`HAlign`] to cosmic-text's per-line align.
-/// `Auto`/`Stretch` map to `None` — cosmic falls back to its
+/// Map the align a [`TextShapeKey`] stores to cosmic-text's per-line
+/// align. `Auto` maps to `None` — cosmic falls back to its
 /// left-or-rtl-aware default, which is what "no per-line align" means.
-/// `Left`/`Center`/`Right` translate directly. Cosmic's `Justified` and
-/// `End` aren't surfaced.
-fn cosmic_align(halign: HAlign) -> Option<CosmicAlign> {
-    match halign {
-        HAlign::Left => Some(CosmicAlign::Left),
-        HAlign::Center => Some(CosmicAlign::Center),
-        HAlign::Right => Some(CosmicAlign::Right),
-        // `Auto` is the documented "no per-line align" default;
-        // `Stretch` doesn't make sense per-line for text and falls
-        // through to the same path.
-        HAlign::Auto | HAlign::Stretch => None,
+/// Cosmic's `Justified` and `End` aren't surfaced.
+fn cosmic_align(align: LineAlign) -> Option<CosmicAlign> {
+    match align {
+        LineAlign::Auto => None,
+        LineAlign::Left => Some(CosmicAlign::Left),
+        LineAlign::Center => Some(CosmicAlign::Center),
+        LineAlign::Right => Some(CosmicAlign::Right),
     }
 }
 
@@ -562,7 +557,9 @@ impl CosmicMeasure {
         // meaningful with a finite wrap target (cosmic uses it as the
         // line width); without one we pass `None` so single-line
         // editors keep their widget-side `dx` placement.
-        let alignment = key.max_width_px().and_then(|_| cosmic_align(key.halign()));
+        let alignment = key
+            .max_width_px()
+            .and_then(|_| cosmic_align(key.line_align()));
         let attrs = self.attrs_of(key);
         buffer.set_text(request.text, &attrs, Shaping::Advanced, alignment);
         buffer.shape_until_scroll(&mut self.font_system, false);
@@ -913,8 +910,7 @@ impl CosmicMeasure {
         if self.ellipsis.len() == ELLIPSIS_MEMO_SLOTS {
             self.ellipsis.pop();
         }
-        self.ellipsis
-            .insert(0, EllipsisMemo::wanted(face).measured(advance));
+        self.ellipsis.insert(0, EllipsisMemo { face, advance });
         advance
     }
 }

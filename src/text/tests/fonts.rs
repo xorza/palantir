@@ -231,12 +231,11 @@ fn the_key_carries_any_family_index() {
             ..GlyphFont::new(16.0)
         };
         let key = TextShapeKey::for_text("hi", face);
-        assert_eq!(key.family_q, raw);
         assert_eq!(key.family().raw(), raw);
         // The neighbours in the packed word must survive it.
         assert_eq!(key.weight(), FontWeight::REGULAR);
         assert_eq!(key.style(), FontStyle::Normal);
-        assert_eq!(key.halign(), HAlign::Auto);
+        assert_eq!(key.line_align(), LineAlign::Auto);
         assert_eq!(key.fit(), LineFit::Wrap);
     }
 }
@@ -255,13 +254,13 @@ fn the_packed_face_word_keeps_every_axis_apart() {
     let bound = unbounded.with_bound(WrapBound::new(120.0, HAlign::Right, LineFit::Wrap));
 
     for (label, key) in [("unbounded", unbounded), ("bound", bound)] {
-        assert_eq!(key.family_q, FontFamily::MONO.raw(), "{label}");
+        assert_eq!(key.family(), FontFamily::MONO, "{label}");
         assert_eq!(key.weight(), FontWeight::new(950), "{label}");
         assert_eq!(key.style(), FontStyle::Italic, "{label}");
     }
-    assert_eq!(unbounded.halign(), HAlign::Auto);
+    assert_eq!(unbounded.line_align(), LineAlign::Auto);
     assert_eq!(unbounded.fit(), LineFit::Wrap);
-    assert_eq!(bound.halign(), HAlign::Right);
+    assert_eq!(bound.line_align(), LineAlign::Right);
     assert_eq!(bound.fit(), LineFit::Wrap);
     assert_eq!(
         bound.unbounded_version(),
