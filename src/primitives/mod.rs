@@ -98,6 +98,7 @@ pub(crate) mod arc;
 pub(crate) mod background;
 pub(crate) mod bezier;
 pub(crate) mod brush;
+pub(crate) mod chevron;
 pub(crate) mod color;
 pub(crate) mod corners;
 pub(crate) mod fill_kind;

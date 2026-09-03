@@ -4,6 +4,7 @@
 //! declaring it below.
 
 mod damage;
+mod expander;
 mod format_change;
 mod gpu_view;
 mod gradient;

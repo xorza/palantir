@@ -2,7 +2,8 @@
 //! property table, and the notes field. Between them they carry every
 //! value-bound widget in the fixture and both `Grid` flavours — the
 //! statically-sized one in [`settings_card`] and the row-count-driven one
-//! in [`properties_card`].
+//! in [`properties_card`]. The notes field sits behind the tree's one
+//! [`Expander`], held open.
 
 use crate::frame_fixture::FrameFixture;
 use crate::frame_fixture::tokens;
@@ -21,6 +22,7 @@ use crate::widgets::button::Button;
 use crate::widgets::checkbox::Checkbox;
 use crate::widgets::combo_box::ComboBox;
 use crate::widgets::drag_value::DragValue;
+use crate::widgets::expander::Expander;
 use crate::widgets::frame::Frame;
 use crate::widgets::grid::Grid;
 use crate::widgets::panel::Panel;
@@ -235,11 +237,23 @@ pub(super) fn properties_card(state: &mut FrameFixture, ui: &mut Ui, rows: usize
     });
 }
 
+/// The notes field, behind the tree's only [`Expander`].
+///
+/// Held open, like every other backing value here — only `tick` moves —
+/// so the body records the same tree on every iteration. The library
+/// default leaves the reveal un-animated, which is what keeps
+/// `frame/cached_*` able to settle to no damage: an animating one would
+/// request a repaint on every frame of the tween.
 pub(super) fn notes_card(state: &mut FrameFixture, ui: &mut Ui) {
     tokens::card(ui, "notes", "NOTES", Sizing::HUG, |ui| {
-        TextEdit::new(&mut state.notes)
-            .id_salt("notes-edit")
-            .size((Sizing::FILL, Sizing::fixed(56.0)))
-            .show(ui);
+        Expander::new("scratch")
+            .id_salt("notes-expander")
+            .default_open(true)
+            .show(ui, |ui| {
+                TextEdit::new(&mut state.notes)
+                    .id_salt("notes-edit")
+                    .size((Sizing::FILL, Sizing::fixed(56.0)))
+                    .show(ui);
+            });
     });
 }
