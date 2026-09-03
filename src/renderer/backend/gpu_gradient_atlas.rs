@@ -19,13 +19,17 @@ use glam::UVec2;
 /// (`gradient_atlas::LutRowTexels`) so the GPU upload row-pitch can't
 /// silently drift from the texel type the bake writes.
 const ROW_PITCH: u32 = (LUT_ROW_TEXELS * size_of::<ColorF16>()) as u32;
-// `write_texture`'s `bytes_per_row` must be a multiple of
-// `COPY_BYTES_PER_ROW_ALIGNMENT` (256). Guarded on the row pitch rather
-// than on `LUT_ROW_TEXELS`, so changing the texel type has to come back
-// through here.
+// A multiple of `COPY_BYTES_PER_ROW_ALIGNMENT` (256), which
+// `write_texture` does *not* require — that rule belongs to
+// `copy_buffer_to_texture`. What it buys is the fast path inside wgpu:
+// a queue write whose pitch is already the aligned one is passed through
+// in a single copy, and one whose pitch is anything else is re-packed
+// row by row into an aligned staging buffer first. Guarded on the pitch
+// rather than on `LUT_ROW_TEXELS`, so changing the texel type has to
+// come back through here.
 const _: () = assert!(
     ROW_PITCH.is_multiple_of(256),
-    "gradient atlas row pitch must be a multiple of COPY_BYTES_PER_ROW_ALIGNMENT (256)"
+    "gradient atlas row pitch must stay 256-aligned to keep write_texture on its single-copy path"
 );
 
 /// Shared CPU gradient source plus the texture, sampler, and bind group
