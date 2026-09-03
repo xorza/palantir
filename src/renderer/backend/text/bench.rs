@@ -14,7 +14,7 @@
 //! - `text_atlas/steady_warm` — fixed scale, atlas warmed by two
 //!   priming iterations. Every glyph is an `atlas.touch` hit; the
 //!   measurement floor is `encode_batch` walking layout runs +
-//!   `swash_cache::CacheKey::new` + vertex buffer upload + draw.
+//!   `cosmic_text::CacheKey::new` + vertex buffer upload + draw.
 //! - `text_atlas/zoom_smooth` / `zoom_cold` — cycle through five
 //!   resident scale rungs in adjacent or jumping order. These isolate
 //!   multi-scale encoded-cache hits after all rungs are primed.

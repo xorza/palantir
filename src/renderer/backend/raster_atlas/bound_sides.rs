@@ -2,7 +2,7 @@
 //! [`RasterAtlas`](crate::renderer::backend::raster_atlas::RasterAtlas)'s two
 //! sides.
 
-use crate::renderer::backend::raster_atlas::content_type::ContentType;
+use crate::primitives::content_type::ContentType;
 use crate::renderer::backend::raster_atlas::side::Side;
 use crate::renderer::backend::raster_program::RasterProgram;
 

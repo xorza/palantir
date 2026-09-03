@@ -6,7 +6,9 @@ use crate::icons::icon_registry::IconSetId;
 use crate::icons::icon_set::IconRef;
 use crate::icons::icon_table::IconTable;
 use crate::icons::svg_facts;
-use crate::renderer::backend::raster_atlas::content_type::ContentType;
+use crate::primitives::content_type::ContentType;
+use crate::primitives::raster_image::RasterImage;
+use glam::IVec2;
 use resvg::tiny_skia;
 use resvg::usvg;
 use rustc_hash::FxHashMap;
@@ -38,18 +40,18 @@ struct ParsedIcon {
 
 /// Turns a baked icon into pixels at an exact physical size.
 ///
-/// Owned by the icon backend and driven on atlas misses. Two caches sit
-/// behind it: parsed [`usvg::Tree`]s, built the first time an icon is
-/// rasterized at any size and reused at every other size, and one RGBA
-/// scratch buffer that every raster renders through — so a steady state that
-/// re-rasterizes (a zoom gesture) allocates nothing after the first frame at
-/// its largest size.
+/// Owned by the icon backend and driven on atlas misses. Behind it sit
+/// parsed [`usvg::Tree`]s, built the first time an icon is rasterized at
+/// any size and reused at every other size, and the two scratch buffers
+/// every raster renders through — so a steady state that re-rasterizes (a
+/// zoom gesture) allocates nothing after the first frame at its largest
+/// size.
 ///
 /// The parses are the set's, not the rasterizer's: they are keyed by
 /// [`IconRef`] and dropped by [`Self::forget_sets`] when the set unloads —
 /// and capped at [`MAX_PARSED_TREES`] before that, so a session that draws
 /// its way through a large set keeps a working set rather than all of it.
-/// The scratch buffer belongs to nobody and stays.
+/// The scratch buffers belong to nobody and stay.
 pub(crate) struct IconRasterizer {
     trees: FxHashMap<IconRef, ParsedIcon>,
     /// Monotonic rasterize counter — the clock `ParsedIcon::last_use` reads.
@@ -57,6 +59,11 @@ pub(crate) struct IconRasterizer {
     /// Premultiplied RGBA that resvg renders into, whatever the icon's kind —
     /// a mask is the alpha channel of this, extracted after the render.
     rgba: Vec<u8>,
+    /// Atlas-ready bytes the render is unpacked into: coverage for a
+    /// tintable icon, straight RGBA otherwise. Separate from
+    /// [`Self::rgba`] because neither form is what resvg leaves behind,
+    /// and the borrow handed out by [`Self::rasterize`] is of this.
+    out: Vec<u8>,
     options: usvg::Options<'static>,
 }
 
@@ -71,6 +78,7 @@ impl Default for IconRasterizer {
             trees: FxHashMap::default(),
             uses: 0,
             rgba: Vec::new(),
+            out: Vec::new(),
             options: svg_facts::parse_options(),
         }
     }
@@ -82,27 +90,29 @@ impl std::fmt::Debug for IconRasterizer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("IconRasterizer")
             .field("parsed", &self.trees.len())
-            .field("scratch_bytes", &self.rgba.capacity())
+            .field(
+                "scratch_bytes",
+                &(self.rgba.capacity() + self.out.capacity()),
+            )
             .finish_non_exhaustive()
     }
 }
 
 impl IconRasterizer {
-    /// Rasterize `key` into `out`, returning which atlas side it belongs on.
+    /// Rasterize `key`, handing back the image over this rasterizer's own
+    /// retained buffer — the same shape
+    /// [`CosmicMeasure::rasterize_glyph`](crate::text::cosmic::CosmicMeasure::rasterize_glyph)
+    /// answers a glyph in, so the atlas takes either without a conversion.
     ///
-    /// `out` is cleared and refilled — pass the backend's retained staging
-    /// buffer, not a fresh `Vec`. `None` means the icon's SVG could not be
-    /// parsed or the size was unrepresentable; the caller skips the draw, and
-    /// the failure is not retried.
+    /// The pixels live until the next rasterize overwrites them, so the
+    /// caller inserts before it asks for the next icon. `None` means the
+    /// icon's SVG could not be parsed or the size was unrepresentable; the
+    /// caller skips the draw, and the failure is not retried.
     pub(crate) fn rasterize(
         &mut self,
         table: &IconTable,
         key: IconRasterKey,
-        out: &mut Vec<u8>,
-    ) -> Option<ContentType> {
-        // Destructured so the parsed tree (borrowed from `trees`) and the
-        // scratch buffer are held at once — disjoint fields that method calls
-        // on `&mut self` could not express.
+    ) -> Option<RasterImage<'_>> {
         self.uses += 1;
         // Room made before the probe, so the ceiling counts the entry about
         // to land rather than the one after it. The extra lookup rides the
@@ -110,10 +120,14 @@ impl IconRasterizer {
         if self.trees.len() >= MAX_PARSED_TREES && !self.trees.contains_key(&key.icon) {
             self.retire_least_used();
         }
+        // Destructured so the parsed tree (borrowed from `trees`) and the
+        // scratch buffers are held at once — disjoint fields that method calls
+        // on `&mut self` could not express.
         let Self {
             trees,
             uses,
             rgba,
+            out,
             options,
         } = self;
         let def = table.def(key.icon.icon);
@@ -148,13 +162,13 @@ impl IconRasterizer {
         // straight off the premultiplied texel.
         let rendered = pixmap.as_ref();
         let pixels = rendered.pixels();
-        if def.tintable {
+        let content = if def.tintable {
             // Coverage only. The colour the artwork was drawn in is discarded
             // — a tintable icon is defined as one whose paint is a single
             // colour, and the draw supplies that colour.
             out.reserve_exact(pixels.len());
             out.extend(pixels.iter().map(|texel| texel.alpha()));
-            Some(ContentType::Mask)
+            ContentType::Mask
         } else {
             out.reserve_exact(bytes);
             for texel in pixels {
@@ -166,8 +180,16 @@ impl IconRasterizer {
                     straight.alpha(),
                 ]);
             }
-            Some(ContentType::Color)
-        }
+            ContentType::Color
+        };
+        Some(RasterImage {
+            content,
+            size: key.size().as_uvec2(),
+            // Unlike a glyph, an icon's raster *is* its box, so the
+            // composer's origin needs no adjustment.
+            bearing: IVec2::ZERO,
+            data: out,
+        })
     }
 
     /// Drop the parse that has gone longest without a rasterize.

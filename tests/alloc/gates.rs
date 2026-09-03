@@ -144,29 +144,32 @@ const RAMP_ICONS: u16 = 5;
 const RAMP_FRAMES: usize = 64;
 
 /// Per-frame ceiling for the ramp, against a measured worst frame of
-/// 553 and a mean of 478.
+/// 400 and a mean of 350.
 ///
 /// **Not zero, and it cannot be.** Every frame here misses every glyph
-/// and every icon it draws: swash hands back an owning
-/// `GlyphImage { data: Vec<u8> }` per glyph, the SVG rasterizer builds a
-/// tree per icon, and both atlases take an insert. That floor belongs to
-/// the dependencies rather than to palantir, and the headroom above it is
-/// for the platform fallback faces, which differ per machine and so
-/// change how many glyphs a run resolves to.
+/// and every icon it draws: swash scales an outline per glyph, resvg
+/// renders the parsed tree at a size it has not been rendered at, and
+/// both atlases take an insert. Shaping is not in that list — the rung is
+/// a raster scale, which `TextShapeKey` does not carry, so the shaped
+/// buffers hit. The floor belongs to the dependencies rather than to
+/// palantir, and the headroom above it is for the platform fallback
+/// faces, which differ per machine and so change how many glyphs a run
+/// resolves to.
 ///
 /// What it pins is the *per-miss* cost. A regression that allocated once
 /// more per glyph would lift this by the glyph count, and the audit
 /// checks every frame on its own, so it fails on the frame that did it
-/// with that frame's backtraces attached. Fixing the swash allocation
-/// would move the number the other way, and the number is meant to follow
-/// it down.
+/// with that frame's backtraces attached. Both rasterizers render into
+/// retained scratch and hand back a borrow, so neither the glyph nor the
+/// icon side contributes a block per raster; anything that made one of
+/// them own its pixels again would show up here first.
 ///
 /// **What it does not reach is atlas pressure.** Eviction needs the mask
 /// side full, and a zoom that climbs far enough to fill it has already
 /// carried most of the tree off the surface — so this ramp exercises
 /// growth and the miss path, not the re-rasterize cascade
 /// `RasterAtlas::evict_one` describes.
-const RAMP_BLOCKS_PER_FRAME_MAX: u64 = 700;
+const RAMP_BLOCKS_PER_FRAME_MAX: u64 = 510;
 
 /// A continuous zoom: the raster scale steps one [`TEXT_SCALE_STEP`] rung
 /// a frame, so every glyph and every icon on screen resolves to a key

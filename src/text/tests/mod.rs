@@ -24,6 +24,7 @@ use crate::text::mono;
 use crate::text::probe::test_support as probe;
 use crate::text::request::TextShapeRequest;
 use crate::text::request::test_support::TestShape;
+use crate::text::root::TextRoot;
 use crate::text::root::test_support::TestMeasure;
 use crate::text::run::TextRun;
 use crate::text::shaped_ref::ShapedTextRef;
@@ -82,25 +83,24 @@ fn slot_at(widget_id: WidgetId, ordinal: u16) -> TextRunSlot {
     TextRunSlot { widget_id, ordinal }
 }
 
-/// Measure through the mono fallback. Mints no shaped buffer, so every
-/// run it measures carries the invalid sentinel.
-fn mono_shape(text: &str, shape: TestShape, fit: LineFit) -> TestMeasure {
+/// The extent the mono metric lays `text` out to — its unbounded shape
+/// where `shape` commits no width, its bounded resolve under `fit` where
+/// it does.
+///
+/// The two entry points are the whole of what the metric answers, so a
+/// case that wants the wrap floor or the line count asks [`mono_root`]
+/// for them: a bounded resolve has neither to give, on either metric.
+fn mono_extent(text: &str, shape: TestShape, fit: LineFit) -> Size {
     let request = shape.request(text, fit);
-    // Size and line count come off the metric's own layout: these cases
-    // pin mono's arithmetic, and a *bounded* resolve reports no line count
-    // through any shaper path. The wrap floor still comes off the root,
-    // which is the only shape that has one.
-    let laid = mono::test_support::layout_of(request);
-    TestMeasure {
-        size: laid.size,
-        key: TextShapeKey::INVALID,
-        intrinsic_min: request
-            .max_width_px()
-            .is_none()
-            .then(|| mono::root(request, WrapFloor::Scan).intrinsic_min)
-            .flatten(),
-        single_line: laid.single_line,
+    match request.max_width_px() {
+        None => mono::root(request, WrapFloor::Skip).size,
+        Some(_) => mono::resolve(request),
     }
+}
+
+/// The mono metric's unbounded root, wrap floor scanned.
+fn mono_root(text: &str, shape: TestShape) -> TextRoot {
+    mono::root(shape.unbounded_request(text), WrapFloor::Scan)
 }
 
 /// A truncating measure and the unbounded probe it cuts from. Truncation

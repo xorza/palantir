@@ -1,8 +1,8 @@
 //! The result of one turn of the eviction clock, named so the policy is
 //! testable against a hand-built slab with no device present.
 
+use crate::primitives::content_type::ContentType;
 use crate::renderer::backend::raster_atlas::atlas_slot::AtlasSlot;
-use crate::renderer::backend::raster_atlas::content_type::ContentType;
 
 /// One turn of [`RasterAtlas::evict_one`]'s clock: where the hand ended
 /// up, what it found, and how far it walked.

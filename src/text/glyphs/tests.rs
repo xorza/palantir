@@ -1,5 +1,5 @@
 use super::*;
-use crate::renderer::backend::raster_atlas::content_type::ContentType;
+use crate::primitives::content_type::ContentType;
 use crate::text::shaper::TextShaper;
 
 /// A real shaper, because the mono fallback shapes no buffers and has no
@@ -116,14 +116,11 @@ fn a_placed_glyph_rasterizes_to_the_bitmap_it_describes() {
     let image = glyphs
         .rasterize(placed.raster_key)
         .expect("a capital A has an image");
-    assert_eq!(image.kind, ContentType::Mask);
-    assert!(image.placement.width > 0 && image.placement.height > 0);
+    assert_eq!(image.content, ContentType::Mask);
+    assert!(image.size.x > 0 && image.size.y > 0);
     // One byte of coverage per pixel, and the rows tightly packed — which
     // is what a caller blits into its atlas on.
-    assert_eq!(
-        image.data.len(),
-        (image.placement.width * image.placement.height) as usize
-    );
+    assert_eq!(image.data.len(), (image.size.x * image.size.y) as usize);
     assert!(
         image.data.iter().any(|&coverage| coverage > 0),
         "the glyph rasterized blank"

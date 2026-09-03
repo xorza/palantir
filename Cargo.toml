@@ -70,6 +70,7 @@ winit = { version = "0.30", optional = true }
 padding-struct = "0.2"
 soa-rs = "1.0"
 strum = { version = "0.28", features = ["derive"] }
+swash = "0.2"
 serde = { version = "1.0", features = ["derive"] }
 tinyvec = { version = "1.12", features = ["serde"] }
 unicode-linebreak = "0.1"

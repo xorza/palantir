@@ -19,7 +19,6 @@
 pub(crate) mod atlas_slot;
 mod bound_sides;
 mod clock_sweep;
-pub(crate) mod content_type;
 pub(crate) mod counters;
 mod free_slots;
 pub(crate) mod packed_metadata;
@@ -27,6 +26,7 @@ pub(crate) mod raster_quad;
 mod side;
 
 use crate::common::expiry_wheel::ExpiryWheel;
+use crate::primitives::content_type::ContentType;
 use crate::primitives::span::Span;
 use crate::renderer::backend::debug_marker;
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
@@ -34,7 +34,6 @@ use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::raster_atlas::atlas_slot::{AtlasSlot, SlotPlacement};
 use crate::renderer::backend::raster_atlas::bound_sides::BoundSides;
 use crate::renderer::backend::raster_atlas::clock_sweep::ClockSweep;
-use crate::renderer::backend::raster_atlas::content_type::ContentType;
 use crate::renderer::backend::raster_atlas::counters::AtlasCounters;
 use crate::renderer::backend::raster_atlas::free_slots::FreeSlots;
 use crate::renderer::backend::raster_atlas::packed_metadata::PackedMetadata;

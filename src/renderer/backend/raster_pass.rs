@@ -13,17 +13,16 @@
 //! it, and so the two can be sized for the content they actually hold.
 //! The cost is one extra draw call on a group that mixes icons and text.
 
+use crate::primitives::raster_image::RasterImage;
 use crate::primitives::span::Span;
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
-use crate::renderer::backend::raster_atlas::content_type::ContentType;
 use crate::renderer::backend::raster_atlas::packed_metadata::PackedMetadata;
 use crate::renderer::backend::raster_atlas::raster_quad::RasterQuad;
 use crate::renderer::backend::raster_atlas::{RasterAtlas, RasterAtlasConfig};
 use crate::renderer::backend::raster_program::RasterProgram;
 use crate::renderer::backend::stencil_variant::StencilVariant;
 use crate::renderer::backend::viewport::ViewportPush;
-use glam::{IVec2, UVec2};
 use std::fmt::Debug;
 use std::hash::Hash;
 
@@ -41,17 +40,6 @@ pub(super) struct RasterPassConfig {
     /// text runs to thousands of them and a screen of icons to hundreds,
     /// so the two tenants start far apart.
     pub(super) initial_instances: usize,
-}
-
-/// One freshly rasterized image, on its way into a slot.
-#[derive(Debug)]
-pub(super) struct RasterImage<'a> {
-    pub(super) content: ContentType,
-    pub(super) size: UVec2,
-    /// Bearing, in the rasterizer's own terms: `x` right, `y` **up**.
-    /// Zero for an icon, whose raster *is* its box.
-    pub(super) bearing: IVec2,
-    pub(super) data: &'a [u8],
 }
 
 /// What one [`RasterPass::insert_raster`] managed to do with an image.

@@ -1,5 +1,8 @@
-//! What a rasterizer produced, and so which of an atlas's two sides it
-//! lives on: single-channel coverage, or full colour.
+//! [`ContentType`] — single-channel coverage, or full colour.
+//!
+//! Beside [`RasterImage`](crate::primitives::raster_image::RasterImage)
+//! and at the primitives layer for the same reason: both rasterizers name
+//! it and so does the atlas, and none of the three sits above the others.
 
 /// What a raster's bytes hold, and so which of an atlas's two sides it
 /// lives on.
@@ -7,7 +10,7 @@
 /// One answer for every rasterizer in the crate. A glyph is a swash
 /// bitmap and an icon a rendered SVG, but each is one of these two things
 /// and each says so in the same word — see
-/// [`GlyphImage::kind`](crate::GlyphImage).
+/// [`RasterImage::content`](crate::RasterImage).
 ///
 /// The discriminants are load-bearing: `RasterAtlas` indexes its
 /// `[Side; 2]` with `content as usize`, and a `PendingCopy` stores the
@@ -39,7 +42,7 @@ impl ContentType {
         }
     }
 
-    pub(super) fn side_name(self) -> &'static str {
+    pub(crate) fn side_name(self) -> &'static str {
         match self {
             Self::Mask => "mask",
             Self::Color => "color",

@@ -15,10 +15,10 @@ use crate::text::render::{GlyphRasterKey, PlacedGlyph, RunPlacement};
 use crate::text::request::TextShapeRequest;
 
 use crate::renderer::backend::raster_atlas::raster_quad::RasterQuad;
-use crate::renderer::backend::raster_pass::{RasterImage, RasterPass, Rasterized};
+use crate::renderer::backend::raster_pass::{RasterPass, Rasterized};
 use crate::renderer::backend::text::encode::EncodedRunKey;
 use crate::renderer::backend::text::encode::cache::{EncodedCache, EncodedGlyph};
-use glam::{IVec2, UVec2};
+use glam::IVec2;
 
 /// The glyph-shaped half of the text pass: the encoded-run cache and the
 /// per-miss extraction scratch. The atlas it fills and the instance
@@ -114,13 +114,7 @@ impl TextEncoder {
                     let Some(image) = glyphs.rasterize(g.raster_key) else {
                         continue;
                     };
-                    let raster = RasterImage {
-                        content: image.kind,
-                        size: UVec2::new(image.placement.width, image.placement.height),
-                        bearing: IVec2::new(image.placement.left, image.placement.top),
-                        data: &image.data,
-                    };
-                    match pass.insert_raster(device, g.raster_key, raster) {
+                    match pass.insert_raster(device, g.raster_key, image) {
                         Rasterized::Slot(i) => i,
                         Rasterized::AtlasFull => {
                             starved = true;

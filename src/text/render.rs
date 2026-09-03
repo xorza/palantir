@@ -1,11 +1,12 @@
 //! Palantir-native vocabulary for the render side of the shaper: the wgpu
 //! text backend drives the measurer through these glyph placements
-//! ([`PlacedGlyph`]) and bitmaps ([`GlyphImage`]), so cosmic types
-//! (`Buffer`, `FontSystem`, `SwashCache`) never cross out of `src/text/`.
-//! [`TextGlyphs`](crate::TextGlyphs) is the lease it drives them through.
+//! ([`PlacedGlyph`]) and the bitmaps they resolve to
+//! ([`RasterImage`](crate::RasterImage)), so cosmic and swash types
+//! (`Buffer`, `FontSystem`, `ScaleContext`) never cross out of
+//! `src/text/`. [`TextGlyphs`](crate::TextGlyphs) is the lease it drives
+//! them through.
 
 use crate::primitives::urect::URect;
-use crate::renderer::backend::raster_atlas::content_type::ContentType;
 use cosmic_text::{CacheKey, SubpixelBin};
 use glam::Vec2;
 
@@ -26,7 +27,7 @@ pub(crate) struct RunPlacement {
 
 /// One glyph resolved to physical-px placement plus its opaque raster
 /// key. `x`/`y` position the glyph image before its raster bearing
-/// ([`GlyphPlacement`]'s `left`/`top`) is applied.
+/// ([`RasterImage::bearing`](crate::RasterImage)) is applied.
 ///
 /// Public because a caller drawing its own text needs the same answer the
 /// text backend does — see [`TextGlyphs`](crate::TextGlyphs).
@@ -35,26 +36,6 @@ pub struct PlacedGlyph {
     pub raster_key: GlyphRasterKey,
     pub x: i32,
     pub y: i32,
-}
-
-/// One rasterized glyph bitmap.
-#[derive(Debug)]
-pub struct GlyphImage {
-    pub kind: ContentType,
-    pub placement: GlyphPlacement,
-    /// Tightly packed rows, `width × height` pixels; 1 byte/px for
-    /// [`ContentType::Mask`], 4 (RGBA) for [`ContentType::Color`].
-    pub data: Vec<u8>,
-}
-
-/// Bitmap extents plus bearing of a rasterized glyph, relative to its
-/// [`PlacedGlyph`] position.
-#[derive(Clone, Copy, Debug)]
-pub struct GlyphPlacement {
-    pub left: i32,
-    pub top: i32,
-    pub width: u32,
-    pub height: u32,
 }
 
 /// Opaque per-glyph rasterization identity: cosmic's `CacheKey` (font,

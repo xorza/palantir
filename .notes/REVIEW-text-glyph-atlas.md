@@ -8,12 +8,12 @@ When you address an item, delete it from this file. Delete a heading when its
 items are gone. Test structure was ignored. Rewrite tests to fit the better
 production shape.
 
-## 1. Mono leaves a sentinel and a duplicate metric behind
+## 1. Mono leaves a sentinel behind
 
 The mono metric stays: it backs `UiHarness::new` and so the whole in-crate UI
 suite, where a hand-computable width is worth more than a measured one. It is
 now a flag on `ShaperInner` rather than a variant every production method
-matches, so the production stack no longer carries it. Two consequences remain.
+matches, so the production stack no longer carries it. One consequence remains.
 
 - [ ] `TextShapeKey::INVALID` means three things: empty text, an unusable face,
   and "a mono run". Only the third still needs the sentinel — the first two are
@@ -23,8 +23,6 @@ matches, so the production stack no longer carries it. Two consequences remain.
   `shaped_run` / `supersede` / the encoder are all production weight carried for
   a test metric. Worth revisiting if a cheaper way to make the renderer drop a
   mono run appears.
-- [ ] `text/mono.rs` re-implements the `LineFit` arithmetic and a wrap-floor
-  scan. That is a second spelling of policy the cosmic path owns.
 
 ## 2. Icons and text still draw as two batches
 
@@ -47,38 +45,6 @@ evicting a tintable icon is not a fair trade, since an SVG re-raster costs
   icon step issues a redundant `set_pipeline`. The bind group genuinely
   differs (different atlas); only the pipeline is shared. Worth a
   `Bound::Raster` variant if batch counts ever climb — dozens a frame today.
-
-## 3. Two rasterizers with two output shapes, one of them allocating per glyph
-
-- [ ] `CosmicMeasure::rasterize_glyph` goes through `SwashCache::get_image_uncached`,
-  which calls swash `Render::render` and allocates a fresh `Image { data: Vec<u8> }`
-  per glyph. A zoom gesture re-rasterizes every visible glyph per scale rung, so
-  this is per-glyph allocation on a frequent path. swash offers
-  `Render::render_into(&mut Image)`, which resizes the image's buffer in place
-  and so reuses its capacity. Cosmic's `swash_image` is ~40 lines; replicate it
-  over a retained `swash::scale::ScaleContext` plus one retained `Image`,
-  clearing that image per glyph. That also drops `SwashCache` (an unused map,
-  and the reason `CosmicMeasure` has a manual `Debug`).
-
-  **Blocked on a dependency decision.** cosmic-text re-exports only
-  `swash::scale::image::{Content, Image}` and `swash::zeno::{...}`, not
-  `Render` / `Source` / `StrikeWith` / `ScaleContext`, so this needs `swash`
-  as a direct entry in `Cargo.toml`. It compiles nothing new — swash is already
-  in the graph under cosmic-text, at the version cosmic-text pins — but it is a
-  manifest entry all the same. The second item below only pays off together
-  with this one: filling an out-param while still calling
-  `get_image_uncached` adds a copy and keeps the allocation.
-- [ ] Give both rasterizers one shape. `IconRasterizer::rasterize(table, key,
-  out: &mut Vec<u8>) -> Option<ContentType>` fills a retained buffer;
-  `rasterize_glyph(key) -> Option<GlyphImage>` returns an owned one. Make the
-  glyph side `rasterize(key, out: &mut Vec<u8>) -> Option<RasterFacts>` where
-  `RasterFacts { content, size: UVec2, bearing: IVec2 }` is exactly what
-  `RasterImage` wants, and both encoders build `RasterImage` the same way. The
-  public `TextGlyphs::rasterize` takes the out-param too, or returns a borrowed
-  `GlyphImage<'_>` over the lease's scratch.
-- [ ] `GlyphPlacement { left, top, width, height }` is rebuilt by the encoder into
-  `UVec2`/`IVec2` and then narrowed by `PackedMetadata`. Spell the public type as
-  `size: UVec2, bearing: IVec2` and one conversion goes.
 
 ## 4. The frame clock advances once per window, not once per frame
 
@@ -127,12 +93,6 @@ evicting a tintable icon is not a fair trade, since an SVG re-raster costs
   `family_q`, `face_q`) are `pub(crate)` but nothing outside `key.rs` reads them;
   every reader goes through the accessors. Only `text_hash` is read elsewhere.
   Make the five private.
-- [ ] `ContentType` lives under `renderer::backend::raster_atlas` and is imported
-  by `text::render`, `text::cosmic` and `icons::icon_rasterizer`, and re-exported
-  from `lib.rs`. `text/mod.rs` states that `renderer` depends on `text` and not
-  the reverse; this import inverts it. It is rasterizer-output vocabulary. Move
-  it to `primitives` (or a small `raster` vocabulary module) that text, icons and
-  the atlas all sit above.
 - [ ] `font_scope.rs` calls `crate::text::cosmic::warm_matches(...)` by full
   inline path. `use crate::text::cosmic;` then `cosmic::warm_matches(...)`.
 - [ ] `glyphs/mod.rs`: the free fns `request` and `placement` are one-liners whose
@@ -147,8 +107,6 @@ evicting a tintable icon is not a fair trade, since an SVG re-raster costs
   one line. Call the cache directly or fold the two.
 - [ ] `RasterQuad::shader_module` compiles one WGSL twice, once per pass. Share
   the module (moot after item 3).
-- [ ] `cosmic/mod.rs` has two `use` groups separated by the `mod` declarations.
-  One group.
 
 ## 9. Comments restate other comments, history, and the code
 

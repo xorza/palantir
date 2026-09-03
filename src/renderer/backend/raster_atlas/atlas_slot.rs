@@ -1,7 +1,7 @@
 //! One resident raster's placement, bearing and lifetime stamps — the hot
 //! read on the atlas hit path.
 
-use crate::renderer::backend::raster_atlas::content_type::ContentType;
+use crate::primitives::content_type::ContentType;
 use crate::renderer::backend::raster_atlas::raster_quad::RasterQuad;
 use etagere::AllocId;
 use glam::{I16Vec2, IVec2, U16Vec2};
@@ -96,8 +96,8 @@ pub(crate) struct AtlasSlot {
 
 #[cfg(test)]
 pub(super) mod test_support {
+    use crate::primitives::content_type::ContentType;
     use crate::renderer::backend::raster_atlas::atlas_slot::{AtlasSlot, SlotPlacement};
-    use crate::renderer::backend::raster_atlas::content_type::ContentType;
     use etagere::AllocId;
     use glam::{I16Vec2, U16Vec2};
 

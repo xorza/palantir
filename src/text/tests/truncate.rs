@@ -384,25 +384,26 @@ fn a_fitting_label_measures_its_natural_width_whatever_the_cap_or_align() {
 fn mono_ellipsis_caps_width_and_leaves_the_floor_to_the_root() {
     // Mono fallback: an elided long word caps at the available width; the
     // wrap counterpart instead grows height and keeps the longest-word
-    // floor, which only its unbounded root can report.
+    // floor, which only its unbounded root can report — a bounded resolve
+    // hands back an extent, so there is no floor on it to be wrong about.
     let long = "abcdefghijklmnop"; // 16 ASCII bytes × 8 px = 128 px natural
     let params = shape(16.0).width(40.0);
     let w = params.max_width_px.unwrap();
 
-    let elided = mono_shape(long, params, LineFit::Ellipsis);
-    assert_eq!(elided.size.w, w, "elided mono caps at the width");
-    assert_eq!(elided.size.h, 16.0, "elided mono is one line");
-    assert_eq!(
-        elided.intrinsic_min, None,
-        "a bounded resolve reports no wrapping floor, on either metric",
-    );
+    let elided = mono_extent(long, params, LineFit::Ellipsis);
+    assert_eq!(elided.w, w, "elided mono caps at the width");
+    assert_eq!(elided.h, 16.0, "elided mono is one line");
+    // A run that already fits measures its own glyphs, which is what the
+    // cosmic cut answers for a prefix it never had to shorten.
+    assert_eq!(mono_extent("ab", params, LineFit::Ellipsis).w, 16.0);
 
-    let wrapped = mono_shape(long, params, LineFit::Wrap);
     // 40 px holds five 8 px cells, so 16 characters wrap to four 16 px lines.
-    assert_eq!(wrapped.size.h, 64.0, "wrap grows height across lines");
-    assert!(
-        mono_shape(long, params.unbounded(), LineFit::Wrap).wrap_floor() > 0.0,
-        "wrap keeps a longest-word floor — reported by the root it belongs to",
+    let wrapped = mono_extent(long, params, LineFit::Wrap);
+    assert_eq!(wrapped.h, 64.0, "wrap grows height across lines");
+    assert_eq!(
+        mono_root(long, params).wrap_floor(),
+        128.0,
+        "one unbreakable word floors at its whole natural width",
     );
 }
 
