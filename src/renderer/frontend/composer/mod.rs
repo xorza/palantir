@@ -72,8 +72,9 @@ pub(crate) struct Composer {
     /// Per-group AABBs partitioned by above-text replay tier. A later
     /// lower-tier draw checks only tiers that replay after it, while
     /// text and quads use the aggregate union before scanning any set.
-    /// Cleared per flush — independent of batch state since every
-    /// higher-kind draw also closes the batch.
+    /// Cleared per flush, which a still-open batch outlives: the tiers of
+    /// the group just closed have drained by the time any later group
+    /// runs, so they can no longer reorder against that batch.
     higher_kinds: HigherKindRects,
     /// `*_start` cursors marking where the open group's per-kind slices
     /// begin in the output. [`ComposeSession::flush`] closes each slice

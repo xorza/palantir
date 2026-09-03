@@ -35,32 +35,42 @@ fn atlas() -> Rc<IconTable> {
     BUILT.with(Rc::clone)
 }
 
-/// Assert a 20x20 solid pane at `at` is `tint` across its own pixels and
-/// nothing beyond them.
+/// Assert every interior pixel of a 20x20 solid pane at `at` is `tint`.
 ///
-/// Five interior samples and one pixel outside each side, at offsets from
-/// the pane's own origin — which is what lets a case move the pane and
-/// keep the derivation. The interior proves the tint reached the
-/// framebuffer; the exterior proves the raster is the size of the box
-/// rather than rounded up into its neighbour.
+/// The whole interior rather than a handful of samples, because a case
+/// that draws something *over* the pane cannot be relied on to hit a
+/// chosen offset — glyph coverage moves with the face. Offsets run from
+/// the pane's own origin, which is what lets a case move the pane and keep
+/// the derivation, and stop one pixel short of each edge so the
+/// rasterizer's boundary row is nobody's business here.
 ///
 /// `Color::rgb` takes sRGB components and the sRGB render target encodes
 /// them back on write, so the expected bytes are the authored ones — the
 /// same round trip the clear-colour smoke test pins.
-fn assert_solid_pane(img: &image::RgbaImage, at: Vec2, tint: [f32; 3]) {
+fn assert_pane_interior(img: &image::RgbaImage, at: Vec2, tint: [f32; 3]) {
     let (ox, oy) = (at.x as u32, at.y as u32);
     let expected = tint.map(|c| (c * 255.0f32).round() as u8);
-    for (dx, dy) in [(2, 2), (10, 10), (18, 18), (1, 18), (18, 1)] {
-        let (x, y) = (ox + dx, oy + dy);
-        let p = img.get_pixel(x, y).0;
-        for c in 0..3 {
-            assert!(
-                p[c].abs_diff(expected[c]) <= 4,
-                "({x},{y}) = {p:?} should be the tint {expected:?}",
-            );
+    for dy in 1..19 {
+        for dx in 1..19 {
+            let (x, y) = (ox + dx, oy + dy);
+            let p = img.get_pixel(x, y).0;
+            for c in 0..3 {
+                assert!(
+                    p[c].abs_diff(expected[c]) <= 4,
+                    "({x},{y}) = {p:?} should be the tint {expected:?}",
+                );
+            }
+            assert_eq!(p[3], 255, "({x},{y}) must be opaque");
         }
-        assert_eq!(p[3], 255, "({x},{y}) must be opaque");
     }
+}
+
+/// [`assert_pane_interior`] plus one pixel outside each side, which proves
+/// the raster is the size of the box rather than rounded up into its
+/// neighbour. Only for panes with nothing drawn near them.
+fn assert_solid_pane(img: &image::RgbaImage, at: Vec2, tint: [f32; 3]) {
+    assert_pane_interior(img, at, tint);
+    let (ox, oy) = (at.x as u32, at.y as u32);
     for (dx, dy) in [(-2, 10), (10, -2), (22, 10), (10, 22)] {
         let (x, y) = (ox.wrapping_add_signed(dx), oy.wrapping_add_signed(dy));
         assert!(
@@ -255,32 +265,40 @@ fn desaturate_greys_a_colour_icon_by_its_luminance() {
     assert!(left != LEFT && right != RIGHT, "grey is not the artwork");
 }
 
-/// Text and icons share one pipeline, so a step of either kind that
-/// follows the other rebinds nothing — see `Bound::Raster`. Both orders
-/// have to land the same pixels as either kind drawn alone.
+/// Paint order across the raster tiers, and the two pipeline transitions
+/// that carry it.
 ///
-/// The icon is what the assertions read, because its coverage is
-/// hand-derivable: a solid 8x8 viewBox filled to its pane is the tint on
-/// every pixel of the box and the clear colour one pixel out. Text
-/// bracketing it above and below is what forces the two transitions —
-/// `admit_higher_kind` closes the open text batch for an icon, so the
-/// pass runs text, icon, text.
+/// A label, an icon recorded *over* it, and a second label in a clipped
+/// panel below. The icon closes the first label's batch because it covers
+/// it, so the pass runs text, icon, text — and since text and icons share
+/// one pipeline, neither transition rebinds anything (see `Bound::Raster`).
 ///
-/// A regression here is not subtle: a raster step that inherited the
-/// wrong pipeline draws the atlas through the wrong shader, and a step
-/// that lost the viewport immediate lands its quad at garbage NDC and
-/// leaves the box empty.
+/// **What the icon box proves.** Its coverage is hand-derivable: a solid
+/// 8x8 viewBox filled to its pane is the tint on every pixel of the box.
+/// The first label's glyphs run straight through that box, so any pixel of
+/// it that is not the tint is a glyph that reordered above the icon. A
+/// batch left open would do exactly that — it would drain in the clipped
+/// panel's group, which the icon's own group has already finished.
+///
+/// **What the two bands prove.** The label has to have drawn, or the box
+/// tests nothing. Lit pixels are counted either side of the icon rather
+/// than named, because glyph coverage moves with the face.
+///
+/// A regression here is not subtle: a raster step that inherited the wrong
+/// pipeline draws the atlas through the wrong shader, and a step that lost
+/// the viewport immediate lands its quad at garbage NDC and leaves the box
+/// empty.
 #[test]
-fn an_icon_between_two_text_runs_lands_in_its_own_pixel_box() {
+fn an_icon_recorded_over_a_label_stays_on_top_of_it() {
     let mut h = Harness::new();
     let tint = Color::rgb(0.2, 0.8, 0.4);
     let label = |ui: &mut Ui, salt: &'static str, at: Vec2| {
         Panel::zstack()
             .id_salt(salt)
             .position(at)
-            .size((Sizing::fixed(40.0), Sizing::fixed(14.0)))
+            .size((Sizing::fixed(60.0), Sizing::fixed(20.0)))
             .show(ui, |ui| {
-                Text::new("Ag")
+                Text::new("AgAgAg")
                     .id_salt(salt)
                     .style(
                         &TextStyle::default()
@@ -290,36 +308,44 @@ fn an_icon_between_two_text_runs_lands_in_its_own_pixel_box() {
                     .show(ui);
             });
     };
-    let img = h.render(UVec2::new(48, 72), 1.0, Color::BLACK, |ui| {
+    let img = h.render(UVec2::new(96, 72), 1.0, Color::BLACK, |ui| {
         Panel::canvas()
             .id_salt("raster_order")
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                label(ui, "before", Vec2::new(6.0, 0.0));
+                label(ui, "under", Vec2::new(6.0, 6.0));
                 pane(
                     ui,
                     "solid",
-                    Vec2::new(6.0, 26.0),
+                    Vec2::new(20.0, 6.0),
                     Vec2::splat(20.0),
                     "solid",
                     tint,
                 );
-                label(ui, "after", Vec2::new(6.0, 54.0));
+                // A rect clip changes the scissor without changing the
+                // stencil chain: it flushes the group and leaves an open
+                // batch open. That is what gives the batch somewhere later
+                // to drain, if it were still open.
+                Panel::zstack()
+                    .id_salt("panel")
+                    .clip_rect()
+                    .position(Vec2::new(0.0, 44.0))
+                    .size((Sizing::fixed(96.0), Sizing::fixed(28.0)))
+                    .show(ui, |ui| {
+                        label(ui, "after", Vec2::new(6.0, 46.0));
+                    });
             });
     });
 
-    // Exactly what the icon has to land at when it is drawn alone, which
-    // is what makes the two orders comparable.
-    assert_solid_pane(&img, Vec2::new(6.0, 26.0), [0.2, 0.8, 0.4]);
+    assert_pane_interior(&img, Vec2::new(20.0, 6.0), [0.2, 0.8, 0.4]);
 
-    // Both runs actually drew, or the icon proved nothing about a
-    // transition that never happened. Counting lit pixels per band
-    // rather than naming one: glyph coverage moves with the face.
-    let lit_in = |rows: std::ops::Range<u32>| {
-        rows.flat_map(|y| (0..48).map(move |x| (x, y)))
-            .filter(|&(x, y)| img.get_pixel(x, y).0[0] > 32)
-            .count()
+    // This run measures x 6..=51, y 9..=20, so it shows either side of
+    // the icon's 20..40 box and passes straight through it.
+    let any_lit = |xs: std::ops::Range<u32>, ys: std::ops::Range<u32>| {
+        ys.flat_map(|y| xs.clone().map(move |x| (x, y)))
+            .any(|(x, y)| img.get_pixel(x, y).0[0] > 32)
     };
-    assert!(lit_in(0..14) > 0, "the run before the icon must have drawn");
-    assert!(lit_in(54..68) > 0, "the run after the icon must have drawn");
+    assert!(any_lit(6..20, 6..26), "the label left of the icon");
+    assert!(any_lit(40..52, 6..26), "the label right of the icon");
+    assert!(any_lit(0..96, 44..72), "the label in the clipped panel");
 }

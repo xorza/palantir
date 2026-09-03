@@ -8,29 +8,6 @@ When you address an item, delete it from this file. Delete a heading when its
 items are gone. Test structure was ignored. Rewrite tests to fit the better
 production shape.
 
-## 2. Icons and text still draw as two batches
-
-The two raster tenants now share a [`RasterProgram`] — one shader, one group-0
-layout, one sampler, and so one pipeline pair per format. What they still do
-not share is the **space**: separate textures, separate bind groups, separate
-eviction budgets, deliberately. Merging the atlases was investigated and
-rejected: sharing a texture means sharing the space it holds, and a glyph miss
-evicting a tintable icon is not a fair trade, since an SVG re-raster costs
-13-72 µs against roughly a microsecond for a glyph.
-
-- [ ] Icons could join the text batch path: an icon has the same "no
-  per-instance clip" property a glyph has, so the composer's strict-bounds
-  scissor rule applies to it unchanged. That is what actually collapses the
-  draw calls where a group mixes icons and text, and now that the pipeline is
-  shared it needs no shared atlas — only a shared batch table. The win is
-  larger than the draw call: `admit_higher_kind` closes the open text batch
-  for every icon, so a toolbar of labelled buttons splits its text into one
-  batch per icon today. What the merge has to carry is the order the split
-  currently buys for free — one batch draws text then icons, so a run
-  recorded *after* an icon it overlaps would paint under it. That needs an
-  intra-batch overlap test, which is `HigherKindRects` scoped to the batch
-  rather than the group.
-
 ## 6. Truncation reads the probe through a closure and re-probes per retry
 
 Tried twice and reverted both times, on a measurement I do not trust —

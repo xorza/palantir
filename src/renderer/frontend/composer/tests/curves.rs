@@ -20,43 +20,62 @@ use glam::{UVec2, Vec2};
 use std::time::Duration;
 
 /// Pin: a higher-kind stroke (a polyline, riding the curve tier)
-/// recorded between two text runs splits the batch. Strokes paint
-/// over text by kind order; if it weren't a split, the merged batch's
-/// text would emit at end-of-batch, *after* the stroke, breaking that
-/// ordering.
+/// recorded between two text runs splits the batch where it covers the
+/// first run, and only there. Strokes paint over text by kind order, and
+/// a batch left open emits at the end of a later group — so merged text
+/// would paint over the stroke it was recorded under. Clear of the run
+/// that inversion reaches no pixel, and the two runs coalesce.
 #[test]
-fn compose_polyline_between_texts_splits_text_batch() {
-    let buf = run(
-        |b, store| {
-            text(b, rect(0.0, 0.0, 100.0, 20.0));
-            polyline_cmd(
-                b,
-                store,
-                &[Vec2::new(0.0, 25.0), Vec2::new(100.0, 25.0)],
-                &[Color::WHITE],
-                ColorMode::Single,
-                1.0,
-                LineCap::Butt,
-                LineJoin::Miter,
-            );
-            text(b, rect(0.0, 40.0, 100.0, 20.0));
+fn compose_polyline_over_prior_text_splits_text_batch() {
+    #[derive(Debug)]
+    struct Case {
+        stroke_y: f32,
+        text_batches: usize,
+    }
+    // The first run spans y 0..20. A 1 px stroke tracks `stroke_y` ± 1
+    // once its width/2 + 0.5 fringe is counted, so y = 10 lands inside
+    // the run and y = 25 clears it by 4 px.
+    for case in [
+        Case {
+            stroke_y: 10.0,
+            text_batches: 2,
         },
-        &params(1.0, UVec2::new(200, 200)),
-    );
-    assert_eq!(
-        buf.text_batches.len(),
-        2,
-        "polyline between texts must split the batch",
-    );
-    // A polyline lowers to GPU stroke instances riding the curve
-    // batches — a 2-point polyline is one segment, no join chrome.
-    assert_eq!(buf.batches(PaintTier::Curve).len(), 1);
-    assert_eq!(
-        buf.batches(PaintTier::Curve)[0].items.len,
-        1,
-        "one segment instance for a 2-point polyline",
-    );
-    assert!(buf.meshes.is_empty(), "no CPU-tessellated mesh");
+        Case {
+            stroke_y: 25.0,
+            text_batches: 1,
+        },
+    ] {
+        let buf = run(
+            |b, store| {
+                text(b, rect(0.0, 0.0, 100.0, 20.0));
+                polyline_cmd(
+                    b,
+                    store,
+                    &[
+                        Vec2::new(0.0, case.stroke_y),
+                        Vec2::new(100.0, case.stroke_y),
+                    ],
+                    &[Color::WHITE],
+                    ColorMode::Single,
+                    1.0,
+                    LineCap::Butt,
+                    LineJoin::Miter,
+                );
+                text(b, rect(0.0, 40.0, 100.0, 20.0));
+            },
+            &params(1.0, UVec2::new(200, 200)),
+        );
+        assert_eq!(buf.text_batches.len(), case.text_batches, "{case:?}");
+        // A polyline lowers to GPU stroke instances riding the curve
+        // batches — a 2-point polyline is one segment, no join chrome.
+        assert_eq!(buf.batches(PaintTier::Curve).len(), 1, "{case:?}");
+        assert_eq!(
+            buf.batches(PaintTier::Curve)[0].items.len,
+            1,
+            "one segment instance for a 2-point polyline: {case:?}",
+        );
+        assert!(buf.meshes.is_empty(), "no CPU-tessellated mesh: {case:?}");
+    }
 }
 
 /// Slice-2 polyline lowering: an N-point polyline emits N−1 segment

@@ -1034,7 +1034,8 @@ impl ComposeSession<'_> {
     /// Finalize the open text batch (if any): push a [`TextBatch`]
     /// entry covering `batch_texts_start..out.texts.len()`. No-op when no
     /// batch is active. Called at batch-split events — rounded-clip
-    /// change, a higher-kind append, or a strict-bounds mismatch. The
+    /// change, a higher-kind draw over the batch's text, an overlapping
+    /// quad, or a strict-bounds mismatch. The
     /// finalized output remains pending for the group-scoped closed
     /// check, so a later quad still flushes for already-closed text that
     /// shares this group. The grid fill is deferred to [`Self::closed_hit`].
@@ -1098,17 +1099,34 @@ impl ComposeSession<'_> {
         b
     }
 
-    /// Cull a higher-kind (mesh / image / curve) draw against the active
-    /// clip and, if it survives, close any open text batch. Higher-kind
-    /// geometry paints above text under the backend's kind reorder, and a
-    /// batch renders at the END of its last group — past this draw if left
-    /// open — so the batch must close here for its text to emit first. Done
-    /// only after the cull: a culled draw must not split the batch. Also
-    /// flushes the group when the draw cross-kind-conflicts with an earlier
-    /// higher-kind draw (see [`HigherKindRects::conflicts`]), and then
-    /// records the draw's own rect for the group's overlap tracking (after
-    /// the flush, so it isn't wiped with the previous group's rects).
-    /// Returns `false` when culled — the caller should `continue`.
+    /// Cull a higher-kind (mesh / image / icon / curve) draw against the active
+    /// clip, then close the open text batch if this draw covers text
+    /// already in it. That order is the rule, not an accident: a culled
+    /// draw paints nothing, so it must neither split the batch nor
+    /// register a rect.
+    ///
+    /// **Why the close is conditional.** A batch renders at the END of
+    /// its last group, and a batch left open lets a later run carry that
+    /// group past this one — so text recorded *before* this draw can
+    /// paint *over* it. The inversion is real, but it is invisible where
+    /// the two rects do not meet, so overlap is the whole test. The open
+    /// batch answers it off the same tiled index [`Self::quad_forces_flush`]
+    /// queries, which pre-rejects on a union AABB before it scans a tile.
+    /// Closing on every higher-kind draw instead costs one text batch per
+    /// draw — one per button of a labelled toolbar.
+    ///
+    /// **The other half of the invariant** is in [`Self::text`]: a run
+    /// recorded *after* this draw joins a batch that drains before the
+    /// group's tier batches, so it would paint *under* the draw. That
+    /// path flushes the group when the run overlaps `higher_kinds`.
+    /// Neither test is sound alone — this one covers the text behind the
+    /// draw, that one the text ahead of it.
+    ///
+    /// Also flushes the group when the draw cross-kind-conflicts with an
+    /// earlier higher-kind draw (see [`HigherKindRects::conflicts`]), and
+    /// then records the draw's own rect for the group's overlap tracking
+    /// (after the flush, so it isn't wiped with the previous group's
+    /// rects). Returns `false` when culled — the caller should `continue`.
     ///
     /// Polyline calls this only after its kept-point walk proves the
     /// stroke emits geometry (an all-coincident polyline must not split
@@ -1123,7 +1141,9 @@ impl ComposeSession<'_> {
         if bounds.is_paint_empty() {
             return false;
         }
-        self.close_batch();
+        if self.composer.batch.open_grid.any_overlap(bounds) {
+            self.close_batch();
+        }
         if self.composer.higher_kinds.conflicts(tier, bounds) {
             self.flush();
         }
