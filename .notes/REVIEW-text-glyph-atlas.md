@@ -55,24 +55,27 @@ evicting a tintable icon is not a fair trade, since an SVG re-raster costs
 
 ## 6. Truncation reads the probe through a closure and re-probes per retry
 
+Tried twice and reverted both times, on a measurement I do not trust —
+re-run it on a quiet machine before deciding.
+
 - [ ] `fitting_prefix` takes `glyph: impl Fn(usize) -> ClusterGlyph`, and
   `shape_truncated` calls `CacheEntry::probe(&self.cache, probe_key)` once per
   back-off round, both to keep the cache borrow disjoint from `logical_order`.
   Snapshot the probe's first layout run into a retained `Vec<ClusterGlyph>` once
   per miss; `fitting_prefix` then takes `&[ClusterGlyph]`, `CacheEntry::probe`
   goes, and a retry costs no hash. The copy is 24 bytes per glyph of one line.
-  Measure on `text_shape/resize_drag_frame`.
 
-## 7. Staging pads every glyph row to 256 bytes
-
-- [ ] `RasterAtlas::enqueue_upload` pads each row to `COPY_BYTES_PER_ROW_ALIGNMENT`.
-  A 12 px mask glyph stages 256 bytes per 12-byte row, about 20× its pixels, and
-  every byte is memcpy'd on the CPU and written through the belt. A frame that
-  rasterizes a few hundred glyphs (one zoom rung) stages 1–2 MB for ~100 KB of
-  pixels. `queue.write_texture` has no row-alignment requirement and is safe on
-  every frame with no pending grow, which is nearly all of them; keep the encoder
-  path for grow frames where ordering against the blit matters. Measure on
-  `text_atlas/cache_churn`.
+  Two shapes were written: the snapshot plus the existing `order` index
+  vector, and the snapshot sorted in place so `order` goes too. Against a
+  `--save-baseline` pair they measured +1.0% and +2.2% on
+  `text_shape/resize_drag_frame` — but a third run of the *reverted* code
+  against the same baseline read −4.9%, so the machine had drifted about
+  5% over the session and none of the three is a measurement of the
+  change. What the attempt did establish is that the predicted win is not
+  where the item says: the back-off runs a second round only when a
+  reshaped prefix overruns, so the per-retry hash is almost never paid,
+  and the copy is spent to save it. Measure the pair back to back, on a
+  machine doing nothing else.
 
 ## 8. Visibility and placement
 
