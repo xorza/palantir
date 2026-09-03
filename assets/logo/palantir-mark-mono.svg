@@ -1,8 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="Palantir">
-  <mask id="mono-limb">
-    <circle cx="64" cy="64" r="48" fill="#fff"/>
-    <circle cx="86" cy="50" r="46" fill="#000"/>
-  </mask>
-  <circle cx="64" cy="64" r="48" fill="currentColor" mask="url(#mono-limb)"/>
-  <circle cx="64" cy="64" r="48" fill="none" stroke="currentColor" stroke-width="2.4"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 200 200" width="128" height="128" role="img" aria-label="Palantir">
+  <circle r="88" fill="none" stroke="currentColor" stroke-width="16"/>
+  <circle cx="5" cy="5" r="52" fill="none" stroke="currentColor" stroke-width="14"/>
+  <circle cx="10" cy="10" r="22" fill="currentColor"/>
 </svg>
