@@ -23,7 +23,7 @@ use crate::host::winit::handle::HostHandle;
 use crate::host::winit::window::{FramePresent, Window};
 use crate::host::winit::window_set::{WindowSet, WindowSlot};
 use crate::host::winit::{Bootstrap, native};
-use crate::text::shaper::TextShaper;
+use crate::text::font_scan::FontScan;
 use crate::window::window_commands::WindowCommands;
 use crate::window::window_config::WindowConfig;
 use crate::window::window_token::WindowToken;
@@ -59,6 +59,10 @@ impl<T: App + 'static> WinitRuntime<T> {
     ) -> Result<Self, WinitHostError> {
         let token = bootstrap.token;
         let config = bootstrap.config.clone();
+        // Started before the window exists and joined below, so the font
+        // scan overlaps window creation and GPU init rather than adding to
+        // them. An early return leaves the thread to finish and drop.
+        let fonts = FontScan::spawn(config.fonts);
         let window = native::create_window(event_loop, token, &config.window)?;
         let GpuInit {
             surfaces,
@@ -68,7 +72,7 @@ impl<T: App + 'static> WinitRuntime<T> {
             surfaces.device.clone(),
             surfaces.queue.clone(),
             surfaces.max_texture_dim,
-            TextShaper::new(),
+            fonts.join(),
             Clipboard::system_or_memory(),
             HostCoreConfig {
                 collect_gpu_stats: config.collect_gpu_stats,

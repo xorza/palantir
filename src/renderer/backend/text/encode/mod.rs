@@ -42,8 +42,8 @@ pub(super) mod encoder;
 /// every cached
 /// [`RasterQuad`](crate::renderer::backend::raster_atlas::raster_quad::RasterQuad)
 /// colour at insert time. **This is only sufficient because palantir
-/// shapes every run with one uniform colour** — `attrs_for`
-/// (`cosmic.rs`) sets no per-span colour, so cosmic never emits a
+/// shapes every run with one uniform colour** — `attrs_named`
+/// (`cosmic/mod.rs`) sets no per-span colour, so cosmic never emits a
 /// per-glyph `color_opt`. If per-span colours are ever added, fold a
 /// colour-span fingerprint into this key *first*, or the cache will
 /// serve a stale run's baked colours. The assertion in

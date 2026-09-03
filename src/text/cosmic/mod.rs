@@ -28,16 +28,20 @@
 use crate::common::expiry_wheel::ExpiryWheel;
 use crate::layout::types::align::HAlign;
 use crate::text::cosmic::counters::CacheCounters;
+use crate::text::error::FontLoadError;
+use crate::text::font_family::FontFamily;
+use crate::text::font_scope::FontScope;
+use crate::text::font_source::FontSource;
+use crate::text::font_style::FontStyle;
+use crate::text::font_weight::FontWeight;
 use crate::text::key::TextShapeKey;
 use crate::text::request::TextShapeRequest;
 use crate::text::root::TextRoot;
 use crate::text::wrap::{LineFit, WrapFloor};
-use crate::text::{
-    FontFamily, FontWeight, RENDERED_RUN_KEEP_FRAMES, RENDERED_RUN_KEEP_SPREAD_MASK,
-};
+use crate::text::{RENDERED_RUN_KEEP_FRAMES, RENDERED_RUN_KEEP_SPREAD_MASK};
 use cosmic_text::{
     Align as CosmicAlign, Attrs, Buffer, CacheKeyFlags, Family, FontSystem, Metrics, Shaping,
-    SwashCache, Weight, fontdb,
+    Style, SwashCache, Weight, fontdb,
 };
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
@@ -61,14 +65,6 @@ pub(super) mod cluster_glyph;
 pub(super) mod counters;
 pub(super) mod ellipsis_memo;
 pub(super) mod geometry;
-
-/// Bundled fonts shipped with the crate. Inter is the default UI /
-/// proportional body font; JetBrains Mono is the monospace. Both ship as
-/// a single variable-weight (`wght`) face, so Regular and Bold come from
-/// one file each. Both are OFL 1.1. Weight is selected per-run via
-/// [`FontWeight`] on the [`crate::TextStyle`], resolved in [`attrs_for`].
-const INTER: &[u8] = include_bytes!("../../../assets/fonts/Inter-VariableFont_opsz,wght.ttf");
-const JBMONO: &[u8] = include_bytes!("../../../assets/fonts/JetBrainsMono[wght].ttf");
 
 const RECYCLE_POOL_CAP: usize = 128;
 
@@ -158,26 +154,101 @@ fn metrics_of(key: TextShapeKey) -> Metrics {
     Metrics::new(key.font_size_px(), key.line_height_px())
 }
 
-/// The other half of [`metrics_of`].
-fn attrs_of(key: TextShapeKey) -> Attrs<'static> {
-    attrs_for(key.family(), key.weight())
-}
-
-fn attrs_for(family: FontFamily, weight: FontWeight) -> Attrs<'static> {
+/// The attributes a resolved family shapes under.
+///
+/// Takes the **resolved** name rather than a [`FontFamily`], because the
+/// resolution needs the database and this does not — which is what lets
+/// the startup warm-up and the per-shape path share one spelling of the
+/// attributes without sharing the memo.
+///
+/// Fake italic is cosmic's to add: `override_fake_italic` sets
+/// `CacheKeyFlags::FAKE_ITALIC` when the matched face is upright and the
+/// request was not, and the flag is part of the glyph cache key, so the
+/// atlas keeps the slanted raster apart from the upright one.
+fn attrs_named(name: &'static str, weight: FontWeight, style: FontStyle) -> Attrs<'static> {
     // Skip TrueType bytecode hinting: skrifa's hint VM dominated zoom-frame
     // CPU time, and at HiDPI / during animated zoom the visual difference
     // is imperceptible.
-    let base = Attrs::new().cache_key_flags(CacheKeyFlags::DISABLE_HINTING);
-    let base = match weight {
-        // `Weight::NORMAL` is fontdb's default; requesting Bold makes
-        // fontdb instantiate the `wght` axis at 700 on the variable face
-        // (both Inter and JetBrains Mono ship as single variable fonts).
-        FontWeight::Regular => base,
-        FontWeight::Bold => base.weight(Weight::BOLD),
-    };
-    match family {
-        FontFamily::Mono => base.family(Family::Name("JetBrains Mono")),
-        FontFamily::Sans => base.family(Family::Name("Inter")),
+    let base = Attrs::new()
+        .cache_key_flags(CacheKeyFlags::DISABLE_HINTING)
+        .family(Family::Name(name))
+        // fontdb instantiates the `wght` axis at this value on a variable
+        // face, and picks the nearest static face otherwise.
+        .weight(Weight(weight.value()));
+    match style {
+        FontStyle::Normal => base,
+        FontStyle::Italic => base.style(Style::Italic),
+    }
+}
+
+/// Whether any face in `db` answers to `name`.
+///
+/// A scan rather than `Database::query`, which allocates a candidate
+/// `Vec` to answer a question that only needs the name — and the caller
+/// memoizes the result, so this runs once per family.
+fn family_present(db: &fontdb::Database, name: &str) -> bool {
+    db.faces()
+        .any(|face| face.families.iter().any(|(known, _)| known == name))
+}
+
+/// Build the match keys for `families`, at the weights and styles a theme
+/// actually asks for.
+///
+/// cosmic builds a `FontMatchKey` per face the first time a
+/// family/weight/style triple is shaped — O(faces), and otherwise paid on
+/// whichever frame first draws that face. See [`FontScope::build`] for
+/// why startup is where that belongs.
+///
+/// **Takes the families rather than walking the interned table**, which
+/// is not the same set: `CosmicMeasure::font_families` interns every name
+/// on the machine, and warming several hundred of them at O(faces) each
+/// would cost more than the misses it saves. The callers pass what will
+/// actually be shaped — the bundled pair at startup, and what the app has
+/// already drawn after a load.
+pub(crate) fn warm_matches(font_system: &mut FontSystem, families: &[FontFamily]) {
+    for &family in families {
+        let name = resolve_against(font_system.db(), family).name;
+        for weight in [FontWeight::REGULAR, FontWeight::BOLD] {
+            for style in [FontStyle::Normal, FontStyle::Italic] {
+                font_system.get_font_matches(&attrs_named(name, weight, style));
+            }
+        }
+    }
+}
+
+/// What one family resolved to.
+///
+/// Two answers off one walk of the database, because they are not the
+/// same question: [`FontFamily::SANS`] shapes under its own name whether
+/// or not a face answers to it, since it *is* what everything else falls
+/// back to.
+#[derive(Clone, Copy, Debug)]
+struct FamilyResolution {
+    /// The name to shape under.
+    name: &'static str,
+    /// Whether a face answers to the family that was asked for.
+    available: bool,
+}
+
+/// The family a request for `family` actually shapes in: itself when a
+/// face answers to it, and [`FontFamily::SANS`] when none does.
+///
+/// **Never cosmic's platform fallback**, which is what an unresolved
+/// `Family::Name` reaches on its own: a missing family would then look
+/// like whatever the machine happens to have installed, and the same app
+/// would read differently on two machines. Falling back to the bundled
+/// default is a look the app can predict, and
+/// [`CosmicMeasure::font_available`] is how it asks in advance.
+fn resolve_against(db: &fontdb::Database, family: FontFamily) -> FamilyResolution {
+    let name = family.name();
+    let available = family_present(db, name);
+    FamilyResolution {
+        name: if available {
+            name
+        } else {
+            FontFamily::SANS.name()
+        },
+        available,
     }
 }
 
@@ -207,14 +278,21 @@ pub(super) struct ShapedRun<'a> {
     pub(super) left: f32,
 }
 
-/// Real-shaping text measurer. Owns a [`FontSystem`] populated by
-/// [`CosmicMeasure::with_bundled_fonts`] (Inter + JetBrains Mono) and
-/// a cache of shaped `Buffer`s keyed on the inputs that affect shaping.
-/// Per-call font family + weight selection comes from [`FontFamily`] /
-/// [`FontWeight`] on each measurement; internal named lookups resolve against
-/// the bundled set.
+/// Real-shaping text measurer. Owns a [`FontSystem`] populated per
+/// [`FontScope`] and a cache of shaped `Buffer`s keyed on the inputs that
+/// affect shaping. Per-call face selection comes from [`FontFamily`],
+/// [`FontWeight`] and [`FontStyle`] on each measurement, resolved through
+/// [`Self::resolve_family`].
 pub(super) struct CosmicMeasure {
     font_system: FontSystem,
+    /// One [`FamilyResolution`] per [`FontFamily`] index, grown on demand
+    /// — see [`resolve_against`] for the rule and [`Self::resolve_family`]
+    /// for why it is memoized.
+    ///
+    /// A `Vec` indexed by the family's own index, not a map: the indices
+    /// are dense and start at zero, so a shape pays one bounds check
+    /// rather than a hash.
+    resolved: Vec<Option<FamilyResolution>>,
     /// Swash rasterization context for [`Self::rasterize_glyph`]. Used
     /// uncached — the renderer's glyph atlas is the real bitmap cache.
     swash_cache: SwashCache,
@@ -286,21 +364,20 @@ pub(super) struct CosmicMeasure {
 }
 
 impl CosmicMeasure {
-    /// Register the bundled faces — the variable-weight Inter (the default
-    /// proportional family) and the variable-weight JetBrains Mono
-    /// (monospace) — so they're always resolvable by name + weight.
-    /// cosmic-text's `new_with_fonts` *also* loads the platform's system
-    /// fonts, which act as glyph fallback for scripts the bundled faces
-    /// don't cover — so text metrics are *not* guaranteed identical
-    /// across machines. Each measurement selects its [`FontFamily`] and
-    /// [`FontWeight`].
-    pub(super) fn with_bundled_fonts() -> Self {
-        let sources = [INTER, JBMONO]
-            .into_iter()
-            .map(|b| fontdb::Source::Binary(Arc::new(b)));
-        let font_system = FontSystem::new_with_fonts(sources);
+    /// Build the database `scope` names — see [`FontScope`] for what each
+    /// one costs and what it makes resolvable.
+    pub(super) fn new(scope: FontScope) -> Self {
+        Self::over(scope.build())
+    }
+
+    /// The measurer around a database somebody else built — the seam
+    /// [`FontScan`](crate::text::font_scan::FontScan) needs, since the
+    /// point of that type is that [`FontScope::build`] ran on another
+    /// thread.
+    pub(super) fn over(font_system: FontSystem) -> Self {
         Self {
             font_system,
+            resolved: Vec::new(),
             swash_cache: SwashCache::new(),
             cache: FxHashMap::default(),
             frame: 0,
@@ -312,6 +389,170 @@ impl CosmicMeasure {
             logical_order: Vec::new(),
             counters: CacheCounters::default(),
         }
+    }
+
+    /// Register every face in `source`, and hand back the family of the
+    /// first one.
+    ///
+    /// A collection loads all of its faces, and each of their families
+    /// interns, so `FontFamily::named` reaches them too. There is no
+    /// unload: the atlas keys on cosmic's `font_id`, and fontdb never
+    /// reuses one.
+    ///
+    /// # Errors
+    ///
+    /// [`FontLoadError::Io`] when the file cannot be read or mapped, and
+    /// [`FontLoadError::NoFaces`] when the bytes hold no face fontdb can
+    /// parse.
+    pub(super) fn load_font(&mut self, source: FontSource) -> Result<FontFamily, FontLoadError> {
+        let source = match source {
+            // The `Cow` goes into the `Arc` whole: it is `AsRef<[u8]>`,
+            // `Send` and `Sync`, so one arm covers borrowed and owned
+            // bytes alike and neither is copied.
+            FontSource::Bytes(bytes) => fontdb::Source::Binary(Arc::new(bytes)),
+            FontSource::File(path) => {
+                // Opened first only to answer *why* a bad path failed:
+                // `load_font_source` reports an unreadable file as zero
+                // faces, which reads as "not a font" rather than "not
+                // there". fontdb maps the file to parse its face table and
+                // then keeps the path, re-mapping on the rare later read
+                // of the face data.
+                std::fs::File::open(&path).map_err(|source| FontLoadError::Io {
+                    path: path.clone(),
+                    source,
+                })?;
+                fontdb::Source::File(path)
+            }
+        };
+        // `db_mut` clears cosmic's own match cache, so the faces below are
+        // reachable to the next shape without any further prompting.
+        let ids = self.font_system.db_mut().load_font_source(source);
+        // Names are collected before any of them is interned:
+        // `FontFamily::named` takes the name table's write lock, and the
+        // borrow of the database would otherwise still be live across it.
+        // fontdb rejects a face with no family name, so the first name
+        // here is the first face's, and an empty list means nothing
+        // parsed.
+        let mut names: Vec<String> = Vec::new();
+        for id in ids {
+            let Some(face) = self.font_system.db().face(id) else {
+                continue;
+            };
+            names.extend(face.families.iter().map(|(name, _)| name.clone()));
+        }
+        let mut loaded = None;
+        for name in &names {
+            loaded.get_or_insert(FontFamily::named(name));
+        }
+        let loaded = loaded.ok_or(FontLoadError::NoFaces)?;
+
+        // Everything downstream of the database is now stale: a family
+        // that resolved to SANS may answer for itself, and every shaped
+        // buffer was laid out against the old resolution.
+        //
+        // The families already resolved are the ones on screen, so they
+        // are what the re-warm covers — `db_mut` dropped cosmic's match
+        // cache along with them, and the frame after a load re-shapes
+        // everything it draws.
+        let mut warm: Vec<FontFamily> = self
+            .resolved
+            .iter()
+            .enumerate()
+            .filter(|(_, name)| name.is_some())
+            .map(|(index, _)| FontFamily::from_raw(index as u16))
+            .collect();
+        if !warm.contains(&loaded) {
+            warm.push(loaded);
+        }
+        self.resolved.clear();
+        self.drop_all_buffers();
+        self.ellipsis.clear();
+        warm_matches(&mut self.font_system, &warm);
+        Ok(loaded)
+    }
+
+    /// Whether a face answers to `family`, so an app can pick a family it
+    /// knows will be used rather than one that quietly resolves to
+    /// [`FontFamily::SANS`].
+    ///
+    /// Answered off the same memo the shaping path fills, not a second
+    /// scan: an immediate-mode app asks this inside a record pass, and a
+    /// walk of every face per frame is a walk of every face per frame.
+    /// Sharing the memo is also what stops the answer and the resolution
+    /// from ever disagreeing.
+    pub(super) fn font_available(&mut self, family: FontFamily) -> bool {
+        self.resolve_family(family).available
+    }
+
+    /// Every family the database knows, system fonts included, interned
+    /// so the caller gets names it can hand straight back.
+    ///
+    /// A `Vec` rather than an iterator: the database sits behind the
+    /// shaper's `RefCell`, so a lending iterator would hold that borrow
+    /// across the caller's whole walk. Cold — a preferences picker asks
+    /// once.
+    pub(super) fn font_families(&self) -> Vec<FontFamily> {
+        let mut names: Vec<&str> = self
+            .font_system
+            .db()
+            .faces()
+            .flat_map(|face| face.families.iter().map(|(name, _)| name.as_str()))
+            .collect();
+        names.sort_unstable();
+        names.dedup();
+        names.into_iter().map(FontFamily::named).collect()
+    }
+
+    /// Drop every shaped buffer now, recycling each one, without waiting
+    /// out a retention window.
+    ///
+    /// [`Self::load_font`] owes this: the buffers were laid out against a
+    /// database that has since changed. Tests that exercise the *restore*
+    /// path use it to set up a guaranteed-cold cache in one call, instead
+    /// of encoding this cache's retention policy into tests that aren't
+    /// about it.
+    pub(super) fn drop_all_buffers(&mut self) {
+        let cache = &mut self.cache;
+        let recycle_pool = &mut self.recycle_pool;
+        for (_, entry) in cache.drain() {
+            recycle_buffer(recycle_pool, entry.buffer);
+        }
+        self.expiry.clear();
+    }
+
+    /// The attributes `key` shapes under, resolved family and all.
+    fn attrs_of(&mut self, key: TextShapeKey) -> Attrs<'static> {
+        let name = self.resolve_family(key.family()).name;
+        attrs_named(name, key.weight(), key.style())
+    }
+
+    /// What `family` resolved to, memoized.
+    ///
+    /// The rule is [`resolve_against`]'s; what belongs here is that asking
+    /// it walks every face, and neither a shape nor a per-frame
+    /// availability check may pay that. The memo is cleared by
+    /// [`Self::load_font`], which is the only thing that can change an
+    /// answer.
+    fn resolve_family(&mut self, family: FontFamily) -> FamilyResolution {
+        let index = usize::from(family.raw());
+        if let Some(Some(resolution)) = self.resolved.get(index) {
+            return *resolution;
+        }
+        let resolution = resolve_against(self.font_system.db(), family);
+        if !resolution.available {
+            // Worded for both callers: `font_available` asks the same
+            // question without going on to shape anything.
+            tracing::warn!(
+                family = family.name(),
+                "no face answers to this font family; it resolves to {}",
+                resolution.name,
+            );
+        }
+        if self.resolved.len() <= index {
+            self.resolved.resize(index + 1, None);
+        }
+        self.resolved[index] = Some(resolution);
+        resolution
     }
 
     /// Look up the shaped run for `key`, or `None` when no buffer is
@@ -409,7 +650,8 @@ impl CosmicMeasure {
         // line width); without one we pass `None` so single-line
         // editors keep their widget-side `dx` placement.
         let alignment = key.max_width_px().and_then(|_| cosmic_align(key.halign()));
-        buffer.set_text(request.text, &attrs_of(key), Shaping::Advanced, alignment);
+        let attrs = self.attrs_of(key);
+        buffer.set_text(request.text, &attrs, Shaping::Advanced, alignment);
         buffer.shape_until_scroll(&mut self.font_system, false);
 
         let geometry = shaped_geometry(&buffer, floor, &mut self.break_scratch);
@@ -665,7 +907,7 @@ impl CosmicMeasure {
             for glyph in run.glyphs.iter() {
                 // The renderer caches encoded runs on one uniform area
                 // colour — correct only while cosmic never produces a
-                // per-glyph override ([`attrs_for`] sets no per-span
+                // per-glyph override ([`attrs_named`] sets no per-span
                 // colour). If this fires, per-span colour was added
                 // without folding a colour fingerprint into the
                 // renderer's `EncodedKey`.
@@ -764,7 +1006,7 @@ impl CosmicMeasure {
         // exactly what the fit test wants — this is the resize-drag path,
         // where the key was hashed three times over.
         let root = self.root(unbounded, WrapFloor::Skip);
-        let attrs = attrs_of(key);
+        let attrs = self.attrs_of(key);
         // Reserve the ellipsis width only when we'll append one; a plain
         // clip cuts flush to the full available width. Resolved before
         // borrowing the probe, since shaping "…" needs `&mut self`.
@@ -866,8 +1108,9 @@ impl CosmicMeasure {
         if let Some(advance) = self.ellipsis.iter().find_map(|memo| memo.advance_for(face)) {
             return advance;
         }
+        let attrs = self.attrs_of(key);
         let mut buffer = self.acquire_buffer(metrics_of(key), None);
-        buffer.set_text("…", &attrs_of(key), Shaping::Advanced, None);
+        buffer.set_text("…", &attrs, Shaping::Advanced, None);
         buffer.shape_until_scroll(&mut self.font_system, false);
         let advance = first_line_right(&buffer);
         recycle_buffer(&mut self.recycle_pool, buffer);
@@ -884,7 +1127,7 @@ impl CosmicMeasure {
 
 impl Default for CosmicMeasure {
     fn default() -> Self {
-        Self::with_bundled_fonts()
+        Self::new(FontScope::Bundled)
     }
 }
 
@@ -904,6 +1147,8 @@ impl std::fmt::Debug for CosmicMeasure {
 #[cfg(any(test, feature = "bench"))]
 pub(crate) mod test_support {
     use super::*;
+    #[cfg(test)]
+    use crate::text::glyph_font::GlyphFont;
     #[cfg(test)]
     use crate::text::request::test_support::TestShape;
     #[cfg(test)]
@@ -986,19 +1231,18 @@ pub(crate) mod test_support {
             self.advance_to(self.frame + 1);
         }
 
-        /// Drop every shaped buffer now, recycling each one, without
-        /// waiting out a retention window. Lets tests that exercise the
-        /// *restore* path (which any eviction can trigger) set up a
-        /// guaranteed-cold cache in one call, instead of encoding this
-        /// cache's retention policy into tests that aren't about it.
+        /// A measurer over an empty database, so a case can watch a
+        /// family go from unresolvable to resolved.
+        ///
+        /// Every [`FontScope`] loads the bundled faces, which is what a
+        /// shipping app wants and what leaves no family for a load test
+        /// to introduce. Nothing production reaches this state.
         #[cfg(test)]
-        pub(crate) fn drop_all_buffers(&mut self) {
-            let cache = &mut self.cache;
-            let recycle_pool = &mut self.recycle_pool;
-            for (_, entry) in cache.drain() {
-                recycle_buffer(recycle_pool, entry.buffer);
-            }
-            self.expiry.clear();
+        pub(crate) fn with_no_fonts() -> Self {
+            Self::over(FontSystem::new_with_locale_and_db(
+                "en-US".to_owned(),
+                fontdb::Database::new(),
+            ))
         }
 
         #[cfg(test)]
@@ -1010,26 +1254,46 @@ pub(crate) mod test_support {
             }
         }
 
-        /// Family name of the font cosmic-text actually shaped `text`
-        /// with for `family`. Proves [`attrs_for`] maps each
-        /// [`FontFamily`] to the intended physical face — a measured-
-        /// width comparison can't, since two different faces can share
-        /// an advance.
+        /// The face cosmic-text actually shaped `text` with, as its
+        /// database id.
+        ///
+        /// Proves the resolution maps a [`GlyphFont`] to the intended
+        /// physical face — a measured-width comparison can't, since two
+        /// different faces can share an advance.
         #[cfg(test)]
-        pub(crate) fn resolved_family(&mut self, text: &str, family: FontFamily) -> Option<String> {
+        fn shaped_face(&mut self, text: &str, face: GlyphFont) -> Option<fontdb::ID> {
+            let key = TextShapeKey::for_text(text, face);
+            let attrs = self.attrs_of(key);
             let mut buf = Buffer::new(&mut self.font_system, Metrics::new(16.0, 19.2));
-            buf.set_text(
-                text,
-                &attrs_for(family, FontWeight::Regular),
-                Shaping::Advanced,
-                None,
-            );
+            buf.set_text(text, &attrs, Shaping::Advanced, None);
             buf.shape_until_scroll(&mut self.font_system, false);
-            let id = buf.layout_runs().next()?.glyphs.first()?.font_id;
+            Some(buf.layout_runs().next()?.glyphs.first()?.font_id)
+        }
+
+        /// The family name of [`Self::shaped_face`] — which family won.
+        #[cfg(test)]
+        pub(crate) fn resolved_family(&mut self, text: &str, face: GlyphFont) -> Option<String> {
+            let id = self.shaped_face(text, face)?;
             self.font_system
                 .db()
                 .face(id)
                 .map(|f| f.families[0].0.clone())
+        }
+
+        /// The PostScript name of [`Self::shaped_face`] — which *file*
+        /// won, which is the only thing that separates an italic face
+        /// from the upright one of the same family.
+        #[cfg(test)]
+        pub(crate) fn resolved_post_script_name(
+            &mut self,
+            text: &str,
+            face: GlyphFont,
+        ) -> Option<String> {
+            let id = self.shaped_face(text, face)?;
+            self.font_system
+                .db()
+                .face(id)
+                .map(|f| f.post_script_name.clone())
         }
     }
 }

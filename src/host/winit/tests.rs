@@ -6,6 +6,7 @@ use crate::host::winit::config::WinitHostConfig;
 use crate::host::winit::error::WinitHostError;
 use crate::host::winit::{WinitHost, finish_run};
 use crate::input::input_event::InputEvent;
+use crate::text::font_scope::FontScope;
 use crate::ui::frame_engines::FrameEngines;
 use crate::ui::frame_report::FrameProcessing;
 use crate::ui::frame_runtime::wake::Wake;
@@ -64,6 +65,7 @@ fn builder_retains_defaults_and_granular_overrides() {
             present_mode: wgpu::PresentMode::Fifo,
             power_preference: wgpu::PowerPreference::None,
             collect_gpu_stats: false,
+            fonts: FontScope::Bundled,
             pixel_snap: true,
         })
         .window(WindowConfig::new("window"))

@@ -379,7 +379,10 @@ fn cursor_xy_on_empty_line_respects_right_align() {
 /// this too.
 #[test]
 fn a_bounded_run_measures_its_glyphs_not_the_gap_before_them() {
-    let mut m = CosmicMeasure::with_bundled_fonts();
+    // The RTL row is Arabic, which no bundled face covers, so this case
+    // needs the machine's fonts to shape anything but tofu — the one
+    // reason a text case asks for [`FontScope::System`].
+    let mut m = CosmicMeasure::new(FontScope::System);
     let wrap = 200.0;
     let bounded = |halign| ui_shape(16.0).width(wrap).halign(halign);
     for (label, text) in [("LTR", "ab cd"), ("RTL", "مرحبا بالعالم")] {

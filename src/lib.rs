@@ -337,6 +337,12 @@ pub use shape::triangle::TriangleShape;
 // [`TextShaper::glyphs`]. The atlas and the pipeline stay the caller's; what is
 // shared is the font stack.
 pub use renderer::backend::raster_atlas::content_type::ContentType;
+pub use text::error::FontLoadError;
+pub use text::font_family::FontFamily;
+pub use text::font_scope::FontScope;
+pub use text::font_source::FontSource;
+pub use text::font_style::FontStyle;
+pub use text::font_weight::FontWeight;
 pub use text::glyph_font::GlyphFont;
 pub use text::glyphs::TextGlyphs;
 pub use text::probe::Caret;
@@ -345,7 +351,6 @@ pub use text::render::{GlyphImage, GlyphPlacement, GlyphRasterKey, PlacedGlyph};
 pub use text::run::TextRun;
 pub use text::shaper::TextShaper;
 pub use text::wrap::TextWrap;
-pub use text::{FontFamily, FontWeight};
 pub use ui::Ui;
 pub use ui::frame_report::{FramePaint, FrameReport};
 pub use ui::layer_scope::LayerScope;

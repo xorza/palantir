@@ -1,4 +1,4 @@
-//! The face a shaping call is asked for: the four parameters that pick a
+//! The face a shaping call is asked for: the five parameters that pick a
 //! font and a size, named once so they travel together.
 //!
 //! Shared vocabulary rather than one caller's parameter bundle. The
@@ -11,7 +11,9 @@
 
 use crate::primitives::approx::EPS;
 use crate::primitives::nan::NanCheck;
-use crate::text::{FontFamily, FontWeight};
+use crate::text::font_family::FontFamily;
+use crate::text::font_style::FontStyle;
+use crate::text::font_weight::FontWeight;
 
 /// Which face to shape in, and how big.
 ///
@@ -27,6 +29,7 @@ pub struct GlyphFont {
     pub line_height_px: f32,
     pub family: FontFamily,
     pub weight: FontWeight,
+    pub style: FontStyle,
 }
 
 impl GlyphFont {
@@ -50,27 +53,29 @@ impl GlyphFont {
         Self::metrics_are_valid(self.size_px, self.line_height_px)
     }
 
-    /// `size_px` in the default family and weight, led at its own size.
+    /// `size_px` in the default family, weight and style, led at its own
+    /// size.
     ///
     /// Every field is public, so anything else is a struct update over this —
-    /// `GlyphFont { family: FontFamily::Mono, ..GlyphFont::new(16.0) }`, which
+    /// `GlyphFont { family: FontFamily::MONO, ..GlyphFont::new(16.0) }`, which
     /// holds in a `const` too.
     ///
-    /// The two defaults are spelled out rather than asked of [`Default`],
-    /// which a derive does not make a `const fn`. They are the `#[default]`
-    /// variants of the enums beside them and have to stay that.
+    /// The three defaults are spelled out rather than asked of [`Default`],
+    /// which a derive does not make a `const fn`. They are what the axes
+    /// beside them call default and have to stay that.
     pub const fn new(size_px: f32) -> Self {
         Self {
             size_px,
             line_height_px: size_px,
-            family: FontFamily::Sans,
-            weight: FontWeight::Regular,
+            family: FontFamily::SANS,
+            weight: FontWeight::REGULAR,
+            style: FontStyle::Normal,
         }
     }
 }
 
 impl NanCheck for GlyphFont {
-    /// Only the two metrics can be NaN; the family and weight are enums.
+    /// Only the two metrics can be NaN; the three face axes are integral.
     fn has_nan(&self) -> bool {
         self.size_px.is_nan() || self.line_height_px.is_nan()
     }
@@ -78,15 +83,17 @@ impl NanCheck for GlyphFont {
 
 #[cfg(test)]
 mod tests {
+    use crate::text::font_family::FontFamily;
+    use crate::text::font_style::FontStyle;
+    use crate::text::font_weight::FontWeight;
     use crate::text::glyph_font::GlyphFont;
-    use crate::text::{FontFamily, FontWeight};
 
-    /// The face and weight [`GlyphFont::new`] writes out are the ones the
-    /// enums beside it call default.
+    /// The three axes [`GlyphFont::new`] writes out are the ones the types
+    /// beside it call default.
     ///
-    /// A `const fn` cannot ask a derived [`Default`], so the two are spelled
-    /// there — and a `#[default]` moved to the other variant would leave that
-    /// silently disagreeing with every other caller of the same enum.
+    /// A `const fn` cannot ask a derived [`Default`], so all three are
+    /// spelled there — and a default moved elsewhere would leave that
+    /// silently disagreeing with every other caller of the same axis.
     #[test]
     fn the_stock_font_is_the_default_face_and_weight() {
         // In a const context, which is the whole point of the constructor
@@ -95,6 +102,7 @@ mod tests {
         const STOCK: GlyphFont = GlyphFont::new(16.0);
         assert_eq!(STOCK.family, FontFamily::default());
         assert_eq!(STOCK.weight, FontWeight::default());
+        assert_eq!(STOCK.style, FontStyle::default());
         // Led at its own size, which is what "no stack to sit in" comes to.
         assert_eq!(STOCK.line_height_px, 16.0);
     }

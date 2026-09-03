@@ -232,8 +232,9 @@ fn paint_only_frames_advance_the_shared_text_clock() {
     use crate::scene::node::Node;
     use crate::scene::tree::paint_anims::PaintAnim;
     use crate::shape::Shape;
+    use crate::text::font_family::FontFamily;
+    use crate::text::font_weight::FontWeight;
     use crate::text::shaper::TextShaper;
-    use crate::text::{FontFamily, FontWeight};
     use crate::ui::frame_report::FrameProcessing;
 
     const HALF: Duration = Duration::from_millis(500);
@@ -257,8 +258,8 @@ fn paint_only_frames_advance_the_shared_text_clock() {
                 .color(Color::WHITE)
                 .wrap(TextWrap::SingleLine)
                 .align(Align::default())
-                .family(FontFamily::Sans)
-                .weight(FontWeight::Regular),
+                .family(FontFamily::SANS)
+                .weight(FontWeight::REGULAR),
                 PaintAnim::BlinkOpacity {
                     half_period: HALF,
                     started_at: HALF,
@@ -336,8 +337,9 @@ fn shared_cache_eviction_preserves_idle_windows_paint_only_text_source() {
     use crate::scene::node::Node;
     use crate::scene::tree::paint_anims::PaintAnim;
     use crate::shape::Shape;
+    use crate::text::font_family::FontFamily;
+    use crate::text::font_weight::FontWeight;
     use crate::text::shaper::TextShaper;
-    use crate::text::{FontFamily, FontWeight};
     use crate::ui::frame_report::FrameProcessing;
 
     const HALF: Duration = Duration::from_millis(500);
@@ -358,8 +360,8 @@ fn shared_cache_eviction_preserves_idle_windows_paint_only_text_source() {
                 .color(Color::WHITE)
                 .wrap(TextWrap::SingleLine)
                 .align(Align::default())
-                .family(FontFamily::Sans)
-                .weight(FontWeight::Regular),
+                .family(FontFamily::SANS)
+                .weight(FontWeight::REGULAR),
                 PaintAnim::BlinkOpacity {
                     half_period: HALF,
                     started_at: HALF,
@@ -457,6 +459,53 @@ fn wrap_target_change_preserves_unbounded_cache() {
         delta, 1,
         "wrap-target change must reshape only the wrap path, not unbounded \
          (extra calls: {delta})",
+    );
+}
+
+/// The two single-axis hatches on [`Text`] reach the record
+/// independently, so `.bold().italic()` is bold italic rather than one
+/// axis overwriting the other. Both default to the theme's.
+#[test]
+fn text_face_hatches_compose_on_the_lowered_record() {
+    use crate::scene::shapes::record::ShapeRecord;
+    use crate::text::font_style::FontStyle;
+    use crate::text::font_weight::FontWeight;
+
+    let mut h = UiHarness::new(SURFACE);
+    h.frame(|ui| {
+        Text::new("plain").id(WidgetId::from_hash("plain")).show(ui);
+        Text::new("bold")
+            .id(WidgetId::from_hash("bold"))
+            .bold()
+            .show(ui);
+        Text::new("italic")
+            .id(WidgetId::from_hash("italic"))
+            .italic()
+            .show(ui);
+        Text::new("both")
+            .id(WidgetId::from_hash("both"))
+            .bold()
+            .italic()
+            .show(ui);
+    });
+
+    let faces: Vec<(FontWeight, FontStyle)> = h.ui.forest.trees[Layer::Main]
+        .shapes
+        .records
+        .iter()
+        .map(|record| match record {
+            ShapeRecord::Text { font, .. } => (font.weight, font.style),
+            shape => panic!("expected text shape, got {shape:?}"),
+        })
+        .collect();
+    assert_eq!(
+        faces,
+        vec![
+            (FontWeight::REGULAR, FontStyle::Normal),
+            (FontWeight::BOLD, FontStyle::Normal),
+            (FontWeight::REGULAR, FontStyle::Italic),
+            (FontWeight::BOLD, FontStyle::Italic),
+        ],
     );
 }
 

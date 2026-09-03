@@ -5,7 +5,8 @@ use crate::layout::types::align::Align;
 use crate::primitives::text_input::TextInput;
 use crate::scene::node::Node;
 use crate::shape::Shape;
-use crate::text::FontWeight;
+use crate::text::font_style::FontStyle;
+use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
@@ -50,6 +51,8 @@ pub struct Text<'a> {
     /// `show`. Lets `Text::new("x").bold()` request bold without cloning
     /// the whole ambient `TextStyle` at the call site.
     weight: Option<FontWeight>,
+    /// The same hatch for the other face axis — see [`Self::italic`].
+    font_style: Option<FontStyle>,
     wrap: TextWrap,
     align: Align,
 }
@@ -62,6 +65,7 @@ impl<'a> Text<'a> {
             text: text.into(),
             style: None,
             weight: None,
+            font_style: None,
             wrap: TextWrap::SingleLine,
             // Default = (Auto, Auto) → top-left. Only matters when the
             // widget has Fixed size larger than its measured content;
@@ -83,7 +87,15 @@ impl<'a> Text<'a> {
     /// style (whether that came from `.style(...)` or the theme default).
     /// One-axis hatch over the resolved bundle — see [`crate::Theme`].
     pub fn bold(mut self) -> Self {
-        self.weight = Some(FontWeight::Bold);
+        self.weight = Some(FontWeight::BOLD);
+        self
+    }
+
+    /// Shape this run italic, overriding just the style of the resolved
+    /// bundle. The weight axis is untouched, so `.bold().italic()` is
+    /// bold italic.
+    pub fn italic(mut self) -> Self {
+        self.font_style = Some(FontStyle::Italic);
         self
     }
 
@@ -113,10 +125,11 @@ impl<'a> Text<'a> {
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
         let style = self.slot(ui.theme());
         let color = style.color;
-        // The builder's weight over the style's; everything else is the
-        // style's face as-is.
+        // The builder's face axes over the style's; everything else is
+        // the style's face as-is.
         let font = GlyphFont {
             weight: self.weight.unwrap_or(style.weight),
+            style: self.font_style.unwrap_or(style.style),
             ..style.font()
         };
         // No metrics guard here: `TextShape::is_noop` rejects a non-finite

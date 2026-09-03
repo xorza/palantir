@@ -103,6 +103,7 @@ impl TextBackend {
         runs: &[TextDrawRow],
         interned_text: &InternedText<'_>,
     ) {
+        self.encoder.sync_fonts(self.shaper.font_epoch());
         self.pass.open_batch(batch_idx);
 
         // One walk: hits emit straight to `instances`; misses encode

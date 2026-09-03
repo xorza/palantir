@@ -107,7 +107,7 @@ pub(crate) const RADIUS: f32 = 6.0;
 pub(crate) fn title_style() -> TextStyle {
     TextStyle::default()
         .with_font_size(19.0)
-        .with_weight(FontWeight::Bold)
+        .with_weight(FontWeight::BOLD)
         .with_color(INK)
 }
 
@@ -122,7 +122,7 @@ pub(crate) fn blurb_style() -> TextStyle {
 pub(crate) fn section_style() -> TextStyle {
     TextStyle::default()
         .with_font_size(12.0)
-        .with_weight(FontWeight::Bold)
+        .with_weight(FontWeight::BOLD)
         .with_color(INK)
 }
 

@@ -12,9 +12,10 @@ use crate::scene::node::Node;
 use crate::scene::node::configure::Configure;
 use crate::scene::tree::node_id::NodeId;
 use crate::shape::Shape;
+use crate::text::font_family::FontFamily;
+use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::wrap::TextWrap;
-use crate::text::{FontFamily, FontWeight};
 use crate::ui::harness::UiHarness;
 use crate::widgets::panel::Panel;
 use glam::UVec2;
@@ -231,8 +232,8 @@ fn build_multi_text_leaf(ui: &mut Ui) -> NodeId {
                 .color(Color::WHITE)
                 .wrap(TextWrap::Truncate)
                 .align(Align::default())
-                .family(FontFamily::Sans)
-                .weight(FontWeight::Regular),
+                .family(FontFamily::SANS)
+                .weight(FontWeight::REGULAR),
             );
             ui.add_shape(
                 Shape::rect(crate::Rect::new(0.0, 20.0, 4.0, 2.0))
@@ -253,8 +254,8 @@ fn build_multi_text_leaf(ui: &mut Ui) -> NodeId {
                 .color(Color::WHITE)
                 .wrap(TextWrap::Truncate)
                 .align(Align::default())
-                .family(FontFamily::Sans)
-                .weight(FontWeight::Regular),
+                .family(FontFamily::SANS)
+                .weight(FontWeight::REGULAR),
             );
         });
     });

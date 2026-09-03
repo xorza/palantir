@@ -105,7 +105,11 @@ pub(crate) mod test_support {
     // The face is a `GlyphFont` now, so only the assertion-side builders
     // that override one of its enums still name them.
     #[cfg(test)]
-    use crate::text::{FontFamily, FontWeight};
+    use crate::text::font_family::FontFamily;
+    #[cfg(test)]
+    use crate::text::font_style::FontStyle;
+    #[cfg(test)]
+    use crate::text::font_weight::FontWeight;
 
     /// A shaping request's parameters without its text, so a test can
     /// describe one face once and measure many strings through it.
@@ -227,6 +231,13 @@ pub(crate) mod test_support {
                     weight,
                     ..self.font
                 },
+                ..self
+            }
+        }
+
+        pub(crate) fn style(self, style: FontStyle) -> Self {
+            Self {
+                font: GlyphFont { style, ..self.font },
                 ..self
             }
         }

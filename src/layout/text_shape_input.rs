@@ -140,10 +140,12 @@ mod tests {
     use crate::common::hash;
     use crate::layout::text_shape_input::{TextShapeInput, checked_text_ordinal};
     use crate::layout::types::align::HAlign;
+    use crate::text::font_family::FontFamily;
+    use crate::text::font_style::FontStyle;
+    use crate::text::font_weight::FontWeight;
     use crate::text::glyph_font::GlyphFont;
     use crate::text::key::TextShapeKey;
     use crate::text::wrap::TextWrap;
-    use crate::text::{FontFamily, FontWeight};
 
     #[test]
     fn text_ordinal_covers_the_u16_domain_and_rejects_the_next_run() {
@@ -158,8 +160,9 @@ mod tests {
     const FACE: GlyphFont = GlyphFont {
         size_px: 16.0,
         line_height_px: 19.2,
-        family: FontFamily::Sans,
-        weight: FontWeight::Regular,
+        family: FontFamily::SANS,
+        weight: FontWeight::REGULAR,
+        style: FontStyle::Normal,
     };
 
     /// One recorded run, paired with whatever hash the caller claims for

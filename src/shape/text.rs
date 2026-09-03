@@ -8,9 +8,11 @@ use crate::primitives::nan::NanCheck;
 use crate::scene::record_store::RecordStore;
 use crate::scene::shapes::record::ShapeRecord;
 use crate::shape::sealed;
+use crate::text::font_family::FontFamily;
+use crate::text::font_style::FontStyle;
+use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::wrap::TextWrap;
-use crate::text::{FontFamily, FontWeight};
 use glam::Vec2;
 
 /// Shaped text run owned by the active node.
@@ -72,6 +74,7 @@ shape_setters!(TextShape {
     align: Align => align,
     family: FontFamily => font.family,
     weight: FontWeight => font.weight,
+    style: FontStyle => font.style,
 });
 
 impl sealed::LowerShape for TextShape {

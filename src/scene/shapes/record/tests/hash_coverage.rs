@@ -12,8 +12,10 @@ use crate::scene::shapes::hash::compute_record_hash;
 use crate::scene::shapes::paint::{LoweredShadow, ShapeStroke};
 use crate::scene::shapes::record::*;
 use crate::shape::rect::RectKind;
+use crate::text::font_family::FontFamily;
+use crate::text::font_style::FontStyle;
+use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
-use crate::text::{FontFamily, FontWeight};
 use glam::Vec2;
 
 /// **The hash-schedule sweep.** For every field of every record,
@@ -431,8 +433,9 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
     let face = GlyphFont {
         size_px: 12.0,
         line_height_px: 14.0,
-        family: FontFamily::Sans,
-        weight: FontWeight::Regular,
+        family: FontFamily::SANS,
+        weight: FontWeight::REGULAR,
+        style: FontStyle::Normal,
     };
     let text = |local_origin, t, color, font, wrap, align| ShapeRecord::Text {
         local_origin,
@@ -548,7 +551,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             recorded(1),
             white,
             GlyphFont {
-                family: FontFamily::Mono,
+                family: FontFamily::MONO,
                 ..face
             },
             TextWrap::SingleLine,
@@ -563,7 +566,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             recorded(1),
             white,
             GlyphFont {
-                weight: FontWeight::Bold,
+                weight: FontWeight::BOLD,
                 ..face
             },
             TextWrap::SingleLine,

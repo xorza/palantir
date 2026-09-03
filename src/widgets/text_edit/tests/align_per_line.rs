@@ -8,10 +8,12 @@
 //! relative to the widest one — never as an offset of the block itself,
 //! which would be the same alignment applied twice.
 
+use crate::text::font_family::FontFamily;
+use crate::text::font_style::FontStyle;
+use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::request::test_support::TestShape;
 use crate::text::shaper::TextShaper;
-use crate::text::{FontFamily, FontWeight};
 use crate::widgets::text_edit::tests::*;
 use crate::{Align, HAlign};
 use glam::UVec2;
@@ -28,8 +30,9 @@ fn shape(wrap: f32, halign: HAlign) -> TestShape {
         font: GlyphFont {
             size_px: FS,
             line_height_px: LH,
-            family: FontFamily::Sans,
-            weight: FontWeight::Regular,
+            family: FontFamily::SANS,
+            weight: FontWeight::REGULAR,
+            style: FontStyle::Normal,
         },
         max_width_px: Some(wrap),
         halign,
@@ -181,8 +184,9 @@ fn cache_key_distinguishes_halign() {
                 font: GlyphFont {
                     size_px: 16.0,
                     line_height_px: 19.2,
-                    family: FontFamily::Sans,
-                    weight: FontWeight::Regular,
+                    family: FontFamily::SANS,
+                    weight: FontWeight::REGULAR,
+                    style: FontStyle::Normal,
                 },
                 max_width_px: Some(100.0),
                 halign: HAlign::Left,
@@ -196,8 +200,9 @@ fn cache_key_distinguishes_halign() {
                 font: GlyphFont {
                     size_px: 16.0,
                     line_height_px: 19.2,
-                    family: FontFamily::Sans,
-                    weight: FontWeight::Regular,
+                    family: FontFamily::SANS,
+                    weight: FontWeight::REGULAR,
+                    style: FontStyle::Normal,
                 },
                 max_width_px: Some(100.0),
                 halign: HAlign::Right,
@@ -205,10 +210,7 @@ fn cache_key_distinguishes_halign() {
         )
         .key;
     assert_ne!(l, r, "halign must enter the cache key");
-    assert_ne!(
-        l.halign_q, r.halign_q,
-        "halign_q is the discriminating field"
-    );
+    assert_ne!(l.halign(), r.halign(), "halign is the discriminating field");
 }
 
 #[test]
@@ -226,8 +228,9 @@ fn unbounded_halign_collapses_to_auto_in_key() {
                 font: GlyphFont {
                     size_px: 16.0,
                     line_height_px: 19.2,
-                    family: FontFamily::Sans,
-                    weight: FontWeight::Regular,
+                    family: FontFamily::SANS,
+                    weight: FontWeight::REGULAR,
+                    style: FontStyle::Normal,
                 },
                 max_width_px: None,
                 halign: HAlign::Left,
@@ -241,8 +244,9 @@ fn unbounded_halign_collapses_to_auto_in_key() {
                 font: GlyphFont {
                     size_px: 16.0,
                     line_height_px: 19.2,
-                    family: FontFamily::Sans,
-                    weight: FontWeight::Regular,
+                    family: FontFamily::SANS,
+                    weight: FontWeight::REGULAR,
+                    style: FontStyle::Normal,
                 },
                 max_width_px: None,
                 halign: HAlign::Right,
@@ -251,8 +255,8 @@ fn unbounded_halign_collapses_to_auto_in_key() {
         .key;
     assert_eq!(left, right, "halign must not split the unbounded cache");
     assert_eq!(
-        left.halign_q,
-        HAlign::Auto as u8,
+        left.halign(),
+        HAlign::Auto,
         "unbounded entries always carry the Auto discriminant",
     );
 }
@@ -297,14 +301,14 @@ fn rendered_buffer_uses_per_line_align_even_when_content_fits() {
     let span = main.text_spans[node.idx()];
     assert_eq!(span.len, 1, "one Shape::Text expected on the block");
     let shaped = main.text_shapes[span.start as usize];
-    // `HAlign::Right as u8 = 3` — pin the discriminant directly
-    // so a variant reordering trips here instead of silently
-    // falling through.
+    // Pinned on the decoded value, so a shifted packing or a
+    // reordered variant trips here instead of silently falling
+    // through.
     assert_eq!(
-        shaped.key.halign_q,
-        HAlign::Right as u8,
-        "rendered buffer must carry the user's halign in its cache key (got {})",
-        shaped.key.halign_q,
+        shaped.key.halign(),
+        HAlign::Right,
+        "rendered buffer must carry the user's halign in its cache key (got {:?})",
+        shaped.key.halign(),
     );
     // Also check the wrap-target axis is set — if it's
     // `u32::MAX` the buffer was shaped without `max_width_px`
@@ -421,8 +425,8 @@ fn placeholder_per_line_aligns_under_wrap() {
     assert_eq!(span.len, 1, "one Shape::Text expected on the block");
     let shaped = main.text_shapes[span.start as usize];
     assert_eq!(
-        shaped.key.halign_q,
-        HAlign::Right as u8,
+        shaped.key.halign(),
+        HAlign::Right,
         "placeholder buffer must carry the user's halign in its cache key",
     );
     assert_ne!(

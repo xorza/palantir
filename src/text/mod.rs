@@ -32,13 +32,18 @@
 //! public geometry surface over the lease it holds, [`glyphs`] the
 //! render-side lease itself — held by the wgpu backend and by a
 //! `GpuView` drawing its own text, which want the same answers off the
-//! same borrow.
+//! same borrow. [`font_scope`] names which faces a database starts with,
+//! and [`font_scan`] is one of those built on another thread.
 //!
 //! **Vocabulary modules** hold the small value types one layer speaks in,
 //! where naming a module per type would scatter a set that is only ever
-//! read together: this file ([`FontFamily`], [`FontWeight`], plus the two
-//! constants the renderer has to agree with), [`wrap`] the wrap policies,
-//! [`render`] the cosmic-free render terms.
+//! read together: this file (the two retention constants the renderer has
+//! to agree with), [`wrap`] the wrap policies, [`render`] the cosmic-free
+//! render terms. The three face axes get a file each —
+//! [`font_family`], [`font_weight`], [`font_style`] — because each owns a
+//! name table, a range check or a tag that is nobody else's business.
+//! [`font_source`] is what a registration hands over and [`error`] what
+//! it can fail with.
 //!
 //! A backend gets a directory, because one type with five separable jobs
 //! is neither shape. [`cosmic`] is `CosmicMeasure` plus wrapped shaping,
@@ -58,6 +63,16 @@ pub(crate) mod bench;
 // `crate::text`, not the crate — and is what a consumer in a sibling of
 // `cosmic` needs, since `pub(super)` there stops at `cosmic` itself.
 mod cosmic;
+pub(crate) mod error;
+pub(crate) mod font_family;
+// Gated with its only consumer, the winit host: a build with no windowed
+// host has nothing to overlap a font scan with, and `-W dead_code` says so.
+#[cfg(feature = "winit")]
+pub(crate) mod font_scan;
+pub(crate) mod font_scope;
+pub(crate) mod font_source;
+pub(crate) mod font_style;
+pub(crate) mod font_weight;
 pub(crate) mod glyph_font;
 pub(crate) mod glyphs;
 pub(crate) mod key;
@@ -163,45 +178,6 @@ pub(crate) const RENDERED_RUN_KEEP_FRAMES: u64 = 120;
 /// [`RENDERED_RUN_KEEP_FRAMES`] gives: the renderer's own suite has to
 /// name the window it waits out, and `cosmic` is private to this module.
 pub(crate) const RENDERED_RUN_KEEP_SPREAD_MASK: u64 = 15;
-
-/// Font family picker on [`crate::TextStyle`] and
-/// [`Shape::text`](crate::Shape::text). `Sans` resolves to bundled Inter (the default
-/// proportional face); `Mono` resolves to bundled JetBrains Mono. Both
-/// ship inside `CosmicMeasure::with_bundled_fonts`; the test-only mono
-/// fallback ignores family entirely.
-/// Weight (Regular/Bold) is an independent axis — see [`FontWeight`].
-///
-/// `#[repr(u8)]` with explicit discriminants pins the on-disk tag so
-/// `TextShapeKey::family_q` and the `ShapeRecord::Text` hash byte
-/// stay stable across variant reordering.
-#[repr(u8)]
-#[derive(
-    Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
-)]
-pub enum FontFamily {
-    #[default]
-    Sans = 0,
-    Mono = 1,
-}
-
-/// Font weight picker on [`crate::TextStyle`] and
-/// [`Shape::text`](crate::Shape::text),
-/// independent of [`FontFamily`]. `Regular` shapes with the family's
-/// normal face; `Bold` requests the bold face (a distinct static face
-/// for Inter, an instantiated `wght` for the variable JetBrains
-/// Mono) via cosmic-text's `Attrs::weight`.
-///
-/// `#[repr(u8)]` pins the tag for `TextShapeKey::weight_q` and the
-/// `ShapeRecord::Text` hash byte.
-#[repr(u8)]
-#[derive(
-    Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
-)]
-pub enum FontWeight {
-    #[default]
-    Regular = 0,
-    Bold = 1,
-}
 
 /// Gated on the feature alone rather than on `any(test, ..)` like its
 /// siblings: the one consumer is the allocation suite's scale ramp, which

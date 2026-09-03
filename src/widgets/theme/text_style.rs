@@ -2,8 +2,10 @@
 //! painted with — the vocabulary every other theme carries a copy of.
 
 use crate::primitives::color::Color;
+use crate::text::font_family::FontFamily;
+use crate::text::font_style::FontStyle;
+use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
-use crate::text::{FontFamily, FontWeight};
 use crate::widgets::theme::palette::Palette;
 
 /// Default [`TextStyle::line_height_mult`]: the leading widgets resolve
@@ -54,15 +56,21 @@ pub struct TextStyle {
     #[animate(snap)]
     pub line_height_mult: f32,
     /// Font family used for shaping. Default
-    /// [`FontFamily::Sans`] resolves to bundled Inter; the debug
-    /// `frame_stats` overlay overrides to [`FontFamily::Mono`].
+    /// [`FontFamily::SANS`] resolves to bundled Inter; the debug
+    /// `frame_stats` overlay overrides to [`FontFamily::MONO`].
     #[animate(snap)]
     pub family: FontFamily,
-    /// Font weight used for shaping. Default [`FontWeight::Regular`];
-    /// set [`FontWeight::Bold`] (or call [`Self::bold`]) to shape against
-    /// the family's bold face.
+    /// Font weight used for shaping, on the CSS 1–1000 scale. Default
+    /// [`FontWeight::REGULAR`]; set [`FontWeight::BOLD`] (or call
+    /// [`Self::bold`]) to shape against the family's bold face.
     #[animate(snap)]
     pub weight: FontWeight,
+    /// Upright or italic. Default [`FontStyle::Normal`]; set
+    /// [`FontStyle::Italic`] (or call [`Self::italic`]) to shape against
+    /// the family's italic face, or a synthesized slant where it has
+    /// none.
+    #[animate(snap)]
+    pub style: FontStyle,
 }
 
 impl Default for TextStyle {
@@ -71,8 +79,9 @@ impl Default for TextStyle {
             font_size_px: 16.0,
             color: Palette::DEFAULT.text,
             line_height_mult: LINE_HEIGHT_MULT,
-            family: FontFamily::Sans,
-            weight: FontWeight::Regular,
+            family: FontFamily::SANS,
+            weight: FontWeight::REGULAR,
+            style: FontStyle::Normal,
         }
     }
 }
@@ -100,6 +109,7 @@ impl TextStyle {
             line_height_px: self.line_height_for(self.font_size_px),
             family: self.family,
             weight: self.weight,
+            style: self.style,
         }
     }
 
@@ -143,10 +153,22 @@ impl TextStyle {
         self
     }
 
-    /// Shorthand for `.with_weight(FontWeight::Bold)`.
+    #[inline]
+    pub const fn with_style(mut self, style: FontStyle) -> Self {
+        self.style = style;
+        self
+    }
+
+    /// Shorthand for `.with_weight(FontWeight::BOLD)`.
     #[inline]
     pub const fn bold(self) -> Self {
-        self.with_weight(FontWeight::Bold)
+        self.with_weight(FontWeight::BOLD)
+    }
+
+    /// Shorthand for `.with_style(FontStyle::Italic)`.
+    #[inline]
+    pub const fn italic(self) -> Self {
+        self.with_style(FontStyle::Italic)
     }
 }
 
@@ -164,6 +186,7 @@ struct UncheckedTextStyle {
     line_height_mult: f32,
     family: FontFamily,
     weight: FontWeight,
+    style: FontStyle,
 }
 
 impl TryFrom<UncheckedTextStyle> for TextStyle {
@@ -176,6 +199,7 @@ impl TryFrom<UncheckedTextStyle> for TextStyle {
             line_height_mult: style.line_height_mult,
             family: style.family,
             weight: style.weight,
+            style: style.style,
         };
         if !style.metrics_valid() {
             return Err(GlyphFont::METRICS_ERROR);

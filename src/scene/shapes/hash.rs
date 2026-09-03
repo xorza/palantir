@@ -126,14 +126,17 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
             color.hash(&mut h);
             font.size_px.hash_visual(&mut h);
             font.line_height_px.hash_visual(&mut h);
-            // `weight` rides the free high byte of `style`; `align`/`wrap`/
-            // `family` occupy bytes 2/1/0, so bold vs regular can't collide
-            // in the node hash (would break damage/reuse).
-            let style = ((font.weight as u32) << 24)
-                | ((align.raw() as u32) << 16)
-                | ((*wrap as u32) << 8)
-                | (font.family as u32);
-            h.write_u32(style);
+            // The five face axes in one word: family and weight are 16
+            // bits each now, so a byte apiece no longer holds them and a
+            // `u32` no longer holds the set. Two runs that differ only in
+            // weight, style or family must not collide here — the node
+            // hash is what damage and reuse compare.
+            let face = (u64::from(font.family.raw()) << 40)
+                | (u64::from(font.weight.value()) << 24)
+                | ((font.style as u64) << 16)
+                | (u64::from(align.raw()) << 8)
+                | (*wrap as u64);
+            h.write_u64(face);
         }
         // Fields named exhaustively for the reason given on the
         // `Polyline` arm above.
@@ -292,25 +295,35 @@ mod tests {
     use crate::primitives::span::Span;
     use crate::scene::shapes::hash::compute_record_hash;
     use crate::scene::shapes::record::ShapeRecord;
+    use crate::text::font_family::FontFamily;
+    use crate::text::font_style::FontStyle;
+    use crate::text::font_weight::FontWeight;
     use crate::text::glyph_font::GlyphFont;
     use crate::text::wrap::TextWrap;
-    use crate::text::{FontFamily, FontWeight};
 
     fn text_shape(
         line_height_px: f32,
         weight: FontWeight,
         local_origin: Option<glam::Vec2>,
     ) -> ShapeRecord {
+        text_face(
+            GlyphFont {
+                size_px: 16.0,
+                line_height_px,
+                family: FontFamily::SANS,
+                weight,
+                style: FontStyle::Normal,
+            },
+            local_origin,
+        )
+    }
+
+    fn text_face(font: GlyphFont, local_origin: Option<glam::Vec2>) -> ShapeRecord {
         ShapeRecord::Text {
             local_origin,
             text: RecordedText::new(Span::default(), hash_str("hi")),
             color: Color::WHITE.into(),
-            font: GlyphFont {
-                size_px: 16.0,
-                line_height_px,
-                family: FontFamily::Sans,
-                weight,
-            },
+            font,
             wrap: TextWrap::Truncate,
             align: Align::default(),
         }
@@ -326,29 +339,52 @@ mod tests {
     /// not in a new test.
     #[test]
     fn text_shape_hash_distinguishes_each_authoring_field() {
-        use FontWeight::{Bold, Regular};
+        let (regular, bold) = (FontWeight::REGULAR, FontWeight::BOLD);
         let o_a = Some(glam::Vec2::new(0.0, 0.0));
         let o_b = Some(glam::Vec2::new(5.0, 5.0));
-        let cases: [(&str, ShapeRecord, ShapeRecord); 4] = [
+        let upright = GlyphFont::new(16.0);
+        let cases: [(&str, ShapeRecord, ShapeRecord); 6] = [
             (
                 "line_height_px",
-                text_shape(16.0 * 1.2, Regular, None),
-                text_shape(16.0 * 1.5, Regular, None),
+                text_shape(16.0 * 1.2, regular, None),
+                text_shape(16.0 * 1.5, regular, None),
             ),
             (
-                "weight Regular vs Bold",
-                text_shape(19.2, Regular, None),
-                text_shape(19.2, Bold, None),
+                "weight regular vs bold",
+                text_shape(19.2, regular, None),
+                text_shape(19.2, bold, None),
             ),
             (
                 "local_origin None vs Some",
-                text_shape(19.2, Regular, None),
-                text_shape(19.2, Regular, o_a),
+                text_shape(19.2, regular, None),
+                text_shape(19.2, regular, o_a),
             ),
             (
                 "local_origin Some(a) vs Some(b)",
-                text_shape(19.2, Regular, o_a),
-                text_shape(19.2, Regular, o_b),
+                text_shape(19.2, regular, o_a),
+                text_shape(19.2, regular, o_b),
+            ),
+            (
+                "family sans vs mono",
+                text_face(upright, None),
+                text_face(
+                    GlyphFont {
+                        family: FontFamily::MONO,
+                        ..upright
+                    },
+                    None,
+                ),
+            ),
+            (
+                "style upright vs italic",
+                text_face(upright, None),
+                text_face(
+                    GlyphFont {
+                        style: FontStyle::Italic,
+                        ..upright
+                    },
+                    None,
+                ),
             ),
         ];
         for (label, a, b) in cases {
@@ -366,8 +402,8 @@ mod tests {
     #[test]
     fn text_shape_hash_matches_when_inputs_match() {
         assert_eq!(
-            hash_shape(&text_shape(19.2, FontWeight::Regular, None)),
-            hash_shape(&text_shape(19.2, FontWeight::Regular, None)),
+            hash_shape(&text_shape(19.2, FontWeight::REGULAR, None)),
+            hash_shape(&text_shape(19.2, FontWeight::REGULAR, None)),
         );
     }
 }

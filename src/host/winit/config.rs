@@ -1,5 +1,6 @@
 //! [`WinitHostConfig`] — startup tunables for [`WinitHost`](super::WinitHost).
 
+use crate::text::font_scope::FontScope;
 use crate::window::window_config::WindowConfig;
 
 /// Startup tunables for [`WinitHost`](super::WinitHost): the first
@@ -30,6 +31,15 @@ pub struct WinitHostConfig {
     /// round-trip is non-trivial. Gates device-feature requests at
     /// startup; every window's `WindowDriver` inherits the result.
     pub collect_gpu_stats: bool,
+    /// Which faces the app-global shaper starts with.
+    ///
+    /// [`FontScope::System`] by default, unlike
+    /// [`TextShaper::new`](crate::TextShaper::new): a window is what a
+    /// person reads, and the OS fonts are the glyph fallback that keeps
+    /// scripts the bundled faces do not cover from rendering as tofu. The
+    /// scan runs on its own thread beside GPU init, so it costs no wall
+    /// time on a warm disk cache.
+    pub fonts: FontScope,
     /// Whether axis-aligned paint edges snap to physical pixels. On by
     /// default, which is what a window wants: an unsnapped edge lands
     /// between texels and antialiases into a soft line. Turn it off for
@@ -45,6 +55,7 @@ impl Default for WinitHostConfig {
             present_mode: wgpu::PresentMode::AutoVsync,
             power_preference: wgpu::PowerPreference::LowPower,
             collect_gpu_stats: false,
+            fonts: FontScope::System,
             pixel_snap: true,
         }
     }

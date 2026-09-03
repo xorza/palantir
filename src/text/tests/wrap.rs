@@ -68,15 +68,17 @@ fn bundled_faces_resolve_and_their_metrics_differ() {
     // physical face. Asserted on the resolved family name and on advances,
     // not on the cache key — a key can discriminate perfectly while every
     // request silently falls back to one face.
-    let mut c = CosmicMeasure::with_bundled_fonts();
+    let mut c = CosmicMeasure::default();
 
     assert_eq!(
-        c.resolved_family("M", FontFamily::Sans).as_deref(),
+        c.resolved_family("M", shape(16.0).family(FontFamily::SANS).font)
+            .as_deref(),
         Some("Inter"),
         "Sans must shape with the bundled Inter face",
     );
     assert_eq!(
-        c.resolved_family("M", FontFamily::Mono).as_deref(),
+        c.resolved_family("M", shape(16.0).family(FontFamily::MONO).font)
+            .as_deref(),
         Some("JetBrains Mono"),
         "Mono must shape with the bundled JetBrains Mono face",
     );
@@ -86,10 +88,10 @@ fn bundled_faces_resolve_and_their_metrics_differ() {
             .size
             .w
     };
-    let sans = width(&mut c, FontFamily::Sans, FontWeight::Regular);
-    let sans_bold = width(&mut c, FontFamily::Sans, FontWeight::Bold);
-    let mono = width(&mut c, FontFamily::Mono, FontWeight::Regular);
-    let mono_bold = width(&mut c, FontFamily::Mono, FontWeight::Bold);
+    let sans = width(&mut c, FontFamily::SANS, FontWeight::REGULAR);
+    let sans_bold = width(&mut c, FontFamily::SANS, FontWeight::BOLD);
+    let mono = width(&mut c, FontFamily::MONO, FontWeight::REGULAR);
+    let mono_bold = width(&mut c, FontFamily::MONO, FontWeight::BOLD);
 
     // Measured widths round up to whole pixels. JetBrains Mono's cell is
     // 600/1000 em — 9.6 px at 16 px — so four of them is 38.4 → 39. Inter is
@@ -241,7 +243,7 @@ fn cosmic_intrinsic_min_tracks_the_widest_unbreakable_segment() {
     // no line break can split. Break opportunities are UAX #14's — the
     // same ones cosmic-text splits its shape words on — so the floor has
     // to track punctuation and script boundaries, not just whitespace.
-    let mut c = CosmicMeasure::with_bundled_fonts();
+    let mut c = CosmicMeasure::default();
     let shape = ui_shape(16.0);
 
     // (run, the widest segment its floor must land on)

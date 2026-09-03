@@ -3,7 +3,9 @@ use crate::input::response::button_state::ButtonState;
 use crate::input::response::response_state::ResponseState;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
-use crate::text::{FontFamily, FontWeight};
+use crate::text::font_family::FontFamily;
+use crate::text::font_style::FontStyle;
+use crate::text::font_weight::FontWeight;
 use crate::widgets::theme::button::ButtonTheme;
 use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::text_edit::TextEditTheme;
@@ -176,8 +178,9 @@ fn animated_look_line_height_px_delegates_to_text_style() {
             font_size_px: 16.0,
             color: Color::TRANSPARENT,
             line_height_mult: 1.5,
-            family: FontFamily::Sans,
-            weight: FontWeight::Regular,
+            family: FontFamily::SANS,
+            weight: FontWeight::REGULAR,
+            style: FontStyle::Normal,
         },
     };
     assert!((look.text.font().line_height_px - 24.0).abs() < 1e-6);
