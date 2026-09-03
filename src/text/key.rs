@@ -32,17 +32,20 @@ pub(crate) struct QuantizedFace {
 /// composer so the renderer can restore the matching buffer without rehashing
 /// or reconstructing a second parameter representation.
 ///
-/// Three quantized fields rather than one collapsed `u64` so the renderer
-/// can also reuse the size/width components if it wants to (e.g. group runs
-/// by size for atlas bin reuse). [`TextShapeKey::INVALID`] tags a measurement
-/// with no shaped buffer — the encoder drops those runs before paint.
+/// **Lossless, not a digest.** Every shaping input is stored quantized
+/// rather than folded into the text's hash, because the restore path
+/// rebuilds cosmic's `Metrics` and `Attrs` from the key alone: a run
+/// whose buffer aged out reshapes from what the key says, and by then
+/// nothing else survives to say it. [`TextShapeKey::INVALID`] tags a
+/// measurement with no shaped buffer — the encoder drops those runs
+/// before paint.
 #[derive(Clone, Copy, Hash, Eq, PartialEq, Debug)]
 pub(crate) struct TextShapeKey {
     /// 64-bit hash of the source string. `0` for the invalid sentinel.
     pub(crate) text_hash: u64,
     /// `font_size_px * 64`, rounded. Quantizing to 1/64 px is below any
     /// visible difference and keeps the key purely integral.
-    pub(crate) size_q: u32,
+    size_q: u32,
     /// `max_width_px * 64`, rounded; `u32::MAX` encodes `None` (unbounded).
     ///
     /// Unlike its 1/64-px neighbours this carries only whole pixels:
@@ -50,20 +53,20 @@ pub(crate) struct TextShapeKey {
     /// [`wrap::canonical_wrap_width`] first, so the value is always a
     /// multiple of 64. The scale is kept so all three quantized fields
     /// dequantize the same way, not because the precision is reachable.
-    pub(crate) max_w_q: u32,
+    max_w_q: u32,
     /// `line_height_px * 64`, rounded. Two `ShapeRecord::Text` runs at the
     /// same font-size but different leading produce different shaped
     /// buffers (different `Metrics::new`), so the key has to discriminate.
-    pub(crate) lh_q: u32,
+    lh_q: u32,
     /// [`FontFamily`] index. Two runs with identical text/size but
     /// different families produce different shaped buffers, so the key
     /// has to discriminate. The index means nothing outside the process
     /// that interned it, which is why no key is ever persisted.
-    pub(crate) family_q: u16,
+    family_q: u16,
     /// Weight, style, per-line alignment and line fit — see
     /// [`FaceBits`], which is where the four stop being separate bytes
     /// so the key can hold a 10-bit weight and stay 24 bytes.
-    pub(crate) face_q: FaceBits,
+    face_q: FaceBits,
 }
 
 const MAX_W_NONE: u32 = u32::MAX;
@@ -162,7 +165,7 @@ impl TextShapeKey {
             max_w_q: MAX_W_NONE,
             lh_q: quantize_metric(line_height_px),
             family_q: family.raw(),
-            face_q: FaceBits::new(weight, style, HAlign::Auto, LineFit::Wrap),
+            face_q: FaceBits::new(weight, style, LineAlign::Auto, LineFit::Wrap),
         }
     }
 
@@ -187,7 +190,7 @@ impl TextShapeKey {
             max_w_q: MAX_W_NONE,
             face_q: self
                 .face_q
-                .with_bound(FaceBits::bound_bits(HAlign::Auto, LineFit::Wrap)),
+                .with_bound(FaceBits::bound_bits(LineAlign::Auto, LineFit::Wrap)),
             ..self
         }
     }
@@ -215,7 +218,7 @@ impl TextShapeKey {
         dequantize(self.lh_q)
     }
 
-    pub(super) fn max_width_px(self) -> Option<f32> {
+    pub(crate) fn max_width_px(self) -> Option<f32> {
         (self.max_w_q != MAX_W_NONE).then(|| dequantize(self.max_w_q))
     }
 
@@ -237,8 +240,8 @@ impl TextShapeKey {
     /// `pub(crate)` where its siblings are `pub(super)`: the text-edit
     /// suite asserts on the alignment a rendered buffer was keyed under,
     /// and it lives outside `crate::text`.
-    pub(crate) fn halign(self) -> HAlign {
-        self.face_q.halign()
+    pub(crate) fn line_align(self) -> LineAlign {
+        self.face_q.line_align()
     }
 
     pub(super) fn fit(self) -> LineFit {
@@ -248,27 +251,26 @@ impl TextShapeKey {
 
 /// Weight, style, per-line alignment and line fit in one 16-bit field.
 ///
-/// Four separate bytes is what the key used to hold, and it fitted only
-/// while weight was a two-variant enum. A weight is a number on the CSS
-/// 1–1000 scale, which wants ten bits, and style is a fifth axis — as
-/// bytes the two would push the key from 24 to 32 and widen every
-/// `ShapeRecord::Text` beside it. Packed, the whole face costs the two
-/// bytes the family does not use.
+/// A weight is a number on the CSS 1–1000 scale, which wants ten bits,
+/// so the four axes as separate bytes would push the key from 24 to 32
+/// and widen every `ShapeRecord::Text` beside it. Packed, the whole face
+/// costs the two bytes the family does not use.
 ///
-/// The bound half — [`HAlign`] and [`LineFit`] — sits in the top five
-/// bits, contiguous, because [`WrapBound`] rewrites exactly those and
-/// nothing else.
+/// The bound half — [`LineAlign`] and [`LineFit`] — sits in bits 11..15,
+/// contiguous, because [`WrapBound`] rewrites exactly those and nothing
+/// else. Bit 15 is spare, because the align holds the four values
+/// shaping varies on rather than the five [`HAlign`] names.
 #[derive(Clone, Copy, Hash, Eq, PartialEq, Debug)]
 pub(crate) struct FaceBits(u16);
 
 const WEIGHT_MASK: u16 = (1 << 10) - 1;
 const STYLE_SHIFT: u32 = 10;
 const STYLE_MASK: u16 = 1 << STYLE_SHIFT;
-const HALIGN_SHIFT: u32 = 11;
-const HALIGN_MASK: u16 = 0b111 << HALIGN_SHIFT;
-const FIT_SHIFT: u32 = 14;
+const ALIGN_SHIFT: u32 = 11;
+const ALIGN_MASK: u16 = 0b11 << ALIGN_SHIFT;
+const FIT_SHIFT: u32 = 13;
 const FIT_MASK: u16 = 0b11 << FIT_SHIFT;
-const BOUND_MASK: u16 = HALIGN_MASK | FIT_MASK;
+const BOUND_MASK: u16 = ALIGN_MASK | FIT_MASK;
 
 impl FaceBits {
     /// What [`TextShapeKey::INVALID`] carries: the default face, so a
@@ -276,22 +278,22 @@ impl FaceBits {
     const STOCK: Self = Self::new(
         FontWeight::REGULAR,
         FontStyle::Normal,
-        HAlign::Auto,
+        LineAlign::Auto,
         LineFit::Wrap,
     );
 
     /// No range check on the weight: [`FontWeight`] holds nothing outside
     /// `1..=1000`, and the `const _` block below pins that inside
     /// [`WEIGHT_MASK`].
-    const fn new(weight: FontWeight, style: FontStyle, halign: HAlign, fit: LineFit) -> Self {
-        Self(weight.value() | ((style as u16) << STYLE_SHIFT) | Self::bound_bits(halign, fit))
+    const fn new(weight: FontWeight, style: FontStyle, align: LineAlign, fit: LineFit) -> Self {
+        Self(weight.value() | ((style as u16) << STYLE_SHIFT) | Self::bound_bits(align, fit))
     }
 
     /// The two fields a committed width rewrites, as bits — the one place
     /// their positions are spelled, so [`WrapBound`] can carry them
     /// without carrying the whole face.
-    const fn bound_bits(halign: HAlign, fit: LineFit) -> u16 {
-        ((halign as u16) << HALIGN_SHIFT) | ((fit as u16) << FIT_SHIFT)
+    const fn bound_bits(align: LineAlign, fit: LineFit) -> u16 {
+        ((align as u16) << ALIGN_SHIFT) | ((fit as u16) << FIT_SHIFT)
     }
 
     const fn with_bound(self, bound: u16) -> Self {
@@ -324,13 +326,12 @@ impl FaceBits {
         }
     }
 
-    const fn halign(self) -> HAlign {
-        match (self.0 & HALIGN_MASK) >> HALIGN_SHIFT {
-            0 => HAlign::Auto,
-            1 => HAlign::Left,
-            2 => HAlign::Center,
-            3 => HAlign::Right,
-            _ => HAlign::Stretch,
+    const fn line_align(self) -> LineAlign {
+        match (self.0 & ALIGN_MASK) >> ALIGN_SHIFT {
+            0 => LineAlign::Auto,
+            1 => LineAlign::Left,
+            2 => LineAlign::Center,
+            _ => LineAlign::Right,
         }
     }
 
@@ -339,6 +340,35 @@ impl FaceBits {
             0 => LineFit::Wrap,
             1 => LineFit::Clip,
             _ => LineFit::Ellipsis,
+        }
+    }
+}
+
+/// The per-line alignment a [`TextShapeKey`] stores: the four values
+/// shaping varies on.
+///
+/// [`HAlign::Stretch`] is not among them, and the conversion is where it
+/// goes. Cosmic maps `Stretch` and `Auto` alike to "no per-line align" —
+/// `Stretch` is a box-alignment concept and a line has no box — so a key
+/// that kept the two apart minted two entries and two reshapes for a
+/// byte-identical buffer. Projecting into a type the encoder takes makes
+/// that a conversion rather than a rule each writer has to remember.
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum LineAlign {
+    Auto = 0,
+    Left = 1,
+    Center = 2,
+    Right = 3,
+}
+
+impl From<HAlign> for LineAlign {
+    fn from(halign: HAlign) -> Self {
+        match halign {
+            HAlign::Auto | HAlign::Stretch => Self::Auto,
+            HAlign::Left => Self::Left,
+            HAlign::Center => Self::Center,
+            HAlign::Right => Self::Right,
         }
     }
 }
@@ -352,18 +382,17 @@ impl FaceBits {
 /// with the value still inside the field it was read from. Naming each
 /// discriminant here turns that into a build failure beside the code that
 /// depends on it. The two width assertions are the other half: a fifth
-/// `LineFit` or a sixth `HAlign` would silently overflow its field.
+/// `LineFit` or a fifth `LineAlign` would silently overflow its field.
 const _: () = {
     assert!(FontStyle::Normal as u8 == 0 && FontStyle::Italic as u8 == 1);
     assert!(
-        HAlign::Auto as u8 == 0
-            && HAlign::Left as u8 == 1
-            && HAlign::Center as u8 == 2
-            && HAlign::Right as u8 == 3
-            && HAlign::Stretch as u8 == 4
+        LineAlign::Auto as u8 == 0
+            && LineAlign::Left as u8 == 1
+            && LineAlign::Center as u8 == 2
+            && LineAlign::Right as u8 == 3
     );
     assert!(LineFit::Wrap as u8 == 0 && LineFit::Clip as u8 == 1 && LineFit::Ellipsis as u8 == 2);
-    assert!(HAlign::Stretch as u16 <= (HALIGN_MASK >> HALIGN_SHIFT));
+    assert!(LineAlign::Right as u16 <= (ALIGN_MASK >> ALIGN_SHIFT));
     assert!(LineFit::Ellipsis as u16 <= (FIT_MASK >> FIT_SHIFT));
     assert!(FontWeight::MAX <= WEIGHT_MASK);
 };
@@ -396,22 +425,15 @@ pub(super) struct WrapBound {
 impl WrapBound {
     pub(super) fn new(max_width_px: f32, halign: HAlign, fit: LineFit) -> Self {
         debug_assert!(max_width_px.is_finite(), "text wrap width must be finite");
-        let halign = match fit {
-            // Projected onto what shaping actually varies on, not
-            // stored raw: `cosmic_align` maps `Auto` and `Stretch`
-            // alike to "no per-line align", so keeping them apart
-            // here minted two keys, two cache entries and two
-            // reshapes for a byte-identical buffer. `Stretch` is a
-            // box-alignment concept with no per-line meaning.
-            LineFit::Wrap => match halign {
-                HAlign::Auto | HAlign::Stretch => HAlign::Auto,
-                other => other,
-            },
-            LineFit::Clip | LineFit::Ellipsis => HAlign::Auto,
+        let align = match fit {
+            // A truncating fit is one line, and cosmic aligns per line,
+            // so there is nothing for an align to move.
+            LineFit::Wrap => LineAlign::from(halign),
+            LineFit::Clip | LineFit::Ellipsis => LineAlign::Auto,
         };
         Self {
             max_w_q: quantize(wrap::canonical_wrap_width(max_width_px)).min(MAX_W_NONE - 1),
-            bound_q: FaceBits::bound_bits(halign, fit),
+            bound_q: FaceBits::bound_bits(align, fit),
         }
     }
 }

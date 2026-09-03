@@ -15,20 +15,20 @@ fn cache_key_discriminates_every_shaping_axis() {
         (
             "font size",
             shape(20.0),
-            (|k: TextShapeKey| k.size_q) as fn(TextShapeKey) -> u32,
-            base.size_q,
+            (|k: TextShapeKey| k.font_size_px().to_bits()) as fn(TextShapeKey) -> u32,
+            base.font_size_px().to_bits(),
         ),
         (
             "line height",
             shape(16.0).leading(24.0),
-            (|k: TextShapeKey| k.lh_q) as fn(TextShapeKey) -> u32,
-            base.lh_q,
+            (|k: TextShapeKey| k.line_height_px().to_bits()) as fn(TextShapeKey) -> u32,
+            base.line_height_px().to_bits(),
         ),
         (
             "family",
             shape(16.0).family(FontFamily::MONO),
-            (|k: TextShapeKey| u32::from(k.family_q)) as fn(TextShapeKey) -> u32,
-            u32::from(base.family_q),
+            (|k: TextShapeKey| u32::from(k.family().raw())) as fn(TextShapeKey) -> u32,
+            u32::from(base.family().raw()),
         ),
         (
             "weight",
@@ -54,7 +54,7 @@ fn cache_key_discriminates_every_shaping_axis() {
 
     // The axis values themselves are what land in the key, packed and
     // read back, so a shifted field can't silently remap cached buffers.
-    assert_eq!(base.family_q, FontFamily::SANS.raw());
+    assert_eq!(base.family(), FontFamily::SANS);
     assert_eq!(base.weight(), FontWeight::REGULAR);
     assert_eq!(base.style(), FontStyle::Normal);
     assert_eq!(
@@ -69,19 +69,24 @@ fn cache_key_discriminates_every_shaping_axis() {
     );
 }
 
+/// Validity is the text hash and nothing else, and no minted key can
+/// hold the hash that means "invalid".
+///
+/// Asserted as the two halves that make it true rather than by writing a
+/// zero hash beside a set field: `content_hash` is what keeps a real run
+/// off zero, so that state is one no minting path can reach.
 #[test]
 fn text_shape_key_validity_is_tagged_by_text_hash() {
     assert!(TextShapeKey::INVALID.is_invalid());
-    let real = TextShapeKey {
-        text_hash: 1,
-        ..TextShapeKey::INVALID
-    };
-    assert!(!real.is_invalid());
-    let zero_hash = TextShapeKey {
-        size_q: 42,
-        ..TextShapeKey::INVALID
-    };
-    assert!(zero_hash.is_invalid());
+    assert_eq!(
+        TextShapeKey::content_hash(0),
+        1,
+        "a run whose text hashes to zero must not read as the sentinel",
+    );
+    for face in [shape(16.0).font, shape(64.0).leading(90.0).font] {
+        assert!(!TextShapeKey::unbounded(0, face).is_invalid());
+        assert!(!TextShapeKey::unbounded(u64::MAX, face).is_invalid());
+    }
 }
 
 /// A face the shaper cannot be asked for measures to nothing, and the
@@ -208,8 +213,10 @@ fn above_epsilon_metrics_survive_cache_key_canonicalization() {
     let mut cosmic = CosmicMeasure::default();
     let result = cosmic.measure("x", shape(EPS * 2.0));
     assert!(!result.key.is_invalid());
-    assert_eq!(result.key.size_q, 1);
-    assert_eq!(result.key.lh_q, 1);
+    // Both floored onto the key's 1/64-px grid rather than to zero, which
+    // would name a face that shapes nothing.
+    assert_eq!(result.key.font_size_px(), 1.0 / 64.0);
+    assert_eq!(result.key.line_height_px(), 1.0 / 64.0);
     assert!(cosmic.shaped_run(result.key).is_some());
 }
 

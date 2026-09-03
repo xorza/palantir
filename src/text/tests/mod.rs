@@ -19,7 +19,7 @@ use crate::text::font_scope::FontScope;
 use crate::text::font_style::FontStyle;
 use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
-use crate::text::key::{TextShapeKey, WrapBound};
+use crate::text::key::{LineAlign, TextShapeKey, WrapBound};
 use crate::text::mono;
 use crate::text::probe::test_support as probe;
 use crate::text::request::TextShapeRequest;
