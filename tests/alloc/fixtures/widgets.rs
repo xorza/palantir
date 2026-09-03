@@ -6,11 +6,14 @@
 //! touches the heap not at all. `churn.rs` covers the scenes that
 //! change, `renderer.rs` the shape counts that stress the frontend.
 
-use crate::harness::Audit;
+use crate::harness::{Audit, new_ui};
+use std::time::Duration;
+
 use palantir::{
-    Background, Button, Checkbox, Color, Configure, ContextMenu, Frame, Grid, MenuItem, Modal,
-    Panel, Popup, ProgressBar, RadioButton, Scroll, Separator, Shortcut, Sizing, Slider, Spinner,
-    Splitter, Switch, Text, TextEdit, Tooltip, Track, Ui, Vec2, WidgetId,
+    AnimSpec, Background, Button, Checkbox, Color, Configure, ContextMenu, Easing, Expander,
+    ExpanderTheme, Frame, Grid, MenuItem, Modal, Panel, Popup, ProgressBar, RadioButton, Scroll,
+    Separator, Shortcut, Sizing, Slider, SlotDefaults, Spinner, Splitter, Switch, Text, TextEdit,
+    Tooltip, Track, Ui, Vec2, WidgetId,
 };
 
 #[test]
@@ -67,6 +70,83 @@ fn grid_8x8_alloc_free() {
                     }
                 }
             });
+    });
+}
+
+/// A settled section, open and closed. The reveal snaps by default, so
+/// neither state repaints — which is the property the closed arm is
+/// really pinning: a section that costs nothing while shut must not keep
+/// asking for frames.
+#[test]
+fn expander_alloc_free() {
+    for open in [false, true] {
+        Audit::new().run(move |ui| {
+            Expander::new("section")
+                .auto_id()
+                .default_open(open)
+                .show(ui, |ui| {
+                    Text::new("body").auto_id().show(ui);
+                });
+        });
+    }
+}
+
+/// A body kept across a collapse records every frame, so it is the arm
+/// that would show a per-frame `Vec` in the collapsed path.
+#[test]
+fn expander_keep_body_alloc_free() {
+    Audit::new().run(|ui| {
+        Expander::new("section")
+            .auto_id()
+            .keep_body(true)
+            .show(ui, |ui| {
+                Text::new("body").auto_id().show(ui);
+            });
+    });
+}
+
+/// Mid-tween, which is the one path that reads a remembered height and
+/// installs a clip on the body.
+///
+/// Driven frame by frame rather than through [`Audit::run`], because a
+/// tween needs a clock that moves and the audit's own loop deliberately
+/// holds one still. Primed open so the height is measured, then closed
+/// over a minute-long reveal, so every audited frame lands inside it.
+///
+/// The long warmup is the reveal's own settling, not margin: a body
+/// whose `max_size` moves every frame invalidates the measure cache
+/// every frame, so the cache arena and the bounds table each grow once
+/// before their capacity is enough. The budget stays a strict zero — a
+/// tween that kept allocating past that would be the regression this
+/// gate exists to catch.
+#[test]
+fn expander_mid_reveal_alloc_free() {
+    let base = ExpanderTheme::default();
+    let theme = ExpanderTheme {
+        defaults: SlotDefaults {
+            anim: Some(AnimSpec::duration(60.0, Easing::Linear)),
+            ..base.defaults
+        },
+        ..base
+    };
+    let mut h = new_ui();
+    let mut open = true;
+    let section = |ui: &mut Ui, open: &mut bool| {
+        Expander::new("section")
+            .auto_id()
+            .style(&theme)
+            .open(open)
+            .show(ui, |ui| {
+                Text::new("body").auto_id().show(ui);
+            });
+    };
+    for _ in 0..4 {
+        h.frame(|ui| section(ui, &mut open));
+    }
+    open = false;
+    Audit::new().warmup(32).run_frames(|| {
+        h.advance(Duration::from_millis(1));
+        h.frame(|ui| section(ui, &mut open));
     });
 }
 

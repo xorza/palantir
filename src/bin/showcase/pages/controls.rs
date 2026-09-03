@@ -9,9 +9,10 @@
 use crate::support;
 use crate::support::{note_style, row, section};
 use palantir::{
-    AnimSpec, Background, Button, ButtonTheme, Checkbox, Color, Configure, Corners, DragValue,
-    Panel, ProgressBar, RadioButton, Separator, Sizing, Slider, Spinner, StatefulLook, Stroke,
-    Switch, Text, TextStyle, TextWrap, Tooltip, Ui, WidgetId, WidgetLook, fmt,
+    Align, AnimSpec, Background, Button, ButtonTheme, Checkbox, Color, Configure, Corners,
+    DragValue, Expander, ExpanderTheme, Panel, ProgressBar, RadioButton, Separator, Sizing, Slider,
+    SlotDefaults, Spinner, StatefulLook, Stroke, Switch, Text, TextEdit, TextStyle, TextWrap,
+    Tooltip, Ui, VAlign, WidgetId, WidgetLook, fmt,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
@@ -33,6 +34,10 @@ struct State {
     volume: f64,
     fps: i64,
     syncing: bool,
+    /// The two disclosure demos below hold one of these each, so the
+    /// state a collapsed body keeps — or loses — is visible.
+    skipped_note: String,
+    kept_note: String,
 }
 
 impl Default for State {
@@ -47,6 +52,8 @@ impl Default for State {
             volume: 0.6,
             fps: 120,
             syncing: false,
+            skipped_note: String::from("type here"),
+            kept_note: String::from("type here"),
         }
     }
 }
@@ -72,7 +79,92 @@ pub(crate) fn build(ui: &mut Ui) {
                 );
                 support::column(ui, "col-r", |ui| side(ui, s, &outlined, &danger));
             });
+        section(
+            ui,
+            "disclosure — a body a header reveals, and what a collapsed one costs",
+            |ui| disclosure(ui, s),
+        );
     });
+}
+
+/// The three things an [`Expander`] decides: whether it starts open,
+/// whether its reveal animates, and whether its body keeps recording
+/// while closed.
+///
+/// The middle pair is the demo worth reading. Type into both fields,
+/// collapse both sections, then reopen them: the left one is empty,
+/// because Palantir sweeps the cross-frame state of any widget that
+/// stops being recorded, and the right one is not, because `keep_body`
+/// records it collapsed instead.
+fn disclosure(ui: &mut Ui, s: &mut State) {
+    let base = ExpanderTheme::default();
+    let animated = ExpanderTheme {
+        defaults: SlotDefaults {
+            anim: Some(AnimSpec::MEDIUM),
+            ..base.defaults
+        },
+        ..base
+    };
+    Panel::hstack()
+        .id_salt("disclosure-row")
+        .gap(24.0)
+        .size((Sizing::FILL, Sizing::HUG))
+        .child_align(Align::v(VAlign::Top))
+        .show(ui, |ui| {
+            support::column(ui, "disc-a", |ui| {
+                Expander::new("Open by default")
+                    .id_salt("plain")
+                    .default_open(true)
+                    .show(ui, |ui| {
+                        Text::new(
+                            "A plain section. The reveal snaps, because the library                              leaves animation opt-in.",
+                        )
+                        .id_salt("plain-body")
+                        .style(&note_style())
+                        .text_wrap(TextWrap::WrapWithOverflow)
+                        .size((Sizing::FILL, Sizing::HUG))
+                        .show(ui);
+                    });
+                Expander::new("Animated reveal")
+                    .id_salt("animated")
+                    .style(&animated)
+                    .show(ui, |ui| {
+                        Text::new(
+                            "The same widget with an AnimSpec on its theme. The first                              open snaps — there is no measured height to tween against                              yet — and every one after it animates.",
+                        )
+                        .id_salt("animated-body")
+                        .style(&note_style())
+                        .text_wrap(TextWrap::WrapWithOverflow)
+                        .size((Sizing::FILL, Sizing::HUG))
+                        .show(ui);
+                    });
+            });
+            support::column(ui, "disc-b", |ui| {
+                Expander::new("Skips its body")
+                    .id_salt("skips")
+                    .default_open(true)
+                    .show(ui, |ui| {
+                        TextEdit::new(&mut s.skipped_note)
+                            .id_salt("skipped-edit")
+                            .size((Sizing::FILL, Sizing::HUG))
+                            .show(ui);
+                    });
+                Expander::new("Keeps its body")
+                    .id_salt("keeps")
+                    .default_open(true)
+                    .keep_body(true)
+                    .show(ui, |ui| {
+                        TextEdit::new(&mut s.kept_note)
+                            .id_salt("kept-edit")
+                            .size((Sizing::FILL, Sizing::HUG))
+                            .show(ui);
+                    });
+                support::note(
+                    ui,
+                    "Type in both, collapse both, then reopen: the upper field's caret                      and selection are gone with its state row, and the lower one's are                      not.",
+                );
+            });
+        });
 }
 
 fn form(ui: &mut Ui, s: &mut State, outlined: &ButtonTheme, danger: &ButtonTheme) {
