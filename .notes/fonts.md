@@ -200,19 +200,60 @@ the way Godot's `font_names` and Zed's default stack do.
 ### 2. Registration on `Ui`, like icons and images
 
 ```rust
+#[derive(Debug)]
 pub enum FontSource {
-    Static(&'static [u8]),
-    Bytes(Arc<[u8]>),
+    Bytes(Cow<'static, [u8]>),
     File(PathBuf),
 }
 
 impl Ui {
-    pub fn load_font(&self, source: FontSource) -> Result<FontFamily, FontLoadError>;
+    pub fn load_font(&self, source: impl Into<FontSource>) -> Result<FontFamily, FontLoadError>;
     pub fn font_available(&self, family: FontFamily) -> bool;
     /// Every family the database knows, system fonts included.
     pub fn font_families(&self) -> impl Iterator<Item = FontFamily> + '_;
 }
 ```
+
+One method. The `From` impls carry the call site:
+
+```rust
+impl From<&'static [u8]> for FontSource            // a slice
+impl<const N: usize> From<&'static [u8; N]> for FontSource  // include_bytes!
+impl From<Vec<u8>> for FontSource                  // a runtime read
+impl From<Cow<'static, [u8]>> for FontSource
+impl From<PathBuf> for FontSource
+impl From<&Path> for FontSource
+impl From<&str> for FontSource                     // a path, never a family name
+```
+
+```rust
+ui.load_font(include_bytes!("../assets/Inter.ttf"))?;
+ui.load_font(std::fs::read(chosen)?)?;
+ui.load_font("/usr/share/fonts/TTF/Iosevka.ttc")?;
+```
+
+The array impl accepts `include_bytes!` directly. iced asks for `&include_bytes!(..)[..]`.
+
+The two variants split by mechanism, not by ownership. Bytes become
+`Source::Binary(Arc::new(bytes))`. A path goes to `Database::load_font_file`,
+which maps the file and keeps `Source::SharedFile`, so the bytes never pass
+through a `Vec`.
+
+`Cow<'static, [u8]>` holds the bytes, never `Arc<[u8]>`. fontdb stores
+`Arc<dyn AsRef<[u8]> + Send + Sync>` (`fontdb-0.23.0/src/lib.rs:866`). `[u8]`
+is unsized, and an unsized type has no coercion to a trait object, so
+`Arc<[u8]>` would need a newtype and a second `Arc` around the first. fontdb
+owns the bytes for the process lifetime, so the caller gains nothing from a
+share. `Image::from_rgba8` takes a plain `Vec<u8>` for the same reason.
+
+`File` owns a `PathBuf`. A borrow does the work, because fontdb copies the path
+itself. But `FontSource<'a>` then forces a named lifetime on every `load_font`
+signature, because anonymous lifetimes in `impl Trait` are unstable
+(`E0658`). One `PathBuf` per font load is a cold allocation. The clean
+signature is worth more.
+
+**A mapped file must stay in place.** `load_font_file` holds the mapping open
+for the process lifetime.
 
 `FontLoadError::{Io, NoFaces}` — the bytes are untrusted, so this is a
 `Result`. The return is the family of the first face. A collection loads
@@ -291,9 +332,9 @@ in the plan below.
    `hot_struct_sizes.rs` stay at 24 / 88.
 3. `attrs_for` resolves through the availability check. Unavailable →
    `SANS` and one warning per family (a `FixedBitSet` on `CosmicMeasure`).
-4. `FontSource`; `FontLoadError` in `src/text/error.rs`;
-   `CosmicMeasure::load_font`, `TextShaper::load_font`, `Ui::load_font`,
-   `Ui::font_available`.
+4. `FontSource` with its `From` impls; `FontLoadError` in
+   `src/text/error.rs`; `CosmicMeasure::load_font`, `TextShaper::load_font`,
+   `Ui::load_font`, `Ui::font_available`.
 5. `font_epoch` on the shaper, the shaped-buffer drop in `CosmicMeasure`,
    the encoded-run clear in `renderer/backend/text`.
 6. Tests, extending `text/tests/wrap.rs` on its existing fixture:
