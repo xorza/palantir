@@ -40,34 +40,50 @@ use std::fmt::Write as _;
 /// a multiple rather than as noise.
 const ROWS: u32 = 8;
 
+/// What one frame of either width drag may allocate.
+///
+/// A band over the measured worst frame, not a pin on it: a ceiling
+/// set to what a drag costs today fails on a one-block shift, which
+/// reads as a regression and is not one. Sensitivity is unhurt — a
+/// leak of one allocation per run costs [`ROWS`] blocks, so this
+/// still catches the smallest regression the fixture is built to see,
+/// several times over.
+///
+/// One number for both, because the two are the same workload under
+/// two wrap policies and the comparison between them is the point.
+const DRAG_BLOCKS_PER_FRAME_MAX: u64 = 20;
+
 /// A resize drag: the committed width moves every frame, so every text
 /// run resolves to a fresh bounded key, supersedes the one it replaces,
 /// and mints a shaped buffer that nothing will ask for again.
 ///
-/// This is the workload `cosmic::PROBATION_KEEP_FRAMES` exists for, and
-/// the one where a per-frame allocation would compound — a drag runs for
-/// hundreds of frames.
+/// This is the workload `shaped_buffer_cache::PROBATION_KEEP_FRAMES`
+/// exists for, and the one where a per-frame allocation would compound
+/// — a drag runs for hundreds of frames.
 #[test]
 fn width_drag_stays_flat() {
     let mut step = 0u32;
     // One shaped buffer per run, all of it inside cosmic.
-    Audit::new().text().budget(16).run(move |ui| {
-        // A whole pixel per frame, which is what a drag commits after
-        // the wrap width is quantized.
-        let width = 240.0 + (step % 64) as f32;
-        step += 1;
-        Panel::vstack()
-            .id_salt("drag-root")
-            .size((Sizing::fixed(width), Sizing::FILL))
-            .show(ui, |ui| {
-                for row in 0..ROWS {
-                    Text::new("a label long enough to need wrapping at this width")
-                        .id_salt(row)
-                        .text_wrap(TextWrap::Wrap)
-                        .show(ui);
-                }
-            });
-    });
+    Audit::new()
+        .text()
+        .budget(DRAG_BLOCKS_PER_FRAME_MAX)
+        .run(move |ui| {
+            // A whole pixel per frame, which is what a drag commits after
+            // the wrap width is quantized.
+            let width = 240.0 + (step % 64) as f32;
+            step += 1;
+            Panel::vstack()
+                .id_salt("drag-root")
+                .size((Sizing::fixed(width), Sizing::FILL))
+                .show(ui, |ui| {
+                    for row in 0..ROWS {
+                        Text::new("a label long enough to need wrapping at this width")
+                            .id_salt(row)
+                            .text_wrap(TextWrap::Wrap)
+                            .show(ui);
+                    }
+                });
+        });
 }
 
 /// The same drag against a truncating policy, which takes the other
@@ -76,23 +92,30 @@ fn width_drag_stays_flat() {
 #[test]
 fn ellipsis_width_drag_stays_flat() {
     let mut step = 0u32;
-    // Lands below the wrapping drag: the cut reshapes only the
-    // prefix rather than the whole run.
-    Audit::new().text().budget(16).run(move |ui| {
-        let width = 180.0 + (step % 64) as f32;
-        step += 1;
-        Panel::vstack()
-            .id_salt("ellipsis-root")
-            .size((Sizing::fixed(width), Sizing::FILL))
-            .show(ui, |ui| {
-                for row in 0..ROWS {
-                    Text::new("a label far too long for the column it sits in")
-                        .id_salt(row)
-                        .text_wrap(TextWrap::Ellipsis)
-                        .show(ui);
-                }
-            });
-    });
+    // Cheaper than the wrapping drag on a typical frame and dearer on
+    // its worst, which is why both gate on one band. The cut reshapes
+    // only the prefix, but `shape_truncated` verifies that prefix
+    // against the committed width and retires another cluster while it
+    // overruns, so a frame that takes the back-off reshapes several
+    // times.
+    Audit::new()
+        .text()
+        .budget(DRAG_BLOCKS_PER_FRAME_MAX)
+        .run(move |ui| {
+            let width = 180.0 + (step % 64) as f32;
+            step += 1;
+            Panel::vstack()
+                .id_salt("ellipsis-root")
+                .size((Sizing::fixed(width), Sizing::FILL))
+                .show(ui, |ui| {
+                    for row in 0..ROWS {
+                        Text::new("a label far too long for the column it sits in")
+                            .id_salt(row)
+                            .text_wrap(TextWrap::Ellipsis)
+                            .show(ui);
+                    }
+                });
+        });
 }
 
 /// Rows entering and leaving the tree, the virtualized-list shape: each

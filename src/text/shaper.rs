@@ -513,10 +513,10 @@ pub(crate) mod internals {
         /// layout case states the width it expects as arithmetic rather
         /// than as whatever the bundled face happens to advance to.
         ///
-        /// Over the bundled database, like any other shaper. Only
-        /// measurement is mono — see [`ShaperInner::mono`] — so a case
-        /// that loads a font, asks which families resolve, or lays
-        /// glyphs out through [`Self::glyphs`] gets the real answer.
+        /// Over the bundled database, like any other shaper: only
+        /// measurement is mono. A case that loads a font, asks which
+        /// families resolve, or lays glyphs out through [`Self::glyphs`]
+        /// gets the real answer.
         pub fn test_mono() -> Self {
             let shaper = Self::new();
             shaper.shared.inner.borrow_mut().mono = true;
