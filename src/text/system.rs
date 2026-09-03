@@ -14,7 +14,8 @@
 //!
 //! A row holds the last bounded key its run answered, and that is the
 //! only record of which buffer to [demote](TextShaper::supersede) when
-//! the committed width moves. Supersession has no other source — it is
+//! the row stops answering through it — the width moved, the policy
+//! stopped binding, or the text came to fit. Supersession has no other source — it is
 //! what makes the shaped-buffer cache's probation window reachable at
 //! all (see `shaped_buffer_cache::PROBATION_KEEP_FRAMES`), so a resize drag stays
 //! bounded because these rows exist. Deleting the layer would take the
@@ -127,9 +128,9 @@ impl TextSystem {
     /// holds for the *root* and fails for the
     /// wrap slot: the slot is the only record of which bounded key this
     /// row last answered, and [`Self::measure`] needs it to
-    /// [`supersede`](TextShaper::supersede) that key when the width
-    /// moves. Dropping it loses the demotion, and the buffer it should
-    /// have demoted ages on the long window instead.
+    /// [`supersede`](TextShaper::supersede) that key when the row stops
+    /// answering through it. Dropping it loses the demotion, and the
+    /// buffer it should have demoted ages on the long window instead.
     ///
     /// That mattered because the rows go cold constantly: the layout
     /// measure cache short-circuits whole subtrees, so a steadily
@@ -164,6 +165,39 @@ impl TextSystem {
         }
         self.entries
             .retain(|slot, _| !removed.contains(&slot.widget_id));
+    }
+
+    /// Drop the rows `widget_id` no longer records: ordinals `count` and
+    /// up, where `count` is how many text runs it recorded this frame.
+    ///
+    /// **Called only by the pass that just measured the widget**, which
+    /// is what makes it sound where a per-frame `hot` bit is not: a
+    /// widget the layout measure cache short-circuited is never measured,
+    /// so it never reaches here and keeps every row. What arrives is a
+    /// widget that *did* record, and whose ordinals past `count` are
+    /// therefore unreachable until it grows back.
+    ///
+    /// Ordinals are dense and assigned in record order
+    /// (`TextShapeInput::on_leaf`), so the first miss ends the walk: a
+    /// widget that did not shrink pays one failed lookup.
+    ///
+    /// **Dropped, not [retired](TextReuseEntry::retire)** — the same
+    /// treatment [`Self::end_frame`] gives a widget that left the tree,
+    /// and for the same reason. A list that shrank may grow back, and
+    /// demoting its buffers would cost a reshape on the frame it does.
+    /// Supersession is for a slot that *moved to another key*, where the
+    /// old one is unreachable for good; a slot that simply stopped being
+    /// recorded is the case the protected window exists for.
+    pub(crate) fn trim_rows(&mut self, widget_id: WidgetId, count: u16) {
+        for ordinal in count..=u16::MAX {
+            if self
+                .entries
+                .remove(&TextRunSlot { widget_id, ordinal })
+                .is_none()
+            {
+                return;
+            }
+        }
     }
 
     /// The run's natural shape, for the intrinsic pass. `TextWrap`'s
@@ -218,27 +252,23 @@ impl TextSystem {
         let entry = Self::refresh(entries, shaper, slot, request, wrap_policy.floor_scan());
 
         let (Some(width), Some(fit)) = (available_width_px, wrap_policy.line_fit()) else {
+            entry.release_bound(shaper);
             return shaped(shapes_buffers, request.key, entry.root.size);
         };
         // The same decision the probe path makes, from the same function
         // — the root is already refreshed above, so the thunk is a read.
         let bound = match wrap_policy.commit(width, halign, fit, || entry.root) {
-            WrapCommit::Unbounded { size } => return shaped(shapes_buffers, request.key, size),
+            WrapCommit::Unbounded { size } => {
+                entry.release_bound(shaper);
+                return shaped(shapes_buffers, request.key, size);
+            }
             WrapCommit::Bound(bound) => bound,
         };
         let size = match entry.wrap.filter(|slot| slot.bound == bound) {
             Some(slot) => slot.size,
             None => {
                 let size = shaper.resolve(request.with_bound(bound));
-                // The width this row used to answer is now unreachable
-                // through it. A resize drag leaves the *unbounded* key
-                // alone and replaces only this slot, so it is the drag's
-                // whole dead population — and the unbounded probe
-                // `measure_truncated` re-reads every frame stays on the
-                // long window, which is what keeps a drag cheap.
-                if let Some(stale) = entry.wrap {
-                    shaper.supersede(request.key.with_bound(stale.bound));
-                }
+                entry.release_bound(shaper);
                 entry.wrap = Some(WrapSlot { bound, size });
                 size
             }
@@ -274,8 +304,7 @@ impl TextSystem {
         };
         let entry = entries.entry(slot).or_insert_with(&fresh);
         if entry.key != request.key {
-            let stale = std::mem::replace(entry, fresh());
-            retire_row(shaper, &stale);
+            std::mem::replace(entry, fresh()).retire(shaper);
         } else if floor == WrapFloor::Scan && entry.root.intrinsic_min.is_none() {
             entry.root = shaper.root(request, WrapFloor::Scan);
         }
@@ -321,18 +350,32 @@ struct TextReuseEntry {
     wrap: Option<WrapSlot>,
 }
 
-/// Demote every buffer `row` was the last reference to: each bounded
-/// resolve it answered, then its unbounded root.
-///
-/// One place rather than one per caller. A row's reachable keys are
-/// exactly its `key` plus its slots, and a caller that retires a row
-/// while forgetting either half leaves those buffers ageing on the
-/// protected window with nothing left that can ask for them.
-fn retire_row(shaper: &TextShaper, row: &TextReuseEntry) {
-    if let Some(slot) = row.wrap {
-        shaper.supersede(row.key.with_bound(slot.bound));
+impl TextReuseEntry {
+    /// Give the bounded slot up, demoting the buffer it named.
+    ///
+    /// **The one demotion path**, and the reason it is a method rather
+    /// than four spellings: a row's bounded buffer has no other
+    /// reference, so every way the row stops answering through the slot
+    /// — a width that moved, a policy that stopped binding, a truncating
+    /// run whose text came to fit, the row's own retirement — owes the
+    /// same `supersede`. One of them written without it is a buffer left
+    /// on the protected window that nothing can ask for again, which is
+    /// exactly the population the probation window exists to shed.
+    fn release_bound(&mut self, shaper: &TextShaper) {
+        if let Some(slot) = self.wrap.take() {
+            shaper.supersede(self.key.with_bound(slot.bound));
+        }
     }
-    shaper.supersede(row.key);
+
+    /// Demote every buffer this row was the last reference to: its
+    /// bounded resolve, then its unbounded root.
+    ///
+    /// Takes the row by value, because a retired row is gone — a caller
+    /// left holding one could ask it for a bound it no longer names.
+    fn retire(mut self, shaper: &TextShaper) {
+        self.release_bound(shaper);
+        shaper.supersede(self.key);
+    }
 }
 
 /// One cached width-bounded extent, under the bound that produced it.

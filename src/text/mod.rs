@@ -141,6 +141,12 @@ pub(crate) const TEXT_SCALE_STEP: f32 = 0.005;
 /// recorded frame that drew no text would age buffers but not encoded
 /// entries.
 ///
+/// **A frame here is a window's, not the host's.** Two windows painting
+/// together spend this window in half the host frames it names. The
+/// ordering above is unaffected — every reader shrinks together — so
+/// read the number as "frames of paint", not as wall time. The clock's
+/// own field documents the limit and what closing it would take.
+///
 /// The ordering is deliberately **not** an equality. Sharing one value
 /// would conflate "cannot cross" with "must match" and cost the encoded
 /// cache four times the resident rows it needs — the shaped side has a

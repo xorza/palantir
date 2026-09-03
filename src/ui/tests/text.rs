@@ -144,6 +144,51 @@ fn text_reuse_evicts_disappeared_widgets() {
     );
 }
 
+/// A widget that records fewer runs than last frame loses the rows above
+/// its new count, on the measure pass that saw the drop.
+///
+/// Without it a list that once showed many entries keeps a row per
+/// entry it ever had, for as long as the widget stays in the tree —
+/// `end_frame` sweeps whole widgets and never trailing ordinals.
+///
+/// Driven through the harness rather than [`TextSystem::trim_rows`]
+/// directly, because what this pins is the *wiring*: the count comes
+/// from `LayoutPass::shape_text_runs`, which is the one place that knows
+/// it, and a unit test on the method would pass with that call deleted.
+#[test]
+fn a_widget_recording_fewer_runs_loses_the_rows_above_its_count() {
+    use crate::scene::node::Node;
+    use crate::shape::Shape;
+
+    let wid = WidgetId::from_hash("multi-run");
+    let build = move |runs: usize| {
+        move |ui: &mut Ui| {
+            Panel::vstack().auto_id().show(ui, |ui| {
+                ui.widget(Node::leaf().id(wid)).record(ui, None, |ui| {
+                    for i in 0..runs {
+                        let text = ui.intern(format!("run {i}"));
+                        ui.add_shape(Shape::text(text, GlyphFont::new(14.0)));
+                    }
+                });
+            });
+        }
+    };
+
+    let mut h = UiHarness::new(UVec2::new(400, 200));
+    h.frame(build(3));
+    for ordinal in 0..3 {
+        assert!(
+            h.engines.layout.text.has_entry(wid, ordinal),
+            "premise: run {ordinal} took a row",
+        );
+    }
+
+    h.frame(build(1));
+    assert!(h.engines.layout.text.has_entry(wid, 0), "the run it kept");
+    assert!(!h.engines.layout.text.has_entry(wid, 1));
+    assert!(!h.engines.layout.text.has_entry(wid, 2));
+}
+
 #[test]
 fn text_reuse_is_window_local_while_cosmic_buffers_are_shared() {
     use crate::layout::types::sizing::Sizing;
