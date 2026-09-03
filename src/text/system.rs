@@ -132,12 +132,12 @@ impl TextSystem {
     /// answering through it. Dropping it loses the demotion, and the
     /// buffer it should have demoted ages on the long window instead.
     ///
-    /// That mattered because the rows go cold constantly: the layout
+    /// That matters because the rows go cold constantly: the layout
     /// measure cache short-circuits whole subtrees, so a steadily
-    /// redrawing run never touches its row at all. Under the `hot` sweep
-    /// a run therefore lost its slot after one still frame, and the next
-    /// width change — the first frame of a drag — had nothing to demote.
-    /// A jerky drag paid that once per stop-start.
+    /// redrawing run never touches its row at all. A sweep keyed on use
+    /// would drop the slot after one still frame, and the next width
+    /// change — the first frame of a drag — would have nothing to
+    /// demote, once per stop-start of a jerky one.
     ///
     /// Keeping rows for live widgets bounds them by the widget's peak
     /// text-ordinal count, which is a handful per widget, and `removed`

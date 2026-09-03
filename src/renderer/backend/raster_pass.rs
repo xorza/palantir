@@ -64,10 +64,9 @@ pub(super) enum Rasterized {
 /// is edge-triggered because it recurs per raster per frame, and logging
 /// each one would bury the signal in its own noise.
 ///
-/// Three states, named. Two bools carried these three plus a fourth
-/// combination that exists only between two lines of
-/// [`RasterPass::note_atlas_starved`], which is a state a reader has to
-/// rule out rather than one the type refuses.
+/// Three named states rather than two bools: the bools admit a fourth
+/// combination that means nothing, and a type that refuses it is one a
+/// reader need not rule out.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum Starvation {
     /// No episode open: the last frame fit everything it drew.

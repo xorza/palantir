@@ -92,14 +92,9 @@ pub(crate) struct EncodedCache {
     /// expires rather than what is resident. Runs the same
     /// file-once/re-file-on-fire protocol the shaped-buffer cache does —
     /// see [`ExpiryWheel`].
-    ///
-    /// This side needs it more than that one: [`Self::emit_cached`]
-    /// refreshes `last_use` on *every* hit of *every* visible run, so
-    /// the previous `map.retain` walked the whole table every frame
-    /// purely to discover that nothing had lapsed.
     expiry: ExpiryWheel<EncodedKey>,
-    /// Encode / hit / expiry / re-file / block tallies. Zero-sized
-    /// outside benchmark and test builds.
+    /// Encode / expiry / re-file tallies. Zero-sized outside benchmark
+    /// and test builds.
     counters: EncodedCounters,
 }
 
@@ -165,7 +160,6 @@ impl EncodedCache {
             return false;
         }
         entry.last_use = current_frame;
-        self.counters.hits.bump();
         true
     }
 
@@ -323,22 +317,20 @@ impl EncodedCache {
 ///
 /// # Why this is below [`crate::text::RENDERED_RUN_KEEP_FRAMES`]
 ///
-/// The constraint against the shaped-buffer window is an *ordering*,
-/// not an equality: a buffer has to outlive the encoded entry that
-/// would come asking for it, or a miss silently pays to reshape. This
-/// window being shorter satisfies that with room to spare, and the
-/// `const _` assertion below is what stops a later edit from inverting
-/// it.
+/// That constant states what the ordering is for. This window sits well
+/// under it, and the `const _` assertion below stops a later edit from
+/// inverting them.
 ///
-/// Making the two *equal* would cost population for nothing. `EncodedKey`
+/// **How far under is this side's own question.** `EncodedKey`
 /// folds `scale_q` and (through
 /// [`TextShapeKey`](crate::text::key::TextShapeKey)) `max_w_q`, so a zoom
 /// or width drag mints a fresh key per run per frame that will never be
 /// asked for again — and with one window and no demotion signal each of
 /// those lives the full span. The resident population is
-/// `runs × (KEEP + 1)`, so the window *is* the population multiplier: 120
-/// held 121 frames of dead gesture keys, ~27 MB of glyph templates for a
-/// text-dense drag, on an arena that never shrinks.
+/// `runs × (KEEP + 1)`, so the window *is* the population multiplier: at
+/// the ceiling's 120 that is 121 frames of dead gesture keys, ~27 MB of
+/// glyph templates for a text-dense drag, on an arena that never
+/// shrinks.
 ///
 /// 30 frames is half a second at 60 Hz. What it costs is a re-encode
 /// for a run that goes untouched for 0.5–2 s and then comes back, which
