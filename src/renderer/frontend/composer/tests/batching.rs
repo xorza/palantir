@@ -3,11 +3,12 @@
 use crate::primitives::brush::gradient::FillAxis;
 use crate::primitives::fill_kind::FillKind;
 use crate::primitives::span::Span;
+use crate::primitives::texture_id::TextureId;
 use crate::primitives::{color::Color, corners::Corners, rect::Rect, stroke::Stroke, urect::URect};
 use crate::renderer::frontend::capture::PaintCapture;
 use crate::renderer::frontend::composer::tests::support::{
-    clip, clip_rounded, composer, curve, draw, image, mesh, params, polyline_cmd, rect,
-    render_buffer, run, text,
+    clip, clip_rounded, composer, curve, draw, gpu_view_payload, icon, icon_ref, image, mesh,
+    params, polyline_cmd, rect, render_buffer, run, text,
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
@@ -426,18 +427,23 @@ fn compose_spins_polyline_about_bbox_center() {
 }
 
 /// Pin: a higher-kind draw that gets *culled* (fully outside the active
-/// clip) does NOT split the text batch — the batch only closes once the
-/// draw will actually emit. Counterpart to
-/// `compose_mesh_between_texts_splits_text_batch`.
+/// clip) does NOT split the text batch, even when its unclipped rect
+/// covers a run already in that batch. The cull runs first, so the
+/// overlap test that closes the batch never sees a draw that paints
+/// nothing. The mesh here is recorded under a clip that discards it
+/// whole, at the coordinates of the first label.
 #[test]
-fn compose_culled_mesh_between_texts_keeps_one_batch() {
+fn compose_culled_mesh_over_batch_text_keeps_one_batch() {
+    let label = rect(0.0, 0.0, 100.0, 20.0);
     let buf = run(
         |b, _arena| {
-            clip(b, rect(0.0, 0.0, 100.0, 100.0));
-            text(b, rect(0.0, 0.0, 100.0, 20.0));
-            mesh(b, rect(200.0, 200.0, 30.0, 30.0)); // outside the clip → culled
-            text(b, rect(0.0, 40.0, 100.0, 20.0));
+            clip(b, rect(0.0, 0.0, 400.0, 400.0));
+            text(b, label);
             b.pop_clip();
+            clip(b, rect(0.0, 200.0, 100.0, 100.0));
+            mesh(b, label); // covers the label, but the clip discards it
+            b.pop_clip();
+            text(b, rect(0.0, 40.0, 100.0, 20.0));
         },
         &params(1.0, UVec2::new(400, 400)),
     );
@@ -584,23 +590,22 @@ fn compose_disjoint_mixed_kinds_share_one_group() {
 /// Regression: a quad overlapping text that lives in an *already-closed*
 /// batch within the same group must still flush so the text paints under
 /// it. Reproduces the node-label-over-inspector-panel bug: a node's text
-/// gets closed into its own batch (here, by an unrelated polyline that
-/// doesn't overlap), then the panel quad — recorded later, overlapping —
-/// must not let that closed batch's text paint on top.
+/// gets closed into its own batch (here, by a polyline over the label's
+/// far end, clear of the quad), then the panel quad — recorded later,
+/// overlapping — must not let that closed batch's text paint on top.
 #[test]
 fn quad_flushes_text_in_already_closed_batch_same_group() {
     let buf = run(
         |b, store| {
             // First node label.
-            text(b, rect(0.0, 0.0, 100.0, 20.0));
-            // A polyline far from everything closes the text batch
-            // (curve-tier) without flushing the group, and doesn't
-            // overlap the quad below (so it can't be what forces the
-            // flush).
+            text(b, rect(0.0, 0.0, 300.0, 20.0));
+            // A polyline over the label's far end closes the text batch
+            // (curve-tier) without flushing the group, and clears the
+            // quad below in x (so it can't be what forces the flush).
             polyline_cmd(
                 b,
                 store,
-                &[Vec2::new(0.0, 400.0), Vec2::new(50.0, 400.0)],
+                &[Vec2::new(200.0, 10.0), Vec2::new(300.0, 10.0)],
                 &[Color::WHITE],
                 ColorMode::Single,
                 1.0,
@@ -611,11 +616,11 @@ fn quad_flushes_text_in_already_closed_batch_same_group() {
             draw(b, rect(0.0, 0.0, 100.0, 60.0));
             // Repeat after the first closed batch has been indexed and
             // flushed. The new pending tail must be discovered independently.
-            text(b, rect(0.0, 100.0, 100.0, 20.0));
+            text(b, rect(0.0, 100.0, 300.0, 20.0));
             polyline_cmd(
                 b,
                 store,
-                &[Vec2::new(0.0, 500.0), Vec2::new(50.0, 500.0)],
+                &[Vec2::new(200.0, 110.0), Vec2::new(300.0, 110.0)],
                 &[Color::WHITE],
                 ColorMode::Single,
                 1.0,
@@ -627,8 +632,8 @@ fn quad_flushes_text_in_already_closed_batch_same_group() {
         &params(1.0, UVec2::new(600, 600)),
     );
     assert_eq!(buf.text_batches.len(), 2);
-    assert_eq!(buf.text_batches[0].scissor, URect::new(0, 0, 100, 20));
-    assert_eq!(buf.text_batches[1].scissor, URect::new(0, 100, 100, 20));
+    assert_eq!(buf.text_batches[0].scissor, URect::new(0, 0, 300, 20));
+    assert_eq!(buf.text_batches[1].scissor, URect::new(0, 100, 300, 20));
     for (batch, quad_y) in buf.text_batches.iter().zip([0.0, 100.0]) {
         let quad_group = buf
             .groups
@@ -775,24 +780,20 @@ fn quad_fast_path_flag_cases() {
     }
 }
 
-/// What a labelled toolbar actually costs in batches — the measurement behind
-/// keeping the icon atlas separate from the glyph atlas rather than folding
-/// the two together.
+/// What a labelled toolbar costs in batches. Eight buttons, each an icon
+/// beside its label, laid out left to right with no overlap.
 ///
-/// Eight buttons, each an icon beside its label, laid out left to right with
-/// no overlap. Icons are a higher kind than text, so every icon closes the
-/// open text batch: the icons coalesce into one batch (they accumulate in the
-/// group until it flushes) while the text splits into one batch per run.
+/// Icons are a higher kind than text, but a higher-kind draw closes the open
+/// text batch only where it covers a run already in that batch. Disjoint
+/// buttons therefore cost one icon batch and one text batch, not one text
+/// batch per button.
 ///
-/// The number this pins is that the split is **text's**, not the icon
-/// atlas's — merging the two atlases would remove the tier boundary and so the
-/// splits, but the same 8-way split already happens today for eight images or
-/// eight meshes interleaved with labels. That is what makes this a general
-/// tier-ordering cost rather than something icons introduced.
+/// The split this used to pin was **text's**, not the icon atlas's — eight
+/// images or eight meshes interleaved with labels split it the same way. So
+/// the condition that removed it removed it for every tier at once, and
+/// merging the two atlases was never what the draw calls were waiting on.
 #[test]
-fn labelled_toolbar_costs_one_icon_batch_and_a_text_batch_per_label() {
-    use crate::renderer::frontend::composer::tests::support::{icon, icon_ref};
-
+fn labelled_toolbar_costs_one_icon_batch_and_one_text_batch() {
     const BUTTONS: usize = 8;
     let out = run(
         |buf, _| {
@@ -813,20 +814,17 @@ fn labelled_toolbar_costs_one_icon_batch_and_a_text_batch_per_label() {
     );
     assert_eq!(
         out.text_batches.len(),
-        BUTTONS,
-        "each icon closes the open text batch, so labels do not coalesce",
+        1,
+        "no icon covers a label, so the labels coalesce into one batch",
     );
     assert_eq!(out.groups.len(), 1, "disjoint draws need no group flush");
 }
 
 /// The control for the test above: the same eight labels with an *image*
-/// between them instead of an icon split text identically. The cost belongs to
+/// between them instead of an icon coalesce identically. The saving belongs to
 /// the tier boundary, not to icons having their own atlas.
 #[test]
-fn images_between_labels_split_text_the_same_way() {
-    use crate::primitives::texture_id::TextureId;
-    use crate::renderer::frontend::composer::tests::support::gpu_view_payload;
-
+fn images_between_labels_coalesce_text_the_same_way() {
     const BUTTONS: usize = 8;
     let out = run(
         |buf, _| {
@@ -841,5 +839,82 @@ fn images_between_labels_split_text_the_same_way() {
         },
         &params(1.0, UVec2::new(1024, 64)),
     );
-    assert_eq!(out.text_batches.len(), BUTTONS);
+    assert_eq!(out.text_batches.len(), 1);
+}
+
+/// The ordering the toolbar's coalescing rests on, both halves of it. A
+/// button whose icon lands on the previous label must still split the
+/// batch, and a label that lands on that icon must still flush the group —
+/// otherwise the icon paints over text recorded after it.
+///
+/// One fixture, read twice: with the trailing label clear of the icon the
+/// batch splits and the group does not, and with it over the icon both do.
+/// A composer that closed nothing would report one batch for the first arm
+/// as well, which is what makes the pair a test rather than a count.
+#[test]
+fn icon_over_prior_label_splits_batch_and_over_later_label_flushes_group() {
+    #[derive(Debug)]
+    struct Case {
+        /// x of the label recorded after the icon. The icon spans 40..56.
+        trailing_x: f32,
+        groups: usize,
+    }
+    for case in [
+        Case {
+            trailing_x: 70.0,
+            groups: 1,
+        },
+        Case {
+            trailing_x: 50.0,
+            groups: 2,
+        },
+    ] {
+        let out = run(
+            |buf, _| {
+                text(buf, rect(0.0, 0.0, 60.0, 16.0));
+                icon(buf, rect(40.0, 0.0, 16.0, 16.0), icon_ref(0));
+                text(buf, rect(case.trailing_x, 0.0, 60.0, 16.0));
+            },
+            &params(1.0, UVec2::new(1024, 64)),
+        );
+        assert_eq!(
+            out.text_batches.len(),
+            2,
+            "the icon covers the first label in both arms: {case:?}",
+        );
+        assert_eq!(out.groups.len(), case.groups, "{case:?}");
+    }
+}
+
+/// A batch that survives a higher-kind draw survives the group flush that
+/// draw's neighbours force, and drains past it: one batch, two groups, and
+/// its `last_group` is the second while the image's is the first.
+///
+/// That is the reordering the overlap test allows on purpose — the first
+/// label paints over the image it was recorded under, which is unobservable
+/// because the two do not meet.
+#[test]
+fn text_batch_drains_past_a_non_overlapping_image() {
+    let out = run(
+        |buf, _| {
+            text(buf, rect(0.0, 0.0, 60.0, 16.0));
+            buf.draw_image(ImageDraw {
+                payload: gpu_view_payload(rect(100.0, 0.0, 16.0, 16.0), TextureId(1)),
+                paint: None,
+            });
+            // Over the image, so this run flushes the group.
+            text(buf, rect(110.0, 0.0, 60.0, 16.0));
+        },
+        &params(1.0, UVec2::new(1024, 64)),
+    );
+    assert_eq!(out.groups.len(), 2);
+    assert_eq!(out.text_batches.len(), 1, "the image covers neither label");
+    assert_eq!(out.text_batches[0].texts.len, 2);
+    assert_eq!(out.text_batches[0].last_group, 1);
+    assert_eq!(out.batches(PaintTier::Image).len(), 1);
+    assert_eq!(
+        out.batches(PaintTier::Image)[0].last_group,
+        0,
+        "the image drains a group before the batch that paints over it",
+    );
 }
