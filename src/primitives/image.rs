@@ -8,7 +8,7 @@
 
 use crate::primitives::color::srgba_u8::SrgbaU8;
 use crate::primitives::nan::NanCheck;
-use glam::UVec2;
+use glam::{UVec2, Vec2};
 
 /// How an image's intrinsic size maps onto its paint rect. Same
 /// semantics as CSS `object-fit`. `Fill` (the default) stretches the
@@ -37,10 +37,7 @@ pub enum ImageFit {
     /// the rect (`uv_size`), `offset` the scroll phase (`uv_min`). The
     /// caller drives both — e.g. a pannable/zoomable dotted backdrop
     /// sets `scale = viewport / tile_px`, `offset = -pan / tile_px`.
-    Tile {
-        offset: glam::Vec2,
-        scale: glam::Vec2,
-    },
+    Tile { offset: Vec2, scale: Vec2 },
 }
 
 /// How texels are interpolated when an image paints at a size other
@@ -103,11 +100,8 @@ pub enum ImageDownsample {
 /// uses a `Rgba8UnormSrgb` texture so the sampler decodes to linear on read,
 /// and the shader premultiplies. Window icons use the same validated storage.
 ///
-/// Registering one copies it to the GPU and keeps nothing of it, so the
-/// caller holds exactly the copies it wants: none for a static image, one to
-/// refill and hand to [`ImageHandle::update`](crate::ImageHandle::update)
-/// for a surface that changes on screen. The texel helpers below are for
-/// that refill.
+/// Registration stages the borrowed pixels without retaining a CPU copy.
+/// Keep the buffer to refill it for [`ImageHandle::update`](crate::ImageHandle::update).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Image {
     pub(crate) size: UVec2,
@@ -192,11 +186,11 @@ impl Image {
     ///
     /// # Panics
     ///
-    /// Panics when `row` is outside the image.
+    /// In debug builds, panics when `row` is outside the image.
     pub fn repeat_row(&mut self, row: u32) {
         let width = self.size.x as usize;
         let rows = self.size.y as usize;
-        assert!(rows > row as usize, "row {row} of {rows}");
+        debug_assert!(rows > row as usize, "row {row} of {rows}");
         let source = row as usize * width;
         let texels = self.texels_mut();
         for target in (0..rows).filter(|target| *target != row as usize) {
@@ -205,11 +199,6 @@ impl Image {
     }
 }
 
-/// Bytes an RGBA8 image of `width` by `height` holds.
-///
-/// # Panics
-///
-/// Panics for a zero dimension or a length `usize` cannot hold.
 fn rgba8_len(width: u32, height: u32) -> usize {
     assert!(
         width != 0 && height != 0,
@@ -222,7 +211,6 @@ fn rgba8_len(width: u32, height: u32) -> usize {
         .expect("RGBA8 dimensions overflow addressable byte length")
 }
 
-/// Only [`ImageFit::Tile`] carries scalars; every other fit is a bare tag.
 impl NanCheck for ImageFit {
     #[inline]
     fn has_nan(&self) -> bool {
@@ -254,20 +242,37 @@ mod tests {
     #[test]
     fn fill_with_visits_every_texel_in_row_major_order() {
         let mut image = Image::blank(UVec2::new(3, 2));
-        image.fill_with(|column, row| SrgbaU8::rgb(column as u8, row as u8, 0));
-        let got: Vec<(u8, u8)> = image.texels().iter().map(|t| (t.r, t.g)).collect();
-        assert_eq!(got, vec![(0, 0), (1, 0), (2, 0), (0, 1), (1, 1), (2, 1)]);
+        let mut visited = 0;
+        image.fill_with(|column, row| {
+            let texel = SrgbaU8::rgb(column as u8, row as u8, visited);
+            visited += 1;
+            texel
+        });
+        assert_eq!(visited, 6);
+        assert_eq!(
+            image.texels(),
+            &[
+                SrgbaU8::rgb(0, 0, 0),
+                SrgbaU8::rgb(1, 0, 1),
+                SrgbaU8::rgb(2, 0, 2),
+                SrgbaU8::rgb(0, 1, 3),
+                SrgbaU8::rgb(1, 1, 4),
+                SrgbaU8::rgb(2, 1, 5),
+            ]
+        );
     }
 
     #[test]
     fn repeat_row_copies_one_row_into_the_others() {
-        let mut image = Image::blank(UVec2::new(2, 3));
-        image
-            .row_mut(1)
-            .copy_from_slice(&[SrgbaU8::rgb(1, 0, 0), SrgbaU8::rgb(2, 0, 0)]);
-        image.repeat_row(1);
-        let reds: Vec<u8> = image.texels().iter().map(|t| t.r).collect();
-        assert_eq!(reds, vec![1, 2, 1, 2, 1, 2]);
+        for rows in [1, 3] {
+            for source in 0..rows {
+                let mut image = Image::blank(UVec2::new(2, rows));
+                let row = [SrgbaU8::rgb(1, 2, 3), SrgbaU8::rgb(4, 5, 6)];
+                image.row_mut(source).copy_from_slice(&row);
+                image.repeat_row(source);
+                assert_eq!(image.texels(), row.repeat(rows as usize));
+            }
+        }
     }
 
     #[test]

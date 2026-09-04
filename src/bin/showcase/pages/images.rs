@@ -9,7 +9,6 @@ use palantir::{
     Image, ImageDownsample, ImageFilter, ImageFit, ImageHandle, RgbaF32, Shape, Ui, Vec2, WidgetId,
 };
 
-/// Synthesize a 64×64 sRGB checkerboard.
 fn checker() -> Image {
     const N: u32 = 64;
     const CELL: u32 = 8;
@@ -117,7 +116,6 @@ struct Sources {
     starfield: ImageHandle,
 }
 
-/// Clone out this frame's handles, registering on first call.
 fn sources(ui: &mut Ui) -> Sources {
     ui.with_state::<Option<Sources>, _>(
         WidgetId::from_hash("showcase::images::sources"),

@@ -10,7 +10,7 @@ use crate::renderer::backend::texture_binding;
 /// registry's GPU side and the target store hold one layout between them,
 /// and each format's image pipeline composes over that same one.
 #[derive(Clone, Debug)]
-pub(crate) struct ImageBinding {
+pub(super) struct ImageBinding {
     layout: wgpu::BindGroupLayout,
     /// Shared by every image and `GpuView` target: min/mag nearest
     /// filtering is a shader-side UV texel-centre snap, so all filter
@@ -19,20 +19,17 @@ pub(crate) struct ImageBinding {
 }
 
 impl ImageBinding {
-    pub(crate) fn new(device: &wgpu::Device) -> Self {
+    pub(super) fn new(device: &wgpu::Device) -> Self {
         Self {
             layout: texture_binding::layout(device, "palantir.image.tex.bgl"),
             sampler: texture_binding::sampler(device, "palantir.image.sampler"),
         }
     }
 
-    /// The layout every image bind group is built against, which each
-    /// format's image pipeline layout composes over.
     pub(super) fn layout(&self) -> &wgpu::BindGroupLayout {
         &self.layout
     }
 
-    /// A bind group sampling `view` through this shape.
     pub(super) fn bind_group(
         &self,
         device: &wgpu::Device,

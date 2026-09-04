@@ -5,6 +5,7 @@
 use crate::common::clipboard::Clipboard;
 use crate::renderer::backend::backend_resources::BackendResources;
 use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
+use crate::renderer::image_registry::ImageRegistry;
 use crate::renderer::texture_limit::TextureLimit;
 use crate::text::shaper::TextShaper;
 use crate::ui::resources::UiResources;
@@ -20,9 +21,10 @@ impl HostShared {
         text: TextShaper,
         clipboard: Clipboard,
         texture_limit: TextureLimit,
+        images: ImageRegistry,
     ) -> Self {
         Self {
-            resources: UiResources::new(text, clipboard, texture_limit),
+            resources: UiResources::new(text, clipboard, texture_limit, images),
             gradient_atlas: SharedGradientAtlas::new(texture_limit),
         }
     }
@@ -42,6 +44,7 @@ impl HostShared {
 pub(crate) mod internals {
     use crate::common::clipboard::Clipboard;
     use crate::host::shared::HostShared;
+    use crate::renderer::image_registry::ImageRegistry;
     use crate::renderer::texture_limit::TextureLimit;
     use crate::text::shaper::TextShaper;
 
@@ -50,7 +53,12 @@ pub(crate) mod internals {
         /// `WindowDriver` without a host. Production hosts go through
         /// `HostCore::new`, which supplies the platform clipboard.
         pub(crate) fn new(text: TextShaper, texture_limit: TextureLimit) -> Self {
-            Self::with_clipboard(text, Clipboard::default(), texture_limit)
+            Self::with_clipboard(
+                text,
+                Clipboard::default(),
+                texture_limit,
+                ImageRegistry::default(),
+            )
         }
     }
 }
