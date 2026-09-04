@@ -1,12 +1,15 @@
 use glam::UVec2;
 use std::num::NonZeroU32;
 
+use crate::common::clipboard::Clipboard;
 use crate::diagnostics::DebugOverlayConfig;
 use crate::host::shared::HostShared;
+use crate::host::test_gpu;
 use crate::primitives::image::Image;
-use crate::primitives::texture_id::TextureId;
+use crate::renderer::image_registry::ImageRegistry;
 use crate::renderer::texture_limit::TextureLimit;
 use crate::text::shaper::TextShaper;
+use crate::ui::Ui;
 
 #[test]
 fn diagnostics_are_shared_across_capability_bundles() {
@@ -36,8 +39,14 @@ fn diagnostics_are_shared_across_capability_bundles() {
 
 #[test]
 fn backend_and_ui_share_text_images_and_gpu_stats() {
+    let gpu = test_gpu::headless_test_gpu();
     let limit = TextureLimit::from_device(NonZeroU32::new(1).unwrap());
-    let shared = HostShared::new(TextShaper::test_mono(), limit);
+    let shared = HostShared::with_clipboard(
+        TextShaper::test_mono(),
+        Clipboard::default(),
+        limit,
+        ImageRegistry::new(gpu.device.clone(), gpu.queue.clone()),
+    );
     let ui = shared.resources.clone();
     let backend = shared.backend_resources();
 
@@ -46,12 +55,12 @@ fn backend_and_ui_share_text_images_and_gpu_stats() {
         ui.texture_limit, limit,
         "the recorder bundle carries the ceiling the host was built with",
     );
-    let image = ui.images.register(&Image::blank(UVec2::ONE));
-    assert_eq!(
-        backend.images.register(&Image::blank(UVec2::ONE)).id(),
-        TextureId(image.id().0 + 1),
-        "one id authority behind both handles",
-    );
+    let image = Ui::new(ui.clone())
+        .register_image(&Image::blank(UVec2::ONE))
+        .unwrap();
+    assert_eq!(backend.images.resident(), 1);
+    drop(image);
+    assert_eq!(backend.images.resident(), 0);
     backend.gpu_pass_stats.record_pass_ns(2_500_000);
     assert_eq!(ui.diagnostics.gpu_pass_stats.last_pass_ms(), Some(2.5));
 }

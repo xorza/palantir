@@ -9,9 +9,6 @@
 //! the atlas it fills. Both build against one binding shape, so a
 //! composite of a view binds exactly like an image.
 
-#[cfg(feature = "bench")]
-pub(crate) mod bench;
-
 use crate::primitives::span::Span;
 use crate::primitives::texture_id::TextureId;
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
@@ -42,8 +39,6 @@ pub(super) struct ImageBatch<'a> {
 #[derive(Debug)]
 pub(super) struct ImagePipeline {
     instance_buffer: DynamicBuffer<ImageInstance>,
-    /// Image shader module — format-independent; [`Self::build_variants`]
-    /// reads it to build each format's pipelines.
     shader: wgpu::ShaderModule,
 }
 
@@ -97,8 +92,6 @@ impl ImagePipeline {
         image_bgl: &wgpu::BindGroupLayout,
         format: wgpu::TextureFormat,
     ) -> StencilVariant {
-        // Per-image tex+sampler at group 0 — viewport rides the
-        // shared immediate region.
         let layout =
             PipelineRecipe::pipeline_layout(device, "palantir.image.pl", &[Some(image_bgl)]);
         StencilVariant::build(
@@ -115,14 +108,10 @@ impl ImagePipeline {
         )
     }
 
-    /// Sync the per-instance buffer — one contiguous, zero-copy upload from
-    /// the shared slice; the schedule slices by batch at draw time.
     pub(super) fn upload(&mut self, ctx: &mut GpuCtx<'_>, instances: &[ImageInstance]) {
         self.instance_buffer.upload_instances(ctx, instances);
     }
 
-    /// Bind once per pass. Viewport rides immediates; per-image
-    /// group 0 is set in [`Self::draw`] from the cached bind group.
     pub(super) fn bind<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
@@ -177,8 +166,6 @@ impl ImagePipeline {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct ImageRun {
     id: TextureId,
-    /// Slice of the per-frame instance buffer this run draws, as one
-    /// instanced range.
     instances: Span,
 }
 
@@ -232,6 +219,9 @@ const _: () = {
     assert!(IMAGE_INSTANCE_ATTRS[5].offset == offset_of!(ImageInstance, flags) as u64);
 };
 
+#[cfg(feature = "bench")]
+pub(crate) mod bench;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -258,12 +248,9 @@ mod tests {
 
     #[test]
     fn adjacent_runs_coalesce_without_disturbing_draw_order() {
-        // `runs` is the post-change bind + draw count: one of each per
-        // run. Before coalescing every case below cost `ids.len()`.
         let cases: [(&str, &[u64], usize); 7] = [
             ("empty", &[], 0),
             ("single", &[7], 1),
-            // The win: repeated icons / repeated GpuView composites.
             ("all same", &[7, 7, 7, 7], 1),
             ("adjacent groups", &[7, 7, 9, 9, 9, 4], 3),
             // Controls that must NOT shrink. Alternating is the case a

@@ -9,7 +9,6 @@ use std::time::Duration;
 #[derive(Debug)]
 pub(super) struct RenderTarget {
     pub(super) view: wgpu::TextureView,
-    /// What a draw samples the target through.
     pub(super) bind_group: wgpu::BindGroup,
     pub(super) size: UVec2,
     pub(super) owner: RenderOwnerId,
@@ -76,8 +75,6 @@ mod tests {
     use super::keep_target;
     use crate::renderer::render_owner_id::RenderOwnerId;
 
-    /// Which of `entries` (id, owner) a submit by `owner` frees, given the
-    /// ids that submit still lists as live.
     fn evicted(entries: &[(u64, RenderOwnerId)], owner: RenderOwnerId, live: &[u64]) -> Vec<u64> {
         entries
             .iter()
@@ -104,11 +101,8 @@ mod tests {
             // `a` still records both of its views — nothing freed, whatever
             // subset of them actually painted this frame.
             (a, &[1u64, 3][..], vec![]),
-            // `a` dropped view 3.
             (a, &[1][..], vec![3]),
-            // `a` dropped both.
             (a, &[][..], vec![1, 3]),
-            // `b` submitting frees nothing of `a`'s, and keeps its own.
             (b, &[2][..], vec![]),
             (b, &[][..], vec![2]),
         ];

@@ -13,9 +13,7 @@ use crate::common::tracy;
 use crate::primitives::texture_id::TextureId;
 use crate::renderer::backend::debug_marker;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
-use crate::renderer::backend::gpu_view_targets::render_target::{
-    AllocatedTarget, RenderTarget, keep_target,
-};
+use crate::renderer::backend::gpu_view_targets::render_target::{AllocatedTarget, RenderTarget};
 use crate::renderer::backend::image_binding::ImageBinding;
 use crate::renderer::gpu_paint::gpu_frame_ctx::GpuFrameCtx;
 use crate::renderer::gpu_paint::gpu_init_ctx::GpuInitCtx;
@@ -46,13 +44,10 @@ impl GpuViewTargets {
         }
     }
 
-    /// What a draw binds for `id`, or `None` when no target answers to it.
     pub(super) fn bind_group(&self, id: TextureId) -> Option<&wgpu::BindGroup> {
         self.targets.get(&id).map(|target| &target.bind_group)
     }
 
-    /// Render every `GpuView` the frame painted into its target, then
-    /// free the submitting owner's targets that it no longer records.
     pub(super) fn paint_gpu_views(
         &mut self,
         ctx: &mut GpuCtx<'_>,
@@ -104,8 +99,9 @@ impl GpuViewTargets {
             debug_marker::pop_encoder(ctx.encoder);
             target.last_paint = Some(now);
         }
-        self.targets
-            .retain(|id, target| keep_target(target.owner, owner, live.binary_search(id).is_ok()));
+        self.targets.retain(|id, target| {
+            render_target::keep_target(target.owner, owner, live.binary_search(id).is_ok())
+        });
     }
 
     /// Drop every target belonging to a render stream that will never submit
