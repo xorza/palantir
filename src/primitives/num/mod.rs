@@ -16,7 +16,7 @@ use glam::Vec2;
 /// anyway. Adding the half before the truncation is round-half-up, which
 /// over a non-negative product is `round`.
 ///
-/// A free `const fn` rather than an [`F32Ext`] method: `Color::hexa` is
+/// A free `const fn` rather than an [`F32Ext`] method: `RgbaF32::hexa` is
 /// `const`, and a trait method cannot be called from one.
 #[inline]
 pub(crate) const fn unit_to_u8(x: f32) -> u8 {

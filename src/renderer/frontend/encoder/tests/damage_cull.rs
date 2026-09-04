@@ -4,7 +4,7 @@ use crate::Ui;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
-use crate::primitives::{color::Color, rect::Rect, translate_scale::TranslateScale};
+use crate::primitives::{color::RgbaF32, rect::Rect, translate_scale::TranslateScale};
 use crate::renderer::frontend::capture::PaintCall;
 use crate::renderer::frontend::encoder::tests::support::count_draw_rects;
 use crate::scene::damage::region::DamageRegion;
@@ -32,7 +32,7 @@ fn damage_filter_partitions_drawrects_by_dirty_region() {
                     .id(WidgetId::from_hash("a"))
                     .size((Sizing::fixed(40.0), Sizing::fixed(40.0)))
                     .background(Background {
-                        fill: Color::rgb(1.0, 0.0, 0.0).into(),
+                        fill: RgbaF32::srgb(1.0, 0.0, 0.0).into(),
                         ..Default::default()
                     })
                     .show(ui);
@@ -40,7 +40,7 @@ fn damage_filter_partitions_drawrects_by_dirty_region() {
                     .id(WidgetId::from_hash("b"))
                     .size((Sizing::fixed(40.0), Sizing::fixed(40.0)))
                     .background(Background {
-                        fill: Color::rgb(0.0, 1.0, 0.0).into(),
+                        fill: RgbaF32::srgb(0.0, 1.0, 0.0).into(),
                         ..Default::default()
                     })
                     .show(ui);
@@ -85,7 +85,7 @@ fn damage_filter_culls_subtree_outside_damage() {
                         .id(WidgetId::from_hash("inner"))
                         .size(20.0)
                         .background(Background {
-                            fill: Color::rgb(1.0, 0.0, 0.0).into(),
+                            fill: RgbaF32::srgb(1.0, 0.0, 0.0).into(),
                             ..Default::default()
                         })
                         .show(ui);
@@ -127,7 +127,7 @@ fn damage_filter_paints_leaves_in_any_rect() {
                         .size((Sizing::fixed(40.0), Sizing::fixed(40.0)))
                         .position(Vec2::new(*x, *y))
                         .background(Background {
-                            fill: Color::rgb(1.0, 0.0, 0.0).into(),
+                            fill: RgbaF32::srgb(1.0, 0.0, 0.0).into(),
                             ..Default::default()
                         })
                         .show(ui);
@@ -187,7 +187,8 @@ fn viewport_and_damage_culls_advance_the_sparse_paint_anim_cursor() {
                             .size(20.0)
                             .show(ui, |ui| {
                                 ui.add_shape_animated(
-                                    Shape::rect(Rect::new(0.0, 0.0, 20.0, 20.0)).fill(Color::WHITE),
+                                    Shape::rect(Rect::new(0.0, 0.0, 20.0, 20.0))
+                                        .fill(RgbaF32::WHITE),
                                     PaintAnim::BlinkOpacity {
                                         half_period: HALF,
                                         started_at,
@@ -251,7 +252,7 @@ fn damage_filter_includes_descendant_overflowing_parent_rect() {
                         .position((60.0, 0.0))
                         .size((Sizing::fixed(40.0), Sizing::fixed(40.0)))
                         .background(Background {
-                            fill: Color::rgb(1.0, 0.0, 0.0).into(),
+                            fill: RgbaF32::srgb(1.0, 0.0, 0.0).into(),
                             ..Default::default()
                         })
                         .show(ui);
@@ -304,7 +305,7 @@ fn damage_filter_repaints_neighbor_in_aa_pad_ring() {
                         .position(Vec2::new(100.0, 100.0))
                         .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
                         .background(Background {
-                            fill: Color::rgb(1.0, 0.0, 0.0).into(),
+                            fill: RgbaF32::srgb(1.0, 0.0, 0.0).into(),
                             ..Default::default()
                         })
                         .show(ui);

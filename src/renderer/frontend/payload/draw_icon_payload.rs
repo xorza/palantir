@@ -1,7 +1,7 @@
 //! One baked-icon draw.
 
 use crate::icons::icon_set::IconRef;
-use crate::primitives::color::ColorF16;
+use crate::primitives::color::RgbaF16;
 use crate::primitives::rect::Rect;
 
 /// One baked-icon draw, in logical px.
@@ -16,7 +16,7 @@ pub(crate) struct DrawIconPayload {
     pub(crate) rect: Rect,
     pub(crate) icon: IconRef,
     /// Whole tint for a tintable icon, alpha only for a colour one.
-    pub(crate) tint: ColorF16,
+    pub(crate) tint: RgbaF16,
     /// Draw a colour icon as its own luminance.
     pub(crate) desaturate: bool,
 }

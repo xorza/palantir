@@ -4,7 +4,7 @@ use crate::Ui;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
-use crate::primitives::{color::Color, rect::Rect, size::Size};
+use crate::primitives::{color::RgbaF32, rect::Rect, size::Size};
 use crate::scene::damage::Damage;
 use crate::scene::damage::tests::support::{BLUE, DISPLAY, RED, frame, one_frame};
 use crate::scene::layer::Layer;
@@ -79,7 +79,7 @@ fn fill_change_marks_only_the_changed_leaf() {
         h.ui.tree(Layer::Main).records.widget_id()[dirty_id.idx()],
         WidgetId::from_hash("a")
     );
-    // DamageEngine rect = Frame's rect (50x50 at (0,0)). Color change
+    // DamageEngine rect = Frame's rect (50x50 at (0,0)). RgbaF32 change
     // doesn't move the rect, so prev == curr; the union is the
     // single rect.
     assert_eq!(
@@ -102,7 +102,7 @@ fn sibling_reflow_marks_downstream_neighbor_dirty() {
                     .id(WidgetId::from_hash("a"))
                     .size((Sizing::fixed(a_size), Sizing::fixed(20.0)))
                     .background(Background {
-                        fill: Color::rgb(0.2, 0.4, 0.8).into(),
+                        fill: RgbaF32::srgb(0.2, 0.4, 0.8).into(),
                         ..Default::default()
                     })
                     .show(ui);
@@ -110,7 +110,7 @@ fn sibling_reflow_marks_downstream_neighbor_dirty() {
                     .id(WidgetId::from_hash("b"))
                     .size((Sizing::fixed(30.0), Sizing::fixed(20.0)))
                     .background(Background {
-                        fill: Color::rgb(0.5, 0.5, 0.5).into(),
+                        fill: RgbaF32::srgb(0.5, 0.5, 0.5).into(),
                         ..Default::default()
                     })
                     .show(ui);
@@ -186,7 +186,7 @@ fn added_widget_contributes_curr_rect_to_damage() {
                     .id(WidgetId::from_hash("new"))
                     .size(50.0)
                     .background(Background {
-                        fill: Color::rgb(0.2, 0.4, 0.8).into(),
+                        fill: RgbaF32::srgb(0.2, 0.4, 0.8).into(),
                         ..Default::default()
                     })
                     .show(ui);
@@ -440,11 +440,11 @@ fn node_snapshot_decomposition_matches_cascade() {
             .show(ui, |ui| {
                 ui.add_shape(
                     Shape::line(Vec2::new(0.0, 0.0), Vec2::new(10.0, 10.0), 1.0)
-                        .brush(Color::rgb(1.0, 0.0, 0.0)),
+                        .brush(RgbaF32::srgb(1.0, 0.0, 0.0)),
                 );
                 ui.add_shape(
                     Shape::line(Vec2::new(20.0, 20.0), Vec2::new(30.0, 30.0), 1.0)
-                        .brush(Color::rgb(0.0, 1.0, 0.0)),
+                        .brush(RgbaF32::srgb(0.0, 1.0, 0.0)),
                 );
             });
     });
@@ -490,11 +490,11 @@ fn node_snapshot_decomposition_matches_cascade() {
     let two_lines = |ui: &mut Ui| {
         ui.add_shape(
             Shape::line(Vec2::new(0.0, 0.0), Vec2::new(10.0, 10.0), 1.0)
-                .brush(Color::rgb(1.0, 0.0, 0.0)),
+                .brush(RgbaF32::srgb(1.0, 0.0, 0.0)),
         );
         ui.add_shape(
             Shape::line(Vec2::new(20.0, 20.0), Vec2::new(30.0, 30.0), 1.0)
-                .brush(Color::rgb(0.0, 1.0, 0.0)),
+                .brush(RgbaF32::srgb(0.0, 1.0, 0.0)),
         );
     };
     frame(&mut h, |ui| {
@@ -553,16 +553,17 @@ fn per_shape_damage_only_pushes_changed_shapes() {
             })
             .show(ui, |ui| {
                 ui.add_shape(
-                    Shape::rect(Rect::new(0.0, 0.0, 20.0, 10.0)).fill(Color::rgb(1.0, 0.0, 0.0)),
+                    Shape::rect(Rect::new(0.0, 0.0, 20.0, 10.0)).fill(RgbaF32::srgb(1.0, 0.0, 0.0)),
                 );
                 ui.add_shape(
-                    Shape::rect(Rect::new(60.0, 0.0, 20.0, 10.0)).fill(Color::rgb(0.0, 1.0, 0.0)),
+                    Shape::rect(Rect::new(60.0, 0.0, 20.0, 10.0))
+                        .fill(RgbaF32::srgb(0.0, 1.0, 0.0)),
                 );
                 // The moving shape, far from the other two, so its
                 // bbox doesn't merge with theirs in the damage region.
                 ui.add_shape(
                     Shape::rect(Rect::new(0.0, moving_y, 20.0, 10.0))
-                        .fill(Color::rgb(0.0, 0.0, 1.0)),
+                        .fill(RgbaF32::srgb(0.0, 0.0, 1.0)),
                 );
             });
     };
@@ -642,7 +643,7 @@ fn per_shape_damage_only_pushes_changed_shapes() {
 #[test]
 fn chrome_authoring_change_pushes_chrome_paint_row() {
     let mut h = UiHarness::new(DISPLAY.physical);
-    let build = |fill: Color, ui: &mut Ui| {
+    let build = |fill: RgbaF32, ui: &mut Ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("c"))
             .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
@@ -758,7 +759,7 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
                             },
                         )
                         .at_origin(ORIGIN)
-                        .color(Color::WHITE)
+                        .color(RgbaF32::WHITE)
                         .wrap(TextWrap::Truncate)
                         .family(FontFamily::SANS)
                         .weight(FontWeight::REGULAR),
@@ -841,7 +842,7 @@ fn visibility_flip_with_coincident_shape_change_damages_whole_node() {
     // distinguishable from the changed shape's.
     const CHROME_PROBE: Rect = Rect::new(44.0, 44.0, 2.0, 2.0);
     const LINE_PROBE: Rect = Rect::new(10.0, 9.0, 2.0, 2.0);
-    let node = |ui: &mut Ui, hidden: bool, color: Color| {
+    let node = |ui: &mut Ui, hidden: bool, color: RgbaF32| {
         let mut p = Panel::zstack()
             .id(WidgetId::from_hash("a"))
             .size(50.0)

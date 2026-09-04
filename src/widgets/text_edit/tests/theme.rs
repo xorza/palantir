@@ -66,12 +66,12 @@ fn each_text_widget_reads_its_own_theme_path_for_font_size() {
 
 #[test]
 fn theme_text_color_used_when_text_widget_does_not_override() {
-    use crate::primitives::color::Color;
+    use crate::primitives::color::RgbaF32;
     use crate::scene::shapes::record::ShapeRecord;
     use crate::widgets::text::Text;
 
     let mut h = ui_at_no_cosmic(NARROW);
-    h.ui.theme_mut().text.color = Color::rgb(1.0, 0.0, 0.0);
+    h.ui.theme_mut().text.color = RgbaF32::srgb(1.0, 0.0, 0.0);
 
     let mut node = None;
     h.frame(|ui| {
@@ -85,18 +85,18 @@ fn theme_text_color_used_when_text_widget_does_not_override() {
             _ => None,
         })
         .unwrap();
-    assert_eq!(Color::from(color), Color::rgb(1.0, 0.0, 0.0));
+    assert_eq!(RgbaF32::from(color), RgbaF32::srgb(1.0, 0.0, 0.0));
 }
 
 #[test]
 fn text_widget_color_override_wins_over_theme() {
     use crate::TextStyle;
-    use crate::primitives::color::Color;
+    use crate::primitives::color::RgbaF32;
     use crate::scene::shapes::record::ShapeRecord;
     use crate::widgets::text::Text;
 
     let mut h = ui_at_no_cosmic(NARROW);
-    h.ui.theme_mut().text.color = Color::rgb(1.0, 0.0, 0.0);
+    h.ui.theme_mut().text.color = RgbaF32::srgb(1.0, 0.0, 0.0);
 
     let mut node = None;
     h.frame(|ui| {
@@ -104,7 +104,7 @@ fn text_widget_color_override_wins_over_theme() {
             node = Some(
                 Text::new("hi")
                     .auto_id()
-                    .style(&TextStyle::default().with_color(Color::rgb(0.0, 1.0, 0.0)))
+                    .style(&TextStyle::default().with_color(RgbaF32::srgb(0.0, 1.0, 0.0)))
                     .show(ui)
                     .node(),
             );
@@ -116,7 +116,7 @@ fn text_widget_color_override_wins_over_theme() {
             _ => None,
         })
         .unwrap();
-    assert_eq!(Color::from(color), Color::rgb(0.0, 1.0, 0.0));
+    assert_eq!(RgbaF32::from(color), RgbaF32::srgb(0.0, 1.0, 0.0));
 }
 
 #[test]

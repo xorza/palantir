@@ -6,11 +6,11 @@ use crate::primitives::background::Background;
 use crate::primitives::brush::gradient::FillAxis;
 use crate::primitives::brush::gradient::stops::{GradientStops, Stop};
 use crate::primitives::brush::gradient::{Interp, Spread};
-use crate::primitives::color::ColorF16;
-use crate::primitives::color::ColorU8;
+use crate::primitives::color::RgbaF16;
+use crate::primitives::color::RgbaU8;
 use crate::primitives::fill_kind::FillKind;
 use crate::primitives::widget_id::WidgetId;
-use crate::primitives::{color::Color, rect::Rect, size::Size, stroke::Stroke};
+use crate::primitives::{color::RgbaF32, rect::Rect, size::Size, stroke::Stroke};
 use crate::renderer::frontend::capture::PaintCall;
 use crate::renderer::frontend::encoder::GradientResolver;
 use crate::renderer::frontend::encoder::tests::support::{as_rect, count_draw_rects, quad_rect};
@@ -31,10 +31,7 @@ fn gradient_resolution_runs_once_per_id_and_restarts_each_encode() {
     let gradient = RecordedGradient {
         axis: FillAxis::from_lanes(1.0, 0.0, 0.0, 1.0),
         kind: FillKind::linear(Spread::Pad),
-        stops: GradientStops::new([
-            Stop::new(0.0, ColorU8::BLACK),
-            Stop::new(1.0, ColorU8::WHITE),
-        ]),
+        stops: GradientStops::new([Stop::new(0.0, RgbaU8::BLACK), Stop::new(1.0, RgbaU8::WHITE)]),
         interp: Interp::Oklab,
     };
     let gradients = [gradient];
@@ -105,7 +102,7 @@ fn baseline_draw_rect_count_cases() {
                         .id(WidgetId::from_hash("a"))
                         .size(50.0)
                         .background(Background {
-                            fill: Color::rgb(1.0, 0.0, 0.0).into(),
+                            fill: RgbaF32::srgb(1.0, 0.0, 0.0).into(),
                             ..Default::default()
                         })
                         .show(ui);
@@ -121,7 +118,7 @@ fn baseline_draw_rect_count_cases() {
                         .id(WidgetId::from_hash("degenerate"))
                         .size(50.0)
                         .background(Background {
-                            fill: Color::TRANSPARENT.into(),
+                            fill: RgbaF32::TRANSPARENT.into(),
                             stroke: Stroke::ZERO,
                             ..Default::default()
                         })
@@ -155,25 +152,25 @@ fn manually_pushed_shapes_emit_expected_cmds() {
             ui.add_shape(
                 Shape::owner_rect()
                     .corners(4.0)
-                    .fill(Color::rgb(1.0, 0.0, 0.0)),
+                    .fill(RgbaF32::srgb(1.0, 0.0, 0.0)),
             );
             ui.add_shape(
                 Shape::owner_windowed_rect()
                     .corners(6.0)
-                    .fill(Color::rgb(0.0, 1.0, 0.0)),
+                    .fill(RgbaF32::srgb(0.0, 1.0, 0.0)),
             );
             ui.add_shape(
                 Shape::line(Vec2::new(0.0, 0.0), Vec2::new(20.0, 0.0), 2.0)
-                    .brush(Color::rgb(1.0, 0.0, 0.0)),
+                    .brush(RgbaF32::srgb(1.0, 0.0, 0.0)),
             );
             // Degenerate variants: filtered before reaching the buffer.
             ui.add_shape(
                 Shape::line(Vec2::new(0.0, 0.0), Vec2::new(10.0, 10.0), 0.0)
-                    .brush(Color::rgb(1.0, 0.0, 0.0)),
+                    .brush(RgbaF32::srgb(1.0, 0.0, 0.0)),
             );
             ui.add_shape(
                 Shape::line(Vec2::new(0.0, 0.0), Vec2::new(10.0, 10.0), 2.0)
-                    .brush(Color::TRANSPARENT),
+                    .brush(RgbaF32::TRANSPARENT),
             );
             Frame::new()
                 .id(WidgetId::from_hash("host"))
@@ -234,7 +231,7 @@ fn shadows_lower_to_shifted_drop_and_source_bounded_inset() {
         Panel::hstack().auto_id().show(ui, |ui| {
             ui.add_shape(
                 Shape::shadow(Shadow {
-                    color: Color::rgba(0.0, 0.0, 0.0, 0.5),
+                    color: RgbaF32::srgba(0.0, 0.0, 0.0, 0.5),
                     offset: Vec2::new(2.0, 4.0),
                     blur: 8.0,
                     spread: -1.0,
@@ -245,7 +242,7 @@ fn shadows_lower_to_shifted_drop_and_source_bounded_inset() {
             );
             ui.add_shape(
                 Shape::shadow(Shadow {
-                    color: Color::rgba(0.0, 0.0, 0.0, 0.5),
+                    color: RgbaF32::srgba(0.0, 0.0, 0.0, 0.5),
                     offset: Vec2::new(2.0, 4.0),
                     blur: 8.0,
                     spread: -2.0,
@@ -273,11 +270,11 @@ fn shadows_lower_to_shifted_drop_and_source_bounded_inset() {
     assert_eq!(drop.fill_axis.lanes(), [0.0, 0.0, 8.0, -1.0]);
     assert_eq!(
         drop.fill.color,
-        ColorF16::from(Color::rgba(0.0, 0.0, 0.0, 0.5))
+        RgbaF16::from(RgbaF32::srgba(0.0, 0.0, 0.0, 0.5))
     );
     // A shadow's whole edge is its blur — the merged payload must carry
     // no stroke, or the shared quad path would paint one.
-    assert_eq!(drop.stroke.color, ColorF16::TRANSPARENT);
+    assert_eq!(drop.stroke.color, RgbaF16::TRANSPARENT);
     assert_eq!(drop.stroke.width, 0.0);
 
     assert_eq!(inset.fill.kind, FillKind::SHADOW_INSET);

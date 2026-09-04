@@ -10,7 +10,7 @@
 
 use crate::support;
 use crate::support::{demo_cell_at, section, tiles};
-use palantir::{Color, IconId, IconSet, IconTable, Ui, WidgetId};
+use palantir::{IconId, IconSet, IconTable, RgbaF32, Ui, WidgetId};
 use std::rc::Rc;
 
 /// A diskette: several flat fills over a vertical gradient, inside a clip
@@ -115,7 +115,7 @@ pub(crate) fn build(ui: &mut Ui) {
             tiles(ui, |ui| {
                 for (px, label) in SIZES {
                     demo_cell_at(ui, label, px + 24.0, px + 24.0, |ui| {
-                        draw(ui, &icons, icons.save, Color::WHITE);
+                        draw(ui, &icons, icons.save, RgbaF32::WHITE);
                     });
                 }
             });
@@ -128,16 +128,16 @@ pub(crate) fn build(ui: &mut Ui) {
         |ui| {
             tiles(ui, |ui| {
                 demo_cell_at(ui, "save — gradient + clip path", 120.0, 120.0, |ui| {
-                    draw(ui, &icons, icons.save, Color::WHITE);
+                    draw(ui, &icons, icons.save, RgbaF32::WHITE);
                 });
                 demo_cell_at(ui, "folder — radial + drop shadow", 120.0, 120.0, |ui| {
-                    draw(ui, &icons, icons.folder, Color::WHITE);
+                    draw(ui, &icons, icons.folder, RgbaF32::WHITE);
                 });
                 demo_cell_at(ui, "new-file — tintable outline", 120.0, 120.0, |ui| {
-                    draw(ui, &icons, icons.new_file, Color::WHITE);
+                    draw(ui, &icons, icons.new_file, RgbaF32::WHITE);
                 });
                 demo_cell_at(ui, "wide — 2:1, Contain", 160.0, 120.0, |ui| {
-                    draw(ui, &icons, icons.wide, Color::WHITE);
+                    draw(ui, &icons, icons.wide, RgbaF32::WHITE);
                 });
             });
         },
@@ -149,9 +149,9 @@ pub(crate) fn build(ui: &mut Ui) {
         |ui| {
             tiles(ui, |ui| {
                 for (label, tint) in [
-                    ("tintable, white", Color::WHITE),
-                    ("tintable, amber", Color::rgb(0.98, 0.75, 0.15)),
-                    ("tintable, teal", Color::rgb(0.30, 0.85, 0.78)),
+                    ("tintable, white", RgbaF32::WHITE),
+                    ("tintable, amber", RgbaF32::srgb(0.98, 0.75, 0.15)),
+                    ("tintable, teal", RgbaF32::srgb(0.30, 0.85, 0.78)),
                 ] {
                     demo_cell_at(ui, label, 96.0, 96.0, |ui| {
                         draw(ui, &icons, icons.new_file, tint);
@@ -160,7 +160,7 @@ pub(crate) fn build(ui: &mut Ui) {
                 // A colour icon takes only the tint's alpha, so fading is
                 // what it gets instead of recolouring.
                 demo_cell_at(ui, "colour icon at 40% alpha", 96.0, 96.0, |ui| {
-                    draw(ui, &icons, icons.save, Color::rgba(1.0, 1.0, 1.0, 0.4));
+                    draw(ui, &icons, icons.save, RgbaF32::srgba(1.0, 1.0, 1.0, 0.4));
                 });
                 // …and `desaturate` is the other half of a disabled state:
                 // the artwork's own luminance, hue gone.
@@ -173,7 +173,7 @@ pub(crate) fn build(ui: &mut Ui) {
                             .set
                             .shape(icons.save)
                             .desaturate(true)
-                            .tint(Color::rgba(1.0, 1.0, 1.0, 0.5)),
+                            .tint(RgbaF32::srgba(1.0, 1.0, 1.0, 0.5)),
                     );
                 });
             });
@@ -187,7 +187,7 @@ pub(crate) fn build(ui: &mut Ui) {
     );
 }
 
-fn draw(ui: &mut Ui, icons: &Icons, icon: IconId, tint: Color) {
+fn draw(ui: &mut Ui, icons: &Icons, icon: IconId, tint: RgbaF32) {
     ui.add_shape(icons.set.shape(icon).tint(tint));
 }
 

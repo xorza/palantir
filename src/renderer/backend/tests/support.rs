@@ -1,7 +1,7 @@
 //! Building a `RenderBuffer` by hand, and reading the emitted steps back.
 
 use crate::display::Display;
-use crate::primitives::color::{Color, ColorF16, ColorU8};
+use crate::primitives::color::{RgbaF16, RgbaF32, RgbaU8};
 use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
 use crate::primitives::span::Span;
@@ -94,9 +94,9 @@ pub(super) fn scissor_count(steps: &[RenderStep]) -> usize {
 fn dummy_quad() -> Quad {
     Quad {
         rect: Rect::new(0.0, 0.0, 10.0, 10.0),
-        fill: Color::WHITE.into(),
+        fill: RgbaF32::WHITE.into(),
         corners: Corners::ZERO,
-        stroke_color: ColorF16::TRANSPARENT,
+        stroke_color: RgbaF16::TRANSPARENT,
         stroke_width: 0.0,
         ..Default::default()
     }
@@ -110,7 +110,7 @@ fn dummy_text() -> TextDrawRow {
             key: TextShapeKey::fixture(),
             span: Span::default(),
         },
-        color: ColorU8::WHITE,
+        color: RgbaU8::WHITE,
         scale: 1.0,
     }
 }

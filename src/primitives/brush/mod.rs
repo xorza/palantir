@@ -7,12 +7,12 @@ use crate::animation::animatable::Animatable;
 use crate::primitives::brush::gradient::conic_geometry::{ConicGradient, ConicGradientBuilder};
 use crate::primitives::brush::gradient::linear_geometry::{LinearGradient, LinearGradientBuilder};
 use crate::primitives::brush::gradient::radial_geometry::{RadialGradient, RadialGradientBuilder};
-use crate::primitives::color::{Color, ColorU8};
+use crate::primitives::color::{RgbaF32, RgbaU8};
 use crate::primitives::nan::NanCheck;
 
 /// Paint source for gradient-capable fills.
 ///
-/// `Solid(Color)` is the hot 99% path — 16 B inline, animation-lerpable.
+/// `Solid(RgbaF32)` is the hot 99% path — 16 B inline, animation-lerpable.
 /// `Linear`/`Radial`/`Conic` carry their geometry plus a
 /// [`GradientStops`](crate::GradientStops) array inline, which
 /// is what sizes the whole enum; gradient morph animations snap across
@@ -24,7 +24,7 @@ use crate::primitives::nan::NanCheck;
 // for all three types it applies to.
 #[derive(Clone, Debug, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
 pub enum Brush {
-    Solid(Color),
+    Solid(RgbaF32),
     Linear(LinearGradient),
     Radial(RadialGradient),
     Conic(ConicGradient),
@@ -52,16 +52,16 @@ impl CurveBrush {
     }
 }
 
-impl From<Color> for CurveBrush {
+impl From<RgbaF32> for CurveBrush {
     #[inline]
-    fn from(color: Color) -> Self {
+    fn from(color: RgbaF32) -> Self {
         Self(Brush::from(color))
     }
 }
 
-impl From<ColorU8> for CurveBrush {
+impl From<RgbaU8> for CurveBrush {
     #[inline]
-    fn from(color: ColorU8) -> Self {
+    fn from(color: RgbaU8) -> Self {
         Self(Brush::from(color))
     }
 }
@@ -81,7 +81,7 @@ impl From<LinearGradientBuilder> for CurveBrush {
 }
 
 impl Brush {
-    pub const TRANSPARENT: Self = Self::Solid(Color::TRANSPARENT);
+    pub const TRANSPARENT: Self = Self::Solid(RgbaF32::TRANSPARENT);
 
     /// Paints nothing visible.
     #[inline]
@@ -94,11 +94,11 @@ impl Brush {
         }
     }
 
-    /// Extracts the underlying `Color` for the solid fast path. Returns
+    /// Extracts the underlying `RgbaF32` for the solid fast path. Returns
     /// `None` for gradient variants. Takes `&self` so callers with a borrowed
     /// `Brush` don't need to clone just to pull out the solid color.
     #[inline]
-    pub const fn as_solid(&self) -> Option<Color> {
+    pub const fn as_solid(&self) -> Option<RgbaF32> {
         match self {
             Brush::Solid(c) => Some(*c),
             Brush::Linear(_) | Brush::Radial(_) | Brush::Conic(_) => None,
@@ -123,16 +123,16 @@ impl Default for Brush {
     }
 }
 
-impl From<Color> for Brush {
+impl From<RgbaF32> for Brush {
     #[inline]
-    fn from(c: Color) -> Self {
+    fn from(c: RgbaF32) -> Self {
         Brush::Solid(c)
     }
 }
 
-impl From<ColorU8> for Brush {
+impl From<RgbaU8> for Brush {
     #[inline]
-    fn from(color: ColorU8) -> Self {
+    fn from(color: RgbaU8) -> Self {
         Brush::Solid(color.into())
     }
 }
@@ -187,7 +187,7 @@ impl Animatable for Brush {
         // re-`Clone` — the tuple-by-value pattern needs `Brush: Copy`,
         // and the trait requires only `Clone`.
         match (&a, &b) {
-            (Brush::Solid(x), Brush::Solid(y)) => Brush::Solid(Color::lerp(*x, *y, t)),
+            (Brush::Solid(x), Brush::Solid(y)) => Brush::Solid(RgbaF32::lerp(*x, *y, t)),
             // Gradient morphs snap until interpolation between gradient payloads exists.
             _ => {
                 if t >= 1.0 {
@@ -233,7 +233,7 @@ impl Animatable for Brush {
 
     #[inline]
     fn zero() -> Self {
-        Brush::Solid(Color::zero())
+        Brush::Solid(RgbaF32::zero())
     }
 
     #[inline]

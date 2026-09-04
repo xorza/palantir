@@ -5,7 +5,7 @@
 use crate::animation::anim_spec::AnimSpec;
 use crate::input::response::response_state::ResponseState;
 use crate::primitives::background::Background;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::corners::Corners;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
@@ -31,9 +31,9 @@ use glam::Vec2;
 pub struct ToggleTheme {
     pub unchecked: StatefulLook,
     pub checked: StatefulLook,
-    /// Color of the check polyline (Checkbox) or filled dot
+    /// RgbaF32 of the check polyline (Checkbox) or filled dot
     /// (RadioButton). Painted on top of the `checked` chrome.
-    pub indicator: Color,
+    pub indicator: RgbaF32,
     /// Outer box/pip square side in logical px.
     pub box_size: f32,
     /// Stroke width of the check polyline (Checkbox).
@@ -143,7 +143,7 @@ impl ToggleTheme {
         t
     }
 
-    fn built(geometry: ToggleGeometry, indicator: Color, p: &Palette) -> Self {
+    fn built(geometry: ToggleGeometry, indicator: RgbaF32, p: &Palette) -> Self {
         let ToggleGeometry {
             corner,
             box_size,
@@ -152,7 +152,7 @@ impl ToggleTheme {
         let radius = Corners::all(corner);
         let edge = p.border_strong();
         let bg =
-            |fill: Color, stroke: Stroke| Background::rounded(fill, radius).with_stroke(stroke);
+            |fill: RgbaF32, stroke: Stroke| Background::rounded(fill, radius).with_stroke(stroke);
         let disabled_text = Some(TextStyle::default().with_color(p.text_disabled));
         let unchecked = StatefulLook {
             normal: WidgetLook {

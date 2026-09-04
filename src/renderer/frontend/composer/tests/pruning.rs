@@ -2,7 +2,7 @@
 
 use crate::primitives::lut_row::LutRow;
 use crate::primitives::{
-    color::Color, corners::Corners, rect::Rect, stroke::Stroke, translate_scale::TranslateScale,
+    color::RgbaF32, corners::Corners, rect::Rect, stroke::Stroke, translate_scale::TranslateScale,
 };
 use crate::renderer::frontend::capture::PaintCapture;
 use crate::renderer::frontend::composer::tests::support::{
@@ -113,8 +113,8 @@ fn prune_does_not_drop_stroked_quad_under_solid_cover() {
             b.draw_quad(DrawQuadPayload::rect(
                 rect(0.0, 0.0, 100.0, 100.0),
                 Corners::default(),
-                BrushSource::Solid(Color::rgb(1.0, 0.0, 0.0).into()),
-                Stroke::solid(Color::rgb(0.0, 1.0, 0.0), 2.0).into(),
+                BrushSource::Solid(RgbaF32::srgb(1.0, 0.0, 0.0).into()),
+                Stroke::solid(RgbaF32::srgb(0.0, 1.0, 0.0), 2.0).into(),
             ));
             draw(b, rect(0.0, 0.0, 100.0, 100.0)); // solid on top
         },
@@ -151,7 +151,7 @@ fn prune_rounded_on_top_uses_deflated_cover() {
             b.draw_quad(DrawQuadPayload::rect(
                 rect(0.0, 0.0, 100.0, 100.0),
                 Corners::all(10.0),
-                BrushSource::Solid(Color::rgb(1.0, 1.0, 1.0).into()),
+                BrushSource::Solid(RgbaF32::srgb(1.0, 1.0, 1.0).into()),
                 Stroke::ZERO.into(),
             ));
         },
@@ -168,7 +168,7 @@ fn prune_rounded_on_top_uses_deflated_cover() {
             b.draw_quad(DrawQuadPayload::rect(
                 rect(0.0, 0.0, 100.0, 100.0),
                 Corners::all(10.0),
-                BrushSource::Solid(Color::rgb(1.0, 1.0, 1.0).into()),
+                BrushSource::Solid(RgbaF32::srgb(1.0, 1.0, 1.0).into()),
                 Stroke::ZERO.into(),
             ));
             draw(b, rect(0.0, 0.0, 100.0, 100.0)); // sharp opaque on top
@@ -193,7 +193,7 @@ fn prune_keeps_transparent_solid_as_non_occluder() {
             b.draw_quad(DrawQuadPayload::rect(
                 rect(0.0, 0.0, 100.0, 100.0),
                 Corners::default(),
-                BrushSource::Solid(Color::rgba(1.0, 1.0, 1.0, 0.5).into()),
+                BrushSource::Solid(RgbaF32::srgba(1.0, 1.0, 1.0, 0.5).into()),
                 Stroke::ZERO.into(),
             ));
         },
@@ -217,7 +217,7 @@ fn prune_rounded_occluder_drops_smaller_under_inside_inscribed_rect() {
             b.draw_quad(DrawQuadPayload::rect(
                 rect(0.0, 0.0, 100.0, 100.0),
                 Corners::all(10.0),
-                BrushSource::Solid(Color::rgb(1.0, 1.0, 1.0).into()),
+                BrushSource::Solid(RgbaF32::srgb(1.0, 1.0, 1.0).into()),
                 Stroke::ZERO.into(),
             ));
         },
@@ -246,7 +246,7 @@ fn prune_rounded_occluder_keeps_under_overlapping_corner_cutout() {
             b.draw_quad(DrawQuadPayload::rect(
                 rect(0.0, 0.0, 100.0, 100.0),
                 Corners::all(20.0),
-                BrushSource::Solid(Color::rgb(1.0, 1.0, 1.0).into()),
+                BrushSource::Solid(RgbaF32::srgb(1.0, 1.0, 1.0).into()),
                 Stroke::ZERO.into(),
             ));
         },
@@ -309,7 +309,7 @@ fn prune_keeps_shadow_under_opaque_cover() {
             b.draw_quad(DrawQuadPayload::shadow(
                 rect(20.0, 20.0, 60.0, 60.0),
                 Corners::default(),
-                Color::rgba(0.0, 0.0, 0.0, 0.5).into(),
+                RgbaF32::srgba(0.0, 0.0, 0.0, 0.5).into(),
                 FillKind::SHADOW_DROP,
                 // (offset.x, offset.y, sigma, spread) — sigma=4 ⇒ 8-px halo.
                 FillAxis::from_lanes(0.0, 0.0, 4.0, 0.0),
@@ -359,8 +359,8 @@ fn prune_stroked_occluder_drops_smaller_sharp_under() {
             b.draw_quad(DrawQuadPayload::rect(
                 rect(0.0, 0.0, 100.0, 100.0),
                 Corners::default(),
-                BrushSource::Solid(Color::rgb(1.0, 1.0, 1.0).into()),
-                Stroke::solid(Color::rgb(0.0, 0.0, 0.0), 2.0).into(),
+                BrushSource::Solid(RgbaF32::srgb(1.0, 1.0, 1.0).into()),
+                Stroke::solid(RgbaF32::srgb(0.0, 0.0, 0.0), 2.0).into(),
             ));
         },
         &params(1.0, UVec2::new(200, 200)),
@@ -411,25 +411,25 @@ fn prune_occluder_stroke_translucency_gates_cover() {
         Case {
             label: "opaque_stroke_aa_edge_not_covered",
             under: rect(0.0, 0.0, 100.0, 100.0),
-            stroke: Stroke::solid(Color::rgb(0.0, 1.0, 0.0), 4.0),
+            stroke: Stroke::solid(RgbaF32::srgb(0.0, 1.0, 0.0), 4.0),
             pruned: false,
         },
         Case {
             label: "translucent_stroke_ring_not_covered",
             under: rect(0.0, 0.0, 100.0, 100.0),
-            stroke: Stroke::solid(Color::rgba(0.0, 1.0, 0.0, 0.5), 4.0),
+            stroke: Stroke::solid(RgbaF32::srgba(0.0, 1.0, 0.0, 0.5), 4.0),
             pruned: false,
         },
         Case {
             label: "translucent_stroke_interior_covered",
             under: rect(10.0, 10.0, 50.0, 50.0),
-            stroke: Stroke::solid(Color::rgba(0.0, 1.0, 0.0, 0.5), 4.0),
+            stroke: Stroke::solid(RgbaF32::srgba(0.0, 1.0, 0.0, 0.5), 4.0),
             pruned: true,
         },
         Case {
             label: "stroke_wider_than_half_rect_no_cover",
             under: rect(10.0, 10.0, 50.0, 50.0),
-            stroke: Stroke::solid(Color::rgba(0.0, 1.0, 0.0, 0.5), 60.0),
+            stroke: Stroke::solid(RgbaF32::srgba(0.0, 1.0, 0.0, 0.5), 60.0),
             pruned: false,
         },
     ];
@@ -440,7 +440,7 @@ fn prune_occluder_stroke_translucency_gates_cover() {
                 b.draw_quad(DrawQuadPayload::rect(
                     rect(0.0, 0.0, 100.0, 100.0),
                     Corners::default(),
-                    BrushSource::Solid(Color::rgb(1.0, 1.0, 1.0).into()),
+                    BrushSource::Solid(RgbaF32::srgb(1.0, 1.0, 1.0).into()),
                     (&case.stroke).into(),
                 ));
             },
@@ -581,18 +581,18 @@ fn rect_inflated_round_trips_with_deflated_by_uniform() {
 fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
     use crate::primitives::brush::gradient::FillAxis;
     use crate::primitives::brush::gradient::Spread;
-    use crate::primitives::color::ColorF16;
+    use crate::primitives::color::RgbaF16;
     use crate::primitives::fill_kind::FillKind;
 
     let vp = UVec2::new(200, 200);
-    let bg = Color::rgb(0.14, 0.16, 0.22);
-    // The override rides a ColorF16 lane; expected value is the f16
+    let bg = RgbaF32::srgb(0.14, 0.16, 0.22);
+    // The override rides a RgbaF16 lane; expected value is the f16
     // round-trip of the input, not the input itself.
-    let folded = ColorF16::from(bg).unpack();
+    let folded = RgbaF16::from(bg).unpack();
 
     // (case, builder, expected quad count, expected override)
     type Build = fn(&mut PaintCapture);
-    let cases: &[(&str, Build, usize, Option<Color>)] = &[
+    let cases: &[(&str, Build, usize, Option<RgbaF32>)] = &[
         (
             "qualifying root folds, later quad stays",
             |b| {
@@ -600,7 +600,7 @@ fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
                 draw(b, rect(10.0, 10.0, 20.0, 20.0));
             },
             1,
-            Some(Color::rgb(1.0, 1.0, 1.0)),
+            Some(RgbaF32::srgb(1.0, 1.0, 1.0)),
         ),
         (
             "rounded corners disqualify",
@@ -608,7 +608,7 @@ fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
                 b.draw_quad(DrawQuadPayload::rect(
                     rect(0.0, 0.0, 200.0, 200.0),
                     Corners::all(4.0),
-                    BrushSource::Solid(Color::rgb(1.0, 1.0, 1.0).into()),
+                    BrushSource::Solid(RgbaF32::srgb(1.0, 1.0, 1.0).into()),
                     Stroke::ZERO.into(),
                 ));
             },
@@ -621,8 +621,8 @@ fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
                 b.draw_quad(DrawQuadPayload::rect(
                     rect(0.0, 0.0, 200.0, 200.0),
                     Corners::default(),
-                    BrushSource::Solid(Color::rgb(1.0, 1.0, 1.0).into()),
-                    Stroke::solid(Color::WHITE, 2.0).into(),
+                    BrushSource::Solid(RgbaF32::srgb(1.0, 1.0, 1.0).into()),
+                    Stroke::solid(RgbaF32::WHITE, 2.0).into(),
                 ));
             },
             1,
@@ -634,7 +634,7 @@ fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
                 b.draw_quad(DrawQuadPayload::rect(
                     rect(0.0, 0.0, 200.0, 200.0),
                     Corners::default(),
-                    BrushSource::Solid(Color::rgba(1.0, 1.0, 1.0, 0.5).into()),
+                    BrushSource::Solid(RgbaF32::srgba(1.0, 1.0, 1.0, 0.5).into()),
                     Stroke::ZERO.into(),
                 ));
             },
@@ -674,7 +674,7 @@ fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
                 draw(b, rect(0.0, 0.0, 200.0, 200.0));
             },
             0,
-            Some(Color::rgb(1.0, 1.0, 1.0)),
+            Some(RgbaF32::srgb(1.0, 1.0, 1.0)),
         ),
         (
             "active clip disqualifies",
@@ -693,12 +693,12 @@ fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
                 b.draw_quad(DrawQuadPayload::rect(
                     rect(0.0, 0.0, 200.0, 200.0),
                     Corners::default(),
-                    BrushSource::Solid(Color::rgb(0.14, 0.16, 0.22).into()),
+                    BrushSource::Solid(RgbaF32::srgb(0.14, 0.16, 0.22).into()),
                     Stroke::ZERO.into(),
                 ));
             },
             0,
-            Some(Color::rgb(0.14, 0.16, 0.22)),
+            Some(RgbaF32::srgb(0.14, 0.16, 0.22)),
         ),
     ];
 
@@ -709,7 +709,7 @@ fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
             *want_quads,
             "{name}: quad count after fold decision",
         );
-        let want = want_override.map(|c| ColorF16::from(c).unpack());
+        let want = want_override.map(|c| RgbaF16::from(c).unpack());
         assert_eq!(buf.clear_override, want, "{name}: clear_override");
     }
 
@@ -736,7 +736,7 @@ fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
 /// cover lands survives the discard (its pops are still ahead).
 #[test]
 fn clear_fold_discards_hidden_underlay_mid_stream() {
-    use crate::primitives::color::ColorF16;
+    use crate::primitives::color::RgbaF16;
 
     let vp = UVec2::new(200, 200);
 
@@ -759,7 +759,7 @@ fn clear_fold_discards_hidden_underlay_mid_stream() {
         &params(1.0, vp),
     );
 
-    let folded = ColorF16::from(Color::rgb(1.0, 1.0, 1.0)).unpack();
+    let folded = RgbaF16::from(RgbaF32::srgb(1.0, 1.0, 1.0)).unpack();
     assert_eq!(buf.clear_override, Some(folded), "the cover folds");
     // Underlay gone: only the post-cover quad + text survive, in one
     // unscissored group (the pre-cover clipped group was discarded).

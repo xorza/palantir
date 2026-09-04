@@ -5,7 +5,7 @@ use crate::primitives::approx::FloatHash;
 use crate::primitives::brush::gradient::gradient_builder::GradientBuilder;
 use crate::primitives::brush::gradient::stops::Stop;
 use crate::primitives::brush::gradient::{Gradient, GradientGeometry, Interp};
-use crate::primitives::color::ColorU8;
+use crate::primitives::color::RgbaU8;
 use crate::primitives::nan::NanCheck;
 use glam::Vec2;
 
@@ -63,7 +63,7 @@ impl RadialGradient {
     /// `radius = (0.5, 0.5)` (covers the bounding circle inscribed in
     /// the unit square). `c0` at offset 0 (centre), `c1` at offset 1
     /// (edge).
-    pub fn two_stop_centered(c0: impl Into<ColorU8>, c1: impl Into<ColorU8>) -> Self {
+    pub fn two_stop_centered(c0: impl Into<RgbaU8>, c1: impl Into<RgbaU8>) -> Self {
         Self::new(
             Vec2::splat(0.5),
             Vec2::splat(0.5),

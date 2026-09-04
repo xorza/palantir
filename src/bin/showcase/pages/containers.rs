@@ -7,7 +7,7 @@
 use crate::support;
 use crate::support::{demo_cell, demo_cell_at, on_swatch_style, section, swatch_bg, tiles};
 use palantir::{
-    Align, Background, Color, Configure, Corners, Frame, Grid, GridCell, Justify, Panel, Sizing,
+    Align, Background, Configure, Corners, Frame, Grid, GridCell, Justify, Panel, RgbaF32, Sizing,
     Stroke, Text, TextStyle, Track, Ui,
 };
 use std::hash::Hash;
@@ -192,11 +192,11 @@ const TAGS: &[&str] = &[
     "linear",
 ];
 
-fn sw(ui: &mut Ui, id: &'static str, w: f32, h: f32, c: Color) {
+fn sw(ui: &mut Ui, id: &'static str, w: f32, h: f32, c: RgbaF32) {
     support::swatch(ui, id, (Sizing::fixed(w), Sizing::fixed(h)), c);
 }
 
-fn positioned(ui: &mut Ui, id: &'static str, x: f32, y: f32, c: Color) {
+fn positioned(ui: &mut Ui, id: &'static str, x: f32, y: f32, c: RgbaF32) {
     Frame::new()
         .id_salt(id)
         .position((x, y))
@@ -237,7 +237,7 @@ fn grid_tile(
     cell: (u16, u16),
     span: Option<(u16, u16)>,
     size: Option<(Sizing, Sizing)>,
-    color: Color,
+    color: RgbaF32,
 ) {
     let mut tile = Panel::zstack()
         .auto_id()

@@ -1,6 +1,6 @@
 //! Mesh payload spans and per-draw GPU instance data.
 
-use crate::primitives::color::ColorU8;
+use crate::primitives::color::RgbaU8;
 use crate::primitives::span::Span;
 use glam::Vec2;
 use soa_rs::Soars;
@@ -37,5 +37,5 @@ pub(crate) struct MeshDrawRow {
 pub(crate) struct MeshInstance {
     pub(crate) translate: Vec2,
     pub(crate) scale: f32,
-    pub(crate) tint: ColorU8,
+    pub(crate) tint: RgbaU8,
 }

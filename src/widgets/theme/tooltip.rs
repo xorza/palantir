@@ -2,7 +2,7 @@
 //! appears.
 
 use crate::primitives::background::Background;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::corners::Corners;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::size::Size;
@@ -64,7 +64,7 @@ impl TooltipTheme {
         let panel = Background::rounded(p.elem, Corners::all(4.0))
             .with_stroke(Stroke::solid(p.border_mid(), 1.0))
             .with_shadow(Shadow::drop(
-                Color::linear_rgba(0.0, 0.0, 0.0, 0.6),
+                RgbaF32::new(0.0, 0.0, 0.0, 0.6),
                 Vec2::new(2.0, 2.0),
                 5.0,
             ));

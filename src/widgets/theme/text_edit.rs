@@ -3,7 +3,7 @@
 
 use crate::input::response::response_state::ResponseState;
 use crate::primitives::background::Background;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::corners::Corners;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
@@ -34,22 +34,22 @@ pub struct TextEditTheme {
     /// `[text_edit.looks.active]`).
     #[serde(flatten)]
     pub looks: StatefulLook,
-    pub placeholder: Color,
-    pub caret: Color,
+    pub placeholder: RgbaF32,
+    pub caret: RgbaF32,
     /// Width of the caret rect in logical px. The caret is painted as
     /// a thin Overlay rect at the caret's prefix-x; one pixel reads as
     /// a hairline, two as a chunkier i-beam. Default 1.5 px.
     pub caret_width: f32,
     /// Selection highlight fill, painted as a wash behind the selected
     /// glyphs (see `TextEdit::show`).
-    pub selection: Color,
+    pub selection: RgbaF32,
     /// Spacing and transition spec — see [`SlotDefaults`].
     #[serde(flatten)]
     pub defaults: SlotDefaults,
 }
 
 impl TextEditTheme {
-    /// `placeholder` / `caret` / `selection` are bare `Color`s, not
+    /// `placeholder` / `caret` / `selection` are bare `RgbaF32`s, not
     /// `TextStyle`s — they take their size from the resolved look.
     /// Destructured so a new field fails to compile here — see
     /// [`Theme::for_each_text`](crate::Theme).

@@ -1,7 +1,7 @@
 //! Composited icon draw records consumed by the icon backend.
 
 use crate::icons::icon_raster_key::IconRasterKey;
-use crate::primitives::color::ColorU8;
+use crate::primitives::color::RgbaU8;
 use glam::IVec2;
 
 /// One icon draw, placed in physical-pixel space.
@@ -27,7 +27,7 @@ pub(crate) struct IconDrawRow {
     pub(crate) origin: IVec2,
     /// Straight-alpha **linear** RGBA, like a text run's colour. Multiplies a
     /// mask icon whole; a colour icon takes the alpha alone.
-    pub(crate) color: ColorU8,
+    pub(crate) color: RgbaU8,
     /// Draw a colour icon as its own luminance — the backend folds this into
     /// the quad's packed uv field rather than spending an instance lane on it.
     pub(crate) desaturate: bool,

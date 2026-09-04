@@ -3,7 +3,7 @@
 use crate::Ui;
 use crate::display::user_scale::UserScale;
 use crate::primitives::background::Background;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::widget_id::WidgetId;
 use crate::renderer::render_plan::RenderPlan;
 use crate::scene::cascade::CascadeInputHash;
@@ -219,7 +219,7 @@ fn small_damage_with_surface_change_forces_full_repaint() {
 #[test]
 fn stable_surface_does_not_short_circuit() {
     let mut h = UiHarness::new(DISPLAY.physical);
-    let build = |ui: &mut Ui, color: Color| {
+    let build = |ui: &mut Ui, color: RgbaF32| {
         one_frame(ui, color);
     };
 

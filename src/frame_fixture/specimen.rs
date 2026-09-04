@@ -13,7 +13,7 @@ use crate::primitives::brush::gradient::conic_geometry::ConicGradient;
 use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::brush::gradient::radial_geometry::RadialGradient;
 use crate::primitives::brush::gradient::stops::Stop;
-use crate::primitives::color::{Color, ColorU8};
+use crate::primitives::color::{RgbaF32, RgbaU8};
 use crate::primitives::mesh::Mesh;
 use crate::primitives::rect::Rect;
 use crate::primitives::shadow::Shadow;
@@ -72,24 +72,24 @@ fn add_brush_swatches(ui: &mut Ui) {
     ui.add_shape(
         Shape::rect(Rect::new(6.0, 6.0, 74.0, 38.0))
             .corners(6.0)
-            .fill(Color::hex(0xd9544c))
-            .stroke(Stroke::solid(Color::rgba(1.0, 1.0, 1.0, 0.5), 1.0)),
+            .fill(RgbaF32::hex(0xd9544c))
+            .stroke(Stroke::solid(RgbaF32::srgba(1.0, 1.0, 1.0, 0.5), 1.0)),
     );
     ui.add_shape(
         Shape::rect(Rect::new(88.0, 6.0, 74.0, 38.0))
             .corners(6.0)
             .fill(
                 LinearGradient::builder(PI / 2.0)
-                    .stop(0.0, ColorU8::hex(0x1a1a2e))
-                    .stop(1.0, ColorU8::hex(0x4c5cdb)),
+                    .stop(0.0, RgbaU8::hex(0x1a1a2e))
+                    .stop(1.0, RgbaU8::hex(0x4c5cdb)),
             ),
     );
     ui.add_shape(
         Shape::rect(Rect::new(6.0, 52.0, 74.0, 38.0))
             .corners(6.0)
             .fill(RadialGradient::two_stop_centered(
-                ColorU8::hex(0xfacc15),
-                ColorU8::hex(0x1a1a2e),
+                RgbaU8::hex(0xfacc15),
+                RgbaU8::hex(0x1a1a2e),
             )),
     );
     ui.add_shape(
@@ -99,9 +99,9 @@ fn add_brush_swatches(ui: &mut Ui) {
                 glam::Vec2::splat(0.5),
                 0.0,
                 [
-                    Stop::new(0.0, ColorU8::hex(0xff5e44)),
-                    Stop::new(0.5, ColorU8::hex(0x46c46c)),
-                    Stop::new(1.0, ColorU8::hex(0x4c5cdb)),
+                    Stop::new(0.0, RgbaU8::hex(0xff5e44)),
+                    Stop::new(0.5, RgbaU8::hex(0x46c46c)),
+                    Stop::new(1.0, RgbaU8::hex(0x4c5cdb)),
                 ],
             )),
     );
@@ -155,7 +155,7 @@ fn add_polyline(ui: &mut Ui) {
         demo_swatches::RED,
         demo_swatches::ORANGE,
         demo_swatches::LIME,
-        Color::hex(0x46c46c),
+        RgbaF32::hex(0x46c46c),
         demo_swatches::TEAL,
         demo_swatches::VIOLET,
     ];
@@ -190,7 +190,7 @@ fn add_shadow(ui: &mut Ui) {
     let plate = Rect::new(34.0, 20.0, 100.0, 52.0);
     ui.add_shape(
         Shape::shadow(Shadow::drop(
-            Color::rgba(0.0, 0.0, 0.0, 0.75),
+            RgbaF32::srgba(0.0, 0.0, 0.0, 0.75),
             glam::Vec2::new(0.0, 7.0),
             9.0,
         ))
@@ -200,7 +200,7 @@ fn add_shadow(ui: &mut Ui) {
     ui.add_shape(
         Shape::rect(plate)
             .corners(10.0)
-            .fill(Color::hex(0x30364a))
+            .fill(RgbaF32::hex(0x30364a))
             .stroke(Stroke::solid(tokens::BORDER, 1.0)),
     );
 }
@@ -215,9 +215,9 @@ fn gradient_mesh(ui: &mut Ui) {
     ui.with_state::<Mesh, _>(id, |ui, m| {
         if fresh {
             *m = Mesh::with_capacity(3, 3);
-            let a = m.vertex(glam::Vec2::new(96.0, 82.0), ColorU8::hex(0xff5e44));
-            let b = m.vertex(glam::Vec2::new(128.0, 22.0), ColorU8::hex(0xfacc15));
-            let c = m.vertex(glam::Vec2::new(160.0, 82.0), ColorU8::hex(0x46c46c));
+            let a = m.vertex(glam::Vec2::new(96.0, 82.0), RgbaU8::hex(0xff5e44));
+            let b = m.vertex(glam::Vec2::new(128.0, 22.0), RgbaU8::hex(0xfacc15));
+            let c = m.vertex(glam::Vec2::new(160.0, 82.0), RgbaU8::hex(0x46c46c));
             m.triangle(a, b, c);
         }
         ui.add_shape(Shape::mesh(m));

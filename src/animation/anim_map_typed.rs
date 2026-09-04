@@ -76,7 +76,7 @@ impl<T: Animatable> AnimMapTyped<T> {
     ) -> TickResult<T> {
         // `T: Animatable` is `Clone` (not `Copy`): each consume of a
         // T field through trait methods needs an explicit `.clone()`.
-        // For Copy fields (f32, Vec2, Color) the clone compiles away;
+        // For Copy fields (f32, Vec2, RgbaF32) the clone compiles away;
         // for heavyweights (Background) the clone is a deliberate
         // memcpy at a known site.
         let row = match self.rows.entry((id, slot)) {

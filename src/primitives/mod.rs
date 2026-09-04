@@ -16,7 +16,7 @@
 /// *not* here is what actually differs: the constructors each offers,
 /// and which two-value shorthand its wire format expands.
 ///
-/// Not every `F16x4` newtype wants this. `ColorF16` and `FillAxis` are
+/// Not every `F16x4` newtype wants this. `RgbaF16` and `FillAxis` are
 /// the same packing with a different surface — no lane names to print,
 /// no wire format — and derive `Debug` like ordinary structs.
 macro_rules! f16x4_lanes {

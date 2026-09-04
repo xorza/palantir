@@ -18,7 +18,7 @@ mod harness;
 
 use glam::UVec2;
 use image::Rgba;
-use palantir::{Color, WindowConfig, WindowToken};
+use palantir::{RgbaF32, WindowConfig, WindowToken};
 
 use crate::harness::Harness;
 
@@ -29,7 +29,7 @@ fn readback_returns_clear_color_for_empty_scene() {
     let mut h = Harness::new();
     let size = UVec2::new(16, 16);
     let (sr, sg, sb) = (0.5, 0.25, 0.75);
-    let clear = Color::rgb(sr, sg, sb);
+    let clear = RgbaF32::srgb(sr, sg, sb);
     let scene = |ui: &mut palantir::Ui| {
         // Vetoing a close the offscreen host never requests is a no-op, not an
         // error — unlike opening a window, which it cannot service at all.
@@ -43,7 +43,7 @@ fn readback_returns_clear_color_for_empty_scene() {
     assert_eq!(replayed, img);
     assert_eq!(img.dimensions(), (size.x, size.y));
 
-    // sRGB → linear (in `Color::rgb`) → sRGB (wgpu's sRGB target) round-trips
+    // sRGB → linear (in `RgbaF32::srgb`) → sRGB (wgpu's sRGB target) round-trips
     // to the original 8-bit sRGB values; ±2 covers rounding inside the pipeline.
     let expected = Rgba([
         (sr * 255.0).round() as u8,
@@ -67,7 +67,7 @@ fn readback_returns_clear_color_for_empty_scene() {
 #[should_panic(expected = "Ui::open_window(WindowToken(1))")]
 fn opening_a_window_offscreen_panics() {
     let mut h = Harness::new();
-    h.render(UVec2::new(16, 16), 1.0, Color::BLACK, |ui| {
+    h.render(UVec2::new(16, 16), 1.0, RgbaF32::BLACK, |ui| {
         ui.open_window(WindowToken(1), WindowConfig::new("unservable"));
     });
 }
@@ -77,7 +77,7 @@ fn opening_a_window_offscreen_panics() {
 #[should_panic(expected = "Ui::close_window(WindowToken(2))")]
 fn closing_a_window_offscreen_panics() {
     let mut h = Harness::new();
-    h.render(UVec2::new(16, 16), 1.0, Color::BLACK, |ui| {
+    h.render(UVec2::new(16, 16), 1.0, RgbaF32::BLACK, |ui| {
         ui.close_window(WindowToken(2));
     });
 }

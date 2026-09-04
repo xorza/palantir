@@ -1,7 +1,7 @@
 use crate::layout::types::align::Align;
 use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::brush::{Brush, CurveBrush};
-use crate::primitives::color::{Color, ColorU8};
+use crate::primitives::color::{RgbaF32, RgbaU8};
 use crate::primitives::mesh::Mesh;
 use crate::primitives::rect::Rect;
 use crate::primitives::stroke::Stroke;
@@ -87,8 +87,8 @@ fn triangle_noop_rejects_scale_relative_zero_area_without_winding_bias() {
     ];
 
     for case in cases {
-        let shape = Shape::triangle(case.a, case.b, case.c).fill(Color::WHITE);
-        assert_eq!(shape.fill, Color::WHITE, "case: {}", case.label);
+        let shape = Shape::triangle(case.a, case.b, case.c).fill(RgbaF32::WHITE);
+        assert_eq!(shape.fill, RgbaF32::WHITE, "case: {}", case.label);
         assert_eq!(shape.is_noop(), case.expected_noop, "case: {}", case.label);
     }
 }
@@ -100,8 +100,8 @@ fn triangle_noop_rejects_scale_relative_zero_area_without_winding_bias() {
 #[test]
 fn typed_builders_set_the_fields_they_name() {
     let rect = Rect::new(1.0, 2.0, 30.0, 40.0);
-    let gradient = LinearGradient::two_stop(0.25, Color::BLACK, Color::WHITE);
-    let stroke = Stroke::solid(Color::WHITE, 2.0);
+    let gradient = LinearGradient::two_stop(0.25, RgbaF32::BLACK, RgbaF32::WHITE);
+    let stroke = Stroke::solid(RgbaF32::WHITE, 2.0);
     let rect_shape = Shape::windowed_rect(rect)
         .fill(gradient.clone())
         .stroke(stroke)
@@ -113,7 +113,7 @@ fn typed_builders_set_the_fields_they_name() {
     assert_eq!(rect_shape.corners.as_array(), [6.0; 4]);
 
     let mesh = Mesh::new();
-    let tint = ColorU8::linear_rgb(10, 20, 30);
+    let tint = RgbaU8::rgb(10, 20, 30);
     let mesh_shape = Shape::mesh(&mesh).at(rect).tint(tint);
     assert!(std::ptr::eq(mesh_shape.mesh, &mesh));
     assert_eq!(mesh_shape.local_rect, Some(rect));
@@ -159,7 +159,7 @@ fn text_noop_rejects_invalid_metrics() {
                 ..GlyphFont::new(16.0)
             },
         )
-        .color(Color::WHITE);
+        .color(RgbaF32::WHITE);
         let shape = match local_origin {
             Some(origin) => shape.at_origin(origin),
             None => shape,
@@ -179,7 +179,7 @@ fn text_noop_rejects_invalid_metrics() {
                 ..GlyphFont::new(font_size_px)
             },
         )
-        .color(Color::WHITE)
+        .color(RgbaF32::WHITE)
         .wrap(TextWrap::SingleLine)
         .align(Align::TOP_LEFT)
         .family(FontFamily::SANS)
@@ -203,18 +203,18 @@ fn curve_brush_conversions_preserve_supported_paints_and_noop_state() {
         expected_noop: bool,
     }
 
-    let visible_gradient = LinearGradient::two_stop(0.0, Color::TRANSPARENT, Color::WHITE);
+    let visible_gradient = LinearGradient::two_stop(0.0, RgbaF32::TRANSPARENT, RgbaF32::WHITE);
     let transparent_gradient =
-        LinearGradient::two_stop(0.0, Color::TRANSPARENT, Color::TRANSPARENT);
+        LinearGradient::two_stop(0.0, RgbaF32::TRANSPARENT, RgbaF32::TRANSPARENT);
     let cases = [
         Case {
             label: "transparent_solid",
-            brush: Color::TRANSPARENT.into(),
+            brush: RgbaF32::TRANSPARENT.into(),
             expected_noop: true,
         },
         Case {
             label: "visible_solid",
-            brush: ColorU8::WHITE.into(),
+            brush: RgbaU8::WHITE.into(),
             expected_noop: false,
         },
         Case {

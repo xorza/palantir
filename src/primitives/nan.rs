@@ -39,12 +39,12 @@ use glam::Vec2;
 /// where this is checked.
 ///
 /// A type whose `const` predicates also need the sweep — [`Shadow`],
-/// [`Color`], [`Rect`], [`Size`] — carries it as an inherent `const fn`
+/// [`RgbaF32`], [`Rect`], [`Size`] — carries it as an inherent `const fn`
 /// and implements this trait by delegating there, so the field walk is
 /// written once.
 ///
 /// [`Shadow`]: crate::primitives::shadow::Shadow
-/// [`Color`]: crate::primitives::color::Color
+/// [`RgbaF32`]: crate::primitives::color::RgbaF32
 /// [`Rect`]: crate::primitives::rect::Rect
 /// [`Size`]: crate::primitives::size::Size
 pub(crate) trait NanCheck {

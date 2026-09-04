@@ -68,7 +68,7 @@ use crate::bench::Run;
 use crate::host::bench_gpu::{BenchGpu, Timing};
 use crate::host::offscreen::{OffscreenHost, test_support as offscreen_support};
 use crate::layout::types::sizing::Sizing;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::image::{Image, ImageFit};
 use crate::primitives::rect::Rect;
 use crate::renderer::backend::schedule::test_support::Walk;
@@ -200,11 +200,11 @@ fn cell_origin(i: usize) -> Vec2 {
 /// whole viewport is dirty and the frame stays `Full`. Geometry never
 /// changes, which keeps layout and measure fully cached — the record
 /// closure is the only thing that re-runs.
-fn tint(phase: bool) -> Color {
+fn tint(phase: bool) -> RgbaF32 {
     if phase {
-        Color::WHITE
+        RgbaF32::WHITE
     } else {
-        Color::rgb(0.85, 0.9, 1.0)
+        RgbaF32::srgb(0.85, 0.9, 1.0)
     }
 }
 

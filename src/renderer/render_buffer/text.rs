@@ -1,6 +1,6 @@
 //! Shaped text records consumed by the native text backend.
 
-use crate::primitives::color::ColorU8;
+use crate::primitives::color::RgbaU8;
 use crate::primitives::urect::URect;
 use crate::text::shaped_ref::ShapedTextRef;
 use glam::Vec2;
@@ -31,7 +31,7 @@ pub(crate) struct TextDrawRow {
     /// **Straight-alpha linear** bytes: the native text backend consumes
     /// linear and premultiplies at output, so nothing here makes an sRGB
     /// round trip.
-    pub(crate) color: ColorU8,
+    pub(crate) color: RgbaU8,
     /// Per-run scale factor on top of the global DPI scale, sourced from
     /// the cumulative ancestor `TranslateScale.scale` at compose time
     /// and snapped to a log-multiplicative ladder

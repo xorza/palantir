@@ -1,7 +1,7 @@
 //! The font, size, weight, colour and leading a run of text is shaped and
 //! painted with — the vocabulary every other theme carries a copy of.
 
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::text::font_family::FontFamily;
 use crate::text::font_style::FontStyle;
 use crate::text::font_weight::FontWeight;
@@ -46,7 +46,7 @@ pub struct TextStyle {
     /// `TextEdit` carry a state-dependent `TextStyle` per state, and
     /// every state that leaves it `None` — which is every active one by
     /// default — resolves to this.
-    pub color: Color,
+    pub color: RgbaF32,
     /// Line-height-to-font-size ratio. Drives the shaper's leading and
     /// the caret rect height (locked together via
     /// `ShapeRecord::Text.line_height_px`). Default matches cosmic-text's
@@ -136,7 +136,7 @@ impl TextStyle {
     }
 
     #[inline]
-    pub const fn with_color(mut self, c: Color) -> Self {
+    pub const fn with_color(mut self, c: RgbaF32) -> Self {
         self.color = c;
         self
     }
@@ -182,7 +182,7 @@ impl TextStyle {
 #[derive(Debug, serde::Deserialize)]
 struct UncheckedTextStyle {
     font_size_px: f32,
-    color: Color,
+    color: RgbaF32,
     line_height_mult: f32,
     family: FontFamily,
     weight: FontWeight,

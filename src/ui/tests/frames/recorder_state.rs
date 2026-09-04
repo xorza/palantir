@@ -1,7 +1,7 @@
 //! Theme sharing, and a subtree disabled between frames.
 
 use crate::primitives::background::Background;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::configure::Configure;
 use crate::ui::harness::UiHarness;
@@ -46,11 +46,11 @@ fn freshly_disabled_subtree_masks_stale_interactions() {
         "interactions must mask on the disable frame"
     );
 
-    use crate::primitives::color::ColorF16;
+    use crate::primitives::color::RgbaF16;
     use crate::scene::shapes::paint::ShapeBrush;
 
     let self_id = WidgetId::from_hash("self-disabled");
-    let disabled_fill = Color::rgb(0.8, 0.1, 0.2);
+    let disabled_fill = RgbaF32::srgb(0.8, 0.1, 0.2);
     let mut style = h.ui.theme.button.clone();
     style.looks.disabled.background = Background::fill(disabled_fill);
     let response = h.frame_value(|ui| {
@@ -76,7 +76,7 @@ fn freshly_disabled_subtree_masks_stale_interactions() {
     };
     assert_eq!(
         actual_fill,
-        ColorF16::from(disabled_fill),
+        RgbaF16::from(disabled_fill),
         "fresh self-disable must pick disabled visuals before cascade catches up",
     );
 }
@@ -97,7 +97,7 @@ fn theme_reads_share_and_writes_copy_on_write() {
     use std::rc::Rc;
 
     let mut h = UiHarness::new(SURFACE);
-    let clear = Color::rgb(0.25, 0.5, 0.75);
+    let clear = RgbaF32::srgb(0.25, 0.5, 0.75);
     h.ui.theme_mut().window_clear = clear;
 
     let handle = Rc::clone(h.ui.theme());
@@ -107,7 +107,7 @@ fn theme_reads_share_and_writes_copy_on_write() {
     );
 
     // Write with the handle alive: the `Ui` moves, the handle does not.
-    let recolored = Color::rgb(0.1, 0.2, 0.3);
+    let recolored = RgbaF32::srgb(0.1, 0.2, 0.3);
     h.ui.theme_mut().window_clear = recolored;
     assert_eq!(h.ui.theme().window_clear, recolored);
     assert_eq!(

@@ -10,12 +10,12 @@
 
 use crate::support::{demo_cell_light, section, tiles};
 use palantir::{
-    Background, Color, Configure, Corners, Panel, Rect, Shadow, ShadowShape, Shape, Sizing, Ui,
+    Background, Configure, Corners, Panel, Rect, RgbaF32, Shadow, ShadowShape, Shape, Sizing, Ui,
     Vec2,
 };
 
 const CARD: Rect = Rect::new(22.0, 28.0, 124.0, 86.0);
-const CARD_INK: Color = Color::hex(0xf2f2f7);
+const CARD_INK: RgbaF32 = RgbaF32::hex(0xf2f2f7);
 
 fn card_corners() -> Corners {
     Corners::all(12.0)
@@ -75,15 +75,28 @@ fn card_fill(ui: &mut Ui) {
 /// comparison the page makes says nothing, so neither route spells the
 /// parameters itself.
 fn soft_shadow() -> Shadow {
-    Shadow::drop(Color::rgba(0.0, 0.0, 0.0, 0.20), Vec2::new(0.0, 4.0), 8.0)
+    Shadow::drop(
+        RgbaF32::srgba(0.0, 0.0, 0.0, 0.20),
+        Vec2::new(0.0, 4.0),
+        8.0,
+    )
 }
 
 fn elevated_shadow() -> Shadow {
-    Shadow::drop(Color::rgba(0.0, 0.0, 0.0, 0.28), Vec2::new(0.0, 12.0), 20.0)
+    Shadow::drop(
+        RgbaF32::srgba(0.0, 0.0, 0.0, 0.28),
+        Vec2::new(0.0, 12.0),
+        20.0,
+    )
 }
 
 fn inset_shadow() -> Shadow {
-    Shadow::drop(Color::rgba(0.0, 0.0, 0.0, 0.45), Vec2::new(0.0, 3.0), 8.0).inset()
+    Shadow::drop(
+        RgbaF32::srgba(0.0, 0.0, 0.0, 0.45),
+        Vec2::new(0.0, 3.0),
+        8.0,
+    )
+    .inset()
 }
 
 /// Standard soft drop shadow — Material Design "elevation 2".
@@ -101,7 +114,7 @@ fn elevated(ui: &mut Ui) {
 /// Tight, dense shadow hugging the shape — UI button rest state.
 fn tight(ui: &mut Ui) {
     ui.add_shape(shadow_shape(Shadow::drop(
-        Color::rgba(0.0, 0.0, 0.0, 0.35),
+        RgbaF32::srgba(0.0, 0.0, 0.0, 0.35),
         Vec2::new(0.0, 1.0),
         2.0,
     )));
@@ -112,7 +125,7 @@ fn tight(ui: &mut Ui) {
 /// shifted by `offset`. Pins the degenerate-blur code path visually.
 fn sharp(ui: &mut Ui) {
     ui.add_shape(shadow_shape(Shadow::drop(
-        Color::rgba(0.0, 0.0, 0.0, 1.0),
+        RgbaF32::srgba(0.0, 0.0, 0.0, 1.0),
         Vec2::new(6.0, 6.0),
         2.0,
     )));
@@ -122,7 +135,7 @@ fn sharp(ui: &mut Ui) {
 /// Coloured glow, zero offset — bloom feel.
 fn glow(ui: &mut Ui) {
     ui.add_shape(shadow_shape(
-        Shadow::drop(Color::rgba(0.4, 0.6, 1.0, 0.6), Vec2::ZERO, 18.0).with_spread(2.0),
+        Shadow::drop(RgbaF32::srgba(0.4, 0.6, 1.0, 0.6), Vec2::ZERO, 18.0).with_spread(2.0),
     ));
     card_fill(ui);
 }
@@ -138,7 +151,7 @@ fn inset(ui: &mut Ui) {
 fn stacked(ui: &mut Ui) {
     for (dy, blur, alpha) in [(18.0, 24.0, 0.18), (8.0, 10.0, 0.22), (1.0, 2.0, 0.30)] {
         ui.add_shape(shadow_shape(Shadow::drop(
-            Color::rgba(0.0, 0.0, 0.0, alpha),
+            RgbaF32::srgba(0.0, 0.0, 0.0, alpha),
             Vec2::new(0.0, dy),
             blur,
         )));
@@ -178,7 +191,7 @@ fn chrome_inset() -> Background {
 /// shape-buffer-lowering route gets wrong; the encoder path is correct.
 fn chrome_translucent() -> Background {
     Background::rounded(CARD_INK.with_alpha(0.4), card_corners()).with_shadow(Shadow::drop(
-        Color::rgba(0.0, 0.0, 0.0, 0.5),
+        RgbaF32::srgba(0.0, 0.0, 0.0, 0.5),
         Vec2::new(0.0, 6.0),
         12.0,
     ))

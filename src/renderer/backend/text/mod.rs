@@ -2,13 +2,13 @@
 //!
 //! Built to Palantir's contracts:
 //!
-//! - **Linear-premul end to end.** `ColorU8` is straight-linear-u8 in,
+//! - **Linear-premul end to end.** `RgbaU8` is straight-linear-u8 in,
 //!   shader writes `vec4(rgb*a, a)`, blend is
 //!   `PREMULTIPLIED_ALPHA_BLENDING`. No sRGB encode/decode round-trip.
 //! - **Scissor does the clipping.** No per-glyph CPU clip; composer
 //!   group scissor crops; cheap y-range pre-cull keeps off-screen
 //!   lines out of the atlas cache.
-//! - **One bind group, one atlas struct.** Color + mask textures
+//! - **One bind group, one atlas struct.** RgbaF32 + mask textures
 //!   side by side; content_type bit selects in the shader.
 //! - **GPU-blit on atlas grow.** `copy_texture_to_texture` from old
 //!   to new; etagere preserves rects so the cache map stays intact —

@@ -33,10 +33,10 @@ use crate::widgets::theme::text_style::TextStyle;
 /// the field you want:
 ///
 /// ```
-/// # use palantir::{Color, Text, TextStyle, Ui};
+/// # use palantir::{RgbaF32, Text, TextStyle, Ui};
 /// # fn demo(ui: &mut Ui) {
 /// let style = TextStyle {
-///     color: Color::hex(0xd94f4f),
+///     color: RgbaF32::hex(0xd94f4f),
 ///     ..ui.theme().text
 /// };
 /// Text::new("hi").style(&style).show(ui);

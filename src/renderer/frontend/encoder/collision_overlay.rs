@@ -12,7 +12,7 @@
 //! it instead of becoming dead weight behind `#[cfg]`s.
 
 use crate::layout::Layout;
-use crate::primitives::color::{Color, ColorF16};
+use crate::primitives::color::{RgbaF16, RgbaF32};
 use crate::primitives::corners::Corners;
 use crate::primitives::stroke::Stroke;
 use crate::renderer::frontend::paint_sink::PaintSink;
@@ -22,7 +22,7 @@ use crate::scene::forest::Forest;
 
 /// Magenta — distinct from the opt-in red damage-rect overlay. Painted
 /// unclipped at the end of `encode`, after every layer's regular paint.
-const STROKE: Stroke = Stroke::solid(Color::rgb(1.0, 0.0, 1.0), 3.0);
+const STROKE: Stroke = Stroke::solid(RgbaF32::srgb(1.0, 0.0, 1.0), 3.0);
 
 /// Final pass: emit a magenta outline for each explicit-id collision
 /// recorded this frame. Painted after the regular per-layer walk so
@@ -55,7 +55,7 @@ pub(super) fn emit(forest: &Forest, layout: &Layout, out: &mut impl PaintSink) {
             out.draw_quad(DrawQuadPayload::rect(
                 rects[ep.node.idx()],
                 Corners::ZERO,
-                BrushSource::Solid(ColorF16::TRANSPARENT),
+                BrushSource::Solid(RgbaF16::TRANSPARENT),
                 STROKE.into(),
             ));
         }

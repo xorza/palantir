@@ -8,7 +8,7 @@ use glam::UVec2;
 use image::RgbaImage;
 use palantir::internals::{HeadlessTestGpuLease, RecordApp, headless_test_gpu};
 use palantir::{
-    Color, DebugOverlayConfig, FixedClock, OffscreenHost, Palette, TextShaper, Theme, Ui,
+    DebugOverlayConfig, FixedClock, OffscreenHost, Palette, RgbaF32, TextShaper, Theme, Ui,
 };
 
 /// The palette every fixture renders under, pinned so that
@@ -21,15 +21,15 @@ use palantir::{
 /// gray. Inks are light and descend in luminance, surfaces are dark and
 /// ascend, and the accent pair is the only saturated mid-tone.
 pub(crate) const FIXTURE_PALETTE: Palette = Palette {
-    text: Color::hex(0xf2f2f2),
-    text_muted: Color::hex(0x9ad2a0),
-    text_disabled: Color::hex(0xd9a05e),
-    terminal_bg: Color::hex(0x14141a),
-    elem: Color::hex(0x2e1f38),
-    elem_mid: Color::hex(0x1e4048),
-    elem_strong: Color::hex(0x3d4f1e),
-    border_focused: Color::hex(0x2f6fd0),
-    accent: Color::hex(0xd23f7a),
+    text: RgbaF32::hex(0xf2f2f2),
+    text_muted: RgbaF32::hex(0x9ad2a0),
+    text_disabled: RgbaF32::hex(0xd9a05e),
+    terminal_bg: RgbaF32::hex(0x14141a),
+    elem: RgbaF32::hex(0x2e1f38),
+    elem_mid: RgbaF32::hex(0x1e4048),
+    elem_strong: RgbaF32::hex(0x3d4f1e),
+    border_focused: RgbaF32::hex(0x2f6fd0),
+    accent: RgbaF32::hex(0xd23f7a),
 };
 
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
@@ -77,7 +77,7 @@ impl Harness {
         &mut self,
         physical: UVec2,
         scale: f32,
-        clear: Color,
+        clear: RgbaF32,
         scene: impl FnMut(&mut Ui),
     ) -> RgbaImage {
         self.render_to_format(FORMAT, physical, scale, clear, scene)
@@ -94,7 +94,7 @@ impl Harness {
         format: wgpu::TextureFormat,
         physical: UVec2,
         scale: f32,
-        clear: Color,
+        clear: RgbaF32,
         scene: impl FnMut(&mut Ui),
     ) -> RgbaImage {
         let target = make_target(&self.gpu.device, format, physical);
@@ -126,7 +126,7 @@ impl Harness {
         settle_frames: u32,
         physical: UVec2,
         scale: f32,
-        clear: Color,
+        clear: RgbaF32,
         scene: F,
     ) -> RgbaImage {
         for _ in 0..settle_frames {
@@ -143,7 +143,7 @@ impl Harness {
         overlay: DebugOverlayConfig,
         physical: UVec2,
         scale: f32,
-        clear: Color,
+        clear: RgbaF32,
         scene: impl FnMut(&mut Ui),
     ) -> RgbaImage {
         self.host.ui().set_debug_overlay(overlay);

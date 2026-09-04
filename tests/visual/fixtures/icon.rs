@@ -5,7 +5,7 @@
 //! with the tint applied the way the icon's kind says — rather than a snapshot.
 
 use glam::{UVec2, Vec2};
-use palantir::{Color, Configure, IconFit, IconTable, Panel, Sizing, Text, TextStyle, Ui};
+use palantir::{Configure, IconFit, IconTable, Panel, RgbaF32, Sizing, Text, TextStyle, Ui};
 use std::rc::Rc;
 
 use crate::fixtures::close;
@@ -44,7 +44,7 @@ fn atlas() -> Rc<IconTable> {
 /// the derivation, and stop one pixel short of each edge so the
 /// rasterizer's boundary row is nobody's business here.
 ///
-/// `Color::rgb` takes sRGB components and the sRGB render target encodes
+/// `RgbaF32::srgb` takes sRGB components and the sRGB render target encodes
 /// them back on write, so the expected bytes are the authored ones — the
 /// same round trip the clear-colour smoke test pins.
 fn assert_pane_interior(img: &image::RgbaImage, at: Vec2, tint: [f32; 3]) {
@@ -83,7 +83,7 @@ fn assert_solid_pane(img: &image::RgbaImage, at: Vec2, tint: [f32; 3]) {
 
 /// One icon in an exactly placed pane, so the pixels it owns are known from
 /// the pane's position and size alone.
-fn pane(ui: &mut Ui, id: &'static str, at: Vec2, size: Vec2, name: &str, tint: Color) {
+fn pane(ui: &mut Ui, id: &'static str, at: Vec2, size: Vec2, name: &str, tint: RgbaF32) {
     pane_desaturated(ui, id, at, size, name, tint, false);
 }
 
@@ -93,7 +93,7 @@ fn pane_desaturated(
     at: Vec2,
     size: Vec2,
     name: &str,
-    tint: Color,
+    tint: RgbaF32,
     desaturate: bool,
 ) {
     let icons = ui.load_icons(atlas());
@@ -118,8 +118,8 @@ fn pane_desaturated(
 #[test]
 fn tintable_icon_fills_its_exact_pixel_box_with_the_tint() {
     let mut h = Harness::new();
-    let tint = Color::rgb(0.2, 0.8, 0.4);
-    let img = h.render(UVec2::new(48, 48), 1.0, Color::BLACK, |ui| {
+    let tint = RgbaF32::srgb(0.2, 0.8, 0.4);
+    let img = h.render(UVec2::new(48, 48), 1.0, RgbaF32::BLACK, |ui| {
         Panel::canvas()
             .id_salt("icon_exact")
             .size((Sizing::FILL, Sizing::FILL))
@@ -144,7 +144,7 @@ fn tintable_icon_fills_its_exact_pixel_box_with_the_tint() {
 #[test]
 fn colour_icon_keeps_its_own_colours_under_a_tint() {
     let mut h = Harness::new();
-    let img = h.render(UVec2::new(48, 32), 1.0, Color::BLACK, |ui| {
+    let img = h.render(UVec2::new(48, 32), 1.0, RgbaF32::BLACK, |ui| {
         Panel::canvas()
             .id_salt("icon_colour")
             .size((Sizing::FILL, Sizing::FILL))
@@ -155,7 +155,7 @@ fn colour_icon_keeps_its_own_colours_under_a_tint() {
                     Vec2::new(8.0, 4.0),
                     Vec2::new(32.0, 24.0),
                     "halves",
-                    Color::rgb(1.0, 0.0, 0.0),
+                    RgbaF32::srgb(1.0, 0.0, 0.0),
                 );
             });
     });
@@ -184,7 +184,7 @@ fn colour_icon_keeps_its_own_colours_under_a_tint() {
 #[test]
 fn icon_rasterizes_to_whole_physical_pixels_at_fractional_scale() {
     let mut h = Harness::new();
-    let img = h.render(UVec2::new(48, 48), 1.5, Color::BLACK, |ui| {
+    let img = h.render(UVec2::new(48, 48), 1.5, RgbaF32::BLACK, |ui| {
         Panel::canvas()
             .id_salt("icon_scaled")
             .size((Sizing::FILL, Sizing::FILL))
@@ -195,7 +195,7 @@ fn icon_rasterizes_to_whole_physical_pixels_at_fractional_scale() {
                     Vec2::new(4.0, 4.0),
                     Vec2::splat(20.0),
                     "solid",
-                    Color::WHITE,
+                    RgbaF32::WHITE,
                 );
             });
     });
@@ -229,7 +229,7 @@ fn icon_rasterizes_to_whole_physical_pixels_at_fractional_scale() {
 #[test]
 fn desaturate_greys_a_colour_icon_by_its_luminance() {
     let mut h = Harness::new();
-    let img = h.render(UVec2::new(48, 32), 1.0, Color::BLACK, |ui| {
+    let img = h.render(UVec2::new(48, 32), 1.0, RgbaF32::BLACK, |ui| {
         Panel::canvas()
             .id_salt("icon_grey")
             .size((Sizing::FILL, Sizing::FILL))
@@ -240,7 +240,7 @@ fn desaturate_greys_a_colour_icon_by_its_luminance() {
                     Vec2::new(8.0, 4.0),
                     Vec2::new(32.0, 24.0),
                     "halves",
-                    Color::WHITE,
+                    RgbaF32::WHITE,
                     true,
                 );
             });
@@ -291,7 +291,7 @@ fn desaturate_greys_a_colour_icon_by_its_luminance() {
 #[test]
 fn an_icon_recorded_over_a_label_stays_on_top_of_it() {
     let mut h = Harness::new();
-    let tint = Color::rgb(0.2, 0.8, 0.4);
+    let tint = RgbaF32::srgb(0.2, 0.8, 0.4);
     let label = |ui: &mut Ui, salt: &'static str, at: Vec2| {
         Panel::zstack()
             .id_salt(salt)
@@ -303,12 +303,12 @@ fn an_icon_recorded_over_a_label_stays_on_top_of_it() {
                     .style(
                         &TextStyle::default()
                             .with_font_size(12.0)
-                            .with_color(Color::WHITE),
+                            .with_color(RgbaF32::WHITE),
                     )
                     .show(ui);
             });
     };
-    let img = h.render(UVec2::new(96, 72), 1.0, Color::BLACK, |ui| {
+    let img = h.render(UVec2::new(96, 72), 1.0, RgbaF32::BLACK, |ui| {
         Panel::canvas()
             .id_salt("raster_order")
             .size((Sizing::FILL, Sizing::FILL))

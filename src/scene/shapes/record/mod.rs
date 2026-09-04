@@ -4,7 +4,7 @@
 
 use crate::icons::icon_set::IconHandle;
 use crate::layout::types::align::Align;
-use crate::primitives::color::ColorF16;
+use crate::primitives::color::RgbaF16;
 use crate::primitives::image::{ImageDownsample, ImageFilter, ImageFit};
 use crate::primitives::nan::NanCheck;
 use crate::primitives::recorded_text::RecordedText;
@@ -90,7 +90,7 @@ pub(crate) enum ShapeRecord {
         /// input is normalized into the active record store before this value
         /// is built, so its span and hash cannot belong to different passes.
         text: RecordedText,
-        color: ColorF16,
+        color: RgbaF16,
         /// The face and metrics to shape in, the same named type
         /// [`TextShape`](crate::TextShape) authors and
         /// [`TextShapeKey`](crate::text::key::TextShapeKey) is minted from
@@ -118,7 +118,7 @@ pub(crate) enum ShapeRecord {
     /// offsets differ.
     Mesh {
         local_rect: Option<Rect>,
-        tint: ColorF16,
+        tint: RgbaF16,
         vertices: Span,
         indices: Span,
         /// Owner-local AABB of the mesh's vertex positions. Snapshot of
@@ -138,7 +138,7 @@ pub(crate) enum ShapeRecord {
     /// sampled pixels in linear-RGB premultiplied space.
     Image {
         local_rect: Option<Rect>,
-        tint: ColorF16,
+        tint: RgbaF16,
         source: ImageSource,
         fit: ImageFit,
         min_filter: ImageFilter,
@@ -154,7 +154,7 @@ pub(crate) enum ShapeRecord {
         local_rect: Option<Rect>,
         handle: IconHandle,
         fit: IconFit,
-        tint: ColorF16,
+        tint: RgbaF16,
         /// Draw a colour icon as its own luminance — see
         /// [`IconShape::desaturate`](crate::IconShape::desaturate).
         desaturate: bool,

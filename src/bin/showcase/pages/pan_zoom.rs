@@ -15,8 +15,8 @@ use crate::support;
 use crate::support::note_style;
 use palantir::SlotDefaults;
 use palantir::{
-    AnimSpec, Background, Brush, Button, ButtonTheme, Checkbox, Color, Configure, Corners, Frame,
-    Grid, InputEvent, LineCap, LineJoin, LinearGradient, Panel, PolylineColors, RadioButton,
+    AnimSpec, Background, Brush, Button, ButtonTheme, Checkbox, Configure, Corners, Frame, Grid,
+    InputEvent, LineCap, LineJoin, LinearGradient, Panel, PolylineColors, RadioButton, RgbaF32,
     Scroll, Shape, Sizing, Spacing, StatefulLook, Stroke, Text, TextStyle, TextWrap, Track, Ui,
     Vec2, WidgetId, WidgetLook, fmt,
 };
@@ -212,15 +212,15 @@ fn gradient_strip(ui: &mut Ui) {
         .show(ui, |ui| {
             for i in 0..10 {
                 let t = i as f32 / 10.0;
-                let a = Color::rgb(0.2 + 0.6 * t, 0.4, 0.9 - 0.6 * t);
-                let b = Color::rgb(0.95 - 0.5 * t, 0.7 * t, 0.3 + 0.5 * t);
+                let a = RgbaF32::srgb(0.2 + 0.6 * t, 0.4, 0.9 - 0.6 * t);
+                let b = RgbaF32::srgb(0.95 - 0.5 * t, 0.7 * t, 0.3 + 0.5 * t);
                 Frame::new()
                     .id_salt(("grad", i))
                     .size((Sizing::fixed(72.0), Sizing::fixed(56.0)))
                     .background(Background {
                         fill: Brush::Linear(LinearGradient::two_stop(0.0, a, b)),
                         corners: Corners::all(6.0),
-                        stroke: Stroke::solid(Color::hex(0x202020), 1.0),
+                        stroke: Stroke::solid(RgbaF32::hex(0x202020), 1.0),
                         ..Default::default()
                     })
                     .show(ui);
@@ -343,7 +343,7 @@ fn canvas_polylines(ui: &mut Ui) {
                     let y = 60.0 + phase.sin() * (16.0 + line as f32 * 3.0);
                     Vec2::new(x, y)
                 });
-                let c = Color::rgb(
+                let c = RgbaF32::srgb(
                     0.4 + line as f32 * 0.1,
                     0.85 - line as f32 * 0.08,
                     0.4 + (1 + line) as f32 * 0.07,
@@ -364,7 +364,7 @@ fn canvas_polylines(ui: &mut Ui) {
 fn cell_theme() -> ButtonTheme {
     let label = TextStyle::default()
         .with_font_size(11.0)
-        .with_color(Color::hex(0x14161a));
+        .with_color(RgbaF32::hex(0x14161a));
     let look = || WidgetLook {
         background: Background::NONE,
         text: Some(label),
@@ -386,17 +386,17 @@ fn cell_theme() -> ButtonTheme {
 
 /// Point `theme`'s four states at one cell's colour: normal is the base,
 /// hovered is brightened, pressed is brightest with a focus stroke.
-fn recolor_cell(theme: &mut ButtonTheme, base: Color) {
-    let bg = |fill: Color| Background::rounded(fill, Corners::all(3.0));
+fn recolor_cell(theme: &mut ButtonTheme, base: RgbaF32) {
+    let bg = |fill: RgbaF32| Background::rounded(fill, Corners::all(3.0));
     theme.looks.normal.background = bg(base);
     theme.looks.hovered.background = bg(brighten(base, 0.15));
     theme.looks.active.background =
-        bg(brighten(base, 0.3)).with_stroke(Stroke::solid(Color::WHITE, 1.0));
+        bg(brighten(base, 0.3)).with_stroke(Stroke::solid(RgbaF32::WHITE, 1.0));
     theme.looks.disabled.background = bg(base);
 }
 
-fn brighten(c: Color, t: f32) -> Color {
-    Color::linear_rgba(
+fn brighten(c: RgbaF32, t: f32) -> RgbaF32 {
+    RgbaF32::new(
         c.r + (1.0 - c.r) * t,
         c.g + (1.0 - c.g) * t,
         c.b + (1.0 - c.b) * t,
@@ -404,10 +404,10 @@ fn brighten(c: Color, t: f32) -> Color {
     )
 }
 
-fn cell_color(r: u32, c: u32) -> Color {
+fn cell_color(r: u32, c: u32) -> RgbaF32 {
     let tr = r as f32 / 24.0;
     let tc = c as f32 / 24.0;
-    Color::rgb(
+    RgbaF32::srgb(
         0.30 + 0.55 * tc,
         0.55 - 0.25 * (tr - 0.5).abs(),
         0.85 - 0.55 * tr,

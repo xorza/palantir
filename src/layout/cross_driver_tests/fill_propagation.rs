@@ -11,7 +11,7 @@ use crate::layout::cross_driver_tests::support;
 use crate::layout::cross_driver_tests::support::two_hug_cols_with_wrap;
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::background::Background;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::scene::node::configure::Configure;
 use crate::scene::tree::node_id::NodeId;
@@ -86,7 +86,7 @@ fn hug_zstack_does_not_recursively_size_to_fill_child() {
                         .id(WidgetId::from_hash("fill-child"))
                         .size((Sizing::FILL, Sizing::FILL))
                         .background(Background {
-                            fill: Color::rgb(0.5, 0.5, 0.5).into(),
+                            fill: RgbaF32::srgb(0.5, 0.5, 0.5).into(),
                             ..Default::default()
                         })
                         .show(ui);

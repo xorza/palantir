@@ -86,7 +86,7 @@ impl FrameReport {
 
 #[cfg(test)]
 mod tests {
-    use crate::primitives::color::Color;
+    use crate::primitives::color::RgbaF32;
     use crate::primitives::rect::Rect;
     use crate::renderer::render_plan::RenderPlan;
     use crate::scene::damage::Damage;
@@ -99,14 +99,14 @@ mod tests {
             (None, FramePaint::Skip),
             (
                 Some(RenderPlan {
-                    clear: Color::BLACK,
+                    clear: RgbaF32::BLACK,
                     damage: Damage::Full,
                 }),
                 FramePaint::Full,
             ),
             (
                 Some(RenderPlan {
-                    clear: Color::BLACK,
+                    clear: RgbaF32::BLACK,
                     damage: Damage::Partial(
                         DamageRegion::from(Rect::new(1.0, 2.0, 3.0, 4.0)).unmeasured(),
                     ),

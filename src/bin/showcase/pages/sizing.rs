@@ -6,7 +6,7 @@
 use crate::support;
 use crate::support::{section, swatch_bg, well_bg};
 use palantir::{
-    Align, Color, Configure, Frame, HAlign, Justify, Panel, Sizing, Ui, VAlign, Visibility,
+    Align, Configure, Frame, HAlign, Justify, Panel, RgbaF32, Sizing, Ui, VAlign, Visibility,
 };
 
 pub(crate) fn build(ui: &mut Ui) {
@@ -262,7 +262,7 @@ fn gap(ui: &mut Ui) {
     });
 }
 
-fn aligned_chip(ui: &mut Ui, id: &'static str, c: Color, align: Align) {
+fn aligned_chip(ui: &mut Ui, id: &'static str, c: RgbaF32, align: Align) {
     Frame::new()
         .id_salt(id)
         .size((Sizing::fixed(56.0), Sizing::fixed(24.0)))

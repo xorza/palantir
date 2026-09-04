@@ -1,7 +1,7 @@
 use crate::input::sense::Sense;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::corners::Corners;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
@@ -21,7 +21,7 @@ fn frame_paints_a_single_rounded_rect() {
                     .id(WidgetId::from_hash("decoration"))
                     .size((Sizing::fixed(80.0), Sizing::fixed(40.0)))
                     .background(Background {
-                        fill: Color::rgb(0.2, 0.4, 0.8).into(),
+                        fill: RgbaF32::srgb(0.2, 0.4, 0.8).into(),
                         corners: Corners::all(6.0),
                         ..Default::default()
                     })

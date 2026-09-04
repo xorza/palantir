@@ -6,7 +6,7 @@ use crate::Ui;
 use crate::layout::cross_driver_tests::text_wrap::support::PARAGRAPH;
 use crate::layout::types::align::Align;
 use crate::layout::types::sizing::Sizing;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::size::Size;
 use crate::renderer::frontend::capture::PaintCall;
 use crate::scene::layer::Layer;
@@ -283,7 +283,7 @@ fn add_direct_text(
             ..GlyphFont::new(font_size_px)
         },
     )
-    .color(Color::WHITE)
+    .color(RgbaF32::WHITE)
     .wrap(wrap)
     .align(Align::default())
     .family(FontFamily::SANS)

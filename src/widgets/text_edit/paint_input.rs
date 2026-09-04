@@ -2,7 +2,7 @@
 
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
@@ -28,9 +28,9 @@ pub(super) struct PaintInput<'a> {
     pub(super) placeholder: &'a str,
     pub(super) geometry: TextGeometry,
     pub(super) selection_rects: &'a [Rect],
-    pub(super) selection_color: Color,
-    pub(super) text_color: Color,
-    pub(super) placeholder_color: Color,
+    pub(super) selection_color: RgbaF32,
+    pub(super) text_color: RgbaF32,
+    pub(super) placeholder_color: RgbaF32,
     pub(super) scroll: ScrollState,
     pub(super) caret: Option<CaretPaint>,
 }

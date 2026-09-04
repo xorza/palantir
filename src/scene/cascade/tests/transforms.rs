@@ -3,7 +3,7 @@
 
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::sizing::Sizing;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::rect::Rect;
 use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
@@ -42,7 +42,7 @@ fn shape_rect_composes_self_transform() {
                 .show(ui, |ui| {
                     ui.add_shape(
                         Shape::rect(Rect::new(0.0, 0.0, 30.0, 30.0))
-                            .fill(Color::rgb(0.5, 0.5, 0.5)),
+                            .fill(RgbaF32::srgb(0.5, 0.5, 0.5)),
                     );
                 });
         });
@@ -128,7 +128,7 @@ fn stroke_bbox_inflates_after_transform_with_physical_fringe() {
                         Vec2::new(40.0, 20.0),
                         4.0,
                     )
-                    .brush(Color::WHITE),
+                    .brush(RgbaF32::WHITE),
                 );
             });
         });
@@ -172,7 +172,7 @@ fn self_transform_anchors_scale_at_panel_origin() {
                     // of the panel's body.
                     ui.add_shape(
                         Shape::rect(Rect::new(0.0, 0.0, 10.0, 10.0))
-                            .fill(Color::rgb(0.5, 0.5, 0.5)),
+                            .fill(RgbaF32::srgb(0.5, 0.5, 0.5)),
                     );
                 });
         });
@@ -230,7 +230,7 @@ fn cascade_screen_rect_matches_composed_quad_under_transform() {
                     // Fully inside the 300×300 panel → clip never bites.
                     ui.add_shape(
                         Shape::rect(Rect::new(0.0, 0.0, 20.0, 20.0))
-                            .fill(Color::rgb(0.5, 0.5, 0.5)),
+                            .fill(RgbaF32::srgb(0.5, 0.5, 0.5)),
                     );
                 });
         });

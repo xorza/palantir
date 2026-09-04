@@ -1,6 +1,6 @@
 //! One indexed-triangle mesh draw.
 
-use crate::primitives::color::ColorF16;
+use crate::primitives::color::RgbaF16;
 use crate::primitives::rect::Rect;
 use glam::Vec2;
 
@@ -19,7 +19,7 @@ pub(crate) struct DrawMeshPayload {
     /// result for the overlap test + scissor cull.
     pub(crate) bbox: Rect,
     pub(crate) origin: Vec2,
-    pub(crate) tint: ColorF16,
+    pub(crate) tint: RgbaF16,
     pub(crate) v_start: u32,
     pub(crate) v_len: u32,
     pub(crate) i_start: u32,

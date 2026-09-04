@@ -56,7 +56,7 @@ impl FillKind {
         self.0 & 0xFF
     }
 
-    /// Solid-fill marker; `Quad.fill: Color` carries the colour, the
+    /// Solid-fill marker; `Quad.fill: RgbaF32` carries the colour, the
     /// LUT / axis / row fields are ignored by the shader.
     pub(crate) const SOLID: Self = Self(Self::TAG_SOLID);
 
@@ -87,7 +87,7 @@ impl FillKind {
         Self(tag | ((spread as u32) << 8))
     }
 
-    /// Drop-shadow marker. `fill: Color` carries the shadow colour,
+    /// Drop-shadow marker. `fill: RgbaF32` carries the shadow colour,
     /// `fill_axis = (0, 0, sigma, spread)`,
     /// `radius` carries the *source* shape's corner radii (the shadow
     /// wraps the source rect centered in its shifted paint bbox). The
@@ -100,7 +100,7 @@ impl FillKind {
     /// source rect.
     pub(crate) const SHADOW_INSET: Self = Self(Self::TAG_SHADOW_INSET);
 
-    /// Rounded-triangle SDF marker. `fill: Color` is the solid fill; the
+    /// Rounded-triangle SDF marker. `fill: RgbaF32` is the solid fill; the
     /// three corner points (packed into the reused `corners` + `fill_axis`
     /// lanes as `(a.x,a.y,b.x,b.y)` / `(c.x,c.y,radius,_)`) and the corner
     /// radius drive `sdf_triangle - radius` in the shader. Stroke rides the

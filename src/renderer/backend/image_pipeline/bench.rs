@@ -23,7 +23,7 @@ use crate::bench::Run;
 use crate::diagnostics::gpu_pass_stats::BatchKind;
 use crate::host::bench_gpu::{BenchGpu, Timing};
 use crate::host::offscreen::OffscreenHost;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::image::{Image, ImageDownsample, ImageFilter, ImageFit};
 use crate::renderer::image_registry::ImageHandle;
 use crate::shape::Shape;
@@ -145,9 +145,9 @@ fn record(ui: &mut Ui, handle: &mut Option<ImageHandle>, workload: Workload, pha
     // Paint-only toggle: a tint the shader multiplies anyway, so damage
     // repaints every layer without changing geometry or flags.
     let tint = if phase {
-        Color::WHITE
+        RgbaF32::WHITE
     } else {
-        Color::rgb(0.98, 0.99, 1.0)
+        RgbaF32::srgb(0.98, 0.99, 1.0)
     };
     let filter = workload.filter();
     Panel::canvas()

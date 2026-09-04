@@ -11,8 +11,8 @@
 use crate::support;
 use crate::support::{captioned_cell, demo_cell, section, tiles};
 use palantir::{
-    Align, Background, Color, Configure, Corners, Frame, Panel, Sizing, Stroke, TranslateScale, Ui,
-    Vec2,
+    Align, Background, Configure, Corners, Frame, Panel, RgbaF32, Sizing, Stroke, TranslateScale,
+    Ui, Vec2,
 };
 
 const CARD: f32 = 200.0;
@@ -92,7 +92,7 @@ enum Mode {
 /// rect scissor and the rounded stencil reads clearly at the corners.
 fn card_bg() -> Background {
     Background::rounded(support::WELL, Corners::all(28.0))
-        .with_stroke(Stroke::solid(Color::hex(0x4d5663), 1.5))
+        .with_stroke(Stroke::solid(RgbaF32::hex(0x4d5663), 1.5))
 }
 
 #[track_caller]

@@ -1,6 +1,6 @@
 //! Composited image and off-screen `GpuView` draw records.
 
-use crate::primitives::color::ColorU8;
+use crate::primitives::color::RgbaU8;
 use crate::primitives::rect::Rect;
 use crate::primitives::texture_id::TextureId;
 use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
@@ -106,7 +106,7 @@ pub(crate) struct ImageInstance {
     /// target maps across the composite paint rect.
     pub(crate) uv_size: Vec2,
     /// Linear-RGBA tint, premultiplied in the shader.
-    pub(crate) tint: ColorU8,
+    pub(crate) tint: RgbaU8,
     /// `IMG_FLAG_*` bits (tile wrap, min/mag nearest sampling, minification
     /// tap mode). `u32` for a clean `Uint32` vertex attr.
     pub(crate) flags: u32,

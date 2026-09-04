@@ -3,7 +3,7 @@
 
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::num::F32Ext;
 use crate::scene::node::Node;
 use crate::scene::tree::paint_anims::PaintAnim;
@@ -33,7 +33,7 @@ use std::time::Duration;
 pub struct Spinner<'a> {
     node: Node,
     diameter: Option<f32>,
-    color: Option<Color>,
+    color: Option<RgbaF32>,
     thickness: Option<f32>,
     style: Option<&'a SpinnerTheme>,
 }
@@ -67,7 +67,7 @@ impl<'a> Spinner<'a> {
 
     /// Arc color (head of the comet), defaulting to
     /// [`crate::Theme::spinner`]'s. One-axis hatch over the resolved bundle — see [`crate::Theme`].
-    pub fn color(mut self, c: Color) -> Self {
+    pub fn color(mut self, c: RgbaF32) -> Self {
         self.color = Some(c);
         self
     }
@@ -136,7 +136,7 @@ fn arc_geometry(diameter: f32, width: f32) -> ArcGeometry {
 /// Scaling from the base alpha keeps a translucent base translucent.
 /// The gradient's `angle` is ignored on stroke shapes — the arc
 /// carries its own 1-D parameter.
-fn comet_brush(base: Color) -> LinearGradient {
+fn comet_brush(base: RgbaF32) -> LinearGradient {
     LinearGradient::two_stop(0.0, base.with_alpha(0.0), base)
 }
 

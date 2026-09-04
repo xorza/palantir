@@ -4,7 +4,7 @@ use crate::Ui;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
-use crate::primitives::{color::Color, rect::Rect, size::Size};
+use crate::primitives::{color::RgbaF32, rect::Rect, size::Size};
 use crate::scene::damage::tests::support::{BLUE, DISPLAY, RED, TEST_SURFACE, frame};
 use crate::scene::layer::Layer;
 use crate::scene::node::configure::Configure;
@@ -28,7 +28,7 @@ fn child_overflowing_clipped_parent_damage_clipped_to_viewport() {
     let mut child_node = None;
     let viewport_size = 100.0;
     let child_size = 200.0;
-    let build = |fill: Color, h: &mut UiHarness, child: &mut Option<NodeId>| {
+    let build = |fill: RgbaF32, h: &mut UiHarness, child: &mut Option<NodeId>| {
         h.frame(|ui| {
             // Root hstack so the inner zstack honors its `Fixed` size
             // (root nodes get stretched to the surface anchor by the
@@ -100,7 +100,7 @@ fn drop_shadow_overhang_contributes_to_damage_on_remove() {
                 .show(ui, |ui| {
                     ui.add_shape(
                         Shape::shadow(Shadow {
-                            color: Color::rgba(0.0, 0.0, 0.0, 0.5),
+                            color: RgbaF32::srgba(0.0, 0.0, 0.0, 0.5),
                             offset: Vec2::new(12.0, -7.0),
                             blur: 8.0,
                             spread: 2.0,
@@ -117,7 +117,7 @@ fn drop_shadow_overhang_contributes_to_damage_on_remove() {
                 .background(Background {
                     fill: BLUE.into(),
                     shadow: Shadow {
-                        color: Color::rgba(0.0, 0.0, 0.0, 0.5),
+                        color: RgbaF32::srgba(0.0, 0.0, 0.0, 0.5),
                         offset: Vec2::new(12.0, -7.0),
                         blur: 8.0,
                         spread: 2.0,
@@ -182,7 +182,7 @@ fn shadow_overhang_inside_clipped_parent_is_clamped() {
     let blur = 8.0;
 
     let mut h = UiHarness::new(UVec2::new(200, 200));
-    let build = |fill: Color, h: &mut UiHarness| {
+    let build = |fill: RgbaF32, h: &mut UiHarness| {
         h.frame(|ui| {
             Panel::hstack()
                 .id(WidgetId::from_hash("host"))
@@ -202,7 +202,7 @@ fn shadow_overhang_inside_clipped_parent_is_clamped() {
                                 .show(ui, |ui| {
                                     ui.add_shape(
                                         Shape::shadow(Shadow {
-                                            color: Color::rgba(0.0, 0.0, 0.0, 0.5),
+                                            color: RgbaF32::srgba(0.0, 0.0, 0.0, 0.5),
                                             offset: Vec2::ZERO,
                                             blur,
                                             spread: 0.0,
@@ -267,7 +267,7 @@ fn direct_shape_on_clipped_node_clips_to_own_mask() {
                 .show(ui, |ui| {
                     ui.add_shape(
                         Shape::rect(Rect::new(0.0, 0.0, 400.0, 20.0))
-                            .fill(Color::rgb(1.0, 0.0, 0.0)),
+                            .fill(RgbaF32::srgb(1.0, 0.0, 0.0)),
                     );
                 });
         });

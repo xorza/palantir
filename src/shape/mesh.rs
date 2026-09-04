@@ -1,7 +1,7 @@
 //! The triangle-mesh builder. Lowers to `ShapeRecord::Mesh`, with the
 //! vertices and indices copied into the record store.
 
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::mesh::Mesh;
 use crate::primitives::nan::NanCheck;
 use crate::primitives::rect::Rect;
@@ -15,7 +15,7 @@ use crate::shape::sealed;
 pub struct MeshShape<'a> {
     pub(crate) mesh: &'a Mesh,
     pub(crate) local_rect: Option<Rect>,
-    pub(crate) tint: Color,
+    pub(crate) tint: RgbaF32,
 }
 
 impl<'a> MeshShape<'a> {
@@ -23,7 +23,7 @@ impl<'a> MeshShape<'a> {
         Self {
             mesh,
             local_rect: None,
-            tint: Color::WHITE,
+            tint: RgbaF32::WHITE,
         }
     }
 }
@@ -31,7 +31,7 @@ impl<'a> MeshShape<'a> {
 local_rect_shape!(MeshShape<'_>, at);
 
 shape_setters!(MeshShape<'_> {
-    tint: Color => tint,
+    tint: RgbaF32 => tint,
 });
 
 impl sealed::LowerShape for MeshShape<'_> {

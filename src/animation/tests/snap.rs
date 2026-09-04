@@ -6,7 +6,7 @@ use crate::animation::anim_spec::AnimSpec;
 use crate::animation::tests::support::{
     AnimUi, SLOT, next_frame, setup_anim_ui, spring_velocity, wid,
 };
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::configure::Configure;
 use crate::widgets::frame::Frame;
@@ -26,7 +26,7 @@ fn spring_snap_fields_carry_target_immediately() {
     let mut map = AnimMapTyped::<Background>::default();
     let id = wid("snap-carry");
     let start = Background {
-        fill: Color::rgb(0.0, 0.0, 0.0).into(),
+        fill: RgbaF32::srgb(0.0, 0.0, 0.0).into(),
         stroke: Stroke::ZERO,
         corners: Corners::all(2.0),
         shadow: Shadow::NONE,
@@ -37,7 +37,7 @@ fn spring_snap_fields_carry_target_immediately() {
 
     // Retarget to a new fill (animated) and a new radius (snap).
     let target = Background {
-        fill: Color::rgb(1.0, 0.0, 0.0).into(),
+        fill: RgbaF32::srgb(1.0, 0.0, 0.0).into(),
         stroke: Stroke::ZERO,
         corners: Corners::all(12.0),
         shadow: Shadow::NONE,
@@ -77,14 +77,14 @@ fn gradient_snap_clears_only_its_background_velocity() {
     let mut map = AnimMapTyped::<Background>::default();
     let id = wid("gradient-background-velocity");
     let start = Background {
-        fill: Brush::Solid(Color::BLACK),
-        stroke: Stroke::solid(Color::BLACK, 0.0),
+        fill: Brush::Solid(RgbaF32::BLACK),
+        stroke: Stroke::solid(RgbaF32::BLACK, 0.0),
         corners: Corners::ZERO,
         shadow: Shadow::NONE,
     };
     let moving = Background {
-        fill: Brush::Solid(Color::WHITE),
-        stroke: Stroke::solid(Color::BLACK, 10.0),
+        fill: Brush::Solid(RgbaF32::WHITE),
+        stroke: Stroke::solid(RgbaF32::BLACK, 10.0),
         corners: Corners::ZERO,
         shadow: Shadow::NONE,
     };
@@ -105,10 +105,14 @@ fn gradient_snap_clears_only_its_background_velocity() {
         "test setup must carry positive stroke velocity",
     );
 
-    let gradient = Brush::Linear(LinearGradient::two_stop(0.0, Color::BLACK, Color::WHITE));
+    let gradient = Brush::Linear(LinearGradient::two_stop(
+        0.0,
+        RgbaF32::BLACK,
+        RgbaF32::WHITE,
+    ));
     let target = Background {
         fill: gradient.clone(),
-        stroke: Stroke::solid(Color::BLACK, 20.0),
+        stroke: Stroke::solid(RgbaF32::BLACK, 20.0),
         corners: Corners::ZERO,
         shadow: Shadow::NONE,
     };
@@ -134,16 +138,16 @@ fn gradient_snap_inside_look_repaints_only_until_numeric_fields_settle() {
 
     let AnimUi { mut h, id } = setup_anim_ui("gradient-look-settle");
     let start = AnimatedLook {
-        background: Background::fill(Color::BLACK),
-        text: TextStyle::default().with_color(Color::BLACK),
+        background: Background::fill(RgbaF32::BLACK),
+        text: TextStyle::default().with_color(RgbaF32::BLACK),
     };
     let gradient = Brush::Radial(RadialGradient::two_stop_centered(
-        Color::BLACK,
-        Color::WHITE,
+        RgbaF32::BLACK,
+        RgbaF32::WHITE,
     ));
     let target = AnimatedLook {
         background: Background::fill(gradient.clone()),
-        text: TextStyle::default().with_color(Color::WHITE),
+        text: TextStyle::default().with_color(RgbaF32::WHITE),
     };
 
     let first = h.frame(|ui| {

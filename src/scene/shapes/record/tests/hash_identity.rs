@@ -1,7 +1,7 @@
 //! Shapes that must hash apart, and the spans that must not count.
 
 use crate::primitives::approx::EPS;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
 use crate::primitives::shadow::Shadow;
@@ -25,8 +25,8 @@ use glam::Vec2;
 /// damage diff would skip on a collision.
 #[test]
 fn quad_shapes_hash_apart() {
-    let fill = ShapeBrush::Solid(ColorF16::from(Color::WHITE));
-    let stroke = ShapeStroke::from(Stroke::solid(Color::BLACK, 2.0));
+    let fill = ShapeBrush::Solid(RgbaF16::from(RgbaF32::WHITE));
+    let stroke = ShapeStroke::from(Stroke::solid(RgbaF32::BLACK, 2.0));
     let corners = Corners::all(8.0);
     let rect = |kind| {
         ShapeRecord::Quad(QuadShape::Rect {
@@ -56,7 +56,7 @@ fn quad_shapes_hash_apart() {
         b: Vec2::ZERO,
         c: Vec2::ZERO,
         radius: 0.0,
-        fill: ColorF16::from(Color::WHITE),
+        fill: RgbaF16::from(RgbaF32::WHITE),
         stroke,
         bbox: Rect::ZERO,
     });
@@ -83,7 +83,7 @@ fn quad_shapes_hash_apart() {
 /// repaint when a stroke changes shape.
 #[test]
 fn curve_and_arc_bases_hash_apart() {
-    let fill = ShapeBrush::Solid(ColorF16::from(Color::WHITE));
+    let fill = ShapeBrush::Solid(RgbaF16::from(RgbaF32::WHITE));
     let curve = |basis| ShapeRecord::Curve {
         basis,
         width: 2.0,
@@ -131,7 +131,7 @@ fn curve_and_arc_bases_hash_apart() {
 
 #[test]
 fn shape_mesh_hash_excludes_span_offsets() {
-    let tint = ColorF16::from(Color {
+    let tint = RgbaF16::from(RgbaF32 {
         r: 0.0,
         g: 1.0,
         b: 0.0,
@@ -183,7 +183,7 @@ fn shape_mesh_hash_excludes_span_offsets() {
 fn image_source_hashes_apart_by_source() {
     let image = |source| ShapeRecord::Image {
         local_rect: None,
-        tint: ColorF16::from(Color::WHITE),
+        tint: RgbaF16::from(RgbaF32::WHITE),
         source,
         fit: ImageFit::Fill,
         min_filter: ImageFilter::Linear,
@@ -217,12 +217,12 @@ fn image_source_hashes_apart_by_source() {
 fn shape_image_hash_distinguishes_handle_dimensions_tint_and_filters() {
     let make = |id: TextureId,
                 size: glam::UVec2,
-                tint: Color,
+                tint: RgbaF32,
                 min_filter: ImageFilter,
                 mag_filter: ImageFilter| {
         ShapeRecord::Image {
             local_rect: None,
-            tint: ColorF16::from(tint),
+            tint: RgbaF16::from(tint),
             source: ImageSource::Texture { id, size },
             fit: ImageFit::Fill,
             min_filter,
@@ -234,7 +234,7 @@ fn shape_image_hash_distinguishes_handle_dimensions_tint_and_filters() {
     let baseline = compute_record_hash(&make(
         TextureId(0xa),
         size,
-        Color::WHITE,
+        RgbaF32::WHITE,
         ImageFilter::Linear,
         ImageFilter::Linear,
     ));
@@ -243,7 +243,7 @@ fn shape_image_hash_distinguishes_handle_dimensions_tint_and_filters() {
         compute_record_hash(&make(
             TextureId(0xb),
             size,
-            Color::WHITE,
+            RgbaF32::WHITE,
             ImageFilter::Linear,
             ImageFilter::Linear,
         ))
@@ -257,7 +257,7 @@ fn shape_image_hash_distinguishes_handle_dimensions_tint_and_filters() {
             compute_record_hash(&make(
                 TextureId(0xa),
                 changed_size,
-                Color::WHITE,
+                RgbaF32::WHITE,
                 ImageFilter::Linear,
                 ImageFilter::Linear,
             ))
@@ -268,7 +268,7 @@ fn shape_image_hash_distinguishes_handle_dimensions_tint_and_filters() {
         compute_record_hash(&make(
             TextureId(0xa),
             size,
-            Color::rgba(1.0, 0.0, 0.0, 1.0),
+            RgbaF32::srgba(1.0, 0.0, 0.0, 1.0),
             ImageFilter::Linear,
             ImageFilter::Linear,
         ))
@@ -278,7 +278,7 @@ fn shape_image_hash_distinguishes_handle_dimensions_tint_and_filters() {
         compute_record_hash(&make(
             TextureId(0xa),
             size,
-            Color::WHITE,
+            RgbaF32::WHITE,
             ImageFilter::Nearest,
             ImageFilter::Linear,
         ))
@@ -288,7 +288,7 @@ fn shape_image_hash_distinguishes_handle_dimensions_tint_and_filters() {
         compute_record_hash(&make(
             TextureId(0xa),
             size,
-            Color::WHITE,
+            RgbaF32::WHITE,
             ImageFilter::Linear,
             ImageFilter::Nearest,
         ))

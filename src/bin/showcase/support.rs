@@ -21,68 +21,68 @@ use palantir::demo_swatches;
 use std::hash::Hash;
 
 use palantir::{
-    Background, Color, Configure, Corners, FontWeight, Frame, Panel, Sizing, Stroke, Text,
+    Background, Configure, Corners, FontWeight, Frame, Panel, RgbaF32, Sizing, Stroke, Text,
     TextStyle, TextWrap, Ui,
 };
 
 /// Window clear — the darkest tier, visible around the card.
-pub(crate) const WINDOW: Color = Color::hex(0x131417);
+pub(crate) const WINDOW: RgbaF32 = RgbaF32::hex(0x131417);
 /// Nav rail fill.
-pub(crate) const SIDEBAR: Color = Color::hex(0x1a1b1f);
+pub(crate) const SIDEBAR: RgbaF32 = RgbaF32::hex(0x1a1b1f);
 /// Page canvas. Deliberately darker than [`ELEM`], the button fill this
 /// showcase installs, so widgets read as raised against it.
-pub(crate) const CARD: Color = Color::hex(0x212329);
+pub(crate) const CARD: RgbaF32 = RgbaF32::hex(0x212329);
 /// Recessed demo surface — one step below [`CARD`].
-pub(crate) const WELL: Color = Color::hex(0x16171b);
+pub(crate) const WELL: RgbaF32 = RgbaF32::hex(0x16171b);
 /// Bright demo surface, for content that only reads against light
 /// (drop shadows, dark strokes).
-pub(crate) const LIGHT_WELL: Color = Color::hex(0xc8ccd2);
+pub(crate) const LIGHT_WELL: RgbaF32 = RgbaF32::hex(0xc8ccd2);
 /// Raised chrome — popup bodies, right-click targets, menu surfaces.
-pub(crate) const RAISED: Color = Color::hex(0x2a2c33);
+pub(crate) const RAISED: RgbaF32 = RgbaF32::hex(0x2a2c33);
 /// Border on raised surfaces and the card edge.
-pub(crate) const BORDER: Color = Color::hex(0x30333c);
+pub(crate) const BORDER: RgbaF32 = RgbaF32::hex(0x30333c);
 /// Divider rules — one step quieter than [`BORDER`].
-pub(crate) const HAIRLINE: Color = Color::hex(0x272a31);
+pub(crate) const HAIRLINE: RgbaF32 = RgbaF32::hex(0x272a31);
 
 /// Widget-chrome fill at rest. `shell`'s palette reads this rung and the
 /// three below it, so widget chrome and the page's own surfaces come off
 /// one ladder — which only holds while the ladder lives in one file.
-pub(crate) const ELEM: Color = Color::hex(0x2b2e36);
+pub(crate) const ELEM: RgbaF32 = RgbaF32::hex(0x2b2e36);
 /// Widget chrome under the pointer.
-pub(crate) const ELEM_MID: Color = Color::hex(0x353942);
+pub(crate) const ELEM_MID: RgbaF32 = RgbaF32::hex(0x353942);
 /// Widget chrome while pressed.
-pub(crate) const ELEM_STRONG: Color = Color::hex(0x434854);
+pub(crate) const ELEM_STRONG: RgbaF32 = RgbaF32::hex(0x434854);
 /// Focus ring on a widget border: a dimmer teal than [`ACCENT`], so the
 /// ring reads as an edge rather than a fill.
-pub(crate) const BORDER_FOCUSED: Color = Color::hex(0x2b6f8f);
+pub(crate) const BORDER_FOCUSED: RgbaF32 = RgbaF32::hex(0x2b6f8f);
 
 /// Primary ink.
-pub(crate) const INK: Color = Color::hex(0xe8eaf0);
+pub(crate) const INK: RgbaF32 = RgbaF32::hex(0xe8eaf0);
 /// Captions, readouts, secondary labels.
-pub(crate) const INK_DIM: Color = Color::hex(0x949bab);
+pub(crate) const INK_DIM: RgbaF32 = RgbaF32::hex(0x949bab);
 /// Group headings and other structural chrome.
-pub(crate) const INK_FAINT: Color = Color::hex(0x6d7482);
+pub(crate) const INK_FAINT: RgbaF32 = RgbaF32::hex(0x6d7482);
 /// Disabled labels — the quietest rung, below [`INK_FAINT`].
-pub(crate) const INK_DISABLED: Color = Color::hex(0x5f6673);
+pub(crate) const INK_DISABLED: RgbaF32 = RgbaF32::hex(0x5f6673);
 /// Selection / focus accent. *Is* swatch [`A`], rather than matching it
 /// by a re-typed hex: highlights and demo content share one hue, and a
 /// second literal is how two of them drift apart.
-pub(crate) const ACCENT: Color = A;
+pub(crate) const ACCENT: RgbaF32 = A;
 
 // Aliased from `palantir::demo_swatches`, which the benchmark fixture
 // reads too — the one set of ink both bundled demo surfaces use. Named
 // A-E here because this page is a *tour*: what matters is that two
 // chips differ, not what either means.
 /// Teal-blue. Default swatch when one color is enough.
-pub(crate) const A: Color = demo_swatches::TEAL;
+pub(crate) const A: RgbaF32 = demo_swatches::TEAL;
 /// Orange. Pair with `A` for "two distinct things".
-pub(crate) const B: Color = demo_swatches::ORANGE;
+pub(crate) const B: RgbaF32 = demo_swatches::ORANGE;
 /// Green.
-pub(crate) const C: Color = demo_swatches::LIME;
+pub(crate) const C: RgbaF32 = demo_swatches::LIME;
 /// Purple.
-pub(crate) const D: Color = demo_swatches::VIOLET;
+pub(crate) const D: RgbaF32 = demo_swatches::VIOLET;
 /// Red — the "wrong / danger" swatch.
-pub(crate) const E: Color = demo_swatches::RED;
+pub(crate) const E: RgbaF32 = demo_swatches::RED;
 
 /// Gap between a page's sections.
 pub(crate) const PAGE_GAP: f32 = 20.0;
@@ -150,11 +150,11 @@ pub(crate) fn body_style() -> TextStyle {
 pub(crate) fn on_swatch_style() -> TextStyle {
     TextStyle::default()
         .with_font_size(12.0)
-        .with_color(Color::hex(0x14161a))
+        .with_color(RgbaF32::hex(0x14161a))
 }
 
 /// Standard swatch fill — colored rect with a 4 px corner radius.
-pub(crate) fn swatch_bg(c: Color) -> Background {
+pub(crate) fn swatch_bg(c: RgbaF32) -> Background {
     Background {
         fill: c.into(),
         corners: Corners::all(4.0),
@@ -234,7 +234,7 @@ pub(crate) fn column(ui: &mut Ui, id: &'static str, body: impl FnOnce(&mut Ui)) 
 /// A plain colour swatch: a sized `Frame` over [`swatch_bg`]. The leaf
 /// most demo cells are built from, so the pages state only its size and
 /// colour.
-pub(crate) fn swatch<H: Hash>(ui: &mut Ui, id: H, size: (Sizing, Sizing), c: Color) {
+pub(crate) fn swatch<H: Hash>(ui: &mut Ui, id: H, size: (Sizing, Sizing), c: RgbaF32) {
     Frame::new()
         .id_salt(id)
         .size(size)

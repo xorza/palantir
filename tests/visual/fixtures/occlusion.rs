@@ -1,15 +1,15 @@
 use glam::UVec2;
 use image::RgbaImage;
-use palantir::{Color, Configure, Panel, Rect, Shape, Sizing, Ui};
+use palantir::{Configure, Panel, Rect, RgbaF32, Shape, Sizing, Ui};
 
 use crate::harness::Harness;
 use palantir::golden::Tolerance;
 
 const VIEWPORT: UVec2 = UVec2::new(128, 128);
-const CLEAR: Color = Color::WHITE;
+const CLEAR: RgbaF32 = RgbaF32::WHITE;
 const LAYER_RECT: Rect = Rect::new(20.25, 20.25, 80.0, 80.0);
 
-fn add_layer(ui: &mut Ui, color: Color) {
+fn add_layer(ui: &mut Ui, color: RgbaF32) {
     ui.add_shape(Shape::rect(LAYER_RECT).fill(color));
 }
 
@@ -21,15 +21,15 @@ fn render_fractional_layers(split_groups: bool) -> RgbaImage {
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                add_layer(ui, Color::rgb(1.0, 0.0, 0.0));
+                add_layer(ui, RgbaF32::srgb(1.0, 0.0, 0.0));
                 if split_groups {
                     Panel::canvas()
                         .auto_id()
                         .size((Sizing::FILL, Sizing::FILL))
                         .clip_rect()
-                        .show(ui, |ui| add_layer(ui, Color::rgb(0.0, 0.0, 1.0)));
+                        .show(ui, |ui| add_layer(ui, RgbaF32::srgb(0.0, 0.0, 1.0)));
                 } else {
-                    add_layer(ui, Color::rgb(0.0, 0.0, 1.0));
+                    add_layer(ui, RgbaF32::srgb(0.0, 0.0, 1.0));
                 }
             });
     })

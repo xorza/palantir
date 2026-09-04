@@ -2,7 +2,7 @@
 //! `ShapeRecord::Quad(QuadShape::Triangle)`.
 
 use crate::primitives::approx::noop_f32;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::nan::NanCheck;
 use crate::primitives::rect::aabb::Aabb;
 use crate::primitives::stroke::Stroke;
@@ -19,7 +19,7 @@ pub struct TriangleShape {
     pub(crate) b: Vec2,
     pub(crate) c: Vec2,
     pub(crate) radius: f32,
-    pub(crate) fill: Color,
+    pub(crate) fill: RgbaF32,
     pub(crate) stroke: Stroke,
 }
 
@@ -30,14 +30,14 @@ impl TriangleShape {
             b,
             c,
             radius: 0.0,
-            fill: Color::TRANSPARENT,
+            fill: RgbaF32::TRANSPARENT,
             stroke: Stroke::ZERO,
         }
     }
 }
 
 shape_setters!(TriangleShape {
-    fill: Color => fill,
+    fill: RgbaF32 => fill,
     stroke: Stroke => stroke,
     radius: f32 => radius,
 });
