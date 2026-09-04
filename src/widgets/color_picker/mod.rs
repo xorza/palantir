@@ -162,10 +162,6 @@ impl<'a> ColorPicker<'a> {
 
     /// Record the panel and report what it did to the bound colour.
     pub fn show(self, ui: &mut Ui) -> ValueResponse<'_> {
-        let mut widget = ui.widget(self.node);
-        let response = widget.response(ui);
-        let id = widget.id();
-
         // The theme handle is cloned, not the bundle: an `Rc` bump lets the
         // borrow outlive the `&mut Ui` the record below takes, which is what
         // lets the rows read their own styles out of it.
@@ -173,24 +169,23 @@ impl<'a> ColorPicker<'a> {
         let slot = self.slot(&theme);
         let gap = slot.gap.themed_length(0.0);
 
+        // The panel is as wide as its field and no wider. Every row below is
+        // `FILL` inside that, which is what keeps the value grid's columns a
+        // fixed width instead of one the digits inside them push around.
+        let node = self.node.gap(gap).default_size((
+            Sizing::fixed(slot.field_width.themed_length(1.0)),
+            Sizing::HUG,
+        ));
+        let widget = ui.widget(node);
+        let response = widget.response(ui);
+        let id = widget.id();
+
         let color = self.color;
         let alpha_on = self.alpha;
         let pinned = self.model;
         let swatches = self.swatches;
         let downsample = self.downsample;
 
-        let node = &mut widget.node;
-        node.gaps.set_gap(gap);
-        // The panel is as wide as its field and no wider. Every row below is
-        // `FILL` inside that, which is what keeps the value grid's columns a
-        // fixed width instead of one the digits inside them push around.
-        node.size.get_or_insert(
-            (
-                Sizing::fixed(slot.field_width.themed_length(1.0)),
-                Sizing::HUG,
-            )
-                .into(),
-        );
         let mut edit = Edit::default();
         widget.record(ui, None, |ui| {
             ui.with_state::<PickerState, _>(id, |ui, state| {

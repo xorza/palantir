@@ -7,10 +7,12 @@ use crate::primitives::color::RgbaF32;
 use crate::primitives::num::F32Ext;
 use crate::primitives::size::Size;
 use crate::scene::node::Node;
+use crate::scene::node::configure::Configure;
 use crate::ui::Ui;
 use crate::widgets::checkerboard::Checkerboard;
 use crate::widgets::response::Response;
 use crate::widgets::theme::color_picker::ColorPickerTheme;
+use std::rc::Rc;
 
 /// A chip painting one colour, with a checkerboard behind it when that colour
 /// is translucent.
@@ -33,10 +35,8 @@ impl<'a> ColorSwatch<'a> {
     /// A chip showing `color`.
     #[track_caller]
     pub fn new(color: RgbaF32) -> Self {
-        let mut node = Node::leaf();
-        node.flags.set_sense(Sense::CLICK);
         Self {
-            node,
+            node: Node::leaf().sense(Sense::CLICK),
             color,
             style: None,
         }
@@ -46,17 +46,20 @@ impl<'a> ColorSwatch<'a> {
 
     /// Record the chip and report whether it was clicked.
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        let mut widget = ui.widget(self.node);
+        // The theme handle is cloned so the slot outlives the `&mut Ui` the
+        // widget opening below takes: the checker reads it after that.
+        let bundle = Rc::clone(ui.theme());
+        let theme = self.slot(&bundle);
+        let side = theme.swatch_size.themed_length(1.0);
+        let node = self
+            .node
+            .default_size((Sizing::fixed(side), Sizing::fixed(side)));
+        let widget = ui.widget(node);
         let response = widget.response(ui);
         let id = widget.id();
-        let theme = self.slot(ui.theme());
-        let side = theme.swatch_size.themed_length(1.0);
         let checker = Checkerboard::new(theme, response.layout_rect, Size::new(side, side));
         let color = self.color;
 
-        let node = &mut widget.node;
-        node.size
-            .get_or_insert((Sizing::fixed(side), Sizing::fixed(side)).into());
         widget.record(ui, None, |ui| checker.paint_chip(ui, color));
         Response::eager(id, ui, response)
     }

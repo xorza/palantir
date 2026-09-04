@@ -5,13 +5,14 @@ use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
 use crate::input::shortcut::Shortcut;
 use crate::layout::types::sizing::Sizing;
-use crate::primitives::approx;
 use crate::primitives::color::color_coords::ColorCoords;
 use crate::primitives::color::color_model::ColorModel;
 use crate::primitives::image::ImageFit;
 use crate::primitives::num::F32Ext;
 use crate::primitives::size::Size;
+use crate::renderer::image_registry::image_write::ImageWrite;
 use crate::scene::node::Node;
+use crate::scene::node::configure::Configure;
 use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::widgets::axis_keys::AxisKeys;
@@ -19,7 +20,7 @@ use crate::widgets::color_surface::ColorSurface;
 use crate::widgets::response::Response;
 use crate::widgets::theme::color_picker::ColorPickerTheme;
 use crate::widgets::value_response::ValueResponse;
-use glam::{UVec2, Vec2};
+use glam::Vec2;
 
 /// The two-axis area of a colour picker: saturation left to right, value
 /// bottom to top, at whatever hue the bound coordinates carry.
@@ -46,11 +47,10 @@ impl<'a> ColorField<'a> {
     /// both that value's.
     #[track_caller]
     pub fn new(coords: &'a mut ColorCoords) -> Self {
-        let mut node = Node::leaf();
-        node.flags.set_sense(Sense::CLICK | Sense::DRAG);
-        node.flags.set_focusable(true);
         Self {
-            node,
+            node: Node::leaf()
+                .sense(Sense::CLICK | Sense::DRAG)
+                .focusable(true),
             coords,
             downsample: ColorSurface::DOWNSAMPLE,
             style: None,
@@ -89,10 +89,6 @@ impl<'a> ColorField<'a> {
 
     /// Record the field and report what the gesture did to the coordinates.
     pub fn show(self, ui: &mut Ui) -> ValueResponse<'_> {
-        let mut widget = ui.widget(self.node);
-        let response = widget.response(ui);
-        let id = widget.id();
-
         let theme = self.slot(ui.theme());
         let themed = Size::new(
             theme.field_width.themed_length(1.0),
@@ -102,6 +98,13 @@ impl<'a> ColorField<'a> {
         let handle_width = theme.handle_width.themed_length(0.0);
         let handle_outer = theme.handle_outer;
         let handle_inner = theme.handle_inner;
+
+        let node = self
+            .node
+            .default_size((Sizing::fixed(themed.w), Sizing::fixed(themed.h)));
+        let widget = ui.widget(node);
+        let response = widget.response(ui);
+        let id = widget.id();
         let size = response.layout_rect.map_or(themed, |r| r.size);
 
         let coords = self.coords;
@@ -111,8 +114,10 @@ impl<'a> ColorField<'a> {
             && (response.pressed() || response.left.drag.dragging() || released)
             && let (Some(local), Some(rect)) = (response.pointer_local, response.layout_rect)
         {
-            let sat = approx::ratio(local.x, rect.size.w).unit_fraction_or(0.0);
-            let val = 1.0 - approx::ratio(local.y, rect.size.h).unit_fraction_or(0.0);
+            // No band: the ring's centre goes wherever the pointer is.
+            let unit = |at: f32, extent: f32| at.band_fraction(extent, 0.0).unit_fraction_or(0.0);
+            let sat = unit(local.x, rect.size.w);
+            let val = 1.0 - unit(local.y, rect.size.h);
             changed |= write_axes(coords, sat, val);
         }
         let keyed = !response.disabled && ui.focus_within(id) && keyboard_travel(ui, coords);
@@ -123,17 +128,13 @@ impl<'a> ColorField<'a> {
         let texels = ColorSurface::texel_size(size, self.downsample, ui);
         let model = coords.model();
         let hue = coords.hue();
-        let stamp = ColorSurface::stamp((model, hue.to_bits()));
         let marker = Vec2::new(coords.sat() * size.w, (1.0 - coords.val()) * size.h);
 
-        let node = &mut widget.node;
-        node.size
-            .get_or_insert((Sizing::fixed(themed.w), Sizing::fixed(themed.h)).into());
         widget.record(ui, None, |ui| {
             let image = ui.with_state::<ColorSurface, _>(id.with("surface"), |ui, surface| {
                 surface
-                    .ensure(ui, texels, stamp, |texels, size| {
-                        fill(texels, size, model, hue);
+                    .ensure(ui, texels, (model, hue.to_bits()), |texels| {
+                        fill(texels, model, hue);
                     })
                     .clone()
             });
@@ -198,16 +199,14 @@ fn keyboard_travel(ui: &mut Ui, coords: &mut ColorCoords) -> bool {
 ///
 /// The hue's gamut solve is hoisted out of the loop — every texel here shares
 /// it, and for Okhsv it is the expensive half of a conversion.
-fn fill(texels: &mut Vec<u8>, size: UVec2, model: ColorModel, hue: f32) {
+fn fill(texels: &mut ImageWrite<'_>, model: ColorModel, hue: f32) {
     let slice = model.slice(hue);
-    for row in 0..size.y {
+    let size = texels.size();
+    texels.fill_with(|column, row| {
+        let sat = (column as f32 + 0.5) / size.x as f32;
         let val = 1.0 - (row as f32 + 0.5) / size.y as f32;
-        for column in 0..size.x {
-            let sat = (column as f32 + 0.5) / size.x as f32;
-            let quantized = slice.color(sat, val).to_srgba_u8();
-            texels.extend_from_slice(&[quantized.r, quantized.g, quantized.b, 255]);
-        }
-    }
+        slice.color(sat, val).to_srgba_u8()
+    });
 }
 
 #[cfg(feature = "bench")]

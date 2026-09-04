@@ -121,6 +121,12 @@ pub trait Configure: Sized {
         self.node_mut().node.size = Some(s.into());
         self
     }
+    /// The size only where none was set: a widget's themed default,
+    /// applied after the caller's chain ran so the caller's choice wins.
+    fn default_size(mut self, s: impl Into<Sizes>) -> Self {
+        self.node_mut().node.size.get_or_insert(s.into());
+        self
+    }
     /// # Panics
     ///
     /// Panics if the bound is negative, non-finite, or above a maximum

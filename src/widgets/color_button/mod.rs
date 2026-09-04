@@ -15,6 +15,7 @@ use crate::widgets::popup::Popup;
 use crate::widgets::response::Response;
 use crate::widgets::theme::color_picker::ColorPickerTheme;
 use crate::widgets::value_response::ValueResponse;
+use std::rc::Rc;
 
 /// A colour chip that opens a [`ColorPicker`] in a popup when clicked.
 ///
@@ -46,10 +47,8 @@ impl<'a> ColorButton<'a> {
     /// A chip bound to `color`.
     #[track_caller]
     pub fn new(color: &'a mut RgbaF32) -> Self {
-        let mut node = Node::leaf();
-        node.flags.set_sense(Sense::CLICK);
         Self {
-            node,
+            node: Node::leaf().sense(Sense::CLICK),
             color,
             alpha: false,
             model: None,
@@ -82,19 +81,21 @@ impl<'a> ColorButton<'a> {
 
     /// Record the chip, and the popup when it is open.
     pub fn show(self, ui: &mut Ui) -> ValueResponse<'_> {
-        let mut widget = ui.widget(self.node);
+        // The theme handle is cloned so the slot outlives the `&mut Ui` the
+        // widget opening below takes: the checker reads it after that.
+        let bundle = Rc::clone(ui.theme());
+        let theme = self.slot(&bundle);
+        let side = theme.chip_size.themed_length(1.0);
+        let node = self
+            .node
+            .default_size((Sizing::fixed(side), Sizing::fixed(side)));
+        let widget = ui.widget(node);
         let response = widget.response(ui);
         let id = widget.id();
-
-        let theme = self.slot(ui.theme());
-        let side = theme.chip_size.themed_length(1.0);
         let checker = Checkerboard::new(theme, response.layout_rect, (side, side).into());
         let color = self.color;
         let shown = *color;
 
-        let node = &mut widget.node;
-        node.size
-            .get_or_insert((Sizing::fixed(side), Sizing::fixed(side)).into());
         widget.record(ui, None, |ui| checker.paint_chip(ui, shown));
 
         // Probed, not inserted: a chip spends nearly every frame closed, and

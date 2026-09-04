@@ -116,15 +116,7 @@ impl Image {
     /// Panics for zero dimensions, unrepresentable byte lengths, or when
     /// `pixels.len() != width * height * 4`.
     pub fn from_rgba8(width: u32, height: u32, pixels: Vec<u8>) -> Self {
-        assert!(
-            width != 0 && height != 0,
-            "RGBA8 dimensions must be non-zero, got {width}x{height}",
-        );
-        let expected = u64::from(width)
-            .checked_mul(u64::from(height))
-            .and_then(|texels| texels.checked_mul(4))
-            .and_then(|len| usize::try_from(len).ok())
-            .expect("RGBA8 dimensions overflow addressable byte length");
+        let expected = rgba8_len(width, height);
         assert_eq!(
             pixels.len(),
             expected,
@@ -136,6 +128,37 @@ impl Image {
             pixels,
         }
     }
+
+    /// Transparent black at `size`: what a surface registers before its first
+    /// write through [`ImageHandle::write`](crate::ImageHandle::write).
+    ///
+    /// # Panics
+    ///
+    /// Panics for a zero dimension or an unrepresentable byte length, as
+    /// [`Self::from_rgba8`] does.
+    pub fn blank(size: UVec2) -> Self {
+        Self {
+            size,
+            pixels: vec![0; rgba8_len(size.x, size.y)],
+        }
+    }
+}
+
+/// Bytes an RGBA8 image of `width` by `height` holds.
+///
+/// # Panics
+///
+/// Panics for a zero dimension or a length `usize` cannot hold.
+fn rgba8_len(width: u32, height: u32) -> usize {
+    assert!(
+        width != 0 && height != 0,
+        "RGBA8 dimensions must be non-zero, got {width}x{height}",
+    );
+    u64::from(width)
+        .checked_mul(u64::from(height))
+        .and_then(|texels| texels.checked_mul(4))
+        .and_then(|len| usize::try_from(len).ok())
+        .expect("RGBA8 dimensions overflow addressable byte length")
 }
 
 /// Only [`ImageFit::Tile`] carries scalars; every other fit is a bare tag.
@@ -159,6 +182,10 @@ mod tests {
         let image = Image::from_rgba8(2, 1, pixels.clone());
         assert_eq!(image.size, glam::UVec2::new(2, 1));
         assert_eq!(image.pixels, pixels);
+
+        let blank = Image::blank(glam::UVec2::new(2, 3));
+        assert_eq!(blank.size, glam::UVec2::new(2, 3));
+        assert_eq!(blank.pixels, vec![0; 24]);
     }
 
     #[test]

@@ -1,16 +1,18 @@
 //! A CPU-built texture a colour widget paints itself with, and the rule that
 //! decides when to build it again.
 
-use crate::common::hash::Hasher;
 use crate::primitives::image::Image;
 use crate::primitives::size::Size;
 use crate::renderer::image_registry::ImageHandle;
+use crate::renderer::image_registry::image_write::ImageWrite;
 use crate::ui::Ui;
 use glam::UVec2;
-use std::hash::{Hash, Hasher as _};
+use rustc_hash::FxBuildHasher;
+use std::hash::{BuildHasher as _, Hash};
 use std::num::NonZeroU32;
 
-/// One texture a colour widget owns, filled on the CPU and refreshed in place.
+/// One texture a colour widget owns, filled on the CPU and rewritten in
+/// place.
 ///
 /// The colour field and the two bars are all exact per texel, which no
 /// gradient and no vertex-coloured mesh can be: a gradient interpolates in
@@ -18,19 +20,14 @@ use std::num::NonZeroU32;
 /// the darks. An image texture is `Rgba8UnormSrgb`, so eight bits land where
 /// the eye can use them.
 ///
-/// Kept in widget state across frames. A rebuild refills one retained buffer
-/// and calls [`ImageHandle::update`], so a hue drag allocates nothing and
-/// mints no second texture.
+/// Kept in widget state across frames. A rebuild writes the texels through
+/// [`ImageHandle::write`], so a hue drag allocates nothing and mints no
+/// second texture.
 #[derive(Debug, Default)]
 pub(crate) struct ColorSurface {
     handle: Option<ImageHandle>,
-    texels: Vec<u8>,
-    size: UVec2,
     stamp: u64,
 }
-
-/// Bytes per texel. `Rgba8UnormSrgb`, and the alpha is written too.
-const CHANNELS: usize = 4;
 
 /// Smallest texture either axis is built at. Two texels still interpolate;
 /// one would flatten the axis.
@@ -74,69 +71,46 @@ impl ColorSurface {
         UVec2::new(axis(size.w), axis(size.h))
     }
 
-    /// The handle to paint with, rebuilding the texels first when `size` or
-    /// `stamp` moved since the last call.
+    /// The handle to paint with, filled again first when `size` or `key`
+    /// moved since the last call.
     ///
-    /// `stamp` is the caller's own hash of everything its `fill` reads. Each
-    /// surface hashes a different set — the field's hue and model, the bar's
-    /// model, the alpha bar's colour — which is why the key is one number
-    /// here rather than a struct carrying fields two of the three ignore.
+    /// `key` is everything `fill` reads, and each surface brings a different
+    /// set — the field's hue and model, a bar's paint — which is why it is
+    /// hashed to one number here rather than kept as a struct carrying fields
+    /// one of them ignores.
     ///
-    /// `fill` writes exactly `size.x * size.y * 4` bytes into the cleared
-    /// buffer, **sRGB-encoded**: [`RgbaF32::to_srgba_u8`](crate::RgbaF32::to_srgba_u8),
-    /// never the linear quantize `RgbaU8::from` performs.
+    /// `fill` writes every texel, **sRGB-encoded**:
+    /// [`RgbaF32::to_srgba_u8`](crate::RgbaF32::to_srgba_u8), never the
+    /// linear quantize `RgbaU8::from` performs.
     pub(crate) fn ensure(
         &mut self,
         ui: &Ui,
         size: UVec2,
-        stamp: u64,
-        fill: impl FnOnce(&mut Vec<u8>, UVec2),
+        key: impl Hash,
+        fill: impl FnOnce(&mut ImageWrite<'_>),
     ) -> &ImageHandle {
-        if self.handle.is_none() || size != self.size || stamp != self.stamp {
-            self.rebuild(ui, size, stamp, fill);
-        }
-        self.handle
+        let stamp = FxBuildHasher.hash_one(key);
+        let fresh = self
+            .handle
             .as_ref()
-            .expect("a rebuild always leaves a handle behind")
-    }
-
-    /// Fold whatever a fill reads into the one number [`Self::ensure`]
-    /// compares.
-    pub(crate) fn stamp(parts: impl Hash) -> u64 {
-        let mut hasher = Hasher::new();
-        parts.hash(&mut hasher);
-        hasher.finish()
-    }
-
-    fn rebuild(
-        &mut self,
-        ui: &Ui,
-        size: UVec2,
-        stamp: u64,
-        fill: impl FnOnce(&mut Vec<u8>, UVec2),
-    ) {
-        let needed = size.x as usize * size.y as usize * CHANNELS;
-        self.texels.clear();
-        self.texels.reserve_exact(needed);
-        fill(&mut self.texels, size);
-        debug_assert_eq!(
-            self.texels.len(),
-            needed,
-            "a colour surface fill owes exactly one RGBA texel per pixel",
-        );
-        match &self.handle {
-            Some(handle) if size == self.size => handle.update(&self.texels),
+            .is_none_or(|handle| handle.size() != size);
+        if fresh {
             // First build or a resize. A resize is rare — a panel being
-            // dragged wider — so the clone it costs is not on any hot path.
-            _ => {
-                let image = Image::from_rgba8(size.x, size.y, self.texels.clone());
-                let handle = ui
-                    .register_image(image)
-                    .expect("a colour surface is clamped to the device texture cap");
-                self.handle = Some(handle);
-                self.size = size;
-            }
+            // dragged wider — so the blank image it registers is not on any
+            // hot path, and the fill below overwrites it in the same frame.
+            let handle = ui
+                .register_image(Image::blank(size))
+                .expect("a colour surface is clamped to the device texture cap");
+            self.handle = Some(handle);
         }
-        self.stamp = stamp;
+        let handle = self
+            .handle
+            .as_ref()
+            .expect("a fresh surface registered its handle above");
+        if fresh || stamp != self.stamp {
+            fill(&mut handle.write());
+            self.stamp = stamp;
+        }
+        handle
     }
 }
