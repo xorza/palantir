@@ -7,8 +7,8 @@
 
 use crate::support::{note_style, row, section};
 use palantir::{
-    RgbaF32, ColorButton, ColorCoords, ColorField, ColorModel, ColorPicker, ColorStrip, ColorSwatch,
-    Configure, Panel, Sizing, Text, Ui, WidgetId,
+    ColorButton, ColorCoords, ColorField, ColorModel, ColorPicker, ColorStrip, ColorSwatch,
+    Configure, Panel, RgbaF32, Sizing, Text, Ui, WidgetId,
 };
 
 #[derive(Debug)]
