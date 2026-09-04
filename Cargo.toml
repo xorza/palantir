@@ -72,7 +72,7 @@ soa-rs = "1.0"
 strum = { version = "0.28", features = ["derive"] }
 swash = "0.2"
 serde = { version = "1.0", features = ["derive"] }
-tinyvec = { version = "1.12", features = ["serde"] }
+tinyvec = { version = "1.13", features = ["serde"] }
 unicode-linebreak = "0.1"
 unicode-segmentation = "1.13"
 
