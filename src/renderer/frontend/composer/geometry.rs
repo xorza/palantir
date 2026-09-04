@@ -202,7 +202,7 @@ impl StrokeBbox {
             join,
             display,
         } = self;
-        let centerline_phys = phys_bbox(xform, bbox, origin, display.scale_factor);
+        let centerline_phys = phys_bbox(xform, bbox, origin, display.scale_factor());
         let painted = stroke_bounds::bbox(centerline_phys, width_phys, HALF_FRINGE, cap, join);
         urect_from_phys(painted.min, painted.max(), display.physical)
     }

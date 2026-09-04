@@ -27,6 +27,7 @@ use crate::common::clipboard::Clipboard;
 use crate::diagnostics::DebugOverlayConfig;
 use crate::diagnostics::frame_stats::FrameStats;
 use crate::display::Display;
+use crate::display::user_scale::UserScale;
 use crate::icons::icon_set::IconSet;
 use crate::icons::icon_table::IconTable;
 use crate::input::input_event::InputEvent;
@@ -99,9 +100,9 @@ use std::rc::Rc;
 use std::time::Duration;
 
 /// Recorder + input/response broker. All public coordinates are
-/// logical pixels (DIPs); `Display::scale_factor` converts to
-/// physical at the wgpu boundary. Frame scheduling state is retained
-/// internally.
+/// logical pixels (DIPs); `Display::scale_factor` — the platform's factor
+/// times [`Ui::set_user_scale`]'s — converts to physical at the wgpu
+/// boundary. Frame scheduling state is retained internally.
 ///
 /// **Every field is private, and that is the boundary.** Everything outside
 /// this module — widgets, the host, the encoder — reaches this state through
@@ -644,15 +645,21 @@ impl Ui {
     }
 
     /// This window's live geometry for persist-and-restore across launches.
-    /// A computed view, not stored state: the logical inner size comes from
+    /// A computed view, not stored state: the inner size comes from
     /// [`Self::display`] (the single source of truth for surface size), and
     /// the placement from the host-refreshed window-manager facts. Feed it
     /// back through [`WindowConfig::placement`](crate::WindowConfig) and
     /// `inner_size` on the next launch to reopen where the user left off.
     /// The placement's position is `None` on platforms that don't report
     /// one (Wayland). All-zero / `None` in headless contexts.
+    ///
+    /// **In the window manager's logical pixels**, not the UI's — see
+    /// [`Display::system_logical_size`]. This size is going back to the
+    /// platform, which never hears about [`Self::set_user_scale`], so
+    /// dividing by the product instead would shrink the window by the user
+    /// scale on every launch.
     pub fn window_geometry(&self) -> WindowGeometry {
-        let logical = self.display.logical_size();
+        let logical = self.display.system_logical_size();
         WindowGeometry {
             inner_size: UVec2::new(
                 (logical.w.round() as u32).max(1),
@@ -1261,12 +1268,63 @@ impl Ui {
             .is_some_and(|h| self.cascade.is_within(h, ancestor))
     }
 
-    /// Active `Display` (physical surface size + scale factor). Read
+    /// Active `Display` (physical surface size + both scale factors). Read
     /// by example/demo code that wants to inject synthetic input
     /// coordinates without threading window dimensions through itself.
     #[inline]
     pub fn display(&self) -> Display {
         self.display
+    }
+
+    /// The application's own scale, multiplied onto the scale the platform
+    /// reported. `UserScale::ONE` until something sets it.
+    ///
+    /// The source of truth, rather than something app code mirrors — the
+    /// same position [`Self::vsync`] takes. Reads back what
+    /// [`Self::set_user_scale`] last wrote, from the first frame, in every
+    /// window.
+    #[inline]
+    pub fn user_scale(&self) -> UserScale {
+        self.resources.user_scale.get()
+    }
+
+    /// Scale the whole UI by `scale` on top of the platform's own factor.
+    ///
+    /// **App-global**, like [`Self::set_debug_overlay`] and for the same
+    /// reason: the per-monitor case is already answered by the platform
+    /// factor, so what is left is a preference, and the host repaints idle
+    /// windows so a change from one shows everywhere.
+    ///
+    /// Takes effect on the next frame, because the host mints each frame's
+    /// [`Display`] before running it. This frame's [`Self::display`] still
+    /// reports the old value, and the frame after relayouts and repaints in
+    /// full — the same path a monitor move takes.
+    ///
+    /// ```
+    /// # use palantir::{Ui, UserScale};
+    /// # fn demo(ui: &mut Ui) {
+    /// // Whatever the app binds its own zoom-in chord to.
+    /// let scale = ui.user_scale();
+    /// ui.set_user_scale(scale.stepped_up());
+    /// # }
+    /// ```
+    ///
+    /// Writing the value already in force costs nothing, so a control may
+    /// write its own state back every frame.
+    ///
+    /// **Restore a persisted preference from the app factory** — the
+    /// closure [`WinitHostBuilder::build`](crate::WinitHostBuilder::build)
+    /// hands a `&mut Ui`, and it runs before the first frame, so the first
+    /// window opens at the right size. That is the same place a
+    /// [`Theme`](crate::Theme) is restored, and there is no host setting
+    /// for either.
+    ///
+    /// Each distinct scale re-rasterizes every glyph on screen — see
+    /// [`UserScale`], which is also where the ladder the steppers walk
+    /// lives.
+    #[inline]
+    pub fn set_user_scale(&mut self, scale: UserScale) {
+        self.resources.user_scale.set(scale);
     }
 
     /// This frame's monotonic index, counting the frames authoring code

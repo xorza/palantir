@@ -6,7 +6,9 @@ use winit::keyboard::{
 };
 
 use crate::common::platform::{PLATFORM, Platform};
-use crate::host::winit::input::{logical_key, normalize_modifiers, physical_key, translate};
+use crate::host::winit::input::{
+    PointerTrace, logical_key, normalize_modifiers, physical_key, translate,
+};
 use crate::input::input_event::InputEvent;
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::modifiers::Modifiers;
@@ -16,6 +18,13 @@ fn wheel(delta: MouseScrollDelta) -> WindowEvent {
         device_id: DeviceId::dummy(),
         delta,
         phase: TouchPhase::Moved,
+    }
+}
+
+fn cursor_moved(x: f64, y: f64) -> WindowEvent {
+    WindowEvent::CursorMoved {
+        device_id: DeviceId::dummy(),
+        position: PhysicalPosition::new(x, y),
     }
 }
 
@@ -220,4 +229,47 @@ fn shared_keys_denote_the_same_key_on_both_sides() {
             "{named:?} must resolve on both sides, not fall through",
         );
     }
+}
+
+/// The recorder is told a logical position, and the host is handed back
+/// the physical one it came from — the number `Window::resync_pointer`
+/// re-divides when the scale moves, and the only pointer fact the
+/// division would otherwise destroy.
+#[test]
+fn a_move_emits_logical_and_traces_physical() {
+    let mut emitted = None;
+    let trace = translate(&cursor_moved(300.0, 120.0), 2.5, |event| {
+        emitted = Some(event)
+    });
+
+    assert!(matches!(
+        emitted,
+        Some(InputEvent::PointerMoved(at)) if at == Vec2::new(120.0, 48.0)
+    ));
+    assert_eq!(trace, PointerTrace::At(Vec2::new(300.0, 120.0)));
+}
+
+/// A departure is traced as one, so the host drops a position it must
+/// not restate, and every other event leaves the trace alone.
+#[test]
+fn a_departure_traces_gone_and_other_events_trace_nothing() {
+    let left = WindowEvent::CursorLeft {
+        device_id: DeviceId::dummy(),
+    };
+    let mut emitted = None;
+    assert_eq!(
+        translate(&left, 1.0, |event| emitted = Some(event)),
+        PointerTrace::Gone,
+    );
+    assert!(matches!(emitted, Some(InputEvent::PointerLeft)));
+
+    assert_eq!(
+        translate(&pinch(0.5), 1.0, |_| {}),
+        PointerTrace::Unchanged,
+        "a gesture says nothing about where the pointer is",
+    );
+    assert_eq!(
+        translate(&wheel(MouseScrollDelta::LineDelta(1.0, 1.0)), 1.0, |_| {}),
+        PointerTrace::Unchanged,
+    );
 }

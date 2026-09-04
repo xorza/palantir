@@ -5,9 +5,9 @@
 pub(crate) mod frame_stats;
 pub(crate) mod gpu_pass_stats;
 
-use std::cell::Cell;
 use std::rc::Rc;
 
+use crate::common::app_setting::AppSetting;
 use crate::diagnostics::gpu_pass_stats::GpuPassStats;
 
 /// Per-overlay flags. Each `bool` toggles one visualization.
@@ -39,49 +39,11 @@ pub struct DebugOverlayConfig {
     pub frame_stats: bool,
 }
 
-/// The app-global overlay flags, and whether they have changed since the
-/// host last asked.
-///
-/// The flags are app-global, so a toggle in one window has to repaint the
-/// others — which means the host must *learn* of a change, and only
-/// [`Ui::set_debug_overlay`](crate::Ui::set_debug_overlay) can tell it.
-/// The write raises the signal and the ask lowers it, so the host holds
-/// no copy of its own to keep in step and asks nothing of the flags on a
-/// loop tick that changed none.
-#[derive(Debug, Default)]
-pub(crate) struct OverlayFlags {
-    config: Cell<DebugOverlayConfig>,
-    changed: Cell<bool>,
-}
-
-impl OverlayFlags {
-    #[inline]
-    pub(crate) fn get(&self) -> DebugOverlayConfig {
-        self.config.get()
-    }
-
-    /// Writing the flags they already hold is not a change: an app that
-    /// assigns the same value every frame must not repaint every window
-    /// every frame.
-    #[inline]
-    pub(crate) fn set(&self, overlay: DebugOverlayConfig) {
-        if self.config.replace(overlay) != overlay {
-            self.changed.set(true);
-        }
-    }
-
-    /// Whether the flags changed since this was last asked, clearing the
-    /// signal. Gated with the windowed runtime, its only caller: it
-    /// repaints every window when a toggle in one moves the shared flags.
-    #[cfg(any(test, feature = "winit"))]
-    #[inline]
-    pub(crate) fn take_change(&self) -> bool {
-        self.changed.replace(false)
-    }
-}
-
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Diagnostics {
     pub(crate) gpu_pass_stats: GpuPassStats,
-    pub(crate) overlay: Rc<OverlayFlags>,
+    /// App-global, so a toggle in one window has to repaint the others —
+    /// which is what the [`AppSetting`] signal is for, and only
+    /// [`Ui::set_debug_overlay`](crate::Ui::set_debug_overlay) raises it.
+    pub(crate) overlay: Rc<AppSetting<DebugOverlayConfig>>,
 }

@@ -145,11 +145,11 @@ fn bench_host(g: &BenchGpu) -> OffscreenHost {
 fn frame_offscreen(
     host: &mut OffscreenHost,
     target: &wgpu::Texture,
-    scale_factor: f32,
+    system_scale: f32,
     record: impl FnMut(&mut Ui),
 ) {
     let mut app = RecordApp::new(record);
-    host.frame_offscreen(target, scale_factor, &mut app);
+    host.frame_offscreen(target, system_scale, &mut app);
 }
 
 /// Deviceless CPU-pipeline harness: a bare `Ui` (bundled-font shaper)

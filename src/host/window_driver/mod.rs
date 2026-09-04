@@ -355,22 +355,26 @@ impl WindowDriver {
 
     /// This driver's [`Display`] for a frame of the given surface.
     ///
-    /// **The one place `pixel_snap` reaches a frame.** The host seals it
-    /// once on its `HostCore` and every driver carries it — but `Display`'s
-    /// own default is `true`, so a host that assembled one itself would
-    /// snap regardless of what it asked for, and nothing would say so.
-    /// Minting it here leaves nothing to remember: a caller supplies what
-    /// it knows (the surface, and the monitor's refresh where it has one)
-    /// and the driver supplies what it owns.
+    /// **The one place `pixel_snap` and the user scale reach a frame.** The
+    /// host seals the first once on its `HostCore` and every driver carries
+    /// it — but `Display`'s own default is `true`, so a host that assembled
+    /// one itself would snap regardless of what it asked for, and nothing
+    /// would say so. The user scale is the same story from the other end: it
+    /// is app-global and written from inside a frame, so a host caching its
+    /// own copy would paint one frame at the old value every time it moved.
+    /// Minting here leaves nothing to remember: a caller supplies what it
+    /// knows (the surface, the platform's scale, and the monitor's refresh
+    /// where it has one) and the driver supplies what it owns.
     pub(super) fn display(
         &self,
         physical: UVec2,
-        scale_factor: f32,
+        system_scale: f32,
         refresh_millihertz: Option<u32>,
     ) -> Display {
         Display {
             physical,
-            scale_factor,
+            system_scale,
+            user_scale: self.ui.user_scale(),
             pixel_snap: self.pixel_snap,
             refresh_millihertz,
         }

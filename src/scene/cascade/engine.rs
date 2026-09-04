@@ -134,7 +134,7 @@ impl CascadeEngine {
                 &layout[layer],
                 &mut cascade.layers[layer],
                 None,
-                display.scale_factor,
+                display.scale_factor(),
             );
             if !incremental_complete {
                 self.counters.abandoned_incremental();
@@ -159,7 +159,7 @@ impl CascadeEngine {
         cascade: &Cascade,
         layout_hashes: &PerLayer<ContentHash>,
     ) -> bool {
-        if self.display_scale != Some(display.scale_factor) {
+        if self.display_scale != Some(display.scale_factor()) {
             return false;
         }
         let total = forest.total_nodes();
@@ -228,7 +228,7 @@ impl CascadeEngine {
                     scopes: &mut cascade.scopes,
                     layer,
                 }),
-                display.scale_factor,
+                display.scale_factor(),
             );
             debug_assert!(full_complete);
             cascade.layers[layer]
@@ -247,7 +247,7 @@ impl CascadeEngine {
         // `SeenIds::pre_record` clears `curr` before a relayout pass can
         // query the preceding pass's responses.
         cascade.by_id.clone_from(&forest.ids.curr);
-        self.display_scale = Some(display.scale_factor);
+        self.display_scale = Some(display.scale_factor());
     }
 }
 
@@ -285,7 +285,7 @@ pub(crate) fn cascade_fingerprint(forest: &Forest, display: Display) -> u64 {
     let mut h = Hasher::new();
     h.write_u32(display.physical.x);
     h.write_u32(display.physical.y);
-    display.scale_factor.hash_eq(&mut h);
+    display.scale_factor().hash_eq(&mut h);
     for (layer, tree) in forest.trees.iter_paint_order() {
         // Layer discriminant: an identical root subtree migrating
         // between side layers (Popup → Tooltip) must not alias, or

@@ -1,6 +1,7 @@
 //! The surface and output changes that force a full frame.
 
 use crate::Ui;
+use crate::display::user_scale::UserScale;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::primitives::widget_id::WidgetId;
@@ -14,8 +15,8 @@ use crate::widgets::{frame::Frame, panel::Panel};
 use crate::{display::Display, layout::types::sizing::Sizing};
 use glam::UVec2;
 
-/// Pin: a Display change between frames (resize or scale-factor)
-/// forces the next compute to `Full` regardless of how few widgets
+/// Pin: a Display change between frames (resize, either scale factor, or
+/// a snap flip) forces the next compute to `Full` regardless of how few widgets
 /// are dirty. The backend recreates the backbuffer / reshapes text
 /// and a partial paint over a freshly cleared backbuffer would leave
 /// the rest of the screen as clear color — the showcase resize-flicker
@@ -31,9 +32,19 @@ fn display_change_forces_full_repaint() {
             },
         ),
         (
-            "scale_factor",
+            "system_scale",
             Display {
-                scale_factor: 2.0,
+                system_scale: 2.0,
+                ..DISPLAY
+            },
+        ),
+        // The user scale rasterizes exactly as the system one does, so it
+        // escalates for the same reason — and it is the half an app can
+        // move while the monitor never changes.
+        (
+            "user_scale",
+            Display {
+                user_scale: UserScale::new(1.25),
                 ..DISPLAY
             },
         ),
@@ -46,7 +57,7 @@ fn display_change_forces_full_repaint() {
             "dpi_move_constant_logical",
             Display {
                 physical: UVec2::new(400, 400),
-                scale_factor: 2.0,
+                system_scale: 2.0,
                 ..DISPLAY
             },
         ),

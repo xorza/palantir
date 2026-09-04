@@ -10,8 +10,8 @@ use palantir::SlotDefaults;
 use palantir::{
     Align, AnimSpec, App, Background, Button, ButtonTheme, Checkbox, Color, Configure, Corners,
     FontWeight, Frame, FrameFixture, Key, Palette, Panel, Scroll, Shortcut, Sizing, Spacing,
-    StatefulLook, Stroke, Text, TextStyle, TextWrap, Theme, Ui, Vsync, WidgetLook, WindowConfig,
-    WindowToken,
+    StatefulLook, Stroke, Text, TextStyle, TextWrap, Theme, Ui, UserScale, Vsync, WidgetLook,
+    WindowConfig, WindowToken, fmt,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -463,8 +463,8 @@ fn group_heading(ui: &mut Ui, name: &'static str, first: bool) {
         .show(ui);
 }
 
-/// The overlay switches, mirroring the F-key shortcuts so they're
-/// discoverable instead of living only in a comment.
+/// The rail footer, where each control mirrors its shortcut so the keys
+/// are discoverable instead of living only in a comment.
 fn debug_toggles(ui: &mut Ui) {
     Frame::new()
         .id_salt("footer-rule")
@@ -496,9 +496,57 @@ fn debug_toggles(ui: &mut Ui) {
                 .id_salt("dbg-vsync")
                 .label("vsync")
                 .show(ui);
+            ui_scale_row(ui);
         });
     ui.set_vsync(if vsync_on { Vsync::On } else { Vsync::Off });
     ui.set_debug_overlay(overlay);
+}
+
+/// The UI-scale stepper, mirroring the Ctrl+`-` / Ctrl+`=` / Ctrl+`0`
+/// shortcuts.
+///
+/// Two buttons and a readout rather than a slider, which is the control
+/// this setting wants: every distinct scale re-rasterizes every glyph on
+/// screen, so a ladder of a dozen rungs is worth far more than a
+/// continuous drag through hundreds of them.
+fn ui_scale_row(ui: &mut Ui) {
+    let scale = ui.user_scale();
+    let mut next = scale;
+    Panel::hstack()
+        .id_salt("ui-scale")
+        .size((Sizing::FILL, Sizing::HUG))
+        .gap(6.0)
+        .align(Align::LEFT)
+        .show(ui, |ui| {
+            if Button::new()
+                .id_salt("ui-scale-down")
+                .label("−")
+                .show(ui)
+                .left
+                .clicked()
+            {
+                next = scale.stepped_down();
+            }
+            if Button::new()
+                .id_salt("ui-scale-up")
+                .label("+")
+                .show(ui)
+                .left
+                .clicked()
+            {
+                next = scale.stepped_up();
+            }
+            let readout = fmt!(ui, "UI {}%  ctrl -/+", scale.percent());
+            Text::new(readout)
+                .id_salt("ui-scale-readout")
+                .style(
+                    &TextStyle::default()
+                        .with_font_size(11.0)
+                        .with_color(support::INK_FAINT),
+                )
+                .show(ui);
+        });
+    ui.set_user_scale(next);
 }
 
 fn page_header(ui: &mut Ui, title: &'static str, blurb: &'static str) {
@@ -587,7 +635,8 @@ fn nav_style(selected: bool) -> ButtonTheme {
 /// ⌘Q / Ctrl+Q quits — palantir drops winit's default macOS menu (so its
 /// Quit item can't hard-terminate past a close-request veto), which also
 /// removes the native ⌘Q, so wire it here. F8 mirrors the `state` page's
-/// inspector button; F9 / F10 / F12 mirror the rail's overlay switches.
+/// inspector button; F9 / F10 / F12 mirror the rail's overlay switches,
+/// and Ctrl+`-` / Ctrl+`=` / Ctrl+`0` its UI-scale stepper.
 fn handle_shortcuts(ui: &mut Ui) {
     if ui.key_pressed(Shortcut::ctrl('Q')) {
         ui.close_window(MAIN_WINDOW);
@@ -602,6 +651,31 @@ fn handle_shortcuts(ui: &mut Ui) {
     overlay.dim_undamaged ^= ui.key_pressed(Shortcut::key(Key::F10));
     overlay.frame_stats ^= ui.key_pressed(Shortcut::key(Key::F9));
     ui.set_debug_overlay(overlay);
+
+    // The browser bindings, on the ladder `UserScale` carries. Written
+    // unconditionally: `set_user_scale` ignores the value already in
+    // force, so the no-key case costs a comparison.
+    //
+    // Three chords step up, because "ctrl and plus" is three different
+    // key presses depending on the layout: `=` unshifted where `+` is
+    // its shifted twin (US), `+` unshifted where the layout gives it a
+    // key of its own (German), and the shifted `+` itself. Each carries
+    // its own modifier set, and `Shortcut::matches` compares those
+    // exactly, so one binding cannot stand for the others.
+    let mut scale = ui.user_scale();
+    let up = ui.key_pressed(Shortcut::ctrl('='))
+        || ui.key_pressed(Shortcut::ctrl('+'))
+        || ui.key_pressed(Shortcut::ctrl_shift('+'));
+    if up {
+        scale = scale.stepped_up();
+    }
+    if ui.key_pressed(Shortcut::ctrl('-')) {
+        scale = scale.stepped_down();
+    }
+    if ui.key_pressed(Shortcut::ctrl('0')) {
+        scale = UserScale::ONE;
+    }
+    ui.set_user_scale(scale);
 }
 
 /// The automated half of "the showcase still feels right by eye": every page
@@ -618,9 +692,9 @@ fn handle_shortcuts(ui: &mut Ui) {
 /// silently sharing one widget's cross-frame state between two.
 #[cfg(all(test, feature = "internals"))]
 mod tests {
-    use super::{MAIN_WINDOW, PAGES, State};
+    use super::{MAIN_WINDOW, PAGES, State, handle_shortcuts};
     use palantir::internals::UiHarness;
-    use palantir::{App, UVec2};
+    use palantir::{App, Key, Modifiers, UVec2, UserScale};
 
     #[test]
     fn every_page_records_two_clean_frames() {
@@ -650,5 +724,70 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// The UI-scale chords walk the ladder and Ctrl+0 returns to 100%.
+    ///
+    /// Every spelling of "ctrl and plus" is exercised, because each is a
+    /// different `KeyPress` and only the layout decides which one a user
+    /// produces — a binding that stopped matching would otherwise fail
+    /// for that layout's users alone.
+    ///
+    /// Each chord is checked to fire **once**. `handle_shortcuts` steps
+    /// rather than toggles, so a key visible to two record passes of one
+    /// frame would step twice; the frame lifecycle drains the key queue
+    /// before pass B, and this is what says so.
+    #[test]
+    fn the_ui_scale_chords_walk_the_ladder() {
+        let mut h = UiHarness::new(UVec2::new(1280, 800));
+        // One frame first: a `KeyDown` with nothing focused is dropped at
+        // ingress unless a chord subscription from the previous frame
+        // claims it, and `key_pressed` is what files those. The running
+        // showcase has always recorded a frame before a user can press
+        // anything, so this is the state every real press arrives in.
+        h.frame(handle_shortcuts);
+
+        const CTRL: Modifiers = Modifiers {
+            shift: false,
+            ctrl: true,
+            alt: false,
+            mac_ctrl: false,
+        };
+        const CTRL_SHIFT: Modifiers = Modifiers {
+            shift: true,
+            ..CTRL
+        };
+
+        for (spelling, mods) in [('=', CTRL), ('+', CTRL), ('+', CTRL_SHIFT)] {
+            h.set_modifiers(mods);
+            h.ui().set_user_scale(UserScale::ONE);
+            h.key(Key::Char(spelling));
+            h.frame(handle_shortcuts);
+            assert_eq!(
+                h.ui().user_scale().get(),
+                1.1,
+                "ctrl+{spelling} with {mods:?} did not step up exactly once",
+            );
+        }
+
+        h.set_modifiers(CTRL);
+        h.key(Key::Char('-'));
+        h.frame(handle_shortcuts);
+        assert_eq!(h.ui().user_scale().get(), 1.0);
+
+        h.key(Key::Char('-'));
+        h.frame(handle_shortcuts);
+        assert_eq!(h.ui().user_scale().get(), 0.9);
+
+        h.key(Key::Char('0'));
+        h.frame(handle_shortcuts);
+        assert_eq!(h.ui().user_scale(), UserScale::ONE);
+
+        h.frame(handle_shortcuts);
+        assert_eq!(
+            h.ui().user_scale(),
+            UserScale::ONE,
+            "a frame with no chord left the scale alone",
+        );
     }
 }

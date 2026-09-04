@@ -11,20 +11,45 @@ use crate::input::keyboard::key::Key;
 use crate::input::keyboard::modifiers::Modifiers;
 use crate::input::pointer::PointerButton;
 
-pub(super) fn translate(event: &WindowEvent, scale_factor: f32, mut emit: impl FnMut(InputEvent)) {
+/// What an event said about where the pointer is, in **physical** pixels
+/// — the one thing the host has to retain across events, because a scale
+/// change invalidates the logical position the recorder was told and
+/// re-deriving it needs the number before the division.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) enum PointerTrace {
+    Unchanged,
+    At(Vec2),
+    Gone,
+}
+
+/// `scale_factor` is the **effective** one — `Window::effective_scale`,
+/// the platform's factor times the app's — because a pointer position
+/// has to land in the space the frame laid its widgets out in, and that
+/// is the space both factors together define.
+///
+/// Returns what the event said about the pointer's physical position, for
+/// `Window::resync_pointer` to re-divide when that space moves.
+pub(super) fn translate(
+    event: &WindowEvent,
+    scale_factor: f32,
+    mut emit: impl FnMut(InputEvent),
+) -> PointerTrace {
     debug_assert!(
         display::scale_factor_is_valid(scale_factor),
-        "the host screens the scale factor through display::sanitize_scale_factor; \
-         got {scale_factor}",
+        "the host screens the platform's half through \
+         display::sanitize_system_scale and the app's half carries its range \
+         in UserScale; got {scale_factor}",
     );
     match event {
         WindowEvent::CursorMoved { position, .. } => {
-            emit(InputEvent::PointerMoved(Vec2::new(
-                position.x as f32 / scale_factor,
-                position.y as f32 / scale_factor,
-            )));
+            let physical = Vec2::new(position.x as f32, position.y as f32);
+            emit(InputEvent::PointerMoved(physical / scale_factor));
+            return PointerTrace::At(physical);
         }
-        WindowEvent::CursorLeft { .. } => emit(InputEvent::PointerLeft),
+        WindowEvent::CursorLeft { .. } => {
+            emit(InputEvent::PointerLeft);
+            return PointerTrace::Gone;
+        }
         WindowEvent::MouseInput { state, button, .. } => {
             // The vocabulary stops at three on purpose:
             // [`PointerButton`] indexes a `ButtonState` on every
@@ -37,7 +62,9 @@ pub(super) fn translate(event: &WindowEvent, scale_factor: f32, mut emit: impl F
                 MouseButton::Left => PointerButton::Left,
                 MouseButton::Right => PointerButton::Right,
                 MouseButton::Middle => PointerButton::Middle,
-                MouseButton::Back | MouseButton::Forward | MouseButton::Other(_) => return,
+                MouseButton::Back | MouseButton::Forward | MouseButton::Other(_) => {
+                    return PointerTrace::Unchanged;
+                }
             };
             emit(match state {
                 ElementState::Pressed => InputEvent::PointerPressed(button),
@@ -74,6 +101,7 @@ pub(super) fn translate(event: &WindowEvent, scale_factor: f32, mut emit: impl F
         WindowEvent::Focused(false) => emit(InputEvent::SurfaceFocusLost),
         _ => {}
     }
+    PointerTrace::Unchanged
 }
 
 /// The keys winit spells the same way in both of its vocabularies, and

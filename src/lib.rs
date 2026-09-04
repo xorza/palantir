@@ -107,9 +107,10 @@ pub(crate) mod common;
 #[cfg(any(feature = "internals", feature = "showcase"))]
 pub mod demo_swatches;
 pub(crate) mod diagnostics;
-/// Per-output display state (physical size, DPR, pixel-snap, refresh) —
-/// cross-cutting host/render vocabulary, read by `ui`, the renderer, and
-/// the host layer; not owned by any one subsystem.
+/// Per-output display state (physical size, the system and user scale
+/// factors, pixel-snap, refresh) — cross-cutting host/render vocabulary,
+/// read by `ui`, the renderer, and the host layer; not owned by any one
+/// subsystem.
 pub(crate) mod display;
 /// The shared benchmark workload — one designed app screen recorded by the
 /// frame, allocation, and cascade benches alike. Owned by none of them, so
@@ -215,6 +216,10 @@ pub use animation::easing::Easing;
 pub use app::App;
 pub use diagnostics::DebugOverlayConfig;
 pub use display::Display;
+/// The application's own scale factor, multiplied onto the one the
+/// platform reports. Written through
+/// [`Ui::set_user_scale`](crate::Ui::set_user_scale).
+pub use display::user_scale::UserScale;
 /// The benchmark workload as a recordable scene. Not part of the supported
 /// surface — it exists so the bench target, the allocation gates and the
 /// showcase page record the same tree, rather than each keeping a smaller

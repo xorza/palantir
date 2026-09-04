@@ -601,7 +601,7 @@ impl WgpuBackend {
                 let runs = &buffer.texts[b.texts.range()];
                 self.text.prepare_batch(
                     &mut ctx,
-                    buffer.display.scale_factor,
+                    buffer.display.scale_factor(),
                     i,
                     runs,
                     &interned_text,
@@ -626,7 +626,7 @@ impl WgpuBackend {
                 "icon.prepare_batches",
                 value = buffer.batches(PaintTier::Icon).len() as u64
             );
-            self.icon.prewarm(&mut ctx, buffer.display.scale_factor);
+            self.icon.prewarm(&mut ctx, buffer.display.scale_factor());
             for (i, b) in buffer.batches(PaintTier::Icon).iter().enumerate() {
                 let rows = &buffer.icons[b.items.range()];
                 self.icon.prepare_batch(&mut ctx, i, rows);

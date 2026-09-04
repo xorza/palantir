@@ -17,6 +17,7 @@ mod scroll;
 mod shadow;
 mod tabs;
 mod text;
+mod user_scale;
 mod widgets;
 
 use palantir::Color;

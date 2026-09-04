@@ -60,7 +60,7 @@ impl PartialScissors {
 /// round here — it is this crate's spelling of "the pixels a float rect
 /// occupies", not a widening.
 fn logical_rect_to_phys_scissor(r: Rect, buffer: &RenderBuffer) -> Option<URect> {
-    let phys = r.scaled_by(buffer.display.scale_factor, true);
+    let phys = r.scaled_by(buffer.display.scale_factor(), true);
     let padded = phys.inflated(RenderPlan::AA_PADDING as f32);
     let physical = buffer.display.physical;
     URect::covering(padded).intersect(URect::new(0, 0, physical.x, physical.y))
