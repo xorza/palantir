@@ -4,7 +4,7 @@ use crate::Ui;
 use crate::host::shared::HostShared;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
-use crate::primitives::{color::Color, rect::Rect};
+use crate::primitives::{color::RgbaF32, rect::Rect};
 use crate::scene::node::configure::Configure;
 use crate::scene::tree::node_id::NodeId;
 use crate::ui::harness::UiHarness;
@@ -27,7 +27,7 @@ pub(super) fn blue_frame(ui: &mut Ui, salt: &'static str) -> NodeId {
         .id(WidgetId::from_hash(salt))
         .size(50.0)
         .background(Background {
-            fill: Color::rgb(0.2, 0.4, 0.8).into(),
+            fill: RgbaF32::srgb(0.2, 0.4, 0.8).into(),
             ..Default::default()
         })
         .show(ui)
@@ -39,7 +39,7 @@ pub(super) fn add_blink_shape(ui: &mut Ui, half: Duration) {
     use crate::shape::Shape;
 
     ui.add_shape_animated(
-        Shape::rect(Rect::new(0.0, 0.0, 4.0, 12.0)).fill(Color::rgb(1.0, 0.0, 0.0)),
+        Shape::rect(Rect::new(0.0, 0.0, 4.0, 12.0)).fill(RgbaF32::srgb(1.0, 0.0, 0.0)),
         PaintAnim::BlinkOpacity {
             half_period: half,
             started_at: Duration::ZERO,

@@ -25,7 +25,7 @@ use crate::primitives::background::Background;
 use crate::primitives::bezier;
 use crate::primitives::brush::Brush;
 use crate::primitives::brush::gradient::{Gradient, GradientGeometry};
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::corners::Corners;
 use crate::primitives::fill_kind::FillKind;
 use crate::primitives::mesh::Mesh;
@@ -80,7 +80,7 @@ fn stored_gradient(store: &mut RecordStore, gradient: RecordedGradient, hash: u6
     }
 }
 
-fn solid_brush(color: Color) -> LoweredBrush {
+fn solid_brush(color: RgbaF32) -> LoweredBrush {
     LoweredBrush {
         brush: ShapeBrush::Solid(color.into()),
         hash: 0,
@@ -194,7 +194,7 @@ pub(crate) fn background(store: &mut RecordStore, bg: &Background) -> ChromeRow 
     #[padding_struct::padding_struct]
     #[derive(Debug, Clone, Copy, bytemuck::NoUninit, bytemuck::Zeroable)]
     struct ChromeHashBytes {
-        fill_payload: u64, // ColorF16-as-u64 (Solid) or fill_grad_hash (Gradient)
+        fill_payload: u64, // RgbaF16-as-u64 (Solid) or fill_grad_hash (Gradient)
         corners_u64: u64,
         stroke: ShapeStroke,   // 12 B align 4
         shadow: LoweredShadow, // 18 B align 2
@@ -256,7 +256,7 @@ pub(crate) fn mesh(
     store: &mut RecordStore,
     mesh: &Mesh,
     local_rect: Option<Rect>,
-    tint: Color,
+    tint: RgbaF32,
 ) -> ShapeRecord {
     let staged = store.stage_mesh(mesh);
     ShapeRecord::Mesh {
@@ -285,7 +285,7 @@ pub(crate) fn polyline(
     join: LineJoin,
     bbox: Rect,
 ) -> ShapeRecord {
-    let (mode, color_slice): (ColorMode, &[Color]) = match &colors {
+    let (mode, color_slice): (ColorMode, &[RgbaF32]) = match &colors {
         PolylineColors::Single(c) => (ColorMode::Single, std::slice::from_ref(c)),
         PolylineColors::PerPoint(cs) => (ColorMode::PerPoint, cs),
         PolylineColors::PerSegment(cs) => (ColorMode::PerSegment, cs),
@@ -449,7 +449,7 @@ fn curve_record(
 #[cfg(test)]
 mod tests {
     use crate::primitives::background::Background;
-    use crate::primitives::color::Color;
+    use crate::primitives::color::RgbaF32;
     use crate::primitives::corners::Corners;
     use crate::primitives::nan::NanCheck;
     use crate::primitives::shadow::Shadow;
@@ -462,7 +462,7 @@ mod tests {
     use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
     use crate::primitives::brush::gradient::radial_geometry::RadialGradient;
     use crate::primitives::brush::gradient::{Interp, Spread};
-    use crate::primitives::color::ColorU8;
+    use crate::primitives::color::RgbaU8;
     use crate::scene::record_store::RecordStore;
     use crate::scene::record_store::recorded_gradients::GradientId;
     use crate::scene::shapes::paint::ShapeBrush;
@@ -480,7 +480,7 @@ mod tests {
     fn with_corners(corners: Corners) -> Background {
         Background {
             corners,
-            ..Background::fill(Color::WHITE)
+            ..Background::fill(RgbaF32::WHITE)
         }
     }
 
@@ -499,24 +499,24 @@ mod tests {
             ),
             (
                 "fill",
-                Background::fill(Color::rgba(1.0, f32::NAN, 1.0, 1.0)),
+                Background::fill(RgbaF32::srgba(1.0, f32::NAN, 1.0, 1.0)),
             ),
             (
                 "stroke",
                 Background {
-                    stroke: Stroke::solid(Color::WHITE, f32::NAN),
-                    ..Background::fill(Color::WHITE)
+                    stroke: Stroke::solid(RgbaF32::WHITE, f32::NAN),
+                    ..Background::fill(RgbaF32::WHITE)
                 },
             ),
             (
                 "shadow",
                 Background {
                     shadow: Shadow {
-                        color: Color::WHITE,
+                        color: RgbaF32::WHITE,
                         blur: f32::NAN,
                         ..Shadow::default()
                     },
-                    ..Background::fill(Color::WHITE)
+                    ..Background::fill(RgbaF32::WHITE)
                 },
             ),
         ]
@@ -531,8 +531,8 @@ mod tests {
     fn the_three_gradient_kinds_hash_apart_on_identical_stops() {
         let mut store = RecordStore::default();
         let stops = [
-            crate::primitives::brush::gradient::stops::Stop::new(0.0, Color::BLACK),
-            crate::primitives::brush::gradient::stops::Stop::new(1.0, Color::WHITE),
+            crate::primitives::brush::gradient::stops::Stop::new(0.0, RgbaF32::BLACK),
+            crate::primitives::brush::gradient::stops::Stop::new(1.0, RgbaF32::WHITE),
         ];
         let centre = glam::Vec2::splat(0.5);
         let hashes = [
@@ -615,7 +615,7 @@ mod tests {
     #[test]
     fn gradient_interning_identity_covers_geometry_kind_spread_and_interpolation() {
         let mut store = RecordStore::default();
-        let colors = [ColorU8::hex(0x1a1a2e), ColorU8::hex(0x4c5cdb)];
+        let colors = [RgbaU8::hex(0x1a1a2e), RgbaU8::hex(0x4c5cdb)];
         let base = LinearGradient::two_stop(0.25, colors[0], colors[1]);
         let first = gradient_id(&mut store, &Brush::Linear(base.clone()));
         assert_eq!(gradient_id(&mut store, &Brush::Linear(base.clone())), first);

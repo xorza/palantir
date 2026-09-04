@@ -33,7 +33,7 @@ use crate::layout::counters::PhaseTimings;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
 use crate::primitives::background::Background;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::corners::Corners;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::stroke::Stroke;
@@ -186,19 +186,19 @@ fn build(ui: &mut Ui) {
 /// shaping-bound workload rather than the mono-fallback `build` one.
 fn build_heavy(ui: &mut Ui) {
     let group_bg = Background {
-        fill: Color::hex(0x1a1a1a).into(),
-        stroke: Stroke::solid(Color::hex(0x4d5663), 1.5),
+        fill: RgbaF32::hex(0x1a1a1a).into(),
+        stroke: Stroke::solid(RgbaF32::hex(0x4d5663), 1.5),
         corners: Corners::all(12.0),
         shadow: Shadow::NONE,
     };
     let row_bg = Background {
-        fill: Color::hex(0x252525).into(),
+        fill: RgbaF32::hex(0x252525).into(),
         stroke: Stroke::ZERO,
         corners: Corners::all(6.0),
         shadow: Shadow::NONE,
     };
     let avatar_bg = Background {
-        fill: Color::hex(0x3a4a5c).into(),
+        fill: RgbaF32::hex(0x3a4a5c).into(),
         stroke: Stroke::ZERO,
         corners: Corners::all(10.0),
         shadow: Shadow::NONE,
@@ -296,9 +296,9 @@ fn build_broad_level(ui: &mut Ui, depth: usize, key: usize, changed: bool) {
                     .size((Sizing::FILL, Sizing::fixed(1.0)))
                     .background(Background {
                         fill: if changed && key == 0 {
-                            Color::rgb(0.5, 0.25, 0.75).into()
+                            RgbaF32::srgb(0.5, 0.25, 0.75).into()
                         } else {
-                            Color::TRANSPARENT.into()
+                            RgbaF32::TRANSPARENT.into()
                         },
                         ..Default::default()
                     })

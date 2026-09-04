@@ -1,5 +1,5 @@
 use crate::primitives::background::Background;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::corners::Corners;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::stroke::Stroke;
@@ -24,8 +24,8 @@ fn widget_look_serde_roundtrip() {
         WidgetLook::default(),
         WidgetLook {
             background: Background {
-                fill: Color::hex(0x336699).into(),
-                stroke: Stroke::solid(Color::hex(0xffffff), 1.5),
+                fill: RgbaF32::hex(0x336699).into(),
+                stroke: Stroke::solid(RgbaF32::hex(0xffffff), 1.5),
                 corners: Corners::all(6.0),
                 shadow: Shadow::NONE,
             },

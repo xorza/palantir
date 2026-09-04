@@ -38,7 +38,7 @@ pub enum Spread {
     Clone, Copy, Debug, Default, PartialEq, Eq, Hash, ::serde::Serialize, ::serde::Deserialize,
 )]
 pub enum Interp {
-    /// Perceptually uniform; matches CSS Color 4 default. Avoids the
+    /// Perceptually uniform; matches CSS RgbaF32 4 default. Avoids the
     /// muddy midpoint of complementary-colour pairs (red↔green,
     /// blue↔orange).
     #[default]
@@ -146,7 +146,7 @@ impl<G: GradientGeometry> std::hash::Hash for Gradient<G> {
 }
 
 /// Stop offsets and colours are integer-encoded (`Stop::offset_u8`,
-/// `ColorU8`), so a gradient's geometry is the only place a NaN can hide.
+/// `RgbaU8`), so a gradient's geometry is the only place a NaN can hide.
 impl<G: GradientGeometry> NanCheck for Gradient<G> {
     #[inline]
     fn has_nan(&self) -> bool {

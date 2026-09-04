@@ -2,7 +2,7 @@
 //! everything behind it.
 
 use crate::primitives::background::Background;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::corners::Corners;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
@@ -19,7 +19,7 @@ pub struct ModalTheme {
     pub panel: Background,
     /// Dimming scrim painted behind the panel. Straight-alpha linear —
     /// black at partial alpha reads as a neutral dim.
-    pub backdrop: Color,
+    pub backdrop: RgbaF32,
     /// Padding inside the panel, applied when the builder leaves it unset.
     pub padding: Spacing,
     /// Minimum panel width in logical px (the panel hugs its content
@@ -34,8 +34,8 @@ impl ModalTheme {
         Self {
             panel,
             // Straight-alpha linear black at 50% — a dim scrim. Black is
-            // identical in sRGB and linear, so `linear_rgba` is exact.
-            backdrop: Color::linear_rgba(0.0, 0.0, 0.0, 0.5),
+            // identical in sRGB and linear, so `RgbaF32::new` is exact.
+            backdrop: RgbaF32::new(0.0, 0.0, 0.0, 0.5),
             padding: Spacing::all(20.0),
             min_width: 280.0,
         }

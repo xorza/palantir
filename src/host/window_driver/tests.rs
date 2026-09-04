@@ -5,7 +5,7 @@ mod present_mode_tests {
     use crate::host::window_driver::PresentMode::{Direct, SkipCopy, SkipNoop, ViaBackbuffer};
     use crate::host::window_driver::PresentStrategy::{BackbufferCopy, DirectAdaptive};
     use crate::host::window_driver::{PresentMode, present_mode};
-    use crate::primitives::color::Color;
+    use crate::primitives::color::RgbaF32;
     use crate::primitives::rect::Rect;
     use crate::renderer::render_plan::RenderPlan;
     use crate::scene::damage::Damage;
@@ -17,7 +17,7 @@ mod present_mode_tests {
 
     fn full() -> Option<RenderPlan> {
         Some(RenderPlan {
-            clear: Color::BLACK,
+            clear: RgbaF32::BLACK,
             damage: Damage::Full,
         })
     }
@@ -31,12 +31,12 @@ mod present_mode_tests {
             SURFACE,
         );
         Some(RenderPlan {
-            clear: Color::BLACK,
+            clear: RgbaF32::BLACK,
             damage: Damage::Partial(damage),
         })
     }
     const DIRECT_FULL: PresentMode = Direct(RenderPlan {
-        clear: Color::BLACK,
+        clear: RgbaF32::BLACK,
         damage: Damage::Full,
     });
 
@@ -118,7 +118,7 @@ mod output_validity_tests {
 
     use crate::host::shared::HostShared;
     use crate::host::window_driver::{PresentMode, PresentStrategy, TargetKey, WindowDriver};
-    use crate::primitives::color::Color;
+    use crate::primitives::color::RgbaF32;
     use crate::renderer::frontend::Frontend;
     use crate::renderer::render_plan::RenderPlan;
     use crate::renderer::texture_limit::TextureLimit;
@@ -318,7 +318,7 @@ mod output_validity_tests {
         let paint = driver.finish_cpu_frame(
             &mut frontend,
             report(Some(RenderPlan {
-                clear: Color::BLACK,
+                clear: RgbaF32::BLACK,
                 damage: Damage::Full,
             })),
         );
@@ -408,7 +408,7 @@ mod record_store_tests {
     use crate::host::clock::FixedClock;
     use crate::host::shared::HostShared;
     use crate::host::window_driver::{PresentStrategy, WindowDriver};
-    use crate::primitives::color::{Color, ColorU8};
+    use crate::primitives::color::{RgbaF32, RgbaU8};
     use crate::primitives::mesh::{Mesh, MeshVertex};
     use crate::primitives::widget_id::WidgetId;
     use crate::renderer::frontend::Frontend;
@@ -428,7 +428,7 @@ mod record_store_tests {
         mesh_vertices: Vec<MeshVertex>,
         mesh_indices: Vec<u32>,
         polyline_points: Vec<Vec2>,
-        polyline_colors: Vec<ColorU8>,
+        polyline_colors: Vec<RgbaU8>,
         text: String,
     }
 
@@ -463,7 +463,7 @@ mod record_store_tests {
         ui: &mut Ui,
         mesh: &Mesh,
         points: &[Vec2],
-        colors: &[Color],
+        colors: &[RgbaF32],
         label: &str,
         id: &'static str,
     ) {
@@ -533,7 +533,7 @@ mod record_store_tests {
             Vec2::new(12.0, 14.0),
             Vec2::new(72.0, 20.0),
             Vec2::new(26.0, 74.0),
-            Color::rgb(0.15, 0.65, 0.95),
+            RgbaF32::srgb(0.15, 0.65, 0.95),
         );
         let points_a = [
             Vec2::new(8.0, 82.0),
@@ -542,10 +542,10 @@ mod record_store_tests {
             Vec2::new(88.0, 12.0),
         ];
         let colors_a = [
-            Color::rgb(1.0, 0.0, 0.0),
-            Color::WHITE,
-            Color::rgb(0.0, 1.0, 0.0),
-            Color::rgb(0.0, 0.0, 1.0),
+            RgbaF32::srgb(1.0, 0.0, 0.0),
+            RgbaF32::WHITE,
+            RgbaF32::srgb(0.0, 1.0, 0.0),
+            RgbaF32::srgb(0.0, 0.0, 1.0),
         ];
 
         let mesh_b = Mesh::filled_polygon(
@@ -556,7 +556,7 @@ mod record_store_tests {
                 Vec2::new(14.0, 70.0),
                 Vec2::new(8.0, 24.0),
             ],
-            Color::rgb(0.9, 0.2, 0.65),
+            RgbaF32::srgb(0.9, 0.2, 0.65),
         );
         let points_b = [
             Vec2::new(90.0, 88.0),
@@ -567,12 +567,12 @@ mod record_store_tests {
             Vec2::new(6.0, 32.0),
         ];
         let colors_b = [
-            Color::WHITE,
-            Color::rgb(0.0, 0.0, 1.0),
-            Color::rgb(0.0, 1.0, 0.0),
-            Color::rgb(1.0, 0.0, 0.0),
-            Color::BLACK,
-            Color::WHITE,
+            RgbaF32::WHITE,
+            RgbaF32::srgb(0.0, 0.0, 1.0),
+            RgbaF32::srgb(0.0, 1.0, 0.0),
+            RgbaF32::srgb(1.0, 0.0, 0.0),
+            RgbaF32::BLACK,
+            RgbaF32::WHITE,
         ];
 
         let mut app_a = RecordApp::new(|ui| {

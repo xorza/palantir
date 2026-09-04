@@ -6,7 +6,7 @@
 use crate::support;
 use crate::support::{demo_cell, demo_cell_at, section, tiles};
 use palantir::{
-    Color, Image, ImageDownsample, ImageFilter, ImageFit, ImageHandle, Shape, Ui, Vec2, WidgetId,
+    Image, ImageDownsample, ImageFilter, ImageFit, ImageHandle, RgbaF32, Shape, Ui, Vec2, WidgetId,
 };
 
 /// Synthesize a 64×64 sRGB checkerboard.
@@ -156,7 +156,7 @@ pub(crate) fn build(ui: &mut Ui) {
                     ("None — 1:1, centred", ImageFit::None),
                 ] {
                     demo_cell_at(ui, label, 232.0, 132.0, |ui| {
-                        image(ui, &src.checker, fit, Color::WHITE);
+                        image(ui, &src.checker, fit, RgbaF32::WHITE);
                     });
                 }
             });
@@ -169,7 +169,7 @@ pub(crate) fn build(ui: &mut Ui) {
         |ui| {
             tiles(ui, |ui| {
                 demo_cell(ui, "no tint", |ui| {
-                    image(ui, &src.gradient, ImageFit::Fill, Color::WHITE);
+                    image(ui, &src.gradient, ImageFit::Fill, RgbaF32::WHITE);
                 });
                 demo_cell(ui, "red tint", |ui| {
                     image(ui, &src.gradient, ImageFit::Fill, support::E);
@@ -179,7 +179,7 @@ pub(crate) fn build(ui: &mut Ui) {
                         ui,
                         &src.gradient,
                         ImageFit::Fill,
-                        Color::WHITE.with_alpha(0.5),
+                        RgbaF32::WHITE.with_alpha(0.5),
                     );
                 });
             });
@@ -193,14 +193,14 @@ pub(crate) fn build(ui: &mut Ui) {
                     offset: Vec2::ZERO,
                     scale: Vec2::splat(3.0),
                 };
-                image(ui, &src.checker, fit, Color::WHITE);
+                image(ui, &src.checker, fit, RgbaF32::WHITE);
             });
             demo_cell(ui, "tile 2×4, offset 0.25", |ui| {
                 let fit = ImageFit::Tile {
                     offset: Vec2::new(0.25, 0.0),
                     scale: Vec2::new(2.0, 4.0),
                 };
-                image(ui, &src.gradient, fit, Color::WHITE);
+                image(ui, &src.gradient, fit, RgbaF32::WHITE);
             });
         });
     });
@@ -248,7 +248,7 @@ pub(crate) fn build(ui: &mut Ui) {
     );
 }
 
-fn image(ui: &mut Ui, handle: &ImageHandle, fit: ImageFit, tint: Color) {
+fn image(ui: &mut Ui, handle: &ImageHandle, fit: ImageFit, tint: RgbaF32) {
     ui.add_shape(Shape::image(handle.clone()).fit(fit).tint(tint));
 }
 

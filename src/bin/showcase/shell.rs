@@ -8,9 +8,9 @@
 
 use palantir::SlotDefaults;
 use palantir::{
-    Align, AnimSpec, App, Background, Button, ButtonTheme, Checkbox, Color, Configure, Corners,
-    FontFamily, FontWeight, Frame, FrameFixture, Justify, Key, Palette, Panel, Scroll, Shortcut,
-    Sizing, Spacing, StatefulLook, Stroke, Text, TextStyle, TextWrap, Theme, Tooltip, Ui,
+    Align, AnimSpec, App, Background, Button, ButtonTheme, Checkbox, Configure, Corners,
+    FontFamily, FontWeight, Frame, FrameFixture, Justify, Key, Palette, Panel, RgbaF32, Scroll,
+    Shortcut, Sizing, Spacing, StatefulLook, Stroke, Text, TextStyle, TextWrap, Theme, Tooltip, Ui,
     UserScale, VAlign, Vsync, WidgetLook, WindowConfig, WindowToken, fmt,
 };
 use std::cell::RefCell;
@@ -632,8 +632,8 @@ fn showcase_palette() -> Palette {
 /// Flat rail button: transparent at rest, accent-washed when it's the
 /// open page. Worn by the nav items and by the UI-scale stepper.
 fn nav_style(selected: bool) -> ButtonTheme {
-    let label = |c: Color| Some(TextStyle::default().with_font_size(12.0).with_color(c));
-    let wash = |alpha: f32, c: Color| Background::rounded(c.with_alpha(alpha), Corners::all(5.0));
+    let label = |c: RgbaF32| Some(TextStyle::default().with_font_size(12.0).with_color(c));
+    let wash = |alpha: f32, c: RgbaF32| Background::rounded(c.with_alpha(alpha), Corners::all(5.0));
     let (rest, hover, press, ink) = if selected {
         (0.16, 0.22, 0.28, support::ACCENT)
     } else {
@@ -642,7 +642,7 @@ fn nav_style(selected: bool) -> ButtonTheme {
     let tint = if selected {
         support::ACCENT
     } else {
-        Color::WHITE
+        RgbaF32::WHITE
     };
     ButtonTheme {
         looks: StatefulLook {

@@ -1,7 +1,7 @@
 //! What the display scale and a transform do to what is drawn.
 
 use crate::primitives::{
-    color::Color, corners::Corners, size::Size, stroke::Stroke, translate_scale::TranslateScale,
+    color::RgbaF32, corners::Corners, size::Size, stroke::Stroke, translate_scale::TranslateScale,
     urect::URect,
 };
 use crate::renderer::frontend::composer::geometry::StrokeBbox;
@@ -91,7 +91,7 @@ fn stroke_bbox_urect_applies_transform_dpi_and_style_once() {
 /// it via `.max(0.0)` — and nothing was checking that they agreed.
 #[test]
 fn nan_stroke_width_normalizes_away_on_every_quad_geometry() {
-    let nan_stroke: ShapeStroke = Stroke::solid(Color::rgb(0.0, 1.0, 0.0), f32::NAN).into();
+    let nan_stroke: ShapeStroke = Stroke::solid(RgbaF32::srgb(0.0, 1.0, 0.0), f32::NAN).into();
     let display = params(2.0, UVec2::new(400, 400));
 
     // An opaque fill keeps the draw alive, so the quad reaches the
@@ -103,7 +103,7 @@ fn nan_stroke_width_normalizes_away_on_every_quad_geometry() {
             b.draw_quad(DrawQuadPayload::rect(
                 rect(10.0, 20.0, 30.0, 40.0),
                 Corners::ZERO,
-                BrushSource::Solid(Color::WHITE.into()),
+                BrushSource::Solid(RgbaF32::WHITE.into()),
                 nan_stroke,
             ));
         },
@@ -124,7 +124,7 @@ fn nan_stroke_width_normalizes_away_on_every_quad_geometry() {
                     Vec2::new(10.0, 0.0),
                     Vec2::new(5.0, 8.0),
                 ],
-                Color::WHITE.into(),
+                RgbaF32::WHITE.into(),
                 0.0,
                 nan_stroke,
             ));
@@ -144,7 +144,7 @@ fn nan_stroke_width_normalizes_away_on_every_quad_geometry() {
             b.draw_quad(DrawQuadPayload::rect(
                 rect(10.0, 20.0, 30.0, 40.0),
                 Corners::ZERO,
-                BrushSource::Solid(Color::TRANSPARENT.into()),
+                BrushSource::Solid(RgbaF32::TRANSPARENT.into()),
                 nan_stroke,
             ));
         },
@@ -189,8 +189,8 @@ fn compose_scales_radius_and_stroke_under_transform() {
             b.draw_quad(DrawQuadPayload::rect(
                 rect(0.0, 0.0, 50.0, 50.0),
                 Corners::all(8.0),
-                BrushSource::Solid(Color::rgb(1.0, 1.0, 1.0).into()),
-                Stroke::solid(Color::rgb(0.0, 0.0, 0.0), 1.5).into(),
+                BrushSource::Solid(RgbaF32::srgb(1.0, 1.0, 1.0).into()),
+                Stroke::solid(RgbaF32::srgb(0.0, 0.0, 0.0), 1.5).into(),
             ));
             b.pop_transform();
         },

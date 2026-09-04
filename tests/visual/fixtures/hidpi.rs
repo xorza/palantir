@@ -3,7 +3,7 @@
 
 use glam::UVec2;
 use palantir::{
-    Background, Button, Color, Configure, Corners, Frame, Grid, GridCell, Panel, Shadow, Sizing,
+    Background, Button, Configure, Corners, Frame, Grid, GridCell, Panel, RgbaF32, Shadow, Sizing,
     Stroke, Text, TextStyle, Track,
 };
 
@@ -43,8 +43,8 @@ fn dashboard_matches_golden() {
                     .padding((10.0, 14.0, 10.0, 14.0))
                     .gap(8.0)
                     .background(Background {
-                        fill: Color::rgb(0.18, 0.22, 0.32).into(),
-                        stroke: Stroke::solid(Color::rgb(0.30, 0.36, 0.46), 1.0),
+                        fill: RgbaF32::srgb(0.18, 0.22, 0.32).into(),
+                        stroke: Stroke::solid(RgbaF32::srgb(0.30, 0.36, 0.46), 1.0),
                         corners: Corners::all(6.0),
                         shadow: Shadow::NONE,
                     })
@@ -54,7 +54,7 @@ fn dashboard_matches_golden() {
                             .style(
                                 &TextStyle::default()
                                     .with_font_size(16.0)
-                                    .with_color(Color::rgb(0.92, 0.94, 1.00)),
+                                    .with_color(RgbaF32::srgb(0.92, 0.94, 1.00)),
                             )
                             .show(ui);
                         Frame::new()
@@ -72,7 +72,7 @@ fn dashboard_matches_golden() {
                     .padding(8.0)
                     .gap(4.0)
                     .background(Background {
-                        fill: Color::rgb(0.14, 0.17, 0.24).into(),
+                        fill: RgbaF32::srgb(0.14, 0.17, 0.24).into(),
                         corners: Corners::all(6.0),
                         ..Default::default()
                     })
@@ -84,9 +84,9 @@ fn dashboard_matches_golden() {
                                 .padding((6.0, 8.0, 6.0, 8.0))
                                 .background(Background {
                                     fill: if i == 1 {
-                                        Color::rgb(0.22, 0.30, 0.46).into()
+                                        RgbaF32::srgb(0.22, 0.30, 0.46).into()
                                     } else {
-                                        Color::TRANSPARENT.into()
+                                        RgbaF32::TRANSPARENT.into()
                                     },
                                     corners: Corners::all(4.0),
                                     ..Default::default()
@@ -105,10 +105,10 @@ fn dashboard_matches_golden() {
                     .gap(8.0)
                     .show(ui, |ui| {
                         let palette = [
-                            Color::rgb(0.30, 0.45, 0.70),
-                            Color::rgb(0.55, 0.35, 0.55),
-                            Color::rgb(0.35, 0.55, 0.40),
-                            Color::rgb(0.60, 0.45, 0.30),
+                            RgbaF32::srgb(0.30, 0.45, 0.70),
+                            RgbaF32::srgb(0.55, 0.35, 0.55),
+                            RgbaF32::srgb(0.35, 0.55, 0.40),
+                            RgbaF32::srgb(0.60, 0.45, 0.30),
                         ];
                         for (i, c) in palette.iter().enumerate() {
                             let row = (i / 2) as u16;
@@ -120,7 +120,7 @@ fn dashboard_matches_golden() {
                                 .gap(6.0)
                                 .background(Background {
                                     fill: (*c).into(),
-                                    stroke: Stroke::solid(Color::rgba(1.0, 1.0, 1.0, 0.18), 1.0),
+                                    stroke: Stroke::solid(RgbaF32::srgba(1.0, 1.0, 1.0, 0.18), 1.0),
                                     corners: Corners::all(8.0),
                                     shadow: Shadow::NONE,
                                 })
@@ -130,7 +130,7 @@ fn dashboard_matches_golden() {
                                         .style(
                                             &TextStyle::default()
                                                 .with_font_size(14.0)
-                                                .with_color(Color::rgb(0.95, 0.96, 1.00)),
+                                                .with_color(RgbaF32::srgb(0.95, 0.96, 1.00)),
                                         )
                                         .show(ui);
                                     Text::new("Some metric here")
@@ -138,7 +138,7 @@ fn dashboard_matches_golden() {
                                         .style(
                                             &TextStyle::default()
                                                 .with_font_size(11.0)
-                                                .with_color(Color::rgba(1.0, 1.0, 1.0, 0.75)),
+                                                .with_color(RgbaF32::srgba(1.0, 1.0, 1.0, 0.75)),
                                         )
                                         .show(ui);
                                 });
@@ -152,7 +152,7 @@ fn dashboard_matches_golden() {
                     .max_size((f32::INFINITY, 24.0))
                     .padding((4.0, 10.0, 4.0, 10.0))
                     .background(Background {
-                        fill: Color::rgb(0.10, 0.12, 0.18).into(),
+                        fill: RgbaF32::srgb(0.10, 0.12, 0.18).into(),
                         corners: Corners::all(4.0),
                         ..Default::default()
                     })
@@ -162,7 +162,7 @@ fn dashboard_matches_golden() {
                             .style(
                                 &TextStyle::default()
                                     .with_font_size(11.0)
-                                    .with_color(Color::rgb(0.65, 0.70, 0.80)),
+                                    .with_color(RgbaF32::srgb(0.65, 0.70, 0.80)),
                             )
                             .show(ui);
                     });

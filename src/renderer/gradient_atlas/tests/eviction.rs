@@ -50,7 +50,7 @@ fn register_full_atlas_evicts_lru_and_preserves_row_zero() {
         "surviving content must reuse its original row exactly",
     );
     // Row 0 still magenta after eviction.
-    let magenta = ColorF16::from(Color::linear_rgba(1.0, 0.0, 1.0, 1.0));
+    let magenta = RgbaF16::from(RgbaF32::new(1.0, 0.0, 1.0, 1.0));
     assert!(atlas.baked[0].iter().all(|&t| t == magenta));
 }
 
@@ -155,7 +155,7 @@ fn growth_stops_at_max_rows_and_falls_back() {
     assert_eq!(atlas.capacity(), INITIAL_ATLAS_ROWS * 2, "cap must hold");
     // The fallback row is still magenta — the overflow never baked
     // over it.
-    let magenta = ColorF16::from(Color::linear_rgba(1.0, 0.0, 1.0, 1.0));
+    let magenta = RgbaF16::from(RgbaF32::new(1.0, 0.0, 1.0, 1.0));
     assert!(atlas.baked[0].iter().all(|&t| t == magenta));
 
     // Next epoch: rows are evictable again, so the same gradient gets

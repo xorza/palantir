@@ -4,7 +4,7 @@ use crate::bench::Run;
 use crate::primitives::background::Background;
 use crate::primitives::brush::Brush;
 use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
-use crate::primitives::color::{Color, ColorU8};
+use crate::primitives::color::{RgbaF32, RgbaU8};
 use crate::renderer::frontend::Frontend;
 use crate::renderer::render_plan::RenderPlan;
 use crate::scene::damage::Damage;
@@ -37,11 +37,11 @@ impl FillCase {
 
     fn background(self) -> Background {
         let fill = match self {
-            Self::Solid => Brush::Solid(Color::rgb(0.12, 0.24, 0.48)),
+            Self::Solid => Brush::Solid(RgbaF32::srgb(0.12, 0.24, 0.48)),
             Self::Gradient => Brush::Linear(LinearGradient::two_stop(
                 0.5,
-                ColorU8::hex(0x1a1a2e),
-                ColorU8::hex(0x4c5cdb),
+                RgbaU8::hex(0x1a1a2e),
+                RgbaU8::hex(0x4c5cdb),
             )),
         };
         Background {
@@ -79,7 +79,7 @@ impl GradientBench {
             }
         });
         let plan = report.plan.unwrap_or(RenderPlan {
-            clear: Color::BLACK,
+            clear: RgbaF32::BLACK,
             damage: Damage::Full,
         });
         self.frontend.build(self.harness.ui.frame_scene(), plan);

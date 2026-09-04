@@ -4,7 +4,7 @@ use crate::Ui;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
-use crate::primitives::{color::Color, rect::Rect};
+use crate::primitives::{color::RgbaF32, rect::Rect};
 use crate::scene::damage::Damage;
 use crate::scene::damage::tests::support::{BLUE, DISPLAY, RED, frame};
 use crate::scene::node::configure::Configure;
@@ -260,7 +260,7 @@ fn offscreen_text_nodes_reorder_cast_no_edge_shadow() {
 /// order scan adds nothing; the position diff must carry the damage.
 #[test]
 fn reordering_a_stack_is_damaged_by_the_position_diff() {
-    fn child(ui: &mut Ui, key: &str, fill: Color) {
+    fn child(ui: &mut Ui, key: &str, fill: RgbaF32) {
         Frame::new()
             .id(WidgetId::from_hash(key))
             .size((Sizing::fixed(40.0), Sizing::fixed(20.0)))
@@ -270,7 +270,7 @@ fn reordering_a_stack_is_damaged_by_the_position_diff() {
             })
             .show(ui);
     }
-    let stack = |ui: &mut Ui, order: [(&str, Color); 2]| {
+    let stack = |ui: &mut Ui, order: [(&str, RgbaF32); 2]| {
         Panel::vstack()
             .id(WidgetId::from_hash("stack"))
             .show(ui, |ui| {
@@ -391,14 +391,14 @@ fn shape_crossing_child_boundary_is_redamaged() {
 fn overlapping_direct_shape_swap_is_redamaged() {
     // Coincident lines, so the overlap is the whole strip.
     const PROBE: Rect = Rect::new(38.0, 29.0, 2.0, 2.0);
-    let line = |ui: &mut Ui, color: Color| {
+    let line = |ui: &mut Ui, color: RgbaF32| {
         ui.add_shape(
             Shape::line(Vec2::new(10.0, 30.0), Vec2::new(70.0, 30.0), 8.0)
                 .brush(color)
                 .cap(LineCap::Round),
         );
     };
-    let canvas = |ui: &mut Ui, first: Color, second: Color| {
+    let canvas = |ui: &mut Ui, first: RgbaF32, second: RgbaF32| {
         Panel::canvas()
             .id(WidgetId::from_hash("canvas"))
             .size((Sizing::FILL, Sizing::FILL))
@@ -553,16 +553,17 @@ fn shape_removed_from_middle_evicts_trailing_ordinals() {
             .size((Sizing::fixed(180.0), Sizing::fixed(60.0)))
             .show(ui, |ui| {
                 ui.add_shape(
-                    Shape::rect(Rect::new(0.0, 0.0, 20.0, 20.0)).fill(Color::rgb(1.0, 0.0, 0.0)),
+                    Shape::rect(Rect::new(0.0, 0.0, 20.0, 20.0)).fill(RgbaF32::srgb(1.0, 0.0, 0.0)),
                 );
                 if include_middle {
                     ui.add_shape(
                         Shape::rect(Rect::new(60.0, 0.0, 20.0, 20.0))
-                            .fill(Color::rgb(0.0, 1.0, 0.0)),
+                            .fill(RgbaF32::srgb(0.0, 1.0, 0.0)),
                     );
                 }
                 ui.add_shape(
-                    Shape::rect(Rect::new(120.0, 0.0, 20.0, 20.0)).fill(Color::rgb(0.0, 0.0, 1.0)),
+                    Shape::rect(Rect::new(120.0, 0.0, 20.0, 20.0))
+                        .fill(RgbaF32::srgb(0.0, 0.0, 1.0)),
                 );
             });
     };
@@ -629,11 +630,11 @@ fn shape_added_in_middle_damages_only_new() {
             .id(WidgetId::from_hash("canvas"))
             .size((Sizing::fixed(180.0), Sizing::fixed(60.0)))
             .show(ui, |ui| {
-                ui.add_shape(Shape::rect(red_rect).fill(Color::rgb(1.0, 0.0, 0.0)));
+                ui.add_shape(Shape::rect(red_rect).fill(RgbaF32::srgb(1.0, 0.0, 0.0)));
                 if include_middle {
-                    ui.add_shape(Shape::rect(green_rect).fill(Color::rgb(0.0, 1.0, 0.0)));
+                    ui.add_shape(Shape::rect(green_rect).fill(RgbaF32::srgb(0.0, 1.0, 0.0)));
                 }
-                ui.add_shape(Shape::rect(blue_rect).fill(Color::rgb(0.0, 0.0, 1.0)));
+                ui.add_shape(Shape::rect(blue_rect).fill(RgbaF32::srgb(0.0, 0.0, 1.0)));
             });
     };
 

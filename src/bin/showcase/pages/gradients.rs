@@ -7,17 +7,17 @@
 use crate::support;
 use crate::support::{demo_cell, section, tiles};
 use palantir::{
-    Background, Brush, ColorU8, Configure, ConicGradient, Corners, Frame, Interp, LinearGradient,
-    RadialGradient, Sizing, Spread, Stop, Ui, Vec2,
+    Background, Brush, Configure, ConicGradient, Corners, Frame, Interp, LinearGradient,
+    RadialGradient, RgbaU8, Sizing, Spread, Stop, Ui, Vec2,
 };
 use std::f32::consts::{FRAC_PI_2, FRAC_PI_4};
 
-const NAVY: ColorU8 = ColorU8::hex(0x1a1a2e);
-const BLUE: ColorU8 = ColorU8::hex(0x4c5cdb);
-const ORANGE: ColorU8 = ColorU8::hex(0xff7e44);
-const YELLOW: ColorU8 = ColorU8::hex(0xfacc15);
-const RED: ColorU8 = ColorU8::hex(0xff5e44);
-const GREEN: ColorU8 = ColorU8::hex(0x46c46c);
+const NAVY: RgbaU8 = RgbaU8::hex(0x1a1a2e);
+const BLUE: RgbaU8 = RgbaU8::hex(0x4c5cdb);
+const ORANGE: RgbaU8 = RgbaU8::hex(0xff7e44);
+const YELLOW: RgbaU8 = RgbaU8::hex(0xfacc15);
+const RED: RgbaU8 = RgbaU8::hex(0xff5e44);
+const GREEN: RgbaU8 = RgbaU8::hex(0x46c46c);
 
 pub(crate) fn build(ui: &mut Ui) {
     section(ui, "linear — angle in radians from the +x axis", |ui| {
@@ -153,9 +153,9 @@ fn conic_wheel(ui: &mut Ui) {
             Stop::new(0.0, RED),
             Stop::new(0.166, YELLOW),
             Stop::new(0.333, GREEN),
-            Stop::new(0.5, ColorU8::hex(0x22ccdd)),
+            Stop::new(0.5, RgbaU8::hex(0x22ccdd)),
             Stop::new(0.666, BLUE),
-            Stop::new(0.833, ColorU8::hex(0xd14fdf)),
+            Stop::new(0.833, RgbaU8::hex(0xd14fdf)),
             Stop::new(1.0, RED),
         ],
     );

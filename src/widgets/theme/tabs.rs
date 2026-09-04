@@ -3,7 +3,7 @@
 
 use crate::input::response::response_state::ResponseState;
 use crate::primitives::background::Background;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::corners::Corners;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
@@ -31,9 +31,9 @@ pub struct TabsTheme {
     /// Look pack for every other chip.
     pub inactive: StatefulLook,
     /// Selection cap on the focused strip.
-    pub accent: Color,
+    pub accent: RgbaF32,
     /// Selection cap on a strip that does not hold focus.
-    pub accent_idle: Color,
+    pub accent_idle: RgbaF32,
     /// Cap breadth in logical px. The selected chip lifts its inner top
     /// inset by the same amount, so the cap adds no height and every
     /// label sits on the same line.
@@ -49,7 +49,7 @@ pub struct TabsTheme {
     pub gap: f32,
     /// Hairline under the band, drawn only when
     /// [`Self::hline_thickness`] is set.
-    pub hline: Color,
+    pub hline: RgbaF32,
     /// Hairline breadth in logical px. `0.0` — the default — records no
     /// rule at all, so the chips meet the content below them directly.
     pub hline_thickness: f32,
@@ -79,7 +79,7 @@ pub struct TabsTheme {
     /// Close button side in logical px.
     pub close_size: f32,
     /// Ink of the status dot.
-    pub badge: Color,
+    pub badge: RgbaF32,
     /// Status-dot diameter in logical px.
     pub badge_size: f32,
     /// Gutter between a chip's own children — its icon, label, badge
@@ -133,7 +133,7 @@ impl TabsTheme {
     }
 
     /// The cap colour a strip paints under its selected chip.
-    pub fn cap(&self, focused: bool) -> Color {
+    pub fn cap(&self, focused: bool) -> RgbaF32 {
         if focused {
             self.accent
         } else {
@@ -146,7 +146,7 @@ impl TabsTheme {
         let top = Corners::top(corner);
         let inactive_text = Some(TextStyle::default().with_color(p.text_muted));
         let disabled_text = Some(TextStyle::default().with_color(p.text_disabled));
-        let chip = |fill: Color, text: Option<TextStyle>| WidgetLook {
+        let chip = |fill: RgbaF32, text: Option<TextStyle>| WidgetLook {
             background: Background::rounded(fill, top),
             text,
         };

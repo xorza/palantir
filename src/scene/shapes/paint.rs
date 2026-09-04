@@ -2,7 +2,7 @@
 
 use crate::common::content_hash::ContentHash;
 use crate::primitives::approx::noop_f32;
-use crate::primitives::color::ColorF16;
+use crate::primitives::color::RgbaF16;
 use crate::primitives::corners::Corners;
 use crate::primitives::half_simd::F16x4;
 use crate::primitives::nan::NanCheck;
@@ -21,7 +21,7 @@ use glam::{UVec2, Vec2};
 /// [`Self::hash_parts`] is the one way to fold a fill into a key.
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum ShapeBrush {
-    Solid(ColorF16),
+    Solid(RgbaF16),
     Gradient(GradientId),
 }
 
@@ -69,7 +69,7 @@ impl ShapeBrush {
 #[derive(Clone, Copy, Debug, Default, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct ShapeStroke {
     pub(crate) width: f32,
-    pub(crate) color: ColorF16,
+    pub(crate) color: RgbaF16,
 }
 
 impl ShapeStroke {
@@ -77,7 +77,7 @@ impl ShapeStroke {
     /// "no stroke here" reads as.
     pub(crate) const NONE: Self = Self {
         width: 0.0,
-        color: ColorF16::TRANSPARENT,
+        color: RgbaF16::TRANSPARENT,
     };
 
     #[inline]
@@ -117,7 +117,7 @@ impl From<&Stroke> for ShapeStroke {
     fn from(stroke: &Stroke) -> Self {
         Self {
             width: stroke.width,
-            color: ColorF16::from(stroke.color),
+            color: RgbaF16::from(stroke.color),
         }
         .normalized()
     }
@@ -253,7 +253,7 @@ pub(crate) enum QuadShape {
         c: Vec2,
         radius: f32,
         /// Solid linear-RGB fill (straight alpha).
-        fill: ColorF16,
+        fill: RgbaF16,
         stroke: ShapeStroke,
         bbox: Rect,
     },
@@ -327,7 +327,7 @@ pub(crate) struct ChromeRow {
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct LoweredShadow {
-    pub(crate) color: ColorF16,
+    pub(crate) color: RgbaF16,
     /// `(offset.x, offset.y, blur, spread)`. Wraps [`F16x4`] rather
     /// than a bare `[u16; 4]` for the reason that type exists: it is
     /// the shared 4-lane storage core, and a field that stores the
@@ -484,7 +484,7 @@ impl NanCheck for QuadShape {
 
 #[cfg(test)]
 mod tests {
-    use crate::primitives::color::Color;
+    use crate::primitives::color::RgbaF32;
     use crate::primitives::stroke::Stroke;
     use crate::scene::shapes::paint::{ShapeBrush, ShapeStroke};
 
@@ -495,10 +495,10 @@ mod tests {
     #[test]
     fn every_invisible_stroke_lowers_to_one_value() {
         let cases = [
-            Stroke::solid(Color::WHITE, -0.0),
-            Stroke::solid(Color::WHITE, 0.0),
-            Stroke::solid(Color::WHITE, 1e-9),
-            Stroke::solid(Color::TRANSPARENT, 4.0),
+            Stroke::solid(RgbaF32::WHITE, -0.0),
+            Stroke::solid(RgbaF32::WHITE, 0.0),
+            Stroke::solid(RgbaF32::WHITE, 1e-9),
+            Stroke::solid(RgbaF32::TRANSPARENT, 4.0),
         ];
         for stroke in cases {
             assert_eq!(
@@ -508,12 +508,12 @@ mod tests {
             );
         }
         // …and a stroke that does paint crosses verbatim.
-        let visible = Stroke::solid(Color::WHITE, 2.0);
+        let visible = Stroke::solid(RgbaF32::WHITE, 2.0);
         assert_eq!(
             ShapeStroke::from(&visible),
             ShapeStroke {
                 width: 2.0,
-                color: Color::WHITE.into(),
+                color: RgbaF32::WHITE.into(),
             },
         );
     }
@@ -532,11 +532,11 @@ mod tests {
         assert_eq!(a, b, "the id is frame-local and excluded");
         assert_ne!(a, c, "the stops decide");
 
-        let solid = ShapeBrush::Solid(Color::WHITE.into()).hash_parts(0xabcd);
+        let solid = ShapeBrush::Solid(RgbaF32::WHITE.into()).hash_parts(0xabcd);
         assert_ne!(solid.tag, a.tag, "a solid and a gradient never collide");
         assert_eq!(
             solid.payload,
-            crate::primitives::color::ColorF16::from(Color::WHITE).as_u64(),
+            crate::primitives::color::RgbaF16::from(RgbaF32::WHITE).as_u64(),
         );
     }
 }

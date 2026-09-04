@@ -4,7 +4,7 @@ use crate::Ui;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::rect::Rect;
 use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
@@ -61,7 +61,7 @@ fn incremental_matches_full_across_cascade_input_classes() {
     use crate::scene::visibility::Visibility;
     use crate::widgets::frame::Frame;
 
-    fn colored_frame(ui: &mut Ui, color: Color) {
+    fn colored_frame(ui: &mut Ui, color: RgbaF32) {
         Frame::new()
             .id(WidgetId::from_hash("paint"))
             .size(50.0)
@@ -72,7 +72,7 @@ fn incremental_matches_full_across_cascade_input_classes() {
             .show(ui);
     }
 
-    fn nested_paint(ui: &mut Ui, color: Color) {
+    fn nested_paint(ui: &mut Ui, color: RgbaF32) {
         Panel::canvas()
             .id(WidgetId::from_hash("paint-root"))
             .show(ui, |ui| {
@@ -92,11 +92,11 @@ fn incremental_matches_full_across_cascade_input_classes() {
                     .size(100.0)
                     .show(ui, |ui| {
                         if nested {
-                            colored_frame(ui, Color::WHITE);
+                            colored_frame(ui, RgbaF32::WHITE);
                         }
                     });
                 if !nested {
-                    colored_frame(ui, Color::WHITE);
+                    colored_frame(ui, RgbaF32::WHITE);
                 }
             });
     }
@@ -110,7 +110,7 @@ fn incremental_matches_full_across_cascade_input_classes() {
                     let offset = index as f32 * 10.0;
                     ui.add_shape(
                         Shape::line(Vec2::splat(offset), Vec2::splat(offset + 20.0), 2.0)
-                            .brush(Color::WHITE)
+                            .brush(RgbaF32::WHITE)
                             .cap(LineCap::Round),
                     );
                 }
@@ -122,7 +122,7 @@ fn incremental_matches_full_across_cascade_input_classes() {
             .id(WidgetId::from_hash("transform"))
             .size(100.0)
             .transform(transform)
-            .show(ui, |ui| colored_frame(ui, Color::WHITE));
+            .show(ui, |ui| colored_frame(ui, RgbaF32::WHITE));
     }
 
     fn clipped(ui: &mut Ui, clip: ClipMode) {
@@ -149,7 +149,7 @@ fn incremental_matches_full_across_cascade_input_classes() {
 
     fn layered(ui: &mut Ui, layer: Layer) {
         ui.layer(layer).at(Vec2::splat(10.0)).show(|ui| {
-            colored_frame(ui, Color::WHITE);
+            colored_frame(ui, RgbaF32::WHITE);
         });
     }
 
@@ -157,7 +157,7 @@ fn incremental_matches_full_across_cascade_input_classes() {
         Panel::hstack()
             .id(WidgetId::from_hash("order"))
             .show(ui, |ui| {
-                let paint = |ui: &mut Ui| colored_frame(ui, Color::rgb(0.2, 0.4, 0.8));
+                let paint = |ui: &mut Ui| colored_frame(ui, RgbaF32::srgb(0.2, 0.4, 0.8));
                 let second = |ui: &mut Ui| {
                     Frame::new()
                         .id(WidgetId::from_hash("second"))
@@ -176,13 +176,13 @@ fn incremental_matches_full_across_cascade_input_classes() {
 
     assert_incremental_case(
         "paint-only",
-        |ui| colored_frame(ui, Color::rgb(0.2, 0.4, 0.8)),
-        |ui| colored_frame(ui, Color::rgb(0.8, 0.2, 0.4)),
+        |ui| colored_frame(ui, RgbaF32::srgb(0.2, 0.4, 0.8)),
+        |ui| colored_frame(ui, RgbaF32::srgb(0.8, 0.2, 0.4)),
     );
     assert_incremental_case(
         "nested paint-only",
-        |ui| nested_paint(ui, Color::rgb(0.2, 0.4, 0.8)),
-        |ui| nested_paint(ui, Color::rgb(0.8, 0.2, 0.4)),
+        |ui| nested_paint(ui, RgbaF32::srgb(0.2, 0.4, 0.8)),
+        |ui| nested_paint(ui, RgbaF32::srgb(0.8, 0.2, 0.4)),
     );
     assert_incremental_case(
         "paint-row cardinality",
@@ -260,11 +260,13 @@ fn adding_a_shape_skips_the_doomed_incremental_walk() {
             .id(WidgetId::from_hash("host"))
             .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
             .show(ui, |ui| {
-                ui.add_shape(Shape::rect(Rect::new(0.0, 0.0, 10.0, 10.0)).fill(Color::WHITE));
+                ui.add_shape(Shape::rect(Rect::new(0.0, 0.0, 10.0, 10.0)).fill(RgbaF32::WHITE));
                 if extra_shape {
                     // Same layout, same rects, one more paint row — the
                     // caret / focus-ring / hover-highlight shape.
-                    ui.add_shape(Shape::rect(Rect::new(20.0, 0.0, 10.0, 10.0)).fill(Color::WHITE));
+                    ui.add_shape(
+                        Shape::rect(Rect::new(20.0, 0.0, 10.0, 10.0)).fill(RgbaF32::WHITE),
+                    );
                 }
             });
     }
@@ -325,7 +327,7 @@ fn every_cascade_input_busts_both_reuse_gates() {
                     .id(WidgetId::from_hash("body"))
                     .size((Sizing::fixed(size), Sizing::fixed(40.0)))
                     .background(Background {
-                        fill: Color::rgb(0.2, 0.4, 0.8).into(),
+                        fill: RgbaF32::srgb(0.2, 0.4, 0.8).into(),
                         ..Default::default()
                     })
                     .show(ui, |_| {});

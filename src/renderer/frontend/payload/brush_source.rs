@@ -1,18 +1,18 @@
 //! A lowered brush and the GPU fill lanes it expands into.
 
 use crate::primitives::brush::gradient::FillAxis;
-use crate::primitives::color::ColorF16;
+use crate::primitives::color::RgbaF16;
 use crate::primitives::fill_kind::FillKind;
 use crate::primitives::lut_row::LutRow;
 use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
 
-/// Lowered brush input. `Solid` carries an 8-byte `ColorF16`;
+/// Lowered brush input. `Solid` carries an 8-byte `RgbaF16`;
 /// `Gradient` carries the 16-byte atlas row + axis + kind resolved for
 /// this encode pass.
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum BrushSource {
-    Solid(ColorF16),
+    Solid(RgbaF16),
     Gradient(ResolvedGradient),
 }
 
@@ -30,7 +30,7 @@ impl BrushSource {
                 lut_row: LutRow::FALLBACK,
             },
             Self::Gradient(g) => GpuFill {
-                color: ColorF16::TRANSPARENT,
+                color: RgbaF16::TRANSPARENT,
                 kind: g.kind,
                 lut_row: g.lut_row,
             },

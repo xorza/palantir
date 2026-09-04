@@ -71,13 +71,13 @@
 //!
 //! # Colour
 //!
-//! [`Color`] holds **straight-alpha linear RGB**. The convenience constructors
-//! ([`Color::rgb`], [`Color::hex`], [`Color::rgb_u8`]) read their input as
-//! sRGB-perceptual and linearise it for you; [`Color::linear_rgb`] and
-//! [`Color::linear_rgba`] take values that are already linear. Everything
+//! [`RgbaF32`] holds **straight-alpha linear RGB**. The convenience constructors
+//! ([`RgbaF32::srgb`], [`RgbaF32::hex`], [`RgbaF32::from_srgba`]) read their
+//! input as sRGB-encoded and linearise it for you; [`RgbaF32::new`] takes
+//! values that are already linear. Everything
 //! downstream — blending, anti-aliasing, animation — runs in linear, and the
 //! sRGB encode happens on the GPU when writing the swapchain. Writing
-//! already-sRGB-encoded values into [`Color`] skips the linearisation and will
+//! already-sRGB-encoded values into [`RgbaF32`] skips the linearisation and will
 //! come out wrong.
 
 // Re-import `palantir` as a self-alias so proc-macros that emit
@@ -289,12 +289,13 @@ pub use primitives::brush::gradient::radial_geometry::{
 pub use primitives::brush::gradient::stops::{GradientStops, Stop};
 pub use primitives::brush::gradient::{Gradient, GradientGeometry, Interp, Spread};
 pub use primitives::brush::{Brush, CurveBrush};
-pub use primitives::color::Color;
-pub use primitives::color::ColorU8;
+pub use primitives::color::RgbaF32;
+pub use primitives::color::RgbaU8;
 pub use primitives::color::color_coords::ColorCoords;
 pub use primitives::color::color_model::ColorModel;
 pub use primitives::color::hsv::Hsv;
 pub use primitives::color::okhsv::Okhsv;
+pub use primitives::color::srgba_u8::SrgbaU8;
 pub use primitives::content_type::ContentType;
 pub use primitives::corners::Corners;
 pub use primitives::image::{Image, ImageDownsample, ImageFilter, ImageFit};

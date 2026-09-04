@@ -2,7 +2,7 @@
 //! writes into.
 
 use crate::diagnostics::DebugOverlayConfig;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::renderer::backend::backbuffer::Backbuffer;
 use crate::renderer::backend::stencil::Stencil;
 use crate::renderer::render_buffer::RenderBuffer;
@@ -37,7 +37,7 @@ impl Submission<'_> {
     /// else the plan's. The frame's bottom paint layer, so both the
     /// `Full` pass's `LoadOp::Clear` and the `Partial` pre-clear quad
     /// read it.
-    pub(crate) fn clear(&self) -> Color {
+    pub(crate) fn clear(&self) -> RgbaF32 {
         self.buffer.clear_override.unwrap_or(self.plan.clear)
     }
 

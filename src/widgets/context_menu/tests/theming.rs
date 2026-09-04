@@ -4,7 +4,7 @@
 use crate::Ui;
 use crate::input::shortcut::Shortcut;
 use crate::primitives::background::Background;
-use crate::primitives::color::{Color, ColorF16};
+use crate::primitives::color::{RgbaF16, RgbaF32};
 use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
@@ -135,7 +135,7 @@ fn menu_separator_theme_drives_rule_geometry_and_color() {
     }
 
     let mut h = UiHarness::new(SURFACE);
-    let rule = Color::hex(0xff00ff);
+    let rule = RgbaF32::hex(0xff00ff);
     h.ui.theme_mut().context_menu.separator = SeparatorTheme {
         color: rule,
         thickness: 3.0,
@@ -143,7 +143,7 @@ fn menu_separator_theme_drives_rule_geometry_and_color() {
     };
     // Loudly different app-wide rule — the menu must not reach for it.
     h.ui.theme_mut().separator.thickness = 11.0;
-    h.ui.theme_mut().separator.color = Color::hex(0x00ff00);
+    h.ui.theme_mut().separator.color = RgbaF32::hex(0x00ff00);
 
     ContextMenu::open(&mut h.ui, trigger_id(), Vec2::new(20.0, 20.0));
     h.frame(menu);
@@ -170,7 +170,7 @@ fn menu_separator_theme_drives_rule_geometry_and_color() {
     let ShapeBrush::Solid(fill) = chrome.fill else {
         panic!("the menu rule paints a solid fill");
     };
-    assert_eq!(fill, ColorF16::from(rule), "rule color comes off the menu");
+    assert_eq!(fill, RgbaF16::from(rule), "rule color comes off the menu");
 }
 
 /// Both menu radii are theme fields, and `with_radius` keeps them in

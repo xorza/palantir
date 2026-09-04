@@ -1,6 +1,6 @@
 //! What a slider wears: the two-tone track, and the knob that rides it.
 
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::widgets::theme::palette::Palette;
 
 /// Visuals for [`crate::Slider`]: a thin two-tone track (filled `fill`
@@ -10,11 +10,11 @@ use crate::widgets::theme::palette::Palette;
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct SliderTheme {
     /// Unfilled track color (right of the knob).
-    pub track: Color,
+    pub track: RgbaF32,
     /// Filled track color (left of the knob).
-    pub fill: Color,
+    pub fill: RgbaF32,
     /// Knob (handle) color.
-    pub knob: Color,
+    pub knob: RgbaF32,
     /// Knob diameter in logical px — also the widget's height.
     pub knob_size: f32,
     /// Track thickness in logical px. Pill radius is

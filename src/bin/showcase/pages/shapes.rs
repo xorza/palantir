@@ -7,7 +7,7 @@
 
 use crate::support;
 use crate::support::{demo_cell, section, tiles};
-use palantir::{Color, ColorU8, LinearGradient, Mesh, Shape, Stroke, Ui, Vec2, WidgetId};
+use palantir::{LinearGradient, Mesh, RgbaF32, RgbaU8, Shape, Stroke, Ui, Vec2, WidgetId};
 use std::f32::consts::{FRAC_PI_2, PI};
 
 pub(crate) fn build(ui: &mut Ui) {
@@ -72,7 +72,7 @@ fn stroked(ui: &mut Ui) {
     ui.add_shape(
         Shape::triangle(A, B, C)
             .fill(support::D)
-            .stroke(Stroke::solid(Color::WHITE, 3.0))
+            .stroke(Stroke::solid(RgbaF32::WHITE, 3.0))
             .radius(10.0_f32),
     );
 }
@@ -180,7 +180,7 @@ fn stress(ui: &mut Ui) {
     const SIDE: u32 = 50;
     const STEP: f32 = 3.0;
     retained_mesh(ui, "stress-grid", |m| {
-        let teal = Color::hex(0x2fa8a8);
+        let teal = RgbaF32::hex(0x2fa8a8);
         *m = Mesh::with_capacity((SIDE as usize).pow(2), (SIDE as usize - 1).pow(2) * 6);
         for j in 0..SIDE {
             for i in 0..SIDE {
@@ -211,8 +211,8 @@ fn window_mask(ui: &mut Ui) {
     ui.add_shape(
         Shape::owner_rect().fill(
             LinearGradient::builder(FRAC_PI_2)
-                .stop(0.0, ColorU8::hex(0x1a1a2e))
-                .stop(1.0, ColorU8::hex(0x4c5cdb)),
+                .stop(0.0, RgbaU8::hex(0x1a1a2e))
+                .stop(1.0, RgbaU8::hex(0x4c5cdb)),
         ),
     );
     ui.add_shape(

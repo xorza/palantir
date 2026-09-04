@@ -1,6 +1,6 @@
 use crate::bench::Run;
 use crate::display::Display;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::rect::Rect;
 use crate::primitives::span::Span;
 use crate::primitives::texture_id::TextureId;
@@ -58,7 +58,7 @@ impl ComposeBench {
                     p3: Vec2::new(112.0, 64.0),
                 },
                 fill: GpuFill {
-                    color: Color::WHITE.into(),
+                    color: RgbaF32::WHITE.into(),
                     ..Default::default()
                 },
                 width: 2.0,
@@ -208,7 +208,7 @@ fn push_mesh(cmds: &mut PaintCapture, bbox: Rect) {
     cmds.draw_mesh(DrawMeshPayload {
         bbox,
         origin: Vec2::ZERO,
-        tint: Color::WHITE.into(),
+        tint: RgbaF32::WHITE.into(),
         v_start: 0,
         v_len: 3,
         i_start: 0,
@@ -229,7 +229,7 @@ fn cell_rect(at: Vec2, within: Rect) -> Rect {
 fn push_text(cmds: &mut PaintCapture, rect: Rect) {
     cmds.draw_text(DrawTextPayload {
         rect,
-        color: Color::WHITE.into(),
+        color: RgbaF32::WHITE.into(),
         text: ShapedTextRef {
             key: TextShapeKey::fixture(),
             span: Span::default(),
@@ -243,7 +243,7 @@ fn push_image(cmds: &mut PaintCapture, rect: Rect) {
             rect,
             uv_min: Vec2::ZERO,
             uv_size: Vec2::ONE,
-            tint: Color::WHITE.into(),
+            tint: RgbaF32::WHITE.into(),
             handle: TextureId(1),
             flags: 0,
         },

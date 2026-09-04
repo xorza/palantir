@@ -1,4 +1,4 @@
-use crate::primitives::color::{Color, ColorF16};
+use crate::primitives::color::{RgbaF16, RgbaF32};
 use crate::primitives::rect::Rect;
 use crate::primitives::texture_id::TextureId;
 use crate::renderer::frontend::capture::{PaintCall, PaintCapture};
@@ -124,7 +124,7 @@ fn gpu_view_gate_drops_zero_extent_and_pairs_payload_with_paint() {
                 rect,
                 uv_min: Vec2::ZERO,
                 uv_size: Vec2::ONE,
-                tint: ColorF16::from(Color::WHITE),
+                tint: RgbaF16::from(RgbaF32::WHITE),
                 handle,
                 flags: 0,
             },
@@ -152,6 +152,6 @@ fn gpu_view_gate_drops_zero_extent_and_pairs_payload_with_paint() {
         assert_eq!(payload.uv_min, Vec2::ZERO, "case {label}");
         assert_eq!(payload.uv_size, Vec2::ONE, "case {label}");
         assert_eq!(payload.flags, 0, "case {label}");
-        assert_eq!(payload.tint, ColorF16::from(Color::WHITE), "case {label}");
+        assert_eq!(payload.tint, RgbaF16::from(RgbaF32::WHITE), "case {label}");
     }
 }

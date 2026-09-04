@@ -1,7 +1,7 @@
 //! The exhaustive pin: every named field on every shape either moves the
 //! hash or is listed as deliberately excluded.
 
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
 use crate::primitives::shadow::Shadow;
@@ -54,11 +54,11 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         );
     }
 
-    let white = ColorF16::from(Color::WHITE);
-    let red = ColorF16::from(Color::rgba(1.0, 0.0, 0.0, 1.0));
+    let white = RgbaF16::from(RgbaF32::WHITE);
+    let red = RgbaF16::from(RgbaF32::srgba(1.0, 0.0, 0.0, 1.0));
     let solid = ShapeBrush::Solid(white);
-    let stroke = ShapeStroke::from(Stroke::solid(Color::BLACK, 1.0));
-    let stroke2 = ShapeStroke::from(Stroke::solid(Color::BLACK, 2.0));
+    let stroke = ShapeStroke::from(Stroke::solid(RgbaF32::BLACK, 1.0));
+    let stroke2 = ShapeStroke::from(Stroke::solid(RgbaF32::BLACK, 2.0));
     let rect = |r| Some(Rect::new(r, 0.0, 4.0, 4.0));
     let pt = |x| Vec2::new(x, 0.0);
 
@@ -186,7 +186,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         })
     };
     let sh = Shadow {
-        color: Color::BLACK,
+        color: RgbaF32::BLACK,
         offset: Vec2::new(1.0, 2.0),
         blur: 3.0,
         spread: 1.0,
@@ -207,7 +207,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         (
             "color",
             Shadow {
-                color: Color::WHITE,
+                color: RgbaF32::WHITE,
                 ..sh
             },
         ),

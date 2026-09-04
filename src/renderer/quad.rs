@@ -6,7 +6,7 @@
 use crate::primitives::brush::gradient::FillAxis;
 use crate::primitives::fill_kind::FillKind;
 use crate::primitives::lut_row::LutRow;
-use crate::primitives::{color::ColorF16, corners::Corners, rect::Rect};
+use crate::primitives::{color::RgbaF16, corners::Corners, rect::Rect};
 use bytemuck::{Pod, Zeroable};
 
 /// Half-width of the quad SDF's physical-pixel antialiasing transition.
@@ -18,7 +18,7 @@ pub(crate) const AA_RADIUS: f32 = 0.5;
 /// offsets, which is the only thing constraining the field order. No tail padding: vertex buffer strides only need
 /// 4-byte alignment, unlike std140 uniforms.
 ///
-/// **Solid fill:** `fill_kind = 0`, `fill: Color` carries the colour,
+/// **Solid fill:** `fill_kind = 0`, `fill: RgbaF32` carries the colour,
 /// `fill_lut_row` / `fill_axis` ignored.
 ///
 /// **Linear-gradient fill:** `fill_kind` low byte = 1, bits 8..16 carry
@@ -38,11 +38,11 @@ pub(crate) struct Quad {
     pub(crate) rect: Rect,
     /// Linear-RGB fill, packed as four `f16` (8 B). Straight-alpha per
     /// the colour-pipeline contract — the shader premultiplies at
-    /// output. Halves the 16 B a full `Color` would cost per instance
+    /// output. Halves the 16 B a full `RgbaF32` would cost per instance
     /// while keeping enough precision for linear blending.
-    pub(crate) fill: ColorF16,
+    pub(crate) fill: RgbaF16,
     pub(crate) corners: Corners,
-    pub(crate) stroke_color: ColorF16,
+    pub(crate) stroke_color: RgbaF16,
     pub(crate) stroke_width: f32,
     /// Packed brush metadata; see [`FillKind`] for layout.
     pub(crate) fill_kind: FillKind,

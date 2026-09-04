@@ -3,7 +3,7 @@ use crate::layout::types::align::{Align, HAlign, VAlign};
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::corners::Corners;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
@@ -37,7 +37,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
                 .id(WidgetId::from_hash("paint-only"))
                 .size(50.0)
                 .background(Background {
-                    fill: Color::rgb(0.5, 0.5, 0.5).into(),
+                    fill: RgbaF32::srgb(0.5, 0.5, 0.5).into(),
                     ..Default::default()
                 })
                 .show(ui, |_| {})
@@ -61,7 +61,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
                 .id(WidgetId::from_hash("clipped"))
                 .size(50.0)
                 .background(Background {
-                    fill: Color::rgb(0.2, 0.2, 0.2).into(),
+                    fill: RgbaF32::srgb(0.2, 0.2, 0.2).into(),
                     ..Default::default()
                 })
                 .clip_rect()
@@ -74,7 +74,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
                 .id(WidgetId::from_hash("rounded"))
                 .size(50.0)
                 .background(Background {
-                    fill: Color::rgb(0.2, 0.2, 0.2).into(),
+                    fill: RgbaF32::srgb(0.2, 0.2, 0.2).into(),
                     corners: Corners::all(4.0),
                     ..Default::default()
                 })
@@ -89,7 +89,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
                 .id(WidgetId::from_hash("rounded-zero"))
                 .size(50.0)
                 .background(Background {
-                    fill: Color::rgb(0.2, 0.2, 0.2).into(),
+                    fill: RgbaF32::srgb(0.2, 0.2, 0.2).into(),
                     ..Default::default()
                 })
                 .clip_rounded()
@@ -114,7 +114,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
 #[test]
 fn explicit_no_chrome_and_no_clip_override_panel_theme() {
     let mut h = UiHarness::new(UVec2::new(200, 120));
-    h.ui.theme_mut().panel_background = Some(Background::fill(Color::WHITE));
+    h.ui.theme_mut().panel_background = Some(Background::fill(RgbaF32::WHITE));
     h.ui.theme_mut().panel_clip = ClipMode::Rect;
     let (mut explicit, mut inherited) = (None, None);
     h.frame(|ui| {
@@ -155,7 +155,7 @@ fn panel_hugs_largest_child_and_layers_them() {
                     .id(WidgetId::from_hash("card"))
                     .padding(10.0)
                     .background(Background {
-                        fill: Color::rgb(0.1, 0.1, 0.15).into(),
+                        fill: RgbaF32::srgb(0.1, 0.1, 0.15).into(),
                         corners: Corners::all(8.0),
                         ..Default::default()
                     })
@@ -218,7 +218,7 @@ fn panel_with_fill_child_grows_to_panel_inner() {
                             .id(WidgetId::from_hash("filler"))
                             .size((Sizing::FILL, Sizing::FILL))
                             .background(Background {
-                                fill: Color::rgb(0.5, 0.5, 0.5).into(),
+                                fill: RgbaF32::srgb(0.5, 0.5, 0.5).into(),
                                 ..Default::default()
                             })
                             .show(ui)
@@ -278,7 +278,7 @@ fn disabled_panel_suppresses_clicks_on_descendants() {
                 .size((Sizing::fixed(200.0), Sizing::fixed(80.0)))
                 .padding(20.0)
                 .background(Background {
-                    fill: Color::rgb(0.2, 0.2, 0.2).into(),
+                    fill: RgbaF32::srgb(0.2, 0.2, 0.2).into(),
                     ..Default::default()
                 })
                 .disabled(true)
@@ -358,7 +358,7 @@ fn zstack_layers_children_without_painting_background() {
                                 .id(WidgetId::from_hash("bg"))
                                 .size((Sizing::fixed(120.0), Sizing::fixed(80.0)))
                                 .background(Background {
-                                    fill: Color::rgb(0.1, 0.1, 0.2).into(),
+                                    fill: RgbaF32::srgb(0.1, 0.1, 0.2).into(),
                                     ..Default::default()
                                 })
                                 .show(ui)
@@ -416,7 +416,7 @@ fn zstack_aligns_child_per_axis() {
                                 .size((Sizing::fixed(40.0), Sizing::fixed(20.0)))
                                 .align(*align)
                                 .background(Background {
-                                    fill: Color::rgb(0.5, 0.5, 0.5).into(),
+                                    fill: RgbaF32::srgb(0.5, 0.5, 0.5).into(),
                                     ..Default::default()
                                 })
                                 .show(ui)

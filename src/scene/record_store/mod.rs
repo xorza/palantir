@@ -19,7 +19,7 @@ pub(crate) mod recorded_gradient;
 pub(crate) mod recorded_gradients;
 pub(crate) mod text_store;
 
-use crate::primitives::color::{Color, ColorU8};
+use crate::primitives::color::{RgbaF32, RgbaU8};
 use crate::primitives::interned_str::InternedStr;
 use crate::primitives::interned_text::InternedText;
 use crate::primitives::mesh::Mesh;
@@ -44,12 +44,12 @@ pub(crate) struct RecordStore {
     /// Point storage for `ShapeRecord::Polyline`. Indexed by the
     /// record's `points` `Span`.
     pub(crate) polyline_points: Vec<Vec2>,
-    /// Color storage for `ShapeRecord::Polyline`. Length per
+    /// RgbaF32 storage for `ShapeRecord::Polyline`. Length per
     /// record is 1, `points.len()`, or `points.len() - 1` per
-    /// `ColorMode`. Stored as `ColorU8` (4 B/elem, same precision
+    /// `ColorMode`. Stored as `RgbaU8` (4 B/elem, same precision
     /// the `CurveInstance` color lanes carry) — quantization happens
     /// once at lowering, not per-emitted-instance.
-    pub(crate) polyline_colors: Vec<ColorU8>,
+    pub(crate) polyline_colors: Vec<RgbaU8>,
     /// Interned record-scoped gradient payloads. `ShapeBrush::Gradient(id)`
     /// (set by `shapes::lower::brush`) indexes into its records. Cross-tree —
     /// storing it here means chrome lowering on one tree and
@@ -166,12 +166,12 @@ impl RecordStore {
     /// Copy one polyline's points and colours in, quantizing the colours
     /// once here rather than per emitted instance. Returns the spans a
     /// `ShapeRecord::Polyline` carries.
-    pub(super) fn stage_polyline(&mut self, points: &[Vec2], colors: &[Color]) -> PolylineSpans {
+    pub(super) fn stage_polyline(&mut self, points: &[Vec2], colors: &[RgbaF32]) -> PolylineSpans {
         let staged_points = Span::new(self.polyline_points.len() as u32, points.len() as u32);
         self.polyline_points.extend_from_slice(points);
         let staged_colors = Span::new(self.polyline_colors.len() as u32, colors.len() as u32);
         self.polyline_colors
-            .extend(colors.iter().map(|&c| ColorU8::from(c)));
+            .extend(colors.iter().map(|&c| RgbaU8::from(c)));
         PolylineSpans {
             points: staged_points,
             colors: staged_colors,

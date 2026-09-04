@@ -5,7 +5,7 @@ use crate::WidgetId;
 use crate::layout::cross_driver_tests::support::chat_message;
 use crate::layout::cross_driver_tests::text_wrap::support::PARAGRAPH;
 use crate::layout::types::align::Align;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::renderer::frontend::capture::PaintCall;
 use crate::scene::layer::Layer;
 use crate::scene::node::Node;
@@ -229,7 +229,7 @@ fn build_multi_text_leaf(ui: &mut Ui) -> NodeId {
                     },
                 )
                 .at_origin(glam::Vec2::new(0.0, 0.0))
-                .color(Color::WHITE)
+                .color(RgbaF32::WHITE)
                 .wrap(TextWrap::Truncate)
                 .align(Align::default())
                 .family(FontFamily::SANS)
@@ -238,7 +238,7 @@ fn build_multi_text_leaf(ui: &mut Ui) -> NodeId {
             ui.add_shape(
                 Shape::rect(crate::Rect::new(0.0, 20.0, 4.0, 2.0))
                     .corners(crate::Corners::ZERO)
-                    .fill(Color::WHITE)
+                    .fill(RgbaF32::WHITE)
                     .stroke(crate::Stroke::ZERO),
             );
             let second = ui.intern("second-with-different-text");
@@ -251,7 +251,7 @@ fn build_multi_text_leaf(ui: &mut Ui) -> NodeId {
                     },
                 )
                 .at_origin(glam::Vec2::new(0.0, 22.0))
-                .color(Color::WHITE)
+                .color(RgbaF32::WHITE)
                 .wrap(TextWrap::Truncate)
                 .align(Align::default())
                 .family(FontFamily::SANS)

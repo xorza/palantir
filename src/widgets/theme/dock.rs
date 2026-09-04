@@ -2,7 +2,7 @@
 //! insertion caret, and the chip trailing the pointer.
 
 use crate::primitives::background::Background;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::corners::Corners;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
@@ -20,7 +20,7 @@ use glam::Vec2;
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct DockTheme {
     /// Wash over the region a drop would occupy.
-    pub preview_fill: Color,
+    pub preview_fill: RgbaF32,
     /// Outline around that region.
     pub preview_stroke: Stroke,
     /// Corner radius of the preview.

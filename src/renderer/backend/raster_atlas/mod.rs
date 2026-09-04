@@ -255,7 +255,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
     ) -> Self {
         let max = device.limits().max_texture_dimension_2d;
 
-        // Order matches `ContentType as usize`: [Mask, Color].
+        // Order matches `ContentType as usize`: [Mask, RgbaF32].
         let sides = [
             Side::new(
                 device,

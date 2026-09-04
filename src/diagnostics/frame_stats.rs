@@ -4,7 +4,7 @@
 use crate::layout::types::justify::Justify;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::spacing::Spacing;
 use crate::scene::layer::Layer;
 use crate::scene::node::configure::Configure;
@@ -68,11 +68,11 @@ pub(crate) fn record(ui: &mut Ui) {
     let style = TextStyle {
         family: FontFamily::MONO,
         weight: FontWeight::REGULAR,
-        color: Color::rgb(1.0, 0.2, 0.2),
+        color: RgbaF32::srgb(1.0, 0.2, 0.2),
         font_size_px: 12.0,
         ..ui.theme().text
     };
-    let chrome = Background::fill(Color::linear_rgba(0.0, 0.0, 0.0, 0.75));
+    let chrome = Background::fill(RgbaF32::new(0.0, 0.0, 0.0, 0.75));
     ui.layer(Layer::Debug).show(|ui| {
         Panel::hstack()
             .size((Sizing::FILL, Sizing::HUG))

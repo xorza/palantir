@@ -15,7 +15,7 @@ use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::background::Background;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::{
-    color::Color, corners::Corners, stroke::Stroke, translate_scale::TranslateScale,
+    color::RgbaF32, corners::Corners, stroke::Stroke, translate_scale::TranslateScale,
 };
 use crate::renderer::frontend::capture::assert_same_capture;
 use crate::scene::layer::Layer;
@@ -398,8 +398,8 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
                     .size((Sizing::FILL, Sizing::HUG))
                     .padding(6.0)
                     .background(Background {
-                        fill: Color::rgb(0.16, 0.18, 0.22).into(),
-                        stroke: Stroke::solid(Color::rgb(0.3, 0.34, 0.42), 1.0),
+                        fill: RgbaF32::srgb(0.16, 0.18, 0.22).into(),
+                        stroke: Stroke::solid(RgbaF32::srgb(0.3, 0.34, 0.42), 1.0),
                         corners: Corners::all(4.0),
                         shadow: Shadow::NONE,
                     })
@@ -443,7 +443,7 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
                     .id(WidgetId::from_hash("under"))
                     .size((Sizing::FILL, Sizing::fixed(20.0)))
                     .background(Background {
-                        fill: Color::rgb(0.4, 0.4, 0.5).into(),
+                        fill: RgbaF32::srgb(0.4, 0.4, 0.5).into(),
                         ..Default::default()
                     })
                     .show(ui);

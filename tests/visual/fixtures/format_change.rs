@@ -13,7 +13,7 @@
 
 use glam::UVec2;
 use palantir::{
-    Background, Button, Color, Configure, Corners, Frame, Image, Panel, Shape, Sizing, Stroke,
+    Background, Button, Configure, Corners, Frame, Image, Panel, RgbaF32, Shape, Sizing, Stroke,
 };
 use std::cell::RefCell;
 use wgpu::TextureFormat;
@@ -36,8 +36,8 @@ fn scene(ui: &mut palantir::Ui) {
                 .id_salt("card")
                 .size((Sizing::FILL, Sizing::FILL))
                 .background(Background {
-                    fill: Color::rgb(0.20, 0.30, 0.55).into(),
-                    stroke: Stroke::solid(Color::rgb(0.65, 0.80, 1.00), 2.0),
+                    fill: RgbaF32::srgb(0.20, 0.30, 0.55).into(),
+                    stroke: Stroke::solid(RgbaF32::srgb(0.65, 0.80, 1.00), 2.0),
                     corners: Corners::all(12.0),
                     ..Default::default()
                 })

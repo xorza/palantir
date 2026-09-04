@@ -1,6 +1,6 @@
 //! One textured-quad draw, and the pair a sink takes it as.
 
-use crate::primitives::color::ColorF16;
+use crate::primitives::color::RgbaF16;
 use crate::primitives::rect::Rect;
 use crate::primitives::texture_id::TextureId;
 use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
@@ -18,7 +18,7 @@ pub(crate) struct DrawImagePayload {
     pub(crate) rect: Rect,
     pub(crate) uv_min: glam::Vec2,
     pub(crate) uv_size: glam::Vec2,
-    pub(crate) tint: ColorF16,
+    pub(crate) tint: RgbaF16,
     /// The image's registration id ([`TextureId`],
     /// a `repr(transparent)` `Pod` `u64`). The backend looks it up in its
     /// texture cache; `TextureId(0)` (the `Zeroable` default) is "no

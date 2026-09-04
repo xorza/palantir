@@ -4,7 +4,7 @@ use crate::animation::anim_slot::AnimSlot;
 use crate::animation::anim_spec::AnimSpec;
 use crate::animation::tests::support::{next_frame, wid};
 use crate::animation::*;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use glam::Vec2;
 
 #[test]
@@ -36,10 +36,10 @@ fn removed_widget_evicts_all_slots_across_typed_maps() {
         0.016,
         next_frame(),
     );
-    let _ = map.typed_mut::<Color>().tick(
+    let _ = map.typed_mut::<RgbaF32>().tick(
         id,
         AnimSlot::new("a"),
-        Color::rgb(1.0, 0.0, 0.0),
+        RgbaF32::srgb(1.0, 0.0, 0.0),
         AnimSpec::FAST,
         0.016,
         next_frame(),
@@ -57,7 +57,7 @@ fn removed_widget_evicts_all_slots_across_typed_maps() {
     // path; we just read `.rows.len()`).
     let f = |m: &mut AnimMap| m.try_typed_mut::<f32>().map_or(0, |t| t.rows.len());
     let v = |m: &mut AnimMap| m.try_typed_mut::<Vec2>().map_or(0, |t| t.rows.len());
-    let c = |m: &mut AnimMap| m.try_typed_mut::<Color>().map_or(0, |t| t.rows.len());
+    let c = |m: &mut AnimMap| m.try_typed_mut::<RgbaF32>().map_or(0, |t| t.rows.len());
     assert_eq!(f(&mut map), 3);
     assert_eq!(v(&mut map), 1);
     assert_eq!(c(&mut map), 1);

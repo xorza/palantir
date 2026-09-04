@@ -8,7 +8,7 @@
 use crate::support;
 use crate::support::{body_style, section, well_bg};
 use palantir::{
-    Background, Color, Configure, Corners, Frame, Grid, Panel, Sizing, Text, TextWrap, Track, Ui,
+    Background, Configure, Corners, Frame, Grid, Panel, RgbaF32, Sizing, Text, TextWrap, Track, Ui,
 };
 
 const PARAGRAPH: &str = "The quick brown fox jumps over the lazy dog. \
@@ -160,7 +160,7 @@ fn compositions(ui: &mut Ui) {
 }
 
 /// One chat row: avatar (Fixed circle) + Fill wrapping message.
-fn chat_row(ui: &mut Ui, key: &'static str, avatar: Color, message: &'static str) {
+fn chat_row(ui: &mut Ui, key: &'static str, avatar: RgbaF32, message: &'static str) {
     Panel::hstack()
         .id_salt(("chat-row", key))
         .size((Sizing::FILL, Sizing::HUG))

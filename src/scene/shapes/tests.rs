@@ -1,4 +1,4 @@
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::image::Image;
 use crate::primitives::rect::Rect;
 use crate::renderer::image_registry::ImageRegistry;
@@ -20,9 +20,9 @@ enum ColorSource {
 }
 
 impl ColorSource {
-    fn colors<'a>(self, colors: &'a [Color]) -> PolylineColors<'a> {
+    fn colors<'a>(self, colors: &'a [RgbaF32]) -> PolylineColors<'a> {
         match self {
-            ColorSource::Single => PolylineColors::Single(Color::WHITE),
+            ColorSource::Single => PolylineColors::Single(RgbaF32::WHITE),
             ColorSource::PerPoint => PolylineColors::PerPoint(colors),
             ColorSource::PerSegment => PolylineColors::PerSegment(colors),
         }
@@ -52,7 +52,7 @@ impl ColorSource {
 #[test]
 fn polyline_color_cardinality_is_enforced_at_lowering() {
     let points = [Vec2::ZERO, Vec2::new(10.0, 10.0)];
-    let colors = [Color::WHITE; 3];
+    let colors = [RgbaF32::WHITE; 3];
 
     for points_len in 0..=2 {
         for source in [
@@ -169,7 +169,7 @@ fn image_dimensions_above_u16_survive_lowering() {
 #[test]
 fn the_nan_gate_drops_every_shape_kind() {
     use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
-    use crate::primitives::color::ColorU8;
+    use crate::primitives::color::RgbaU8;
     use crate::primitives::mesh::Mesh;
     use crate::primitives::shadow::Shadow;
     use crate::primitives::stroke::Stroke;
@@ -179,7 +179,7 @@ fn the_nan_gate_drops_every_shape_kind() {
     const N: f32 = f32::NAN;
     let nan_pt = Vec2::new(1.0, N);
     let ok_rect = Rect::new(0.0, 0.0, 8.0, 8.0);
-    let white = Color::WHITE;
+    let white = RgbaF32::WHITE;
     let mesh = |pos| {
         let mut m = Mesh::new();
         m.vertex(pos, white);
@@ -255,10 +255,10 @@ fn the_nan_gate_drops_every_shape_kind() {
         "rect_stroke_colour",
         Shape::rect(ok_rect)
             .fill(white)
-            .stroke(Stroke::solid(Color::rgba(0.0, N, 0.0, 1.0), 2.0)),
+            .stroke(Stroke::solid(RgbaF32::srgba(0.0, N, 0.0, 1.0), 2.0)),
         Shape::rect(ok_rect)
             .fill(white)
-            .stroke(Stroke::solid(Color::BLACK, 2.0)),
+            .stroke(Stroke::solid(RgbaF32::BLACK, 2.0)),
     );
     gate(
         "triangle_corner",
@@ -301,8 +301,8 @@ fn the_nan_gate_drops_every_shape_kind() {
     let gradient = |angle| {
         Shape::rect(ok_rect).fill(LinearGradient::two_stop(
             angle,
-            ColorU8::hex(0x1a1a2e),
-            ColorU8::hex(0x4c5cdb),
+            RgbaU8::hex(0x1a1a2e),
+            RgbaU8::hex(0x4c5cdb),
         ))
     };
     gate("rect_gradient_geometry", gradient(N), gradient(0.25));

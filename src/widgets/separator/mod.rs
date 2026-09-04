@@ -4,7 +4,7 @@ use crate::layout::axis::Axis;
 use crate::layout::types::align::{Align, HAlign, VAlign};
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::num::F32Ext;
 use crate::scene::node::Node;
 use crate::scene::node::configure::Configure;
@@ -29,7 +29,7 @@ pub struct Separator<'a> {
     node: Node,
     axis: Axis,
     thickness: Option<f32>,
-    color: Option<Color>,
+    color: Option<RgbaF32>,
     style: Option<&'a SeparatorTheme>,
 }
 
@@ -83,7 +83,7 @@ impl<'a> Separator<'a> {
 
     /// Line color, defaulting to [`crate::Theme::separator`]'s.
     /// One-axis hatch over the resolved bundle — see [`crate::Theme`].
-    pub fn color(mut self, c: Color) -> Self {
+    pub fn color(mut self, c: RgbaF32) -> Self {
         self.color = Some(c);
         self
     }

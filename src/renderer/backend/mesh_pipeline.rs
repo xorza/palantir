@@ -203,8 +203,8 @@ fn mesh_upload_required(vertices: usize, indices: usize, instances: usize) -> bo
 const MESH_VERTEX_ATTRS: [wgpu::VertexAttribute; 2] = wgpu::vertex_attr_array![
     0 => Float32x2,
     // `Unorm8x4` normalizes `u8/255 → 0..1` floats on the GPU. The
-    // CPU side stores linear-u8 via the linear `From<Color> for
-    // ColorU8` impl, so the shader sees linear values directly —
+    // CPU side stores linear-u8 via the linear `From<RgbaF32> for
+    // RgbaU8` impl, so the shader sees linear values directly —
     // no decode, no banding worse than 1/255 (below display step).
     1 => Unorm8x4,
 ];

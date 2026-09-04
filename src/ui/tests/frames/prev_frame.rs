@@ -2,7 +2,7 @@
 
 use crate::Ui;
 use crate::primitives::background::Background;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
@@ -101,7 +101,7 @@ fn prev_frame_drops_disappeared_widgets() {
 #[test]
 fn prev_frame_updates_on_authoring_change() {
     let mut h = UiHarness::new(SURFACE);
-    let paint = |fill: Color| {
+    let paint = |fill: RgbaF32| {
         move |ui: &mut Ui| {
             Frame::new()
                 .id(WidgetId::from_hash("a"))
@@ -113,10 +113,10 @@ fn prev_frame_updates_on_authoring_change() {
                 .show(ui);
         }
     };
-    h.frame(paint(Color::rgb(0.2, 0.4, 0.8)));
+    h.frame(paint(RgbaF32::srgb(0.2, 0.4, 0.8)));
     let h1 = h.engines.damage.prev[&WidgetId::from_hash("a")].hash;
 
-    h.frame(paint(Color::rgb(0.9, 0.4, 0.8)));
+    h.frame(paint(RgbaF32::srgb(0.9, 0.4, 0.8)));
     let h2 = h.engines.damage.prev[&WidgetId::from_hash("a")].hash;
     assert_ne!(h1, h2);
 }

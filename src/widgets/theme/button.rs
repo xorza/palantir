@@ -3,7 +3,7 @@
 use crate::input::response::response_state::ResponseState;
 use crate::primitives::background::Background;
 use crate::primitives::brush::Brush;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::corners::Corners;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
@@ -39,7 +39,7 @@ impl ButtonTheme {
     /// "inherit `Theme::text`" — bumping `theme.text.color` recolors
     /// active button labels. The historical 4 px radius is retained.
     pub fn from_palette(p: &Palette) -> Self {
-        let bg = |fill: Color| {
+        let bg = |fill: RgbaF32| {
             Background::rounded(fill, Corners::all(4.0))
                 .with_stroke(Stroke::solid(p.border_soft(), 1.0))
         };

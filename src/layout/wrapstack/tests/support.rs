@@ -4,7 +4,7 @@
 use crate::Ui;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::configure::Configure;
@@ -26,7 +26,7 @@ pub(super) fn cell(ui: &mut Ui, id: &'static str, w: f32, h: f32) -> NodeId {
         .id(WidgetId::from_hash(id))
         .size((Sizing::fixed(w), Sizing::fixed(h)))
         .background(Background {
-            fill: Color::WHITE.into(),
+            fill: RgbaF32::WHITE.into(),
             ..Default::default()
         })
         .show(ui)

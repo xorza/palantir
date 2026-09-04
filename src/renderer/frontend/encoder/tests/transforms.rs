@@ -3,7 +3,7 @@
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
-use crate::primitives::{color::Color, rect::Rect, translate_scale::TranslateScale};
+use crate::primitives::{color::RgbaF32, rect::Rect, translate_scale::TranslateScale};
 use crate::renderer::frontend::capture::PaintCall;
 use crate::renderer::frontend::encoder::tests::support::screen_rects_by_fill;
 use crate::scene::node::configure::Configure;
@@ -44,7 +44,7 @@ fn spun_polyline_bbox_is_rotation_invariant_square_about_owner_centre() {
                     ui.add_shape_animated(
                         Shape::polyline(
                             &[Vec2::new(10.0, 10.0), Vec2::new(70.0, 30.0)],
-                            PolylineColors::Single(Color::rgb(1.0, 0.0, 0.0)),
+                            PolylineColors::Single(RgbaF32::srgb(1.0, 0.0, 0.0)),
                             1.0,
                         ),
                         PaintAnim::Spin {
@@ -113,7 +113,7 @@ fn spun_arc_bbox_is_rotation_invariant_square_about_owner_centre() {
                 .size((Sizing::fixed(80.0), Sizing::fixed(40.0)))
                 .show(ui, |ui| {
                     ui.add_shape_animated(
-                        Shape::arc(Vec2::new(50.0, 20.0), 10.0, 0.0, PI, 2.0).brush(Color::WHITE),
+                        Shape::arc(Vec2::new(50.0, 20.0), 10.0, 0.0, PI, 2.0).brush(RgbaF32::WHITE),
                         PaintAnim::Spin {
                             speed: 1.0,
                             started_at: Duration::ZERO,
@@ -169,8 +169,8 @@ fn spun_arc_bbox_is_rotation_invariant_square_about_owner_centre() {
 fn transformed_panel_applies_transform_to_direct_shapes() {
     use crate::shape::Shape;
 
-    let shape_color = Color::rgb(0.2, 0.6, 0.9);
-    let child_color = Color::rgb(0.9, 0.4, 0.2);
+    let shape_color = RgbaF32::srgb(0.2, 0.6, 0.9);
+    let child_color = RgbaF32::srgb(0.9, 0.4, 0.2);
     let scale = 2.0;
     let xform = TranslateScale::new(Vec2::new(10.0, 20.0), scale);
 
@@ -204,10 +204,10 @@ fn transformed_panel_applies_transform_to_direct_shapes() {
         });
     });
 
-    use crate::primitives::color::ColorF16;
+    use crate::primitives::color::RgbaF16;
     let drawn = screen_rects_by_fill(&h.encode_paint());
-    let shape_f16: ColorF16 = shape_color.into();
-    let child_f16: ColorF16 = child_color.into();
+    let shape_f16: RgbaF16 = shape_color.into();
+    let child_f16: RgbaF16 = child_color.into();
 
     let (_, shape_rect) = drawn
         .iter()
@@ -239,7 +239,7 @@ fn transformed_panel_applies_transform_to_direct_shapes() {
 /// flip side of `transformed_panel_applies_transform_to_direct_shapes`.
 #[test]
 fn transformed_panel_chrome_stays_in_parent_space() {
-    let chrome_color = Color::rgb(0.1, 0.1, 0.1);
+    let chrome_color = RgbaF32::srgb(0.1, 0.1, 0.1);
     let xform = TranslateScale::new(Vec2::new(50.0, 50.0), 2.0);
 
     let mut h = UiHarness::new(UVec2::new(400, 400));
@@ -257,9 +257,9 @@ fn transformed_panel_chrome_stays_in_parent_space() {
         });
     });
 
-    use crate::primitives::color::ColorF16;
+    use crate::primitives::color::RgbaF16;
     let drawn = screen_rects_by_fill(&h.encode_paint());
-    let chrome_f16: ColorF16 = chrome_color.into();
+    let chrome_f16: RgbaF16 = chrome_color.into();
     let (_, chrome_rect) = drawn
         .iter()
         .find(|(c, _)| *c == chrome_f16)

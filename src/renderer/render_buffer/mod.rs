@@ -6,7 +6,7 @@
 //! allocates nothing for its output.
 
 use crate::display::Display;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
 use crate::primitives::span::Span;
@@ -131,7 +131,7 @@ pub(crate) struct RenderBuffer {
     /// (or pre-clears, on partial frames) to this color instead of the
     /// plan's — pixel-identical output, minus the hidden underlay and the
     /// full-surface fragment load of the biggest quad in the frame.
-    pub(crate) clear_override: Option<Color>,
+    pub(crate) clear_override: Option<RgbaF32>,
     /// The display this buffer was composed for — the frame input every
     /// consumer of the buffer needs a piece of. `physical` is the
     /// backend's default scissor when a group has no clip, and

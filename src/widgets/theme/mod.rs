@@ -47,7 +47,7 @@ pub(crate) mod widget_look;
 
 use crate::layout::types::clip_mode::ClipMode;
 use crate::primitives::background::Background;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::scene::node::container_chrome::ContainerChrome;
 use crate::text::glyph_font::GlyphFont;
 use crate::widgets::theme::button::ButtonTheme;
@@ -158,7 +158,7 @@ pub struct Theme {
     /// filling that slot, which is all or nothing.
     pub text: TextStyle,
     /// Window/swapchain clear color. Hosts pass to `WgpuBackend::submit`.
-    pub window_clear: Color,
+    pub window_clear: RgbaF32,
     /// Default chrome paint for container widgets (`Panel`, `Grid`,
     /// `Popup`) that didn't set their own background.
     /// `None` leaves containers unpainted by default. Setting

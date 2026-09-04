@@ -5,7 +5,7 @@ use crate::primitives::approx::FloatHash;
 use crate::primitives::brush::gradient::gradient_builder::GradientBuilder;
 use crate::primitives::brush::gradient::stops::Stop;
 use crate::primitives::brush::gradient::{Gradient, GradientGeometry, Interp};
-use crate::primitives::color::ColorU8;
+use crate::primitives::color::RgbaU8;
 
 /// Geometry of a linear gradient: colour runs along an axis at `angle`
 /// radians (0 = →, π/2 = ↓). Object-space — the gradient spans the brush
@@ -60,7 +60,7 @@ impl LinearGradient {
     /// 2-stop shorthand — `c0` at offset 0, `c1` at offset 1. Covers
     /// the dominant UI-gradient pattern (panel chrome, button
     /// surfaces, headers).
-    pub fn two_stop(angle: f32, c0: impl Into<ColorU8>, c1: impl Into<ColorU8>) -> Self {
+    pub fn two_stop(angle: f32, c0: impl Into<RgbaU8>, c1: impl Into<RgbaU8>) -> Self {
         Self::new(angle, [Stop::new(0.0, c0), Stop::new(1.0, c1)])
     }
 }

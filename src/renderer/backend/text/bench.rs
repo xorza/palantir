@@ -47,7 +47,7 @@ use std::time::Duration;
 use crate::bench::Run;
 use crate::host::bench_gpu::{BenchGpu, TARGET_FORMAT, Timing};
 use crate::layout::types::align::Align;
-use crate::primitives::color::ColorU8;
+use crate::primitives::color::RgbaU8;
 use crate::primitives::interned_text::InternedText;
 use crate::primitives::urect::URect;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
@@ -208,7 +208,7 @@ fn make_run(
     origin: Vec2,
     viewport: UVec2,
     scale: f32,
-    color: ColorU8,
+    color: RgbaU8,
 ) -> TextDrawRow {
     let interned = store.intern(text);
     let recorded = store.record_text(interned);
@@ -244,12 +244,12 @@ fn make_run(
 /// per-iteration `scale` argument to `prepare` changes between frames.
 fn build_runs(shaper: &TextShaper) -> BenchRuns {
     let mut store = RecordStore::default();
-    let color = ColorU8::linear_rgba(220, 220, 220, 255);
+    let color = RgbaU8::new(220, 220, 220, 255);
     let mut runs = Vec::with_capacity((ROWS * 4) as usize);
     for row in 0..ROWS {
         let y = 16.0 + (row as f32) * 18.0;
         // Four short labels per row at typical graph-node sizes.
-        let label_color = ColorU8::linear_rgba(245, 245, 245, 255);
+        let label_color = RgbaU8::new(245, 245, 245, 255);
         runs.push(make_run(
             &mut store,
             shaper,
@@ -381,7 +381,7 @@ fn run_batches(
 /// the map empty and defeat the workload).
 fn build_distinct_runs(shaper: &TextShaper) -> BenchRuns {
     let mut store = RecordStore::default();
-    let color = ColorU8::linear_rgba(220, 220, 220, 255);
+    let color = RgbaU8::new(220, 220, 220, 255);
     let mut runs = Vec::with_capacity(DISTINCT_RUNS);
     for i in 0..DISTINCT_RUNS {
         let text = format!("field {i}: f32");

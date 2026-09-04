@@ -1,13 +1,13 @@
 //! One shaped-text run draw.
 
-use crate::primitives::color::ColorF16;
+use crate::primitives::color::RgbaF16;
 use crate::primitives::rect::Rect;
 use crate::text::shaped_ref::ShapedTextRef;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct DrawTextPayload {
     pub(crate) rect: Rect,
-    pub(crate) color: ColorF16,
+    pub(crate) color: RgbaF16,
     pub(crate) text: ShapedTextRef,
 }
 

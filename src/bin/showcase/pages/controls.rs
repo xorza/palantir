@@ -9,8 +9,8 @@
 use crate::support;
 use crate::support::{note_style, row, section};
 use palantir::{
-    Align, AnimSpec, Background, Button, ButtonTheme, Checkbox, Color, Configure, Corners,
-    DragValue, Expander, ExpanderTheme, Panel, ProgressBar, RadioButton, Separator, Sizing, Slider,
+    Align, AnimSpec, Background, Button, ButtonTheme, Checkbox, Configure, Corners, DragValue,
+    Expander, ExpanderTheme, Panel, ProgressBar, RadioButton, RgbaF32, Separator, Sizing, Slider,
     SlotDefaults, Spinner, StatefulLook, Stroke, Switch, Text, TextEdit, TextStyle, TextWrap,
     Tooltip, Ui, VAlign, WidgetId, WidgetLook, fmt,
 };
@@ -433,11 +433,12 @@ fn group(ui: &mut Ui, label: &'static str) {
 fn outlined_style() -> ButtonTheme {
     let accent = support::ACCENT;
     let stroke = Stroke::solid(accent, 1.5);
-    let bg = |fill: Color, stroke| Background::rounded(fill, Corners::all(4.0)).with_stroke(stroke);
+    let bg =
+        |fill: RgbaF32, stroke| Background::rounded(fill, Corners::all(4.0)).with_stroke(stroke);
     ButtonTheme {
         looks: StatefulLook {
             normal: WidgetLook {
-                background: bg(Color::TRANSPARENT, stroke),
+                background: bg(RgbaF32::TRANSPARENT, stroke),
                 text: None,
             },
             hovered: WidgetLook {
@@ -450,7 +451,7 @@ fn outlined_style() -> ButtonTheme {
             },
             disabled: WidgetLook {
                 background: bg(
-                    Color::TRANSPARENT,
+                    RgbaF32::TRANSPARENT,
                     Stroke::solid(accent.with_alpha(0.35), 1.5),
                 ),
                 text: Some(TextStyle::default().with_color(support::INK_FAINT)),
@@ -462,16 +463,16 @@ fn outlined_style() -> ButtonTheme {
 
 fn danger_style() -> ButtonTheme {
     let red = support::E;
-    let look = |fill: Color, ink: Color| WidgetLook {
+    let look = |fill: RgbaF32, ink: RgbaF32| WidgetLook {
         background: Background::rounded(fill, Corners::all(4.0)),
         text: Some(TextStyle::default().with_color(ink)),
     };
     ButtonTheme {
         looks: StatefulLook {
-            normal: look(red, Color::WHITE),
-            hovered: look(Color::hex(0xff7e6a), Color::WHITE),
-            active: look(Color::hex(0xc74734), Color::WHITE),
-            disabled: look(red.with_alpha(0.4), Color::WHITE.with_alpha(0.55)),
+            normal: look(red, RgbaF32::WHITE),
+            hovered: look(RgbaF32::hex(0xff7e6a), RgbaF32::WHITE),
+            active: look(RgbaF32::hex(0xc74734), RgbaF32::WHITE),
+            disabled: look(red.with_alpha(0.4), RgbaF32::WHITE.with_alpha(0.55)),
         },
         ..Default::default()
     }

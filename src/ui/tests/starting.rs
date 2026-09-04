@@ -4,7 +4,7 @@ use crate::display::Display;
 use crate::display::user_scale::UserScale;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
-use crate::primitives::{color::Color, rect::Rect};
+use crate::primitives::{color::RgbaF32, rect::Rect};
 use crate::renderer::frontend::Frontend;
 use crate::renderer::render_plan::RenderPlan;
 use crate::scene::damage::Damage;
@@ -171,7 +171,7 @@ fn cold_start_first_frame_damage_is_full() {
             .auto_id()
             .size(50.0)
             .background(Background {
-                fill: Color::rgb(0.2, 0.4, 0.8).into(),
+                fill: RgbaF32::srgb(0.2, 0.4, 0.8).into(),
                 ..Default::default()
             })
             .show(ui);

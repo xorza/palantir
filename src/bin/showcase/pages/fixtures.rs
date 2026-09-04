@@ -17,7 +17,7 @@
 use crate::support;
 use crate::support::{captioned_cell, demo_cell, section, swatch_bg, tiles};
 use palantir::{
-    Align, Background, Button, Color, Configure, Corners, Frame, Panel, PolylineColors, Rect,
+    Align, Background, Button, Configure, Corners, Frame, Panel, PolylineColors, Rect, RgbaF32,
     Shape, Sizing, Stroke, Text, TextStyle, Ui, Vec2,
 };
 
@@ -31,7 +31,7 @@ pub(crate) fn build(ui: &mut Ui) {
                 for label in ["dup A", "dup B", "dup C"] {
                     Button::new().id_salt("idcol-dup-btn").label(label).show(ui);
                 }
-                for fill in [Color::hex(0x3a4a5c), Color::hex(0xddaa44)] {
+                for fill in [RgbaF32::hex(0x3a4a5c), RgbaF32::hex(0xddaa44)] {
                     Frame::new()
                         .id_salt("idcol-dup-frame")
                         .size(36.0)
@@ -106,13 +106,13 @@ fn zorder_cell(ui: &mut Ui, label: &'static str, quad_after: bool) {
                     .style(
                         &TextStyle::default()
                             .with_font_size(28.0)
-                            .with_color(Color::hex(0x14161a)),
+                            .with_color(RgbaF32::hex(0x14161a)),
                     )
                     .show(ui);
                 if quad_after {
                     Frame::new()
                         .size((Sizing::fixed(120.0), Sizing::fixed(60.0)))
-                        .background(swatch_bg(Color::hex(0x14161a)))
+                        .background(swatch_bg(RgbaF32::hex(0x14161a)))
                         .show(ui);
                 }
             });
@@ -128,20 +128,23 @@ fn concentricity(ui: &mut Ui) {
     Panel::zstack()
         .size((Sizing::FILL, Sizing::FILL))
         .child_align(Align::CENTER)
-        .background(Background::rounded(Color::hex(0xff0000), Corners::all(4.0)))
+        .background(Background::rounded(
+            RgbaF32::hex(0xff0000),
+            Corners::all(4.0),
+        ))
         .show(ui, |ui| {
             Panel::zstack()
                 .size((Sizing::fixed(130.0), Sizing::fixed(100.0)))
                 .child_align(Align::CENTER)
                 .background(
-                    Background::rounded(Color::hex(0x0000ff), Corners::all(OUTER))
-                        .with_stroke(Stroke::solid(Color::hex(0x00ff00), STROKE)),
+                    Background::rounded(RgbaF32::hex(0x0000ff), Corners::all(OUTER))
+                        .with_stroke(Stroke::solid(RgbaF32::hex(0x00ff00), STROKE)),
                 )
                 .show(ui, |ui| {
                     Frame::new()
                         .size((Sizing::FILL, Sizing::FILL))
                         .background(Background::rounded(
-                            Color::hex(0x000000),
+                            RgbaF32::hex(0x000000),
                             Corners::all(OUTER - STROKE - 1.0),
                         ))
                         .show(ui);
@@ -161,7 +164,7 @@ fn concentricity(ui: &mut Ui) {
 fn backdrop(ui: &mut Ui) {
     ui.add_shape(
         Shape::rect(Rect::new(0.0, 0.0, support::TILE, support::TILE))
-            .fill(Color::rgb(1.0, 0.0, 1.0)),
+            .fill(RgbaF32::srgb(1.0, 0.0, 1.0)),
     );
 }
 
@@ -171,7 +174,7 @@ fn translucent_solid(ui: &mut Ui) {
     let pts = [Vec2::new(14.0, 28.0), Vec2::new(154.0, 140.0)];
     ui.add_shape(Shape::polyline(
         &pts,
-        PolylineColors::Single(Color::rgba(0.0, 1.0, 0.0, 0.5)),
+        PolylineColors::Single(RgbaF32::srgba(0.0, 1.0, 0.0, 0.5)),
         16.0,
     ));
 }
@@ -186,9 +189,9 @@ fn translucent_per_point(ui: &mut Ui) {
         Vec2::new(154.0, 28.0),
     ];
     let cols = [
-        Color::rgba(1.0, 1.0, 0.0, 0.5),
-        Color::rgba(0.0, 1.0, 1.0, 0.5),
-        Color::rgba(1.0, 0.0, 1.0, 0.5),
+        RgbaF32::srgba(1.0, 1.0, 0.0, 0.5),
+        RgbaF32::srgba(0.0, 1.0, 1.0, 0.5),
+        RgbaF32::srgba(1.0, 0.0, 1.0, 0.5),
     ];
     ui.add_shape(Shape::polyline(&pts, PolylineColors::PerPoint(&cols), 14.0));
 }
@@ -201,7 +204,7 @@ fn translucent_quarter(ui: &mut Ui) {
     let pts = [Vec2::new(14.0, 84.0), Vec2::new(154.0, 84.0)];
     ui.add_shape(Shape::polyline(
         &pts,
-        PolylineColors::Single(Color::rgba(0.0, 1.0, 0.0, 0.25)),
+        PolylineColors::Single(RgbaF32::srgba(0.0, 1.0, 0.0, 0.25)),
         24.0,
     ));
 }

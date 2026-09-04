@@ -1,4 +1,4 @@
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::color::okhsv::Okhsv;
 
 /// Hue of each sRGB cube corner, measured with the reference port. The test
@@ -13,17 +13,17 @@ const CORNER_HUES: [f32; 6] = [
     0.912_120_6,
 ];
 
-const CORNERS: [Color; 6] = [
-    Color::hex(0xff0000),
-    Color::hex(0xffff00),
-    Color::hex(0x00ff00),
-    Color::hex(0x00ffff),
-    Color::hex(0x0000ff),
-    Color::hex(0xff00ff),
+const CORNERS: [RgbaF32; 6] = [
+    RgbaF32::hex(0xff0000),
+    RgbaF32::hex(0xffff00),
+    RgbaF32::hex(0x00ff00),
+    RgbaF32::hex(0x00ffff),
+    RgbaF32::hex(0x0000ff),
+    RgbaF32::hex(0xff00ff),
 ];
 
-fn srgb(c: Color) -> [u8; 3] {
-    let q = c.to_srgb_u8();
+fn srgb(c: RgbaF32) -> [u8; 3] {
+    let q = c.to_srgba_u8();
     [q.r, q.g, q.b]
 }
 
@@ -73,7 +73,7 @@ fn pure_blue_lies_outside_the_cube() {
     // Reading pure blue back saturates both axes rather than reporting
     // something out of range, so a picker opened on it shows its handles in
     // the corner.
-    let coords = Okhsv::from_color(Color::hex(0x0000ff), 0.0);
+    let coords = Okhsv::from_color(RgbaF32::hex(0x0000ff), 0.0);
     assert_eq!(coords.s, 1.0);
     assert_eq!(coords.v, 1.0);
 }
@@ -106,7 +106,7 @@ fn round_trip_holds_across_the_cube() {
 }
 
 /// The forward map lands a hair outside the gamut at the red corner — the
-/// reference returns -1/255 there. Without the clamp that reaches `Color`.
+/// reference returns -1/255 there. Without the clamp that reaches `RgbaF32`.
 #[test]
 fn the_gamut_edge_never_goes_negative() {
     for step in 0..360 {
@@ -127,7 +127,7 @@ fn the_gamut_edge_never_goes_negative() {
 #[test]
 fn grey_keeps_the_fallback_hue() {
     for level in [0.0, 0.25, 0.5, 1.0] {
-        let grey = Color::rgb(level, level, level);
+        let grey = RgbaF32::srgb(level, level, level);
         let coords = Okhsv::from_color(grey, 0.6180);
         assert_eq!(coords.h, 0.6180, "grey at {level} lost the fallback");
         assert!(

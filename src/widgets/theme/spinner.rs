@@ -1,6 +1,6 @@
 //! What a spinner wears, and how fast it turns.
 
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::widgets::theme::palette::Palette;
 
 /// Visuals and motion for [`crate::Spinner`]: the rotating comet arc.
@@ -9,7 +9,7 @@ use crate::widgets::theme::palette::Palette;
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct SpinnerTheme {
     /// Arc color — the comet's head; the tail fades to transparent.
-    pub color: Color,
+    pub color: RgbaF32,
     /// Diameter in logical px.
     pub diameter: f32,
     /// Arc length in radians. Under a full turn, so the gap is what

@@ -17,8 +17,8 @@
 //! Run with: `cargo run --example custom_widget`
 
 use palantir::{
-    Align, App, Background, Color, Configure, ConfigureNode, Corners, HostHandle, LineCap,
-    LineJoin, Node, Panel, PolylineColors, Response, ResponseState, Sense, Shadow, Shape, Sizing,
+    Align, App, Background, Configure, ConfigureNode, Corners, HostHandle, LineCap, LineJoin, Node,
+    Panel, PolylineColors, Response, ResponseState, RgbaF32, Sense, Shadow, Shape, Sizing, SrgbaU8,
     Stroke, Text, Ui, VAlign, Vec2, WidgetId, WindowToken, WinitHost, WinitHostError, fmt,
 };
 
@@ -120,11 +120,11 @@ enum Glyph {
 /// set via `.id(...)`, so the node resolves to it verbatim.
 fn step_button(ui: &mut Ui, id: WidgetId, state: ResponseState, glyph: Glyph) {
     let fill = if state.pressed() {
-        Color::rgb_u8(0x3a, 0x3a, 0x52)
+        RgbaF32::from_srgba(SrgbaU8::rgb(0x3a, 0x3a, 0x52))
     } else if state.hovered {
-        Color::rgb_u8(0x33, 0x33, 0x48)
+        RgbaF32::from_srgba(SrgbaU8::rgb(0x33, 0x33, 0x48))
     } else {
-        Color::rgb_u8(0x26, 0x26, 0x3a)
+        RgbaF32::from_srgba(SrgbaU8::rgb(0x26, 0x26, 0x3a))
     };
     let chrome = Background {
         fill: fill.into(),
@@ -150,7 +150,7 @@ fn step_button(ui: &mut Ui, id: WidgetId, state: ResponseState, glyph: Glyph) {
 
 fn paint_bar(ui: &mut Ui, points: &[Vec2]) {
     ui.add_shape(
-        Shape::polyline(points, PolylineColors::Single(Color::WHITE), 2.0)
+        Shape::polyline(points, PolylineColors::Single(RgbaF32::WHITE), 2.0)
             .cap(LineCap::Round)
             .join(LineJoin::Round),
     );
