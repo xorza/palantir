@@ -1,6 +1,7 @@
 use crate::primitives::color::RgbaF32;
 use crate::primitives::color::color_model::ColorModel;
 use crate::primitives::color::okhsv::Okhsv;
+use crate::primitives::color::srgba_u8::SrgbaU8;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::configure::Configure;
 use crate::ui::harness::UiHarness;
@@ -65,7 +66,11 @@ fn an_outside_edit_re_seeds_the_axes() {
     color = RgbaF32::hex(0xff8800);
     let (changed, _) = frame(&mut h, id, &mut color);
     assert!(!changed, "the picker does not rewrite what it was handed");
-    assert_eq!(color.to_srgba_u8().r, 0xff, "and it keeps the colour intact");
+    assert_eq!(
+        color.to_srgba_u8().r,
+        0xff,
+        "and it keeps the colour intact"
+    );
 
     // The axes now describe the new colour: pressing the field's top-right
     // corner lands on that hue's most saturated colour, not the old one's.
