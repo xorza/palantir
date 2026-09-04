@@ -114,7 +114,6 @@ impl<'a> ColorField<'a> {
             && (response.pressed() || response.left.drag.dragging() || released)
             && let (Some(local), Some(rect)) = (response.pointer_local, response.layout_rect)
         {
-            // No band: the ring's centre goes wherever the pointer is.
             let unit = |at: f32, extent: f32| at.band_fraction(extent, 0.0).unit_fraction_or(0.0);
             let sat = unit(local.x, rect.size.w);
             let val = 1.0 - unit(local.y, rect.size.h);
@@ -122,7 +121,6 @@ impl<'a> ColorField<'a> {
         }
         let keyed = !response.disabled && ui.focus_within(id) && keyboard_travel(ui, coords);
         changed |= keyed;
-        // Edge, not level: a released drag and a key press are each one edit.
         let committed = !response.disabled && (released || keyed);
 
         let texels = ColorSurface::texel_size(size, self.downsample, ui);
@@ -155,7 +153,6 @@ impl<'a> ColorField<'a> {
 
 impl_configure!(ColorField<'_>);
 
-/// Write both axes, reporting whether either actually moved.
 fn write_axes(coords: &mut ColorCoords, sat: f32, val: f32) -> bool {
     let before = *coords;
     coords.set_sat(sat);
@@ -163,8 +160,6 @@ fn write_axes(coords: &mut ColorCoords, sat: f32, val: f32) -> bool {
     *coords != before
 }
 
-/// Key travel across the field, only while it holds focus. `Home` / `End`
-/// run the saturation to its ends, `Page up` / `Page down` the value.
 fn keyboard_travel(ui: &mut Ui, coords: &mut ColorCoords) -> bool {
     let across = AxisKeys {
         back: Key::ArrowLeft,
@@ -195,10 +190,7 @@ fn keyboard_travel(ui: &mut Ui, coords: &mut ColorCoords) -> bool {
     write_axes(coords, sat, val)
 }
 
-/// Fill one field texture: saturation across, value up, sRGB-encoded.
-///
-/// The hue's gamut solve is hoisted out of the loop — every texel here shares
-/// it, and for Okhsv it is the expensive half of a conversion.
+// Every texel shares the hue, so its gamut solve belongs outside the loop.
 fn fill(image: &mut Image, model: ColorModel, hue: f32) {
     let slice = model.slice(hue);
     let size = image.size();

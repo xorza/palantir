@@ -44,8 +44,6 @@ macro_rules! shape_setters {
 macro_rules! local_rect_shape {
     ($ty:ty) => {
         impl $ty {
-            /// True when an explicit paint rect was authored and it covers
-            /// no pixels — what every such kind's `is_noop` opens with.
             fn rect_is_noop(&self) -> bool {
                 self.local_rect.is_some_and(|rect| rect.is_paint_empty())
             }
@@ -82,7 +80,7 @@ use crate::primitives::interned_str::InternedStr;
 use crate::primitives::mesh::Mesh;
 use crate::primitives::rect::Rect;
 use crate::primitives::shadow::Shadow;
-use crate::renderer::image_registry::ImageHandle;
+use crate::renderer::image_registry::image_handle::ImageHandle;
 use crate::shape::curve::{CurveGeometry, CurveShape};
 use crate::shape::icon::IconShape;
 use crate::shape::image::ImageShape;

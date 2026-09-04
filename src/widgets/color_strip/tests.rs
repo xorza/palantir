@@ -33,8 +33,6 @@ fn the_alpha_bar_writes_only_alpha() {
     assert_eq!((color.r, color.g, color.b), (before.r, before.g, before.b));
 }
 
-/// The hue bar moves the hue and leaves the other two axes and the model
-/// where they were.
 #[test]
 fn the_hue_bar_writes_only_the_hue() {
     let id = WidgetId::from_hash("strip-hue-writes");
@@ -77,8 +75,6 @@ fn the_alpha_texture_is_the_colour_at_every_alpha() {
     assert_eq!(alphas, vec![32, 96, 159, 223]);
 }
 
-/// Both rows of a bar are the same row. The fill writes one and copies it,
-/// which is what keeps a rebuild allocation-free.
 #[test]
 fn every_row_of_a_bar_is_the_first_row() {
     let size = UVec2::new(6, 3);
@@ -110,8 +106,6 @@ fn the_hue_texture_follows_the_model() {
     }
 }
 
-/// A press writes and the release commits, whether or not the press ever
-/// became a drag.
 #[test]
 fn a_click_commits_as_a_drag_does() {
     let id = WidgetId::from_hash("strip-click-commits");

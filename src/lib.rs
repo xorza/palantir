@@ -232,11 +232,8 @@ pub use frame_fixture::FrameFixture;
 #[cfg(feature = "internals")]
 pub use frame_fixture::{BENCH_DPR, BENCH_SCALE, BENCH_SURFACE};
 pub use host::clock::{Clock, FixedClock, RealtimeClock};
-/// What to ask an adapter for so the device it returns can run Palantir.
 pub use host::device_requirements::DeviceRequirements;
 pub use host::error::{GpuRequestError, UnmetRequirements};
-/// An adapter and the device opened on it. `RequestedGpu::headless` is the
-/// short way to one when there is no window to get it from.
 pub use host::gpu_request::RequestedGpu;
 /// The headless render-to-texture host — the offscreen peer of
 /// [`WinitHost`]. Renders a `Ui` to a caller-supplied `wgpu::Texture`
@@ -330,7 +327,7 @@ pub use primitives::widget_id::WidgetId;
 pub use renderer::gpu_paint::GpuPaint;
 pub use renderer::gpu_paint::gpu_frame_ctx::GpuFrameCtx;
 pub use renderer::gpu_paint::gpu_init_ctx::GpuInitCtx;
-pub use renderer::image_registry::ImageHandle;
+pub use renderer::image_registry::image_handle::ImageHandle;
 pub use renderer::texture_limit::RegisterImageError;
 /// The bound on [`Ui::add_shape`] — sealed, so it names the shape kinds
 /// the crate ships and nothing else.
