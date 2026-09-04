@@ -169,10 +169,17 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
             tint.hash(&mut h);
             mem::discriminant(source).hash(&mut h);
             match source {
-                // The registration `id` + intrinsic `size`.
-                ImageSource::Texture { id, size } => {
+                // The registration `id`, the intrinsic `size`, and the write
+                // count that moves the hash when the texels change under an
+                // id that does not.
+                ImageSource::Texture {
+                    id,
+                    size,
+                    generation,
+                } => {
                     h.write_u64(id.0);
                     h.write_u64(u64::from(size.x) | (u64::from(size.y) << 32));
+                    h.write_u32(*generation);
                 }
                 // `epoch` is the view's damage version: `Ui::gpu_view` bumps
                 // it to the frame id on `repaint(true)` (hash changes → the

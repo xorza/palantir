@@ -79,6 +79,7 @@ impl sealed::LowerShape for ImageShape {
             source: ImageSource::Texture {
                 id: handle.id(),
                 size: handle.size(),
+                generation: handle.generation(),
             },
             fit,
             min_filter,

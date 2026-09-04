@@ -4,14 +4,15 @@ use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
 use crate::input::shortcut::Shortcut;
 use crate::layout::types::sizing::Sizing;
-use crate::primitives::approx;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::color::color_coords::ColorCoords;
 use crate::primitives::color::color_model::ColorModel;
 use crate::primitives::image::ImageFit;
 use crate::primitives::num::F32Ext;
 use crate::primitives::size::Size;
+use crate::renderer::image_registry::image_write::ImageWrite;
 use crate::scene::node::Node;
+use crate::scene::node::configure::Configure;
 use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::widgets::axis_keys::AxisKeys;
@@ -20,7 +21,8 @@ use crate::widgets::color_surface::ColorSurface;
 use crate::widgets::response::Response;
 use crate::widgets::theme::color_picker::ColorPickerTheme;
 use crate::widgets::value_response::ValueResponse;
-use glam::{UVec2, Vec2};
+use glam::Vec2;
+use std::rc::Rc;
 
 /// A one-axis bar of a colour picker: the hue ramp, or the alpha ramp of one
 /// colour over its checker.
@@ -71,11 +73,10 @@ impl<'a> ColorStrip<'a> {
 
     #[track_caller]
     fn new(kind: StripKind<'a>) -> Self {
-        let mut node = Node::leaf();
-        node.flags.set_sense(Sense::CLICK | Sense::DRAG);
-        node.flags.set_focusable(true);
         Self {
-            node,
+            node: Node::leaf()
+                .sense(Sense::CLICK | Sense::DRAG)
+                .focusable(true),
             kind,
             downsample: ColorSurface::DOWNSAMPLE,
             style: None,
@@ -98,11 +99,10 @@ impl<'a> ColorStrip<'a> {
 
     /// Record the bar and report what the gesture did to the value it writes.
     pub fn show(self, ui: &mut Ui) -> ValueResponse<'_> {
-        let mut widget = ui.widget(self.node);
-        let response = widget.response(ui);
-        let id = widget.id();
-
-        let theme = self.slot(ui.theme());
+        // The theme handle is cloned so the slot outlives the `&mut Ui` the
+        // widget opening below takes: the checker reads it after that.
+        let bundle = Rc::clone(ui.theme());
+        let theme = self.slot(&bundle);
         let themed = Size::new(
             theme.field_width.themed_length(1.0),
             theme.bar_thickness.themed_length(1.0),
@@ -110,6 +110,13 @@ impl<'a> ColorStrip<'a> {
         let handle_width = theme.handle_width.themed_length(0.0);
         let handle_outer = theme.handle_outer;
         let handle_inner = theme.handle_inner;
+
+        let node = self
+            .node
+            .default_size((Sizing::fixed(themed.w), Sizing::fixed(themed.h)));
+        let widget = ui.widget(node);
+        let response = widget.response(ui);
+        let id = widget.id();
         let size = response.layout_rect.map_or(themed, |r| r.size);
         let checker = Checkerboard::new(theme, response.layout_rect, themed);
 
@@ -120,7 +127,11 @@ impl<'a> ColorStrip<'a> {
             && (response.pressed() || response.left.drag.dragging() || released)
             && let (Some(local), Some(rect)) = (response.pointer_local, response.layout_rect)
         {
-            let at = approx::ratio(local.x, rect.size.w).unit_fraction_or(0.0);
+            // No band: the marker line goes wherever the pointer is.
+            let at = local
+                .x
+                .band_fraction(rect.size.w, 0.0)
+                .unit_fraction_or(0.0);
             changed |= kind.write(at);
         }
         let keyed = !response.disabled && ui.focus_within(id) && keyboard_travel(ui, &mut kind);
@@ -131,18 +142,13 @@ impl<'a> ColorStrip<'a> {
         let paint = kind.paint();
         let marker = kind.read() * size.w;
 
-        let node = &mut widget.node;
-        node.size
-            .get_or_insert((Sizing::fixed(themed.w), Sizing::fixed(themed.h)).into());
         widget.record(ui, None, |ui| {
             if paint.wants_checker() {
                 checker.paint(ui);
             }
             let image = ui.with_state::<ColorSurface, _>(id.with("surface"), |ui, surface| {
                 surface
-                    .ensure(ui, texels, paint.stamp(), |texels, size| {
-                        paint.fill(texels, size);
-                    })
+                    .ensure(ui, texels, paint, |texels| paint.fill(texels))
                     .clone()
             });
             ui.add_shape(Shape::image(image).fit(ImageFit::Fill));
@@ -189,7 +195,8 @@ impl StripKind<'_> {
     }
 }
 
-/// What one bar's texture shows, and everything its fill reads.
+/// What one bar's texture shows, and everything its fill reads — so, hashed,
+/// the rebuild key: a hue bar follows its model, an alpha bar its colour.
 #[derive(Clone, Copy, Debug, Hash)]
 pub(crate) enum StripPaint {
     Hue(ColorModel),
@@ -202,31 +209,20 @@ impl StripPaint {
         matches!(self, Self::Alpha(_))
     }
 
-    /// The rebuild key: a hue bar follows its model, an alpha bar its colour.
-    fn stamp(self) -> u64 {
-        ColorSurface::stamp(self)
-    }
-
     /// Write the bar's texels: the three colour channels sRGB-encoded, the
     /// fourth straight alpha.
     ///
     /// Both ramps vary along one axis only, so one row is built and repeated.
-    pub(crate) fn fill(self, texels: &mut Vec<u8>, size: UVec2) {
-        for column in 0..size.x {
-            let along = (column as f32 + 0.5) / size.x as f32;
-            let (color, alpha) = match self {
-                Self::Hue(model) => (model.slice(along).color(1.0, 1.0), 255),
-                Self::Alpha(color) => (color, (along * 255.0).round() as u8),
+    pub(crate) fn fill(self, texels: &mut ImageWrite<'_>) {
+        let width = texels.size().x;
+        for (column, texel) in texels.row_mut(0).iter_mut().enumerate() {
+            let along = (column as f32 + 0.5) / width as f32;
+            *texel = match self {
+                Self::Hue(model) => model.slice(along).color(1.0, 1.0).to_srgba_u8(),
+                Self::Alpha(color) => color.with_alpha(along).to_srgba_u8(),
             };
-            let quantized = color.to_srgba_u8();
-            texels.extend_from_slice(&[quantized.r, quantized.g, quantized.b, alpha]);
         }
-        // Every row is the first one. Copying inside the buffer keeps the
-        // rebuild allocation-free, which a drag needs.
-        let row = size.x as usize * 4;
-        for _ in 1..size.y {
-            texels.extend_from_within(..row);
-        }
+        texels.repeat_row(0);
     }
 }
 

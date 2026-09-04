@@ -16,6 +16,7 @@
 
 use crate::bench::Run;
 use crate::primitives::color::color_model::ColorModel;
+use crate::renderer::image_registry::test_support;
 use crate::widgets::color_field::fill;
 use criterion::Criterion;
 use glam::UVec2;
@@ -25,27 +26,21 @@ use std::hint::black_box;
 /// 208 × 160 at display scale 1.5.
 const PHYSICAL: UVec2 = UVec2::new(312, 240);
 
-fn texels(divisor: u32) -> UVec2 {
+fn size_at(divisor: u32) -> UVec2 {
     UVec2::new(PHYSICAL.x / divisor, PHYSICAL.y / divisor)
 }
 
 pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
     let mut g = run.group(c);
-    let mut buffer = Vec::new();
     for model in ColorModel::ALL {
         for divisor in [1u32, 2, 4] {
-            let size = texels(divisor);
+            let handle = test_support::handle(size_at(divisor));
             let name = format!("fill/{}/divisor_{divisor}", model.label().to_lowercase());
             g.bench_function(&name, |b| {
                 b.iter(|| {
-                    buffer.clear();
-                    fill(
-                        &mut buffer,
-                        black_box(size),
-                        black_box(model),
-                        black_box(0.6),
-                    );
-                    buffer.len()
+                    let mut texels = handle.write();
+                    fill(&mut texels, black_box(model), black_box(0.6));
+                    texels.len()
                 })
             });
         }
