@@ -2,7 +2,7 @@
 //! their joins.
 
 use crate::primitives::lut_row::LutRow;
-use crate::primitives::{color::Color, color::ColorU8};
+use crate::primitives::{color::RgbaF32, color::RgbaU8};
 use crate::renderer::frontend::capture::PaintCapture;
 use crate::renderer::frontend::composer::tests::support::{
     clip, composer, curve, image, mesh, params, polyline_cmd, rect, render_buffer, run, text,
@@ -55,7 +55,7 @@ fn compose_polyline_over_prior_text_splits_text_batch() {
                         Vec2::new(0.0, case.stroke_y),
                         Vec2::new(100.0, case.stroke_y),
                     ],
-                    &[Color::WHITE],
+                    &[RgbaF32::WHITE],
                     ColorMode::Single,
                     1.0,
                     LineCap::Butt,
@@ -99,7 +99,7 @@ fn compose_polyline_emits_segments_and_join_chrome() {
         &mut commands,
         &mut store,
         &pts,
-        &[Color::WHITE],
+        &[RgbaF32::WHITE],
         ColorMode::Single,
         4.0,
         LineCap::Round,
@@ -180,7 +180,7 @@ fn compose_polyline_miter_downgrades_to_bevel_when_sharp() {
                     b,
                     store,
                     &pts,
-                    &[Color::WHITE],
+                    &[RgbaF32::WHITE],
                     ColorMode::Single,
                     4.0,
                     LineCap::Butt,
@@ -229,12 +229,12 @@ fn compose_polyline_miter_downgrades_to_bevel_when_sharp() {
 #[test]
 fn compose_polyline_color_modes_and_coincident_skip() {
     use crate::renderer::render_buffer::curve::{CURVE_KIND_JOIN_ROUND, CURVE_KIND_SEGMENT};
-    let red = Color::rgb(1.0, 0.0, 0.0);
-    let green = Color::rgb(0.0, 1.0, 0.0);
-    let blue = Color::rgb(0.0, 0.0, 1.0);
-    let red8: ColorU8 = red.into();
-    let green8: ColorU8 = green.into();
-    let blue8: ColorU8 = blue.into();
+    let red = RgbaF32::srgb(1.0, 0.0, 0.0);
+    let green = RgbaF32::srgb(0.0, 1.0, 0.0);
+    let blue = RgbaF32::srgb(0.0, 0.0, 1.0);
+    let red8: RgbaU8 = red.into();
+    let green8: RgbaU8 = green.into();
+    let blue8: RgbaU8 = blue.into();
 
     // PerPoint with a duplicated middle point: the duplicate is
     // dropped, and the kept segments read the colors at the original
@@ -334,7 +334,7 @@ fn compose_emits_one_curve_batch_per_scissor_group() {
                         p3: Vec2::new(offset + 100.0, 0.0),
                     },
                     fill: GpuFill {
-                        color: Color::WHITE.into(),
+                        color: RgbaF32::WHITE.into(),
                         ..Default::default()
                     },
                     width: 2.0,
@@ -380,7 +380,7 @@ fn compose_splits_curve_batches_across_scissor_groups() {
                     p3: Vec2::new(100.0, 0.0),
                 },
                 fill: GpuFill {
-                    color: Color::WHITE.into(),
+                    color: RgbaF32::WHITE.into(),
                     ..Default::default()
                 },
                 width: 2.0,
@@ -397,7 +397,7 @@ fn compose_splits_curve_batches_across_scissor_groups() {
                     p3: Vec2::new(50.0, 0.0),
                 },
                 fill: GpuFill {
-                    color: Color::WHITE.into(),
+                    color: RgbaF32::WHITE.into(),
                     ..Default::default()
                 },
                 width: 2.0,
@@ -438,7 +438,7 @@ fn compose_threads_curve_fill_kind_and_lut_row_into_instances() {
                     p3: Vec2::new(100.0, 0.0),
                 },
                 fill: GpuFill {
-                    color: Color::TRANSPARENT.into(),
+                    color: RgbaF32::TRANSPARENT.into(),
                     kind: FillKind::linear(Spread::Pad),
                     lut_row: LutRow(7),
                 },
@@ -482,7 +482,7 @@ fn compose_arc_scales_geometry_and_subdivides_by_exact_length() {
                     a1: sweep,
                 },
                 fill: GpuFill {
-                    color: Color::WHITE.into(),
+                    color: RgbaF32::WHITE.into(),
                     ..Default::default()
                 },
                 width: 2.0,
@@ -539,7 +539,7 @@ fn compose_arc_spin_rotates_center_about_bbox_pivot_and_offsets_angles() {
                     a1: PI,
                 },
                 fill: GpuFill {
-                    color: Color::WHITE.into(),
+                    color: RgbaF32::WHITE.into(),
                     ..Default::default()
                 },
                 width: 2.0,
@@ -579,7 +579,7 @@ fn compose_flat_cubic_emits_single_instance_curved_emits_many() {
                 p3: Vec2::new(800.0, 5.0),
             },
             fill: GpuFill {
-                color: Color::WHITE.into(),
+                color: RgbaF32::WHITE.into(),
                 ..Default::default()
             },
             width: 2.0,
@@ -597,7 +597,7 @@ fn compose_flat_cubic_emits_single_instance_curved_emits_many() {
                 p3: Vec2::new(800.0, 5.0),
             },
             fill: GpuFill {
-                color: Color::WHITE.into(),
+                color: RgbaF32::WHITE.into(),
                 ..Default::default()
             },
             width: 2.0,
@@ -643,7 +643,7 @@ fn compose_curve_spin_rotates_control_points_about_bbox_pivot() {
                     p3: Vec2::new(50.0, 30.0),
                 },
                 fill: GpuFill {
-                    color: Color::WHITE.into(),
+                    color: RgbaF32::WHITE.into(),
                     ..Default::default()
                 },
                 width: 2.0,
@@ -693,7 +693,7 @@ fn compose_arc_and_curve_share_one_batch_per_group() {
                     a1: 1.0,
                 },
                 fill: GpuFill {
-                    color: Color::WHITE.into(),
+                    color: RgbaF32::WHITE.into(),
                     ..Default::default()
                 },
                 width: 2.0,
@@ -709,7 +709,7 @@ fn compose_arc_and_curve_share_one_batch_per_group() {
                     p3: Vec2::new(200.0, 0.0),
                 },
                 fill: GpuFill {
-                    color: Color::WHITE.into(),
+                    color: RgbaF32::WHITE.into(),
                     ..Default::default()
                 },
                 width: 2.0,
@@ -787,7 +787,7 @@ fn two_point_polyline_does_not_reserve_miter_join_reach() {
                     b,
                     store,
                     case.points,
-                    &[Color::WHITE],
+                    &[RgbaF32::WHITE],
                     ColorMode::Single,
                     2.0,
                     LineCap::Butt,
@@ -815,7 +815,7 @@ fn degenerate_polyline_emits_nothing_rather_than_panicking() {
         let buf = run(
             |b, arena| {
                 arena.polyline_points.push(Vec2::ZERO);
-                arena.polyline_colors.push(ColorU8::WHITE);
+                arena.polyline_colors.push(RgbaU8::WHITE);
                 b.polyline(DrawPolylinePayload {
                     bounds: StrokeBounds::Still(rect(0.0, 0.0, 4.0, 4.0)),
                     origin: Vec2::ZERO,

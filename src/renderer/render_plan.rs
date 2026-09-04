@@ -1,6 +1,6 @@
 //! Internal renderer work selected after scene damage classification.
 
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::scene::damage::Damage;
 
 /// WindowDriver-facing render plan, present only when there's actual render
@@ -11,7 +11,7 @@ use crate::scene::damage::Damage;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct RenderPlan {
     /// Surface clear colour for this frame.
-    pub(crate) clear: Color,
+    pub(crate) clear: RgbaF32,
     /// Whole surface, or just a damage region. `Full` clears and repaints
     /// everything; `Partial` loads the backbuffer and paints inside the
     /// rects after a `clear`-coloured pre-fill quad per scissor, with the
@@ -40,7 +40,7 @@ impl RenderPlan {
 
     /// Stamp `DamageEngine`'s output with the surface clear colour. A
     /// frame with no damage stays `None` all the way to the host.
-    pub(crate) fn from_damage(damage: Option<Damage>, clear: Color) -> Option<Self> {
+    pub(crate) fn from_damage(damage: Option<Damage>, clear: RgbaF32) -> Option<Self> {
         Some(RenderPlan {
             clear,
             damage: damage?,

@@ -134,7 +134,7 @@ impl Default for Background {
 
 #[cfg(test)]
 mod tests {
-    use crate::primitives::color::Color;
+    use crate::primitives::color::RgbaF32;
 
     use super::*;
 
@@ -146,9 +146,9 @@ mod tests {
 
     #[test]
     fn with_stroke_and_with_shadow_set_the_named_field_only() {
-        let base = Background::rounded(Color::WHITE, Corners::all(4.0));
-        let stroke = Stroke::solid(Color::BLACK, 2.0);
-        let shadow = Shadow::drop(Color::BLACK, glam::Vec2::ZERO, 4.0);
+        let base = Background::rounded(RgbaF32::WHITE, Corners::all(4.0));
+        let stroke = Stroke::solid(RgbaF32::BLACK, 2.0);
+        let shadow = Shadow::drop(RgbaF32::BLACK, glam::Vec2::ZERO, 4.0);
 
         let with_stroke = base.clone().with_stroke(stroke);
         assert_eq!(with_stroke.stroke, stroke);

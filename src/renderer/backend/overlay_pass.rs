@@ -12,7 +12,7 @@
 //! hundred bytes total) but never upload to them.
 
 use crate::primitives::{
-    color::{Color, ColorF16},
+    color::{RgbaF16, RgbaF32},
     corners::Corners,
     rect::Rect,
 };
@@ -30,7 +30,7 @@ use tinyvec::ArrayVec;
 /// Stroke color for the damage-rect overlay outline. Bright opaque
 /// red — picked for contrast against any UI palette, not
 /// theme-driven.
-const DAMAGE_OVERLAY_COLOR: Color = Color::rgb(1.0, 0.0, 0.0);
+const DAMAGE_OVERLAY_COLOR: RgbaF32 = RgbaF32::srgb(1.0, 0.0, 0.0);
 
 /// Stroke width for the damage-rect overlay outline, in logical
 /// pixels. Multiplied by `Display::scale_factor()` at submit time.
@@ -83,7 +83,7 @@ impl DebugOverlay {
     pub(super) fn upload_dim(&mut self, ctx: &mut GpuCtx<'_>, viewport: Vec2) {
         let q = Quad {
             rect: Rect::new(0.0, 0.0, viewport.x, viewport.y),
-            fill: Color::linear_rgba(0.0, 0.0, 0.0, DIM_ALPHA).into(),
+            fill: RgbaF32::new(0.0, 0.0, 0.0, DIM_ALPHA).into(),
             ..Default::default()
         };
         self.dim_buffer.upload_instances(ctx, &[q]);
@@ -127,11 +127,11 @@ impl DebugOverlay {
         buffer: &RenderBuffer,
     ) -> u32 {
         let gap_px = (DAMAGE_OVERLAY_GAP * buffer.display.scale_factor()).max(1.0);
-        let stroke_color = ColorF16::from(DAMAGE_OVERLAY_COLOR);
+        let stroke_color = RgbaF16::from(DAMAGE_OVERLAY_COLOR);
         let stroke_width = DAMAGE_OVERLAY_STROKE_WIDTH * buffer.display.scale_factor();
         let outline = |rect: Rect| Quad {
             rect,
-            fill: ColorF16::TRANSPARENT,
+            fill: RgbaF16::TRANSPARENT,
             corners: Corners::default(),
             stroke_color,
             stroke_width,

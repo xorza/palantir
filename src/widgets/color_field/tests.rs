@@ -1,4 +1,4 @@
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::color::color_coords::ColorCoords;
 use crate::primitives::color::color_model::ColorModel;
 use crate::primitives::widget_id::WidgetId;
@@ -95,7 +95,7 @@ fn changed_and_committed_are_edges() {
 }
 
 /// The texture is sRGB-encoded, because that is what `Rgba8UnormSrgb` decodes
-/// on sample. Writing the linear bytes `ColorU8::from` produces would paint
+/// on sample. Writing the linear bytes `RgbaU8::from` produces would paint
 /// the whole field far too bright, and nothing else in the crate would catch
 /// it.
 ///
@@ -111,15 +111,15 @@ fn texels_are_srgb_encoded() {
 }
 
 /// Decode one texel of an `Rgba8UnormSrgb` texture the way a sampler does.
-fn texel(texels: &[u8], size: UVec2, column: u32, row: u32) -> Color {
+fn texel(texels: &[u8], size: UVec2, column: u32, row: u32) -> RgbaF32 {
     let at = ((row * size.x + column) * 4) as usize;
-    Color::rgb_u8(texels[at], texels[at + 1], texels[at + 2])
+    RgbaF32::from_srgba(SrgbaU8::rgb(texels[at], texels[at + 1], texels[at + 2]))
 }
 
 /// What the sampler shows at a fraction across a `size`-texel image: decode
 /// to linear, then filter. An sRGB texture decodes *before* it filters, which
 /// is why this interpolates linear values rather than bytes.
-fn sample(texels: &[u8], size: UVec2, u: f32, v: f32) -> Color {
+fn sample(texels: &[u8], size: UVec2, u: f32, v: f32) -> RgbaF32 {
     let axis = |fraction: f32, count: u32| {
         let at = (fraction * count as f32 - 0.5).clamp(0.0, (count - 1) as f32);
         let low = at.floor();
@@ -129,7 +129,7 @@ fn sample(texels: &[u8], size: UVec2, u: f32, v: f32) -> Color {
     let (y, fy) = axis(v, size.y);
     let x1 = (x + 1).min(size.x - 1);
     let y1 = (y + 1).min(size.y - 1);
-    let mix = |a: Color, b: Color, t: f32| a.lerp(b, t);
+    let mix = |a: RgbaF32, b: RgbaF32, t: f32| a.lerp(b, t);
     let top = mix(texel(texels, size, x, y), texel(texels, size, x1, y), fx);
     let bottom = mix(texel(texels, size, x, y1), texel(texels, size, x1, y1), fx);
     mix(top, bottom, fy)
@@ -163,8 +163,8 @@ fn worst_error_at(model: ColorModel, downsample: u32) -> (f32, f32, f32) {
             let v = (row as f32 + 0.5) / pixels.y as f32;
             for column in 0..pixels.x {
                 let u = (column as f32 + 0.5) / pixels.x as f32;
-                let shown = sample(&texels, size, u, v).to_srgb_u8();
-                let want = slice.color(u, 1.0 - v).to_srgb_u8();
+                let shown = sample(&texels, size, u, v).to_srgba_u8();
+                let want = slice.color(u, 1.0 - v).to_srgba_u8();
                 for (a, b) in [(shown.r, want.r), (shown.g, want.g), (shown.b, want.b)] {
                     let error = (f32::from(a) - f32::from(b)).abs();
                     if error > worst {

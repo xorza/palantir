@@ -25,7 +25,7 @@ fn finish_hash(write: impl FnOnce(&mut DefaultHasher)) -> u64 {
 #[test]
 fn every_paint_noop_predicate_treats_nan_as_invisible() {
     use crate::primitives::brush::Brush;
-    use crate::primitives::color::{Color, ColorF16};
+    use crate::primitives::color::{RgbaF16, RgbaF32};
     use crate::primitives::mesh::Mesh;
     use crate::primitives::shadow::Shadow;
     use crate::primitives::size::Size;
@@ -34,11 +34,11 @@ fn every_paint_noop_predicate_treats_nan_as_invisible() {
     use glam::Vec2;
 
     const N: f32 = f32::NAN;
-    let nan_color = Color::rgba(0.0, 0.0, 0.0, N);
+    let nan_color = RgbaF32::srgba(0.0, 0.0, 0.0, N);
     let mut nan_mesh = Mesh::new();
-    nan_mesh.vertex(Vec2::new(N, 0.0), Color::WHITE);
-    nan_mesh.vertex(Vec2::ZERO, Color::WHITE);
-    nan_mesh.vertex(Vec2::X, Color::WHITE);
+    nan_mesh.vertex(Vec2::new(N, 0.0), RgbaF32::WHITE);
+    nan_mesh.vertex(Vec2::ZERO, RgbaF32::WHITE);
+    nan_mesh.vertex(Vec2::X, RgbaF32::WHITE);
     nan_mesh.triangle(0, 1, 2);
 
     let cases: &[(&str, bool)] = &[
@@ -53,11 +53,11 @@ fn every_paint_noop_predicate_treats_nan_as_invisible() {
             "Rect::is_paint_empty/min",
             Rect::new(N, 0.0, 4.0, 4.0).is_paint_empty(),
         ),
-        ("Color::is_noop", nan_color.is_noop()),
-        ("ColorF16::is_noop", ColorF16::from(nan_color).is_noop()),
+        ("RgbaF32::is_noop", nan_color.is_noop()),
+        ("RgbaF16::is_noop", RgbaF16::from(nan_color).is_noop()),
         (
             "Stroke::is_noop/width",
-            Stroke::solid(Color::WHITE, N).is_noop(),
+            Stroke::solid(RgbaF32::WHITE, N).is_noop(),
         ),
         (
             "Stroke::is_noop/color",
@@ -65,7 +65,7 @@ fn every_paint_noop_predicate_treats_nan_as_invisible() {
         ),
         (
             "ShapeStroke::is_noop/width",
-            ShapeStroke::from(Stroke::solid(Color::WHITE, N)).is_noop(),
+            ShapeStroke::from(Stroke::solid(RgbaF32::WHITE, N)).is_noop(),
         ),
         (
             "ShapeStroke::is_noop/color",
@@ -83,7 +83,7 @@ fn every_paint_noop_predicate_treats_nan_as_invisible() {
         (
             "Shadow::is_noop/blur",
             Shadow {
-                color: Color::WHITE,
+                color: RgbaF32::WHITE,
                 blur: N,
                 ..Shadow::default()
             }
@@ -92,7 +92,7 @@ fn every_paint_noop_predicate_treats_nan_as_invisible() {
         (
             "Shadow::is_noop/offset",
             Shadow {
-                color: Color::WHITE,
+                color: RgbaF32::WHITE,
                 offset: Vec2::new(N, 0.0),
                 ..Shadow::default()
             }
@@ -101,7 +101,7 @@ fn every_paint_noop_predicate_treats_nan_as_invisible() {
         (
             "Shadow::is_noop/spread",
             Shadow {
-                color: Color::WHITE,
+                color: RgbaF32::WHITE,
                 spread: N,
                 ..Shadow::default()
             }
@@ -114,13 +114,13 @@ fn every_paint_noop_predicate_treats_nan_as_invisible() {
         // vertex reaches the shader with a finite box.
         (
             "Mesh::filled_triangle/is_noop",
-            Mesh::filled_triangle(Vec2::new(N, 0.0), Vec2::ZERO, Vec2::X, Color::WHITE).is_noop(),
+            Mesh::filled_triangle(Vec2::new(N, 0.0), Vec2::ZERO, Vec2::X, RgbaF32::WHITE).is_noop(),
         ),
         (
             "Mesh::filled_polygon/is_noop",
             Mesh::filled_polygon(
                 &[Vec2::new(N, 0.0), Vec2::ZERO, Vec2::X, Vec2::Y],
-                Color::WHITE,
+                RgbaF32::WHITE,
             )
             .is_noop(),
         ),
@@ -129,17 +129,17 @@ fn every_paint_noop_predicate_treats_nan_as_invisible() {
         // only thing standing between a NaN `Background` and the
         // shader.
         (
-            "ColorF16::is_noop/red",
-            ColorF16::from(Color::rgba(N, 0.0, 0.0, 1.0)).is_noop(),
+            "RgbaF16::is_noop/red",
+            RgbaF16::from(RgbaF32::srgba(N, 0.0, 0.0, 1.0)).is_noop(),
         ),
         (
-            "Color::is_noop/red",
-            Color::rgba(N, 0.0, 0.0, 1.0).is_noop(),
+            "RgbaF32::is_noop/red",
+            RgbaF32::srgba(N, 0.0, 0.0, 1.0).is_noop(),
         ),
         (
             "LoweredShadow::is_noop/blur",
             LoweredShadow::from(Shadow {
-                color: Color::WHITE,
+                color: RgbaF32::WHITE,
                 blur: N,
                 ..Shadow::default()
             })
@@ -148,7 +148,7 @@ fn every_paint_noop_predicate_treats_nan_as_invisible() {
         (
             "LoweredShadow::is_noop/offset",
             LoweredShadow::from(Shadow {
-                color: Color::WHITE,
+                color: RgbaF32::WHITE,
                 offset: Vec2::new(N, 0.0),
                 ..Shadow::default()
             })

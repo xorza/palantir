@@ -39,7 +39,7 @@ pub(super) struct TextureRegion<'a> {
     pub(super) size: UVec2,
     /// Source stride. Carried rather than derived from `size.x`: the two
     /// uploaders have different texel widths (`Rgba8` against
-    /// `ColorF16`).
+    /// `RgbaF16`).
     ///
     /// A pitch that is already a multiple of
     /// `COPY_BYTES_PER_ROW_ALIGNMENT` reaches the texture in one copy.

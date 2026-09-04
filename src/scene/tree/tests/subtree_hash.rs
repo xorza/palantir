@@ -4,7 +4,7 @@ use crate::Ui;
 use crate::common::content_hash::ContentHash;
 use crate::primitives::approx::EPS;
 use crate::primitives::background::Background;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::scene::node::configure::Configure;
@@ -23,7 +23,7 @@ fn subtree_hash_stable_across_frames() {
                     .id(WidgetId::from_hash("a"))
                     .size(50.0)
                     .background(Background {
-                        fill: Color::rgb(0.2, 0.4, 0.8).into(),
+                        fill: RgbaF32::srgb(0.2, 0.4, 0.8).into(),
                         ..Default::default()
                     })
                     .show(ui);
@@ -31,7 +31,7 @@ fn subtree_hash_stable_across_frames() {
                     .id(WidgetId::from_hash("b"))
                     .size(30.0)
                     .background(Background {
-                        fill: Color::rgb(0.9, 0.1, 0.1).into(),
+                        fill: RgbaF32::srgb(0.9, 0.1, 0.1).into(),
                         ..Default::default()
                     })
                     .show(ui);
@@ -44,7 +44,7 @@ fn subtree_hash_stable_across_frames() {
 
 #[test]
 fn subtree_hash_changes_when_descendant_changes() {
-    fn build(ui: &mut Ui, fill: Color) -> NodeId {
+    fn build(ui: &mut Ui, fill: RgbaF32) -> NodeId {
         Panel::hstack()
             .id(WidgetId::from_hash("root"))
             .show(ui, |ui| {
@@ -60,8 +60,8 @@ fn subtree_hash_changes_when_descendant_changes() {
             .response
             .node()
     }
-    let h1 = record_subtree_hash(|ui| build(ui, Color::rgb(0.2, 0.4, 0.8)));
-    let h2 = record_subtree_hash(|ui| build(ui, Color::rgb(0.9, 0.4, 0.8)));
+    let h1 = record_subtree_hash(|ui| build(ui, RgbaF32::srgb(0.2, 0.4, 0.8)));
+    let h2 = record_subtree_hash(|ui| build(ui, RgbaF32::srgb(0.9, 0.4, 0.8)));
     assert_ne!(h1, h2, "leaf change must invalidate every ancestor");
 }
 
@@ -73,7 +73,7 @@ fn subtree_hash_changes_on_sibling_reorder() {
                 .id(WidgetId::from_hash("a"))
                 .size(50.0)
                 .background(Background {
-                    fill: Color::rgb(0.2, 0.4, 0.8).into(),
+                    fill: RgbaF32::srgb(0.2, 0.4, 0.8).into(),
                     ..Default::default()
                 })
                 .show(ui);
@@ -83,7 +83,7 @@ fn subtree_hash_changes_on_sibling_reorder() {
                 .id(WidgetId::from_hash("b"))
                 .size(30.0)
                 .background(Background {
-                    fill: Color::rgb(0.9, 0.1, 0.1).into(),
+                    fill: RgbaF32::srgb(0.9, 0.1, 0.1).into(),
                     ..Default::default()
                 })
                 .show(ui);
@@ -293,7 +293,7 @@ fn subtree_end_handles_deep_nesting() {
 /// hashes for the second root regardless of the first's content.
 #[test]
 fn subtree_hash_rollup_root_local_across_two_roots() {
-    fn build(ui: &mut Ui, root_a_color: Color) -> u32 {
+    fn build(ui: &mut Ui, root_a_color: RgbaF32) -> u32 {
         Panel::vstack()
             .id(WidgetId::from_hash("root-a"))
             .show(ui, |ui| {
@@ -320,14 +320,14 @@ fn subtree_hash_rollup_root_local_across_two_roots() {
     let mut ui1 = UiHarness::new(SURFACE);
     let mut b_first1 = 0;
     ui1.frame(|ui| {
-        b_first1 = build(ui, Color::rgb(1.0, 0.0, 0.0));
+        b_first1 = build(ui, RgbaF32::srgb(1.0, 0.0, 0.0));
     });
     let h_b1 = ui1.ui.tree(Layer::Main).rollups.subtree[b_first1 as usize];
 
     let mut ui2 = UiHarness::new(SURFACE);
     let mut b_first2 = 0;
     ui2.frame(|ui| {
-        b_first2 = build(ui, Color::rgb(0.0, 1.0, 0.0));
+        b_first2 = build(ui, RgbaF32::srgb(0.0, 1.0, 0.0));
     });
     let h_b2 = ui2.ui.tree(Layer::Main).rollups.subtree[b_first2 as usize];
     assert_eq!(b_first1, b_first2);

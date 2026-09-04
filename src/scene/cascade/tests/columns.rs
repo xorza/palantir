@@ -3,7 +3,7 @@
 use crate::Ui;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
@@ -28,7 +28,7 @@ fn node_spans_rows_mirror_chrome_and_children() {
                 .id(WidgetId::from_hash("chrome"))
                 .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
                 .background(Background {
-                    fill: Color::rgb(0.5, 0.5, 0.5).into(),
+                    fill: RgbaF32::srgb(0.5, 0.5, 0.5).into(),
                     ..Default::default()
                 })
                 .show(ui, |_| {});
@@ -150,7 +150,7 @@ fn non_painting_sibling_does_not_origin_anchor_subtree_rollup() {
                 .id(WidgetId::from_hash("painted"))
                 .size(50.0)
                 .background(Background {
-                    fill: Color::rgb(0.2, 0.4, 0.8).into(),
+                    fill: RgbaF32::srgb(0.2, 0.4, 0.8).into(),
                     ..Default::default()
                 })
                 .show(ui);
@@ -177,7 +177,7 @@ fn non_painting_sibling_does_not_origin_anchor_subtree_rollup() {
 /// survives a relayout.
 #[test]
 fn rect_hash_tracks_geometry_and_ignores_paint() {
-    fn build(size: f32, fill: Color) -> impl FnMut(&mut Ui) {
+    fn build(size: f32, fill: RgbaF32) -> impl FnMut(&mut Ui) {
         move |ui: &mut Ui| {
             Panel::vstack()
                 .id(WidgetId::from_hash("root"))
@@ -196,11 +196,11 @@ fn rect_hash_tracks_geometry_and_ignores_paint() {
     }
 
     let mut h = UiHarness::new(UVec2::splat(300));
-    h.frame(build(50.0, Color::rgb(1.0, 0.0, 0.0)));
+    h.frame(build(50.0, RgbaF32::srgb(1.0, 0.0, 0.0)));
     let base = h.ui.layout(Layer::Main).rect_hash();
 
     // Same geometry, same paint — a rebuild of an identical frame.
-    h.frame(build(50.0, Color::rgb(1.0, 0.0, 0.0)));
+    h.frame(build(50.0, RgbaF32::srgb(1.0, 0.0, 0.0)));
     assert_eq!(
         h.ui.layout(Layer::Main).rect_hash(),
         base,
@@ -209,7 +209,7 @@ fn rect_hash_tracks_geometry_and_ignores_paint() {
 
     // Same geometry, different paint: `can_update` must still be able
     // to retain its rows and repair paint only.
-    h.frame(build(50.0, Color::rgb(0.0, 1.0, 0.0)));
+    h.frame(build(50.0, RgbaF32::srgb(0.0, 1.0, 0.0)));
     assert_eq!(
         h.ui.layout(Layer::Main).rect_hash(),
         base,
@@ -217,7 +217,7 @@ fn rect_hash_tracks_geometry_and_ignores_paint() {
     );
 
     // Geometry moved — the one case that must invalidate.
-    h.frame(build(80.0, Color::rgb(1.0, 0.0, 0.0)));
+    h.frame(build(80.0, RgbaF32::srgb(1.0, 0.0, 0.0)));
     let moved = h.ui.layout(Layer::Main).rect_hash();
     assert_ne!(
         moved, base,
@@ -226,7 +226,7 @@ fn rect_hash_tracks_geometry_and_ignores_paint() {
 
     // And it is a function of the geometry, not a change counter:
     // going back to the original size returns the original hash.
-    h.frame(build(50.0, Color::rgb(1.0, 0.0, 0.0)));
+    h.frame(build(50.0, RgbaF32::srgb(1.0, 0.0, 0.0)));
     assert_eq!(
         h.ui.layout(Layer::Main).rect_hash(),
         base,

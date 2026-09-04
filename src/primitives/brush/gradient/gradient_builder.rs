@@ -3,7 +3,7 @@
 
 use crate::primitives::brush::gradient::stops::{GradientStopsBuilder, Stop};
 use crate::primitives::brush::gradient::{Gradient, GradientGeometry, Interp, Spread};
-use crate::primitives::color::ColorU8;
+use crate::primitives::color::RgbaU8;
 
 /// Chainable, allocation-free authoring builder for [`Gradient`].
 ///
@@ -33,7 +33,7 @@ impl<G: GradientGeometry> GradientBuilder<G> {
     }
 
     /// Add a color stop at `offset`, clamped to the 0..=1 gradient range.
-    pub fn stop(mut self, offset: f32, color: impl Into<ColorU8>) -> Self {
+    pub fn stop(mut self, offset: f32, color: impl Into<RgbaU8>) -> Self {
         self.stops.push(Stop::new(offset, color));
         self
     }

@@ -1,4 +1,4 @@
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::color::color_coords::ColorCoords;
 use crate::primitives::color::color_model::ColorModel;
 use crate::primitives::widget_id::WidgetId;
@@ -19,7 +19,7 @@ fn harness() -> UiHarness {
 fn the_alpha_bar_writes_only_alpha() {
     let id = WidgetId::from_hash("strip-alpha-writes");
     let mut h = harness();
-    let mut color = Color::hex(0x4cd3ff).with_alpha(1.0);
+    let mut color = RgbaF32::hex(0x4cd3ff).with_alpha(1.0);
     let before = color;
     h.frame(|ui| {
         ColorStrip::alpha(&mut color).id(id).show(ui);
@@ -38,7 +38,7 @@ fn the_alpha_bar_writes_only_alpha() {
 fn the_hue_bar_writes_only_the_hue() {
     let id = WidgetId::from_hash("strip-hue-writes");
     let mut h = harness();
-    let mut coords = ColorCoords::new(ColorModel::Okhsv, Color::hex(0x4cd3ff), 0.0);
+    let mut coords = ColorCoords::new(ColorModel::Okhsv, RgbaF32::hex(0x4cd3ff), 0.0);
     let (sat, val) = (coords.sat(), coords.val());
     h.frame(|ui| {
         ColorStrip::hue(&mut coords).id(id).show(ui);
@@ -59,8 +59,8 @@ fn the_hue_bar_writes_only_the_hue() {
 /// and read wrong over any other ground.
 #[test]
 fn the_alpha_texture_is_the_colour_at_every_alpha() {
-    let color = Color::hex(0x4cd3ff);
-    let want = color.to_srgb_u8();
+    let color = RgbaF32::hex(0x4cd3ff);
+    let want = color.to_srgba_u8();
     let mut texels = Vec::new();
     StripPaint::Alpha(color).fill(&mut texels, UVec2::new(4, 2));
     for texel in texels.as_chunks::<4>().0 {
@@ -102,7 +102,7 @@ fn the_hue_texture_follows_the_model() {
         StripPaint::Hue(model).fill(&mut texels, size);
         for column in 0..size.x {
             let hue = (column as f32 + 0.5) / size.x as f32;
-            let want = model.slice(hue).color(1.0, 1.0).to_srgb_u8();
+            let want = model.slice(hue).color(1.0, 1.0).to_srgba_u8();
             let at = column as usize * 4;
             assert_eq!(
                 &texels[at..at + 4],
@@ -119,8 +119,8 @@ fn the_hue_texture_follows_the_model() {
 fn a_click_commits_as_a_drag_does() {
     let id = WidgetId::from_hash("strip-click-commits");
     let mut h = harness();
-    let mut color = Color::hex(0x4cd3ff).with_alpha(1.0);
-    let frame = |h: &mut UiHarness, color: &mut Color| {
+    let mut color = RgbaF32::hex(0x4cd3ff).with_alpha(1.0);
+    let frame = |h: &mut UiHarness, color: &mut RgbaF32| {
         h.frame_value(|ui| {
             let r = ColorStrip::alpha(color).id(id).show(ui);
             (r.changed, r.committed)

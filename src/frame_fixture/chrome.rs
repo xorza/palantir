@@ -15,7 +15,7 @@ use crate::primitives::brush::Brush;
 use crate::primitives::brush::gradient::conic_geometry::ConicGradient;
 use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::brush::gradient::stops::Stop;
-use crate::primitives::color::{Color, ColorU8};
+use crate::primitives::color::{RgbaF32, RgbaU8};
 use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
 use crate::primitives::shadow::Shadow;
@@ -48,9 +48,9 @@ pub(super) fn app_bar(ui: &mut Ui) {
                         glam::Vec2::splat(0.5),
                         0.0,
                         [
-                            Stop::new(0.0, ColorU8::hex(0x4cd3ff)),
-                            Stop::new(0.5, ColorU8::hex(0xd897ff)),
-                            Stop::new(1.0, ColorU8::hex(0x4cd3ff)),
+                            Stop::new(0.0, RgbaU8::hex(0x4cd3ff)),
+                            Stop::new(0.5, RgbaU8::hex(0xd897ff)),
+                            Stop::new(1.0, RgbaU8::hex(0x4cd3ff)),
                         ],
                     )),
                     corners: Corners::all(11.0),
@@ -158,8 +158,8 @@ pub(super) fn status_bar(state: &mut FrameFixture, ui: &mut Ui) {
                 .background(Background {
                     fill: Brush::Linear(LinearGradient::two_stop(
                         0.0,
-                        ColorU8::hex(0x1a1a2e),
-                        ColorU8::hex(0x2a2a3e),
+                        RgbaU8::hex(0x1a1a2e),
+                        RgbaU8::hex(0x2a2a3e),
                     )),
                     corners: Corners::all(6.0),
                     ..Default::default()
@@ -221,7 +221,7 @@ pub(super) fn status_bar(state: &mut FrameFixture, ui: &mut Ui) {
             stroke: Stroke::solid(tokens::BORDER, 1.0),
             corners: Corners::all(6.0),
             shadow: Shadow::drop(
-                Color::rgba(0.0, 0.0, 0.0, 0.55),
+                RgbaF32::srgba(0.0, 0.0, 0.0, 0.55),
                 glam::Vec2::new(0.0, 3.0),
                 10.0,
             ),

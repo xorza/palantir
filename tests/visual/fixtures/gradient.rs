@@ -4,7 +4,7 @@
 
 use glam::UVec2;
 use image::RgbaImage;
-use palantir::{Color, ColorU8, Configure, LinearGradient, Panel, Rect, Shape, Sizing};
+use palantir::{Configure, LinearGradient, Panel, Rect, RgbaF32, RgbaU8, Shape, Sizing};
 
 use crate::goldens::assert_matches_golden;
 use crate::harness::Harness;
@@ -17,14 +17,14 @@ const ROWS: u32 = 16;
 const SWATCHES: u32 = COLS * ROWS;
 const SWATCH: u32 = 8;
 const VIEWPORT: UVec2 = UVec2::new(COLS * SWATCH, ROWS * SWATCH);
-const CLEAR: Color = Color::BLACK;
+const CLEAR: RgbaF32 = RgbaF32::BLACK;
 
 /// Linear-u8 stop colour for swatch `i`. Channels are spread far
 /// enough apart that neighbouring swatches stay distinguishable after
 /// the sRGB framebuffer encode, so sampling the wrong LUT row can't
 /// pass as rounding.
-fn swatch_color(i: u32) -> ColorU8 {
-    ColorU8::linear_rgb(
+fn swatch_color(i: u32) -> RgbaU8 {
+    RgbaU8::rgb(
         (40 + (i % COLS) * 10) as u8,
         (40 + (i / COLS) * 12) as u8,
         200,
@@ -74,7 +74,7 @@ fn render_swatches() -> RgbaImage {
 fn overflowing_gradient_atlas_paints_every_swatch() {
     let img = render_swatches();
     for i in 0..SWATCHES {
-        let want = Color::from(swatch_color(i)).to_srgb_u8();
+        let want = RgbaF32::from(swatch_color(i)).to_srgba_u8();
         // Swatch centre — clear of the edge AA the composer leaves on
         // the quad boundary.
         let x = (i % COLS) * SWATCH + SWATCH / 2;

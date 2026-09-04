@@ -2,7 +2,7 @@
 //! rounded triangles, which all lower to one `Quad` instance.
 
 use crate::primitives::brush::gradient::FillAxis;
-use crate::primitives::color::ColorF16;
+use crate::primitives::color::RgbaF16;
 use crate::primitives::corners::Corners;
 use crate::primitives::fill_kind::FillKind;
 use crate::primitives::lut_row::LutRow;
@@ -69,11 +69,11 @@ impl QuadGeom {
 /// up. A triangle's `fill_axis` is unread; the composer overwrites both
 /// reused lanes from the transformed points.
 ///
-/// `fill: ColorF16` is the solid colour when `kind == SOLID` (and the
+/// `fill: RgbaF16` is the solid colour when `kind == SOLID` (and the
 /// tint when it's a shadow); zeroed for gradients, where the atlas row
-/// supplies the colour. Storing as `ColorF16` (8 B linear-RGB) vs. 16 B
-/// `Color` saves 8 B per payload — the composer decodes via
-/// `Color::from(f16)` at `Quad` write time.
+/// supplies the colour. Storing as `RgbaF16` (8 B linear-RGB) vs. 16 B
+/// `RgbaF32` saves 8 B per payload — the composer decodes via
+/// `RgbaF32::from(f16)` at `Quad` write time.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct DrawQuadPayload {
     pub(crate) geom: QuadGeom,
@@ -150,7 +150,7 @@ impl DrawQuadPayload {
     pub(crate) fn shadow(
         rect: Rect,
         corners: Corners,
-        color: ColorF16,
+        color: RgbaF16,
         fill_kind: FillKind,
         fill_axis: FillAxis,
     ) -> Self {
@@ -174,7 +174,7 @@ impl DrawQuadPayload {
     pub(crate) fn triangle(
         origin: Vec2,
         points: [Vec2; 3],
-        fill: ColorF16,
+        fill: RgbaF16,
         radius: f32,
         stroke: ShapeStroke,
     ) -> Self {
@@ -222,7 +222,7 @@ impl DrawQuadPayload {
 
 #[cfg(test)]
 mod tests {
-    use crate::primitives::color::{Color, ColorF16};
+    use crate::primitives::color::{RgbaF16, RgbaF32};
     use crate::primitives::corners::Corners;
     use crate::primitives::fill_kind::FillKind;
     use crate::primitives::rect::Rect;
@@ -252,12 +252,12 @@ mod tests {
     /// — the regression guard against either growing its own copy again.
     #[test]
     fn quad_stroke_normalization_is_shared_by_rect_and_triangle() {
-        let fill = Color::rgb(1.0, 0.0, 0.0);
-        let green = Color::rgb(0.0, 1.0, 0.0);
+        let fill = RgbaF32::srgb(1.0, 0.0, 0.0);
+        let green = RgbaF32::srgb(0.0, 1.0, 0.0);
         let cases: [(&str, ShapeStroke, bool); 4] = [
             (
                 "transparent_color",
-                Stroke::solid(Color::TRANSPARENT, 3.0).into(),
+                Stroke::solid(RgbaF32::TRANSPARENT, 3.0).into(),
                 true,
             ),
             ("zero_width", Stroke::solid(green, 0.0).into(), true),
@@ -300,10 +300,10 @@ mod tests {
                 "case {label}",
             );
             if expect_normalized {
-                assert_eq!(tp.stroke.color, ColorF16::TRANSPARENT, "case {label}");
+                assert_eq!(tp.stroke.color, RgbaF16::TRANSPARENT, "case {label}");
                 assert_eq!(tp.stroke.width, 0.0, "case {label}");
             } else {
-                assert_eq!(tp.stroke.color, ColorF16::from(green), "case {label}");
+                assert_eq!(tp.stroke.color, RgbaF16::from(green), "case {label}");
             }
         }
     }

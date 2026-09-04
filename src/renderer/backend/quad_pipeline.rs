@@ -8,7 +8,7 @@ use crate::common::tracy;
 use crate::primitives::brush::gradient::Spread;
 use crate::primitives::fill_kind::FillKind;
 use crate::primitives::span::Span;
-use crate::primitives::{color::Color, rect::Rect};
+use crate::primitives::{color::RgbaF32, rect::Rect};
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::pipeline_recipe::PipelineRecipe;
@@ -75,7 +75,7 @@ pub(super) struct QuadPipeline {
     /// asserts `Some` — catches a future refactor that decorrelates
     /// the upload guard in `submit` from the per-pass `PreClear` emit
     /// in the schedule.
-    last_clear: Option<(Vec2, Color)>,
+    last_clear: Option<(Vec2, RgbaF32)>,
     /// Quad shader module — format-independent; the `build_*` methods
     /// read it to build each format's pipelines.
     shader: wgpu::ShaderModule,
@@ -105,7 +105,7 @@ impl QuadPipeline {
     /// last frame's pixels. Alpha is forced because a translucent
     /// pre-clear would blend against last frame's pixels and defeat
     /// the fringe-fix.
-    pub(super) fn upload_clear(&mut self, ctx: &mut GpuCtx<'_>, viewport: Vec2, color: Color) {
+    pub(super) fn upload_clear(&mut self, ctx: &mut GpuCtx<'_>, viewport: Vec2, color: RgbaF32) {
         // Steady state: viewport + clear color match last frame, so
         // the clear_buffer already holds the right pixels. Skip the
         // belt write entirely on a match.
@@ -114,7 +114,7 @@ impl QuadPipeline {
         }
         let q = Quad {
             rect: Rect::new(0.0, 0.0, viewport.x, viewport.y),
-            fill: Color { a: 1.0, ..color }.into(),
+            fill: RgbaF32 { a: 1.0, ..color }.into(),
             // Solid, sharp, stroke-less, integer-origin (`viewport` is
             // the ceil'd physical size): qualifies for the fragment
             // fast path.

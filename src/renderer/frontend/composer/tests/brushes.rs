@@ -6,7 +6,7 @@ use crate::primitives::lut_row::LutRow;
 use crate::primitives::span::Span;
 use crate::primitives::texture_id::TextureId;
 use crate::primitives::{
-    color::Color, color::ColorU8, corners::Corners, rect::Rect, size::Size, stroke::Stroke,
+    color::RgbaF32, color::RgbaU8, corners::Corners, rect::Rect, size::Size, stroke::Stroke,
     translate_scale::TranslateScale,
 };
 use crate::renderer::frontend::capture::PaintCapture;
@@ -35,7 +35,7 @@ fn compose_solid_brush_emits_kind_zero_quad() {
     buffer.draw_quad(DrawQuadPayload::rect(
         rect(0.0, 0.0, 100.0, 100.0),
         Corners::default(),
-        BrushSource::Solid(Color::rgb(0.5, 0.5, 0.5).into()),
+        BrushSource::Solid(RgbaF32::srgb(0.5, 0.5, 0.5).into()),
         Stroke::ZERO.into(),
     ));
     let mut composer = composer();
@@ -82,7 +82,7 @@ fn windowed_rect_is_not_an_opaque_cover() {
             b.draw_quad(DrawQuadPayload::rect_window(
                 rect(0.0, 0.0, 200.0, 200.0),
                 Corners::default(),
-                BrushSource::Solid(Color::rgb(1.0, 1.0, 1.0).into()),
+                BrushSource::Solid(RgbaF32::srgb(1.0, 1.0, 1.0).into()),
                 Stroke::ZERO.into(),
             ));
         },
@@ -113,7 +113,7 @@ fn compose_linear_brush_emits_kind_one_with_atlas_row() {
     use crate::primitives::fill_kind::FillKind;
     use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
     let g =
-        LinearGradient::two_stop(0.0, ColorU8::WHITE, ColorU8::BLACK).with_spread(Spread::Reflect);
+        LinearGradient::two_stop(0.0, RgbaU8::WHITE, RgbaU8::BLACK).with_spread(Spread::Reflect);
     let expected_axis = g.axis();
     let atlas = SharedGradientAtlas::default();
     let row = atlas.register_stops(&g.stops, g.interp);
@@ -153,7 +153,7 @@ fn compose_repeated_linear_brush_shares_atlas_row() {
     use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
     use crate::primitives::fill_kind::FillKind;
     use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
-    let g = LinearGradient::two_stop(0.5, ColorU8::hex(0x336699), ColorU8::hex(0xddaa44));
+    let g = LinearGradient::two_stop(0.5, RgbaU8::hex(0x336699), RgbaU8::hex(0xddaa44));
     let atlas = SharedGradientAtlas::default();
     let lowered = ResolvedGradient {
         axis: g.axis(),
@@ -197,7 +197,7 @@ fn compose_emits_image_batch_for_drawimage() {
                     rect: rect(10.0, 20.0, 30.0, 40.0),
                     uv_min: glam::Vec2::ZERO,
                     uv_size: glam::Vec2::ONE,
-                    tint: Color::WHITE.into(),
+                    tint: RgbaF32::WHITE.into(),
                     handle: TextureId(0xc0ffee),
                     flags: 0,
                 },
@@ -471,7 +471,7 @@ fn compose_image_forwards_uv_crop_for_cover_fit() {
                     rect: rect(0.0, 0.0, 100.0, 100.0),
                     uv_min: glam::Vec2::new(0.25, 0.0),
                     uv_size: glam::Vec2::new(0.5, 1.0),
-                    tint: Color::WHITE.into(),
+                    tint: RgbaF32::WHITE.into(),
                     handle: TextureId(1),
                     flags: 0,
                 },
@@ -499,7 +499,7 @@ fn compose_forwards_flags_and_repeat_uv() {
                     rect: rect(0.0, 0.0, 50.0, 50.0),
                     uv_min: glam::Vec2::ZERO,
                     uv_size: glam::Vec2::ONE,
-                    tint: Color::WHITE.into(),
+                    tint: RgbaF32::WHITE.into(),
                     handle: TextureId(1),
                     flags: 0,
                 },
@@ -511,7 +511,7 @@ fn compose_forwards_flags_and_repeat_uv() {
                     rect: rect(0.0, 0.0, 50.0, 50.0),
                     uv_min: glam::Vec2::ZERO,
                     uv_size: glam::Vec2::new(3.0, 2.0),
-                    tint: Color::WHITE.into(),
+                    tint: RgbaF32::WHITE.into(),
                     handle: TextureId(2),
                     flags: IMG_FLAG_TILED,
                 },
@@ -523,7 +523,7 @@ fn compose_forwards_flags_and_repeat_uv() {
                     rect: rect(0.0, 0.0, 50.0, 50.0),
                     uv_min: glam::Vec2::ZERO,
                     uv_size: glam::Vec2::ONE,
-                    tint: Color::WHITE.into(),
+                    tint: RgbaF32::WHITE.into(),
                     handle: TextureId(3),
                     flags: IMG_FLAG_MIN_NEAREST | IMG_FLAG_MAG_NEAREST,
                 },

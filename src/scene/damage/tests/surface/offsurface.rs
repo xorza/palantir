@@ -4,7 +4,7 @@ use crate::Ui;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
-use crate::primitives::{color::Color, rect::Rect, translate_scale::TranslateScale};
+use crate::primitives::{color::RgbaF32, rect::Rect, translate_scale::TranslateScale};
 use crate::scene::cascade::paint::Paint;
 use crate::scene::cascade::paint::PaintRows;
 use crate::scene::damage::Damage;
@@ -171,7 +171,7 @@ fn offscreen_node_scrolling_into_view_is_covered_and_stays_sound() {
     // Surface is 200×200 (test DISPLAY). Three 100-wide frames: "c"
     // starts at x = 200 — exactly off-surface (edge-touching rects
     // don't intersect), so its Vacant visit skips the snapshot insert.
-    let build = |dx: f32, c_fill: Option<Color>, ui: &mut Ui| {
+    let build = |dx: f32, c_fill: Option<RgbaF32>, ui: &mut Ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("outer"))
             .transform(TranslateScale::from_translation(Vec2::new(dx, 0.0)))

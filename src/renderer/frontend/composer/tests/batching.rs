@@ -4,7 +4,9 @@ use crate::primitives::brush::gradient::FillAxis;
 use crate::primitives::fill_kind::FillKind;
 use crate::primitives::span::Span;
 use crate::primitives::texture_id::TextureId;
-use crate::primitives::{color::Color, corners::Corners, rect::Rect, stroke::Stroke, urect::URect};
+use crate::primitives::{
+    color::RgbaF32, corners::Corners, rect::Rect, stroke::Stroke, urect::URect,
+};
 use crate::renderer::frontend::capture::PaintCapture;
 use crate::renderer::frontend::composer::tests::support::{
     clip, clip_rounded, composer, curve, draw, gpu_view_payload, icon, icon_ref, image, mesh,
@@ -181,7 +183,7 @@ fn compose_shadow_outer_halo_after_text_splits_group() {
             b.draw_quad(DrawQuadPayload::shadow(
                 shadow_rect,
                 Corners::ZERO,
-                Color::BLACK.into(),
+                RgbaF32::BLACK.into(),
                 FillKind::SHADOW_DROP,
                 FillAxis::from_lanes(0.0, 0.0, sigma, 0.0),
             ));
@@ -360,7 +362,7 @@ fn compose_spins_polyline_about_bbox_center() {
         store.polyline_points.push(Vec2::new(15.0, 50.0));
         store.polyline_points.push(Vec2::new(85.0, 50.0));
         let c_start = store.polyline_colors.len() as u32;
-        store.polyline_colors.push(Color::WHITE.into());
+        store.polyline_colors.push(RgbaF32::WHITE.into());
         buffer.draw_polyline(DrawPolylinePayload {
             // Pivot is the 100x100 box centre, which `stroke_bounds`
             // derives from the owner rect on the production path.
@@ -606,7 +608,7 @@ fn quad_flushes_text_in_already_closed_batch_same_group() {
                 b,
                 store,
                 &[Vec2::new(200.0, 10.0), Vec2::new(300.0, 10.0)],
-                &[Color::WHITE],
+                &[RgbaF32::WHITE],
                 ColorMode::Single,
                 1.0,
                 LineCap::Butt,
@@ -621,7 +623,7 @@ fn quad_flushes_text_in_already_closed_batch_same_group() {
                 b,
                 store,
                 &[Vec2::new(200.0, 110.0), Vec2::new(300.0, 110.0)],
-                &[Color::WHITE],
+                &[RgbaF32::WHITE],
                 ColorMode::Single,
                 1.0,
                 LineCap::Butt,
@@ -669,8 +671,8 @@ fn quad_fast_path_flag_cases() {
     use crate::primitives::fill_kind::FillKind;
     use crate::primitives::lut_row::LutRow;
 
-    let solid = |c: Color| BrushSource::Solid(c.into());
-    let opaque = Color::rgb(0.5, 0.5, 0.5);
+    let solid = |c: RgbaF32| BrushSource::Solid(c.into());
+    let opaque = RgbaF32::srgb(0.5, 0.5, 0.5);
 
     // (case, rect, corners, stroke, brush, dpr, expect_fast)
     let gradient = BrushSource::Gradient(ResolvedGradient {
@@ -693,7 +695,7 @@ fn quad_fast_path_flag_cases() {
             rect(10.0, 10.0, 20.0, 20.0),
             Corners::ZERO,
             Stroke::ZERO,
-            solid(Color::rgba(0.5, 0.5, 0.5, 0.5)),
+            solid(RgbaF32::srgba(0.5, 0.5, 0.5, 0.5)),
             1.0,
             true,
         ),
@@ -737,7 +739,7 @@ fn quad_fast_path_flag_cases() {
             "stroke disqualifies",
             rect(10.0, 10.0, 20.0, 20.0),
             Corners::ZERO,
-            Stroke::solid(Color::WHITE, 1.0),
+            Stroke::solid(RgbaF32::WHITE, 1.0),
             solid(opaque),
             1.0,
             false,

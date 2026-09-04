@@ -5,7 +5,7 @@ use crate::diagnostics::DebugOverlayConfig;
 use crate::host::shared::HostShared;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
-use crate::primitives::{color::Color, rect::Rect};
+use crate::primitives::{color::RgbaF32, rect::Rect};
 use crate::renderer::render_plan::RenderPlan;
 use crate::renderer::texture_limit::TextureLimit;
 use crate::scene::damage::Damage;
@@ -347,8 +347,8 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
                 .background(Background {
                     fill: Brush::Linear(LinearGradient::two_stop(
                         0.0,
-                        Color::rgb(1.0, 0.0, 0.0),
-                        Color::rgb(0.0, 0.0, 1.0),
+                        RgbaF32::srgb(1.0, 0.0, 0.0),
+                        RgbaF32::srgb(0.0, 0.0, 1.0),
                     )),
                     ..Default::default()
                 })
@@ -404,7 +404,7 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
 #[test]
 fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
     use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
-    use crate::primitives::color::ColorU8;
+    use crate::primitives::color::RgbaU8;
 
     use crate::primitives::lut_row::LutRow;
 
@@ -437,11 +437,7 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
     fn window_a(ui: &mut Ui, half: Duration) {
         Panel::hstack().size(20.0).show(ui, |ui| {
             ui.add_shape(Shape::rect(Rect::new(0.0, 0.0, 8.0, 8.0)).fill(
-                LinearGradient::two_stop(
-                    0.0,
-                    ColorU8::linear_rgb(255, 0, 0),
-                    ColorU8::linear_rgb(0, 0, 255),
-                ),
+                LinearGradient::two_stop(0.0, RgbaU8::rgb(255, 0, 0), RgbaU8::rgb(0, 0, 255)),
             ));
             add_blink_shape(ui, half);
         });
@@ -463,12 +459,12 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
                 ui.add_shape(Shape::rect(Rect::new(0.0, 0.0, 8.0, 8.0)).fill(
                     LinearGradient::two_stop(
                         0.0,
-                        ColorU8::linear_rgb(
+                        RgbaU8::rgb(
                             index as u8,
                             (index >> u8::BITS) as u8,
                             (index >> (u8::BITS * 2)) as u8,
                         ),
-                        ColorU8::WHITE,
+                        RgbaU8::WHITE,
                     ),
                 ));
             }

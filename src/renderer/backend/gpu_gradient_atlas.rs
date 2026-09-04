@@ -6,7 +6,7 @@
 //! means neither pipeline owns the other's input: each takes `&bgl` at
 //! build time and `&bg` at bind time.
 
-use crate::primitives::color::ColorF16;
+use crate::primitives::color::RgbaF16;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::texture_binding;
 use crate::renderer::backend::texture_region::TextureRegion;
@@ -15,10 +15,10 @@ use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
 use glam::UVec2;
 
 /// Bytes per uploaded LUT row: texture width × `Rgba16Float` texel.
-/// Derived from the CPU-side `ColorF16` row store
+/// Derived from the CPU-side `RgbaF16` row store
 /// (`gradient_atlas::LutRowTexels`) so the GPU upload row-pitch can't
 /// silently drift from the texel type the bake writes.
-const ROW_PITCH: u32 = (LUT_ROW_TEXELS * size_of::<ColorF16>()) as u32;
+const ROW_PITCH: u32 = (LUT_ROW_TEXELS * size_of::<RgbaF16>()) as u32;
 // A multiple of `COPY_BYTES_PER_ROW_ALIGNMENT` (256), which
 // `write_texture` does *not* require — that rule belongs to
 // `copy_buffer_to_texture`. What it buys is the fast path inside wgpu:
@@ -40,7 +40,7 @@ pub(super) struct GpuGradientAtlas {
     cpu: SharedGradientAtlas,
     /// LUT atlas texture. 256 cols × N rows of `Rgba16Float`
     /// (linear, no sampler decode — the LUT bake stores linear-RGB
-    /// directly via `From<Color> for ColorF16`, so the GPU sees
+    /// directly via `From<RgbaF32> for RgbaF16`, so the GPU sees
     /// ready-to-blend linear values; see `AGENTS.md` "Colour pipeline").
     /// f16 over 8-bit linear: dark gradient stops linearise to tiny
     /// values, and an 8-bit linear row crushes them onto a handful of

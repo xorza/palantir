@@ -7,7 +7,7 @@ use crate::input::sense::Sense;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
-use crate::primitives::{color::Color, translate_scale::TranslateScale};
+use crate::primitives::{color::RgbaF32, translate_scale::TranslateScale};
 use crate::renderer::frontend::encoder::tests::support::screen_rects_by_fill;
 use crate::scene::node::configure::Configure;
 use crate::ui::harness::UiHarness;
@@ -20,9 +20,9 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
     // skipped by encoder but tracked by hit index. Clicks land on visible
     // and are suppressed for both disabled (sense cascade) and hidden
     // (visibility cascade).
-    let v_color = Color::rgb(1.0, 0.0, 0.0);
-    let d_color = Color::rgb(0.0, 1.0, 0.0);
-    let h_color = Color::rgb(0.0, 0.0, 1.0);
+    let v_color = RgbaF32::srgb(1.0, 0.0, 0.0);
+    let d_color = RgbaF32::srgb(0.0, 1.0, 0.0);
+    let h_color = RgbaF32::srgb(0.0, 0.0, 1.0);
     let xform = TranslateScale::new(Vec2::new(5.0, 7.0), 2.0);
 
     let surface = UVec2::new(400, 400);
@@ -83,12 +83,12 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
     let cmds = h.encode_paint();
     let drawn = screen_rects_by_fill(&cmds);
 
-    // Encoder stores fills as `ColorF16` now; encode the expected
+    // Encoder stores fills as `RgbaF16` now; encode the expected
     // colours the same way for bit-exact comparison.
-    use crate::primitives::color::ColorF16;
-    let v_color_f16: ColorF16 = v_color.into();
-    let d_color_f16: ColorF16 = d_color.into();
-    let h_color_f16: ColorF16 = h_color.into();
+    use crate::primitives::color::RgbaF16;
+    let v_color_f16: RgbaF16 = v_color.into();
+    let d_color_f16: RgbaF16 = d_color.into();
+    let h_color_f16: RgbaF16 = h_color.into();
 
     let v_id = WidgetId::from_hash("V");
     let v_screen = drawn
@@ -153,7 +153,7 @@ fn disabled_ancestor_propagates_disabled_flag_to_descendants() {
                     .auto_id()
                     .size(Sizing::fixed(40.0))
                     .background(Background {
-                        fill: Color::rgb(1.0, 0.0, 0.0).into(),
+                        fill: RgbaF32::srgb(1.0, 0.0, 0.0).into(),
                         ..Default::default()
                     })
                     .show(ui)

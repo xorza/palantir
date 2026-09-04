@@ -2,7 +2,7 @@
 
 use crate::input::response::response_state::ResponseState;
 use crate::primitives::background::Background;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::corners::Corners;
 use crate::primitives::spacing::Spacing;
 use crate::widgets::theme::palette::Palette;
@@ -21,9 +21,9 @@ pub struct MenuItemTheme {
     /// (`[context_menu.item.normal]`, not `[….item.looks.normal]`).
     #[serde(flatten)]
     pub looks: StatefulLook,
-    /// Color for the right-aligned shortcut hint (e.g. "⌘C"). Pulled
+    /// RgbaF32 for the right-aligned shortcut hint (e.g. "⌘C"). Pulled
     /// off the row label color so the hint reads muted.
-    pub shortcut: Color,
+    pub shortcut: RgbaF32,
     /// Minimum gutter between the label and its right-aligned shortcut
     /// hint. The row is `SpaceBetween`, so this is the floor the two
     /// texts are held apart by while the menu hugs its widest row —
@@ -38,7 +38,7 @@ pub struct MenuItemTheme {
 }
 
 impl MenuItemTheme {
-    /// `shortcut` is a bare `Color`, not a `TextStyle` — the hint is
+    /// `shortcut` is a bare `RgbaF32`, not a `TextStyle` — the hint is
     /// painted at the row label's size. Destructured so a new field
     /// fails to compile here — see
     /// [`Theme::for_each_text`](crate::Theme).

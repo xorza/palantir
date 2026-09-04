@@ -3,7 +3,7 @@
 use crate::icons::icon_raster_key::IconRasterKey;
 use crate::primitives::approx::{EPS, noop_f32};
 use crate::primitives::brush::gradient::FillAxis;
-use crate::primitives::color::ColorU8;
+use crate::primitives::color::RgbaU8;
 use crate::primitives::corners::Corners;
 use crate::primitives::fill_kind::FillKind;
 use crate::primitives::num::{F32Ext, Vec2Ext};
@@ -516,7 +516,7 @@ impl PaintSink for ComposeSession<'_> {
         let spin = p.bounds.spin();
         // Style lanes are basis-independent; each arm below fills in
         // the geometry and its own `kind`.
-        let color: ColorU8 = p.fill.color.into();
+        let color: RgbaU8 = p.fill.color.into();
         let proto = CurveInstance {
             width: width_phys,
             color0: color,
@@ -703,7 +703,7 @@ impl PaintSink for ComposeSession<'_> {
         // through `kept` so the lookup lands on the *original* point
         // index — a coincident point dropped above takes its color
         // with it.
-        let seg_colors = |k: usize| -> (ColorU8, ColorU8) {
+        let seg_colors = |k: usize| -> (RgbaU8, RgbaU8) {
             match mode {
                 ColorMode::Single => (src_colors[0], src_colors[0]),
                 ColorMode::PerPoint => (
@@ -825,7 +825,7 @@ impl PaintSink for ComposeSession<'_> {
         self.out.texts.push(TextDrawRow {
             origin: phys_rect.min,
             bounds,
-            // Linear ColorU8 straight to the text backend.
+            // Linear RgbaU8 straight to the text backend.
             // Palantir's native text shader (see
             // `src/renderer/backend/text/`) consumes linear
             // bytes and premultiplies at output — matching

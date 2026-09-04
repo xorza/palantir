@@ -1,7 +1,7 @@
 //! Reading a `PaintCapture` back: what counts as a rect, a shadow, a clip
 //! pair.
 
-use crate::primitives::color::ColorF16;
+use crate::primitives::color::RgbaF16;
 use crate::primitives::{rect::Rect, translate_scale::TranslateScale};
 use crate::renderer::frontend::capture::{PaintCall, PaintCapture};
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
@@ -28,7 +28,7 @@ pub(super) fn count_draw_rects(cmds: &PaintCapture) -> usize {
 
 /// Walk a recorded paint stream and return the effective screen-space rect
 /// for each `Rect` call, keyed by its fill colour.
-pub(super) fn screen_rects_by_fill(cmds: &PaintCapture) -> Vec<(ColorF16, Rect)> {
+pub(super) fn screen_rects_by_fill(cmds: &PaintCapture) -> Vec<(RgbaF16, Rect)> {
     let mut t = TranslateScale::IDENTITY;
     let mut t_stack: Vec<TranslateScale> = Vec::new();
     let mut clip: Option<Rect> = None;

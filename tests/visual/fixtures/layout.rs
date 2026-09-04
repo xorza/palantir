@@ -3,7 +3,7 @@
 
 use glam::UVec2;
 use palantir::{
-    Align, Background, Button, Color, Configure, Corners, Frame, Grid, GridCell, Panel, Shadow,
+    Align, Background, Button, Configure, Corners, Frame, Grid, GridCell, Panel, RgbaF32, Shadow,
     Sizing, Stroke, Text, TextStyle, TextWrap, Track,
 };
 
@@ -28,7 +28,7 @@ fn vstack_fill_weights_matches_golden() {
                     .id_salt("a")
                     .size((Sizing::FILL, Sizing::fill(1.0)))
                     .background(Background {
-                        fill: Color::rgb(0.85, 0.30, 0.30).into(),
+                        fill: RgbaF32::srgb(0.85, 0.30, 0.30).into(),
                         ..Default::default()
                     })
                     .show(ui);
@@ -36,7 +36,7 @@ fn vstack_fill_weights_matches_golden() {
                     .id_salt("b")
                     .size((Sizing::FILL, Sizing::fill(2.0)))
                     .background(Background {
-                        fill: Color::rgb(0.30, 0.85, 0.40).into(),
+                        fill: RgbaF32::srgb(0.30, 0.85, 0.40).into(),
                         ..Default::default()
                     })
                     .show(ui);
@@ -44,7 +44,7 @@ fn vstack_fill_weights_matches_golden() {
                     .id_salt("c")
                     .size((Sizing::FILL, Sizing::fill(1.0)))
                     .background(Background {
-                        fill: Color::rgb(0.30, 0.50, 0.95).into(),
+                        fill: RgbaF32::srgb(0.30, 0.50, 0.95).into(),
                         ..Default::default()
                     })
                     .show(ui);
@@ -72,7 +72,7 @@ fn grid_mixed_tracks_matches_golden() {
                     .id_salt("header")
                     .grid_cell(GridCell::at(0, 0).span(1, 3))
                     .background(Background {
-                        fill: Color::rgb(0.25, 0.30, 0.45).into(),
+                        fill: RgbaF32::srgb(0.25, 0.30, 0.45).into(),
                         corners: Corners::all(4.0),
                         ..Default::default()
                     })
@@ -81,7 +81,7 @@ fn grid_mixed_tracks_matches_golden() {
                     .id_salt("side")
                     .grid_cell((1, 0))
                     .background(Background {
-                        fill: Color::rgb(0.35, 0.45, 0.30).into(),
+                        fill: RgbaF32::srgb(0.35, 0.45, 0.30).into(),
                         corners: Corners::all(4.0),
                         ..Default::default()
                     })
@@ -90,7 +90,7 @@ fn grid_mixed_tracks_matches_golden() {
                     .id_salt("body")
                     .grid_cell((1, 1))
                     .background(Background {
-                        fill: Color::rgb(0.20, 0.20, 0.28).into(),
+                        fill: RgbaF32::srgb(0.20, 0.20, 0.28).into(),
                         corners: Corners::all(4.0),
                         ..Default::default()
                     })
@@ -99,7 +99,7 @@ fn grid_mixed_tracks_matches_golden() {
                     .id_salt("aside")
                     .grid_cell((1, 2))
                     .background(Background {
-                        fill: Color::rgb(0.50, 0.30, 0.45).into(),
+                        fill: RgbaF32::srgb(0.50, 0.30, 0.45).into(),
                         corners: Corners::all(4.0),
                         ..Default::default()
                     })
@@ -121,8 +121,8 @@ fn zstack_centered_button_matches_golden() {
             .padding(12.0)
             .size((Sizing::FILL, Sizing::FILL))
             .background(Background {
-                fill: Color::rgb(0.16, 0.20, 0.28).into(),
-                stroke: Stroke::solid(Color::rgb(0.30, 0.36, 0.46), 1.0),
+                fill: RgbaF32::srgb(0.16, 0.20, 0.28).into(),
+                stroke: Stroke::solid(RgbaF32::srgb(0.30, 0.36, 0.46), 1.0),
                 corners: Corners::all(10.0),
                 shadow: Shadow::NONE,
             })

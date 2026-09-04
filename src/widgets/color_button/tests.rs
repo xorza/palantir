@@ -1,4 +1,4 @@
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::scene::node::configure::Configure;
@@ -21,8 +21,8 @@ fn panel_nodes(h: &UiHarness) -> usize {
 fn the_chip_toggles_its_panel() {
     let id = WidgetId::from_hash("color-button-toggle");
     let mut h = harness();
-    let mut color = Color::hex(0x4cd3ff);
-    let frame = |h: &mut UiHarness, color: &mut Color| {
+    let mut color = RgbaF32::hex(0x4cd3ff);
+    let frame = |h: &mut UiHarness, color: &mut RgbaF32| {
         h.frame(|ui| {
             ColorButton::new(color).id(id).show(ui);
         });
@@ -50,7 +50,7 @@ fn the_chip_toggles_its_panel() {
 fn opening_the_panel_is_not_an_edit() {
     let id = WidgetId::from_hash("color-button-no-edit");
     let mut h = harness();
-    let mut color = Color::hex(0x4cd3ff);
+    let mut color = RgbaF32::hex(0x4cd3ff);
     let before = color;
     let mut changed = false;
     for _ in 0..2 {

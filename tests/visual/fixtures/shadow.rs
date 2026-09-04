@@ -2,13 +2,13 @@
 
 use glam::{IVec2, UVec2, Vec2};
 use image::RgbaImage;
-use palantir::{Color, Configure, Panel, Rect, Shadow, Shape, Sizing};
+use palantir::{Configure, Panel, Rect, RgbaF32, Shadow, Shape, Sizing};
 
 use crate::harness::Harness;
 use palantir::golden::Tolerance;
 
 const VIEWPORT: UVec2 = UVec2::new(220, 180);
-const CLEAR: Color = Color::WHITE;
+const CLEAR: RgbaF32 = RgbaF32::WHITE;
 
 fn render_shadow(
     source: Rect,
@@ -26,7 +26,7 @@ fn render_shadow(
             .show(ui, |ui| {
                 ui.add_shape(
                     Shape::shadow(Shadow {
-                        color: Color::rgba(0.0, 0.0, 0.0, 0.85),
+                        color: RgbaF32::srgba(0.0, 0.0, 0.0, 0.85),
                         offset,
                         blur,
                         spread,

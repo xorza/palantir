@@ -2,7 +2,7 @@
 
 use crate::animation::anim_spec::AnimSpec;
 use crate::animation::tests::support::{AnimUi, SLOT, setup_anim_ui};
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::configure::Configure;
 use crate::widgets::frame::Frame;
@@ -129,8 +129,8 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     let AnimUi { mut h, id } = setup_anim_ui("look-test");
 
     let bg = Background {
-        fill: Color::hex(0x336699).into(),
-        stroke: Stroke::solid(Color::hex(0xffffff), 2.0),
+        fill: RgbaF32::hex(0x336699).into(),
+        stroke: Stroke::solid(RgbaF32::hex(0xffffff), 2.0),
         corners: Corners::all(4.0),
         shadow: Shadow::NONE,
     };
@@ -174,7 +174,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     // unallocated.
     let look2 = WidgetLook {
         background: Background {
-            fill: Color::hex(0xff0000).into(),
+            fill: RgbaF32::hex(0xff0000).into(),
             ..bg.clone()
         },
         text: None,
@@ -194,13 +194,13 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     // made wrong in every field so any read shows up.
     let own_text = TextStyle {
         font_size_px: fallback.font_size_px + 7.0,
-        color: Color::hex(0x00ff00),
+        color: RgbaF32::hex(0x00ff00),
         line_height_mult: fallback.line_height_mult + 0.5,
         ..fallback
     };
     let unread = TextStyle {
         font_size_px: fallback.font_size_px + 99.0,
-        color: Color::hex(0xff00ff),
+        color: RgbaF32::hex(0xff00ff),
         line_height_mult: fallback.line_height_mult + 9.0,
         ..fallback
     };

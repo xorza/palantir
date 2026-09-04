@@ -3,13 +3,13 @@
 
 use crate::common::hash::Hasher;
 use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
-use crate::primitives::color::ColorU8;
+use crate::primitives::color::RgbaU8;
 use crate::renderer::gradient_atlas::*;
 use std::hash::Hasher as _;
 
 /// Fresh f16 LUT row, all texels transparent before bake.
 pub(super) fn fresh_row() -> LutRowTexels {
-    [ColorF16::TRANSPARENT; LUT_ROW_TEXELS]
+    [RgbaF16::TRANSPARENT; LUT_ROW_TEXELS]
 }
 
 /// Vary the *stops* (the only thing the row key now depends on)
@@ -27,11 +27,7 @@ pub(super) fn distinct_grad(seed: f32) -> LinearGradient {
     let r = v as u8;
     let g = (v >> 8) as u8;
     let b = (v >> 16) as u8;
-    LinearGradient::two_stop(
-        0.0,
-        ColorU8::linear_rgb(r, g, b),
-        ColorU8::linear_rgb(0, 0xff, 0),
-    )
+    LinearGradient::two_stop(0.0, RgbaU8::rgb(r, g, b), RgbaU8::rgb(0, 0xff, 0))
 }
 
 pub(super) fn register_for(atlas: &mut CpuGradientAtlas, g: LinearGradient) -> LutRow {

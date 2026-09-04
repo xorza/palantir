@@ -1,4 +1,4 @@
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::color::color_model::ColorModel;
 use crate::primitives::color::okhsv::Okhsv;
 use crate::primitives::widget_id::WidgetId;
@@ -12,7 +12,7 @@ fn harness() -> UiHarness {
     UiHarness::with_text(UVec2::new(320, 460))
 }
 
-fn frame(h: &mut UiHarness, id: WidgetId, color: &mut Color) -> (bool, bool) {
+fn frame(h: &mut UiHarness, id: WidgetId, color: &mut RgbaF32) -> (bool, bool) {
     h.frame_value(|ui| {
         let r = ColorPicker::new(color).alpha(true).id(id).show(ui);
         (r.changed, r.committed)
@@ -26,7 +26,7 @@ fn frame(h: &mut UiHarness, id: WidgetId, color: &mut Color) -> (bool, bool) {
 fn the_hue_survives_black() {
     let id = WidgetId::from_hash("picker-hue-survives-black");
     let mut h = harness();
-    let mut color = Color::hex(0x4cd3ff);
+    let mut color = RgbaF32::hex(0x4cd3ff);
     frame(&mut h, id, &mut color);
     let start = color;
 
@@ -35,8 +35,8 @@ fn the_hue_survives_black() {
     frame(&mut h, id, &mut color);
     h.drag_to(Vec2::new(1.0, 300.0));
     frame(&mut h, id, &mut color);
-    assert_eq!(color.to_srgb_u8().r, 0, "dragged past the bottom is black");
-    assert_eq!(color.to_srgb_u8().b, 0);
+    assert_eq!(color.to_srgba_u8().r, 0, "dragged past the bottom is black");
+    assert_eq!(color.to_srgba_u8().b, 0);
 
     h.drag_to(Vec2::new(190.0, 4.0));
     frame(&mut h, id, &mut color);
@@ -49,7 +49,7 @@ fn the_hue_survives_black() {
     assert!(
         (started - ended).abs() < 1e-3,
         "hue {started} came back as {ended} ({:?})",
-        color.to_srgb_u8(),
+        color.to_srgba_u8(),
     );
 }
 
@@ -59,19 +59,19 @@ fn the_hue_survives_black() {
 fn an_outside_edit_re_seeds_the_axes() {
     let id = WidgetId::from_hash("picker-outside-edit");
     let mut h = harness();
-    let mut color = Color::hex(0x4cd3ff);
+    let mut color = RgbaF32::hex(0x4cd3ff);
     frame(&mut h, id, &mut color);
 
-    color = Color::hex(0xff8800);
+    color = RgbaF32::hex(0xff8800);
     let (changed, _) = frame(&mut h, id, &mut color);
     assert!(!changed, "the picker does not rewrite what it was handed");
-    assert_eq!(color.to_srgb_u8().r, 0xff, "and it keeps the colour intact");
+    assert_eq!(color.to_srgba_u8().r, 0xff, "and it keeps the colour intact");
 
     // The axes now describe the new colour: pressing the field's top-right
     // corner lands on that hue's most saturated colour, not the old one's.
     h.press_at(Vec2::new(206.0, 1.0));
     frame(&mut h, id, &mut color);
-    let picked = color.to_srgb_u8();
+    let picked = color.to_srgba_u8();
     assert!(
         picked.r > picked.g && picked.g > picked.b,
         "an orange: {picked:?}"
@@ -85,14 +85,14 @@ fn an_outside_edit_re_seeds_the_axes() {
 fn opacity_leaves_the_colour_alone() {
     let id = WidgetId::from_hash("picker-alpha-only");
     let mut h = harness();
-    let mut color = Color::hex(0x0000ff);
+    let mut color = RgbaF32::hex(0x0000ff);
     frame(&mut h, id, &mut color);
-    let before = color.to_srgb_u8();
+    let before = color.to_srgba_u8();
 
     // The alpha bar sits under the hue bar, right of the preview chip.
     h.press_at(Vec2::new(120.0, 160.0 + 6.0 + 14.0 + 6.0 + 7.0));
     frame(&mut h, id, &mut color);
-    let after = color.to_srgb_u8();
+    let after = color.to_srgba_u8();
     assert_eq!(
         (after.r, after.g, after.b),
         (before.r, before.g, before.b),
@@ -104,9 +104,9 @@ fn opacity_leaves_the_colour_alone() {
 /// ignored rather than guessed at.
 #[test]
 fn hex_parses_and_rejects() {
-    assert_eq!(parse_hex("#4CD3FF"), Some(Color::hex(0x4cd3ff)));
-    assert_eq!(parse_hex("4cd3ff"), Some(Color::hex(0x4cd3ff)));
-    assert_eq!(parse_hex("  #4cd3ff  "), Some(Color::hex(0x4cd3ff)));
+    assert_eq!(parse_hex("#4CD3FF"), Some(RgbaF32::hex(0x4cd3ff)));
+    assert_eq!(parse_hex("4cd3ff"), Some(RgbaF32::hex(0x4cd3ff)));
+    assert_eq!(parse_hex("  #4cd3ff  "), Some(RgbaF32::hex(0x4cd3ff)));
     assert_eq!(parse_hex(""), None);
     assert_eq!(parse_hex("#4cd3f"), None);
     assert_eq!(parse_hex("#4cd3fg"), None);
@@ -122,7 +122,7 @@ fn hex_parses_and_rejects() {
 fn the_model_switch_keeps_the_colour() {
     let id = WidgetId::from_hash("picker-model-switch");
     let mut h = harness();
-    let mut color = Color::hex(0x4cd3ff);
+    let mut color = RgbaF32::hex(0x4cd3ff);
     h.frame(|ui| {
         ColorPicker::new(&mut color)
             .model(ColorModel::Hsv)
@@ -146,8 +146,8 @@ fn the_model_switch_keeps_the_colour() {
 fn the_channel_boxes_are_one_fixed_width() {
     let id = WidgetId::from_hash("picker-fixed-values");
     let mut h = harness();
-    let mut color = Color::rgb_u8(9, 9, 9);
-    let widths = |h: &mut UiHarness, color: &mut Color| {
+    let mut color = RgbaF32::from_srgba(SrgbaU8::rgb(9, 9, 9));
+    let widths = |h: &mut UiHarness, color: &mut RgbaF32| {
         h.frame_value(|ui| {
             ColorPicker::new(color).alpha(true).id(id).show(ui);
             ["R", "G", "B", "S"].map(|name| {
@@ -168,7 +168,7 @@ fn the_channel_boxes_are_one_fixed_width() {
     }
 
     // Three digits everywhere instead of one: the same width, still.
-    color = Color::rgb_u8(200, 211, 255);
+    color = RgbaF32::from_srgba(SrgbaU8::rgb(200, 211, 255));
     frame(&mut h, id, &mut color);
     let wide = widths(&mut h, &mut color);
     assert_eq!(wide, narrow, "the boxes followed their digits");

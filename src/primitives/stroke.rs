@@ -1,7 +1,7 @@
 //! A shape's outline: one colour and one width.
 
 use crate::primitives::approx::noop_f32;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::nan::NanCheck;
 use palantir_anim_derive::Animatable;
 
@@ -10,7 +10,7 @@ use palantir_anim_derive::Animatable;
     Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize, Animatable,
 )]
 pub struct Stroke {
-    pub color: Color,
+    pub color: RgbaF32,
     pub width: f32,
 }
 
@@ -20,7 +20,7 @@ impl Stroke {
     /// const contexts and read it as the sentinel "this background
     /// has no stroke" without needing `Option<Stroke>` in the type.
     pub const ZERO: Self = Self {
-        color: Color::TRANSPARENT,
+        color: RgbaF32::TRANSPARENT,
         width: 0.0,
     };
 
@@ -63,7 +63,7 @@ impl Stroke {
 
     /// Construct a stroke with `color` and `width`.
     #[inline]
-    pub const fn solid(color: Color, width: f32) -> Self {
+    pub const fn solid(color: RgbaF32, width: f32) -> Self {
         Self { color, width }
     }
 }

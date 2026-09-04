@@ -2,7 +2,7 @@ use crate::input::response::button_phase::ButtonPhase;
 use crate::input::response::button_state::ButtonState;
 use crate::input::response::response_state::ResponseState;
 use crate::primitives::background::Background;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::text::font_family::FontFamily;
 use crate::text::font_style::FontStyle;
 use crate::text::font_weight::FontWeight;
@@ -176,7 +176,7 @@ fn animated_look_line_height_px_delegates_to_text_style() {
         background: Background::default(),
         text: TextStyle {
             font_size_px: 16.0,
-            color: Color::TRANSPARENT,
+            color: RgbaF32::TRANSPARENT,
             line_height_mult: 1.5,
             family: FontFamily::SANS,
             weight: FontWeight::REGULAR,

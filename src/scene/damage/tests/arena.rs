@@ -21,7 +21,7 @@ use crate::Ui;
 use crate::common::counters::CounterSet;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::rect::Rect;
 use crate::primitives::span::Span;
 use crate::primitives::widget_id::WidgetId;
@@ -50,7 +50,7 @@ fn canvas(ui: &mut Ui, id: &'static str, shapes: u32) {
                         8.0,
                         8.0,
                     ))
-                    .fill(Color::rgb(0.1 * s as f32, 0.4, 0.6)),
+                    .fill(RgbaF32::srgb(0.1 * s as f32, 0.4, 0.6)),
                 );
             }
         });

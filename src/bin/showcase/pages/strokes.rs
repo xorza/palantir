@@ -6,7 +6,7 @@
 
 use crate::support;
 use crate::support::{demo_cell, section, tiles};
-use palantir::{Color, LineCap, LineJoin, LinearGradient, PolylineColors, Shape, Stop, Ui, Vec2};
+use palantir::{LineCap, LineJoin, LinearGradient, PolylineColors, RgbaF32, Shape, Stop, Ui, Vec2};
 
 pub(crate) fn build(ui: &mut Ui) {
     section(
@@ -65,7 +65,9 @@ fn widths(ui: &mut Ui) {
 fn hairlines(ui: &mut Ui) {
     for (i, w) in [0.1_f32, 0.25, 0.5, 0.75, 1.0].iter().enumerate() {
         let y = 20.0 + i as f32 * 26.0;
-        ui.add_shape(Shape::line(Vec2::new(16.0, y), Vec2::new(150.0, y), *w).brush(Color::WHITE));
+        ui.add_shape(
+            Shape::line(Vec2::new(16.0, y), Vec2::new(150.0, y), *w).brush(RgbaF32::WHITE),
+        );
     }
 }
 
@@ -94,7 +96,7 @@ fn caps(ui: &mut Ui) {
         for x in [40.0_f32, 128.0] {
             ui.add_shape(
                 Shape::line(Vec2::new(x, y - 14.0), Vec2::new(x, y + 14.0), 1.0)
-                    .brush(Color::WHITE),
+                    .brush(RgbaF32::WHITE),
             );
         }
     }
@@ -160,7 +162,7 @@ fn per_segment(ui: &mut Ui) {
         support::C,
         support::A,
         support::D,
-        Color::hex(0xff8fc8),
+        RgbaF32::hex(0xff8fc8),
     ];
     ui.add_shape(Shape::polyline(
         &pts,

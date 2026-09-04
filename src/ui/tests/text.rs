@@ -3,7 +3,7 @@
 use crate::TextStyle;
 use crate::Ui;
 use crate::host::shared::HostShared;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::widget_id::WidgetId;
 use crate::renderer::frontend::Frontend;
 use crate::renderer::texture_limit::TextureLimit;
@@ -300,7 +300,7 @@ fn paint_only_frames_advance_the_shared_text_clock() {
                         ..GlyphFont::new(16.0)
                     },
                 )
-                .color(Color::WHITE)
+                .color(RgbaF32::WHITE)
                 .wrap(TextWrap::SingleLine)
                 .align(Align::default())
                 .family(FontFamily::SANS)
@@ -402,7 +402,7 @@ fn shared_cache_eviction_preserves_idle_windows_paint_only_text_source() {
                         ..GlyphFont::new(16.0)
                     },
                 )
-                .color(Color::WHITE)
+                .color(RgbaF32::WHITE)
                 .wrap(TextWrap::SingleLine)
                 .align(Align::default())
                 .family(FontFamily::SANS)

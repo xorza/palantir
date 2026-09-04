@@ -7,7 +7,7 @@ use crate::layout::types::sizing::Sizes;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::wrapstack::tests::support::{cell, rect_of};
 use crate::primitives::background::Background;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::configure::Configure;
@@ -150,7 +150,7 @@ fn wrap_hstack_cross_fill_child_stretches_to_row_height() {
                     .id(WidgetId::from_hash("filler"))
                     .size((Sizing::fixed(100.0), Sizing::FILL))
                     .background(Background {
-                        fill: Color::rgb(0.5, 0.5, 0.5).into(),
+                        fill: RgbaF32::srgb(0.5, 0.5, 0.5).into(),
                         ..Default::default()
                     })
                     .show(ui);

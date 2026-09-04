@@ -2,7 +2,7 @@
 
 use glam::UVec2;
 use image::Rgba;
-use palantir::{Background, Color, Configure, Panel, Sizing, Text, TextStyle};
+use palantir::{Background, Configure, Panel, RgbaF32, Sizing, Text, TextStyle};
 
 use crate::fixtures::DARK_BG;
 use crate::goldens::assert_matches_golden;
@@ -26,7 +26,7 @@ fn text_paragraph_matches_golden() {
                     .style(
                         &TextStyle::default()
                             .with_font_size(20.0)
-                            .with_color(Color::rgb(0.92, 0.94, 1.00)),
+                            .with_color(RgbaF32::srgb(0.92, 0.94, 1.00)),
                     )
                     .show(ui);
                 Text::new("Immediate-mode UI with WPF-style layout.")
@@ -34,7 +34,7 @@ fn text_paragraph_matches_golden() {
                     .style(
                         &TextStyle::default()
                             .with_font_size(13.0)
-                            .with_color(Color::rgb(0.72, 0.76, 0.84)),
+                            .with_color(RgbaF32::srgb(0.72, 0.76, 0.84)),
                     )
                     .show(ui);
                 Text::new("Rendered headlessly through wgpu.")
@@ -42,7 +42,7 @@ fn text_paragraph_matches_golden() {
                     .style(
                         &TextStyle::default()
                             .with_font_size(13.0)
-                            .with_color(Color::rgb(0.72, 0.76, 0.84)),
+                            .with_color(RgbaF32::srgb(0.72, 0.76, 0.84)),
                     )
                     .show(ui);
             });
@@ -63,12 +63,12 @@ fn text_paragraph_matches_golden() {
 fn text_row_list_batches_into_one_render() {
     let mut h = Harness::new();
     let rows = [
-        ("Alpha", Color::rgb(0.20, 0.40, 0.60)),
-        ("Bravo", Color::rgb(0.60, 0.30, 0.20)),
-        ("Charlie", Color::rgb(0.25, 0.55, 0.30)),
-        ("Delta", Color::rgb(0.55, 0.40, 0.65)),
-        ("Echo", Color::rgb(0.35, 0.55, 0.55)),
-        ("Foxtrot", Color::rgb(0.65, 0.55, 0.30)),
+        ("Alpha", RgbaF32::srgb(0.20, 0.40, 0.60)),
+        ("Bravo", RgbaF32::srgb(0.60, 0.30, 0.20)),
+        ("Charlie", RgbaF32::srgb(0.25, 0.55, 0.30)),
+        ("Delta", RgbaF32::srgb(0.55, 0.40, 0.65)),
+        ("Echo", RgbaF32::srgb(0.35, 0.55, 0.55)),
+        ("Foxtrot", RgbaF32::srgb(0.65, 0.55, 0.30)),
     ];
     let img = h.render(UVec2::new(220, 200), 1.0, DARK_BG, |ui| {
         Panel::vstack()
@@ -91,7 +91,7 @@ fn text_row_list_batches_into_one_render() {
                                 .style(
                                     &TextStyle::default()
                                         .with_font_size(14.0)
-                                        .with_color(Color::rgb(0.95, 0.95, 1.00)),
+                                        .with_color(RgbaF32::srgb(0.95, 0.95, 1.00)),
                                 )
                                 .show(ui);
                         });
@@ -124,7 +124,7 @@ fn text_row_list_survives_partial_damage_smoke() {
     let size = UVec2::new(220, 200);
     // Frame 1: 6 rows. All labels live in one text batch (rows are
     // disjoint, no overlap-induced split).
-    let row_bg = Color::rgb(0.20, 0.20, 0.24);
+    let row_bg = RgbaF32::srgb(0.20, 0.20, 0.24);
     let labels_initial = ["aaaa", "bbbb", "cccc", "dddd", "eeee", "ffff"];
 
     let scene = |labels: [&'static str; 6]| {
@@ -149,7 +149,7 @@ fn text_row_list_survives_partial_damage_smoke() {
                                     .style(
                                         &TextStyle::default()
                                             .with_font_size(14.0)
-                                            .with_color(Color::rgb(0.95, 0.95, 1.00)),
+                                            .with_color(RgbaF32::srgb(0.95, 0.95, 1.00)),
                                     )
                                     .show(ui);
                             });

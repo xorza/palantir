@@ -7,32 +7,32 @@
 
 use crate::support::{note_style, row, section};
 use palantir::{
-    Color, ColorButton, ColorCoords, ColorField, ColorModel, ColorPicker, ColorStrip, ColorSwatch,
+    RgbaF32, ColorButton, ColorCoords, ColorField, ColorModel, ColorPicker, ColorStrip, ColorSwatch,
     Configure, Panel, Sizing, Text, Ui, WidgetId,
 };
 
 #[derive(Debug)]
 struct State {
-    picked: Color,
-    port: Color,
-    accent: Color,
+    picked: RgbaF32,
+    port: RgbaF32,
+    accent: RgbaF32,
     parts: ColorCoords,
-    recent: Vec<Color>,
+    recent: Vec<RgbaF32>,
 }
 
 impl Default for State {
     fn default() -> Self {
         Self {
-            picked: Color::hex(0x4cd3ff),
-            port: Color::hex(0xffa63d),
-            accent: Color::hex(0xd897ff),
-            parts: ColorCoords::new(ColorModel::Okhsv, Color::hex(0xd9ff57), 0.0),
+            picked: RgbaF32::hex(0x4cd3ff),
+            port: RgbaF32::hex(0xffa63d),
+            accent: RgbaF32::hex(0xd897ff),
+            parts: ColorCoords::new(ColorModel::Okhsv, RgbaF32::hex(0xd9ff57), 0.0),
             recent: vec![
-                Color::hex(0x4cd3ff),
-                Color::hex(0xffa63d),
-                Color::hex(0xd9ff57),
-                Color::hex(0xd897ff),
-                Color::hex(0xff5e44),
+                RgbaF32::hex(0x4cd3ff),
+                RgbaF32::hex(0xffa63d),
+                RgbaF32::hex(0xd9ff57),
+                RgbaF32::hex(0xd897ff),
+                RgbaF32::hex(0xff5e44),
             ],
         }
     }

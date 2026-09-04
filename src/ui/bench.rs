@@ -69,7 +69,7 @@ use crate::diagnostics::gpu_pass_stats::BatchKind;
 use crate::frame_fixture::{BENCH_DPR, BENCH_SCALE, BENCH_SURFACE, FrameFixture};
 use crate::host::bench_gpu::{BenchGpu, Timing};
 use crate::host::offscreen::OffscreenHost;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::renderer::backend::texture_region::counters::WriteStats;
 use crate::renderer::frontend::Frontend;
 use crate::renderer::render_plan::RenderPlan;
@@ -90,7 +90,7 @@ use std::time::{Duration, Instant};
 // Surface clear colour. Set on `theme.window_clear` in both harnesses
 // and reused as the `clear` for the synthesized `Full` plan the CPU
 // `cached` arm encodes against (see `CpuHarness::frame`).
-const WINDOW_CLEAR: Color = Color::BLACK;
+const WINDOW_CLEAR: RgbaF32 = RgbaF32::BLACK;
 // Proportioned against `BENCH_SURFACE` — `Surface::new` rescales them by
 // whatever ratio `--size` asks for, so what matters is the spread
 // (-16%..+8% wide, -7%..+3% tall), not the absolute values. Multiples of

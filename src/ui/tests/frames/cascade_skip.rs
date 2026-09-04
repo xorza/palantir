@@ -3,7 +3,7 @@
 
 use crate::Ui;
 use crate::primitives::background::Background;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::scene::node::configure::Configure;
@@ -101,7 +101,7 @@ fn cascade_fingerprint_covers_authoring_input_classes() {
 
     fn bg(r: f32, g: f32, b: f32) -> Background {
         Background {
-            fill: Color::rgb(r, g, b).into(),
+            fill: RgbaF32::srgb(r, g, b).into(),
             ..Default::default()
         }
     }
@@ -153,7 +153,7 @@ fn cascade_fingerprint_covers_layer_and_root_identity() {
                 .id(WidgetId::from_hash(key))
                 .size(20.0)
                 .background(Background {
-                    fill: Color::rgb(0.2, 0.4, 0.8).into(),
+                    fill: RgbaF32::srgb(0.2, 0.4, 0.8).into(),
                     ..Default::default()
                 })
                 .show(ui);

@@ -5,7 +5,7 @@ use crate::display::Display;
 use crate::display::user_scale::UserScale;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
-use crate::primitives::{color::Color, rect::Rect};
+use crate::primitives::{color::RgbaF32, rect::Rect};
 use crate::scene::damage::Damage;
 use crate::scene::node::configure::Configure;
 use crate::ui::harness::UiHarness;
@@ -30,13 +30,13 @@ pub(super) fn frame(h: &mut UiHarness, f: impl FnMut(&mut Ui)) -> Option<Damage>
 }
 
 /// The standard "root with one 50×50 frame" tree used by most damage
-/// tests. Color flips between frames to drive minimal authoring
+/// tests. RgbaF32 flips between frames to drive minimal authoring
 /// changes.
-pub(super) const BLUE: Color = Color::rgb(0.2, 0.4, 0.8);
+pub(super) const BLUE: RgbaF32 = RgbaF32::srgb(0.2, 0.4, 0.8);
 
-pub(super) const RED: Color = Color::rgb(0.9, 0.4, 0.8);
+pub(super) const RED: RgbaF32 = RgbaF32::srgb(0.9, 0.4, 0.8);
 
-pub(super) fn one_frame(ui: &mut Ui, color: Color) {
+pub(super) fn one_frame(ui: &mut Ui, color: RgbaF32) {
     Panel::hstack()
         .id(WidgetId::from_hash("root"))
         .show(ui, |ui| {

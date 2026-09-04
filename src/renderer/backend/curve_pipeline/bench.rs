@@ -16,7 +16,7 @@ use crate::bench::Run;
 use crate::diagnostics::gpu_pass_stats::BatchKind;
 use crate::host::bench_gpu::{BenchGpu, Timing};
 use crate::host::offscreen::OffscreenHost;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::shape::Shape;
 use crate::shape::polyline::PolylineColors;
 use crate::shape::style::LineJoin;
@@ -77,7 +77,7 @@ fn record(ui: &mut Ui, workload: Workload, phase: bool) {
 }
 
 fn record_cubics(ui: &mut Ui, phase: bool) {
-    let color = Color::rgb(0.2, 0.8, 1.0);
+    let color = RgbaF32::srgb(0.2, 0.8, 1.0);
     let wobble = if phase { 0.125 } else { -0.125 };
     for row in 0..GRID {
         for col in 0..GRID {
@@ -97,7 +97,7 @@ fn record_cubics(ui: &mut Ui, phase: bool) {
 }
 
 fn record_joins(ui: &mut Ui, phase: bool) {
-    let color = Color::rgba(0.3, 1.0, 0.5, 0.75);
+    let color = RgbaF32::srgba(0.3, 1.0, 0.5, 0.75);
     let wobble = if phase { 0.125 } else { -0.125 };
     for row in 0..GRID {
         for col in 0..GRID {

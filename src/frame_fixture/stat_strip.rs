@@ -9,7 +9,7 @@ use crate::primitives::brush::gradient::conic_geometry::ConicGradient;
 use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::brush::gradient::radial_geometry::RadialGradient;
 use crate::primitives::brush::gradient::stops::Stop;
-use crate::primitives::color::{Color, ColorU8};
+use crate::primitives::color::{RgbaF32, RgbaU8};
 use crate::primitives::corners::Corners;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::stroke::Stroke;
@@ -30,7 +30,7 @@ pub(super) fn show(ui: &mut Ui) {
         ("DRAW CALLS", "36", "-4"),
         ("GPU", "2.81 ms", "steady"),
     ];
-    const DELTA: [Color; 4] = [tokens::OK, tokens::ACCENT, tokens::OK, tokens::TEXT_DIM];
+    const DELTA: [RgbaF32; 4] = [tokens::OK, tokens::ACCENT, tokens::OK, tokens::TEXT_DIM];
 
     Panel::hstack()
         .id_salt("stats")
@@ -41,23 +41,23 @@ pub(super) fn show(ui: &mut Ui) {
                 let fill = match i {
                     0 => Brush::Linear(LinearGradient::two_stop(
                         0.6,
-                        ColorU8::hex(0x1d2440),
-                        ColorU8::hex(0x2b3a63),
+                        RgbaU8::hex(0x1d2440),
+                        RgbaU8::hex(0x2b3a63),
                     )),
                     1 => Brush::Radial(RadialGradient::two_stop_centered(
-                        ColorU8::hex(0x2a2350),
-                        ColorU8::hex(0x171a2b),
+                        RgbaU8::hex(0x2a2350),
+                        RgbaU8::hex(0x171a2b),
                     )),
                     2 => Brush::Conic(ConicGradient::new(
                         glam::Vec2::new(0.15, 0.9),
                         0.0,
                         [
-                            Stop::new(0.0, ColorU8::hex(0x1b2b2e)),
-                            Stop::new(0.55, ColorU8::hex(0x24404a)),
-                            Stop::new(1.0, ColorU8::hex(0x1b2b2e)),
+                            Stop::new(0.0, RgbaU8::hex(0x1b2b2e)),
+                            Stop::new(0.55, RgbaU8::hex(0x24404a)),
+                            Stop::new(1.0, RgbaU8::hex(0x1b2b2e)),
                         ],
                     )),
-                    _ => Brush::Solid(Color::hex(0x232734)),
+                    _ => Brush::Solid(RgbaF32::hex(0x232734)),
                 };
                 Panel::zstack()
                     .id_salt(("stat", i))
@@ -71,7 +71,7 @@ pub(super) fn show(ui: &mut Ui) {
                                 stroke: Stroke::solid(tokens::BORDER, 1.0),
                                 corners: Corners::all(8.0),
                                 shadow: Shadow::drop(
-                                    Color::rgba(0.0, 0.0, 0.0, 0.45),
+                                    RgbaF32::srgba(0.0, 0.0, 0.0, 0.45),
                                     glam::Vec2::new(0.0, 2.0),
                                     8.0,
                                 ),

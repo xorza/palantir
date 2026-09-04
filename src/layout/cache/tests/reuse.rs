@@ -8,7 +8,7 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::span::Span;
 use crate::primitives::widget_id::WidgetId;
-use crate::primitives::{color::Color, size::Size};
+use crate::primitives::{color::RgbaF32, size::Size};
 use crate::scene::layer::Layer;
 use crate::scene::node::configure::Configure;
 use crate::scene::tree::node_id::NodeId;
@@ -67,7 +67,7 @@ fn assert_snapshot_is_linear(h: &UiHarness) {
     );
 }
 
-fn build_wrapped_frame(ui: &mut Ui, panel_id: &str, frame_size: f32, fill: Color) {
+fn build_wrapped_frame(ui: &mut Ui, panel_id: &str, frame_size: f32, fill: RgbaF32) {
     Panel::vstack()
         .id(WidgetId::from_hash(panel_id))
         .show(ui, |ui| {
@@ -112,7 +112,7 @@ fn whole_tree_snapshot_populates_subtree_ranges_once() {
 #[test]
 fn unchanged_subtree_hits_and_replays_exact_output() {
     let mut h = UiHarness::new(UVec2::new(200, 200));
-    let build = |ui: &mut Ui| build_wrapped_frame(ui, "a", 50.0, Color::rgb(0.2, 0.4, 0.8));
+    let build = |ui: &mut Ui| build_wrapped_frame(ui, "a", 50.0, RgbaF32::srgb(0.2, 0.4, 0.8));
 
     run_frame(&mut h, build);
     let first_hash = snap_for(&h, WidgetId::from_hash("a"))
@@ -151,12 +151,12 @@ fn unchanged_subtree_hits_and_replays_exact_output() {
 fn changing_descendant_hash_replaces_ancestor_descriptor() {
     let mut h = UiHarness::new(UVec2::new(200, 200));
     run_frame(&mut h, |ui| {
-        build_wrapped_frame(ui, "a", 50.0, Color::rgb(0.2, 0.4, 0.8));
+        build_wrapped_frame(ui, "a", 50.0, RgbaF32::srgb(0.2, 0.4, 0.8));
     });
     let first = snap_for(&h, WidgetId::from_hash("a")).unwrap().snap;
 
     run_frame(&mut h, |ui| {
-        build_wrapped_frame(ui, "a", 50.0, Color::rgb(0.9, 0.4, 0.8));
+        build_wrapped_frame(ui, "a", 50.0, RgbaF32::srgb(0.9, 0.4, 0.8));
     });
     let second = snap_for(&h, WidgetId::from_hash("a")).unwrap().snap;
 
@@ -172,8 +172,8 @@ fn changing_descendant_hash_replaces_ancestor_descriptor() {
 fn removed_widget_is_absent_from_next_snapshot() {
     let mut h = UiHarness::new(UVec2::new(200, 200));
     run_frame(&mut h, |ui| {
-        build_wrapped_frame(ui, "gone", 40.0, Color::rgb(0.5, 0.5, 0.5));
-        build_wrapped_frame(ui, "kept", 40.0, Color::rgb(0.5, 0.5, 0.5));
+        build_wrapped_frame(ui, "gone", 40.0, RgbaF32::srgb(0.5, 0.5, 0.5));
+        build_wrapped_frame(ui, "kept", 40.0, RgbaF32::srgb(0.5, 0.5, 0.5));
     });
     assert!(
         h.engines
@@ -185,7 +185,7 @@ fn removed_widget_is_absent_from_next_snapshot() {
     );
 
     run_frame(&mut h, |ui| {
-        build_wrapped_frame(ui, "kept", 40.0, Color::rgb(0.5, 0.5, 0.5));
+        build_wrapped_frame(ui, "kept", 40.0, RgbaF32::srgb(0.5, 0.5, 0.5));
     });
 
     assert!(
@@ -339,7 +339,7 @@ fn solver_order_text_runs_form_contiguous_subtree_snapshots() {
 
 #[test]
 fn localized_change_hits_unchanged_sibling() {
-    let build = |ui: &mut Ui, color: Color| {
+    let build = |ui: &mut Ui, color: RgbaF32| {
         Panel::vstack()
             .id(WidgetId::from_hash("branch-root"))
             .show(ui, |ui| {
@@ -366,13 +366,13 @@ fn localized_change_hits_unchanged_sibling() {
             });
     };
     let mut h = UiHarness::new(UVec2::new(200, 200));
-    run_frame(&mut h, |ui| build(ui, Color::rgb(1.0, 0.0, 0.0)));
+    run_frame(&mut h, |ui| build(ui, RgbaF32::srgb(1.0, 0.0, 0.0)));
     let stable_hash = snap_for(&h, WidgetId::from_hash("stable"))
         .unwrap()
         .snap
         .subtree_hash;
 
-    run_frame(&mut h, |ui| build(ui, Color::rgb(0.0, 1.0, 0.0)));
+    run_frame(&mut h, |ui| build(ui, RgbaF32::srgb(0.0, 1.0, 0.0)));
 
     assert!(
         h.engines

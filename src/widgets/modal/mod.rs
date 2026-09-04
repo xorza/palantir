@@ -5,7 +5,7 @@ use crate::layout::types::align::Align;
 use crate::layout::types::placement::Placement;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::size::Size;
 use crate::scene::layer::Layer;
 use crate::scene::node::Node;
@@ -34,7 +34,7 @@ use std::rc::Rc;
 pub struct Modal<'a> {
     node: Node,
     chrome: Option<Background>,
-    backdrop: Option<Color>,
+    backdrop: Option<RgbaF32>,
     style: Option<&'a ModalTheme>,
 }
 
@@ -60,7 +60,7 @@ impl<'a> Modal<'a> {
 
     /// Backdrop scrim color, defaulting to [`crate::Theme::modal`]'s.
     /// One-axis hatch over the resolved bundle — see [`crate::Theme`].
-    pub fn backdrop(mut self, c: Color) -> Self {
+    pub fn backdrop(mut self, c: RgbaF32) -> Self {
         self.backdrop = Some(c);
         self
     }

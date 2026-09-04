@@ -4,10 +4,10 @@ use crate::animation::animatable::Animatable;
 use crate::primitives::approx;
 use crate::primitives::brush::gradient::Interp;
 use crate::primitives::brush::gradient::stops::{GradientStops, MAX_STOPS};
-use crate::primitives::color::{Color, ColorF16, linear_to_oklab, oklab_to_linear};
+use crate::primitives::color::{RgbaF16, RgbaF32, linear_to_oklab, oklab_to_linear};
 
 pub(crate) const LUT_ROW_TEXELS: usize = 256;
-pub(crate) type LutRowTexels = [ColorF16; LUT_ROW_TEXELS];
+pub(crate) type LutRowTexels = [RgbaF16; LUT_ROW_TEXELS];
 
 pub(crate) fn bake_stops(stops: &GradientStops, interp: Interp, out: &mut LutRowTexels) {
     // No sort here: `GradientStops` holds its stops in ascending offset
@@ -16,7 +16,7 @@ pub(crate) fn bake_stops(stops: &GradientStops, interp: Interp, out: &mut LutRow
     let count = stops.len();
     debug_assert!(stops.is_ascending(), "GradientStops must arrive sorted");
 
-    let mut linear_stops = [Color::TRANSPARENT; MAX_STOPS];
+    let mut linear_stops = [RgbaF32::TRANSPARENT; MAX_STOPS];
     for index in 0..count {
         linear_stops[index] = stops[index].color().into();
     }
@@ -62,7 +62,7 @@ pub(crate) fn bake_stops(stops: &GradientStops, interp: Interp, out: &mut LutRow
 #[derive(Debug)]
 struct Ramp<'a> {
     stops: &'a GradientStops,
-    linear: &'a [Color],
+    linear: &'a [RgbaF32],
     /// Oklab coordinates of `linear`, empty under [`Interp::Linear`].
     oklab: &'a [[f32; 3]],
     interp: Interp,
@@ -79,7 +79,7 @@ impl<'a> Ramp<'a> {
     /// segment exist.
     fn new(
         stops: &'a GradientStops,
-        linear: &'a [Color],
+        linear: &'a [RgbaF32],
         oklab: &'a [[f32; 3]],
         interp: Interp,
     ) -> Self {
@@ -95,7 +95,7 @@ impl<'a> Ramp<'a> {
 
     /// The ramp colour at `t`. Private to [`Iterator::next`], which is the
     /// only thing that may name a `t` — see this type's doc.
-    fn color_at(&mut self, t: f32) -> Color {
+    fn color_at(&mut self, t: f32) -> RgbaF32 {
         if t <= self.stops[0].offset() {
             return self.linear[0];
         }
@@ -119,7 +119,7 @@ impl<'a> Ramp<'a> {
         let lower = self.linear[upper - 1];
         let upper_color = self.linear[upper];
         match self.interp {
-            Interp::Linear => Color::lerp(lower, upper_color, amount),
+            Interp::Linear => RgbaF32::lerp(lower, upper_color, amount),
             Interp::Oklab => lerp_oklab(
                 lower,
                 upper_color,
@@ -132,16 +132,16 @@ impl<'a> Ramp<'a> {
 }
 
 impl Iterator for Ramp<'_> {
-    type Item = ColorF16;
+    type Item = RgbaF16;
 
-    fn next(&mut self) -> Option<ColorF16> {
+    fn next(&mut self) -> Option<RgbaF16> {
         let texel = self.texel;
         if texel == LUT_ROW_TEXELS {
             return None;
         }
         self.texel += 1;
         let t = texel as f32 / (LUT_ROW_TEXELS - 1) as f32;
-        Some(ColorF16::from(self.color_at(t)))
+        Some(RgbaF16::from(self.color_at(t)))
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -153,19 +153,19 @@ impl Iterator for Ramp<'_> {
 impl ExactSizeIterator for Ramp<'_> {}
 
 fn lerp_oklab(
-    lower: Color,
-    upper: Color,
+    lower: RgbaF32,
+    upper: RgbaF32,
     lower_lab: [f32; 3],
     upper_lab: [f32; 3],
     amount: f32,
-) -> Color {
+) -> RgbaF32 {
     let lab = [
         lower_lab[0] + (upper_lab[0] - lower_lab[0]) * amount,
         lower_lab[1] + (upper_lab[1] - lower_lab[1]) * amount,
         lower_lab[2] + (upper_lab[2] - lower_lab[2]) * amount,
     ];
     let rgb = oklab_to_linear(lab);
-    Color {
+    RgbaF32 {
         r: rgb[0],
         g: rgb[1],
         b: rgb[2],
@@ -177,7 +177,7 @@ fn lerp_oklab(
 mod tests {
     use crate::primitives::brush::gradient::Interp;
     use crate::primitives::brush::gradient::stops::{GradientStops, Stop};
-    use crate::primitives::color::{Color, ColorU8};
+    use crate::primitives::color::{RgbaF32, RgbaU8};
     use crate::renderer::gradient_atlas::bake::{LUT_ROW_TEXELS, Ramp};
 
     /// The bake `zip`s the ramp against a fixed-length row, so a ramp
@@ -188,11 +188,9 @@ mod tests {
     /// as badly as a wrong count.
     #[test]
     fn a_ramp_yields_exactly_one_row_of_texels() {
-        let stops = GradientStops::new([
-            Stop::new(0.0, ColorU8::BLACK),
-            Stop::new(1.0, ColorU8::WHITE),
-        ]);
-        let linear = [Color::BLACK, Color::WHITE];
+        let stops =
+            GradientStops::new([Stop::new(0.0, RgbaU8::BLACK), Stop::new(1.0, RgbaU8::WHITE)]);
+        let linear = [RgbaF32::BLACK, RgbaF32::WHITE];
         let ramp = Ramp::new(&stops, &linear, &[], Interp::Linear);
 
         assert_eq!(ramp.len(), LUT_ROW_TEXELS);
