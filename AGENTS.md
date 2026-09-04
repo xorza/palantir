@@ -29,6 +29,18 @@ State-of-the-art UI framework, craft-driven.
   user intent or current code, double-question rather than defer — flag the
   conflict and ask.
 
+## Widgets use the public API
+
+A widget in this crate is written the way a widget outside it would be. It
+reaches nothing an outside crate could not: no `pub(crate)` helper, no private
+field, no crate-only trait or macro doing what a public path cannot. Widgets
+have no exclusive access to the system.
+
+When a widget needs something the public API does not offer, make it public
+first, with the docs a stranger needs, then use it from the widget. The test is
+that another person could reimplement the widget outside the crate, line for
+line, against the published surface.
+
 ## Architecture
 
 Five passes per frame over a tree rebuilt every frame: **record → measure →
