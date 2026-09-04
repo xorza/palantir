@@ -43,7 +43,6 @@ pub struct ColorStrip<'a> {
     style: Option<&'a ColorPickerTheme>,
 }
 
-/// Which axis a bar drives, and what it writes through to do it.
 #[derive(Debug)]
 enum StripKind<'a> {
     /// Hue needs the whole coordinate, not a bare `f32`: hue alone does not
@@ -54,7 +53,6 @@ enum StripKind<'a> {
     Alpha(&'a mut RgbaF32),
 }
 
-/// What `Page up` / `Page down` move.
 const KEY_PAGE: f32 = 0.1;
 
 impl<'a> ColorStrip<'a> {
@@ -127,7 +125,6 @@ impl<'a> ColorStrip<'a> {
             && (response.pressed() || response.left.drag.dragging() || released)
             && let (Some(local), Some(rect)) = (response.pointer_local, response.layout_rect)
         {
-            // No band: the marker line goes wherever the pointer is.
             let at = local
                 .x
                 .band_fraction(rect.size.w, 0.0)
@@ -168,7 +165,6 @@ impl<'a> ColorStrip<'a> {
 impl_configure!(ColorStrip<'_>);
 
 impl StripKind<'_> {
-    /// Where along the bar the value currently sits, `0..1`.
     fn read(&self) -> f32 {
         match self {
             Self::Hue(coords) => coords.hue(),
@@ -176,7 +172,6 @@ impl StripKind<'_> {
         }
     }
 
-    /// Move the value to `at`, reporting whether it actually moved.
     fn write(&mut self, at: f32) -> bool {
         let before = self.read();
         match self {
@@ -186,7 +181,6 @@ impl StripKind<'_> {
         self.read() != before
     }
 
-    /// What this bar's texture is built from.
     fn paint(&self) -> StripPaint {
         match self {
             Self::Hue(coords) => StripPaint::Hue(coords.model()),
@@ -204,15 +198,11 @@ pub(crate) enum StripPaint {
 }
 
 impl StripPaint {
-    /// Whether this bar needs the checker drawn behind it.
     fn wants_checker(self) -> bool {
         matches!(self, Self::Alpha(_))
     }
 
-    /// Write the bar's texels: the three colour channels sRGB-encoded, the
-    /// fourth straight alpha.
-    ///
-    /// Both ramps vary along one axis only, so one row is built and repeated.
+    // Both ramps vary along one axis; reuse each column conversion for every row.
     pub(crate) fn fill(self, image: &mut Image) {
         let width = image.size().x;
         for (column, texel) in image.row_mut(0).iter_mut().enumerate() {
@@ -226,8 +216,6 @@ impl StripPaint {
     }
 }
 
-/// Key travel along the bar, only while it holds focus. `Home` / `End` run
-/// to the ends, `Page up` / `Page down` move a tenth.
 fn keyboard_travel(ui: &mut Ui, kind: &mut StripKind<'_>) -> bool {
     let along = AxisKeys {
         back: Key::ArrowLeft,

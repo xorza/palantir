@@ -1,21 +1,21 @@
 use crate::common::clipboard::Clipboard;
 use crate::primitives::image::Image;
 use crate::primitives::texture_id::TextureId;
+use crate::renderer::image_registry::ImageRegistry;
 use crate::renderer::texture_limit::TextureLimit;
 use crate::text::shaper::TextShaper;
 use crate::ui::Ui;
 use crate::ui::resources::UiResources;
+use glam::UVec2;
 use std::num::NonZeroU32;
 
-/// The bundle's ceiling is the one `Ui::register_image` enforces and
-/// the one it reports, and a rejection stops before the registry — so
-/// it consumes no id.
 #[test]
 fn the_bundle_ceiling_gates_registration_and_is_what_ui_reports() {
     let resources = UiResources::new(
         TextShaper::test_mono(),
         Clipboard::default(),
         TextureLimit::from_device(NonZeroU32::new(4).unwrap()),
+        ImageRegistry::default(),
     );
     let ui = Ui::new(resources);
     assert_eq!(ui.max_image_dimension(), NonZeroU32::new(4));
@@ -38,10 +38,24 @@ fn img(w: u32, h: u32) -> Image {
 #[test]
 fn images_and_gpu_views_share_one_texture_id_authority() {
     let resources = UiResources::isolated_mono();
+    let clone = resources.clone();
     let gpu_view_id = resources.texture_ids.reserve();
-    let image = Image::from_rgba8(1, 1, vec![0, 0, 0, 0]);
-    let image_id = resources.images.register(&image).id();
+    let first = resources.register_image(&img(2, 3)).unwrap();
+    let second = clone.register_image(&img(4, 5)).unwrap();
 
     assert_eq!(gpu_view_id, TextureId(1));
-    assert_eq!(image_id, TextureId(2));
+    assert_eq!(first.id(), TextureId(2));
+    assert_eq!(second.id(), TextureId(3));
+    assert_eq!(first.size(), UVec2::new(2, 3));
+    assert_eq!(second.size(), UVec2::new(4, 5));
+    assert_eq!(resources.images.resident(), 0);
+    assert_eq!(clone.images.resident(), 0);
+}
+
+#[test]
+fn dimensions_above_u16_are_preserved_without_a_gpu() {
+    const WIDTH: u32 = u16::MAX as u32 + 1;
+    let resources = UiResources::isolated_mono();
+    let handle = resources.register_image(&img(WIDTH, 1)).unwrap();
+    assert_eq!(handle.size(), UVec2::new(WIDTH, 1));
 }

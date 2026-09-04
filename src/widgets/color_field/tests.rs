@@ -25,16 +25,22 @@ fn coords(hue: f32, sat: f32, val: f32) -> ColorCoords {
     c
 }
 
-/// One frame of a field bound to `state`, reporting what it wrote.
-fn frame(h: &mut UiHarness, id: WidgetId, state: &mut ColorCoords) -> (bool, bool) {
+#[derive(Debug)]
+struct EditEdges {
+    changed: bool,
+    committed: bool,
+}
+
+fn frame(h: &mut UiHarness, id: WidgetId, state: &mut ColorCoords) -> EditEdges {
     h.frame_value(|ui| {
         let r = ColorField::new(state).id(id).show(ui);
-        (r.changed, r.committed)
+        EditEdges {
+            changed: r.changed,
+            committed: r.committed,
+        }
     })
 }
 
-/// The pointer maps onto the axes with no drift: the top-left corner is the
-/// grey-and-bright end exactly, and a quarter across is a quarter.
 #[test]
 fn the_pointer_maps_onto_the_axes() {
     let id = WidgetId::from_hash("field-mapping");
@@ -72,8 +78,6 @@ fn a_drag_past_the_edge_clamps_to_it() {
     assert_eq!(state.val(), 0.0, "dragged past the bottom edge");
 }
 
-/// A press writes and a release commits, and neither fires on a frame where
-/// nothing moved.
 #[test]
 fn changed_and_committed_are_edges() {
     let id = WidgetId::from_hash("field-edges");
@@ -82,19 +86,19 @@ fn changed_and_committed_are_edges() {
     frame(&mut h, id, &mut state);
 
     h.press_at(Vec2::new(104.0, 80.0));
-    let (changed, committed) = frame(&mut h, id, &mut state);
+    let EditEdges { changed, committed } = frame(&mut h, id, &mut state);
     assert!(changed, "the press moved the value");
     assert!(!committed, "a press is not the end of a gesture");
 
-    let (changed, committed) = frame(&mut h, id, &mut state);
+    let EditEdges { changed, committed } = frame(&mut h, id, &mut state);
     assert!(!changed, "a held pointer that has not moved writes nothing");
     assert!(!committed);
 
     h.release();
-    let (_, committed) = frame(&mut h, id, &mut state);
+    let EditEdges { committed, .. } = frame(&mut h, id, &mut state);
     assert!(committed, "the release frame is the one edit");
 
-    let (changed, committed) = frame(&mut h, id, &mut state);
+    let EditEdges { changed, committed } = frame(&mut h, id, &mut state);
     assert!(!changed && !committed, "no residual signals");
 }
 
@@ -113,8 +117,6 @@ fn texels_are_srgb_encoded() {
     assert_eq!(image.texels()[2], SrgbaU8::rgb(128, 96, 96));
 }
 
-/// A hue change rewrites the texture under the same id, and damage has to
-/// see that: the field's whole rect repaints, not the marker's alone.
 #[test]
 fn a_hue_change_repaints_the_whole_field() {
     let id = WidgetId::from_hash("field-repaint");
@@ -151,37 +153,52 @@ fn a_hue_change_repaints_the_whole_field() {
     );
 }
 
-/// Decode one texel of an `Rgba8UnormSrgb` texture the way a sampler does.
-fn texel(texels: &[SrgbaU8], size: UVec2, column: u32, row: u32) -> RgbaF32 {
-    RgbaF32::from_srgba(texels[(row * size.x + column) as usize])
-}
-
-/// What the sampler shows at a fraction across a `size`-texel image: decode
-/// to linear, then filter. An sRGB texture decodes *before* it filters, which
-/// is why this interpolates linear values rather than bytes.
-fn sample(texels: &[SrgbaU8], size: UVec2, u: f32, v: f32) -> RgbaF32 {
+// An sRGB texture decodes before filtering, so interpolate linear texels.
+fn sample(texels: &[RgbaF32], size: UVec2, u: f32, v: f32) -> RgbaF32 {
+    #[derive(Debug)]
+    struct AxisSample {
+        low: u32,
+        fraction: f32,
+    }
     let axis = |fraction: f32, count: u32| {
         let at = (fraction * count as f32 - 0.5).clamp(0.0, (count - 1) as f32);
         let low = at.floor();
-        (low as u32, (at - low).clamp(0.0, 1.0))
+        AxisSample {
+            low: low as u32,
+            fraction: at - low,
+        }
     };
-    let (x, fx) = axis(u, size.x);
-    let (y, fy) = axis(v, size.y);
+    let AxisSample {
+        low: x,
+        fraction: fx,
+    } = axis(u, size.x);
+    let AxisSample {
+        low: y,
+        fraction: fy,
+    } = axis(v, size.y);
     let x1 = (x + 1).min(size.x - 1);
     let y1 = (y + 1).min(size.y - 1);
     let mix = |a: RgbaF32, b: RgbaF32, t: f32| a.lerp(b, t);
-    let top = mix(texel(texels, size, x, y), texel(texels, size, x1, y), fx);
-    let bottom = mix(texel(texels, size, x, y1), texel(texels, size, x1, y1), fx);
+    let top = mix(
+        texels[(y * size.x + x) as usize],
+        texels[(y * size.x + x1) as usize],
+        fx,
+    );
+    let bottom = mix(
+        texels[(y1 * size.x + x) as usize],
+        texels[(y1 * size.x + x1) as usize],
+        fx,
+    );
     mix(top, bottom, fy)
 }
 
-/// Worst error, in 8-bit sRGB units, between the sampled texture and the
-/// exact colour, over one field's worth of pixels at twelve hues.
-fn worst_error(model: ColorModel, downsample: u32) -> f32 {
-    worst_error_at(model, downsample).0
+#[derive(Debug, Default)]
+struct SampleError {
+    value: f32,
+    at: Vec2,
 }
 
-fn worst_error_at(model: ColorModel, downsample: u32) -> (f32, f32, f32) {
+fn worst_error(model: ColorModel, downsample: u32) -> SampleError {
     const SCALE: f32 = 1.5;
     let pixels = UVec2::new(
         (FIELD.x as f32 * SCALE) as u32,
@@ -192,31 +209,33 @@ fn worst_error_at(model: ColorModel, downsample: u32) -> (f32, f32, f32) {
         (pixels.y as f32 / downsample as f32).ceil() as u32,
     );
     let mut image = Image::blank(size);
-    let mut worst = 0.0_f32;
-    let (mut worst_u, mut worst_v) = (0.0_f32, 0.0_f32);
+    let mut texels = Vec::with_capacity((size.x * size.y) as usize);
+    let mut worst = SampleError::default();
     for step in 0..12 {
         let hue = step as f32 / 12.0;
         fill(&mut image, model, hue);
-        let texels = image.texels();
+        texels.clear();
+        texels.extend(image.texels().iter().copied().map(RgbaF32::from_srgba));
         let slice = model.slice(hue);
         for row in 0..pixels.y {
             let v = (row as f32 + 0.5) / pixels.y as f32;
             for column in 0..pixels.x {
                 let u = (column as f32 + 0.5) / pixels.x as f32;
-                let shown = sample(texels, size, u, v).to_srgba_u8();
+                let shown = sample(&texels, size, u, v).to_srgba_u8();
                 let want = slice.color(u, 1.0 - v).to_srgba_u8();
                 for (a, b) in [(shown.r, want.r), (shown.g, want.g), (shown.b, want.b)] {
                     let error = (f32::from(a) - f32::from(b)).abs();
-                    if error > worst {
-                        worst = error;
-                        worst_u = u;
-                        worst_v = 1.0 - v;
+                    if error > worst.value {
+                        worst = SampleError {
+                            value: error,
+                            at: Vec2::new(u, 1.0 - v),
+                        };
                     }
                 }
             }
         }
     }
-    (worst, worst_u, worst_v)
+    worst
 }
 
 /// The default resolution holds the field within nine 8-bit steps of the
@@ -231,16 +250,23 @@ fn worst_error_at(model: ColorModel, downsample: u32) -> (f32, f32, f32) {
 /// [`ColorField::downsample`](crate::ColorField::downsample) for the table.
 #[test]
 fn downsample_four_tracks_the_exact_colour() {
-    for model in ColorModel::ALL {
-        let (worst, u, v) = worst_error_at(model, 4);
+    let errors = std::thread::scope(|scope| {
+        let sweeps = ColorModel::ALL.map(|model| {
+            [1, 4, 16].map(|downsample| scope.spawn(move || worst_error(model, downsample)))
+        });
+        sweeps.map(|model| model.map(|sweep| sweep.join().unwrap()))
+    });
+    for (model, [exact, sampled, coarse]) in ColorModel::ALL.into_iter().zip(errors) {
+        let SampleError { value: worst, at } = sampled;
+        let u = at.x;
+        let v = at.y;
         assert!(worst <= 9.0, "{model:?} at 4: {worst}/255 at s={u} v={v}");
         assert!(
             v > 0.9,
             "{model:?}: worst error left the top edge, at v={v}"
         );
-        let _ = u;
-        assert_eq!(worst_error(model, 1), 0.0, "{model:?} at 1 is exact");
-        let coarse = worst_error(model, 16);
+        assert_eq!(exact.value, 0.0, "{model:?} at 1 is exact");
+        let coarse = coarse.value;
         assert!(
             coarse > worst,
             "{model:?} at 16 ({coarse}/255) should be worse than at 4 ({worst}/255)",

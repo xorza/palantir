@@ -3,7 +3,7 @@
 
 use crate::primitives::image::Image;
 use crate::primitives::size::Size;
-use crate::renderer::image_registry::ImageHandle;
+use crate::renderer::image_registry::image_handle::ImageHandle;
 use crate::ui::Ui;
 use glam::UVec2;
 use rustc_hash::FxBuildHasher;
@@ -20,19 +20,18 @@ use std::num::NonZeroU32;
 /// the eye can use them.
 ///
 /// Kept in widget state across frames, the CPU image included. A rebuild
-/// refills that image and hands it to [`ImageHandle::update`], so a hue drag
-/// allocates nothing and mints no second texture.
+/// refills that image and hands it to [`ImageHandle::update`], reusing the
+/// CPU buffer and GPU texture.
 #[derive(Debug, Default)]
 pub(crate) struct ColorSurface {
     built: Option<Built>,
-    stamp: u64,
 }
 
-/// The texture and the CPU image it is refilled from.
 #[derive(Debug)]
 struct Built {
     handle: ImageHandle,
     image: Image,
+    stamp: u64,
 }
 
 /// Smallest texture either axis is built at. Two texels still interpolate;
@@ -96,26 +95,72 @@ impl ColorSurface {
         fill: impl FnOnce(&mut Image),
     ) -> &ImageHandle {
         let stamp = FxBuildHasher.hash_one(key);
-        let built = match self.built.take() {
-            Some(mut built) if built.handle.size() == size => {
-                if stamp != self.stamp {
-                    fill(&mut built.image);
-                    built.handle.update(&built.image);
-                }
-                built
+        if let Some(built) = self
+            .built
+            .as_mut()
+            .filter(|built| built.image.size() == size)
+        {
+            if stamp != built.stamp {
+                fill(&mut built.image);
+                built.handle.update(&built.image);
+                built.stamp = stamp;
             }
-            // First build or a resize. A resize is rare — a panel being
-            // dragged wider — so the allocation is not on any hot path.
-            _ => {
-                let mut image = Image::blank(size);
-                fill(&mut image);
-                let handle = ui
-                    .register_image(&image)
-                    .expect("a colour surface is clamped to the device texture cap");
-                Built { handle, image }
-            }
-        };
-        self.stamp = stamp;
-        &self.built.insert(built).handle
+        } else {
+            let mut image = Image::blank(size);
+            fill(&mut image);
+            let handle = ui
+                .register_image(&image)
+                .expect("a colour surface is clamped to the device texture cap");
+            self.built = Some(Built {
+                handle,
+                image,
+                stamp,
+            });
+        }
+        &self.built.as_ref().unwrap().handle
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::primitives::color::srgba_u8::SrgbaU8;
+    use crate::ui::harness::UiHarness;
+
+    #[test]
+    fn cached_surface_reuses_pixels_and_handle_until_resize() {
+        let mut h = UiHarness::new(UVec2::new(8, 8));
+        let mut surface = ColorSurface::default();
+        let red = SrgbaU8::rgb(255, 0, 0);
+        let blue = SrgbaU8::rgb(0, 0, 255);
+        let first = surface
+            .ensure(h.ui(), UVec2::new(2, 3), 1, |image| {
+                image.texels_mut().fill(red);
+            })
+            .clone();
+        let pixels = surface.built.as_ref().unwrap().image.texels().as_ptr();
+        assert_eq!(first.generation(), 0);
+        let reused = surface.ensure(h.ui(), UVec2::new(2, 3), 1, |_| {
+            panic!("an unchanged surface must not refill");
+        });
+        assert_eq!(reused.id(), first.id());
+        assert_eq!(reused.generation(), 0);
+
+        let updated = surface.ensure(h.ui(), UVec2::new(2, 3), 2, |image| {
+            assert_eq!(image.texels().as_ptr(), pixels);
+            image.texels_mut().fill(blue);
+        });
+        assert_eq!(updated.id(), first.id());
+        assert_eq!(first.generation(), 1);
+        assert_eq!(surface.built.as_ref().unwrap().image.texels(), &[blue; 6]);
+
+        let resized = surface.ensure(h.ui(), UVec2::new(3, 2), 2, |image| {
+            assert_eq!(image.size(), UVec2::new(3, 2));
+            image.texels_mut().fill(red);
+        });
+        assert_ne!(resized.id(), first.id());
+        assert_eq!(resized.size(), UVec2::new(3, 2));
+        assert_eq!(resized.generation(), 0);
+        assert_eq!(surface.built.as_ref().unwrap().image.texels(), &[red; 6]);
     }
 }

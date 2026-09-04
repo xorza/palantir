@@ -33,9 +33,7 @@ use glam::UVec2;
 #[derive(Clone, Copy, Debug)]
 pub(super) struct TextureRegion<'a> {
     pub(super) texture: &'a wgpu::Texture,
-    /// Row this band starts at.
     pub(super) first_row: u32,
-    /// Extent in texels.
     pub(super) size: UVec2,
     /// Source stride. Carried rather than derived from `size.x`: the two
     /// uploaders have different texel widths (`Rgba8` against
@@ -97,7 +95,6 @@ pub(crate) mod counters {
     static TEXTURE_CALLS: AtomicU64 = AtomicU64::new(0);
     static TEXTURE_BYTES: AtomicU64 = AtomicU64::new(0);
 
-    /// Tally one [`super::TextureRegion::write`] of `bytes`.
     pub(super) fn note(bytes: u64) {
         TEXTURE_CALLS.fetch_add(1, Relaxed);
         TEXTURE_BYTES.fetch_add(bytes, Relaxed);

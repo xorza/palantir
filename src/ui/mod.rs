@@ -57,7 +57,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::renderer::frontend::FrameScene;
 use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
 use crate::renderer::gpu_paint::gpu_views::GpuViews;
-use crate::renderer::image_registry::ImageHandle;
+use crate::renderer::image_registry::image_handle::ImageHandle;
 use crate::renderer::texture_limit::RegisterImageError;
 use crate::scene::cascade::Cascade;
 use crate::scene::forest::Forest;
@@ -132,15 +132,12 @@ pub struct Ui {
     /// site clone one — 640 B for a `ButtonTheme`, 692 B for a
     /// `TextEditTheme`, per widget per frame.
     theme: Rc<Theme>,
-    /// Cross-frame widget state: per-type dense stores keyed by
-    /// `WidgetId` (see [`StateMap`]).
     state: StateMap,
     /// Live `GpuView`s — the only `GpuView` bookkeeping on the `Ui`. The
     /// shape records only the redraw epoch, and the encoder looks the view
     /// up here by the node's `WidgetId`. Swept by the same `removed` set
     /// as [`StateMap`].
     gpu_views: GpuViews,
-    /// App-global capabilities available to the recorder.
     resources: UiResources,
     layout: Layout,
     /// Cascaded clip/disabled/invisible/transform per node + global
@@ -154,9 +151,7 @@ pub struct Ui {
     /// validity state — the scheduling half of a frame, as against the
     /// authored tables above.
     frame_runtime: FrameRuntime,
-    /// Recorder-to-host requests retained across frames.
     window_requests: WindowRequests,
-    /// Host-to-recorder facts refreshed before each windowed frame.
     window_frame: WindowFrameState,
 }
 
@@ -751,8 +746,7 @@ impl Ui {
     ///
     /// **Hold the set.** It owns everything the host caches for those icons —
     /// the data, the SVG parses, the atlas rasters — and dropping the last
-    /// clone unloads all three at the next submit, exactly as
-    /// [`Self::register_image`] does for a texture. Park it in your state and
+    /// clone unloads all three at the next submit. Park it in your state and
     /// clone it where it needs to live.
     ///
     /// Loading is cheap and idempotent *while a set is held*: registering an
@@ -777,9 +771,9 @@ impl Ui {
     /// [`Shape::image`](crate::Shape::image) every frame (`clone` it where it
     /// needs to live).
     ///
-    /// The bytes are copied to the GPU before this returns, and nothing of
-    /// `image` is kept. Keep it yourself only to refill it for
-    /// [`ImageHandle::update`].
+    /// The bytes are copied into wgpu staging before this returns; the next
+    /// queue submission uploads them before drawing. No CPU copy is retained
+    /// by the registry. Keep `image` to refill it for [`ImageHandle::update`].
     ///
     /// # Errors
     ///
@@ -788,8 +782,7 @@ impl Ui {
     /// CPU recorders have no device limit and retain the original dimensions.
     #[inline]
     pub fn register_image(&self, image: &Image) -> Result<ImageHandle, RegisterImageError> {
-        self.resources.texture_limit.accepts(image.size)?;
-        Ok(self.resources.images.register(image))
+        self.resources.register_image(image)
     }
 
     /// Register a font and get back the [`FontFamily`] its first face
@@ -1059,7 +1052,6 @@ impl Ui {
         self.forest.open_node(id, node, chrome);
     }
 
-    /// Close the node [`Self::open_node`] opened.
     #[inline]
     pub(crate) fn close_node(&mut self) {
         self.forest.close_node();
@@ -1075,7 +1067,6 @@ impl Ui {
         self.forest.push_grid_def(rows, cols)
     }
 
-    /// [`Self::push_grid_def`] for a scroll's bar overlay.
     #[inline]
     pub(crate) fn push_scrollbars_def(&mut self, def: ScrollbarsDef) -> ScrollbarsDefId {
         self.forest.push_scrollbars_def(def)
@@ -1628,8 +1619,6 @@ pub(crate) mod internals {
     /// `-W dead_code` says so.
     #[cfg(any(test, feature = "bench"))]
     impl Ui {
-        /// The whole forest, for the callers that re-run a pass over it —
-        /// the cascade engine and the measure cache both walk every layer.
         pub(crate) fn forest(&self) -> &Forest {
             &self.forest
         }
@@ -1712,7 +1701,6 @@ pub(crate) mod internals {
             &self.frame_runtime
         }
 
-        /// Narrower again: only the winit host's own tests write here.
         #[cfg(feature = "winit")]
         pub(crate) fn frame_runtime_mut(&mut self) -> &mut FrameRuntime {
             &mut self.frame_runtime
@@ -1722,7 +1710,6 @@ pub(crate) mod internals {
             &self.window_requests
         }
 
-        /// Narrower again: only the winit host's own tests write here.
         #[cfg(feature = "winit")]
         pub(crate) fn window_frame_mut(&mut self) -> &mut WindowFrameState {
             &mut self.window_frame

@@ -5,18 +5,65 @@
 
 use glam::{UVec2, Vec2};
 use palantir::{
-    Configure, ImageDownsample, ImageFilter, ImageFit, Panel, RgbaF32, Shape, Sizing, Ui,
+    Configure, Image, ImageDownsample, ImageFilter, ImageFit, Panel, RgbaF32, Shape, Sizing, Ui,
 };
 
 use crate::fixtures::close;
 use crate::harness::Harness;
+
+#[test]
+fn image_updates_copy_pixels_and_repaint_every_clone() {
+    let mut h = Harness::new();
+    let size = UVec2::new(4, 2);
+    let mut image = Image::from_rgba8(2, 2, [RED, BLUE, BLUE, RED].concat());
+    let handle = h.host.ui().register_image(&image).unwrap();
+    let clone = handle.clone();
+    drop(handle);
+    assert_eq!(h.host.gpu_image_cache_len(), 1);
+
+    // Changing the caller's bytes must not change the staged upload.
+    image.texels_mut().rotate_left(1);
+    let scene = |ui: &mut Ui| {
+        Panel::canvas()
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                for x in [0.0, 2.0] {
+                    strip_pane(
+                        ui,
+                        &clone,
+                        x,
+                        Vec2::splat(2.0),
+                        ImageFit::Fill,
+                        ImageFilter::Nearest,
+                        ImageFilter::Nearest,
+                    );
+                }
+            });
+    };
+    for expected in [[RED, BLUE, BLUE, RED], [BLUE, BLUE, RED, RED]] {
+        let out = h.render(size, 1.0, RgbaF32::BLACK, scene);
+        for y in 0..2 {
+            for x in 0..4 {
+                // Sampling at texel centres only incurs the sRGB round trip.
+                let want = expected[(y * 2 + x % 2) as usize];
+                for (got, want) in out.get_pixel(x, y).0.into_iter().zip(want) {
+                    assert!(got.abs_diff(want) <= 1, "pixel ({x}, {y}): {got} != {want}");
+                }
+            }
+        }
+        clone.update(&image);
+        image.texels_mut().fill(palantir::SrgbaU8::default());
+        assert_eq!(h.host.gpu_image_cache_len(), 1);
+    }
+    drop(clone);
+    assert_eq!(h.host.gpu_image_cache_len(), 0);
+}
 
 /// Source texels for the filter fixture: a 2×1 red|blue strip. Upscaled
 /// 64× horizontally, the two filters must diverge only around the seam.
 const RED: [u8; 4] = [230, 60, 60, 255];
 const BLUE: [u8; 4] = [60, 120, 230, 255];
 
-/// One exactly placed pane painting a strip with independent filters.
 fn strip_pane(
     ui: &mut Ui,
     handle: &palantir::ImageHandle,
@@ -338,7 +385,6 @@ const SKY: [u8; 4] = [0, 0, 0, 255];
 #[test]
 fn downsample_modes_recover_a_texel_the_single_tap_misses() {
     const PANE: Vec2 = Vec2::new(8.0, 16.0);
-    // (mode, expected grey, label)
     let cases = [
         (ImageDownsample::Single, 0u8, "Single"),
         (ImageDownsample::Mean, 165, "Mean"),
@@ -435,7 +481,6 @@ fn downsample_combines_taps_in_premultiplied_space() {
     const FAINT_WHITE: [u8; 4] = [255, 255, 255, 26];
     const SOLID_GREY: [u8; 4] = [128, 128, 128, 255];
 
-    // (texel triple, mode, expected grey, label)
     let cases = [
         (
             [DIM_WHITE, CLEAR, CLEAR],
@@ -558,8 +603,6 @@ fn downsample_taps_wrap_with_the_tile_instead_of_clamping() {
     }
 }
 
-/// Third solid source for the run-coalescing fixture, distinct from
-/// [`RED`] / [`BLUE`] so every run boundary is a visible colour change.
 const GREEN: [u8; 4] = [60, 200, 90, 255];
 
 /// Adjacent draws sharing a texture collapse into one instanced draw
