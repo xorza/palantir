@@ -43,6 +43,19 @@ fn color_field_alloc_free() {
     });
 }
 
+/// A hue drag rewrites the field's texture every frame, and after the first
+/// one that touches the heap not at all: the texels go straight into the
+/// buffer the handle keeps. A fixed warmup, because the scene never settles:
+/// the four frames the probe finds the settled field needs.
+#[test]
+fn color_field_hue_drag_alloc_free() {
+    let mut coords = ColorCoords::default();
+    Audit::new().warmup(4).run(|ui| {
+        coords.set_hue(coords.hue() + 0.01);
+        ColorField::new(&mut coords).auto_id().show(ui);
+    });
+}
+
 #[test]
 fn color_strip_alloc_free() {
     let mut coords = ColorCoords::default();

@@ -17,7 +17,7 @@
 /// [`RgbaF32::to_srgba_u8`]: crate::RgbaF32::to_srgba_u8
 /// [`RgbaF32::from_srgba`]: crate::RgbaF32::from_srgba
 #[repr(C)]
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct SrgbaU8 {
     /// Red, sRGB-encoded, 0..255.
     pub r: u8,

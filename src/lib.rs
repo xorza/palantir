@@ -301,6 +301,7 @@ pub use primitives::corners::Corners;
 pub use primitives::image::{Image, ImageDownsample, ImageFilter, ImageFit};
 pub use primitives::interned_str::InternedStr;
 pub use primitives::mesh::{Mesh, MeshVertex};
+pub use primitives::num::F32Ext;
 pub use primitives::raster_image::RasterImage;
 pub use primitives::rect::Rect;
 pub use primitives::shadow::Shadow;
@@ -330,6 +331,7 @@ pub use renderer::gpu_paint::GpuPaint;
 pub use renderer::gpu_paint::gpu_frame_ctx::GpuFrameCtx;
 pub use renderer::gpu_paint::gpu_init_ctx::GpuInitCtx;
 pub use renderer::image_registry::ImageHandle;
+pub use renderer::image_registry::image_write::ImageWrite;
 pub use renderer::texture_limit::RegisterImageError;
 /// The bound on [`Ui::add_shape`] — sealed, so it names the shape kinds
 /// the crate ships and nothing else.
