@@ -1,8 +1,10 @@
+use glam::UVec2;
 use std::num::NonZeroU32;
 
 use crate::diagnostics::DebugOverlayConfig;
 use crate::host::shared::HostShared;
 use crate::primitives::image::Image;
+use crate::primitives::texture_id::TextureId;
 use crate::renderer::texture_limit::TextureLimit;
 use crate::text::shaper::TextShaper;
 
@@ -44,15 +46,12 @@ fn backend_and_ui_share_text_images_and_gpu_stats() {
         ui.texture_limit, limit,
         "the recorder bundle carries the ceiling the host was built with",
     );
-    let image = ui
-        .images
-        .register(Image::from_rgba8(1, 1, vec![1, 2, 3, 4]));
-    let mut uploaded = None;
-    backend.images.drain_pending(|id, data| {
-        uploaded = Some(id);
-        assert_eq!(data.pixels, vec![1, 2, 3, 4]);
-    });
-    assert_eq!(uploaded, Some(image.id()));
+    let image = ui.images.register(&Image::blank(UVec2::ONE));
+    assert_eq!(
+        backend.images.register(&Image::blank(UVec2::ONE)).id(),
+        TextureId(image.id().0 + 1),
+        "one id authority behind both handles",
+    );
     backend.gpu_pass_stats.record_pass_ns(2_500_000);
     assert_eq!(ui.diagnostics.gpu_pass_stats.last_pass_ms(), Some(2.5));
 }

@@ -108,9 +108,11 @@ mod format_pipelines;
 mod gpu_ctx;
 mod gpu_gradient_atlas;
 mod gpu_timings;
+mod gpu_view_targets;
 pub(crate) mod icon;
+pub(crate) mod image_binding;
+pub(crate) mod image_gpu;
 pub(crate) mod image_pipeline;
-mod image_textures;
 mod mesh_pipeline;
 mod overlay_pass;
 mod pipeline_recipe;
@@ -142,9 +144,11 @@ use crate::renderer::backend::format_pipelines::PipelineSources;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::gpu_gradient_atlas::GpuGradientAtlas;
 use crate::renderer::backend::gpu_timings::GpuTimings;
+use crate::renderer::backend::gpu_view_targets::GpuViewTargets;
 use crate::renderer::backend::icon::IconBackend;
+use crate::renderer::backend::image_binding::ImageBinding;
+use crate::renderer::backend::image_gpu::ImageGpu;
 use crate::renderer::backend::image_pipeline::{ImageBatch, ImagePipeline};
-use crate::renderer::backend::image_textures::ImageTextures;
 use crate::renderer::backend::mesh_pipeline::{MeshBatch, MeshPipeline, MeshUpload};
 use crate::renderer::backend::overlay_pass::DebugOverlay;
 use crate::renderer::backend::quad_pipeline::QuadPipeline;
@@ -208,12 +212,13 @@ pub(crate) struct WgpuBackend {
     quad: QuadPipeline,
     mesh: MeshPipeline,
     image: ImagePipeline,
-    /// Every GPU texture a draw may sample — registered images and the
-    /// framework's `GpuView` targets — plus the group-0 layout and
-    /// sampler they share. Owned beside the pipeline rather than inside
-    /// it, so `paint_gpu_views` and `retire_owner` are reached without a
-    /// forwarder and `draw` is handed the store it binds from.
-    image_textures: ImageTextures,
+    /// The group-0 layout and sampler every image bind group is built
+    /// against, shared by the registered images and the `GpuView` targets.
+    image_binding: ImageBinding,
+    /// The framework's `GpuView` targets. Owned beside the pipeline rather
+    /// than inside it, so `paint_gpu_views` and `retire_owner` are reached
+    /// without a forwarder and `draw` is handed the store it binds from.
+    gpu_view_targets: GpuViewTargets,
     /// The one shader, group-0 layout and sampler both raster tenants
     /// draw through, and so the one pipeline pair per format they
     /// share — see [`RasterProgram`].
@@ -230,7 +235,8 @@ pub(crate) struct WgpuBackend {
     /// that carries the color target; there is no single "current format"
     /// — the surface texture handed to `submit` selects the set.
     pipelines: FxHashMap<wgpu::TextureFormat, FormatPipelines>,
-    /// Shared image lifecycle drained each frame for uploads and releases.
+    /// The registered images. Their GPU side is attached here at
+    /// construction, and the draw path binds through it.
     images: ImageRegistry,
     /// Main-pass timestamp queries. `Some` when the host opted into
     /// instrumentation and the device was created with `TIMESTAMP_QUERY`
@@ -284,7 +290,13 @@ impl WgpuBackend {
         let quad = QuadPipeline::new(&device);
         let mesh = MeshPipeline::new(&device);
         let image = ImagePipeline::new(&device);
-        let image_textures = ImageTextures::new(&device);
+        let image_binding = ImageBinding::new(&device);
+        let gpu_view_targets = GpuViewTargets::new(image_binding.clone());
+        resources.images.attach(ImageGpu::new(
+            device.clone(),
+            queue.clone(),
+            image_binding.clone(),
+        ));
         let curve = CurvePipeline::new(&device);
         let raster = RasterProgram::new(&device);
         let text = TextBackend::new(&device, &raster, resources.text);
@@ -319,7 +331,8 @@ impl WgpuBackend {
             quad,
             mesh,
             image,
-            image_textures,
+            image_binding,
+            gpu_view_targets,
             raster,
             icon,
             curve,
@@ -352,7 +365,7 @@ impl WgpuBackend {
                 format,
                 PipelineSources {
                     gradient_bgl: &self.gradient.bgl,
-                    image_bgl: self.image_textures.layout(),
+                    image_bgl: self.image_binding.layout(),
                     quad: &self.quad,
                     mesh: &self.mesh,
                     image: &self.image,
@@ -520,15 +533,11 @@ impl WgpuBackend {
         let is_partial = plan.damage.is_partial();
         let mut ctx = GpuCtx::new(&self.device, &self.queue, &mut self.staging_belt, encoder);
 
-        // Texture-only uploads (the belt is buffer-only). Run
-        // first so any draws below see the right pixels:
-        // - gradient LUT atlas: idle frames drain an empty dirty
-        //   flag and do nothing; first frame uploads row 0's
-        //   magenta fallback plus any baked rows composer queued.
-        // - image registry: first-frame images need a bind group
-        //   ready when the schedule's draw call lands.
+        // Texture-only upload (the belt is buffer-only). Runs first so
+        // any draw below sees the right pixels: idle frames drain an
+        // empty dirty flag and do nothing; the first frame uploads row
+        // 0's magenta fallback plus any baked rows composer queued.
         self.gradient.upload(&ctx);
-        self.image_textures.drain_registry(&mut ctx, &self.images);
 
         if dim_undamaged {
             self.debug
@@ -570,7 +579,7 @@ impl WgpuBackend {
         // (eviction is owner-scoped — the shared backend serves every
         // window).
         // `submit` itself carries no render-target logic.
-        self.image_textures.paint_gpu_views(
+        self.gpu_view_targets.paint_gpu_views(
             &mut ctx,
             buffer.frame_views(),
             owner,
@@ -790,6 +799,7 @@ impl WgpuBackend {
         use_stencil: bool,
     ) {
         tracy::zone!();
+        let images = self.images.gpu();
         // Track what pipeline + vertex buffer is currently bound so we
         // can skip redundant `set_pipeline` / `set_vertex_buffer` calls
         // across consecutive same-kind steps. wgpu records every
@@ -954,7 +964,8 @@ impl WgpuBackend {
                                     ids: buffer.images.id(),
                                     items: items(),
                                 },
-                                &self.image_textures,
+                                &images,
+                                &self.gpu_view_targets,
                             );
                         }
                         PaintTier::Icon => {
@@ -1054,7 +1065,7 @@ impl WgpuBackend {
     // the only conceivable one — an embedding host needs this entry point too.
     #[cfg_attr(not(feature = "winit"), allow(dead_code))]
     pub(crate) fn retire_render_owner(&mut self, owner: RenderOwnerId) {
-        self.image_textures.retire_owner(owner);
+        self.gpu_view_targets.retire_owner(owner);
     }
 }
 
@@ -1117,10 +1128,10 @@ pub(crate) mod internals {
             self.pipelines.contains_key(&format)
         }
 
-        /// Images resident in the GPU texture cache — see
-        /// [`ImageTextures::gpu_cached_count`].
+        /// Registered images resident on the GPU — what the surface-format
+        /// change tests assert survives a pipeline rebuild.
         pub(crate) fn gpu_image_cache_len(&self) -> usize {
-            self.image_textures.gpu_cached_count()
+            self.images.gpu().resident()
         }
     }
 }

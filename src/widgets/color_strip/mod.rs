@@ -7,10 +7,10 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::color::color_coords::ColorCoords;
 use crate::primitives::color::color_model::ColorModel;
+use crate::primitives::image::Image;
 use crate::primitives::image::ImageFit;
 use crate::primitives::num::F32Ext;
 use crate::primitives::size::Size;
-use crate::renderer::image_registry::image_write::ImageWrite;
 use crate::scene::node::Node;
 use crate::scene::node::configure::Configure;
 use crate::shape::Shape;
@@ -148,7 +148,7 @@ impl<'a> ColorStrip<'a> {
             }
             let image = ui.with_state::<ColorSurface, _>(id.with("surface"), |ui, surface| {
                 surface
-                    .ensure(ui, texels, paint, |texels| paint.fill(texels))
+                    .ensure(ui, texels, paint, |image| paint.fill(image))
                     .clone()
             });
             ui.add_shape(Shape::image(image).fit(ImageFit::Fill));
@@ -213,16 +213,16 @@ impl StripPaint {
     /// fourth straight alpha.
     ///
     /// Both ramps vary along one axis only, so one row is built and repeated.
-    pub(crate) fn fill(self, texels: &mut ImageWrite<'_>) {
-        let width = texels.size().x;
-        for (column, texel) in texels.row_mut(0).iter_mut().enumerate() {
+    pub(crate) fn fill(self, image: &mut Image) {
+        let width = image.size().x;
+        for (column, texel) in image.row_mut(0).iter_mut().enumerate() {
             let along = (column as f32 + 0.5) / width as f32;
             *texel = match self {
                 Self::Hue(model) => model.slice(along).color(1.0, 1.0).to_srgba_u8(),
                 Self::Alpha(color) => color.with_alpha(along).to_srgba_u8(),
             };
         }
-        texels.repeat_row(0);
+        image.repeat_row(0);
     }
 }
 

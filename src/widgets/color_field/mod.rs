@@ -7,10 +7,10 @@ use crate::input::shortcut::Shortcut;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::color::color_coords::ColorCoords;
 use crate::primitives::color::color_model::ColorModel;
+use crate::primitives::image::Image;
 use crate::primitives::image::ImageFit;
 use crate::primitives::num::F32Ext;
 use crate::primitives::size::Size;
-use crate::renderer::image_registry::image_write::ImageWrite;
 use crate::scene::node::Node;
 use crate::scene::node::configure::Configure;
 use crate::shape::Shape;
@@ -133,8 +133,8 @@ impl<'a> ColorField<'a> {
         widget.record(ui, None, |ui| {
             let image = ui.with_state::<ColorSurface, _>(id.with("surface"), |ui, surface| {
                 surface
-                    .ensure(ui, texels, (model, hue.to_bits()), |texels| {
-                        fill(texels, model, hue);
+                    .ensure(ui, texels, (model, hue.to_bits()), |image| {
+                        fill(image, model, hue);
                     })
                     .clone()
             });
@@ -199,10 +199,10 @@ fn keyboard_travel(ui: &mut Ui, coords: &mut ColorCoords) -> bool {
 ///
 /// The hue's gamut solve is hoisted out of the loop — every texel here shares
 /// it, and for Okhsv it is the expensive half of a conversion.
-fn fill(texels: &mut ImageWrite<'_>, model: ColorModel, hue: f32) {
+fn fill(image: &mut Image, model: ColorModel, hue: f32) {
     let slice = model.slice(hue);
-    let size = texels.size();
-    texels.fill_with(|column, row| {
+    let size = image.size();
+    image.fill_with(|column, row| {
         let sat = (column as f32 + 0.5) / size.x as f32;
         let val = 1.0 - (row as f32 + 0.5) / size.y as f32;
         slice.color(sat, val).to_srgba_u8()

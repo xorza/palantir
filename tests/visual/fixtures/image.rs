@@ -70,7 +70,7 @@ fn minification_and_magnification_filters_are_independent() {
     let magnified = h.render(UVec2::new(256, 64), 1.0, RgbaF32::BLACK, |ui| {
         let handle = mag_strip
             .get_or_insert_with(|| {
-                ui.register_image(palantir::Image::from_rgba8(2, 1, [RED, BLUE].concat()))
+                ui.register_image(&palantir::Image::from_rgba8(2, 1, [RED, BLUE].concat()))
                     .expect("fixture image fits every supported GPU")
             })
             .clone();
@@ -117,7 +117,7 @@ fn minification_and_magnification_filters_are_independent() {
     let minified = h.render(UVec2::new(4, 16), 1.0, RgbaF32::BLACK, |ui| {
         let handle = min_strip
             .get_or_insert_with(|| {
-                ui.register_image(palantir::Image::from_rgba8(
+                ui.register_image(&palantir::Image::from_rgba8(
                     4,
                     1,
                     [RED, BLUE, RED, BLUE].concat(),
@@ -197,8 +197,12 @@ fn bilinear_both_nearest_and_tiled_sampling_paths_are_pinned() {
     let strips = h.render(UVec2::new(200, 32), 1.0, RgbaF32::BLACK, |ui| {
         let handle = strip
             .get_or_insert_with(|| {
-                ui.register_image(palantir::Image::from_rgba8(3, 1, [RED, BLUE, RED].concat()))
-                    .expect("fixture image fits every supported GPU")
+                ui.register_image(&palantir::Image::from_rgba8(
+                    3,
+                    1,
+                    [RED, BLUE, RED].concat(),
+                ))
+                .expect("fixture image fits every supported GPU")
             })
             .clone();
         Panel::canvas()
@@ -243,7 +247,7 @@ fn bilinear_both_nearest_and_tiled_sampling_paths_are_pinned() {
     let tiled = h.render(UVec2::new(200, 16), 1.0, RgbaF32::BLACK, |ui| {
         let handle = tile
             .get_or_insert_with(|| {
-                ui.register_image(palantir::Image::from_rgba8(2, 1, [RED, BLUE].concat()))
+                ui.register_image(&palantir::Image::from_rgba8(2, 1, [RED, BLUE].concat()))
                     .expect("fixture image fits every supported GPU")
             })
             .clone();
@@ -350,7 +354,7 @@ fn downsample_modes_recover_a_texel_the_single_tap_misses() {
                     .flatten()
                     .flatten()
                     .collect();
-                ui.register_image(palantir::Image::from_rgba8(24, 1, texels))
+                ui.register_image(&palantir::Image::from_rgba8(24, 1, texels))
                     .expect("fixture image fits every supported GPU")
             })
             .clone();
@@ -458,7 +462,7 @@ fn downsample_combines_taps_in_premultiplied_space() {
                         .flatten()
                         .flatten()
                         .collect();
-                    ui.register_image(palantir::Image::from_rgba8(24, 1, texels))
+                    ui.register_image(&palantir::Image::from_rgba8(24, 1, texels))
                         .expect("fixture image fits every supported GPU")
                 })
                 .collect()
@@ -520,7 +524,7 @@ fn downsample_taps_wrap_with_the_tile_instead_of_clamping() {
     let out = h.render(UVec2::new(8, 16), 1.0, RgbaF32::BLACK, |ui| {
         let handle = source
             .get_or_insert_with(|| {
-                ui.register_image(palantir::Image::from_rgba8(
+                ui.register_image(&palantir::Image::from_rgba8(
                     4,
                     1,
                     [STAR, SKY, SKY, SKY].concat(),
@@ -585,7 +589,7 @@ fn adjacent_same_texture_runs_composite_identically_to_per_draw() {
     let out = h.render(UVec2::new(192, 32), 1.0, RgbaF32::BLACK, |ui| {
         let handles = sources.get_or_insert_with(|| {
             SOURCES.map(|texel| {
-                ui.register_image(palantir::Image::from_rgba8(1, 1, texel.to_vec()))
+                ui.register_image(&palantir::Image::from_rgba8(1, 1, texel.to_vec()))
                     .expect("fixture image fits every supported GPU")
             })
         });

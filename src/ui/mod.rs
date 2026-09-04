@@ -771,20 +771,23 @@ impl Ui {
         self.resources.icons.register(table)
     }
 
-    /// Upload an image and get back an owning [`ImageHandle`]. **Hold the
-    /// handle** to keep the GPU texture resident — dropping the last
+    /// Upload an image now and get back an owning [`ImageHandle`]. **Hold
+    /// the handle** to keep the GPU texture resident — dropping the last
     /// clone frees it; there is no `unregister`. Reference it in
     /// [`Shape::image`](crate::Shape::image) every frame (`clone` it where it
     /// needs to live).
-    /// The CPU bytes are dropped right after the upload.
+    ///
+    /// The bytes are copied to the GPU before this returns, and nothing of
+    /// `image` is kept. Keep it yourself only to refill it for
+    /// [`ImageHandle::update`].
     ///
     /// # Errors
     ///
     /// Returns an error when an image axis exceeds the selected device's 2D
-    /// texture limit. A rejected image is never queued for upload. Standalone
+    /// texture limit. A rejected image never reaches the GPU. Standalone
     /// CPU recorders have no device limit and retain the original dimensions.
     #[inline]
-    pub fn register_image(&self, image: Image) -> Result<ImageHandle, RegisterImageError> {
+    pub fn register_image(&self, image: &Image) -> Result<ImageHandle, RegisterImageError> {
         self.resources.texture_limit.accepts(image.size)?;
         Ok(self.resources.images.register(image))
     }

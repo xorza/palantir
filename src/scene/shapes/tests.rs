@@ -134,7 +134,7 @@ fn polyline_color_cardinality_is_enforced_at_lowering() {
 fn image_dimensions_above_u16_survive_lowering() {
     const WIDTH: u32 = u16::MAX as u32 + 1;
     let registry = ImageRegistry::new(TextureIdSource::default());
-    let handle = registry.register(Image::from_rgba8(WIDTH, 1, vec![0; WIDTH as usize * 4]));
+    let handle = registry.register(&Image::from_rgba8(WIDTH, 1, vec![0; WIDTH as usize * 4]));
     let mut shapes = Shapes::default();
     let mut store = RecordStore::default();
 

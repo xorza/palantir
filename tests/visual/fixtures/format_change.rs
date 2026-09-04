@@ -167,7 +167,7 @@ thread_local! {
 fn image_scene(ui: &mut palantir::Ui) {
     let handle = TEST_IMAGE.with_borrow_mut(|slot| {
         slot.get_or_insert_with(|| {
-            ui.register_image(test_image())
+            ui.register_image(&test_image())
                 .expect("fixture image fits every supported GPU")
         })
         .clone()

@@ -4,7 +4,6 @@
 use crate::primitives::image::Image;
 use crate::primitives::size::Size;
 use crate::renderer::image_registry::ImageHandle;
-use crate::renderer::image_registry::image_write::ImageWrite;
 use crate::ui::Ui;
 use glam::UVec2;
 use rustc_hash::FxBuildHasher;
@@ -20,13 +19,20 @@ use std::num::NonZeroU32;
 /// the darks. An image texture is `Rgba8UnormSrgb`, so eight bits land where
 /// the eye can use them.
 ///
-/// Kept in widget state across frames. A rebuild writes the texels through
-/// [`ImageHandle::write`], so a hue drag allocates nothing and mints no
-/// second texture.
+/// Kept in widget state across frames, the CPU image included. A rebuild
+/// refills that image and hands it to [`ImageHandle::update`], so a hue drag
+/// allocates nothing and mints no second texture.
 #[derive(Debug, Default)]
 pub(crate) struct ColorSurface {
-    handle: Option<ImageHandle>,
+    built: Option<Built>,
     stamp: u64,
+}
+
+/// The texture and the CPU image it is refilled from.
+#[derive(Debug)]
+struct Built {
+    handle: ImageHandle,
+    image: Image,
 }
 
 /// Smallest texture either axis is built at. Two texels still interpolate;
@@ -87,30 +93,29 @@ impl ColorSurface {
         ui: &Ui,
         size: UVec2,
         key: impl Hash,
-        fill: impl FnOnce(&mut ImageWrite<'_>),
+        fill: impl FnOnce(&mut Image),
     ) -> &ImageHandle {
         let stamp = FxBuildHasher.hash_one(key);
-        let fresh = self
-            .handle
-            .as_ref()
-            .is_none_or(|handle| handle.size() != size);
-        if fresh {
+        let built = match self.built.take() {
+            Some(mut built) if built.handle.size() == size => {
+                if stamp != self.stamp {
+                    fill(&mut built.image);
+                    built.handle.update(&built.image);
+                }
+                built
+            }
             // First build or a resize. A resize is rare — a panel being
-            // dragged wider — so the blank image it registers is not on any
-            // hot path, and the fill below overwrites it in the same frame.
-            let handle = ui
-                .register_image(Image::blank(size))
-                .expect("a colour surface is clamped to the device texture cap");
-            self.handle = Some(handle);
-        }
-        let handle = self
-            .handle
-            .as_ref()
-            .expect("a fresh surface registered its handle above");
-        if fresh || stamp != self.stamp {
-            fill(&mut handle.write());
-            self.stamp = stamp;
-        }
-        handle
+            // dragged wider — so the allocation is not on any hot path.
+            _ => {
+                let mut image = Image::blank(size);
+                fill(&mut image);
+                let handle = ui
+                    .register_image(&image)
+                    .expect("a colour surface is clamped to the device texture cap");
+                Built { handle, image }
+            }
+        };
+        self.stamp = stamp;
+        &self.built.insert(built).handle
     }
 }

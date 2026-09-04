@@ -1,8 +1,8 @@
 use crate::primitives::color::RgbaF32;
 use crate::primitives::color::color_coords::ColorCoords;
 use crate::primitives::color::color_model::ColorModel;
+use crate::primitives::image::Image;
 use crate::primitives::widget_id::WidgetId;
-use crate::renderer::image_registry::test_support;
 use crate::scene::node::configure::Configure;
 use crate::ui::harness::UiHarness;
 use crate::widgets::color_strip::{ColorStrip, StripPaint};
@@ -62,10 +62,10 @@ fn the_hue_bar_writes_only_the_hue() {
 fn the_alpha_texture_is_the_colour_at_every_alpha() {
     let color = RgbaF32::hex(0x4cd3ff);
     let want = color.to_srgba_u8();
-    let handle = test_support::handle(UVec2::new(4, 2));
-    let mut texels = handle.write();
-    StripPaint::Alpha(color).fill(&mut texels);
-    for texel in texels.iter() {
+    let mut image = Image::blank(UVec2::new(4, 2));
+    StripPaint::Alpha(color).fill(&mut image);
+    let texels = image.texels();
+    for texel in texels {
         assert_eq!(
             (texel.r, texel.g, texel.b),
             (want.r, want.g, want.b),
@@ -82,9 +82,9 @@ fn the_alpha_texture_is_the_colour_at_every_alpha() {
 #[test]
 fn every_row_of_a_bar_is_the_first_row() {
     let size = UVec2::new(6, 3);
-    let handle = test_support::handle(size);
-    let mut texels = handle.write();
-    StripPaint::Hue(ColorModel::Okhsv).fill(&mut texels);
+    let mut image = Image::blank(size);
+    StripPaint::Hue(ColorModel::Okhsv).fill(&mut image);
+    let texels = image.texels();
     let row = size.x as usize;
     assert_eq!(texels.len(), row * size.y as usize);
     assert_eq!(&texels[..row], &texels[row..row * 2]);
@@ -99,9 +99,9 @@ fn every_row_of_a_bar_is_the_first_row() {
 fn the_hue_texture_follows_the_model() {
     for model in ColorModel::ALL {
         let size = UVec2::new(8, 1);
-        let handle = test_support::handle(size);
-        let mut texels = handle.write();
-        StripPaint::Hue(model).fill(&mut texels);
+        let mut image = Image::blank(size);
+        StripPaint::Hue(model).fill(&mut image);
+        let texels = image.texels();
         for column in 0..size.x {
             let hue = (column as f32 + 0.5) / size.x as f32;
             let want = model.slice(hue).color(1.0, 1.0).to_srgba_u8();

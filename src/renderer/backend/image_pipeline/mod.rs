@@ -2,12 +2,12 @@
 //! but draws textured quads — per-instance rect + tint, plus a
 //! per-image bind group selected at draw time.
 //!
-//! The bind groups themselves belong to [`ImageTextures`], which the
-//! backend owns beside this pipeline and hands to
-//! [`ImagePipeline::draw`] — the same split the text pass makes between
-//! its encoder and the atlas it fills. That store also holds the
-//! `GpuView` render targets, so a composite of one binds exactly like an
-//! image.
+//! The bind groups themselves belong to the two texture stores the
+//! backend hands [`ImagePipeline::draw`] — the registry's [`ImageGpu`]
+//! for registered images and [`GpuViewTargets`] for the `GpuView`
+//! targets — the same split the text pass makes between its encoder and
+//! the atlas it fills. Both build against one binding shape, so a
+//! composite of a view binds exactly like an image.
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
@@ -16,7 +16,8 @@ use crate::primitives::span::Span;
 use crate::primitives::texture_id::TextureId;
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
-use crate::renderer::backend::image_textures::ImageTextures;
+use crate::renderer::backend::gpu_view_targets::GpuViewTargets;
+use crate::renderer::backend::image_gpu::ImageGpu;
 use crate::renderer::backend::pipeline_recipe::PipelineRecipe;
 use crate::renderer::backend::shader_template::{self, ShaderConstant};
 use crate::renderer::backend::stencil_variant::ColorVariantSpec;
@@ -145,18 +146,24 @@ impl ImagePipeline {
     ///
     /// An **absent id is skipped** (no warning, no draw) — it just means
     /// the owning [`ImageHandle`](crate::ImageHandle) was dropped before
-    /// this draw, or hasn't been uploaded yet. Drawing nothing is the
+    /// this draw. Drawing nothing is the
     /// defined behaviour for a missing texture. Every draw in a run
     /// shares one id, so the miss check runs once per run and skips the
     /// whole run, which is exactly the per-draw behaviour it replaces.
-    pub(super) fn draw<'a>(
+    pub(super) fn draw(
         &self,
-        pass: &mut wgpu::RenderPass<'a>,
+        pass: &mut wgpu::RenderPass<'_>,
         ImageBatch { ids, items }: ImageBatch<'_>,
-        textures: &'a ImageTextures,
+        images: &ImageGpu,
+        targets: &GpuViewTargets,
     ) {
         for run in image_runs(&ids[items.range()], items.start) {
-            let Some(bind_group) = textures.bind_group(run.id) else {
+            // Registered images first: they are the common draw, and a
+            // view composite is the one that pays the second probe.
+            let Some(bind_group) = images
+                .bind_group(run.id)
+                .or_else(|| targets.bind_group(run.id))
+            else {
                 continue;
             };
             pass.set_bind_group(0, bind_group, &[]);

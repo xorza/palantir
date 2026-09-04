@@ -138,7 +138,7 @@ fn record(ui: &mut Ui, handle: &mut Option<ImageHandle>, workload: Workload, pha
     let edge = workload.texel();
     let image = handle
         .get_or_insert_with(|| {
-            ui.register_image(Image::from_rgba8(edge, edge, texels(edge)))
+            ui.register_image(&Image::from_rgba8(edge, edge, texels(edge)))
                 .expect("benchmark image fits every supported GPU")
         })
         .clone();
