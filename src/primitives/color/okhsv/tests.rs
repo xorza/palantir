@@ -1,5 +1,6 @@
 use crate::primitives::color::RgbaF32;
 use crate::primitives::color::okhsv::Okhsv;
+use crate::primitives::color::srgba_u8::SrgbaU8;
 
 /// Hue of each sRGB cube corner, measured with the reference port. The test
 /// below re-derives them, so a drift in the conversion cannot hide behind a
@@ -22,11 +23,6 @@ const CORNERS: [RgbaF32; 6] = [
     RgbaF32::hex(0xff00ff),
 ];
 
-fn srgb(c: RgbaF32) -> [u8; 3] {
-    let q = c.to_srgba_u8();
-    [q.r, q.g, q.b]
-}
-
 /// Index of pure blue in [`CORNERS`] — the one corner that is not on the
 /// Okhsv gamut edge. See `pure_blue_lies_outside_the_cube`.
 const BLUE: usize = 4;
@@ -40,7 +36,7 @@ fn cube_corners_are_the_gamut_edge() {
         assert!(
             (coords.h - expected).abs() < 1e-4,
             "hue of {:?}: {} vs {expected}",
-            srgb(*corner),
+            corner.to_srgba_u8(),
             coords.h,
         );
         assert!(coords.s > 0.999, "corner saturation {}", coords.s);
@@ -50,9 +46,9 @@ fn cube_corners_are_the_gamut_edge() {
             continue;
         }
         let back = Okhsv::new(expected, 1.0, 1.0).to_color();
-        let (got, want) = (srgb(back), srgb(*corner));
-        for channel in 0..3 {
-            let delta = i16::from(got[channel]) - i16::from(want[channel]);
+        let (got, want) = (back.to_srgba_u8(), corner.to_srgba_u8());
+        for (g, w) in [(got.r, want.r), (got.g, want.g), (got.b, want.b)] {
+            let delta = i16::from(g) - i16::from(w);
             assert!(delta.abs() <= 1, "corner {want:?} came back {got:?}");
         }
     }
@@ -69,7 +65,7 @@ fn cube_corners_are_the_gamut_edge() {
 #[test]
 fn pure_blue_lies_outside_the_cube() {
     let edge = Okhsv::new(CORNER_HUES[BLUE], 1.0, 1.0).to_color();
-    assert_eq!(srgb(edge), [0, 56, 255]);
+    assert_eq!(edge.to_srgba_u8(), SrgbaU8::hex(0x0038ff));
     // Reading pure blue back saturates both axes rather than reporting
     // something out of range, so a picker opened on it shows its handles in
     // the corner.
@@ -142,11 +138,13 @@ fn grey_keeps_the_fallback_hue() {
 /// saturation, white for every hue at zero saturation.
 #[test]
 fn the_value_ends_are_absolute() {
+    let black = SrgbaU8::hex(0x000000);
+    let white = SrgbaU8::hex(0xffffff);
     for step in 0..12 {
         let h = step as f32 / 12.0;
-        assert_eq!(srgb(Okhsv::new(h, 1.0, 0.0).to_color()), [0, 0, 0]);
-        assert_eq!(srgb(Okhsv::new(h, 0.0, 0.0).to_color()), [0, 0, 0]);
-        assert_eq!(srgb(Okhsv::new(h, 0.0, 1.0).to_color()), [255, 255, 255]);
+        assert_eq!(Okhsv::new(h, 1.0, 0.0).to_color().to_srgba_u8(), black);
+        assert_eq!(Okhsv::new(h, 0.0, 0.0).to_color().to_srgba_u8(), black);
+        assert_eq!(Okhsv::new(h, 0.0, 1.0).to_color().to_srgba_u8(), white);
     }
 }
 
@@ -155,12 +153,12 @@ fn the_value_ends_are_absolute() {
 #[test]
 fn out_of_range_axes_wrap_and_clamp() {
     assert_eq!(
-        srgb(Okhsv::new(1.25, 2.0, 2.0).to_color()),
-        srgb(Okhsv::new(0.25, 1.0, 1.0).to_color()),
+        Okhsv::new(1.25, 2.0, 2.0).to_color().to_srgba_u8(),
+        Okhsv::new(0.25, 1.0, 1.0).to_color().to_srgba_u8(),
     );
     assert_eq!(
-        srgb(Okhsv::new(-0.75, -1.0, 0.5).to_color()),
-        srgb(Okhsv::new(0.25, 0.0, 0.5).to_color()),
+        Okhsv::new(-0.75, -1.0, 0.5).to_color().to_srgba_u8(),
+        Okhsv::new(0.25, 0.0, 0.5).to_color().to_srgba_u8(),
     );
 }
 

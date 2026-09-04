@@ -123,6 +123,8 @@ fn color_parse_accepts_with_and_without_hash() {
         parse_hex("#3266CC80").unwrap(),
         RgbaF32::from_srgba(SrgbaU8::new(0x32, 0x66, 0xcc, 0x80))
     );
+    assert_eq!("#3266cc80".parse::<RgbaF32>(), parse_hex("#3266cc80"));
+    assert!("#3266c".parse::<RgbaF32>().is_err());
 }
 
 #[test]

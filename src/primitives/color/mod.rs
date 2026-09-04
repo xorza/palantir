@@ -530,6 +530,17 @@ impl<'de> Deserialize<'de> for RgbaF32 {
     }
 }
 
+/// The hex forms the wire format reads, so `"#3266cc".parse()` and a
+/// deserialized `"#3266cc"` cannot disagree. Not trimmed: the caller decides
+/// what whitespace means.
+impl std::str::FromStr for RgbaF32 {
+    type Err = &'static str;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        parse_hex(value)
+    }
+}
+
 /// Parse `#rrggbb` / `#rrggbbaa` (the `#` optional) into an sRGB
 /// [`RgbaF32`]. Deserialization input is untrusted, so every rejection is
 /// an `Err` — the length arms select on **bytes** and each digit is
