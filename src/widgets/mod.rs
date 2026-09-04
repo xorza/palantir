@@ -156,9 +156,9 @@ macro_rules! impl_configure {
 pub(crate) mod axis_keys;
 pub(crate) mod button;
 pub(crate) mod checkbox;
+pub(crate) mod checkerboard;
 pub(crate) mod close_handle;
 pub(crate) mod color_button;
-pub(crate) mod color_checker;
 pub(crate) mod color_field;
 pub(crate) mod color_picker;
 pub(crate) mod color_strip;

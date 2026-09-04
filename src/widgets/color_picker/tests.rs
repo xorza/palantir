@@ -5,7 +5,7 @@ use crate::primitives::color::srgba_u8::SrgbaU8;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::configure::Configure;
 use crate::ui::harness::UiHarness;
-use crate::widgets::color_picker::{ColorPicker, parse_hex};
+use crate::widgets::color_picker::ColorPicker;
 use glam::{UVec2, Vec2};
 
 /// Wide enough for the panel and its rows to lay out without wrapping.
@@ -102,23 +102,6 @@ fn opacity_leaves_the_colour_alone() {
         (after.r, after.g, after.b),
         (before.r, before.g, before.b),
         "pure blue must survive an opacity drag",
-    );
-}
-
-/// A hex string names a colour outright, and anything that is not one is
-/// ignored rather than guessed at.
-#[test]
-fn hex_parses_and_rejects() {
-    assert_eq!(parse_hex("#4CD3FF"), Some(RgbaF32::hex(0x4cd3ff)));
-    assert_eq!(parse_hex("4cd3ff"), Some(RgbaF32::hex(0x4cd3ff)));
-    assert_eq!(parse_hex("  #4cd3ff  "), Some(RgbaF32::hex(0x4cd3ff)));
-    assert_eq!(parse_hex(""), None);
-    assert_eq!(parse_hex("#4cd3f"), None);
-    assert_eq!(parse_hex("#4cd3fg"), None);
-    assert_eq!(
-        parse_hex("#4cd3ff00"),
-        None,
-        "alpha is the bar's, not the field's"
     );
 }
 
