@@ -1,6 +1,6 @@
 //! Curve-pipeline wire constants and per-instance GPU data.
 
-use crate::primitives::color::ColorU8;
+use crate::primitives::color::RgbaU8;
 use crate::primitives::fill_kind::FillKind;
 use crate::primitives::lut_row::LutRow;
 use glam::Vec2;
@@ -81,11 +81,11 @@ pub(crate) struct CurveInstance {
     pub(crate) width: f32,
     /// Stroke colour at `t = 0`. Zeroed for a gradient `fill_kind`; the
     /// shader samples the LUT row instead.
-    pub(crate) color0: ColorU8,
+    pub(crate) color0: RgbaU8,
     /// Stroke colour at `t = 1` — the shader lerps `color0 → color1`
     /// along `t` (straight-alpha, like `PolylineColors::PerPoint`).
     /// Equal to `color0` for single-colour strokes.
-    pub(crate) color1: ColorU8,
+    pub(crate) color1: RgbaU8,
     /// Cap kind per end, packed: bits 0..8 = start cap, 8..16 = end
     /// cap, each a [`LineCap`](crate::shape::style::LineCap)
     /// discriminant the curve pipeline substitutes into its shader.

@@ -18,7 +18,7 @@ use crate::input::shortcut::Shortcut;
 use crate::input::watch::PointerWake;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::scene::node::configure::Configure;
 use crate::shape::Shape;
@@ -252,7 +252,9 @@ fn pointer_local_read_keeps_hover_local_indicator_reactive() {
             .show(ui, |ui| {
                 let local = ui.pointer_local(id);
                 if let Some(center) = local {
-                    ui.add_shape(Shape::circle(center, 3.0, 2.0).brush(Color::rgb(0.2, 0.8, 1.0)));
+                    ui.add_shape(
+                        Shape::circle(center, 3.0, 2.0).brush(RgbaF32::srgb(0.2, 0.8, 1.0)),
+                    );
                 }
                 *painted_at = local;
             });
@@ -283,16 +285,16 @@ fn pointer_local_read_keeps_hover_local_indicator_reactive() {
 
 #[test]
 fn modifiers_read_keeps_alt_ctrl_visual_reactive_through_release() {
-    fn visual(ui: &mut Ui, painted: &mut Color) {
+    fn visual(ui: &mut Ui, painted: &mut RgbaF32) {
         let modifiers = ui.modifiers();
         let color = if modifiers.alt && modifiers.ctrl {
-            Color::WHITE
+            RgbaF32::WHITE
         } else if modifiers.alt {
-            Color::rgb(1.0, 0.0, 0.0)
+            RgbaF32::srgb(1.0, 0.0, 0.0)
         } else if modifiers.ctrl {
-            Color::rgb(0.0, 0.0, 1.0)
+            RgbaF32::srgb(0.0, 0.0, 1.0)
         } else {
-            Color::BLACK
+            RgbaF32::BLACK
         };
         *painted = color;
         Frame::new()
@@ -305,9 +307,9 @@ fn modifiers_read_keeps_alt_ctrl_visual_reactive_through_release() {
     let surface = UVec2::new(200, 200);
     let mut h = UiHarness::new(surface);
     h.ui.set_input_policy(InputPolicy::OnDelta);
-    let mut painted = Color::TRANSPARENT;
+    let mut painted = RgbaF32::TRANSPARENT;
     h.frame(|ui| visual(ui, &mut painted));
-    assert_eq!(painted, Color::BLACK);
+    assert_eq!(painted, RgbaF32::BLACK);
 
     let states = [
         (
@@ -315,7 +317,7 @@ fn modifiers_read_keeps_alt_ctrl_visual_reactive_through_release() {
                 alt: true,
                 ..Modifiers::NONE
             },
-            Color::rgb(1.0, 0.0, 0.0),
+            RgbaF32::srgb(1.0, 0.0, 0.0),
         ),
         (
             Modifiers {
@@ -323,16 +325,16 @@ fn modifiers_read_keeps_alt_ctrl_visual_reactive_through_release() {
                 ctrl: true,
                 ..Modifiers::NONE
             },
-            Color::WHITE,
+            RgbaF32::WHITE,
         ),
         (
             Modifiers {
                 ctrl: true,
                 ..Modifiers::NONE
             },
-            Color::rgb(0.0, 0.0, 1.0),
+            RgbaF32::srgb(0.0, 0.0, 1.0),
         ),
-        (Modifiers::NONE, Color::BLACK),
+        (Modifiers::NONE, RgbaF32::BLACK),
     ];
     for (modifiers, expected) in states {
         // Raw, not `set_modifiers`: this asserts the modifier wake, and

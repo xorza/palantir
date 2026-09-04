@@ -3,7 +3,7 @@
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
-use crate::primitives::{color::Color, rect::Rect, translate_scale::TranslateScale};
+use crate::primitives::{color::RgbaF32, rect::Rect, translate_scale::TranslateScale};
 use crate::scene::damage::Damage;
 use crate::scene::damage::tests::support::{BLUE, RED};
 use crate::scene::layer::Layer;
@@ -23,7 +23,7 @@ fn child_under_transformed_parent_damage_in_screen_space() {
     let translate = Vec2::new(100.0, 0.0);
     let mut h = UiHarness::new(UVec2::new(400, 400));
     let mut child_node = None;
-    let build = |fill: Color, h: &mut UiHarness, child: &mut Option<NodeId>| {
+    let build = |fill: RgbaF32, h: &mut UiHarness, child: &mut Option<NodeId>| {
         h.frame(|ui| {
             Panel::hstack()
                 .id(WidgetId::from_hash("outer"))
@@ -44,8 +44,8 @@ fn child_under_transformed_parent_damage_in_screen_space() {
         });
     };
 
-    build(Color::rgb(0.2, 0.4, 0.8), &mut h, &mut child_node);
-    build(Color::rgb(0.9, 0.4, 0.8), &mut h, &mut child_node);
+    build(RgbaF32::srgb(0.2, 0.4, 0.8), &mut h, &mut child_node);
+    build(RgbaF32::srgb(0.9, 0.4, 0.8), &mut h, &mut child_node);
 
     // Layout rect of the child is at the parent's inner origin (0, 0
     // in this layout). Screen rect after the parent's translate is at
@@ -88,7 +88,7 @@ fn animated_parent_transform_unions_old_and_new_positions() {
                             .id(WidgetId::from_hash("c"))
                             .size(40.0)
                             .background(Background {
-                                fill: Color::rgb(0.2, 0.4, 0.8).into(),
+                                fill: RgbaF32::srgb(0.2, 0.4, 0.8).into(),
                                 ..Default::default()
                             })
                             .show(ui)
@@ -160,7 +160,7 @@ fn transform_animation_keeps_far_positions_split() {
                             .id(WidgetId::from_hash("c"))
                             .size(40.0)
                             .background(Background {
-                                fill: Color::rgb(0.2, 0.4, 0.8).into(),
+                                fill: RgbaF32::srgb(0.2, 0.4, 0.8).into(),
                                 ..Default::default()
                             })
                             .show(ui)
@@ -226,7 +226,7 @@ fn transform_shifted_direct_shape_with_invariant_clipped_paint_rect_contributes_
                                     // under small `dx` translates.
                                     ui.add_shape(
                                         Shape::rect(Rect::new(-200.0, 0.0, 500.0, 50.0))
-                                            .fill(Color::rgb(1.0, 0.0, 0.0)),
+                                            .fill(RgbaF32::srgb(1.0, 0.0, 0.0)),
                                     );
                                 });
                         });
@@ -278,7 +278,7 @@ fn pan_with_invariant_clipped_paint_rect_stays_partial() {
                                 .show(ui, |ui| {
                                     ui.add_shape(
                                         Shape::rect(Rect::new(-200.0, 0.0, 500.0, 50.0))
-                                            .fill(Color::rgb(1.0, 0.0, 0.0)),
+                                            .fill(RgbaF32::srgb(1.0, 0.0, 0.0)),
                                     );
                                 });
                         });
@@ -330,7 +330,7 @@ fn self_transform_shift_damages_direct_shapes() {
                             // beziers on the inner canvas.
                             ui.add_shape(
                                 Shape::rect(Rect::new(40.0, 40.0, 30.0, 30.0))
-                                    .fill(Color::rgb(0.2, 0.6, 0.9)),
+                                    .fill(RgbaF32::srgb(0.2, 0.6, 0.9)),
                             );
                         });
                 });
@@ -441,7 +441,7 @@ fn moved_subtree_damages_extents_and_refreshes_snapshots() {
 #[test]
 fn content_change_under_constant_transform_stays_row_tight() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
-    let build = |fill: Color, h: &mut UiHarness| {
+    let build = |fill: RgbaF32, h: &mut UiHarness| {
         h.frame(|ui| {
             Panel::hstack()
                 .id(WidgetId::from_hash("outer"))

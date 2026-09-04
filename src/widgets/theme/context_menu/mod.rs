@@ -5,7 +5,7 @@
 pub(crate) mod menu_item;
 
 use crate::primitives::background::Background;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::corners::Corners;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::spacing::Spacing;
@@ -99,7 +99,7 @@ impl ContextMenuTheme {
         let panel = Background::rounded(p.elem, Corners::all(4.0))
             .with_stroke(Stroke::solid(p.border_mid(), 1.0))
             .with_shadow(Shadow::drop(
-                Color::linear_rgba(0.0, 0.0, 0.0, 0.5),
+                RgbaF32::new(0.0, 0.0, 0.0, 0.5),
                 Vec2::new(0.0, 3.0),
                 6.0,
             ));

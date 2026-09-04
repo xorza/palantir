@@ -1,7 +1,7 @@
 //! What `style_setter!` generates: the `Option`-taking setter, and the one
 //! naming of a widget's theme slot that resolves it.
 
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
@@ -75,7 +75,7 @@ fn text_style_none_inherits_the_ambient_text_style() {
     let theme = Theme {
         text: TextStyle::default()
             .with_font_size(31.0)
-            .with_color(Color::rgb(1.0, 0.0, 0.0)),
+            .with_color(RgbaF32::srgb(1.0, 0.0, 0.0)),
         ..Theme::default()
     };
     let big = TextStyle::default().with_font_size(62.0);

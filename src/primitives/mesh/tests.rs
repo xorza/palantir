@@ -1,12 +1,12 @@
 use crate::primitives::approx;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::mesh::*;
 use crate::primitives::size::Size;
 
 fn mesh_with_vertices(count: usize) -> Mesh {
     let mut mesh = Mesh::with_capacity(count, 0);
     for index in 0..count {
-        mesh.vertex(Vec2::new(index as f32, 0.0), Color::WHITE);
+        mesh.vertex(Vec2::new(index as f32, 0.0), RgbaF32::WHITE);
     }
     mesh
 }
@@ -20,7 +20,7 @@ fn mesh_vertex_is_12_bytes_no_padding() {
 fn mesh_vertex_pod_roundtrip() {
     let v = MeshVertex::new(
         Vec2::new(1.0, 2.0),
-        Color {
+        RgbaF32 {
             r: 0.1,
             g: 0.2,
             b: 0.3,
@@ -97,8 +97,8 @@ fn triangle_validates_each_index_before_mutating() {
 
 #[test]
 fn triangle_indices_offset_in_append() {
-    let mut a = Mesh::filled_triangle(Vec2::ZERO, Vec2::X, Vec2::Y, Color::default());
-    let b = Mesh::filled_triangle(Vec2::ZERO, Vec2::X, Vec2::Y, Color::default());
+    let mut a = Mesh::filled_triangle(Vec2::ZERO, Vec2::X, Vec2::Y, RgbaF32::default());
+    let b = Mesh::filled_triangle(Vec2::ZERO, Vec2::X, Vec2::Y, RgbaF32::default());
     a.append(&b);
     assert_eq!(a.vertices.len(), 6);
     assert_eq!(a.indices, vec![0, 1, 2, 3, 4, 5]);
@@ -106,9 +106,9 @@ fn triangle_indices_offset_in_append() {
 
     let mut expected = Mesh::with_capacity(6, 6);
     for _ in 0..2 {
-        let i0 = expected.vertex(Vec2::ZERO, Color::default());
-        let i1 = expected.vertex(Vec2::X, Color::default());
-        let i2 = expected.vertex(Vec2::Y, Color::default());
+        let i0 = expected.vertex(Vec2::ZERO, RgbaF32::default());
+        let i1 = expected.vertex(Vec2::X, RgbaF32::default());
+        let i2 = expected.vertex(Vec2::Y, RgbaF32::default());
         expected.triangle(i0, i1, i2);
     }
     assert_eq!(a.vertices, expected.vertices);
@@ -123,13 +123,13 @@ fn polygon_fan_indices_share_pivot() {
         Vec2::new(1.0, 1.0),
         Vec2::new(0.0, 1.0),
     ];
-    let m = Mesh::filled_polygon(&pts, Color::default());
+    let m = Mesh::filled_polygon(&pts, RgbaF32::default());
     assert_eq!(m.vertices.len(), 4);
     assert_eq!(m.indices, vec![0, 1, 2, 0, 2, 3]);
 }
 
 fn red_tri() -> Mesh {
-    let red = Color {
+    let red = RgbaF32 {
         r: 1.0,
         g: 0.0,
         b: 0.0,
@@ -144,7 +144,7 @@ fn content_hash_stable_for_identical_input() {
     let b = red_tri();
     assert_eq!(a.content_hash(), b.content_hash());
 
-    let make = |first| Mesh::filled_triangle(first, Vec2::X, Vec2::Y, Color::WHITE);
+    let make = |first| Mesh::filled_triangle(first, Vec2::X, Vec2::Y, RgbaF32::WHITE);
     assert_eq!(
         make(Vec2::ZERO).content_hash(),
         make(Vec2::new(approx::EPS * 0.5, -approx::EPS * 0.5)).content_hash(),
@@ -175,7 +175,7 @@ fn content_hash_memoizes_until_mutation() {
     assert_eq!(m.content_hash(), h0);
     assert_eq!(m.cached_hash.get(), Some(h0));
     // Any builder mutation invalidates.
-    m.vertex(Vec2::new(2.0, 2.0), Color::default());
+    m.vertex(Vec2::new(2.0, 2.0), RgbaF32::default());
     assert_eq!(m.cached_hash.get(), None);
     let h1 = m.content_hash();
     assert_ne!(h0, h1);
@@ -195,7 +195,7 @@ fn filled_triangle_precaches_bbox() {
         Vec2::new(-1.0, 2.0),
         Vec2::new(4.0, 2.0),
         Vec2::new(0.0, 7.0),
-        Color::default(),
+        RgbaF32::default(),
     );
     // No `bbox()` call yet — must already be cached.
     let cached = m
@@ -215,7 +215,7 @@ fn filled_polygon_precaches_bbox() {
         Vec2::new(3.0, 2.0),
         Vec2::new(0.0, 2.0),
     ];
-    let m = Mesh::filled_polygon(&pts, Color::default());
+    let m = Mesh::filled_polygon(&pts, RgbaF32::default());
     let cached = m
         .cached_bbox
         .get()
@@ -236,7 +236,7 @@ fn bbox_spans_vertex_extent() {
         Vec2::new(-1.0, 2.0),
         Vec2::new(4.0, 2.0),
         Vec2::new(0.0, 7.0),
-        Color::default(),
+        RgbaF32::default(),
     );
     let b = m.bbox();
     assert_eq!(b.min, Vec2::new(-1.0, 2.0));
@@ -249,7 +249,7 @@ fn bbox_memoizes_until_mutation() {
     let mut m = red_tri();
     let b0 = m.bbox();
     assert_eq!(m.cached_bbox.get(), Some(b0));
-    m.vertex(Vec2::new(10.0, 10.0), Color::default());
+    m.vertex(Vec2::new(10.0, 10.0), RgbaF32::default());
     assert_eq!(m.cached_bbox.get(), None);
     let b1 = m.bbox();
     assert_ne!(b0, b1);
@@ -294,7 +294,7 @@ fn append_invalidates_bbox() {
         Vec2::new(10.0, 10.0),
         Vec2::new(11.0, 10.0),
         Vec2::new(10.0, 11.0),
-        Color::default(),
+        RgbaF32::default(),
     );
     a.append(&b);
     assert_eq!(a.cached_bbox.get(), None);

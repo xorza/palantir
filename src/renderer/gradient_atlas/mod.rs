@@ -5,7 +5,7 @@
 //!
 //! ## Bake output convention
 //!
-//! Each baked row is 256 [`ColorF16`] texels = 2048 bytes, **straight
+//! Each baked row is 256 [`RgbaF16`] texels = 2048 bytes, **straight
 //! (non-premultiplied) linear-RGB** f16. The backend uploads these into
 //! an `Rgba16Float` texture (no auto-decode); the shader samples and
 //! gets the stored linear value directly as f16-decoded floats.
@@ -24,9 +24,9 @@
 //!
 //! ## Interpolation spaces
 //!
-//! Stops live as `ColorU8` (linear u8 storage — the default
-//! `From<Color> for ColorU8` is a linear quantize). `bake_stops`
-//! decodes each stop to a linear `Color` **once** per row before the
+//! Stops live as `RgbaU8` (linear u8 storage — the default
+//! `From<RgbaF32> for RgbaU8` is a linear quantize). `bake_stops`
+//! decodes each stop to a linear `RgbaF32` **once** per row before the
 //! 256-texel loop, so the inner loop never re-runs the cubic.
 //!
 //! - [`Interp::Linear`]: physically correct linear blend. Shows the
@@ -35,11 +35,11 @@
 //! - [`Interp::Oklab`]: pre-converts each stop's linear RGB to Oklab
 //!   `L/a/b` triplets once at bake time; the texel loop lerps the
 //!   triplet and runs only `oklab_to_linear` per texel. Perceptually
-//!   uniform; CSS Color 4 default.
+//!   uniform; CSS RgbaF32 4 default.
 
 use crate::primitives::brush::gradient::Interp;
 use crate::primitives::brush::gradient::stops::GradientStops;
-use crate::primitives::color::{Color, ColorF16};
+use crate::primitives::color::{RgbaF16, RgbaF32};
 use crate::primitives::lut_row::LutRow;
 use crate::renderer::gradient_atlas::bake::{LUT_ROW_TEXELS, LutRowTexels, bake_stops};
 use crate::renderer::gradient_atlas::counters::GradientAtlasCounters;
@@ -244,7 +244,7 @@ impl CpuGradientAtlas {
         let mut atlas = Self {
             index: FxHashMap::default(),
             slots: vec![RowSlot::default()],
-            baked: vec![[ColorF16::TRANSPARENT; LUT_ROW_TEXELS]],
+            baked: vec![[RgbaF16::TRANSPARENT; LUT_ROW_TEXELS]],
             mru: MruList::seeded(1),
             max_rows: max_rows.max(INITIAL_ATLAS_ROWS),
             epoch: 1,
@@ -270,7 +270,7 @@ impl CpuGradientAtlas {
     fn init_row_zero_magenta(&mut self) {
         // Linear (1, 0, 1, 1): the sRGB framebuffer encodes this to
         // #ff00ff on write, so the fallback reads as bright magenta.
-        let magenta = ColorF16::from(Color::linear_rgba(1.0, 0.0, 1.0, 1.0));
+        let magenta = RgbaF16::from(RgbaF32::new(1.0, 0.0, 1.0, 1.0));
         self.baked[0].fill(magenta);
         // No `rows[0]` sentinel: row 0 is not a member of the MRU list,
         // so no claim can ever select it.
@@ -386,7 +386,7 @@ impl CpuGradientAtlas {
         let from = self.capacity();
         self.slots.resize(to as usize, RowSlot::default());
         self.baked
-            .resize(to as usize, [ColorF16::TRANSPARENT; LUT_ROW_TEXELS]);
+            .resize(to as usize, [RgbaF16::TRANSPARENT; LUT_ROW_TEXELS]);
         self.mru.extend_to(from, to);
         debug_assert_eq!(
             self.slots.len(),

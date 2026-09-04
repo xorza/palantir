@@ -10,7 +10,7 @@ use crate::primitives::background::Background;
 use crate::primitives::brush::Brush;
 use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::brush::gradient::radial_geometry::RadialGradient;
-use crate::primitives::color::ColorU8;
+use crate::primitives::color::RgbaU8;
 use crate::primitives::corners::Corners;
 use crate::scene::node::configure::Configure;
 use crate::text::wrap::TextWrap;
@@ -46,8 +46,8 @@ pub(super) fn filmstrip(ui: &mut Ui, cells: usize) {
                                 .background(Background {
                                     fill: Brush::Linear(LinearGradient::two_stop(
                                         0.9,
-                                        ColorU8::hex(0x24304d),
-                                        ColorU8::hex(0x3d2a52),
+                                        RgbaU8::hex(0x24304d),
+                                        RgbaU8::hex(0x3d2a52),
                                     )),
                                     corners: Corners::all(5.0),
                                     ..Default::default()
@@ -85,8 +85,8 @@ pub(super) fn activity_card(ui: &mut Ui, messages: usize) {
                                 .size((Sizing::fixed(34.0), Sizing::fixed(34.0)))
                                 .background(Background {
                                     fill: Brush::Radial(RadialGradient::two_stop_centered(
-                                        ColorU8::hex(0xfacc15),
-                                        ColorU8::hex(0x4c5cdb),
+                                        RgbaU8::hex(0xfacc15),
+                                        RgbaU8::hex(0x4c5cdb),
                                     )),
                                     corners: Corners::all(17.0),
                                     ..Default::default()

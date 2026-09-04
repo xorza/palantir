@@ -576,7 +576,7 @@ fn emit_shadow(
     out.draw_quad(DrawQuadPayload::shadow(
         paint_rect,
         corners,
-        // LoweredShadow.color is `ColorF16` (the field); the payload
+        // LoweredShadow.color is `RgbaF16` (the field); the payload
         // takes the packed form directly so the encoder doesn't
         // unpack-and-repack.
         shadow.color,

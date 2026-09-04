@@ -3,7 +3,7 @@
 //! which is what separates it from the single strokes in `curve`.
 
 use crate::primitives::approx::noop_f32;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::rect::Rect;
 use crate::primitives::rect::aabb::Aabb;
 use crate::scene::record_store::RecordStore;
@@ -52,20 +52,20 @@ shape_setters!(PolylineShape<'_> {
     join: LineJoin => join,
 });
 
-/// Color source for [`Shape::polyline`](crate::Shape::polyline).
+/// RgbaF32 source for [`Shape::polyline`](crate::Shape::polyline).
 #[derive(Clone, Copy, Debug)]
 pub enum PolylineColors<'a> {
     /// One color for the whole stroke. Broadcast to every cross-section.
-    Single(Color),
+    Single(RgbaF32),
     /// One color per input point. `len()` must equal `points.len()`.
     /// GPU lerps between adjacent cross-sections, giving a smooth
     /// gradient along the stroke.
-    PerPoint(&'a [Color]),
+    PerPoint(&'a [RgbaF32]),
     /// One color per segment. `len()` must equal
     /// `points.len() - 1`. Each segment renders as its own solid
     /// block (join chrome blends the two neighbors) — no color
     /// bleed at joins.
-    PerSegment(&'a [Color]),
+    PerSegment(&'a [RgbaF32]),
 }
 
 impl PolylineColors<'_> {
@@ -110,7 +110,7 @@ impl sealed::LowerShape for PolylineShape<'_> {
     }
 
     /// The colours are the bulk input `bbox` does not cover, and they
-    /// are `Color`s rather than positions — a NaN channel reads as
+    /// are `RgbaF32`s rather than positions — a NaN channel reads as
     /// invisible through `is_noop` above rather than poisoning geometry,
     /// so the fold that would scan them buys nothing.
     fn has_nan(&self) -> bool {

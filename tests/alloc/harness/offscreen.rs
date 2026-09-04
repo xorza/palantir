@@ -13,7 +13,7 @@
 
 use glam::UVec2;
 use palantir::internals::{HeadlessTestGpuLease, RecordApp};
-use palantir::{Color, OffscreenHost, Ui};
+use palantir::{OffscreenHost, RgbaF32, Ui};
 
 /// One offscreen host and the texture it draws into.
 #[derive(Debug)]
@@ -27,7 +27,7 @@ impl OffscreenTarget {
     /// what every caller pins excludes the direct-present path.
     pub(crate) fn new(gpu: &HeadlessTestGpuLease, label: &str, surface: UVec2) -> Self {
         let mut host = OffscreenHost::builder(gpu.device.clone(), gpu.queue.clone()).build();
-        host.ui().theme_mut().window_clear = Color::TRANSPARENT;
+        host.ui().theme_mut().window_clear = RgbaF32::TRANSPARENT;
         let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
             label: Some(label),
             size: wgpu::Extent3d {

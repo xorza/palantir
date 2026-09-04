@@ -10,10 +10,10 @@ use crate::harness::{Audit, new_ui};
 use std::time::Duration;
 
 use palantir::{
-    AnimSpec, Background, Button, Checkbox, Color, Configure, ContextMenu, Easing, Expander,
-    ExpanderTheme, Frame, Grid, MenuItem, Modal, Panel, Popup, ProgressBar, RadioButton, Scroll,
-    Separator, Shortcut, Sizing, Slider, SlotDefaults, Spinner, Splitter, Switch, Text, TextEdit,
-    Tooltip, Track, Ui, Vec2, WidgetId,
+    AnimSpec, Background, Button, Checkbox, Configure, ContextMenu, Easing, Expander,
+    ExpanderTheme, Frame, Grid, MenuItem, Modal, Panel, Popup, ProgressBar, RadioButton, RgbaF32,
+    Scroll, Separator, Shortcut, Sizing, Slider, SlotDefaults, Spinner, Splitter, Switch, Text,
+    TextEdit, Tooltip, Track, Ui, Vec2, WidgetId,
 };
 
 #[test]
@@ -62,7 +62,7 @@ fn grid_8x8_alloc_free() {
                         Frame::new()
                             .id_salt((r, c))
                             .background(Background {
-                                fill: Color::WHITE.into(),
+                                fill: RgbaF32::WHITE.into(),
                                 ..Default::default()
                             })
                             .grid_cell((r, c))
@@ -171,7 +171,7 @@ fn damage_animated_rect_alloc_free() {
             Frame::new()
                 .auto_id()
                 .background(Background {
-                    fill: Color::WHITE.into(),
+                    fill: RgbaF32::WHITE.into(),
                     ..Default::default()
                 })
                 .size((Sizing::fixed(w), Sizing::fixed(40.0)))

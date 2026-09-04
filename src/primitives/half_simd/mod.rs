@@ -1,5 +1,5 @@
 //! Direct 4-lane f16 ↔ f32 pack/unpack, plus the [`F16x4`] newtype that
-//! `Spacing`, `Corners`, `ColorF16`, `FillAxis`, and `LoweredShadow`
+//! `Spacing`, `Corners`, `RgbaF16`, `FillAxis`, and `LoweredShadow`
 //! wrap as their shared `[u16; 4]` lane-storage core.
 //!
 //! Bypasses `half::slice::HalfFloatSliceExt::convert_{to,from}_f32_slice`,
@@ -27,7 +27,7 @@
 use crate::primitives::approx::EPS;
 
 /// Four f16 lanes packed in 8 B (`[u16; 4]`, align 2) — the shared
-/// storage core behind `Corners`, `Spacing`, `FillAxis`, `ColorF16`,
+/// storage core behind `Corners`, `Spacing`, `FillAxis`, `RgbaF16`,
 /// and `LoweredShadow`'s geometry. Each wraps an `F16x4` for type
 /// safety and adds its own lane-naming + domain methods; `F16x4` owns
 /// the pack/unpack/hash/NaN idioms so they can't drift apart.
@@ -63,7 +63,7 @@ impl F16x4 {
     pub(crate) const ZERO: Self = Self([0; 4]);
 
     /// One lane's f16 bit pattern — for predicates that test a single
-    /// lane (`ColorF16`'s alpha) without unpacking all four to f32.
+    /// lane (`RgbaF16`'s alpha) without unpacking all four to f32.
     #[inline(always)]
     pub(crate) const fn lane_bits(self, lane: usize) -> u16 {
         self.0[lane]

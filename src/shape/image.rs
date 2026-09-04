@@ -1,6 +1,6 @@
 //! The textured-rectangle builder. Lowers to `ShapeRecord::Image`.
 
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::image::{ImageDownsample, ImageFilter, ImageFit};
 use crate::primitives::nan::NanCheck;
 use crate::primitives::rect::Rect;
@@ -19,7 +19,7 @@ pub struct ImageShape {
     pub(crate) min_filter: ImageFilter,
     pub(crate) mag_filter: ImageFilter,
     pub(crate) downsample: ImageDownsample,
-    pub(crate) tint: Color,
+    pub(crate) tint: RgbaF32,
 }
 
 impl ImageShape {
@@ -31,7 +31,7 @@ impl ImageShape {
             min_filter: ImageFilter::default(),
             mag_filter: ImageFilter::default(),
             downsample: ImageDownsample::default(),
-            tint: Color::WHITE,
+            tint: RgbaF32::WHITE,
         }
     }
 }
@@ -47,7 +47,7 @@ shape_setters!(ImageShape {
     /// what it costs. Off by default; only worth setting on an image that
     /// actually shrinks, and that has detail fine enough to alias.
     downsample: ImageDownsample => downsample,
-    tint: Color => tint,
+    tint: RgbaF32 => tint,
 });
 
 impl sealed::LowerShape for ImageShape {

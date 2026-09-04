@@ -4,7 +4,7 @@ use crate::animation::anim_spec::AnimSpec;
 use crate::animation::easing::Easing;
 use crate::bench::Run;
 use crate::primitives::background::Background;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::widget_id::WidgetId;
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::theme::widget_look::animated_look::AnimatedLook;
@@ -30,7 +30,7 @@ impl Motion {
     }
 }
 
-fn look(background: Color, text: Color) -> AnimatedLook {
+fn look(background: RgbaF32, text: RgbaF32) -> AnimatedLook {
     AnimatedLook {
         background: Background::fill(background),
         text: TextStyle::default().with_color(text),
@@ -41,8 +41,8 @@ fn bench_motion(c: &mut Criterion, run: Run<'_>, sub: &str, motion: Motion) {
     let ids: Vec<_> = (0..ROWS)
         .map(|index| WidgetId::from_hash(index as u64))
         .collect();
-    let first = look(Color::rgb(0.1, 0.2, 0.3), Color::WHITE);
-    let second = look(Color::rgb(0.8, 0.4, 0.2), Color::BLACK);
+    let first = look(RgbaF32::srgb(0.1, 0.2, 0.3), RgbaF32::WHITE);
+    let second = look(RgbaF32::srgb(0.8, 0.4, 0.2), RgbaF32::BLACK);
     let spec = motion.spec();
     let mut map = AnimMapTyped::default();
     for &id in &ids {

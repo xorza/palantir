@@ -2,7 +2,7 @@
 
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::renderer::frontend::capture::PaintCall;
@@ -50,7 +50,7 @@ fn shapes_attached_to_button_node() {
 fn interleaved_shapes_record_correct_order() {
     fn pos_rect(slot: u16) -> RectShape {
         let s = (slot + 1) as f32 * 10.0;
-        Shape::rect(Rect::new(0.0, 0.0, s, s)).fill(Color::rgb(1.0, 0.0, 0.0))
+        Shape::rect(Rect::new(0.0, 0.0, s, s)).fill(RgbaF32::srgb(1.0, 0.0, 0.0))
     }
     let mut h = UiHarness::new(SURFACE);
     let p = h.frame_value(|ui| {
@@ -62,7 +62,7 @@ fn interleaved_shapes_record_correct_order() {
                 Frame::new()
                     .id(WidgetId::from_hash("c0"))
                     .background(Background {
-                        fill: Color::rgb(0.0, 1.0, 0.0).into(),
+                        fill: RgbaF32::srgb(0.0, 1.0, 0.0).into(),
                         ..Default::default()
                     })
                     .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
@@ -71,7 +71,7 @@ fn interleaved_shapes_record_correct_order() {
                 Frame::new()
                     .id(WidgetId::from_hash("c1"))
                     .background(Background {
-                        fill: Color::rgb(0.0, 0.0, 1.0).into(),
+                        fill: RgbaF32::srgb(0.0, 0.0, 1.0).into(),
                         ..Default::default()
                     })
                     .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
@@ -128,7 +128,7 @@ fn interleaved_shapes_record_correct_order() {
 #[test]
 fn parent_post_child_shapes_dont_inflate_child_subtree_count() {
     fn pos_rect() -> RectShape {
-        Shape::rect(Rect::new(0.0, 0.0, 10.0, 10.0)).fill(Color::rgb(1.0, 0.0, 0.0))
+        Shape::rect(Rect::new(0.0, 0.0, 10.0, 10.0)).fill(RgbaF32::srgb(1.0, 0.0, 0.0))
     }
     let mut h = UiHarness::new(SURFACE);
     let mut child_id = None;
@@ -143,7 +143,7 @@ fn parent_post_child_shapes_dont_inflate_child_subtree_count() {
                         Frame::new()
                             .id(WidgetId::from_hash("only-child"))
                             .background(Background {
-                                fill: Color::rgb(0.0, 1.0, 0.0).into(),
+                                fill: RgbaF32::srgb(0.0, 1.0, 0.0).into(),
                                 ..Default::default()
                             })
                             .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))

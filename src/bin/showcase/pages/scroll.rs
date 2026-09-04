@@ -6,7 +6,7 @@
 use crate::support;
 use crate::support::{note_style, on_swatch_style, swatch_bg, well_bg};
 use palantir::{
-    Color, Configure, Panel, Scroll, Sizing, SplitHalf, Splitter, Text, Ui, WidgetId, fmt,
+    Configure, Panel, RgbaF32, Scroll, Sizing, SplitHalf, Splitter, Text, Ui, WidgetId, fmt,
 };
 
 #[derive(Debug)]
@@ -152,16 +152,17 @@ fn grid(ui: &mut Ui) {
 /// Teal → purple → orange sweep across the scrollable items, so panning
 /// shows visible progress. These colors aren't theme — they ARE the demo
 /// content, and they stay in the swatch palette's hues.
-fn ramp(i: u32) -> Color {
+fn ramp(i: u32) -> RgbaF32 {
     let t = (i % 40) as f32 / 40.0;
     let (from, to, u) = if t < 0.5 {
         (support::A, support::D, t * 2.0)
     } else {
         (support::D, support::B, (t - 0.5) * 2.0)
     };
-    Color::linear_rgb(
+    RgbaF32::new(
         from.r + (to.r - from.r) * u,
         from.g + (to.g - from.g) * u,
         from.b + (to.b - from.b) * u,
+        1.0,
     )
 }

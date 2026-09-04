@@ -2,7 +2,7 @@ use crate::ui::harness::UiHarness;
 use std::f32::consts::TAU;
 
 use crate::layout::types::sizing::Sizing;
-use crate::primitives::color::{Color, ColorU8};
+use crate::primitives::color::{RgbaF32, RgbaU8};
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::scene::node::configure::Configure;
@@ -128,7 +128,7 @@ fn arc_and_spin_follow_the_spinner_theme() {
 /// head must carry the base alpha, not opaque 1.0.
 #[test]
 fn comet_brush_fades_tail_to_head() {
-    let base = Color::rgb(0.6, 0.8, 1.0).with_alpha(0.5);
+    let base = RgbaF32::srgb(0.6, 0.8, 1.0).with_alpha(0.5);
     let g = comet_brush(base);
     assert_eq!(g.stops.len(), 2);
     let tail = g.stops[0];
@@ -136,7 +136,7 @@ fn comet_brush_fades_tail_to_head() {
     assert_eq!(tail.offset(), 0.0);
     assert_eq!(head.offset(), 1.0);
     assert_eq!(tail.color().a, 0);
-    assert_eq!(head.color(), ColorU8::from(base));
+    assert_eq!(head.color(), RgbaU8::from(base));
     // RGB is untouched — only alpha varies along the trail.
     assert_eq!(tail.color().r, head.color().r);
     assert_eq!(tail.color().g, head.color().g);

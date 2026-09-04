@@ -1,7 +1,7 @@
 //! What a scroll's bars wear, in both the modes they can lay out in —
 //! reserved beside the content, or floating over it.
 
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::widgets::theme::palette::Palette;
 
 /// Visuals for [`crate::Scroll`] reservation-layout scrollbars. Under
@@ -25,15 +25,15 @@ pub struct ScrollbarTheme {
     /// Floor for the thumb's main-axis length so a tiny `viewport /
     /// content` ratio doesn't produce an ungrabbable nub.
     pub min_thumb_px: f32,
-    /// Track background. `Color::TRANSPARENT` = pure overlay (only the
+    /// Track background. `RgbaF32::TRANSPARENT` = pure overlay (only the
     /// thumb is visible) — the macOS-style default.
-    pub track: Color,
+    pub track: RgbaF32,
     /// Idle thumb fill.
-    pub thumb: Color,
+    pub thumb: RgbaF32,
     /// Thumb fill while the pointer is over the bar.
-    pub thumb_hovered: Color,
+    pub thumb_hovered: RgbaF32,
     /// Thumb fill while the thumb is drag-captured (or pressed).
-    pub thumb_active: Color,
+    pub thumb_active: RgbaF32,
 }
 
 impl ScrollbarTheme {
@@ -47,7 +47,7 @@ impl ScrollbarTheme {
             thickness: 8.0,
             gap: 4.0,
             min_thumb_px: 24.0,
-            track: Color::TRANSPARENT,
+            track: RgbaF32::TRANSPARENT,
             thumb: thumb(0.45),
             thumb_hovered: thumb(0.65),
             thumb_active: thumb(0.85),

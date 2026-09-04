@@ -2,7 +2,7 @@ use crate::Ui;
 use crate::display::Display;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::scene::node::configure::Configure;
@@ -215,7 +215,7 @@ fn hidden_keeps_slot_but_emits_no_draws() {
                     .id(WidgetId::from_hash("a"))
                     .size(40.0)
                     .background(Background {
-                        fill: Color::rgb(1.0, 0.0, 0.0).into(),
+                        fill: RgbaF32::srgb(1.0, 0.0, 0.0).into(),
                         ..Default::default()
                     })
                     .show(ui);
@@ -223,7 +223,7 @@ fn hidden_keeps_slot_but_emits_no_draws() {
                     .id(WidgetId::from_hash("hid"))
                     .size(40.0)
                     .background(Background {
-                        fill: Color::rgb(0.0, 1.0, 0.0).into(),
+                        fill: RgbaF32::srgb(0.0, 1.0, 0.0).into(),
                         ..Default::default()
                     })
                     .hidden()
@@ -232,7 +232,7 @@ fn hidden_keeps_slot_but_emits_no_draws() {
                     .id(WidgetId::from_hash("b"))
                     .size(40.0)
                     .background(Background {
-                        fill: Color::rgb(0.0, 0.0, 1.0).into(),
+                        fill: RgbaF32::srgb(0.0, 0.0, 1.0).into(),
                         ..Default::default()
                     })
                     .show(ui);

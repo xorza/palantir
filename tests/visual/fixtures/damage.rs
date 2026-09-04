@@ -10,14 +10,14 @@ use std::path::Path;
 
 use glam::{UVec2, Vec2};
 use image::{Rgba, RgbaImage};
-use palantir::{Background, Button, Color, Configure, DebugOverlayConfig, Frame, Panel, Sizing};
+use palantir::{Background, Button, Configure, DebugOverlayConfig, Frame, Panel, RgbaF32, Sizing};
 
 use crate::fixtures::DARK_BG;
 use crate::harness::Harness;
 
 /// Bright magenta — picked so non-painted pixels in the damage
 /// visualization image stand out against any plausible UI palette.
-const VIS_CLEAR: Color = Color::rgb(1.0, 0.0, 1.0);
+const VIS_CLEAR: RgbaF32 = RgbaF32::srgb(1.0, 0.0, 1.0);
 
 fn save_debug(name: &str, img: &RgbaImage) {
     if std::env::var_os("SAVE_DAMAGE_PNGS").is_none_or(|v| v.is_empty()) {
@@ -58,7 +58,7 @@ fn button_scene(
             .gap(8.0)
             .size((Sizing::FILL, Sizing::FILL))
             .background(Background {
-                fill: Color::rgb(0.15, 0.15, 0.18).into(),
+                fill: RgbaF32::srgb(0.15, 0.15, 0.18).into(),
                 ..Default::default()
             })
             .show(ui, |ui| {
@@ -76,7 +76,7 @@ fn corner_pair_scene(
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
             .background(Background {
-                fill: Color::rgb(0.15, 0.15, 0.18).into(),
+                fill: RgbaF32::srgb(0.15, 0.15, 0.18).into(),
                 ..Default::default()
             })
             .show(ui, |ui| {
@@ -85,7 +85,7 @@ fn corner_pair_scene(
                     .position(Vec2::new(0.0, 0.0))
                     .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
                     .background(Background {
-                        fill: Color::rgb(0.2, 0.7, 0.4).into(),
+                        fill: RgbaF32::srgb(0.2, 0.7, 0.4).into(),
                         ..Default::default()
                     })
                     .show(ui);
@@ -94,7 +94,7 @@ fn corner_pair_scene(
                     .position(Vec2::new(180.0, 180.0))
                     .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
                     .background(Background {
-                        fill: Color::rgb(0.7, 0.3, 0.2).into(),
+                        fill: RgbaF32::srgb(0.7, 0.3, 0.2).into(),
                         ..Default::default()
                     })
                     .show(ui);
@@ -362,7 +362,7 @@ fn damage_rect_overlay_outlines_thin_sliver() {
                 .auto_id()
                 .size((Sizing::FILL, Sizing::FILL))
                 .background(Background {
-                    fill: Color::rgb(0.12, 0.12, 0.15).into(),
+                    fill: RgbaF32::srgb(0.12, 0.12, 0.15).into(),
                     ..Default::default()
                 })
                 .show(ui, |ui| {
@@ -372,9 +372,9 @@ fn damage_rect_overlay_outlines_thin_sliver() {
                         .size((Sizing::fixed(2.0), Sizing::fixed(40.0)))
                         .background(Background {
                             fill: if on {
-                                Color::rgb(0.9, 0.5, 0.2)
+                                RgbaF32::srgb(0.9, 0.5, 0.2)
                             } else {
-                                Color::rgb(0.2, 0.3, 0.7)
+                                RgbaF32::srgb(0.2, 0.3, 0.7)
                             }
                             .into(),
                             ..Default::default()

@@ -4,7 +4,7 @@
 
 use glam::UVec2;
 use palantir::{
-    Background, Color, Configure, Corners, Frame, Panel, Scroll, ScrollbarTheme, Sizing,
+    Background, Configure, Corners, Frame, Panel, RgbaF32, Scroll, ScrollbarTheme, Sizing,
 };
 
 use crate::fixtures::DARK_BG;
@@ -12,17 +12,17 @@ use crate::goldens::assert_matches_golden;
 use crate::harness::Harness;
 use palantir::golden::Tolerance;
 
-const CARD: Color = Color::rgb(0.16, 0.20, 0.28);
-const ROW: Color = Color::rgb(0.42, 0.55, 0.78);
+const CARD: RgbaF32 = RgbaF32::srgb(0.16, 0.20, 0.28);
+const ROW: RgbaF32 = RgbaF32::srgb(0.42, 0.55, 0.78);
 
 /// Override the default near-black thumb to a light translucent fill
 /// so it shows up against the dark fixture background. Mirrors what
 /// the showcase binary (`src/bin/showcase/main.rs`) does.
 fn light_thumb_theme(ui: &mut palantir::Ui) {
     ui.theme_mut().scrollbar = ScrollbarTheme {
-        thumb: Color::rgba(1.0, 1.0, 1.0, 0.55),
-        thumb_hovered: Color::rgba(1.0, 1.0, 1.0, 0.75),
-        thumb_active: Color::rgba(1.0, 1.0, 1.0, 0.9),
+        thumb: RgbaF32::srgba(1.0, 1.0, 1.0, 0.55),
+        thumb_hovered: RgbaF32::srgba(1.0, 1.0, 1.0, 0.75),
+        thumb_active: RgbaF32::srgba(1.0, 1.0, 1.0, 0.9),
         ..Default::default()
     };
 }

@@ -100,7 +100,7 @@ impl FloatHash for Vec2 {
 /// one comparison: `v <= EPS` is true for near-zero positives,
 /// exact zero, and any negative; the `is_nan` branch handles the
 /// NaN case (NaN compares false against everything). Useful as the
-/// shared predicate behind `Stroke::is_noop`, `Color::is_noop`,
+/// shared predicate behind `Stroke::is_noop`, `RgbaF32::is_noop`,
 /// and per-variant `Shape::is_noop` checks — keeps the
 /// "non-paintable scalar" contract in one place.
 ///

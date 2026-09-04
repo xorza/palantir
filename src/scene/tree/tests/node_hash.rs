@@ -5,7 +5,7 @@ use crate::common::content_hash::ContentHash;
 use crate::layout::types::{justify::Justify, sizing::Sizing};
 use crate::primitives::approx::EPS;
 use crate::primitives::background::Background;
-use crate::primitives::color::{Color, ColorU8};
+use crate::primitives::color::{RgbaF32, RgbaU8};
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::scene::node::configure::Configure;
@@ -37,7 +37,7 @@ fn same_authoring_produces_same_hash() {
                     .id(WidgetId::from_hash("a"))
                     .size(50.0)
                     .background(Background {
-                        fill: Color::rgb(0.2, 0.4, 0.8).into(),
+                        fill: RgbaF32::srgb(0.2, 0.4, 0.8).into(),
                         ..Default::default()
                     })
                     .show(ui);
@@ -50,7 +50,7 @@ fn same_authoring_produces_same_hash() {
 
 #[test]
 fn polyline_hash_uses_visual_points_and_lowered_colors() {
-    fn build(ui: &mut Ui, points: &[Vec2], color: Color) -> NodeId {
+    fn build(ui: &mut Ui, points: &[Vec2], color: RgbaF32) -> NodeId {
         Panel::canvas()
             .id(WidgetId::from_hash("polyline"))
             .show(ui, |ui| {
@@ -62,10 +62,10 @@ fn polyline_hash_uses_visual_points_and_lowered_colors() {
 
     let base_points = [Vec2::ZERO, Vec2::new(10.0, 0.0)];
     let noisy_points = [Vec2::new(EPS * 0.5, -EPS * 0.5), Vec2::new(10.0, 0.0)];
-    let color_a = Color::linear_rgb(0.5, 0.25, 0.75);
-    let color_b = Color::linear_rgb(0.5001, 0.2501, 0.7501);
+    let color_a = RgbaF32::new(0.5, 0.25, 0.75, 1.0);
+    let color_b = RgbaF32::new(0.5001, 0.2501, 0.7501, 1.0);
     assert_ne!(color_a, color_b);
-    assert_eq!(ColorU8::from(color_a), ColorU8::from(color_b));
+    assert_eq!(RgbaU8::from(color_a), RgbaU8::from(color_b));
 
     let baseline = record_hash(|ui| build(ui, &base_points, color_a));
     assert_eq!(
@@ -77,7 +77,7 @@ fn polyline_hash_uses_visual_points_and_lowered_colors() {
 
 #[test]
 fn changing_fill_color_changes_hash() {
-    fn build_child(ui: &mut Ui, fill: Color) -> NodeId {
+    fn build_child(ui: &mut Ui, fill: RgbaF32) -> NodeId {
         let mut child = None;
         Panel::hstack()
             .id(WidgetId::from_hash("root"))
@@ -96,11 +96,11 @@ fn changing_fill_color_changes_hash() {
             });
         child.unwrap()
     }
-    let h1 = record_hash(|ui| build_child(ui, Color::rgb(0.2, 0.4, 0.8)));
-    let h2 = record_hash(|ui| build_child(ui, Color::rgb(0.9, 0.4, 0.8)));
+    let h1 = record_hash(|ui| build_child(ui, RgbaF32::srgb(0.2, 0.4, 0.8)));
+    let h2 = record_hash(|ui| build_child(ui, RgbaF32::srgb(0.9, 0.4, 0.8)));
     assert_ne!(h1, h2);
-    let static_1 = record_cascade_static(|ui| build_child(ui, Color::rgb(0.2, 0.4, 0.8)));
-    let static_2 = record_cascade_static(|ui| build_child(ui, Color::rgb(0.9, 0.4, 0.8)));
+    let static_1 = record_cascade_static(|ui| build_child(ui, RgbaF32::srgb(0.2, 0.4, 0.8)));
+    let static_2 = record_cascade_static(|ui| build_child(ui, RgbaF32::srgb(0.9, 0.4, 0.8)));
     assert_eq!(
         static_1, static_2,
         "paint-only changes must remain eligible for incremental cascade"
@@ -300,7 +300,7 @@ fn changing_text_content_changes_hash() {
 
 #[test]
 fn child_hash_does_not_affect_parent_hash() {
-    fn build(ui: &mut Ui, fill: Color) -> NodeId {
+    fn build(ui: &mut Ui, fill: RgbaF32) -> NodeId {
         Panel::hstack()
             .id(WidgetId::from_hash("root"))
             .show(ui, |ui| {
@@ -316,8 +316,8 @@ fn child_hash_does_not_affect_parent_hash() {
             .response
             .node()
     }
-    let h1 = record_hash(|ui| build(ui, Color::rgb(0.2, 0.4, 0.8)));
-    let h2 = record_hash(|ui| build(ui, Color::rgb(0.9, 0.4, 0.8)));
+    let h1 = record_hash(|ui| build(ui, RgbaF32::srgb(0.2, 0.4, 0.8)));
+    let h2 = record_hash(|ui| build(ui, RgbaF32::srgb(0.9, 0.4, 0.8)));
     assert_eq!(h1, h2, "parent hash captures only its own fields");
 }
 
@@ -332,13 +332,13 @@ fn shape_hashes_column_sized_to_shape_records() {
             .id(WidgetId::from_hash("f"))
             .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
             .background(Background {
-                fill: Color::rgb(0.2, 0.4, 0.8).into(),
+                fill: RgbaF32::srgb(0.2, 0.4, 0.8).into(),
                 ..Default::default()
             })
             .show(ui, |ui| {
                 ui.add_shape(
                     Shape::line(glam::Vec2::new(0.0, 0.0), glam::Vec2::new(10.0, 10.0), 1.0)
-                        .brush(Color::rgb(1.0, 0.0, 0.0)),
+                        .brush(RgbaF32::srgb(1.0, 0.0, 0.0)),
                 );
                 ui.add_shape(
                     Shape::line(
@@ -346,7 +346,7 @@ fn shape_hashes_column_sized_to_shape_records() {
                         glam::Vec2::new(20.0, 20.0),
                         1.0,
                     )
-                    .brush(Color::rgb(0.0, 1.0, 0.0)),
+                    .brush(RgbaF32::srgb(0.0, 1.0, 0.0)),
                 );
             });
     });
@@ -384,13 +384,13 @@ fn shape_hash_stable_across_frames() {
             .id(WidgetId::from_hash("f"))
             .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
             .background(Background {
-                fill: Color::rgb(0.2, 0.4, 0.8).into(),
+                fill: RgbaF32::srgb(0.2, 0.4, 0.8).into(),
                 ..Default::default()
             })
             .show(ui, |ui| {
                 ui.add_shape(
                     Shape::line(glam::Vec2::new(0.0, 0.0), glam::Vec2::new(10.0, 10.0), 1.0)
-                        .brush(Color::rgb(1.0, 0.0, 0.0)),
+                        .brush(RgbaF32::srgb(1.0, 0.0, 0.0)),
                 );
             });
     };
@@ -415,17 +415,17 @@ fn one_shape_change_only_flips_its_own_hash() {
             .id(WidgetId::from_hash("f"))
             .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
             .background(Background {
-                fill: Color::rgb(0.2, 0.4, 0.8).into(),
+                fill: RgbaF32::srgb(0.2, 0.4, 0.8).into(),
                 ..Default::default()
             })
             .show(ui, |ui| {
                 ui.add_shape(
                     Shape::line(glam::Vec2::new(0.0, 0.0), glam::Vec2::new(10.0, 10.0), 1.0)
-                        .brush(Color::rgb(1.0, 0.0, 0.0)),
+                        .brush(RgbaF32::srgb(1.0, 0.0, 0.0)),
                 );
                 ui.add_shape(
                     Shape::line(glam::Vec2::new(5.0, 5.0), b_endpoint, 1.0)
-                        .brush(Color::rgb(0.0, 1.0, 0.0)),
+                        .brush(RgbaF32::srgb(0.0, 1.0, 0.0)),
                 );
             });
     };

@@ -8,7 +8,7 @@ pub(crate) mod paint;
 pub(crate) mod record;
 
 use crate::common::content_hash::ContentHash;
-use crate::primitives::color::{Color, ColorF16};
+use crate::primitives::color::{RgbaF16, RgbaF32};
 use crate::primitives::image::{ImageDownsample, ImageFilter, ImageFit};
 use crate::primitives::nan::NanCheck;
 use crate::scene::record_store::RecordStore;
@@ -120,7 +120,7 @@ impl Shapes {
     pub(crate) fn add_gpu_view(&mut self, epoch: u64) {
         let record = ShapeRecord::Image {
             local_rect: None,
-            tint: ColorF16::from(Color::WHITE),
+            tint: RgbaF16::from(RgbaF32::WHITE),
             source: ImageSource::GpuView { epoch },
             fit: ImageFit::Fill,
             min_filter: ImageFilter::Linear,

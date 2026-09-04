@@ -4,7 +4,7 @@ use crate::primitives::approx::FloatHash;
 use crate::primitives::brush::gradient::gradient_builder::GradientBuilder;
 use crate::primitives::brush::gradient::stops::Stop;
 use crate::primitives::brush::gradient::{Gradient, GradientGeometry, Interp};
-use crate::primitives::color::ColorU8;
+use crate::primitives::color::RgbaU8;
 use crate::primitives::nan::NanCheck;
 use glam::Vec2;
 
@@ -71,7 +71,7 @@ impl ConicGradient {
 
     /// Centred shorthand — `center = (0.5, 0.5)`, starts at angle 0
     /// (positive x-axis, sweeping CCW). 2 stops at offsets 0/1.
-    pub fn two_stop_centered(c0: impl Into<ColorU8>, c1: impl Into<ColorU8>) -> Self {
+    pub fn two_stop_centered(c0: impl Into<RgbaU8>, c1: impl Into<RgbaU8>) -> Self {
         Self::new(
             Vec2::splat(0.5),
             0.0,

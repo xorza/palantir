@@ -18,15 +18,15 @@
 //! Not part of the supported surface; it exists only because both demo
 //! surfaces ship in-tree.
 
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 
 /// Teal-blue. The default when one colour is enough.
-pub const TEAL: Color = Color::hex(0x4cd3ff);
+pub const TEAL: RgbaF32 = RgbaF32::hex(0x4cd3ff);
 /// Orange. Pairs with [`TEAL`] for "two distinct things".
-pub const ORANGE: Color = Color::hex(0xffa63d);
+pub const ORANGE: RgbaF32 = RgbaF32::hex(0xffa63d);
 /// Green-yellow.
-pub const LIME: Color = Color::hex(0xd9ff57);
+pub const LIME: RgbaF32 = RgbaF32::hex(0xd9ff57);
 /// Purple.
-pub const VIOLET: Color = Color::hex(0xd897ff);
+pub const VIOLET: RgbaF32 = RgbaF32::hex(0xd897ff);
 /// Red — the "wrong / danger" swatch.
-pub const RED: Color = Color::hex(0xff5e44);
+pub const RED: RgbaF32 = RgbaF32::hex(0xff5e44);

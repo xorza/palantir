@@ -1,7 +1,7 @@
 //! One drop or inset shadow: the offset, blur and spread a chrome or a
 //! shape paints behind itself.
 
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::nan::{self, NanCheck};
 use glam::Vec2;
 use palantir_anim_derive::Animatable;
@@ -30,7 +30,7 @@ use palantir_anim_derive::Animatable;
     Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize, Animatable,
 )]
 pub struct Shadow {
-    pub color: Color,
+    pub color: RgbaF32,
     pub offset: Vec2,
     pub blur: f32,
     pub spread: f32,
@@ -44,7 +44,7 @@ impl Shadow {
     /// `const` contexts (theme tables, look defaults). Reports
     /// `is_noop()` — emits nothing.
     pub const NONE: Self = Self {
-        color: Color::TRANSPARENT,
+        color: RgbaF32::TRANSPARENT,
         offset: Vec2::ZERO,
         blur: 0.0,
         spread: 0.0,
@@ -54,7 +54,7 @@ impl Shadow {
     /// A drop shadow: `color`, Gaussian-blurred by `blur` (σ, logical px)
     /// and shifted by `offset`, painting outside the shape with no spread.
     /// Chain [`Self::with_spread`] / [`Self::inset`] for the variations.
-    pub const fn drop(color: Color, offset: Vec2, blur: f32) -> Self {
+    pub const fn drop(color: RgbaF32, offset: Vec2, blur: f32) -> Self {
         Self {
             color,
             offset,

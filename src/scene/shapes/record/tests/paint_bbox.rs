@@ -1,6 +1,6 @@
 //! The rect a shape reports as painted, where it is not the owner's.
 
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::rect::Rect;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::size::Size;
@@ -42,7 +42,7 @@ fn shadow_paint_bbox_tracks_shifted_drop_and_source_bounded_inset() {
 
     let lowered = |offset: Vec2, blur: f32, spread: f32, inset: bool| {
         LoweredShadow::from(Shadow {
-            color: Color::BLACK,
+            color: RgbaF32::BLACK,
             offset,
             blur,
             spread,

@@ -1,6 +1,6 @@
 //! The colour lanes every GPU fill writes.
 
-use crate::primitives::color::ColorF16;
+use crate::primitives::color::RgbaF16;
 use crate::primitives::fill_kind::FillKind;
 use crate::primitives::lut_row::LutRow;
 
@@ -19,7 +19,7 @@ use crate::primitives::lut_row::LutRow;
 pub(crate) struct GpuFill {
     /// Linear-RGB, straight alpha. Zeroed for a gradient, where the
     /// atlas row at [`Self::lut_row`] supplies the colour instead.
-    pub(crate) color: ColorF16,
+    pub(crate) color: RgbaF16,
     /// Low byte is the kind tag; bits 8..16 carry `Spread` for the
     /// gradient variants.
     pub(crate) kind: FillKind,

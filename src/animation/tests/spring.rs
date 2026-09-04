@@ -7,7 +7,7 @@ use crate::animation::tests::support::{
     AnimUi, SLOT, duration_motion, next_frame, setup_anim_ui, spring_velocity, wid,
 };
 use crate::animation::*;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::configure::Configure;
 use crate::widgets::frame::Frame;
@@ -247,10 +247,10 @@ fn spring_settles_under_sub_millisecond_dt_via_fixed_step_accumulator() {
 
 #[test]
 fn color_spring_converges_to_target() {
-    let mut map = AnimMapTyped::<Color>::default();
+    let mut map = AnimMapTyped::<RgbaF32>::default();
     let id = wid("a");
-    let start = Color::rgb(0.0, 0.0, 0.0);
-    let target = Color::rgb(1.0, 0.5, 0.25);
+    let start = RgbaF32::srgb(0.0, 0.0, 0.0);
+    let target = RgbaF32::srgb(1.0, 0.5, 0.25);
     let _ = map.tick(id, SLOT, start, AnimSpec::SPRING, 0.016, next_frame());
     let mut last = start;
     let mut settled_at = None;
@@ -278,12 +278,12 @@ fn color_spring_converges_to_target() {
 fn solid_brush_spring_matches_color_trajectory() {
     use crate::primitives::brush::Brush;
 
-    let mut color_map = AnimMapTyped::<Color>::default();
+    let mut color_map = AnimMapTyped::<RgbaF32>::default();
     let mut brush_map = AnimMapTyped::<Brush>::default();
     let color_id = wid("solid-color-trajectory");
     let brush_id = wid("solid-brush-trajectory");
-    let start = Color::rgba(0.1, 0.2, 0.3, 0.4);
-    let target = Color::rgba(0.9, 0.7, 0.5, 0.8);
+    let start = RgbaF32::srgba(0.1, 0.2, 0.3, 0.4);
+    let target = RgbaF32::srgba(0.9, 0.7, 0.5, 0.8);
     let _ = color_map.tick(color_id, SLOT, start, AnimSpec::SPRING, 0.0, next_frame());
     let _ = brush_map.tick(
         brush_id,

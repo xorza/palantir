@@ -290,7 +290,7 @@ fn hash_fit(fit: &ImageFit, h: &mut Hasher) {
 mod tests {
     use crate::common::hash::hash_str;
     use crate::layout::types::align::Align;
-    use crate::primitives::color::Color;
+    use crate::primitives::color::RgbaF32;
     use crate::primitives::recorded_text::RecordedText;
     use crate::primitives::span::Span;
     use crate::scene::shapes::hash::compute_record_hash;
@@ -322,7 +322,7 @@ mod tests {
         ShapeRecord::Text {
             local_origin,
             text: RecordedText::new(Span::default(), hash_str("hi")),
-            color: Color::WHITE.into(),
+            color: RgbaF32::WHITE.into(),
             font,
             wrap: TextWrap::Truncate,
             align: Align::default(),

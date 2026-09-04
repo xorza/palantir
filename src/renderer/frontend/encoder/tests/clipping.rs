@@ -5,7 +5,7 @@ use crate::primitives::background::Background;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
-use crate::primitives::{color::Color, stroke::Stroke};
+use crate::primitives::{color::RgbaF32, stroke::Stroke};
 use crate::renderer::frontend::capture::PaintCall;
 use crate::renderer::frontend::capture::PaintCapture;
 use crate::renderer::frontend::encoder::tests::support::{as_rect, count_draw_rects};
@@ -51,7 +51,7 @@ fn clip_emits_balanced_push_pop() {
                         .id(WidgetId::from_hash("inner"))
                         .size(40.0)
                         .background(Background {
-                            fill: Color::rgb(0.5, 0.5, 0.5).into(),
+                            fill: RgbaF32::srgb(0.5, 0.5, 0.5).into(),
                             ..Default::default()
                         })
                         .show(ui);
@@ -102,8 +102,8 @@ fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
                 .id(WidgetId::from_hash("rounded"))
                 .size(80.0)
                 .background(Background {
-                    fill: Color::rgb(0.2, 0.2, 0.2).into(),
-                    stroke: Stroke::solid(Color::rgb(1.0, 1.0, 1.0), 2.0),
+                    fill: RgbaF32::srgb(0.2, 0.2, 0.2).into(),
+                    stroke: Stroke::solid(RgbaF32::srgb(1.0, 1.0, 1.0), 2.0),
                     corners: Corners::all(8.0),
                     shadow: Shadow::NONE,
                 })

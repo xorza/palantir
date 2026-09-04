@@ -9,7 +9,7 @@
 
 use crate::support;
 use palantir::{
-    AnimSpec, Background, Button, Color, Configure, Corners, Easing, Frame, Panel, Sense, Sizing,
+    AnimSpec, Background, Button, Configure, Corners, Easing, Frame, Panel, RgbaF32, Sense, Sizing,
     Stroke, Text, Ui, Vec2, WidgetId,
 };
 
@@ -22,7 +22,7 @@ const CANVAS_H: f32 = 300.0;
 const CARD_W: f32 = 140.0;
 const CARD_H: f32 = 80.0;
 
-const CARDS: [(&str, Vec2, Color); 3] = [
+const CARDS: [(&str, Vec2, RgbaF32); 3] = [
     ("motion.card.a", Vec2::new(40.0, 32.0), support::A),
     ("motion.card.b", Vec2::new(230.0, 112.0), support::B),
     ("motion.card.c", Vec2::new(120.0, 192.0), support::D),
@@ -141,7 +141,7 @@ struct CardState {
     dragging: bool,
 }
 
-fn card(ui: &mut Ui, key: &str, initial: Vec2, accent: Color) {
+fn card(ui: &mut Ui, key: &str, initial: Vec2, accent: RgbaF32) {
     let id = WidgetId::from_hash(key);
     // Seeded on the first frame only — keyed on the row not existing yet,
     // the way every other page seeds one, rather than on a flag the row's
@@ -160,7 +160,7 @@ fn card(ui: &mut Ui, key: &str, initial: Vec2, accent: Color) {
         .sense(Sense::DRAG)
         .background(
             Background::rounded(accent, Corners::all(6.0))
-                .with_stroke(Stroke::solid(Color::hex(0x14161a), 1.0)),
+                .with_stroke(Stroke::solid(RgbaF32::hex(0x14161a), 1.0)),
         )
         .show(ui)
         .snapshot();

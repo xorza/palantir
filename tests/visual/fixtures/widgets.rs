@@ -4,9 +4,9 @@
 use glam::{UVec2, Vec2};
 use image::Rgba;
 use palantir::{
-    Background, Brush, Button, Color, ColorU8, ComboBox, Configure, ConicGradient, Corners,
-    DragValue, Frame, LineCap, LineJoin, LinearGradient, Modal, Panel, ProgressBar, RadialGradient,
-    Rect, Shadow, Shape, Sizing, Slider, Spinner, Stroke, Switch, Text, ToggleTheme,
+    Background, Brush, Button, ComboBox, Configure, ConicGradient, Corners, DragValue, Frame,
+    LineCap, LineJoin, LinearGradient, Modal, Panel, ProgressBar, RadialGradient, Rect, RgbaF32,
+    RgbaU8, Shadow, Shape, Sizing, Slider, Spinner, SrgbaU8, Stroke, Switch, Text, ToggleTheme,
 };
 use std::f32::consts::{FRAC_PI_2, FRAC_PI_4};
 
@@ -43,8 +43,8 @@ fn frame_filled_with_stroke_matches_golden() {
                     .id_salt("card")
                     .size((Sizing::FILL, Sizing::FILL))
                     .background(Background {
-                        fill: Color::rgb(0.20, 0.30, 0.55).into(),
-                        stroke: Stroke::solid(Color::rgb(0.65, 0.80, 1.00), 2.0),
+                        fill: RgbaF32::srgb(0.20, 0.30, 0.55).into(),
+                        stroke: Stroke::solid(RgbaF32::srgb(0.65, 0.80, 1.00), 2.0),
                         corners: Corners::all(16.0),
                         shadow: Shadow::NONE,
                     })
@@ -75,8 +75,8 @@ fn frame_linear_gradient_matches_golden() {
                     .background(Background {
                         fill: Brush::Linear(LinearGradient::two_stop(
                             FRAC_PI_2,
-                            ColorU8::hex(0x1a1a2e),
-                            ColorU8::hex(0x4c5cdb),
+                            RgbaU8::hex(0x1a1a2e),
+                            RgbaU8::hex(0x4c5cdb),
                         )),
                         corners: Corners::all(16.0),
                         ..Default::default()
@@ -106,8 +106,8 @@ fn add_shape_rounded_rect_linear_gradient_matches_golden() {
                         .corners(12.0)
                         .fill(LinearGradient::two_stop(
                             0.0,
-                            ColorU8::hex(0xff5e44),
-                            ColorU8::hex(0xfacc15),
+                            RgbaU8::hex(0xff5e44),
+                            RgbaU8::hex(0xfacc15),
                         )),
                 );
             });
@@ -138,14 +138,14 @@ fn windowed_rect_masks_corners_matches_golden() {
                 let card = Rect::new(0.0, 0.0, 180.0, 100.0);
                 ui.add_shape(Shape::rect(card).fill(LinearGradient::two_stop(
                     0.0,
-                    ColorU8::hex(0xff5e44),
-                    ColorU8::hex(0xfacc15),
+                    RgbaU8::hex(0xff5e44),
+                    RgbaU8::hex(0xfacc15),
                 )));
                 ui.add_shape(
                     Shape::windowed_rect(card)
                         .corners(20.0)
                         .fill(DARK_BG)
-                        .stroke(Stroke::solid(Color::rgb(0.65, 0.80, 1.00), 2.0)),
+                        .stroke(Stroke::solid(RgbaF32::srgb(0.65, 0.80, 1.00), 2.0)),
                 );
             });
     });
@@ -163,12 +163,12 @@ fn showcase_gradients_tab_matches_golden() {
     use palantir::{Interp, Spread, Stop};
     let mut h = Harness::new();
     let img = h.render(UVec2::new(560, 360), 1.0, DARK_BG, |ui| {
-        let navy = ColorU8::hex(0x1a1a2e);
-        let blue = ColorU8::hex(0x4c5cdb);
-        let orange = ColorU8::hex(0xff7e44);
-        let yellow = ColorU8::hex(0xfacc15);
-        let red = ColorU8::hex(0xff5e44);
-        let green = ColorU8::hex(0x46c46c);
+        let navy = RgbaU8::hex(0x1a1a2e);
+        let blue = RgbaU8::hex(0x4c5cdb);
+        let orange = RgbaU8::hex(0xff7e44);
+        let yellow = RgbaU8::hex(0xfacc15);
+        let red = RgbaU8::hex(0xff5e44);
+        let green = RgbaU8::hex(0x46c46c);
         let cell = |g: LinearGradient| Background {
             fill: Brush::Linear(g),
             corners: Corners::all(8.0),
@@ -274,10 +274,8 @@ fn radial_and_conic_gradient_matches_golden() {
             .padding(16.0)
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                let r = RadialGradient::two_stop_centered(
-                    ColorU8::hex(0xfacc15),
-                    ColorU8::hex(0x1a1a2e),
-                );
+                let r =
+                    RadialGradient::two_stop_centered(RgbaU8::hex(0xfacc15), RgbaU8::hex(0x1a1a2e));
                 Frame::new()
                     .id_salt("radial")
                     .size((Sizing::FILL, Sizing::FILL))
@@ -291,11 +289,11 @@ fn radial_and_conic_gradient_matches_golden() {
                     glam::Vec2::splat(0.5),
                     0.0,
                     [
-                        palantir::Stop::new(0.0, ColorU8::hex(0xff5e44)),
-                        palantir::Stop::new(0.25, ColorU8::hex(0xfacc15)),
-                        palantir::Stop::new(0.5, ColorU8::hex(0x46c46c)),
-                        palantir::Stop::new(0.75, ColorU8::hex(0x4c5cdb)),
-                        palantir::Stop::new(1.0, ColorU8::hex(0xff5e44)),
+                        palantir::Stop::new(0.0, RgbaU8::hex(0xff5e44)),
+                        palantir::Stop::new(0.25, RgbaU8::hex(0xfacc15)),
+                        palantir::Stop::new(0.5, RgbaU8::hex(0x46c46c)),
+                        palantir::Stop::new(0.75, RgbaU8::hex(0x4c5cdb)),
+                        palantir::Stop::new(1.0, RgbaU8::hex(0xff5e44)),
                     ],
                 );
                 Frame::new()
@@ -321,8 +319,8 @@ fn radial_and_conic_gradient_matches_golden() {
 #[test]
 fn surface_rounded_clips_full_fill_child() {
     let mut h = Harness::new();
-    let pink = Color::rgb(1.0, 0.42, 0.72);
-    let black = Color::rgb(0.0, 0.0, 0.0);
+    let pink = RgbaF32::srgb(1.0, 0.42, 0.72);
+    let black = RgbaF32::srgb(0.0, 0.0, 0.0);
     let img = h.render(UVec2::new(220, 220), 1.0, DARK_BG, |ui| {
         Panel::vstack()
             .auto_id()
@@ -337,8 +335,8 @@ fn surface_rounded_clips_full_fill_child() {
                     .id_salt("rounded")
                     .size((Sizing::FILL, Sizing::FILL))
                     .background(Background {
-                        fill: Color::TRANSPARENT.into(),
-                        stroke: Stroke::solid(Color::rgb_u8(0, 255, 0), 5.0),
+                        fill: RgbaF32::TRANSPARENT.into(),
+                        stroke: Stroke::solid(RgbaF32::from_srgba(SrgbaU8::rgb(0, 255, 0)), 5.0),
                         corners: Corners::new(4.0, 12.0, 20.0, 28.0),
                         shadow: Shadow::NONE,
                     })
@@ -393,8 +391,8 @@ fn rounded_clip_partially_offscreen_does_not_bleed_corners() {
                     .position(Vec2::new(-6.0, -6.0))
                     .size((Sizing::fixed(200.0), Sizing::fixed(150.0)))
                     .background(Background {
-                        fill: Color::TRANSPARENT.into(),
-                        stroke: Stroke::solid(Color::rgb_u8(0, 255, 0), 4.0),
+                        fill: RgbaF32::TRANSPARENT.into(),
+                        stroke: Stroke::solid(RgbaF32::from_srgba(SrgbaU8::rgb(0, 255, 0)), 4.0),
                         corners: Corners::all(24.0),
                         shadow: Shadow::NONE,
                     })
@@ -404,7 +402,7 @@ fn rounded_clip_partially_offscreen_does_not_bleed_corners() {
                             .id_salt("inner")
                             .size((Sizing::FILL, Sizing::FILL))
                             .background(Background {
-                                fill: Color::rgb(0.0, 0.0, 0.0).into(),
+                                fill: RgbaF32::srgb(0.0, 0.0, 0.0).into(),
                                 ..Default::default()
                             })
                             .show(ui);
@@ -476,7 +474,7 @@ fn rounded_clip_survives_surface_resize() {
                     .id_salt("rounded")
                     .size((Sizing::FILL, Sizing::FILL))
                     .background(Background {
-                        fill: Color::rgb(0.2, 0.2, 0.3).into(),
+                        fill: RgbaF32::srgb(0.2, 0.2, 0.3).into(),
                         corners: Corners::all(8.0),
                         ..Default::default()
                     })
@@ -519,29 +517,31 @@ fn interleaved_shapes_paint_in_record_order() {
             .padding(0.0)
             .show(ui, |ui| {
                 ui.add_shape(
-                    Shape::rect(Rect::new(0.0, 0.0, 30.0, 60.0)).fill(Color::rgb(1.0, 0.0, 0.0)),
+                    Shape::rect(Rect::new(0.0, 0.0, 30.0, 60.0)).fill(RgbaF32::srgb(1.0, 0.0, 0.0)),
                 );
                 Frame::new()
                     .id_salt("cyan")
                     .background(Background {
-                        fill: Color::rgb(0.0, 1.0, 1.0).into(),
+                        fill: RgbaF32::srgb(0.0, 1.0, 1.0).into(),
                         ..Default::default()
                     })
                     .size((Sizing::fixed(60.0), Sizing::FILL))
                     .show(ui);
                 ui.add_shape(
-                    Shape::rect(Rect::new(30.0, 0.0, 60.0, 60.0)).fill(Color::rgb(0.0, 1.0, 0.0)),
+                    Shape::rect(Rect::new(30.0, 0.0, 60.0, 60.0))
+                        .fill(RgbaF32::srgb(0.0, 1.0, 0.0)),
                 );
                 Frame::new()
                     .id_salt("yellow")
                     .background(Background {
-                        fill: Color::rgb(1.0, 1.0, 0.0).into(),
+                        fill: RgbaF32::srgb(1.0, 1.0, 0.0).into(),
                         ..Default::default()
                     })
                     .size((Sizing::fixed(60.0), Sizing::FILL))
                     .show(ui);
                 ui.add_shape(
-                    Shape::rect(Rect::new(90.0, 0.0, 60.0, 60.0)).fill(Color::rgb(0.2, 0.4, 1.0)),
+                    Shape::rect(Rect::new(90.0, 0.0, 60.0, 60.0))
+                        .fill(RgbaF32::srgb(0.2, 0.4, 1.0)),
                 );
             });
     });
@@ -564,7 +564,7 @@ fn line_diagonal_aa_matches_golden() {
             .show(ui, |ui| {
                 ui.add_shape(
                     Shape::line(Vec2::new(10.0, 10.0), Vec2::new(150.0, 110.0), 4.0)
-                        .brush(Color::rgb(0.2, 0.9, 1.0)),
+                        .brush(RgbaF32::srgb(0.2, 0.9, 1.0)),
                 );
                 // Hairlines at sub-pixel width — should appear dim
                 // (coverage-faded) rather than vanish or look identical
@@ -577,7 +577,7 @@ fn line_diagonal_aa_matches_golden() {
                 for y in [80.0, 40.5] {
                     ui.add_shape(
                         Shape::line(Vec2::new(10.0, y), Vec2::new(150.0, y), 0.4)
-                            .brush(Color::rgb(1.0, 1.0, 1.0)),
+                            .brush(RgbaF32::srgb(1.0, 1.0, 1.0)),
                     );
                 }
             });
@@ -607,10 +607,10 @@ fn polyline_gradient_matches_golden() {
                     Vec2::new(150.0, 130.0),
                 ];
                 let cols = [
-                    Color::rgb(1.0, 0.2, 0.2),
-                    Color::rgb(1.0, 0.85, 0.2),
-                    Color::rgb(0.2, 1.0, 0.4),
-                    Color::rgb(0.2, 0.6, 1.0),
+                    RgbaF32::srgb(1.0, 0.2, 0.2),
+                    RgbaF32::srgb(1.0, 0.85, 0.2),
+                    RgbaF32::srgb(0.2, 1.0, 0.4),
+                    RgbaF32::srgb(0.2, 0.6, 1.0),
                 ];
                 ui.add_shape(Shape::polyline(&pts, PolylineColors::PerPoint(&cols), 5.0));
             });
@@ -634,7 +634,7 @@ fn polyline_bevel_join_matches_golden() {
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                let cyan = Color::rgb(0.2, 0.9, 1.0);
+                let cyan = RgbaF32::srgb(0.2, 0.9, 1.0);
                 let shallow = [
                     Vec2::new(15.0, 30.0),
                     Vec2::new(60.0, 60.0),
@@ -666,9 +666,9 @@ fn polyline_round_caps_match_golden() {
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 for (y, cap, color) in [
-                    (30.0_f32, LineCap::Butt, Color::rgb(1.0, 0.4, 0.4)),
-                    (70.0, LineCap::Square, Color::rgb(0.4, 1.0, 0.4)),
-                    (110.0, LineCap::Round, Color::rgb(0.4, 0.6, 1.0)),
+                    (30.0_f32, LineCap::Butt, RgbaF32::srgb(1.0, 0.4, 0.4)),
+                    (70.0, LineCap::Square, RgbaF32::srgb(0.4, 1.0, 0.4)),
+                    (110.0, LineCap::Round, RgbaF32::srgb(0.4, 0.6, 1.0)),
                 ] {
                     ui.add_shape(
                         Shape::line(Vec2::new(40.0, y), Vec2::new(140.0, y), 10.0)
@@ -695,7 +695,7 @@ fn polyline_round_join_matches_golden() {
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                let cyan = Color::rgb(0.2, 0.9, 1.0);
+                let cyan = RgbaF32::srgb(0.2, 0.9, 1.0);
                 for (y, join) in [
                     (30.0_f32, LineJoin::Miter),
                     (90.0, LineJoin::Bevel),
@@ -731,7 +731,7 @@ fn polyline_translucent_joins_have_uniform_coverage() {
     // their concave overlap is covered exactly once — a brighter
     // wedge under a corner means the partition regressed and the
     // strips double-blended.
-    let img = h.render(UVec2::new(180, 160), 1.0, Color::BLACK, |ui| {
+    let img = h.render(UVec2::new(180, 160), 1.0, RgbaF32::BLACK, |ui| {
         Panel::zstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
@@ -749,7 +749,7 @@ fn polyline_translucent_joins_have_uniform_coverage() {
                     ui.add_shape(
                         Shape::polyline(
                             &pts,
-                            PolylineColors::Single(Color::rgba(0.0, 1.0, 0.0, 0.5)),
+                            PolylineColors::Single(RgbaF32::srgba(0.0, 1.0, 0.0, 0.5)),
                             14.0,
                         )
                         .join(*join),
@@ -797,18 +797,19 @@ fn polyline_translucent_premultiplies_in_stroke_shader() {
     use palantir::PolylineColors;
     let mut h = Harness::new();
     // Backdrop + a 24px horizontal translucent green stroke at y=60.
-    let img = h.render(UVec2::new(120, 120), 1.0, Color::BLACK, |ui| {
+    let img = h.render(UVec2::new(120, 120), 1.0, RgbaF32::BLACK, |ui| {
         Panel::zstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 ui.add_shape(
-                    Shape::rect(Rect::new(0.0, 0.0, 120.0, 120.0)).fill(Color::rgb(1.0, 0.0, 1.0)),
+                    Shape::rect(Rect::new(0.0, 0.0, 120.0, 120.0))
+                        .fill(RgbaF32::srgb(1.0, 0.0, 1.0)),
                 );
                 let pts = [Vec2::new(10.0, 60.0), Vec2::new(110.0, 60.0)];
                 ui.add_shape(Shape::polyline(
                     &pts,
-                    PolylineColors::Single(Color::rgba(0.0, 1.0, 0.0, 0.5)),
+                    PolylineColors::Single(RgbaF32::srgba(0.0, 1.0, 0.0, 0.5)),
                     24.0,
                 ));
             });
@@ -848,9 +849,9 @@ fn curve_caps_match_golden() {
                 // Three identical "hill" cubics, one per cap kind.
                 // Symmetric so the cap effect is the only delta.
                 for (i, (cap, color)) in [
-                    (LineCap::Butt, Color::rgb(1.0, 0.4, 0.4)),
-                    (LineCap::Square, Color::rgb(0.4, 1.0, 0.4)),
-                    (LineCap::Round, Color::rgb(0.4, 0.6, 1.0)),
+                    (LineCap::Butt, RgbaF32::srgb(1.0, 0.4, 0.4)),
+                    (LineCap::Square, RgbaF32::srgb(0.4, 1.0, 0.4)),
+                    (LineCap::Round, RgbaF32::srgb(0.4, 0.6, 1.0)),
                 ]
                 .iter()
                 .enumerate()
@@ -877,7 +878,7 @@ fn curve_caps_match_golden() {
                         Vec2::new(170.0, 215.0),
                         4.0,
                     )
-                    .brush(Color::rgb(1.0, 0.85, 0.2))
+                    .brush(RgbaF32::srgb(1.0, 0.85, 0.2))
                     .cap(LineCap::Round),
                 );
             });
@@ -905,7 +906,7 @@ fn triangle_matches_golden() {
                         Vec2::new(65.0, 15.0),
                         Vec2::new(110.0, 100.0),
                     )
-                    .fill(Color::rgb(1.0, 0.4, 0.4)),
+                    .fill(RgbaF32::srgb(1.0, 0.4, 0.4)),
                 );
                 // Top-right: rounded solid fill.
                 ui.add_shape(
@@ -915,7 +916,7 @@ fn triangle_matches_golden() {
                         Vec2::new(220.0, 100.0),
                     )
                     .radius(12.0_f32)
-                    .fill(Color::rgb(0.4, 1.0, 0.5)),
+                    .fill(RgbaF32::srgb(0.4, 1.0, 0.5)),
                 );
                 // Bottom-left: rounded fill + inner-edge stroke.
                 ui.add_shape(
@@ -925,8 +926,8 @@ fn triangle_matches_golden() {
                         Vec2::new(110.0, 220.0),
                     )
                     .radius(8.0_f32)
-                    .fill(Color::rgb(0.2, 0.5, 1.0))
-                    .stroke(Stroke::solid(Color::WHITE, 3.0)),
+                    .fill(RgbaF32::srgb(0.2, 0.5, 1.0))
+                    .stroke(Stroke::solid(RgbaF32::WHITE, 3.0)),
                 );
                 // Bottom-right: stroke-only (transparent fill), CW winding.
                 ui.add_shape(
@@ -936,8 +937,8 @@ fn triangle_matches_golden() {
                         Vec2::new(130.0, 220.0),
                     )
                     .radius(6.0_f32)
-                    .fill(Color::TRANSPARENT)
-                    .stroke(Stroke::solid(Color::rgb(1.0, 0.85, 0.2), 3.0)),
+                    .fill(RgbaF32::TRANSPARENT)
+                    .stroke(Stroke::solid(RgbaF32::srgb(1.0, 0.85, 0.2), 3.0)),
                 );
             });
     });
@@ -1009,12 +1010,12 @@ fn arc_shapes_match_golden() {
             .show(ui, |ui| {
                 ui.add_shape(
                     Shape::circle(Vec2::new(45.0, 70.0), 30.0, 4.0)
-                        .brush(Color::rgb(0.2, 0.9, 1.0)),
+                        .brush(RgbaF32::srgb(0.2, 0.9, 1.0)),
                 );
                 let comet = LinearGradient::two_stop(
                     0.0,
-                    Color::rgb(1.0, 0.85, 0.2).with_alpha(0.0),
-                    Color::rgb(1.0, 0.85, 0.2),
+                    RgbaF32::srgb(1.0, 0.85, 0.2).with_alpha(0.0),
+                    RgbaF32::srgb(1.0, 0.85, 0.2),
                 );
                 ui.add_shape(
                     Shape::arc(Vec2::new(130.0, 70.0), 30.0, -FRAC_PI_2, 1.5 * PI, 8.0)
@@ -1117,7 +1118,7 @@ fn modal_dialog_matches_golden() {
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
             .background(Background {
-                fill: Color::rgb(0.35, 0.45, 0.65).into(),
+                fill: RgbaF32::srgb(0.35, 0.45, 0.65).into(),
                 stroke: Stroke::ZERO,
                 corners: Corners::ZERO,
                 shadow: Shadow::NONE,

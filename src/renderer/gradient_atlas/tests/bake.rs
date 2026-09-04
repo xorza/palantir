@@ -5,7 +5,7 @@ use crate::primitives::approx;
 use crate::primitives::brush::gradient::Interp;
 use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::brush::gradient::stops::{GradientStops, Stop};
-use crate::primitives::color::ColorU8;
+use crate::primitives::color::RgbaU8;
 use crate::renderer::gradient_atlas::tests::support::fresh_row;
 use crate::renderer::gradient_atlas::*;
 use std::collections::HashSet;
@@ -17,8 +17,7 @@ use std::collections::HashSet;
 /// below the 0.4 threshold.
 #[test]
 fn linear_midpoint_black_to_white_is_half() {
-    let g =
-        LinearGradient::two_stop(0.0, ColorU8::BLACK, ColorU8::WHITE).with_interp(Interp::Linear);
+    let g = LinearGradient::two_stop(0.0, RgbaU8::BLACK, RgbaU8::WHITE).with_interp(Interp::Linear);
     let mut out = fresh_row();
     bake_stops(&g.stops, g.interp, &mut out);
     let mid = texel(&out, 127);
@@ -39,8 +38,8 @@ fn linear_midpoint_black_to_white_is_half() {
 /// hues rather than dipping through dark brown).
 #[test]
 fn oklab_red_to_green_midpoint_avoids_muddy_brown() {
-    let red = ColorU8::linear_rgb(255, 0, 0);
-    let green = ColorU8::linear_rgb(0, 255, 0);
+    let red = RgbaU8::rgb(255, 0, 0);
+    let green = RgbaU8::rgb(0, 255, 0);
     let g = LinearGradient::two_stop(0.0, red, green).with_interp(Interp::Oklab);
     let mut out = fresh_row();
     bake_stops(&g.stops, g.interp, &mut out);
@@ -64,8 +63,8 @@ fn oklab_red_to_green_midpoint_avoids_muddy_brown() {
 /// stride and the edge-clamp guard.
 #[test]
 fn endpoints_match_stops_exactly() {
-    let c0 = ColorU8::linear_rgb(11, 22, 33);
-    let c1 = ColorU8::linear_rgb(244, 233, 222);
+    let c0 = RgbaU8::rgb(11, 22, 33);
+    let c1 = RgbaU8::rgb(244, 233, 222);
     for interp in [Interp::Linear, Interp::Oklab] {
         let g = LinearGradient::two_stop(0.0, c0, c1).with_interp(interp);
         let mut out = fresh_row();
@@ -101,9 +100,9 @@ fn endpoints_match_stops_exactly() {
 #[test]
 fn three_stop_quarter_brackets_first_pair() {
     let g = LinearGradient::builder(0.0)
-        .stop(0.0, ColorU8::linear_rgb(0, 0, 0))
-        .stop(0.5, ColorU8::linear_rgb(255, 0, 0))
-        .stop(1.0, ColorU8::linear_rgb(0, 0, 255))
+        .stop(0.0, RgbaU8::rgb(0, 0, 0))
+        .stop(0.5, RgbaU8::rgb(255, 0, 0))
+        .stop(1.0, RgbaU8::rgb(0, 0, 255))
         .with_interp(Interp::Linear)
         .build();
     let mut out = fresh_row();
@@ -131,8 +130,8 @@ fn cursor_scan_matches_restart_scan_across_eight_stops() {
     /// The pre-cursor bracketing, transcribed: restart at segment 1 and
     /// walk forward. Same arithmetic in the same order, so agreement is
     /// exact rather than approximate.
-    fn restart_scan(stops: &GradientStops, t: f32) -> Color {
-        let linear: Vec<Color> = stops.iter().map(|stop| stop.color().into()).collect();
+    fn restart_scan(stops: &GradientStops, t: f32) -> RgbaF32 {
+        let linear: Vec<RgbaF32> = stops.iter().map(|stop| stop.color().into()).collect();
         if t <= stops[0].offset() {
             return linear[0];
         }
@@ -149,7 +148,7 @@ fn cursor_scan_matches_restart_scan_across_eight_stops() {
         if approx::approx_zero(denominator) {
             return linear[upper];
         }
-        Color::lerp(
+        RgbaF32::lerp(
             linear[upper - 1],
             linear[upper],
             (t - lower_offset) / denominator,
@@ -159,14 +158,14 @@ fn cursor_scan_matches_restart_scan_across_eight_stops() {
     let g = LinearGradient::new(
         0.0,
         [
-            Stop::new(0.0, ColorU8::linear_rgb(0, 0, 0)),
-            Stop::new(0.002, ColorU8::linear_rgb(255, 0, 0)), // narrower than one texel
-            Stop::new(0.25, ColorU8::linear_rgb(0, 255, 0)),
-            Stop::new(0.5, ColorU8::linear_rgb(0, 0, 255)),
-            Stop::new(0.5, ColorU8::linear_rgb(255, 255, 0)), // hard stop
-            Stop::new(0.75, ColorU8::linear_rgb(0, 255, 255)),
-            Stop::new(0.9, ColorU8::linear_rgb(255, 0, 255)),
-            Stop::new(1.0, ColorU8::linear_rgb(255, 255, 255)),
+            Stop::new(0.0, RgbaU8::rgb(0, 0, 0)),
+            Stop::new(0.002, RgbaU8::rgb(255, 0, 0)), // narrower than one texel
+            Stop::new(0.25, RgbaU8::rgb(0, 255, 0)),
+            Stop::new(0.5, RgbaU8::rgb(0, 0, 255)),
+            Stop::new(0.5, RgbaU8::rgb(255, 255, 0)), // hard stop
+            Stop::new(0.75, RgbaU8::rgb(0, 255, 255)),
+            Stop::new(0.9, RgbaU8::rgb(255, 0, 255)),
+            Stop::new(1.0, RgbaU8::rgb(255, 255, 255)),
         ],
     )
     .with_interp(Interp::Linear);
@@ -174,24 +173,20 @@ fn cursor_scan_matches_restart_scan_across_eight_stops() {
     bake_stops(&g.stops, g.interp, &mut out);
     for (i, got) in out.iter().enumerate() {
         let t = i as f32 / (LUT_ROW_TEXELS - 1) as f32;
-        let want = ColorF16::from(restart_scan(&g.stops, t));
+        let want = RgbaF16::from(restart_scan(&g.stops, t));
         assert_eq!(*got, want, "texel {i} at t={t}");
     }
 }
 
-/// Pin the row layout: 256 `ColorF16` texels = 2048 bytes total,
+/// Pin the row layout: 256 `RgbaF16` texels = 2048 bytes total,
 /// `[r, g, b, a]` f16 lanes per texel. Endpoint texels decode back
 /// to their stops' linear values.
 #[test]
 fn lut_row_layout() {
     assert_eq!(LUT_ROW_TEXELS, 256);
     assert_eq!(size_of::<LutRowTexels>(), 2048);
-    assert_eq!(size_of::<ColorF16>(), 8);
-    let g = LinearGradient::two_stop(
-        0.0,
-        ColorU8::linear_rgb(1, 2, 3),
-        ColorU8::linear_rgb(4, 5, 6),
-    );
+    assert_eq!(size_of::<RgbaF16>(), 8);
+    let g = LinearGradient::two_stop(0.0, RgbaU8::rgb(1, 2, 3), RgbaU8::rgb(4, 5, 6));
     let mut out = fresh_row();
     bake_stops(&g.stops, g.interp, &mut out);
     let tol = 1.0 / 255.0;
@@ -214,8 +209,8 @@ fn lut_row_layout() {
 #[test]
 fn unsorted_stops_get_sorted_at_bake() {
     let stops = [
-        Stop::new(1.0, ColorU8::linear_rgb(255, 0, 0)), // out of order
-        Stop::new(0.0, ColorU8::linear_rgb(0, 0, 255)),
+        Stop::new(1.0, RgbaU8::rgb(255, 0, 0)), // out of order
+        Stop::new(0.0, RgbaU8::rgb(0, 0, 255)),
     ];
     let g = LinearGradient::new(0.0, stops);
     let mut out = fresh_row();
@@ -235,8 +230,8 @@ fn unsorted_stops_get_sorted_at_bake() {
 #[test]
 fn partial_range_clamps_at_edges() {
     let stops = [
-        Stop::new(0.25, ColorU8::linear_rgb(0, 255, 0)),
-        Stop::new(0.75, ColorU8::linear_rgb(0, 0, 255)),
+        Stop::new(0.25, RgbaU8::rgb(0, 255, 0)),
+        Stop::new(0.75, RgbaU8::rgb(0, 0, 255)),
     ];
     let g = LinearGradient::new(0.0, stops);
     let mut out = fresh_row();
@@ -257,8 +252,8 @@ fn partial_range_clamps_at_edges() {
 /// banding (so the test fails loudly if the premise ever changes).
 #[test]
 fn dark_gradient_row_has_no_banding() {
-    let navy = ColorU8::hex(0x1a1a2e);
-    let blue = ColorU8::hex(0x4c5cdb);
+    let navy = RgbaU8::hex(0x1a1a2e);
+    let blue = RgbaU8::hex(0x4c5cdb);
     // The whole problem: both stops linearise to tiny reds (≈ 2/255
     // and 18/255), so the bake walks a narrow span that an 8-bit
     // linear row can't resolve. Bounded, not exact-pinned, so a
@@ -300,14 +295,14 @@ fn dark_gradient_row_has_no_banding() {
     );
 }
 
-/// One baked texel decoded back to a linear `Color`. The f16 store
+/// One baked texel decoded back to a linear `RgbaF32`. The f16 store
 /// round-trips losslessly enough that `≈` comparisons hold to well
 /// under a u8 LSB (1/255).
-fn texel(out: &LutRowTexels, i: usize) -> Color {
+fn texel(out: &LutRowTexels, i: usize) -> RgbaF32 {
     out[i].unpack()
 }
 
-/// Expected linear value of a `ColorU8` channel: `ColorU8` is linear
+/// Expected linear value of a `RgbaU8` channel: `RgbaU8` is linear
 /// storage, so the stored byte / 255 *is* the linear value the bake
 /// interpolates between (no sRGB decode).
 fn lin(byte: u8) -> f32 {

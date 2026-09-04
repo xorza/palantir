@@ -12,7 +12,7 @@ use crate::layout::types::grid_cell::GridCell;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
 use crate::primitives::background::Background;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::corners::Corners;
 use crate::scene::node::configure::Configure;
 use crate::scene::visibility::Visibility;
@@ -207,7 +207,7 @@ pub(super) fn properties_card(state: &mut FrameFixture, ui: &mut Ui, rows: usize
                             .id_salt(("pband", row))
                             .size((Sizing::FILL, Sizing::FILL))
                             .background(Background {
-                                fill: Color::hex(0x1f232d).into(),
+                                fill: RgbaF32::hex(0x1f232d).into(),
                                 corners: Corners::all(4.0),
                                 ..Default::default()
                             })

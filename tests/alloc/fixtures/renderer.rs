@@ -27,8 +27,8 @@
 use crate::harness::{Audit, OffscreenTarget, SURFACE};
 use palantir::internals::headless_test_gpu;
 use palantir::{
-    Color, Configure, Frame, Grid, IconId, IconSet, IconTable, Mesh, Panel, PolylineColors, Shape,
-    Sizing, Track, TranslateScale, Ui,
+    Configure, Frame, Grid, IconId, IconSet, IconTable, Mesh, Panel, PolylineColors, RgbaF32,
+    Shape, Sizing, Track, TranslateScale, Ui,
 };
 use std::rc::Rc;
 
@@ -112,7 +112,7 @@ fn many_rects_compose_alloc_free() {
                         Frame::new()
                             .id_salt((r, c))
                             .background(palantir::Background {
-                                fill: Color::WHITE.into(),
+                                fill: RgbaF32::WHITE.into(),
                                 ..Default::default()
                             })
                             .grid_cell((r, c))
@@ -140,7 +140,7 @@ fn polyline_static_alloc_free() {
             .show(ui, |ui| {
                 ui.add_shape(Shape::polyline(
                     &points,
-                    PolylineColors::Single(Color::WHITE),
+                    PolylineColors::Single(RgbaF32::WHITE),
                     2.0,
                 ));
             });
@@ -155,9 +155,9 @@ fn polyline_static_alloc_free() {
 fn mesh_static_alloc_free() {
     let mesh = {
         let mut m = Mesh::with_capacity(3, 3);
-        let a = m.vertex(glam::Vec2::new(0.0, 0.0), Color::WHITE);
-        let b = m.vertex(glam::Vec2::new(100.0, 0.0), Color::WHITE);
-        let c = m.vertex(glam::Vec2::new(50.0, 100.0), Color::WHITE);
+        let a = m.vertex(glam::Vec2::new(0.0, 0.0), RgbaF32::WHITE);
+        let b = m.vertex(glam::Vec2::new(100.0, 0.0), RgbaF32::WHITE);
+        let c = m.vertex(glam::Vec2::new(50.0, 100.0), RgbaF32::WHITE);
         m.triangle(a, b, c);
         m
     };

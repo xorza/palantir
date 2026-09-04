@@ -1,7 +1,7 @@
 //! What a divider rule wears. Its default margin depends on where the
 //! rule is used, so a menu's separator names its own.
 
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::spacing::Spacing;
 use crate::widgets::theme::palette::Palette;
 
@@ -20,7 +20,7 @@ use crate::widgets::theme::palette::Palette;
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct SeparatorTheme {
     /// Rule color.
-    pub color: Color,
+    pub color: RgbaF32,
     /// Rule breadth in logical px.
     pub thickness: f32,
     /// Breathing room around the rule, applied when the builder left

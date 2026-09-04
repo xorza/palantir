@@ -2,7 +2,7 @@
 //! normalized into the active text arena.
 
 use crate::layout::types::align::Align;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::interned_str::InternedStr;
 use crate::primitives::nan::NanCheck;
 use crate::scene::record_store::RecordStore;
@@ -28,7 +28,7 @@ pub struct TextShape {
     /// compute.
     pub(crate) local_origin: Option<Vec2>,
     pub(crate) text: InternedStr,
-    pub(crate) color: Color,
+    pub(crate) color: RgbaF32,
     /// The face and metrics to shape in — one named type rather than four
     /// fields, so this and [`ShapeRecord::Text`] mirror each other in one
     /// field and a shape cache key is minted from it directly.
@@ -48,7 +48,7 @@ impl TextShape {
         Self {
             local_origin: None,
             text,
-            color: Color::WHITE,
+            color: RgbaF32::WHITE,
             font,
             wrap: TextWrap::SingleLine,
             align: Align::TOP_LEFT,
@@ -69,7 +69,7 @@ impl TextShape {
     }
 }
 shape_setters!(TextShape {
-    color: Color => color,
+    color: RgbaF32 => color,
     wrap: TextWrap => wrap,
     align: Align => align,
     family: FontFamily => font.family,

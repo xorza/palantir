@@ -16,7 +16,7 @@
 use crate::bench::Run;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::damage::Damage;
@@ -39,7 +39,7 @@ const ROWS: usize = 32;
 /// `hot_color`; the rest get a default cold colour. The id-salt
 /// scheme keeps cell identity stable across frames so damage diffs
 /// against the right `prev` snapshot.
-fn build_grid(ui: &mut Ui, hot: &[usize], hot_color: Color) {
+fn build_grid(ui: &mut Ui, hot: &[usize], hot_color: RgbaF32) {
     Panel::vstack()
         .id_salt("root")
         .gap(2.0)
@@ -57,7 +57,7 @@ fn build_grid(ui: &mut Ui, hot: &[usize], hot_color: Color) {
                             let fill = if hot.contains(&i) {
                                 hot_color
                             } else {
-                                Color::rgb(0.2, 0.2, 0.25)
+                                RgbaF32::srgb(0.2, 0.2, 0.25)
                             };
                             Frame::new()
                                 .id_salt(("cell", r, c))
@@ -79,8 +79,8 @@ fn build_grid(ui: &mut Ui, hot: &[usize], hot_color: Color) {
 /// predicate (rect + node_hash + subtree_hash + cascade_input all
 /// match prev at the row root) fires at each row, jumping past 32
 /// per-cell entry lookups. Cells listed in `hot` get `hot_color`.
-fn build_painted_rows(ui: &mut Ui, hot: &[usize], hot_color: Color) {
-    let row_bg = Color::rgb(0.1, 0.1, 0.12);
+fn build_painted_rows(ui: &mut Ui, hot: &[usize], hot_color: RgbaF32) {
+    let row_bg = RgbaF32::srgb(0.1, 0.1, 0.12);
     Panel::vstack()
         .id_salt("root")
         .gap(2.0)
@@ -102,7 +102,7 @@ fn build_painted_rows(ui: &mut Ui, hot: &[usize], hot_color: Color) {
                             let fill = if hot.contains(&i) {
                                 hot_color
                             } else {
-                                Color::rgb(0.2, 0.2, 0.25)
+                                RgbaF32::srgb(0.2, 0.2, 0.25)
                             };
                             Frame::new()
                                 .id_salt(("cell", r, c))
@@ -216,8 +216,8 @@ struct ArenaSettle {
 }
 
 fn bench_workloads(c: &mut Criterion, run: Run<'_>) {
-    let cold = Color::rgb(0.2, 0.4, 0.8);
-    let hot = Color::rgb(0.9, 0.4, 0.2);
+    let cold = RgbaF32::srgb(0.2, 0.4, 0.8);
+    let hot = RgbaF32::srgb(0.9, 0.4, 0.2);
     let mut group = run.subgroup(c, "workload");
 
     // Skip path — identical scene every frame; nothing dirty. Rows
@@ -339,7 +339,7 @@ fn bench_workloads(c: &mut Criterion, run: Run<'_>) {
                                             .id_salt(("cell", r, c))
                                             .size((Sizing::fixed(30.0), Sizing::FILL))
                                             .background(Background {
-                                                fill: Color::rgb(
+                                                fill: RgbaF32::srgb(
                                                     0.4 + (phase.sin() * 0.4),
                                                     0.4 + (phase.cos() * 0.4),
                                                     0.6,
@@ -396,7 +396,7 @@ fn bench_workloads(c: &mut Criterion, run: Run<'_>) {
             .id(WidgetId::from_hash(("canvas", c)))
             .size((Sizing::fixed(40.0), Sizing::fixed(25.0)))
             .background(Background {
-                fill: Color::rgb(0.1, 0.1, 0.12).into(),
+                fill: RgbaF32::srgb(0.1, 0.1, 0.12).into(),
                 ..Default::default()
             })
             .show(ui, |ui| {
@@ -404,7 +404,7 @@ fn bench_workloads(c: &mut Criterion, run: Run<'_>) {
                     ui.add_shape(
                         Shape::rect(Rect::new((s as f32) * 4.0, 2.0, 3.0, 20.0))
                             .corners(1.0)
-                            .fill(Color::rgb(0.3 + (s as f32) * 0.05, 0.4, 0.6)),
+                            .fill(RgbaF32::srgb(0.3 + (s as f32) * 0.05, 0.4, 0.6)),
                     );
                 }
             });
@@ -628,7 +628,7 @@ fn build_ordered_siblings(ui: &mut Ui, order: &[usize]) {
                     .id_salt(("sib", i))
                     .size((Sizing::fixed(120.0), Sizing::fixed(60.0)))
                     .background(Background {
-                        fill: Color::rgb(0.2, 0.2, 0.25).into(),
+                        fill: RgbaF32::srgb(0.2, 0.2, 0.25).into(),
                         ..Default::default()
                     })
                     .show(ui);

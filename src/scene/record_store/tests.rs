@@ -1,7 +1,7 @@
 use crate::primitives::brush::gradient::FillAxis;
 use crate::primitives::brush::gradient::stops::{GradientStops, Stop};
 use crate::primitives::brush::gradient::{Interp, Spread};
-use crate::primitives::color::ColorU8;
+use crate::primitives::color::RgbaU8;
 use crate::primitives::fill_kind::FillKind;
 use crate::scene::record_store::RecordStore;
 use crate::scene::record_store::recorded_gradient::RecordedGradient;
@@ -28,10 +28,7 @@ fn stores_are_isolated() {
 /// wasted rows, never a wrong one.
 #[test]
 fn gradient_interner_confirms_equality_across_hash_collisions_and_clears() {
-    let stops = GradientStops::new([
-        Stop::new(0.0, ColorU8::BLACK),
-        Stop::new(1.0, ColorU8::WHITE),
-    ]);
+    let stops = GradientStops::new([Stop::new(0.0, RgbaU8::BLACK), Stop::new(1.0, RgbaU8::WHITE)]);
     let first = RecordedGradient {
         axis: FillAxis::from_lanes(1.0, 0.0, 0.0, 1.0),
         kind: FillKind::linear(Spread::Pad),
@@ -100,8 +97,8 @@ fn gradient_interner_dedups_at_every_table_width() {
             axis: FillAxis::from_lanes(i as f32, 0.0, 0.0, 1.0),
             kind: FillKind::linear(Spread::Pad),
             stops: GradientStops::new([
-                Stop::new(0.0, ColorU8::BLACK),
-                Stop::new(1.0, ColorU8::WHITE),
+                Stop::new(0.0, RgbaU8::BLACK),
+                Stop::new(1.0, RgbaU8::WHITE),
             ]),
             interp: Interp::Oklab,
         }

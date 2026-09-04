@@ -4,7 +4,7 @@
 use crate::Ui;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::configure::Configure;
@@ -238,7 +238,7 @@ fn nested_clipped_scrolls_compose_through_warm_cache() {
                         .padding(8.0)
                         .size((Sizing::FILL, Sizing::FILL))
                         .background(Background {
-                            fill: Color::rgb(0.16, 0.20, 0.28).into(),
+                            fill: RgbaF32::srgb(0.16, 0.20, 0.28).into(),
                             ..Default::default()
                         })
                         .clip_rect()

@@ -2,7 +2,7 @@
 //! when it supports interpolation, spring displacement arithmetic,
 //! and a squared magnitude used by settle checks. Value-dependent
 //! snap-only fields normalize before that arithmetic. Built-in impls
-//! cover `f32`, `Vec2`, `Color`. Domain types (`Stroke`,
+//! cover `f32`, `Vec2`, `RgbaF32`. Domain types (`Stroke`,
 //! `Background`, ...) opt in via `#[derive(Animatable)]` — see
 //! `palantir-anim-derive` and the type-erased `AnimMap` storage.
 
@@ -25,7 +25,7 @@ use glam::Vec2;
 /// opener when they were `Copy`). A `Copy` supertrait here would bring
 /// that back in through the bound, so duplication sites spell
 /// `.clone()` and every copy stays a call-site decision; small `Copy`
-/// types (`f32`, `Vec2`, `Color`) still pass through the trait at zero
+/// types (`f32`, `Vec2`, `RgbaF32`) still pass through the trait at zero
 /// cost because `Copy → Clone` is a no-op codegen. Both sizes are
 /// pinned by `hot_struct_sizes_are_pinned`.
 pub trait Animatable: Clone + PartialEq + 'static {
@@ -92,7 +92,7 @@ macro_rules! animatable_by_ops {
 animatable_by_ops!(f32, |v| v * v, 0.0);
 animatable_by_ops!(Vec2, |v| v.length_squared(), Vec2::ZERO);
 
-// `Color` derives `Animatable` (see `primitives/color.rs`); the
+// `RgbaF32` derives `Animatable` (see `primitives/color.rs`); the
 // generated impl is per-component lerp/add/sub/scale,
 // sum-of-squared-component magnitude_squared, all-zeros for `zero()`.
 //

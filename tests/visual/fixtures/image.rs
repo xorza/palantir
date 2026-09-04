@@ -5,7 +5,7 @@
 
 use glam::{UVec2, Vec2};
 use palantir::{
-    Color, Configure, ImageDownsample, ImageFilter, ImageFit, Panel, Shape, Sizing, Ui,
+    Configure, ImageDownsample, ImageFilter, ImageFit, Panel, RgbaF32, Shape, Sizing, Ui,
 };
 
 use crate::fixtures::close;
@@ -67,7 +67,7 @@ fn assert_blend(pixel: [u8; 4], label: &str) {
 fn minification_and_magnification_filters_are_independent() {
     let mut h = Harness::new();
     let mut mag_strip: Option<palantir::ImageHandle> = None;
-    let magnified = h.render(UVec2::new(256, 64), 1.0, Color::BLACK, |ui| {
+    let magnified = h.render(UVec2::new(256, 64), 1.0, RgbaF32::BLACK, |ui| {
         let handle = mag_strip
             .get_or_insert_with(|| {
                 ui.register_image(palantir::Image::from_rgba8(2, 1, [RED, BLUE].concat()))
@@ -114,7 +114,7 @@ fn minification_and_magnification_filters_are_independent() {
     assert_blend(px(64), "linear magnification seam");
 
     let mut min_strip: Option<palantir::ImageHandle> = None;
-    let minified = h.render(UVec2::new(4, 16), 1.0, Color::BLACK, |ui| {
+    let minified = h.render(UVec2::new(4, 16), 1.0, RgbaF32::BLACK, |ui| {
         let handle = min_strip
             .get_or_insert_with(|| {
                 ui.register_image(palantir::Image::from_rgba8(
@@ -194,7 +194,7 @@ fn minification_and_magnification_filters_are_independent() {
 fn bilinear_both_nearest_and_tiled_sampling_paths_are_pinned() {
     let mut h = Harness::new();
     let mut strip: Option<palantir::ImageHandle> = None;
-    let strips = h.render(UVec2::new(200, 32), 1.0, Color::BLACK, |ui| {
+    let strips = h.render(UVec2::new(200, 32), 1.0, RgbaF32::BLACK, |ui| {
         let handle = strip
             .get_or_insert_with(|| {
                 ui.register_image(palantir::Image::from_rgba8(3, 1, [RED, BLUE, RED].concat()))
@@ -240,7 +240,7 @@ fn bilinear_both_nearest_and_tiled_sampling_paths_are_pinned() {
     }
 
     let mut tile: Option<palantir::ImageHandle> = None;
-    let tiled = h.render(UVec2::new(200, 16), 1.0, Color::BLACK, |ui| {
+    let tiled = h.render(UVec2::new(200, 16), 1.0, RgbaF32::BLACK, |ui| {
         let handle = tile
             .get_or_insert_with(|| {
                 ui.register_image(palantir::Image::from_rgba8(2, 1, [RED, BLUE].concat()))
@@ -343,7 +343,7 @@ fn downsample_modes_recover_a_texel_the_single_tap_misses() {
 
     let mut h = Harness::new();
     let mut source: Option<palantir::ImageHandle> = None;
-    let out = h.render(UVec2::new(24, 16), 1.0, Color::BLACK, |ui| {
+    let out = h.render(UVec2::new(24, 16), 1.0, RgbaF32::BLACK, |ui| {
         let handle = source
             .get_or_insert_with(|| {
                 let texels: Vec<u8> = std::iter::repeat_n([STAR, SKY, SKY], 8)
@@ -449,7 +449,7 @@ fn downsample_combines_taps_in_premultiplied_space() {
 
     let mut h = Harness::new();
     let mut sources: Option<Vec<palantir::ImageHandle>> = None;
-    let out = h.render(UVec2::new(16, 16), 1.0, Color::BLACK, |ui| {
+    let out = h.render(UVec2::new(16, 16), 1.0, RgbaF32::BLACK, |ui| {
         let handles = sources.get_or_insert_with(|| {
             cases
                 .iter()
@@ -517,7 +517,7 @@ fn downsample_combines_taps_in_premultiplied_space() {
 fn downsample_taps_wrap_with_the_tile_instead_of_clamping() {
     let mut h = Harness::new();
     let mut source: Option<palantir::ImageHandle> = None;
-    let out = h.render(UVec2::new(8, 16), 1.0, Color::BLACK, |ui| {
+    let out = h.render(UVec2::new(8, 16), 1.0, RgbaF32::BLACK, |ui| {
         let handle = source
             .get_or_insert_with(|| {
                 ui.register_image(palantir::Image::from_rgba8(
@@ -582,7 +582,7 @@ fn adjacent_same_texture_runs_composite_identically_to_per_draw() {
 
     let mut h = Harness::new();
     let mut sources: Option<[palantir::ImageHandle; 3]> = None;
-    let out = h.render(UVec2::new(192, 32), 1.0, Color::BLACK, |ui| {
+    let out = h.render(UVec2::new(192, 32), 1.0, RgbaF32::BLACK, |ui| {
         let handles = sources.get_or_insert_with(|| {
             SOURCES.map(|texel| {
                 ui.register_image(palantir::Image::from_rgba8(1, 1, texel.to_vec()))

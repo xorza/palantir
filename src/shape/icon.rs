@@ -2,7 +2,7 @@
 //! box. Lowers to `ShapeRecord::Icon`.
 
 use crate::icons::icon_set::IconHandle;
-use crate::primitives::color::Color;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::image::ImageFit;
 use crate::primitives::nan::NanCheck;
 use crate::primitives::rect::Rect;
@@ -62,7 +62,7 @@ pub struct IconShape {
     pub(crate) handle: IconHandle,
     pub(crate) local_rect: Option<Rect>,
     pub(crate) fit: IconFit,
-    pub(crate) tint: Color,
+    pub(crate) tint: RgbaF32,
     pub(crate) desaturate: bool,
 }
 
@@ -72,7 +72,7 @@ impl IconShape {
             handle,
             local_rect: None,
             fit: IconFit::default(),
-            tint: Color::WHITE,
+            tint: RgbaF32::WHITE,
             desaturate: false,
         }
     }
@@ -84,7 +84,7 @@ shape_setters!(IconShape {
     fit: IconFit => fit,
     /// Multiply the icon by `tint` — whole for a tintable icon, alpha only
     /// for a colour one. See the type docs.
-    tint: Color => tint,
+    tint: RgbaF32 => tint,
     /// Draw a **colour** icon in greyscale — its own luminance, hue gone.
     ///
     /// The disabled look for artwork whose colours a tint cannot replace.

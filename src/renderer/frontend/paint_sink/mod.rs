@@ -34,7 +34,7 @@
 //! each other — each answers a different question at a point where the
 //! others cannot:
 //!
-//! 1. **Primitives** (`Color`, `Stroke`, `Shadow`, `Brush`,
+//! 1. **Primitives** (`RgbaF32`, `Stroke`, `Shadow`, `Brush`,
 //!    `TranslateScale`, …) answer "is this *value* invisible". They are
 //!    the vocabulary the other two tiers are written in.
 //! 2. **Authoring shapes** (`Shape::is_noop`, at `Shapes::add`) compose
