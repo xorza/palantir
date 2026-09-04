@@ -30,7 +30,7 @@ pub(crate) const fn unit_to_u8(x: f32) -> u8 {
 /// quantize pair replaces a libm call the hot paths cannot afford, and
 /// says so at each; [`Self::unit_fraction_or`] is here because one wrong
 /// answer about a share reaches layout as a panic.
-pub(crate) trait F32Ext {
+pub trait F32Ext {
     /// Where `self` sits along a track of `extent` that reserves `band`
     /// to a centred thing the pointer drags, as a 0..1 share.
     ///
@@ -38,7 +38,7 @@ pub(crate) trait F32Ext {
     /// problem: a fixed-width object whose *centre* follows the pointer,
     /// so half the band comes off each end before the division and the
     /// usable travel is `extent - band`. A track with no travel left has
-    /// no share to report and yields zero, through [`approx::ratio`].
+    /// no share to report and yields zero.
     /// What that zero means is the caller's, and the two callers
     /// disagree.
     ///

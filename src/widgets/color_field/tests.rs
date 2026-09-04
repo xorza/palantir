@@ -3,6 +3,9 @@ use crate::primitives::color::color_coords::ColorCoords;
 use crate::primitives::color::color_model::ColorModel;
 use crate::primitives::color::srgba_u8::SrgbaU8;
 use crate::primitives::widget_id::WidgetId;
+use crate::renderer::image_registry::test_support;
+use crate::renderer::render_plan::RenderPlan;
+use crate::scene::damage::Damage;
 use crate::scene::node::configure::Configure;
 use crate::ui::harness::UiHarness;
 use crate::widgets::color_field::{ColorField, fill};
@@ -105,22 +108,59 @@ fn changed_and_committed_are_edges() {
 /// 0.375, so 128 and 96. Read as linear the same colour would be 188 and 166.
 #[test]
 fn texels_are_srgb_encoded() {
-    let mut texels = Vec::new();
-    fill(&mut texels, UVec2::new(2, 3), ColorModel::Hsv, 0.0);
-    let middle_row = 2 * 4;
-    assert_eq!(&texels[middle_row..middle_row + 4], &[128, 96, 96, 255]);
+    let handle = test_support::handle(UVec2::new(2, 3));
+    let mut texels = handle.write();
+    fill(&mut texels, ColorModel::Hsv, 0.0);
+    assert_eq!(texels[2], SrgbaU8::rgb(128, 96, 96));
+}
+
+/// A hue change rewrites the texture under the same id, and damage has to
+/// see that: the field's whole rect repaints, not the marker's alone.
+#[test]
+fn a_hue_change_repaints_the_whole_field() {
+    let id = WidgetId::from_hash("field-repaint");
+    // A surface the field is a small part of, so the damage stays partial
+    // rather than tripping the full-repaint coverage threshold.
+    let mut h = UiHarness::new(UVec2::new(800, 600));
+    let mut state = coords(0.3, 0.5, 0.5);
+    frame(&mut h, id, &mut state);
+    frame(&mut h, id, &mut state);
+    state.set_hue(0.9);
+    let report = h.frame(|ui| {
+        ColorField::new(&mut state).id(id).show(ui);
+    });
+    let field = h.rect(id).expect("the field was laid out");
+    let Some(RenderPlan {
+        damage: Damage::Partial(damage),
+        ..
+    }) = report.plan
+    else {
+        panic!(
+            "a hue change must damage part of the frame, got {:?}",
+            report.plan
+        );
+    };
+    let covered = damage.region.iter_rects().any(|r| {
+        r.min.x <= field.min.x
+            && r.min.y <= field.min.y
+            && r.max().x >= field.max().x
+            && r.max().y >= field.max().y
+    });
+    assert!(
+        covered,
+        "the field {field:?} is not inside the damage {damage:?}"
+    );
 }
 
 /// Decode one texel of an `Rgba8UnormSrgb` texture the way a sampler does.
-fn texel(texels: &[u8], size: UVec2, column: u32, row: u32) -> RgbaF32 {
-    let at = ((row * size.x + column) * 4) as usize;
-    RgbaF32::from_srgba(SrgbaU8::rgb(texels[at], texels[at + 1], texels[at + 2]))
+fn texel(texels: &[SrgbaU8], size: UVec2, column: u32, row: u32) -> RgbaF32 {
+    RgbaF32::from_srgba(texels[(row * size.x + column) as usize])
 }
 
 /// What the sampler shows at a fraction across a `size`-texel image: decode
 /// to linear, then filter. An sRGB texture decodes *before* it filters, which
 /// is why this interpolates linear values rather than bytes.
-fn sample(texels: &[u8], size: UVec2, u: f32, v: f32) -> RgbaF32 {
+fn sample(texels: &[SrgbaU8], size: UVec2, u: f32, v: f32) -> RgbaF32 {
     let axis = |fraction: f32, count: u32| {
         let at = (fraction * count as f32 - 0.5).clamp(0.0, (count - 1) as f32);
         let low = at.floor();
@@ -152,13 +192,13 @@ fn worst_error_at(model: ColorModel, downsample: u32) -> (f32, f32, f32) {
         (pixels.x as f32 / downsample as f32).ceil() as u32,
         (pixels.y as f32 / downsample as f32).ceil() as u32,
     );
-    let mut texels = Vec::new();
+    let handle = test_support::handle(size);
     let mut worst = 0.0_f32;
     let (mut worst_u, mut worst_v) = (0.0_f32, 0.0_f32);
     for step in 0..12 {
         let hue = step as f32 / 12.0;
-        texels.clear();
-        fill(&mut texels, size, model, hue);
+        let mut texels = handle.write();
+        fill(&mut texels, model, hue);
         let slice = model.slice(hue);
         for row in 0..pixels.y {
             let v = (row as f32 + 0.5) / pixels.y as f32;

@@ -2,6 +2,7 @@ use crate::primitives::color::RgbaF32;
 use crate::primitives::color::color_coords::ColorCoords;
 use crate::primitives::color::color_model::ColorModel;
 use crate::primitives::widget_id::WidgetId;
+use crate::renderer::image_registry::test_support;
 use crate::scene::node::configure::Configure;
 use crate::ui::harness::UiHarness;
 use crate::widgets::color_strip::{ColorStrip, StripPaint};
@@ -61,19 +62,18 @@ fn the_hue_bar_writes_only_the_hue() {
 fn the_alpha_texture_is_the_colour_at_every_alpha() {
     let color = RgbaF32::hex(0x4cd3ff);
     let want = color.to_srgba_u8();
-    let mut texels = Vec::new();
-    StripPaint::Alpha(color).fill(&mut texels, UVec2::new(4, 2));
-    for texel in texels.as_chunks::<4>().0 {
-        assert_eq!(&texel[..3], &[want.r, want.g, want.b], "colour held");
+    let handle = test_support::handle(UVec2::new(4, 2));
+    let mut texels = handle.write();
+    StripPaint::Alpha(color).fill(&mut texels);
+    for texel in texels.iter() {
+        assert_eq!(
+            (texel.r, texel.g, texel.b),
+            (want.r, want.g, want.b),
+            "colour held"
+        );
     }
     // Four texels: centres at 1/8, 3/8, 5/8, 7/8 of the ramp.
-    let alphas: Vec<u8> = texels
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .take(4)
-        .map(|t| t[3])
-        .collect();
+    let alphas: Vec<u8> = texels.iter().take(4).map(|t| t.a).collect();
     assert_eq!(alphas, vec![32, 96, 159, 223]);
 }
 
@@ -81,10 +81,11 @@ fn the_alpha_texture_is_the_colour_at_every_alpha() {
 /// which is what keeps a rebuild allocation-free.
 #[test]
 fn every_row_of_a_bar_is_the_first_row() {
-    let mut texels = Vec::new();
     let size = UVec2::new(6, 3);
-    StripPaint::Hue(ColorModel::Okhsv).fill(&mut texels, size);
-    let row = size.x as usize * 4;
+    let handle = test_support::handle(size);
+    let mut texels = handle.write();
+    StripPaint::Hue(ColorModel::Okhsv).fill(&mut texels);
+    let row = size.x as usize;
     assert_eq!(texels.len(), row * size.y as usize);
     assert_eq!(&texels[..row], &texels[row..row * 2]);
     assert_eq!(&texels[..row], &texels[row * 2..]);
@@ -98,17 +99,13 @@ fn every_row_of_a_bar_is_the_first_row() {
 fn the_hue_texture_follows_the_model() {
     for model in ColorModel::ALL {
         let size = UVec2::new(8, 1);
-        let mut texels = Vec::new();
-        StripPaint::Hue(model).fill(&mut texels, size);
+        let handle = test_support::handle(size);
+        let mut texels = handle.write();
+        StripPaint::Hue(model).fill(&mut texels);
         for column in 0..size.x {
             let hue = (column as f32 + 0.5) / size.x as f32;
             let want = model.slice(hue).color(1.0, 1.0).to_srgba_u8();
-            let at = column as usize * 4;
-            assert_eq!(
-                &texels[at..at + 4],
-                &[want.r, want.g, want.b, 255],
-                "{model:?} at hue {hue}",
-            );
+            assert_eq!(texels[column as usize], want, "{model:?} at hue {hue}");
         }
     }
 }
