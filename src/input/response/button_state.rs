@@ -60,6 +60,14 @@ impl ButtonState {
         matches!(self.phase, ButtonPhase::Up { click: Some(_) })
     }
 
+    /// One-frame edge: the press ended this frame, whether as a click or
+    /// as the release of a latched drag. The frame a value-writing widget
+    /// reports `committed` on — a gesture is one edit however it ended.
+    #[inline]
+    pub fn released(self) -> bool {
+        matches!(self.phase, ButtonPhase::Up { .. })
+    }
+
     /// This frame's press-run position: `0` off the press edge,
     /// 1/2/3+ on it (`press_count() > 0` is the press-rising edge).
     #[inline]

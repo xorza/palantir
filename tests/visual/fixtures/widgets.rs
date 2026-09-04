@@ -4,9 +4,10 @@
 use glam::{UVec2, Vec2};
 use image::Rgba;
 use palantir::{
-    Background, Brush, Button, Color, ColorU8, ComboBox, Configure, ConicGradient, Corners,
-    DragValue, Frame, LineCap, LineJoin, LinearGradient, Modal, Panel, ProgressBar, RadialGradient,
-    Rect, Shadow, Shape, Sizing, Slider, Spinner, Stroke, Switch, Text, ToggleTheme,
+    Background, Brush, Button, Color, ColorCoords, ColorField, ColorModel, ColorPicker, ColorStrip,
+    ColorU8, ComboBox, Configure, ConicGradient, Corners, DragValue, Frame, LineCap, LineJoin,
+    LinearGradient, Modal, Panel, ProgressBar, RadialGradient, Rect, Shadow, Shape, Sizing, Slider,
+    Spinner, Stroke, Switch, Text, ToggleTheme,
 };
 use std::f32::consts::{FRAC_PI_2, FRAC_PI_4};
 
@@ -1128,4 +1129,60 @@ fn modal_dialog_matches_golden() {
         });
     });
     assert_matches_golden("modal_dialog", &img, Tolerance::default());
+}
+
+/// The colour field and both bars at one hue, in each model.
+///
+/// The only end-to-end check that the CPU texture reaches the screen: the
+/// unit tests read the texels, and this reads what the sampler made of them.
+#[test]
+fn color_field_and_bars_match_golden() {
+    let mut h = Harness::new();
+    let img = h.render(UVec2::new(480, 220), 1.0, DARK_BG, |ui| {
+        Panel::hstack()
+            .auto_id()
+            .padding(12.0)
+            .gap(16.0)
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                for model in ColorModel::ALL {
+                    let mut coords = ColorCoords::new(model, Color::hex(0x2b7fd4), 0.0);
+                    Panel::vstack()
+                        .id_salt(model.label())
+                        .gap(8.0)
+                        .size((Sizing::HUG, Sizing::HUG))
+                        .show(ui, |ui| {
+                            ColorField::new(&mut coords).id_salt("field").show(ui);
+                            ColorStrip::hue(&mut coords).id_salt("hue").show(ui);
+                            let mut translucent = coords.to_color().with_alpha(0.6);
+                            ColorStrip::alpha(&mut translucent)
+                                .id_salt("alpha")
+                                .show(ui);
+                        });
+                }
+            });
+    });
+    assert_matches_golden("color_field_and_bars", &img, Tolerance::default());
+}
+
+/// The whole panel: field, bars, preview chip over its checker, the channel
+/// values, the model switch and the preset row.
+#[test]
+fn color_picker_panel_matches_golden() {
+    let mut h = Harness::new();
+    let img = h.render(UVec2::new(280, 500), 1.0, DARK_BG, |ui| {
+        let mut color = Color::hex(0x4cd3ff).with_alpha(0.75);
+        Panel::vstack()
+            .auto_id()
+            .padding(12.0)
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                ColorPicker::new(&mut color)
+                    .alpha(true)
+                    .history(true)
+                    .id_salt("picker")
+                    .show(ui);
+            });
+    });
+    assert_matches_golden("color_picker_panel", &img, Tolerance::default());
 }

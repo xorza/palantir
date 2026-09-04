@@ -153,9 +153,17 @@ macro_rules! impl_configure {
     };
 }
 
+pub(crate) mod axis_keys;
 pub(crate) mod button;
 pub(crate) mod checkbox;
 pub(crate) mod close_handle;
+pub(crate) mod color_button;
+pub(crate) mod color_checker;
+pub(crate) mod color_field;
+pub(crate) mod color_picker;
+pub(crate) mod color_strip;
+pub(crate) mod color_surface;
+pub(crate) mod color_swatch;
 pub(crate) mod combo_box;
 pub(crate) mod context_menu;
 pub(crate) mod dock;

@@ -10,10 +10,10 @@ use crate::harness::{Audit, new_ui};
 use std::time::Duration;
 
 use palantir::{
-    AnimSpec, Background, Button, Checkbox, Color, Configure, ContextMenu, Easing, Expander,
-    ExpanderTheme, Frame, Grid, MenuItem, Modal, Panel, Popup, ProgressBar, RadioButton, Scroll,
-    Separator, Shortcut, Sizing, Slider, SlotDefaults, Spinner, Splitter, Switch, Text, TextEdit,
-    Tooltip, Track, Ui, Vec2, WidgetId,
+    AnimSpec, Background, Button, Checkbox, Color, ColorCoords, ColorField, ColorPicker,
+    ColorStrip, Configure, ContextMenu, Easing, Expander, ExpanderTheme, Frame, Grid, MenuItem,
+    Modal, Panel, Popup, ProgressBar, RadioButton, Scroll, Separator, Shortcut, Sizing, Slider,
+    SlotDefaults, Spinner, Splitter, Switch, Text, TextEdit, Tooltip, Track, Ui, Vec2, WidgetId,
 };
 
 #[test]
@@ -28,6 +28,40 @@ fn button_only_alloc_free() {
             .auto_id()
             .label("hello")
             .size((Sizing::FILL, Sizing::FILL))
+            .show(ui);
+    });
+}
+
+/// A settled colour field re-paints from the texture it already holds: the
+/// rebuild is keyed on the hue, so a frame that does not move one touches the
+/// heap not at all.
+#[test]
+fn color_field_alloc_free() {
+    let mut coords = ColorCoords::default();
+    Audit::new().run(|ui| {
+        ColorField::new(&mut coords).auto_id().show(ui);
+    });
+}
+
+#[test]
+fn color_strip_alloc_free() {
+    let mut coords = ColorCoords::default();
+    Audit::new().run(|ui| {
+        ColorStrip::hue(&mut coords).auto_id().show(ui);
+    });
+}
+
+/// The whole panel, swatch row and hex field included. The hex buffer is
+/// rewritten every frame into the string the picker already holds, which is
+/// the one place this could quietly allocate.
+#[test]
+fn color_picker_alloc_free() {
+    let mut color = Color::hex(0x4cd3ff);
+    Audit::new().text().run(|ui| {
+        ColorPicker::new(&mut color)
+            .alpha(true)
+            .history(true)
+            .auto_id()
             .show(ui);
     });
 }

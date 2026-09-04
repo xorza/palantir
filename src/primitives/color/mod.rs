@@ -6,6 +6,11 @@
 //! Every conversion between them is here, so the two quantize policies —
 //! linear and sRGB-encoded — cannot drift apart.
 
+pub(crate) mod color_coords;
+pub(crate) mod color_model;
+pub(crate) mod hsv;
+pub(crate) mod okhsv;
+
 use crate::animation::animatable::Animatable;
 use crate::primitives::approx::FloatHash;
 use crate::primitives::nan::NanCheck;
