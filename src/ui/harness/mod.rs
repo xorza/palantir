@@ -152,6 +152,7 @@
 use crate::app::internals::RecordApp;
 use crate::common::time::MAX_ANIM_DT;
 use crate::display::Display;
+use crate::display::user_scale::UserScale;
 use crate::host::shared::HostShared;
 use crate::input::capture::{DOUBLE_CLICK_WINDOW, DRAG_THRESHOLD};
 use crate::input::input_event::InputEvent;
@@ -237,11 +238,25 @@ impl UiHarness {
         Self::new(ARENA_SURFACE)
     }
 
-    /// Device pixel ratio. The surface stays physical, so at `dpr = 2.0`
-    /// a 600×200 surface is 300×100 logical — and every position below is
-    /// logical.
+    /// Device pixel ratio, as a platform would report it. The surface
+    /// stays physical, so at `dpr = 2.0` a 600×200 surface is 300×100
+    /// logical — and every position below is logical.
     pub fn scale(mut self, dpr: f32) -> Self {
-        self.display.scale_factor = dpr;
+        self.display.system_scale = dpr;
+        self.sync_display();
+        self.mark_warm();
+        self
+    }
+
+    /// The app's own scale on top of [`Self::scale`], multiplying into the
+    /// same logical space.
+    ///
+    /// Writes both homes the value has — the harness stamps its `Display`
+    /// directly, so the shared setting `Ui::user_scale` reads back would
+    /// otherwise disagree with the frame that ran.
+    pub fn user_scale(mut self, scale: UserScale) -> Self {
+        self.ui.set_user_scale(scale);
+        self.display.user_scale = scale;
         self.sync_display();
         self.mark_warm();
         self

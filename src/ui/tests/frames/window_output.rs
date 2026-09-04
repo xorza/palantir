@@ -1,9 +1,10 @@
 //! Window requests a frame queues, and the close veto's one-frame life.
 
+use crate::display::user_scale::UserScale;
 use crate::ui::harness::UiHarness;
 use crate::ui::tests::support::SURFACE;
 use crate::window::window_placement::WindowPlacement;
-use glam::IVec2;
+use glam::{IVec2, UVec2};
 
 /// `open_window` / `close_window` enqueue onto the retained scratch the
 /// host drains *after* the frame — so the requests must survive the
@@ -147,4 +148,35 @@ fn open_window_dedups_by_token_within_a_frame() {
         "second"
     );
     assert_eq!(h.ui.window_requests.commands.opens[1].token, WindowToken(8));
+}
+
+/// `window_geometry` answers in the **window manager's** logical pixels,
+/// so what an app persists reopens the same window whatever the user
+/// scale was when it saved.
+///
+/// A 200×200 surface at dpr 2 is 100×100 to the platform, and stays
+/// 100×100 at 125% — where the UI itself is laid out in 80×80. Dividing
+/// by the product instead would save 80, and the next launch would open a
+/// window 80×80 platform-logical: 20% smaller, and smaller again on every
+/// launch after that.
+#[test]
+fn window_geometry_reports_the_platform_space_not_the_ui_space() {
+    let mut h = UiHarness::new(SURFACE).scale(2.0);
+    h.frame(|_| {});
+    assert_eq!(h.ui.window_geometry().inner_size, UVec2::new(100, 100));
+
+    let mut zoomed = UiHarness::new(SURFACE)
+        .scale(2.0)
+        .user_scale(UserScale::new(1.25));
+    zoomed.frame(|_| {});
+    assert_eq!(
+        zoomed.ui.display.logical_size().w,
+        80.0,
+        "the UI is laid out in the scaled space",
+    );
+    assert_eq!(
+        zoomed.ui.window_geometry().inner_size,
+        UVec2::new(100, 100),
+        "and the platform hears the unscaled one",
+    );
 }

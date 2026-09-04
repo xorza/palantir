@@ -135,7 +135,7 @@ pub(crate) struct RenderBuffer {
     /// The display this buffer was composed for — the frame input every
     /// consumer of the buffer needs a piece of. `physical` is the
     /// backend's default scissor when a group has no clip, and
-    /// `scale_factor` is what the text backend multiplies logical-px
+    /// `scale_factor()` is what the text backend multiplies logical-px
     /// shaped buffers by when emitting glyph quads.
     ///
     /// Held whole rather than unpacked into the two or three scalars

@@ -119,7 +119,7 @@ impl Encoder {
         gradient_resolver.reset_for(gradients.len());
         // Matches the backend's padded physical scissor; both derive from
         // `renderer::render_plan::RenderPlan::AA_PADDING`.
-        let damage_cull_margin = RenderPlan::cull_margin(scene.display.scale_factor);
+        let damage_cull_margin = RenderPlan::cull_margin(scene.display.scale_factor());
         for (layer, tree) in scene.forest.trees.iter_paint_order() {
             let layer_cascades = &scene.cascade.layers[layer];
             let mut ctx = LayerCtx {

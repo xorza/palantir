@@ -2,6 +2,7 @@
 
 use crate::Ui;
 use crate::display::Display;
+use crate::display::user_scale::UserScale;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::Color, rect::Rect};
@@ -13,7 +14,8 @@ use glam::UVec2;
 
 pub(super) const DISPLAY: Display = Display {
     physical: UVec2::new(200, 200),
-    scale_factor: 1.0,
+    system_scale: 1.0,
+    user_scale: UserScale::ONE,
     pixel_snap: true,
     refresh_millihertz: None,
 };

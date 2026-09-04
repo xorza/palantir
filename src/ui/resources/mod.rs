@@ -1,12 +1,17 @@
 //! The app-global capabilities a recorder is built over — the shaper, the
-//! image and icon registries, the clipboard, the window directory and the
-//! diagnostics flags.
+//! image and icon registries, the clipboard, the window directory, the
+//! diagnostics flags and the user scale.
 //!
 //! Every field is clone-shared, so two recorders in two windows resolve
-//! the same font, the same texture and the same overlay toggle.
+//! the same font, the same texture, the same overlay toggle and the same
+//! scale.
 
+use std::rc::Rc;
+
+use crate::common::app_setting::AppSetting;
 use crate::common::clipboard::Clipboard;
 use crate::diagnostics::Diagnostics;
+use crate::display::user_scale::UserScale;
 use crate::icons::icon_registry::IconRegistry;
 use crate::renderer::image_registry::ImageRegistry;
 use crate::renderer::texture_id_source::TextureIdSource;
@@ -30,6 +35,14 @@ pub(crate) struct UiResources {
     pub(crate) texture_limit: TextureLimit,
     pub(crate) clipboard: Clipboard,
     pub(crate) diagnostics: Diagnostics,
+    /// The one scale every window's `Display` is minted from.
+    ///
+    /// App-global rather than per window: the per-monitor case is already
+    /// answered by `Display::system_scale`, which the platform reports per
+    /// window, so what is left is a preference — and two windows of one
+    /// application disagreeing about a preference is not a picture anyone
+    /// asks for.
+    pub(crate) user_scale: Rc<AppSetting<UserScale>>,
     pub(crate) windows: WindowDirectory,
 }
 
@@ -44,6 +57,7 @@ impl UiResources {
             texture_limit,
             clipboard,
             diagnostics: Diagnostics::default(),
+            user_scale: Rc::default(),
             windows: WindowDirectory::default(),
         }
     }

@@ -152,7 +152,7 @@ impl ComposeSession<'_> {
     /// result, so a culled draw costs the same as an emitted one.
     fn scaled_rect(&self, rect: Rect) -> ScaledRect {
         let world = self.composer.transform.apply_rect(rect);
-        let phys = world.scaled_by(self.out.display.scale_factor, self.out.display.pixel_snap);
+        let phys = world.scaled_by(self.out.display.scale_factor(), self.out.display.pixel_snap);
         ScaledRect::from_phys(phys, self.out.display.physical)
     }
 
@@ -196,7 +196,7 @@ impl Drop for ComposeSession<'_> {
 
 impl PaintSink for ComposeSession<'_> {
     fn push_clip(&mut self, p: PushClipPayload) {
-        let scale = self.out.display.scale_factor;
+        let scale = self.out.display.scale_factor();
         let snap = self.out.display.pixel_snap;
         let viewport_phys = self.out.display.physical;
         let logical_radius = (!p.corners.approx_zero()).then_some(p.corners);
@@ -318,7 +318,7 @@ impl PaintSink for ComposeSession<'_> {
     }
 
     fn mesh(&mut self, p: DrawMeshPayload) {
-        let scale = self.out.display.scale_factor;
+        let scale = self.out.display.scale_factor();
         let viewport_phys = self.out.display.physical;
         // `draw_mesh` already gated empty/degenerate meshes
         // (`draw_mesh` applies its no-op gate), so `v_len >= 1` here.
@@ -446,7 +446,7 @@ impl PaintSink for ComposeSession<'_> {
         // then thrown away: a status line long enough to widen the window's
         // root is enough to do it, which is how this was found.
         if let Some(paint) = paint {
-            let scale = self.out.display.scale_factor;
+            let scale = self.out.display.scale_factor();
             let cap = i64::from(self.composer.max_texture_dim.get());
             let whole = phys_rect.size;
             // The cap is measured against the *whole* view, so how much a view
@@ -485,7 +485,7 @@ impl PaintSink for ComposeSession<'_> {
     }
 
     fn curve(&mut self, p: DrawCurvePayload) {
-        let scale = self.out.display.scale_factor;
+        let scale = self.out.display.scale_factor();
         let xform = self.composer.transform.current();
         let width_phys = p.width * geometry::phys_scale(xform, scale);
         let cap = p.cap;
@@ -599,7 +599,7 @@ impl PaintSink for ComposeSession<'_> {
     }
 
     fn polyline(&mut self, p: DrawPolylinePayload) {
-        let scale = self.out.display.scale_factor;
+        let scale = self.out.display.scale_factor();
         let display = self.out.display;
         let mode = p.color_mode;
         let cap = p.cap;
@@ -855,7 +855,7 @@ impl ComposeSession<'_> {
     /// points. Everything past this point is shape-blind.
     fn pack_quad(&self, p: &DrawQuadPayload) -> PackedQuad {
         let xform = self.composer.transform.current();
-        let scale_phys = geometry::phys_scale(xform, self.out.display.scale_factor);
+        let scale_phys = geometry::phys_scale(xform, self.out.display.scale_factor());
         match p.geom {
             QuadGeom::Rect { rect, corners } => {
                 PackedQuad {
@@ -880,7 +880,7 @@ impl ComposeSession<'_> {
                 c,
                 radius,
             } => {
-                let scale = self.out.display.scale_factor;
+                let scale = self.out.display.scale_factor();
                 // Fold owner origin + active transform, scale to physical
                 // px. No pixel-snap — the SDF handles sub-pixel placement;
                 // snapping the covering rect would only shift the AA band.

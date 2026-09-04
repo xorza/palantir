@@ -3,7 +3,7 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use glam::{IVec2, UVec2};
+use glam::{IVec2, UVec2, Vec2};
 use winit::window::Window as WinitWindow;
 
 use crate::app::App;
@@ -12,6 +12,7 @@ use crate::display;
 use crate::host::core::HostCore;
 use crate::host::window_driver::{CpuFrame, TargetKey, WindowDriver};
 use crate::host::winit::gpu::{self, SurfaceManager, WindowSurface};
+use crate::host::winit::input::PointerTrace;
 use crate::host::winit::native;
 use crate::input::input_event::InputEvent;
 use crate::input::response::input_delta::InputDelta;
@@ -42,6 +43,43 @@ pub(super) struct SystemFacts {
     refresh_millihertz: Option<u32>,
 }
 
+/// Where the pointer is, and the scale the recorder was last told it in.
+///
+/// The pair is one fact, not two: a physical position means nothing
+/// without the divisor that turned it into the logical one the recorder
+/// is holding, and comparing that divisor against the current scale is
+/// the whole of how a stale pointer is noticed.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct PointerAnchor {
+    physical: Vec2,
+    /// The effective scale [`Window::effective_scale`] reported when this
+    /// position was last delivered.
+    scale: f32,
+}
+
+impl PointerAnchor {
+    /// The anchor `trace` leaves behind, given the one `held` now and the
+    /// `scale` the event was translated at.
+    fn after(held: Option<Self>, trace: PointerTrace, scale: f32) -> Option<Self> {
+        match trace {
+            PointerTrace::Unchanged => held,
+            PointerTrace::At(physical) => Some(Self { physical, scale }),
+            PointerTrace::Gone => None,
+        }
+    }
+
+    /// Adopt `scale` and return the logical position to re-tell the
+    /// recorder — or `None` when the scale has not moved and what the
+    /// recorder holds is still true.
+    fn restate_at(&mut self, scale: f32) -> Option<Vec2> {
+        if self.scale == scale {
+            return None;
+        }
+        self.scale = scale;
+        Some(self.physical / scale)
+    }
+}
+
 /// First delay after a `Validation` acquire — about one frame at 60 Hz,
 /// so a single spurious failure costs a dropped frame and nothing more.
 const ACQUIRE_RETRY_MIN: Duration = Duration::from_millis(16);
@@ -58,7 +96,10 @@ pub(super) struct Window {
     pub(super) surface: wgpu::Surface<'static>,
     pub(super) config: wgpu::SurfaceConfiguration,
     pub(super) driver: WindowDriver,
-    pub(super) scale_factor: f32,
+    /// The device pixel ratio winit reports for this window. The factor
+    /// the UI is actually drawn and clicked at is
+    /// [`Self::effective_scale`], which folds the app's own scale in.
+    pub(super) system_scale: f32,
     pub(super) next: FramePresent,
     pub(super) close_requested: bool,
     cursor: CursorIcon,
@@ -69,6 +110,9 @@ pub(super) struct Window {
     frame_set: FrameSet,
     /// See [`SystemFacts`]. `None` until the next frame asks.
     system_facts: Option<SystemFacts>,
+    /// See [`PointerAnchor`]. `None` while the pointer is outside this
+    /// window, where there is nothing to keep fresh.
+    pointer: Option<PointerAnchor>,
     /// How long the next frame waits before retrying an acquire that
     /// failed validation — `None` while acquires are healthy.
     ///
@@ -90,7 +134,7 @@ impl Window {
         surface: WindowSurface,
         mut driver: WindowDriver,
     ) -> Self {
-        let scale_factor = display::sanitize_scale_factor(window.scale_factor());
+        let system_scale = display::sanitize_system_scale(window.scale_factor());
         // Seed the recorder's pacing level from the swapchain that was
         // actually opened, so `Ui::vsync` is truthful before any frame runs
         // and a control writing its own value back doesn't reconfigure an
@@ -103,19 +147,61 @@ impl Window {
             surface: surface.surface,
             config: surface.config,
             driver,
-            scale_factor,
+            system_scale,
             next: FramePresent::Immediate,
             close_requested: false,
             cursor: CursorIcon::default(),
             occluded_at: None,
             frame_set: FrameSet::claim(),
             system_facts: None,
+            pointer: None,
             acquire_retry: None,
         }
     }
 
     pub(super) fn on_input(&mut self, event: InputEvent) -> InputDelta {
         self.driver.ui.on_input(event)
+    }
+
+    /// Retain what an event said about the pointer, against the scale it
+    /// was translated at.
+    pub(super) fn note_pointer(&mut self, trace: PointerTrace, scale: f32) {
+        self.pointer = PointerAnchor::after(self.pointer, trace, scale);
+    }
+
+    /// Re-tell the recorder where the pointer is when the effective scale
+    /// has moved since it was last told.
+    ///
+    /// **The pointer is the one input that outlives its own event.** Every
+    /// other one is consumed by the frame it arrived for, but a position
+    /// stays true until the pointer moves again — which is what makes it
+    /// the only one a scale change can leave stale. Nothing else re-sends
+    /// it, so a monitor move or a [`Ui::set_user_scale`](crate::Ui::set_user_scale)
+    /// write would otherwise hover and hit-test the new layout against a
+    /// point from the old one, until the user happened to move the mouse.
+    ///
+    /// A no-op unless the scale actually moved, so the frame path pays one
+    /// comparison. The injected event raises the input signal, and the
+    /// frame this runs before is the one that acts on it.
+    fn resync_pointer(&mut self) {
+        let scale = self.effective_scale();
+        if let Some(anchor) = &mut self.pointer
+            && let Some(logical) = anchor.restate_at(scale)
+        {
+            self.driver.ui.on_input(InputEvent::PointerMoved(logical));
+        }
+    }
+
+    /// Physical pixels per logical pixel *as the app sees them* — what a
+    /// pointer position must be divided by to land in the space the frame
+    /// laid its widgets out in.
+    ///
+    /// Read per event rather than cached beside [`Self::system_scale`]:
+    /// the user scale is written from inside a frame, and a cached copy
+    /// would hit-test the frame after that write against the scale before
+    /// it.
+    pub(super) fn effective_scale(&self) -> f32 {
+        self.driver.ui.user_scale().applied_to(self.system_scale)
     }
 
     /// This frame's [`SystemFacts`], asking the windowing system only
@@ -209,10 +295,13 @@ impl Window {
             if self.occluded_at.is_some() {
                 self.occluded_at = Some(Instant::now());
             }
+            // Before the display is minted, so a frame that lays out at a
+            // new scale hit-tests against a pointer in the same space.
+            self.resync_pointer();
             let physical = UVec2::new(self.config.width, self.config.height);
             let display =
                 self.driver
-                    .display(physical, self.scale_factor, facts.refresh_millihertz);
+                    .display(physical, self.system_scale, facts.refresh_millihertz);
 
             // A size, format, or present-mode change invalidates the driver's
             // retained target state *and* needs the swapchain reconfigured before
@@ -405,9 +494,12 @@ impl FramePresent {
 mod tests {
     use std::time::{Duration, Instant};
 
+    use glam::Vec2;
+
     use crate::host::shared::HostShared;
     use crate::host::window_driver::WindowDriver;
-    use crate::host::winit::window::FramePresent;
+    use crate::host::winit::input::PointerTrace;
+    use crate::host::winit::window::{FramePresent, PointerAnchor};
     use crate::renderer::texture_limit::TextureLimit;
     use crate::text::shaper::TextShaper;
     use crate::window::cursor_icon::CursorIcon;
@@ -415,6 +507,52 @@ mod tests {
     use crate::window::window_commands::WindowCommands;
     use crate::window::window_config::WindowConfig;
     use crate::window::window_token::WindowToken;
+
+    const AT: Vec2 = Vec2::new(300.0, 120.0);
+
+    fn anchor(scale: f32) -> Option<PointerAnchor> {
+        PointerAnchor::after(None, PointerTrace::At(AT), scale)
+    }
+
+    #[test]
+    fn a_trace_records_a_position_and_a_departure_clears_one() {
+        let held = anchor(2.0);
+        assert_eq!(held.map(|a| a.physical), Some(AT));
+
+        assert_eq!(
+            PointerAnchor::after(held, PointerTrace::Unchanged, 4.0),
+            held,
+            "an event carrying no position leaves the anchor alone, scale included",
+        );
+        assert_eq!(PointerAnchor::after(held, PointerTrace::Gone, 2.0), None);
+        assert_eq!(
+            PointerAnchor::after(None, PointerTrace::Unchanged, 2.0),
+            None,
+        );
+    }
+
+    /// The pointer sits at physical (300, 120). At scale 2 the recorder
+    /// holds (150, 60); after a move to 2.5 it must hold (120, 48).
+    #[test]
+    fn a_scale_move_restates_the_position_once() {
+        let mut held = anchor(2.0).unwrap();
+        assert_eq!(held.restate_at(2.5), Some(Vec2::new(120.0, 48.0)));
+        assert_eq!(
+            held.restate_at(2.5),
+            None,
+            "the anchor adopted the scale, so the recorder is up to date",
+        );
+        assert_eq!(
+            held.restate_at(2.0),
+            Some(Vec2::new(150.0, 60.0)),
+            "and a move back restates the position it started at",
+        );
+    }
+
+    #[test]
+    fn an_unmoved_scale_restates_nothing() {
+        assert_eq!(anchor(1.5).unwrap().restate_at(1.5), None);
+    }
 
     #[test]
     fn frame_drain_collects_commands_and_applies_close_veto() {

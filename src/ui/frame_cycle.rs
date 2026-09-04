@@ -80,11 +80,13 @@ impl<'a> FrameCycle<'a> {
         // strictness rather than below it: a host is not the only way in
         // — the `internals` harness stamps a display directly — and every
         // pointer coordinate is divided by this several passes later,
-        // where nothing names the frame that carried it.
+        // where nothing names the frame that carried it. The product is
+        // what is checked, because the product is what divides: each half
+        // is screened where it enters, and neither door sees the other.
         assert!(
-            display::scale_factor_is_valid(stamp.display.scale_factor),
-            "Display::scale_factor must be finite and ≥ EPSILON; got {}",
-            stamp.display.scale_factor,
+            display::scale_factor_is_valid(stamp.display.scale_factor()),
+            "Display::scale_factor() must be finite and ≥ EPSILON; got {}",
+            stamp.display.scale_factor(),
         );
 
         let first_frame = self.ui.frame_runtime.is_first_frame();

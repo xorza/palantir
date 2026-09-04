@@ -2,6 +2,7 @@
 //! back through.
 
 use crate::display::Display;
+use crate::display::user_scale::UserScale;
 use crate::icons::icon_registry::IconSetId;
 use crate::icons::icon_set::IconRef;
 use crate::icons::icon_table::IconId;
@@ -80,7 +81,8 @@ pub(super) fn text(buf: &mut PaintCapture, r: Rect) {
 pub(super) fn params(scale: f32, physical: UVec2) -> Display {
     Display {
         physical,
-        scale_factor: scale,
+        system_scale: scale,
+        user_scale: UserScale::ONE,
         pixel_snap: false,
         refresh_millihertz: None,
     }

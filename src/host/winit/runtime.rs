@@ -168,10 +168,17 @@ impl<T: App + 'static> WinitRuntime<T> {
         Ok(())
     }
 
-    /// Repaint everything when the app-global debug overlay changed, so a
-    /// toggle in one window shows up in the others.
-    pub(super) fn repaint_on_overlay_change(&mut self) {
-        if self.core.shared.resources.diagnostics.overlay.take_change() {
+    /// Repaint everything when an app-global setting changed, so a write in
+    /// one window shows up in the others: the debug overlay's flags, and the
+    /// user scale every window's `Display` is minted from.
+    ///
+    /// Both signals are taken before either is tested — `||` would short-
+    /// circuit past the second, leaving its change to fire a stray repaint
+    /// on whatever moved next.
+    pub(super) fn repaint_on_shared_change(&mut self) {
+        let overlay = self.core.shared.resources.diagnostics.overlay.take_change();
+        let user_scale = self.core.shared.resources.user_scale.take_change();
+        if overlay || user_scale {
             self.repaint_all();
         }
     }

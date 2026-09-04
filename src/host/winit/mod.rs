@@ -371,7 +371,7 @@ where
             self.fail(event_loop, error);
             return;
         }
-        runtime.repaint_on_overlay_change();
+        runtime.repaint_on_shared_change();
         runtime.schedule(event_loop, now);
     }
 
@@ -388,9 +388,11 @@ where
         let win = runtime.window(slot);
 
         let mut wants_repaint = false;
-        input::translate(&event, win.scale_factor, |ev| {
+        let scale = win.effective_scale();
+        let trace = input::translate(&event, scale, |ev| {
             wants_repaint |= win.on_input(ev).requests_repaint;
         });
+        win.note_pointer(trace, scale);
         if wants_repaint {
             win.next = FramePresent::Immediate;
         }
@@ -411,7 +413,7 @@ where
             }
 
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
-                win.scale_factor = display::sanitize_scale_factor(scale_factor);
+                win.system_scale = display::sanitize_system_scale(scale_factor);
                 win.invalidate_system_facts();
                 win.next = FramePresent::Immediate;
             }

@@ -33,7 +33,7 @@ use tinyvec::ArrayVec;
 const DAMAGE_OVERLAY_COLOR: Color = Color::rgb(1.0, 0.0, 0.0);
 
 /// Stroke width for the damage-rect overlay outline, in logical
-/// pixels. Multiplied by `scale_factor` at submit time.
+/// pixels. Multiplied by `Display::scale_factor()` at submit time.
 const DAMAGE_OVERLAY_STROKE_WIDTH: f32 = 2.0;
 
 /// Gap between the overlay outline and the damage edge, in logical
@@ -126,9 +126,9 @@ impl DebugOverlay {
         plan: RenderPlan,
         buffer: &RenderBuffer,
     ) -> u32 {
-        let gap_px = (DAMAGE_OVERLAY_GAP * buffer.display.scale_factor).max(1.0);
+        let gap_px = (DAMAGE_OVERLAY_GAP * buffer.display.scale_factor()).max(1.0);
         let stroke_color = ColorF16::from(DAMAGE_OVERLAY_COLOR);
-        let stroke_width = DAMAGE_OVERLAY_STROKE_WIDTH * buffer.display.scale_factor;
+        let stroke_width = DAMAGE_OVERLAY_STROKE_WIDTH * buffer.display.scale_factor();
         let outline = |rect: Rect| Quad {
             rect,
             fill: ColorF16::TRANSPARENT,
@@ -149,7 +149,7 @@ impl DebugOverlay {
                 // damage edge is fine.
                 for r in damage.region.iter_rects() {
                     quads.push(outline(
-                        r.scaled_by(buffer.display.scale_factor, true)
+                        r.scaled_by(buffer.display.scale_factor(), true)
                             .inflated(gap_px),
                     ));
                 }

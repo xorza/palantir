@@ -604,3 +604,59 @@ mod record_store_tests {
         assert_eq!(snapshot(&window_a), retained);
     }
 }
+
+/// The one place both host-owned display settings reach a frame.
+mod display_tests {
+    use glam::UVec2;
+
+    use crate::display::user_scale::UserScale;
+    use crate::host::shared::HostShared;
+    use crate::host::window_driver::WindowDriver;
+    use crate::primitives::size::Size;
+    use crate::renderer::texture_limit::TextureLimit;
+    use crate::text::shaper::TextShaper;
+    use crate::window::window_token::WindowToken;
+
+    /// The driver mints its `Display` from what it owns, so a scale the
+    /// app wrote during a frame is in the very next one — a host caching
+    /// its own copy is what this arrangement exists to make impossible.
+    /// `pixel_snap` rides the same call and is checked beside it.
+    #[test]
+    fn the_mint_folds_in_the_app_scale_and_the_hosts_snap() {
+        let shared = HostShared::new(TextShaper::test_mono(), TextureLimit::default());
+        let mut driver = WindowDriver::builder(WindowToken(1), &shared, false).build();
+
+        let plain = driver.display(UVec2::new(800, 600), 2.0, None);
+        assert_eq!(plain.system_scale, 2.0);
+        assert_eq!(plain.user_scale, UserScale::ONE);
+        assert_eq!(plain.scale_factor(), 2.0);
+        assert!(!plain.pixel_snap, "the snap comes from the host, not here");
+
+        driver.ui.set_user_scale(UserScale::new(1.25));
+        let zoomed = driver.display(UVec2::new(800, 600), 2.0, None);
+        assert_eq!(zoomed.system_scale, 2.0, "the platform's half is untouched");
+        assert_eq!(zoomed.user_scale, UserScale::new(1.25));
+        assert_eq!(zoomed.scale_factor(), 2.5);
+        assert_eq!(zoomed.logical_size(), Size::new(320.0, 240.0));
+        assert_eq!(zoomed.system_logical_size(), Size::new(400.0, 300.0));
+    }
+
+    /// The scale is app-global, so two drivers over one `HostShared` mint
+    /// the same one however the write reached it.
+    #[test]
+    fn two_windows_mint_the_one_scale() {
+        let shared = HostShared::new(TextShaper::test_mono(), TextureLimit::default());
+        let mut first = WindowDriver::builder(WindowToken(1), &shared, true).build();
+        let second = WindowDriver::builder(WindowToken(2), &shared, true).build();
+
+        first.ui.set_user_scale(UserScale::new(1.5));
+
+        assert_eq!(second.ui.user_scale(), UserScale::new(1.5));
+        assert_eq!(
+            second
+                .display(UVec2::new(400, 400), 1.0, None)
+                .scale_factor(),
+            1.5,
+        );
+    }
+}

@@ -1,6 +1,7 @@
 //! The first frames: the warm-up pass, and what an empty `Ui` still does.
 
 use crate::display::Display;
+use crate::display::user_scale::UserScale;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::Color, rect::Rect};
@@ -62,19 +63,26 @@ fn empty_then_populated_frame() {
     assert_eq!(h.engines.damage.prev.len(), 1);
 }
 
-/// Pin: `Ui::frame` panics if `display.scale_factor` is below `EPS`.
+/// Pin: `Ui::frame` panics if `display.scale_factor()` is below `EPS`.
 #[test]
-#[should_panic(expected = "Display::scale_factor must be finite and ≥ EPSILON")]
+#[should_panic(expected = "Display::scale_factor() must be finite and ≥ EPSILON")]
 fn frame_rejects_zero_scale_factor() {
     let mut h = UiHarness::new(UVec2::new(800, 600)).scale(0.0);
     let _ = h.frame(|_| {});
 }
 
-/// Pin: `Display::logical_rect` divides physical by scale_factor.
+/// Pin: `Display::logical_rect` divides physical by `scale_factor()`,
+/// which is both factors — so the user scale takes room out of layout.
 #[test]
 fn display_logical_rect_scales() {
     let d = Display::from_physical(UVec2::new(800, 600), 2.0);
     assert_eq!(d.logical_rect(), Rect::new(0.0, 0.0, 400.0, 300.0));
+
+    let zoomed = Display {
+        user_scale: UserScale::new(2.0),
+        ..d
+    };
+    assert_eq!(zoomed.logical_rect(), Rect::new(0.0, 0.0, 200.0, 150.0));
 }
 
 /// On a true first frame the user closure runs **twice** — once for the

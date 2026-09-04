@@ -282,7 +282,7 @@ fn damage_filter_includes_descendant_overflowing_parent_rect() {
 /// margin doesn't silently disable damage culling.
 #[test]
 fn damage_filter_repaints_neighbor_in_aa_pad_ring() {
-    // At `scale_factor == 1` (UiHarness::new) the cull margin is
+    // At `scale_factor() == 1` (UiHarness::new) the cull margin is
     // `RenderPlan::AA_PADDING + 1 = 3` logical px. A neighbor 2 px away is
     // inside the pad the backend clears → must repaint; one 10 px away is
     // well past the margin → must stay culled.

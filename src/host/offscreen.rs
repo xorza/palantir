@@ -33,8 +33,8 @@
 //! that mean nothing unless serviced; settings are not. That is the whole of
 //! which window calls this host honours.
 //!
-//! Everything the host can reject is a caller mistake — an unusable scale
-//! factor, a window request it has no lifecycle for — so `frame_offscreen`
+//! Everything the host can reject is a caller mistake — an unusable system
+//! scale, a window request it has no lifecycle for — so `frame_offscreen`
 //! panics rather than returning a `Result` no caller could act on.
 
 use crate::app::App;
@@ -187,28 +187,34 @@ impl OffscreenHost {
     /// passed to [`App::update`] and [`App::record`], with the same once-only
     /// update and replayable record semantics as [`crate::WinitHost`].
     ///
+    /// `system_scale` stands in for the device pixel ratio a platform would
+    /// report. The app's own scale multiplies onto it, exactly as in a
+    /// window, so a render at 200% asks for it through
+    /// [`Ui::set_user_scale`](crate::Ui::set_user_scale) rather than by
+    /// doubling this.
+    ///
     /// # Panics
     ///
-    /// Panics if `scale_factor` is non-finite or below `1e-4`, or if the frame
+    /// Panics if `system_scale` is non-finite or below `1e-4`, or if the frame
     /// recorded [`Ui::open_window`] / [`Ui::close_window`] — this host has no
     /// window lifecycle.
     pub fn frame_offscreen<T: App>(
         &mut self,
         target: &wgpu::Texture,
-        scale_factor: f32,
+        system_scale: f32,
         app: &mut T,
     ) -> FrameReport {
         assert!(
-            display::scale_factor_is_valid(scale_factor),
-            "offscreen scale factor must be finite and at least {EPS}, got \
-             {scale_factor}"
+            display::scale_factor_is_valid(system_scale),
+            "offscreen system scale must be finite and at least {EPS}, got \
+             {system_scale}"
         );
 
         let key = TargetKey::of(target);
         let driver = &mut self.driver;
         driver.note_target(key);
         // No monitor, so no refresh rate to declare.
-        let display = driver.display(key.physical, scale_factor, None);
+        let display = driver.display(key.physical, system_scale, None);
         let CpuFrame { report, mode } = self.core.cpu_frame(driver, display, app);
         // Before submitting: a frame that asked for a window it can never get
         // is a caller error, and reporting it against an untouched target
