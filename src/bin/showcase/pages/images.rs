@@ -124,16 +124,16 @@ fn sources(ui: &mut Ui) -> Sources {
         |ui, slot| {
             slot.get_or_insert_with(|| Sources {
                 checker: ui
-                    .register_image(checker())
+                    .register_image(&checker())
                     .expect("showcase checker fits every supported GPU"),
                 gradient: ui
-                    .register_image(gradient())
+                    .register_image(&gradient())
                     .expect("showcase gradient fits every supported GPU"),
                 sprite: ui
-                    .register_image(sprite())
+                    .register_image(&sprite())
                     .expect("showcase sprite fits every supported GPU"),
                 starfield: ui
-                    .register_image(starfield())
+                    .register_image(&starfield())
                     .expect("showcase starfield fits every supported GPU"),
             })
             .clone()

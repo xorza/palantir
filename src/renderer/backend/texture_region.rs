@@ -51,9 +51,9 @@ pub(super) struct TextureRegion<'a> {
     /// **Padding on this side to buy that copy back is a
     /// pessimisation.** It is the same row-by-row fill, plus a buffer of
     /// our own, and wgpu then copies the padded whole a second time into
-    /// staging it allocates either way. An image uploads once, at
-    /// registration (`ImageTextures::drain_registry`), so the re-pack is
-    /// paid per image and never per frame.
+    /// staging it allocates either way. A static image uploads once, at
+    /// registration, and a rewritten one is a few hundred texels wide, so
+    /// the re-pack never amounts to a frame's cost.
     pub(super) bytes_per_row: u32,
 }
 

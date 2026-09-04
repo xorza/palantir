@@ -331,7 +331,6 @@ pub use renderer::gpu_paint::GpuPaint;
 pub use renderer::gpu_paint::gpu_frame_ctx::GpuFrameCtx;
 pub use renderer::gpu_paint::gpu_init_ctx::GpuInitCtx;
 pub use renderer::image_registry::ImageHandle;
-pub use renderer::image_registry::image_write::ImageWrite;
 pub use renderer::texture_limit::RegisterImageError;
 /// The bound on [`Ui::add_shape`] — sealed, so it names the shape kinds
 /// the crate ships and nothing else.

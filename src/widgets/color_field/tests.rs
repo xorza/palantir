@@ -2,8 +2,8 @@ use crate::primitives::color::RgbaF32;
 use crate::primitives::color::color_coords::ColorCoords;
 use crate::primitives::color::color_model::ColorModel;
 use crate::primitives::color::srgba_u8::SrgbaU8;
+use crate::primitives::image::Image;
 use crate::primitives::widget_id::WidgetId;
-use crate::renderer::image_registry::test_support;
 use crate::renderer::render_plan::RenderPlan;
 use crate::scene::damage::Damage;
 use crate::scene::node::configure::Configure;
@@ -108,10 +108,9 @@ fn changed_and_committed_are_edges() {
 /// 0.375, so 128 and 96. Read as linear the same colour would be 188 and 166.
 #[test]
 fn texels_are_srgb_encoded() {
-    let handle = test_support::handle(UVec2::new(2, 3));
-    let mut texels = handle.write();
-    fill(&mut texels, ColorModel::Hsv, 0.0);
-    assert_eq!(texels[2], SrgbaU8::rgb(128, 96, 96));
+    let mut image = Image::blank(UVec2::new(2, 3));
+    fill(&mut image, ColorModel::Hsv, 0.0);
+    assert_eq!(image.texels()[2], SrgbaU8::rgb(128, 96, 96));
 }
 
 /// A hue change rewrites the texture under the same id, and damage has to
@@ -192,19 +191,19 @@ fn worst_error_at(model: ColorModel, downsample: u32) -> (f32, f32, f32) {
         (pixels.x as f32 / downsample as f32).ceil() as u32,
         (pixels.y as f32 / downsample as f32).ceil() as u32,
     );
-    let handle = test_support::handle(size);
+    let mut image = Image::blank(size);
     let mut worst = 0.0_f32;
     let (mut worst_u, mut worst_v) = (0.0_f32, 0.0_f32);
     for step in 0..12 {
         let hue = step as f32 / 12.0;
-        let mut texels = handle.write();
-        fill(&mut texels, model, hue);
+        fill(&mut image, model, hue);
+        let texels = image.texels();
         let slice = model.slice(hue);
         for row in 0..pixels.y {
             let v = (row as f32 + 0.5) / pixels.y as f32;
             for column in 0..pixels.x {
                 let u = (column as f32 + 0.5) / pixels.x as f32;
-                let shown = sample(&texels, size, u, v).to_srgba_u8();
+                let shown = sample(texels, size, u, v).to_srgba_u8();
                 let want = slice.color(u, 1.0 - v).to_srgba_u8();
                 for (a, b) in [(shown.r, want.r), (shown.g, want.g), (shown.b, want.b)] {
                     let error = (f32::from(a) - f32::from(b)).abs();
