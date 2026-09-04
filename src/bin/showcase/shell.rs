@@ -87,6 +87,14 @@ const PAGES: &[Page] = &[
     },
     Page {
         group: "WIDGETS",
+        label: "colors",
+        blurb: "The colour picker and its parts. Drag the field and the bars; switch the \
+                model under the panel to see Okhsv hold one brightness where HSV does not.",
+        flow: Flow::Scroll,
+        body: Body::Simple(pages::colors::build),
+    },
+    Page {
+        group: "WIDGETS",
         label: "text edit",
         blurb: "Click to focus, type to insert; arrows / Home / End / Backspace / Delete \
                 navigate, Escape blurs.",

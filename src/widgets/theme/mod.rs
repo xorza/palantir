@@ -23,6 +23,7 @@ macro_rules! palette_default {
 }
 
 pub(crate) mod button;
+pub(crate) mod color_picker;
 pub(crate) mod combo_box;
 pub(crate) mod context_menu;
 pub(crate) mod dock;
@@ -50,6 +51,7 @@ use crate::primitives::color::Color;
 use crate::scene::node::container_chrome::ContainerChrome;
 use crate::text::glyph_font::GlyphFont;
 use crate::widgets::theme::button::ButtonTheme;
+use crate::widgets::theme::color_picker::ColorPickerTheme;
 use crate::widgets::theme::combo_box::ComboBoxTheme;
 use crate::widgets::theme::context_menu::ContextMenuTheme;
 use crate::widgets::theme::dock::DockTheme;
@@ -128,6 +130,8 @@ pub struct Theme {
     /// [`Self::button`] and [`Self::context_menu`].
     pub combo_box: ComboBoxTheme,
     pub modal: ModalTheme,
+    /// What the colour picker and its four parts wear, sizes included.
+    pub color_picker: ColorPickerTheme,
     pub tooltip: TooltipTheme,
     pub progress_bar: ProgressBarTheme,
     pub separator: SeparatorTheme,
@@ -254,6 +258,7 @@ impl Theme {
             tabs,
             dock,
             expander,
+            color_picker,
             // Chrome, geometry, and scalars — no `TextStyle` reachable.
             scrollbar: _,
             combo_box: _,
@@ -280,6 +285,7 @@ impl Theme {
         tabs.for_each_text(f);
         dock.for_each_text(f);
         expander.for_each_text(f);
+        color_picker.for_each_text(f);
     }
 
     /// Assemble a full theme from a [`Palette`] — every widget recipe
@@ -299,6 +305,7 @@ impl Theme {
             context_menu: ContextMenuTheme::from_palette(p),
             combo_box: ComboBoxTheme::from_palette(p),
             modal: ModalTheme::from_palette(p),
+            color_picker: ColorPickerTheme::from_palette(p),
             tooltip: TooltipTheme::from_palette(p),
             progress_bar: ProgressBarTheme::from_palette(p),
             separator: SeparatorTheme::from_palette(p),
