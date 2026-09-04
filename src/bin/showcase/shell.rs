@@ -9,9 +9,9 @@
 use palantir::SlotDefaults;
 use palantir::{
     Align, AnimSpec, App, Background, Button, ButtonTheme, Checkbox, Color, Configure, Corners,
-    FontWeight, Frame, FrameFixture, Key, Palette, Panel, Scroll, Shortcut, Sizing, Spacing,
-    StatefulLook, Stroke, Text, TextStyle, TextWrap, Theme, Ui, UserScale, Vsync, WidgetLook,
-    WindowConfig, WindowToken, fmt,
+    FontFamily, FontWeight, Frame, FrameFixture, Justify, Key, Palette, Panel, Scroll, Shortcut,
+    Sizing, Spacing, StatefulLook, Stroke, Text, TextStyle, TextWrap, Theme, Tooltip, Ui,
+    UserScale, VAlign, Vsync, WidgetLook, WindowConfig, WindowToken, fmt,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -502,24 +502,34 @@ fn debug_toggles(ui: &mut Ui) {
     ui.set_debug_overlay(overlay);
 }
 
-/// The UI-scale stepper, mirroring the Ctrl+`-` / Ctrl+`=` / Ctrl+`0`
-/// shortcuts.
+/// The UI-scale stepper: `−  100%  +`, flat against the rail.
 ///
-/// Two buttons and a readout rather than a slider, which is the control
-/// this setting wants: every distinct scale re-rasterizes every glyph on
-/// screen, so a ladder of a dozen rungs is worth far more than a
-/// continuous drag through hundreds of them.
+/// The two signs walk [`UserScale`]'s ladder, and the readout only reads.
+/// A scrubbable value belongs to a setting that does not move its own
+/// widget: this one relaids the row out from under the pointer mid-drag,
+/// so the gesture chased itself off the number it had hold of.
 fn ui_scale_row(ui: &mut Ui) {
     let scale = ui.user_scale();
+    let step = scale_step_style();
+    let readout = TextStyle {
+        family: FontFamily::MONO,
+        font_size_px: 12.0,
+        color: support::INK,
+        ..ui.theme().text
+    };
+
     let mut next = scale;
     Panel::hstack()
         .id_salt("ui-scale")
         .size((Sizing::FILL, Sizing::HUG))
-        .gap(6.0)
-        .align(Align::LEFT)
+        .margin(Spacing::new(0.0, 6.0, 0.0, 0.0))
+        .justify(Justify::Center)
+        .child_align(Align::v(VAlign::Center))
+        .gap(4.0)
         .show(ui, |ui| {
             if Button::new()
                 .id_salt("ui-scale-down")
+                .style(&step)
                 .label("−")
                 .show(ui)
                 .left
@@ -527,26 +537,47 @@ fn ui_scale_row(ui: &mut Ui) {
             {
                 next = scale.stepped_down();
             }
-            if Button::new()
+            // Fixed width, mono face: the readout is three characters at
+            // 90% and four at 100%, and the signs must not shuffle sideways
+            // as it steps between them.
+            Text::new(fmt!(ui, "{}%", scale.percent()))
+                .id_salt("ui-scale-readout")
+                .style(&readout)
+                .size((Sizing::fixed(34.0), Sizing::HUG))
+                .text_align(Align::CENTER)
+                .show(ui);
+            let up = Button::new()
                 .id_salt("ui-scale-up")
+                .style(&step)
                 .label("+")
-                .show(ui)
-                .left
-                .clicked()
-            {
+                .show(ui);
+            let clicked = up.left.clicked();
+            let up = up.snapshot();
+            if clicked {
                 next = scale.stepped_up();
             }
-            let readout = fmt!(ui, "UI {}%  ctrl -/+", scale.percent());
-            Text::new(readout)
-                .id_salt("ui-scale-readout")
-                .style(
-                    &TextStyle::default()
-                        .with_font_size(11.0)
-                        .with_color(support::INK_FAINT),
-                )
+            Tooltip::on(&up)
+                .label("UI scale — ctrl +/− · ctrl 0 resets")
                 .show(ui);
         });
     ui.set_user_scale(next);
+}
+
+/// The rail's flat button, with a bigger glyph. `−` and `+` are single
+/// marks rather than words, and at the nav items' label size they read as
+/// specks beside the readout.
+fn scale_step_style() -> ButtonTheme {
+    let mut style = nav_style(false);
+    let grow = |look: &mut WidgetLook| {
+        if let Some(text) = &mut look.text {
+            text.font_size_px = 15.0;
+        }
+    };
+    grow(&mut style.looks.normal);
+    grow(&mut style.looks.hovered);
+    grow(&mut style.looks.active);
+    grow(&mut style.looks.disabled);
+    style
 }
 
 fn page_header(ui: &mut Ui, title: &'static str, blurb: &'static str) {
@@ -590,8 +621,8 @@ fn showcase_palette() -> Palette {
     }
 }
 
-/// Flat nav-rail button: transparent at rest, accent-washed when it's
-/// the open page.
+/// Flat rail button: transparent at rest, accent-washed when it's the
+/// open page. Worn by the nav items and by the UI-scale stepper.
 fn nav_style(selected: bool) -> ButtonTheme {
     let label = |c: Color| Some(TextStyle::default().with_font_size(12.0).with_color(c));
     let wash = |alpha: f32, c: Color| Background::rounded(c.with_alpha(alpha), Corners::all(5.0));
