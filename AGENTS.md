@@ -63,7 +63,7 @@ Test and bench code that needs past a file's privates goes in one gated module
 at the end of that file, `pub(crate)`, named for who reaches in:
 
 - **`internals`** — reached from *outside* the crate: `tests/visual`,
-  `tests/alloc`, the showcase binary. Always
+  `tests/alloc`, the showcase example. Always
   `#[cfg(any(test, feature = "internals"))]`, and `src/lib.rs` re-exports the
   published subset through `pub mod internals`.
 - **`test_support`** — reached from *inside* the crate only: another module's
