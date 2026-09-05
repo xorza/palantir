@@ -289,6 +289,18 @@ impl std::hash::Hash for RgbaU8 {
 }
 
 impl RgbaU8 {
+    /// Scale the alpha lane by `by`, leaving the colour lanes alone.
+    ///
+    /// The 8-bit peer of [`RgbaF16::faded`], for the polyline vertex
+    /// colours the composer writes straight into the curve instances.
+    #[inline]
+    pub(crate) fn faded(self, by: f32) -> Self {
+        Self {
+            a: (f32::from(self.a) * by).round().clamp(0.0, 255.0) as u8,
+            ..self
+        }
+    }
+
     /// Fully transparent black.
     pub const TRANSPARENT: Self = Self {
         r: 0,
@@ -439,6 +451,27 @@ pub struct RgbaF16(F16x4);
 
 impl RgbaF16 {
     pub const TRANSPARENT: Self = Self(F16x4::ZERO);
+
+    /// Alpha one over zeroed colour — the identity for a lane that is an
+    /// opacity multiplier rather than a colour. A gradient fill's colour
+    /// lane is one; see
+    /// [`BrushSource::gpu_fill`](crate::renderer::frontend::payload::brush_source::BrushSource::gpu_fill).
+    #[inline]
+    pub(crate) fn opacity_one() -> Self {
+        Self(F16x4::from_lanes([0.0, 0.0, 0.0, 1.0]))
+    }
+
+    /// Scale the alpha lane by `by`, leaving the colour lanes alone.
+    ///
+    /// What a paint animation's alpha channel folds into a draw. Storage
+    /// is straight-alpha, so this is one lane and no premultiply
+    /// rebalancing. `by == 1.0` is the identity and the common case, so
+    /// the caller skips this rather than paying the unpack.
+    #[inline]
+    pub(crate) fn faded(self, by: f32) -> Self {
+        let [r, g, b, a] = self.0.lanes();
+        Self(F16x4::from_lanes([r, g, b, a * by]))
+    }
 
     /// True when alpha is below `EPS` — paints nothing visible. Reuses
     /// [`F16x4::lane_is_noop`]'s bit-trick (mask sign, compare against

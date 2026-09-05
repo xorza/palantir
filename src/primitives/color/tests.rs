@@ -201,3 +201,28 @@ fn f16_to_u8_matches_two_hop_quantize() {
         assert_eq!(RgbaU8::from(f16), RgbaU8::from(RgbaF32::from(f16)));
     }
 }
+
+/// `faded` scales alpha and nothing else, on both packed types.
+///
+/// Hand-computed: half of `0.8` is `0.4`, and half of `200` is `100`.
+/// The colour lanes must come back bit-identical, because a fade is an
+/// opacity change and a widget that fades a red shape does not want a
+/// darker red. `by == 1.0` is the identity the emit path leans on.
+#[test]
+fn faded_scales_only_the_alpha_lane() {
+    let f16 = RgbaF16::from(RgbaF32::new(0.25, 0.5, 0.75, 0.8));
+    let full = f16.unpack();
+    let half = f16.faded(0.5).unpack();
+    assert_eq!((half.r, half.g, half.b), (full.r, full.g, full.b));
+    assert!(
+        (half.a - 0.4).abs() < 1e-3,
+        "alpha {} is not half of 0.8",
+        half.a,
+    );
+    assert_eq!(f16.faded(1.0), f16);
+
+    let u8c = RgbaU8::new(10, 20, 30, 200);
+    assert_eq!(u8c.faded(0.5), RgbaU8::new(10, 20, 30, 100));
+    assert_eq!(u8c.faded(1.0), u8c);
+    assert_eq!(u8c.faded(0.0).a, 0, "a zero fade is fully transparent");
+}

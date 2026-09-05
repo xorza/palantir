@@ -90,6 +90,21 @@ pub(crate) struct DrawQuadPayload {
 }
 
 impl DrawQuadPayload {
+    /// This draw with its alpha scaled by `by`, for
+    /// [`PaintSink`](crate::renderer::frontend::paint_sink::PaintSink)'s
+    /// gate.
+    #[inline]
+    pub(crate) fn faded(self, by: f32) -> Self {
+        if by == 1.0 {
+            return self;
+        }
+        Self {
+            fill: self.fill.faded(by),
+            stroke: self.stroke.faded(by),
+            ..self
+        }
+    }
+
     /// A rounded rect with `fill` and `stroke`.
     ///
     /// The brush is lowered here rather than at the call site because
@@ -222,14 +237,18 @@ impl DrawQuadPayload {
 
 #[cfg(test)]
 mod tests {
+    use crate::primitives::brush::gradient::FillAxis;
+    use crate::primitives::brush::gradient::Spread;
     use crate::primitives::color::{RgbaF16, RgbaF32};
     use crate::primitives::corners::Corners;
     use crate::primitives::fill_kind::FillKind;
+    use crate::primitives::lut_row::LutRow;
     use crate::primitives::rect::Rect;
     use crate::primitives::stroke::Stroke;
     use crate::renderer::frontend::payload::brush_source::BrushSource;
     use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
     use crate::renderer::frontend::payload::draw_quad_payload::QuadGeom;
+    use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
     use crate::scene::shapes::paint::ShapeStroke;
     use glam::Vec2;
 
@@ -306,5 +325,52 @@ mod tests {
                 assert_eq!(tp.stroke.color, RgbaF16::from(green), "case {label}");
             }
         }
+    }
+
+    /// A fade reaches a solid fill and a gradient fill by different
+    /// routes, and both have to arrive.
+    ///
+    /// A solid carries its own colour, so the fade scales the real alpha:
+    /// half of `0.8` is `0.4`. A gradient's colour comes from the atlas
+    /// row instead, which leaves its colour lane free to *be* the
+    /// multiplier — so it starts at one and a half fade takes it to
+    /// `0.5`, with the unread RGB left at zero. The stroke is scaled
+    /// either way, and `faded(1.0)` changes nothing.
+    #[test]
+    fn a_fade_reaches_the_solid_alpha_and_the_gradients_opacity_lane() {
+        let stroke = ShapeStroke {
+            width: 2.0,
+            color: RgbaF16::from(RgbaF32::new(1.0, 1.0, 1.0, 1.0)),
+        };
+        let quad = |fill| {
+            DrawQuadPayload::rect(Rect::new(0.0, 0.0, 8.0, 8.0), Corners::ZERO, fill, stroke)
+        };
+
+        let solid = quad(BrushSource::Solid(RgbaF16::from(RgbaF32::new(
+            0.25, 0.5, 0.75, 0.8,
+        ))));
+        assert_eq!(solid.faded(1.0), solid);
+        let faded = solid.faded(0.5);
+        assert!((faded.fill.color.unpack().a - 0.4).abs() < 1e-3);
+        assert!((faded.stroke.color.unpack().a - 0.5).abs() < 1e-3);
+
+        let gradient = quad(BrushSource::Gradient(ResolvedGradient {
+            axis: FillAxis::ZERO,
+            lut_row: LutRow::FALLBACK,
+            kind: FillKind::linear(Spread::Pad),
+        }));
+        let opacity = gradient.fill.color.unpack();
+        assert_eq!(
+            (opacity.r, opacity.g, opacity.b),
+            (0.0, 0.0, 0.0),
+            "the gradient's colour lanes are unread and stay zeroed",
+        );
+        assert!(
+            (opacity.a - 1.0).abs() < 1e-3,
+            "an unfaded gradient is opaque"
+        );
+        let faded = gradient.faded(0.5);
+        assert!((faded.fill.color.unpack().a - 0.5).abs() < 1e-3);
+        assert_eq!(faded.fill.lut_row, gradient.fill.lut_row);
     }
 }

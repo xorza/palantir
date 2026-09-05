@@ -48,22 +48,25 @@ impl ComposeBench {
         assert!(curve_count > 0);
         let mut cmds = PaintCapture::default();
         for _ in 0..curve_count {
-            cmds.draw_curve(DrawCurvePayload {
-                bounds: StrokeBounds::Still(Rect::new(16.0, 63.0, 96.0, 2.0)),
-                origin: Vec2::ZERO,
-                basis: CurveBasis::Cubic {
-                    p0: Vec2::new(16.0, 64.0),
-                    p1: Vec2::new(48.0, 64.0),
-                    p2: Vec2::new(80.0, 64.0),
-                    p3: Vec2::new(112.0, 64.0),
-                },
-                fill: GpuFill {
-                    color: RgbaF32::WHITE.into(),
+            cmds.draw_curve(
+                DrawCurvePayload {
+                    bounds: StrokeBounds::Still(Rect::new(16.0, 63.0, 96.0, 2.0)),
+                    origin: Vec2::ZERO,
+                    basis: CurveBasis::Cubic {
+                        p0: Vec2::new(16.0, 64.0),
+                        p1: Vec2::new(48.0, 64.0),
+                        p2: Vec2::new(80.0, 64.0),
+                        p3: Vec2::new(112.0, 64.0),
+                    },
+                    fill: GpuFill {
+                        color: RgbaF32::WHITE.into(),
+                        ..Default::default()
+                    },
+                    width: 2.0,
                     ..Default::default()
                 },
-                width: 2.0,
-                ..Default::default()
-            });
+                1.0,
+            );
         }
         Self::new(cmds, UVec2::splat(128))
     }
@@ -205,15 +208,18 @@ impl HigherKindCase {
 }
 
 fn push_mesh(cmds: &mut PaintCapture, bbox: Rect) {
-    cmds.draw_mesh(DrawMeshPayload {
-        bbox,
-        origin: Vec2::ZERO,
-        tint: RgbaF32::WHITE.into(),
-        v_start: 0,
-        v_len: 3,
-        i_start: 0,
-        i_len: 3,
-    });
+    cmds.draw_mesh(
+        DrawMeshPayload {
+            bbox,
+            origin: Vec2::ZERO,
+            tint: RgbaF32::WHITE.into(),
+            v_start: 0,
+            v_len: 3,
+            i_start: 0,
+            i_len: 3,
+        },
+        1.0,
+    );
 }
 
 /// `within` placed relative to a grid cell whose origin is `at`.
@@ -227,28 +233,34 @@ fn cell_rect(at: Vec2, within: Rect) -> Rect {
 }
 
 fn push_text(cmds: &mut PaintCapture, rect: Rect) {
-    cmds.draw_text(DrawTextPayload {
-        rect,
-        color: RgbaF32::WHITE.into(),
-        text: ShapedTextRef {
-            key: TextShapeKey::fixture(),
-            span: Span::default(),
+    cmds.draw_text(
+        DrawTextPayload {
+            rect,
+            color: RgbaF32::WHITE.into(),
+            text: ShapedTextRef {
+                key: TextShapeKey::fixture(),
+                span: Span::default(),
+            },
         },
-    });
+        1.0,
+    );
 }
 
 fn push_image(cmds: &mut PaintCapture, rect: Rect) {
-    cmds.draw_image(ImageDraw {
-        payload: DrawImagePayload {
-            rect,
-            uv_min: Vec2::ZERO,
-            uv_size: Vec2::ONE,
-            tint: RgbaF32::WHITE.into(),
-            handle: TextureId(1),
-            flags: 0,
+    cmds.draw_image(
+        ImageDraw {
+            payload: DrawImagePayload {
+                rect,
+                uv_min: Vec2::ZERO,
+                uv_size: Vec2::ONE,
+                tint: RgbaF32::WHITE.into(),
+                handle: TextureId(1),
+                flags: 0,
+            },
+            paint: None,
         },
-        paint: None,
-    });
+        1.0,
+    );
 }
 
 pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {

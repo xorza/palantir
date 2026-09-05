@@ -119,15 +119,17 @@ impl LayerCtx<'_> {
         // Ahead of the two gates below, because the cursor counts *records*:
         // a run either of them drops still owns its slot in the node's span.
         let shaped = runs.shaped(shape, self.layout);
-        // Paint-anim gate. Today's only alpha source (`BlinkOpacity`) is
-        // binary 0/1, so a "hidden" sample just skips emission;
-        // fractional-alpha multiplication arrives with a future `Pulse`
-        // variant. `Spin` rides `paint_mod.rotation`, consumed by the
-        // stroke arms below.
+        // Every emit below passes `alpha`, and the sink's `draw_*` folds it
+        // into whichever lane that payload carries its colour in. An
+        // early-out rather than the gate: the sink drops a fully faded
+        // payload anyway, but a shape animated to nothing should not pay
+        // for its geometry first. `paint_mod.rotation` rides the stroke
+        // arms instead, through `StrokeBounds`.
         let paint_mod = self.paint_anim_cursor.sample(shape_idx, self.now);
         if noop_f32(paint_mod.alpha) {
             return;
         }
+        let alpha = paint_mod.alpha;
         // The node's arranged rect, which every shape resolves its geometry
         // against. Read here rather than passed in: it is `layout.rect[id]`,
         // the same column this function already indexes for padding and text
@@ -151,18 +153,19 @@ impl LayerCtx<'_> {
                     let src = self.brush_source(*fill);
                     match kind {
                         RectKind::Rounded => {
-                            out.draw_quad(DrawQuadPayload::rect(r, *corners, src, *stroke))
+                            out.draw_quad(DrawQuadPayload::rect(r, *corners, src, *stroke), alpha)
                         }
-                        RectKind::Windowed => {
-                            out.draw_quad(DrawQuadPayload::rect_window(r, *corners, src, *stroke))
-                        }
+                        RectKind::Windowed => out.draw_quad(
+                            DrawQuadPayload::rect_window(r, *corners, src, *stroke),
+                            alpha,
+                        ),
                     }
                 }
                 QuadShape::Shadow {
                     local_rect,
                     corners,
                     shadow,
-                } => emit_shadow(out, owner_rect, *local_rect, *corners, shadow),
+                } => emit_shadow(out, owner_rect, *local_rect, *corners, shadow, alpha),
                 QuadShape::Triangle {
                     a,
                     b,
@@ -177,13 +180,16 @@ impl LayerCtx<'_> {
                     // fill only — the reused quad lanes have no room for a gradient.
                     // Stroke noop-normalization happens inside
                     // `DrawQuadPayload::triangle`, the single canonical gate.
-                    out.draw_quad(DrawQuadPayload::triangle(
-                        owner_rect.min,
-                        [*a, *b, *c],
-                        *fill,
-                        *radius,
-                        *stroke,
-                    ))
+                    out.draw_quad(
+                        DrawQuadPayload::triangle(
+                            owner_rect.min,
+                            [*a, *b, *c],
+                            *fill,
+                            *radius,
+                            *stroke,
+                        ),
+                        alpha,
+                    )
                 }
             },
             ShapeRecord::Text {
@@ -220,11 +226,14 @@ impl LayerCtx<'_> {
                     shaped.measured,
                 );
                 let rect = geometry::resolve_local_rect(owner_rect, Some(local));
-                out.draw_text(DrawTextPayload {
-                    rect,
-                    color: *color,
-                    text: ShapedTextRef::new(key, text),
-                });
+                out.draw_text(
+                    DrawTextPayload {
+                        rect,
+                        color: *color,
+                        text: ShapedTextRef::new(key, text),
+                    },
+                    alpha,
+                );
             }
             ShapeRecord::Polyline {
                 width,
@@ -239,18 +248,22 @@ impl LayerCtx<'_> {
                 // Points + colors live in the window's RecordStore; spans
                 // are forwarded verbatim. Owner-local convention — the
                 // composer folds `origin` into the per-point transform.
-                out.draw_polyline(DrawPolylinePayload {
-                    bounds: StrokeBounds::new(owner_rect, *bbox, paint_mod.rotation),
-                    origin: owner_rect.min,
-                    width: *width,
-                    points_start: points.start,
-                    points_len: points.len,
-                    colors_start: colors.start,
-                    colors_len: colors.len,
-                    color_mode: *color_mode,
-                    cap: *cap,
-                    join: *join,
-                });
+                out.draw_polyline(
+                    DrawPolylinePayload {
+                        bounds: StrokeBounds::new(owner_rect, *bbox, paint_mod.rotation),
+                        origin: owner_rect.min,
+                        width: *width,
+                        points_start: points.start,
+                        points_len: points.len,
+                        colors_start: colors.start,
+                        colors_len: colors.len,
+                        color_mode: *color_mode,
+                        cap: *cap,
+                        join: *join,
+                        alpha: u8::MAX,
+                    },
+                    alpha,
+                );
             }
             ShapeRecord::Mesh {
                 local_rect,
@@ -264,15 +277,18 @@ impl LayerCtx<'_> {
                 // composer folds `origin` into the per-instance translate.
                 // No per-frame copy here.
                 let origin = geometry::resolve_local_rect(owner_rect, *local_rect).min;
-                out.draw_mesh(DrawMeshPayload {
-                    bbox: *bbox,
-                    origin,
-                    tint: *tint,
-                    v_start: vertices.start,
-                    v_len: vertices.len,
-                    i_start: indices.start,
-                    i_len: indices.len,
-                });
+                out.draw_mesh(
+                    DrawMeshPayload {
+                        bbox: *bbox,
+                        origin,
+                        tint: *tint,
+                        v_start: vertices.start,
+                        v_len: vertices.len,
+                        i_start: indices.start,
+                        i_len: indices.len,
+                    },
+                    alpha,
+                );
             }
             ShapeRecord::Curve {
                 basis,
@@ -288,14 +304,17 @@ impl LayerCtx<'_> {
                 // crosses verbatim — record and payload share the type, so
                 // both bases' cull, spin, and sub-instance sizing stay one
                 // code path from here through the composer.
-                out.draw_curve(DrawCurvePayload {
-                    basis: *basis,
-                    bounds: StrokeBounds::new(owner_rect, *bbox, paint_mod.rotation),
-                    origin: owner_rect.min,
-                    fill: self.brush_source(*fill).gpu_fill(),
-                    width: *width,
-                    cap: *cap,
-                });
+                out.draw_curve(
+                    DrawCurvePayload {
+                        basis: *basis,
+                        bounds: StrokeBounds::new(owner_rect, *bbox, paint_mod.rotation),
+                        origin: owner_rect.min,
+                        fill: self.brush_source(*fill).gpu_fill(),
+                        width: *width,
+                        cap: *cap,
+                    },
+                    alpha,
+                );
             }
             ShapeRecord::Icon {
                 local_rect,
@@ -305,12 +324,15 @@ impl LayerCtx<'_> {
                 desaturate,
             } => {
                 let base = geometry::resolve_local_rect(owner_rect, *local_rect);
-                out.draw_icon(DrawIconPayload {
-                    rect: geometry::resolve_icon_fit(base, handle.view_box, *fit),
-                    icon: handle.icon,
-                    tint: *tint,
-                    desaturate: *desaturate,
-                });
+                out.draw_icon(
+                    DrawIconPayload {
+                        rect: geometry::resolve_icon_fit(base, handle.view_box, *fit),
+                        icon: handle.icon,
+                        tint: *tint,
+                        desaturate: *desaturate,
+                    },
+                    alpha,
+                );
             }
             ShapeRecord::Image {
                 local_rect,
@@ -362,17 +384,20 @@ impl LayerCtx<'_> {
                     ImageDownsample::Mean => flags |= IMG_FLAG_TAPS_MEAN,
                     ImageDownsample::Peak => flags |= IMG_FLAG_TAPS_PEAK,
                 }
-                out.draw_image(ImageDraw {
-                    payload: DrawImagePayload {
-                        rect,
-                        uv_min,
-                        uv_size,
-                        tint: *tint,
-                        handle,
-                        flags,
+                out.draw_image(
+                    ImageDraw {
+                        payload: DrawImagePayload {
+                            rect,
+                            uv_min,
+                            uv_size,
+                            tint: *tint,
+                            handle,
+                            flags,
+                        },
+                        paint,
                     },
-                    paint,
-                });
+                    alpha,
+                );
             }
         }
     }
@@ -447,13 +472,16 @@ impl LayerCtx<'_> {
         let chrome = self.tree.chrome(id);
 
         if let Some(bg) = chrome {
+            // Both draws pass alpha `1.0`: a paint animation is registered
+            // against a shape, and chrome is the node's own, not one of them.
+            //
             // Shadow paints UNDER the rect fill (CSS box-shadow order).
             // `local_rect = None` means the shadow follows the owner's
             // full arranged rect — `compute_paint_rect` mirrors this so
             // paint extent and damage extent stay in lockstep.
-            emit_shadow(out, rect, None, bg.corners, &bg.shadow);
+            emit_shadow(out, rect, None, bg.corners, &bg.shadow, 1.0);
             let src = self.brush_source(bg.fill);
-            out.draw_quad(DrawQuadPayload::rect(rect, bg.corners, src, bg.stroke));
+            out.draw_quad(DrawQuadPayload::rect(rect, bg.corners, src, bg.stroke), 1.0);
         }
 
         if clip {
@@ -550,6 +578,7 @@ fn emit_shadow(
     local_rect: Option<Rect>,
     corners: Corners,
     shadow: &LoweredShadow,
+    alpha: f32,
 ) {
     if shadow.is_noop() {
         return;
@@ -573,14 +602,17 @@ fn emit_shadow(
             FillAxis::from_lanes(0.0, 0.0, blur, spread),
         )
     };
-    out.draw_quad(DrawQuadPayload::shadow(
-        paint_rect,
-        corners,
-        // LoweredShadow.color is `RgbaF16` (the field); the payload
-        // takes the packed form directly so the encoder doesn't
-        // unpack-and-repack.
-        shadow.color,
-        kind,
-        fill_axis,
-    ));
+    out.draw_quad(
+        DrawQuadPayload::shadow(
+            paint_rect,
+            corners,
+            // LoweredShadow.color is `RgbaF16` (the field); the payload
+            // takes the packed form directly so the encoder doesn't
+            // unpack-and-repack.
+            shadow.color,
+            kind,
+            fill_axis,
+        ),
+        alpha,
+    );
 }

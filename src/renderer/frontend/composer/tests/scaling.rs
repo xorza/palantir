@@ -100,12 +100,15 @@ fn nan_stroke_width_normalizes_away_on_every_quad_geometry() {
     // proves nothing about the lanes.
     let buf = run(
         |b, _arena| {
-            b.draw_quad(DrawQuadPayload::rect(
-                rect(10.0, 20.0, 30.0, 40.0),
-                Corners::ZERO,
-                BrushSource::Solid(RgbaF32::WHITE.into()),
-                nan_stroke,
-            ));
+            b.draw_quad(
+                DrawQuadPayload::rect(
+                    rect(10.0, 20.0, 30.0, 40.0),
+                    Corners::ZERO,
+                    BrushSource::Solid(RgbaF32::WHITE.into()),
+                    nan_stroke,
+                ),
+                1.0,
+            );
         },
         &display,
     );
@@ -117,17 +120,20 @@ fn nan_stroke_width_normalizes_away_on_every_quad_geometry() {
 
     let buf = run(
         |b, _arena| {
-            b.draw_quad(DrawQuadPayload::triangle(
-                Vec2::ZERO,
-                [
-                    Vec2::new(0.0, 0.0),
-                    Vec2::new(10.0, 0.0),
-                    Vec2::new(5.0, 8.0),
-                ],
-                RgbaF32::WHITE.into(),
-                0.0,
-                nan_stroke,
-            ));
+            b.draw_quad(
+                DrawQuadPayload::triangle(
+                    Vec2::ZERO,
+                    [
+                        Vec2::new(0.0, 0.0),
+                        Vec2::new(10.0, 0.0),
+                        Vec2::new(5.0, 8.0),
+                    ],
+                    RgbaF32::WHITE.into(),
+                    0.0,
+                    nan_stroke,
+                ),
+                1.0,
+            );
         },
         &display,
     );
@@ -141,12 +147,15 @@ fn nan_stroke_width_normalizes_away_on_every_quad_geometry() {
     // dropped — the fill and the stroke are both no-ops.
     let buf = run(
         |b, _arena| {
-            b.draw_quad(DrawQuadPayload::rect(
-                rect(10.0, 20.0, 30.0, 40.0),
-                Corners::ZERO,
-                BrushSource::Solid(RgbaF32::TRANSPARENT.into()),
-                nan_stroke,
-            ));
+            b.draw_quad(
+                DrawQuadPayload::rect(
+                    rect(10.0, 20.0, 30.0, 40.0),
+                    Corners::ZERO,
+                    BrushSource::Solid(RgbaF32::TRANSPARENT.into()),
+                    nan_stroke,
+                ),
+                1.0,
+            );
         },
         &display,
     );
@@ -186,12 +195,15 @@ fn compose_scales_radius_and_stroke_under_transform() {
     let buf = run(
         |b, _arena| {
             b.push_transform(TranslateScale::from_scale(2.0));
-            b.draw_quad(DrawQuadPayload::rect(
-                rect(0.0, 0.0, 50.0, 50.0),
-                Corners::all(8.0),
-                BrushSource::Solid(RgbaF32::srgb(1.0, 1.0, 1.0).into()),
-                Stroke::solid(RgbaF32::srgb(0.0, 0.0, 0.0), 1.5).into(),
-            ));
+            b.draw_quad(
+                DrawQuadPayload::rect(
+                    rect(0.0, 0.0, 50.0, 50.0),
+                    Corners::all(8.0),
+                    BrushSource::Solid(RgbaF32::srgb(1.0, 1.0, 1.0).into()),
+                    Stroke::solid(RgbaF32::srgb(0.0, 0.0, 0.0), 1.5).into(),
+                ),
+                1.0,
+            );
             b.pop_transform();
         },
         &params(1.0, UVec2::new(400, 400)),

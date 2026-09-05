@@ -50,6 +50,23 @@ pub(crate) struct ImageDraw<'a> {
 }
 
 impl ImageDraw<'_> {
+    /// This draw with its alpha scaled by `by`, for
+    /// [`PaintSink`](crate::renderer::frontend::paint_sink::PaintSink)'s
+    /// gate.
+    #[inline]
+    pub(crate) fn faded(self, by: f32) -> Self {
+        if by == 1.0 {
+            return self;
+        }
+        Self {
+            payload: DrawImagePayload {
+                tint: self.payload.tint.faded(by),
+                ..self.payload
+            },
+            ..self
+        }
+    }
+
     /// Paints nothing when: zero-extent rect, fully transparent tint, or
     /// a null handle with no callback behind it — a registered image
     /// that was dropped. A `GpuView` is never null-skipped, since its

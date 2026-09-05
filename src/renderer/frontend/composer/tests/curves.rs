@@ -324,22 +324,25 @@ fn compose_emits_one_curve_batch_per_scissor_group() {
             // promise: one draw call per scissor group, no matter how
             // many curves the group contains.
             for offset in [0.0_f32, 50.0] {
-                b.draw_curve(DrawCurvePayload {
-                    bounds: StrokeBounds::Still(rect(0.0, 0.0, 100.0, 100.0)),
-                    origin: Vec2::ZERO,
-                    basis: CurveBasis::Cubic {
-                        p0: Vec2::new(offset, 0.0),
-                        p1: Vec2::new(offset + 10.0, 50.0),
-                        p2: Vec2::new(offset + 90.0, 50.0),
-                        p3: Vec2::new(offset + 100.0, 0.0),
-                    },
-                    fill: GpuFill {
-                        color: RgbaF32::WHITE.into(),
+                b.draw_curve(
+                    DrawCurvePayload {
+                        bounds: StrokeBounds::Still(rect(0.0, 0.0, 100.0, 100.0)),
+                        origin: Vec2::ZERO,
+                        basis: CurveBasis::Cubic {
+                            p0: Vec2::new(offset, 0.0),
+                            p1: Vec2::new(offset + 10.0, 50.0),
+                            p2: Vec2::new(offset + 90.0, 50.0),
+                            p3: Vec2::new(offset + 100.0, 0.0),
+                        },
+                        fill: GpuFill {
+                            color: RgbaF32::WHITE.into(),
+                            ..Default::default()
+                        },
+                        width: 2.0,
                         ..Default::default()
                     },
-                    width: 2.0,
-                    ..Default::default()
-                });
+                    1.0,
+                );
             }
         },
         &params(1.0, UVec2::new(200, 200)),
@@ -370,39 +373,45 @@ fn compose_splits_curve_batches_across_scissor_groups() {
     use crate::scene::shapes::paint::CurveBasis;
     let buf = run(
         |b, _arena| {
-            b.draw_curve(DrawCurvePayload {
-                bounds: StrokeBounds::Still(rect(0.0, 0.0, 100.0, 100.0)),
-                origin: Vec2::ZERO,
-                basis: CurveBasis::Cubic {
-                    p0: Vec2::new(0.0, 0.0),
-                    p1: Vec2::new(10.0, 50.0),
-                    p2: Vec2::new(90.0, 50.0),
-                    p3: Vec2::new(100.0, 0.0),
-                },
-                fill: GpuFill {
-                    color: RgbaF32::WHITE.into(),
+            b.draw_curve(
+                DrawCurvePayload {
+                    bounds: StrokeBounds::Still(rect(0.0, 0.0, 100.0, 100.0)),
+                    origin: Vec2::ZERO,
+                    basis: CurveBasis::Cubic {
+                        p0: Vec2::new(0.0, 0.0),
+                        p1: Vec2::new(10.0, 50.0),
+                        p2: Vec2::new(90.0, 50.0),
+                        p3: Vec2::new(100.0, 0.0),
+                    },
+                    fill: GpuFill {
+                        color: RgbaF32::WHITE.into(),
+                        ..Default::default()
+                    },
+                    width: 2.0,
                     ..Default::default()
                 },
-                width: 2.0,
-                ..Default::default()
-            });
+                1.0,
+            );
             clip(b, rect(0.0, 0.0, 50.0, 200.0));
-            b.draw_curve(DrawCurvePayload {
-                bounds: StrokeBounds::Still(rect(0.0, 0.0, 50.0, 50.0)),
-                origin: Vec2::ZERO,
-                basis: CurveBasis::Cubic {
-                    p0: Vec2::new(0.0, 0.0),
-                    p1: Vec2::new(5.0, 25.0),
-                    p2: Vec2::new(45.0, 25.0),
-                    p3: Vec2::new(50.0, 0.0),
-                },
-                fill: GpuFill {
-                    color: RgbaF32::WHITE.into(),
+            b.draw_curve(
+                DrawCurvePayload {
+                    bounds: StrokeBounds::Still(rect(0.0, 0.0, 50.0, 50.0)),
+                    origin: Vec2::ZERO,
+                    basis: CurveBasis::Cubic {
+                        p0: Vec2::new(0.0, 0.0),
+                        p1: Vec2::new(5.0, 25.0),
+                        p2: Vec2::new(45.0, 25.0),
+                        p3: Vec2::new(50.0, 0.0),
+                    },
+                    fill: GpuFill {
+                        color: RgbaF32::WHITE.into(),
+                        ..Default::default()
+                    },
+                    width: 2.0,
                     ..Default::default()
                 },
-                width: 2.0,
-                ..Default::default()
-            });
+                1.0,
+            );
             b.pop_clip();
         },
         &params(1.0, UVec2::new(200, 200)),
@@ -428,23 +437,26 @@ fn compose_threads_curve_fill_kind_and_lut_row_into_instances() {
         |b, _arena| {
             // Linear gradient curve: fill_kind low byte = 1, lut_row = 7.
             // Every sub-instance must carry the same fill_kind and row.
-            b.draw_curve(DrawCurvePayload {
-                bounds: StrokeBounds::Still(rect(0.0, 0.0, 100.0, 100.0)),
-                origin: Vec2::ZERO,
-                basis: CurveBasis::Cubic {
-                    p0: Vec2::new(0.0, 0.0),
-                    p1: Vec2::new(10.0, 50.0),
-                    p2: Vec2::new(90.0, 50.0),
-                    p3: Vec2::new(100.0, 0.0),
+            b.draw_curve(
+                DrawCurvePayload {
+                    bounds: StrokeBounds::Still(rect(0.0, 0.0, 100.0, 100.0)),
+                    origin: Vec2::ZERO,
+                    basis: CurveBasis::Cubic {
+                        p0: Vec2::new(0.0, 0.0),
+                        p1: Vec2::new(10.0, 50.0),
+                        p2: Vec2::new(90.0, 50.0),
+                        p3: Vec2::new(100.0, 0.0),
+                    },
+                    fill: GpuFill {
+                        color: RgbaF32::TRANSPARENT.into(),
+                        kind: FillKind::linear(Spread::Pad),
+                        lut_row: LutRow(7),
+                    },
+                    width: 4.0,
+                    ..Default::default()
                 },
-                fill: GpuFill {
-                    color: RgbaF32::TRANSPARENT.into(),
-                    kind: FillKind::linear(Spread::Pad),
-                    lut_row: LutRow(7),
-                },
-                width: 4.0,
-                ..Default::default()
-            });
+                1.0,
+            );
         },
         &params(1.0, UVec2::new(200, 200)),
     );
@@ -472,22 +484,25 @@ fn compose_arc_scales_geometry_and_subdivides_by_exact_length() {
     let sweep = 1.5 * PI;
     let buf = run(
         |b, _arena| {
-            b.draw_curve(DrawCurvePayload {
-                bounds: StrokeBounds::Still(rect(0.0, 0.0, 100.0, 100.0)),
-                origin: Vec2::ZERO,
-                basis: CurveBasis::Arc {
-                    center: Vec2::new(50.0, 50.0),
-                    radius: 20.0,
-                    a0: 0.0,
-                    a1: sweep,
-                },
-                fill: GpuFill {
-                    color: RgbaF32::WHITE.into(),
+            b.draw_curve(
+                DrawCurvePayload {
+                    bounds: StrokeBounds::Still(rect(0.0, 0.0, 100.0, 100.0)),
+                    origin: Vec2::ZERO,
+                    basis: CurveBasis::Arc {
+                        center: Vec2::new(50.0, 50.0),
+                        radius: 20.0,
+                        a0: 0.0,
+                        a1: sweep,
+                    },
+                    fill: GpuFill {
+                        color: RgbaF32::WHITE.into(),
+                        ..Default::default()
+                    },
+                    width: 2.0,
                     ..Default::default()
                 },
-                width: 2.0,
-                ..Default::default()
-            });
+                1.0,
+            );
         },
         &params(2.0, UVec2::new(400, 400)),
     );
@@ -523,28 +538,31 @@ fn compose_arc_spin_rotates_center_about_bbox_pivot_and_offsets_angles() {
     // so the spun center is (50, 70). Both angles shift by π/2.
     let buf = run(
         |b, _arena| {
-            b.draw_curve(DrawCurvePayload {
-                bounds: StrokeBounds::Spun {
-                    spin: Spin {
-                        pivot: Vec2::splat(50.0),
-                        angle: FRAC_PI_2,
+            b.draw_curve(
+                DrawCurvePayload {
+                    bounds: StrokeBounds::Spun {
+                        spin: Spin {
+                            pivot: Vec2::splat(50.0),
+                            angle: FRAC_PI_2,
+                        },
+                        radius: Vec2::splat(50.0).length(),
                     },
-                    radius: Vec2::splat(50.0).length(),
-                },
-                origin: Vec2::ZERO,
-                basis: CurveBasis::Arc {
-                    center: Vec2::new(70.0, 50.0),
-                    radius: 10.0,
-                    a0: 0.0,
-                    a1: PI,
-                },
-                fill: GpuFill {
-                    color: RgbaF32::WHITE.into(),
+                    origin: Vec2::ZERO,
+                    basis: CurveBasis::Arc {
+                        center: Vec2::new(70.0, 50.0),
+                        radius: 10.0,
+                        a0: 0.0,
+                        a1: PI,
+                    },
+                    fill: GpuFill {
+                        color: RgbaF32::WHITE.into(),
+                        ..Default::default()
+                    },
+                    width: 2.0,
                     ..Default::default()
                 },
-                width: 2.0,
-                ..Default::default()
-            });
+                1.0,
+            );
         },
         &params(1.0, UVec2::new(200, 200)),
     );
@@ -569,40 +587,46 @@ fn compose_flat_cubic_emits_single_instance_curved_emits_many() {
     // instance; a genuinely curved one must subdivide (800 px polygon
     // → ⌈⌈800/1.5⌉/16⌉ = 34 instances).
     let straight = |b: &mut PaintCapture| {
-        b.draw_curve(DrawCurvePayload {
-            bounds: StrokeBounds::Still(rect(0.0, 0.0, 800.0, 10.0)),
-            origin: Vec2::ZERO,
-            basis: CurveBasis::Cubic {
-                p0: Vec2::new(0.0, 5.0),
-                p1: Vec2::new(800.0 / 3.0, 5.0),
-                p2: Vec2::new(1600.0 / 3.0, 5.0),
-                p3: Vec2::new(800.0, 5.0),
-            },
-            fill: GpuFill {
-                color: RgbaF32::WHITE.into(),
+        b.draw_curve(
+            DrawCurvePayload {
+                bounds: StrokeBounds::Still(rect(0.0, 0.0, 800.0, 10.0)),
+                origin: Vec2::ZERO,
+                basis: CurveBasis::Cubic {
+                    p0: Vec2::new(0.0, 5.0),
+                    p1: Vec2::new(800.0 / 3.0, 5.0),
+                    p2: Vec2::new(1600.0 / 3.0, 5.0),
+                    p3: Vec2::new(800.0, 5.0),
+                },
+                fill: GpuFill {
+                    color: RgbaF32::WHITE.into(),
+                    ..Default::default()
+                },
+                width: 2.0,
                 ..Default::default()
             },
-            width: 2.0,
-            ..Default::default()
-        });
+            1.0,
+        );
     };
     let curved = |b: &mut PaintCapture| {
-        b.draw_curve(DrawCurvePayload {
-            bounds: StrokeBounds::Still(rect(0.0, 0.0, 800.0, 400.0)),
-            origin: Vec2::ZERO,
-            basis: CurveBasis::Cubic {
-                p0: Vec2::new(0.0, 5.0),
-                p1: Vec2::new(266.0, 400.0),
-                p2: Vec2::new(533.0, 400.0),
-                p3: Vec2::new(800.0, 5.0),
-            },
-            fill: GpuFill {
-                color: RgbaF32::WHITE.into(),
+        b.draw_curve(
+            DrawCurvePayload {
+                bounds: StrokeBounds::Still(rect(0.0, 0.0, 800.0, 400.0)),
+                origin: Vec2::ZERO,
+                basis: CurveBasis::Cubic {
+                    p0: Vec2::new(0.0, 5.0),
+                    p1: Vec2::new(266.0, 400.0),
+                    p2: Vec2::new(533.0, 400.0),
+                    p3: Vec2::new(800.0, 5.0),
+                },
+                fill: GpuFill {
+                    color: RgbaF32::WHITE.into(),
+                    ..Default::default()
+                },
+                width: 2.0,
                 ..Default::default()
             },
-            width: 2.0,
-            ..Default::default()
-        });
+            1.0,
+        );
     };
     let vp = params(1.0, UVec2::new(900, 900));
     let flat_buf = run(|b, _| straight(b), &vp);
@@ -627,28 +651,31 @@ fn compose_curve_spin_rotates_control_points_about_bbox_pivot() {
     // (-dy, dx). p0 = (70, 50) → (50, 70); p3 = (50, 30) → (70, 50).
     let buf = run(
         |b, _arena| {
-            b.draw_curve(DrawCurvePayload {
-                bounds: StrokeBounds::Spun {
-                    spin: Spin {
-                        pivot: Vec2::splat(50.0),
-                        angle: FRAC_PI_2,
+            b.draw_curve(
+                DrawCurvePayload {
+                    bounds: StrokeBounds::Spun {
+                        spin: Spin {
+                            pivot: Vec2::splat(50.0),
+                            angle: FRAC_PI_2,
+                        },
+                        radius: Vec2::splat(50.0).length(),
                     },
-                    radius: Vec2::splat(50.0).length(),
-                },
-                origin: Vec2::ZERO,
-                basis: CurveBasis::Cubic {
-                    p0: Vec2::new(70.0, 50.0),
-                    p1: Vec2::new(70.0, 40.0),
-                    p2: Vec2::new(60.0, 30.0),
-                    p3: Vec2::new(50.0, 30.0),
-                },
-                fill: GpuFill {
-                    color: RgbaF32::WHITE.into(),
+                    origin: Vec2::ZERO,
+                    basis: CurveBasis::Cubic {
+                        p0: Vec2::new(70.0, 50.0),
+                        p1: Vec2::new(70.0, 40.0),
+                        p2: Vec2::new(60.0, 30.0),
+                        p3: Vec2::new(50.0, 30.0),
+                    },
+                    fill: GpuFill {
+                        color: RgbaF32::WHITE.into(),
+                        ..Default::default()
+                    },
+                    width: 2.0,
                     ..Default::default()
                 },
-                width: 2.0,
-                ..Default::default()
-            });
+                1.0,
+            );
         },
         &params(1.0, UVec2::new(200, 200)),
     );
@@ -683,38 +710,44 @@ fn compose_arc_and_curve_share_one_batch_per_group() {
     use crate::scene::shapes::paint::CurveBasis;
     let buf = run(
         |b, _arena| {
-            b.draw_curve(DrawCurvePayload {
-                bounds: StrokeBounds::Still(rect(0.0, 0.0, 40.0, 40.0)),
-                origin: Vec2::ZERO,
-                basis: CurveBasis::Arc {
-                    center: Vec2::new(20.0, 20.0),
-                    radius: 10.0,
-                    a0: 0.0,
-                    a1: 1.0,
-                },
-                fill: GpuFill {
-                    color: RgbaF32::WHITE.into(),
+            b.draw_curve(
+                DrawCurvePayload {
+                    bounds: StrokeBounds::Still(rect(0.0, 0.0, 40.0, 40.0)),
+                    origin: Vec2::ZERO,
+                    basis: CurveBasis::Arc {
+                        center: Vec2::new(20.0, 20.0),
+                        radius: 10.0,
+                        a0: 0.0,
+                        a1: 1.0,
+                    },
+                    fill: GpuFill {
+                        color: RgbaF32::WHITE.into(),
+                        ..Default::default()
+                    },
+                    width: 2.0,
                     ..Default::default()
                 },
-                width: 2.0,
-                ..Default::default()
-            });
-            b.draw_curve(DrawCurvePayload {
-                bounds: StrokeBounds::Still(rect(100.0, 0.0, 100.0, 100.0)),
-                origin: Vec2::ZERO,
-                basis: CurveBasis::Cubic {
-                    p0: Vec2::new(100.0, 0.0),
-                    p1: Vec2::new(110.0, 50.0),
-                    p2: Vec2::new(190.0, 50.0),
-                    p3: Vec2::new(200.0, 0.0),
-                },
-                fill: GpuFill {
-                    color: RgbaF32::WHITE.into(),
+                1.0,
+            );
+            b.draw_curve(
+                DrawCurvePayload {
+                    bounds: StrokeBounds::Still(rect(100.0, 0.0, 100.0, 100.0)),
+                    origin: Vec2::ZERO,
+                    basis: CurveBasis::Cubic {
+                        p0: Vec2::new(100.0, 0.0),
+                        p1: Vec2::new(110.0, 50.0),
+                        p2: Vec2::new(190.0, 50.0),
+                        p3: Vec2::new(200.0, 0.0),
+                    },
+                    fill: GpuFill {
+                        color: RgbaF32::WHITE.into(),
+                        ..Default::default()
+                    },
+                    width: 2.0,
                     ..Default::default()
                 },
-                width: 2.0,
-                ..Default::default()
-            });
+                1.0,
+            );
         },
         &params(1.0, UVec2::new(300, 300)),
     );
