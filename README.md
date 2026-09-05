@@ -13,6 +13,9 @@
   <a href="https://docs.rs/palantir"><img src="https://img.shields.io/docsrs/palantir" alt="docs.rs" /></a>
 </p>
 
+I wanted a cross-platform GUI library — simple yet powerful, WPF-style layout
+declaration, good-looking and fast. I made it.
+
 Published on [crates.io](https://crates.io/crates/palantir); API reference on
 [docs.rs](https://docs.rs/palantir).
 
