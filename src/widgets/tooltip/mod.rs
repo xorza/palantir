@@ -11,6 +11,7 @@ use crate::scene::layer::Layer;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
 use crate::widgets::configure::Configure;
+use crate::widgets::configure::ConfigureWidget;
 use crate::widgets::configure::ThemeDefaults;
 use crate::widgets::overlay_scope::{Backdrop, OverlayScope};
 use crate::widgets::response::ResponseSnapshot;
@@ -103,17 +104,23 @@ impl<'a> Tooltip<'a> {
         }
     }
 
-    style_setter!(
-        'a,
-        TooltipTheme,
-        tooltip,
-        "Per-field [`Self::background`] / [`Self::delay`] still win over it.",
-    );
+    /// Per-instance override of [`crate::Theme`]'s `tooltip`. Takes an
+    /// `Option` as readily as a reference: `.style(overrides.as_ref())`.
+    ///
+    /// Per-field [`Self::background`] / [`Self::delay`] still win over it.
+    pub fn style(mut self, s: impl Into<Option<&'a TooltipTheme>>) -> Self {
+        self.style = s.into();
+        self
+    }
 
-    label_setter!(
-        'a,
-        "The bubble's whole content — a tooltip draws nothing else.",
-    );
+    /// The text this widget draws. Empty (the default) draws none —
+    /// no text child is recorded at all.
+    ///
+    /// The bubble's whole content — a tooltip draws nothing else.
+    pub fn label(mut self, label: impl Into<TextInput<'a>>) -> Self {
+        self.label = label.into();
+        self
+    }
 
     /// Override the per-tooltip delay. Falls back to
     /// [`crate::widgets::theme::tooltip::TooltipTheme::delay`] when unset.
@@ -136,7 +143,7 @@ impl<'a> Tooltip<'a> {
         // Handle, not a borrow: the bundle may point into the `Ui`'s own
         // theme, and the record below reborrows `ui` mutably.
         let ui_theme = Rc::clone(ui.theme());
-        let theme = self.slot(&ui_theme);
+        let theme = self.style.unwrap_or(&ui_theme.tooltip);
         let delay = self.delay.unwrap_or(theme.delay);
         let warmup = theme.warmup;
         let gap = theme.gap;
@@ -235,13 +242,24 @@ impl<'a> Tooltip<'a> {
     }
 }
 
-impl_background!(
-    Tooltip<'_>,
-    "`None` is the default; theme fallback in [`Self::show`] fills it in from \
-     `ui.theme().tooltip.panel` when unset. Pass [`Background::NONE`] to \
-     suppress the themed bubble chrome.",
-);
-impl_configure!(Tooltip<'_>);
+impl Tooltip<'_> {
+    /// Paint `bg` as this widget's background.
+    ///
+    /// `None` is the default; theme fallback in [`Self::show`] fills it in
+    /// from `ui.theme().tooltip.panel` when unset. Pass
+    /// [`Background::NONE`] to suppress the themed bubble chrome.
+    pub fn background(mut self, bg: Background) -> Self {
+        self.chrome = Some(bg);
+        self
+    }
+}
+
+impl Configure for Tooltip<'_> {
+    #[inline]
+    fn configure(&mut self) -> ConfigureWidget<'_> {
+        self.widget.configure()
+    }
+}
 
 #[cfg(test)]
 mod tests;

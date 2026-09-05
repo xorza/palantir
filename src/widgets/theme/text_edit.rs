@@ -174,4 +174,8 @@ impl ThemeSlot for TextEditTheme {
     }
 }
 
-palette_default!(TextEditTheme);
+impl Default for TextEditTheme {
+    fn default() -> Self {
+        Self::from_palette(&Palette::DEFAULT)
+    }
+}

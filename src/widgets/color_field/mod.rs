@@ -17,6 +17,7 @@ use crate::widgets::axis_keys::AxisKeys;
 use crate::widgets::color_surface;
 use crate::widgets::color_surface::ColorSurface;
 use crate::widgets::configure::Configure;
+use crate::widgets::configure::ConfigureWidget;
 use crate::widgets::response::Response;
 use crate::widgets::theme::color_picker::ColorPickerTheme;
 use crate::widgets::value_response::ValueResponse;
@@ -86,11 +87,16 @@ impl<'a> ColorField<'a> {
         self
     }
 
-    style_setter!('a, ColorPickerTheme, color_picker);
+    /// Per-instance override of [`crate::Theme`]'s `color_picker`. Takes an
+    /// `Option` as readily as a reference: `.style(overrides.as_ref())`.
+    pub fn style(mut self, s: impl Into<Option<&'a ColorPickerTheme>>) -> Self {
+        self.style = s.into();
+        self
+    }
 
     /// Record the field and report what the gesture did to the coordinates.
     pub fn show(self, ui: &mut Ui) -> ValueResponse<'_> {
-        let theme = self.slot(ui.theme());
+        let theme = self.style.unwrap_or(&ui.theme().color_picker);
         let themed = Size::new(
             theme.field_width.themed_length(1.0),
             theme.field_height.themed_length(1.0),
@@ -145,7 +151,12 @@ impl<'a> ColorField<'a> {
     }
 }
 
-impl_configure!(ColorField<'_>);
+impl Configure for ColorField<'_> {
+    #[inline]
+    fn configure(&mut self) -> ConfigureWidget<'_> {
+        self.widget.configure()
+    }
+}
 
 fn write_axes(coords: &mut ColorCoords, sat: f32, val: f32) -> bool {
     let before = *coords;

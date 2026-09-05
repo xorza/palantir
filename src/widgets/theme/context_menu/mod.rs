@@ -114,4 +114,8 @@ impl ContextMenuTheme {
     }
 }
 
-palette_default!(ContextMenuTheme);
+impl Default for ContextMenuTheme {
+    fn default() -> Self {
+        Self::from_palette(&Palette::DEFAULT)
+    }
+}

@@ -12,6 +12,7 @@ use crate::shape::Shape;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
 use crate::widgets::configure::Configure;
+use crate::widgets::configure::ConfigureWidget;
 use crate::widgets::drag_num::DragNum;
 use crate::widgets::response::Response;
 use crate::widgets::text_edit::TextEdit;
@@ -147,12 +148,14 @@ impl<'a> DragValue<'a> {
         }
     }
 
-    style_setter!(
-        'a,
-        DragValueTheme,
-        drag_value,
-        "Covers both modes at once — the scrub chip and the inline editor.",
-    );
+    /// Per-instance override of [`crate::Theme`]'s `drag_value`. Takes an
+    /// `Option` as readily as a reference: `.style(overrides.as_ref())`.
+    ///
+    /// Covers both modes at once — the scrub chip and the inline editor.
+    pub fn style(mut self, s: impl Into<Option<&'a DragValueTheme>>) -> Self {
+        self.style = s.into();
+        self
+    }
 
     pub fn show(mut self, ui: &mut Ui) -> ValueResponse<'_> {
         let required = self.required_sense();
@@ -259,7 +262,7 @@ impl<'a> DragValue<'a> {
         // takes its half from, so the two modes stay in sync under a global
         // restyle.
         let theme = ui.theme();
-        let chip = &self.slot(theme).chip;
+        let chip = &self.style.unwrap_or(&theme.drag_value).chip;
         let look = chip
             .plan(&response, (), theme.text)
             .apply(ui, &mut self.widget);
@@ -356,7 +359,12 @@ impl<'a> DragValue<'a> {
     }
 }
 
-impl_configure!(DragValue<'_>);
+impl Configure for DragValue<'_> {
+    #[inline]
+    fn configure(&mut self) -> ConfigureWidget<'_> {
+        self.widget.configure()
+    }
+}
 
 #[cfg(test)]
 mod tests;

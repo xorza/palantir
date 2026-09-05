@@ -1,4 +1,4 @@
-//! What `style_setter!` generates: the `Option`-taking setter, and the one
+//! What every widget's `style` setter is: the `Option`-taking setter, and the one
 //! naming of a widget's theme slot that resolves it.
 
 use crate::primitives::color::RgbaF32;
@@ -69,7 +69,7 @@ fn style_takes_an_option_and_none_falls_back_to_the_slot() {
 }
 
 /// `Text`'s slot is `Theme::text`, not a per-widget bundle — the same
-/// `style_setter!` shape reaching a different kind of slot.
+/// `style` shape reaching a different kind of slot.
 #[test]
 fn text_style_none_inherits_the_ambient_text_style() {
     let theme = Theme {

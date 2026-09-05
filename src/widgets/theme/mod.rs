@@ -5,23 +5,6 @@
 //! [`Theme`] aggregates them. A widget opts in by reading its own slice,
 //! so a bundle grows a field without any existing widget changing.
 
-/// `Default` for a theme bundle whose default *is* the default palette.
-///
-///
-/// Every bundle in here builds from a [`palette::Palette`], and the
-/// stock look is that recipe over [`palette::Palette::DEFAULT`] — so the
-/// impl is the same line each time and only the type varies. Invoke it
-/// **in the bundle's own file**, next to `from_palette`.
-macro_rules! palette_default {
-    ($ty:ty) => {
-        impl Default for $ty {
-            fn default() -> Self {
-                Self::from_palette(&$crate::widgets::theme::palette::Palette::DEFAULT)
-            }
-        }
-    };
-}
-
 pub(crate) mod button;
 pub(crate) mod color_picker;
 pub(crate) mod combo_box;
@@ -323,7 +306,11 @@ impl Theme {
     }
 }
 
-palette_default!(Theme);
+impl Default for Theme {
+    fn default() -> Self {
+        Self::from_palette(&Palette::DEFAULT)
+    }
+}
 
 #[cfg(test)]
 mod tests;

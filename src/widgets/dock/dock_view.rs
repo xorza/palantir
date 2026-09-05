@@ -8,6 +8,7 @@ use crate::primitives::corners::Corners;
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
 use crate::widgets::configure::Configure;
+use crate::widgets::configure::ConfigureWidget;
 use crate::widgets::context_menu::ContextMenu;
 use crate::widgets::dock::dock_node::{DockNode, DockSplit, NodeIdx};
 use crate::widgets::dock::dock_op::DockOp;
@@ -103,19 +104,21 @@ impl<'a, T: DockTab> DockView<'a, T> {
         self
     }
 
-    style_setter!(
-        'a,
-        DockTheme,
-        dock,
-        "The dividers read [`crate::Theme::splitter`] and every pane's \
-         strip [`crate::Theme::tabs`], so this bundle covers the drag \
-         feedback alone.",
-    );
+    /// Per-instance override of [`crate::Theme`]'s `dock`. Takes an
+    /// `Option` as readily as a reference: `.style(overrides.as_ref())`.
+    ///
+    /// The dividers read [`crate::Theme::splitter`] and every pane's strip
+    /// [`crate::Theme::tabs`], so this bundle covers the drag feedback
+    /// alone.
+    pub fn style(mut self, s: impl Into<Option<&'a DockTheme>>) -> Self {
+        self.style = s.into();
+        self
+    }
 
     /// Record the pane tree, and the drag feedback over it.
     pub fn show<'u, D: DockTabs<Tab = T>>(self, ui: &'u mut Ui, tabs: &mut D) -> Response<'u> {
         let app_theme = Rc::clone(ui.theme());
-        let theme = self.slot(&app_theme);
+        let theme = self.style.unwrap_or(&app_theme.dock);
         let Self {
             mut widget,
             state,
@@ -171,7 +174,12 @@ impl<T: DockTab> DockView<'_, T> {
     }
 }
 
-impl_configure!(<T> DockView<'_, T>);
+impl<T> Configure for DockView<'_, T> {
+    #[inline]
+    fn configure(&mut self) -> ConfigureWidget<'_> {
+        self.widget.configure()
+    }
+}
 
 /// The scratch [`DockView::run`] keeps between frames, so an application
 /// that never spells the op vocabulary still allocates once rather than

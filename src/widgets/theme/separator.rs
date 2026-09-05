@@ -50,4 +50,8 @@ impl SeparatorTheme {
     }
 }
 
-palette_default!(SeparatorTheme);
+impl Default for SeparatorTheme {
+    fn default() -> Self {
+        Self::from_palette(&Palette::DEFAULT)
+    }
+}

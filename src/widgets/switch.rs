@@ -9,6 +9,7 @@ use crate::primitives::num::F32Ext;
 use crate::primitives::text_input::TextInput;
 use crate::ui::Ui;
 use crate::widgets::configure::Configure;
+use crate::widgets::configure::ConfigureWidget;
 use crate::widgets::response::Response;
 use crate::widgets::theme::toggle::ToggleTheme;
 use crate::widgets::theme::widget_look::theme_slot::ThemeSlot;
@@ -44,9 +45,22 @@ impl<'a> Switch<'a> {
         }
     }
 
-    label_setter!('a, "Drawn to the right of the track; an empty label leaves the track alone.");
+    /// The text this widget draws. Empty (the default) draws none —
+    /// no text child is recorded at all.
+    ///
+    /// Drawn to the right of the track; an empty label leaves the track
+    /// alone.
+    pub fn label(mut self, label: impl Into<TextInput<'a>>) -> Self {
+        self.label = label.into();
+        self
+    }
 
-    style_setter!('a, ToggleTheme, switch);
+    /// Per-instance override of [`crate::Theme`]'s `switch`. Takes an
+    /// `Option` as readily as a reference: `.style(overrides.as_ref())`.
+    pub fn style(mut self, s: impl Into<Option<&'a ToggleTheme>>) -> Self {
+        self.style = s.into();
+        self
+    }
 
     pub fn show(mut self, ui: &mut Ui) -> Response<'_> {
         let response = self.widget.response(ui);
@@ -55,7 +69,7 @@ impl<'a> Switch<'a> {
         let on = ToggleChrome::toggled(&response, self.value);
 
         let theme = ui.theme();
-        let slot = self.slot(theme);
+        let slot = self.style.unwrap_or(&theme.switch);
         let track_h = slot.box_size.themed_length(1.0);
         let inset = slot.indicator_inset.themed_length(0.0);
         let aspect = slot.track_aspect;
@@ -104,7 +118,12 @@ impl<'a> Switch<'a> {
     }
 }
 
-impl_configure!(Switch<'_>);
+impl Configure for Switch<'_> {
+    #[inline]
+    fn configure(&mut self) -> ConfigureWidget<'_> {
+        self.widget.configure()
+    }
+}
 
 /// Knob placement inside the track. The track's own extent is
 /// [`track_width`] × `track_h` and is not repeated here — `Switch::show`

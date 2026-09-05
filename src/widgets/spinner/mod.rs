@@ -10,6 +10,7 @@ use crate::shape::Shape;
 use crate::shape::style::LineCap;
 use crate::ui::Ui;
 use crate::widgets::configure::Configure;
+use crate::widgets::configure::ConfigureWidget;
 use crate::widgets::response::Response;
 use crate::widgets::theme::spinner::SpinnerTheme;
 use crate::widgets::widget::Widget;
@@ -51,13 +52,15 @@ impl<'a> Spinner<'a> {
         }
     }
 
-    style_setter!(
-        'a,
-        SpinnerTheme,
-        spinner,
-        "Per-field [`Self::color`] / [`Self::diameter`] / [`Self::thickness`] \
-         still win over it.",
-    );
+    /// Per-instance override of [`crate::Theme`]'s `spinner`. Takes an
+    /// `Option` as readily as a reference: `.style(overrides.as_ref())`.
+    ///
+    /// Per-field [`Self::color`] / [`Self::diameter`] / [`Self::thickness`]
+    /// still win over it.
+    pub fn style(mut self, s: impl Into<Option<&'a SpinnerTheme>>) -> Self {
+        self.style = s.into();
+        self
+    }
 
     /// Diameter in logical px, defaulting to
     /// [`crate::Theme::spinner`]'s. One-axis hatch over the resolved bundle — see [`crate::Theme`].
@@ -81,7 +84,7 @@ impl<'a> Spinner<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        let theme = self.slot(ui.theme());
+        let theme = self.style.unwrap_or(&ui.theme().spinner);
         let diameter = self.diameter.unwrap_or(theme.diameter).themed_length(1.0);
         let width = self
             .thickness
@@ -110,7 +113,12 @@ impl<'a> Spinner<'a> {
     }
 }
 
-impl_configure!(Spinner<'_>);
+impl Configure for Spinner<'_> {
+    #[inline]
+    fn configure(&mut self) -> ConfigureWidget<'_> {
+        self.widget.configure()
+    }
+}
 
 /// Node-local circle the arc traces.
 #[derive(Debug, PartialEq)]

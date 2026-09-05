@@ -18,6 +18,7 @@ use crate::shape::polyline::PolylineColors;
 use crate::shape::style::{LineCap, LineJoin};
 use crate::ui::Ui;
 use crate::widgets::configure::Configure;
+use crate::widgets::configure::ConfigureWidget;
 use crate::widgets::response::Response;
 use crate::widgets::text::Text;
 use crate::widgets::theme::expander::ExpanderTheme;
@@ -122,13 +123,18 @@ impl<'a> Expander<'a> {
         self
     }
 
-    style_setter!('a, ExpanderTheme, expander);
+    /// Per-instance override of [`crate::Theme`]'s `expander`. Takes an
+    /// `Option` as readily as a reference: `.style(overrides.as_ref())`.
+    pub fn style(mut self, s: impl Into<Option<&'a ExpanderTheme>>) -> Self {
+        self.style = s.into();
+        self
+    }
 
     /// Record the header, and the body under it while the section is
     /// open.
     pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> ExpanderResponse<'_, R> {
         let theme = Rc::clone(ui.theme());
-        let t = self.slot(&theme);
+        let t = self.style.unwrap_or(&theme.expander);
         let ambient = theme.text;
         let Self {
             mut widget,
@@ -270,7 +276,12 @@ impl<'a> Expander<'a> {
     }
 }
 
-impl_configure!(Expander<'_>);
+impl Configure for Expander<'_> {
+    #[inline]
+    fn configure(&mut self) -> ConfigureWidget<'_> {
+        self.widget.configure()
+    }
+}
 
 /// What the record pass hands back out of its closure.
 #[derive(Debug)]

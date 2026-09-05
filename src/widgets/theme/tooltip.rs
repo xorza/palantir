@@ -80,4 +80,8 @@ impl TooltipTheme {
     }
 }
 
-palette_default!(TooltipTheme);
+impl Default for TooltipTheme {
+    fn default() -> Self {
+        Self::from_palette(&Palette::DEFAULT)
+    }
+}

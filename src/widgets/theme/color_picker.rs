@@ -191,4 +191,8 @@ impl ColorPickerTheme {
     }
 }
 
-palette_default!(ColorPickerTheme);
+impl Default for ColorPickerTheme {
+    fn default() -> Self {
+        Self::from_palette(&Palette::DEFAULT)
+    }
+}

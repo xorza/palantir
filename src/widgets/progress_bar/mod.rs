@@ -7,6 +7,7 @@ use crate::primitives::corners::Corners;
 use crate::primitives::num::F32Ext;
 use crate::ui::Ui;
 use crate::widgets::configure::Configure;
+use crate::widgets::configure::ConfigureWidget;
 use crate::widgets::response::Response;
 use crate::widgets::theme::progress_bar::ProgressBarTheme;
 use crate::widgets::widget::Widget;
@@ -39,10 +40,15 @@ impl<'a> ProgressBar<'a> {
         }
     }
 
-    style_setter!('a, ProgressBarTheme, progress_bar);
+    /// Per-instance override of [`crate::Theme`]'s `progress_bar`. Takes an
+    /// `Option` as readily as a reference: `.style(overrides.as_ref())`.
+    pub fn style(mut self, s: impl Into<Option<&'a ProgressBarTheme>>) -> Self {
+        self.style = s.into();
+        self
+    }
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        let theme = self.slot(ui.theme());
+        let theme = self.style.unwrap_or(&ui.theme().progress_bar);
         let [fill, spacer] = Sizing::split(self.fraction);
         let thickness = theme.thickness.themed_length(0.0);
         let radius = Corners::all(thickness * 0.5);
@@ -65,7 +71,12 @@ impl<'a> ProgressBar<'a> {
     }
 }
 
-impl_configure!(ProgressBar<'_>);
+impl Configure for ProgressBar<'_> {
+    #[inline]
+    fn configure(&mut self) -> ConfigureWidget<'_> {
+        self.widget.configure()
+    }
+}
 
 #[cfg(test)]
 mod tests;

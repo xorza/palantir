@@ -12,6 +12,7 @@ use crate::primitives::num::F32Ext;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::Ui;
 use crate::widgets::configure::Configure;
+use crate::widgets::configure::ConfigureWidget;
 use crate::widgets::response::Response;
 use crate::widgets::theme::splitter::SplitterTheme;
 use crate::widgets::widget::Widget;
@@ -93,7 +94,12 @@ impl<'a> Splitter<'a> {
         self
     }
 
-    style_setter!('a, SplitterTheme, splitter);
+    /// Per-instance override of [`crate::Theme`]'s `splitter`. Takes an
+    /// `Option` as readily as a reference: `.style(overrides.as_ref())`.
+    pub fn style(mut self, s: impl Into<Option<&'a SplitterTheme>>) -> Self {
+        self.style = s.into();
+        self
+    }
 
     pub fn show<'u>(
         mut self,
@@ -103,7 +109,7 @@ impl<'a> Splitter<'a> {
         let response = self.widget.response(ui);
         let id = self.widget.resolve(ui);
 
-        let theme = self.slot(ui.theme());
+        let theme = self.style.unwrap_or(&ui.theme().splitter);
         let grab_thickness = theme.grab_thickness.themed_length(1.0);
         let rule_thickness = theme.rule_thickness.themed_length(0.0);
         let rule_color = theme.rule;
@@ -217,7 +223,12 @@ impl<'a> Splitter<'a> {
     }
 }
 
-impl_configure!(Splitter<'_>);
+impl Configure for Splitter<'_> {
+    #[inline]
+    fn configure(&mut self) -> ConfigureWidget<'_> {
+        self.widget.configure()
+    }
+}
 
 /// One pane: a clipped ZStack filling its Grid cell.
 fn pane(ui: &mut Ui, id: WidgetId, axis: Axis, main_cell: u16, body: impl FnOnce(&mut Ui)) {

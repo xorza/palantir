@@ -120,7 +120,11 @@ impl ExpanderTheme {
     }
 }
 
-palette_default!(ExpanderTheme);
+impl Default for ExpanderTheme {
+    fn default() -> Self {
+        Self::from_palette(&Palette::DEFAULT)
+    }
+}
 
 impl ThemeSlot for ExpanderTheme {
     type Pick = ();

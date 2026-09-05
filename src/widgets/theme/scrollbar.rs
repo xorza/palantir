@@ -55,4 +55,8 @@ impl ScrollbarTheme {
     }
 }
 
-palette_default!(ScrollbarTheme);
+impl Default for ScrollbarTheme {
+    fn default() -> Self {
+        Self::from_palette(&Palette::DEFAULT)
+    }
+}

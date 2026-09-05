@@ -11,6 +11,7 @@ use crate::scene::layer::Layer;
 use crate::ui::Ui;
 use crate::widgets::close_handle::CloseHandle;
 use crate::widgets::configure::Configure;
+use crate::widgets::configure::ConfigureWidget;
 use crate::widgets::configure::ThemeDefaults;
 use crate::widgets::overlay_response::OverlayResponse;
 use crate::widgets::overlay_scope::{Backdrop, OverlayScope};
@@ -49,12 +50,15 @@ impl<'a> Modal<'a> {
         }
     }
 
-    style_setter!(
-        'a,
-        ModalTheme,
-        modal,
-        "Per-field [`Self::background`] / [`Self::backdrop`] still win over it.",
-    );
+    /// Per-instance override of [`crate::Theme`]'s `modal`. Takes an
+    /// `Option` as readily as a reference: `.style(overrides.as_ref())`.
+    ///
+    /// Per-field [`Self::background`] / [`Self::backdrop`] still win over
+    /// it.
+    pub fn style(mut self, s: impl Into<Option<&'a ModalTheme>>) -> Self {
+        self.style = s.into();
+        self
+    }
 
     /// Backdrop scrim color, defaulting to [`crate::Theme::modal`]'s.
     /// One-axis hatch over the resolved bundle — see [`crate::Theme`].
@@ -77,7 +81,7 @@ impl<'a> Modal<'a> {
         // Handle: `mt.panel` is still borrowed at `scope.record`, which
         // owns `ui` mutably.
         let ui_theme = Rc::clone(ui.theme());
-        let mt = self.slot(&ui_theme);
+        let mt = self.style.unwrap_or(&ui_theme.modal);
         let dim = Background::fill(self.backdrop.unwrap_or(mt.backdrop));
         let panel_bg = self.chrome.as_ref().unwrap_or(&mt.panel);
         let theme_padding = mt.padding;
@@ -119,12 +123,23 @@ impl<'a> Modal<'a> {
     }
 }
 
-impl_background!(
-    Modal<'_>,
-    "The panel chrome. Pass [`Background::NONE`] to suppress the themed panel \
-     chrome for this modal.",
-);
-impl_configure!(Modal<'_>);
+impl Modal<'_> {
+    /// Paint `bg` as this widget's background.
+    ///
+    /// The panel chrome. Pass [`Background::NONE`] to suppress the themed
+    /// panel chrome for this modal.
+    pub fn background(mut self, bg: Background) -> Self {
+        self.chrome = Some(bg);
+        self
+    }
+}
+
+impl Configure for Modal<'_> {
+    #[inline]
+    fn configure(&mut self) -> ConfigureWidget<'_> {
+        self.widget.configure()
+    }
+}
 
 #[cfg(test)]
 mod tests;

@@ -6,6 +6,7 @@ use crate::renderer::gpu_paint::GpuPaint;
 use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
 use crate::ui::Ui;
 use crate::widgets::configure::Configure;
+use crate::widgets::configure::ConfigureWidget;
 use crate::widgets::response::Response;
 use crate::widgets::widget::Widget;
 use std::cell::RefCell;
@@ -113,7 +114,12 @@ impl GpuView {
     }
 }
 
-impl_configure!(GpuView);
+impl Configure for GpuView {
+    #[inline]
+    fn configure(&mut self) -> ConfigureWidget<'_> {
+        self.widget.configure()
+    }
+}
 
 #[cfg(test)]
 mod tests;

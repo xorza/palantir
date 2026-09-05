@@ -20,6 +20,7 @@ fn double_and_triple_click_select_word_and_all() {
                 .show(ui);
         });
     }
+
     fn record_at_secs(h: &mut UiHarness, now_secs: f32, mut f: impl FnMut(&mut Ui)) {
         h.at(Duration::from_secs_f32(now_secs)).frame(|ui| f(ui));
     }

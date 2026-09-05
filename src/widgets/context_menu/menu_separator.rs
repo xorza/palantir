@@ -2,6 +2,8 @@
 
 use crate::layout::axis::Axis;
 use crate::ui::Ui;
+use crate::widgets::configure::Configure;
+use crate::widgets::configure::ConfigureWidget;
 use crate::widgets::response::Response;
 use crate::widgets::separator::Separator;
 use crate::widgets::theme::separator::SeparatorTheme;
@@ -41,16 +43,26 @@ impl<'a> MenuSeparator<'a> {
         }
     }
 
-    style_setter!('a, SeparatorTheme, context_menu.separator);
+    /// Per-instance override of [`crate::Theme`]'s `context_menu.separator`. Takes an
+    /// `Option` as readily as a reference: `.style(overrides.as_ref())`.
+    pub fn style(mut self, s: impl Into<Option<&'a SeparatorTheme>>) -> Self {
+        self.style = s.into();
+        self
+    }
 
     pub fn show<'ui>(self, ui: &'ui mut Ui) -> Response<'ui> {
         // Handle, not a borrow: `Separator::style` holds the reference
         // across `show`'s `&mut Ui`, and this one may point into the
         // `Ui`'s own theme.
         let ui_theme = Rc::clone(ui.theme());
-        let style = self.slot(&ui_theme);
+        let style = self.style.unwrap_or(&ui_theme.context_menu.separator);
         Separator::over(self.widget, Axis::X).style(style).show(ui)
     }
 }
 
-impl_configure!(MenuSeparator<'_>);
+impl Configure for MenuSeparator<'_> {
+    #[inline]
+    fn configure(&mut self) -> ConfigureWidget<'_> {
+        self.widget.configure()
+    }
+}

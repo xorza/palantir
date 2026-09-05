@@ -8,6 +8,7 @@ use crate::primitives::text_input::TextInput;
 use crate::ui::Ui;
 use crate::widgets::close_handle::CloseHandle;
 use crate::widgets::configure::Configure;
+use crate::widgets::configure::ConfigureWidget;
 use crate::widgets::context_menu::menu_separator::MenuSeparator;
 use crate::widgets::response::Response;
 use crate::widgets::text::Text;
@@ -53,7 +54,12 @@ impl<'a> MenuItem<'a> {
         }
     }
 
-    style_setter!('a, MenuItemTheme, context_menu.item);
+    /// Per-instance override of [`crate::Theme`]'s `context_menu.item`. Takes an
+    /// `Option` as readily as a reference: `.style(overrides.as_ref())`.
+    pub fn style(mut self, s: impl Into<Option<&'a MenuItemTheme>>) -> Self {
+        self.style = s.into();
+        self
+    }
 
     /// Attach a keyboard shortcut. Renders the right-aligned hint
     /// using the platform's native form (`⌘C` / `Ctrl+C`) and
@@ -91,7 +97,7 @@ impl<'a> MenuItem<'a> {
         // defaults, the transition — rides the shared plan, so a menu row
         // picks and animates exactly like a Button.
         let theme = ui.theme();
-        let item = self.slot(theme);
+        let item = self.style.unwrap_or(&theme.context_menu.item);
         let shortcut_color = item.shortcut;
         let gap = item.gap;
         let look = item
@@ -163,4 +169,9 @@ impl<'a> MenuItem<'a> {
     }
 }
 
-impl_configure!(MenuItem<'_>);
+impl Configure for MenuItem<'_> {
+    #[inline]
+    fn configure(&mut self) -> ConfigureWidget<'_> {
+        self.widget.configure()
+    }
+}

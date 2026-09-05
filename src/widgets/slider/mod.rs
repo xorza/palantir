@@ -10,6 +10,7 @@ use crate::primitives::corners::Corners;
 use crate::primitives::num::F32Ext;
 use crate::ui::Ui;
 use crate::widgets::configure::Configure;
+use crate::widgets::configure::ConfigureWidget;
 use crate::widgets::drag_num::DragNum;
 use crate::widgets::response::Response;
 use crate::widgets::theme::slider::SliderTheme;
@@ -83,7 +84,12 @@ impl<'a> Slider<'a> {
         self
     }
 
-    style_setter!('a, SliderTheme, slider);
+    /// Per-instance override of [`crate::Theme`]'s `slider`. Takes an
+    /// `Option` as readily as a reference: `.style(overrides.as_ref())`.
+    pub fn style(mut self, s: impl Into<Option<&'a SliderTheme>>) -> Self {
+        self.style = s.into();
+        self
+    }
 
     /// Record the slider and report what the drag did to the bound
     /// value.
@@ -99,7 +105,7 @@ impl<'a> Slider<'a> {
         let response = self.widget.response(ui);
         let id = self.widget.resolve(ui);
 
-        let theme = self.slot(ui.theme());
+        let theme = self.style.unwrap_or(&ui.theme().slider);
         let knob = theme.knob_size.themed_length(1.0);
         let track_h = theme.track_thickness.themed_length(0.0);
         let fill_color = theme.fill;
@@ -157,7 +163,12 @@ impl<'a> Slider<'a> {
     }
 }
 
-impl_configure!(Slider<'_>);
+impl Configure for Slider<'_> {
+    #[inline]
+    fn configure(&mut self) -> ConfigureWidget<'_> {
+        self.widget.configure()
+    }
+}
 
 /// Fraction (0..1) of the way from `min` to `max` that `value` sits.
 ///

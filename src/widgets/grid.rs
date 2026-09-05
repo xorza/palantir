@@ -5,6 +5,8 @@ use crate::layout::types::layout_mode::LayoutMode;
 use crate::layout::types::track::Track;
 use crate::primitives::background::Background;
 use crate::ui::Ui;
+use crate::widgets::configure::Configure;
+use crate::widgets::configure::ConfigureWidget;
 use crate::widgets::response::InnerResponse;
 use crate::widgets::widget::Widget;
 use std::rc::Rc;
@@ -91,7 +93,12 @@ impl<Rows, Cols> Grid<Rows, Cols> {
     }
 }
 
-impl_configure!(<Rows, Cols> Grid<Rows, Cols>);
+impl<Rows, Cols> Configure for Grid<Rows, Cols> {
+    #[inline]
+    fn configure(&mut self) -> ConfigureWidget<'_> {
+        self.widget.configure()
+    }
+}
 
 #[cfg(test)]
 mod tests {

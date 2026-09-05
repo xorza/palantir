@@ -18,6 +18,7 @@ use crate::shape::Shape;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
 use crate::widgets::configure::Configure;
+use crate::widgets::configure::ConfigureWidget;
 use crate::widgets::context_menu::ContextMenu;
 use crate::widgets::context_menu::menu_item::MenuItem;
 use crate::widgets::response::Response;
@@ -146,7 +147,12 @@ impl<'a> TabStrip<'a> {
         self
     }
 
-    style_setter!('a, TabsTheme, tabs);
+    /// Per-instance override of [`crate::Theme`]'s `tabs`. Takes an
+    /// `Option` as readily as a reference: `.style(overrides.as_ref())`.
+    pub fn style(mut self, s: impl Into<Option<&'a TabsTheme>>) -> Self {
+        self.style = s.into();
+        self
+    }
 
     /// The chip id for `key` under a strip recorded with `strip` as its
     /// id. The one derivation, so a caller polling last frame's
@@ -182,7 +188,7 @@ impl<'a> TabStrip<'a> {
 
     pub fn show(self, ui: &mut Ui) -> TabStripResponse<'_> {
         let theme = Rc::clone(ui.theme());
-        let t = self.slot(&theme);
+        let t = self.style.unwrap_or(&theme.tabs);
         let ambient = theme.text;
         let Self {
             mut widget,
@@ -255,7 +261,12 @@ impl<'a> TabStrip<'a> {
     }
 }
 
-impl_configure!(TabStrip<'_>);
+impl Configure for TabStrip<'_> {
+    #[inline]
+    fn configure(&mut self) -> ConfigureWidget<'_> {
+        self.widget.configure()
+    }
+}
 
 /// The edges one pass over the chips collected, in slot order.
 #[derive(Debug, Default)]

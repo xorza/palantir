@@ -142,4 +142,8 @@ impl ThemeSlot for ButtonTheme {
     }
 }
 
-palette_default!(ButtonTheme);
+impl Default for ButtonTheme {
+    fn default() -> Self {
+        Self::from_palette(&Palette::DEFAULT)
+    }
+}

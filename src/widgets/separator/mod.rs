@@ -8,6 +8,7 @@ use crate::primitives::color::RgbaF32;
 use crate::primitives::num::F32Ext;
 use crate::ui::Ui;
 use crate::widgets::configure::Configure;
+use crate::widgets::configure::ConfigureWidget;
 use crate::widgets::configure::ThemeDefaults;
 use crate::widgets::response::Response;
 use crate::widgets::theme::separator::SeparatorTheme;
@@ -65,14 +66,16 @@ impl<'a> Separator<'a> {
         }
     }
 
-    style_setter!(
-        'a,
-        SeparatorTheme,
-        separator,
-        "[`crate::MenuSeparator`] passes `theme.context_menu.separator` here \
-         instead. Per-field [`Self::color`] / [`Self::thickness`] still win \
-         over whichever bundle is in play.",
-    );
+    /// Per-instance override of [`crate::Theme`]'s `separator`. Takes an
+    /// `Option` as readily as a reference: `.style(overrides.as_ref())`.
+    ///
+    /// [`crate::MenuSeparator`] passes `theme.context_menu.separator` here
+    /// instead. Per-field [`Self::color`] / [`Self::thickness`] still win
+    /// over whichever bundle is in play.
+    pub fn style(mut self, s: impl Into<Option<&'a SeparatorTheme>>) -> Self {
+        self.style = s.into();
+        self
+    }
 
     /// Line thickness in logical px, defaulting to
     /// [`crate::Theme::separator`]'s. One-axis hatch over the resolved bundle — see [`crate::Theme`].
@@ -89,7 +92,7 @@ impl<'a> Separator<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        let theme = self.slot(ui.theme());
+        let theme = self.style.unwrap_or(&ui.theme().separator);
         let t = self.thickness.unwrap_or(theme.thickness).themed_length(0.0);
         let (default_size, stretch) = match self.axis {
             Axis::X => ((Sizing::HUG, Sizing::fixed(t)), Align::h(HAlign::Stretch)),
@@ -111,7 +114,12 @@ impl<'a> Separator<'a> {
     }
 }
 
-impl_configure!(Separator<'_>);
+impl Configure for Separator<'_> {
+    #[inline]
+    fn configure(&mut self) -> ConfigureWidget<'_> {
+        self.widget.configure()
+    }
+}
 
 #[cfg(test)]
 mod tests;

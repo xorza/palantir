@@ -11,6 +11,7 @@ use crate::ui::Ui;
 use crate::widgets::checkerboard::Checkerboard;
 use crate::widgets::color_picker::ColorPicker;
 use crate::widgets::configure::Configure;
+use crate::widgets::configure::ConfigureWidget;
 use crate::widgets::popup::Popup;
 use crate::widgets::response::Response;
 use crate::widgets::theme::color_picker::ColorPickerTheme;
@@ -77,11 +78,16 @@ impl<'a> ColorButton<'a> {
         self
     }
 
-    style_setter!('a, ColorPickerTheme, color_picker);
+    /// Per-instance override of [`crate::Theme`]'s `color_picker`. Takes an
+    /// `Option` as readily as a reference: `.style(overrides.as_ref())`.
+    pub fn style(mut self, s: impl Into<Option<&'a ColorPickerTheme>>) -> Self {
+        self.style = s.into();
+        self
+    }
 
     /// Record the chip, and the popup when it is open.
     pub fn show(self, ui: &mut Ui) -> ValueResponse<'_> {
-        let theme = self.slot(ui.theme());
+        let theme = self.style.unwrap_or(&ui.theme().color_picker);
         let side = theme.chip_size.themed_length(1.0);
         let checker = Checkerboard::new(theme);
         let mut widget = self
@@ -139,7 +145,12 @@ impl<'a> ColorButton<'a> {
     }
 }
 
-impl_configure!(ColorButton<'_>);
+impl Configure for ColorButton<'_> {
+    #[inline]
+    fn configure(&mut self) -> ConfigureWidget<'_> {
+        self.widget.configure()
+    }
+}
 
 #[cfg(test)]
 mod tests;

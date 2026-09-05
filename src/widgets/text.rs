@@ -9,6 +9,8 @@ use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
+use crate::widgets::configure::Configure;
+use crate::widgets::configure::ConfigureWidget;
 use crate::widgets::response::Response;
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::widget::Widget;
@@ -74,14 +76,16 @@ impl<'a> Text<'a> {
         }
     }
 
-    style_setter!(
-        'a,
-        TextStyle,
-        text,
-        "All-or-nothing — every axis the bundle covers (font size, color, \
-         leading) is replaced. To tweak one axis, build the bundle from the \
-         theme: `TextStyle { color: red, ..ui.theme().text }`.",
-    );
+    /// Per-instance override of [`crate::Theme`]'s `text`. Takes an
+    /// `Option` as readily as a reference: `.style(overrides.as_ref())`.
+    ///
+    /// All-or-nothing — every axis the bundle covers (font size, color,
+    /// leading) is replaced. To tweak one axis, build the bundle from the
+    /// theme: `TextStyle { color: red, ..ui.theme().text }`.
+    pub fn style(mut self, s: impl Into<Option<&'a TextStyle>>) -> Self {
+        self.style = s.into();
+        self
+    }
 
     /// Shape this run bold, overriding just the weight of the resolved
     /// style (whether that came from `.style(...)` or the theme default).
@@ -123,7 +127,7 @@ impl<'a> Text<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        let style = self.slot(ui.theme());
+        let style = self.style.unwrap_or(&ui.theme().text);
         let color = style.color;
         // The builder's face axes over the style's; everything else is
         // the style's face as-is.
@@ -150,4 +154,9 @@ impl<'a> Text<'a> {
     }
 }
 
-impl_configure!(Text<'_>);
+impl Configure for Text<'_> {
+    #[inline]
+    fn configure(&mut self) -> ConfigureWidget<'_> {
+        self.widget.configure()
+    }
+}

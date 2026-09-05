@@ -10,6 +10,7 @@ use crate::shape::polyline::PolylineColors;
 use crate::shape::style::{LineCap, LineJoin};
 use crate::ui::Ui;
 use crate::widgets::configure::Configure;
+use crate::widgets::configure::ConfigureWidget;
 use crate::widgets::configure::ThemeDefaults;
 use crate::widgets::context_menu::menu_item::MenuItem;
 use crate::widgets::popup::Popup;
@@ -90,14 +91,16 @@ impl<'a, S> ComboBox<'a, S> {
         }
     }
 
-    style_setter!(
-        'a,
-        ButtonTheme,
-        button,
-        "Restyles the trigger chrome. The dropdown reads \
-         [`crate::Theme::context_menu`], and the arrow geometry \
-         [`crate::Theme::combo_box`].",
-    );
+    /// Per-instance override of [`crate::Theme`]'s `button`. Takes an
+    /// `Option` as readily as a reference: `.style(overrides.as_ref())`.
+    ///
+    /// Restyles the trigger chrome. The dropdown reads
+    /// [`crate::Theme::context_menu`], and the arrow geometry
+    /// [`crate::Theme::combo_box`].
+    pub fn style(mut self, s: impl Into<Option<&'a ButtonTheme>>) -> Self {
+        self.style = s.into();
+        self
+    }
 
     pub fn show(mut self, ui: &mut Ui) -> SelectResponse<'_> {
         let response = self.widget.response(ui);
@@ -107,7 +110,7 @@ impl<'a, S> ComboBox<'a, S> {
         // One handle covers both reads: the geometry is read again inside
         // the `record` closure below, which owns `ui` mutably.
         let theme = Rc::clone(ui.theme());
-        let slot = self.slot(&theme);
+        let slot = self.style.unwrap_or(&theme.button);
         let look = slot
             .plan(&response, (), theme.text)
             .apply(ui, &mut self.widget);
@@ -212,7 +215,12 @@ impl<'a, S> ComboBox<'a, S> {
     }
 }
 
-impl_configure!(<S> ComboBox<'_, S>);
+impl<S> Configure for ComboBox<'_, S> {
+    #[inline]
+    fn configure(&mut self) -> ConfigureWidget<'_> {
+        self.widget.configure()
+    }
+}
 
 #[cfg(test)]
 mod tests;
