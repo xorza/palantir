@@ -107,18 +107,18 @@ impl EditAction {
             Self::SelectAll => editor.select_all(),
             Self::Cut => {
                 if let Some(selected) = editor.selected_text()
-                    && clipboard.set(selected).is_ok()
+                    && clipboard.set_text(selected).is_ok()
                 {
                     editor.cut_selection();
                 }
             }
             Self::Copy => {
                 if let Some(selected) = editor.selected_text() {
-                    let _ = clipboard.set(selected);
+                    let _ = clipboard.set_text(selected);
                 }
             }
             Self::Paste => {
-                if let Ok(text) = clipboard.get() {
+                if let Ok(text) = clipboard.text() {
                     editor.paste(&text);
                 }
             }

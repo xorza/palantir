@@ -709,17 +709,15 @@ impl UiHarness {
     /// in-memory backend, which always does.
     pub fn clipboard_text(&self) -> String {
         self.ui
-            .resources
             .clipboard()
-            .get()
+            .text()
             .expect("the harness clipboard is the in-memory backend")
     }
 
     pub fn set_clipboard_text(&mut self, text: &str) {
         self.ui
-            .resources
             .clipboard()
-            .set(text)
+            .set_text(text)
             .expect("the memory clipboard is always available");
     }
 
@@ -755,7 +753,7 @@ impl UiHarness {
     /// must not do it to the shaper its neighbours are sharing.
     pub(crate) fn over_shaper(shaper: TextShaper, surface: UVec2) -> Self {
         Self::from_resources(
-            UiResources::new(shaper, Clipboard::default(), TextureLimit::default()),
+            UiResources::new(shaper, Clipboard::memory(), TextureLimit::default()),
             surface,
         )
     }

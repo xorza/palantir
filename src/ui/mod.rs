@@ -845,15 +845,39 @@ impl Ui {
         self.resources.texture_limit().max_dimension()
     }
 
-    /// A handle on the app-global clipboard.
+    /// A handle on the host's clipboard.
     ///
-    /// Hands back a clone rather than a borrow because that is what the one
-    /// caller shape needs: `TextEdit` reads the clipboard from inside a
+    /// One clipboard per host, shared by every window that host opens and
+    /// isolated from every other host's.
+    ///
+    /// Hands back a clone rather than a borrow because that is what the
+    /// caller shape needs: a widget reads the clipboard from inside a
     /// keyboard-event walk that already holds `&mut Ui`, so a borrow out of
     /// `self` could not survive to the paste. The handle is an `Rc` inside,
-    /// so the clone is a refcount bump.
+    /// so the clone is a refcount bump — take one before the walk and pass
+    /// it to whatever handles the action.
+    ///
+    /// `&self` on [`Self::load_font`]'s terms: the clipboard is a
+    /// host-global resource and touching it schedules no frame work.
+    ///
+    /// # What is behind it
+    ///
+    /// With the `winit` feature, the OS clipboard, plus an in-process
+    /// fallback that takes over when the system backend refuses a write.
+    /// A copy is therefore never silently lost, and a paste after such a
+    /// refusal returns the last text the user actually copied rather than
+    /// stale system content.
+    ///
+    /// Without `winit` — and on [`OffscreenHost`](crate::OffscreenHost)
+    /// either way — the in-process buffer is all there is.
+    /// [`Clipboard::set_text`] then [`Clipboard::text`] round-trips, and
+    /// nothing reaches the OS.
+    ///
+    /// On Linux the copied text is served by the running process, so it
+    /// goes when the app exits unless a desktop clipboard manager took a
+    /// copy of its own. That is how X11 and Wayland selections work.
     #[inline]
-    pub(crate) fn clipboard(&self) -> Clipboard {
+    pub fn clipboard(&self) -> Clipboard {
         self.resources.clipboard().clone()
     }
 

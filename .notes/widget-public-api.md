@@ -7,9 +7,9 @@ Research notes on the rule in `CLAUDE.md`:
 
 The test is reimplementation: could another person write `Scroll`, `TextEdit`
 or `Popup` outside this crate, line for line, against the published surface?
-Today the answer is no for eight of the bundled widgets. This note says exactly
-what stops them, what the framework would have to publish, and what it would
-cost.
+Today the answer is no for fourteen of the bundled widgets. This note says
+exactly what stops them, what the framework would have to publish, and what it
+would cost.
 
 This is a survey plus a set of proposals, not a plan. Nothing here is
 committed.
@@ -64,7 +64,7 @@ from `widgets`.
 |---|---|---|---|---|
 | G1 | scroll viewport and scrollbar layout mode | `LayoutMode::Scroll`, `ScrollSpec`, `ScrollbarsDef`, `Ui::scroll_content`, `Ui::push_scrollbars_def`, `Ui::current_node`, `Widget::scroll`, `Widget::scrollbars` | Scroll | large |
 | G2 | anchored, flip-to-fit overlay placement | `OverlayPosition`, `OverlaySide`, `LayerScope::placement` | Popup, ContextMenu, MenuItem, Tooltip, ComboBox, ColorButton, TabStrip, TabbedView, Dock | small |
-| G3 | clipboard read and write | `Clipboard`, `Ui::clipboard` | TextEdit, DragValue | small |
+| ~~G3~~ | ~~clipboard read and write~~ | **closed** — `Clipboard`, `ClipboardUnavailable` and `Ui::clipboard` are published | — | — |
 | G4 | paint-time shape animation | `PaintAnim`, `Ui::add_shape_animated` | Spinner, TextEdit caret | small |
 | G5 | GPU view registration | `GpuPaintRef`, `Ui::gpu_view` | GpuView | small |
 | G6 | text content identity without shaping | `TextShapeKey::content_hash`, `hash::hash_str` | TextEdit | trivial |
@@ -163,30 +163,35 @@ Note that `Modal` is **not** blocked. It asks for
 path only because it shares `OverlayScope` with the two overlays that do need
 it.
 
-### G3 — Clipboard
+### G3 — Clipboard — **closed**
 
-**Blocks:** `TextEdit`, and `DragValue` through it.
+`Clipboard`, `ClipboardUnavailable` and `Ui::clipboard` are published. The
+handle was published rather than a `clipboard_text` / `set_clipboard_text` pair
+on `Ui`, because a widget has to be able to hand the capability to a helper
+without handing over the whole `Ui` — `EditAction::execute(editor, clipboard)`
+is that shape — and because eleven `Ui`-free tests drive it. `TextEdit` and
+`DragValue` are no longer blocked on this.
 
-`Ui::clipboard()` is `pub(crate)` and hands back a `Clipboard`, which is also
-crate-private. Behind it sits a real capability: an `arboard` system backend
-under the `winit` feature, an in-memory fallback without it, and an authority
-rule that decides which one answers.
+**One half stays open.** `OffscreenHost` builds an in-process clipboard
+unconditionally, so an app that renders offscreen has no OS clipboard even in a
+`winit` build. The `winit` feature comment says the arrangement was deliberate:
+"the clipboard only ever had a system backend to reach for when a windowed host
+was already in the build". An offscreen host with a system clipboard is exactly
+the case that reasoning did not cover.
 
-No public call reads or writes the clipboard. Any text-bearing widget written
-outside this crate has no cut, copy or paste.
+Closing it means splitting `arboard` out of `winit` into its own default-on
+`system-clipboard` feature, implied by `winit`, then adding
 
-**Proposals**
+```rust
+#[cfg(feature = "system-clipboard")]
+pub fn OffscreenHostBuilder::system_clipboard(self, on: bool) -> Self;
+```
 
-1. *Publish `Clipboard` and `Ui::clipboard`.* The type is already a cheap
-   `Rc` clone, exactly so it can be held across a keyboard walk. Its error
-   type `ClipboardUnavailable` would go public with it. Under a day.
-2. *Publish two methods on `Ui`.* `Ui::clipboard_text() -> Option<String>` and
-   `Ui::set_clipboard_text(&str)`. Smaller surface, but it forces a borrow of
-   `Ui` at each call, which is the reason the handle exists.
-
-**Recommendation:** (1). The handle shape was chosen for the widget call
-pattern and (2) would fight it. This is the second-cheapest gap and the one
-most likely to block a real user.
+which mirrors `collect_gpu_stats(bool)` and `pixel_snap(bool)`. Default `false`,
+so no existing offscreen build changes behaviour. A later
+`OffscreenHostBuilder::clipboard(Clipboard)` would let several hosts share one,
+mirroring the existing `shaper(TextShaper)` knob — worth adding only when
+someone asks.
 
 ### G4 — Paint-time shape animation
 
@@ -278,8 +283,8 @@ sharing, not a capability gap — file it under nice-to-have.
 | TabStrip, TabbedView | no | G2 (overflow menu) |
 | Dock | no | G2 (tab menu) |
 | Scroll | no | G1, G7 |
-| TextEdit | no | G3, G4, G6 |
-| DragValue | no | G3, G4, G6 (via TextEdit) |
+| TextEdit | no | G4, G6 |
+| DragValue | no | G4, G6 (via TextEdit) |
 | Spinner | no | G4 |
 | GpuView | no | G5 |
 
@@ -330,8 +335,8 @@ if one is ever wanted.
 
 ## Suggested order
 
-1. **G2** overlay anchoring — cheapest, unblocks nine widgets.
-2. **G3** clipboard — cheap, blocks every text-bearing widget.
+1. ~~**G3** clipboard~~ — done.
+2. **G2** overlay anchoring — cheapest of what is left, unblocks eight widgets.
 3. **G6** text content hash — an hour, no design question.
 4. **G4** paint animation, as `Shape` builder methods.
 5. **G1** scroll, proposal (1) only.

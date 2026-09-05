@@ -446,7 +446,7 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
 
     let shared = UiResources::new(
         TextShaper::test_mono(),
-        Clipboard::default(),
+        Clipboard::memory(),
         TextureLimit::default(),
     );
     let atlas = shared.gradient_atlas().clone();

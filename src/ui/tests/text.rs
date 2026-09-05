@@ -208,7 +208,7 @@ fn text_reuse_is_window_local_while_cosmic_buffers_are_shared() {
 
     let shared = UiResources::new(
         TextShaper::new(),
-        Clipboard::default(),
+        Clipboard::memory(),
         TextureLimit::default(),
     );
     let mut a = ui_with_shared(&shared);
@@ -321,7 +321,7 @@ fn paint_only_frames_advance_the_shared_text_clock() {
 
     let shared = UiResources::new(
         TextShaper::new(),
-        Clipboard::default(),
+        Clipboard::memory(),
         TextureLimit::default(),
     );
     let mut ui = UiHarness::from_resources(shared.clone(), SURFACE);
@@ -427,7 +427,7 @@ fn shared_cache_eviction_preserves_idle_windows_paint_only_text_source() {
 
     let shared = UiResources::new(
         TextShaper::new(),
-        Clipboard::default(),
+        Clipboard::memory(),
         TextureLimit::default(),
     );
     let mut idle = UiHarness::from_resources(shared.clone(), SURFACE);

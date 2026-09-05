@@ -132,7 +132,7 @@ pub(crate) mod internals {
         pub(crate) fn isolated_mono() -> Self {
             Self::new(
                 TextShaper::test_mono(),
-                Clipboard::default(),
+                Clipboard::memory(),
                 TextureLimit::default(),
             )
         }
