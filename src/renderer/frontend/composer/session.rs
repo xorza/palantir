@@ -6,7 +6,7 @@ use crate::primitives::brush::gradient::FillAxis;
 use crate::primitives::color::RgbaU8;
 use crate::primitives::corners::Corners;
 use crate::primitives::fill_kind::FillKind;
-use crate::primitives::num::{F32Ext, Vec2Ext};
+use crate::primitives::num::{F32Px, Vec2Ext};
 use crate::primitives::rect::Rect;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::span::Span;

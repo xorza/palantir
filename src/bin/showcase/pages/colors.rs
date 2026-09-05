@@ -55,7 +55,7 @@ pub(crate) fn build(ui: &mut Ui) {
                     .id(state_id.with("panel"))
                     .show(ui);
                 if picked.committed {
-                    state.recent.push(state.picked);
+                    state.recent.insert(0, state.picked);
                     state.recent.truncate(12);
                 }
                 Panel::vstack()

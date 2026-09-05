@@ -12,7 +12,6 @@ use crate::ui::Ui;
 use crate::widgets::checkerboard::Checkerboard;
 use crate::widgets::response::Response;
 use crate::widgets::theme::color_picker::ColorPickerTheme;
-use std::rc::Rc;
 
 /// A chip painting one colour, with a checkerboard behind it when that colour
 /// is translucent.
@@ -46,21 +45,21 @@ impl<'a> ColorSwatch<'a> {
 
     /// Record the chip and report whether it was clicked.
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        // The theme handle is cloned so the slot outlives the `&mut Ui` the
-        // widget opening below takes: the checker reads it after that.
-        let bundle = Rc::clone(ui.theme());
-        let theme = self.slot(&bundle);
+        let theme = self.slot(ui.theme());
         let side = theme.swatch_size.themed_length(1.0);
+        let checker = Checkerboard::new(theme);
         let node = self
             .node
             .default_size((Sizing::fixed(side), Sizing::fixed(side)));
         let widget = ui.widget(node);
         let response = widget.response(ui);
         let id = widget.id();
-        let checker = Checkerboard::new(theme, response.layout_rect, Size::new(side, side));
+        let size = response
+            .layout_rect
+            .map_or(Size::new(side, side), |r| r.size);
         let color = self.color;
 
-        widget.record(ui, None, |ui| checker.paint_chip(ui, color));
+        widget.record(ui, None, |ui| checker.paint_chip(ui, color, size));
         Response::eager(id, ui, response)
     }
 }

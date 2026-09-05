@@ -6,6 +6,7 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::color::color_model::ColorModel;
 use crate::primitives::num::F32Ext;
+use crate::primitives::size::Size;
 use crate::scene::node::Node;
 use crate::scene::node::configure::Configure;
 use crate::ui::Ui;
@@ -15,7 +16,6 @@ use crate::widgets::popup::Popup;
 use crate::widgets::response::Response;
 use crate::widgets::theme::color_picker::ColorPickerTheme;
 use crate::widgets::value_response::ValueResponse;
-use std::rc::Rc;
 
 /// A colour chip that opens a [`ColorPicker`] in a popup when clicked.
 ///
@@ -81,22 +81,22 @@ impl<'a> ColorButton<'a> {
 
     /// Record the chip, and the popup when it is open.
     pub fn show(self, ui: &mut Ui) -> ValueResponse<'_> {
-        // The theme handle is cloned so the slot outlives the `&mut Ui` the
-        // widget opening below takes: the checker reads it after that.
-        let bundle = Rc::clone(ui.theme());
-        let theme = self.slot(&bundle);
+        let theme = self.slot(ui.theme());
         let side = theme.chip_size.themed_length(1.0);
+        let checker = Checkerboard::new(theme);
         let node = self
             .node
             .default_size((Sizing::fixed(side), Sizing::fixed(side)));
         let widget = ui.widget(node);
         let response = widget.response(ui);
         let id = widget.id();
-        let checker = Checkerboard::new(theme, response.layout_rect, (side, side).into());
+        let size = response
+            .layout_rect
+            .map_or(Size::new(side, side), |r| r.size);
         let color = self.color;
         let shown = *color;
 
-        widget.record(ui, None, |ui| checker.paint_chip(ui, shown));
+        widget.record(ui, None, |ui| checker.paint_chip(ui, shown, size));
 
         // Probed, not inserted: a chip spends nearly every frame closed, and
         // closed is the default — so an unopened trigger keeps no row at all.

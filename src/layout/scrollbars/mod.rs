@@ -25,7 +25,7 @@ use crate::layout::types::layout_mode::{ScrollSpec, ScrollbarsDefId};
 use crate::primitives::approx;
 use crate::primitives::approx::FloatHash;
 use crate::primitives::interned_text::InternedText;
-use crate::primitives::num::F32Ext;
+use crate::primitives::num::F32Px;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;

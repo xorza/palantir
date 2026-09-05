@@ -16,6 +16,7 @@ use crate::scene::node::configure::Configure;
 use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::widgets::axis_keys::AxisKeys;
+use crate::widgets::color_surface;
 use crate::widgets::color_surface::ColorSurface;
 use crate::widgets::response::Response;
 use crate::widgets::theme::color_picker::ColorPickerTheme;
@@ -52,7 +53,7 @@ impl<'a> ColorField<'a> {
                 .sense(Sense::CLICK | Sense::DRAG)
                 .focusable(true),
             coords,
-            downsample: ColorSurface::DOWNSAMPLE,
+            downsample: color_surface::DOWNSAMPLE,
             style: None,
         }
     }
@@ -81,7 +82,7 @@ impl<'a> ColorField<'a> {
     ///
     /// Panics unless `n` is a power of two from 1 to 16.
     pub fn downsample(mut self, n: u32) -> Self {
-        self.downsample = ColorSurface::checked_downsample(n);
+        self.downsample = color_surface::checked_downsample(n);
         self
     }
 
@@ -109,33 +110,27 @@ impl<'a> ColorField<'a> {
 
         let coords = self.coords;
         let mut changed = false;
-        let released = response.left.released();
-        if !response.disabled
-            && (response.pressed() || response.left.drag.dragging() || released)
-            && let (Some(local), Some(rect)) = (response.pointer_local, response.layout_rect)
-        {
-            let unit = |at: f32, extent: f32| at.band_fraction(extent, 0.0).unit_fraction_or(0.0);
-            let sat = unit(local.x, rect.size.w);
-            let val = 1.0 - unit(local.y, rect.size.h);
-            changed |= write_axes(coords, sat, val);
+        if let Some(at) = response.press_fraction(0.0) {
+            changed |= write_axes(coords, at.x, 1.0 - at.y);
         }
         let keyed = !response.disabled && ui.focus_within(id) && keyboard_travel(ui, coords);
         changed |= keyed;
-        let committed = !response.disabled && (released || keyed);
+        let committed = !response.disabled && (response.left.released() || keyed);
 
-        let texels = ColorSurface::texel_size(size, self.downsample, ui);
+        let texels = color_surface::texel_size(size, self.downsample, ui);
         let model = coords.model();
         let hue = coords.hue();
         let marker = Vec2::new(coords.sat() * size.w, (1.0 - coords.val()) * size.h);
 
         widget.record(ui, None, |ui| {
-            let image = ui.with_state::<ColorSurface, _>(id.with("surface"), |ui, surface| {
-                surface
-                    .ensure(ui, texels, (model, hue.to_bits()), |image| {
-                        fill(image, model, hue);
-                    })
-                    .clone()
-            });
+            let image = ui.with_state::<ColorSurface<(ColorModel, f32)>, _>(
+                id.with("surface"),
+                |ui, surface| {
+                    surface
+                        .ensure(ui, texels, (model, hue), |image| fill(image, model, hue))
+                        .clone()
+                },
+            );
             ui.add_shape(Shape::image(image).fit(ImageFit::Fill));
             ui.add_shape(Shape::circle(marker, handle_radius, handle_width).brush(handle_outer));
             ui.add_shape(

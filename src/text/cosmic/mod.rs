@@ -21,7 +21,7 @@
 //! on every hit — outweighs the cost of accepting the negligible risk.
 
 use crate::primitives::content_type::ContentType;
-use crate::primitives::num::F32Ext;
+use crate::primitives::num::F32Px;
 use crate::primitives::raster_image::RasterImage;
 use crate::primitives::size::Size;
 use crate::text::cosmic::cache_entry::CachedExtent;

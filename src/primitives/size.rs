@@ -161,6 +161,15 @@ impl<W: Num, H: Num> From<(W, H)> for Size {
     }
 }
 
+/// The extent as a vector, for the arithmetic that mixes it with a
+/// position: an offset across it, a share of it, a centre inside it.
+impl From<Size> for Vec2 {
+    #[inline]
+    fn from(size: Size) -> Self {
+        Self::new(size.w, size.h)
+    }
+}
+
 /// Wire format: a `{w, h}` table whose fields are optional, because
 /// [`Size::INF`] — the "no upper bound" sentinel — has no finite
 /// spelling. A non-finite axis serializes as absent and an absent axis
@@ -208,6 +217,7 @@ impl NanCheck for Size {
 #[cfg(test)]
 mod tests {
     use crate::primitives::size::Size;
+    use glam::Vec2;
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
 
@@ -223,6 +233,7 @@ mod tests {
         let b = Size::new(4.0, 2.0);
         assert_eq!(a.min(b), Size::new(1.0, 2.0));
         assert_eq!(a.max(b), Size::new(4.0, 8.0));
+        assert_eq!(Vec2::from(a), Vec2::new(1.0, 8.0));
     }
 
     #[test]

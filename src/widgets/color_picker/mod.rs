@@ -16,7 +16,7 @@ use crate::ui::Ui;
 use crate::widgets::color_field::ColorField;
 use crate::widgets::color_picker::history::History;
 use crate::widgets::color_strip::ColorStrip;
-use crate::widgets::color_surface::ColorSurface;
+use crate::widgets::color_surface;
 use crate::widgets::color_swatch::ColorSwatch;
 use crate::widgets::drag_value::DragValue;
 use crate::widgets::grid::Grid;
@@ -108,7 +108,7 @@ impl<'a> ColorPicker<'a> {
             alpha: false,
             model: None,
             swatches: Swatches::Hidden,
-            downsample: ColorSurface::DOWNSAMPLE,
+            downsample: color_surface::DOWNSAMPLE,
             style: None,
         }
     }
@@ -154,7 +154,7 @@ impl<'a> ColorPicker<'a> {
     ///
     /// Panics unless `n` is a power of two from 1 to 16.
     pub fn downsample(mut self, n: u32) -> Self {
-        self.downsample = ColorSurface::checked_downsample(n);
+        self.downsample = color_surface::checked_downsample(n);
         self
     }
 
@@ -162,9 +162,8 @@ impl<'a> ColorPicker<'a> {
 
     /// Record the panel and report what it did to the bound colour.
     pub fn show(self, ui: &mut Ui) -> ValueResponse<'_> {
-        // The theme handle is cloned, not the bundle: an `Rc` bump lets the
-        // borrow outlive the `&mut Ui` the record below takes, which is what
-        // lets the rows read their own styles out of it.
+        // An `Rc` bump on the theme bundle, so the rows can borrow their
+        // styles out of it across the `&mut Ui` the record below takes.
         let theme = Rc::clone(ui.theme());
         let slot = self.slot(&theme);
         let gap = slot.gap.themed_length(0.0);
@@ -443,14 +442,8 @@ fn values_grid(
                 });
 
             if alpha_on {
-                let r = value_cell(ui, id, theme, "A %", GridCell::at(0, 2), |ui, id| {
-                    DragValue::new(&mut opacity)
-                        .range(0.0..=100.0)
-                        .style(&theme.value)
-                        .id(id)
-                        .size((Sizing::FILL, Sizing::HUG))
-                        .show(ui)
-                });
+                let cell = GridCell::at(0, 2);
+                let r = value_cell(ui, id, theme, "A %", cell, &mut opacity, 100.0);
                 if r.changed {
                     writes.alpha = opacity as f32 / 100.0;
                     writes.alpha_moved = true;
@@ -458,14 +451,7 @@ fn values_grid(
                 writes.committed |= r.committed;
             }
 
-            let r = value_cell(ui, id, theme, "H °", GridCell::at(0, 3), |ui, id| {
-                DragValue::new(&mut hue)
-                    .range(0.0..=360.0)
-                    .style(&theme.value)
-                    .id(id)
-                    .size((Sizing::FILL, Sizing::HUG))
-                    .show(ui)
-            });
+            let r = value_cell(ui, id, theme, "H °", GridCell::at(0, 3), &mut hue, 360.0);
             if r.changed {
                 state.coords.set_hue(hue as f32 / 360.0);
                 writes.axes = true;
@@ -474,14 +460,7 @@ fn values_grid(
 
             for (column, name) in ["R", "G", "B"].into_iter().enumerate() {
                 let cell = GridCell::at(1, column as u16);
-                let r = value_cell(ui, id, theme, name, cell, |ui, id| {
-                    DragValue::new(&mut rgb[column])
-                        .range(0.0..=255.0)
-                        .style(&theme.value)
-                        .id(id)
-                        .size((Sizing::FILL, Sizing::HUG))
-                        .show(ui)
-                });
+                let r = value_cell(ui, id, theme, name, cell, &mut rgb[column], 255.0);
                 if r.changed {
                     let channel = |v: i64| v.clamp(0, 255) as u8;
                     writes.exact = Some(
@@ -496,14 +475,7 @@ fn values_grid(
                 writes.committed |= r.committed;
             }
 
-            let r = value_cell(ui, id, theme, "S %", GridCell::at(1, 3), |ui, id| {
-                DragValue::new(&mut sat)
-                    .range(0.0..=100.0)
-                    .style(&theme.value)
-                    .id(id)
-                    .size((Sizing::FILL, Sizing::HUG))
-                    .show(ui)
-            });
+            let r = value_cell(ui, id, theme, "S %", GridCell::at(1, 3), &mut sat, 100.0);
             if r.changed {
                 state.coords.set_sat(sat as f32 / 100.0);
                 writes.axes = true;
@@ -512,8 +484,8 @@ fn values_grid(
         });
 }
 
-/// One grid cell: the channel's caption over the value it names, so the
-/// number gets the column's whole width.
+/// One grid cell: the channel's caption over the value it names, a drag from
+/// zero to `top`, so the number gets the column's whole width.
 ///
 /// The caption carries the unit — `A %`, `H °` — rather than the value
 /// carrying a suffix. A three-digit number and a suffix do not both fit a
@@ -524,7 +496,8 @@ fn value_cell(
     theme: &ColorPickerTheme,
     caption: &'static str,
     cell: GridCell,
-    value: impl FnOnce(&mut Ui, WidgetId) -> ValueResponse<'_>,
+    value: &mut i64,
+    top: f64,
 ) -> Edit {
     // Keyed on the channel letter alone: the caption carries the unit too,
     // and an id that moved when a unit changed would drop the widget's state.
@@ -540,7 +513,12 @@ fn value_cell(
                 .style(&theme.label)
                 .id(cell_id.with("label"))
                 .show(ui);
-            let r = value(ui, cell_id.with("value"));
+            let r = DragValue::new(value)
+                .range(0.0..=top)
+                .style(&theme.value)
+                .id(cell_id.with("value"))
+                .size((Sizing::FILL, Sizing::HUG))
+                .show(ui);
             edit.changed = r.changed;
             edit.committed = r.committed;
         });

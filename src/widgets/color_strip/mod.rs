@@ -17,12 +17,12 @@ use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::widgets::axis_keys::AxisKeys;
 use crate::widgets::checkerboard::Checkerboard;
+use crate::widgets::color_surface;
 use crate::widgets::color_surface::ColorSurface;
 use crate::widgets::response::Response;
 use crate::widgets::theme::color_picker::ColorPickerTheme;
 use crate::widgets::value_response::ValueResponse;
 use glam::Vec2;
-use std::rc::Rc;
 
 /// A one-axis bar of a colour picker: the hue ramp, or the alpha ramp of one
 /// colour over its checker.
@@ -76,7 +76,7 @@ impl<'a> ColorStrip<'a> {
                 .sense(Sense::CLICK | Sense::DRAG)
                 .focusable(true),
             kind,
-            downsample: ColorSurface::DOWNSAMPLE,
+            downsample: color_surface::DOWNSAMPLE,
             style: None,
         }
     }
@@ -89,7 +89,7 @@ impl<'a> ColorStrip<'a> {
     ///
     /// Panics unless `n` is a power of two from 1 to 16.
     pub fn downsample(mut self, n: u32) -> Self {
-        self.downsample = ColorSurface::checked_downsample(n);
+        self.downsample = color_surface::checked_downsample(n);
         self
     }
 
@@ -97,10 +97,7 @@ impl<'a> ColorStrip<'a> {
 
     /// Record the bar and report what the gesture did to the value it writes.
     pub fn show(self, ui: &mut Ui) -> ValueResponse<'_> {
-        // The theme handle is cloned so the slot outlives the `&mut Ui` the
-        // widget opening below takes: the checker reads it after that.
-        let bundle = Rc::clone(ui.theme());
-        let theme = self.slot(&bundle);
+        let theme = self.slot(ui.theme());
         let themed = Size::new(
             theme.field_width.themed_length(1.0),
             theme.bar_thickness.themed_length(1.0),
@@ -108,6 +105,7 @@ impl<'a> ColorStrip<'a> {
         let handle_width = theme.handle_width.themed_length(0.0);
         let handle_outer = theme.handle_outer;
         let handle_inner = theme.handle_inner;
+        let checker = Checkerboard::new(theme);
 
         let node = self
             .node
@@ -116,38 +114,30 @@ impl<'a> ColorStrip<'a> {
         let response = widget.response(ui);
         let id = widget.id();
         let size = response.layout_rect.map_or(themed, |r| r.size);
-        let checker = Checkerboard::new(theme, response.layout_rect, themed);
 
         let mut kind = self.kind;
         let mut changed = false;
-        let released = response.left.released();
-        if !response.disabled
-            && (response.pressed() || response.left.drag.dragging() || released)
-            && let (Some(local), Some(rect)) = (response.pointer_local, response.layout_rect)
-        {
-            let at = local
-                .x
-                .band_fraction(rect.size.w, 0.0)
-                .unit_fraction_or(0.0);
-            changed |= kind.write(at);
+        if let Some(at) = response.press_fraction(0.0) {
+            changed |= kind.write(at.x);
         }
         let keyed = !response.disabled && ui.focus_within(id) && keyboard_travel(ui, &mut kind);
         changed |= keyed;
-        let committed = !response.disabled && (released || keyed);
+        let committed = !response.disabled && (response.left.released() || keyed);
 
-        let texels = ColorSurface::texel_size(size, self.downsample, ui);
+        let texels = color_surface::texel_size(size, self.downsample, ui);
         let paint = kind.paint();
         let marker = kind.read() * size.w;
 
         widget.record(ui, None, |ui| {
             if paint.wants_checker() {
-                checker.paint(ui);
+                checker.paint(ui, size);
             }
-            let image = ui.with_state::<ColorSurface, _>(id.with("surface"), |ui, surface| {
-                surface
-                    .ensure(ui, texels, paint, |image| paint.fill(image))
-                    .clone()
-            });
+            let image =
+                ui.with_state::<ColorSurface<StripPaint>, _>(id.with("surface"), |ui, surface| {
+                    surface
+                        .ensure(ui, texels, paint, |image| paint.fill(image))
+                        .clone()
+                });
             ui.add_shape(Shape::image(image).fit(ImageFit::Fill));
             let top = Vec2::new(marker, 0.0);
             let bottom = Vec2::new(marker, size.h);
@@ -189,10 +179,10 @@ impl StripKind<'_> {
     }
 }
 
-/// What one bar's texture shows, and everything its fill reads — so, hashed,
-/// the rebuild key: a hue bar follows its model, an alpha bar its colour.
-#[derive(Clone, Copy, Debug, Hash)]
-pub(crate) enum StripPaint {
+/// What one bar's texture shows, and everything its fill reads — so the
+/// rebuild key: a hue bar follows its model, an alpha bar its colour.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum StripPaint {
     Hue(ColorModel),
     Alpha(RgbaF32),
 }
@@ -203,7 +193,7 @@ impl StripPaint {
     }
 
     // Both ramps vary along one axis; reuse each column conversion for every row.
-    pub(crate) fn fill(self, image: &mut Image) {
+    fn fill(self, image: &mut Image) {
         let width = image.size().x;
         for (column, texel) in image.row_mut(0).iter_mut().enumerate() {
             let along = (column as f32 + 0.5) / width as f32;
