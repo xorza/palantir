@@ -31,6 +31,7 @@ use crate::primitives::rect::Rect;
 use crate::primitives::spacing::Spacing;
 use crate::ui::Ui;
 use crate::widgets::configure::Configure;
+use crate::widgets::configure::ConfigureWidget;
 use crate::widgets::response::{Response, ResponseSnapshot};
 use crate::widgets::text_edit::caret_paint::CaretPaint;
 use crate::widgets::text_edit::edit_state::EditState;
@@ -209,16 +210,18 @@ impl<'a> TextEdit<'a> {
         self
     }
 
-    style_setter!(
-        'a,
-        TextEditTheme,
-        text_edit,
-        "All-or-nothing. To tweak one axis, build and share a bundle: \
-         `TextEditTheme { caret: red, ..ui.theme().text_edit.clone() }`. \
-         Buffer font/leading/color live on the per-state `text` slot (a \
-         [`crate::TextStyle`]) — `None` there inherits \
-         [`crate::Theme::text`] like every other text-rendering widget.",
-    );
+    /// Per-instance override of [`crate::Theme`]'s `text_edit`. Takes an
+    /// `Option` as readily as a reference: `.style(overrides.as_ref())`.
+    ///
+    /// All-or-nothing. To tweak one axis, build and share a bundle:
+    /// `TextEditTheme { caret: red, ..ui.theme().text_edit.clone() }`.
+    /// Buffer font/leading/color live on the per-state `text` slot (a
+    /// [`crate::TextStyle`]) — `None` there inherits [`crate::Theme::text`]
+    /// like every other text-rendering widget.
+    pub fn style(mut self, s: impl Into<Option<&'a TextEditTheme>>) -> Self {
+        self.style = s.into();
+        self
+    }
 
     /// Take over the placement half of `from` — where the widget sits in
     /// its parent, not what it looks like.
@@ -328,7 +331,7 @@ impl<'a> TextEdit<'a> {
         // renderer reads `node.padding` to deflate the buffer layout and the
         // caret hit-test reads it back below, so both see the resolved value.
         let theme = ui.theme();
-        let slot = self.slot(theme);
+        let slot = self.style.unwrap_or(&theme.text_edit);
         let caret_color = slot.caret;
         let caret_width = slot.caret_width;
         let selection_color = slot.selection;
@@ -494,7 +497,12 @@ impl<'a> TextEdit<'a> {
     }
 }
 
-impl_configure!(TextEdit<'_>);
+impl Configure for TextEdit<'_> {
+    #[inline]
+    fn configure(&mut self) -> ConfigureWidget<'_> {
+        self.widget.configure()
+    }
+}
 
 /// [`TextEditResponse`] minus its `Response` — what one pass can report
 /// while the state row is still out on loan. `show` reunites the two

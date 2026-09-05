@@ -4,6 +4,7 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::Ui;
 use crate::widgets::configure::Configure;
+use crate::widgets::configure::ConfigureWidget;
 use crate::widgets::panel::Panel;
 use crate::widgets::response::Response;
 use crate::widgets::tabs::tab_item::{TabBadge, TabItem, TabItemBuf};
@@ -134,14 +135,19 @@ impl<'a, S> TabbedView<'a, S> {
         self
     }
 
-    style_setter!('a, TabsTheme, tabs);
+    /// Per-instance override of [`crate::Theme`]'s `tabs`. Takes an
+    /// `Option` as readily as a reference: `.style(overrides.as_ref())`.
+    pub fn style(mut self, s: impl Into<Option<&'a TabsTheme>>) -> Self {
+        self.style = s.into();
+        self
+    }
 
     /// Record the strip and the page under it. `body` is called once,
     /// with the visible page's index.
     #[track_caller]
     pub fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, usize)) -> TabbedViewResponse<'_> {
         let theme = Rc::clone(ui.theme());
-        let t = self.slot(&theme);
+        let t = self.style.unwrap_or(&theme.tabs);
         let Self {
             mut widget,
             selected,
@@ -223,7 +229,12 @@ impl<'a, S> TabbedView<'a, S> {
     }
 }
 
-impl_configure!(<S> TabbedView<'_, S>);
+impl<S> Configure for TabbedView<'_, S> {
+    #[inline]
+    fn configure(&mut self) -> ConfigureWidget<'_> {
+        self.widget.configure()
+    }
+}
 
 /// The three edges [`TabbedView`] reads back out of its strip, carried
 /// past the state scope the strip was recorded inside.

@@ -8,6 +8,7 @@ use crate::scene::layer::Layer;
 use crate::ui::Ui;
 use crate::widgets::close_handle::CloseHandle;
 use crate::widgets::configure::Configure;
+use crate::widgets::configure::ConfigureWidget;
 use crate::widgets::overlay_response::OverlayResponse;
 use crate::widgets::overlay_scope::{Backdrop, OverlayScope};
 use crate::widgets::widget::Widget;
@@ -223,13 +224,24 @@ impl Popup {
     }
 }
 
-impl_background!(
-    Popup,
-    "`None` is the default; theme fallback in [`Self::show`] fills it in from \
-     `ui.theme().panel_background` when unset. Pass [`Background::NONE`] to \
-     suppress that fallback for this popup.",
-);
-impl_configure!(Popup);
+impl Popup {
+    /// Paint `bg` as this widget's background.
+    ///
+    /// `None` is the default; theme fallback in [`Self::show`] fills it in
+    /// from `ui.theme().panel_background` when unset. Pass
+    /// [`Background::NONE`] to suppress that fallback for this popup.
+    pub fn background(mut self, bg: Background) -> Self {
+        self.chrome = Some(bg);
+        self
+    }
+}
+
+impl Configure for Popup {
+    #[inline]
+    fn configure(&mut self) -> ConfigureWidget<'_> {
+        self.widget.configure()
+    }
+}
 
 #[cfg(test)]
 mod tests;

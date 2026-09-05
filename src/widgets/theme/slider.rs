@@ -34,4 +34,8 @@ impl SliderTheme {
     }
 }
 
-palette_default!(SliderTheme);
+impl Default for SliderTheme {
+    fn default() -> Self {
+        Self::from_palette(&Palette::DEFAULT)
+    }
+}

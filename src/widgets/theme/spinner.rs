@@ -38,4 +38,8 @@ impl SpinnerTheme {
     }
 }
 
-palette_default!(SpinnerTheme);
+impl Default for SpinnerTheme {
+    fn default() -> Self {
+        Self::from_palette(&Palette::DEFAULT)
+    }
+}

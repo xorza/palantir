@@ -43,4 +43,8 @@ impl ComboBoxTheme {
     }
 }
 
-palette_default!(ComboBoxTheme);
+impl Default for ComboBoxTheme {
+    fn default() -> Self {
+        Self::from_palette(&Palette::DEFAULT)
+    }
+}

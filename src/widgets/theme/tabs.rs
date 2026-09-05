@@ -208,7 +208,11 @@ impl TabsTheme {
     }
 }
 
-palette_default!(TabsTheme);
+impl Default for TabsTheme {
+    fn default() -> Self {
+        Self::from_palette(&Palette::DEFAULT)
+    }
+}
 
 impl ThemeSlot for TabsTheme {
     type Pick = bool;

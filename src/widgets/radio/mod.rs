@@ -8,6 +8,7 @@ use crate::primitives::text_input::TextInput;
 use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::widgets::configure::Configure;
+use crate::widgets::configure::ConfigureWidget;
 use crate::widgets::response::Response;
 use crate::widgets::theme::toggle::ToggleTheme;
 use crate::widgets::theme::widget_look::theme_slot::ThemeSlot;
@@ -47,9 +48,21 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
         }
     }
 
-    label_setter!('a, "Drawn to the right of the dot; an empty label leaves the dot alone.");
+    /// The text this widget draws. Empty (the default) draws none —
+    /// no text child is recorded at all.
+    ///
+    /// Drawn to the right of the dot; an empty label leaves the dot alone.
+    pub fn label(mut self, label: impl Into<TextInput<'a>>) -> Self {
+        self.label = label.into();
+        self
+    }
 
-    style_setter!('a, ToggleTheme, radio);
+    /// Per-instance override of [`crate::Theme`]'s `radio`. Takes an
+    /// `Option` as readily as a reference: `.style(overrides.as_ref())`.
+    pub fn style(mut self, s: impl Into<Option<&'a ToggleTheme>>) -> Self {
+        self.style = s.into();
+        self
+    }
 
     pub fn show(mut self, ui: &mut Ui) -> Response<'_> {
         let response = self.widget.response(ui);
@@ -57,7 +70,7 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
         // Read ahead of the latch below, which moves `self.value` and so
         // leaves `self` unborrowable.
         let theme = ui.theme();
-        let slot = self.slot(theme);
+        let slot = self.style.unwrap_or(&theme.radio);
         let pip_size = slot.box_size.themed_length(1.0);
         let indicator = slot.indicator;
         let dot_inset = slot.indicator_inset.themed_length(0.0);
@@ -92,7 +105,12 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
     }
 }
 
-impl_configure!(<T: PartialEq> RadioButton<'_, T>);
+impl<T: PartialEq> Configure for RadioButton<'_, T> {
+    #[inline]
+    fn configure(&mut self) -> ConfigureWidget<'_> {
+        self.widget.configure()
+    }
+}
 
 #[cfg(test)]
 mod tests;

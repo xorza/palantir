@@ -21,7 +21,7 @@ use glam::UVec2;
 /// Each toggle gets its **own** spacing, so this also pins which slot
 /// each one reads. `toggle_row` is shared but the slots are not —
 /// restyling `checkbox` must leave `radio` and `switch` alone — and the
-/// three name their slot exactly once, in their own `style_setter!`.
+/// three name their slot exactly once, at their own `style` use.
 /// Writing one value to all three slots could not tell them apart, so a
 /// toggle reading its neighbour's slot passed.
 #[test]

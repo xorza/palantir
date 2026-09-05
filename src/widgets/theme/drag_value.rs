@@ -65,4 +65,8 @@ impl DragValueTheme {
     }
 }
 
-palette_default!(DragValueTheme);
+impl Default for DragValueTheme {
+    fn default() -> Self {
+        Self::from_palette(&Palette::DEFAULT)
+    }
+}

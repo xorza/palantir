@@ -110,4 +110,8 @@ impl ThemeSlot for MenuItemTheme {
     }
 }
 
-palette_default!(MenuItemTheme);
+impl Default for MenuItemTheme {
+    fn default() -> Self {
+        Self::from_palette(&Palette::DEFAULT)
+    }
+}

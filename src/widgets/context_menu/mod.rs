@@ -92,14 +92,17 @@ impl<'a> ContextMenu<'a> {
         }
     }
 
-    style_setter!(
-        'a,
-        ContextMenuTheme,
-        context_menu,
-        "Restyles the *panel* only — the rows are recorded by the caller's \
-         body closure, so pass the matching sub-bundles to them \
-         ([`MenuItem::style`](crate::widgets::context_menu::menu_item::MenuItem::style), [`MenuSeparator::style`](crate::widgets::context_menu::menu_separator::MenuSeparator::style)).",
-    );
+    /// Per-instance override of [`crate::Theme`]'s `context_menu`. Takes an
+    /// `Option` as readily as a reference: `.style(overrides.as_ref())`.
+    ///
+    /// Restyles the *panel* only — the rows are recorded by the caller's
+    /// body closure, so pass the matching sub-bundles to them
+    /// ([`MenuItem::style`](crate::widgets::context_menu::menu_item::MenuItem::style),
+    /// [`MenuSeparator::style`](crate::widgets::context_menu::menu_separator::MenuSeparator::style)).
+    pub fn style(mut self, s: impl Into<Option<&'a ContextMenuTheme>>) -> Self {
+        self.style = s.into();
+        self
+    }
 
     /// Derive `for_id` from a trigger widget's response snapshot, and
     /// auto-open at the current pointer position if the trigger
@@ -146,7 +149,7 @@ impl<'a> ContextMenu<'a> {
         };
 
         let ui_theme = Rc::clone(ui.theme());
-        let ctx = self.slot(&ui_theme);
+        let ctx = self.style.unwrap_or(&ui_theme.context_menu);
 
         // The menu is the popup, configured: the caller's `Configure`
         // calls already landed on it, the menu theme fills in whatever

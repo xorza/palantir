@@ -17,6 +17,7 @@ use crate::widgets::color_strip::ColorStrip;
 use crate::widgets::color_surface;
 use crate::widgets::color_swatch::ColorSwatch;
 use crate::widgets::configure::Configure;
+use crate::widgets::configure::ConfigureWidget;
 use crate::widgets::drag_value::DragValue;
 use crate::widgets::grid::Grid;
 use crate::widgets::panel::Panel;
@@ -158,14 +159,19 @@ impl<'a> ColorPicker<'a> {
         self
     }
 
-    style_setter!('a, ColorPickerTheme, color_picker);
+    /// Per-instance override of [`crate::Theme`]'s `color_picker`. Takes an
+    /// `Option` as readily as a reference: `.style(overrides.as_ref())`.
+    pub fn style(mut self, s: impl Into<Option<&'a ColorPickerTheme>>) -> Self {
+        self.style = s.into();
+        self
+    }
 
     /// Record the panel and report what it did to the bound colour.
     pub fn show(self, ui: &mut Ui) -> ValueResponse<'_> {
         // An `Rc` bump on the theme bundle, so the rows can borrow their
         // styles out of it across the `&mut Ui` the record below takes.
         let theme = Rc::clone(ui.theme());
-        let slot = self.slot(&theme);
+        let slot = self.style.unwrap_or(&theme.color_picker);
         let gap = slot.gap.themed_length(0.0);
 
         // The panel is as wide as its field and no wider. Every row below is
@@ -210,7 +216,12 @@ impl<'a> ColorPicker<'a> {
     }
 }
 
-impl_configure!(ColorPicker<'_>);
+impl Configure for ColorPicker<'_> {
+    #[inline]
+    fn configure(&mut self) -> ConfigureWidget<'_> {
+        self.widget.configure()
+    }
+}
 
 /// Everything the panel body needs that is not the retained state.
 ///

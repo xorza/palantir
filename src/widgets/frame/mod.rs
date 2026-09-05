@@ -3,6 +3,8 @@
 
 use crate::primitives::background::Background;
 use crate::ui::Ui;
+use crate::widgets::configure::Configure;
+use crate::widgets::configure::ConfigureWidget;
 use crate::widgets::response::Response;
 use crate::widgets::widget::Widget;
 
@@ -32,12 +34,23 @@ impl Frame {
     }
 }
 
-impl_background!(
-    Frame,
-    "`Frame` is the unthemed container: there is no slot to fall back to, \
-     so an unset background paints nothing.",
-);
-impl_configure!(Frame);
+impl Frame {
+    /// Paint `bg` as this widget's background.
+    ///
+    /// `Frame` is the unthemed container: there is no slot to fall back to,
+    /// so an unset background paints nothing.
+    pub fn background(mut self, bg: Background) -> Self {
+        self.chrome = Some(bg);
+        self
+    }
+}
+
+impl Configure for Frame {
+    #[inline]
+    fn configure(&mut self) -> ConfigureWidget<'_> {
+        self.widget.configure()
+    }
+}
 
 #[cfg(test)]
 mod tests;

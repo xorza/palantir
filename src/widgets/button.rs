@@ -8,6 +8,7 @@ use crate::shape::Shape;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
 use crate::widgets::configure::Configure;
+use crate::widgets::configure::ConfigureWidget;
 use crate::widgets::response::Response;
 use crate::widgets::theme::button::ButtonTheme;
 use crate::widgets::theme::widget_look::theme_slot::ThemeSlot;
@@ -34,12 +35,22 @@ impl<'a> Button<'a> {
         }
     }
 
-    style_setter!('a, ButtonTheme, button);
-    label_setter!(
-        'a,
-        "Drawn inside the button and centered by default; \
-         [`Self::text_align`] moves it.",
-    );
+    /// Per-instance override of [`crate::Theme`]'s `button`. Takes an
+    /// `Option` as readily as a reference: `.style(overrides.as_ref())`.
+    pub fn style(mut self, s: impl Into<Option<&'a ButtonTheme>>) -> Self {
+        self.style = s.into();
+        self
+    }
+
+    /// The text this widget draws. Empty (the default) draws none —
+    /// no text child is recorded at all.
+    ///
+    /// Drawn inside the button and centered by default;
+    /// [`Self::text_align`] moves it.
+    pub fn label(mut self, label: impl Into<TextInput<'a>>) -> Self {
+        self.label = label.into();
+        self
+    }
 
     /// Set how the label handles a width narrower than its natural line.
     /// Default [`TextWrap::Truncate`] (hard-cut to one line, no marker); pass
@@ -64,7 +75,7 @@ impl<'a> Button<'a> {
         let response = self.widget.response(ui);
         let id = self.widget.resolve(ui);
         let theme = ui.theme();
-        let slot = self.slot(theme);
+        let slot = self.style.unwrap_or(&theme.button);
         let look = slot
             .plan(&response, (), theme.text)
             .apply(ui, &mut self.widget);
@@ -89,7 +100,12 @@ impl<'a> Button<'a> {
     }
 }
 
-impl_configure!(Button<'_>);
+impl Configure for Button<'_> {
+    #[inline]
+    fn configure(&mut self) -> ConfigureWidget<'_> {
+        self.widget.configure()
+    }
+}
 
 #[cfg(test)]
 mod tests {

@@ -74,4 +74,8 @@ impl DockTheme {
     }
 }
 
-palette_default!(DockTheme);
+impl Default for DockTheme {
+    fn default() -> Self {
+        Self::from_palette(&Palette::DEFAULT)
+    }
+}

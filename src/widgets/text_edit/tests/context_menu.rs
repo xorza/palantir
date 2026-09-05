@@ -11,6 +11,7 @@ fn context_menu_cut_copy_paste_clear() {
     fn editor_id() -> WidgetId {
         WidgetId::from_hash("ctx-ed")
     }
+
     fn body(ui: &mut Ui, buf: &mut String) {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(buf)
@@ -19,10 +20,12 @@ fn context_menu_cut_copy_paste_clear() {
                 .show(ui);
         });
     }
+
     fn open_menu_and_record(h: &mut UiHarness, buf: &mut String) {
         ContextMenu::open(&mut h.ui, editor_id(), Vec2::new(20.0, 10.0));
         h.frame(|ui| body(ui, buf));
     }
+
     /// Click the center of the open menu's `row_idx`-th row (record
     /// order, separators included), then run a frame so the click is
     /// observed by `MenuItem::show`. Rows are the menu body's direct

@@ -3,6 +3,8 @@
 
 use crate::primitives::background::Background;
 use crate::ui::Ui;
+use crate::widgets::configure::Configure;
+use crate::widgets::configure::ConfigureWidget;
 use crate::widgets::response::InnerResponse;
 use crate::widgets::widget::Widget;
 use std::rc::Rc;
@@ -95,13 +97,24 @@ impl Panel {
     }
 }
 
-impl_background!(
-    Panel,
-    "`None` is the default; theme fallback in [`Self::show`] fills it in from \
-     `ui.theme().panel_background` when unset. Pass [`Background::NONE`] to \
-     suppress that fallback for this panel.",
-);
-impl_configure!(Panel);
+impl Panel {
+    /// Paint `bg` as this widget's background.
+    ///
+    /// `None` is the default; theme fallback in [`Self::show`] fills it in
+    /// from `ui.theme().panel_background` when unset. Pass
+    /// [`Background::NONE`] to suppress that fallback for this panel.
+    pub fn background(mut self, bg: Background) -> Self {
+        self.chrome = Some(bg);
+        self
+    }
+}
+
+impl Configure for Panel {
+    #[inline]
+    fn configure(&mut self) -> ConfigureWidget<'_> {
+        self.widget.configure()
+    }
+}
 
 #[cfg(test)]
 mod tests;

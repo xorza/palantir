@@ -23,6 +23,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::Node;
 use crate::ui::Ui;
 use crate::widgets::configure::Configure;
+use crate::widgets::configure::ConfigureWidget;
 use crate::widgets::response::{InnerResponse, Response};
 use crate::widgets::scroll::bars::{BarMode, BarSpace, Bars, bar_space};
 use crate::widgets::scroll::state::{ScrollBounds, ScrollState};
@@ -210,7 +211,12 @@ impl<'a> Scroll<'a> {
         }
     }
 
-    style_setter!('a, ScrollbarTheme, scrollbar);
+    /// Per-instance override of [`crate::Theme`]'s `scrollbar`. Takes an
+    /// `Option` as readily as a reference: `.style(overrides.as_ref())`.
+    pub fn style(mut self, s: impl Into<Option<&'a ScrollbarTheme>>) -> Self {
+        self.style = s.into();
+        self
+    }
 
     /// Set the scrollbar layout mode. See [`BarMode`].
     pub fn bar_mode(mut self, mode: BarMode) -> Self {
@@ -333,7 +339,7 @@ impl<'a> Scroll<'a> {
     /// This viewport's scrollbar bundle: the per-instance override if
     /// the caller set one, else the global slot.
     fn bars_theme<'u>(&'u self, ui: &'u Ui) -> &'u ScrollbarTheme {
-        self.slot(ui.theme())
+        self.style.unwrap_or(&ui.theme().scrollbar)
     }
 
     /// Last frame's measurements, in the shape every later step reads
@@ -514,14 +520,26 @@ impl<'a> Scroll<'a> {
     }
 }
 
-impl_background!(
-    Scroll<'_>,
-    "Chrome for the inner scroll surface — painted under the children, before \
-     the scrollbar overlay. Unlike the other containers (`Panel`/`Grid`/`Popup`), \
-     Scroll does **not** fall back to `theme.panel_background` when unset: an \
-     unstyled scroll surface paints no background. Pass one explicitly to fill it.",
-);
-impl_configure!(Scroll<'_>);
+impl Scroll<'_> {
+    /// Paint `bg` as this widget's background.
+    ///
+    /// Chrome for the inner scroll surface — painted under the children,
+    /// before the scrollbar overlay. Unlike the other containers
+    /// (`Panel`/`Grid`/`Popup`), Scroll does **not** fall back to
+    /// `theme.panel_background` when unset: an unstyled scroll surface
+    /// paints no background. Pass one explicitly to fill it.
+    pub fn background(mut self, bg: Background) -> Self {
+        self.chrome = Some(bg);
+        self
+    }
+}
+
+impl Configure for Scroll<'_> {
+    #[inline]
+    fn configure(&mut self) -> ConfigureWidget<'_> {
+        self.widget.configure()
+    }
+}
 
 #[cfg(test)]
 mod tests;
