@@ -5,5 +5,6 @@ mod lifecycle;
 mod panning;
 mod pivot;
 mod support;
+mod wrappers;
 mod zoom_config;
 mod zooming;

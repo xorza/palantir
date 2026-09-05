@@ -5,6 +5,7 @@ use crate::primitives::background::Background;
 use crate::ui::Ui;
 use crate::widgets::configure::Configure;
 use crate::widgets::configure::ConfigureWidget;
+use crate::widgets::configure::ThemeDefaults;
 use crate::widgets::response::InnerResponse;
 use crate::widgets::widget::Widget;
 use std::rc::Rc;
@@ -37,16 +38,11 @@ impl Panel {
     }
 
     pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<'_, R> {
-        // Theme fallback: if the caller left chrome / clip unset,
-        // inherit from `theme.panel_*`. Caller intent (any non-None
-        // value) wins.
         // The theme handle is cloned, not the chrome: an `Rc` bump lets
         // the borrow outlive the `&mut Ui` the record below takes.
         let theme = Rc::clone(ui.theme());
-        let mut widget = self.widget;
-        let chrome = widget
-            .node
-            .resolve_container_chrome(self.chrome.as_ref(), theme.container_chrome());
+        let widget = self.widget.default_clip(theme.panel_clip);
+        let chrome = self.chrome.as_ref().or(theme.panel_background.as_ref());
         widget.show(ui, chrome, body)
     }
 

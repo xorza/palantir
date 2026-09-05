@@ -20,7 +20,7 @@ use crate::widgets::widget::Widget;
 /// The display half of the colour family: it writes nothing and senses only a
 /// click, so a caller builds a preset row, a recent-colours strip or a
 /// "before / after" pair out of it and reads
-/// [`clicked`](crate::Response::clicked) itself.
+/// [`left.clicked()`](crate::ButtonState::clicked) itself.
 ///
 /// Sized from [`ColorPickerTheme::swatch_size`], and styled from the same
 /// bundle as the rest of the family.

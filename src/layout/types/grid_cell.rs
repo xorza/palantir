@@ -58,15 +58,14 @@ impl GridCell {
         }
     }
 
-    /// Place this cell at track `main` along `axis`, leaving the cross
-    /// axis where it is. The write half of [`Self::track_span`]: an
-    /// axis-generic parent (a `Splitter`) lays its children out along
-    /// one axis and shouldn't have to know which field that is.
-    #[inline]
-    pub(crate) fn set_main(&mut self, axis: Axis, main: u16) {
+    /// The cell at track `main` along `axis` and the first track across
+    /// it, one track each way. The write half of `track_span`: an
+    /// axis-generic parent (a `Splitter`) lays its children out along one
+    /// axis and shouldn't have to know which field that is.
+    pub const fn along(axis: Axis, main: u16) -> Self {
         match axis {
-            Axis::X => self.col = main,
-            Axis::Y => self.row = main,
+            Axis::X => Self::at(0, main),
+            Axis::Y => Self::at(main, 0),
         }
     }
 }
@@ -82,5 +81,20 @@ impl From<(u16, u16)> for GridCell {
 impl Default for GridCell {
     fn default() -> Self {
         Self::at(0, 0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn along_puts_main_on_the_axis_named_and_cross_on_the_first_track() {
+        assert_eq!(GridCell::along(Axis::X, 2), GridCell::at(0, 2));
+        assert_eq!(GridCell::along(Axis::Y, 2), GridCell::at(2, 0));
+        assert_eq!(
+            GridCell::along(Axis::X, 2).track_span(Axis::X),
+            GridCell::at(0, 2).track_span(Axis::X),
+        );
     }
 }

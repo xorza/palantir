@@ -5,7 +5,6 @@
 
 pub(crate) mod authored_gaps;
 pub(crate) mod bounds_extras;
-pub(crate) mod container_chrome;
 pub(crate) mod gaps;
 pub(crate) mod ident;
 pub(crate) mod layout_core;
@@ -21,14 +20,12 @@ use crate::layout::types::justify::Justify;
 use crate::layout::types::layout_mode::{LayoutMode, ScrollSpec};
 use crate::layout::types::limits;
 use crate::layout::types::sizing::Sizes;
-use crate::primitives::background::Background;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::authored_gaps::AuthoredGaps;
 use crate::scene::node::bounds_extras::BoundsExtras;
-use crate::scene::node::container_chrome::ContainerChrome;
 use crate::scene::node::layout_core::LayoutCore;
 use crate::scene::node::node_columns::NodeColumns;
 use crate::scene::node::node_flags::NodeFlags;
@@ -105,30 +102,6 @@ pub(crate) struct Node {
 }
 
 impl Node {
-    /// Resolve this container node's chrome + clip against the theme
-    /// fallbacks, setting the clip mode in place. Shared by
-    /// `Panel`/`Grid`/`Popup` (theme slot `panel_background` /
-    /// `panel_clip`): an explicit `.background(...)` wins, otherwise the
-    /// theme default fills in; the clip default only applies when the
-    /// caller did not configure clipping. Returns the chrome to pass to
-    /// [`Widget::record`].
-    ///
-    /// **Not every container wants this.** Tooltip, Modal and ContextMenu
-    /// resolve their own with `Option::unwrap_or`, and `Frame` has no theme
-    /// slot to fall back to at all — the three differ in what the consumer
-    /// needs (a borrow, an owned value, nothing), and none of them has a
-    /// clip default, which is the only thing this adds over `.or()`.
-    ///
-    /// [`Widget::record`]: crate::widgets::widget::Widget::record
-    pub(crate) fn resolve_container_chrome<'a>(
-        &mut self,
-        explicit: Option<&'a Background>,
-        theme: ContainerChrome<'a>,
-    ) -> Option<&'a Background> {
-        self.clip.get_or_insert(theme.clip);
-        explicit.or(theme.background)
-    }
-
     /// Set the lower size bound, checking it against the upper one.
     ///
     /// The four `set_*` writers below own every check an authored field

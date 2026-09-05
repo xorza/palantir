@@ -3,7 +3,7 @@
 //!
 //! One epsilon ([`EPS`]) answers "can the eye resolve this", and every
 //! predicate here is that comparison under a name: is this zero, does this
-//! paint, do these coincide, what share is this. [`FloatHash`] carries the
+//! paint, do these coincide, what share is this. `FloatHash` carries the
 //! same question into a hasher, where equality-compatible and
 //! visual-identity canonicalization part ways.
 //!

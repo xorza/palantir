@@ -1,7 +1,6 @@
 //! The WPF-style grid: explicit row and column tracks, with each child
 //! placed into a cell it names.
 
-use crate::layout::types::layout_mode::LayoutMode;
 use crate::layout::types::track::Track;
 use crate::primitives::background::Background;
 use crate::ui::Ui;
@@ -79,16 +78,13 @@ impl<Rows, Cols> Grid<Rows, Cols> {
         Rows: AsRef<[Track]>,
         Cols: AsRef<[Track]>,
     {
-        let id = ui.push_grid_def(self.rows.as_ref(), self.cols.as_ref());
         let mut widget = self.widget;
-        widget.node.set_mode(LayoutMode::Grid(id));
+        widget.grid_tracks(ui, self.rows.as_ref(), self.cols.as_ref());
 
-        // Theme fallback for chrome / clip — see `Panel::show`, including
-        // why the handle is what gets cloned.
+        // See `Panel::show` for why the handle is what gets cloned.
         let theme = Rc::clone(ui.theme());
-        let chrome = widget
-            .node
-            .resolve_container_chrome(self.chrome.as_ref(), theme.container_chrome());
+        widget.configure().default_clip(theme.panel_clip);
+        let chrome = self.chrome.as_ref().or(theme.panel_background.as_ref());
         widget.show(ui, chrome, body)
     }
 }
@@ -112,12 +108,12 @@ mod tests {
     #[test]
     fn gaps_validate_and_store_values() {
         let configured = Grid::new().line_gap(3.0).gap(5.0);
-        assert_eq!(configured.widget.node.gaps.line_gap(), Some(3.0));
-        assert_eq!(configured.widget.node.gaps.gap(), Some(5.0));
+        assert_eq!(configured.widget.authored_line_gap(), Some(3.0));
+        assert_eq!(configured.widget.authored_gap(), Some(5.0));
 
         let edge = Grid::new().line_gap(MAX_PACKED_GAP).gap(0.0);
-        assert_eq!(edge.widget.node.gaps.line_gap(), Some(MAX_PACKED_GAP));
-        assert_eq!(edge.widget.node.gaps.gap(), Some(0.0));
+        assert_eq!(edge.widget.authored_line_gap(), Some(MAX_PACKED_GAP));
+        assert_eq!(edge.widget.authored_gap(), Some(0.0));
 
         let invalid: [fn(Grid) -> Grid; 6] = [
             |grid| grid.line_gap(-1.0),

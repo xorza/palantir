@@ -239,50 +239,57 @@ impl ConfigureWidget<'_> {
 
     /// Borrowing form of [`ThemeDefaults::default_id`].
     #[inline]
-    pub(crate) fn default_id(&mut self, id: WidgetId) -> &mut Self {
+    pub fn default_id(&mut self, id: WidgetId) -> &mut Self {
         self.widget.fill_id(id);
         self
     }
 
     /// Borrowing form of [`ThemeDefaults::default_padding`].
     #[inline]
-    pub(crate) fn default_padding(&mut self, p: impl Into<Spacing>) -> &mut Self {
+    pub fn default_padding(&mut self, p: impl Into<Spacing>) -> &mut Self {
         self.widget.node.fill_padding(p.into());
         self
     }
 
     /// Borrowing form of [`ThemeDefaults::default_margin`].
     #[inline]
-    pub(crate) fn default_margin(&mut self, m: impl Into<Spacing>) -> &mut Self {
+    pub fn default_margin(&mut self, m: impl Into<Spacing>) -> &mut Self {
         self.widget.node.fill_margin(m.into());
         self
     }
 
     /// Borrowing form of [`ThemeDefaults::default_align`].
     #[inline]
-    pub(crate) fn default_align(&mut self, a: Align) -> &mut Self {
+    pub fn default_align(&mut self, a: Align) -> &mut Self {
         self.widget.node.fill_align(a);
         self
     }
 
     /// Borrowing form of [`ThemeDefaults::default_gap`].
     #[inline]
-    pub(crate) fn default_gap(&mut self, g: f32) -> &mut Self {
+    pub fn default_gap(&mut self, g: f32) -> &mut Self {
         self.widget.node.fill_gap(g);
         self
     }
 
     /// Borrowing form of [`ThemeDefaults::default_min_size`].
     #[inline]
-    pub(crate) fn default_min_size(&mut self, s: impl Into<Size>) -> &mut Self {
+    pub fn default_min_size(&mut self, s: impl Into<Size>) -> &mut Self {
         self.widget.node.fill_min_size(s.into());
         self
     }
 
     /// Borrowing form of [`ThemeDefaults::default_max_size`].
     #[inline]
-    pub(crate) fn default_max_size(&mut self, s: impl Into<Size>) -> &mut Self {
+    pub fn default_max_size(&mut self, s: impl Into<Size>) -> &mut Self {
         self.widget.node.fill_max_size(s.into());
+        self
+    }
+
+    /// Borrowing form of [`ThemeDefaults::default_clip`].
+    #[inline]
+    pub fn default_clip(&mut self, mode: ClipMode) -> &mut Self {
+        self.widget.node.clip.get_or_insert(mode);
         self
     }
 }
@@ -656,18 +663,19 @@ pub trait Configure: Sized {
 /// whether the caller already spoke, which those setters can't say.
 /// These can.
 ///
-/// **Deliberately `pub(crate)` and separate from `Configure`.** Theme
-/// resolution is the framework's job, not the caller's: an app chaining
-/// `.default_padding(…)` onto a `Button` would be overriding nothing and
-/// shadowing a decision the widget makes for it. Keeping the family off
-/// the public trait keeps it off every exported widget's method list.
+/// **Separate from `Configure`, and for widget authors.** Theme
+/// resolution is the widget's job, not its caller's: an app chaining
+/// `.default_padding(..)` onto a `Button` overrides nothing, because the
+/// button resolved its own default first. A widget written outside this
+/// crate resolves its theme the same way, which is why the family is
+/// public.
 ///
 /// Blanket-implemented for everything `Configure`, so it reaches a bare
 /// [`Widget`] *and* a builder that wraps one — `ContextMenu` resolves
 /// the menu theme into the `Popup` it is built from, which an inherent
 /// `Widget` method could not do without one builder reaching into the
 /// other's widget.
-pub(crate) trait ThemeDefaults: Configure {
+pub trait ThemeDefaults: Configure {
     /// Identity to fall back on when the caller set none.
     ///
     /// "Set" means [`Configure::id`] / [`Configure::id_salt`] — a
@@ -719,6 +727,13 @@ pub(crate) trait ThemeDefaults: Configure {
     #[inline]
     fn default_max_size(mut self, s: impl Into<Size>) -> Self {
         self.configure().default_max_size(s);
+        self
+    }
+
+    /// Clip mode to fall back on when the caller set none.
+    #[inline]
+    fn default_clip(mut self, mode: ClipMode) -> Self {
+        self.configure().default_clip(mode);
         self
     }
 }

@@ -20,7 +20,6 @@ use crate::primitives::background::Background;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::node::Node;
 use crate::ui::Ui;
 use crate::widgets::configure::Configure;
 use crate::widgets::configure::ConfigureWidget;
@@ -96,62 +95,47 @@ struct ScrollWrappers {
 impl ScrollWrappers {
     /// Split a user `Scroll` widget into its outer/inner wrappers.
     ///
-    /// **This routes every `Node` field that should survive on a
-    /// `Scroll`** — the destructure below binds every field with no `..`,
-    /// so adding one to `Node` fails to compile here, forcing the decision
-    /// whether it lands on `outer` (sizing/placement) or `inner`
-    /// (layout/panel knobs).
+    /// **This routes every authored field that should survive on a
+    /// `Scroll`**: sizing, placement and interaction land on `outer`,
+    /// padding and the panel knobs on `inner`. A field added to the
+    /// authoring surface has to be given a side here.
     /// `Scroll::show` patches the remaining inner fields it computes per
     /// frame (the viewport id, the reservation `margin`, layout fit
-    /// flags, `clip` — read off `flags` before this runs — and the pan
+    /// flags, `clip` — read off the user widget — and the pan
     /// `transform`). Identity is `Scroll::show`'s too: the outer wrapper
     /// takes the caller's resolved id there, and the inner a child of it.
     fn split(widget: &Widget) -> Self {
-        let scroll_spec = widget.node.scroll_spec();
-        let Node {
-            mode: _,
-            size,
-            min_size,
-            max_size,
-            padding,
-            gaps,
-            justify,
-            child_align,
-            flags,
-            // Placement, carried onto `outer` by `Node::adopt_placement`
-            // below. Named rather than elided for the same reason as
-            // every other field here.
-            margin: _,
-            align: _,
-            position: _,
-            grid: _,
-            visibility: _,
-            // Re-derived by `Scroll::show` once the wrappers exist: it copies
-            // `clip` from the user node onto `inner` and replaces `transform`
-            // with the pan offset. Named rather than elided — a `..` here would
-            // let a newly added `Node` field vanish silently, which is exactly
-            // what this destructure exists to prevent.
-            clip: _,
-            transform: _,
-        } = widget.node;
-
-        let mut outer = Widget::zstack();
+        let mut outer = Widget::zstack()
+            .sense(widget.authored_sense())
+            .disabled(widget.authored_disabled())
+            .focusable(widget.authored_focusable())
+            .input_scope(widget.authored_input_scope());
         outer.adopt_placement(widget);
-        outer.node.size = size;
-        outer.node.min_size = min_size;
-        outer.node.max_size = max_size;
-        outer.node.flags.set_sense(flags.sense());
-        outer.node.flags.set_disabled(flags.is_disabled());
-        outer.node.flags.set_focusable(flags.is_focusable());
+        if let Some(size) = widget.authored_size() {
+            outer.configure().size(size);
+        }
+        if let Some(min) = widget.authored_min_size() {
+            outer.configure().min_size(min);
+        }
+        if let Some(max) = widget.authored_max_size() {
+            outer.configure().max_size(max);
+        }
 
-        let mut inner = Widget::scroll(scroll_spec);
         // Inner fills the outer wrapper; the outer carries the user's
         // `Sizing` and drives the actual size.
-        inner.node.size = Some((Sizing::FILL, Sizing::FILL).into());
-        inner.node.padding = padding;
-        inner.node.gaps = gaps;
-        inner.node.justify = justify;
-        inner.node.child_align = child_align;
+        let mut inner = Widget::scroll(widget.node.scroll_spec())
+            .size((Sizing::FILL, Sizing::FILL))
+            .justify(widget.authored_justify())
+            .child_align(widget.authored_child_align());
+        if let Some(padding) = widget.authored_padding() {
+            inner.configure().padding(padding);
+        }
+        if let Some(gap) = widget.authored_gap() {
+            inner.configure().gap(gap);
+        }
+        if let Some(line_gap) = widget.authored_line_gap() {
+            inner.configure().line_gap(line_gap);
+        }
         Self { outer, inner }
     }
 }

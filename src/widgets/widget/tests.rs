@@ -134,14 +134,14 @@ fn builder_setters_cover_the_complete_external_node_surface() {
             col_span: 5,
         },
     );
-    assert_eq!(widget.node.gaps.gap(), Some(6.0));
-    assert_eq!(widget.node.gaps.line_gap(), Some(7.0));
-    assert_eq!(widget.node.justify, Justify::SpaceBetween);
+    assert_eq!(widget.authored_gap(), Some(6.0));
+    assert_eq!(widget.authored_line_gap(), Some(7.0));
+    assert_eq!(widget.authored_justify(), Justify::SpaceBetween);
     assert_eq!(widget.node.align, align);
-    assert_eq!(widget.node.child_align, child_align);
-    assert_eq!(widget.node.flags.sense(), sense);
-    assert!(!widget.node.flags.is_disabled());
-    assert!(widget.node.flags.is_focusable());
+    assert_eq!(widget.authored_child_align(), child_align);
+    assert_eq!(widget.authored_sense(), sense);
+    assert!(!widget.authored_disabled());
+    assert!(widget.authored_focusable());
     assert_eq!(widget.node.visibility, Visibility::Hidden);
     assert_eq!(widget.node.clip, Some(ClipMode::None));
     assert_eq!(widget.node.transform, transform);
@@ -256,8 +256,8 @@ fn packed_gaps_accept_f16_boundaries_and_reject_invalid_values() {
     let valid = Widget::hstack()
         .gap(MAX_PACKED_GAP)
         .line_gap(MAX_PACKED_GAP);
-    assert_eq!(valid.node.gaps.gap(), Some(MAX_PACKED_GAP));
-    assert_eq!(valid.node.gaps.line_gap(), Some(MAX_PACKED_GAP));
+    assert_eq!(valid.authored_gap(), Some(MAX_PACKED_GAP));
+    assert_eq!(valid.authored_line_gap(), Some(MAX_PACKED_GAP));
 
     type Case = (&'static str, fn() -> Widget);
     let cases: &[Case] = &[
