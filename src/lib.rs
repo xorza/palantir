@@ -63,7 +63,7 @@
 //! | --- | --- | --- |
 //! | `winit` | yes | The winit-backed [`WinitHost`] — real windows and a real event loop. Without it only [`OffscreenHost`] exists. Implies `system-clipboard`. |
 //! | `system-clipboard` | via `winit` | Backs [`Clipboard`] with the OS clipboard, which is what [`TextEdit`]'s cut/copy/paste reaches. [`WinitHost`] always uses it; [`OffscreenHost`] asks through [`OffscreenHostBuilder::system_clipboard`]. Without it every host runs on an in-process buffer. |
-//! | `showcase` | no | Builds the bundled `showcase` example, a tour of every widget. |
+//! | `showcase` | no | Exposes the two demo surfaces the bundled `showcase` example reads. Build it with `cargo run --example showcase --features showcase`. |
 //! | `gpu-debug-markers` | no | Emits GPU debug groups around every draw step for RenderDoc / Xcode captures. Costs two recorded commands and a label copy per step even with no capture tool attached, so it is off unless you intend to capture. |
 //! | `profile-with-tracy` | no | Opens a Tracy zone over each frame pass, and marks a frame set per window. Needs the external Tracy viewer. |
 //! | `internals` | no | Test reach-ins — adds the `internals` module. **Not a supported API**: it exists so the integration tests under `tests/` can reach crate privates, and it breaks without notice. |
