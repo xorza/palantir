@@ -41,6 +41,29 @@ const COVERED: &[&str] = &[
 /// `splitter` went missing.
 const EXCLUDED: &[(&str, &str)] = &[
     (
+        "color_field",
+        "builds a CPU texture and registers it with the image registry, which the \
+             deviceless CPU/alloc harnesses never drain — the fixture would hold the \
+             texels and measure a first-frame build the steady state never repeats",
+    ),
+    (
+        "color_strip",
+        "same as color_field — one registered texture per bar",
+    ),
+    (
+        "color_picker",
+        "arranges color_field and color_strip, so it inherits their reason",
+    ),
+    (
+        "color_button",
+        "records only a chip until a click opens its picker, and then that picker",
+    ),
+    (
+        "color_swatch",
+        "a rect and a checker; joining alone would move every existing bench number \
+             for coverage its own tests already give",
+    ),
+    (
         "spinner",
         "animates — a PaintAnim wakes the host every frame, so `frame/cached_*` \
              could never settle to no damage",

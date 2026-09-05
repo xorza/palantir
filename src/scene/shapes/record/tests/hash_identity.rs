@@ -198,8 +198,21 @@ fn image_source_hashes_apart_by_source() {
         compute_record_hash(&image(ImageSource::Texture {
             id: TextureId(7),
             size: glam::UVec2::ZERO,
+            generation: 0,
         })),
         "a texture id must not collide with an epoch of the same value",
+    );
+    let texture = |generation| {
+        compute_record_hash(&image(ImageSource::Texture {
+            id: TextureId(7),
+            size: glam::UVec2::ZERO,
+            generation,
+        }))
+    };
+    assert_ne!(
+        texture(0),
+        texture(1),
+        "a write must move the hash, or a rewritten texture never repaints",
     );
     assert_ne!(
         view,
@@ -223,7 +236,11 @@ fn shape_image_hash_distinguishes_handle_dimensions_tint_and_filters() {
         ShapeRecord::Image {
             local_rect: None,
             tint: RgbaF16::from(tint),
-            source: ImageSource::Texture { id, size },
+            source: ImageSource::Texture {
+                id,
+                size,
+                generation: 0,
+            },
             fit: ImageFit::Fill,
             min_filter,
             mag_filter,

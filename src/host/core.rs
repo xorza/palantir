@@ -1,12 +1,13 @@
 //! `HostCore` — the composition root both hosts build on: the app-global
-//! [`HostShared`] resources, the one CPU [`Frontend`], and the one
-//! [`WgpuBackend`] every window renders through.
+//! [`UiResources`], the one CPU [`Frontend`], and the one [`WgpuBackend`]
+//! every window renders through.
 //!
 //! The three are constructed together because they are not independent: the
-//! backend's capability bundle, the frontend's gradient-atlas handle, and both
-//! halves' texture-dimension cap all derive from the same `HostShared` over
-//! the same device. Building them apart means re-deriving that wiring per
-//! host, which is what this type exists to stop.
+//! backend connects to the registries, the atlas and the timing sample in
+//! the resources and attaches its texture store to their image registry,
+//! the frontend bakes into the same atlas, and both halves' texture-dimension
+//! cap is one number over one device. Building them apart means re-deriving
+//! that wiring per host, which is what this type exists to stop.
 //!
 //! It deliberately does *not* own the [`WindowDriver`]s. Each host pairs a
 //! driver with whatever its target needs — a swapchain and native handle for
@@ -17,13 +18,14 @@
 use crate::app::App;
 use crate::common::clipboard::Clipboard;
 use crate::display::Display;
-use crate::host::shared::HostShared;
 use crate::host::window_driver::{CpuFrame, PresentMode, WindowDriver, WindowDriverBuilder};
 use crate::renderer::backend::WgpuBackend;
 use crate::renderer::backend::backend_config::BackendConfig;
+use crate::renderer::backend::backend_resources::BackendResources;
 use crate::renderer::frontend::Frontend;
 use crate::renderer::texture_limit::TextureLimit;
 use crate::text::shaper::TextShaper;
+use crate::ui::resources::UiResources;
 use crate::window::window_token::WindowToken;
 use std::num::NonZeroU32;
 
@@ -40,7 +42,7 @@ pub(super) struct HostCoreConfig {
 
 #[derive(Debug)]
 pub(super) struct HostCore {
-    pub(super) shared: HostShared,
+    pub(super) resources: UiResources,
     /// Shared CPU encode/compose allocations, reused serially across windows.
     pub(super) frontend: Frontend,
     /// The one shared GPU renderer every window draws through (pipelines,
@@ -63,7 +65,7 @@ impl HostCore {
         clipboard: Clipboard,
         config: HostCoreConfig,
     ) -> Self {
-        let shared = HostShared::with_clipboard(
+        let resources = UiResources::new(
             shaper,
             clipboard,
             TextureLimit::from_device(max_texture_dim),
@@ -71,14 +73,20 @@ impl HostCore {
         let backend = WgpuBackend::new(
             device,
             queue,
-            shared.backend_resources(),
+            BackendResources {
+                text: resources.text(),
+                images: resources.images(),
+                icons: resources.icons(),
+                gradient_atlas: resources.gradient_atlas(),
+                gpu_pass_stats: &resources.diagnostics().gpu_pass_stats,
+            },
             BackendConfig {
                 collect_gpu_stats: config.collect_gpu_stats,
             },
         );
-        let frontend = Frontend::new(max_texture_dim.get(), shared.gradient_atlas.clone());
+        let frontend = Frontend::new(max_texture_dim.get(), resources.gradient_atlas().clone());
         Self {
-            shared,
+            resources,
             frontend,
             backend,
             pixel_snap: config.pixel_snap,
@@ -89,7 +97,7 @@ impl HostCore {
     /// resources. Defaults suit a swapchain window — see
     /// [`WindowDriver::builder`].
     pub(super) fn driver(&self, token: WindowToken) -> WindowDriverBuilder<'_> {
-        WindowDriver::builder(token, &self.shared, self.pixel_snap)
+        WindowDriver::builder(token, &self.resources, self.pixel_snap)
     }
 
     /// Retire a closed window's render stream, freeing the `GpuView` targets

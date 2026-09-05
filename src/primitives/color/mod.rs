@@ -10,6 +10,11 @@
 
 pub(crate) mod srgba_u8;
 
+pub(crate) mod color_coords;
+pub(crate) mod color_model;
+pub(crate) mod hsv;
+pub(crate) mod okhsv;
+
 use crate::animation::animatable::Animatable;
 use crate::primitives::approx::FloatHash;
 use crate::primitives::color::srgba_u8::SrgbaU8;
@@ -522,6 +527,17 @@ impl<'de> Deserialize<'de> for RgbaF32 {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let raw = Cow::<'de, str>::deserialize(deserializer)?;
         parse_hex(raw.trim()).map_err(D::Error::custom)
+    }
+}
+
+/// The hex forms the wire format reads, so `"#3266cc".parse()` and a
+/// deserialized `"#3266cc"` cannot disagree. Not trimmed: the caller decides
+/// what whitespace means.
+impl std::str::FromStr for RgbaF32 {
+    type Err = &'static str;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        parse_hex(value)
     }
 }
 

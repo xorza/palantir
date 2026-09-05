@@ -4,7 +4,7 @@ use crate::primitives::color::RgbaF32;
 use crate::primitives::image::{ImageDownsample, ImageFilter, ImageFit};
 use crate::primitives::nan::NanCheck;
 use crate::primitives::rect::Rect;
-use crate::renderer::image_registry::ImageHandle;
+use crate::renderer::image_registry::image_handle::ImageHandle;
 use crate::scene::record_store::RecordStore;
 use crate::scene::shapes::paint::ImageSource;
 use crate::scene::shapes::record::ShapeRecord;
@@ -55,8 +55,6 @@ impl sealed::LowerShape for ImageShape {
         self.rect_is_noop() || self.tint.is_noop()
     }
 
-    /// The two filters and the downsample policy are bare tags; only
-    /// `ImageFit::Tile` carries scalars, which is why `fit` is asked.
     fn has_nan(&self) -> bool {
         self.local_rect.has_nan() || self.tint.has_nan() || self.fit.has_nan()
     }
@@ -74,11 +72,10 @@ impl sealed::LowerShape for ImageShape {
         ShapeRecord::Image {
             local_rect,
             tint: tint.into(),
-            // Extract the cheap id + size; the owning `ImageHandle` the
-            // caller holds is what keeps the GPU texture alive.
             source: ImageSource::Texture {
                 id: handle.id(),
                 size: handle.size(),
+                generation: handle.generation(),
             },
             fit,
             min_filter,

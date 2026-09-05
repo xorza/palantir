@@ -297,8 +297,15 @@ pub(crate) enum ImageSource {
     /// keeps the GPU texture alive). The backend looks `id` up in its
     /// texture cache and skips the draw on a miss. `size` is the
     /// intrinsic dims, baked in at registration so the encoder reads
-    /// them with no registry borrow.
-    Texture { id: TextureId, size: UVec2 },
+    /// them with no registry borrow. `generation` counts the handle's
+    /// writes: a texture rewritten in place under the same id still moves
+    /// the hash and repaints — the registered image's twin of the view's
+    /// `epoch` below.
+    Texture {
+        id: TextureId,
+        size: UVec2,
+        generation: u32,
+    },
     /// An app-rendered GPU surface. The view's stable render-target
     /// `TextureId` and its `paint` callback live in `Ui::gpu_views`,
     /// keyed by the owner node's `WidgetId`, which the encoder reads to

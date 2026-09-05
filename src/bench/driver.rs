@@ -58,6 +58,7 @@ pub(super) const DRIVERS: &[Driver] = &[
     driver("animation", animation::bench::bench),
     driver("caches", layout::cache::bench::bench),
     driver("cascade", scene::cascade::bench::bench),
+    driver("color_field", widgets::color_field::bench::bench),
     driver("composer", renderer::frontend::composer::bench::bench),
     gpu_driver(
         "curve_pipeline",

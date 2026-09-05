@@ -1,31 +1,20 @@
-//! [`TextureIdSource`] — the shared allocator minting [`TextureId`]s.
-//!
-//! Stays in `renderer` (unlike the id itself) because it exists to keep the
-//! backend's single texture cache collision-free, which is a renderer
-//! concern.
+//! Texture ids shared by image registration and `GpuView` targets.
 
 use crate::primitives::texture_id::TextureId;
 use std::cell::Cell;
 use std::rc::Rc;
 
-/// Shared monotonic source of [`TextureId`]s. The
-/// [`ImageRegistry`](crate::renderer::image_registry::ImageRegistry) (CPU
-/// images) and each `GpuView` render target (minted via `Ui::gpu_view`)
-/// draw from **one** of these so their ids never collide in the backend's
-/// single texture cache. `UiResources` creates one and shares it with the
-/// registry and every window's `Ui`. Never hands out `TextureId(0)` (the
-/// render path's "no texture" value).
+/// The image draw path resolves registered images and `GpuView` targets by
+/// the same id, so their separate stores must never contain colliding ids.
+/// `UiResources` owns one source shared across its clones and used by both
+/// registration paths. Zero is reserved for the render path's "no texture".
 ///
-/// An owned, shared cell rather than the process-wide
-/// [`IdCounter`](crate::common::id_counter::IdCounter) the other two
-/// monotonic ids read: the scope that must not collide is one
-/// `UiResources` and its one backend cache, and a handle to it is what
-/// says so. Single-threaded with it, so a `Cell` and not an atomic.
+/// Ids are scoped to one host, so this needs neither a process-wide counter
+/// nor atomics: all recorders sharing a host run on its UI thread.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct TextureIdSource(Rc<Cell<u64>>);
 
 impl TextureIdSource {
-    /// Mint the next id from this source.
     pub(crate) fn reserve(&self) -> TextureId {
         let id = self.0.get() + 1;
         self.0.set(id);

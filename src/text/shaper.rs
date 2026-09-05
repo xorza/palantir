@@ -25,9 +25,8 @@ use std::rc::Rc;
 /// measurement during layout, prepare/render during the wgpu frame —
 /// so the `RefCell` is just runtime insurance against accidental
 /// re-entry. Cloning is cheap (refcount bump).
-/// `HostShared` retains the canonical handle; its UI and backend capability
-/// views give every consumer access to the same
-/// content cache.
+/// `UiResources` retains the canonical handle; every recorder and the
+/// backend clone it and reach the same content cache.
 ///
 /// Construct with [`Self::new`] / `Default` (bundled fonts only), or
 /// [`Self::with_fonts`] to say whether the machine's installed fonts
@@ -462,13 +461,6 @@ pub(crate) mod internals {
 
         pub(crate) fn byte_at_xy(&self, text: &str, x: f32, y: f32, shape: TestShape) -> usize {
             self.probe_layout(text, shape, |probe| probe.byte_at(x, y))
-        }
-
-        /// Whether both handles front the same shaped-buffer cache — the
-        /// `HostShared` contract that a window's recorder and the backend
-        /// never shape into separate caches.
-        pub(crate) fn shares_cache_with(&self, other: &Self) -> bool {
-            Rc::ptr_eq(&self.shared, &other.shared)
         }
 
         /// Hold the shaper's exclusive borrow for the caller's scope, so

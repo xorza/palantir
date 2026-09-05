@@ -1,4 +1,4 @@
-use crate::primitives::num::{F32Ext, Vec2Ext, unit_to_u8};
+use crate::primitives::num::{F32Ext, F32Px, Vec2Ext, unit_to_u8};
 use glam::Vec2;
 
 #[test]
@@ -198,6 +198,14 @@ fn band_fraction_offsets_by_half_the_band() {
             "band_fraction({pos}) = {got}, want {want}"
         );
     }
+    // Per component on a point: each axis is the scalar answer over its
+    // own extent and band, so a 60 on the 120 track beside a 20 on a 40
+    // track with a 10 band (30 px of travel from 5) reads (0.5, 0.5).
+    let point = Vec2::new(60.0, 20.0).band_fraction(Vec2::new(120.0, 40.0), Vec2::new(20.0, 10.0));
+    assert!(
+        (point - Vec2::splat(0.5)).abs().max_element() < 1e-6,
+        "{point}"
+    );
 }
 
 /// A band at least as wide as its track leaves no travel, so there is no
@@ -231,6 +239,11 @@ fn unit_fraction_or_clamps_in_range_and_falls_back_outside_the_finite() {
         (f32::NAN, 0.0, 0.0),
         (f32::INFINITY, 1.0, 1.0),
     ];
+    assert_eq!(
+        Vec2::new(1.7, f32::NAN).unit_fraction_or(Vec2::new(0.5, 0.25)),
+        Vec2::new(1.0, 0.25),
+        "each component clamps or falls back on its own",
+    );
     for &(value, fallback, want) in cases {
         assert_eq!(
             value.unit_fraction_or(fallback),

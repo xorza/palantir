@@ -5,6 +5,7 @@ use crate::input::pointer::PointerButton;
 use crate::input::response::button_phase::ButtonPhase;
 use crate::input::response::button_state::ButtonState;
 use crate::input::response::scroll_delta::ScrollDelta;
+use crate::primitives::num::F32Ext;
 use crate::primitives::rect::Rect;
 use crate::primitives::translate_scale::TranslateScale;
 use glam::Vec2;
@@ -194,12 +195,40 @@ impl ResponseState {
     /// Left-button press with the pointer still over the widget — the
     /// "shows pressed visuals" predicate. Derived: `left.held &&
     /// hovered` (a held press whose pointer wandered off reports
-    /// `left.held` but not `pressed`). The only cross-field
-    /// derivation on this type — everything per-button reads its
-    /// slot: `state.left.clicked()`, `state.left.drag.delta()`,
-    /// `state.left.double_clicked()`.
+    /// `left.held` but not `pressed`). One of two cross-field
+    /// derivations on this type, with [`Self::press_fraction`] —
+    /// everything per-button reads its slot: `state.left.clicked()`,
+    /// `state.left.drag.delta()`, `state.left.double_clicked()`.
     #[inline]
     pub fn pressed(&self) -> bool {
         self.left.held() && self.hovered
+    }
+
+    /// Where the primary button's gesture sits across the widget, as a
+    /// `0..1` share of each axis: on the press, on every drag frame, and
+    /// on the release. `None` on any other frame, while disabled, and
+    /// before the widget has arranged.
+    ///
+    /// One answer for every widget a pointer drives along an axis — a
+    /// slider, a colour field, a bar — so the frames a gesture writes on
+    /// are named once. `band` is the width of a centred thing the pointer
+    /// drags, a knob, and comes off each end before the division; pass
+    /// zero when the pointer itself is the position — see
+    /// [`F32Ext::band_fraction`](crate::F32Ext::band_fraction). Clamped,
+    /// so a pointer past an edge reports that edge, which is the only way
+    /// a drag reaches an axis end.
+    #[inline]
+    pub fn press_fraction(&self, band: f32) -> Option<Vec2> {
+        let in_gesture = self.pressed() || self.left.drag.dragging() || self.left.released();
+        if self.disabled || !in_gesture {
+            return None;
+        }
+        let local = self.pointer_local?;
+        let rect = self.layout_rect?;
+        Some(
+            local
+                .band_fraction(rect.size.into(), Vec2::splat(band))
+                .unit_fraction_or(Vec2::ZERO),
+        )
     }
 }

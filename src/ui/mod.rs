@@ -57,7 +57,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::renderer::frontend::FrameScene;
 use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
 use crate::renderer::gpu_paint::gpu_views::GpuViews;
-use crate::renderer::image_registry::ImageHandle;
+use crate::renderer::image_registry::image_handle::ImageHandle;
 use crate::renderer::texture_limit::RegisterImageError;
 use crate::scene::cascade::Cascade;
 use crate::scene::forest::Forest;
@@ -140,7 +140,6 @@ pub struct Ui {
     /// up here by the node's `WidgetId`. Swept by the same `removed` set
     /// as [`StateMap`].
     gpu_views: GpuViews,
-    /// App-global capabilities available to the recorder.
     resources: UiResources,
     layout: Layout,
     /// Cascaded clip/disabled/invisible/transform per node + global
@@ -687,7 +686,7 @@ impl Ui {
     /// ```
     #[inline]
     pub fn debug_overlay(&self) -> DebugOverlayConfig {
-        self.resources.diagnostics.overlay.get()
+        self.resources.diagnostics().overlay.get()
     }
 
     /// Replace this app's debug-overlay flags. The overlay is app-global:
@@ -696,7 +695,7 @@ impl Ui {
     /// handled the key.
     #[inline]
     pub fn set_debug_overlay(&mut self, overlay: DebugOverlayConfig) {
-        self.resources.diagnostics.overlay.set(overlay);
+        self.resources.diagnostics().overlay.set(overlay);
     }
 
     /// This frame's diagnostic counters, for the [`frame_stats`] overlay.
@@ -712,7 +711,7 @@ impl Ui {
             render_frame_id: self.frame_runtime.render_frame_id,
             fps: self.frame_runtime.fps_ema,
             settle_frames: self.frame_runtime.settle_frames,
-            gpu_ms: self.resources.diagnostics.gpu_pass_stats.last_pass_ms(),
+            gpu_ms: self.resources.diagnostics().gpu_pass_stats.last_pass_ms(),
         }
     }
 
@@ -725,7 +724,7 @@ impl Ui {
     /// closed via its titlebar drops out of this set automatically.
     #[inline]
     pub fn window_open(&self, token: WindowToken) -> bool {
-        self.resources.windows.contains(token)
+        self.resources.windows().contains(token)
     }
 
     /// The app-global live-window set this recorder answers
@@ -737,7 +736,7 @@ impl Ui {
     /// through the field.
     #[inline]
     pub(crate) fn window_directory(&self) -> &WindowDirectory {
-        &self.resources.windows
+        self.resources.windows()
     }
 
     /// Attach a paint primitive to the active node. Direct text contributes to
@@ -751,8 +750,7 @@ impl Ui {
     ///
     /// **Hold the set.** It owns everything the host caches for those icons —
     /// the data, the SVG parses, the atlas rasters — and dropping the last
-    /// clone unloads all three at the next submit, exactly as
-    /// [`Self::register_image`] does for a texture. Park it in your state and
+    /// clone unloads all three at the next submit. Park it in your state and
     /// clone it where it needs to live.
     ///
     /// Loading is cheap and idempotent *while a set is held*: registering an
@@ -768,25 +766,27 @@ impl Ui {
     /// bytes.
     #[inline]
     pub fn load_icons(&self, table: Rc<IconTable>) -> IconSet {
-        self.resources.icons.register(table)
+        self.resources.icons().register(table)
     }
 
-    /// Upload an image and get back an owning [`ImageHandle`]. **Hold the
-    /// handle** to keep the GPU texture resident — dropping the last
+    /// Upload an image now and get back an owning [`ImageHandle`]. **Hold
+    /// the handle** to keep the GPU texture resident — dropping the last
     /// clone frees it; there is no `unregister`. Reference it in
     /// [`Shape::image`](crate::Shape::image) every frame (`clone` it where it
     /// needs to live).
-    /// The CPU bytes are dropped right after the upload.
+    ///
+    /// The bytes are copied into wgpu staging before this returns; the next
+    /// queue submission uploads them before drawing. No CPU copy is retained
+    /// by the registry. Keep `image` to refill it for [`ImageHandle::update`].
     ///
     /// # Errors
     ///
     /// Returns an error when an image axis exceeds the selected device's 2D
-    /// texture limit. A rejected image is never queued for upload. Standalone
+    /// texture limit. A rejected image never reaches the GPU. Standalone
     /// CPU recorders have no device limit and retain the original dimensions.
     #[inline]
-    pub fn register_image(&self, image: Image) -> Result<ImageHandle, RegisterImageError> {
-        self.resources.texture_limit.accepts(image.size)?;
-        Ok(self.resources.images.register(image))
+    pub fn register_image(&self, image: &Image) -> Result<ImageHandle, RegisterImageError> {
+        self.resources.register_image(image)
     }
 
     /// Register a font and get back the [`FontFamily`] its first face
@@ -831,7 +831,7 @@ impl Ui {
     /// bytes hold no face fontdb can parse.
     #[inline]
     pub fn load_font(&self, source: impl Into<FontSource>) -> Result<FontFamily, FontLoadError> {
-        self.resources.text.load_font(source)
+        self.resources.text().load_font(source)
     }
 
     /// Whether a face answers to `family`.
@@ -842,7 +842,7 @@ impl Ui {
     /// installed. Ask here to choose deterministically instead.
     #[inline]
     pub fn font_available(&self, family: FontFamily) -> bool {
-        self.resources.text.font_available(family)
+        self.resources.text().font_available(family)
     }
 
     /// Every family the shaper's database knows, system fonts included —
@@ -851,7 +851,7 @@ impl Ui {
     /// Cold: it walks every face and interns every name it has not seen.
     #[inline]
     pub fn font_families(&self) -> Vec<FontFamily> {
-        self.resources.text.font_families()
+        self.resources.text().font_families()
     }
 
     /// The largest width or height [`Self::register_image`] accepts — the
@@ -866,7 +866,7 @@ impl Ui {
     /// biggest texture a machine will take has to ask first.
     #[inline]
     pub fn max_image_dimension(&self) -> Option<NonZeroU32> {
-        self.resources.texture_limit.max_dimension()
+        self.resources.texture_limit().max_dimension()
     }
 
     /// A handle on the app-global clipboard.
@@ -878,7 +878,7 @@ impl Ui {
     /// so the clone is a refcount bump.
     #[inline]
     pub(crate) fn clipboard(&self) -> Clipboard {
-        self.resources.clipboard.clone()
+        self.resources.clipboard().clone()
     }
 
     /// Record a `GpuView` for widget `id`: refresh its row in
@@ -895,7 +895,7 @@ impl Ui {
         let frame = self.frame_runtime.render_frame_id;
         let epoch = self
             .gpu_views
-            .record(id, paint, repaint, frame, &self.resources.texture_ids);
+            .record(id, paint, repaint, frame, self.resources.texture_ids());
         self.forest.add_gpu_view(epoch);
     }
 
@@ -1056,7 +1056,6 @@ impl Ui {
         self.forest.open_node(id, node, chrome);
     }
 
-    /// Close the node [`Self::open_node`] opened.
     #[inline]
     pub(crate) fn close_node(&mut self) {
         self.forest.close_node();
@@ -1072,7 +1071,6 @@ impl Ui {
         self.forest.push_grid_def(rows, cols)
     }
 
-    /// [`Self::push_grid_def`] for a scroll's bar overlay.
     #[inline]
     pub(crate) fn push_scrollbars_def(&mut self, def: ScrollbarsDef) -> ScrollbarsDefId {
         self.forest.push_scrollbars_def(def)
@@ -1285,7 +1283,7 @@ impl Ui {
     /// window.
     #[inline]
     pub fn user_scale(&self) -> UserScale {
-        self.resources.user_scale.get()
+        self.resources.user_scale().get()
     }
 
     /// Scale the whole UI by `scale` on top of the platform's own factor.
@@ -1324,7 +1322,7 @@ impl Ui {
     /// lives.
     #[inline]
     pub fn set_user_scale(&mut self, scale: UserScale) {
-        self.resources.user_scale.set(scale);
+        self.resources.user_scale().set(scale);
     }
 
     /// This frame's monotonic index, counting the frames authoring code
@@ -1385,7 +1383,7 @@ impl Ui {
     /// unchanged text is a lookup, not a reshape.
     #[inline]
     pub fn probe_text<'a>(&'a mut self, run: TextRun<'a>) -> TextProbe<'a> {
-        self.resources.text.layout(&run)
+        self.resources.text().layout(&run)
     }
 
     /// Every edge the pointer produced this frame, widget by widget.
@@ -1702,7 +1700,7 @@ pub(crate) mod internals {
         /// test asks for, and all it gets: the cache-population and
         /// measure-count probes the text suites assert on.
         pub(crate) fn shaper(&self) -> &TextShaper {
-            &self.resources.text
+            self.resources.text()
         }
 
         pub(crate) fn frame_runtime(&self) -> &FrameRuntime {

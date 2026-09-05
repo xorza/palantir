@@ -1,13 +1,13 @@
 //! The `Ui` a test drives, and the frames it records into.
 
 use crate::Ui;
-use crate::host::shared::HostShared;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::RgbaF32, rect::Rect};
 use crate::scene::node::configure::Configure;
 use crate::scene::tree::node_id::NodeId;
 use crate::ui::harness::UiHarness;
+use crate::ui::resources::UiResources;
 use crate::widgets::frame::Frame;
 use glam::UVec2;
 use std::time::Duration;
@@ -15,11 +15,11 @@ use std::time::Duration;
 pub(super) const SURFACE: UVec2 = UVec2::new(200, 200);
 
 pub(super) fn measure_calls(ui: &Ui) -> u64 {
-    ui.resources.text.measure_calls()
+    ui.resources.text().measure_calls()
 }
 
-pub(super) fn ui_with_shared(shared: &HostShared) -> UiHarness {
-    UiHarness::from_resources(shared.resources.clone(), SURFACE)
+pub(super) fn ui_with_shared(shared: &UiResources) -> UiHarness {
+    UiHarness::from_resources(shared.clone(), SURFACE)
 }
 
 pub(super) fn blue_frame(ui: &mut Ui, salt: &'static str) -> NodeId {

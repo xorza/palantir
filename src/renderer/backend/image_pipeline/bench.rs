@@ -25,7 +25,7 @@ use crate::host::bench_gpu::{BenchGpu, Timing};
 use crate::host::offscreen::OffscreenHost;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::image::{Image, ImageDownsample, ImageFilter, ImageFit};
-use crate::renderer::image_registry::ImageHandle;
+use crate::renderer::image_registry::image_handle::ImageHandle;
 use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::widgets::panel::Panel;
@@ -133,12 +133,10 @@ fn texels(edge: u32) -> Vec<u8> {
 }
 
 fn record(ui: &mut Ui, handle: &mut Option<ImageHandle>, workload: Workload, phase: bool) {
-    // One `Fixture` per workload, so this registers that workload's own source
-    // edge on its first frame and reuses it after.
     let edge = workload.texel();
     let image = handle
         .get_or_insert_with(|| {
-            ui.register_image(Image::from_rgba8(edge, edge, texels(edge)))
+            ui.register_image(&Image::from_rgba8(edge, edge, texels(edge)))
                 .expect("benchmark image fits every supported GPU")
         })
         .clone();

@@ -232,11 +232,8 @@ pub use frame_fixture::FrameFixture;
 #[cfg(feature = "internals")]
 pub use frame_fixture::{BENCH_DPR, BENCH_SCALE, BENCH_SURFACE};
 pub use host::clock::{Clock, FixedClock, RealtimeClock};
-/// What to ask an adapter for so the device it returns can run Palantir.
 pub use host::device_requirements::DeviceRequirements;
 pub use host::error::{GpuRequestError, UnmetRequirements};
-/// An adapter and the device opened on it. `RequestedGpu::headless` is the
-/// short way to one when there is no window to get it from.
 pub use host::gpu_request::RequestedGpu;
 /// The headless render-to-texture host — the offscreen peer of
 /// [`WinitHost`]. Renders a `Ui` to a caller-supplied `wgpu::Texture`
@@ -291,12 +288,17 @@ pub use primitives::brush::gradient::{Gradient, GradientGeometry, Interp, Spread
 pub use primitives::brush::{Brush, CurveBrush};
 pub use primitives::color::RgbaF32;
 pub use primitives::color::RgbaU8;
+pub use primitives::color::color_coords::ColorCoords;
+pub use primitives::color::color_model::{ColorModel, HueSlice};
+pub use primitives::color::hsv::Hsv;
+pub use primitives::color::okhsv::{Okhsv, OkhsvSlice};
 pub use primitives::color::srgba_u8::SrgbaU8;
 pub use primitives::content_type::ContentType;
 pub use primitives::corners::Corners;
 pub use primitives::image::{Image, ImageDownsample, ImageFilter, ImageFit};
 pub use primitives::interned_str::InternedStr;
 pub use primitives::mesh::{Mesh, MeshVertex};
+pub use primitives::num::F32Ext;
 pub use primitives::raster_image::RasterImage;
 pub use primitives::rect::Rect;
 pub use primitives::shadow::Shadow;
@@ -325,7 +327,7 @@ pub use primitives::widget_id::WidgetId;
 pub use renderer::gpu_paint::GpuPaint;
 pub use renderer::gpu_paint::gpu_frame_ctx::GpuFrameCtx;
 pub use renderer::gpu_paint::gpu_init_ctx::GpuInitCtx;
-pub use renderer::image_registry::ImageHandle;
+pub use renderer::image_registry::image_handle::ImageHandle;
 pub use renderer::texture_limit::RegisterImageError;
 /// The bound on [`Ui::add_shape`] — sealed, so it names the shape kinds
 /// the crate ships and nothing else.
@@ -364,6 +366,11 @@ pub use ui::layer_scope::LayerScope;
 pub use widgets::button::Button;
 pub use widgets::checkbox::Checkbox;
 pub use widgets::close_handle::CloseHandle;
+pub use widgets::color_button::ColorButton;
+pub use widgets::color_field::ColorField;
+pub use widgets::color_picker::ColorPicker;
+pub use widgets::color_strip::ColorStrip;
+pub use widgets::color_swatch::ColorSwatch;
 pub use widgets::combo_box::ComboBox;
 pub use widgets::context_menu::ContextMenu;
 pub use widgets::context_menu::menu_item::MenuItem;
@@ -408,6 +415,7 @@ pub use widgets::text::Text;
 pub use widgets::text_edit::{TextEdit, TextEditResponse};
 pub use widgets::theme::Theme;
 pub use widgets::theme::button::ButtonTheme;
+pub use widgets::theme::color_picker::ColorPickerTheme;
 pub use widgets::theme::combo_box::ComboBoxTheme;
 pub use widgets::theme::context_menu::ContextMenuTheme;
 pub use widgets::theme::context_menu::menu_item::MenuItemTheme;

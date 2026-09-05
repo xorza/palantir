@@ -25,7 +25,7 @@
 //! keys target retention on, so an unchanged view culled out of a frame keeps
 //! its texture. The store is swept by the same `removed` set as every other
 //! per-widget cache; the backend then frees the orphaned texture (see
-//! `ImageTextures::paint_gpu_views`).
+//! `GpuViewTargets::paint_gpu_views`).
 
 pub(crate) mod gpu_frame_ctx;
 pub(crate) mod gpu_init_ctx;
