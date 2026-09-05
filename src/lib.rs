@@ -61,7 +61,8 @@
 //!
 //! | flag | default | what it does |
 //! | --- | --- | --- |
-//! | `winit` | yes | The winit-backed [`WinitHost`] — real windows, a real event loop, and [`TextEdit`] cut/copy/paste through the OS clipboard. Without it only [`OffscreenHost`] exists, and clipboard traffic stays in an in-process buffer. |
+//! | `winit` | yes | The winit-backed [`WinitHost`] — real windows and a real event loop. Without it only [`OffscreenHost`] exists. Implies `system-clipboard`. |
+//! | `system-clipboard` | via `winit` | Backs [`Clipboard`] with the OS clipboard, which is what [`TextEdit`]'s cut/copy/paste reaches. [`WinitHost`] always uses it; [`OffscreenHost`] asks through [`OffscreenHostBuilder::system_clipboard`]. Without it every host runs on an in-process buffer. |
 //! | `showcase` | no | Builds the bundled `showcase` binary, a tour of every widget. |
 //! | `gpu-debug-markers` | no | Emits GPU debug groups around every draw step for RenderDoc / Xcode captures. Costs two recorded commands and a label copy per step even with no capture tool attached, so it is off unless you intend to capture. |
 //! | `profile-with-tracy` | no | Opens a Tracy zone over each frame pass, and marks a frame set per window. Needs the external Tracy viewer. |

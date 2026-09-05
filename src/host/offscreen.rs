@@ -76,6 +76,12 @@ pub struct OffscreenHostBuilder {
     /// defaults here instead is what let the two drift.
     clock: Option<Box<dyn Clock>>,
     pixel_snap: bool,
+    /// Off by default. An offscreen host is as often a thumbnailer or a
+    /// server-side compositor as it is an application, and neither should
+    /// reach for the desktop's clipboard because it happened to record a
+    /// `TextEdit`.
+    #[cfg(feature = "system-clipboard")]
+    system_clipboard: bool,
 }
 
 impl OffscreenHostBuilder {
@@ -113,6 +119,37 @@ impl OffscreenHostBuilder {
         self
     }
 
+    /// Back this host's [`Clipboard`](crate::Clipboard) with the OS
+    /// clipboard instead of the in-process buffer.
+    ///
+    /// Off by default, and deliberately: a thumbnailer or a server-side
+    /// compositor renders text fields it never intends to let the user
+    /// cut from, and reaching for the desktop's clipboard on their behalf
+    /// is a side effect nobody asked for. An offscreen *application* —
+    /// one whose frames a person actually looks at — turns it on.
+    ///
+    /// The in-process buffer stays underneath either way, so a system
+    /// backend that refuses a write does not lose the copy. See
+    /// [`Ui::clipboard`](crate::Ui::clipboard).
+    #[cfg(feature = "system-clipboard")]
+    pub fn system_clipboard(mut self, system: bool) -> Self {
+        self.system_clipboard = system;
+        self
+    }
+
+    /// The clipboard [`Self::build`] hands the core.
+    ///
+    /// Split out because which backend it is depends on a feature as well
+    /// as on the flag, and `build` should read as the wiring it is rather
+    /// than carry a `cfg` in the middle of an argument list.
+    fn clipboard(&self) -> Clipboard {
+        #[cfg(feature = "system-clipboard")]
+        if self.system_clipboard {
+            return Clipboard::system_or_memory();
+        }
+        Clipboard::memory()
+    }
+
     /// Allocate the shared core and the window driver from the sealed
     /// settings.
     ///
@@ -130,12 +167,13 @@ impl OffscreenHostBuilder {
             panic!("offscreen host device cannot run Palantir: {unmet}");
         }
         let max_texture_dim = DeviceRequirements::max_texture_dim(&self.device);
+        let clipboard = self.clipboard();
         let core = HostCore::new(
             self.device,
             self.queue,
             max_texture_dim,
             self.shaper.unwrap_or_default(),
-            Clipboard::memory(),
+            clipboard,
             HostCoreConfig {
                 collect_gpu_stats: self.collect_gpu_stats,
                 pixel_snap: self.pixel_snap,
@@ -173,6 +211,8 @@ impl OffscreenHost {
             collect_gpu_stats: false,
             clock: None,
             pixel_snap: true,
+            #[cfg(feature = "system-clipboard")]
+            system_clipboard: false,
         }
     }
 

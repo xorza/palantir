@@ -862,16 +862,21 @@ impl Ui {
     ///
     /// # What is behind it
     ///
-    /// With the `winit` feature, the OS clipboard, plus an in-process
-    /// fallback that takes over when the system backend refuses a write.
-    /// A copy is therefore never silently lost, and a paste after such a
-    /// refusal returns the last text the user actually copied rather than
-    /// stale system content.
+    /// The OS clipboard, plus an in-process fallback that takes over when
+    /// the system backend refuses a write. A copy is therefore never
+    /// silently lost, and a paste after such a refusal returns the last
+    /// text the user actually copied rather than stale system content.
     ///
-    /// Without `winit` — and on [`OffscreenHost`](crate::OffscreenHost)
-    /// either way — the in-process buffer is all there is.
-    /// [`Clipboard::set_text`] then [`Clipboard::text`] round-trips, and
-    /// nothing reaches the OS.
+    /// [`WinitHost`](crate::WinitHost) always reaches for the OS
+    /// clipboard. [`OffscreenHost`](crate::OffscreenHost) does not until
+    /// asked, through
+    /// [`OffscreenHostBuilder::system_clipboard`](crate::OffscreenHostBuilder::system_clipboard),
+    /// because a thumbnailer should not touch the desktop's clipboard on
+    /// its caller's behalf.
+    ///
+    /// Without the `system-clipboard` feature the in-process buffer is
+    /// all there is. [`Clipboard::set_text`] then [`Clipboard::text`]
+    /// round-trips, and nothing reaches the OS.
     ///
     /// On Linux the copied text is served by the running process, so it
     /// goes when the app exits unless a desktop clipboard manager took a
