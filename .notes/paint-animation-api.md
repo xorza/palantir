@@ -3,7 +3,8 @@
 Design proposal for gap **G2** in `widget-public-api.md`, widened by the ask:
 let a user write their **own** paint animation, not pick from a menu of two.
 
-Nothing here is committed.
+**The renderer half has shipped** — see *What exists today*. What is left is
+the authoring form, and none of it is committed.
 
 ## What exists today
 
@@ -22,25 +23,25 @@ pub(crate) enum PaintAnim {
 pub(crate) struct PaintMod { alpha: f32, rotation: f32 }
 ```
 
-### Two surprises worth stating before designing anything
+Both are still `pub(crate)`, and the enum is still closed — that is the gap.
 
-**`alpha` is not a multiplier.** The encoder reads it as a gate:
+### What the channels can do
 
-```rust
-let paint_mod = self.paint_anim_cursor.sample(shape_idx, self.now);
-if noop_f32(paint_mod.alpha) { return; }        // layer_ctx.rs:127
-```
+**`alpha` is a real multiplier**, on every shape kind. `PaintSink`'s `draw_*`
+gates each take it as a parameter and fold it into whichever lane that payload
+carries its colour in: a solid `GpuFill`, a stroke, a text colour, an icon,
+mesh or image tint. A gradient's colour lane is unread — the atlas row supplies
+the colour — so that lane *is* the multiplier, and `quad.wgsl` and `curve.wgsl`
+apply it in their gradient branches. A polyline carries an `alpha: u8` lane the
+composer folds into each curve instance, because its colours are a span in the
+record store it only points at.
 
-Nothing multiplies it into the brush. `BlinkOpacity` only ever answers `0.0` or
-`1.0`, and the code comment says fractional alpha "arrives with a future
-`Pulse` variant". So today the channel is *hide or show*, not *fade*.
+Nothing produces a fractional value yet. `BlinkOpacity` still answers `0.0` or
+`1.0`, so the capability is live and unused until the authoring form lands.
 
 **`rotation` reaches three shape kinds.** It is consumed only where a
 `StrokeBounds` is built — the polyline, curve and arc arms. A quad, an image or
 a text run cannot be spun.
-
-So the honest description of the current capability is: **hide or show any
-shape, and spin a stroked one.**
 
 ### The four places a paint animation is read
 
@@ -49,37 +50,26 @@ shape, and spin a stroked one.**
 | cascade `paint_rect.rs:100` | `anims.rotates(shape_idx)` | whether the damage bound is the recorded bbox or the swept square |
 | damage `damage/mod.rs:437` | `anim.next_wake(prev)` | whether this shape's rect is re-damaged this frame |
 | `post_record` `forest.rs:192` | `anim.next_wake(now)` | when the host is woken next |
-| encoder `layer_ctx.rs:127` | `cursor.sample(shape_idx, now)` | the value |
+| encoder `layer_ctx.rs:128` | `cursor.sample(shape_idx, now)` | the value |
 
 Only the last one is the animation's *output*. The other three are the
 framework asking questions it must answer correctly **or paint outside the
 region it cleared**. Hold on to that — it decides the design.
 
-## The ask splits in two
-
-1. **What can be animated?** The channel vocabulary. Two channels today, one
-   of them binary, one of them limited to stroked shapes.
-2. **Who computes the value?** A closed enum today.
-
-A design that answers only (2) ships "custom animations" that can blink and
-spin. That is not the feature.
-
-## Question 1 — the channels
+## The channels that are still missing
 
 | channel | cost | verdict |
 |---|---|---|
-| **alpha, fractional** | Mostly an encoder-side multiply: a solid quad fill, a text run and an image all carry a per-draw colour lane already (`GpuFill.color`, `DrawTextPayload::color`, `DrawImagePayload::tint`), so the encoder scales the alpha before the payload is built and no shader changes. Only a **gradient** fill needs shader work, and only in the two pipelines that resolve one (`quad.wgsl`, `curve.wgsl`) — where `GpuFill.color` is zeroed because the atlas row carries the colour, so that lane is free to become the multiplier. The mesh path was not checked. | **Do it.** This is what unlocks fade, pulse and breathe — most of what "custom animation" means in a UI. |
 | **rotation on quads / text / images** | The quad pipeline draws axis-aligned rects; a rotation means a real transform through the vertex path. | Defer. Large, and the stroked case already covers spinners. |
 | **translation** | The cascade would need the *swept union over the path*, which it cannot compute without sampling — and it deliberately answers `rotates()` without a `now`. A rotation is cheap because the swept cover is the same square at every angle. A translation has no such shortcut. | Defer. This is the expensive one, and it needs a design of its own. |
 | **scale** | Same bound problem as translation. | Defer. |
 | **colour tint** | Folds like alpha, but wants three more lanes rather than one free one. | Defer until asked. |
 
-**Recommendation: make `alpha` a real multiplier, and ship the open authoring
-form on top of the two channels there are.** Everything past that is a renderer
-change, not an API change, and each can arrive later without breaking the
-surface.
+Alpha and rotation are enough to ship the authoring form on. Everything here is
+a renderer change, not an API change, and each can arrive later without
+breaking the surface.
 
-## Question 2 — the authoring form
+## The authoring form
 
 ### Option A — a richer closed enum
 
@@ -204,53 +194,24 @@ PaintAnim::turn(0.0, 1.0)
 
 ## Where the entry point goes
 
-**On `Ui`, not on `Shape`.** My earlier note suggested `Shape::blink(..)` /
-`Shape::spin(..)` builders. That was wrong once the animation became a value:
+**On `Ui`, not on `Shape`.** An earlier sketch suggested `Shape::blink(..)` /
+`Shape::spin(..)` builders. That is wrong once the animation is a value:
 carrying an `Option<PaintAnim>` on every shape grows `ShapeRecord`, which is
 pinned at 88 bytes by `hot_struct_sizes.rs` and paid per recorded shape per
 frame. The animation belongs beside the shape, not inside it, so
 `Ui::add_shape_animated(shape, anim)` becomes `pub` as it stands.
 
-## What it costs
+## What is left
 
 | piece | size |
 |---|---|
-| **stage one — fractional alpha** | see the breakdown below |
 | `PaintChannel` / `PaintTiming` / `PaintRepeat` / `PaintSteps` / `PaintCurve` and the builder | a day |
 | rewrite `BlinkOpacity` and `Spin` as uses of it, delete the enum | half a day — the existing tests in `paint_anims/tests.rs` pin the behaviour and should survive unchanged |
-| publish the four types, `curves`, and `Ui::add_shape_animated` | documentation |
+| publish the five types, `curves`, and `Ui::add_shape_animated` | documentation |
 
-Staged: fractional alpha first, standing on its own with the existing enum,
-because it is the renderer half and it is what the feature is worth. The
-authoring form second.
-
-### Stage one, in detail
-
-**Encoder only, no shader.** Every one of these already carries the colour in
-its payload, so the encoder scales the `RgbaF16` alpha on the way in:
-
-| payload | lane |
-|---|---|
-| `DrawTextPayload` | `color` |
-| `DrawImagePayload` | `tint` |
-| `DrawIconPayload` | `tint` |
-| `DrawMeshPayload` | `tint` |
-| `DrawQuadPayload` | `fill` (solid), `stroke` |
-| `DrawCurvePayload` | `fill` (solid) |
-
-**Shader, two files.** A gradient fill takes its colour from the atlas row, and
-a polyline takes its vertex colours from a span in the record store — neither
-is in the payload to scale. Both get the same one-line multiply:
-
-- `quad.wgsl`, gradient branch. `GpuFill.color` is zeroed for a gradient, so
-  that lane is free to carry the multiplier.
-- `curve.wgsl`, gradient branch and the polyline colour read. `DrawPolylinePayload`
-  gains one `alpha: f32` lane, because its colours are a span it does not own.
-
-**Provably inert for existing content.** Every scene in the visual suite paints
-at alpha 1, so the whole change must leave the golden images byte-identical.
-The suite is the test.
-
+The first fractional alpha anyone can produce arrives with this, so it is also
+what makes the renderer half observable. A visual test that fades a gradient
+and a solid at the same alpha is the check that stage one was right.
 
 ## What it does not cover
 
@@ -266,10 +227,8 @@ The suite is the test.
 
 ## Decisions
 
-1. **Fractional alpha ships first**, standing on its own with the existing
-   enum. Without it the first custom animation anyone writes can only blink.
-2. **One animation drives both channels under one curve.** `PaintChannel`
+1. **One animation drives both channels under one curve.** `PaintChannel`
    carries `alpha` and `turn` as independent `Option<(f32, f32)>` ranges, so
    fade-and-spin together works and the entry stays `Copy` and flat.
-3. `curves` ships as a module of free `fn`s. A curve is a function value and
+2. `curves` ships as a module of free `fn`s. A curve is a function value and
    has nowhere else to sit.
