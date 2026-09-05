@@ -52,14 +52,18 @@ fn arena_interns_without_ever_recording() {
 
 #[test]
 fn from_resources_pairs_two_harnesses_onto_one_text_cache() {
-    let shared = HostShared::new(TextShaper::new(), TextureLimit::default());
-    let mut first = UiHarness::from_resources(shared.resources().clone(), SURFACE);
-    let second = UiHarness::from_resources(shared.resources().clone(), SURFACE);
+    let shared = UiResources::new(
+        TextShaper::new(),
+        Clipboard::default(),
+        TextureLimit::default(),
+    );
+    let mut first = UiHarness::from_resources(shared.clone(), SURFACE);
+    let second = UiHarness::from_resources(shared.clone(), SURFACE);
 
     first.set_clipboard_text("shared");
     assert_eq!(
         second.clipboard_text(),
         "shared",
-        "one HostShared, one clipboard",
+        "one UiResources, one clipboard",
     );
 }

@@ -1,6 +1,6 @@
 //! [`OffscreenHost`] — the headless peer of
 //! [`WinitHost`](crate::WinitHost). Both build on the same [`HostCore`]: one
-//! [`HostShared`](crate::host::shared::HostShared), one
+//! [`UiResources`](crate::ui::resources::UiResources), one
 //! [`Frontend`](crate::renderer::frontend::Frontend), one
 //! [`WgpuBackend`](crate::renderer::backend::WgpuBackend), and one
 //! [`WindowDriver`]. Unlike `WinitHost` there's no winit and no swapchain —
@@ -72,7 +72,7 @@ pub struct OffscreenHostBuilder {
     /// `None` leaves the driver's own default standing — see
     /// [`WindowDriver::builder`](crate::host::window_driver::WindowDriver).
     /// Held rather than applied, because the driver builder wants a
-    /// `HostShared` that does not exist until [`Self::build`]; restating the
+    /// `UiResources` that does not exist until [`Self::build`]; restating the
     /// defaults here instead is what let the two drift.
     clock: Option<Box<dyn Clock>>,
     pixel_snap: bool,
@@ -227,7 +227,7 @@ impl OffscreenHost {
     /// Cloneable handle to the most-recent GPU instrumentation sample —
     /// same handle the `Ui` debug overlay reads from.
     pub fn gpu_pass_stats(&self) -> &GpuPassStats {
-        &self.core.shared.resources().diagnostics().gpu_pass_stats
+        &self.core.resources.diagnostics().gpu_pass_stats
     }
 }
 
