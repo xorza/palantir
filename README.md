@@ -167,7 +167,7 @@ or, by hand:
 
 ```toml
 [dependencies]
-palantir = "0.3"
+palantir = "0.4"
 ```
 
 To track unreleased work, depend on the repository directly — `master` moves
