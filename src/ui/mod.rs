@@ -46,7 +46,6 @@ use crate::input::watch::{KeyboardWake, PointerWake};
 use crate::layout::Layout;
 use crate::layout::scrollbars::ScrollbarsDef;
 use crate::layout::types::layout_mode::{GridDefId, ScrollbarsDefId};
-use crate::layout::types::sizing::Sizes;
 use crate::layout::types::track::Track;
 use crate::primitives::background::Background;
 use crate::primitives::image::Image;
@@ -82,9 +81,7 @@ use crate::ui::frame_stamp::FrameInput;
 use crate::ui::layer_scope::LayerScope;
 use crate::ui::resources::UiResources;
 use crate::ui::state::StateMap;
-use crate::widgets::configure::Configure;
 use crate::widgets::theme::Theme;
-use crate::widgets::widget::Widget;
 use crate::window::cursor_icon::CursorIcon;
 use crate::window::vsync::Vsync;
 use crate::window::window_commands::WindowCommands;
@@ -333,28 +330,6 @@ impl Ui {
     #[inline]
     pub fn keyboard_events(&self) -> &[KeyPress] {
         self.input.keyboard_events(self.forest.current_layer())
-    }
-
-    /// Walk this frame's [`Self::keyboard_events`], handing each to
-    /// `visit` with `&mut Ui` free for the duration.
-    ///
-    /// **Indexed rather than iterated, and that is the whole point.** A
-    /// handler for a key almost always needs the `Ui` back — a text probe
-    /// for vertical caret motion, a clipboard read for paste — and an
-    /// iterator over the queue would hold a borrow of `Ui` across every
-    /// one of those calls. Taking one event at a time by index keeps that
-    /// borrow to the read itself, without a scratch `Vec` standing between
-    /// the queue and the handler.
-    ///
-    /// The queue does not change during a record pass, so the length is
-    /// read once and the walk is exactly the frame's events, in arrival
-    /// order.
-    pub(crate) fn each_keyboard_event(&mut self, mut visit: impl FnMut(&mut Self, KeyPress)) {
-        let n = self.keyboard_events().len();
-        for i in 0..n {
-            let event = self.keyboard_events()[i];
-            visit(self, event);
-        }
     }
 
     /// `true` if any press this frame matches
@@ -982,29 +957,11 @@ impl Ui {
     /// Resolve a widget's identity recipe against the currently-open
     /// parent into the id it records under. [`Widget::resolve`] is the
     /// one caller, and it keeps the answer on the widget.
+    ///
+    /// [`Widget::resolve`]: crate::Widget::resolve
     #[inline]
     pub(crate) fn resolve_ident(&mut self, ident: Ident) -> WidgetId {
         self.forest.widget_id(ident)
-    }
-
-    /// Record a chrome-only leaf: a sized child that paints `bg` and
-    /// holds nothing.
-    ///
-    /// The shape every rail / fill / knob segment takes — a `Slider`'s
-    /// three and a `ProgressBar`'s two. Widgets whose leaf carries more
-    /// than a size and a background build the node themselves: a `Switch`
-    /// knob adds a `position`, a `Scroll` track/thumb a `Sense` (and no
-    /// size at all — its driver assigns the rects), a `Splitter` bar a
-    /// margin and a grid cell, a `ComboBox` arrow a shape body. Threading
-    /// those through here would cost more parameters than the sharing
-    /// saves.
-    pub(crate) fn chrome_leaf(
-        &mut self,
-        id: WidgetId,
-        size: impl Into<Sizes>,
-        bg: Option<&Background>,
-    ) {
-        Widget::leaf().id(id).size(size).record(self, bg, |_| {});
     }
 
     /// Open `node` under `id`, painting `chrome` behind it. Pairs with
@@ -1014,6 +971,8 @@ impl Ui {
     /// widget in the crate reaches the tree, and `FrameCycle`'s synthetic
     /// `Layer::Main` viewport, which has no `Widget` to record through.
     /// Widget code calls `Widget::record`, never this.
+    ///
+    /// [`Widget::record`]: crate::Widget::record
     #[inline]
     pub(crate) fn open_node(&mut self, id: WidgetId, node: &Node, chrome: Option<&Background>) {
         self.forest.open_node(id, node, chrome);
@@ -1029,6 +988,8 @@ impl Ui {
     /// which is the whole reason it is on `Ui`: a widget that becomes a
     /// grid references a definition the tree owns, and should not have to
     /// name the tree to do it.
+    ///
+    /// [`Widget::grid_tracks`]: crate::Widget::grid_tracks
     #[inline]
     pub(crate) fn push_grid_def(&mut self, rows: &[Track], cols: &[Track]) -> GridDefId {
         self.forest.push_grid_def(rows, cols)

@@ -72,7 +72,7 @@ impl MinMax for f64 {
 
 #[cfg(test)]
 mod tests {
-    use crate::primitives::limits::Limits;
+    use crate::widgets::drag_num::limits::Limits;
 
     /// A reversed pair means the same range as the ordered one, and both
     /// clamp identically at the ends and inside.

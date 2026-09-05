@@ -95,7 +95,6 @@ macro_rules! f16x4_lanes {
 
 pub mod approx;
 pub(crate) mod arc;
-pub(crate) mod arrow;
 pub(crate) mod background;
 pub(crate) mod bezier;
 pub(crate) mod brush;
@@ -107,7 +106,6 @@ pub(crate) mod half_simd;
 pub(crate) mod image;
 pub(crate) mod interned_str;
 pub(crate) mod interned_text;
-pub(crate) mod limits;
 pub(crate) mod lut_row;
 pub(crate) mod mesh;
 pub(crate) mod nan;

@@ -62,10 +62,16 @@ impl<'a> ProgressBar<'a> {
         let id = widget.resolve(ui);
         widget
             .show(ui, Some(&track), |ui| {
-                ui.chrome_leaf(id.with("fill"), (fill, Sizing::FILL), Some(&fill_bg));
+                Widget::leaf()
+                    .id(id.with("fill"))
+                    .size((fill, Sizing::FILL))
+                    .record(ui, Some(&fill_bg), |_| {});
                 // Remainder spacer — its `Fill` weight pushes the fill to the
                 // correct fraction of the track width.
-                ui.chrome_leaf(id.with("rest"), (spacer, Sizing::FILL), None);
+                Widget::leaf()
+                    .id(id.with("rest"))
+                    .size((spacer, Sizing::FILL))
+                    .record(ui, None, |_| {});
             })
             .response
     }

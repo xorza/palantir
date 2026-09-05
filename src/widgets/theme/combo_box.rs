@@ -1,7 +1,7 @@
 //! A combo box's geometry. Its colours come from the button and popup
 //! themes it is assembled out of, which is why they are not here.
 
-use crate::primitives::arrow::Arrow;
+use crate::widgets::arrow::Arrow;
 use crate::widgets::theme::palette::Palette;
 use glam::Vec2;
 

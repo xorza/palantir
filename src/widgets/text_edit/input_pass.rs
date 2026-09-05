@@ -170,22 +170,24 @@ impl InputPass<'_> {
 
         // Drain this frame's presses in arrival order: shared edit actions
         // first (clipboard / undo), then `apply_key` (edit / nav).
-        // Vertical-nav probes happen inline because they need a text probe,
-        // which is what `Ui`'s walk keeps the borrow free for.
-        ui.each_keyboard_event(|ui, press| {
+        // Walked by index because the vertical and line-edge outcomes probe
+        // the text inline, and iterating the queue would hold a borrow of
+        // `ui` across every one of those probes.
+        for i in 0..ui.keyboard_events().len() {
+            let press = ui.keyboard_events()[i];
             let Some(kp) = filter.accepts(press) else {
-                return;
+                continue;
             };
             // Single-line Enter is a *submit* signal, not an edit: the buffer
             // is left untouched (multi-line handles `\n` in `apply_key`), but
             // the caller learns the user accepted the value.
             if !ed.multiline() && kp.key == Key::Enter && !kp.mods.any_command() {
                 submitted = true;
-                return;
+                continue;
             }
             if let Some(action) = EditAction::from_keypress(kp) {
                 action.execute(&mut ed, &clipboard);
-                return;
+                continue;
             }
             match apply_key(&mut ed, kp) {
                 KeyOutcome::Blur => cancelled = true,
@@ -197,7 +199,7 @@ impl InputPass<'_> {
                 }
                 KeyOutcome::None => {}
             }
-        });
+        }
 
         ed.normalize();
         InputResult {

@@ -1,27 +1,36 @@
-//! Compile-time platform tag. Use `PLATFORM` (an enum) instead of
-//! `cfg!(target_os = "...")` / `#[cfg(target_os = "...")]` at sites
-//! that just need a three-way branch. Const-evaluable, so it works
-//! inside `const fn` bodies.
+//! Compile-time platform tag.
 
+/// The host family the crate was compiled for.
+///
+/// Published because platform conventions are a widget's business, not
+/// only the framework's: which modifier starts word navigation, which
+/// chord submits, which corner a menu prefers. A widget outside this
+/// crate branches on the same three cases the bundled ones do, and
+/// reads them from [`PLATFORM`] rather than restating the `cfg`
+/// spelling at every site.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub(crate) enum Platform {
-    // `PLATFORM` is cfg-selected, so a build constructs exactly one of these and
-    // matches against the rest. Each variant carries its own gate rather than the
-    // enum a blanket one, so a variant that goes dead on the target it names still
-    // gets reported.
-    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub enum Platform {
     Mac,
-    #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
     Win,
-    #[cfg_attr(any(target_os = "macos", target_os = "windows"), allow(dead_code))]
     Linux,
 }
 
-#[cfg(target_os = "macos")]
-pub(crate) const PLATFORM: Platform = Platform::Mac;
-
-#[cfg(target_os = "windows")]
-pub(crate) const PLATFORM: Platform = Platform::Win;
-
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-pub(crate) const PLATFORM: Platform = Platform::Linux;
+/// The platform this build targets. Prefer it to
+/// `cfg!(target_os = "...")` wherever a three-way branch is what the
+/// site wants. Const-evaluable, so it works inside a `const fn` body.
+/// Everything that is neither macOS nor Windows reads as
+/// [`Platform::Linux`].
+pub const PLATFORM: Platform = {
+    #[cfg(target_os = "macos")]
+    {
+        Platform::Mac
+    }
+    #[cfg(target_os = "windows")]
+    {
+        Platform::Win
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        Platform::Linux
+    }
+};
