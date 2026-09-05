@@ -120,8 +120,6 @@ Pre-1.0 — these are known gaps, not design rejections:
 - **Accessibility** — no AccessKit / screen-reader support yet.
 - **Tab-key focus traversal** — focus exists (click-to-focus, programmatic
   `request_focus`), but `Tab` / `Shift+Tab` cycling does not.
-- **Virtualized list / table** — `Scroll` records all children; no
-  row-virtualized list or data table for large datasets.
 - **Rich text** — one family / size / colour per `Text`; no inline spans.
 - **RTL / bidirectional text** — right-to-left and mixed-direction scripts
   aren't supported yet.
@@ -155,13 +153,6 @@ either way. `-C target-cpu=x86-64-v3` implies it, plus AVX2 and FMA.
 
 ```sh
 cargo add palantir
-```
-
-or, by hand:
-
-```toml
-[dependencies]
-palantir = "0.4"
 ```
 
 To track unreleased work, depend on the repository directly — `master` moves
