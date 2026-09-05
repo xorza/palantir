@@ -32,6 +32,9 @@ exclude = [
 [package.metadata.docs.rs]
 all-features = false
 
+[workspace]
+members = ["anim-derive"]
+
 [lints.rust]
 missing_debug_implementations = "deny"
 unreachable_pub = "deny"
