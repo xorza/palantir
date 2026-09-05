@@ -361,8 +361,7 @@ impl<'a> TextEdit<'a> {
         let stroke_w = look.background.stroke.ring();
         let padding = Spacing::from_array(
             self.widget
-                .node
-                .padding
+                .authored_padding()
                 .unwrap()
                 .as_array()
                 .map(|v| v + stroke_w),

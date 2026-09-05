@@ -69,9 +69,9 @@ impl<'a> Editor<'a> {
         let clipboard = ui.clipboard();
         let mut clicked_action = None;
         ContextMenu::attach(ui, snapshot).show(ui, |ui, popup| {
-            ui.each_keyboard_event(|_, press| {
-                let Some(keypress) = filter.accepts(press) else {
-                    return;
+            for press in ui.keyboard_events() {
+                let Some(keypress) = filter.accepts(*press) else {
+                    continue;
                 };
                 if let Some(action) = EditAction::from_keypress(keypress) {
                     action.execute(self, &clipboard);
@@ -79,7 +79,7 @@ impl<'a> Editor<'a> {
                         popup.close();
                     }
                 }
-            });
+            }
 
             let has_selection = self.has_selection();
             let has_text = self.has_text();

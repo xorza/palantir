@@ -150,10 +150,19 @@ impl<'a> Slider<'a> {
         let [filled, remainder] = Sizing::split(fraction);
         self.widget.record(ui, None, |ui| {
             let track = Sizing::fixed(track_h);
-            ui.chrome_leaf(id.with("fill"), (filled, track), Some(&fill_bg));
+            Widget::leaf()
+                .id(id.with("fill"))
+                .size((filled, track))
+                .record(ui, Some(&fill_bg), |_| {});
             let knob = Sizing::fixed(knob);
-            ui.chrome_leaf(id.with("knob"), (knob, knob), Some(&knob_bg));
-            ui.chrome_leaf(id.with("track"), (remainder, track), Some(&track_bg));
+            Widget::leaf()
+                .id(id.with("knob"))
+                .size((knob, knob))
+                .record(ui, Some(&knob_bg), |_| {});
+            Widget::leaf()
+                .id(id.with("track"))
+                .size((remainder, track))
+                .record(ui, Some(&track_bg), |_| {});
         });
         ValueResponse {
             response: Response::eager(id, ui, response),

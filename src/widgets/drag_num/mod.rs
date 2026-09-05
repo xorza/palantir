@@ -1,6 +1,8 @@
 //! The numeric target a value widget writes through.
 
-use crate::primitives::limits::Limits;
+pub(crate) mod limits;
+
+use crate::widgets::drag_num::limits::Limits;
 
 /// The numeric target a value widget writes through: either an `i64` or
 /// an `f64`, borrowed mutably for the widget's lifetime. Build one

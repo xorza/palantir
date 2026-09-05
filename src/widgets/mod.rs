@@ -9,6 +9,7 @@
 //! is the same for every widget, so it is decided once here.
 #![allow(clippy::new_without_default)]
 
+pub(crate) mod arrow;
 pub(crate) mod axis_keys;
 pub(crate) mod button;
 pub(crate) mod checkbox;

@@ -214,6 +214,7 @@ pub use animation::anim_spec::AnimSpec;
 pub use animation::animatable::Animatable;
 pub use animation::easing::Easing;
 pub use app::App;
+pub use common::platform::{PLATFORM, Platform};
 pub use diagnostics::DebugOverlayConfig;
 pub use display::Display;
 /// The application's own scale factor, multiplied onto the one the
