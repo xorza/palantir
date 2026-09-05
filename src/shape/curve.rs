@@ -67,10 +67,17 @@ impl CurveShape {
     }
 }
 
-shape_setters!(CurveShape {
-    brush: CurveBrush => stroke.brush,
-    cap: LineCap => stroke.cap,
-});
+impl CurveShape {
+    pub fn brush(mut self, brush: impl Into<CurveBrush>) -> Self {
+        self.stroke.brush = brush.into();
+        self
+    }
+
+    pub fn cap(mut self, cap: impl Into<LineCap>) -> Self {
+        self.stroke.cap = cap.into();
+        self
+    }
+}
 
 impl sealed::LowerShape for CurveShape {
     fn is_noop(&self) -> bool {

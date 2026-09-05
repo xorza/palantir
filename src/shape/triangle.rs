@@ -36,11 +36,22 @@ impl TriangleShape {
     }
 }
 
-shape_setters!(TriangleShape {
-    fill: RgbaF32 => fill,
-    stroke: Stroke => stroke,
-    radius: f32 => radius,
-});
+impl TriangleShape {
+    pub fn fill(mut self, fill: impl Into<RgbaF32>) -> Self {
+        self.fill = fill.into();
+        self
+    }
+
+    pub fn stroke(mut self, stroke: impl Into<Stroke>) -> Self {
+        self.stroke = stroke.into();
+        self
+    }
+
+    pub fn radius(mut self, radius: impl Into<f32>) -> Self {
+        self.radius = radius.into();
+        self
+    }
+}
 
 #[inline]
 fn triangle_paint_empty(a: Vec2, b: Vec2, c: Vec2) -> bool {

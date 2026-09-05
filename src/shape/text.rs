@@ -68,14 +68,37 @@ impl TextShape {
         self
     }
 }
-shape_setters!(TextShape {
-    color: RgbaF32 => color,
-    wrap: TextWrap => wrap,
-    align: Align => align,
-    family: FontFamily => font.family,
-    weight: FontWeight => font.weight,
-    style: FontStyle => font.style,
-});
+impl TextShape {
+    pub fn color(mut self, color: impl Into<RgbaF32>) -> Self {
+        self.color = color.into();
+        self
+    }
+
+    pub fn wrap(mut self, wrap: impl Into<TextWrap>) -> Self {
+        self.wrap = wrap.into();
+        self
+    }
+
+    pub fn align(mut self, align: impl Into<Align>) -> Self {
+        self.align = align.into();
+        self
+    }
+
+    pub fn family(mut self, family: impl Into<FontFamily>) -> Self {
+        self.font.family = family.into();
+        self
+    }
+
+    pub fn weight(mut self, weight: impl Into<FontWeight>) -> Self {
+        self.font.weight = weight.into();
+        self
+    }
+
+    pub fn style(mut self, style: impl Into<FontStyle>) -> Self {
+        self.font.style = style.into();
+        self
+    }
+}
 
 impl sealed::LowerShape for TextShape {
     /// An unusable face shapes nothing, which is what the two public

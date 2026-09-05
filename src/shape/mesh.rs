@@ -28,15 +28,25 @@ impl<'a> MeshShape<'a> {
     }
 }
 
-local_rect_shape!(MeshShape<'_>, at);
+impl MeshShape<'_> {
+    /// Paint into `rect`, in owner-relative coords, instead of the
+    /// owner's whole arranged rect.
+    pub fn at(mut self, rect: impl Into<Rect>) -> Self {
+        self.local_rect = Some(rect.into());
+        self
+    }
 
-shape_setters!(MeshShape<'_> {
-    tint: RgbaF32 => tint,
-});
+    pub fn tint(mut self, tint: impl Into<RgbaF32>) -> Self {
+        self.tint = tint.into();
+        self
+    }
+}
 
 impl sealed::LowerShape for MeshShape<'_> {
     fn is_noop(&self) -> bool {
-        self.rect_is_noop() || self.tint.is_noop() || self.mesh.is_noop()
+        self.local_rect.is_some_and(Rect::is_paint_empty)
+            || self.tint.is_noop()
+            || self.mesh.is_noop()
     }
 
     /// The vertices reach this as the memoized bbox, so the whole shape
