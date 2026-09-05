@@ -5,17 +5,13 @@
 pub(crate) mod menu_item;
 
 use crate::primitives::background::Background;
-use crate::primitives::color::RgbaF32;
 use crate::primitives::corners::Corners;
-use crate::primitives::shadow::Shadow;
 use crate::primitives::spacing::Spacing;
-use crate::primitives::stroke::Stroke;
 use crate::widgets::theme::context_menu::menu_item::MenuItemTheme;
 use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::separator::SeparatorTheme;
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::theme::widget_look::stateful_look::StatefulLook;
-use glam::Vec2;
 
 /// Visuals for [`crate::Popup`]-hosted context menus.
 /// `panel` paints the surrounding container chrome (fill + stroke +
@@ -89,22 +85,8 @@ impl ContextMenuTheme {
     }
 
     pub fn from_palette(p: &Palette) -> Self {
-        // Radius sits on the small-floating-overlay step shared with
-        // `TooltipTheme`, not the modal's 12 — the same corner that reads
-        // as "soft" on a dialog reads as a bubble on a stack of 26 px
-        // rows. The shadow is what separates the panel from what it
-        // opened over: the fill is `elem`, the same surface tier as the
-        // panels and cards underneath, so a hairline alone leaves the
-        // menu looking glued down.
-        let panel = Background::rounded(p.elem, Corners::all(4.0))
-            .with_stroke(Stroke::solid(p.border_mid(), 1.0))
-            .with_shadow(Shadow::drop(
-                RgbaF32::new(0.0, 0.0, 0.0, 0.5),
-                Vec2::new(0.0, 3.0),
-                6.0,
-            ));
         Self {
-            panel,
+            panel: p.popup_panel(),
             padding: Spacing::all(4.0),
             min_width: 160.0,
             gap: 0.0,
