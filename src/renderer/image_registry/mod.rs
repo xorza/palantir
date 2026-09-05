@@ -41,12 +41,6 @@ impl ImageRegistry {
         Self { store: Some(store) }
     }
 
-    fn create(&self, id: TextureId, image: &Image) {
-        if let Some(store) = &self.store {
-            store.create(id, image);
-        }
-    }
-
     fn write(&self, id: TextureId, image: &Image) {
         if let Some(store) = &self.store {
             store.write(id, image);

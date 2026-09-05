@@ -298,11 +298,11 @@ impl WindowDriverBuilder<'_> {
     /// without building would otherwise leave its token live for the rest
     /// of the session.
     pub(super) fn build(self) -> WindowDriver {
-        self.shared.resources.windows.add(self.token);
+        self.shared.resources().windows().add(self.token);
         WindowDriver {
             token: self.token,
-            engines: FrameEngines::new(&self.shared.resources),
-            ui: Ui::new(self.shared.resources.clone()),
+            engines: FrameEngines::new(self.shared.resources()),
+            ui: Ui::new(self.shared.resources().clone()),
             render_owner: RenderOwnerId::reserve(),
             backbuffer: None,
             backbuffer_fresh: false,
