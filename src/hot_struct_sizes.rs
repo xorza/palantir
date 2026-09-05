@@ -134,7 +134,7 @@ macro_rules! hot_structs {
 /// Expected `size_of::<Ui>()`, as `cfg(test)` sees it. `FrameRuntime`
 /// carries a probe cell, so a release `Ui` can be smaller — see
 /// [`FRAME_ENGINES_SIZE`], where the same gate is worth ~90 B.
-const UI_SIZE: usize = 6024;
+const UI_SIZE: usize = 6016;
 
 /// Expected `size_of::<FrameEngines>()`, as **`cfg(test)`** sees it —
 /// which is the only way this module compiles.
@@ -170,7 +170,7 @@ hot_structs! {
     ExtrasIdx => "scene::ExtrasIdx": 6 / 2,
     BoundsExtras => "scene::BoundsExtras": 32 / 4,
     PanelExtras => "scene::PanelExtras": 20 / 4,
-    Node => "scene::Node": 120 / 8,
+    Node => "scene::Node": 100 / 4,
     ShapeRecord => "scene::ShapeRecord": 88 / 8,
     RecordedText => "shapes::RecordedText": 16 / 8,
     ChromeRow => "scene::ChromeRow": 64 / 8,
@@ -214,7 +214,7 @@ hot_structs! {
     HitRow => "cascade::HitRow": 32 / 8,
     Paint => "cascade::Paint": 24 / 8,
     ResponseState => "input::ResponseState": 136 / 4,
-    Widget => "widgets::Widget": 128 / 8,
+    Widget => "widgets::Widget": 120 / 8,
     TargetScrollDelta => "input::TargetScrollDelta": 32 / 8,
     DamageRegion => "damage::DamageRegion": 132 / 4,
     CollapsedDamage => "damage::CollapsedDamage": 136 / 4,

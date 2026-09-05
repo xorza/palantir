@@ -2,9 +2,9 @@
 //! reaches for, over the one node the layout drivers dispatch on.
 
 use crate::primitives::background::Background;
-use crate::scene::node::Node;
 use crate::ui::Ui;
 use crate::widgets::response::InnerResponse;
+use crate::widgets::widget::Widget;
 use std::rc::Rc;
 
 /// The container widget. Lays children out as `HStack` / `VStack` / `ZStack`
@@ -22,13 +22,16 @@ use std::rc::Rc;
 /// set its own.
 #[derive(Debug)]
 pub struct Panel {
-    node: Node,
+    widget: Widget,
     chrome: Option<Background>,
 }
 
 impl Panel {
-    fn auto(node: Node) -> Self {
-        Self { node, chrome: None }
+    fn auto(widget: Widget) -> Self {
+        Self {
+            widget,
+            chrome: None,
+        }
     }
 
     pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<'_, R> {
@@ -38,19 +41,21 @@ impl Panel {
         // The theme handle is cloned, not the chrome: an `Rc` bump lets
         // the borrow outlive the `&mut Ui` the record below takes.
         let theme = Rc::clone(ui.theme());
-        let mut node = self.node;
-        let chrome = node.resolve_container_chrome(self.chrome.as_ref(), theme.container_chrome());
-        ui.widget(node).show(ui, chrome, body)
+        let mut widget = self.widget;
+        let chrome = widget
+            .node
+            .resolve_container_chrome(self.chrome.as_ref(), theme.container_chrome());
+        widget.show(ui, chrome, body)
     }
 
     #[track_caller]
     pub fn hstack() -> Self {
-        Self::auto(Node::hstack())
+        Self::auto(Widget::hstack())
     }
 
     #[track_caller]
     pub fn vstack() -> Self {
-        Self::auto(Node::vstack())
+        Self::auto(Widget::vstack())
     }
 
     /// HStack with overflow wrap: children flow left-to-right; when the
@@ -62,7 +67,7 @@ impl Panel {
     /// to row height.
     #[track_caller]
     pub fn wrap_hstack() -> Self {
-        Self::auto(Node::wrap_hstack())
+        Self::auto(Widget::wrap_hstack())
     }
 
     /// VStack with overflow wrap: children flow top-to-bottom; when the
@@ -71,14 +76,14 @@ impl Panel {
     /// axes swapped.
     #[track_caller]
     pub fn wrap_vstack() -> Self {
-        Self::auto(Node::wrap_vstack())
+        Self::auto(Widget::wrap_vstack())
     }
 
     /// Layered children: each child placed at the parent's inner top-left,
     /// sized per its own `Sizing`. Last sibling paints on top.
     #[track_caller]
     pub fn zstack() -> Self {
-        Self::auto(Node::zstack())
+        Self::auto(Widget::zstack())
     }
 
     /// Children placed at their declared `Layout.position` (parent-inner
@@ -86,7 +91,7 @@ impl Panel {
     /// box of placed children.
     #[track_caller]
     pub fn canvas() -> Self {
-        Self::auto(Node::canvas())
+        Self::auto(Widget::canvas())
     }
 }
 

@@ -6,9 +6,9 @@ use crate::primitives::color::RgbaF32;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
-use crate::scene::node::configure::Configure;
 use crate::ui::harness::UiHarness;
 use crate::ui::tests::support::{SURFACE, blue_frame};
+use crate::widgets::configure::Configure;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 
 #[test]

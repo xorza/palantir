@@ -81,7 +81,7 @@ use criterion::measurement::WallTime;
 use criterion::{BenchmarkGroup, Criterion};
 use std::fs::OpenOptions;
 use std::hint::black_box;
-use std::io::Write;
+use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::OnceLock;
@@ -551,6 +551,16 @@ fn prepend_machine_results(run: Run<'_>) {
 /// continues, because losing a history row must not fail a bench that
 /// has already produced its numbers.
 ///
+/// A file that exists but cannot be read stops the write. Only
+/// `NotFound` means "no history yet"; every other error means the
+/// history is there and this run cannot see it, and the rename below
+/// would replace every past row with the newest one. Losing the new row
+/// costs one run, and losing the file costs all of them.
+///
+/// The prior content travels as bytes rather than as a `String` for the
+/// same reason: a file that is not valid UTF-8 is a file this run cannot
+/// read, and it is not this run's to discard.
+///
 /// Split from [`prepend_machine_results`] so the file handling is
 /// reachable from a test with a directory of its own — the caller's
 /// `benches/results` is a fixed relative path a test cannot redirect.
@@ -562,7 +572,17 @@ fn prepend_block(dir: &Path, machine: &str, block: &str) {
         return;
     }
     let path = dir.join(format!("{machine}.txt"));
-    let prior = std::fs::read_to_string(&path).unwrap_or_default();
+    let prior = match std::fs::read(&path) {
+        Ok(prior) => prior,
+        Err(e) if e.kind() == ErrorKind::NotFound => Vec::new(),
+        Err(e) => {
+            eprintln!(
+                "[machine-results] read {}: {e} — history kept, this row dropped",
+                path.display(),
+            );
+            return;
+        }
+    };
     // Atomic-enough rewrite: write to a sibling tempfile then rename
     // over the destination. Avoids leaving the file half-written if
     // the bench is interrupted mid-write.
@@ -581,7 +601,7 @@ fn prepend_block(dir: &Path, machine: &str, block: &str) {
     };
     if let Err(e) = f
         .write_all(block.as_bytes())
-        .and_then(|_| f.write_all(prior.as_bytes()))
+        .and_then(|_| f.write_all(&prior))
     {
         eprintln!("[machine-results] write {}: {e}", tmp_path.display());
         return;
@@ -823,6 +843,45 @@ mod tests {
         // A second machine writes beside the first, not over it.
         prepend_block(&dir, "other", "elsewhere\n");
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "newer\nolder\n");
+
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    /// The history below the new row is not this run's to lose. Reading
+    /// the file as a `String` and falling back to empty replaced every
+    /// past row with the newest one on any read that did not succeed —
+    /// content that is not UTF-8 included.
+    #[test]
+    fn an_unreadable_history_is_kept_rather_than_replaced() {
+        let root =
+            std::env::temp_dir().join(format!("palantir-bench-unreadable-{}", std::process::id()));
+        let dir = root.join("results");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        // Not UTF-8, so a `String` read fails where a byte read does not.
+        let prior: &[u8] = b"\xff\xfe older\n";
+        let path = dir.join("rig.txt");
+        std::fs::write(&path, prior).unwrap();
+        prepend_block(&dir, "rig", "newer\n");
+        let mut want = b"newer\n".to_vec();
+        want.extend_from_slice(prior);
+        assert_eq!(
+            std::fs::read(&path).unwrap(),
+            want,
+            "the row goes on top of bytes this run cannot decode",
+        );
+
+        // A read that fails for any other reason stops the write: the
+        // rename would otherwise replace the history with one row.
+        let blocked = dir.join("other.txt");
+        std::fs::create_dir(&blocked).unwrap();
+        prepend_block(&dir, "other", "newer\n");
+        assert!(blocked.is_dir(), "an unreadable destination is left alone");
+        assert!(
+            !dir.join("other.txt.tmp").exists(),
+            "and the write never starts, so no tempfile is left behind",
+        );
 
         std::fs::remove_dir_all(&root).unwrap();
     }

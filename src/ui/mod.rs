@@ -63,7 +63,7 @@ use crate::scene::cascade::Cascade;
 use crate::scene::forest::Forest;
 use crate::scene::layer::Layer;
 use crate::scene::node::Node;
-use crate::scene::node::configure::Configure;
+use crate::scene::node::ident::Ident;
 use crate::scene::record_store::RecordStore;
 use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::paint_anims::PaintAnim;
@@ -82,6 +82,7 @@ use crate::ui::frame_stamp::FrameInput;
 use crate::ui::layer_scope::LayerScope;
 use crate::ui::resources::UiResources;
 use crate::ui::state::StateMap;
+use crate::widgets::configure::Configure;
 use crate::widgets::theme::Theme;
 use crate::widgets::widget::Widget;
 use crate::window::cursor_icon::CursorIcon;
@@ -893,9 +894,7 @@ impl Ui {
     /// `repaint` included.
     pub(crate) fn gpu_view(&mut self, id: WidgetId, paint: GpuPaintRef, repaint: bool) {
         let frame = self.frame_runtime.render_frame_id;
-        let epoch = self
-            .gpu_views
-            .record(id, paint, repaint, frame, self.resources.texture_ids());
+        let epoch = self.gpu_views.record(id, paint, repaint, frame);
         self.forest.add_gpu_view(epoch);
     }
 
@@ -980,46 +979,12 @@ impl Ui {
         self.input.close_scope(id);
     }
 
-    /// Resolve `node`'s stable [`WidgetId`] for this frame and hand
-    /// back the [`Widget`] pairing that id with the node. This is
-    /// the public entry a widget author calls first: read
-    /// [`Self::response_for`] / per-widget [`Self::state_mut`] against
-    /// `widget.id()` (theme picking off the prior frame, animation
-    /// slots, sub-id derivation), mutate `widget.node` as needed,
-    /// then record via [`Widget::record`]. Every built-in widget follows
-    /// this resolve-once-then-`node` shape; see
-    /// `examples/custom_widget.rs`.
-    ///
-    /// Resolution is the egui `make_persistent_id` analogue: an
-    /// [`crate::Configure::id_salt`] salt *and* a `#[track_caller]`
-    /// auto id both resolve to `parent.with(id)` (so identity tracks
-    /// tree position, not global record order, keeping per-site state
-    /// stable across frames and sibling reorders); only an explicit
-    /// `.id(id)` resolves verbatim. Parent context is the
-    /// most-recently-opened node in the current layer — `Layer::Main`'s
-    /// synthetic viewport counts as a parent with a frame-stable id, so
-    /// widgets get stable ids with no layer carve-out. `SeenIds`
-    /// **eagerly disambiguates**: a salt colliding with a sibling
-    /// already recorded this frame is bumped to a fresh occurrence
-    /// slot, so the resolved id matches what the tree, cascade, and
-    /// `response_for` will see.
-    ///
-    /// **Record exactly once**: the resolution reserves this frame's
-    /// occurrence slot for the id, and the matching [`Widget::record`]
-    /// call claims it. Dropping the `Widget` without recording leaves
-    /// the slot dangling (a second same-salt widget this frame would
-    /// reuse the id); recording twice panics.
-    /// **The one resolver.** A widget whose recorded root is
-    /// framework-built — `Modal`'s backdrop, `Scroll`'s outer wrapper,
-    /// `TextEdit`'s measured frame — resolves here on the node it was
-    /// handed, then overwrites [`Widget::node`] with the root it
-    /// actually records once the id has unlocked the state to build it.
-    /// The id is the part that must not move; the node is explicitly
-    /// open until `record` consumes it.
-    #[must_use = "record the widget with Widget::record"]
+    /// Resolve a widget's identity recipe against the currently-open
+    /// parent into the id it records under. [`Widget::resolve`] is the
+    /// one caller, and it keeps the answer on the widget.
     #[inline]
-    pub fn widget(&mut self, node: Node) -> Widget {
-        Widget::new(self.forest.widget_id(node.salt), node)
+    pub(crate) fn resolve_ident(&mut self, ident: Ident) -> WidgetId {
+        self.forest.widget_id(ident)
     }
 
     /// Record a chrome-only leaf: a sized child that paints `bg` and
@@ -1039,9 +1004,7 @@ impl Ui {
         size: impl Into<Sizes>,
         bg: Option<&Background>,
     ) {
-        let leaf = Node::leaf().id(id).size(size);
-        let widget = self.widget(leaf);
-        widget.record(self, bg, |_| {});
+        Widget::leaf().id(id).size(size).record(self, bg, |_| {});
     }
 
     /// Open `node` under `id`, painting `chrome` behind it. Pairs with

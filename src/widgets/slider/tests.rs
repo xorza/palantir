@@ -3,12 +3,10 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
-use crate::scene::node::configure::Configure;
 use crate::ui::harness::UiHarness;
+use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
-use crate::widgets::slider::{
-    Slider, fraction_to_value, pointer_to_fraction, snap_to_step, value_to_fraction,
-};
+use crate::widgets::slider::{Slider, fraction_to_value, snap_to_step, value_to_fraction};
 use glam::{UVec2, Vec2};
 
 #[derive(Debug)]
@@ -49,10 +47,9 @@ fn deferred_frame(h: &mut UiHarness, id: WidgetId, canonical: &mut f64) -> Signa
 
 /// The release frame re-writes the value, so a caller that re-seeds its
 /// draft from a canonical copy every frame and adopts it only on
-/// `committed` still observes the gesture's result. `Drag::Stopped` is
-/// neither `pressed()` nor `dragging()`, so without naming it the
-/// deferred caller would read its own seed back on the one frame it acts
-/// on.
+/// `committed` still observes the gesture's result. A release is neither
+/// `pressed()` nor `dragging()`, so without naming it the deferred
+/// caller would read its own seed back on the one frame it acts on.
 ///
 /// Geometry: 118 wide, knob 18, so travel is 100 px starting at x = 9 —
 /// x = 59 is fraction 0.5 and x = 89 is 0.8, straight through to the
@@ -85,6 +82,44 @@ fn release_rewrites_the_value_once_for_a_deferred_caller() {
     let s = deferred_frame(&mut h, id, &mut canonical);
     assert!(!s.changed && !s.committed, "no residual signals");
     assert_eq!(canonical, 0.8);
+}
+
+/// A press and release on the track is a whole edit: it writes a value,
+/// and it latches no drag, so a commit read off `drag.stopped()` never
+/// fires for it. Every release ends a gesture, and every gesture owes one
+/// commit.
+///
+/// Same geometry as the drag test above — 118 wide, knob 18, travel 100
+/// from x = 9 — so x = 59 is 0.5 of an unstepped `0..=1` range.
+#[test]
+fn a_click_on_the_track_commits_the_value_it_wrote() {
+    let id = WidgetId::from_hash("slider-click-commit");
+    let mut h = UiHarness::new(UVec2::new(118, 18));
+    let mut canonical = 0.0_f64;
+
+    // Settle a layout frame so the cascade exists for pointer routing.
+    deferred_frame(&mut h, id, &mut canonical);
+
+    h.press_at(Vec2::new(59.0, 9.0));
+    let s = deferred_frame(&mut h, id, &mut canonical);
+    assert!(s.changed && !s.committed, "press: live write, no commit");
+    assert_eq!(
+        canonical, 0.0,
+        "deferred caller ignores the mid-gesture write"
+    );
+
+    h.release();
+    let s = deferred_frame(&mut h, id, &mut canonical);
+    assert!(s.committed, "the click's release commits it");
+    assert_eq!(s.commits, 1, "one commit, one record pass");
+    assert_eq!(
+        canonical, 0.5,
+        "the commit frame carries the value it wrote"
+    );
+
+    let s = deferred_frame(&mut h, id, &mut canonical);
+    assert!(!s.changed && !s.committed, "no residual signals");
+    assert_eq!(canonical, 0.5);
 }
 
 /// Explicit `.size(...)` wins over the widget's `Fill × knob_size`
@@ -172,8 +207,8 @@ fn value_to_fraction_maps_and_clamps() {
         );
     }
     // A NaN anywhere in the triple names no share, and the low end is
-    // what this widget reads that as — the same answer
-    // `pointer_to_fraction` gives a track with no travel.
+    // what this widget reads that as — the same answer `press_fraction`
+    // gives a track with no travel.
     for (v, min, max) in [
         (f64::NAN, 0.0, 100.0),
         (50.0, f64::NAN, 100.0),
@@ -198,18 +233,6 @@ fn fraction_to_value_inverts_value_to_fraction() {
     assert!((fraction_to_value(0.25, 10.0, 20.0) - 12.5).abs() < 1e-6);
     // Out-of-range fraction clamps before mapping.
     assert!((fraction_to_value(1.5, 0.0, 100.0) - 100.0).abs() < 1e-6);
-}
-
-#[test]
-fn pointer_to_fraction_uses_knob_inset_travel() {
-    let track_w = 120.0;
-    let knob = 20.0; // travel = 100, offset knob/2 = 10
-    assert!((pointer_to_fraction(10.0, track_w, knob) - 0.0).abs() < 1e-6);
-    assert!((pointer_to_fraction(110.0, track_w, knob) - 1.0).abs() < 1e-6);
-    assert!((pointer_to_fraction(60.0, track_w, knob) - 0.5).abs() < 1e-6);
-    // Past the ends clamps.
-    assert!((pointer_to_fraction(0.0, track_w, knob) - 0.0).abs() < 1e-6);
-    assert!((pointer_to_fraction(200.0, track_w, knob) - 1.0).abs() < 1e-6);
 }
 
 #[test]
@@ -275,14 +298,6 @@ fn step_rejects_a_value_that_cannot_snap() {
             "step({bad}) must panic",
         );
     }
-}
-
-/// A track with no travel left reports the low end rather than dividing
-/// by a floored span.
-#[test]
-fn pointer_to_fraction_reports_zero_for_a_knob_wider_than_its_rail() {
-    assert_eq!(pointer_to_fraction(15.0, 20.0, 20.0), 0.0);
-    assert_eq!(pointer_to_fraction(15.0, 10.0, 20.0), 0.0);
 }
 
 /// The binding is `DragNum`, so the track drives an integer as readily

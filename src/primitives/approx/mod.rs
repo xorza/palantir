@@ -6,6 +6,14 @@
 //! paint, do these coincide, what share is this. [`FloatHash`] carries the
 //! same question into a hasher, where equality-compatible and
 //! visual-identity canonicalization part ways.
+//!
+//! The predicates are public because a widget asks them: a splitter whose
+//! track collapsed, a scroll whose zoom step is the identity, a bar taking
+//! a share of a span that may be nothing. A widget outside this crate has
+//! the same questions and must reach the same epsilon — two tolerances for
+//! one screen is how a rule lands on one side of a seam and its handle on
+//! the other. The hashing half stays inside: it is cache identity, not
+//! geometry.
 
 use glam::Vec2;
 use std::hash::Hasher;
@@ -15,11 +23,11 @@ use std::hash::Hasher;
 /// `EPS = 1e-4` is below 8-bit color precision (1/255 ≈ 4e-3) and sub-pixel
 /// position resolution at typical display scales, so differences smaller
 /// than this are invisible to the user.
-pub(crate) const EPS: f32 = 1.0e-4;
+pub const EPS: f32 = 1.0e-4;
 
 /// True if `c` is within `EPS` of zero.
 #[inline]
-pub(crate) const fn approx_zero(c: f32) -> bool {
+pub const fn approx_zero(c: f32) -> bool {
     c.abs() <= EPS
 }
 
@@ -112,7 +120,7 @@ impl FloatHash for Vec2 {
 /// and then testing its ink; `DrawQuadPayload` carries the pair and
 /// reads that way.
 #[inline]
-pub(crate) const fn noop_f32(v: f32) -> bool {
+pub const fn noop_f32(v: f32) -> bool {
     v.is_nan() || v <= EPS
 }
 
@@ -131,7 +139,7 @@ pub(crate) const fn noop_f32(v: f32) -> bool {
 /// one does — the negated share puts a splitter rule on the wrong side
 /// of a track narrower than its own bar.
 #[inline]
-pub(crate) const fn ratio(n: f32, d: f32) -> f32 {
+pub const fn ratio(n: f32, d: f32) -> f32 {
     if noop_f32(d) { 0.0 } else { n / d }
 }
 
@@ -140,7 +148,7 @@ pub(crate) const fn ratio(n: f32, d: f32) -> f32 {
 /// `sqrt`. Use when two points should be treated as coincident
 /// (degenerate stroke endpoints, zero-length segments).
 #[inline]
-pub(crate) const fn vec2_approx_eq(a: glam::Vec2, b: glam::Vec2) -> bool {
+pub const fn vec2_approx_eq(a: glam::Vec2, b: glam::Vec2) -> bool {
     let dx = a.x - b.x;
     let dy = a.y - b.y;
     dx * dx + dy * dy <= EPS * EPS

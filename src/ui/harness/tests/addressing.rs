@@ -4,10 +4,10 @@
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::size::Size;
 use crate::scene::layer::Layer;
-use crate::scene::node::configure::Configure;
 use crate::ui::harness::tests::support::{INSIDE, OUTSIDE, SURFACE, button, target};
 use crate::ui::harness::*;
 use crate::widgets::button::Button;
+use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 
 #[test]

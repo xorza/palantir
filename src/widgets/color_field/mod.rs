@@ -11,16 +11,16 @@ use crate::primitives::image::Image;
 use crate::primitives::image::ImageFit;
 use crate::primitives::num::F32Ext;
 use crate::primitives::size::Size;
-use crate::scene::node::Node;
-use crate::scene::node::configure::Configure;
 use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::widgets::axis_keys::AxisKeys;
 use crate::widgets::color_surface;
 use crate::widgets::color_surface::ColorSurface;
+use crate::widgets::configure::Configure;
 use crate::widgets::response::Response;
 use crate::widgets::theme::color_picker::ColorPickerTheme;
 use crate::widgets::value_response::ValueResponse;
+use crate::widgets::widget::Widget;
 use glam::Vec2;
 
 /// The two-axis area of a colour picker: saturation left to right, value
@@ -37,7 +37,7 @@ use glam::Vec2;
 /// [`ValueResponse`] every other value-writing widget does.
 #[derive(Debug)]
 pub struct ColorField<'a> {
-    node: Node,
+    widget: Widget,
     coords: &'a mut ColorCoords,
     downsample: u32,
     style: Option<&'a ColorPickerTheme>,
@@ -49,7 +49,7 @@ impl<'a> ColorField<'a> {
     #[track_caller]
     pub fn new(coords: &'a mut ColorCoords) -> Self {
         Self {
-            node: Node::leaf()
+            widget: Widget::leaf()
                 .sense(Sense::CLICK | Sense::DRAG)
                 .focusable(true),
             coords,
@@ -100,12 +100,11 @@ impl<'a> ColorField<'a> {
         let handle_outer = theme.handle_outer;
         let handle_inner = theme.handle_inner;
 
-        let node = self
-            .node
+        let mut widget = self
+            .widget
             .default_size((Sizing::fixed(themed.w), Sizing::fixed(themed.h)));
-        let widget = ui.widget(node);
         let response = widget.response(ui);
-        let id = widget.id();
+        let id = widget.resolve(ui);
         let size = response.layout_rect.map_or(themed, |r| r.size);
 
         let coords = self.coords;

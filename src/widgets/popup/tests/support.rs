@@ -3,7 +3,7 @@
 
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::node::configure::Configure;
+use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::popup::{ClickOutside, Popup};
 use crate::{Sense, Ui};

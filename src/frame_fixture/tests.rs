@@ -178,8 +178,8 @@ fn every_excluded_widget_is_actually_absent() {
 #[test]
 fn covered_and_excluded_account_for_every_public_widget() {
     /// Exported from `widgets::` but not widgets: themes, the shared
-    /// response types, and the `Widget` trait itself.
-    const NOT_WIDGETS: &[&str] = &["theme", "response", "widget"];
+    /// response types, the `Widget` entity and its `Configure` mixin.
+    const NOT_WIDGETS: &[&str] = &["theme", "response", "widget", "configure"];
 
     let mut classified: Vec<&str> = COVERED.to_vec();
     classified.extend(EXCLUDED.iter().map(|(m, _)| *m));

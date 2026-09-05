@@ -4,7 +4,7 @@
 //! Registered images are the other population a draw can sample. Those
 //! live in [`WgpuImageStore`](crate::renderer::backend::image_store::WgpuImageStore),
 //! and the two build against one [`ImageBinding`], so a composite of a
-//! view binds exactly like an image. [`TextureIdSource`](crate::renderer::texture_id_source::TextureIdSource)
+//! view binds exactly like an image. [`TextureId::reserve`](crate::primitives::texture_id::TextureId::reserve)
 //! mints both populations' ids, so an id cannot mean two things.
 
 mod render_target;

@@ -4,10 +4,10 @@
 use crate::layout::types::sizing::Sizing;
 use crate::renderer::gpu_paint::GpuPaint;
 use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
-use crate::scene::node::Node;
-use crate::scene::node::configure::Configure;
 use crate::ui::Ui;
+use crate::widgets::configure::Configure;
 use crate::widgets::response::Response;
+use crate::widgets::widget::Widget;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -49,7 +49,7 @@ use std::rc::Rc;
 /// (drag / click) from the returned [`Response`].
 #[derive(Debug)]
 pub struct GpuView {
-    node: Node,
+    widget: Widget,
     /// Wrapped at construction rather than carried raw: [`GpuPaintRef`]
     /// exists so a struct holding a `dyn GpuPaint` can still derive
     /// `Debug`, and holding the `Rc` directly meant hand-writing the one
@@ -72,7 +72,7 @@ impl GpuView {
     pub fn new<T: GpuPaint + 'static>(paint: &Rc<RefCell<T>>) -> Self {
         let paint: Rc<RefCell<T>> = Rc::clone(paint);
         Self {
-            node: Node::leaf().size((Sizing::fill(1.0), Sizing::fill(1.0))),
+            widget: Widget::leaf().size((Sizing::fill(1.0), Sizing::fill(1.0))),
             paint: GpuPaintRef(paint),
             repaint: true,
         }
@@ -100,13 +100,12 @@ impl GpuView {
     /// frame to animate.
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
         let Self {
-            node,
+            mut widget,
             paint,
             repaint,
         } = self;
-        let widget = ui.widget(node);
         let response = widget.response(ui);
-        let id = widget.id();
+        let id = widget.resolve(ui);
         widget.record(ui, None, |ui| {
             ui.gpu_view(id, paint, repaint);
         });

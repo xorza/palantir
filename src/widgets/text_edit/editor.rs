@@ -1,8 +1,8 @@
 //! One frame's semantic editing session over the host-owned buffer.
 
 use crate::input::key_class::KeyFilter;
-use crate::scene::node::configure::Configure;
 use crate::ui::Ui;
+use crate::widgets::configure::Configure;
 use crate::widgets::context_menu::ContextMenu;
 use crate::widgets::context_menu::menu_item::MenuItem;
 use crate::widgets::response::ResponseSnapshot;

@@ -7,15 +7,15 @@ use crate::primitives::color::RgbaF32;
 use crate::primitives::color::color_model::ColorModel;
 use crate::primitives::num::F32Ext;
 use crate::primitives::size::Size;
-use crate::scene::node::Node;
-use crate::scene::node::configure::Configure;
 use crate::ui::Ui;
 use crate::widgets::checkerboard::Checkerboard;
 use crate::widgets::color_picker::ColorPicker;
+use crate::widgets::configure::Configure;
 use crate::widgets::popup::Popup;
 use crate::widgets::response::Response;
 use crate::widgets::theme::color_picker::ColorPickerTheme;
 use crate::widgets::value_response::ValueResponse;
+use crate::widgets::widget::Widget;
 
 /// A colour chip that opens a [`ColorPicker`] in a popup when clicked.
 ///
@@ -29,7 +29,7 @@ use crate::widgets::value_response::ValueResponse;
 /// the colour is, not a proposal.
 #[derive(Debug)]
 pub struct ColorButton<'a> {
-    node: Node,
+    widget: Widget,
     color: &'a mut RgbaF32,
     alpha: bool,
     model: Option<ColorModel>,
@@ -48,7 +48,7 @@ impl<'a> ColorButton<'a> {
     #[track_caller]
     pub fn new(color: &'a mut RgbaF32) -> Self {
         Self {
-            node: Node::leaf().sense(Sense::CLICK),
+            widget: Widget::leaf().sense(Sense::CLICK),
             color,
             alpha: false,
             model: None,
@@ -84,12 +84,11 @@ impl<'a> ColorButton<'a> {
         let theme = self.slot(ui.theme());
         let side = theme.chip_size.themed_length(1.0);
         let checker = Checkerboard::new(theme);
-        let node = self
-            .node
+        let mut widget = self
+            .widget
             .default_size((Sizing::fixed(side), Sizing::fixed(side)));
-        let widget = ui.widget(node);
         let response = widget.response(ui);
-        let id = widget.id();
+        let id = widget.resolve(ui);
         let size = response
             .layout_rect
             .map_or(Size::new(side, side), |r| r.size);

@@ -9,10 +9,10 @@ use crate::layout::cross_driver_tests::text_wrap::support::PARAGRAPH;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::{axis::Axis, intrinsic::LenReq};
 use crate::scene::layer::Layer;
-use crate::scene::node::configure::Configure;
 use crate::scene::shapes::record::ShapeRecord;
 use crate::text::wrap::TextWrap;
 use crate::ui::harness::UiHarness;
+use crate::widgets::configure::Configure;
 use crate::widgets::{button::Button, panel::Panel, text::Text};
 use glam::UVec2;
 

@@ -7,9 +7,9 @@ use crate::primitives::background::Background;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::node::configure::Configure;
 use crate::scene::tree::node_id::NodeId;
 use crate::ui::harness::UiHarness;
+use crate::widgets::configure::Configure;
 use crate::widgets::frame::Frame;
 
 /// The arranged rect of whatever recorded under `key`. Generic over the

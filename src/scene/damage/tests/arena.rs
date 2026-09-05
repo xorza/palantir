@@ -26,9 +26,9 @@ use crate::primitives::rect::Rect;
 use crate::primitives::span::Span;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::damage::tests::support::{BLUE, DISPLAY, RED, frame, one_frame};
-use crate::scene::node::configure::Configure;
 use crate::shape::Shape;
 use crate::ui::harness::UiHarness;
+use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 
 /// A canvas holding `shapes` rects, all inside its own box so nothing is

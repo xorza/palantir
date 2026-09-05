@@ -69,7 +69,7 @@ impl WidgetId {
     /// Hard-coded (rather than derived from `auto_stable()` at the
     /// viewport construction site) so refactors to `ui/mod.rs` don't
     /// shift it. Treated like any other parent by
-    /// `Ui::widget` — top-level `id_salt("k")` resolves to
+    /// `Widget::resolve` — top-level `id_salt("k")` resolves to
     /// `VIEWPORT.with(from_hash("k").0)`.
     pub(crate) const VIEWPORT: Self = Self(u64::MAX);
 
@@ -190,7 +190,7 @@ impl WidgetId {
     /// Repeated calls from the same source location (a loop or a closure
     /// helper) all produce the same id; id resolution silently disambiguates by
     /// mixing in a per-id occurrence counter. Override with
-    /// [`Configure::id_salt`](crate::scene::node::configure::Configure::id_salt) when call order isn't
+    /// [`Configure::id_salt`](crate::widgets::configure::Configure::id_salt) when call order isn't
     /// stable across frames.
     #[track_caller]
     pub fn auto_stable() -> Self {

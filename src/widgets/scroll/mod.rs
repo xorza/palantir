@@ -21,13 +21,14 @@ use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::Node;
-use crate::scene::node::configure::Configure;
 use crate::ui::Ui;
+use crate::widgets::configure::Configure;
 use crate::widgets::response::{InnerResponse, Response};
 use crate::widgets::scroll::bars::{BarMode, BarSpace, Bars, bar_space};
 use crate::widgets::scroll::state::{ScrollBounds, ScrollState};
 use crate::widgets::scroll::zoom_config::{ZoomConfig, ZoomModifier, ZoomPivot};
 use crate::widgets::theme::scrollbar::ScrollbarTheme;
+use crate::widgets::widget::Widget;
 use glam::{BVec2, Vec2};
 
 /// What one scroll frame resolves against, all read from *last* frame's
@@ -81,18 +82,18 @@ struct ScrollInput {
     pivot: Option<Vec2>,
 }
 
-/// The two wrapper `Node`s a `Scroll` records: an outer `ZStack`
+/// The two wrapper `Widget`s a `Scroll` records: an outer `ZStack`
 /// that owns sizing / placement / sense / visibility and an inner
 /// viewport that owns the `Scroll` layout mode, padding, and the panel
 /// knobs (gap / justify / child_align).
 #[derive(Debug)]
 struct ScrollWrappers {
-    outer: Node,
-    inner: Node,
+    outer: Widget,
+    inner: Widget,
 }
 
 impl ScrollWrappers {
-    /// Split a user `Scroll` node into its outer/inner wrappers.
+    /// Split a user `Scroll` widget into its outer/inner wrappers.
     ///
     /// **This routes every `Node` field that should survive on a
     /// `Scroll`** — the destructure below binds every field with no `..`,
@@ -100,28 +101,30 @@ impl ScrollWrappers {
     /// whether it lands on `outer` (sizing/placement) or `inner`
     /// (layout/panel knobs).
     /// `Scroll::show` patches the remaining inner fields it computes per
-    /// frame (`salt`, the reservation `margin`, layout fit flags,
-    /// `clip` — read off `flags` before this runs — and the pan
-    /// `transform`). The user salt stays on the `Widget` resolved in
-    /// `Scroll::show`; neither wrapper carries it.
-    fn split(node: Node) -> Self {
-        let scroll_spec = node.scroll_spec();
+    /// frame (the viewport id, the reservation `margin`, layout fit
+    /// flags, `clip` — read off `flags` before this runs — and the pan
+    /// `transform`). Identity is `Scroll::show`'s too: the outer wrapper
+    /// takes the caller's resolved id there, and the inner a child of it.
+    fn split(widget: &Widget) -> Self {
+        let scroll_spec = widget.node.scroll_spec();
         let Node {
-            salt: _,
             mode: _,
             size,
             min_size,
             max_size,
             padding,
-            margin,
             gaps,
             justify,
-            align,
             child_align,
-            position,
-            grid,
             flags,
-            visibility,
+            // Placement, carried onto `outer` by `Node::adopt_placement`
+            // below. Named rather than elided for the same reason as
+            // every other field here.
+            margin: _,
+            align: _,
+            position: _,
+            grid: _,
+            visibility: _,
             // Re-derived by `Scroll::show` once the wrappers exist: it copies
             // `clip` from the user node onto `inner` and replaces `transform`
             // with the pan offset. Named rather than elided — a `..` here would
@@ -129,29 +132,25 @@ impl ScrollWrappers {
             // what this destructure exists to prevent.
             clip: _,
             transform: _,
-        } = node;
+        } = widget.node;
 
-        let mut outer = Node::zstack();
-        outer.size = size;
-        outer.min_size = min_size;
-        outer.max_size = max_size;
-        outer.margin = margin;
-        outer.align = align;
-        outer.position = position;
-        outer.grid = grid;
-        outer.flags.set_sense(flags.sense());
-        outer.flags.set_disabled(flags.is_disabled());
-        outer.flags.set_focusable(flags.is_focusable());
-        outer.visibility = visibility;
+        let mut outer = Widget::zstack();
+        outer.adopt_placement(widget);
+        outer.node.size = size;
+        outer.node.min_size = min_size;
+        outer.node.max_size = max_size;
+        outer.node.flags.set_sense(flags.sense());
+        outer.node.flags.set_disabled(flags.is_disabled());
+        outer.node.flags.set_focusable(flags.is_focusable());
 
-        let mut inner = Node::scroll(scroll_spec);
+        let mut inner = Widget::scroll(scroll_spec);
         // Inner fills the outer wrapper; the outer carries the user's
         // `Sizing` and drives the actual size.
-        inner.size = Some((Sizing::FILL, Sizing::FILL).into());
-        inner.padding = padding;
-        inner.gaps = gaps;
-        inner.justify = justify;
-        inner.child_align = child_align;
+        inner.node.size = Some((Sizing::FILL, Sizing::FILL).into());
+        inner.node.padding = padding;
+        inner.node.gaps = gaps;
+        inner.node.justify = justify;
+        inner.node.child_align = child_align;
         Self { outer, inner }
     }
 }
@@ -172,7 +171,7 @@ impl ScrollWrappers {
 /// via [`BarMode`].
 #[derive(Debug)]
 pub struct Scroll<'a> {
-    node: Node,
+    widget: Widget,
     style: Option<&'a ScrollbarTheme>,
     zoom: Option<ZoomConfig>,
     chrome: Option<Background>,
@@ -202,7 +201,7 @@ impl<'a> Scroll<'a> {
             // Scroll requires clipping; default to `Rect` so callers that
             // don't override get the cheap scissor path. Callers can still
             // call `Configure::clip_rounded` to upgrade to a stencil mask.
-            node: Node::scroll(spec).sense(Sense::SCROLL).clip_rect(),
+            widget: Widget::scroll(spec).sense(Sense::SCROLL).clip_rect(),
             style: None,
             zoom: None,
             chrome: None,
@@ -263,8 +262,7 @@ impl<'a> Scroll<'a> {
     /// Enable zoom with explicit config. See [`Self::with_zoom`].
     pub fn with_zoom_config(mut self, cfg: ZoomConfig) -> Self {
         self.zoom = Some(cfg);
-        let sense = self.node.flags.sense() | Sense::PINCH;
-        self.sense(sense)
+        self.add_sense(Sense::PINCH)
     }
 
     /// Route this frame's wheel / trackpad / pinch input over the
@@ -350,7 +348,7 @@ impl<'a> Scroll<'a> {
     ) -> ScrollGeometry {
         let outer = response.layout_rect.map_or(Size::ZERO, |r| r.size);
         let content = ui.scroll_content(scroll_id);
-        let padding = self.node.padding.unwrap_or(Spacing::ZERO);
+        let padding = self.widget.authored_padding().unwrap_or(Spacing::ZERO);
         let space = bar_space(outer, pan, padding, self.bars_theme(ui), self.bar_mode);
         ScrollGeometry {
             content,
@@ -414,7 +412,7 @@ impl<'a> Scroll<'a> {
         space: BarSpace,
         state: ScrollState,
     ) -> ScrollWrappers {
-        let ScrollWrappers { outer, inner } = ScrollWrappers::split(self.node);
+        let ScrollWrappers { outer, inner } = ScrollWrappers::split(&self.widget);
 
         // Inner viewport owns the clip, the pan transform, the user-set
         // padding (encoder deflates the clip mask by it), and the
@@ -428,30 +426,36 @@ impl<'a> Scroll<'a> {
         // extent, so the scroll sizes to content like any other `Hug`
         // widget (bounded by `max_size`/available, scrolling past the
         // cap); `Fill`/`Fixed` keep the content-independent viewport.
-        let user = self.node.size.unwrap_or_default();
+        let user = self.widget.authored_size().unwrap_or_default();
         let fit = BVec2::new(pan.x && user.w().is_hug(), pan.y && user.h().is_hug());
         let mut inner = inner.id(scroll_id);
-        inner.set_mode(LayoutMode::Scroll(self.node.scroll_spec().with_fit(fit)));
-        inner.margin = Some(Spacing::new(0.0, 0.0, space.reserve_y, space.reserve_x));
+        inner.node.set_mode(LayoutMode::Scroll(
+            self.widget.node.scroll_spec().with_fit(fit),
+        ));
+        inner
+            .configure()
+            .margin(Spacing::new(0.0, 0.0, space.reserve_y, space.reserve_x))
+            // Raw pan/zoom, from the one place a viewport's transform is
+            // derived — `TextEdit`'s text block reads the same method.
+            .transform(state.transform());
         // `with_axes` set `ClipMode::Rect` by default; caller configuration
-        // can replace it with rounded clipping or no clipping.
-        inner.clip = self.node.clip;
-        // Raw pan/zoom, from the one place a viewport's transform is
-        // derived — `TextEdit`'s text block reads the same method.
-        inner.transform = state.transform();
+        // can replace it with rounded clipping or no clipping. Nothing can
+        // unset it, so the `None` arm never runs.
+        if let Some(clip) = self.widget.authored_clip() {
+            inner.configure().clip(clip);
+        }
         ScrollWrappers { outer, inner }
     }
 
-    pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<'_, R> {
+    pub fn show<R>(mut self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<'_, R> {
         // The caller's salt names the *outer wrapper*, but the node it
         // arrived on describes the viewport — `wrappers` splits it into
         // both, so neither is the node that came in, and the wrappers
         // can't be built until the id has unlocked this widget's state.
-        // Identity resolves on its own; the outer wrapper stages onto it
-        // below.
-        let mut widget = ui.widget(self.node);
-        let id = widget.id();
-        let spec = self.node.scroll_spec();
+        // Identity resolves on the widget that came in; the outer wrapper
+        // takes it below.
+        let id = self.widget.resolve(ui);
+        let spec = self.widget.node.scroll_spec();
         let pan = spec.pan_mask();
         if self.zoom.is_some() {
             debug_assert!(
@@ -482,9 +486,8 @@ impl<'a> Scroll<'a> {
 
         let ScrollWrappers { outer, inner } = self.wrappers(scroll_id, pan, geom.space, state);
         let inner_chrome = self.chrome;
-        widget.node = outer;
-        let inner_value = widget.record(ui, None, |ui| {
-            let inner_value = ui.widget(inner).record(ui, inner_chrome.as_ref(), body);
+        let inner_value = outer.id(id).record(ui, None, |ui| {
+            let inner_value = inner.record(ui, inner_chrome.as_ref(), body);
             if let Some(bars) = &bars {
                 bars.record(ui, scroll_id, state, geom, spec);
             }

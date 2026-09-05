@@ -8,7 +8,7 @@ use crate::animation::tests::support::{
 };
 use crate::primitives::color::RgbaF32;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::node::configure::Configure;
+use crate::widgets::configure::Configure;
 use crate::widgets::frame::Frame;
 use std::time::Duration;
 

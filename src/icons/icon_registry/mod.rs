@@ -128,13 +128,14 @@ struct Inner {
 /// icon index in a cache key — so it must be reusable, so the table has to
 /// own the row and stamp it with a generation.
 ///
-/// That difference reaches the drains too, which is why the two are not
-/// the same shape. An image's release is one hash removal from a map
-/// keyed by its own id, so `ImageRegistry` reports them one at a time.
-/// A set's release is a whole *family* of keys — every parse, every
-/// packed raster — that only a full walk of each store can find, so
-/// [`Self::drain_released`] hands over the whole batch and the backend
-/// walks once.
+/// That difference reaches the release path too, which is why the two are
+/// not the same shape. An image's release is one hash removal from a map
+/// keyed by its own id, so the handle's `Drop` performs it there and then
+/// and `ImageRegistry` queues nothing — there is no image drain. A set's
+/// release is a whole *family* of keys — every parse, every packed
+/// raster — that only a full walk of each store can find, so it is queued
+/// instead: [`Self::drain_released`] hands the whole batch over and the
+/// backend walks once.
 ///
 /// Single-threaded `Rc<RefCell<…>>`; cheap to clone, with shared inner state.
 #[derive(Clone, Debug, Default)]

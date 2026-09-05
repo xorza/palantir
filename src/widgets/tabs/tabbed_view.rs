@@ -2,14 +2,14 @@
 
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::node::Node;
-use crate::scene::node::configure::Configure;
 use crate::ui::Ui;
+use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::response::Response;
 use crate::widgets::tabs::tab_item::{TabBadge, TabItem, TabItemBuf};
 use crate::widgets::tabs::tab_strip::{TabOverflow, TabStrip, TabStripResponse};
 use crate::widgets::theme::tabs::TabsTheme;
+use crate::widgets::widget::Widget;
 use std::rc::Rc;
 
 /// What one pass over a [`TabbedView`] asks its caller to do.
@@ -71,7 +71,7 @@ pub struct TabbedViewResponse<'a> {
 /// re-deriving the index alongside it.
 #[derive(Debug)]
 pub struct TabbedView<'a, S> {
-    node: Node,
+    widget: Widget,
     selected: &'a mut usize,
     options: &'a [S],
     /// Reads one option's label. `new` fills this with `S::as_ref`.
@@ -100,7 +100,7 @@ impl<'a, S> TabbedView<'a, S> {
     #[track_caller]
     pub fn labeled(selected: &'a mut usize, options: &'a [S], label: fn(&S) -> &str) -> Self {
         Self {
-            node: Node::vstack().size((Sizing::FILL, Sizing::FILL)),
+            widget: Widget::vstack().size((Sizing::FILL, Sizing::FILL)),
             selected,
             options,
             label,
@@ -143,7 +143,7 @@ impl<'a, S> TabbedView<'a, S> {
         let theme = Rc::clone(ui.theme());
         let t = self.slot(&theme);
         let Self {
-            node,
+            mut widget,
             selected,
             options,
             label,
@@ -158,8 +158,7 @@ impl<'a, S> TabbedView<'a, S> {
             *selected,
             options.len(),
         );
-        let widget = ui.widget(node);
-        let id = widget.id();
+        let id = widget.resolve(ui);
         let response = widget.response(ui);
         let strip_id = id.with("strip");
         let mut action = None;

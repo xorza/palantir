@@ -8,13 +8,13 @@ use crate::primitives::{color::RgbaF32, rect::Rect, size::Size};
 use crate::scene::damage::Damage;
 use crate::scene::damage::tests::support::{BLUE, DISPLAY, RED, frame, one_frame};
 use crate::scene::layer::Layer;
-use crate::scene::node::configure::Configure;
 use crate::scene::tree::node_id::NodeId;
 use crate::shape::Shape;
 use crate::shape::style::LineCap;
 use crate::text::TEXT_SCALE_STEP;
 use crate::text::glyph_font::GlyphFont;
 use crate::ui::harness::UiHarness;
+use crate::widgets::configure::Configure;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};
 
@@ -729,11 +729,11 @@ fn chrome_only_owner_has_nonzero_paint_span() {
 /// strings' bboxes.
 #[test]
 fn text_content_change_damages_shaped_extent_not_just_origin() {
-    use crate::scene::node::Node;
     use crate::shape::Shape;
     use crate::text::font_family::FontFamily;
     use crate::text::font_weight::FontWeight;
     use crate::text::wrap::TextWrap;
+    use crate::widgets::widget::Widget;
 
     let mut h = UiHarness::new(DISPLAY.physical);
     // Mono fallback geometry: glyph width = font_size_px * 0.5, line
@@ -747,8 +747,8 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
             .id(WidgetId::from_hash("root"))
             .size((Sizing::fixed(100.0), Sizing::fixed(50.0)))
             .show(ui, |ui| {
-                let node = Node::leaf().id(leaf_id);
-                ui.widget(node).record(ui, None, |ui| {
+                let widget = Widget::leaf().id(leaf_id);
+                widget.record(ui, None, |ui| {
                     let text = ui.intern(text);
                     ui.add_shape(
                         Shape::text(

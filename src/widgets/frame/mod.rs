@@ -2,9 +2,9 @@
 //! none of the interaction the other containers carry.
 
 use crate::primitives::background::Background;
-use crate::scene::node::Node;
 use crate::ui::Ui;
 use crate::widgets::response::Response;
+use crate::widgets::widget::Widget;
 
 /// A simple decorated rectangle: optional background / size / margin
 /// plus an optional `Sense`. Used directly for dividers / hit-areas /
@@ -13,7 +13,7 @@ use crate::widgets::response::Response;
 /// [`Configure::clip_rounded`](crate::Configure::clip_rounded).
 #[derive(Debug)]
 pub struct Frame {
-    node: Node,
+    widget: Widget,
     chrome: Option<Background>,
 }
 
@@ -21,16 +21,14 @@ impl Frame {
     #[track_caller]
     pub fn new() -> Self {
         Self {
-            node: Node::leaf(),
+            widget: Widget::leaf(),
             chrome: None,
         }
     }
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
         let chrome = self.chrome;
-        ui.widget(self.node)
-            .show(ui, chrome.as_ref(), |_| {})
-            .response
+        self.widget.show(ui, chrome.as_ref(), |_| {}).response
     }
 }
 

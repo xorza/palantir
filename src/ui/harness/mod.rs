@@ -830,11 +830,11 @@ mod unit {
     use crate::scene::damage::Damage;
     use crate::scene::damage::region::DamageRegion;
     use crate::scene::layer::Layer;
-    use crate::scene::node::configure::Configure;
     use crate::scene::tree::node_id::NodeId;
     use crate::ui::Ui;
     use crate::ui::frame_report::FrameReport;
     use crate::ui::harness::UiHarness;
+    use crate::widgets::configure::Configure;
     use crate::widgets::panel::Panel;
     use glam::UVec2;
 

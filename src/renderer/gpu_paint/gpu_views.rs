@@ -3,7 +3,6 @@
 use crate::primitives::texture_id::TextureId;
 use crate::primitives::widget_id::{WidgetId, WidgetIdMap, WidgetIdSet};
 use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
-use crate::renderer::texture_id_source::TextureIdSource;
 use std::collections::hash_map::Entry;
 
 /// One live `GpuView`, keyed by `WidgetId`: the view's stable backend
@@ -39,16 +38,15 @@ impl GpuViews {
     /// when clear, the epoch is held stable, so the damage diff treats the
     /// view as unchanged and the encoder culls it (skipping its GPU paint
     /// and reusing last frame's pixels). First sight always paints — the
-    /// texture does not exist yet — and is the one place `ids` is drawn
-    /// from, which is what makes the `TextureId` stable for the view's
-    /// whole life.
+    /// texture does not exist yet — and is the one place an id is minted,
+    /// which is what makes the `TextureId` stable for the view's whole
+    /// life.
     pub(crate) fn record(
         &mut self,
         id: WidgetId,
         paint: GpuPaintRef,
         repaint: bool,
         frame: u64,
-        ids: &TextureIdSource,
     ) -> u64 {
         match self.entries.entry(id) {
             Entry::Occupied(e) => {
@@ -61,7 +59,7 @@ impl GpuViews {
             }
             Entry::Vacant(e) => {
                 e.insert(GpuViewEntry {
-                    texture_id: ids.reserve(),
+                    texture_id: TextureId::reserve(),
                     paint,
                     epoch: frame,
                 })

@@ -5,11 +5,12 @@ use crate::layout::types::overlay::OverlayPosition;
 use crate::primitives::background::Background;
 use crate::primitives::rect::Rect;
 use crate::scene::layer::Layer;
-use crate::scene::node::Node;
 use crate::ui::Ui;
 use crate::widgets::close_handle::CloseHandle;
+use crate::widgets::configure::Configure;
 use crate::widgets::overlay_response::OverlayResponse;
 use crate::widgets::overlay_scope::{Backdrop, OverlayScope};
+use crate::widgets::widget::Widget;
 use glam::Vec2;
 use std::rc::Rc;
 
@@ -79,7 +80,7 @@ pub struct Popup {
     position: OverlayPosition,
     click_outside: ClickOutside,
     layer: Layer,
-    node: Node,
+    widget: Widget,
     chrome: Option<Background>,
 }
 
@@ -111,13 +112,11 @@ impl Popup {
 
     #[track_caller]
     fn positioned(position: OverlayPosition) -> Self {
-        let mut node = Node::vstack();
-        node.flags.set_sense(Sense::CLICK);
         Self {
             position,
             click_outside: ClickOutside::Dismiss,
             layer: Layer::Popup,
-            node,
+            widget: Widget::vstack().sense(Sense::CLICK),
             chrome: None,
         }
     }
@@ -150,7 +149,7 @@ impl Popup {
     }
 
     /// Chrome to fall back on when the caller set none — the `Popup`
-    /// peer of [`ThemeDefaults::default_padding`](crate::scene::node::theme_defaults::ThemeDefaults::default_padding),
+    /// peer of [`ThemeDefaults::default_padding`](crate::widgets::configure::ThemeDefaults::default_padding),
     /// since chrome is a field here rather than on the node.
     ///
     /// Takes a borrow so a wrapper's themed panel is cloned only where
@@ -184,14 +183,13 @@ impl Popup {
             position,
             click_outside,
             layer,
-            node,
+            mut widget,
             chrome,
         } = self;
         // Resolved before the layer switch below, so the body id — and the
         // eater derived from it — is parent-scoped to the trigger's site the
         // way any other widget is, not to the side layer's empty root.
-        let mut widget = ui.widget(node);
-        let eater_id = widget.id().with("eater");
+        let eater_id = widget.resolve(ui).with("eater");
         // The two captures are one decision: an overlay either takes the
         // pointer *and* the keys from the layers below, or neither. Taking
         // one without the other leaves a host that is half-dead in a way
@@ -201,7 +199,8 @@ impl Popup {
         } else {
             Backdrop::Eater(eater_id)
         };
-        let scope = OverlayScope::claim(widget.id(), layer, position, backdrop, &mut widget.node);
+        let id = widget.resolve(ui);
+        let scope = OverlayScope::claim(id, layer, position, backdrop, &mut widget);
 
         let theme = Rc::clone(ui.theme());
         let chrome = widget

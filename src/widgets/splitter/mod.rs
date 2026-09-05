@@ -10,11 +10,11 @@ use crate::primitives::approx;
 use crate::primitives::background::Background;
 use crate::primitives::num::F32Ext;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::node::Node;
-use crate::scene::node::configure::Configure;
 use crate::ui::Ui;
+use crate::widgets::configure::Configure;
 use crate::widgets::response::Response;
 use crate::widgets::theme::splitter::SplitterTheme;
+use crate::widgets::widget::Widget;
 use crate::window::cursor_icon::CursorIcon;
 
 /// Two panes split by a draggable divider. [`Splitter::horizontal`] lays
@@ -37,7 +37,7 @@ use crate::window::cursor_icon::CursorIcon;
 /// a recursive pane tree can capture its response mutably once.
 #[derive(Debug)]
 pub struct Splitter<'a> {
-    node: Node,
+    widget: Widget,
     ratio: &'a mut f32,
     axis: Axis,
     min_pane: f32,
@@ -76,7 +76,9 @@ impl<'a> Splitter<'a> {
         Self {
             // The clipped root contains the grab overlay's overhang within
             // the splitter.
-            node: Node::grid().size((Sizing::FILL, Sizing::FILL)).clip_rect(),
+            widget: Widget::grid()
+                .size((Sizing::FILL, Sizing::FILL))
+                .clip_rect(),
             ratio,
             axis,
             min_pane: 0.0,
@@ -94,13 +96,12 @@ impl<'a> Splitter<'a> {
     style_setter!('a, SplitterTheme, splitter);
 
     pub fn show<'u>(
-        self,
+        mut self,
         ui: &'u mut Ui,
         mut body: impl FnMut(&mut Ui, SplitHalf),
     ) -> Response<'u> {
-        let mut widget = ui.widget(self.node);
-        let response = widget.response(ui);
-        let id = widget.id();
+        let response = self.widget.response(ui);
+        let id = self.widget.resolve(ui);
 
         let theme = self.slot(ui.theme());
         let grab_thickness = theme.grab_thickness.themed_length(1.0);
@@ -185,32 +186,31 @@ impl<'a> Splitter<'a> {
         let grid_def_id = ui.push_grid_def(rows, cols);
         // The middle track *is* the seam, so the grid owes no spacing of
         // its own — a caller's `gap` would push the panes off the rule.
-        widget.node.gaps.set_gap(0.0);
-        widget.node.gaps.set_line_gap(0.0);
-        widget.node.set_mode(LayoutMode::Grid(grid_def_id));
-        widget.record(ui, None, |ui| {
+        self.widget.configure().gap(0.0).line_gap(0.0);
+        self.widget.node.set_mode(LayoutMode::Grid(grid_def_id));
+        self.widget.record(ui, None, |ui| {
             pane(ui, first_id, axis, 0, |ui| body(ui, SplitHalf::First));
 
-            let mut rule = Node::leaf()
+            let mut rule = Widget::leaf()
                 .id(id.with("rule"))
                 .size((Sizing::FILL, Sizing::FILL));
-            rule.grid.set_main(axis, 1);
-            ui.widget(rule).record(ui, Some(&rule_bg), |_| {});
+            rule.node.grid.set_main(axis, 1);
+            rule.record(ui, Some(&rule_bg), |_| {});
 
             pane(ui, second_id, axis, 2, |ui| body(ui, SplitHalf::Second));
 
             // The grab bar overhangs the seam on the split axis only, so
             // its inset is main-axis with nothing across.
             let inset = (rule_thickness - grab_thickness) * 0.5;
-            let mut bar = Node::leaf()
+            let mut bar = Widget::leaf()
                 .id(divider_id)
                 .sense(Sense::DRAG)
                 .size((Sizing::FILL, Sizing::FILL))
                 .margin(axis.compose_spacing(inset, 0.0));
             // No `Configure` twin: cell placement there is `(row, col)`, and
             // which of the two this axis means is the whole point here.
-            bar.grid.set_main(axis, 1);
-            ui.widget(bar).record(ui, Some(&bar_bg), |_| {});
+            bar.node.grid.set_main(axis, 1);
+            bar.record(ui, Some(&bar_bg), |_| {});
         });
 
         Response::eager(id, ui, response)
@@ -221,12 +221,12 @@ impl_configure!(Splitter<'_>);
 
 /// One pane: a clipped ZStack filling its Grid cell.
 fn pane(ui: &mut Ui, id: WidgetId, axis: Axis, main_cell: u16, body: impl FnOnce(&mut Ui)) {
-    let mut el = Node::zstack()
+    let mut el = Widget::zstack()
         .id(id)
         .size((Sizing::FILL, Sizing::FILL))
         .clip_rect();
-    el.grid.set_main(axis, main_cell);
-    ui.widget(el).record(ui, None, body)
+    el.node.grid.set_main(axis, main_cell);
+    el.record(ui, None, body)
 }
 
 /// Recover the first pane's effective share after layout applied both

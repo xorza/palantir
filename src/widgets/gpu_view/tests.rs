@@ -12,9 +12,9 @@ use crate::renderer::render_plan::RenderPlan;
 use crate::scene::damage::Damage;
 use crate::scene::damage::region::DamageRegion;
 use crate::scene::layer::Layer;
-use crate::scene::node::configure::Configure;
 use crate::scene::shapes::paint::ImageSource;
 use crate::scene::shapes::record::ShapeRecord;
+use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
 

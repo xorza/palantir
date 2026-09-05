@@ -17,10 +17,10 @@ use crate::diagnostics::Diagnostics;
 use crate::display::user_scale::UserScale;
 use crate::icons::icon_registry::IconRegistry;
 use crate::primitives::image::Image;
+use crate::primitives::texture_id::TextureId;
 use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
 use crate::renderer::image_registry::ImageRegistry;
 use crate::renderer::image_registry::image_handle::ImageHandle;
-use crate::renderer::texture_id_source::TextureIdSource;
 use crate::renderer::texture_limit::{RegisterImageError, TextureLimit};
 use crate::text::shaper::TextShaper;
 use crate::window::window_directory::WindowDirectory;
@@ -36,7 +36,6 @@ pub(crate) struct UiResources {
     /// Held here, where no recorder reads it, so the one list of handles a
     /// host shares is this struct and not this struct plus a loose atlas.
     gradient_atlas: SharedGradientAtlas,
-    texture_ids: TextureIdSource,
     /// The device ceiling a registered image is measured against, and what
     /// `Ui::max_image_dimension` reports. Held beside the registry rather
     /// than inside it: this is an immutable device constant, and the
@@ -62,7 +61,6 @@ impl UiResources {
             images: ImageRegistry::default(),
             icons: IconRegistry::default(),
             gradient_atlas: SharedGradientAtlas::new(texture_limit),
-            texture_ids: TextureIdSource::default(),
             texture_limit,
             clipboard,
             diagnostics: Diagnostics::default(),
@@ -85,11 +83,6 @@ impl UiResources {
 
     pub(crate) fn gradient_atlas(&self) -> &SharedGradientAtlas {
         &self.gradient_atlas
-    }
-
-    /// The one id authority for registered images and `GpuView` targets.
-    pub(super) fn texture_ids(&self) -> &TextureIdSource {
-        &self.texture_ids
     }
 
     pub(crate) fn texture_limit(&self) -> TextureLimit {
@@ -115,7 +108,7 @@ impl UiResources {
     pub(super) fn register_image(&self, image: &Image) -> Result<ImageHandle, RegisterImageError> {
         self.texture_limit.accepts(image.size)?;
         Ok(ImageHandle::new(
-            self.texture_ids.reserve(),
+            TextureId::reserve(),
             image,
             self.images.clone(),
         ))

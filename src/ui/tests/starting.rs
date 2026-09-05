@@ -9,9 +9,9 @@ use crate::renderer::frontend::Frontend;
 use crate::renderer::render_plan::RenderPlan;
 use crate::scene::damage::Damage;
 use crate::scene::layer::Layer;
-use crate::scene::node::configure::Configure;
 use crate::ui::harness::UiHarness;
 use crate::ui::tests::support::{COLD, SURFACE, cold_frame, cold_ui};
+use crate::widgets::configure::Configure;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};
 

@@ -13,7 +13,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::scene::endpoint::Endpoint;
 use crate::scene::layer::{Layer, PerLayer};
 use crate::scene::node::Node;
-use crate::scene::node::salt::Salt;
+use crate::scene::node::ident::Ident;
 use crate::scene::record_store::RecordStore;
 use crate::scene::seen_ids::{CollisionRecord, SeenIds};
 use crate::scene::tree::ChromeInput;
@@ -114,21 +114,21 @@ impl Forest {
         self.trees[layer].push_scrollbars_def(def)
     }
 
-    /// Resolve `salt` against the currently-open parent into the id this
-    /// frame will record under, reserving its occurrence slot.
+    /// Resolve `ident` against the currently-open parent into the id this
+    /// frame will record under.
     ///
-    /// Both halves are the tracker's: `Salt::resolve` mixes in the
+    /// Both halves are the tracker's: [`Ident::raw_id`] mixes in the
     /// parent so identity follows tree position rather than record
-    /// order, and [`SeenIds::resolve`] eagerly disambiguates a salt that
-    /// already appeared this frame. Neither is meaningful without the
+    /// order, and [`SeenIds::resolve`] eagerly disambiguates a raw id
+    /// that already opened this frame. Neither is meaningful without the
     /// other — a raw id that skipped disambiguation would collide, and a
     /// disambiguated id that skipped the parent would move with record
     /// order — so they resolve together here rather than being paired up
     /// again by every caller.
     #[inline]
-    pub(crate) fn widget_id(&mut self, salt: Salt) -> WidgetId {
-        let raw_id = salt.resolve(self.current_parent_id());
-        self.ids.resolve(raw_id, salt.is_explicit())
+    pub(crate) fn widget_id(&mut self, ident: Ident) -> WidgetId {
+        let raw_id = ident.raw_id(self.current_parent_id());
+        self.ids.resolve(raw_id, ident.is_explicit())
     }
 
     /// The node `id` was opened under in **this** record pass.
@@ -194,7 +194,7 @@ impl Forest {
     }
 
     /// Open a node whose id has already been resolved + disambiguated
-    /// upstream by [`crate::Ui::widget`] (which calls
+    /// upstream by [`crate::Widget::resolve`] (which calls
     /// `SeenIds::resolve` eagerly so the returned id matches what the
     /// tree, cascade, and `response_for` see). This function takes
     /// the id verbatim, opens the node in the active tree, and records
@@ -435,7 +435,7 @@ impl Forest {
     }
 
     /// `WidgetId` of the innermost open node in the active layer — the
-    /// parent context auto/salted ids resolve against (`Ui::widget`)
+    /// parent context auto/salted ids resolve against (`Widget::resolve`)
     /// — or `None` at the top of a layer with no node open yet.
     #[inline]
     pub(crate) fn current_parent_id(&self) -> Option<WidgetId> {

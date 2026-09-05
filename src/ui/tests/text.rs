@@ -8,13 +8,13 @@ use crate::primitives::widget_id::WidgetId;
 use crate::renderer::frontend::Frontend;
 use crate::renderer::texture_limit::TextureLimit;
 use crate::scene::layer::Layer;
-use crate::scene::node::configure::Configure;
 use crate::text::RENDERED_RUN_KEEP_FRAMES;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::wrap::TextWrap;
 use crate::ui::harness::UiHarness;
 use crate::ui::resources::UiResources;
 use crate::ui::tests::support::{SURFACE, measure_calls, ui_with_shared};
+use crate::widgets::configure::Configure;
 use crate::widgets::{panel::Panel, text::Text};
 use glam::UVec2;
 use std::time::Duration;
@@ -158,14 +158,14 @@ fn text_reuse_evicts_disappeared_widgets() {
 /// it, and a unit test on the method would pass with that call deleted.
 #[test]
 fn a_widget_recording_fewer_runs_loses_the_rows_above_its_count() {
-    use crate::scene::node::Node;
     use crate::shape::Shape;
+    use crate::widgets::widget::Widget;
 
     let wid = WidgetId::from_hash("multi-run");
     let build = move |runs: usize| {
         move |ui: &mut Ui| {
             Panel::vstack().auto_id().show(ui, |ui| {
-                ui.widget(Node::leaf().id(wid)).record(ui, None, |ui| {
+                Widget::leaf().id(wid).record(ui, None, |ui| {
                     for i in 0..runs {
                         let text = ui.intern(format!("run {i}"));
                         ui.add_shape(Shape::text(text, GlyphFont::new(14.0)));
@@ -279,7 +279,6 @@ fn paint_only_frames_advance_the_shared_text_clock() {
     use crate::common::clipboard::Clipboard;
     use crate::layout::types::align::Align;
     use crate::layout::types::sizing::Sizing;
-    use crate::scene::node::Node;
     use crate::scene::tree::paint_anims::PaintAnim;
     use crate::shape::Shape;
     use crate::text::font_family::FontFamily;
@@ -287,6 +286,7 @@ fn paint_only_frames_advance_the_shared_text_clock() {
     use crate::text::shaper::TextShaper;
     use crate::ui::frame_report::FrameProcessing;
     use crate::ui::resources::UiResources;
+    use crate::widgets::widget::Widget;
 
     const HALF: Duration = Duration::from_millis(500);
 
@@ -294,9 +294,8 @@ fn paint_only_frames_advance_the_shared_text_clock() {
     // paint-only frames at all: it repaints on a timer without
     // re-recording.
     fn blinking_text(ui: &mut Ui) {
-        let mut node = Node::leaf();
-        node.size = Some((Sizing::fixed(160.0), Sizing::fixed(30.0)).into());
-        ui.widget(node).record(ui, None, |ui| {
+        let widget = Widget::leaf().size((Sizing::fixed(160.0), Sizing::fixed(30.0)));
+        widget.record(ui, None, |ui| {
             let text = ui.intern("paint-only clock");
             ui.add_shape_animated(
                 Shape::text(
@@ -389,7 +388,6 @@ fn shared_cache_eviction_preserves_idle_windows_paint_only_text_source() {
     use crate::common::clipboard::Clipboard;
     use crate::layout::types::align::Align;
     use crate::layout::types::sizing::Sizing;
-    use crate::scene::node::Node;
     use crate::scene::tree::paint_anims::PaintAnim;
     use crate::shape::Shape;
     use crate::text::font_family::FontFamily;
@@ -397,13 +395,13 @@ fn shared_cache_eviction_preserves_idle_windows_paint_only_text_source() {
     use crate::text::shaper::TextShaper;
     use crate::ui::frame_report::FrameProcessing;
     use crate::ui::resources::UiResources;
+    use crate::widgets::widget::Widget;
 
     const HALF: Duration = Duration::from_millis(500);
 
     fn idle_body(ui: &mut Ui) {
-        let mut node = Node::leaf();
-        node.size = Some((Sizing::fixed(160.0), Sizing::fixed(30.0)).into());
-        ui.widget(node).record(ui, None, |ui| {
+        let widget = Widget::leaf().size((Sizing::fixed(160.0), Sizing::fixed(30.0)));
+        widget.record(ui, None, |ui| {
             let text = ui.intern("idle interned window text");
             ui.add_shape_animated(
                 Shape::text(

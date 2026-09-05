@@ -8,8 +8,6 @@ use crate::layout::types::align::Align;
 use crate::primitives::color::RgbaF32;
 use crate::renderer::frontend::capture::PaintCall;
 use crate::scene::layer::Layer;
-use crate::scene::node::Node;
-use crate::scene::node::configure::Configure;
 use crate::scene::tree::node_id::NodeId;
 use crate::shape::Shape;
 use crate::text::font_family::FontFamily;
@@ -17,7 +15,9 @@ use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::wrap::TextWrap;
 use crate::ui::harness::UiHarness;
+use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
+use crate::widgets::widget::Widget;
 use glam::UVec2;
 
 /// Pin: a custom widget that pushes two `ShapeRecord::Text` to the same
@@ -217,8 +217,8 @@ fn a_resize_drag_costs_one_reshape_a_frame_and_stays_bounded() {
 fn build_multi_text_leaf(ui: &mut Ui) -> NodeId {
     let leaf_id = WidgetId::from_hash("multi-text-leaf");
     Panel::vstack().auto_id().show(ui, |ui| {
-        let node = Node::leaf().id(leaf_id);
-        ui.widget(node).record(ui, None, |ui| {
+        let widget = Widget::leaf().id(leaf_id);
+        widget.record(ui, None, |ui| {
             let first = ui.intern("first");
             ui.add_shape(
                 Shape::text(

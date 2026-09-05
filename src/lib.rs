@@ -272,6 +272,7 @@ pub use layout::types::justify::Justify;
 pub use layout::types::sizing::{Sizes, Sizing};
 pub use layout::types::track::Track;
 pub use palantir_anim_derive::Animatable;
+pub use primitives::approx;
 pub use primitives::background::Background;
 pub use primitives::brush::gradient::conic_geometry::{
     ConicGeometry, ConicGradient, ConicGradientBuilder,
@@ -306,9 +307,6 @@ pub use primitives::size::Size;
 pub use primitives::spacing::{Spacing, Sums};
 pub use primitives::text_input::TextInput;
 pub use scene::layer::Layer;
-pub use scene::node::Node;
-pub use scene::node::configure::Configure;
-pub use scene::node::configure::ConfigureNode;
 pub use scene::visibility::Visibility;
 // Re-exported (not an palantir type) because it's the canonical integer
 // pixel-extent across the public surface — `Display.physical`,
@@ -372,6 +370,8 @@ pub use widgets::color_picker::ColorPicker;
 pub use widgets::color_strip::ColorStrip;
 pub use widgets::color_swatch::ColorSwatch;
 pub use widgets::combo_box::ComboBox;
+pub use widgets::configure::Configure;
+pub use widgets::configure::ConfigureWidget;
 pub use widgets::context_menu::ContextMenu;
 pub use widgets::context_menu::menu_item::MenuItem;
 pub use widgets::context_menu::menu_separator::MenuSeparator;

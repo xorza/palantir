@@ -8,9 +8,9 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::cascade::Cascade;
 use crate::scene::layer::Layer;
-use crate::scene::node::configure::Configure;
 use crate::ui::Ui;
 use crate::ui::harness::UiHarness;
+use crate::widgets::configure::Configure;
 use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
 use std::time::Duration;
@@ -368,7 +368,7 @@ fn focus_policy_routing() {
     use crate::Ui;
     use crate::layout::types::sizing::Sizing;
     use crate::primitives::widget_id::WidgetId;
-    use crate::scene::node::configure::Configure;
+    use crate::widgets::configure::Configure;
     use crate::widgets::{button::Button, panel::Panel};
 
     // (label, policy, expect_focus_after_outside_press).
@@ -416,7 +416,7 @@ fn clicking_non_focusable_widget_preserves_focus_under_preserve_policy() {
     use crate::Ui;
     use crate::layout::types::sizing::Sizing;
     use crate::primitives::widget_id::WidgetId;
-    use crate::scene::node::configure::Configure;
+    use crate::widgets::configure::Configure;
     use crate::widgets::{button::Button, panel::Panel};
 
     let surface = glam::UVec2::new(400, 80);
@@ -451,7 +451,7 @@ fn clicking_non_focusable_widget_preserves_focus_under_preserve_policy() {
 #[test]
 fn focus_is_evicted_when_widget_disappears() {
     use crate::layout::types::sizing::Sizing;
-    use crate::scene::node::configure::Configure;
+    use crate::widgets::configure::Configure;
     use crate::widgets::{button::Button, panel::Panel};
 
     let surface = glam::UVec2::new(200, 80);
@@ -494,8 +494,8 @@ fn invisible_or_disabled_focusable_refuses_focus() {
     // future split doesn't keep one alive.
 
     use crate::layout::types::sizing::Sizing;
-    use crate::scene::node::configure::Configure;
     use crate::scene::visibility::Visibility;
+    use crate::widgets::configure::Configure;
     use crate::widgets::{button::Button, panel::Panel};
 
     #[derive(Debug)]

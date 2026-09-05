@@ -18,9 +18,9 @@ use crate::input::capture::DRAG_THRESHOLD;
 use crate::input::watch::PointerWake;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::node::configure::Configure;
 use crate::ui::harness::UiHarness;
 use crate::widgets::button::Button;
+use crate::widgets::configure::Configure;
 
 /// Bigger than the button, so the pointer has inert surface to sit on.
 const SURFACE: UVec2 = UVec2::new(200, 200);

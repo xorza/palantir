@@ -3,7 +3,6 @@
 
 use crate::layout::types::align::Align;
 use crate::primitives::text_input::TextInput;
-use crate::scene::node::Node;
 use crate::shape::Shape;
 use crate::text::font_style::FontStyle;
 use crate::text::font_weight::FontWeight;
@@ -12,6 +11,7 @@ use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
 use crate::widgets::response::Response;
 use crate::widgets::theme::text_style::TextStyle;
+use crate::widgets::widget::Widget;
 
 /// Standalone shaped-text leaf. Use for labels, paragraphs, headings —
 /// anything that's just a string. Hugs its measured size when it has room;
@@ -44,7 +44,7 @@ use crate::widgets::theme::text_style::TextStyle;
 /// ```
 #[derive(Debug)]
 pub struct Text<'a> {
-    node: Node,
+    widget: Widget,
     text: TextInput<'a>,
     style: Option<&'a TextStyle>,
     /// Single-axis weight override applied over the resolved `style` in
@@ -61,7 +61,7 @@ impl<'a> Text<'a> {
     #[track_caller]
     pub fn new(text: impl Into<TextInput<'a>>) -> Self {
         Self {
-            node: Node::leaf(),
+            widget: Widget::leaf(),
             text: text.into(),
             style: None,
             weight: None,
@@ -136,7 +136,7 @@ impl<'a> Text<'a> {
         // size or leading at `add_shape`, which is where Button and
         // DragValue leave it too. One owner of the rule, and it is the one
         // downstream of every recorder.
-        ui.widget(self.node)
+        self.widget
             .show(ui, None, |ui| {
                 let text = ui.intern(self.text);
                 ui.add_shape(

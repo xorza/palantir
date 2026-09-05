@@ -93,7 +93,7 @@ macro_rules! f16x4_lanes {
     };
 }
 
-pub(crate) mod approx;
+pub mod approx;
 pub(crate) mod arc;
 pub(crate) mod background;
 pub(crate) mod bezier;

@@ -6,9 +6,9 @@ use crate::primitives::image::Image;
 use crate::primitives::widget_id::WidgetId;
 use crate::renderer::render_plan::RenderPlan;
 use crate::scene::damage::Damage;
-use crate::scene::node::configure::Configure;
 use crate::ui::harness::UiHarness;
 use crate::widgets::color_field::{ColorField, fill};
+use crate::widgets::configure::Configure;
 use glam::{UVec2, Vec2};
 
 const FIELD: UVec2 = UVec2::new(208, 160);

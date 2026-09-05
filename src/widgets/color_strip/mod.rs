@@ -11,17 +11,17 @@ use crate::primitives::image::Image;
 use crate::primitives::image::ImageFit;
 use crate::primitives::num::F32Ext;
 use crate::primitives::size::Size;
-use crate::scene::node::Node;
-use crate::scene::node::configure::Configure;
 use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::widgets::axis_keys::AxisKeys;
 use crate::widgets::checkerboard::Checkerboard;
 use crate::widgets::color_surface;
 use crate::widgets::color_surface::ColorSurface;
+use crate::widgets::configure::Configure;
 use crate::widgets::response::Response;
 use crate::widgets::theme::color_picker::ColorPickerTheme;
 use crate::widgets::value_response::ValueResponse;
+use crate::widgets::widget::Widget;
 use glam::Vec2;
 
 /// A one-axis bar of a colour picker: the hue ramp, or the alpha ramp of one
@@ -37,7 +37,7 @@ use glam::Vec2;
 /// wherever it is used, rather than a CPU imitation of it.
 #[derive(Debug)]
 pub struct ColorStrip<'a> {
-    node: Node,
+    widget: Widget,
     kind: StripKind<'a>,
     downsample: u32,
     style: Option<&'a ColorPickerTheme>,
@@ -72,7 +72,7 @@ impl<'a> ColorStrip<'a> {
     #[track_caller]
     fn new(kind: StripKind<'a>) -> Self {
         Self {
-            node: Node::leaf()
+            widget: Widget::leaf()
                 .sense(Sense::CLICK | Sense::DRAG)
                 .focusable(true),
             kind,
@@ -107,12 +107,11 @@ impl<'a> ColorStrip<'a> {
         let handle_inner = theme.handle_inner;
         let checker = Checkerboard::new(theme);
 
-        let node = self
-            .node
+        let mut widget = self
+            .widget
             .default_size((Sizing::fixed(themed.w), Sizing::fixed(themed.h)));
-        let widget = ui.widget(node);
         let response = widget.response(ui);
-        let id = widget.id();
+        let id = widget.resolve(ui);
         let size = response.layout_rect.map_or(themed, |r| r.size);
 
         let mut kind = self.kind;

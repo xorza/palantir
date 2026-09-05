@@ -2,18 +2,18 @@
 //! drawn as a switch.
 
 use crate::layout::types::sizing::Sizing;
-use crate::primitives::approx::noop_f32;
+use crate::primitives::approx;
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
 use crate::primitives::num::F32Ext;
 use crate::primitives::text_input::TextInput;
-use crate::scene::node::Node;
-use crate::scene::node::configure::Configure;
 use crate::ui::Ui;
+use crate::widgets::configure::Configure;
 use crate::widgets::response::Response;
 use crate::widgets::theme::toggle::ToggleTheme;
 use crate::widgets::theme::widget_look::theme_slot::ThemeSlot;
 use crate::widgets::toggle_chrome::ToggleChrome;
+use crate::widgets::widget::Widget;
 use glam::Vec2;
 
 /// Two-response boolean toggle drawn as a pill track with a knob that
@@ -27,7 +27,7 @@ use glam::Vec2;
 /// absolutely positioned; the knob's x animates through [`Ui::animate`].
 #[derive(Debug)]
 pub struct Switch<'a> {
-    node: Node,
+    widget: Widget,
     value: &'a mut bool,
     label: TextInput<'a>,
     style: Option<&'a ToggleTheme>,
@@ -37,7 +37,7 @@ impl<'a> Switch<'a> {
     #[track_caller]
     pub fn new(value: &'a mut bool) -> Self {
         Self {
-            node: ToggleChrome::row_node(),
+            widget: ToggleChrome::row(),
             value,
             label: TextInput::default(),
             style: None,
@@ -48,10 +48,9 @@ impl<'a> Switch<'a> {
 
     style_setter!('a, ToggleTheme, switch);
 
-    pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        let widget = ui.widget(self.node);
-        let response = widget.response(ui);
-        let id = widget.id();
+    pub fn show(mut self, ui: &mut Ui) -> Response<'_> {
+        let response = self.widget.response(ui);
+        let id = self.widget.resolve(ui);
 
         let on = ToggleChrome::toggled(&response, self.value);
 
@@ -69,13 +68,13 @@ impl<'a> Switch<'a> {
             // A `Canvas` so the knob can be absolutely positioned inside
             // the track. Width is stroke-independent, so it resolves
             // here even though the stroke isn't known until the body.
-            boxed: Node::canvas().size((
+            boxed: Widget::canvas().size((
                 Sizing::fixed(track_width(track_h, aspect)),
                 Sizing::fixed(track_h),
             )),
             pill: Some(track_h * 0.5),
         };
-        chrome.record_row(ui, widget, response, self.label, |ui, track| {
+        chrome.record_row(ui, self.widget, response, self.label, |ui, track| {
             // The track's stroke auto-insets the Canvas content box by
             // its width on every side (`Tree::open_node`), so the knob's
             // declared position is content-box-relative. Feed the stroke
@@ -86,17 +85,21 @@ impl<'a> Switch<'a> {
             // theme: the stroke animates between the on and off looks,
             // and a mid-transition knob has to track it.
             let stroke = track.stroke.width;
-            let stroke_inset = if noop_f32(stroke) { 0.0 } else { stroke };
+            let stroke_inset = if approx::noop_f32(stroke) {
+                0.0
+            } else {
+                stroke
+            };
             let geom = switch_geom(track_h, inset, stroke_inset, aspect);
 
             let target_x = if on { geom.on_x } else { geom.off_x };
             let knob_x = ui.animate(knob_id, "x", target_x, anim);
             let knob_bg = Background::rounded(knob_color, Corners::all(geom.knob * 0.5));
-            let knob = Node::leaf()
+            let knob = Widget::leaf()
                 .id(knob_id)
                 .size((Sizing::fixed(geom.knob), Sizing::fixed(geom.knob)))
                 .position(Vec2::new(knob_x, geom.knob_y));
-            ui.widget(knob).record(ui, Some(&knob_bg), |_| {});
+            knob.record(ui, Some(&knob_bg), |_| {});
         })
     }
 }
