@@ -1,5 +1,6 @@
 //! [`LayerScope`] — the builder [`Ui::layer`] hands out.
 
+use crate::layout::types::overlay::OverlayPosition;
 use crate::layout::types::placement::Placement;
 use crate::primitives::size::Size;
 use crate::scene::layer::Layer;
@@ -8,15 +9,14 @@ use glam::Vec2;
 
 /// A side layer being configured, terminated by [`Self::show`].
 ///
-/// [`Self::at`] fixes the body's top-left, while the crate-internal
-/// overlay form resolves the origin from the body's measured size
-/// instead — that is what lets a popup flip above its anchor when it
-/// would not fit below, and it is why `Popup`, `ContextMenu`, and
-/// `Tooltip` place themselves rather than taking a point from the
-/// caller. [`Self::max_size`] caps either one, so no setter here
-/// depends on the order the others ran in. Setting neither anchors at
-/// the surface origin with the whole surface available, which is what
-/// every full-surface layer wants.
+/// [`Self::at`] fixes the body's top-left. [`Self::anchored`] resolves
+/// the origin from the body's measured size instead — that is what lets
+/// a popup flip above its anchor when it would not fit below, and it is
+/// why `Popup`, `ContextMenu` and `Tooltip` place themselves rather than
+/// taking a point from the caller. [`Self::max_size`] caps either one,
+/// so no setter here depends on the order the others ran in. Setting
+/// neither anchors at the surface origin with the whole surface
+/// available, which is what every full-surface layer wants.
 #[derive(Debug)]
 #[must_use = "a layer records nothing until `show`"]
 pub struct LayerScope<'a> {
@@ -50,15 +50,15 @@ impl<'a> LayerScope<'a> {
         self
     }
 
-    /// Set the placement wholesale.
+    /// Resolve the body's origin from its measured size against
+    /// `position`'s anchor, flipping or shifting it to fit the surface.
     ///
-    /// Takes an `OverlayPosition` — resolve the origin from the body's
-    /// measured size against a screen-space anchor rect, the
-    /// flip-or-shift-to-fit form popups, menus, and tooltips want — or an
-    /// already-built [`Placement`], for framework callers that were
-    /// handed one rather than building it.
-    pub(crate) fn placement(mut self, placement: impl Into<Placement>) -> Self {
-        self.placement = placement.into();
+    /// The form every anchored overlay wants — a dropdown under its
+    /// trigger, a menu at the pointer, a tooltip beside the thing it
+    /// describes. Replaces an origin set by [`Self::at`] and keeps a cap
+    /// set by [`Self::max_size`].
+    pub fn anchored(mut self, position: OverlayPosition) -> Self {
+        self.placement = self.placement.with_overlay(position);
         self
     }
 

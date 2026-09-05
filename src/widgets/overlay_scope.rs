@@ -2,7 +2,7 @@
 
 use crate::input::key_class::KeyFilter;
 use crate::input::sense::Sense;
-use crate::layout::types::placement::Placement;
+use crate::layout::types::overlay::OverlayPosition;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
@@ -84,7 +84,10 @@ pub(super) struct OverlayScope {
     /// the body placed on another — every caller knows the whole
     /// placement at claim time anyway.
     layer: Layer,
-    placement: Placement,
+    /// `None` takes the layer's default — the surface origin with the
+    /// whole surface available, which is what a full-surface overlay
+    /// like a modal wants.
+    position: Option<OverlayPosition>,
     backdrop: Backdrop,
 }
 
@@ -99,7 +102,7 @@ impl OverlayScope {
     pub(super) fn claim(
         owner: WidgetId,
         layer: Layer,
-        placement: impl Into<Placement>,
+        position: Option<OverlayPosition>,
         backdrop: Backdrop,
         root: &mut Widget,
     ) -> Self {
@@ -109,7 +112,7 @@ impl OverlayScope {
         Self {
             owner,
             layer,
-            placement: placement.into(),
+            position,
             backdrop,
         }
     }
@@ -146,7 +149,12 @@ impl OverlayScope {
             });
         }
         let owns_input = self.backdrop.owns_input();
-        let (inner, escape) = ui.layer(self.layer).placement(self.placement).show(|ui| {
+        let scope = ui.layer(self.layer);
+        let scope = match self.position {
+            Some(position) => scope.anchored(position),
+            None => scope,
+        };
+        let (inner, escape) = scope.show(|ui| {
             let inner = body(ui);
             (inner, owns_input && ui.escape_pressed())
         });

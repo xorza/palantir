@@ -36,13 +36,24 @@ impl OverlaySide {
     }
 }
 
-/// Measured side-layer placement relative to an anchor rectangle.
+/// Where a side layer lands next to the thing it belongs to.
+///
+/// Hand one to [`LayerScope::anchored`](crate::LayerScope::anchored). The
+/// origin resolves *after* measure, from the body's own size against the
+/// surface: the body takes the side you asked for when it fits there,
+/// flips to the opposite side when it does not, and shifts back inside
+/// the surface when neither side has room. That is what a dropdown does
+/// near the bottom edge, and it is the whole reason this is a value the
+/// layer resolves rather than a point you compute.
+///
+/// [`LayerScope::at`](crate::LayerScope::at) is the other form: a fixed
+/// top-left that never moves.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct OverlayPosition {
-    pub(crate) anchor: Rect,
-    pub(crate) side: OverlaySide,
-    pub(crate) align: AxisAlign,
-    pub(crate) gap: f32,
+pub struct OverlayPosition {
+    anchor: Rect,
+    side: OverlaySide,
+    align: AxisAlign,
+    gap: f32,
 }
 
 impl OverlayPosition {
@@ -68,24 +79,42 @@ impl OverlayPosition {
         }
     }
 
-    pub(crate) const fn at_point(anchor: Vec2) -> Self {
-        Self::below(Rect::new(anchor.x, anchor.y, 0.0, 0.0), 0.0)
+    /// Below a zero-sized anchor at `anchor` — the point form, for an
+    /// overlay raised at the pointer rather than off a widget's rect.
+    /// Still flips and shifts, so a menu opened near the bottom edge
+    /// comes up rather than off-screen.
+    pub const fn at_point(anchor: Vec2) -> Self {
+        Self::below(Rect::new(anchor.x, anchor.y, 0.0, 0.0))
     }
 
-    pub(crate) const fn above(anchor: Rect, gap: f32) -> Self {
-        Self::new(anchor, OverlaySide::Above, AxisAlign::Start, gap)
+    /// Above `anchor`, falling back to below it.
+    pub const fn above(anchor: Rect) -> Self {
+        Self::new(anchor, OverlaySide::Above, AxisAlign::Start, 0.0)
     }
 
-    pub(crate) const fn below(anchor: Rect, gap: f32) -> Self {
-        Self::new(anchor, OverlaySide::Below, AxisAlign::Start, gap)
+    /// Below `anchor`, falling back to above it.
+    pub const fn below(anchor: Rect) -> Self {
+        Self::new(anchor, OverlaySide::Below, AxisAlign::Start, 0.0)
     }
 
-    pub(crate) const fn left_of(anchor: Rect, gap: f32) -> Self {
-        Self::new(anchor, OverlaySide::Left, AxisAlign::Start, gap)
+    /// Left of `anchor`, falling back to its right.
+    pub const fn left_of(anchor: Rect) -> Self {
+        Self::new(anchor, OverlaySide::Left, AxisAlign::Start, 0.0)
     }
 
-    pub(crate) const fn right_of(anchor: Rect, gap: f32) -> Self {
-        Self::new(anchor, OverlaySide::Right, AxisAlign::Start, gap)
+    /// Right of `anchor`, falling back to its left.
+    pub const fn right_of(anchor: Rect) -> Self {
+        Self::new(anchor, OverlaySide::Right, AxisAlign::Start, 0.0)
+    }
+
+    /// Hold the body this far off the anchor, in logical px.
+    ///
+    /// Zero by default, because a dropdown meets the trigger it drops out
+    /// of. An overlay that reads as a separate object — a tooltip — sets
+    /// its own.
+    pub const fn gap(mut self, px: f32) -> Self {
+        self.gap = px;
+        self
     }
 
     pub(crate) fn resolve(self, measured: Size, bounds: Rect) -> Vec2 {

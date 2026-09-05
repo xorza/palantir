@@ -93,22 +93,22 @@ impl Popup {
 
     #[track_caller]
     pub fn below(anchor: Rect) -> Self {
-        Self::positioned(OverlayPosition::below(anchor, 0.0))
+        Self::positioned(OverlayPosition::below(anchor))
     }
 
     #[track_caller]
     pub fn above(anchor: Rect) -> Self {
-        Self::positioned(OverlayPosition::above(anchor, 0.0))
+        Self::positioned(OverlayPosition::above(anchor))
     }
 
     #[track_caller]
     pub fn left_of(anchor: Rect) -> Self {
-        Self::positioned(OverlayPosition::left_of(anchor, 0.0))
+        Self::positioned(OverlayPosition::left_of(anchor))
     }
 
     #[track_caller]
     pub fn right_of(anchor: Rect) -> Self {
-        Self::positioned(OverlayPosition::right_of(anchor, 0.0))
+        Self::positioned(OverlayPosition::right_of(anchor))
     }
 
     #[track_caller]
@@ -140,7 +140,7 @@ impl Popup {
     /// object — the way [`crate::Tooltip`] does, off
     /// [`TooltipTheme::gap`](crate::TooltipTheme) — sets its own.
     pub fn gap(mut self, px: f32) -> Self {
-        self.position.gap = px;
+        self.position = self.position.gap(px);
         self
     }
 
@@ -201,7 +201,7 @@ impl Popup {
             Backdrop::Eater(eater_id)
         };
         let id = widget.resolve(ui);
-        let scope = OverlayScope::claim(id, layer, position, backdrop, &mut widget);
+        let scope = OverlayScope::claim(id, layer, Some(position), backdrop, &mut widget);
 
         let theme = Rc::clone(ui.theme());
         widget.configure().default_clip(theme.panel_clip);

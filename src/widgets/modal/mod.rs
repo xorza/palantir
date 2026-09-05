@@ -2,7 +2,6 @@
 
 use crate::input::sense::Sense;
 use crate::layout::types::align::Align;
-use crate::layout::types::placement::Placement;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::color::RgbaF32;
@@ -17,7 +16,6 @@ use crate::widgets::overlay_response::OverlayResponse;
 use crate::widgets::overlay_scope::{Backdrop, OverlayScope};
 use crate::widgets::theme::modal::ModalTheme;
 use crate::widgets::widget::Widget;
-use glam::Vec2;
 use std::rc::Rc;
 
 /// A centered dialog over a dimming, input-blocking backdrop, recorded
@@ -72,7 +70,6 @@ impl<'a> Modal<'a> {
         ui: &mut Ui,
         body: impl FnOnce(&mut Ui, &CloseHandle) -> R,
     ) -> OverlayResponse<R> {
-        let surface = ui.display().logical_rect();
         // The caller's identity names the *backdrop root*, but the widget
         // it arrived on is the panel — the root is framework-built below
         // under the id, and the panel moves onto a child of it.
@@ -103,9 +100,10 @@ impl<'a> Modal<'a> {
             .size((Sizing::FILL, Sizing::FILL))
             .child_align(Align::CENTER)
             .sense(Sense::ABSORB_POINTER);
-        let placement = Placement::fixed(Vec2::ZERO, Some(surface.size));
-        let scope =
-            OverlayScope::claim(root_id, Layer::Modal, placement, Backdrop::Root, &mut root);
+        // No placement: a modal is a full-surface layer, and the layer's
+        // own default is the surface origin with the whole surface
+        // available.
+        let scope = OverlayScope::claim(root_id, Layer::Modal, None, Backdrop::Root, &mut root);
         let handle = CloseHandle::default();
         let turn = scope.record(ui, |ui| {
             root.record(ui, Some(&dim), |ui| {

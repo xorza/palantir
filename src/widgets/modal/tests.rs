@@ -1,6 +1,7 @@
 use crate::Ui;
 use crate::input::keyboard::key::Key;
 use crate::primitives::background::Background;
+use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
@@ -36,6 +37,27 @@ fn explicit_zero_padding_and_minimum_override_card_theme() {
     let node = NodeId(index as u32);
     assert_eq!(tree.records.layout()[index].padding, Spacing::ZERO);
     assert_eq!(tree.bounds(node).min_size, Size::ZERO);
+}
+
+/// A modal takes no placement of its own — it wants the layer's default,
+/// which is the surface origin with the whole surface available. Pinned
+/// here because that default is what makes the backdrop cover the screen,
+/// and nothing else in this file would notice it drifting.
+#[test]
+fn the_backdrop_root_covers_the_whole_surface() {
+    const SURFACE: UVec2 = UVec2::new(400, 300);
+    let mut h = UiHarness::new(SURFACE);
+    h.frame(|ui| {
+        Modal::new()
+            .id(WidgetId::from_hash("modal-full-surface"))
+            .show(ui, |_, _| {});
+    });
+
+    let root = h.ui.tree(Layer::Modal).roots[0].first_node.idx();
+    assert_eq!(
+        h.ui.layout(Layer::Modal).rect[root],
+        Rect::new(0.0, 0.0, SURFACE.x as f32, SURFACE.y as f32),
+    );
 }
 
 /// A modal paints above every popup and eats pointer input through

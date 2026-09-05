@@ -23,6 +23,15 @@ pub(crate) enum PlacementOrigin {
 }
 
 /// Measurement and post-measure placement policy for one layer root.
+///
+/// The *storage* form, not the authoring one: it hangs off the root slot,
+/// the layout engine reads [`Self::available`] and [`Self::origin`] off it
+/// two passes after the record that set it, and the measure cache folds it
+/// into a fingerprint. [`LayerScope`](crate::LayerScope) is its public
+/// face — `at`, `anchored` and `max_size` are this struct's three fields
+/// as a builder — which is why nothing publishes this type as a value.
+/// [`OverlayPosition`] is one of the two origin rules it holds, and the
+/// only one with enough parameters to need a name of its own.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Placement {
     pub(crate) origin: PlacementOrigin,
@@ -62,17 +71,19 @@ impl Placement {
         }
     }
 
-    pub(crate) const fn fixed(anchor: Vec2, max_size: Option<Size>) -> Self {
-        Self {
-            origin: PlacementOrigin::Anchor(anchor),
-            max_size,
-        }
-    }
-
-    /// Replace the origin, keeping any size cap.
+    /// Replace the origin with a fixed point, keeping any size cap.
     pub(crate) const fn with_anchor(self, anchor: Vec2) -> Self {
         Self {
             origin: PlacementOrigin::Anchor(anchor),
+            ..self
+        }
+    }
+
+    /// Replace the origin with one resolved after measure, keeping any
+    /// size cap.
+    pub(crate) const fn with_overlay(self, position: OverlayPosition) -> Self {
+        Self {
+            origin: PlacementOrigin::Overlay(position),
             ..self
         }
     }
@@ -104,21 +115,14 @@ impl Placement {
     }
 }
 
-/// An anchor-relative position *is* a placement, which is what lets
-/// [`LayerScope::placement`](crate::ui::layer_scope::LayerScope::placement)
-/// take either form through one `impl Into<Placement>` parameter.
-impl From<OverlayPosition> for Placement {
-    fn from(position: OverlayPosition) -> Self {
-        Self {
-            origin: PlacementOrigin::Overlay(position),
-            max_size: None,
-        }
-    }
-}
-
+/// The surface origin with the whole surface available — what a layer
+/// that sets no placement gets, and what a full-surface overlay wants.
 impl Default for Placement {
     fn default() -> Self {
-        Self::fixed(Vec2::ZERO, None)
+        Self {
+            origin: PlacementOrigin::Anchor(Vec2::ZERO),
+            max_size: None,
+        }
     }
 }
 
@@ -134,7 +138,8 @@ mod tests {
     /// `10 + 6 + 4 = 20`, and `AxisAlign::Start` puts its left at the
     /// anchor's 40. Both fit, so neither the flip nor the clamp fires.
     fn overlay() -> Placement {
-        OverlayPosition::below(Rect::new(40.0, 10.0, 20.0, 6.0), 4.0).into()
+        Placement::default()
+            .with_overlay(OverlayPosition::below(Rect::new(40.0, 10.0, 20.0, 6.0)).gap(4.0))
     }
 
     #[test]
