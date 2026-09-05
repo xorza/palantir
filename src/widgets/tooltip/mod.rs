@@ -204,7 +204,7 @@ impl<'a> Tooltip<'a> {
         {
             ui.state_mut::<TooltipGlobal>(global_state_id())
                 .last_visible_at = Some(now);
-            let position = OverlayPosition::below(trigger_rect, gap);
+            let position = OverlayPosition::below(trigger_rect).gap(gap);
             let label = self.label;
             let chrome = self.chrome.as_ref().unwrap_or(&theme.panel);
             // Theme fills in whatever the caller left alone. Identity
@@ -222,7 +222,7 @@ impl<'a> Tooltip<'a> {
             let scope = OverlayScope::claim(
                 bubble_id,
                 Layer::Tooltip,
-                position,
+                Some(position),
                 Backdrop::None,
                 &mut bubble,
             );

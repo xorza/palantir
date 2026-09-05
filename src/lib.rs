@@ -272,6 +272,7 @@ pub use layout::types::align::{Align, HAlign, VAlign};
 pub use layout::types::clip_mode::ClipMode;
 pub use layout::types::grid_cell::GridCell;
 pub use layout::types::justify::Justify;
+pub use layout::types::overlay::OverlayPosition;
 pub use layout::types::sizing::{Sizes, Sizing};
 pub use layout::types::track::Track;
 pub use palantir_anim_derive::Animatable;

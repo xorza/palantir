@@ -7,9 +7,9 @@ Research notes on the rule in `CLAUDE.md`:
 
 The test is reimplementation: could another person write `Scroll`, `TextEdit`
 or `Popup` outside this crate, line for line, against the published surface?
-Today the answer is no for fourteen of the bundled widgets. This note says
-exactly what stops them, what the framework would have to publish, and what it
-would cost.
+Today the answer is no for five of the bundled widgets. This note says exactly
+what stops them, what the framework would have to publish, and what it would
+cost.
 
 This is a survey plus a set of proposals, not a plan. Nothing here is
 committed.
@@ -29,13 +29,14 @@ Test and bench code is out of scope. It reaches in on purpose, through the
 
 ## Where it stands
 
-Production widget code reaches outside `src/widgets` at **27 sites across 17
-private items**, plus **10 `pub(crate)` methods on the published `Ui`**. Every
-one of them belongs to one of the seven gaps below.
+Production widget code reaches outside `src/widgets` at **22 sites across 14
+private items**, plus **9 `pub(crate)` methods on the published `Ui`**. Every
+one of them belongs to one of the gaps below.
 
-Six reach-ins were removed while writing this note (see *Already migrated*),
-and they were the only ones that a straight rewrite could reach. The rest are
-capability gaps: no combination of published calls produces the same frame.
+It started at 32 sites across 21 items. Six went to a straight rewrite (see
+*Already migrated*), and closing G3 and G2 took the rest of the difference.
+What is left is capability gaps: no combination of published calls produces
+the same frame.
 
 ## Already migrated
 
@@ -63,7 +64,7 @@ from `widgets`.
 | # | gap | what is missing | blocks | size |
 |---|---|---|---|---|
 | G1 | scroll viewport and scrollbar layout mode | `LayoutMode::Scroll`, `ScrollSpec`, `ScrollbarsDef`, `Ui::scroll_content`, `Ui::push_scrollbars_def`, `Ui::current_node`, `Widget::scroll`, `Widget::scrollbars` | Scroll | large |
-| G2 | anchored, flip-to-fit overlay placement | `OverlayPosition`, `OverlaySide`, `LayerScope::placement` | Popup, ContextMenu, MenuItem, Tooltip, ComboBox, ColorButton, TabStrip, TabbedView, Dock | small |
+| ~~G2~~ | ~~anchored, flip-to-fit overlay placement~~ | **closed** — `OverlayPosition` and `LayerScope::anchored` are published | — | — |
 | ~~G3~~ | ~~clipboard read and write~~ | **closed** — `Clipboard`, `ClipboardUnavailable` and `Ui::clipboard` are published | — | — |
 | G4 | paint-time shape animation | `PaintAnim`, `Ui::add_shape_animated` | Spinner, TextEdit caret | small |
 | G5 | GPU view registration | `GpuPaintRef`, `Ui::gpu_view` | GpuView | small |
@@ -73,7 +74,7 @@ from `widgets`.
 Each gap is worked through below: what the bundled widget does today, why the
 published surface cannot express it, the proposals, and a recommendation.
 
-## The seven gaps
+## The gaps, one by one
 
 ### G1 — Scroll viewport and scrollbars
 
@@ -125,43 +126,37 @@ placement. (1) is roughly a day and covers the case people actually ask for —
 a scrollable custom container. (2) is a frame-model change and belongs beside
 the record-time-geometry work in `record-time-geometry.md`.
 
-### G2 — Anchored overlay placement
+### G2 — Anchored overlay placement — **closed**
 
-**Blocks:** `Popup`, `ContextMenu`, `Tooltip`, and through them `ComboBox`,
-`ColorButton`, `TabStrip`'s overflow menu, `Dock`'s tab menu, and `TextEdit`'s
-edit menu.
+Published: `OverlayPosition`, with `at_point`, `above`, `below`, `left_of`,
+`right_of` and a `gap` builder, plus `LayerScope::anchored`. An overlay written
+outside the crate now gets the same post-measure resolve the bundled ones do —
+the preferred side when the body fits there, the opposite side when it does
+not, and a shift back inside the surface when neither has room.
 
-`LayerScope` publishes `at(Vec2)` and `max_size(Size)` — a fixed origin. It
-keeps `placement(impl Into<Placement>)` crate-private, and that is the setter
-that takes an `OverlayPosition`: an anchor **rect**, a preferred side, an
-alignment, and a gap, resolved against the body's *measured* size so the body
-flips above its anchor when it does not fit below.
+`OverlaySide` and `AxisAlign` stayed private. Nothing needs to name a side
+once there are four constructors, and no caller in the crate has ever varied
+the cross-axis alignment. Adding `OverlayPosition::align` later is additive,
+and that is when the alignment enum earns publishing.
 
-An outside author can place an overlay at a point. They cannot make it flip,
-and they cannot shift it back inside the surface, because both need the
-measured size, which does not exist at record time.
+Three private items went with it. `LayerScope::placement` is deleted —
+`anchored` replaced its only caller. `Placement::fixed` went with it, dead once
+nothing but `Default` called it. `Placement` no longer reaches the widgets at
+all: `OverlayScope` holds an `Option<OverlayPosition>`, where `None` takes the
+layer's documented default of the surface origin with the whole surface
+available. `Modal` passes `None`, which is what it was spelling out as
+`Placement::fixed(Vec2::ZERO, Some(surface.size))` — the same origin and the
+same available extent, since the surface rect starts at the origin.
 
-**Proposals**
-
-1. *Publish `OverlaySide`, `OverlayPosition` and `LayerScope::anchored_to`.*
-   `OverlayPosition` is four plain fields and its constructors are already
-   the shape a builder wants (`below`, `above`, `left_of`, `right_of`,
-   `at_point`). The type would need `AxisAlign` published or replaced with
-   the public `Align`. Small: half a day, mostly documentation.
-2. *Publish a narrower builder.* `LayerScope::anchored_to(rect).side(…).gap(…)`,
-   with `OverlayPosition` staying private behind it. Fewer types on the
-   surface, one more builder to keep in step.
-
-**Recommendation:** (2). The flip rule is a policy the framework should own,
-and a builder hides `AxisAlign` and `OverlaySide` while exposing the whole
-behaviour. This is the cheapest gap to close and it unblocks eight widgets —
-more than the other six together.
-
-Note that `Modal` is **not** blocked. It asks for
-`Placement::fixed(Vec2::ZERO, Some(surface.size))`, which is exactly
-`ui.layer(Layer::Modal).at(Vec2::ZERO).max_size(size)`. It reaches the private
-path only because it shares `OverlayScope` with the two overlays that do need
-it.
+**Why `Placement` is not the published type.** It is the storage form: it hangs
+off the root slot, and the layout engine reads its origin and available extent
+two passes after the record that set it. `LayerScope` is already its public
+face — `at`, `anchored` and `max_size` are its three fields as a builder — so
+publishing the value as well would be two ways to say one thing. Merging the
+two the other way, folding `OverlayPosition`'s fields into `PlacementOrigin`,
+would leave the anchored rule with no name a caller can pass around.
+`OverlayPosition` is the one origin rule with enough parameters to need one;
+the other is a bare `Vec2`.
 
 ### G3 — Clipboard — **closed**
 
@@ -278,18 +273,18 @@ sharing, not a capability gap — file it under nice-to-have.
 | Slider, ProgressBar, Splitter, Expander | yes | — |
 | ColorPicker, ColorField, ColorStrip | yes | — |
 | Modal | yes | — |
-| Popup, ContextMenu, MenuItem, Tooltip | no | G2 |
-| ComboBox, ColorButton | no | G2 |
-| TabStrip, TabbedView | no | G2 (overflow menu) |
-| Dock | no | G2 (tab menu) |
+| Popup, ContextMenu, MenuItem, Tooltip | yes | — |
+| ComboBox, ColorButton | yes | — |
+| TabStrip, TabbedView, Dock | yes | — |
 | Scroll | no | G1, G7 |
 | TextEdit | no | G4, G6 |
 | DragValue | no | G4, G6 (via TextEdit) |
 | Spinner | no | G4 |
 | GpuView | no | G5 |
 
-G2 alone moves eight of those across the line, and it is the cheapest of the
-seven. Nothing above `Scroll` and `TextEdit` needs anything else.
+Twenty-seven of the bundled widgets are reimplementable outside the crate
+today. The five that are not need `Scroll`'s layout mode, paint-time
+animation, the text content hash, or GPU view registration.
 
 ## Not gaps
 
@@ -336,7 +331,7 @@ if one is ever wanted.
 ## Suggested order
 
 1. ~~**G3** clipboard~~ — done.
-2. **G2** overlay anchoring — cheapest of what is left, unblocks eight widgets.
+2. ~~**G2** overlay anchoring~~ — done.
 3. **G6** text content hash — an hour, no design question.
 4. **G4** paint animation, as `Shape` builder methods.
 5. **G1** scroll, proposal (1) only.
