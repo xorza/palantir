@@ -70,7 +70,7 @@ flag](#recommended-build-flag)), worth ~6% of the CPU figures above.
 ---
 
 A short screen recording of the
-[showcase](https://github.com/xorza/palantir/tree/master/src/bin/showcase) tabs:
+[showcase](https://github.com/xorza/palantir/tree/master/examples/showcase) tabs:
 
 https://github.com/user-attachments/assets/0a403745-b841-4e17-bee9-fdbaad43c786
 
@@ -205,11 +205,11 @@ fn main() -> Result<(), WinitHostError> {
 ```
 
 Run the bundled
-[showcase](https://github.com/xorza/palantir/tree/master/src/bin/showcase)
+[showcase](https://github.com/xorza/palantir/tree/master/examples/showcase)
 for a tour of every widget:
 
 ```sh
-cargo run --release --features showcase --bin showcase
+cargo run --release --features showcase --example showcase
 ```
 
 To author your own widget from the public API, see
