@@ -2,8 +2,7 @@
 //! history it retains. [`Editor`](super::editor::Editor) is the
 //! behaviour over this data.
 
-use crate::common::hash;
-use crate::text::key::TextShapeKey;
+use crate::text::probe::TextProbe;
 use std::collections::VecDeque;
 use std::num::NonZeroU64;
 
@@ -223,13 +222,8 @@ impl EditState {
 
     /// The identity of `text`, minted the way the shape probe mints the
     /// hash [`Self::observe_text_hash`] is fed.
-    ///
-    /// Through [`TextShapeKey::content_hash`] and not a bare `hash_str`:
-    /// that rule maps a raw zero to one, so for exactly the content that
-    /// hashes to zero a raw hash here would compare unequal against the
-    /// probe's for the *same* buffer and silently wipe the undo stack.
     pub(super) fn text_hash(text: &str) -> NonZeroU64 {
-        TextShapeKey::content_hash(hash::hash_str(text))
+        TextProbe::hash_of(text)
     }
 
     pub(super) fn sel_range(&self) -> Option<std::ops::Range<usize>> {

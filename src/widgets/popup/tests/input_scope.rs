@@ -67,7 +67,8 @@ fn outside_pointer_gestures_do_not_leak_to_main() {
         "scroll-lines under popup must not reach Main",
     );
     assert_eq!(
-        bg.scroll.zoom, 1.0,
+        bg.scroll.zoom.get(),
+        1.0,
         "pinch zoom under popup must not reach Main",
     );
     assert!(

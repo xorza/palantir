@@ -268,6 +268,7 @@ pub use input::response::scroll_delta::ScrollDelta;
 pub use input::sense::Sense;
 pub use input::shortcut::{Mods, Shortcut};
 pub use input::watch::{KeyboardWake, PointerWake};
+pub use input::zoom_factor::ZoomFactor;
 pub use layout::axis::Axis;
 pub use layout::types::align::{Align, HAlign, VAlign};
 pub use layout::types::anchor::Anchor;

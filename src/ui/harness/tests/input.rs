@@ -209,7 +209,7 @@ fn scroll_routes_to_whatever_the_pointer_moved_over() {
         "a pinch that lands on a zoom target wakes the next frame",
     );
     assert_eq!(
-        pinched.response_in(zoomer, zoom_build).scroll.zoom,
+        pinched.response_in(zoomer, zoom_build).scroll.zoom.get(),
         1.5,
         "the zoom factor reaches the widget under the pointer",
     );

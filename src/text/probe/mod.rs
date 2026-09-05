@@ -11,6 +11,7 @@
 //! Nothing shaped escapes `src/text/`: [`TextProbe`] answers in plain
 //! geometry and the cosmic-text buffer behind it stays private to this file.
 
+use crate::common::hash;
 use crate::layout::types::align::HAlign;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
@@ -94,6 +95,26 @@ impl<'a> TextProbe<'a> {
     /// would read as one buffer's identity to a caller comparing two.
     pub fn text_hash(&self) -> Option<NonZeroU64> {
         Some(self.key?.text_hash)
+    }
+
+    /// What [`Self::text_hash`] would answer for `text`, without shaping
+    /// it.
+    ///
+    /// The two agree exactly, and that is the whole point: a caller that
+    /// tracks a buffer's identity across frames reads the probe's hash on
+    /// the frames it probes, and mints its own on the frames it does not
+    /// — an input pass that edits before anything is shaped, say. A
+    /// disagreement between the two reads as *the buffer was replaced*,
+    /// which is not a conclusion to reach by accident. `TextEdit` wipes
+    /// its undo stack on it.
+    ///
+    /// ```
+    /// # use palantir::TextProbe;
+    /// assert_eq!(TextProbe::hash_of("hello"), TextProbe::hash_of("hello"));
+    /// assert_ne!(TextProbe::hash_of("hello"), TextProbe::hash_of("world"));
+    /// ```
+    pub fn hash_of(text: &str) -> NonZeroU64 {
+        TextShapeKey::content_hash(hash::hash_str(text))
     }
 
     /// The band every unshaped answer below reports on: the leading this

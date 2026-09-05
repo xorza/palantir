@@ -116,8 +116,8 @@ fn pinch_products_accumulate_independently_per_event_time_target() {
         build_two_gesture_targets(ui);
         if observed.is_none() {
             observed = Some([
-                ui.response_for(WidgetId::from_hash("a")).scroll.zoom,
-                ui.response_for(WidgetId::from_hash("b")).scroll.zoom,
+                ui.response_for(WidgetId::from_hash("a")).scroll.zoom.get(),
+                ui.response_for(WidgetId::from_hash("b")).scroll.zoom.get(),
             ]);
         }
     });
@@ -271,7 +271,7 @@ fn sense_scroll_routes_scroll_but_not_pinch() {
         build(ui);
         let resp = ui.response_for(id);
         scroll_pixels = resp.scroll.pixels;
-        zoom_factor = resp.scroll.zoom;
+        zoom_factor = resp.scroll.zoom.get();
     });
     assert_eq!(
         scroll_pixels,
@@ -309,7 +309,7 @@ fn sense_pinch_routes_pinch_but_not_scroll() {
         build(ui);
         let resp = ui.response_for(id);
         scroll_pixels = resp.scroll.pixels;
-        zoom_factor = resp.scroll.zoom;
+        zoom_factor = resp.scroll.zoom.get();
     });
     assert_eq!(
         scroll_pixels,

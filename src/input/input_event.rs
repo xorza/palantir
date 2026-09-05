@@ -3,7 +3,7 @@
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::modifiers::Modifiers;
 use crate::input::pointer::PointerButton;
-use crate::input::zoom;
+use crate::input::zoom_factor::ZoomFactor;
 use glam::Vec2;
 
 /// Palantir-native input event. Independent of any windowing toolkit.
@@ -91,7 +91,7 @@ impl InputEvent {
     pub(crate) fn is_valid(&self) -> bool {
         match self {
             Self::PointerMoved(p) | Self::ScrollPixels(p) | Self::ScrollLines(p) => p.is_finite(),
-            Self::Zoom(factor) => zoom::is_valid(*factor),
+            Self::Zoom(factor) => ZoomFactor::new(*factor).is_some(),
             Self::PointerLeft
             | Self::PointerPressed(_)
             | Self::PointerReleased(_)

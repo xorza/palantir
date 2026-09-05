@@ -11,7 +11,7 @@ pub(crate) mod zoom_config;
 
 use crate::input::response::response_state::ResponseState;
 use crate::input::sense::Sense;
-use crate::input::zoom;
+use crate::input::zoom_factor::ZoomFactor;
 use crate::layout::types::layout_mode::LayoutMode;
 use crate::layout::types::layout_mode::ScrollSpec;
 use crate::layout::types::sizing::Sizing;
@@ -295,15 +295,15 @@ impl<'a> Scroll<'a> {
             ZoomModifier::PinchOnly => false,
         });
         let (pan_delta, wheel_factor) = match self.zoom.as_ref().filter(|_| wheel_zooms) {
-            Some(cfg) => (Vec2::ZERO, zoom::from_wheel(cfg.step, notches.y)),
-            None => (pan_raw, 1.0_f32),
+            Some(cfg) => (Vec2::ZERO, ZoomFactor::from_wheel(cfg.step, notches.y)),
+            None => (pan_raw, ZoomFactor::ONE),
         };
-        let zoom_delta = zoom::combine(scroll.zoom, wheel_factor);
+        let zoom_delta = scroll.zoom.combine(wheel_factor);
 
         let centre = response
             .layout_rect
             .map(|r| Vec2::new(r.size.w * 0.5, r.size.h * 0.5));
-        let zoom_changed = !approx::approx_zero(zoom_delta - 1.0);
+        let zoom_changed = !approx::approx_zero(zoom_delta.get() - 1.0);
         let pivot = zoom_changed
             .then(
                 || match self.zoom.as_ref().map_or(ZoomPivot::Pointer, |c| c.pivot) {
@@ -315,7 +315,7 @@ impl<'a> Scroll<'a> {
 
         ScrollInput {
             pan_delta,
-            zoom_delta,
+            zoom_delta: zoom_delta.get(),
             pivot,
         }
     }
