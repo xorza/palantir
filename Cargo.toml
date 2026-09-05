@@ -120,33 +120,13 @@ required-features = ["bench"]
 
 [features]
 default = ["winit"]
-# Test reach-ins into crate privates — `UiHarness`, the probe counters, the
-# headless GPU lease. Deliberately cheap: both integration suites need it to
-# reach past the published surface, and neither should pay to compile a
-# benchmark harness for the privilege.
 internals = []
-# The golden-image suite: `image` to read and write PNGs, `rayon` to diff them
-# a row at a time. Kept off `internals`, which is deliberately dependency-free
-# — a crate reaching past the published surface should not have to build an
-# image codec to do it.
 golden = ["dep:image", "dep:rayon"]
-# Compiles the source-level benchmark drivers and exposes their function-only
-# facade to the thin external targets. Implies `internals` — the drivers reach
-# into the same privates the tests do, and add the harness crates on top.
 bench = ["internals", "dep:criterion", "dep:clap", "dep:gethostname"]
-# Enables the bundled widget-tour binary and its logging setup. Carries
-# `gpu-debug-markers` because the showcase is what you capture.
 showcase = ["dep:tracing-subscriber", "winit", "gpu-debug-markers"]
-# GPU debug groups (RenderDoc / Xcode capture labels) around every draw
-# step. Off by default: wgpu-core records two commands plus a label
-# memcpy per pair even with no capture tool attached, and the step count
-# scales with UI complexity. Turn on when you intend to capture.
 gpu-debug-markers = []
-# The winit-backed host: real windows, a real event loop, and the OS
-# clipboard behind `TextEdit`'s cut/copy/paste. One flag rather than two
-# because the clipboard only ever had a system backend to reach for when
-# a windowed host was already in the build.
-winit = ["dep:winit", "dep:arboard"]
+system-clipboard = ["dep:arboard"]
+winit = ["dep:winit", "system-clipboard"]
 profile-with-tracy = ["dep:tracy-client"]
 
 
