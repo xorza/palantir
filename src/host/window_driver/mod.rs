@@ -8,7 +8,7 @@
 //! pipelines, glyph + gradient atlases, the image texture cache, and renderer
 //! device/queue handles — live on the **one** shared `WgpuBackend` the host
 //! passes into every method; renderer and recorder capabilities derive from
-//! [`HostShared`]. Each `Ui` owns
+//! [`UiResources`]. Each `Ui` owns
 //! its per-window record store alongside its tree. So N windows render through
 //! one GPU renderer without sharing frame-local geometry.
 //!
@@ -22,7 +22,6 @@ use crate::app::App;
 use crate::common::tracy;
 use crate::display::Display;
 use crate::host::clock::{Clock, RealtimeClock};
-use crate::host::shared::HostShared;
 use crate::renderer::backend::WgpuBackend;
 use crate::renderer::backend::backbuffer::Backbuffer;
 use crate::renderer::backend::stencil::Stencil;
@@ -38,13 +37,14 @@ use crate::ui::frame_engines::FrameEngines;
 use crate::ui::frame_report::FrameReport;
 use crate::ui::frame_stamp::FrameInput;
 use crate::ui::frame_stamp::FrameStamp;
+use crate::ui::resources::UiResources;
 use crate::window::window_commands::WindowCommands;
 use crate::window::window_output::WindowOutput;
 use crate::window::window_token::WindowToken;
 use glam::UVec2;
 
 /// Per-window state driving the host's shared [`Frontend`] and [`WgpuBackend`].
-/// Built by [`WindowDriverBuilder`] from the shared [`HostShared`]; owns no GPU
+/// Built by [`WindowDriverBuilder`] from the shared [`UiResources`]; owns no GPU
 /// resources except its own [`Backbuffer`] + [`Stencil`].
 #[derive(Debug)]
 pub(super) struct WindowDriver {
@@ -271,7 +271,7 @@ pub(super) struct CpuFrame {
 #[derive(Debug)]
 pub(super) struct WindowDriverBuilder<'a> {
     token: WindowToken,
-    shared: &'a HostShared,
+    resources: &'a UiResources,
     strategy: PresentStrategy,
     clock: Box<dyn Clock>,
     pixel_snap: bool,
@@ -298,11 +298,11 @@ impl WindowDriverBuilder<'_> {
     /// without building would otherwise leave its token live for the rest
     /// of the session.
     pub(super) fn build(self) -> WindowDriver {
-        self.shared.resources().windows().add(self.token);
+        self.resources.windows().add(self.token);
         WindowDriver {
             token: self.token,
-            engines: FrameEngines::new(self.shared.resources()),
-            ui: Ui::new(self.shared.resources().clone()),
+            engines: FrameEngines::new(self.resources),
+            ui: Ui::new(self.resources.clone()),
             render_owner: RenderOwnerId::reserve(),
             backbuffer: None,
             backbuffer_fresh: false,
@@ -330,7 +330,7 @@ impl Drop for WindowDriver {
 }
 
 impl WindowDriver {
-    /// Start building a driver for `token` from the shared [`HostShared`].
+    /// Start building a driver for `token` from the shared [`UiResources`].
     /// Its `Ui` receives recorder capabilities plus a fresh per-window record
     /// store. Defaults suit a swapchain window: direct adaptive presentation
     /// and a realtime clock.
@@ -341,12 +341,12 @@ impl WindowDriver {
     /// overwrote it, and a setter would let one window be built without it.
     pub(super) fn builder(
         token: WindowToken,
-        shared: &HostShared,
+        resources: &UiResources,
         pixel_snap: bool,
     ) -> WindowDriverBuilder<'_> {
         WindowDriverBuilder {
             token,
-            shared,
+            resources,
             strategy: PresentStrategy::DirectAdaptive,
             clock: Box::new(RealtimeClock::new()),
             pixel_snap,
