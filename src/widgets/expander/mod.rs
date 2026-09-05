@@ -8,14 +8,12 @@ use crate::input::sense::Sense;
 use crate::input::shortcut::Shortcut;
 use crate::layout::types::align::{Align, VAlign};
 use crate::layout::types::sizing::Sizing;
-use crate::primitives::chevron::Chevron;
+use crate::primitives::arrow::Arrow;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::text_input::TextInput;
 use crate::primitives::widget_id::WidgetId;
 use crate::shape::Shape;
-use crate::shape::polyline::PolylineColors;
-use crate::shape::style::{LineCap, LineJoin};
 use crate::ui::Ui;
 use crate::widgets::configure::Configure;
 use crate::widgets::configure::ConfigureWidget;
@@ -189,7 +187,8 @@ impl<'a> Expander<'a> {
                 t.defaults.anim
             };
             let openness = ui.animate(header_id, SLOT_OPEN, f32::from(now_open), spec);
-            let arrow = Chevron { size: t.arrow_size }.rotated(t.arrow_angle(openness));
+            let [a, b, c] =
+                Arrow { size: t.arrow_size }.rounded(t.arrow_radius, t.arrow_angle(openness));
             let text = look.text;
             let label = ui.intern(label);
             header.record(ui, Some(&look.background), |ui| {
@@ -198,9 +197,9 @@ impl<'a> Expander<'a> {
                     .size((Sizing::fixed(t.arrow_size.x), Sizing::fixed(t.arrow_size.y)));
                 arrow_box.record(ui, None, |ui| {
                     ui.add_shape(
-                        Shape::polyline(&arrow, PolylineColors::Single(text.color), t.arrow_stroke)
-                            .cap(LineCap::Round)
-                            .join(LineJoin::Round),
+                        Shape::triangle(a, b, c)
+                            .fill(text.color)
+                            .radius(t.arrow_radius),
                     );
                 });
                 Text::new(label)

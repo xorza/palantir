@@ -95,10 +95,10 @@ macro_rules! f16x4_lanes {
 
 pub mod approx;
 pub(crate) mod arc;
+pub(crate) mod arrow;
 pub(crate) mod background;
 pub(crate) mod bezier;
 pub(crate) mod brush;
-pub(crate) mod chevron;
 pub(crate) mod color;
 pub(crate) mod content_type;
 pub(crate) mod corners;

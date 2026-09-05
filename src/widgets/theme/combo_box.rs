@@ -1,7 +1,7 @@
 //! A combo box's geometry. Its colours come from the button and popup
 //! themes it is assembled out of, which is why they are not here.
 
-use crate::primitives::chevron::Chevron;
+use crate::primitives::arrow::Arrow;
 use crate::widgets::theme::palette::Palette;
 use glam::Vec2;
 
@@ -36,7 +36,7 @@ impl ComboBoxTheme {
     /// The chevron's three points (`v`), in a box of [`Self::arrow_size`]
     /// with the origin at the top-left. The middle point is the tip.
     pub(crate) fn chevron_pts(&self) -> [Vec2; 3] {
-        Chevron {
+        Arrow {
             size: self.arrow_size,
         }
         .points()
