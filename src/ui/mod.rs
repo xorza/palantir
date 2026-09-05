@@ -65,7 +65,7 @@ use crate::scene::node::Node;
 use crate::scene::node::ident::Ident;
 use crate::scene::record_store::RecordStore;
 use crate::scene::tree::node_id::NodeId;
-use crate::scene::tree::paint_anims::PaintAnim;
+use crate::scene::tree::paint_anims::paint_anim::PaintAnim;
 use crate::shape::Lower;
 use crate::text::error::FontLoadError;
 use crate::text::font_family::FontFamily;
@@ -934,14 +934,36 @@ impl Ui {
         self.forest.record_store.intern(text.into())
     }
 
-    /// Append `shape` to the active node and register `anim` against
-    /// it. The encoder samples `anim` at paint time and folds the
-    /// resulting `PaintMod` into the shape's brush; `post_record`
-    /// folds the anim's `next_wake` into `repaint_wakes` so the
-    /// caller doesn't manage scheduling. Drops silently if the shape
-    /// itself was noop-collapsed (zero stroke + transparent fill,
-    /// etc.) — `PaintAnim` can't make a zero shape paintable.
-    pub(crate) fn add_shape_animated<S: Lower>(&mut self, shape: S, anim: PaintAnim) {
+    /// Append `shape` to the active node and animate it at **paint**
+    /// time.
+    ///
+    /// The recorded shape is byte-identical every frame — the encoder
+    /// samples `anim` one pass later and folds the result into the
+    /// brush — so the widget never re-records and its layout cache entry
+    /// survives. [`Self::animate`] plus [`Self::request_repaint`] paint
+    /// the same pixels at the cost of a record pass per frame.
+    ///
+    /// `post_record` folds the animation's next wake into the repaint
+    /// queue, so a caller schedules nothing of its own.
+    ///
+    /// Drops silently if the shape itself was noop-collapsed — zero
+    /// stroke and transparent fill, say. An animation cannot make a zero
+    /// shape paintable.
+    ///
+    /// ```
+    /// # use palantir::{PaintAnim, PaintRepeat, Rect, RgbaF32, Shape, Ui, curves};
+    /// # use std::time::Duration;
+    /// # fn demo(ui: &mut Ui) {
+    /// ui.add_shape_animated(
+    ///     Shape::rect(Rect::new(0.0, 0.0, 8.0, 8.0)).fill(RgbaF32::WHITE),
+    ///     PaintAnim::alpha(0.4, 1.0)
+    ///         .period(Duration::from_secs(2))
+    ///         .repeat(PaintRepeat::Forever)
+    ///         .curve(curves::sine),
+    /// );
+    /// # }
+    /// ```
+    pub fn add_shape_animated<S: Lower>(&mut self, shape: S, anim: PaintAnim) {
         self.forest.add_shape_animated(shape, anim);
     }
 

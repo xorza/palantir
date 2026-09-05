@@ -5,7 +5,9 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::num::F32Ext;
-use crate::scene::tree::paint_anims::PaintAnim;
+use crate::scene::tree::paint_anims::curves;
+use crate::scene::tree::paint_anims::paint_anim::PaintAnim;
+use crate::scene::tree::paint_anims::paint_anim::PaintRepeat;
 use crate::shape::Shape;
 use crate::shape::style::LineCap;
 use crate::ui::Ui;
@@ -15,6 +17,7 @@ use crate::widgets::response::Response;
 use crate::widgets::theme::spinner::SpinnerTheme;
 use crate::widgets::widget::Widget;
 use glam::Vec2;
+use std::f32::consts::TAU;
 use std::time::Duration;
 
 /// Indeterminate activity spinner: a rounded arc that rotates with the
@@ -103,10 +106,13 @@ impl<'a> Spinner<'a> {
                     Shape::arc(center, radius, 0.0, sweep, width)
                         .brush(comet_brush(color))
                         .cap(LineCap::Round),
-                    PaintAnim::Spin {
-                        speed,
-                        started_at: Duration::ZERO,
-                    },
+                    // One turn per `TAU / speed` seconds — the old
+                    // radians-per-second spelling, in the period the
+                    // schedule is written in.
+                    PaintAnim::turn(0.0, 1.0)
+                        .period(Duration::from_secs_f32(TAU / speed))
+                        .repeat(PaintRepeat::Forever)
+                        .curve(curves::linear),
                 );
             })
             .response

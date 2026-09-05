@@ -1,5 +1,7 @@
 use crate::scene::tree::node_id::NodeId;
+use crate::scene::tree::paint_anims::paint_anim::{PaintAnim, PaintRepeat};
 use crate::scene::tree::paint_anims::*;
+use std::f32::consts::TAU;
 
 const HP: Duration = Duration::from_millis(500);
 const START: Duration = Duration::from_secs(1);
@@ -9,19 +11,21 @@ const NO_STOP: Duration = Duration::MAX;
 
 /// A blink that runs forever, for the cases about phase alone.
 fn blink() -> PaintAnim {
-    PaintAnim::BlinkOpacity {
-        half_period: HP,
-        started_at: START,
-        stop_after: NO_STOP,
-    }
+    PaintAnim::alpha(0.0, 1.0)
+        .started_at(START)
+        .period(HP * 2)
+        .steps(2)
+        .repeat(PaintRepeat::Settle(NO_STOP))
+        .curve(curves::square)
 }
 
 fn spinning(shape_idx: u32, speed: f32) -> PaintAnimEntry {
     PaintAnimEntry {
-        anim: PaintAnim::Spin {
-            speed,
-            started_at: START,
-        },
+        anim: PaintAnim::turn(0.0, 1.0)
+            .started_at(START)
+            .period(Duration::from_secs_f32(TAU / speed))
+            .repeat(PaintRepeat::Forever)
+            .curve(curves::linear),
         shape_idx,
         row: 0,
         node: NodeId(0),
@@ -137,11 +141,7 @@ fn pre_start_phase_is_solid_and_wakes_at_start() {
 
 #[test]
 fn zero_period_never_wakes() {
-    let a = PaintAnim::BlinkOpacity {
-        half_period: Duration::ZERO,
-        started_at: START,
-        stop_after: NO_STOP,
-    };
+    let a = blink().period(Duration::ZERO);
     // Degenerate, but must not panic. `next_wake` returns `None` so
     // the wake folder drops it.
     assert_eq!(a.next_wake(START + Duration::from_secs(1)), None);
@@ -150,10 +150,11 @@ fn zero_period_never_wakes() {
 #[test]
 fn spin_angle_is_elapsed_times_speed_wrapped() {
     let speed = 4.0; // rad/s
-    let a = PaintAnim::Spin {
-        speed,
-        started_at: START,
-    };
+    let a = PaintAnim::turn(0.0, 1.0)
+        .started_at(START)
+        .period(Duration::from_secs_f32(TAU / speed))
+        .repeat(PaintRepeat::Forever)
+        .curve(curves::linear);
     // Pre-start clamps to 0 (no negative elapsed).
     assert_eq!(a.sample(START - Duration::from_secs(1)).rotation, 0.0);
     // 0.25 s in → 1.0 rad, alpha untouched.
@@ -171,10 +172,7 @@ fn spin_angle_is_elapsed_times_speed_wrapped() {
 fn spin_wakes_every_frame() {
     // `next_wake(prev)` must be <= now for any prev <= now so
     // `extend_predamaged` repaints the spun rect each frame.
-    let a = PaintAnim::Spin {
-        speed: 1.0,
-        started_at: START,
-    };
+    let a = spinning(0, 1.0).anim;
     let prev = START + Duration::from_secs(3);
     let now = prev + Duration::from_millis(16);
     assert!(a.next_wake(prev).is_some_and(|wake| wake <= now));
@@ -187,11 +185,7 @@ fn spin_wakes_every_frame() {
 fn blink_settles_solid_after_stop_and_stops_waking() {
     // Stop at 4 half-periods: boundaries at +1..+4 HP, then solid.
     let stop = HP * 4;
-    let a = PaintAnim::BlinkOpacity {
-        half_period: HP,
-        started_at: START,
-        stop_after: stop,
-    };
+    let a = blink().repeat(PaintRepeat::Settle(stop));
 
     // Before the stop the phase still alternates: odd multiples of
     // HP are the hidden ones.
@@ -219,13 +213,79 @@ fn blink_settles_solid_after_stop_and_stops_waking() {
     // 3.5 half-periods in, the phase is the hidden one (n = 3), so
     // waking only on boundaries would strand the caret invisible.
     let ragged = HP * 3 + HP / 2;
-    let b = PaintAnim::BlinkOpacity {
-        half_period: HP,
-        started_at: START,
-        stop_after: ragged,
-    };
+    let b = blink().repeat(PaintRepeat::Settle(ragged));
     assert_eq!(b.sample(START + HP * 3).alpha, 0.0);
     assert_eq!(b.sample(START + ragged).alpha, 1.0);
     assert_eq!(b.next_wake(START + HP * 3), Some(START + ragged));
     assert_eq!(b.next_wake(START + ragged), None);
+}
+
+/// A caller's own curve, driving both channels off one pass.
+///
+/// Hand-computed against `alpha(0.2, 1.0)` and `turn(0.0, 0.5)` over a
+/// one-second period with `curve = |t| t * t`:
+///
+/// - at 0.5 s the phase is 0.5, so the curve gives 0.25. Alpha lerps to
+///   `0.2 + 0.8 * 0.25 = 0.4`, and the turn to `0.5 * 0.25 = 0.125`
+///   turns, which is `TAU / 8` radians.
+/// - at 1.0 s the pass is over. `Once` holds the end: alpha 1.0, turn a
+///   half, which is `TAU / 2`.
+///
+/// A fractional alpha is the whole point — the two shipped animations
+/// only ever answered 0 or 1, so nothing before this could produce one.
+#[test]
+fn a_custom_curve_drives_both_channels_and_holds_at_the_end() {
+    fn squared(t: f32) -> f32 {
+        t * t
+    }
+
+    let a = PaintAnim::alpha(0.2, 1.0)
+        .with_turn(0.0, 0.5)
+        .started_at(START)
+        .period(Duration::from_secs(1))
+        .curve(squared);
+
+    let mid = a.sample(START + Duration::from_millis(500));
+    assert!((mid.alpha - 0.4).abs() < 1e-5, "alpha {}", mid.alpha);
+    assert!(
+        (mid.rotation - TAU / 8.0).abs() < 1e-5,
+        "rotation {}",
+        mid.rotation,
+    );
+
+    let end = a.sample(START + Duration::from_secs(1));
+    assert!((end.alpha - 1.0).abs() < 1e-5, "alpha {}", end.alpha);
+    assert!((end.rotation - TAU / 2.0).abs() < 1e-5);
+    assert_eq!(a.next_wake(START + Duration::from_secs(1)), None);
+
+    // A turn of any range makes the damage bound the swept square, and
+    // the cascade asks without a `now` or a call into the curve.
+    assert!(a.rotates());
+    assert!(!PaintAnim::alpha(0.0, 1.0).rotates());
+}
+
+/// `Settle` stops modifying the shape, rather than holding an end value.
+/// A settled blink is a solid caret, and a settled fade is the shape as
+/// recorded — which is why the caret needs no "and now paint me opaque"
+/// arm of its own.
+#[test]
+fn a_settled_animation_stops_modifying_the_shape() {
+    let a = PaintAnim::alpha(0.0, 0.25)
+        .started_at(START)
+        .period(Duration::from_millis(100))
+        .repeat(PaintRepeat::Settle(Duration::from_millis(250)));
+
+    assert!(a.sample(START + Duration::from_millis(200)).alpha < 0.25);
+    let settled = a.sample(START + Duration::from_millis(250));
+    assert_eq!(settled.alpha, 1.0, "a settled animation multiplies by one");
+    assert_eq!(settled.rotation, 0.0);
+    assert_eq!(a.next_wake(START + Duration::from_millis(250)), None);
+}
+
+/// Zero steps would read as a shape that never animates, with nothing
+/// else to say the animation was asked for.
+#[test]
+#[should_panic = "zero steps"]
+fn zero_steps_is_a_caller_bug() {
+    let _ = PaintAnim::alpha(0.0, 1.0).steps(0);
 }

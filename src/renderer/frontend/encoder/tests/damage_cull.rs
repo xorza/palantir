@@ -150,7 +150,9 @@ fn damage_filter_paints_leaves_in_any_rect() {
 fn viewport_and_damage_culls_advance_the_sparse_paint_anim_cursor() {
     use crate::display::Display;
 
-    use crate::scene::tree::paint_anims::PaintAnim;
+    use crate::scene::tree::paint_anims::curves;
+    use crate::scene::tree::paint_anims::paint_anim::PaintAnim;
+    use crate::scene::tree::paint_anims::paint_anim::PaintRepeat;
     use crate::shape::Shape;
     use std::time::Duration;
 
@@ -189,11 +191,12 @@ fn viewport_and_damage_culls_advance_the_sparse_paint_anim_cursor() {
                                 ui.add_shape_animated(
                                     Shape::rect(Rect::new(0.0, 0.0, 20.0, 20.0))
                                         .fill(RgbaF32::WHITE),
-                                    PaintAnim::BlinkOpacity {
-                                        half_period: HALF,
-                                        started_at,
-                                        stop_after: Duration::MAX,
-                                    },
+                                    PaintAnim::alpha(0.0, 1.0)
+                                        .started_at(started_at)
+                                        .period(HALF * 2)
+                                        .steps(2)
+                                        .repeat(PaintRepeat::Settle(Duration::MAX))
+                                        .curve(curves::square),
                                 );
                             });
                     }

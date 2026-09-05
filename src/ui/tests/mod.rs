@@ -3,6 +3,7 @@
 mod frames;
 mod ids;
 mod overlay_placement;
+mod paint_anim;
 mod repainting;
 mod starting;
 mod state;

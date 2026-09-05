@@ -41,7 +41,6 @@ fn arc_geometry_insets_by_half_width() {
 fn arc_and_spin_follow_the_spinner_theme() {
     use crate::scene::shapes::paint::CurveBasis;
     use crate::scene::shapes::record::ShapeRecord;
-    use crate::scene::tree::paint_anims::PaintAnim;
 
     fn recorded(theme: SpinnerTheme, diameter: f32) -> (f32, f32, f32) {
         let mut h = UiHarness::new(UVec2::new(200, 200));
@@ -68,15 +67,19 @@ fn arc_and_spin_follow_the_spinner_theme() {
                 _ => None,
             })
             .expect("spinner records one arc");
+        // Reported as the old radians-per-second, so the assertions below
+        // stay written in the unit the theme is.
         let speed = tree
             .paint_anims
             .entries
             .iter()
-            .find_map(|e| match e.anim {
-                PaintAnim::Spin { speed, .. } => Some(speed),
-                _ => None,
+            .find_map(|e| {
+                e.anim
+                    .channel
+                    .turn
+                    .map(|_| TAU / e.anim.timing.period.as_secs_f32())
             })
-            .expect("spinner registers a spin anim");
+            .expect("spinner registers a turning anim");
         (arc.0, arc.1, speed)
     }
 

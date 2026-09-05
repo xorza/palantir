@@ -25,7 +25,10 @@ use glam::{UVec2, Vec2};
 #[test]
 fn spun_polyline_bbox_is_rotation_invariant_square_about_owner_centre() {
     use crate::display::Display;
-    use crate::scene::tree::paint_anims::PaintAnim;
+    use crate::scene::tree::paint_anims::curves;
+    use crate::scene::tree::paint_anims::paint_anim::PaintAnim;
+    use crate::scene::tree::paint_anims::paint_anim::PaintRepeat;
+    use std::f32::consts::TAU;
 
     use crate::shape::Shape;
     use crate::shape::polyline::PolylineColors;
@@ -47,10 +50,11 @@ fn spun_polyline_bbox_is_rotation_invariant_square_about_owner_centre() {
                             PolylineColors::Single(RgbaF32::srgb(1.0, 0.0, 0.0)),
                             1.0,
                         ),
-                        PaintAnim::Spin {
-                            speed: 1.0,
-                            started_at: Duration::ZERO,
-                        },
+                        PaintAnim::turn(0.0, 1.0)
+                            .started_at(Duration::ZERO)
+                            .period(Duration::from_secs_f32(TAU / 1.0))
+                            .repeat(PaintRepeat::Forever)
+                            .curve(curves::linear),
                     );
                 });
         });
@@ -98,9 +102,10 @@ fn spun_polyline_bbox_is_rotation_invariant_square_about_owner_centre() {
 #[test]
 fn spun_arc_bbox_is_rotation_invariant_square_about_owner_centre() {
     use crate::display::Display;
-    use crate::scene::tree::paint_anims::PaintAnim;
+    use crate::scene::tree::paint_anims::curves;
+    use crate::scene::tree::paint_anims::paint_anim::{PaintAnim, PaintRepeat};
     use crate::shape::Shape;
-    use std::f32::consts::PI;
+    use std::f32::consts::{PI, TAU};
     use std::time::Duration;
 
     let display = Display::from_physical(UVec2::new(200, 200), 1.0);
@@ -114,10 +119,11 @@ fn spun_arc_bbox_is_rotation_invariant_square_about_owner_centre() {
                 .show(ui, |ui| {
                     ui.add_shape_animated(
                         Shape::arc(Vec2::new(50.0, 20.0), 10.0, 0.0, PI, 2.0).brush(RgbaF32::WHITE),
-                        PaintAnim::Spin {
-                            speed: 1.0,
-                            started_at: Duration::ZERO,
-                        },
+                        PaintAnim::turn(0.0, 1.0)
+                            .started_at(Duration::ZERO)
+                            .period(Duration::from_secs_f32(TAU / 1.0))
+                            .repeat(PaintRepeat::Forever)
+                            .curve(curves::linear),
                     );
                 });
         });

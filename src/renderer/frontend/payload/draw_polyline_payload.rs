@@ -20,10 +20,8 @@ use glam::Vec2;
 /// [`RecordStore`]: crate::scene::record_store::RecordStore
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub(crate) struct DrawPolylinePayload {
-    /// Cull bound plus the spin, if any — set from a
-    /// [`PaintAnim::Spin`] sample.
-    ///
-    /// [`PaintAnim::Spin`]: crate::scene::tree::paint_anims::PaintAnim::Spin
+    /// Cull bound plus the turn, if any — set from a paint animation's
+    /// sampled rotation.
     pub(crate) bounds: StrokeBounds,
     pub(crate) origin: Vec2,
     pub(crate) width: f32,

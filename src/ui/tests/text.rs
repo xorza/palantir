@@ -279,7 +279,9 @@ fn paint_only_frames_advance_the_shared_text_clock() {
     use crate::common::clipboard::Clipboard;
     use crate::layout::types::align::Align;
     use crate::layout::types::sizing::Sizing;
-    use crate::scene::tree::paint_anims::PaintAnim;
+    use crate::scene::tree::paint_anims::curves;
+    use crate::scene::tree::paint_anims::paint_anim::PaintAnim;
+    use crate::scene::tree::paint_anims::paint_anim::PaintRepeat;
     use crate::shape::Shape;
     use crate::text::font_family::FontFamily;
     use crate::text::font_weight::FontWeight;
@@ -310,11 +312,12 @@ fn paint_only_frames_advance_the_shared_text_clock() {
                 .align(Align::default())
                 .family(FontFamily::SANS)
                 .weight(FontWeight::REGULAR),
-                PaintAnim::BlinkOpacity {
-                    half_period: HALF,
-                    started_at: HALF,
-                    stop_after: Duration::MAX,
-                },
+                PaintAnim::alpha(0.0, 1.0)
+                    .started_at(HALF)
+                    .period(HALF * 2)
+                    .steps(2)
+                    .repeat(PaintRepeat::Settle(Duration::MAX))
+                    .curve(curves::square),
             );
         });
     }
@@ -388,7 +391,8 @@ fn shared_cache_eviction_preserves_idle_windows_paint_only_text_source() {
     use crate::common::clipboard::Clipboard;
     use crate::layout::types::align::Align;
     use crate::layout::types::sizing::Sizing;
-    use crate::scene::tree::paint_anims::PaintAnim;
+    use crate::scene::tree::paint_anims::curves;
+    use crate::scene::tree::paint_anims::paint_anim::{PaintAnim, PaintRepeat};
     use crate::shape::Shape;
     use crate::text::font_family::FontFamily;
     use crate::text::font_weight::FontWeight;
@@ -416,11 +420,12 @@ fn shared_cache_eviction_preserves_idle_windows_paint_only_text_source() {
                 .align(Align::default())
                 .family(FontFamily::SANS)
                 .weight(FontWeight::REGULAR),
-                PaintAnim::BlinkOpacity {
-                    half_period: HALF,
-                    started_at: HALF,
-                    stop_after: Duration::MAX,
-                },
+                PaintAnim::alpha(0.0, 1.0)
+                    .started_at(HALF)
+                    .period(HALF * 2)
+                    .steps(2)
+                    .repeat(PaintRepeat::Settle(Duration::MAX))
+                    .curve(curves::square),
             );
         });
     }
