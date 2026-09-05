@@ -1,7 +1,7 @@
 use crate::common::clipboard::Clipboard;
+use crate::diagnostics::DebugOverlayConfig;
 use crate::primitives::image::Image;
 use crate::primitives::texture_id::TextureId;
-use crate::renderer::backend::shared_resources::SharedResources;
 use crate::renderer::texture_limit::TextureLimit;
 use crate::text::shaper::TextShaper;
 use crate::ui::Ui;
@@ -11,13 +11,9 @@ use std::num::NonZeroU32;
 
 #[test]
 fn the_bundle_ceiling_gates_registration_and_is_what_ui_reports() {
-    let resources = UiResources::new(
-        SharedResources::deviceless(
-            TextShaper::test_mono(),
-            TextureLimit::from_device(NonZeroU32::new(4).unwrap()),
-        ),
-        Clipboard::default(),
-    );
+    let limit = TextureLimit::from_device(NonZeroU32::new(4).unwrap());
+    let resources = UiResources::new(TextShaper::test_mono(), Clipboard::default(), limit);
+    assert_eq!(resources.texture_limit(), limit);
     let ui = Ui::new(resources);
     assert_eq!(ui.max_image_dimension(), NonZeroU32::new(4));
 
@@ -57,4 +53,43 @@ fn dimensions_above_u16_are_preserved_without_a_gpu() {
     let resources = UiResources::isolated_mono();
     let handle = resources.register_image(&img(WIDTH, 1)).unwrap();
     assert_eq!(handle.size(), UVec2::new(WIDTH, 1));
+}
+
+#[test]
+fn diagnostics_are_shared_across_clones() {
+    let host = UiResources::isolated_mono();
+    let ui = host.clone();
+    assert_eq!(
+        host.diagnostics().overlay.get(),
+        DebugOverlayConfig::default()
+    );
+
+    ui.diagnostics().overlay.set(DebugOverlayConfig {
+        damage_rect: true,
+        ..DebugOverlayConfig::default()
+    });
+
+    assert!(host.diagnostics().overlay.get().damage_rect);
+    assert!(ui.diagnostics().overlay.get().damage_rect);
+    assert!(
+        ui.diagnostics().overlay.take_change(),
+        "the write raises the host's repaint signal",
+    );
+    assert!(
+        !host.diagnostics().overlay.take_change(),
+        "and the ask lowers it, for the one host that shares the flags",
+    );
+}
+
+#[test]
+fn clipboard_is_shared_within_one_host_and_isolated_between_hosts() {
+    let first = UiResources::isolated_mono();
+    let first_window = first.clone();
+    let second_window = first.clone();
+    let second = UiResources::isolated_mono();
+
+    first_window.clipboard().set("shared").unwrap();
+
+    assert_eq!(second_window.clipboard().get().unwrap(), "shared");
+    assert_eq!(second.clipboard().get().unwrap(), "");
 }

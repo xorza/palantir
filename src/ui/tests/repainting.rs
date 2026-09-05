@@ -1,8 +1,8 @@
 //! When a frame is asked for again, and what a paint-only one may skip.
 
 use crate::Ui;
+use crate::common::clipboard::Clipboard;
 use crate::diagnostics::DebugOverlayConfig;
-use crate::host::shared::HostShared;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::RgbaF32, rect::Rect};
@@ -12,6 +12,7 @@ use crate::scene::damage::Damage;
 use crate::scene::layer::Layer;
 use crate::scene::node::configure::Configure;
 use crate::ui::harness::UiHarness;
+use crate::ui::resources::UiResources;
 use crate::ui::tests::support::{SURFACE, add_blink_shape, ui_with_shared};
 use crate::widgets::{frame::Frame, panel::Panel, text::Text};
 use glam::Vec2;
@@ -443,7 +444,11 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
         });
     }
 
-    let shared = HostShared::new(TextShaper::test_mono(), TextureLimit::default());
+    let shared = UiResources::new(
+        TextShaper::test_mono(),
+        Clipboard::default(),
+        TextureLimit::default(),
+    );
     let atlas = shared.gradient_atlas().clone();
     let mut a = ui_with_shared(&shared);
     let mut b = ui_with_shared(&shared);

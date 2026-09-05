@@ -2,7 +2,7 @@
 
 use crate::TextStyle;
 use crate::Ui;
-use crate::host::shared::HostShared;
+use crate::common::clipboard::Clipboard;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::widget_id::WidgetId;
 use crate::renderer::frontend::Frontend;
@@ -13,6 +13,7 @@ use crate::text::RENDERED_RUN_KEEP_FRAMES;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::wrap::TextWrap;
 use crate::ui::harness::UiHarness;
+use crate::ui::resources::UiResources;
 use crate::ui::tests::support::{SURFACE, measure_calls, ui_with_shared};
 use crate::widgets::{panel::Panel, text::Text};
 use glam::UVec2;
@@ -205,7 +206,11 @@ fn text_reuse_is_window_local_while_cosmic_buffers_are_shared() {
             });
     }
 
-    let shared = HostShared::new(TextShaper::new(), TextureLimit::default());
+    let shared = UiResources::new(
+        TextShaper::new(),
+        Clipboard::default(),
+        TextureLimit::default(),
+    );
     let mut a = ui_with_shared(&shared);
     let mut b = ui_with_shared(&shared);
     let text_id = WidgetId::from_hash("shared-text");
@@ -271,7 +276,7 @@ fn text_reuse_is_window_local_while_cosmic_buffers_are_shared() {
 /// separate tick the `PaintOnly` arm owes.
 #[test]
 fn paint_only_frames_advance_the_shared_text_clock() {
-    use crate::host::shared::HostShared;
+    use crate::common::clipboard::Clipboard;
     use crate::layout::types::align::Align;
     use crate::layout::types::sizing::Sizing;
     use crate::scene::node::Node;
@@ -281,6 +286,7 @@ fn paint_only_frames_advance_the_shared_text_clock() {
     use crate::text::font_weight::FontWeight;
     use crate::text::shaper::TextShaper;
     use crate::ui::frame_report::FrameProcessing;
+    use crate::ui::resources::UiResources;
 
     const HALF: Duration = Duration::from_millis(500);
 
@@ -314,8 +320,12 @@ fn paint_only_frames_advance_the_shared_text_clock() {
         });
     }
 
-    let shared = HostShared::new(TextShaper::new(), TextureLimit::default());
-    let mut ui = UiHarness::from_resources(shared.resources().clone(), SURFACE);
+    let shared = UiResources::new(
+        TextShaper::new(),
+        Clipboard::default(),
+        TextureLimit::default(),
+    );
+    let mut ui = UiHarness::from_resources(shared.clone(), SURFACE);
     let shaper = ui.ui.resources.text().clone();
 
     let first = ui.frame(blinking_text);
@@ -376,7 +386,7 @@ fn paint_only_frames_advance_the_shared_text_clock() {
 
 #[test]
 fn shared_cache_eviction_preserves_idle_windows_paint_only_text_source() {
-    use crate::host::shared::HostShared;
+    use crate::common::clipboard::Clipboard;
     use crate::layout::types::align::Align;
     use crate::layout::types::sizing::Sizing;
     use crate::scene::node::Node;
@@ -386,6 +396,7 @@ fn shared_cache_eviction_preserves_idle_windows_paint_only_text_source() {
     use crate::text::font_weight::FontWeight;
     use crate::text::shaper::TextShaper;
     use crate::ui::frame_report::FrameProcessing;
+    use crate::ui::resources::UiResources;
 
     const HALF: Duration = Duration::from_millis(500);
 
@@ -416,9 +427,13 @@ fn shared_cache_eviction_preserves_idle_windows_paint_only_text_source() {
         });
     }
 
-    let shared = HostShared::new(TextShaper::new(), TextureLimit::default());
-    let mut idle = UiHarness::from_resources(shared.resources().clone(), SURFACE);
-    let mut active = UiHarness::from_resources(shared.resources().clone(), SURFACE);
+    let shared = UiResources::new(
+        TextShaper::new(),
+        Clipboard::default(),
+        TextureLimit::default(),
+    );
+    let mut idle = UiHarness::from_resources(shared.clone(), SURFACE);
+    let mut active = UiHarness::from_resources(shared.clone(), SURFACE);
 
     let idle_first = idle.frame(idle_body);
     assert_eq!(idle_first.repaint_after, Some(HALF));

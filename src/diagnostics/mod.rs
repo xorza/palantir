@@ -39,22 +39,11 @@ pub struct DebugOverlayConfig {
     pub frame_stats: bool,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub(crate) struct Diagnostics {
     pub(crate) gpu_pass_stats: GpuPassStats,
     /// App-global, so a toggle in one window has to repaint the others —
     /// which is what the [`AppSetting`] signal is for, and only
     /// [`Ui::set_debug_overlay`](crate::Ui::set_debug_overlay) raises it.
     pub(crate) overlay: Rc<AppSetting<DebugOverlayConfig>>,
-}
-
-impl Diagnostics {
-    /// Flags at their defaults over the timing sample the backend
-    /// publishes into.
-    pub(crate) fn new(gpu_pass_stats: GpuPassStats) -> Self {
-        Self {
-            gpu_pass_stats,
-            overlay: Rc::default(),
-        }
-    }
 }

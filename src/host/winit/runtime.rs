@@ -176,14 +176,8 @@ impl<T: App + 'static> WinitRuntime<T> {
     /// circuit past the second, leaving its change to fire a stray repaint
     /// on whatever moved next.
     pub(super) fn repaint_on_shared_change(&mut self) {
-        let overlay = self
-            .core
-            .shared
-            .resources()
-            .diagnostics()
-            .overlay
-            .take_change();
-        let user_scale = self.core.shared.resources().user_scale().take_change();
+        let overlay = self.core.resources.diagnostics().overlay.take_change();
+        let user_scale = self.core.resources.user_scale().take_change();
         if overlay || user_scale {
             self.repaint_all();
         }

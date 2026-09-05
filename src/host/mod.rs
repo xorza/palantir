@@ -1,6 +1,6 @@
 //! The host layer — everything between the OS/GPU and the [`Ui`](crate::Ui)
-//! recorder. [`HostShared`](shared::HostShared) owns the app-global resources
-//! exposed to each `Ui` and the shared renderer;
+//! recorder. [`UiResources`](crate::ui::resources::UiResources) is the
+//! app-global bundle each `Ui` and the shared renderer are built over;
 //! [`HostCore`](core::HostCore) bundles those resources with the one CPU
 //! frontend and GPU backend both hosts build on;
 //! [`WindowDriver`](window_driver::WindowDriver) owns each window's `Ui`
@@ -21,7 +21,6 @@ pub(crate) mod device_requirements;
 pub(crate) mod error;
 pub(crate) mod gpu_request;
 pub(crate) mod offscreen;
-pub(crate) mod shared;
 #[cfg(feature = "internals")]
 pub(crate) mod test_gpu;
 mod window_driver;
