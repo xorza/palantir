@@ -368,7 +368,7 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
             )
             .with_stroke(self.theme.preview_stroke);
             ui.layer(Layer::Tooltip)
-                .at(r.min)
+                .fixed_at(r.min)
                 .max_size(r.size)
                 .show(|ui| {
                     Panel::zstack()
@@ -386,7 +386,7 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
         let ghost_text = self.theme.ghost.text.unwrap_or(ui.theme().text);
         let padding = self.theme.ghost_padding;
         ui.layer(Layer::Tooltip)
-            .at(p + self.theme.ghost_offset)
+            .fixed_at(p + self.theme.ghost_offset)
             .show(|ui| {
                 Panel::hstack()
                     .id(dock.with("ghost"))

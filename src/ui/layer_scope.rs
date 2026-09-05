@@ -1,6 +1,6 @@
 //! [`LayerScope`] — the builder [`Ui::layer`] hands out.
 
-use crate::layout::types::overlay::OverlayPosition;
+use crate::layout::types::anchor::Anchor;
 use crate::layout::types::placement::Placement;
 use crate::primitives::size::Size;
 use crate::scene::layer::Layer;
@@ -9,14 +9,14 @@ use glam::Vec2;
 
 /// A side layer being configured, terminated by [`Self::show`].
 ///
-/// [`Self::at`] fixes the body's top-left. [`Self::anchored`] resolves
-/// the origin from the body's measured size instead — that is what lets
-/// a popup flip above its anchor when it would not fit below, and it is
-/// why `Popup`, `ContextMenu` and `Tooltip` place themselves rather than
-/// taking a point from the caller. [`Self::max_size`] caps either one,
-/// so no setter here depends on the order the others ran in. Setting
-/// neither anchors at the surface origin with the whole surface
-/// available, which is what every full-surface layer wants.
+/// [`Self::fixed_at`] pins the body's top-left. [`Self::anchored`]
+/// resolves the origin from the body's measured size instead — that is
+/// what lets a popup flip above its anchor when it would not fit below,
+/// and it is why `Popup`, `ContextMenu` and `Tooltip` place themselves
+/// rather than taking a point from the caller. [`Self::max_size`] caps
+/// either one, so no setter here depends on the order the others ran in.
+/// Setting neither leaves the body at the surface origin with the whole
+/// surface available, which is what every full-surface layer wants.
 #[derive(Debug)]
 #[must_use = "a layer records nothing until `show`"]
 pub struct LayerScope<'a> {
@@ -34,11 +34,26 @@ impl<'a> LayerScope<'a> {
         }
     }
 
-    /// Place the body's top-left at `anchor`. Without a
-    /// [`Self::max_size`] the available extent runs from here to the
-    /// surface's bottom-right.
-    pub fn at(mut self, anchor: Vec2) -> Self {
-        self.placement = self.placement.with_anchor(anchor);
+    /// Pin the body's top-left at `point`, wherever that leaves it.
+    /// Without a [`Self::max_size`] the available extent runs from here
+    /// to the surface's bottom-right.
+    ///
+    /// [`Self::anchored`] is the other form, and the one an overlay
+    /// wants: it moves the body to keep it on screen.
+    pub fn fixed_at(mut self, point: Vec2) -> Self {
+        self.placement = self.placement.with_fixed(point);
+        self
+    }
+
+    /// Resolve the body's origin from its measured size against
+    /// `anchor`, flipping or shifting it to fit the surface.
+    ///
+    /// The form every anchored overlay wants — a dropdown under its
+    /// trigger, a menu at the pointer, a tooltip beside the thing it
+    /// describes. Replaces an origin set by [`Self::fixed_at`] and keeps
+    /// a cap set by [`Self::max_size`].
+    pub fn anchored(mut self, anchor: Anchor) -> Self {
+        self.placement = self.placement.with_anchored(anchor);
         self
     }
 
@@ -46,19 +61,7 @@ impl<'a> LayerScope<'a> {
     /// so an oversized cap can't bleed past the viewport. The root's own
     /// `Sizing` (Hug / Fill / Fixed) governs the painted size within it.
     pub fn max_size(mut self, size: impl Into<Size>) -> Self {
-        self.placement = self.placement.with_size(size.into());
-        self
-    }
-
-    /// Resolve the body's origin from its measured size against
-    /// `position`'s anchor, flipping or shifting it to fit the surface.
-    ///
-    /// The form every anchored overlay wants — a dropdown under its
-    /// trigger, a menu at the pointer, a tooltip beside the thing it
-    /// describes. Replaces an origin set by [`Self::at`] and keeps a cap
-    /// set by [`Self::max_size`].
-    pub fn anchored(mut self, position: OverlayPosition) -> Self {
-        self.placement = self.placement.with_overlay(position);
+        self.placement = self.placement.with_max_size(size.into());
         self
     }
 

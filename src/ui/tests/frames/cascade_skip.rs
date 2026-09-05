@@ -148,7 +148,7 @@ fn cascade_fingerprint_covers_layer_and_root_identity() {
             .id(WidgetId::from_hash("anchor"))
             .size(50.0)
             .show(ui);
-        ui.layer(layer).at(Vec2::new(10.0, 10.0)).show(|ui| {
+        ui.layer(layer).fixed_at(Vec2::new(10.0, 10.0)).show(|ui| {
             Frame::new()
                 .id(WidgetId::from_hash(key))
                 .size(20.0)

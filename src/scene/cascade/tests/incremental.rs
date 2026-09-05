@@ -148,7 +148,7 @@ fn incremental_matches_full_across_cascade_input_classes() {
     }
 
     fn layered(ui: &mut Ui, layer: Layer) {
-        ui.layer(layer).at(Vec2::splat(10.0)).show(|ui| {
+        ui.layer(layer).fixed_at(Vec2::splat(10.0)).show(|ui| {
             colored_frame(ui, RgbaF32::WHITE);
         });
     }

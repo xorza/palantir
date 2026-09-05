@@ -3,6 +3,7 @@
 pub(crate) mod menu_item;
 pub(crate) mod menu_separator;
 
+use crate::layout::types::anchor::Anchor;
 use crate::primitives::background::Background;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
@@ -21,11 +22,11 @@ use glam::Vec2;
 use std::rc::Rc;
 
 /// Cross-frame response for one context-menu site, keyed off the trigger
-/// widget's id in [`StateMap`](crate::ui::state::StateMap). `anchor = Some`
-/// is the single source of truth for "menu open".
+/// widget's id in [`StateMap`](crate::ui::state::StateMap).
+/// `open_at = Some` is the single source of truth for "menu open".
 #[derive(Default, Clone, Copy, Debug)]
 struct ContextMenuState {
-    anchor: Option<Vec2>,
+    open_at: Option<Vec2>,
 }
 
 /// A right-click / programmatically-opened popup menu attached to a
@@ -69,7 +70,7 @@ pub struct ContextMenu<'a> {
     /// so the caller's [`Configure`] calls land on the node that
     /// actually records — there is no second node to keep in sync or
     /// swap in at `show`. Its anchor is a placeholder until `show`
-    /// re-places it (see [`Popup::anchored_at`]); a closed menu returns
+    /// re-anchors it (see [`Popup::anchor`]); a closed menu returns
     /// before recording, so the placeholder never places anything.
     ///
     /// It owns the chrome too, so `.background(..)` and the theme
@@ -141,9 +142,9 @@ impl<'a> ContextMenu<'a> {
         // Read via `try_state` so a never-opened menu doesn't materialize a
         // StateMap row every frame `show` is called (matches `is_open`'s no-alloc
         // path); the row only needs to exist after `open`.
-        let Some(raw_anchor) = ui
+        let Some(open_at) = ui
             .try_state::<ContextMenuState>(self.for_id)
-            .and_then(|st| st.anchor)
+            .and_then(|st| st.open_at)
         else {
             return OverlayResponse::default();
         };
@@ -159,7 +160,7 @@ impl<'a> ContextMenu<'a> {
         let resp = self
             .popup
             .on(Layer::Menu)
-            .anchored_at(raw_anchor)
+            .anchor(Anchor::at_point(open_at))
             .default_background(&ctx.panel)
             .default_padding(ctx.padding)
             .default_min_size(Size::new(ctx.min_width, 0.0))
@@ -173,24 +174,24 @@ impl<'a> ContextMenu<'a> {
     }
 
     /// Open the context menu keyed off `for_id` at surface-space
-    /// `anchor`. Idempotent — repeated calls refresh the anchor.
-    pub fn open(ui: &mut Ui, for_id: WidgetId, anchor: Vec2) {
-        ui.state_mut::<ContextMenuState>(for_id).anchor = Some(anchor);
+    /// `point`. Idempotent — repeated calls move an open menu.
+    pub fn open(ui: &mut Ui, for_id: WidgetId, point: Vec2) {
+        ui.state_mut::<ContextMenuState>(for_id).open_at = Some(point);
     }
 
     /// Close the context menu keyed off `for_id`. No-op if already closed.
     pub fn close(ui: &mut Ui, for_id: WidgetId) {
         if let Some(response) = ui.try_state_mut::<ContextMenuState>(for_id) {
-            response.anchor = None;
+            response.open_at = None;
         }
     }
 
-    /// `true` while the menu keyed off `for_id` has an active anchor.
+    /// `true` while the menu keyed off `for_id` is open.
     /// Cheap immutable probe — no row is allocated for triggers that
     /// have never been opened.
     pub fn is_open(ui: &Ui, for_id: WidgetId) -> bool {
         ui.try_state::<ContextMenuState>(for_id)
-            .is_some_and(|st| st.anchor.is_some())
+            .is_some_and(|st| st.open_at.is_some())
     }
 }
 

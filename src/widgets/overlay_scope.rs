@@ -2,7 +2,7 @@
 
 use crate::input::key_class::KeyFilter;
 use crate::input::sense::Sense;
-use crate::layout::types::overlay::OverlayPosition;
+use crate::layout::types::anchor::Anchor;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
@@ -87,7 +87,7 @@ pub(super) struct OverlayScope {
     /// `None` takes the layer's default — the surface origin with the
     /// whole surface available, which is what a full-surface overlay
     /// like a modal wants.
-    position: Option<OverlayPosition>,
+    anchor: Option<Anchor>,
     backdrop: Backdrop,
 }
 
@@ -102,7 +102,7 @@ impl OverlayScope {
     pub(super) fn claim(
         owner: WidgetId,
         layer: Layer,
-        position: Option<OverlayPosition>,
+        anchor: Option<Anchor>,
         backdrop: Backdrop,
         root: &mut Widget,
     ) -> Self {
@@ -112,7 +112,7 @@ impl OverlayScope {
         Self {
             owner,
             layer,
-            position,
+            anchor,
             backdrop,
         }
     }
@@ -150,8 +150,8 @@ impl OverlayScope {
         }
         let owns_input = self.backdrop.owns_input();
         let scope = ui.layer(self.layer);
-        let scope = match self.position {
-            Some(position) => scope.anchored(position),
+        let scope = match self.anchor {
+            Some(anchor) => scope.anchored(anchor),
             None => scope,
         };
         let (inner, escape) = scope.show(|ui| {

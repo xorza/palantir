@@ -1,7 +1,7 @@
 //! The anchored floating body: the widget and the press-outside policy.
 
 use crate::input::sense::Sense;
-use crate::layout::types::overlay::OverlayPosition;
+use crate::layout::types::anchor::Anchor;
 use crate::primitives::background::Background;
 use crate::primitives::rect::Rect;
 use crate::scene::layer::Layer;
@@ -78,7 +78,7 @@ pub enum ClickOutside {
 /// `.padding(...)`, `.size(...)`, etc. on the popup body.
 #[derive(Debug)]
 pub struct Popup {
-    position: OverlayPosition,
+    anchor: Anchor,
     click_outside: ClickOutside,
     layer: Layer,
     widget: Widget,
@@ -87,34 +87,34 @@ pub struct Popup {
 
 impl Popup {
     #[track_caller]
-    pub fn anchored_to(anchor: Vec2) -> Self {
-        Self::positioned(OverlayPosition::at_point(anchor))
+    pub fn anchored_to(point: Vec2) -> Self {
+        Self::new(Anchor::at_point(point))
     }
 
     #[track_caller]
-    pub fn below(anchor: Rect) -> Self {
-        Self::positioned(OverlayPosition::below(anchor))
+    pub fn below(rect: Rect) -> Self {
+        Self::new(Anchor::below(rect))
     }
 
     #[track_caller]
-    pub fn above(anchor: Rect) -> Self {
-        Self::positioned(OverlayPosition::above(anchor))
+    pub fn above(rect: Rect) -> Self {
+        Self::new(Anchor::above(rect))
     }
 
     #[track_caller]
-    pub fn left_of(anchor: Rect) -> Self {
-        Self::positioned(OverlayPosition::left_of(anchor))
+    pub fn left_of(rect: Rect) -> Self {
+        Self::new(Anchor::left_of(rect))
     }
 
     #[track_caller]
-    pub fn right_of(anchor: Rect) -> Self {
-        Self::positioned(OverlayPosition::right_of(anchor))
+    pub fn right_of(rect: Rect) -> Self {
+        Self::new(Anchor::right_of(rect))
     }
 
     #[track_caller]
-    fn positioned(position: OverlayPosition) -> Self {
+    fn new(anchor: Anchor) -> Self {
         Self {
-            position,
+            anchor,
             click_outside: ClickOutside::Dismiss,
             layer: Layer::Popup,
             widget: Widget::vstack().sense(Sense::CLICK),
@@ -140,7 +140,7 @@ impl Popup {
     /// object — the way [`crate::Tooltip`] does, off
     /// [`TooltipTheme::gap`](crate::TooltipTheme) — sets its own.
     pub fn gap(mut self, px: f32) -> Self {
-        self.position = self.position.gap(px);
+        self.anchor = self.anchor.gap(px);
         self
     }
 
@@ -163,15 +163,15 @@ impl Popup {
         self
     }
 
-    /// Re-place an already-built popup at `anchor`.
+    /// Re-anchor an already-built popup.
     ///
     /// For a wrapper whose placement is late-bound: [`crate::ContextMenu`]
     /// holds its popup from the moment the caller starts configuring it,
     /// but doesn't learn where the menu was opened until `show` reads the
-    /// state map. The constructors stay the canonical way in; this is the
-    /// one case that can't use them.
-    pub(crate) fn anchored_at(mut self, anchor: Vec2) -> Self {
-        self.position = OverlayPosition::at_point(anchor);
+    /// state map. The constructors stay the canonical way in. This is the
+    /// one case that cannot use them.
+    pub(crate) fn anchor(mut self, anchor: Anchor) -> Self {
+        self.anchor = anchor;
         self
     }
 
@@ -181,7 +181,7 @@ impl Popup {
         body: impl FnOnce(&mut Ui, &CloseHandle) -> R,
     ) -> OverlayResponse<R> {
         let Self {
-            position,
+            anchor,
             click_outside,
             layer,
             mut widget,
@@ -201,7 +201,7 @@ impl Popup {
             Backdrop::Eater(eater_id)
         };
         let id = widget.resolve(ui);
-        let scope = OverlayScope::claim(id, layer, Some(position), backdrop, &mut widget);
+        let scope = OverlayScope::claim(id, layer, Some(anchor), backdrop, &mut widget);
 
         let theme = Rc::clone(ui.theme());
         widget.configure().default_clip(theme.panel_clip);

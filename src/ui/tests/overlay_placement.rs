@@ -2,7 +2,7 @@
 //! path a widget written outside this crate takes.
 
 use crate::Ui;
-use crate::layout::types::overlay::OverlayPosition;
+use crate::layout::types::anchor::Anchor;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
@@ -37,7 +37,7 @@ fn placed(mut place: impl FnMut(&mut Ui)) -> Rect {
     h.ui.layout(Layer::Popup).rect[root]
 }
 
-/// The three answers `OverlayPosition` gives for one 120x100 body,
+/// The three answers `Anchor` gives for one 120x100 body,
 /// hand-computed against a 400x300 surface:
 ///
 /// - Anchor `(20, 30, 100, 20)`, no gap: the body fits below, so its top
@@ -71,7 +71,7 @@ fn an_anchored_layer_takes_the_gap_and_flips_to_fit() {
     for &(anchor, gap, expected) in cases {
         let rect = placed(|ui| {
             ui.layer(Layer::Popup)
-                .anchored(OverlayPosition::below(anchor).gap(gap))
+                .anchored(Anchor::below(anchor).gap(gap))
                 .show(body);
         });
         assert_eq!(rect.min, expected, "anchor {anchor:?} gap {gap}");
@@ -87,7 +87,9 @@ fn an_anchored_layer_takes_the_gap_and_flips_to_fit() {
 #[test]
 fn a_fixed_layer_stays_where_it_was_put() {
     let rect = placed(|ui| {
-        ui.layer(Layer::Popup).at(Vec2::new(20.0, 250.0)).show(body);
+        ui.layer(Layer::Popup)
+            .fixed_at(Vec2::new(20.0, 250.0))
+            .show(body);
     });
     assert_eq!(rect.min, Vec2::new(20.0, 250.0));
 }

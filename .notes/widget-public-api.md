@@ -64,7 +64,7 @@ from `widgets`.
 | # | gap | what is missing | blocks | size |
 |---|---|---|---|---|
 | G1 | scroll viewport and scrollbar layout mode | `LayoutMode::Scroll`, `ScrollSpec`, `ScrollbarsDef`, `Ui::scroll_content`, `Ui::push_scrollbars_def`, `Ui::current_node`, `Widget::scroll`, `Widget::scrollbars` | Scroll | large |
-| ~~G2~~ | ~~anchored, flip-to-fit overlay placement~~ | **closed** — `OverlayPosition` and `LayerScope::anchored` are published | — | — |
+| ~~G2~~ | ~~anchored, flip-to-fit overlay placement~~ | **closed** — `Anchor` and `LayerScope::anchored` are published | — | — |
 | ~~G3~~ | ~~clipboard read and write~~ | **closed** — `Clipboard`, `ClipboardUnavailable` and `Ui::clipboard` are published | — | — |
 | G4 | paint-time shape animation | `PaintAnim`, `Ui::add_shape_animated` | Spinner, TextEdit caret | small |
 | G5 | GPU view registration | `GpuPaintRef`, `Ui::gpu_view` | GpuView | small |
@@ -128,35 +128,67 @@ the record-time-geometry work in `record-time-geometry.md`.
 
 ### G2 — Anchored overlay placement — **closed**
 
-Published: `OverlayPosition`, with `at_point`, `above`, `below`, `left_of`,
-`right_of` and a `gap` builder, plus `LayerScope::anchored`. An overlay written
-outside the crate now gets the same post-measure resolve the bundled ones do —
-the preferred side when the body fits there, the opposite side when it does
-not, and a shift back inside the surface when neither has room.
+Published: `Anchor`, with `at_point`, `above`, `below`, `left_of`, `right_of`
+and a `gap` builder, plus `LayerScope::anchored`. An overlay written outside
+the crate now gets the same post-measure resolve the bundled ones do — the
+preferred side when the body fits there, the opposite side when it does not,
+and a shift back inside the surface when neither has room.
 
-`OverlaySide` and `AxisAlign` stayed private. Nothing needs to name a side
-once there are four constructors, and no caller in the crate has ever varied
-the cross-axis alignment. Adding `OverlayPosition::align` later is additive,
-and that is when the alignment enum earns publishing.
+`AnchorSide` and `AxisAlign` stayed private. Nothing needs to name a side once
+there are four constructors, and no caller in the crate has ever varied the
+cross-axis alignment. Adding `Anchor::align` later is additive, and that is
+when the alignment enum earns publishing.
 
-Three private items went with it. `LayerScope::placement` is deleted —
-`anchored` replaced its only caller. `Placement::fixed` went with it, dead once
-nothing but `Default` called it. `Placement` no longer reaches the widgets at
-all: `OverlayScope` holds an `Option<OverlayPosition>`, where `None` takes the
-layer's documented default of the surface origin with the whole surface
-available. `Modal` passes `None`, which is what it was spelling out as
+The side names are relational — `Above`, `Below`, `LeftOf`, `RightOf` — because
+the body sits *outside* the rect. `Top` and `Bottom` already mean an edge of a
+box or a position inside one everywhere else in the crate (`SplitSide`,
+`VAlign`), so reusing them here would have said the wrong thing.
+
+Two private items went with it. `LayerScope::placement` is deleted — `anchored`
+replaced its only caller. `Placement::fixed` went too, dead once nothing but
+`Default` called it. `Placement` no longer reaches the widgets at all:
+`OverlayScope` holds an `Option<Anchor>`, where `None` takes the layer's
+documented default of the surface origin with the whole surface available.
+`Modal` passes `None`, which is what it was spelling out as
 `Placement::fixed(Vec2::ZERO, Some(surface.size))` — the same origin and the
 same available extent, since the surface rect starts at the origin.
 
-**Why `Placement` is not the published type.** It is the storage form: it hangs
-off the root slot, and the layout engine reads its origin and available extent
-two passes after the record that set it. `LayerScope` is already its public
-face — `at`, `anchored` and `max_size` are its three fields as a builder — so
-publishing the value as well would be two ways to say one thing. Merging the
-two the other way, folding `OverlayPosition`'s fields into `PlacementOrigin`,
-would leave the anchored rule with no name a caller can pass around.
-`OverlayPosition` is the one origin rule with enough parameters to need one;
-the other is a bare `Vec2`.
+#### The naming pass that followed
+
+The cluster read as word soup — `Placement`, `PlacementOrigin`,
+`OverlayPosition` — and carried one outright collision: `LayerScope::at` never
+moved the body while `OverlayPosition::at_point` flipped and shifted it.
+
+| was | is |
+|---|---|
+| `OverlayPosition` (pub) | `Anchor` |
+| `OverlaySide` | `AnchorSide`, with `Left`/`Right` → `LeftOf`/`RightOf` |
+| `PlacementOrigin` | `Origin` |
+| `PlacementOrigin::Anchor(Vec2)` | `Origin::Fixed(Vec2)` |
+| `PlacementOrigin::Overlay(..)` | `Origin::Anchored(Anchor)` |
+| `LayerScope::at` (pub) | `LayerScope::fixed_at` |
+| `Placement::with_anchor` / `with_overlay` / `with_size` | `with_fixed` / `with_anchored` / `with_max_size` |
+| `Popup::anchored_at` (pub(crate), took a `Vec2`) | `Popup::anchor` (takes an `Anchor`) |
+| module `layout::types::overlay` | `layout::types::anchor` |
+
+It now reads `Placement { origin: Origin, max_size }`, `Origin::{Fixed,
+Anchored}`, `Anchor { rect, side, align, gap }`. `fixed_at` and `anchored`
+carry the distinction that `at` and `at_point` hid, and every setter name
+matches the variant or the field it writes.
+
+**Four types is the floor.** Folding `Origin` into `Placement` as an enum puts
+`max_size` in both arms. Folding `Anchor` into `Origin::Anchored { .. }` leaves
+the anchored rule with no name a caller can store on a builder, which is what
+`Popup` does and what makes `gap` a builder method. Publishing `Placement`
+instead of `Anchor` puts `gap` on a type where four of six constructors make it
+meaningless, and duplicates `LayerScope`, which is already `Placement`'s
+builder. Moving `max_size` out onto `RootSlot` does remove a type, but splits a
+pair that always travels together into two fields in three places.
+
+The four other `*Placement` types in the crate — `SlotPlacement` (raster
+atlas), `RunPlacement` (text render), `AxisPlacement` (layout axis) and the
+public `WindowPlacement` (a window on the desktop) — are in unrelated
+subsystems and each carries a prefix that says which. They were left alone.
 
 ### G3 — Clipboard — **closed**
 
