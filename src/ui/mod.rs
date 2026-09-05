@@ -1025,9 +1025,9 @@ impl Ui {
     }
 
     /// Intern a grid's track definition into the current layer and hand back
-    /// the id a `Node` carries it by. Recorded by `Grid` and `Splitter`,
-    /// which is the whole reason it is on `Ui`: both build a node that
-    /// references a definition the tree owns, and neither should have to
+    /// the id a `Node` carries it by. Called by [`Widget::grid_tracks`],
+    /// which is the whole reason it is on `Ui`: a widget that becomes a
+    /// grid references a definition the tree owns, and should not have to
     /// name the tree to do it.
     #[inline]
     pub(crate) fn push_grid_def(&mut self, rows: &[Track], cols: &[Track]) -> GridDefId {

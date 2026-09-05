@@ -7,11 +7,16 @@
 //! identity setter replaces it. A widget that records without reading
 //! first never names its id at all.
 
+use crate::input::key_class::KeyFilter;
 use crate::input::response::response_state::ResponseState;
+use crate::input::sense::Sense;
 use crate::layout::axis::Axis;
+use crate::layout::types::align::Align;
 use crate::layout::types::clip_mode::ClipMode;
+use crate::layout::types::justify::Justify;
 use crate::layout::types::layout_mode::{LayoutMode, ScrollSpec, ScrollbarsDefId};
 use crate::layout::types::sizing::Sizes;
+use crate::layout::types::track::Track;
 use crate::primitives::background::Background;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
@@ -97,8 +102,11 @@ impl Widget {
         Self::new(NodeMode::Resolved(LayoutMode::Canvas))
     }
 
+    /// Grid container for custom widgets. Its tracks arrive through
+    /// [`Self::grid_tracks`] once a `Ui` is at hand; recording it without
+    /// them panics.
     #[track_caller]
-    pub(crate) fn grid() -> Self {
+    pub fn grid() -> Self {
         Self::new(NodeMode::PendingGrid)
     }
 
@@ -272,6 +280,75 @@ impl Widget {
     #[inline]
     pub fn authored_clip(&self) -> Option<ClipMode> {
         self.node.clip
+    }
+
+    /// The sibling gap the caller authored, or `None`. See
+    /// [`Self::authored_size`].
+    #[inline]
+    pub fn authored_gap(&self) -> Option<f32> {
+        self.node.gaps.gap()
+    }
+
+    /// The line gap the caller authored, or `None`. See
+    /// [`Self::authored_size`].
+    #[inline]
+    pub fn authored_line_gap(&self) -> Option<f32> {
+        self.node.gaps.line_gap()
+    }
+
+    /// The main-axis distribution the caller authored, `Justify::Start`
+    /// where they stayed silent.
+    #[inline]
+    pub fn authored_justify(&self) -> Justify {
+        self.node.justify
+    }
+
+    /// The child alignment the caller authored, `Auto` on each axis they
+    /// left alone.
+    #[inline]
+    pub fn authored_child_align(&self) -> Align {
+        self.node.child_align
+    }
+
+    /// What the caller made this widget sense.
+    #[inline]
+    pub fn authored_sense(&self) -> Sense {
+        self.node.flags.sense()
+    }
+
+    /// Whether the caller disabled this widget.
+    #[inline]
+    pub fn authored_disabled(&self) -> bool {
+        self.node.flags.is_disabled()
+    }
+
+    /// Whether the caller made this widget focusable.
+    #[inline]
+    pub fn authored_focusable(&self) -> bool {
+        self.node.flags.is_focusable()
+    }
+
+    /// The input scope the caller declared, empty where they declared
+    /// none. See [`Configure::input_scope`].
+    #[inline]
+    pub fn authored_input_scope(&self) -> KeyFilter {
+        self.node.flags.key_filter()
+    }
+
+    /// Install this grid's tracks: `rows` and `cols` are interned into the
+    /// current layer's tree, and the widget lays its children out on them.
+    ///
+    /// The definition lives in the tree rather than on the widget because
+    /// a layout mode packs into 16 bits, and a track list does not. That
+    /// is why this needs the `Ui`, and why it cannot be a [`Configure`]
+    /// setter.
+    ///
+    /// # Panics
+    ///
+    /// Panics on a widget that is not a [`Self::grid`].
+    pub fn grid_tracks(&mut self, ui: &mut Ui, rows: &[Track], cols: &[Track]) {
+        let id = ui.push_grid_def(rows, cols);
+        self.node.set_mode(LayoutMode::Grid(id));
     }
 
     /// Take over `from`'s placement — where it sits in its parent, and

@@ -30,7 +30,7 @@ pub(crate) const fn unit_to_u8(x: f32) -> u8 {
 /// Each is here because one wrong answer about a length or a share reaches
 /// layout as a panic, so the crate keeps one definition and every widget —
 /// inside this crate or outside it — goes through it. The engine-side
-/// scalar helpers are [`F32Px`].
+/// scalar helpers are `F32Px`.
 pub trait F32Ext {
     /// Where `self` sits along a track of `extent` that reserves `band`
     /// to a centred thing the pointer drags, as a 0..1 share.

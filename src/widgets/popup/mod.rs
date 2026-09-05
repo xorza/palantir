@@ -204,9 +204,8 @@ impl Popup {
         let scope = OverlayScope::claim(id, layer, position, backdrop, &mut widget);
 
         let theme = Rc::clone(ui.theme());
-        let chrome = widget
-            .node
-            .resolve_container_chrome(chrome.as_ref(), theme.container_chrome());
+        widget.configure().default_clip(theme.panel_clip);
+        let chrome = chrome.as_ref().or(theme.panel_background.as_ref());
         let handle = CloseHandle::default();
         let turn = scope.record(ui, |ui| widget.record(ui, chrome, |ui| body(ui, &handle)));
         let dismiss_mode = click_outside == ClickOutside::Dismiss;

@@ -3,7 +3,7 @@
 
 use crate::input::sense::Sense;
 use crate::layout::axis::Axis;
-use crate::layout::types::layout_mode::LayoutMode;
+use crate::layout::types::grid_cell::GridCell;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
 use crate::primitives::approx;
@@ -189,34 +189,31 @@ impl<'a> Splitter<'a> {
         ];
         let cross_tracks = [Track::FILL];
         let [rows, cols] = axis.rows_cols(&main_tracks[..], &cross_tracks[..]);
-        let grid_def_id = ui.push_grid_def(rows, cols);
+        self.widget.grid_tracks(ui, rows, cols);
         // The middle track *is* the seam, so the grid owes no spacing of
         // its own — a caller's `gap` would push the panes off the rule.
         self.widget.configure().gap(0.0).line_gap(0.0);
-        self.widget.node.set_mode(LayoutMode::Grid(grid_def_id));
         self.widget.record(ui, None, |ui| {
             pane(ui, first_id, axis, 0, |ui| body(ui, SplitHalf::First));
 
-            let mut rule = Widget::leaf()
+            Widget::leaf()
                 .id(id.with("rule"))
-                .size((Sizing::FILL, Sizing::FILL));
-            rule.node.grid.set_main(axis, 1);
-            rule.record(ui, Some(&rule_bg), |_| {});
+                .size((Sizing::FILL, Sizing::FILL))
+                .grid_cell(GridCell::along(axis, 1))
+                .record(ui, Some(&rule_bg), |_| {});
 
             pane(ui, second_id, axis, 2, |ui| body(ui, SplitHalf::Second));
 
             // The grab bar overhangs the seam on the split axis only, so
             // its inset is main-axis with nothing across.
             let inset = (rule_thickness - grab_thickness) * 0.5;
-            let mut bar = Widget::leaf()
+            Widget::leaf()
                 .id(divider_id)
                 .sense(Sense::DRAG)
                 .size((Sizing::FILL, Sizing::FILL))
-                .margin(axis.compose_spacing(inset, 0.0));
-            // No `Configure` twin: cell placement there is `(row, col)`, and
-            // which of the two this axis means is the whole point here.
-            bar.node.grid.set_main(axis, 1);
-            bar.record(ui, Some(&bar_bg), |_| {});
+                .margin(axis.compose_spacing(inset, 0.0))
+                .grid_cell(GridCell::along(axis, 1))
+                .record(ui, Some(&bar_bg), |_| {});
         });
 
         Response::eager(id, ui, response)
@@ -232,12 +229,12 @@ impl Configure for Splitter<'_> {
 
 /// One pane: a clipped ZStack filling its Grid cell.
 fn pane(ui: &mut Ui, id: WidgetId, axis: Axis, main_cell: u16, body: impl FnOnce(&mut Ui)) {
-    let mut el = Widget::zstack()
+    Widget::zstack()
         .id(id)
         .size((Sizing::FILL, Sizing::FILL))
-        .clip_rect();
-    el.node.grid.set_main(axis, main_cell);
-    el.record(ui, None, body)
+        .clip_rect()
+        .grid_cell(GridCell::along(axis, main_cell))
+        .record(ui, None, body)
 }
 
 /// Recover the first pane's effective share after layout applied both

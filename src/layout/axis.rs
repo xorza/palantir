@@ -10,7 +10,7 @@ use glam::{BVec2, Vec2};
 /// targets). `X` = horizontal, `Y` = vertical.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 #[repr(u8)]
-pub(crate) enum Axis {
+pub enum Axis {
     X,
     Y,
 }

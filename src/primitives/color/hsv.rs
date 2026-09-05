@@ -8,8 +8,8 @@ use crate::primitives::color::{RgbaF32, linear_to_srgb};
 /// Every axis is `0..1`, and `h` wraps at `1`. **The axes are defined on
 /// sRGB-encoded components**, which is what every other tool means by HSV and
 /// what makes `v = 0.5` read as `#808080` rather than as half the light. The
-/// conversion therefore goes through [`RgbaF32::rgb`], not
-/// [`RgbaF32::linear_rgb`].
+/// conversion therefore goes through [`RgbaF32::srgb`], not
+/// [`RgbaF32::new`].
 ///
 /// It is the alternate model, not the default:
 /// [`Okhsv`](crate::Okhsv) is the same three axes without HSV's hue
