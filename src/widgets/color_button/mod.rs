@@ -17,6 +17,7 @@ use crate::widgets::response::Response;
 use crate::widgets::theme::color_picker::ColorPickerTheme;
 use crate::widgets::value_response::ValueResponse;
 use crate::widgets::widget::Widget;
+use std::rc::Rc;
 
 /// A colour chip that opens a [`ColorPicker`] in a popup when clicked.
 ///
@@ -87,9 +88,12 @@ impl<'a> ColorButton<'a> {
 
     /// Record the chip, and the popup when it is open.
     pub fn show(self, ui: &mut Ui) -> ValueResponse<'_> {
-        let theme = self.style.unwrap_or(&ui.theme().color_picker);
-        let side = theme.chip_size.themed_length(1.0);
-        let checker = Checkerboard::new(theme);
+        // An `Rc` bump on the theme bundle, so the popup can borrow its
+        // chrome out of it across the `&mut Ui` the chip's record takes.
+        let theme = Rc::clone(ui.theme());
+        let slot = self.style.unwrap_or(&theme.color_picker);
+        let side = slot.chip_size.themed_length(1.0);
+        let checker = Checkerboard::new(slot);
         let mut widget = self
             .widget
             .default_size((Sizing::fixed(side), Sizing::fixed(side)));
@@ -119,9 +123,16 @@ impl<'a> ColorButton<'a> {
             let alpha = self.alpha;
             let model = self.model;
             let history = self.history;
-            let popup = Popup::below(rect).id(id.with("panel"));
+            let style = self.style;
+            let popup = Popup::below(rect)
+                .id(id.with("panel"))
+                .background(slot.popup.clone())
+                .padding(slot.popup_padding);
             let opened = popup.show(ui, |ui, _| {
-                let mut picker = ColorPicker::new(color).alpha(alpha).history(history);
+                let mut picker = ColorPicker::new(color)
+                    .alpha(alpha)
+                    .history(history)
+                    .style(style);
                 if let Some(model) = model {
                     picker = picker.model(model);
                 }

@@ -298,6 +298,7 @@ fn body(ui: &mut Ui, state: &mut PickerState, inputs: Inputs<'_>) -> Edit {
 
     let field = ColorField::new(&mut state.coords)
         .downsample(downsample)
+        .style(theme)
         .id(id.with("field"))
         .show(ui);
     writes.axes |= field.changed;
@@ -310,6 +311,7 @@ fn body(ui: &mut Ui, state: &mut PickerState, inputs: Inputs<'_>) -> Edit {
         .size((Sizing::FILL, Sizing::HUG))
         .show(ui, |ui| {
             ColorSwatch::new(preview)
+                .style(theme)
                 .id(id.with("preview"))
                 .size((Sizing::fixed(chip), Sizing::fixed(chip)))
                 .show(ui);
@@ -320,6 +322,7 @@ fn body(ui: &mut Ui, state: &mut PickerState, inputs: Inputs<'_>) -> Edit {
                 .show(ui, |ui| {
                     let hue = ColorStrip::hue(&mut state.coords)
                         .downsample(downsample)
+                        .style(theme)
                         .id(id.with("hue"))
                         .size((Sizing::FILL, Sizing::fixed(bar)))
                         .show(ui);
@@ -329,6 +332,7 @@ fn body(ui: &mut Ui, state: &mut PickerState, inputs: Inputs<'_>) -> Edit {
                         let mut working = preview;
                         let strip = ColorStrip::alpha(&mut working)
                             .downsample(downsample)
+                            .style(theme)
                             .id(id.with("alpha"))
                             .size((Sizing::FILL, Sizing::fixed(bar)))
                             .show(ui);
@@ -341,11 +345,11 @@ fn body(ui: &mut Ui, state: &mut PickerState, inputs: Inputs<'_>) -> Edit {
                 });
         });
 
-    values_grid(ui, state, id, theme, alpha_on, gap, &mut writes);
+    values_grid(ui, state, id, theme, alpha_on, &mut writes);
     if pinned.is_none() {
         model_switch(ui, state, id, gap);
     }
-    swatch_row(ui, state, id, &swatches, gap, &mut writes);
+    swatch_row(ui, state, id, theme, &swatches, &mut writes);
 
     apply(state, color, writes)
 }
@@ -394,9 +398,9 @@ fn values_grid(
     id: WidgetId,
     theme: &ColorPickerTheme,
     alpha_on: bool,
-    gap: f32,
     writes: &mut Writes,
 ) {
+    let gap = theme.gap.themed_length(0.0);
     let color = state.coords.to_color().with_alpha(writes.alpha);
     let quantized = color.to_srgba_u8();
     let hex_id = id.with("hex");
@@ -558,8 +562,8 @@ fn swatch_row(
     ui: &mut Ui,
     state: &mut PickerState,
     id: WidgetId,
+    theme: &ColorPickerTheme,
     swatches: &Swatches<'_>,
-    gap: f32,
     writes: &mut Writes,
 ) {
     let colors: &[RgbaF32] = match swatches {
@@ -570,11 +574,12 @@ fn swatch_row(
     let mut picked = None;
     Panel::wrap_hstack()
         .id(id.with("swatches"))
-        .gap(gap)
+        .gap(theme.gap.themed_length(0.0))
         .size((Sizing::FILL, Sizing::HUG))
         .show(ui, |ui| {
             for (index, color) in colors.iter().enumerate() {
                 if ColorSwatch::new(*color)
+                    .style(theme)
                     .id(id.with("swatch").with(index))
                     .show(ui)
                     .left

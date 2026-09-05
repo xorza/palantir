@@ -1,6 +1,7 @@
 //! What a colour picker wears: the surfaces it paints, the handle that rides
 //! them, and the checker behind anything translucent.
 
+use crate::primitives::background::Background;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::spacing::Spacing;
 use crate::text::font_family::FontFamily;
@@ -56,6 +57,14 @@ pub struct ColorPickerTheme {
     pub border_width: f32,
     /// Gap between the panel's rows and between swatches, in logical px.
     pub gap: f32,
+    /// Chrome of the popup a [`crate::ColorButton`] drops its panel in:
+    /// [`Palette::popup_panel`], the same as a menu's and a combo list's, so a
+    /// chip's popup beside a combo's list reads as one system.
+    pub popup: Background,
+    /// Padding between that chrome and the panel inside it. Wider than
+    /// [`Self::gap`], so the panel reads as set in a card rather than as one
+    /// more of its own rows.
+    pub popup_padding: Spacing,
     /// What the channel values wear: [`Theme::drag_value`](crate::Theme) in
     /// the bundled monospace face.
     ///
@@ -150,6 +159,8 @@ impl ColorPickerTheme {
             border: _,
             border_width: _,
             gap: _,
+            popup: _,
+            popup_padding: _,
         } = self;
         value.for_each_text(f);
         hex.for_each_text(f);
@@ -173,6 +184,8 @@ impl ColorPickerTheme {
             border: p.elem_strong,
             border_width: 1.0,
             gap: 6.0,
+            popup: p.popup_panel(),
+            popup_padding: Spacing::all(8.0),
             value: {
                 let mut value = DragValueTheme::from_palette(p);
                 mono_states(&mut value.chip.looks, ambient(p));

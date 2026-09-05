@@ -124,7 +124,7 @@ pub(crate) mod test_support {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "internals"))]
 mod tests {
     use crate::host::test_gpu;
     use crate::primitives::color::srgba_u8::SrgbaU8;

@@ -4,11 +4,17 @@
 //! re-deriving palantir's recipes per widget. [`Palette::DEFAULT`] is
 //! the built-in neutral dark grayscale with a single blue accent.
 
+use crate::primitives::background::Background;
 use crate::primitives::color::RgbaF32;
+use crate::primitives::corners::Corners;
+use crate::primitives::shadow::Shadow;
+use crate::primitives::stroke::Stroke;
+use glam::Vec2;
 
 /// Semantic color roster for theme assembly. Fields are the roles the
-/// widget recipes key on; derived tints (the border ladder) live as
-/// methods so a palette swap moves them automatically.
+/// widget recipes key on; derived tints (the border ladder) and the one
+/// chrome recipe overlays share live as methods so a palette swap moves
+/// them automatically.
 ///
 /// The three `elem` rungs name a tier and never a widget state, because
 /// no one mapping holds: a standard button rests on `elem_mid` and
@@ -65,6 +71,27 @@ impl Palette {
 
     pub fn border_strong(&self) -> RgbaF32 {
         self.text_muted.with_alpha(0.35)
+    }
+
+    /// Chrome for a body a [`crate::Popup`] drops from a trigger: a context
+    /// menu, a combo's list, a colour chip's picker. One recipe, so the three
+    /// read as one system wherever they open beside each other.
+    ///
+    /// Radius sits on the small-floating-overlay step shared with
+    /// [`TooltipTheme`](crate::TooltipTheme), not the modal's 12 — the same
+    /// corner that reads as "soft" on a dialog reads as a bubble on a stack
+    /// of 26 px rows. The shadow is what separates the body from what it
+    /// opened over: the fill is `elem`, the same surface tier as the panels
+    /// and cards underneath, so a hairline alone leaves it looking glued
+    /// down.
+    pub fn popup_panel(&self) -> Background {
+        Background::rounded(self.elem, Corners::all(4.0))
+            .with_stroke(Stroke::solid(self.border_mid(), 1.0))
+            .with_shadow(Shadow::drop(
+                RgbaF32::new(0.0, 0.0, 0.0, 0.5),
+                Vec2::new(0.0, 3.0),
+                6.0,
+            ))
     }
 }
 

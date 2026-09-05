@@ -6,6 +6,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::ui::harness::UiHarness;
 use crate::widgets::color_picker::ColorPicker;
 use crate::widgets::configure::Configure;
+use crate::widgets::theme::color_picker::ColorPickerTheme;
 use glam::{UVec2, Vec2};
 
 /// Wide enough for the panel and its rows to lay out without wrapping.
@@ -160,4 +161,55 @@ fn the_channel_boxes_are_one_fixed_width() {
     frame(&mut h, id, &mut color);
     let wide = widths(&mut h, &mut color);
     assert_eq!(wide, narrow, "the boxes followed their digits");
+}
+
+/// What one picker measured: the field's height and a swatch's side.
+#[derive(Debug)]
+struct Measured {
+    field: f32,
+    swatch: f32,
+}
+
+/// `.style(..)` on the picker reaches the widgets it arranges, not only the
+/// values and labels it records itself. The field and the swatch row took
+/// their sizes from the global theme before, so a styled picker showed a
+/// stock field over styled numbers.
+///
+/// Differential, so no value is baked in: the field is exactly the styled
+/// height and a swatch exactly the styled side, and each differs from stock.
+#[test]
+fn the_style_reaches_the_field_and_the_swatches() {
+    let stock = ColorPickerTheme::default();
+    let custom = ColorPickerTheme {
+        field_height: stock.field_height + 30.0,
+        swatch_size: stock.swatch_size + 7.0,
+        ..stock.clone()
+    };
+    let measure = |style: Option<&ColorPickerTheme>| {
+        let id = WidgetId::from_hash("picker-style");
+        let mut h = harness();
+        let mut color = RgbaF32::hex(0x4cd3ff);
+        let given = [color];
+        h.frame(|ui| {
+            ColorPicker::new(&mut color)
+                .swatches(&given)
+                .style(style)
+                .id(id)
+                .show(ui);
+        });
+        let rect = |id: WidgetId| h.ui.response_for(id).rect.expect("arranged");
+        Measured {
+            field: rect(id.with("field")).size.h,
+            swatch: rect(id.with("swatch").with(0_usize)).size.w,
+        }
+    };
+
+    let plain = measure(None);
+    let styled = measure(Some(&custom));
+    assert_eq!(plain.field, stock.field_height);
+    assert_eq!(styled.field, custom.field_height);
+    assert_eq!(plain.swatch, stock.swatch_size);
+    assert_eq!(styled.swatch, custom.swatch_size);
+    assert_ne!(styled.field, plain.field);
+    assert_ne!(styled.swatch, plain.swatch);
 }
