@@ -139,7 +139,7 @@ fn context_menu_cut_copy_paste_clear() {
 /// per platform.
 #[test]
 fn clipboard_shortcuts_apply_keypresses() {
-    let clipboard = Clipboard::default();
+    let clipboard = Clipboard::memory();
 
     // Primary command modifier (`Modifiers::ctrl` is platform-
     // normalized — Cmd on macOS, Ctrl elsewhere).
@@ -168,7 +168,7 @@ fn clipboard_shortcuts_apply_keypresses() {
         }
     }
 
-    clipboard.set("").unwrap();
+    clipboard.set_text("").unwrap();
     let mut text = String::from("hello");
     let mut state = EditState {
         caret: 4,
@@ -179,12 +179,12 @@ fn clipboard_shortcuts_apply_keypresses() {
     // Copy: clipboard ← "ell", buffer unchanged.
     apply_key_with_clipboard(&mut text, &mut state, primary('c'), &clipboard);
     assert_eq!(text, "hello");
-    assert_eq!(clipboard.get().unwrap(), "ell");
+    assert_eq!(clipboard.text().unwrap(), "ell");
 
     // Cut: clipboard keeps "ell", buffer drops it, caret collapses.
     apply_key_with_clipboard(&mut text, &mut state, primary('x'), &clipboard);
     assert_eq!(text, "ho");
-    assert_eq!(clipboard.get().unwrap(), "ell");
+    assert_eq!(clipboard.text().unwrap(), "ell");
     assert_eq!(state.caret, 1);
     assert_eq!(state.selection, None);
 
@@ -196,7 +196,7 @@ fn clipboard_shortcuts_apply_keypresses() {
     // Non-primary modifier must NOT trigger any clipboard action.
     // (On macOS, raw Ctrl+C is not Copy; on Win/Linux, Super+C is
     // not Copy.) Reset state and verify a no-op.
-    clipboard.set("CLIP").unwrap();
+    clipboard.set_text("CLIP").unwrap();
     let mut text2 = String::from("hello");
     let mut state2 = EditState {
         caret: 4,
@@ -205,7 +205,7 @@ fn clipboard_shortcuts_apply_keypresses() {
     };
     apply_key_with_clipboard(&mut text2, &mut state2, non_primary('c'), &clipboard);
     assert_eq!(
-        clipboard.get().unwrap(),
+        clipboard.text().unwrap(),
         "CLIP",
         "non-primary must not copy"
     );
@@ -271,8 +271,8 @@ fn paste_strips_newlines() {
     // End-to-end via Cmd+V (Ctrl+V on non-Mac): a multi-line
     // clipboard string lands in the buffer as a single
     // space-separated line.
-    let clipboard = Clipboard::default();
-    clipboard.set("first\r\nsecond\nthird").unwrap();
+    let clipboard = Clipboard::memory();
+    clipboard.set_text("first\r\nsecond\nthird").unwrap();
     let mut text = String::new();
     let mut state = EditState::default();
     apply_key_with_clipboard(
@@ -289,8 +289,8 @@ fn paste_strips_newlines() {
 /// shortcut branch suppresses the printable-char insert path.
 #[test]
 fn clipboard_shortcut_does_not_insert_char() {
-    let clipboard = Clipboard::default();
-    clipboard.set("").unwrap();
+    let clipboard = Clipboard::memory();
+    clipboard.set_text("").unwrap();
 
     let mut text = String::from("ab");
     let mut state = EditState {

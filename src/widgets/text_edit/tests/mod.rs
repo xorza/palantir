@@ -9,7 +9,7 @@ use crate::widgets::text_edit::unicode::{
 };
 
 fn apply_key(text: &mut String, state: &mut EditState, kp: KeyPress) -> bool {
-    let clipboard = Clipboard::default();
+    let clipboard = Clipboard::memory();
     apply_key_with_clipboard(text, state, kp, &clipboard)
 }
 

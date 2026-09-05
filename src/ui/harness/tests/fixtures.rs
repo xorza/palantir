@@ -54,7 +54,7 @@ fn arena_interns_without_ever_recording() {
 fn from_resources_pairs_two_harnesses_onto_one_text_cache() {
     let shared = UiResources::new(
         TextShaper::new(),
-        Clipboard::default(),
+        Clipboard::memory(),
         TextureLimit::default(),
     );
     let mut first = UiHarness::from_resources(shared.clone(), SURFACE);

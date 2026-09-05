@@ -143,7 +143,7 @@ mod output_validity_tests {
     fn deny_window_commands_accepts_a_quiet_frame_and_clears_the_veto() {
         let shared = UiResources::new(
             TextShaper::test_mono(),
-            Clipboard::default(),
+            Clipboard::memory(),
             TextureLimit::default(),
         );
         let mut quiet = driver(WindowToken(1), &shared);
@@ -170,7 +170,7 @@ mod output_validity_tests {
     fn deny_window_commands_rejects_an_open() {
         let shared = UiResources::new(
             TextShaper::test_mono(),
-            Clipboard::default(),
+            Clipboard::memory(),
             TextureLimit::default(),
         );
         let mut opener = driver(WindowToken(1), &shared);
@@ -186,7 +186,7 @@ mod output_validity_tests {
     fn deny_window_commands_rejects_a_close() {
         let shared = UiResources::new(
             TextShaper::test_mono(),
-            Clipboard::default(),
+            Clipboard::memory(),
             TextureLimit::default(),
         );
         let mut closer = driver(WindowToken(1), &shared);
@@ -216,7 +216,7 @@ mod output_validity_tests {
     fn note_target_tracks_size_format_and_present_mode_and_invalidates_on_change() {
         let shared = UiResources::new(
             TextShaper::test_mono(),
-            Clipboard::default(),
+            Clipboard::memory(),
             TextureLimit::default(),
         );
         let mut driver = WindowDriver::builder(WindowToken(1), &shared, true).build();
@@ -328,7 +328,7 @@ mod output_validity_tests {
     fn output_validity_tracks_pending_and_completion() {
         let shared = UiResources::new(
             TextShaper::test_mono(),
-            Clipboard::default(),
+            Clipboard::memory(),
             TextureLimit::default(),
         );
         let mut frontend = Frontend::new(8192, shared.gradient_atlas().clone());
@@ -393,7 +393,7 @@ mod lifecycle_tests {
     fn a_driver_owns_its_directory_entry_from_build_to_drop() {
         let shared = UiResources::new(
             TextShaper::test_mono(),
-            Clipboard::default(),
+            Clipboard::memory(),
             TextureLimit::default(),
         );
         let token = WindowToken(11);
@@ -418,7 +418,7 @@ mod lifecycle_tests {
     fn window_drivers_have_distinct_render_owners() {
         let shared = UiResources::new(
             TextShaper::test_mono(),
-            Clipboard::default(),
+            Clipboard::memory(),
             TextureLimit::default(),
         );
         let first = WindowDriver::builder(WindowToken(1), &shared, true).build();
@@ -523,7 +523,7 @@ mod record_store_tests {
     fn cpu_frame_forwards_token_through_app_lifecycle() {
         let shared = UiResources::new(
             TextShaper::test_mono(),
-            Clipboard::default(),
+            Clipboard::memory(),
             TextureLimit::default(),
         );
         let mut frontend = Frontend::new(8192, shared.gradient_atlas().clone());
@@ -556,7 +556,7 @@ mod record_store_tests {
     fn interleaved_window_paint_only_preserves_record_payloads() {
         let shared = UiResources::new(
             TextShaper::test_mono(),
-            Clipboard::default(),
+            Clipboard::memory(),
             TextureLimit::default(),
         );
         let mut frontend = Frontend::new(8192, shared.gradient_atlas().clone());
@@ -665,7 +665,7 @@ mod display_tests {
     fn the_mint_folds_in_the_app_scale_and_the_hosts_snap() {
         let shared = UiResources::new(
             TextShaper::test_mono(),
-            Clipboard::default(),
+            Clipboard::memory(),
             TextureLimit::default(),
         );
         let mut driver = WindowDriver::builder(WindowToken(1), &shared, false).build();
@@ -691,7 +691,7 @@ mod display_tests {
     fn two_windows_mint_the_one_scale() {
         let shared = UiResources::new(
             TextShaper::test_mono(),
-            Clipboard::default(),
+            Clipboard::memory(),
             TextureLimit::default(),
         );
         let mut first = WindowDriver::builder(WindowToken(1), &shared, true).build();

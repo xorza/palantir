@@ -12,7 +12,7 @@ use std::num::NonZeroU32;
 #[test]
 fn the_bundle_ceiling_gates_registration_and_is_what_ui_reports() {
     let limit = TextureLimit::from_device(NonZeroU32::new(4).unwrap());
-    let resources = UiResources::new(TextShaper::test_mono(), Clipboard::default(), limit);
+    let resources = UiResources::new(TextShaper::test_mono(), Clipboard::memory(), limit);
     assert_eq!(resources.texture_limit(), limit);
     let ui = Ui::new(resources);
     assert_eq!(ui.max_image_dimension(), NonZeroU32::new(4));
@@ -100,8 +100,8 @@ fn clipboard_is_shared_within_one_host_and_isolated_between_hosts() {
     let second_window = first.clone();
     let second = UiResources::isolated_mono();
 
-    first_window.clipboard().set("shared").unwrap();
+    first_window.clipboard().set_text("shared").unwrap();
 
-    assert_eq!(second_window.clipboard().get().unwrap(), "shared");
-    assert_eq!(second.clipboard().get().unwrap(), "");
+    assert_eq!(second_window.clipboard().text().unwrap(), "shared");
+    assert_eq!(second.clipboard().text().unwrap(), "");
 }

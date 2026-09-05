@@ -559,7 +559,7 @@ mod tests {
     fn frame_drain_collects_commands_and_applies_close_veto() {
         let shared = UiResources::new(
             TextShaper::test_mono(),
-            Clipboard::default(),
+            Clipboard::memory(),
             TextureLimit::default(),
         );
         let token = WindowToken(17);
@@ -628,7 +628,7 @@ mod tests {
     fn vsync_is_a_level_the_drain_copies_and_the_recorder_keeps() {
         let shared = UiResources::new(
             TextShaper::test_mono(),
-            Clipboard::default(),
+            Clipboard::memory(),
             TextureLimit::default(),
         );
         let mut driver = WindowDriver::builder(WindowToken(3), &shared, true).build();

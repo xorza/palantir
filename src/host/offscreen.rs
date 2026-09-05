@@ -135,7 +135,7 @@ impl OffscreenHostBuilder {
             self.queue,
             max_texture_dim,
             self.shaper.unwrap_or_default(),
-            Clipboard::default(),
+            Clipboard::memory(),
             HostCoreConfig {
                 collect_gpu_stats: self.collect_gpu_stats,
                 pixel_snap: self.pixel_snap,

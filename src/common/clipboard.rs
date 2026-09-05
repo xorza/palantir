@@ -4,8 +4,22 @@ use std::cell::RefCell;
 use std::fmt;
 use std::rc::Rc;
 
+/// No clipboard backend could answer.
+///
+/// Distinct from an empty clipboard, and the distinction is the reason
+/// [`Clipboard::text`] returns a `Result` rather than a `String`: a paste
+/// that cannot tell the two apart replaces the selection it was asked to
+/// fill with nothing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct ClipboardUnavailable;
+pub struct ClipboardUnavailable;
+
+impl fmt::Display for ClipboardUnavailable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("no clipboard backend could answer")
+    }
+}
+
+impl std::error::Error for ClipboardUnavailable {}
 
 trait Backend: fmt::Debug {
     fn get_text(&mut self) -> Result<String, ClipboardUnavailable>;
@@ -83,7 +97,7 @@ impl ClipboardState {
         }
     }
 
-    fn get(&mut self) -> Result<String, ClipboardUnavailable> {
+    fn text(&mut self) -> Result<String, ClipboardUnavailable> {
         if self.authority == Authority::Fallback {
             return self.fallback.get_text();
         }
@@ -102,7 +116,7 @@ impl ClipboardState {
         }
     }
 
-    fn set(&mut self, text: &str) -> Result<(), ClipboardUnavailable> {
+    fn set_text(&mut self, text: &str) -> Result<(), ClipboardUnavailable> {
         let fallback_written = self.fallback.set_text(text).is_ok();
         let primary_written = self
             .primary
@@ -123,15 +137,18 @@ impl ClipboardState {
     }
 }
 
+/// The host's clipboard, as a handle a widget can hold.
+///
+/// Obtained from [`Ui::clipboard`](crate::Ui::clipboard), which is the
+/// only way in — a clipboard belongs to a host, and one built beside that
+/// host would answer for nobody. The clone it hands back is an `Rc` bump,
+/// so a widget takes one before a keyboard walk and passes it to whatever
+/// handles the paste, instead of carrying the whole `Ui` there.
+///
+/// Text only, today.
 #[derive(Clone, Debug)]
-pub(crate) struct Clipboard {
+pub struct Clipboard {
     state: Rc<RefCell<ClipboardState>>,
-}
-
-impl Default for Clipboard {
-    fn default() -> Self {
-        Self::new(None, Box::<MemoryBackend>::default())
-    }
 }
 
 impl Clipboard {
@@ -139,6 +156,11 @@ impl Clipboard {
         Self {
             state: Rc::new(RefCell::new(ClipboardState::new(primary, fallback))),
         }
+    }
+
+    /// In-process only, for a host with no system backend to reach for.
+    pub(crate) fn memory() -> Self {
+        Self::new(None, Box::<MemoryBackend>::default())
     }
 
     #[cfg(feature = "winit")]
@@ -149,19 +171,20 @@ impl Clipboard {
         Self::new(primary, Box::<MemoryBackend>::default())
     }
 
-    /// The clipboard's text, or [`ClipboardUnavailable`] when no backend
-    /// could answer.
-    ///
-    /// A `Result` on the same terms [`Self::set`] is one: an empty
-    /// clipboard and an unreachable one are different answers, and a
-    /// paste that cannot tell them apart deletes the selection it was
-    /// asked to replace.
-    pub(crate) fn get(&self) -> Result<String, ClipboardUnavailable> {
-        self.state.borrow_mut().get()
+    /// The clipboard's text. An empty clipboard answers `Ok("")`, so a
+    /// caller that only wants to know whether there is anything to paste
+    /// tests the string rather than the `Result`.
+    pub fn text(&self) -> Result<String, ClipboardUnavailable> {
+        self.state.borrow_mut().text()
     }
 
-    pub(crate) fn set(&self, text: &str) -> Result<(), ClipboardUnavailable> {
-        self.state.borrow_mut().set(text)
+    /// Replace the clipboard's text.
+    ///
+    /// A widget that acts on the write — a cut, which deletes what it just
+    /// copied — checks the result first. Losing the copy and the selection
+    /// together is the one outcome the user cannot undo from the clipboard.
+    pub fn set_text(&self, text: &str) -> Result<(), ClipboardUnavailable> {
+        self.state.borrow_mut().set_text(text)
     }
 }
 
@@ -226,23 +249,31 @@ mod tests {
 
     #[test]
     fn memory_clipboards_roundtrip_and_are_isolated() {
-        let first = Clipboard::default();
-        let second = Clipboard::default();
+        let first = Clipboard::memory();
+        let second = Clipboard::memory();
 
-        first.set("clipboard-test-roundtrip-✓").unwrap();
+        first.set_text("clipboard-test-roundtrip-✓").unwrap();
 
-        assert_eq!(first.get().unwrap(), "clipboard-test-roundtrip-✓");
-        assert_eq!(second.get().unwrap(), "");
+        assert_eq!(first.text().unwrap(), "clipboard-test-roundtrip-✓");
+        assert_eq!(second.text().unwrap(), "");
     }
 
     #[test]
     fn clones_share_one_clipboard() {
-        let first = Clipboard::default();
+        let first = Clipboard::memory();
         let second = first.clone();
 
-        first.set("shared").unwrap();
+        first.set_text("shared").unwrap();
 
-        assert_eq!(second.get().unwrap(), "shared");
+        assert_eq!(second.text().unwrap(), "shared");
+    }
+
+    /// The error crosses the public surface, so it owes the two impls a
+    /// caller needs to put it in a `Box<dyn Error>` and print it.
+    #[test]
+    fn unavailable_reports_itself_as_an_error() {
+        let boxed: Box<dyn std::error::Error> = Box::new(ClipboardUnavailable);
+        assert_eq!(boxed.to_string(), "no clipboard backend could answer");
     }
 
     #[test]
@@ -259,17 +290,17 @@ mod tests {
             Box::<MemoryBackend>::default(),
         );
 
-        clipboard.set("fresh").unwrap();
+        clipboard.set_text("fresh").unwrap();
 
-        assert_eq!(clipboard.get().unwrap(), "fresh");
+        assert_eq!(clipboard.text().unwrap(), "fresh");
         assert_eq!(primary_state.borrow().reads, 0);
 
         primary_state.borrow_mut().reject_writes = false;
-        clipboard.set("replacement").unwrap();
+        clipboard.set_text("replacement").unwrap();
         assert_eq!(primary_state.borrow().text, "replacement");
 
         primary_state.borrow_mut().text = String::from("external");
-        assert_eq!(clipboard.get().unwrap(), "external");
+        assert_eq!(clipboard.text().unwrap(), "external");
         assert_eq!(primary_state.borrow().reads, 1);
     }
 }
