@@ -8,6 +8,14 @@
   An immediate-mode GUI library for Rust — WPF-style two-pass layout, wgpu renderer.
 </p>
 
+<p align="center">
+  <a href="https://crates.io/crates/palantir"><img src="https://img.shields.io/crates/v/palantir.svg" alt="crates.io" /></a>
+  <a href="https://docs.rs/palantir"><img src="https://img.shields.io/docsrs/palantir" alt="docs.rs" /></a>
+</p>
+
+Published on [crates.io](https://crates.io/crates/palantir); API reference on
+[docs.rs](https://docs.rs/palantir).
+
 Status: **beta** — feature-rich and usable, but still pre-1.0: the public
 API can still change and break between releases.
 
@@ -150,6 +158,12 @@ Worth **−5 to −8%** on the `frame` bench. Moves the CPU floor to Ivy Bridge
 either way. `-C target-cpu=x86-64-v3` implies it, plus AVX2 and FMA.
 
 ## Install
+
+```sh
+cargo add palantir
+```
+
+or, by hand:
 
 ```toml
 [dependencies]
