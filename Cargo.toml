@@ -80,10 +80,10 @@ criterion = { version = "0.8", optional = true }
 clap = { version = "4", optional = true, features = ["derive"] }
 gethostname = { version = "1.1", optional = true }
 tracy-client = { version = "0.19", optional = true }
-tracing-subscriber = { version = "0.3", features = ["env-filter"], optional = true }
 
 [dev-dependencies]
 backtrace = "0.3"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 static_assertions = "1.1"
 ron = "0.12"
 
@@ -104,7 +104,7 @@ required-features = ["winit"]
 [[example]]
 name = "showcase"
 path = "examples/showcase/main.rs"
-required-features = ["showcase"]
+required-features = ["winit", "showcase"]
 
 [[example]]
 name = "custom_widget"
@@ -123,7 +123,11 @@ default = ["winit"]
 internals = []
 golden = ["dep:image", "dep:rayon"]
 bench = ["internals", "dep:criterion", "dep:clap", "dep:gethostname"]
-showcase = ["dep:tracing-subscriber", "winit", "gpu-debug-markers"]
+# Exposes the two demo surfaces the bundled `showcase` example reads —
+# `demo_swatches` and `FrameFixture`. Nothing else: the example names `winit`
+# in its own `required-features`, and an example cannot turn on the gate it
+# needs, which is the whole reason this flag exists.
+showcase = []
 gpu-debug-markers = []
 system-clipboard = ["dep:arboard"]
 winit = ["dep:winit", "system-clipboard"]
