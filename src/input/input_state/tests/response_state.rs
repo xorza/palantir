@@ -8,6 +8,7 @@ use crate::input::response::drag::Drag;
 use crate::input::response::response_state::ResponseState;
 use crate::input::response::scroll_delta::ScrollDelta;
 use crate::input::target_scroll_delta::TargetScrollDelta;
+use crate::input::zoom_factor::ZoomFactor;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::rect::Rect;
 use crate::primitives::translate_scale::TranslateScale;
@@ -285,7 +286,7 @@ fn quiescent_frame_keeps_geometry_defaults_interaction() {
     assert_eq!(r.left.click_count(), 0);
     assert_eq!(r.scroll.pixels, Vec2::ZERO);
     assert_eq!(r.scroll.lines, Vec2::ZERO);
-    assert_eq!(r.scroll.zoom, 1.0);
+    assert_eq!(r.scroll.zoom, ZoomFactor::ONE);
     assert_eq!(r.pointer_local, None);
 }
 

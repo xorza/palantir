@@ -7,7 +7,7 @@ Research notes on the rule in `CLAUDE.md`:
 
 The test is reimplementation: could another person write `Scroll`, `TextEdit`
 or `Popup` outside this crate, line for line, against the published surface?
-Today the answer is no for four of the bundled widgets. This note says exactly
+Today the answer is no for two of the bundled widgets. This note says exactly
 what stops them, what the framework would have to publish, and what it would
 cost.
 
@@ -29,10 +29,11 @@ Test and bench code is out of scope. It reaches in on purpose, through the
 
 ## Where it stands
 
-Production widget code reaches outside `src/widgets` at **19 sites across 13
-private items**, plus **8 `pub(crate)` methods on the published `Ui`**. Every
-one of them belongs to one of the gaps below, and every one is a capability
-gap: no combination of published calls produces the same frame.
+Production widget code reaches outside `src/widgets` at **15 sites across 10
+private items**, plus **8 `pub(crate)` methods on the published `Ui`**. Four of
+those sites are the `Widget` / `Configure` façade over the private scene types,
+which is not a gap — see *Not gaps*. The rest are two capability gaps: no
+combination of published calls produces the same frame.
 
 ## The gap list
 
@@ -40,58 +41,15 @@ Ordered by what to do next.
 
 | # | gap | what is missing | blocks | size |
 |---|---|---|---|---|
-| G1 | text content identity without shaping | `TextShapeKey::content_hash`, `hash::hash_str` | TextEdit | trivial |
-| ~~G2~~ | ~~paint-time shape animation~~ | **closed** — `PaintAnim`, `PaintChannel`, `PaintTiming`, `PaintRepeat`, `PaintSteps`, `PaintCurve`, `curves` and `Ui::add_shape_animated` are published | — | — |
-| G3 | scroll viewport and scrollbar layout mode | `LayoutMode::Scroll`, `ScrollSpec`, `ScrollbarsDef`, `Ui::scroll_content`, `Ui::push_scrollbars_def`, `Ui::current_node`, `Widget::scroll`, `Widget::scrollbars` | Scroll | large |
-| G4 | GPU view registration | `GpuPaintRef`, `Ui::gpu_view` | GpuView | small |
-| G5 | zoom factor arithmetic | `input::zoom::{is_valid, combine, from_wheel}` | nothing — correctness sharing only | trivial |
+| G1 | scroll viewport and scrollbar layout mode | `LayoutMode::Scroll`, `ScrollSpec`, `ScrollbarsDef`, `Ui::scroll_content`, `Ui::push_scrollbars_def`, `Ui::current_node`, `Widget::scroll`, `Widget::scrollbars` | Scroll | large |
+| G2 | GPU view registration | `GpuPaintRef`, `Ui::gpu_view` | GpuView | small |
 
 Each gap is worked through below: what the bundled widget does today, why the
 published surface cannot express it, the proposals, and a recommendation.
 
 ## The gaps, one by one
 
-### G1 — Text content identity
-
-**Blocks:** `TextEdit`.
-
-`EditState::text_hash` mints the same `NonZeroU64` the shaping probe reports
-through the public `TextProbe::text_hash()`, without shaping:
-
-```rust
-TextShapeKey::content_hash(hash::hash_str(text))   // text_edit/edit_state.rs:232
-```
-
-It has to agree exactly. A disagreement reads as *the host replaced the
-buffer* and wipes the undo stack under the user. Both halves — `hash_str` and
-the zero-maps-to-one rule in `content_hash` — are private.
-
-**Proposal:** one associated function,
-`TextProbe::hash_of(text: &str) -> NonZeroU64`, documented as the twin of
-`TextProbe::text_hash`. An hour. There is no design question here, only a
-missing accessor.
-
-### G2 — Paint-time shape animation — **closed**
-
-`Ui::add_shape_animated` is published, and `PaintAnim` is no longer a closed
-enum of two: it is a channel, a timing and a **caller-supplied curve**, any
-`fn(f32) -> f32`. `Spinner` and `TextEdit`'s caret are now ordinary uses of it.
-
-The framework kept the two answers whose failure corrupts pixels rather than
-merely painting a wrong one. `rotates()` reads the channel and `next_wake()`
-reads the timing, both without calling the curve — so a curve is a value
-function and nothing more.
-
-An `Rc<dyn PaintAnimation>` trait was rejected for that reason. Two of its
-three methods would be correctness machinery, not output, and a wrong answer
-from either damages the wrong region: the shape paints outside what was cleared
-for it, and the artefact lands on unrelated widgets. Neither is checkable at
-any cost a frame can pay.
-
-`alpha` also became a real multiplier on the way. It was a gate — hide or show
-— so a fade was not expressible on any shape kind.
-
-### G3 — Scroll viewport and scrollbars
+### G1 — Scroll viewport and scrollbars
 
 **Blocks:** `Scroll`, and `TextEdit` indirectly (it reuses `ScrollState`).
 
@@ -141,7 +99,7 @@ placement. (1) is roughly a day and covers the case people actually ask for —
 a scrollable custom container. (2) is a frame-model change and belongs beside
 the record-time-geometry work in `record-time-geometry.md`.
 
-### G4 — GPU view registration
+### G2 — GPU view registration
 
 **Blocks:** `GpuView` only.
 
@@ -156,21 +114,6 @@ node structure: a view that also paints an overlay inside its own node, say.
 directly and drop the wrapper from the signature. Half a day. Do it when
 someone asks.
 
-### G5 — Zoom factor arithmetic
-
-**Blocks:** nothing. `Scroll` uses it, but an outside author can rewrite it.
-
-`input::zoom` holds `is_valid`, `combine` and `from_wheel`. Zoom is
-multiplicative, so a long gesture accumulates a running product, and every
-product goes through a clamp that keeps it invertible — including a NaN arm
-that resolves to identity. `ScrollDelta::zoom` crosses the public API as a
-plain `f32`, so an outside widget receives the value and gets to rediscover
-that discipline.
-
-**Proposal:** publish the three functions as a `zoom` module, or as inherent
-methods on a published `ZoomFactor` newtype. Half a day. This is correctness
-sharing, not a capability gap — file it under nice-to-have.
-
 ## Per-widget verdict
 
 | widget | reimplementable outside today | blocked by |
@@ -183,15 +126,12 @@ sharing, not a capability gap — file it under nice-to-have.
 | Popup, ContextMenu, MenuItem, Tooltip | yes | — |
 | ComboBox, ColorButton | yes | — |
 | TabStrip, TabbedView, Dock | yes | — |
-| TextEdit | no | G1 |
-| DragValue | no | G1 (via TextEdit) |
-| Spinner | yes | — |
-| Scroll | no | G3, G5 |
-| GpuView | no | G4 |
+| TextEdit, DragValue, Spinner | yes | — |
+| Scroll | no | G1 |
+| GpuView | no | G2 |
 
-Twenty-eight of the bundled widgets are reimplementable outside the crate
-today. The four that are not need the text content hash, `Scroll`'s layout
-mode, or GPU view registration.
+Thirty of the bundled widgets are reimplementable outside the crate today. The
+two that are not need `Scroll`'s layout mode or GPU view registration.
 
 ## Not gaps
 

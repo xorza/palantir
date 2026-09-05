@@ -3,7 +3,7 @@
 //! [`ZoomModifier`] and [`ZoomPivot`] are [`ZoomConfig`]'s own axes —
 //! neither means anything without it — so all three share a file.
 
-use crate::input::zoom;
+use crate::input::zoom_factor::ZoomFactor;
 use std::ops::RangeInclusive;
 
 /// What kind of input triggers a zoom step. See [`ZoomConfig::modifier`].
@@ -57,10 +57,10 @@ impl ZoomConfig {
         let min = *range.start();
         let max = *range.end();
         assert!(
-            zoom::is_valid(min) && zoom::is_valid(max) && min <= max,
+            ZoomFactor::new(min).is_some() && ZoomFactor::new(max).is_some() && min <= max,
             "{ZOOM_RANGE_ERROR}"
         );
-        assert!(zoom::is_valid(step), "{ZOOM_STEP_ERROR}");
+        assert!(ZoomFactor::new(step).is_some(), "{ZOOM_STEP_ERROR}");
         Self {
             range,
             step,

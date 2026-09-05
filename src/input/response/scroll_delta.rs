@@ -1,6 +1,7 @@
 //! Wheel, touchpad and pinch deltas as they reach one widget, in the three
 //! units the platforms send them in.
 
+use crate::input::zoom_factor::ZoomFactor;
 use glam::Vec2;
 
 /// Wheel / touchpad / pinch deltas routed to the widget this frame.
@@ -22,10 +23,15 @@ pub struct ScrollDelta {
     /// Use for "mouse wheel" intent (e.g. zoom-by-notches in a graph
     /// viewport that pans on touchpad).
     pub lines: Vec2,
-    /// Multiplicative pinch zoom factor (`1.0` = no pinch). Pinch
-    /// always reports — no modifier gating, unlike wheel zoom which
-    /// the caller derives manually from [`Self::lines`] + modifiers.
-    pub zoom: f32,
+    /// Multiplicative pinch zoom factor ([`ZoomFactor::ONE`] = no
+    /// pinch). Pinch always reports — no modifier gating, unlike wheel
+    /// zoom, which the caller derives from [`Self::lines`] and the
+    /// modifiers through [`ZoomFactor::from_wheel`].
+    ///
+    /// Fold it into a held view zoom with
+    /// [`ZoomFactor::combine`](crate::ZoomFactor::combine), which is what
+    /// keeps a long gesture from accumulating out of range.
+    pub zoom: ZoomFactor,
 }
 
 impl ScrollDelta {
@@ -43,15 +49,15 @@ impl ScrollDelta {
     }
 }
 
-/// Hand-rolled because `zoom`'s identity is `1.0`, not the `0.0` that
-/// `#[derive(Default)]` would produce — `(zoom - 1.0).abs() > eps` is
-/// a safe presence check on a `Default`-constructed instance.
+/// Hand-rolled because `Vec2`'s identity is the zero `#[derive(Default)]`
+/// gives and `zoom`'s is [`ZoomFactor::ONE`], so only two of the three
+/// fields agree with the derive.
 impl Default for ScrollDelta {
     fn default() -> Self {
         Self {
             pixels: Vec2::ZERO,
             lines: Vec2::ZERO,
-            zoom: 1.0,
+            zoom: ZoomFactor::ONE,
         }
     }
 }

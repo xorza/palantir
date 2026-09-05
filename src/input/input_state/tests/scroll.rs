@@ -1,5 +1,6 @@
 use crate::input::input_event::InputEvent;
 use crate::input::input_state::InputState;
+use crate::input::zoom_factor::ZoomFactor;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::cascade::Cascade;
 use glam::Vec2;
@@ -24,7 +25,7 @@ fn scroll_delta_for_preserves_raw_pixels_and_lines() {
     let delta = state.scroll_delta_for(id);
     assert_eq!(delta.pixels, Vec2::new(0.0, 5.0));
     assert_eq!(delta.lines, Vec2::new(0.0, 2.0));
-    assert_eq!(delta.zoom, 1.0);
+    assert_eq!(delta.zoom, ZoomFactor::ONE);
 }
 
 #[test]

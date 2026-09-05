@@ -21,7 +21,7 @@ use crate::input::scope::Scopes;
 use crate::input::shortcut::Shortcut;
 use crate::input::target_scroll_delta::TargetScrollDelta;
 use crate::input::watch::{KeyboardWake, PointerWake, Watches};
-use crate::input::zoom;
+use crate::input::zoom_factor::ZoomFactor;
 use crate::layout::Layout;
 use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
@@ -572,7 +572,12 @@ impl InputState {
                 let target = self.pinch_target;
                 if let Some(target) = target {
                     let delta = self.target_scroll_delta_mut(target);
-                    delta.zoom = zoom::combine(delta.zoom, f);
+                    // A host may forward whatever the platform sent, so an
+                    // invalid factor is data rather than a bug. It reads as
+                    // no pinch this frame.
+                    if let Some(f) = ZoomFactor::new(f) {
+                        delta.zoom = delta.zoom.combine(f);
+                    }
                 }
                 let subbed = self.push_positioned(PointerWake::PINCH, |pos| PointerEvent::Zoom {
                     pos,
