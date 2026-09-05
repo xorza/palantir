@@ -3,8 +3,9 @@
 //! per-image bind group selected at draw time.
 //!
 //! The bind groups themselves belong to the two texture stores the
-//! backend hands [`ImagePipeline::draw`] — the registry's [`ImageGpu`]
-//! for registered images and [`GpuViewTargets`] for the `GpuView`
+//! backend hands [`ImagePipeline::draw`] — the registered images of
+//! [`WgpuImageStore`](crate::renderer::backend::image_store::WgpuImageStore),
+//! borrowed once for the pass, and [`GpuViewTargets`] for the `GpuView`
 //! targets — the same split the text pass makes between its encoder and
 //! the atlas it fills. Both build against one binding shape, so a
 //! composite of a view binds exactly like an image.
@@ -14,7 +15,7 @@ use crate::primitives::texture_id::TextureId;
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::gpu_view_targets::GpuViewTargets;
-use crate::renderer::backend::image_gpu::ImageGpu;
+use crate::renderer::backend::image_store::ImageTexture;
 use crate::renderer::backend::pipeline_recipe::PipelineRecipe;
 use crate::renderer::backend::shader_template::{self, ShaderConstant};
 use crate::renderer::backend::stencil_variant::ColorVariantSpec;
@@ -23,6 +24,7 @@ use crate::renderer::render_buffer::image::{
     IMG_FLAG_MAG_NEAREST, IMG_FLAG_MIN_NEAREST, IMG_FLAG_TAPS_MEAN, IMG_FLAG_TAPS_PEAK,
     IMG_FLAG_TILED, ImageInstance,
 };
+use rustc_hash::FxHashMap;
 
 /// One batch of image draws: the frame's whole per-draw texture column,
 /// and the slice of it this batch owns.
@@ -143,14 +145,15 @@ impl ImagePipeline {
         &self,
         pass: &mut wgpu::RenderPass<'_>,
         ImageBatch { ids, items }: ImageBatch<'_>,
-        images: &ImageGpu,
+        images: &FxHashMap<TextureId, ImageTexture>,
         targets: &GpuViewTargets,
     ) {
         for run in image_runs(&ids[items.range()], items.start) {
             // Registered images first: they are the common draw, and a
             // view composite is the one that pays the second probe.
             let Some(bind_group) = images
-                .bind_group(run.id)
+                .get(&run.id)
+                .map(|entry| &entry.bind_group)
                 .or_else(|| targets.bind_group(run.id))
             else {
                 continue;

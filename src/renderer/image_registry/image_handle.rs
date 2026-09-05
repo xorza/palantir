@@ -42,7 +42,7 @@ impl Drop for ImageToken {
 
 impl ImageHandle {
     pub(crate) fn new(id: TextureId, image: &Image, registry: ImageRegistry) -> Self {
-        registry.create(id, image);
+        registry.write(id, image);
         Self {
             inner: Rc::new(ImageToken {
                 id,

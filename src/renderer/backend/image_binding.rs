@@ -7,7 +7,7 @@ use crate::renderer::backend::texture_binding;
 /// The per-image group-0 layout and the sampler it pairs with.
 ///
 /// `Clone` hands out `wgpu`'s own reference-counted handles, so the
-/// registry's GPU side and the target store hold one layout between them,
+/// image store and the target store hold one layout between them,
 /// and each format's image pipeline composes over that same one.
 #[derive(Clone, Debug)]
 pub(super) struct ImageBinding {
