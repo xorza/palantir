@@ -21,54 +21,21 @@
 //! across both visited shapes and ranges skipped by subtree culling without
 //! retaining a reverse-index slot for every preceding static shape.
 //!
-//! [`PaintAnim::BlinkOpacity`] (alpha) and [`PaintAnim::Spin`] (rotation)
-//! ship today; pulse or marquee variants would need further encoder
-//! transform-mod plumbing.
+//! An animation drives alpha, rotation, or both. Translation and scale
+//! would need the cascade to bound the *swept union over the path*, which
+//! it cannot compute without sampling — where a rotation's cover is the
+//! same square at every angle.
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
+pub mod curves;
+pub(crate) mod paint_anim;
 
 use crate::scene::tree::node_id::NodeId;
-use std::f32::consts::TAU;
+use crate::scene::tree::paint_anims::paint_anim::PaintAnim;
 use std::time::Duration;
 
 const CURSOR_END: u64 = u64::MAX;
-
-/// A paint-time animation contract. Encoded as a small enum so the
-/// per-shape registry stays a flat `Vec`; sampling is branch-on-tag
-/// rather than a virtual call.
-///
-/// Sampling is a pure function of `now`. No accumulator state, so
-/// dropped frames / irregular `dt` don't drift.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) enum PaintAnim {
-    /// Solid for `half_period`, hidden for the next `half_period`,
-    /// repeating from `started_at` until `stop_after` has elapsed, then
-    /// solid forever. The caret-blink shape.
-    ///
-    /// The stop lives here rather than in the widget that registers the
-    /// anim because it has to hold on frames the widget never sees. A
-    /// blinking caret is enough on its own to wake the host, and such a
-    /// wake produces a paint-only frame — no record pass, so no widget
-    /// code runs to re-decide anything. An idle cutoff evaluated at
-    /// record time is therefore evaluated exactly once and never again,
-    /// and the blink runs forever. Sampled here, it settles on the
-    /// paint pass that crosses it and [`Self::next_wake`] stops asking
-    /// for frames.
-    BlinkOpacity {
-        half_period: Duration,
-        started_at: Duration,
-        /// Idle span from `started_at` after which the blink settles
-        /// solid. [`Duration::MAX`] blinks indefinitely.
-        stop_after: Duration,
-    },
-    /// Continuous rotation at `speed` radians/second, measured from
-    /// `started_at`. The sampled angle is `(now - started_at) * speed`
-    /// wrapped to `[0, TAU)`. Its [`Self::next_wake`] is always `now`, so
-    /// it repaints every frame (a spinner) without the widget changing
-    /// any geometry — the arc is recorded once and spun at paint time.
-    Spin { speed: f32, started_at: Duration },
-}
 
 /// Per-shape paint modification sampled from a `PaintAnim`. Encoder
 /// folds this into the shape's brush / geometry at emit time.
@@ -78,9 +45,9 @@ pub(crate) struct PaintMod {
     /// `0.0` = fully transparent (encoder may drop the emit).
     pub(crate) alpha: f32,
     /// Rotation in radians applied to the shape's geometry about its
-    /// owner-box centre at paint time. `0.0` = no rotation. Only
-    /// [`PaintAnim::Spin`] produces a non-zero value today; the
-    /// polyline, curve, and arc emits honour it (the composer rotates
+    /// owner-box centre at paint time. `0.0` = no rotation. Only a
+    /// [`PaintChannel::turn`](crate::PaintChannel) produces a non-zero
+    /// value; the polyline, curve, and arc emits honour it (the composer rotates
     /// points / control points / center + angles before the ancestor
     /// transform). The encoder folds it and the pivot into the payload's
     /// [`StrokeBounds`](crate::renderer::frontend::payload::stroke_bounds::StrokeBounds).
@@ -95,141 +62,6 @@ impl PaintMod {
         alpha: 1.0,
         rotation: 0.0,
     };
-}
-
-impl PaintAnim {
-    /// Sample the animation at `now`. Pure function — caller is
-    /// responsible for clamping `now >= started_at` (this routine
-    /// tolerates `now < started_at` by returning the pre-start
-    /// phase's value).
-    #[inline]
-    pub(crate) fn sample(self, now: Duration) -> PaintMod {
-        match self {
-            PaintAnim::BlinkOpacity {
-                half_period,
-                started_at,
-                stop_after,
-            } => {
-                let alpha = if blink_visible_at(half_period, started_at, stop_after, now) {
-                    1.0
-                } else {
-                    0.0
-                };
-                PaintMod {
-                    alpha,
-                    rotation: 0.0,
-                }
-            }
-            PaintAnim::Spin { speed, started_at } => {
-                // Wrap to `[0, TAU)` so `sin_cos` keeps full precision no
-                // matter how long the spinner has been on screen.
-                let dt = now.saturating_sub(started_at).as_secs_f32();
-                let rotation = (dt * speed).rem_euclid(TAU);
-                PaintMod {
-                    alpha: 1.0,
-                    rotation,
-                }
-            }
-        }
-    }
-
-    /// Whether this anim turns the shape's geometry, which decides
-    /// whether a bound has to cover the swept disc rather than the
-    /// recorded bbox.
-    #[inline]
-    pub(crate) fn rotates(self) -> bool {
-        matches!(self, PaintAnim::Spin { .. })
-    }
-
-    /// Earliest `Duration` (absolute time, same epoch as
-    /// frame-runtime time / `started_at`) at which `quantum` will next
-    /// change, or `None` when the anim has settled and will never
-    /// change again. `post_record` folds the min of every live entry's
-    /// `next_wake` into the frame runtime's wake queue so widgets don't have to.
-    ///
-    /// For `BlinkOpacity` this is the next half-period boundary
-    /// strictly after `now`, until `stop_after` elapses.
-    #[inline]
-    pub(crate) fn next_wake(self, now: Duration) -> Option<Duration> {
-        match self {
-            PaintAnim::BlinkOpacity {
-                half_period,
-                started_at,
-                stop_after,
-            } => next_blink_boundary(half_period, started_at, stop_after, now),
-            // Continuous: the angle changes every frame, so the soonest
-            // it "next changes" is now. `extend_predamaged` compares
-            // `next_wake(prev) <= now` (always true, since `prev <= now`)
-            // and so re-damages the spun shape's rect every frame.
-            PaintAnim::Spin { .. } => Some(now),
-        }
-    }
-}
-
-/// True when a blink with `half_period` starting at `started_at` is
-/// in its solid phase at `now`. Pre-start (now < started_at) returns
-/// `true` so a freshly-focused caret is immediately visible, and so
-/// does everything from `started_at + stop_after` onwards.
-#[inline]
-fn blink_visible_at(
-    half_period: Duration,
-    started_at: Duration,
-    stop_after: Duration,
-    now: Duration,
-) -> bool {
-    if now <= started_at {
-        return true;
-    }
-    let dt = now - started_at;
-    if dt >= stop_after {
-        return true;
-    }
-    // (dt / half_period) parity: even = solid, odd = hidden.
-    let n = duration_div_floor(dt, half_period);
-    n & 1 == 0
-}
-
-/// Absolute time of the next strictly-future boundary at which the
-/// blink flips. Aligns to `started_at + k * half_period` for the
-/// smallest `k` with that time `> now`. `None` once the blink has
-/// settled solid — a degenerate zero period, or a boundary that would
-/// land at or past `started_at + stop_after`.
-#[inline]
-fn next_blink_boundary(
-    half_period: Duration,
-    started_at: Duration,
-    stop_after: Duration,
-    now: Duration,
-) -> Option<Duration> {
-    if half_period.is_zero() {
-        return None;
-    }
-    if now < started_at {
-        return Some(started_at);
-    }
-    let settles_at = started_at.saturating_add(stop_after);
-    if now >= settles_at {
-        return None;
-    }
-    let dt = now - started_at;
-    let n = duration_div_floor(dt, half_period);
-    let boundary = started_at + half_period.saturating_mul((n + 1) as u32);
-    // The settle is itself a flip the encoder has to paint, so it caps
-    // the wake rather than merely bounding it: a `stop_after` that isn't
-    // a whole number of half-periods lands between two boundaries, and
-    // waking only on boundaries would leave the caret stuck on whatever
-    // phase it was in until some unrelated wake arrived.
-    Some(boundary.min(settles_at))
-}
-
-/// `floor(a / b)` for `Duration`. Returns 0 if `b` is zero.
-#[inline]
-fn duration_div_floor(a: Duration, b: Duration) -> u64 {
-    let bn = b.as_nanos();
-    if bn == 0 {
-        return 0;
-    }
-    (a.as_nanos() / bn) as u64
 }
 
 /// One row per registered paint animation.

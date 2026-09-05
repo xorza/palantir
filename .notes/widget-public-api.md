@@ -7,7 +7,7 @@ Research notes on the rule in `CLAUDE.md`:
 
 The test is reimplementation: could another person write `Scroll`, `TextEdit`
 or `Popup` outside this crate, line for line, against the published surface?
-Today the answer is no for five of the bundled widgets. This note says exactly
+Today the answer is no for four of the bundled widgets. This note says exactly
 what stops them, what the framework would have to publish, and what it would
 cost.
 
@@ -29,8 +29,8 @@ Test and bench code is out of scope. It reaches in on purpose, through the
 
 ## Where it stands
 
-Production widget code reaches outside `src/widgets` at **22 sites across 14
-private items**, plus **9 `pub(crate)` methods on the published `Ui`**. Every
+Production widget code reaches outside `src/widgets` at **19 sites across 13
+private items**, plus **8 `pub(crate)` methods on the published `Ui`**. Every
 one of them belongs to one of the gaps below, and every one is a capability
 gap: no combination of published calls produces the same frame.
 
@@ -41,7 +41,7 @@ Ordered by what to do next.
 | # | gap | what is missing | blocks | size |
 |---|---|---|---|---|
 | G1 | text content identity without shaping | `TextShapeKey::content_hash`, `hash::hash_str` | TextEdit | trivial |
-| G2 | paint-time shape animation | `PaintAnim`, `Ui::add_shape_animated` | Spinner, TextEdit caret | small |
+| ~~G2~~ | ~~paint-time shape animation~~ | **closed** — `PaintAnim`, `PaintChannel`, `PaintTiming`, `PaintRepeat`, `PaintSteps`, `PaintCurve`, `curves` and `Ui::add_shape_animated` are published | — | — |
 | G3 | scroll viewport and scrollbar layout mode | `LayoutMode::Scroll`, `ScrollSpec`, `ScrollbarsDef`, `Ui::scroll_content`, `Ui::push_scrollbars_def`, `Ui::current_node`, `Widget::scroll`, `Widget::scrollbars` | Scroll | large |
 | G4 | GPU view registration | `GpuPaintRef`, `Ui::gpu_view` | GpuView | small |
 | G5 | zoom factor arithmetic | `input::zoom::{is_valid, combine, from_wheel}` | nothing — correctness sharing only | trivial |
@@ -71,31 +71,25 @@ the zero-maps-to-one rule in `content_hash` — are private.
 `TextProbe::text_hash`. An hour. There is no design question here, only a
 missing accessor.
 
-### G2 — Paint-time shape animation
+### G2 — Paint-time shape animation — **closed**
 
-**Blocks:** `Spinner`, `TextEdit` (caret blink).
+`Ui::add_shape_animated` is published, and `PaintAnim` is no longer a closed
+enum of two: it is a channel, a timing and a **caller-supplied curve**, any
+`fn(f32) -> f32`. `Spinner` and `TextEdit`'s caret are now ordinary uses of it.
 
-`Ui::add_shape_animated(shape, PaintAnim)` registers an animation the *encoder*
-samples, not the record pass. The recorded subtree is byte-identical every
-frame, so it stays cache-stable and the widget never re-records. `PaintAnim`
-ships two variants: `BlinkOpacity` and `Spin`.
+The framework kept the two answers whose failure corrupts pixels rather than
+merely painting a wrong one. `rotates()` reads the channel and `next_wake()`
+reads the timing, both without calling the curve — so a curve is a value
+function and nothing more.
 
-The public substitute is `Ui::animate` plus `Ui::request_repaint`, which
-re-records the widget every frame and invalidates its layout cache entry. It
-produces the right pixels and the wrong frame cost.
+An `Rc<dyn PaintAnimation>` trait was rejected for that reason. Two of its
+three methods would be correctness machinery, not output, and a wrong answer
+from either damages the wrong region: the shape paints outside what was cleared
+for it, and the artefact lands on unrelated widgets. Neither is checkable at
+any cost a frame can pay.
 
-**Proposals**
-
-1. *Publish `PaintAnim` and `Ui::add_shape_animated`.* The enum is closed on
-   purpose — the encoder can only fold an alpha multiplier and a rotation
-   today — so publishing it publishes a promise the renderer cannot yet keep
-   for a third variant. Mark it `#[non_exhaustive]`.
-2. *Publish two shape modifiers instead.* `Shape::blink(half_period, stop)`
-   and `Shape::spin(speed)` on the `Lower` builders, with `PaintAnim` staying
-   private. This reads better at the call site and hides the enum entirely.
-
-**Recommendation:** (2). `Shape` is already the vocabulary a widget paints in,
-and a builder method there costs one line per variant with no new public type.
+`alpha` also became a real multiplier on the way. It was a gate — hide or show
+— so a fade was not expressible on any shape kind.
 
 ### G3 — Scroll viewport and scrollbars
 
@@ -189,15 +183,15 @@ sharing, not a capability gap — file it under nice-to-have.
 | Popup, ContextMenu, MenuItem, Tooltip | yes | — |
 | ComboBox, ColorButton | yes | — |
 | TabStrip, TabbedView, Dock | yes | — |
-| TextEdit | no | G1, G2 |
-| DragValue | no | G1, G2 (via TextEdit) |
-| Spinner | no | G2 |
+| TextEdit | no | G1 |
+| DragValue | no | G1 (via TextEdit) |
+| Spinner | yes | — |
 | Scroll | no | G3, G5 |
 | GpuView | no | G4 |
 
-Twenty-seven of the bundled widgets are reimplementable outside the crate
-today. The five that are not need the text content hash, paint-time animation,
-`Scroll`'s layout mode, or GPU view registration.
+Twenty-eight of the bundled widgets are reimplementable outside the crate
+today. The four that are not need the text content hash, `Scroll`'s layout
+mode, or GPU view registration.
 
 ## Not gaps
 

@@ -363,8 +363,11 @@ fn button_unhover_damage_covers_only_the_button() {
 /// registration alone, which is what lets it answer without sampling.
 #[test]
 fn a_spun_stroke_is_damaged_against_the_square_it_sweeps() {
-    use crate::scene::tree::paint_anims::PaintAnim;
+    use crate::scene::tree::paint_anims::curves;
+    use crate::scene::tree::paint_anims::paint_anim::PaintAnim;
+    use crate::scene::tree::paint_anims::paint_anim::PaintRepeat;
     use crate::shape::polyline::PolylineColors;
+    use std::f32::consts::TAU;
     use std::time::Duration;
 
     let owner_id = WidgetId::from_hash("spin_owner");
@@ -383,10 +386,11 @@ fn a_spun_stroke_is_damaged_against_the_square_it_sweeps() {
                                 PolylineColors::Single(RED),
                                 1.0,
                             ),
-                            PaintAnim::Spin {
-                                speed: 1.0,
-                                started_at: Duration::ZERO,
-                            },
+                            PaintAnim::turn(0.0, 1.0)
+                                .started_at(Duration::ZERO)
+                                .period(Duration::from_secs_f32(TAU / 1.0))
+                                .repeat(PaintRepeat::Forever)
+                                .curve(curves::linear),
                         );
                     });
             });

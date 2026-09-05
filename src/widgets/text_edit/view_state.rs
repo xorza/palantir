@@ -3,7 +3,9 @@
 
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
-use crate::scene::tree::paint_anims::PaintAnim;
+use crate::scene::tree::paint_anims::curves;
+use crate::scene::tree::paint_anims::paint_anim::PaintAnim;
+use crate::scene::tree::paint_anims::paint_anim::PaintRepeat;
 use crate::widgets::scroll::state::{ScrollBounds, ScrollState};
 use crate::widgets::text_edit::text_geometry::TextGeometry;
 use glam::Vec2;
@@ -151,11 +153,14 @@ impl ViewState {
         // caret wakes the host on its own, and those wakes paint without
         // recording, so this line would stop running long before the
         // cutoff arrived.
-        input.focused.then_some(PaintAnim::BlinkOpacity {
-            half_period: BLINK_HALF,
-            started_at: self.last_caret_change,
-            stop_after: BLINK_STOP_AFTER_IDLE,
-        })
+        input.focused.then_some(
+            PaintAnim::alpha(0.0, 1.0)
+                .started_at(self.last_caret_change)
+                .period(BLINK_HALF * 2)
+                .steps(2)
+                .repeat(PaintRepeat::Settle(BLINK_STOP_AFTER_IDLE))
+                .curve(curves::square),
+        )
     }
 }
 

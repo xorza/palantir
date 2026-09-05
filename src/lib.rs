@@ -312,6 +312,12 @@ pub use primitives::size::Size;
 pub use primitives::spacing::{Spacing, Sums};
 pub use primitives::text_input::TextInput;
 pub use scene::layer::Layer;
+/// The paint-time animation curves the crate ships. A caller's own curve
+/// is any `fn(f32) -> f32` over the same range — see [`PaintCurve`].
+pub use scene::tree::paint_anims::curves;
+pub use scene::tree::paint_anims::paint_anim::{
+    PaintAnim, PaintChannel, PaintCurve, PaintRepeat, PaintSteps, PaintTiming,
+};
 pub use scene::visibility::Visibility;
 // Re-exported (not an palantir type) because it's the canonical integer
 // pixel-extent across the public surface — `Display.physical`,
