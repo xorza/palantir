@@ -253,7 +253,7 @@ fn layout_outputs_stay_isolated_per_layer_across_cache_hits() {
 fn collisions_do_not_record_into_debug_layer() {
     let mut h = UiHarness::new(UVec2::new(100, 100));
     assert!(
-        !h.ui.resources.diagnostics.overlay.get().frame_stats,
+        !h.ui.resources.diagnostics().overlay.get().frame_stats,
         "test relies on frame_stats off — Debug should otherwise stay empty",
     );
     h.frame(|ui| {

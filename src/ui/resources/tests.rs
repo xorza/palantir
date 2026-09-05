@@ -1,7 +1,7 @@
 use crate::common::clipboard::Clipboard;
 use crate::primitives::image::Image;
 use crate::primitives::texture_id::TextureId;
-use crate::renderer::image_registry::ImageRegistry;
+use crate::renderer::backend::shared_resources::SharedResources;
 use crate::renderer::texture_limit::TextureLimit;
 use crate::text::shaper::TextShaper;
 use crate::ui::Ui;
@@ -12,10 +12,11 @@ use std::num::NonZeroU32;
 #[test]
 fn the_bundle_ceiling_gates_registration_and_is_what_ui_reports() {
     let resources = UiResources::new(
-        TextShaper::test_mono(),
+        SharedResources::deviceless(
+            TextShaper::test_mono(),
+            TextureLimit::from_device(NonZeroU32::new(4).unwrap()),
+        ),
         Clipboard::default(),
-        TextureLimit::from_device(NonZeroU32::new(4).unwrap()),
-        ImageRegistry::default(),
     );
     let ui = Ui::new(resources);
     assert_eq!(ui.max_image_dimension(), NonZeroU32::new(4));
@@ -48,8 +49,6 @@ fn images_and_gpu_views_share_one_texture_id_authority() {
     assert_eq!(second.id(), TextureId(3));
     assert_eq!(first.size(), UVec2::new(2, 3));
     assert_eq!(second.size(), UVec2::new(4, 5));
-    assert_eq!(resources.images.resident(), 0);
-    assert_eq!(clone.images.resident(), 0);
 }
 
 #[test]
