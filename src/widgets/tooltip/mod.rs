@@ -3,7 +3,7 @@
 //! appear without re-serving the delay.
 
 use crate::input::sense::Sense;
-use crate::layout::types::overlay::OverlayPosition;
+use crate::layout::types::anchor::Anchor;
 use crate::primitives::background::Background;
 use crate::primitives::text_input::TextInput;
 use crate::primitives::widget_id::WidgetId;
@@ -204,7 +204,7 @@ impl<'a> Tooltip<'a> {
         {
             ui.state_mut::<TooltipGlobal>(global_state_id())
                 .last_visible_at = Some(now);
-            let position = OverlayPosition::below(trigger_rect).gap(gap);
+            let anchor = Anchor::below(trigger_rect).gap(gap);
             let label = self.label;
             let chrome = self.chrome.as_ref().unwrap_or(&theme.panel);
             // Theme fills in whatever the caller left alone. Identity
@@ -222,7 +222,7 @@ impl<'a> Tooltip<'a> {
             let scope = OverlayScope::claim(
                 bubble_id,
                 Layer::Tooltip,
-                Some(position),
+                Some(anchor),
                 Backdrop::None,
                 &mut bubble,
             );

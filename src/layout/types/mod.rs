@@ -8,12 +8,12 @@
 //! overlay lands beside its anchor, and what counts as a usable bound.
 
 pub(crate) mod align;
+pub(crate) mod anchor;
 pub(crate) mod clip_mode;
 pub(crate) mod grid_cell;
 pub(crate) mod justify;
 pub(crate) mod layout_mode;
 pub(crate) mod limits;
-pub(crate) mod overlay;
 pub(crate) mod placement;
 pub(crate) mod sizing;
 pub(crate) mod track;
