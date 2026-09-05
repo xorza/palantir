@@ -32,12 +32,15 @@ use std::time::Duration;
 #[test]
 fn compose_solid_brush_emits_kind_zero_quad() {
     let mut buffer = PaintCapture::default();
-    buffer.draw_quad(DrawQuadPayload::rect(
-        rect(0.0, 0.0, 100.0, 100.0),
-        Corners::default(),
-        BrushSource::Solid(RgbaF32::srgb(0.5, 0.5, 0.5).into()),
-        Stroke::ZERO.into(),
-    ));
+    buffer.draw_quad(
+        DrawQuadPayload::rect(
+            rect(0.0, 0.0, 100.0, 100.0),
+            Corners::default(),
+            BrushSource::Solid(RgbaF32::srgb(0.5, 0.5, 0.5).into()),
+            Stroke::ZERO.into(),
+        ),
+        1.0,
+    );
     let mut composer = composer();
     let mut out = render_buffer();
     // 200×200 viewport: an opaque solid sharp quad covering the whole
@@ -79,12 +82,15 @@ fn windowed_rect_is_not_an_opaque_cover() {
     let buf = run(
         |b, _| {
             draw(b, rect(10.0, 10.0, 50.0, 50.0));
-            b.draw_quad(DrawQuadPayload::rect_window(
-                rect(0.0, 0.0, 200.0, 200.0),
-                Corners::default(),
-                BrushSource::Solid(RgbaF32::srgb(1.0, 1.0, 1.0).into()),
-                Stroke::ZERO.into(),
-            ));
+            b.draw_quad(
+                DrawQuadPayload::rect_window(
+                    rect(0.0, 0.0, 200.0, 200.0),
+                    Corners::default(),
+                    BrushSource::Solid(RgbaF32::srgb(1.0, 1.0, 1.0).into()),
+                    Stroke::ZERO.into(),
+                ),
+                1.0,
+            );
         },
         &params(1.0, UVec2::new(200, 200)),
     );
@@ -123,12 +129,15 @@ fn compose_linear_brush_emits_kind_one_with_atlas_row() {
         kind: FillKind::linear(g.spread),
     };
     let mut buffer = PaintCapture::default();
-    buffer.draw_quad(DrawQuadPayload::rect(
-        rect(0.0, 0.0, 100.0, 100.0),
-        Corners::default(),
-        BrushSource::Gradient(lowered),
-        Stroke::ZERO.into(),
-    ));
+    buffer.draw_quad(
+        DrawQuadPayload::rect(
+            rect(0.0, 0.0, 100.0, 100.0),
+            Corners::default(),
+            BrushSource::Gradient(lowered),
+            Stroke::ZERO.into(),
+        ),
+        1.0,
+    );
     let mut composer = composer();
     let mut out = render_buffer();
     composer
@@ -162,12 +171,15 @@ fn compose_repeated_linear_brush_shares_atlas_row() {
     };
     let mut buffer = PaintCapture::default();
     for _ in 0..3 {
-        buffer.draw_quad(DrawQuadPayload::rect(
-            rect(0.0, 0.0, 10.0, 10.0),
-            Corners::default(),
-            BrushSource::Gradient(lowered),
-            Stroke::ZERO.into(),
-        ));
+        buffer.draw_quad(
+            DrawQuadPayload::rect(
+                rect(0.0, 0.0, 10.0, 10.0),
+                Corners::default(),
+                BrushSource::Gradient(lowered),
+                Stroke::ZERO.into(),
+            ),
+            1.0,
+        );
     }
     let mut composer = composer();
     let mut out = render_buffer();
@@ -192,17 +204,20 @@ fn compose_repeated_linear_brush_shares_atlas_row() {
 fn compose_emits_image_batch_for_drawimage() {
     let buf = run(
         |b, _arena| {
-            b.draw_image(ImageDraw {
-                payload: DrawImagePayload {
-                    rect: rect(10.0, 20.0, 30.0, 40.0),
-                    uv_min: glam::Vec2::ZERO,
-                    uv_size: glam::Vec2::ONE,
-                    tint: RgbaF32::WHITE.into(),
-                    handle: TextureId(0xc0ffee),
-                    flags: 0,
+            b.draw_image(
+                ImageDraw {
+                    payload: DrawImagePayload {
+                        rect: rect(10.0, 20.0, 30.0, 40.0),
+                        uv_min: glam::Vec2::ZERO,
+                        uv_size: glam::Vec2::ONE,
+                        tint: RgbaF32::WHITE.into(),
+                        handle: TextureId(0xc0ffee),
+                        flags: 0,
+                    },
+                    paint: None,
                 },
-                paint: None,
-            });
+                1.0,
+            );
         },
         &params(2.0, UVec2::new(400, 400)),
     );
@@ -247,10 +262,13 @@ fn compose_gpu_view_carries_nested_transform_and_dpr_to_raster_target() {
             |b, _arena| {
                 b.push_transform(TranslateScale::from_scale(2.0));
                 b.push_transform(TranslateScale::from_scale(1.5));
-                b.draw_image(ImageDraw {
-                    payload: gpu_view_payload(rect(0.0, 0.0, 20.0, 10.0), TextureId(0xc0ffee)),
-                    paint: Some(&gpu_paint()),
-                });
+                b.draw_image(
+                    ImageDraw {
+                        payload: gpu_view_payload(rect(0.0, 0.0, 20.0, 10.0), TextureId(0xc0ffee)),
+                        paint: Some(&gpu_paint()),
+                    },
+                    1.0,
+                );
                 b.pop_transform();
                 b.pop_transform();
             },
@@ -287,10 +305,13 @@ fn compose_gpu_view_sized_to_what_the_surface_can_show() {
     // Twice as wide as the 100px surface, and a third taller.
     let buf = run(
         |b, _arena| {
-            b.draw_image(ImageDraw {
-                payload: gpu_view_payload(rect(0.0, 0.0, 200.0, 120.0), TextureId(0xc0ffee)),
-                paint: Some(&gpu_paint()),
-            });
+            b.draw_image(
+                ImageDraw {
+                    payload: gpu_view_payload(rect(0.0, 0.0, 200.0, 120.0), TextureId(0xc0ffee)),
+                    paint: Some(&gpu_paint()),
+                },
+                1.0,
+            );
         },
         &params(1.0, UVec2::new(100, 90)),
     );
@@ -330,10 +351,13 @@ fn compose_gpu_view_sized_to_what_a_clip_leaves() {
     let buf = run(
         |b, _arena| {
             b.push_clip(PushClipPayload::rect(rect(30.0, 20.0, 40.0, 25.0)));
-            b.draw_image(ImageDraw {
-                payload: gpu_view_payload(rect(10.0, 10.0, 100.0, 60.0), TextureId(0xc0ffee)),
-                paint: Some(&gpu_paint()),
-            });
+            b.draw_image(
+                ImageDraw {
+                    payload: gpu_view_payload(rect(10.0, 10.0, 100.0, 60.0), TextureId(0xc0ffee)),
+                    paint: Some(&gpu_paint()),
+                },
+                1.0,
+            );
             b.pop_clip();
         },
         &params(1.0, UVec2::new(200, 200)),
@@ -358,10 +382,13 @@ fn compose_gpu_view_sized_to_what_a_clip_leaves() {
 fn compose_gpu_view_whole_when_nothing_clips_it() {
     let buf = run(
         |b, _arena| {
-            b.draw_image(ImageDraw {
-                payload: gpu_view_payload(rect(10.0, 20.0, 80.0, 40.0), TextureId(0xc0ffee)),
-                paint: Some(&gpu_paint()),
-            });
+            b.draw_image(
+                ImageDraw {
+                    payload: gpu_view_payload(rect(10.0, 20.0, 80.0, 40.0), TextureId(0xc0ffee)),
+                    paint: Some(&gpu_paint()),
+                },
+                1.0,
+            );
         },
         &params(1.0, UVec2::new(200, 200)),
     );
@@ -395,16 +422,19 @@ fn compose_gpu_view_caps_wide_and_tall_targets_uniformly() {
     for case in cases {
         let buf = run_with_texture_cap(
             |b, _arena| {
-                b.draw_image(ImageDraw {
-                    payload: gpu_view_payload(
-                        Rect {
-                            min: Vec2::ZERO,
-                            size: case.logical_size,
-                        },
-                        TextureId(0xc0ffee),
-                    ),
-                    paint: Some(&gpu_paint()),
-                });
+                b.draw_image(
+                    ImageDraw {
+                        payload: gpu_view_payload(
+                            Rect {
+                                min: Vec2::ZERO,
+                                size: case.logical_size,
+                            },
+                            TextureId(0xc0ffee),
+                        ),
+                        paint: Some(&gpu_paint()),
+                    },
+                    1.0,
+                );
             },
             &params(1.0, UVec2::new(400, 400)),
             100,
@@ -441,10 +471,13 @@ fn compose_gpu_view_caps_wide_and_tall_targets_uniformly() {
     let buf = run_with_texture_cap(
         |b, _arena| {
             b.push_clip(PushClipPayload::rect(rect(45.0, 45.0, 155.0, 155.0)));
-            b.draw_image(ImageDraw {
-                payload: gpu_view_payload(rect(0.0, 0.0, 200.0, 200.0), TextureId(0xc0ffee)),
-                paint: Some(&gpu_paint()),
-            });
+            b.draw_image(
+                ImageDraw {
+                    payload: gpu_view_payload(rect(0.0, 0.0, 200.0, 200.0), TextureId(0xc0ffee)),
+                    paint: Some(&gpu_paint()),
+                },
+                1.0,
+            );
             b.pop_clip();
         },
         &params(1.0, UVec2::new(400, 400)),
@@ -466,17 +499,20 @@ fn compose_gpu_view_caps_wide_and_tall_targets_uniformly() {
 fn compose_image_forwards_uv_crop_for_cover_fit() {
     let buf = run(
         |b, _arena| {
-            b.draw_image(ImageDraw {
-                payload: DrawImagePayload {
-                    rect: rect(0.0, 0.0, 100.0, 100.0),
-                    uv_min: glam::Vec2::new(0.25, 0.0),
-                    uv_size: glam::Vec2::new(0.5, 1.0),
-                    tint: RgbaF32::WHITE.into(),
-                    handle: TextureId(1),
-                    flags: 0,
+            b.draw_image(
+                ImageDraw {
+                    payload: DrawImagePayload {
+                        rect: rect(0.0, 0.0, 100.0, 100.0),
+                        uv_min: glam::Vec2::new(0.25, 0.0),
+                        uv_size: glam::Vec2::new(0.5, 1.0),
+                        tint: RgbaF32::WHITE.into(),
+                        handle: TextureId(1),
+                        flags: 0,
+                    },
+                    paint: None,
                 },
-                paint: None,
-            });
+                1.0,
+            );
         },
         &params(1.0, UVec2::new(400, 400)),
     );
@@ -494,41 +530,50 @@ fn compose_forwards_flags_and_repeat_uv() {
     let buf = run(
         |b, _arena| {
             // Plain draw: flags stay 0.
-            b.draw_image(ImageDraw {
-                payload: DrawImagePayload {
-                    rect: rect(0.0, 0.0, 50.0, 50.0),
-                    uv_min: glam::Vec2::ZERO,
-                    uv_size: glam::Vec2::ONE,
-                    tint: RgbaF32::WHITE.into(),
-                    handle: TextureId(1),
-                    flags: 0,
+            b.draw_image(
+                ImageDraw {
+                    payload: DrawImagePayload {
+                        rect: rect(0.0, 0.0, 50.0, 50.0),
+                        uv_min: glam::Vec2::ZERO,
+                        uv_size: glam::Vec2::ONE,
+                        tint: RgbaF32::WHITE.into(),
+                        handle: TextureId(1),
+                        flags: 0,
+                    },
+                    paint: None,
                 },
-                paint: None,
-            });
+                1.0,
+            );
             // Tiled draw: UV size > 1 (3×2 repeats) + tiled bit.
-            b.draw_image(ImageDraw {
-                payload: DrawImagePayload {
-                    rect: rect(0.0, 0.0, 50.0, 50.0),
-                    uv_min: glam::Vec2::ZERO,
-                    uv_size: glam::Vec2::new(3.0, 2.0),
-                    tint: RgbaF32::WHITE.into(),
-                    handle: TextureId(2),
-                    flags: IMG_FLAG_TILED,
+            b.draw_image(
+                ImageDraw {
+                    payload: DrawImagePayload {
+                        rect: rect(0.0, 0.0, 50.0, 50.0),
+                        uv_min: glam::Vec2::ZERO,
+                        uv_size: glam::Vec2::new(3.0, 2.0),
+                        tint: RgbaF32::WHITE.into(),
+                        handle: TextureId(2),
+                        flags: IMG_FLAG_TILED,
+                    },
+                    paint: None,
                 },
-                paint: None,
-            });
+                1.0,
+            );
             // The two nearest-filter bits ride through together.
-            b.draw_image(ImageDraw {
-                payload: DrawImagePayload {
-                    rect: rect(0.0, 0.0, 50.0, 50.0),
-                    uv_min: glam::Vec2::ZERO,
-                    uv_size: glam::Vec2::ONE,
-                    tint: RgbaF32::WHITE.into(),
-                    handle: TextureId(3),
-                    flags: IMG_FLAG_MIN_NEAREST | IMG_FLAG_MAG_NEAREST,
+            b.draw_image(
+                ImageDraw {
+                    payload: DrawImagePayload {
+                        rect: rect(0.0, 0.0, 50.0, 50.0),
+                        uv_min: glam::Vec2::ZERO,
+                        uv_size: glam::Vec2::ONE,
+                        tint: RgbaF32::WHITE.into(),
+                        handle: TextureId(3),
+                        flags: IMG_FLAG_MIN_NEAREST | IMG_FLAG_MAG_NEAREST,
+                    },
+                    paint: None,
                 },
-                paint: None,
-            });
+                1.0,
+            );
         },
         &params(1.0, UVec2::new(400, 400)),
     );

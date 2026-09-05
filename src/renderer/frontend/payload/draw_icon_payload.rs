@@ -22,6 +22,20 @@ pub(crate) struct DrawIconPayload {
 }
 
 impl DrawIconPayload {
+    /// This draw with its alpha scaled by `by`, for
+    /// [`PaintSink`](crate::renderer::frontend::paint_sink::PaintSink)'s
+    /// gate.
+    #[inline]
+    pub(crate) fn faded(self, by: f32) -> Self {
+        if by == 1.0 {
+            return self;
+        }
+        Self {
+            tint: self.tint.faded(by),
+            ..self
+        }
+    }
+
     /// Paints nothing when the rect has no extent or the tint is fully
     /// transparent — the latter covering both icon kinds, since alpha gates
     /// the colour path as much as the mask one.

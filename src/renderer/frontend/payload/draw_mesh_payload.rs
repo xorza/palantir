@@ -27,6 +27,20 @@ pub(crate) struct DrawMeshPayload {
 }
 
 impl DrawMeshPayload {
+    /// This draw with its alpha scaled by `by`, for
+    /// [`PaintSink`](crate::renderer::frontend::paint_sink::PaintSink)'s
+    /// gate.
+    #[inline]
+    pub(crate) fn faded(self, by: f32) -> Self {
+        if by == 1.0 {
+            return self;
+        }
+        Self {
+            tint: self.tint.faded(by),
+            ..self
+        }
+    }
+
     /// Paints nothing when: empty vertex buffer, fewer than
     /// one full triangle, an index count that isn't a multiple of 3,
     /// or fully transparent tint.

@@ -236,7 +236,12 @@ fn eval_fill(in: VertexOut) -> vec4<f32> {
     // grows when one frame registers more distinct gradients than it
     // holds, and a query keeps this pipeline valid across that resize.
     let v = (f32(in.fill_lut_row) + 0.5) / f32(textureDimensions(gradient_tex).y);
-    return textureSample(gradient_tex, gradient_sampler, vec2<f32>(t, v));
+    let c = textureSample(gradient_tex, gradient_sampler, vec2<f32>(t, v));
+    // `in.fill` is unread on this path — the row above supplies the
+    // colour — so its alpha lane carries a paint animation's opacity
+    // multiplier instead. It is 1.0 for every unanimated gradient. See
+    // `BrushSource::gpu_fill`.
+    return vec4<f32>(c.rgb, c.a * in.fill.a);
 }
 
 // `erf` approximation (Abramowitz & Stegun 7.1.26 form, max error

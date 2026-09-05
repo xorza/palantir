@@ -36,6 +36,20 @@ pub(crate) struct DrawCurvePayload {
 }
 
 impl DrawCurvePayload {
+    /// This draw with its alpha scaled by `by`, for
+    /// [`PaintSink`](crate::renderer::frontend::paint_sink::PaintSink)'s
+    /// gate.
+    #[inline]
+    pub(crate) fn faded(self, by: f32) -> Self {
+        if by == 1.0 {
+            return self;
+        }
+        Self {
+            fill: self.fill.faded(by),
+            ..self
+        }
+    }
+
     /// Paints nothing when: zero/negative stroke width, a
     /// degenerate arc radius (nothing to trace), or a solid fill that's
     /// fully transparent. Gradient fills always paint (the

@@ -83,6 +83,14 @@ use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 /// The required methods are exactly the calls a sink implements. The
 /// provided `draw_*` methods below are the no-op gates the encoder
 /// paints through, and no sink overrides them.
+///
+/// Each gate takes an `alpha` — a paint animation's opacity — and folds
+/// it into the payload before testing it, so a shape animated to nothing
+/// drops out through the gate that was already there. **It is a parameter
+/// rather than something the caller folds in** because the encoder emits
+/// a shape through one of these and nothing else: an arm that forgot to
+/// fade would compile and silently ignore the animation. `1.0` is "no
+/// animation", which is every draw outside a node's own shapes.
 pub(crate) trait PaintSink {
     /// Push a clip region. `payload.corners` is zero for a rect clip.
     fn push_clip(&mut self, payload: PushClipPayload);
@@ -125,7 +133,8 @@ pub(crate) trait PaintSink {
     fn curve(&mut self, payload: DrawCurvePayload);
 
     #[inline]
-    fn draw_quad(&mut self, payload: DrawQuadPayload) {
+    fn draw_quad(&mut self, payload: DrawQuadPayload, alpha: f32) {
+        let payload = payload.faded(alpha);
         if payload.is_noop() {
             return;
         }
@@ -133,7 +142,8 @@ pub(crate) trait PaintSink {
     }
 
     #[inline]
-    fn draw_text(&mut self, payload: DrawTextPayload) {
+    fn draw_text(&mut self, payload: DrawTextPayload, alpha: f32) {
+        let payload = payload.faded(alpha);
         if payload.is_noop() {
             return;
         }
@@ -141,7 +151,8 @@ pub(crate) trait PaintSink {
     }
 
     #[inline]
-    fn draw_mesh(&mut self, payload: DrawMeshPayload) {
+    fn draw_mesh(&mut self, payload: DrawMeshPayload, alpha: f32) {
+        let payload = payload.faded(alpha);
         if payload.is_noop() {
             return;
         }
@@ -149,7 +160,8 @@ pub(crate) trait PaintSink {
     }
 
     #[inline]
-    fn draw_icon(&mut self, payload: DrawIconPayload) {
+    fn draw_icon(&mut self, payload: DrawIconPayload, alpha: f32) {
+        let payload = payload.faded(alpha);
         if payload.is_noop() {
             return;
         }
@@ -157,7 +169,8 @@ pub(crate) trait PaintSink {
     }
 
     #[inline]
-    fn draw_curve(&mut self, payload: DrawCurvePayload) {
+    fn draw_curve(&mut self, payload: DrawCurvePayload, alpha: f32) {
+        let payload = payload.faded(alpha);
         if payload.is_noop() {
             return;
         }
@@ -165,7 +178,8 @@ pub(crate) trait PaintSink {
     }
 
     #[inline]
-    fn draw_image(&mut self, payload: ImageDraw<'_>) {
+    fn draw_image(&mut self, payload: ImageDraw<'_>, alpha: f32) {
+        let payload = payload.faded(alpha);
         if payload.is_noop() {
             return;
         }
@@ -173,7 +187,8 @@ pub(crate) trait PaintSink {
     }
 
     #[inline]
-    fn draw_polyline(&mut self, payload: DrawPolylinePayload) {
+    fn draw_polyline(&mut self, payload: DrawPolylinePayload, alpha: f32) {
+        let payload = payload.faded(alpha);
         // Asserted, not gated — the one payload whose no-op conditions
         // are *already guaranteed* when it gets here, so a failure is a
         // broken contract rather than a value to filter.

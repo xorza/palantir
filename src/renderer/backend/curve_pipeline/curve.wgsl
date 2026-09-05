@@ -420,7 +420,12 @@ fn fs(in: VsOut) -> @location(0) vec4<f32> {
         // frame registers more distinct gradients than it holds, and a
         // query keeps this pipeline valid across that resize.
         let lut_v = (f32(in.lut_row) + 0.5) / f32(textureDimensions(gradient_tex).y);
-        rgba = textureSample(gradient_tex, gradient_sampler, vec2<f32>(in.curve_t, lut_v));
+        let c = textureSample(gradient_tex, gradient_sampler, vec2<f32>(in.curve_t, lut_v));
+        // `in.color` is unread on this path — the row above supplies the
+        // colour — so its alpha lane carries a paint animation's opacity
+        // multiplier instead. It is 1.0 for every unanimated gradient.
+        // See `BrushSource::gpu_fill`.
+        rgba = vec4<f32>(c.rgb, c.a * rgba.a);
     }
     let a = rgba.a * coverage;
     return premultiply(rgba.rgb, a);

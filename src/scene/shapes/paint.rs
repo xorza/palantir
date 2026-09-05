@@ -73,6 +73,15 @@ pub(crate) struct ShapeStroke {
 }
 
 impl ShapeStroke {
+    /// This stroke with its colour's alpha scaled by `by`.
+    #[inline]
+    pub(crate) fn faded(self, by: f32) -> Self {
+        Self {
+            color: self.color.faded(by),
+            ..self
+        }
+    }
+
     /// The stroke a no-op normalizes to, and what a payload's
     /// "no stroke here" reads as.
     pub(crate) const NONE: Self = Self {

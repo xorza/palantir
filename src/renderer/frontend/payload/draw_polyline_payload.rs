@@ -34,9 +34,36 @@ pub(crate) struct DrawPolylinePayload {
     pub(crate) color_mode: ColorMode,
     pub(crate) cap: LineCap,
     pub(crate) join: LineJoin,
+    /// Opacity multiplier from a paint animation, `255` for a still
+    /// polyline.
+    ///
+    /// A lane rather than a scaled colour, because the colours are a span
+    /// in the record store this payload only points at — scaling them
+    /// here would mean copying the run every frame. The composer folds it
+    /// in as it writes each curve instance, where it is already touching
+    /// every colour once.
+    ///
+    /// Eight bits, not a float: the colours it multiplies are `RgbaU8`,
+    /// so the extra precision has nowhere to land, and the byte rides in
+    /// this payload's tail padding instead of growing it.
+    pub(crate) alpha: u8,
 }
 
 impl DrawPolylinePayload {
+    /// This draw with its alpha scaled by `by`, for
+    /// [`PaintSink`](crate::renderer::frontend::paint_sink::PaintSink)'s
+    /// gate.
+    #[inline]
+    pub(crate) fn faded(self, by: f32) -> Self {
+        if by == 1.0 {
+            return self;
+        }
+        Self {
+            alpha: (f32::from(self.alpha) * by).round().clamp(0.0, 255.0) as u8,
+            ..self
+        }
+    }
+
     /// Paints nothing when: fewer than two points (no segments) or a
     /// non-paintable stroke width.
     ///

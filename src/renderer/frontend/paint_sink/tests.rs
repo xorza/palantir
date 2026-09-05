@@ -119,17 +119,20 @@ fn gpu_view_gate_drops_zero_extent_and_pairs_payload_with_paint() {
 
     for (label, rect, handle, has_paint, expect_call) in cases {
         let mut sink = PaintCapture::default();
-        sink.draw_image(ImageDraw {
-            payload: DrawImagePayload {
-                rect,
-                uv_min: Vec2::ZERO,
-                uv_size: Vec2::ONE,
-                tint: RgbaF16::from(RgbaF32::WHITE),
-                handle,
-                flags: 0,
+        sink.draw_image(
+            ImageDraw {
+                payload: DrawImagePayload {
+                    rect,
+                    uv_min: Vec2::ZERO,
+                    uv_size: Vec2::ONE,
+                    tint: RgbaF16::from(RgbaF32::WHITE),
+                    handle,
+                    flags: 0,
+                },
+                paint: has_paint.then_some(&paint),
             },
-            paint: has_paint.then_some(&paint),
-        });
+            1.0,
+        );
         if !expect_call {
             assert!(sink.calls.is_empty(), "case {label}: {:?}", sink.calls);
             continue;
@@ -154,4 +157,48 @@ fn gpu_view_gate_drops_zero_extent_and_pairs_payload_with_paint() {
         assert_eq!(payload.flags, 0, "case {label}");
         assert_eq!(payload.tint, RgbaF16::from(RgbaF32::WHITE), "case {label}");
     }
+}
+
+/// The gate sees the *faded* payload, which is the whole reason `alpha`
+/// is a parameter and not something the caller folds in.
+///
+/// A draw animated to nothing is dropped by the no-op gate that was
+/// already there — no second gate, and no way for an emit to skip it. A
+/// half fade reaches the sink with a halved tint and its colour lanes
+/// untouched: `1.0` alpha over white becomes `0.5`, and white stays
+/// white.
+#[test]
+fn the_gate_sees_the_faded_payload() {
+    let draw = || ImageDraw {
+        payload: DrawImagePayload {
+            rect: Rect::new(0.0, 0.0, 4.0, 4.0),
+            uv_min: Vec2::ZERO,
+            uv_size: Vec2::ONE,
+            tint: RgbaF16::from(RgbaF32::WHITE),
+            handle: TextureId(7),
+            flags: 0,
+        },
+        paint: None,
+    };
+
+    let mut faded_out = PaintCapture::default();
+    faded_out.draw_image(draw(), 0.0);
+    assert!(
+        faded_out.calls.is_empty(),
+        "a draw animated to nothing must not reach the sink: {:?}",
+        faded_out.calls,
+    );
+
+    let mut half = PaintCapture::default();
+    half.draw_image(draw(), 0.5);
+    let [PaintCall::Image { payload, .. }] = half.calls.as_slice() else {
+        panic!("expected one Image call, got {:?}", half.calls);
+    };
+    let tint = payload.tint.unpack();
+    assert!(
+        (tint.a - 0.5).abs() < 1e-3,
+        "tint alpha {} is not half",
+        tint.a
+    );
+    assert_eq!((tint.r, tint.g, tint.b), (1.0, 1.0, 1.0));
 }

@@ -180,13 +180,16 @@ fn compose_shadow_outer_halo_after_text_splits_group() {
     let buf = run(
         |b, _arena| {
             text(b, rect(39.0, 60.0, 2.0, 10.0));
-            b.draw_quad(DrawQuadPayload::shadow(
-                shadow_rect,
-                Corners::ZERO,
-                RgbaF32::BLACK.into(),
-                FillKind::SHADOW_DROP,
-                FillAxis::from_lanes(0.0, 0.0, sigma, 0.0),
-            ));
+            b.draw_quad(
+                DrawQuadPayload::shadow(
+                    shadow_rect,
+                    Corners::ZERO,
+                    RgbaF32::BLACK.into(),
+                    FillKind::SHADOW_DROP,
+                    FillAxis::from_lanes(0.0, 0.0, sigma, 0.0),
+                ),
+                1.0,
+            );
         },
         &params(1.0, UVec2::new(200, 200)),
     );
@@ -363,30 +366,34 @@ fn compose_spins_polyline_about_bbox_center() {
         store.polyline_points.push(Vec2::new(85.0, 50.0));
         let c_start = store.polyline_colors.len() as u32;
         store.polyline_colors.push(RgbaF32::WHITE.into());
-        buffer.draw_polyline(DrawPolylinePayload {
-            // Pivot is the 100x100 box centre, which `stroke_bounds`
-            // derives from the owner rect on the production path.
-            bounds: if rotation == 0.0 {
-                StrokeBounds::Still(rect(0.0, 0.0, 100.0, 100.0))
-            } else {
-                StrokeBounds::Spun {
-                    spin: Spin {
-                        pivot: Vec2::splat(50.0),
-                        angle: rotation,
-                    },
-                    radius: Vec2::splat(50.0).length(),
-                }
+        buffer.draw_polyline(
+            DrawPolylinePayload {
+                alpha: u8::MAX,
+                // Pivot is the 100x100 box centre, which `stroke_bounds`
+                // derives from the owner rect on the production path.
+                bounds: if rotation == 0.0 {
+                    StrokeBounds::Still(rect(0.0, 0.0, 100.0, 100.0))
+                } else {
+                    StrokeBounds::Spun {
+                        spin: Spin {
+                            pivot: Vec2::splat(50.0),
+                            angle: rotation,
+                        },
+                        radius: Vec2::splat(50.0).length(),
+                    }
+                },
+                origin: Vec2::ZERO,
+                width: 2.0,
+                points_start: p_start,
+                points_len: 2,
+                colors_start: c_start,
+                colors_len: 1,
+                color_mode: ColorMode::Single,
+                cap: LineCap::Butt,
+                join: LineJoin::Miter,
             },
-            origin: Vec2::ZERO,
-            width: 2.0,
-            points_start: p_start,
-            points_len: 2,
-            colors_start: c_start,
-            colors_len: 1,
-            color_mode: ColorMode::Single,
-            cap: LineCap::Butt,
-            join: LineJoin::Miter,
-        });
+            1.0,
+        );
         let mut composer = composer();
         let mut out = render_buffer();
         composer
@@ -758,12 +765,10 @@ fn quad_fast_path_flag_cases() {
     for (name, r, corners, stroke, brush, dpr, expect_fast) in cases {
         let buf = run(
             |b, _arena| {
-                b.draw_quad(DrawQuadPayload::rect(
-                    *r,
-                    *corners,
-                    *brush,
-                    (*stroke).into(),
-                ))
+                b.draw_quad(
+                    DrawQuadPayload::rect(*r, *corners, *brush, (*stroke).into()),
+                    1.0,
+                )
             },
             &params(*dpr, UVec2::new(400, 400)),
         );
@@ -832,10 +837,13 @@ fn images_between_labels_coalesce_text_the_same_way() {
         |buf, _| {
             for i in 0..BUTTONS {
                 let x = i as f32 * 100.0;
-                buf.draw_image(ImageDraw {
-                    payload: gpu_view_payload(rect(x, 0.0, 16.0, 16.0), TextureId(1)),
-                    paint: None,
-                });
+                buf.draw_image(
+                    ImageDraw {
+                        payload: gpu_view_payload(rect(x, 0.0, 16.0, 16.0), TextureId(1)),
+                        paint: None,
+                    },
+                    1.0,
+                );
                 text(buf, rect(x + 20.0, 0.0, 60.0, 16.0));
             }
         },
@@ -900,10 +908,13 @@ fn text_batch_drains_past_a_non_overlapping_image() {
     let out = run(
         |buf, _| {
             text(buf, rect(0.0, 0.0, 60.0, 16.0));
-            buf.draw_image(ImageDraw {
-                payload: gpu_view_payload(rect(100.0, 0.0, 16.0, 16.0), TextureId(1)),
-                paint: None,
-            });
+            buf.draw_image(
+                ImageDraw {
+                    payload: gpu_view_payload(rect(100.0, 0.0, 16.0, 16.0), TextureId(1)),
+                    paint: None,
+                },
+                1.0,
+            );
             // Over the image, so this run flushes the group.
             text(buf, rect(110.0, 0.0, 60.0, 16.0));
         },

@@ -29,6 +29,22 @@ pub(crate) struct GpuFill {
 }
 
 impl GpuFill {
+    /// This fill with its opacity scaled by `by`.
+    ///
+    /// One lane covers both kinds, and that is the point of the layout: a
+    /// solid's colour lane holds its real alpha, and a gradient's holds
+    /// an opacity multiplier that starts at one because the atlas row
+    /// supplies the colour. Scaling the alpha lane is therefore the whole
+    /// operation either way. See
+    /// [`BrushSource::gpu_fill`](crate::renderer::frontend::payload::brush_source::BrushSource::gpu_fill).
+    #[inline]
+    pub(crate) fn faded(self, by: f32) -> Self {
+        Self {
+            color: self.color.faded(by),
+            ..self
+        }
+    }
+
     /// Whether this fill paints nothing.
     ///
     /// A gradient always paints: its colour lane is zeroed by

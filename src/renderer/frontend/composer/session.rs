@@ -703,8 +703,15 @@ impl PaintSink for ComposeSession<'_> {
         // through `kept` so the lookup lands on the *original* point
         // index — a coincident point dropped above takes its color
         // with it.
+        // A paint animation's alpha rides the payload rather than the
+        // colours, which live in the record store this draw only points
+        // at. Folded in here, where every colour is already read once on
+        // its way into an instance, so a faded polyline costs no copy of
+        // the run. The joint chrome below averages these, so it inherits
+        // the fade without asking for it.
+        let alpha = f32::from(p.alpha) / 255.0;
         let seg_colors = |k: usize| -> (RgbaU8, RgbaU8) {
-            match mode {
+            let (a, b) = match mode {
                 ColorMode::Single => (src_colors[0], src_colors[0]),
                 ColorMode::PerPoint => (
                     src_colors[kept[k] as usize],
@@ -714,7 +721,8 @@ impl PaintSink for ComposeSession<'_> {
                     let c = src_colors[kept[k + 1] as usize - 1];
                     (c, c)
                 }
-            }
+            };
+            (a.faded(alpha), b.faded(alpha))
         };
         let user_cap = cap as u32;
         let n_segs = directions.len();

@@ -52,12 +52,15 @@ pub(super) fn emit(forest: &Forest, layout: &Layout, out: &mut impl PaintSink) {
                 ep.node,
                 rects.len(),
             );
-            out.draw_quad(DrawQuadPayload::rect(
-                rects[ep.node.idx()],
-                Corners::ZERO,
-                BrushSource::Solid(RgbaF16::TRANSPARENT),
-                STROKE.into(),
-            ));
+            out.draw_quad(
+                DrawQuadPayload::rect(
+                    rects[ep.node.idx()],
+                    Corners::ZERO,
+                    BrushSource::Solid(RgbaF16::TRANSPARENT),
+                    STROKE.into(),
+                ),
+                1.0,
+            );
         }
     }
 }
