@@ -1,6 +1,6 @@
 [package]
 name = "palantir"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2024"
 authors = ["xxorza <xxorza@gmail.com>"]
 description = "An immediate-mode GUI library with WPF-style two-pass layout and a wgpu renderer"
@@ -54,7 +54,7 @@ path = "src/bin/showcase/main.rs"
 required-features = ["showcase"]
 
 [dependencies]
-palantir-anim-derive = { path = "anim-derive", version = "=0.3.0" }
+palantir-anim-derive = { path = "anim-derive", version = "=0.4.0" }
 arboard = { version = "3.6", default-features = false, optional = true }
 bitflags = "2.13"
 bytemuck = { version = "1.25", features = ["derive"] }
