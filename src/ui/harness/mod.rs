@@ -710,7 +710,7 @@ impl UiHarness {
     pub fn clipboard_text(&self) -> String {
         self.ui
             .resources
-            .clipboard
+            .clipboard()
             .get()
             .expect("the harness clipboard is the in-memory backend")
     }
@@ -718,7 +718,7 @@ impl UiHarness {
     pub fn set_clipboard_text(&mut self, text: &str) {
         self.ui
             .resources
-            .clipboard
+            .clipboard()
             .set(text)
             .expect("the memory clipboard is always available");
     }
@@ -755,7 +755,7 @@ impl UiHarness {
     /// must not do it to the shaper its neighbours are sharing.
     pub(crate) fn over_shaper(shaper: TextShaper, surface: UVec2) -> Self {
         let shared = HostShared::new(shaper, TextureLimit::default());
-        Self::from_resources(shared.resources.clone(), surface)
+        Self::from_resources(shared.resources().clone(), surface)
     }
 
     /// The one place a frame is actually entered. `Ui::frame` is

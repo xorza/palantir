@@ -15,11 +15,11 @@ use std::time::Duration;
 pub(super) const SURFACE: UVec2 = UVec2::new(200, 200);
 
 pub(super) fn measure_calls(ui: &Ui) -> u64 {
-    ui.resources.text.measure_calls()
+    ui.resources.text().measure_calls()
 }
 
 pub(super) fn ui_with_shared(shared: &HostShared) -> UiHarness {
-    UiHarness::from_resources(shared.resources.clone(), SURFACE)
+    UiHarness::from_resources(shared.resources().clone(), SURFACE)
 }
 
 pub(super) fn blue_frame(ui: &mut Ui, salt: &'static str) -> NodeId {

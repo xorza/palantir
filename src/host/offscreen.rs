@@ -227,7 +227,7 @@ impl OffscreenHost {
     /// Cloneable handle to the most-recent GPU instrumentation sample —
     /// same handle the `Ui` debug overlay reads from.
     pub fn gpu_pass_stats(&self) -> &GpuPassStats {
-        &self.core.shared.resources.diagnostics.gpu_pass_stats
+        &self.core.shared.resources().diagnostics().gpu_pass_stats
     }
 }
 

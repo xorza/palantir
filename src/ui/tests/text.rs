@@ -216,7 +216,7 @@ fn text_reuse_is_window_local_while_cosmic_buffers_are_shared() {
     let b_key = b.ui.layout[Layer::Main].text_shapes[0].buffer_key();
 
     assert_ne!(a_key, b_key, "different window text needs distinct keys");
-    for (label, shaper) in [("A", &a.ui.resources.text), ("B", &b.ui.resources.text)] {
+    for (label, shaper) in [("A", a.ui.resources.text()), ("B", b.ui.resources.text())] {
         assert!(
             shaper.has_cosmic_buffer(a_key),
             "window {label} shares the buffer cache, so it sees A's key",
@@ -229,10 +229,10 @@ fn text_reuse_is_window_local_while_cosmic_buffers_are_shared() {
     assert!(a.engines.layout.text.has_entry(text_id, 0));
     assert!(b.engines.layout.text.has_entry(text_id, 0));
 
-    let after_b = a.ui.resources.text.measure_calls();
+    let after_b = a.ui.resources.text().measure_calls();
     a.frame(|ui| text_window(ui, "window A", 140.0));
     assert_eq!(
-        a.ui.resources.text.measure_calls(),
+        a.ui.resources.text().measure_calls(),
         after_b,
         "window B must not overwrite window A's reuse row",
     );
@@ -246,10 +246,10 @@ fn text_reuse_is_window_local_while_cosmic_buffers_are_shared() {
     assert!(!b.engines.layout.text.has_entry(text_id, 0));
     assert!(a.engines.layout.text.has_entry(text_id, 0));
 
-    let after_b_removal = a.ui.resources.text.measure_calls();
+    let after_b_removal = a.ui.resources.text().measure_calls();
     a.frame(|ui| text_window(ui, "window A", 160.0));
     assert_eq!(
-        a.ui.resources.text.measure_calls(),
+        a.ui.resources.text().measure_calls(),
         after_b_removal,
         "window B removal must not evict window A's reuse row",
     );
@@ -315,8 +315,8 @@ fn paint_only_frames_advance_the_shared_text_clock() {
     }
 
     let shared = HostShared::new(TextShaper::new(), TextureLimit::default());
-    let mut ui = UiHarness::from_resources(shared.resources.clone(), SURFACE);
-    let shaper = ui.ui.resources.text.clone();
+    let mut ui = UiHarness::from_resources(shared.resources().clone(), SURFACE);
+    let shaper = ui.ui.resources.text().clone();
 
     let first = ui.frame(blinking_text);
     assert_eq!(first.repaint_after, Some(HALF));
@@ -417,8 +417,8 @@ fn shared_cache_eviction_preserves_idle_windows_paint_only_text_source() {
     }
 
     let shared = HostShared::new(TextShaper::new(), TextureLimit::default());
-    let mut idle = UiHarness::from_resources(shared.resources.clone(), SURFACE);
-    let mut active = UiHarness::from_resources(shared.resources.clone(), SURFACE);
+    let mut idle = UiHarness::from_resources(shared.resources().clone(), SURFACE);
+    let mut active = UiHarness::from_resources(shared.resources().clone(), SURFACE);
 
     let idle_first = idle.frame(idle_body);
     assert_eq!(idle_first.repaint_after, Some(HALF));
@@ -430,9 +430,9 @@ fn shared_cache_eviction_preserves_idle_windows_paint_only_text_source() {
             Text::new("active window two").auto_id().show(ui);
         });
     });
-    idle.ui.resources.text.drop_cosmic_buffers();
+    idle.ui.resources.text().drop_cosmic_buffers();
     assert!(
-        !idle.ui.resources.text.has_cosmic_buffer(idle_key),
+        !idle.ui.resources.text().has_cosmic_buffer(idle_key),
         "the idle window's shaped buffer must be gone before the paint",
     );
 
@@ -443,7 +443,7 @@ fn shared_cache_eviction_preserves_idle_windows_paint_only_text_source() {
     let plan = idle_paint
         .plan
         .expect("the animated text boundary must produce a paint plan");
-    assert!(!idle.ui.resources.text.has_cosmic_buffer(idle_key));
+    assert!(!idle.ui.resources.text().has_cosmic_buffer(idle_key));
 
     let mut frontend = Frontend::for_test();
     frontend.build(idle.ui.frame_scene(), plan);
@@ -462,7 +462,7 @@ fn shared_cache_eviction_preserves_idle_windows_paint_only_text_source() {
         "PaintOnly must retain the source needed for backend reconstruction",
     );
     assert!(
-        !idle.ui.resources.text.has_cosmic_buffer(idle_key),
+        !idle.ui.resources.text().has_cosmic_buffer(idle_key),
         "frontend composition must not reconstruct an evicted text buffer",
     );
 }

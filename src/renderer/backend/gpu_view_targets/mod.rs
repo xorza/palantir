@@ -2,7 +2,7 @@
 //! paints into, and the bind groups a draw samples them through.
 //!
 //! Registered images are the other population a draw can sample. Those
-//! live on the registry's [`ImageGpu`](crate::renderer::backend::image_gpu::ImageGpu),
+//! live in [`WgpuImageStore`](crate::renderer::backend::image_store::WgpuImageStore),
 //! and the two build against one [`ImageBinding`], so a composite of a
 //! view binds exactly like an image. [`TextureIdSource`](crate::renderer::texture_id_source::TextureIdSource)
 //! mints both populations' ids, so an id cannot mean two things.

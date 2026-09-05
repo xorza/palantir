@@ -163,7 +163,7 @@ impl<'a> FrameCycle<'a> {
         // may pay it twice — see `TextShaper::tick_frame`. Through the
         // shaper `UiResources` owns rather than the layout engine's
         // `TextSystem`, which a paint-only frame never runs.
-        self.ui.resources.text.tick_frame();
+        self.ui.resources.text().tick_frame();
 
         self.ui.frame_runtime.note_processing(processing);
 

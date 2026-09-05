@@ -6,6 +6,8 @@
 //!   CPU; no device handles.
 //! - [`backend`] consumes `&RenderBuffer` and submits draws. The only
 //!   stage that touches a device/queue.
+//! - [`image_registry`] owns registered-image lifetimes. Its texels go to
+//!   an `ImageStore` the backend implements, so it names no device.
 //!
 //! [`RenderBuffer`](render_buffer::RenderBuffer) and [`Quad`](quad::Quad)
 //! live at this level as the frontend↔backend contract. Geometry and schedule

@@ -2,7 +2,7 @@
 //! it.
 //!
 //! Every `queue.write_texture` in the backend goes through
-//! [`TextureRegion::write`] — the image registry and the gradient atlas —
+//! [`TextureRegion::write`] — the image store and the gradient atlas —
 //! so the tally has one place to live and a third uploader cannot quietly
 //! skip it. Not every texture *upload*: the glyph atlas batches its
 //! pixels through one `copy_buffer_to_texture` on the frame encoder
