@@ -143,7 +143,8 @@ mod tests {
         let gpu = test_gpu::headless_test_gpu();
         let store = Rc::new(WgpuImageStore::new(gpu.device.clone(), gpu.queue.clone()));
         let weak = Rc::downgrade(&store);
-        let registry = ImageRegistry::new(Rc::clone(&store));
+        let registry = ImageRegistry::default();
+        registry.attach(Rc::clone(&store));
         assert!(!store.read().contains_key(&TextureId(1)));
 
         let mut image = Image::blank(UVec2::splat(2));
