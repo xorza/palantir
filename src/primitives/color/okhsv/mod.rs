@@ -18,7 +18,7 @@ use std::f32::consts::TAU;
 /// The conversion is Ottosson's reference
 /// (<https://bottosson.github.io/posts/colorpicker/>) over the crate's own
 /// Oklab matrices. It works entirely in linear light, so it never pays the
-/// cubic sRGB approximation that [`RgbaF32::rgb`] carries.
+/// cubic sRGB approximation that [`RgbaF32::srgb`] carries.
 ///
 /// # The blue sliver
 ///
