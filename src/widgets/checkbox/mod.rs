@@ -4,16 +4,16 @@
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::num::F32Ext;
 use crate::primitives::text_input::TextInput;
-use crate::scene::node::Node;
-use crate::scene::node::configure::Configure;
 use crate::shape::Shape;
 use crate::shape::polyline::PolylineColors;
 use crate::shape::style::{LineCap, LineJoin};
 use crate::ui::Ui;
+use crate::widgets::configure::Configure;
 use crate::widgets::response::Response;
 use crate::widgets::theme::toggle::ToggleTheme;
 use crate::widgets::theme::widget_look::theme_slot::ThemeSlot;
 use crate::widgets::toggle_chrome::ToggleChrome;
+use crate::widgets::widget::Widget;
 
 /// Two-response boolean toggle. Takes a `&mut bool` whose owner controls
 /// the value — same pattern as egui. Clicking the row flips it.
@@ -30,7 +30,7 @@ use crate::widgets::toggle_chrome::ToggleChrome;
 /// `box_size` etc.
 #[derive(Debug)]
 pub struct Checkbox<'a> {
-    node: Node,
+    widget: Widget,
     value: &'a mut bool,
     label: TextInput<'a>,
     style: Option<&'a ToggleTheme>,
@@ -40,7 +40,7 @@ impl<'a> Checkbox<'a> {
     #[track_caller]
     pub fn new(value: &'a mut bool) -> Self {
         Self {
-            node: ToggleChrome::row_node(),
+            widget: ToggleChrome::row(),
             value,
             label: TextInput::default(),
             style: None,
@@ -51,9 +51,8 @@ impl<'a> Checkbox<'a> {
 
     style_setter!('a, ToggleTheme, checkbox);
 
-    pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        let widget = ui.widget(self.node);
-        let response = widget.response(ui);
+    pub fn show(mut self, ui: &mut Ui) -> Response<'_> {
+        let response = self.widget.response(ui);
 
         let checked = ToggleChrome::toggled(&response, self.value);
 
@@ -66,11 +65,11 @@ impl<'a> Checkbox<'a> {
         let chrome = ToggleChrome {
             plan: slot.plan(&response, checked, theme.text),
             gap: slot.gap,
-            boxed: Node::leaf().size((Sizing::fixed(box_size), Sizing::fixed(box_size))),
+            boxed: Widget::leaf().size((Sizing::fixed(box_size), Sizing::fixed(box_size))),
             // Square box: the theme's own corner radius stands.
             pill: None,
         };
-        chrome.record_row(ui, widget, response, self.label, |ui, _| {
+        chrome.record_row(ui, self.widget, response, self.label, |ui, _| {
             if checked {
                 ui.add_shape(
                     Shape::polyline(&check, PolylineColors::Single(indicator), indicator_stroke)

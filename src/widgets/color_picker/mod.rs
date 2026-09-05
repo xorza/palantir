@@ -10,14 +10,13 @@ use crate::primitives::color::color_model::ColorModel;
 use crate::primitives::color::srgba_u8::SrgbaU8;
 use crate::primitives::num::F32Ext;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::node::Node;
-use crate::scene::node::configure::Configure;
 use crate::ui::Ui;
 use crate::widgets::color_field::ColorField;
 use crate::widgets::color_picker::history::History;
 use crate::widgets::color_strip::ColorStrip;
 use crate::widgets::color_surface;
 use crate::widgets::color_swatch::ColorSwatch;
+use crate::widgets::configure::Configure;
 use crate::widgets::drag_value::DragValue;
 use crate::widgets::grid::Grid;
 use crate::widgets::panel::Panel;
@@ -27,6 +26,7 @@ use crate::widgets::text::Text;
 use crate::widgets::text_edit::TextEdit;
 use crate::widgets::theme::color_picker::ColorPickerTheme;
 use crate::widgets::value_response::ValueResponse;
+use crate::widgets::widget::Widget;
 use std::fmt::Write as _;
 use std::rc::Rc;
 
@@ -58,7 +58,7 @@ mod history;
 /// outside, which is how a caller's own edit moves the handles.
 #[derive(Debug)]
 pub struct ColorPicker<'a> {
-    node: Node,
+    widget: Widget,
     color: &'a mut RgbaF32,
     alpha: bool,
     model: Option<ColorModel>,
@@ -103,7 +103,7 @@ impl<'a> ColorPicker<'a> {
     #[track_caller]
     pub fn new(color: &'a mut RgbaF32) -> Self {
         Self {
-            node: Node::vstack(),
+            widget: Widget::vstack(),
             color,
             alpha: false,
             model: None,
@@ -171,13 +171,12 @@ impl<'a> ColorPicker<'a> {
         // The panel is as wide as its field and no wider. Every row below is
         // `FILL` inside that, which is what keeps the value grid's columns a
         // fixed width instead of one the digits inside them push around.
-        let node = self.node.gap(gap).default_size((
+        let mut widget = self.widget.gap(gap).default_size((
             Sizing::fixed(slot.field_width.themed_length(1.0)),
             Sizing::HUG,
         ));
-        let widget = ui.widget(node);
         let response = widget.response(ui);
-        let id = widget.id();
+        let id = widget.resolve(ui);
 
         let color = self.color;
         let alpha_on = self.alpha;

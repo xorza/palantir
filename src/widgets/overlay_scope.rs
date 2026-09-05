@@ -6,10 +6,10 @@ use crate::layout::types::placement::Placement;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
-use crate::scene::node::Node;
-use crate::scene::node::configure::Configure;
 use crate::ui::Ui;
+use crate::widgets::configure::Configure;
 use crate::widgets::frame::Frame;
+use crate::widgets::widget::Widget;
 
 /// What stands between an overlay's body and the layers below it.
 ///
@@ -101,10 +101,10 @@ impl OverlayScope {
         layer: Layer,
         placement: impl Into<Placement>,
         backdrop: Backdrop,
-        root: &mut Node,
+        root: &mut Widget,
     ) -> Self {
         if backdrop.owns_input() {
-            root.flags.set_key_filter(KeyFilter::ALL);
+            root.configure().input_scope(KeyFilter::ALL);
         }
         Self {
             owner,

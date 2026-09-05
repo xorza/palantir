@@ -14,10 +14,10 @@ use crate::primitives::widget_id::WidgetId;
 
 use crate::layout::types::sizing::Sizing;
 use crate::scene::layer::Layer;
-use crate::scene::node::configure::Configure;
 use crate::scene::tree::node_id::NodeId;
 use crate::ui::harness::UiHarness;
 use crate::widgets::button::Button;
+use crate::widgets::configure::Configure;
 use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
 use glam::UVec2;

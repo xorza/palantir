@@ -211,7 +211,7 @@ cargo run --release --features showcase --bin showcase
 
 To author your own widget from the public API, see
 [`examples/custom_widget.rs`](https://github.com/xorza/palantir/blob/master/examples/custom_widget.rs) — a `Stepper`
-built from `Element` + `Configure`, `Ui::widget_id` / `Ui::node` /
+built from `Widget` + `Configure`, `Widget::resolve` / `Widget::record` /
 `Ui::add_shape` / `Ui::response_for`, with nothing reaching into crate
 internals:
 

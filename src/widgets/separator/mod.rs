@@ -6,12 +6,12 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::num::F32Ext;
-use crate::scene::node::Node;
-use crate::scene::node::configure::Configure;
-use crate::scene::node::theme_defaults::ThemeDefaults;
 use crate::ui::Ui;
+use crate::widgets::configure::Configure;
+use crate::widgets::configure::ThemeDefaults;
 use crate::widgets::response::Response;
 use crate::widgets::theme::separator::SeparatorTheme;
+use crate::widgets::widget::Widget;
 
 /// A thin divider rule between content. [`Separator::horizontal`]
 /// stretches across the parent's width as a `thickness`-tall line;
@@ -26,7 +26,7 @@ use crate::widgets::theme::separator::SeparatorTheme;
 /// Visuals come from [`crate::SeparatorTheme`] (theme slot `separator`).
 #[derive(Debug)]
 pub struct Separator<'a> {
-    node: Node,
+    widget: Widget,
     axis: Axis,
     thickness: Option<f32>,
     color: Option<RgbaF32>,
@@ -48,16 +48,16 @@ impl<'a> Separator<'a> {
 
     #[track_caller]
     fn along(axis: Axis) -> Self {
-        Self::over(Node::leaf(), axis)
+        Self::over(Widget::leaf(), axis)
     }
 
     /// A rule on `axis` over a node the caller already built, so
     /// [`crate::MenuSeparator`] forwards the `Configure` calls that
     /// landed on it — identity included, which is why this takes the
     /// node rather than building one at *this* call site.
-    pub(crate) fn over(node: Node, axis: Axis) -> Self {
+    pub(crate) fn over(widget: Widget, axis: Axis) -> Self {
         Self {
-            node,
+            widget,
             axis,
             thickness: None,
             color: None,
@@ -88,27 +88,26 @@ impl<'a> Separator<'a> {
         self
     }
 
-    pub fn show(mut self, ui: &mut Ui) -> Response<'_> {
+    pub fn show(self, ui: &mut Ui) -> Response<'_> {
         let theme = self.slot(ui.theme());
         let t = self.thickness.unwrap_or(theme.thickness).themed_length(0.0);
-        let margin = theme.margin;
-        if self.node.size.is_none() {
-            // The stretch belongs to the `Hug` default, not to the rule:
-            // it is what spans the parent, and applying it over an
-            // explicit size would override the extent the caller gave.
-            // `Node` is `Copy`, so the chain reads back into the field.
-            let (default_size, stretch) = match self.axis {
-                Axis::X => ((Sizing::HUG, Sizing::fixed(t)), Align::h(HAlign::Stretch)),
-                Axis::Y => ((Sizing::fixed(t), Sizing::HUG), Align::v(VAlign::Stretch)),
-            };
-            self.node = self.node.size(default_size).default_align(stretch);
-        }
+        let (default_size, stretch) = match self.axis {
+            Axis::X => ((Sizing::HUG, Sizing::fixed(t)), Align::h(HAlign::Stretch)),
+            Axis::Y => ((Sizing::fixed(t), Sizing::HUG), Align::v(VAlign::Stretch)),
+        };
+        // The stretch belongs to the `Hug` default, not to the rule: it
+        // is what spans the parent, and applying it over an explicit
+        // size would override the extent the caller gave.
+        let widget = match self.widget.authored_size() {
+            Some(_) => self.widget,
+            None => self.widget.size(default_size).default_align(stretch),
+        };
         let chrome = Background::fill(self.color.unwrap_or(theme.color));
         // Theme margin fills in only where the caller stayed silent —
         // the menu slot holds its rule off the rows above and below,
         // the in-flow slot leaves it at zero.
-        let node = self.node.default_margin(margin);
-        ui.widget(node).show(ui, Some(&chrome), |_| {}).response
+        let widget = widget.default_margin(theme.margin);
+        widget.show(ui, Some(&chrome), |_| {}).response
     }
 }
 

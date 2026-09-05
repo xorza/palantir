@@ -18,33 +18,45 @@ fn the_bundle_ceiling_gates_registration_and_is_what_ui_reports() {
     assert_eq!(ui.max_image_dimension(), NonZeroU32::new(4));
 
     let accepted = ui.register_image(&img(4, 4)).unwrap();
-    assert_eq!(accepted.id(), TextureId(1));
     assert_eq!(
         ui.register_image(&img(5, 1)).unwrap_err().max_dimension,
         4,
         "an over-limit source is rejected against the bundle's ceiling",
     );
     let next = ui.register_image(&img(1, 1)).unwrap();
-    assert_eq!(next.id(), TextureId(2), "a rejection consumes no id");
+    assert!(
+        next.id().0 > accepted.id().0,
+        "a registration after a rejection still gets a fresh id",
+    );
 }
 
 fn img(w: u32, h: u32) -> Image {
     Image::from_rgba8(w, h, vec![0u8; (w * h * 4) as usize])
 }
 
+/// The sequence is process-wide, so the ids are only ever compared
+/// against each other: another test registering an image on another
+/// thread lands between any two reserves here, which is exactly the
+/// interleaving the one sequence exists to survive.
 #[test]
-fn images_and_gpu_views_share_one_texture_id_authority() {
-    let resources = UiResources::isolated_mono();
-    let clone = resources.clone();
-    let gpu_view_id = resources.texture_ids.reserve();
-    let first = resources.register_image(&img(2, 3)).unwrap();
-    let second = clone.register_image(&img(4, 5)).unwrap();
+fn no_two_texture_ids_repeat_across_hosts_or_kinds() {
+    let host = UiResources::isolated_mono();
+    let window = host.clone();
+    let elsewhere = UiResources::isolated_mono();
 
-    assert_eq!(gpu_view_id, TextureId(1));
-    assert_eq!(first.id(), TextureId(2));
-    assert_eq!(second.id(), TextureId(3));
+    let gpu_view = TextureId::reserve();
+    let first = host.register_image(&img(2, 3)).unwrap();
+    let second = window.register_image(&img(4, 5)).unwrap();
+    let foreign = elsewhere.register_image(&img(6, 7)).unwrap();
+
+    let ids = [gpu_view, first.id(), second.id(), foreign.id()];
+    assert!(
+        ids.windows(2).all(|pair| pair[0].0 < pair[1].0),
+        "one sequence, whichever host or kind asked: {ids:?}",
+    );
     assert_eq!(first.size(), UVec2::new(2, 3));
     assert_eq!(second.size(), UVec2::new(4, 5));
+    assert_eq!(foreign.size(), UVec2::new(6, 7));
 }
 
 #[test]

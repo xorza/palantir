@@ -5,10 +5,11 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
 use crate::primitives::num::F32Ext;
-use crate::scene::node::Node;
 use crate::ui::Ui;
+use crate::widgets::configure::Configure;
 use crate::widgets::response::Response;
 use crate::widgets::theme::progress_bar::ProgressBarTheme;
+use crate::widgets::widget::Widget;
 
 /// Determinate progress bar: a rounded `track` with an accent fill
 /// spanning `fraction` (clamped to `0..=1`) of its width.
@@ -23,7 +24,7 @@ use crate::widgets::theme::progress_bar::ProgressBarTheme;
 /// `progress_bar`).
 #[derive(Debug)]
 pub struct ProgressBar<'a> {
-    node: Node,
+    widget: Widget,
     fraction: f32,
     style: Option<&'a ProgressBarTheme>,
 }
@@ -32,7 +33,7 @@ impl<'a> ProgressBar<'a> {
     #[track_caller]
     pub fn new(fraction: f32) -> Self {
         Self {
-            node: Node::hstack(),
+            widget: Widget::hstack(),
             fraction,
             style: None,
         }
@@ -46,14 +47,13 @@ impl<'a> ProgressBar<'a> {
         let thickness = theme.thickness.themed_length(0.0);
         let radius = Corners::all(thickness * 0.5);
 
-        let mut node = self.node;
-        node.size
-            .get_or_insert((Sizing::FILL, Sizing::fixed(thickness)).into());
+        let mut widget = self
+            .widget
+            .default_size((Sizing::FILL, Sizing::fixed(thickness)));
         let track = Background::rounded(theme.track, radius);
         let fill_bg = Background::rounded(theme.fill, radius);
 
-        let widget = ui.widget(node);
-        let id = widget.id();
+        let id = widget.resolve(ui);
         widget
             .show(ui, Some(&track), |ui| {
                 ui.chrome_leaf(id.with("fill"), (fill, Sizing::FILL), Some(&fill_bg));

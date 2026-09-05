@@ -11,8 +11,8 @@
 //!
 //! The pure data types live elsewhere —
 //! [`Image`] / [`ImageFit`](crate::primitives::image::ImageFit) in
-//! `primitives`, [`TextureId`] in `primitives::texture_id` and its source
-//! in `renderer::texture_id_source`, and the device ceiling a source is
+//! `primitives`, [`TextureId`] and the counter it is minted from in
+//! `primitives::texture_id`, and the device ceiling a source is
 //! measured against in
 //! [`TextureLimit`](crate::renderer::texture_limit::TextureLimit) — so this
 //! module owns only the lifecycle. `UiResources` mints the id and applies

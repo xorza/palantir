@@ -8,14 +8,15 @@ use crate::primitives::background::Background;
 use crate::primitives::text_input::TextInput;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
-use crate::scene::node::Node;
-use crate::scene::node::theme_defaults::ThemeDefaults;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
+use crate::widgets::configure::Configure;
+use crate::widgets::configure::ThemeDefaults;
 use crate::widgets::overlay_scope::{Backdrop, OverlayScope};
 use crate::widgets::response::ResponseSnapshot;
 use crate::widgets::text::Text;
 use crate::widgets::theme::tooltip::TooltipTheme;
+use crate::widgets::widget::Widget;
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -76,7 +77,7 @@ pub struct Tooltip<'a> {
     label: TextInput<'a>,
     delay: Option<Duration>,
     show_when_disabled: bool,
-    node: Node,
+    widget: Widget,
     chrome: Option<Background>,
     style: Option<&'a TooltipTheme>,
 }
@@ -89,15 +90,14 @@ impl<'a> Tooltip<'a> {
     /// borrow before recording the tooltip body.
     #[track_caller]
     pub fn on(snapshot: &'a ResponseSnapshot) -> Self {
-        let mut node = Node::vstack();
         // Bubble must never claim hover — would shadow its own trigger.
-        node.flags.set_sense(Sense::empty());
+        let widget = Widget::vstack().sense(Sense::empty());
         Self {
             snapshot,
             label: TextInput::default(),
             delay: None,
             show_when_disabled: false,
-            node,
+            widget,
             chrome: None,
             style: None,
         }
@@ -204,8 +204,8 @@ impl<'a> Tooltip<'a> {
             // derives from the trigger, because that is the only thing a
             // tooltip *has* — but a caller-set id wins like any other
             // explicit value.
-            let mut node = self
-                .node
+            let mut bubble = self
+                .widget
                 .default_id(bubble_id)
                 .default_padding(theme.padding)
                 .default_max_size(theme.max_size);
@@ -217,10 +217,10 @@ impl<'a> Tooltip<'a> {
                 Layer::Tooltip,
                 position,
                 Backdrop::None,
-                &mut node,
+                &mut bubble,
             );
             let _ = scope.record(ui, |ui| {
-                ui.widget(node).record(ui, Some(chrome), |ui| {
+                bubble.record(ui, Some(chrome), |ui| {
                     Text::new(label)
                         .style(&theme.text)
                         .text_wrap(TextWrap::Wrap)

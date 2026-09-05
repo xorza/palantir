@@ -5,7 +5,7 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::color::{RgbaF32, RgbaU8};
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
-use crate::scene::node::configure::Configure;
+use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::spinner::Spinner;
 use crate::widgets::spinner::{ArcGeometry, arc_geometry, comet_brush};

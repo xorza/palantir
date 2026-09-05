@@ -5,9 +5,9 @@
 //! surface, so this example doubles as a compile-time proof that the
 //! surface is complete:
 //!
-//! * `Node` constructors + the `Configure` builder (implemented for `Node`
-//!   itself) — construct and configure layout nodes.
-//! * `Ui::widget` — resolve a stable id once per widget, into a `Widget`.
+//! * `Widget` constructors + the `Configure` builder (implemented for
+//!   `Widget` itself) — construct and configure what a widget records.
+//! * `Widget::resolve` — the stable id, resolved once and kept.
 //! * `Widget::record` — open the widget's node, run its body, close it.
 //! * `Ui::response_for` — read last frame's interaction (hover/click/…).
 //! * `Ui::add_shape` — paint custom geometry (the ± glyphs).
@@ -17,15 +17,15 @@
 //! Run with: `cargo run --example custom_widget`
 
 use palantir::{
-    Align, App, Background, Configure, ConfigureNode, Corners, HostHandle, LineCap, LineJoin, Node,
+    Align, App, Background, Configure, ConfigureWidget, Corners, HostHandle, LineCap, LineJoin,
     Panel, PolylineColors, Response, ResponseState, RgbaF32, Sense, Shadow, Shape, Sizing, SrgbaU8,
-    Stroke, Text, Ui, VAlign, Vec2, WidgetId, WindowToken, WinitHost, WinitHostError, fmt,
+    Stroke, Text, Ui, VAlign, Vec2, Widget, WidgetId, WindowToken, WinitHost, WinitHostError, fmt,
 };
 
 /// A horizontal integer stepper bound to a caller-owned `&mut i32`.
 #[derive(Debug)]
 pub struct Stepper<'a> {
-    node: Node,
+    widget: Widget,
     value: &'a mut i32,
     min: i32,
     max: i32,
@@ -39,7 +39,7 @@ impl<'a> Stepper<'a> {
     #[track_caller]
     pub fn new(value: &'a mut i32) -> Self {
         Self {
-            node: Node::hstack(),
+            widget: Widget::hstack(),
             value,
             min: i32::MIN,
             max: i32::MAX,
@@ -63,12 +63,12 @@ impl<'a> Stepper<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        // 1) Resolve the container into a `Widget` once, then read last
-        //    frame's interaction for the two buttons (keyed off its id)
-        //    and apply clicks *before* recording — so the new value
-        //    paints this frame.
-        let widget = ui.widget(self.node);
-        let id = widget.id();
+        // 1) Resolve the container's id once, then read last frame's
+        //    interaction for the two buttons (keyed off it) and apply
+        //    clicks *before* recording — so the new value paints this
+        //    frame.
+        let mut widget = self.widget;
+        let id = widget.resolve(ui);
         let minus_id = id.with("minus");
         let plus_id = id.with("plus");
         let minus = ui.response_for(minus_id);
@@ -103,10 +103,10 @@ impl<'a> Stepper<'a> {
 }
 
 /// The container builder gets every chained setter (`.gap`, `.padding`,
-/// `.id_salt`, `.size`, …) for free by implementing just `node_mut`.
+/// `.id_salt`, `.size`, …) for free by implementing just `configure`.
 impl Configure for Stepper<'_> {
-    fn node_mut(&mut self) -> ConfigureNode<'_> {
-        self.node.node_mut()
+    fn configure(&mut self) -> ConfigureWidget<'_> {
+        self.widget.configure()
     }
 }
 
@@ -132,11 +132,11 @@ fn step_button(ui: &mut Ui, id: WidgetId, state: ResponseState, glyph: Glyph) {
         corners: Corners::all(5.0),
         shadow: Shadow::NONE,
     };
-    let el = Node::leaf()
+    let widget = Widget::leaf()
         .id(id)
         .size((Sizing::fixed(24.0), Sizing::fixed(24.0)))
         .sense(Sense::CLICK);
-    ui.widget(el).record(ui, Some(&chrome), |ui| {
+    widget.record(ui, Some(&chrome), |ui| {
         // Glyphs in node-local coordinates (0..24 on each axis). A
         // horizontal bar is the minus; the plus adds a vertical bar.
         let horiz = [Vec2::new(7.0, 12.0), Vec2::new(17.0, 12.0)];

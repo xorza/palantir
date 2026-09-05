@@ -13,9 +13,9 @@ use crate::scene::damage::Damage;
 
 use crate::Ui;
 use crate::scene::layer::Layer;
-use crate::scene::node::configure::Configure;
 use crate::shape::Shape;
 use crate::ui::harness::UiHarness;
+use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 use glam::UVec2;
 use glam::Vec2;

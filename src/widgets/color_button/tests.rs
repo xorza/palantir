@@ -1,9 +1,9 @@
 use crate::primitives::color::RgbaF32;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
-use crate::scene::node::configure::Configure;
 use crate::ui::harness::UiHarness;
 use crate::widgets::color_button::ColorButton;
+use crate::widgets::configure::Configure;
 use glam::{UVec2, Vec2};
 
 fn harness() -> UiHarness {

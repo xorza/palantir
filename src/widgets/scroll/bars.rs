@@ -14,12 +14,12 @@ use crate::primitives::corners::Corners;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::node::Node;
-use crate::scene::node::configure::Configure;
 use crate::ui::Ui;
+use crate::widgets::configure::Configure;
 use crate::widgets::scroll::ScrollGeometry;
 use crate::widgets::scroll::state::{ScrollState, ThumbTravel, TrackPage};
 use crate::widgets::theme::scrollbar::ScrollbarTheme;
+use crate::widgets::widget::Widget;
 use glam::BVec2;
 
 /// Cross-axis space one bar reserves on a panned axis: the bar's
@@ -97,10 +97,10 @@ impl BarAxis {
     /// way, matching OS scrollbar conventions.
     fn record(&self, ui: &mut Ui, theme: &ScrollbarTheme) {
         let radius = Corners::all(theme.thickness * 0.5);
-        let track = Node::leaf().id(self.track_id).sense(Sense::CLICK);
+        let track = Widget::leaf().id(self.track_id).sense(Sense::CLICK);
         let track_chrome =
             (!theme.track.is_noop()).then(|| Background::rounded(theme.track, radius));
-        ui.widget(track).record(ui, track_chrome.as_ref(), |_| {});
+        track.record(ui, track_chrome.as_ref(), |_| {});
 
         let fill = if self.thumb.left.drag.delta().is_some() || self.thumb.pressed() {
             theme.thumb_active
@@ -109,9 +109,9 @@ impl BarAxis {
         } else {
             theme.thumb
         };
-        let thumb = Node::leaf().id(self.thumb_id).sense(Sense::DRAG);
+        let thumb = Widget::leaf().id(self.thumb_id).sense(Sense::DRAG);
         let chrome = Background::rounded(fill, radius);
-        ui.widget(thumb).record(ui, Some(&chrome), |_| {});
+        thumb.record(ui, Some(&chrome), |_| {});
     }
 }
 
@@ -284,10 +284,10 @@ impl Bars {
             bar_thickness: self.theme.thickness,
             min_thumb: self.theme.min_thumb_px,
         });
-        let overlay = Node::scrollbars(def_id)
+        let overlay = Widget::scrollbars(def_id)
             .id(scroll_id.with("bars"))
             .size((Sizing::FILL, Sizing::FILL));
-        ui.widget(overlay).record(ui, None, |ui| {
+        overlay.record(ui, None, |ui| {
             for (_, bar) in self.axes() {
                 bar.record(ui, &self.theme);
             }

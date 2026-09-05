@@ -122,9 +122,9 @@ macro_rules! style_setter {
     };
 }
 
-/// Implement [`Configure`](crate::scene::node::configure::Configure) for widget
-/// builders that keep their [`Node`](crate::scene::node::Node) in a
-/// field called `node`.
+/// Implement [`Configure`](crate::widgets::configure::Configure) for widget
+/// builders that keep their [`Widget`](crate::widgets::widget::Widget) in
+/// a field called `widget`.
 ///
 /// The trait has one required method and every widget's answer is the
 /// same expression over the same field, so spelling the block out per
@@ -136,15 +136,15 @@ macro_rules! style_setter {
 /// `impl_configure!(<S> ComboBox<'_, S>)`,
 /// `impl_configure!(<T: PartialEq> RadioButton<'_, T>)`.
 ///
-/// One widget writes the impl by hand instead: `ContextMenu` has no `node`
-/// of its own — it forwards to the `Popup` it wraps, which is delegation
-/// the macro's fixed `self.node` body can't express.
+/// One widget writes the impl by hand instead: `ContextMenu` has no
+/// `Widget` of its own — it forwards to the `Popup` it wraps, which is
+/// delegation the macro's fixed `self.widget` body can't express.
 macro_rules! impl_configure {
     (<$($param:ident $(: $bound:path)?),*> $ty:ty) => {
-        impl<$($param $(: $bound)?,)*> $crate::scene::node::configure::Configure for $ty {
+        impl<$($param $(: $bound)?,)*> $crate::widgets::configure::Configure for $ty {
             #[inline]
-            fn node_mut(&mut self) -> $crate::scene::node::configure::ConfigureNode<'_> {
-                $crate::scene::node::configure::Configure::node_mut(&mut self.node)
+            fn configure(&mut self) -> $crate::widgets::configure::ConfigureWidget<'_> {
+                $crate::widgets::configure::Configure::configure(&mut self.widget)
             }
         }
     };
@@ -165,6 +165,7 @@ pub(crate) mod color_strip;
 pub(crate) mod color_surface;
 pub(crate) mod color_swatch;
 pub(crate) mod combo_box;
+pub(crate) mod configure;
 pub(crate) mod context_menu;
 pub(crate) mod dock;
 pub(crate) mod drag_num;

@@ -5,16 +5,16 @@ use crate::input::shortcut::Shortcut;
 use crate::layout::types::align::{Align, HAlign};
 use crate::layout::types::justify::Justify;
 use crate::primitives::text_input::TextInput;
-use crate::scene::node::Node;
-use crate::scene::node::configure::Configure;
 use crate::ui::Ui;
 use crate::widgets::close_handle::CloseHandle;
+use crate::widgets::configure::Configure;
 use crate::widgets::context_menu::menu_separator::MenuSeparator;
 use crate::widgets::response::Response;
 use crate::widgets::text::Text;
 use crate::widgets::theme::context_menu::menu_item::MenuItemTheme;
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::theme::widget_look::theme_slot::ThemeSlot;
+use crate::widgets::widget::Widget;
 
 /// One row inside a [`ContextMenu`](crate::widgets::context_menu::ContextMenu). Label on the left, optional
 /// right-aligned shortcut hint, theme-driven hover chrome. Reports
@@ -29,7 +29,7 @@ use crate::widgets::theme::widget_look::theme_slot::ThemeSlot;
 /// don't intercept.
 #[derive(Debug)]
 pub struct MenuItem<'a> {
-    node: Node,
+    widget: Widget,
     label: TextInput<'a>,
     shortcut: MenuShortcut,
     style: Option<&'a MenuItemTheme>,
@@ -45,10 +45,8 @@ enum MenuShortcut {
 impl<'a> MenuItem<'a> {
     #[track_caller]
     pub fn new(label: impl Into<TextInput<'a>>) -> Self {
-        let mut node = Node::hstack();
-        node.flags.set_sense(Sense::CLICK);
         Self {
-            node,
+            widget: Widget::hstack().sense(Sense::CLICK),
             label: label.into(),
             shortcut: MenuShortcut::None,
             style: None,
@@ -79,13 +77,12 @@ impl<'a> MenuItem<'a> {
         MenuSeparator::new()
     }
 
-    pub fn show<'ui>(self, ui: &'ui mut Ui, popup: &CloseHandle) -> Response<'ui> {
+    pub fn show<'ui>(mut self, ui: &'ui mut Ui, popup: &CloseHandle) -> Response<'ui> {
         // Single `response_for` probe via the shared entry helper: the
         // row's body records only decorative `Text` leaves, so the response
         // is identical before and after the node records.
-        let mut widget = ui.widget(self.node);
-        let mut response = widget.response(ui);
-        let id = widget.id();
+        let mut response = self.widget.response(ui);
+        let id = self.widget.resolve(ui);
         let disabled = response.disabled;
 
         // Row-only scalars and the look plan come off one borrow of the row's
@@ -97,7 +94,9 @@ impl<'a> MenuItem<'a> {
         let item = self.slot(theme);
         let shortcut_color = item.shortcut;
         let gap = item.gap;
-        let look = item.plan(&response, (), theme.text).apply(ui, &mut widget);
+        let look = item
+            .plan(&response, (), theme.text)
+            .apply(ui, &mut self.widget);
         // Already fallen back to `theme.text` by `WidgetLook::animate`.
         let text_style = look.text;
         // Shortcut hint reads muted — same style as the label but the
@@ -107,14 +106,15 @@ impl<'a> MenuItem<'a> {
             ..text_style
         };
 
-        let node = &mut widget.node;
         // Hug+Stretch+SpaceBetween: row hugs content (the default
         // `Sizes` — respects an explicit `.size(...)`), arrange
         // stretches to widest row, label/shortcut pin to opposite
         // edges. Fill would leak INF.
-        node.align = Align::h(HAlign::Stretch);
-        node.justify = Justify::SpaceBetween;
-        node.gaps.set_gap(gap);
+        self.widget
+            .configure()
+            .align(Align::h(HAlign::Stretch))
+            .justify(Justify::SpaceBetween)
+            .gap(gap);
 
         let label = ui.intern(self.label);
         // Passive hints watch for wake-up while their parent owns dispatch.
@@ -148,7 +148,7 @@ impl<'a> MenuItem<'a> {
                     .show(ui);
             }
         };
-        widget.record(ui, Some(&look.background), body);
+        self.widget.record(ui, Some(&look.background), body);
 
         if shortcut_fired {
             response.mark_clicked();

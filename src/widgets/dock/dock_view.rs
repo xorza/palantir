@@ -6,9 +6,8 @@ use crate::primitives::approx;
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
 use crate::scene::layer::Layer;
-use crate::scene::node::Node;
-use crate::scene::node::configure::Configure;
 use crate::ui::Ui;
+use crate::widgets::configure::Configure;
 use crate::widgets::context_menu::ContextMenu;
 use crate::widgets::dock::dock_node::{DockNode, DockSplit, NodeIdx};
 use crate::widgets::dock::dock_op::DockOp;
@@ -25,6 +24,7 @@ use crate::widgets::tabs::tab_item::{TabItem, TabItemBuf};
 use crate::widgets::tabs::tab_strip::{TabOverflow, TabStrip};
 use crate::widgets::text::Text;
 use crate::widgets::theme::dock::DockTheme;
+use crate::widgets::widget::Widget;
 use crate::window::cursor_icon::CursorIcon;
 use std::rc::Rc;
 
@@ -60,7 +60,7 @@ use std::rc::Rc;
 /// no queue of its own to route the ops through.
 #[derive(Debug)]
 pub struct DockView<'a, T> {
-    node: Node,
+    widget: Widget,
     state: &'a DockState<T>,
     ops: &'a mut Vec<DockOp<T>>,
     min_pane: f32,
@@ -78,7 +78,7 @@ impl<'a, T: DockTab> DockView<'a, T> {
     #[track_caller]
     pub fn new(state: &'a DockState<T>, ops: &'a mut Vec<DockOp<T>>) -> Self {
         Self {
-            node: Node::zstack()
+            widget: Widget::zstack()
                 .id(state.dock_id())
                 .size((Sizing::FILL, Sizing::FILL)),
             state,
@@ -117,15 +117,14 @@ impl<'a, T: DockTab> DockView<'a, T> {
         let app_theme = Rc::clone(ui.theme());
         let theme = self.slot(&app_theme);
         let Self {
-            node,
+            mut widget,
             state,
             ops,
             min_pane,
             overflow,
             style: _,
         } = self;
-        let widget = ui.widget(node);
-        let id = widget.id();
+        let id = widget.resolve(ui);
         let response = widget.response(ui);
         let mut cx = DockCtx {
             state,

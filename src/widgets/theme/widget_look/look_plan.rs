@@ -2,6 +2,7 @@
 //! borrow does not have to survive the `&mut Ui` its own body takes.
 
 use crate::ui::Ui;
+use crate::widgets::configure::Configure;
 use crate::widgets::theme::widget_look::WidgetLook;
 use crate::widgets::theme::widget_look::animated_look::AnimatedLook;
 use crate::widgets::theme::widget_look::theme_slot::SlotDefaults;
@@ -64,14 +65,11 @@ impl LookPlan {
                     anim,
                 },
         } = self;
-        let node = &mut widget.node;
-        // The `&mut Node` writers rather than `ThemeDefaults` — same
-        // guarded write and the same NaN screen, without moving a
-        // 120-byte `Node` through two consuming builders that carry no
-        // `#[inline]`, three copies deep, once per themed widget per
-        // frame.
-        node.fill_padding(padding);
-        node.fill_margin(margin);
-        ui.animate(widget.id(), WidgetLook::SLOT_LOOK, target, anim)
+        widget
+            .configure()
+            .default_padding(padding)
+            .default_margin(margin);
+        let id = widget.resolve(ui);
+        ui.animate(id, WidgetLook::SLOT_LOOK, target, anim)
     }
 }

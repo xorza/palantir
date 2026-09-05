@@ -4,17 +4,18 @@
 use crate::input::sense::Sense;
 use crate::layout::types::align::Align;
 use crate::primitives::text_input::TextInput;
-use crate::scene::node::Node;
 use crate::shape::Shape;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
+use crate::widgets::configure::Configure;
 use crate::widgets::response::Response;
 use crate::widgets::theme::button::ButtonTheme;
 use crate::widgets::theme::widget_look::theme_slot::ThemeSlot;
+use crate::widgets::widget::Widget;
 
 #[derive(Debug)]
 pub struct Button<'a> {
-    node: Node,
+    widget: Widget,
     style: Option<&'a ButtonTheme>,
     label: TextInput<'a>,
     label_align: Align,
@@ -24,10 +25,8 @@ pub struct Button<'a> {
 impl<'a> Button<'a> {
     #[track_caller]
     pub fn new() -> Self {
-        let mut node = Node::leaf();
-        node.flags.set_sense(Sense::CLICK);
         Self {
-            node,
+            widget: Widget::leaf().sense(Sense::CLICK),
             style: None,
             label: TextInput::default(),
             label_align: Align::CENTER,
@@ -61,18 +60,19 @@ impl<'a> Button<'a> {
         self
     }
 
-    pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        let mut widget = ui.widget(self.node);
-        let response = widget.response(ui);
-        let id = widget.id();
+    pub fn show(mut self, ui: &mut Ui) -> Response<'_> {
+        let response = self.widget.response(ui);
+        let id = self.widget.resolve(ui);
         let theme = ui.theme();
         let slot = self.slot(theme);
-        let look = slot.plan(&response, (), theme.text).apply(ui, &mut widget);
+        let look = slot
+            .plan(&response, (), theme.text)
+            .apply(ui, &mut self.widget);
         let label = self.label;
         let label_align = self.label_align;
         let label_wrap = self.label_wrap;
 
-        widget.record(ui, Some(&look.background), |ui| {
+        self.widget.record(ui, Some(&look.background), |ui| {
             if !label.is_empty() {
                 let label = ui.intern(label);
                 ui.add_shape(
@@ -98,8 +98,8 @@ mod tests {
     use crate::primitives::background::Background;
     use crate::primitives::spacing::Spacing;
     use crate::scene::layer::Layer;
-    use crate::scene::node::configure::Configure;
     use crate::widgets::button::Button;
+    use crate::widgets::configure::Configure;
     use crate::widgets::theme::button::ButtonTheme;
     use crate::widgets::theme::widget_look::theme_slot::SlotDefaults;
     use glam::UVec2;

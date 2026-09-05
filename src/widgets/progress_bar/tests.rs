@@ -2,7 +2,7 @@ use crate::ui::harness::UiHarness;
 
 use crate::layout::types::sizing::Sizing;
 use crate::scene::layer::Layer;
-use crate::scene::node::configure::Configure;
+use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::progress_bar::ProgressBar;
 use glam::UVec2;

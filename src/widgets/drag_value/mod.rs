@@ -8,17 +8,17 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::node::Node;
-use crate::scene::node::configure::Configure;
 use crate::shape::Shape;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
+use crate::widgets::configure::Configure;
 use crate::widgets::drag_num::DragNum;
 use crate::widgets::response::Response;
 use crate::widgets::text_edit::TextEdit;
 use crate::widgets::theme::drag_value::DragValueTheme;
 use crate::widgets::theme::widget_look::theme_slot::ThemeSlot;
 use crate::widgets::value_response::ValueResponse;
+use crate::widgets::widget::Widget;
 use std::ops::RangeInclusive;
 use std::rc::Rc;
 
@@ -68,7 +68,7 @@ enum DragValueState {
 /// longer editable) is dropped, not committed.
 #[derive(Debug)]
 pub struct DragValue<'a> {
-    node: Node,
+    widget: Widget,
     value: DragNum<'a>,
     speed: f64,
     min: f64,
@@ -83,7 +83,7 @@ impl<'a> DragValue<'a> {
     #[track_caller]
     pub fn new(value: impl Into<DragNum<'a>>) -> Self {
         Self {
-            node: Node::leaf(),
+            widget: Widget::leaf(),
             value: value.into(),
             speed: 1.0,
             min: f64::NEG_INFINITY,
@@ -155,11 +155,10 @@ impl<'a> DragValue<'a> {
     );
 
     pub fn show(mut self, ui: &mut Ui) -> ValueResponse<'_> {
-        let sense = self.node.flags.sense() | self.required_sense();
-        self.node.flags.set_sense(sense);
-        let mut widget = ui.widget(self.node);
-        let mut response = widget.response(ui);
-        let id = widget.id();
+        let required = self.required_sense();
+        self.configure().add_sense(required);
+        let mut response = self.widget.response(ui);
+        let id = self.widget.resolve(ui);
 
         // Focused + editable + enabled: the inline text editor owns the
         // frame. Pass the chip's last *pre-transform* rect (logical px,
@@ -261,9 +260,11 @@ impl<'a> DragValue<'a> {
         // restyle.
         let theme = ui.theme();
         let chip = &self.slot(theme).chip;
-        let look = chip.plan(&response, (), theme.text).apply(ui, &mut widget);
+        let look = chip
+            .plan(&response, (), theme.text)
+            .apply(ui, &mut self.widget);
 
-        widget.record(ui, Some(&look.background), |ui| {
+        self.widget.record(ui, Some(&look.background), |ui| {
             ui.add_shape(
                 Shape::text(text, look.text.font())
                     .color(look.text.color)
@@ -312,8 +313,8 @@ impl<'a> DragValue<'a> {
         // `min_size.w`) so a long value scrolls inside the chip's box instead
         // of growing a content-hugging row. Before the first chip frame gives
         // us a width to hold, fall back to the field's own width sizing.
-        let min_size = self.node.min_size.unwrap_or(Size::ZERO);
-        let sizes = self.node.size.unwrap_or_default();
+        let min_size = self.widget.authored_min_size().unwrap_or(Size::ZERO);
+        let sizes = self.widget.authored_size().unwrap_or_default();
         let held_w = prev_rect.map(|r| Sizing::fixed(r.size.w.max(min_size.w)));
         let width = held_w.unwrap_or(sizes.w());
         // Entry replaces any scrub state atomically, so its later release
@@ -331,11 +332,11 @@ impl<'a> DragValue<'a> {
                 .style(editor)
                 .size((width, sizes.h()))
                 .min_size(min_size)
-                .max_size(self.node.max_size.unwrap_or(Size::INF));
+                .max_size(self.widget.authored_max_size().unwrap_or(Size::INF));
             // The chip's placement has to survive the swap or the field
             // visibly jumps mid-interaction; which fields that means is
             // `TextEdit`'s call, and documented there.
-            let resp = edit.adopt_placement(self.node).show(ui);
+            let resp = edit.adopt_placement(&self.widget).show(ui);
             resp.submitted
         };
         let changed = self.value.parse_from(&buffer, self.min, self.max);

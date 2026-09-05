@@ -5,13 +5,12 @@ use crate::input::sense::Sense;
 use crate::layout::types::align::{Align, VAlign};
 use crate::layout::types::justify::Justify;
 use crate::layout::types::sizing::Sizing;
-use crate::scene::node::Node;
-use crate::scene::node::configure::Configure;
-use crate::scene::node::theme_defaults::ThemeDefaults;
 use crate::shape::Shape;
 use crate::shape::polyline::PolylineColors;
 use crate::shape::style::{LineCap, LineJoin};
 use crate::ui::Ui;
+use crate::widgets::configure::Configure;
+use crate::widgets::configure::ThemeDefaults;
 use crate::widgets::context_menu::menu_item::MenuItem;
 use crate::widgets::popup::Popup;
 use crate::widgets::response::Response;
@@ -19,6 +18,7 @@ use crate::widgets::select_response::SelectResponse;
 use crate::widgets::text::Text;
 use crate::widgets::theme::button::ButtonTheme;
 use crate::widgets::theme::widget_look::theme_slot::ThemeSlot;
+use crate::widgets::widget::Widget;
 use std::rc::Rc;
 
 /// Open/closed flag for one combo site, keyed off the trigger id.
@@ -53,7 +53,7 @@ struct ComboState {
 /// frame — reads exactly one label.
 #[derive(Debug)]
 pub struct ComboBox<'a, S> {
-    node: Node,
+    widget: Widget,
     selected: &'a mut usize,
     options: &'a [S],
     /// Reads one option's label. `new` fills this with `S::as_ref`.
@@ -81,10 +81,8 @@ impl<'a, S> ComboBox<'a, S> {
     /// non-generic over the projection; every real label is a field read.
     #[track_caller]
     pub fn labeled(selected: &'a mut usize, options: &'a [S], label: fn(&S) -> &str) -> Self {
-        let mut node = Node::hstack();
-        node.flags.set_sense(Sense::CLICK);
         Self {
-            node,
+            widget: Widget::hstack().sense(Sense::CLICK),
             selected,
             options,
             label,
@@ -101,23 +99,25 @@ impl<'a, S> ComboBox<'a, S> {
          [`crate::Theme::combo_box`].",
     );
 
-    pub fn show(self, ui: &mut Ui) -> SelectResponse<'_> {
-        let mut widget = ui.widget(self.node);
-        let response = widget.response(ui);
-        let id = widget.id();
+    pub fn show(mut self, ui: &mut Ui) -> SelectResponse<'_> {
+        let response = self.widget.response(ui);
+        let id = self.widget.resolve(ui);
 
         // Trigger chrome from the button theme (same flow as `Button`).
         // One handle covers both reads: the geometry is read again inside
         // the `record` closure below, which owns `ui` mutably.
         let theme = Rc::clone(ui.theme());
         let slot = self.slot(&theme);
-        let look = slot.plan(&response, (), theme.text).apply(ui, &mut widget);
+        let look = slot
+            .plan(&response, (), theme.text)
+            .apply(ui, &mut self.widget);
 
         let geom = &theme.combo_box;
-        let node = &mut widget.node;
-        node.justify = Justify::SpaceBetween;
-        node.child_align = Align::v(VAlign::Center);
-        node.gaps.set_gap(geom.gap);
+        self.widget
+            .configure()
+            .justify(Justify::SpaceBetween)
+            .child_align(Align::v(VAlign::Center))
+            .gap(geom.gap);
 
         let arrow_color = look.text.color;
         let text_style = look.text;
@@ -134,17 +134,17 @@ impl<'a, S> ComboBox<'a, S> {
         // so it routes through `Ui::intern`.
         let label = ui.intern(chosen);
 
-        widget.record(ui, Some(&look.background), |ui| {
+        self.widget.record(ui, Some(&look.background), |ui| {
             Text::new(label)
                 .id(id.with("label"))
                 .style(&text_style)
                 .show(ui);
 
-            let arrow = Node::leaf().id(id.with("arrow")).size((
+            let arrow = Widget::leaf().id(id.with("arrow")).size((
                 Sizing::fixed(geom.arrow_size.x),
                 Sizing::fixed(geom.arrow_size.y),
             ));
-            ui.widget(arrow).record(ui, None, |ui| {
+            arrow.record(ui, None, |ui| {
                 let pts = geom.chevron_pts();
                 ui.add_shape(
                     Shape::polyline(&pts, PolylineColors::Single(arrow_color), geom.arrow_stroke)

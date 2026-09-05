@@ -1,24 +1,24 @@
-//! Public node authoring data and the builder configuration surface.
+//! The layout, interaction and paint record a [`Widget`] carries, in the
+//! shape the tree reads it.
+//!
+//! [`Widget`]: crate::widgets::widget::Widget
 
 pub(crate) mod authored_gaps;
 pub(crate) mod bounds_extras;
-pub(crate) mod configure;
 pub(crate) mod container_chrome;
 pub(crate) mod gaps;
+pub(crate) mod ident;
 pub(crate) mod layout_core;
 pub(crate) mod node_columns;
 pub(crate) mod node_flags;
 pub(crate) mod node_mode;
 pub(crate) mod panel_extras;
-pub(crate) mod salt;
-pub(crate) mod theme_defaults;
 
-use crate::layout::axis::Axis;
 use crate::layout::types::align::{Align, HAlign, VAlign};
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::grid_cell::GridCell;
 use crate::layout::types::justify::Justify;
-use crate::layout::types::layout_mode::{LayoutMode, ScrollSpec, ScrollbarsDefId};
+use crate::layout::types::layout_mode::{LayoutMode, ScrollSpec};
 use crate::layout::types::limits;
 use crate::layout::types::sizing::Sizes;
 use crate::primitives::background::Background;
@@ -28,31 +28,27 @@ use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::authored_gaps::AuthoredGaps;
 use crate::scene::node::bounds_extras::BoundsExtras;
-use crate::scene::node::configure::{Configure, ConfigureNode};
 use crate::scene::node::container_chrome::ContainerChrome;
 use crate::scene::node::layout_core::LayoutCore;
 use crate::scene::node::node_columns::NodeColumns;
 use crate::scene::node::node_flags::NodeFlags;
 use crate::scene::node::node_mode::NodeMode;
 use crate::scene::node::panel_extras::PanelExtras;
-use crate::scene::node::salt::Salt;
 use crate::scene::visibility::Visibility;
 use glam::Vec2;
 
-/// Per-node config: identity + spatial layout + interaction + paint flags.
-/// Every widget builder owns one and records it via `Ui::widget` +
-/// `Widget::record`. [`Configure`] gives chained setters for all fields by
-/// implementing one method.
+/// Per-node config: spatial layout + interaction + paint flags. Every
+/// [`Widget`] owns one, and [`Widget::record`] hands it to the tree.
 ///
-/// Fields are grouped by who reads them: identity, own-size (every parent),
-/// mode-specific (only certain parents read these), interaction, and paint.
+/// Fields are grouped by who reads them: own-size (every parent),
+/// mode-specific (only certain parents read these), interaction, and
+/// paint. Identity is the widget's, not the node's — a node is what a
+/// widget records, and it never carries the id it records under.
+///
+/// [`Widget`]: crate::widgets::widget::Widget
+/// [`Widget::record`]: crate::widgets::widget::Widget::record
 #[derive(Clone, Copy, Debug)]
-pub struct Node {
-    /// Recipe for this node's `WidgetId`. Resolution happens inside
-    /// [`crate::Ui::widget`] — `Node` itself never carries a
-    /// resolved id. Mirrors egui's "builder stores raw `id_salt`,
-    /// `Ui::widget` mixes in the parent's id at `.show()`" pattern.
-    pub(crate) salt: Salt,
+pub(crate) struct Node {
     pub(crate) mode: NodeMode,
 
     /// The themable fields are `None` until explicitly set, so
@@ -133,72 +129,12 @@ impl Node {
         explicit.or(theme.background)
     }
 
-    /// Paint/layout leaf for custom widget content.
-    #[track_caller]
-    pub fn leaf() -> Self {
-        Self::new(NodeMode::Resolved(LayoutMode::Leaf))
-    }
-
-    /// Horizontal stack container for custom widgets.
-    #[track_caller]
-    pub fn hstack() -> Self {
-        Self::new(NodeMode::Resolved(LayoutMode::Stack(Axis::X)))
-    }
-
-    /// Vertical stack container for custom widgets.
-    #[track_caller]
-    pub fn vstack() -> Self {
-        Self::new(NodeMode::Resolved(LayoutMode::Stack(Axis::Y)))
-    }
-
-    /// Wrapping horizontal stack container for custom widgets.
-    #[track_caller]
-    pub fn wrap_hstack() -> Self {
-        Self::new(NodeMode::Resolved(LayoutMode::WrapStack(Axis::X)))
-    }
-
-    /// Wrapping vertical stack container for custom widgets.
-    #[track_caller]
-    pub fn wrap_vstack() -> Self {
-        Self::new(NodeMode::Resolved(LayoutMode::WrapStack(Axis::Y)))
-    }
-
-    /// Layered stack container for custom widgets.
-    #[track_caller]
-    pub fn zstack() -> Self {
-        Self::new(NodeMode::Resolved(LayoutMode::ZStack))
-    }
-
-    /// Absolute-positioned container for custom widgets.
-    #[track_caller]
-    pub fn canvas() -> Self {
-        Self::new(NodeMode::Resolved(LayoutMode::Canvas))
-    }
-
-    #[track_caller]
-    pub(crate) fn grid() -> Self {
-        Self::new(NodeMode::PendingGrid)
-    }
-
-    /// Bar-overlay container for [`crate::widgets::scroll::Scroll`]. Its
-    /// children are placed by `layout::scrollbars` after measure, which
-    /// is the only point the content extent they size against exists.
-    #[track_caller]
-    pub(crate) fn scrollbars(id: ScrollbarsDefId) -> Self {
-        Self::new(NodeMode::Resolved(LayoutMode::Scrollbars(id)))
-    }
-
-    #[track_caller]
-    pub(crate) fn scroll(spec: ScrollSpec) -> Self {
-        Self::new(NodeMode::Resolved(LayoutMode::Scroll(spec)))
-    }
-
     /// Set the lower size bound, checking it against the upper one.
     ///
     /// The four `set_*` writers below own every check an authored field
     /// owes, and everything that writes one goes through them: the
     /// consuming [`Configure`] setter, the
-    /// [`ThemeDefaults`](crate::scene::node::theme_defaults::ThemeDefaults)
+    /// [`ThemeDefaults`](crate::widgets::configure::ThemeDefaults)
     /// fallback beside it, and the widgets that hold a `&mut Node` and
     /// cannot move it through a builder. A field written past them is a
     /// field whose bound or NaN screen did not run.
@@ -254,10 +190,8 @@ impl Node {
     /// does.
     ///
     /// `fill_`, not `default_`: the consuming
-    /// [`ThemeDefaults`](crate::scene::node::theme_defaults::ThemeDefaults)
-    /// wrapper owns that name, and a `Node` held by value would resolve
-    /// the trait's by-value method ahead of these and silently drop the
-    /// node it returns.
+    /// [`ThemeDefaults`](crate::widgets::configure::ThemeDefaults)
+    /// wrapper owns that name, and reads apart from it.
     #[inline]
     pub(crate) fn fill_min_size(&mut self, value: Size) {
         if self.min_size.is_none() {
@@ -269,18 +203,6 @@ impl Node {
     pub(crate) fn fill_max_size(&mut self, value: Size) {
         if self.max_size.is_none() {
             self.set_max_size(value);
-        }
-    }
-
-    /// Identity's half of the same rule. Its "caller stayed silent" test
-    /// is [`Salt::is_explicit`] rather than an `Option`, because every
-    /// node carries a `#[track_caller]` auto id from the moment it is
-    /// built — silence is an id the caller did not choose, not the
-    /// absence of one.
-    #[inline]
-    pub(crate) fn fill_id(&mut self, id: WidgetId) {
-        if !self.salt.is_explicit() {
-            self.salt = Salt::Verbatim(id);
         }
     }
 
@@ -324,6 +246,67 @@ impl Node {
         self.align = Align::new(h, v);
     }
 
+    /// Take over `from`'s placement — where the node sits in its parent,
+    /// and nothing about what it contains or how it behaves.
+    ///
+    /// For a widget that hands its slot to a second node partway through
+    /// a gesture: [`crate::DragValue`] swaps its scrub chip for an inline
+    /// [`crate::TextEdit`] on click, and without this the field visibly
+    /// moves and resizes on the edit frame, because margin, alignment,
+    /// grid placement and canvas position all go with the chip.
+    ///
+    /// And for a widget that records as two nodes rather than one:
+    /// [`crate::Scroll`] splits the caller's node into an outer box and
+    /// an inner viewport, and the placement is the outer one's.
+    ///
+    /// Margin is the one `Option`: `None` there means the caller stated
+    /// no opinion, so the adopting node keeps its own themed default
+    /// rather than taking a zero.
+    ///
+    /// The destructure is exhaustive on purpose. A new field has to be
+    /// given a side here rather than silently vanishing across the swap,
+    /// and an elided `..` would let that back in.
+    pub(crate) fn adopt_placement(&mut self, from: Node) {
+        let Node {
+            // Layout mode is the adopting node's own: it is whatever
+            // container or leaf it was built as.
+            mode: _,
+            // Box extent, not placement. The adopting node sizes itself:
+            // the editor pins its width to the chip's last rect so a long
+            // value scrolls instead of growing the row, and the scroll's
+            // outer box takes the caller's sizing separately. Forwarding
+            // these would undo both.
+            size: _,
+            min_size: _,
+            max_size: _,
+            padding: _,
+            clip: _,
+            // Interior configuration: what the node does with its own
+            // children, and what it senses.
+            gaps: _,
+            justify: _,
+            child_align: _,
+            flags: _,
+            // A render transform over the node's body, which is content
+            // rather than placement.
+            transform: _,
+            // Everything below places the node inside its parent.
+            margin,
+            align,
+            position,
+            grid,
+            visibility,
+        } = from;
+
+        if let Some(margin) = margin {
+            self.set_margin(margin);
+        }
+        self.align = align;
+        self.position = position;
+        self.grid = grid;
+        self.visibility = visibility;
+    }
+
     /// Install this node's layout mode, once the payload a builder chain
     /// could not carry exists.
     ///
@@ -349,10 +332,8 @@ impl Node {
         spec
     }
 
-    #[track_caller]
-    fn new(mode: NodeMode) -> Self {
+    pub(crate) fn new(mode: NodeMode) -> Self {
         Self {
-            salt: Salt::Auto(WidgetId::auto_stable()),
             mode,
             size: None,
             min_size: None,
@@ -378,11 +359,11 @@ impl Node {
     /// the node is dead.
     ///
     /// Single routing point: adding a field is one edit in the column
-    /// type and one in the routing block below. `widget_id` is supplied
-    /// by the caller (resolved from `self.salt` upstream in
-    /// `Forest::open_node`) so `Node` itself never carries a resolved id.
+    /// type and one in the routing block below. `widget_id` is the
+    /// widget's, resolved before it recorded, so `Node` itself never
+    /// carries one.
     ///
-    /// Takes `&self` rather than the 120-byte `Node` by value, so the
+    /// Takes `&self` rather than the 100-byte `Node` by value, so the
     /// four-hop opener chain above it moves no bytes at any hop and does
     /// not lean on `#[inline]` to elide them. Named without a `to_` /
     /// `into_` prefix for that reason: both would read as a by-value
@@ -408,17 +389,6 @@ impl Node {
                 transform: self.transform,
             },
         }
-    }
-}
-
-/// A bare `Node` is its own configurable builder, so widget authors
-/// can chain the [`Configure`] setters on the child nodes they construct
-/// inside their `show` body — e.g.
-/// `Node::leaf().id(my_id).size(...).sense(Sense::CLICK)`.
-impl Configure for Node {
-    #[inline]
-    fn node_mut(&mut self) -> ConfigureNode<'_> {
-        ConfigureNode { node: self }
     }
 }
 

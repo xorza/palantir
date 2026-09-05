@@ -30,13 +30,14 @@ use crate::primitives::widget_id::WidgetId;
 use crate::renderer::render_plan::RenderPlan;
 use crate::scene::cascade;
 use crate::scene::damage::{Damage, DamageInput};
-use crate::scene::node::Node;
 use crate::ui::Ui;
 use crate::ui::frame_engines::FrameEngines;
 use crate::ui::frame_report::{FrameProcessing, FrameReport};
 use crate::ui::frame_runtime::wake::WakeReasons;
 use crate::ui::frame_runtime::{FrameClassifyInput, FramePlan};
 use crate::ui::frame_stamp::FrameInput;
+use crate::widgets::configure::Configure;
+use crate::widgets::widget::Widget;
 use crate::window::cursor_icon::CursorIcon;
 use crate::window::window_token::WindowToken;
 
@@ -283,12 +284,11 @@ impl<'a> FrameCycle<'a> {
         // declared `Sizing` / `Sense` on the top-level widget. ZStack +
         // Fill still paints the full surface, while letting user roots
         // respect their own sizing.
-        let mut viewport = Node::zstack();
-        viewport.size = Some(Sizing::FILL.into());
+        let viewport = Widget::zstack().size(Sizing::FILL);
         // Hard-coded `WidgetId::VIEWPORT` — a frame-stable parent id,
         // so top-level salts/auto ids resolve to `VIEWPORT.with(salt)`
-        // like any other parent-scoped id (see `Ui::widget`).
-        self.ui.open_node(WidgetId::VIEWPORT, &viewport, None);
+        // like any other parent-scoped id (see `Widget::resolve`).
+        self.ui.open_node(WidgetId::VIEWPORT, &viewport.node, None);
         {
             tracy::zone!("Ui::record_user");
             app.record(win, self.ui);

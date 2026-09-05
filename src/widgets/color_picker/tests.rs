@@ -3,9 +3,9 @@ use crate::primitives::color::color_model::ColorModel;
 use crate::primitives::color::okhsv::Okhsv;
 use crate::primitives::color::srgba_u8::SrgbaU8;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::node::configure::Configure;
 use crate::ui::harness::UiHarness;
 use crate::widgets::color_picker::ColorPicker;
+use crate::widgets::configure::Configure;
 use glam::{UVec2, Vec2};
 
 /// Wide enough for the panel and its rows to lay out without wrapping.

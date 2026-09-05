@@ -8,12 +8,12 @@ use crate::primitives::background::Background;
 use crate::primitives::color::{RgbaF32, RgbaU8};
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
-use crate::scene::node::configure::Configure;
 use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::tests::support::{SURFACE, record_cascade_static, record_hash};
 use crate::shape::Shape;
 use crate::shape::polyline::PolylineColors;
 use crate::ui::harness::UiHarness;
+use crate::widgets::configure::Configure;
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::Vec2;
 

@@ -13,16 +13,16 @@ use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::text_input::TextInput;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::node::Node;
-use crate::scene::node::configure::Configure;
 use crate::shape::Shape;
 use crate::shape::polyline::PolylineColors;
 use crate::shape::style::{LineCap, LineJoin};
 use crate::ui::Ui;
+use crate::widgets::configure::Configure;
 use crate::widgets::response::Response;
 use crate::widgets::text::Text;
 use crate::widgets::theme::expander::ExpanderTheme;
 use crate::widgets::theme::widget_look::theme_slot::ThemeSlot;
+use crate::widgets::widget::Widget;
 use std::rc::Rc;
 
 /// What one pass over an [`Expander`] produced.
@@ -68,7 +68,7 @@ pub struct ExpanderResponse<'a, R> {
 /// instead.
 #[derive(Debug)]
 pub struct Expander<'a> {
-    node: Node,
+    widget: Widget,
     label: TextInput<'a>,
     default_open: bool,
     open: Option<&'a mut bool>,
@@ -83,7 +83,7 @@ impl<'a> Expander<'a> {
     #[track_caller]
     pub fn new(label: impl Into<TextInput<'a>>) -> Self {
         Self {
-            node: Node::vstack().size((Sizing::FILL, Sizing::HUG)),
+            widget: Widget::vstack().size((Sizing::FILL, Sizing::HUG)),
             label: label.into(),
             default_open: false,
             open: None,
@@ -131,7 +131,7 @@ impl<'a> Expander<'a> {
         let t = self.slot(&theme);
         let ambient = theme.text;
         let Self {
-            node,
+            mut widget,
             label,
             default_open,
             open,
@@ -139,8 +139,7 @@ impl<'a> Expander<'a> {
             style: _,
         } = self;
 
-        let widget = ui.widget(node);
-        let id = widget.id();
+        let id = widget.resolve(ui);
         let header_id = id.with("header");
         let body_id = id.with("body");
         let stored = ui.try_state::<ExpanderState>(header_id).copied();
@@ -157,7 +156,7 @@ impl<'a> Expander<'a> {
             inner: None,
         };
         widget.record(ui, None, |ui| {
-            let header_node = Node::hstack()
+            let mut header = Widget::hstack()
                 .id(header_id)
                 .size((Sizing::FILL, Sizing::HUG))
                 .gap(t.gap)
@@ -169,7 +168,6 @@ impl<'a> Expander<'a> {
                 // focused header: it is not a typing target, and nothing
                 // behind it should read the keys either.
                 .input_scope(KeyFilter::TEXT);
-            let mut header = ui.widget(header_node);
             let state = header.response(ui);
             let look = t.plan(&state, (), ambient).apply(ui, &mut header);
 
@@ -189,10 +187,10 @@ impl<'a> Expander<'a> {
             let text = look.text;
             let label = ui.intern(label);
             header.record(ui, Some(&look.background), |ui| {
-                let box_node = Node::leaf()
+                let arrow_box = Widget::leaf()
                     .id(header_id.with("arrow"))
                     .size((Sizing::fixed(t.arrow_size.x), Sizing::fixed(t.arrow_size.y)));
-                ui.widget(box_node).record(ui, None, |ui| {
+                arrow_box.record(ui, None, |ui| {
                     ui.add_shape(
                         Shape::polyline(&arrow, PolylineColors::Single(text.color), t.arrow_stroke)
                             .cap(LineCap::Round)
@@ -207,23 +205,23 @@ impl<'a> Expander<'a> {
 
             let showing = openness > 0.0;
             if showing || keep_body {
-                let mut body_node = Node::vstack()
+                let mut body_panel = Widget::vstack()
                     .id(body_id)
                     .size((Sizing::FILL, Sizing::HUG))
                     .margin(Spacing::new(t.indent, 0.0, 0.0, 0.0))
                     .padding(t.body_padding);
                 if !showing {
-                    body_node = body_node.collapsed();
+                    body_panel = body_panel.collapsed();
                 } else if let Some(full) = height.filter(|_| openness < 1.0) {
                     // The body records whole and the clip is what reveals
                     // it. Laying it out at a fraction of its height
                     // instead would reflow its text on every frame of the
                     // tween.
-                    body_node = body_node
+                    body_panel = body_panel
                         .max_size(Size::new(f32::INFINITY, openness * full))
                         .clip_rect();
                 }
-                pass.inner = Some(ui.widget(body_node).record(ui, None, body));
+                pass.inner = Some(body_panel.record(ui, None, body));
             }
             pass.header = state;
             pass.toggled = activated;

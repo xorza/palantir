@@ -7,9 +7,8 @@ use crate::layout::types::align::{Align, VAlign};
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
 use crate::primitives::text_input::TextInput;
-use crate::scene::node::Node;
-use crate::scene::node::configure::Configure;
 use crate::ui::Ui;
+use crate::widgets::configure::Configure;
 use crate::widgets::response::Response;
 use crate::widgets::text::Text;
 use crate::widgets::theme::widget_look::look_plan::LookPlan;
@@ -37,7 +36,7 @@ pub(crate) struct ToggleChrome {
     /// a wide `Canvas` for `Switch`'s track. [`Self::record_row`] only
     /// stamps the id (`<row>.with("box")`) and the resolved chrome onto
     /// it.
-    pub(crate) boxed: Node,
+    pub(crate) boxed: Widget,
     /// Corner radius forced onto the box chrome, overriding whatever
     /// radius the theme stored. The radio pip and the switch track must
     /// read as pills however they are re-themed; `None` keeps the
@@ -46,7 +45,7 @@ pub(crate) struct ToggleChrome {
 }
 
 impl ToggleChrome {
-    /// The node every toggle row starts from: a horizontal stack that
+    /// The widget every toggle row starts from: a horizontal stack that
     /// senses a click, because the whole row — box *and* label — is one
     /// hit target.
     ///
@@ -54,10 +53,8 @@ impl ToggleChrome {
     /// still resolves to the call site that asked for the widget rather
     /// than to this line.
     #[track_caller]
-    pub(crate) fn row_node() -> Node {
-        let mut node = Node::hstack();
-        node.flags.set_sense(Sense::CLICK);
-        node
+    pub(crate) fn row() -> Widget {
+        Widget::hstack().sense(Sense::CLICK)
     }
 
     /// Flip `value` when the row was clicked while enabled, and answer
@@ -96,7 +93,7 @@ impl ToggleChrome {
         label: TextInput<'text>,
         body: impl FnOnce(&mut Ui, &Background),
     ) -> Response<'ui> {
-        let id = widget.id();
+        let id = widget.resolve(ui);
         let Self {
             plan,
             gap,
@@ -108,11 +105,14 @@ impl ToggleChrome {
             look.background.corners = Corners::all(radius);
         }
 
-        widget.node.gaps.set_gap(gap);
-        widget.node.child_align = Align::v(VAlign::Center);
+        widget
+            .configure()
+            .gap(gap)
+            .child_align(Align::v(VAlign::Center));
 
         widget.record(ui, None, |ui| {
-            ui.widget(boxed.id(id.with("box")))
+            boxed
+                .id(id.with("box"))
                 .record(ui, Some(&look.background), |ui| body(ui, &look.background));
 
             if !label.is_empty() {

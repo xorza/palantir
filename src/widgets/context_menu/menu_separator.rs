@@ -1,11 +1,11 @@
 //! The rule a context menu draws between groups of rows.
 
 use crate::layout::axis::Axis;
-use crate::scene::node::Node;
 use crate::ui::Ui;
 use crate::widgets::response::Response;
 use crate::widgets::separator::Separator;
 use crate::widgets::theme::separator::SeparatorTheme;
+use crate::widgets::widget::Widget;
 use std::rc::Rc;
 
 /// The rule [`MenuItem::separator`](crate::widgets::context_menu::menu_item::MenuItem::separator)
@@ -25,7 +25,7 @@ use std::rc::Rc;
 /// ```
 #[derive(Debug)]
 pub struct MenuSeparator<'a> {
-    node: Node,
+    widget: Widget,
     style: Option<&'a SeparatorTheme>,
 }
 
@@ -36,7 +36,7 @@ impl<'a> MenuSeparator<'a> {
     #[track_caller]
     pub(super) fn new() -> Self {
         Self {
-            node: Node::leaf(),
+            widget: Widget::leaf(),
             style: None,
         }
     }
@@ -48,9 +48,8 @@ impl<'a> MenuSeparator<'a> {
         // across `show`'s `&mut Ui`, and this one may point into the
         // `Ui`'s own theme.
         let ui_theme = Rc::clone(ui.theme());
-        Separator::over(self.node, Axis::X)
-            .style(self.slot(&ui_theme))
-            .show(ui)
+        let style = self.slot(&ui_theme);
+        Separator::over(self.widget, Axis::X).style(style).show(ui)
     }
 }
 

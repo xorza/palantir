@@ -6,10 +6,10 @@ use crate::primitives::color::RgbaF32;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::node::Node;
 use crate::shape::Shape;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
+use crate::widgets::configure::Configure;
 use crate::widgets::scroll::state::ScrollState;
 use crate::widgets::text_edit::caret_paint::CaretPaint;
 use crate::widgets::text_edit::text_geometry::TextGeometry;
@@ -36,15 +36,14 @@ pub(super) struct PaintInput<'a> {
 }
 
 impl PaintInput<'_> {
-    /// Applies the measured minimums to `widget`'s staged node, then
-    /// records it. The node arrives on the widget rather than in
-    /// `PaintInput` so there is one copy of it, not two to keep in step.
+    /// Applies the measured minimums to `widget`, then records it. The
+    /// widget arrives here rather than in `PaintInput` so there is one
+    /// copy of it, not two to keep in step.
     pub(super) fn record(self, ui: &mut Ui, mut widget: Widget) {
         let layout = self.geometry.layout;
         let ctx = layout.ctx;
         if !ctx.multiline {
-            let node = &mut widget.node;
-            let min_size = node.min_size.get_or_insert(Size::ZERO);
+            let mut min_size = widget.authored_min_size().unwrap_or(Size::ZERO);
             // The block's own height rather than the theme's leading, because a
             // panned axis contributes no max-content — so this floor is what the
             // field's height *is*, and a floor a thousandth under what the shaper
@@ -52,15 +51,15 @@ impl PaintInput<'_> {
             min_size.h = min_size
                 .h
                 .max(self.block_size(layout).h + ctx.padding.vert());
-            if node.size.unwrap_or_default().w().is_hug() {
+            if widget.authored_size().unwrap_or_default().w().is_hug() {
                 let reserved =
                     self.geometry.display_size.w + layout.caret_reserve() + ctx.padding.horiz();
-                let min_size = node.min_size.get_or_insert(Size::ZERO);
                 min_size.w = min_size.w.max(reserved);
             }
+            widget.configure().min_size(min_size);
         }
 
-        let block = Widget::new(self.block_id, self.block_node(layout));
+        let block = self.block(layout);
         widget.record(ui, Some(&self.chrome), |ui| {
             block.record(ui, None, |ui| {
                 for rect in self.selection_rects {
@@ -140,12 +139,12 @@ impl PaintInput<'_> {
     /// coordinates, so the three shapes stay in one frame of reference and a
     /// scrolled field is the same picture slid sideways — through the same
     /// [`ScrollState::transform`] a `Scroll` viewport carries its children with.
-    fn block_node(&self, layout: TextLayout) -> Node {
+    fn block(&self, layout: TextLayout) -> Widget {
         let size = self.block_size(layout);
-        let mut block = Node::leaf();
-        block.size = Some((Sizing::fixed(size.w), Sizing::fixed(size.h)).into());
-        block.align = layout.block_align();
-        block.transform = self.scroll.transform();
-        block
+        Widget::leaf()
+            .id(self.block_id)
+            .size((Sizing::fixed(size.w), Sizing::fixed(size.h)))
+            .align(layout.block_align())
+            .transform(self.scroll.transform())
     }
 }

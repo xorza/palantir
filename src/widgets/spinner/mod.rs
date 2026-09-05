@@ -5,13 +5,14 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::num::F32Ext;
-use crate::scene::node::Node;
 use crate::scene::tree::paint_anims::PaintAnim;
 use crate::shape::Shape;
 use crate::shape::style::LineCap;
 use crate::ui::Ui;
+use crate::widgets::configure::Configure;
 use crate::widgets::response::Response;
 use crate::widgets::theme::spinner::SpinnerTheme;
+use crate::widgets::widget::Widget;
 use glam::Vec2;
 use std::time::Duration;
 
@@ -31,7 +32,7 @@ use std::time::Duration;
 /// DPI; the comet fade is a linear gradient sampled along the sweep.
 #[derive(Debug)]
 pub struct Spinner<'a> {
-    node: Node,
+    widget: Widget,
     diameter: Option<f32>,
     color: Option<RgbaF32>,
     thickness: Option<f32>,
@@ -42,7 +43,7 @@ impl<'a> Spinner<'a> {
     #[track_caller]
     pub fn new() -> Self {
         Self {
-            node: Node::leaf(),
+            widget: Widget::leaf(),
             diameter: None,
             color: None,
             thickness: None,
@@ -79,7 +80,7 @@ impl<'a> Spinner<'a> {
         self
     }
 
-    pub fn show(mut self, ui: &mut Ui) -> Response<'_> {
+    pub fn show(self, ui: &mut Ui) -> Response<'_> {
         let theme = self.slot(ui.theme());
         let diameter = self.diameter.unwrap_or(theme.diameter).themed_length(1.0);
         let width = self
@@ -88,11 +89,8 @@ impl<'a> Spinner<'a> {
         let color = self.color.unwrap_or(theme.color);
         let sweep = theme.sweep;
         let speed = theme.speed;
-        self.node
-            .size
-            .get_or_insert((Sizing::fixed(diameter), Sizing::fixed(diameter)).into());
-
-        ui.widget(self.node)
+        self.widget
+            .default_size((Sizing::fixed(diameter), Sizing::fixed(diameter)))
             .show(ui, None, |ui| {
                 // Static arc (phase 0) + a paint-time spin: the recorded
                 // shape is identical every frame, so the spinner's subtree

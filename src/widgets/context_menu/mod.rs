@@ -7,11 +7,11 @@ use crate::primitives::background::Background;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
-use crate::scene::node::configure::Configure;
-use crate::scene::node::configure::ConfigureNode;
-use crate::scene::node::theme_defaults::ThemeDefaults;
 use crate::ui::Ui;
 use crate::widgets::close_handle::CloseHandle;
+use crate::widgets::configure::Configure;
+use crate::widgets::configure::ConfigureWidget;
+use crate::widgets::configure::ThemeDefaults;
 use crate::widgets::overlay_response::OverlayResponse;
 use crate::widgets::popup::Popup;
 use crate::widgets::response::ResponseSnapshot;
@@ -207,8 +207,8 @@ impl ContextMenu<'_> {
 /// `.padding(...)` / `.id(...)` configure the node that actually
 /// records — the menu keeps no node of its own.
 impl Configure for ContextMenu<'_> {
-    fn node_mut(&mut self) -> ConfigureNode<'_> {
-        self.popup.node_mut()
+    fn configure(&mut self) -> ConfigureWidget<'_> {
+        self.popup.configure()
     }
 }
 

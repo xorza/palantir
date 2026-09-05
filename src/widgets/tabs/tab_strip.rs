@@ -14,11 +14,10 @@ use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
-use crate::scene::node::Node;
-use crate::scene::node::configure::Configure;
 use crate::shape::Shape;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
+use crate::widgets::configure::Configure;
 use crate::widgets::context_menu::ContextMenu;
 use crate::widgets::context_menu::menu_item::MenuItem;
 use crate::widgets::response::Response;
@@ -28,6 +27,7 @@ use crate::widgets::text::Text;
 use crate::widgets::theme::tabs::TabsTheme;
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::theme::widget_look::theme_slot::ThemeSlot;
+use crate::widgets::widget::Widget;
 use glam::Vec2;
 use std::rc::Rc;
 
@@ -94,7 +94,7 @@ pub struct TabStripResponse<'a> {
 /// [`Self::close_id`].
 #[derive(Debug)]
 pub struct TabStrip<'a> {
-    node: Node,
+    widget: Widget,
     items: &'a [TabItem],
     selected: Option<usize>,
     focused: bool,
@@ -111,7 +111,7 @@ impl<'a> TabStrip<'a> {
             // Motion scope keeps those arrows out of the application
             // while a chip holds focus, and lets every other class walk
             // straight past.
-            node: Node::vstack()
+            widget: Widget::vstack()
                 .size((Sizing::FILL, Sizing::HUG))
                 .focusable(true)
                 .input_scope(KeyFilter::MOTION),
@@ -185,15 +185,14 @@ impl<'a> TabStrip<'a> {
         let t = self.slot(&theme);
         let ambient = theme.text;
         let Self {
-            node,
+            mut widget,
             items,
             selected,
             focused,
             overflow,
             style: _,
         } = self;
-        let widget = ui.widget(node);
-        let id = widget.id();
+        let id = widget.resolve(ui);
         let response = widget.response(ui);
         let strip_bg = t.strip.clone();
         let rule = Background::fill(t.hline);
@@ -201,12 +200,12 @@ impl<'a> TabStrip<'a> {
 
         let mut hits = StripHits::default();
         widget.record(ui, Some(&strip_bg), |ui| {
-            let row = Node::hstack()
+            let row = Widget::hstack()
                 .id(id.with("row"))
                 .size((Sizing::FILL, Sizing::HUG))
                 .gap(t.gap)
                 .child_align(Align::v(VAlign::Bottom));
-            ui.widget(row).record(ui, None, |ui| {
+            row.record(ui, None, |ui| {
                 Scroll::horizontal()
                     .id(Self::band_id(id))
                     .size((Sizing::FILL, Sizing::HUG))
@@ -230,10 +229,10 @@ impl<'a> TabStrip<'a> {
                 }
             });
             if rule_thickness > 0.0 {
-                let rule_node = Node::leaf()
+                let rule_leaf = Widget::leaf()
                     .id(id.with("rule"))
                     .size((Sizing::FILL, Sizing::fixed(rule_thickness)));
-                ui.widget(rule_node).record(ui, Some(&rule), |_| {});
+                rule_leaf.record(ui, Some(&rule), |_| {});
             }
             keyboard_travel(ui, id, items.len(), selected, &mut hits);
         });
@@ -305,14 +304,13 @@ impl ChipCtx<'_> {
         // while the inner takes a tighter one, so the band follows the
         // corner instead of cutting across it.
         let cap = if selected { t.accent_thickness } else { 0.0 };
-        let outer = Node::hstack()
+        let mut widget = Widget::hstack()
             .id(chip_id)
             .size((Sizing::HUG, Sizing::HUG))
             .min_size(Size::new(t.min_width, 0.0))
             .max_size(Size::new(t.max_width, f32::INFINITY))
             .padding(Spacing::new(0.0, cap, 0.0, 0.0))
             .sense(sense);
-        let mut widget = ui.widget(outer);
         let state = widget.response(ui);
         // The chip's own look paints the *inner* box, so the plan is
         // applied for its spacing defaults and its animation row while
@@ -354,20 +352,20 @@ impl ChipCtx<'_> {
         // glyph style and the click all come off the same response.
         let close = closable.then(|| GlyphButton::resolve(ui, t, close_id, self.ambient));
 
-        let inner = Node::hstack()
+        let inner = Widget::hstack()
             .id(chip_id.with("fill"))
             .size((Sizing::HUG, Sizing::HUG))
             .padding(padding)
             .gap(t.label_gap)
             .child_align(Align::v(VAlign::Center));
         widget.record(ui, Some(&cap_bg), |ui| {
-            ui.widget(inner).record(ui, Some(&inner_bg), |ui| {
+            inner.record(ui, Some(&inner_bg), |ui| {
                 if let Some(handle) = icon {
                     let side = text.font_size_px;
-                    let art = Node::leaf()
+                    let art = Widget::leaf()
                         .id(chip_id.with("icon"))
                         .size((Sizing::fixed(side), Sizing::fixed(side)));
-                    ui.widget(art).record(ui, None, |ui| {
+                    art.record(ui, None, |ui| {
                         ui.add_shape(Shape::icon(handle));
                     });
                 }
@@ -388,20 +386,20 @@ impl ChipCtx<'_> {
                         // draw nothing" means here.
                         Background::NONE
                     };
-                    let dot = Node::leaf()
+                    let dot = Widget::leaf()
                         .id(chip_id.with("badge"))
                         .size((Sizing::fixed(t.badge_size), Sizing::fixed(t.badge_size)))
                         .align(Align::v(VAlign::Center));
-                    ui.widget(dot).record(ui, Some(&fill), |_| {});
+                    dot.record(ui, Some(&fill), |_| {});
                 }
                 if let Some(close) = &close {
-                    let button = Node::zstack()
+                    let button = Widget::zstack()
                         .id(close_id)
                         .size((Sizing::fixed(t.close_size), Sizing::fixed(t.close_size)))
                         .sense(Sense::CLICK)
                         .align(Align::v(VAlign::Center))
                         .child_align(Align::CENTER);
-                    ui.widget(button).record(ui, Some(&close.background), |ui| {
+                    button.record(ui, Some(&close.background), |ui| {
                         close.glyph(ui, close_id, "\u{00d7}");
                     });
                 }
@@ -495,17 +493,16 @@ fn overflow_menu(
     // The chevron sits outside the scrolling band, so it takes the
     // strip's own trailing inset as a margin rather than inheriting it.
     let [_, _, band_r, band_b] = t.strip_padding.as_array();
-    let button = Node::zstack()
+    let button = Widget::zstack()
         .id(button_id)
         .size((Sizing::fixed(t.close_size), Sizing::fixed(t.close_size)))
         .margin(Spacing::new(0.0, 0.0, band_r, band_b))
         .sense(Sense::CLICK)
         .align(Align::v(VAlign::Bottom))
         .child_align(Align::CENTER);
-    ui.widget(button)
-        .record(ui, Some(&chevron.background), |ui| {
-            chevron.glyph(ui, button_id, "\u{22ef}");
-        });
+    button.record(ui, Some(&chevron.background), |ui| {
+        chevron.glyph(ui, button_id, "\u{22ef}");
+    });
     if chevron.state.left.clicked()
         && let Some(rect) = chevron.state.rect
     {

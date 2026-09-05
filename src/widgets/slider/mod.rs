@@ -8,12 +8,13 @@ use crate::primitives::approx;
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
 use crate::primitives::num::F32Ext;
-use crate::scene::node::Node;
 use crate::ui::Ui;
+use crate::widgets::configure::Configure;
 use crate::widgets::drag_num::DragNum;
 use crate::widgets::response::Response;
 use crate::widgets::theme::slider::SliderTheme;
 use crate::widgets::value_response::ValueResponse;
+use crate::widgets::widget::Widget;
 use std::ops::RangeInclusive;
 
 /// Horizontal value slider over a numeric range. Takes the same
@@ -29,7 +30,7 @@ use std::ops::RangeInclusive;
 /// `slider`).
 #[derive(Debug)]
 pub struct Slider<'a> {
-    node: Node,
+    widget: Widget,
     value: DragNum<'a>,
     min: f64,
     max: f64,
@@ -45,10 +46,8 @@ impl<'a> Slider<'a> {
     /// where an unbounded scrub is the drag value's default.
     #[track_caller]
     pub fn new(value: impl Into<DragNum<'a>>, range: RangeInclusive<f64>) -> Self {
-        let mut node = Node::hstack();
-        node.flags.set_sense(Sense::CLICK | Sense::DRAG);
         Self {
-            node,
+            widget: Widget::hstack().sense(Sense::CLICK | Sense::DRAG),
             value: value.into(),
             min: *range.start(),
             max: *range.end(),
@@ -97,9 +96,8 @@ impl<'a> Slider<'a> {
     /// [`DragValue`](crate::DragValue) returns, so the two value-editing
     /// widgets read alike.
     pub fn show(mut self, ui: &mut Ui) -> ValueResponse<'_> {
-        let mut widget = ui.widget(self.node);
-        let response = widget.response(ui);
-        let id = widget.id();
+        let response = self.widget.response(ui);
+        let id = self.widget.resolve(ui);
 
         let theme = self.slot(ui.theme());
         let knob = theme.knob_size.themed_length(1.0);
@@ -108,31 +106,26 @@ impl<'a> Slider<'a> {
         let track_color = theme.track;
         let knob_color = theme.knob;
 
-        // Pointer drives the value: pressing or dragging the track maps
-        // the cursor x against the last frame's logical width.
-        //
-        // `Drag::Stopped` is neither pressed nor dragging, so the release
-        // frame has to be named for `ValueResponse::committed` to mean what
-        // it documents. Replaying the value there needs no retained `last`
-        // the way `DragValue` does: it is a function of the pointer, not of
-        // accumulated travel.
-        let stopped = response.left.drag.stopped();
+        // Pointer drives the value on every frame of the gesture, the
+        // release included, and the knob is the band its centre travels
+        // inside. Replaying the value on the release needs no retained
+        // `last` the way `DragValue` does: it is a function of the
+        // pointer, not of accumulated travel.
         let mut changed = false;
-        if !response.disabled
-            && (response.pressed() || response.left.drag.dragging() || stopped)
-            && let (Some(local), Some(rect)) = (response.pointer_local, response.layout_rect)
-        {
-            let f = pointer_to_fraction(local.x, rect.size.w, knob);
+        if let Some(at) = response.press_fraction(knob) {
             let v = snap_to_step(
-                fraction_to_value(f, self.min, self.max),
+                fraction_to_value(at.x, self.min, self.max),
                 self.min,
                 self.step,
             );
             changed = self.value.commit_drag(v, self.decimals, self.min, self.max);
         }
-        // Edge, not level: the frame the gesture ends is the one a
-        // caller treats as a single undoable edit.
-        let committed = !response.disabled && stopped;
+        // Edge, not level: the frame the gesture ends is the one a caller
+        // treats as a single undoable edit. Every release ends one, so
+        // this reads `left.released()` and not `drag.stopped()` — a press
+        // and release on the track writes a value and never latches a
+        // drag, and that edit owes a commit like any other.
+        let committed = !response.disabled && response.left.released();
         let fraction = value_to_fraction(self.value.get(), self.min, self.max);
 
         let pill = Corners::all(track_h * 0.5);
@@ -140,16 +133,16 @@ impl<'a> Slider<'a> {
         let track_bg = Background::rounded(track_color, pill);
         let knob_bg = Background::rounded(knob_color, Corners::all(knob * 0.5));
 
-        let node = &mut widget.node;
-        node.size
-            .get_or_insert((Sizing::FILL, Sizing::fixed(knob)).into());
-        node.child_align = Align::v(VAlign::Center);
+        self.widget
+            .configure()
+            .default_size((Sizing::FILL, Sizing::fixed(knob)))
+            .child_align(Align::v(VAlign::Center));
 
         // The knob sits between two track segments whose weights
         // partition the span, so its position follows the resolved width
         // without this widget knowing that width at record time.
         let [filled, remainder] = Sizing::split(fraction);
-        widget.record(ui, None, |ui| {
+        self.widget.record(ui, None, |ui| {
             let track = Sizing::fixed(track_h);
             ui.chrome_leaf(id.with("fill"), (filled, track), Some(&fill_bg));
             let knob = Sizing::fixed(knob);
@@ -171,9 +164,10 @@ impl_configure!(Slider<'_>);
 /// The knob's position is a visual quantity, so the share is taken in
 /// `f32` — through [`approx::ratio`], the crate's one answer for a
 /// divisor geometry can legitimately collapse, and out through the same
-/// [`F32Ext::unit_fraction_or`] [`pointer_to_fraction`] ends in. Both of
-/// this widget's fractions are then total and answer a range or a value
-/// that names no share the same way: the low end.
+/// [`F32Ext::unit_fraction_or`]
+/// [`ResponseState::press_fraction`](crate::ResponseState::press_fraction)
+/// ends in. Both of this widget's fractions are then total and answer a
+/// range or a pointer that names no share the same way: the low end.
 fn value_to_fraction(value: f64, min: f64, max: f64) -> f32 {
     approx::ratio((value - min) as f32, (max - min) as f32).unit_fraction_or(0.0)
 }
@@ -183,14 +177,6 @@ fn value_to_fraction(value: f64, min: f64, max: f64) -> f32 {
 /// value is stored at.
 fn fraction_to_value(fraction: f32, min: f64, max: f64) -> f64 {
     min + f64::from(fraction.clamp(0.0, 1.0)) * (max - min)
-}
-
-/// Map a cursor x (relative to the track's left edge) to a fraction. The
-/// usable travel is `[knob/2, track_w - knob/2]` so the knob center
-/// stays inside the track at both extremes. A track with no travel reads
-/// as the low end, and so does a cursor that names no position.
-fn pointer_to_fraction(local_x: f32, track_w: f32, knob: f32) -> f32 {
-    local_x.band_fraction(track_w, knob).unit_fraction_or(0.0)
 }
 
 /// Snap to the nearest multiple of `step` measured from `min`. A slider

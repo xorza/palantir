@@ -11,7 +11,7 @@ fn ep(node: u32) -> Endpoint {
 }
 
 /// Stand-in for the production `resolve → record_endpoint`
-/// pairing every widget does (`Ui::widget` →
+/// pairing every widget does (`Widget::resolve` →
 /// `scene::open_node`). The lazy-counter fast path in `resolve`
 /// depends on `curr` being populated between consecutive resolves
 /// of the same raw id, so tests interleave them the same way.

@@ -4,7 +4,7 @@ use crate::layout::types::align::{Align, HAlign, VAlign};
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::spacing::Spacing;
 use crate::scene::layer::Layer;
-use crate::scene::node::configure::Configure;
+use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::separator::Separator;
 use crate::widgets::theme::separator::SeparatorTheme;

@@ -26,12 +26,11 @@ use crate::input::key_class::KeyFilter;
 use crate::input::response::response_state::ResponseState;
 use crate::input::sense::Sense;
 use crate::layout::types::align::Align;
-use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::layout_mode::ScrollSpec;
 use crate::primitives::rect::Rect;
 use crate::primitives::spacing::Spacing;
-use crate::scene::node::Node;
 use crate::ui::Ui;
+use crate::widgets::configure::Configure;
 use crate::widgets::response::{Response, ResponseSnapshot};
 use crate::widgets::text_edit::caret_paint::CaretPaint;
 use crate::widgets::text_edit::edit_state::EditState;
@@ -73,7 +72,7 @@ struct TextEditState {
 /// are repaired before each input pass.
 #[derive(Debug)]
 pub struct TextEdit<'a> {
-    node: Node,
+    widget: Widget,
     text: &'a mut String,
     style: Option<&'a TextEditTheme>,
     placeholder: Cow<'static, str>,
@@ -119,25 +118,26 @@ impl<'a> TextEdit<'a> {
         // in a container narrower than its buffer scrolls rather than refusing
         // to fit. The leaf said the same thing through `TextWrap::Scroll`; a
         // child with a width of its own needs the viewport to say it instead.
-        let mut node = Node::scroll(ScrollSpec::BOTH);
         // `SCROLL` as well as `CLICK`: the node is a scroll viewport, so
         // an editor whose content overflows has somewhere to go, and
         // without the sense the wheel routed straight past it to
         // whatever container sat behind — a multi-line editor could only
         // be panned by moving the caret.
-        node.flags.set_sense(Sense::CLICK | Sense::SCROLL);
-        node.flags.set_focusable(true);
-        // Clip glyphs, caret, and selection wash to the editor's own
-        // rect so a `Fixed`-sized editor with long content doesn't
-        // bleed over its neighbours. Chrome (background) draws before
-        // the clip, so the editor's surround still paints normally.
-        node.clip = Some(ClipMode::Rect);
+        //
+        // The clip keeps glyphs, caret, and selection wash inside the
+        // editor's own rect, so a `Fixed`-sized editor with long content
+        // does not bleed over its neighbours. Chrome (background) draws
+        // before the clip, so the editor's surround still paints normally.
+        let widget = Widget::scroll(ScrollSpec::BOTH)
+            .sense(Sense::CLICK | Sense::SCROLL)
+            .focusable(true)
+            .clip_rect();
         // `Node::padding` left at zero — `show()` substitutes
         // `theme.text_edit.padding` when the user didn't call
         // `.padding(...)`. Same renderer semantics as before; the
         // value just lives on the theme instead of hard-coded here.
         Self {
-            node,
+            widget,
             text,
             style: None,
             placeholder: Cow::Borrowed(""),
@@ -226,79 +226,26 @@ impl<'a> TextEdit<'a> {
     /// For a widget that *becomes* a `TextEdit` partway through a
     /// gesture: [`crate::DragValue`] swaps its scrub chip for an inline
     /// editor on click, and without this the field visibly moved and
-    /// resized on the edit frame because padding, margin, alignment,
-    /// grid placement and canvas position all vanished with the chip.
+    /// resized on the edit frame because margin, alignment, grid
+    /// placement and canvas position all vanished with the chip.
     ///
-    /// The destructure below is exhaustive on purpose. A new `Node`
-    /// field has to be given a policy here rather than silently
-    /// disappearing across the swap — that silent loss is the whole
-    /// defect this exists to prevent, and an elided `..` would let it
-    /// back in.
-    pub(crate) fn adopt_placement(mut self, from: Node) -> Self {
-        let Node {
-            // Identity and layout mode belong to the editor: it
-            // deliberately shares the chip's resolved `WidgetId` (same
-            // focus, same state row), and it is a scrolling text field
-            // whatever the chip was.
-            salt: _,
-            mode: _,
-            // Sizing is resolved by the caller, which pins the width to
-            // the chip's last rect so a long value scrolls instead of
-            // growing the row. Forwarding the raw values here would undo
-            // that.
-            size: _,
-            min_size: _,
-            max_size: _,
-            // `TextEdit::new` pins `ClipMode::Rect` so glyphs cannot
-            // spill past the field; a caller's clip choice must not
-            // relax that.
-            clip: _,
-            // Box parity across the swap is the *theme's* job —
-            // `DragValueTheme::from_chip` mirrors the chip's padding onto
-            // the editor for exactly that reason — and the chip itself
-            // resolves its padding from the theme rather than from this
-            // node. Forwarding it would make the editor honour a value
-            // the chip ignores, which is a new divergence rather than a
-            // fix, and it perturbs the editor's intrinsic height. Margin
-            // below is different: nothing else carries it, so without
-            // this the field visibly shifts.
-            padding: _,
-            // Interior child configuration — the editor owns its one
-            // child.
-            gaps: _,
-            justify: _,
-            child_align: _,
-            // The editor senses as a text field, not as a click/drag
-            // chip.
-            flags: _,
-            // `TextEdit` wraps a `Scroll`, which overwrites `transform`
-            // with its pan offset (see `ScrollWrappers::split`), so
-            // forwarding one would read as supported while doing nothing.
-            transform: _,
-            // Everything below places the widget inside its parent or
-            // sets its box metrics. These are what must survive.
-            margin,
-            align,
-            position,
-            grid,
-            visibility,
-        } = from;
-
-        // `None` means "no caller opinion" — leave this field's own theme
-        // default standing rather than overwriting it with zero.
-        if let Some(margin) = margin {
-            self.node.margin = Some(margin);
-        }
-        self.node.align = align;
-        self.node.position = position;
-        self.node.grid = grid;
-        self.node.visibility = visibility;
+    /// Three fields the caller might expect are deliberately not
+    /// placement, and [`Widget::adopt_placement`] leaves all three alone.
+    /// Sizing is resolved by the caller, which pins the width to the
+    /// chip's last rect so a long value scrolls instead of growing the
+    /// row. Box parity is the *theme's* job — `DragValueTheme::from_chip`
+    /// mirrors the chip's padding onto the editor — and the chip resolves
+    /// its own padding from the theme rather than from this node. And
+    /// `TextEdit` wraps a [`crate::Scroll`], which overwrites `transform`
+    /// with its pan offset, so forwarding one would read as supported
+    /// while doing nothing.
+    pub fn adopt_placement(mut self, from: &Widget) -> Self {
+        self.widget.adopt_placement(from);
         self
     }
 
-    pub fn show(self, ui: &mut Ui) -> TextEditResponse<'_> {
-        let widget = ui.widget(self.node);
-        let id = widget.id();
+    pub fn show(mut self, ui: &mut Ui) -> TextEditResponse<'_> {
+        let id = self.widget.resolve(ui);
         // **The state row is moved out for the whole pass and moved back
         // after.** Every stage of the pass wants it, and the stages are
         // separated by `&mut Ui` calls — the keyboard drain, the shape
@@ -311,7 +258,7 @@ impl<'a> TextEdit<'a> {
         // early-returns on an unstyled editor, and a `mem::take` whose
         // write-back only runs on *some* paths silently resets the caret.
         let mut state = std::mem::take(ui.state_mut::<TextEditState>(id));
-        let signals = self.pass(ui, widget, &mut state);
+        let signals = self.pass(ui, &mut state);
         *ui.state_mut::<TextEditState>(id) = state;
 
         TextEditResponse {
@@ -330,11 +277,8 @@ impl<'a> TextEdit<'a> {
     /// One record pass over a state row the caller owns — see
     /// [`Self::show`] for why it is passed in rather than looked up.
     /// Returns the borrow-free half of [`TextEditResponse`].
-    /// `widget` owns the node from here on — the key filter and
-    /// `LookPlan::apply`'s spacing defaults both write `widget.node`, so there
-    /// is one copy and no point at which it can be recorded stale.
-    fn pass(self, ui: &mut Ui, mut widget: Widget, state: &mut TextEditState) -> EditSignals {
-        let id = widget.id();
+    fn pass(mut self, ui: &mut Ui, state: &mut TextEditState) -> EditSignals {
+        let id = self.widget.resolve(ui);
         let mut is_focused = ui.focused_id() == Some(id);
         // The pass's one probe, and what `show` hands back at the end.
         // Nothing below can move a cascade or layout answer — both are frozen
@@ -345,7 +289,7 @@ impl<'a> TextEdit<'a> {
         // The look, the input, the menu snapshot and the caller all read
         // this one value — a second copy taken before the fold would
         // report a freshly disabled field as live.
-        let mut response = widget.response(ui);
+        let mut response = self.widget.response(ui);
         // Pick the per-state look + animate its visual components.
         // Disabled wins over focus — a disabled editor that still
         // happens to hold focus paints with its disabled visuals
@@ -375,7 +319,7 @@ impl<'a> TextEdit<'a> {
         let mut filter = KeyFilter::TEXT_FIELD;
         filter.set(KeyFilter::ESCAPE, !self.escape_falls_through);
         if is_focused {
-            widget.node.flags.set_key_filter(filter);
+            self.widget.configure().input_scope(filter);
         }
         // One borrow of the slot covers both halves: the state-independent
         // caret / selection scalars this widget paints with, and the plan for
@@ -389,7 +333,9 @@ impl<'a> TextEdit<'a> {
         let caret_width = slot.caret_width;
         let selection_color = slot.selection;
         let placeholder_color = slot.placeholder;
-        let look = slot.plan(&response, (), theme.text).apply(ui, &mut widget);
+        let look = slot
+            .plan(&response, (), theme.text)
+            .apply(ui, &mut self.widget);
         // A face the shaper cannot be asked for shapes nothing — the
         // answer `TextShape::is_noop` gives every widget that records
         // text. This one needs an explicit arm because it derives caret
@@ -397,7 +343,7 @@ impl<'a> TextEdit<'a> {
         // the box paints, the layout below does not run.
         if !look.text.metrics_valid() {
             let focus = state.view.roll_focus(is_focused);
-            widget.record(ui, Some(&look.background), |_| {});
+            self.widget.record(ui, Some(&look.background), |_| {});
             return EditSignals::focus_only(focus, response);
         }
         let font = look.text.font();
@@ -411,7 +357,7 @@ impl<'a> TextEdit<'a> {
         // value so Tree's fold reproduces the same effective padding.
         let stroke_w = look.background.stroke.ring();
         let padding = Spacing::from_array(
-            widget
+            self.widget
                 .node
                 .padding
                 .unwrap()
@@ -536,7 +482,7 @@ impl<'a> TextEdit<'a> {
                 anim: caret_anim,
             }),
         }
-        .record(ui, widget);
+        .record(ui, self.widget);
         EditSignals {
             changed,
             submitted,

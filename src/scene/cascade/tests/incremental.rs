@@ -16,11 +16,11 @@ use crate::scene::cascade::engine::{
 
 use crate::scene::endpoint::Endpoint;
 use crate::scene::layer::Layer;
-use crate::scene::node::configure::Configure;
 use crate::scene::tree::node_id::NodeId;
 use crate::shape::Shape;
 use crate::shape::style::LineCap;
 use crate::ui::harness::UiHarness;
+use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::state::ScrollState;
 use glam::UVec2;
