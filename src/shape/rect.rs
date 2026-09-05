@@ -41,17 +41,27 @@ impl RectShape {
     }
 }
 
-local_rect_shape!(RectShape);
+impl RectShape {
+    pub fn fill(mut self, fill: impl Into<Brush>) -> Self {
+        self.fill = fill.into();
+        self
+    }
 
-shape_setters!(RectShape {
-    fill: Brush => fill,
-    stroke: Stroke => stroke,
-    corners: Corners => corners,
-});
+    pub fn stroke(mut self, stroke: impl Into<Stroke>) -> Self {
+        self.stroke = stroke.into();
+        self
+    }
+
+    pub fn corners(mut self, corners: impl Into<Corners>) -> Self {
+        self.corners = corners.into();
+        self
+    }
+}
 
 impl sealed::LowerShape for RectShape {
     fn is_noop(&self) -> bool {
-        self.rect_is_noop() || (self.fill.is_noop() && self.stroke.is_noop())
+        self.local_rect.is_some_and(Rect::is_paint_empty)
+            || (self.fill.is_noop() && self.stroke.is_noop())
     }
 
     /// `fill` is screened here rather than where it interns: a gradient's

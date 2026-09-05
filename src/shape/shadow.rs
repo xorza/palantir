@@ -28,15 +28,23 @@ impl ShadowShape {
     }
 }
 
-local_rect_shape!(ShadowShape, at);
+impl ShadowShape {
+    /// Paint into `rect`, in owner-relative coords, instead of the
+    /// owner's whole arranged rect.
+    pub fn at(mut self, rect: impl Into<Rect>) -> Self {
+        self.local_rect = Some(rect.into());
+        self
+    }
 
-shape_setters!(ShadowShape {
-    corners: Corners => corners,
-});
+    pub fn corners(mut self, corners: impl Into<Corners>) -> Self {
+        self.corners = corners.into();
+        self
+    }
+}
 
 impl sealed::LowerShape for ShadowShape {
     fn is_noop(&self) -> bool {
-        self.rect_is_noop() || self.shadow.is_noop()
+        self.local_rect.is_some_and(Rect::is_paint_empty) || self.shadow.is_noop()
     }
 
     fn has_nan(&self) -> bool {

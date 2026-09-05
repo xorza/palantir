@@ -36,23 +36,47 @@ impl ImageShape {
     }
 }
 
-local_rect_shape!(ImageShape, at);
+impl ImageShape {
+    /// Paint into `rect`, in owner-relative coords, instead of the
+    /// owner's whole arranged rect.
+    pub fn at(mut self, rect: impl Into<Rect>) -> Self {
+        self.local_rect = Some(rect.into());
+        self
+    }
 
-shape_setters!(ImageShape {
-    fit: ImageFit => fit,
-    min_filter: ImageFilter => min_filter,
-    mag_filter: ImageFilter => mag_filter,
+    pub fn fit(mut self, fit: impl Into<ImageFit>) -> Self {
+        self.fit = fit.into();
+        self
+    }
+
+    pub fn min_filter(mut self, min_filter: impl Into<ImageFilter>) -> Self {
+        self.min_filter = min_filter.into();
+        self
+    }
+
+    pub fn mag_filter(mut self, mag_filter: impl Into<ImageFilter>) -> Self {
+        self.mag_filter = mag_filter.into();
+        self
+    }
+
     /// Take extra taps where this image minifies, instead of the sampler's
     /// lone bilinear one — see [`ImageDownsample`] for what that buys and
     /// what it costs. Off by default; only worth setting on an image that
     /// actually shrinks, and that has detail fine enough to alias.
-    downsample: ImageDownsample => downsample,
-    tint: RgbaF32 => tint,
-});
+    pub fn downsample(mut self, downsample: impl Into<ImageDownsample>) -> Self {
+        self.downsample = downsample.into();
+        self
+    }
+
+    pub fn tint(mut self, tint: impl Into<RgbaF32>) -> Self {
+        self.tint = tint.into();
+        self
+    }
+}
 
 impl sealed::LowerShape for ImageShape {
     fn is_noop(&self) -> bool {
-        self.rect_is_noop() || self.tint.is_noop()
+        self.local_rect.is_some_and(Rect::is_paint_empty) || self.tint.is_noop()
     }
 
     fn has_nan(&self) -> bool {

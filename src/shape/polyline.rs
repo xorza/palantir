@@ -47,10 +47,17 @@ impl<'a> PolylineShape<'a> {
     }
 }
 
-shape_setters!(PolylineShape<'_> {
-    cap: LineCap => cap,
-    join: LineJoin => join,
-});
+impl PolylineShape<'_> {
+    pub fn cap(mut self, cap: impl Into<LineCap>) -> Self {
+        self.cap = cap.into();
+        self
+    }
+
+    pub fn join(mut self, join: impl Into<LineJoin>) -> Self {
+        self.join = join.into();
+        self
+    }
+}
 
 /// RgbaF32 source for [`Shape::polyline`](crate::Shape::polyline).
 #[derive(Clone, Copy, Debug)]

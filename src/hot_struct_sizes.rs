@@ -77,58 +77,24 @@ use crate::widgets::theme::widget_look::animated_look::AnimatedLook;
 use crate::widgets::tooltip::Tooltip;
 use crate::widgets::widget::Widget;
 
-/// Single source of truth for the per-frame hot-struct inventory.
-/// Each entry is `Type => "name": expected_size / expected_align`.
-/// Drives two tests from one list:
-///
-/// - [`print_hot_struct_sizes`] (`#[ignore]`) prints the live
-///   `size`/`align` table — run it to read off a new number when a
-///   layout change is intentional.
-/// - [`hot_struct_sizes_are_pinned`] (a real gate) asserts each
-///   `(size, align)` so a *silent* footprint regression — an added
-///   field, a stop-cap bump, an enum variant that re-inlines a boxed
-///   payload — fails `cargo test` instead of diffusing across the
-///   codebase. When the change is intended, update the number next to
-///   the type; that one-line edit is the review signal.
-///
-/// Sizes are for the 64-bit target (the only one). Covers the SoA
-/// per-node columns, per-shape/per-chrome lowered forms, the
-/// encoder↔composer wire payloads, the GPU instance types, and the
-/// one whole-`Ui` entry ([`UI_SIZE`]).
-///
-/// The expected size is a `tt`, not a literal, so a type whose number
-/// needs an explanation of its own can name a const in the same column
-/// as everything else's number.
-macro_rules! hot_structs {
-    ($($ty:ty => $name:literal : $size:tt / $align:literal),+ $(,)?) => {
-        #[test]
-        #[ignore = "print-only"]
-        fn print_hot_struct_sizes() {
-            let rows = [$(($name, size_of::<$ty>(), align_of::<$ty>())),+];
-            let name_w = rows.iter().map(|(n, ..): &(&str, _, _)| n.len()).max().unwrap_or(0);
-            println!();
-            println!("{:<w$}  {:>5}  {:>5}", "struct", "size", "align", w = name_w);
-            println!("{:-<w$}  {:->5}  {:->5}", "", "", "", w = name_w);
-            for (n, s, a) in &rows {
-                println!("{:<w$}  {:>5}  {:>5}", n, s, a, w = name_w);
-            }
-            println!();
-        }
+/// One inventory row: `T`'s live size and alignment beside the pinned ones.
+#[derive(Debug)]
+struct Pin {
+    name: &'static str,
+    size: usize,
+    align: usize,
+    want_size: usize,
+    want_align: usize,
+}
 
-        #[test]
-        fn hot_struct_sizes_are_pinned() {
-            $(
-                assert_eq!(
-                    (size_of::<$ty>(), align_of::<$ty>()),
-                    ($size, $align),
-                    concat!(
-                        "size/align of ", $name,
-                        " drifted from the pin — update it here if the change is intentional",
-                    ),
-                );
-            )+
-        }
-    };
+const fn pin<T>(name: &'static str, want_size: usize, want_align: usize) -> Pin {
+    Pin {
+        name,
+        size: size_of::<T>(),
+        align: align_of::<T>(),
+        want_size,
+        want_align,
+    }
 }
 
 /// Expected `size_of::<Ui>()`, as `cfg(test)` sees it. `FrameRuntime`
@@ -148,7 +114,29 @@ const UI_SIZE: usize = 6016;
 /// the production footprint.
 const FRAME_ENGINES_SIZE: usize = 1480;
 
-hot_structs! {
+/// Single source of truth for the per-frame hot-struct inventory.
+/// Each entry is `pin::<Type>("name", expected_size, expected_align)`.
+/// Drives two tests from one list:
+///
+/// - [`print_hot_struct_sizes`] (`#[ignore]`) prints the live
+///   `size`/`align` table — run it to read off a new number when a
+///   layout change is intentional.
+/// - [`hot_struct_sizes_are_pinned`] (a real gate) asserts each
+///   `(size, align)` so a *silent* footprint regression — an added
+///   field, a stop-cap bump, an enum variant that re-inlines a boxed
+///   payload — fails `cargo test` instead of diffusing across the
+///   codebase. When the change is intended, update the number next to
+///   the type; that one-line edit is the review signal.
+///
+/// Sizes are for the 64-bit target (the only one). Covers the SoA
+/// per-node columns, per-shape/per-chrome lowered forms, the
+/// encoder↔composer wire payloads, the GPU instance types, and the
+/// one whole-`Ui` entry ([`UI_SIZE`]).
+///
+/// A row's expected size is any `usize` expression, so a type whose
+/// number needs an explanation of its own names a const in the same
+/// column as everything else's number.
+const PINS: &[Pin] = &[
     // One instance per window, not per frame — pinned because every
     // pass walks `&mut Ui` to reach `forest` / `layout` / `anim` /
     // `input` / `cascade`, so anything parked inline between them
@@ -158,85 +146,116 @@ hot_structs! {
     // `frame/partial_cpu`. That is the regression this number
     // exists to catch; a new field is fine, a new multi-KB blob is
     // the thing to argue about.
-    Ui => "ui::Ui": UI_SIZE / 8,
+    pin::<Ui>("ui::Ui", UI_SIZE, 8),
     // The other per-window instance, holding the retained caches the
     // passes run on. Pinned for the same locality reason, and split
     // from `Ui` so a cache growing here cannot be mistaken for the
     // recorder growing.
-    FrameEngines => "ui::FrameEngines": FRAME_ENGINES_SIZE / 8,
-    NodeRecord => "scene::NodeRecord": 64 / 8,
-    LayoutCore => "scene::LayoutCore": 28 / 4,
-    NodeFlags => "scene::NodeFlags": 2 / 2,
-    ExtrasIdx => "scene::ExtrasIdx": 6 / 2,
-    BoundsExtras => "scene::BoundsExtras": 32 / 4,
-    PanelExtras => "scene::PanelExtras": 20 / 4,
-    Node => "scene::Node": 100 / 4,
-    ShapeRecord => "scene::ShapeRecord": 88 / 8,
-    RecordedText => "shapes::RecordedText": 16 / 8,
-    ChromeRow => "scene::ChromeRow": 64 / 8,
-    ShapeStroke => "shapes::ShapeStroke": 12 / 4,
-    LoweredShadow => "shapes::LoweredShadow": 18 / 2,
-    RecordedGradient => "shapes::RecordedGradient": 56 / 4,
-    ResolvedGradient => "payload::ResolvedGradient": 16 / 4,
-    Background => "primitives::Background": 124 / 4,
-    Brush => "primitives::Brush": 60 / 4,
-    Span => "layout::Span": 8 / 4,
-    Button<'static> => "widgets::Button": 160 / 8,
-    Checkbox<'static> => "widgets::Checkbox": 160 / 8,
-    Switch<'static> => "widgets::Switch": 160 / 8,
-    ComboBox<'static, &'static str> => "widgets::ComboBox": 160 / 8,
-    DragValue<'static> => "widgets::DragValue": 200 / 8,
-    RadioButton<'static, u8> => "widgets::RadioButton<u8>": 168 / 8,
-    TextEdit<'static> => "widgets::TextEdit": 184 / 8,
-    Text<'static> => "widgets::Text": 160 / 8,
-    Slider<'static> => "widgets::Slider": 184 / 8,
-    ProgressBar<'static> => "widgets::ProgressBar": 136 / 8,
-    Splitter<'static> => "widgets::Splitter": 144 / 8,
-    Panel => "widgets::Panel": 248 / 8,
-    Frame => "widgets::Frame": 248 / 8,
-    Grid => "widgets::Grid": 248 / 8,
-    Scroll<'static> => "widgets::Scroll": 288 / 8,
-    Separator<'static> => "widgets::Separator": 160 / 8,
-    Spinner<'static> => "widgets::Spinner": 168 / 8,
-    Popup => "widgets::Popup": 272 / 8,
-    Modal<'static> => "widgets::Modal": 272 / 8,
-    Tooltip<'static> => "widgets::Tooltip": 304 / 8,
-    GpuView => "widgets::GpuView": 144 / 8,
-    ContextMenu<'static> => "widgets::ContextMenu": 288 / 8,
-    MenuItem<'static> => "widgets::MenuItem": 168 / 8,
-    ShapedText => "layout::ShapedText": 32 / 8,
-    TextShapeKey => "text::TextShapeKey": 24 / 8,
-    MeasureSnapshot => "layout::MeasureSnapshot": 312 / 8,
-    AnimRow<AnimatedLook> => "animation::AnimRow<AnimatedLook>": 488 / 8,
-    ContentHash => "common::ContentHash": 8 / 8,
-    CascadeInputHash => "cascade::CascadeInputHash": 8 / 8,
-    EntryRow => "cascade::EntryRow": 32 / 4,
-    HitRow => "cascade::HitRow": 32 / 8,
-    Paint => "cascade::Paint": 24 / 8,
-    ResponseState => "input::ResponseState": 136 / 4,
-    Widget => "widgets::Widget": 120 / 8,
-    TargetScrollDelta => "input::TargetScrollDelta": 32 / 8,
-    DamageRegion => "damage::DamageRegion": 132 / 4,
-    CollapsedDamage => "damage::CollapsedDamage": 136 / 4,
-    NodeSnapshot => "damage::node_snapshot::NodeSnapshot": 40 / 8,
-    PushClipPayload => "payload::PushClipPayload": 24 / 4,
-    DrawQuadPayload => "payload::DrawQuadPayload": 76 / 4,
-    DrawTextPayload => "payload::DrawTextPayload": 56 / 8,
-    DrawPolylinePayload => "payload::DrawPolylinePayload": 52 / 4,
-    DrawMeshPayload => "payload::DrawMeshPayload": 48 / 4,
-    DrawImagePayload => "payload::DrawImagePayload": 56 / 8,
-    DrawCurvePayload => "payload::DrawCurvePayload": 88 / 4,
-    DrawIconPayload => "payload::DrawIconPayload": 32 / 4,
-    Quad => "renderer::Quad": 60 / 4,
-    CurveInstance => "renderer::CurveInstance": 68 / 4,
-    MeshInstance => "renderer::MeshInstance": 16 / 4,
-    ImageInstance => "renderer::ImageInstance": 40 / 4,
-    MeshVertex => "primitives::MeshVertex": 12 / 4,
-    RasterQuad => "atlas::RasterQuad": 20 / 4,
-    PlacedGlyph => "text::PlacedGlyph": 32 / 4,
-    ShapedTextRef => "text::ShapedTextRef": 32 / 8,
-    TextDrawRow => "renderer::TextDrawRow": 64 / 8,
-    IconDrawRow => "renderer::IconDrawRow": 24 / 4,
-    ImageDrawRow => "renderer::ImageDrawRow": 48 / 8,
-    MeshDrawRow => "renderer::MeshDrawRow": 32 / 4,
+    pin::<FrameEngines>("ui::FrameEngines", FRAME_ENGINES_SIZE, 8),
+    pin::<NodeRecord>("scene::NodeRecord", 64, 8),
+    pin::<LayoutCore>("scene::LayoutCore", 28, 4),
+    pin::<NodeFlags>("scene::NodeFlags", 2, 2),
+    pin::<ExtrasIdx>("scene::ExtrasIdx", 6, 2),
+    pin::<BoundsExtras>("scene::BoundsExtras", 32, 4),
+    pin::<PanelExtras>("scene::PanelExtras", 20, 4),
+    pin::<Node>("scene::Node", 100, 4),
+    pin::<ShapeRecord>("scene::ShapeRecord", 88, 8),
+    pin::<RecordedText>("shapes::RecordedText", 16, 8),
+    pin::<ChromeRow>("scene::ChromeRow", 64, 8),
+    pin::<ShapeStroke>("shapes::ShapeStroke", 12, 4),
+    pin::<LoweredShadow>("shapes::LoweredShadow", 18, 2),
+    pin::<RecordedGradient>("shapes::RecordedGradient", 56, 4),
+    pin::<ResolvedGradient>("payload::ResolvedGradient", 16, 4),
+    pin::<Background>("primitives::Background", 124, 4),
+    pin::<Brush>("primitives::Brush", 60, 4),
+    pin::<Span>("layout::Span", 8, 4),
+    pin::<Button<'static>>("widgets::Button", 160, 8),
+    pin::<Checkbox<'static>>("widgets::Checkbox", 160, 8),
+    pin::<Switch<'static>>("widgets::Switch", 160, 8),
+    pin::<ComboBox<'static, &'static str>>("widgets::ComboBox", 160, 8),
+    pin::<DragValue<'static>>("widgets::DragValue", 200, 8),
+    pin::<RadioButton<'static, u8>>("widgets::RadioButton<u8>", 168, 8),
+    pin::<TextEdit<'static>>("widgets::TextEdit", 184, 8),
+    pin::<Text<'static>>("widgets::Text", 160, 8),
+    pin::<Slider<'static>>("widgets::Slider", 184, 8),
+    pin::<ProgressBar<'static>>("widgets::ProgressBar", 136, 8),
+    pin::<Splitter<'static>>("widgets::Splitter", 144, 8),
+    pin::<Panel>("widgets::Panel", 248, 8),
+    pin::<Frame>("widgets::Frame", 248, 8),
+    pin::<Grid>("widgets::Grid", 248, 8),
+    pin::<Scroll<'static>>("widgets::Scroll", 288, 8),
+    pin::<Separator<'static>>("widgets::Separator", 160, 8),
+    pin::<Spinner<'static>>("widgets::Spinner", 168, 8),
+    pin::<Popup>("widgets::Popup", 272, 8),
+    pin::<Modal<'static>>("widgets::Modal", 272, 8),
+    pin::<Tooltip<'static>>("widgets::Tooltip", 304, 8),
+    pin::<GpuView>("widgets::GpuView", 144, 8),
+    pin::<ContextMenu<'static>>("widgets::ContextMenu", 288, 8),
+    pin::<MenuItem<'static>>("widgets::MenuItem", 168, 8),
+    pin::<ShapedText>("layout::ShapedText", 32, 8),
+    pin::<TextShapeKey>("text::TextShapeKey", 24, 8),
+    pin::<MeasureSnapshot>("layout::MeasureSnapshot", 312, 8),
+    pin::<AnimRow<AnimatedLook>>("animation::AnimRow<AnimatedLook>", 488, 8),
+    pin::<ContentHash>("common::ContentHash", 8, 8),
+    pin::<CascadeInputHash>("cascade::CascadeInputHash", 8, 8),
+    pin::<EntryRow>("cascade::EntryRow", 32, 4),
+    pin::<HitRow>("cascade::HitRow", 32, 8),
+    pin::<Paint>("cascade::Paint", 24, 8),
+    pin::<ResponseState>("input::ResponseState", 136, 4),
+    pin::<Widget>("widgets::Widget", 120, 8),
+    pin::<TargetScrollDelta>("input::TargetScrollDelta", 32, 8),
+    pin::<DamageRegion>("damage::DamageRegion", 132, 4),
+    pin::<CollapsedDamage>("damage::CollapsedDamage", 136, 4),
+    pin::<NodeSnapshot>("damage::node_snapshot::NodeSnapshot", 40, 8),
+    pin::<PushClipPayload>("payload::PushClipPayload", 24, 4),
+    pin::<DrawQuadPayload>("payload::DrawQuadPayload", 76, 4),
+    pin::<DrawTextPayload>("payload::DrawTextPayload", 56, 8),
+    pin::<DrawPolylinePayload>("payload::DrawPolylinePayload", 52, 4),
+    pin::<DrawMeshPayload>("payload::DrawMeshPayload", 48, 4),
+    pin::<DrawImagePayload>("payload::DrawImagePayload", 56, 8),
+    pin::<DrawCurvePayload>("payload::DrawCurvePayload", 88, 4),
+    pin::<DrawIconPayload>("payload::DrawIconPayload", 32, 4),
+    pin::<Quad>("renderer::Quad", 60, 4),
+    pin::<CurveInstance>("renderer::CurveInstance", 68, 4),
+    pin::<MeshInstance>("renderer::MeshInstance", 16, 4),
+    pin::<ImageInstance>("renderer::ImageInstance", 40, 4),
+    pin::<MeshVertex>("primitives::MeshVertex", 12, 4),
+    pin::<RasterQuad>("atlas::RasterQuad", 20, 4),
+    pin::<PlacedGlyph>("text::PlacedGlyph", 32, 4),
+    pin::<ShapedTextRef>("text::ShapedTextRef", 32, 8),
+    pin::<TextDrawRow>("renderer::TextDrawRow", 64, 8),
+    pin::<IconDrawRow>("renderer::IconDrawRow", 24, 4),
+    pin::<ImageDrawRow>("renderer::ImageDrawRow", 48, 8),
+    pin::<MeshDrawRow>("renderer::MeshDrawRow", 32, 4),
+];
+
+#[test]
+#[ignore = "print-only"]
+fn print_hot_struct_sizes() {
+    let name_w = PINS.iter().map(|p| p.name.len()).max().unwrap_or(0);
+    println!();
+    println!(
+        "{:<w$}  {:>5}  {:>5}",
+        "struct",
+        "size",
+        "align",
+        w = name_w
+    );
+    println!("{:-<w$}  {:->5}  {:->5}", "", "", "", w = name_w);
+    for p in PINS {
+        println!("{:<w$}  {:>5}  {:>5}", p.name, p.size, p.align, w = name_w);
+    }
+    println!();
+}
+
+#[test]
+fn hot_struct_sizes_are_pinned() {
+    for p in PINS {
+        assert_eq!(
+            (p.size, p.align),
+            (p.want_size, p.want_align),
+            "size/align of {} drifted from the pin — update it here if the change is intentional",
+            p.name,
+        );
+    }
 }

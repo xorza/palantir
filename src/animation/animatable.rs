@@ -49,48 +49,62 @@ pub trait Animatable: Clone + PartialEq + 'static {
     fn normalize_for_spring(&mut self, _target: &Self, _velocity: &mut Self) {}
 }
 
-/// The [`Animatable`] a type with the four arithmetic operators already
-/// has: `lerp`, `add`, `sub` and `scale` *are* those operators. Only the
-/// two that are not — the squared magnitude and the additive identity —
-/// are spelled per type.
-///
-/// A macro rather than a blanket impl over `Add + Sub + Mul<f32>`: the
-/// blanket would claim every such type in the crate and beyond, and
-/// `Animatable` is a decision each type makes.
-macro_rules! animatable_by_ops {
-    ($ty:ty, |$value:ident| $magnitude:expr, $zero:expr) => {
-        impl Animatable for $ty {
-            #[inline]
-            fn lerp(a: Self, b: Self, t: f32) -> Self {
-                a + (b - a) * t
-            }
-            #[inline]
-            fn sub(self, other: Self) -> Self {
-                self - other
-            }
-            #[inline]
-            fn add(self, other: Self) -> Self {
-                self + other
-            }
-            #[inline]
-            fn scale(self, k: f32) -> Self {
-                self * k
-            }
-            #[inline]
-            fn magnitude_squared(self) -> f32 {
-                let $value = self;
-                $magnitude
-            }
-            #[inline]
-            fn zero() -> Self {
-                $zero
-            }
-        }
-    };
+// Written per type rather than as a blanket impl over `Add + Sub +
+// Mul<f32>`: the blanket would claim every such type in the crate and
+// beyond, and `Animatable` is a decision each type makes.
+impl Animatable for f32 {
+    #[inline]
+    fn lerp(a: Self, b: Self, t: f32) -> Self {
+        a + (b - a) * t
+    }
+    #[inline]
+    fn sub(self, other: Self) -> Self {
+        self - other
+    }
+    #[inline]
+    fn add(self, other: Self) -> Self {
+        self + other
+    }
+    #[inline]
+    fn scale(self, k: f32) -> Self {
+        self * k
+    }
+    #[inline]
+    fn magnitude_squared(self) -> f32 {
+        self * self
+    }
+    #[inline]
+    fn zero() -> Self {
+        0.0
+    }
 }
 
-animatable_by_ops!(f32, |v| v * v, 0.0);
-animatable_by_ops!(Vec2, |v| v.length_squared(), Vec2::ZERO);
+impl Animatable for Vec2 {
+    #[inline]
+    fn lerp(a: Self, b: Self, t: f32) -> Self {
+        a + (b - a) * t
+    }
+    #[inline]
+    fn sub(self, other: Self) -> Self {
+        self - other
+    }
+    #[inline]
+    fn add(self, other: Self) -> Self {
+        self + other
+    }
+    #[inline]
+    fn scale(self, k: f32) -> Self {
+        self * k
+    }
+    #[inline]
+    fn magnitude_squared(self) -> f32 {
+        self.length_squared()
+    }
+    #[inline]
+    fn zero() -> Self {
+        Vec2::ZERO
+    }
+}
 
 // `RgbaF32` derives `Animatable` (see `primitives/color.rs`); the
 // generated impl is per-component lerp/add/sub/scale,

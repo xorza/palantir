@@ -123,42 +123,46 @@ const _: () = assert!(
     "Visibility discriminant exceeds 2 bits",
 );
 
-/// One index into a side table a [`LayoutMode`] variant carries a
-/// definition through. A type per table, so a grid index cannot reach the
-/// scrollbar table, over the one [`Index16`] that bounds-checks it and
-/// names the table it overflowed.
-macro_rules! def_id {
-    ($(#[$doc:meta])* $name:ident => $table:literal) => {
-        $(#[$doc])*
-        #[repr(transparent)]
-        #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-        pub(crate) struct $name(Index16);
+// One index type per side table a `LayoutMode` variant carries a
+// definition through, so a grid index cannot reach the scrollbar
+// table, over the one `Index16` that bounds-checks it and names the
+// table it overflowed.
 
-        impl $name {
-            pub(crate) fn from_index(index: usize) -> Self {
-                Self(Index16::new(index, $table))
-            }
-        }
+/// Index into `Tree::grid_defs`.
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(crate) struct GridDefId(Index16);
 
-        impl From<$name> for usize {
-            fn from(value: $name) -> Self {
-                value.0.idx()
-            }
-        }
-    };
+impl GridDefId {
+    pub(crate) fn from_index(index: usize) -> Self {
+        Self(Index16::new(index, "grid_defs"))
+    }
 }
 
-def_id!(
-    /// Index into `Tree::grid_defs`.
-    GridDefId => "grid_defs"
-);
+impl From<GridDefId> for usize {
+    fn from(value: GridDefId) -> Self {
+        value.0.idx()
+    }
+}
 
-def_id!(
-    /// Index into `Tree::scrollbar_defs`. A side table rather than an
-    /// inline payload because the def carries nine fields and
-    /// `LayoutMode` packs into 16 bits.
-    ScrollbarsDefId => "scrollbar_defs"
-);
+/// Index into `Tree::scrollbar_defs`. A side table rather than an
+/// inline payload because the def carries nine fields and
+/// `LayoutMode` packs into 16 bits.
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(crate) struct ScrollbarsDefId(Index16);
+
+impl ScrollbarsDefId {
+    pub(crate) fn from_index(index: usize) -> Self {
+        Self(Index16::new(index, "scrollbar_defs"))
+    }
+}
+
+impl From<ScrollbarsDefId> for usize {
+    fn from(value: ScrollbarsDefId) -> Self {
+        value.0.idx()
+    }
+}
 
 /// Which driver lays a scroll viewport's children out. Derived from the
 /// spec's pan mask by [`ScrollSpec::child_layout`], so measure, arrange,

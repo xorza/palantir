@@ -78,20 +78,6 @@ use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 
-macro_rules! noop_gates {
-    ($( $gate:ident($payload:ty) => $method:ident, )*) => {
-        $(
-            #[inline]
-            fn $gate(&mut self, payload: $payload) {
-                if payload.is_noop() {
-                    return;
-                }
-                self.$method(payload);
-            }
-        )*
-    };
-}
-
 /// Sink for one frame's lowered paint operations, in authoring order.
 ///
 /// The required methods are exactly the calls a sink implements. The
@@ -138,17 +124,52 @@ pub(crate) trait PaintSink {
 
     fn curve(&mut self, payload: DrawCurvePayload);
 
-    // One gate per payload kind whose whole body is "drop it if it
-    // paints nothing". Written once rather than six times: what differs
-    // between them is the payload type and the sink method, which is all
-    // the table says.
-    noop_gates! {
-        draw_quad(DrawQuadPayload) => quad,
-        draw_text(DrawTextPayload) => text,
-        draw_mesh(DrawMeshPayload) => mesh,
-        draw_icon(DrawIconPayload) => icon,
-        draw_curve(DrawCurvePayload) => curve,
-        draw_image(ImageDraw<'_>) => image,
+    #[inline]
+    fn draw_quad(&mut self, payload: DrawQuadPayload) {
+        if payload.is_noop() {
+            return;
+        }
+        self.quad(payload);
+    }
+
+    #[inline]
+    fn draw_text(&mut self, payload: DrawTextPayload) {
+        if payload.is_noop() {
+            return;
+        }
+        self.text(payload);
+    }
+
+    #[inline]
+    fn draw_mesh(&mut self, payload: DrawMeshPayload) {
+        if payload.is_noop() {
+            return;
+        }
+        self.mesh(payload);
+    }
+
+    #[inline]
+    fn draw_icon(&mut self, payload: DrawIconPayload) {
+        if payload.is_noop() {
+            return;
+        }
+        self.icon(payload);
+    }
+
+    #[inline]
+    fn draw_curve(&mut self, payload: DrawCurvePayload) {
+        if payload.is_noop() {
+            return;
+        }
+        self.curve(payload);
+    }
+
+    #[inline]
+    fn draw_image(&mut self, payload: ImageDraw<'_>) {
+        if payload.is_noop() {
+            return;
+        }
+        self.image(payload);
     }
 
     #[inline]

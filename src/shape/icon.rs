@@ -78,25 +78,41 @@ impl IconShape {
     }
 }
 
-local_rect_shape!(IconShape, at);
+impl IconShape {
+    /// Paint into `rect`, in owner-relative coords, instead of the
+    /// owner's whole arranged rect.
+    pub fn at(mut self, rect: impl Into<Rect>) -> Self {
+        self.local_rect = Some(rect.into());
+        self
+    }
 
-shape_setters!(IconShape {
-    fit: IconFit => fit,
+    pub fn fit(mut self, fit: impl Into<IconFit>) -> Self {
+        self.fit = fit.into();
+        self
+    }
+
     /// Multiply the icon by `tint` — whole for a tintable icon, alpha only
     /// for a colour one. See the type docs.
-    tint: RgbaF32 => tint,
+    pub fn tint(mut self, tint: impl Into<RgbaF32>) -> Self {
+        self.tint = tint.into();
+        self
+    }
+
     /// Draw a **colour** icon in greyscale — its own luminance, hue gone.
     ///
     /// The disabled look for artwork whose colours a tint cannot replace.
     /// Pairs with a faded `tint` alpha, which is the other half of the same
     /// state. No effect on a tintable icon: there the draw already picks the
     /// colour, so a grey one is a grey `tint`.
-    desaturate: bool => desaturate,
-});
+    pub fn desaturate(mut self, desaturate: impl Into<bool>) -> Self {
+        self.desaturate = desaturate.into();
+        self
+    }
+}
 
 impl sealed::LowerShape for IconShape {
     fn is_noop(&self) -> bool {
-        self.rect_is_noop() || self.tint.is_noop()
+        self.local_rect.is_some_and(Rect::is_paint_empty) || self.tint.is_noop()
     }
 
     /// `fit` is a bare tag, `desaturate` a flag, and the artwork's own

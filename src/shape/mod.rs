@@ -8,61 +8,6 @@
 //! so the decision belongs here rather than over each one.
 #![allow(private_interfaces)]
 
-/// Chainable builder setters — `self.field = value.into(); self` — for the
-/// authoring surface a shape kind exposes.
-///
-/// A macro because the bodies are identical across kinds while the names are
-/// not — `at`, `tint`, `corners`, `cap` and `stroke` repeat over four or
-/// five kinds each. Spelled out, that is how one of them ends up taking a
-/// concrete type instead of `impl Into`, or setting the wrong field.
-macro_rules! shape_setters {
-    ($ty:ty {
-        $(
-            $(#[$meta:meta])*
-            $name:ident: $arg:ty => $($field:ident).+,
-        )*
-    }) => {
-        impl $ty {
-            $(
-                $(#[$meta])*
-                pub fn $name(mut self, $name: impl Into<$arg>) -> Self {
-                    self.$($field).+ = $name.into();
-                    self
-                }
-            )*
-        }
-    };
-}
-
-/// The owner-relative paint rect the rect-shaped kinds carry: the `is_noop`
-/// clause that reads it, and — for the kinds that let a caller author one —
-/// the `at` setter, named in the invocation.
-///
-/// `Shape::rect` and `Shape::owner_rect` take theirs up front, so `RectShape`
-/// asks for the clause alone; a second way to say the same thing would only
-/// make `Shape::rect(a).at(b)` expressible.
-macro_rules! local_rect_shape {
-    ($ty:ty) => {
-        impl $ty {
-            fn rect_is_noop(&self) -> bool {
-                self.local_rect.is_some_and(|rect| rect.is_paint_empty())
-            }
-        }
-    };
-    ($ty:ty, at) => {
-        local_rect_shape!($ty);
-
-        impl $ty {
-            /// Paint into `rect`, in owner-relative coords, instead of the
-            /// owner's whole arranged rect.
-            pub fn at(mut self, rect: impl Into<$crate::primitives::rect::Rect>) -> Self {
-                self.local_rect = Some(rect.into());
-                self
-            }
-        }
-    };
-}
-
 pub(crate) mod curve;
 pub(crate) mod icon;
 pub(crate) mod image;

@@ -46,23 +46,29 @@ pub(crate) trait MinMax: Copy {
     fn max_of(self, other: Self) -> Self;
 }
 
-macro_rules! impl_min_max {
-    ($($t:ty),+) => {$(
-        impl MinMax for $t {
-            #[inline]
-            fn min_of(self, other: Self) -> Self {
-                self.min(other)
-            }
+impl MinMax for f32 {
+    #[inline]
+    fn min_of(self, other: Self) -> Self {
+        self.min(other)
+    }
 
-            #[inline]
-            fn max_of(self, other: Self) -> Self {
-                self.max(other)
-            }
-        }
-    )+};
+    #[inline]
+    fn max_of(self, other: Self) -> Self {
+        self.max(other)
+    }
 }
 
-impl_min_max!(f32, f64);
+impl MinMax for f64 {
+    #[inline]
+    fn min_of(self, other: Self) -> Self {
+        self.min(other)
+    }
+
+    #[inline]
+    fn max_of(self, other: Self) -> Self {
+        self.max(other)
+    }
+}
 
 #[cfg(test)]
 mod tests {
