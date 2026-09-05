@@ -63,7 +63,6 @@ fn recreate_backend_on_format_change_renders_identically() {
     let size = UVec2::new(200, 120);
     let mut h = Harness::new();
 
-    // Baseline at the construction format (Rgba8UnormSrgb).
     let before = h.render_to_format(TextureFormat::Rgba8UnormSrgb, size, 1.0, DARK_BG, scene);
 
     // Guard against a vacuous comparison: the scene must actually paint
@@ -162,12 +161,10 @@ thread_local! {
         const { RefCell::new(None) };
 }
 
-/// Scene drawing the test image stretched to fill. Registers once (held
-/// in `TEST_IMAGE`); later frames clone the handle.
 fn image_scene(ui: &mut palantir::Ui) {
     let handle = TEST_IMAGE.with_borrow_mut(|slot| {
         slot.get_or_insert_with(|| {
-            ui.register_image(test_image())
+            ui.register_image(&test_image())
                 .expect("fixture image fits every supported GPU")
         })
         .clone()
@@ -191,7 +188,6 @@ fn images_survive_format_change_without_reupload() {
     let size = UVec2::new(128, 128);
     let mut h = Harness::new();
 
-    // First render at the construction format uploads the image.
     let before = h.render_to_format(
         TextureFormat::Rgba8UnormSrgb,
         size,

@@ -10,7 +10,7 @@ use crate::layout::fill_item::FillItem;
 use crate::layout::grid::grid_track_store::GridTrackStore;
 use crate::layout::types::layout_mode::GridDefId;
 use crate::layout::types::track::Track;
-use crate::primitives::num::F32Ext;
+use crate::primitives::num::F32Px;
 use crate::primitives::span::Span;
 use fixedbitset::FixedBitSet;
 

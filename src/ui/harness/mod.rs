@@ -150,10 +150,10 @@
 //! `unreachable_pub` / `dead_code` stay live on all three tiers.
 
 use crate::app::internals::RecordApp;
+use crate::common::clipboard::Clipboard;
 use crate::common::time::MAX_ANIM_DT;
 use crate::display::Display;
 use crate::display::user_scale::UserScale;
-use crate::host::shared::HostShared;
 use crate::input::capture::{DOUBLE_CLICK_WINDOW, DRAG_THRESHOLD};
 use crate::input::input_event::InputEvent;
 use crate::input::keyboard::key::Key;
@@ -710,7 +710,7 @@ impl UiHarness {
     pub fn clipboard_text(&self) -> String {
         self.ui
             .resources
-            .clipboard
+            .clipboard()
             .get()
             .expect("the harness clipboard is the in-memory backend")
     }
@@ -718,7 +718,7 @@ impl UiHarness {
     pub fn set_clipboard_text(&mut self, text: &str) {
         self.ui
             .resources
-            .clipboard
+            .clipboard()
             .set(text)
             .expect("the memory clipboard is always available");
     }
@@ -733,7 +733,7 @@ impl UiHarness {
 /// The in-crate rung: tree, encoder, damage, and the schedule knobs.
 /// None of this leaves the crate when the type is exported.
 impl UiHarness {
-    /// Two recorders over one `HostShared`, for the shared-text-cache and
+    /// Two recorders over one `UiResources`, for the shared-text-cache and
     /// idle/active-window tests.
     pub(crate) fn from_resources(resources: UiResources, surface: UVec2) -> Self {
         let mut harness = Self {
@@ -754,8 +754,10 @@ impl UiHarness {
     /// watches, and drops every shaped buffer — so a case that loads one
     /// must not do it to the shaper its neighbours are sharing.
     pub(crate) fn over_shaper(shaper: TextShaper, surface: UVec2) -> Self {
-        let shared = HostShared::new(shaper, TextureLimit::default());
-        Self::from_resources(shared.resources.clone(), surface)
+        Self::from_resources(
+            UiResources::new(shaper, Clipboard::default(), TextureLimit::default()),
+            surface,
+        )
     }
 
     /// The one place a frame is actually entered. `Ui::frame` is

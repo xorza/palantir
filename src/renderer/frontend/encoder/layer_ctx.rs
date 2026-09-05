@@ -334,7 +334,7 @@ impl LayerCtx<'_> {
                 // untinted composite a view has always emitted.
                 // `epoch` only affects the shape hash (damage), not the draw.
                 let (handle, size, paint) = match source {
-                    ImageSource::Texture { id, size } => (*id, *size, None),
+                    ImageSource::Texture { id, size, .. } => (*id, *size, None),
                     ImageSource::GpuView { epoch: _ } => {
                         let wid = self.tree.records.widget_id()[id.idx()];
                         let view = self.gpu_views.view(wid);

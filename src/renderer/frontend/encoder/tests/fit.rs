@@ -98,7 +98,7 @@ fn downsample_modes_encode_to_distinct_tap_flags() {
     let mut h = UiHarness::new(UVec2::new(200, 200));
     let handle = h
         .ui()
-        .register_image(Image::from_rgba8(2, 2, vec![255; 16]))
+        .register_image(&Image::from_rgba8(2, 2, vec![255; 16]))
         .unwrap();
     // Three shapes on one node: they all paint the same rect, and record order
     // is what pairs each draw back up with the mode that asked for it.

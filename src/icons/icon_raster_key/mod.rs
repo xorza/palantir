@@ -2,7 +2,7 @@
 //! that bounds how many distinct rasters a continuous zoom can create.
 
 use crate::icons::icon_set::IconRef;
-use crate::primitives::num::F32Ext;
+use crate::primitives::num::F32Px;
 use glam::{U16Vec2, Vec2};
 
 /// Physical sizes at or below this rasterize at exactly the pixel box asked

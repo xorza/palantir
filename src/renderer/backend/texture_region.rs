@@ -2,7 +2,7 @@
 //! it.
 //!
 //! Every `queue.write_texture` in the backend goes through
-//! [`TextureRegion::write`] — the image registry and the gradient atlas —
+//! [`TextureRegion::write`] — the image store and the gradient atlas —
 //! so the tally has one place to live and a third uploader cannot quietly
 //! skip it. Not every texture *upload*: the glyph atlas batches its
 //! pixels through one `copy_buffer_to_texture` on the frame encoder
@@ -33,9 +33,7 @@ use glam::UVec2;
 #[derive(Clone, Copy, Debug)]
 pub(super) struct TextureRegion<'a> {
     pub(super) texture: &'a wgpu::Texture,
-    /// Row this band starts at.
     pub(super) first_row: u32,
-    /// Extent in texels.
     pub(super) size: UVec2,
     /// Source stride. Carried rather than derived from `size.x`: the two
     /// uploaders have different texel widths (`Rgba8` against
@@ -51,9 +49,9 @@ pub(super) struct TextureRegion<'a> {
     /// **Padding on this side to buy that copy back is a
     /// pessimisation.** It is the same row-by-row fill, plus a buffer of
     /// our own, and wgpu then copies the padded whole a second time into
-    /// staging it allocates either way. An image uploads once, at
-    /// registration (`ImageTextures::drain_registry`), so the re-pack is
-    /// paid per image and never per frame.
+    /// staging it allocates either way. A static image uploads once, at
+    /// registration, and a rewritten one is a few hundred texels wide, so
+    /// the re-pack never amounts to a frame's cost.
     pub(super) bytes_per_row: u32,
 }
 
@@ -97,7 +95,6 @@ pub(crate) mod counters {
     static TEXTURE_CALLS: AtomicU64 = AtomicU64::new(0);
     static TEXTURE_BYTES: AtomicU64 = AtomicU64::new(0);
 
-    /// Tally one [`super::TextureRegion::write`] of `bytes`.
     pub(super) fn note(bytes: u64) {
         TEXTURE_CALLS.fetch_add(1, Relaxed);
         TEXTURE_BYTES.fetch_add(bytes, Relaxed);

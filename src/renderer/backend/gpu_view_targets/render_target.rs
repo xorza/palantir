@@ -1,7 +1,7 @@
 //! One framework-owned off-screen target for a composited `GpuView`.
 
-use crate::renderer::backend::image_textures::TARGET_FORMAT;
-use crate::renderer::backend::texture_binding;
+use crate::renderer::backend::gpu_view_targets::TARGET_FORMAT;
+use crate::renderer::backend::image_binding::ImageBinding;
 use crate::renderer::render_owner_id::RenderOwnerId;
 use glam::UVec2;
 use std::time::Duration;
@@ -9,6 +9,7 @@ use std::time::Duration;
 #[derive(Debug)]
 pub(super) struct RenderTarget {
     pub(super) view: wgpu::TextureView,
+    pub(super) bind_group: wgpu::BindGroup,
     pub(super) size: UVec2,
     pub(super) owner: RenderOwnerId,
     /// [`GpuPaint::init`](crate::GpuPaint::init) has run for this view.
@@ -20,9 +21,9 @@ pub(super) struct RenderTarget {
     pub(super) last_paint: Option<Duration>,
 }
 
-/// A freshly created target texture, as the two halves its owner files
-/// separately: the view a paint renders into, and the bind group a draw
-/// samples it through.
+/// A freshly created target texture, as the two halves a [`RenderTarget`]
+/// keeps: the view a paint renders into, and the bind group a draw samples
+/// it through. A resize swaps both and leaves the rest of the entry alone.
 #[derive(Debug)]
 pub(super) struct AllocatedTarget {
     pub(super) view: wgpu::TextureView,
@@ -30,12 +31,7 @@ pub(super) struct AllocatedTarget {
 }
 
 impl AllocatedTarget {
-    pub(super) fn new(
-        device: &wgpu::Device,
-        bgl: &wgpu::BindGroupLayout,
-        sampler: &wgpu::Sampler,
-        size: UVec2,
-    ) -> Self {
+    pub(super) fn new(device: &wgpu::Device, binding: &ImageBinding, size: UVec2) -> Self {
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("palantir.gpu_view.target"),
             size: wgpu::Extent3d {
@@ -51,8 +47,7 @@ impl AllocatedTarget {
             view_formats: &[],
         });
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let bind_group =
-            texture_binding::bind_group(device, bgl, sampler, &view, "palantir.gpu_view.tex.bg");
+        let bind_group = binding.bind_group(device, &view, "palantir.gpu_view.tex.bg");
         Self { view, bind_group }
     }
 }
@@ -65,7 +60,7 @@ impl AllocatedTarget {
 /// Another owner's entries always survive, since an idle window is not
 /// evidence that its views are gone — which is exactly why a *closed* owner
 /// has to be retired explicitly through
-/// [`ImageTextures::retire_owner`](super::ImageTextures::retire_owner),
+/// [`GpuViewTargets::retire_owner`](super::GpuViewTargets::retire_owner),
 /// never having a submit to be absent from.
 ///
 /// A free function over the two ids rather than a method on
@@ -80,8 +75,6 @@ mod tests {
     use super::keep_target;
     use crate::renderer::render_owner_id::RenderOwnerId;
 
-    /// Which of `entries` (id, owner) a submit by `owner` frees, given the
-    /// ids that submit still lists as live.
     fn evicted(entries: &[(u64, RenderOwnerId)], owner: RenderOwnerId, live: &[u64]) -> Vec<u64> {
         entries
             .iter()
@@ -98,7 +91,7 @@ mod tests {
     /// Note `2` (owner `b`) surviving every one of `a`'s submits below: a
     /// submit is never evidence about another stream's targets. That is what
     /// leaves a *closed* stream's targets unreachable by eviction and makes
-    /// `ImageTextures::retire_owner` the only thing that frees them.
+    /// `GpuViewTargets::retire_owner` the only thing that frees them.
     #[test]
     fn eviction_follows_the_live_roster_and_is_owner_scoped() {
         let a = RenderOwnerId::reserve();
@@ -108,11 +101,8 @@ mod tests {
             // `a` still records both of its views — nothing freed, whatever
             // subset of them actually painted this frame.
             (a, &[1u64, 3][..], vec![]),
-            // `a` dropped view 3.
             (a, &[1][..], vec![3]),
-            // `a` dropped both.
             (a, &[][..], vec![1, 3]),
-            // `b` submitting frees nothing of `a`'s, and keeps its own.
             (b, &[2][..], vec![]),
             (b, &[][..], vec![2]),
         ];

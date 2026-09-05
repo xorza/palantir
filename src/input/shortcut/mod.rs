@@ -65,6 +65,12 @@ impl Mods {
         shift: false,
         alt: false,
     };
+    /// Shift alone.
+    pub const SHIFT: Self = Self {
+        ctrl: false,
+        shift: true,
+        alt: false,
+    };
     /// Primary command key alone.
     pub const CTRL: Self = Self {
         ctrl: true,

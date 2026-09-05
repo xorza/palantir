@@ -6,7 +6,7 @@ use crate::layout::intrinsic::LenReq;
 use crate::layout::pass::LayoutPass;
 use crate::layout::types::layout_mode::GridDefId;
 use crate::layout::types::track::Track;
-use crate::primitives::num::F32Ext;
+use crate::primitives::num::F32Px;
 use crate::primitives::size::Size;
 use crate::scene::tree::node_id::NodeId;
 

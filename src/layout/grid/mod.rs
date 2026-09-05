@@ -12,7 +12,7 @@ use crate::layout::intrinsic::{IntrinsicQuery, IntrinsicRange, LenReq};
 use crate::layout::pass::LayoutPass;
 use crate::layout::types::layout_mode::GridDefId;
 use crate::primitives::interned_text::InternedText;
-use crate::primitives::num::F32Ext;
+use crate::primitives::num::F32Px;
 use crate::primitives::{rect::Rect, size::Size};
 use crate::scene::tree::Tree;
 use crate::scene::tree::node_id::NodeId;

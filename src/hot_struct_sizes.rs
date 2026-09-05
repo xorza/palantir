@@ -134,7 +134,7 @@ macro_rules! hot_structs {
 /// Expected `size_of::<Ui>()`, as `cfg(test)` sees it. `FrameRuntime`
 /// carries a probe cell, so a release `Ui` can be smaller — see
 /// [`FRAME_ENGINES_SIZE`], where the same gate is worth ~90 B.
-const UI_SIZE: usize = 6016;
+const UI_SIZE: usize = 6024;
 
 /// Expected `size_of::<FrameEngines>()`, as **`cfg(test)`** sees it —
 /// which is the only way this module compiles.
@@ -164,7 +164,6 @@ hot_structs! {
     // from `Ui` so a cache growing here cannot be mistaken for the
     // recorder growing.
     FrameEngines => "ui::FrameEngines": FRAME_ENGINES_SIZE / 8,
-    // Per-node SoA columns (touched every node, every frame).
     NodeRecord => "scene::NodeRecord": 64 / 8,
     LayoutCore => "scene::LayoutCore": 28 / 4,
     NodeFlags => "scene::NodeFlags": 2 / 2,
@@ -172,7 +171,6 @@ hot_structs! {
     BoundsExtras => "scene::BoundsExtras": 32 / 4,
     PanelExtras => "scene::PanelExtras": 20 / 4,
     Node => "scene::Node": 120 / 8,
-    // Per-shape / per-chrome paint records + lowered fill forms.
     ShapeRecord => "scene::ShapeRecord": 88 / 8,
     RecordedText => "shapes::RecordedText": 16 / 8,
     ChromeRow => "scene::ChromeRow": 64 / 8,
@@ -180,7 +178,6 @@ hot_structs! {
     LoweredShadow => "shapes::LoweredShadow": 18 / 2,
     RecordedGradient => "shapes::RecordedGradient": 56 / 4,
     ResolvedGradient => "payload::ResolvedGradient": 16 / 4,
-    // Authoring paint primitives.
     Background => "primitives::Background": 124 / 4,
     Brush => "primitives::Brush": 60 / 4,
     Span => "layout::Span": 8 / 4,
@@ -207,31 +204,21 @@ hot_structs! {
     GpuView => "widgets::GpuView": 144 / 8,
     ContextMenu<'static> => "widgets::ContextMenu": 288 / 8,
     MenuItem<'static> => "widgets::MenuItem": 168 / 8,
-    // Layout / text outputs.
     ShapedText => "layout::ShapedText": 32 / 8,
     TextShapeKey => "text::TextShapeKey": 24 / 8,
-    // The measure cache's per-descriptor row, retained across frames.
     MeasureSnapshot => "layout::MeasureSnapshot": 312 / 8,
-    // Cross-frame animation rows. 488 rather than 472 since `TextStyle`
-    // gained the italic axis: a numeric weight and a style no longer fit
-    // the two bytes a pair of two-variant enums used, so each of the
-    // row's looks carries four more.
     AnimRow<AnimatedLook> => "animation::AnimRow<AnimatedLook>": 488 / 8,
-    // Cross-frame hash keys.
     ContentHash => "common::ContentHash": 8 / 8,
     CascadeInputHash => "cascade::CascadeInputHash": 8 / 8,
-    // Cascade per-node and input per-target rows.
     EntryRow => "cascade::EntryRow": 32 / 4,
     HitRow => "cascade::HitRow": 32 / 8,
     Paint => "cascade::Paint": 24 / 8,
     ResponseState => "input::ResponseState": 136 / 4,
     Widget => "widgets::Widget": 128 / 8,
     TargetScrollDelta => "input::TargetScrollDelta": 32 / 8,
-    // Damage.
     DamageRegion => "damage::DamageRegion": 132 / 4,
     CollapsedDamage => "damage::CollapsedDamage": 136 / 4,
     NodeSnapshot => "damage::node_snapshot::NodeSnapshot": 40 / 8,
-    // Encoder↔composer wire payloads.
     PushClipPayload => "payload::PushClipPayload": 24 / 4,
     DrawQuadPayload => "payload::DrawQuadPayload": 76 / 4,
     DrawTextPayload => "payload::DrawTextPayload": 56 / 8,
@@ -240,7 +227,6 @@ hot_structs! {
     DrawImagePayload => "payload::DrawImagePayload": 56 / 8,
     DrawCurvePayload => "payload::DrawCurvePayload": 88 / 4,
     DrawIconPayload => "payload::DrawIconPayload": 32 / 4,
-    // GPU instance / vertex types.
     Quad => "renderer::Quad": 60 / 4,
     CurveInstance => "renderer::CurveInstance": 68 / 4,
     MeshInstance => "renderer::MeshInstance": 16 / 4,

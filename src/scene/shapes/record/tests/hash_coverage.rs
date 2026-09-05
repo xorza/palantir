@@ -678,6 +678,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
     let tex = ImageSource::Texture {
         id: TextureId(1),
         size: glam::UVec2::new(2, 3),
+        generation: 0,
     };
     let base = image(
         rect(0.0),
@@ -721,6 +722,23 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             rect(0.0),
             white,
             ImageSource::GpuView { epoch: 1 },
+            ImageFit::Fill,
+            ImageFilter::Linear,
+            ImageFilter::Linear,
+            ImageDownsample::Single,
+        ),
+    );
+    moves(
+        "Image.source.generation",
+        &base,
+        &image(
+            rect(0.0),
+            white,
+            ImageSource::Texture {
+                id: TextureId(1),
+                size: glam::UVec2::new(2, 3),
+                generation: 1,
+            },
             ImageFit::Fill,
             ImageFilter::Linear,
             ImageFilter::Linear,

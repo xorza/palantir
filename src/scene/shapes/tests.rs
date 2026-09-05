@@ -1,8 +1,9 @@
 use crate::primitives::color::RgbaF32;
 use crate::primitives::image::Image;
 use crate::primitives::rect::Rect;
+use crate::primitives::texture_id::TextureId;
 use crate::renderer::image_registry::ImageRegistry;
-use crate::renderer::texture_id_source::TextureIdSource;
+use crate::renderer::image_registry::image_handle::ImageHandle;
 use crate::scene::record_store::RecordStore;
 use crate::scene::shapes::Shapes;
 use crate::scene::shapes::paint::ImageSource;
@@ -133,8 +134,11 @@ fn polyline_color_cardinality_is_enforced_at_lowering() {
 #[test]
 fn image_dimensions_above_u16_survive_lowering() {
     const WIDTH: u32 = u16::MAX as u32 + 1;
-    let registry = ImageRegistry::new(TextureIdSource::default());
-    let handle = registry.register(Image::from_rgba8(WIDTH, 1, vec![0; WIDTH as usize * 4]));
+    let handle = ImageHandle::new(
+        TextureId(1),
+        &Image::from_rgba8(WIDTH, 1, vec![0; WIDTH as usize * 4]),
+        ImageRegistry::default(),
+    );
     let mut shapes = Shapes::default();
     let mut store = RecordStore::default();
 

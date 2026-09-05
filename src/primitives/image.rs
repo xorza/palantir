@@ -6,8 +6,9 @@
 //! lives in [`crate::renderer::image_registry`] — `primitives` stays a
 //! pure leaf.
 
+use crate::primitives::color::srgba_u8::SrgbaU8;
 use crate::primitives::nan::NanCheck;
-use glam::UVec2;
+use glam::{UVec2, Vec2};
 
 /// How an image's intrinsic size maps onto its paint rect. Same
 /// semantics as CSS `object-fit`. `Fill` (the default) stretches the
@@ -36,10 +37,7 @@ pub enum ImageFit {
     /// the rect (`uv_size`), `offset` the scroll phase (`uv_min`). The
     /// caller drives both — e.g. a pannable/zoomable dotted backdrop
     /// sets `scale = viewport / tile_px`, `offset = -pan / tile_px`.
-    Tile {
-        offset: glam::Vec2,
-        scale: glam::Vec2,
-    },
+    Tile { offset: Vec2, scale: Vec2 },
 }
 
 /// How texels are interpolated when an image paints at a size other
@@ -98,10 +96,12 @@ pub enum ImageDownsample {
     Peak,
 }
 
-/// Decoded pixel buffer. Straight (non-premultiplied) sRGB RGBA8 — the backend
+/// A CPU pixel buffer. Straight (non-premultiplied) sRGB RGBA8 — the backend
 /// uses a `Rgba8UnormSrgb` texture so the sampler decodes to linear on read,
 /// and the shader premultiplies. Window icons use the same validated storage.
-/// Dropped right after the backend uploads a registered image to GPU.
+///
+/// Registration stages the borrowed pixels without retaining a CPU copy.
+/// Keep the buffer to refill it for [`ImageHandle::update`](crate::ImageHandle::update).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Image {
     pub(crate) size: UVec2,
@@ -116,15 +116,7 @@ impl Image {
     /// Panics for zero dimensions, unrepresentable byte lengths, or when
     /// `pixels.len() != width * height * 4`.
     pub fn from_rgba8(width: u32, height: u32, pixels: Vec<u8>) -> Self {
-        assert!(
-            width != 0 && height != 0,
-            "RGBA8 dimensions must be non-zero, got {width}x{height}",
-        );
-        let expected = u64::from(width)
-            .checked_mul(u64::from(height))
-            .and_then(|texels| texels.checked_mul(4))
-            .and_then(|len| usize::try_from(len).ok())
-            .expect("RGBA8 dimensions overflow addressable byte length");
+        let expected = rgba8_len(width, height);
         assert_eq!(
             pixels.len(),
             expected,
@@ -136,9 +128,89 @@ impl Image {
             pixels,
         }
     }
+
+    /// Transparent black at `size`: what a surface fills before it registers,
+    /// and refills before each [`ImageHandle::update`](crate::ImageHandle::update).
+    ///
+    /// # Panics
+    ///
+    /// Panics for a zero dimension or an unrepresentable byte length, as
+    /// [`Self::from_rgba8`] does.
+    pub fn blank(size: UVec2) -> Self {
+        Self {
+            size,
+            pixels: vec![0; rgba8_len(size.x, size.y)],
+        }
+    }
+
+    /// Width and height in texels.
+    pub fn size(&self) -> UVec2 {
+        self.size
+    }
+
+    /// The texels, row-major: sRGB-encoded channels and a straight alpha,
+    /// which is what an `Rgba8UnormSrgb` texture decodes on sample.
+    pub fn texels(&self) -> &[SrgbaU8] {
+        bytemuck::cast_slice(&self.pixels)
+    }
+
+    /// The texels for writing. The size is fixed, so the slice is too.
+    pub fn texels_mut(&mut self) -> &mut [SrgbaU8] {
+        bytemuck::cast_slice_mut(&mut self.pixels)
+    }
+
+    /// Every texel from its column and row, row by row.
+    pub fn fill_with(&mut self, mut texel: impl FnMut(u32, u32) -> SrgbaU8) {
+        let width = self.size.x as usize;
+        for (row, line) in self.texels_mut().chunks_exact_mut(width).enumerate() {
+            for (column, out) in line.iter_mut().enumerate() {
+                *out = texel(column as u32, row as u32);
+            }
+        }
+    }
+
+    /// One row, `size().x` texels wide.
+    ///
+    /// # Panics
+    ///
+    /// Panics when `row` is outside the image.
+    pub fn row_mut(&mut self, row: u32) -> &mut [SrgbaU8] {
+        let width = self.size.x as usize;
+        let start = row as usize * width;
+        &mut self.texels_mut()[start..start + width]
+    }
+
+    /// Copy `row` into every other row. A texture that varies along one
+    /// axis only is built as one row and repeated, which keeps a bar's
+    /// rebuild at one conversion per column.
+    ///
+    /// # Panics
+    ///
+    /// Panics when `row` is outside the image.
+    pub fn repeat_row(&mut self, row: u32) {
+        let width = self.size.x as usize;
+        let rows = self.size.y as usize;
+        debug_assert!(rows > row as usize, "row {row} of {rows}");
+        let source = row as usize * width;
+        let texels = self.texels_mut();
+        for target in (0..rows).filter(|target| *target != row as usize) {
+            texels.copy_within(source..source + width, target * width);
+        }
+    }
 }
 
-/// Only [`ImageFit::Tile`] carries scalars; every other fit is a bare tag.
+fn rgba8_len(width: u32, height: u32) -> usize {
+    assert!(
+        width != 0 && height != 0,
+        "RGBA8 dimensions must be non-zero, got {width}x{height}",
+    );
+    u64::from(width)
+        .checked_mul(u64::from(height))
+        .and_then(|texels| texels.checked_mul(4))
+        .and_then(|len| usize::try_from(len).ok())
+        .expect("RGBA8 dimensions overflow addressable byte length")
+}
+
 impl NanCheck for ImageFit {
     #[inline]
     fn has_nan(&self) -> bool {
@@ -151,14 +223,62 @@ impl NanCheck for ImageFit {
 
 #[cfg(test)]
 mod tests {
+    use crate::primitives::color::srgba_u8::SrgbaU8;
     use crate::primitives::image::Image;
+    use glam::UVec2;
 
     #[test]
     fn image_stores_valid_rgba8_dimensions_and_pixels() {
         let pixels = vec![255, 0, 0, 255, 0, 255, 0, 128];
         let image = Image::from_rgba8(2, 1, pixels.clone());
-        assert_eq!(image.size, glam::UVec2::new(2, 1));
+        assert_eq!(image.size(), UVec2::new(2, 1));
         assert_eq!(image.pixels, pixels);
+
+        let blank = Image::blank(UVec2::new(2, 3));
+        assert_eq!(blank.size(), UVec2::new(2, 3));
+        assert_eq!(blank.pixels, vec![0; 24]);
+    }
+
+    #[test]
+    fn fill_with_visits_every_texel_in_row_major_order() {
+        let mut image = Image::blank(UVec2::new(3, 2));
+        let mut visited = 0;
+        image.fill_with(|column, row| {
+            let texel = SrgbaU8::rgb(column as u8, row as u8, visited);
+            visited += 1;
+            texel
+        });
+        assert_eq!(visited, 6);
+        assert_eq!(
+            image.texels(),
+            &[
+                SrgbaU8::rgb(0, 0, 0),
+                SrgbaU8::rgb(1, 0, 1),
+                SrgbaU8::rgb(2, 0, 2),
+                SrgbaU8::rgb(0, 1, 3),
+                SrgbaU8::rgb(1, 1, 4),
+                SrgbaU8::rgb(2, 1, 5),
+            ]
+        );
+    }
+
+    #[test]
+    fn repeat_row_copies_one_row_into_the_others() {
+        for rows in [1, 3] {
+            for source in 0..rows {
+                let mut image = Image::blank(UVec2::new(2, rows));
+                let row = [SrgbaU8::rgb(1, 2, 3), SrgbaU8::rgb(4, 5, 6)];
+                image.row_mut(source).copy_from_slice(&row);
+                image.repeat_row(source);
+                assert_eq!(image.texels(), row.repeat(rows as usize));
+            }
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "row 3 of 3")]
+    fn repeat_row_rejects_a_row_outside_the_image() {
+        Image::blank(UVec2::new(2, 3)).repeat_row(3);
     }
 
     #[test]

@@ -12,7 +12,7 @@ use crate::layout::ShapedText;
 use crate::layout::grid::grid_track_store::GridTrackStore;
 use crate::layout::intrinsic::SLOT_COUNT;
 use crate::layout::types::layout_mode::LayoutMode;
-use crate::primitives::num::F32Ext;
+use crate::primitives::num::F32Px;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::span::Span;

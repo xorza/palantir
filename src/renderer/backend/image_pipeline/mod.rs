@@ -2,21 +2,20 @@
 //! but draws textured quads — per-instance rect + tint, plus a
 //! per-image bind group selected at draw time.
 //!
-//! The bind groups themselves belong to [`ImageTextures`], which the
-//! backend owns beside this pipeline and hands to
-//! [`ImagePipeline::draw`] — the same split the text pass makes between
-//! its encoder and the atlas it fills. That store also holds the
-//! `GpuView` render targets, so a composite of one binds exactly like an
-//! image.
-
-#[cfg(feature = "bench")]
-pub(crate) mod bench;
+//! The bind groups themselves belong to the two texture stores the
+//! backend hands [`ImagePipeline::draw`] — the registered images of
+//! [`WgpuImageStore`](crate::renderer::backend::image_store::WgpuImageStore),
+//! borrowed once for the pass, and [`GpuViewTargets`] for the `GpuView`
+//! targets — the same split the text pass makes between its encoder and
+//! the atlas it fills. Both build against one binding shape, so a
+//! composite of a view binds exactly like an image.
 
 use crate::primitives::span::Span;
 use crate::primitives::texture_id::TextureId;
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
-use crate::renderer::backend::image_textures::ImageTextures;
+use crate::renderer::backend::gpu_view_targets::GpuViewTargets;
+use crate::renderer::backend::image_store::ImageTexture;
 use crate::renderer::backend::pipeline_recipe::PipelineRecipe;
 use crate::renderer::backend::shader_template::{self, ShaderConstant};
 use crate::renderer::backend::stencil_variant::ColorVariantSpec;
@@ -25,6 +24,7 @@ use crate::renderer::render_buffer::image::{
     IMG_FLAG_MAG_NEAREST, IMG_FLAG_MIN_NEAREST, IMG_FLAG_TAPS_MEAN, IMG_FLAG_TAPS_PEAK,
     IMG_FLAG_TILED, ImageInstance,
 };
+use rustc_hash::FxHashMap;
 
 /// One batch of image draws: the frame's whole per-draw texture column,
 /// and the slice of it this batch owns.
@@ -41,8 +41,6 @@ pub(super) struct ImageBatch<'a> {
 #[derive(Debug)]
 pub(super) struct ImagePipeline {
     instance_buffer: DynamicBuffer<ImageInstance>,
-    /// Image shader module — format-independent; [`Self::build_variants`]
-    /// reads it to build each format's pipelines.
     shader: wgpu::ShaderModule,
 }
 
@@ -96,8 +94,6 @@ impl ImagePipeline {
         image_bgl: &wgpu::BindGroupLayout,
         format: wgpu::TextureFormat,
     ) -> StencilVariant {
-        // Per-image tex+sampler at group 0 — viewport rides the
-        // shared immediate region.
         let layout =
             PipelineRecipe::pipeline_layout(device, "palantir.image.pl", &[Some(image_bgl)]);
         StencilVariant::build(
@@ -114,14 +110,10 @@ impl ImagePipeline {
         )
     }
 
-    /// Sync the per-instance buffer — one contiguous, zero-copy upload from
-    /// the shared slice; the schedule slices by batch at draw time.
     pub(super) fn upload(&mut self, ctx: &mut GpuCtx<'_>, instances: &[ImageInstance]) {
         self.instance_buffer.upload_instances(ctx, instances);
     }
 
-    /// Bind once per pass. Viewport rides immediates; per-image
-    /// group 0 is set in [`Self::draw`] from the cached bind group.
     pub(super) fn bind<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
@@ -145,18 +137,25 @@ impl ImagePipeline {
     ///
     /// An **absent id is skipped** (no warning, no draw) — it just means
     /// the owning [`ImageHandle`](crate::ImageHandle) was dropped before
-    /// this draw, or hasn't been uploaded yet. Drawing nothing is the
+    /// this draw. Drawing nothing is the
     /// defined behaviour for a missing texture. Every draw in a run
     /// shares one id, so the miss check runs once per run and skips the
     /// whole run, which is exactly the per-draw behaviour it replaces.
-    pub(super) fn draw<'a>(
+    pub(super) fn draw(
         &self,
-        pass: &mut wgpu::RenderPass<'a>,
+        pass: &mut wgpu::RenderPass<'_>,
         ImageBatch { ids, items }: ImageBatch<'_>,
-        textures: &'a ImageTextures,
+        images: &FxHashMap<TextureId, ImageTexture>,
+        targets: &GpuViewTargets,
     ) {
         for run in image_runs(&ids[items.range()], items.start) {
-            let Some(bind_group) = textures.bind_group(run.id) else {
+            // Registered images first: they are the common draw, and a
+            // view composite is the one that pays the second probe.
+            let Some(bind_group) = images
+                .get(&run.id)
+                .map(|entry| &entry.bind_group)
+                .or_else(|| targets.bind_group(run.id))
+            else {
                 continue;
             };
             pass.set_bind_group(0, bind_group, &[]);
@@ -170,8 +169,6 @@ impl ImagePipeline {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct ImageRun {
     id: TextureId,
-    /// Slice of the per-frame instance buffer this run draws, as one
-    /// instanced range.
     instances: Span,
 }
 
@@ -225,6 +222,9 @@ const _: () = {
     assert!(IMAGE_INSTANCE_ATTRS[5].offset == offset_of!(ImageInstance, flags) as u64);
 };
 
+#[cfg(feature = "bench")]
+pub(crate) mod bench;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -251,12 +251,9 @@ mod tests {
 
     #[test]
     fn adjacent_runs_coalesce_without_disturbing_draw_order() {
-        // `runs` is the post-change bind + draw count: one of each per
-        // run. Before coalescing every case below cost `ids.len()`.
         let cases: [(&str, &[u64], usize); 7] = [
             ("empty", &[], 0),
             ("single", &[7], 1),
-            // The win: repeated icons / repeated GpuView composites.
             ("all same", &[7, 7, 7, 7], 1),
             ("adjacent groups", &[7, 7, 9, 9, 9, 4], 3),
             // Controls that must NOT shrink. Alternating is the case a

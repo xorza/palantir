@@ -48,7 +48,7 @@ impl FrameEngines {
     /// needs is spelled here, next to the field that keeps it.
     pub(crate) fn new(resources: &UiResources) -> Self {
         Self {
-            layout: LayoutEngine::new(resources.text.clone()),
+            layout: LayoutEngine::new(resources.text().clone()),
             cascade: CascadeEngine::default(),
             damage: DamageEngine::default(),
         }

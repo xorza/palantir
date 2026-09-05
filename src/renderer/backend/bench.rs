@@ -72,7 +72,7 @@ use crate::primitives::color::RgbaF32;
 use crate::primitives::image::{Image, ImageFit};
 use crate::primitives::rect::Rect;
 use crate::renderer::backend::schedule::test_support::Walk;
-use crate::renderer::image_registry::ImageHandle;
+use crate::renderer::image_registry::image_handle::ImageHandle;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::scene::node::configure::Configure;
 use crate::shape::Shape;
@@ -276,7 +276,7 @@ impl Fixture {
         let handles = (0..workload.textures())
             .map(|seed| {
                 host.ui()
-                    .register_image(Image::from_rgba8(TEXEL, TEXEL, texels(seed)))
+                    .register_image(&Image::from_rgba8(TEXEL, TEXEL, texels(seed)))
                     .expect("benchmark image fits every supported GPU")
             })
             .collect();
