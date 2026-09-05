@@ -93,34 +93,25 @@ available_q)`; subtree hits blit last frame's measure result and skip
   recursion.
 - **In-house text backend** on top of `cosmic-text` so the GPU upload
   path routes through palantir's staging belt.
-- **Fonts an app brings or the OS has** — `ui.load_font(bytes_or_path)`
-  registers a face and hands back a `FontFamily`, and
-  `FontFamily::named("Segoe UI")` reaches an installed one. Weight is the
-  numeric CSS axis (1–1000, instantiated on a variable face), italic is a
-  separate axis, and a family no face answers to resolves to the bundled
-  default rather than to whatever the machine has. Whether the machine's
-  fonts are scanned at all is `WinitHostConfig::fonts`, and the scan runs
-  on its own thread beside GPU init.
-- **SVG artwork** — an icon set is baked into the binary or built at runtime
-  from source bytes; each icon parses the first time it is drawn and
-  rasterizes at its exact physical size into the icon atlas, so it stays
-  crisp at any scale factor and costs nothing until it is used. Gradients
-  and filters are supported; a single-paint icon rasterizes to a coverage
-  mask and takes a shape's tint whole, while a colour icon keeps its own
-  palette and takes the tint's alpha.
-- **Tabs and docking** — `TabStrip` is the chip row on its own, with a
-  selection cap, close buttons, status badges, overflow and WAI-ARIA
-  keyboard travel. `TabbedView` binds it to a `&mut usize` page index the
-  way `ComboBox` binds a selection. `DockView` walks a split tree of tabbed
-  panes with drag docking, and *emits* ops rather than mutating the tree —
-  so an application routes them through its own queue, undo and validation.
+- **Fonts an app brings or the OS has** — load bytes or a path, or name an
+  installed family. Weight is the numeric CSS axis, instantiated on a
+  variable face. An unmatched family falls back to the bundled default,
+  never to whatever the machine happens to have, and scanning the system at
+  all is opt-in and off-thread.
+- **SVG artwork** — icons rasterize at their exact physical size into the
+  icon atlas, so they stay crisp at any scale factor and cost nothing until
+  first drawn. Gradients and filters included. A single-paint icon takes a
+  tint whole; a colour one keeps its palette and takes the tint's alpha.
+- **Tabs and docking** — `TabStrip` is the chip row alone: close buttons,
+  status badges, overflow, keyboard travel. `TabbedView` binds it to a
+  `&mut usize`. `DockView` walks a split tree with drag docking and *emits*
+  ops rather than mutating it, so an app routes them through its own undo
+  and validation.
 - **`GpuView` — raw `wgpu` inside a widget.** Implement `GpuPaint` on your
-  own renderer (a 3D scene, a custom shader) and hand it to
-  `GpuView::new(paint)`; the framework owns an off-screen target sized to the
-  widget's rect, runs your callback into it, and composites the result through
-  the image pipeline — so it clips, rounds, and z-orders like any other widget.
-  Mark a static view `.repaint(false)` and it goes undamaged (its paint is
-  skipped) until something changes.
+  own renderer and the framework runs it into a widget-sized off-screen
+  target, then composites the result like any other image — so it clips,
+  rounds and z-orders with everything else. `.repaint(false)` skips a static
+  view's paint until something changes.
 
 ## Not yet implemented
 
