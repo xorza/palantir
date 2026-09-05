@@ -25,7 +25,7 @@
 //! re-checks it while emitting. Atlas growth preserves rects
 //! (`etagere::grow`), so no invalidation is needed there.
 
-use crate::primitives::num::F32Ext;
+use crate::primitives::num::F32Px;
 use crate::renderer::render_buffer::text::TextDrawRow;
 use crate::text::key::TextShapeKey;
 use crate::text::render::SubpixelOrigin;

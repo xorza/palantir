@@ -1,7 +1,7 @@
 //! Okhsv — the picker's default axes, and the sRGB gamut solve behind them.
 
 use crate::primitives::color::{RgbaF32, linear_to_oklab, oklab_to_linear};
-use std::f32::consts::{PI, TAU};
+use std::f32::consts::TAU;
 
 /// Hue, saturation and value in Björn Ottosson's Okhsv space.
 ///
@@ -80,15 +80,9 @@ impl Okhsv {
     ///
     /// What a colour field is built from: every texel of one field shares the
     /// hue, and the cusp solve is the expensive half of the conversion.
-    pub(crate) fn slice(hue: f32) -> OkhsvSlice {
+    pub fn slice(hue: f32) -> OkhsvSlice {
         let (sin, cos) = (TAU * hue.rem_euclid(1.0)).sin_cos();
-        let slopes = Cusp::find(cos, sin).slopes();
-        OkhsvSlice {
-            cos,
-            sin,
-            slopes,
-            k: 1.0 - ANCHOR_S / slopes.s,
-        }
+        OkhsvSlice::from_direction(cos, sin)
     }
 
     /// The axes naming `color`, ignoring its alpha.
@@ -106,26 +100,19 @@ impl Okhsv {
                 v: toe(lightness).clamp(0.0, 1.0),
             };
         }
-        let cos = lab[1] / chroma;
-        let sin = lab[2] / chroma;
-        let slopes = Cusp::find(cos, sin).slopes();
+        let slice = OkhsvSlice::from_direction(lab[1] / chroma, lab[2] / chroma);
+        let CuspSlopes { t, .. } = slice.slopes;
 
         // Undo `to_color` in the order it applied: triangle, then curved top,
         // then toe.
-        let t = slopes.t / (chroma + lightness * slopes.t);
-        let l_v = t * lightness;
-        let c_v = t * chroma;
-        let l_vt = toe_inv(l_v);
-        let c_vt = c_v * l_vt / l_v;
-        let scale = peak_scale([l_vt, cos * c_vt, sin * c_vt]);
-        let unscaled = lightness / scale;
-        let toed = toe(unscaled);
+        let at_top = t / (chroma + lightness * t);
+        let l_v = at_top * lightness;
+        let c_v = at_top * chroma;
+        let toed = toe(lightness / slice.top_scale(l_v, c_v));
 
-        let k = 1.0 - ANCHOR_S / slopes.s;
         Self {
-            h: (0.5 + 0.5 * (-lab[2]).atan2(-lab[1]) / PI).rem_euclid(1.0),
-            s: ((ANCHOR_S + slopes.t) * c_v / (slopes.t * ANCHOR_S + slopes.t * k * c_v))
-                .clamp(0.0, 1.0),
+            h: (lab[2].atan2(lab[1]) / TAU).rem_euclid(1.0),
+            s: ((ANCHOR_S + t) * c_v / (t * ANCHOR_S + t * slice.k * c_v)).clamp(0.0, 1.0),
             v: (toed / l_v).clamp(0.0, 1.0),
         }
     }
@@ -134,9 +121,10 @@ impl Okhsv {
 /// One hue's gamut geometry, hoisted out of a sampling loop.
 ///
 /// Holds what [`Okhsv::to_color`] would otherwise re-solve per call: the hue's
-/// direction in Oklab and the two edges of its gamut triangle.
+/// direction in Oklab and the two edges of its gamut triangle. Take one from
+/// [`Okhsv::slice`].
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct OkhsvSlice {
+pub struct OkhsvSlice {
     cos: f32,
     sin: f32,
     slopes: CuspSlopes,
@@ -144,8 +132,29 @@ pub(crate) struct OkhsvSlice {
 }
 
 impl OkhsvSlice {
+    /// The slice whose Oklab direction is the unit vector `(cos, sin)`. Both
+    /// conversion directions come through here, so they solve one cusp.
+    fn from_direction(cos: f32, sin: f32) -> Self {
+        let slopes = Cusp::find(cos, sin).slopes();
+        Self {
+            cos,
+            sin,
+            slopes,
+            k: 1.0 - ANCHOR_S / slopes.s,
+        }
+    }
+
+    /// The scale that bends the triangle's top, at the `v = 1` point
+    /// `(l_v, c_v)`, back onto the real gamut. Shared by the two directions,
+    /// which is what keeps them exact inverses of one another.
+    fn top_scale(self, l_v: f32, c_v: f32) -> f32 {
+        let l_vt = toe_inv(l_v);
+        let c_vt = c_v * l_vt / l_v;
+        peak_scale([l_vt, self.cos * c_vt, self.sin * c_vt])
+    }
+
     /// The opaque colour at `s` and `v` on this hue. Both clamp to `0..1`.
-    pub(crate) fn color(self, s: f32, v: f32) -> RgbaF32 {
+    pub fn color(self, s: f32, v: f32) -> RgbaF32 {
         let sat = s.clamp(0.0, 1.0);
         let val = v.clamp(0.0, 1.0);
 
@@ -157,8 +166,6 @@ impl OkhsvSlice {
 
         // Then the two compensations that bend the triangle back onto the
         // real gamut: the toe on lightness, and the curved top.
-        let l_vt = toe_inv(l_v);
-        let c_vt = c_v * l_vt / l_v;
         let lightness = val * l_v;
         let chroma = val * c_v;
         let toed = toe_inv(lightness);
@@ -167,7 +174,7 @@ impl OkhsvSlice {
         } else {
             0.0
         };
-        let scale = peak_scale([l_vt, self.cos * c_vt, self.sin * c_vt]);
+        let scale = self.top_scale(l_v, c_v);
 
         let rgb = oklab_to_linear([
             toed * scale,
@@ -294,8 +301,7 @@ fn max_saturation(a: f32, b: f32) -> f32 {
 
 /// The cube-root scale that brings `lab`'s brightest linear channel to
 /// exactly one: what pins a slice's cusp, and its curved top, onto the real
-/// gamut. One function for the cusp and for both conversion directions,
-/// which is what keeps the two directions exact inverses of one another.
+/// gamut.
 fn peak_scale(lab: [f32; 3]) -> f32 {
     let rgb = oklab_to_linear(lab);
     let peak = rgb[0].max(rgb[1]).max(rgb[2]);

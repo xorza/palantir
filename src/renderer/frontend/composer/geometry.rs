@@ -3,7 +3,7 @@
 
 use crate::display::Display;
 use crate::primitives::approx::EPS;
-use crate::primitives::{num::F32Ext, rect::Rect, translate_scale::TranslateScale, urect::URect};
+use crate::primitives::{num::F32Px, rect::Rect, translate_scale::TranslateScale, urect::URect};
 use crate::renderer::render_buffer::MAX_ROUNDED_CLIP_DEPTH;
 use crate::renderer::render_buffer::curve::{
     CURVE_KIND_JOIN_BEVEL, CURVE_KIND_JOIN_MITER, CURVE_KIND_JOIN_ROUND, SEGMENTS_PER_INSTANCE,

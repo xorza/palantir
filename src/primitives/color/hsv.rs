@@ -67,13 +67,14 @@ impl Hsv {
         let high = r.max(g).max(b);
         let low = r.min(g).min(b);
         let spread = high - low;
-        let sixth = if spread <= GREY_SPREAD {
+        if spread <= GREY_SPREAD {
             return Self {
                 h: fallback_hue.rem_euclid(1.0),
                 s: 0.0,
                 v: high.clamp(0.0, 1.0),
             };
-        } else if high == r {
+        }
+        let sixth = if high == r {
             ((g - b) / spread).rem_euclid(6.0)
         } else if high == g {
             (b - r) / spread + 2.0

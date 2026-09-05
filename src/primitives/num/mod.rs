@@ -1,5 +1,5 @@
-//! Scalar helpers the crate keeps one definition of: the [`F32Ext`] /
-//! [`Vec2Ext`] methods on the scalars themselves, and two free
+//! Scalar helpers the crate keeps one definition of: the [`F32Ext`],
+//! [`F32Px`] and [`Vec2Ext`] methods on the scalars themselves, and two free
 //! conversions whose exact form is a contract rather than a detail.
 
 use crate::primitives::approx;
@@ -16,20 +16,21 @@ use glam::Vec2;
 /// anyway. Adding the half before the truncation is round-half-up, which
 /// over a non-negative product is `round`.
 ///
-/// A free `const fn` rather than an [`F32Ext`] method: `RgbaF32::hexa` is
+/// A free `const fn` rather than an [`F32Px`] method: `RgbaF32::hexa` is
 /// `const`, and a trait method cannot be called from one.
 #[inline]
 pub(crate) const fn unit_to_u8(x: f32) -> u8 {
     (x * 255.0 + 0.5) as u8
 }
 
-/// The `f32` operations the crate keeps one definition of, as methods on
-/// the scalar itself.
+/// The `f32` operations a widget reads a theme or a pointer through, as
+/// methods on the scalar itself — and, per component, on a [`Vec2`], so a
+/// two-axis widget asks once for both.
 ///
-/// Two families, and the reason each is here differs. The snap and
-/// quantize pair replaces a libm call the hot paths cannot afford, and
-/// says so at each; [`Self::unit_fraction_or`] is here because one wrong
-/// answer about a share reaches layout as a panic.
+/// Each is here because one wrong answer about a length or a share reaches
+/// layout as a panic, so the crate keeps one definition and every widget —
+/// inside this crate or outside it — goes through it. The engine-side
+/// scalar helpers are [`F32Px`].
 pub trait F32Ext {
     /// Where `self` sits along a track of `extent` that reserves `band`
     /// to a centred thing the pointer drags, as a 0..1 share.
@@ -45,17 +46,7 @@ pub trait F32Ext {
     /// The result is unclamped — a pointer outside the track reports
     /// outside `0..1`, and each caller pins it with the bounds it
     /// enforces, which is what [`Self::unit_fraction_or`] is for.
-    fn band_fraction(self, extent: f32, band: f32) -> f32;
-
-    /// This gap laid *between* `count` items: `count - 1` of them, and
-    /// none at all for one item or none.
-    ///
-    /// One definition because every container that stacks children spells
-    /// it — the two stacks, the wrap stack's lines, a grid's tracks and
-    /// each span inside them — and each of them once for measure and
-    /// again for arrange. The saturating step is the whole content: an
-    /// empty container has no gaps, and `0 - 1` on a `usize` is not zero.
-    fn gaps_between(self, count: usize) -> f32;
+    fn band_fraction(self, extent: Self, band: Self) -> Self;
 
     /// This value as a share of something — clamped into `0..=1`, or
     /// `fallback` where it names no share at all.
@@ -70,7 +61,92 @@ pub trait F32Ext {
     /// `fallback` is the caller's, because "no share" resolves
     /// differently: unknown progress is empty, an unknown split is
     /// centred. The screen is shared, the neutral is not.
-    fn unit_fraction_or(self, fallback: f32) -> f32;
+    fn unit_fraction_or(self, fallback: Self) -> Self;
+
+    /// A length read out of a theme, floored at `min`.
+    ///
+    /// One definition because every widget that sizes a node or a corner
+    /// radius from its bundle owes the same guard: the scalar arrived
+    /// from a hand-edited theme file or an app's own bundle, so a
+    /// negative or NaN one is bad data rather than a logic error and
+    /// cannot assert. Both cases land on `min`, since `f32::max` answers
+    /// the other operand for NaN.
+    ///
+    /// `min` is the widget's, not the type's. A rule the theme sets to
+    /// zero is a rule the app wanted invisible, while a grab bar or a
+    /// spinner that thin cannot be grabbed or seen at all.
+    fn themed_length(self, min: Self) -> Self;
+}
+
+impl F32Ext for f32 {
+    #[inline]
+    fn band_fraction(self, extent: f32, band: f32) -> f32 {
+        approx::ratio(self - band * 0.5, extent - band)
+    }
+
+    #[inline]
+    fn unit_fraction_or(self, fallback: f32) -> f32 {
+        debug_assert!(
+            (0.0..=1.0).contains(&fallback),
+            "a unit-fraction fallback must itself be a share, got {fallback}",
+        );
+        if self.is_finite() {
+            self.clamp(0.0, 1.0)
+        } else {
+            fallback
+        }
+    }
+
+    #[inline]
+    fn themed_length(self, min: f32) -> f32 {
+        debug_assert!(
+            min >= 0.0,
+            "a themed length's floor is itself a length, got {min}",
+        );
+        self.max(min)
+    }
+}
+
+impl F32Ext for Vec2 {
+    #[inline]
+    fn band_fraction(self, extent: Self, band: Self) -> Self {
+        Self::new(
+            self.x.band_fraction(extent.x, band.x),
+            self.y.band_fraction(extent.y, band.y),
+        )
+    }
+
+    #[inline]
+    fn unit_fraction_or(self, fallback: Self) -> Self {
+        Self::new(
+            self.x.unit_fraction_or(fallback.x),
+            self.y.unit_fraction_or(fallback.y),
+        )
+    }
+
+    #[inline]
+    fn themed_length(self, min: Self) -> Self {
+        Self::new(self.x.themed_length(min.x), self.y.themed_length(min.y))
+    }
+}
+
+/// The `f32` operations the layout and paint engines keep one definition
+/// of. The snap and quantize family replaces a libm call the hot paths
+/// cannot afford, and says so at each; the gap count is the one every
+/// stacking container spells.
+///
+/// Crate-private on purpose: nothing a widget does needs them, and the
+/// grids they snap to are cache identities, not an API.
+pub(crate) trait F32Px {
+    /// This gap laid *between* `count` items: `count - 1` of them, and
+    /// none at all for one item or none.
+    ///
+    /// One definition because every container that stacks children spells
+    /// it — the two stacks, the wrap stack's lines, a grid's tracks and
+    /// each span inside them — and each of them once for measure and
+    /// again for arrange. The saturating step is the whole content: an
+    /// empty container has no gaps, and `0 - 1` on a `usize` is not zero.
+    fn gaps_between(self, count: usize) -> f32;
 
     /// Exact `f32::round` (round half away from zero) without the libm
     /// call: baseline x86-64 has no `roundss` (SSE4.1), so `.round()`
@@ -110,44 +186,12 @@ pub trait F32Ext {
     /// measured at another width. Non-finite (an unbounded axis) saturates
     /// rather than wrapping through the `as` cast.
     fn quantize_px(self) -> i32;
-
-    /// A length read out of a theme, floored at `min`.
-    ///
-    /// One definition because every widget that sizes a node or a corner
-    /// radius from its bundle owes the same guard: the scalar arrived
-    /// from a hand-edited theme file or an app's own bundle, so a
-    /// negative or NaN one is bad data rather than a logic error and
-    /// cannot assert. Both cases land on `min`, since `f32::max` answers
-    /// the other operand for NaN.
-    ///
-    /// `min` is the widget's, not the type's. A rule the theme sets to
-    /// zero is a rule the app wanted invisible, while a grab bar or a
-    /// spinner that thin cannot be grabbed or seen at all.
-    fn themed_length(self, min: f32) -> f32;
 }
 
-impl F32Ext for f32 {
-    #[inline]
-    fn band_fraction(self, extent: f32, band: f32) -> f32 {
-        approx::ratio(self - band * 0.5, extent - band)
-    }
-
+impl F32Px for f32 {
     #[inline]
     fn gaps_between(self, count: usize) -> f32 {
         self * count.saturating_sub(1) as f32
-    }
-
-    #[inline]
-    fn unit_fraction_or(self, fallback: f32) -> f32 {
-        debug_assert!(
-            (0.0..=1.0).contains(&fallback),
-            "a unit-fraction fallback must itself be a share, got {fallback}",
-        );
-        if self.is_finite() {
-            self.clamp(0.0, 1.0)
-        } else {
-            fallback
-        }
     }
 
     #[inline]
@@ -201,20 +245,11 @@ impl F32Ext for f32 {
             i32::MAX
         }
     }
-
-    #[inline]
-    fn themed_length(self, min: f32) -> f32 {
-        debug_assert!(
-            min >= 0.0,
-            "a themed length's floor is itself a length, got {min}",
-        );
-        self.max(min)
-    }
 }
 
-/// [`F32Ext`] applied per component, for the paint paths that snap a point.
+/// [`F32Px`] applied per component, for the paint paths that snap a point.
 pub(crate) trait Vec2Ext {
-    /// Componentwise [`F32Ext::fast_round`]. `Vec2::round` is two
+    /// Componentwise [`F32Px::fast_round`]. `Vec2::round` is two
     /// out-of-line `roundf` calls on baseline x86-64, which is what this
     /// exists to keep off the per-icon and per-quad snap paths.
     fn fast_round(self) -> Vec2;

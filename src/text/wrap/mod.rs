@@ -7,7 +7,7 @@
 //! itself.
 
 use crate::layout::types::align::HAlign;
-use crate::primitives::num::F32Ext;
+use crate::primitives::num::F32Px;
 use crate::primitives::size::Size;
 use crate::text::key::WrapBound;
 use crate::text::root::TextRoot;
@@ -16,7 +16,7 @@ use crate::text::root::TextRoot;
 /// ([`crate::text::key::WrapBound::new`]) and the fitting-truncate
 /// check in `TextSystem::measure`.
 ///
-/// Snapped with [`F32Ext::quantize_px`], the same grid the measure cache
+/// Snapped with [`F32Px::quantize_px`], the same grid the measure cache
 /// keys `available_q` on — the two must agree or a cached subtree could be
 /// blitted against a shape measured at another width. All this adds is the
 /// clamp: an over-constrained layout can commit a negative width, which the

@@ -7,7 +7,7 @@ pub(crate) mod aabb;
 use crate::primitives::approx::canon_bits;
 use crate::primitives::nan::{self, NanCheck};
 use crate::primitives::{
-    approx::FloatHash, corners::Corners, num::F32Ext, size::Size, spacing::Spacing,
+    approx::FloatHash, corners::Corners, num::F32Px, size::Size, spacing::Spacing,
 };
 use core::f32::consts::FRAC_1_SQRT_2;
 use glam::Vec2;

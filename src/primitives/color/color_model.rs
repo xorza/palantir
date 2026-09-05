@@ -36,8 +36,9 @@ impl ColorModel {
     }
 
     /// This model's slice at `hue`, with whatever the model solves per hue
-    /// solved once.
-    pub(crate) fn slice(self, hue: f32) -> HueSlice {
+    /// solved once. What to build a texture of one hue from — see
+    /// [`HueSlice`].
+    pub fn slice(self, hue: f32) -> HueSlice {
         match self {
             Self::Okhsv => HueSlice::Okhsv(Okhsv::slice(hue)),
             Self::Hsv => HueSlice::Hsv(hue),
@@ -50,16 +51,16 @@ impl ColorModel {
 /// What a colour field's texture is filled from. Every texel of a field
 /// shares the hue, and for [`ColorModel::Okhsv`] the per-hue gamut solve is
 /// the expensive half of a conversion — so it happens once here rather than
-/// four thousand times in the loop.
+/// four thousand times in the loop. Take one from [`ColorModel::slice`].
 #[derive(Clone, Copy, Debug)]
-pub(crate) enum HueSlice {
+pub enum HueSlice {
     Okhsv(OkhsvSlice),
     Hsv(f32),
 }
 
 impl HueSlice {
-    /// The opaque colour at `s` and `v` on this hue.
-    pub(crate) fn color(self, s: f32, v: f32) -> RgbaF32 {
+    /// The opaque colour at `s` and `v` on this hue. Both clamp to `0..1`.
+    pub fn color(self, s: f32, v: f32) -> RgbaF32 {
         match self {
             Self::Okhsv(slice) => slice.color(s, v),
             Self::Hsv(hue) => Hsv::new(hue, s, v).to_color(),

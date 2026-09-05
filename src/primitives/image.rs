@@ -186,7 +186,7 @@ impl Image {
     ///
     /// # Panics
     ///
-    /// In debug builds, panics when `row` is outside the image.
+    /// Panics when `row` is outside the image.
     pub fn repeat_row(&mut self, row: u32) {
         let width = self.size.x as usize;
         let rows = self.size.y as usize;

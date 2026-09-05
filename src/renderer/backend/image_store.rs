@@ -17,7 +17,6 @@ use std::cell::{Ref, RefCell};
 /// for a whole pass. Only a queue drained by the backend under `&mut self`
 /// would remove the cell, and that is the staged-upload design this
 /// immediate one replaced.
-///
 #[derive(Debug)]
 pub(super) struct WgpuImageStore {
     device: wgpu::Device,
@@ -33,7 +32,6 @@ pub(super) struct WgpuImageStore {
 #[derive(Debug)]
 pub(super) struct ImageTexture {
     texture: wgpu::Texture,
-    /// What a draw binds for the texture.
     pub(super) bind_group: wgpu::BindGroup,
 }
 
@@ -114,7 +112,7 @@ impl ImageStore for WgpuImageStore {
 }
 
 #[cfg(any(test, feature = "internals"))]
-pub(crate) mod internals {
+pub(crate) mod test_support {
     use crate::renderer::backend::image_store::WgpuImageStore;
 
     impl WgpuImageStore {
