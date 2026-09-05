@@ -151,15 +151,19 @@ either way. `-C target-cpu=x86-64-v3` implies it, plus AVX2 and FMA.
 
 ## Install
 
-Palantir is not on crates.io. Depend on the repository directly:
+```toml
+[dependencies]
+palantir = "0.3"
+```
+
+To track unreleased work, depend on the repository directly — `master` moves
+and breaks, so pin a `rev` (or a `tag`) for anything you expect to build again
+tomorrow:
 
 ```toml
 [dependencies]
-palantir = { git = "https://github.com/xorza/palantir" }
+palantir = { git = "https://github.com/xorza/palantir", rev = "..." }
 ```
-
-`master` moves and breaks — pin a `rev` (or a `tag`) for anything you expect to
-build again tomorrow.
 
 The default features carry the winit host and the OS clipboard. With
 `default-features = false` the only host left is `OffscreenHost`, which renders
