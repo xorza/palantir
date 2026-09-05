@@ -16,20 +16,24 @@ use std::f32::consts::FRAC_PI_2;
 ///
 /// The header is a button in everything but name — the whole row is one
 /// hit target — so it carries the same four-state look pack, and its
-/// arrow takes the picked look's text colour rather than a slot of its
-/// own.
+/// triangle takes the picked look's text colour rather than a slot of
+/// its own.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ExpanderTheme {
     /// Four-state look for the header row.
     pub looks: StatefulLook,
-    /// Arrow bounding box in logical px.
+    /// Bounding box of the disclosure triangle in logical px, corners
+    /// included.
     ///
     /// **Square, unless the angles below leave it unturned.** A quarter
-    /// turn swaps the arrow's extents, so an oblong box clips it on one
-    /// axis.
+    /// turn swaps the triangle's extents, so an oblong box clips it on
+    /// one axis.
     pub arrow_size: Vec2,
-    /// Stroke width of the arrow polyline.
-    pub arrow_stroke: f32,
+    /// Corner radius of the triangle, in logical px. The tip and both base
+    /// corners take it, and `0.0` is a sharp triangle. At most half the
+    /// smaller side of [`Self::arrow_size`], which the vertices sit inside
+    /// by this much.
+    pub arrow_radius: f32,
     /// Angle the arrow wears while the body is closed, in radians. The
     /// default quarter turn anticlockwise points it at the label, which
     /// is the disclosure triangle every file tree draws.
@@ -65,7 +69,7 @@ impl ExpanderTheme {
         let Self {
             looks,
             arrow_size: _,
-            arrow_stroke: _,
+            arrow_radius: _,
             arrow_closed_angle: _,
             arrow_open_angle: _,
             gap: _,
@@ -105,7 +109,7 @@ impl ExpanderTheme {
                 },
             },
             arrow_size: Vec2::new(9.0, 9.0),
-            arrow_stroke: 1.5,
+            arrow_radius: 1.5,
             arrow_closed_angle: -FRAC_PI_2,
             arrow_open_angle: 0.0,
             gap: 8.0,

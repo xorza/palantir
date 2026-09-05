@@ -6,7 +6,7 @@ use glam::{UVec2, Vec2};
 use crate::animation::anim_spec::AnimSpec;
 use crate::input::keyboard::key::Key;
 use crate::layout::types::sizing::Sizing;
-use crate::primitives::chevron::Chevron;
+use crate::primitives::arrow::Arrow;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::Ui;
 use crate::ui::harness::UiHarness;
@@ -296,8 +296,8 @@ fn space_and_enter_toggle_a_focused_header() {
 /// The arrow is one shape at two sizes, and a quarter turn takes the
 /// dropdown's `v` to the disclosure `>`.
 #[test]
-fn a_quarter_turn_points_the_chevron_at_the_label() {
-    let c = Chevron {
+fn a_quarter_turn_points_the_arrow_at_the_label() {
+    let c = Arrow {
         size: Vec2::new(8.0, 8.0),
     };
     assert_eq!(
@@ -322,6 +322,26 @@ fn a_quarter_turn_points_the_chevron_at_the_label() {
             "a quarter turn about the centre: got {turned:?}, want {expected:?}",
         );
     }
+
+    // Rounded by 1: the same turn on a 6 px arrow one px in from every
+    // edge, so the dilated shape's extents are the box's again.
+    let rounded = c.rounded(1.0, -std::f32::consts::FRAC_PI_2);
+    let expected = [
+        Vec2::new(1.0, 7.0),
+        Vec2::new(7.0, 4.0),
+        Vec2::new(1.0, 1.0),
+    ];
+    for (got, want) in rounded.into_iter().zip(expected) {
+        assert!(
+            (got - want).length() < 1e-4,
+            "vertices one radius in: got {rounded:?}, want {expected:?}",
+        );
+    }
+    assert_eq!(
+        c.rounded(0.0, 0.0),
+        c.points(),
+        "a sharp triangle is the arrow itself"
+    );
 
     // Both angles the theme names, resolved through it.
     let t = ExpanderTheme::default();
