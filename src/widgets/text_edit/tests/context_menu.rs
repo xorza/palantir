@@ -1,4 +1,5 @@
 use crate::common::clipboard::{Clipboard, test_support};
+use crate::input::keyboard::key_text::KeyText;
 use crate::widgets::text_edit::tests::*;
 
 /// Default context menu wires Cut / Copy / Paste / Clear against
@@ -152,6 +153,7 @@ fn clipboard_shortcuts_apply_keypresses() {
             },
             repeat: false,
             physical: Key::Other,
+            text: KeyText::from_char(c),
         }
     }
 
@@ -165,6 +167,7 @@ fn clipboard_shortcuts_apply_keypresses() {
             },
             repeat: false,
             physical: Key::Other,
+            text: KeyText::from_char(c),
         }
     }
 
@@ -308,6 +311,7 @@ fn clipboard_shortcut_does_not_insert_char() {
             },
             repeat: false,
             physical: Key::Other,
+            text: KeyText::from_char('c'),
         },
         &clipboard,
     );

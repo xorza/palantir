@@ -111,9 +111,13 @@
 //!     set through [`set_modifiers`](UiHarness::set_modifiers) is still
 //!     held by the *next* key until it is set back.
 //!     `Modifiers.ctrl` is platform-normalized — Cmd on macOS.
-//! 14. **Typed text arrives as `KeyDown { key: Key::Char(c) }`**, which
-//!     is the only path a field inserts from —
-//!     [`type_text`](UiHarness::type_text) emits one per char.
+//! 14. **A field types a press's `text`, not its key.** The harness
+//!     reports one the way a window does — a printable key carries the
+//!     character it produced, a named key carries none — so
+//!     [`type_text`](UiHarness::type_text) and [`key`](UiHarness::key)
+//!     both type. A case that needs several characters from one press,
+//!     or a character on an unnamed key, builds the event through
+//!     [`on_input`](UiHarness::on_input).
 //! 15. **Keyboard events are discarded at ingress when nothing is
 //!     focused.** `InputState::on_input` gates `KeyDown` on
 //!     `focused.is_some() || subs.matches_press(kp) || keyboard_mask`,
@@ -157,6 +161,7 @@ use crate::display::user_scale::UserScale;
 use crate::input::capture::{DOUBLE_CLICK_WINDOW, DRAG_THRESHOLD};
 use crate::input::input_event::InputEvent;
 use crate::input::keyboard::key::Key;
+use crate::input::keyboard::key_text::KeyText;
 use crate::input::keyboard::modifiers::Modifiers;
 use crate::input::pointer::PointerButton;
 use crate::input::response::input_delta::InputDelta;
@@ -578,6 +583,14 @@ impl UiHarness {
                 key,
                 repeat: false,
                 physical: Key::Other,
+                // What a window reports beside the key: a printable one
+                // carries its character, and a named one carries
+                // nothing. The command gate is the *field's*, not this
+                // one's — a platform reports text under Ctrl too.
+                text: match key {
+                    Key::Char(c) => KeyText::from_char(c),
+                    _ => KeyText::EMPTY,
+                },
             },
             self.time,
         )
@@ -602,8 +615,8 @@ impl UiHarness {
         }
     }
 
-    /// One `KeyDown { key: Key::Char(c) }` per char — the path a real
-    /// window produces, and the only one a field inserts from.
+    /// One press per character, each carrying that character as its
+    /// text — the path a real window produces for someone typing.
     pub fn type_text(&mut self, s: &str) {
         for c in s.chars() {
             self.key(Key::Char(c));

@@ -3,6 +3,7 @@
 
 use crate::Ui;
 use crate::common::time::MAX_ANIM_DT;
+use crate::input::keyboard::key_text::KeyText;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::harness::UiHarness;
@@ -134,6 +135,7 @@ fn frame_pass_count_matches_action_trigger() {
                     key: Key::Enter,
                     repeat: false,
                     physical: Key::Other,
+                    text: KeyText::EMPTY,
                 });
             },
             1,
@@ -146,6 +148,7 @@ fn frame_pass_count_matches_action_trigger() {
                     key: Key::Enter,
                     repeat: false,
                     physical: Key::Other,
+                    text: KeyText::EMPTY,
                 });
             },
             2,

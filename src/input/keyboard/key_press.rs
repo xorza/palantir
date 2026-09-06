@@ -2,6 +2,7 @@
 //! modifiers, and whether it repeated.
 
 use crate::input::keyboard::key::Key;
+use crate::input::keyboard::key_text::KeyText;
 use crate::input::keyboard::modifiers::Modifiers;
 
 /// One entry of the per-frame keyboard queue — key, modifier snapshot at
@@ -30,6 +31,11 @@ pub struct KeyPress {
     /// (Cyrillic `'я'` for the physical Z on a Russian layout — see
     /// [`crate::Shortcut::matches`]).
     pub physical: Key,
+    /// What this press produced to *type*, where the key is what it
+    /// produced to *match* — see [`KeyText`]. Empty for a named key, for
+    /// a chord, and for a dead key still waiting on the press that
+    /// completes it.
+    pub text: KeyText,
 }
 
 impl KeyPress {

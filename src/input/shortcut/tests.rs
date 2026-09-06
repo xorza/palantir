@@ -1,3 +1,4 @@
+use crate::input::keyboard::key_text::KeyText;
 use crate::input::shortcut::*;
 
 fn kp(mods: Modifiers, key: Key) -> KeyPress {
@@ -6,6 +7,10 @@ fn kp(mods: Modifiers, key: Key) -> KeyPress {
         mods,
         repeat: false,
         physical: Key::Other,
+        text: match key {
+            Key::Char(c) => KeyText::from_char(c),
+            _ => KeyText::EMPTY,
+        },
     }
 }
 
@@ -44,6 +49,7 @@ fn non_latin_layout_matches_command_chord_via_physical_key() {
         mods: primary_mod(),
         repeat: false,
         physical: Key::Char('z'),
+        text: KeyText::from_char('я'),
     };
     assert!(undo.matches(russian_z), "Cmd+Z fires on a Russian layout");
 
@@ -55,6 +61,7 @@ fn non_latin_layout_matches_command_chord_via_physical_key() {
         mods: primary_mod(),
         repeat: false,
         physical: Key::Char('z'), // physical Z position, but ';' under Dvorak
+        text: KeyText::from_char(';'),
     };
     assert!(
         !undo.matches(dvorak_semicolon),
@@ -71,6 +78,7 @@ fn non_latin_fallback_requires_a_command_modifier() {
         mods: Modifiers::NONE,
         repeat: false,
         physical: Key::Char('z'),
+        text: KeyText::from_char('я'),
     };
     assert!(!bare.matches(russian_z));
 }

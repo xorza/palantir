@@ -37,6 +37,7 @@ use crate::common::platform::{PLATFORM, Platform};
 use crate::input::input_event::InputEvent;
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::key_press::KeyPress;
+use crate::input::keyboard::key_text::KeyText;
 use crate::input::keyboard::modifiers::Modifiers;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
@@ -84,6 +85,10 @@ fn press(key: Key) -> KeyPress {
         mods: Modifiers::NONE,
         repeat: false,
         physical: Key::Other,
+        text: match key {
+            Key::Char(c) => KeyText::from_char(c),
+            _ => KeyText::EMPTY,
+        },
     }
 }
 
@@ -111,6 +116,10 @@ fn shift(key: Key) -> KeyPress {
         },
         repeat: false,
         physical: Key::Other,
+        text: match key {
+            Key::Char(c) => KeyText::from_char(c),
+            _ => KeyText::EMPTY,
+        },
     }
 }
 
@@ -127,6 +136,10 @@ fn ctrl_press(key: Key) -> KeyPress {
         },
         repeat: false,
         physical: Key::Other,
+        text: match key {
+            Key::Char(c) => KeyText::from_char(c),
+            _ => KeyText::EMPTY,
+        },
     }
 }
 

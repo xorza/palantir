@@ -590,12 +590,14 @@ impl InputState {
                 key,
                 repeat,
                 physical,
+                text,
             } => {
                 let kp = KeyPress {
                     key,
                     mods: self.modifiers,
                     repeat,
                     physical,
+                    text,
                 };
                 // Wake when a focused widget would consume the key
                 // OR a specific-chord watcher asked for it
