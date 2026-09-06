@@ -45,6 +45,8 @@ use crate::host::clock::Clock;
 use crate::host::core::{HostCore, HostCoreConfig};
 use crate::host::device_requirements::DeviceRequirements;
 use crate::host::window_driver::{CpuFrame, PresentStrategy, TargetKey, WindowDriver};
+use crate::input::input_event::InputEvent;
+use crate::input::response::input_delta::InputDelta;
 use crate::primitives::approx::EPS;
 use crate::text::shaper::TextShaper;
 use crate::ui::Ui;
@@ -219,6 +221,20 @@ impl OffscreenHost {
     /// Mutable access to the window's `Ui` for building scenes.
     pub fn ui(&mut self) -> &mut Ui {
         &mut self.driver.ui
+    }
+
+    /// Deliver one input event to the window's `Ui`, and report whether it
+    /// asks for a repaint.
+    ///
+    /// The headless peer of the winit host's event pump: an offscreen host
+    /// drives a real [`App`], so it needs the door for the pointer and the
+    /// keyboard that a windowed one has. The event is stamped with this
+    /// host's own clock — the one that also stamps its frames — so a press
+    /// between two frames is timed against the other presses rather than
+    /// against the frame that carried it.
+    pub fn on_input(&mut self, event: InputEvent) -> InputDelta {
+        let now = self.driver.now();
+        self.driver.ui.on_input(event, now)
     }
 
     /// Run one offscreen application frame against `target`, filling the
