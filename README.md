@@ -107,6 +107,9 @@ available_q)`; subtree hits blit last frame's measure result and skip
   `&mut usize`. `DockView` walks a split tree with drag docking and *emits*
   ops rather than mutating it, so an app routes them through its own undo
   and validation.
+- **Headless test harness** — `UiHarness` runs the real UI with no window
+  and no GPU. Click, drag, type, scroll and control the clock, then assert
+  on what the frame did. See [Headless UI tests](#headless-ui-tests).
 - **`GpuView` — raw `wgpu` inside a widget.** Implement `GpuPaint` on your
   own renderer and the framework runs it into a widget-sized off-screen
   target, then composites the result like any other image — so it clips,
@@ -131,6 +134,50 @@ on retained scratch (`RecordStore`, SoA columns on `Tree`, `CacheArena`)
 that reuses capacity across frames; any new per-frame `Vec::new()` /
 `HashMap` rebuild is treated as a regression and caught by the `alloc`
 bench under `benches/`.
+
+## Headless UI tests
+
+Turn on the `internals` feature and `UiHarness` drives your interface with
+no window, no GPU and no event loop. It records frames, feeds synthetic
+input, and reads the result back. A whole interaction test costs
+microseconds, so UI behaviour stays a plain `cargo test`.
+
+- **Act like a user** — `click_on(id)`, `right_click_on`, `drag_to`,
+  `scroll_lines`, `pinch`, `type_text("hi")`, `key`, `set_modifiers`.
+- **Ask what happened** — arranged rect, centre, hit-test at a point,
+  focus, hover, clipboard, and duplicate-id collisions.
+- **Own the clock** — step animations frame by frame, or move past the
+  double-click window. Every run is deterministic.
+- **Pick the surface** — size, DPI scale, user scale, pixel snap, refresh
+  rate. Test a 4K HiDPI layout on any machine.
+
+```toml
+[dev-dependencies]
+palantir = { version = "0.4", features = ["internals"] }
+```
+
+```rust,ignore
+use palantir::{Button, Configure, Ui, UVec2, WidgetId, internals::UiHarness};
+
+let inc = WidgetId::from_hash("inc");
+let mut clicks = 0_u32;
+let mut screen = |ui: &mut Ui| {
+    if Button::new().id(inc).label("click me").show(ui).left.clicked() {
+        clicks += 1;
+    }
+};
+
+let mut h = UiHarness::new(UVec2::new(400, 200));
+h.prime(2, &mut screen);
+h.click_on(inc);
+h.frame(&mut screen);
+
+assert_eq!(clicks, 1);
+```
+
+For pixels as well as behaviour, the `golden` feature adds golden-image
+regression tests. `OffscreenHost` renders a frame into a `wgpu::Texture`,
+and the comparison reports exactly which pixels moved.
 
 ## Recommended build flag
 
