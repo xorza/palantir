@@ -1781,7 +1781,6 @@ version = "0.5.0"
 dependencies = [
  "arboard",
  "backtrace",
- "bitflags 2.13.1",
  "bytemuck",
  "clap",
  "cosmic-text",

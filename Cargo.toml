@@ -51,7 +51,6 @@ redundant_explicit_links = "deny"
 [dependencies]
 palantir-anim-derive = { path = "anim-derive", version = "=0.5.0" }
 arboard = { version = "3.6", default-features = false, optional = true }
-bitflags = "2.13"
 bytemuck = { version = "1.25", features = ["derive"] }
 cosmic-text = "0.19"
 fixedbitset = "0.5"

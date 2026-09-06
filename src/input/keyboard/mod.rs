@@ -2,8 +2,8 @@
 //! small [`Key`](crate::Key) enum covering navigation/editing keys plus
 //! printable characters, a [`Modifiers`](crate::Modifiers) struct, the
 //! [`KeyText`](crate::KeyText) a press produced, and a
-//! [`KeyPress`](crate::KeyPress) pairing them — all `Copy`, so
-//! [`InputEvent`](crate::input::input_event::InputEvent) is too.
+//! [`KeyPress`](crate::KeyPress) pairing them — all `Copy`, so `InputEvent`
+//! is too.
 //!
 //! Consumers: `TextEdit`, the [`Shortcut`](crate::Shortcut) matcher, and
 //! global [`KeyboardWake`](crate::input::watch::KeyboardWake) watchers,

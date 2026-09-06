@@ -22,26 +22,23 @@
 
 use crate::input::keyboard::key_press::KeyPress;
 use crate::input::shortcut::Shortcut;
-use bitflags::bitflags;
 
-bitflags! {
+flag_set! {
     /// Wake-gate categories. Granular so a popup watching for
     /// clicks doesn't wake on every pointer move; canvases that want
     /// every move opt in explicitly.
-    #[repr(transparent)]
-    #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
-    pub struct PointerWake: u8 {
-        /// Wakes on [`PointerEvent::Down`] / [`PointerEvent::Up`].
+    pub struct PointerWake {
+        /// Wakes on [`PointerEvent::Down`](crate::PointerEvent::Down) / [`PointerEvent::Up`](crate::PointerEvent::Up).
         /// Popup dismiss-on-press, focus traps.
         const BUTTONS = 1 << 0;
-        /// Wakes on [`PointerEvent::Move`]. Eyedropper, custom
+        /// Wakes on [`PointerEvent::Move`](crate::PointerEvent::Move). Eyedropper, custom
         /// crosshair, drag-anywhere overlays. Expensive in event
         /// count — opt in only when needed.
         const MOVE = 1 << 1;
-        /// Wakes on [`PointerEvent::Scroll`]. Global scroll capture
+        /// Wakes on [`PointerEvent::Scroll`](crate::PointerEvent::Scroll). Global scroll capture
         /// (minimap, debug overlay).
         const SCROLL = 1 << 2;
-        /// Wakes on [`PointerEvent::Zoom`]. Separate from `SCROLL` for
+        /// Wakes on [`PointerEvent::Zoom`](crate::PointerEvent::Zoom). Separate from `SCROLL` for
         /// the same reason [`Sense::PINCH`](crate::Sense::PINCH) is
         /// separate from `Sense::SCROLL`: a wheel tick and a touchpad
         /// pinch are different gestures with different targets, and a
@@ -54,16 +51,14 @@ impl PointerWake {
     pub const NONE: Self = Self::empty();
 }
 
-bitflags! {
+flag_set! {
     /// Keyboard wake-gate categories. Orthogonal to focus routing —
     /// a focused widget always wakes on `KeyDown` regardless of these
     /// flags; watching here is for **off-focus** consumers
     /// (hotkey recorder, debug overlay, accel-underline UIs).
     /// Specific `(Key, Modifiers)` chords use the finer
-    /// [`Watches::keys`] path instead.
-    #[repr(transparent)]
-    #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
-    pub struct KeyboardWake: u8 {
+    /// `Watches::keys` path instead.
+    pub struct KeyboardWake {
         /// Wakes on any [`KeyPress`](crate::KeyPress) regardless of
         /// focus. Hotkey recorder, cheat codes, debug key overlay.
         const KEY = 1 << 0;

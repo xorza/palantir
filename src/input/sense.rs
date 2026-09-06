@@ -1,24 +1,20 @@
 //! Which pointer interactions a widget takes part in — the declaration
 //! that decides whether hit-testing considers it at all.
 
-use bitflags::bitflags;
-
-bitflags! {
+flag_set! {
     /// Which pointer interactions a widget participates in. Widgets
     /// that sense nothing (`Sense::NONE`) are skipped during hit-testing
     /// and clicks/hovers pass through to whatever's beneath.
     ///
     /// Flags compose: `Sense::CLICK | Sense::SCROLL` declares a widget
     /// that captures both clicks and scroll deltas. The "click implies
-    /// hover" relationship lives in [`Self::hovers`] — a widget with
+    /// hover" relationship lives in `Sense::hovers` — a widget with
     /// `CLICK` set is hoverable regardless of whether `HOVER` is set.
     /// Convention matches egui: containers default to `NONE`, leaf-
     /// interactive widgets pick `CLICK`, draggables add `DRAG`.
-    #[repr(transparent)]
-    #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
-    pub struct Sense: u8 {
+    pub struct Sense {
         /// Visible to hover hit-test. Implied by CLICK / DRAG via
-        /// [`Self::hovers`]; set explicitly for hover-only widgets
+        /// `Sense::hovers`; set explicitly for hover-only widgets
         /// (tooltip triggers, row highlights) that shouldn't capture
         /// clicks meant for things below.
         const HOVER  = 1 << 0;
@@ -91,5 +87,33 @@ impl Sense {
     /// True if this sense captures pinch zoom factors.
     pub(crate) const fn pinches(self) -> bool {
         self.contains(Self::PINCH)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::input::sense::Sense;
+
+    /// The two derived predicates read the union they document, not a
+    /// single bit — `SCROLL`-only stays invisible to the hover layer.
+    #[test]
+    fn hover_and_click_predicates_span_their_documented_unions() {
+        for sense in [Sense::HOVER, Sense::CLICK, Sense::DRAG] {
+            assert!(sense.hovers(), "{sense:?} should hover");
+        }
+        assert!(!Sense::SCROLL.hovers());
+        assert!(!Sense::PINCH.hovers());
+        assert!(!Sense::NONE.hovers());
+
+        assert!(Sense::CLICK.clicks());
+        assert!(Sense::DRAG.clicks());
+        assert!(!Sense::HOVER.clicks());
+
+        assert!(Sense::ABSORB_POINTER.contains(Sense::CLICK));
+        assert!(Sense::ABSORB_POINTER.contains(Sense::PINCH));
+        assert!(
+            !Sense::ABSORB_POINTER.contains(Sense::HOVER),
+            "the scrim is four routed bits, not every bit",
+        );
     }
 }

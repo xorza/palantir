@@ -21,8 +21,8 @@ const CAP: usize = 14;
 /// [`Shortcut`](crate::Shortcut) the key,
 /// [`TextEdit`](crate::TextEdit) the text.
 ///
-/// **Inline and `Copy`**, so [`InputEvent`](crate::InputEvent) stays
-/// `Copy` and the per-frame queue stays one flat vector. A key press
+/// **Inline and `Copy`**, so `InputEvent` stays `Copy` and the per-frame
+/// queue stays one flat vector. A key press
 /// produces one grapheme or two, which [`Self::CAP`] holds several times
 /// over; text longer than that is an IME commit, and this vocabulary
 /// does not carry one.

@@ -257,6 +257,10 @@ impl From<SrgbaU8> for RgbaF32 {
 /// [`SrgbaU8`], reached through [`RgbaF32::to_srgba_u8`]; [`Self::hex`] /
 /// [`Self::hexa`] read a hex code and decode it to linear bytes, so every
 /// value of this type is linear whichever way it was built.
+///
+/// The hex pair is also the only **`const`** route to a value of this type
+/// from a colour written the way a designer writes one: the `From` impl is
+/// not `const`, so a `const` mesh palette cannot go through [`RgbaF32`].
 #[repr(C)]
 #[derive(
     Copy,

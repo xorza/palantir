@@ -159,11 +159,11 @@ impl InputState {
     }
 
     pub(crate) fn watch_pointer(&mut self, flags: PointerWake) {
-        self.subs.pointer_mask |= flags;
+        self.subs.pointer_mask.insert(flags);
     }
 
     pub(crate) fn watch_keyboard(&mut self, flags: KeyboardWake) {
-        self.subs.keyboard_mask |= flags;
+        self.subs.keyboard_mask.insert(flags);
     }
 
     pub(crate) fn watch_key(&mut self, shortcut: Shortcut) {
