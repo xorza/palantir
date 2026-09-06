@@ -28,6 +28,9 @@ pub enum DockError<T> {
     DuplicateTab { tab: T },
     /// The focused group is not in the tree.
     MissingFocusedGroup { group: TabGroupId },
+    /// The group-id counter cannot mint a fresh id: it would repeat one
+    /// the tree already uses, or it has counted to the end of its range.
+    GroupAllocator { next_group: u64 },
 }
 
 impl<T: std::fmt::Debug> std::fmt::Display for DockError<T> {
@@ -46,6 +49,9 @@ impl<T: std::fmt::Debug> std::fmt::Display for DockError<T> {
             }
             Self::DuplicateTab { tab } => write!(f, "tab {tab:?} appears twice"),
             Self::MissingFocusedGroup { group } => write!(f, "focused group {group:?} is missing"),
+            Self::GroupAllocator { next_group } => {
+                write!(f, "dock group counter {next_group} cannot mint a fresh id")
+            }
         }
     }
 }

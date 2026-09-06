@@ -295,25 +295,91 @@ fn closing_the_last_tab_collapses_and_refocuses() {
     );
 }
 
+/// A strip is addressed by index and read by identity, so removing a
+/// tab keeps the pane on the tab it was showing. Only removing that tab
+/// picks another, and it picks the neighbour that took the slot.
+///
+/// Fixture: `[Main, Prefs, v1, v2]` showing v1 at slot 2. Dropping Prefs
+/// slides v1 and v2 down one — an index held still would then show v2,
+/// which is a tab switch nobody asked for on the way to closing a
+/// different tab.
 #[test]
-fn close_keeps_active_on_a_surviving_tab() {
-    let mut d = seeded();
-    d.apply(DockOp::ActivateTab { tab: viewer(1) });
-    assert_eq!(d.primary().active_tab(), viewer(1));
+fn a_close_and_a_filter_keep_the_pane_on_its_own_tab() {
+    let showing_v1 = || {
+        let mut d = seeded();
+        let primary = d.primary().id;
+        d.find_or_insert(viewer(2), primary);
+        d.apply(DockOp::ActivateTab { tab: viewer(1) });
+        assert_eq!(
+            d.primary().tabs,
+            [Tab::Main, Tab::Prefs, viewer(1), viewer(2)]
+        );
+        assert_eq!(d.primary().active_tab(), viewer(1));
+        d
+    };
 
-    // Closing the active last tab clamps `active` onto the previous one.
-    d.apply(DockOp::CloseTab { tab: viewer(1) });
-    d.validate().unwrap();
-    assert_eq!(d.primary().tabs, [Tab::Main, Tab::Prefs]);
-    assert_eq!(d.primary().active, 1);
-
-    // Closing a tab left of the active one shifts what `active` points
-    // at; per-group clamping keeps it in range.
-    let mut d = seeded();
-    d.apply(DockOp::ActivateTab { tab: viewer(1) });
+    let mut d = showing_v1();
     d.apply(DockOp::CloseTab { tab: Tab::Prefs });
     d.validate().unwrap();
-    assert_eq!(d.primary().active, 1, "clamped into range");
+    assert_eq!(d.primary().tabs, [Tab::Main, viewer(1), viewer(2)]);
+    assert_eq!(
+        d.primary().active_tab(),
+        viewer(1),
+        "a close ahead of the shown tab must not switch it",
+    );
+
+    let mut d = showing_v1();
+    d.apply(DockOp::CloseTab { tab: viewer(2) });
+    d.validate().unwrap();
+    assert_eq!(
+        d.primary().active_tab(),
+        viewer(1),
+        "and a close behind it moves nothing at all",
+    );
+
+    let mut d = showing_v1();
+    d.apply(DockOp::CloseTab { tab: viewer(1) });
+    d.validate().unwrap();
+    assert_eq!(
+        d.primary().active_tab(),
+        viewer(2),
+        "closing the shown tab falls to the one that took its slot",
+    );
+
+    // The last slot has no successor, so its neighbour is behind it.
+    let mut d = showing_v1();
+    d.apply(DockOp::ActivateTab { tab: viewer(2) });
+    d.apply(DockOp::CloseTab { tab: viewer(2) });
+    d.validate().unwrap();
+    assert_eq!(d.primary().active_tab(), viewer(1));
+
+    // A filter removes by the same rule, however many tabs it takes.
+    let mut d = showing_v1();
+    d.retain_tabs(|tab| tab != Tab::Prefs);
+    d.validate().unwrap();
+    assert_eq!(d.primary().tabs, [Tab::Main, viewer(1), viewer(2)]);
+    assert_eq!(
+        d.primary().active_tab(),
+        viewer(1),
+        "a filter ahead of the shown tab must not switch it either",
+    );
+}
+
+/// The pinned tab holds the tree non-empty, so a filter is never offered
+/// it. Filtering everything away leaves the dock its one pinned tab
+/// rather than a state `validate` rejects and `primary` panics on.
+#[test]
+fn retain_tabs_never_drops_the_pinned_tab() {
+    let mut d = seeded();
+    let primary = d.primary().id;
+    split_off(&mut d, viewer(1), primary, SplitSide::Right);
+    assert_eq!(d.groups().count(), 2, "premise: two panes to empty");
+
+    d.retain_tabs(|_| false);
+    d.validate().unwrap();
+    assert_eq!(d.primary().tabs, [Tab::Main]);
+    assert_eq!(d.primary().active_tab(), Tab::Main);
+    assert_eq!(d.groups().count(), 1, "the emptied pane collapsed away");
 }
 
 #[test]
@@ -557,7 +623,7 @@ fn validate_rejects_each_corruption() {
     };
 
     type Corrupt = fn(&mut DockState<Tab>);
-    let cases: [(&str, Corrupt, &str); 9] = [
+    let cases: [(&str, Corrupt, &str); 11] = [
         (
             "duplicate group id",
             |d| {
@@ -597,6 +663,18 @@ fn validate_rejects_each_corruption() {
                 s.ratio = 0.95;
             },
             "split ratio",
+        ),
+        (
+            // The next split would mint an id a group already holds, and
+            // every op addressed to that group would then be ambiguous.
+            "group counter repeats a live id",
+            |d| d.set_next_group_unchecked(0),
+            "cannot mint a fresh id",
+        ),
+        (
+            "group counter has nowhere left to count",
+            |d| d.set_next_group_unchecked(u64::MAX),
+            "cannot mint a fresh id",
         ),
         (
             "children out of pre-order",

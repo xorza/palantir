@@ -14,7 +14,8 @@
 //! - some group holds the pinned tab;
 //! - no group is empty, no tab appears twice, group ids are unique,
 //!   each `active` is in range, `focused` names a live group, and every
-//!   ratio stays inside the clamp.
+//!   ratio stays inside the clamp;
+//! - the group-id counter can still mint an id no group holds.
 
 use std::hash::Hash;
 
@@ -398,11 +399,20 @@ impl<T: DockTab> DockState<T> {
     }
 
     /// Drop every tab failing `keep`, collapsing groups that empty.
+    ///
+    /// The pinned tab is never offered to `keep`. It is what holds the
+    /// tree non-empty, which is why [`DockOp::CloseTab`] refuses it and
+    /// the close button never appears on it. A filter allowed to take it
+    /// would hand back a state [`Self::validate`] rejects and
+    /// [`Self::primary`] panics on.
+    ///
+    /// Each surviving group keeps showing the tab it was showing, the
+    /// way a close does.
     pub fn retain_tabs(&mut self, mut keep: impl FnMut(T) -> bool) {
+        let pinned = self.pinned;
         for node in &mut self.nodes {
             if let DockNode::Group(g) = node {
-                g.tabs.retain(|t| keep(*t));
-                g.clamp_active();
+                g.retain(|tab| *tab == pinned || keep(*tab));
             }
         }
         self.normalize();
@@ -584,6 +594,16 @@ impl<T: DockTab> DockState<T> {
                 }
                 seen.push(*tab);
             }
+        }
+        // The id counter is document state like the rest, so a corrupt
+        // one is caught here rather than at the split that would spend
+        // it. It has to name an id no group holds — a repeat makes
+        // every op addressed to that group ambiguous — and it has to
+        // have somewhere left to count.
+        if self.next_group == u64::MAX || seen_groups.iter().any(|g| g.0 >= self.next_group) {
+            return Err(DockError::GroupAllocator {
+                next_group: self.next_group,
+            });
         }
         if self.group(self.focused).is_none() {
             return Err(DockError::MissingFocusedGroup {
@@ -808,6 +828,12 @@ mod test_support {
         /// A group id no tree has minted.
         pub(crate) fn absent_group(&self) -> TabGroupId {
             TabGroupId(self.next_group + 1000)
+        }
+
+        /// Park the id counter where no sequence of ops could — the
+        /// corruption a hand-edited document carries.
+        pub(crate) fn set_next_group_unchecked(&mut self, next: u64) {
+            self.next_group = next;
         }
     }
 }
