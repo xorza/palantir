@@ -21,6 +21,19 @@ use glam::BVec2;
 /// `Fill` means the same thing in a `Panel` and in a `Grid`. A parent
 /// never grows to fit a child, so overflow only happens when rigid
 /// descendants genuinely do not fit.
+///
+/// # Which constructors panic, and why
+///
+/// [`Self::fixed`], [`Self::fill`] and [`Self::share`] each state a
+/// contract and **panic** when a caller breaks it. A negative or
+/// non-finite extent is arithmetic that already went wrong upstream, and
+/// clamping it here would put a collapsed row on screen with nothing
+/// pointing at the divide that produced the NaN.
+///
+/// [`Self::split`] is the one **total** constructor, and deliberately: it
+/// is the only one a widget feeds a number it took from application code,
+/// where the widget has no standing to assert. A caller wanting the same
+/// guarantee for an extent clamps before it gets here.
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub struct Sizing(SizingValue);
 
@@ -94,15 +107,12 @@ impl Sizing {
     /// resolved extent at record time, so the split rides on `Fill`
     /// weights and arrange resolves it against whatever width lands.
     ///
-    /// **Total over every `f32`**, which is what makes it the gate its
-    /// callers need rather than one more place a bad number passes
-    /// through. `fraction` goes through `F32Ext::unit_fraction_or`, so
-    /// an endpoint collapses one share to a zero-extent `Fixed` rather
-    /// than tripping [`Self::share`]'s non-negative assert, and a
-    /// fraction that names no share — a `0 / 0` progress ratio, an
-    /// unseeded slider value — reads as empty instead of reaching that
-    /// assert with a NaN. A widget takes those numbers from application
-    /// code and cannot assert on them.
+    /// **Total over every `f32`** — see [`Sizing`]'s own doc for why this
+    /// one is. `fraction` goes through `F32Ext::unit_fraction_or`, so an
+    /// endpoint collapses one share to a zero-extent `Fixed` rather than
+    /// tripping [`Self::share`]'s non-negative assert, and a fraction that
+    /// names no share — a `0 / 0` progress ratio, an unseeded slider
+    /// value — reads as empty instead of reaching that assert with a NaN.
     pub fn split(fraction: f32) -> [Self; 2] {
         let f = fraction.unit_fraction_or(0.0);
         [Self::share(f), Self::share(1.0 - f)]
