@@ -201,12 +201,15 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
         }
         // The handle's `view_box` is baked data — constant for a given
         // `(set, icon)` — so identity plus the rect, fit and tint is the
-        // whole of what can change. Constant because `IconSetId` carries a
-        // generation: a slot reused by another set answers to a different
-        // id, so one `(slot, icon)` pair can never name two artworks. The
-        // raster size is *not* hashed: it is a
-        // function of the resolved screen rect, which the paint bound already
-        // tracks, and folding it in would need the display scale the record
+        // whole of what can change. Constant on both counts a cache
+        // needs. `IconSetId` carries a generation, so a slot reused by
+        // another set answers to a different id and one `(slot, icon)`
+        // pair can never name two artworks. And the field is readable
+        // but not writable, so no caller can move the painted rect —
+        // `IconFit` resolves against it — under a hash that omits it.
+        // The raster size is *not* hashed: it is a function of the
+        // resolved screen rect, which the paint bound already tracks,
+        // and folding it in would need the display scale the record
         // does not carry.
         ShapeRecord::Icon {
             local_rect,

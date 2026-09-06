@@ -17,7 +17,7 @@ use std::time::Duration;
 /// [`FrameReport::paint`] is: it names the internal pass structure, and
 /// that structure is free to change. A consumer asking "was anything
 /// repainted" reads [`FramePaint`]; this answers "which passes got
-/// there", which only the crate's own tests have a stake in.
+/// there", which is the crate's own business.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum FrameProcessing {
     /// Paint-anim-only short-circuit fired: no pre_record, no user
@@ -58,12 +58,10 @@ pub struct FrameReport {
     /// facades convert this Ui-time deadline to their own clock.
     pub repaint_after: Option<Duration>,
     pub(crate) plan: Option<RenderPlan>,
-    /// Which passes ran. Gated with its readers — the crate's own
-    /// tests, asserting that the paint-only short-circuit fired or that
-    /// the double-layout retry didn't. The value itself is live in every
-    /// build; `FrameRuntime::note_processing` is what consumes it.
-    /// See [`FrameProcessing`].
-    #[cfg(test)]
+    /// Which passes ran — see [`FrameProcessing`]. Every build decides
+    /// it, so every build carries it: `FrameCycle::run` asserts it
+    /// against this report's own paint outcome, and the crate's tests
+    /// read it to pin which short-circuit fired.
     pub(crate) processing: FrameProcessing,
 }
 

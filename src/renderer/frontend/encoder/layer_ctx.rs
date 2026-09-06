@@ -326,7 +326,7 @@ impl LayerCtx<'_> {
                 let base = geometry::resolve_local_rect(owner_rect, *local_rect);
                 out.draw_icon(
                     DrawIconPayload {
-                        rect: geometry::resolve_icon_fit(base, handle.view_box, *fit),
+                        rect: geometry::resolve_icon_fit(base, handle.view_box(), *fit),
                         icon: handle.icon,
                         tint: *tint,
                         desaturate: *desaturate,

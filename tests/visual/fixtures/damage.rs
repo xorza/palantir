@@ -1,9 +1,13 @@
 //! DamageEngine visualization. Renders a static scene twice into the same
 //! Harness (so `DamageEngine.prev` carries between frames). The second
-//! render flips `DebugOverlayConfig::dim_undamaged` on and uses a
-//! striking magenta clear: pixels outside the damage scissor stay
-//! magenta, pixels inside flash the freshly-painted content. With
-//! `SAVE_DAMAGE_PNGS=1` the second frame is written under
+//! render flips `DebugOverlayConfig::dim_undamaged` on.
+//!
+//! A striking magenta is the clear colour of **both** frames, so a pixel
+//! reads magenta exactly when the scene covered it with nothing. One
+//! colour for the pair on purpose: a clear colour that moves between
+//! frames is itself a full repaint (`FrameBaseline`), and a full repaint
+//! is the one classification these fixtures cannot observe anything
+//! through. With `SAVE_DAMAGE_PNGS=1` the second frame is written under
 //! `tests/visual/output/damage/<name>.png` for inspection.
 
 use std::path::Path;
@@ -104,17 +108,21 @@ fn corner_pair_scene(
 
 /// Two identical frames of a tiny static scene. After frame 1 seeds
 /// `DamageEngine.prev`, frame 2's diff is empty and the renderer gets no
-/// plan at all — no clear, no draw, the swapchain still holds frame 1's
-/// pixels. Magenta is the *clear* color that never ran, so a clean skip
-/// means **zero magenta pixels** in the readback. Any magenta ⇒ the skip
-/// didn't fire and we re-cleared.
+/// plan at all — no clear, no draw, the target still holds frame 1's
+/// pixels.
+///
+/// So frame 2 must read back as frame 1, bit for bit: the dim pass is
+/// the one thing a partial frame would leave on those pixels, and it
+/// runs on a plan this frame must not have. Zero magenta on top of that
+/// says the scene covered every pixel, which is what makes the equality
+/// worth asserting.
 #[test]
 fn static_scene_repeats_clean() {
     let mut h = Harness::new();
     let size = UVec2::new(160, 96);
     let scene = button_scene("hi", "hello");
 
-    let _f1 = h.render(size, 1.0, DARK_BG, scene);
+    let f1 = h.render(size, 1.0, VIS_CLEAR, scene);
     let f2 = h.render_with_overlay(
         DebugOverlayConfig {
             dim_undamaged: true,
@@ -131,9 +139,13 @@ fn static_scene_repeats_clean() {
     let total = size.x * size.y;
     assert_eq!(
         painted, total,
-        "static frame should hit the Skip path: backbuffer holds frame 1 \
-         pixels and no magenta clear runs. Got {painted}/{total} non-magenta \
-         pixels — Skip path didn't fire."
+        "the scene covers the surface, so no pixel may read as the clear \
+         colour. Got {painted}/{total} non-magenta pixels."
+    );
+    assert!(
+        f2 == f1,
+        "a repeat frame must paint nothing: an undim-able pixel changed, so \
+         the frame took a paint path and the Skip didn't fire",
     );
 }
 
@@ -148,7 +160,7 @@ fn single_button_change_repaints_something() {
     let mut h = Harness::new();
     let size = UVec2::new(160, 96);
 
-    let _f1 = h.render(size, 1.0, DARK_BG, button_scene("b", "a"));
+    let _f1 = h.render(size, 1.0, VIS_CLEAR, button_scene("b", "a"));
     let f2 = h.render_with_overlay(
         DebugOverlayConfig {
             dim_undamaged: true,
@@ -238,7 +250,7 @@ fn corner_pair_change_keeps_center_unpainted() {
     let mut h = Harness::new();
     let size = UVec2::new(200, 200);
 
-    let f1 = h.render(size, 1.0, DARK_BG, corner_pair_scene("a", "a"));
+    let f1 = h.render(size, 1.0, VIS_CLEAR, corner_pair_scene("a", "a"));
     let f2 = h.render_with_overlay(
         DebugOverlayConfig {
             dim_undamaged: true,
