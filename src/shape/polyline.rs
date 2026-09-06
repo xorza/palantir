@@ -48,11 +48,13 @@ impl<'a> PolylineShape<'a> {
 }
 
 impl PolylineShape<'_> {
+    /// How the two open ends are finished.
     pub fn cap(mut self, cap: impl Into<LineCap>) -> Self {
         self.cap = cap.into();
         self
     }
 
+    /// How interior corners are finished.
     pub fn join(mut self, join: impl Into<LineJoin>) -> Self {
         self.join = join.into();
         self

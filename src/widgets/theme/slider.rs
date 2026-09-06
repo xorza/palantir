@@ -23,6 +23,8 @@ pub struct SliderTheme {
 }
 
 impl SliderTheme {
+    /// A muted track, an accent fill behind the knob, and a knob in the
+    /// text colour.
     pub fn from_palette(p: &Palette) -> Self {
         Self {
             track: p.elem_mid,

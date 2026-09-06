@@ -32,6 +32,7 @@ impl InternedStr {
         Self { span, epoch }
     }
 
+    /// Whether the interned run has no bytes.
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.span.len == 0

@@ -36,6 +36,7 @@ impl ShadowShape {
         self
     }
 
+    /// Corner radii of the shape casting the shadow.
     pub fn corners(mut self, corners: impl Into<Corners>) -> Self {
         self.corners = corners.into();
         self

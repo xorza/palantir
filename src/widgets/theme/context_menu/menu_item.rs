@@ -57,6 +57,7 @@ impl MenuItemTheme {
         self.looks.pick(state, state.pressed())
     }
 
+    /// Rows transparent at rest, one surface step brighter on hover.
     pub fn from_palette(p: &Palette) -> Self {
         // Rows are transparent at rest; hover paints one surface-step
         // brighter (`elem_mid`) — same delta a menu-bar trigger uses

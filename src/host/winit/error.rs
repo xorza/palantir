@@ -36,32 +36,43 @@ impl Error for HostDisconnected {}
 pub enum WinitHostError {
     /// Winit could not create the application event loop.
     CreateEventLoop {
+        /// What winit reported.
         source: winit::error::EventLoopError,
     },
     /// Winit's event loop terminated with an error.
     RunEventLoop {
+        /// What winit reported.
         source: winit::error::EventLoopError,
     },
     /// The operating system could not create a native window.
     CreateWindow {
+        /// The window that failed to open.
         token: WindowToken,
+        /// What the platform reported.
         source: winit::error::OsError,
     },
     /// Wgpu could not create a presentation surface for a native window.
     CreateSurface {
+        /// The window whose surface failed.
         token: WindowToken,
+        /// What wgpu reported.
         source: wgpu::CreateSurfaceError,
     },
     /// Asking the driver for a device failed — the same four ways it fails
     /// for every host, so the same enum describes them.
-    Gpu { source: GpuRequestError },
+    Gpu {
+        /// Which of the four ways the request failed.
+        source: GpuRequestError,
+    },
     /// The selected adapter cannot present to this window's surface.
     IncompatibleSurface,
     /// The surface cannot satisfy Palantir's linear-to-sRGB output contract.
     MissingSrgbSurface,
     /// The surface lacks texture usages required by Palantir's compositor.
     MissingSurfaceUsages {
+        /// What the compositor needs.
         required: wgpu::TextureUsages,
+        /// What the surface offers.
         supported: wgpu::TextureUsages,
     },
 }

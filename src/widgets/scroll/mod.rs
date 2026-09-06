@@ -163,23 +163,26 @@ pub struct Scroll<'a> {
     chrome: Option<Background>,
     bar_mode: BarMode,
     content_margin: Spacing,
-    /// [`Scroll::scroll_by`]'s accumulated request, in logical pixels.
+    /// [`Scroll::pan_by`]'s accumulated request, in logical pixels.
     pan_request: Vec2,
     /// [`Scroll::zoom_by`]'s accumulated request.
     zoom_request: ZoomFactor,
 }
 
 impl<'a> Scroll<'a> {
+    /// Scrolls up and down only. The cross axis sizes as usual.
     #[track_caller]
     pub fn vertical() -> Self {
         Self::with_axes(ScrollSpec::VERTICAL)
     }
 
+    /// Scrolls left and right only.
     #[track_caller]
     pub fn horizontal() -> Self {
         Self::with_axes(ScrollSpec::HORIZONTAL)
     }
 
+    /// Scrolls on both axes. What [`Self::zoomable`] requires.
     #[track_caller]
     pub fn both() -> Self {
         Self::with_axes(ScrollSpec::BOTH)
@@ -215,7 +218,7 @@ impl<'a> Scroll<'a> {
     ///
     /// Relative, because that is what a builder can state without first
     /// reading where the viewport already sits.
-    pub fn scroll_by(mut self, delta: Vec2) -> Self {
+    pub fn pan_by(mut self, delta: Vec2) -> Self {
         self.pan_request += delta;
         self
     }
@@ -225,7 +228,7 @@ impl<'a> Scroll<'a> {
     /// with the default pivot it zooms about the pointer where there is
     /// one, and about the viewport's centre where there is not.
     ///
-    /// A viewport with no [`Self::zoom`] ignores it, like every
+    /// A viewport with no [`Self::zoomable`] ignores it, like every
     /// other zoom input. Two calls compose into one factor.
     ///
     /// Takes the bare factor for the call site's sake — a view that
@@ -292,17 +295,21 @@ impl<'a> Scroll<'a> {
         self
     }
 
-    /// Enable pivot-anchored zoom with a default [`ZoomConfig`]. Asserts
-    /// at record time that the scroll pans on both axes (built via
-    /// [`Scroll::both`]) — uniform scale on a single-axis scroll has no
-    /// clean answer (cross-axis content escapes the viewport with no way
-    /// to reach it). Debug builds reject the caller bug.
-    pub fn zoom(self) -> Self {
-        self.zoom_config(ZoomConfig::default())
+    /// Let the viewport zoom, pivot-anchored, with a default
+    /// [`ZoomConfig`]. A switch, not a step — [`Self::zoom_by`] is the
+    /// step.
+    ///
+    /// Asserts at record time that the scroll pans on both axes (built
+    /// via [`Scroll::both`]) — uniform scale on a single-axis scroll has
+    /// no clean answer (cross-axis content escapes the viewport with no
+    /// way to reach it). Debug builds reject the caller bug.
+    pub fn zoomable(self) -> Self {
+        self.zoomable_with(ZoomConfig::default())
     }
 
-    /// Enable zoom with explicit config. See [`Self::zoom`].
-    pub fn zoom_config(mut self, cfg: ZoomConfig) -> Self {
+    /// [`Self::zoomable`] with an explicit [`ZoomConfig`] in place of
+    /// the default. Same assert, same pivot rule.
+    pub fn zoomable_with(mut self, cfg: ZoomConfig) -> Self {
         self.zoom = Some(cfg);
         self.add_sense(Sense::PINCH)
     }
@@ -494,6 +501,10 @@ impl<'a> Scroll<'a> {
         ScrollWrappers { outer, inner }
     }
 
+    /// Record the viewport, its `body`, and the scrollbars.
+    ///
+    /// The [`InnerResponse`]'s `response` belongs to the node the caller
+    /// identified, which wraps both the scrolled surface and the bars.
     pub fn show<R>(mut self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<'_, R> {
         // The caller's salt names the *outer wrapper*, but the node it
         // arrived on describes the viewport — `wrappers` splits it into
@@ -507,7 +518,7 @@ impl<'a> Scroll<'a> {
         if self.zoom.is_some() {
             debug_assert!(
                 pan.x && pan.y,
-                "Scroll::zoom requires Scroll::both — single-axis scroll has no clean zoom semantics",
+                "Scroll::zoomable requires Scroll::both — single-axis scroll has no clean zoom semantics",
             );
         }
         // Input routes by `Sense::SCROLL`, which sits on the outer

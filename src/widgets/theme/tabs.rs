@@ -141,6 +141,8 @@ impl TabsTheme {
         }
     }
 
+    /// Chips rounded at the top only, so the active one reads as continuous
+    /// with the page below it.
     pub fn from_palette(p: &Palette) -> Self {
         let corner = 4.0;
         let top = Corners::top(corner);

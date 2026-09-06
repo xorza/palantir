@@ -9,28 +9,52 @@ pub enum DockError<T> {
     /// The nodes are not in canonical pre-order.
     NonCanonical,
     /// A child index points past the end of the node vector.
-    NodeOutOfRange { index: u32 },
+    NodeOutOfRange {
+        /// The offending child index.
+        index: u32,
+    },
     /// A root-to-leaf chain nests deeper than the cap allows.
     SplitNesting,
     /// A split ratio sits outside the clamp.
-    SplitRatio { ratio: f32 },
+    SplitRatio {
+        /// The offending ratio.
+        ratio: f32,
+    },
     /// The vector holds slots the root cannot reach.
     UnreachableSlots,
     /// No group holds the pinned tab.
     MissingPinnedTab,
     /// Two groups share an id, so every op addressed to it is ambiguous.
-    DuplicateGroup { group: TabGroupId },
+    DuplicateGroup {
+        /// The id both groups claim.
+        group: TabGroupId,
+    },
     /// A group holds no tabs.
-    EmptyGroup { group: TabGroupId },
+    EmptyGroup {
+        /// The empty group.
+        group: TabGroupId,
+    },
     /// A group's visible index points past its own tab list.
-    ActiveTabOutOfRange { group: TabGroupId },
+    ActiveTabOutOfRange {
+        /// The group whose visible index is out of range.
+        group: TabGroupId,
+    },
     /// One tab appears in two places.
-    DuplicateTab { tab: T },
+    DuplicateTab {
+        /// The tab found in two places.
+        tab: T,
+    },
     /// The focused group is not in the tree.
-    MissingFocusedGroup { group: TabGroupId },
+    MissingFocusedGroup {
+        /// The id focus points at.
+        group: TabGroupId,
+    },
     /// The group-id counter cannot mint a fresh id: it would repeat one
     /// the tree already uses, or it has counted to the end of its range.
-    GroupAllocator { next_group: u64 },
+    GroupAllocator {
+        /// The id the counter would mint next.
+        next_group: u64,
+    },
 }
 
 impl<T: std::fmt::Debug> std::fmt::Display for DockError<T> {

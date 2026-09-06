@@ -90,6 +90,8 @@ use crate::widgets::theme::tooltip::TooltipTheme;
 /// time.
 #[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize)]
 pub struct Theme {
+    /// What every [`crate::Button`] wears. [`crate::ComboBox`]'s trigger
+    /// and [`crate::DragValue`]'s chip both derive from it.
     pub button: ButtonTheme,
     /// The three toggle widgets share a theme *type* but not a *slot* —
     /// restyling one leaves the other two alone.
@@ -98,7 +100,11 @@ pub struct Theme {
     pub radio: ToggleTheme,
     /// See [`Self::checkbox`].
     pub switch: ToggleTheme,
+    /// The track and thumb every [`crate::Scroll`] paints, and the
+    /// gutter it reserves for them.
     pub scrollbar: ScrollbarTheme,
+    /// What every [`crate::TextEdit`] wears — caret and selection
+    /// included. [`Self::drag_value`]'s inline editor derives from it.
     pub text_edit: TextEditTheme,
     /// Theme for [`crate::DragValue`] — the scrub chip plus its inline
     /// editor. Both modes resolve from this bundle (`chip` at rest,
@@ -107,18 +113,29 @@ pub struct Theme {
     /// [`DragValueTheme::from_chip`]; apps that restyle `button` and
     /// want DragValue to match should rebuild this bundle the same way.
     pub drag_value: DragValueTheme,
+    /// The panel and rows of every [`crate::ContextMenu`], and of the
+    /// dropdown [`crate::ComboBox`] opens.
     pub context_menu: ContextMenuTheme,
     /// Geometry for [`crate::ComboBox`]; its colours come from
     /// [`Self::button`] and [`Self::context_menu`].
     pub combo_box: ComboBoxTheme,
+    /// The panel and backdrop of every [`crate::Modal`].
     pub modal: ModalTheme,
     /// What the colour picker and its four parts wear, sizes included.
     pub color_picker: ColorPickerTheme,
+    /// The bubble every [`crate::Tooltip`] paints, and the delay before
+    /// it appears.
     pub tooltip: TooltipTheme,
+    /// The track and fill of every [`crate::ProgressBar`].
     pub progress_bar: ProgressBarTheme,
+    /// The rule every [`crate::Separator`] paints, and the margin
+    /// around it.
     pub separator: SeparatorTheme,
+    /// The track, fill and knob of every [`crate::Slider`].
     pub slider: SliderTheme,
+    /// The arc every [`crate::Spinner`] sweeps, and how fast.
     pub spinner: SpinnerTheme,
+    /// The grab band and rule of every [`crate::Splitter`].
     pub splitter: SplitterTheme,
     /// What every [`crate::TabStrip`] wears — on its own, inside a
     /// [`crate::TabbedView`], and on every [`crate::DockView`] pane.

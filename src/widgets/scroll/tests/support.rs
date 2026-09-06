@@ -28,7 +28,7 @@ pub(super) fn driven(ui: &mut Ui, viewport_h: f32, content_h: f32, pan: Vec2) {
         .show(ui, |ui| {
             Scroll::vertical()
                 .id(WidgetId::from_hash("scroll"))
-                .scroll_by(pan)
+                .pan_by(pan)
                 .size((Sizing::fixed(200.0), Sizing::fixed(viewport_h)))
                 .show(ui, |ui| {
                     Block::new()
@@ -45,7 +45,7 @@ pub(super) fn driven(ui: &mut Ui, viewport_h: f32, content_h: f32, pan: Vec2) {
 pub(super) fn zoom_driven(ui: &mut Ui, factors: &[f32]) {
     let mut scroll = Scroll::both()
         .id(WidgetId::from_hash("scroll"))
-        .zoom()
+        .zoomable()
         .size((Sizing::fixed(200.0), Sizing::fixed(200.0)));
     for factor in factors {
         scroll = scroll.zoom_by(*factor);

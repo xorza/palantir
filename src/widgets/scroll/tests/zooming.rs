@@ -21,7 +21,7 @@ fn nested_non_zoom_scroll_routes_pinch_to_zoomable_ancestor() {
     let build = |ui: &mut Ui| {
         Scroll::both()
             .id(outer_id)
-            .zoom()
+            .zoomable()
             .size((Sizing::fixed(300.0), Sizing::fixed(300.0)))
             .show(ui, |ui| {
                 Scroll::vertical()
@@ -120,7 +120,7 @@ fn pinch_zoom_keeps_point_under_cursor_fixed() {
                         .show(ui);
                     Scroll::both()
                         .id(WidgetId::from_hash("xy"))
-                        .zoom()
+                        .zoomable()
                         .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                         .show(ui, |ui| {
                             Block::new()
@@ -216,7 +216,7 @@ fn pan_after_pivot_zoom_does_not_snap_out_of_range_offset() {
             .show(ui, |ui| {
                 Scroll::both()
                     .id(WidgetId::from_hash("xy"))
-                    .zoom()
+                    .zoomable()
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
                         Block::new()
@@ -261,7 +261,7 @@ fn pivot_zoom_preserves_underflow_pan_range() {
     let build = |ui: &mut Ui| {
         Scroll::both()
             .id(WidgetId::from_hash("scroll"))
-            .zoom()
+            .zoomable()
             .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
             .show(ui, |ui| {
                 Block::new()
@@ -301,7 +301,7 @@ fn ctrl_touchpad_pixel_scroll_zooms_at_same_rate_as_wheel_lines() {
             .show(ui, |ui| {
                 Scroll::both()
                     .id(WidgetId::from_hash("zoomy"))
-                    .zoom()
+                    .zoomable()
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
                         Block::new()
@@ -351,7 +351,7 @@ fn wheel_zoom_step_is_font_independent() {
                 .show(ui, |ui| {
                     Scroll::both()
                         .id(WidgetId::from_hash("fz"))
-                        .zoom()
+                        .zoomable()
                         .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                         .show(ui, |ui| {
                             Block::new()

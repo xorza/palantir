@@ -25,6 +25,11 @@ pub struct AnimSlot {
 }
 
 impl AnimSlot {
+    /// A slot named `name`, hashed at compile time.
+    ///
+    /// One widget animates several values by giving each its own slot. Two
+    /// slots on one widget must not share a name — debug builds assert on
+    /// exactly that.
     pub const fn new(name: &'static str) -> Self {
         let bytes = name.as_bytes();
         let mut hash = 0xcbf2_9ce4_8422_2325u64;

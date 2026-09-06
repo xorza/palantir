@@ -6,6 +6,7 @@ use crate::text::shaper::TextShaper;
 /// format-dependent pipelines, and the window's own text shaper.
 #[derive(Debug)]
 pub struct GpuInitCtx<'a> {
+    /// The device to create pipelines and resources against.
     pub device: &'a wgpu::Device,
     /// The off-screen color target's format (sRGB `Rgba8UnormSrgb`). Match
     /// it on your render pipeline's color target.

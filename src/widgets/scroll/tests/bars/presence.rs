@@ -31,7 +31,7 @@ fn hidden_scroll_skips_bar_ids_and_cold_relayout_but_keeps_pan_and_zoom() {
         Scroll::both()
             .id(outer_id)
             .hide_bars()
-            .zoom()
+            .zoomable()
             .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
             .show(ui, |ui| {
                 Block::new()

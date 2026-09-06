@@ -22,6 +22,8 @@ pub struct TranslateScale {
 }
 
 impl TranslateScale {
+    /// No translation, unit scale — the transform a node sits under
+    /// when nothing above it moves or scales.
     pub const IDENTITY: Self = Self {
         translation: Vec2::ZERO,
         scale: 1.0,
@@ -113,10 +115,13 @@ impl TranslateScale {
         )
     }
 
+    /// Move by `t`, at unit scale.
     pub const fn from_translation(t: Vec2) -> Self {
         Self::new(t, 1.0)
     }
 
+    /// Scale by `s` about the origin. For a scale about a pivot, see
+    /// [`Self::from_scale_about`].
     pub const fn from_scale(s: f32) -> Self {
         Self::new(Vec2::ZERO, s)
     }
@@ -204,6 +209,9 @@ impl TranslateScale {
         )
     }
 
+    /// Map a point through this transform. [`Self::inverse_vector`] is
+    /// the reverse trip for a direction or an offset, which the
+    /// translation does not apply to.
     pub const fn apply_point(self, p: Vec2) -> Vec2 {
         Vec2::new(
             p.x * self.scale + self.translation.x,
@@ -217,6 +225,7 @@ impl TranslateScale {
         Vec2::new(v.x / self.scale, v.y / self.scale)
     }
 
+    /// [`Self::apply_point`] for a whole rect — origin and extent both.
     pub const fn apply_rect(self, r: Rect) -> Rect {
         Rect {
             min: Vec2::new(

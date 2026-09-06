@@ -53,6 +53,7 @@ impl<'a> MenuSeparator<'a> {
         self
     }
 
+    /// Record the rule. It senses nothing.
     pub fn show<'ui>(self, ui: &'ui mut Ui) -> Response<'ui> {
         // Handle, not a borrow: `Separator::style` holds the reference
         // across `show`'s `&mut Ui`, and this one may point into the

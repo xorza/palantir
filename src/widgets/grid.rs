@@ -35,6 +35,8 @@ pub struct Grid<Rows = [Track; 0], Cols = [Track; 0]> {
 }
 
 impl Grid {
+    /// A grid with no tracks. Give it some through [`Self::rows`] and
+    /// [`Self::cols`].
     #[track_caller]
     pub fn new() -> Self {
         Self {
@@ -47,6 +49,8 @@ impl Grid {
 }
 
 impl<Rows, Cols> Grid<Rows, Cols> {
+    /// The row tracks, as anything that borrows a `[Track]` — an array, a
+    /// slice, or a `Vec`.
     pub fn rows<NewRows: AsRef<[Track]>>(self, rows: NewRows) -> Grid<NewRows, Cols> {
         Grid {
             widget: self.widget,
@@ -56,6 +60,7 @@ impl<Rows, Cols> Grid<Rows, Cols> {
         }
     }
 
+    /// The column tracks. See [`Self::rows`].
     pub fn cols<NewCols: AsRef<[Track]>>(self, cols: NewCols) -> Grid<Rows, NewCols> {
         Grid {
             widget: self.widget,
@@ -74,6 +79,8 @@ impl<Rows, Cols> Grid<Rows, Cols> {
         self
     }
 
+    /// Record the grid and its `body`. Children name their own slot with
+    /// [`Configure::grid_cell`](crate::Configure::grid_cell).
     pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<'_, R>
     where
         Rows: AsRef<[Track]>,

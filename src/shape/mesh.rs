@@ -36,6 +36,7 @@ impl MeshShape<'_> {
         self
     }
 
+    /// Multiplied onto every vertex colour. White leaves the mesh alone.
     pub fn tint(mut self, tint: impl Into<RgbaF32>) -> Self {
         self.tint = tint.into();
         self

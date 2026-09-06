@@ -44,16 +44,20 @@ impl ImageShape {
         self
     }
 
+    /// How the image is placed inside the paint rect.
     pub fn fit(mut self, fit: impl Into<ImageFit>) -> Self {
         self.fit = fit.into();
         self
     }
 
+    /// Filtering while the image is drawn smaller than its intrinsic size.
     pub fn min_filter(mut self, min_filter: impl Into<ImageFilter>) -> Self {
         self.min_filter = min_filter.into();
         self
     }
 
+    /// Filtering while it is drawn larger. [`ImageFilter::Nearest`] is what
+    /// keeps pixel art crisp.
     pub fn mag_filter(mut self, mag_filter: impl Into<ImageFilter>) -> Self {
         self.mag_filter = mag_filter.into();
         self
@@ -68,6 +72,7 @@ impl ImageShape {
         self
     }
 
+    /// Multiplied onto every texel. White leaves the image alone.
     pub fn tint(mut self, tint: impl Into<RgbaF32>) -> Self {
         self.tint = tint.into();
         self

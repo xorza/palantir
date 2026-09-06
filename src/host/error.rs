@@ -12,13 +12,18 @@ use std::fmt::{Display, Formatter};
 pub enum UnmetRequirements {
     /// A feature Palantir cannot run without is absent.
     Features {
+        /// What Palantir needs.
         required: wgpu::Features,
+        /// What the device offers.
         available: wgpu::Features,
     },
     /// A limit Palantir needs raised sits below the floor.
     Limit {
+        /// The `wgpu::Limits` field, by its own name.
         name: &'static str,
+        /// The floor Palantir needs.
         required: u64,
+        /// What the device offers.
         available: u64,
     },
 }
@@ -61,11 +66,20 @@ pub enum GpuRequestError {
     /// Palantir was compiled without a wgpu backend for the current target.
     NoBackend,
     /// No graphics adapter matched the requested power policy.
-    RequestAdapter { source: wgpu::RequestAdapterError },
+    RequestAdapter {
+        /// What wgpu reported.
+        source: wgpu::RequestAdapterError,
+    },
     /// The adapter that answered cannot run Palantir's pipelines.
-    Requirements { source: UnmetRequirements },
+    Requirements {
+        /// Which requirement went unmet.
+        source: UnmetRequirements,
+    },
     /// The adapter could not create the logical device.
-    RequestDevice { source: wgpu::RequestDeviceError },
+    RequestDevice {
+        /// What wgpu reported.
+        source: wgpu::RequestDeviceError,
+    },
 }
 
 impl Display for GpuRequestError {

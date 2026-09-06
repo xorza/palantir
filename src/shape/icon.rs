@@ -86,6 +86,7 @@ impl IconShape {
         self
     }
 
+    /// How the glyph is placed inside its box.
     pub fn fit(mut self, fit: impl Into<IconFit>) -> Self {
         self.fit = fit.into();
         self

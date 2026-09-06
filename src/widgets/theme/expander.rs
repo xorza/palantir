@@ -87,6 +87,7 @@ impl ExpanderTheme {
         self.arrow_closed_angle + (self.arrow_open_angle - self.arrow_closed_angle) * t
     }
 
+    /// A header transparent at rest, picking up a surface fill on hover.
     pub fn from_palette(p: &Palette) -> Self {
         let radius = Corners::all(4.0);
         Self {

@@ -43,7 +43,11 @@ use crate::widgets::theme::widget_look::animated_look::AnimatedLook;
 // theme definitions and is cheap to `.clone()`.
 #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct WidgetLook {
+    /// Fill, stroke, corners and shadow. [`Background::NONE`] paints
+    /// nothing.
     pub background: Background,
+    /// Text style for a label inside this look. `None` inherits
+    /// [`Theme::text`](crate::Theme).
     pub text: Option<TextStyle>,
 }
 

@@ -115,6 +115,11 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
         self
     }
 
+    /// Record the trigger, and the dropdown when it is open.
+    ///
+    /// The [`SelectResponse`]'s own `response` is the trigger's — read
+    /// `changed` for the pick. See [`SelectResponse`] for why the two
+    /// differ.
     pub fn show(mut self, ui: &mut Ui) -> SelectResponse<'_> {
         let response = self.widget.response(ui);
         let id = self.widget.resolve(ui);

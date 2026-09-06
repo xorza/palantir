@@ -24,6 +24,8 @@ pub struct SplitterTheme {
 }
 
 impl SplitterTheme {
+    /// A hairline rule inside a grab band six pixels wide, which lights up
+    /// on hover and again while dragged.
     pub fn from_palette(p: &Palette) -> Self {
         Self {
             grab_thickness: 6.0,

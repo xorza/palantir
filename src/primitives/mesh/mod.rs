@@ -31,7 +31,10 @@ use std::hash::Hasher as _;
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Default, PartialEq, Pod, Zeroable)]
 pub struct MeshVertex {
+    /// Position in the owner's local logical pixels.
     pub pos: Vec2,
+    /// Vertex colour, linear and quantized. See the type doc for why it
+    /// is eight bits per channel.
     pub color: RgbaU8,
 }
 
@@ -77,6 +80,7 @@ pub struct Mesh {
 }
 
 impl Mesh {
+    /// An empty mesh, allocating nothing.
     #[inline]
     pub const fn new() -> Self {
         Self {
@@ -87,6 +91,8 @@ impl Mesh {
         }
     }
 
+    /// [`Self::new`] with both buffers reserved, for a mesh whose size
+    /// is known before it is filled.
     #[inline]
     pub fn with_capacity(vertices: usize, indices: usize) -> Self {
         Self {
@@ -97,6 +103,8 @@ impl Mesh {
         }
     }
 
+    /// Drop the contents and the cached hash and bbox, keeping the
+    /// capacity — how a retained mesh is refilled each frame.
     #[inline]
     pub fn clear(&mut self) {
         self.vertices.clear();

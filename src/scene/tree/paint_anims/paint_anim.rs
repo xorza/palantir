@@ -81,7 +81,9 @@ pub struct PaintTiming {
     pub started_at: Duration,
     /// One pass of the curve.
     pub period: Duration,
+    /// How many passes run, and whether they settle.
     pub repeat: PaintRepeat,
+    /// Continuous, or quantized to a step count.
     pub steps: PaintSteps,
 }
 
@@ -123,8 +125,11 @@ pub struct PaintTiming {
 /// nothing. Compare [`Self::channel`] and [`Self::timing`] instead.
 #[derive(Clone, Copy, Debug)]
 pub struct PaintAnim {
+    /// What the animation drives, and over what range.
     pub channel: PaintChannel,
+    /// When it runs, and how finely.
     pub timing: PaintTiming,
+    /// The shape of one pass, phase in and value out.
     pub curve: PaintCurve,
 }
 
@@ -195,6 +200,7 @@ impl PaintAnim {
         self
     }
 
+    /// How many passes run. Default one, then hold at the end value.
     pub fn repeat(mut self, repeat: PaintRepeat) -> Self {
         self.timing.repeat = repeat;
         self
@@ -214,6 +220,8 @@ impl PaintAnim {
         self
     }
 
+    /// The shape of one pass. Any `fn(f32) -> f32` over `0.0..=1.0`,
+    /// including the ones in [`curves`](crate::widget::curves).
     pub fn curve(mut self, curve: PaintCurve) -> Self {
         self.curve = curve;
         self

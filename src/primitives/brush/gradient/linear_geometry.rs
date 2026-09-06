@@ -12,6 +12,7 @@ use crate::primitives::color::RgbaF32;
 /// owner's bounding rect end-to-end at that angle.
 #[derive(Clone, Copy, Debug, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
 pub struct LinearGeometry {
+    /// Axis direction in radians — `0` runs right, `π/2` runs down.
     pub angle: f32,
 }
 

@@ -29,15 +29,22 @@ use glam::Vec2;
 /// cost because `Copy → Clone` is a no-op codegen. Both sizes are
 /// pinned by `hot_struct_sizes_are_pinned`.
 pub trait Animatable: Clone + PartialEq + 'static {
+    /// Interpolate from `a` to `b` at phase `t`, normally `0.0..=1.0`.
+    /// A curve may overshoot it, so an implementation must not clamp.
     fn lerp(a: Self, b: Self, t: f32) -> Self;
+    /// Componentwise difference — the displacement a spring works on.
     fn sub(self, other: Self) -> Self;
+    /// Componentwise sum, the inverse of [`Self::sub`].
     fn add(self, other: Self) -> Self;
+    /// Componentwise multiplication by a scalar.
     fn scale(self, k: f32) -> Self;
     /// Squared length, compared against `EPS * EPS` for settle checks.
     /// Squared form avoids a per-frame `sqrt` for the spring termination
     /// path. For scalars: `self * self`. For vectors: dot(self, self).
     /// For derived compound types: sum of component squared magnitudes.
     fn magnitude_squared(self) -> f32;
+    /// The additive identity — zero displacement, and the velocity a
+    /// fresh spring starts at.
     fn zero() -> Self;
 
     /// Normalize fields that cannot participate in spring arithmetic.

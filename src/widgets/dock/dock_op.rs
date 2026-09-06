@@ -11,10 +11,20 @@ use crate::widgets::dock::tab_group::TabGroupId;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DockDrop {
     /// Join `group`'s strip at `index` (clamped to its length).
-    Into { group: TabGroupId, index: usize },
+    Into {
+        /// The strip the tab joins.
+        group: TabGroupId,
+        /// Slot within that strip, clamped to its length.
+        index: usize,
+    },
     /// Split `group`'s pane; the tab becomes a fresh single-tab group on
     /// the given side.
-    Split { group: TabGroupId, side: SplitSide },
+    Split {
+        /// The pane that splits.
+        group: TabGroupId,
+        /// Which half of it the new group takes.
+        side: SplitSide,
+    },
 }
 
 /// One dock mutation, executed by
@@ -37,18 +47,40 @@ pub enum DockDrop {
 pub enum DockOp<T> {
     /// Make `tab` visible in whichever group holds it, and focus that
     /// group.
-    ActivateTab { tab: T },
+    ActivateTab {
+        /// The tab to reveal.
+        tab: T,
+    },
     /// Open `tab` in the focused group — reusing it wherever it already
     /// sits — then make it visible and focus its pane.
-    OpenTab { tab: T },
+    OpenTab {
+        /// The tab to open.
+        tab: T,
+    },
     /// Close `tab` wherever it sits. The pinned tab never closes — the
     /// op refuses it.
-    CloseTab { tab: T },
+    CloseTab {
+        /// The tab to close.
+        tab: T,
+    },
     /// Move `tab` to `to` — into another strip, or splitting a pane.
-    MoveTab { tab: T, to: DockDrop },
+    MoveTab {
+        /// The tab to move.
+        tab: T,
+        /// Where it lands.
+        to: DockDrop,
+    },
     /// Set the ratio of the split at `split` (its packed root path).
     /// Emitted per frame by a divider drag; coalesces per split.
-    SetRatio { split: DockPath, ratio: f32 },
+    SetRatio {
+        /// Packed root path of the split to move.
+        split: DockPath,
+        /// Fraction of the pane the leading half takes.
+        ratio: f32,
+    },
     /// Move focus onto `group`, because a press landed inside its pane.
-    FocusPane { group: TabGroupId },
+    FocusPane {
+        /// The pane that takes focus.
+        group: TabGroupId,
+    },
 }

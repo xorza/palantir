@@ -45,6 +45,8 @@ pub enum FramePaint {
     Partial,
 }
 
+/// What one call to [`Ui::frame`](crate::Ui) did, and what the host owes
+/// the next one.
 #[derive(Debug)]
 pub struct FrameReport {
     /// `true` when an animation tick during this frame hasn't

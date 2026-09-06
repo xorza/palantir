@@ -116,6 +116,8 @@ impl std::fmt::Debug for Response<'_> {
 pub struct ResponseSnapshot {
     /// Widget id of the originating widget.
     pub id: WidgetId,
+    /// The state as it stood when the snapshot was taken. Also reached
+    /// through this type's [`Deref`](std::ops::Deref).
     pub state: ResponseState,
 }
 
@@ -133,7 +135,9 @@ impl std::ops::Deref for ResponseSnapshot {
 /// through [`Self::inner`].
 #[derive(Debug)]
 pub struct InnerResponse<'a, R> {
+    /// The container's own pointer/click/hover [`Response`].
     pub response: Response<'a>,
+    /// What the body returned.
     pub inner: R,
 }
 

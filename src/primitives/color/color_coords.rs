@@ -19,7 +19,9 @@ use crate::primitives::color::okhsv::Okhsv;
 /// reached zero.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ColorCoords {
+    /// Coordinates in [`ColorModel::Okhsv`].
     Okhsv(Okhsv),
+    /// Coordinates in [`ColorModel::Hsv`].
     Hsv(Hsv),
 }
 

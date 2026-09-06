@@ -102,6 +102,8 @@ pub struct DragValue<'a> {
 }
 
 impl<'a> DragValue<'a> {
+    /// A scrub chip bound to `value`, which takes a `&mut f64` or a
+    /// `&mut i64`. Unbounded until [`Self::range`].
     #[track_caller]
     pub fn new(value: impl Into<DragNum<'a>>) -> Self {
         Self {
@@ -183,6 +185,7 @@ impl<'a> DragValue<'a> {
         self
     }
 
+    /// Record the chip, or its inline editor while one is open.
     pub fn show(mut self, ui: &mut Ui) -> ValueResponse<'_> {
         let required = self.required_sense();
         self.configure().add_sense(required);

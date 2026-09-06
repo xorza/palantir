@@ -28,6 +28,7 @@ impl Track {
         min_content.max(self.min).min(self.max)
     }
 
+    /// A track sized by `size`, with no bounds of its own.
     pub const fn new(size: Sizing) -> Self {
         Self {
             size,
@@ -46,10 +47,12 @@ impl Track {
     /// weights it.
     pub const FILL: Self = Self::new(Sizing::FILL);
 
+    /// [`Sizing::fixed`] as a track.
     pub const fn fixed(v: f32) -> Self {
         Self::new(Sizing::fixed(v))
     }
 
+    /// [`Sizing::fill`] as a track.
     pub const fn fill(weight: f32) -> Self {
         Self::new(Sizing::fill(weight))
     }

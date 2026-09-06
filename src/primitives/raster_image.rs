@@ -18,7 +18,9 @@ use glam::{IVec2, UVec2};
 /// out before the next raster overwrites them.
 #[derive(Clone, Copy, Debug)]
 pub struct RasterImage<'a> {
+    /// Whether [`Self::data`] is one byte per pixel or four.
     pub content: ContentType,
+    /// Raster dimensions in physical pixels.
     pub size: UVec2,
     /// Offset from the pen position to the raster's top-left, in the
     /// rasterizer's sense: `x` right, `y` **up**. Zero for an icon,

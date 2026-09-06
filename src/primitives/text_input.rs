@@ -9,8 +9,12 @@ use std::borrow::Cow;
 /// unchanged, provided it belongs to the pass doing the showing.
 #[derive(Debug)]
 pub enum TextInput<'a> {
+    /// A `&str`, copied into the arena at `show`.
     Borrowed(&'a str),
+    /// A `String`, likewise copied — the allocation is the caller's.
     Owned(String),
+    /// Already in the arena. Passes through untouched, provided it
+    /// belongs to the pass doing the showing.
     Interned(InternedStr),
 }
 

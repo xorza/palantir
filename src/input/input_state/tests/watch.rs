@@ -360,7 +360,7 @@ fn key_chord_watcher_wakes_only_exact_chord() {
 
     // Alt+Escape: watcher asked for bare Escape → no match.
     // (Avoid ctrl here: on macOS, raw Ctrl isn't represented in
-    // `Shortcut`'s `Mods` vocabulary, so ctrl+Escape would *match*
+    // `Shortcut`'s `ShortcutMods` vocabulary, so ctrl+Escape would *match*
     // Shortcut::key(Escape) — a documented platform compromise.)
     let alt = Modifiers {
         alt: true,

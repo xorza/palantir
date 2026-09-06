@@ -60,6 +60,12 @@ pub(crate) type WidgetIdMap<V> = HashMap<WidgetId, V, BuildHasherDefault<IdHashe
 /// id that is already a hash is paid per entry per frame.
 pub(crate) type WidgetIdSet = HashSet<WidgetId, BuildHasherDefault<IdHasher>>;
 
+/// A widget's identity across frames.
+///
+/// Derived from the call site and any
+/// [`Configure::id_salt`](crate::Configure::id_salt) above it, so the
+/// same call in the same place answers the same id every frame. Cross-frame
+/// state, focus and animation all key on one.
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct WidgetId(pub(crate) u64);
@@ -73,6 +79,8 @@ impl WidgetId {
     /// `VIEWPORT.with(from_hash("k").0)`.
     pub(crate) const VIEWPORT: Self = Self(u64::MAX);
 
+    /// An id from anything hashable, with no parent mixed in. For a root a
+    /// caller names itself — [`Self::with`] is what derives a child.
     pub fn from_hash(h: impl Hash) -> Self {
         let mut hasher = Hasher::new();
         h.hash(&mut hasher);

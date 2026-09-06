@@ -1,7 +1,7 @@
 //! Arrow-key travel along one unit axis.
 
 use crate::input::keyboard::key::Key;
-use crate::input::shortcut::{Mods, Shortcut};
+use crate::input::shortcut::{Shortcut, ShortcutMods};
 use crate::ui::Ui;
 
 /// The two arrow keys that walk one `0..1` axis.
@@ -28,7 +28,7 @@ impl AxisKeys {
     pub(crate) fn travel(self, ui: &mut Ui) -> f32 {
         let mut travel = 0.0;
         for (key, sign) in [(self.back, -1.0), (self.forward, 1.0)] {
-            let coarse = ui.key_pressed(Shortcut::new(Mods::SHIFT, key));
+            let coarse = ui.key_pressed(Shortcut::new(ShortcutMods::SHIFT, key));
             let plain = ui.key_pressed(Shortcut::key(key));
             if coarse {
                 travel += sign * STEP * COARSE;

@@ -44,6 +44,7 @@ enum MenuShortcut {
 }
 
 impl<'a> MenuItem<'a> {
+    /// A row labelled `label`.
     #[track_caller]
     pub fn new(label: impl Into<TextInput<'a>>) -> Self {
         Self {
@@ -65,7 +66,7 @@ impl<'a> MenuItem<'a> {
     /// using the platform's native form (`⌘C` / `Ctrl+C`) and
     /// intercepts that keypress while the menu is open. Glyph-only
     /// hints (no modifier, e.g. `Backspace → ⌫`) are expressed as
-    /// `Shortcut::new(Mods::NONE, Key::Backspace)`.
+    /// `Shortcut::new(ShortcutMods::NONE, Key::Backspace)`.
     pub fn shortcut(mut self, s: Shortcut) -> Self {
         self.shortcut = MenuShortcut::Activate(s);
         self
@@ -83,6 +84,8 @@ impl<'a> MenuItem<'a> {
         MenuSeparator::new()
     }
 
+    /// Record the row inside an open menu. Activating it closes the menu
+    /// through `popup`.
     pub fn show<'ui>(mut self, ui: &'ui mut Ui, popup: &CloseHandle) -> Response<'ui> {
         // Single `response_for` probe via the shared entry helper: the
         // row's body records only decorative `Text` leaves, so the response

@@ -109,6 +109,8 @@ pub struct TextEdit<'a> {
 }
 
 impl<'a> TextEdit<'a> {
+    /// A single-line editor over `text`, which it edits in place. See
+    /// [`Self::multiline`] for the other mode.
     #[track_caller]
     pub fn new(text: &'a mut String) -> Self {
         // **A scrolling viewport over one child**, which is what a field is.
@@ -315,6 +317,8 @@ impl<'a> TextEdit<'a> {
         self
     }
 
+    /// Record the editor and run one frame of editing over the bound
+    /// `String`.
     pub fn show(mut self, ui: &mut Ui) -> TextEditResponse<'_> {
         let id = self.widget.resolve(ui);
         // **The state row is moved out for the whole pass and moved back

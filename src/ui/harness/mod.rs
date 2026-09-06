@@ -190,6 +190,8 @@ use std::time::Duration;
 /// to be non-degenerate.
 const ARENA_SURFACE: UVec2 = UVec2::splat(1);
 
+/// Drives a [`Ui`] through frames with synthetic input. See the module
+/// doc for the pass model every helper here is built around.
 #[derive(Debug)]
 pub struct UiHarness {
     /// `pub(crate)` rather than behind an accessor: the recorder state the
@@ -275,6 +277,8 @@ impl UiHarness {
         self
     }
 
+    /// Whether layout rounds to physical pixels, as
+    /// [`Display::pixel_snap`](crate::Display) reports it.
     pub fn pixel_snap(mut self, on: bool) -> Self {
         self.display.pixel_snap = on;
         self.sync_display();
@@ -302,6 +306,8 @@ impl UiHarness {
         self
     }
 
+    /// Run one frame and report what it did. The record closure runs
+    /// once, twice, or not at all — see the module doc.
     pub fn frame(&mut self, record: impl FnMut(&mut Ui)) -> FrameReport {
         self.drive(true, record)
     }
@@ -414,6 +420,8 @@ impl UiHarness {
         self.ui.on_input(InputEvent::PointerMoved(pos), self.time)
     }
 
+    /// The pointer leaves the surface. Returns the event's
+    /// [`InputDelta`], like [`Self::move_to`].
     pub fn pointer_left(&mut self) -> InputDelta {
         self.ui.on_input(InputEvent::PointerLeft, self.time)
     }
@@ -428,35 +436,44 @@ impl UiHarness {
         self.press_button(PointerButton::Left)
     }
 
+    /// [`Self::press`] with the button named.
     pub fn press_button(&mut self, button: PointerButton) -> InputDelta {
         self.pressed_at = self.ui.input.pointer_pos;
         self.ui
             .on_input(InputEvent::PointerPressed(button), self.time)
     }
 
+    /// Move to `pos`, then [`Self::press`].
     pub fn press_at(&mut self, pos: Vec2) -> InputDelta {
         self.press_button_at(PointerButton::Left, pos)
     }
 
+    /// [`Self::press_at`] with the button named.
     pub fn press_button_at(&mut self, button: PointerButton, pos: Vec2) -> InputDelta {
         self.move_to(pos);
         self.press_button(button)
     }
 
+    /// Release the left button, clearing the press origin
+    /// [`Self::drag_to`] measures from.
     pub fn release(&mut self) -> InputDelta {
         self.release_button(PointerButton::Left)
     }
 
+    /// [`Self::release`] with the button named.
     pub fn release_button(&mut self, button: PointerButton) -> InputDelta {
         self.pressed_at = None;
         self.ui
             .on_input(InputEvent::PointerReleased(button), self.time)
     }
 
+    /// Press and release the left button at `pos`, in one frame's
+    /// worth of events.
     pub fn click_at(&mut self, pos: Vec2) {
         self.click_button_at(PointerButton::Left, pos);
     }
 
+    /// [`Self::click_at`] with the right button.
     pub fn right_click_at(&mut self, pos: Vec2) {
         self.click_button_at(PointerButton::Right, pos);
     }
@@ -506,10 +523,13 @@ impl UiHarness {
         self.click_at(self.hit_center_of(id));
     }
 
+    /// [`Self::click_on`] with the right button.
     pub fn right_click_on(&mut self, id: WidgetId) {
         self.right_click_at(self.hit_center_of(id));
     }
 
+    /// Press `id` at its center, checked the same way
+    /// [`Self::click_on`] is.
     pub fn press_on(&mut self, id: WidgetId) -> InputDelta {
         self.press_at(self.hit_center_of(id))
     }
@@ -547,10 +567,12 @@ impl UiHarness {
         self.ui.on_input(InputEvent::ScrollLines(delta), self.time)
     }
 
+    /// [`Self::scroll_lines`] in pixels rather than lines.
     pub fn scroll_pixels(&mut self, delta: Vec2) -> InputDelta {
         self.ui.on_input(InputEvent::ScrollPixels(delta), self.time)
     }
 
+    /// A pinch-zoom step, aimed like [`Self::scroll_lines`].
     pub fn pinch(&mut self, factor: f32) -> InputDelta {
         self.ui.on_input(InputEvent::Zoom(factor), self.time)
     }
@@ -562,11 +584,13 @@ impl UiHarness {
         self.scroll_lines(delta)
     }
 
+    /// Aim, then [`Self::scroll_pixels`].
     pub fn scroll_pixels_at(&mut self, pos: Vec2, delta: Vec2) -> InputDelta {
         self.move_to(pos);
         self.scroll_pixels(delta)
     }
 
+    /// Aim, then [`Self::pinch`].
     pub fn pinch_at(&mut self, pos: Vec2, factor: f32) -> InputDelta {
         self.move_to(pos);
         self.pinch(factor)
@@ -678,26 +702,32 @@ impl UiHarness {
         self.ui.focused_id()
     }
 
+    /// [`Ui::set_focus`].
     pub fn set_focus(&mut self, id: WidgetId) {
         self.ui.set_focus(id);
     }
 
+    /// [`Ui::clear_focus`].
     pub fn clear_focus(&mut self) {
         self.ui.clear_focus();
     }
 
+    /// [`Ui::focus_within`].
     pub fn focus_within(&self, ancestor: WidgetId) -> bool {
         self.ui.focus_within(ancestor)
     }
 
+    /// [`Ui::hover_within`].
     pub fn hover_within(&self, ancestor: WidgetId) -> bool {
         self.ui.hover_within(ancestor)
     }
 
+    /// [`Ui::pointer_pos`].
     pub fn pointer_pos(&mut self) -> Option<Vec2> {
         self.ui.pointer_pos()
     }
 
+    /// [`Ui::escape_pressed`].
     pub fn escape_pressed(&mut self) -> bool {
         self.ui.escape_pressed()
     }
@@ -737,6 +767,7 @@ impl UiHarness {
             .expect("the harness clipboard is the in-memory backend")
     }
 
+    /// Seed the harness clipboard, for a paste a test is about to make.
     pub fn set_clipboard_text(&mut self, text: &str) {
         self.ui
             .clipboard()

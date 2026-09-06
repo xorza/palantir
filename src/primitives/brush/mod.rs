@@ -24,9 +24,13 @@ use crate::primitives::nan::NanCheck;
 // for all three types it applies to.
 #[derive(Clone, Debug, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
 pub enum Brush {
+    /// One colour everywhere.
     Solid(RgbaF32),
+    /// A gradient along a line.
     Linear(LinearGradient),
+    /// A gradient out from a centre.
     Radial(RadialGradient),
+    /// A gradient around a centre.
     Conic(ConicGradient),
 }
 
@@ -43,6 +47,7 @@ pub enum Brush {
 pub struct CurveBrush(Brush);
 
 impl CurveBrush {
+    /// Paints nothing. The identity a stroke falls back to.
     pub const TRANSPARENT: Self = Self(Brush::TRANSPARENT);
 
     /// The paint source, for consumers that read, screen or lower it.
@@ -81,6 +86,7 @@ impl From<LinearGradientBuilder> for CurveBrush {
 }
 
 impl Brush {
+    /// Paints nothing. The identity a fill falls back to.
     pub const TRANSPARENT: Self = Self::Solid(RgbaF32::TRANSPARENT);
 
     /// Paints nothing visible.

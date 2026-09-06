@@ -20,8 +20,11 @@ use crate::host::error::GpuRequestError;
 /// own request rather than replacing it.
 #[derive(Debug)]
 pub struct RequestedGpu {
+    /// The adapter that answered the request.
     pub adapter: wgpu::Adapter,
+    /// The logical device it created.
     pub device: wgpu::Device,
+    /// That device's queue.
     pub queue: wgpu::Queue,
 }
 

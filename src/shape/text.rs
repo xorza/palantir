@@ -69,31 +69,39 @@ impl TextShape {
     }
 }
 impl TextShape {
+    /// Ink colour. Straight-alpha linear RGB, like every other colour
+    /// on the CPU side.
     pub fn color(mut self, color: impl Into<RgbaF32>) -> Self {
         self.color = color.into();
         self
     }
 
+    /// Whether the run breaks to the owner's width, and how.
     pub fn wrap(mut self, wrap: impl Into<TextWrap>) -> Self {
         self.wrap = wrap.into();
         self
     }
 
+    /// Where the run sits inside its owner. Unread once
+    /// [`Self::at_origin`] takes placement over.
     pub fn align(mut self, align: impl Into<Align>) -> Self {
         self.align = align.into();
         self
     }
 
+    /// Which family to shape in.
     pub fn family(mut self, family: impl Into<FontFamily>) -> Self {
         self.font.family = family.into();
         self
     }
 
+    /// Which weight to shape at, on the CSS 1–1000 scale.
     pub fn weight(mut self, weight: impl Into<FontWeight>) -> Self {
         self.font.weight = weight.into();
         self
     }
 
+    /// Upright or italic.
     pub fn slant(mut self, slant: impl Into<FontSlant>) -> Self {
         self.font.slant = slant.into();
         self

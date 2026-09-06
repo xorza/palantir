@@ -42,16 +42,19 @@ impl RectShape {
 }
 
 impl RectShape {
+    /// Interior paint.
     pub fn fill(mut self, fill: impl Into<Brush>) -> Self {
         self.fill = fill.into();
         self
     }
 
+    /// Edge paint, centred on the boundary.
     pub fn stroke(mut self, stroke: impl Into<Stroke>) -> Self {
         self.stroke = stroke.into();
         self
     }
 
+    /// Corner radii. Takes one number for all four, or a [`Corners`].
     pub fn corners(mut self, corners: impl Into<Corners>) -> Self {
         self.corners = corners.into();
         self

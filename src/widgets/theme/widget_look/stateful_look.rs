@@ -16,9 +16,13 @@ use crate::widgets::theme::widget_look::WidgetLook;
 // **Not `Copy`** because `WidgetLook` isn't.
 #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StatefulLook {
+    /// At rest.
     pub normal: WidgetLook,
+    /// Under the pointer.
     pub hovered: WidgetLook,
+    /// Engaged — pressed, or focused for a field. See [`Self::pick`].
     pub active: WidgetLook,
+    /// Disabled, which outranks the other three.
     pub disabled: WidgetLook,
 }
 

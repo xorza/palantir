@@ -34,7 +34,9 @@ pub struct TextEditTheme {
     /// `[text_edit.looks.active]`).
     #[serde(flatten)]
     pub looks: StatefulLook,
+    /// Ink for the placeholder text an empty field shows.
     pub placeholder: RgbaF32,
+    /// Ink for the caret.
     pub caret: RgbaF32,
     /// Width of the caret rect in logical px. The caret is painted as
     /// a thin Overlay rect at the caret's prefix-x; one pixel reads as
@@ -110,6 +112,8 @@ impl TextEditTheme {
             - Vec2::new(left + ring + self.caret_width * 0.5, top + ring)
     }
 
+    /// A field whose stroke changes colour on focus but never width — see
+    /// the comment below for why the width is pinned.
     pub fn from_palette(p: &Palette) -> Self {
         let radius = Corners::all(4.0);
         // Stroke width stays constant across states — color is the

@@ -22,6 +22,8 @@ use crate::widgets::response::Response;
 /// this type exists.
 #[derive(Debug)]
 pub struct SelectResponse<'a> {
+    /// The *trigger*'s pointer/click/hover [`Response`] — which answers
+    /// a different question than `changed`, as the type doc explains.
     pub response: Response<'a>,
     /// A different option was chosen this frame. Re-picking the option
     /// already selected leaves it `false`.

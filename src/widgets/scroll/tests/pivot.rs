@@ -28,7 +28,7 @@ fn pointer_zoom_pivot_is_scale_invariant() {
                 .show(ui, |ui| {
                     Scroll::both()
                         .id(id)
-                        .zoom()
+                        .zoomable()
                         .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                         .show(ui, |ui| {
                             Block::new()

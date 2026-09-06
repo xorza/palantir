@@ -344,8 +344,11 @@ impl<'a> TextProbe<'a> {
 /// rather than the metric that was asked for.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Caret {
+    /// Horizontal position in the block's local logical pixels.
     pub x: f32,
+    /// Top of the caret, on the same axes.
     pub y_top: f32,
+    /// Height of the line the caret sits on, as it was laid out.
     pub line_height: f32,
 }
 

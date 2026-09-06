@@ -43,8 +43,11 @@ use std::rc::Rc;
 /// looks like.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ClickOutside {
+    /// Swallow the press and stay open. A modal overlay.
     Block,
+    /// Swallow the press and close. The default.
     Dismiss,
+    /// Let the press reach what is under the overlay, which stays open.
     PassThrough,
 }
 
@@ -106,21 +109,25 @@ impl Popup {
         }
     }
 
+    /// Placed by [`Anchor::below`].
     #[track_caller]
     pub fn below(rect: Rect) -> Self {
         Self::new(Anchor::below(rect))
     }
 
+    /// Placed by [`Anchor::above`].
     #[track_caller]
     pub fn above(rect: Rect) -> Self {
         Self::new(Anchor::above(rect))
     }
 
+    /// Placed by [`Anchor::left_of`].
     #[track_caller]
     pub fn left_of(rect: Rect) -> Self {
         Self::new(Anchor::left_of(rect))
     }
 
+    /// Placed by [`Anchor::right_of`].
     #[track_caller]
     pub fn right_of(rect: Rect) -> Self {
         Self::new(Anchor::right_of(rect))
@@ -137,6 +144,9 @@ impl Popup {
         self
     }
 
+    /// What a press outside the overlay does. Default
+    /// [`ClickOutside::Dismiss`] — see that type for why the choice
+    /// matters.
     pub fn click_outside(mut self, m: ClickOutside) -> Self {
         self.click_outside = m;
         self
@@ -168,6 +178,8 @@ impl Popup {
         self
     }
 
+    /// Record the overlay and its `body`, which is handed a
+    /// [`CloseHandle`] so anything inside it can close the overlay.
     pub fn show<R>(
         self,
         ui: &mut Ui,

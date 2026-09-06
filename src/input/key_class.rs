@@ -129,10 +129,15 @@ flag_set! {
     /// to the first scope whose filter contains its [`KeyClass`]; scopes
     /// further out never see it.
     pub struct KeyFilter {
+        /// Takes [`KeyClass::Text`].
         const TEXT   = 1 << 0;
+        /// Takes [`KeyClass::Edit`].
         const EDIT   = 1 << 1;
+        /// Takes [`KeyClass::Motion`].
         const MOTION = 1 << 2;
+        /// Takes [`KeyClass::Escape`].
         const ESCAPE = 1 << 3;
+        /// Takes [`KeyClass::Accel`].
         const ACCEL  = 1 << 4;
     }
 }

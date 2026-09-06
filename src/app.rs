@@ -39,6 +39,7 @@ pub(crate) mod internals {
     }
 
     impl<F: FnMut(&mut Ui)> RecordApp<F> {
+        /// Wrap a record closure as an [`App`].
         pub fn new(record: F) -> Self {
             Self { record }
         }

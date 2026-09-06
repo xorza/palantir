@@ -15,7 +15,9 @@ use glam::Vec2;
 /// applies `Spread`, samples the LUT.
 #[derive(Clone, Copy, Debug, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
 pub struct ConicGeometry {
+    /// Sweep centre, in object-space `0..1` coordinates.
     pub center: Vec2,
+    /// Where the sweep begins, in radians.
     pub start_angle: f32,
 }
 

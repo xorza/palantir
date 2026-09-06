@@ -7,6 +7,7 @@ use crate::widgets::dock::split_side::{SplitDir, SplitSide};
 /// never shows a drop the model would go on to refuse.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum AllowedSplits {
+    /// Every direction. The default.
     #[default]
     All,
     /// Only splits that put the two panes side by side.

@@ -5,7 +5,7 @@ use crate::input::key_class::KeyFilter;
 use crate::input::keyboard::key::Key;
 use crate::input::response::response_state::ResponseState;
 use crate::input::sense::Sense;
-use crate::input::shortcut::{Mods, Shortcut};
+use crate::input::shortcut::{Shortcut, ShortcutMods};
 use crate::layout::types::align::{Align, VAlign};
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::approx::EPS;
@@ -65,6 +65,8 @@ pub enum TabOverflow {
 /// reason: it happens inside a popup whose ids no chip scan can reach.
 #[derive(Debug)]
 pub struct TabStripResponse<'a> {
+    /// The strip's own pointer/click/hover [`Response`]. Which chip was
+    /// hit is in the fields below.
     pub response: Response<'a>,
     /// The chip a click on the chip itself activated.
     pub clicked: Option<usize>,
@@ -117,6 +119,8 @@ pub struct TabStrip<'a> {
 }
 
 impl<'a> TabStrip<'a> {
+    /// A strip over `items`. It writes nothing back — every outcome
+    /// arrives through [`TabStripResponse`].
     #[track_caller]
     pub fn new(items: &'a [TabItem]) -> Self {
         Self {
@@ -199,6 +203,7 @@ impl<'a> TabStrip<'a> {
         chips.into_iter().filter(|c| c.center().x < x).count()
     }
 
+    /// Record the strip, and its overflow menu when one is open.
     pub fn show(self, ui: &mut Ui) -> TabStripResponse<'_> {
         let theme = Rc::clone(ui.theme());
         let t = self.style.unwrap_or(&theme.tabs);
@@ -606,8 +611,8 @@ fn keyboard_travel(
     let forward = ui.key_pressed(Shortcut::key(Key::ArrowRight));
     let first = ui.key_pressed(Shortcut::key(Key::Home));
     let last = ui.key_pressed(Shortcut::key(Key::End));
-    let cycle = ui.key_pressed(Shortcut::new(Mods::CTRL, Key::Tab));
-    let cycle_back = ui.key_pressed(Shortcut::new(Mods::CTRL_SHIFT, Key::Tab));
+    let cycle = ui.key_pressed(Shortcut::new(ShortcutMods::CTRL, Key::Tab));
+    let cycle_back = ui.key_pressed(Shortcut::new(ShortcutMods::CTRL_SHIFT, Key::Tab));
     let target = if back || cycle_back {
         Some(step(false))
     } else if forward || cycle {

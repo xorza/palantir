@@ -2,6 +2,11 @@
 // the only form GitHub expands into an inline video player — wrapping it for
 // rustdoc's sake would turn it back into a dead link on the repo page.
 #![allow(rustdoc::bare_urls)]
+// Scoped to the library rather than set in `Cargo.toml`, because a
+// `[lints]` table reaches every target in the package: the bundled
+// examples are minimal teaching code, and a doc comment on each of their
+// throwaway helpers is noise in the one place a reader wants none.
+#![deny(missing_docs)]
 // The README's counter example builds a `WinitHost`, so it only compiles as a
 // doctest when that feature is on. Without it the crate docs open at the
 // orientation section below instead.
@@ -375,7 +380,7 @@ pub use input::response::pointer_edge::PointerEdge;
 pub use input::response::response_state::ResponseState;
 pub use input::response::scroll_delta::ScrollDelta;
 pub use input::sense::Sense;
-pub use input::shortcut::{Mods, Shortcut};
+pub use input::shortcut::{Shortcut, ShortcutMods};
 pub use input::watch::{KeyboardWake, PointerWake};
 pub use input::zoom_factor::ZoomFactor;
 pub use layout::axis::Axis;

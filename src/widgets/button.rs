@@ -14,6 +14,16 @@ use crate::widgets::theme::button::ButtonTheme;
 use crate::widgets::theme::widget_look::theme_slot::ThemeSlot;
 use crate::widgets::widget::Widget;
 
+/// A clickable, themed rectangle carrying an optional label.
+///
+/// ```
+/// # use palantir::{Button, Ui};
+/// # fn demo(ui: &mut Ui) {
+/// if Button::new().label("Save").show(ui).clicked() {
+///     // …
+/// }
+/// # }
+/// ```
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct Button<'a> {
@@ -25,6 +35,7 @@ pub struct Button<'a> {
 }
 
 impl<'a> Button<'a> {
+    /// An unlabelled button. Add text with [`Self::label`].
     #[track_caller]
     pub fn new() -> Self {
         Self {
@@ -72,6 +83,7 @@ impl<'a> Button<'a> {
         self
     }
 
+    /// Record the button. Read the click off the [`Response`].
     pub fn show(mut self, ui: &mut Ui) -> Response<'_> {
         let response = self.widget.response(ui);
         let id = self.widget.resolve(ui);

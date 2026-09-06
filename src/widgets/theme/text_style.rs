@@ -100,11 +100,17 @@ impl Default for TextStyle {
 /// of your own can offer it too.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct TextStyleOverrides {
+    /// Replaces [`TextStyle::color`].
     pub color: Option<RgbaF32>,
+    /// Replaces [`TextStyle::font_size_px`].
     pub font_size_px: Option<f32>,
+    /// Replaces [`TextStyle::line_height_mult`].
     pub line_height_mult: Option<f32>,
+    /// Replaces [`TextStyle::family`].
     pub family: Option<FontFamily>,
+    /// Replaces [`TextStyle::weight`].
     pub weight: Option<FontWeight>,
+    /// Replaces [`TextStyle::slant`].
     pub slant: Option<FontSlant>,
 }
 
@@ -172,24 +178,28 @@ impl TextStyle {
         self
     }
 
+    /// [`Self::with_font_size`] for the colour axis.
     #[inline]
     pub const fn with_color(mut self, c: RgbaF32) -> Self {
         self.color = c;
         self
     }
 
+    /// [`Self::with_font_size`] for the line-height axis.
     #[inline]
     pub const fn with_line_height_mult(mut self, mult: f32) -> Self {
         self.line_height_mult = mult;
         self
     }
 
+    /// [`Self::with_font_size`] for the weight axis.
     #[inline]
     pub const fn with_weight(mut self, weight: FontWeight) -> Self {
         self.weight = weight;
         self
     }
 
+    /// [`Self::with_font_size`] for the slant axis.
     #[inline]
     pub const fn with_slant(mut self, slant: FontSlant) -> Self {
         self.slant = slant;

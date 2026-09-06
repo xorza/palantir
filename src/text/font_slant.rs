@@ -14,7 +14,10 @@
     Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
 )]
 pub enum FontSlant {
+    /// Upright. The default.
     #[default]
     Normal = 0,
+    /// Italic — the family's italic face, or a synthesized slant where
+    /// it has none.
     Italic = 1,
 }

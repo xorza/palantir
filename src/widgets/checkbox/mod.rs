@@ -39,6 +39,7 @@ pub struct Checkbox<'a> {
 }
 
 impl<'a> Checkbox<'a> {
+    /// A box bound to `value`, which a click flips.
     #[track_caller]
     pub fn new(value: &'a mut bool) -> Self {
         Self {

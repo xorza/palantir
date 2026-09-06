@@ -46,6 +46,7 @@ pub struct Spinner<'a> {
 }
 
 impl<'a> Spinner<'a> {
+    /// An indeterminate spinner, themed and already turning.
     #[track_caller]
     pub fn new() -> Self {
         Self {
@@ -88,6 +89,9 @@ impl<'a> Spinner<'a> {
         self
     }
 
+    /// Record the arc once. The turn is a paint-time animation, so the
+    /// widget re-records on no frame and the composer spins what it
+    /// recorded.
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
         let theme = self.style.unwrap_or(&ui.theme().spinner);
         let diameter = self.diameter.unwrap_or(theme.diameter).themed_length(1.0);

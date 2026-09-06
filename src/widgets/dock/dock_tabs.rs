@@ -25,6 +25,7 @@ use crate::widgets::tabs::tab_item::TabBadge;
 /// The dock stores only a key, so every one of these runs once per
 /// visible tab per frame. Keep them cheap: a match arm, a field read.
 pub trait DockTabs {
+    /// The application's own tab key — a small `Copy` enum or index.
     type Tab: DockTab;
 
     /// The chip's label. Intern through [`Ui::intern`] or
@@ -79,7 +80,9 @@ pub trait DockTabs {
 /// without the other could not name its own drop.
 #[derive(Debug)]
 pub struct DockTabMenu<'a, T> {
+    /// The chip that was right-clicked.
     pub tab: T,
+    /// The pane that chip sits in.
     pub group: TabGroupId,
     /// Where an item's op goes. The application's own queue drains it,
     /// or [`DockView::run`](crate::DockView::run) does.

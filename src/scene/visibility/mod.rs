@@ -13,16 +13,23 @@
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Visibility {
+    /// Laid out, painted, hit-tested. The default.
     #[default]
     Visible = 0,
+    /// Laid out, so it still occupies space — but neither painted nor
+    /// hit-tested.
     Hidden = 1,
+    /// Treated as absent: zero size, and skipped by stack and grid
+    /// parents.
     Collapsed = 2,
 }
 
 impl Visibility {
+    /// Whether this node paints.
     pub const fn is_visible(self) -> bool {
         matches!(self, Visibility::Visible)
     }
+    /// Whether this node is skipped by layout entirely.
     pub const fn is_collapsed(self) -> bool {
         matches!(self, Visibility::Collapsed)
     }

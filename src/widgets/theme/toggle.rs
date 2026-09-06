@@ -29,7 +29,9 @@ use glam::Vec2;
 /// `TEXT_DISABLED`) — same flow as Button.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ToggleTheme {
+    /// Chrome for the box or pip while the value is `false`.
     pub unchecked: StatefulLook,
+    /// Chrome for it while the value is `true`.
     pub checked: StatefulLook,
     /// RgbaF32 of the check polyline (Checkbox) or filled dot
     /// (RadioButton). Painted on top of the `checked` chrome.

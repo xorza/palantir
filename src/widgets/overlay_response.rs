@@ -12,7 +12,8 @@
 /// `inner` is whatever the body returned, the way
 /// [`InnerResponse`](crate::InnerResponse) carries a container's.
 ///
-/// **The one result type with no [`Response`](crate::Response) beside it.**
+/// **No [`Response`](crate::Response) beside it**, which it shares only
+/// with [`TooltipResponse`](crate::TooltipResponse).
 /// An overlay's own node is placement and a scrim, not something anyone
 /// interacts with — the widgets *inside* the body each return their own.
 /// Carrying one would also put a `Ui` borrow on this type, and with it the
@@ -20,8 +21,12 @@
 /// result without a branch.
 #[derive(Copy, Clone, Debug, Default)]
 pub struct OverlayResponse<R> {
+    /// The user asked from outside — an eaten outside-press, or Escape.
     pub dismissed: bool,
+    /// A widget inside the body called
+    /// [`CloseHandle::close`](crate::CloseHandle::close).
     pub close_requested: bool,
+    /// What the body returned.
     pub inner: R,
 }
 

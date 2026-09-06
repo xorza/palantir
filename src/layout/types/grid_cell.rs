@@ -10,9 +10,13 @@ use crate::primitives::span::Span;
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct GridCell {
+    /// Zero-based row.
     pub row: u16,
+    /// Zero-based column.
     pub col: u16,
+    /// Rows covered, at least one.
     pub row_span: u16,
+    /// Columns covered, at least one.
     pub col_span: u16,
 }
 
