@@ -63,6 +63,7 @@ use crate::scene::cascade::Cascade;
 use crate::scene::cascade::paint::Paint;
 use crate::scene::cascade::paint::PaintRows;
 use crate::scene::damage::counters::DamageCounters;
+use crate::scene::damage::frame_baseline::FrameBaseline;
 use crate::scene::damage::node_snapshot::NodeSnapshot;
 use crate::scene::damage::region::{CollapsedDamage, DEFAULT_PASS_BUDGET_PX, DamageRegion};
 use crate::scene::damage::row_matcher::RowMatcher;
@@ -73,6 +74,7 @@ use std::time::Duration;
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
 pub(crate) mod counters;
+pub(crate) mod frame_baseline;
 pub(crate) mod node_snapshot;
 pub(crate) mod region;
 pub(crate) mod row_matcher;
@@ -108,6 +110,12 @@ pub(crate) struct DamageEngine {
     /// Per-paint backing storage every `NodeSnapshot.paint_span` points
     /// into. See [`NodeSnapshot`] for the block lifecycle.
     pub(crate) paints: BlockArena<Paint>,
+    /// What the last presented frame was painted under, or `None` before
+    /// one was. The frame-wide half of the baseline [`Self::prev`] holds
+    /// the per-widget half of — see [`FrameBaseline`] for why a diff of
+    /// snapshots cannot see these move, and
+    /// [`Self::note_presented`] for when this is stamped.
+    presented: Option<FrameBaseline>,
     /// Retained scratch for the per-node row pairing. Beside the storage
     /// rather than wrapped with it: the diff slices live spans out of
     /// `paints.slots` on every leg, so a wrapper that owned both only hid
@@ -141,6 +149,7 @@ impl Default for DamageEngine {
             budget_px: DEFAULT_PASS_BUDGET_PX,
             prev: WidgetIdMap::default(),
             paints: BlockArena::default(),
+            presented: None,
             matcher: RowMatcher::default(),
             raw_rects: Vec::new(),
             order_extents: Vec::new(),
@@ -167,6 +176,10 @@ pub(crate) struct DamageInput<'a> {
     /// site that divides by surface area — rather than degrading
     /// silently.
     pub(crate) surface: Rect,
+    /// The frame-wide paint inputs this frame would present under. A
+    /// change since the last presented frame escalates to
+    /// [`Damage::Full`], because no per-node diff can see one.
+    pub(crate) baseline: FrameBaseline,
     pub(crate) prev_time: Option<Duration>,
     pub(crate) now: Duration,
 }
@@ -259,9 +272,10 @@ impl DamageEngine {
     /// - `None` — empty region, nothing changed.
     /// - [`Damage::Partial`] — coverage below
     ///   [`FULL_REPAINT_THRESHOLD`].
-    /// - [`Damage::Full`] — coverage above the threshold, or the
+    /// - [`Damage::Full`] — coverage above the threshold, the
     ///   caller-supplied `force_full` (first frame / surface change /
-    ///   last frame unacked), which returns early below.
+    ///   last frame unacked), or a [`FrameBaseline`] that moved since
+    ///   the last presented frame. All three return early below.
     ///
     /// `self.prev` is rolled forward in the same pass: a missing entry
     /// with a painting node inserts; an unchanged snapshot is a no-op;
@@ -294,9 +308,17 @@ impl DamageEngine {
             forest,
             cascade,
             surface,
+            baseline,
             prev_time,
             now,
         } = input;
+        // The frame-wide inputs join the caller's signal rather than
+        // getting a flag of their own: a baseline that moved repaints
+        // the whole surface, which is what the one flag already means,
+        // and the map rebuild it brings costs a fraction of the repaint
+        // it accompanies. What no snapshot carries, no diff can find —
+        // so this is where a moved one is caught.
+        let force_full = force_full || self.presented != Some(baseline);
         // `force_full` is the "treat as a fresh frame" signal — set
         // by the caller when `FrameRuntime::take_frame_plan` decided
         // this frame must repaint everything (surface changed, last
@@ -343,7 +365,7 @@ impl DamageEngine {
         // cleared at entry, so no stale entries survive), and the anim
         // iterator is lazy — dropping it without consuming is free.
         if force_full {
-            return Some(Damage::Full);
+            return self.note_presented(baseline, Some(Damage::Full));
         }
 
         // Predamaged anim rects. The structural diff above is
@@ -370,7 +392,27 @@ impl DamageEngine {
         }
 
         // Pass 2: collapse to the bounded region.
-        self.finish_region(surface)
+        let damage = self.finish_region(surface);
+        self.note_presented(baseline, damage)
+    }
+
+    /// Stamp the baseline a frame presents under, and hand its damage
+    /// back.
+    ///
+    /// Only a frame that paints presents: the screen still holds
+    /// whatever the last painted frame put there, so a skipped frame
+    /// leaves that frame's baseline standing. Stamping regardless would
+    /// adopt a clear colour no pixel was ever painted under, and the
+    /// change would then never reach the screen at all.
+    fn note_presented(
+        &mut self,
+        baseline: FrameBaseline,
+        damage: Option<Damage>,
+    ) -> Option<Damage> {
+        if damage.is_some() {
+            self.presented = Some(baseline);
+        }
+        damage
     }
 
     /// Pass 2: collapse the accumulated `raw_rects` into a budgeted
@@ -386,11 +428,19 @@ impl DamageEngine {
 
     /// PaintOnly fast path. The tree wasn't rebuilt this frame, so
     /// every node would match its prev snapshot and contribute nothing
-    /// to the structural diff — skip Pass 1 entirely. Only the
-    /// caller-supplied predamaged anim rects matter.
+    /// to the structural diff — skip Pass 1 entirely. The predamaged
+    /// anim rects are then all a frame of this kind can have, unless a
+    /// frame-wide input moved.
     pub(crate) fn compute_paint_only(&mut self, input: DamageInput<'_>) -> Option<Damage> {
         tracy::zone!();
         self.counters.begin_pass();
+        // The tree is retained, so a theme swapped between two frames of
+        // it reaches the surface here or nowhere. `prev` stands: it
+        // describes the very tree this frame repaints, and no walk runs
+        // to rebuild it if it were dropped.
+        if self.presented != Some(input.baseline) {
+            return self.note_presented(input.baseline, Some(Damage::Full));
+        }
         self.raw_rects.clear();
         extend_predamaged(
             &mut self.raw_rects,
@@ -399,7 +449,8 @@ impl DamageEngine {
             input.prev_time,
             input.now,
         );
-        self.finish_region(input.surface)
+        let damage = self.finish_region(input.surface);
+        self.note_presented(input.baseline, damage)
     }
 }
 

@@ -1635,6 +1635,12 @@ pub(crate) mod internals {
             &self.cascade
         }
 
+        /// The font database's epoch, for the tests that re-compute a
+        /// reuse key this `Ui` folds it into.
+        pub(crate) fn font_epoch(&self) -> u32 {
+            self.resources.text().font_epoch()
+        }
+
         /// One layer's recorded tree — its `records` columns, `rollups`,
         /// `shapes`, `paint_anims` and `roots`.
         ///

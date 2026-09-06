@@ -40,12 +40,28 @@ pub(crate) struct IconRef {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct IconHandle {
     pub(crate) icon: IconRef,
-    /// The artwork's viewBox extent in logical px — the size the icon was
-    /// designed at, and what to size its node to.
+    /// The artwork's viewBox extent in logical px.
+    ///
+    /// Read-only past this module, and that is load-bearing rather than
+    /// tidy: the shape hash a drawn icon is cached under omits this,
+    /// on the ground that it is baked data one `(set, icon)` pair can
+    /// only ever answer with once. A caller able to write it could move
+    /// the painted rect — [`IconFit`](crate::IconFit) resolves against
+    /// it — under a hash that cannot see the move, and the frame would
+    /// skip.
+    view_box: Vec2,
+}
+
+impl IconHandle {
+    /// The artwork's viewBox extent in logical px — the size the icon
+    /// was designed at, and what to size its node to.
     ///
     /// Sound to read on a handle whose set is gone, unlike drawing with
     /// one: the number travelled with the handle and is baked.
-    pub view_box: Vec2,
+    #[inline]
+    pub fn view_box(&self) -> Vec2 {
+        self.view_box
+    }
 }
 
 /// A loaded icon set, and an **RAII owner** of everything the host caches

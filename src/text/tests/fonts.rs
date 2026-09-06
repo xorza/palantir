@@ -2,9 +2,16 @@
 //! unknown family falls back to, and what the axes shape against.
 
 use super::*;
+use crate::Ui;
 use crate::text::error::FontLoadError;
 use crate::text::font_scope::test_support::{INTER, MONO};
 use crate::text::font_style::FontStyle;
+use crate::ui::frame_report::FramePaint;
+use crate::ui::harness::UiHarness;
+use crate::widgets::configure::Configure;
+use crate::widgets::text::Text;
+use crate::widgets::theme::text_style::TextStyle;
+use glam::UVec2;
 
 // A face file the bundled scope has *not* already registered is what a
 // load case would rather have, and there is none — so the cases below
@@ -98,6 +105,68 @@ fn a_load_bumps_the_epoch_the_renderer_watches() {
         shaper.font_epoch(),
         before + 1,
         "a failed load changes no face, so it must not invalidate anything",
+    );
+}
+
+/// A load reaches the frame, and not the text caches alone.
+///
+/// Two facts, one event. `InputState::response_for` takes the entry
+/// rect from the cascade and the arranged rect from `Layout`, on the
+/// stated ground that the cascade is rebuilt whenever an arranged rect
+/// moves — so a load that moves one while the authored tree stands
+/// still has to reach the cascade fingerprint, or the frame answers two
+/// different arrangements to the same question. And the pixels owe the
+/// same: a glyph redrawn in a new face inside an unmoved rect is a
+/// change no per-widget diff can see, so the frame that carries the
+/// load repaints in full.
+#[test]
+fn a_load_reaches_the_cascade_and_the_screen() {
+    let shaper = TextShaper::over(CosmicMeasure::with_no_fonts());
+    let mut h = UiHarness::over_shaper(shaper, UVec2::new(400, 300));
+    h.ui.load_font(INTER).expect("the bundled Inter loads");
+    // `i` is where a proportional face and a fixed-advance one disagree
+    // most, and monospace is a family this database answers with Inter
+    // until the load below.
+    let id = WidgetId::from_hash("label");
+    let record = |ui: &mut Ui| {
+        Text::new("iiiiiiii")
+            .id(id)
+            .style(&TextStyle {
+                family: FontFamily::MONO,
+                ..TextStyle::default().with_font_size(16.0)
+            })
+            .show(ui);
+    };
+    h.frame(record);
+    h.frame(record);
+    let fallback = h.rect(id).expect("the label arranged");
+    assert_eq!(
+        h.layout_rect(id),
+        Some(fallback),
+        "premise: a warm frame's two rects describe one arrangement",
+    );
+
+    h.ui.load_font(MONO)
+        .expect("the bundled JetBrains Mono loads");
+    let report = h.frame(record);
+    let resolved = h.rect(id).expect("the label arranged");
+    assert!(
+        resolved.size.w > fallback.size.w,
+        "the run must re-measure in the face that just arrived: \
+         {} wide before, {} after",
+        fallback.size.w,
+        resolved.size.w,
+    );
+    assert_eq!(
+        h.layout_rect(id),
+        Some(resolved),
+        "the cascade skipped a load that moved an arranged rect, so the \
+         response geometry and the layout disagree",
+    );
+    assert_eq!(
+        report.paint(),
+        FramePaint::Full,
+        "a load repaints every glyph it may have changed",
     );
 }
 

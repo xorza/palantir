@@ -6,10 +6,13 @@ use crate::primitives::background::Background;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
+use crate::text::font_scope::test_support::INTER;
+use crate::text::shaper::TextShaper;
 use crate::ui::harness::UiHarness;
 use crate::ui::tests::support::SURFACE;
 use crate::widgets::configure::Configure;
 use crate::widgets::frame::Frame;
+use crate::widgets::text::Text;
 use glam::{UVec2, Vec2};
 
 /// O5 stage 0: an unchanged frame skips the cascade (its output is
@@ -130,6 +133,40 @@ fn cascade_fingerprint_covers_authoring_input_classes() {
         "chrome",
         |ui| probe(ui, |f| f.background(bg(0.2, 0.4, 0.8))),
         |ui| probe(ui, |f| f.background(bg(0.8, 0.2, 0.2))),
+    );
+}
+
+/// O5 stage-0 completeness for the one cascade input that is not
+/// authoring at all. Every other input reaches the fingerprint through
+/// a hash of what the frame recorded; the font database reaches it
+/// through nothing, because a load moves what a run measures to while
+/// every key addressing that run stands still. So the epoch is folded
+/// in directly, and an unchanged tree re-arranges in the face that just
+/// arrived instead of reusing rects measured in the one before it.
+///
+/// Over a shaper of this test's own: a load moves process-visible state
+/// that the shared one's neighbours must not see move.
+#[test]
+fn cascade_fingerprint_covers_the_font_database() {
+    let mut h = UiHarness::over_shaper(TextShaper::new(), SURFACE);
+    let record = |ui: &mut Ui| {
+        Text::new("a label that sizes to its own text")
+            .id(WidgetId::from_hash("label"))
+            .show(ui);
+    };
+    h.frame(record);
+    h.frame(record);
+    assert!(
+        !h.ui.frame_runtime.cascade_ran(),
+        "premise: an unchanged tree skips the cascade",
+    );
+
+    h.ui.load_font(INTER).expect("the bundled Inter loads");
+    h.frame(record);
+    assert!(
+        h.ui.frame_runtime.cascade_ran(),
+        "a font load must re-run the cascade — the epoch is missing from \
+         the fingerprint, and the arranged rects it reads have moved",
     );
 }
 

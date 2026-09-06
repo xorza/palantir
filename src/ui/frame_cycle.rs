@@ -29,10 +29,11 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
 use crate::renderer::render_plan::RenderPlan;
 use crate::scene::cascade;
-use crate::scene::damage::{Damage, DamageInput};
+use crate::scene::damage::DamageInput;
+use crate::scene::damage::frame_baseline::FrameBaseline;
 use crate::ui::Ui;
 use crate::ui::frame_engines::FrameEngines;
-use crate::ui::frame_report::{FrameProcessing, FrameReport};
+use crate::ui::frame_report::{FramePaint, FrameProcessing, FrameReport};
 use crate::ui::frame_runtime::wake::WakeReasons;
 use crate::ui::frame_runtime::{FrameClassifyInput, FramePlan};
 use crate::ui::frame_stamp::FrameInput;
@@ -174,10 +175,18 @@ impl<'a> FrameCycle<'a> {
         // instead of stale state from the previous frame.
         let surface = self.ui.display.logical_rect();
         let prev_time = self.ui.frame_runtime.prev_stamp.map(|s| s.time);
+        // One read for both consumers: the damage decision and the plan
+        // the host paints with must name the same colour, or a frame
+        // presents under one the baseline never checked.
+        let baseline = FrameBaseline {
+            clear: self.ui.theme.window_clear,
+            font_epoch: self.ui.resources.text().font_epoch(),
+        };
         let input = DamageInput {
             forest: &self.ui.forest,
             cascade: &self.ui.cascade,
             surface,
+            baseline,
             prev_time,
             now: self.ui.now(),
         };
@@ -189,16 +198,6 @@ impl<'a> FrameCycle<'a> {
                     .compute(input, &self.ui.forest.ids.removed, force_full)
             }
         };
-
-        // First-frame contract: no prev snapshot to diff against, so
-        // every painting widget is "new" — `DamageEngine::compute`
-        // must return `Damage::Full`. The walk itself is still
-        // load-bearing (seeds `prev` for frame 2's incremental diff)
-        // so we keep the call; the assert just pins the invariant.
-        debug_assert!(
-            !first_frame || matches!(damage, Some(Damage::Full)),
-            "first frame must produce Damage::Full; got {damage:?}",
-        );
 
         // Re-queue the next paint-anim boundary regardless of path.
         // FullRecord rebuilt `paint_anims.entries` during record;
@@ -216,7 +215,7 @@ impl<'a> FrameCycle<'a> {
 
         self.ui.frame_runtime.prev_stamp = Some(stamp);
 
-        FrameReport {
+        let report = FrameReport {
             repaint_requested: self.ui.frame_runtime.repaint_requested,
             repaint_after: self
                 .ui
@@ -224,10 +223,28 @@ impl<'a> FrameCycle<'a> {
                 .repaint_wakes
                 .first()
                 .map(|w| w.deadline),
-            plan: RenderPlan::from_damage(damage, self.ui.theme.window_clear),
-            #[cfg(test)]
+            plan: RenderPlan::from_damage(damage, baseline.clear),
             processing,
-        }
+        };
+        // The first-frame contract, checked on the finished report
+        // because each half carries a share of it. With no prev snapshot
+        // to diff against, every painting widget is "new" and the walk
+        // can only come out `Full` — the walk is still load-bearing, so
+        // the assert pins it rather than replacing it. And a frame that
+        // paints from a retained tree cannot be the one before which
+        // none was retained, which `take_frame_plan` encodes and these
+        // two fields are where it shows.
+        debug_assert!(
+            !first_frame || report.paint() == FramePaint::Full,
+            "first frame must repaint in full; got {:?}",
+            report.paint(),
+        );
+        debug_assert!(
+            !first_frame || report.processing != FrameProcessing::PaintOnly,
+            "first frame has no retained tree to paint from; got {:?}",
+            report.processing,
+        );
+        report
     }
 
     /// Cold-start record pass, run once before the first frame's real
@@ -355,7 +372,11 @@ impl<'a> FrameCycle<'a> {
         // `Ui::cascade` can be reused verbatim (the tree is rebuilt
         // with identical structure when `subtree_hash` matches, so its
         // NodeId-indexed rows still line up).
-        let fp = cascade::engine::cascade_fingerprint(&self.ui.forest, self.ui.display);
+        let fp = cascade::engine::cascade_fingerprint(
+            &self.ui.forest,
+            self.ui.display,
+            self.ui.resources.text().font_epoch(),
+        );
         if !self.ui.frame_runtime.cascade_needs_run(fp) {
             return;
         }

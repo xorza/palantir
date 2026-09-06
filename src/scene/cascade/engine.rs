@@ -275,17 +275,22 @@ pub(super) fn layout_hashes(forest: &Forest, layout: &Layout) -> PerLayer<Conten
 /// - every root's `subtree_hash`, which already captures all cascade
 ///   authoring — transforms (`PanelExtras`), clip/disabled/focusable
 ///   (`attrs`), visibility, shapes, chrome;
+/// - the font epoch, the one arrange input that moves a rect while
+///   every key addressing that rect stands still: a run measures to a
+///   new width in a face loaded after it was authored, and nothing in
+///   the authoring says so (`TextShaper::font_epoch`);
 ///
 /// Lives here, beside the walk it mirrors, on purpose: the skip is
 /// only sound while this enumeration covers every input `run_tree`
 /// (and the arrange pass feeding it) consumes. Adding a cascade input
 /// without folding it here silently reuses stale cascade — keep the
 /// two in one review's field of view.
-pub(crate) fn cascade_fingerprint(forest: &Forest, display: Display) -> u64 {
+pub(crate) fn cascade_fingerprint(forest: &Forest, display: Display, font_epoch: u32) -> u64 {
     let mut h = Hasher::new();
     h.write_u32(display.physical.x);
     h.write_u32(display.physical.y);
     display.scale_factor().hash_eq(&mut h);
+    h.write_u32(font_epoch);
     for (layer, tree) in forest.trees.iter_paint_order() {
         // Layer discriminant: an identical root subtree migrating
         // between side layers (Popup → Tooltip) must not alias, or

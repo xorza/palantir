@@ -358,7 +358,7 @@ fn every_cascade_input_busts_both_reuse_gates() {
     for &(label, mutate) in mutations {
         let mut h = UiHarness::new(UVec2::new(200, 200));
         h.frame(|ui| scene(ui, 100.0, false));
-        let base_fp = cascade_fingerprint(h.ui.forest(), h.ui.display());
+        let base_fp = cascade_fingerprint(h.ui.forest(), h.ui.display(), h.ui.font_epoch());
         let rebuilds = h.engines.cascade.counters.full_rebuilds();
         let abandoned = h.engines.cascade.counters.abandoned_incrementals();
 
@@ -366,7 +366,7 @@ fn every_cascade_input_busts_both_reuse_gates() {
 
         assert_ne!(
             base_fp,
-            cascade_fingerprint(h.ui.forest(), h.ui.display()),
+            cascade_fingerprint(h.ui.forest(), h.ui.display(), h.ui.font_epoch()),
             "`{label}` left the fingerprint unmoved — the frame would reuse a stale cascade",
         );
         assert!(
@@ -385,12 +385,12 @@ fn every_cascade_input_busts_both_reuse_gates() {
     // assertions above would hold for any frame at all.
     let mut h = UiHarness::new(UVec2::new(200, 200));
     h.frame(|ui| scene(ui, 100.0, false));
-    let base_fp = cascade_fingerprint(h.ui.forest(), h.ui.display());
+    let base_fp = cascade_fingerprint(h.ui.forest(), h.ui.display(), h.ui.font_epoch());
     let rebuilds = h.engines.cascade.counters.full_rebuilds();
     h.frame(|ui| scene(ui, 100.0, false));
     assert_eq!(
         base_fp,
-        cascade_fingerprint(h.ui.forest(), h.ui.display()),
+        cascade_fingerprint(h.ui.forest(), h.ui.display(), h.ui.font_epoch()),
         "an unchanged frame must keep its fingerprint",
     );
     assert_eq!(

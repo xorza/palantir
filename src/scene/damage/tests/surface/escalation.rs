@@ -249,6 +249,46 @@ fn stable_surface_does_not_short_circuit() {
     );
 }
 
+/// The clear colour is the bottom paint layer of every frame, and no
+/// widget carries it. A full frame clears to it; a partial frame
+/// pre-fills each scissor with it and leaves every other pixel alone —
+/// so a new colour under a partial frame, or under a frame with nothing
+/// else to paint, would never reach the screen at all. It escalates
+/// instead, once, and the next frame settles back.
+#[test]
+fn a_new_clear_colour_forces_full_damage() {
+    let mut h = UiHarness::new(DISPLAY.physical);
+    h.frame(|ui| one_frame(ui, BLUE));
+    assert!(
+        h.frame(|ui| one_frame(ui, BLUE)).plan.is_none(),
+        "premise: an unchanged scene skips",
+    );
+
+    h.ui().theme_mut().window_clear = RED;
+    let recleared = h.frame(|ui| one_frame(ui, BLUE)).plan;
+    assert!(
+        matches!(
+            recleared,
+            Some(RenderPlan {
+                damage: Damage::Full,
+                ..
+            })
+        ),
+        "a clear colour reaches the screen through a full repaint or not \
+         at all: {recleared:?}",
+    );
+    assert_eq!(
+        recleared.map(|plan| plan.clear),
+        Some(RED),
+        "and the repaint clears to the colour it escalated for",
+    );
+
+    assert!(
+        h.frame(|ui| one_frame(ui, BLUE)).plan.is_none(),
+        "the colour the last frame presented under is the baseline now",
+    );
+}
+
 #[test]
 fn invalid_prior_output_forces_full_damage() {
     let mut h = UiHarness::new(DISPLAY.physical);
