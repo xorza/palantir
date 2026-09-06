@@ -4,7 +4,6 @@
 use crate::input::sense::Sense;
 use crate::layout::types::align::{Align, VAlign};
 use crate::layout::types::sizing::Sizing;
-use crate::primitives::approx;
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
 use crate::primitives::num::F32Ext;
@@ -115,7 +114,7 @@ impl<'a> Slider<'a> {
         // Pointer drives the value on every frame of the gesture, the
         // release included, and the knob is the band its centre travels
         // inside. Replaying the value on the release needs no retained
-        // `last` the way `DragValue` does: it is a function of the
+        // anchor the way `DragValue` does: it is a function of the
         // pointer, not of accumulated travel.
         let mut changed = false;
         if let Some(at) = response.press_fraction(knob) {
@@ -124,7 +123,9 @@ impl<'a> Slider<'a> {
                 self.min,
                 self.step,
             );
-            changed = self.value.commit_drag(v, self.decimals, self.min, self.max);
+            changed = self
+                .value
+                .commit_value(v, self.decimals, self.min, self.max);
         }
         // Edge, not level: the frame the gesture ends is the one a caller
         // treats as a single undoable edit. Every release ends one, so
@@ -132,7 +133,7 @@ impl<'a> Slider<'a> {
         // and release on the track writes a value and never latches a
         // drag, and that edit owes a commit like any other.
         let committed = !response.disabled && response.left.released();
-        let fraction = value_to_fraction(self.value.get(), self.min, self.max);
+        let fraction = value_to_fraction(self.value.read().widen(), self.min, self.max);
 
         let pill = Corners::all(track_h * 0.5);
         let fill_bg = Background::rounded(fill_color, pill);
@@ -181,15 +182,34 @@ impl Configure for Slider<'_> {
 
 /// Fraction (0..1) of the way from `min` to `max` that `value` sits.
 ///
-/// The knob's position is a visual quantity, so the share is taken in
-/// `f32` — through [`approx::ratio`], the crate's one answer for a
-/// divisor geometry can legitimately collapse, and out through the same
-/// [`F32Ext::unit_fraction_or`]
+/// The share is dimensionless, but the two differences it divides are
+/// not: they are in the caller's units, and an app binds units as far
+/// either side of a pixel as it likes. So the division and the clamp
+/// stay in `f64`, the domain the value and its range live in, and only
+/// the settled share narrows. Narrowed first, a whole class of ranges
+/// lands on one end of the track — one under the tolerance a share of a
+/// *distance* answers to, one past `f32`'s reach, one whose share alone
+/// is past it.
+///
+/// The end of it is [`F32Ext::unit_fraction_or`]'s policy in the value
+/// domain: a share that is no share reads as the low end, and every
+/// other share is pinned into `0..=1`. Non-finite covers the ranges
+/// geometry can collapse — a range whose ends coincide divides by zero,
+/// and an unbounded one divides infinity by itself. Both of this
+/// widget's fractions are then total and answer a range or a pointer
+/// that names no share the same way, since
 /// [`ResponseState::press_fraction`](crate::ResponseState::press_fraction)
-/// ends in. Both of this widget's fractions are then total and answer a
-/// range or a pointer that names no share the same way: the low end.
+/// ends in that same fallback.
+///
+/// A reversed range is not degenerate: it runs from `min` at the left of
+/// the track to `max` at the right like any other, so its values descend,
+/// and this stays the exact inverse of [`fraction_to_value`] there too.
 fn value_to_fraction(value: f64, min: f64, max: f64) -> f32 {
-    approx::ratio((value - min) as f32, (max - min) as f32).unit_fraction_or(0.0)
+    let share = (value - min) / (max - min);
+    match share.is_finite() {
+        true => share.clamp(0.0, 1.0) as f32,
+        false => 0.0,
+    }
 }
 
 /// Inverse of [`value_to_fraction`]: the value at `fraction` of the

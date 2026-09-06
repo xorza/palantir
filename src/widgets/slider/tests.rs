@@ -198,6 +198,22 @@ fn value_to_fraction_maps_and_clamps() {
         (-10.0, 0.0, 100.0, 0.0), // below clamps
         (15.0, 10.0, 20.0, 0.5),  // offset range
         (5.0, 3.0, 3.0, 0.0),     // degenerate
+        // The share is dimensionless, so the units it is taken in cannot
+        // decide it: a range under the pixel tolerance and one past
+        // `f32`'s reach both put their midpoint in the middle.
+        (5e-6, 0.0, 1e-5, 0.5),
+        (5e99, 0.0, 1e100, 0.5),
+        (2.5e-7, 0.0, 1e-5, 0.025),
+        // A share past `f32`'s reach is still a share, and it clamps to
+        // the end it is past rather than to the low end.
+        (1e300, 0.0, 1.0, 1.0),
+        (-1e300, 0.0, 1.0, 0.0),
+        (1.0, 0.0, 1e-300, 1.0),
+        // A reversed range descends from left to right, and its midpoint
+        // is still the middle of the track.
+        (50.0, 100.0, 0.0, 0.5),
+        (100.0, 100.0, 0.0, 0.0),
+        (0.0, 100.0, 0.0, 1.0),
     ];
     for (v, min, max, want) in cases {
         let got = value_to_fraction(v, min, max);
@@ -231,6 +247,11 @@ fn fraction_to_value_inverts_value_to_fraction() {
         assert!((back - v).abs() < 1e-5, "roundtrip {v} -> {f} -> {back}");
     }
     assert!((fraction_to_value(0.25, 10.0, 20.0) - 12.5).abs() < 1e-6);
+    // A reversed range round-trips through the same inverse: 75 sits a
+    // quarter of the way from 100 down to 0.
+    let f = value_to_fraction(75.0, 100.0, 0.0);
+    assert!((f - 0.25).abs() < 1e-6, "reversed fraction {f}");
+    assert!((fraction_to_value(f, 100.0, 0.0) - 75.0).abs() < 1e-5);
     // Out-of-range fraction clamps before mapping.
     assert!((fraction_to_value(1.5, 0.0, 100.0) - 100.0).abs() < 1e-6);
 }

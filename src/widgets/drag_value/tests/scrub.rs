@@ -173,6 +173,44 @@ fn release_while_disabled_drops_the_gesture() {
     assert_eq!(canonical, 10.0);
 }
 
+/// The scrub anchors on the integer the target holds, so the whole `i64`
+/// domain survives a drag. An anchor widened to `f64` rounds every value
+/// past 2^53, and a zero-speed drag — one that moves the value nowhere —
+/// would then store that rounded number over the exact one the keyboard
+/// path accepts.
+#[test]
+fn an_exact_integer_survives_a_scrub_that_moves_it_nowhere() {
+    const EXACT: i64 = 9_007_199_254_740_993;
+    let id = WidgetId::from_hash("dv-exact-integer");
+    let mut h = UiHarness::new(UVec2::new(300, 100));
+    let mut value = EXACT;
+    let frame = |h: &mut UiHarness, value: &mut i64, speed: f64| {
+        h.frame(|ui| {
+            DragValue::new(&mut *value)
+                .speed(speed)
+                .id(id)
+                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
+                .show(ui);
+        });
+    };
+    frame(&mut h, &mut value, 0.0);
+
+    // 20 px of travel at zero speed: no step, so nothing is stored.
+    h.press_at(Vec2::new(50.0, 20.0));
+    h.drag_to(Vec2::new(70.0, 20.0));
+    frame(&mut h, &mut value, 0.0);
+    assert_eq!(value, EXACT, "a zero-speed drag moves nothing");
+    h.release();
+    frame(&mut h, &mut value, 0.0);
+    assert_eq!(value, EXACT, "and its commit stores nothing new");
+
+    // The same 20 px at speed 1 is 20 whole steps from that same anchor.
+    h.press_at(Vec2::new(50.0, 20.0));
+    h.drag_to(Vec2::new(70.0, 20.0));
+    frame(&mut h, &mut value, 1.0);
+    assert_eq!(value, EXACT + 20);
+}
+
 #[test]
 fn non_left_drags_do_not_scrub() {
     // A right-button drag over the chip is someone else's gesture

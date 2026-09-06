@@ -14,6 +14,7 @@ use crate::ui::Ui;
 use crate::widgets::configure::Configure;
 use crate::widgets::configure::ConfigureWidget;
 use crate::widgets::drag_num::DragNum;
+use crate::widgets::drag_num::Num;
 use crate::widgets::response::Response;
 use crate::widgets::text_edit::TextEdit;
 use crate::widgets::theme::drag_value::DragValueTheme;
@@ -23,23 +24,42 @@ use crate::widgets::widget::Widget;
 use std::ops::RangeInclusive;
 use std::rc::Rc;
 
-/// One mutually exclusive interaction per [`DragValue`] id. A scrub keeps
-/// its sampled base and speed so cumulative pointer travel remains stable;
-/// an edit keeps its draft after focus leaves until the chip can resolve it.
+/// One mutually exclusive interaction per [`DragValue`] id: a live
+/// [`Scrub`], or an edit whose draft outlives its focus until the chip
+/// can resolve it.
 #[derive(Debug, Default)]
 enum DragValueState {
     #[default]
     Idle,
-    Scrubbing {
-        value: f64,
-        speed: f64,
-        /// Last scrubbed result, retained because the stop edge no longer
-        /// carries drag distance and deferred callers re-seed the old value.
-        last: f64,
-    },
+    Scrubbing(Scrub),
     Editing {
         buffer: String,
     },
+}
+
+/// A live scrub: the value it began on, how fast it moves, and how far
+/// it has come.
+///
+/// The anchor is a [`Num`], since the gesture writes back through it.
+///
+/// Travel is retained rather than the value it produced. The stop edge
+/// carries no drag distance, so the release frame derives its result
+/// from the anchor again — reading the last stored value back instead
+/// would find whatever a deferred caller re-seeded there.
+#[derive(Clone, Copy, Debug)]
+struct Scrub {
+    anchor: Num,
+    speed: f64,
+    /// Cumulative pointer travel of the last frame that wrote, in
+    /// logical pixels.
+    travel: f32,
+}
+
+impl Scrub {
+    /// How far the anchor has moved, in value units.
+    fn offset(self) -> f64 {
+        self.travel as f64 * self.speed
+    }
 }
 
 /// A numeric field you scrub by dragging horizontally (Blender / egui
@@ -208,38 +228,44 @@ impl<'a> DragValue<'a> {
             }
 
             if drag_started {
-                let value = self.value.get();
-                *state = DragValueState::Scrubbing {
-                    value,
+                *state = DragValueState::Scrubbing(Scrub {
+                    anchor: self.value.read(),
                     speed: self.speed,
-                    last: value,
-                };
+                    travel: 0.0,
+                });
             }
 
-            let mut stopped_at = None;
-            if let DragValueState::Scrubbing { value, speed, last } = state {
+            let mut stopped = None;
+            if let DragValueState::Scrubbing(scrub) = state {
                 if !response.disabled
                     && let Some(delta) = drag_delta
                 {
-                    let raw = *value + delta.x as f64 * *speed;
-                    changed |= self
-                        .value
-                        .commit_drag(raw, self.decimals, self.min, self.max);
-                    *last = self.value.get();
+                    scrub.travel = delta.x;
+                    changed |= self.value.commit_drag(
+                        scrub.anchor,
+                        scrub.offset(),
+                        self.decimals,
+                        self.min,
+                        self.max,
+                    );
                 }
                 if drag_stopped {
-                    stopped_at = Some(*last);
+                    stopped = Some(*scrub);
                 }
             }
             // The stop edge is the commit: the drag state is already gone on
-            // this frame, so `last` carries the final value. Released while
-            // disabled, the gesture is dropped instead.
-            if let Some(last) = stopped_at {
+            // this frame, so the scrub's own travel carries the final value.
+            // Released while disabled, the gesture is dropped instead.
+            if let Some(scrub) = stopped {
                 *state = DragValueState::Idle;
                 if !response.disabled {
-                    changed |= self
-                        .value
-                        .commit_drag(last, self.decimals, self.min, self.max);
+                    changed |= self.value.commit_drag(
+                        scrub.anchor,
+                        scrub.offset(),
+                        self.decimals,
+                        self.min,
+                        self.max,
+                    );
                     committed = true;
                 }
             }
@@ -325,7 +351,7 @@ impl<'a> DragValue<'a> {
         // same String through TextEdit without allocating a new buffer.
         let mut buffer = match std::mem::take(ui.state_mut::<DragValueState>(id)) {
             DragValueState::Editing { buffer } => buffer,
-            DragValueState::Idle | DragValueState::Scrubbing { .. } => self.value.edit_string(),
+            DragValueState::Idle | DragValueState::Scrubbing(_) => self.value.edit_string(),
         };
         let submitted = {
             let edit = TextEdit::new(&mut buffer)
