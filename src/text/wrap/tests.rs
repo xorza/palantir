@@ -1,8 +1,8 @@
 use crate::layout::cache::quantize_available;
+use crate::primitives::num::F32Px;
 use crate::primitives::size::Size;
 use crate::text::root::TextRoot;
-use crate::text::wrap;
-use crate::text::wrap::{LineFit, TextWrap, canonical_wrap_width};
+use crate::text::wrap::{LineFit, TextWrap};
 
 /// Every policy, in declaration order — so a new one has to be added
 /// here to compile, rather than quietly escaping the sweeps below.
@@ -80,7 +80,7 @@ fn only_a_fitting_single_line_truncation_reuses_the_unbounded_root() {
         assert_eq!(
             fit.resolves_to_unbounded(
                 &root(100.0, single_line, 0.0),
-                canonical_wrap_width(target_width_px),
+                target_width_px.canonical_px(),
             ),
             expected,
             "{fit:?}, single_line={single_line}, width={target_width_px}",
@@ -123,30 +123,17 @@ fn only_wrap_with_overflow_floors_the_shaping_width_at_its_widest_segment() {
 
 #[test]
 fn wrap_target_matches_cache_grid() {
-    assert_eq!(
-        wrap::canonical_wrap_width(100.1),
-        wrap::canonical_wrap_width(100.4),
-    );
-    assert_eq!(
-        wrap::canonical_wrap_width(99.6),
-        wrap::canonical_wrap_width(100.4),
-    );
-    assert_ne!(
-        wrap::canonical_wrap_width(100.4),
-        wrap::canonical_wrap_width(100.6),
-    );
+    assert_eq!(100.1_f32.canonical_px(), 100.4_f32.canonical_px(),);
+    assert_eq!(99.6_f32.canonical_px(), 100.4_f32.canonical_px(),);
+    assert_ne!(100.4_f32.canonical_px(), 100.6_f32.canonical_px(),);
     for width in [0.0_f32, 99.6, 100.1, 100.4, 250.4] {
         let cache_width = quantize_available(Size::new(width, 0.0)).x;
-        assert_eq!(
-            wrap::canonical_wrap_width(width) as i32,
-            cache_width,
-            "width={width}",
-        );
+        assert_eq!(width.canonical_px() as i32, cache_width, "width={width}",);
     }
     // The wrap width adds one rule on top of the shared grid: an
     // over-constrained layout can commit a negative width, which the
     // cache would assert on, so it clamps to zero here first.
     for width in [-0.4_f32, -1.0, -1e9] {
-        assert_eq!(wrap::canonical_wrap_width(width), 0.0, "width={width}");
+        assert_eq!(width.canonical_px(), 0.0, "width={width}");
     }
 }

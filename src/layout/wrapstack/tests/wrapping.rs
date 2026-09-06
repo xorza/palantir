@@ -191,3 +191,48 @@ fn nested_wrap_hstacks_do_not_trample_scratch() {
     let inner_card_w = 120.0;
     assert_eq!(ob.min.x, inner_card_w + 10.0); // outer gap=10
 }
+
+/// A subpixel resize must not move where a line breaks, because the
+/// measure cache's key cannot see it.
+///
+/// Both frames answer for one surface: the cold one measures it, and the
+/// warm one restores a subtree captured a quarter-pixel earlier under a
+/// key that rounds both widths to the same whole pixel. Answering
+/// differently is the cache reporting a height the layout would not.
+///
+/// Geometry: two 50.0625-wide cells total 100.125, and at scale 4 a
+/// 400 px surface is 100.0 logical while a 401 px one is 100.25. The raw
+/// sum falls between them, and both round to a 100 px budget — so the
+/// pair wraps at either width and the stack stands two 20 px lines tall.
+#[test]
+fn a_subpixel_resize_keeps_the_break_its_cache_key_stands_for() {
+    fn build(ui: &mut crate::Ui) {
+        Panel::wrap_hstack()
+            .id(WidgetId::from_hash("w"))
+            .size((Sizing::HUG, Sizing::HUG))
+            .show(ui, |ui| {
+                cell(ui, "a", 50.0625, 20.0);
+                cell(ui, "b", 50.0625, 20.0);
+            });
+    }
+    let height = |h: &UiHarness| rect_of(h, "w").size.h;
+
+    let mut cold = UiHarness::new(UVec2::new(401, 300)).scale(4.0);
+    cold.frame(build);
+
+    let mut warm = UiHarness::new(UVec2::new(400, 300)).scale(4.0);
+    warm.frame(build);
+    warm.resize(UVec2::new(401, 300));
+    warm.frame(build);
+
+    assert_eq!(
+        height(&cold),
+        40.0,
+        "100.125 of children past a 100 px budget takes two lines",
+    );
+    assert_eq!(
+        height(&warm),
+        height(&cold),
+        "a warm frame must answer what a cold one answers for the same surface",
+    );
+}

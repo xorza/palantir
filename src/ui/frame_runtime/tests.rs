@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use glam::UVec2;
 
+use crate::common::time::{ANIM_SUBSTEP_DT, MAX_ANIM_DT};
 use crate::display::Display;
 use crate::input::policy::{InputPolicy, InputSignal};
 use crate::ui::frame_runtime::FrameClassifyInput;
@@ -166,4 +167,44 @@ fn frame_classification_covers_external_entry_facts() {
 
         assert_eq!(actual, case.expected, "{}", case.label);
     }
+}
+
+/// What a frame *spends* is bounded, not only what it observed.
+///
+/// Wall time is clamped as it arrives, but the accumulator carries
+/// whatever earlier frames were too short to spend, and the sum is what
+/// reaches the integrators. [`spring::step`](crate::animation::spring)
+/// takes `MAX_ANIM_DT` as a contract and derives its substep budget from
+/// it, so a carry riding on top of an already-clamped delta is a debug
+/// panic and a frame of unbudgeted work.
+///
+/// One frame under a substep, then a stall: 1 ms carries, 100 ms clamps,
+/// and 101 ms is what the sum would hand over.
+#[test]
+fn a_spent_delta_stays_inside_the_animation_bound() {
+    let mut rt = FrameRuntime::default();
+
+    rt.advance_clock(Duration::from_millis(1));
+    assert_eq!(rt.dt, 0.0, "a frame under one substep spends nothing");
+    assert!(
+        rt.dt_accum < ANIM_SUBSTEP_DT,
+        "and carries it: {}",
+        rt.dt_accum,
+    );
+
+    rt.advance_clock(Duration::from_millis(101));
+    assert_eq!(
+        rt.dt, MAX_ANIM_DT,
+        "the carry may not push a spent delta past the bound",
+    );
+    assert_eq!(rt.dt_accum, 0.0, "a spending frame leaves nothing behind");
+
+    // An ordinary frame still spends its whole delta — the bound is a
+    // ceiling, not a quantization.
+    rt.advance_clock(Duration::from_millis(117));
+    assert!(
+        (rt.dt - 0.016).abs() < 1e-6,
+        "a 16 ms frame spends 16 ms; got {}",
+        rt.dt,
+    );
 }

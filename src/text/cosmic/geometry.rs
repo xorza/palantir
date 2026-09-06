@@ -98,7 +98,7 @@ pub(super) fn shaped_geometry(
 ///
 /// **Reported on the whole-pixel grid, like every other width here.**
 /// `WrapWithOverflow` floors its committed width at this value, and
-/// `canonical_wrap_width` then snaps that to nearest. A raw 57.4 comes
+/// `F32Px::canonical_px` then snaps that to nearest. A raw 57.4 comes
 /// back as 57, and the shaper breaks the very segment the floor exists to
 /// keep whole — in the min-content case layout commits, where the
 /// policy's promise matters most. Rounding *up* is the only direction

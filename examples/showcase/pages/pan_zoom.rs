@@ -6,19 +6,20 @@
 //! (~580 nodes — cells are buttons so hover / press / click input works
 //! through the transform), or a heavier mixed document (~2000 nodes:
 //! grids, wrapping text, gradient swatches, polylines, chat rows) for
-//! benchmarking. The auto-drive checkbox feeds synthetic scroll + zoom
-//! input every frame from a bounded cosine oscillator, with the pointer
-//! seeded over the viewport once so `scroll_target` latches without
-//! clobbering the real cursor on later frames.
+//! benchmarking. The auto-drive checkbox pans and zooms the viewport
+//! every frame from a bounded cosine oscillator, through
+//! `Scroll::scroll_by` and `Scroll::zoom_by` — the same clamp a wheel
+//! takes, and no pointer involved, so it drives the view without
+//! touching the real cursor.
 
 use crate::support;
 use crate::support::note_style;
 use palantir::SlotDefaults;
 use palantir::{
     AnimSpec, Background, Brush, Button, ButtonTheme, Checkbox, Configure, Corners, Frame, Grid,
-    InputEvent, LineCap, LineJoin, LinearGradient, Panel, PolylineColors, RadioButton, RgbaF32,
-    Scroll, Shape, Sizing, Spacing, StatefulLook, Stroke, Text, TextStyle, TextWrap, Track, Ui,
-    Vec2, WidgetId, WidgetLook, fmt,
+    LineCap, LineJoin, LinearGradient, Panel, PolylineColors, RadioButton, RgbaF32, Scroll, Shape,
+    Sizing, Spacing, StatefulLook, Stroke, Text, TextStyle, TextWrap, Track, Ui, Vec2, WidgetId,
+    WidgetLook, fmt,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
@@ -43,21 +44,14 @@ pub(crate) fn build(ui: &mut Ui) {
 }
 
 fn page(ui: &mut Ui, s: &mut State) {
+    // A zero pan and an identity zoom are no-ops, so the viewport below
+    // takes the request unconditionally and the branch stays here.
+    let mut auto_pan = Vec2::ZERO;
+    let mut auto_zoom = 1.0;
     if s.auto {
-        // Seed the pointer over the scroll viewport on the first frame
-        // only — enough to latch scroll_target. Re-injecting every frame
-        // would clobber the real cursor and break clicks on the rail.
-        if s.tick == 0 {
-            let size = ui.display().logical_size();
-            let centre = Vec2::new(size.w * 0.6, size.h * 0.6);
-            ui.on_input(InputEvent::PointerMoved(centre));
-        }
         let t = s.tick as f32 * 0.05;
-        ui.on_input(InputEvent::ScrollPixels(Vec2::new(
-            t.cos() * 5.0,
-            (t * 0.7).cos() * 5.0,
-        )));
-        ui.on_input(InputEvent::Zoom(1.0 + t.cos() * 0.02));
+        auto_pan = Vec2::new(t.cos() * 5.0, (t * 0.7).cos() * 5.0);
+        auto_zoom = 1.0 + t.cos() * 0.02;
         s.tick = s.tick.wrapping_add(1);
         ui.request_repaint();
     } else {
@@ -98,6 +92,8 @@ fn page(ui: &mut Ui, s: &mut State) {
     let mut clicked = None;
     Scroll::both()
         .with_zoom()
+        .scroll_by(auto_pan)
+        .zoom_by(auto_zoom)
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| match s.content {
             Content::Grid => cell_grid(ui, "pz", 24, 24, &mut clicked),

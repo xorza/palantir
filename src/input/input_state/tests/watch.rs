@@ -464,8 +464,8 @@ fn sample_pointer_layers(
 fn only_a_scope_gates_the_stream_and_only_while_recorded() {
     let surface = UVec2::new(200, 200);
     let press = |ui: &mut Ui| {
-        let _ = ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
-        let _ = ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+        ui.inject_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
+        ui.inject_input(InputEvent::PointerPressed(PointerButton::Left));
     };
     let with_modal = |ui: &mut Ui| {
         empty_watch_buttons(ui);

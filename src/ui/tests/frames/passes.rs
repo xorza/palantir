@@ -98,39 +98,39 @@ fn frame_pass_count_matches_action_trigger() {
         (
             "hover only",
             |ui| {
-                ui.on_input(InputEvent::PointerMoved(Vec2::new(10.0, 10.0)));
+                ui.inject_input(InputEvent::PointerMoved(Vec2::new(10.0, 10.0)));
             },
             1,
         ),
         (
             "modifiers only",
             |ui| {
-                ui.on_input(InputEvent::ModifiersChanged(Modifiers::NONE));
+                ui.inject_input(InputEvent::ModifiersChanged(Modifiers::NONE));
             },
             1,
         ),
         (
             "routed click",
             |ui| {
-                ui.on_input(InputEvent::PointerMoved(Vec2::new(10.0, 10.0)));
-                ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
-                ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+                ui.inject_input(InputEvent::PointerMoved(Vec2::new(10.0, 10.0)));
+                ui.inject_input(InputEvent::PointerPressed(PointerButton::Left));
+                ui.inject_input(InputEvent::PointerReleased(PointerButton::Left));
             },
             2,
         ),
         (
             "unrouted click",
             |ui| {
-                ui.on_input(InputEvent::PointerMoved(Vec2::new(150.0, 150.0)));
-                ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
-                ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+                ui.inject_input(InputEvent::PointerMoved(Vec2::new(150.0, 150.0)));
+                ui.inject_input(InputEvent::PointerPressed(PointerButton::Left));
+                ui.inject_input(InputEvent::PointerReleased(PointerButton::Left));
             },
             1,
         ),
         (
             "unrouted keydown",
             |ui| {
-                ui.on_input(InputEvent::KeyDown {
+                ui.inject_input(InputEvent::KeyDown {
                     key: Key::Enter,
                     repeat: false,
                     physical: Key::Other,
@@ -142,7 +142,7 @@ fn frame_pass_count_matches_action_trigger() {
             "routed keydown",
             |ui| {
                 ui.request_focus(Some(WidgetId::from_hash("root")));
-                ui.on_input(InputEvent::KeyDown {
+                ui.inject_input(InputEvent::KeyDown {
                     key: Key::Enter,
                     repeat: false,
                     physical: Key::Other,
@@ -153,7 +153,7 @@ fn frame_pass_count_matches_action_trigger() {
         (
             "scroll",
             |ui| {
-                ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 10.0)));
+                ui.inject_input(InputEvent::ScrollPixels(Vec2::new(0.0, 10.0)));
             },
             1,
         ),

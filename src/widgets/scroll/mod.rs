@@ -162,6 +162,10 @@ pub struct Scroll<'a> {
     chrome: Option<Background>,
     bar_mode: BarMode,
     content_margin: Spacing,
+    /// [`Scroll::scroll_by`]'s accumulated request, in logical pixels.
+    pan_request: Vec2,
+    /// [`Scroll::zoom_by`]'s accumulated request.
+    zoom_request: ZoomFactor,
 }
 
 impl<'a> Scroll<'a> {
@@ -192,7 +196,51 @@ impl<'a> Scroll<'a> {
             chrome: None,
             bar_mode: BarMode::Reserved,
             content_margin: Spacing::default(),
+            pan_request: Vec2::ZERO,
+            zoom_request: ZoomFactor::ONE,
         }
+    }
+
+    /// Pan the viewport by `delta` logical pixels on the frame this is
+    /// shown — the step a wheel of that distance would take, through the
+    /// same clamp and the same rubber band.
+    ///
+    /// For a viewport something other than the pointer drives: a "scroll
+    /// to top" button, a page that plays a gesture back, a timer walking
+    /// a document past the camera. It reads no pointer and no hover, so
+    /// a request lands whether or not the viewport is under the cursor,
+    /// and it composes with a wheel arriving on the same frame, and with
+    /// a second call, rather than replacing either.
+    ///
+    /// Relative, because that is what a builder can state without first
+    /// reading where the viewport already sits.
+    pub fn scroll_by(mut self, delta: Vec2) -> Self {
+        self.pan_request += delta;
+        self
+    }
+
+    /// Multiply the zoom by `factor` on the frame this is shown, through
+    /// the same clamp and the same [`ZoomPivot`] a wheel zoom takes — so
+    /// with the default pivot it zooms about the pointer where there is
+    /// one, and about the viewport's centre where there is not.
+    ///
+    /// A viewport with no [`Self::with_zoom`] ignores it, like every
+    /// other zoom input. Two calls compose into one factor.
+    ///
+    /// Takes the bare factor for the call site's sake — a view that
+    /// *keeps* a zoom should keep a [`ZoomFactor`], which is the type
+    /// that cannot lose one.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `factor` is finite and greater than zero. A zoom
+    /// cannot invert or annihilate, and a non-finite factor poisons
+    /// every product it enters.
+    pub fn zoom_by(mut self, factor: f32) -> Self {
+        let factor = ZoomFactor::new(factor)
+            .unwrap_or_else(|| panic!("a zoom factor must be finite and above zero, got {factor}"));
+        self.zoom_request = self.zoom_request.combine(factor);
+        self
     }
 
     /// Per-instance override of [`crate::Theme`]'s `scrollbar`. Takes an
@@ -298,7 +346,12 @@ impl<'a> Scroll<'a> {
             Some(cfg) => (Vec2::ZERO, ZoomFactor::from_wheel(cfg.step, notches.y)),
             None => (pan_raw, ZoomFactor::ONE),
         };
-        let zoom_delta = scroll.zoom.combine(wheel_factor);
+        // The authored requests join the pointer's rather than replacing
+        // it: a viewport can be driven and scrolled in one frame, and a
+        // wheel that zooms leaves `pan_delta` at zero for the pan the
+        // caller asked for.
+        let pan_delta = pan_delta + self.pan_request;
+        let zoom_delta = scroll.zoom.combine(wheel_factor).combine(self.zoom_request);
 
         let centre = response
             .layout_rect

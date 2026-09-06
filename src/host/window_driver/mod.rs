@@ -42,6 +42,7 @@ use crate::window::window_commands::WindowCommands;
 use crate::window::window_output::WindowOutput;
 use crate::window::window_token::WindowToken;
 use glam::UVec2;
+use std::time::Duration;
 
 /// Per-window state driving the host's shared [`Frontend`] and [`WgpuBackend`].
 /// Built by [`WindowDriverBuilder`] from the shared [`UiResources`]; owns no GPU
@@ -330,6 +331,14 @@ impl Drop for WindowDriver {
 }
 
 impl WindowDriver {
+    /// This driver's clock, which stamps its frames and — through the
+    /// host that owns it — the input events that arrive between them.
+    /// Both readings have to come from one clock, or a press is timed
+    /// against a frame on another.
+    pub(super) fn now(&self) -> Duration {
+        self.clock.now()
+    }
+
     /// Start building a driver for `token` from the shared [`UiResources`].
     /// Its `Ui` receives recorder capabilities plus a fresh per-window record
     /// store. Defaults suit a swapchain window: direct adaptive presentation

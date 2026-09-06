@@ -6,6 +6,7 @@ use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::{button::Button, panel::Panel};
 use glam::{UVec2, Vec2};
+use std::time::Duration;
 
 #[test]
 fn input_state_press_release_emits_click() {
@@ -352,6 +353,51 @@ fn two_left_clicks_within_window_emit_double_clicked() {
     h.frame(|ui| build(ui, &mut single, &mut double));
     assert!(single, "third click should fire `clicked`");
     assert!(!double, "third click must not chain another double");
+}
+
+/// A double click that follows an idle gap is still a double click.
+///
+/// A press carries the time it arrived, and an event-driven host runs no
+/// frame at all while nothing happens. Stamped with the frame clock
+/// instead, the first press of a pair would carry the *last frame's*
+/// time — from before the idle — and the pair would measure the idle
+/// rather than the 100 ms between the two presses. Waking an app and
+/// double-clicking it is an ordinary interaction.
+#[test]
+fn a_double_click_survives_the_idle_before_it() {
+    let mut h = UiHarness::new(UVec2::new(200, 80));
+    let build = |ui: &mut Ui, single: &mut bool, double: &mut bool| {
+        Panel::hstack().auto_id().show(ui, |ui| {
+            let r = Button::new()
+                .id(WidgetId::from_hash("idle_target"))
+                .label("dc")
+                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
+                .show(ui);
+            *single |= r.left.clicked();
+            *double |= r.left.double_clicked();
+        });
+    };
+    h.frame(|ui| build(ui, &mut false, &mut false));
+
+    // Ten seconds of nothing: no input, and so no frame either.
+    h.advance(Duration::from_secs(10));
+    h.click_at(Vec2::new(50.0, 20.0));
+    let (mut single, mut double) = (false, false);
+    h.frame(|ui| build(ui, &mut single, &mut double));
+    assert!(single, "the waking click is a click");
+    assert!(!double, "and the first of a pair is not a double");
+
+    // 100 ms later, well inside the window that separates the two.
+    h.advance(Duration::from_millis(100));
+    h.click_at(Vec2::new(50.0, 20.0));
+    let (mut single, mut double) = (false, false);
+    h.frame(|ui| build(ui, &mut single, &mut double));
+    assert!(single, "the second click is a click");
+    assert!(
+        double,
+        "two presses 100 ms apart are a double click, whatever the app \
+         was doing for the ten seconds before them",
+    );
 }
 
 #[test]

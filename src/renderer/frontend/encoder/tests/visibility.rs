@@ -116,9 +116,9 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
     assert!(h.ui.response_for(h_id).rect.is_some());
 
     fn press_and_release_at(ui: &mut Ui, p: Vec2) {
-        ui.on_input(InputEvent::PointerMoved(p));
-        ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
-        ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+        ui.inject_input(InputEvent::PointerMoved(p));
+        ui.inject_input(InputEvent::PointerPressed(PointerButton::Left));
+        ui.inject_input(InputEvent::PointerReleased(PointerButton::Left));
     }
     press_and_release_at(
         &mut h.ui,

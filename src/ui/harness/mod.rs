@@ -62,19 +62,19 @@
 //!
 //! ## Clocks — there are two, and they diverge
 //!
-//! 6. **The frame clock only moves at a frame boundary.** `Ui::on_input`
-//!    stamps events with `FrameRuntime::time`, so events fed between
-//!    frames carry the value the *last* frame published. Moving time is
-//!    [`advance`](UiHarness::advance) or [`at`](UiHarness::at) → `frame`
-//!    → *then* the input; either one with no frame between changes
-//!    nothing.
+//! 6. **One clock, read at two doors.** [`advance`](UiHarness::advance)
+//!    and [`at`](UiHarness::at) move `UiHarness::time`, which stamps the
+//!    frames this harness drives *and* the input events it feeds — the
+//!    way a host reads its own clock at both. So an `advance` reaches
+//!    input timing with no frame in between, and a frame with no
+//!    `advance` moves nothing.
 //! 7. **A frozen clock makes every click simultaneous.**
-//!    `DOUBLE_CLICK_WINDOW` is 500 ms against `FrameRuntime::time`, so
-//!    without an `advance` a second `click_at` within
-//!    `DOUBLE_CLICK_RADIUS` (5 px) *always* reports `double_clicked`.
-//!    Two deliberately separate clicks need
+//!    `DOUBLE_CLICK_WINDOW` is 500 ms against that clock, so without an
+//!    `advance` a second `click_at` within `DOUBLE_CLICK_RADIUS` (5 px)
+//!    *always* reports `double_clicked`. Two deliberately separate
+//!    clicks need an `advance` past the window — which is what
 //!    [`advance_past_double_click`](UiHarness::advance_past_double_click)
-//!    or >5 px of travel.
+//!    spells — or >5 px of travel.
 //! 8. **Animation time is not the frame clock.** `advance_clock` clamps
 //!    per-frame animation dt to `MAX_ANIM_DT` (0.1 s) and quantizes
 //!    through an accumulator at `ANIM_SUBSTEP_DT` (1/240 s). One frame
@@ -339,13 +339,12 @@ impl UiHarness {
         }
     }
 
-    /// Move the absolute clock. Takes effect on the **next** frame, and
-    /// only then do subsequent input events carry it: `Ui::frame` is what
-    /// publishes the clock to the input machine, so the order is
-    /// `advance` → `frame` → input.
+    /// Move the absolute clock. Every event fed after this carries the
+    /// new time, and so does the next frame — one clock, read at both
+    /// doors, the way a host reads its own.
     ///
-    /// Animation dt is a separate clock — it is clamped per frame to
-    /// `MAX_ANIM_DT`, so one big jump here does not integrate one big
+    /// Animation dt is derived rather than read: it is clamped per frame
+    /// to `MAX_ANIM_DT`, so one big jump here does not integrate one big
     /// step there. Use [`Self::advance_frames`] for that.
     pub fn advance(&mut self, dt: Duration) -> &mut Self {
         self.time += dt;
@@ -353,9 +352,8 @@ impl UiHarness {
     }
 
     /// Park the absolute clock at `time` — [`Self::advance`] for a test
-    /// written against absolute stamps rather than deltas. Same timing
-    /// rule: it reaches the input machine only through the next frame,
-    /// so the order is `at` → `frame` → input.
+    /// written against absolute stamps rather than deltas, and the same
+    /// clock on both doors.
     pub fn at(&mut self, time: Duration) -> &mut Self {
         self.time = time;
         self
@@ -387,7 +385,9 @@ impl UiHarness {
     ///
     /// No caller outside this module's own tests — the multi-click suite
     /// uses absolute stamps. Kept as rule 7's remedy: it is where the
-    /// window constant and the mandatory intervening frame live.
+    /// window constant lives. The frame is for whatever the gap was
+    /// meant to let settle, not for the clock, which the `advance`
+    /// already published to input.
     pub fn advance_past_double_click(&mut self, record: impl FnMut(&mut Ui)) {
         self.advance(DOUBLE_CLICK_WINDOW + Duration::from_millis(1));
         self.frame(record);
@@ -400,17 +400,17 @@ impl UiHarness {
     /// emits exactly one event hands back that event's [`InputDelta`] so
     /// nothing is given up by using it.
     pub fn on_input(&mut self, event: InputEvent) -> InputDelta {
-        self.ui.on_input(event)
+        self.ui.on_input(event, self.time)
     }
 
     /// Returns the move's [`InputDelta`] — `on_input`'s value, so a
     /// repaint-hint assertion has no reason to build the event by hand.
     pub fn move_to(&mut self, pos: Vec2) -> InputDelta {
-        self.ui.on_input(InputEvent::PointerMoved(pos))
+        self.ui.on_input(InputEvent::PointerMoved(pos), self.time)
     }
 
     pub fn pointer_left(&mut self) -> InputDelta {
-        self.ui.on_input(InputEvent::PointerLeft)
+        self.ui.on_input(InputEvent::PointerLeft, self.time)
     }
 
     /// Press wherever the pointer already is — the peer of
@@ -425,7 +425,8 @@ impl UiHarness {
 
     pub fn press_button(&mut self, button: PointerButton) -> InputDelta {
         self.pressed_at = self.ui.input.pointer_pos;
-        self.ui.on_input(InputEvent::PointerPressed(button))
+        self.ui
+            .on_input(InputEvent::PointerPressed(button), self.time)
     }
 
     pub fn press_at(&mut self, pos: Vec2) -> InputDelta {
@@ -443,7 +444,8 @@ impl UiHarness {
 
     pub fn release_button(&mut self, button: PointerButton) -> InputDelta {
         self.pressed_at = None;
-        self.ui.on_input(InputEvent::PointerReleased(button))
+        self.ui
+            .on_input(InputEvent::PointerReleased(button), self.time)
     }
 
     pub fn click_at(&mut self, pos: Vec2) {
@@ -537,15 +539,15 @@ impl UiHarness {
     /// aimed it — the `_at` peers below are the same events with the aim
     /// inlined. Positive `y` means the content scrolls down.
     pub fn scroll_lines(&mut self, delta: Vec2) -> InputDelta {
-        self.ui.on_input(InputEvent::ScrollLines(delta))
+        self.ui.on_input(InputEvent::ScrollLines(delta), self.time)
     }
 
     pub fn scroll_pixels(&mut self, delta: Vec2) -> InputDelta {
-        self.ui.on_input(InputEvent::ScrollPixels(delta))
+        self.ui.on_input(InputEvent::ScrollPixels(delta), self.time)
     }
 
     pub fn pinch(&mut self, factor: f32) -> InputDelta {
-        self.ui.on_input(InputEvent::Zoom(factor))
+        self.ui.on_input(InputEvent::Zoom(factor), self.time)
     }
 
     /// Aim, then scroll — the delta returned is the scroll's, not the
@@ -571,11 +573,14 @@ impl UiHarness {
     /// that needs a real physical position builds the event through
     /// [`Self::on_input`].
     pub fn key(&mut self, key: Key) -> InputDelta {
-        self.ui.on_input(InputEvent::KeyDown {
-            key,
-            repeat: false,
-            physical: Key::Other,
-        })
+        self.ui.on_input(
+            InputEvent::KeyDown {
+                key,
+                repeat: false,
+                physical: Key::Other,
+            },
+            self.time,
+        )
     }
 
     /// Emits `ModifiersChanged` only when the set actually changes —
@@ -592,7 +597,8 @@ impl UiHarness {
     /// would have cleared it, leaving a chord silently held.
     pub fn set_modifiers(&mut self, mods: Modifiers) {
         if self.ui.input.modifiers != mods {
-            self.ui.on_input(InputEvent::ModifiersChanged(mods));
+            self.ui
+                .on_input(InputEvent::ModifiersChanged(mods), self.time);
         }
     }
 

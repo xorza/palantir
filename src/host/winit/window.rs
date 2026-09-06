@@ -160,7 +160,11 @@ impl Window {
     }
 
     pub(super) fn on_input(&mut self, event: InputEvent) -> InputDelta {
-        self.driver.ui.on_input(event)
+        // Stamped here, where the event actually arrived: the frame clock
+        // it would otherwise carry stands still between frames, and an
+        // event-driven host can idle for seconds between two of them.
+        let now = self.driver.now();
+        self.driver.ui.on_input(event, now)
     }
 
     /// Retain what an event said about the pointer, against the scale it
@@ -188,7 +192,10 @@ impl Window {
         if let Some(anchor) = &mut self.pointer
             && let Some(logical) = anchor.restate_at(scale)
         {
-            self.driver.ui.on_input(InputEvent::PointerMoved(logical));
+            let now = self.driver.now();
+            self.driver
+                .ui
+                .on_input(InputEvent::PointerMoved(logical), now);
         }
     }
 

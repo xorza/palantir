@@ -146,11 +146,11 @@ fn shape_origins(ui: &Ui, node: NodeId) -> (Option<glam::Vec2>, Option<glam::Vec
 
 /// Emit Shift+ArrowRight as the focused widget would see it.
 fn shift_arrow_right(ui: &mut Ui) {
-    ui.on_input(InputEvent::ModifiersChanged(Modifiers {
+    ui.inject_input(InputEvent::ModifiersChanged(Modifiers {
         shift: true,
         ..Modifiers::NONE
     }));
-    ui.on_input(InputEvent::KeyDown {
+    ui.inject_input(InputEvent::KeyDown {
         key: Key::ArrowRight,
         repeat: false,
         physical: Key::Other,
