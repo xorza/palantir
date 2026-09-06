@@ -3,6 +3,7 @@ use crate::KeyFilter;
 use crate::input::input_event::InputEvent;
 use crate::input::input_state::InputState;
 use crate::input::keyboard::key::Key;
+use crate::input::keyboard::key_text::KeyText;
 use crate::input::keyboard::modifiers::Modifiers;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
@@ -32,6 +33,7 @@ fn keyboard_events_do_not_perturb_scroll_state() {
             key: Key::ArrowLeft,
             repeat: false,
             physical: Key::Other,
+            text: KeyText::EMPTY,
         },
         &cascade,
         Duration::ZERO,
@@ -65,6 +67,7 @@ fn keydown_pushes_onto_frame_keys_with_current_modifiers() {
             key: Key::Char('a'),
             repeat: false,
             physical: Key::Other,
+            text: KeyText::from_char('a'),
         },
         &cascade,
         Duration::ZERO,
@@ -79,6 +82,7 @@ fn keydown_pushes_onto_frame_keys_with_current_modifiers() {
             key: Key::Char('b'),
             repeat: true,
             physical: Key::Other,
+            text: KeyText::from_char('b'),
         },
         &cascade,
         Duration::ZERO,
@@ -541,6 +545,7 @@ fn post_record_clears_keys_but_preserves_modifiers() {
             key: Key::ArrowLeft,
             repeat: false,
             physical: Key::Other,
+            text: KeyText::EMPTY,
         },
         &cascade,
         Duration::ZERO,

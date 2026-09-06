@@ -62,9 +62,9 @@ struct TextEditState {
     selection_rects: Vec<Rect>,
 }
 
-/// Editable text leaf. Supports typing (`KeyDown` printable chars or
-/// IME `Text` commits), backspace/delete, left/right (+ shift / home /
-/// end), drag-select, multi-line, cut/copy/paste, undo+redo
+/// Editable text leaf. Supports typing (whatever text a press produced —
+/// see [`KeyText`](crate::KeyText)), backspace/delete, left/right
+/// (+ shift / home / end), drag-select, multi-line, cut/copy/paste, undo+redo
 /// (Cmd/Ctrl+Z, Cmd/Ctrl+Shift+Z), escape-to-blur, click-to-place-caret.
 ///
 /// Borrows `&'a mut String` for the buffer — host owns the storage and

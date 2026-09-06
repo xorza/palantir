@@ -10,6 +10,7 @@
 //! clicks in. Effective padding is (6.5, 4.5), inner rect 267×31.
 
 use crate::Align;
+use crate::input::keyboard::key_text::KeyText;
 use crate::primitives::size::Size;
 use crate::primitives::translate_scale::TranslateScale;
 use crate::scene::layer::Layer;
@@ -154,6 +155,7 @@ fn shift_arrow_right(ui: &mut Ui) {
         key: Key::ArrowRight,
         repeat: false,
         physical: Key::Other,
+        text: KeyText::EMPTY,
     });
 }
 

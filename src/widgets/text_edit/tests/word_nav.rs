@@ -1,3 +1,4 @@
+use crate::input::keyboard::key_text::KeyText;
 use crate::widgets::text_edit::tests::*;
 
 #[test]
@@ -90,6 +91,10 @@ fn apply_key_word_nav_cases() {
             mods,
             repeat: false,
             physical: Key::Other,
+            text: match key {
+                Key::Char(c) => KeyText::from_char(c),
+                _ => KeyText::EMPTY,
+            },
         }
     }
 

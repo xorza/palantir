@@ -1,6 +1,7 @@
 //! The crate's host-facing input vocabulary.
 
 use crate::input::keyboard::key::Key;
+use crate::input::keyboard::key_text::KeyText;
 use crate::input::keyboard::modifiers::Modifiers;
 use crate::input::pointer::PointerButton;
 use crate::input::zoom_factor::ZoomFactor;
@@ -52,6 +53,11 @@ pub enum InputEvent {
         /// Layout-independent physical key — see
         /// [`KeyPress::physical`](crate::KeyPress::physical).
         physical: Key,
+        /// The text this press produced, which a host reads from its
+        /// platform beside the key — see [`KeyText`]. A field types
+        /// this and nothing else, so a host that leaves it empty is a
+        /// host nothing can be typed into.
+        text: KeyText,
     },
     /// Modifier-key set changed. The carried snapshot is the new state
     /// (not a delta). Consumers track the latest snapshot to disambiguate
@@ -106,6 +112,7 @@ impl InputEvent {
 mod tests {
     use crate::input::input_event::InputEvent;
     use crate::input::keyboard::key::Key;
+    use crate::input::keyboard::key_text::KeyText;
     use crate::input::keyboard::modifiers::Modifiers;
     use crate::input::pointer::PointerButton;
     use glam::Vec2;
@@ -148,6 +155,7 @@ mod tests {
                 key: Key::Char('a'),
                 repeat: false,
                 physical: Key::Char('a'),
+                text: KeyText::from_char('a'),
             },
             InputEvent::ModifiersChanged(Modifiers::default()),
         ];

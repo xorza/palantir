@@ -426,9 +426,14 @@ impl<'a> Editor<'a> {
         }
     }
 
-    pub(super) fn insert_char(&mut self, c: char) {
-        let mut buf = [0u8; 4];
-        self.replace_selection(c.encode_utf8(&mut buf), EditKind::Typing);
+    /// Type `text` over the selection, or at the caret where there is
+    /// none.
+    ///
+    /// A whole string rather than a character: one key press can produce
+    /// two — a dead-key sequence the platform could not compose — and
+    /// both belong in one undo step, since one press made them.
+    pub(super) fn insert_str(&mut self, text: &str) {
+        self.replace_selection(text, EditKind::Typing);
     }
 
     pub(super) fn delete_backward(&mut self) {

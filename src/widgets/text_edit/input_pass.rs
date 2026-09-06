@@ -213,7 +213,6 @@ impl InputPass<'_> {
 pub(super) fn apply_key(editor: &mut Editor<'_>, keypress: KeyPress) -> KeyOutcome {
     let extend = keypress.mods.shift;
     match keypress.key {
-        Key::Char(c) if !keypress.mods.any_command() => editor.insert_char(c),
         Key::Backspace => editor.delete_backward(),
         Key::Delete => editor.delete_forward(),
         Key::ArrowLeft if is_word_nav(keypress.mods) => editor.move_word_left(extend),
@@ -241,6 +240,19 @@ pub(super) fn apply_key(editor: &mut Editor<'_>, keypress: KeyPress) -> KeyOutco
             if !had_selection {
                 return KeyOutcome::Blur;
             }
+        }
+        // Whatever the key, what the press *produced* is what gets
+        // typed: the platform resolved the layout, the dead keys and the
+        // modifiers, and a field has nothing better to go on. The named
+        // keys above are the ones that mean something other than their
+        // text, so they answer first — Enter reports `"\r"`, which
+        // `KeyText` drops on the way in, and a multi-line editor writes
+        // its own newline above.
+        //
+        // Command chords type nothing, whatever the platform reports
+        // under them: macOS gives Cmd+A the text `"a"`.
+        _ if !keypress.mods.any_command() && !keypress.text.is_empty() => {
+            editor.insert_str(keypress.text.as_str());
         }
         _ => {}
     }

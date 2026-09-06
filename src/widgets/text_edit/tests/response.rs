@@ -1,3 +1,4 @@
+use crate::input::keyboard::key_text::KeyText;
 use crate::ui::harness::UiHarness;
 use crate::widgets::text_edit::tests::*;
 
@@ -210,6 +211,7 @@ fn every_edit_action_chord_is_edit_class() {
             },
             repeat: false,
             physical: shortcut.key,
+            text: KeyText::EMPTY,
         };
         assert_eq!(
             KeyClass::of(press),

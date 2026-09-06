@@ -1,3 +1,6 @@
+use crate::input::input_event::InputEvent;
+use crate::input::keyboard::key_text::KeyText;
+use crate::input::keyboard::modifiers::Modifiers;
 use crate::ui::harness::UiHarness;
 use crate::{FocusPolicy, widgets::text_edit::tests::*};
 
@@ -15,6 +18,71 @@ fn typing_inserts_text_when_focused() {
 
     h.frame(editor_only(&mut buf));
     assert_eq!(buf, "hi");
+}
+
+/// A field types what the press *produced*, not the key it names.
+///
+/// One press can resolve to two characters — a Windows dead-key
+/// sequence the platform could not compose reports `^e` — and a layout
+/// can put a character on a key whose name says nothing about it. The
+/// key stays what a chord matches on, and the text is what lands.
+#[test]
+fn a_field_types_the_text_a_press_produced() {
+    let mut h = UiHarness::with_text(SMALL);
+    let mut buf = String::new();
+    let id = WidgetId::from_hash("editor");
+
+    h.frame(editor_only(&mut buf));
+    h.click_at(Vec2::new(50.0, 20.0));
+    assert_eq!(h.focused_id(), Some(id));
+
+    // A dead-key fallback: two characters from one press, and the key
+    // that carried them names only the first.
+    h.on_input(InputEvent::KeyDown {
+        key: Key::Char('^'),
+        repeat: false,
+        physical: Key::Other,
+        text: KeyText::new("^e"),
+    });
+    h.frame(editor_only(&mut buf));
+    assert_eq!(buf, "^e", "both characters land, from the one press");
+
+    // A composed character on a key the vocabulary has no name for.
+    h.on_input(InputEvent::KeyDown {
+        key: Key::Other,
+        repeat: false,
+        physical: Key::Other,
+        text: KeyText::from_char('é'),
+    });
+    h.frame(editor_only(&mut buf));
+    assert_eq!(buf, "^eé", "an unnamed key still types what it produced");
+}
+
+/// A command chord types nothing, whatever text the platform reports
+/// under it — macOS gives Cmd+A the text `"a"`, and a field that took it
+/// would type an `a` on every select-all.
+#[test]
+fn a_command_chord_types_nothing_it_reports() {
+    let mut h = UiHarness::with_text(SMALL);
+    let mut buf = String::from("seed");
+    let id = WidgetId::from_hash("editor");
+
+    h.frame(editor_only(&mut buf));
+    h.click_at(Vec2::new(50.0, 20.0));
+    assert_eq!(h.focused_id(), Some(id));
+
+    h.set_modifiers(Modifiers {
+        ctrl: true,
+        ..Modifiers::NONE
+    });
+    h.on_input(InputEvent::KeyDown {
+        key: Key::Char('a'),
+        repeat: false,
+        physical: Key::Char('a'),
+        text: KeyText::from_char('a'),
+    });
+    h.frame(editor_only(&mut buf));
+    assert_eq!(buf, "seed", "the chord selected, and typed nothing");
 }
 
 #[test]

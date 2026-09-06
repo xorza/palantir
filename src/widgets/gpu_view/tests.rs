@@ -24,6 +24,9 @@ impl GpuPaint for NoopPaint {
     fn paint(&mut self, _ctx: &mut GpuFrameCtx<'_>) {}
 }
 
+/// The renderer an application keeps and lends back every frame — one
+/// handle, because a fresh one is a fresh view and takes a target of its
+/// own (see `GpuViews::record`).
 fn scene() -> Rc<RefCell<NoopPaint>> {
     Rc::new(RefCell::new(NoopPaint))
 }
@@ -129,9 +132,10 @@ fn senses_click_when_opted_in() {
     let id = WidgetId::from_hash("gpu_view_hitbox");
     let surface = UVec2::new(200, 100);
     let mut h = UiHarness::new(surface);
+    let scene = scene();
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
-            GpuView::new(&scene())
+            GpuView::new(&scene)
                 .id(id)
                 .sense(Sense::CLICK)
                 .size((Sizing::fixed(100.0), Sizing::fixed(50.0)))
@@ -142,7 +146,7 @@ fn senses_click_when_opted_in() {
     let mut clicked = false;
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
-            clicked |= GpuView::new(&scene())
+            clicked |= GpuView::new(&scene)
                 .id(id)
                 .sense(Sense::CLICK)
                 .size((Sizing::fixed(100.0), Sizing::fixed(50.0)))

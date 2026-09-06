@@ -8,6 +8,7 @@ use crate::common::platform::{PLATFORM, Platform};
 use crate::display;
 use crate::input::input_event::InputEvent;
 use crate::input::keyboard::key::Key;
+use crate::input::keyboard::key_text::KeyText;
 use crate::input::keyboard::modifiers::Modifiers;
 use crate::input::pointer::PointerButton;
 
@@ -89,6 +90,12 @@ pub(super) fn translate(
                 key: logical_key(&event.logical_key),
                 repeat: event.repeat,
                 physical: physical_key(&event.physical_key),
+                // The platform's own resolution of layout, dead keys and
+                // modifiers — the only thing that knows what this press
+                // writes. `logical_key` names the key for chords and
+                // cannot answer for it: it holds one character where a
+                // dead-key fallback produces two.
+                text: event.text.as_deref().map_or(KeyText::EMPTY, KeyText::new),
             });
         }
         WindowEvent::ModifiersChanged(modifiers) => {
@@ -156,10 +163,10 @@ macro_rules! shared_key {
 ///
 /// A `Character` payload is a string because a dead-key sequence can
 /// resolve to several chars, and only the first is taken: [`Key`] names a
-/// *key*, and a multi-char resolution is text rather than a key. The rest
-/// is dropped, because treating the run as a chord would bind shortcuts
-/// to whichever char happened to come first. A host that wants the whole
-/// resolution wants IME, which this one does not enable.
+/// *key*, and treating a whole run as a chord would bind shortcuts to
+/// whichever char happened to come first. Nothing is lost by it — the
+/// resolution the user meant to write travels beside the key, in the
+/// event's `text`.
 fn logical_key(key: &WinitKey) -> Key {
     match key {
         WinitKey::Named(named) => shared_key!(NamedKey, named).unwrap_or(Key::Other),

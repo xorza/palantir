@@ -1,6 +1,7 @@
 //! Keyboard event vocabulary, sized for what `TextEdit` asks of it: a
 //! small [`Key`](crate::Key) enum covering navigation/editing keys plus
-//! printable characters, a [`Modifiers`](crate::Modifiers) struct, and a
+//! printable characters, a [`Modifiers`](crate::Modifiers) struct, the
+//! [`KeyText`](crate::KeyText) a press produced, and a
 //! [`KeyPress`](crate::KeyPress) pairing them — all `Copy`, so
 //! [`InputEvent`](crate::input::input_event::InputEvent) is too.
 //!
@@ -10,4 +11,5 @@
 
 pub(crate) mod key;
 pub(crate) mod key_press;
+pub(crate) mod key_text;
 pub(crate) mod modifiers;

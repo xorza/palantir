@@ -254,6 +254,7 @@ pub use input::input_event::InputEvent;
 pub use input::key_class::{KeyClass, KeyFilter};
 pub use input::keyboard::key::Key;
 pub use input::keyboard::key_press::KeyPress;
+pub use input::keyboard::key_text::KeyText;
 pub use input::keyboard::modifiers::Modifiers;
 pub use input::pointer::{PointerButton, PointerEvent};
 pub use input::policy::{FocusPolicy, InputPolicy};

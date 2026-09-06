@@ -79,6 +79,16 @@ impl KeyClass {
     /// compile until it declares which class it belongs to, rather than
     /// falling into a catch-all and quietly becoming an accelerator.
     pub fn of(press: KeyPress) -> Self {
+        // A press that produced text *is* text, whatever its key is
+        // called: a layout can put a character on a key this vocabulary
+        // has no name for, and a dead-key sequence resolves to text the
+        // key that carried it never held. No named key reaches here with
+        // text — what Enter, Tab and Escape produce is a control
+        // character, which never enters a `KeyText` — so the match below
+        // keeps answering for every key that typed nothing.
+        if !press.mods.any_command() && !press.text.is_empty() {
+            return Self::Text;
+        }
         match press.key {
             Key::Escape => Self::Escape,
             Key::ArrowLeft
@@ -192,6 +202,7 @@ mod tests {
     use crate::input::key_class::{KeyClass, KeyFilter};
     use crate::input::keyboard::key::Key;
     use crate::input::keyboard::key_press::KeyPress;
+    use crate::input::keyboard::key_text::KeyText;
     use crate::input::keyboard::modifiers::Modifiers;
 
     fn press(key: Key, mods: Modifiers) -> KeyPress {
@@ -200,6 +211,10 @@ mod tests {
             mods,
             repeat: false,
             physical: key,
+            text: match key {
+                Key::Char(c) => KeyText::from_char(c),
+                _ => KeyText::EMPTY,
+            },
         }
     }
 

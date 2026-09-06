@@ -3,6 +3,7 @@
 use crate::Ui;
 use crate::input::input_event::InputEvent;
 use crate::input::keyboard::key::Key;
+use crate::input::keyboard::key_text::KeyText;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::harness::UiHarness;
@@ -272,11 +273,17 @@ fn click_to_edit_reports_focus_on_the_same_frame() {
     );
 }
 
+/// One key press, reported the way a window reports one: a printable
+/// key carries the text it produced, and a named key carries none.
 fn key(ui: &mut Ui, k: Key) {
     ui.inject_input(InputEvent::KeyDown {
         key: k,
         repeat: false,
         physical: Key::Other,
+        text: match k {
+            Key::Char(c) => KeyText::from_char(c),
+            _ => KeyText::EMPTY,
+        },
     });
 }
 
