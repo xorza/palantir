@@ -72,8 +72,42 @@ fn vs(@builtin(vertex_index) vi: u32, in: VsIn) -> VsOut {
 // `textureSample` derives is always 0 anyway, and taking it explicitly frees
 // the tap loop below from WGSL's uniform-control-flow rule — `flags` is
 // flat-interpolated per instance, so *nothing* downstream of it is uniform.
-fn tap(uv: vec2<f32>) -> vec4<f32> {
-    return textureSampleLevel(tex, tex_smp, uv, 0.0);
+//
+// A tiled draw filters itself, because `ClampToEdge` cannot express a
+// repeat and the sampler is shared with the gradient LUT. Wrapping the
+// coordinate is not enough: the filter reads the *neighbour* too, and at
+// a seam that neighbour clamps to the edge texel instead of continuing
+// into the next repeat — so the last half-texel of every tile blends
+// with itself. The wrap has to reach each fetched texel, which only a
+// hand-written filter can do. Four point fetches instead of one bilinear,
+// on the tiled path alone.
+fn tap(uv: vec2<f32>, tiled: bool) -> vec4<f32> {
+    if (!tiled) {
+        return textureSampleLevel(tex, tex_smp, uv, 0.0);
+    }
+    let dims = vec2<i32>(textureDimensions(tex));
+    // Texel space as the sampler sees it: uv `(i + 0.5) / n` is the centre
+    // of texel `i`, so the half-texel comes off before the floor.
+    let t = fract(uv) * vec2<f32>(dims) - 0.5;
+    let base = floor(t);
+    let f = t - base;
+    let i0 = vec2<i32>(base);
+    let lo = vec2<i32>(wrap_texel(i0.x, dims.x), wrap_texel(i0.y, dims.y));
+    let hi = vec2<i32>(wrap_texel(i0.x + 1, dims.x), wrap_texel(i0.y + 1, dims.y));
+    let c00 = textureLoad(tex, lo, 0);
+    let c10 = textureLoad(tex, vec2<i32>(hi.x, lo.y), 0);
+    let c01 = textureLoad(tex, vec2<i32>(lo.x, hi.y), 0);
+    let c11 = textureLoad(tex, hi, 0);
+    // The weights are `f32` here rather than the fixed-point the sampler
+    // interpolates with, which is the one thing this path gains for its
+    // extra fetches.
+    return mix(mix(c00, c10, f.x), mix(c01, c11, f.x), f.y);
+}
+
+// `i` brought into `[0, n)`. WGSL's `%` keeps the sign of the dividend,
+// so a texel one to the left of the tile needs the extra turn.
+fn wrap_texel(i: i32, n: i32) -> i32 {
+    return ((i % n) + n) % n;
 }
 
 // A grid of taps tiling the fragment's source footprint — the parallelogram
@@ -91,11 +125,11 @@ fn footprint_taps(
     flags: u32,
 ) -> vec4<f32> {
     let peak = (flags & FLAG_TAPS_PEAK) != 0u;
-    // A tiled draw wraps its base UV in `fs`, but the taps step *off* that UV
-    // and can leave [0,1) on their own — where `ClampToEdge` would smear the
-    // edge texel across every tile seam instead of continuing into the next
-    // repeat. Same `fract`, same reason, and gated the same way: a Cover crop
-    // must not have its far edge wrapped.
+    // The taps step *off* the base UV by up to half the footprint, so a
+    // tiled draw's leave [0,1) on their own and land in a neighbouring
+    // repeat. `tap` wraps each fetch, so that is where they read — and
+    // the flag has to reach it, since a Cover crop must not have its far
+    // edge taken round to its near one.
     let tiled = (flags & FLAG_TILED) != 0u;
     // Each tap spans 2 texels, so a footprint that wide needs half as many.
     let n = clamp(i32(ceil(footprint * 0.5)), 1, MAX_TAPS_PER_AXIS);
@@ -116,7 +150,7 @@ fn footprint_taps(
             // and ranking by straight luma lets a near-invisible bright
             // texel outrank a solid one. Each tap already carries its own
             // coverage as its weight.
-            let s = tap(select(p, fract(p), tiled));
+            let s = tap(p, tiled);
             sum += s;
             // Branchless so both modes cost the same walk; the mode picks a
             // result at the end rather than a path here. The whole tap wins
@@ -141,13 +175,18 @@ fn fs(in: VsOut) -> @location(0) vec4<f32> {
     let uv_dx = dpdx(in.uv);
     let uv_dy = dpdy(in.uv);
 
-    // `ImageFit::Tile` ships UVs spanning [0, repeats]; wrap into the
-    // [0,1) tile with `fract` (the ClampToEdge sampler would otherwise
-    // clamp). Per-fragment, so each repeat samples the full tile. Other
-    // fits keep UVs in [0,1] and sample directly — `fract(1.0)=0.0`
-    // would wrap a Cover crop's far edge, so it must stay gated.
+    // `ImageFit::Tile` ships UVs spanning [0, repeats]; `tap` wraps into
+    // the [0,1) tile per fetched texel, so each repeat samples the full
+    // tile and a seam blends across it. Other fits keep UVs in [0,1] and
+    // sample directly — a wrap would take a Cover crop's far edge round
+    // to its near one, so it must stay gated.
+    //
+    // Wrapped here as well, though `tap` would: the nearest snap below
+    // works in texel space, and a UV twenty repeats along has that many
+    // fewer bits left for the half-texel it adds.
+    let tiled = (in.flags & FLAG_TILED) != 0u;
     var uv = in.uv;
-    if ((in.flags & FLAG_TILED) != 0u) {
+    if (tiled) {
         uv = fract(in.uv);
     }
 
@@ -162,7 +201,7 @@ fn fs(in: VsOut) -> @location(0) vec4<f32> {
     let filtered = in.flags
         & (FLAG_MIN_NEAREST | FLAG_MAG_NEAREST | FLAG_TAPS_MEAN | FLAG_TAPS_PEAK);
     if (filtered == 0u) {
-        s = tap(uv);
+        s = tap(uv, tiled);
     } else {
         let texel_dx = uv_dx * dims;
         let texel_dy = uv_dy * dims;
@@ -187,7 +226,7 @@ fn fs(in: VsOut) -> @location(0) vec4<f32> {
         if (taps != 0u && footprint_squared > MIN_TAPPED_FOOTPRINT_SQUARED) {
             s = footprint_taps(uv, uv_dx, uv_dy, sqrt(footprint_squared), in.flags);
         } else {
-            s = tap(uv);
+            s = tap(uv, tiled);
         }
     }
 
