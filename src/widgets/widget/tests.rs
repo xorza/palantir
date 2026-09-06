@@ -118,15 +118,18 @@ fn builder_setters_cover_the_complete_external_node_surface() {
         .clip(ClipMode::None);
     widget.node.transform = transform;
 
+    // Read back through the `authored_*` surface rather than the node's
+    // private fields: a widget written outside this crate has only these,
+    // so the assertions and that widget see the same setters land.
     assert!(matches!(widget.ident, Ident::Verbatim(value) if value == id));
-    assert_eq!(widget.node.size, Some(size));
-    assert_eq!(widget.node.min_size, Some(min_size));
-    assert_eq!(widget.node.max_size, Some(max_size));
-    assert_eq!(widget.node.padding, Some(padding));
-    assert_eq!(widget.node.margin, Some(margin));
-    assert_eq!(widget.node.position, position);
+    assert_eq!(widget.authored_size(), Some(size));
+    assert_eq!(widget.authored_min_size(), Some(min_size));
+    assert_eq!(widget.authored_max_size(), Some(max_size));
+    assert_eq!(widget.authored_padding(), Some(padding));
+    assert_eq!(widget.authored_margin(), Some(margin));
+    assert_eq!(widget.authored_position(), position);
     assert_eq!(
-        widget.node.grid,
+        widget.authored_grid_cell(),
         GridCell {
             row: 2,
             col: 3,
@@ -137,14 +140,42 @@ fn builder_setters_cover_the_complete_external_node_surface() {
     assert_eq!(widget.authored_gap(), Some(6.0));
     assert_eq!(widget.authored_line_gap(), Some(7.0));
     assert_eq!(widget.authored_justify(), Justify::SpaceBetween);
-    assert_eq!(widget.node.align, align);
+    assert_eq!(widget.authored_align(), align);
     assert_eq!(widget.authored_child_align(), child_align);
     assert_eq!(widget.authored_sense(), sense);
     assert!(!widget.authored_disabled());
     assert!(widget.authored_focusable());
-    assert_eq!(widget.node.visibility, Visibility::Hidden);
-    assert_eq!(widget.node.clip, Some(ClipMode::None));
-    assert_eq!(widget.node.transform, transform);
+    assert_eq!(widget.authored_visibility(), Visibility::Hidden);
+    assert_eq!(widget.authored_clip(), Some(ClipMode::None));
+    assert_eq!(widget.authored_transform(), transform);
+}
+
+/// The other half of [`builder_setters_cover_the_complete_external_node_surface`]:
+/// every reader answers the untouched default on a widget nothing
+/// configured, so none of them can be returning the value above by
+/// accident.
+#[test]
+fn authored_readers_answer_the_defaults_before_anything_is_set() {
+    let widget = Widget::hstack();
+
+    assert_eq!(widget.authored_size(), None);
+    assert_eq!(widget.authored_min_size(), None);
+    assert_eq!(widget.authored_max_size(), None);
+    assert_eq!(widget.authored_padding(), None);
+    assert_eq!(widget.authored_margin(), None);
+    assert_eq!(widget.authored_clip(), None);
+    assert_eq!(widget.authored_gap(), None);
+    assert_eq!(widget.authored_line_gap(), None);
+    assert_eq!(widget.authored_position(), Vec2::ZERO);
+    assert_eq!(widget.authored_grid_cell(), GridCell::default());
+    assert_eq!(widget.authored_justify(), Justify::Start);
+    assert_eq!(widget.authored_align(), Align::default());
+    assert_eq!(widget.authored_child_align(), Align::default());
+    assert_eq!(widget.authored_sense(), Sense::NONE);
+    assert!(!widget.authored_disabled());
+    assert!(!widget.authored_focusable());
+    assert_eq!(widget.authored_visibility(), Visibility::Visible);
+    assert_eq!(widget.authored_transform(), TranslateScale::IDENTITY);
 }
 
 #[test]
