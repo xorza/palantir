@@ -153,7 +153,7 @@ microseconds, so UI behaviour stays a plain `cargo test`.
 
 ```toml
 [dev-dependencies]
-palantir = { version = "0.4", features = ["internals"] }
+palantir = { version = "*", features = ["internals"] }
 ```
 
 ```rust,ignore
