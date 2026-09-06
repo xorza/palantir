@@ -9,8 +9,8 @@ use crate::renderer::frontend::Frontend;
 use crate::renderer::render_plan::RenderPlan;
 use crate::scene::damage::Damage;
 use crate::ui::harness::UiHarness;
+use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
-use crate::widgets::frame::Frame;
 use criterion::{BenchmarkId, Criterion, Throughput};
 use glam::UVec2;
 use std::hint::black_box;
@@ -71,7 +71,7 @@ impl GradientBench {
         let background = fill_case.background();
         let report = self.harness.at(self.start.elapsed()).frame(|ui| {
             for row in 0..ROWS {
-                Frame::new()
+                Block::new()
                     .id_salt(row)
                     .size((8.0, 8.0))
                     .background(background.clone())

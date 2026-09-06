@@ -10,7 +10,7 @@ use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
-use crate::widgets::{button::Button, frame::Frame, panel::Panel};
+use crate::widgets::{block::Block, button::Button, panel::Panel};
 use glam::{UVec2, Vec2};
 
 /// `Surface::apply_to` (called by `Panel::show`) writes the clip bit
@@ -214,7 +214,7 @@ fn panel_with_fill_child_grows_to_panel_inner() {
                     .size((Sizing::fixed(200.0), Sizing::fixed(100.0)))
                     .padding(10.0)
                     .show(ui, |ui| {
-                        Frame::new()
+                        Block::new()
                             .id(WidgetId::from_hash("filler"))
                             .size((Sizing::FILL, Sizing::FILL))
                             .background(Background {
@@ -254,7 +254,7 @@ fn child_inside_disabled_panel_sees_disabled_at_record_time() {
             .disabled(true)
             .show(ui, |ui| {
                 let observed = ui.response_for(child_id);
-                Frame::new().id(child_id).size(10.0).show(ui);
+                Block::new().id(child_id).size(10.0).show(ui);
                 observed
             })
             .inner
@@ -310,13 +310,13 @@ fn canvas_places_children_at_absolute_positions_and_hugs_bbox() {
             .show(ui, |ui| {
                 let canvas = Panel::canvas().id(WidgetId::from_hash("c")).show(ui, |ui| {
                     [
-                        Frame::new()
+                        Block::new()
                             .id(WidgetId::from_hash("a"))
                             .size((Sizing::fixed(40.0), Sizing::fixed(20.0)))
                             .position(Vec2::new(10.0, 5.0))
                             .show(ui)
                             .node(),
-                        Frame::new()
+                        Block::new()
                             .id(WidgetId::from_hash("b"))
                             .size((Sizing::fixed(30.0), Sizing::fixed(60.0)))
                             .position(Vec2::new(80.0, 40.0))
@@ -354,7 +354,7 @@ fn zstack_layers_children_without_painting_background() {
                     .id(WidgetId::from_hash("layered"))
                     .show(ui, |ui| {
                         [
-                            Frame::new()
+                            Block::new()
                                 .id(WidgetId::from_hash("bg"))
                                 .size((Sizing::fixed(120.0), Sizing::fixed(80.0)))
                                 .background(Background {
@@ -411,7 +411,7 @@ fn zstack_aligns_child_per_axis() {
                         .id(WidgetId::from_hash("box"))
                         .size((Sizing::fixed(200.0), Sizing::fixed(100.0)))
                         .show(ui, |ui| {
-                            Frame::new()
+                            Block::new()
                                 .id(WidgetId::from_hash("c"))
                                 .size((Sizing::fixed(40.0), Sizing::fixed(20.0)))
                                 .align(*align)

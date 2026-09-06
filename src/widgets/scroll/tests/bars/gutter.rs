@@ -5,8 +5,8 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::harness::UiHarness;
+use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
-use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::scroll::tests::bars::support::{record_two_frames, theme, thumb_rects};
@@ -27,7 +27,7 @@ fn vertical_overflow_reserves_bar_thickness_on_inner() {
                     .id(WidgetId::from_hash("scroll"))
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        Frame::new()
+                        Block::new()
                             .id(WidgetId::from_hash("tall"))
                             .size((Sizing::fixed(180.0), Sizing::fixed(800.0)))
                             .show(ui);
@@ -57,7 +57,7 @@ fn user_padding_is_preserved_when_bar_reserves() {
                     .padding(16.0)
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        Frame::new()
+                        Block::new()
                             .id(WidgetId::from_hash("tall"))
                             .size((Sizing::fixed(100.0), Sizing::fixed(800.0)))
                             .show(ui);
@@ -86,7 +86,7 @@ fn vertical_bar_overlay_rect_lands_in_right_padding_strip() {
                     .padding(16.0)
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        Frame::new()
+                        Block::new()
                             .id(WidgetId::from_hash("tall"))
                             .size((Sizing::fixed(100.0), Sizing::fixed(800.0)))
                             .show(ui);
@@ -131,7 +131,7 @@ fn bar_reservation_stays_constant_across_overflow_toggle() {
                     .id(WidgetId::from_hash("scroll"))
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        Frame::new()
+                        Block::new()
                             .id(WidgetId::from_hash("body"))
                             .size((Sizing::fixed(180.0), Sizing::fixed(content_h)))
                             .show(ui);
@@ -178,7 +178,7 @@ fn overlay_mode_skips_gutter_reservation() {
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .bar_mode(BarMode::Overlay)
                     .show(ui, |ui| {
-                        Frame::new()
+                        Block::new()
                             .id(WidgetId::from_hash("tall"))
                             .size((Sizing::fixed(180.0), Sizing::fixed(800.0)))
                             .show(ui);

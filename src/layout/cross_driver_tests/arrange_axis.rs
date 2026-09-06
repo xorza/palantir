@@ -1,13 +1,13 @@
 use crate::Ui;
 use crate::layout::axis::Axis;
 use crate::layout::types::align::{Align, HAlign, VAlign};
-use crate::layout::types::sizing::{Sizes, Sizing};
+use crate::layout::types::sizing::{SizeSpec, Sizing};
 use crate::layout::types::track::Track;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::harness::UiHarness;
+use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
-use crate::widgets::frame::Frame;
 use crate::widgets::grid::Grid;
 use crate::widgets::panel::Panel;
 use glam::UVec2;
@@ -49,15 +49,15 @@ struct ArrangeCase {
     align: Align,
 }
 
-fn axis_sizes(axis: Axis, sizing: Sizing) -> Sizes {
+fn axis_sizes(axis: Axis, sizing: Sizing) -> SizeSpec {
     match axis {
-        Axis::X => Sizes::new(sizing, Sizing::fixed(10.0)),
-        Axis::Y => Sizes::new(Sizing::fixed(10.0), sizing),
+        Axis::X => SizeSpec::new(sizing, Sizing::fixed(10.0)),
+        Axis::Y => SizeSpec::new(Sizing::fixed(10.0), sizing),
     }
 }
 
 fn add_child(ui: &mut Ui, id: WidgetId, case: ArrangeCase) {
-    Frame::new()
+    Block::new()
         .id(id)
         .size(axis_sizes(case.axis, case.sizing))
         .min_size(case.axis.compose_size(case.min, 0.0))
@@ -101,7 +101,7 @@ fn arrange_with(driver: Driver, case: ArrangeCase) -> Rect {
                 .size(parent_size)
                 .child_align(Align::STRETCH)
                 .show(ui, |ui| {
-                    Frame::new()
+                    Block::new()
                         .auto_id()
                         .size(axis_sizes(case.axis, Sizing::fixed(case.slot)))
                         .show(ui);

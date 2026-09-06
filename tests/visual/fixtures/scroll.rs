@@ -4,7 +4,7 @@
 
 use glam::UVec2;
 use palantir::{
-    Background, Configure, Corners, Frame, Panel, RgbaF32, Scroll, ScrollbarTheme, Sizing,
+    Background, Block, Configure, Corners, Panel, RgbaF32, Scroll, ScrollbarTheme, Sizing,
 };
 
 use crate::fixtures::DARK_BG;
@@ -47,7 +47,7 @@ fn scroll_vertical_overflow_matches_golden() {
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui, |ui| {
                         for i in 0..30u32 {
-                            Frame::new()
+                            Block::new()
                                 .id_salt(("row", i))
                                 .background(Background {
                                     fill: ROW.into(),
@@ -83,7 +83,7 @@ fn scroll_horizontal_overflow_matches_golden() {
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui, |ui| {
                         for i in 0..30u32 {
-                            Frame::new()
+                            Block::new()
                                 .id_salt(("col", i))
                                 .background(Background {
                                     fill: ROW.into(),
@@ -118,7 +118,7 @@ fn scroll_xy_overflow_matches_golden() {
                     .id_salt("scroll")
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui, |ui| {
-                        Frame::new()
+                        Block::new()
                             .id_salt("big")
                             .background(Background {
                                 fill: ROW.into(),
@@ -152,7 +152,7 @@ fn scroll_no_bar_when_content_fits_matches_golden() {
                     .id_salt("scroll")
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui, |ui| {
-                        Frame::new()
+                        Block::new()
                             .id_salt("short")
                             .background(Background {
                                 fill: ROW.into(),
@@ -190,7 +190,7 @@ fn scroll_with_user_padding_matches_golden() {
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui, |ui| {
                         for i in 0..20u32 {
-                            Frame::new()
+                            Block::new()
                                 .id_salt(("row", i))
                                 .background(Background {
                                     fill: ROW.into(),
@@ -246,7 +246,7 @@ fn scroll_warm_cache_matches_cold_encoded_second_frame() {
                                 .size((Sizing::FILL, Sizing::FILL))
                                 .show(ui, |ui| {
                                     for i in 0..25u32 {
-                                        Frame::new()
+                                        Block::new()
                                             .id_salt((tag, "row", i))
                                             .background(Background {
                                                 fill: ROW.into(),

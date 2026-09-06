@@ -13,7 +13,7 @@ use glam::{UVec2, Vec2};
 #[test]
 fn hits_track_only_sensing_or_focusable_rows_in_paint_order() {
     use crate::input::sense::Sense;
-    use crate::widgets::frame::Frame;
+    use crate::widgets::block::Block;
 
     let inert = WidgetId::from_hash("inert");
     let hover = WidgetId::from_hash("hover");
@@ -26,18 +26,18 @@ fn hits_track_only_sensing_or_focusable_rows_in_paint_order() {
             .auto_id()
             .size(Sizing::fixed(100.0))
             .show(ui, |ui| {
-                Frame::new().id(inert).size(Sizing::FILL).show(ui);
-                Frame::new()
+                Block::new().id(inert).size(Sizing::FILL).show(ui);
+                Block::new()
                     .id(hover)
                     .size(Sizing::FILL)
                     .sense(Sense::HOVER)
                     .show(ui);
-                Frame::new()
+                Block::new()
                     .id(focus)
                     .size(Sizing::FILL)
                     .focusable(true)
                     .show(ui);
-                Frame::new()
+                Block::new()
                     .id(disabled)
                     .size(Sizing::FILL)
                     .sense(Sense::CLICK)
@@ -46,7 +46,7 @@ fn hits_track_only_sensing_or_focusable_rows_in_paint_order() {
                     .show(ui);
             });
         ui.layer(Layer::Popup).show(|ui| {
-            Frame::new()
+            Block::new()
                 .id(popup_scroll)
                 .size(Sizing::FILL)
                 .sense(Sense::SCROLL)
@@ -88,7 +88,7 @@ fn hits_track_only_sensing_or_focusable_rows_in_paint_order() {
     assert_eq!(targets.pinch, None);
 
     h.frame(|ui| {
-        Frame::new().id(inert).size(Sizing::FILL).show(ui);
+        Block::new().id(inert).size(Sizing::FILL).show(ui);
     });
     assert_eq!(h.ui.cascade().hits.len(), 0);
     assert_eq!(

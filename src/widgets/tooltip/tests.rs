@@ -112,7 +112,7 @@ fn tooltip_breaks_long_tokens_inside_bubble() {
         .first()
         .expect("tooltip text shaped");
     assert!(
-        shaped.measured.w <= bubble.size.w - ui.ui.theme().tooltip.padding.horizontal(),
+        shaped.measured.w <= bubble.size.w - ui.ui.theme().tooltip.padding.horizontal_sum(),
         "text width {} must fit inside bubble width {}",
         shaped.measured.w,
         bubble.size.w,
@@ -569,12 +569,12 @@ fn layer_below_current_scope_panics() {
 }
 
 /// A disabled trigger is exactly when the user most wants to be told
-/// *why*, so `show_when_disabled` has to reach one — which needs the
+/// *why*, so `when_disabled` has to reach one — which needs the
 /// pointer to still be observed over a widget that can do nothing with
 /// it. The flag stays off by default, so the same fixture without it
 /// shows nothing.
 #[test]
-fn show_when_disabled_reaches_a_disabled_trigger() {
+fn when_disabled_reaches_a_disabled_trigger() {
     let visible_after_hover = |allow: bool| {
         let mut h = UiHarness::new(SURFACE);
         let trigger_id = WidgetId::from_hash("disabled-trigger");
@@ -593,7 +593,7 @@ fn show_when_disabled_reaches_a_disabled_trigger() {
                         assert!(r.state.disabled, "fixture: the trigger is disabled");
                         Tooltip::on(&r)
                             .label("nothing to save yet")
-                            .show_when_disabled(allow)
+                            .when_disabled(allow)
                             .delay(Duration::from_millis(300))
                             .show(ui);
                     });

@@ -5,8 +5,8 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::harness::UiHarness;
+use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
-use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::scroll::state::ScrollState;
@@ -31,7 +31,7 @@ fn pointer_zoom_pivot_is_scale_invariant() {
                         .zoom()
                         .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                         .show(ui, |ui| {
-                            Frame::new()
+                            Block::new()
                                 .id(WidgetId::from_hash("scaled-scroll-content"))
                                 .size((Sizing::fixed(400.0), Sizing::fixed(400.0)))
                                 .show(ui);

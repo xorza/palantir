@@ -18,6 +18,9 @@
 //!
 //! # Where to start
 //!
+//! - [`prelude`] is the one import an application screen needs — the common
+//!   widgets, the layout vocabulary, and the [`Configure`] trait that carries
+//!   the setters every widget shares.
 //! - [`App`] is the lifecycle trait your application implements. Its
 //!   [`record`](App::record) runs every frame and describes the whole UI from
 //!   scratch — there is no retained widget tree to mutate.
@@ -34,7 +37,8 @@
 //!   (h/v/z-stack and canvas) and [`Grid`].
 //! - [`Configure`] carries the settings every node shares — identity, size,
 //!   padding, margin, alignment, visibility — so the same builder methods work
-//!   on any widget.
+//!   on any widget. It is a trait, so it has to be in scope; the [`prelude`]
+//!   is the usual way it gets there.
 //! - [`Theme`] is the one serializable style tree; per-widget sub-themes hang
 //!   off it.
 //! - [`GpuView`] hands a widget-sized `wgpu` render target to your own
@@ -171,12 +175,6 @@ pub mod internals {
     /// only under the feature — never in a plain `cargo test` build.
     #[cfg(feature = "internals")]
     pub use crate::host::test_gpu::{HeadlessTestGpuLease, headless_test_gpu};
-    /// The event a host feeds in. [`UiHarness`] is the only thing outside
-    /// this crate that can pass one — `Ui::on_input` is crate-private.
-    pub use crate::input::input_event::InputEvent;
-    /// The verdict [`UiHarness::on_input`] reads back, for a suite asserting
-    /// on what an event was allowed to change.
-    pub use crate::input::response::input_delta::InputDelta;
     #[cfg(feature = "internals")]
     pub use crate::text::internals::TEXT_SCALE_STEP;
     pub use crate::ui::harness::UiHarness;
@@ -223,6 +221,40 @@ pub use wgpu;
 macro_rules! fmt {
     ($ui:expr, $($args:tt)*) => {
         $ui.fmt(::core::format_args!($($args)*))
+    };
+}
+
+/// What an application screen types, in one import.
+///
+/// **Reach for this first.** [`Configure`] carries the setters every widget
+/// shares — `.size()`, `.padding()`, `.gap()`, `.align()` — and it is a
+/// trait, so without it in scope `Button::new().size(..)` does not compile.
+/// A prelude is how you never have to know that.
+///
+/// ```
+/// use palantir::prelude::*;
+///
+/// fn screen(ui: &mut Ui) {
+///     Panel::vstack().gap(8.0).show(ui, |ui| {
+///         Text::new("hello").show(ui);
+///         Button::new().label("go").show(ui);
+///     });
+/// }
+/// ```
+///
+/// It holds the common case and not the whole crate: the theme's
+/// per-widget bundles, the docking model, the hosts, the colour models and
+/// the gradient builders stay at the crate root, and the widget-authoring
+/// half stays in [`widget`]. Import those by name when you need them.
+pub mod prelude {
+    pub use crate::{
+        Align, App, Axis, Background, Block, Brush, Button, Checkbox, ComboBox, Configure,
+        ContextMenu, Corners, DragValue, Expander, Grid, GridCell, HAlign, InnerResponse, Justify,
+        Key, KeyPress, MenuItem, Modal, Modifiers, OverlayResponse, Panel, PointerButton, Popup,
+        ProgressBar, RadioButton, Rect, Response, RgbaF32, Scroll, SelectResponse, Sense,
+        Separator, Shadow, Shortcut, Size, SizeSpec, Sizing, Slider, Spacing, Spinner, Splitter,
+        Stroke, Switch, TabbedView, Text, TextEdit, TextStyle, Theme, Tooltip, Track, UVec2, Ui,
+        VAlign, ValueResponse, Vec2, WidgetId, WindowToken, fmt,
     };
 }
 
@@ -278,6 +310,7 @@ pub mod widget {
     pub use crate::text::run::TextRun;
     pub use crate::widgets::configure::ConfigureWidget;
     pub use crate::widgets::configure::ThemeDefaults;
+    pub use crate::widgets::theme::text_style::TextStyleOverrides;
     pub use crate::widgets::widget::Widget;
     pub use palantir_anim_derive::Animatable;
 }
@@ -320,6 +353,10 @@ pub use host::winit::{
     error::{HostDisconnected, WinitHostError},
     handle::{HostHandle, UserEvent},
 };
+/// The event a host feeds a `Ui`. Toolkit-independent, so a host of your
+/// own translates its platform's events into these — see
+/// [`OffscreenHost::on_input`].
+pub use input::input_event::InputEvent;
 pub use input::key_class::{KeyClass, KeyFilter};
 pub use input::keyboard::key::Key;
 pub use input::keyboard::key_press::KeyPress;
@@ -330,6 +367,9 @@ pub use input::policy::{FocusPolicy, InputPolicy};
 pub use input::response::button_phase::ButtonPhase;
 pub use input::response::button_state::ButtonState;
 pub use input::response::drag::Drag;
+/// The verdict [`OffscreenHost::on_input`] reads back, so a host knows
+/// whether an event asks for a repaint.
+pub use input::response::input_delta::InputDelta;
 pub use input::response::pointer_action::PointerAction;
 pub use input::response::pointer_edge::PointerEdge;
 pub use input::response::response_state::ResponseState;
@@ -344,7 +384,7 @@ pub use layout::types::anchor::Anchor;
 pub use layout::types::clip_mode::ClipMode;
 pub use layout::types::grid_cell::GridCell;
 pub use layout::types::justify::Justify;
-pub use layout::types::sizing::{Sizes, Sizing};
+pub use layout::types::sizing::{SizeSpec, Sizing};
 pub use layout::types::track::Track;
 pub use primitives::background::Background;
 pub use primitives::brush::gradient::conic_geometry::{
@@ -394,7 +434,7 @@ pub use renderer::gpu_paint::GpuPaint;
 pub use renderer::gpu_paint::gpu_frame_ctx::GpuFrameCtx;
 pub use renderer::gpu_paint::gpu_init_ctx::GpuInitCtx;
 pub use renderer::image_registry::image_handle::ImageHandle;
-pub use renderer::texture_limit::RegisterImageError;
+pub use renderer::texture_limit::ImageLoadError;
 pub use text::error::FontLoadError;
 pub use text::font_family::FontFamily;
 pub use text::font_scope::FontScope;
@@ -406,6 +446,7 @@ pub use text::wrap::TextWrap;
 pub use ui::Ui;
 pub use ui::frame_report::{FramePaint, FrameReport};
 pub use ui::layer_scope::LayerScope;
+pub use widgets::block::Block;
 pub use widgets::button::Button;
 pub use widgets::checkbox::Checkbox;
 pub use widgets::close_handle::CloseHandle;
@@ -433,7 +474,6 @@ pub use widgets::dock::tab_group::{TabGroup, TabGroupId};
 pub use widgets::drag_num::DragNum;
 pub use widgets::drag_value::DragValue;
 pub use widgets::expander::{Expander, ExpanderResponse};
-pub use widgets::frame::Frame;
 pub use widgets::gpu_view::GpuView;
 pub use widgets::grid::Grid;
 pub use widgets::modal::Modal;

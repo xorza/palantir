@@ -16,9 +16,9 @@ use crate::layout::types::sizing::Sizing;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
 use crate::ui::harness::UiHarness;
+use crate::widgets::block::Block;
 use crate::widgets::button::Button;
 use crate::widgets::configure::Configure;
-use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
 use glam::UVec2;
 
@@ -57,7 +57,7 @@ fn fill_siblings_with_unequal_min_content_do_not_overflow_parent() {
                         .size((Sizing::FILL, Sizing::FILL))
                         .padding(12.0)
                         .show(ui, |ui| {
-                            Frame::new()
+                            Block::new()
                                 .id(WidgetId::from_hash("left-bg"))
                                 .size((Sizing::FILL, Sizing::FILL))
                                 .show(ui);
@@ -73,11 +73,11 @@ fn fill_siblings_with_unequal_min_content_do_not_overflow_parent() {
                                 .id(WidgetId::from_hash("right-z"))
                                 .size((Sizing::FILL, Sizing::FILL))
                                 .show(ui, |ui| {
-                                    Frame::new()
+                                    Block::new()
                                         .id(WidgetId::from_hash("right-bg"))
                                         .size((Sizing::FILL, Sizing::FILL))
                                         .show(ui);
-                                    Frame::new()
+                                    Block::new()
                                         .id(WidgetId::from_hash("right-fixed"))
                                         .size((Sizing::fixed(180.0), Sizing::fixed(80.0)))
                                         .show(ui);
@@ -204,7 +204,7 @@ fn second_pass_grow_then_overshoot_does_not_panic() {
                                             .size((Sizing::FILL, Sizing::FILL))
                                             .padding(12.0)
                                             .show(ui, |ui| {
-                                                Frame::new()
+                                                Block::new()
                                                     .id(WidgetId::from_hash((id, "swatch")))
                                                     .size((
                                                         Sizing::fixed(content_w),

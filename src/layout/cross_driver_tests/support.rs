@@ -11,7 +11,7 @@ use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::layout::{LayerLayout, ShapedText};
 use crate::scene::tree::node_id::NodeId;
 use crate::widgets::configure::Configure;
-use crate::widgets::{frame::Frame, grid::Grid, panel::Panel, text::Text};
+use crate::widgets::{block::Block, grid::Grid, panel::Panel, text::Text};
 
 /// Test helper: the leaf's single shaped-text result. Asserts the
 /// span holds exactly one entry — every cross-driver test today builds
@@ -67,7 +67,7 @@ pub(super) fn chat_message(ui: &mut Ui, avatar_w: f32, text: &'static str, text_
             .auto_id()
             .size((Sizing::FILL, Sizing::HUG))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("avatar"))
                     .size((Sizing::fixed(avatar_w), Sizing::fixed(40.0)))
                     .show(ui);

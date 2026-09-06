@@ -13,7 +13,6 @@ use crate::widgets::context_menu::menu_separator::MenuSeparator;
 use crate::widgets::response::Response;
 use crate::widgets::text::Text;
 use crate::widgets::theme::context_menu::menu_item::MenuItemTheme;
-use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::theme::widget_look::theme_slot::ThemeSlot;
 use crate::widgets::widget::Widget;
 
@@ -29,6 +28,7 @@ use crate::widgets::widget::Widget;
 /// close the menu, mirroring native menu behaviour. Disabled rows
 /// don't intercept.
 #[derive(Debug)]
+#[must_use = "a widget records nothing until `show`"]
 pub struct MenuItem<'a> {
     widget: Widget,
     label: TextInput<'a>,
@@ -105,15 +105,9 @@ impl<'a> MenuItem<'a> {
             .apply(ui, &mut self.widget);
         // Already fallen back to `theme.text` by `WidgetLook::animate`.
         let text_style = look.text;
-        // Shortcut hint reads muted — same style as the label but the
-        // theme's `shortcut` color.
-        let shortcut_style = TextStyle {
-            color: shortcut_color,
-            ..text_style
-        };
 
         // Hug+Stretch+SpaceBetween: row hugs content (the default
-        // `Sizes` — respects an explicit `.size(...)`), arrange
+        // `SizeSpec` — respects an explicit `.size(...)`), arrange
         // stretches to widest row, label/shortcut pin to opposite
         // edges. Fill would leak INF.
         self.widget
@@ -150,7 +144,8 @@ impl<'a> MenuItem<'a> {
             if let Some(s) = shortcut_label {
                 Text::new(s)
                     .id(id.with("shortcut"))
-                    .style(&shortcut_style)
+                    .style(&text_style)
+                    .color(shortcut_color)
                     .show(ui);
             }
         };

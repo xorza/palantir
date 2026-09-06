@@ -30,6 +30,7 @@ use crate::widgets::widget::Widget;
 /// four-state pack, check glyph color from `indicator`, geometry from
 /// `box_size` etc.
 #[derive(Debug)]
+#[must_use = "a widget records nothing until `show`"]
 pub struct Checkbox<'a> {
     widget: Widget,
     value: &'a mut bool,
@@ -64,6 +65,16 @@ impl<'a> Checkbox<'a> {
         self
     }
 
+    /// Record the row and hand back its [`Response`].
+    ///
+    /// **`clicked()` is the change edge.** A checkbox flips on every
+    /// activation, so a click always writes the bound `bool` and nothing
+    /// else ever does. That is why this returns a bare `Response` where
+    /// [`RadioButton`](crate::RadioButton) returns a
+    /// [`SelectResponse`](crate::SelectResponse) and
+    /// [`Slider`](crate::Slider) a
+    /// [`ValueResponse`](crate::ValueResponse): those two can be clicked
+    /// without moving their value, and this one cannot.
     pub fn show(mut self, ui: &mut Ui) -> Response<'_> {
         let response = self.widget.response(ui);
 

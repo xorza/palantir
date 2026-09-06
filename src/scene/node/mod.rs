@@ -19,7 +19,7 @@ use crate::layout::types::grid_cell::GridCell;
 use crate::layout::types::justify::Justify;
 use crate::layout::types::layout_mode::{LayoutMode, ScrollSpec};
 use crate::layout::types::limits;
-use crate::layout::types::sizing::Sizes;
+use crate::layout::types::sizing::SizeSpec;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::translate_scale::TranslateScale;
@@ -52,9 +52,9 @@ pub(crate) struct Node {
     /// widgets can layer theme defaults under user intent with a plain
     /// `get_or_insert` / `unwrap_or` — there is no separate provenance
     /// tracking. [`Self::columns`] resolves `None` to the layout
-    /// defaults (`Sizes::default()`, `Size::ZERO`/`Size::INF` bounds,
+    /// defaults (`SizeSpec::default()`, `Size::ZERO`/`Size::INF` bounds,
     /// `Spacing::ZERO`).
-    pub(crate) size: Option<Sizes>,
+    pub(crate) size: Option<SizeSpec>,
     pub(crate) min_size: Option<Size>,
     pub(crate) max_size: Option<Size>,
     pub(crate) padding: Option<Spacing>,

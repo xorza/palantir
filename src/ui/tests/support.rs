@@ -7,8 +7,8 @@ use crate::primitives::{color::RgbaF32, rect::Rect};
 use crate::scene::tree::node_id::NodeId;
 use crate::ui::harness::UiHarness;
 use crate::ui::resources::UiResources;
+use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
-use crate::widgets::frame::Frame;
 use glam::UVec2;
 use std::time::Duration;
 
@@ -23,7 +23,7 @@ pub(super) fn ui_with_shared(shared: &UiResources) -> UiHarness {
 }
 
 pub(super) fn blue_frame(ui: &mut Ui, salt: &'static str) -> NodeId {
-    Frame::new()
+    Block::new()
         .id(WidgetId::from_hash(salt))
         .size(50.0)
         .background(Background {

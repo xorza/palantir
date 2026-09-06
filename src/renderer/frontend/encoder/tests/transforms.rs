@@ -9,7 +9,7 @@ use crate::renderer::frontend::encoder::tests::support::screen_rects_by_fill;
 use crate::scene::shapes::paint::CurveBasis;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
-use crate::widgets::{frame::Frame, panel::Panel};
+use crate::widgets::{block::Block, panel::Panel};
 use glam::{UVec2, Vec2};
 
 /// A spun polyline's payload bbox must be rotation-invariant: the
@@ -197,7 +197,7 @@ fn transformed_panel_applies_transform_to_direct_shapes() {
                             .corners(0.0)
                             .fill(shape_color),
                     );
-                    Frame::new()
+                    Block::new()
                         .id(WidgetId::from_hash("child"))
                         .position((50.0, 60.0))
                         .size(40.0)

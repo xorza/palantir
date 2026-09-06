@@ -77,7 +77,7 @@ pub struct TooltipResponse {
 /// ```
 ///
 /// Tooltips are pointer-driven only and skip recording on disabled
-/// triggers by default. Pass `.show_when_disabled(true)` to opt in for
+/// triggers by default. Pass `.when_disabled(true)` to opt in for
 /// "why is this disabled?" hints.
 ///
 /// Implements [`Configure`](crate::Configure), so the bubble takes `.padding(...)`,
@@ -86,11 +86,12 @@ pub struct TooltipResponse {
 /// no call site of its own worth keying on — but an explicit `.id(...)`
 /// / `.id_salt(...)` wins.
 #[derive(Debug)]
+#[must_use = "a widget records nothing until `show`"]
 pub struct Tooltip<'a> {
     snapshot: &'a ResponseSnapshot,
     label: TextInput<'a>,
     delay: Option<Duration>,
-    show_when_disabled: bool,
+    when_disabled: bool,
     widget: Widget,
     chrome: Option<Background>,
     style: Option<&'a TooltipTheme>,
@@ -110,7 +111,7 @@ impl<'a> Tooltip<'a> {
             snapshot,
             label: TextInput::default(),
             delay: None,
-            show_when_disabled: false,
+            when_disabled: false,
             widget,
             chrome: None,
             style: None,
@@ -144,8 +145,8 @@ impl<'a> Tooltip<'a> {
 
     /// Allow the tooltip to fire on disabled triggers. Off by default —
     /// most disabled tooltips would be UX noise.
-    pub fn show_when_disabled(mut self, yes: bool) -> Self {
-        self.show_when_disabled = yes;
+    pub fn when_disabled(mut self, yes: bool) -> Self {
+        self.when_disabled = yes;
         self
     }
 
@@ -166,16 +167,15 @@ impl<'a> Tooltip<'a> {
 
         // The observation, not the reaction: the two agree for an enabled
         // trigger, and a disabled one is never hovered — which is the
-        // trigger `show_when_disabled` exists for.
+        // trigger `when_disabled` exists for.
         let pointer_over = self.snapshot.state.pointer_over;
         let trigger_disabled = self.snapshot.state.disabled;
         let trigger_rect = self.snapshot.state.rect;
         // An empty label is inactive rather than an empty bubble, and
         // inactive early enough that the hover timer never arms and no
         // wake is queued for a tooltip that could never appear.
-        let active_trigger = pointer_over
-            && !self.label.is_empty()
-            && (!trigger_disabled || self.show_when_disabled);
+        let active_trigger =
+            pointer_over && !self.label.is_empty() && (!trigger_disabled || self.when_disabled);
 
         let now = ui.now();
 

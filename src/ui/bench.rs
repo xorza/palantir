@@ -15,7 +15,7 @@
 //!   `cached_cpu` and ~50% on `resizing_cpu` (multi-MB backbuffer
 //!   reallocations per size) — swamping the palantir cost being measured.
 //! - **`bench_gpu`** (`frame/*_gpu`) — the full public path:
-//!   `OffscreenHost::frame_offscreen` against an offscreen `wgpu::Texture` +
+//!   `OffscreenHost::frame` against an offscreen `wgpu::Texture` +
 //!   `PollType::Wait`. Wall time covers the whole CPU + GPU pipeline;
 //!   dominated by GPU exec on large views. The per-frame `write_stats`
 //!   dump (upload counts, GPU pass timings) lives here since it's
@@ -142,14 +142,14 @@ fn bench_host(g: &BenchGpu) -> OffscreenHost {
     g.offscreen_builder().collect_gpu_stats(true).build()
 }
 
-fn frame_offscreen(
+fn gpu_frame(
     host: &mut OffscreenHost,
     target: &wgpu::Texture,
     system_scale: f32,
     record: impl FnMut(&mut Ui),
 ) {
     let mut app = RecordApp::new(record);
-    host.frame_offscreen(target, system_scale, &mut app);
+    host.frame(target, system_scale, &mut app);
 }
 
 /// Deviceless CPU-pipeline harness: a bare `Ui` (bundled-font shaper)
@@ -316,7 +316,7 @@ fn gpu_cached(group: &mut BenchmarkGroup<'_, WallTime>, surface: &Surface) {
     let target = gpu().target(surface.size, "palantir.frame_bench.cached");
     let scale = surface.scale;
     run_gpu_arm(group, "cached_gpu", |host, state| {
-        frame_offscreen(host, &target, scale, |ui| state.render(BENCH_SCALE, ui));
+        gpu_frame(host, &target, scale, |ui| state.render(BENCH_SCALE, ui));
         gpu().wait();
         black_box(&target);
     });
@@ -327,7 +327,7 @@ fn gpu_partial(group: &mut BenchmarkGroup<'_, WallTime>, surface: &Surface) {
     let scale = surface.scale;
     run_gpu_arm(group, "partial_gpu", |host, state| {
         state.tick = state.tick.wrapping_add(1);
-        frame_offscreen(host, &target, scale, |ui| state.render(BENCH_SCALE, ui));
+        gpu_frame(host, &target, scale, |ui| state.render(BENCH_SCALE, ui));
         gpu().wait();
         black_box(&target);
     });
@@ -339,7 +339,7 @@ fn gpu_scrolling(group: &mut BenchmarkGroup<'_, WallTime>, surface: &Surface) {
     run_gpu_arm(group, "scrolling_gpu", |host, state| {
         state.scroll_offset.x = (state.scroll_offset.x + 1.5) % 256.0;
         state.scroll_offset.y = (state.scroll_offset.y + 0.7) % 256.0;
-        frame_offscreen(host, &target, scale, |ui| state.render(BENCH_SCALE, ui));
+        gpu_frame(host, &target, scale, |ui| state.render(BENCH_SCALE, ui));
         gpu().wait();
         black_box(&target);
     });
@@ -357,7 +357,7 @@ fn gpu_resizing(group: &mut BenchmarkGroup<'_, WallTime>, surface: &Surface) {
     run_gpu_arm(group, "resizing_gpu", move |host, state| {
         let t = &targets[idx % targets.len()];
         idx = idx.wrapping_add(1);
-        frame_offscreen(host, t, scale, |ui| state.render(BENCH_SCALE, ui));
+        gpu_frame(host, t, scale, |ui| state.render(BENCH_SCALE, ui));
         gpu().wait();
         black_box(t);
     });
@@ -387,7 +387,7 @@ fn report_write_stats(surface: &Surface) {
             mutate(&mut state, frame);
             let _ = WriteStats::take();
             let target = &targets[frame % targets.len()];
-            frame_offscreen(&mut host, target, scale, |ui| state.render(BENCH_SCALE, ui));
+            gpu_frame(&mut host, target, scale, |ui| state.render(BENCH_SCALE, ui));
             g.wait();
             let s = WriteStats::take();
             // The pass-time readout lags by one frame (the

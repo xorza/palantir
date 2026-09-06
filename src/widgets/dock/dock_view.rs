@@ -60,6 +60,7 @@ use std::rc::Rc;
 /// [`Self::run`] does all of that in one call, for an application with
 /// no queue of its own to route the ops through.
 #[derive(Debug)]
+#[must_use = "a widget records nothing until `show`"]
 pub struct DockView<'a, T> {
     widget: Widget,
     state: &'a DockState<T>,

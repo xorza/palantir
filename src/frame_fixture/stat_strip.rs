@@ -15,8 +15,8 @@ use crate::primitives::shadow::Shadow;
 use crate::primitives::stroke::Stroke;
 use crate::scene::visibility::Visibility;
 use crate::ui::Ui;
+use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
-use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
 use crate::widgets::text::Text;
 use crate::widgets::theme::text_style::TextStyle;
@@ -63,7 +63,7 @@ pub(super) fn show(ui: &mut Ui) {
                     .id_salt(("stat", i))
                     .size((Sizing::fill(1.0), Sizing::fixed(74.0)))
                     .show(ui, |ui| {
-                        Frame::new()
+                        Block::new()
                             .id_salt(("stat-plate", i))
                             .size((Sizing::FILL, Sizing::FILL))
                             .background(Background {
@@ -80,7 +80,7 @@ pub(super) fn show(ui: &mut Ui) {
                         // Cascade `Hidden` flattening — the alert ring this
                         // tile would show on a threshold breach. A ZStack
                         // sibling, so reserving its box costs no layout.
-                        Frame::new()
+                        Block::new()
                             .id_salt(("stat-alert", i))
                             .size((Sizing::FILL, Sizing::FILL))
                             .background(Background {

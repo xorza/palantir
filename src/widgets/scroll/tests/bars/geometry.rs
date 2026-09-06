@@ -7,8 +7,8 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::harness::UiHarness;
+use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
-use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::scroll::state::ScrollState;
@@ -176,7 +176,7 @@ fn a_travelling_thumb_keeps_its_snapped_length() {
                     .gap(12.0)
                     .show(ui, |ui| {
                         for i in 0..8 {
-                            Frame::new()
+                            Block::new()
                                 .id(WidgetId::from_hash(format!("row{i}")))
                                 .size((Sizing::FILL, Sizing::fixed(90.0)))
                                 .show(ui);
@@ -227,7 +227,7 @@ fn scrolling_moves_the_thumb_without_resizing_it() {
                     .id(WidgetId::from_hash("scroll"))
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        Frame::new()
+                        Block::new()
                             .id(WidgetId::from_hash("tall"))
                             .size((Sizing::fixed(180.0), Sizing::fixed(800.0)))
                             .show(ui);
@@ -279,7 +279,7 @@ fn zoomed_content_shrinks_thumb_proportionally() {
                     .zoom()
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        Frame::new()
+                        Block::new()
                             .id(WidgetId::from_hash("big"))
                             .size((Sizing::fixed(400.0), Sizing::fixed(400.0)))
                             .show(ui);

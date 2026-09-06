@@ -1,5 +1,5 @@
-//! A decorated rectangle: background, size and margin around a body, with
-//! none of the interaction the other containers carry.
+//! A decorated rectangle with nothing inside it: background, size and
+//! margin, and none of the interaction a container carries.
 
 use crate::primitives::background::Background;
 use crate::ui::Ui;
@@ -8,18 +8,22 @@ use crate::widgets::configure::ConfigureWidget;
 use crate::widgets::response::Response;
 use crate::widgets::widget::Widget;
 
-/// A simple decorated rectangle: optional background / size / margin
-/// plus an optional `Sense`. Used directly for dividers / hit-areas /
-/// bg swatches. Chrome + clip behavior come from
-/// [`Self::background`] / [`Configure::clip_rect`](crate::Configure::clip_rect) /
+/// A leaf rectangle: optional background / size / margin plus an optional
+/// `Sense`. Dividers, hit areas, colour swatches, spacers. Chrome + clip
+/// behavior come from [`Self::background`] /
+/// [`Configure::clip_rect`](crate::Configure::clip_rect) /
 /// [`Configure::clip_rounded`](crate::Configure::clip_rounded).
+///
+/// **It takes no body.** A decorated rectangle *around* content is a
+/// [`Panel`](crate::Panel) with a background.
 #[derive(Debug)]
-pub struct Frame {
+#[must_use = "a widget records nothing until `show`"]
+pub struct Block {
     widget: Widget,
     chrome: Option<Background>,
 }
 
-impl Frame {
+impl Block {
     #[track_caller]
     pub fn new() -> Self {
         Self {
@@ -34,18 +38,18 @@ impl Frame {
     }
 }
 
-impl Frame {
+impl Block {
     /// Paint `bg` as this widget's background.
     ///
-    /// `Frame` is the unthemed container: there is no slot to fall back to,
-    /// so an unset background paints nothing.
+    /// `Block` is unthemed: there is no slot to fall back to, so an unset
+    /// background paints nothing.
     pub fn background(mut self, bg: Background) -> Self {
         self.chrome = Some(bg);
         self
     }
 }
 
-impl Configure for Frame {
+impl Configure for Block {
     #[inline]
     fn configure(&mut self) -> ConfigureWidget<'_> {
         self.widget.configure()

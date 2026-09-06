@@ -16,7 +16,7 @@ use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
-use crate::widgets::{frame::Frame, grid::Grid, panel::Panel, text::Text};
+use crate::widgets::{block::Block, grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
 
 const PARAGRAPH: &str = "the quick brown fox jumps over the lazy dog";
@@ -82,7 +82,7 @@ fn hug_zstack_does_not_recursively_size_to_fill_child() {
             Panel::zstack()
                 .id(WidgetId::from_hash("hug-z"))
                 .show(ui, |ui| {
-                    Frame::new()
+                    Block::new()
                         .id(WidgetId::from_hash("fill-child"))
                         .size((Sizing::FILL, Sizing::FILL))
                         .background(Background {
@@ -90,7 +90,7 @@ fn hug_zstack_does_not_recursively_size_to_fill_child() {
                             ..Default::default()
                         })
                         .show(ui);
-                    Frame::new()
+                    Block::new()
                         .id(WidgetId::from_hash("fixed-child"))
                         .size((Sizing::fixed(60.0), Sizing::fixed(40.0)))
                         .show(ui);

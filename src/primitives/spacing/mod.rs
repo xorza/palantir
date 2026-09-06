@@ -51,18 +51,18 @@ impl Spacing {
 
     /// `left + right` — how much width this spacing costs.
     #[inline]
-    pub fn horizontal(self) -> f32 {
+    pub fn horizontal_sum(self) -> f32 {
         let [l, _t, r, _b] = self.as_array();
         l + r
     }
     /// `top + bottom` — how much height this spacing costs.
     #[inline]
-    pub fn vertical(self) -> f32 {
+    pub fn vertical_sum(self) -> f32 {
         let [_l, t, _r, b] = self.as_array();
         t + b
     }
     /// Both totals in a single SIMD unpack. Use when both axes are
-    /// needed; otherwise prefer `horizontal()` / `vertical()`.
+    /// needed; otherwise prefer `horizontal_sum()` / `vertical_sum()`.
     #[inline]
     pub fn sums(self) -> Sums {
         let [l, t, r, b] = self.as_array();

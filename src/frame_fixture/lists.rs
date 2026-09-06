@@ -14,9 +14,9 @@ use crate::primitives::color::RgbaF32;
 use crate::primitives::corners::Corners;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
+use crate::widgets::block::Block;
 use crate::widgets::button::Button;
 use crate::widgets::configure::Configure;
-use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::separator::Separator;
@@ -40,7 +40,7 @@ pub(super) fn filmstrip(ui: &mut Ui, cells: usize) {
                         .gap(3.0)
                         .size((Sizing::fixed(84.0), Sizing::FILL))
                         .show(ui, |ui| {
-                            Frame::new()
+                            Block::new()
                                 .id_salt(("film-thumb", i))
                                 .size((Sizing::FILL, Sizing::FILL))
                                 .background(Background {
@@ -80,7 +80,7 @@ pub(super) fn activity_card(ui: &mut Ui, messages: usize) {
                         .gap(8.0)
                         .size((Sizing::FILL, Sizing::HUG))
                         .show(ui, |ui| {
-                            Frame::new()
+                            Block::new()
                                 .id_salt(("avatar", i))
                                 .size((Sizing::fixed(34.0), Sizing::fixed(34.0)))
                                 .background(Background {

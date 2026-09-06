@@ -51,13 +51,13 @@ use crate::text::render::PlacedGlyph;
 use crate::text::shaped_ref::ShapedTextRef;
 use crate::ui::Ui;
 use crate::ui::frame_engines::FrameEngines;
+use crate::widgets::block::Block;
 use crate::widgets::button::Button;
 use crate::widgets::checkbox::Checkbox;
 use crate::widgets::combo_box::ComboBox;
 use crate::widgets::context_menu::ContextMenu;
 use crate::widgets::context_menu::menu_item::MenuItem;
 use crate::widgets::drag_value::DragValue;
-use crate::widgets::frame::Frame;
 use crate::widgets::gpu_view::GpuView;
 use crate::widgets::grid::Grid;
 use crate::widgets::modal::Modal;
@@ -128,7 +128,7 @@ const FRAME_ENGINES_SIZE: usize = 1504;
 ///   codebase. When the change is intended, update the number next to
 ///   the type; that one-line edit is the review signal.
 ///
-/// Sizes are for the 64-bit target (the only one). Covers the SoA
+/// SizeSpec are for the 64-bit target (the only one). Covers the SoA
 /// per-node columns, per-shape/per-chrome lowered forms, the
 /// encoder↔composer wire payloads, the GPU instance types, and the
 /// one whole-`Ui` entry ([`UI_SIZE`]).
@@ -172,16 +172,20 @@ const PINS: &[Pin] = &[
     pin::<Button<'static>>("widgets::Button", 160, 8),
     pin::<Checkbox<'static>>("widgets::Checkbox", 160, 8),
     pin::<Switch<'static>>("widgets::Switch", 160, 8),
-    pin::<ComboBox<'static, &'static str>>("widgets::ComboBox", 160, 8),
+    pin::<ComboBox<'static, &'static str, for<'a> fn(&'a &'static str) -> &'a str>>(
+        "widgets::ComboBox",
+        168,
+        8,
+    ),
     pin::<DragValue<'static>>("widgets::DragValue", 200, 8),
     pin::<RadioButton<'static, u8>>("widgets::RadioButton<u8>", 168, 8),
-    pin::<TextEdit<'static>>("widgets::TextEdit", 184, 8),
-    pin::<Text<'static>>("widgets::Text", 160, 8),
+    pin::<TextEdit<'static>>("widgets::TextEdit", 224, 8),
+    pin::<Text<'static>>("widgets::Text", 208, 8),
     pin::<Slider<'static>>("widgets::Slider", 184, 8),
     pin::<ProgressBar<'static>>("widgets::ProgressBar", 136, 8),
     pin::<Splitter<'static>>("widgets::Splitter", 144, 8),
     pin::<Panel>("widgets::Panel", 248, 8),
-    pin::<Frame>("widgets::Frame", 248, 8),
+    pin::<Block>("widgets::Block", 248, 8),
     pin::<Grid>("widgets::Grid", 248, 8),
     pin::<Scroll<'static>>("widgets::Scroll", 296, 8),
     pin::<Separator<'static>>("widgets::Separator", 160, 8),

@@ -54,7 +54,7 @@ fn escape_blur_commits_pending_draft_once() {
     let mut canonical = 5.0_f64;
     deferred_frame(&mut h, id, &mut canonical, true, false);
 
-    h.request_focus(Some(id));
+    h.set_focus(id);
     deferred_frame(&mut h, id, &mut canonical, true, false);
     key(&mut h.ui, Key::Char('4'));
     deferred_frame(&mut h, id, &mut canonical, true, false);
@@ -79,7 +79,7 @@ fn escape_blur_commits_pending_draft_once() {
 #[test]
 fn programmatic_focus_seeds_a_fresh_buffer() {
     // Regression: the buffer used to be seeded only by the click path, so
-    // request_focus re-opened the previous session's stale text and
+    // set_focus re-opened the previous session's stale text and
     // committed it over an externally-changed value.
     let id = WidgetId::from_hash("dv-fresh-seed");
     let mut h = UiHarness::new(UVec2::new(300, 100));
@@ -87,7 +87,7 @@ fn programmatic_focus_seeds_a_fresh_buffer() {
     deferred_frame(&mut h, id, &mut canonical, true, false);
 
     // First session commits 42 and leaves "42" in the buffer state.
-    h.request_focus(Some(id));
+    h.set_focus(id);
     deferred_frame(&mut h, id, &mut canonical, true, false);
     key(&mut h.ui, Key::Char('4'));
     deferred_frame(&mut h, id, &mut canonical, true, false);
@@ -99,7 +99,7 @@ fn programmatic_focus_seeds_a_fresh_buffer() {
 
     // The value changes externally; a new focus must show 99, not 42.
     canonical = 99.0;
-    h.request_focus(Some(id));
+    h.set_focus(id);
     deferred_frame(&mut h, id, &mut canonical, true, false);
     assert_eq!(edit_buffer(&mut h.ui, id), "99.0");
 
@@ -121,7 +121,7 @@ fn focusing_mid_scrub_cannot_overwrite_the_typed_commit() {
     h.press_at(Vec2::new(50.0, 20.0));
     h.drag_to(Vec2::new(70.0, 20.0));
     deferred_frame(&mut h, id, &mut canonical, true, false);
-    h.request_focus(Some(id));
+    h.set_focus(id);
     deferred_frame(&mut h, id, &mut canonical, true, false);
     assert!(matches!(
         h.ui.state_or_default::<DragValueState>(id),
@@ -161,10 +161,10 @@ fn unparseable_and_non_finite_drafts_commit_without_writing() {
     // blur resolve must not clobber the value with junk, NaN, or inf —
     // non-finite parses poison every later scrub, so they're rejected.
     for bad in ["junk", "nan", "inf", "-inf"] {
-        h.request_focus(Some(id));
+        h.set_focus(id);
         deferred_frame(&mut h, id, &mut canonical, true, false);
         *edit_buffer(&mut h.ui, id) = bad.to_string();
-        h.request_focus(None);
+        h.clear_focus();
         let s = deferred_frame(&mut h, id, &mut canonical, true, false);
         assert!(
             s.committed && !s.changed,
@@ -181,7 +181,7 @@ fn disabling_mid_edit_discards_the_draft() {
     let mut canonical = 5.0_f64;
     deferred_frame(&mut h, id, &mut canonical, true, false);
 
-    h.request_focus(Some(id));
+    h.set_focus(id);
     deferred_frame(&mut h, id, &mut canonical, true, false);
     key(&mut h.ui, Key::Char('9'));
     deferred_frame(&mut h, id, &mut canonical, true, false);
@@ -212,7 +212,7 @@ fn toggling_editable_off_mid_edit_cannot_replay_the_draft() {
     let mut canonical = 5.0_f64;
     deferred_frame(&mut h, id, &mut canonical, true, false);
 
-    h.request_focus(Some(id));
+    h.set_focus(id);
     deferred_frame(&mut h, id, &mut canonical, true, false);
     key(&mut h.ui, Key::Char('9'));
     key(&mut h.ui, Key::Char('9'));
@@ -220,7 +220,7 @@ fn toggling_editable_off_mid_edit_cannot_replay_the_draft() {
     deferred_frame(&mut h, id, &mut canonical, true, false);
 
     // Rendered read-only mid-edit: the pending draft is discarded.
-    h.request_focus(None);
+    h.clear_focus();
     let s = deferred_frame(&mut h, id, &mut canonical, false, false);
     assert!(!s.committed, "read-only frame commits nothing");
     assert!(matches!(
@@ -237,7 +237,7 @@ fn toggling_editable_off_mid_edit_cannot_replay_the_draft() {
 /// The frame a click opens the editor, the returned response already
 /// reports `focused`.
 ///
-/// `DragValue` calls `Ui::request_focus` on itself mid-`show`, but its
+/// `DragValue` calls `Ui::set_focus` on itself mid-`show`, but its
 /// entry snapshot was taken before that — so without
 /// `ResponseState::mark_focused` the widget would hand back a response
 /// denying the focus it had just taken, and a caller keying off

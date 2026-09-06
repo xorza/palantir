@@ -8,7 +8,7 @@
 use crate::support;
 use crate::support::{body_style, section, well_bg};
 use palantir::{
-    Background, Configure, Corners, Frame, Grid, Panel, RgbaF32, Sizing, Text, TextWrap, Track, Ui,
+    Background, Block, Configure, Corners, Grid, Panel, RgbaF32, Sizing, Text, TextWrap, Track, Ui,
 };
 
 const PARAGRAPH: &str = "The quick brown fox jumps over the lazy dog. \
@@ -166,7 +166,7 @@ fn chat_row(ui: &mut Ui, key: &'static str, avatar: RgbaF32, message: &'static s
         .size((Sizing::FILL, Sizing::HUG))
         .gap(10.0)
         .show(ui, |ui| {
-            Frame::new()
+            Block::new()
                 .id_salt(("avatar", key))
                 .size((Sizing::fixed(36.0), Sizing::fixed(36.0)))
                 .background(Background::rounded(avatar, Corners::all(18.0)))

@@ -369,7 +369,7 @@ fn open_menu_exclusively_owns_ordered_edit_shortcuts() {
         });
     };
     h.frame(|ui| body(ui, &mut a, &mut b));
-    h.request_focus(Some(a_id));
+    h.set_focus(a_id);
     {
         let state = h.ui.state_or_default::<TextEditState>(a_id);
         state.edit.caret = a.len();

@@ -14,7 +14,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
-use crate::widgets::{button::Button, frame::Frame, grid::Grid, panel::Panel};
+use crate::widgets::{block::Block, button::Button, grid::Grid, panel::Panel};
 use glam::UVec2;
 
 #[test]
@@ -27,11 +27,11 @@ fn grid_fixed_and_fill_columns_split_remainder() {
             .rows([Track::FILL])
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("left"))
                     .grid_cell((0, 0))
                     .show(ui);
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("right"))
                     .grid_cell((0, 1))
                     .show(ui);
@@ -70,7 +70,7 @@ fn grid_hug_column_takes_max_span1_child_intrinsic() {
                     .label("hello!!")
                     .grid_cell((1, 0))
                     .show(ui);
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("body"))
                     .grid_cell(GridCell::at(0, 1).span(2, 1))
                     .show(ui);
@@ -123,7 +123,7 @@ fn hug_column_stretches_fill_cells_to_widest_content() {
                     .grid_cell((0, 0))
                     .size((Sizing::FILL, Sizing::HUG))
                     .show(ui, |ui| {
-                        Frame::new()
+                        Block::new()
                             .id(WidgetId::from_hash("fa"))
                             .size((Sizing::fixed(120.0), Sizing::fixed(20.0)))
                             .show(ui);
@@ -133,7 +133,7 @@ fn hug_column_stretches_fill_cells_to_widest_content() {
                     .grid_cell((1, 0))
                     .size((Sizing::FILL, Sizing::HUG))
                     .show(ui, |ui| {
-                        Frame::new()
+                        Block::new()
                             .id(WidgetId::from_hash("fb"))
                             .size((Sizing::fixed(60.0), Sizing::fixed(20.0)))
                             .show(ui);
@@ -238,11 +238,11 @@ fn grid_fill_weights_and_clamps() {
                 .rows([Track::FILL])
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
-                    Frame::new()
+                    Block::new()
                         .id(WidgetId::from_hash("a"))
                         .grid_cell((0, 0))
                         .show(ui);
-                    Frame::new()
+                    Block::new()
                         .id(WidgetId::from_hash("b"))
                         .grid_cell((0, 1))
                         .show(ui);
@@ -279,12 +279,12 @@ fn grid_fill_col_floors_at_descendant_min_content() {
             .rows([Track::FILL])
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("rigid"))
                     .size((Sizing::fixed(200.0), Sizing::FILL))
                     .grid_cell((0, 0))
                     .show(ui);
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("flex"))
                     .grid_cell((0, 1))
                     .show(ui);
@@ -315,12 +315,12 @@ fn grid_fill_row_floors_at_descendant_min_content() {
             .rows([Track::FILL, Track::FILL])
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("rigid"))
                     .size((Sizing::FILL, Sizing::fixed(60.0)))
                     .grid_cell((0, 0))
                     .show(ui);
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("flex"))
                     .grid_cell((1, 0))
                     .show(ui);
@@ -358,12 +358,12 @@ fn grid_hug_rows_floor_at_their_measured_height_when_cramped() {
             .rows([Track::HUG, Track::HUG])
             .size((Sizing::FILL, Sizing::fixed(100.0)))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("top"))
                     .size((Sizing::FILL, Sizing::fixed(60.0)))
                     .grid_cell((0, 0))
                     .show(ui);
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("bottom"))
                     .size((Sizing::FILL, Sizing::fixed(60.0)))
                     .grid_cell((1, 0))
@@ -430,7 +430,7 @@ fn grid_multi_row_hug_heights_resolve_independently() {
                         .size((Sizing::HUG, Sizing::HUG))
                         .show(ui, |ui| {
                             kids.push(
-                                Frame::new()
+                                Block::new()
                                     .id(WidgetId::from_hash("short"))
                                     .size((50.0, 10.0))
                                     .grid_cell((0, 0))
@@ -438,7 +438,7 @@ fn grid_multi_row_hug_heights_resolve_independently() {
                                     .node(),
                             );
                             kids.push(
-                                Frame::new()
+                                Block::new()
                                     .id(WidgetId::from_hash("tall"))
                                     .size((50.0, 80.0))
                                     .grid_cell((1, 0))
@@ -446,7 +446,7 @@ fn grid_multi_row_hug_heights_resolve_independently() {
                                     .node(),
                             );
                             kids.push(
-                                Frame::new()
+                                Block::new()
                                     .id(WidgetId::from_hash("med"))
                                     .size((50.0, 30.0))
                                     .grid_cell((2, 0))
@@ -480,12 +480,12 @@ fn rigid_first_col_rects(first: Track, surface_width: u32) -> Vec<Rect> {
             .rows([Track::FILL])
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("rigid"))
                     .size((Sizing::fixed(200.0), Sizing::FILL))
                     .grid_cell((0, 0))
                     .show(ui);
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("flex"))
                     .grid_cell((0, 1))
                     .show(ui);

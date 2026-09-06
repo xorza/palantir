@@ -12,8 +12,8 @@ use crate::scene::tree::node_id::NodeId;
 use crate::shape::rect::RectKind;
 use crate::ui::frame_report::FrameProcessing;
 use crate::ui::harness::UiHarness;
+use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
-use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::scroll::state::ScrollState;
@@ -34,7 +34,7 @@ fn hidden_scroll_skips_bar_ids_and_cold_relayout_but_keeps_pan_and_zoom() {
             .zoom()
             .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("hidden-content"))
                     .size((Sizing::fixed(400.0), Sizing::fixed(400.0)))
                     .show(ui);
@@ -88,7 +88,7 @@ fn vertical_overflow_emits_thumb_shape_after_settle() {
                     .id(WidgetId::from_hash("scroll"))
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        Frame::new()
+                        Block::new()
                             .id(WidgetId::from_hash("tall"))
                             .size((Sizing::fixed(180.0), Sizing::fixed(800.0)))
                             .show(ui);
@@ -123,7 +123,7 @@ fn content_that_stops_overflowing_retires_its_bar() {
                         .size((Sizing::FILL, Sizing::FILL))
                         .overlay_bars()
                         .show(ui, |ui| {
-                            Frame::new()
+                            Block::new()
                                 .id(WidgetId::from_hash("body"))
                                 .size((
                                     Sizing::FILL,
@@ -172,7 +172,7 @@ fn no_bar_when_content_fits_viewport() {
                     .id(WidgetId::from_hash("scroll"))
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        Frame::new()
+                        Block::new()
                             .id(WidgetId::from_hash("short"))
                             .size((Sizing::fixed(180.0), Sizing::fixed(50.0)))
                             .show(ui);
@@ -196,7 +196,7 @@ fn both_axes_overflow_emits_two_thumbs() {
                     .id(WidgetId::from_hash("scroll"))
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        Frame::new()
+                        Block::new()
                             .id(WidgetId::from_hash("big"))
                             .size((Sizing::fixed(800.0), Sizing::fixed(800.0)))
                             .show(ui);
@@ -222,7 +222,7 @@ fn both_axes_bars_dont_overlap_at_corner() {
                     .id(WidgetId::from_hash("scroll"))
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        Frame::new()
+                        Block::new()
                             .id(WidgetId::from_hash("big"))
                             .size((Sizing::fixed(800.0), Sizing::fixed(800.0)))
                             .show(ui);

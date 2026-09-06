@@ -17,13 +17,13 @@ fn the_bundle_ceiling_gates_registration_and_is_what_ui_reports() {
     let ui = Ui::new(resources);
     assert_eq!(ui.max_image_dimension(), NonZeroU32::new(4));
 
-    let accepted = ui.register_image(&img(4, 4)).unwrap();
+    let accepted = ui.load_image(&img(4, 4)).unwrap();
     assert_eq!(
-        ui.register_image(&img(5, 1)).unwrap_err().max_dimension,
+        ui.load_image(&img(5, 1)).unwrap_err().max_dimension,
         4,
         "an over-limit source is rejected against the bundle's ceiling",
     );
-    let next = ui.register_image(&img(1, 1)).unwrap();
+    let next = ui.load_image(&img(1, 1)).unwrap();
     assert!(
         next.id().0 > accepted.id().0,
         "a registration after a rejection still gets a fresh id",
@@ -31,7 +31,7 @@ fn the_bundle_ceiling_gates_registration_and_is_what_ui_reports() {
 }
 
 fn img(w: u32, h: u32) -> Image {
-    Image::from_rgba8(UVec2::new(w, h), vec![0u8; (w * h * 4) as usize])
+    Image::from_srgba8(UVec2::new(w, h), vec![0u8; (w * h * 4) as usize])
 }
 
 /// The sequence is process-wide, so the ids are only ever compared
@@ -45,9 +45,9 @@ fn no_two_texture_ids_repeat_across_hosts_or_kinds() {
     let elsewhere = UiResources::isolated_mono();
 
     let gpu_view = TextureId::reserve();
-    let first = host.register_image(&img(2, 3)).unwrap();
-    let second = window.register_image(&img(4, 5)).unwrap();
-    let foreign = elsewhere.register_image(&img(6, 7)).unwrap();
+    let first = host.load_image(&img(2, 3)).unwrap();
+    let second = window.load_image(&img(4, 5)).unwrap();
+    let foreign = elsewhere.load_image(&img(6, 7)).unwrap();
 
     let ids = [gpu_view, first.id(), second.id(), foreign.id()];
     assert!(
@@ -63,7 +63,7 @@ fn no_two_texture_ids_repeat_across_hosts_or_kinds() {
 fn dimensions_above_u16_are_preserved_without_a_gpu() {
     const WIDTH: u32 = u16::MAX as u32 + 1;
     let resources = UiResources::isolated_mono();
-    let handle = resources.register_image(&img(WIDTH, 1)).unwrap();
+    let handle = resources.load_image(&img(WIDTH, 1)).unwrap();
     assert_eq!(handle.size(), UVec2::new(WIDTH, 1));
 }
 

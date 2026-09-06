@@ -100,8 +100,7 @@ impl Harness {
         let target = make_target(&self.gpu.device, format, physical);
 
         self.host.ui().theme_mut().window_clear = clear;
-        self.host
-            .frame_offscreen(&target, scale, &mut RecordApp::new(scene));
+        self.host.frame(&target, scale, &mut RecordApp::new(scene));
 
         let mut img = readback(&self.gpu.device, &self.gpu.queue, &target, physical);
         // Readback copies raw bytes; a BGRA target lands as B,G,R,A.

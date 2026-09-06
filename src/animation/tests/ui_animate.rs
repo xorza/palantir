@@ -4,8 +4,8 @@ use crate::animation::anim_spec::AnimSpec;
 use crate::animation::tests::support::{AnimUi, SLOT, setup_anim_ui};
 use crate::primitives::color::RgbaF32;
 use crate::primitives::widget_id::WidgetId;
+use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
-use crate::widgets::frame::Frame;
 use std::time::Duration;
 
 /// End-to-end through `Ui::animate` + `FrameOutput::repaint_requested`:
@@ -18,7 +18,7 @@ fn animate_drives_repaint_until_settle() {
     let repaint = h
         .frame(|ui| {
             let _ = ui.animate(id, SLOT, 0.0_f32, Some(AnimSpec::FAST));
-            Frame::new().id(WidgetId::from_hash("anim-test")).show(ui);
+            Block::new().id(WidgetId::from_hash("anim-test")).show(ui);
         })
         .repaint_requested;
     assert!(
@@ -30,7 +30,7 @@ fn animate_drives_repaint_until_settle() {
         .at(Duration::from_millis(16))
         .frame(|ui| {
             let _ = ui.animate(id, SLOT, 1.0_f32, Some(AnimSpec::FAST));
-            Frame::new().id(WidgetId::from_hash("anim-test")).show(ui);
+            Block::new().id(WidgetId::from_hash("anim-test")).show(ui);
         })
         .repaint_requested;
     assert!(repaint, "in-flight animation must request repaint");
@@ -43,7 +43,7 @@ fn animate_drives_repaint_until_settle() {
             .at(now)
             .frame(|ui| {
                 let _ = ui.animate(id, SLOT, 1.0_f32, Some(AnimSpec::FAST));
-                Frame::new().id(WidgetId::from_hash("anim-test")).show(ui);
+                Block::new().id(WidgetId::from_hash("anim-test")).show(ui);
             })
             .repaint_requested;
         if !repaint {
@@ -60,24 +60,30 @@ fn animate_drives_repaint_until_settle() {
 /// `Ui::animate(..., None)` must: return `target` unchanged, never
 /// allocate a row, never request a repaint. `None` is the API-level
 /// signal "this caller didn't ask for motion."
+///
+/// [`AnimSpec::SNAP`] is the named spelling of the same answer, so it is
+/// swept here rather than pinned apart — a caller reaching for the name
+/// must not get different behaviour from the one passing `None`.
 #[test]
 fn animate_with_none_spec_snaps_and_skips_repaint() {
-    let AnimUi { mut h, id } = setup_anim_ui("anim-none");
-    let repaint = h
-        .at(Duration::from_millis(16))
-        .frame(|ui| {
-            let v1 = ui.animate(id, SLOT, 7.0_f32, None);
-            let v2 = ui.animate(id, SLOT, 9.0_f32, None);
-            assert_eq!(v1, 7.0);
-            assert_eq!(v2, 9.0);
-            Frame::new().id(WidgetId::from_hash("anim-none")).show(ui);
-        })
-        .repaint_requested;
-    assert!(!repaint, "None spec must never request a repaint");
-    assert!(
-        h.anim_row_count::<f32>() == 0,
-        "None spec must not allocate a row",
-    );
+    for (label, spec) in [("none", None), ("snap", Some(AnimSpec::SNAP))] {
+        let AnimUi { mut h, id } = setup_anim_ui("anim-none");
+        let repaint = h
+            .at(Duration::from_millis(16))
+            .frame(|ui| {
+                let v1 = ui.animate(id, SLOT, 7.0_f32, spec);
+                let v2 = ui.animate(id, SLOT, 9.0_f32, spec);
+                assert_eq!(v1, 7.0, "{label}");
+                assert_eq!(v2, 9.0, "{label}");
+                Block::new().id(WidgetId::from_hash("anim-none")).show(ui);
+            })
+            .repaint_requested;
+        assert!(!repaint, "{label} spec must never request a repaint");
+        assert!(
+            h.anim_row_count::<f32>() == 0,
+            "{label} spec must not allocate a row",
+        );
+    }
 }
 
 /// Switching from `Some(spec)` to `None` mid-flight must drop the
@@ -89,11 +95,11 @@ fn animate_some_then_none_drops_stale_row() {
     // Frame A: animate to 1.0 with FAST (in flight).
     let _ = h.at(Duration::from_millis(0)).frame(|ui| {
         let _ = ui.animate(id, SLOT, 0.0_f32, Some(AnimSpec::FAST));
-        Frame::new().id(WidgetId::from_hash("anim-toggle")).show(ui);
+        Block::new().id(WidgetId::from_hash("anim-toggle")).show(ui);
     });
     let _ = h.at(Duration::from_millis(50)).frame(|ui| {
         let _ = ui.animate(id, SLOT, 1.0_f32, Some(AnimSpec::FAST));
-        Frame::new().id(WidgetId::from_hash("anim-toggle")).show(ui);
+        Block::new().id(WidgetId::from_hash("anim-toggle")).show(ui);
     });
     assert!(
         h.anim_row_count::<f32>() > 0,
@@ -103,7 +109,7 @@ fn animate_some_then_none_drops_stale_row() {
     // Frame B: switch to None — the stale row should drop.
     let _ = h.at(Duration::from_millis(60)).frame(|ui| {
         let _ = ui.animate(id, SLOT, 1.0_f32, None);
-        Frame::new().id(WidgetId::from_hash("anim-toggle")).show(ui);
+        Block::new().id(WidgetId::from_hash("anim-toggle")).show(ui);
     });
     assert!(
         h.anim_row_count::<f32>() == 0,
@@ -146,7 +152,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     let _ = h.at(Duration::from_millis(16)).frame(|ui| {
         let target = look.to_animated(fallback);
         captured.set(Some(ui.animate(id, WidgetLook::SLOT_LOOK, target, None)));
-        Frame::new().id(WidgetId::from_hash("look-test")).show(ui);
+        Block::new().id(WidgetId::from_hash("look-test")).show(ui);
     });
     let snap = captured.take().expect("animate ran");
     assert_eq!(snap.background.fill, bg.fill, "None: fill snaps to target");
@@ -182,7 +188,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     let _ = h.at(Duration::from_millis(32)).frame(|ui| {
         let target = look2.to_animated(fallback);
         let _ = ui.animate(id, WidgetLook::SLOT_LOOK, target, Some(AnimSpec::FAST));
-        Frame::new().id(WidgetId::from_hash("look-test")).show(ui);
+        Block::new().id(WidgetId::from_hash("look-test")).show(ui);
     });
     assert!(
         h.anim_row_count::<AnimatedLook>() > 0,
@@ -217,7 +223,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
             target,
             None,
         )));
-        Frame::new().id(WidgetId::from_hash("look-test")).show(ui);
+        Block::new().id(WidgetId::from_hash("look-test")).show(ui);
     });
     let snap = captured.take().expect("animate ran");
     assert_eq!(

@@ -14,7 +14,7 @@ use crate::scene::tree::node_id::NodeId;
 use crate::text::wrap::TextWrap;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
-use crate::widgets::{frame::Frame, panel::Panel, text::Text};
+use crate::widgets::{block::Block, panel::Panel, text::Text};
 use glam::UVec2;
 
 fn run_frame(h: &mut UiHarness, record: impl FnMut(&mut Ui)) {
@@ -71,7 +71,7 @@ fn build_wrapped_frame(ui: &mut Ui, panel_id: &str, frame_size: f32, fill: RgbaF
     Panel::vstack()
         .id(WidgetId::from_hash(panel_id))
         .show(ui, |ui| {
-            Frame::new()
+            Block::new()
                 .id(WidgetId::from_hash((panel_id, "leaf")))
                 .size(frame_size)
                 .background(Background {
@@ -90,7 +90,7 @@ fn whole_tree_snapshot_populates_subtree_ranges_once() {
             .id(WidgetId::from_hash("group"))
             .show(ui, |ui| {
                 for (id, size) in [("c1", 10.0), ("c2", 20.0), ("c3", 30.0)] {
-                    Frame::new().id(WidgetId::from_hash(id)).size(size).show(ui);
+                    Block::new().id(WidgetId::from_hash(id)).size(size).show(ui);
                 }
             });
     });
@@ -212,7 +212,7 @@ fn reordered_widgets_rebuild_the_dense_descriptor_index() {
     fn build(ui: &mut Ui, reversed: bool) {
         let mut add = |id: &'static str, size: f32| {
             Panel::vstack().id(WidgetId::from_hash(id)).show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash((id, "leaf")))
                     .size(size)
                     .show(ui);
@@ -346,7 +346,7 @@ fn localized_change_hits_unchanged_sibling() {
                 Panel::vstack()
                     .id(WidgetId::from_hash("changing"))
                     .show(ui, |ui| {
-                        Frame::new()
+                        Block::new()
                             .id(WidgetId::from_hash("changing-leaf"))
                             .size(20.0)
                             .background(Background {
@@ -358,7 +358,7 @@ fn localized_change_hits_unchanged_sibling() {
                 Panel::vstack()
                     .id(WidgetId::from_hash("stable"))
                     .show(ui, |ui| {
-                        Frame::new()
+                        Block::new()
                             .id(WidgetId::from_hash("stable-leaf"))
                             .size(30.0)
                             .show(ui);
@@ -409,7 +409,7 @@ fn widget_reappearance_matches_cold_snapshot() {
                 Panel::vstack()
                     .id(WidgetId::from_hash("blip"))
                     .show(ui, |ui| {
-                        Frame::new()
+                        Block::new()
                             .id(WidgetId::from_hash("blip-leaf"))
                             .size(40.0)
                             .show(ui);
@@ -446,13 +446,13 @@ fn oscillating_tree_size_reuses_both_snapshot_buffers() {
                 .id(WidgetId::from_hash("oscillating"))
                 .show(ui, |ui| {
                     for index in 0..10 {
-                        Frame::new()
+                        Block::new()
                             .id(WidgetId::from_hash(("row", index)))
                             .size(10.0)
                             .show(ui);
                     }
                     if extra {
-                        Frame::new()
+                        Block::new()
                             .id(WidgetId::from_hash("extra"))
                             .size(10.0)
                             .show(ui);
@@ -519,7 +519,7 @@ fn oscillating_tree_size_reuses_both_snapshot_buffers() {
         Panel::vstack()
             .id(WidgetId::from_hash("re-keyed"))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("lone"))
                     .size(10.0)
                     .show(ui);

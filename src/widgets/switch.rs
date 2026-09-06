@@ -27,6 +27,7 @@ use glam::Vec2;
 /// `Sense::CLICK` hit target. The track is a `Canvas` so the knob can be
 /// absolutely positioned; the knob's x animates through [`Ui::animate`].
 #[derive(Debug)]
+#[must_use = "a widget records nothing until `show`"]
 pub struct Switch<'a> {
     widget: Widget,
     value: &'a mut bool,
@@ -62,6 +63,11 @@ impl<'a> Switch<'a> {
         self
     }
 
+    /// Record the row and hand back its [`Response`].
+    ///
+    /// **`clicked()` is the change edge**, for the reason
+    /// [`Checkbox::show`](crate::Checkbox::show) gives: a switch flips on
+    /// every activation, so a click always writes the bound `bool`.
     pub fn show(mut self, ui: &mut Ui) -> Response<'_> {
         let response = self.widget.response(ui);
         let id = self.widget.resolve(ui);

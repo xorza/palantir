@@ -11,7 +11,7 @@ use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::tests::support::{SURFACE, record_cascade_static, record_hash};
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
-use crate::widgets::{frame::Frame, panel::Panel};
+use crate::widgets::{block::Block, panel::Panel};
 
 #[test]
 fn subtree_hash_stable_across_frames() {
@@ -19,7 +19,7 @@ fn subtree_hash_stable_across_frames() {
         Panel::hstack()
             .id(WidgetId::from_hash("root"))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("a"))
                     .size(50.0)
                     .background(Background {
@@ -27,7 +27,7 @@ fn subtree_hash_stable_across_frames() {
                         ..Default::default()
                     })
                     .show(ui);
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("b"))
                     .size(30.0)
                     .background(Background {
@@ -48,7 +48,7 @@ fn subtree_hash_changes_when_descendant_changes() {
         Panel::hstack()
             .id(WidgetId::from_hash("root"))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("a"))
                     .size(50.0)
                     .background(Background {
@@ -69,7 +69,7 @@ fn subtree_hash_changes_when_descendant_changes() {
 fn subtree_hash_changes_on_sibling_reorder() {
     fn build(ui: &mut Ui, swap: bool) -> NodeId {
         let a = |ui: &mut Ui| {
-            Frame::new()
+            Block::new()
                 .id(WidgetId::from_hash("a"))
                 .size(50.0)
                 .background(Background {
@@ -79,7 +79,7 @@ fn subtree_hash_changes_on_sibling_reorder() {
                 .show(ui);
         };
         let b = |ui: &mut Ui| {
-            Frame::new()
+            Block::new()
                 .id(WidgetId::from_hash("b"))
                 .size(30.0)
                 .background(Background {
@@ -220,23 +220,23 @@ fn subtree_end_rolls_up_during_recording() {
         Panel::hstack()
             .id(WidgetId::from_hash("root"))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("a"))
                     .size(10.0)
                     .show(ui);
                 Panel::hstack()
                     .id(WidgetId::from_hash("inner"))
                     .show(ui, |ui| {
-                        Frame::new()
+                        Block::new()
                             .id(WidgetId::from_hash("b"))
                             .size(10.0)
                             .show(ui);
-                        Frame::new()
+                        Block::new()
                             .id(WidgetId::from_hash("c"))
                             .size(10.0)
                             .show(ui);
                     });
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("d"))
                     .size(10.0)
                     .show(ui);
@@ -260,7 +260,7 @@ fn subtree_end_rolls_up_during_recording() {
 fn subtree_end_handles_deep_nesting() {
     fn nest(ui: &mut Ui, depth: usize) {
         if depth == 0 {
-            Frame::new()
+            Block::new()
                 .id(WidgetId::from_hash(("leaf", depth)))
                 .size(10.0)
                 .show(ui);
@@ -297,7 +297,7 @@ fn subtree_hash_rollup_root_local_across_two_roots() {
         Panel::vstack()
             .id(WidgetId::from_hash("root-a"))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("a-leaf"))
                     .size(50.0)
                     .background(Background {
@@ -310,7 +310,7 @@ fn subtree_hash_rollup_root_local_across_two_roots() {
         Panel::vstack()
             .id(WidgetId::from_hash("root-b"))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("b-leaf"))
                     .size(30.0)
                     .show(ui);

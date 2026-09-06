@@ -15,7 +15,7 @@ use crate::shape::Shape;
 use crate::shape::rect::{RectKind, RectShape};
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
-use crate::widgets::{button::Button, frame::Frame, panel::Panel};
+use crate::widgets::{block::Block, button::Button, panel::Panel};
 
 #[test]
 fn shapes_attached_to_button_node() {
@@ -59,7 +59,7 @@ fn interleaved_shapes_record_correct_order() {
             .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
             .show(ui, |ui| {
                 ui.add_shape(pos_rect(0));
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("c0"))
                     .background(Background {
                         fill: RgbaF32::srgb(0.0, 1.0, 0.0).into(),
@@ -68,7 +68,7 @@ fn interleaved_shapes_record_correct_order() {
                     .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
                     .show(ui);
                 ui.add_shape(pos_rect(1));
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("c1"))
                     .background(Background {
                         fill: RgbaF32::srgb(0.0, 0.0, 1.0).into(),
@@ -140,7 +140,7 @@ fn parent_post_child_shapes_dont_inflate_child_subtree_count() {
                 .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
                 .show(ui, |ui| {
                     child_id = Some(
-                        Frame::new()
+                        Block::new()
                             .id(WidgetId::from_hash("only-child"))
                             .background(Background {
                                 fill: RgbaF32::srgb(0.0, 1.0, 0.0).into(),
@@ -189,11 +189,11 @@ fn extras_columns_split_by_field_kind() {
             .id(WidgetId::from_hash("panel-with-gap"))
             .gap(8.0)
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("leaf-with-min"))
                     .min_size(Size::new(20.0, 20.0))
                     .show(ui);
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("plain-leaf"))
                     .size(10.0)
                     .show(ui);
@@ -210,19 +210,19 @@ fn child_iter_traverses_correctly_after_finalize() {
         Panel::hstack()
             .id(WidgetId::from_hash("root"))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("a"))
                     .size(10.0)
                     .show(ui);
                 Panel::hstack()
                     .id(WidgetId::from_hash("inner"))
                     .show(ui, |ui| {
-                        Frame::new()
+                        Block::new()
                             .id(WidgetId::from_hash("b"))
                             .size(10.0)
                             .show(ui);
                     });
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("c"))
                     .size(10.0)
                     .show(ui);

@@ -112,7 +112,7 @@ impl<K: PartialEq> ColorSurface<K> {
             let mut image = Image::blank(size);
             fill(&mut image);
             let handle = ui
-                .register_image(&image)
+                .load_image(&image)
                 .expect("a colour surface is clamped to the device texture cap");
             self.built = Some(Built { handle, image, key });
         }

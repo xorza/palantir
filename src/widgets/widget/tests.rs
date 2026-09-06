@@ -6,7 +6,7 @@ use crate::layout::types::grid_cell::GridCell;
 use crate::layout::types::justify::Justify;
 use crate::layout::types::layout_mode::{LayoutMode, ScrollSpec};
 use crate::layout::types::limits::MAX_PACKED_GAP;
-use crate::layout::types::sizing::Sizes;
+use crate::layout::types::sizing::SizeSpec;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::translate_scale::TranslateScale;
@@ -21,7 +21,7 @@ use crate::widgets::configure::ThemeDefaults;
 use crate::widgets::context_menu::menu_item::MenuItem;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::widget::Widget;
-use crate::widgets::{button::Button, frame::Frame, grid::Grid, panel::Panel, text::Text};
+use crate::widgets::{block::Block, button::Button, grid::Grid, panel::Panel, text::Text};
 use glam::Vec2;
 
 fn node_of<W: Configure>(widget: &mut W) -> &mut Node {
@@ -86,7 +86,7 @@ fn builder_setters_cover_the_complete_external_node_surface() {
     use crate::layout::types::sizing::Sizing;
 
     let id = WidgetId::from_hash("complete-configuration-surface");
-    let size: Sizes = (Sizing::fixed(40.0), Sizing::fixed(30.0)).into();
+    let size: SizeSpec = (Sizing::fixed(40.0), Sizing::fixed(30.0)).into();
     let min_size = Size::new(10.0, 12.0);
     let max_size = Size::new(100.0, 120.0);
     let padding = Spacing::new(1.0, 2.0, 3.0, 4.0);
@@ -326,8 +326,8 @@ fn auto_id_propagates_track_caller_through_every_widget() {
                 id_of(Button::new().auto_id()),
             )
         }),
-        ("Frame", || {
-            (id_of(Frame::new().auto_id()), id_of(Frame::new().auto_id()))
+        ("Block", || {
+            (id_of(Block::new().auto_id()), id_of(Block::new().auto_id()))
         }),
         ("Grid", || {
             (id_of(Grid::new().auto_id()), id_of(Grid::new().auto_id()))

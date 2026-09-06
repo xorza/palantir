@@ -186,7 +186,7 @@ impl LayoutDriver for WrapStack {
         // can't place a child until we know the row's `line_main` (for
         // justify) and `line_cross` (for cross-axis place). Buffer node
         // IDs in the engine's flat `wrap.pool` at this depth's slice,
-        // flush on overflow / end-of-children. Sizes come from
+        // flush on overflow / end-of-children. SizeSpec come from
         // `pass.desired(..)` at flush time, so the buffer is just node
         // IDs.
         let layouts = tree.records.layout();

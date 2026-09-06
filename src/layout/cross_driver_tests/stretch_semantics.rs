@@ -8,7 +8,7 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
-use crate::widgets::{button::Button, frame::Frame, panel::Panel};
+use crate::widgets::{block::Block, button::Button, panel::Panel};
 use glam::{UVec2, Vec2};
 
 /// **Pin (the darkroom node case):** a Hug container that holds Fill
@@ -62,7 +62,7 @@ fn fill_child_stretches_to_fixed_parent() {
             .auto_id()
             .size((Sizing::fixed(400.0), Sizing::HUG))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(child_id)
                     .size((Sizing::FILL, Sizing::fixed(20.0)))
                     .show(ui);
@@ -84,11 +84,11 @@ fn equal_weight_fill_siblings_split_fixed_parent_equally() {
             .auto_id()
             .size((Sizing::fixed(400.0), Sizing::HUG))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(a)
                     .size((Sizing::FILL, Sizing::fixed(20.0)))
                     .show(ui);
-                Frame::new()
+                Block::new()
                     .id(b)
                     .size((Sizing::FILL, Sizing::fixed(20.0)))
                     .show(ui);
@@ -126,7 +126,7 @@ fn hug_node_in_canvas_fill_children_arrange_to_hug_width() {
                             .id(row_id)
                             .size((Sizing::FILL, Sizing::HUG))
                             .show(ui, |ui| {
-                                Frame::new()
+                                Block::new()
                                     .auto_id()
                                     .size((Sizing::fixed(50.0), Sizing::fixed(20.0)))
                                     .show(ui);
@@ -162,7 +162,7 @@ fn hug_hstack_with_fill_spacer_hugs_to_button() {
     h.frame(|ui| {
         Panel::hstack().id(root).show(ui, |ui| {
             Button::new().id(button).label("Hi").show(ui);
-            Frame::new()
+            Block::new()
                 .id(spacer)
                 .size((Sizing::FILL, Sizing::HUG))
                 .show(ui);

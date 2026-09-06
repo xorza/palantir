@@ -12,7 +12,7 @@ use crate::scene::damage::region::DamageRegion;
 use crate::scene::damage::tests::support::{BLUE, DISPLAY, RED, frame};
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
-use crate::widgets::{frame::Frame, panel::Panel};
+use crate::widgets::{block::Block, panel::Panel};
 use glam::Vec2;
 
 /// `DamageRegion::collapse_from` intersects each input rect with the
@@ -182,7 +182,7 @@ fn offscreen_node_scrolling_into_view_is_covered_and_stays_sound() {
                         let cells = [("a", Some(BLUE)), ("b", Some(BLUE)), ("c", c_fill)];
                         for (key, fill) in cells {
                             let Some(fill) = fill else { continue };
-                            Frame::new()
+                            Block::new()
                                 .id(WidgetId::from_hash(key))
                                 .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
                                 .background(Background {

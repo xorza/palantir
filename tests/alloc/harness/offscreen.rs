@@ -58,7 +58,7 @@ impl OffscreenTarget {
         record: impl FnMut(&mut Ui),
     ) {
         self.host
-            .frame_offscreen(&self.texture, dpr, &mut RecordApp::new(record));
+            .frame(&self.texture, dpr, &mut RecordApp::new(record));
         gpu.device
             .poll(wgpu::PollType::Wait {
                 submission_index: None,

@@ -148,6 +148,6 @@ fn the_popup_takes_the_picker_theme() {
     // Two edges of padding, (19 - 8) * 2 = 22, plus the preview's 30: the chip
     // is taller than the bar beside it on both sides of the difference, so
     // the bars row grows by exactly what the chip does.
-    let padding = custom.popup_padding.vertical() - stock.popup_padding.vertical();
+    let padding = custom.popup_padding.vertical_sum() - stock.popup_padding.vertical_sum();
     assert_eq!(styled.height - plain.height, padding + 30.0);
 }

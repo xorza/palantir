@@ -114,7 +114,7 @@ fn disclosure(ui: &mut Ui, s: &mut State) {
             support::column(ui, "disc-a", |ui| {
                 Expander::new("Open by default")
                     .id_salt("plain")
-                    .default_open(true)
+                    .start_open(true)
                     .show(ui, |ui| {
                         Text::new(
                             "A plain section. The reveal snaps, because the library                              leaves animation opt-in.",
@@ -142,7 +142,7 @@ fn disclosure(ui: &mut Ui, s: &mut State) {
             support::column(ui, "disc-b", |ui| {
                 Expander::new("Skips its body")
                     .id_salt("skips")
-                    .default_open(true)
+                    .start_open(true)
                     .show(ui, |ui| {
                         TextEdit::new(&mut s.skipped_note)
                             .id_salt("skipped-edit")
@@ -151,7 +151,7 @@ fn disclosure(ui: &mut Ui, s: &mut State) {
                     });
                 Expander::new("Keeps its body")
                     .id_salt("keeps")
-                    .default_open(true)
+                    .start_open(true)
                     .keep_body(true)
                     .show(ui, |ui| {
                         TextEdit::new(&mut s.kept_note)

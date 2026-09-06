@@ -10,7 +10,7 @@ use std::cell::OnceCell;
 /// `WidgetId` plus a shared borrow of `Ui`; the first deref probes
 /// `ui.response_for(self.id)` and memoizes the result. Dropping the
 /// handle without touching it skips the probe entirely — the common
-/// case for decorative widgets (Text, Frame, Panel chrome, etc.).
+/// case for decorative widgets (Text, Block, Panel chrome, etc.).
 ///
 /// There is **no accessor surface of its own**: `Response` derefs to
 /// [`ResponseState`], so everything reads exactly like the state —
@@ -44,7 +44,7 @@ impl<'a> Response<'a> {
     /// Empty-cache constructor — the first deref triggers
     /// `response_for`. Used by widgets that don't otherwise consume
     /// the response state during `.show()` (decorative widgets:
-    /// Text, Frame, Panel, Grid). External widget authors reach this
+    /// Text, Block, Panel, Grid). External widget authors reach this
     /// through [`Widget::response`](crate::widget::Widget::response).
     #[inline]
     pub(super) fn lazy(id: WidgetId, ui: &'a Ui) -> Self {

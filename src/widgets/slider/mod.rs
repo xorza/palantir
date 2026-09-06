@@ -29,6 +29,7 @@ use std::ops::RangeInclusive;
 /// rates). Visuals come from [`crate::SliderTheme`] (theme slot
 /// `slider`).
 #[derive(Debug)]
+#[must_use = "a widget records nothing until `show`"]
 pub struct Slider<'a> {
     widget: Widget,
     value: DragNum<'a>,

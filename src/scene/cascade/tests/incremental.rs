@@ -59,10 +59,10 @@ fn cascade_input_hash_collapses_visual_zero_noise() {
 fn incremental_matches_full_across_cascade_input_classes() {
     use crate::primitives::background::Background;
     use crate::scene::visibility::Visibility;
-    use crate::widgets::frame::Frame;
+    use crate::widgets::block::Block;
 
     fn colored_frame(ui: &mut Ui, color: RgbaF32) {
-        Frame::new()
+        Block::new()
             .id(WidgetId::from_hash("paint"))
             .size(50.0)
             .background(Background {
@@ -131,7 +131,7 @@ fn incremental_matches_full_across_cascade_input_classes() {
             .size(100.0)
             .clip(clip)
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("overflow"))
                     .size(50.0)
                     .position((80.0, 0.0))
@@ -140,7 +140,7 @@ fn incremental_matches_full_across_cascade_input_classes() {
     }
 
     fn visible(ui: &mut Ui, visibility: Visibility) {
-        Frame::new()
+        Block::new()
             .id(WidgetId::from_hash("visible"))
             .size(50.0)
             .visibility(visibility)
@@ -159,7 +159,7 @@ fn incremental_matches_full_across_cascade_input_classes() {
             .show(ui, |ui| {
                 let paint = |ui: &mut Ui| colored_frame(ui, RgbaF32::srgb(0.2, 0.4, 0.8));
                 let second = |ui: &mut Ui| {
-                    Frame::new()
+                    Block::new()
                         .id(WidgetId::from_hash("second"))
                         .size(50.0)
                         .show(ui);
@@ -219,7 +219,7 @@ fn incremental_matches_full_across_cascade_input_classes() {
 
 #[test]
 fn incremental_scroll_matches_full() {
-    use crate::widgets::frame::Frame;
+    use crate::widgets::block::Block;
     use crate::widgets::scroll::Scroll;
 
     let build = |ui: &mut Ui| {
@@ -227,7 +227,7 @@ fn incremental_scroll_matches_full() {
             .id(WidgetId::from_hash("scroll"))
             .size((Sizing::fixed(200.0), Sizing::fixed(100.0)))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("scroll-content"))
                     .size((Sizing::fixed(200.0), Sizing::fixed(300.0)))
                     .show(ui);

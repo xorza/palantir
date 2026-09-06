@@ -40,10 +40,10 @@ impl TextureLimit {
     /// Rejects rather than shrinks: a caller that wants the biggest
     /// texture a machine will take asks [`Self::max_dimension`] first and
     /// scales its source, which is a decision only it can make.
-    pub(crate) fn accepts(self, size: UVec2) -> Result<(), RegisterImageError> {
+    pub(crate) fn accepts(self, size: UVec2) -> Result<(), ImageLoadError> {
         match self.0.map(NonZeroU32::get) {
             Some(max_dimension) if size.x > max_dimension || size.y > max_dimension => {
-                Err(RegisterImageError {
+                Err(ImageLoadError {
                     size,
                     max_dimension,
                 })
@@ -53,17 +53,17 @@ impl TextureLimit {
     }
 }
 
-/// Why an [`Image`](crate::primitives::image::Image) could not be
-/// registered for GPU upload.
+/// Why an [`Image`](crate::primitives::image::Image) could not be loaded
+/// for GPU upload.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct RegisterImageError {
+pub struct ImageLoadError {
     /// Rejected intrinsic pixel dimensions.
     pub size: UVec2,
     /// Maximum accepted width or height for the selected device.
     pub max_dimension: u32,
 }
 
-impl Display for RegisterImageError {
+impl Display for ImageLoadError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -73,11 +73,11 @@ impl Display for RegisterImageError {
     }
 }
 
-impl std::error::Error for RegisterImageError {}
+impl std::error::Error for ImageLoadError {}
 
 #[cfg(test)]
 mod tests {
-    use crate::renderer::texture_limit::{RegisterImageError, TextureLimit};
+    use crate::renderer::texture_limit::{ImageLoadError, TextureLimit};
     use glam::UVec2;
     use std::num::NonZeroU32;
 
@@ -92,7 +92,7 @@ mod tests {
         for size in [UVec2::new(5, 1), UVec2::new(1, 5)] {
             assert_eq!(
                 limit.accepts(size),
-                Err(RegisterImageError {
+                Err(ImageLoadError {
                     size,
                     max_dimension: 4,
                 }),

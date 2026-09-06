@@ -13,25 +13,38 @@ enum Pick {
     C,
 }
 
-/// Run one frame and return each row's reported `Response.rect`
-/// keyed to the click target (B / C). We need the rect so the click
-/// test can hit the actual painted area regardless of font metrics.
-fn frame_with_rects(h: &mut UiHarness, sel: &mut Pick) -> [Option<Rect>; 3] {
+/// One frame of the three rows, in row order.
+///
+/// The rects are the click targets: a test has to hit the actually
+/// painted area, which font metrics decide.
+struct Rows {
+    rects: [Option<Rect>; 3],
+    changed: [bool; 3],
+}
+
+/// `frame_value`, not `frame`: `changed` is a one-frame edge like
+/// `clicked()`, so only the input-observing pass reports it.
+fn frame_rows(h: &mut UiHarness, sel: &mut Pick) -> Rows {
     let mut local = *sel;
-    let mut rects = [None; 3];
-    h.frame(|ui| {
+    let rows = h.frame_value(|ui| {
+        let mut rows = Rows {
+            rects: [None; 3],
+            changed: [false; 3],
+        };
         Panel::vstack().auto_id().gap(2.0).show(ui, |ui| {
             for (i, value) in [Pick::A, Pick::B, Pick::C].into_iter().enumerate() {
                 let r = RadioButton::new(&mut local, value)
                     .id(WidgetId::from_hash(("rb", format!("{value:?}"))))
                     .label(format!("{value:?}"))
                     .show(ui);
-                rects[i] = r.rect;
+                rows.rects[i] = r.response.rect;
+                rows.changed[i] = r.changed;
             }
         });
+        rows
     });
     *sel = local;
-    rects
+    rows
 }
 
 #[test]
@@ -43,22 +56,39 @@ fn clicking_a_row_selects_it() {
     // First frame lays out (rects come back as None because the
     // response reads the *previous* frame's layout); ack, then a
     // second frame returns the first frame's rects.
-    let _ = frame_with_rects(&mut h, &mut sel);
-    let rects = frame_with_rects(&mut h, &mut sel);
-    let row_b = rects[1].expect("row B rect");
-    let row_c = rects[2].expect("row C rect");
+    let _ = frame_rows(&mut h, &mut sel);
+    let rows = frame_rows(&mut h, &mut sel);
+    let row_b = rows.rects[1].expect("row B rect");
+    let row_c = rows.rects[2].expect("row C rect");
+    assert_eq!(
+        rows.changed, [false; 3],
+        "an untouched frame reports no pick",
+    );
 
     h.click_at(row_b.min + (row_b.max() - row_b.min) * 0.5);
-    frame_with_rects(&mut h, &mut sel);
+    let rows = frame_rows(&mut h, &mut sel);
     assert_eq!(sel, Pick::B, "click on row B selects B");
+    assert_eq!(
+        rows.changed,
+        [false, true, false],
+        "only the row that took the pick reports `changed`",
+    );
 
     h.click_at(row_c.min + (row_c.max() - row_c.min) * 0.5);
-    frame_with_rects(&mut h, &mut sel);
+    let rows = frame_rows(&mut h, &mut sel);
     assert_eq!(sel, Pick::C, "click on row C selects C");
+    assert_eq!(rows.changed, [false, false, true]);
 
+    // The whole reason a radio hands back a `SelectResponse`: this frame
+    // is `clicked()` on row C and `changed == false`, and `Response`
+    // alone cannot tell the two apart.
     h.click_at(row_c.min + (row_c.max() - row_c.min) * 0.5);
-    frame_with_rects(&mut h, &mut sel);
+    let rows = frame_rows(&mut h, &mut sel);
     assert_eq!(sel, Pick::C, "re-click on selected row is no-op");
+    assert_eq!(
+        rows.changed, [false; 3],
+        "re-clicking the selected row reports no pick",
+    );
 }
 
 #[test]

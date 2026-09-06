@@ -9,7 +9,7 @@ use crate::scene::layer::Layer;
 use crate::ui::harness::UiHarness;
 use crate::ui::tests::support::{SURFACE, blue_frame};
 use crate::widgets::configure::Configure;
-use crate::widgets::{button::Button, frame::Frame, panel::Panel};
+use crate::widgets::{block::Block, button::Button, panel::Panel};
 
 #[test]
 fn prev_frame_empty_before_first_frame() {
@@ -103,7 +103,7 @@ fn prev_frame_updates_on_authoring_change() {
     let mut h = UiHarness::new(SURFACE);
     let paint = |fill: RgbaF32| {
         move |ui: &mut Ui| {
-            Frame::new()
+            Block::new()
                 .id(WidgetId::from_hash("a"))
                 .size(50.0)
                 .background(Background {

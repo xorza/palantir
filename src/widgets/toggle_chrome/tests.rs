@@ -81,10 +81,12 @@ fn theme_spacing_reaches_every_toggle_row_and_explicit_wins() {
                 .padding(Spacing::ZERO)
                 .margin(Spacing::ZERO)
                 .show(ui)
+                .response
                 .node(),
             RadioButton::new(&mut d, 1)
                 .id(WidgetId::from_hash("rb-inherited"))
                 .show(ui)
+                .response
                 .node(),
         ]
     });

@@ -64,6 +64,14 @@ impl AnimSpec {
             ease: Easing::OutCubic,
         },
     };
+    /// No motion: the value lands on its target in one frame.
+    ///
+    /// The named form of the "do not animate" case, so a call site says
+    /// which it means instead of leaving a bare `None` to be read. It is
+    /// what [`Ui::animate`](crate::Ui::animate) does for `None` too — a
+    /// zero-second duration is [`Self::is_instant`], and both short-circuit
+    /// on that.
+    pub const SNAP: Self = Self::duration_from_validated(0.0, Easing::Linear);
     /// Near-critically-damped spring tuned as a general-purpose default.
     pub const SPRING: Self = Self {
         motion: AnimMotion::Spring {

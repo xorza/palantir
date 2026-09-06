@@ -18,6 +18,7 @@ use crate::widgets::response::Response;
 use crate::widgets::select_response::SelectResponse;
 use crate::widgets::text::Text;
 use crate::widgets::theme::button::ButtonTheme;
+use crate::widgets::theme::combo_box::ComboBoxTheme;
 use crate::widgets::theme::widget_look::theme_slot::ThemeSlot;
 use crate::widgets::widget::Widget;
 use std::rc::Rc;
@@ -53,16 +54,18 @@ struct ComboState {
 /// way nothing is copied to open a combo, and a closed one — nearly every
 /// frame — reads exactly one label.
 #[derive(Debug)]
-pub struct ComboBox<'a, S> {
+#[must_use = "a widget records nothing until `show`"]
+pub struct ComboBox<'a, S, L> {
     widget: Widget,
     selected: &'a mut usize,
     options: &'a [S],
     /// Reads one option's label. `new` fills this with `S::as_ref`.
-    label: fn(&S) -> &str,
-    style: Option<&'a ButtonTheme>,
+    label: L,
+    style: Option<&'a ComboBoxTheme>,
+    button_style: Option<&'a ButtonTheme>,
 }
 
-impl<'a, S: AsRef<str>> ComboBox<'a, S> {
+impl<'a, S: AsRef<str>> ComboBox<'a, S, fn(&S) -> &str> {
     /// A dropdown over options that are themselves text.
     #[track_caller]
     pub fn new(selected: &'a mut usize, options: &'a [S]) -> Self {
@@ -70,35 +73,45 @@ impl<'a, S: AsRef<str>> ComboBox<'a, S> {
     }
 }
 
-impl<'a, S> ComboBox<'a, S> {
+impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
     /// A dropdown over rows that *carry* a label rather than being one:
     /// `label` reads each row's text.
     ///
     /// For an option type no `AsRef<str>` impl could serve — a record with
     /// an id beside a display name, where picking between the two is the
-    /// call site's business, not the type's.
-    ///
-    /// A plain `fn` pointer rather than a closure keeps `ComboBox`
-    /// non-generic over the projection; every real label is a field read.
+    /// call site's business, not the type's. `label` is any `Fn`, so a
+    /// projection may capture the table it reads through.
     #[track_caller]
-    pub fn labeled(selected: &'a mut usize, options: &'a [S], label: fn(&S) -> &str) -> Self {
+    pub fn labeled(selected: &'a mut usize, options: &'a [S], label: L) -> Self {
         Self {
             widget: Widget::hstack().sense(Sense::CLICK),
             selected,
             options,
             label,
             style: None,
+            button_style: None,
         }
     }
 
-    /// Per-instance override of [`crate::Theme`]'s `button`. Takes an
+    /// Per-instance override of [`crate::Theme`]'s `combo_box`. Takes an
     /// `Option` as readily as a reference: `.style(overrides.as_ref())`.
     ///
-    /// Restyles the trigger chrome. The dropdown reads
-    /// [`crate::Theme::context_menu`], and the arrow geometry
-    /// [`crate::Theme::combo_box`].
-    pub fn style(mut self, s: impl Into<Option<&'a ButtonTheme>>) -> Self {
+    /// Restyles the widget's own geometry — the label/chevron gutter and
+    /// the chevron. [`Self::button_style`] restyles the trigger's chrome,
+    /// and the dropdown reads [`crate::Theme::context_menu`].
+    pub fn style(mut self, s: impl Into<Option<&'a ComboBoxTheme>>) -> Self {
         self.style = s.into();
+        self
+    }
+
+    /// Per-instance override of [`crate::Theme`]'s `button`, which is what
+    /// the trigger paints as.
+    ///
+    /// Separate from [`Self::style`] because a combo box is assembled out
+    /// of two other controls: the trigger is a button and the dropdown a
+    /// context menu, so restyling either moves the combo with it.
+    pub fn button_style(mut self, s: impl Into<Option<&'a ButtonTheme>>) -> Self {
+        self.button_style = s.into();
         self
     }
 
@@ -110,12 +123,12 @@ impl<'a, S> ComboBox<'a, S> {
         // One handle covers both reads: the geometry is read again inside
         // the `record` closure below, which owns `ui` mutably.
         let theme = Rc::clone(ui.theme());
-        let slot = self.style.unwrap_or(&theme.button);
+        let slot = self.button_style.unwrap_or(&theme.button);
         let look = slot
             .plan(&response, (), theme.text)
             .apply(ui, &mut self.widget);
 
-        let geom = &theme.combo_box;
+        let geom = self.style.unwrap_or(&theme.combo_box);
         self.widget
             .configure()
             .justify(Justify::SpaceBetween)
@@ -213,7 +226,7 @@ impl<'a, S> ComboBox<'a, S> {
     }
 }
 
-impl<S> Configure for ComboBox<'_, S> {
+impl<S, L> Configure for ComboBox<'_, S, L> {
     #[inline]
     fn configure(&mut self) -> ConfigureWidget<'_> {
         self.widget.configure()

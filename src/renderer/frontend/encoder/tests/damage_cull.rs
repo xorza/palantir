@@ -11,7 +11,7 @@ use crate::scene::damage::region::DamageRegion;
 use crate::scene::layer::Layer;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
-use crate::widgets::{frame::Frame, panel::Panel};
+use crate::widgets::{block::Block, panel::Panel};
 use glam::{UVec2, Vec2};
 
 #[test]
@@ -28,7 +28,7 @@ fn damage_filter_partitions_drawrects_by_dirty_region() {
         let mut h = UiHarness::new(UVec2::new(200, 200));
         h.frame(|ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("a"))
                     .size((Sizing::fixed(40.0), Sizing::fixed(40.0)))
                     .background(Background {
@@ -36,7 +36,7 @@ fn damage_filter_partitions_drawrects_by_dirty_region() {
                         ..Default::default()
                     })
                     .show(ui);
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("b"))
                     .size((Sizing::fixed(40.0), Sizing::fixed(40.0)))
                     .background(Background {
@@ -81,7 +81,7 @@ fn damage_filter_culls_subtree_outside_damage() {
         h.frame(|ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
                 let inner = |ui: &mut Ui| {
-                    Frame::new()
+                    Block::new()
                         .id(WidgetId::from_hash("inner"))
                         .size(20.0)
                         .background(Background {
@@ -122,7 +122,7 @@ fn damage_filter_paints_leaves_in_any_rect() {
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 for (key, x, y) in &[("tl", 0.0, 0.0), ("tr", 160.0, 0.0), ("bl", 0.0, 160.0)] {
-                    Frame::new()
+                    Block::new()
                         .id(WidgetId::from_hash(*key))
                         .size((Sizing::fixed(40.0), Sizing::fixed(40.0)))
                         .position(Vec2::new(*x, *y))
@@ -250,7 +250,7 @@ fn damage_filter_includes_descendant_overflowing_parent_rect() {
                 .id(WidgetId::from_hash("overflow-parent"))
                 .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
                 .show(ui, |ui| {
-                    Frame::new()
+                    Block::new()
                         .id(WidgetId::from_hash("overflowing-child"))
                         .position((60.0, 0.0))
                         .size((Sizing::fixed(40.0), Sizing::fixed(40.0)))
@@ -303,7 +303,7 @@ fn damage_filter_repaints_neighbor_in_aa_pad_ring() {
                 .show(ui, |ui| {
                     // Static neighbour at (100..120, 100..120) — stands in
                     // for a node border / port circle the wire swept past.
-                    Frame::new()
+                    Block::new()
                         .id(WidgetId::from_hash("neighbour"))
                         .position(Vec2::new(100.0, 100.0))
                         .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))

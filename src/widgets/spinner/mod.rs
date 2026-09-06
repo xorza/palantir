@@ -13,6 +13,7 @@ use crate::shape::style::LineCap;
 use crate::ui::Ui;
 use crate::widgets::configure::Configure;
 use crate::widgets::configure::ConfigureWidget;
+use crate::widgets::configure::ThemeDefaults;
 use crate::widgets::response::Response;
 use crate::widgets::theme::spinner::SpinnerTheme;
 use crate::widgets::widget::Widget;
@@ -35,6 +36,7 @@ use std::time::Duration;
 /// circle, adaptive subdivision), so it stays smooth at any size and
 /// DPI; the comet fade is a linear gradient sampled along the sweep.
 #[derive(Debug)]
+#[must_use = "a widget records nothing until `show`"]
 pub struct Spinner<'a> {
     widget: Widget,
     diameter: Option<f32>,

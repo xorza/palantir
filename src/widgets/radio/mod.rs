@@ -9,7 +9,7 @@ use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::widgets::configure::Configure;
 use crate::widgets::configure::ConfigureWidget;
-use crate::widgets::response::Response;
+use crate::widgets::select_response::SelectResponse;
 use crate::widgets::theme::toggle::ToggleTheme;
 use crate::widgets::theme::widget_look::theme_slot::ThemeSlot;
 use crate::widgets::toggle_chrome::ToggleChrome;
@@ -28,6 +28,7 @@ use crate::widgets::widget::Widget;
 /// from `theme.radio` ([`crate::ToggleTheme`]); the pip paints as a
 /// pill (`box_size * 0.5` radius) regardless of `box_radius`.
 #[derive(Debug)]
+#[must_use = "a widget records nothing until `show`"]
 pub struct RadioButton<'a, T: PartialEq> {
     widget: Widget,
     current: &'a mut T,
@@ -64,7 +65,15 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
         self
     }
 
-    pub fn show(mut self, ui: &mut Ui) -> Response<'_> {
+    /// Record the row and report whether this click moved the group's
+    /// selection.
+    ///
+    /// A [`SelectResponse`] rather than a bare [`Response`](crate::Response), for the
+    /// reason [`ComboBox`](crate::ComboBox) returns one: a radio latches,
+    /// so `clicked()` is true on the already-selected option and
+    /// `changed` is not. The caller has no other way to tell the two
+    /// apart.
+    pub fn show(mut self, ui: &mut Ui) -> SelectResponse<'_> {
         let response = self.widget.response(ui);
 
         // Read ahead of the latch below, which moves `self.value` and so
@@ -76,6 +85,7 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
         let dot_inset = slot.indicator_inset.themed_length(0.0);
 
         let mut selected = *self.current == self.value;
+        let mut changed = false;
         // Radios latch — re-clicking the selected option is a no-op,
         // matches platform behavior on every OS. A fresh click selects
         // this option, so flip `selected` now (`value` is moved into
@@ -84,6 +94,7 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
         if response.clicked() && !selected {
             *self.current = self.value;
             selected = true;
+            changed = true;
         }
 
         let chrome = ToggleChrome {
@@ -95,13 +106,14 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
             // radio pip must never square-corner.
             pill: Some(pip_size * 0.5),
         };
-        chrome.record_row(ui, self.widget, response, self.label, |ui, _| {
+        let response = chrome.record_row(ui, self.widget, response, self.label, |ui, _| {
             if selected {
                 let dot_size = pip_size - 2.0 * dot_inset;
                 let dot = Rect::new(dot_inset, dot_inset, dot_size, dot_size);
                 ui.add_shape(Shape::rect(dot).corners(dot_size * 0.5).fill(indicator));
             }
-        })
+        });
+        SelectResponse { response, changed }
     }
 }
 

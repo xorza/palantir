@@ -2,14 +2,14 @@ use crate::layout::axis::Axis;
 use crate::layout::types::{
     align::Align,
     align::VAlign,
-    sizing::{Sizes, Sizing},
+    sizing::{SizeSpec, Sizing},
 };
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
-use crate::widgets::{button::Button, frame::Frame, panel::Panel};
+use crate::widgets::{block::Block, button::Button, panel::Panel};
 use glam::UVec2;
 
 #[test]
@@ -102,11 +102,11 @@ fn hstack_fill_weights_split_remainder_proportionally() {
                 .auto_id()
                 .size((Sizing::FILL, Sizing::HUG))
                 .show(ui, |ui| {
-                    Frame::new()
+                    Block::new()
                         .id(WidgetId::from_hash("a"))
                         .size((Sizing::fill(case.weights[0]), Sizing::HUG))
                         .show(ui);
-                    Frame::new()
+                    Block::new()
                         .id(WidgetId::from_hash("b"))
                         .size((Sizing::fill(case.weights[1]), Sizing::HUG))
                         .show(ui);
@@ -176,7 +176,7 @@ fn hstack_justify_distributes_leftover() {
                 .justify(*justify)
                 .show(ui, |ui| {
                     for i in 0..expected_xs.len() {
-                        Frame::new()
+                        Block::new()
                             .id(WidgetId::from_hash(("c", i)))
                             .size(40.0)
                             .show(ui);
@@ -202,15 +202,15 @@ fn hstack_justify_is_noop_when_fill_child_consumes_leftover() {
             .size((Sizing::FILL, Sizing::HUG))
             .justify(Justify::Center)
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("a"))
                     .size(40.0)
                     .show(ui);
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("filler"))
                     .size((Sizing::FILL, Sizing::HUG))
                     .show(ui);
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("c"))
                     .size(40.0)
                     .show(ui);
@@ -233,15 +233,15 @@ fn hstack_gap_inserts_space_between_children() {
             .auto_id()
             .gap(10.0)
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("a"))
                     .size(40.0)
                     .show(ui);
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("b"))
                     .size(40.0)
                     .show(ui);
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("c"))
                     .size(40.0)
                     .show(ui);
@@ -263,7 +263,7 @@ fn hstack_align_center_centers_child_on_cross_axis() {
             .auto_id()
             .size((Sizing::FILL, Sizing::fixed(100.0)))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("c"))
                     .size((Sizing::fixed(40.0), Sizing::fixed(20.0)))
                     .align(Align::CENTER)
@@ -320,7 +320,7 @@ fn hug_hstack_pass2_does_not_double_count_non_fill_children() {
     let [button_node, root] = h.frame_value(|ui| {
         let panel = Panel::hstack().auto_id().show(ui, |ui| {
             let button = Button::new().auto_id().label("Hi").show(ui).node();
-            Frame::new()
+            Block::new()
                 .id(WidgetId::from_hash("filler"))
                 .size((Sizing::FILL, Sizing::HUG))
                 .show(ui);
@@ -346,16 +346,16 @@ fn hstack_collapsed_child_neither_advances_cursor_nor_consumes_gap() {
             .auto_id()
             .gap(5.0)
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("a"))
                     .size((20.0, 20.0))
                     .show(ui);
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("hidden"))
                     .size((50.0, 20.0))
                     .collapsed()
                     .show(ui);
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("b"))
                     .size((30.0, 20.0))
                     .show(ui);
@@ -406,14 +406,14 @@ fn stack_mixed_sizing_modes_have_exact_axis_symmetric_layout() {
                 .size(case.axis.compose_size(200.0, 40.0))
                 .gap(5.0)
                 .show(ui, |ui| {
-                    Frame::new()
+                    Block::new()
                         .id(WidgetId::from_hash((case.label, "fixed")))
                         .size(case.axis.compose_size(20.0, 10.0))
                         .show(ui);
 
                     let hug_size = match case.axis {
-                        Axis::X => Sizes::new(Sizing::HUG, Sizing::fixed(10.0)),
-                        Axis::Y => Sizes::new(Sizing::fixed(10.0), Sizing::HUG),
+                        Axis::X => SizeSpec::new(Sizing::HUG, Sizing::fixed(10.0)),
+                        Axis::Y => SizeSpec::new(Sizing::fixed(10.0), Sizing::HUG),
                     };
                     let hug = match case.axis {
                         Axis::X => Panel::hstack(),
@@ -422,22 +422,22 @@ fn stack_mixed_sizing_modes_have_exact_axis_symmetric_layout() {
                     hug.id(WidgetId::from_hash((case.label, "hug")))
                         .size(hug_size)
                         .show(ui, |ui| {
-                            Frame::new()
+                            Block::new()
                                 .id(WidgetId::from_hash((case.label, "hug-content")))
                                 .size(case.axis.compose_size(30.0, 10.0))
                                 .show(ui);
                         });
 
                     let fill_size = match case.axis {
-                        Axis::X => Sizes::new(Sizing::FILL, Sizing::fixed(10.0)),
-                        Axis::Y => Sizes::new(Sizing::fixed(10.0), Sizing::FILL),
+                        Axis::X => SizeSpec::new(Sizing::FILL, Sizing::fixed(10.0)),
+                        Axis::Y => SizeSpec::new(Sizing::fixed(10.0), Sizing::FILL),
                     };
-                    Frame::new()
+                    Block::new()
                         .id(WidgetId::from_hash((case.label, "collapsed-fill")))
                         .size(fill_size)
                         .collapsed()
                         .show(ui);
-                    Frame::new()
+                    Block::new()
                         .id(WidgetId::from_hash((case.label, "fill")))
                         .size(fill_size)
                         .show(ui);
@@ -476,11 +476,11 @@ fn hstack_fill_max_size_caps_arranged_share() {
             .auto_id()
             .size((Sizing::fixed(200.0), Sizing::fixed(40.0)))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("fixed"))
                     .size((20.0, 20.0))
                     .show(ui);
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("fill"))
                     .size((Sizing::FILL, 20.0))
                     .max_size(Size::new(50.0, f32::INFINITY))
@@ -552,7 +552,7 @@ fn fill_cross_axis_stretches_regardless_of_align() {
                 .size((Sizing::fixed(400.0), Sizing::fixed(100.0)))
                 .show(ui, |ui| {
                     child = Some(
-                        Frame::new()
+                        Block::new()
                             .auto_id()
                             .size((Sizing::FILL, Sizing::fixed(20.0)))
                             .align(align)
@@ -592,7 +592,7 @@ fn hug_panel_clamps_to_min_and_max_size() {
             .size((Sizing::HUG, Sizing::HUG))
             .min_size((0.0, 100.0))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("c"))
                     .size((Sizing::fixed(40.0), Sizing::fixed(60.0)))
                     .show(ui);
@@ -614,7 +614,7 @@ fn hug_panel_clamps_to_min_and_max_size() {
             .size((Sizing::HUG, Sizing::HUG))
             .max_size((f32::INFINITY, 120.0))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("c"))
                     .size((Sizing::fixed(40.0), Sizing::fixed(300.0)))
                     .show(ui);
@@ -652,11 +652,11 @@ fn hstack_child_align_per_axis_with_overrides() {
                 .size((Sizing::FILL, Sizing::fixed(100.0)))
                 .child_align(Align::v(VAlign::Center))
                 .show(ui, |ui| {
-                    Frame::new()
+                    Block::new()
                         .id(WidgetId::from_hash("a"))
                         .size((Sizing::fixed(40.0), Sizing::fixed(20.0)))
                         .show(ui);
-                    let mut b = Frame::new()
+                    let mut b = Block::new()
                         .id(WidgetId::from_hash("b"))
                         .size((Sizing::fixed(40.0), Sizing::fixed(20.0)));
                     if let Some(a) = *second_override {

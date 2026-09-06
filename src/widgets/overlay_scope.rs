@@ -7,8 +7,8 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
+use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
-use crate::widgets::frame::Frame;
 use crate::widgets::widget::Widget;
 
 /// What stands between an overlay's body and the layers below it.
@@ -141,7 +141,7 @@ impl OverlayScope {
     pub(super) fn record<R>(&self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> OverlayTurn<R> {
         if let Backdrop::Eater(id) = self.backdrop {
             ui.layer(self.layer).show(|ui| {
-                Frame::new()
+                Block::new()
                     .id(id)
                     .size((Sizing::FILL, Sizing::FILL))
                     .sense(Sense::ABSORB_POINTER)
@@ -193,7 +193,7 @@ impl OverlayScope {
     /// using a scope it has handed back.
     pub(super) fn withdraw(self, ui: &mut Ui, closed: bool) {
         if closed && self.backdrop.owns_input() {
-            ui.close_scope(self.owner);
+            ui.release_input_scope(self.owner);
         }
     }
 }

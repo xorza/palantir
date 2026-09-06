@@ -17,7 +17,7 @@ use crate::text::font_weight::FontWeight;
 
 /// Which face to shape in, and how big.
 ///
-/// Sizes are logical pixels; the raster scale is
+/// SizeSpec are logical pixels; the raster scale is
 /// [`TextGlyphs::line`](crate::widget::TextGlyphs::line)'s, because
 /// it is a property of the surface being drawn into rather than of the text.
 #[derive(Clone, Copy, Debug, PartialEq)]

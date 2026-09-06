@@ -82,6 +82,7 @@ use crate::host::winit::gpu::SurfaceManager;
 use crate::host::winit::handle::{HostHandle, MainTask, UserEvent};
 use crate::host::winit::runtime::WinitRuntime;
 use crate::host::winit::window::FramePresent;
+use crate::text::font_scope::FontScope;
 use crate::ui::Ui;
 use crate::window::vsync::Vsync;
 use crate::window::window_config::WindowConfig;
@@ -174,6 +175,18 @@ where
     /// Set the bootstrap window's title.
     pub fn title(mut self, title: impl Into<String>) -> Self {
         self.config.window.title = title.into();
+        self
+    }
+
+    /// Which faces every window shapes against. Defaults to
+    /// [`FontScope::System`], because a window sits beside the machine's
+    /// other applications and should fall back the way they do.
+    ///
+    /// The door both hosts share — see
+    /// [`OffscreenHostBuilder::fonts`](crate::OffscreenHostBuilder::fonts),
+    /// which defaults the other way.
+    pub fn fonts(mut self, scope: FontScope) -> Self {
+        self.config.fonts = scope;
         self
     }
 

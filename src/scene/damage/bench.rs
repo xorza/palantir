@@ -24,8 +24,8 @@ use crate::scene::damage::region::DamageRegion;
 use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::ui::harness::UiHarness;
+use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
-use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
 use criterion::{BenchmarkId, Criterion};
 use std::hint::black_box;
@@ -59,7 +59,7 @@ fn build_grid(ui: &mut Ui, hot: &[usize], hot_color: RgbaF32) {
                             } else {
                                 RgbaF32::srgb(0.2, 0.2, 0.25)
                             };
-                            Frame::new()
+                            Block::new()
                                 .id_salt(("cell", r, c))
                                 .size((Sizing::fixed(30.0), Sizing::FILL))
                                 .background(Background {
@@ -104,7 +104,7 @@ fn build_painted_rows(ui: &mut Ui, hot: &[usize], hot_color: RgbaF32) {
                             } else {
                                 RgbaF32::srgb(0.2, 0.2, 0.25)
                             };
-                            Frame::new()
+                            Block::new()
                                 .id_salt(("cell", r, c))
                                 .size((Sizing::fixed(30.0), Sizing::FILL))
                                 .background(Background {
@@ -335,7 +335,7 @@ fn bench_workloads(c: &mut Criterion, run: Run<'_>) {
                                     for c in 0..COLS {
                                         let i = r * COLS + c;
                                         let phase = (i as u32 + frame_n) as f32 * 0.013;
-                                        Frame::new()
+                                        Block::new()
                                             .id_salt(("cell", r, c))
                                             .size((Sizing::fixed(30.0), Sizing::FILL))
                                             .background(Background {
@@ -624,7 +624,7 @@ fn build_ordered_siblings(ui: &mut Ui, order: &[usize]) {
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
             for &i in order {
-                Frame::new()
+                Block::new()
                     .id_salt(("sib", i))
                     .size((Sizing::fixed(120.0), Sizing::fixed(60.0)))
                     .background(Background {

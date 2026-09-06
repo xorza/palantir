@@ -11,7 +11,7 @@ use crate::scene::damage::Damage;
 use crate::scene::damage::tests::support::{BLUE, DISPLAY, RED, one_frame};
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
-use crate::widgets::{frame::Frame, panel::Panel};
+use crate::widgets::{block::Block, panel::Panel};
 use crate::{display::Display, layout::types::sizing::Sizing};
 use glam::UVec2;
 
@@ -154,7 +154,7 @@ fn small_damage_with_surface_change_forces_full_repaint() {
             .id(WidgetId::from_hash("root"))
             .size((Sizing::fixed(60.0), Sizing::fixed(120.0)))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("big"))
                     .size((60.0, 60.0))
                     .background(Background {
@@ -162,7 +162,7 @@ fn small_damage_with_surface_change_forces_full_repaint() {
                         ..Default::default()
                     })
                     .show(ui);
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("small"))
                     .size((50.0, 60.0))
                     .background(Background {

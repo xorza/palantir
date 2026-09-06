@@ -4,7 +4,7 @@ use crate::scene::layer::Layer;
 use crate::text::wrap::TextWrap;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
-use crate::widgets::{frame::Frame, panel::Panel, text::Text};
+use crate::widgets::{block::Block, panel::Panel, text::Text};
 use glam::UVec2;
 
 #[test]
@@ -16,7 +16,7 @@ fn canvas_places_child_at_position_within_inner_rect() {
             .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
             .padding(10.0)
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("a"))
                     .position((30.0, 40.0))
                     .size((20.0, 20.0))
@@ -42,12 +42,12 @@ fn canvas_hugs_to_bounding_box_of_placed_children() {
             .auto_id()
             .size((Sizing::HUG, Sizing::HUG))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("a"))
                     .position((10.0, 5.0))
                     .size((30.0, 15.0))
                     .show(ui);
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("b"))
                     .position((50.0, 60.0))
                     .size((20.0, 20.0))
@@ -79,7 +79,7 @@ fn canvas_fill_canvas_positioned_overflow_does_not_grow_bbox() {
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("overhang"))
                     .position((700.0, 100.0))
                     .size((160.0, 80.0))
@@ -117,7 +117,7 @@ fn canvas_negative_position_does_not_extend_bbox() {
             .auto_id()
             .size((Sizing::HUG, Sizing::HUG))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("neg"))
                     .position((-5.0, -5.0))
                     .size((20.0, 20.0))
@@ -166,7 +166,7 @@ fn canvas_fill_child_fills_the_room_past_its_position() {
             }
             canvas
                 .show(ui, |ui| {
-                    Frame::new()
+                    Block::new()
                         .id(WidgetId::from_hash("filler"))
                         .position((10.0, 10.0))
                         .size((Sizing::FILL, Sizing::FILL))
@@ -240,12 +240,12 @@ fn canvas_collapsed_child_does_not_grow_bbox() {
             .auto_id()
             .size((Sizing::HUG, Sizing::HUG))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("a"))
                     .position((0.0, 0.0))
                     .size((10.0, 10.0))
                     .show(ui);
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("collapsed"))
                     .position((100.0, 100.0))
                     .size((50.0, 50.0))
@@ -277,7 +277,7 @@ fn canvas_ignores_child_align() {
             .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
             .show(ui, |ui| {
                 child = Some(
-                    Frame::new()
+                    Block::new()
                         .id(WidgetId::from_hash("aligned"))
                         .position((30.0, 40.0))
                         .size((50.0, 50.0))

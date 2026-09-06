@@ -44,8 +44,8 @@ use std::hash::Hash;
 /// and the bar that gets drawn scale differently.
 pub(crate) fn viewport(outer: Size, reserve_y: f32, reserve_x: f32, padding: Spacing) -> Size {
     Size::new(
-        (outer.w - reserve_y - padding.horizontal()).max(0.0),
-        (outer.h - reserve_x - padding.vertical()).max(0.0),
+        (outer.w - reserve_y - padding.horizontal_sum()).max(0.0),
+        (outer.h - reserve_x - padding.vertical_sum()).max(0.0),
     )
 }
 
@@ -256,7 +256,7 @@ impl LayoutDriver for Scrollbars {
     /// Index of this overlay's definition in `Tree::scrollbar_defs`.
     type Payload = ScrollbarsDefId;
 
-    /// Sizes its thumbs from the *sibling* viewport's measured
+    /// SizeSpec its thumbs from the *sibling* viewport's measured
     /// `scroll_content`, so content that stops overflowing leaves this
     /// subtree's own hash and slot untouched while the bars it should
     /// retire stay exactly where they were.

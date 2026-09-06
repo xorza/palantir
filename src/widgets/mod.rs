@@ -11,6 +11,7 @@
 
 pub(crate) mod arrow;
 pub(crate) mod axis_keys;
+pub(crate) mod block;
 pub(crate) mod button;
 pub(crate) mod checkbox;
 pub(crate) mod checkerboard;
@@ -28,7 +29,6 @@ pub(crate) mod dock;
 pub(crate) mod drag_num;
 pub(crate) mod drag_value;
 pub(crate) mod expander;
-pub(crate) mod frame;
 pub(crate) mod gpu_view;
 pub(crate) mod grid;
 pub(crate) mod modal;

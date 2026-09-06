@@ -22,8 +22,8 @@ use crate::primitives::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::shape::Shape;
 use crate::ui::harness::UiHarness;
+use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
-use crate::widgets::frame::Frame;
 use crate::widgets::modal::Modal;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
@@ -297,7 +297,7 @@ fn modifiers_read_keeps_alt_ctrl_visual_reactive_through_release() {
             RgbaF32::BLACK
         };
         *painted = color;
-        Frame::new()
+        Block::new()
             .id(WidgetId::from_hash("modifier-visual"))
             .size((Sizing::fixed(40.0), Sizing::fixed(40.0)))
             .background(Background::fill(color))
@@ -408,7 +408,7 @@ fn a_scope_silences_pointer_watchers_strictly_below_it() {
     let scoped = |ui: &mut Ui| {
         empty_watch_buttons(ui);
         ui.layer(Layer::Popup).show(|ui| {
-            Frame::new()
+            Block::new()
                 .id(WidgetId::from_hash("overlay"))
                 .input_scope(KeyFilter::ALL)
                 .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))

@@ -11,8 +11,8 @@ use crate::scene::cascade::Cascade;
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
 use crate::ui::harness::UiHarness;
+use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
-use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
 use std::time::Duration;
 use strum::EnumCount as _;
@@ -110,7 +110,7 @@ fn keydown_pushes_onto_frame_keys_with_current_modifiers() {
 fn a_tree_with_no_scopes_still_reads_every_chord() {
     let mut h = UiHarness::new(glam::UVec2::new(200, 200));
     let bare = |ui: &mut Ui| {
-        Frame::new()
+        Block::new()
             .id(WidgetId::from_hash("plain"))
             .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
             .show(ui);
@@ -247,7 +247,7 @@ fn closing_one_of_two_scopes_on_a_layer_leaves_it_blocked() {
         press_escape(&mut h);
         h.frame(|ui| {
             two(ui, &mut read_by_survivor);
-            ui.close_scope(WidgetId::from_hash(closed));
+            ui.release_input_scope(WidgetId::from_hash(closed));
         });
 
         // The next resolution honours the close, and the sibling holds.
@@ -266,7 +266,7 @@ fn closing_one_of_two_scopes_on_a_layer_leaves_it_blocked() {
     }
 }
 
-/// A `close_scope` takes effect for reads **after it in the same pass**,
+/// A `release_input_scope` takes effect for reads **after it in the same pass**,
 /// not just on the next resolution.
 ///
 /// Nested scopes, and the read sits inside the inner one. With focus on
@@ -299,7 +299,7 @@ fn a_close_reaches_reads_later_in_its_own_pass() {
                     .show(ui, |ui| {
                         *before |= ui.escape_pressed();
                         if closes {
-                            ui.close_scope(WidgetId::from_hash("inner"));
+                            ui.release_input_scope(WidgetId::from_hash("inner"));
                         }
                         *after |= ui.escape_pressed();
                     });
@@ -483,12 +483,12 @@ fn focus_is_evicted_when_widget_disappears() {
 }
 
 #[test]
-fn request_focus_bypasses_policy() {
+fn set_focus_bypasses_policy() {
     let mut h = UiHarness::new(glam::UVec2::new(200, 80));
     let id = WidgetId::from_hash("manual");
-    h.request_focus(Some(id));
+    h.set_focus(id);
     assert_eq!(h.focused_id(), Some(id));
-    h.request_focus(None);
+    h.clear_focus();
     assert_eq!(h.focused_id(), None);
 }
 

@@ -14,7 +14,7 @@ use crate::ui::harness::UiHarness;
 use crate::ui::resources::UiResources;
 use crate::ui::tests::support::{SURFACE, add_blink_shape, ui_with_shared};
 use crate::widgets::configure::Configure;
-use crate::widgets::{frame::Frame, panel::Panel, text::Text};
+use crate::widgets::{block::Block, panel::Panel, text::Text};
 use glam::Vec2;
 use std::time::Duration;
 
@@ -33,7 +33,7 @@ fn frame_stats_overlay_records_partial_damage() {
     // diff against), but the Debug layer should already carry the
     // readout.
     let mut body = |ui: &mut Ui| {
-        Frame::new()
+        Block::new()
             .id(WidgetId::from_hash("body"))
             .size(50.0)
             .show(ui);
@@ -245,7 +245,7 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
 
     fn body(ui: &mut Ui, half: Duration) {
         Panel::hstack().auto_id().show(ui, |ui| {
-            Frame::new()
+            Block::new()
                 .id(WidgetId::from_hash("blinker"))
                 .size(20.0)
                 .show(ui);
@@ -342,7 +342,7 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
             // Gradient-filled chrome: `lower::background` interns a
             // `RecordedGradient` into `RecordStore::gradients` each record
             // pass, and the resulting `ChromeRow` stores the index.
-            Frame::new()
+            Block::new()
                 .id(WidgetId::from_hash("grad_bg"))
                 .size(50.0)
                 .background(Background {
@@ -504,7 +504,7 @@ fn paint_only_skipped_when_widget_requested_repaint() {
 
     fn body(ui: &mut Ui, half: Duration) {
         Panel::hstack().auto_id().show(ui, |ui| {
-            Frame::new()
+            Block::new()
                 .id(WidgetId::from_hash("blinker"))
                 .size(20.0)
                 .show(ui);
@@ -550,7 +550,7 @@ fn input_policy_routes_paint_only_gate() {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("inert"))
                     .size(80.0)
                     .show(ui);

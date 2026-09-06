@@ -72,6 +72,7 @@ struct ContextMenuState {
 /// body closure, so pass the matching sub-themes down to them
 /// ([`MenuItem::style`](crate::widgets::context_menu::menu_item::MenuItem::style), [`MenuSeparator::style`](crate::widgets::context_menu::menu_separator::MenuSeparator::style)).
 #[derive(Debug)]
+#[must_use = "a widget records nothing until `show`"]
 pub struct ContextMenu<'a> {
     for_id: WidgetId,
     /// The popup this menu *is*. It owns the body node from the start,

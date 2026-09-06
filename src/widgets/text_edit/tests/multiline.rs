@@ -7,7 +7,7 @@ fn multiline_enter_inserts_newline() {
     let mut buf = String::from("abc");
     let ed_id = WidgetId::from_hash("ml-ed");
     // Focus + caret after "abc".
-    h.request_focus(Some(ed_id));
+    h.set_focus(ed_id);
     {
         let st = h.ui.state_or_default::<TextEditState>(ed_id);
         st.edit.caret = 3;
@@ -61,7 +61,7 @@ fn multiline_paste_keeps_newlines() {
     h.set_clipboard_text("line1\nline2\nline3");
     let mut buf = String::new();
     let ed_id = WidgetId::from_hash("ml-ed");
-    h.request_focus(Some(ed_id));
+    h.set_focus(ed_id);
     h.frame(multiline_editor(&mut buf));
     h.set_modifiers(Modifiers {
         ctrl: true,
@@ -82,7 +82,7 @@ fn multiline_selection_crosses_newline() {
     let mut h = UiHarness::with_text(UVec2::new(300, 200));
     let mut buf = String::from("first\nsecond");
     let ed_id = WidgetId::from_hash("ml-ed");
-    h.request_focus(Some(ed_id));
+    h.set_focus(ed_id);
     // Caret on line 1, column 3.
     {
         let st = h.ui.state_or_default::<TextEditState>(ed_id);

@@ -4,8 +4,8 @@ use crate::Ui;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::harness::UiHarness;
+use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
-use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::scroll::state::ScrollState;
@@ -28,7 +28,7 @@ fn nested_non_zoom_scroll_routes_pinch_to_zoomable_ancestor() {
                     .id(inner_id)
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        Frame::new()
+                        Block::new()
                             .id(WidgetId::from_hash("content"))
                             .size((Sizing::fixed(400.0), Sizing::fixed(400.0)))
                             .show(ui);
@@ -114,7 +114,7 @@ fn pinch_zoom_keeps_point_under_cursor_fixed() {
                 .id(WidgetId::from_hash("root"))
                 .padding(OUTER_PAD)
                 .show(ui, |ui| {
-                    Frame::new()
+                    Block::new()
                         .id(WidgetId::from_hash("topbar"))
                         .size((Sizing::fixed(200.0), Sizing::fixed(TEXT_GAP)))
                         .show(ui);
@@ -123,7 +123,7 @@ fn pinch_zoom_keeps_point_under_cursor_fixed() {
                         .zoom()
                         .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                         .show(ui, |ui| {
-                            Frame::new()
+                            Block::new()
                                 .id(WidgetId::from_hash("content"))
                                 .size((Sizing::fixed(content_size), Sizing::fixed(content_size)))
                                 .show(ui);
@@ -219,7 +219,7 @@ fn pan_after_pivot_zoom_does_not_snap_out_of_range_offset() {
                     .zoom()
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        Frame::new()
+                        Block::new()
                             .id(WidgetId::from_hash("content"))
                             .size((Sizing::fixed(400.0), Sizing::fixed(400.0)))
                             .show(ui);
@@ -264,7 +264,7 @@ fn pivot_zoom_preserves_underflow_pan_range() {
             .zoom()
             .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("content"))
                     .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
                     .show(ui);
@@ -304,7 +304,7 @@ fn ctrl_touchpad_pixel_scroll_zooms_at_same_rate_as_wheel_lines() {
                     .zoom()
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        Frame::new()
+                        Block::new()
                             .id(WidgetId::from_hash("content"))
                             .size((Sizing::fixed(800.0), Sizing::fixed(800.0)))
                             .show(ui);
@@ -354,7 +354,7 @@ fn wheel_zoom_step_is_font_independent() {
                         .zoom()
                         .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                         .show(ui, |ui| {
-                            Frame::new()
+                            Block::new()
                                 .id(WidgetId::from_hash("content"))
                                 .size((Sizing::fixed(800.0), Sizing::fixed(800.0)))
                                 .show(ui);

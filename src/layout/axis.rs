@@ -2,7 +2,7 @@
 //! intrinsic query. Lifted out of `stack` so non-stack code (intrinsics,
 //! cache keys) can refer to it.
 
-use crate::layout::types::{sizing::Sizes, sizing::Sizing};
+use crate::layout::types::{sizing::SizeSpec, sizing::Sizing};
 use crate::primitives::{rect::Rect, size::Size, spacing::Spacing};
 use glam::{BVec2, Vec2};
 
@@ -77,7 +77,7 @@ impl Axis {
             Axis::Y => v.x,
         }
     }
-    pub(crate) fn main_sizing(self, s: Sizes) -> Sizing {
+    pub(crate) fn main_sizing(self, s: SizeSpec) -> Sizing {
         match self {
             Axis::X => s.w(),
             Axis::Y => s.h(),
@@ -86,8 +86,8 @@ impl Axis {
     /// Total spacing along this axis (left+right for X, top+bottom for Y).
     pub(crate) fn spacing(self, s: Spacing) -> f32 {
         match self {
-            Axis::X => s.horizontal(),
-            Axis::Y => s.vertical(),
+            Axis::X => s.horizontal_sum(),
+            Axis::Y => s.vertical_sum(),
         }
     }
     /// Build a `Size` from main- and cross-axis lengths.

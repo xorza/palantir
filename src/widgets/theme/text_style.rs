@@ -50,9 +50,10 @@ pub struct TextStyle {
     /// Line-height-to-font-size ratio. Drives the shaper's leading and
     /// the caret rect height (locked together via
     /// `ShapeRecord::Text.line_height_px`). Default matches cosmic-text's
-    /// natural leading (1.2). A widget overrides it by carrying a whole
-    /// [`TextStyle`] in its look's `text` slot, since a look either
-    /// replaces every text axis or inherits every one.
+    /// natural leading (1.2). A *look* overrides it by carrying a whole
+    /// [`TextStyle`] in its `text` slot, since a look either replaces
+    /// every text axis or inherits every one. A *caller* overrides it
+    /// alone through [`TextStyleOverrides`].
     #[animate(snap)]
     pub line_height_mult: f32,
     /// Font family used for shaping. Default
@@ -86,6 +87,42 @@ impl Default for TextStyle {
     }
 }
 
+/// Per-axis overrides folded onto a resolved [`TextStyle`].
+///
+/// What a text-rendering widget collects from its one-axis setters —
+/// [`Text::color`](crate::Text::color),
+/// [`TextEdit::font_size`](crate::TextEdit::font_size) and the rest — so
+/// that a caller who wants one axis does not have to build a whole bundle.
+/// A `None` field leaves the resolved style's own value standing.
+///
+/// One type rather than a set of fields per widget, so [`Text`](crate::Text)
+/// and [`TextEdit`](crate::TextEdit) answer the same chain, and so a widget
+/// of your own can offer it too.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct TextStyleOverrides {
+    pub color: Option<RgbaF32>,
+    pub font_size_px: Option<f32>,
+    pub line_height_mult: Option<f32>,
+    pub family: Option<FontFamily>,
+    pub weight: Option<FontWeight>,
+    pub slant: Option<FontSlant>,
+}
+
+impl TextStyleOverrides {
+    /// `base` with every axis this set names replaced.
+    #[inline]
+    pub fn apply(self, base: &TextStyle) -> TextStyle {
+        TextStyle {
+            font_size_px: self.font_size_px.unwrap_or(base.font_size_px),
+            color: self.color.unwrap_or(base.color),
+            line_height_mult: self.line_height_mult.unwrap_or(base.line_height_mult),
+            family: self.family.unwrap_or(base.family),
+            weight: self.weight.unwrap_or(base.weight),
+            slant: self.slant.unwrap_or(base.slant),
+        }
+    }
+}
+
 impl TextStyle {
     pub(crate) fn metrics_valid(&self) -> bool {
         GlyphFont::metrics_are_valid(self.font_size_px, self.line_height_for(self.font_size_px))
@@ -99,9 +136,9 @@ impl TextStyle {
     /// `font_size_px` with a separately-computed line height, so the two
     /// cannot arrive at the shaper disagreeing.
     ///
-    /// A builder that overrides one field writes a struct update over
-    /// this — `GlyphFont { weight: bold, ..slant.font() }` — which is why
-    /// there is no per-field variant here.
+    /// A builder that overrides one axis folds a [`TextStyleOverrides`]
+    /// onto the style before it gets here, which is why there is no
+    /// per-field variant.
     #[inline]
     pub fn font(&self) -> GlyphFont {
         GlyphFont {

@@ -8,9 +8,9 @@
 
 use palantir::SlotDefaults;
 use palantir::{
-    Align, AnimSpec, App, Background, Button, ButtonTheme, Checkbox, Configure, Corners,
-    FontFamily, FontWeight, Frame, FrameFixture, Justify, Key, Palette, Panel, RgbaF32, Scroll,
-    Shortcut, Sizing, Spacing, StatefulLook, Stroke, Text, TextStyle, TextWrap, Theme, Tooltip, Ui,
+    Align, AnimSpec, App, Background, Block, Button, ButtonTheme, Checkbox, Configure, Corners,
+    FontFamily, FontWeight, FrameFixture, Justify, Key, Palette, Panel, RgbaF32, Scroll, Shortcut,
+    Sizing, Spacing, StatefulLook, Stroke, Text, TextStyle, TextWrap, Theme, Tooltip, Ui,
     UserScale, VAlign, Vsync, WidgetLook, WindowConfig, WindowToken, fmt,
 };
 use std::cell::RefCell;
@@ -307,7 +307,7 @@ impl State {
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 self.rail(ui);
-                Frame::new()
+                Block::new()
                     .id_salt("rail-divider")
                     .size((Sizing::fixed(1.0), Sizing::FILL))
                     .background(Background::fill(support::HAIRLINE))
@@ -452,7 +452,7 @@ fn brand(ui: &mut Ui) {
 }
 
 fn group_heading(ui: &mut Ui, name: &'static str, first: bool) {
-    Frame::new()
+    Block::new()
         .id_salt(("group-space", name))
         .size((
             Sizing::fixed(1.0),
@@ -474,7 +474,7 @@ fn group_heading(ui: &mut Ui, name: &'static str, first: bool) {
 /// The rail footer, where each control mirrors its shortcut so the keys
 /// are discoverable instead of living only in a comment.
 fn debug_toggles(ui: &mut Ui) {
-    Frame::new()
+    Block::new()
         .id_salt("footer-rule")
         .size((Sizing::FILL, Sizing::fixed(1.0)))
         .background(Background::fill(support::HAIRLINE))
@@ -519,12 +519,6 @@ fn debug_toggles(ui: &mut Ui) {
 fn ui_scale_row(ui: &mut Ui) {
     let scale = ui.user_scale();
     let step = scale_step_style();
-    let readout = TextStyle {
-        family: FontFamily::MONO,
-        font_size_px: 12.0,
-        color: support::INK,
-        ..ui.theme().text
-    };
 
     let mut next = scale;
     Panel::hstack()
@@ -550,7 +544,9 @@ fn ui_scale_row(ui: &mut Ui) {
             // as it steps between them.
             Text::new(fmt!(ui, "{}%", scale.percent()))
                 .id_salt("ui-scale-readout")
-                .style(&readout)
+                .family(FontFamily::MONO)
+                .font_size(12.0)
+                .color(support::INK)
                 .size((Sizing::fixed(34.0), Sizing::HUG))
                 .text_align(Align::CENTER)
                 .show(ui);
@@ -604,7 +600,7 @@ fn page_header(ui: &mut Ui, title: &'static str, blurb: &'static str) {
                 .size((Sizing::FILL, Sizing::HUG))
                 .text_wrap(TextWrap::WrapWithOverflow)
                 .show(ui);
-            Frame::new()
+            Block::new()
                 .id_salt("header-rule")
                 .size((Sizing::FILL, Sizing::fixed(1.0)))
                 .margin((0.0, 10.0, 0.0, 0.0))

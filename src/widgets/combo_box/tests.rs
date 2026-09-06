@@ -7,6 +7,7 @@ use crate::widgets::combo_box::{ComboBox, ComboState};
 use crate::widgets::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::theme::Theme;
+use crate::widgets::theme::combo_box::ComboBoxTheme;
 use glam::{UVec2, Vec2};
 
 const SURFACE: UVec2 = UVec2::new(400, 300);
@@ -162,7 +163,7 @@ fn trigger_geometry_follows_the_combo_box_theme() {
     let options = ["One"];
     let id = WidgetId::from_hash("geom-combo");
 
-    let measure = |arrow: Vec2, gap: f32| -> (Vec2, f32) {
+    let measure = |arrow: Vec2, gap: f32, instance: Option<&ComboBoxTheme>| -> (Vec2, f32) {
         let mut h = UiHarness::new(SURFACE);
         h.ui.theme_mut().combo_box.arrow_size = arrow;
         h.ui.theme_mut().combo_box.gap = gap;
@@ -173,6 +174,7 @@ fn trigger_geometry_follows_the_combo_box_theme() {
                 .show(ui, |ui| {
                     ComboBox::new(&mut selected, &options)
                         .id(id)
+                        .style(instance)
                         .size((Sizing::HUG, Sizing::HUG))
                         .show(ui);
                 });
@@ -191,16 +193,27 @@ fn trigger_geometry_follows_the_combo_box_theme() {
         )
     };
 
-    let (size_a, gap_a) = measure(Vec2::new(10.0, 6.0), 12.0);
+    let (size_a, gap_a) = measure(Vec2::new(10.0, 6.0), 12.0, None);
     assert_eq!(size_a, Vec2::new(10.0, 6.0), "arrow node takes arrow_size");
     assert!((gap_a - 12.0).abs() < 1e-4, "gutter is gap, got {gap_a}",);
 
     // Both knobs move the layout — neither is baked in.
-    let (size_b, gap_b) = measure(Vec2::new(20.0, 14.0), 30.0);
+    let (size_b, gap_b) = measure(Vec2::new(20.0, 14.0), 30.0, None);
     assert_eq!(size_b, Vec2::new(20.0, 14.0));
     assert!((gap_b - 30.0).abs() < 1e-4, "gutter is gap, got {gap_b}");
     assert_ne!(size_a, size_b);
     assert_ne!(gap_a, gap_b);
+
+    // The same two knobs through `style`, against a slot set the other
+    // way: the instance is what lands.
+    let instance = ComboBoxTheme {
+        arrow_size: Vec2::new(20.0, 14.0),
+        gap: 30.0,
+        ..ComboBoxTheme::default()
+    };
+    let (size_c, gap_c) = measure(Vec2::new(10.0, 6.0), 12.0, Some(&instance));
+    assert_eq!(size_c, size_b, "`style` overrides the slot's arrow_size");
+    assert_eq!(gap_c, gap_b, "`style` overrides the slot's gap");
 }
 
 /// The list is the context menu's panel, not merely its colour: it takes

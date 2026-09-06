@@ -40,8 +40,8 @@ use crate::primitives::stroke::Stroke;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
 use crate::ui::harness::UiHarness;
+use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
-use crate::widgets::frame::Frame;
 use crate::widgets::grid::Grid;
 use crate::widgets::panel::Panel;
 use crate::widgets::text::Text;
@@ -155,7 +155,7 @@ fn build(ui: &mut Ui) {
                                 .gap(6.0)
                                 .size((Sizing::FILL, Sizing::HUG))
                                 .show(ui, |ui| {
-                                    Frame::new()
+                                    Block::new()
                                         .id_salt(("avatar", g, r))
                                         .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
                                         .show(ui);
@@ -169,7 +169,7 @@ fn build(ui: &mut Ui) {
                                         .show(ui);
                                 });
                         }
-                        Frame::new()
+                        Block::new()
                             .id_salt(("g-ftr", g))
                             .size((Sizing::FILL, Sizing::fixed(2.0)))
                             .show(ui);
@@ -237,7 +237,7 @@ fn build_heavy(ui: &mut Ui) {
                                         .id_salt(("h-avatar-wrap", g, r))
                                         .size((Sizing::fixed(24.0), Sizing::fixed(24.0)))
                                         .show(ui, |ui| {
-                                            Frame::new()
+                                            Block::new()
                                                 .id_salt(("h-avatar", g, r))
                                                 .size((Sizing::FILL, Sizing::FILL))
                                                 .background(avatar_bg.clone())
@@ -264,7 +264,7 @@ fn build_deep(ui: &mut Ui) {
 
 fn build_deep_level(ui: &mut Ui, depth: usize) {
     if depth == DEEP_DEPTH {
-        Frame::new()
+        Block::new()
             .id_salt("deep-leaf")
             .size((Sizing::FILL, Sizing::fixed(1.0)))
             .show(ui);
@@ -291,7 +291,7 @@ fn build_broad_level(ui: &mut Ui, depth: usize, key: usize, changed: bool) {
         .size((Sizing::FILL, Sizing::HUG))
         .show(ui, |ui| {
             if depth == BROAD_DEPTH {
-                Frame::new()
+                Block::new()
                     .id_salt(("broad-leaf", key))
                     .size((Sizing::FILL, Sizing::fixed(1.0)))
                     .background(Background {

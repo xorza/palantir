@@ -80,7 +80,7 @@ fn unconfigured_and_explicit_default_values_remain_distinct() {
     assert_eq!(inherited.node.clip, None);
 
     let explicit = Widget::leaf()
-        .size(Sizes::default())
+        .size(SizeSpec::default())
         .min_size(Size::ZERO)
         .max_size(Size::INF)
         .padding(Spacing::ZERO)
@@ -89,7 +89,7 @@ fn unconfigured_and_explicit_default_values_remain_distinct() {
         .focusable(false)
         .visibility(Visibility::Visible)
         .clip(ClipMode::None);
-    assert_eq!(explicit.node.size, Some(Sizes::default()));
+    assert_eq!(explicit.node.size, Some(SizeSpec::default()));
     assert_eq!(explicit.node.min_size, Some(Size::ZERO));
     assert_eq!(explicit.node.max_size, Some(Size::INF));
     assert_eq!(explicit.node.padding, Some(Spacing::ZERO));

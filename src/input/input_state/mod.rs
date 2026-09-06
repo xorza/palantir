@@ -154,7 +154,7 @@ impl InputState {
     /// Withdraw `owner`'s scope from the next resolution — see
     /// [`Scopes::close`] for the span that covers, and [`Scopes`] for why
     /// this one *does* take effect mid-pass.
-    pub(crate) fn close_scope(&mut self, owner: WidgetId) {
+    pub(crate) fn release_input_scope(&mut self, owner: WidgetId) {
         self.scopes.close(owner);
     }
 
@@ -755,7 +755,7 @@ impl InputState {
     /// edge. Taken once per record pass so [`Self::response_for`] can
     /// default the interaction half out for every widget at once.
     ///
-    /// `focused` is deliberately *not* part of this: [`crate::Ui::request_focus`]
+    /// `focused` is deliberately *not* part of this: [`crate::Ui::set_focus`]
     /// can set it mid-record, after the snapshot is taken, so
     /// `response_for` always reads it live — even on the fast path.
     ///
@@ -842,7 +842,7 @@ impl InputState {
         //
         // `focused` sits in the geometry half despite being interaction
         // state: it is read live rather than from the quiescent snapshot,
-        // because `request_focus` can set it mid-record, after
+        // because `set_focus` can set it mid-record, after
         // `frame_quiescent` was taken.
         let mut state = ResponseState {
             rect,

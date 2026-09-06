@@ -8,6 +8,7 @@ use crate::primitives::num::F32Ext;
 use crate::ui::Ui;
 use crate::widgets::configure::Configure;
 use crate::widgets::configure::ConfigureWidget;
+use crate::widgets::configure::ThemeDefaults;
 use crate::widgets::response::Response;
 use crate::widgets::theme::progress_bar::ProgressBarTheme;
 use crate::widgets::widget::Widget;
@@ -24,6 +25,7 @@ use crate::widgets::widget::Widget;
 /// Visuals come from [`crate::ProgressBarTheme`] (theme slot
 /// `progress_bar`).
 #[derive(Debug)]
+#[must_use = "a widget records nothing until `show`"]
 pub struct ProgressBar<'a> {
     widget: Widget,
     fraction: f32,

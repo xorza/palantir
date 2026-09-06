@@ -8,7 +8,7 @@ use crate::primitives::shadow::Shadow;
 use crate::primitives::stroke::Stroke;
 use palantir_anim_derive::Animatable;
 
-/// Paint data shared by container widgets (`Frame`, `Panel`, `Grid`)
+/// Paint data shared by container widgets (`Block`, `Panel`, `Grid`)
 /// and per-state widget visuals: fill colour, optional stroke, and
 /// corner radii. [`Self::NONE`] is transparent fill / no stroke / zero radius
 /// — emitting nothing.

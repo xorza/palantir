@@ -13,7 +13,7 @@ use crate::scene::damage::tests::support::{BLUE, DISPLAY, RED, frame};
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::popup::Popup;
-use crate::widgets::{frame::Frame, panel::Panel};
+use crate::widgets::{block::Block, panel::Panel};
 use glam::Vec2;
 
 /// Pin: when a subtree's `(paint_rect, node_hash, subtree_hash,
@@ -42,7 +42,7 @@ fn stable_painting_subtree_triggers_skip_jump() {
                         ..Default::default()
                     })
                     .show(ui, |ui| {
-                        Frame::new()
+                        Block::new()
                             .id(WidgetId::from_hash("child_a"))
                             .size(20.0)
                             .background(Background {
@@ -50,7 +50,7 @@ fn stable_painting_subtree_triggers_skip_jump() {
                                 ..Default::default()
                             })
                             .show(ui);
-                        Frame::new()
+                        Block::new()
                             .id(WidgetId::from_hash("child_b"))
                             .size(20.0)
                             .background(Background {
@@ -89,7 +89,7 @@ fn paints_to_non_paints_transition_evicts_and_clears() {
         Panel::hstack()
             .id(WidgetId::from_hash("root"))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("a"))
                     .size(50.0)
                     .background(Background {
@@ -103,7 +103,7 @@ fn paints_to_non_paints_transition_evicts_and_clears() {
         Panel::hstack()
             .id(WidgetId::from_hash("root"))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("a"))
                     .size(50.0)
                     .show(ui);
@@ -144,7 +144,7 @@ fn popup_eater_does_not_force_full_repaint() {
                 ..Default::default()
             })
             .show(ui, |ui, _popup| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("body-leaf"))
                     .size(60.0)
                     .background(Background {
@@ -159,7 +159,7 @@ fn popup_eater_does_not_force_full_repaint() {
     // paints-gate, the eater's full-surface prev rect would dominate
     // the region.
     let out = h.frame(|ui| {
-        Frame::new()
+        Block::new()
             .id(WidgetId::from_hash("placeholder"))
             .size(10.0)
             .show(ui);
@@ -193,7 +193,7 @@ fn click_on_empty_bg_does_not_force_full() {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("a"))
                     .size(50.0)
                     .background(Background {

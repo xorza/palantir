@@ -149,7 +149,7 @@ fn stack_sense_routing() {
 /// the disabling alone is what stops the press in the other case.
 #[test]
 fn a_disabled_cover_absorbs_the_press_it_is_painted_over() {
-    use crate::widgets::frame::Frame;
+    use crate::widgets::block::Block;
 
     let under = WidgetId::from_hash("under");
     let cover = WidgetId::from_hash("cover");
@@ -164,7 +164,7 @@ fn a_disabled_cover_absorbs_the_press_it_is_painted_over() {
                 .auto_id()
                 .size(Sizing::fixed(100.0))
                 .show(ui, |ui| {
-                    *clicked |= Frame::new()
+                    *clicked |= Block::new()
                         .id(under)
                         .size(Sizing::FILL)
                         .sense(Sense::CLICK)
@@ -172,7 +172,7 @@ fn a_disabled_cover_absorbs_the_press_it_is_painted_over() {
                         .show(ui)
                         .left
                         .clicked();
-                    Frame::new()
+                    Block::new()
                         .id(cover)
                         .size(Sizing::FILL)
                         .sense(sense)

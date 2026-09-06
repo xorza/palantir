@@ -22,7 +22,7 @@ use crate::scene::record_store::recorded_gradients::GradientId;
 use crate::scene::shapes::paint::ShapeBrush;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
-use crate::widgets::{frame::Frame, panel::Panel};
+use crate::widgets::{block::Block, panel::Panel};
 use glam::{UVec2, Vec2};
 
 #[test]
@@ -100,7 +100,7 @@ fn baseline_draw_rect_count_cases() {
             Panel::hstack().auto_id().show(ui, |ui| match scene {
                 Scene::Empty => {}
                 Scene::FrameWithFill => {
-                    Frame::new()
+                    Block::new()
                         .id(WidgetId::from_hash("a"))
                         .size(50.0)
                         .background(Background {
@@ -110,13 +110,13 @@ fn baseline_draw_rect_count_cases() {
                         .show(ui);
                 }
                 Scene::InvisibleFrame => {
-                    Frame::new()
+                    Block::new()
                         .id(WidgetId::from_hash("invisible"))
                         .size(50.0)
                         .show(ui);
                 }
                 Scene::FrameWithDegenerateBackground => {
-                    Frame::new()
+                    Block::new()
                         .id(WidgetId::from_hash("degenerate"))
                         .size(50.0)
                         .background(Background {
@@ -127,7 +127,7 @@ fn baseline_draw_rect_count_cases() {
                         .show(ui);
                 }
                 Scene::FrameWithClipRectSurface => {
-                    Frame::new()
+                    Block::new()
                         .id(WidgetId::from_hash("clip_only"))
                         .size(50.0)
                         .clip_rect()
@@ -174,7 +174,7 @@ fn manually_pushed_shapes_emit_expected_cmds() {
                 Shape::line(Vec2::new(0.0, 0.0), Vec2::new(10.0, 10.0), 2.0)
                     .brush(RgbaF32::TRANSPARENT),
             );
-            Frame::new()
+            Block::new()
                 .id(WidgetId::from_hash("host"))
                 .size(50.0)
                 .show(ui);
@@ -253,7 +253,7 @@ fn shadows_lower_to_shifted_drop_and_source_bounded_inset() {
                 .at(Rect::new(10.0, 20.0, 30.0, 40.0))
                 .corners(4.0),
             );
-            Frame::new()
+            Block::new()
                 .id(WidgetId::from_hash("host"))
                 .size(50.0)
                 .show(ui);

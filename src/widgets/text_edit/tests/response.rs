@@ -42,7 +42,7 @@ fn reports_gained_focus_as_a_one_frame_edge() {
     let mut buf = String::new();
 
     assert!(!frame(&mut h, &mut buf).gained, "unfocused: no gain");
-    h.request_focus(Some(id));
+    h.set_focus(id);
     assert!(frame(&mut h, &mut buf).gained, "took focus this frame");
     assert!(
         !frame(&mut h, &mut buf).gained,
@@ -56,7 +56,7 @@ fn reports_changed_on_edit_but_not_submit() {
     let id = WidgetId::from_hash(EDITOR);
     let mut buf = String::new();
 
-    h.request_focus(Some(id));
+    h.set_focus(id);
     let _ = frame(&mut h, &mut buf); // settle focus
     h.key(Key::Char('x'));
     let s = frame(&mut h, &mut buf);
@@ -70,7 +70,7 @@ fn reports_submitted_on_single_line_enter() {
     let id = WidgetId::from_hash(EDITOR);
     let mut buf = String::from("hi");
 
-    h.request_focus(Some(id));
+    h.set_focus(id);
     let _ = frame(&mut h, &mut buf); // settle focus
     h.key(Key::Enter);
     let s = frame(&mut h, &mut buf);
@@ -85,9 +85,9 @@ fn reports_lost_focus_on_blur() {
     let id = WidgetId::from_hash(EDITOR);
     let mut buf = String::new();
 
-    h.request_focus(Some(id));
+    h.set_focus(id);
     let _ = frame(&mut h, &mut buf); // settle focus
-    h.request_focus(None);
+    h.clear_focus();
     assert!(frame(&mut h, &mut buf).lost, "lost focus this frame");
 }
 
@@ -97,7 +97,7 @@ fn escape_reports_lost_focus_on_the_blur_frame() {
     let id = WidgetId::from_hash(EDITOR);
     let mut buf = String::new();
 
-    h.request_focus(Some(id));
+    h.set_focus(id);
     let _ = frame(&mut h, &mut buf);
     h.key(Key::Escape);
     let escaped = frame(&mut h, &mut buf);
@@ -118,7 +118,7 @@ fn reports_changed_on_same_length_overwrite() {
     let id = WidgetId::from_hash(EDITOR);
     let mut buf = String::from("a");
 
-    h.request_focus(Some(id));
+    h.set_focus(id);
     let _ = frame(&mut h, &mut buf); // settle focus
     // Ctrl+A select-all, then type the replacement.
     h.set_modifiers(Modifiers {
@@ -160,7 +160,7 @@ fn disabling_a_focused_editor_blurs_and_drops_input() {
     let id = WidgetId::from_hash(EDITOR);
     let mut buf = String::new();
 
-    h.request_focus(Some(id));
+    h.set_focus(id);
     let _ = frame(&mut h, &mut buf); // settle focus on the enabled editor
     h.key(Key::Char('x'));
     let sig = disabled_frame(&mut h, &mut buf);

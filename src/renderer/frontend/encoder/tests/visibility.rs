@@ -11,7 +11,7 @@ use crate::primitives::{color::RgbaF32, translate_scale::TranslateScale};
 use crate::renderer::frontend::encoder::tests::support::screen_rects_by_fill;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
-use crate::widgets::{frame::Frame, panel::Panel};
+use crate::widgets::{block::Block, panel::Panel};
 use glam::{UVec2, Vec2};
 
 #[test]
@@ -34,7 +34,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
                 .clip_rect()
                 .transform(xform)
                 .show(ui, |ui| {
-                    capture.0 |= Frame::new()
+                    capture.0 |= Block::new()
                         .id(WidgetId::from_hash("V"))
                         .position((0.0, 0.0))
                         .size(30.0)
@@ -46,7 +46,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
                         .show(ui)
                         .left
                         .clicked();
-                    capture.1 |= Frame::new()
+                    capture.1 |= Block::new()
                         .id(WidgetId::from_hash("D"))
                         .position((40.0, 0.0))
                         .size(30.0)
@@ -59,7 +59,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
                         .show(ui)
                         .left
                         .clicked();
-                    capture.2 |= Frame::new()
+                    capture.2 |= Block::new()
                         .id(WidgetId::from_hash("H"))
                         .position((80.0, 0.0))
                         .size(30.0)
@@ -148,7 +148,7 @@ fn disabled_ancestor_propagates_disabled_flag_to_descendants() {
             .auto_id()
             .disabled(true)
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .auto_id()
                     .size(Sizing::fixed(40.0))
                     .background(Background {

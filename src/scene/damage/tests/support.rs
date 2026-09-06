@@ -9,7 +9,7 @@ use crate::primitives::{color::RgbaF32, rect::Rect};
 use crate::scene::damage::Damage;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
-use crate::widgets::{frame::Frame, panel::Panel};
+use crate::widgets::{block::Block, panel::Panel};
 use glam::UVec2;
 
 pub(super) const DISPLAY: Display = Display {
@@ -40,7 +40,7 @@ pub(super) fn one_frame(ui: &mut Ui, color: RgbaF32) {
     Panel::hstack()
         .id(WidgetId::from_hash("root"))
         .show(ui, |ui| {
-            Frame::new()
+            Block::new()
                 .id(WidgetId::from_hash("a"))
                 .size(50.0)
                 .background(Background {

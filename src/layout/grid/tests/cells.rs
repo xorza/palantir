@@ -6,7 +6,7 @@ use crate::layout::types::track::Track;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
-use crate::widgets::{frame::Frame, grid::Grid};
+use crate::widgets::{block::Block, grid::Grid};
 use glam::UVec2;
 
 #[test]
@@ -20,7 +20,7 @@ fn grid_cell_alignment_override_pins_child_to_corner() {
             .cols([Track::fixed(100.0)])
             .rows([Track::fixed(100.0)])
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("pinned"))
                     .grid_cell((0, 0))
                     .size((20.0, 20.0))

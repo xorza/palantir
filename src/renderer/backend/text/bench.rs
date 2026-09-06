@@ -299,7 +299,7 @@ fn build_runs(shaper: &TextShaper) -> BenchRuns {
 }
 
 /// One iteration: prepare → flush → render pass → submit → poll →
-/// post. Mirrors `OffscreenHost::frame_offscreen`'s text-relevant slice.
+/// post. Mirrors `OffscreenHost::frame`'s text-relevant slice.
 fn run_frame(
     g: &Gpu,
     backend: &mut BenchText,

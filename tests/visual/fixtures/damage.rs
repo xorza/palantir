@@ -14,7 +14,7 @@ use std::path::Path;
 
 use glam::{UVec2, Vec2};
 use image::{Rgba, RgbaImage};
-use palantir::{Background, Button, Configure, DebugOverlayConfig, Frame, Panel, RgbaF32, Sizing};
+use palantir::{Background, Block, Button, Configure, DebugOverlayConfig, Panel, RgbaF32, Sizing};
 
 use crate::fixtures::DARK_BG;
 use crate::harness::Harness;
@@ -84,7 +84,7 @@ fn corner_pair_scene(
                 ..Default::default()
             })
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id_salt(("tl", tl_label))
                     .position(Vec2::new(0.0, 0.0))
                     .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
@@ -93,7 +93,7 @@ fn corner_pair_scene(
                         ..Default::default()
                     })
                     .show(ui);
-                Frame::new()
+                Block::new()
                     .id_salt(("br", br_label))
                     .position(Vec2::new(180.0, 180.0))
                     .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
@@ -378,7 +378,7 @@ fn damage_rect_overlay_outlines_thin_sliver() {
                     ..Default::default()
                 })
                 .show(ui, |ui| {
-                    Frame::new()
+                    Block::new()
                         .id_salt("sliver")
                         .position(Vec2::new(60.0, 20.0))
                         .size((Sizing::fixed(2.0), Sizing::fixed(40.0)))

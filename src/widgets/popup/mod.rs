@@ -76,6 +76,7 @@ pub enum ClickOutside {
 /// Implements [`Configure`](crate::Configure) — use `.id(...)`, `.id_salt(...)`,
 /// `.padding(...)`, `.size(...)`, etc. on the popup body.
 #[derive(Debug)]
+#[must_use = "a widget records nothing until `show`"]
 pub struct Popup {
     anchor: Anchor,
     click_outside: ClickOutside,

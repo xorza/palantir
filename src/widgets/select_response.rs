@@ -5,14 +5,21 @@ use crate::widgets::response::Response;
 /// What a widget that picks one option out of several reports about the
 /// index it writes through.
 ///
+/// One type for [`ComboBox`](crate::ComboBox) and
+/// [`RadioButton`](crate::RadioButton): both pick one option out of
+/// several, and on both the trigger's own `clicked()` answers a different
+/// question than `changed`.
+///
 /// Separate from [`ValueResponse`](crate::ValueResponse) because a pick
 /// has no draft: the selection is written by the click that makes it, so
 /// `changed` is already the commit and a second signal would repeat it.
 ///
-/// The [`Response`] is the *trigger*'s. A [`ComboBox`](crate::ComboBox)
-/// writes from a row inside its dropdown, so the trigger's own
-/// `clicked()` reports that the list opened and never that the selection
-/// moved — which is the whole reason this type exists.
+/// The [`Response`] is the *trigger*'s. A `ComboBox` writes from a row
+/// inside its dropdown, so its `clicked()` reports that the list opened
+/// and never that the selection moved. A `RadioButton` latches, so its
+/// `clicked()` is true on the option already selected. Neither widget can
+/// report a pick through `Response` alone — which is the whole reason
+/// this type exists.
 #[derive(Debug)]
 pub struct SelectResponse<'a> {
     pub response: Response<'a>,

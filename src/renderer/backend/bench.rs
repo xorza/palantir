@@ -277,7 +277,7 @@ impl Fixture {
         let handles = (0..workload.textures())
             .map(|seed| {
                 host.ui()
-                    .register_image(&Image::from_rgba8(UVec2::new(TEXEL, TEXEL), texels(seed)))
+                    .load_image(&Image::from_srgba8(UVec2::new(TEXEL, TEXEL), texels(seed)))
                     .expect("benchmark image fits every supported GPU")
             })
             .collect();
@@ -302,7 +302,7 @@ impl Fixture {
         let workload = *workload;
         let phase = *phase;
         let mut app = RecordApp::new(|ui| record(ui, handles, workload, phase));
-        let report = host.frame_offscreen(target, 1.0, &mut app);
+        let report = host.frame(target, 1.0, &mut app);
         // A `Partial` frame walks the schedule once per damage rect, so a
         // drift to Partial would quietly turn every number below into a
         // multi-walk measurement that isn't comparable across arms.

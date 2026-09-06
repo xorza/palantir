@@ -155,6 +155,7 @@ impl ScrollWrappers {
 /// content area — reserved gutter, overlay, or hidden — is selected
 /// via [`BarMode`].
 #[derive(Debug)]
+#[must_use = "a widget records nothing until `show`"]
 pub struct Scroll<'a> {
     widget: Widget,
     style: Option<&'a ScrollbarTheme>,
@@ -250,23 +251,26 @@ impl<'a> Scroll<'a> {
         self
     }
 
-    /// Set the scrollbar layout mode. See [`BarMode`].
+    /// Set the scrollbar layout mode — reserved gutter, overlay, or no
+    /// bar at all. See [`BarMode`], which documents all three.
+    ///
+    /// [`Self::overlay_bars`] and [`Self::hide_bars`] are this with the two
+    /// values a caller actually types. The third is the default.
     pub fn bar_mode(mut self, mode: BarMode) -> Self {
         self.bar_mode = mode;
         self
     }
 
-    /// Sugar for `bar_mode(BarMode::Overlay)` — bar paints over
-    /// content when overflowing, no gutter reservation.
+    /// [`BarMode::Overlay`] — the bar paints over content when it
+    /// overflows, and reserves no gutter.
     pub fn overlay_bars(self) -> Self {
         self.bar_mode(BarMode::Overlay)
     }
 
-    /// Sugar for `bar_mode(BarMode::Hidden)` — no track, no thumb, no
-    /// cross-axis reservation. Pan/wheel/zoom input still work; the
-    /// viewport just doesn't paint indicators. Useful for canvas-style
-    /// scopes (node graphs, infinite boards) where the bars would be
-    /// noise.
+    /// [`BarMode::Hidden`] — no track, no thumb, no cross-axis
+    /// reservation. Pan / wheel / zoom input still work; the viewport just
+    /// paints no indicator. For canvas-style scopes (node graphs, infinite
+    /// boards) where the bars would be noise.
     pub fn hide_bars(self) -> Self {
         self.bar_mode(BarMode::Hidden)
     }

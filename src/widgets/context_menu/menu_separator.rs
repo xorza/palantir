@@ -26,6 +26,7 @@ use std::rc::Rc;
 /// # }
 /// ```
 #[derive(Debug)]
+#[must_use = "a widget records nothing until `show`"]
 pub struct MenuSeparator<'a> {
     widget: Widget,
     style: Option<&'a SeparatorTheme>,

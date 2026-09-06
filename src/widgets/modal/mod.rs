@@ -30,6 +30,7 @@ use std::rc::Rc;
 /// itself are absorbed, so interacting with dialog content never closes
 /// it.
 #[derive(Debug)]
+#[must_use = "a widget records nothing until `show`"]
 pub struct Modal<'a> {
     widget: Widget,
     chrome: Option<Background>,

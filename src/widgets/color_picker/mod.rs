@@ -18,6 +18,7 @@ use crate::widgets::color_surface;
 use crate::widgets::color_swatch::ColorSwatch;
 use crate::widgets::configure::Configure;
 use crate::widgets::configure::ConfigureWidget;
+use crate::widgets::configure::ThemeDefaults;
 use crate::widgets::drag_value::DragValue;
 use crate::widgets::grid::Grid;
 use crate::widgets::panel::Panel;
@@ -58,6 +59,7 @@ mod history;
 /// reached zero. They *are* re-derived when the bound colour changes from
 /// outside, which is how a caller's own edit moves the handles.
 #[derive(Debug)]
+#[must_use = "a widget records nothing until `show`"]
 pub struct ColorPicker<'a> {
     widget: Widget,
     color: &'a mut RgbaF32,

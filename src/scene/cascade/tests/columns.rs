@@ -135,7 +135,7 @@ fn per_node_columns_track_tree_size() {
 #[test]
 fn non_painting_sibling_does_not_origin_anchor_subtree_rollup() {
     use crate::primitives::background::Background;
-    use crate::widgets::frame::Frame;
+    use crate::widgets::block::Block;
     use crate::widgets::panel::Panel;
     let row = WidgetId::from_hash("row");
     let mut h = UiHarness::new(glam::UVec2::new(200, 200));
@@ -146,7 +146,7 @@ fn non_painting_sibling_does_not_origin_anchor_subtree_rollup() {
                 .id(WidgetId::from_hash("spacer"))
                 .size(50.0)
                 .show(ui, |_| {});
-            Frame::new()
+            Block::new()
                 .id(WidgetId::from_hash("painted"))
                 .size(50.0)
                 .background(Background {

@@ -7,7 +7,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
-use crate::widgets::{frame::Frame, panel::Panel};
+use crate::widgets::{block::Block, panel::Panel};
 use glam::UVec2;
 
 #[test]
@@ -17,7 +17,7 @@ fn frame_paints_a_single_rounded_rect() {
         Panel::hstack()
             .auto_id()
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("decoration"))
                     .size((Sizing::fixed(80.0), Sizing::fixed(40.0)))
                     .background(Background {
@@ -56,7 +56,7 @@ fn frame_with_sense_click_is_clickable() {
     let mut h = UiHarness::new(surface);
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
-            Frame::new()
+            Block::new()
                 .id(WidgetId::from_hash("hitbox"))
                 .size((Sizing::fixed(100.0), Sizing::fixed(50.0)))
                 .sense(Sense::CLICK)
@@ -68,7 +68,7 @@ fn frame_with_sense_click_is_clickable() {
     let mut clicked = false;
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
-            clicked |= Frame::new()
+            clicked |= Block::new()
                 .id(WidgetId::from_hash("hitbox"))
                 .size((Sizing::fixed(100.0), Sizing::fixed(50.0)))
                 .sense(Sense::CLICK)

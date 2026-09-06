@@ -8,8 +8,8 @@ use crate::animation::animatable::Animatable;
 use crate::animation::easing::Easing;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::harness::UiHarness;
+use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
-use crate::widgets::frame::Frame;
 use glam::UVec2;
 
 const SURFACE: UVec2 = UVec2::new(100, 100);
@@ -62,7 +62,7 @@ pub(super) fn spring_velocity<T: Animatable>(row: &AnimRow<T>) -> &T {
 /// [`Ui::frame`]: spin up a `Ui`, pre-record the widget once so
 /// its state row exists, return the `Ui` and the widget's id. Per-frame
 /// bodies still need to re-record the
-/// widget (`Frame::new().id(WidgetId::from_hash(salt)).show(ui)`) so the
+/// widget (`Block::new().id(WidgetId::from_hash(salt)).show(ui)`) so the
 /// persistent
 /// state survives end-of-frame sweeps.
 #[derive(Debug)]
@@ -75,7 +75,7 @@ pub(super) fn setup_anim_ui(salt: &'static str) -> AnimUi {
     let mut h = UiHarness::new(SURFACE);
     let id = wid(salt);
     h.frame(|ui| {
-        Frame::new().id(WidgetId::from_hash(salt)).show(ui);
+        Block::new().id(WidgetId::from_hash(salt)).show(ui);
     });
     AnimUi { h, id }
 }

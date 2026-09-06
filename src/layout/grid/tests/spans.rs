@@ -12,7 +12,7 @@ use crate::text::wrap::TextWrap;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::theme::text_style::TextStyle;
-use crate::widgets::{frame::Frame, grid::Grid};
+use crate::widgets::{block::Block, grid::Grid};
 use crate::widgets::{panel::Panel, text::Text};
 use glam::UVec2;
 
@@ -51,11 +51,11 @@ fn grid_span_covers_multiple_tracks_with_gap() {
                 .rows(rows)
                 .cols(cols)
                 .show(ui, |ui| {
-                    Frame::new()
+                    Block::new()
                         .id(WidgetId::from_hash("header"))
                         .grid_cell(GridCell::at(0, 0).span(span.0, span.1))
                         .show(ui);
-                    Frame::new()
+                    Block::new()
                         .id(WidgetId::from_hash("body"))
                         .grid_cell((1, 1))
                         .show(ui);
@@ -179,12 +179,12 @@ fn spanned_nested_wrap_measures_against_internal_gaps_on_both_axes() {
                                     Axis::Y => GridCell::at(0, 0).span(case.span, 1),
                                 })
                                 .show(ui, |ui| {
-                                    Frame::new()
+                                    Block::new()
                                         .auto_id()
                                         .size(axis.compose_size(case.child_main, 20.0))
                                         .show(ui);
                                     second_node = Some(
-                                        Frame::new()
+                                        Block::new()
                                             .auto_id()
                                             .size(axis.compose_size(case.child_main, 20.0))
                                             .show(ui)
@@ -247,11 +247,11 @@ fn grid_cell_with_2d_span_covers_track_union_with_gaps() {
             .line_gap(10.0)
             .gap(10.0)
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("big"))
                     .grid_cell(GridCell::at(0, 0).span(2, 2))
                     .show(ui);
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("corner"))
                     .grid_cell((2, 2))
                     .show(ui);

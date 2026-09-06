@@ -12,7 +12,7 @@ use crate::scene::tree::node_id::NodeId;
 use crate::ui::harness::UiHarness;
 use crate::ui::tests::support::SURFACE;
 use crate::widgets::configure::Configure;
-use crate::widgets::{button::Button, frame::Frame, panel::Panel};
+use crate::widgets::{block::Block, button::Button, panel::Panel};
 use glam::{UVec2, Vec2};
 use std::cell::Cell;
 
@@ -280,7 +280,7 @@ fn collisions_do_not_record_into_debug_layer() {
 #[test]
 fn auto_id_collisions_disambiguate() {
     fn chip(ui: &mut Ui) {
-        Frame::new().auto_id().show(ui);
+        Block::new().auto_id().show(ui);
     }
     let mut h = UiHarness::new(UVec2::new(100, 100));
     h.frame(|ui| {
@@ -301,19 +301,19 @@ fn state_map_persists_and_evicts_with_recorded_ids() {
     let id_b = WidgetId::from_hash("b");
 
     h.frame(|ui| {
-        Frame::new().id(WidgetId::from_hash("a")).show(ui);
-        Frame::new().id(WidgetId::from_hash("b")).show(ui);
+        Block::new().id(WidgetId::from_hash("a")).show(ui);
+        Block::new().id(WidgetId::from_hash("b")).show(ui);
         *ui.state_or_default::<u32>(id_a) = 11;
         *ui.state_or_default::<u32>(id_b) = 22;
     });
     h.frame(|ui| {
-        Frame::new().id(WidgetId::from_hash("a")).show(ui);
+        Block::new().id(WidgetId::from_hash("a")).show(ui);
         // Reading state during recording so the row is touched while
         // its widget is still seen.
         assert_eq!(*ui.state_or_default::<u32>(id_a), 11);
     });
     h.frame(|ui| {
-        Frame::new().id(WidgetId::from_hash("b")).show(ui);
+        Block::new().id(WidgetId::from_hash("b")).show(ui);
         assert_eq!(
             *ui.state_or_default::<u32>(id_b),
             0,
