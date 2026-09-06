@@ -26,6 +26,24 @@ use std::cell::OnceCell;
 /// To detach from the `&Ui` borrow (e.g. before calling another
 /// `&mut Ui` op while still holding the state), use
 /// [`Response::snapshot`] to materialize a [`ResponseSnapshot`].
+///
+/// # Reaching one out of a richer result
+///
+/// A widget that owes the caller more than interaction returns a wrapper
+/// holding this in a `response` field — [`InnerResponse`],
+/// [`ValueResponse`](crate::ValueResponse),
+/// [`SelectResponse`](crate::SelectResponse),
+/// [`TextEditResponse`](crate::TextEditResponse) and the rest. **None of
+/// them derefs to it**, so interaction is always spelled
+/// `r.response.clicked()` there where a plain response spells
+/// `r.clicked()`.
+///
+/// That is deliberate, and pinned by a test. A wrapper carries two things
+/// a call site has to keep apart — what the body returned, or what the
+/// value did, beside what the pointer did. Deref would let either be
+/// read without saying which was meant. This type derefs to
+/// [`ResponseState`] because it *is* a handle to one; a wrapper merely
+/// contains a response, and says so.
 pub struct Response<'a> {
     /// Widget id of the originating widget. Stable across frames as
     /// long as the call-site / explicit-key inputs don't change.
@@ -156,17 +174,24 @@ pub(crate) mod test_support {
 
 #[cfg(test)]
 mod tests {
+    use crate::widgets::expander::ExpanderResponse;
     use crate::widgets::response::InnerResponse;
+    use crate::widgets::select_response::SelectResponse;
+    use crate::widgets::tabs::tab_strip::TabStripResponse;
+    use crate::widgets::tabs::tabbed_view::TabbedViewResponse;
     use crate::widgets::text_edit::TextEditResponse;
     use crate::widgets::value_response::ValueResponse;
     use static_assertions::assert_not_impl_any;
     use std::ops::Deref;
 
-    // The wrappers that carry a `Response` alongside something else stay
-    // explicit: reaching interaction state through `.response` is what
-    // keeps the body result and the response distinguishable at the call
-    // site.
+    // Pins the rule `Response`'s own doc states, under "Reaching one out
+    // of a richer result" — every wrapper, so the doc's "none of them"
+    // cannot drift into "three of them".
     assert_not_impl_any!(InnerResponse<'static, ()>: Deref);
     assert_not_impl_any!(ValueResponse<'static>: Deref);
+    assert_not_impl_any!(SelectResponse<'static>: Deref);
     assert_not_impl_any!(TextEditResponse<'static>: Deref);
+    assert_not_impl_any!(ExpanderResponse<'static, ()>: Deref);
+    assert_not_impl_any!(TabStripResponse<'static>: Deref);
+    assert_not_impl_any!(TabbedViewResponse<'static>: Deref);
 }

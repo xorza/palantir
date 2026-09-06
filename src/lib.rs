@@ -69,6 +69,35 @@
 //! Children clamp down to fit their parent — a parent never grows to fit a
 //! child. Overflow happens only when rigid descendants genuinely do not fit.
 //!
+//! # Styling
+//!
+//! Three doors, widest first.
+//!
+//! - **[`Theme`]** is the whole style tree, and
+//!   [`Ui::set_theme`](Ui::set_theme) swaps it. Per-widget bundles hang
+//!   off it — [`Theme::button`], [`Theme::slider`], one per widget kind.
+//! - **`style(&…Theme)`** overrides the bundle for one call site. Every
+//!   themed widget has it, with the same shape everywhere: it takes an
+//!   `Option` as readily as a reference, so `.style(overrides.as_ref())`
+//!   works.
+//! - **A per-axis setter** — [`Text::color`], [`Separator::thickness`],
+//!   [`Spinner::diameter`], [`Modal::backdrop`] — overrides one field
+//!   without building a bundle.
+//!
+//! The third door is deliberately not on every widget. An axis gets a
+//! setter only where it has **one** meaning on that widget. [`Separator`]
+//! draws a single rule, so `color` can only mean that rule's; [`Slider`]
+//! draws a track, a fill and a knob, so a `color` there could not say
+//! which, and [`Button`] carries a colour per interaction state, so one
+//! setter would have to pick a state silently. Those widgets take the
+//! bundle instead, which names every part and every state.
+//!
+//! [`Background`] follows the same rule: a widget with one panel behind
+//! it takes one through its own `background()` — [`Panel`], [`Grid`],
+//! [`Block`], [`Scroll`], [`Popup`], [`Modal`], [`Tooltip`],
+//! [`ContextMenu`] — and a widget whose chrome varies by state or spreads
+//! across parts has no such setter.
+//!
 //! # Feature flags
 //!
 //! | flag | default | what it does |
@@ -422,6 +451,12 @@ pub use primitives::spacing::Spacing;
 pub use primitives::text_input::TextInput;
 pub use scene::layer::Layer;
 pub use scene::visibility::Visibility;
+// Signed screen coordinates: `WindowConfig::position`,
+// `WindowPlacement.position`, `RasterImage.bearing`. Re-exported for the
+// reason `UVec2` and `Vec2` are — a consumer naming one of those would
+// otherwise need a `glam` dependency held semver-identical to this one by
+// hand.
+pub use glam::IVec2;
 // Re-exported (not an palantir type) because it's the canonical integer
 // pixel-extent across the public surface — `Display.physical`,
 // `Display::from_physical`, and `WindowConfig`'s sizes all speak `UVec2`

@@ -13,6 +13,7 @@ use crate::input::sense::Sense;
 use crate::layout::axis::Axis;
 use crate::layout::types::align::Align;
 use crate::layout::types::clip_mode::ClipMode;
+use crate::layout::types::grid_cell::GridCell;
 use crate::layout::types::justify::Justify;
 use crate::layout::types::layout_mode::{LayoutMode, ScrollSpec, ScrollbarsDefId};
 use crate::layout::types::sizing::SizeSpec;
@@ -20,13 +21,16 @@ use crate::layout::types::track::Track;
 use crate::primitives::background::Background;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
+use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::node::Node;
 use crate::scene::node::ident::Ident;
 use crate::scene::node::node_mode::NodeMode;
+use crate::scene::visibility::Visibility;
 use crate::ui::Ui;
 use crate::widgets::configure::{Configure, ConfigureWidget};
 use crate::widgets::response::{InnerResponse, Response};
+use glam::Vec2;
 
 /// What a widget records: its identity, and the node the tree reads.
 /// Every widget builder owns one, chains the [`Configure`] setters on it,
@@ -275,11 +279,32 @@ impl Widget {
         self.node.padding
     }
 
-    /// The clip mode the caller authored, or `None`. See
+    /// The margin the caller authored, or `None`. See
     /// [`Self::authored_size`].
     #[inline]
-    pub fn authored_clip(&self) -> Option<ClipMode> {
-        self.node.clip
+    pub fn authored_margin(&self) -> Option<Spacing> {
+        self.node.margin
+    }
+
+    /// The paint transform the caller authored,
+    /// [`TranslateScale::IDENTITY`] where they authored none.
+    #[inline]
+    pub fn authored_transform(&self) -> TranslateScale {
+        self.node.transform
+    }
+
+    /// The `Canvas`-parent position the caller authored, `Vec2::ZERO`
+    /// where they authored none. Read by no other parent kind.
+    #[inline]
+    pub fn authored_position(&self) -> Vec2 {
+        self.node.position
+    }
+
+    /// The grid slot the caller named. A default [`GridCell`] means they
+    /// named none, and is read only under a grid parent.
+    #[inline]
+    pub fn authored_grid_cell(&self) -> GridCell {
+        self.node.grid
     }
 
     /// The sibling gap the caller authored, or `None`. See
@@ -301,6 +326,14 @@ impl Widget {
     #[inline]
     pub fn authored_justify(&self) -> Justify {
         self.node.justify
+    }
+
+    /// How the caller aligned this widget inside its parent, `Auto` on
+    /// each axis they left alone. The self-alignment half of
+    /// [`Self::authored_child_align`].
+    #[inline]
+    pub fn authored_align(&self) -> Align {
+        self.node.align
     }
 
     /// The child alignment the caller authored, `Auto` on each axis they
@@ -333,6 +366,20 @@ impl Widget {
     #[inline]
     pub fn authored_input_scope(&self) -> KeyFilter {
         self.node.flags.key_filter()
+    }
+
+    /// What the caller set this widget's visibility to,
+    /// [`Visibility::Visible`] where they left it alone.
+    #[inline]
+    pub fn authored_visibility(&self) -> Visibility {
+        self.node.visibility
+    }
+
+    /// The clip mode the caller authored, or `None`. See
+    /// [`Self::authored_size`].
+    #[inline]
+    pub fn authored_clip(&self) -> Option<ClipMode> {
+        self.node.clip
     }
 
     /// Install this grid's tracks: `rows` and `cols` are interned into the
