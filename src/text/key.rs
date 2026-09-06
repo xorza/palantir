@@ -9,7 +9,7 @@ use crate::text::font_family::FontFamily;
 use crate::text::font_style::FontStyle;
 use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
-use crate::text::wrap::{self, LineFit};
+use crate::text::wrap::LineFit;
 use std::num::NonZeroU64;
 
 /// The face a shape is measured at, as [`TextShapeKey`] quantizes it:
@@ -61,7 +61,7 @@ pub(crate) struct TextShapeKey {
     ///
     /// Unlike its 1/64-px neighbours this carries only whole pixels:
     /// [`WrapBound::new`] snaps the width to the measure cache's grid via
-    /// [`wrap::canonical_wrap_width`] first, so the value is always a
+    /// [`F32Px::canonical_px`] first, so the value is always a
     /// multiple of 64. The scale is kept so all three quantized fields
     /// dequantize the same way, not because the precision is reachable.
     max_w_q: u32,
@@ -420,7 +420,7 @@ impl WrapBound {
             LineFit::Clip | LineFit::Ellipsis => LineAlign::Auto,
         };
         Self {
-            max_w_q: quantize(wrap::canonical_wrap_width(max_width_px)).min(MAX_W_NONE - 1),
+            max_w_q: quantize(max_width_px.canonical_px()).min(MAX_W_NONE - 1),
             bound_q: FaceBits::bound_bits(align, fit),
         }
     }

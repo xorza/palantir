@@ -113,7 +113,7 @@ impl TextLayout {
         // is measured against cannot disagree. Spelled apart, the wrap
         // target keeps a raw subtraction where the measured box clamps,
         // and an over-constrained field commits a negative wrap width —
-        // the case `canonical_wrap_width`'s own clamp catches one layer
+        // the case `F32Px::canonical_px`'s own clamp catches one layer
         // further down.
         let inner = input
             .response_rect

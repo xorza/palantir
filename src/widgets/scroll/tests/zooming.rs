@@ -9,7 +9,8 @@ use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::scroll::state::ScrollState;
-use crate::widgets::scroll::tests::support::{SURFACE, build};
+use crate::widgets::scroll::tests::support::{SURFACE, build, read_state, zoom_driven};
+use crate::widgets::scroll::zoom_config::ZoomConfig;
 use glam::{UVec2, Vec2};
 
 #[test]
@@ -407,6 +408,77 @@ fn line_wheel_step_scales_with_theme_font_size() {
         assert!(
             (offset_y - expected_px).abs() < 0.01,
             "case: {label} — expected {expected_px} px after 1 line wheel, got {offset_y}",
+        );
+    }
+}
+
+/// [`Scroll::zoom_by`] scales through the same clamp a pinch takes.
+///
+/// The default [`ZoomConfig`] range is what stops it, so the case walks
+/// past both ends and asks where it stopped rather than pinning the
+/// range itself.
+#[test]
+fn zoom_by_scales_and_clamps_into_the_configured_range() {
+    let cfg = ZoomConfig::default();
+    let (min_zoom, max_zoom) = (*cfg.range.start(), *cfg.range.end());
+    let mut h = UiHarness::new(SURFACE);
+    h.frame(|ui| zoom_driven(ui, &[1.0]));
+    assert_eq!(
+        read_state(&mut h).zoom,
+        1.0,
+        "premise: an identity request is a no-op",
+    );
+
+    h.frame(|ui| zoom_driven(ui, &[1.5]));
+    assert_eq!(
+        read_state(&mut h).zoom,
+        1.5,
+        "the factor multiplies the zoom"
+    );
+
+    h.frame(|ui| zoom_driven(ui, &[2.0]));
+    assert_eq!(
+        read_state(&mut h).zoom,
+        3.0,
+        "and multiplies again, from where the last frame left it",
+    );
+
+    for _ in 0..40 {
+        h.frame(|ui| zoom_driven(ui, &[2.0]));
+    }
+    assert_eq!(read_state(&mut h).zoom, max_zoom, "clamped at the top");
+
+    for _ in 0..80 {
+        h.frame(|ui| zoom_driven(ui, &[0.5]));
+    }
+    assert_eq!(read_state(&mut h).zoom, min_zoom, "and at the bottom");
+}
+
+/// Two calls on one builder compose into one factor, so a caller may
+/// fold a request in from more than one place.
+#[test]
+fn zoom_by_composes_across_calls() {
+    let mut h = UiHarness::new(SURFACE);
+    h.frame(|ui| zoom_driven(ui, &[1.0]));
+    h.frame(|ui| zoom_driven(ui, &[1.5, 2.0]));
+    assert_eq!(
+        read_state(&mut h).zoom,
+        3.0,
+        "1.5 then 2.0 is one factor of 3",
+    );
+}
+
+/// A zoom factor is authored, not data, so an impossible one is a caller
+/// error rather than a silently ignored request.
+#[test]
+fn zoom_by_rejects_a_factor_that_cannot_scale() {
+    for bad in [0.0, -1.0, f32::NAN, f32::INFINITY] {
+        assert!(
+            std::panic::catch_unwind(move || {
+                let _ = Scroll::both().zoom_by(bad);
+            })
+            .is_err(),
+            "zoom_by({bad}) must panic",
         );
     }
 }

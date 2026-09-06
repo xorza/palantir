@@ -171,7 +171,17 @@ impl FrameRuntime {
         self.dt = if self.dt_accum >= ANIM_SUBSTEP_DT {
             let spent = self.dt_accum;
             self.dt_accum = 0.0;
-            spent
+            // The same limit on a different quantity: `raw_dt` bounds
+            // what one frame observed, and this bounds what it spends —
+            // that plus a carry of up to one substep. `spring::step`
+            // takes `MAX_ANIM_DT` as its contract and sizes its substep
+            // budget from it, so a sum past it is a debug panic and, in
+            // release, unbudgeted integration work.
+            //
+            // The excess is dropped rather than carried: the clamp above
+            // already drops stall time, and a carry would let the stall
+            // bleed into later frames as catch-up motion.
+            spent.min(MAX_ANIM_DT)
         } else {
             0.0
         };

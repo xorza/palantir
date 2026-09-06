@@ -12,20 +12,6 @@ use crate::primitives::size::Size;
 use crate::text::key::WrapBound;
 use crate::text::root::TextRoot;
 
-/// Canonical width used by width-bounded cache identity
-/// ([`crate::text::key::WrapBound::new`]) and the fitting-truncate
-/// check in `TextSystem::measure`.
-///
-/// Snapped with [`F32Px::quantize_px`], the same grid the measure cache
-/// keys `available_q` on — the two must agree or a cached subtree could be
-/// blitted against a shape measured at another width. All this adds is the
-/// clamp: an over-constrained layout can commit a negative width, which the
-/// cache would assert on.
-#[inline]
-pub(super) fn canonical_wrap_width(width: f32) -> f32 {
-    width.max(0.0).quantize_px() as f32
-}
-
 /// Byte offsets in `text` that open a new unbreakable segment: the
 /// UAX #14 break opportunities, minus the terminal one at `text.len()`,
 /// which ends the text rather than opening a segment.
@@ -239,7 +225,7 @@ impl TextWrap {
         // Canonicalized once, at the top: the fit test compares against
         // it and `WrapBound::new` keys on it, and a width quantized twice
         // is a width the two halves could disagree about.
-        let available = canonical_wrap_width(available_width_px);
+        let available = available_width_px.canonical_px();
         let committed = if self.floor_scan() == WrapFloor::Scan || fit != LineFit::Wrap {
             let root = root();
             if fit.resolves_to_unbounded(&root, available) {

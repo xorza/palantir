@@ -11,16 +11,24 @@ use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::scroll::state::ScrollState;
-use glam::UVec2;
+use glam::{UVec2, Vec2};
 
 pub(super) const SURFACE: UVec2 = UVec2::new(400, 600);
 
 pub(super) fn build(ui: &mut Ui, viewport_h: f32, content_h: f32) {
+    driven(ui, viewport_h, content_h, Vec2::ZERO);
+}
+
+/// [`build`] with a pan request folded in — the viewport driven by
+/// authoring code rather than by a pointer. `build` passes a zero one,
+/// which the widget takes as the no-op it is.
+pub(super) fn driven(ui: &mut Ui, viewport_h: f32, content_h: f32, pan: Vec2) {
     Panel::vstack()
         .id(WidgetId::from_hash("root"))
         .show(ui, |ui| {
             Scroll::vertical()
                 .id(WidgetId::from_hash("scroll"))
+                .scroll_by(pan)
                 .size((Sizing::fixed(200.0), Sizing::fixed(viewport_h)))
                 .show(ui, |ui| {
                     Frame::new()
@@ -29,6 +37,25 @@ pub(super) fn build(ui: &mut Ui, viewport_h: f32, content_h: f32) {
                         .show(ui);
                 });
         });
+}
+
+/// A zoomable viewport, taking one [`Scroll::zoom_by`] per entry of
+/// `factors` — so a case can ask what several requests on one builder
+/// compose to. Read back through [`read_state`], like its panning peer.
+pub(super) fn zoom_driven(ui: &mut Ui, factors: &[f32]) {
+    let mut scroll = Scroll::both()
+        .id(WidgetId::from_hash("scroll"))
+        .with_zoom()
+        .size((Sizing::fixed(200.0), Sizing::fixed(200.0)));
+    for factor in factors {
+        scroll = scroll.zoom_by(*factor);
+    }
+    scroll.show(ui, |ui| {
+        Frame::new()
+            .id(WidgetId::from_hash("content"))
+            .size((Sizing::fixed(400.0), Sizing::fixed(400.0)))
+            .show(ui);
+    });
 }
 
 pub(super) fn read_state(h: &mut UiHarness) -> ScrollState {

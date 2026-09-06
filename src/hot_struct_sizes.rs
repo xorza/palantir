@@ -183,7 +183,7 @@ const PINS: &[Pin] = &[
     pin::<Panel>("widgets::Panel", 248, 8),
     pin::<Frame>("widgets::Frame", 248, 8),
     pin::<Grid>("widgets::Grid", 248, 8),
-    pin::<Scroll<'static>>("widgets::Scroll", 288, 8),
+    pin::<Scroll<'static>>("widgets::Scroll", 296, 8),
     pin::<Separator<'static>>("widgets::Separator", 160, 8),
     pin::<Spinner<'static>>("widgets::Spinner", 168, 8),
     pin::<Popup>("widgets::Popup", 272, 8),

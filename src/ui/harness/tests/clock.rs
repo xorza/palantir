@@ -4,11 +4,12 @@ use crate::ui::harness::tests::support::{INSIDE, SURFACE, button, target};
 use crate::ui::harness::*;
 
 #[test]
-fn the_clock_only_reaches_input_through_a_frame() {
+fn one_clock_stamps_both_frames_and_input() {
     // Rules 6 and 7. Time is frozen unless advanced, so two clicks at one
-    // point are always a double-click; and `advance` alone does nothing —
-    // `Ui::frame` is what publishes the clock to the input machine, so
-    // the separating frame is load-bearing.
+    // point are always a double-click — and an `advance` is what
+    // separates them, with or without a frame after it. A host reads its
+    // own clock at both doors, and an event-driven one can idle for
+    // seconds between frames.
     let mut harness = UiHarness::new(SURFACE);
     harness.prime(2, button);
 
@@ -34,20 +35,17 @@ fn the_clock_only_reaches_input_through_a_frame() {
         "past DOUBLE_CLICK_WINDOW the run restarts",
     );
 
-    // Advancing without a frame in between leaves the input clock where
-    // it was, so this pairs with the click above instead of restarting.
+    // No frame between the advance and the click: the press is stamped
+    // when it arrives, so the gap separates the runs on its own.
     harness.advance(DOUBLE_CLICK_WINDOW * 2);
     harness.click_at(INSIDE);
     let fourth = harness.response_in(target(), button);
     assert!(
-        fourth.left.double_clicked(),
-        "advance without a frame does not reach the input clock",
+        !fourth.left.double_clicked(),
+        "an advance reaches input timing without a frame to publish it",
     );
 
-    // `at` is the same clock, parked absolutely instead of stepped. The
-    // last `advance` left it at 3× the window plus the two 1 ms nudges
-    // from `advance_past_double_click`; parking well past that and
-    // framing separates the runs exactly as `advance` did.
+    // `at` is the same clock, parked absolutely instead of stepped.
     let parked = harness.time + DOUBLE_CLICK_WINDOW * 2;
     harness.at(parked).frame(button);
     assert_eq!(harness.time, parked, "at parks the clock absolutely");

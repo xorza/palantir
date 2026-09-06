@@ -399,10 +399,11 @@ impl InputState {
     /// capture, no hover/scroll target change) leaves
     /// `requests_repaint` false so the frame can be skipped entirely.
     ///
-    /// `now` is the frame-runtime clock, handed in by the caller that
-    /// owns it: events arrive *between* frames, so multi-press timing
-    /// must read the deterministic frame clock rather than a wall-clock
-    /// `Instant`, and a copy kept here would be a second owner of it.
+    /// `now` is when the event arrived, handed in by the host that read
+    /// its own clock for it — see [`Ui::on_input`](crate::Ui::on_input).
+    /// Multi-press timing is the one reader, and the interval it measures
+    /// is between two presses rather than between the frames that
+    /// carried them.
     pub(crate) fn on_input(
         &mut self,
         event: InputEvent,

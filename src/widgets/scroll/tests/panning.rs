@@ -12,7 +12,7 @@ use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::scroll::state::ScrollState;
 use crate::widgets::scroll::tests::support::{
-    SURFACE, build, read_state, scroll_content, scroll_viewport,
+    SURFACE, build, driven, read_state, scroll_content, scroll_viewport,
 };
 use glam::Vec2;
 
@@ -382,5 +382,74 @@ fn content_margin_does_not_shift_content_that_fits() {
         read_state(&mut h).offset,
         Vec2::new(m, m),
         "and so is the trailing band",
+    );
+}
+
+/// [`Scroll::scroll_by`] takes the step a wheel of that distance takes,
+/// through the same clamp — and takes it with no pointer over the
+/// viewport at all, which is what lets authoring code drive a view.
+///
+/// Geometry: 200 of viewport over 800 of content, so the offset may
+/// reach 600 and no further.
+#[test]
+fn scroll_by_pans_without_a_pointer_and_clamps() {
+    let drive = |ui: &mut Ui, delta: f32| driven(ui, 200.0, 800.0, Vec2::new(0.0, delta));
+    let mut h = UiHarness::new(SURFACE);
+    h.frame(|ui| drive(ui, 0.0));
+    assert_eq!(
+        read_state(&mut h).offset.y,
+        0.0,
+        "premise: the viewport starts at the top",
+    );
+
+    h.frame(|ui| drive(ui, 50.0));
+    assert_eq!(read_state(&mut h).offset.y, 50.0, "one request, one step");
+
+    h.frame(|ui| drive(ui, 50.0));
+    assert_eq!(
+        read_state(&mut h).offset.y,
+        100.0,
+        "and the steps accumulate, as a wheel's do",
+    );
+
+    h.frame(|ui| drive(ui, 9_999.0));
+    assert_eq!(
+        read_state(&mut h).offset.y,
+        600.0,
+        "clamped at content minus viewport, like every other pan",
+    );
+}
+
+/// Everything asking to pan one frame contributes to one step: two
+/// requests on the builder, and a wheel that arrived as well. None of
+/// them replaces another.
+#[test]
+fn scroll_by_composes_with_a_wheel_and_with_itself() {
+    let mut h = UiHarness::new(SURFACE);
+    h.frame(|ui| driven(ui, 200.0, 800.0, Vec2::ZERO));
+    h.move_to(Vec2::new(50.0, 50.0));
+
+    h.scroll_pixels(Vec2::new(0.0, 30.0));
+    h.frame(|ui| {
+        Panel::vstack()
+            .id(WidgetId::from_hash("root"))
+            .show(ui, |ui| {
+                Scroll::vertical()
+                    .id(WidgetId::from_hash("scroll"))
+                    .scroll_by(Vec2::new(0.0, 12.0))
+                    .scroll_by(Vec2::new(0.0, 8.0))
+                    .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
+                    .show(ui, |ui| {
+                        Frame::new()
+                            .id(WidgetId::from_hash("content"))
+                            .size((Sizing::fixed(200.0), Sizing::fixed(800.0)))
+                            .show(ui);
+                    });
+            });
+    });
+    assert_eq!(
+        read_state(&mut h).offset.y,
+        50.0,
+        "30 px of wheel and two requests of 12 and 8 are 50 px of pan",
     );
 }

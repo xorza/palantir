@@ -50,11 +50,32 @@ fn child_pack(axis: Axis, d: Size) -> ChildPack {
     }
 }
 
-/// True iff appending a child to the current line would push it past
-/// `main_avail`. The first child on an empty line never wraps.
+/// The main-axis budget a line breaks against, on the whole-pixel grid
+/// the measure cache keys `available_q` on.
+///
+/// Where a line breaks is this driver's one discontinuous output: a
+/// quarter-pixel of available width decides between one line and two, and
+/// so between one line's height and two. The cache restores a whole
+/// subtree under a key that holds whole pixels, so the break has to be
+/// taken on that same grid — otherwise a warm frame answers the height
+/// its key stands for and a cold one answers the fraction, for the same
+/// surface. Text wrapping owes its own width the same, and pays it
+/// through the same [`F32Px::canonical_px`].
+///
+/// Read once per node rather than per child, and by measure and arrange
+/// alike, so the two cannot break lines in different places. Justify is
+/// the one main-axis reader that keeps the raw extent: leftover space is
+/// continuous, and rounding it would push a line off the rect it fills.
 #[inline]
-fn would_wrap(line: LinePack, gap: f32, child_main: f32, main_avail: f32) -> bool {
-    line.occupied && line.main + gap + child_main > main_avail
+fn line_budget(axis: Axis, size: Size) -> f32 {
+    axis.main(size).canonical_px()
+}
+
+/// True iff appending a child to the current line would push it past
+/// [`line_budget`]. The first child on an empty line never wraps.
+#[inline]
+fn would_wrap(line: LinePack, gap: f32, child_main: f32, budget: f32) -> bool {
+    line.occupied && line.main + gap + child_main > budget
 }
 
 /// Advance the line-packing state by one child. When the child won't fit
@@ -67,12 +88,12 @@ fn would_wrap(line: LinePack, gap: f32, child_main: f32, main_avail: f32) -> boo
 fn pack_child(
     line: &mut LinePack,
     gap: f32,
-    main_avail: f32,
+    budget: f32,
     pack: ChildPack,
     mut complete_line: impl FnMut(f32, f32),
 ) {
     let ChildPack { main, cross } = pack;
-    if would_wrap(*line, gap, main, main_avail) {
+    if would_wrap(*line, gap, main, budget) {
         complete_line(line.main, line.cross);
         *line = LinePack {
             main,
@@ -116,7 +137,7 @@ impl LayoutDriver for WrapStack {
         let panel = tree.panel(node);
         let gap = panel.gaps.gap();
         let line_gap = panel.gaps.line_gap();
-        let main_avail = axis.main(inner_avail);
+        let budget = line_budget(axis, inner_avail);
         let cross_avail = axis.cross(inner_avail);
 
         // Measure each non-collapsed child once. Pass `INF` on main with the
@@ -135,7 +156,7 @@ impl LayoutDriver for WrapStack {
         for c in tree.active_children(node) {
             let d = pass.measure(c, axis.compose_size(f32::INFINITY, cross_avail));
             let pack = child_pack(axis, d);
-            pack_child(&mut line, gap, main_avail, pack, &mut complete_line);
+            pack_child(&mut line, gap, budget, pack, &mut complete_line);
         }
         // Flush last line.
         if line.occupied {
@@ -153,7 +174,13 @@ impl LayoutDriver for WrapStack {
         let line_gap = panel.gaps.line_gap();
         let justify = panel.justify;
         let parent_child_align = panel.child_align;
+        // Two extents, and the split is the point. Lines break against
+        // the budget, so measure and arrange agree with each other and
+        // with the cache; justify hands out the leftover of the rect
+        // actually arranged, which is continuous and owes the fraction
+        // back to the pixels it fills.
         let main_avail = axis.main(inner.size);
+        let budget = line_budget(axis, inner.size);
 
         // Same packing logic as `measure`. Each row needs lookahead —
         // can't place a child until we know the row's `line_main` (for
@@ -240,7 +267,7 @@ impl LayoutDriver for WrapStack {
             // On wrap, `pack_child` places the just-finished line (which
             // empties the pool back to this depth's start); the child that
             // triggered the wrap is then pushed as the new line's first node.
-            pack_child(&mut line, gap, main_avail, pack, |line_main, line_cross| {
+            pack_child(&mut line, gap, budget, pack, |line_main, line_cross| {
                 place_line(
                     pass,
                     line_main,

@@ -140,7 +140,7 @@ fn app_lifecycle_follows_frame_plan_and_record_replays() {
     let mut ui = Ui::new(resources);
     let mut app = CountingApp::default();
     let pointer = Vec2::new(24.0, 12.0);
-    ui.on_input(InputEvent::PointerMoved(pointer));
+    ui.inject_input(InputEvent::PointerMoved(pointer));
     app.expected_pointer = Some(pointer);
 
     let processing = run_frame(&mut ui, &mut engines, &mut app, Duration::ZERO);

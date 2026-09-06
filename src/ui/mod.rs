@@ -250,14 +250,27 @@ impl Ui {
         FrameCycle::new(self, engines).run(input, win, app)
     }
 
-    /// Feed an palantir-native input event. Returns an [`InputDelta`]
-    /// the host reads to decide whether to request a redraw — pointer
-    /// moves over inert surfaces leave `requests_repaint` false so the
-    /// host can skip the frame entirely. Animation/tooltip-delay wakes
-    /// still drive paints independently via `FrameReport::repaint_after`.
+    /// Feed an event that arrived at `now`. Returns an [`InputDelta`] the
+    /// host reads to decide whether to request a redraw — pointer moves
+    /// over inert surfaces leave `requests_repaint` false so the host can
+    /// skip the frame entirely. Animation/tooltip-delay wakes still drive
+    /// paints independently via `FrameReport::repaint_after`.
+    ///
+    /// Half of the host contract, and crate-private for the same reason
+    /// [`Self::frame`] is: nothing outside this crate can hold a [`Ui`]
+    /// to drive, so nothing outside it delivers events either.
+    ///
+    /// `now` is when the event arrived, on the clock the host also drives
+    /// frames with. It is the host's to read because only the host is
+    /// awake when an event lands: a frame clock stands still between
+    /// frames, so two presses either side of an idle gap would be timed
+    /// against the frames that carried them rather than against each
+    /// other, and the second could never be a double click. A host that
+    /// wants reproducible input timing hands over a clock it controls,
+    /// exactly as it does for frames.
     #[inline]
-    pub fn on_input(&mut self, event: InputEvent) -> InputDelta {
-        self.input.on_input(event, &self.cascade, self.now())
+    pub(crate) fn on_input(&mut self, event: InputEvent, now: Duration) -> InputDelta {
+        self.input.on_input(event, &self.cascade, now)
     }
 
     // The input surface has three verbs, and every method below is one
@@ -1537,6 +1550,8 @@ pub(crate) mod harness;
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {
     #[cfg(test)]
+    use crate::input::input_event::InputEvent;
+    #[cfg(test)]
     use crate::input::input_state::InputState;
     #[cfg(test)]
     use crate::layout::LayerLayout;
@@ -1639,6 +1654,20 @@ pub(crate) mod internals {
         /// reuse key this `Ui` folds it into.
         pub(crate) fn font_epoch(&self) -> u32 {
             self.resources.text().font_epoch()
+        }
+
+        /// Deliver `event` as though it arrived now, for a case that
+        /// drives a bare `Ui` rather than a [`UiHarness`].
+        ///
+        /// [`Self::on_input`] is the host's door and takes the arrival
+        /// time the host read. A test synthesizing an event has no such
+        /// clock, and the frame's own time is the honest answer for
+        /// something that arrives during it.
+        ///
+        /// [`UiHarness`]: crate::ui::harness::UiHarness
+        pub(crate) fn inject_input(&mut self, event: InputEvent) {
+            let now = self.now();
+            self.on_input(event, now);
         }
 
         /// One layer's recorded tree — its `records` columns, `rollups`,

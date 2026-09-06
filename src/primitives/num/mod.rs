@@ -186,6 +186,23 @@ pub(crate) trait F32Px {
     /// measured at another width. Non-finite (an unbounded axis) saturates
     /// rather than wrapping through the `as` cast.
     fn quantize_px(self) -> i32;
+
+    /// [`Self::quantize_px`]'s grid, back in `f32`, for the extents that
+    /// are *compared against* a cache key rather than hashed into one.
+    ///
+    /// Every discontinuous decision taken against an available extent
+    /// owes this: a line break, a truncation, a fit test. The key its
+    /// answer is cached under holds whole pixels, so a decision taken on
+    /// the fraction can fall the other side of a boundary from the one
+    /// the key stands for, and a warm frame then answers what a cold one
+    /// would not. A continuous output — a flex shrink, a track share —
+    /// has no boundary to fall the wrong side of, and reads the raw
+    /// extent.
+    ///
+    /// A negative extent names no space and answers zero, which is what
+    /// an over-constrained layout's callers want of a width driven below
+    /// nothing.
+    fn canonical_px(self) -> f32;
 }
 
 impl F32Px for f32 {
@@ -235,6 +252,11 @@ impl F32Px for f32 {
     #[inline]
     fn is_integral(&self) -> bool {
         *self == (*self as i64 as f32)
+    }
+
+    #[inline]
+    fn canonical_px(self) -> f32 {
+        self.max(0.0).quantize_px() as f32
     }
 
     #[inline]

@@ -273,7 +273,7 @@ fn click_to_edit_reports_focus_on_the_same_frame() {
 }
 
 fn key(ui: &mut Ui, k: Key) {
-    ui.on_input(InputEvent::KeyDown {
+    ui.inject_input(InputEvent::KeyDown {
         key: k,
         repeat: false,
         physical: Key::Other,
