@@ -37,7 +37,7 @@ fn bench_stable(
     }
     if selected {
         h.request_focus(Some(editor_id()));
-        let state = h.ui.state_mut::<TextEditState>(editor_id());
+        let state = h.ui.state_or_default::<TextEditState>(editor_id());
         state.edit.selection = Some(0);
         state.edit.caret = text.len();
         run_frame(&mut h, &mut text, multiline);

@@ -126,7 +126,7 @@ impl<'a> Splitter<'a> {
         let axis = self.axis;
 
         let sync_pending = ui
-            .try_state::<SplitterState>(id)
+            .state::<SplitterState>(id)
             .is_some_and(|response| response.sync_ratio_next_record);
         let synced_ratio = if sync_pending {
             arranged_pane_ratio(ui, first_id, second_id, axis)
@@ -150,7 +150,7 @@ impl<'a> Splitter<'a> {
                 );
                 resizing = true;
             }
-            if divider.left.double_clicked() {
+            if divider.double_clicked() {
                 layout_ratio = 0.5;
                 resizing = true;
             }
@@ -162,7 +162,8 @@ impl<'a> Splitter<'a> {
         // default. A splitter that never resizes mints no row at all.
         let sync_next = resizing || (sync_pending && synced_ratio.is_none());
         if sync_next != sync_pending {
-            ui.state_mut::<SplitterState>(id).sync_ratio_next_record = sync_next;
+            ui.state_or_default::<SplitterState>(id)
+                .sync_ratio_next_record = sync_next;
         }
 
         let bar_fill = if divider.left.drag.dragging() {
@@ -251,7 +252,7 @@ fn arranged_pane_ratio(
     let first_extent = axis.main(first.size);
     let second_extent = axis.main(second.size);
     let span = first_extent + second_extent;
-    (!approx::noop_f32(span)).then(|| sanitize_ratio(first_extent / span))
+    (!approx::paints_nothing(span)).then(|| sanitize_ratio(first_extent / span))
 }
 
 /// A caller-supplied ratio, made safe to use as a `Fill` weight. The
@@ -270,7 +271,7 @@ fn sanitize_ratio(r: f32) -> f32 {
 /// extents pin to `0.5`.
 fn pointer_to_ratio(pos: f32, extent: f32, reserved: f32, min_pane: f32) -> f32 {
     let span = extent - reserved;
-    if approx::noop_f32(span) {
+    if approx::paints_nothing(span) {
         return 0.5;
     }
     // `floor <= 0.5` by construction, so the clamp can't invert even

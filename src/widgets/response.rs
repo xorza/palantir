@@ -14,7 +14,7 @@ use std::cell::OnceCell;
 ///
 /// There is **no accessor surface of its own**: `Response` derefs to
 /// [`ResponseState`], so everything reads exactly like the state —
-/// `r.hovered()`, `r.pressed()`, `r.left.clicked()`,
+/// `r.hovered()`, `r.pressed()`, `r.clicked()`,
 /// `r.left.drag.delta()`, `r.scroll.pixels`. One API, defined once.
 /// Deref-copy (`*r`) hands out the owned `Copy` state.
 ///
@@ -45,7 +45,7 @@ impl<'a> Response<'a> {
     /// `response_for`. Used by widgets that don't otherwise consume
     /// the response state during `.show()` (decorative widgets:
     /// Text, Frame, Panel, Grid). External widget authors reach this
-    /// through [`Widget::response`](crate::Widget::response).
+    /// through [`Widget::response`](crate::widget::Widget::response).
     #[inline]
     pub(super) fn lazy(id: WidgetId, ui: &'a Ui) -> Self {
         Self {
@@ -77,7 +77,7 @@ impl<'a> Response<'a> {
     /// releasing the `&Ui` borrow. Use this before any `&mut Ui` op
     /// that needs to interleave with reads from this response — e.g.
     /// `let r = btn.show(ui).snapshot(); …other_widget.show(ui); if
-    /// r.left.clicked() {…}`. The cache fills on first deref either
+    /// r.clicked() {…}`. The cache fills on first deref either
     /// way, so this is purely a borrow-shape conversion.
     #[inline]
     pub fn snapshot(&self) -> ResponseSnapshot {

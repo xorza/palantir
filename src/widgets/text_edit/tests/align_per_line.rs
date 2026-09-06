@@ -9,7 +9,7 @@
 //! which would be the same alignment applied twice.
 
 use crate::text::font_family::FontFamily;
-use crate::text::font_style::FontStyle;
+use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::key::LineAlign;
@@ -33,7 +33,7 @@ fn shape(wrap: f32, halign: HAlign) -> TestShape {
             line_height_px: LH,
             family: FontFamily::SANS,
             weight: FontWeight::REGULAR,
-            style: FontStyle::Normal,
+            slant: FontSlant::Normal,
         },
         max_width_px: Some(wrap),
         halign,
@@ -187,7 +187,7 @@ fn cache_key_distinguishes_halign() {
                     line_height_px: 19.2,
                     family: FontFamily::SANS,
                     weight: FontWeight::REGULAR,
-                    style: FontStyle::Normal,
+                    slant: FontSlant::Normal,
                 },
                 max_width_px: Some(100.0),
                 halign: HAlign::Left,
@@ -203,7 +203,7 @@ fn cache_key_distinguishes_halign() {
                     line_height_px: 19.2,
                     family: FontFamily::SANS,
                     weight: FontWeight::REGULAR,
-                    style: FontStyle::Normal,
+                    slant: FontSlant::Normal,
                 },
                 max_width_px: Some(100.0),
                 halign: HAlign::Right,
@@ -235,7 +235,7 @@ fn unbounded_halign_collapses_to_auto_in_key() {
                     line_height_px: 19.2,
                     family: FontFamily::SANS,
                     weight: FontWeight::REGULAR,
-                    style: FontStyle::Normal,
+                    slant: FontSlant::Normal,
                 },
                 max_width_px: None,
                 halign: HAlign::Left,
@@ -251,7 +251,7 @@ fn unbounded_halign_collapses_to_auto_in_key() {
                     line_height_px: 19.2,
                     family: FontFamily::SANS,
                     weight: FontWeight::REGULAR,
-                    style: FontStyle::Normal,
+                    slant: FontSlant::Normal,
                 },
                 max_width_px: None,
                 halign: HAlign::Right,
@@ -456,7 +456,7 @@ fn multiline_widget_right_aligns_each_line() {
         });
     };
     h.frame(&mut record);
-    h.ui.state_mut::<TextEditState>(id).edit.caret = 5;
+    h.ui.state_or_default::<TextEditState>(id).edit.caret = 5;
     h.frame(&mut record);
     // wrap target = inner width = 300 - 2*5 = 290.
     let wrap = 290.0;

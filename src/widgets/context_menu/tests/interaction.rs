@@ -23,7 +23,7 @@ use glam::Vec2;
 fn close_before_open_does_not_create_state() {
     let mut h = UiHarness::arena();
     ContextMenu::close(h.ui(), trigger_id());
-    assert!(h.ui.try_state::<ContextMenuState>(trigger_id()).is_none());
+    assert!(h.ui.state::<ContextMenuState>(trigger_id()).is_none());
 }
 
 #[test]

@@ -3,7 +3,7 @@
 
 use crate::primitives::color::RgbaF32;
 use crate::text::font_family::FontFamily;
-use crate::text::font_style::FontStyle;
+use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
 use crate::widgets::theme::palette::Palette;
@@ -65,12 +65,12 @@ pub struct TextStyle {
     /// [`Self::bold`]) to shape against the family's bold face.
     #[animate(snap)]
     pub weight: FontWeight,
-    /// Upright or italic. Default [`FontStyle::Normal`]; set
-    /// [`FontStyle::Italic`] (or call [`Self::italic`]) to shape against
+    /// Upright or italic. Default [`FontSlant::Normal`]; set
+    /// [`FontSlant::Italic`] (or call [`Self::italic`]) to shape against
     /// the family's italic face, or a synthesized slant where it has
     /// none.
     #[animate(snap)]
-    pub style: FontStyle,
+    pub slant: FontSlant,
 }
 
 impl Default for TextStyle {
@@ -81,7 +81,7 @@ impl Default for TextStyle {
             line_height_mult: LINE_HEIGHT_MULT,
             family: FontFamily::SANS,
             weight: FontWeight::REGULAR,
-            style: FontStyle::Normal,
+            slant: FontSlant::Normal,
         }
     }
 }
@@ -100,7 +100,7 @@ impl TextStyle {
     /// cannot arrive at the shaper disagreeing.
     ///
     /// A builder that overrides one field writes a struct update over
-    /// this — `GlyphFont { weight: bold, ..style.font() }` — which is why
+    /// this — `GlyphFont { weight: bold, ..slant.font() }` — which is why
     /// there is no per-field variant here.
     #[inline]
     pub fn font(&self) -> GlyphFont {
@@ -109,7 +109,7 @@ impl TextStyle {
             line_height_px: self.line_height_for(self.font_size_px),
             family: self.family,
             weight: self.weight,
-            style: self.style,
+            slant: self.slant,
         }
     }
 
@@ -154,8 +154,8 @@ impl TextStyle {
     }
 
     #[inline]
-    pub const fn with_style(mut self, style: FontStyle) -> Self {
-        self.style = style;
+    pub const fn with_slant(mut self, slant: FontSlant) -> Self {
+        self.slant = slant;
         self
     }
 
@@ -165,10 +165,10 @@ impl TextStyle {
         self.with_weight(FontWeight::BOLD)
     }
 
-    /// Shorthand for `.with_style(FontStyle::Italic)`.
+    /// Shorthand for `.with_slant(FontSlant::Italic)`.
     #[inline]
     pub const fn italic(self) -> Self {
-        self.with_style(FontStyle::Italic)
+        self.with_slant(FontSlant::Italic)
     }
 }
 
@@ -186,7 +186,7 @@ struct UncheckedTextStyle {
     line_height_mult: f32,
     family: FontFamily,
     weight: FontWeight,
-    style: FontStyle,
+    slant: FontSlant,
 }
 
 impl TryFrom<UncheckedTextStyle> for TextStyle {
@@ -199,7 +199,7 @@ impl TryFrom<UncheckedTextStyle> for TextStyle {
             line_height_mult: style.line_height_mult,
             family: style.family,
             weight: style.weight,
-            style: style.style,
+            slant: style.slant,
         };
         if !style.metrics_valid() {
             return Err(GlyphFont::METRICS_ERROR);

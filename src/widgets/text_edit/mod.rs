@@ -260,9 +260,9 @@ impl<'a> TextEdit<'a> {
         // [`Self::pass`] exists to make the write-back unconditional: it
         // early-returns on an unstyled editor, and a `mem::take` whose
         // write-back only runs on *some* paths silently resets the caret.
-        let mut state = std::mem::take(ui.state_mut::<TextEditState>(id));
+        let mut state = std::mem::take(ui.state_or_default::<TextEditState>(id));
         let signals = self.pass(ui, &mut state);
-        *ui.state_mut::<TextEditState>(id) = state;
+        *ui.state_or_default::<TextEditState>(id) = state;
 
         TextEditResponse {
             // The pass already probed this id and tracked the one field that

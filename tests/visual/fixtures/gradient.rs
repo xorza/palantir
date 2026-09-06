@@ -4,7 +4,8 @@
 
 use glam::UVec2;
 use image::RgbaImage;
-use palantir::{Configure, LinearGradient, Panel, Rect, RgbaF32, RgbaU8, Shape, Sizing};
+use palantir::widget::Shape;
+use palantir::{Configure, LinearGradient, Panel, Rect, RgbaF32, RgbaU8, Sizing};
 
 use crate::goldens::assert_matches_golden;
 use crate::harness::Harness;
@@ -23,12 +24,13 @@ const CLEAR: RgbaF32 = RgbaF32::BLACK;
 /// enough apart that neighbouring swatches stay distinguishable after
 /// the sRGB framebuffer encode, so sampling the wrong LUT row can't
 /// pass as rounding.
-fn swatch_color(i: u32) -> RgbaU8 {
+fn swatch_color(i: u32) -> RgbaF32 {
     RgbaU8::rgb(
         (40 + (i % COLS) * 10) as u8,
         (40 + (i / COLS) * 12) as u8,
         200,
     )
+    .into()
 }
 
 /// Each swatch is a two-stop gradient whose stops share one colour, so
@@ -74,7 +76,7 @@ fn render_swatches() -> RgbaImage {
 fn overflowing_gradient_atlas_paints_every_swatch() {
     let img = render_swatches();
     for i in 0..SWATCHES {
-        let want = RgbaF32::from(swatch_color(i)).to_srgba_u8();
+        let want = swatch_color(i).to_srgba_u8();
         // Swatch centre — clear of the edge AA the composer leaves on
         // the quad boundary.
         let x = (i % COLS) * SWATCH + SWATCH / 2;

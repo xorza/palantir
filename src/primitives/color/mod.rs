@@ -133,7 +133,7 @@ impl RgbaF32 {
         // Alpha decides visibility; the colour channels are screened
         // for NaN only. See `RgbaF16::is_noop` for why a NaN in a
         // non-alpha lane has to count as invisible.
-        approx::noop_f32(self.a) || self.has_nan()
+        approx::paints_nothing(self.a) || self.has_nan()
     }
 
     /// True if any channel is NaN. `const`, so [`Self::is_noop`] can
@@ -408,6 +408,19 @@ impl RgbaU8 {
     pub const fn is_noop(self) -> bool {
         self.a == 0
     }
+
+    /// The **linear** un-quantize, and the inverse of [`Self::from_linear`].
+    ///
+    /// The body [`From<RgbaU8>`](RgbaF32) runs, `const` for the same reason
+    /// its twin is: a `const fn` accessor over stored bytes needs to reach it.
+    pub(crate) const fn to_linear(self) -> RgbaF32 {
+        RgbaF32 {
+            r: self.r as f32 / 255.0,
+            g: self.g as f32 / 255.0,
+            b: self.b as f32 / 255.0,
+            a: self.a as f32 / 255.0,
+        }
+    }
 }
 
 impl From<RgbaF32> for RgbaU8 {
@@ -426,12 +439,7 @@ impl From<RgbaU8> for RgbaF32 {
     /// `srgb_to_linear`.
     #[inline]
     fn from(s: RgbaU8) -> Self {
-        RgbaF32 {
-            r: s.r as f32 / 255.0,
-            g: s.g as f32 / 255.0,
-            b: s.b as f32 / 255.0,
-            a: s.a as f32 / 255.0,
-        }
+        s.to_linear()
     }
 }
 

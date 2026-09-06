@@ -137,10 +137,11 @@ fn position_on_monitor(event_loop: &ActiveEventLoop, pos: IVec2) -> bool {
 mod tests {
     use crate::host::winit::native;
     use crate::primitives::image::Image;
+    use glam::UVec2;
 
     #[test]
     fn validated_window_icon_converts_to_the_platform_type() {
-        let image = Image::from_rgba8(2, 1, vec![255, 0, 0, 255, 0, 255, 0, 128]);
+        let image = Image::from_rgba8(UVec2::new(2, 1), vec![255, 0, 0, 255, 0, 255, 0, 128]);
         let _ = native::icon(&image);
     }
 }

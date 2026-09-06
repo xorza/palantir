@@ -5,7 +5,7 @@ use super::*;
 use crate::Ui;
 use crate::text::error::FontLoadError;
 use crate::text::font_scope::test_support::{INTER, MONO};
-use crate::text::font_style::FontStyle;
+use crate::text::font_slant::FontSlant;
 use crate::ui::frame_report::FramePaint;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
@@ -266,7 +266,7 @@ fn italic_reaches_the_italic_file_at_every_weight() {
             ..GlyphFont::new(16.0)
         };
         let italic = GlyphFont {
-            style: FontStyle::Italic,
+            slant: FontSlant::Italic,
             ..upright
         };
         let name = c
@@ -303,7 +303,7 @@ fn the_key_carries_any_family_index() {
         assert_eq!(key.family().raw(), raw);
         // The neighbours in the packed word must survive it.
         assert_eq!(key.weight(), FontWeight::REGULAR);
-        assert_eq!(key.style(), FontStyle::Normal);
+        assert_eq!(key.slant(), FontSlant::Normal);
         assert_eq!(key.line_align(), LineAlign::Auto);
         assert_eq!(key.fit(), LineFit::Wrap);
     }
@@ -316,7 +316,7 @@ fn the_packed_face_word_keeps_every_axis_apart() {
     let face = GlyphFont {
         family: FontFamily::MONO,
         weight: FontWeight::new(950),
-        style: FontStyle::Italic,
+        slant: FontSlant::Italic,
         ..GlyphFont::new(16.0)
     };
     let unbounded = TextShapeKey::for_text("hi", face).expect("a fixture face is usable");
@@ -325,7 +325,7 @@ fn the_packed_face_word_keeps_every_axis_apart() {
     for (label, key) in [("unbounded", unbounded), ("bound", bound)] {
         assert_eq!(key.family(), FontFamily::MONO, "{label}");
         assert_eq!(key.weight(), FontWeight::new(950), "{label}");
-        assert_eq!(key.style(), FontStyle::Italic, "{label}");
+        assert_eq!(key.slant(), FontSlant::Italic, "{label}");
     }
     assert_eq!(unbounded.line_align(), LineAlign::Auto);
     assert_eq!(unbounded.fit(), LineFit::Wrap);

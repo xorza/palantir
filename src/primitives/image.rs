@@ -43,7 +43,7 @@ pub enum ImageFit {
 /// How texels are interpolated when an image paints at a size other
 /// than its intrinsic one. `Linear` (the default) is bilinear
 /// smoothing; `Nearest` keeps hard texel edges — pixel-art upscales,
-/// checkerboards, pixel peeping. [`Shape::image`](crate::Shape::image) chooses this
+/// checkerboards, pixel peeping. [`Shape::image`](crate::widget::Shape::image) chooses this
 /// independently for minification and magnification. Implemented as a
 /// UV texel-center snap in the image shader, so every combination
 /// shares one sampler and one bind group per texture. Serde (lowercase)
@@ -65,7 +65,7 @@ pub enum ImageFilter {
 /// screenshot's text. Spreading taps across the pixel's derivative footprint
 /// reads enough of it for that to stop.
 ///
-/// Opt in per shape via [`ImageShape::downsample`](crate::ImageShape::downsample).
+/// Opt in per shape via [`ImageShape::downsample`](crate::widget::ImageShape::downsample).
 /// The taps cost fill rate on every fragment the image minifies into, which is
 /// why they are not the default — a UI icon or a 1:1 blit should not pay for
 /// them. Magnified and 1:1 draws take the single tap whatever this says, since
@@ -115,20 +115,19 @@ impl Image {
     ///
     /// # Panics
     ///
-    /// Panics for zero dimensions, unrepresentable byte lengths, or when
-    /// `pixels.len() != width * height * 4`.
-    pub fn from_rgba8(width: u32, height: u32, pixels: Vec<u8>) -> Self {
-        let expected = rgba8_len(width, height);
+    /// Panics for a zero dimension, an unrepresentable byte length, or when
+    /// `pixels.len() != size.x * size.y * 4`.
+    pub fn from_rgba8(size: UVec2, pixels: Vec<u8>) -> Self {
+        let expected = rgba8_len(size.x, size.y);
         assert_eq!(
             pixels.len(),
             expected,
-            "RGBA8 byte length {} does not match {width}x{height}x4 = {expected}",
+            "RGBA8 byte length {} does not match {}x{}x4 = {expected}",
             pixels.len(),
+            size.x,
+            size.y,
         );
-        Self {
-            size: UVec2::new(width, height),
-            pixels,
-        }
+        Self { size, pixels }
     }
 
     /// Transparent black at `size`: what a surface fills before it registers,
@@ -232,7 +231,7 @@ mod tests {
     #[test]
     fn image_stores_valid_rgba8_dimensions_and_pixels() {
         let pixels = vec![255, 0, 0, 255, 0, 255, 0, 128];
-        let image = Image::from_rgba8(2, 1, pixels.clone());
+        let image = Image::from_rgba8(UVec2::new(2, 1), pixels.clone());
         assert_eq!(image.size(), UVec2::new(2, 1));
         assert_eq!(image.pixels, pixels);
 
@@ -318,8 +317,7 @@ mod tests {
         for case in cases {
             assert!(
                 std::panic::catch_unwind(|| Image::from_rgba8(
-                    case.width,
-                    case.height,
+                    UVec2::new(case.width, case.height),
                     vec![0; case.len],
                 ))
                 .is_err(),

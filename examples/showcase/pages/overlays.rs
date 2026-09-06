@@ -1,9 +1,11 @@
-//! Side-layer widgets. `Popup::anchored_to` records a side root in the
+//! Side-layer widgets. `Popup::new` records a side root in the
 //! `Popup` layer that paints above the main tree, escapes ancestor clip,
 //! and hit-tests on top. Tooltips live one layer higher still, with a
 //! ~0.5 s delay and a warmup window — move between adjacent triggers
 //! within ~1 s and the next bubble skips the delay. ContextMenus attach
 //! to any sensed widget and auto-open on secondary-click at the pointer.
+
+use palantir::Anchor;
 
 use std::time::Duration;
 
@@ -46,7 +48,7 @@ fn popup_menu(ui: &mut Ui, menu: &mut MenuState) {
                     .id_salt("popup-trigger")
                     .label("menu")
                     .show(ui);
-                if r.left.clicked() {
+                if r.clicked() {
                     clicked = true;
                 }
                 trigger_rect = r.rect;
@@ -70,7 +72,7 @@ fn popup_menu(ui: &mut Ui, menu: &mut MenuState) {
 
     let anchor = Vec2::new(trigger.min.x, trigger.min.y + trigger.size.h + 4.0);
     let mut chosen: Option<&'static str> = None;
-    let resp = Popup::anchored_to(anchor)
+    let resp = Popup::new(Anchor::at_point(anchor))
         .id_salt("popup-menu")
         .padding(6.0)
         .size((Sizing::HUG, Sizing::HUG))
@@ -238,7 +240,7 @@ fn context_menu_section(ui: &mut Ui) {
 
                 // Static strings only — no per-frame alloc.
                 let label = ui
-                    .state_mut::<CtxState>(state_id)
+                    .state_or_default::<CtxState>(state_id)
                     .last_action
                     .unwrap_or("last action: (none yet)");
                 Text::new(label)
@@ -328,7 +330,7 @@ fn attach_menu(ui: &mut Ui, trigger: &ResponseSnapshot, state_id: WidgetId, flav
                 .left
                 .clicked()
             {
-                ui.state_mut::<CtxState>(state_id).last_action = Some(action);
+                ui.state_or_default::<CtxState>(state_id).last_action = Some(action);
             }
         }
         MenuItem::separator().style(rule).show(ui);
@@ -344,7 +346,7 @@ fn attach_menu(ui: &mut Ui, trigger: &ResponseSnapshot, state_id: WidgetId, flav
             .left
             .clicked()
         {
-            ui.state_mut::<CtxState>(state_id).last_action = Some("last action: Delete");
+            ui.state_or_default::<CtxState>(state_id).last_action = Some("last action: Delete");
         }
     });
 }

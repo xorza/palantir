@@ -59,14 +59,19 @@ const KEY_PAGE: f32 = 0.1;
 impl<'a> ColorStrip<'a> {
     /// A hue bar driving `coords`, painted in that value's model.
     #[track_caller]
-    pub fn hue(coords: &'a mut ColorCoords) -> Self {
+    pub fn for_hue(coords: &'a mut ColorCoords) -> Self {
         Self::new(StripKind::Hue(coords))
     }
 
     /// An alpha bar over `color`, showing that colour from transparent to
     /// opaque and writing its alpha.
+    ///
+    /// Not `alpha`: that is a *setter* on the two colour widgets next door
+    /// ([`ColorPicker::alpha`](crate::ColorPicker::alpha),
+    /// [`ColorButton::alpha`](crate::ColorButton::alpha)), and one word
+    /// cannot mean both a setter and a constructor.
     #[track_caller]
-    pub fn alpha(color: &'a mut RgbaF32) -> Self {
+    pub fn for_alpha(color: &'a mut RgbaF32) -> Self {
         Self::new(StripKind::Alpha(color))
     }
 

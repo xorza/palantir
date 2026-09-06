@@ -44,8 +44,8 @@ use std::hash::Hash;
 /// and the bar that gets drawn scale differently.
 pub(crate) fn viewport(outer: Size, reserve_y: f32, reserve_x: f32, padding: Spacing) -> Size {
     Size::new(
-        (outer.w - reserve_y - padding.horiz()).max(0.0),
-        (outer.h - reserve_x - padding.vert()).max(0.0),
+        (outer.w - reserve_y - padding.horizontal()).max(0.0),
+        (outer.h - reserve_x - padding.vertical()).max(0.0),
     )
 }
 
@@ -135,7 +135,7 @@ impl BarDomain {
     /// `offset` as a 0..1 position along the bar's travel.
     #[inline]
     pub(crate) fn fraction(self, offset: f32) -> f32 {
-        approx::ratio(offset, self.max_off).clamp(0.0, 1.0)
+        approx::share_of(offset, self.max_off).clamp(0.0, 1.0)
     }
 }
 
@@ -293,7 +293,7 @@ impl LayoutDriver for Scrollbars {
     fn arrange(pass: &mut LayoutPass<'_>, node: NodeId, id: Self::Payload, inner: Rect) {
         let def = pass.tree.scrollbar_defs[usize::from(id)];
         let raw_content = pass.scroll_content(def.content);
-        let scaled_content = raw_content.scaled(def.zoom);
+        let scaled_content = raw_content.scaled_by(def.zoom);
         let vertical = axis_rects(&def, inner.size, scaled_content, Axis::Y);
         let horizontal = axis_rects(&def, inner.size, scaled_content, Axis::X);
 

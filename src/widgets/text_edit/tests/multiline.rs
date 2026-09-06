@@ -9,14 +9,14 @@ fn multiline_enter_inserts_newline() {
     // Focus + caret after "abc".
     h.request_focus(Some(ed_id));
     {
-        let st = h.ui.state_mut::<TextEditState>(ed_id);
+        let st = h.ui.state_or_default::<TextEditState>(ed_id);
         st.edit.caret = 3;
     }
     h.frame(multiline_editor(&mut buf));
     h.key(Key::Enter);
     h.frame(multiline_editor(&mut buf));
     assert_eq!(buf, "abc\n");
-    let st = h.ui.state_mut::<TextEditState>(ed_id).clone();
+    let st = h.ui.state_or_default::<TextEditState>(ed_id).clone();
     assert_eq!(st.edit.caret, 4);
 
     // A subsequent printable char goes on the new visual line.
@@ -70,7 +70,7 @@ fn multiline_paste_keeps_newlines() {
     h.key(Key::Char('v'));
     h.frame(multiline_editor(&mut buf));
     assert_eq!(buf, "line1\nline2\nline3");
-    let st = h.ui.state_mut::<TextEditState>(ed_id).clone();
+    let st = h.ui.state_or_default::<TextEditState>(ed_id).clone();
     assert_eq!(st.edit.caret, buf.len());
 }
 
@@ -85,7 +85,7 @@ fn multiline_selection_crosses_newline() {
     h.request_focus(Some(ed_id));
     // Caret on line 1, column 3.
     {
-        let st = h.ui.state_mut::<TextEditState>(ed_id);
+        let st = h.ui.state_or_default::<TextEditState>(ed_id);
         st.edit.caret = 3;
     }
     h.frame(multiline_editor(&mut buf));
@@ -95,7 +95,7 @@ fn multiline_selection_crosses_newline() {
     });
     h.key(Key::ArrowDown);
     h.frame(multiline_editor(&mut buf));
-    let st = h.ui.state_mut::<TextEditState>(ed_id).clone();
+    let st = h.ui.state_or_default::<TextEditState>(ed_id).clone();
     assert!(
         st.edit.selection.is_some(),
         "shift+down across newline establishes a selection",

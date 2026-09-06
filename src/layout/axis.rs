@@ -86,8 +86,8 @@ impl Axis {
     /// Total spacing along this axis (left+right for X, top+bottom for Y).
     pub(crate) fn spacing(self, s: Spacing) -> f32 {
         match self {
-            Axis::X => s.horiz(),
-            Axis::Y => s.vert(),
+            Axis::X => s.horizontal(),
+            Axis::Y => s.vertical(),
         }
     }
     /// Build a `Size` from main- and cross-axis lengths.

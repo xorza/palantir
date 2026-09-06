@@ -109,7 +109,7 @@ impl<'a> TextProbe<'a> {
     /// its undo stack on it.
     ///
     /// ```
-    /// # use palantir::TextProbe;
+    /// # use palantir::widget::TextProbe;
     /// assert_eq!(TextProbe::hash_of("hello"), TextProbe::hash_of("hello"));
     /// assert_ne!(TextProbe::hash_of("hello"), TextProbe::hash_of("world"));
     /// ```
@@ -133,7 +133,7 @@ impl<'a> TextProbe<'a> {
     /// **Mono is refused rather than missed.** A probe's key is a real
     /// one whichever metric measured it — only `TextSystem` withholds
     /// one — so a mono run whose key some other caller had shaped
-    /// through [`TextGlyphs`](crate::TextGlyphs) would find that buffer
+    /// through [`TextGlyphs`](crate::widget::TextGlyphs) would find that buffer
     /// and answer cosmic geometry against a mono extent. Every answer a
     /// probe gives has to come from the metric that measured it.
     ///

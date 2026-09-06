@@ -36,7 +36,7 @@ fn double_and_triple_click_select_word_and_all() {
     record_at_secs(&mut h, 0.0, |ui| body(ui, &mut buf));
     h.release();
     record_at_secs(&mut h, 0.0, |ui| body(ui, &mut buf));
-    let st = h.ui.state_mut::<TextEditState>(ed_id).clone();
+    let st = h.ui.state_or_default::<TextEditState>(ed_id).clone();
     assert_eq!(st.edit.caret, 3, "single click places the caret");
     assert_eq!(st.edit.selection, None);
 
@@ -44,7 +44,7 @@ fn double_and_triple_click_select_word_and_all() {
     // selects word at byte 3 → "hello".
     h.press();
     record_at_secs(&mut h, 0.1, |ui| body(ui, &mut buf));
-    let st = h.ui.state_mut::<TextEditState>(ed_id).clone();
+    let st = h.ui.state_or_default::<TextEditState>(ed_id).clone();
     assert_eq!(st.edit.sel_range(), Some(0..5), "double click selects word");
     h.release();
     record_at_secs(&mut h, 0.1, |ui| body(ui, &mut buf));
@@ -52,7 +52,7 @@ fn double_and_triple_click_select_word_and_all() {
     // Click 3 still inside the window → triple press → select all.
     h.press();
     record_at_secs(&mut h, 0.2, |ui| body(ui, &mut buf));
-    let st = h.ui.state_mut::<TextEditState>(ed_id).clone();
+    let st = h.ui.state_or_default::<TextEditState>(ed_id).clone();
     assert_eq!(
         st.edit.sel_range(),
         Some(0..buf.len()),
@@ -67,7 +67,7 @@ fn double_and_triple_click_select_word_and_all() {
     record_at_secs(&mut h, 5.0, |ui| body(ui, &mut buf));
     h.press();
     record_at_secs(&mut h, 5.0, |ui| body(ui, &mut buf));
-    let st = h.ui.state_mut::<TextEditState>(ed_id).clone();
+    let st = h.ui.state_or_default::<TextEditState>(ed_id).clone();
     assert_eq!(st.edit.caret, 3, "pause resets the run to a single click");
     assert_eq!(
         st.edit.selection, None,

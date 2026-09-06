@@ -432,9 +432,9 @@ impl ChipCtx<'_> {
             });
         });
 
-        if close.is_some_and(|c| c.state.left.clicked()) {
+        if close.is_some_and(|c| c.state.clicked()) {
             hits.closed.get_or_insert(slot);
-        } else if state.left.clicked() {
+        } else if state.clicked() {
             hits.clicked.get_or_insert(slot);
         }
         if state.left.drag.started() {
@@ -544,7 +544,7 @@ fn overflow_menu(
     button.record(ui, Some(&chevron.background), |ui| {
         chevron.glyph(ui, button_id, "\u{22ef}");
     });
-    if chevron.state.left.clicked()
+    if chevron.state.clicked()
         && let Some(rect) = chevron.state.rect
     {
         ContextMenu::open(ui, menu_id, Vec2::new(rect.min.x, rect.max().y));

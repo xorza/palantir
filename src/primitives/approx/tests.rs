@@ -1,4 +1,4 @@
-use crate::primitives::approx::{EPS, FloatHash, approx_zero, canon_bits, noop_f32};
+use crate::primitives::approx::{EPS, FloatHash, approx_zero, canon_bits, paints_nothing};
 use crate::primitives::rect::Rect;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hasher as _;
@@ -42,7 +42,7 @@ fn every_paint_noop_predicate_treats_nan_as_invisible() {
     nan_mesh.triangle(0, 1, 2);
 
     let cases: &[(&str, bool)] = &[
-        ("noop_f32", noop_f32(N)),
+        ("paints_nothing", paints_nothing(N)),
         ("Size::is_paint_empty/w", Size::new(N, 4.0).is_paint_empty()),
         ("Size::is_paint_empty/h", Size::new(4.0, N).is_paint_empty()),
         (

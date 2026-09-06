@@ -462,7 +462,7 @@ mod tests {
     use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
     use crate::primitives::brush::gradient::radial_geometry::RadialGradient;
     use crate::primitives::brush::gradient::{Interp, Spread};
-    use crate::primitives::color::RgbaU8;
+
     use crate::scene::record_store::RecordStore;
     use crate::scene::record_store::recorded_gradients::GradientId;
     use crate::scene::shapes::paint::ShapeBrush;
@@ -615,7 +615,7 @@ mod tests {
     #[test]
     fn gradient_interning_identity_covers_geometry_kind_spread_and_interpolation() {
         let mut store = RecordStore::default();
-        let colors = [RgbaU8::hex(0x1a1a2e), RgbaU8::hex(0x4c5cdb)];
+        let colors = [RgbaF32::hex(0x1a1a2e), RgbaF32::hex(0x4c5cdb)];
         let base = LinearGradient::two_stop(0.25, colors[0], colors[1]);
         let first = gradient_id(&mut store, &Brush::Linear(base.clone()));
         assert_eq!(gradient_id(&mut store, &Brush::Linear(base.clone())), first);
@@ -643,11 +643,11 @@ mod tests {
 
         let radial = gradient_id(
             &mut store,
-            &Brush::Radial(RadialGradient::two_stop_centered(colors[0], colors[1])),
+            &Brush::Radial(RadialGradient::two_stop(colors[0], colors[1])),
         );
         let conic = gradient_id(
             &mut store,
-            &Brush::Conic(ConicGradient::two_stop_centered(colors[0], colors[1])),
+            &Brush::Conic(ConicGradient::two_stop(colors[0], colors[1])),
         );
         assert!(!mode_ids.contains(&radial));
         assert!(!mode_ids.contains(&conic));

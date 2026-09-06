@@ -162,7 +162,7 @@ use palantir::{Button, Configure, Ui, UVec2, WidgetId, internals::UiHarness};
 let inc = WidgetId::from_hash("inc");
 let mut clicks = 0_u32;
 let mut screen = |ui: &mut Ui| {
-    if Button::new().id(inc).label("click me").show(ui).left.clicked() {
+    if Button::new().id(inc).label("click me").show(ui).clicked() {
         clicks += 1;
     }
 };
@@ -236,7 +236,7 @@ impl App for Counter {
             .show(ui, |ui| {
                 // `fmt!` formats into the frame's text arena — no `String`.
                 Text::new(fmt!(ui, "clicks: {}", self.clicks)).show(ui);
-                if Button::new().label("click me").show(ui).left.clicked() {
+                if Button::new().label("click me").show(ui).clicked() {
                     self.clicks += 1;
                 }
             });
@@ -259,11 +259,14 @@ for a tour of every widget:
 cargo run --release --features showcase --example showcase
 ```
 
-To author your own widget from the public API, see
+The authoring surface lives in `palantir::widget` — the node, the paint
+primitives, and the text and animation plumbing a widget is built from. The
+crate root is what an application types; nothing in `widget` is needed to
+compose the widgets Palantir ships. To author your own from it, see
 [`examples/custom_widget.rs`](https://github.com/xorza/palantir/blob/master/examples/custom_widget.rs) — a `Stepper`
-built from `Widget` + `Configure`, `Widget::resolve` / `Widget::record` /
-`Ui::add_shape` / `Ui::response_for`, with nothing reaching into crate
-internals:
+built from `widget::Widget` + `Configure`, `Widget::resolve` /
+`Widget::record` / `Ui::add_shape` / `Ui::response_for`, with nothing reaching
+into crate internals:
 
 ```sh
 cargo run --example custom_widget

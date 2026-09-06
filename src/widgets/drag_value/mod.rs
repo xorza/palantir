@@ -211,9 +211,9 @@ impl<'a> DragValue<'a> {
         let drag_delta = response.left.drag.delta();
         let drag_stopped = response.left.drag.stopped();
         let state = if drag_started {
-            Some(ui.state_mut::<DragValueState>(id))
+            Some(ui.state_or_default::<DragValueState>(id))
         } else {
-            ui.try_state_mut::<DragValueState>(id)
+            ui.state_mut::<DragValueState>(id)
         };
         if let Some(state) = state {
             // Escape / click-away reaches the chip with the edit draft still
@@ -274,7 +274,7 @@ impl<'a> DragValue<'a> {
         // A plain enabled click (no drag latched) enters keyboard entry;
         // `show_editing` seeds the buffer on entry, so a click and a
         // programmatic `request_focus` get the same fresh draft.
-        if self.editable && !response.disabled && response.left.clicked() {
+        if self.editable && response.clicked() {
             ui.request_focus(Some(id));
             response.mark_focused();
         }
@@ -349,7 +349,7 @@ impl<'a> DragValue<'a> {
         // Entry replaces any scrub state atomically, so its later release
         // cannot overwrite the typed result. Existing edit frames move the
         // same String through TextEdit without allocating a new buffer.
-        let mut buffer = match std::mem::take(ui.state_mut::<DragValueState>(id)) {
+        let mut buffer = match std::mem::take(ui.state_or_default::<DragValueState>(id)) {
             DragValueState::Editing { buffer } => buffer,
             DragValueState::Idle | DragValueState::Scrubbing(_) => self.value.edit_string(),
         };
@@ -369,7 +369,7 @@ impl<'a> DragValue<'a> {
             resp.submitted
         };
         let changed = self.value.parse_from(&buffer, self.min, self.max);
-        *ui.state_mut::<DragValueState>(id) = if submitted {
+        *ui.state_or_default::<DragValueState>(id) = if submitted {
             DragValueState::Idle
         } else {
             DragValueState::Editing { buffer }

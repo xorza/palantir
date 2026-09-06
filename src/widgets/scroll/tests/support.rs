@@ -45,7 +45,7 @@ pub(super) fn driven(ui: &mut Ui, viewport_h: f32, content_h: f32, pan: Vec2) {
 pub(super) fn zoom_driven(ui: &mut Ui, factors: &[f32]) {
     let mut scroll = Scroll::both()
         .id(WidgetId::from_hash("scroll"))
-        .with_zoom()
+        .zoom()
         .size((Sizing::fixed(200.0), Sizing::fixed(200.0)));
     for factor in factors {
         scroll = scroll.zoom_by(*factor);
@@ -59,7 +59,8 @@ pub(super) fn zoom_driven(ui: &mut Ui, factors: &[f32]) {
 }
 
 pub(super) fn read_state(h: &mut UiHarness) -> ScrollState {
-    *h.ui.state_mut::<ScrollState>(WidgetId::from_hash("scroll"))
+    *h.ui
+        .state_or_default::<ScrollState>(WidgetId::from_hash("scroll"))
 }
 
 fn scroll_viewport_endpoint(ui: &Ui, outer_id: WidgetId) -> Endpoint {

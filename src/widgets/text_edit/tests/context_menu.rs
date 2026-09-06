@@ -60,7 +60,7 @@ fn context_menu_cut_copy_paste_clear() {
     let mut buf = String::from("hello");
     h.frame(|ui| body(ui, &mut buf));
     {
-        let st = h.ui.state_mut::<TextEditState>(editor_id());
+        let st = h.ui.state_or_default::<TextEditState>(editor_id());
         st.edit.caret = 4;
         st.edit.selection = Some(1);
     }
@@ -78,7 +78,7 @@ fn context_menu_cut_copy_paste_clear() {
 
     // Cut → buffer drops "ell", caret collapses to selection start.
     {
-        let st = h.ui.state_mut::<TextEditState>(editor_id());
+        let st = h.ui.state_or_default::<TextEditState>(editor_id());
         st.edit.caret = 4;
         st.edit.selection = Some(1);
     }
@@ -86,7 +86,7 @@ fn context_menu_cut_copy_paste_clear() {
     click_menu_row(&mut h, &mut buf, 0); // row 0 == Cut
     assert_eq!(buf, "ho", "cut removes the selection");
     assert_eq!(h.clipboard_text(), "ell");
-    let st = h.ui.state_mut::<TextEditState>(editor_id()).clone();
+    let st = h.ui.state_or_default::<TextEditState>(editor_id()).clone();
     assert_eq!(st.edit.caret, 1);
     assert_eq!(st.edit.selection, None);
 
@@ -94,7 +94,7 @@ fn context_menu_cut_copy_paste_clear() {
     open_menu_and_record(&mut h, &mut buf);
     click_menu_row(&mut h, &mut buf, 2); // row 2 == Paste
     assert_eq!(buf, "hello", "paste inserts clipboard at caret");
-    let st = h.ui.state_mut::<TextEditState>(editor_id()).clone();
+    let st = h.ui.state_or_default::<TextEditState>(editor_id()).clone();
     assert_eq!(st.edit.caret, 4, "caret advances past pasted text");
 
     // Clear → buffer wiped, caret reset. Row 3 is the separator,
@@ -102,7 +102,7 @@ fn context_menu_cut_copy_paste_clear() {
     open_menu_and_record(&mut h, &mut buf);
     click_menu_row(&mut h, &mut buf, 5);
     assert_eq!(buf, "");
-    let st = h.ui.state_mut::<TextEditState>(editor_id()).clone();
+    let st = h.ui.state_or_default::<TextEditState>(editor_id()).clone();
     assert_eq!(st.edit.caret, 0);
 
     // Regression: pasting `\n`-bearing clipboard via the menu must
@@ -126,7 +126,7 @@ fn context_menu_cut_copy_paste_clear() {
     });
     h.key(Key::Char('a'));
     h.frame(|ui| body(ui, &mut buf));
-    let state = h.ui.state_mut::<TextEditState>(editor_id()).clone();
+    let state = h.ui.state_or_default::<TextEditState>(editor_id()).clone();
     assert_eq!(state.edit.sel_range(), Some(0..buf.len()));
     assert!(
         !ContextMenu::is_open(&h.ui, editor_id()),
@@ -371,7 +371,7 @@ fn open_menu_exclusively_owns_ordered_edit_shortcuts() {
     h.frame(|ui| body(ui, &mut a, &mut b));
     h.request_focus(Some(a_id));
     {
-        let state = h.ui.state_mut::<TextEditState>(a_id);
+        let state = h.ui.state_or_default::<TextEditState>(a_id);
         state.edit.caret = a.len();
         state.edit.selection = Some(0);
     }

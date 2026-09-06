@@ -195,7 +195,7 @@ impl Forest {
     }
 
     /// Open a node whose id has already been resolved + disambiguated
-    /// upstream by [`crate::Widget::resolve`] (which calls
+    /// upstream by [`crate::widget::Widget::resolve`] (which calls
     /// `SeenIds::resolve` eagerly so the returned id matches what the
     /// tree, cascade, and `response_for` see). This function takes
     /// the id verbatim, opens the node in the active tree, and records
@@ -286,7 +286,7 @@ impl Forest {
         self.scratch.iter().any(|s| !s.open_frames.is_empty())
     }
 
-    /// Lower a user-facing [`Shape`](crate::Shape) (curve flattening, span
+    /// Lower a user-facing [`Shape`](crate::widget::Shape) (curve flattening, span
     /// stamping, hashing) and append it to the active tree's shape buffer.
     /// Asserts a node is currently open so widgets can't leak shapes
     /// outside an `open_node` / `close_node` scope.
@@ -303,7 +303,7 @@ impl Forest {
     /// to the active node. Only the redraw `epoch` rides the shape — the
     /// view's `id` + app `paint` live in `Ui::gpu_views` keyed by the
     /// owner's `WidgetId`; this is assembled by `Ui::gpu_view`, not lowered
-    /// from a user-facing [`Shape`](crate::Shape), so it skips the lowering
+    /// from a user-facing [`Shape`](crate::widget::Shape), so it skips the lowering
     /// path and can never noop-collapse.
     pub(crate) fn add_gpu_view(&mut self, epoch: u64) {
         self.push_shape("add_gpu_view", |tree, _, _| {

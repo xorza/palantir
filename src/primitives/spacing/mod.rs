@@ -51,36 +51,36 @@ impl Spacing {
 
     /// `left + right` — how much width this spacing costs.
     #[inline]
-    pub fn horiz(self) -> f32 {
+    pub fn horizontal(self) -> f32 {
         let [l, _t, r, _b] = self.as_array();
         l + r
     }
     /// `top + bottom` — how much height this spacing costs.
     #[inline]
-    pub fn vert(self) -> f32 {
+    pub fn vertical(self) -> f32 {
         let [_l, t, _r, b] = self.as_array();
         t + b
     }
     /// Both totals in a single SIMD unpack. Use when both axes are
-    /// needed; otherwise prefer `horiz()` / `vert()`.
+    /// needed; otherwise prefer `horizontal()` / `vertical()`.
     #[inline]
     pub fn sums(self) -> Sums {
         let [l, t, r, b] = self.as_array();
         Sums {
-            horiz: l + r,
-            vert: t + b,
+            horizontal: l + r,
+            vertical: t + b,
         }
     }
 }
 
-/// Both axis totals from one [`Spacing`], unpacked together — `horiz =
-/// left + right`, `vert = top + bottom`.
+/// Both axis totals from one [`Spacing`], unpacked together — `horizontal =
+/// left + right`, `vertical = top + bottom`.
 #[derive(Clone, Copy, Debug)]
 pub struct Sums {
     /// `left + right`.
-    pub horiz: f32,
+    pub horizontal: f32,
     /// `top + bottom`.
-    pub vert: f32,
+    pub vertical: f32,
 }
 
 impl std::ops::Add for Spacing {

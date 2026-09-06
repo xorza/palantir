@@ -320,7 +320,7 @@ fn body(ui: &mut Ui, state: &mut PickerState, inputs: Inputs<'_>) -> Edit {
                 .gap(gap)
                 .size((Sizing::FILL, Sizing::HUG))
                 .show(ui, |ui| {
-                    let hue = ColorStrip::hue(&mut state.coords)
+                    let hue = ColorStrip::for_hue(&mut state.coords)
                         .downsample(downsample)
                         .style(theme)
                         .id(id.with("hue"))
@@ -330,7 +330,7 @@ fn body(ui: &mut Ui, state: &mut PickerState, inputs: Inputs<'_>) -> Edit {
                     writes.committed |= hue.committed;
                     if alpha_on {
                         let mut working = preview;
-                        let strip = ColorStrip::alpha(&mut working)
+                        let strip = ColorStrip::for_alpha(&mut working)
                             .downsample(downsample)
                             .style(theme)
                             .id(id.with("alpha"))

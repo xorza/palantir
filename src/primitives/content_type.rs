@@ -10,7 +10,7 @@
 /// One answer for every rasterizer in the crate. A glyph is a swash
 /// bitmap and an icon a rendered SVG, but each is one of these two things
 /// and each says so in the same word — see
-/// [`RasterImage::content`](crate::RasterImage).
+/// [`RasterImage::content`](crate::widget::RasterImage).
 ///
 /// The discriminants are load-bearing: `RasterAtlas` indexes its
 /// `[Side; 2]` with `content as usize`.

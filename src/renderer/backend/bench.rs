@@ -82,6 +82,7 @@ use crate::widgets::panel::Panel;
 use crate::widgets::text::Text;
 use crate::widgets::theme::text_style::TextStyle;
 use criterion::{Criterion, Throughput};
+use glam::UVec2;
 use glam::Vec2;
 use std::hint::black_box;
 use std::time::Duration;
@@ -276,7 +277,7 @@ impl Fixture {
         let handles = (0..workload.textures())
             .map(|seed| {
                 host.ui()
-                    .register_image(&Image::from_rgba8(TEXEL, TEXEL, texels(seed)))
+                    .register_image(&Image::from_rgba8(UVec2::new(TEXEL, TEXEL), texels(seed)))
                     .expect("benchmark image fits every supported GPU")
             })
             .collect();

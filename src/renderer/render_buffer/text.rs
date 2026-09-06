@@ -12,7 +12,7 @@ use glam::Vec2;
 /// Named for the `*DrawRow` pattern its siblings in this module already
 /// use ([`ImageDrawRow`](crate::renderer::render_buffer::image::ImageDrawRow),
 /// [`MeshDrawRow`](crate::renderer::render_buffer::mesh::MeshDrawRow)), not
-/// `TextRun` — that name belongs to [`crate::TextRun`], the *authoring*
+/// `TextRun` — that name belongs to [`crate::widget::TextRun`], the *authoring*
 /// input a caller hands to `Ui`. The two sat at opposite ends of the
 /// pipeline under one name.
 #[derive(Clone, Copy, Debug)]

@@ -121,7 +121,7 @@ impl ButtonTheme {
     /// Pick the visual state for `state`: `active` = pressed.
     /// Disabled wins over hover/press; pressed wins over hover;
     /// otherwise normal. `state.disabled` already carries the node's own
-    /// flag — [`Widget::response`](crate::Widget) merges it, so a button
+    /// flag — [`Widget::response`](crate::widget::Widget) merges it, so a button
     /// disabled this frame paints disabled without waiting for the
     /// cascade.
     #[inline(always)]

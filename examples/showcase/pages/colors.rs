@@ -90,7 +90,7 @@ pub(crate) fn build(ui: &mut Ui) {
                     .gap(8.0)
                     .size((Sizing::fixed(180.0), Sizing::HUG))
                     .show(ui, |ui| {
-                        ColorStrip::hue(&mut state.parts)
+                        ColorStrip::for_hue(&mut state.parts)
                             .id(state_id.with("hue"))
                             .size((Sizing::FILL, Sizing::fixed(14.0)))
                             .show(ui);

@@ -1,5 +1,7 @@
 //! What the layers below see while a popup is open, per click-outside mode.
 
+use crate::layout::types::anchor::Anchor;
+
 use crate::input::keyboard::key::Key;
 use crate::input::pointer::PointerButton;
 use crate::layout::types::sizing::Sizing;
@@ -30,7 +32,7 @@ fn outside_pointer_gestures_do_not_leak_to_main() {
             .size((Sizing::FILL, Sizing::FILL))
             .sense(Sense::DRAG | Sense::SCROLL | Sense::PINCH)
             .show(ui, |ui| {
-                Popup::anchored_to(ANCHOR)
+                Popup::new(Anchor::at_point(ANCHOR))
                     .id(WidgetId::from_hash("test-popup"))
                     .click_outside(ClickOutside::Block)
                     .padding(4.0)
@@ -163,7 +165,7 @@ fn only_pass_through_leaves_the_keyboard_to_the_layers_below() {
                     // consumes, so it could not tell "scope silenced Main"
                     // from "the popup handled it".
                     saw |= ui.key_pressed(Shortcut::key(Key::F5));
-                    Popup::anchored_to(ANCHOR)
+                    Popup::new(Anchor::at_point(ANCHOR))
                         .id(WidgetId::from_hash("test-popup"))
                         .click_outside(mode)
                         .show(ui, |ui, _popup| {
@@ -207,7 +209,7 @@ fn text_edit_inside_a_popup_receives_typing() {
     let field = WidgetId::from_hash("popup-field");
     let mut buf = String::new();
     let scene = |ui: &mut Ui, buf: &mut String| {
-        Popup::anchored_to(glam::Vec2::ZERO)
+        Popup::new(Anchor::at_point(glam::Vec2::ZERO))
             .id(WidgetId::from_hash("host"))
             .show(ui, |ui, _handle| {
                 TextEdit::new(buf).id(field).show(ui);
@@ -257,7 +259,7 @@ fn a_field_decides_whether_escape_closes_the_popup_around_it() {
                 .id(WidgetId::from_hash("main-bg"))
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
-                    let r = Popup::anchored_to(ANCHOR)
+                    let r = Popup::new(Anchor::at_point(ANCHOR))
                         .id(WidgetId::from_hash("filter-popup"))
                         .click_outside(ClickOutside::Dismiss)
                         .show(ui, |ui, _handle| {

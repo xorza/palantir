@@ -1,7 +1,7 @@
 use crate::layout::types::align::Align;
 use crate::primitives::size::Size;
 use crate::text::font_family::FontFamily;
-use crate::text::font_style::FontStyle;
+use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::probe::{cursor_from_byte, cursor_to_byte};
@@ -32,7 +32,7 @@ fn probing_a_run_maps_bytes_and_positions_both_ways() {
                 line_height_px: 20.0,
                 family: FontFamily::SANS,
                 weight: FontWeight::REGULAR,
-                style: FontStyle::Normal,
+                slant: FontSlant::Normal,
             },
             wrap: TextWrap::SingleLine,
             align: Align::LEFT,
@@ -107,7 +107,7 @@ fn a_wrapping_run_binds_its_width_and_a_single_line_run_does_not() {
             line_height_px: 20.0,
             family: FontFamily::SANS,
             weight: FontWeight::REGULAR,
-            style: FontStyle::Normal,
+            slant: FontSlant::Normal,
         },
         wrap,
         align: Align::LEFT,
@@ -162,7 +162,7 @@ fn an_unusable_face_probes_to_nothing() {
             line_height_px,
             family: FontFamily::SANS,
             weight: FontWeight::REGULAR,
-            style: FontStyle::Normal,
+            slant: FontSlant::Normal,
         },
         wrap: TextWrap::SingleLine,
         align: Align::LEFT,

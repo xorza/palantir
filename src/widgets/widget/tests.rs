@@ -158,7 +158,7 @@ fn widget_specific_node_setters_reach_the_inner_node() {
     let mut item = MenuItem::new("Open").disabled(false);
     assert!(!node_of(&mut item).flags.is_disabled());
 
-    let mut scroll = Scroll::both().with_zoom();
+    let mut scroll = Scroll::both().zoom();
     assert_eq!(
         node_of(&mut scroll).flags.sense(),
         Sense::SCROLL | Sense::PINCH,

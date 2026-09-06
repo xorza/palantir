@@ -21,7 +21,7 @@ fn nested_non_zoom_scroll_routes_pinch_to_zoomable_ancestor() {
     let build = |ui: &mut Ui| {
         Scroll::both()
             .id(outer_id)
-            .with_zoom()
+            .zoom()
             .size((Sizing::fixed(300.0), Sizing::fixed(300.0)))
             .show(ui, |ui| {
                 Scroll::vertical()
@@ -43,8 +43,8 @@ fn nested_non_zoom_scroll_routes_pinch_to_zoomable_ancestor() {
     assert!(h.pinch(1.5).requests_repaint);
     h.frame(build);
 
-    let outer_zoom = h.ui.state_mut::<ScrollState>(outer_id).zoom;
-    let inner_zoom = h.ui.state_mut::<ScrollState>(inner_id).zoom;
+    let outer_zoom = h.ui.state_or_default::<ScrollState>(outer_id).zoom;
+    let inner_zoom = h.ui.state_or_default::<ScrollState>(inner_id).zoom;
     assert_eq!(outer_zoom, 1.5);
     assert_eq!(inner_zoom, 1.0);
 }
@@ -120,7 +120,7 @@ fn pinch_zoom_keeps_point_under_cursor_fixed() {
                         .show(ui);
                     Scroll::both()
                         .id(WidgetId::from_hash("xy"))
-                        .with_zoom()
+                        .zoom()
                         .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                         .show(ui, |ui| {
                             Frame::new()
@@ -140,7 +140,7 @@ fn pinch_zoom_keeps_point_under_cursor_fixed() {
         }
 
         let id = WidgetId::from_hash("xy");
-        let before = *h.ui.state_mut::<ScrollState>(id);
+        let before = *h.ui.state_or_default::<ScrollState>(id);
         let pivot_local = Vec2::new(pointer.0 - OUTER_PAD, pointer.1 - (OUTER_PAD + TEXT_GAP));
         let world_before = Vec2::new(
             (pivot_local.x + before.offset.x) / before.zoom,
@@ -152,7 +152,7 @@ fn pinch_zoom_keeps_point_under_cursor_fixed() {
             h.frame(build);
         }
 
-        let after = *h.ui.state_mut::<ScrollState>(id);
+        let after = *h.ui.state_or_default::<ScrollState>(id);
         let world_after = Vec2::new(
             (pivot_local.x + after.offset.x) / after.zoom,
             (pivot_local.y + after.offset.y) / after.zoom,
@@ -216,7 +216,7 @@ fn pan_after_pivot_zoom_does_not_snap_out_of_range_offset() {
             .show(ui, |ui| {
                 Scroll::both()
                     .id(WidgetId::from_hash("xy"))
-                    .with_zoom()
+                    .zoom()
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
                         Frame::new()
@@ -230,14 +230,14 @@ fn pan_after_pivot_zoom_does_not_snap_out_of_range_offset() {
 
     let id = WidgetId::from_hash("xy");
     {
-        let row = h.ui.state_mut::<ScrollState>(id);
+        let row = h.ui.state_or_default::<ScrollState>(id);
         row.offset = Vec2::new(0.0, -50.0);
     }
 
     h.scroll_pixels_at(Vec2::new(50.0, 50.0), Vec2::new(0.0, 5.0));
     h.frame(build);
 
-    let after = *h.ui.state_mut::<ScrollState>(id);
+    let after = *h.ui.state_or_default::<ScrollState>(id);
     assert!(
         (after.offset.y - (-45.0)).abs() < 1e-3,
         "wheel pan from out-of-range offset snapped: -50 + 5 should be -45, got {}",
@@ -246,7 +246,7 @@ fn pan_after_pivot_zoom_does_not_snap_out_of_range_offset() {
 
     h.scroll_pixels(Vec2::new(0.0, -5.0));
     h.frame(build);
-    let after2 = *h.ui.state_mut::<ScrollState>(id);
+    let after2 = *h.ui.state_or_default::<ScrollState>(id);
     assert!(
         (after2.offset.y - (-45.0)).abs() < 1e-3,
         "pan further out-of-range should be blocked at current ({}), got {}",
@@ -261,7 +261,7 @@ fn pivot_zoom_preserves_underflow_pan_range() {
     let build = |ui: &mut Ui| {
         Scroll::both()
             .id(WidgetId::from_hash("scroll"))
-            .with_zoom()
+            .zoom()
             .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
             .show(ui, |ui| {
                 Frame::new()
@@ -275,14 +275,14 @@ fn pivot_zoom_preserves_underflow_pan_range() {
     h.frame(build);
 
     let id = WidgetId::from_hash("scroll");
-    let zoomed = *h.ui.state_mut::<ScrollState>(id);
+    let zoomed = *h.ui.state_or_default::<ScrollState>(id);
     let expected_zoomed_offset = (0.0 + 50.0) * 0.5 - 50.0;
     assert_eq!(zoomed.zoom, 0.5);
     assert_eq!(zoomed.offset.y, expected_zoomed_offset);
 
     h.scroll_pixels(Vec2::new(0.0, -10.0));
     h.frame(build);
-    let panned = *h.ui.state_mut::<ScrollState>(id);
+    let panned = *h.ui.state_or_default::<ScrollState>(id);
     assert_eq!(panned.offset.y, expected_zoomed_offset - 10.0);
     assert_ne!(panned.offset.y, zoomed.offset.y);
 }
@@ -301,7 +301,7 @@ fn ctrl_touchpad_pixel_scroll_zooms_at_same_rate_as_wheel_lines() {
             .show(ui, |ui| {
                 Scroll::both()
                     .id(WidgetId::from_hash("zoomy"))
-                    .with_zoom()
+                    .zoom()
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
                         Frame::new()
@@ -314,7 +314,7 @@ fn ctrl_touchpad_pixel_scroll_zooms_at_same_rate_as_wheel_lines() {
     h.frame(build_zoom);
 
     let scroll_id = WidgetId::from_hash("zoomy");
-    let before_zoom = h.ui.state_mut::<ScrollState>(scroll_id).zoom;
+    let before_zoom = h.ui.state_or_default::<ScrollState>(scroll_id).zoom;
 
     // Press ctrl, then touchpad-scroll. `wheel_zoom_gate` requires
     // ctrl||cmd; with cfg.step = 1.03 the factor is 1.03^(-2) ≈ 0.9426.
@@ -327,7 +327,7 @@ fn ctrl_touchpad_pixel_scroll_zooms_at_same_rate_as_wheel_lines() {
     h.scroll_pixels(Vec2::new(0.0, 38.4));
     h.frame(build_zoom);
 
-    let after_zoom = h.ui.state_mut::<ScrollState>(scroll_id).zoom;
+    let after_zoom = h.ui.state_or_default::<ScrollState>(scroll_id).zoom;
     let expected = before_zoom * 1.03_f32.powf(-2.0);
     assert!(
         (after_zoom - expected).abs() < 1e-3,
@@ -351,7 +351,7 @@ fn wheel_zoom_step_is_font_independent() {
                 .show(ui, |ui| {
                     Scroll::both()
                         .id(WidgetId::from_hash("fz"))
-                        .with_zoom()
+                        .zoom()
                         .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                         .show(ui, |ui| {
                             Frame::new()
@@ -373,7 +373,7 @@ fn wheel_zoom_step_is_font_independent() {
         h.frame(build_zoom);
 
         let scroll_id = WidgetId::from_hash("fz");
-        let zoom = h.ui.state_mut::<ScrollState>(scroll_id).zoom;
+        let zoom = h.ui.state_or_default::<ScrollState>(scroll_id).zoom;
         if let Some(prev) = last_zoom {
             assert!(
                 (zoom - prev).abs() < 1e-4,
@@ -404,7 +404,7 @@ fn line_wheel_step_scales_with_theme_font_size() {
         h.frame(build_v);
 
         let scroll_id = WidgetId::from_hash("scroll");
-        let offset_y = h.ui.state_mut::<ScrollState>(scroll_id).offset.y;
+        let offset_y = h.ui.state_or_default::<ScrollState>(scroll_id).offset.y;
         assert!(
             (offset_y - expected_px).abs() < 0.01,
             "case: {label} — expected {expected_px} px after 1 line wheel, got {offset_y}",

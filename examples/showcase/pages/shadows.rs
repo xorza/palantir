@@ -9,10 +9,8 @@
 //! Every tile is on the bright surface: black-on-dark shadows don't read.
 
 use crate::support::{demo_cell_light, section, tiles};
-use palantir::{
-    Background, Configure, Corners, Panel, Rect, RgbaF32, Shadow, ShadowShape, Shape, Sizing, Ui,
-    Vec2,
-};
+use palantir::widget::{ShadowShape, Shape};
+use palantir::{Background, Configure, Corners, Panel, Rect, RgbaF32, Shadow, Sizing, Ui, Vec2};
 
 const CARD: Rect = Rect::new(22.0, 28.0, 124.0, 86.0);
 const CARD_INK: RgbaF32 = RgbaF32::hex(0xf2f2f7);

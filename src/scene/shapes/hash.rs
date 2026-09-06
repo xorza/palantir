@@ -133,7 +133,7 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
             // hash is what damage and reuse compare.
             let face = (u64::from(font.family.raw()) << 40)
                 | (u64::from(font.weight.value()) << 24)
-                | ((font.style as u64) << 16)
+                | ((font.slant as u64) << 16)
                 | (u64::from(align.raw()) << 8)
                 | (*wrap as u64);
             h.write_u64(face);
@@ -306,7 +306,7 @@ mod tests {
     use crate::scene::shapes::hash::compute_record_hash;
     use crate::scene::shapes::record::ShapeRecord;
     use crate::text::font_family::FontFamily;
-    use crate::text::font_style::FontStyle;
+    use crate::text::font_slant::FontSlant;
     use crate::text::font_weight::FontWeight;
     use crate::text::glyph_font::GlyphFont;
     use crate::text::wrap::TextWrap;
@@ -322,7 +322,7 @@ mod tests {
                 line_height_px,
                 family: FontFamily::SANS,
                 weight,
-                style: FontStyle::Normal,
+                slant: FontSlant::Normal,
             },
             local_origin,
         )
@@ -390,7 +390,7 @@ mod tests {
                 text_face(upright, None),
                 text_face(
                     GlyphFont {
-                        style: FontStyle::Italic,
+                        slant: FontSlant::Italic,
                         ..upright
                     },
                     None,

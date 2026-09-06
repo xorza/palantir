@@ -7,7 +7,8 @@
 
 use crate::support;
 use crate::support::{demo_cell, section, tiles};
-use palantir::{LinearGradient, Mesh, RgbaF32, RgbaU8, Shape, Stroke, Ui, Vec2, WidgetId};
+use palantir::widget::{Mesh, Shape};
+use palantir::{LinearGradient, RgbaF32, Stroke, Ui, Vec2, WidgetId};
 use std::f32::consts::{FRAC_PI_2, PI};
 
 pub(crate) fn build(ui: &mut Ui) {
@@ -113,7 +114,7 @@ fn radii(ui: &mut Ui) {
 /// keeps every cell on it.
 fn retained_mesh(ui: &mut Ui, key: &'static str, build: impl FnOnce(&mut Mesh)) {
     let id = WidgetId::from_hash(("showcase::shapes::mesh", key));
-    let fresh = ui.try_state::<Mesh>(id).is_none();
+    let fresh = ui.state::<Mesh>(id).is_none();
     ui.with_state::<Mesh, _>(id, |ui, m| {
         if fresh {
             build(m);
@@ -211,8 +212,8 @@ fn window_mask(ui: &mut Ui) {
     ui.add_shape(
         Shape::owner_rect().fill(
             LinearGradient::builder(FRAC_PI_2)
-                .stop(0.0, RgbaU8::hex(0x1a1a2e))
-                .stop(1.0, RgbaU8::hex(0x4c5cdb)),
+                .stop(0.0, RgbaF32::hex(0x1a1a2e))
+                .stop(1.0, RgbaF32::hex(0x4c5cdb)),
         ),
     );
     ui.add_shape(

@@ -1,6 +1,6 @@
 //! A shape's outline: one colour and one width.
 
-use crate::primitives::approx::noop_f32;
+use crate::primitives::approx::paints_nothing;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::nan::NanCheck;
 use palantir_anim_derive::Animatable;
@@ -36,7 +36,7 @@ impl Stroke {
     /// takes `&self` for the same reason.
     #[inline]
     pub const fn is_noop(&self) -> bool {
-        noop_f32(self.width) || self.color.is_noop()
+        paints_nothing(self.width) || self.color.is_noop()
     }
 
     /// The ring this stroke paints *inside* the rect it bounds — its
@@ -54,7 +54,7 @@ impl Stroke {
     /// makes invisible is still a stroke the fold makes room for.
     #[inline]
     pub(crate) const fn ring(&self) -> f32 {
-        if noop_f32(self.width) {
+        if paints_nothing(self.width) {
             0.0
         } else {
             self.width

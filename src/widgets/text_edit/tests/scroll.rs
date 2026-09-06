@@ -25,9 +25,13 @@ fn scroll_keeps_caret_inside_visible_inner_rect() {
     // Short text: caret at end (5) → x = 40 px ≤ inner_w. No scroll.
     let mut buf = String::from("hello");
     h.frame(|ui| body(ui, &mut buf));
-    h.ui.state_mut::<TextEditState>(ed_id).edit.caret = 5;
+    h.ui.state_or_default::<TextEditState>(ed_id).edit.caret = 5;
     h.frame(|ui| body(ui, &mut buf));
-    let scroll = h.ui.state_mut::<TextEditState>(ed_id).view.scroll.offset;
+    let scroll =
+        h.ui.state_or_default::<TextEditState>(ed_id)
+            .view
+            .scroll
+            .offset;
     assert_eq!(scroll, Vec2::ZERO, "text fits — no scroll");
 
     // Long text past inner_w: caret at end (100) → x = 800 px.
@@ -36,17 +40,25 @@ fn scroll_keeps_caret_inside_visible_inner_rect() {
     // 801.5 − (267 − 1.5) = 536.
     let mut long = "a".repeat(100);
     h.frame(|ui| body(ui, &mut long));
-    h.ui.state_mut::<TextEditState>(ed_id).edit.caret = 100;
+    h.ui.state_or_default::<TextEditState>(ed_id).edit.caret = 100;
     h.frame(|ui| body(ui, &mut long));
-    let scroll = h.ui.state_mut::<TextEditState>(ed_id).view.scroll.offset;
+    let scroll =
+        h.ui.state_or_default::<TextEditState>(ed_id)
+            .view
+            .scroll
+            .offset;
     assert!((scroll.x - 536.0).abs() < 0.5, "scroll.x = {}", scroll.x);
     assert_eq!(scroll.y, 0.0, "single-line never scrolls y");
 
     // Caret home: scroll.x snaps back so the start of the text is
     // visible again.
-    h.ui.state_mut::<TextEditState>(ed_id).edit.caret = 0;
+    h.ui.state_or_default::<TextEditState>(ed_id).edit.caret = 0;
     h.frame(|ui| body(ui, &mut long));
-    let scroll = h.ui.state_mut::<TextEditState>(ed_id).view.scroll.offset;
+    let scroll =
+        h.ui.state_or_default::<TextEditState>(ed_id)
+            .view
+            .scroll
+            .offset;
     assert_eq!(scroll.x, 0.0, "scroll snaps to 0 when caret moves home");
 }
 
@@ -76,19 +88,23 @@ fn hug_width_editor_shows_full_text_after_growth() {
     // Start narrow so the Hug width settles small (rect ≈ one glyph).
     let mut buf = String::from("1");
     h.frame(|ui| body(ui, &mut buf));
-    h.ui.state_mut::<TextEditState>(ed_id).edit.caret = 1;
+    h.ui.state_or_default::<TextEditState>(ed_id).edit.caret = 1;
     h.frame(|ui| body(ui, &mut buf));
 
     // Grow the buffer with the caret pinned at the end. The first frame
     // still sees last frame's narrower rect and scrolls left to chase the
     // caret — exactly the transient that used to stick.
     buf.push_str("2345");
-    h.ui.state_mut::<TextEditState>(ed_id).edit.caret = buf.len();
+    h.ui.state_or_default::<TextEditState>(ed_id).edit.caret = buf.len();
     h.frame(|ui| body(ui, &mut buf));
     // Settle: the widened rect is now visible to update_scroll.
     h.frame(|ui| body(ui, &mut buf));
 
-    let scroll = h.ui.state_mut::<TextEditState>(ed_id).view.scroll.offset;
+    let scroll =
+        h.ui.state_or_default::<TextEditState>(ed_id)
+            .view
+            .scroll
+            .offset;
     assert_eq!(
         scroll.x, 0.0,
         "hug editor must show its whole text (no left clip); scroll.x = {}",
@@ -117,9 +133,14 @@ fn click_hit_test_compensates_for_scroll() {
 
     // Drive caret to end so the editor scrolls all the way right.
     h.frame(|ui| body(ui, &mut buf));
-    h.ui.state_mut::<TextEditState>(ed_id).edit.caret = 100;
+    h.ui.state_or_default::<TextEditState>(ed_id).edit.caret = 100;
     h.frame(|ui| body(ui, &mut buf));
-    let scroll_x = h.ui.state_mut::<TextEditState>(ed_id).view.scroll.offset.x;
+    let scroll_x =
+        h.ui.state_or_default::<TextEditState>(ed_id)
+            .view
+            .scroll
+            .offset
+            .x;
     assert!(scroll_x > 100.0, "precondition: editor is scrolled");
 
     // Click 8 px into the widget (right at the left edge of the
@@ -131,7 +152,7 @@ fn click_hit_test_compensates_for_scroll() {
     h.release();
     h.frame(|ui| body(ui, &mut buf));
 
-    let caret = h.ui.state_mut::<TextEditState>(ed_id).edit.caret;
+    let caret = h.ui.state_or_default::<TextEditState>(ed_id).edit.caret;
     let expected = (scroll_x / 8.0).round() as usize;
     assert!(
         caret.abs_diff(expected) <= 1,
@@ -172,10 +193,14 @@ fn wheel_pans_a_multiline_editor_and_the_caret_does_not_snap_it_back() {
     // Caret at the top, so anything that follows it would pull the view
     // back to zero and the assertions below could not pass by accident.
     h.frame(|ui| body(ui, &mut buf));
-    h.ui.state_mut::<TextEditState>(ed_id).edit.caret = 0;
+    h.ui.state_or_default::<TextEditState>(ed_id).edit.caret = 0;
     h.frame(|ui| body(ui, &mut buf));
     assert_eq!(
-        h.ui.state_mut::<TextEditState>(ed_id).view.scroll.offset.y,
+        h.ui.state_or_default::<TextEditState>(ed_id)
+            .view
+            .scroll
+            .offset
+            .y,
         0.0,
         "precondition: caret at the top holds the view at the top",
     );
@@ -183,7 +208,12 @@ fn wheel_pans_a_multiline_editor_and_the_caret_does_not_snap_it_back() {
     // One wheel gesture over the editor.
     h.scroll_pixels_at(Vec2::new(140.0, 50.0), Vec2::new(0.0, 48.0));
     h.frame(|ui| body(ui, &mut buf));
-    let scrolled = h.ui.state_mut::<TextEditState>(ed_id).view.scroll.offset.y;
+    let scrolled =
+        h.ui.state_or_default::<TextEditState>(ed_id)
+            .view
+            .scroll
+            .offset
+            .y;
     assert!(
         scrolled > 0.0,
         "wheel over a multi-line editor must pan it; scroll.y = {scrolled}",
@@ -194,18 +224,26 @@ fn wheel_pans_a_multiline_editor_and_the_caret_does_not_snap_it_back() {
     // would break.
     h.frame(|ui| body(ui, &mut buf));
     assert_eq!(
-        h.ui.state_mut::<TextEditState>(ed_id).view.scroll.offset.y,
+        h.ui.state_or_default::<TextEditState>(ed_id)
+            .view
+            .scroll
+            .offset
+            .y,
         scrolled,
         "an idle frame must not drag the view back to the caret",
     );
 
     // Moving the caret *does* pull the view back, so the wheel has not
     // simply disabled caret-following.
-    h.ui.state_mut::<TextEditState>(ed_id).edit.caret = 0;
-    h.ui.state_mut::<TextEditState>(ed_id).edit.caret = 1;
+    h.ui.state_or_default::<TextEditState>(ed_id).edit.caret = 0;
+    h.ui.state_or_default::<TextEditState>(ed_id).edit.caret = 1;
     h.frame(|ui| body(ui, &mut buf));
     assert_eq!(
-        h.ui.state_mut::<TextEditState>(ed_id).view.scroll.offset.y,
+        h.ui.state_or_default::<TextEditState>(ed_id)
+            .view
+            .scroll
+            .offset
+            .y,
         0.0,
         "a caret move must scroll it back into view",
     );

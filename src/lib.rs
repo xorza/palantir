@@ -40,6 +40,9 @@
 //! - [`GpuView`] hands a widget-sized `wgpu` render target to your own
 //!   [`GpuPaint`] implementation and composites the result like any other
 //!   image, so it clips, rounds, and z-orders with everything else.
+//! - [`widget`] is the other half of the surface: the node, the paint
+//!   primitives, and the text and animation plumbing a widget of your own is
+//!   built from. Nothing there is needed to compose the widgets above.
 //!
 //! # Sizing
 //!
@@ -210,9 +213,63 @@ macro_rules! fmt {
     };
 }
 
-pub use animation::anim_slot::AnimSlot;
+/// Authoring a widget: the node, the paint primitives, and the text and
+/// animation plumbing a widget of your own is built from.
+///
+/// **The other half of the surface.** The crate root is what an application
+/// types — the widgets, the theme, the host, the layout vocabulary. Nothing
+/// here is needed to compose the widgets Palantir ships, and everything here
+/// is needed to write one beside them. Every widget in this crate is written
+/// against exactly this module plus the root, which is what keeps the two
+/// complete: see `examples/custom_widget.rs`, a widget built from nothing
+/// else.
+///
+/// The split is a namespace, not a permission — these are ordinary public
+/// items with one canonical path each, and an application that draws its own
+/// geometry reaches for [`Shape`](widget::Shape) as readily as a widget does.
+pub mod widget {
+    pub use crate::animation::anim_slot::AnimSlot;
+    pub use crate::animation::animatable::Animatable;
+    pub use crate::primitives::approx;
+    pub use crate::primitives::content_type::ContentType;
+    pub use crate::primitives::mesh::{Mesh, MeshVertex};
+    pub use crate::primitives::num::F32Ext;
+    pub use crate::primitives::raster_image::RasterImage;
+    pub use crate::primitives::spacing::Sums;
+    pub use crate::primitives::span::Span;
+    /// The paint-time animation curves the crate ships. A caller's own curve
+    /// is any `fn(f32) -> f32` over the same range — see [`PaintCurve`].
+    pub use crate::scene::tree::paint_anims::curves;
+    pub use crate::scene::tree::paint_anims::paint_anim::{
+        PaintAnim, PaintChannel, PaintCurve, PaintRepeat, PaintSteps, PaintTiming,
+    };
+    /// The bound on [`Ui::add_shape`](crate::Ui::add_shape) — sealed, so it
+    /// names the shape kinds the crate ships and nothing else.
+    pub use crate::shape::Lower;
+    pub use crate::shape::Shape;
+    pub use crate::shape::curve::CurveShape;
+    pub use crate::shape::icon::{IconFit, IconShape};
+    pub use crate::shape::image::ImageShape;
+    pub use crate::shape::mesh::MeshShape;
+    pub use crate::shape::polyline::{PolylineColors, PolylineShape};
+    pub use crate::shape::rect::RectShape;
+    pub use crate::shape::shadow::ShadowShape;
+    pub use crate::shape::style::{LineCap, LineJoin};
+    pub use crate::shape::text::TextShape;
+    pub use crate::shape::triangle::TriangleShape;
+    pub use crate::text::glyph_font::GlyphFont;
+    pub use crate::text::glyphs::TextGlyphs;
+    pub use crate::text::probe::Caret;
+    pub use crate::text::probe::TextProbe;
+    pub use crate::text::render::{GlyphRasterKey, PlacedGlyph};
+    pub use crate::text::run::TextRun;
+    pub use crate::widgets::configure::ConfigureWidget;
+    pub use crate::widgets::configure::ThemeDefaults;
+    pub use crate::widgets::widget::Widget;
+    pub use palantir_anim_derive::Animatable;
+}
+
 pub use animation::anim_spec::AnimSpec;
-pub use animation::animatable::Animatable;
 pub use animation::easing::Easing;
 pub use app::App;
 pub use common::clipboard::{Clipboard, ClipboardUnavailable};
@@ -278,8 +335,6 @@ pub use layout::types::grid_cell::GridCell;
 pub use layout::types::justify::Justify;
 pub use layout::types::sizing::{Sizes, Sizing};
 pub use layout::types::track::Track;
-pub use palantir_anim_derive::Animatable;
-pub use primitives::approx;
 pub use primitives::background::Background;
 pub use primitives::brush::gradient::conic_geometry::{
     ConicGeometry, ConicGradient, ConicGradientBuilder,
@@ -301,25 +356,15 @@ pub use primitives::color::color_model::{ColorModel, HueSlice};
 pub use primitives::color::hsv::Hsv;
 pub use primitives::color::okhsv::{Okhsv, OkhsvSlice};
 pub use primitives::color::srgba_u8::SrgbaU8;
-pub use primitives::content_type::ContentType;
 pub use primitives::corners::Corners;
 pub use primitives::image::{Image, ImageDownsample, ImageFilter, ImageFit};
 pub use primitives::interned_str::InternedStr;
-pub use primitives::mesh::{Mesh, MeshVertex};
-pub use primitives::num::F32Ext;
-pub use primitives::raster_image::RasterImage;
 pub use primitives::rect::Rect;
 pub use primitives::shadow::Shadow;
 pub use primitives::size::Size;
-pub use primitives::spacing::{Spacing, Sums};
+pub use primitives::spacing::Spacing;
 pub use primitives::text_input::TextInput;
 pub use scene::layer::Layer;
-/// The paint-time animation curves the crate ships. A caller's own curve
-/// is any `fn(f32) -> f32` over the same range — see [`PaintCurve`].
-pub use scene::tree::paint_anims::curves;
-pub use scene::tree::paint_anims::paint_anim::{
-    PaintAnim, PaintChannel, PaintCurve, PaintRepeat, PaintSteps, PaintTiming,
-};
 pub use scene::visibility::Visibility;
 // Re-exported (not an palantir type) because it's the canonical integer
 // pixel-extent across the public surface — `Display.physical`,
@@ -331,7 +376,6 @@ pub use glam::UVec2;
 pub use glam::Vec2;
 pub use icons::icon_set::{IconHandle, IconSet};
 pub use icons::icon_table::{IconDef, IconId, IconTable};
-pub use primitives::span::Span;
 pub use primitives::stroke::Stroke;
 pub use primitives::translate_scale::TranslateScale;
 pub use primitives::widget_id::WidgetId;
@@ -340,35 +384,12 @@ pub use renderer::gpu_paint::gpu_frame_ctx::GpuFrameCtx;
 pub use renderer::gpu_paint::gpu_init_ctx::GpuInitCtx;
 pub use renderer::image_registry::image_handle::ImageHandle;
 pub use renderer::texture_limit::RegisterImageError;
-/// The bound on [`Ui::add_shape`] — sealed, so it names the shape kinds
-/// the crate ships and nothing else.
-pub use shape::Lower;
-pub use shape::Shape;
-pub use shape::curve::CurveShape;
-pub use shape::icon::{IconFit, IconShape};
-pub use shape::image::ImageShape;
-pub use shape::mesh::MeshShape;
-pub use shape::polyline::{PolylineColors, PolylineShape};
-pub use shape::rect::RectShape;
-pub use shape::shadow::ShadowShape;
-pub use shape::style::{LineCap, LineJoin};
-pub use shape::text::TextShape;
-pub use shape::triangle::TriangleShape;
-// Shaping and rasterization for a caller that draws its own text — see
-// [`TextShaper::glyphs`]. The atlas and the pipeline stay the caller's; what is
-// shared is the font stack.
 pub use text::error::FontLoadError;
 pub use text::font_family::FontFamily;
 pub use text::font_scope::FontScope;
+pub use text::font_slant::FontSlant;
 pub use text::font_source::FontSource;
-pub use text::font_style::FontStyle;
 pub use text::font_weight::FontWeight;
-pub use text::glyph_font::GlyphFont;
-pub use text::glyphs::TextGlyphs;
-pub use text::probe::Caret;
-pub use text::probe::TextProbe;
-pub use text::render::{GlyphRasterKey, PlacedGlyph};
-pub use text::run::TextRun;
 pub use text::shaper::TextShaper;
 pub use text::wrap::TextWrap;
 pub use ui::Ui;
@@ -384,8 +405,6 @@ pub use widgets::color_strip::ColorStrip;
 pub use widgets::color_swatch::ColorSwatch;
 pub use widgets::combo_box::ComboBox;
 pub use widgets::configure::Configure;
-pub use widgets::configure::ConfigureWidget;
-pub use widgets::configure::ThemeDefaults;
 pub use widgets::context_menu::ContextMenu;
 pub use widgets::context_menu::menu_item::MenuItem;
 pub use widgets::context_menu::menu_separator::MenuSeparator;
@@ -453,9 +472,8 @@ pub use widgets::theme::widget_look::WidgetLook;
 pub use widgets::theme::widget_look::animated_look::AnimatedLook;
 pub use widgets::theme::widget_look::stateful_look::StatefulLook;
 pub use widgets::theme::widget_look::theme_slot::SlotDefaults;
-pub use widgets::tooltip::Tooltip;
+pub use widgets::tooltip::{Tooltip, TooltipResponse};
 pub use widgets::value_response::ValueResponse;
-pub use widgets::widget::Widget;
 pub use window::cursor_icon::CursorIcon;
 pub use window::vsync::Vsync;
 pub use window::window_config::WindowConfig;

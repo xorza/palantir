@@ -46,6 +46,19 @@ fn global_state_id() -> WidgetId {
     WidgetId::from_hash("palantir.tooltip.global")
 }
 
+/// What one pass over a [`Tooltip`] produced.
+///
+/// No [`Response`](crate::Response) here, unlike the other widget results:
+/// the bubble senses nothing and does not record at all on the frames it is
+/// down, so there is no node an application would ask about. Whether it is
+/// up is the whole answer — for a trigger that wants to paint differently
+/// while its hint is showing.
+#[derive(Debug, Clone, Copy)]
+pub struct TooltipResponse {
+    /// The bubble recorded this frame.
+    pub visible: bool,
+}
+
 /// Hover-driven text bubble attached to a trigger widget. Records into
 /// [`crate::scene::layer::Layer::Tooltip`] after the pointer has rested
 /// on the trigger for [`crate::widgets::theme::tooltip::TooltipTheme::delay`]
@@ -139,7 +152,7 @@ impl<'a> Tooltip<'a> {
     /// Tick the hover timer, update visibility, and (when visible)
     /// record the bubble into `Layer::Tooltip` anchored next to the
     /// trigger.
-    pub fn show(self, ui: &mut Ui) {
+    pub fn show(self, ui: &mut Ui) -> TooltipResponse {
         // Handle, not a borrow: the bundle may point into the `Ui`'s own
         // theme, and the record below reborrows `ui` mutably.
         let ui_theme = Rc::clone(ui.theme());
@@ -172,14 +185,14 @@ impl<'a> Tooltip<'a> {
         // warmup singleton is only asked for by a hovered trigger, and the
         // write-back below is gated on an actual change.
         let prev: TooltipState = ui
-            .try_state::<TooltipState>(trigger_id)
+            .state::<TooltipState>(trigger_id)
             .copied()
             .unwrap_or_default();
         let mut state = prev;
 
         if active_trigger {
             let warmup_active = ui
-                .try_state::<TooltipGlobal>(global_state_id())
+                .state::<TooltipGlobal>(global_state_id())
                 .and_then(|global| global.last_visible_at)
                 .is_some_and(|t| now.saturating_sub(t) < warmup);
             let started = match state.hover_started_at {
@@ -205,7 +218,7 @@ impl<'a> Tooltip<'a> {
         if state.visible
             && let Some(trigger_rect) = trigger_rect
         {
-            ui.state_mut::<TooltipGlobal>(global_state_id())
+            ui.state_or_default::<TooltipGlobal>(global_state_id())
                 .last_visible_at = Some(now);
             let anchor = Anchor::below(trigger_rect).gap(gap);
             let label = self.label;
@@ -240,7 +253,10 @@ impl<'a> Tooltip<'a> {
         }
 
         if state != prev {
-            *ui.state_mut::<TooltipState>(trigger_id) = state;
+            *ui.state_or_default::<TooltipState>(trigger_id) = state;
+        }
+        TooltipResponse {
+            visible: state.visible,
         }
     }
 }

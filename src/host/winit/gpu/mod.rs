@@ -86,7 +86,7 @@ impl GpuInit {
         // intersects them with what the adapter offers and drops the rest,
         // rather than failing. `TIMESTAMP_QUERY` alone → pass begin/end only;
         // `+ TIMESTAMP_QUERY_INSIDE_PASSES` → per-batch attribution;
-        // `+ PIPELINE_STATISTICS_QUERY` → vert/frag invocation counts.
+        // `+ PIPELINE_STATISTICS_QUERY` → vertical/frag invocation counts.
         let timing_features = if cfg.collect_gpu_stats {
             DeviceRequirements::GPU_TIMING_FEATURES
         } else {

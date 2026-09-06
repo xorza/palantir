@@ -12,7 +12,6 @@ use crate::widgets::configure::ConfigureWidget;
 use crate::widgets::overlay_response::OverlayResponse;
 use crate::widgets::overlay_scope::{Backdrop, OverlayScope};
 use crate::widgets::widget::Widget;
-use glam::Vec2;
 use std::rc::Rc;
 
 /// What happens when the user presses outside the popup's body.
@@ -86,9 +85,24 @@ pub struct Popup {
 }
 
 impl Popup {
+    /// A popup placed by `anchor`.
+    ///
+    /// [`Anchor`] carries the whole placement vocabulary — a point, a side
+    /// of a rect, and the gap off it — so this is the one constructor and
+    /// the four below are sugar for the shapes a dropdown takes. An
+    /// application holding an anchor already (from
+    /// [`LayerScope::anchored`](crate::LayerScope::anchored), or one it
+    /// computed) hands it straight over:
+    /// `Popup::new(Anchor::at_point(p).gap(4.0))`.
     #[track_caller]
-    pub fn anchored_to(point: Vec2) -> Self {
-        Self::new(Anchor::at_point(point))
+    pub fn new(anchor: Anchor) -> Self {
+        Self {
+            anchor,
+            click_outside: ClickOutside::Dismiss,
+            layer: Layer::Popup,
+            widget: Widget::vstack().sense(Sense::CLICK),
+            chrome: None,
+        }
     }
 
     #[track_caller]
@@ -111,17 +125,6 @@ impl Popup {
         Self::new(Anchor::right_of(rect))
     }
 
-    #[track_caller]
-    fn new(anchor: Anchor) -> Self {
-        Self {
-            anchor,
-            click_outside: ClickOutside::Dismiss,
-            layer: Layer::Popup,
-            widget: Widget::vstack().sense(Sense::CLICK),
-            chrome: None,
-        }
-    }
-
     /// Record into `layer` rather than [`Layer::Popup`].
     ///
     /// In-crate, because which layer an overlay belongs on is a fact about the
@@ -130,17 +133,6 @@ impl Popup {
     /// to pick would be free to invert them.
     pub(crate) fn on(mut self, layer: Layer) -> Self {
         self.layer = layer;
-        self
-    }
-
-    /// Hold the body this far off its anchor, in logical px.
-    ///
-    /// A dropdown meets the trigger it drops out of, so the
-    /// constructors start flush; an overlay that reads as a separate
-    /// object — the way [`crate::Tooltip`] does, off
-    /// [`TooltipTheme::gap`](crate::TooltipTheme) — sets its own.
-    pub fn gap(mut self, px: f32) -> Self {
-        self.anchor = self.anchor.gap(px);
         self
     }
 

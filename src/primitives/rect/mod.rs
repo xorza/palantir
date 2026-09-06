@@ -391,12 +391,15 @@ impl Rect {
         }
     }
 
-    /// Scale by `scale` and optionally snap edges to integer pixels. Used at
-    /// the logical→physical-px boundary inside the renderer; snapping derives
-    /// width/height from rounded edges (not from `size * scale`) to avoid
-    /// creeping width drift across rows of identical rects.
+    /// Scale by `scale` and optionally snap edges to integer pixels.
+    ///
+    /// The logical→physical-px step, so `snap` is the renderer's own
+    /// [`Display::pixel_snap`](crate::Display) travelling as an argument.
+    /// Snapping derives width and height from rounded edges rather than from
+    /// `size * scale`, which is what stops width drift creeping across a row
+    /// of identical rects.
     #[inline]
-    pub fn scaled_by(self, scale: f32, snap: bool) -> Self {
+    pub(crate) fn scaled_by(self, scale: f32, snap: bool) -> Self {
         // Scalar lanes because glam's `Vec2` ops aren't `const fn`.
         let m = self.max();
         let mut min = Vec2::new(self.min.x * scale, self.min.y * scale);

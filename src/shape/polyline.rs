@@ -2,7 +2,7 @@
 //! Lowers to `ShapeRecord::Polyline` — the one stroke with interior joins,
 //! which is what separates it from the single strokes in `curve`.
 
-use crate::primitives::approx::noop_f32;
+use crate::primitives::approx::paints_nothing;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::rect::Rect;
 use crate::primitives::rect::aabb::Aabb;
@@ -59,7 +59,7 @@ impl PolylineShape<'_> {
     }
 }
 
-/// RgbaF32 source for [`Shape::polyline`](crate::Shape::polyline).
+/// RgbaF32 source for [`Shape::polyline`](crate::widget::Shape::polyline).
 #[derive(Clone, Copy, Debug)]
 pub enum PolylineColors<'a> {
     /// One color for the whole stroke. Broadcast to every cross-section.
@@ -105,7 +105,7 @@ impl PolylineColors<'_> {
 }
 impl sealed::LowerShape for PolylineShape<'_> {
     fn is_noop(&self) -> bool {
-        if noop_f32(self.width) || self.points.len() < 2 {
+        if paints_nothing(self.width) || self.points.len() < 2 {
             return true;
         }
         match self.colors {

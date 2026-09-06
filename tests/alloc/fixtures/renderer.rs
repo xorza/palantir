@@ -26,9 +26,10 @@
 
 use crate::harness::{Audit, OffscreenTarget, SURFACE};
 use palantir::internals::headless_test_gpu;
+use palantir::widget::{Mesh, PolylineColors, Shape};
 use palantir::{
-    Configure, Frame, Grid, IconId, IconSet, IconTable, Mesh, Panel, PolylineColors, RgbaF32,
-    Shape, Sizing, Track, TranslateScale, Ui,
+    Configure, Frame, Grid, IconId, IconSet, IconTable, Panel, RgbaF32, Sizing, Track,
+    TranslateScale, Ui,
 };
 use std::rc::Rc;
 

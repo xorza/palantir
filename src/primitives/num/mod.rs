@@ -81,7 +81,7 @@ pub trait F32Ext {
 impl F32Ext for f32 {
     #[inline]
     fn band_fraction(self, extent: f32, band: f32) -> f32 {
-        approx::ratio(self - band * 0.5, extent - band)
+        approx::share_of(self - band * 0.5, extent - band)
     }
 
     #[inline]

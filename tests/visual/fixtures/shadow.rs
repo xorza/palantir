@@ -2,7 +2,8 @@
 
 use glam::{IVec2, UVec2, Vec2};
 use image::RgbaImage;
-use palantir::{Configure, Panel, Rect, RgbaF32, Shadow, Shape, Sizing};
+use palantir::widget::Shape;
+use palantir::{Configure, Panel, Rect, RgbaF32, Shadow, Sizing};
 
 use crate::harness::Harness;
 use palantir::golden::Tolerance;

@@ -63,8 +63,18 @@ pub struct ResponseState {
     pub pointer_over: bool,
     /// Disabled — this widget *or* any ancestor. The cascaded half is
     /// one frame stale; the widget's own flag is folded in on top by the
-    /// time it reads this. `true` implies the whole interaction half is
-    /// at its default.
+    /// time it reads this.
+    ///
+    /// **`true` empties the interaction half.** [`Self::left`],
+    /// [`Self::right`], [`Self::middle`] and [`Self::scroll`] are all at
+    /// their default, so `clicked()`, `held()`, `pressed()` and every
+    /// drag read `false` on their own. Guarding a click with
+    /// `!state.disabled &&` is therefore dead code, not safety.
+    ///
+    /// [`Self::pointer_over`], [`Self::rect`] and [`Self::pointer_local`]
+    /// survive the fold — they are geometry, not something the widget was
+    /// allowed to do, and a tooltip explaining *why* a control is
+    /// disabled needs them.
     pub disabled: bool,
     /// This widget holds keyboard focus. Unlike the other flags this is
     /// current, not one frame stale.
@@ -147,13 +157,39 @@ impl ResponseState {
         self.pointer_over && !self.disabled
     }
 
+    /// One-frame edge: a primary-button press+release landed on the
+    /// widget, without latching a drag.
+    ///
+    /// **The activation predicate** — the one an application branches a
+    /// button, a menu row, or a tab on. Reads `left`, the same button
+    /// [`Self::pressed`] and [`Self::press_fraction`] report, so the
+    /// three name one gesture between them.
+    ///
+    /// No `disabled` guard here, and none needed at a call site: a
+    /// disabled widget's button slices are already empty — see
+    /// [`Self::disabled`].
+    #[inline]
+    pub fn clicked(&self) -> bool {
+        self.left.clicked()
+    }
+
+    /// One-frame edge: this primary-button click completed a double.
+    ///
+    /// [`Self::clicked`] fires on the same frame — a double is a click
+    /// whose press was the second in its run, not a separate event. Read
+    /// [`ButtonState::click_count`] for triple and beyond.
+    #[inline]
+    pub fn double_clicked(&self) -> bool {
+        self.left.double_clicked()
+    }
+
     /// One-frame edge: a press+release landed on the widget on **any**
     /// button, without latching a drag.
     ///
-    /// The dismissal question every overlay backdrop asks. Reading only
-    /// `left` leaves a menu opened by a secondary button un-closable by
-    /// that same button, and spelling it `left || right || middle` at
-    /// each site leaves the next button silently unhandled.
+    /// The dismissal question every overlay backdrop asks. [`Self::clicked`]
+    /// leaves a menu opened by a secondary button un-closable by that same
+    /// button, and spelling it `left || right || middle` at each site
+    /// leaves the next button silently unhandled.
     #[inline]
     pub fn any_clicked(&self) -> bool {
         PointerButton::all().any(|button| self.button(button).clicked())
@@ -218,13 +254,13 @@ impl ResponseState {
         }
     }
 
-    /// Left-button press with the pointer still over the widget — the
+    /// Primary-button press with the pointer still over the widget — the
     /// "shows pressed visuals" predicate. Derived: `left.held &&
     /// hovered` (a held press whose pointer wandered off reports
-    /// `left.held` but not `pressed`). One of two cross-field
-    /// derivations on this type, with [`Self::press_fraction`] —
-    /// everything per-button reads its slot: `state.left.clicked()`,
-    /// `state.left.drag.delta()`, `state.left.double_clicked()`.
+    /// `left.held` but not `pressed`). The cross-field derivation that
+    /// [`Self::clicked`] and [`Self::press_fraction`] read the same
+    /// button as — anything else per-button reads its slot directly:
+    /// `state.left.drag.delta()`, `state.right.clicked()`.
     #[inline]
     pub fn pressed(&self) -> bool {
         self.left.held() && self.hovered()
@@ -240,7 +276,7 @@ impl ResponseState {
     /// are named once. `band` is the width of a centred thing the pointer
     /// drags, a knob, and comes off each end before the division; pass
     /// zero when the pointer itself is the position — see
-    /// [`F32Ext::band_fraction`](crate::F32Ext::band_fraction). Clamped,
+    /// [`F32Ext::band_fraction`](crate::widget::F32Ext::band_fraction). Clamped,
     /// so a pointer past an edge reports that edge, which is the only way
     /// a drag reaches an axis end.
     #[inline]

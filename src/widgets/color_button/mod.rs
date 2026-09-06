@@ -109,11 +109,9 @@ impl<'a> ColorButton<'a> {
 
         // Probed, not inserted: a chip spends nearly every frame closed, and
         // closed is the default — so an unopened trigger keeps no row at all.
-        let was_open = ui
-            .try_state::<ChipState>(id)
-            .is_some_and(|state| state.open);
+        let was_open = ui.state::<ChipState>(id).is_some_and(|state| state.open);
         let mut open = was_open;
-        if !response.disabled && response.left.clicked() {
+        if response.clicked() {
             open = !open;
         }
 
@@ -145,7 +143,7 @@ impl<'a> ColorButton<'a> {
             }
         }
         if open != was_open {
-            ui.state_mut::<ChipState>(id).open = open;
+            ui.state_or_default::<ChipState>(id).open = open;
         }
 
         ValueResponse {

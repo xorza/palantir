@@ -5,7 +5,8 @@
 //! with the tint applied the way the icon's kind says — rather than a snapshot.
 
 use glam::{UVec2, Vec2};
-use palantir::{Configure, IconFit, IconTable, Panel, RgbaF32, Sizing, Text, TextStyle, Ui};
+use palantir::widget::IconFit;
+use palantir::{Configure, IconTable, Panel, RgbaF32, Sizing, Text, TextStyle, Ui};
 use std::rc::Rc;
 
 use crate::fixtures::close;

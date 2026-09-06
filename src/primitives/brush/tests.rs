@@ -67,13 +67,13 @@ fn linear_gradient_hash_tracks_canonical_content() {
         assert_eq!(h(x), h(y), "case: {label}");
     }
 
-    let two_stops = LinearGradient::two_stop(0.0, RgbaU8::BLACK, RgbaU8::WHITE);
+    let two_stops = LinearGradient::two_stop(0.0, RgbaF32::BLACK, RgbaF32::WHITE);
     let three_stops = LinearGradient::builder(0.0)
-        .stop(0.0, RgbaU8::BLACK)
-        .stop(0.5, RgbaU8::rgb(127, 127, 127))
-        .stop(1.0, RgbaU8::WHITE)
+        .stop(0.0, RgbaF32::BLACK)
+        .stop(0.5, RgbaU8::rgb(127, 127, 127).into())
+        .stop(1.0, RgbaF32::WHITE)
         .build();
-    let recolored = LinearGradient::two_stop(0.0, RgbaU8::BLACK, RgbaU8::rgb(255, 0, 0));
+    let recolored = LinearGradient::two_stop(0.0, RgbaF32::BLACK, RgbaU8::rgb(255, 0, 0).into());
     assert_ne!(h(&two_stops), h(&three_stops));
     assert_ne!(h(&two_stops), h(&recolored));
 }
@@ -83,8 +83,8 @@ fn authoring_values_convert_to_their_brush_variants() {
     let color = RgbaF32::WHITE;
     let color_u8 = RgbaU8::rgb(10, 20, 30);
     let linear = LinearGradient::two_stop(0.25, RgbaF32::BLACK, RgbaF32::WHITE);
-    let radial = RadialGradient::two_stop_centered(RgbaF32::BLACK, RgbaF32::WHITE);
-    let conic = ConicGradient::two_stop_centered(RgbaF32::BLACK, RgbaF32::WHITE);
+    let radial = RadialGradient::two_stop(RgbaF32::BLACK, RgbaF32::WHITE);
+    let conic = ConicGradient::two_stop(RgbaF32::BLACK, RgbaF32::WHITE);
     let linear_builder = LinearGradient::builder(0.25)
         .stop(0.0, RgbaF32::BLACK)
         .stop(1.0, RgbaF32::WHITE);
@@ -143,18 +143,14 @@ fn linear_gradient_size_is_compact() {
 fn gradient_stop_count_is_enforced_by_construction_and_deserialization() {
     let stops = |count: usize| {
         (0..count)
-            .map(|index| Stop::new(index as f32 / count.max(1) as f32, RgbaU8::WHITE))
+            .map(|index| Stop::new(index as f32 / count.max(1) as f32, RgbaF32::WHITE))
             .collect::<Vec<_>>()
     };
     let serialized = |count: usize| {
         let mut document = String::from("(stops: [");
         for index in 0..count {
             let offset = index as f32 / count.max(1) as f32;
-            write!(
-                document,
-                "(offset: {offset}, color: (r: 255, g: 255, b: 255, a: 255)),"
-            )
-            .unwrap();
+            write!(document, "(offset: {offset}, color: \"#ffffff\"),").unwrap();
         }
         document.push_str("])");
         document
@@ -183,7 +179,7 @@ fn non_finite_stop_offsets_are_rejected_at_both_boundaries() {
         ("negative infinity", f32::NEG_INFINITY),
     ] {
         assert!(
-            std::panic::catch_unwind(|| Stop::new(offset, RgbaU8::WHITE)).is_err(),
+            std::panic::catch_unwind(|| Stop::new(offset, RgbaF32::WHITE)).is_err(),
             "{label} must panic at the authoring boundary",
         );
     }
@@ -191,8 +187,8 @@ fn non_finite_stop_offsets_are_rejected_at_both_boundaries() {
     for literal in ["NaN", "inf", "-inf"] {
         let document = format!(
             "(stops: [\
-               (offset: {literal}, color: (r: 255, g: 255, b: 255, a: 255)),\
-               (offset: 1.0, color: (r: 0, g: 0, b: 0, a: 255)),\
+               (offset: {literal}, color: \"#ffffff\"),\
+               (offset: 1.0, color: \"#000000\"),\
              ])"
         );
         let error = ron::from_str::<StopsDocument>(&document).unwrap_err();
@@ -211,15 +207,13 @@ fn every_gradient_variant_round_trips_validated_stops() {
     }
 
     let brushes = [
-        Brush::Linear(LinearGradient::two_stop(0.25, RgbaU8::BLACK, RgbaU8::WHITE)),
-        Brush::Radial(RadialGradient::two_stop_centered(
-            RgbaU8::BLACK,
-            RgbaU8::WHITE,
+        Brush::Linear(LinearGradient::two_stop(
+            0.25,
+            RgbaF32::BLACK,
+            RgbaF32::WHITE,
         )),
-        Brush::Conic(ConicGradient::two_stop_centered(
-            RgbaU8::BLACK,
-            RgbaU8::WHITE,
-        )),
+        Brush::Radial(RadialGradient::two_stop(RgbaF32::BLACK, RgbaF32::WHITE)),
+        Brush::Conic(ConicGradient::two_stop(RgbaF32::BLACK, RgbaF32::WHITE)),
     ];
     for brush in brushes {
         let document = BrushDocument { brush };
@@ -287,7 +281,11 @@ fn gradient_builders_preserve_geometry_stops_and_options() {
 
 #[test]
 fn linear_all_transparent_is_noop() {
-    let g = LinearGradient::two_stop(0.0, RgbaU8::TRANSPARENT, RgbaU8::new(255, 255, 255, 0));
+    let g = LinearGradient::two_stop(
+        0.0,
+        RgbaF32::TRANSPARENT,
+        RgbaU8::new(255, 255, 255, 0).into(),
+    );
     assert!(g.is_noop());
     assert!(Brush::Linear(g).is_noop());
 }
@@ -336,14 +334,8 @@ fn gradient_brush_spring_normalization_is_direction_independent() {
             RgbaF32::BLACK,
             RgbaF32::WHITE,
         )),
-        Brush::Radial(RadialGradient::two_stop_centered(
-            RgbaF32::BLACK,
-            RgbaF32::WHITE,
-        )),
-        Brush::Conic(ConicGradient::two_stop_centered(
-            RgbaF32::BLACK,
-            RgbaF32::WHITE,
-        )),
+        Brush::Radial(RadialGradient::two_stop(RgbaF32::BLACK, RgbaF32::WHITE)),
+        Brush::Conic(ConicGradient::two_stop(RgbaF32::BLACK, RgbaF32::WHITE)),
     ];
     let replacement_gradients = [
         Brush::Linear(LinearGradient::two_stop(
@@ -351,14 +343,8 @@ fn gradient_brush_spring_normalization_is_direction_independent() {
             RgbaF32::WHITE,
             RgbaF32::BLACK,
         )),
-        Brush::Radial(RadialGradient::two_stop_centered(
-            RgbaF32::WHITE,
-            RgbaF32::BLACK,
-        )),
-        Brush::Conic(ConicGradient::two_stop_centered(
-            RgbaF32::WHITE,
-            RgbaF32::BLACK,
-        )),
+        Brush::Radial(RadialGradient::two_stop(RgbaF32::WHITE, RgbaF32::BLACK)),
+        Brush::Conic(ConicGradient::two_stop(RgbaF32::WHITE, RgbaF32::BLACK)),
     ];
 
     for gradient in &gradients {
@@ -374,7 +360,7 @@ fn gradient_brush_spring_normalization_is_direction_independent() {
 
 #[test]
 fn radial_default_centered() {
-    let g = RadialGradient::two_stop_centered(RgbaF32::WHITE, RgbaF32::BLACK);
+    let g = RadialGradient::two_stop(RgbaF32::WHITE, RgbaF32::BLACK);
     assert_eq!(g.geometry.center, Vec2::splat(0.5));
     assert_eq!(g.geometry.radius, Vec2::splat(0.5));
     assert_eq!(g.interp, Interp::Oklab);
@@ -385,10 +371,7 @@ fn radial_default_centered() {
 
 #[test]
 fn conic_default_linear_interp_per_variant() {
-    let g = ConicGradient::two_stop_centered(
-        RgbaF32::srgb(1.0, 0.0, 0.0),
-        RgbaF32::srgb(0.0, 0.0, 1.0),
-    );
+    let g = ConicGradient::two_stop(RgbaF32::srgb(1.0, 0.0, 0.0), RgbaF32::srgb(0.0, 0.0, 1.0));
     assert_eq!(g.interp, Interp::Linear);
     let l = LinearGradient::two_stop(
         0.0,
@@ -396,10 +379,7 @@ fn conic_default_linear_interp_per_variant() {
         RgbaF32::srgb(0.0, 0.0, 1.0),
     );
     assert_eq!(l.interp, Interp::Oklab);
-    let r = RadialGradient::two_stop_centered(
-        RgbaF32::srgb(1.0, 0.0, 0.0),
-        RgbaF32::srgb(0.0, 0.0, 1.0),
-    );
+    let r = RadialGradient::two_stop(RgbaF32::srgb(1.0, 0.0, 0.0), RgbaF32::srgb(0.0, 0.0, 1.0));
     assert_eq!(r.interp, Interp::Oklab);
 }
 
@@ -421,22 +401,16 @@ fn conic_axis_packs_start_angle() {
 
 #[test]
 fn brush_radial_conic_noop_when_all_transparent() {
-    let r = RadialGradient::two_stop_centered(RgbaU8::TRANSPARENT, RgbaU8::TRANSPARENT);
-    let c = ConicGradient::two_stop_centered(RgbaU8::TRANSPARENT, RgbaU8::TRANSPARENT);
+    let r = RadialGradient::two_stop(RgbaF32::TRANSPARENT, RgbaF32::TRANSPARENT);
+    let c = ConicGradient::two_stop(RgbaF32::TRANSPARENT, RgbaF32::TRANSPARENT);
     assert!(Brush::Radial(r).is_noop());
     assert!(Brush::Conic(c).is_noop());
 }
 
 #[test]
 fn brush_radial_conic_as_solid_is_none() {
-    let r = RadialGradient::two_stop_centered(
-        RgbaF32::srgb(1.0, 0.0, 0.0),
-        RgbaF32::srgb(0.0, 0.0, 1.0),
-    );
-    let c = ConicGradient::two_stop_centered(
-        RgbaF32::srgb(1.0, 0.0, 0.0),
-        RgbaF32::srgb(0.0, 0.0, 1.0),
-    );
+    let r = RadialGradient::two_stop(RgbaF32::srgb(1.0, 0.0, 0.0), RgbaF32::srgb(0.0, 0.0, 1.0));
+    let c = ConicGradient::two_stop(RgbaF32::srgb(1.0, 0.0, 0.0), RgbaF32::srgb(0.0, 0.0, 1.0));
     assert!(Brush::Radial(r).as_solid().is_none());
     assert!(Brush::Conic(c).as_solid().is_none());
 }

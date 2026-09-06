@@ -3,6 +3,8 @@
 //! Multi-frame integration tests drive fake pointer hover at advancing
 //! the `Ui` frame-runtime clock to assert visibility, placement, and sizing behavior.
 
+use crate::layout::types::anchor::Anchor;
+
 use crate::input::response::response_state::ResponseState;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
@@ -110,7 +112,7 @@ fn tooltip_breaks_long_tokens_inside_bubble() {
         .first()
         .expect("tooltip text shaped");
     assert!(
-        shaped.measured.w <= bubble.size.w - ui.ui.theme().tooltip.padding.horiz(),
+        shaped.measured.w <= bubble.size.w - ui.ui.theme().tooltip.padding.horizontal(),
         "text width {} must fit inside bubble width {}",
         shaped.measured.w,
         bubble.size.w,
@@ -231,7 +233,7 @@ fn empty_label_records_no_bubble() {
     assert!(
         !empty
             .ui
-            .try_state::<TooltipState>(WidgetId::from_hash("edge-trigger"))
+            .state::<TooltipState>(WidgetId::from_hash("edge-trigger"))
             .copied()
             .unwrap_or_default()
             .visible,
@@ -270,17 +272,17 @@ fn tooltip_delay_keeps_subsecond_precision_after_long_uptime() {
     let started_at = Duration::from_secs(1 << 24);
     record_at(&mut h, started_at);
     assert_eq!(
-        h.ui.try_state::<TooltipState>(trigger_id)
+        h.ui.state::<TooltipState>(trigger_id)
             .unwrap()
             .hover_started_at,
         Some(started_at),
     );
 
     record_at(&mut h, started_at + Duration::from_millis(249));
-    assert!(!h.ui.try_state::<TooltipState>(trigger_id).unwrap().visible);
+    assert!(!h.ui.state::<TooltipState>(trigger_id).unwrap().visible);
 
     record_at(&mut h, started_at + Duration::from_millis(250));
-    assert!(h.ui.try_state::<TooltipState>(trigger_id).unwrap().visible);
+    assert!(h.ui.state::<TooltipState>(trigger_id).unwrap().visible);
 }
 
 #[test]
@@ -297,11 +299,11 @@ fn tooltip_state_is_swept_with_trigger_while_global_state_persists() {
 
     h.frame(record);
     assert!(
-        h.ui.try_state::<TooltipState>(trigger_id).is_none(),
+        h.ui.state::<TooltipState>(trigger_id).is_none(),
         "an idle trigger must not materialise a state row",
     );
     assert!(
-        h.ui.try_state::<TooltipGlobal>(global_state_id()).is_none(),
+        h.ui.state::<TooltipGlobal>(global_state_id()).is_none(),
         "nothing has been visible yet, so the singleton has no row either",
     );
 
@@ -312,14 +314,14 @@ fn tooltip_state_is_swept_with_trigger_while_global_state_persists() {
     h.frame(record);
     h.advance(Duration::from_millis(600)).frame(record);
 
-    assert!(h.ui.try_state::<TooltipState>(trigger_id).is_some());
+    assert!(h.ui.state::<TooltipState>(trigger_id).is_some());
     assert!(
-        h.ui.try_state::<TooltipState>(trigger_id.with("tooltip"))
+        h.ui.state::<TooltipState>(trigger_id.with("tooltip"))
             .is_none(),
         "per-trigger state must not use an unrecorded synthetic id",
     );
     assert!(
-        h.ui.try_state::<TooltipGlobal>(global_state_id()).is_some(),
+        h.ui.state::<TooltipGlobal>(global_state_id()).is_some(),
         "the intentional global singleton must exist",
     );
 
@@ -327,8 +329,8 @@ fn tooltip_state_is_swept_with_trigger_while_global_state_persists() {
         Panel::vstack().id(root_id).show(ui, |_ui| {});
     });
 
-    assert!(h.ui.try_state::<TooltipState>(trigger_id).is_none());
-    assert!(h.ui.try_state::<TooltipGlobal>(global_state_id()).is_some());
+    assert!(h.ui.state::<TooltipState>(trigger_id).is_none());
+    assert!(h.ui.state::<TooltipGlobal>(global_state_id()).is_some());
 }
 
 /// Drive the timer across N frames with a fixed dt-per-frame, hovering
@@ -369,7 +371,7 @@ fn delay_gates_visibility() {
     h.move_onto(trigger_id);
     record_at_secs(&mut h, 0.1, &mut captured);
     let early =
-        h.ui.try_state::<TooltipState>(trigger_id)
+        h.ui.state::<TooltipState>(trigger_id)
             .copied()
             .unwrap_or_default();
     assert!(
@@ -389,7 +391,7 @@ fn delay_gates_visibility() {
     }
 
     let late =
-        h.ui.try_state::<TooltipState>(trigger_id)
+        h.ui.state::<TooltipState>(trigger_id)
             .copied()
             .unwrap_or_default();
     assert!(
@@ -407,13 +409,13 @@ fn delay_gates_visibility() {
     t += 0.1;
     h.move_to(Vec2::new(350.0, 250.0));
     record_at_secs(&mut h, t, &mut captured);
-    assert!(!h.ui.try_state::<TooltipState>(trigger_id).unwrap().visible);
+    assert!(!h.ui.state::<TooltipState>(trigger_id).unwrap().visible);
 
     t += 0.1;
     h.move_onto(trigger_id);
     record_at_secs(&mut h, t, &mut captured);
     assert!(
-        !h.ui.try_state::<TooltipState>(trigger_id).unwrap().visible,
+        !h.ui.state::<TooltipState>(trigger_id).unwrap().visible,
         "zero warmup must not bypass the delay on a new hover",
     );
 }
@@ -455,7 +457,7 @@ fn hover_clears_after_tooltip_visible() {
         record_at_secs(&mut h, t, &mut captured);
     }
     let state =
-        h.ui.try_state::<TooltipState>(trigger_id)
+        h.ui.state::<TooltipState>(trigger_id)
             .copied()
             .unwrap_or_default();
     assert!(
@@ -471,7 +473,7 @@ fn hover_clears_after_tooltip_visible() {
 
     let pointer_over = h.ui.response_for(trigger_id).pointer_over;
     let state =
-        h.ui.try_state::<TooltipState>(trigger_id)
+        h.ui.state::<TooltipState>(trigger_id)
             .copied()
             .unwrap_or_default();
     assert!(!pointer_over, "the pointer left the trigger");
@@ -498,7 +500,7 @@ fn tooltip_inside_popup_records_without_panic() {
                 .id(WidgetId::from_hash("root"))
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
-                    Popup::anchored_to(popup_anchor)
+                    Popup::new(Anchor::at_point(popup_anchor))
                         .id(WidgetId::from_hash("popup"))
                         .click_outside(ClickOutside::Dismiss)
                         .padding(4.0)
@@ -532,7 +534,7 @@ fn tooltip_inside_popup_records_without_panic() {
     }
 
     let state =
-        h.ui.try_state::<TooltipState>(trigger_id)
+        h.ui.state::<TooltipState>(trigger_id)
             .copied()
             .unwrap_or_default();
     assert!(
@@ -605,7 +607,7 @@ fn show_when_disabled_reaches_a_disabled_trigger() {
             h.move_onto(trigger_id);
             record(&mut h, t);
         }
-        h.ui.try_state::<TooltipState>(trigger_id)
+        h.ui.state::<TooltipState>(trigger_id)
             .copied()
             .unwrap_or_default()
             .visible

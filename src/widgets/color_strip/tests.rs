@@ -23,11 +23,11 @@ fn the_alpha_bar_writes_only_alpha() {
     let mut color = RgbaF32::hex(0x4cd3ff).with_alpha(1.0);
     let before = color;
     h.frame(|ui| {
-        ColorStrip::alpha(&mut color).id(id).show(ui);
+        ColorStrip::for_alpha(&mut color).id(id).show(ui);
     });
     h.press_at(Vec2::new(52.0, 7.0));
     h.frame(|ui| {
-        ColorStrip::alpha(&mut color).id(id).show(ui);
+        ColorStrip::for_alpha(&mut color).id(id).show(ui);
     });
     assert_eq!(color.a, 0.25, "a quarter along the bar");
     assert_eq!((color.r, color.g, color.b), (before.r, before.g, before.b));
@@ -40,11 +40,11 @@ fn the_hue_bar_writes_only_the_hue() {
     let mut coords = ColorCoords::new(ColorModel::Okhsv, RgbaF32::hex(0x4cd3ff), 0.0);
     let (sat, val) = (coords.sat(), coords.val());
     h.frame(|ui| {
-        ColorStrip::hue(&mut coords).id(id).show(ui);
+        ColorStrip::for_hue(&mut coords).id(id).show(ui);
     });
     h.press_at(Vec2::new(156.0, 7.0));
     h.frame(|ui| {
-        ColorStrip::hue(&mut coords).id(id).show(ui);
+        ColorStrip::for_hue(&mut coords).id(id).show(ui);
     });
     assert_eq!(coords.hue(), 0.75, "three quarters along the bar");
     assert_eq!(coords.sat(), sat);
@@ -113,7 +113,7 @@ fn a_click_commits_as_a_drag_does() {
     let mut color = RgbaF32::hex(0x4cd3ff).with_alpha(1.0);
     let frame = |h: &mut UiHarness, color: &mut RgbaF32| {
         h.frame_value(|ui| {
-            let r = ColorStrip::alpha(color).id(id).show(ui);
+            let r = ColorStrip::for_alpha(color).id(id).show(ui);
             (r.changed, r.committed)
         })
     };

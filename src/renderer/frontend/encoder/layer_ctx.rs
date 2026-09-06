@@ -8,7 +8,7 @@
 use crate::layout::LayerLayout;
 use crate::layout::text_runs::TextRuns;
 use crate::layout::types::clip_mode::ClipMode;
-use crate::primitives::approx::noop_f32;
+use crate::primitives::approx::paints_nothing;
 use crate::primitives::brush::gradient::FillAxis;
 use crate::primitives::corners::Corners;
 use crate::primitives::fill_kind::FillKind;
@@ -126,7 +126,7 @@ impl LayerCtx<'_> {
         // for its geometry first. `paint_mod.rotation` rides the stroke
         // arms instead, through `StrokeBounds`.
         let paint_mod = self.paint_anim_cursor.sample(shape_idx, self.now);
-        if noop_f32(paint_mod.alpha) {
+        if paints_nothing(paint_mod.alpha) {
             return;
         }
         let alpha = paint_mod.alpha;

@@ -141,7 +141,7 @@ mod tests {
     use crate::layout::text_shape_input::{TextShapeInput, checked_text_ordinal};
     use crate::layout::types::align::HAlign;
     use crate::text::font_family::FontFamily;
-    use crate::text::font_style::FontStyle;
+    use crate::text::font_slant::FontSlant;
     use crate::text::font_weight::FontWeight;
     use crate::text::glyph_font::GlyphFont;
     use crate::text::key::TextShapeKey;
@@ -162,7 +162,7 @@ mod tests {
         line_height_px: 19.2,
         family: FontFamily::SANS,
         weight: FontWeight::REGULAR,
-        style: FontStyle::Normal,
+        slant: FontSlant::Normal,
     };
 
     /// One recorded run, paired with whatever hash the caller claims for

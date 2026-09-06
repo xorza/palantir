@@ -31,6 +31,7 @@ use crate::ui::Ui;
 use crate::widgets::panel::Panel;
 use crate::{Configure, Sizing, Vec2};
 use criterion::{Criterion, Throughput};
+use glam::UVec2;
 use std::hint::black_box;
 use std::time::Duration;
 
@@ -136,7 +137,7 @@ fn record(ui: &mut Ui, handle: &mut Option<ImageHandle>, workload: Workload, pha
     let edge = workload.texel();
     let image = handle
         .get_or_insert_with(|| {
-            ui.register_image(&Image::from_rgba8(edge, edge, texels(edge)))
+            ui.register_image(&Image::from_rgba8(UVec2::new(edge, edge), texels(edge)))
                 .expect("benchmark image fits every supported GPU")
         })
         .clone();

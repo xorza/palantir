@@ -163,7 +163,7 @@ fn caret_motion_alone_resets_blink() {
     h.click_at(Vec2::new(20.0, 20.0));
     record_at_secs(&mut h, 0.0, |ui| body(ui, &mut buf, &mut leaf));
     let caret_at_click =
-        h.ui.state_mut::<TextEditState>(WidgetId::from_hash("caret-move-blink"))
+        h.ui.state_or_default::<TextEditState>(WidgetId::from_hash("caret-move-blink"))
             .edit
             .caret;
     assert!(
@@ -182,7 +182,7 @@ fn caret_motion_alone_resets_blink() {
     h.key(Key::End);
     record_at_secs(&mut h, 0.75, |ui| body(ui, &mut buf, &mut leaf));
     let state =
-        h.ui.state_mut::<TextEditState>(WidgetId::from_hash("caret-move-blink"))
+        h.ui.state_or_default::<TextEditState>(WidgetId::from_hash("caret-move-blink"))
             .clone();
     assert_eq!(buf, "abcdefghij", "`End` must not edit the buffer");
     assert_eq!(state.edit.caret, buf.len(), "`End` moves caret to the end");

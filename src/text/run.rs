@@ -2,7 +2,7 @@
 //! surface.
 //!
 //! Layout already measures and paints text for any widget that records a
-//! [`Shape::Text`](crate::Shape) — nothing here is needed for that. What
+//! [`Shape::Text`](crate::widget::Shape) — nothing here is needed for that. What
 //! this and [`probe`](crate::text::probe) add is the other direction:
 //! mapping between byte offsets and positions inside a run, which is what
 //! a widget needs to place a caret, turn a click into an offset, or paint
@@ -14,7 +14,7 @@ use crate::text::key::TextShapeKey;
 use crate::text::request::TextShapeRequest;
 use crate::text::wrap::TextWrap;
 
-/// One text run, described the way [`Shape::Text`](crate::Shape)
+/// One text run, described the way [`Shape::Text`](crate::widget::Shape)
 /// describes one.
 ///
 /// **The spelling mirrors `Shape::Text` on purpose.** A probe that

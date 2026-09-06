@@ -1,4 +1,4 @@
-//! [`FontStyle`] — the upright/italic axis, independent of weight.
+//! [`FontSlant`] — the upright/italic axis, independent of weight.
 
 /// Whether a run shapes against an upright or an italic face.
 ///
@@ -13,7 +13,7 @@
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
 )]
-pub enum FontStyle {
+pub enum FontSlant {
     #[default]
     Normal = 0,
     Italic = 1,

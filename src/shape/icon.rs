@@ -49,7 +49,7 @@ impl IconFit {
 /// physical pixel size it lands on.
 ///
 /// Three knobs, all of which mean something — the sampling controls an
-/// [`ImageShape`](crate::ImageShape) carries have no meaning here, because
+/// [`ImageShape`](crate::widget::ImageShape) carries have no meaning here, because
 /// nothing is ever resampled.
 ///
 /// `tint` reads differently for the two kinds of icon, following what the

@@ -34,8 +34,8 @@ use crate::text::cosmic::shaped_buffer_cache::{ShapedBufferCache, ShapedRun};
 use crate::text::error::FontLoadError;
 use crate::text::font_family::FontFamily;
 use crate::text::font_scope::FontScope;
+use crate::text::font_slant::FontSlant;
 use crate::text::font_source::FontSource;
-use crate::text::font_style::FontStyle;
 use crate::text::font_weight::FontWeight;
 use crate::text::key::{LineAlign, TextShapeKey};
 use crate::text::render::{GlyphRasterKey, PlacedGlyph, RunPlacement};
@@ -85,7 +85,7 @@ fn metrics_of(key: TextShapeKey) -> Metrics {
 /// `CacheKeyFlags::FAKE_ITALIC` when the matched face is upright and the
 /// request was not, and the flag is part of the glyph cache key, so the
 /// atlas keeps the slanted raster apart from the upright one.
-fn attrs_named(name: &'static str, weight: FontWeight, style: FontStyle) -> Attrs<'static> {
+fn attrs_named(name: &'static str, weight: FontWeight, style: FontSlant) -> Attrs<'static> {
     // Skip TrueType bytecode hinting: skrifa's hint VM dominated zoom-frame
     // CPU time, and at HiDPI / during animated zoom the visual difference
     // is imperceptible.
@@ -96,8 +96,8 @@ fn attrs_named(name: &'static str, weight: FontWeight, style: FontStyle) -> Attr
         // face, and picks the nearest static face otherwise.
         .weight(Weight(weight.value()));
     match style {
-        FontStyle::Normal => base,
-        FontStyle::Italic => base.style(Style::Italic),
+        FontSlant::Normal => base,
+        FontSlant::Italic => base.style(Style::Italic),
     }
 }
 
@@ -130,7 +130,7 @@ pub(crate) fn warm_matches(font_system: &mut FontSystem, families: &[FontFamily]
         let present = family_present(font_system.db(), family.name());
         let name = shaping_name(family, present);
         for weight in [FontWeight::REGULAR, FontWeight::BOLD] {
-            for style in [FontStyle::Normal, FontStyle::Italic] {
+            for style in [FontSlant::Normal, FontSlant::Italic] {
                 font_system.get_font_matches(&attrs_named(name, weight, style));
             }
         }
@@ -240,7 +240,7 @@ fn subpixel_offset(key: CacheKey) -> Vector {
 /// Real-shaping text measurer. Owns a [`FontSystem`] populated per
 /// [`FontScope`] and a cache of shaped `Buffer`s keyed on the inputs that
 /// affect shaping. Per-call face selection comes from [`FontFamily`],
-/// [`FontWeight`] and [`FontStyle`] on each measurement, resolved through
+/// [`FontWeight`] and [`FontSlant`] on each measurement, resolved through
 /// [`Self::font_available`] and [`shaping_name`].
 pub(super) struct CosmicMeasure {
     font_system: FontSystem,
@@ -483,7 +483,7 @@ impl CosmicMeasure {
     fn attrs_of(&mut self, key: TextShapeKey) -> Attrs<'static> {
         let family = key.family();
         let name = shaping_name(family, self.font_available(family));
-        attrs_named(name, key.weight(), key.style())
+        attrs_named(name, key.weight(), key.slant())
     }
 
     /// Whether a buffer is resident under `key`, and what it laid out

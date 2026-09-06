@@ -31,7 +31,7 @@ fn the_bundle_ceiling_gates_registration_and_is_what_ui_reports() {
 }
 
 fn img(w: u32, h: u32) -> Image {
-    Image::from_rgba8(w, h, vec![0u8; (w * h * 4) as usize])
+    Image::from_rgba8(UVec2::new(w, h), vec![0u8; (w * h * 4) as usize])
 }
 
 /// The sequence is process-wide, so the ids are only ever compared

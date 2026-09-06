@@ -95,7 +95,7 @@ impl ScrollState {
     /// apart, they can differ on the zoom factor and the viewport too.
     #[inline]
     fn raw_overflow(&self, bounds: ScrollBounds) -> Vec2 {
-        let content = bounds.content.scaled(self.zoom);
+        let content = bounds.content.scaled_by(self.zoom);
         Vec2::new(content.w - bounds.viewport.w, content.h - bounds.viewport.h)
     }
 

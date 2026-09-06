@@ -28,7 +28,7 @@ fn pointer_zoom_pivot_is_scale_invariant() {
                 .show(ui, |ui| {
                     Scroll::both()
                         .id(id)
-                        .with_zoom()
+                        .zoom()
                         .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                         .show(ui, |ui| {
                             Frame::new()
@@ -46,7 +46,7 @@ fn pointer_zoom_pivot_is_scale_invariant() {
         h.pinch_at(pointer, 1.5);
         h.frame(build);
 
-        let state = *h.ui.state_mut::<ScrollState>(id);
+        let state = *h.ui.state_or_default::<ScrollState>(id);
         assert_eq!(state.zoom, 1.5, "zoom at {scale}×");
         assert_eq!(
             state.offset,

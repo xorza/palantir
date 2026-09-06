@@ -13,7 +13,7 @@ use crate::scene::shapes::paint::{LoweredShadow, ShapeStroke};
 use crate::scene::shapes::record::*;
 use crate::shape::rect::RectKind;
 use crate::text::font_family::FontFamily;
-use crate::text::font_style::FontStyle;
+use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
 use glam::Vec2;
@@ -435,7 +435,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         line_height_px: 14.0,
         family: FontFamily::SANS,
         weight: FontWeight::REGULAR,
-        style: FontStyle::Normal,
+        slant: FontSlant::Normal,
     };
     let text = |local_origin, t, color, font, wrap, align| ShapeRecord::Text {
         local_origin,

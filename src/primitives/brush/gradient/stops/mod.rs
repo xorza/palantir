@@ -2,7 +2,7 @@
 //! run a gradient carries them in, and the builder that sorts and
 //! validates one.
 
-use crate::primitives::color::RgbaU8;
+use crate::primitives::color::{RgbaF32, RgbaU8};
 use crate::primitives::num;
 use serde::de::Error as _;
 use serde::ser::SerializeStruct;
@@ -21,11 +21,12 @@ pub(crate) const MAX_STOPS: usize = 8;
 /// out-of-range positions clamp at construction — 8-bit precision is
 /// sufficient and saves ~24 B per gradient.
 ///
-/// The quantization stays an implementation detail: the fields are
-/// private, [`Self::new`] clamps and quantizes, [`Self::offset`] decodes
-/// back to f32, and serde uses the **float** `offset` (0..1) as the wire
-/// form. Theme authors write `offset = 0.5`, matching how every other
-/// spatial value in the crate is authored.
+/// The quantization stays an implementation detail, on both fields: they
+/// are private, [`Self::new`] clamps and quantizes, [`Self::offset`] and
+/// [`Self::color`] decode back, and serde carries the decoded forms as the
+/// wire format. A theme author writes `offset: 0.5` and `color: "#22ccdd"`,
+/// matching how every other position and every other colour in the crate is
+/// authored.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub struct Stop {
     offset_u8: u8,
@@ -34,9 +35,10 @@ pub struct Stop {
 
 impl Stop {
     /// Construct a stop. Finite offsets are clamped to 0..=1 and
-    /// quantized to u8 (round-to-nearest).
+    /// quantized to u8 (round-to-nearest). The colour quantizes to linear
+    /// bytes, which is what the LUT bakes from.
     #[inline]
-    pub fn new(offset: f32, color: impl Into<RgbaU8>) -> Self {
+    pub fn new(offset: f32, color: RgbaF32) -> Self {
         assert!(offset.is_finite(), "gradient stop offset must be finite");
         Self {
             offset_u8: num::unit_to_u8(offset),
@@ -51,10 +53,11 @@ impl Stop {
         self.offset_u8 as f32 / 255.0
     }
 
-    /// The stop colour, 8-bit linear RGB.
+    /// Decode the stored colour back to the crate's linear f32 form, the
+    /// way [`Self::offset`] decodes the position.
     #[inline]
-    pub const fn color(self) -> RgbaU8 {
-        self.color
+    pub const fn color(self) -> RgbaF32 {
+        self.color.to_linear()
     }
 }
 
@@ -62,7 +65,7 @@ impl Serialize for Stop {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let mut state = serializer.serialize_struct("Stop", 2)?;
         state.serialize_field("offset", &self.offset())?;
-        state.serialize_field("color", &self.color)?;
+        state.serialize_field("color", &self.color())?;
         state.end()
     }
 }
@@ -72,7 +75,7 @@ impl<'de> Deserialize<'de> for Stop {
         #[derive(Debug, Deserialize)]
         struct RawStop {
             offset: f32,
-            color: RgbaU8,
+            color: RgbaF32,
         }
 
         let raw = RawStop::deserialize(deserializer)?;

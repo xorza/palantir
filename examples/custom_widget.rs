@@ -16,10 +16,11 @@
 //!
 //! Run with: `cargo run --example custom_widget`
 
+use palantir::widget::{ConfigureWidget, LineCap, LineJoin, PolylineColors, Shape, Widget};
 use palantir::{
-    Align, App, Background, Configure, ConfigureWidget, Corners, HostHandle, LineCap, LineJoin,
-    Panel, PolylineColors, Response, ResponseState, RgbaF32, Sense, Shadow, Shape, Sizing, SrgbaU8,
-    Stroke, Text, Ui, VAlign, Vec2, Widget, WidgetId, WindowToken, WinitHost, WinitHostError, fmt,
+    Align, App, Background, Configure, Corners, HostHandle, Panel, Response, ResponseState,
+    RgbaF32, Sense, Shadow, Sizing, SrgbaU8, Stroke, Text, Ui, VAlign, Vec2, WidgetId, WindowToken,
+    WinitHost, WinitHostError, fmt,
 };
 
 /// A horizontal integer stepper bound to a caller-owned `&mut i32`.
@@ -73,10 +74,10 @@ impl<'a> Stepper<'a> {
         let plus_id = id.with("plus");
         let minus = ui.response_for(minus_id);
         let plus = ui.response_for(plus_id);
-        if minus.left.clicked() && !minus.disabled {
+        if minus.clicked() {
             *self.value = (*self.value - self.step).max(self.min);
         }
-        if plus.left.clicked() && !plus.disabled {
+        if plus.clicked() {
             *self.value = (*self.value + self.step).min(self.max);
         }
 
@@ -139,11 +140,11 @@ fn step_button(ui: &mut Ui, id: WidgetId, state: ResponseState, glyph: Glyph) {
     widget.record(ui, Some(&chrome), |ui| {
         // Glyphs in node-local coordinates (0..24 on each axis). A
         // horizontal bar is the minus; the plus adds a vertical bar.
-        let horiz = [Vec2::new(7.0, 12.0), Vec2::new(17.0, 12.0)];
-        paint_bar(ui, &horiz);
+        let horizontal = [Vec2::new(7.0, 12.0), Vec2::new(17.0, 12.0)];
+        paint_bar(ui, &horizontal);
         if matches!(glyph, Glyph::Plus) {
-            let vert = [Vec2::new(12.0, 7.0), Vec2::new(12.0, 17.0)];
-            paint_bar(ui, &vert);
+            let vertical = [Vec2::new(12.0, 7.0), Vec2::new(12.0, 17.0)];
+            paint_bar(ui, &vertical);
         }
     });
 }

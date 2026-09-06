@@ -9,7 +9,7 @@ use crate::scene::record_store::RecordStore;
 use crate::scene::shapes::record::ShapeRecord;
 use crate::shape::sealed;
 use crate::text::font_family::FontFamily;
-use crate::text::font_style::FontStyle;
+use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::wrap::TextWrap;
@@ -94,8 +94,8 @@ impl TextShape {
         self
     }
 
-    pub fn style(mut self, style: impl Into<FontStyle>) -> Self {
-        self.font.style = style.into();
+    pub fn slant(mut self, slant: impl Into<FontSlant>) -> Self {
+        self.font.slant = slant.into();
         self
     }
 }

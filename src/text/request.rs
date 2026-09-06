@@ -20,7 +20,7 @@ use crate::text::key::{TextShapeKey, WrapBound};
 /// crate edges with an answer of their own rather than a layer to hop
 /// through:
 /// [`TextShaper::layout`](crate::text::shaper::TextShaper::layout) mints
-/// an empty probe, and [`TextGlyphs`](crate::TextGlyphs) reports no
+/// an empty probe, and [`TextGlyphs`](crate::widget::TextGlyphs) reports no
 /// glyphs. Recorded runs never reach either — `TextShape::is_noop` drops
 /// both cases before they become a `ShapeRecord`.
 #[derive(Clone, Copy, Debug)]
@@ -31,8 +31,8 @@ pub(crate) struct TextShapeRequest<'a> {
 
 impl<'a> TextShapeRequest<'a> {
     /// **Where a face is screened.** `font` reaches here straight off a
-    /// public [`TextRun`](crate::TextRun) or
-    /// [`TextGlyphs`](crate::TextGlyphs) call as often as it does off a
+    /// public [`TextRun`](crate::widget::TextRun) or
+    /// [`TextGlyphs`](crate::widget::TextGlyphs) call as often as it does off a
     /// recorded shape, so the screen belongs at the boundary both cross
     /// rather than at record time only — an unusable size would otherwise
     /// quantize to a 1/64-px face and shape against it.
@@ -104,7 +104,7 @@ pub(crate) mod test_support {
     #[cfg(test)]
     use crate::text::font_family::FontFamily;
     #[cfg(test)]
-    use crate::text::font_style::FontStyle;
+    use crate::text::font_slant::FontSlant;
     #[cfg(test)]
     use crate::text::font_weight::FontWeight;
 
@@ -232,9 +232,9 @@ pub(crate) mod test_support {
             }
         }
 
-        pub(crate) fn style(self, style: FontStyle) -> Self {
+        pub(crate) fn slant(self, slant: FontSlant) -> Self {
             Self {
-                font: GlyphFont { style, ..self.font },
+                font: GlyphFont { slant, ..self.font },
                 ..self
             }
         }

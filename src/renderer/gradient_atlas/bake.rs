@@ -18,7 +18,7 @@ pub(crate) fn bake_stops(stops: &GradientStops, interp: Interp, out: &mut LutRow
 
     let mut linear_stops = [RgbaF32::TRANSPARENT; MAX_STOPS];
     for index in 0..count {
-        linear_stops[index] = stops[index].color().into();
+        linear_stops[index] = stops[index].color();
     }
     let mut oklab_stops = [[0.0; 3]; MAX_STOPS];
     // Only the Oklab ramp reads these, and an empty slice is what says so:
@@ -177,7 +177,7 @@ fn lerp_oklab(
 mod tests {
     use crate::primitives::brush::gradient::Interp;
     use crate::primitives::brush::gradient::stops::{GradientStops, Stop};
-    use crate::primitives::color::{RgbaF32, RgbaU8};
+    use crate::primitives::color::RgbaF32;
     use crate::renderer::gradient_atlas::bake::{LUT_ROW_TEXELS, Ramp};
 
     /// The bake `zip`s the ramp against a fixed-length row, so a ramp
@@ -188,8 +188,10 @@ mod tests {
     /// as badly as a wrong count.
     #[test]
     fn a_ramp_yields_exactly_one_row_of_texels() {
-        let stops =
-            GradientStops::new([Stop::new(0.0, RgbaU8::BLACK), Stop::new(1.0, RgbaU8::WHITE)]);
+        let stops = GradientStops::new([
+            Stop::new(0.0, RgbaF32::BLACK),
+            Stop::new(1.0, RgbaF32::WHITE),
+        ]);
         let linear = [RgbaF32::BLACK, RgbaF32::WHITE];
         let ramp = Ramp::new(&stops, &linear, &[], Interp::Linear);
 
