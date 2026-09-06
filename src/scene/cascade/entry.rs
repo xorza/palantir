@@ -36,9 +36,10 @@ pub(crate) struct EntryRow {
     /// for converting surface-space vectors into widget-local logical
     /// coordinates — `IDENTITY` when untransformed.
     pub(crate) transform: TranslateScale,
-    /// Effective disabled (self OR any ancestor). Mirrors what
-    /// `cascaded_off` already nulls `sense`/`focusable` from,
-    /// kept here so per-widget responses can read it.
+    /// Effective disabled (self OR any ancestor), which is the whole of
+    /// what the cascade does with it: the flag is stored rather than
+    /// acted on, and `ResponseState::merge_disabled` is what empties the
+    /// response a disabled widget reads.
     pub(crate) disabled: bool,
 }
 
@@ -62,11 +63,24 @@ pub(crate) struct HitRow {
     pub(crate) rect: Rect,
     pub(crate) widget_id: WidgetId,
     /// Pointer interactions this row participates in (`HOVER` / `CLICK`
-    /// / `DRAG` / `SCROLL`). Already cascaded — `Sense::NONE` for a
-    /// disabled or invisible subtree.
+    /// / `DRAG` / `SCROLL`). Already cascaded — `Sense::NONE` for an
+    /// invisible subtree, and as declared for a disabled one, which goes
+    /// on absorbing what it covers.
     pub(crate) sense: Sense,
     /// Focus eligibility — checked by the focusable hit-test only.
+    /// Always `false` in a disabled or invisible subtree.
     pub(crate) focusable: bool,
+    /// Disabled — this widget or any ancestor, the same flag
+    /// [`EntryRow::disabled`] carries.
+    ///
+    /// The pointer walks ignore it: a disabled row is the hover, press,
+    /// wheel and pinch target like any other, and answers nothing
+    /// because `ResponseState::merge_disabled` empties what it reads.
+    /// Focus is where it is read —
+    /// [`Cascade::hit_test_press`](super::Cascade::hit_test_press) ends
+    /// its walk here, so a press this row absorbed focuses nothing
+    /// beneath it.
+    pub(crate) disabled: bool,
 }
 
 /// Where one widget's per-frame rows live — the flat
@@ -103,6 +117,10 @@ pub(crate) struct ScopeRow {
 /// press target and the focus target are routinely different rows — and
 /// resolving them separately walked the same hit table twice for one
 /// position.
+///
+/// Independent up to the widget that takes the press: a disabled one
+/// absorbs it, so `focus` is whatever sat *above* the disabled row, and
+/// `None` when nothing did.
 #[derive(Default, Clone, Copy, Debug)]
 pub(crate) struct PressTargets {
     pub(crate) click: Option<WidgetId>,

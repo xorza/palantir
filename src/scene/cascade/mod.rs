@@ -329,11 +329,19 @@ impl Cascade {
     /// press path and it wants `Sense::clicks` for the press itself and
     /// `HitRow::focusable` for what the click focuses — different fields,
     /// which is why one filter parameter could not have served both.
+    ///
+    /// The focus walk normally passes *through* the press target, which
+    /// is how clicking a `Button` inside a focusable group focuses the
+    /// group. A disabled target ends it instead: the press went no
+    /// further, so neither may the focus it would have moved.
     pub(crate) fn hit_test_press(&self, pos: Vec2) -> PressTargets {
         let mut targets = PressTargets::default();
         for row in self.hits_under(pos) {
             if targets.click.is_none() && Sense::clicks(row.sense) {
                 targets.click = Some(row.widget_id);
+                if row.disabled {
+                    break;
+                }
             }
             if targets.focus.is_none() && row.focusable {
                 targets.focus = Some(row.widget_id);

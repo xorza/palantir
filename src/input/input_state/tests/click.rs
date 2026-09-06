@@ -139,6 +139,56 @@ fn stack_sense_routing() {
     }
 }
 
+/// A disabled widget covers what it is painted over. It keeps the sense
+/// it declared, so it is still the target the press routes to, and it
+/// answers nothing — the widget beneath neither clicks nor takes the
+/// focus the press would have moved.
+///
+/// The `Sense::NONE` case is the control: an inert cover really is a
+/// hole, so the stack, the position and the harness are all sound, and
+/// the disabling alone is what stops the press in the other case.
+#[test]
+fn a_disabled_cover_absorbs_the_press_it_is_painted_over() {
+    use crate::widgets::frame::Frame;
+
+    let under = WidgetId::from_hash("under");
+    let cover = WidgetId::from_hash("cover");
+    for (label, sense, disabled, expect_click, expect_focus) in [
+        ("inert cover", Sense::NONE, false, true, Some(under)),
+        ("disabled cover", Sense::CLICK, true, false, None),
+    ] {
+        let mut h = UiHarness::new(UVec2::splat(100));
+        let mut clicked = false;
+        let build = |ui: &mut Ui, clicked: &mut bool| {
+            Panel::zstack()
+                .auto_id()
+                .size(Sizing::fixed(100.0))
+                .show(ui, |ui| {
+                    *clicked |= Frame::new()
+                        .id(under)
+                        .size(Sizing::FILL)
+                        .sense(Sense::CLICK)
+                        .focusable(true)
+                        .show(ui)
+                        .left
+                        .clicked();
+                    Frame::new()
+                        .id(cover)
+                        .size(Sizing::FILL)
+                        .sense(sense)
+                        .disabled(disabled)
+                        .show(ui);
+                });
+        };
+        h.frame(|ui| build(ui, &mut false));
+        h.click_at(Vec2::splat(50.0));
+        h.frame(|ui| build(ui, &mut clicked));
+
+        assert_eq!(clicked, expect_click, "{label}: the widget underneath");
+        assert_eq!(h.focused_id(), expect_focus, "{label}: focus");
+    }
+}
+
 #[test]
 fn input_state_release_outside_does_not_click() {
     let surface = UVec2::new(400, 80);

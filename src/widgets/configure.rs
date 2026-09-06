@@ -564,6 +564,12 @@ pub trait Configure: Sized {
     }
 
     /// Suppress this node's interactions and cascade to all descendants.
+    ///
+    /// Suppressed, not removed: the node keeps the [`Sense`] it declared
+    /// and goes on taking the hover, the press and the wheel away from
+    /// whatever it covers. It answers none of them. A disabled button
+    /// stacked over a canvas is a hole in neither direction — the canvas
+    /// does not receive the click, and the button does not act on it.
     #[inline]
     fn disabled(mut self, d: bool) -> Self {
         self.configure().disabled(d);
@@ -571,9 +577,11 @@ pub trait Configure: Sized {
     }
 
     /// Mark this node as eligible to take keyboard focus on press.
-    /// Default `false`. Only editable widgets (TextEdit) opt in. Disabled
-    /// or invisible nodes are excluded from focus regardless of this
-    /// flag — same cascade rule as `Sense`.
+    /// Default `false`. Only editable widgets (TextEdit) opt in.
+    ///
+    /// Disabled or invisible nodes are excluded from focus regardless of
+    /// this flag. Unlike [`Sense`], which a disabled node keeps: it
+    /// absorbs the press, and focus has nowhere useful to land.
     #[inline]
     fn focusable(mut self, f: bool) -> Self {
         self.configure().focusable(f);

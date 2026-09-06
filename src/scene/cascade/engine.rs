@@ -477,30 +477,39 @@ impl CascadeEngine {
             // twice and left a panic path on every node of a rebuild.
             if let Some(sink) = sink.as_mut() {
                 let layer = sink.layer;
-                let cascaded_off = disabled || invisible;
-                // A disabled widget keeps the hover it would have had and
-                // nothing else: it is still drawn and still under the
-                // pointer, which a tooltip explaining *why* it is
-                // disabled has to be able to ask. Invisible is the other
-                // ruling — what is not drawn takes nothing.
-                let sense = match (invisible, disabled) {
-                    (true, _) => Sense::NONE,
-                    (false, true) if attrs.sense().hovers() => Sense::HOVER,
-                    (false, true) => Sense::NONE,
-                    (false, false) => attrs.sense(),
+                // Names the keyboard half alone: the pointer half below
+                // keeps routing to a disabled row, and only `invisible`
+                // takes a node out of it.
+                let keyboard_off = disabled || invisible;
+                // Disabling takes away what a widget may *do*, never what
+                // it occupies: it is still drawn, still under the
+                // pointer, and still in the way of everything it covers,
+                // so it keeps the sense it declared and goes on being
+                // routed to. Nothing comes back, because the response it
+                // reads has its interaction half cleared. Invisible is
+                // the other ruling — what is not drawn takes nothing.
+                let sense = if invisible {
+                    Sense::NONE
+                } else {
+                    attrs.sense()
                 };
-                let focusable = !cascaded_off && attrs.is_focusable();
+                // Focus is the exception: routing a press to a disabled
+                // widget absorbs it, but *focusing* one would put the
+                // keyboard somewhere that answers no key.
+                let focusable = !keyboard_off && attrs.is_focusable();
                 if sense != Sense::NONE || focusable {
                     sink.hits.push(HitRow {
                         rect: visible_rect,
                         widget_id: widget_ids[iu],
                         sense,
                         focusable,
+                        disabled,
                     });
                 }
                 // A scope in a disabled or invisible subtree owns
-                // nothing, the same rule that nulls `sense` above.
-                let filter = if cascaded_off {
+                // nothing, the same rule `focusable` follows: a key has
+                // nowhere to go there.
+                let filter = if keyboard_off {
                     KeyFilter::empty()
                 } else {
                     attrs.key_filter()
