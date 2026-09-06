@@ -1,7 +1,7 @@
 //! Which modifier keys are held, as a level the input state carries
 //! between events rather than an edge.
 
-/// Modifier-key state. Sent as a standalone [`InputEvent::ModifiersChanged`]
+/// Modifier-key state. Sent as a standalone `InputEvent::ModifiersChanged`
 /// whenever the held set changes; widgets read the latest snapshot from the
 /// input state.
 ///
@@ -16,8 +16,6 @@
 /// emacs-style Ctrl-A in a field). It's only ever set on macOS; on
 /// Windows/Linux the physical Ctrl *is* the primary, so it lands in
 /// `ctrl` and `mac_ctrl` stays `false`. Most code should ignore it.
-///
-/// [`InputEvent::ModifiersChanged`]: crate::InputEvent::ModifiersChanged
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct Modifiers {
     /// Either Shift key is held.

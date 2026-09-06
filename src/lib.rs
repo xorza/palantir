@@ -91,20 +91,27 @@
 
 extern crate self as palantir;
 
-// Crate-internal macros are declared at the top of the `mod.rs` that owns
-// them, above its module list. `macro_rules!` without `#[macro_export]` is
-// scoped textually, so that placement — and only that placement — hands the
-// macro to every file in that subtree and to nothing outside it. `widgets`,
-// `widgets::theme`, `shape`, `primitives`, and `primitives::brush::gradient`
-// each carry their own set on those terms. Collecting them into one shared
-// module would take `#[macro_use]` and would widen every macro's reach to the
-// whole crate, which is the property this arrangement exists to deny.
+// A macro that says something about one subsystem is declared at the top of
+// the `mod.rs` that owns it, above its module list. `macro_rules!` without
+// `#[macro_export]` is scoped textually, so that placement — and only that
+// placement — hands the macro to every file in that subtree and to nothing
+// outside it. `widgets`, `widgets::theme`, `shape`, `primitives`, and
+// `primitives::brush::gradient` each carry their own set on those terms, and
+// a second subtree wanting one of them is the sign it was filed in the wrong
+// place, not a reason to widen its reach.
+//
+// `common::flag_set` is the exception, and the only one: a bit-flag set is a
+// shape, not a fact about a subsystem, so the module carrying it is
+// `#[macro_use]` and declared first — textual scoping reaches only what comes
+// after it.
+
+#[macro_use]
+pub(crate) mod common;
 
 pub(crate) mod animation;
 pub(crate) mod app;
 #[cfg(feature = "bench")]
 pub mod bench;
-pub(crate) mod common;
 /// Accent swatches shared by the two bundled demo surfaces. Public only
 /// because the `showcase` example is a separate crate from this library
 /// and cannot reach a `pub(crate)` one; not part of the supported API.
@@ -164,6 +171,12 @@ pub mod internals {
     /// only under the feature — never in a plain `cargo test` build.
     #[cfg(feature = "internals")]
     pub use crate::host::test_gpu::{HeadlessTestGpuLease, headless_test_gpu};
+    /// The event a host feeds in. [`UiHarness`] is the only thing outside
+    /// this crate that can pass one — `Ui::on_input` is crate-private.
+    pub use crate::input::input_event::InputEvent;
+    /// The verdict [`UiHarness::on_input`] reads back, for a suite asserting
+    /// on what an event was allowed to change.
+    pub use crate::input::response::input_delta::InputDelta;
     #[cfg(feature = "internals")]
     pub use crate::text::internals::TEXT_SCALE_STEP;
     pub use crate::ui::harness::UiHarness;
@@ -307,7 +320,6 @@ pub use host::winit::{
     error::{HostDisconnected, WinitHostError},
     handle::{HostHandle, UserEvent},
 };
-pub use input::input_event::InputEvent;
 pub use input::key_class::{KeyClass, KeyFilter};
 pub use input::keyboard::key::Key;
 pub use input::keyboard::key_press::KeyPress;
@@ -318,7 +330,6 @@ pub use input::policy::{FocusPolicy, InputPolicy};
 pub use input::response::button_phase::ButtonPhase;
 pub use input::response::button_state::ButtonState;
 pub use input::response::drag::Drag;
-pub use input::response::input_delta::InputDelta;
 pub use input::response::pointer_action::PointerAction;
 pub use input::response::pointer_edge::PointerEdge;
 pub use input::response::response_state::ResponseState;

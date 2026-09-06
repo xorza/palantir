@@ -180,9 +180,15 @@ where
     /// Set the app-global presentation policy. An explicit mode unsupported by
     /// a surface falls back to its matching automatic policy.
     ///
-    /// Naming a [`wgpu::PresentMode`] means depending on wgpu directly, at a
-    /// version matching the one palantir links. [`Self::vsync`] covers the
-    /// common case without that.
+    /// The escape hatch for a mode [`Vsync`] cannot name — `Mailbox`,
+    /// `Immediate`, `FifoRelaxed`. Naming a [`wgpu::PresentMode`] means
+    /// depending on wgpu directly, at a version matching the one palantir
+    /// links, so [`Self::vsync`] covers the common case without that.
+    ///
+    /// **One slot, written by both.** This and [`Self::vsync`] set the same
+    /// field, so the later call in the chain is the one that survives —
+    /// `.present_mode(Mailbox).vsync(Vsync::On)` starts on `AutoVsync`, not
+    /// on `Mailbox`.
     pub fn present_mode(mut self, mode: wgpu::PresentMode) -> Self {
         self.config.present_mode = mode;
         self
@@ -195,6 +201,9 @@ where
     /// Prefer this over asking for the same thing from the first frame: set
     /// here it reaches the *initial* swapchain, where the runtime request
     /// would build one swapchain and immediately replace it.
+    ///
+    /// Writes the same field [`Self::present_mode`] does, so the later call
+    /// in the chain wins.
     pub fn vsync(mut self, vsync: Vsync) -> Self {
         self.config.present_mode = gpu::present_mode(vsync);
         self

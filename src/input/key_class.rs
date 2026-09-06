@@ -6,8 +6,6 @@
 //! scope declares which kinds it takes via [`KeyFilter`], so a focused
 //! editor can own `Ctrl+Z` while `Ctrl+S` walks past it to the app.
 
-use bitflags::bitflags;
-
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::key_press::KeyPress;
 
@@ -124,15 +122,13 @@ impl KeyClass {
     }
 }
 
-bitflags! {
+flag_set! {
     /// The key classes a scope takes while it is on the active path.
     ///
     /// A press walks the active scope path deepest-first and is granted
     /// to the first scope whose filter contains its [`KeyClass`]; scopes
     /// further out never see it.
-    #[repr(transparent)]
-    #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
-    pub struct KeyFilter: u8 {
+    pub struct KeyFilter {
         const TEXT   = 1 << 0;
         const EDIT   = 1 << 1;
         const MOTION = 1 << 2;

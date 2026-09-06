@@ -6,8 +6,8 @@
 //! wheel/touchpad/pinch deltas), [`PointerAction`](crate::PointerAction) /
 //! [`PointerEdge`](crate::PointerEdge) (the same frame collated the other
 //! way about — what the pointer did, widget by widget, rather than what
-//! one widget saw), and [`InputDelta`](crate::InputDelta) (the repaint
-//! hint `Ui::on_input` returns).
+//! one widget saw), and `InputDelta` (the repaint hint `Ui::on_input`
+//! returns).
 //!
 //! These are pure outputs — they never reference the
 //! [`InputState`](crate::input::input_state::InputState) machine that
