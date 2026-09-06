@@ -35,14 +35,14 @@ fn freshly_disabled_subtree_masks_stale_interactions() {
     run(&mut h, false);
     h.move_to(Vec2::new(10.0, 10.0));
     let enabled = run(&mut h, false);
-    assert!(enabled.hovered, "sanity: pointer hovers the button");
+    assert!(enabled.hovered(), "sanity: pointer hovers the button");
     assert!(!enabled.disabled);
     // Disable frame: stale cascade still routes the hover; the read
     // must mask it.
     let disabled = run(&mut h, true);
     assert!(disabled.disabled, "ancestor-disabled ORs in lag-free");
     assert!(
-        !disabled.hovered,
+        !disabled.hovered(),
         "interactions must mask on the disable frame"
     );
 

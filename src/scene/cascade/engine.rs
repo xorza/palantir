@@ -478,10 +478,16 @@ impl CascadeEngine {
             if let Some(sink) = sink.as_mut() {
                 let layer = sink.layer;
                 let cascaded_off = disabled || invisible;
-                let sense = if cascaded_off {
-                    Sense::NONE
-                } else {
-                    attrs.sense()
+                // A disabled widget keeps the hover it would have had and
+                // nothing else: it is still drawn and still under the
+                // pointer, which a tooltip explaining *why* it is
+                // disabled has to be able to ask. Invisible is the other
+                // ruling — what is not drawn takes nothing.
+                let sense = match (invisible, disabled) {
+                    (true, _) => Sense::NONE,
+                    (false, true) if attrs.sense().hovers() => Sense::HOVER,
+                    (false, true) => Sense::NONE,
+                    (false, false) => attrs.sense(),
                 };
                 let focusable = !cascaded_off && attrs.is_focusable();
                 if sense != Sense::NONE || focusable {

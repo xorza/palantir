@@ -8,7 +8,6 @@ Scope: `.` — production code across the frame pipeline, layout, input, text, r
 
 ## Widgets use response data that cannot represent the interaction they offer
 
-- [ ] **Medium — show_when_disabled cannot enable tooltips for ordinary disabled widgets.** [Tooltip::show](/home/xxorza/Projects/palantir/src/widgets/tooltip/mod.rs:154) requires `snapshot.state.hovered` even when the option is enabled. [Cascade](/home/xxorza/Projects/palantir/src/scene/cascade/engine.rs:476) removes disabled nodes from hover sensing, so their ordinary responses cannot satisfy that condition. Reproduced with a disabled button, pointer inside its rectangle, zero tooltip delay, and `.show_when_disabled(true)`: no bubble is recorded. The input/public response contract needs an observation path for disabled hover that does not enable the disabled widget's actions.
 
 ## Built-in widgets depend on capabilities unavailable through the public API
 

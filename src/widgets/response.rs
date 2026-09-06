@@ -14,7 +14,7 @@ use std::cell::OnceCell;
 ///
 /// There is **no accessor surface of its own**: `Response` derefs to
 /// [`ResponseState`], so everything reads exactly like the state —
-/// `r.hovered`, `r.pressed()`, `r.left.clicked()`,
+/// `r.hovered()`, `r.pressed()`, `r.left.clicked()`,
 /// `r.left.drag.delta()`, `r.scroll.pixels`. One API, defined once.
 /// Deref-copy (`*r`) hands out the owned `Copy` state.
 ///
@@ -34,7 +34,7 @@ pub struct Response<'a> {
     ui: &'a Ui,
     /// `OnceCell` so `deref` can lend `&ResponseState` out of the
     /// lazily-filled cache. The state survives later reads — a
-    /// `Tooltip` / `Scroll` body that asks for `hovered`, `pressed()`,
+    /// `Tooltip` / `Scroll` body that asks for `hovered()`, `pressed()`,
     /// and `drag_delta()` in sequence pays for exactly one
     /// `response_for` probe.
     cached: OnceCell<ResponseState>,

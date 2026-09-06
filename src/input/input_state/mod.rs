@@ -862,9 +862,10 @@ impl InputState {
 
         let me_under_pointer = self.hovered == Some(id);
         let left_press = self.capture(PointerButton::Left).press;
-        // Hover is left-capture-gated: while some *other* widget holds
-        // the left press, nothing else reads hovered.
-        state.hovered = me_under_pointer && left_press.is_none_or(|p| p.target == id);
+        // Both are left-capture-gated: while some *other* widget holds
+        // the left press, the pointer belongs to that gesture and no one
+        // else is under it.
+        state.pointer_over = me_under_pointer && left_press.is_none_or(|p| p.target == id);
 
         // One uniform slice per button. Phase priority mirrors the
         // capture: a live press is `Down` (its `fresh` edge) or

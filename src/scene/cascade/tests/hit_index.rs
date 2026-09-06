@@ -55,25 +55,30 @@ fn hits_track_only_sensing_or_focusable_rows_in_paint_order() {
     });
 
     // `hits` is interactive-rows-only, in paint order, and carries its
-    // own geometry — so identity is all that needs asserting here.
+    // own geometry — so identity is all that needs asserting here. The
+    // disabled row is in it: disabling takes away what a widget may do,
+    // not the fact that the pointer rests on it.
     assert_eq!(
         h.ui.cascade()
             .hits
             .iter()
             .map(|r| r.widget_id)
             .collect::<Vec<_>>(),
-        [hover, focus, popup_scroll],
+        [hover, focus, disabled, popup_scroll],
     );
     let pos = Vec2::splat(50.0);
-    assert_eq!(h.ui.cascade().hit_test(pos, Sense::hovers), Some(hover),);
+    // Painted last of the three that hover, so the disabled one takes
+    // the hover — and keeps `Sense::CLICK` off, so the press below finds
+    // nothing to click.
+    assert_eq!(h.ui.cascade().hit_test(pos, Sense::hovers), Some(disabled));
     assert_eq!(h.ui.cascade().hit_test(pos, Sense::clicks), None);
     // One walk must agree with the two separate filters above it: the
     // press path resolves both from a single scan.
     let press = h.ui.cascade().hit_test_press(pos);
-    assert_eq!(press.focus, Some(focus));
+    assert_eq!(press.focus, Some(focus), "a disabled row is not focusable");
     assert_eq!(press.click, None);
     let targets = h.ui.cascade().hit_test_targets(pos);
-    assert_eq!(targets.hover, Some(hover));
+    assert_eq!(targets.hover, Some(disabled));
     assert_eq!(targets.scroll, Some(popup_scroll));
     assert_eq!(targets.pinch, None);
 

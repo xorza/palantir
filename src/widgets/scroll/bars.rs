@@ -104,7 +104,7 @@ impl BarAxis {
 
         let fill = if self.thumb.left.drag.delta().is_some() || self.thumb.pressed() {
             theme.thumb_active
-        } else if self.thumb.hovered {
+        } else if self.thumb.hovered() {
             theme.thumb_hovered
         } else {
             theme.thumb
