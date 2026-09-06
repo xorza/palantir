@@ -142,9 +142,10 @@ impl Serialize for AnimSpec {
 }
 
 /// Validating, so a hand-written impl rather than `#[serde(transparent)]`:
-/// a theme file is untrusted input, and the constructors' own
-/// [`DURATION_ERROR`] / [`SPRING_ERROR`] contracts have to hold for a
-/// spec that arrived over the wire too.
+/// a theme file is untrusted input, and the bounds [`AnimSpec::duration`]
+/// and [`AnimSpec::spring`] assert on have to hold for a spec that arrived
+/// over the wire too. Bad data is an `Err` here rather than the panic those
+/// two raise.
 impl<'de> Deserialize<'de> for AnimSpec {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
