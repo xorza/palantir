@@ -64,8 +64,7 @@ Measured via `perf stat`, pinned to one core; the per-frame counts are a
 differential between two measurement windows, so process startup cancels
 out.
 
-The build sets `-C target-feature=+f16c` (see [Recommended build
-flag](#recommended-build-flag)), worth ~6% of the CPU figures above.
+The build sets `-C target-feature=+f16c` (see [Recommended build flag](#recommended-build-flag)), worth ~6% of the CPU figures above.
 
 ---
 
@@ -233,14 +232,12 @@ for a tour of every widget:
 cargo run --release --features showcase --example showcase
 ```
 
-The authoring surface lives in `palantir::widget` — the node, the paint
-primitives, and the text and animation plumbing a widget is built from. The
-crate root is what an application types; nothing in `widget` is needed to
-compose the widgets Palantir ships. To author your own from it, see
-[`examples/custom_widget.rs`](https://github.com/xorza/palantir/blob/master/examples/custom_widget.rs) — a `Stepper`
-built from `widget::Widget` + `Configure`, `Widget::resolve` /
-`Widget::record` / `Ui::add_shape` / `Ui::response_for`, with nothing reaching
-into crate internals:
+Widget authoring lives in `palantir::widget`. The crate root is what an
+application types; nothing in `widget` is needed to compose the widgets
+Palantir ships. To write your own, see
+[`examples/custom_widget.rs`](https://github.com/xorza/palantir/blob/master/examples/custom_widget.rs) — a
+`Stepper` built entirely against the published API, reaching into no crate
+internals:
 
 ```sh
 cargo run --example custom_widget
