@@ -59,7 +59,7 @@ fn content_growth_and_shrink_reposition_without_input_or_settling() {
         id: trigger_id,
         state: ResponseState {
             rect: Some(trigger),
-            hovered: true,
+            pointer_over: true,
             ..ResponseState::default()
         },
     };
@@ -143,7 +143,7 @@ fn configure_reaches_the_bubble_and_explicit_id_beats_the_derived_one() {
         id: trigger_id,
         state: ResponseState {
             rect: Some(Rect::new(40.0, 40.0, 40.0, 24.0)),
-            hovered: true,
+            pointer_over: true,
             ..ResponseState::default()
         },
     };
@@ -194,7 +194,7 @@ fn visible_tooltip_at(trigger_x: f32, text: &'static str) -> UiHarness {
         id: trigger_id,
         state: ResponseState {
             rect: Some(Rect::new(trigger_x, 40.0, 40.0, 24.0)),
-            hovered: true,
+            pointer_over: true,
             ..ResponseState::default()
         },
     };
@@ -254,7 +254,7 @@ fn tooltip_delay_keeps_subsecond_precision_after_long_uptime() {
         id: trigger_id,
         state: ResponseState {
             rect: Some(Rect::new(40.0, 40.0, 40.0, 24.0)),
-            hovered: true,
+            pointer_over: true,
             ..ResponseState::default()
         },
     };
@@ -469,12 +469,12 @@ fn hover_clears_after_tooltip_visible() {
     t += 0.1;
     record_at_secs(&mut h, t, &mut captured);
 
-    let hovered = h.ui.response_for(trigger_id).hovered;
+    let pointer_over = h.ui.response_for(trigger_id).pointer_over;
     let state =
         h.ui.try_state::<TooltipState>(trigger_id)
             .copied()
             .unwrap_or_default();
-    assert!(!hovered, "trigger must not be hovered after move-away");
+    assert!(!pointer_over, "the pointer left the trigger");
     assert!(!state.visible, "tooltip must hide after move-away");
 }
 
@@ -564,4 +564,59 @@ fn layer_below_current_scope_panics() {
             ui.layer(Layer::Popup).show(|_ui| {});
         });
     });
+}
+
+/// A disabled trigger is exactly when the user most wants to be told
+/// *why*, so `show_when_disabled` has to reach one — which needs the
+/// pointer to still be observed over a widget that can do nothing with
+/// it. The flag stays off by default, so the same fixture without it
+/// shows nothing.
+#[test]
+fn show_when_disabled_reaches_a_disabled_trigger() {
+    let visible_after_hover = |allow: bool| {
+        let mut h = UiHarness::new(SURFACE);
+        let trigger_id = WidgetId::from_hash("disabled-trigger");
+        let record = |h: &mut UiHarness, secs: f32| {
+            h.at(Duration::from_secs_f32(secs)).frame(|ui| {
+                Panel::vstack()
+                    .id(WidgetId::from_hash("root"))
+                    .size((Sizing::FILL, Sizing::FILL))
+                    .show(ui, |ui| {
+                        let r = Button::new()
+                            .id(trigger_id)
+                            .label("save")
+                            .disabled(true)
+                            .show(ui)
+                            .snapshot();
+                        assert!(r.state.disabled, "fixture: the trigger is disabled");
+                        Tooltip::on(&r)
+                            .label("nothing to save yet")
+                            .show_when_disabled(allow)
+                            .delay(Duration::from_millis(300))
+                            .show(ui);
+                    });
+            });
+        };
+
+        record(&mut h, 0.0);
+        let mut t = 0.0_f32;
+        for _ in 0..10 {
+            t += 0.1;
+            h.move_onto(trigger_id);
+            record(&mut h, t);
+        }
+        h.ui.try_state::<TooltipState>(trigger_id)
+            .copied()
+            .unwrap_or_default()
+            .visible
+    };
+
+    assert!(
+        visible_after_hover(true),
+        "the flag reaches a disabled trigger"
+    );
+    assert!(
+        !visible_after_hover(false),
+        "and off by default it does not"
+    );
 }

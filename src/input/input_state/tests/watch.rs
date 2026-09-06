@@ -270,7 +270,7 @@ fn pointer_local_read_keeps_hover_local_indicator_reactive() {
     let response = h.ui.response_for(id);
     let layout_rect = response.layout_rect.expect("indicator arranged");
     let origin = response.transform.apply_point(layout_rect.min);
-    assert!(!response.hovered, "the indicator surface is inert");
+    assert!(!response.hovered(), "the indicator surface is inert");
 
     for expected in [Vec2::new(20.0, 25.0), Vec2::new(70.0, 60.0)] {
         let delta = h.move_to(origin + expected);

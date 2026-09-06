@@ -95,7 +95,7 @@ fn folding_disabled_in_drops_the_interaction_half_at_every_fold() {
         rect: Some(Rect::new(1.0, 2.0, 3.0, 4.0)),
         layout_rect: Some(Rect::new(5.0, 6.0, 7.0, 8.0)),
         pointer_local: Some(Vec2::new(9.0, 10.0)),
-        hovered: true,
+        pointer_over: true,
         focused: true,
         left: ButtonState::new(ButtonPhase::Up { click: Some(1) }, Drag::None),
         scroll: ScrollDelta {
@@ -109,7 +109,7 @@ fn folding_disabled_in_drops_the_interaction_half_at_every_fold() {
     let mut kept = busy;
     kept.merge_disabled(false);
     assert!(!kept.disabled);
-    assert!(kept.hovered && kept.left.clicked());
+    assert!(kept.hovered() && kept.left.clicked());
 
     // The cascade's fold clears, and the node's later fold finds nothing
     // left to clear — which is the point: the order of the three sources
@@ -118,7 +118,7 @@ fn folding_disabled_in_drops_the_interaction_half_at_every_fold() {
     off.merge_disabled(true);
     off.merge_disabled(false);
     assert!(off.disabled, "a later `false` cannot re-enable it");
-    assert!(!off.hovered, "the hover goes with it");
+    assert!(!off.hovered(), "the hover goes with it");
     assert!(!off.left.clicked(), "and the click");
     assert_eq!(off.left, ButtonState::default());
     assert_eq!(off.right, ButtonState::default());
@@ -131,6 +131,11 @@ fn folding_disabled_in_drops_the_interaction_half_at_every_fold() {
     assert_eq!(off.layout_rect, busy.layout_rect);
     assert_eq!(off.pointer_local, busy.pointer_local);
     assert!(off.focused);
+    assert!(
+        off.pointer_over,
+        "the observation is geometry too — a tooltip explaining the \
+         disable needs it",
+    );
 }
 
 #[test]
@@ -277,7 +282,7 @@ fn quiescent_frame_keeps_geometry_defaults_interaction() {
     assert_eq!(rect.size.h, 40.0);
     assert!(r.layout_rect.is_some());
 
-    assert!(!r.hovered);
+    assert!(!r.hovered());
     assert!(!r.pressed());
     assert!(!r.left.clicked());
     assert!(!r.right.clicked());
@@ -308,7 +313,7 @@ fn non_quiescent_frame_computes_interaction() {
     let r = h.ui.response_for(id);
     let layout_rect = r.layout_rect.expect("arranged layout rect present");
     assert!(
-        r.hovered,
+        r.hovered(),
         "pointer resting inside the button rect hovers it"
     );
     assert_eq!(

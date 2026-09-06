@@ -17,8 +17,8 @@ use crate::widgets::theme::widget_look::animated_look::AnimatedLook;
 #[test]
 fn button_theme_pick_precedence() {
     let theme = ButtonTheme::default();
-    let state = |hovered, pressed: bool, disabled| ResponseState {
-        hovered,
+    let state = |pointer_over, pressed: bool, disabled| ResponseState {
+        pointer_over,
         left: ButtonState {
             phase: if pressed {
                 ButtonPhase::Held
@@ -60,10 +60,10 @@ fn button_theme_pick_precedence() {
 #[test]
 fn text_edit_theme_pick_precedence() {
     let theme = TextEditTheme::default();
-    let state = |focused, hovered, disabled| ResponseState {
+    let state = |focused, pointer_over, disabled| ResponseState {
         disabled,
         focused,
-        hovered,
+        pointer_over,
         ..ResponseState::default()
     };
     let cases: &[(ResponseState, &WidgetLook, &str)] = &[
@@ -104,8 +104,8 @@ fn text_edit_theme_pick_precedence() {
 #[test]
 fn toggle_theme_pick_selects_pack_then_state() {
     let theme = ToggleTheme::checkbox(&Palette::DEFAULT);
-    let state = |hovered, pressed: bool, disabled| ResponseState {
-        hovered,
+    let state = |pointer_over, pressed: bool, disabled| ResponseState {
+        pointer_over,
         left: ButtonState {
             phase: if pressed {
                 ButtonPhase::Held

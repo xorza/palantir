@@ -33,7 +33,7 @@ impl StatefulLook {
             &self.disabled
         } else if active {
             &self.active
-        } else if state.hovered {
+        } else if state.hovered() {
             &self.hovered
         } else {
             &self.normal

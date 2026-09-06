@@ -151,13 +151,16 @@ impl<'a> Tooltip<'a> {
         let trigger_id = self.snapshot.id;
         let bubble_id = trigger_id.with("bubble");
 
-        let trigger_hovered = self.snapshot.state.hovered;
+        // The observation, not the reaction: the two agree for an enabled
+        // trigger, and a disabled one is never hovered — which is the
+        // trigger `show_when_disabled` exists for.
+        let pointer_over = self.snapshot.state.pointer_over;
         let trigger_disabled = self.snapshot.state.disabled;
         let trigger_rect = self.snapshot.state.rect;
         // An empty label is inactive rather than an empty bubble, and
         // inactive early enough that the hover timer never arms and no
         // wake is queued for a tooltip that could never appear.
-        let active_trigger = trigger_hovered
+        let active_trigger = pointer_over
             && !self.label.is_empty()
             && (!trigger_disabled || self.show_when_disabled);
 

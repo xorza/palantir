@@ -86,7 +86,7 @@ impl<'a> Stepper<'a> {
 
         // 2) Open the container, record its three children, and hand back
         //    a Response for the container so callers can chain
-        //    `.hovered` etc.; the `&mut i32` mutation is the real effect.
+        //    `.hovered()` etc.; the `&mut i32` mutation is the real effect.
         //    `show` is `record` plus that response — recording consumes
         //    the `Widget`, which is what stops a second record.
         widget
@@ -121,7 +121,7 @@ enum Glyph {
 fn step_button(ui: &mut Ui, id: WidgetId, state: ResponseState, glyph: Glyph) {
     let fill = if state.pressed() {
         RgbaF32::from_srgba(SrgbaU8::rgb(0x3a, 0x3a, 0x52))
-    } else if state.hovered {
+    } else if state.hovered() {
         RgbaF32::from_srgba(SrgbaU8::rgb(0x33, 0x33, 0x48))
     } else {
         RgbaF32::from_srgba(SrgbaU8::rgb(0x26, 0x26, 0x3a))

@@ -167,7 +167,7 @@ impl<'a> Splitter<'a> {
 
         let bar_fill = if divider.left.drag.dragging() {
             Some(active_color)
-        } else if divider.hovered && !response.disabled {
+        } else if divider.hovered() && !response.disabled {
             Some(hovered_color)
         } else {
             None

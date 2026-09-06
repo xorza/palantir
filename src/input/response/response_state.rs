@@ -50,9 +50,17 @@ pub struct ResponseState {
     /// is off-surface or the widget didn't arrange. This remains relative
     /// to the full widget when ancestor clipping trims [`Self::rect`].
     pub pointer_local: Option<Vec2>,
-    /// Pointer is over this widget's visible rect. Read from the previous
-    /// frame's cascade, so it lags input by one frame.
-    pub hovered: bool,
+    /// Pointer is over this widget's visible rect, and nothing above it
+    /// took the pointer first. Read from the previous frame's cascade,
+    /// so it lags input by one frame.
+    ///
+    /// **The observation, where [`Self::hovered`] is the reaction.** A
+    /// disabled widget still covers what is behind it and the pointer
+    /// still rests on it, which is what a tooltip explaining *why* it is
+    /// disabled needs to know — so this survives the disabled fold and
+    /// [`Self::hovered`] does not. For an enabled widget the two answer
+    /// alike.
+    pub pointer_over: bool,
     /// Disabled — this widget *or* any ancestor. The cascaded half is
     /// one frame stale; the widget's own flag is folded in on top by the
     /// time it reads this. `true` implies the whole interaction half is
@@ -90,10 +98,12 @@ impl ResponseState {
     /// last: the interaction half is already gone when a later source
     /// arrives, and a later `false` cannot re-enable anything.
     ///
-    /// A disabled widget can never be under the pointer in steady state —
-    /// the cascade gives disabled entries `Sense::NONE`, so they leave
-    /// the hit index — and this makes the transition frame agree with
-    /// the frames on either side of it.
+    /// [`Self::pointer_over`] is not part of that half and stays: the
+    /// cascade keeps a disabled widget in the hit index for hover alone,
+    /// because it still covers what is behind it. What goes is
+    /// everything the widget was allowed to *do*, and [`Self::hovered`]
+    /// goes with it by reading [`Self::disabled`] rather than by being
+    /// cleared here.
     #[inline]
     pub(crate) fn merge_disabled(&mut self, disabled: bool) {
         self.disabled |= disabled;
@@ -111,14 +121,26 @@ impl ResponseState {
     /// answering — so the same question had two answers depending on
     /// which one a caller asked. `pointer_local` is geometry ("where is
     /// the cursor relative to me"), not something the widget was allowed
-    /// to do, so it stays with `rect` and `transform`.
+    /// to do, so it stays with `rect` and `transform` —
+    /// [`Self::pointer_over`] with them, for the same reason.
     #[inline]
     fn clear_interaction(&mut self) {
-        self.hovered = false;
         self.left = ButtonState::default();
         self.right = ButtonState::default();
         self.middle = ButtonState::default();
         self.scroll = ScrollDelta::default();
+    }
+
+    /// Pointer is over this widget and this widget can react to it.
+    ///
+    /// [`Self::pointer_over`] minus every widget that cannot act: a
+    /// disabled widget is never hovered. Derived rather than stored, so
+    /// the two can never disagree — a widget disabled part-way through
+    /// the frame stops reading as hovered at the same moment, whichever
+    /// of the three sources of `disabled` said so.
+    #[inline]
+    pub fn hovered(&self) -> bool {
+        self.pointer_over && !self.disabled
     }
 
     /// One-frame edge: a press+release landed on the widget on **any**
@@ -201,7 +223,7 @@ impl ResponseState {
     /// `state.left.drag.delta()`, `state.left.double_clicked()`.
     #[inline]
     pub fn pressed(&self) -> bool {
-        self.left.held() && self.hovered
+        self.left.held() && self.hovered()
     }
 
     /// Where the primary button's gesture sits across the widget, as a
