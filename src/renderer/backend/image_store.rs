@@ -1,6 +1,8 @@
 //! The GPU side of registered images: their textures and bind groups,
 //! created, rewritten and freed the moment the registry asks.
 
+use crate::primitives::color::RgbaF32;
+use crate::primitives::color::srgba_u8::SrgbaU8;
 use crate::primitives::image::Image;
 use crate::primitives::texture_id::TextureId;
 use crate::renderer::backend::image_binding::ImageBinding;
@@ -9,6 +11,7 @@ use crate::renderer::image_registry::image_store::ImageStore;
 use glam::UVec2;
 use rustc_hash::FxHashMap;
 use std::cell::{Ref, RefCell};
+use std::sync::OnceLock;
 
 /// The [`ImageStore`] a host's registry writes through and its backend
 /// draws from. The two hold one `Rc` between them, which is why the map
@@ -27,6 +30,10 @@ pub(super) struct WgpuImageStore {
     /// composes over its layout.
     binding: ImageBinding,
     textures: RefCell<FxHashMap<TextureId, ImageTexture>>,
+    /// Where [`premultiply_into`] stages a write, kept so a refilled
+    /// image allocates once rather than once per update. An image with
+    /// no transparency never reaches it — see [`Self::write`].
+    staged: RefCell<Vec<SrgbaU8>>,
 }
 
 #[derive(Debug)]
@@ -42,6 +49,7 @@ impl WgpuImageStore {
             device,
             queue,
             textures: RefCell::default(),
+            staged: RefCell::default(),
         }
     }
 
@@ -97,18 +105,122 @@ impl ImageStore for WgpuImageStore {
             image.size,
             "a write matches the texture it lands in",
         );
-        TextureRegion {
+        let region = TextureRegion {
             texture: &entry.texture,
             first_row: 0,
             size: image.size,
             bytes_per_row: image.size.x * 4,
+        };
+        // An image with nothing transparent in it is premultiplied
+        // already — every colour is scaled by one — so it goes as it
+        // stands, for a read the write pays anyway rather than a second
+        // buffer the size of the image. A photograph, a screenshot and
+        // an opaque generated surface all take that path: what pays is
+        // what could have had a fringe.
+        let texels = image.texels();
+        if texels.iter().all(|texel| texel.a == u8::MAX) {
+            region.write(&self.queue, &image.pixels);
+            return;
         }
-        .write(&self.queue, &image.pixels);
+        let mut staged = self.staged.borrow_mut();
+        premultiply_into(texels, &mut staged);
+        region.write(&self.queue, bytemuck::cast_slice(&staged));
     }
 
     fn free(&self, id: TextureId) {
         self.textures.borrow_mut().remove(&id);
     }
+}
+
+/// `texels` with every colour scaled by its own alpha, still sRGB-encoded
+/// — what the texture holds, and what an [`Image`] does not.
+///
+/// **The filter runs before the shader does**, so the texels it blends
+/// have to carry their own coverage already: halfway between opaque red
+/// and transparent black, straight colour averages to full red at half
+/// alpha, and the shader's multiply then leaves a quarter of the red the
+/// edge covers. That is a dark fringe around every soft edge, and a
+/// coloured one wherever the clear texels carry a colour. The image
+/// shader's header states the contract this satisfies.
+///
+/// The scale happens in linear light, because that is what the sRGB
+/// texture decodes to and what the filter blends.
+///
+/// **A texture cannot follow how it is sampled.** The error needs a
+/// blending filter *and* neighbours whose alpha differs, and only the
+/// second is a property of the image — one texture serves every draw of
+/// it, magnified here and snapped to its texels there. So the caller
+/// tests the alpha, and this converts whatever it is handed. The raster
+/// atlases are the textures that *can* answer the first, and they answer
+/// it the other way: one texel per pixel with `Nearest`, and straight
+/// alpha kept, which is what lets the icon rasterizer hand them
+/// demultiplied pixels.
+///
+/// Paid once per upload rather than per fragment, which suits an image
+/// registered once and sampled for as long as it is shown. An
+/// application refilling one every frame pays it every frame.
+fn premultiply_into(texels: &[SrgbaU8], out: &mut Vec<SrgbaU8>) {
+    let table = premultiplied_bytes();
+    out.clear();
+    out.reserve_exact(texels.len());
+    out.extend(texels.iter().map(|texel| {
+        let row = &table[texel.a as usize];
+        SrgbaU8 {
+            r: row[texel.r as usize],
+            g: row[texel.g as usize],
+            b: row[texel.b as usize],
+            a: texel.a,
+        }
+    }));
+}
+
+/// `encode(decode(value) · alpha)` for every byte pair a texel can hold,
+/// indexed `[alpha][value]`.
+///
+/// **The arithmetic is what costs, not the pass.** One entry is a cubic
+/// sRGB decode and an encode that seeds with `powf` and then runs three
+/// Newton steps — around a hundred nanoseconds, per channel, per texel. A
+/// soft-edged image is mostly part-transparent texels, so computing it
+/// per texel would spend that three times over on every one of them and
+/// stall the frame that registered the image. Two lookups instead, and
+/// the pass over the buffer is what is left.
+///
+/// 64 KiB, built on the first upload and kept for the process. The build
+/// spends the arithmetic 65536 times, which is less than one soft image
+/// of any size would have spent.
+fn premultiplied_bytes() -> &'static [[u8; 256]; 256] {
+    static TABLE: OnceLock<Box<[[u8; 256]; 256]>> = OnceLock::new();
+    TABLE.get_or_init(|| {
+        let decoded: [f32; 256] = std::array::from_fn(|value| {
+            RgbaF32::from(SrgbaU8 {
+                r: value as u8,
+                g: 0,
+                b: 0,
+                a: u8::MAX,
+            })
+            .r
+        });
+        let mut table = Box::new([[0u8; 256]; 256]);
+        for (alpha, row) in table.iter_mut().enumerate() {
+            let coverage = alpha as f32 / 255.0;
+            for (value, out) in row.iter_mut().enumerate() {
+                *out = RgbaF32 {
+                    r: decoded[value] * coverage,
+                    g: 0.0,
+                    b: 0.0,
+                    a: 1.0,
+                }
+                .to_srgba_u8()
+                .r;
+            }
+        }
+        // Full coverage scales by one, and an opaque image must reach the
+        // GPU as the bytes it was handed. The decode and encode either
+        // side of that multiply round-trip to within one LSB rather than
+        // exactly, so the identity is stated instead of computed.
+        table[usize::from(u8::MAX)] = std::array::from_fn(|value| value as u8);
+        table
+    })
 }
 
 #[cfg(any(test, feature = "internals"))]
@@ -127,14 +239,51 @@ pub(crate) mod test_support {
 #[cfg(all(test, feature = "internals"))]
 mod tests {
     use crate::host::test_gpu;
+    use crate::primitives::color::RgbaF32;
     use crate::primitives::color::srgba_u8::SrgbaU8;
     use crate::primitives::image::Image;
     use crate::primitives::texture_id::TextureId;
-    use crate::renderer::backend::image_store::WgpuImageStore;
+    use crate::renderer::backend::image_store::{WgpuImageStore, premultiply_into};
     use crate::renderer::image_registry::ImageRegistry;
     use crate::renderer::image_registry::image_handle::ImageHandle;
     use glam::UVec2;
     use std::rc::Rc;
+
+    /// The table stands in for the arithmetic, so it answers what the
+    /// arithmetic answers — over every byte pair a texel can hold, not a
+    /// sample of them. Full coverage is the one deliberate difference:
+    /// it is the identity, where the round trip through the transfer
+    /// functions could drift a bit.
+    #[test]
+    fn the_premultiply_table_answers_for_the_arithmetic() {
+        let texels: Vec<SrgbaU8> = (0..=u8::MAX)
+            .flat_map(|a| {
+                (0..=u8::MAX).map(move |v| SrgbaU8 {
+                    r: v,
+                    g: v,
+                    b: v,
+                    a,
+                })
+            })
+            .collect();
+        let mut out = Vec::new();
+        premultiply_into(&texels, &mut out);
+
+        for (texel, got) in texels.iter().zip(&out) {
+            let straight = RgbaF32::from(*texel);
+            let want = match texel.a {
+                u8::MAX => *texel,
+                _ => RgbaF32 {
+                    r: straight.r * straight.a,
+                    g: straight.g * straight.a,
+                    b: straight.b * straight.a,
+                    a: straight.a,
+                }
+                .to_srgba_u8(),
+            };
+            assert_eq!(*got, want, "premultiplied {texel:?}");
+        }
+    }
 
     #[test]
     fn a_gpu_texture_lives_exactly_as_long_as_its_handle() {

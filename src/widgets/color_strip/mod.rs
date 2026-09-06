@@ -33,7 +33,7 @@ use glam::Vec2;
 /// turns a corner at each primary and secondary, and a gradient chording
 /// across those corners misses by up to 73/255.
 ///
-/// The alpha bar carries **straight alpha** in its texture and lets the GPU
+/// The alpha bar writes **real alpha** into its image and lets the GPU
 /// composite it over the checker behind — the same blend the colour will get
 /// wherever it is used, rather than a CPU imitation of it.
 #[derive(Debug)]
