@@ -84,29 +84,10 @@ https://github.com/user-attachments/assets/0a403745-b841-4e17-bee9-fdbaad43c786
 - **Immediate-mode authoring**, builder-style widgets that read like prose.
 - **WPF-contract two-pass layout** (measure → arrange) with flex-shrink
   sizing and a min-content floor.
-- **wgpu rendering** with premultiplied-alpha linear-RGB throughout;
-  sRGB encode happens on the swapchain.
-- **Layered recording** — `Main` / `Popup` / `Modal` / `Tooltip` / `Debug`
-  arenas painted bottom-up, hit-tested top-down.
-- **Cross-frame work-skip cache** keyed on `(WidgetId, subtree_hash,
-available_q)`; subtree hits blit last frame's measure result and skip
-  recursion.
-- **In-house text backend** on top of `cosmic-text` so the GPU upload
-  path routes through palantir's staging belt.
-- **Fonts an app brings or the OS has** — load bytes or a path, or name an
-  installed family. Weight is the numeric CSS axis, instantiated on a
-  variable face. An unmatched family falls back to the bundled default,
-  never to whatever the machine happens to have, and scanning the system at
-  all is opt-in and off-thread.
 - **SVG artwork** — icons rasterize at their exact physical size into the
   icon atlas, so they stay crisp at any scale factor and cost nothing until
   first drawn. Gradients and filters included. A single-paint icon takes a
   tint whole; a colour one keeps its palette and takes the tint's alpha.
-- **Tabs and docking** — `TabStrip` is the chip row alone: close buttons,
-  status badges, overflow, keyboard travel. `TabbedView` binds it to a
-  `&mut usize`. `DockView` walks a split tree with drag docking and *emits*
-  ops rather than mutating it, so an app routes them through its own undo
-  and validation.
 - **Headless test harness** — `UiHarness` runs the real UI with no window
   and no GPU. Click, drag, type, scroll and control the clock, then assert
   on what the frame did. See [Headless UI tests](#headless-ui-tests).
@@ -129,11 +110,14 @@ Pre-1.0 — these are known gaps, not design rejections:
 
 ## Zero per-frame allocation
 
-Steady-state frames are heap-alloc-free after warmup. Per-frame data lives
-on retained scratch (`RecordStore`, SoA columns on `Tree`, `CacheArena`)
-that reuses capacity across frames; any new per-frame `Vec::new()` /
-`HashMap` rebuild is treated as a regression and caught by the `alloc`
-bench under `benches/`.
+Steady-state frames are heap-alloc-free after warmup. Per-frame data lives on
+retained scratch that reuses capacity across frames; any new per-frame
+`Vec::new()` / `HashMap` rebuild is treated as a regression and caught by the
+`alloc` test suite under `tests/`:
+
+```sh
+cargo test --features internals --test alloc
+```
 
 ## Headless UI tests
 
@@ -201,15 +185,6 @@ either way. `-C target-cpu=x86-64-v3` implies it, plus AVX2 and FMA.
 
 ```sh
 cargo add palantir
-```
-
-To track unreleased work, depend on the repository directly — `master` moves
-and breaks, so pin a `rev` (or a `tag`) for anything you expect to build again
-tomorrow:
-
-```toml
-[dependencies]
-palantir = { git = "https://github.com/xorza/palantir", rev = "..." }
 ```
 
 The default features carry the winit host and the OS clipboard. With
