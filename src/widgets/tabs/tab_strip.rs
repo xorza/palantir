@@ -8,6 +8,7 @@ use crate::input::sense::Sense;
 use crate::input::shortcut::{Mods, Shortcut};
 use crate::layout::types::align::{Align, VAlign};
 use crate::layout::types::sizing::Sizing;
+use crate::primitives::approx::EPS;
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
@@ -41,7 +42,12 @@ pub enum TabOverflow {
     #[default]
     Scroll,
     /// [`Self::Scroll`], plus a trailing chevron listing every chip.
-    /// Recorded only while at least one chip is out of sight.
+    /// Recorded only while a chip is out of sight, whole or in part.
+    ///
+    /// A pick from that list arrives as
+    /// [`TabStripResponse::menu_picked`] — a caller that turns this on
+    /// reads that field beside [`TabStripResponse::clicked`], or the
+    /// menu closes on a choice that does nothing.
     Menu,
 }
 
@@ -51,17 +57,23 @@ pub enum TabOverflow {
 /// Every field is a one-frame edge, so a caller reads them and acts;
 /// nothing latches.
 ///
-/// Pointer and keyboard activation are reported apart. A caller that
-/// polls the chips itself one phase earlier — the dock's navigation scan
-/// does — already has the click, and acts on [`Self::keyed`] alone;
-/// everyone else takes either.
+/// Activation is reported by where it came from, because the callers do
+/// not all see the same sources. One that polls the chips itself a phase
+/// earlier — the dock's navigation scan does — already has the click,
+/// and acts on [`Self::keyed`] and [`Self::menu_picked`]; everyone else
+/// takes any of the three. A menu pick is its own field for exactly that
+/// reason: it happens inside a popup whose ids no chip scan can reach.
 #[derive(Debug)]
 pub struct TabStripResponse<'a> {
     pub response: Response<'a>,
-    /// The chip a pointer click activated.
+    /// The chip a click on the chip itself activated.
     pub clicked: Option<usize>,
     /// The chip a keyboard move activated.
     pub keyed: Option<usize>,
+    /// The chip chosen from the overflow menu — a pointer activation
+    /// like [`Self::clicked`], reported apart because it lands on a
+    /// popup entry rather than on the chip a caller can poll.
+    pub menu_picked: Option<usize>,
     /// The chip whose close button was clicked. Wins over `clicked` —
     /// the button sits inside the chip, so one press reaches both.
     pub closed: Option<usize>,
@@ -246,6 +258,7 @@ impl<'a> TabStrip<'a> {
         let StripHits {
             clicked,
             keyed,
+            menu_picked,
             closed,
             drag_started,
             drag_stopped,
@@ -254,6 +267,7 @@ impl<'a> TabStrip<'a> {
             response: Response::eager(id, ui, response),
             clicked,
             keyed,
+            menu_picked,
             closed,
             drag_started,
             drag_stopped,
@@ -273,6 +287,7 @@ impl Configure for TabStrip<'_> {
 struct StripHits {
     clicked: Option<usize>,
     keyed: Option<usize>,
+    menu_picked: Option<usize>,
     closed: Option<usize>,
     drag_started: Option<usize>,
     drag_stopped: Option<usize>,
@@ -488,12 +503,27 @@ fn overflow_menu(
     ambient: TextStyle,
     hits: &mut StripHits,
 ) {
+    // The band's rect is the window, clipped — what an ancestor cut away
+    // is not visible either.
     let Some(band) = ui.response_for(TabStrip::band_id(strip)).rect else {
         return;
     };
-    let hidden = |item: &TabItem| match ui.response_for(TabStrip::chip_id(strip, item.key)).rect {
-        Some(chip) => chip.min.x < band.min.x || chip.max().x > band.max().x,
-        None => false,
+    // The chip's rect is not, and cannot be: it is clipped to this very
+    // band, so a chip half out of sight reports as wholly inside and the
+    // chevron that would reach it never appears. The arranged rect under
+    // the chip's own transform is where the chip *would* be with nothing
+    // cutting it, which is the question. Answered at the crate's
+    // tolerance, so a chip that fills the band exactly cannot flicker
+    // the chevron on a rounding difference between two paths.
+    let hidden = |item: &TabItem| {
+        let chip = ui.response_for(TabStrip::chip_id(strip, item.key));
+        match chip.layout_rect {
+            Some(rect) => {
+                let full = chip.transform.apply_rect(rect);
+                full.min.x < band.min.x - EPS || full.max().x > band.max().x + EPS
+            }
+            None => false,
+        }
     };
     let menu_id = strip.with("overflow_menu");
     if !items.iter().any(hidden) && !ContextMenu::is_open(ui, menu_id) {
@@ -536,7 +566,7 @@ fn overflow_menu(
             picked
         });
     if let Some(slot) = picked.inner.flatten() {
-        hits.clicked = Some(slot);
+        hits.menu_picked = Some(slot);
         ContextMenu::close(ui, menu_id);
     }
 }

@@ -5,13 +5,14 @@ use glam::{UVec2, Vec2};
 
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::modifiers::Modifiers;
+use crate::layout::types::sizing::Sizing;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::Ui;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::tabs::tab_item::{TabBadge, TabItem};
-use crate::widgets::tabs::tab_strip::TabStrip;
+use crate::widgets::tabs::tab_strip::{TabOverflow, TabStrip};
 use crate::widgets::tabs::tabbed_view::{TabbedView, TabsAction};
 use crate::widgets::text::Text;
 
@@ -385,5 +386,54 @@ fn a_reorderable_view_reports_the_slot_a_drag_released_over() {
         action,
         Some(TabsAction::Reordered { from: 0, to: 3 }),
         "released past the last centre, so the target slot is the append"
+    );
+}
+
+/// The chevron has to appear while a chip is *partly* out of sight, not
+/// only once one is wholly gone — the half a reader cannot see is the
+/// half the menu exists to reach.
+///
+/// Self-calibrating, because a chip hugs its label and the theme's
+/// padding: measure the strip's chips at a width that fits them all,
+/// then cut the band to halfway through the last one. That chip then
+/// starts inside the band and ends outside it, which is the case a
+/// clipped rect cannot tell from a chip wholly inside.
+#[test]
+fn a_partly_clipped_chip_raises_the_overflow_chevron() {
+    let build = |width: f32| {
+        move |ui: &mut Ui| {
+            let items = items(ui, TabBadge::None);
+            TabStrip::new(&items)
+                .id(strip_id())
+                .selected(0)
+                .overflow(TabOverflow::Menu)
+                .size((Sizing::fixed(width), Sizing::HUG))
+                .show(ui);
+        }
+    };
+    let chevron = strip_id().with("overflow");
+    let last = TabStrip::chip_id(strip_id(), 30);
+
+    // Wide enough for all three: no chip is cut, and no chevron.
+    let mut h = UiHarness::new(SURFACE);
+    h.frame(build(SURFACE.x as f32));
+    h.frame(build(SURFACE.x as f32));
+    let whole = h.layout_rect(last).expect("the last chip arranged");
+    let strip_left = h.layout_rect(strip_id()).expect("the strip arranged").min.x;
+    assert!(
+        h.rect(chevron).is_none(),
+        "premise: nothing is hidden, so nothing offers a menu",
+    );
+
+    // Half of that chip, and no more: it starts inside the band and ends
+    // past it. Measured from the strip's own left edge, since that is
+    // what the width below is a width of.
+    let half_way = whole.min.x + whole.size.w * 0.5 - strip_left;
+    let mut h = UiHarness::new(SURFACE);
+    h.frame(build(half_way));
+    h.frame(build(half_way));
+    assert!(
+        h.rect(chevron).is_some(),
+        "a chip cut in half is a chip the strip cannot show whole",
     );
 }

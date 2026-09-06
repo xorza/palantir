@@ -186,6 +186,7 @@ impl<'a, S> TabbedView<'a, S> {
                 let TabStripResponse {
                     clicked,
                     keyed,
+                    menu_picked,
                     closed,
                     drag_stopped,
                     response: _,
@@ -197,9 +198,9 @@ impl<'a, S> TabbedView<'a, S> {
                     .style(t)
                     .show(ui);
                 StripHit {
-                    // A tabbed view owns its selection outright, so a
-                    // keyboard move and a click are the same request.
-                    clicked: clicked.or(keyed),
+                    // A tabbed view owns its selection outright, so every
+                    // way of asking for a tab is the same request.
+                    clicked: clicked.or(keyed).or(menu_picked),
                     closed,
                     drag_stopped,
                 }
