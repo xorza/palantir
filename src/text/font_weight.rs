@@ -16,14 +16,23 @@ use std::fmt;
 pub struct FontWeight(u16);
 
 impl FontWeight {
+    /// CSS 100.
     pub const THIN: Self = Self(100);
+    /// CSS 200.
     pub const EXTRA_LIGHT: Self = Self(200);
+    /// CSS 300.
     pub const LIGHT: Self = Self(300);
+    /// CSS 400 — the default a [`TextStyle`](crate::TextStyle) starts at.
     pub const REGULAR: Self = Self(400);
+    /// CSS 500.
     pub const MEDIUM: Self = Self(500);
+    /// CSS 600.
     pub const SEMI_BOLD: Self = Self(600);
+    /// CSS 700 — what [`Text::bold`](crate::Text::bold) selects.
     pub const BOLD: Self = Self(700);
+    /// CSS 800.
     pub const EXTRA_BOLD: Self = Self(800);
+    /// CSS 900.
     pub const BLACK: Self = Self(900);
 
     /// The widest value the axis holds, and the width of the key field
@@ -50,6 +59,7 @@ impl FontWeight {
         weight >= 1 && weight <= Self::MAX
     }
 
+    /// This weight as a bare number on the 1–1000 scale.
     pub const fn value(self) -> u16 {
         self.0
     }

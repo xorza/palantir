@@ -38,6 +38,8 @@ pub struct RadioButton<'a, T: PartialEq> {
 }
 
 impl<'a, T: PartialEq> RadioButton<'a, T> {
+    /// A button that writes `value` into `current` when picked, and reads
+    /// as selected while the two are equal.
     #[track_caller]
     pub fn new(current: &'a mut T, value: T) -> Self {
         Self {

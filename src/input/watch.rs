@@ -48,6 +48,7 @@ flag_set! {
 }
 
 impl PointerWake {
+    /// Watch nothing.
     pub const NONE: Self = Self::empty();
 }
 
@@ -69,6 +70,7 @@ flag_set! {
 }
 
 impl KeyboardWake {
+    /// Watch nothing.
     pub const NONE: Self = Self::empty();
 }
 
@@ -79,7 +81,7 @@ pub(super) struct Watches {
     pub(super) pointer_mask: PointerWake,
     pub(super) keyboard_mask: KeyboardWake,
     /// Specific-chord wake list. [`Shortcut`] carries platform-aware
-    /// `Mods` (Cmd↔Ctrl) + ignore-case `Char` matching — the same
+    /// `ShortcutMods` (Cmd↔Ctrl) + ignore-case `Char` matching — the same
     /// vocabulary menus / context-menus use, so watches and
     /// menu shortcuts share one type.
     pub(super) keys: Vec<Shortcut>,

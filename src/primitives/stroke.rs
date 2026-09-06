@@ -10,7 +10,12 @@ use palantir_anim_derive::Animatable;
     Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize, Animatable,
 )]
 pub struct Stroke {
+    /// Ink colour.
     pub color: RgbaF32,
+    /// Line width in logical pixels. The stroke paints *inside* the rect
+    /// it bounds, and layout folds this width into the chrome's padding,
+    /// so children sit inside the stroke without the caller subtracting
+    /// it.
     pub width: f32,
 }
 

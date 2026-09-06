@@ -4,11 +4,11 @@
 //!
 //! ## Conventions
 //!
-//! - The primary command modifier (`Mods::ctrl`) maps to the
+//! - The primary command modifier (`ShortcutMods::ctrl`) maps to the
 //!   platform's convention: **Cmd on macOS, Ctrl on Win/Linux** — one
 //!   binding fires on ⌘S on a Mac and Ctrl+S elsewhere. Raw Ctrl on
 //!   macOS is the rare case; match a `KeyPress` directly for it.
-//! - [`Mods`] is the *shortcut* vocabulary, distinct from [`Modifiers`]
+//! - [`ShortcutMods`] is the *shortcut* vocabulary, distinct from [`Modifiers`]
 //!   (the event-state vocabulary, which keeps `ctrl` and `cmd` as
 //!   separate physical keys).
 //! - [`Shortcut::matches`] compares the modifier set *exactly*: Ctrl+A
@@ -26,16 +26,16 @@ use crate::input::keyboard::modifiers::Modifiers;
 use std::fmt;
 
 /// Modifier set for declaring shortcuts. `ctrl` is the primary command
-/// key — Cmd on macOS, Ctrl on Win/Linux (see [`Mods::from_event`]);
+/// key — Cmd on macOS, Ctrl on Win/Linux (see [`ShortcutMods::from_event`]);
 /// `shift` and `alt` are literal.
 ///
 /// Distinct from event-state [`Modifiers`] on purpose: that type also
 /// carries `mac_ctrl` (the raw macOS Control), which shortcut matching
 /// must *ignore*. Comparing a `Modifiers` directly would let a held
-/// macOS Control break an otherwise-matching chord, so [`Mods`] is the
+/// macOS Control break an otherwise-matching chord, so [`ShortcutMods`] is the
 /// 3-field projection the matcher compares against.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
-pub struct Mods {
+pub struct ShortcutMods {
     /// The primary command key — Cmd on macOS, Ctrl on Windows and Linux.
     pub ctrl: bool,
     /// Shift, literally.
@@ -45,8 +45,8 @@ pub struct Mods {
 }
 
 /// The named sets are the ones the crate's own constructors reach for;
-/// any other combination is a struct literal, which is all `Mods` is.
-impl Mods {
+/// any other combination is a struct literal, which is all `ShortcutMods` is.
+impl ShortcutMods {
     /// True if this chord declares any command modifier — the same
     /// question [`Modifiers::any_command`](crate::Modifiers::any_command)
     /// asks of what is *held*, on the side that declares it. Shift alone
@@ -113,7 +113,7 @@ impl Mods {
 pub struct Shortcut {
     /// Modifier set. Matched **exactly** — `Ctrl+A` never fires on
     /// `Ctrl+Shift+A`.
-    pub mods: Mods,
+    pub mods: ShortcutMods,
     /// The key. `Char` compares ignore-case, since it arrives post-shift.
     pub key: Key,
 }
@@ -121,7 +121,7 @@ pub struct Shortcut {
 impl Shortcut {
     /// Any modifier set plus any key. The other constructors are shorthands
     /// over this one.
-    pub const fn new(mods: Mods, key: Key) -> Self {
+    pub const fn new(mods: ShortcutMods, key: Key) -> Self {
         Self { mods, key }
     }
 
@@ -129,18 +129,18 @@ impl Shortcut {
     /// `Shortcut::key(Key::Escape)` and event triggers like
     /// `Shortcut::key(Key::Enter)` that don't carry a chord.
     pub const fn key(key: Key) -> Self {
-        Self::new(Mods::NONE, key)
+        Self::new(ShortcutMods::NONE, key)
     }
 
     /// `Ctrl+<c>`. `c` should be uppercase ASCII (matching is
     /// case-insensitive, but the label uses what you pass).
     pub const fn ctrl(c: char) -> Self {
-        Self::new(Mods::CTRL, Key::Char(c))
+        Self::new(ShortcutMods::CTRL, Key::Char(c))
     }
 
     /// `Ctrl+Shift+<c>`. Same casing convention as [`Self::ctrl`].
     pub const fn ctrl_shift(c: char) -> Self {
-        Self::new(Mods::CTRL_SHIFT, Key::Char(c))
+        Self::new(ShortcutMods::CTRL_SHIFT, Key::Char(c))
     }
 
     /// True iff `kp` matches this shortcut. Modifier comparison is
@@ -172,7 +172,7 @@ impl Shortcut {
     /// external callers go through [`Self::matches`] so they get the
     /// layout-correct path rather than this logical-only one.
     fn matches_key(self, key: Key, mods: Modifiers) -> bool {
-        if Mods::from_event(mods) != self.mods {
+        if ShortcutMods::from_event(mods) != self.mods {
             return false;
         }
         match (self.key, key) {

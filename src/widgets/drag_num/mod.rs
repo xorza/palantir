@@ -15,7 +15,9 @@ use crate::widgets::drag_num::limits::Limits;
 /// digit the caller stored.
 #[derive(Debug)]
 pub enum DragNum<'a> {
+    /// An integer target, which moves by whole steps.
     I64(&'a mut i64),
+    /// A float target, which keeps every digit the caller stored.
     F64(&'a mut f64),
 }
 

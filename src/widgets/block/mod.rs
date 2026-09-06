@@ -24,6 +24,8 @@ pub struct Block {
 }
 
 impl Block {
+    /// An empty block. It occupies space, and paints nothing until
+    /// [`Self::background`] gives it something to paint.
     #[track_caller]
     pub fn new() -> Self {
         Self {
@@ -32,6 +34,8 @@ impl Block {
         }
     }
 
+    /// Record the rectangle. The [`Response`] answers only where the
+    /// `Sense` given through [`Configure::sense`] lets it.
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
         let chrome = self.chrome;
         self.widget.show(ui, chrome.as_ref(), |_| {}).response

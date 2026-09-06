@@ -26,11 +26,13 @@ pub struct Corners(F16x4);
 f16x4_lanes!(Corners, [tl, tr, br, bl]);
 
 impl Corners {
+    /// One radius on all four corners.
     #[inline]
     pub fn all(r: f32) -> Self {
         Self(F16x4::from_lanes([r, r, r, r]))
     }
 
+    /// Four radii, clockwise from the top left.
     #[inline]
     pub fn new(tl: f32, tr: f32, br: f32, bl: f32) -> Self {
         Self(F16x4::from_lanes([tl, tr, br, bl]))
@@ -78,6 +80,8 @@ impl Corners {
         Self(F16x4::from_lanes([0.0, r, 0.0, r]))
     }
 
+    /// Every radius multiplied by `scale` — what carries a logical
+    /// radius into physical pixels at compose time.
     #[inline]
     pub fn scaled_by(self, scale: f32) -> Self {
         Self(self.0.scaled(scale))

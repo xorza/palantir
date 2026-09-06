@@ -20,7 +20,9 @@ use rayon::prelude::*;
 /// is at most `max_ratio`.
 #[derive(Clone, Copy, Debug)]
 pub struct Tolerance {
+    /// Per-channel deviation a pixel may carry and still match.
     pub per_channel: u8,
+    /// Fraction of differing pixels an image may carry and still pass.
     pub max_ratio: f32,
 }
 
@@ -96,9 +98,13 @@ impl Tolerance {
 /// What one [`Tolerance::diff`] measured.
 #[derive(Debug)]
 pub struct DiffReport {
+    /// The largest single-channel deviation found anywhere.
     pub max_channel_delta: u8,
+    /// How many pixels exceeded [`Tolerance::per_channel`].
     pub differing_pixels: u32,
+    /// [`Self::differing_pixels`] over the image's pixel count.
     pub differing_ratio: f32,
+    /// The two images overlaid, with differing pixels marked.
     pub diff_image: RgbaImage,
     /// The tolerance the comparison ran under. Carried rather than
     /// re-taken by [`Self::passes`]: `per_channel` is spent inside the
@@ -109,6 +115,8 @@ pub struct DiffReport {
 }
 
 impl DiffReport {
+    /// Whether [`Self::differing_ratio`] is within the tolerance the
+    /// comparison ran under.
     pub fn passes(&self) -> bool {
         self.differing_ratio <= self.tolerance.max_ratio
     }

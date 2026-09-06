@@ -38,6 +38,7 @@ impl Panel {
         }
     }
 
+    /// Record the panel and its `body`.
     pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<'_, R> {
         // The theme handle is cloned, not the chrome: an `Rc` bump lets
         // the borrow outlive the `&mut Ui` the record below takes.
@@ -47,11 +48,13 @@ impl Panel {
         widget.show(ui, chrome, body)
     }
 
+    /// Children left to right on one line.
     #[track_caller]
     pub fn hstack() -> Self {
         Self::auto(Widget::hstack())
     }
 
+    /// Children top to bottom in one column.
     #[track_caller]
     pub fn vstack() -> Self {
         Self::auto(Widget::vstack())

@@ -13,7 +13,9 @@ use std::path::PathBuf;
 pub enum FontLoadError {
     /// The file could not be read or memory-mapped.
     Io {
+        /// The file that could not be read.
         path: PathBuf,
+        /// What the filesystem reported.
         source: std::io::Error,
     },
     /// The bytes parsed to no usable face.

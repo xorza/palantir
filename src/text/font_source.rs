@@ -25,6 +25,7 @@ pub enum FontSource {
     /// need a newtype and a second `Arc` around the first. `include_bytes!`
     /// borrows with no copy, and a runtime read hands over its `Vec`.
     Bytes(Cow<'static, [u8]>),
+    /// A font file on disk, read when the source is registered.
     File(PathBuf),
 }
 

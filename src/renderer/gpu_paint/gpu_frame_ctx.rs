@@ -5,7 +5,9 @@ use std::time::Duration;
 
 /// Handed to [`GpuPaint::paint`](crate::renderer::gpu_paint::GpuPaint::paint) each painted frame.
 pub struct GpuFrameCtx<'a> {
+    /// The device every resource in this frame is created against.
     pub device: &'a wgpu::Device,
+    /// The queue this frame's uploads go through.
     pub queue: &'a wgpu::Queue,
     /// Palantir's main command encoder — record your render pass(es) here.
     /// wgpu inserts the `RENDER_ATTACHMENT → TEXTURE_BINDING` transition

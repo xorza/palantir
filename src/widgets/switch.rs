@@ -36,6 +36,7 @@ pub struct Switch<'a> {
 }
 
 impl<'a> Switch<'a> {
+    /// A switch bound to `value`, which a click flips.
     #[track_caller]
     pub fn new(value: &'a mut bool) -> Self {
         Self {

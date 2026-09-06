@@ -31,6 +31,7 @@ use palantir_anim_derive::Animatable;
 // whole argument and the measurement for.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, Animatable)]
 pub struct Background {
+    /// Interior paint. [`Brush::TRANSPARENT`] fills nothing.
     pub fill: Brush,
     /// `Stroke::ZERO` (the `Default`) omitted from serialized output —
     /// the common "fill-only, no border" case stays compact.
@@ -78,6 +79,7 @@ impl Background {
         self.fill.is_noop() && self.stroke.is_noop() && self.shadow.is_noop()
     }
 
+    /// A plain fill — no stroke, no corners, no shadow.
     pub fn fill<I: Into<Brush>>(brush: I) -> Self {
         Self {
             fill: brush.into(),

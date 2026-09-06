@@ -312,8 +312,12 @@ impl Bars {
 ///   infinite boards) where indicators would be noise.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub enum BarMode {
+    /// A gutter always reserved, with the bar drawn in it on overflow.
+    /// The default.
     #[default]
     Reserved,
+    /// No gutter. The bar paints over the content on overflow.
     Overlay,
+    /// No bar and no gutter. Input still pans.
     Hidden,
 }

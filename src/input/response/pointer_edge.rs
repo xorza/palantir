@@ -23,10 +23,16 @@
 pub enum PointerEdge {
     /// The button went down on this widget. `count` is its place in the
     /// multi-press run — 1 for a single press, 2 for the second of a double.
-    Pressed { count: u8 },
+    Pressed {
+        /// Place in the multi-press run — 1 for a single press.
+        count: u8,
+    },
     /// Released back on it with no drag latched. `count` as above, so a
     /// double-click arrives as a `Clicked { count: 2 }`.
-    Clicked { count: u8 },
+    Clicked {
+        /// Place in the multi-press run — 2 for a double-click.
+        count: u8,
+    },
     /// Travel passed the drag threshold, latching a drag on this widget.
     DragStarted,
     /// A latched drag ended — the commit edge for drag gestures.

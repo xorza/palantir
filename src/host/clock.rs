@@ -49,6 +49,7 @@ pub struct RealtimeClock {
 }
 
 impl RealtimeClock {
+    /// Start the clock now, so the first frame reads near zero.
     pub fn new() -> Self {
         Self {
             origin: Instant::now(),
@@ -88,6 +89,7 @@ pub struct FixedClock {
 }
 
 impl FixedClock {
+    /// A clock parked at `now` until [`Self::advance`] moves it.
     pub fn new(now: Duration) -> Self {
         Self { now }
     }

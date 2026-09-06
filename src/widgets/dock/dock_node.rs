@@ -23,16 +23,22 @@ impl NodeIdx {
 /// One node of the flat tree: a division, or a pane.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum DockNode<T> {
+    /// A division of this node's rect between two children.
     Split(DockSplit),
+    /// A leaf pane, holding one tab strip.
     Group(TabGroup<T>),
 }
 
 /// A division of one rect between two child nodes.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct DockSplit {
+    /// How the two children are arranged.
     pub dir: SplitDir,
     /// The first child's share of the free space.
     pub ratio: f32,
+    /// The leading child — left in a [`SplitDir::Row`], top in a
+    /// [`SplitDir::Column`].
     pub first: NodeIdx,
+    /// The trailing child.
     pub second: NodeIdx,
 }

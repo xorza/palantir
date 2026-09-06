@@ -18,8 +18,11 @@ use crate::primitives::color::okhsv::{Okhsv, OkhsvSlice};
 )]
 #[serde(rename_all = "lowercase")]
 pub enum ColorModel {
+    /// Perceptual HSV over Oklab. The default, and the one whose
+    /// saturation reads evenly across hues.
     #[default]
     Okhsv,
+    /// Classic sRGB-space HSV.
     Hsv,
 }
 
@@ -54,7 +57,9 @@ impl ColorModel {
 /// four thousand times in the loop. Take one from [`ColorModel::slice`].
 #[derive(Clone, Copy, Debug)]
 pub enum HueSlice {
+    /// One hue of [`ColorModel::Okhsv`], gamut already solved.
     Okhsv(OkhsvSlice),
+    /// One hue of [`ColorModel::Hsv`], which needs no solve.
     Hsv(f32),
 }
 

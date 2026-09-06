@@ -85,10 +85,14 @@ pub trait GradientGeometry {
 /// memcpy) — just explicit.
 #[derive(Clone, Debug, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
 pub struct Gradient<G> {
+    /// Where the parametric axis runs — see the geometry type.
     #[serde(flatten)]
     pub geometry: G,
+    /// The colour ramp along that axis.
     pub stops: GradientStops,
+    /// What happens outside `0..=1`.
     pub spread: Spread,
+    /// Which space the ramp interpolates in.
     pub interp: Interp,
 }
 

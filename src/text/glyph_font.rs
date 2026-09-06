@@ -17,18 +17,22 @@ use crate::text::font_weight::FontWeight;
 
 /// Which face to shape in, and how big.
 ///
-/// SizeSpec are logical pixels; the raster scale is
+/// Sizes are logical pixels; the raster scale is
 /// [`TextGlyphs::line`](crate::widget::TextGlyphs::line)'s, because
 /// it is a property of the surface being drawn into rather than of the text.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct GlyphFont {
+    /// Em size in logical pixels.
     pub size_px: f32,
     /// Leading is the caller's to choose. Palantir's own widgets derive one
     /// from the type scale; a single line pinned to a point in space has no
     /// stack to sit in, so this defaults to the size itself.
     pub line_height_px: f32,
+    /// Which family to match a face in.
     pub family: FontFamily,
+    /// Which weight to match, on the CSS 1–1000 scale.
     pub weight: FontWeight,
+    /// Upright or italic.
     pub slant: FontSlant,
 }
 

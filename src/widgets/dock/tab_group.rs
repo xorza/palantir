@@ -14,6 +14,8 @@ pub struct TabGroupId(pub(crate) u64);
 /// One pane's tab strip: the open tabs plus which one is visible.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TabGroup<T> {
+    /// Stable identity, which survives the re-pack every structural op
+    /// ends with.
     pub id: TabGroupId,
     /// Non-empty; a group whose last tab closes collapses out of the
     /// tree.
@@ -23,6 +25,7 @@ pub struct TabGroup<T> {
 }
 
 impl<T: Copy> TabGroup<T> {
+    /// The visible tab. Always present — a group is never empty.
     pub fn active_tab(&self) -> T {
         self.tabs[self.active]
     }

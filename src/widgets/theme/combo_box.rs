@@ -25,6 +25,10 @@ pub struct ComboBoxTheme {
 }
 
 impl ComboBoxTheme {
+    /// Geometry only — a combo box takes every colour from
+    /// [`ButtonTheme`](crate::ButtonTheme) and
+    /// [`ContextMenuTheme`](crate::ContextMenuTheme), so the palette goes
+    /// unread here.
     pub fn from_palette(_p: &Palette) -> Self {
         Self {
             gap: 12.0,

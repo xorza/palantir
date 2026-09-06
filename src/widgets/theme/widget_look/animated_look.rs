@@ -16,6 +16,8 @@ use palantir_anim_derive::Animatable;
 // **Not `Copy`** because `Background` isn't.
 #[derive(Clone, Debug, Default, PartialEq, Animatable)]
 pub struct AnimatedLook {
+    /// The animated background.
     pub background: Background,
+    /// The animated text style, with the inherit case already resolved.
     pub text: TextStyle,
 }

@@ -39,6 +39,7 @@ pub struct Modal<'a> {
 }
 
 impl<'a> Modal<'a> {
+    /// A modal panel over a backdrop, centred in the window.
     #[track_caller]
     pub fn new() -> Self {
         Self {
@@ -66,6 +67,9 @@ impl<'a> Modal<'a> {
         self
     }
 
+    /// Record the backdrop and the panel, with `body` inside the panel.
+    /// The body is handed a [`CloseHandle`] so anything in it can close the
+    /// dialog.
     pub fn show<R>(
         mut self,
         ui: &mut Ui,

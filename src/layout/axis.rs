@@ -11,7 +11,9 @@ use glam::{BVec2, Vec2};
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 #[repr(u8)]
 pub enum Axis {
+    /// Horizontal.
     X,
+    /// Vertical.
     Y,
 }
 

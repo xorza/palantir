@@ -99,9 +99,9 @@ fn extra_modifier_rejects_match() {
     let cut = Shortcut::ctrl('A');
     // Ctrl+Shift+A must not match plain Ctrl+A.
     let mods = primary_shift_mod();
-    assert_eq!(Mods::from_event(mods), Mods::CTRL_SHIFT);
+    assert_eq!(ShortcutMods::from_event(mods), ShortcutMods::CTRL_SHIFT);
     assert!(!cut.matches(kp(mods, Key::Char('A'))));
-    assert_eq!(cut.mods, Mods::CTRL);
+    assert_eq!(cut.mods, ShortcutMods::CTRL);
 }
 
 #[test]
@@ -132,7 +132,7 @@ fn label_ctrl_shift_letter() {
 
 #[test]
 fn label_non_letter_key() {
-    let s = Shortcut::new(Mods::CTRL, Key::ArrowLeft).to_string();
+    let s = Shortcut::new(ShortcutMods::CTRL, Key::ArrowLeft).to_string();
     let expected = match PLATFORM {
         Platform::Mac => "⌘←",
         _ => "Ctrl+←",
@@ -145,7 +145,7 @@ fn modifier_order_is_canonical() {
     // Ctrl+Shift+Alt+K. Mac order ⌥ ⇧ ⌘ then key (primary=⌘ last).
     // Else: Ctrl+Shift+Alt+K.
     let s = Shortcut::new(
-        Mods {
+        ShortcutMods {
             ctrl: true,
             shift: true,
             alt: true,

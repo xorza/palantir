@@ -15,6 +15,8 @@ use crate::primitives::widget_id::WidgetId;
 pub struct PointerAction {
     /// The widget it happened to.
     pub id: WidgetId,
+    /// Which button the edge belongs to.
     pub button: PointerButton,
+    /// What happened.
     pub edge: PointerEdge,
 }

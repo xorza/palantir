@@ -6,7 +6,9 @@ use serde::{Deserialize, Serialize};
 /// divider), `Column` stacked (horizontal divider).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SplitDir {
+    /// Children side by side, divided by a vertical rule.
     Row,
+    /// Children stacked, divided by a horizontal rule.
     Column,
 }
 
@@ -15,13 +17,18 @@ pub enum SplitDir {
 /// `Top` / `Bottom` into a [`SplitDir::Column`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SplitSide {
+    /// The new pane takes the left half.
     Left,
+    /// The new pane takes the right half.
     Right,
+    /// The new pane takes the top half.
     Top,
+    /// The new pane takes the bottom half.
     Bottom,
 }
 
 impl SplitSide {
+    /// The split this side implies.
     pub fn dir(self) -> SplitDir {
         match self {
             SplitSide::Left | SplitSide::Right => SplitDir::Row,

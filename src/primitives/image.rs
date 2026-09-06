@@ -37,7 +37,12 @@ pub enum ImageFit {
     /// the rect (`uv_size`), `offset` the scroll phase (`uv_min`). The
     /// caller drives both — e.g. a pannable/zoomable dotted backdrop
     /// sets `scale = viewport / tile_px`, `offset = -pan / tile_px`.
-    Tile { offset: Vec2, scale: Vec2 },
+    Tile {
+        /// Scroll phase, as a raw UV origin.
+        offset: Vec2,
+        /// Repeats across the paint rect, as a raw UV extent.
+        scale: Vec2,
+    },
 }
 
 /// How texels are interpolated when an image paints at a size other
@@ -51,8 +56,10 @@ pub enum ImageFit {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ImageFilter {
+    /// Bilinear smoothing. The default.
     #[default]
     Linear,
+    /// Hard texel edges, for pixel art and checkerboards.
     Nearest,
 }
 

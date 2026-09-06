@@ -17,7 +17,9 @@ use glam::Vec2;
 /// samples the LUT.
 #[derive(Clone, Copy, Debug, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
 pub struct RadialGeometry {
+    /// Ramp origin, in object-space `0..1` coordinates.
     pub center: Vec2,
+    /// Elliptical radius, per axis, in the same coordinates.
     pub radius: Vec2,
 }
 

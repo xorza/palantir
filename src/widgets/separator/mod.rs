@@ -92,6 +92,7 @@ impl<'a> Separator<'a> {
         self
     }
 
+    /// Record the rule. It senses nothing.
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
         let theme = self.style.unwrap_or(&ui.theme().separator);
         let t = self.thickness.unwrap_or(theme.thickness).themed_length(0.0);

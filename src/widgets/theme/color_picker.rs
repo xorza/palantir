@@ -167,6 +167,8 @@ impl ColorPickerTheme {
         f(label);
     }
 
+    /// The picker's geometry is fixed; only its handle and swatch colours
+    /// come from `p`.
     pub fn from_palette(p: &Palette) -> Self {
         Self {
             field_width: 208.0,

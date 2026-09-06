@@ -63,7 +63,9 @@ impl ProcessGpu {
 /// Borrowed handles to the process-static headless GPU.
 #[derive(Debug)]
 pub struct HeadlessTestGpuLease {
+    /// The leased device's queue.
     pub queue: wgpu::Queue,
+    /// The leased device.
     pub device: wgpu::Device,
     gpu: &'static ProcessGpu,
 }

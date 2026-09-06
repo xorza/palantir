@@ -68,11 +68,14 @@ impl CurveShape {
 }
 
 impl CurveShape {
+    /// Paint along the curve. Solid colours and linear gradients only —
+    /// see [`CurveBrush`](crate::CurveBrush).
     pub fn brush(mut self, brush: impl Into<CurveBrush>) -> Self {
         self.stroke.brush = brush.into();
         self
     }
 
+    /// How the two ends are finished.
     pub fn cap(mut self, cap: impl Into<LineCap>) -> Self {
         self.stroke.cap = cap.into();
         self

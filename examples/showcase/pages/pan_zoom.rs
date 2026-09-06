@@ -1,4 +1,4 @@
-//! `Scroll::both().zoom()` — bare wheel pans, `Ctrl/Cmd + wheel`
+//! `Scroll::both().zoomable()` — bare wheel pans, `Ctrl/Cmd + wheel`
 //! zooms about the cursor, pinch zooms unconditionally. Pin the cursor
 //! to a cell and scroll-zoom: the cell stays under the cursor.
 //!
@@ -8,7 +8,7 @@
 //! grids, wrapping text, gradient swatches, polylines, chat rows) for
 //! benchmarking. The auto-drive checkbox pans and zooms the viewport
 //! every frame from a bounded cosine oscillator, through
-//! `Scroll::scroll_by` and `Scroll::zoom_by` — the same clamp a wheel
+//! `Scroll::pan_by` and `Scroll::zoom_by` — the same clamp a wheel
 //! takes, and no pointer involved, so it drives the view without
 //! touching the real cursor.
 
@@ -91,8 +91,8 @@ fn page(ui: &mut Ui, s: &mut State) {
 
     let mut clicked = None;
     Scroll::both()
-        .zoom()
-        .scroll_by(auto_pan)
+        .zoomable()
+        .pan_by(auto_pan)
         .zoom_by(auto_zoom)
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| match s.content {

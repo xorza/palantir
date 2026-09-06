@@ -19,12 +19,15 @@ pub enum CursorIcon {
     Grab,
     /// Closed hand: a grab in progress.
     Grabbing,
+    /// Move the thing under the pointer, on both axes.
     Move,
+    /// Precise aim — a picker, a canvas tool.
     Crosshair,
     /// Horizontal resize (a vertical divider).
     EwResize,
     /// Vertical resize (a horizontal divider).
     NsResize,
+    /// The gesture under way cannot land here.
     NotAllowed,
 }
 

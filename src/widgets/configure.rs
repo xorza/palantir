@@ -399,6 +399,8 @@ pub trait Configure: Sized {
         self
     }
 
+    /// Both axes at once. Takes a [`Sizing`](crate::Sizing), a bare
+    /// number (fixed on both axes), a `(w, h)` pair, or a [`Size`].
     #[inline]
     fn size(mut self, s: impl Into<SizeSpec>) -> Self {
         self.configure().size(s);
@@ -425,12 +427,16 @@ pub trait Configure: Sized {
         self
     }
 
+    /// Space inside this node, between its edge and its children. Takes a
+    /// number, a `(x, y)` pair, or a `(l, t, r, b)` quad.
     #[inline]
     fn padding(mut self, p: impl Into<Spacing>) -> Self {
         self.configure().padding(p);
         self
     }
 
+    /// Space outside this node, between its edge and its siblings. Same
+    /// argument shapes as [`Self::padding`].
     #[inline]
     fn margin(mut self, m: impl Into<Spacing>) -> Self {
         self.configure().margin(m);
@@ -533,6 +539,7 @@ pub trait Configure: Sized {
         self
     }
 
+    /// Replace what this node senses. [`Self::add_sense`] folds instead.
     #[inline]
     fn sense(mut self, s: Sense) -> Self {
         self.configure().sense(s);

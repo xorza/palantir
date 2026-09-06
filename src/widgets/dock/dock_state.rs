@@ -55,7 +55,9 @@ fn default_max_depth() -> u32 {
 /// group's strip.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TabAddress {
+    /// The group holding the tab.
     pub group: TabGroupId,
+    /// Its slot in that group's strip.
     pub index: usize,
 }
 
@@ -213,6 +215,7 @@ impl<T: DockTab> DockState<T> {
             .expect("a group holds the pinned tab")
     }
 
+    /// Where `tab` currently sits, or `None` when no group holds it.
     pub fn find_tab(&self, tab: T) -> Option<TabAddress> {
         self.groups().find_map(|g| {
             g.tabs

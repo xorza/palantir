@@ -80,6 +80,8 @@ pub struct Expander<'a> {
 const SLOT_OPEN: AnimSlot = AnimSlot::new("open");
 
 impl<'a> Expander<'a> {
+    /// A header labelled `label`, closed on its first frame. The widget
+    /// owns the open state until [`Self::open`] takes it over.
     #[track_caller]
     pub fn new(label: impl Into<TextInput<'a>>) -> Self {
         Self {

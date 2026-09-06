@@ -8,9 +8,12 @@
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum LineCap {
+    /// Ends exactly at the endpoint. The default.
     #[default]
     Butt = 0,
+    /// Extends by half the stroke width along the tangent.
     Square = 1,
+    /// Adds a half-disc past the endpoint.
     Round = 2,
 }
 
@@ -19,8 +22,12 @@ pub enum LineCap {
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum LineJoin {
+    /// Extends both edges to their crossing point. The default, and it
+    /// downgrades to [`Self::Bevel`] past the miter limit.
     #[default]
     Miter = 0,
+    /// Cuts the corner off square.
     Bevel = 1,
+    /// Rounds the corner by the stroke radius.
     Round = 2,
 }

@@ -21,7 +21,9 @@ pub enum InputEvent {
     PointerMoved(Vec2),
     /// Pointer left the surface; clears `hovered`.
     PointerLeft,
+    /// A button went down at the last reported position.
     PointerPressed(PointerButton),
+    /// A button came back up.
     PointerReleased(PointerButton),
     /// Pixel-precise scroll delta — touchpad / precision wheel /
     /// `MouseScrollDelta::PixelDelta`. Logical pixels. Positive `y`
@@ -48,7 +50,10 @@ pub enum InputEvent {
     /// consumers read the latest [`Modifiers`] from `InputState`. We
     /// don't carry releases — no consumer needs them yet.
     KeyDown {
+        /// The logical key, after the keyboard layout has been applied.
         key: Key,
+        /// The press came from OS-level key repeat rather than a fresh
+        /// press.
         repeat: bool,
         /// Layout-independent physical key — see
         /// [`KeyPress::physical`](crate::KeyPress::physical).

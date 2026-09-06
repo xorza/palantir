@@ -768,6 +768,11 @@ impl Ui {
     /// each raster happens at the exact physical pixel size the icon is drawn
     /// at — so a set the session never draws from costs nothing beyond its
     /// bytes.
+    ///
+    /// No `Result`, unlike [`Self::load_image`] and [`Self::load_font`]:
+    /// registration parses nothing and asks the device nothing, so there is
+    /// no point here at which it could fail. A malformed icon is reported
+    /// when it is first drawn.
     #[inline]
     pub fn load_icons(&self, table: Rc<IconTable>) -> IconSet {
         self.resources.icons().register(table)
@@ -868,6 +873,11 @@ impl Ui {
     /// picked to stay under every device's limit. Registration *rejects* an
     /// over-limit image rather than shrinking it, so a host that wants the
     /// biggest texture a machine will take has to ask first.
+    ///
+    /// `NonZeroU32` rather than the bare `u32` the rest of the surface
+    /// speaks, so that the two ways of having no answer stay distinct: a
+    /// recorder with no device answers `None`, and a device that answered
+    /// cannot have answered zero.
     #[inline]
     pub fn max_image_dimension(&self) -> Option<NonZeroU32> {
         self.resources.texture_limit().max_dimension()
@@ -1531,6 +1541,8 @@ impl Ui {
         self.input.modifiers
     }
 
+    /// What a press on a non-focusable widget does to focus. See
+    /// [`FocusPolicy`].
     #[inline]
     pub fn focus_policy(&self) -> FocusPolicy {
         self.input.focus_policy

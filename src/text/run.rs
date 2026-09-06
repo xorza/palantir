@@ -28,11 +28,13 @@ use crate::text::wrap::TextWrap;
 /// cannot change any answer here.
 #[derive(Clone, Copy, Debug)]
 pub struct TextRun<'a> {
+    /// The characters to shape.
     pub text: &'a str,
     /// The face and metrics the run is shaped in — the same
     /// [`GlyphFont`] `Shape::Text` carries, so describing a probe means
     /// naming one value rather than restating four.
     pub font: GlyphFont,
+    /// Whether the run breaks to the shaping width, and how.
     pub wrap: TextWrap,
     /// Only the horizontal half is read — cosmic lays out per-line `x`
     /// offsets from it, so it changes the shaped result. The vertical

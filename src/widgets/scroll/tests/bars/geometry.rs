@@ -276,7 +276,7 @@ fn zoomed_content_shrinks_thumb_proportionally() {
             .show(ui, |ui| {
                 Scroll::both()
                     .id(WidgetId::from_hash("scroll"))
-                    .zoom()
+                    .zoomable()
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
                         Block::new()

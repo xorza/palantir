@@ -385,14 +385,14 @@ fn content_margin_does_not_shift_content_that_fits() {
     );
 }
 
-/// [`Scroll::scroll_by`] takes the step a wheel of that distance takes,
+/// [`Scroll::pan_by`] takes the step a wheel of that distance takes,
 /// through the same clamp — and takes it with no pointer over the
 /// viewport at all, which is what lets authoring code drive a view.
 ///
 /// Geometry: 200 of viewport over 800 of content, so the offset may
 /// reach 600 and no further.
 #[test]
-fn scroll_by_pans_without_a_pointer_and_clamps() {
+fn pan_by_pans_without_a_pointer_and_clamps() {
     let drive = |ui: &mut Ui, delta: f32| driven(ui, 200.0, 800.0, Vec2::new(0.0, delta));
     let mut h = UiHarness::new(SURFACE);
     h.frame(|ui| drive(ui, 0.0));
@@ -424,7 +424,7 @@ fn scroll_by_pans_without_a_pointer_and_clamps() {
 /// requests on the builder, and a wheel that arrived as well. None of
 /// them replaces another.
 #[test]
-fn scroll_by_composes_with_a_wheel_and_with_itself() {
+fn pan_by_composes_with_a_wheel_and_with_itself() {
     let mut h = UiHarness::new(SURFACE);
     h.frame(|ui| driven(ui, 200.0, 800.0, Vec2::ZERO));
     h.move_to(Vec2::new(50.0, 50.0));
@@ -436,8 +436,8 @@ fn scroll_by_composes_with_a_wheel_and_with_itself() {
             .show(ui, |ui| {
                 Scroll::vertical()
                     .id(WidgetId::from_hash("scroll"))
-                    .scroll_by(Vec2::new(0.0, 12.0))
-                    .scroll_by(Vec2::new(0.0, 8.0))
+                    .pan_by(Vec2::new(0.0, 12.0))
+                    .pan_by(Vec2::new(0.0, 8.0))
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
                         Block::new()

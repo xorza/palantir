@@ -128,7 +128,7 @@ const FRAME_ENGINES_SIZE: usize = 1504;
 ///   codebase. When the change is intended, update the number next to
 ///   the type; that one-line edit is the review signal.
 ///
-/// SizeSpec are for the 64-bit target (the only one). Covers the SoA
+/// Sizes are for the 64-bit target (the only one). Covers the SoA
 /// per-node columns, per-shape/per-chrome lowered forms, the
 /// encoder↔composer wire payloads, the GPU instance types, and the
 /// one whole-`Ui` entry ([`UI_SIZE`]).

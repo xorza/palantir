@@ -10,8 +10,12 @@
 /// spelling at every site.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Platform {
+    /// macOS, where Cmd is the command modifier
+    /// [`ShortcutMods::ctrl`](crate::ShortcutMods) names.
     Mac,
+    /// Windows.
     Win,
+    /// Linux and the other X11 / Wayland targets.
     Linux,
 }
 

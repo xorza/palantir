@@ -49,7 +49,10 @@ pub struct Splitter<'a> {
 /// Which pane [`Splitter::show`]'s body is currently recording.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SplitHalf {
+    /// The leading pane — left of a vertical divider, above a
+    /// horizontal one.
     First,
+    /// The trailing pane.
     Second,
 }
 
@@ -102,6 +105,12 @@ impl<'a> Splitter<'a> {
         self
     }
 
+    /// Record both panes and the divider between them. `body` runs twice,
+    /// once per [`SplitHalf`].
+    ///
+    /// The [`Response`] is the splitter's own, covering both panes. The
+    /// divider drags the bound `ratio` itself — nothing here has to be
+    /// read for that to happen.
     pub fn show<'u>(
         mut self,
         ui: &'u mut Ui,

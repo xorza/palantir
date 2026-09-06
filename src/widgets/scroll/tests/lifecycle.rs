@@ -72,7 +72,7 @@ fn state_is_swept_when_scroll_disappears() {
     let build = |ui: &mut Ui| {
         Scroll::both()
             .id(id)
-            .zoom()
+            .zoomable()
             .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
             .show(ui, |_| {});
     };

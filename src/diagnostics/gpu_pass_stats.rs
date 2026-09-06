@@ -75,10 +75,16 @@ impl BatchKind {
 /// matches `wgpu::PipelineStatisticsTypes`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct PipelineStats {
+    /// Vertices the vertex stage ran on.
     pub vertex_shader_invocations: u64,
+    /// Primitives the clipper was handed.
     pub clipper_invocations: u64,
+    /// Primitives the clipper emitted.
     pub clipper_primitives_out: u64,
+    /// Fragments the fragment stage ran on.
     pub fragment_shader_invocations: u64,
+    /// Compute workgroup invocations. Zero for the render passes
+    /// Palantir itself submits.
     pub compute_shader_invocations: u64,
 }
 

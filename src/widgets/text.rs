@@ -64,6 +64,8 @@ pub struct Text<'a> {
 }
 
 impl<'a> Text<'a> {
+    /// A run of `text`, which takes a `&str`, a `String`, or the
+    /// [`InternedStr`](crate::InternedStr) that [`fmt!`](crate::fmt) mints.
     #[track_caller]
     pub fn new(text: impl Into<TextInput<'a>>) -> Self {
         Self {
@@ -169,6 +171,8 @@ impl<'a> Text<'a> {
         self
     }
 
+    /// Record the run. It senses nothing until [`Configure::sense`] says
+    /// otherwise.
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
         // Folded back into a `TextStyle` rather than a `GlyphFont`, so the
         // `line_height_mult` formula keeps its one owner.

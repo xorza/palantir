@@ -61,14 +61,17 @@ impl Palette {
     // The border ladder — TEXT_MUTED tints, not grays: raw surface
     // grays sit too close to `elem`/`elem_mid` to read as edges at
     // 1 px.
+    /// The faintest edge — a rule, a divider.
     pub fn border_soft(&self) -> RgbaF32 {
         self.text_muted.with_alpha(0.18)
     }
 
+    /// The default edge — a panel or a field outline.
     pub fn border_mid(&self) -> RgbaF32 {
         self.text_muted.with_alpha(0.22)
     }
 
+    /// The loudest edge, for chrome that has to separate two lit surfaces.
     pub fn border_strong(&self) -> RgbaF32 {
         self.text_muted.with_alpha(0.35)
     }

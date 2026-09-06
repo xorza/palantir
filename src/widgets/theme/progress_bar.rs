@@ -18,6 +18,7 @@ pub struct ProgressBarTheme {
 }
 
 impl ProgressBarTheme {
+    /// A muted track under an accent fill.
     pub fn from_palette(p: &Palette) -> Self {
         Self {
             track: p.elem_mid,

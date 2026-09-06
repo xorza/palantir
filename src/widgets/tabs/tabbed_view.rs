@@ -22,21 +22,34 @@ use std::rc::Rc;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TabsAction {
     /// The visible page changed. The bound index already holds `index`.
-    Activated { index: usize },
+    Activated {
+        /// The page now visible.
+        index: usize,
+    },
     /// The page's close button was clicked. Remove it from the option
     /// collection, and re-derive the bound index alongside it.
-    Closed { index: usize },
+    Closed {
+        /// The page to remove.
+        index: usize,
+    },
     /// A chip was dragged onto another slot. Move `from` to `to` in the
     /// option collection; `to` addresses the collection **as it is now**,
     /// before the move.
-    Reordered { from: usize, to: usize },
+    Reordered {
+        /// Where the chip came from.
+        from: usize,
+        /// Where it lands, addressing the collection before the move.
+        to: usize,
+    },
 }
 
 /// A [`TabbedView`]'s pass: the view's own response, and at most one
 /// [`TabsAction`].
 #[derive(Debug)]
 pub struct TabbedViewResponse<'a> {
+    /// The view's own pointer/click/hover [`Response`].
     pub response: Response<'a>,
+    /// What the strip asks the caller to do, if anything.
     pub action: Option<TabsAction>,
 }
 

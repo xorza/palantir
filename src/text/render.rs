@@ -33,8 +33,12 @@ pub(crate) struct RunPlacement {
 /// text backend does — see [`TextGlyphs`](crate::widget::TextGlyphs).
 #[derive(Clone, Copy, Debug)]
 pub struct PlacedGlyph {
+    /// Which raster to draw, as the atlas keys it.
     pub raster_key: GlyphRasterKey,
+    /// Horizontal placement in physical pixels, before the raster
+    /// bearing is applied.
     pub x: i32,
+    /// Vertical placement, on the same terms.
     pub y: i32,
 }
 

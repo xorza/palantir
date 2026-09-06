@@ -37,16 +37,19 @@ impl TriangleShape {
 }
 
 impl TriangleShape {
+    /// Interior paint.
     pub fn fill(mut self, fill: impl Into<RgbaF32>) -> Self {
         self.fill = fill.into();
         self
     }
 
+    /// Edge paint.
     pub fn stroke(mut self, stroke: impl Into<Stroke>) -> Self {
         self.stroke = stroke.into();
         self
     }
 
+    /// Round all three corners by this radius.
     pub fn radius(mut self, radius: impl Into<f32>) -> Self {
         self.radius = radius.into();
         self

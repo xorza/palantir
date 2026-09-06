@@ -33,6 +33,13 @@ pub struct ProgressBar<'a> {
 }
 
 impl<'a> ProgressBar<'a> {
+    /// A bar filled to `fraction` of its width — `0.0` empty, `1.0`
+    /// full.
+    ///
+    /// Total over every `f32`: a value outside the range reads as the
+    /// nearer end, and a non-finite one — the `0 / 0` a ratio of nothing
+    /// produces — reads as empty. Resolved at `show`, by
+    /// [`Sizing::split`].
     #[track_caller]
     pub fn new(fraction: f32) -> Self {
         Self {
@@ -49,6 +56,7 @@ impl<'a> ProgressBar<'a> {
         self
     }
 
+    /// Record the bar. It senses nothing by default.
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
         let theme = self.style.unwrap_or(&ui.theme().progress_bar);
         let [fill, spacer] = Sizing::split(self.fraction);
