@@ -124,6 +124,9 @@ impl<'a> DragValue<'a> {
     }
 
     /// Clamp the value into `range`. Default unbounded.
+    ///
+    /// A builder step here and a constructor argument on
+    /// [`Slider::new`](crate::Slider::new), which says why.
     pub fn range(mut self, range: RangeInclusive<f64>) -> Self {
         self.min = *range.start();
         self.max = *range.end();

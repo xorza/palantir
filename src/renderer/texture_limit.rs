@@ -1,8 +1,8 @@
 //! The device ceiling every texture this crate touches is measured
-//! against, and what exceeding it reports.
+//! against.
 
+use crate::renderer::error::ImageLoadError;
 use glam::UVec2;
-use std::fmt::{Display, Formatter};
 use std::num::NonZeroU32;
 
 /// The selected device's `max_texture_dimension_2d` — the single ceiling
@@ -53,31 +53,10 @@ impl TextureLimit {
     }
 }
 
-/// Why an [`Image`](crate::primitives::image::Image) could not be loaded
-/// for GPU upload.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct ImageLoadError {
-    /// Rejected intrinsic pixel dimensions.
-    pub size: UVec2,
-    /// Maximum accepted width or height for the selected device.
-    pub max_dimension: u32,
-}
-
-impl Display for ImageLoadError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "image is {}x{} px but the device's maximum 2D texture dimension is {}",
-            self.size.x, self.size.y, self.max_dimension,
-        )
-    }
-}
-
-impl std::error::Error for ImageLoadError {}
-
 #[cfg(test)]
 mod tests {
-    use crate::renderer::texture_limit::{ImageLoadError, TextureLimit};
+    use crate::renderer::error::ImageLoadError;
+    use crate::renderer::texture_limit::TextureLimit;
     use glam::UVec2;
     use std::num::NonZeroU32;
 

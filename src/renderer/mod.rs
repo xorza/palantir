@@ -17,6 +17,7 @@
 //! Both halves are owned once by each host and driven with the active private
 //! `WindowDriver` behind the public host facades.
 pub(crate) mod backend;
+pub(crate) mod error;
 pub(crate) mod frontend;
 pub(crate) mod gpu_paint;
 pub(crate) mod gradient_atlas;

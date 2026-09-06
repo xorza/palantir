@@ -18,10 +18,11 @@ use crate::display::user_scale::UserScale;
 use crate::icons::icon_registry::IconRegistry;
 use crate::primitives::image::Image;
 use crate::primitives::texture_id::TextureId;
+use crate::renderer::error::ImageLoadError;
 use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
 use crate::renderer::image_registry::ImageRegistry;
 use crate::renderer::image_registry::image_handle::ImageHandle;
-use crate::renderer::texture_limit::{ImageLoadError, TextureLimit};
+use crate::renderer::texture_limit::TextureLimit;
 use crate::text::shaper::TextShaper;
 use crate::window::window_directory::WindowDirectory;
 

@@ -41,10 +41,11 @@ pub struct Slider<'a> {
 }
 
 impl<'a> Slider<'a> {
-    /// The range is a constructor argument rather than the builder
-    /// [`DragValue::range`](crate::DragValue::range): a slider maps a
-    /// track position onto its bounds, so it has no meaning without them,
-    /// where an unbounded scrub is the drag value's default.
+    /// A constructor argument takes what the widget cannot work without,
+    /// and a builder step takes the rest. A slider maps a track position
+    /// onto its bounds, so it has no meaning without them — where an
+    /// unbounded scrub is the drag value's default, and so
+    /// [`DragValue::range`](crate::DragValue::range) is a builder step.
     #[track_caller]
     pub fn new(value: impl Into<DragNum<'a>>, range: RangeInclusive<f64>) -> Self {
         Self {
