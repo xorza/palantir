@@ -284,7 +284,7 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
     fn strip(&mut self, ui: &mut Ui, group: &TabGroup<T>) {
         let strip_id = self.state.strip_id(group.id);
         let focused = self.state.focused() == group.id;
-        let keyed = ui.with_state::<TabItemBuf, _>(strip_id, |ui, buf| {
+        let activated = ui.with_state::<TabItemBuf, _>(strip_id, |ui, buf| {
             buf.items.clear();
             buf.items.reserve_exact(group.tabs.len());
             for &tab in &group.tabs {
@@ -298,25 +298,26 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
                     icon: self.tabs.icon(tab),
                 });
             }
-            TabStrip::new(&buf.items)
+            let hit = TabStrip::new(&buf.items)
                 .id(strip_id)
                 .selected(group.active)
                 .focused(focused)
                 .overflow(self.overflow)
-                .show(ui)
-                .keyed
+                .show(ui);
+            hit.keyed.or(hit.menu_picked)
         });
-        // Only the keyboard activation. A pointer click on a chip was
-        // already turned into an op by the scan, a phase earlier, and
+        // Everything the scan a phase earlier could not see. A pointer
+        // click on a chip was already turned into an op there, and
         // pushing it again here would put the same op in the queue
-        // twice.
+        // twice — but that scan reads chip and close-button ids, and
+        // neither a keyboard move nor a popup entry has one.
         //
         // So a keyboard move lands one frame after the press, where a
         // click lands on its own frame. That is inherent rather than a
         // shortcut: the strip resolves an arrow against its own input
         // scope, which only exists while it is recording, so there is
         // nothing for the earlier phase to read.
-        if let Some(slot) = keyed
+        if let Some(slot) = activated
             && let Some(&tab) = group.tabs.get(slot)
         {
             self.ops.push(DockOp::ActivateTab { tab });

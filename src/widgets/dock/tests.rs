@@ -22,7 +22,7 @@ use crate::widgets::dock::split_side::{SplitDir, SplitSide};
 use crate::widgets::dock::tab_group::{TabGroup, TabGroupId};
 use crate::widgets::panel::Panel;
 use crate::widgets::tabs::tab_item::TabBadge;
-use crate::widgets::tabs::tab_strip::TabStrip;
+use crate::widgets::tabs::tab_strip::{TabOverflow, TabStrip};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 enum Tab {
@@ -971,4 +971,63 @@ fn a_close_click_removes_the_tab_and_does_not_activate_it() {
         "the closed tab is not the active one"
     );
     d.validate().unwrap();
+}
+
+/// A tab chosen from the overflow menu activates, the way a chip click
+/// does.
+///
+/// The dock's navigation scan reads chip and close-button ids a phase
+/// before the strip records, and a popup entry has neither. So the pick
+/// arrives through the strip's own report or it does not arrive: the
+/// menu would close on a choice that changed nothing.
+#[test]
+fn a_pick_from_the_overflow_menu_activates_its_tab() {
+    let mut d = seeded();
+    d.apply(DockOp::ActivateTab { tab: Tab::Main });
+    let mut tabs = Labels;
+    // Narrow enough that three chips cannot all be shown, which is what
+    // puts the chevron on the strip.
+    let mut h = UiHarness::new(UVec2::new(120, 200));
+    fn frame(h: &mut UiHarness, d: &mut DockState<Tab>, tabs: &mut Labels) {
+        h.frame(|ui| {
+            let mut ops = Vec::new();
+            d.scan(ui, &mut ops);
+            for op in ops.drain(..) {
+                d.apply(op);
+            }
+            DockView::new(&*d, &mut ops)
+                .overflow(TabOverflow::Menu)
+                .show(ui, tabs);
+            for op in ops.drain(..) {
+                d.apply(op);
+            }
+        });
+    }
+    for _ in 0..3 {
+        frame(&mut h, &mut d, &mut tabs);
+    }
+
+    let strip = d.strip_id(d.primary().id);
+    let chevron = strip.with("overflow");
+    assert!(
+        h.rect(chevron).is_some(),
+        "premise: the strip cannot show every chip, so it offers a menu",
+    );
+    assert_eq!(d.primary().active_tab(), Tab::Main);
+
+    h.click_at(h.center_of(chevron));
+    frame(&mut h, &mut d, &mut tabs);
+
+    let entry = strip
+        .with("overflow_menu")
+        .with(DockState::<Tab>::tab_key(viewer(1)));
+    assert!(h.rect(entry).is_some(), "the menu lists every tab");
+    h.click_at(h.center_of(entry));
+    frame(&mut h, &mut d, &mut tabs);
+
+    assert_eq!(
+        d.primary().active_tab(),
+        viewer(1),
+        "the chosen tab is the one the pane shows",
+    );
 }
