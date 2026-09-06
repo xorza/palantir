@@ -96,9 +96,11 @@ pub enum ImageDownsample {
     Peak,
 }
 
-/// A CPU pixel buffer. Straight (non-premultiplied) sRGB RGBA8 — the backend
-/// uses a `Rgba8UnormSrgb` texture so the sampler decodes to linear on read,
-/// and the shader premultiplies. Window icons use the same validated storage.
+/// A CPU pixel buffer. Straight (non-premultiplied) sRGB RGBA8 — the
+/// backend uploads it into a `Rgba8UnormSrgb` texture, scaling each
+/// colour by its own alpha on the way, because the sampler filters what
+/// the texture holds and straight colour filtered across a soft edge
+/// darkens it. Window icons use the same validated storage.
 ///
 /// Registration stages the borrowed pixels without retaining a CPU copy.
 /// Keep the buffer to refill it for [`ImageHandle::update`](crate::ImageHandle::update).
@@ -148,8 +150,8 @@ impl Image {
         self.size
     }
 
-    /// The texels, row-major: sRGB-encoded channels and a straight alpha,
-    /// which is what an `Rgba8UnormSrgb` texture decodes on sample.
+    /// The texels, row-major: sRGB-encoded channels and a straight alpha
+    /// — what an application draws with, and what the upload converts.
     pub fn texels(&self) -> &[SrgbaU8] {
         bytemuck::cast_slice(&self.pixels)
     }

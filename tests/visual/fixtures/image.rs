@@ -458,21 +458,25 @@ fn downsample_modes_recover_a_texel_the_single_tap_misses() {
 /// `0.25·T1 + 0.75·T2`; `T1` is fully clear in both sources, so each tap is
 /// just three-quarters of an outer texel).
 ///
-/// **Mean — averaging.** Source `WHITE(α=128) CLEAR CLEAR`. Premultiplied, the
-/// lit tap is `0.75·0.75α` over `0.75α`, which un-premultiplies back to
-/// `rgb = 0.75` — the white survives at full strength and only the *coverage*
-/// halves. Straight-alpha averaging would instead have dragged rgb to
-/// `(0.75 + 0)/2 = 0.375`, halving the colour a second time. Composited over
-/// black the output is `rgb · a = 0.75 · 0.375α = 0.28125α`, and with
-/// `α = 128/255` that is 0.14118 linear → **105** sRGB (the straight-alpha
-/// answer would read 75).
+/// The texture holds premultiplied colour, so a tap is premultiplied
+/// before it is read — the whole point of `premultiply_into`, and what
+/// makes the coverage apply exactly once.
+///
+/// **Mean — averaging.** Source `WHITE(α=128) CLEAR CLEAR`. The lit tap is
+/// `0.75 · α` over `0.75 · α`, so its colour is white at full strength and
+/// only its *coverage* is three quarters. The mean of the two taps is
+/// `0.75 · α / 2 = 0.1882` linear, which composites over black as itself →
+/// **120** sRGB. Filtering straight colour instead drags rgb to `0.75`
+/// before the coverage is applied, which multiplies it in twice and reads
+/// 105 — the fringe.
 ///
 /// **Peak — ranking.** Source `WHITE(α=26) CLEAR GREY(α=255)`, chosen so the
 /// two orderings disagree: by straight luma the near-invisible white wins
 /// (0.75 vs 0.162), by premultiplied luma the solid grey does (0.121 vs
-/// 0.057). Grey is sRGB 128 = 0.21586 linear, so the winning tap
-/// un-premultiplies to `rgb = 0.75 · 0.21586`, `a = 0.75`, and the composite
-/// is `0.12138` linear → **98** sRGB (picking the white would read 68).
+/// 0.057). Grey is sRGB 128 = 0.21586 linear, so the winning tap is
+/// `0.75 · 0.21586 = 0.1619` over `a = 0.75`, and the composite is that
+/// same 0.1619 → **113** sRGB (picking the white would read 68, and
+/// applying the coverage twice reads 98).
 #[test]
 fn downsample_combines_taps_in_premultiplied_space() {
     const PANE: Vec2 = Vec2::new(8.0, 16.0);
@@ -485,13 +489,13 @@ fn downsample_combines_taps_in_premultiplied_space() {
         (
             [DIM_WHITE, CLEAR, CLEAR],
             ImageDownsample::Mean,
-            105u8,
+            120u8,
             "Mean over alpha",
         ),
         (
             [FAINT_WHITE, CLEAR, SOLID_GREY],
             ImageDownsample::Peak,
-            98,
+            113,
             "Peak ranking over alpha",
         ),
     ];
@@ -539,6 +543,58 @@ fn downsample_combines_taps_in_premultiplied_space() {
             "{label} must read {expected} grey, got {pixel:?}",
         );
     }
+}
+
+/// A magnified edge keeps its colour: the bilinear blend between an
+/// opaque texel and a transparent one carries the opaque colour at
+/// partial coverage, not a partial colour.
+///
+/// The plain path — one hardware tap, no footprint loop — is what an
+/// icon or a photo scaled up runs, and it is the sampler's own filter
+/// doing the blending. That filter reads whatever the texture holds, so
+/// the texture has to hold premultiplied colour or the blend darkens
+/// every soft edge.
+///
+/// Geometry: a two-texel image, `RED CLEAR`, filled across a 16 px pane.
+/// Texel centres sit at uv 0.25 and 0.75, and pixel 7 samples uv
+/// `7.5/16 = 0.46875` — `t = 0.4375` of the way between them. So the tap
+/// is `0.5625` of the red at `0.5625` coverage, which over black is
+/// `0.5625` linear → **199** sRGB. Filtering straight colour first
+/// gives the same 0.5625 red at 0.5625 alpha and then multiplies them,
+/// reading 153: the dark fringe.
+#[test]
+fn a_magnified_transparent_edge_keeps_its_colour() {
+    const CLEAR: [u8; 4] = [0, 0, 0, 0];
+    const RED: [u8; 4] = [255, 0, 0, 255];
+
+    let mut h = Harness::new();
+    let mut source: Option<palantir::ImageHandle> = None;
+    let out = h.render(UVec2::new(16, 16), 1.0, RgbaF32::BLACK, |ui| {
+        let handle = source
+            .get_or_insert_with(|| {
+                let texels: Vec<u8> = [RED, CLEAR].into_iter().flatten().collect();
+                ui.register_image(&palantir::Image::from_rgba8(2, 1, texels))
+                    .expect("fixture image fits every supported GPU")
+            })
+            .clone();
+        Panel::canvas()
+            .id_salt("fringe_fixture")
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                Panel::zstack()
+                    .id_salt("fringe_pane")
+                    .size((Sizing::FILL, Sizing::FILL))
+                    .show(ui, |ui| {
+                        ui.add_shape(Shape::image(handle.clone()).fit(ImageFit::Fill));
+                    });
+            });
+    });
+
+    let pixel = out.get_pixel(7, 8).0;
+    assert!(
+        close(pixel, [199, 0, 0, 255]),
+        "half-covered red must stay red at half coverage, got {pixel:?}",
+    );
 }
 
 /// Taps wrap with the tile rather than clamping at its edge. `fs` wraps the

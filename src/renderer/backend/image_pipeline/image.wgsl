@@ -36,7 +36,7 @@ const MAX_TAPS_PER_AXIS: i32 = 4;
 // Squared footprint below which the tap grid collapses to `n = 1` — a single
 // tap at the fragment's own UV, which is exactly what the plain path does. Two
 // texels squared, since each tap already spans two. Gating here keeps a barely
-// minified image off the loop *and* off the premultiply round-trip's rounding.
+// minified image off the loop.
 const MIN_TAPPED_FOOTPRINT_SQUARED: f32 = 4.0;
 
 struct VsIn {
@@ -110,32 +110,27 @@ fn footprint_taps(
             // about the fragment's own UV.
             let t = (vec2<f32>(f32(i), f32(j)) + 0.5) * step - 0.5;
             let p = uv + uv_dx * t.x + uv_dy * t.y;
+            // Premultiplied, as every tap is, which is what makes both
+            // modes correct over alpha: averaging straight colour lets a
+            // transparent texel drag an opaque one's rgb toward black,
+            // and ranking by straight luma lets a near-invisible bright
+            // texel outrank a solid one. Each tap already carries its own
+            // coverage as its weight.
             let s = tap(select(p, fract(p), tiled));
-            // Combined premultiplied, which is what makes both modes correct
-            // over alpha: averaging straight colour lets a transparent texel
-            // drag an opaque one's rgb toward black, and ranking by straight
-            // luma lets a near-invisible bright texel outrank a solid one.
-            // Premultiplying weights each tap by its own coverage for free.
-            let pm = premultiply(s.rgb, s.a);
-            sum += pm;
+            sum += s;
             // Branchless so both modes cost the same walk; the mode picks a
             // result at the end rather than a path here. The whole tap wins
             // rather than a per-channel `max`, so a coloured point source
             // keeps its hue instead of being pushed toward white.
-            let luma = dot(pm.rgb, LUMA);
+            let luma = dot(s.rgb, LUMA);
             let brighter = luma > best_luma;
-            best = select(best, pm, brighter);
+            best = select(best, s, brighter);
             best_luma = select(best_luma, luma, brighter);
         }
     }
-    let combined = select(sum / f32(n * n), best, peak);
-    // Back to straight alpha, so this returns what `tap` does and the caller's
-    // tint-then-premultiply path needs no branch of its own. Fully transparent
-    // stays transparent rather than dividing by zero.
-    return vec4<f32>(
-        select(vec3<f32>(0.0), combined.rgb / combined.a, combined.a > 0.0),
-        combined.a,
-    );
+    // Premultiplied out, as it came in — what `tap` returns, so the
+    // caller cannot tell the two paths apart.
+    return select(sum / f32(n * n), best, peak);
 }
 
 @fragment
@@ -196,8 +191,7 @@ fn fs(in: VsOut) -> @location(0) vec4<f32> {
         }
     }
 
-    // sRGB-format texture decodes to linear on read; tint is linear
-    // straight-alpha. Multiply, then premultiply for the blend.
-    let c = s * in.tint;
-    return premultiply(c.rgb, c.a);
+    // `s` is premultiplied already; the tint is not, so it is premultiplied
+    // here and the two multiply as the premultiplied values they both are.
+    return s * premultiply(in.tint.rgb, in.tint.a);
 }

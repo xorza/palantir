@@ -41,6 +41,14 @@ use crate::renderer::gpu_paint::gpu_init_ctx::GpuInitCtx;
 /// `Rc<RefCell<…>>`) across the whole frame — the render runs at paint
 /// time, after `App::record` has returned, so it can't borrow frame-local
 /// state.
+///
+/// **Write premultiplied colour into the target.** The composite that
+/// puts a view on screen samples its texture the way it samples a
+/// registered image, and both hold colour already scaled by its own
+/// alpha — that is what makes the filter correct across a soft edge. A
+/// renderer that blends with `PREMULTIPLIED_ALPHA_BLENDING`, which is
+/// the target's own format and this crate's convention throughout, is
+/// already writing what the composite expects.
 pub trait GpuPaint: 'static {
     /// Build GPU resources (pipelines, persistent buffers). Called **once**
     /// per view, the first time the device is available for it. Skipping
