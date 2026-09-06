@@ -97,17 +97,17 @@ fn anim_spec_serde_validates_and_roundtrips() {
         (
             "non-positive spring",
             r#"(spec: (kind: "spring", stiffness: 170.0, damping: 0.0))"#,
-            "spring parameters must be positive, finite, convergent, and within the integration limit",
+            "spring parameters must be positive, finite, convergent, and settle without a long velocity tail",
         ),
         (
             "slow spring",
             r#"(spec: (kind: "spring", stiffness: 1.0, damping: 100.0))"#,
-            "spring parameters must be positive, finite, convergent, and within the integration limit",
+            "spring parameters must be positive, finite, convergent, and settle without a long velocity tail",
         ),
         (
-            "expensive spring",
+            "long velocity tail",
             r#"(spec: (kind: "spring", stiffness: 3.4028235e38, damping: 2.0))"#,
-            "spring parameters must be positive, finite, convergent, and within the integration limit",
+            "spring parameters must be positive, finite, convergent, and settle without a long velocity tail",
         ),
     ];
     for (label, input, expected) in invalid {

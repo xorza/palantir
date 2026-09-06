@@ -231,18 +231,13 @@ impl<T: Animatable> AnimMapTyped<T> {
                     settled,
                 }
             }
-            AnimMotion::Spring {
-                stiffness,
-                damping,
-                substep_dt,
-            } => {
+            AnimMotion::Spring { stiffness, damping } => {
                 let MotionRow::Spring { velocity } = &mut row.motion else {
                     unreachable!("motion state must match the active specification");
                 };
                 let step = spring_step(
                     stiffness,
                     damping,
-                    substep_dt,
                     row.current.clone(),
                     velocity.clone(),
                     row.target.clone(),
