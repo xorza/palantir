@@ -90,6 +90,7 @@ fn fixture(density: Density) -> Cascade {
                 widget_id: WidgetId::from_hash(index),
                 sense: Sense::HOVER | Sense::CLICK | Sense::SCROLL | Sense::PINCH,
                 focusable: true,
+                disabled: false,
             });
         }
         cascade.entries.push(EntryRow {

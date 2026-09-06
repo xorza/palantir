@@ -98,12 +98,16 @@ impl ResponseState {
     /// last: the interaction half is already gone when a later source
     /// arrives, and a later `false` cannot re-enable anything.
     ///
-    /// [`Self::pointer_over`] is not part of that half and stays: the
-    /// cascade keeps a disabled widget in the hit index for hover alone,
-    /// because it still covers what is behind it. What goes is
-    /// everything the widget was allowed to *do*, and [`Self::hovered`]
-    /// goes with it by reading [`Self::disabled`] rather than by being
-    /// cleared here.
+    /// **This fold is the whole of what disabling does.** The cascade
+    /// keeps a disabled widget in the hit index with the sense it
+    /// declared, so the pointer, the press and the wheel all still route
+    /// to it — it covers what is behind it. Emptying what it reads is
+    /// what turns that routing into nothing happening.
+    ///
+    /// [`Self::pointer_over`] is not part of the half that goes: it is
+    /// the observation, and a tooltip explaining *why* the widget is
+    /// disabled needs it. [`Self::hovered`] goes by reading
+    /// [`Self::disabled`] rather than by being cleared here.
     #[inline]
     pub(crate) fn merge_disabled(&mut self, disabled: bool) {
         self.disabled |= disabled;

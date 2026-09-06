@@ -67,16 +67,21 @@ fn hits_track_only_sensing_or_focusable_rows_in_paint_order() {
         [hover, focus, disabled, popup_scroll],
     );
     let pos = Vec2::splat(50.0);
-    // Painted last of the three that hover, so the disabled one takes
-    // the hover — and keeps `Sense::CLICK` off, so the press below finds
-    // nothing to click.
+    // Painted last of the four in `Main`, so the disabled one takes both
+    // the hover and the press: it keeps the sense it declared, and
+    // answers neither.
     assert_eq!(h.ui.cascade().hit_test(pos, Sense::hovers), Some(disabled));
-    assert_eq!(h.ui.cascade().hit_test(pos, Sense::clicks), None);
+    assert_eq!(h.ui.cascade().hit_test(pos, Sense::clicks), Some(disabled));
     // One walk must agree with the two separate filters above it: the
-    // press path resolves both from a single scan.
+    // press path resolves both from a single scan. `focus` is empty
+    // rather than the focusable row underneath — the press stopped at
+    // the disabled row, so nothing below it was pressed to be focused.
     let press = h.ui.cascade().hit_test_press(pos);
-    assert_eq!(press.focus, Some(focus), "a disabled row is not focusable");
-    assert_eq!(press.click, None);
+    assert_eq!(press.click, Some(disabled));
+    assert_eq!(
+        press.focus, None,
+        "a disabled press focuses nothing under it"
+    );
     let targets = h.ui.cascade().hit_test_targets(pos);
     assert_eq!(targets.hover, Some(disabled));
     assert_eq!(targets.scroll, Some(popup_scroll));

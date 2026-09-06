@@ -18,7 +18,7 @@ use glam::{UVec2, Vec2};
 fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
     // Visible and disabled get the same effective screen rect; hidden is
     // skipped by encoder but tracked by hit index. Clicks land on visible
-    // and are suppressed for both disabled (sense cascade) and hidden
+    // and are suppressed for both disabled (the response fold) and hidden
     // (visibility cascade).
     let v_color = RgbaF32::srgb(1.0, 0.0, 0.0);
     let d_color = RgbaF32::srgb(0.0, 1.0, 0.0);
@@ -120,24 +120,23 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
         ui.inject_input(InputEvent::PointerPressed(PointerButton::Left));
         ui.inject_input(InputEvent::PointerReleased(PointerButton::Left));
     }
-    press_and_release_at(
-        &mut h.ui,
-        v_hit.min + Vec2::new(v_hit.size.w, v_hit.size.h) * 0.5,
-    );
-    press_and_release_at(
-        &mut h.ui,
-        d_hit.min + Vec2::new(d_hit.size.w, d_hit.size.h) * 0.5,
-    );
+    // A frame per gesture: one release slot per button, so three
+    // uninterrupted gestures would leave only the last one to read, and
+    // `D` absorbing its press is exactly what makes that visible.
     let h_hit = h.ui.response_for(h_id).rect.unwrap();
-    press_and_release_at(
-        &mut h.ui,
-        h_hit.min + Vec2::new(h_hit.size.w, h_hit.size.h) * 0.5,
-    );
-
     let mut got = (false, false, false);
-    h.frame(|ui| build(ui, &mut got));
+    for target in [v_hit, d_hit, h_hit] {
+        press_and_release_at(
+            &mut h.ui,
+            target.min + Vec2::new(target.size.w, target.size.h) * 0.5,
+        );
+        h.frame(|ui| build(ui, &mut got));
+    }
     assert!(got.0, "visible widget should click");
-    assert!(!got.1, "disabled widget must not click (sense cascade)");
+    assert!(
+        !got.1,
+        "a disabled widget absorbs its press without clicking"
+    );
     assert!(!got.2, "hidden widget must not click (visibility cascade)");
 }
 
