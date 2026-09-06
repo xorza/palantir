@@ -3,12 +3,14 @@
 
 use std::time::Duration;
 
-/// Base animation step used by the `Ui` frame runtime's `dt` accumulator and
-/// as the spring integrator's largest substep. Stiffer springs adapt below it.
+/// Smallest delta the `Ui` frame runtime's `dt` accumulator will spend.
+/// Shorter frames carry rather than advance, so an unthrottled repaint
+/// loop cannot grind an animation forward in deltas below the f32 ULP of
+/// the values it moves.
 pub(crate) const ANIM_SUBSTEP_DT: f32 = 1.0 / 240.0;
 
-/// Per-frame animation delta clamp. Stalled frames freeze motion instead of
-/// teleporting; spring validation uses the same bound to cap worst-frame work.
+/// Per-frame animation delta clamp. Stalled frames freeze motion instead
+/// of teleporting.
 pub(crate) const MAX_ANIM_DT: f32 = 0.1;
 
 /// Fallback repaint-wake coalesce floor, used when the display's

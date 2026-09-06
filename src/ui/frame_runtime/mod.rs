@@ -173,10 +173,9 @@ impl FrameRuntime {
             self.dt_accum = 0.0;
             // The same limit on a different quantity: `raw_dt` bounds
             // what one frame observed, and this bounds what it spends —
-            // that plus a carry of up to one substep. `spring::step`
-            // takes `MAX_ANIM_DT` as its contract and sizes its substep
-            // budget from it, so a sum past it is a debug panic and, in
-            // release, unbudgeted integration work.
+            // that plus a carry of up to one accumulator step.
+            // `spring::step` takes `MAX_ANIM_DT` as its contract, so a
+            // sum past it is a debug panic.
             //
             // The excess is dropped rather than carried: the clamp above
             // already drops stall time, and a carry would let the stall

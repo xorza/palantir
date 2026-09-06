@@ -174,18 +174,20 @@ fn frame_classification_covers_external_entry_facts() {
 /// Wall time is clamped as it arrives, but the accumulator carries
 /// whatever earlier frames were too short to spend, and the sum is what
 /// reaches the integrators. [`spring::step`](crate::animation::spring)
-/// takes `MAX_ANIM_DT` as a contract and derives its substep budget from
-/// it, so a carry riding on top of an already-clamped delta is a debug
-/// panic and a frame of unbudgeted work.
+/// takes `MAX_ANIM_DT` as a contract, so a carry riding on top of an
+/// already-clamped delta is a debug panic.
 ///
-/// One frame under a substep, then a stall: 1 ms carries, 100 ms clamps,
+/// One frame under the accumulator step, then a stall: 1 ms carries, 100 ms clamps,
 /// and 101 ms is what the sum would hand over.
 #[test]
 fn a_spent_delta_stays_inside_the_animation_bound() {
     let mut rt = FrameRuntime::default();
 
     rt.advance_clock(Duration::from_millis(1));
-    assert_eq!(rt.dt, 0.0, "a frame under one substep spends nothing");
+    assert_eq!(
+        rt.dt, 0.0,
+        "a frame under the accumulator step spends nothing"
+    );
     assert!(
         rt.dt_accum < ANIM_SUBSTEP_DT,
         "and carries it: {}",

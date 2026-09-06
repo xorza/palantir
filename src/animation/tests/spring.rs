@@ -1,8 +1,9 @@
-//! Spring integration: boundedness, substep accumulation, and per-axis
-//! velocity.
+//! The spring transition: its agreement with the closed-form solution,
+//! its independence from how frames partition an interval, and how a row
+//! carrying one settles.
 
 use crate::animation::anim_map_typed::AnimMapTyped;
-use crate::animation::anim_spec::{AnimMotion, AnimSpec};
+use crate::animation::anim_spec::AnimSpec;
 use crate::animation::tests::support::{
     AnimUi, SLOT, duration_motion, next_frame, setup_anim_ui, spring_velocity, wid,
 };
@@ -18,7 +19,7 @@ fn validated_springs_remain_finite_and_settle() {
     let cases = [
         ("minimum-decay", AnimSpec::spring(1.0, 2.0)),
         ("default", AnimSpec::SPRING),
-        ("adaptive-step", AnimSpec::spring(1_000_000.0, 100.0)),
+        ("stiff", AnimSpec::spring(1_000_000.0, 100.0)),
     ];
     let dts = [0.1, 1.0 / 60.0, 0.0042, 0.033];
 
@@ -49,18 +50,109 @@ fn validated_springs_remain_finite_and_settle() {
     }
 }
 
+/// The three damping regimes against the solution of
+/// `x'' + c·x' + k·x = 0` computed independently, plus the stiff
+/// overdamped corner where a textbook `e^(-h·t)·cosh(ψ·t)` overflows
+/// `f64` long before the product it belongs to leaves `[0, 1]`.
+///
+/// Released from rest at `x₀ = 1`, so `x(t) = e^(-h·t)(C + h·S)` and
+/// `v(t) = -k·e^(-h·t)·S`, with `h = c/2` and `(C, S)` the pair named on
+/// `SpringTransition`. Values below come from evaluating that by hand
+/// per regime: `cos`/`sin` for `k=5, c=2` (roots `-1 ± 2i`), the `ψ = 0`
+/// limit for `k=100, c=20` (`e^-1·(1 + 10t)`), and `(4/3)e^(-t) −
+/// (1/3)e^(-4t)` for `k=4, c=5` (roots `-1` and `-4`).
 #[test]
-fn built_in_spring_preserves_validated_substep() {
-    let AnimMotion::Spring {
-        stiffness,
-        damping,
-        substep_dt,
-    } = AnimSpec::SPRING.motion
-    else {
-        panic!("built-in spring has the wrong motion kind");
+fn closed_form_matches_the_analytic_solution_in_every_damping_regime() {
+    // (label, stiffness, damping, expected position, expected velocity).
+    let cases = [
+        ("underdamped", 5.0, 2.0, 0.976_682_66, -0.449_408_62),
+        ("critically damped", 100.0, 20.0, 0.735_758_9, -3.678_794_4),
+        ("overdamped", 4.0, 5.0, 0.983_009_9, -0.312_689_84),
+        // ψ·dt ≈ 995, where `cosh` alone is 1e432 — `f64` holds it,
+        // but only just, and one step stiffer it would not.
+        (
+            "stiff overdamped",
+            1.0e6,
+            20_000.0,
+            0.006_670_589,
+            -0.334_367_46,
+        ),
+    ];
+    for (label, stiffness, damping, expect_pos, expect_vel) in cases {
+        assert!(
+            spring::params_are_valid(stiffness, damping),
+            "{label}: fixture must be an accepted spring",
+        );
+        let step = spring::step(stiffness, damping, 1.0_f32, 0.0, 0.0, 0.1);
+        assert!(!step.settled, "{label}: a unit displacement is not settled");
+        assert!(
+            (step.current - expect_pos).abs() < 1e-6,
+            "{label}: position {} vs analytic {expect_pos}",
+            step.current,
+        );
+        assert!(
+            (step.velocity - expect_vel).abs() < 1e-5,
+            "{label}: velocity {} vs analytic {expect_vel}",
+            step.velocity,
+        );
+    }
+}
+
+/// The property the closed form buys: for a target held still, the
+/// travel over an interval does not depend on how the frames cut it up.
+/// A substepped Euler integrator fails this by construction — it
+/// re-partitions at every call — and the gap it leaves is far wider than
+/// the f32 rounding this tolerates.
+#[test]
+fn travel_does_not_depend_on_how_the_frames_partition_it() {
+    let (stiffness, damping) = (170.0, 26.0);
+    let travel = |steps: u32| {
+        let dt = 0.1 / steps as f32;
+        let mut current = 300.0_f32;
+        let mut velocity = 0.0_f32;
+        for _ in 0..steps {
+            let step = spring::step(stiffness, damping, current, velocity, 0.0, dt);
+            assert!(
+                !step.settled,
+                "fixture must stay in flight for the whole 0.1s"
+            );
+            current = step.current;
+            velocity = step.velocity;
+        }
+        current
     };
-    assert!(spring::params_are_valid(stiffness, damping, substep_dt));
-    assert_eq!(substep_dt, spring::stable_substep_dt(stiffness, damping));
+    let once = travel(1);
+    // `(170, 26)` is barely underdamped (ψ = 1), so 300 px becomes
+    // `300·e^(-1.3)·(cos 0.1 + 13·sin 0.1)` ≈ 187 px after 0.1 s: still
+    // in flight, and four orders of magnitude above the agreement
+    // asserted below.
+    assert!((185.0..190.0).contains(&once), "fixture sanity: got {once}");
+    for steps in [2, 10, 100] {
+        let split = travel(steps);
+        assert!(
+            (split - once).abs() < 0.01,
+            "{steps} steps gave {split}, one step gave {once}",
+        );
+    }
+}
+
+/// Critical damping is the `ψ = 0` point of the exponential branch, not
+/// a third case guarded by a tolerance, so the transition is continuous
+/// across `damping = 2√stiffness` — where a split-by-epsilon
+/// implementation has a seam whose width is the epsilon.
+#[test]
+fn the_critically_damped_boundary_has_no_seam() {
+    let stiffness = 100.0_f32;
+    let at = |damping: f32| spring::step(stiffness, damping, 1.0_f32, 0.0, 0.0, 0.1).current;
+    let critical = at(20.0);
+    for offset in [1e-3, 1e-4, 1e-5] {
+        let under = at(20.0 - offset);
+        let over = at(20.0 + offset);
+        assert!(
+            (under - critical).abs() < 1e-4 && (over - critical).abs() < 1e-4,
+            "offset {offset}: {under} / {critical} / {over} straddle a seam",
+        );
+    }
 }
 
 #[test]
@@ -80,13 +172,12 @@ fn spring_parameters_change_trajectory() {
     assert_ne!(default, custom);
 }
 
-/// Worst-case wall-clock `dt` (= `MAX_ANIM_DT` after a stalled
-/// frame
-/// or a tab-switch redraw gap) must not blow up the integrator: a
-/// single-step semi-implicit Euler at `dt = 0.1` with default spring
-/// `(170, 26)` produces a `current` far past the target (negative for
-/// the showcase animation widths, triggering the `Sizing::fixed`
-/// invariant). Pin: stepping a 400→80 spring with `dt = 0.1` keeps
+/// Worst-case wall-clock `dt` — `MAX_ANIM_DT`, after a stalled frame or
+/// a tab-switch redraw gap — must not throw the value past its
+/// endpoints. A single Euler step at `dt = 0.1` with the default spring
+/// `(170, 26)` used to land `current` far past the target, negative for
+/// the showcase animation widths, which trips the `Sizing::fixed`
+/// invariant. Pin: stepping a 400→80 spring with `dt = 0.1` keeps
 /// `current` within `[80, 400]`.
 #[test]
 fn spring_step_at_max_dt_stays_bounded() {
