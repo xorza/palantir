@@ -146,6 +146,11 @@ impl PaintAnim {
     }
 
     /// Animate opacity from `from` to `to`.
+    ///
+    /// A constructor, where [`Self::with_alpha`] is the setter that adds the
+    /// same channel to an animation already built — the pair `turn` and
+    /// [`Self::with_turn`] repeat for rotation. One curve drives whatever
+    /// channels are set.
     pub fn alpha(from: f32, to: f32) -> Self {
         Self::new(PaintChannel {
             alpha: Some((from, to)),
@@ -155,6 +160,8 @@ impl PaintAnim {
 
     /// Animate rotation from `from` to `to`, in full turns about the
     /// owner box's centre.
+    ///
+    /// The constructor half of the pair described on [`Self::alpha`].
     pub fn turn(from: f32, to: f32) -> Self {
         Self::new(PaintChannel {
             alpha: None,
