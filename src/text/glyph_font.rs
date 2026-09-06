@@ -4,7 +4,7 @@
 //! Shared vocabulary rather than one caller's parameter bundle. The
 //! authoring shape, the record it lowers to, the probe input, layout's
 //! own lowering, the shape-cache key, and the public
-//! [`TextGlyphs`](crate::TextGlyphs) lease all state a face as this one
+//! [`TextGlyphs`](crate::widget::TextGlyphs) lease all state a face as this one
 //! value — so the five that mirror each other mirror in one field, and a
 //! swapped pair of metrics is a type error rather than a silent mis-key
 //! that only shows up as a cache miss.
@@ -12,13 +12,13 @@
 use crate::primitives::approx::EPS;
 use crate::primitives::nan::NanCheck;
 use crate::text::font_family::FontFamily;
-use crate::text::font_style::FontStyle;
+use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
 
 /// Which face to shape in, and how big.
 ///
 /// Sizes are logical pixels; the raster scale is
-/// [`TextGlyphs::line`](crate::TextGlyphs::line)'s, because
+/// [`TextGlyphs::line`](crate::widget::TextGlyphs::line)'s, because
 /// it is a property of the surface being drawn into rather than of the text.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct GlyphFont {
@@ -29,7 +29,7 @@ pub struct GlyphFont {
     pub line_height_px: f32,
     pub family: FontFamily,
     pub weight: FontWeight,
-    pub style: FontStyle,
+    pub slant: FontSlant,
 }
 
 impl GlyphFont {
@@ -69,7 +69,7 @@ impl GlyphFont {
             line_height_px: size_px,
             family: FontFamily::SANS,
             weight: FontWeight::REGULAR,
-            style: FontStyle::Normal,
+            slant: FontSlant::Normal,
         }
     }
 }
@@ -84,7 +84,7 @@ impl NanCheck for GlyphFont {
 #[cfg(test)]
 mod tests {
     use crate::text::font_family::FontFamily;
-    use crate::text::font_style::FontStyle;
+    use crate::text::font_slant::FontSlant;
     use crate::text::font_weight::FontWeight;
     use crate::text::glyph_font::GlyphFont;
 
@@ -102,7 +102,7 @@ mod tests {
         const STOCK: GlyphFont = GlyphFont::new(16.0);
         assert_eq!(STOCK.family, FontFamily::default());
         assert_eq!(STOCK.weight, FontWeight::default());
-        assert_eq!(STOCK.style, FontStyle::default());
+        assert_eq!(STOCK.slant, FontSlant::default());
         // Led at its own size, which is what "no stack to sit in" comes to.
         assert_eq!(STOCK.line_height_px, 16.0);
     }

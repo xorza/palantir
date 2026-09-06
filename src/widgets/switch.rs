@@ -99,7 +99,7 @@ impl<'a> Switch<'a> {
             // theme: the stroke animates between the on and off looks,
             // and a mid-transition knob has to track it.
             let stroke = track.stroke.width;
-            let stroke_inset = if approx::noop_f32(stroke) {
+            let stroke_inset = if approx::paints_nothing(stroke) {
                 0.0
             } else {
                 stroke

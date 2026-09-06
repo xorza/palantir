@@ -146,7 +146,7 @@ impl<'a> Expander<'a> {
         let id = widget.resolve(ui);
         let header_id = id.with("header");
         let body_id = id.with("body");
-        let stored = ui.try_state::<ExpanderState>(header_id).copied();
+        let stored = ui.state::<ExpanderState>(header_id).copied();
         let was_open = match &open {
             Some(flag) => **flag,
             None => stored.map_or(default_open, |s| s.open),
@@ -175,8 +175,10 @@ impl<'a> Expander<'a> {
             let state = header.response(ui);
             let look = t.plan(&state, (), ambient).apply(ui, &mut header);
 
-            let activated =
-                !state.disabled && (state.left.clicked() || activation_key(ui, header_id));
+            // The click half needs no `disabled` guard — a disabled
+            // widget's button slices are already empty. The key half
+            // does: keyboard events never pass through that fold.
+            let activated = state.clicked() || (!state.disabled && activation_key(ui, header_id));
             let now_open = was_open != activated;
             // No measured height yet, so a tween would have nothing to
             // clip against. Snap instead of guessing one, and animate
@@ -263,7 +265,7 @@ impl<'a> Expander<'a> {
             height: None,
         });
         if current != row {
-            *ui.state_mut::<ExpanderState>(header_id) = row;
+            *ui.state_or_default::<ExpanderState>(header_id) = row;
         }
 
         ExpanderResponse {

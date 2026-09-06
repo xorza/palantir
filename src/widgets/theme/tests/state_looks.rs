@@ -4,7 +4,7 @@ use crate::input::response::response_state::ResponseState;
 use crate::primitives::background::Background;
 use crate::primitives::color::RgbaF32;
 use crate::text::font_family::FontFamily;
-use crate::text::font_style::FontStyle;
+use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
 use crate::widgets::theme::button::ButtonTheme;
 use crate::widgets::theme::palette::Palette;
@@ -180,7 +180,7 @@ fn animated_look_line_height_px_delegates_to_text_style() {
             line_height_mult: 1.5,
             family: FontFamily::SANS,
             weight: FontWeight::REGULAR,
-            style: FontStyle::Normal,
+            slant: FontSlant::Normal,
         },
     };
     assert!((look.text.font().line_height_px - 24.0).abs() < 1e-6);

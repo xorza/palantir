@@ -4,7 +4,7 @@ use crate::layout::types::align::HAlign;
 use crate::primitives::widget_id::{WidgetId, WidgetIdSet};
 use crate::text::cosmic::shaped_buffer_cache;
 use crate::text::font_family::FontFamily;
-use crate::text::font_style::FontStyle;
+use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::key::WrapBound;
@@ -61,7 +61,7 @@ const UI_FACE: TestShape = TestShape {
         line_height_px: 14.0 * LEADING_RATIO,
         family: FontFamily::SANS,
         weight: FontWeight::REGULAR,
-        style: FontStyle::Normal,
+        slant: FontSlant::Normal,
     },
     #[cfg(test)]
     max_width_px: None,

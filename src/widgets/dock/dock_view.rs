@@ -158,7 +158,7 @@ impl<T: DockTab> DockView<'_, T> {
     pub fn run<D: DockTabs<Tab = T>>(ui: &mut Ui, state: &mut DockState<T>, tabs: &mut D) {
         let id = state.dock_id();
         let mut ops = ui
-            .try_state_mut::<DockOpBuf<T>>(id)
+            .state_mut::<DockOpBuf<T>>(id)
             .map(|buf| std::mem::take(&mut buf.ops))
             .unwrap_or_default();
         ops.clear();
@@ -170,7 +170,7 @@ impl<T: DockTab> DockView<'_, T> {
         for op in ops.drain(..) {
             state.apply(op);
         }
-        ui.state_mut::<DockOpBuf<T>>(id).ops = ops;
+        ui.state_or_default::<DockOpBuf<T>>(id).ops = ops;
     }
 }
 

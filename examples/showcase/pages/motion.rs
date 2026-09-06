@@ -46,10 +46,10 @@ fn easing(ui: &mut Ui) {
                 .left
                 .clicked()
             {
-                let s = ui.state_mut::<Bars>(demo_id);
+                let s = ui.state_or_default::<Bars>(demo_id);
                 s.wide = !s.wide;
             }
-            let target = if ui.state_mut::<Bars>(demo_id).wide {
+            let target = if ui.state_or_default::<Bars>(demo_id).wide {
                 420.0
             } else {
                 80.0
@@ -103,9 +103,10 @@ fn bar(ui: &mut Ui, key: &'static str, label: &'static str, spec: AnimSpec, targ
 /// the drag started, so no anchor bookkeeping leaks into the caller. The
 /// actively-dragged card records last so it paints over any overlap.
 fn drag(ui: &mut Ui) {
-    let dragging = CARDS
-        .iter()
-        .position(|(k, _, _)| ui.state_mut::<CardState>(WidgetId::from_hash(*k)).dragging);
+    let dragging = CARDS.iter().position(|(k, _, _)| {
+        ui.state_or_default::<CardState>(WidgetId::from_hash(*k))
+            .dragging
+    });
 
     support::section(
         ui,
@@ -146,8 +147,8 @@ fn card(ui: &mut Ui, key: &str, initial: Vec2, accent: RgbaF32) {
     // Seeded on the first frame only — keyed on the row not existing yet,
     // the way every other page seeds one, rather than on a flag the row's
     // own presence already answers.
-    let fresh = ui.try_state::<CardState>(id).is_none();
-    let st: &mut CardState = ui.state_mut(id);
+    let fresh = ui.state::<CardState>(id).is_none();
+    let st: &mut CardState = ui.state_or_default(id);
     if fresh {
         st.pos = initial;
     }
@@ -165,7 +166,7 @@ fn card(ui: &mut Ui, key: &str, initial: Vec2, accent: RgbaF32) {
         .show(ui)
         .snapshot();
 
-    let st: &mut CardState = ui.state_mut(id);
+    let st: &mut CardState = ui.state_or_default(id);
     if r.left.drag.started() {
         st.anchor = st.pos;
         st.dragging = true;

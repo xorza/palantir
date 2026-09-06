@@ -1,6 +1,6 @@
 //! One native GPU stroke — a cubic or an arc.
 
-use crate::primitives::approx::noop_f32;
+use crate::primitives::approx::paints_nothing;
 use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
 use crate::scene::shapes::paint::CurveBasis;
@@ -57,11 +57,11 @@ impl DrawCurvePayload {
     /// lowering).
     #[inline]
     pub(crate) fn is_noop(&self) -> bool {
-        if noop_f32(self.width) {
+        if paints_nothing(self.width) {
             return true;
         }
         if let CurveBasis::Arc { radius, .. } = self.basis
-            && noop_f32(radius)
+            && paints_nothing(radius)
         {
             return true;
         }

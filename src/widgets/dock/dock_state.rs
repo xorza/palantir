@@ -691,7 +691,7 @@ impl<T: DockTab> DockState<T> {
                     continue;
                 }
                 let chip = ui.response_for(TabStrip::chip_id(strip, key));
-                if chip.left.clicked() {
+                if chip.clicked() {
                     ops.push(DockOp::ActivateTab { tab });
                 }
                 if dragged.is_none() && chip.left.drag.started() {
@@ -726,12 +726,11 @@ impl<T: DockTab> DockState<T> {
 
     /// The tab a pointer is currently carrying, if any.
     pub(crate) fn drag(&self, ui: &Ui) -> Option<T> {
-        ui.try_state::<TabDrag<T>>(self.drag_id())
-            .and_then(|d| d.tab)
+        ui.state::<TabDrag<T>>(self.drag_id()).and_then(|d| d.tab)
     }
 
     fn set_drag(&self, ui: &mut Ui, tab: Option<T>) {
-        ui.state_mut::<TabDrag<T>>(self.drag_id()).tab = tab;
+        ui.state_or_default::<TabDrag<T>>(self.drag_id()).tab = tab;
     }
 
     /// The drop the pointer currently indicates: the pane whose rect

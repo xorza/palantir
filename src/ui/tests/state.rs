@@ -8,7 +8,7 @@ use crate::widgets::{button::Button, panel::Panel, text::Text};
 
 /// The whole reason [`Ui::with_state`](crate::Ui::with_state) exists: the
 /// row is live *at the same time as* the `Ui`, so a subtree can read and
-/// write it around the widget calls it drives. `state_mut`'s borrow cannot
+/// write it around the widget calls it drives. `state_or_default`'s borrow cannot
 /// survive the first of those.
 #[test]
 fn with_state_lends_a_row_across_widget_calls() {
@@ -33,7 +33,7 @@ fn with_state_lends_a_row_across_widget_calls() {
     });
 
     assert_eq!(
-        h.ui.try_state::<Page>(id),
+        h.ui.state::<Page>(id),
         Some(&Page {
             clicks: 11,
             note: "x".into(),
@@ -54,11 +54,11 @@ fn with_state_survives_the_body_growing_its_own_store() {
             // Enough same-`T` rows to force the dense store's `Vec` to
             // reallocate while the outer row is out on loan.
             for i in 0..64u64 {
-                *ui.state_mut::<u32>(WidgetId::from_hash(("filler", i))) = i as u32;
+                *ui.state_or_default::<u32>(WidgetId::from_hash(("filler", i))) = i as u32;
             }
         });
     });
-    assert_eq!(h.ui.try_state::<u32>(outer), Some(&7));
+    assert_eq!(h.ui.state::<u32>(outer), Some(&7));
 }
 
 /// Rows of different types nest, which is what lets a page scope sit
@@ -82,8 +82,8 @@ fn with_state_scopes_nest_by_type() {
             app.0 += 10;
         });
     });
-    assert_eq!(h.ui.try_state::<App>(app_id).map(|a| a.0), Some(11));
-    assert_eq!(h.ui.try_state::<Page>(page_id).map(|p| p.0), Some(2));
+    assert_eq!(h.ui.state::<App>(app_id).map(|a| a.0), Some(11));
+    assert_eq!(h.ui.state::<Page>(page_id).map(|p| p.0), Some(2));
 }
 
 /// The scope returns whatever the body returns, so a page can hand a
@@ -99,5 +99,5 @@ fn with_state_returns_the_body_value() {
         })
     });
     assert_eq!(out, 15);
-    assert_eq!(h.ui.try_state::<u32>(id), Some(&5));
+    assert_eq!(h.ui.state::<u32>(id), Some(&5));
 }

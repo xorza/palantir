@@ -308,13 +308,13 @@ fn drag_select_continues_past_editor_bounds() {
     // Press inside: caret lands mid-text and the anchor latches there.
     h.press_at(Vec2::new(22.0, 20.0));
     h.frame(|ui| body(ui, &mut buf));
-    let anchor = h.ui.state_mut::<TextEditState>(ed_id).edit.caret;
+    let anchor = h.ui.state_or_default::<TextEditState>(ed_id).edit.caret;
     assert!(
         anchor > 0 && anchor < buf.len(),
         "press should land mid-text (room to extend both ways), got {anchor}",
     );
     {
-        let st = h.ui.state_mut::<TextEditState>(ed_id);
+        let st = h.ui.state_or_default::<TextEditState>(ed_id);
         assert_eq!(st.edit.drag_anchor, Some(anchor));
         assert_eq!(
             st.edit.selection, None,
@@ -327,7 +327,7 @@ fn drag_select_continues_past_editor_bounds() {
     h.drag_to(Vec2::new(4000.0, 20.0));
     h.frame(|ui| body(ui, &mut buf));
     {
-        let st = h.ui.state_mut::<TextEditState>(ed_id);
+        let st = h.ui.state_or_default::<TextEditState>(ed_id);
         assert_eq!(
             st.edit.caret,
             buf.len(),
@@ -350,7 +350,7 @@ fn drag_select_continues_past_editor_bounds() {
     h.drag_to(Vec2::new(-2000.0, 20.0));
     h.frame(|ui| body(ui, &mut buf));
     {
-        let st = h.ui.state_mut::<TextEditState>(ed_id);
+        let st = h.ui.state_or_default::<TextEditState>(ed_id);
         assert_eq!(st.edit.caret, 0, "caret clamps to 0 past the left edge");
         assert_eq!(
             st.edit.selection,
@@ -364,7 +364,7 @@ fn drag_select_continues_past_editor_bounds() {
     h.pointer_left();
     h.frame(|ui| body(ui, &mut buf));
     {
-        let st = h.ui.state_mut::<TextEditState>(ed_id);
+        let st = h.ui.state_or_default::<TextEditState>(ed_id);
         assert_eq!(
             st.edit.selection,
             Some(anchor),
@@ -381,7 +381,7 @@ fn drag_select_continues_past_editor_bounds() {
     h.release();
     h.frame(|ui| body(ui, &mut buf));
     {
-        let st = h.ui.state_mut::<TextEditState>(ed_id);
+        let st = h.ui.state_or_default::<TextEditState>(ed_id);
         assert_eq!(
             st.edit.selection,
             Some(anchor),
@@ -459,7 +459,7 @@ fn select_all_on_focus_gates_on_the_flag() {
     h.request_focus(Some(on_id));
     h.frame(|ui| render(ui, &mut on, &mut off));
     {
-        let st = h.ui.state_mut::<TextEditState>(on_id);
+        let st = h.ui.state_or_default::<TextEditState>(on_id);
         assert_eq!(
             st.edit.selection,
             Some(0),
@@ -475,7 +475,9 @@ fn select_all_on_focus_gates_on_the_flag() {
     h.request_focus(Some(off_id));
     h.frame(|ui| render(ui, &mut on, &mut off));
     assert_eq!(
-        h.ui.state_mut::<TextEditState>(off_id).edit.selection,
+        h.ui.state_or_default::<TextEditState>(off_id)
+            .edit
+            .selection,
         None,
         "flag off: focus leaves the selection untouched"
     );
@@ -514,7 +516,7 @@ fn caret_click_is_scale_invariant_under_zoom() {
         );
         h.press_at(click);
         h.frame(|ui| render(ui, &mut buf));
-        h.ui.state_mut::<TextEditState>(id).edit.caret
+        h.ui.state_or_default::<TextEditState>(id).edit.caret
     }
 
     let full = caret_at_scale(1.0);

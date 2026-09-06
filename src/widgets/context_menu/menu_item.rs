@@ -25,7 +25,7 @@ use crate::widgets::widget::Widget;
 ///
 /// If [`Self::shortcut`] is set, the row also intercepts that
 /// shortcut from this frame's key events: matching keypresses
-/// synthesize a click (so `if item.left.clicked() { … }` fires) AND
+/// synthesize a click (so `if item.clicked() { … }` fires) AND
 /// close the menu, mirroring native menu behaviour. Disabled rows
 /// don't intercept.
 #[derive(Debug)]
@@ -162,7 +162,7 @@ impl<'a> MenuItem<'a> {
         // Eager: `response` folds in the synthesized shortcut click, which
         // a lazy re-probe would drop.
         let resp = Response::eager(id, ui, response);
-        if resp.left.clicked() {
+        if resp.clicked() {
             popup.close();
         }
         resp

@@ -122,7 +122,7 @@ fn dropdown_aligns_to_the_full_trigger_rect_when_flipped_above() {
             });
     };
     h.frame(|ui| build(ui, &mut selected));
-    h.ui.state_mut::<ComboState>(id).open = true;
+    h.ui.state_or_default::<ComboState>(id).open = true;
 
     let mut passes = 0;
     h.frame(|ui| {
@@ -237,7 +237,7 @@ fn the_dropdown_takes_the_context_menu_theme_it_documents() {
                 });
         };
         h.frame(|ui| build(ui, &mut selected));
-        h.ui.state_mut::<ComboState>(id).open = true;
+        h.ui.state_or_default::<ComboState>(id).open = true;
         h.frame(|ui| build(ui, &mut selected));
         h.ui.response_for(id.with("list"))
             .rect

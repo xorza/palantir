@@ -4,7 +4,7 @@
 use crate::layout::types::align::Align;
 use crate::primitives::text_input::TextInput;
 use crate::shape::Shape;
-use crate::text::font_style::FontStyle;
+use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::wrap::TextWrap;
@@ -54,7 +54,7 @@ pub struct Text<'a> {
     /// the whole ambient `TextStyle` at the call site.
     weight: Option<FontWeight>,
     /// The same hatch for the other face axis — see [`Self::italic`].
-    font_style: Option<FontStyle>,
+    font_slant: Option<FontSlant>,
     wrap: TextWrap,
     align: Align,
 }
@@ -67,7 +67,7 @@ impl<'a> Text<'a> {
             text: text.into(),
             style: None,
             weight: None,
-            font_style: None,
+            font_slant: None,
             wrap: TextWrap::SingleLine,
             // Default = (Auto, Auto) → top-left. Only matters when the
             // widget has Fixed size larger than its measured content;
@@ -99,7 +99,7 @@ impl<'a> Text<'a> {
     /// bundle. The weight axis is untouched, so `.bold().italic()` is
     /// bold italic.
     pub fn italic(mut self) -> Self {
-        self.font_style = Some(FontStyle::Italic);
+        self.font_slant = Some(FontSlant::Italic);
         self
     }
 
@@ -133,7 +133,7 @@ impl<'a> Text<'a> {
         // the style's face as-is.
         let font = GlyphFont {
             weight: self.weight.unwrap_or(style.weight),
-            style: self.font_style.unwrap_or(style.style),
+            slant: self.font_slant.unwrap_or(style.slant),
             ..style.font()
         };
         // No metrics guard here: `TextShape::is_noop` rejects a non-finite

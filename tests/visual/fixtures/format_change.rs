@@ -12,8 +12,9 @@
 //! survive the switch with no re-upload.
 
 use glam::UVec2;
+use palantir::widget::Shape;
 use palantir::{
-    Background, Button, Configure, Corners, Frame, Image, Panel, RgbaF32, Shape, Sizing, Stroke,
+    Background, Button, Configure, Corners, Frame, Image, Panel, RgbaF32, Sizing, Stroke,
 };
 use std::cell::RefCell;
 use wgpu::TextureFormat;
@@ -149,7 +150,7 @@ fn test_image() -> Image {
             px.extend_from_slice(&[rgb[0], rgb[1], rgb[2], 255]);
         }
     }
-    Image::from_rgba8(N, N, px)
+    Image::from_rgba8(UVec2::new(N, N), px)
 }
 
 thread_local! {

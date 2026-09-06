@@ -276,7 +276,7 @@ fn zoomed_content_shrinks_thumb_proportionally() {
             .show(ui, |ui| {
                 Scroll::both()
                     .id(WidgetId::from_hash("scroll"))
-                    .with_zoom()
+                    .zoom()
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
                         Frame::new()
@@ -298,7 +298,7 @@ fn zoomed_content_shrinks_thumb_proportionally() {
         .size
         .h;
 
-    h.ui.state_mut::<ScrollState>(scroll_id).zoom = 2.0;
+    h.ui.state_or_default::<ScrollState>(scroll_id).zoom = 2.0;
     h.frame(build);
     h.frame(build);
     let z2_thumbs = thumb_rects(&h.ui, "scroll");

@@ -225,7 +225,7 @@ fn invalid_runtime_metrics_record_no_text_or_shaping_state() {
             });
         });
         {
-            let st = h.ui.state_mut::<TextEditState>(editor_id);
+            let st = h.ui.state_or_default::<TextEditState>(editor_id);
             st.edit.caret = 4;
             st.edit.selection = Some(1);
         }
@@ -266,7 +266,7 @@ fn invalid_runtime_metrics_record_no_text_or_shaping_state() {
         // hand the row back as `Default` — silently resetting the caret
         // and dropping the undo stack the moment a theme made the text
         // unrenderable.
-        let st = h.ui.state_mut::<TextEditState>(editor_id);
+        let st = h.ui.state_or_default::<TextEditState>(editor_id);
         assert_eq!(st.edit.caret, 4, "{label}: caret lost on the early return");
         assert_eq!(
             st.edit.selection,

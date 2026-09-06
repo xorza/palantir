@@ -6,14 +6,14 @@ use crate::layout::types::align::HAlign;
 use crate::primitives::num::F32Px;
 use crate::text::RENDERED_RUN_KEEP_SPREAD_MASK;
 use crate::text::font_family::FontFamily;
-use crate::text::font_style::FontStyle;
+use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::wrap::LineFit;
 use std::num::NonZeroU64;
 
 /// The face a shape is measured at, as [`TextShapeKey`] quantizes it:
-/// size, family, weight and style, and nothing about the text or the
+/// size, family, weight and slant, and nothing about the text or the
 /// width.
 ///
 /// Named rather than compared field by field wherever a face has to
@@ -23,7 +23,7 @@ use std::num::NonZeroU64;
 pub(crate) struct QuantizedFace {
     size_q: u32,
     family_q: u16,
-    /// [`FaceBits`] with the bound half masked off — the weight and style
+    /// [`FaceBits`] with the bound half masked off — the weight and slant
     /// alone, since a face is the same face however wide its box is.
     face_q: u16,
 }
@@ -74,7 +74,7 @@ pub(crate) struct TextShapeKey {
     /// has to discriminate. The index means nothing outside the process
     /// that interned it, which is why no key is ever persisted.
     family_q: u16,
-    /// Weight, style, per-line alignment and line fit — see
+    /// Weight, slant, per-line alignment and line fit — see
     /// [`FaceBits`], which is where the four stop being separate bytes
     /// so the key can hold a 10-bit weight and stay 24 bytes.
     face_q: FaceBits,
@@ -149,7 +149,7 @@ impl TextShapeKey {
             line_height_px,
             family,
             weight,
-            style,
+            slant,
         } = font;
         debug_assert!(
             GlyphFont::metrics_are_valid(font_size_px, line_height_px),
@@ -162,7 +162,7 @@ impl TextShapeKey {
             max_w_q: MAX_W_NONE,
             lh_q: quantize_metric(line_height_px),
             family_q: family.raw(),
-            face_q: FaceBits::new(weight, style, LineAlign::Auto, LineFit::Wrap),
+            face_q: FaceBits::new(weight, slant, LineAlign::Auto, LineFit::Wrap),
         }
     }
 
@@ -230,8 +230,8 @@ impl TextShapeKey {
         self.face_q.weight()
     }
 
-    pub(super) fn style(self) -> FontStyle {
-        self.face_q.style()
+    pub(super) fn slant(self) -> FontSlant {
+        self.face_q.slant()
     }
 
     /// `pub(crate)` where its siblings are `pub(super)`: the text-edit
@@ -246,7 +246,7 @@ impl TextShapeKey {
     }
 }
 
-/// Weight, style, per-line alignment and line fit in one 16-bit field.
+/// Weight, slant, per-line alignment and line fit in one 16-bit field.
 ///
 /// A weight is a number on the CSS 1–1000 scale, which wants ten bits,
 /// so the four axes as separate bytes would push the key from 24 to 32
@@ -261,8 +261,8 @@ impl TextShapeKey {
 pub(crate) struct FaceBits(u16);
 
 const WEIGHT_MASK: u16 = (1 << 10) - 1;
-const STYLE_SHIFT: u32 = 10;
-const STYLE_MASK: u16 = 1 << STYLE_SHIFT;
+const SLANT_SHIFT: u32 = 10;
+const STYLE_MASK: u16 = 1 << SLANT_SHIFT;
 const ALIGN_SHIFT: u32 = 11;
 const ALIGN_MASK: u16 = 0b11 << ALIGN_SHIFT;
 const FIT_SHIFT: u32 = 13;
@@ -273,8 +273,8 @@ impl FaceBits {
     /// No range check on the weight: [`FontWeight`] holds nothing outside
     /// `1..=1000`, and the `const _` block below pins that inside
     /// [`WEIGHT_MASK`].
-    const fn new(weight: FontWeight, style: FontStyle, align: LineAlign, fit: LineFit) -> Self {
-        Self(weight.value() | ((style as u16) << STYLE_SHIFT) | Self::bound_bits(align, fit))
+    const fn new(weight: FontWeight, slant: FontSlant, align: LineAlign, fit: LineFit) -> Self {
+        Self(weight.value() | ((slant as u16) << SLANT_SHIFT) | Self::bound_bits(align, fit))
     }
 
     /// The two fields a committed width rewrites, as bits — the one place
@@ -289,7 +289,7 @@ impl FaceBits {
         Self((self.0 & !BOUND_MASK) | bound)
     }
 
-    /// The weight and style alone — the half of a face that survives a
+    /// The weight and slant alone — the half of a face that survives a
     /// width change, which is what [`QuantizedFace`] compares.
     const fn face_only(self) -> u16 {
         self.0 & !BOUND_MASK
@@ -307,10 +307,10 @@ impl FaceBits {
         FontWeight::from_raw(self.0 & WEIGHT_MASK)
     }
 
-    const fn style(self) -> FontStyle {
+    const fn slant(self) -> FontSlant {
         match self.0 & STYLE_MASK {
-            0 => FontStyle::Normal,
-            _ => FontStyle::Italic,
+            0 => FontSlant::Normal,
+            _ => FontSlant::Italic,
         }
     }
 
@@ -372,7 +372,7 @@ impl From<HAlign> for LineAlign {
 /// depends on it. The two width assertions are the other half: a fifth
 /// `LineFit` or a fifth `LineAlign` would silently overflow its field.
 const _: () = {
-    assert!(FontStyle::Normal as u8 == 0 && FontStyle::Italic as u8 == 1);
+    assert!(FontSlant::Normal as u8 == 0 && FontSlant::Italic as u8 == 1);
     assert!(
         LineAlign::Auto as u8 == 0
             && LineAlign::Left as u8 == 1

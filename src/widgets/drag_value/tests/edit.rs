@@ -124,7 +124,7 @@ fn focusing_mid_scrub_cannot_overwrite_the_typed_commit() {
     h.request_focus(Some(id));
     deferred_frame(&mut h, id, &mut canonical, true, false);
     assert!(matches!(
-        h.ui.state_mut::<DragValueState>(id),
+        h.ui.state_or_default::<DragValueState>(id),
         DragValueState::Editing { .. }
     ));
 
@@ -193,7 +193,7 @@ fn disabling_mid_edit_discards_the_draft() {
     assert_eq!(h.focused_id(), None, "disable kicks the editor's focus");
     assert_eq!(canonical, 5.0);
     assert!(matches!(
-        h.ui.state_mut::<DragValueState>(id),
+        h.ui.state_or_default::<DragValueState>(id),
         DragValueState::Idle
     ));
 
@@ -224,7 +224,7 @@ fn toggling_editable_off_mid_edit_cannot_replay_the_draft() {
     let s = deferred_frame(&mut h, id, &mut canonical, false, false);
     assert!(!s.committed, "read-only frame commits nothing");
     assert!(matches!(
-        h.ui.state_mut::<DragValueState>(id),
+        h.ui.state_or_default::<DragValueState>(id),
         DragValueState::Idle
     ));
 
@@ -288,7 +288,7 @@ fn key(ui: &mut Ui, k: Key) {
 }
 
 fn edit_buffer(ui: &mut Ui, id: WidgetId) -> &mut String {
-    match ui.state_mut::<DragValueState>(id) {
+    match ui.state_or_default::<DragValueState>(id) {
         DragValueState::Editing { buffer } => buffer,
         state => panic!("expected DragValue edit state, got {state:?}"),
     }

@@ -340,7 +340,10 @@ fn placeholder_uses_own_measured_size_for_alignment() {
     // the block the engine arranged, not a second alignment of the empty
     // buffer's own measure, which would have parked it a whole
     // placeholder further right.
-    let stored = h.ui.state_mut::<TextEditState>(ed_id()).view.block_offset;
+    let stored =
+        h.ui.state_or_default::<TextEditState>(ed_id())
+            .view
+            .block_offset;
     let placed = block_at(&h.ui, node) - glam::Vec2::new(PAD_L, PAD_T);
     assert!(
         (stored - placed).length() < 1e-3,
@@ -364,7 +367,7 @@ fn click_compensates_for_right_align() {
     frame(&mut h, &mut buf, Some(Align::RIGHT), None);
     h.release();
     let id = WidgetId::from_hash("align-ed");
-    let caret = h.ui.state_mut::<TextEditState>(id).edit.caret;
+    let caret = h.ui.state_or_default::<TextEditState>(id).edit.caret;
     assert!(
         (1..=2).contains(&caret),
         "click on right-aligned glyph 'b' must land near byte 1 (got {caret})",

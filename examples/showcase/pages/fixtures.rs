@@ -16,9 +16,10 @@
 
 use crate::support;
 use crate::support::{captioned_cell, demo_cell, section, swatch_bg, tiles};
+use palantir::widget::{PolylineColors, Shape};
 use palantir::{
-    Align, Background, Button, Configure, Corners, Frame, Panel, PolylineColors, Rect, RgbaF32,
-    Shape, Sizing, Stroke, Text, TextStyle, Ui, Vec2,
+    Align, Background, Button, Configure, Corners, Frame, Panel, Rect, RgbaF32, Sizing, Stroke,
+    Text, TextStyle, Ui, Vec2,
 };
 
 pub(crate) fn build(ui: &mut Ui) {

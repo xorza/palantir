@@ -364,8 +364,8 @@ impl TextShaper {
     }
 
     /// Lay glyphs out and rasterize them directly: the exclusive render-side
-    /// lease, in palantir-native terms — [`PlacedGlyph`](crate::PlacedGlyph)
-    /// placements and [`RasterImage`](crate::RasterImage) bitmaps, with no
+    /// lease, in palantir-native terms — [`PlacedGlyph`](crate::widget::PlacedGlyph)
+    /// placements and [`RasterImage`](crate::widget::RasterImage) bitmaps, with no
     /// cosmic type in sight.
     ///
     /// Available under the mono metric too, and answers there in real

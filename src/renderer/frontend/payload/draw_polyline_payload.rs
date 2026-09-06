@@ -1,6 +1,6 @@
 //! One stroked-polyline draw.
 
-use crate::primitives::approx::noop_f32;
+use crate::primitives::approx::paints_nothing;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
 use crate::scene::shapes::record::ColorMode;
 use crate::shape::style::{LineCap, LineJoin};
@@ -79,6 +79,6 @@ impl DrawPolylinePayload {
     /// still paint stroke pixels, so it isn't checked either.
     #[inline]
     pub(crate) fn is_noop(&self) -> bool {
-        self.points_len < 2 || noop_f32(self.width)
+        self.points_len < 2 || paints_nothing(self.width)
     }
 }

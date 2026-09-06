@@ -1,9 +1,9 @@
 //! Palantir-native vocabulary for the render side of the shaper: the wgpu
 //! text backend drives the measurer through these glyph placements
 //! ([`PlacedGlyph`]) and the bitmaps they resolve to
-//! ([`RasterImage`](crate::RasterImage)), so cosmic and swash types
+//! ([`RasterImage`](crate::widget::RasterImage)), so cosmic and swash types
 //! (`Buffer`, `FontSystem`, `ScaleContext`) never cross out of
-//! `src/text/`. [`TextGlyphs`](crate::TextGlyphs) is the lease it drives
+//! `src/text/`. [`TextGlyphs`](crate::widget::TextGlyphs) is the lease it drives
 //! them through.
 
 use crate::primitives::urect::URect;
@@ -27,10 +27,10 @@ pub(crate) struct RunPlacement {
 
 /// One glyph resolved to physical-px placement plus its opaque raster
 /// key. `x`/`y` position the glyph image before its raster bearing
-/// ([`RasterImage::bearing`](crate::RasterImage)) is applied.
+/// ([`RasterImage::bearing`](crate::widget::RasterImage)) is applied.
 ///
 /// Public because a caller drawing its own text needs the same answer the
-/// text backend does — see [`TextGlyphs`](crate::TextGlyphs).
+/// text backend does — see [`TextGlyphs`](crate::widget::TextGlyphs).
 #[derive(Clone, Copy, Debug)]
 pub struct PlacedGlyph {
     pub raster_key: GlyphRasterKey,

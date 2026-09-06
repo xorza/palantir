@@ -81,7 +81,7 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
         // this option, so flip `selected` now (`value` is moved into
         // `current`, so we can't re-derive it) — otherwise the chrome +
         // pip below paint unselected until the next unrelated repaint.
-        if response.left.clicked() && !response.disabled && !selected {
+        if response.clicked() && !selected {
             *self.current = self.value;
             selected = true;
         }

@@ -1,6 +1,7 @@
 use glam::UVec2;
 use image::RgbaImage;
-use palantir::{Configure, Panel, Rect, RgbaF32, Shape, Sizing, Ui};
+use palantir::widget::Shape;
+use palantir::{Configure, Panel, Rect, RgbaF32, Sizing, Ui};
 
 use crate::harness::Harness;
 use palantir::golden::Tolerance;

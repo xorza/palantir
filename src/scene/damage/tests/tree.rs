@@ -544,7 +544,7 @@ fn rekeying_a_child_damages_only_the_child() {
 /// doc — frame stays correct, one frame of over-paint, settles next.
 #[test]
 fn shape_removed_from_middle_evicts_trailing_ordinals() {
-    use crate::Shape;
+    use crate::widget::Shape;
 
     let mut h = UiHarness::new(DISPLAY.physical);
     let build = |include_middle: bool, ui: &mut Ui| {
@@ -619,7 +619,7 @@ fn shape_removed_from_middle_evicts_trailing_ordinals() {
 /// counterparts and only the new shape contributes damage.
 #[test]
 fn shape_added_in_middle_damages_only_new() {
-    use crate::Shape;
+    use crate::widget::Shape;
 
     let mut h = UiHarness::new(DISPLAY.physical);
     let red_rect = Rect::new(0.0, 0.0, 20.0, 20.0);

@@ -141,10 +141,7 @@ fn gradient_snap_inside_look_repaints_only_until_numeric_fields_settle() {
         background: Background::fill(RgbaF32::BLACK),
         text: TextStyle::default().with_color(RgbaF32::BLACK),
     };
-    let gradient = Brush::Radial(RadialGradient::two_stop_centered(
-        RgbaF32::BLACK,
-        RgbaF32::WHITE,
-    ));
+    let gradient = Brush::Radial(RadialGradient::two_stop(RgbaF32::BLACK, RgbaF32::WHITE));
     let target = AnimatedLook {
         background: Background::fill(gradient.clone()),
         text: TextStyle::default().with_color(RgbaF32::WHITE),

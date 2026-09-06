@@ -80,8 +80,8 @@ const CHURN_BASE: u32 = 1_000_000;
 /// half of its word; keeping the naive fixture makes them an end-to-end
 /// guard on the layout as well as on the atlas.
 fn gradient_for(seed: u32) -> GradientStops {
-    let a = RgbaU8::rgb(seed as u8, (seed >> 8) as u8, (seed >> 16) as u8);
-    let b = RgbaU8::rgb((seed >> 4) as u8, (seed >> 12) as u8, 0x40);
+    let a = RgbaU8::rgb(seed as u8, (seed >> 8) as u8, (seed >> 16) as u8).into();
+    let b = RgbaU8::rgb((seed >> 4) as u8, (seed >> 12) as u8, 0x40).into();
     GradientStops::new([Stop::new(0.0, a), Stop::new(1.0, b)])
 }
 

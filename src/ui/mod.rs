@@ -423,6 +423,19 @@ impl Ui {
         self.window_requests.levels.cursor = cursor;
     }
 
+    /// The cursor requested so far this record pass, or
+    /// [`CursorIcon::Default`] before anything asked.
+    ///
+    /// Frame-scoped, unlike the [`Self::vsync`] / [`Self::set_vsync`] pair
+    /// beside it: the request resets at the top of every record pass, so
+    /// this answers "what has the tree asked for up to here", not "what is
+    /// the window showing". A widget that wants to defer to a request
+    /// already made reads it before writing its own.
+    #[inline]
+    pub fn cursor(&self) -> CursorIcon {
+        self.window_requests.levels.cursor
+    }
+
     /// Set this window's presentation pacing.
     ///
     /// A **level**, retained across frames — [`Self::vsync`] reads it back,
@@ -761,7 +774,7 @@ impl Ui {
     /// Upload an image now and get back an owning [`ImageHandle`]. **Hold
     /// the handle** to keep the GPU texture resident — dropping the last
     /// clone frees it; there is no `unregister`. Reference it in
-    /// [`Shape::image`](crate::Shape::image) every frame (`clone` it where it
+    /// [`Shape::image`](crate::widget::Shape::image) every frame (`clone` it where it
     /// needs to live).
     ///
     /// The bytes are copied into wgpu staging before this returns; the next
@@ -964,7 +977,8 @@ impl Ui {
     /// shape paintable.
     ///
     /// ```
-    /// # use palantir::{PaintAnim, PaintRepeat, Rect, RgbaF32, Shape, Ui, curves};
+    /// # use palantir::widget::{PaintAnim, PaintRepeat, Shape, curves};
+    /// # use palantir::{Rect, RgbaF32, Ui};
     /// # use std::time::Duration;
     /// # fn demo(ui: &mut Ui) {
     /// ui.add_shape_animated(
@@ -1022,7 +1036,7 @@ impl Ui {
     /// parent into the id it records under. [`Widget::resolve`] is the
     /// one caller, and it keeps the answer on the widget.
     ///
-    /// [`Widget::resolve`]: crate::Widget::resolve
+    /// [`Widget::resolve`]: crate::widget::Widget::resolve
     #[inline]
     pub(crate) fn resolve_ident(&mut self, ident: Ident) -> WidgetId {
         self.forest.widget_id(ident)
@@ -1036,7 +1050,7 @@ impl Ui {
     /// `Layer::Main` viewport, which has no `Widget` to record through.
     /// Widget code calls `Widget::record`, never this.
     ///
-    /// [`Widget::record`]: crate::Widget::record
+    /// [`Widget::record`]: crate::widget::Widget::record
     #[inline]
     pub(crate) fn open_node(&mut self, id: WidgetId, node: &Node, chrome: Option<&Background>) {
         self.forest.open_node(id, node, chrome);
@@ -1053,7 +1067,7 @@ impl Ui {
     /// grid references a definition the tree owns, and should not have to
     /// name the tree to do it.
     ///
-    /// [`Widget::grid_tracks`]: crate::Widget::grid_tracks
+    /// [`Widget::grid_tracks`]: crate::widget::Widget::grid_tracks
     #[inline]
     pub(crate) fn push_grid_def(&mut self, rows: &[Track], cols: &[Track]) -> GridDefId {
         self.forest.push_grid_def(rows, cols)
@@ -1112,8 +1126,12 @@ impl Ui {
         state
     }
 
-    /// Cross-frame state row for `id`, `T::default()` on first
-    /// access. Rows for `WidgetId`s not recorded this frame are
+    /// Cross-frame state row for `id`, inserting `S::default()` on first
+    /// access — the one a widget reaches for, since the row it wants may not
+    /// exist yet. [`Self::state`] and [`Self::state_mut`] insert nothing,
+    /// which is why they answer `Option`.
+    ///
+    /// Rows for `WidgetId`s not recorded this frame are
     /// evicted in `finalize_frame`, once per `Ui::frame` after the
     /// final record pass. Type collisions at one `id` are NOT
     /// detected — each `T` lives in its own store, so two call sites
@@ -1123,7 +1141,7 @@ impl Ui {
     /// The returned borrow is out of `&mut Ui`, so it ends at the next
     /// widget call — fine for a single read or write, useless for state a
     /// whole subtree edits. Use [`Self::with_state`] for that.
-    pub fn state_mut<S: Default + 'static>(&mut self, id: WidgetId) -> &mut S {
+    pub fn state_or_default<S: Default + 'static>(&mut self, id: WidgetId) -> &mut S {
         self.state.get_or_insert_with(id, S::default)
     }
 
@@ -1131,7 +1149,7 @@ impl Ui {
     /// `Ui` — the scope in which a page, a panel, or any other subtree
     /// larger than one widget owns state.
     ///
-    /// [`Self::state_mut`] hands back a borrow of the `Ui`, which the first
+    /// [`Self::state_or_default`] hands back a borrow of the `Ui`, which the first
     /// widget call inside the scope invalidates; the row is instead moved
     /// out for the duration of the call and moved back after, so both are
     /// live at once:
@@ -1142,7 +1160,7 @@ impl Ui {
     /// # struct Page { clicks: u32, note: String }
     /// # fn demo(ui: &mut Ui, page_id: WidgetId) {
     /// ui.with_state::<Page, _>(page_id, |ui, page| {
-    ///     if Button::new().label("click").show(ui).left.clicked() {
+    ///     if Button::new().label("click").show(ui).clicked() {
     ///         page.clicks += 1;
     ///     }
     ///     Text::new(&page.note).show(ui);
@@ -1151,7 +1169,7 @@ impl Ui {
     /// ```
     ///
     /// The row is `S::default()` on first access and follows the same
-    /// eviction rule as [`Self::state_mut`], so a subtree that stops being
+    /// eviction rule as [`Self::state_or_default`], so a subtree that stops being
     /// recorded drops its state — key it off a [`WidgetId`] that lives as
     /// long as the state should.
     ///
@@ -1164,27 +1182,28 @@ impl Ui {
         id: WidgetId,
         body: impl FnOnce(&mut Self, &mut S) -> R,
     ) -> R {
-        let mut value = std::mem::take(self.state_mut::<S>(id));
+        let mut value = std::mem::take(self.state_or_default::<S>(id));
         let out = body(self, &mut value);
         // Re-probed rather than held: `body` may have inserted rows of the
         // same `S` at other ids, which can reallocate the store's data vec.
-        *self.state_mut::<S>(id) = value;
+        *self.state_or_default::<S>(id) = value;
         out
     }
 
-    /// Read-only peek at the cross-frame state row for `id`. `None` if
-    /// nothing has been stored for `(id, T)` yet — does not allocate or
-    /// mutate. Use this on the `&Ui` side (probes, hit-test helpers,
-    /// "is this menu open?" checks) where `state_mut`'s `&mut Ui`
-    /// receiver would be a needless borrow upgrade.
-    pub fn try_state<S: 'static>(&self, id: WidgetId) -> Option<&S> {
+    /// The cross-frame state row for `id`, or `None` when nothing has been
+    /// stored for `(id, S)` yet. Allocates nothing and mutates nothing.
+    ///
+    /// The `&Ui` read — probes, hit-test helpers, "is this menu open?"
+    /// checks — where [`Self::state_or_default`]'s `&mut Ui` receiver would
+    /// be a needless borrow upgrade.
+    pub fn state<S: 'static>(&self, id: WidgetId) -> Option<&S> {
         self.state.try_get::<S>(id)
     }
 
-    /// Mutable peek at an existing cross-frame state row. `None` if
-    /// `(id, T)` has never been stored; unlike [`Self::state_mut`], this
-    /// does not allocate a typed store or insert a default row.
-    pub fn try_state_mut<S: 'static>(&mut self, id: WidgetId) -> Option<&mut S> {
+    /// [`Self::state`], mutably. `None` if `(id, S)` has never been stored —
+    /// unlike [`Self::state_or_default`], this allocates no typed store and
+    /// inserts no default row.
+    pub fn state_mut<S: 'static>(&mut self, id: WidgetId) -> Option<&mut S> {
         self.state.try_get_mut::<S>(id)
     }
 
@@ -1456,7 +1475,7 @@ impl Ui {
     /// modifier-dependent paint updates on both press and release
     /// without another input event. When the read is instead gated on
     /// something that already woke this frame — the overwhelmingly
-    /// common `if response.left.clicked() { … }` — use
+    /// common `if response.clicked() { … }` — use
     /// [`Self::peek_modifiers`] and don't pay for the wake.
     #[inline]
     pub fn modifiers(&mut self) -> Modifiers {

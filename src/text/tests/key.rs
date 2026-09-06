@@ -37,10 +37,10 @@ fn cache_key_discriminates_every_shaping_axis() {
             u32::from(base.weight().value()),
         ),
         (
-            "style",
-            shape(16.0).style(FontStyle::Italic),
-            (|k: TextShapeKey| k.style() as u32) as fn(TextShapeKey) -> u32,
-            base.style() as u32,
+            "slant",
+            shape(16.0).slant(FontSlant::Italic),
+            (|k: TextShapeKey| k.slant() as u32) as fn(TextShapeKey) -> u32,
+            base.slant() as u32,
         ),
     ] {
         let key = c.measure("hi", variant).buffer_key();
@@ -56,7 +56,7 @@ fn cache_key_discriminates_every_shaping_axis() {
     // read back, so a shifted field can't silently remap cached buffers.
     assert_eq!(base.family(), FontFamily::SANS);
     assert_eq!(base.weight(), FontWeight::REGULAR);
-    assert_eq!(base.style(), FontStyle::Normal);
+    assert_eq!(base.slant(), FontSlant::Normal);
     assert_eq!(
         base.text_hash,
         TextShapeKey::content_hash(hash::hash_str("hi")),
@@ -355,7 +355,7 @@ fn key_for(recorded: &RecordedText) -> TextShapeKey {
             line_height_px: 19.2,
             family: FontFamily::SANS,
             weight: FontWeight::REGULAR,
-            style: FontStyle::Normal,
+            slant: FontSlant::Normal,
         },
     )
 }

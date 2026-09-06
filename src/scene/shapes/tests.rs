@@ -10,6 +10,7 @@ use crate::scene::shapes::paint::ImageSource;
 use crate::scene::shapes::record::ShapeRecord;
 use crate::shape::Shape;
 use crate::shape::polyline::PolylineColors;
+use glam::UVec2;
 use glam::Vec2;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
@@ -136,7 +137,7 @@ fn image_dimensions_above_u16_survive_lowering() {
     const WIDTH: u32 = u16::MAX as u32 + 1;
     let handle = ImageHandle::new(
         TextureId(1),
-        &Image::from_rgba8(WIDTH, 1, vec![0; WIDTH as usize * 4]),
+        &Image::from_rgba8(UVec2::new(WIDTH, 1), vec![0; WIDTH as usize * 4]),
         ImageRegistry::default(),
     );
     let mut shapes = Shapes::default();
@@ -173,7 +174,6 @@ fn image_dimensions_above_u16_survive_lowering() {
 #[test]
 fn the_nan_gate_drops_every_shape_kind() {
     use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
-    use crate::primitives::color::RgbaU8;
     use crate::primitives::mesh::Mesh;
     use crate::primitives::shadow::Shadow;
     use crate::primitives::stroke::Stroke;
@@ -305,8 +305,8 @@ fn the_nan_gate_drops_every_shape_kind() {
     let gradient = |angle| {
         Shape::rect(ok_rect).fill(LinearGradient::two_stop(
             angle,
-            RgbaU8::hex(0x1a1a2e),
-            RgbaU8::hex(0x4c5cdb),
+            RgbaF32::hex(0x1a1a2e),
+            RgbaF32::hex(0x4c5cdb),
         ))
     };
     gate("rect_gradient_geometry", gradient(N), gradient(0.25));

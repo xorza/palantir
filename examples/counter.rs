@@ -21,7 +21,7 @@ impl App for Counter {
             .show(ui, |ui| {
                 // `fmt!` formats into the frame's text arena — no `String`.
                 Text::new(fmt!(ui, "clicks: {}", self.clicks)).show(ui);
-                if Button::new().label("click me").show(ui).left.clicked() {
+                if Button::new().label("click me").show(ui).clicked() {
                     self.clicks += 1;
                 }
             });

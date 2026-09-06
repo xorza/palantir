@@ -76,7 +76,7 @@ impl Size {
     /// zero-extent geometry before emit / cache work runs.
     #[inline]
     pub const fn is_paint_empty(self) -> bool {
-        approx::noop_f32(self.w) || approx::noop_f32(self.h)
+        approx::paints_nothing(self.w) || approx::paints_nothing(self.h)
     }
 
     /// True if either axis is NaN. `const`, so the const predicates that
@@ -137,7 +137,7 @@ impl Size {
     /// margin at the same. Named because the per-axis spelling puts `w`
     /// and `h` a keystroke apart, and a swap between them compiles.
     #[inline]
-    pub const fn scaled(self, factor: f32) -> Self {
+    pub const fn scaled_by(self, factor: f32) -> Self {
         Self {
             w: self.w * factor,
             h: self.h * factor,

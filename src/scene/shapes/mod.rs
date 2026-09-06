@@ -51,7 +51,7 @@ impl Shapes {
         self.hashes.clear();
     }
 
-    /// Lower a user-facing [`Shape`](crate::Shape) and append it to
+    /// Lower a user-facing [`Shape`](crate::widget::Shape) and append it to
     /// `records`: passthrough for rect/text, cubic promotion for beziers,
     /// span-stamping for the variable-length variants (polyline / mesh)
     /// whose payload bytes land on the [`RecordStore`].
@@ -108,7 +108,7 @@ impl Shapes {
 
     /// Append a [`ImageSource::GpuView`]-sourced [`ShapeRecord::Image`]
     /// directly — assembled by `Ui::gpu_view`, not lowered from a
-    /// user-facing [`Shape`](crate::Shape), so this bypasses the
+    /// user-facing [`Shape`](crate::widget::Shape), so this bypasses the
     /// [`Self::add`] lowering. The view's `id` + `paint` live in
     /// `Ui::gpu_views` keyed by the owner's `WidgetId`; the record carries
     /// only `epoch` (which the per-frame damage hash reads).

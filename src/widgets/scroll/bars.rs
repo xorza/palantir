@@ -146,7 +146,7 @@ impl ResolvedBar {
     fn travel(&self) -> ThumbTravel {
         let domain = self.domain();
         ThumbTravel {
-            factor: approx::ratio(domain.max_off(), self.travel),
+            factor: approx::share_of(domain.max_off(), self.travel),
             domain,
         }
     }
@@ -243,7 +243,7 @@ impl Bars {
             );
         }
         for (axis, bar) in self.axes() {
-            if !axis.main_b(pan) || !bar.track.left.clicked() {
+            if !axis.main_b(pan) || !bar.track.clicked() {
                 continue;
             }
             let Some(pointer_local) = bar.track.pointer_local else {

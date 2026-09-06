@@ -147,7 +147,7 @@ fn align_grid(ui: &mut Ui) {
                             // row not existing yet, rather than on the buffer
                             // being empty, so a cell the user clears stays
                             // cleared and its placeholder can actually show.
-                            let fresh = ui.try_state::<String>(buf_id).is_none();
+                            let fresh = ui.state::<String>(buf_id).is_none();
                             ui.with_state::<String, _>(buf_id, |ui, buf| {
                                 if fresh {
                                     *buf = format!("{vname}-{hname}");

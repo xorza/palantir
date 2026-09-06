@@ -132,12 +132,12 @@ impl AxisSlot {
         dispatch: impl FnOnce(Size) -> Size,
     ) -> Size {
         let Sums {
-            horiz: p_horiz,
-            vert: p_vert,
+            horizontal: p_horiz,
+            vertical: p_vert,
         } = layout.padding.sums();
         let Sums {
-            horiz: m_horiz,
-            vert: m_vert,
+            horizontal: m_horiz,
+            vertical: m_vert,
         } = layout.margin.sums();
 
         let w = Self {

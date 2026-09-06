@@ -6,6 +6,8 @@
 //! touches the heap not at all. `churn.rs` covers the scenes that
 //! change, `renderer.rs` the shape counts that stress the frontend.
 
+use palantir::Anchor;
+
 use crate::harness::{Audit, new_ui};
 use std::time::Duration;
 
@@ -60,7 +62,7 @@ fn color_field_hue_drag_alloc_free() {
 fn color_strip_alloc_free() {
     let mut coords = ColorCoords::default();
     Audit::new().run(|ui| {
-        ColorStrip::hue(&mut coords).auto_id().show(ui);
+        ColorStrip::for_hue(&mut coords).auto_id().show(ui);
     });
 }
 
@@ -295,7 +297,7 @@ fn state_map_counter_alloc_free() {
     let id = WidgetId::from_hash("counter");
     Audit::new().run(move |ui| {
         Frame::new().id_salt("counter").show(ui);
-        let n = ui.state_mut::<u32>(id);
+        let n = ui.state_or_default::<u32>(id);
         *n = n.wrapping_add(1);
     });
 }
@@ -380,7 +382,7 @@ fn overlays_alloc_free() {
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                Popup::anchored_to(Vec2::new(40.0, 40.0))
+                Popup::new(Anchor::at_point(Vec2::new(40.0, 40.0)))
                     .id_salt("pop")
                     .show(ui, |ui, _handle| {
                         Text::new("popup body").id_salt("pop-text").show(ui);

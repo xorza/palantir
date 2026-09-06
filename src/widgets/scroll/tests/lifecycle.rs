@@ -72,21 +72,21 @@ fn state_is_swept_when_scroll_disappears() {
     let build = |ui: &mut Ui| {
         Scroll::both()
             .id(id)
-            .with_zoom()
+            .zoom()
             .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
             .show(ui, |_| {});
     };
 
     h.frame(build);
-    let state = h.ui.try_state_mut::<ScrollState>(id).unwrap();
+    let state = h.ui.state_mut::<ScrollState>(id).unwrap();
     state.offset = Vec2::new(12.0, 34.0);
     state.zoom = 2.0;
 
     h.frame(|_| {});
-    assert!(h.ui.try_state::<ScrollState>(id).is_none());
+    assert!(h.ui.state::<ScrollState>(id).is_none());
 
     h.frame(build);
-    let state = h.ui.try_state::<ScrollState>(id).unwrap();
+    let state = h.ui.state::<ScrollState>(id).unwrap();
     assert_eq!(state.offset, Vec2::ZERO);
     assert_eq!(state.zoom, 1.0);
     assert!(state.drag_anchor_is_none());

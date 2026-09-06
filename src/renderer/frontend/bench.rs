@@ -4,7 +4,7 @@ use crate::bench::Run;
 use crate::primitives::background::Background;
 use crate::primitives::brush::Brush;
 use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
-use crate::primitives::color::{RgbaF32, RgbaU8};
+use crate::primitives::color::RgbaF32;
 use crate::renderer::frontend::Frontend;
 use crate::renderer::render_plan::RenderPlan;
 use crate::scene::damage::Damage;
@@ -40,8 +40,8 @@ impl FillCase {
             Self::Solid => Brush::Solid(RgbaF32::srgb(0.12, 0.24, 0.48)),
             Self::Gradient => Brush::Linear(LinearGradient::two_stop(
                 0.5,
-                RgbaU8::hex(0x1a1a2e),
-                RgbaU8::hex(0x4c5cdb),
+                RgbaF32::hex(0x1a1a2e),
+                RgbaF32::hex(0x4c5cdb),
             )),
         };
         Background {

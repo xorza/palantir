@@ -1,5 +1,6 @@
 use crate::Ui;
 use crate::input::keyboard::key::Key;
+use crate::layout::types::anchor::Anchor;
 use crate::primitives::background::Background;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
@@ -76,7 +77,7 @@ fn modal_hears_escape_even_while_a_popup_below_holds_keyboard_claim() {
         const SURFACE: UVec2 = UVec2::new(400, 300);
         let scene = |ui: &mut Ui, dismissed: &mut bool| {
             if with_popup {
-                Popup::anchored_to(Vec2::ZERO)
+                Popup::new(Anchor::at_point(Vec2::ZERO))
                     .id(WidgetId::from_hash("under-modal"))
                     .show(ui, |_ui, _handle| {});
             }
@@ -192,7 +193,7 @@ fn a_dismissed_modal_stops_owning_input_on_the_very_next_frame() {
 fn escape_closes_only_the_topmost_overlay() {
     const SURFACE: UVec2 = UVec2::new(400, 300);
     let scene = |ui: &mut Ui, modal: &mut bool, popup: &mut bool| {
-        *popup |= Popup::anchored_to(Vec2::ZERO)
+        *popup |= Popup::new(Anchor::at_point(Vec2::ZERO))
             .id(WidgetId::from_hash("under-modal"))
             .show(ui, |_ui, _handle| {})
             .dismissed;

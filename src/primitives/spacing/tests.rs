@@ -44,8 +44,8 @@ fn struct_is_eight_bytes() {
 fn lanes_round_trip_integer_values_exactly() {
     let s = Spacing::new(1.0, 2.0, 3.0, 4.0);
     assert_eq!(s.as_array(), [1.0, 2.0, 3.0, 4.0]);
-    assert_eq!(s.horiz(), 4.0);
-    assert_eq!(s.vert(), 6.0);
+    assert_eq!(s.horizontal(), 4.0);
+    assert_eq!(s.vertical(), 6.0);
 }
 
 /// Documents the f16 precision contract: lossless for integer
@@ -73,8 +73,8 @@ fn as_array_and_from_array_round_trip() {
 fn xy_ctor_repeats_axes() {
     let s = Spacing::xy(3.0, 7.0);
     assert_eq!(s.as_array(), [3.0, 7.0, 3.0, 7.0]);
-    assert_eq!(s.horiz(), 6.0);
-    assert_eq!(s.vert(), 14.0);
+    assert_eq!(s.horizontal(), 6.0);
+    assert_eq!(s.vertical(), 14.0);
 }
 
 /// Tuple `From` impls — easy place to swap component order during

@@ -16,7 +16,7 @@ use crate::text::cosmic::cluster_glyph::{self, ClusterGlyph};
 use crate::text::cosmic::shaped_buffer_cache;
 use crate::text::font_family::FontFamily;
 use crate::text::font_scope::FontScope;
-use crate::text::font_style::FontStyle;
+use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::key::{LineAlign, TextShapeKey, WrapBound};
@@ -56,7 +56,7 @@ fn shape(font_size_px: f32) -> TestShape {
             line_height_px: font_size_px,
             family: FontFamily::SANS,
             weight: FontWeight::REGULAR,
-            style: FontStyle::Normal,
+            slant: FontSlant::Normal,
         },
         max_width_px: None,
         halign: HAlign::Auto,

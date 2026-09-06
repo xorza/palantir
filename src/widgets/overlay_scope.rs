@@ -49,7 +49,7 @@ impl Backdrop {
 /// What one overlay turn produced: whatever the body returned, and the
 /// two dismissal edges the turn observed.
 ///
-/// `inner` rides along the way [`Widget::record`](crate::Widget::record)
+/// `inner` rides along the way [`Widget::record`](crate::widget::Widget::record)
 /// returns its body's value — without it every host would have to smuggle
 /// the result out of the closure through an `Option` it then unwraps.
 #[derive(Debug)]

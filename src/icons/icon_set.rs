@@ -25,7 +25,7 @@ pub(crate) struct IconRef {
 /// record and encode like an integer.
 ///
 /// It carries `view_box` so that resolving
-/// [`IconFit`](crate::IconFit) at encode time needs no lookup: the aspect
+/// [`IconFit`](crate::widget::IconFit) at encode time needs no lookup: the aspect
 /// ratio travels with the handle rather than being fetched from the registry
 /// on the hot path.
 ///
@@ -36,7 +36,7 @@ pub(crate) struct IconRef {
 /// panics when the renderer goes to draw it.
 ///
 /// Handed out by [`IconSet::handle`] and consumed by
-/// [`Shape::icon`](crate::Shape::icon).
+/// [`Shape::icon`](crate::widget::Shape::icon).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct IconHandle {
     pub(crate) icon: IconRef,
@@ -46,7 +46,7 @@ pub struct IconHandle {
     /// tidy: the shape hash a drawn icon is cached under omits this,
     /// on the ground that it is baked data one `(set, icon)` pair can
     /// only ever answer with once. A caller able to write it could move
-    /// the painted rect — [`IconFit`](crate::IconFit) resolves against
+    /// the painted rect — [`IconFit`](crate::widget::IconFit) resolves against
     /// it — under a hash that cannot see the move, and the frame would
     /// skip.
     view_box: Vec2,
@@ -76,7 +76,7 @@ impl IconHandle {
 /// makes.
 ///
 /// **An [`IconHandle`] is not an owner.** It is `Copy` and holds nothing, so
-/// that resolving [`IconFit`](crate::IconFit) at encode time needs no
+/// that resolving [`IconFit`](crate::widget::IconFit) at encode time needs no
 /// lookup — which means a handle used after every `IconSet` for its set is
 /// gone names a set that no longer exists, and panics when the renderer goes
 /// to draw it. Hold the `IconSet` for as long as anything can draw from it.
@@ -107,7 +107,7 @@ impl IconSet {
         Self { inner }
     }
 
-    /// The handle for `icon`, to hand to [`Shape::icon`](crate::Shape::icon).
+    /// The handle for `icon`, to hand to [`Shape::icon`](crate::widget::Shape::icon).
     ///
     /// # Panics
     ///

@@ -1,4 +1,4 @@
-//! `Scroll::both().with_zoom()` — bare wheel pans, `Ctrl/Cmd + wheel`
+//! `Scroll::both().zoom()` — bare wheel pans, `Ctrl/Cmd + wheel`
 //! zooms about the cursor, pinch zooms unconditionally. Pin the cursor
 //! to a cell and scroll-zoom: the cell stays under the cursor.
 //!
@@ -15,11 +15,11 @@
 use crate::support;
 use crate::support::note_style;
 use palantir::SlotDefaults;
+use palantir::widget::{LineCap, LineJoin, PolylineColors, Shape};
 use palantir::{
     AnimSpec, Background, Brush, Button, ButtonTheme, Checkbox, Configure, Corners, Frame, Grid,
-    LineCap, LineJoin, LinearGradient, Panel, PolylineColors, RadioButton, RgbaF32, Scroll, Shape,
-    Sizing, Spacing, StatefulLook, Stroke, Text, TextStyle, TextWrap, Track, Ui, Vec2, WidgetId,
-    WidgetLook, fmt,
+    LinearGradient, Panel, RadioButton, RgbaF32, Scroll, Sizing, Spacing, StatefulLook, Stroke,
+    Text, TextStyle, TextWrap, Track, Ui, Vec2, WidgetId, WidgetLook, fmt,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
@@ -91,7 +91,7 @@ fn page(ui: &mut Ui, s: &mut State) {
 
     let mut clicked = None;
     Scroll::both()
-        .with_zoom()
+        .zoom()
         .scroll_by(auto_pan)
         .zoom_by(auto_zoom)
         .size((Sizing::FILL, Sizing::FILL))

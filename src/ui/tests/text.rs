@@ -531,7 +531,7 @@ fn wrap_target_change_preserves_unbounded_cache() {
 #[test]
 fn text_face_hatches_compose_on_the_lowered_record() {
     use crate::scene::shapes::record::ShapeRecord;
-    use crate::text::font_style::FontStyle;
+    use crate::text::font_slant::FontSlant;
     use crate::text::font_weight::FontWeight;
 
     let mut h = UiHarness::new(SURFACE);
@@ -552,22 +552,22 @@ fn text_face_hatches_compose_on_the_lowered_record() {
             .show(ui);
     });
 
-    let faces: Vec<(FontWeight, FontStyle)> = h.ui.forest.trees[Layer::Main]
+    let faces: Vec<(FontWeight, FontSlant)> = h.ui.forest.trees[Layer::Main]
         .shapes
         .records
         .iter()
         .map(|record| match record {
-            ShapeRecord::Text { font, .. } => (font.weight, font.style),
+            ShapeRecord::Text { font, .. } => (font.weight, font.slant),
             shape => panic!("expected text shape, got {shape:?}"),
         })
         .collect();
     assert_eq!(
         faces,
         vec![
-            (FontWeight::REGULAR, FontStyle::Normal),
-            (FontWeight::BOLD, FontStyle::Normal),
-            (FontWeight::REGULAR, FontStyle::Italic),
-            (FontWeight::BOLD, FontStyle::Italic),
+            (FontWeight::REGULAR, FontSlant::Normal),
+            (FontWeight::BOLD, FontSlant::Normal),
+            (FontWeight::REGULAR, FontSlant::Italic),
+            (FontWeight::BOLD, FontSlant::Italic),
         ],
     );
 }

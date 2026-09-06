@@ -120,7 +120,7 @@ impl FloatHash for Vec2 {
 /// and then testing its ink; `DrawQuadPayload` carries the pair and
 /// reads that way.
 #[inline]
-pub const fn noop_f32(v: f32) -> bool {
+pub const fn paints_nothing(v: f32) -> bool {
     v.is_nan() || v <= EPS
 }
 
@@ -133,14 +133,14 @@ pub const fn noop_f32(v: f32) -> bool {
 /// a tolerance instead returns an enormous number for a quantity every
 /// caller then reads as a fraction: a wrong answer stated confidently.
 ///
-/// The gate is [`noop_f32`], so a *negative* `d` is degenerate too and
+/// The gate is [`paints_nothing`], so a *negative* `d` is degenerate too and
 /// not merely a sign flip. Every `d` this divides is a distance, and one
 /// that came out backwards has no share to report any more than a zero
 /// one does — the negated share puts a splitter rule on the wrong side
 /// of a track narrower than its own bar.
 #[inline]
-pub const fn ratio(n: f32, d: f32) -> f32 {
-    if noop_f32(d) { 0.0 } else { n / d }
+pub const fn share_of(n: f32, d: f32) -> f32 {
+    if paints_nothing(d) { 0.0 } else { n / d }
 }
 
 /// True if two 2D points are within `EPS` of each other (Euclidean

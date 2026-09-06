@@ -161,12 +161,10 @@ impl<'a, S> ComboBox<'a, S> {
         // Probed, not inserted: a combo box spends nearly every frame closed,
         // and a closed one is the default — so an unopened trigger keeps no
         // row at all, and the write-back below happens only on a real flip.
-        let was_open = ui
-            .try_state::<ComboState>(id)
-            .is_some_and(|state| state.open);
+        let was_open = ui.state::<ComboState>(id).is_some_and(|state| state.open);
         let mut open = was_open;
         let mut changed = false;
-        if !response.disabled && response.left.clicked() {
+        if response.clicked() {
             open = !open;
         }
         // Esc closes via the `Dismiss` popup's `resp.closed()` below — no
@@ -192,7 +190,7 @@ impl<'a, S> ComboBox<'a, S> {
                 let mut picked = false;
                 for (i, opt) in options.iter().enumerate() {
                     let lbl = ui.intern(label(opt));
-                    if MenuItem::new(lbl).show(ui, popup).left.clicked() && *selected != i {
+                    if MenuItem::new(lbl).show(ui, popup).clicked() && *selected != i {
                         *selected = i;
                         picked = true;
                     }
@@ -205,7 +203,7 @@ impl<'a, S> ComboBox<'a, S> {
             }
         }
         if open != was_open {
-            ui.state_mut::<ComboState>(id).open = open;
+            ui.state_or_default::<ComboState>(id).open = open;
         }
 
         SelectResponse {

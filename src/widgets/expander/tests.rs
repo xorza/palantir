@@ -91,7 +91,7 @@ fn an_untouched_section_mints_no_state_row() {
     frame(&mut h, false);
     frame(&mut h, false);
     assert!(
-        h.ui().try_state::<ExpanderState>(header()).is_none(),
+        h.ui().state::<ExpanderState>(header()).is_none(),
         "a closed default wrote a row it did not need",
     );
 
@@ -101,7 +101,7 @@ fn an_untouched_section_mints_no_state_row() {
     frame(&mut h, false);
     let row = h
         .ui()
-        .try_state::<ExpanderState>(header())
+        .state::<ExpanderState>(header())
         .copied()
         .expect("the toggle wrote a row");
     assert!(row.open, "the click opened it");
@@ -173,7 +173,7 @@ fn keep_body_records_a_collapsed_body_and_holds_its_state() {
         "and is not hit-tested",
     );
     assert!(
-        h.ui().try_state::<ExpanderState>(header()).is_none(),
+        h.ui().state::<ExpanderState>(header()).is_none(),
         "keeping the body is not itself a toggle",
     );
 }

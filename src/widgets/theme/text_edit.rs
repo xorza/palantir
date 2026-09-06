@@ -68,7 +68,7 @@ impl TextEditTheme {
     /// Pick the visual state: `active` = focused. Disabled wins over
     /// focused, focused over hovered; otherwise normal.
     /// `state.disabled` already carries the node's own flag —
-    /// [`Widget::response`](crate::Widget) merges it, so a field
+    /// [`Widget::response`](crate::widget::Widget) merges it, so a field
     /// disabled this frame paints disabled without waiting for the
     /// cascade.
     #[inline(always)]

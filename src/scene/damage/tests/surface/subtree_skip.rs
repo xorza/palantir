@@ -1,5 +1,7 @@
 //! Subtrees the diff can jump over, and the transitions that end that.
 
+use crate::layout::types::anchor::Anchor;
+
 use crate::Ui;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
@@ -135,7 +137,7 @@ fn popup_eater_does_not_force_full_repaint() {
     let anchor = glam::Vec2::new(40.0, 40.0);
     // Frame 1: popup open. Eater (full-surface) + body (small).
     frame(&mut h, |ui| {
-        Popup::anchored_to(anchor)
+        Popup::new(Anchor::at_point(anchor))
             .id(WidgetId::from_hash("p"))
             .background(Background {
                 fill: BLUE.into(),

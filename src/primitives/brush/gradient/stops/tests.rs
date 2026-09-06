@@ -1,11 +1,11 @@
 use crate::common::hash::Hasher;
 use crate::primitives::brush::gradient::stops::{GradientStops, Stop};
-use crate::primitives::color::RgbaU8;
+use crate::primitives::color::{RgbaF32, RgbaU8};
 use std::hash::{Hash, Hasher as _};
 
 /// Two-stop gradient, the shape almost every UI gradient takes.
 fn ramp(a: RgbaU8, b: RgbaU8) -> GradientStops {
-    GradientStops::new([Stop::new(0.0, a), Stop::new(1.0, b)])
+    GradientStops::new([Stop::new(0.0, a.into()), Stop::new(1.0, b.into())])
 }
 
 /// Entries landing on the most crowded bucket index, hashing `keys`
@@ -86,8 +86,8 @@ fn offset_and_colour_stay_independent() {
     let base = ramp(RgbaU8::rgb(1, 2, 3), RgbaU8::rgb(4, 5, 6));
     let colour_swapped = ramp(RgbaU8::rgb(4, 5, 6), RgbaU8::rgb(1, 2, 3));
     let offset_moved = GradientStops::new([
-        Stop::new(0.0, RgbaU8::rgb(1, 2, 3)),
-        Stop::new(0.5, RgbaU8::rgb(4, 5, 6)),
+        Stop::new(0.0, RgbaU8::rgb(1, 2, 3).into()),
+        Stop::new(0.5, RgbaU8::rgb(4, 5, 6).into()),
     ]);
 
     let digest = |s: &GradientStops| {
@@ -110,9 +110,12 @@ fn offset_and_colour_stay_independent() {
 /// arrives through.
 #[test]
 fn written_order_does_not_reach_identity() {
-    let a = RgbaU8::rgb(1, 2, 3);
-    let b = RgbaU8::rgb(4, 5, 6);
-    let c = RgbaU8::rgb(7, 8, 9);
+    // Colours the wire form can also name, since the parsed half below
+    // has to land on this exact ramp: a stop serializes as the sRGB hex
+    // every other theme colour uses.
+    let a = RgbaF32::hex(0xff0000);
+    let b = RgbaF32::hex(0x00ff00);
+    let c = RgbaF32::hex(0x0000ff);
     let ascending = GradientStops::new([Stop::new(0.0, a), Stop::new(0.5, b), Stop::new(1.0, c)]);
     let shuffled = GradientStops::new([Stop::new(1.0, c), Stop::new(0.0, a), Stop::new(0.5, b)]);
 
@@ -136,9 +139,9 @@ fn written_order_does_not_reach_identity() {
     }
     let parsed = ron::from_str::<Document>(
         "(stops: [\
-           (offset: 1.0, color: (r: 7, g: 8, b: 9, a: 255)),\
-           (offset: 0.0, color: (r: 1, g: 2, b: 3, a: 255)),\
-           (offset: 0.5, color: (r: 4, g: 5, b: 6, a: 255)),\
+           (offset: 1.0, color: \"#0000ff\"),\
+           (offset: 0.0, color: \"#ff0000\"),\
+           (offset: 0.5, color: \"#00ff00\"),\
          ])",
     )
     .expect("three valid stops")

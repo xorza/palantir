@@ -38,7 +38,7 @@
 //! would only scatter with a file apiece: this file (the constants the
 //! renderer has to agree with), [`wrap`] the wrap policies, [`render`]
 //! the cosmic-free render terms. The three face axes get a file each —
-//! [`font_family`], [`font_weight`], [`font_style`] — because each owns a
+//! [`font_family`], [`font_weight`], [`font_slant`] — because each owns a
 //! name table, a range check or a tag that is nobody else's business.
 //! [`font_source`] is what a registration hands over and [`error`] what
 //! it can fail with.
@@ -69,8 +69,8 @@ pub(crate) mod font_family;
 #[cfg(feature = "winit")]
 pub(crate) mod font_scan;
 pub(crate) mod font_scope;
+pub(crate) mod font_slant;
 pub(crate) mod font_source;
-pub(crate) mod font_style;
 pub(crate) mod font_weight;
 pub(crate) mod glyph_font;
 pub(crate) mod glyphs;

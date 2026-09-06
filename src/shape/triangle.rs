@@ -1,7 +1,7 @@
 //! The triangle builder. Lowers to
 //! `ShapeRecord::Quad(QuadShape::Triangle)`.
 
-use crate::primitives::approx::noop_f32;
+use crate::primitives::approx::paints_nothing;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::nan::NanCheck;
 use crate::primitives::rect::aabb::Aabb;
@@ -64,7 +64,7 @@ fn triangle_paint_empty(a: Vec2, b: Vec2, c: Vec2) -> bool {
         .max(bc.length_squared());
     // Longest-edge normalization keeps the cutoff independent of authored scale.
     let normalized_twice_area = ab.perp_dot(ac).abs() / max_edge_len_sq;
-    noop_f32(normalized_twice_area)
+    paints_nothing(normalized_twice_area)
 }
 impl sealed::LowerShape for TriangleShape {
     fn is_noop(&self) -> bool {

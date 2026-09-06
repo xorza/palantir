@@ -2,7 +2,7 @@
 //! `ShapeRecord::Curve`, and the stroke properties travel beside the
 //! geometry so only the geometry varies between the entry points.
 
-use crate::primitives::approx::{noop_f32, vec2_approx_eq};
+use crate::primitives::approx::{paints_nothing, vec2_approx_eq};
 use crate::primitives::brush::CurveBrush;
 use crate::primitives::nan::NanCheck;
 use crate::scene::record_store::RecordStore;
@@ -81,7 +81,7 @@ impl CurveShape {
 
 impl sealed::LowerShape for CurveShape {
     fn is_noop(&self) -> bool {
-        if noop_f32(self.stroke.width) || self.stroke.brush.as_brush().is_noop() {
+        if paints_nothing(self.stroke.width) || self.stroke.brush.as_brush().is_noop() {
             return true;
         }
         match &self.geometry {
@@ -92,7 +92,9 @@ impl sealed::LowerShape for CurveShape {
             CurveGeometry::QuadraticBezier { p0, p1, p2 } => {
                 vec2_approx_eq(*p0, *p1) && vec2_approx_eq(*p0, *p2)
             }
-            CurveGeometry::Arc { radius, sweep, .. } => noop_f32(*radius) || noop_f32(sweep.abs()),
+            CurveGeometry::Arc { radius, sweep, .. } => {
+                paints_nothing(*radius) || paints_nothing(sweep.abs())
+            }
         }
     }
 

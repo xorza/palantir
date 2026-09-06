@@ -32,11 +32,13 @@ pub struct MenuSeparator<'a> {
 }
 
 impl<'a> MenuSeparator<'a> {
-    /// An unstyled rule. The public way to one is
-    /// [`MenuItem::separator`](crate::widgets::context_menu::menu_item::MenuItem::separator),
-    /// which is where the rule reads as part of the menu vocabulary.
+    /// An unstyled rule.
+    ///
+    /// [`MenuItem::separator`](crate::MenuItem::separator) is the same
+    /// thing under the menu's own vocabulary, and reads better inside a
+    /// menu body.
     #[track_caller]
-    pub(super) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             widget: Widget::leaf(),
             style: None,

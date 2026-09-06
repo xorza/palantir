@@ -1,7 +1,7 @@
 //! One frame being composed, and the sink the paint calls arrive through.
 
 use crate::icons::icon_raster_key::IconRasterKey;
-use crate::primitives::approx::{EPS, noop_f32};
+use crate::primitives::approx::{EPS, paints_nothing};
 use crate::primitives::brush::gradient::FillAxis;
 use crate::primitives::color::RgbaU8;
 use crate::primitives::corners::Corners;
@@ -83,7 +83,7 @@ impl PackedQuad {
     /// rect — the shape both the clear fold and the fragment fast path
     /// start from.
     fn is_sharp(&self) -> bool {
-        noop_f32(self.stroke_width) && self.corners.approx_zero()
+        paints_nothing(self.stroke_width) && self.corners.approx_zero()
     }
 
     /// [`Self::is_sharp`] plus a rect whose physical edges land on whole
@@ -974,7 +974,7 @@ impl ComposeSession<'_> {
             return;
         }
         let inscribed = packed.rect.phys.inscribed_for_corners(packed.corners);
-        let stroke_inset = if noop_f32(packed.stroke_width) || p.stroke.color.is_opaque() {
+        let stroke_inset = if paints_nothing(packed.stroke_width) || p.stroke.color.is_opaque() {
             0.0
         } else {
             packed.stroke_width

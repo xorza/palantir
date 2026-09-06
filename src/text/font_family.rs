@@ -22,7 +22,7 @@ static NAMES: LazyLock<RwLock<Vec<&'static str>>> =
 ///
 /// Identity is the **name** — the unit every CSS engine, Zed and Slint
 /// resolve on — and the index is what the hot path carries.
-/// The shape-cache key and [`GlyphFont`](crate::GlyphFont) both hold one,
+/// The shape-cache key and [`GlyphFont`](crate::widget::GlyphFont) both hold one,
 /// so this stays `Copy` and two bytes wide.
 ///
 /// Serializes as its name, so a theme file says `family: "Inter"` and

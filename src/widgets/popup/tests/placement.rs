@@ -1,6 +1,8 @@
 //! Where the body lands: sizing, the upward flip near an edge, and
 //! stability across frames.
 
+use crate::layout::types::anchor::Anchor;
+
 use crate::Ui;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::rect::Rect;
@@ -48,7 +50,7 @@ fn popup_body_sizing_matches_sizing_mode() {
                 .id(WidgetId::from_hash("main-bg"))
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
-                    Popup::anchored_to(anchor)
+                    Popup::new(Anchor::at_point(anchor))
                         .id(WidgetId::from_hash("sized-popup"))
                         .padding(0.0)
                         .size((sw, sh))
@@ -89,7 +91,7 @@ fn popup_near_bottom_flips_upward() {
             .id(WidgetId::from_hash("main-bg"))
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                Popup::anchored_to(anchor)
+                Popup::new(Anchor::at_point(anchor))
                     .id(WidgetId::from_hash("flip-popup"))
                     .padding(0.0)
                     .size((Sizing::HUG, Sizing::HUG))
@@ -134,7 +136,7 @@ fn popup_flip_reaches_cascade_not_just_layout() {
             .id(WidgetId::from_hash("main-bg"))
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                Popup::anchored_to(anchor)
+                Popup::new(Anchor::at_point(anchor))
                     .id(body_id)
                     .padding(0.0)
                     .size((Sizing::HUG, Sizing::HUG))
@@ -182,7 +184,7 @@ fn popup_with_scroll_settles_in_one_frame() {
             .id(WidgetId::from_hash("main-bg"))
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                Popup::anchored_to(anchor)
+                Popup::new(Anchor::at_point(anchor))
                     .id(WidgetId::from_hash("scroll-popup"))
                     .padding(0.0)
                     .size((Sizing::HUG, Sizing::HUG))
@@ -239,7 +241,7 @@ fn popup_placement_is_stable_across_frames() {
             .id(WidgetId::from_hash("main-bg"))
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                Popup::anchored_to(anchor)
+                Popup::new(Anchor::at_point(anchor))
                     .id(WidgetId::from_hash("stable-popup"))
                     .padding(0.0)
                     .size((Sizing::HUG, Sizing::HUG))

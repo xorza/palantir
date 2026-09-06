@@ -88,7 +88,7 @@ impl<'a> ContextMenu<'a> {
     pub fn for_id(for_id: WidgetId) -> Self {
         Self {
             for_id,
-            popup: Popup::anchored_to(Vec2::ZERO).default_id(for_id.with("body")),
+            popup: Popup::new(Anchor::at_point(Vec2::ZERO)).default_id(for_id.with("body")),
             style: None,
         }
     }
@@ -139,11 +139,11 @@ impl<'a> ContextMenu<'a> {
         // Esc dismissal is owned by the `Dismiss` popup below — it folds into
         // `resp.closed()`, so no hand-rolled `escape_pressed` here.
         //
-        // Read via `try_state` so a never-opened menu doesn't materialize a
+        // Read via `state` so a never-opened menu doesn't materialize a
         // StateMap row every frame `show` is called (matches `is_open`'s no-alloc
         // path); the row only needs to exist after `open`.
         let Some(open_at) = ui
-            .try_state::<ContextMenuState>(self.for_id)
+            .state::<ContextMenuState>(self.for_id)
             .and_then(|st| st.open_at)
         else {
             return OverlayResponse::default();
@@ -176,12 +176,12 @@ impl<'a> ContextMenu<'a> {
     /// Open the context menu keyed off `for_id` at surface-space
     /// `point`. Idempotent — repeated calls move an open menu.
     pub fn open(ui: &mut Ui, for_id: WidgetId, point: Vec2) {
-        ui.state_mut::<ContextMenuState>(for_id).open_at = Some(point);
+        ui.state_or_default::<ContextMenuState>(for_id).open_at = Some(point);
     }
 
     /// Close the context menu keyed off `for_id`. No-op if already closed.
     pub fn close(ui: &mut Ui, for_id: WidgetId) {
-        if let Some(response) = ui.try_state_mut::<ContextMenuState>(for_id) {
+        if let Some(response) = ui.state_mut::<ContextMenuState>(for_id) {
             response.open_at = None;
         }
     }
@@ -190,7 +190,7 @@ impl<'a> ContextMenu<'a> {
     /// Cheap immutable probe — no row is allocated for triggers that
     /// have never been opened.
     pub fn is_open(ui: &Ui, for_id: WidgetId) -> bool {
-        ui.try_state::<ContextMenuState>(for_id)
+        ui.state::<ContextMenuState>(for_id)
             .is_some_and(|st| st.open_at.is_some())
     }
 }

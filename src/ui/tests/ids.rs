@@ -303,19 +303,19 @@ fn state_map_persists_and_evicts_with_recorded_ids() {
     h.frame(|ui| {
         Frame::new().id(WidgetId::from_hash("a")).show(ui);
         Frame::new().id(WidgetId::from_hash("b")).show(ui);
-        *ui.state_mut::<u32>(id_a) = 11;
-        *ui.state_mut::<u32>(id_b) = 22;
+        *ui.state_or_default::<u32>(id_a) = 11;
+        *ui.state_or_default::<u32>(id_b) = 22;
     });
     h.frame(|ui| {
         Frame::new().id(WidgetId::from_hash("a")).show(ui);
         // Reading state during recording so the row is touched while
         // its widget is still seen.
-        assert_eq!(*ui.state_mut::<u32>(id_a), 11);
+        assert_eq!(*ui.state_or_default::<u32>(id_a), 11);
     });
     h.frame(|ui| {
         Frame::new().id(WidgetId::from_hash("b")).show(ui);
         assert_eq!(
-            *ui.state_mut::<u32>(id_b),
+            *ui.state_or_default::<u32>(id_b),
             0,
             "B was unrecorded last frame; its row should have been swept",
         );

@@ -92,7 +92,7 @@ pub(crate) enum ShapeRecord {
         text: RecordedText,
         color: RgbaF16,
         /// The face and metrics to shape in, the same named type
-        /// [`TextShape`](crate::TextShape) authors and
+        /// [`TextShape`](crate::widget::TextShape) authors and
         /// [`TextShapeKey`](crate::text::key::TextShapeKey) is minted from
         /// — so the mirror between the three is one field, not four kept
         /// in step by eye.
@@ -149,14 +149,14 @@ pub(crate) enum ShapeRecord {
     /// size it lands on and cached in the icon atlas. Carries the artwork's
     /// viewBox on the [`IconHandle`], so resolving `fit` needs no registry
     /// lookup on the encode path. `tint` multiplies a tintable icon whole and
-    /// a colour icon's alpha only — see [`IconShape`](crate::IconShape).
+    /// a colour icon's alpha only — see [`IconShape`](crate::widget::IconShape).
     Icon {
         local_rect: Option<Rect>,
         handle: IconHandle,
         fit: IconFit,
         tint: RgbaF16,
         /// Draw a colour icon as its own luminance — see
-        /// [`IconShape::desaturate`](crate::IconShape::desaturate).
+        /// [`IconShape::desaturate`](crate::widget::IconShape::desaturate).
         desaturate: bool,
     },
     /// Native GPU stroke — a cubic Bézier or an exact circular arc, per

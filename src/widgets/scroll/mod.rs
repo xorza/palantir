@@ -53,7 +53,7 @@ impl ScrollGeometry {
     /// this rather than the raw extent so dragging a thumb inside a
     /// zoomed viewport tracks the cursor 1:1 with what's on screen.
     fn scaled_content(&self, zoom: f32) -> Size {
-        self.content.scaled(zoom)
+        self.content.scaled_by(zoom)
     }
 
     /// What the offset solver works in, projected rather than stored.
@@ -224,7 +224,7 @@ impl<'a> Scroll<'a> {
     /// with the default pivot it zooms about the pointer where there is
     /// one, and about the viewport's centre where there is not.
     ///
-    /// A viewport with no [`Self::with_zoom`] ignores it, like every
+    /// A viewport with no [`Self::zoom`] ignores it, like every
     /// other zoom input. Two calls compose into one factor.
     ///
     /// Takes the bare factor for the call site's sake — a view that
@@ -293,12 +293,12 @@ impl<'a> Scroll<'a> {
     /// [`Scroll::both`]) — uniform scale on a single-axis scroll has no
     /// clean answer (cross-axis content escapes the viewport with no way
     /// to reach it). Debug builds reject the caller bug.
-    pub fn with_zoom(self) -> Self {
-        self.with_zoom_config(ZoomConfig::default())
+    pub fn zoom(self) -> Self {
+        self.zoom_config(ZoomConfig::default())
     }
 
-    /// Enable zoom with explicit config. See [`Self::with_zoom`].
-    pub fn with_zoom_config(mut self, cfg: ZoomConfig) -> Self {
+    /// Enable zoom with explicit config. See [`Self::zoom`].
+    pub fn zoom_config(mut self, cfg: ZoomConfig) -> Self {
         self.zoom = Some(cfg);
         self.add_sense(Sense::PINCH)
     }
@@ -331,7 +331,7 @@ impl<'a> Scroll<'a> {
         let pan_raw = scroll.pan(line_px);
         // A theme with no line metric behind it contributes no notches,
         // rather than the enormous ones a floored divisor would report.
-        let notches_per_px = approx::ratio(1.0, line_px);
+        let notches_per_px = approx::share_of(1.0, line_px);
         let notches = scroll.lines + scroll.pixels * notches_per_px;
         // Gate on `mods.ctrl` only — Ctrl is the zoom modifier on every
         // platform (macOS Cmd not honored), and `alt`-wheel shouldn't
@@ -503,7 +503,7 @@ impl<'a> Scroll<'a> {
         if self.zoom.is_some() {
             debug_assert!(
                 pan.x && pan.y,
-                "Scroll::with_zoom requires Scroll::both — single-axis scroll has no clean zoom semantics",
+                "Scroll::zoom requires Scroll::both — single-axis scroll has no clean zoom semantics",
             );
         }
         // Input routes by `Sense::SCROLL`, which sits on the outer
@@ -519,7 +519,7 @@ impl<'a> Scroll<'a> {
             .then(|| Bars::read(ui, scroll_id, self.bars_theme(ui)));
 
         let state = {
-            let state = ui.state_mut::<ScrollState>(id);
+            let state = ui.state_or_default::<ScrollState>(id);
             self.apply_input(state, input, geom, pan);
             if let Some(bars) = &bars {
                 bars.drive(state, geom, pan);

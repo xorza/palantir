@@ -11,6 +11,13 @@
 /// widget inside the body called [`CloseHandle::close`](crate::CloseHandle::close).
 /// `inner` is whatever the body returned, the way
 /// [`InnerResponse`](crate::InnerResponse) carries a container's.
+///
+/// **The one result type with no [`Response`](crate::Response) beside it.**
+/// An overlay's own node is placement and a scrim, not something anyone
+/// interacts with — the widgets *inside* the body each return their own.
+/// Carrying one would also put a `Ui` borrow on this type, and with it the
+/// `Copy` and `Default` that let a trigger widget hold a closed overlay's
+/// result without a branch.
 #[derive(Copy, Clone, Debug, Default)]
 pub struct OverlayResponse<R> {
     pub dismissed: bool,

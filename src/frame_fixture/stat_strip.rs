@@ -9,7 +9,7 @@ use crate::primitives::brush::gradient::conic_geometry::ConicGradient;
 use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::brush::gradient::radial_geometry::RadialGradient;
 use crate::primitives::brush::gradient::stops::Stop;
-use crate::primitives::color::{RgbaF32, RgbaU8};
+use crate::primitives::color::RgbaF32;
 use crate::primitives::corners::Corners;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::stroke::Stroke;
@@ -41,20 +41,20 @@ pub(super) fn show(ui: &mut Ui) {
                 let fill = match i {
                     0 => Brush::Linear(LinearGradient::two_stop(
                         0.6,
-                        RgbaU8::hex(0x1d2440),
-                        RgbaU8::hex(0x2b3a63),
+                        RgbaF32::hex(0x1d2440),
+                        RgbaF32::hex(0x2b3a63),
                     )),
-                    1 => Brush::Radial(RadialGradient::two_stop_centered(
-                        RgbaU8::hex(0x2a2350),
-                        RgbaU8::hex(0x171a2b),
+                    1 => Brush::Radial(RadialGradient::two_stop(
+                        RgbaF32::hex(0x2a2350),
+                        RgbaF32::hex(0x171a2b),
                     )),
                     2 => Brush::Conic(ConicGradient::new(
                         glam::Vec2::new(0.15, 0.9),
                         0.0,
                         [
-                            Stop::new(0.0, RgbaU8::hex(0x1b2b2e)),
-                            Stop::new(0.55, RgbaU8::hex(0x24404a)),
-                            Stop::new(1.0, RgbaU8::hex(0x1b2b2e)),
+                            Stop::new(0.0, RgbaF32::hex(0x1b2b2e)),
+                            Stop::new(0.55, RgbaF32::hex(0x24404a)),
+                            Stop::new(1.0, RgbaF32::hex(0x1b2b2e)),
                         ],
                     )),
                     _ => Brush::Solid(RgbaF32::hex(0x232734)),

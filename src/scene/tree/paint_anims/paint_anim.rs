@@ -15,7 +15,7 @@ use std::time::Duration;
 /// with no accumulator, so a dropped frame or an irregular `dt` must not
 /// make the animation drift.
 ///
-/// The crate ships [`curves`](crate::curves); anything else is a function
+/// The crate ships [`curves`](crate::widget::curves); anything else is a function
 /// the caller writes.
 pub type PaintCurve = fn(f32) -> f32;
 
@@ -104,7 +104,7 @@ pub struct PaintTiming {
 /// Hand one to [`Ui::add_shape_animated`](crate::Ui::add_shape_animated).
 ///
 /// ```
-/// # use palantir::{PaintAnim, PaintRepeat, curves};
+/// # use palantir::widget::{PaintAnim, PaintRepeat, curves};
 /// # use std::time::Duration;
 /// // Fade in over 240 ms and stay.
 /// let fade = PaintAnim::alpha(0.0, 1.0)
@@ -129,7 +129,7 @@ pub struct PaintAnim {
 }
 
 impl PaintAnim {
-    /// One pass of [`curves::linear`](crate::curves::linear) over a
+    /// One pass of [`curves::linear`](crate::widget::curves::linear) over a
     /// one-second period, driving nothing. The builders below name a
     /// channel and adjust the timing.
     fn new(channel: PaintChannel) -> Self {

@@ -1,7 +1,7 @@
 //! Lowered paint data shared by shape records and node chrome.
 
 use crate::common::content_hash::ContentHash;
-use crate::primitives::approx::noop_f32;
+use crate::primitives::approx::paints_nothing;
 use crate::primitives::color::RgbaF16;
 use crate::primitives::corners::Corners;
 use crate::primitives::half_simd::F16x4;
@@ -91,7 +91,7 @@ impl ShapeStroke {
 
     #[inline]
     pub(crate) const fn is_noop(self) -> bool {
-        noop_f32(self.width) || self.color.is_noop()
+        paints_nothing(self.width) || self.color.is_noop()
     }
 
     /// Collapse a no-op stroke to [`Self::NONE`]; pass anything else
@@ -103,7 +103,7 @@ impl ShapeStroke {
     /// was a no-op".
     ///
     /// A NaN width normalizes away like any other non-painting width —
-    /// `noop_f32` classifies it as invisible. Catching a NaN *loudly* is
+    /// `paints_nothing` classifies it as invisible. Catching a NaN *loudly* is
     /// `Shape::debug_assert_no_nan`'s job, at the authoring boundary
     /// where the value still has a call site; by the time it reaches
     /// here the useful thing to do is fail safe.

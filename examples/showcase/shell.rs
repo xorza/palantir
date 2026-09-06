@@ -559,7 +559,7 @@ fn ui_scale_row(ui: &mut Ui) {
                 .style(&step)
                 .label("+")
                 .show(ui);
-            let clicked = up.left.clicked();
+            let clicked = up.clicked();
             let up = up.snapshot();
             if clicked {
                 next = scale.stepped_up();

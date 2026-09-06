@@ -9,7 +9,7 @@ use std::rc::Rc;
 /// [`Ui::register_image`](crate::Ui::register_image). The texture lives exactly
 /// as long as an `ImageHandle` (or any clone of one) is held; dropping the last
 /// clone frees it. `Clone` shares ownership (reference-counted). Reference it
-/// from [`Shape::image`](crate::Shape::image) each frame; "no image" is
+/// from [`Shape::image`](crate::widget::Shape::image) each frame; "no image" is
 /// expressed as `Option<ImageHandle>` at the call site, not a sentinel.
 ///
 /// Not `Copy`: the lifetime is load-bearing, so sharing must be an

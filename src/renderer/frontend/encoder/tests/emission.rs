@@ -7,7 +7,6 @@ use crate::primitives::brush::gradient::FillAxis;
 use crate::primitives::brush::gradient::stops::{GradientStops, Stop};
 use crate::primitives::brush::gradient::{Interp, Spread};
 use crate::primitives::color::RgbaF16;
-use crate::primitives::color::RgbaU8;
 use crate::primitives::fill_kind::FillKind;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::RgbaF32, rect::Rect, size::Size, stroke::Stroke};
@@ -31,7 +30,10 @@ fn gradient_resolution_runs_once_per_id_and_restarts_each_encode() {
     let gradient = RecordedGradient {
         axis: FillAxis::from_lanes(1.0, 0.0, 0.0, 1.0),
         kind: FillKind::linear(Spread::Pad),
-        stops: GradientStops::new([Stop::new(0.0, RgbaU8::BLACK), Stop::new(1.0, RgbaU8::WHITE)]),
+        stops: GradientStops::new([
+            Stop::new(0.0, RgbaF32::BLACK),
+            Stop::new(1.0, RgbaF32::WHITE),
+        ]),
         interp: Interp::Oklab,
     };
     let gradients = [gradient];

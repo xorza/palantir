@@ -235,7 +235,7 @@ fn incremental_scroll_matches_full() {
     };
     let mut h = UiHarness::new(UVec2::splat(300));
     h.frame(build);
-    h.ui.state_mut::<ScrollState>(WidgetId::from_hash("scroll"))
+    h.ui.state_or_default::<ScrollState>(WidgetId::from_hash("scroll"))
         .offset
         .y = 40.0;
     h.frame(build);

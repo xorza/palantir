@@ -197,7 +197,7 @@ fn entering_edit_mode_preserves_the_callers_node_placement() {
     // taken at all — then both frames would be chips and match trivially.
     assert!(
         matches!(
-            h.ui.state_mut::<DragValueState>(id),
+            h.ui.state_or_default::<DragValueState>(id),
             DragValueState::Editing { .. }
         ),
         "second frame must have recorded the inline editor",

@@ -3,11 +3,12 @@
 
 use glam::{UVec2, Vec2};
 use image::Rgba;
+use palantir::widget::{LineCap, LineJoin, Shape};
 use palantir::{
     Background, Brush, Button, ColorCoords, ColorField, ColorModel, ColorPicker, ColorStrip,
-    ComboBox, Configure, ConicGradient, Corners, DragValue, Frame, LineCap, LineJoin,
-    LinearGradient, Modal, Panel, ProgressBar, RadialGradient, Rect, RgbaF32, RgbaU8, Shadow,
-    Shape, Sizing, Slider, Spinner, SrgbaU8, Stroke, Switch, Text, ToggleTheme,
+    ComboBox, Configure, ConicGradient, Corners, DragValue, Frame, LinearGradient, Modal, Panel,
+    ProgressBar, RadialGradient, Rect, RgbaF32, Shadow, Sizing, Slider, Spinner, SrgbaU8, Stroke,
+    Switch, Text, ToggleTheme,
 };
 use std::f32::consts::{FRAC_PI_2, FRAC_PI_4};
 
@@ -76,8 +77,8 @@ fn frame_linear_gradient_matches_golden() {
                     .background(Background {
                         fill: Brush::Linear(LinearGradient::two_stop(
                             FRAC_PI_2,
-                            RgbaU8::hex(0x1a1a2e),
-                            RgbaU8::hex(0x4c5cdb),
+                            RgbaF32::hex(0x1a1a2e),
+                            RgbaF32::hex(0x4c5cdb),
                         )),
                         corners: Corners::all(16.0),
                         ..Default::default()
@@ -107,8 +108,8 @@ fn add_shape_rounded_rect_linear_gradient_matches_golden() {
                         .corners(12.0)
                         .fill(LinearGradient::two_stop(
                             0.0,
-                            RgbaU8::hex(0xff5e44),
-                            RgbaU8::hex(0xfacc15),
+                            RgbaF32::hex(0xff5e44),
+                            RgbaF32::hex(0xfacc15),
                         )),
                 );
             });
@@ -139,8 +140,8 @@ fn windowed_rect_masks_corners_matches_golden() {
                 let card = Rect::new(0.0, 0.0, 180.0, 100.0);
                 ui.add_shape(Shape::rect(card).fill(LinearGradient::two_stop(
                     0.0,
-                    RgbaU8::hex(0xff5e44),
-                    RgbaU8::hex(0xfacc15),
+                    RgbaF32::hex(0xff5e44),
+                    RgbaF32::hex(0xfacc15),
                 )));
                 ui.add_shape(
                     Shape::windowed_rect(card)
@@ -164,12 +165,12 @@ fn showcase_gradients_tab_matches_golden() {
     use palantir::{Interp, Spread, Stop};
     let mut h = Harness::new();
     let img = h.render(UVec2::new(560, 360), 1.0, DARK_BG, |ui| {
-        let navy = RgbaU8::hex(0x1a1a2e);
-        let blue = RgbaU8::hex(0x4c5cdb);
-        let orange = RgbaU8::hex(0xff7e44);
-        let yellow = RgbaU8::hex(0xfacc15);
-        let red = RgbaU8::hex(0xff5e44);
-        let green = RgbaU8::hex(0x46c46c);
+        let navy = RgbaF32::hex(0x1a1a2e);
+        let blue = RgbaF32::hex(0x4c5cdb);
+        let orange = RgbaF32::hex(0xff7e44);
+        let yellow = RgbaF32::hex(0xfacc15);
+        let red = RgbaF32::hex(0xff5e44);
+        let green = RgbaF32::hex(0x46c46c);
         let cell = |g: LinearGradient| Background {
             fill: Brush::Linear(g),
             corners: Corners::all(8.0),
@@ -275,8 +276,7 @@ fn radial_and_conic_gradient_matches_golden() {
             .padding(16.0)
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                let r =
-                    RadialGradient::two_stop_centered(RgbaU8::hex(0xfacc15), RgbaU8::hex(0x1a1a2e));
+                let r = RadialGradient::two_stop(RgbaF32::hex(0xfacc15), RgbaF32::hex(0x1a1a2e));
                 Frame::new()
                     .id_salt("radial")
                     .size((Sizing::FILL, Sizing::FILL))
@@ -290,11 +290,11 @@ fn radial_and_conic_gradient_matches_golden() {
                     glam::Vec2::splat(0.5),
                     0.0,
                     [
-                        palantir::Stop::new(0.0, RgbaU8::hex(0xff5e44)),
-                        palantir::Stop::new(0.25, RgbaU8::hex(0xfacc15)),
-                        palantir::Stop::new(0.5, RgbaU8::hex(0x46c46c)),
-                        palantir::Stop::new(0.75, RgbaU8::hex(0x4c5cdb)),
-                        palantir::Stop::new(1.0, RgbaU8::hex(0xff5e44)),
+                        palantir::Stop::new(0.0, RgbaF32::hex(0xff5e44)),
+                        palantir::Stop::new(0.25, RgbaF32::hex(0xfacc15)),
+                        palantir::Stop::new(0.5, RgbaF32::hex(0x46c46c)),
+                        palantir::Stop::new(0.75, RgbaF32::hex(0x4c5cdb)),
+                        palantir::Stop::new(1.0, RgbaF32::hex(0xff5e44)),
                     ],
                 );
                 Frame::new()
@@ -594,7 +594,7 @@ fn line_diagonal_aa_matches_golden() {
 /// strips, which would fail the gradient sample tolerance.
 #[test]
 fn polyline_gradient_matches_golden() {
-    use palantir::PolylineColors;
+    use palantir::widget::PolylineColors;
     let mut h = Harness::new();
     let img = h.render(UVec2::new(160, 140), 1.0, DARK_BG, |ui| {
         Panel::zstack()
@@ -628,7 +628,7 @@ fn polyline_gradient_matches_golden() {
 /// stroke only.
 #[test]
 fn polyline_bevel_join_matches_golden() {
-    use palantir::PolylineColors;
+    use palantir::widget::PolylineColors;
     let mut h = Harness::new();
     let img = h.render(UVec2::new(180, 140), 1.0, DARK_BG, |ui| {
         Panel::zstack()
@@ -689,7 +689,7 @@ fn polyline_round_caps_match_golden() {
 /// through to the chrome instances and their fragment metrics.
 #[test]
 fn polyline_round_join_matches_golden() {
-    use palantir::PolylineColors;
+    use palantir::widget::PolylineColors;
     let mut h = Harness::new();
     let img = h.render(UVec2::new(180, 200), 1.0, DARK_BG, |ui| {
         Panel::zstack()
@@ -725,7 +725,7 @@ fn polyline_round_join_matches_golden() {
 /// the golden.
 #[test]
 fn polyline_translucent_joins_have_uniform_coverage() {
-    use palantir::PolylineColors;
+    use palantir::widget::PolylineColors;
     let mut h = Harness::new();
     // Three translucent chevrons, one per join kind. The GPU joint
     // model clips adjacent segment strips at the angle bisector, so
@@ -795,7 +795,7 @@ fn polyline_translucent_joins_have_uniform_coverage() {
 /// step fails this with `delta ≈ 60+`.
 #[test]
 fn polyline_translucent_premultiplies_in_stroke_shader() {
-    use palantir::PolylineColors;
+    use palantir::widget::PolylineColors;
     let mut h = Harness::new();
     // Backdrop + a 24px horizontal translucent green stroke at y=60.
     let img = h.render(UVec2::new(120, 120), 1.0, RgbaF32::BLACK, |ui| {
@@ -1154,9 +1154,9 @@ fn color_field_and_bars_match_golden() {
                         .size((Sizing::HUG, Sizing::HUG))
                         .show(ui, |ui| {
                             ColorField::new(&mut coords).id_salt("field").show(ui);
-                            ColorStrip::hue(&mut coords).id_salt("hue").show(ui);
+                            ColorStrip::for_hue(&mut coords).id_salt("hue").show(ui);
                             let mut translucent = coords.to_color().with_alpha(0.6);
-                            ColorStrip::alpha(&mut translucent)
+                            ColorStrip::for_alpha(&mut translucent)
                                 .id_salt("alpha")
                                 .show(ui);
                         });

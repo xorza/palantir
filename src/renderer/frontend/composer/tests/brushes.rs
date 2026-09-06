@@ -6,7 +6,7 @@ use crate::primitives::lut_row::LutRow;
 use crate::primitives::span::Span;
 use crate::primitives::texture_id::TextureId;
 use crate::primitives::{
-    color::RgbaF32, color::RgbaU8, corners::Corners, rect::Rect, size::Size, stroke::Stroke,
+    color::RgbaF32, corners::Corners, rect::Rect, size::Size, stroke::Stroke,
     translate_scale::TranslateScale,
 };
 use crate::renderer::frontend::capture::PaintCapture;
@@ -119,7 +119,7 @@ fn compose_linear_brush_emits_kind_one_with_atlas_row() {
     use crate::primitives::fill_kind::FillKind;
     use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
     let g =
-        LinearGradient::two_stop(0.0, RgbaU8::WHITE, RgbaU8::BLACK).with_spread(Spread::Reflect);
+        LinearGradient::two_stop(0.0, RgbaF32::WHITE, RgbaF32::BLACK).with_spread(Spread::Reflect);
     let expected_axis = g.axis();
     let atlas = SharedGradientAtlas::default();
     let row = atlas.register_stops(&g.stops, g.interp);
@@ -162,7 +162,7 @@ fn compose_repeated_linear_brush_shares_atlas_row() {
     use crate::primitives::brush::gradient::linear_geometry::LinearGradient;
     use crate::primitives::fill_kind::FillKind;
     use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
-    let g = LinearGradient::two_stop(0.5, RgbaU8::hex(0x336699), RgbaU8::hex(0xddaa44));
+    let g = LinearGradient::two_stop(0.5, RgbaF32::hex(0x336699), RgbaF32::hex(0xddaa44));
     let atlas = SharedGradientAtlas::default();
     let lowered = ResolvedGradient {
         axis: g.axis(),

@@ -96,7 +96,7 @@ impl<'a> Editor<'a> {
                 if let Some(shortcut) = item.action.shortcut() {
                     row = row.shortcut_hint(shortcut);
                 }
-                if row.show(ui, popup).left.clicked() {
+                if row.show(ui, popup).clicked() {
                     clicked_action = Some(item.action);
                 }
             }

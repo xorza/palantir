@@ -67,7 +67,7 @@ impl ToggleChrome {
     /// re-clicking the selected option is a no-op — so it resolves its
     /// own.
     pub(crate) fn toggled(response: &ResponseState, value: &mut bool) -> bool {
-        if response.left.clicked() && !response.disabled {
+        if response.clicked() {
             *value = !*value;
         }
         *value

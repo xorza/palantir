@@ -431,7 +431,7 @@ fn a_spun_stroke_is_damaged_against_the_square_it_sweeps() {
 /// matching rect and canonical hash. Mirrors `Cascade::paint_arenas`.
 #[test]
 fn node_snapshot_decomposition_matches_cascade() {
-    use crate::Shape;
+    use crate::widget::Shape;
     let mut h = UiHarness::cold(DISPLAY.physical);
     frame(&mut h, |ui| {
         Panel::hstack()
@@ -540,7 +540,7 @@ fn node_snapshot_decomposition_matches_cascade() {
 /// all shapes`; slice 4 pushes only the moved shape's prev + curr.
 #[test]
 fn per_shape_damage_only_pushes_changed_shapes() {
-    use crate::Shape;
+    use crate::widget::Shape;
 
     // Two stable shapes (drawn at fixed coords) + one shape whose
     // endpoint shifts between frames. Frame N records all three;
