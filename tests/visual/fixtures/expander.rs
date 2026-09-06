@@ -28,7 +28,7 @@ fn expander_open_and_closed_matches_golden() {
             .show(ui, |ui| {
                 Expander::new("Revealed")
                     .id_salt("open")
-                    .default_open(true)
+                    .start_open(true)
                     .show(ui, |ui| {
                         Text::new("the body an open header shows")
                             .id_salt("body")

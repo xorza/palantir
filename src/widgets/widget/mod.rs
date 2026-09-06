@@ -15,7 +15,7 @@ use crate::layout::types::align::Align;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::justify::Justify;
 use crate::layout::types::layout_mode::{LayoutMode, ScrollSpec, ScrollbarsDefId};
-use crate::layout::types::sizing::Sizes;
+use crate::layout::types::sizing::SizeSpec;
 use crate::layout::types::track::Track;
 use crate::primitives::background::Background;
 use crate::primitives::size::Size;
@@ -53,7 +53,7 @@ use crate::widgets::response::{InnerResponse, Response};
 /// under the node whose body it is recorded in. Resolve and record in
 /// the same body.
 #[derive(Debug)]
-#[must_use = "record the widget with Widget::record"]
+#[must_use = "a widget records nothing until `show` or `record`"]
 pub struct Widget {
     pub(crate) ident: Ident,
     pub(crate) node: Node,
@@ -241,7 +241,7 @@ impl Widget {
     /// The size the caller authored, or `None` where they stayed silent.
     ///
     /// The read half of authoring. A widget layers its themed default
-    /// under the caller's choice with [`Configure::default_size`] and
+    /// under the caller's choice with [`ThemeDefaults::default_size`](crate::widget::ThemeDefaults::default_size) and
     /// friends, but a widget whose default *depends* on whether the
     /// caller spoke has to ask, and this is how. `None` is the whole
     /// answer: it is what the themable fields mean by "unset".
@@ -250,7 +250,7 @@ impl Widget {
     /// `size(&self)` would shadow [`Configure::size`] and break every
     /// builder chain.
     #[inline]
-    pub fn authored_size(&self) -> Option<Sizes> {
+    pub fn authored_size(&self) -> Option<SizeSpec> {
         self.node.size
     }
 

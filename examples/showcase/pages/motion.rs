@@ -9,7 +9,7 @@
 
 use crate::support;
 use palantir::{
-    AnimSpec, Background, Button, Configure, Corners, Easing, Frame, Panel, RgbaF32, Sense, Sizing,
+    AnimSpec, Background, Block, Button, Configure, Corners, Easing, Panel, RgbaF32, Sense, Sizing,
     Stroke, Text, Ui, Vec2, WidgetId,
 };
 
@@ -86,7 +86,7 @@ fn bar(ui: &mut Ui, key: &'static str, label: &'static str, spec: AnimSpec, targ
         .size((Sizing::FILL, Sizing::HUG))
         .gap(10.0)
         .show(ui, |ui| {
-            Frame::new()
+            Block::new()
                 .id(id)
                 .size((Sizing::fixed(width), Sizing::fixed(18.0)))
                 .background(support::swatch_bg(support::A))
@@ -154,7 +154,7 @@ fn card(ui: &mut Ui, key: &str, initial: Vec2, accent: RgbaF32) {
     }
     let pos = st.pos;
 
-    let r = Frame::new()
+    let r = Block::new()
         .id(id)
         .size((Sizing::fixed(CARD_W), Sizing::fixed(CARD_H)))
         .position(pos)

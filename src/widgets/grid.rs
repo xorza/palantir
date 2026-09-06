@@ -26,6 +26,7 @@ use std::rc::Rc;
 /// The layout driver documents the three-phase solver and its explicit
 /// non-goals: no Auto-vs-Star cycle, `SharedSizeScope`, or auto-flow.
 #[derive(Debug)]
+#[must_use = "a widget records nothing until `show`"]
 pub struct Grid<Rows = [Track; 0], Cols = [Track; 0]> {
     widget: Widget,
     rows: Rows,

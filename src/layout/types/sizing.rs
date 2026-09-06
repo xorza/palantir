@@ -181,19 +181,19 @@ impl std::hash::Hash for Sizing {
 /// physical-pixel snapping resolution. Saves 8 B per `LayoutCore`
 /// (56 → 48) across the per-node SoA column.
 ///
-/// Construct via `Default` (Hug × Hug), `Sizes::from(s)` (uniform),
-/// `Sizes::from(n)` (uniform Fixed via `Num`), or `Sizes::from((w, h))`
+/// Construct via `Default` (Hug × Hug), `SizeSpec::from(s)` (uniform),
+/// `SizeSpec::from(n)` (uniform Fixed via `Num`), or `SizeSpec::from((w, h))`
 /// for asymmetric. The `From` impls are the public surface —
-/// `Configure::size` takes `impl Into<Sizes>` so call sites stay terse:
+/// `Configure::size` takes `impl Into<SizeSpec>` so call sites stay terse:
 /// `.size(100.0)`, `.size(Sizing::FILL)`, `.size((Sizing::FILL, 40.0))`.
-/// Read components via `Sizes::w()` / `Sizes::h()`.
+/// Read components via `SizeSpec::w()` / `SizeSpec::h()`.
 #[derive(Clone, Copy)]
-pub struct Sizes {
+pub struct SizeSpec {
     w_packed: u32,
     h_packed: u32,
 }
 
-impl Default for Sizes {
+impl Default for SizeSpec {
     #[inline]
     fn default() -> Self {
         Self::new(Sizing::HUG, Sizing::HUG)
@@ -235,7 +235,7 @@ const fn decode_sizing(packed: u32) -> Sizing {
     }
 }
 
-impl Sizes {
+impl SizeSpec {
     /// Both axes, packed into eight bytes.
     #[inline]
     pub const fn new(w: Sizing, h: Sizing) -> Self {
@@ -271,48 +271,48 @@ impl Sizes {
     }
 }
 
-impl PartialEq for Sizes {
+impl PartialEq for SizeSpec {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.w_packed == other.w_packed && self.h_packed == other.h_packed
     }
 }
 
-impl std::fmt::Debug for Sizes {
+impl std::fmt::Debug for SizeSpec {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Sizes")
+        f.debug_struct("SizeSpec")
             .field("w", &self.w())
             .field("h", &self.h())
             .finish()
     }
 }
 
-impl From<Sizing> for Sizes {
+impl From<Sizing> for SizeSpec {
     fn from(s: Sizing) -> Self {
         Self::new(s, s)
     }
 }
 
-impl std::hash::Hash for Sizes {
+impl std::hash::Hash for SizeSpec {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
         h.write_u64(self.as_u64());
     }
 }
 
-impl<T: Num> From<T> for Sizes {
+impl<T: Num> From<T> for SizeSpec {
     fn from(v: T) -> Self {
         Sizing::from(v).into()
     }
 }
 
-impl<W: Into<Sizing>, H: Into<Sizing>> From<(W, H)> for Sizes {
+impl<W: Into<Sizing>, H: Into<Sizing>> From<(W, H)> for SizeSpec {
     fn from((w, h): (W, H)) -> Self {
         Self::new(w.into(), h.into())
     }
 }
 
-impl From<Size> for Sizes {
+impl From<Size> for SizeSpec {
     fn from(s: Size) -> Self {
         (s.w, s.h).into()
     }
@@ -320,7 +320,7 @@ impl From<Size> for Sizes {
 
 #[cfg(test)]
 mod tests {
-    use crate::layout::types::sizing::{Sizes, Sizing};
+    use crate::layout::types::sizing::{SizeSpec, Sizing};
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
 
@@ -373,8 +373,8 @@ mod tests {
         assert_eq!(positive, negative);
         assert_eq!(hash_value(positive), hash_value(negative));
 
-        let positive = Sizes::new(positive, Sizing::HUG);
-        let negative = Sizes::new(negative, Sizing::HUG);
+        let positive = SizeSpec::new(positive, Sizing::HUG);
+        let negative = SizeSpec::new(negative, Sizing::HUG);
         assert_eq!(positive, negative);
         assert_eq!(hash_value(positive), hash_value(negative));
     }
@@ -388,7 +388,7 @@ mod tests {
         assert_eq!(Sizing::share(2.5), Sizing::fill(2.5));
 
         let smallest_positive = f32::from_bits(1);
-        let packed = Sizes::new(Sizing::fill(smallest_positive), Sizing::HUG);
+        let packed = SizeSpec::new(Sizing::fill(smallest_positive), Sizing::HUG);
         // Dropping two bits yields 0; the positive floor stores 1, then decode restores bits 4.
         assert_eq!(packed.w().fill_weight(), Some(f32::from_bits(4)));
 

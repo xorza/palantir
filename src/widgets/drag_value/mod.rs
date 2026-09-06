@@ -88,6 +88,7 @@ impl Scrub {
 /// that ends while the widget is disabled (or, for a pending edit, no
 /// longer editable) is dropped, not committed.
 #[derive(Debug)]
+#[must_use = "a widget records nothing until `show`"]
 pub struct DragValue<'a> {
     widget: Widget,
     value: DragNum<'a>,
@@ -95,7 +96,7 @@ pub struct DragValue<'a> {
     min: f64,
     max: f64,
     decimals: usize,
-    suffix: &'static str,
+    suffix: &'a str,
     editable: bool,
     style: Option<&'a DragValueTheme>,
 }
@@ -138,8 +139,10 @@ impl<'a> DragValue<'a> {
         self
     }
 
-    /// Static text appended after the number (e.g. `"px"`, `"%"`).
-    pub fn suffix(mut self, s: &'static str) -> Self {
+    /// Text appended after the number — a unit (`"px"`, `"%"`), or
+    /// whatever a locale table hands over. Borrowed for the frame, so it
+    /// need not be `'static`.
+    pub fn suffix(mut self, s: &'a str) -> Self {
         self.suffix = s;
         self
     }
@@ -192,7 +195,7 @@ impl<'a> DragValue<'a> {
         // which kicks focus out and discards the pending draft below.
         if self.editable && ui.focused_id() == Some(id) {
             if response.disabled {
-                ui.request_focus(None);
+                ui.clear_focus();
             } else {
                 return self.show_editing(ui, id, response.layout_rect);
             }
@@ -273,9 +276,9 @@ impl<'a> DragValue<'a> {
 
         // A plain enabled click (no drag latched) enters keyboard entry;
         // `show_editing` seeds the buffer on entry, so a click and a
-        // programmatic `request_focus` get the same fresh draft.
+        // programmatic `set_focus` get the same fresh draft.
         if self.editable && response.clicked() {
-            ui.request_focus(Some(id));
+            ui.set_focus(id);
             response.mark_focused();
         }
 
@@ -375,7 +378,7 @@ impl<'a> DragValue<'a> {
             DragValueState::Editing { buffer }
         };
         if submitted {
-            ui.request_focus(None);
+            ui.clear_focus();
         }
         ValueResponse {
             response: Response::lazy(id, ui),

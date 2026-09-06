@@ -7,8 +7,8 @@ use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::ui::harness::UiHarness;
+use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
-use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
 use crate::widgets::splitter::{SplitHalf, Splitter, pointer_to_ratio, sanitize_ratio};
 use crate::widgets::theme::splitter::SplitterTheme;
@@ -187,7 +187,7 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
                     .min_pane(50.0)
                     .show(ui, |ui, half| {
                         if half == rigid_half {
-                            Frame::new()
+                            Block::new()
                                 .id(split_id().with("rigid"))
                                 .size(if horizontal {
                                     (Sizing::fixed(180.0), Sizing::FILL)

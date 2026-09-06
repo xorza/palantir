@@ -15,7 +15,7 @@ use crate::shape::Shape;
 use crate::shape::rect::{RectKind, RectShape};
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
-use crate::widgets::{button::Button, frame::Frame, panel::Panel};
+use crate::widgets::{block::Block, button::Button, panel::Panel};
 use glam::UVec2;
 
 #[test]
@@ -26,11 +26,11 @@ fn ui_layer_records_popup_into_separate_tree() {
         Panel::vstack()
             .id(WidgetId::from_hash("main-root"))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("main-leaf"))
                     .size(50.0)
                     .show(ui);
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("main-leaf-2"))
                     .size(30.0)
                     .show(ui);
@@ -39,7 +39,7 @@ fn ui_layer_records_popup_into_separate_tree() {
             Panel::vstack()
                 .id(WidgetId::from_hash("popup-root"))
                 .show(ui, |ui| {
-                    Frame::new()
+                    Block::new()
                         .id(WidgetId::from_hash("popup-leaf"))
                         .size(20.0)
                         .show(ui);
@@ -126,7 +126,7 @@ fn empty_popup_body_leaves_popup_tree_empty() {
         Panel::vstack()
             .id(WidgetId::from_hash("only-main"))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("leaf"))
                     .size(20.0)
                     .show(ui);
@@ -145,7 +145,7 @@ fn forest_independence_across_recording_orders() {
         Panel::vstack()
             .id(WidgetId::from_hash("main-root"))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("main-leaf"))
                     .size(50.0)
                     .show(ui);
@@ -156,7 +156,7 @@ fn forest_independence_across_recording_orders() {
             Panel::vstack()
                 .id(WidgetId::from_hash("popup-root"))
                 .show(ui, |ui| {
-                    Frame::new()
+                    Block::new()
                         .id(WidgetId::from_hash("popup-leaf"))
                         .size(20.0)
                         .show(ui);
@@ -263,12 +263,12 @@ fn mid_recording_popup_keeps_trees_independent() {
             .id(WidgetId::from_hash("main-parent"))
             .show(ui, |ui| {
                 ui.add_shape(marker(0));
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("mc1"))
                     .size(20.0)
                     .show(ui);
                 ui.add_shape(marker(1));
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("mc2"))
                     .size(20.0)
                     .show(ui);
@@ -278,23 +278,23 @@ fn mid_recording_popup_keeps_trees_independent() {
                         .id(WidgetId::from_hash("popup-root"))
                         .show(ui, |ui| {
                             ui.add_shape(marker(10));
-                            Frame::new()
+                            Block::new()
                                 .id(WidgetId::from_hash("popup-leaf"))
                                 .size(10.0)
                                 .show(ui);
                             ui.add_shape(marker(11));
-                            Frame::new()
+                            Block::new()
                                 .id(WidgetId::from_hash("popup-leaf-2"))
                                 .size(10.0)
                                 .show(ui);
                         });
                 });
                 ui.add_shape(marker(3));
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("mc3"))
                     .size(20.0)
                     .show(ui);
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("mc4"))
                     .size(20.0)
                     .show(ui);

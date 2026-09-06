@@ -37,6 +37,7 @@ use crate::window::cursor_icon::CursorIcon;
 /// with [`SplitHalf::First`] then [`SplitHalf::Second`] — one closure, so
 /// a recursive pane tree can capture its response mutably once.
 #[derive(Debug)]
+#[must_use = "a widget records nothing until `show`"]
 pub struct Splitter<'a> {
     widget: Widget,
     ratio: &'a mut f32,

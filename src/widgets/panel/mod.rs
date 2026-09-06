@@ -24,6 +24,7 @@ use std::rc::Rc;
 /// fields supply a framework-wide fallback for any panel that didn't
 /// set its own.
 #[derive(Debug)]
+#[must_use = "a widget records nothing until `show`"]
 pub struct Panel {
     widget: Widget,
     chrome: Option<Background>,

@@ -50,11 +50,11 @@ impl PaintInput<'_> {
             // measured is a field a thousandth shorter than the chip it replaces.
             min_size.h = min_size
                 .h
-                .max(self.block_size(layout).h + ctx.padding.vertical());
+                .max(self.block_size(layout).h + ctx.padding.vertical_sum());
             if widget.authored_size().unwrap_or_default().w().is_hug() {
                 let reserved = self.geometry.display_size.w
                     + layout.caret_reserve()
-                    + ctx.padding.horizontal();
+                    + ctx.padding.horizontal_sum();
                 min_size.w = min_size.w.max(reserved);
             }
             widget.configure().min_size(min_size);

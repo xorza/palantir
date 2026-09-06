@@ -7,7 +7,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
-use crate::widgets::{frame::Frame, grid::Grid, panel::Panel};
+use crate::widgets::{block::Block, grid::Grid, panel::Panel};
 use glam::UVec2;
 
 #[test]
@@ -26,11 +26,11 @@ fn grid_hug_grid_collapses_empty_fill_tracks() {
                         .rows([Track::fixed(40.0)])
                         .size((Sizing::HUG, Sizing::HUG))
                         .show(ui, |ui| {
-                            Frame::new()
+                            Block::new()
                                 .id(WidgetId::from_hash("a"))
                                 .grid_cell((0, 0))
                                 .show(ui);
-                            Frame::new()
+                            Block::new()
                                 .id(WidgetId::from_hash("b"))
                                 .grid_cell((0, 1))
                                 .show(ui);
@@ -64,7 +64,7 @@ fn hug_grid_fill_track_contributes_nested_rigid_floor() {
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui, |ui| {
                         rigid_node = Some(
-                            Frame::new()
+                            Block::new()
                                 .id(WidgetId::from_hash("rigid"))
                                 .size((Sizing::fixed(120.0), Sizing::fixed(20.0)))
                                 .show(ui)
@@ -107,7 +107,7 @@ fn stack_fill_sibling_yields_to_grid_fill_track_rigid_floor() {
                             .size((Sizing::FILL, Sizing::FILL))
                             .show(ui, |ui| {
                                 rigid_node = Some(
-                                    Frame::new()
+                                    Block::new()
                                         .id(WidgetId::from_hash("rigid"))
                                         .size((Sizing::fixed(200.0), Sizing::FILL))
                                         .show(ui)
@@ -115,7 +115,7 @@ fn stack_fill_sibling_yields_to_grid_fill_track_rigid_floor() {
                                 );
                             });
                     });
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("shrinkable"))
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui);

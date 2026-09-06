@@ -6,7 +6,7 @@ use crate::layout::wrapstack::tests::support::{cell, rect_of};
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
-use crate::widgets::{frame::Frame, panel::Panel};
+use crate::widgets::{block::Block, panel::Panel};
 use glam::UVec2;
 
 /// Pin: per-line justify with a 200-wide WrapHStack and two 60-wide
@@ -68,7 +68,7 @@ fn wrap_hstack_collapsed_child_in_pack_is_skipped() {
             .gap(10.0)
             .show(ui, |ui| {
                 cell(ui, "a", 60.0, 20.0);
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("hidden"))
                     .size((Sizing::fixed(60.0), Sizing::fixed(20.0)))
                     .collapsed()
@@ -103,7 +103,7 @@ fn wrap_hstack_fill_main_child_treated_as_hug_for_now() {
             .gap(10.0)
             .show(ui, |ui| {
                 cell(ui, "fixed-a", 60.0, 20.0);
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("filler"))
                     .size((Sizing::FILL, Sizing::fixed(20.0)))
                     // min_size makes Fill measurable as a positive

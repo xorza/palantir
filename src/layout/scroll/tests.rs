@@ -8,8 +8,8 @@ use crate::layout::types::track::Track;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::harness::UiHarness;
+use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
-use crate::widgets::frame::Frame;
 use crate::widgets::grid::Grid;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
@@ -60,7 +60,7 @@ fn vertical_scroll_records_content_extent() {
             .size((Sizing::fixed(200.0), Sizing::fixed(100.0)))
             .show(ui, |ui| {
                 for i in 0..5u32 {
-                    Frame::new()
+                    Block::new()
                         .id(WidgetId::from_hash(("row", i)))
                         .size((Sizing::FILL, Sizing::fixed(50.0)))
                         .show(ui);
@@ -84,7 +84,7 @@ fn horizontal_scroll_records_content_extent() {
                     .gap(4.0)
                     .show(ui, |ui| {
                         for i in 0..10u32 {
-                            Frame::new()
+                            Block::new()
                                 .id(WidgetId::from_hash(("col", i)))
                                 .size((Sizing::fixed(40.0), Sizing::FILL))
                                 .show(ui);
@@ -109,7 +109,7 @@ fn both_axis_scroll_records_content_extent() {
             .id(WidgetId::from_hash("scroll"))
             .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("wide-tall"))
                     .size((Sizing::fixed(300.0), Sizing::fixed(250.0)))
                     .show(ui);
@@ -131,7 +131,7 @@ fn layout_output_survives_across_frames() {
                     .size((Sizing::fixed(150.0), Sizing::fixed(100.0)))
                     .show(ui, |ui| {
                         for i in 0..4u32 {
-                            Frame::new()
+                            Block::new()
                                 .id(WidgetId::from_hash(("row", i)))
                                 .size((Sizing::FILL, Sizing::fixed(40.0)))
                                 .show(ui);
@@ -161,7 +161,7 @@ fn content_margin_leaves_content_size_unchanged() {
             .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
             .content_margin((20.0, 50.0))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("box"))
                     .size((Sizing::fixed(80.0), Sizing::fixed(160.0)))
                     .show(ui);
@@ -198,7 +198,7 @@ fn hug_scroll_height(count: u32, min_h: f32, max_h: f32) -> f32 {
                     .max_size((f32::INFINITY, max_h))
                     .show(ui, |ui| {
                         for i in 0..count {
-                            Frame::new()
+                            Block::new()
                                 .id(WidgetId::from_hash(("row", i)))
                                 .size((Sizing::fixed(120.0), Sizing::fixed(50.0)))
                                 .show(ui);
@@ -248,7 +248,7 @@ fn hug_scroll_caps_at_max_and_scrolls() {
                     .max_size((f32::INFINITY, 200.0))
                     .show(ui, |ui| {
                         for i in 0..8u32 {
-                            Frame::new()
+                            Block::new()
                                 .id(WidgetId::from_hash(("row", i)))
                                 .size((Sizing::fixed(120.0), Sizing::fixed(50.0)))
                                 .show(ui);
@@ -275,7 +275,7 @@ fn hug_scroll_caps_at_max_and_scrolls() {
                     .size((Sizing::HUG, Sizing::HUG))
                     .show(ui, |ui| {
                         for i in 0..8u32 {
-                            Frame::new()
+                            Block::new()
                                 .id(WidgetId::from_hash(("parent-capped-row", i)))
                                 .size((Sizing::fixed(120.0), Sizing::fixed(50.0)))
                                 .show(ui);
@@ -309,7 +309,7 @@ fn fill_scroll_does_not_grow_hug_parent() {
                     .id(WidgetId::from_hash("scroll"))
                     .size((Sizing::HUG, Sizing::fill(1.0)))
                     .show(ui, |ui| {
-                        Frame::new()
+                        Block::new()
                             .id(WidgetId::from_hash("row"))
                             .size((Sizing::fixed(120.0), Sizing::fixed(150.0)))
                             .show(ui);
@@ -342,7 +342,7 @@ fn toggling_scroll_sizing_busts_measure_cache() {
                     .id(WidgetId::from_hash("scroll"))
                     .size((Sizing::HUG, pan_h))
                     .show(ui, |ui| {
-                        Frame::new()
+                        Block::new()
                             .id(WidgetId::from_hash("row"))
                             .size((Sizing::fixed(120.0), Sizing::fixed(150.0)))
                             .show(ui);
@@ -387,7 +387,7 @@ fn hug_scroll_drives_the_hug_grid_column_it_sits_in() {
                     .id(WidgetId::from_hash("hug-scroll"))
                     .size((Sizing::HUG, Sizing::fixed(40.0)))
                     .show(ui, |ui| {
-                        Frame::new()
+                        Block::new()
                             .id(WidgetId::from_hash("wide"))
                             .size((Sizing::fixed(CONTENT_W), Sizing::fixed(20.0)))
                             .show(ui);
@@ -442,7 +442,7 @@ fn a_scroll_viewport_takes_its_slot_under_every_driver_that_places_one() {
             .size((Sizing::HUG, Sizing::HUG))
             .id(WidgetId::from_hash(SCROLL))
             .record(ui, None, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("content"))
                     .size((Sizing::fixed(CONTENT.w), Sizing::fixed(CONTENT.h)))
                     .show(ui);

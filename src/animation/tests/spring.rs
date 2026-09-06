@@ -10,8 +10,8 @@ use crate::animation::tests::support::{
 use crate::animation::*;
 use crate::primitives::color::RgbaF32;
 use crate::primitives::widget_id::WidgetId;
+use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
-use crate::widgets::frame::Frame;
 use std::time::Duration;
 
 #[test]
@@ -307,7 +307,7 @@ fn spring_settles_under_sub_millisecond_dt_via_fixed_step_accumulator() {
     let mut now = Duration::ZERO;
     let _ = h.at(now).frame(|ui| {
         let _ = ui.animate(id, SLOT, 80.0_f32, Some(AnimSpec::SPRING));
-        Frame::new()
+        Block::new()
             .id(WidgetId::from_hash("anim-novsync"))
             .show(ui);
     });
@@ -320,7 +320,7 @@ fn spring_settles_under_sub_millisecond_dt_via_fixed_step_accumulator() {
             .at(now)
             .frame(|ui| {
                 let _ = ui.animate(id, SLOT, 400.0_f32, Some(AnimSpec::SPRING));
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("anim-novsync"))
                     .show(ui);
             })

@@ -106,6 +106,7 @@ pub struct TabStripResponse<'a> {
 /// scan does — derives the same ids through [`Self::chip_id`] and
 /// [`Self::close_id`].
 #[derive(Debug)]
+#[must_use = "a widget records nothing until `show`"]
 pub struct TabStrip<'a> {
     widget: Widget,
     items: &'a [TabItem],

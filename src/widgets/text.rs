@@ -2,17 +2,18 @@
 //! measured like any other content.
 
 use crate::layout::types::align::Align;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::text_input::TextInput;
 use crate::shape::Shape;
+use crate::text::font_family::FontFamily;
 use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
-use crate::text::glyph_font::GlyphFont;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
 use crate::widgets::configure::Configure;
 use crate::widgets::configure::ConfigureWidget;
 use crate::widgets::response::Response;
-use crate::widgets::theme::text_style::TextStyle;
+use crate::widgets::theme::text_style::{TextStyle, TextStyleOverrides};
 use crate::widgets::widget::Widget;
 
 /// Standalone shaped-text leaf. Use for labels, paragraphs, headings —
@@ -28,33 +29,36 @@ use crate::widgets::widget::Widget;
 /// lines. Widgets that should clip a too-long label (e.g. `Button`,
 /// `DragValue`) set `Truncate` explicitly.
 ///
-/// Style is all-or-nothing: the optional `style` field replaces every
-/// text axis (font size, color, leading) at once. Defaults to the
-/// global [`crate::TextStyle`] from [`crate::Theme::text`] when not set.
-/// To tweak one axis, build a `TextStyle` from the theme and override
-/// the field you want:
+/// # Styling
+///
+/// [`Self::style`] replaces every text axis at once, and defaults to the
+/// global [`crate::TextStyle`] from [`crate::Theme::text`]. Each axis also
+/// has a setter of its own — [`Self::color`], [`Self::font_size`],
+/// [`Self::family`], [`Self::weight`], [`Self::slant`],
+/// [`Self::line_height`] — which overrides that one axis of whatever the
+/// bundle resolved to:
 ///
 /// ```
-/// # use palantir::{RgbaF32, Text, TextStyle, Ui};
+/// # use palantir::{FontWeight, RgbaF32, Text, Ui};
 /// # fn demo(ui: &mut Ui) {
-/// let style = TextStyle {
-///     color: RgbaF32::hex(0xd94f4f),
-///     ..ui.theme().text
-/// };
-/// Text::new("hi").style(&style).show(ui);
+/// Text::new("hi")
+///     .color(RgbaF32::hex(0xd94f4f))
+///     .font_size(20.0)
+///     .weight(FontWeight::BOLD)
+///     .show(ui);
 /// # }
 /// ```
+///
+/// The font size is [`Self::font_size`] and not `size`, because
+/// [`Configure::size`](crate::Configure::size) already names the widget's
+/// layout extent.
 #[derive(Debug)]
+#[must_use = "a widget records nothing until `show`"]
 pub struct Text<'a> {
     widget: Widget,
     text: TextInput<'a>,
     style: Option<&'a TextStyle>,
-    /// Single-axis weight override applied over the resolved `style` in
-    /// `show`. Lets `Text::new("x").bold()` request bold without cloning
-    /// the whole ambient `TextStyle` at the call site.
-    weight: Option<FontWeight>,
-    /// The same hatch for the other face axis — see [`Self::italic`].
-    font_slant: Option<FontSlant>,
+    overrides: TextStyleOverrides,
     wrap: TextWrap,
     align: Align,
 }
@@ -66,8 +70,7 @@ impl<'a> Text<'a> {
             widget: Widget::leaf(),
             text: text.into(),
             style: None,
-            weight: None,
-            font_slant: None,
+            overrides: TextStyleOverrides::default(),
             wrap: TextWrap::SingleLine,
             // Default = (Auto, Auto) → top-left. Only matters when the
             // widget has Fixed size larger than its measured content;
@@ -79,27 +82,67 @@ impl<'a> Text<'a> {
     /// Per-instance override of [`crate::Theme`]'s `text`. Takes an
     /// `Option` as readily as a reference: `.style(overrides.as_ref())`.
     ///
-    /// All-or-nothing — every axis the bundle covers (font size, color,
-    /// leading) is replaced. To tweak one axis, build the bundle from the
-    /// theme: `TextStyle { color: red, ..ui.theme().text }`.
+    /// All-or-nothing — every axis the bundle covers is replaced. The
+    /// per-axis setters below then override single axes of the result, so
+    /// `.style(&heading).color(red)` is that bundle in red.
     pub fn style(mut self, s: impl Into<Option<&'a TextStyle>>) -> Self {
         self.style = s.into();
         self
     }
 
-    /// Shape this run bold, overriding just the weight of the resolved
-    /// style (whether that came from `.style(...)` or the theme default).
-    /// One-axis hatch over the resolved bundle — see [`crate::Theme`].
-    pub fn bold(mut self) -> Self {
-        self.weight = Some(FontWeight::BOLD);
+    /// Fill colour for this run, overriding the resolved style's.
+    pub fn color(mut self, color: RgbaF32) -> Self {
+        self.overrides.color = Some(color);
         self
     }
 
-    /// Shape this run italic, overriding just the style of the resolved
-    /// bundle. The weight axis is untouched, so `.bold().italic()` is
-    /// bold italic.
+    /// Font size in logical px, overriding the resolved style's.
+    ///
+    /// Named apart from [`Configure::size`](crate::Configure::size), which
+    /// is the widget's layout extent.
+    pub fn font_size(mut self, px: f32) -> Self {
+        self.overrides.font_size_px = Some(px);
+        self
+    }
+
+    /// Line height as a multiple of the font size, overriding the resolved
+    /// style's `line_height_mult`. `1.0` sets the lines solid.
+    pub fn line_height(mut self, mult: f32) -> Self {
+        self.overrides.line_height_mult = Some(mult);
+        self
+    }
+
+    /// Family to shape against, overriding the resolved style's.
+    pub fn family(mut self, family: FontFamily) -> Self {
+        self.overrides.family = Some(family);
+        self
+    }
+
+    /// Weight to shape against, overriding the resolved style's.
+    /// [`Self::bold`] is this with [`FontWeight::BOLD`].
+    pub fn weight(mut self, weight: FontWeight) -> Self {
+        self.overrides.weight = Some(weight);
+        self
+    }
+
+    /// Upright or italic, overriding the resolved style's.
+    /// [`Self::italic`] is this with [`FontSlant::Italic`].
+    pub fn slant(mut self, slant: FontSlant) -> Self {
+        self.overrides.slant = Some(slant);
+        self
+    }
+
+    /// Shape this run bold — [`Self::weight`] with [`FontWeight::BOLD`].
+    pub fn bold(mut self) -> Self {
+        self.overrides.weight = Some(FontWeight::BOLD);
+        self
+    }
+
+    /// Shape this run italic — [`Self::slant`] with
+    /// [`FontSlant::Italic`]. The weight axis is untouched, so
+    /// `.bold().italic()` is bold italic.
     pub fn italic(mut self) -> Self {
-        self.font_slant = Some(FontSlant::Italic);
+        self.overrides.slant = Some(FontSlant::Italic);
         self
     }
 
@@ -127,15 +170,11 @@ impl<'a> Text<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        let style = self.style.unwrap_or(&ui.theme().text);
+        // Folded back into a `TextStyle` rather than a `GlyphFont`, so the
+        // `line_height_mult` formula keeps its one owner.
+        let style = self.overrides.apply(self.style.unwrap_or(&ui.theme().text));
         let color = style.color;
-        // The builder's face axes over the style's; everything else is
-        // the style's face as-is.
-        let font = GlyphFont {
-            weight: self.weight.unwrap_or(style.weight),
-            slant: self.font_slant.unwrap_or(style.slant),
-            ..style.font()
-        };
+        let font = style.font();
         // No metrics guard here: `TextShape::is_noop` rejects a non-finite
         // size or leading at `add_shape`, which is where Button and
         // DragValue leave it too. One owner of the rule, and it is the one

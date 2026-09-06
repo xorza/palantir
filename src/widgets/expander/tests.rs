@@ -36,11 +36,11 @@ fn label() -> WidgetId {
 }
 
 /// One frame of a plain expander over a single label.
-fn frame(h: &mut UiHarness, default_open: bool) {
+fn frame(h: &mut UiHarness, start_open: bool) {
     h.frame(|ui| {
         Expander::new("section")
             .id(root())
-            .default_open(default_open)
+            .start_open(start_open)
             .show(ui, |ui| {
                 Text::new("body").id(label()).show(ui);
             });
@@ -65,7 +65,7 @@ fn a_closed_body_is_not_recorded_and_an_open_one_is() {
     h.prime(2, |ui| {
         Expander::new("section")
             .id(root())
-            .default_open(true)
+            .start_open(true)
             .show(ui, |ui| {
                 Text::new("body").id(label()).show(ui);
             });
@@ -152,7 +152,7 @@ fn keep_body_records_a_collapsed_body_and_holds_its_state() {
     let record = |ui: &mut Ui, text: &mut String, open: bool| {
         Expander::new("section")
             .id(root())
-            .default_open(open)
+            .start_open(open)
             .keep_body(true)
             .show(ui, |ui| {
                 TextEdit::new(text)
@@ -187,7 +187,7 @@ fn a_bound_flag_is_read_and_written() {
     let record = |ui: &mut Ui, open: &mut bool| {
         Expander::new("section")
             .id(root())
-            .default_open(false)
+            .start_open(false)
             .open(open)
             .show(ui, |ui| {
                 Text::new("body").id(label()).show(ui);
@@ -196,7 +196,7 @@ fn a_bound_flag_is_read_and_written() {
     h.prime(2, |ui| record(ui, &mut open));
     assert!(
         h.rect(body()).is_some(),
-        "the binding won over default_open(false)",
+        "the binding won over start_open(false)",
     );
 
     let at = h.center_of(header());
@@ -277,7 +277,7 @@ fn space_and_enter_toggle_a_focused_header() {
         frame(&mut h, false);
         frame(&mut h, false);
 
-        h.request_focus(None);
+        h.clear_focus();
         h.key(key);
         frame(&mut h, false);
         assert!(
@@ -285,7 +285,7 @@ fn space_and_enter_toggle_a_focused_header() {
             "{key:?} moved an unfocused header",
         );
 
-        h.request_focus(Some(header()));
+        h.set_focus(header());
         frame(&mut h, false);
         h.key(key);
         frame(&mut h, false);

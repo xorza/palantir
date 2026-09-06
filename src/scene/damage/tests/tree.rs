@@ -11,7 +11,7 @@ use crate::shape::Shape;
 use crate::shape::style::LineCap;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
-use crate::widgets::{button::Button, frame::Frame, panel::Panel};
+use crate::widgets::{block::Block, button::Button, panel::Panel};
 use glam::Vec2;
 
 /// Pin: removing a child of a fixed-size canvas that paints its own
@@ -46,7 +46,7 @@ fn removing_canvas_child_does_not_redamage_sibling_shapes() {
                         .cap(LineCap::Round),
                 );
                 for i in 0..n_children {
-                    Frame::new()
+                    Block::new()
                         .id(WidgetId::from_hash(("child", i)))
                         .position((10.0 + i as f32 * 50.0, 10.0))
                         .size(20.0)
@@ -96,7 +96,7 @@ fn reordering_nodes_does_not_damage_unchanged_leaves() {
             .show(ui, |ui| {
                 // Auto id — no `.id`/`.id_salt`; same call site for every
                 // node, so it collides across nodes and is disambiguated.
-                Frame::new()
+                Block::new()
                     .size(10.0)
                     .background(Background {
                         fill: RED.into(),
@@ -148,7 +148,7 @@ fn raising_an_overlapping_node_redamages_only_the_overlap() {
     const C: Rect = Rect::new(150.0, 150.0, 20.0, 20.0);
 
     fn node(ui: &mut Ui, key: &str, r: Rect) {
-        Frame::new()
+        Block::new()
             .id(WidgetId::from_hash(key))
             .position((r.min.x, r.min.y))
             .size(r.size.w)
@@ -261,7 +261,7 @@ fn offscreen_text_nodes_reorder_cast_no_edge_shadow() {
 #[test]
 fn reordering_a_stack_is_damaged_by_the_position_diff() {
     fn child(ui: &mut Ui, key: &str, fill: RgbaF32) {
-        Frame::new()
+        Block::new()
             .id(WidgetId::from_hash(key))
             .size((Sizing::fixed(40.0), Sizing::fixed(20.0)))
             .background(Background {
@@ -328,7 +328,7 @@ fn shape_crossing_child_boundary_is_redamaged() {
         );
     };
     let child = |ui: &mut Ui| {
-        Frame::new()
+        Block::new()
             .id(WidgetId::from_hash("child"))
             .position((CHILD.min.x, CHILD.min.y))
             .size(CHILD.size.w)
@@ -434,7 +434,7 @@ fn inserting_a_child_does_not_redamage_unmoved_later_shapes() {
     const LINE_PROBE: Rect = Rect::new(30.0, 99.0, 2.0, 2.0);
 
     fn node(ui: &mut Ui, key: &str, r: Rect) {
-        Frame::new()
+        Block::new()
             .id(WidgetId::from_hash(key))
             .position((r.min.x, r.min.y))
             .size(r.size.w)
@@ -497,7 +497,7 @@ fn rekeying_a_child_damages_only_the_child() {
             .id(WidgetId::from_hash("canvas"))
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash(key))
                     .position((CHILD.min.x, CHILD.min.y))
                     .size(CHILD.size.w)
@@ -691,7 +691,7 @@ fn shape_added_in_middle_damages_only_new() {
 /// hides both parents, so the same move happens with nothing painting.
 fn reparent_fixture(ui: &mut Ui, under_b: bool, hidden: bool) {
     let leaf = |ui: &mut Ui| {
-        Frame::new()
+        Block::new()
             .id(WidgetId::from_hash("L"))
             .size(30.0)
             .background(Background {
@@ -828,7 +828,7 @@ fn a_hidden_container_takes_no_snapshot() {
             .id(WidgetId::from_hash("root"))
             .show(ui, |ui| {
                 Panel::hstack().id(hidden).hidden().show(ui, |ui| {
-                    Frame::new()
+                    Block::new()
                         .id(hidden_child)
                         .size(20.0)
                         .background(Background {
@@ -837,7 +837,7 @@ fn a_hidden_container_takes_no_snapshot() {
                         })
                         .show(ui);
                 });
-                Frame::new()
+                Block::new()
                     .id(shown)
                     .size(20.0)
                     .background(Background {

@@ -14,7 +14,7 @@ use crate::shape::Shape;
 use crate::shape::polyline::PolylineColors;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
-use crate::widgets::{frame::Frame, panel::Panel};
+use crate::widgets::{block::Block, panel::Panel};
 use glam::Vec2;
 
 #[test]
@@ -33,7 +33,7 @@ fn same_authoring_produces_same_hash() {
         Panel::hstack()
             .id(WidgetId::from_hash("root"))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("a"))
                     .size(50.0)
                     .background(Background {
@@ -83,7 +83,7 @@ fn changing_fill_color_changes_hash() {
             .id(WidgetId::from_hash("root"))
             .show(ui, |ui| {
                 child = Some(
-                    Frame::new()
+                    Block::new()
                         .id(WidgetId::from_hash("a"))
                         .size(50.0)
                         .background(Background {
@@ -304,7 +304,7 @@ fn child_hash_does_not_affect_parent_hash() {
         Panel::hstack()
             .id(WidgetId::from_hash("root"))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("c"))
                     .size(50.0)
                     .background(Background {

@@ -1,7 +1,7 @@
 //! The per-node sizing column every measure and arrange pass reads.
 
 use crate::layout::types::layout_mode::{LayoutMode, PackedLayoutMeta};
-use crate::layout::types::sizing::Sizes;
+use crate::layout::types::sizing::SizeSpec;
 use crate::primitives::rect::Rect;
 use crate::primitives::spacing::Spacing;
 use crate::scene::node::Node;
@@ -10,7 +10,7 @@ use std::hash::Hash;
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct LayoutCore {
-    pub(crate) size: Sizes,
+    pub(crate) size: SizeSpec,
     pub(crate) padding: Spacing,
     pub(crate) margin: Spacing,
     pub(crate) meta: PackedLayoutMeta,

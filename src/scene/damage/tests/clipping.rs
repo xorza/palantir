@@ -11,7 +11,7 @@ use crate::scene::tree::node_id::NodeId;
 use crate::shape::Shape;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
-use crate::widgets::{frame::Frame, panel::Panel};
+use crate::widgets::{block::Block, panel::Panel};
 use glam::{UVec2, Vec2};
 
 /// Pin: a child whose layout rect overflows a clipped panel (e.g. a
@@ -42,7 +42,7 @@ fn child_overflowing_clipped_parent_damage_clipped_to_viewport() {
                         .clip_rect()
                         .show(ui, |ui| {
                             *child = Some(
-                                Frame::new()
+                                Block::new()
                                     .id(WidgetId::from_hash("overflow"))
                                     .size(child_size)
                                     .background(Background {

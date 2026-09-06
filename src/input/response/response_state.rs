@@ -24,7 +24,7 @@ use glam::Vec2;
 /// `focused` is `true` when this widget currently holds keyboard focus
 /// (`Ui::focused_id() == Some(id)`). Updated synchronously with focus
 /// changes, so unlike `hovered`/`left.held` it isn't one-frame stale —
-/// a widget that just called `ui.request_focus(id)` reads `true` on
+/// a widget that just called `ui.set_focus(id)` reads `true` on
 /// the same frame.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct ResponseState {
@@ -196,7 +196,7 @@ impl ResponseState {
     }
 
     /// Report the widget as focused for the rest of this frame, after it
-    /// called [`Ui::request_focus`](crate::Ui::request_focus) on itself.
+    /// called [`Ui::set_focus`](crate::Ui::set_focus) on itself.
     ///
     /// A probed state predates the request — focus resolves live, but
     /// the snapshot was taken on entry — so without this the widget's

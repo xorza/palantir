@@ -28,7 +28,7 @@ use crate::harness::{Audit, OffscreenTarget, SURFACE};
 use palantir::internals::headless_test_gpu;
 use palantir::widget::{Mesh, PolylineColors, Shape};
 use palantir::{
-    Configure, Frame, Grid, IconId, IconSet, IconTable, Panel, RgbaF32, Sizing, Track,
+    Block, Configure, Grid, IconId, IconSet, IconTable, Panel, RgbaF32, Sizing, Track,
     TranslateScale, Ui,
 };
 use std::rc::Rc;
@@ -95,7 +95,7 @@ fn frontend_audit(label: &str, mut scene: impl FnMut(&mut Ui)) {
         });
 }
 
-/// 16×16 grid of `Frame`s — 256 quads, re-encoded every frame. Stresses
+/// 16×16 grid of `Block`s — 256 quads, re-encoded every frame. Stresses
 /// `RenderCmdBuffer` and `RenderBuffer.quads` capacity reuse much harder
 /// than `grid_8x8` (64 quads). A capacity-doubling regression in the
 /// encoder shape vec or the composer quad vec shows up here.
@@ -110,7 +110,7 @@ fn many_rects_compose_alloc_free() {
             .show(ui, |ui| {
                 for r in 0..16u16 {
                     for c in 0..16u16 {
-                        Frame::new()
+                        Block::new()
                             .id_salt((r, c))
                             .background(palantir::Background {
                                 fill: RgbaF32::WHITE.into(),

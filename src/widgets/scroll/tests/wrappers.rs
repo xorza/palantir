@@ -3,7 +3,7 @@
 use crate::input::key_class::KeyFilter;
 use crate::input::sense::Sense;
 use crate::layout::types::justify::Justify;
-use crate::layout::types::sizing::{Sizes, Sizing};
+use crate::layout::types::sizing::{SizeSpec, Sizing};
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::widgets::configure::Configure;
@@ -31,7 +31,7 @@ fn split_carries_every_interaction_flag_onto_the_outer_wrapper() {
 /// and the panel knobs are the inner viewport's, where the children are.
 #[test]
 fn split_routes_sizing_outward_and_panel_knobs_inward() {
-    let size: Sizes = (Sizing::fixed(120.0), Sizing::HUG).into();
+    let size: SizeSpec = (Sizing::fixed(120.0), Sizing::HUG).into();
     let scroll = Scroll::vertical()
         .size(size)
         .min_size(Size::new(10.0, 20.0))

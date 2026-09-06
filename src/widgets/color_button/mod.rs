@@ -12,6 +12,7 @@ use crate::widgets::checkerboard::Checkerboard;
 use crate::widgets::color_picker::ColorPicker;
 use crate::widgets::configure::Configure;
 use crate::widgets::configure::ConfigureWidget;
+use crate::widgets::configure::ThemeDefaults;
 use crate::widgets::popup::Popup;
 use crate::widgets::response::Response;
 use crate::widgets::theme::color_picker::ColorPickerTheme;
@@ -30,6 +31,7 @@ use std::rc::Rc;
 /// every gesture inside the panel has already committed — the chip shows what
 /// the colour is, not a proposal.
 #[derive(Debug)]
+#[must_use = "a widget records nothing until `show`"]
 pub struct ColorButton<'a> {
     widget: Widget,
     color: &'a mut RgbaF32,

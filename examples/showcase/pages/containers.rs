@@ -7,7 +7,7 @@
 use crate::support;
 use crate::support::{demo_cell, demo_cell_at, on_swatch_style, section, swatch_bg, tiles};
 use palantir::{
-    Align, Background, Configure, Corners, Frame, Grid, GridCell, Justify, Panel, RgbaF32, Sizing,
+    Align, Background, Block, Configure, Corners, Grid, GridCell, Justify, Panel, RgbaF32, Sizing,
     Stroke, Text, TextStyle, Track, Ui,
 };
 use std::hash::Hash;
@@ -197,7 +197,7 @@ fn sw(ui: &mut Ui, id: &'static str, w: f32, h: f32, c: RgbaF32) {
 }
 
 fn positioned(ui: &mut Ui, id: &'static str, x: f32, y: f32, c: RgbaF32) {
-    Frame::new()
+    Block::new()
         .id_salt(id)
         .position((x, y))
         .size(44.0)

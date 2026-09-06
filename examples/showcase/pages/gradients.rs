@@ -1,4 +1,4 @@
-//! Gradient brushes. Each tile paints a `Frame` whose `Background.fill`
+//! Gradient brushes. Each tile paints a `Block` whose `Background.fill`
 //! carries one gradient variant, so the full path — composer, atlas
 //! bake, shader sample, premultiplied blend — runs every frame. Stop
 //! colours stay vivid so spread and interpolation differences read at a
@@ -7,7 +7,7 @@
 use crate::support;
 use crate::support::{demo_cell, section, tiles};
 use palantir::{
-    Background, Brush, Configure, ConicGradient, Corners, Frame, Interp, LinearGradient,
+    Background, Block, Brush, Configure, ConicGradient, Corners, Interp, LinearGradient,
     RadialGradient, RgbaF32, Sizing, Spread, Stop, Ui, Vec2,
 };
 use std::f32::consts::{FRAC_PI_2, FRAC_PI_4};
@@ -74,7 +74,7 @@ fn filled(brush: Brush) -> Background {
 }
 
 fn gradient_frame(ui: &mut Ui, bg: Background) {
-    Frame::new()
+    Block::new()
         .size((Sizing::FILL, Sizing::FILL))
         .background(bg)
         .show(ui);

@@ -8,8 +8,8 @@ use crate::animation::tests::support::{
 };
 use crate::primitives::color::RgbaF32;
 use crate::primitives::widget_id::WidgetId;
+use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
-use crate::widgets::frame::Frame;
 use std::time::Duration;
 
 /// Pin: `#[animate(snap)]` fields update on retarget mid-spring, not
@@ -150,7 +150,7 @@ fn gradient_snap_inside_look_repaints_only_until_numeric_fields_settle() {
     let first = h.frame(|ui| {
         let current = ui.animate(id, SLOT, start.clone(), Some(AnimSpec::SPRING));
         assert_eq!(current, start);
-        Frame::new()
+        Block::new()
             .id(WidgetId::from_hash("gradient-look-settle"))
             .show(ui);
     });
@@ -161,7 +161,7 @@ fn gradient_snap_inside_look_repaints_only_until_numeric_fields_settle() {
         let current = ui.animate(id, SLOT, target.clone(), Some(AnimSpec::SPRING));
         assert_eq!(current.background.fill, gradient);
         assert_ne!(current.text.color, target.text.color);
-        Frame::new()
+        Block::new()
             .id(WidgetId::from_hash("gradient-look-settle"))
             .show(ui);
     });
@@ -174,7 +174,7 @@ fn gradient_snap_inside_look_repaints_only_until_numeric_fields_settle() {
         let output = h.at(now).frame(|ui| {
             current = ui.animate(id, SLOT, target.clone(), Some(AnimSpec::SPRING));
             assert_eq!(current.background.fill, gradient);
-            Frame::new()
+            Block::new()
                 .id(WidgetId::from_hash("gradient-look-settle"))
                 .show(ui);
         });
@@ -190,7 +190,7 @@ fn gradient_snap_inside_look_repaints_only_until_numeric_fields_settle() {
     let after_settle = h.at(now).frame(|ui| {
         let current = ui.animate(id, SLOT, target.clone(), Some(AnimSpec::SPRING));
         assert_eq!(current, target);
-        Frame::new()
+        Block::new()
             .id(WidgetId::from_hash("gradient-look-settle"))
             .show(ui);
     });

@@ -15,7 +15,7 @@ use crate::layout::types::align::Align;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::grid_cell::GridCell;
 use crate::layout::types::justify::Justify;
-use crate::layout::types::sizing::Sizes;
+use crate::layout::types::sizing::SizeSpec;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::translate_scale::TranslateScale;
@@ -63,14 +63,14 @@ impl ConfigureWidget<'_> {
 
     /// Borrowing form of [`Configure::size`].
     #[inline]
-    pub fn size(&mut self, s: impl Into<Sizes>) -> &mut Self {
+    pub fn size(&mut self, s: impl Into<SizeSpec>) -> &mut Self {
         self.widget.node.size = Some(s.into());
         self
     }
 
-    /// Borrowing form of [`Configure::default_size`].
+    /// Borrowing form of [`ThemeDefaults::default_size`].
     #[inline]
-    pub fn default_size(&mut self, s: impl Into<Sizes>) -> &mut Self {
+    pub fn default_size(&mut self, s: impl Into<SizeSpec>) -> &mut Self {
         self.widget.node.size.get_or_insert(s.into());
         self
     }
@@ -400,16 +400,8 @@ pub trait Configure: Sized {
     }
 
     #[inline]
-    fn size(mut self, s: impl Into<Sizes>) -> Self {
+    fn size(mut self, s: impl Into<SizeSpec>) -> Self {
         self.configure().size(s);
-        self
-    }
-
-    /// The size only where none was set: a widget's themed default,
-    /// applied after the caller's chain ran so the caller's choice wins.
-    #[inline]
-    fn default_size(mut self, s: impl Into<Sizes>) -> Self {
-        self.configure().default_size(s);
         self
     }
 
@@ -692,6 +684,13 @@ pub trait ThemeDefaults: Configure {
     #[inline]
     fn default_id(mut self, id: WidgetId) -> Self {
         self.configure().default_id(id);
+        self
+    }
+
+    /// The size to fall back on when the caller set none.
+    #[inline]
+    fn default_size(mut self, s: impl Into<SizeSpec>) -> Self {
+        self.configure().default_size(s);
         self
     }
 

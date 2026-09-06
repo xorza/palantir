@@ -137,7 +137,7 @@ fn record(ui: &mut Ui, handle: &mut Option<ImageHandle>, workload: Workload, pha
     let edge = workload.texel();
     let image = handle
         .get_or_insert_with(|| {
-            ui.register_image(&Image::from_rgba8(UVec2::new(edge, edge), texels(edge)))
+            ui.load_image(&Image::from_srgba8(UVec2::new(edge, edge), texels(edge)))
                 .expect("benchmark image fits every supported GPU")
         })
         .clone();
@@ -203,7 +203,7 @@ impl Fixture {
         } = self;
         let phase = *phase;
         let mut app = RecordApp::new(|ui| record(ui, handle, workload, phase));
-        host.frame_offscreen(target, 1.0, &mut app);
+        host.frame(target, 1.0, &mut app);
         gpu.wait();
     }
 }

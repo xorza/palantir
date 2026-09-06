@@ -9,7 +9,7 @@ use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
-use crate::widgets::{frame::Frame, panel::Panel};
+use crate::widgets::{block::Block, panel::Panel};
 use glam::UVec2;
 
 /// Pin issue 2: showcase tab-toolbar pattern. A `Sizing::FILL`
@@ -112,7 +112,7 @@ fn wrap_vstack_wraps_under_max_size_inside_vstack() {
                         // 50×40 cells: a 100px column fits 2 (40 + 10 + 40 = 90);
                         // the 3rd (140 > 100) wraps to the next column.
                         for i in 0..5u32 {
-                            Frame::new()
+                            Block::new()
                                 .id(WidgetId::from_hash(("c", i)))
                                 .size((Sizing::fixed(50.0), Sizing::fixed(40.0)))
                                 .show(ui);
@@ -156,7 +156,7 @@ fn wrap_vstack_inherits_parent_stack_main_bound() {
                         // 50×40 cells: a 100px column fits 2 (40 + 10 + 40 = 90);
                         // the 3rd (140 > 100) wraps to the next column.
                         for i in 0..5u32 {
-                            Frame::new()
+                            Block::new()
                                 .id(WidgetId::from_hash(("c", i)))
                                 .size((Sizing::fixed(50.0), Sizing::fixed(40.0)))
                                 .show(ui);
@@ -196,7 +196,7 @@ fn capped_hstack_of_columns_wraps_func_lists() {
                     .size((Sizing::HUG, Sizing::HUG))
                     .show(ui, |ui| {
                         // Category header above the wrapping function list.
-                        Frame::new()
+                        Block::new()
                             .id(WidgetId::from_hash("hdr"))
                             .size((Sizing::fixed(60.0), Sizing::fixed(15.0)))
                             .show(ui);
@@ -208,7 +208,7 @@ fn capped_hstack_of_columns_wraps_func_lists() {
                             .show(ui, |ui| {
                                 // 50×40 funcs: a 100px column fits 2; the 3rd wraps.
                                 for i in 0..5u32 {
-                                    Frame::new()
+                                    Block::new()
                                         .id(WidgetId::from_hash(("f", i)))
                                         .size((Sizing::fixed(50.0), Sizing::fixed(40.0)))
                                         .show(ui);
@@ -256,7 +256,7 @@ fn capped_vstack_bounds_wrap_through_hstack() {
                                     .line_gap(12.0)
                                     .show(ui, |ui| {
                                         for i in 0..5u32 {
-                                            Frame::new()
+                                            Block::new()
                                                 .id(WidgetId::from_hash(("f", i)))
                                                 .size((Sizing::fixed(50.0), Sizing::fixed(40.0)))
                                                 .show(ui);

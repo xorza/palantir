@@ -22,7 +22,7 @@ use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
-use crate::widgets::{frame::Frame, grid::Grid, panel::Panel, text::Text};
+use crate::widgets::{block::Block, grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
 
 /// Run `record` twice at `size` (cold then warm-from-cache) and assert
@@ -439,7 +439,7 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
                                     .show(ui);
                             });
                     });
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("under"))
                     .size((Sizing::FILL, Sizing::fixed(20.0)))
                     .background(Background {

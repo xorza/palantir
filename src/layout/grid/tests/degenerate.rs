@@ -7,7 +7,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::ui::Ui;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
-use crate::widgets::{frame::Frame, grid::Grid, panel::Panel};
+use crate::widgets::{block::Block, grid::Grid, panel::Panel};
 use glam::UVec2;
 
 /// Pin: empty grid (zero rows or zero cols) measures + arranges to zero
@@ -29,7 +29,7 @@ fn grid_empty_dim_measures_to_zero_and_zeros_children() {
                         .rows(empty)
                         .size((Sizing::HUG, Sizing::HUG))
                         .show(ui, |ui| {
-                            Frame::new()
+                            Block::new()
                                 .id(WidgetId::from_hash("ghost"))
                                 .size((20.0, 20.0))
                                 .show(ui);
@@ -70,11 +70,11 @@ fn zero_extent_grid_keeps_fixed_track_when_arrange_reuses_the_resolution() {
             .rows([Track::fixed(20.0)])
             .size((Sizing::fixed(0.0), Sizing::fixed(0.0)))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("fixed-cell"))
                     .grid_cell((0, 0))
                     .show(ui);
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("fill-cell"))
                     .grid_cell((0, 1))
                     .show(ui);
@@ -128,7 +128,7 @@ fn large_inline_track_definition_has_exact_extent_and_last_cell_position() {
                 .line_gap(0.0)
                 .gap(2.0)
                 .show(ui, |ui| {
-                    Frame::new()
+                    Block::new()
                         .id(WidgetId::from_hash("last-cell"))
                         .grid_cell((0, (COLS - 1) as u16))
                         .show(ui);

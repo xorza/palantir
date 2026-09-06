@@ -9,8 +9,8 @@ use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::tree::node_id::NodeId;
 use crate::ui::harness::UiHarness;
+use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
-use crate::widgets::frame::Frame;
 
 /// The arranged rect of whatever recorded under `key`. Generic over the
 /// key exactly like `WidgetId::from_hash`, so a fixture that salts by
@@ -22,7 +22,7 @@ pub(super) fn rect_of(h: &UiHarness, key: impl std::hash::Hash) -> Rect {
 }
 
 pub(super) fn cell(ui: &mut Ui, id: &'static str, w: f32, h: f32) -> NodeId {
-    Frame::new()
+    Block::new()
         .id(WidgetId::from_hash(id))
         .size((Sizing::fixed(w), Sizing::fixed(h)))
         .background(Background {

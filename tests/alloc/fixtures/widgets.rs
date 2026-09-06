@@ -12,9 +12,9 @@ use crate::harness::{Audit, new_ui};
 use std::time::Duration;
 
 use palantir::{
-    AnimSpec, Background, Button, Checkbox, ColorCoords, ColorField, ColorPicker, ColorStrip,
-    Configure, ContextMenu, Easing, Expander, ExpanderTheme, Frame, Grid, MenuItem, Modal, Panel,
-    Popup, ProgressBar, RadioButton, RgbaF32, Scroll, Separator, Shortcut, Sizing, Slider,
+    AnimSpec, Background, Block, Button, Checkbox, ColorCoords, ColorField, ColorPicker,
+    ColorStrip, Configure, ContextMenu, Easing, Expander, ExpanderTheme, Grid, MenuItem, Modal,
+    Panel, Popup, ProgressBar, RadioButton, RgbaF32, Scroll, Separator, Shortcut, Sizing, Slider,
     SlotDefaults, Spinner, Splitter, Switch, Text, TextEdit, Tooltip, Track, Ui, Vec2, WidgetId,
 };
 
@@ -108,7 +108,7 @@ fn grid_8x8_alloc_free() {
             .show(ui, |ui| {
                 for r in 0..8u16 {
                     for c in 0..8u16 {
-                        Frame::new()
+                        Block::new()
                             .id_salt((r, c))
                             .background(Background {
                                 fill: RgbaF32::WHITE.into(),
@@ -132,7 +132,7 @@ fn expander_alloc_free() {
         Audit::new().run(move |ui| {
             Expander::new("section")
                 .auto_id()
-                .default_open(open)
+                .start_open(open)
                 .show(ui, |ui| {
                     Text::new("body").auto_id().show(ui);
                 });
@@ -217,7 +217,7 @@ fn damage_animated_rect_alloc_free() {
         tick = tick.wrapping_add(1);
         let w = 100.0 + (tick % 200) as f32;
         Panel::vstack().auto_id().show(ui, |ui| {
-            Frame::new()
+            Block::new()
                 .auto_id()
                 .background(Background {
                     fill: RgbaF32::WHITE.into(),
@@ -282,7 +282,7 @@ fn long_multiline_selection_alloc_free() {
     let editor_id = WidgetId::from_hash("alloc-long-selection");
     let mut document = "selected line\n".repeat(32);
     Audit::new().text().run(move |ui| {
-        ui.request_focus(Some(editor_id));
+        ui.set_focus(editor_id);
         TextEdit::new(&mut document)
             .id(editor_id)
             .multiline(true)
@@ -296,7 +296,7 @@ fn long_multiline_selection_alloc_free() {
 fn state_map_counter_alloc_free() {
     let id = WidgetId::from_hash("counter");
     Audit::new().run(move |ui| {
-        Frame::new().id_salt("counter").show(ui);
+        Block::new().id_salt("counter").show(ui);
         let n = ui.state_or_default::<u32>(id);
         *n = n.wrapping_add(1);
     });
@@ -310,7 +310,7 @@ fn scroll_overflow_alloc_free() {
             .id_salt("scroll")
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id_salt("tall")
                     .size((Sizing::fixed(180.0), Sizing::fixed(800.0)))
                     .show(ui);
@@ -326,7 +326,7 @@ fn scroll_fits_alloc_free() {
             .id_salt("scroll")
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id_salt("short")
                     .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
                     .show(ui);

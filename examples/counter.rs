@@ -1,7 +1,5 @@
-use palantir::{
-    App, Button, Configure, HostHandle, Panel, Sizing, Text, Ui, WindowToken, WinitHost,
-    WinitHostError, fmt,
-};
+use palantir::prelude::*;
+use palantir::{HostHandle, WinitHost, WinitHostError};
 
 struct Counter {
     clicks: u32,

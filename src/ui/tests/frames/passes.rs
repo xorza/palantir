@@ -10,7 +10,7 @@ use crate::ui::harness::UiHarness;
 use crate::ui::tests::support::{COLD, SURFACE};
 use crate::widgets::configure::Configure;
 use crate::widgets::response::ResponseSnapshot;
-use crate::widgets::{button::Button, frame::Frame, panel::Panel};
+use crate::widgets::{block::Block, button::Button, panel::Panel};
 use glam::{UVec2, Vec2};
 use std::cell::{Cell, RefCell};
 use std::time::Duration;
@@ -33,7 +33,7 @@ fn cascade_visible_to_relayout_pass() {
         let probe_resp: std::cell::RefCell<Option<ResponseSnapshot>> = RefCell::new(None);
         Panel::vstack().auto_id().show(ui, |ui| {
             *probe_resp.borrow_mut() = Some(
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash(id_salt))
                     .size(40.0)
                     .show(ui)
@@ -143,7 +143,7 @@ fn frame_pass_count_matches_action_trigger() {
         (
             "routed keydown",
             |ui| {
-                ui.request_focus(Some(WidgetId::from_hash("root")));
+                ui.set_focus(WidgetId::from_hash("root"));
                 ui.inject_input(InputEvent::KeyDown {
                     key: Key::Enter,
                     repeat: false,

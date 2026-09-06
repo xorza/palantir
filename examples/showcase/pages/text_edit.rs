@@ -158,13 +158,15 @@ fn align_grid(ui: &mut Ui) {
                                     .text_align(Align::new(h, v))
                                     .size((Sizing::FILL, Sizing::fixed(56.0)))
                                     .min_size((140.0, 56.0));
-                                // Composed only when it can be seen:
-                                // `placeholder` takes an owned `Cow`, so
-                                // building one every frame would allocate per
-                                // cell for text that shows only while a cell
-                                // is empty.
+                                // Composed only when it can be seen: the
+                                // `String` backing the placeholder would
+                                // otherwise allocate per cell every frame,
+                                // for text that shows only while a cell is
+                                // empty.
+                                let hint;
                                 if empty {
-                                    edit = edit.placeholder(format!("{vname} / {hname}"));
+                                    hint = format!("{vname} / {hname}");
+                                    edit = edit.placeholder(&hint);
                                 }
                                 edit.show(ui);
                             });

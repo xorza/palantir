@@ -3,7 +3,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
-use crate::widgets::{frame::Frame, panel::Panel};
+use crate::widgets::{block::Block, panel::Panel};
 use glam::UVec2;
 
 #[test]
@@ -14,11 +14,11 @@ fn zstack_hugs_to_largest_child_per_axis_independently() {
             .auto_id()
             .size((Sizing::HUG, Sizing::HUG))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("a"))
                     .size((40.0, 20.0))
                     .show(ui);
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("b"))
                     .size((10.0, 80.0))
                     .show(ui);
@@ -40,11 +40,11 @@ fn zstack_lays_children_at_inner_top_left_by_default() {
             .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
             .padding(8.0)
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("a"))
                     .size((20.0, 20.0))
                     .show(ui);
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("b"))
                     .size((30.0, 30.0))
                     .show(ui);
@@ -103,7 +103,7 @@ fn zstack_per_axis_alignment() {
             }
             p.show(ui, |ui| {
                 for (i, ((w, h), align, _)) in children.iter().enumerate() {
-                    Frame::new()
+                    Block::new()
                         .id(WidgetId::from_hash(("c", i)))
                         .size((*w, *h))
                         .align(*align)
@@ -135,7 +135,7 @@ fn zstack_fill_child_stretches_to_inner() {
             .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
             .padding(10.0)
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("filler"))
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui);
@@ -162,7 +162,7 @@ fn hug_zstack_with_only_fill_children_collapses_to_zero() {
             .auto_id()
             .size((Sizing::HUG, Sizing::HUG))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("filler"))
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui);
@@ -183,11 +183,11 @@ fn zstack_collapsed_child_does_not_grow_panel() {
             .auto_id()
             .size((Sizing::HUG, Sizing::HUG))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("a"))
                     .size((20.0, 20.0))
                     .show(ui);
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("hidden"))
                     .size((100.0, 100.0))
                     .collapsed()

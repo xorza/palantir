@@ -9,8 +9,8 @@ use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::ui::harness::UiHarness;
+use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
-use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::scroll::state::{ScrollState, ThumbTravel};
@@ -182,7 +182,7 @@ fn scroll_records_content_extent() {
                 .gap(4.0)
                 .show(ui, |ui| {
                     for i in 0..3u32 {
-                        Frame::new()
+                        Block::new()
                             .id(WidgetId::from_hash(("row", i)))
                             .size((Sizing::fixed(180.0), Sizing::fixed(28.0)))
                             .show(ui);
@@ -196,7 +196,7 @@ fn scroll_records_content_extent() {
                 .gap(8.0)
                 .show(ui, |ui| {
                     for i in 0..2u32 {
-                        Frame::new()
+                        Block::new()
                             .id(WidgetId::from_hash(("col", i)))
                             .size((Sizing::fixed(60.0), Sizing::fixed(40.0)))
                             .show(ui);
@@ -208,11 +208,11 @@ fn scroll_records_content_extent() {
                 .id(WidgetId::from_hash("scroll"))
                 .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
                 .show(ui, |ui| {
-                    Frame::new()
+                    Block::new()
                         .id(WidgetId::from_hash("wide"))
                         .size((Sizing::fixed(300.0), Sizing::fixed(60.0)))
                         .show(ui);
-                    Frame::new()
+                    Block::new()
                         .id(WidgetId::from_hash("tall"))
                         .size((Sizing::fixed(80.0), Sizing::fixed(250.0)))
                         .show(ui);
@@ -260,7 +260,7 @@ fn scroll_content_is_restored_on_measure_cache_hit() {
                     .gap(4.0)
                     .show(ui, |ui| {
                         for i in 0..3u32 {
-                            Frame::new()
+                            Block::new()
                                 .id(WidgetId::from_hash(("row", i)))
                                 .size((Sizing::fixed(180.0), Sizing::fixed(28.0)))
                                 .show(ui);

@@ -17,13 +17,13 @@ use crate::primitives::corners::Corners;
 use crate::scene::visibility::Visibility;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
+use crate::widgets::block::Block;
 use crate::widgets::button::Button;
 use crate::widgets::checkbox::Checkbox;
 use crate::widgets::combo_box::ComboBox;
 use crate::widgets::configure::Configure;
 use crate::widgets::drag_value::DragValue;
 use crate::widgets::expander::Expander;
-use crate::widgets::frame::Frame;
 use crate::widgets::grid::Grid;
 use crate::widgets::panel::Panel;
 use crate::widgets::progress_bar::ProgressBar;
@@ -112,7 +112,7 @@ pub(super) fn settings_card(state: &mut FrameFixture, ui: &mut Ui) {
 
                 // Full-width rule, drawn with a spanning cell so the grid
                 // carries span coverage in its simplest honest form.
-                Frame::new()
+                Block::new()
                     .id_salt("s-rule")
                     .size((Sizing::FILL, Sizing::fixed(1.0)))
                     .background(Background {
@@ -203,7 +203,7 @@ pub(super) fn properties_card(state: &mut FrameFixture, ui: &mut Ui, rows: usize
                     // cells. Grid children may share a cell, so this both
                     // reads as a table and covers a multi-column span.
                     if row % 2 == 0 {
-                        Frame::new()
+                        Block::new()
                             .id_salt(("pband", row))
                             .size((Sizing::FILL, Sizing::FILL))
                             .background(Background {
@@ -248,7 +248,7 @@ pub(super) fn notes_card(state: &mut FrameFixture, ui: &mut Ui) {
     tokens::card(ui, "notes", "NOTES", Sizing::HUG, |ui| {
         Expander::new("scratch")
             .id_salt("notes-expander")
-            .default_open(true)
+            .start_open(true)
             .show(ui, |ui| {
                 TextEdit::new(&mut state.notes)
                     .id_salt("notes-edit")

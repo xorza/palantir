@@ -190,7 +190,7 @@ fn arrows_home_and_end_travel_and_wrap() {
     let mut h = UiHarness::new(SURFACE);
     strip_frame(&mut h, 0, TabBadge::None);
     strip_frame(&mut h, 0, TabBadge::None);
-    h.request_focus(Some(strip_id()));
+    h.set_focus(strip_id());
     strip_frame(&mut h, 0, TabBadge::None);
 
     let travel = |h: &mut UiHarness, key: Key, mods: Modifiers, selected: usize| {
@@ -264,7 +264,7 @@ fn travel_needs_focus_inside_the_strip() {
     let mut h = UiHarness::new(SURFACE);
     strip_frame(&mut h, 0, TabBadge::None);
     strip_frame(&mut h, 0, TabBadge::None);
-    h.request_focus(None);
+    h.clear_focus();
     h.key(Key::ArrowRight);
     let keyed = h.frame_value(|ui| {
         let items = items(ui, TabBadge::None);

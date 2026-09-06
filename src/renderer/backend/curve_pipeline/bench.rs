@@ -123,7 +123,7 @@ fn render(
 ) {
     *phase = !*phase;
     let mut app = RecordApp::new(|ui| record(ui, workload, *phase));
-    host.frame_offscreen(target, 1.0, &mut app);
+    host.frame(target, 1.0, &mut app);
     gpu.wait();
 }
 

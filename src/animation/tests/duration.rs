@@ -9,8 +9,8 @@ use crate::animation::tests::support::{
 };
 use crate::common::time::MAX_ANIM_DT;
 use crate::primitives::widget_id::WidgetId;
+use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
-use crate::widgets::frame::Frame;
 use glam::Vec2;
 use std::time::Duration;
 
@@ -29,7 +29,7 @@ fn instant_duration_is_noop_and_drops_row() {
         .frame(|ui| {
             let v = ui.animate(id, SLOT, 1.0_f32, instant);
             assert_eq!(v, 1.0);
-            Frame::new()
+            Block::new()
                 .id(WidgetId::from_hash("anim-instant"))
                 .show(ui);
         })
@@ -40,13 +40,13 @@ fn instant_duration_is_noop_and_drops_row() {
     // Mid-flight on FAST: row gets allocated.
     let _ = h.at(Duration::from_millis(0)).frame(|ui| {
         let _ = ui.animate(id, SLOT, 0.0_f32, Some(AnimSpec::FAST));
-        Frame::new()
+        Block::new()
             .id(WidgetId::from_hash("anim-instant"))
             .show(ui);
     });
     let _ = h.at(Duration::from_millis(50)).frame(|ui| {
         let _ = ui.animate(id, SLOT, 1.0_f32, Some(AnimSpec::FAST));
-        Frame::new()
+        Block::new()
             .id(WidgetId::from_hash("anim-instant"))
             .show(ui);
     });
@@ -56,7 +56,7 @@ fn instant_duration_is_noop_and_drops_row() {
     let _ = h.at(Duration::from_millis(60)).frame(|ui| {
         let v = ui.animate(id, SLOT, 1.0_f32, instant);
         assert_eq!(v, 1.0);
-        Frame::new()
+        Block::new()
             .id(WidgetId::from_hash("anim-instant"))
             .show(ui);
     });
@@ -70,7 +70,7 @@ fn instant_duration_is_noop_and_drops_row() {
     let _ = h.at(Duration::from_millis(70)).frame(|ui| {
         let v = ui.animate(id, SLOT, 5.0_f32, Some(AnimSpec::FAST));
         assert_eq!(v, 5.0, "post-instant first-touch snaps to new target");
-        Frame::new()
+        Block::new()
             .id(WidgetId::from_hash("anim-instant"))
             .show(ui);
     });

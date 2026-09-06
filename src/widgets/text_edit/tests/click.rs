@@ -456,7 +456,7 @@ fn select_all_on_focus_gates_on_the_flag() {
     };
 
     h.frame(|ui| render(ui, &mut on, &mut off));
-    h.request_focus(Some(on_id));
+    h.set_focus(on_id);
     h.frame(|ui| render(ui, &mut on, &mut off));
     {
         let st = h.ui.state_or_default::<TextEditState>(on_id);
@@ -472,7 +472,7 @@ fn select_all_on_focus_gates_on_the_flag() {
         );
     }
 
-    h.request_focus(Some(off_id));
+    h.set_focus(off_id);
     h.frame(|ui| render(ui, &mut on, &mut off));
     assert_eq!(
         h.ui.state_or_default::<TextEditState>(off_id)

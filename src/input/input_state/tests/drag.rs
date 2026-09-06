@@ -8,7 +8,7 @@ use crate::scene::layer::Layer;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::response::Response;
-use crate::widgets::{frame::Frame, panel::Panel};
+use crate::widgets::{block::Block, panel::Panel};
 use glam::{UVec2, Vec2};
 
 fn build_clickable(ui: &mut Ui) {
@@ -442,7 +442,7 @@ impl Card {
     }
 
     fn record(&mut self, ui: &mut Ui) {
-        let r = Frame::new()
+        let r = Block::new()
             .id(WidgetId::from_hash(self.label))
             .size((Sizing::fixed(CARD_SIZE), Sizing::fixed(CARD_SIZE)))
             .position(self.pos)
@@ -621,7 +621,7 @@ fn canvas_rearranges_with_dragged_child_position() {
                 .id(WidgetId::from_hash("canvas"))
                 .size((Sizing::fixed(400.0), Sizing::fixed(400.0)))
                 .show(ui, |ui| {
-                    let r = Frame::new()
+                    let r = Block::new()
                         .id(WidgetId::from_hash("a"))
                         .size((Sizing::fixed(CARD_SIZE), Sizing::fixed(CARD_SIZE)))
                         .position(a.pos)

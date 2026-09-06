@@ -123,7 +123,7 @@
 //!     `focused.is_some() || subs.matches_press(kp) || keyboard_mask`,
 //!     and drops what is not observable rather than queueing it. A
 //!     keyboard test must establish focus first — by clicking, or via
-//!     `Ui::request_focus` — or it asserts on a queue that can never
+//!     `Ui::set_focus` — or it asserts on a queue that can never
 //!     fill.
 //!
 //! **Three tiers, one per block.** The whole module is already
@@ -678,8 +678,12 @@ impl UiHarness {
         self.ui.focused_id()
     }
 
-    pub fn request_focus(&mut self, id: Option<WidgetId>) {
-        self.ui.request_focus(id);
+    pub fn set_focus(&mut self, id: WidgetId) {
+        self.ui.set_focus(id);
+    }
+
+    pub fn clear_focus(&mut self) {
+        self.ui.clear_focus();
     }
 
     pub fn focus_within(&self, ancestor: WidgetId) -> bool {

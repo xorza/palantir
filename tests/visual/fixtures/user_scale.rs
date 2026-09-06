@@ -8,7 +8,7 @@
 
 use glam::UVec2;
 use image::{Rgba, RgbaImage};
-use palantir::{Background, Configure, Frame, Panel, RgbaF32, Sizing, Ui, UserScale};
+use palantir::{Background, Block, Configure, Panel, RgbaF32, Sizing, Ui, UserScale};
 
 use crate::fixtures::DARK_BG;
 use crate::harness::Harness;
@@ -23,7 +23,7 @@ fn block(ui: &mut Ui) {
         .id_salt("root")
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
-            Frame::new()
+            Block::new()
                 .id_salt("block")
                 .size((Sizing::fixed(40.0), Sizing::fixed(24.0)))
                 .background(Background::fill(RgbaF32::WHITE))

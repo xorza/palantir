@@ -18,6 +18,7 @@ use crate::widgets::color_surface;
 use crate::widgets::color_surface::ColorSurface;
 use crate::widgets::configure::Configure;
 use crate::widgets::configure::ConfigureWidget;
+use crate::widgets::configure::ThemeDefaults;
 use crate::widgets::response::Response;
 use crate::widgets::theme::color_picker::ColorPickerTheme;
 use crate::widgets::value_response::ValueResponse;
@@ -37,6 +38,7 @@ use glam::Vec2;
 /// Sized from [`ColorPickerTheme`], and returns the same
 /// [`ValueResponse`] every other value-writing widget does.
 #[derive(Debug)]
+#[must_use = "a widget records nothing until `show`"]
 pub struct ColorField<'a> {
     widget: Widget,
     coords: &'a mut ColorCoords,

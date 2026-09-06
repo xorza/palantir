@@ -10,8 +10,8 @@ use crate::text::font_scope::test_support::INTER;
 use crate::text::shaper::TextShaper;
 use crate::ui::harness::UiHarness;
 use crate::ui::tests::support::SURFACE;
+use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
-use crate::widgets::frame::Frame;
 use crate::widgets::text::Text;
 use glam::{UVec2, Vec2};
 
@@ -23,7 +23,7 @@ fn cascade_skip_fires_on_unchanged_reruns_on_change() {
     use crate::layout::types::sizing::Sizing;
 
     fn build(ui: &mut Ui, w: f32) {
-        Frame::new()
+        Block::new()
             .id(WidgetId::from_hash("f"))
             .size((Sizing::fixed(w), Sizing::fixed(50.0)))
             .show(ui);
@@ -76,8 +76,8 @@ fn cascade_fingerprint_covers_authoring_input_classes() {
     use crate::layout::types::clip_mode::ClipMode;
     use crate::scene::visibility::Visibility;
 
-    fn probe(ui: &mut Ui, cfg: impl FnOnce(Frame) -> Frame) {
-        cfg(Frame::new().id(WidgetId::from_hash("probe")).size(50.0)).show(ui);
+    fn probe(ui: &mut Ui, cfg: impl FnOnce(Block) -> Block) {
+        cfg(Block::new().id(WidgetId::from_hash("probe")).size(50.0)).show(ui);
     }
 
     // Settle `base` into the skip, then run `changed` and assert the
@@ -181,12 +181,12 @@ fn cascade_fingerprint_covers_the_font_database() {
 #[test]
 fn cascade_fingerprint_covers_layer_and_root_identity() {
     fn float(ui: &mut Ui, layer: Layer, key: &str) {
-        Frame::new()
+        Block::new()
             .id(WidgetId::from_hash("anchor"))
             .size(50.0)
             .show(ui);
         ui.layer(layer).fixed_at(Vec2::new(10.0, 10.0)).show(|ui| {
-            Frame::new()
+            Block::new()
                 .id(WidgetId::from_hash(key))
                 .size(20.0)
                 .background(Background {

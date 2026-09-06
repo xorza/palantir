@@ -5,8 +5,8 @@ use glam::{UVec2, Vec2};
 use image::Rgba;
 use palantir::widget::{LineCap, LineJoin, Shape};
 use palantir::{
-    Background, Brush, Button, ColorCoords, ColorField, ColorModel, ColorPicker, ColorStrip,
-    ComboBox, Configure, ConicGradient, Corners, DragValue, Frame, LinearGradient, Modal, Panel,
+    Background, Block, Brush, Button, ColorCoords, ColorField, ColorModel, ColorPicker, ColorStrip,
+    ComboBox, Configure, ConicGradient, Corners, DragValue, LinearGradient, Modal, Panel,
     ProgressBar, RadialGradient, Rect, RgbaF32, Shadow, Sizing, Slider, Spinner, SrgbaU8, Stroke,
     Switch, Text, ToggleTheme,
 };
@@ -41,7 +41,7 @@ fn frame_filled_with_stroke_matches_golden() {
             .padding(20.0)
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id_salt("card")
                     .size((Sizing::FILL, Sizing::FILL))
                     .background(Background {
@@ -71,7 +71,7 @@ fn frame_linear_gradient_matches_golden() {
             .padding(20.0)
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id_salt("card")
                     .size((Sizing::FILL, Sizing::FILL))
                     .background(Background {
@@ -187,17 +187,17 @@ fn showcase_gradients_tab_matches_golden() {
                     .gap(16.0)
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui, |ui| {
-                        Frame::new()
+                        Block::new()
                             .id_salt("horizontal")
                             .size((Sizing::FILL, Sizing::FILL))
                             .background(cell(LinearGradient::two_stop(0.0, navy, blue)))
                             .show(ui);
-                        Frame::new()
+                        Block::new()
                             .id_salt("vertical")
                             .size((Sizing::FILL, Sizing::FILL))
                             .background(cell(LinearGradient::two_stop(FRAC_PI_2, navy, blue)))
                             .show(ui);
-                        Frame::new()
+                        Block::new()
                             .id_salt("diag")
                             .size((Sizing::FILL, Sizing::FILL))
                             .background(cell(LinearGradient::two_stop(FRAC_PI_4, orange, yellow)))
@@ -208,7 +208,7 @@ fn showcase_gradients_tab_matches_golden() {
                     .gap(16.0)
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui, |ui| {
-                        Frame::new()
+                        Block::new()
                             .id_salt("threestop")
                             .size((Sizing::FILL, Sizing::FILL))
                             .background(cell(
@@ -233,7 +233,7 @@ fn showcase_gradients_tab_matches_golden() {
                                         [Stop::new(0.0, navy), Stop::new(0.5, blue)],
                                     )
                                     .with_spread(*sp);
-                                    Frame::new()
+                                    Block::new()
                                         .id_salt(("sp", i))
                                         .size((Sizing::FILL, Sizing::FILL))
                                         .background(cell(g))
@@ -248,7 +248,7 @@ fn showcase_gradients_tab_matches_golden() {
                                 for (i, ip) in [Interp::Linear, Interp::Oklab].iter().enumerate() {
                                     let g =
                                         LinearGradient::two_stop(0.0, red, green).with_interp(*ip);
-                                    Frame::new()
+                                    Block::new()
                                         .id_salt(("ip", i))
                                         .size((Sizing::FILL, Sizing::FILL))
                                         .background(cell(g))
@@ -277,7 +277,7 @@ fn radial_and_conic_gradient_matches_golden() {
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 let r = RadialGradient::two_stop(RgbaF32::hex(0xfacc15), RgbaF32::hex(0x1a1a2e));
-                Frame::new()
+                Block::new()
                     .id_salt("radial")
                     .size((Sizing::FILL, Sizing::FILL))
                     .background(Background {
@@ -297,7 +297,7 @@ fn radial_and_conic_gradient_matches_golden() {
                         palantir::Stop::new(1.0, RgbaF32::hex(0xff5e44)),
                     ],
                 );
-                Frame::new()
+                Block::new()
                     .id_salt("conic")
                     .size((Sizing::FILL, Sizing::FILL))
                     .background(Background {
@@ -343,7 +343,7 @@ fn surface_rounded_clips_full_fill_child() {
                     })
                     .clip_rounded()
                     .show(ui, |ui| {
-                        Frame::new()
+                        Block::new()
                             .id_salt("inner")
                             .size((Sizing::FILL, Sizing::FILL))
                             .background(Background {
@@ -399,7 +399,7 @@ fn rounded_clip_partially_offscreen_does_not_bleed_corners() {
                     })
                     .clip_rounded()
                     .show(ui, |ui| {
-                        Frame::new()
+                        Block::new()
                             .id_salt("inner")
                             .size((Sizing::FILL, Sizing::FILL))
                             .background(Background {
@@ -520,7 +520,7 @@ fn interleaved_shapes_paint_in_record_order() {
                 ui.add_shape(
                     Shape::rect(Rect::new(0.0, 0.0, 30.0, 60.0)).fill(RgbaF32::srgb(1.0, 0.0, 0.0)),
                 );
-                Frame::new()
+                Block::new()
                     .id_salt("cyan")
                     .background(Background {
                         fill: RgbaF32::srgb(0.0, 1.0, 1.0).into(),
@@ -532,7 +532,7 @@ fn interleaved_shapes_paint_in_record_order() {
                     Shape::rect(Rect::new(30.0, 0.0, 60.0, 60.0))
                         .fill(RgbaF32::srgb(0.0, 1.0, 0.0)),
                 );
-                Frame::new()
+                Block::new()
                     .id_salt("yellow")
                     .background(Background {
                         fill: RgbaF32::srgb(1.0, 1.0, 0.0).into(),

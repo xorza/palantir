@@ -20,7 +20,7 @@ use crate::text::wrap::TextWrap;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::text::Text;
-use crate::widgets::{frame::Frame, panel::Panel};
+use crate::widgets::{block::Block, panel::Panel};
 use glam::UVec2;
 
 #[test]
@@ -201,7 +201,7 @@ fn build_wrapping_container_text(ui: &mut Ui) -> ContainerTextScene {
         .show(ui, |ui| {
             add_direct_text(ui, PARAGRAPH, 14.0, 16.0, TextWrap::Wrap, None);
             child = Some(
-                Frame::new()
+                Block::new()
                     .id_salt("container-size-driver")
                     .size((Sizing::fixed(80.0), Sizing::fixed(20.0)))
                     .show(ui)

@@ -11,7 +11,7 @@ use crate::text::wrap::TextWrap;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
 use crate::widgets::theme::text_style::TextStyle;
-use crate::widgets::{frame::Frame, grid::Grid, panel::Panel, scroll::Scroll, text::Text};
+use crate::widgets::{block::Block, grid::Grid, panel::Panel, scroll::Scroll, text::Text};
 use glam::UVec2;
 
 /// Driver-triggered intrinsic queries during `run` must populate
@@ -189,7 +189,7 @@ fn parent_intrinsic_query_populates_descendant_cache() {
 #[test]
 fn intrinsic_range_exactly_matches_separate_queries_for_every_driver() {
     fn fixed(ui: &mut Ui, id: &'static str, size: (f32, f32)) {
-        Frame::new().id_salt(id).size(size).show(ui);
+        Block::new().id_salt(id).size(size).show(ui);
     }
 
     let mut h = UiHarness::new(UVec2::new(1200, 900));
@@ -218,7 +218,7 @@ fn intrinsic_range_exactly_matches_separate_queries_for_every_driver() {
                 fixed(ui, "range-zstack-child", (22.0, 18.0));
             });
             Panel::canvas().id_salt("range-canvas").show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id_salt("range-canvas-child")
                     .position((7.0, 9.0))
                     .size((19.0, 13.0))
@@ -234,7 +234,7 @@ fn intrinsic_range_exactly_matches_separate_queries_for_every_driver() {
                         .id_salt("range-grid-label")
                         .grid_cell((0, 0))
                         .show(ui);
-                    Frame::new()
+                    Block::new()
                         .id_salt("range-grid-body")
                         .size((16.0, 11.0))
                         .grid_cell((0, 1))

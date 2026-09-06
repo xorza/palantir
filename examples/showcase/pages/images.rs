@@ -21,7 +21,7 @@ fn checker() -> Image {
             pixels.extend_from_slice(&[rgb, rgb, rgb, 255]);
         }
     }
-    Image::from_rgba8(UVec2::new(N, N), pixels)
+    Image::from_srgba8(UVec2::new(N, N), pixels)
 }
 
 /// 64×64 vertical magenta-to-cyan gradient — exercises the tint path
@@ -38,7 +38,7 @@ fn gradient() -> Image {
             pixels.extend_from_slice(&[r, g, 255, 255]);
         }
     }
-    Image::from_rgba8(UVec2::new(W, H), pixels)
+    Image::from_srgba8(UVec2::new(W, H), pixels)
 }
 
 /// 4×4 primary-colour sprite — small enough that any tile-sized draw is
@@ -62,7 +62,7 @@ fn sprite() -> Image {
         [200, 200, 120, 255],
         [120, 30, 30, 255],
     ];
-    Image::from_rgba8(UVec2::new(4, 4), px.into_iter().flatten().collect())
+    Image::from_srgba8(UVec2::new(4, 4), px.into_iter().flatten().collect())
 }
 
 /// 512×512 of near-black with scattered one-pixel stars — the worst case
@@ -103,7 +103,7 @@ fn starfield() -> Image {
         let i = ((y * N + x) * 4) as usize;
         pixels[i..i + 4].copy_from_slice(&[rr, gg, bb, 255]);
     }
-    Image::from_rgba8(UVec2::new(N, N), pixels)
+    Image::from_srgba8(UVec2::new(N, N), pixels)
 }
 
 /// The four demo images, registered once and parked in a state row — the
@@ -123,16 +123,16 @@ fn sources(ui: &mut Ui) -> Sources {
         |ui, slot| {
             slot.get_or_insert_with(|| Sources {
                 checker: ui
-                    .register_image(&checker())
+                    .load_image(&checker())
                     .expect("showcase checker fits every supported GPU"),
                 gradient: ui
-                    .register_image(&gradient())
+                    .load_image(&gradient())
                     .expect("showcase gradient fits every supported GPU"),
                 sprite: ui
-                    .register_image(&sprite())
+                    .load_image(&sprite())
                     .expect("showcase sprite fits every supported GPU"),
                 starfield: ui
-                    .register_image(&starfield())
+                    .load_image(&starfield())
                     .expect("showcase starfield fits every supported GPU"),
             })
             .clone()

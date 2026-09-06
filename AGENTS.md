@@ -7,10 +7,11 @@ layout with flex-shrink sizing**, **wgpu rendering**.
 
 State-of-the-art UI framework, craft-driven.
 
-- **Break things freely.** Rename, refactor, big-bang migrations welcome — no
-  deprecation shims, compat aliases, feature flags, or migration helpers.
-  Releases break; that's what pre-1.0 buys. Bar is "fmt + clippy + tests pass
-  and the showcase still feels right by eye."
+- **Break things freely, once asked.** Rename, refactor, big-bang migrations
+  welcome — no deprecation shims, compat aliases, feature flags, or migration
+  helpers. Releases break; that's what pre-1.0 buys. Bar is "fmt + clippy +
+  tests pass and the showcase still feels right by eye." Who decides is
+  **Public API**, below.
 - **Per-frame allocation is a real metric.** Steady-state must be heap-alloc-free
   after warmup. New per-frame allocation or map rebuilding is a regression; push
   onto retained scratch with capacity reuse.
@@ -28,6 +29,18 @@ State-of-the-art UI framework, craft-driven.
   docs, and this file as evolving and possibly wrong. When a doc contradicts
   user intent or current code, double-question rather than defer — flag the
   conflict and ask.
+
+## Public API
+
+**Never change it on your own.** Adding, renaming, removing, or re-signing an
+exported item — a type, a method, an argument, a trait bound — waits for my
+go-ahead. Propose it, then stop.
+
+**Design it against its neighbours, not from scratch.** Before proposing new
+surface, read what it will sit beside: the same widget's other setters, the
+sibling type's methods, the trait it joins, the `Response` its peers return.
+Match their names, argument shapes, and order. A new item that reads unlike
+the ones around it is a bug, however good it looks alone.
 
 ## Widgets use the public API
 

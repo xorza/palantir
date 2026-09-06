@@ -49,6 +49,7 @@ use std::rc::Rc;
 /// by default — opt in with [`Configure::sense`] to drive interaction
 /// (drag / click) from the returned [`Response`].
 #[derive(Debug)]
+#[must_use = "a widget records nothing until `show`"]
 pub struct GpuView {
     widget: Widget,
     /// Wrapped at construction rather than carried raw: [`GpuPaintRef`]

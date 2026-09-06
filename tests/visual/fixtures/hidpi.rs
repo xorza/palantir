@@ -3,7 +3,7 @@
 
 use glam::UVec2;
 use palantir::{
-    Background, Button, Configure, Corners, Frame, Grid, GridCell, Panel, RgbaF32, Shadow, Sizing,
+    Background, Block, Button, Configure, Corners, Grid, GridCell, Panel, RgbaF32, Shadow, Sizing,
     Stroke, Text, TextStyle, Track,
 };
 
@@ -57,7 +57,7 @@ fn dashboard_matches_golden() {
                                     .with_color(RgbaF32::srgb(0.92, 0.94, 1.00)),
                             )
                             .show(ui);
-                        Frame::new()
+                        Block::new()
                             .id_salt("spacer")
                             .size((Sizing::FILL, Sizing::fixed(1.0)))
                             .show(ui);
@@ -78,7 +78,7 @@ fn dashboard_matches_golden() {
                     })
                     .show(ui, |ui| {
                         for i in 0..5 {
-                            Frame::new()
+                            Block::new()
                                 .id_salt(("nav-bg", i))
                                 .size((Sizing::FILL, Sizing::fixed(28.0)))
                                 .padding((6.0, 8.0, 6.0, 8.0))

@@ -122,7 +122,7 @@ Pre-1.0 — these are known gaps, not design rejections:
 
 - **Accessibility** — no AccessKit / screen-reader support yet.
 - **Tab-key focus traversal** — focus exists (click-to-focus, programmatic
-  `request_focus`), but `Tab` / `Shift+Tab` cycling does not.
+  `Ui::set_focus`), but `Tab` / `Shift+Tab` cycling does not.
 - **Rich text** — one family / size / colour per `Text`; no inline spans.
 - **RTL / bidirectional text** — right-to-left and mixed-direction scripts
   aren't supported yet.
@@ -157,7 +157,8 @@ palantir = { version = "*", features = ["internals"] }
 ```
 
 ```rust,ignore
-use palantir::{Button, Configure, Ui, UVec2, WidgetId, internals::UiHarness};
+use palantir::prelude::*;
+use palantir::internals::UiHarness;
 
 let inc = WidgetId::from_hash("inc");
 let mut clicks = 0_u32;
@@ -219,10 +220,8 @@ an app that already owns its window and event loop.
 ## Example
 
 ```rust,no_run
-use palantir::{
-    App, Button, Configure, Panel, Sizing, Text, Ui, WindowToken, WinitHost,
-    WinitHostError, fmt,
-};
+use palantir::prelude::*;
+use palantir::{WinitHost, WinitHostError};
 
 struct Counter { clicks: u32 }
 

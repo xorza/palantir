@@ -21,9 +21,9 @@ use crate::primitives::rect::Rect;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::stroke::Stroke;
 use crate::ui::Ui;
+use crate::widgets::block::Block;
 use crate::widgets::button::Button;
 use crate::widgets::configure::Configure;
-use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
 use crate::widgets::popup::{ClickOutside, Popup};
 use crate::widgets::scroll::Scroll;
@@ -40,7 +40,7 @@ pub(super) fn app_bar(ui: &mut Ui) {
         .child_align(Align::CENTER)
         .show(ui, |ui| {
             // Brand dot: the only conic-gradient chrome fill in the tree.
-            Frame::new()
+            Block::new()
                 .id_salt("brand")
                 .size((Sizing::fixed(22.0), Sizing::fixed(22.0)))
                 .background(Background {
@@ -65,7 +65,7 @@ pub(super) fn app_bar(ui: &mut Ui) {
                 .id_salt("subtitle")
                 .style(&tokens::caption_style())
                 .show(ui);
-            Frame::new()
+            Block::new()
                 .id_salt("title-spacer")
                 .size((Sizing::FILL, Sizing::fixed(1.0)))
                 .show(ui);
@@ -152,7 +152,7 @@ pub(super) fn status_bar(state: &mut FrameFixture, ui: &mut Ui) {
         .id_salt("status")
         .size((Sizing::FILL, Sizing::fixed(34.0)))
         .show(ui, |ui| {
-            Frame::new()
+            Block::new()
                 .id_salt("footer-bg")
                 .size((Sizing::FILL, Sizing::FILL))
                 .background(Background {
@@ -181,7 +181,7 @@ pub(super) fn status_bar(state: &mut FrameFixture, ui: &mut Ui) {
                         .style(&TextStyle::default().with_font_size(12.0))
                         .size((Sizing::fixed(120.0), Sizing::HUG))
                         .show(ui);
-                    Frame::new()
+                    Block::new()
                         .id_salt("footer-spacer")
                         .size((Sizing::FILL, Sizing::fixed(1.0)))
                         .show(ui);

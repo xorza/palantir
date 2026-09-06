@@ -10,6 +10,7 @@ use crate::ui::Ui;
 use crate::widgets::checkerboard::Checkerboard;
 use crate::widgets::configure::Configure;
 use crate::widgets::configure::ConfigureWidget;
+use crate::widgets::configure::ThemeDefaults;
 use crate::widgets::response::Response;
 use crate::widgets::theme::color_picker::ColorPickerTheme;
 use crate::widgets::widget::Widget;
@@ -25,6 +26,7 @@ use crate::widgets::widget::Widget;
 /// Sized from [`ColorPickerTheme::swatch_size`], and styled from the same
 /// bundle as the rest of the family.
 #[derive(Debug)]
+#[must_use = "a widget records nothing until `show`"]
 pub struct ColorSwatch<'a> {
     widget: Widget,
     color: RgbaF32,

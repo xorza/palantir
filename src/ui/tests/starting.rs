@@ -12,7 +12,7 @@ use crate::scene::layer::Layer;
 use crate::ui::harness::UiHarness;
 use crate::ui::tests::support::{COLD, SURFACE, cold_frame, cold_ui};
 use crate::widgets::configure::Configure;
-use crate::widgets::{button::Button, frame::Frame, panel::Panel};
+use crate::widgets::{block::Block, button::Button, panel::Panel};
 use glam::{UVec2, Vec2};
 
 /// Pin: an empty frame drives the full pipeline without panicking and
@@ -167,7 +167,7 @@ fn cold_start_routes_held_pointer_against_warmup_cascade() {
 fn cold_start_first_frame_damage_is_full() {
     let mut h = cold_ui();
     let report = h.frame(|ui| {
-        Frame::new()
+        Block::new()
             .auto_id()
             .size(50.0)
             .background(Background {

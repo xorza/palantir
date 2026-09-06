@@ -9,8 +9,8 @@ use crate::scene::tree::paint_anims::paint_anim::PaintAnim;
 use crate::shape::Shape;
 use crate::ui::harness::UiHarness;
 use crate::ui::tests::support::SURFACE;
+use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
-use crate::widgets::frame::Frame;
 use std::time::Duration;
 
 /// A fractional alpha survives the whole path: sampled by the encoder,
@@ -25,7 +25,7 @@ use std::time::Duration;
 #[test]
 fn a_fractional_alpha_reaches_the_encoded_fill() {
     let record = |ui: &mut crate::Ui| {
-        Frame::new()
+        Block::new()
             .id(WidgetId::from_hash("faded"))
             .size(20.0)
             .show(ui);

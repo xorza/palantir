@@ -6,8 +6,8 @@ use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::endpoint::Endpoint;
 use crate::ui::harness::UiHarness;
+use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
-use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::scroll::state::ScrollState;
@@ -31,7 +31,7 @@ pub(super) fn driven(ui: &mut Ui, viewport_h: f32, content_h: f32, pan: Vec2) {
                 .scroll_by(pan)
                 .size((Sizing::fixed(200.0), Sizing::fixed(viewport_h)))
                 .show(ui, |ui| {
-                    Frame::new()
+                    Block::new()
                         .id(WidgetId::from_hash("content"))
                         .size((Sizing::fixed(200.0), Sizing::fixed(content_h)))
                         .show(ui);
@@ -51,7 +51,7 @@ pub(super) fn zoom_driven(ui: &mut Ui, factors: &[f32]) {
         scroll = scroll.zoom_by(*factor);
     }
     scroll.show(ui, |ui| {
-        Frame::new()
+        Block::new()
             .id(WidgetId::from_hash("content"))
             .size((Sizing::fixed(400.0), Sizing::fixed(400.0)))
             .show(ui);

@@ -12,7 +12,7 @@ use std::time::Duration;
 use crate::support;
 use crate::support::{note_style, raised_bg, row, section};
 use palantir::{
-    Align, Button, Configure, ContextMenu, ContextMenuTheme, Frame, Justify, Key, MenuItem, Mods,
+    Align, Block, Button, Configure, ContextMenu, ContextMenuTheme, Justify, Key, MenuItem, Mods,
     Panel, Popup, Rect, ResponseSnapshot, Sense, Shortcut, Sizing, Spacing, Text, Tooltip, Ui,
     Vec2, WidgetId, fmt,
 };
@@ -183,8 +183,8 @@ fn tooltip_section(ui: &mut Ui) {
                     .show(ui)
                     .snapshot();
                 Tooltip::on(&r)
-                    .label("Opt in via .show_when_disabled(true) for 'why is this disabled' hints.")
-                    .show_when_disabled(true)
+                    .label("Opt in via .when_disabled(true) for 'why is this disabled' hints.")
+                    .when_disabled(true)
                     .show(ui);
             });
         },
@@ -257,7 +257,7 @@ fn context_menu_section(ui: &mut Ui) {
                     // A generic Frame surface (Sense::CLICK so it can
                     // receive secondary clicks) with the theme-driven
                     // default menu look.
-                    let surface = Frame::new()
+                    let surface = Block::new()
                         .id_salt("ctx-surface")
                         .size((Sizing::FILL, Sizing::fixed(90.0)))
                         .sense(Sense::CLICK)
@@ -268,7 +268,7 @@ fn context_menu_section(ui: &mut Ui) {
 
                     // Same items, configured wider with bigger padding and
                     // a maximum width.
-                    let wide = Frame::new()
+                    let wide = Block::new()
                         .id_salt("ctx-wide-surface")
                         .size((Sizing::FILL, Sizing::fixed(90.0)))
                         .sense(Sense::CLICK)

@@ -14,12 +14,12 @@ use std::time::Duration;
 /// prose — a name can fall out of a sentence with nothing to catch
 /// it, but not out of a list the suite checks.
 const COVERED: &[&str] = &[
+    "block",
     "button",
     "checkbox",
     "combo_box",
     "drag_value",
     "expander",
-    "frame",
     "grid",
     "panel",
     "popup",

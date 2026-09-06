@@ -133,7 +133,7 @@ fn typed_text_arrives_as_one_press_per_char() {
     // Keyboard events are dropped at *ingress* when nothing holds focus
     // and no subscriber matches — not queued and ignored, discarded. So
     // a keyboard test has to establish focus before it drives anything.
-    harness.ui().request_focus(Some(target()));
+    harness.ui().set_focus(target());
 
     harness.type_text("hi");
 

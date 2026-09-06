@@ -19,6 +19,7 @@ use crate::widgets::color_surface;
 use crate::widgets::color_surface::ColorSurface;
 use crate::widgets::configure::Configure;
 use crate::widgets::configure::ConfigureWidget;
+use crate::widgets::configure::ThemeDefaults;
 use crate::widgets::response::Response;
 use crate::widgets::theme::color_picker::ColorPickerTheme;
 use crate::widgets::value_response::ValueResponse;
@@ -37,6 +38,7 @@ use glam::Vec2;
 /// composite it over the checker behind — the same blend the colour will get
 /// wherever it is used, rather than a CPU imitation of it.
 #[derive(Debug)]
+#[must_use = "a widget records nothing until `show`"]
 pub struct ColorStrip<'a> {
     widget: Widget,
     kind: StripKind<'a>,

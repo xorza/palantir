@@ -17,7 +17,7 @@ use crate::support::note_style;
 use palantir::SlotDefaults;
 use palantir::widget::{LineCap, LineJoin, PolylineColors, Shape};
 use palantir::{
-    AnimSpec, Background, Brush, Button, ButtonTheme, Checkbox, Configure, Corners, Frame, Grid,
+    AnimSpec, Background, Block, Brush, Button, ButtonTheme, Checkbox, Configure, Corners, Grid,
     LinearGradient, Panel, RadioButton, RgbaF32, Scroll, Sizing, Spacing, StatefulLook, Stroke,
     Text, TextStyle, TextWrap, Track, Ui, Vec2, WidgetId, WidgetLook, fmt,
 };
@@ -131,7 +131,7 @@ fn header_band(ui: &mut Ui) {
             Text::new("Complex document")
                 .style(&TextStyle::default().with_font_size(18.0))
                 .show(ui);
-            Frame::new()
+            Block::new()
                 .id_salt("hdr-spacer")
                 .size((Sizing::FILL, Sizing::fixed(1.0)))
                 .show(ui);
@@ -210,7 +210,7 @@ fn gradient_strip(ui: &mut Ui) {
                 let t = i as f32 / 10.0;
                 let a = RgbaF32::srgb(0.2 + 0.6 * t, 0.4, 0.9 - 0.6 * t);
                 let b = RgbaF32::srgb(0.95 - 0.5 * t, 0.7 * t, 0.3 + 0.5 * t);
-                Frame::new()
+                Block::new()
                     .id_salt(("grad", i))
                     .size((Sizing::fixed(72.0), Sizing::fixed(56.0)))
                     .background(Background {
@@ -283,7 +283,7 @@ fn chat_messages(ui: &mut Ui, count: u32) {
                     .gap(8.0)
                     .size((Sizing::FILL, Sizing::HUG))
                     .show(ui, |ui| {
-                        Frame::new()
+                        Block::new()
                             .id_salt(("avatar", i))
                             .size((Sizing::fixed(40.0), Sizing::fixed(40.0)))
                             .background(Background::rounded(
@@ -324,7 +324,7 @@ fn canvas_polylines(ui: &mut Ui) {
                 .with_stroke(Stroke::solid(support::BORDER, 1.0)),
         )
         .show(ui, |ui| {
-            Frame::new()
+            Block::new()
                 .id_salt("poly-host")
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui);

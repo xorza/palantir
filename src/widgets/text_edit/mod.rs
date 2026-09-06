@@ -27,8 +27,12 @@ use crate::input::response::response_state::ResponseState;
 use crate::input::sense::Sense;
 use crate::layout::types::align::Align;
 use crate::layout::types::layout_mode::ScrollSpec;
+use crate::primitives::color::RgbaF32;
 use crate::primitives::rect::Rect;
 use crate::primitives::spacing::Spacing;
+use crate::text::font_family::FontFamily;
+use crate::text::font_slant::FontSlant;
+use crate::text::font_weight::FontWeight;
 use crate::ui::Ui;
 use crate::widgets::configure::Configure;
 use crate::widgets::configure::ConfigureWidget;
@@ -42,10 +46,10 @@ use crate::widgets::text_edit::text_geometry::{GeometryInput, TextGeometry};
 use crate::widgets::text_edit::text_layout::{LayoutInput, TextLayout};
 use crate::widgets::text_edit::view_state::{FocusEdges, ViewState, ViewUpdateInput};
 use crate::widgets::theme::text_edit::TextEditTheme;
+use crate::widgets::theme::text_style::TextStyleOverrides;
 use crate::widgets::theme::widget_look::theme_slot::ThemeSlot;
 use crate::widgets::widget::Widget;
 use glam::Vec2;
-use std::borrow::Cow;
 
 #[derive(Clone, Default, Debug)]
 struct TextEditState {
@@ -72,11 +76,13 @@ struct TextEditState {
 /// mutations between frames are visible immediately; persisted offsets
 /// are repaired before each input pass.
 #[derive(Debug)]
+#[must_use = "a widget records nothing until `show`"]
 pub struct TextEdit<'a> {
     widget: Widget,
     text: &'a mut String,
     style: Option<&'a TextEditTheme>,
-    placeholder: Cow<'static, str>,
+    overrides: TextStyleOverrides,
+    placeholder: &'a str,
     /// When `true`, Enter inserts `\n`, paste/IME preserve newlines,
     /// click hit-test + caret + selection render in 2D, and text
     /// soft-wraps to the editor's inner width via cosmic-text. v1
@@ -141,7 +147,8 @@ impl<'a> TextEdit<'a> {
             widget,
             text,
             style: None,
-            placeholder: Cow::Borrowed(""),
+            overrides: TextStyleOverrides::default(),
+            placeholder: "",
             multiline: false,
             text_align: None,
             max_chars: None,
@@ -150,8 +157,78 @@ impl<'a> TextEdit<'a> {
         }
     }
 
+    /// Per-instance override of [`crate::Theme`]'s `text_edit`. Takes an
+    /// `Option` as readily as a reference: `.style(overrides.as_ref())`.
+    ///
+    /// All-or-nothing. To tweak one axis, build and share a bundle:
+    /// `TextEditTheme { caret: red, ..ui.theme().text_edit.clone() }`.
+    /// Buffer font/leading/color live on the per-state `text` slot (a
+    /// [`crate::TextStyle`]) — `None` there inherits [`crate::Theme::text`]
+    /// like every other text-rendering widget.
+    pub fn style(mut self, s: impl Into<Option<&'a TextEditTheme>>) -> Self {
+        self.style = s.into();
+        self
+    }
+
+    /// Fill colour for the buffer, overriding the resolved look's.
+    pub fn color(mut self, color: RgbaF32) -> Self {
+        self.overrides.color = Some(color);
+        self
+    }
+
+    /// Font size in logical px, overriding the resolved look's.
+    ///
+    /// Named apart from [`Configure::size`](crate::Configure::size), which
+    /// is the widget's layout extent.
+    pub fn font_size(mut self, px: f32) -> Self {
+        self.overrides.font_size_px = Some(px);
+        self
+    }
+
+    /// Line height as a multiple of the font size, overriding the resolved
+    /// look's `line_height_mult`. Sets the caret's height with it.
+    pub fn line_height(mut self, mult: f32) -> Self {
+        self.overrides.line_height_mult = Some(mult);
+        self
+    }
+
+    /// Family to shape against, overriding the resolved look's — a code
+    /// editor asks for [`FontFamily::MONO`] here.
+    pub fn family(mut self, family: FontFamily) -> Self {
+        self.overrides.family = Some(family);
+        self
+    }
+
+    /// Weight to shape against, overriding the resolved look's.
+    /// [`Self::bold`] is this with [`FontWeight::BOLD`].
+    pub fn weight(mut self, weight: FontWeight) -> Self {
+        self.overrides.weight = Some(weight);
+        self
+    }
+
+    /// Upright or italic, overriding the resolved look's.
+    /// [`Self::italic`] is this with [`FontSlant::Italic`].
+    pub fn slant(mut self, slant: FontSlant) -> Self {
+        self.overrides.slant = Some(slant);
+        self
+    }
+
+    /// Shape the buffer bold — [`Self::weight`] with [`FontWeight::BOLD`].
+    pub fn bold(mut self) -> Self {
+        self.overrides.weight = Some(FontWeight::BOLD);
+        self
+    }
+
+    /// Shape the buffer italic — [`Self::slant`] with
+    /// [`FontSlant::Italic`]. The weight axis is untouched, so
+    /// `.bold().italic()` is bold italic.
+    pub fn italic(mut self) -> Self {
+        self.overrides.slant = Some(FontSlant::Italic);
+        self
+    }
+
     /// Select the whole buffer the moment the field gains focus without a
-    /// same-frame pointer press — so a value handed to it (via `request_focus`)
+    /// same-frame pointer press — so a value handed to it (via `set_focus`)
     /// is replaced by the first keystroke. Clicking into the field still
     /// places the caret at the hit. Default off.
     pub fn select_all_on_focus(mut self) -> Self {
@@ -205,21 +282,12 @@ impl<'a> TextEdit<'a> {
         self
     }
 
-    pub fn placeholder(mut self, s: impl Into<Cow<'static, str>>) -> Self {
-        self.placeholder = s.into();
-        self
-    }
-
-    /// Per-instance override of [`crate::Theme`]'s `text_edit`. Takes an
-    /// `Option` as readily as a reference: `.style(overrides.as_ref())`.
+    /// Text drawn in place of an empty, unfocused buffer.
     ///
-    /// All-or-nothing. To tweak one axis, build and share a bundle:
-    /// `TextEditTheme { caret: red, ..ui.theme().text_edit.clone() }`.
-    /// Buffer font/leading/color live on the per-state `text` slot (a
-    /// [`crate::TextStyle`]) — `None` there inherits [`crate::Theme::text`]
-    /// like every other text-rendering widget.
-    pub fn style(mut self, s: impl Into<Option<&'a TextEditTheme>>) -> Self {
-        self.style = s.into();
+    /// Borrowed for the frame, so it need not be `'static` — a prompt from
+    /// a locale table goes straight in.
+    pub fn placeholder(mut self, s: &'a str) -> Self {
+        self.placeholder = s;
         self
     }
 
@@ -305,7 +373,7 @@ impl<'a> TextEdit<'a> {
         // click-to-edit path) and run this frame unfocused, so the
         // same frame's keystrokes are dropped and no caret paints.
         if is_focused && response.disabled {
-            ui.request_focus(None);
+            ui.clear_focus();
             is_focused = false;
             response.focused = false;
         }
@@ -336,9 +404,12 @@ impl<'a> TextEdit<'a> {
         let caret_width = slot.caret_width;
         let selection_color = slot.selection;
         let placeholder_color = slot.placeholder;
-        let look = slot
+        let mut look = slot
             .plan(&response, (), theme.text)
             .apply(ui, &mut self.widget);
+        // After the look animates, so a per-axis override outranks the
+        // theme in every state rather than cross-fading with it.
+        look.text = self.overrides.apply(&look.text);
         // A face the shaper cannot be asked for shapes nothing — the
         // answer `TextShape::is_noop` gives every widget that records
         // text. This one needs an explicit arm because it derives caret
@@ -403,7 +474,7 @@ impl<'a> TextEdit<'a> {
         }
         .run(ui);
         if cancelled {
-            ui.request_focus(None);
+            ui.clear_focus();
             is_focused = false;
             response.focused = false;
         }
@@ -446,7 +517,7 @@ impl<'a> TextEdit<'a> {
             GeometryInput {
                 layout,
                 text: self.text,
-                placeholder: &self.placeholder,
+                placeholder: self.placeholder,
                 caret: caret_byte,
                 selection: is_focused.then_some(selection).flatten(),
             },
@@ -465,12 +536,11 @@ impl<'a> TextEdit<'a> {
             now,
         });
         let text_color = look.text.color;
-        let placeholder = self.placeholder;
         PaintInput {
             chrome: look.background,
             block_id: id.with("text-block"),
             text: self.text,
-            placeholder: &placeholder,
+            placeholder: self.placeholder,
             geometry,
             selection_rects: &state.selection_rects,
             selection_color,

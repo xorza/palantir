@@ -11,7 +11,7 @@ use crate::scene::tree::node_id::NodeId;
 use crate::shape::Shape;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
-use crate::widgets::{frame::Frame, panel::Panel};
+use crate::widgets::{block::Block, panel::Panel};
 use glam::{UVec2, Vec2};
 
 /// Pin: when a transformed parent's child changes authoring, the
@@ -30,7 +30,7 @@ fn child_under_transformed_parent_damage_in_screen_space() {
                 .transform(TranslateScale::from_translation(translate))
                 .show(ui, |ui| {
                     *child = Some(
-                        Frame::new()
+                        Block::new()
                             .id(WidgetId::from_hash("c"))
                             .size(40.0)
                             .background(Background {
@@ -84,7 +84,7 @@ fn animated_parent_transform_unions_old_and_new_positions() {
                 .transform(TranslateScale::from_translation(Vec2::new(dx, 0.0)))
                 .show(ui, |ui| {
                     *child = Some(
-                        Frame::new()
+                        Block::new()
                             .id(WidgetId::from_hash("c"))
                             .size(40.0)
                             .background(Background {
@@ -156,7 +156,7 @@ fn transform_animation_keeps_far_positions_split() {
                 .transform(TranslateScale::from_translation(Vec2::new(dx, 0.0)))
                 .show(ui, |ui| {
                     *child = Some(
-                        Frame::new()
+                        Block::new()
                             .id(WidgetId::from_hash("c"))
                             .size(40.0)
                             .background(Background {
@@ -378,7 +378,7 @@ fn moved_subtree_damages_extents_and_refreshes_snapshots() {
                         .id(WidgetId::from_hash("inner"))
                         .show(ui, |ui| {
                             for key in ["a", "b"] {
-                                Frame::new()
+                                Block::new()
                                     .id(WidgetId::from_hash(key))
                                     .size(40.0)
                                     .background(Background {
@@ -450,7 +450,7 @@ fn content_change_under_constant_transform_stays_row_tight() {
                     Panel::hstack()
                         .id(WidgetId::from_hash("inner"))
                         .show(ui, |ui| {
-                            Frame::new()
+                            Block::new()
                                 .id(WidgetId::from_hash("a"))
                                 .size(40.0)
                                 .background(Background {
@@ -458,7 +458,7 @@ fn content_change_under_constant_transform_stays_row_tight() {
                                     ..Default::default()
                                 })
                                 .show(ui);
-                            Frame::new()
+                            Block::new()
                                 .id(WidgetId::from_hash("b"))
                                 .size(40.0)
                                 .background(Background {

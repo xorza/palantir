@@ -124,7 +124,7 @@ fn modal_hears_escape_even_while_a_popup_below_holds_keyboard_claim() {
 /// overlay by a frame — long enough to swallow the click that lands
 /// where the modal used to be.
 ///
-/// **This does not pin `Ui::close_scope`**, and the difference is
+/// **This does not pin `Ui::release_input_scope`**, and the difference is
 /// worth recording: dismissal is action input, action input forces a
 /// second record pass, and that pass re-records without the modal —
 /// so the claim is already gone by `take_action_flag` whether or not

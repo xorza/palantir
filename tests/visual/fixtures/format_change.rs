@@ -14,7 +14,7 @@
 use glam::UVec2;
 use palantir::widget::Shape;
 use palantir::{
-    Background, Button, Configure, Corners, Frame, Image, Panel, RgbaF32, Sizing, Stroke,
+    Background, Block, Button, Configure, Corners, Image, Panel, RgbaF32, Sizing, Stroke,
 };
 use std::cell::RefCell;
 use wgpu::TextureFormat;
@@ -33,7 +33,7 @@ fn scene(ui: &mut palantir::Ui) {
         .padding(16.0)
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
-            Frame::new()
+            Block::new()
                 .id_salt("card")
                 .size((Sizing::FILL, Sizing::FILL))
                 .background(Background {
@@ -150,7 +150,7 @@ fn test_image() -> Image {
             px.extend_from_slice(&[rgb[0], rgb[1], rgb[2], 255]);
         }
     }
-    Image::from_rgba8(UVec2::new(N, N), px)
+    Image::from_srgba8(UVec2::new(N, N), px)
 }
 
 thread_local! {
@@ -165,7 +165,7 @@ thread_local! {
 fn image_scene(ui: &mut palantir::Ui) {
     let handle = TEST_IMAGE.with_borrow_mut(|slot| {
         slot.get_or_insert_with(|| {
-            ui.register_image(&test_image())
+            ui.load_image(&test_image())
                 .expect("fixture image fits every supported GPU")
         })
         .clone()

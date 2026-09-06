@@ -11,7 +11,7 @@
 //! | gate | covers | budget |
 //! |---|---|---|
 //! | [`full_tree_cpu_frame_alloc_free`] | record → measure → arrange → cascade → damage over the frame bench's own tree, through real cosmic shaping. `Ui::frame` stops before the frontend, so no paint | strict zero |
-//! | [`offscreen_frame_stays_at_driver_floor`] | a whole frame through `OffscreenHost::frame_offscreen` — encode, compose, and the wgpu submission, over a still tree | the driver floor |
+//! | [`offscreen_frame_stays_at_driver_floor`] | a whole frame through `OffscreenHost::frame` — encode, compose, and the wgpu submission, over a still tree | the driver floor |
 //! | [`scale_ramp_rasterizes_at_a_flat_cost_per_frame`] | the same frame under a continuous zoom: full damage, glyph and icon rasterization, both atlases' insert paths | the measured miss cost |
 //!
 //! All three audit each measured frame on its own rather than summing a

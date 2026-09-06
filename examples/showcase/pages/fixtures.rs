@@ -18,7 +18,7 @@ use crate::support;
 use crate::support::{captioned_cell, demo_cell, section, swatch_bg, tiles};
 use palantir::widget::{PolylineColors, Shape};
 use palantir::{
-    Align, Background, Button, Configure, Corners, Frame, Panel, Rect, RgbaF32, Sizing, Stroke,
+    Align, Background, Block, Button, Configure, Corners, Panel, Rect, RgbaF32, Sizing, Stroke,
     Text, TextStyle, Ui, Vec2,
 };
 
@@ -33,7 +33,7 @@ pub(crate) fn build(ui: &mut Ui) {
                     Button::new().id_salt("idcol-dup-btn").label(label).show(ui);
                 }
                 for fill in [RgbaF32::hex(0x3a4a5c), RgbaF32::hex(0xddaa44)] {
-                    Frame::new()
+                    Block::new()
                         .id_salt("idcol-dup-frame")
                         .size(36.0)
                         .background(Background::fill(fill))
@@ -99,7 +99,7 @@ fn zorder_cell(ui: &mut Ui, label: &'static str, quad_after: bool) {
             .size((Sizing::FILL, Sizing::FILL))
             .padding(12.0)
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .size((Sizing::FILL, Sizing::FILL))
                     .background(swatch_bg(if quad_after { support::B } else { support::A }))
                     .show(ui);
@@ -111,7 +111,7 @@ fn zorder_cell(ui: &mut Ui, label: &'static str, quad_after: bool) {
                     )
                     .show(ui);
                 if quad_after {
-                    Frame::new()
+                    Block::new()
                         .size((Sizing::fixed(120.0), Sizing::fixed(60.0)))
                         .background(swatch_bg(RgbaF32::hex(0x14161a)))
                         .show(ui);
@@ -142,7 +142,7 @@ fn concentricity(ui: &mut Ui) {
                         .with_stroke(Stroke::solid(RgbaF32::hex(0x00ff00), STROKE)),
                 )
                 .show(ui, |ui| {
-                    Frame::new()
+                    Block::new()
                         .size((Sizing::FILL, Sizing::FILL))
                         .background(Background::rounded(
                             RgbaF32::hex(0x000000),

@@ -21,7 +21,7 @@ use palantir::demo_swatches;
 use std::hash::Hash;
 
 use palantir::{
-    Background, Configure, Corners, FontWeight, Frame, Panel, RgbaF32, Sizing, Stroke, Text,
+    Background, Block, Configure, Corners, FontWeight, Panel, RgbaF32, Sizing, Stroke, Text,
     TextStyle, TextWrap, Ui,
 };
 
@@ -231,11 +231,11 @@ pub(crate) fn column(ui: &mut Ui, id: &'static str, body: impl FnOnce(&mut Ui)) 
         .show(ui, body);
 }
 
-/// A plain colour swatch: a sized `Frame` over [`swatch_bg`]. The leaf
+/// A plain colour swatch: a sized `Block` over [`swatch_bg`]. The leaf
 /// most demo cells are built from, so the pages state only its size and
 /// colour.
 pub(crate) fn swatch<H: Hash>(ui: &mut Ui, id: H, size: (Sizing, Sizing), c: RgbaF32) {
-    Frame::new()
+    Block::new()
         .id_salt(id)
         .size(size)
         .background(swatch_bg(c))

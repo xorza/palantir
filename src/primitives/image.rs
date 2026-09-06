@@ -117,7 +117,7 @@ impl Image {
     ///
     /// Panics for a zero dimension, an unrepresentable byte length, or when
     /// `pixels.len() != size.x * size.y * 4`.
-    pub fn from_rgba8(size: UVec2, pixels: Vec<u8>) -> Self {
+    pub fn from_srgba8(size: UVec2, pixels: Vec<u8>) -> Self {
         let expected = rgba8_len(size.x, size.y);
         assert_eq!(
             pixels.len(),
@@ -136,7 +136,7 @@ impl Image {
     /// # Panics
     ///
     /// Panics for a zero dimension or an unrepresentable byte length, as
-    /// [`Self::from_rgba8`] does.
+    /// [`Self::from_srgba8`] does.
     pub fn blank(size: UVec2) -> Self {
         Self {
             size,
@@ -231,7 +231,7 @@ mod tests {
     #[test]
     fn image_stores_valid_rgba8_dimensions_and_pixels() {
         let pixels = vec![255, 0, 0, 255, 0, 255, 0, 128];
-        let image = Image::from_rgba8(UVec2::new(2, 1), pixels.clone());
+        let image = Image::from_srgba8(UVec2::new(2, 1), pixels.clone());
         assert_eq!(image.size(), UVec2::new(2, 1));
         assert_eq!(image.pixels, pixels);
 
@@ -316,7 +316,7 @@ mod tests {
 
         for case in cases {
             assert!(
-                std::panic::catch_unwind(|| Image::from_rgba8(
+                std::panic::catch_unwind(|| Image::from_srgba8(
                     UVec2::new(case.width, case.height),
                     vec![0; case.len],
                 ))

@@ -218,7 +218,7 @@ fn text_edit_inside_a_popup_receives_typing() {
 
     let mut h = UiHarness::new(SURFACE);
     h.frame(|ui| scene(ui, &mut buf));
-    h.request_focus(Some(field));
+    h.set_focus(field);
     h.frame(|ui| scene(ui, &mut buf));
 
     h.type_text("x");
@@ -280,7 +280,7 @@ fn a_field_decides_whether_escape_closes_the_popup_around_it() {
         h.frame(|ui| {
             scene(ui, &mut buf);
         });
-        h.request_focus(Some(field));
+        h.set_focus(field);
         // Two settling frames: the scope path resolves against the
         // previous frame's cascade, so the filter this field declares has
         // to have been recorded once before the press reads it.

@@ -15,6 +15,7 @@ use crate::widgets::theme::widget_look::theme_slot::ThemeSlot;
 use crate::widgets::widget::Widget;
 
 #[derive(Debug)]
+#[must_use = "a widget records nothing until `show`"]
 pub struct Button<'a> {
     widget: Widget,
     style: Option<&'a ButtonTheme>,

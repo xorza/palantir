@@ -3,7 +3,7 @@
 
 use crate::Ui;
 use crate::layout::axis::Axis;
-use crate::layout::types::sizing::Sizes;
+use crate::layout::types::sizing::SizeSpec;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::wrapstack::tests::support::{cell, rect_of};
 use crate::primitives::background::Background;
@@ -13,7 +13,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::scene::tree::node_id::NodeId;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
-use crate::widgets::{frame::Frame, panel::Panel};
+use crate::widgets::{block::Block, panel::Panel};
 use glam::{UVec2, Vec2};
 
 /// A zero-main, 30-cross child measures to 0×30 or 30×0. Adding a 20-main
@@ -146,7 +146,7 @@ fn wrap_hstack_cross_fill_child_stretches_to_row_height() {
                 cell(ui, "tall", 100.0, 60.0);
                 // Fill-on-cross child should stretch to 60 (not stay at its
                 // intrinsic).
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("filler"))
                     .size((Sizing::fixed(100.0), Sizing::FILL))
                     .background(Background {
@@ -346,15 +346,15 @@ fn all_fill_line_cross_floors_respect_explicit_min_and_max() {
     }
 }
 
-fn axis_sizes(axis: Axis, main: Sizing, cross: Sizing) -> Sizes {
+fn axis_sizes(axis: Axis, main: Sizing, cross: Sizing) -> SizeSpec {
     match axis {
-        Axis::X => Sizes::new(main, cross),
-        Axis::Y => Sizes::new(cross, main),
+        Axis::X => SizeSpec::new(main, cross),
+        Axis::Y => SizeSpec::new(cross, main),
     }
 }
 
 fn fill_cross_cell(ui: &mut Ui, id: &'static str, axis: Axis, main: f32, min_cross: f32) -> NodeId {
-    Frame::new()
+    Block::new()
         .id(WidgetId::from_hash(id))
         .size(axis_sizes(axis, Sizing::fixed(main), Sizing::FILL))
         .min_size(axis.compose_size(0.0, min_cross))
@@ -375,7 +375,7 @@ fn max_capped_fill_cross_cell(
         .size(axis_sizes(axis, Sizing::fixed(main), Sizing::FILL))
         .max_size(axis.compose_size(f32::INFINITY, max_cross))
         .show(ui, |ui| {
-            Frame::new()
+            Block::new()
                 .id(WidgetId::from_hash("max-capped-content"))
                 .size(axis_sizes(
                     axis,

@@ -57,7 +57,7 @@ use crate::renderer::frontend::FrameScene;
 use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
 use crate::renderer::gpu_paint::gpu_views::GpuViews;
 use crate::renderer::image_registry::image_handle::ImageHandle;
-use crate::renderer::texture_limit::RegisterImageError;
+use crate::renderer::texture_limit::ImageLoadError;
 use crate::scene::cascade::Cascade;
 use crate::scene::forest::Forest;
 use crate::scene::layer::Layer;
@@ -258,7 +258,9 @@ impl Ui {
     ///
     /// Half of the host contract, and crate-private for the same reason
     /// [`Self::frame`] is: nothing outside this crate can hold a [`Ui`]
-    /// to drive, so nothing outside it delivers events either.
+    /// to drive. A host reaches it through its own door —
+    /// [`OffscreenHost::on_input`](crate::OffscreenHost::on_input) for the
+    /// headless one, the event pump for the windowed one.
     ///
     /// `now` is when the event arrived, on the clock the host also drives
     /// frames with. It is the host's to read because only the host is
@@ -285,7 +287,7 @@ impl Ui {
     //   default because forgetting it is a silent visual bug: paint
     //   derived from the pointer freezes on screen until some unrelated
     //   event forces a frame. Forgetting a peek only costs frames.
-    // - `input_scope`, and `close_scope`, take authority over a stream for
+    // - `input_scope`, and `release_input_scope`, take authority over a stream for
     //   the ambient layer, silencing readers strictly below it.
     //
     // A plain read auto-watches exactly what its own result depends on:
@@ -771,9 +773,9 @@ impl Ui {
         self.resources.icons().register(table)
     }
 
-    /// Upload an image now and get back an owning [`ImageHandle`]. **Hold
+    /// Load an image and get back an owning [`ImageHandle`]. **Hold
     /// the handle** to keep the GPU texture resident — dropping the last
-    /// clone frees it; there is no `unregister`. Reference it in
+    /// clone frees it, and there is no unload. Reference it in
     /// [`Shape::image`](crate::widget::Shape::image) every frame (`clone` it where it
     /// needs to live).
     ///
@@ -787,8 +789,8 @@ impl Ui {
     /// texture limit. A rejected image never reaches the GPU. Standalone
     /// CPU recorders have no device limit and retain the original dimensions.
     #[inline]
-    pub fn register_image(&self, image: &Image) -> Result<ImageHandle, RegisterImageError> {
-        self.resources.register_image(image)
+    pub fn load_image(&self, image: &Image) -> Result<ImageHandle, ImageLoadError> {
+        self.resources.load_image(image)
     }
 
     /// Register a font and get back the [`FontFamily`] its first face
@@ -800,7 +802,7 @@ impl Ui {
     /// families becomes reachable through
     /// [`FontFamily::named`](crate::FontFamily::named). The returned
     /// family is `Copy` and always valid, so — unlike
-    /// [`Self::load_icons`] and [`Self::register_image`] — nothing has to
+    /// [`Self::load_icons`] and [`Self::load_image`] — nothing has to
     /// be held to keep it alive.
     ///
     /// A load invalidates every shaped buffer, every reuse row, the
@@ -856,9 +858,9 @@ impl Ui {
         self.resources.text().font_families()
     }
 
-    /// The largest width or height [`Self::register_image`] accepts — the
+    /// The largest width or height [`Self::load_image`] accepts — the
     /// selected device's `max_texture_dimension_2d`, and the *only* ceiling on
-    /// a registered image, since palantir imposes none of its own. `None` for
+    /// a loaded image, since palantir imposes none of its own. `None` for
     /// a standalone CPU recorder, which has no device to ask.
     ///
     /// Read it when deriving a texture from a larger source, so the downscale
@@ -1028,8 +1030,8 @@ impl Ui {
     /// that it closed; a scope that simply stops recording needs
     /// nothing.
     #[inline]
-    pub fn close_scope(&mut self, id: WidgetId) {
-        self.input.close_scope(id);
+    pub fn release_input_scope(&mut self, id: WidgetId) {
+        self.input.release_input_scope(id);
     }
 
     /// Resolve a widget's identity recipe against the currently-open
@@ -1208,9 +1210,13 @@ impl Ui {
     }
 
     /// Advance an animation row keyed by `(id, slot)` and return the
-    /// current value. `spec = None` snaps to `target` and drops any
-    /// stale row without requesting a repaint — the canonical
-    /// "no animation" path.
+    /// current value.
+    ///
+    /// `spec` takes an [`AnimSpec`] as readily as an `Option<AnimSpec>`, so
+    /// a themed slot's `Option` goes straight in and a call site that means
+    /// one motion names it. [`AnimSpec::SNAP`] and `None` are the same
+    /// answer — land on `target` this frame, drop any stale row, and
+    /// request no repaint.
     // Generic and reached through cross-module widget helpers. Keep the
     // dominant no-map/no-spec return in the widget's block so a static theme
     // doesn't pay an outlined call plus a large `V` return-slot handoff.
@@ -1220,13 +1226,13 @@ impl Ui {
         id: WidgetId,
         slot: impl Into<AnimSlot>,
         target: V,
-        spec: Option<AnimSpec>,
+        spec: impl Into<Option<AnimSpec>>,
     ) -> V {
         let r = self.anim.animate(
             id,
             slot,
             target,
-            spec,
+            spec.into(),
             self.frame_runtime.dt,
             self.frame_runtime.render_frame_id,
         );
@@ -1418,16 +1424,24 @@ impl Ui {
         self.input.pointer_actions()
     }
 
-    /// Programmatically set or clear focus. Bypasses [`FocusPolicy`].
+    /// Move keyboard focus to `id`. Bypasses [`FocusPolicy`], and takes
+    /// effect at once rather than asking anything.
     ///
-    /// `focused` reads back immediately, but key-class routing does not
-    /// move until the next record pass: this pass's keystrokes were
-    /// already routed by the scope path resolved at its start. A widget
-    /// that blurs itself on Escape therefore does not also hand that
-    /// Escape to the overlay around it.
+    /// [`Self::focused_id`] reads back immediately, but key-class routing
+    /// does not move until the next record pass: this pass's keystrokes
+    /// were already routed by the scope path resolved at its start. A
+    /// widget that blurs itself on Escape therefore does not also hand
+    /// that Escape to the overlay around it.
     #[inline]
-    pub fn request_focus(&mut self, id: Option<WidgetId>) {
-        self.input.set_focus(id);
+    pub fn set_focus(&mut self, id: WidgetId) {
+        self.input.set_focus(Some(id));
+    }
+
+    /// Leave nothing focused. The clearing half of [`Self::set_focus`],
+    /// and subject to the same routing lag.
+    #[inline]
+    pub fn clear_focus(&mut self) {
+        self.input.set_focus(None);
     }
 
     /// Current pointer position in logical pixels (surface space), or

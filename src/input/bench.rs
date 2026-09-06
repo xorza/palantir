@@ -28,9 +28,9 @@ use crate::input::sense::Sense;
 use crate::layout::types::sizing::Sizing;
 use crate::ui::Ui;
 use crate::ui::harness::UiHarness;
+use crate::widgets::block::Block;
 use crate::widgets::button::Button;
 use crate::widgets::configure::Configure;
-use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::text::Text;
@@ -92,7 +92,7 @@ fn build_ui(ui: &mut Ui) {
                             2 => Sense::CLICK | Sense::DRAG,
                             _ => Sense::SCROLL,
                         };
-                        Frame::new()
+                        Block::new()
                             .id_salt(("ovl", i))
                             .sense(sense)
                             .size((Sizing::FILL, Sizing::FILL))
@@ -117,7 +117,7 @@ fn build_ui(ui: &mut Ui) {
                                     .id_salt(("scrolltxt", i))
                                     .show(ui);
                             }
-                            Frame::new()
+                            Block::new()
                                 .auto_id()
                                 .size((Sizing::fixed(4000.0), Sizing::fixed(4000.0)))
                                 .show(ui);

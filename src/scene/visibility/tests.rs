@@ -9,7 +9,7 @@ use crate::scene::tree::node_id::NodeId;
 use crate::scene::visibility::Visibility;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
-use crate::widgets::{button::Button, frame::Frame, panel::Panel, spinner::Spinner};
+use crate::widgets::{block::Block, button::Button, panel::Panel, spinner::Spinner};
 use glam::UVec2;
 use std::time::Duration;
 
@@ -132,16 +132,16 @@ fn collapsed_child_consumes_no_space_in_hstack() {
             .auto_id()
             .gap(10.0)
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("a"))
                     .size(40.0)
                     .show(ui);
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("gone"))
                     .size(40.0)
                     .collapsed()
                     .show(ui);
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("b"))
                     .size(40.0)
                     .show(ui);
@@ -173,16 +173,16 @@ fn collapsed_does_not_consume_fill_weight() {
             .auto_id()
             .size((Sizing::FILL, Sizing::HUG))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("a"))
                     .size((Sizing::fill(1.0), Sizing::HUG))
                     .show(ui);
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("gone"))
                     .size((Sizing::fill(3.0), Sizing::HUG))
                     .collapsed()
                     .show(ui);
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("b"))
                     .size((Sizing::fill(1.0), Sizing::HUG))
                     .show(ui);
@@ -211,7 +211,7 @@ fn hidden_keeps_slot_but_emits_no_draws() {
             .auto_id()
             .gap(10.0)
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("a"))
                     .size(40.0)
                     .background(Background {
@@ -219,7 +219,7 @@ fn hidden_keeps_slot_but_emits_no_draws() {
                         ..Default::default()
                     })
                     .show(ui);
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("hid"))
                     .size(40.0)
                     .background(Background {
@@ -228,7 +228,7 @@ fn hidden_keeps_slot_but_emits_no_draws() {
                     })
                     .hidden()
                     .show(ui);
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("b"))
                     .size(40.0)
                     .background(Background {

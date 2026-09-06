@@ -11,7 +11,7 @@
 use crate::support;
 use crate::support::{captioned_cell, demo_cell, section, tiles};
 use palantir::{
-    Align, Background, Configure, Corners, Frame, Panel, RgbaF32, Sizing, Stroke, TranslateScale,
+    Align, Background, Block, Configure, Corners, Panel, RgbaF32, Sizing, Stroke, TranslateScale,
     Ui, Vec2,
 };
 
@@ -122,7 +122,7 @@ fn clip_card(ui: &mut Ui, label: &'static str, mode: Mode, padding: f32) {
 /// it, so the overhang stays exactly [`SPILL`] whether or not the card
 /// is padded.
 fn spiller(ui: &mut Ui) {
-    Frame::new()
+    Block::new()
         .size((Sizing::FILL, Sizing::FILL))
         .margin((-SPILL, -SPILL, -SPILL, -SPILL))
         // Translucent so the card's own edge stays visible underneath —
@@ -134,7 +134,7 @@ fn spiller(ui: &mut Ui) {
 
 #[track_caller]
 fn tile(ui: &mut Ui) {
-    Frame::new()
+    Block::new()
         .auto_id()
         .size((Sizing::fixed(56.0), Sizing::fixed(56.0)))
         .background(support::swatch_bg(support::A))

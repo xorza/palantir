@@ -9,8 +9,8 @@ use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::frame_report::FrameProcessing;
 use crate::ui::harness::UiHarness;
+use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
-use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::scroll::tests::bars::support::{theme, thumb_rects};
@@ -34,7 +34,7 @@ fn cold_mount_places_the_thumb_in_one_record_pass() {
                     .id(WidgetId::from_hash("scroll"))
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        Frame::new()
+                        Block::new()
                             .id(WidgetId::from_hash("tall"))
                             .size((Sizing::fixed(180.0), Sizing::fixed(800.0)))
                             .show(ui);
@@ -85,7 +85,7 @@ fn cold_mount_overflow_paints_with_gutter_on_first_frame() {
                     .id(WidgetId::from_hash("scroll"))
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        Frame::new()
+                        Block::new()
                             .id(WidgetId::from_hash("tall"))
                             .size((Sizing::fixed(180.0), Sizing::fixed(800.0)))
                             .show(ui);
@@ -123,7 +123,7 @@ fn cold_mount_bar_geometry_matches_frame_two() {
                     .id(WidgetId::from_hash("scroll"))
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        Frame::new()
+                        Block::new()
                             .id(WidgetId::from_hash("big"))
                             .size((Sizing::fixed(800.0), Sizing::fixed(800.0)))
                             .show(ui);
@@ -172,7 +172,7 @@ fn cold_mount_fits_reserves_gutter_but_paints_no_thumb() {
                     .id(WidgetId::from_hash("scroll"))
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        Frame::new()
+                        Block::new()
                             .id(WidgetId::from_hash("short"))
                             .size((Sizing::fixed(180.0), Sizing::fixed(50.0)))
                             .show(ui);
@@ -208,7 +208,7 @@ fn scroll_with_bars_composes_through_warm_cache() {
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
                         for i in 0..30u32 {
-                            Frame::new()
+                            Block::new()
                                 .id(WidgetId::from_hash(("row", i)))
                                 .size((Sizing::fixed(180.0), Sizing::fixed(28.0)))
                                 .show(ui);
@@ -252,7 +252,7 @@ fn nested_clipped_scrolls_compose_through_warm_cache() {
                             };
                             s.size((Sizing::FILL, Sizing::FILL)).show(ui, |ui| {
                                 for i in 0..40u32 {
-                                    Frame::new()
+                                    Block::new()
                                         .id(WidgetId::from_hash((tag, "item", i)))
                                         .size((Sizing::fixed(120.0), Sizing::fixed(28.0)))
                                         .show(ui);

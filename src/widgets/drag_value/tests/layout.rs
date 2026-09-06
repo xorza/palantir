@@ -56,7 +56,7 @@ fn editing_a_long_value_holds_the_field_width() {
     let display_w = h.layout_rect(id).expect("arranged").size.w;
 
     // Enter edit mode; entry seeds the full-precision text.
-    h.request_focus(Some(id));
+    h.set_focus(id);
     h.frame(|ui| node = Some(render(ui, &mut v)));
     let edit_w = h.layout_rect(id).expect("arranged").size.w;
 
@@ -105,7 +105,7 @@ fn editing_under_a_scaled_canvas_does_not_panic() {
             });
     };
     h.frame(|ui| draw(ui, &mut v));
-    h.request_focus(Some(id));
+    h.set_focus(id);
     h.frame(|ui| draw(ui, &mut v));
 }
 
@@ -184,7 +184,7 @@ fn entering_edit_mode_preserves_the_callers_node_placement() {
     let chip = placement(&h.ui, id);
 
     // Focus flips the same widget to its inline editor.
-    h.request_focus(Some(id));
+    h.set_focus(id);
     h.frame(scene);
     let editor = placement(&h.ui, id);
 
@@ -254,7 +254,7 @@ fn entering_edit_mode_keeps_the_chips_box() {
     h.frame(|ui| render(ui, &mut fps));
     let chip = h.layout_rect(id).expect("arranged").size;
 
-    h.request_focus(Some(id));
+    h.set_focus(id);
     h.frame(|ui| render(ui, &mut fps));
     let editor = h.layout_rect(id).expect("arranged").size;
 

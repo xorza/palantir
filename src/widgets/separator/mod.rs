@@ -26,6 +26,7 @@ use crate::widgets::widget::Widget;
 /// leaving the other axis to the default.
 /// Visuals come from [`crate::SeparatorTheme`] (theme slot `separator`).
 #[derive(Debug)]
+#[must_use = "a widget records nothing until `show`"]
 pub struct Separator<'a> {
     widget: Widget,
     axis: Axis,

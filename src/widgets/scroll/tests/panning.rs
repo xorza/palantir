@@ -6,8 +6,8 @@ use crate::primitives::size::Size;
 use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::harness::UiHarness;
+use crate::widgets::block::Block;
 use crate::widgets::configure::Configure;
-use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::scroll::state::ScrollState;
@@ -74,7 +74,7 @@ fn content_margin_allows_negative_pan_into_left_top_band() {
             .hide_bars()
             .content_margin(m)
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("content"))
                     .size((Sizing::fixed(400.0), Sizing::fixed(400.0)))
                     .show(ui);
@@ -109,7 +109,7 @@ fn horizontal_scroll_pans_only_x() {
                     .id(WidgetId::from_hash("hscroll"))
                     .size((Sizing::fixed(200.0), Sizing::fixed(40.0)))
                     .show(ui, |ui| {
-                        Frame::new()
+                        Block::new()
                             .id(WidgetId::from_hash("hcontent"))
                             .size((Sizing::fixed(800.0), Sizing::fixed(40.0)))
                             .show(ui);
@@ -136,7 +136,7 @@ fn both_axis_scroll_pans_both_axes() {
                     .id(WidgetId::from_hash("xy"))
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        Frame::new()
+                        Block::new()
                             .id(WidgetId::from_hash("xy-content"))
                             .size((Sizing::fixed(800.0), Sizing::fixed(800.0)))
                             .show(ui);
@@ -173,7 +173,7 @@ fn drag_thumb_pans_proportionally() {
                         .id(WidgetId::from_hash("scroll"))
                         .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                         .show(ui, |ui| {
-                            Frame::new()
+                            Block::new()
                                 .id(WidgetId::from_hash("tall"))
                                 .size((Sizing::fixed(180.0), Sizing::fixed(800.0)))
                                 .show(ui);
@@ -242,7 +242,7 @@ fn click_on_track_before_thumb_pages_back_after_pages_forward() {
                                         .id(WidgetId::from_hash("hscroll"))
                                         .size((Sizing::fixed(200.0), Sizing::fixed(40.0)))
                                         .show(ui, |ui| {
-                                            Frame::new()
+                                            Block::new()
                                                 .id(WidgetId::from_hash("hcontent"))
                                                 .size((Sizing::fixed(800.0), Sizing::fixed(40.0)))
                                                 .show(ui);
@@ -351,7 +351,7 @@ fn content_margin_does_not_shift_content_that_fits() {
             .show(ui, |ui| {
                 // Smaller than the 200x200 viewport, so there is no
                 // overflow to pan and the resting offset must be zero.
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("content"))
                     .size((Sizing::fixed(80.0), Sizing::fixed(80.0)))
                     .show(ui);
@@ -440,7 +440,7 @@ fn scroll_by_composes_with_a_wheel_and_with_itself() {
                     .scroll_by(Vec2::new(0.0, 8.0))
                     .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
                     .show(ui, |ui| {
-                        Frame::new()
+                        Block::new()
                             .id(WidgetId::from_hash("content"))
                             .size((Sizing::fixed(200.0), Sizing::fixed(800.0)))
                             .show(ui);

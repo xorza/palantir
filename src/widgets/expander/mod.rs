@@ -46,7 +46,7 @@ pub struct ExpanderResponse<'a, R> {
 /// # use palantir::{Expander, Text, Ui};
 /// # fn demo(ui: &mut Ui) {
 /// Expander::new("Advanced")
-///     .default_open(false)
+///     .start_open(false)
 ///     .show(ui, |ui| {
 ///         Text::new("hidden until asked for").show(ui);
 ///     });
@@ -61,15 +61,16 @@ pub struct ExpanderResponse<'a, R> {
 /// record on every frame.
 ///
 /// The open flag lives on the widget's own id and is `false` until
-/// [`Self::default_open`] says otherwise, so a section nobody touches
+/// [`Self::start_open`] says otherwise, so a section nobody touches
 /// keeps no state row at all. An application that owns the flag itself —
 /// a restored layout, an "expand all" — binds it with [`Self::open`]
 /// instead.
 #[derive(Debug)]
+#[must_use = "a widget records nothing until `show`"]
 pub struct Expander<'a> {
     widget: Widget,
     label: TextInput<'a>,
-    default_open: bool,
+    start_open: bool,
     open: Option<&'a mut bool>,
     keep_body: bool,
     style: Option<&'a ExpanderTheme>,
@@ -84,7 +85,7 @@ impl<'a> Expander<'a> {
         Self {
             widget: Widget::vstack().size((Sizing::FILL, Sizing::HUG)),
             label: label.into(),
-            default_open: false,
+            start_open: false,
             open: None,
             keep_body: false,
             style: None,
@@ -94,14 +95,14 @@ impl<'a> Expander<'a> {
     /// Whether the section starts open. Read on the first frame only —
     /// after that the widget's own flag answers. Ignored entirely when
     /// [`Self::open`] binds the flag.
-    pub fn default_open(mut self, open: bool) -> Self {
-        self.default_open = open;
+    pub fn start_open(mut self, open: bool) -> Self {
+        self.start_open = open;
         self
     }
 
     /// Bind the open flag to the caller's own `bool`, for an application
     /// that persists it or drives it from elsewhere. Wins over
-    /// [`Self::default_open`], and the widget writes every toggle back
+    /// [`Self::start_open`], and the widget writes every toggle back
     /// through it.
     pub fn open(mut self, open: &'a mut bool) -> Self {
         self.open = Some(open);
@@ -137,7 +138,7 @@ impl<'a> Expander<'a> {
         let Self {
             mut widget,
             label,
-            default_open,
+            start_open,
             open,
             keep_body,
             style: _,
@@ -149,7 +150,7 @@ impl<'a> Expander<'a> {
         let stored = ui.state::<ExpanderState>(header_id).copied();
         let was_open = match &open {
             Some(flag) => **flag,
-            None => stored.map_or(default_open, |s| s.open),
+            None => stored.map_or(start_open, |s| s.open),
         };
         let height = stored.and_then(|s| s.height);
 
@@ -258,7 +259,7 @@ impl<'a> Expander<'a> {
         // takes for its own open flag. An absent row *is* the state the
         // widget resolved from, which is why the comparison is against
         // that rather than against `ExpanderState::default`: a section
-        // opened by `default_open` and left alone has nothing to record
+        // opened by `start_open` and left alone has nothing to record
         // either.
         let current = stored.unwrap_or(ExpanderState {
             open: was_open,

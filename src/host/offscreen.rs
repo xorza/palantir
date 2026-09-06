@@ -5,7 +5,7 @@
 //! [`WgpuBackend`](crate::renderer::backend::WgpuBackend), and one
 //! [`WindowDriver`]. Unlike `WinitHost` there's no winit and no swapchain —
 //! the driver renders into a caller-supplied `wgpu::Texture`.
-//! [`OffscreenHost::frame_offscreen`] accepts the same [`App`] lifecycle as
+//! [`OffscreenHost::frame`] accepts the same [`App`] lifecycle as
 //! the windowed host, so update and replay semantics do not depend on the
 //! output backend.
 //!
@@ -34,7 +34,7 @@
 //! which window calls this host honours.
 //!
 //! Everything the host can reject is a caller mistake — an unusable system
-//! scale, a window request it has no lifecycle for — so `frame_offscreen`
+//! scale, a window request it has no lifecycle for — so `frame`
 //! panics rather than returning a `Result` no caller could act on.
 
 use crate::app::App;
@@ -48,6 +48,7 @@ use crate::host::window_driver::{CpuFrame, PresentStrategy, TargetKey, WindowDri
 use crate::input::input_event::InputEvent;
 use crate::input::response::input_delta::InputDelta;
 use crate::primitives::approx::EPS;
+use crate::text::font_scope::FontScope;
 use crate::text::shaper::TextShaper;
 use crate::ui::Ui;
 use crate::ui::frame_report::FrameReport;
@@ -66,8 +67,8 @@ pub struct OffscreenHost {
 pub struct OffscreenHostBuilder {
     device: wgpu::Device,
     queue: wgpu::Queue,
-    /// `None` until [`Self::shaper`] overrides; resolved to the
-    /// bundled-fonts default lazily in [`Self::build`] so an override
+    /// `None` until [`Self::fonts`] or [`Self::shaper`] overrides; resolved
+    /// to the bundled-fonts default lazily in [`Self::build`] so an override
     /// never pays the font load.
     shaper: Option<TextShaper>,
     collect_gpu_stats: bool,
@@ -87,8 +88,26 @@ pub struct OffscreenHostBuilder {
 }
 
 impl OffscreenHostBuilder {
+    /// Which faces this host shapes against. Defaults to
+    /// [`FontScope::Bundled`], so an offscreen render measures the same on
+    /// every machine.
+    ///
+    /// The door both hosts share — see
+    /// [`WinitHostBuilder::fonts`](crate::WinitHostBuilder::fonts), which
+    /// defaults the other way. Builds a fresh [`TextShaper`] and so
+    /// replaces one set by [`Self::shaper`].
+    pub fn fonts(mut self, scope: FontScope) -> Self {
+        self.shaper = Some(TextShaper::with_fonts(scope));
+        self
+    }
+
     /// Replace the default bundled-fonts [`TextShaper`], so several hosts
     /// can share one shaped-buffer cache.
+    ///
+    /// The headless escape hatch past [`Self::fonts`]: a caller that
+    /// already built a shaper — with its warmed cache, or with fonts
+    /// loaded into it — hands that one over instead of a scope to build a
+    /// second from.
     ///
     /// Real shaping either way: every `TextShaper` carries a font
     /// database, and the placeholder *metric* is reachable solely through
@@ -254,7 +273,7 @@ impl OffscreenHost {
     /// Panics if `system_scale` is non-finite or below `1e-4`, or if the frame
     /// recorded [`Ui::open_window`] / [`Ui::close_window`] — this host has no
     /// window lifecycle.
-    pub fn frame_offscreen<T: App>(
+    pub fn frame<T: App>(
         &mut self,
         target: &wgpu::Texture,
         system_scale: f32,
@@ -311,7 +330,7 @@ pub(crate) mod test_support {
     use crate::host::offscreen::OffscreenHost;
     use crate::renderer::render_buffer::RenderBuffer;
 
-    /// Draw list the most recent [`OffscreenHost::frame_offscreen`]
+    /// Draw list the most recent [`OffscreenHost::frame`]
     /// composed. The `record_pass` benchmark replays the schedule over it
     /// to report the exact step counts behind each timing — a number the
     /// backend never publishes, because counting steps on the production

@@ -319,7 +319,7 @@ fn a_steadily_drawn_row_holds_one_ticket_not_one_per_frame() {
     );
 }
 
-/// Sizes the problem a probation tier would solve, so the tier can
+/// SizeSpec the problem a probation tier would solve, so the tier can
 /// be argued from a number instead of a hunch.
 ///
 /// A zoom or resize drag re-keys every visible run every frame, and

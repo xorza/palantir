@@ -313,7 +313,7 @@ fn step_rejects_a_value_that_cannot_snap() {
         assert!(
             std::panic::catch_unwind(move || {
                 let mut v = 0.5_f64;
-                Slider::new(&mut v, 0.0..=1.0).step(bad);
+                let _ = Slider::new(&mut v, 0.0..=1.0).step(bad);
             })
             .is_err(),
             "step({bad}) must panic",

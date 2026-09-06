@@ -71,19 +71,20 @@ pub struct TabbedViewResponse<'a> {
 /// panics. A caller whose option list shrinks between frames owns
 /// re-deriving the index alongside it.
 #[derive(Debug)]
-pub struct TabbedView<'a, S> {
+#[must_use = "a widget records nothing until `show`"]
+pub struct TabbedView<'a, S, L> {
     widget: Widget,
     selected: &'a mut usize,
     options: &'a [S],
     /// Reads one option's label. `new` fills this with `S::as_ref`.
-    label: fn(&S) -> &str,
+    label: L,
     closable: bool,
     reorderable: bool,
     overflow: TabOverflow,
     style: Option<&'a TabsTheme>,
 }
 
-impl<'a, S: AsRef<str>> TabbedView<'a, S> {
+impl<'a, S: AsRef<str>> TabbedView<'a, S, fn(&S) -> &str> {
     /// A tabbed view over pages that are themselves named by text.
     #[track_caller]
     pub fn new(selected: &'a mut usize, options: &'a [S]) -> Self {
@@ -91,15 +92,14 @@ impl<'a, S: AsRef<str>> TabbedView<'a, S> {
     }
 }
 
-impl<'a, S> TabbedView<'a, S> {
+impl<'a, S, L: Fn(&S) -> &str> TabbedView<'a, S, L> {
     /// A tabbed view over rows that *carry* a label rather than being
     /// one: `label` reads each row's text.
     ///
-    /// A plain `fn` pointer rather than a closure keeps `TabbedView`
-    /// non-generic over the projection; every real label is a field
-    /// read.
+    /// `label` is any `Fn`, so a projection may capture the table it
+    /// reads through.
     #[track_caller]
-    pub fn labeled(selected: &'a mut usize, options: &'a [S], label: fn(&S) -> &str) -> Self {
+    pub fn labeled(selected: &'a mut usize, options: &'a [S], label: L) -> Self {
         Self {
             widget: Widget::vstack().size((Sizing::FILL, Sizing::FILL)),
             selected,
@@ -230,7 +230,7 @@ impl<'a, S> TabbedView<'a, S> {
     }
 }
 
-impl<S> Configure for TabbedView<'_, S> {
+impl<S, L> Configure for TabbedView<'_, S, L> {
     #[inline]
     fn configure(&mut self) -> ConfigureWidget<'_> {
         self.widget.configure()

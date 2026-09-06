@@ -15,9 +15,9 @@ use crate::primitives::translate_scale::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::scene::cascade::Cascade;
 use crate::ui::harness::UiHarness;
+use crate::widgets::block::Block;
 use crate::widgets::button::Button;
 use crate::widgets::configure::Configure;
-use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
 
@@ -26,7 +26,7 @@ fn focusable_id() -> WidgetId {
 }
 
 fn build_focusable_leaf(ui: &mut Ui) {
-    Frame::new()
+    Block::new()
         .id(WidgetId::from_hash("focusable"))
         .focusable(true)
         .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
@@ -39,13 +39,13 @@ fn focused_reflects_focused_id_synchronously() {
     h.frame(build_focusable_leaf);
     assert!(!h.ui.response_for(focusable_id()).focused);
 
-    h.request_focus(Some(focusable_id()));
+    h.set_focus(focusable_id());
     assert!(
         h.ui.response_for(focusable_id()).focused,
-        "focused must be true the same frame as request_focus",
+        "focused must be true the same frame as set_focus",
     );
 
-    h.request_focus(None);
+    h.clear_focus();
     assert!(!h.ui.response_for(focusable_id()).focused);
 }
 
@@ -57,7 +57,7 @@ fn disabled_reflects_cascaded_ancestor_flag() {
             .id(WidgetId::from_hash("parent"))
             .disabled(true)
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("child"))
                     .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
                     .show(ui);
@@ -145,7 +145,7 @@ fn disabled_false_when_chain_clean() {
         Panel::vstack()
             .id(WidgetId::from_hash("parent"))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("child"))
                     .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
                     .show(ui);
@@ -379,7 +379,7 @@ fn pointer_local_uses_unclipped_widget_origin() {
             .clip_rect()
             .size((Sizing::fixed(50.0), Sizing::fixed(40.0)))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(id)
                     .position(Vec2::new(-20.0, 0.0))
                     .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))

@@ -12,7 +12,7 @@ use crate::renderer::frontend::encoder::tests::support::{as_rect, count_draw_rec
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
-use crate::widgets::{frame::Frame, panel::Panel};
+use crate::widgets::{block::Block, panel::Panel};
 use glam::UVec2;
 
 /// Pin: a clip-only Surface (no painted background) still emits a
@@ -47,7 +47,7 @@ fn clip_emits_balanced_push_pop() {
                 .size(50.0)
                 .clip_rect()
                 .show(ui, |ui| {
-                    Frame::new()
+                    Block::new()
                         .id(WidgetId::from_hash("inner"))
                         .size(40.0)
                         .background(Background {
@@ -109,7 +109,7 @@ fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
                 })
                 .clip_rounded()
                 .show(ui, |ui| {
-                    Frame::new()
+                    Block::new()
                         .id(WidgetId::from_hash("c"))
                         .size(40.0)
                         .show(ui);
@@ -150,7 +150,7 @@ fn clip_rounded_falls_back_to_scissor_without_background() {
                 .size(80.0)
                 .clip_rounded()
                 .show(ui, |ui| {
-                    Frame::new()
+                    Block::new()
                         .id(WidgetId::from_hash("c"))
                         .size(40.0)
                         .show(ui);

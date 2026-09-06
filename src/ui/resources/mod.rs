@@ -21,7 +21,7 @@ use crate::primitives::texture_id::TextureId;
 use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
 use crate::renderer::image_registry::ImageRegistry;
 use crate::renderer::image_registry::image_handle::ImageHandle;
-use crate::renderer::texture_limit::{RegisterImageError, TextureLimit};
+use crate::renderer::texture_limit::{ImageLoadError, TextureLimit};
 use crate::text::shaper::TextShaper;
 use crate::window::window_directory::WindowDirectory;
 
@@ -105,7 +105,7 @@ impl UiResources {
         &self.windows
     }
 
-    pub(super) fn register_image(&self, image: &Image) -> Result<ImageHandle, RegisterImageError> {
+    pub(super) fn load_image(&self, image: &Image) -> Result<ImageHandle, ImageLoadError> {
         self.texture_limit.accepts(image.size)?;
         Ok(ImageHandle::new(
             TextureId::reserve(),

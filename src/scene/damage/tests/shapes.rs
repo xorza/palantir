@@ -15,7 +15,7 @@ use crate::text::TEXT_SCALE_STEP;
 use crate::text::glyph_font::GlyphFont;
 use crate::ui::harness::UiHarness;
 use crate::widgets::configure::Configure;
-use crate::widgets::{button::Button, frame::Frame, panel::Panel};
+use crate::widgets::{block::Block, button::Button, panel::Panel};
 use glam::{UVec2, Vec2};
 
 /// Pin: the very first frame has no `prev_frame` entries, so every
@@ -98,7 +98,7 @@ fn sibling_reflow_marks_downstream_neighbor_dirty() {
         Panel::hstack()
             .id(WidgetId::from_hash("root"))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("a"))
                     .size((Sizing::fixed(a_size), Sizing::fixed(20.0)))
                     .background(Background {
@@ -106,7 +106,7 @@ fn sibling_reflow_marks_downstream_neighbor_dirty() {
                         ..Default::default()
                     })
                     .show(ui);
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("b"))
                     .size((Sizing::fixed(30.0), Sizing::fixed(20.0)))
                     .background(Background {
@@ -182,7 +182,7 @@ fn added_widget_contributes_curr_rect_to_damage() {
         Panel::hstack()
             .id(WidgetId::from_hash("root"))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id(WidgetId::from_hash("new"))
                     .size(50.0)
                     .background(Background {

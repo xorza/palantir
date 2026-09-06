@@ -6,7 +6,7 @@
 use crate::support;
 use crate::support::{section, swatch_bg, well_bg};
 use palantir::{
-    Align, Configure, Frame, HAlign, Justify, Panel, RgbaF32, Sizing, Ui, VAlign, Visibility,
+    Align, Block, Configure, HAlign, Justify, Panel, RgbaF32, Sizing, Ui, VAlign, Visibility,
 };
 
 pub(crate) fn build(ui: &mut Ui) {
@@ -47,7 +47,7 @@ fn sizing(ui: &mut Ui) {
                 // Padded frames hug their empty content box — effectively
                 // just padding, so the two boxes differ only by pad width.
                 for (i, pad) in [20.0, 40.0].into_iter().enumerate() {
-                    Frame::new()
+                    Block::new()
                         .id_salt(("hug", i))
                         .size((Sizing::HUG, Sizing::fixed(32.0)))
                         .padding((pad, 0.0, pad, 0.0))
@@ -124,7 +124,7 @@ fn visibility(ui: &mut Ui) {
                             ("mid", support::B, vis),
                             ("c", support::C, Visibility::Visible),
                         ] {
-                            Frame::new()
+                            Block::new()
                                 .id_salt((id, key))
                                 .size((Sizing::fixed(70.0), Sizing::fixed(28.0)))
                                 .visibility(v)
@@ -201,13 +201,13 @@ fn spacing(ui: &mut Ui) {
                 .gap(8.0)
                 .background(well_bg())
                 .show(ui, |ui| {
-                    Frame::new()
+                    Block::new()
                         .id_salt("m1")
                         .size((Sizing::fixed(60.0), Sizing::fixed(40.0)))
                         .margin(8.0)
                         .background(swatch_bg(support::A))
                         .show(ui);
-                    Frame::new()
+                    Block::new()
                         .id_salt("m2")
                         .size((Sizing::fixed(60.0), Sizing::fixed(40.0)))
                         .margin((16.0, 16.0, 0.0, 0.0))
@@ -228,7 +228,7 @@ fn spacing(ui: &mut Ui) {
                         (Sizing::fixed(80.0), Sizing::fixed(40.0)),
                         support::A,
                     );
-                    Frame::new()
+                    Block::new()
                         .id_salt(("neg", "b"))
                         .size((Sizing::fixed(80.0), Sizing::fixed(40.0)))
                         .margin((-30.0, 0.0, 0.0, 0.0))
@@ -263,7 +263,7 @@ fn gap(ui: &mut Ui) {
 }
 
 fn aligned_chip(ui: &mut Ui, id: &'static str, c: RgbaF32, align: Align) {
-    Frame::new()
+    Block::new()
         .id_salt(id)
         .size((Sizing::fixed(56.0), Sizing::fixed(24.0)))
         .align(align)

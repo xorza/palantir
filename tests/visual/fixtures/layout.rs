@@ -3,7 +3,7 @@
 
 use glam::UVec2;
 use palantir::{
-    Align, Background, Button, Configure, Corners, Frame, Grid, GridCell, Panel, RgbaF32, Shadow,
+    Align, Background, Block, Button, Configure, Corners, Grid, GridCell, Panel, RgbaF32, Shadow,
     Sizing, Stroke, Text, TextStyle, TextWrap, Track,
 };
 
@@ -24,7 +24,7 @@ fn vstack_fill_weights_matches_golden() {
             .gap(4.0)
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id_salt("a")
                     .size((Sizing::FILL, Sizing::fill(1.0)))
                     .background(Background {
@@ -32,7 +32,7 @@ fn vstack_fill_weights_matches_golden() {
                         ..Default::default()
                     })
                     .show(ui);
-                Frame::new()
+                Block::new()
                     .id_salt("b")
                     .size((Sizing::FILL, Sizing::fill(2.0)))
                     .background(Background {
@@ -40,7 +40,7 @@ fn vstack_fill_weights_matches_golden() {
                         ..Default::default()
                     })
                     .show(ui);
-                Frame::new()
+                Block::new()
                     .id_salt("c")
                     .size((Sizing::FILL, Sizing::fill(1.0)))
                     .background(Background {
@@ -68,7 +68,7 @@ fn grid_mixed_tracks_matches_golden() {
             .padding(10.0)
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                Frame::new()
+                Block::new()
                     .id_salt("header")
                     .grid_cell(GridCell::at(0, 0).span(1, 3))
                     .background(Background {
@@ -77,7 +77,7 @@ fn grid_mixed_tracks_matches_golden() {
                         ..Default::default()
                     })
                     .show(ui);
-                Frame::new()
+                Block::new()
                     .id_salt("side")
                     .grid_cell((1, 0))
                     .background(Background {
@@ -86,7 +86,7 @@ fn grid_mixed_tracks_matches_golden() {
                         ..Default::default()
                     })
                     .show(ui);
-                Frame::new()
+                Block::new()
                     .id_salt("body")
                     .grid_cell((1, 1))
                     .background(Background {
@@ -95,7 +95,7 @@ fn grid_mixed_tracks_matches_golden() {
                         ..Default::default()
                     })
                     .show(ui);
-                Frame::new()
+                Block::new()
                     .id_salt("aside")
                     .grid_cell((1, 2))
                     .background(Background {
