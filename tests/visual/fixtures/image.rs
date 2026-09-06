@@ -229,14 +229,15 @@ fn minification_and_magnification_filters_are_independent() {
 /// Tile fixture: RED|BLUE with `scale = 2.5` across 100px → 2.5 repeats,
 /// so `uv = (x + 0.5) / 40` and the shader's `fract` wrap gives
 /// `t = fract(uv) · 2`.
-/// - Wrap is filter-independent: `t(39)` lands past the last texel
-///   center (BLUE) and `t(40)` restarts the tile (RED) under both.
-/// - Inside a repeat the filters diverge: `t(20) = 1.025` blends under
+/// - The filters part at every seam: nearest steps from the last texel
+///   to the first, while bilinear blends the two — which is what a
+///   repeat means, and what the assertions below separate.
+/// - Inside a repeat they part the same way: `t(20) = 1.025` blends under
 ///   bilinear but snaps to BLUE under nearest.
 /// - `x = 81` is inside the truncated third repeat
 ///   (`fract(2.0375) = 0.0375` → `t = 0.075`, below the first texel
-///   center) → RED under both filters, which pins that `fract` runs per
-///   fragment rather than the sampler clamping the last partial tile.
+///   center) → RED under nearest, which pins that the wrap runs per
+///   fragment rather than the last partial tile stopping at an edge.
 #[test]
 fn bilinear_both_nearest_and_tiled_sampling_paths_are_pinned() {
     let mut h = Harness::new();
@@ -328,16 +329,41 @@ fn bilinear_both_nearest_and_tiled_sampling_paths_are_pinned() {
     });
 
     let tpx = |x: u32| tiled.get_pixel(x, 8).0;
-    for (base, name) in [(0, "tiled bilinear"), (100, "tiled both-nearest")] {
-        assert!(close(tpx(base), RED), "{name} tile start must be RED");
-        assert!(close(tpx(base + 39), BLUE), "{name} tile end must be BLUE");
-        assert!(close(tpx(base + 40), RED), "{name} must wrap back to RED");
+    // Bilinear over a repeat blends *across* every seam, the draw's own
+    // edges included: the texel before the first one is the last one,
+    // which is what repeating means and what `ClampToEdge` cannot say.
+    // At 20 px per texel the sample points nearest the first seam are
+    // x = 0 and x = 39, and both read a blend rather than the pure texel
+    // a clamp would smear there.
+    assert!(
+        close(tpx(0), [176, 94, 170, 255]),
+        "tiled bilinear must open on the seam blend, got {:?}",
+        tpx(0),
+    );
+    assert!(
+        close(tpx(39), [170, 97, 176, 255]),
+        "and close on it, got {:?}",
+        tpx(39),
+    );
+    // One tile is 40 px, so the same offsets a repeat later read the same.
+    assert!(close(tpx(40), tpx(0)), "the next repeat opens the same way");
+    assert!(close(tpx(79), tpx(39)), "and closes the same way");
+    assert_blend(tpx(20), "tiled bilinear intra-tile seam");
+
+    // Nearest picks a whole texel, so a seam is a step and the pure
+    // colours survive at the edges the bilinear pane blends.
+    for (x, expected, name) in [
+        (0, RED, "tile start"),
+        (39, BLUE, "tile end"),
+        (40, RED, "wrap back"),
+        (81, RED, "partial third repeat"),
+    ] {
         assert!(
-            close(tpx(base + 81), RED),
-            "{name} partial third repeat must be RED"
+            close(tpx(100 + x), expected),
+            "tiled both-nearest {name} must be {expected:?}, got {:?}",
+            tpx(100 + x),
         );
     }
-    assert_blend(tpx(20), "tiled bilinear intra-tile seam");
     assert!(
         close(tpx(100 + 19), RED),
         "tiled nearest intra-tile seam-left must be RED"
@@ -597,11 +623,11 @@ fn a_magnified_transparent_edge_keeps_its_colour() {
     );
 }
 
-/// Taps wrap with the tile rather than clamping at its edge. `fs` wraps the
-/// *base* UV for a tiled draw, but the taps step off that UV by up to half the
-/// footprint and leave `[0,1)` on their own — where `ClampToEdge` would smear
-/// the edge texel across every seam instead of continuing into the next
-/// repeat.
+/// Taps wrap with the tile rather than clamping at its edge. A tap steps
+/// off the base UV by up to half the footprint, so a tiled draw's leave
+/// `[0,1)` on their own — and `tap` wraps each of its fetches, so they
+/// land in the neighbouring repeat rather than on the edge texel a clamp
+/// would smear across every seam.
 ///
 /// **Geometry.** A 4×1 `STAR SKY SKY SKY` tile repeated 24× across an 8×16
 /// pane: 3 whole tiles per pixel, so `uv_dx = 3` and the footprint is 12

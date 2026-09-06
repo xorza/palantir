@@ -6,10 +6,6 @@ Scope: `.` — production code across the frame pipeline, layout, input, text, r
 
 **Evidence:** “Reproduced” means a small executable exercised the library through public APIs and `UiHarness`. “Source trace” means the finding follows from the cited implementation, and “derived” gives the calculation. Every item below was re-read against the current source, and each one names a defect that is reachable through the public API.
 
-## Image filtering happens before the required alpha and boundary operations
-
-- [ ] **Medium — Tiled images clamp within each bilinear footprint instead of filtering across tile boundaries.** Derived from [the ClampToEdge sampler](/home/xxorza/Projects/palantir/src/renderer/backend/texture_binding.rs:61) and [the shader's fract wrapping](/home/xxorza/Projects/palantir/src/renderer/backend/image_pipeline/image.wgsl:155). Wrapping the sample coordinate does not wrap the adjacent texels that bilinear filtering reads. For a two-texel opaque black/white tile, a sample exactly at a repeat boundary returns black under clamping; a repeating bilinear sample blends the last and first texels to 0.5 linear gray. The same boundary error affects each footprint tap. Repeating image draws need repeat addressing at the filter level, while nonrepeating crops need their existing edge behavior.
-
 ## Widgets use response data that cannot represent the interaction they offer
 
 - [ ] **Medium — show_when_disabled cannot enable tooltips for ordinary disabled widgets.** [Tooltip::show](/home/xxorza/Projects/palantir/src/widgets/tooltip/mod.rs:154) requires `snapshot.state.hovered` even when the option is enabled. [Cascade](/home/xxorza/Projects/palantir/src/scene/cascade/engine.rs:476) removes disabled nodes from hover sensing, so their ordinary responses cannot satisfy that condition. Reproduced with a disabled button, pointer inside its rectangle, zero tooltip delay, and `.show_when_disabled(true)`: no bubble is recorded. The input/public response contract needs an observation path for disabled hover that does not enable the disabled widget's actions.
