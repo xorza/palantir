@@ -1,0 +1,111 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+# Least privilege: nothing here writes to the repository.
+permissions:
+  contents: read
+
+# A new push to the same ref cancels the previous run, except on master,
+# where every commit keeps its own status.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: 1
+  RUSTFLAGS: -D warnings
+
+jobs:
+  fmt:
+    name: rustfmt
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all --check
+
+  clippy:
+    name: clippy (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          # Only master writes the cache, so a pull request cannot evict the
+          # entries every other branch reads.
+          save-if: ${{ github.ref == 'refs/heads/master' }}
+          key: ${{ matrix.os }}
+      # `--all-features` is what compiles the `internals`, `golden` and `bench`
+      # reach-ins, and `--all-targets` keeps the examples and the criterion
+      # drivers building. Clippy only compiles them, so the golden suite's
+      # missing baselines cost nothing here.
+      - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    steps:
+      - uses: actions/checkout@v5
+      # The unit tests lease a real `wgpu` device, and a hosted Linux runner
+      # has no GPU. Mesa's lavapipe answers as a software Vulkan adapter, which
+      # is the only backend this crate builds on Linux. macOS needs nothing —
+      # its runner exposes Metal.
+      - name: Install a software Vulkan adapter
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            mesa-vulkan-drivers vulkan-tools libvulkan1 libxkbcommon-dev
+          vulkaninfo --summary
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/master' }}
+          key: ${{ matrix.os }}
+      # Not `--all-features`: `golden` adds the `visual` test target, whose
+      # baselines under `tests/visual/golden/` are gitignored. A fresh checkout
+      # has none, so that suite writes every one and fails on purpose — correct
+      # on a workstation, permanently red on a runner.
+      - run: cargo test --locked --features internals --lib --tests
+      # The README is the crate's front page through `doc = include_str!`, so
+      # its example is a doctest and default features are the build it needs.
+      - run: cargo test --locked --doc
+
+  docs:
+    name: rustdoc
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/master' }}
+      # `package.metadata.docs.rs` sets `all-features = false`, so default
+      # features are exactly what docs.rs publishes.
+      - run: cargo doc --workspace --no-deps --locked
+        env:
+          RUSTDOCFLAGS: -D warnings
