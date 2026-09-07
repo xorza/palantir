@@ -21,8 +21,8 @@
 //! driver's own frame-to-frame spread, and only one that scales with the
 //! shape count moves the number. `fixtures/widgets.rs` and
 //! `fixtures/churn.rs` still hold the strict-zero half of the suite, and
-//! `gates::offscreen_frame_stays_at_driver_floor` pins this floor on a
-//! still tree so a drift in the driver reads there first.
+//! `gates::on_gpu::offscreen_frame_stays_at_driver_floor` pins this
+//! floor on a still tree so a drift in the driver reads there first.
 
 use crate::harness::{Audit, OffscreenTarget, SURFACE};
 use palantir::internals::headless_test_gpu;
