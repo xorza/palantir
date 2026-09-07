@@ -1793,6 +1793,7 @@ dependencies = [
  "image",
  "memchr",
  "padding-struct",
+ "palantir",
  "palantir-anim-derive",
  "pollster",
  "rayon",

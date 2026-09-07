@@ -119,6 +119,14 @@ const PAGES: &[Page] = &[
     },
     Page {
         group: "WIDGETS",
+        label: "custom widget",
+        blurb: "A Stepper authored the way a widget in another crate would be — Widget and \
+                Configure, response_for, add_shape, and no crate internal.",
+        flow: Flow::Scroll,
+        body: Body::Simple(pages::custom_widget::build),
+    },
+    Page {
+        group: "WIDGETS",
         label: "dialogs",
         blurb: "Modal flows — a dropdown, a confirm dialog, and OS close-request \
                 interception.",

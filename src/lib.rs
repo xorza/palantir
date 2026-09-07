@@ -104,7 +104,6 @@
 //! | --- | --- | --- |
 //! | `winit` | yes | The winit-backed [`WinitHost`] — real windows and a real event loop. Without it only [`OffscreenHost`] exists. Implies `system-clipboard`. |
 //! | `system-clipboard` | via `winit` | Backs [`Clipboard`] with the OS clipboard, which is what [`TextEdit`]'s cut/copy/paste reaches. [`WinitHost`] always uses it; [`OffscreenHost`] asks through [`OffscreenHostBuilder::system_clipboard`]. Without it every host runs on an in-process buffer. |
-//! | `showcase` | no | Exposes the two demo surfaces the bundled `showcase` example reads. Build it with `cargo run --example showcase --features showcase`. |
 //! | `gpu-debug-markers` | no | Emits GPU debug groups around every draw step for RenderDoc / Xcode captures. Costs two recorded commands and a label copy per step even with no capture tool attached, so it is off unless you intend to capture. |
 //! | `profile-with-tracy` | no | Opens a Tracy zone over each frame pass, and marks a frame set per window. Needs the external Tracy viewer. |
 //! | `internals` | no | Test reach-ins — adds the `internals` module. **Not a supported API**: it exists so the integration tests under `tests/` can reach crate privates, and it breaks without notice. |
@@ -153,7 +152,7 @@ pub mod bench;
 /// Accent swatches shared by the two bundled demo surfaces. Public only
 /// because the `showcase` example is a separate crate from this library
 /// and cannot reach a `pub(crate)` one; not part of the supported API.
-#[cfg(any(feature = "internals", feature = "showcase"))]
+#[cfg(feature = "internals")]
 pub mod demo_swatches;
 pub(crate) mod diagnostics;
 /// Per-output display state (physical size, the system and user scale
@@ -166,12 +165,11 @@ pub(crate) mod display;
 /// it lives here rather than under whichever driver happened to need it
 /// first.
 ///
-/// Gated on `internals` and `showcase`: the allocation gates in
-/// `tests/alloc` clear against this tree, and the showcase carries it as a
-/// page — the only way to look at the workload the numbers come from. It is
-/// pure scene code with no harness dependency, so reaching it either way
-/// costs nothing.
-#[cfg(any(feature = "internals", feature = "showcase"))]
+/// Gated on `internals`: the allocation gates in `tests/alloc` clear
+/// against this tree, and the showcase carries it as a page — the only way
+/// to look at the workload the numbers come from. It is pure scene code
+/// with no harness dependency, so reaching it costs nothing.
+#[cfg(feature = "internals")]
 pub(crate) mod frame_fixture;
 pub(crate) mod host;
 pub(crate) mod icons;
@@ -200,8 +198,8 @@ pub mod golden;
 /// feature.
 ///
 /// The two bundled demo surfaces — [`FrameFixture`] and [`demo_swatches`] —
-/// are gated at the crate root instead, because `showcase` builds them
-/// without `internals` and so cannot see this module at all.
+/// are gated at the crate root instead of here. They reach past nothing:
+/// they are scene code the showcase and the allocation gates both record.
 #[cfg(any(test, feature = "internals"))]
 pub mod internals {
     pub use crate::app::internals::RecordApp;
@@ -364,7 +362,7 @@ pub use display::user_scale::UserScale;
 /// surface — it exists so the bench target, the allocation gates and the
 /// showcase page record the same tree, rather than each keeping a smaller
 /// stand-in of its own.
-#[cfg(any(feature = "internals", feature = "showcase"))]
+#[cfg(feature = "internals")]
 pub use frame_fixture::FrameFixture;
 /// The surface, scale and dpr the benchmark workload is timed at. The
 /// bench target and the allocation gates share them so their numbers stay

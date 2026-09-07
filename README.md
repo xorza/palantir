@@ -118,7 +118,7 @@ retained scratch that reuses capacity across frames; any new per-frame
 `alloc` test suite under `tests/`:
 
 ```sh
-cargo test --features internals --test alloc
+cargo test --test alloc
 ```
 
 ## Headless UI tests
@@ -232,19 +232,16 @@ Run the bundled
 for a tour of every widget:
 
 ```sh
-cargo run --release --features showcase --example showcase
+cargo run --release --example showcase
 ```
 
 Widget authoring lives in `palantir::widget`. The crate root is what an
 application types; nothing in `widget` is needed to compose the widgets
-Palantir ships. To write your own, see
-[`examples/custom_widget.rs`](https://github.com/xorza/palantir/blob/master/examples/custom_widget.rs) — a
-`Stepper` built entirely against the published API, reaching into no crate
-internals:
-
-```sh
-cargo run --example custom_widget
-```
+Palantir ships. To write your own, see the showcase's **custom widget**
+page —
+[`examples/showcase/pages/custom_widget.rs`](https://github.com/xorza/palantir/blob/master/examples/showcase/pages/custom_widget.rs)
+— a `Stepper` built entirely against the published API, reaching into no
+crate internals.
 
 ## License
 
