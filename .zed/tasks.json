@@ -1,9 +1,6 @@
 [
     {
         "label": "Run showcase",
-        // `showcase` opens the two demo surfaces the example reads. The
-        // `winit` it also requires is a default feature, so this matches
-        // what the README tells a reader to type.
         "command": "cargo",
         "args": ["run", "--release", "--features", "showcase", "--example", "showcase"],
         "cwd": "$ZED_WORKTREE_ROOT",
