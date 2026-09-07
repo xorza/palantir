@@ -6,6 +6,7 @@ pub(crate) mod clip;
 pub(crate) mod colors;
 pub(crate) mod containers;
 pub(crate) mod controls;
+pub(crate) mod custom_widget;
 pub(crate) mod dialogs;
 pub(crate) mod dock;
 pub(crate) mod fixtures;
