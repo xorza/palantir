@@ -181,7 +181,11 @@ use wgpu::util::StagingBelt;
 /// declare `immediate_size = IMMEDIATES_BYTES` so the immediate-state
 /// layout matches and bytes written by other pipelines stay valid
 /// after a pipeline switch.
-const IMMEDIATES_BYTES: u32 = 16;
+///
+/// `DeviceRequirements` asks every device for exactly this many bytes and
+/// rejects one that grants fewer, so growing the layout raises the request
+/// by the same step.
+pub(crate) const IMMEDIATES_BYTES: u32 = 16;
 
 /// Wgpu renderer owning its device/queue handles, pipelines, and text
 /// backend. The winit adapter retains cloned handles solely for surface
