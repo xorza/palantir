@@ -1,7 +1,6 @@
 //! Placing a child inside its resolved cell, and the depth stack that
 //! brackets the walk.
 
-use crate::layout::grid::grid_depth_stack::GridDepthStack;
 use crate::layout::types::track::Track;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::harness::UiHarness;
@@ -44,5 +43,7 @@ fn grid_cell_alignment_override_pins_child_to_corner() {
 #[test]
 #[should_panic(expected = "GridDepthStack::exit underflow")]
 fn grid_depth_stack_rejects_exit_without_enter() {
+    use crate::layout::grid::grid_depth_stack::GridDepthStack;
+
     GridDepthStack::default().exit();
 }

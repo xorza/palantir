@@ -4,9 +4,6 @@ use crate::Ui;
 use crate::primitives::rect::Rect;
 use crate::primitives::span::Span;
 use crate::primitives::widget_id::WidgetId;
-use crate::renderer::frontend::Frontend;
-use crate::renderer::render_plan::RenderPlan;
-use crate::scene::damage::Damage;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
 use crate::ui::harness::UiHarness;
@@ -30,6 +27,10 @@ use std::cell::Cell;
 /// encoder emits.
 #[cfg(debug_assertions)]
 fn collision_outlines(ui: &Ui) -> Vec<Rect> {
+    use crate::renderer::frontend::Frontend;
+    use crate::renderer::render_plan::RenderPlan;
+    use crate::scene::damage::Damage;
+
     // Share Ui's record store so any mesh/polyline bytes pushed at
     // record time are visible at compose / upload — the WindowDriver
     // wiring for real apps.

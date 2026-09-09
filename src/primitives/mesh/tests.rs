@@ -3,14 +3,6 @@ use crate::primitives::color::RgbaF32;
 use crate::primitives::mesh::*;
 use crate::primitives::size::Size;
 
-fn mesh_with_vertices(count: usize) -> Mesh {
-    let mut mesh = Mesh::with_capacity(count, 0);
-    for index in 0..count {
-        mesh.vertex(Vec2::new(index as f32, 0.0), RgbaF32::WHITE);
-    }
-    mesh
-}
-
 #[test]
 fn mesh_vertex_is_12_bytes_no_padding() {
     assert_eq!(std::mem::size_of::<MeshVertex>(), 12);
@@ -57,6 +49,14 @@ fn mesh_index_arithmetic_accepts_boundaries_and_rejects_overflow() {
 #[cfg(debug_assertions)]
 #[test]
 fn triangle_validates_each_index_before_mutating() {
+    fn mesh_with_vertices(count: usize) -> Mesh {
+        let mut mesh = Mesh::with_capacity(count, 0);
+        for index in 0..count {
+            mesh.vertex(Vec2::new(index as f32, 0.0), RgbaF32::WHITE);
+        }
+        mesh
+    }
+
     #[derive(Debug)]
     struct Case {
         label: &'static str,

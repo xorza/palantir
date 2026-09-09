@@ -283,6 +283,10 @@ mod tests {
         }
     }
 
+    /// Debug-only: release still panics on the out-of-range copy, but
+    /// from the slice rather than the screen, so only the debug build
+    /// can pin the row it names.
+    #[cfg(debug_assertions)]
     #[test]
     #[should_panic(expected = "row 3 of 3")]
     fn repeat_row_rejects_a_row_outside_the_image() {
