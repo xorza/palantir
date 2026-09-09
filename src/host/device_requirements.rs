@@ -1,6 +1,7 @@
 //! What Palantir needs from the device it draws on.
 
 use crate::host::error::UnmetRequirements;
+use crate::renderer::backend::IMMEDIATES_BYTES;
 use std::num::NonZeroU32;
 
 /// The features and limits to ask an adapter for, so that the device it
@@ -18,18 +19,15 @@ pub struct DeviceRequirements {
     /// have. Union with the caller's before requesting.
     pub features: wgpu::Features,
     /// Already resolved against the adapter, so these are requestable as they
-    /// stand rather than a floor to raise.
+    /// stand. They are only what Palantir's own pipelines consume, so a caller
+    /// that draws its own work on the same device raises them to its needs
+    /// with `or_better_values_from` before requesting.
     pub limits: wgpu::Limits,
 }
 
 impl DeviceRequirements {
     /// Features no configuration runs without.
     pub const FEATURES: wgpu::Features = wgpu::Features::IMMEDIATES;
-
-    /// Immediate-region bytes Palantir needs. This covers
-    /// `renderer::backend::text::Params` (a `vec2<u32>`) with WGSL's 16-byte
-    /// uniform-struct rounding.
-    pub const IMMEDIATE_SIZE: u32 = 16;
 
     /// The three features `collect_gpu_stats` asks for, as the one set they
     /// mean something as: instrument the GPU timeline.
@@ -73,10 +71,10 @@ impl DeviceRequirements {
                 available,
             });
         }
-        if limits.max_immediate_size < Self::IMMEDIATE_SIZE {
+        if limits.max_immediate_size < IMMEDIATES_BYTES {
             return Err(UnmetRequirements::Limit {
                 name: IMMEDIATE_SIZE_LIMIT,
-                required: u64::from(Self::IMMEDIATE_SIZE),
+                required: u64::from(IMMEDIATES_BYTES),
                 available: u64::from(limits.max_immediate_size),
             });
         }
@@ -92,8 +90,22 @@ impl DeviceRequirements {
     ) -> Result<Self, UnmetRequirements> {
         Self::check(available, &ceiling)?;
 
-        let mut limits = wgpu::Limits::default().using_resolution(ceiling.clone());
-        limits.max_immediate_size = limits.max_immediate_size.max(Self::IMMEDIATE_SIZE);
+        // The GLES-3 baseline rather than `Limits::default()`: the default
+        // demands 16 inter-stage shader variables where `curve.wgsl`, the
+        // busiest shader here, declares 10 — and a Raspberry Pi's V3D reports
+        // 15, so the default cost a device that draws Palantir fine. The
+        // pipelines clear the rest of the baseline with room to spare: no
+        // compute pass, no storage or uniform buffer, one bind group, two
+        // vertex buffers, twelve vertex attributes, one colour attachment.
+        //
+        // Resolution is the exception and comes from the adapter, since the
+        // swapchain, a `GpuView` target and the atlases are all capped by
+        // `max_texture_dimension_2d` — the baseline's 2048 would cap the
+        // window rather than describe a need.
+        let limits = wgpu::Limits {
+            max_immediate_size: IMMEDIATES_BYTES,
+            ..wgpu::Limits::downlevel_defaults().using_resolution(ceiling.clone())
+        };
 
         let mut unmet = None;
         limits.check_limits_with_fail_fn(&ceiling, true, |name, required, available| {
@@ -151,11 +163,12 @@ mod tests {
 
     use crate::host::device_requirements::DeviceRequirements;
     use crate::host::error::UnmetRequirements;
+    use crate::renderer::backend::IMMEDIATES_BYTES;
 
     #[test]
     fn negotiation_holds_the_hard_line_and_lets_the_rest_degrade() {
         let ceiling = Limits {
-            max_immediate_size: DeviceRequirements::IMMEDIATE_SIZE,
+            max_immediate_size: IMMEDIATES_BYTES,
             ..Limits::default()
         };
         let available = Features::IMMEDIATES | Features::TIMESTAMP_QUERY;
@@ -169,10 +182,7 @@ mod tests {
             requirements.features,
             Features::IMMEDIATES | Features::TIMESTAMP_QUERY
         );
-        assert_eq!(
-            requirements.limits.max_immediate_size,
-            DeviceRequirements::IMMEDIATE_SIZE
-        );
+        assert_eq!(requirements.limits.max_immediate_size, IMMEDIATES_BYTES);
 
         // The non-negotiable one is not dropped.
         let missing =
@@ -187,7 +197,7 @@ mod tests {
         );
 
         let mut short = ceiling;
-        short.max_immediate_size = DeviceRequirements::IMMEDIATE_SIZE - 1;
+        short.max_immediate_size = IMMEDIATES_BYTES - 1;
         let unmet = DeviceRequirements::against(Features::IMMEDIATES, short, Features::empty())
             .unwrap_err();
         assert_eq!(
@@ -202,5 +212,35 @@ mod tests {
             unmet.to_string(),
             "graphics device limit max_immediate_size is 15, but Palantir requires 16"
         );
+    }
+
+    #[test]
+    fn an_adapter_under_wgpu_defaults_still_negotiates() {
+        // A Raspberry Pi's V3D, which is one inter-stage variable and 512
+        // texture pixels short of `Limits::default()` and meets every other
+        // default.
+        let ceiling = Limits {
+            max_texture_dimension_1d: 7680,
+            max_texture_dimension_2d: 7680,
+            max_texture_dimension_3d: 7680,
+            max_inter_stage_shader_variables: 15,
+            max_immediate_size: 256,
+            ..Limits::default()
+        };
+        assert!(
+            !Limits::default().check_limits(&ceiling),
+            "fixture no longer stands for an adapter the wgpu defaults fail on"
+        );
+
+        let requirements =
+            DeviceRequirements::against(Features::IMMEDIATES, ceiling.clone(), Features::empty())
+                .unwrap();
+
+        assert!(requirements.limits.check_limits(&ceiling));
+        assert_eq!(requirements.limits.max_inter_stage_shader_variables, 15);
+        assert_eq!(requirements.limits.max_immediate_size, IMMEDIATES_BYTES);
+        // Resolution is the adapter's, not the baseline's 2048 and 256.
+        assert_eq!(requirements.limits.max_texture_dimension_2d, 7680);
+        assert_eq!(requirements.limits.max_texture_dimension_3d, 7680);
     }
 }
