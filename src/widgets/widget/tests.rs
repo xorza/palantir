@@ -444,6 +444,10 @@ fn auto_id_redirects_to_call_site() {
 /// A NaN edge that slips through reaches layout and surfaces frames
 /// later as a widget that measured to nothing, with nothing pointing
 /// back at the theme that set it.
+///
+/// Debug-only: the screen itself is a `debug_assert!`, one per set
+/// padding per frame.
+#[cfg(debug_assertions)]
 #[test]
 #[should_panic(expected = "NaN in padding")]
 fn a_themed_padding_is_nan_screened_like_an_authored_one() {
