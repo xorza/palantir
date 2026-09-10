@@ -15,17 +15,18 @@
 //! allocs (Vec growth in `TRACES`, backtrace internals) neither
 //! recurse forever nor get counted.
 //!
-//! Capture is unconditional and unresolved (`new_unresolved`) so the
-//! hot path is just a stack walk; symbol resolution runs lazily
-//! inside the harness when a fixture fails. Cost is negligible for
-//! passing tests (steady-state audits allocate zero times) and we
-//! want traces always available on failure.
+//! Capture is unresolved (`new_unresolved`) so the hot path is just a
+//! stack walk, and symbol resolution runs lazily inside the harness
+//! when a fixture fails. A window keeps the first [`TRACE_CAP`] of
+//! them. Cost is nil for a passing test: a steady-state audit
+//! allocates zero times, so it walks nothing.
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::{Cell, RefCell};
 
 use backtrace::Backtrace;
 
+#[derive(Debug)]
 pub(crate) struct CountingAllocator;
 
 thread_local! {
@@ -36,6 +37,19 @@ thread_local! {
     static TRACES: RefCell<Vec<Backtrace>> = const { RefCell::new(Vec::new()) };
 }
 
+/// Allocation traces one audit window keeps. The counters stay exact; this
+/// bounds the diagnostic alone.
+///
+/// A failing frame names its offender in the first few sites, and the
+/// harness reports how many it dropped. The bound is what keeps the cost of
+/// a failure flat: every capture walks the stack, and every one the harness
+/// prints resolves symbols. Windows does both through `dbghelp`, behind one
+/// process-wide mutex it shares with the panic printer, at a cost no other
+/// platform charges — an unbounded window there ran four of this harness's
+/// own tests past a minute each, and the job was cancelled before they
+/// finished.
+pub(crate) const TRACE_CAP: usize = 8;
+
 #[inline]
 fn track(size: usize) {
     if !IN_AUDIT.with(Cell::get) || CAPTURING.with(Cell::get) {
@@ -44,8 +58,10 @@ fn track(size: usize) {
     ALLOCS.with(|c| c.set(c.get() + 1));
     BYTES.with(|c| c.set(c.get() + size as u64));
     CAPTURING.with(|f| f.set(true));
-    let bt = Backtrace::new_unresolved();
-    TRACES.with(|t| t.borrow_mut().push(bt));
+    if TRACES.with(|t| t.borrow().len()) < TRACE_CAP {
+        let bt = Backtrace::new_unresolved();
+        TRACES.with(|t| t.borrow_mut().push(bt));
+    }
     CAPTURING.with(|f| f.set(false));
 }
 
@@ -74,11 +90,15 @@ unsafe impl GlobalAlloc for CountingAllocator {
 pub(crate) struct AuditResult {
     pub(crate) allocs: u64,
     pub(crate) bytes: u64,
+    /// The window's first [`TRACE_CAP`] allocation sites. Past the cap
+    /// `allocs` keeps counting, so it can name more allocations than there
+    /// are traces.
     pub(crate) traces: Vec<Backtrace>,
 }
 
 /// RAII guard: clears `IN_AUDIT` on drop so a panic mid-audit can't
 /// strand the flag and poison subsequent operations on this thread.
+#[derive(Debug)]
 struct AuditGuard;
 
 impl AuditGuard {

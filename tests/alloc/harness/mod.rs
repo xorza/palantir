@@ -236,8 +236,15 @@ impl Audit {
              {} B — budget is {}/frame",
             self.frames, result.allocs, result.bytes, self.budget,
         );
+        let traced = result.traces.len() as u64;
         for (i, bt) in result.traces.iter_mut().enumerate() {
             eprintln!("--- alloc #{i} backtrace ---\n{}", format::user_frames(bt));
+        }
+        if result.allocs > traced {
+            eprintln!(
+                "({} further allocations went untraced — a window keeps the first {traced})",
+                result.allocs - traced,
+            );
         }
         eprintln!(
             "(set PALANTIR_ALLOC_FULL_BT=1 to disable user-code filtering and see full stacks)"
