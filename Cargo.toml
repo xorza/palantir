@@ -64,7 +64,7 @@ memchr = "2.8"
 rustc-hash = "2.1"
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 pollster = "1.0"
-wgpu = { version = "30.0", default-features = false, features = ["std", "parking_lot", "wgsl", "vulkan", "metal", "dx12"] }
+wgpu = { version = "30.0", default-features = false, features = ["std", "parking_lot", "wgsl", "vulkan", "metal", "dx12", "gles"] }
 winit = { version = "0.30", optional = true }
 padding-struct = "0.2"
 soa-rs = "1.0"
